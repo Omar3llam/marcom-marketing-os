@@ -21,31 +21,43 @@ let thinkTimer = null, thinkIdx = 0;
 
 // ── CLERK INIT ────────────────────────────────────────────────
 window.addEventListener('load', async () => {
-  await window.Clerk?.load({ appearance: { elements: { rootBox: 'clerk-root' } } });
-  const clerk = window.Clerk;
+  try {
+    await window.Clerk?.load({ appearance: { elements: { rootBox: 'clerk-root' } } });
+  } catch (err) {
+    console.error('Clerk load failed', err);
+  }
 
-  // Clerk must be present and the user must be signed in.
-  // Never boot the app with a null Clerk instance.
+  const clerk = window.Clerk;
+  const authContainer = document.getElementById('auth-container');
+  const signInEl     = document.getElementById('clerk-sign-in');
+
   if (!clerk) {
-    document.getElementById('auth-container').style.display = 'flex';
-    const signInEl = document.getElementById('sign-in');
+    authContainer.style.display = 'flex';
     if (signInEl) signInEl.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;">Auth service unavailable. Please refresh.</p>';
     return;
   }
 
   if (clerk.user) { boot(clerk); return; }
 
-  document.getElementById('auth-container').style.display = 'flex';
-  clerk.mountSignIn(document.getElementById('sign-in'), {
-    appearance: {
-      variables: { colorPrimary: '#FFD300', colorBackground: '#fff', borderRadius: '20px', fontFamily: 'Poppins' },
-      elements: {
-        card: 'box-shadow:0 8px 40px rgba(0,0,0,0.1);border-radius:20px;',
-        formButtonPrimary: 'font-weight:700;',
+  // Show container BEFORE mounting so Clerk has a visible target
+  authContainer.style.display = 'flex';
+
+  try {
+    clerk.mountSignIn(signInEl, {
+      appearance: {
+        variables: { colorPrimary: '#FFD300', colorBackground: '#fff', borderRadius: '20px', fontFamily: 'Poppins' },
+        elements: {
+          card: 'box-shadow:0 8px 40px rgba(0,0,0,0.1);border-radius:20px;',
+          formButtonPrimary: 'font-weight:700;',
+        },
       },
-    },
-    afterSignInUrl: window.location.href,
-  });
+      afterSignInUrl: window.location.href,
+    });
+  } catch (err) {
+    console.error('Clerk mount failed', err);
+    if (signInEl) signInEl.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;">Sign-in failed to load. Please refresh.</p>';
+  }
+
   clerk.addListener(({ user }) => { if (user) boot(clerk); });
 });
 
