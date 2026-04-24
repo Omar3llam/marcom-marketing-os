@@ -20,49 +20,39 @@ const LUMI_THOUGHTS = [
 let thinkTimer = null, thinkIdx = 0;
 
 // ── CLERK INIT ────────────────────────────────────────────────
-// Clerk's CDN bundle no longer ships UI components by default.
-// We must: 1) load the UI bundle from the Clerk domain, 2) instantiate
-// Clerk manually, 3) pass ClerkUI into load() — per official Clerk docs.
+// Using @clerk/clerk-js@4 CDN which bundles UI components.
+// window.Clerk is set as an instance by the data-clerk-publishable-key auto-init.
 window.addEventListener('load', async () => {
   const authContainer = document.getElementById('auth-container');
   const signInEl      = document.getElementById('clerk-sign-in');
 
-  const publishableKey = window.CLERK_PUBLISHABLE_KEY;
-  if (!publishableKey || !window.Clerk) {
+  console.log('[Clerk Init] window.Clerk:', typeof window.Clerk, window.Clerk);
+
+  if (!window.Clerk) {
+    console.error('[Clerk Init Error]: Clerk script failed to load completely from the CDN.');
     authContainer.style.display = 'flex';
     if (signInEl) signInEl.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;">Auth service unavailable. Please refresh.</p>';
     return;
   }
-
-  // Decode Clerk frontend API domain from the publishable key
-  const clerkDomain = atob(publishableKey.split('_')[2]).slice(0, -1);
-
-  // Load the UI bundle (sets window.__internal_ClerkUICtor)
-  await new Promise((resolve, reject) => {
-    const s = document.createElement('script');
-    s.src = `https://${clerkDomain}/npm/@clerk/ui@1/dist/ui.browser.js`;
-    s.async = true;
-    s.crossOrigin = 'anonymous';
-    s.onload = resolve;
-    s.onerror = () => reject(new Error('Failed to load @clerk/ui bundle'));
-    document.head.appendChild(s);
-  });
-
-  // Manually instantiate Clerk (window.Clerk from CDN is the class when no data- attr)
-  const clerk = new window.Clerk(publishableKey);
 
   try {
-    await clerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
+    await window.Clerk.load({
+      appearance: {
+        variables: { colorPrimary: '#FFD300', colorBackground: '#fff', borderRadius: '20px', fontFamily: 'Poppins' },
+      },
+    });
+    console.log('[Clerk Init] load() succeeded. user:', window.Clerk.user);
   } catch (err) {
-    console.error('Clerk load failed', err);
+    console.error('[Clerk Init Error]:', err);
     authContainer.style.display = 'flex';
     if (signInEl) signInEl.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;">Auth service unavailable. Please refresh.</p>';
     return;
   }
+
+  const clerk = window.Clerk;
 
   if (clerk.user) { boot(clerk); return; }
 
-  // Show container BEFORE mounting so Clerk has a visible target
   authContainer.style.display = 'flex';
 
   try {
@@ -76,8 +66,9 @@ window.addEventListener('load', async () => {
       },
       afterSignInUrl: window.location.href,
     });
+    console.log('[Clerk Init] mountSignIn() called successfully.');
   } catch (err) {
-    console.error('Clerk mount failed', err);
+    console.error('[Clerk Init Error]:', err);
     if (signInEl) signInEl.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;">Sign-in failed to load. Please refresh.</p>';
   }
 
