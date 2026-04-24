@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "read",
+      "write",
+      "shell:npm install",
+      "shell:npm run *",
+      "shell:node *",
+      "shell:curl *",
+      "shell:cat *",
+      "shell:ls *",
+      "shell:mkdir *",
+      "shell:cp *",
+      "shell:mv *"
+    ],
+    "deny": [
+      "shell:rm -rf /",
+      "shell:sudo *"
+    ]
+  },
+  "model": "claude-sonnet-4-5",
+  "environment": {
+    "NODE_ENV": "development"
+  }
+}
