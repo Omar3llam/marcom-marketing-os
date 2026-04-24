@@ -16,7 +16,7 @@ if (!DATABASE_URL) {
 
 const sql = postgres(DATABASE_URL, {
   max: 1,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: true } : false,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   connect_timeout: 15,
 });
 
