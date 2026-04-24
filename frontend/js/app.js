@@ -21,7 +21,7 @@ let thinkTimer = null, thinkIdx = 0;
 
 // ── CLERK INIT ────────────────────────────────────────────────
 window.addEventListener('load', async () => {
-  await window.Clerk?.load();
+  await window.Clerk?.load({ appearance: { elements: { rootBox: 'clerk-root' } } });
   const clerk = window.Clerk;
 
   // Clerk must be present and the user must be signed in.
