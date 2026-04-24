@@ -6,11 +6,10 @@
 <title>MARCOM — AI Marketing Co-pilot</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-<!-- Clerk Vanilla JS SDK -->
-<script async crossorigin="anonymous"
-  data-clerk-publishable-key="pk_test_Y2hvaWNlLWxpb25maXNoLTEwLmNsZXJrLmFjY291bnRzLmRldiQ"
-  src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
-  type="text/javascript"></script>
+<!-- Clerk: expose key as global; app.js controls full init (loads UI bundle first) -->
+<script>window.CLERK_PUBLISHABLE_KEY = "pk_test_Y2hvaWNlLWxpb25maXNoLTEwLmNsZXJrLmFjY291bnRzLmRldiQ";</script>
+<script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+  crossorigin="anonymous" type="text/javascript"></script>
 
 <style>
 /* ═══════════════════════════════════════════════════

@@ -20,18 +20,41 @@ const LUMI_THOUGHTS = [
 let thinkTimer = null, thinkIdx = 0;
 
 // ── CLERK INIT ────────────────────────────────────────────────
+// Clerk's CDN bundle no longer ships UI components by default.
+// We must: 1) load the UI bundle from the Clerk domain, 2) instantiate
+// Clerk manually, 3) pass ClerkUI into load() — per official Clerk docs.
 window.addEventListener('load', async () => {
-  try {
-    await window.Clerk?.load({ appearance: { elements: { rootBox: 'clerk-root' } } });
-  } catch (err) {
-    console.error('Clerk load failed', err);
+  const authContainer = document.getElementById('auth-container');
+  const signInEl      = document.getElementById('clerk-sign-in');
+
+  const publishableKey = window.CLERK_PUBLISHABLE_KEY;
+  if (!publishableKey || !window.Clerk) {
+    authContainer.style.display = 'flex';
+    if (signInEl) signInEl.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;">Auth service unavailable. Please refresh.</p>';
+    return;
   }
 
-  const clerk = window.Clerk;
-  const authContainer = document.getElementById('auth-container');
-  const signInEl     = document.getElementById('clerk-sign-in');
+  // Decode Clerk frontend API domain from the publishable key
+  const clerkDomain = atob(publishableKey.split('_')[2]).slice(0, -1);
 
-  if (!clerk) {
+  // Load the UI bundle (sets window.__internal_ClerkUICtor)
+  await new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = `https://${clerkDomain}/npm/@clerk/ui@1/dist/ui.browser.js`;
+    s.async = true;
+    s.crossOrigin = 'anonymous';
+    s.onload = resolve;
+    s.onerror = () => reject(new Error('Failed to load @clerk/ui bundle'));
+    document.head.appendChild(s);
+  });
+
+  // Manually instantiate Clerk (window.Clerk from CDN is the class when no data- attr)
+  const clerk = new window.Clerk(publishableKey);
+
+  try {
+    await clerk.load({ ui: { ClerkUI: window.__internal_ClerkUICtor } });
+  } catch (err) {
+    console.error('Clerk load failed', err);
     authContainer.style.display = 'flex';
     if (signInEl) signInEl.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;">Auth service unavailable. Please refresh.</p>';
     return;
