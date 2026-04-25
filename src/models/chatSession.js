@@ -137,7 +137,12 @@ export async function saveSession(userId, { sessionId, title, messages }) {
   const messagesJson  = JSON.stringify(cleanMessages);
 
   // Upsert pattern with explicit user_id ownership check.
-  // The DO UPDATE WHERE clause is the cross-user safety net.
+  // Title overwrite policy:
+  //   • Always update if the incoming title is real (not 'New Chat').
+  //   • Allow overwriting a stale 'New Chat' placeholder once a real
+  //     title becomes available.
+  //   • Never downgrade a good title to 'New Chat' — protects against
+  //     race conditions where a save fires before pushHistory completes.
   const rows = await sql`
     INSERT INTO marcom_sessions (
       session_id, user_id, title, conversation_history,
@@ -148,7 +153,11 @@ export async function saveSession(userId, { sessionId, title, messages }) {
       1, 0, 0, false, ${'[]'}::jsonb
     )
     ON CONFLICT (session_id) DO UPDATE SET
-      title                = EXCLUDED.title,
+      title = CASE
+        WHEN EXCLUDED.title = 'New Chat' AND marcom_sessions.title <> '' AND marcom_sessions.title <> 'New Chat'
+          THEN marcom_sessions.title
+        ELSE EXCLUDED.title
+      END,
       conversation_history = EXCLUDED.conversation_history
     WHERE marcom_sessions.user_id = ${userId}
     RETURNING session_id, title, last_updated, user_id
@@ -164,4 +173,23 @@ export async function saveSession(userId, { sessionId, title, messages }) {
     title:     rows[0].title,
     updatedAt: rows[0].last_updated,
   };
+}
+
+/**
+ * Delete a session, scoped to userId. Returns true if a row was deleted,
+ * false if not found or owned by a different user — callers map false to 404.
+ *
+ * The user_id is part of the WHERE clause, so cross-user deletes return
+ * 0 affected rows without leaking existence info.
+ */
+export async function deleteSession(userId, sessionId) {
+  if (!sessionId) return false;
+  const sql = getDb();
+  const rows = await sql`
+    DELETE FROM marcom_sessions
+    WHERE session_id = ${sessionId}
+      AND user_id    = ${userId}
+    RETURNING session_id
+  `;
+  return rows.length > 0;
 }

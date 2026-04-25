@@ -116,10 +116,13 @@ function pushHistory(role, content, meta = {}) {
 
 /**
  * Derive a sidebar title from the first user message in S.history.
+ * Truncates to 40 chars and appends an ellipsis when the original was longer.
  */
 function deriveTitle() {
   const first = S.history.find(m => m.role === 'user' && typeof m.content === 'string');
-  return first ? first.content.replace(/\s+/g, ' ').trim().slice(0, 40) : 'New Chat';
+  if (!first) return 'New Chat';
+  const clean = first.content.replace(/\s+/g, ' ').trim();
+  return clean.length > 40 ? clean.slice(0, 40) + '...' : clean;
 }
 
 /**
@@ -180,16 +183,88 @@ export async function loadRecentChats() {
     }
 
     list.innerHTML = sessions.map(s => {
-      const safeId = (s.sessionId || '').replace(/'/g, "\\'");
-      const label  = (s.title || 'New Chat').slice(0, 28);
-      return `<div class="sb-item sb-recent" onclick="window._app.resumeChat('${safeId}')" title="${s.sessionId}">
+      const safeId = esc(s.sessionId || '');
+      const label  = esc((s.title || 'New Chat').slice(0, 28));
+      // Note: delete button + row use event delegation (see _wireSidebarDelegation).
+      return `<div class="sb-item sb-recent" data-session-id="${safeId}" title="${safeId}">
         <span class="sb-item-icon">💬</span>
-        <span class="sb-item-label">${esc(label)}</span>
+        <span class="sb-item-label">${label}</span>
+        <button class="sb-recent-del" data-session-id="${safeId}"
+                aria-label="Delete chat" title="Delete">✕</button>
       </div>`;
     }).join('');
+    _wireSidebarDelegation();
   } catch (err) {
     console.warn('[Lumi] loadRecentChats failed:', err?.message);
     list.innerHTML = '<div style="padding:6px 12px;font-size:11px;color:var(--ink-3);font-style:italic;">Offline — history unavailable.</div>';
+  }
+}
+
+// ── SIDEBAR EVENT DELEGATION ─────────────────────────────────
+// One listener on the container — handles both row-click (resume)
+// and delete-button click (delete) without inline onclick handlers,
+// so we can also stopPropagation cleanly.
+let _sidebarDelegationWired = false;
+function _wireSidebarDelegation() {
+  if (_sidebarDelegationWired) return;
+  const list = document.getElementById('recent-chats-list');
+  if (!list) return;
+
+  list.addEventListener('click', (e) => {
+    const delBtn = e.target.closest('.sb-recent-del');
+    if (delBtn) {
+      e.stopPropagation();
+      const sid = delBtn.dataset.sessionId;
+      if (sid) deleteSession(sid);
+      return;
+    }
+    const row = e.target.closest('.sb-recent');
+    if (row) {
+      const sid = row.dataset.sessionId;
+      if (sid) resumeChat(sid);
+    }
+  });
+
+  _sidebarDelegationWired = true;
+}
+
+// ── DELETE SESSION ───────────────────────────────────────────
+// Optimistic: pull the row out of the DOM first, then call backend.
+// If the delete failed we re-fetch the list to reconcile UI ↔ DB.
+async function deleteSession(sessionId) {
+  if (!sessionId) return;
+
+  // 1. Optimistic DOM removal
+  const el = document.querySelector(`.sb-recent[data-session-id="${CSS.escape(sessionId)}"]`);
+  if (el) el.remove();
+
+  // 2. If the deleted session is the active one, clear it and start fresh.
+  if (S.sid === sessionId) {
+    S.sid = null; S.history = []; S.mode = 1; S.section = 0;
+    S.service = 0; S.locked = false; S.forceMode = null; S.img = null;
+    try { localStorage.removeItem('mc_session'); } catch {}
+    const msgs = document.getElementById('msgs');
+    if (msgs) msgs.innerHTML =
+      `<div class="empty" id="emptyState"><div class="empty-lumi">✨</div><div class="empty-divider"></div><div class="empty-tagline">Session cleared. Let's go again.</div></div>`;
+    updateUI();
+  }
+
+  // 3. Backend call
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/history/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      headers,
+    });
+    if (!res.ok && res.status !== 404) {
+      // 404 means already gone — silently OK. Other errors → reconcile.
+      throw new Error(`Delete returned ${res.status}`);
+    }
+    toast('Chat deleted', 'ok');
+  } catch (err) {
+    console.warn('[Lumi] deleteSession failed:', err?.message);
+    toast('Delete failed — refreshing');
+    loadRecentChats();
   }
 }
 
@@ -405,10 +480,10 @@ export async function send() {
       // "Last active session" pointer — kept in localStorage for reload restore;
       // not chat data.
       try { localStorage.setItem('mc_session', S.sid); } catch {}
-      // Background save — never await, must not block UI.
-      saveSession();
-      // Refresh sidebar so the title bumps to the top.
-      loadRecentChats();
+      // Save first, then refresh — guarantees the sidebar reads the latest
+      // title (including the newly-derived first-message title for fresh sessions).
+      // Still backgrounded so we don't block the UI.
+      saveSession().then(() => loadRecentChats());
     }
     updateUI();
   } catch (err) {
@@ -532,6 +607,6 @@ window._app = {
   send, qs, showWizard, selTile, wNext, wizDone, wizManual, renderWizStep, wizSetCountry,
   setWizUrl, handleFile, clearImg, syncCRMBtn, dlCSV, copyLink,
   clearSession, setMode, updateUI, toast, esc,
-  saveChatSession, loadRecentChats, resumeChat,
+  saveChatSession, loadRecentChats, resumeChat, deleteSession,
   openSidebar, closeSidebar,
 };

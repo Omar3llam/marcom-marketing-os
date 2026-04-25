@@ -104,9 +104,29 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 .sb-divider{height:1px;background:var(--border);margin:6px 8px 2px;}
 
 /* Recent — muted style */
-.sb-recent{font-size:12px;color:var(--ink-3);}
+.sb-recent{font-size:12px;color:var(--ink-3);position:relative;display:flex;align-items:center;}
 .sb-recent:hover{color:var(--ink-2);background:var(--sb-hover);}
 .sb-recent .sb-item-icon{font-size:13px;}
+
+/* Delete button — hidden until row hover; always visible on touch */
+.sb-recent-del{
+  margin-left:auto;flex-shrink:0;
+  background:transparent;border:none;
+  color:var(--ink-3);font-family:'Poppins',sans-serif;
+  width:22px;height:22px;border-radius:50%;
+  font-size:13px;line-height:1;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  opacity:0;pointer-events:none;
+  transition:opacity 0.15s, color 0.15s, background 0.15s;
+}
+.sb-recent:hover .sb-recent-del{opacity:1;pointer-events:auto;}
+.sb-recent-del:hover{color:var(--coral);background:var(--coral-lt);}
+.sb-recent-del:active{transform:scale(0.9);}
+
+/* Touch-first: no hover on mobile, so always show the delete affordance */
+@media(hover:none),(max-width:640px){
+  .sb-recent-del{opacity:1;pointer-events:auto;}
+}
 
 /* Bottom — status + user */
 .sb-bottom{

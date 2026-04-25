@@ -14,7 +14,7 @@
 // ============================================================
 import { Router } from 'express';
 import { logger } from '../utils/logger.js';
-import { listSessions, getSession, saveSession } from '../models/chatSession.js';
+import { listSessions, getSession, saveSession, deleteSession } from '../models/chatSession.js';
 
 export const historyRouter = Router();
 
@@ -75,5 +75,25 @@ historyRouter.get('/:sessionId', async (req, res) => {
   } catch (err) {
     logger.error({ err, userId, sessionId }, 'history.get failed');
     return res.status(500).json({ error: 'Lookup failed' });
+  }
+});
+
+// ── DELETE /api/history/:sessionId ──────────────────────────
+// 404 covers both "not found" and "belongs to a different user" — the
+// model's WHERE clause filters on userId, so cross-user deletes return
+// 0 affected rows and never leak existence info.
+historyRouter.delete('/:sessionId', async (req, res) => {
+  const userId = req.userId;
+  const { sessionId } = req.params;
+
+  if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
+
+  try {
+    const ok = await deleteSession(userId, sessionId);
+    if (!ok) return res.status(404).json({ error: 'Not found' });
+    return res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err, userId, sessionId }, 'history.delete failed');
+    return res.status(500).json({ error: 'Delete failed' });
   }
 });
