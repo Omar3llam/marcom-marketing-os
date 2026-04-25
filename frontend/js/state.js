@@ -23,11 +23,7 @@ export function updateUI() {
     document.getElementById('pbar').classList.add('visible');
     document.getElementById('pbarFill').style.width = `${Math.min(100, (S.section / 9) * 100)}%`;
   } else { document.getElementById('pbar').classList.remove('visible'); }
-  document.getElementById('stBackend').textContent = S.backend ? '✓ Set' : 'Using origin';
-  document.getElementById('stBackend').className   = S.backend ? 's-ok' : 's-warn';
-  document.getElementById('stCtx').textContent     = S.locked ? '🔒 Locked' : '⏳ Incomplete';
-  document.getElementById('stCtx').className       = S.locked ? 's-ok' : 's-warn';
-  document.getElementById('stMsgs').textContent    = S.msgs;
+  // stBackend / stCtx / stMsgs were part of the removed settings panel — no-op now.
   _updateHints();
 }
 
