@@ -55,13 +55,15 @@ export function appendMsg(role, content, meta = {}, imgB64 = null) {
 }
 
 // ── RESPONSE ROUTING ──────────────────────────────────────────
+// Only route to structured renderers when the AI explicitly returns
+// the expected JSON shape. Everything else is a plain chat bubble.
 export function renderResp(data) {
   const json = tryJSON(data.message);
   if (data.current_mode === 5 && json?.campaigns) { renderCampaign(json); return; }
   if (data.current_mode === 4 && json?.scorecard)  { renderScorecard(json); return; }
   if (data.current_mode === 3 && json?.calendar)   { renderCalendar(json); return; }
-  if (data.current_mode === 2 && (data.message?.length || 0) > 200) { renderInsightText(data); }
-  else appendMsg('system', data.message, { mode: data.current_mode, service: data.current_service });
+  // All other responses — including mode-2 tool answers — are plain bubbles.
+  appendMsg('system', data.message, { mode: data.current_mode, service: data.current_service });
 }
 
 function mkBridge(type, payload) {
@@ -131,22 +133,19 @@ function buildAudienceTabs(sims) {
   return `<div class="aud-wrap"><div class="aud-hdr"><span class="aud-title">👥 Audience Simulation</span><div class="aud-tabs">${tabs}</div></div>${panels}</div>`;
 }
 
-export function renderScorecard(payload) {
-  const msgs = document.getElementById('msgs');
-  const wrap = document.createElement('div');
-  wrap.className = 'msg system'; wrap.style.animation = 'msgIn 0.3s ease';
+function buildScorecardHTML(payload) {
   const sc = payload.scorecard || {};
   const rwLvl = (payload.rewrite_required || 'none').toLowerCase();
   const rwMap = { none:'rw-none', minor:'rw-minor', moderate:'rw-moderate', major:'rw-major' };
   const metrics = [
-    { k:'ai_probability',    lbl:'AI Probability',       gate:'≤30%', inv:true, pct:v=>100-v },
-    { k:'hook_score',        lbl:'Hook Score',            gate:'≥7',   pct:v=>v/10*100 },
+    { k:'ai_probability',     lbl:'AI Probability',      gate:'≤30%', inv:true, pct:v=>100-v },
+    { k:'hook_score',         lbl:'Hook Score',           gate:'≥7',   pct:v=>v/10*100 },
     { k:'audience_conviction',lbl:'Audience Conviction',  gate:'≥7',   pct:v=>v/10*100 },
-    { k:'authority_signal',  lbl:'Authority Signal',      gate:'≥7',   pct:v=>v/10*100 },
-    { k:'differentiation',   lbl:'Differentiation',       gate:'≥6',   pct:v=>v/10*100 },
-    { k:'cultural_resonance',lbl:'Cultural Resonance',    gate:'≥7',   pct:v=>v/10*100 },
-    { k:'closing_line',      lbl:'Closing Line',          gate:'≥7',   pct:v=>v/10*100 },
-    { k:'commercial_impact', lbl:'Commercial Impact',     gate:'≥Mod', isTxt:true, pct:v=>v==='High'?100:v==='Moderate'?60:20 },
+    { k:'authority_signal',   lbl:'Authority Signal',     gate:'≥7',   pct:v=>v/10*100 },
+    { k:'differentiation',    lbl:'Differentiation',      gate:'≥6',   pct:v=>v/10*100 },
+    { k:'cultural_resonance', lbl:'Cultural Resonance',   gate:'≥7',   pct:v=>v/10*100 },
+    { k:'closing_line',       lbl:'Closing Line',         gate:'≥7',   pct:v=>v/10*100 },
+    { k:'commercial_impact',  lbl:'Commercial Impact',    gate:'≥Mod', isTxt:true, pct:v=>v==='High'?100:v==='Moderate'?60:20 },
     { k:'visual_impact_score',lbl:'Visual Impact',        gate:'≥7',   pct:v=>v/10*100, opt:true },
     { k:'text_design_harmony',lbl:'Text/Design Harmony',  gate:'≥7',   pct:v=>v/10*100, opt:true },
   ];
@@ -170,8 +169,7 @@ export function renderScorecard(payload) {
   }).join('');
   const ov = sc['overall'];
   const ovSt = ov ? mst({ pct:v=>v/10*100 }, ov) : 'w';
-  const container = document.createElement('div'); container.style.maxWidth = '100%';
-  container.innerHTML = `
+  return `
     <div class="sc-hdr"><span class="sc-title">🔍 Content Interrogation Engine</span>
       <span class="rw-pill ${rwMap[rwLvl] || 'rw-minor'}">Rewrite: ${esc(rwLvl)}</span></div>
     ${rows}
@@ -180,8 +178,43 @@ export function renderScorecard(payload) {
     ${payload.brutal_insight    ? `<div class="brutal-box"><div class="bi-lbl">⚡ Brutal Insight</div><div class="bi-txt">${fmtTxt(payload.brutal_insight)}</div></div>` : ''}
     ${payload.rewritten_content ? `<div class="rw-box"><div class="rw-top"><span class="rw-top-lbl">✦ Rewritten Version</span></div><div class="rw-body">${fmtTxt(payload.rewritten_content)}</div></div>` : ''}
     ${payload.verdict           ? `<div class="verdict-txt">${fmtTxt(payload.verdict)}</div>` : ''}`;
-  container.appendChild(mkBridge('content', payload));
-  wrap.appendChild(container); msgs.appendChild(wrap); msgs.scrollTop = msgs.scrollHeight;
+}
+
+// Modal helpers (called from inline onclick — must be global)
+window.showDashboard = function(encoded) {
+  const html = decodeURIComponent(encoded);
+  document.getElementById('modal-body').innerHTML = html;
+  document.getElementById('dashboard-modal').style.display = 'flex';
+};
+window.closeModal = function() {
+  document.getElementById('dashboard-modal').style.display = 'none';
+};
+// Close on backdrop click
+document.addEventListener('click', e => {
+  if (e.target.id === 'dashboard-modal') window.closeModal();
+});
+
+export function renderScorecard(payload) {
+  const dashboardHTML = buildScorecardHTML(payload);
+  const ov = payload.scorecard?.overall;
+  const rwLvl = (payload.rewrite_required || 'none').toLowerCase();
+  const encoded = encodeURIComponent(dashboardHTML);
+
+  // Append a compact stub message with a "View Dashboard" button
+  const msgs = document.getElementById('msgs');
+  const wrap = document.createElement('div');
+  wrap.className = 'msg system'; wrap.style.animation = 'msgIn 0.3s ease';
+  wrap.innerHTML = `<div class="lumi-av">✨</div><div>
+    <div class="bubble" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <span style="font-size:20px;">🔍</span>
+      <div>
+        <div style="font-weight:700;color:var(--ink);margin-bottom:3px;">Content Interrogation Complete</div>
+        <div style="font-size:12px;color:var(--ink-3);">Score: <strong>${ov != null ? `${ov}/10` : '—'}</strong> &nbsp;·&nbsp; Rewrite: <strong>${esc(rwLvl)}</strong></div>
+      </div>
+      <button class="abtn crm" style="margin-left:auto;" onclick="window.showDashboard(this.dataset.html)" data-html="${esc(encoded)}">📊 View Dashboard</button>
+    </div>
+  </div>`;
+  msgs.appendChild(wrap); msgs.scrollTop = msgs.scrollHeight;
 }
 
 export function renderCalendar(payload) {

@@ -91,6 +91,45 @@ function boot(clerk) {
   if (sid) { S.sid = sid; }
 
   updateUI(); setupTA(); buildDots();
+  loadRecentChats();
+}
+
+// ── CHAT HISTORY (localStorage) ───────────────────────────────
+const CHATS_KEY = 'mc_recent_chats';
+const MAX_RECENT = 12;
+
+export function saveChatSession(sessionId, title) {
+  if (!sessionId) return;
+  const chats = getRecentChats().filter(c => c.id !== sessionId);
+  chats.unshift({ id: sessionId, title: title || `Chat ${new Date().toLocaleDateString()}`, ts: Date.now() });
+  localStorage.setItem(CHATS_KEY, JSON.stringify(chats.slice(0, MAX_RECENT)));
+  loadRecentChats();
+}
+
+function getRecentChats() {
+  try { return JSON.parse(localStorage.getItem(CHATS_KEY) || '[]'); } catch { return []; }
+}
+
+export function loadRecentChats() {
+  const list = document.getElementById('recent-chats-list');
+  if (!list) return;
+  const chats = getRecentChats();
+  if (!chats.length) {
+    list.innerHTML = '<div style="padding:6px 12px;font-size:11px;color:var(--ink-3);font-style:italic;">No recent chats yet.</div>';
+    return;
+  }
+  list.innerHTML = chats.map(c => `
+    <div class="sb-item sb-recent" onclick="window._app.resumeChat('${c.id}')" title="${c.id}">
+      <span class="sb-item-icon">💬</span>
+      <span class="sb-item-label">${c.title.slice(0, 28)}</span>
+    </div>`).join('');
+}
+
+export function resumeChat(sessionId) {
+  S.sid = sessionId;
+  localStorage.setItem('mc_session', sessionId);
+  updateUI();
+  toast('Session resumed ✓', 'ok');
 }
 
 // ── TEXTAREA AUTO-RESIZE ──────────────────────────────────────
@@ -134,7 +173,11 @@ export async function send() {
     hideLumi();
     if (data.message) renderResp(data);
     else if (data.error) { appendMsg('system', `⚠ ${data.error}`); toast(data.error); }
-    if (S.sid) localStorage.setItem('mc_session', S.sid);
+    if (S.sid) {
+      localStorage.setItem('mc_session', S.sid);
+      // Save/update the chat in recent history using first user message as title
+      saveChatSession(S.sid, message.slice(0, 40));
+    }
     updateUI();
   } catch (err) {
     hideLumi();
@@ -245,4 +288,5 @@ window._app = {
   send, qs, showWizard, selTile, wNext, wizDone, wizManual, renderWizStep, wizSetCountry,
   setWizUrl, handleFile, clearImg, syncCRMBtn, dlCSV, copyLink,
   clearSession, setMode, updateUI, toast, esc,
+  saveChatSession, loadRecentChats, resumeChat,
 };

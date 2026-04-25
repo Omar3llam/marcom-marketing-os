@@ -383,6 +383,15 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 .rp-tag{font-size:9px;color:var(--mint);font-weight:700;letter-spacing:0.06em;text-transform:uppercase;}
 .cal-summary{margin-top:12px;padding:14px 16px;background:var(--cream-2);border-radius:var(--r-md);font-size:13px;color:var(--ink-2);line-height:1.65;}
 
+/* ── DASHBOARD MODAL ───────────────────────────── */
+.modal{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:none;align-items:center;justify-content:center;z-index:1000;padding:20px;backdrop-filter:blur(3px);}
+.modal[style*="flex"]{display:flex !important;}
+.modal-content{background:#fff;border-radius:var(--r-xl);padding:28px;max-width:800px;width:100%;max-height:85vh;overflow-y:auto;position:relative;box-shadow:0 20px 60px rgba(0,0,0,0.2);animation:msgIn 0.25s ease;}
+.modal-content::-webkit-scrollbar{width:5px;}
+.modal-content::-webkit-scrollbar-thumb{background:var(--border);border-radius:var(--r-full);}
+.modal-close{position:absolute;top:16px;right:18px;background:var(--cream-2);border:1.5px solid var(--border);border-radius:var(--r-full);width:32px;height:32px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;font-family:'Poppins',sans-serif;color:var(--ink-3);}
+.modal-close:hover{background:var(--coral-lt);border-color:var(--coral);color:var(--coral);}
+
 /* ── TOAST ─────────────────────────────────────── */
 .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);padding:12px 22px;border-radius:var(--r-full);font-size:13px;font-weight:600;opacity:0;transition:all 0.3s;pointer-events:none;z-index:300;max-width:420px;text-align:center;box-shadow:var(--shadow-md);}
 .toast.vis{opacity:1;transform:translateX(-50%) translateY(0);}
@@ -474,15 +483,7 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 
       <div class="sb-divider"></div>
       <span class="sb-section-lbl">Recent</span>
-
-      <div class="sb-item sb-recent">
-        <span class="sb-item-icon">💬</span>
-        <span class="sb-item-label">OS Global</span>
-      </div>
-      <div class="sb-item sb-recent">
-        <span class="sb-item-icon">💬</span>
-        <span class="sb-item-label">OS MENA</span>
-      </div>
+      <div id="recent-chats-list"></div>
 
     </div>
 
@@ -552,6 +553,14 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
   </main>
 
 </div><!-- /app-container -->
+
+<!-- Dashboard Modal -->
+<div id="dashboard-modal" class="modal">
+  <div class="modal-content">
+    <button class="modal-close" onclick="window.closeModal()">✕</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
