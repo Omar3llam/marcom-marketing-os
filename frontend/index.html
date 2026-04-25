@@ -264,8 +264,18 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 .insight-card.warn{border-top-color:var(--coral);}
 .insight-card.opp{border-top-color:var(--yellow-dk);}
 .ic-mood{font-size:28px;line-height:1;}
-.ic-label{font-size:10px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-3);}
+.ic-label{font-size:11px;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;color:var(--ink);border-bottom:2px solid var(--cream-3);padding-bottom:8px;margin-bottom:12px;display:block;}
 .ic-value{font-size:14px;font-weight:600;color:var(--ink-2);line-height:1.5;}
+
+/* ── INSIGHT CARD — RICH MARKDOWN CONTENT ─────── */
+.insight-card p{margin-bottom:10px;line-height:1.6;color:var(--ink-2);}
+.insight-card p:last-child{margin-bottom:0;}
+.insight-card strong{color:var(--ink);background:linear-gradient(120deg,var(--yellow-lt) 0%,rgba(255,255,255,0) 100%);padding:0 4px;border-radius:4px;font-weight:700;}
+.insight-card ul{padding-left:22px;margin-bottom:12px;list-style-type:none;}
+.insight-card li{position:relative;margin-bottom:8px;color:var(--ink-2);}
+.insight-card li::before{content:'✨';position:absolute;left:-22px;font-size:12px;top:2px;}
+.insight-card blockquote{border-left:4px solid var(--purple);background:var(--purple-lt);padding:12px 16px;margin:12px 0;border-radius:0 var(--r-md) var(--r-md) 0;font-style:italic;color:var(--ink-2);font-size:13px;}
+.insight-card code{background:var(--cream-2);border:1px solid var(--border);padding:3px 6px;border-radius:6px;font-size:12px;color:var(--coral);font-weight:600;}
 
 /* ── ACTION BRIDGE ─────────────────────────────── */
 .action-bridge{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
