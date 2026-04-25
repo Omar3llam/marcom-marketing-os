@@ -10,15 +10,15 @@ export const S = {
 };
 
 export function updateUI() {
-  const mn = { 1:'Mode 1 — Context', 2:'Mode 2 — Tools', 3:'Mode 3 — Social', 4:'Mode 4 — Content', 5:'Mode 5 — Campaign' };
+  const mn = { 1:'Mode 1', 2:'Mode 2', 3:'Mode 3', 4:'Mode 4', 5:'Mode 5' };
   const mc = { 1:'m1', 2:'m2', 3:'m3', 4:'m4', 5:'m5' };
   const chip = document.getElementById('modeChip');
   chip.className = `mode-chip ${mc[S.mode] || 'm1'}`;
   document.getElementById('modeLbl').textContent = mn[S.mode] || `Mode ${S.mode}`;
   document.getElementById('sidTag').textContent = S.sid ? `SID …${S.sid.slice(-6)}` : '';
   const ctx = document.getElementById('ctxPill');
-  if (S.locked) { ctx.className = 'ctx-pill locked';    ctx.innerHTML = '<span>🔒</span><span>Context Locked</span>'; }
-  else           { ctx.className = 'ctx-pill gathering'; ctx.innerHTML = '<span>⏳</span><span>Gathering Context…</span>'; }
+  if (S.locked) { ctx.className = 'ctx-pill locked';    ctx.innerHTML = '<span>🔒</span><span>Locked</span>'; }
+  else           { ctx.className = 'ctx-pill gathering'; ctx.innerHTML = '<span>⏳</span><span>Gathering…</span>'; }
   if (S.mode === 1) {
     document.getElementById('pbar').classList.add('visible');
     document.getElementById('pbarFill').style.width = `${Math.min(100, (S.section / 9) * 100)}%`;
