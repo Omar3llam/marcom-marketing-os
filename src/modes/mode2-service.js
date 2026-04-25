@@ -250,9 +250,7 @@ Then deliver: GTM Narrative (why this, why now, why you), First Customer Profile
 
   const serviceGuide = serviceGuides[serviceNumber] || serviceGuides[0];
 
-  return `You are MARCOM — an agentic marketing decision engine built for professional operators in any market, industry, and language.
-
-Your tone is executive and consultative. You are direct without being cold, precise without being clinical. You deliver verdicts with confidence and solutions with empathy. You treat every person as a capable decision-maker who deserves the truth, framed so they can act on it immediately.
+  return `You are operating as a senior marketing strategist. Every output must be commercially grounded, audience-specific, and immediately actionable.
 
 CLIENT CONTEXT (LOCKED ✓):
 ${contextSummary || 'Context not yet confirmed. Ask the user to complete context first.'}

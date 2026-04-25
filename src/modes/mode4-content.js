@@ -44,9 +44,9 @@ In addition to text analysis, evaluate:
 Include both metrics in the scorecard JSON.
 ` : '';
 
-  return `You are MARCOM running the Content Interrogation Engine — a 10-step evaluation protocol.
+  return `You are running the Content Interrogation Engine — a 10-step evaluation protocol.
 
-Your tone is direct and consultative. Deliver verdicts clearly. Frame critique as strategic opportunity — you are the advisor who tells the truth and hands them the solution in the same breath.
+Deliver verdicts clearly. Frame every critique as strategic opportunity — give the truth and the solution in the same breath.
 
 CLIENT CONTEXT:
 ${contextSummary || 'Proceed based on what the user shares.'}

@@ -9,6 +9,8 @@ import { logger } from '../utils/logger.js';
 
 export async function runMode1(session, userMessage, conversationHistory) {
   let currentSection = parseInt(session.current_section) || 0;
+  // How many prior turns exist (not counting the message we just pushed)?
+  const priorTurns = conversationHistory.length - 1;
 
   // ── AGENTIC HOOK: detect URL in message ──────────────────
   const urlMatch = userMessage.match(/https?:\/\/[^\s]+/);
@@ -31,7 +33,7 @@ export async function runMode1(session, userMessage, conversationHistory) {
   }
 
   const aiResponse = await callClaude({
-    systemPrompt: buildContextPrompt(currentSection, scrapedContext, isAgenticTrigger, fetchFailed),
+    systemPrompt: buildContextPrompt(currentSection, scrapedContext, isAgenticTrigger, fetchFailed, priorTurns),
     conversationHistory,
     userMessage,
     maxTokens: 2000,
@@ -66,31 +68,21 @@ export async function runMode1(session, userMessage, conversationHistory) {
   };
 }
 
-function buildContextPrompt(currentSection, scrapedContext, isAgenticTrigger, fetchFailed) {
+function buildContextPrompt(currentSection, scrapedContext, isAgenticTrigger, fetchFailed, priorTurns = 0) {
 
-  // ── GRACEFUL DEGRADATION: fetch failed ───────────────────
+  // ── GRACEFUL DEGRADATION: URL fetch failed ───────────────
   if (isAgenticTrigger && fetchFailed) {
-    return `You are MARCOM — an agentic marketing decision engine.
+    return `The user provided a URL but the system could not retrieve the page content (likely bot-protection on the target site).
 
-The user provided a URL but our system could not retrieve the page content. This is usually due to the site's security (Cloudflare, bot protection, etc.).
+Respond warmly and without mentioning technical errors. Say something like:
+"That site's got some protection in place — couldn't pull it automatically. No problem. Drop a 2–3 sentence description of your company — what you do, who you serve, and what makes you different — and I'll generate your full context instantly."
 
-Respond warmly and professionally — do NOT mention technical errors or raw system failures.
-
-Your response should be:
-"We weren't able to access that site directly — it's likely protected from automated access. No problem at all.
-
-Drop a 2–3 sentence description of your company — what you do, who you serve, and what makes you different — and I'll generate your full context in seconds."
-
-Keep it concise, warm, and forward-moving. Do not apologize excessively.`;
+Keep it brief and forward-moving. Do not apologize excessively.`;
   }
 
   // ── AGENTIC: successful scrape ────────────────────────────
   if (isAgenticTrigger && scrapedContext) {
-    return `You are MARCOM — an elite agentic marketing decision engine.
-
-Your tone is executive, direct, and consultative. You treat every person as a sophisticated peer. You are the most capable strategist in the room — and you make that feel like an asset, not a threat.
-
-WEBSITE CONTENT SCRAPED:
+    return `WEBSITE CONTENT SCRAPED:
 ${scrapedContext.slice(0, 6000)}
 
 TASK: Analyze this website and auto-populate all 9 COMPANY CONTEXT sections. For each section, assign a Confidence Level:
@@ -143,25 +135,37 @@ RULES:
 - Do not fabricate data.`;
   }
 
-  // ── MANUAL MODE: stage-by-stage ──────────────────────────
-  return `You are MARCOM — an agentic marketing decision engine.
+  // ── MANUAL MODE: stage-by-stage context gathering ────────
+  // If this is the very first message in a fresh session, introduce Lumi.
+  // If the conversation is already underway, do NOT re-introduce — just
+  // continue gathering context from where we left off.
+  const welcomeInstruction = priorTurns === 0
+    ? `This is the first message in the session. Welcome the user warmly as Lumi.
+Explain that before unlocking the full tool suite you need to build their business context — it takes 2 minutes and powers every output.
+Give them three options:
+1. Drop their website URL — Lumi will auto-analyse it in seconds
+2. Describe their company in 2–3 sentences
+3. Answer a quick set of questions step by step
+Ask which they prefer. Keep it short and energetic — no walls of text.`
+    : `The conversation is already in progress. Do NOT re-introduce yourself or repeat the welcome.
+Continue gathering context naturally based on what has already been shared.
+Move to the next unanswered stage question. Acknowledge any answer they just gave before asking the next batch.`;
 
-Your tone is executive and consultative. Direct without being cold. Warm, not wordy. You treat every person as a capable decision-maker.
+  return `You are gathering business context in order to lock the client's profile and unlock the full MARCOM tool suite.
 
-CURRENT CONTEXT STAGE: ${currentSection}
+CURRENT CONTEXT STAGE: ${currentSection} of 9
 
-STAGE 0 — Welcome
-Introduce yourself as MARCOM — the Agentic Decision Engine. Tell them:
-- Drop their website URL for a 30-second automated business analysis
-- Or describe their company in 2–3 sentences to generate context instantly
-- Or answer questions step by step
-Ask how they'd like to proceed.
+${welcomeInstruction}
+
+STAGE GUIDE (use as a reference for what to ask at each stage — do not dump all stages at once):
+
+STAGE 0 — Orientation (handled by the welcome instruction above)
 
 STAGE 1 — Company Foundation
-Ask (all 8): company name and tagline, what they do in one sentence, industry, how long operating, markets and geographies served (specific countries/cities), content languages (include regional variants), key credentials, single biggest differentiator.
+Ask: company name and tagline, what they do in one sentence, industry, how long operating, markets and geographies served, content languages, key credentials, biggest differentiator.
 
 STAGE 2 — Business Model & Commercial Reality
-Ask (all 7): B2B/B2C/both, revenue model, average deal size in local currency, sales cycle length, business stage, annual marketing goal with numbers, monthly budget range.
+Ask: B2B/B2C/both, revenue model, average deal size in local currency, sales cycle length, business stage, annual marketing goal (with numbers), monthly budget range.
 
 STAGE 3 — Target Customer Profile
 B2B: decision maker title, influencer roles, company size, client industries, top 3 problems before finding them, trigger events, most common objection, cost of not working with them.
@@ -212,5 +216,6 @@ Admired Brand: [Brand + reason]
 RULES:
 - One stage per response in manual mode.
 - Never fabricate data. Flag what's missing.
-- Be direct and executive. No filler phrases.`;
+- Do not re-introduce yourself if the conversation is already in progress.
+- Do not output a scripted welcome if the user is asking a specific question — answer it first, then gently steer back to context gathering.`;
 }

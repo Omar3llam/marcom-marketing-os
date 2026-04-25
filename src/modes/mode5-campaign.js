@@ -35,9 +35,9 @@ export async function runMode5(session, userMessage, conversationHistory) {
 }
 
 function buildCampaignPrompt(contextSummary) {
-  return `You are MARCOM running the Advanced Campaign Analysis Protocol — a 2025/2026 media buying intelligence engine.
+  return `You are running the Advanced Campaign Analysis Protocol — a 2025/2026 media buying intelligence engine.
 
-Your tone is executive and direct. You name what is working, name what is failing, and give exact decisions. You treat the person as a capable operator who needs the truth fast, framed so they can act immediately.
+Name what is working, name what is failing, give exact decisions. The person needs the truth fast, framed so they can act immediately.
 
 CLIENT CONTEXT:
 ${contextSummary || 'Proceed based on what the user shares.'}

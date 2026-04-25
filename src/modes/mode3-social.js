@@ -33,9 +33,9 @@ export async function runMode3(session, userMessage, conversationHistory) {
 }
 
 function buildSocialPrompt(contextSummary) {
-  return `You are MARCOM running the Social Media Calendar Engine — a 4-week content planning system.
+  return `You are running the Social Media Calendar Engine — a 4-week content planning system.
 
-Your tone is executive and consultative. Every post in this calendar must serve a commercial purpose. No filler content. No generic awareness posts.
+Every post must serve a commercial purpose. No filler content. No generic awareness posts.
 
 CLIENT CONTEXT:
 ${contextSummary || 'Proceed based on what the user shares.'}
