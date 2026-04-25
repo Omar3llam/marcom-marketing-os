@@ -95,13 +95,43 @@ function boot(clerk) {
 }
 
 // ── CHAT HISTORY (localStorage) ───────────────────────────────
-const CHATS_KEY = 'mc_recent_chats';
-const MAX_RECENT = 12;
+const CHATS_KEY   = 'mc_recent_chats';
+const MAX_RECENT  = 12;
+const MAX_MSGS    = 200;          // max messages stored per session
+const msgKey      = id => `mc_msgs_${id}`;
 
-export function saveChatSession(sessionId, title) {
+/**
+ * Persist a single message bubble to this session's local history.
+ * Called after every user send and every AI response so the history
+ * is always in sync with what's visible on screen.
+ */
+function persistMsg(sessionId, role, content, meta = {}) {
+  if (!sessionId || !content) return;
+  try {
+    const arr = JSON.parse(localStorage.getItem(msgKey(sessionId)) || '[]');
+    arr.push({ role, content, meta, ts: Date.now() });
+    localStorage.setItem(msgKey(sessionId), JSON.stringify(arr.slice(-MAX_MSGS)));
+  } catch {}
+}
+
+function getSessionMsgs(sessionId) {
+  try { return JSON.parse(localStorage.getItem(msgKey(sessionId)) || '[]'); } catch { return []; }
+}
+
+/**
+ * Save / update a session in the Recent Chats list.
+ * Stores mode + locked so the UI can restore state on resume.
+ */
+export function saveChatSession(sessionId, title, mode = 1, locked = false) {
   if (!sessionId) return;
   const chats = getRecentChats().filter(c => c.id !== sessionId);
-  chats.unshift({ id: sessionId, title: title || `Chat ${new Date().toLocaleDateString()}`, ts: Date.now() });
+  chats.unshift({
+    id: sessionId,
+    title: title || `Chat ${new Date().toLocaleDateString()}`,
+    ts: Date.now(),
+    mode:   mode   || 1,
+    locked: !!locked,
+  });
   localStorage.setItem(CHATS_KEY, JSON.stringify(chats.slice(0, MAX_RECENT)));
   loadRecentChats();
 }
@@ -128,6 +158,52 @@ export function loadRecentChats() {
 export function resumeChat(sessionId) {
   S.sid = sessionId;
   localStorage.setItem('mc_session', sessionId);
+
+  // ── Restore frontend state from saved session metadata ────────
+  // This keeps the mode chip, context pill, and status bar correct
+  // even before the user sends the next message.
+  // It also primes S.forceMode so the FIRST message after resume
+  // tells the backend which mode to route to — preventing a stale
+  // session (or DB miss) from defaulting to Mode 1 re-onboarding.
+  const saved = getRecentChats().find(c => c.id === sessionId);
+  if (saved) {
+    S.mode      = saved.mode   || 1;
+    S.locked    = !!saved.locked;
+    S.forceMode = saved.mode   || null;
+  }
+
+  // ── Re-render message history from localStorage ───────────────
+  const msgs = document.getElementById('msgs');
+  msgs.innerHTML = '';
+
+  const history = getSessionMsgs(sessionId);
+
+  if (!history.length) {
+    // No locally stored messages — show a neutral placeholder.
+    // The conversation history still exists on the backend; the user
+    // just needs to send a message to continue.
+    msgs.innerHTML = `
+      <div class="empty" id="emptyState">
+        <div class="empty-lumi">✨</div>
+        <div class="empty-divider"></div>
+        <div class="empty-tagline" style="font-size:13px;color:var(--ink-3);">
+          Session restored — continue the conversation below.
+        </div>
+      </div>`;
+  } else {
+    // Re-render every stored bubble using the same renderer used
+    // when the messages were first displayed.
+    history.forEach(m => {
+      appendMsg(
+        m.role === 'user' ? 'user' : 'system',
+        m.content,
+        m.meta || {},
+      );
+    });
+    // Scroll to the bottom so the user sees the last exchange.
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
   updateUI();
   toast('Session resumed ✓', 'ok');
 }
@@ -147,6 +223,7 @@ export async function send() {
   if (!message || S.loading) return;
 
   hideEmpty();
+  const userMsg = message;   // capture before clearing ta
   appendMsg('user', message, {}, S.img?.base64);
   ta.value = ''; ta.style.height = 'auto';
   S.msgs++;
@@ -164,19 +241,35 @@ export async function send() {
       backendUrl:     S.backend,
     });
 
-    if (data.session_id)             S.sid     = data.session_id;
-    if (data.current_mode)           S.mode    = data.current_mode;
+    if (data.session_id)              S.sid     = data.session_id;
+    if (data.current_mode)            S.mode    = data.current_mode;
     if (data.current_section != null) S.section = data.current_section;
     if (data.current_service != null) S.service = data.current_service;
     if (data.context_locked  != null) S.locked  = data.context_locked;
 
+    // After the first API call succeeds the backend session is live;
+    // clear forceMode so subsequent messages use natural mode detection.
+    S.forceMode = null;
+
     hideLumi();
-    if (data.message) renderResp(data);
-    else if (data.error) { appendMsg('system', `⚠ ${data.error}`); toast(data.error); }
+
+    // ── Persist both sides now that we have the real session_id ──
+    persistMsg(S.sid, 'user', userMsg);
+
+    if (data.message) {
+      renderResp(data);
+      persistMsg(S.sid, 'ai', data.message, {
+        mode:    data.current_mode,
+        service: data.current_service,
+      });
+    } else if (data.error) {
+      appendMsg('system', `⚠ ${data.error}`);
+      toast(data.error);
+    }
+
     if (S.sid) {
       localStorage.setItem('mc_session', S.sid);
-      // Save/update the chat in recent history using first user message as title
-      saveChatSession(S.sid, message.slice(0, 40));
+      saveChatSession(S.sid, userMsg.slice(0, 40), data.current_mode, data.context_locked);
     }
     updateUI();
   } catch (err) {
@@ -268,7 +361,7 @@ export function setMode(m) {
 export function clearSession() {
   if (!confirm('Clear session and start over?')) return;
   S.sid = null; S.mode = 1; S.section = 0; S.service = 0;
-  S.locked = false; S.msgs = 0; S.forceMode = null;
+  S.locked = false; S.msgs = 0; S.forceMode = null; S.img = null;
   clearImg(); localStorage.removeItem('mc_session');
   document.getElementById('msgs').innerHTML =
     `<div class="empty" id="emptyState"><div class="empty-lumi">✨</div><div class="empty-divider"></div><div class="empty-tagline">Session cleared. Let's go again.</div></div>`;
