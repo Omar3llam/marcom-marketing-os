@@ -53,30 +53,16 @@ window.addEventListener('load', async () => {
 
   if (clerk.user) { boot(clerk); return; }
 
-  authContainer.style.display = 'flex';
-
-  try {
-    clerk.mountSignIn(signInEl, {
-      appearance: {
-        variables: { colorPrimary: '#FFD300', colorBackground: '#fff', borderRadius: '20px', fontFamily: 'Poppins' },
-        elements: {
-          card: 'box-shadow:0 8px 40px rgba(0,0,0,0.1);border-radius:20px;',
-          formButtonPrimary: 'font-weight:700;',
-        },
-      },
-      afterSignInUrl: window.location.href,
-    });
-    console.log('[Clerk Init] mountSignIn() called successfully.');
-  } catch (err) {
-    console.error('[Clerk Init Error]:', err);
-    if (signInEl) signInEl.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;">Sign-in failed to load. Please refresh.</p>';
-  }
-
-  clerk.addListener(({ user }) => { if (user) boot(clerk); });
+  // app.html is a protected route. Unauthenticated visitors are sent
+  // back to the landing page where Clerk handles sign-in.
+  console.log('[Clerk] No active session — redirecting to /');
+  window.location.replace('/');
+  return;
 });
 
 function boot(clerk) {
-  document.getElementById('auth-container').style.display = 'none';
+  const authEl = document.getElementById('auth-container');
+  if (authEl) authEl.style.display = 'none';
   document.getElementById('app-container').classList.add('visible');
 
   if (clerk?.mountUserButton) {
