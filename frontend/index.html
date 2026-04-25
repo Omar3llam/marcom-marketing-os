@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>MARCOM AI — Meet Lumi, Your Agentic Marketing Co-pilot</title>
 <meta name="description" content="Lumi is the AI marketing agent that locks your brand context, plans campaigns, scores content, and makes media-buying decisions — in seconds.">
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -624,14 +624,69 @@ footer {
   .modes-wrap { flex-direction:column; }
   .modes-nav { width:100%; flex-direction:row; flex-wrap:wrap; position:static; }
   .mode-btn { flex:1; min-width:140px; }
+  .features-grid { grid-template-columns:1fr 1fr; }
 }
-@media(max-width:640px){
+
+@media(max-width:768px){
+  /* Navbar */
   .nav-links { display:none; }
-  h1 { letter-spacing:-1px; }
+  .nav-actions { gap:6px; }
+  .btn-ghost { padding:7px 14px; font-size:13px; }
+  .btn-primary { padding:7px 16px; font-size:13px; }
+
+  /* Sections */
+  section { padding:64px 16px; }
+  .container { padding:0 16px; }
+  #cta { padding:64px 16px; }
+
+  /* Hero */
+  #hero { padding:100px 16px 60px; }
+  h1 { font-size:32px; letter-spacing:-1px; }
+  .hero-sub { font-size:15px; }
+  .hero-badge { font-size:11px; }
+  .hero-ctas { gap:10px; }
+  .btn-hero { font-size:14px; padding:12px 24px; }
+  .btn-hero-ghost { font-size:14px; padding:11px 20px; }
   .hero-window { display:none; }
-  .footer-inner { grid-template-columns:1fr; }
-  .footer-bottom { flex-direction:column;text-align:center; }
-  .cta-box { padding:48px 24px; }
+
+  /* Proof bar */
+  #proof-bar { padding:24px 16px; }
+  .proof-inner { gap:8px; }
+  .proof-stat { padding:0 10px; }
+  .proof-num { font-size:18px; }
+  .proof-divider { display:none; }
+
+  /* Features grid */
+  .features-grid { grid-template-columns:1fr; gap:16px; }
+  .feat-card { padding:24px 20px; }
+
+  /* Modes */
+  .modes-nav { gap:4px; }
+  .mode-btn { min-width:calc(50% - 4px); padding:10px 12px; }
+  .mode-btn-label { font-size:12px; }
+  .mode-btn-sub { display:none; }
+  .mode-panel-title { font-size:22px; }
+  .mode-panel-body { font-size:14px; }
+  .mode-step { padding:12px 14px; }
+
+  /* CTA */
+  .cta-box { padding:40px 20px; }
+  .cta-box h2 { font-size:26px; }
+  .btn-cta { font-size:15px; padding:14px 28px; }
+
+  /* Footer */
+  .footer-inner { grid-template-columns:1fr; gap:24px; padding:0 16px; }
+  .footer-bottom { flex-direction:column; text-align:center; padding:0 16px; }
+
+  /* Sign-in modal */
+  #modal-box { padding:28px 20px; margin:16px; width:calc(100% - 32px); max-width:100%; }
+}
+
+@media(max-width:400px){
+  h1 { font-size:28px; }
+  .hero-ctas { flex-direction:column; align-items:stretch; }
+  .btn-hero, .btn-hero-ghost { width:100%; justify-content:center; }
+  .mode-btn { min-width:100%; }
 }
 </style>
 </head>

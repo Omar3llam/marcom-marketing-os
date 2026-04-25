@@ -461,9 +461,20 @@ export function toast(msg, t = 'err') {
 }
 
 // ── WINDOW FACADE (used by HTML inline event handlers) ────────
+// ── MOBILE SIDEBAR TOGGLE ─────────────────────────────────────
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('sidebar-open');
+  document.getElementById('mobile-overlay').classList.add('overlay-open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('sidebar-open');
+  document.getElementById('mobile-overlay').classList.remove('overlay-open');
+}
+
 window._app = {
   send, qs, showWizard, selTile, wNext, wizDone, wizManual, renderWizStep, wizSetCountry,
   setWizUrl, handleFile, clearImg, syncCRMBtn, dlCSV, copyLink,
   clearSession, setMode, updateUI, toast, esc,
   saveChatSession, loadRecentChats, resumeChat,
+  openSidebar, closeSidebar,
 };

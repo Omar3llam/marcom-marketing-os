@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>LUMI — AI Marketing Co-pilot</title>
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
@@ -399,15 +399,90 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 .toast.ok{background:var(--mint-lt);color:#1a7a44;border:1.5px solid var(--mint);}
 .toast.inf{background:var(--sky-lt);color:#1a5c8a;border:1.5px solid var(--sky);}
 
-/* ── RESPONSIVE ────────────────────────────────── */
-@media(max-width:680px){
-  #sidebar{width:220px;}
-  .msgs{padding:16px 14px 10px;}
-  .input-area{padding:6px 10px 16px;}
+/* ── HAMBURGER BUTTON ──────────────────────────────── */
+#hamburger{
+  display:none;
+  position:fixed;top:12px;left:12px;z-index:10000;
+  background:#fff;border:1.5px solid var(--border);
+  border-radius:var(--r-md);width:40px;height:40px;
+  font-size:18px;cursor:pointer;align-items:center;justify-content:center;
+  box-shadow:var(--shadow-sm);transition:all 0.2s;
+  font-family:'Poppins',sans-serif;
 }
-@media(max-width:480px){
-  #sidebar{display:none;}
-  .msgs{padding:12px 10px 8px;}
+#hamburger:hover{background:var(--yellow-lt);border-color:var(--yellow-dk);}
+
+/* ── MOBILE OVERLAY ────────────────────────────────── */
+#mobile-overlay{
+  display:none;
+  position:fixed;inset:0;
+  background:rgba(0,0,0,0.5);
+  z-index:9998;
+  backdrop-filter:blur(2px);
+}
+
+/* ── RESPONSIVE ────────────────────────────────── */
+@media(max-width:768px){
+  /* Show hamburger, slide sidebar off-screen */
+  #hamburger{display:flex;}
+
+  #sidebar{
+    position:fixed;left:-100%;top:0;bottom:0;
+    z-index:9999;
+    transition:left 0.3s ease;
+    width:280px;
+    box-shadow:4px 0 24px rgba(0,0,0,0.15);
+  }
+  #sidebar.sidebar-open{left:0;}
+  #mobile-overlay.overlay-open{display:block;}
+
+  /* Main view takes full width */
+  #main-view{width:100%;}
+
+  /* Messages */
+  .msgs{padding:60px 12px 12px;}
+  .bubble{max-width:95%;word-break:break-word;}
+  .msg-content{word-break:break-word;max-width:95%;}
+
+  /* Input area */
+  .input-area{padding:6px 8px 16px;width:100%;box-sizing:border-box;}
+  .input-box{max-width:100%;border-radius:var(--r-lg);}
+  .input-row{gap:6px;}
+  .upload-btn{padding:0 10px;font-size:11px;}
+  .send-btn{padding:0 14px;font-size:12px;}
+  .hints{gap:5px;}
+  .hint{font-size:11px;padding:4px 10px;}
+
+  /* Grids stack to single column */
+  .insight-grid{grid-template-columns:1fr !important;}
+  .cal-grid{grid-template-columns:1fr !important;}
+  .tile-grid{grid-template-columns:repeat(2,1fr);}
+
+  /* Modal */
+  #dashboard-modal .modal-content{width:95%;padding:16px;border-radius:var(--r-lg);}
+
+  /* Wizard */
+  .wizard-wrap{max-width:100%;}
+  .wizard-card{padding:18px 16px;}
+  .wiz-actions{flex-direction:column;}
+
+  /* Empty state */
+  .empty{padding:20px 16px;}
+  .empty-lumi{font-size:48px;}
+  .empty-title{font-size:18px;}
+  .quick-starts{gap:8px;}
+  .qs-chip{padding:7px 14px;font-size:12px;}
+
+  /* Campaign table */
+  .ctable-wrap{font-size:12px;}
+  .ctable th,.ctable td{padding:8px 10px;}
+
+  /* Scorecard */
+  .mrow{flex-wrap:wrap;}
+  .mlbl{min-width:120px;}
+}
+
+@media(max-width:400px){
+  .tile-grid{grid-template-columns:1fr;}
 }
 </style>
 </head>
@@ -439,7 +514,7 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
         <div class="sb-logo-icon">✨</div>
         <div class="sb-logo-text"><em>LUMI</em></div>
       </div>
-      <button class="sb-new-btn" onclick="window._app.clearSession()">
+      <button class="sb-new-btn" onclick="window._app.closeSidebar();window._app.clearSession()">
         <span class="sb-new-btn-icon">＋</span> New Chat
       </button>
     </div>
@@ -449,7 +524,7 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 
       <span class="sb-section-lbl">Tools</span>
 
-      <div class="sb-item tool" onclick="window._app.showWizard()">
+      <div class="sb-item tool" onclick="window._app.closeSidebar();window._app.showWizard()">
         <span class="sb-item-icon">🚀</span>
         <div>
           <div class="sb-item-label">Onboarding</div>
@@ -457,7 +532,7 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
         </div>
       </div>
 
-      <div class="sb-item tool" onclick="window._app.qs('social media calendar')">
+      <div class="sb-item tool" onclick="window._app.closeSidebar();window._app.qs('social media calendar')">
         <span class="sb-item-icon">📅</span>
         <div>
           <div class="sb-item-label">Social Calendar</div>
@@ -465,7 +540,7 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
         </div>
       </div>
 
-      <div class="sb-item tool" onclick="window._app.qs('Evaluate this content')">
+      <div class="sb-item tool" onclick="window._app.closeSidebar();window._app.qs('Evaluate this content')">
         <span class="sb-item-icon">🔍</span>
         <div>
           <div class="sb-item-label">Score Content</div>
@@ -473,7 +548,7 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
         </div>
       </div>
 
-      <div class="sb-item tool" onclick="window._app.qs('I have campaign metrics')">
+      <div class="sb-item tool" onclick="window._app.closeSidebar();window._app.qs('I have campaign metrics')">
         <span class="sb-item-icon">📊</span>
         <div>
           <div class="sb-item-label">Campaign Analysis</div>
@@ -503,6 +578,9 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 
   <!-- ── MAIN VIEW ─────────────────────────────── -->
   <main id="main-view">
+
+    <!-- Hamburger — mobile only -->
+    <button id="hamburger" onclick="window._app.openSidebar()" aria-label="Open menu">☰</button>
 
     <div class="pbar" id="pbar"><div class="pbar-fill" id="pbarFill"></div></div>
 
@@ -561,6 +639,9 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
     <div id="modal-body"></div>
   </div>
 </div>
+
+<!-- Mobile sidebar overlay -->
+<div id="mobile-overlay" onclick="window._app.closeSidebar()"></div>
 
 <div class="toast" id="toast"></div>
 
