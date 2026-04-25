@@ -80,113 +80,166 @@ function boot(clerk) {
   loadRecentChats();
 }
 
-// ── CHAT HISTORY (localStorage) ───────────────────────────────
-const CHATS_KEY   = 'mc_recent_chats';
-const MAX_RECENT  = 12;
-const MAX_MSGS    = 200;
-// Key for per-session message arrays
-const chatKey     = id => `mc_chat_${id}`;
+// ── CHAT HISTORY (backend, user-scoped) ──────────────────────
+// Replaces the previous localStorage-based persistence so chat
+// history syncs across devices for the same Clerk userId.
+// Backed by /api/history/{save,list,:sessionId}.
 
 /**
- * Append one message to this session's local history array.
- * Stores: role ('user' | 'ai'), raw content string, and meta
- * ({mode, service}) so the bubble can be re-rendered identically.
- *
- * IMPORTANT: must only be called after S.sid is confirmed from the
- * backend response — never with a null/undefined sessionId.
+ * Build the auth headers Clerk requires for every /api call.
+ * Awaits the live Clerk session token — never reads from a cache.
  */
-function saveMsgToHistory(sessionId, role, content, meta = {}) {
-  if (!sessionId || content == null || content === '') return;
-  try {
-    const key   = chatKey(sessionId);
-    const arr   = JSON.parse(localStorage.getItem(key) || '[]');
-    arr.push({ role, content, meta, ts: Date.now() });
-    // Trim to cap so we never blow the storage quota
-    if (arr.length > MAX_MSGS) arr.splice(0, arr.length - MAX_MSGS);
-    localStorage.setItem(key, JSON.stringify(arr));
-  } catch (e) {
-    console.warn('[Lumi] saveMsgToHistory failed:', e.message);
-  }
+async function getAuthHeaders() {
+  const token = await window.Clerk?.session?.getToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+  };
 }
 
 /**
- * Read the full message array for a session.
- * Returns [] when no data found or on any parse error.
+ * Append one message to the in-memory history array.
+ * The DB save is fired separately, in the background, after a turn
+ * completes — never blocking the UI.
  */
-function loadMsgHistory(sessionId) {
-  if (!sessionId) return [];
-  try {
-    const raw = localStorage.getItem(chatKey(sessionId));
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Save / update a session in the Recent Chats sidebar list.
- * Stores mode + locked so the UI can restore state on resume without
- * a backend round-trip.
- */
-export function saveChatSession(sessionId, title, mode = 1, locked = false) {
-  if (!sessionId) return;
-  const chats = getRecentChats().filter(c => c.id !== sessionId);
-  chats.unshift({
-    id:     sessionId,
-    title:  title || `Chat ${new Date().toLocaleDateString()}`,
-    ts:     Date.now(),
-    mode:   mode   || 1,
-    locked: !!locked,
+function pushHistory(role, content, meta = {}) {
+  if (content == null || content === '') return;
+  S.history.push({
+    role: role === 'user' ? 'user' : 'assistant',
+    content,
+    meta,
+    ts: Date.now(),
   });
-  localStorage.setItem(CHATS_KEY, JSON.stringify(chats.slice(0, MAX_RECENT)));
-  loadRecentChats();
+  // Hard cap to prevent runaway growth in long sessions.
+  if (S.history.length > 200) S.history.splice(0, S.history.length - 200);
 }
 
-function getRecentChats() {
-  try { return JSON.parse(localStorage.getItem(CHATS_KEY) || '[]'); } catch { return []; }
+/**
+ * Derive a sidebar title from the first user message in S.history.
+ */
+function deriveTitle() {
+  const first = S.history.find(m => m.role === 'user' && typeof m.content === 'string');
+  return first ? first.content.replace(/\s+/g, ' ').trim().slice(0, 40) : 'New Chat';
 }
 
-export function loadRecentChats() {
+/**
+ * POST the current session to the backend. Fire-and-forget — must
+ * never block the UI or the next message send.
+ */
+async function saveSession() {
+  if (!S.sid || !S.history.length) return;
+  try {
+    const headers = await getAuthHeaders();
+    await fetch('/api/history/save', {
+      method:  'POST',
+      headers,
+      body:    JSON.stringify({
+        sessionId: S.sid,
+        title:     deriveTitle(),
+        messages:  S.history,
+      }),
+    });
+  } catch (err) {
+    console.warn('[Lumi] saveSession failed:', err?.message);
+  }
+}
+
+/**
+ * Public stub kept for the existing window._app facade signature.
+ * Triggers a background save and refreshes the sidebar.
+ */
+export function saveChatSession(sessionId, _title, mode = 1, locked = false) {
+  if (!sessionId) return;
+  S.sid     = sessionId;
+  S.mode    = mode   || S.mode;
+  S.locked  = !!locked;
+  saveSession();          // fire-and-forget
+  loadRecentChats();      // refresh sidebar without blocking
+}
+
+/**
+ * Populate the Recent Chats sidebar from the backend.
+ * Only metadata (sessionId, title, updatedAt) — payload stays small.
+ */
+export async function loadRecentChats() {
   const list = document.getElementById('recent-chats-list');
   if (!list) return;
-  const chats = getRecentChats();
-  if (!chats.length) {
-    list.innerHTML = '<div style="padding:6px 12px;font-size:11px;color:var(--ink-3);font-style:italic;">No recent chats yet.</div>';
-    return;
+
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/history/list', { headers });
+    if (!res.ok) {
+      list.innerHTML = '<div style="padding:6px 12px;font-size:11px;color:var(--ink-3);font-style:italic;">Could not load history.</div>';
+      return;
+    }
+    const { sessions = [] } = await res.json();
+
+    if (!sessions.length) {
+      list.innerHTML = '<div style="padding:6px 12px;font-size:11px;color:var(--ink-3);font-style:italic;">No recent chats yet.</div>';
+      return;
+    }
+
+    list.innerHTML = sessions.map(s => {
+      const safeId = (s.sessionId || '').replace(/'/g, "\\'");
+      const label  = (s.title || 'New Chat').slice(0, 28);
+      return `<div class="sb-item sb-recent" onclick="window._app.resumeChat('${safeId}')" title="${s.sessionId}">
+        <span class="sb-item-icon">💬</span>
+        <span class="sb-item-label">${esc(label)}</span>
+      </div>`;
+    }).join('');
+  } catch (err) {
+    console.warn('[Lumi] loadRecentChats failed:', err?.message);
+    list.innerHTML = '<div style="padding:6px 12px;font-size:11px;color:var(--ink-3);font-style:italic;">Offline — history unavailable.</div>';
   }
-  list.innerHTML = chats.map(c => `
-    <div class="sb-item sb-recent" onclick="window._app.resumeChat('${c.id}')" title="${c.id}">
-      <span class="sb-item-icon">💬</span>
-      <span class="sb-item-label">${c.title.slice(0, 28)}</span>
-    </div>`).join('');
 }
 
-export function resumeChat(sessionId) {
-  S.sid = sessionId;
-  localStorage.setItem('mc_session', sessionId);
+/**
+ * Resume a saved session: GET /api/history/:sessionId,
+ * render every bubble, restore S.history.
+ */
+export async function resumeChat(sessionId) {
+  if (!sessionId) return;
 
-  // ── Restore frontend state from saved session metadata ──────
-  // Keeps mode chip + context pill correct before the next API call.
-  // S.forceMode primes the backend so it routes to the right mode
-  // even if the DB session row was lost (prevents Mode 1 re-onboarding).
-  const saved = getRecentChats().find(c => c.id === sessionId);
-  if (saved) {
-    S.mode      = saved.mode   || 1;
-    S.locked    = !!saved.locked;
-    S.forceMode = saved.mode   || null;
+  S.sid = sessionId;
+  // Pointer to "last active session id" — small UX nicety, not chat data.
+  try { localStorage.setItem('mc_session', sessionId); } catch {}
+
+  const msgs = document.getElementById('msgs');
+  if (msgs) msgs.innerHTML = '';
+
+  let payload = null;
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/history/${encodeURIComponent(sessionId)}`, { headers });
+    if (!res.ok) {
+      toast(res.status === 404 ? 'Session not found' : 'Failed to load session');
+      return;
+    }
+    payload = await res.json();
+  } catch (err) {
+    console.warn('[Lumi] resumeChat fetch failed:', err?.message);
+    toast('Could not load session — please try again');
+    return;
   }
 
-  // ── Wipe current messages and rebuild from localStorage ─────
-  const msgs = document.getElementById('msgs');
-  msgs.innerHTML = '';
+  const history = Array.isArray(payload?.messages) ? payload.messages : [];
+  S.history = history.map(m => ({
+    role:    m.role === 'assistant' ? 'assistant' : 'user',
+    content: m.content,
+    meta:    m.meta || (m.mode || m.service ? { mode: m.mode, service: m.service } : {}),
+    ts:      m.ts,
+  }));
 
-  const history = loadMsgHistory(sessionId);
+  // Restore mode/lock from message metadata so the chips render correctly
+  // and the next backend call routes to the right mode.
+  const lastAi = [...S.history].reverse().find(m => m.role === 'assistant' && m.meta?.mode);
+  if (lastAi?.meta?.mode) {
+    S.mode      = lastAi.meta.mode;
+    S.forceMode = lastAi.meta.mode;
+  }
 
-  if (!history.length) {
-    // No local history for this session (e.g. pre-dates the persist
-    // feature, or a different device). Show a neutral prompt so the
-    // user can continue — backend still has the full context in DB.
-    msgs.innerHTML = `
+  if (!S.history.length) {
+    if (msgs) msgs.innerHTML = `
       <div class="empty" id="emptyState">
         <div class="empty-lumi">✨</div>
         <div class="empty-divider"></div>
@@ -195,16 +248,14 @@ export function resumeChat(sessionId) {
         </div>
       </div>`;
   } else {
-    // ── Render every stored message bubble ───────────────────
-    history.forEach(({ role, content, meta }) => {
+    S.history.forEach(({ role, content, meta }) => {
       if (role === 'user') {
-        // ── User bubble ─────────────────────────────────────
         _renderRestoredBubble(msgs, 'user', content, meta);
       } else {
-        // ── AI bubble — detect structured JSON vs plain text ─
-        // Modes 3/4/5 store raw JSON strings. We detect them and
-        // render a compact "result" stub so the conversation makes
-        // sense visually without dumping raw JSON into a bubble.
+        // AI bubble — detect structured JSON (modes 3/4/5) vs plain text.
+        // Mode 4 dashboard modal flow is unaffected: structured stubs are
+        // only used for HISTORICAL replay; the live response still goes
+        // through renderResp() in the send() path.
         const json = tryJSON(content);
         if (json && (json.calendar || json.scorecard || json.campaigns)) {
           _renderRestoredStructuredStub(msgs, json, meta);
@@ -213,8 +264,7 @@ export function resumeChat(sessionId) {
         }
       }
     });
-
-    msgs.scrollTop = msgs.scrollHeight;
+    if (msgs) msgs.scrollTop = msgs.scrollHeight;
   }
 
   updateUI();
@@ -336,13 +386,13 @@ export async function send() {
 
     hideLumi();
 
-    // ── Save both sides to localStorage now that session_id is confirmed ──
-    // Using the session_id returned by the backend (guaranteed non-null here).
-    saveMsgToHistory(S.sid, 'user', userMsg);
+    // ── Update in-memory history; backend save is fire-and-forget ──
+    // The session_id is now confirmed by the backend response.
+    pushHistory('user', userMsg);
 
     if (data.message) {
       renderResp(data);
-      saveMsgToHistory(S.sid, 'ai', data.message, {
+      pushHistory('assistant', data.message, {
         mode:    data.current_mode,
         service: data.current_service,
       });
@@ -352,8 +402,13 @@ export async function send() {
     }
 
     if (S.sid) {
-      localStorage.setItem('mc_session', S.sid);
-      saveChatSession(S.sid, userMsg.slice(0, 40), data.current_mode, data.context_locked);
+      // "Last active session" pointer — kept in localStorage for reload restore;
+      // not chat data.
+      try { localStorage.setItem('mc_session', S.sid); } catch {}
+      // Background save — never await, must not block UI.
+      saveSession();
+      // Refresh sidebar so the title bumps to the top.
+      loadRecentChats();
     }
     updateUI();
   } catch (err) {
@@ -446,7 +501,9 @@ export function clearSession() {
   if (!confirm('Clear session and start over?')) return;
   S.sid = null; S.mode = 1; S.section = 0; S.service = 0;
   S.locked = false; S.msgs = 0; S.forceMode = null; S.img = null;
-  clearImg(); localStorage.removeItem('mc_session');
+  S.history = [];
+  clearImg();
+  try { localStorage.removeItem('mc_session'); } catch {}
   document.getElementById('msgs').innerHTML =
     `<div class="empty" id="emptyState"><div class="empty-lumi">✨</div><div class="empty-divider"></div><div class="empty-tagline">Session cleared. Let's go again.</div></div>`;
   updateUI();

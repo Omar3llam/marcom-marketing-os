@@ -19,8 +19,10 @@ import { apiLimiter, chatLimiter }          from './middleware/rateLimit.js';
 import { errorHandler }     from './middleware/errorHandler.js';
 import { masterRouter }     from './routes/master.js';
 import { exportRouter }     from './routes/export.js';
+import { historyRouter }    from './routes/history.js';
 import { logger }           from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
+import { ensureChatSessionSchema } from './models/chatSession.js';
 import { config }           from './config.js';
 
 const app = express();
@@ -116,6 +118,13 @@ app.use('/api',
   exportRouter
 );
 
+// Chat history endpoints — user-scoped, light rate-limit
+app.use('/api/history',
+  requireAuth,
+  apiLimiter,
+  historyRouter
+);
+
 // Chat endpoint also accessible from browser with Clerk token
 app.use('/api',
   requireAuth,
@@ -129,6 +138,11 @@ app.use(errorHandler);
 // ── START + GRACEFUL SHUTDOWN ────────────────────────────────
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port, env: config.nodeEnv }, 'MARCOM v4 online');
+  // Idempotent migration for the chat-history feature — adds the title
+  // column + per-user index if they don't exist. Non-fatal on failure.
+  ensureChatSessionSchema().catch(err =>
+    logger.warn({ err: err.message }, 'ensureChatSessionSchema failed at startup')
+  );
 });
 
 async function shutdown(signal) {

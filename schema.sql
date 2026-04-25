@@ -21,12 +21,19 @@ CREATE TABLE IF NOT EXISTS marcom_sessions (
   hybrid_raw_data           TEXT NOT NULL DEFAULT '',
   status           TEXT        NOT NULL DEFAULT 'active'
                                CHECK (status IN ('active','locked','error')),
+  title            TEXT        NOT NULL DEFAULT '',  -- short label for sidebar (~40 chars)
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_updated     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_sessions_session_id ON marcom_sessions (session_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_user_id    ON marcom_sessions (user_id);
+-- Auto-add title for existing deployments (idempotent)
+ALTER TABLE marcom_sessions ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS idx_sessions_session_id      ON marcom_sessions (session_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id         ON marcom_sessions (user_id);
+-- Compound index for /api/history/list (user-scoped, sorted by recency)
+CREATE INDEX IF NOT EXISTS idx_sessions_user_lastupdated
+  ON marcom_sessions (user_id, last_updated DESC);
 
 -- Auto-update last_updated on every row change
 CREATE OR REPLACE FUNCTION touch_last_updated()

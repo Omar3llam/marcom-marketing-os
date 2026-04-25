@@ -7,6 +7,9 @@ export const S = {
   locked: false, msgs: 0, loading: false, forceMode: null,
   backend: localStorage.getItem('mc_backend') || '',
   img: null,  // { base64, mediaType, name }
+  // In-memory canonical conversation for the active session.
+  // Single source of truth that the save endpoint reads from.
+  history: [],
 };
 
 export function updateUI() {
