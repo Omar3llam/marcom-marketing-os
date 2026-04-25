@@ -4,6 +4,7 @@
 // ============================================================
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from './logger.js';
+import { LUMI_SYSTEM_PROMPT } from '../prompts/lumi-system.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const DEFAULT_MODEL        = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5';
@@ -40,6 +41,11 @@ export async function callClaude({
   imageBase64 = null,
   imageMediaType = 'image/jpeg',
 }) {
+  // Always prepend Lumi's global identity prompt before any mode-specific instructions
+  const fullSystemPrompt = systemPrompt
+    ? `${LUMI_SYSTEM_PROMPT}\n\n${'═'.repeat(64)}\nMODE-SPECIFIC INSTRUCTIONS\n${'═'.repeat(64)}\n\n${systemPrompt}`
+    : LUMI_SYSTEM_PROMPT;
+
   const trimmedHistory = conversationHistory.slice(-MAX_HISTORY_MESSAGES);
 
   const messages = trimmedHistory
@@ -66,7 +72,7 @@ export async function callClaude({
 
   while (true) {
     try {
-      const response = await client.messages.create({ model, max_tokens: maxTokens, system: systemPrompt, messages });
+      const response = await client.messages.create({ model, max_tokens: maxTokens, system: fullSystemPrompt, messages });
       const textContent = response.content.find(c => c.type === 'text');
       if (!textContent) throw new Error('No text content in Claude response');
       return textContent.text;

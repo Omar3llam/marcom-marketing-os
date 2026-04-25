@@ -9,6 +9,7 @@ import { sanitizeMessage } from '../utils/sanitize.js';
 import { validate, chatSchema } from '../middleware/validate.js';
 import { logger } from '../utils/logger.js';
 import { detectMode } from '../../config/mode-detector.js';
+import { fetchUrlContent } from '../utils/scraper.js';
 import { runMode1 } from '../modes/mode1-onboarding.js';
 import { runMode2 } from '../modes/mode2-service.js';
 import { runMode3 } from '../modes/mode3-social.js';
@@ -49,13 +50,31 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
 
     const currentMode = detectMode(session, message, forceMode);  // server-side only
 
+    // ── AUTO URL SCRAPING (modes 2–5; mode 1 handles internally) ──
+    // If the message contains a URL, fetch its content and append it
+    // to the message so Claude has full page context automatically.
+    let enrichedMessage = message;
+    if (currentMode !== 1) {
+      const urlMatch = message.match(/https?:\/\/[^\s]+/);
+      if (urlMatch) {
+        try {
+          const pageContent = await fetchUrlContent(urlMatch[0]);
+          enrichedMessage = `${message}\n\n---\n[SCRAPED PAGE CONTENT FROM ${urlMatch[0]}]\n${pageContent}\n---`;
+          logger.info({ url: urlMatch[0], mode: currentMode }, 'URL auto-scraped for context');
+        } catch (err) {
+          logger.warn({ err: err.message, url: urlMatch[0] }, 'URL scrape failed — continuing without page content');
+          // Silent fallback — proceed with original message
+        }
+      }
+    }
+
     let modeResult;
     switch (currentMode) {
       case 1: modeResult = await runMode1(session, message, conversationHistory); break;
-      case 2: modeResult = await runMode2(session, message, conversationHistory); break;
-      case 3: modeResult = await runMode3(session, message, conversationHistory); break;
-      case 4: modeResult = await runMode4(session, message, conversationHistory, imageBase64, imageMediaType); break;
-      case 5: modeResult = await runMode5(session, message, conversationHistory); break;
+      case 2: modeResult = await runMode2(session, enrichedMessage, conversationHistory); break;
+      case 3: modeResult = await runMode3(session, enrichedMessage, conversationHistory); break;
+      case 4: modeResult = await runMode4(session, enrichedMessage, conversationHistory, imageBase64, imageMediaType); break;
+      case 5: modeResult = await runMode5(session, enrichedMessage, conversationHistory); break;
       default: modeResult = await runMode1(session, message, conversationHistory);
     }
 
