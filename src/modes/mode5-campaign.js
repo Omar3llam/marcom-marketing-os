@@ -4,15 +4,16 @@
 // B2B Pipeline Efficiency, True CAC
 // Strict JSON output → visual decision table
 // ============================================================
-import { callClaude } from '../utils/claude.js';
+import { callClaude, stripJsonFences } from '../utils/claude.js';
 
 export async function runMode5(session, userMessage, conversationHistory) {
-  const aiResponse = await callClaude({
+  const raw = await callClaude({
     systemPrompt: buildCampaignPrompt(session.context_summary),
     conversationHistory,
     userMessage,
     maxTokens: 4000,
   });
+  const aiResponse = stripJsonFences(raw);
 
   const existingLog = session.campaign_analysis_log || '';
   const campaignLog = existingLog
@@ -126,5 +127,7 @@ OUTPUT FORMAT — Return ONLY this JSON. No markdown, no preamble, no other text
   "mer_cac_flags": ["<any MER or True CAC warnings>" or []]
 }
 
-If metrics have not yet been submitted: respond with plain text asking for the data — do NOT output JSON until you have what you need.`;
+If metrics have not yet been submitted: respond with plain text asking for the data — do NOT output JSON until you have what you need.
+
+CRITICAL: Return ONLY valid JSON. Do not wrap the response in markdown blocks or backticks. Start directly with { and end with }.`;
 }

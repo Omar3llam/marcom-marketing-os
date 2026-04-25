@@ -2,15 +2,16 @@
 // MARCOM — Mode 3: Visual Social Media Calendar Engine
 // Strict JSON output → interactive calendar grid UI
 // ============================================================
-import { callClaude } from '../utils/claude.js';
+import { callClaude, stripJsonFences } from '../utils/claude.js';
 
 export async function runMode3(session, userMessage, conversationHistory) {
-  const aiResponse = await callClaude({
+  const raw = await callClaude({
     systemPrompt: buildSocialPrompt(session.context_summary),
     conversationHistory,
     userMessage,
     maxTokens: 4000,
   });
+  const aiResponse = stripJsonFences(raw);
 
   const existingLog = session.campaign_analysis_log || '';
   const socialLog = existingLog
@@ -87,5 +88,7 @@ OUTPUT FORMAT — Return ONLY this JSON. No other text:
   },
   "summary": "<2–3 sentence strategic rationale for this calendar — what commercial outcome it drives and why the mix is right>",
   "cultural_moments": ["<Any relevant dates flagged for the client's market>"]
-}`;
+}
+
+CRITICAL: Return ONLY valid JSON. Do not wrap the response in markdown blocks or backticks. Start directly with { and end with }.`;
 }

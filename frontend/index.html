@@ -347,7 +347,6 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
       <div class="mode-chip m1" id="modeChip"><div class="mode-dot"></div><span id="modeLbl">Mode 1 — Context</span></div>
       <div class="sid-tag" id="sidTag"></div>
       <div id="user-button"></div>
-      <button class="cfg-btn" onclick="window._app.openCfg()">⚙ Settings</button>
     </div>
   </div>
 
@@ -395,47 +394,6 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 
 </div><!-- /app-container -->
 
-<div class="overlay" id="overlay" onclick="window._app.closeCfg()"></div>
-
-<div class="cfg-panel" id="cfgPanel">
-  <div class="cfg-hdr">
-    <div class="cfg-ttl">Settings</div>
-    <button class="close-cfg" onclick="window._app.closeCfg()">✕</button>
-  </div>
-  <div class="cfg-body">
-    <div style="margin-bottom:18px;">
-      <div class="cfg-lbl">Force Mode</div>
-      <div class="mode-sw">
-        <button class="msw-btn" id="msw1" onclick="window._app.setMode(1)">01 Context</button>
-        <button class="msw-btn" id="msw2" onclick="window._app.setMode(2)">02 Tools</button>
-        <button class="msw-btn" id="msw3" onclick="window._app.setMode(3)">03 Social</button>
-        <button class="msw-btn" id="msw4" onclick="window._app.setMode(4)">04 Content</button>
-        <button class="msw-btn" id="msw5" onclick="window._app.setMode(5)">05 Campaign</button>
-        <button class="msw-btn" id="mswA" onclick="window._app.setMode(null)">Auto</button>
-      </div>
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-lbl">Backend URL</label>
-      <input class="cfg-inp" id="cfgBackend" type="text" placeholder="http://localhost:3000">
-      <div class="cfg-note">Base URL of your MARCOM server (no trailing slash)</div>
-    </div>
-    <div class="cfg-field">
-      <label class="cfg-lbl">Session ID</label>
-      <input class="cfg-inp" id="cfgSession" type="text" placeholder="Leave blank to auto-generate">
-      <div class="cfg-note">Paste to resume a previous session</div>
-    </div>
-    <div class="cfg-field">
-      <div class="cfg-lbl">Status</div>
-      <div class="status-row"><span style="color:var(--ink-3);font-weight:600;">Backend</span><span id="stBackend">—</span></div>
-      <div class="status-row"><span style="color:var(--ink-3);font-weight:600;">Auth</span><span id="stAuth">—</span></div>
-      <div class="status-row"><span style="color:var(--ink-3);font-weight:600;">Context</span><span id="stCtx">—</span></div>
-      <div class="status-row"><span style="color:var(--ink-3);font-weight:600;">Messages</span><span id="stMsgs">0</span></div>
-    </div>
-    <div style="height:1px;background:var(--border);margin:14px 0;"></div>
-    <button class="save-cfg" onclick="window._app.saveCfg()">Save Settings</button>
-    <button class="ghost-cfg" onclick="window._app.clearSession()">Clear Session & Restart</button>
-  </div>
-</div>
 
 <div class="toast" id="toast"></div>
 

@@ -3,10 +3,10 @@
 // Supports text + vision (image) analysis
 // Strict JSON output → visual scorecard cards
 // ============================================================
-import { callClaude } from '../utils/claude.js';
+import { callClaude, stripJsonFences } from '../utils/claude.js';
 
 export async function runMode4(session, userMessage, conversationHistory, imageBase64 = null, imageMediaType = 'image/jpeg') {
-  const aiResponse = await callClaude({
+  const raw = await callClaude({
     systemPrompt: buildContentPrompt(session.context_summary, !!imageBase64),
     conversationHistory,
     userMessage,
@@ -14,6 +14,7 @@ export async function runMode4(session, userMessage, conversationHistory, imageB
     imageBase64,
     imageMediaType,
   });
+  const aiResponse = stripJsonFences(raw);
 
   const existingLog = session.content_interrogation_log || '';
   const contentLog = existingLog
@@ -126,5 +127,7 @@ OUTPUT FORMAT — Return ONLY this JSON. No other text whatsoever:
   "brutal_insight": "<one punchy, high-impact strategic takeaway — direct, specific, actionable. The single most important thing. Not a summary.>",
   "rewritten_content": "<full rewritten version if rewrite_required is not None, else empty string>",
   "what_changed": ["<specific improvement 1>", "<specific improvement 2>", "<specific improvement 3>"]
-}`;
+}
+
+CRITICAL: Return ONLY valid JSON. Do not wrap the response in markdown blocks or backticks. Start directly with { and end with }.`;
 }

@@ -20,6 +20,17 @@ async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Strip markdown code fences that Claude sometimes wraps JSON in.
+ * Safe to call on plain JSON strings — leaves them untouched.
+ */
+export function stripJsonFences(raw = '') {
+  return raw
+    .replace(/^```(?:json)?[\r\n]*/gi, '')  // opening fence
+    .replace(/[\r\n]*```\s*$/gi, '')         // closing fence
+    .trim();
+}
+
 export async function callClaude({
   systemPrompt,
   conversationHistory = [],
