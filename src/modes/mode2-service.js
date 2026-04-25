@@ -3,15 +3,28 @@
 // ============================================================
 import { callClaude } from '../utils/claude.js';
 import { fetchUrlContent } from '../utils/scraper.js';
+import { extractDialectContext, MODE_PLATFORM_HINTS } from '../utils/dialectContext.js';
 
 // Hybrid services that require URL scraping
 const HYBRID_SERVICES = [5, 8];
 // Campaign services with manual metric input
 const CAMPAIGN_SERVICES = [6];
 
+// Per-tool platform hints — fall back to mode2_default when tool unmapped.
+const TOOL_PLATFORM_HINTS = {
+  3:  MODE_PLATFORM_HINTS.mode2_tool_3,
+  11: MODE_PLATFORM_HINTS.mode2_tool_11,
+  13: MODE_PLATFORM_HINTS.mode2_tool_13,
+  14: MODE_PLATFORM_HINTS.mode2_tool_14,
+};
+
 export async function runMode2(session, userMessage, conversationHistory) {
   const currentService = detectService(userMessage, session.current_service);
   const serviceType = getServiceType(currentService);
+
+  // Build dialect context — tool-specific platform hint
+  const platformHint = TOOL_PLATFORM_HINTS[currentService] || MODE_PLATFORM_HINTS.mode2_default;
+  const dialectContext = extractDialectContext(session, platformHint);
 
   let aiResponse;
   let hybridData = session.hybrid_raw_data || '';
@@ -37,6 +50,7 @@ export async function runMode2(session, userMessage, conversationHistory) {
       conversationHistory,
       userMessage,
       maxTokens: 2500,
+      dialectContext,
     });
   } else {
     // ── CONVERSATIONAL or CAMPAIGN ────────────────────────────
@@ -45,6 +59,7 @@ export async function runMode2(session, userMessage, conversationHistory) {
       conversationHistory,
       userMessage,
       maxTokens: 2500,
+      dialectContext,
     });
   }
 

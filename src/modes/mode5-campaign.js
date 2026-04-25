@@ -5,13 +5,17 @@
 // Strict JSON output → visual decision table
 // ============================================================
 import { callClaude, stripJsonFences } from '../utils/claude.js';
+import { extractDialectContext, MODE_PLATFORM_HINTS } from '../utils/dialectContext.js';
 
 export async function runMode5(session, userMessage, conversationHistory) {
+  const dialectContext = extractDialectContext(session, MODE_PLATFORM_HINTS.mode5);
+
   const raw = await callClaude({
     systemPrompt: buildCampaignPrompt(session.context_summary),
     conversationHistory,
     userMessage,
     maxTokens: 4000,
+    dialectContext,
   });
   const aiResponse = stripJsonFences(raw);
 

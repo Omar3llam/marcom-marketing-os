@@ -5,6 +5,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from './logger.js';
 import { LUMI_SYSTEM_PROMPT } from '../prompts/lumi-system.js';
+import { resolveDialect } from '../services/dialectResolver.js';
+import { compileDialectFragment } from '../prompts/dialectInjector.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const DEFAULT_MODEL        = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5';
@@ -40,11 +42,39 @@ export async function callClaude({
   model = DEFAULT_MODEL,
   imageBase64 = null,
   imageMediaType = 'image/jpeg',
+  dialectContext = null,   // optional — when provided, auto-resolves and injects DIALECT LOCK fragment
 }) {
-  // Always prepend Lumi's global identity prompt before any mode-specific instructions
-  const fullSystemPrompt = systemPrompt
-    ? `${LUMI_SYSTEM_PROMPT}\n\n${'═'.repeat(64)}\nMODE-SPECIFIC INSTRUCTIONS\n${'═'.repeat(64)}\n\n${systemPrompt}`
-    : LUMI_SYSTEM_PROMPT;
+  // Resolve dialect (if context provided) and compile the fragment that
+  // sits between LUMI_SYSTEM_PROMPT and the mode-specific instructions.
+  let dialectFragment = '';
+  let dialectRefusal = null;
+  if (dialectContext) {
+    try {
+      const resolved = resolveDialect(dialectContext);
+      if (resolved.refusal_required) {
+        dialectRefusal = resolved.refusal_reason;
+      } else {
+        dialectFragment = compileDialectFragment(resolved);
+        logger.info({
+          dialect: resolved.dialect_id,
+          register: resolved.register_level,
+          fallback: resolved.fallback_used || false,
+        }, 'Dialect lock active');
+      }
+    } catch (err) {
+      logger.warn({ err: err.message }, 'Dialect resolution failed — continuing without dialect lock');
+    }
+  }
+
+  // If dialect resolver demanded refusal, short-circuit before any API call.
+  if (dialectRefusal) return dialectRefusal;
+
+  // Compose final system prompt: identity → dialect lock → mode instructions
+  const sep = '═'.repeat(64);
+  const parts = [LUMI_SYSTEM_PROMPT];
+  if (dialectFragment)  parts.push(`${sep}\n${dialectFragment}`);
+  if (systemPrompt)     parts.push(`${sep}\nMODE-SPECIFIC INSTRUCTIONS\n${sep}\n\n${systemPrompt}`);
+  const fullSystemPrompt = parts.join('\n\n');
 
   const trimmedHistory = conversationHistory.slice(-MAX_HISTORY_MESSAGES);
 

@@ -4,8 +4,11 @@
 // Strict JSON output → visual scorecard cards
 // ============================================================
 import { callClaude, stripJsonFences } from '../utils/claude.js';
+import { extractDialectContext, MODE_PLATFORM_HINTS } from '../utils/dialectContext.js';
 
 export async function runMode4(session, userMessage, conversationHistory, imageBase64 = null, imageMediaType = 'image/jpeg') {
+  const dialectContext = extractDialectContext(session, MODE_PLATFORM_HINTS.mode4);
+
   const raw = await callClaude({
     systemPrompt: buildContentPrompt(session.context_summary, !!imageBase64),
     conversationHistory,
@@ -13,6 +16,7 @@ export async function runMode4(session, userMessage, conversationHistory, imageB
     maxTokens: 4000,
     imageBase64,
     imageMediaType,
+    dialectContext,
   });
   const aiResponse = stripJsonFences(raw);
 

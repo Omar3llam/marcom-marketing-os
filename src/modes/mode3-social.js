@@ -3,13 +3,17 @@
 // Strict JSON output → interactive calendar grid UI
 // ============================================================
 import { callClaude, stripJsonFences } from '../utils/claude.js';
+import { extractDialectContext, MODE_PLATFORM_HINTS } from '../utils/dialectContext.js';
 
 export async function runMode3(session, userMessage, conversationHistory) {
+  const dialectContext = extractDialectContext(session, MODE_PLATFORM_HINTS.mode3);
+
   const raw = await callClaude({
     systemPrompt: buildSocialPrompt(session.context_summary),
     conversationHistory,
     userMessage,
     maxTokens: 4000,
+    dialectContext,
   });
   const aiResponse = stripJsonFences(raw);
 

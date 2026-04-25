@@ -7,6 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolveDialect } from '../services/dialectResolver.js';
 import { compileDialectFragment } from '../prompts/dialectInjector.js';
+import { extractDialectContext, MODE_PLATFORM_HINTS } from '../utils/dialectContext.js';
 
 // ── 1. Egyptian B2C Instagram for Gen Z ──────────────────────
 test('Egyptian B2C Instagram for 25yo female audience → casual_social, no MSA, EN-AR code-switch ok', () => {
@@ -167,6 +168,41 @@ test('Compiled fragment includes the mandatory native-feel test', () => {
   const frag = compileDialectFragment(r);
   assert.match(frag, /NATIVE-FEEL TEST/);
   assert.match(frag, /personal account/);
+});
+
+// ── End-to-end wiring tests ──────────────────────────────────
+
+test('Wiring: Egyptian context_summary → extract → resolve → Egyptian pack', () => {
+  const session = {
+    context_summary: 'Brand: Cairo-based fashion startup. Target audience: Egyptian women 22-28, Gen Z, Instagram-first. Tone: playful and youthful.',
+  };
+  const ctx = extractDialectContext(session, MODE_PLATFORM_HINTS.mode3);
+  assert.equal(ctx.country, 'EG');
+  assert.equal(ctx.audience_age, 'gen_z');
+  assert.equal(ctx.brand_tone, 'playful');
+  const r = resolveDialect(ctx);
+  assert.equal(r.dialect_id, 'egyptian_arabic');
+  assert.equal(r.register_level, 'casual_social');
+});
+
+test('Wiring: Saudi B2B context_summary → Khaleeji + professional', () => {
+  const session = {
+    context_summary: 'Brand: Riyadh SaaS for enterprise CMOs. Audience: B2B decision-makers, professional. Channel: LinkedIn.',
+  };
+  const ctx = extractDialectContext(session, MODE_PLATFORM_HINTS.mode2_default);
+  assert.equal(ctx.country, 'SA');
+  assert.equal(ctx.brand_tone, 'professional');
+  const r = resolveDialect(ctx);
+  assert.equal(r.dialect_id, 'khaleeji_arabic');
+});
+
+test('Wiring: empty context_summary → safe fallback', () => {
+  const ctx = extractDialectContext({ context_summary: '' }, MODE_PLATFORM_HINTS.mode3);
+  assert.equal(ctx.country, null);
+  const r = resolveDialect(ctx);
+  // No country → falls back to American English with fallback_used flag
+  assert.equal(r.dialect_id, 'american_english');
+  assert.equal(r.fallback_used, true);
 });
 
 // ── 12. Register-conflict: corporate_formal excludes gen_z slang ─
