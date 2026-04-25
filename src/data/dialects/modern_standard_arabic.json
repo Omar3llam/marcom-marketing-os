@@ -1,0 +1,56 @@
+{
+  "dialect_id": "modern_standard_arabic",
+  "display_name": "Modern Standard Arabic (MSA / الفصحى)",
+  "region": ["pan-Arab"],
+  "iso_base": "ar",
+  "primary_use_cases": ["news", "government", "luxury heritage brands", "religious content", "pan-Arab campaigns", "regulated industries", "press releases"],
+  "register_levels": {
+    "professional_casual": { "description": "Light MSA — accessible, modern, retains some warmth. Used in editorial content and thought leadership across Arab markets." },
+    "corporate_formal": { "description": "Full classical MSA. Used in banking, government, legal, religious, and pan-Arab campaigns where dialect-neutrality is essential." }
+  },
+  "lexicon": {
+    "greetings": ["مرحباً", "أهلاً وسهلاً", "صباح الخير", "مساء الخير", "السلام عليكم", "تحية طيبة"],
+    "agreement": ["نعم", "بالتأكيد", "بكل تأكيد", "موافق", "صحيح", "بالطبع"],
+    "disagreement": ["لا", "كلا", "غير صحيح", "لا أوافق", "ليس بالضرورة"],
+    "emphasis_intensifiers": ["تماماً", "حقاً", "فعلاً", "بحق", "للغاية", "بشكل كبير"],
+    "filler_words": ["إذن", "كذلك", "علاوة على ذلك", "بالإضافة إلى", "من ناحية أخرى"],
+    "religious_phatic": ["إن شاء الله", "بإذن الله", "والحمد لله", "بسم الله الرحمن الرحيم"]
+  },
+  "grammar_quirks": [
+    "Full MSA verb conjugations including dual forms (يدرسان، تدرسان)",
+    "Case marking (إعراب) maintained in formal writing",
+    "إن and أن particles used for emphasis and complementation",
+    "Negation with لم + jussive, لا + present, لن + subjunctive",
+    "Demonstratives precede the noun: هذا الكتاب (NOT الكتاب ده as in dialects)"
+  ],
+  "code_switching_patterns": {
+    "english_in_arabic": "Minimal — only for technical terms with no Arabic equivalent. Even loanwords are usually Arabicized (e.g. تكنولوجيا rather than تكنولوجي).",
+    "rules": [
+      "Avoid English in MSA copy unless quoting or referencing a brand name.",
+      "Religious/heritage/government brands should have zero code-switching."
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "professional_casual",
+    "linkedin_post": "professional_casual | corporate_formal",
+    "press_release": "corporate_formal",
+    "b2b_email": "corporate_formal",
+    "government_communication": "corporate_formal"
+  },
+  "do_not_use": [
+    "Any colloquial dialect markers (ده، دي، إزاي، شو، يبه) — defeats the purpose of MSA",
+    "Slang of any kind",
+    "Code-switched English"
+  ],
+  "tone_signals": {
+    "modern_msa": ["Shorter sentences than classical Arabic", "Active voice over passive", "Concrete nouns over abstract"]
+  },
+  "example_translations": [
+    {
+      "english": "We are committed to delivering excellence to our clients across the region.",
+      "correct_native_casual": "نلتزم بتقديم التميز لعملائنا في جميع أنحاء المنطقة.",
+      "note": "Pan-Arab campaigns default to MSA to avoid dialect-favoritism."
+    }
+  ],
+  "review_required_by_native": true
+}

@@ -1,0 +1,53 @@
+{
+  "dialect_id": "tagalog",
+  "display_name": "Tagalog (incl. Taglish)",
+  "region": ["PH"],
+  "iso_base": "tl",
+  "register_levels": {
+    "casual_social": { "description": "Default Filipino B2C — Taglish-dominant, warm, expressive." },
+    "professional_casual": { "description": "Manila LinkedIn — heavily English, light Tagalog anchors." },
+    "corporate_formal": { "description": "Press, banking — formal Tagalog or English." }
+  },
+  "lexicon": {
+    "greetings": ["kumusta", "hi", "hello", "musta"],
+    "agreement": ["oo", "opo (formal)", "sige", "tama", "okay"],
+    "disagreement": ["hindi", "ayoko", "wala"],
+    "excitement": ["ang galing", "sobrang ganda", "lit", "the best", "petmalu (slang)"],
+    "emphasis_intensifiers": ["sobrang", "talaga", "super", "very"],
+    "filler_words": ["kasi", "talaga", "tapos", "ano", "diba"]
+  },
+  "grammar_quirks": [
+    "Verb-Subject-Object word order common",
+    "Focus markers (ang, ng, sa) determine sentence structure",
+    "Heavy English borrowing — Taglish is dominant register",
+    "'po' / 'opo' as honorific for elders",
+    "Reduplication for plurals/emphasis"
+  ],
+  "code_switching_patterns": {
+    "english_in_tagalog": "Taglish — heavy and natural; English nouns/verbs in Tagalog syntax",
+    "rules": ["Pure Tagalog feels formal; pure English feels distant — Taglish hits the sweet spot"]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "professional_casual"
+  },
+  "do_not_use": [
+    "Forced pure-Tagalog in Gen Z marketing — feels stiff",
+    "Cebuano/Visayan markers in Manila-targeted copy",
+    "Stereotyped 'mabuhay' overuse"
+  ],
+  "tone_signals": {
+    "metro_manila": ["Taglish-heavy, fast, cosmopolitan"],
+    "provincial": ["Slightly more Tagalog-leaning, traditional warmth"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "Ang galing nito talaga, sobrang lit!",
+      "note": "Taglish mix natural for Filipino Gen Z casual."
+    }
+  ],
+  "review_required_by_native": true
+}

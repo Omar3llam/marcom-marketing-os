@@ -1,0 +1,64 @@
+{
+  "dialect_id": "mexican_spanish",
+  "display_name": "Mexican Spanish (incl. Spanglish for US-Latino)",
+  "region": ["MX", "US-Latino"],
+  "iso_base": "es",
+  "register_levels": {
+    "street": { "description": "Hyper-casual Mexican Gen Z — TikTok-native, slang-heavy." },
+    "casual_social": { "description": "Default Mexican B2C social — warm, expressive, ¡buena onda!" },
+    "professional_casual": { "description": "LinkedIn México — professional but recognizably Mexican." },
+    "corporate_formal": { "description": "Press, banking, government — neutral Latin American Spanish." }
+  },
+  "lexicon": {
+    "greetings": ["hola", "qué onda", "qué tal", "buenos días", "qué pasó"],
+    "agreement": ["sí", "claro", "neta", "va", "órale", "simón"],
+    "disagreement": ["no", "para nada", "nel", "nombre"],
+    "excitement": ["chido", "padre", "qué padre", "está cabrón (vulgar — context!)", "neta", "una chulada"],
+    "frustration": ["qué mala onda", "qué hueva", "ay no"],
+    "emphasis_intensifiers": ["bien", "mucho", "súper", "neta", "harto"],
+    "filler_words": ["pues", "este", "o sea", "neta", "wey/güey (informal)"],
+    "gen_z_internet_slang": ["xula", "neta neta", "qué onda banda", "está cañón"],
+    "loanwords_english": ["chequear (to check)", "lonche (lunch)", "parquear (to park) — context-specific"]
+  },
+  "grammar_quirks": [
+    "Tú (informal you) dominant; usted for formal/elder",
+    "Diminutive -ito/-ita endings (cafecito, ahorita)",
+    "'Ahorita' has variable meaning — 'right now' or 'in a bit' depending on context",
+    "Use of 'le' for indirect object, even when redundant"
+  ],
+  "code_switching_patterns": {
+    "english_in_spanish": "Spanglish in US-Latino contexts — Texas, California, Florida especially. Common patterns: English nouns in Spanish syntax ('voy al store').",
+    "rules": [
+      "Mexican Gen Z TikTok mixes English freely",
+      "Northern Mexico (border states) has more English influence than Central/South",
+      "Spanish-only register for traditional/heritage/regional brands"
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social | street",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "corporate_formal",
+    "whatsapp_dm": "casual_social"
+  },
+  "do_not_use": [
+    "Castilian markers (vosotros, vale, tío) — wrong region",
+    "Argentinian voseo (vos, tenés, querés) — wrong region",
+    "Caribbean speed/cadence — wrong feel",
+    "Stereotyped 'ándale' / 'arriba' — caricature"
+  ],
+  "tone_signals": {
+    "ciudad_de_mexico": ["Buena onda, expressive, fast"],
+    "monterrey_norte": ["More direct, English-influenced, cosmopolitan"],
+    "guadalajara": ["Warm, traditional, regional pride"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "Está chido, neta.",
+      "correct_native_genz": "Neta neta, está cañón esto.",
+      "note": "Avoid Castilian 'vale' or Argentinian 'che'."
+    }
+  ],
+  "review_required_by_native": true
+}

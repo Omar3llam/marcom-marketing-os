@@ -1,0 +1,249 @@
+{
+  "dialect_id": "egyptian_arabic",
+  "display_name": "Egyptian Arabic (Masri)",
+  "region": ["EG"],
+  "iso_base": "ar",
+  "primary_cities": ["Cairo", "Alexandria", "Giza", "Mansoura", "Tanta", "Damanhur", "Asyut", "Aswan"],
+  "speaker_estimate_millions": 110,
+  "register_levels": {
+    "street": {
+      "description": "Hyper-casual, street-level Cairene/Delta speech. Short sentences, slang-heavy, profanity-adjacent. Used in TikTok comedy, micro-influencer DMs, friends chatting. Not appropriate for brand-owned channels unless brand is explicitly edgy/youth.",
+      "use_when": ["TikTok comedy script", "WhatsApp group banter", "low-fi UGC scripts", "meme accounts"],
+      "avoid_when": ["any B2B", "luxury brands", "any official communication", "brands targeting parents/30+"]
+    },
+    "casual_social": {
+      "description": "The default register for almost all Egyptian B2C social media. Natural, warm, conversational — how a 25-year-old native posts on their personal Instagram. Light English code-switching is expected and natural.",
+      "use_when": ["Instagram captions", "Facebook posts", "Reels scripts", "casual brand DMs", "WhatsApp Business replies"],
+      "avoid_when": ["B2B email subject lines", "regulatory/legal copy", "luxury/heritage brands that lean MSA"]
+    },
+    "professional_casual": {
+      "description": "Polished but still recognizably Egyptian. Slang dialed down to 1-2 anchor terms; English loanwords kept for tech/marketing terms only. The voice of LinkedIn Egypt, B2B blog posts, white papers with personality.",
+      "use_when": ["LinkedIn posts", "blog content", "founder-led B2B brand voice", "podcast scripts targeting professionals"],
+      "avoid_when": ["luxury brands wanting heritage feel — go corporate_formal/MSA", "Gen Z TikTok"]
+    },
+    "corporate_formal": {
+      "description": "MSA-leaning Egyptian — almost entirely Modern Standard Arabic but with Egyptian rhythm and sentence structure. The voice of bank communications, government PSAs, luxury heritage brands, regulated industries.",
+      "use_when": ["banking/financial copy", "government communication", "luxury heritage brands", "press releases", "legal disclaimers"],
+      "avoid_when": ["any consumer social media — feels stiff and dated"]
+    }
+  },
+  "lexicon": {
+    "greetings": [
+      "إزيك", "إزيك يا معلم", "إزي حالك", "إزي الأخبار", "عامل إيه",
+      "صباح الفل", "صباح القشطة", "صباح الورد", "صباحو", "مساء الفل",
+      "ازيك يا باشا", "ازيك يا قمر", "اخبارك ايه", "كله تمام؟", "حمد لله على السلامة"
+    ],
+    "agreement": [
+      "ماشي", "تمام", "تمام أوي", "حاضر", "أوكي", "اوكيه", "طب",
+      "طبعاً", "أكيد", "مظبوط", "صح كده", "بالظبط", "كده تمام",
+      "ماشي الحال", "خلاص اتفقنا", "زي ما انت عايز", "اللي تشوفه", "بكل تأكيد"
+    ],
+    "disagreement": [
+      "لأ", "لأ خالص", "لأ ابداً", "مش ممكن", "بلاش", "يا عم بلاش",
+      "إستحالة", "لأ يا سيدي", "مش لاقيها", "مش هينفع", "متشغلش بالك",
+      "مش وقتها", "مش الوقت ده"
+    ],
+    "excitement": [
+      "تحفة", "حلو أوي", "جامد", "جامد جداً", "جامد قوي", "نار",
+      "روشة", "هايل", "فظيع", "بجد بجد", "موت",
+      "بمعنى الكلمة", "جنان", "جنان بجد", "خرافة", "أسطورة", "كنز",
+      "والله العظيم", "حتة واحدة", "ولا أحلى"
+    ],
+    "frustration": [
+      "خلاص", "يا ساتر", "يا دي النيلة", "يا دي المصيبة", "الله يخرب بيتك",
+      "يا حول الله", "مش معقول", "تصدق", "ايه الكلام ده", "بقالنا",
+      "طفش", "ملل", "زهق", "تعبت", "مش طايق", "نفسي اخلص",
+      "حرام عليك", "كده برضه؟"
+    ],
+    "emphasis_intensifiers": [
+      "أوي", "خالص", "جداً", "فظيع", "موت", "بجد",
+      "والله", "والنبي", "صدقني", "يعني", "بالظبط",
+      "لدرجة", "لدرجة كده", "حتة واحدة", "بمعنى الكلمة", "حقيقي"
+    ],
+    "filler_words": [
+      "يعني", "طب", "أصل", "علشان", "عشان", "بقى",
+      "ساعتها", "وقتها", "بصراحة", "بجد", "حاجة كده",
+      "بمعنى", "ع فكرة", "بالمناسبة", "اللي هو", "كده يعني"
+    ],
+    "gen_z_internet_slang": [
+      "فالصو", "روش", "طحن", "موت ضحك", "قمر", "الفا",
+      "بيتش بليز", "تروست مي", "نو واي", "ده انا", "زي ما هو",
+      "ايه ده يا عم", "حالة", "وايب", "موود", "كرينج",
+      "ديليولو", "no crumbs بالعربي", "اوبشن", "بيستي", "كومفي", "اف"
+    ],
+    "millennial_slang": [
+      "تحفة", "جامد", "روشة", "كوول", "يا باشا", "يا معلم",
+      "هايل", "فل الفل", "تمام التمام", "روقان", "بمزاج",
+      "نضمها", "كلام كبير", "كلام جامد"
+    ],
+    "loanwords_english": [
+      "البريك (break)", "ايفنت (event)", "لايفستايل (lifestyle)",
+      "اوكي (ok)", "تشيك (check)", "بوست (post)", "ستوري (story)",
+      "ريلز (reels)", "فولوور (follower)", "لايك (like)", "كومنت (comment)",
+      "vibe / فايب", "mood / موود", "stress / استرس",
+      "deadline / دد لاين", "meeting / ميتنج", "feedback / فيدباك",
+      "team / تيم", "deal / ديل", "offer / اوفر", "discount / دسكاونت",
+      "delivery / دليفيري", "outfit / آوتفت", "cool / كوول"
+    ],
+    "loanwords_french": [
+      "مرسي (merci)", "بون جور (bonjour)", "شي شي (chichi)", "شيك (chic)",
+      "بوتيك (boutique)", "شوفير (chauffeur)", "أتيليه (atelier)",
+      "ميرسي بوكو (merci beaucoup)", "كافيه (café)", "بوفيه (buffet)",
+      "كوافير (coiffeur)"
+    ],
+    "religious_phatic": [
+      "إن شاء الله", "الحمد لله", "ماشاء الله", "بإذن الله", "ربنا يبارك",
+      "ربنا يكرم", "ربنا يفتحها", "اللهم بارك", "ربنا معاك", "ربنا يوفقك",
+      "بسم الله", "الله يفتحها معاك", "ربنا يسهل", "تبارك الرحمن"
+    ],
+    "egyptian_idioms": [
+      "اللي اختشوا ماتوا (the shameless ones outlived the rest — sarcasm)",
+      "ابن الكلب (lit. son of a dog — very strong, almost never in marketing)",
+      "ع راسي (my pleasure / on my head)",
+      "تسلم ايديك (your hands deserve health — praise for craftsmanship/cooking)",
+      "ربنا يخليك (may God preserve you — gratitude/farewell)",
+      "حلال عليك (you've earned it / good for you)",
+      "ع راحتك (take your time / your call)",
+      "بقالك زمان (long time no see)",
+      "اوعى (watch out / careful)",
+      "خليها على الله (leave it to God / stop stressing)",
+      "زي الفل (like jasmine — i.e. perfect)"
+    ]
+  },
+  "grammar_quirks": [
+    "Negation with ما...ش circumfix: مفيش (there isn't), معرفش (I don't know), مبيعرفش (he doesn't know), ماحدش (no one), مفهمتش (I didn't understand)",
+    "Future tense particle ها prefixed to verbs: هاروح (I'll go), هايجي (he'll come), هتعمل (you'll do)",
+    "Present continuous بـ prefix: بيشتغل (he's working), بتاكل (you're eating), بيدور (he's looking)",
+    "Question words: إيه (what), إزاي (how), فين (where), إمتى (when), ليه (why), مين (who), كام (how much/many)",
+    "Possessive marker بتاع/بتاعت/بتوع: العربية بتاعتي (my car), البيت بتاعنا (our house) — distinct from MSA إضافة",
+    "Demonstratives ده/دي/دول come AFTER the noun: المنتج ده (this product), البنت دي (this girl), الناس دول (these people)",
+    "Pluralization of imperative with و: روحوا (you-pl. go), اعملوا (you-pl. do), شوفوا (you-pl. see)",
+    "Cairo qaf ق → glottal stop ء (e.g. قلب → ألب, قال → ال) — but NOT in Saidi/Upper Egypt where ق → g",
+    "Jeem ج → hard g in Cairo (gameel for جميل) — opposite of MSA's soft j",
+    "Vowel reduction: short i and u often dropped (e.g. كتاب → ktab, فهمت → fhimt)",
+    "Object pronoun suffixes attach to verbs: شفته (I saw him), حبيتها (I loved her), قالهم (he told them)"
+  ],
+  "code_switching_patterns": {
+    "english_in_arabic": "Heavy in Cairo/Alex urban tech, marketing, and Gen Z scenes. Common pattern: Arabic syntax with English content nouns and adjectives. Examples: 'يعني الـ vibe مش حلو خالص', 'اعمل ستوري عن الـ event', 'البوست ده trending جامد', 'البراند بتاعهم professional أوي'. Verbs almost always stay Arabic; English verbs only appear in tech jargon ('بيـ debug الكود').",
+    "french_in_arabic": "Older generation (60+), historically Heliopolis/Zamalek/Garden City demographics. Phrases like 'مرسي يا حبيبتي', 'بون جور', 'شيك أوي'. In modern marketing, French loanwords surface in luxury, fashion, and beauty verticals — never in mass-market or Gen Z copy.",
+    "rules": [
+      "English words are inserted as nouns/adjectives, never as full clauses. 'I'm going to the store' would never code-switch to '*أنا going للـ store' — that's broken. Natural: 'أنا رايح الـ store'.",
+      "Stress and pronunciation stay Arabic — English words get Arabic phonology (e.g. 'فايب' not 'vaib').",
+      "Avoid forced code-switching in luxury, heritage, religious, or government brands — they signal authenticity through cleaner Arabic.",
+      "When the audience age is mixed or skews older (gen_x/boomer), reduce English to ~5% of words.",
+      "Gen Z TikTok scripts can hit 30-40% English insertion and still feel native — but only if the rhythm holds."
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "instagram_story": "casual_social",
+    "instagram_reels_script": "casual_social",
+    "tiktok_script": "street | casual_social",
+    "facebook_post": "casual_social",
+    "linkedin_post": "professional_casual",
+    "linkedin_article": "professional_casual",
+    "b2b_email": "corporate_formal",
+    "b2c_email": "casual_social",
+    "whatsapp_dm": "casual_social | street",
+    "whatsapp_business_reply": "professional_casual",
+    "x_post": "casual_social",
+    "youtube_script": "casual_social",
+    "podcast_script": "casual_social | professional_casual",
+    "press_release": "corporate_formal",
+    "landing_page_hero": "casual_social | professional_casual",
+    "landing_page_long_form": "professional_casual"
+  },
+  "do_not_use": [
+    "تحفة as a primary excitement word — overused by every brand since ~2012, signals lazy copywriting. Use sparingly and only with self-aware framing.",
+    "روش / روشة — felt fresh in 2008-2014, now reads as dated millennial. Acceptable only when targeting 35+ audience nostalgically.",
+    "Khaleeji-specific vocabulary in Egyptian content: يبه, ابغى, شلونك, زين, وش — these are wrong-dialect markers and immediately tank credibility.",
+    "Levantine markers: كيفك, شو, هلق, منيح, كتير — wrong dialect.",
+    "MSA in casual social copy: هذا, ذلك, الذي, التي, إن, لكن, كذلك — sounds like a news anchor and kills engagement.",
+    "Religious phrases as ironic punchlines or comedic devices in commercial work — culturally damaging.",
+    "Saidi accent rendered phonetically for jokes (gameel for جميل played for laughs) — punching down, avoid absent legitimate cultural-partnership context.",
+    "Forced direct translation of English Gen Z slang ('on fleek' → 'على الفليك', 'low-key' → 'لو-كي') — almost never works, find a native equivalent or rephrase.",
+    "Excessive exclamation marks and emojis in 'energetic' Arabic copy — feels like 2015 brand voice. Modern native copy is calmer and trusts the reader.",
+    "Generic ad copy starters: 'هل تعلم أن...' / 'في عالم اليوم...' / 'نحن نؤمن بأن...' — instant ad-detection signal, scrolled past instantly."
+  ],
+  "tone_signals": {
+    "young_urban_cairo": [
+      "Heavy English code-switching (~25-40% of nouns/adjectives)",
+      "TikTok-native Gen Z slang (فالصو, روش, موود, vibe)",
+      "Self-deprecating humor and ironic distance",
+      "Short sentences, fragmented rhythm, comma-splices intentional",
+      "Frequent rhetorical questions ('يا جماعة هو ده طبيعي؟')",
+      "Brand voice that 'gets it' — not trying to sound young, just is"
+    ],
+    "alexandria": [
+      "Slightly slower pacing than Cairo",
+      "Some residual Italian/Greek loanwords in older speakers (fading in Gen Z)",
+      "Strong regional pride — references to البحر, السيدة, sporting clubs land well",
+      "More relaxed, less status-conscious tone than Cairo urban",
+      "Marker phrases: 'احنا اسكندرانية', 'البحر بتاعنا'"
+    ],
+    "delta_damanhur_mansoura_tanta": [
+      "Closer to Cairo than to Saidi — minimal accent distance",
+      "More agriculture/family/community vocabulary lands well",
+      "Strong sense of regional identity — 'بحري' references resonate",
+      "Slightly more conservative tone than Cairo Gen Z but not dramatically",
+      "Marker phrases reference local landmarks, family, and seasonal agriculture"
+    ],
+    "upper_egypt_saidi": [
+      "Distinctive g→g pronunciation (gameel for جميل) — DO NOT phonetically render in copy",
+      "More formal traditional speech patterns",
+      "Family, honor, hospitality themes resonate",
+      "Avoid casual irony — feels disrespectful",
+      "Use professional_casual or corporate_formal as default register"
+    ]
+  },
+  "example_translations": [
+    {
+      "english": "This product is amazing, you have to try it.",
+      "wrong_msa": "هذا المنتج رائع، يجب أن تجربه.",
+      "wrong_translated_feel": "المنتج ده مذهل، عليك تجربته.",
+      "correct_egyptian_casual": "المنتج ده هايل والله، لازم تجربه.",
+      "correct_egyptian_genz": "المنتج ده vibes صدقني، جربه وهتشكرني.",
+      "note": "Avoid تحفة as the default — overused. Hayel (هايل) feels fresher in 2025-26."
+    },
+    {
+      "english": "Limited stock — order now before it's gone.",
+      "wrong_msa": "الكمية محدودة، اطلب الآن قبل النفاد.",
+      "wrong_translated_feel": "ستوك محدود — اطلب الآن قبل أن ينتهي.",
+      "correct_egyptian_casual": "الكمية محدودة، اطلب دلوقتي قبل ما تخلص.",
+      "correct_egyptian_genz": "الكمية بتخلص بسرعة — اطلب دلوقتي قبل ما تندم.",
+      "note": "دلوقتي (now) and خلص (run out) are the natural Egyptian verbs here. 'الآن' sounds like a TV news ticker."
+    },
+    {
+      "english": "Honestly, I never thought I'd find something this good for this price.",
+      "wrong_msa": "بصراحة، لم أكن أتوقع أن أجد شيئاً بهذه الجودة بهذا السعر.",
+      "wrong_translated_feel": "بصراحة، ما كنتش متوقع ألاقي حاجة بالجودة دي بالسعر ده.",
+      "correct_egyptian_casual": "بجد ماكنتش متخيل ألاقي حاجة بالجمال ده بالسعر ده.",
+      "correct_egyptian_genz": "بجد، ده انا قلبي وقع — ايه الجودة دي بالسعر ده!",
+      "note": "'ده انا قلبي وقع' is a recent Gen Z cairo idiom for 'I was floored' — works in late-2024/2025 TikTok content."
+    },
+    {
+      "english": "Free delivery across Egypt within 48 hours.",
+      "wrong_msa": "توصيل مجاني إلى جميع أنحاء مصر خلال 48 ساعة.",
+      "wrong_translated_feel": "ديليفيري فري لكل مصر في خلال 48 ساعة.",
+      "correct_egyptian_casual": "شحن مجاني لكل المحافظات، يوصلك في 48 ساعة.",
+      "correct_egyptian_professional": "نوصلك لأي محافظة في مصر خلال 48 ساعة، والشحن علينا.",
+      "note": "'الشحن علينا' is warmer than 'شحن مجاني' for B2C. Avoid mid-sentence English unless brand voice is heavily code-switching."
+    },
+    {
+      "english": "Book a free consultation with our growth team.",
+      "wrong_msa": "احجز استشارة مجانية مع فريق النمو لدينا.",
+      "wrong_translated_feel": "احجز كونسيلتيشن فري مع الـ growth team بتاعنا.",
+      "correct_egyptian_professional_casual": "احجز جلسة استشارية مجانية مع تيم growth عندنا.",
+      "correct_egyptian_corporate_formal": "احجز استشارة مجانية مع فريق النمو لدينا واكتشف فرص توسعك القادمة.",
+      "note": "B2B Egypt LinkedIn lands best with light EN-AR code-switch. Pure MSA reads stiff for SaaS audiences."
+    }
+  ],
+  "freshness_notes": {
+    "fresh_terms_2024_2026": ["vibes / vibez", "موود", "ده انا (Gen Z exaggeration)", "كرينج", "ديليولو", "no crumbs بالعربي"],
+    "fading_terms": ["تحفة (overused)", "جامد (still works but feels millennial)", "روشة (dated)", "حلال عليك (still warm but not Gen Z)"],
+    "dead_terms": ["كوول written as كوول (Gen Z just writes 'cool')", "تروست مي (peaked 2022)", "زي الفل (older generation marker now)"]
+  },
+  "compiled_for": "Lumi v2.0 — MARCOM AI",
+  "last_reviewed": "2026-04-25",
+  "review_required_by_native": true
+}

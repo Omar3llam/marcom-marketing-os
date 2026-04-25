@@ -1,0 +1,55 @@
+{
+  "dialect_id": "singlish",
+  "display_name": "Singlish (Singapore English)",
+  "region": ["SG"],
+  "iso_base": "en",
+  "register_levels": {
+    "casual_social": { "description": "Default Singlish B2C — heavy particles, multilingual mix." },
+    "professional_casual": { "description": "Standard Singapore English with light Singlish for warmth." },
+    "corporate_formal": { "description": "Standard English — government, legal, MNC corporate." }
+  },
+  "lexicon": {
+    "greetings": ["hi", "hello", "eh"],
+    "agreement": ["yeah lah", "ok lor", "can lah", "confirm"],
+    "disagreement": ["cannot lah", "no lah", "where got"],
+    "excitement": ["shiok", "power", "steady"],
+    "emphasis_intensifiers": ["very very", "damn", "siao (crazy good)"],
+    "filler_words": ["lah", "leh", "lor", "meh", "hor", "sia"],
+    "loanwords_malay_chinese": ["shiok (Malay — great)", "kiasu (Hokkien — afraid to lose out)", "bojio (Hokkien — didn't invite)"]
+  },
+  "grammar_quirks": [
+    "Sentence-final particles: lah, leh, lor, meh, hor, sia — each has distinct pragmatic meaning",
+    "Topic-comment structure ('this place very nice')",
+    "Copula deletion ('she very smart')",
+    "Code-mixing English + Malay + Hokkien + Mandarin in single sentence"
+  ],
+  "code_switching_patterns": {
+    "rules": [
+      "Singlish particles carry meaning — 'lah' is assertive, 'leh' is questioning, 'lor' is resignation",
+      "Government and MNC brands use Standard English; local F&B/retail use Singlish freely",
+      "Avoid forced Singlish in luxury/premium brands"
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "professional_casual"
+  },
+  "do_not_use": [
+    "Singlish in MNC corporate or luxury brand voice",
+    "Stereotyped Singlish (overuse of 'lah' for parody)",
+    "American slang"
+  ],
+  "tone_signals": {
+    "general_sg": ["Pragmatic, multicultural, warm but efficient"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "This one shiok lah!",
+      "note": "'Shiok' for genuine pleasure; 'lah' for assertion."
+    }
+  ],
+  "review_required_by_native": true
+}

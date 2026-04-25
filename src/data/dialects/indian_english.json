@@ -1,0 +1,60 @@
+{
+  "dialect_id": "indian_english",
+  "display_name": "Indian English (incl. Hinglish)",
+  "region": ["IN"],
+  "iso_base": "en",
+  "register_levels": {
+    "casual_social": { "description": "Default Indian B2C — Hinglish-heavy, expressive, warm." },
+    "professional_casual": { "description": "LinkedIn India — light Hinglish, mostly English." },
+    "corporate_formal": { "description": "Standard British-leaning Indian English for business." }
+  },
+  "lexicon": {
+    "greetings": ["hi", "hello", "namaste", "hey yaar"],
+    "agreement": ["haan", "haan ji", "okay okay", "bilkul", "for sure"],
+    "disagreement": ["nahi", "no yaar", "not okay"],
+    "excitement": ["mast", "bindaas", "kya baat hai", "amazing yaar", "killer"],
+    "emphasis_intensifiers": ["bilkul", "ekdum", "really really", "very very"],
+    "filler_words": ["yaar", "na", "actually", "basically"],
+    "loanwords_hindi": ["yaar (friend)", "bhai (brother)", "achha (good/ok)", "mast (cool)", "bindaas (chill)", "scene (situation)"]
+  },
+  "grammar_quirks": [
+    "'doing the needful' — Indian English idiom",
+    "Habitual present where US would use simple present ('I am eating' for routine eating)",
+    "Question tags 'isn't it?' / 'no?' / 'na?'",
+    "British spelling and grammar conventions",
+    "Reduplication for emphasis (very very good, hot hot)"
+  ],
+  "code_switching_patterns": {
+    "english_in_hindi": "Hinglish — heavy mixing, especially in urban Tier-1 cities (Mumbai, Delhi, Bangalore). Sentences flip between Hindi and English mid-clause naturally.",
+    "rules": [
+      "Hinglish is regionally variable — Mumbai Hinglish ≠ Delhi Hinglish",
+      "South India (Tamil/Telugu/Kannada/Malayalam states) uses less Hindi mixing — adapt to Tamil/Telugu English where relevant",
+      "B2B India often defaults to mostly-English with light yaar/bhai inserts"
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "professional_casual",
+    "whatsapp_dm": "casual_social"
+  },
+  "do_not_use": [
+    "Stereotyped Indian English ('please do the needful immediately' as parody)",
+    "South-Indian-language markers in North-Indian-targeted copy",
+    "American slang (awesome, dude — feels foreign)"
+  ],
+  "tone_signals": {
+    "north_india_hindi_belt": ["Heavy Hinglish, expressive, warm"],
+    "south_india_metros": ["More English-dominant, less Hindi mixing"],
+    "tier_1_urban": ["Tech-influenced, English-heavy, fast"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "Yaar this is mast!",
+      "note": "Hinglish flow: English structure with Hindi anchor word."
+    }
+  ],
+  "review_required_by_native": true
+}

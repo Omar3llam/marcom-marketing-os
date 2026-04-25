@@ -1,0 +1,62 @@
+{
+  "dialect_id": "american_english",
+  "display_name": "American English (General)",
+  "region": ["US"],
+  "iso_base": "en",
+  "register_levels": {
+    "street": { "description": "Hyper-casual American — TikTok/Twitter native, heavy slang, profanity-adjacent." },
+    "casual_social": { "description": "Default for US B2C social. Friendly, contraction-heavy, conversational." },
+    "professional_casual": { "description": "LinkedIn US — confident, direct, light wit. Founder-led brand voice." },
+    "corporate_formal": { "description": "Press releases, regulated industries, B2B legal-adjacent communication." }
+  },
+  "lexicon": {
+    "greetings": ["hey", "hi", "what's up", "how's it going", "morning", "yo (Gen Z casual)"],
+    "agreement": ["yep", "yeah", "for sure", "absolutely", "totally", "100%", "bet (Gen Z)"],
+    "disagreement": ["nope", "not really", "I don't think so", "hard pass"],
+    "excitement": ["amazing", "love it", "obsessed", "incredible", "wild", "unreal"],
+    "frustration": ["ugh", "frustrating", "annoying", "exhausting"],
+    "emphasis_intensifiers": ["really", "super", "so", "totally", "literally", "actually"],
+    "filler_words": ["like", "you know", "I mean", "honestly", "basically"],
+    "gen_z_internet_slang": ["rizz", "ate", "no crumbs", "delulu", "slay", "it's giving", "main character", "the way", "lowkey", "highkey"],
+    "millennial_slang": ["adulting", "extra", "lit (fading)", "savage", "mood", "vibe"]
+  },
+  "grammar_quirks": [
+    "Heavy use of contractions (don't, won't, can't, I'm)",
+    "Sentence-initial 'And/But/So' is natural in casual register",
+    "'gonna', 'wanna', 'gotta' acceptable in casual_social and below",
+    "Singular 'they' is standard in 2025-26 American English"
+  ],
+  "code_switching_patterns": {
+    "spanish_in_english": "Spanglish in Latino US contexts — see mexican_spanish pack for cross-pollination.",
+    "rules": [
+      "Avoid forced AAVE-style slang (slay, periodt, no cap) in mainstream brand voice unless audience is genuinely Black-focused — see Core Law 3.",
+      "Gen Z slang has fast half-life — verify freshness for any term older than 18 months."
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social | street",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "professional_casual | corporate_formal",
+    "x_post": "casual_social | street",
+    "press_release": "corporate_formal"
+  },
+  "do_not_use": [
+    "Outdated Gen Z slang ('on fleek', 'bae', 'YOLO', 'salty')",
+    "Forced AAVE without Black-audience context (Core Law 3)",
+    "British markers (innit, peng, bare, mate) in US copy",
+    "Filler buzzwords (synergy, leverage, holistic, robust)"
+  ],
+  "tone_signals": {
+    "general_us": ["Direct, optimistic, punchy", "Reader-as-protagonist framing", "Light wit, not sarcasm-heavy"]
+  },
+  "example_translations": [
+    {
+      "english": "This product is amazing, you have to try it.",
+      "correct_native_casual": "Honestly, you have to try this — I'm obsessed.",
+      "correct_native_genz": "Ok this is actually unreal, you NEED to try it.",
+      "note": "Native US copy uses casual hedges ('honestly', 'ok') and intensifiers naturally."
+    }
+  ],
+  "review_required_by_native": true
+}

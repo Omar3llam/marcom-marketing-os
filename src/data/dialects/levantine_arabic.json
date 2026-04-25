@@ -1,0 +1,72 @@
+{
+  "dialect_id": "levantine_arabic",
+  "display_name": "Levantine Arabic (Shami)",
+  "region": ["LB", "SY", "JO", "PS"],
+  "iso_base": "ar",
+  "sub_dialects": {
+    "lebanese": { "notes": "Beirut — heaviest French-Arabic-English code-switching of any Arab city. 'Bonjour habibti' is a real greeting." },
+    "syrian": { "notes": "Damascus and Aleppo — more conservative phonology, melodic intonation." },
+    "jordanian": { "notes": "Closer to Palestinian; bedouin influence in southern regions." },
+    "palestinian": { "notes": "Strong oral tradition; closer to Jordanian; identity-laden." }
+  },
+  "register_levels": {
+    "casual_social": { "description": "Default for Shami B2C social — warm, expressive, intimate-feeling." },
+    "professional_casual": { "description": "Beirut LinkedIn / Amman B2B — French-English-Arabic blend in Lebanon." },
+    "corporate_formal": { "description": "MSA-leaning Levantine — banks, ministries, NGOs." }
+  },
+  "lexicon": {
+    "greetings": ["مرحبا", "أهلا", "كيفك", "كيف الحال", "شو أخبارك", "صباح الخير", "مرحبتين"],
+    "agreement": ["أكيد", "أيوة", "تمام", "منيح", "ماشي", "صح", "اوكي"],
+    "disagreement": ["لأ", "ما بصير", "مش هيك", "ما بدي", "مستحيل"],
+    "excitement": ["كتير حلو", "رائع", "عنجد", "بجد", "فظيع", "تحفة"],
+    "frustration": ["يا ربي", "خلص", "ع بالي", "تعبت", "بطلت"],
+    "emphasis_intensifiers": ["كتير", "عنجد", "بجد", "ع الآخر", "موت"],
+    "filler_words": ["يعني", "هلق", "بعدين", "طيب", "شو"],
+    "gen_z_internet_slang": ["vibe / فايب", "موود", "كيوت", "نار", "حالة"],
+    "loanwords_french": ["مرسي", "بون جور", "شيك", "كافيه", "بوتيك (Lebanese — heavy French heritage)"],
+    "loanwords_english": ["meeting / ميتنج", "vibe / فايب", "outfit / آوتفت"],
+    "religious_phatic": ["إن شاء الله", "الحمد لله", "ماشاء الله", "يا رب", "ربنا يحميك"]
+  },
+  "grammar_quirks": [
+    "Question word 'شو' (what) — distinct from Egyptian 'إيه' and Khaleeji 'وش'",
+    "'هلق' (now) — distinct from Egyptian 'دلوقتي' and Khaleeji 'الحين'",
+    "Negation: 'ما' before verbs (ما بعرف = I don't know)",
+    "Future tense particle 'رح' or 'حـ' (رح روح = I'll go)",
+    "Possessive 'تبع' / 'تبعك' (similar to Egyptian بتاع)",
+    "Lebanese: heavy French phonology influence in upper-class speech"
+  ],
+  "code_switching_patterns": {
+    "english_in_arabic": "Heavy in Beirut, moderate in Amman, lighter in Damascus.",
+    "french_in_arabic": "Lebanese-specific — 'bonjour', 'merci', 'ça va' woven into casual conversation, especially among older generations and elite Beirut.",
+    "rules": [
+      "Lebanese can mix Arabic + French + English in a single sentence — known as 'Lebanese trilingual'.",
+      "Syrian/Jordanian/Palestinian brands should keep French to zero unless explicitly Beirut-targeted."
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "corporate_formal",
+    "whatsapp_dm": "casual_social"
+  },
+  "do_not_use": [
+    "Egyptian markers (ده، دي، إزاي، أوي)",
+    "Khaleeji markers (وش، يبه، ابغى)",
+    "Lebanese French-blend in Syrian/Jordanian/Palestinian copy"
+  ],
+  "tone_signals": {
+    "beirut_lebanese": ["Trilingual blend, fashion-forward, melodic intonation, expressive"],
+    "damascus_syrian": ["Warm, conservative, traditional respect markers, melodic"],
+    "amman_jordanian": ["Direct, bedouin-influenced, balanced formal-casual"],
+    "palestinian": ["Identity-laden, oral-tradition-rich, warm, communal"]
+  },
+  "example_translations": [
+    {
+      "english": "Honestly, you have to try this.",
+      "correct_native_casual": "عنجد لازم تجربها.",
+      "note": "'عنجد' is the natural Levantine intensifier. Avoid Egyptian 'بجد' or Khaleeji 'صدق'."
+    }
+  ],
+  "review_required_by_native": true
+}

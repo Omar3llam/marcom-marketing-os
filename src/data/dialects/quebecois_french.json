@@ -1,0 +1,57 @@
+{
+  "dialect_id": "quebecois_french",
+  "display_name": "Quebecois French (Joual)",
+  "region": ["CA-QC"],
+  "iso_base": "fr",
+  "register_levels": {
+    "casual_social": { "description": "Default Quebec B2C — joual, English-influenced, distinctive vocabulary." },
+    "professional_casual": { "description": "Montreal/Quebec LinkedIn — cleaner French, light joual." },
+    "corporate_formal": { "description": "Government, banking — closer to international French." }
+  },
+  "lexicon": {
+    "greetings": ["bonjour", "allô", "salut"],
+    "agreement": ["oui", "ouais", "okay", "c'est correct"],
+    "disagreement": ["non", "pantoute (not at all)"],
+    "excitement": ["c'est l'fun", "écœurant (positive — great)", "malade", "hot"],
+    "frustration": ["tabarnak (vulgar — strong)", "câlisse (vulgar)", "criss (vulgar)", "voyons donc"],
+    "emphasis_intensifiers": ["ben", "vraiment", "super"],
+    "filler_words": ["faque (so)", "ben", "tsé (tu sais)", "là"],
+    "loanwords_english": ["chum (boyfriend)", "blonde (girlfriend)", "char (car)", "checker"]
+  },
+  "grammar_quirks": [
+    "Distinctive joual pronunciation (moé/toé for moi/toi)",
+    "Heavy English borrowing despite French-protection laws",
+    "Religious-origin vulgarities (sacres) used as expletives — culturally specific",
+    "Tu vs vous less strict than France"
+  ],
+  "code_switching_patterns": {
+    "english_in_french": "Heavy historical English borrowing — chum, blonde, char, checker, parking",
+    "rules": [
+      "Quebec brands prefer Quebec-French over France-French to signal local identity",
+      "Bill 96 / language laws — official communication must be French-first"
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "corporate_formal"
+  },
+  "do_not_use": [
+    "France-French verlan in Quebec copy",
+    "Sacres (tabarnak, câlisse) in commercial work — culturally inappropriate",
+    "Anglicisms that signal lazy translation rather than authentic Quebec speech"
+  ],
+  "tone_signals": {
+    "montreal": ["Bilingual, urban, cosmopolitan, cultural-pride"],
+    "quebec_city": ["More traditional, conservative, proud Francophone identity"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "C'est vraiment l'fun!",
+      "note": "'L'fun' is the Quebec native marker for 'fun' — ubiquitous."
+    }
+  ],
+  "review_required_by_native": true
+}

@@ -1,0 +1,63 @@
+{
+  "dialect_id": "maghrebi_arabic",
+  "display_name": "Maghrebi Arabic (Darija — Morocco / Algeria / Tunisia)",
+  "region": ["MA", "DZ", "TN"],
+  "iso_base": "ar",
+  "sub_dialects": {
+    "moroccan_darija": { "notes": "Heaviest Berber/Tamazight + French + Spanish influence. Often unintelligible to Mashreq Arabs." },
+    "algerian": { "notes": "Heavy French code-switching, some Berber substrate." },
+    "tunisian": { "notes": "Closer to Mashreq than Moroccan; French-Italian heritage." }
+  },
+  "register_levels": {
+    "casual_social": { "description": "Default for Darija social — extremely French-blended; almost unintelligible to Egyptians/Khaleejis." },
+    "professional_casual": { "description": "French-Arabic blend on LinkedIn Maghreb — French often dominant." },
+    "corporate_formal": { "description": "MSA + French — government and banking." }
+  },
+  "lexicon": {
+    "greetings": ["السلام", "أهلا", "لاباس", "كيداير (MA)", "واش راك (DZ)", "شنية أحوالك (TN)"],
+    "agreement": ["واخا (MA)", "ايه", "صافي (MA)", "نعم", "اوكي"],
+    "disagreement": ["لا", "ماشي (NOT 'ok' — means 'no/not'!)", "خلاص"],
+    "excitement": ["زوين (MA)", "بنين (MA)", "هايل", "روعة", "نار"],
+    "filler_words": ["داكشي (MA — that thing)", "هاد (this)", "غير (only/just)"],
+    "loanwords_french": ["bonjour / بنجور", "merci / ميرسي", "ça va / صا فا", "voiture / فواتير"],
+    "loanwords_spanish": ["plaza / بلاصة (MA)", "semana / سيمانا (MA — week)"],
+    "religious_phatic": ["إن شاء الله", "الحمد لله", "ربي يحفظ"]
+  },
+  "grammar_quirks": [
+    "Massive vowel reduction (يكتب → ka-yektb)",
+    "Negation circumfix ما...ش (similar to Egyptian)",
+    "Moroccan 'ka-' present tense prefix (kaymshi = he goes)",
+    "Question word 'شنو' or 'واش' (what)",
+    "Heavy French verb borrowings with Arabic conjugation"
+  ],
+  "code_switching_patterns": {
+    "french_in_arabic": "Default — Maghrebi Darija sentences routinely contain 30-50% French. 'Je vais à l'école' could equally be 'غادي للمدرسة' or 'غادي à l'école'.",
+    "rules": [
+      "If brand is Maghreb-only, French-Arabic blend is native.",
+      "If pan-Arab, switch to MSA — Mashreq audiences cannot parse Darija."
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "corporate_formal"
+  },
+  "do_not_use": [
+    "Mashreq Arabic markers (ده، دي، إزاي، شو، وش) — wrong family",
+    "Pan-Arab MSA in Darija casual content — feels stiff and foreign"
+  ],
+  "tone_signals": {
+    "moroccan_casablanca": ["French-Arabic blend, urban, fashion-forward"],
+    "algerian_algiers": ["Heavy French code-switching, expressive"],
+    "tunisian_tunis": ["Mediterranean tone, French-Italian-Arabic blend"]
+  },
+  "example_translations": [
+    {
+      "english": "I really like this.",
+      "correct_native_casual": "هاد الحاجة زوينة بزاف. (MA)",
+      "note": "Pan-Maghreb campaigns are rare — produce per-country versions."
+    }
+  ],
+  "review_required_by_native": true
+}

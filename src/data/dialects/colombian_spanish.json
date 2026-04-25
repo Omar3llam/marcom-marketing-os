@@ -1,0 +1,53 @@
+{
+  "dialect_id": "colombian_spanish",
+  "display_name": "Colombian Spanish",
+  "region": ["CO"],
+  "iso_base": "es",
+  "sub_dialects": {
+    "paisa_medellin": { "notes": "Distinctive — voseo, melodic intonation, parcero culture." },
+    "rolo_bogota": { "notes": "Considered closest to 'neutral' Latin American Spanish — used for dubbing." },
+    "costeño_caribbean": { "notes": "Coastal — closer to Caribbean Spanish in pace and dropped 's'." }
+  },
+  "register_levels": {
+    "casual_social": { "description": "Default Colombian B2C — warm, melodic, parcero culture." },
+    "professional_casual": { "description": "Bogotá LinkedIn — clean Spanish, considered neutral." }
+  },
+  "lexicon": {
+    "greetings": ["hola", "quihubo", "qué más", "buenos días", "ey parcero"],
+    "agreement": ["sí", "claro", "listo", "bacano", "chévere"],
+    "disagreement": ["no", "qué pena", "para nada"],
+    "excitement": ["chévere", "bacano", "bacanísimo", "una nota", "tremendo"],
+    "emphasis_intensifiers": ["bien", "muy", "súper", "re"],
+    "filler_words": ["pues", "parce", "parcero", "marica (informal — context)", "vea"]
+  },
+  "grammar_quirks": [
+    "Paisa voseo (vos tenés, querés)",
+    "Bogotá retained 'usted' even in informal contexts",
+    "Diminutives heavy (cafecito, ratico, momentico)"
+  ],
+  "code_switching_patterns": {
+    "rules": ["English mixing modest in mainstream Colombian marketing"]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual"
+  },
+  "do_not_use": [
+    "Mexican / Argentinian / Caribbean markers — wrong dialect",
+    "Castilian markers"
+  ],
+  "tone_signals": {
+    "paisa_medellin": ["Warm, melodic, parcero-culture, expressive"],
+    "rolo_bogota": ["Clean, neutral, slightly formal"],
+    "costeño": ["Faster, dropped 's', coastal warmth"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "Esto está bacano, parce.",
+      "note": "'Bacano' + 'parce' = native Colombian casual."
+    }
+  ],
+  "review_required_by_native": true
+}

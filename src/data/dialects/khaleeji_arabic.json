@@ -1,0 +1,75 @@
+{
+  "dialect_id": "khaleeji_arabic",
+  "display_name": "Khaleeji Arabic (Gulf — KSA / UAE / Kuwait / Qatar / Bahrain / Oman)",
+  "region": ["SA", "AE", "KW", "QA", "BH", "OM"],
+  "iso_base": "ar",
+  "sub_dialects": {
+    "saudi": { "notes": "Najdi (central) most associated with KSA marketing; Hijazi (west) softer; Eastern Province closer to Bahraini." },
+    "emirati": { "notes": "Distinctive 'ch' sound for ك (chthir for كثير); heavy English code-switching in Dubai marketing." },
+    "kuwaiti": { "notes": "Closer to Najdi; influential in Khaleeji pop culture and media." },
+    "qatari": { "notes": "Conservative tone; closer to Saudi Najdi than Emirati." },
+    "bahraini": { "notes": "Influenced by Persian and Indian loanwords historically." },
+    "omani": { "notes": "Distinctive — closer to Yemeni in some features; less commonly used in pan-Khaleeji marketing." }
+  },
+  "register_levels": {
+    "casual_social": { "description": "Default for Gulf B2C social — warm, slightly more formal than Egyptian casual." },
+    "professional_casual": { "description": "LinkedIn KSA/UAE — heavy English code-switching is expected in Dubai/Riyadh tech." },
+    "corporate_formal": { "description": "MSA-leaning Khaleeji — banking, government, royal-court communication." }
+  },
+  "lexicon": {
+    "greetings": ["السلام عليكم", "هلا وغلا", "حياك الله", "كيفك", "شخبارك", "مرحبا", "هلا والله"],
+    "agreement": ["إي", "إي والله", "أكيد", "زين", "تمام", "اوكي", "ماشي", "صح"],
+    "disagreement": ["لا", "لا والله", "ما يصير", "ما ينفع", "أبد", "مستحيل"],
+    "excitement": ["حلو", "خرافي", "عجيب", "حتة واحدة", "روعة", "كشخة", "فل", "فنان"],
+    "frustration": ["يا ساتر", "يا ربي", "تعبت", "زهقت", "فاضي", "خلاص"],
+    "emphasis_intensifiers": ["مرة", "وايد (UAE/KW)", "كثير", "جداً", "حيل", "بقوة"],
+    "filler_words": ["يعني", "زين", "طيب", "عاد", "بعدين"],
+    "gen_z_internet_slang": ["كشخة", "فاضي", "تشيلي (chilly)", "موود", "vibe", "كيوت"],
+    "loanwords_english": ["meeting / ميتنج", "deal / ديل", "vibe / فايب", "team / تيم", "outfit / آوتفت"],
+    "religious_phatic": ["إن شاء الله", "ما شاء الله", "الحمد لله", "بإذن الله", "تبارك الله"]
+  },
+  "grammar_quirks": [
+    "Use of 'إي' (yes) instead of 'أيوه/نعم'",
+    "Question word 'وش' (what) instead of Egyptian 'إيه'",
+    "Demonstratives 'هذا/هذي' kept closer to MSA than Egyptian ده/دي",
+    "First-person verb prefix 'أ' often replaced by 'ا' in writing (ابغى = أريد)",
+    "Negation 'ما' before verbs (ما اعرف = I don't know)",
+    "UAE: ك → ch sound (chthir for كثير)",
+    "Plural 'إحنا' (we), 'إنتو' (you-pl)"
+  ],
+  "code_switching_patterns": {
+    "english_in_arabic": "Heavy in Dubai, Riyadh tech, and Khaleeji Gen Z. UAE Emirati youth especially mix English freely. Common in fashion, tech, F&B marketing.",
+    "rules": [
+      "Saudi government/religious brands should minimize English.",
+      "UAE consumer brands often go 50/50 Arabic-English.",
+      "When unsure, default to lighter code-switching for Saudi vs. heavier for UAE."
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "corporate_formal",
+    "whatsapp_dm": "casual_social"
+  },
+  "do_not_use": [
+    "Egyptian markers (ده، دي، إزاي، أوي، علشان) — wrong dialect",
+    "Levantine markers (شو، كيف، هلق)",
+    "Casual irony in Saudi corporate — feels disrespectful",
+    "Slang older than 3 years — Khaleeji slang cycles fast"
+  ],
+  "tone_signals": {
+    "saudi_najdi": ["Direct, slightly formal, traditional respect markers"],
+    "emirati": ["Heavy English mix, cosmopolitan, fashion-forward tone"],
+    "kuwaiti": ["Pop-culture influenced, expressive, slightly louder register"]
+  },
+  "example_translations": [
+    {
+      "english": "This is a must-try.",
+      "wrong_egyptian": "ده لازم تجربه",
+      "correct_native_casual": "لازم تجربه، خرافي والله.",
+      "note": "Avoid Egyptian 'ده' demonstrative."
+    }
+  ],
+  "review_required_by_native": true
+}

@@ -1,0 +1,56 @@
+{
+  "dialect_id": "brazilian_portuguese",
+  "display_name": "Brazilian Portuguese",
+  "region": ["BR"],
+  "iso_base": "pt",
+  "register_levels": {
+    "street": { "description": "São Paulo / Rio favela slang, funk-influenced, hyper-casual." },
+    "casual_social": { "description": "Default Brazilian B2C — warm, expressive, slang-rich." },
+    "professional_casual": { "description": "São Paulo LinkedIn — cleaner Portuguese, light slang." },
+    "corporate_formal": { "description": "Press, banking, legal — formal Brazilian Portuguese." }
+  },
+  "lexicon": {
+    "greetings": ["oi", "olá", "e aí", "tudo bem", "fala mano"],
+    "agreement": ["sim", "claro", "beleza", "tranquilo", "fechou"],
+    "disagreement": ["não", "nem", "que nada"],
+    "excitement": ["massa", "dahora", "irado", "top", "show", "maneiro"],
+    "emphasis_intensifiers": ["muito", "super", "pra caramba", "demais"],
+    "filler_words": ["tipo", "né", "cara", "mano", "véi"],
+    "gen_z_internet_slang": ["mds (meu deus)", "kkkk (laugh)", "shippar", "crush", "mozão"]
+  },
+  "grammar_quirks": [
+    "Você over tu in most regions (Rio Grande do Sul keeps tu)",
+    "Continuous tense uses gerund (estou falando) unlike European Portuguese (estou a falar)",
+    "Different prepositions and verb conjugations from European Portuguese"
+  ],
+  "code_switching_patterns": {
+    "english_in_portuguese": "Moderate — tech, marketing, Gen Z TikTok",
+    "rules": [
+      "Brazilian Portuguese is dominant in Lusophone marketing — European Portuguese feels foreign in Brazil",
+      "São Paulo tech scene mixes English freely; Rio cultural brands keep Portuguese cleaner"
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social | street",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "corporate_formal"
+  },
+  "do_not_use": [
+    "European Portuguese vocabulary/conjugations — wrong dialect for Brazil",
+    "Stereotyped 'samba' / 'caipirinha' references — caricature"
+  ],
+  "tone_signals": {
+    "sao_paulo": ["Tech-forward, fast, English-influenced"],
+    "rio_de_janeiro": ["Warmer, more musical, beach-culture-influenced"],
+    "northeast": ["Distinctive sotaque, regional pride, more traditional"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "Mano, isso aqui tá massa demais.",
+      "note": "'Massa' + 'mano' = native Brazilian casual."
+    }
+  ],
+  "review_required_by_native": true
+}

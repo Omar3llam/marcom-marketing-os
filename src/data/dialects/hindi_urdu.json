@@ -1,0 +1,59 @@
+{
+  "dialect_id": "hindi_urdu",
+  "display_name": "Hindi/Urdu (incl. Hinglish/Urdlish)",
+  "region": ["IN", "PK"],
+  "iso_base": "hi",
+  "register_levels": {
+    "casual_social": { "description": "Default Hindi/Urdu B2C — Hinglish-heavy, expressive, family-oriented." },
+    "professional_casual": { "description": "LinkedIn India/Pakistan — heavily English, light Hindi/Urdu anchor terms." },
+    "corporate_formal": { "description": "Government, banking — formal Hindi (Devanagari) or Urdu (Nastaliq)." }
+  },
+  "lexicon": {
+    "greetings_hindi": ["नमस्ते", "हाय", "क्या हाल"],
+    "greetings_urdu": ["السلام علیکم", "ہائے", "کیا حال"],
+    "agreement": ["हाँ / haan", "ज़रूर / zaroor", "बिल्कुल / bilkul"],
+    "disagreement": ["नहीं / nahi", "बिल्कुल नहीं / bilkul nahi"],
+    "excitement": ["mast", "kya baat", "lajawab", "shaandar", "zabardast"],
+    "emphasis_intensifiers": ["bilkul", "ekdum", "bahut", "kaafi"],
+    "filler_words": ["yaar", "matlab", "bhai", "actually", "basically"]
+  },
+  "grammar_quirks": [
+    "SOV word order",
+    "Postpositions (not prepositions)",
+    "Gendered nouns and verb agreement",
+    "Hindi (Devanagari) and Urdu (Nastaliq) share spoken language but differ in script and formal vocabulary",
+    "Polite verb forms with -iye / -ji"
+  ],
+  "code_switching_patterns": {
+    "english_in_hindi": "Hinglish — heavy mixing in urban India",
+    "english_in_urdu": "Urdlish — heavy mixing in urban Pakistan",
+    "rules": [
+      "Choose Hindi or Urdu based on audience country and religion sensitively",
+      "Pakistan content uses Urdu vocabulary; India content uses Hindi vocabulary",
+      "Punjabi influence in both Indian Punjab and Pakistani Punjab markets"
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "professional_casual"
+  },
+  "do_not_use": [
+    "Mixing Hindi-specific vocab in Pakistan-targeted Urdu copy",
+    "Stereotyped Bollywood / Bhangra references — caricature",
+    "Religious phrases as ironic punchlines"
+  ],
+  "tone_signals": {
+    "north_india_hindi_belt": ["Heavy Hinglish, expressive"],
+    "pakistan_urban": ["Urdu base, English-heavy in Karachi/Lahore tech"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "Yaar, ye toh bahut mast hai.",
+      "note": "Hinglish mix natural; pure Hindi feels textbook for casual social."
+    }
+  ],
+  "review_required_by_native": true
+}

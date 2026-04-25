@@ -1,0 +1,52 @@
+{
+  "dialect_id": "european_portuguese",
+  "display_name": "European Portuguese (Portugal)",
+  "region": ["PT"],
+  "iso_base": "pt",
+  "register_levels": {
+    "casual_social": { "description": "Default Portugal B2C — distinct from Brazilian, cleaner phonology." },
+    "professional_casual": { "description": "Lisbon/Porto LinkedIn — formal-leaning Portuguese." },
+    "corporate_formal": { "description": "Press, government, EU — formal European Portuguese." }
+  },
+  "lexicon": {
+    "greetings": ["olá", "bom dia", "tudo bem", "viva"],
+    "agreement": ["sim", "claro", "fixe", "está bem"],
+    "disagreement": ["não", "nada", "nem pensar"],
+    "excitement": ["fixe", "porreiro", "espetacular", "altamente"],
+    "emphasis_intensifiers": ["muito", "imenso", "super", "bastante"],
+    "filler_words": ["pá", "tipo", "ya", "então"],
+    "millennial_slang": ["fixe", "porreiro"]
+  },
+  "grammar_quirks": [
+    "Tu (informal) and você (formal) — distinct from Brazilian usage",
+    "Continuous uses 'estar a + infinitive' (estou a falar) — distinct from Brazilian gerund",
+    "Closed/reduced vowels — distinctive phonology",
+    "'Pá' as universal vocative (similar to mate/dude)"
+  ],
+  "code_switching_patterns": {
+    "english_in_portuguese": "Moderate — Lisbon tech, marketing",
+    "rules": ["European Portuguese ≠ Brazilian Portuguese — produce SEPARATE versions"]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "corporate_formal"
+  },
+  "do_not_use": [
+    "Brazilian Portuguese conjugations/vocabulary",
+    "Brazilian 'massa' / 'dahora' / 'mano' — wrong dialect"
+  ],
+  "tone_signals": {
+    "lisbon": ["Cosmopolitan, slightly formal, sea-influenced"],
+    "porto": ["More direct, working-class pride, regional identity"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "Isto é mesmo fixe, pá.",
+      "note": "'Fixe' + 'pá' = native Lisbon casual. Avoid Brazilian markers."
+    }
+  ],
+  "review_required_by_native": true
+}

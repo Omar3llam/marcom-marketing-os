@@ -1,0 +1,59 @@
+{
+  "dialect_id": "german",
+  "display_name": "German (incl. Kiezdeutsch / Berlin youth)",
+  "region": ["DE", "AT", "CH"],
+  "iso_base": "de",
+  "register_levels": {
+    "street": { "description": "Kiezdeutsch / Berlin youth — multicultural urban German, Turkish/Arabic influence." },
+    "casual_social": { "description": "Default German B2C — duzen (informal) for under-40 audiences, witty." },
+    "professional_casual": { "description": "German LinkedIn — siezen (formal) for B2B, light wit." },
+    "corporate_formal": { "description": "German press, banking, legal — strict siezen, formal Hochdeutsch." }
+  },
+  "lexicon": {
+    "greetings": ["hallo", "hi", "moin (north)", "servus (south)", "grüß dich"],
+    "agreement": ["ja", "klar", "genau", "auf jeden Fall", "passt"],
+    "disagreement": ["nein", "auf keinen Fall", "quatsch"],
+    "excitement": ["geil (caution: vulgar undertone)", "krass", "mega", "stark", "richtig gut"],
+    "emphasis_intensifiers": ["sehr", "echt", "wirklich", "voll", "mega"],
+    "filler_words": ["halt", "eben", "ja", "also", "doch", "mal"],
+    "gen_z_internet_slang": ["lit", "vibe", "cringe", "wallah (Kiezdeutsch — Arabic origin)"]
+  },
+  "grammar_quirks": [
+    "Du (informal you) vs. Sie (formal you) — strict business marker",
+    "Compound nouns can be very long (Geschwindigkeitsbegrenzung)",
+    "V2 word order — verb in second position",
+    "Modal particles (halt, eben, doch, mal) carry pragmatic meaning"
+  ],
+  "code_switching_patterns": {
+    "english_in_german": "Moderate to heavy in tech, marketing, startups (Denglisch).",
+    "rules": [
+      "Older audiences (50+) react negatively to excessive Denglisch",
+      "Tech/startup brands mix English freely",
+      "Luxury/heritage brands keep German cleaner"
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social | street",
+    "linkedin_post": "professional_casual | corporate_formal",
+    "b2b_email": "corporate_formal"
+  },
+  "do_not_use": [
+    "Austrian/Swiss markers in DE-only copy",
+    "Forced 'geil' for excitement — has vulgar undertone, not always brand-safe",
+    "Stereotyped 'das ist gut' / 'achtung' — caricature"
+  ],
+  "tone_signals": {
+    "berlin": ["Multicultural, edgy, anti-establishment, Kiezdeutsch-influenced"],
+    "munich_bavaria": ["Servus greetings, slightly traditional, beer-culture references"],
+    "hamburg": ["Maritime, dry, understated"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "Das ist echt richtig stark.",
+      "note": "'Echt' + 'richtig' + adjective = native German casual emphasis."
+    }
+  ],
+  "review_required_by_native": true
+}

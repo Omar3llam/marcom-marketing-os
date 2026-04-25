@@ -1,0 +1,53 @@
+{
+  "dialect_id": "indonesian",
+  "display_name": "Indonesian (Bahasa Indonesia / Bahasa Gaul)",
+  "region": ["ID"],
+  "iso_base": "id",
+  "register_levels": {
+    "street": { "description": "Bahasa gaul — Jakarta youth slang, hyper-casual." },
+    "casual_social": { "description": "Default Indonesian B2C — warm, casual, gaul-influenced." },
+    "professional_casual": { "description": "Jakarta LinkedIn — Bahasa baku with light gaul." },
+    "corporate_formal": { "description": "Press, banking — formal Bahasa Indonesia." }
+  },
+  "lexicon": {
+    "greetings": ["halo", "hai", "selamat pagi", "apa kabar"],
+    "agreement": ["iya", "oke", "sip", "betul", "bener"],
+    "disagreement": ["tidak", "nggak", "enggak", "bukan"],
+    "excitement": ["keren", "mantap", "wah", "gokil", "kece"],
+    "emphasis_intensifiers": ["banget", "sekali", "amat"],
+    "filler_words": ["sih", "kok", "lah", "deh", "kan", "nih"],
+    "gen_z_internet_slang": ["anjay", "sat-set", "halu (delusional)", "chill", "vibes"]
+  },
+  "grammar_quirks": [
+    "Particles (sih, kok, lah, deh, kan, nih) carry pragmatic meaning — distinct from base meaning",
+    "No verb conjugation by tense (uses time markers)",
+    "Reduplication for plurals/emphasis (anak-anak)",
+    "Affixes (me-, ber-, ter-, di-) change verb meaning"
+  ],
+  "code_switching_patterns": {
+    "english_in_indonesian": "Heavy in Jakarta urban, tech, and Gen Z TikTok",
+    "rules": ["Outside Jakarta, mainstream brands keep Indonesian cleaner"]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social | street",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "corporate_formal"
+  },
+  "do_not_use": [
+    "Stereotyped 'selamat datang' overuse",
+    "Mixing Bahasa Malaysia vocabulary — wrong dialect"
+  ],
+  "tone_signals": {
+    "jakarta": ["Cosmopolitan, fast, English-influenced, gaul-heavy"],
+    "java_other": ["Slightly more traditional, warmer"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "Ini keren banget sih.",
+      "note": "'Banget' + 'sih' = native Indonesian casual emphasis."
+    }
+  ],
+  "review_required_by_native": true
+}

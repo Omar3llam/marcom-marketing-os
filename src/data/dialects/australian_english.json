@@ -1,0 +1,50 @@
+{
+  "dialect_id": "australian_english",
+  "display_name": "Australian English",
+  "region": ["AU"],
+  "iso_base": "en",
+  "register_levels": {
+    "casual_social": { "description": "Default Aussie B2C — laid-back, abbreviated, direct, dry humor." },
+    "professional_casual": { "description": "AU LinkedIn — informal even for B2B, less corporate than US." },
+    "corporate_formal": { "description": "Press releases, financial — UK-leaning standard register." }
+  },
+  "lexicon": {
+    "greetings": ["g'day", "hey", "morning", "how ya going"],
+    "agreement": ["yeah nah... yeah", "for sure", "no worries", "too easy"],
+    "disagreement": ["nah", "yeah nah", "not happening"],
+    "excitement": ["beauty", "ripper", "bonza (older)", "deadset", "fair dinkum"],
+    "emphasis_intensifiers": ["proper", "bloody", "deadset", "fully sick"],
+    "filler_words": ["mate", "reckon", "as ya do"],
+    "millennial_slang": ["arvo (afternoon)", "servo (gas station)", "brekkie", "barbie"]
+  },
+  "grammar_quirks": [
+    "Diminutive -ie/-o suffixes (arvo, servo, brekkie, barbie)",
+    "Tag 'eh?' at sentence end",
+    "British spellings (colour, organise)"
+  ],
+  "code_switching_patterns": {
+    "rules": ["AU rarely mixes other languages in marketing — single-language register dominant."]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "professional_casual"
+  },
+  "do_not_use": [
+    "Stereotyped 'crikey' / 'shrimp on the barbie' — caricature, not voice",
+    "American slang (awesome, gotten) — feels American",
+    "British roadman markers"
+  ],
+  "tone_signals": {
+    "general_au": ["Laid-back, dry humor, anti-pretension"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "Yeah this is a ripper, mate.",
+      "note": "'Ripper' for genuine enthusiasm; 'deadset' for emphasis."
+    }
+  ],
+  "review_required_by_native": true
+}

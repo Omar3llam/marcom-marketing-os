@@ -1,0 +1,54 @@
+{
+  "dialect_id": "iraqi_arabic",
+  "display_name": "Iraqi Arabic",
+  "region": ["IQ"],
+  "iso_base": "ar",
+  "register_levels": {
+    "casual_social": { "description": "Baghdadi-default Iraqi casual register. Direct, warm, oral-tradition-rich." },
+    "professional_casual": { "description": "Iraqi LinkedIn / B2B — MSA-leaning with Iraqi rhythm." },
+    "corporate_formal": { "description": "MSA-dominant for banks, ministries, NGOs." }
+  },
+  "lexicon": {
+    "greetings": ["السلام عليكم", "هلا", "شلونك", "شخبارك", "أهلا", "صباح الخير"],
+    "agreement": ["زين", "إي", "اوكي", "ماشي", "تمام", "أكيد"],
+    "disagreement": ["لا", "ما يصير", "أبد", "ماكو"],
+    "excitement": ["خوش", "ممتاز", "شي عجيب", "حلو"],
+    "frustration": ["خلص", "تعبت", "زهقت", "ها"],
+    "emphasis_intensifiers": ["جدا", "كلش", "هواي"],
+    "filler_words": ["يعني", "هاي", "طيب"],
+    "religious_phatic": ["إن شاء الله", "الحمد لله", "ماشاء الله"]
+  },
+  "grammar_quirks": [
+    "'ماكو' (there isn't) — distinctive Iraqi marker",
+    "'هواي' / 'كلش' (very, a lot) — Iraqi intensifiers",
+    "'شلون' (how) — shared with Khaleeji",
+    "Q→g pronunciation common (gulup for قلب)",
+    "Persian and Turkish loanwords (e.g. خوش = good)"
+  ],
+  "code_switching_patterns": {
+    "english_in_arabic": "Light to moderate — present in Baghdad youth and diaspora-influenced content.",
+    "rules": ["Iraqi diaspora content (UK, US, Germany, Sweden) often has heavier English mix."]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "corporate_formal"
+  },
+  "do_not_use": [
+    "Egyptian markers (ده، دي، إزاي)",
+    "Khaleeji markers (وش، يبه)",
+    "Levantine markers (شو، هلق)"
+  ],
+  "tone_signals": {
+    "baghdadi": ["Direct, warm, oral-tradition-rich, expressive"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "هاي خوش شي.",
+      "note": "Khoosh (خوش) is a Persian-origin Iraqi positive marker."
+    }
+  ],
+  "review_required_by_native": true
+}

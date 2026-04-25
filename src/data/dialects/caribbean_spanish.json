@@ -1,0 +1,57 @@
+{
+  "dialect_id": "caribbean_spanish",
+  "display_name": "Caribbean Spanish (Puerto Rican / Dominican / Cuban)",
+  "region": ["PR", "DO", "CU"],
+  "iso_base": "es",
+  "sub_dialects": {
+    "puerto_rican": { "notes": "Spanglish-heavy in PR; reggaeton-influenced rhythm." },
+    "dominican": { "notes": "Fast pace; distinctive vocabulary; baseball/merengue references resonate." },
+    "cuban": { "notes": "Distinctive intonation; Cuban-American Miami variant has heavy Spanglish." }
+  },
+  "register_levels": {
+    "casual_social": { "description": "Default Caribbean B2C — fast, expressive, music-influenced." },
+    "professional_casual": { "description": "PR/DR/Cuban LinkedIn — Spanglish in PR, cleaner Spanish in DR/Cuba." }
+  },
+  "lexicon": {
+    "greetings": ["hola", "qué pasa", "qué lo qué (DR)", "qué bola (CU)", "wepa (PR)"],
+    "agreement": ["sí", "claro", "tato (PR/DR)", "dale"],
+    "disagreement": ["no", "qué va"],
+    "excitement": ["brutal", "cabrón (positive context)", "fuego", "bacano", "tremendo"],
+    "emphasis_intensifiers": ["bien", "mucho", "tremendo", "de pinga (CU vulgar)"],
+    "filler_words": ["mira", "oye", "papi", "loco"],
+    "loanwords_english": ["parking (PR)", "lonchera (lunchbox PR/DR)", "bro / brou"]
+  },
+  "grammar_quirks": [
+    "Final 's' often dropped (lo cubanos for los cubanos)",
+    "'r' → 'l' in PR (puelta for puerta)",
+    "Fast staccato rhythm",
+    "Heavy English code-mixing in PR Spanglish"
+  ],
+  "code_switching_patterns": {
+    "english_in_spanish": "PR Spanglish is established — sentences mix English nouns/verbs freely. Less so in DR/Cuba mainstream.",
+    "rules": ["Match sub-dialect to specific market — PR ≠ DR ≠ Cuban"]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual"
+  },
+  "do_not_use": [
+    "Mexican 'chido' / 'qué onda' as primary markers",
+    "Castilian markers (vosotros, vale, guay)",
+    "Mixing PR / DR / Cuban markers in same copy"
+  ],
+  "tone_signals": {
+    "puerto_rico": ["Spanglish-heavy, reggaeton rhythm, fast"],
+    "dominican_republic": ["Very fast, baseball/merengue-influenced"],
+    "cuba": ["Distinctive intonation, Cuban-specific idioms"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "Esto está brutal, mano.",
+      "note": "'Brutal' positive in Caribbean Spanish; 'mano' shorthand for 'hermano'."
+    }
+  ],
+  "review_required_by_native": true
+}

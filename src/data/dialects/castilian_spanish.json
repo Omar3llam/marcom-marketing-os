@@ -1,0 +1,53 @@
+{
+  "dialect_id": "castilian_spanish",
+  "display_name": "Castilian Spanish (Spain)",
+  "region": ["ES"],
+  "iso_base": "es",
+  "register_levels": {
+    "casual_social": { "description": "Default Spain B2C — direct, dry humor, vosotros usage." },
+    "professional_casual": { "description": "Madrid/Barcelona LinkedIn — confident, slightly formal." },
+    "corporate_formal": { "description": "Press, banking, EU institutions — formal Castilian." }
+  },
+  "lexicon": {
+    "greetings": ["hola", "buenos días", "qué tal", "ey"],
+    "agreement": ["sí", "vale", "venga", "claro", "guay"],
+    "disagreement": ["no", "qué va", "para nada"],
+    "excitement": ["guay", "molón", "brutal", "de puta madre (vulgar — context!)", "chulo"],
+    "emphasis_intensifiers": ["mucho", "muy", "súper", "tela", "qué pasada"],
+    "filler_words": ["pues", "tío/tía", "o sea", "vamos", "venga"],
+    "millennial_slang": ["guay", "chulo", "molón", "currar (to work)"]
+  },
+  "grammar_quirks": [
+    "Vosotros (you-pl informal) — distinct from Latin American ustedes",
+    "Distinción: c/z → 'th' sound (gracias = grathias)",
+    "Past tense preference for present perfect ('he comido' for 'I ate today')",
+    "'Vale' = ok, ubiquitous"
+  ],
+  "code_switching_patterns": {
+    "rules": ["English mixing modest in mainstream Spain marketing", "Catalan/Basque/Galician mixing in regional brands"]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "corporate_formal"
+  },
+  "do_not_use": [
+    "Latin American 'ustedes' as universal you-pl — Spain uses vosotros",
+    "Mexican 'chido' / 'qué onda'",
+    "Argentinian voseo"
+  ],
+  "tone_signals": {
+    "madrid": ["Direct, fast, slightly formal"],
+    "barcelona": ["Cosmopolitan, often Catalan-influenced"],
+    "andalucia": ["Warmer, more melodic, dropped 's' sounds"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "Esto está guay, tío.",
+      "note": "'Guay' + 'tío' = native Castilian casual."
+    }
+  ],
+  "review_required_by_native": true
+}

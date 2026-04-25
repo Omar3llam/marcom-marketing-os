@@ -1,0 +1,59 @@
+{
+  "dialect_id": "genz_internet_english",
+  "display_name": "Gen Z Internet English (TikTok-native)",
+  "region": ["global-anglosphere"],
+  "iso_base": "en",
+  "register_levels": {
+    "street": { "description": "TikTok-native, hyper-current Gen Z. Half-life of slang is ~6-18 months." },
+    "casual_social": { "description": "Cleaner Gen Z social voice for brand-owned channels." }
+  },
+  "lexicon": {
+    "greetings": ["hi bestie", "hey besties", "yo"],
+    "agreement": ["bet", "say less", "fr", "no cap", "facts"],
+    "disagreement": ["nah", "hard pass", "not it"],
+    "excitement": ["it's giving _", "ate", "no crumbs", "slay", "main character energy", "iconic", "the way _", "I can't"],
+    "emphasis_intensifiers": ["lowkey", "highkey", "literally", "actually", "no but", "wait"],
+    "filler_words": ["like", "literally", "the way", "ok but", "not me _ -ing"],
+    "gen_z_internet_slang": [
+      "rizz", "ate", "no crumbs", "delulu", "slay", "it's giving",
+      "main character", "the way", "lowkey", "highkey",
+      "fr fr", "no cap", "bestie", "girlypop", "gworl",
+      "core memory", "unhinged", "feral", "bussin",
+      "POV:", "tell me you're _ without telling me", "I'm in my _ era"
+    ]
+  },
+  "grammar_quirks": [
+    "Sentence fragments are the dominant rhythm",
+    "Lowercase as aesthetic ('this is really sending me')",
+    "Excessive em-dashes and ellipses",
+    "Caps for emphasis on a single word ('this is REAL')"
+  ],
+  "code_switching_patterns": {
+    "rules": [
+      "Many Gen Z phrases originated in AAVE (slay, period, bet, no cap) — use with awareness; see aave_english pack",
+      "Slang half-life is short — verify any term older than 18 months",
+      "Don't combo more than 2-3 Gen Z slang terms per sentence — feels try-hard"
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "street | casual_social",
+    "x_post": "casual_social"
+  },
+  "do_not_use": [
+    "Dead Gen Z slang ('on fleek', 'bae', 'salty', 'YOLO', 'savage')",
+    "Combining 4+ Gen Z markers in one sentence — instant brand-trying-too-hard signal",
+    "Brand voice that sounds like an adult writing what they think Gen Z says"
+  ],
+  "tone_signals": {
+    "tiktok_native": ["Sentence fragments", "Self-aware humor", "Anti-marketing tone in the marketing"]
+  },
+  "example_translations": [
+    {
+      "english": "I love this.",
+      "correct_native_genz": "ok bestie this is actually sending me",
+      "note": "Pair with restraint — one Gen Z marker per sentence beats four."
+    }
+  ],
+  "review_required_by_native": true
+}

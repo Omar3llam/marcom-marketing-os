@@ -1,0 +1,57 @@
+{
+  "dialect_id": "turkish",
+  "display_name": "Turkish (incl. Gen Z internet slang)",
+  "region": ["TR"],
+  "iso_base": "tr",
+  "register_levels": {
+    "casual_social": { "description": "Default Turkish B2C — warm, expressive, internet-savvy Gen Z mixes English." },
+    "professional_casual": { "description": "Istanbul LinkedIn — light English, professional warmth." },
+    "corporate_formal": { "description": "Press, banking, government — formal Turkish." }
+  },
+  "lexicon": {
+    "greetings": ["selam", "merhaba", "naber", "günaydın"],
+    "agreement": ["evet", "tabii", "kesinlikle", "olur", "tamam"],
+    "disagreement": ["hayır", "yok", "olmaz"],
+    "excitement": ["harika", "süper", "muhteşem", "efsane", "bomba"],
+    "emphasis_intensifiers": ["çok", "süper", "aşırı", "fena"],
+    "filler_words": ["yani", "şey", "abi", "kanka"],
+    "gen_z_internet_slang": ["aq (vulgar)", "abicim", "yeğenim", "mood", "vibe", "cringe", "mid"]
+  },
+  "grammar_quirks": [
+    "Agglutinative — suffixes stack (evlerimizdekilerden)",
+    "SOV word order (subject-object-verb)",
+    "Vowel harmony rules",
+    "No grammatical gender",
+    "Honorific 'siz' for formal, 'sen' for informal"
+  ],
+  "code_switching_patterns": {
+    "english_in_turkish": "Moderate to heavy in Istanbul tech and Gen Z TikTok",
+    "rules": [
+      "Older audiences and Anatolian markets react negatively to heavy English",
+      "Istanbul cosmopolitan brands mix English freely"
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "corporate_formal"
+  },
+  "do_not_use": [
+    "Stereotyped Turkish phrases in caricature contexts",
+    "Forced English in heritage/traditional brands"
+  ],
+  "tone_signals": {
+    "istanbul": ["Cosmopolitan, fast, English-influenced"],
+    "ankara": ["More formal, government-influenced"],
+    "anatolia": ["Traditional, warmer, family-rooted"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "Bu gerçekten harika abi.",
+      "note": "'Abi' (older brother) is universal warm vocative for casual."
+    }
+  ],
+  "review_required_by_native": true
+}

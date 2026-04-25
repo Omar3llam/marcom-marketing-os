@@ -1,0 +1,54 @@
+{
+  "dialect_id": "aave_english",
+  "display_name": "African American Vernacular English (AAVE)",
+  "region": ["US"],
+  "iso_base": "en",
+  "safety_critical": true,
+  "appropriation_warning": "AAVE is a culturally-specific dialect with deep roots in Black American history. Use is restricted: produce only when (a) the brand is Black-owned or Black-audience-focused AND (b) the user explicitly requests AAVE. Otherwise the resolver returns a refusal. See Core Law 3, Rule 7.",
+  "register_levels": {
+    "casual_social": { "description": "AAVE social copy for Black-focused brands or Black-creator partnerships." },
+    "professional_casual": { "description": "AAVE-influenced professional voice — for Black-owned B2B with Black audience." }
+  },
+  "lexicon": {
+    "greetings": ["wassup", "what's good", "how you doin'"],
+    "agreement": ["fa sho", "for real", "facts", "no cap", "say less", "bet"],
+    "excitement": ["that go", "that's fire", "she ate", "period(t)", "down bad (context-dependent)"],
+    "emphasis_intensifiers": ["dead-ass", "for real", "no cap", "lowkey", "highkey"],
+    "filler_words": ["mans", "deadass", "you feel me"]
+  },
+  "grammar_quirks": [
+    "Habitual 'be' — 'she be working' (she habitually works), distinct from 'she's working'",
+    "Copula deletion — 'she nice' (she is nice)",
+    "Aspect markers: 'done', 'been done', 'finna' (about to)",
+    "Negative concord — 'I don't know nothing' is standard"
+  ],
+  "code_switching_patterns": {
+    "rules": [
+      "AAVE is not slang — it has its own grammar and rules. Treat it with the same rigor as any other dialect.",
+      "AAVE used as 'flavor' in mainstream brand voice is appropriation. Don't.",
+      "Many phrases that have entered mainstream Gen Z slang (slay, period, no cap, bet) originated in AAVE — using them in mainstream copy without acknowledgment is itself a form of appropriation."
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual"
+  },
+  "do_not_use": [
+    "AAVE for general-market campaigns (refusal required per Core Law 3)",
+    "Mocking or stereotyped AAVE — instant cultural damage",
+    "Phonetic respelling of AAVE for comedic effect"
+  ],
+  "tone_signals": {
+    "authentic_aave": ["Earned, community-rooted, never costume"]
+  },
+  "example_translations": [
+    {
+      "english": "This is genuinely great.",
+      "correct_native_casual": "This go fr fr.",
+      "note": "Only when brand context legitimately permits."
+    }
+  ],
+  "review_required_by_native": true,
+  "review_required_by_cultural_consultant": true
+}

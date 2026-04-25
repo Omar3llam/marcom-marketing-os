@@ -1,0 +1,53 @@
+{
+  "dialect_id": "argentinian_spanish",
+  "display_name": "Argentinian Spanish (Rioplatense)",
+  "region": ["AR", "UY"],
+  "iso_base": "es",
+  "register_levels": {
+    "casual_social": { "description": "Default Argentinian B2C — voseo, expressive, café-culture warmth." },
+    "professional_casual": { "description": "Buenos Aires LinkedIn — voseo retained, Italian-influenced rhythm." },
+    "corporate_formal": { "description": "Neutral Latin American Spanish — banks, ministries." }
+  },
+  "lexicon": {
+    "greetings": ["hola", "qué tal", "che", "qué hacés", "buen día"],
+    "agreement": ["sí", "dale", "obvio", "claro", "tal cual"],
+    "disagreement": ["no", "para nada", "ni en pedo", "nada que ver"],
+    "excitement": ["bárbaro", "genial", "copado", "buenísimo", "una masa"],
+    "emphasis_intensifiers": ["re", "súper", "muy", "una banda"],
+    "filler_words": ["che", "viste", "tipo", "o sea", "boludo (informal — strong friendship marker)"],
+    "millennial_slang": ["copado", "pulento", "una masa"],
+    "loanwords_italian": ["laburo (work, from lavoro)", "morfar (to eat, from morfare)"]
+  },
+  "grammar_quirks": [
+    "Voseo: vos sos (you are), tenés, querés, andá — replaces tú",
+    "ll/y → 'sh' sound (calle = ca-shay)",
+    "Italian-influenced intonation and gestures",
+    "'che' as universal vocative",
+    "Stress on second-person verbs falls on final syllable (tenés, querés)"
+  ],
+  "code_switching_patterns": {
+    "rules": ["Italian heritage shows in vocabulary, less in code-switching", "English mixing modest in mainstream marketing"]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "corporate_formal"
+  },
+  "do_not_use": [
+    "Tú/tienes/quieres (Mexican/Castilian forms) — wrong dialect",
+    "Mexican 'chido' or 'qué onda'",
+    "Castilian 'vale' / 'tío'"
+  ],
+  "tone_signals": {
+    "buenos_aires_porteño": ["Italian-influenced rhythm, expressive, café-culture, slightly dramatic"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "Che, esto es una masa.",
+      "note": "Voseo + 'una masa' = native Buenos Aires."
+    }
+  ],
+  "review_required_by_native": true
+}

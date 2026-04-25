@@ -1,0 +1,60 @@
+{
+  "dialect_id": "french_france",
+  "display_name": "French (France) incl. Verlan slang",
+  "region": ["FR"],
+  "iso_base": "fr",
+  "register_levels": {
+    "street": { "description": "Verlan, banlieue slang, hyper-casual youth — TikTok/Twitch native." },
+    "casual_social": { "description": "Default French B2C — informal but elegant, tu-form for under-40 audiences." },
+    "professional_casual": { "description": "Paris LinkedIn — vous-form, polished, slightly formal." },
+    "corporate_formal": { "description": "Press, government, luxury — strict vous, formal lexicon." }
+  },
+  "lexicon": {
+    "greetings": ["bonjour", "salut", "coucou", "yo (Gen Z)"],
+    "agreement": ["oui", "ouais", "carrément", "grave", "trop"],
+    "disagreement": ["non", "pas du tout", "absolument pas"],
+    "excitement": ["génial", "super", "trop bien", "stylé", "ouf (verlan — fou)"],
+    "frustration": ["zut", "merde (vulgar)", "putain (vulgar — common)"],
+    "emphasis_intensifiers": ["trop", "vachement", "carrément", "grave"],
+    "filler_words": ["bah", "ben", "du coup", "genre", "quoi"],
+    "gen_z_internet_slang": ["chiller", "frérot", "wesh", "askip", "trkl (tranquille)", "stylé"],
+    "verlan_slang": ["meuf (femme)", "keuf (flic)", "ouf (fou)", "chelou (louche)", "vénère (énervé)", "relou (lourd)"]
+  },
+  "grammar_quirks": [
+    "Tu vs vous — strict register marker",
+    "Negation 'ne' often dropped in casual ('je sais pas' for 'je ne sais pas')",
+    "Verlan = syllable-reversed slang, mostly in banlieue and youth contexts"
+  ],
+  "code_switching_patterns": {
+    "english_in_french": "Moderate in tech/marketing/Gen Z; heavy resistance from Académie française.",
+    "rules": [
+      "Luxury/heritage brands keep English minimal",
+      "Tech/startup brands mix English freely",
+      "Older audiences (50+) react negatively to anglicisms"
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social | street",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "corporate_formal"
+  },
+  "do_not_use": [
+    "Quebecois markers (tabarnak, char, chum) — wrong region",
+    "Forced anglicisms in luxury/heritage brands",
+    "Verlan in corporate or 50+ audience copy"
+  ],
+  "tone_signals": {
+    "paris": ["Slightly dry, ironic, refined"],
+    "banlieue_youth": ["Verlan-heavy, expressive, multicultural"]
+  },
+  "example_translations": [
+    {
+      "english": "This is really good.",
+      "correct_native_casual": "C'est trop bien, franchement.",
+      "correct_native_genz": "Wesh c'est stylé de ouf.",
+      "note": "Avoid Quebecois rhythm/lexicon."
+    }
+  ],
+  "review_required_by_native": true
+}

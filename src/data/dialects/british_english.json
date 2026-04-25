@@ -1,0 +1,60 @@
+{
+  "dialect_id": "british_english",
+  "display_name": "British English (incl. UK Gen Z / Roadman)",
+  "region": ["GB"],
+  "iso_base": "en",
+  "register_levels": {
+    "street": { "description": "London/Manchester roadman / UK Gen Z — heavy MLE (Multicultural London English) markers." },
+    "casual_social": { "description": "Default UK B2C social — drier humor, understatement, sarcasm-tolerant." },
+    "professional_casual": { "description": "UK LinkedIn — wittier and more self-effacing than US equivalent." },
+    "corporate_formal": { "description": "Press, finance, legal — RP-leaning standard British English." }
+  },
+  "lexicon": {
+    "greetings": ["hi", "hiya", "alright?", "morning", "you alright?"],
+    "agreement": ["yeah", "spot on", "cheers", "bang on", "innit"],
+    "disagreement": ["nah", "no chance", "hardly"],
+    "excitement": ["brilliant", "spot on", "cracking", "ace", "peng", "bare good"],
+    "frustration": ["bloody hell", "for crying out loud", "knackered"],
+    "emphasis_intensifiers": ["bare", "proper", "well", "absolutely", "dead"],
+    "filler_words": ["right", "well", "I mean", "innit"],
+    "gen_z_internet_slang": ["peng", "bare", "innit", "calm", "wagwan", "long ting", "sick", "bait", "wasteman"],
+    "millennial_slang": ["banter", "buzzing", "gutted", "chuffed", "knackered"]
+  },
+  "grammar_quirks": [
+    "Tag question 'innit' (isn't it) used after most statements in MLE",
+    "'have got' over 'have' (I've got vs. I have)",
+    "Collective nouns take plural verbs (the team are vs. the team is)",
+    "British spelling: -our (colour), -ise (organise), -re (centre)"
+  ],
+  "code_switching_patterns": {
+    "rules": [
+      "London Gen Z mixes MLE with Caribbean and Nigerian English markers — acknowledge multicultural roots.",
+      "Don't mix US slang into UK copy — feels American-pretending-British."
+    ]
+  },
+  "platform_register_map": {
+    "instagram_caption": "casual_social",
+    "tiktok_script": "casual_social | street",
+    "linkedin_post": "professional_casual",
+    "b2b_email": "professional_casual"
+  },
+  "do_not_use": [
+    "American spelling/slang in UK copy (color, awesome, gotten)",
+    "MLE/roadman slang for non-youth or luxury brands — wrong register",
+    "Stereotypical 'cor blimey' / 'old chap' — feels like American writing British"
+  ],
+  "tone_signals": {
+    "london_gen_z": ["MLE-influenced, multicultural, fast"],
+    "rp_corporate": ["Understated, dry, slightly self-effacing"],
+    "northern_england": ["Warmer, more direct, less polished"]
+  },
+  "example_translations": [
+    {
+      "english": "This is amazing.",
+      "correct_native_casual": "This is proper brilliant.",
+      "correct_native_genz": "Bare peng, innit.",
+      "note": "Default casual is 'proper' + adjective. MLE markers only when audience fits."
+    }
+  ],
+  "review_required_by_native": true
+}
