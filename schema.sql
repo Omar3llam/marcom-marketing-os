@@ -35,6 +35,16 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user_id         ON marcom_sessions (user
 CREATE INDEX IF NOT EXISTS idx_sessions_user_lastupdated
   ON marcom_sessions (user_id, last_updated DESC);
 
+-- ============================================================
+-- USER CONTEXT — onboarding wizard output, one row per Clerk user.
+-- Used as the source of truth for /api/context/save + GET /api/context.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS marcom_user_context (
+  user_id    TEXT        PRIMARY KEY,
+  context    TEXT        NOT NULL DEFAULT '',
+  saved_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Auto-update last_updated on every row change
 CREATE OR REPLACE FUNCTION touch_last_updated()
 RETURNS TRIGGER LANGUAGE plpgsql AS $$

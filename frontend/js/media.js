@@ -16,10 +16,16 @@ export function handleFile(e) {
       canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
       const comp = canvas.toDataURL('image/jpeg', 0.85);
       S.img = { base64: comp.split(',')[1], mediaType: 'image/jpeg', name: file.name };
-      document.getElementById('imgThumb').src = comp;
-      document.getElementById('imgName').textContent = file.name;
-      document.getElementById('imgPreview').style.display = 'flex';
-      document.getElementById('upBtn').classList.add('has-img');
+      // The upload UI was retired alongside the wizard input; guards
+      // keep the function safe for any programmatic callers.
+      const thumb   = document.getElementById('imgThumb');
+      const name    = document.getElementById('imgName');
+      const preview = document.getElementById('imgPreview');
+      const btn     = document.getElementById('upBtn');
+      if (thumb)   thumb.src = comp;
+      if (name)    name.textContent = file.name;
+      if (preview) preview.style.display = 'flex';
+      if (btn)     btn.classList.add('has-img');
     };
     img.src = ev.target.result;
   };
@@ -28,6 +34,8 @@ export function handleFile(e) {
 
 export function clearImg() {
   S.img = null;
-  document.getElementById('imgPreview').style.display = 'none';
-  document.getElementById('upBtn').classList.remove('has-img');
+  const preview = document.getElementById('imgPreview');
+  const btn     = document.getElementById('upBtn');
+  if (preview) preview.style.display = 'none';
+  if (btn)     btn.classList.remove('has-img');
 }

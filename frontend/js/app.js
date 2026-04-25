@@ -51,13 +51,50 @@ window.addEventListener('load', async () => {
 
   const clerk = window.Clerk;
 
-  if (clerk.user) { boot(clerk); return; }
+  // ── Routing order is mandatory: AUTH first, CONTEXT second.
+  // Step 1: Auth guard
+  if (!clerk.user) {
+    console.log('[Clerk] No active session — redirecting to /');
+    window.location.replace('/');
+    return;
+  }
 
-  // app.html is a protected route. Unauthenticated visitors are sent
-  // back to the landing page where Clerk handles sign-in.
-  console.log('[Clerk] No active session — redirecting to /');
-  window.location.replace('/');
-  return;
+  // Step 2: Context guard — wizard must run before chat is reachable.
+  let lumiContext  = localStorage.getItem('lumi_context');
+  const ctxLocked  = localStorage.getItem('context_locked');
+
+  if (!ctxLocked || !lumiContext) {
+    // Backend recovery before forcing the user back through the wizard —
+    // covers the "user cleared localStorage on mobile" case.
+    try {
+      const token = await window.Clerk.session.getToken();
+      const res = await fetch('/api/context', {
+        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+      });
+      if (res.ok) {
+        const { context } = await res.json();
+        if (context && context.trim()) {
+          localStorage.setItem('lumi_context',   context);
+          localStorage.setItem('context_locked', 'true');
+          lumiContext = context;
+        } else {
+          window.location.replace('/onboarding.html');
+          return;
+        }
+      } else {
+        window.location.replace('/onboarding.html');
+        return;
+      }
+    } catch (err) {
+      console.warn('[Lumi] context recovery failed — sending to wizard:', err?.message);
+      window.location.replace('/onboarding.html');
+      return;
+    }
+  }
+
+  // Step 3: Init chat with context available
+  window.__lumiContext = lumiContext;
+  boot(clerk);
 });
 
 function boot(clerk) {
@@ -75,6 +112,10 @@ function boot(clerk) {
   const sid = localStorage.getItem('mc_session');
   if (b)   { S.backend = b; }
   if (sid) { S.sid = sid; }
+
+  // The user is authenticated AND has locked context — pin the status
+  // pill to "Context: Locked" since wizard onboarding satisfies Core Law 1.
+  S.locked = true;
 
   updateUI(); setupTA(); buildDots();
   loadRecentChats();

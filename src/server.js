@@ -20,9 +20,11 @@ import { errorHandler }     from './middleware/errorHandler.js';
 import { masterRouter }     from './routes/master.js';
 import { exportRouter }     from './routes/export.js';
 import { historyRouter }    from './routes/history.js';
+import { contextRouter }    from './routes/context.js';
 import { logger }           from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
 import { ensureChatSessionSchema } from './models/chatSession.js';
+import { ensureUserContextSchema } from './models/userContext.js';
 import { config }           from './config.js';
 
 const app = express();
@@ -125,6 +127,13 @@ app.use('/api/history',
   historyRouter
 );
 
+// Onboarding-wizard context endpoints (user-scoped)
+app.use('/api/context',
+  requireAuth,
+  apiLimiter,
+  contextRouter
+);
+
 // Chat endpoint also accessible from browser with Clerk token
 app.use('/api',
   requireAuth,
@@ -142,6 +151,9 @@ const server = app.listen(config.port, () => {
   // column + per-user index if they don't exist. Non-fatal on failure.
   ensureChatSessionSchema().catch(err =>
     logger.warn({ err: err.message }, 'ensureChatSessionSchema failed at startup')
+  );
+  ensureUserContextSchema().catch(err =>
+    logger.warn({ err: err.message }, 'ensureUserContextSchema failed at startup')
   );
 });
 

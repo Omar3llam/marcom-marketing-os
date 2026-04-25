@@ -4,6 +4,7 @@
 // ============================================================
 import { Router } from 'express';
 import { getOrCreateSession, updateSession } from '../utils/sessionStore.js';
+import { getUserContext } from '../models/userContext.js';
 import { sendNotification, sendErrorAlert } from '../utils/email.js';
 import { sanitizeMessage } from '../utils/sanitize.js';
 import { validate, chatSchema } from '../middleware/validate.js';
@@ -31,7 +32,7 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
   const userId = req.userId;   // set by requireAuth
 
   try {
-    let { message, session_id, mode: forceMode, image_base64, image_media_type } = req.body;
+    let { message, session_id, mode: forceMode, image_base64, image_media_type, lumi_context } = req.body;
 
     // Sanitize against prompt injection
     message = sanitizeMessage(message);
@@ -44,6 +45,29 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
 
     // Load or create session (scoped to userId)
     const session = await getOrCreateSession(session_id, userId);
+
+    // ── ONBOARDING-WIZARD CONTEXT INJECTION ─────────────────────
+    // If this is a fresh session row (no context yet) but the user has
+    // already completed the wizard, lift the locked context onto the
+    // session so mode handlers see it on the very first message.
+    // Mode 1 (chat-onboarding) is then bypassed for the rest of the
+    // session — Core Law 1 satisfied.
+    if (!session.context_locked && (!session.context_summary || !session.context_summary.trim())) {
+      try {
+        // Prefer the DB record; fall back to the inline lumi_context the
+        // browser sent in case the wizard's /api/context/save round-trip
+        // hasn't landed yet (race-safe path).
+        const wizardContext = (await getUserContext(userId))
+          || (typeof lumi_context === 'string' && lumi_context.trim() ? lumi_context.trim() : null);
+        if (wizardContext) {
+          session.context_summary = wizardContext;
+          session.context_locked  = true;
+          logger.info({ userId, sessionId: session.session_id }, 'Wizard context auto-injected into fresh session');
+        }
+      } catch (err) {
+        logger.warn({ err: err.message, userId }, 'Wizard context lookup failed — proceeding without');
+      }
+    }
 
     const conversationHistory = session.conversation_history.slice(-MAX_HISTORY);
     conversationHistory.push({ role: 'user', content: message, timestamp: new Date().toISOString(), has_image: !!imageBase64 });
