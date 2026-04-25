@@ -5,7 +5,7 @@
 // ============================================================
 import { sendChat, exportToCRM } from './api.js';
 import { S, updateUI } from './state.js';
-import { renderResp, appendMsg, esc, hideEmpty } from './renderers.js';
+import { renderResp, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js';
 import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js';
 import { handleFile, clearImg } from './media.js';
 
@@ -97,38 +97,58 @@ function boot(clerk) {
 // ── CHAT HISTORY (localStorage) ───────────────────────────────
 const CHATS_KEY   = 'mc_recent_chats';
 const MAX_RECENT  = 12;
-const MAX_MSGS    = 200;          // max messages stored per session
-const msgKey      = id => `mc_msgs_${id}`;
+const MAX_MSGS    = 200;
+// Key for per-session message arrays
+const chatKey     = id => `mc_chat_${id}`;
 
 /**
- * Persist a single message bubble to this session's local history.
- * Called after every user send and every AI response so the history
- * is always in sync with what's visible on screen.
+ * Append one message to this session's local history array.
+ * Stores: role ('user' | 'ai'), raw content string, and meta
+ * ({mode, service}) so the bubble can be re-rendered identically.
+ *
+ * IMPORTANT: must only be called after S.sid is confirmed from the
+ * backend response — never with a null/undefined sessionId.
  */
-function persistMsg(sessionId, role, content, meta = {}) {
-  if (!sessionId || !content) return;
+function saveMsgToHistory(sessionId, role, content, meta = {}) {
+  if (!sessionId || content == null || content === '') return;
   try {
-    const arr = JSON.parse(localStorage.getItem(msgKey(sessionId)) || '[]');
+    const key   = chatKey(sessionId);
+    const arr   = JSON.parse(localStorage.getItem(key) || '[]');
     arr.push({ role, content, meta, ts: Date.now() });
-    localStorage.setItem(msgKey(sessionId), JSON.stringify(arr.slice(-MAX_MSGS)));
-  } catch {}
-}
-
-function getSessionMsgs(sessionId) {
-  try { return JSON.parse(localStorage.getItem(msgKey(sessionId)) || '[]'); } catch { return []; }
+    // Trim to cap so we never blow the storage quota
+    if (arr.length > MAX_MSGS) arr.splice(0, arr.length - MAX_MSGS);
+    localStorage.setItem(key, JSON.stringify(arr));
+  } catch (e) {
+    console.warn('[Lumi] saveMsgToHistory failed:', e.message);
+  }
 }
 
 /**
- * Save / update a session in the Recent Chats list.
- * Stores mode + locked so the UI can restore state on resume.
+ * Read the full message array for a session.
+ * Returns [] when no data found or on any parse error.
+ */
+function loadMsgHistory(sessionId) {
+  if (!sessionId) return [];
+  try {
+    const raw = localStorage.getItem(chatKey(sessionId));
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Save / update a session in the Recent Chats sidebar list.
+ * Stores mode + locked so the UI can restore state on resume without
+ * a backend round-trip.
  */
 export function saveChatSession(sessionId, title, mode = 1, locked = false) {
   if (!sessionId) return;
   const chats = getRecentChats().filter(c => c.id !== sessionId);
   chats.unshift({
-    id: sessionId,
-    title: title || `Chat ${new Date().toLocaleDateString()}`,
-    ts: Date.now(),
+    id:     sessionId,
+    title:  title || `Chat ${new Date().toLocaleDateString()}`,
+    ts:     Date.now(),
     mode:   mode   || 1,
     locked: !!locked,
   });
@@ -159,12 +179,10 @@ export function resumeChat(sessionId) {
   S.sid = sessionId;
   localStorage.setItem('mc_session', sessionId);
 
-  // ── Restore frontend state from saved session metadata ────────
-  // This keeps the mode chip, context pill, and status bar correct
-  // even before the user sends the next message.
-  // It also primes S.forceMode so the FIRST message after resume
-  // tells the backend which mode to route to — preventing a stale
-  // session (or DB miss) from defaulting to Mode 1 re-onboarding.
+  // ── Restore frontend state from saved session metadata ──────
+  // Keeps mode chip + context pill correct before the next API call.
+  // S.forceMode primes the backend so it routes to the right mode
+  // even if the DB session row was lost (prevents Mode 1 re-onboarding).
   const saved = getRecentChats().find(c => c.id === sessionId);
   if (saved) {
     S.mode      = saved.mode   || 1;
@@ -172,16 +190,16 @@ export function resumeChat(sessionId) {
     S.forceMode = saved.mode   || null;
   }
 
-  // ── Re-render message history from localStorage ───────────────
+  // ── Wipe current messages and rebuild from localStorage ─────
   const msgs = document.getElementById('msgs');
   msgs.innerHTML = '';
 
-  const history = getSessionMsgs(sessionId);
+  const history = loadMsgHistory(sessionId);
 
   if (!history.length) {
-    // No locally stored messages — show a neutral placeholder.
-    // The conversation history still exists on the backend; the user
-    // just needs to send a message to continue.
+    // No local history for this session (e.g. pre-dates the persist
+    // feature, or a different device). Show a neutral prompt so the
+    // user can continue — backend still has the full context in DB.
     msgs.innerHTML = `
       <div class="empty" id="emptyState">
         <div class="empty-lumi">✨</div>
@@ -191,21 +209,100 @@ export function resumeChat(sessionId) {
         </div>
       </div>`;
   } else {
-    // Re-render every stored bubble using the same renderer used
-    // when the messages were first displayed.
-    history.forEach(m => {
-      appendMsg(
-        m.role === 'user' ? 'user' : 'system',
-        m.content,
-        m.meta || {},
-      );
+    // ── Render every stored message bubble ───────────────────
+    history.forEach(({ role, content, meta }) => {
+      if (role === 'user') {
+        // ── User bubble ─────────────────────────────────────
+        _renderRestoredBubble(msgs, 'user', content, meta);
+      } else {
+        // ── AI bubble — detect structured JSON vs plain text ─
+        // Modes 3/4/5 store raw JSON strings. We detect them and
+        // render a compact "result" stub so the conversation makes
+        // sense visually without dumping raw JSON into a bubble.
+        const json = tryJSON(content);
+        if (json && (json.calendar || json.scorecard || json.campaigns)) {
+          _renderRestoredStructuredStub(msgs, json, meta);
+        } else {
+          _renderRestoredBubble(msgs, 'system', content, meta);
+        }
+      }
     });
-    // Scroll to the bottom so the user sees the last exchange.
+
     msgs.scrollTop = msgs.scrollHeight;
   }
 
   updateUI();
   toast('Session resumed ✓', 'ok');
+}
+
+/**
+ * Render a plain text bubble (user or AI) during history restore.
+ * Uses fmtTxt for safe markdown→HTML conversion — identical to the
+ * live appendMsg path so formatting is perfectly preserved.
+ */
+function _renderRestoredBubble(msgsEl, role, content, meta = {}) {
+  const isUser  = role === 'user';
+  const wrap    = document.createElement('div');
+  wrap.className = `msg ${isUser ? 'user' : 'system'}`;
+
+  const av = isUser
+    ? '<div class="user-av">YOU</div>'
+    : '<div class="lumi-av">✨</div>';
+
+  let metaLine = '';
+  if (!isUser && meta?.mode) {
+    const mn = { 1:'Context', 2:'Tools', 3:'Social', 4:'Content', 5:'Campaign' };
+    let mt = `Mode ${meta.mode} — ${mn[meta.mode] || ''}`;
+    if (meta.service && meta.service > 0)
+      mt += ` — Tool ${String(meta.service).padStart(2, '0')}`;
+    metaLine = `<div class="bubble-meta">${esc(mt)}</div>`;
+  }
+
+  wrap.innerHTML = `${av}<div>
+    <div class="bubble">${fmtTxt(content)}</div>
+    ${metaLine}
+  </div>`;
+
+  msgsEl.appendChild(wrap);
+}
+
+/**
+ * Render a compact stub for structured AI responses (calendar,
+ * scorecard, campaign) stored as JSON strings.  We don't attempt a
+ * full re-render because the interactive UI elements (tabs, modals,
+ * export buttons) rely on live JS closures that can't be serialised.
+ * The stub makes the conversation flow readable and lets the user
+ * re-run the analysis if they need the full view again.
+ */
+function _renderRestoredStructuredStub(msgsEl, json, meta = {}) {
+  let icon = '📊', label = 'Analysis result';
+  if (json.calendar)  { icon = '📅'; label = '4-Week Social Calendar'; }
+  if (json.scorecard) { icon = '🔍'; label = 'Content Interrogation'; }
+  if (json.campaigns) { icon = '📊'; label = 'Campaign Decision Engine'; }
+
+  const wrap = document.createElement('div');
+  wrap.className = 'msg system';
+
+  let metaLine = '';
+  if (meta?.mode) {
+    const mn = { 1:'Context', 2:'Tools', 3:'Social', 4:'Content', 5:'Campaign' };
+    metaLine = `<div class="bubble-meta">${esc(`Mode ${meta.mode} — ${mn[meta.mode] || ''}`)}</div>`;
+  }
+
+  wrap.innerHTML = `<div class="lumi-av">✨</div><div>
+    <div class="bubble" style="display:flex;align-items:center;gap:12px;">
+      <span style="font-size:22px;">${icon}</span>
+      <div>
+        <div style="font-weight:700;color:var(--ink);margin-bottom:3px;">${label}</div>
+        <div style="font-size:12px;color:var(--ink-3);">
+          Previously generated — send a message to re-run this analysis.
+        </div>
+      </div>
+    </div>
+    ${metaLine}
+  </div>`;
+
+  msgsEl.appendChild(wrap);
 }
 
 // ── TEXTAREA AUTO-RESIZE ──────────────────────────────────────
@@ -253,12 +350,13 @@ export async function send() {
 
     hideLumi();
 
-    // ── Persist both sides now that we have the real session_id ──
-    persistMsg(S.sid, 'user', userMsg);
+    // ── Save both sides to localStorage now that session_id is confirmed ──
+    // Using the session_id returned by the backend (guaranteed non-null here).
+    saveMsgToHistory(S.sid, 'user', userMsg);
 
     if (data.message) {
       renderResp(data);
-      persistMsg(S.sid, 'ai', data.message, {
+      saveMsgToHistory(S.sid, 'ai', data.message, {
         mode:    data.current_mode,
         service: data.current_service,
       });
