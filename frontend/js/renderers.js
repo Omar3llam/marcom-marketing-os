@@ -108,7 +108,7 @@ export function renderCampaign(payload) {
         <tbody>${rows}</tbody>
       </table>
     </div>
-    ${payload.summary ? `<div class="tbl-summary">${esc(payload.summary)}</div>` : ''}`;
+    ${payload.summary ? `<div class="tbl-summary">${fmtTxt(payload.summary)}</div>` : ''}`;
   container.appendChild(mkBridge('campaign', payload));
   wrap.appendChild(container); msgs.appendChild(wrap); msgs.scrollTop = msgs.scrollHeight;
 }
@@ -158,9 +158,9 @@ export function renderScorecard(payload) {
       <span class="rw-pill ${rwMap[rwLvl] || 'rw-minor'}">Rewrite: ${esc(rwLvl)}</span></div>
     ${rows}
     ${ov != null ? `<div class="ov-row"><span class="ov-lbl">Overall Score</span><span class="ov-num ${{ p:'ms-p', w:'ms-w', f:'ms-f' }[ovSt]}">${esc(String(ov))}/10</span></div>` : ''}
-    ${payload.brutal_insight    ? `<div class="brutal-box"><div class="bi-lbl">⚡ Brutal Insight</div><div class="bi-txt">${esc(payload.brutal_insight)}</div></div>` : ''}
-    ${payload.rewritten_content ? `<div class="rw-box"><div class="rw-top"><span class="rw-top-lbl">✦ Rewritten Version</span></div><div class="rw-body">${esc(payload.rewritten_content)}</div></div>` : ''}
-    ${payload.verdict           ? `<div class="verdict-txt">${esc(payload.verdict)}</div>` : ''}`;
+    ${payload.brutal_insight    ? `<div class="brutal-box"><div class="bi-lbl">⚡ Brutal Insight</div><div class="bi-txt">${fmtTxt(payload.brutal_insight)}</div></div>` : ''}
+    ${payload.rewritten_content ? `<div class="rw-box"><div class="rw-top"><span class="rw-top-lbl">✦ Rewritten Version</span></div><div class="rw-body">${fmtTxt(payload.rewritten_content)}</div></div>` : ''}
+    ${payload.verdict           ? `<div class="verdict-txt">${fmtTxt(payload.verdict)}</div>` : ''}`;
   container.appendChild(mkBridge('content', payload));
   wrap.appendChild(container); msgs.appendChild(wrap); msgs.scrollTop = msgs.scrollHeight;
 }
@@ -193,7 +193,7 @@ export function renderCalendar(payload) {
     </div>
     <div class="pillars-row">${pillars}</div>
     ${weekBlocks}
-    ${payload.summary ? `<div class="cal-summary">${esc(payload.summary)}</div>` : ''}
+    ${payload.summary ? `<div class="cal-summary">${fmtTxt(payload.summary)}</div>` : ''}
     ${moments.length ? `<div style="font-size:12px;font-weight:600;color:var(--yellow-dk);margin-top:10px;">📅 ${moments.map(esc).join(' · ')}</div>` : ''}`;
   container.appendChild(mkBridge('social', payload));
   wrap.appendChild(container); msgs.appendChild(wrap); msgs.scrollTop = msgs.scrollHeight;
@@ -220,7 +220,7 @@ export function renderInsightText(data) {
     cards.slice(0, 8).forEach(c => {
       const cls = c.mood === '🛑' ? 'warn' : c.mood === '😉' ? 'good' : 'opp';
       const card = document.createElement('div'); card.className = `insight-card ${cls}`;
-      card.innerHTML = `<div class="ic-mood">${c.mood}</div>${c.label ? `<div class="ic-label">${esc(c.label)}</div>` : ''}<div class="ic-value">${esc(c.value)}</div>`;
+      card.innerHTML = `<div class="ic-mood">${c.mood}</div>${c.label ? `<div class="ic-label">${fmtTxt(c.label)}</div>` : ''}<div class="ic-value">${fmtTxt(c.value)}</div>`;
       grid.appendChild(card);
     });
     section.appendChild(grid); wrap.appendChild(section);
