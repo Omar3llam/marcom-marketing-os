@@ -113,6 +113,24 @@ export function renderCampaign(payload) {
   wrap.appendChild(container); msgs.appendChild(wrap); msgs.scrollTop = msgs.scrollHeight;
 }
 
+function buildAudienceTabs(sims) {
+  if (!Array.isArray(sims) || !sims.length) return '';
+  const tabs = sims.map((p, i) =>
+    `<button class="aud-tab${i === 0 ? ' active' : ''}" onclick="
+      this.closest('.aud-wrap').querySelectorAll('.aud-tab').forEach(b=>b.classList.remove('active'));
+      this.closest('.aud-wrap').querySelectorAll('.aud-panel').forEach(p=>p.classList.remove('active'));
+      this.classList.add('active');
+      this.closest('.aud-wrap').querySelector('.aud-panel[data-idx=\\'${i}\\']').classList.add('active');
+    ">${esc(p.persona_name || `Persona ${i + 1}`)}</button>`
+  ).join('');
+  const panels = sims.map((p, i) => `
+    <div class="aud-panel${i === 0 ? ' active' : ''}" data-idx="${i}">
+      <div class="aud-row"><span class="aud-lbl">💬 Reaction</span><span class="aud-val">${fmtTxt(p.reaction || '')}</span></div>
+      <div class="aud-row"><span class="aud-lbl">⚠ Credibility Gap</span><span class="aud-val aud-gap">${fmtTxt(p.credibility_gap || '')}</span></div>
+    </div>`).join('');
+  return `<div class="aud-wrap"><div class="aud-hdr"><span class="aud-title">👥 Audience Simulation</span><div class="aud-tabs">${tabs}</div></div>${panels}</div>`;
+}
+
 export function renderScorecard(payload) {
   const msgs = document.getElementById('msgs');
   const wrap = document.createElement('div');
@@ -158,6 +176,7 @@ export function renderScorecard(payload) {
       <span class="rw-pill ${rwMap[rwLvl] || 'rw-minor'}">Rewrite: ${esc(rwLvl)}</span></div>
     ${rows}
     ${ov != null ? `<div class="ov-row"><span class="ov-lbl">Overall Score</span><span class="ov-num ${{ p:'ms-p', w:'ms-w', f:'ms-f' }[ovSt]}">${esc(String(ov))}/10</span></div>` : ''}
+    ${buildAudienceTabs(payload.audience_simulation)}
     ${payload.brutal_insight    ? `<div class="brutal-box"><div class="bi-lbl">⚡ Brutal Insight</div><div class="bi-txt">${fmtTxt(payload.brutal_insight)}</div></div>` : ''}
     ${payload.rewritten_content ? `<div class="rw-box"><div class="rw-top"><span class="rw-top-lbl">✦ Rewritten Version</span></div><div class="rw-body">${fmtTxt(payload.rewritten_content)}</div></div>` : ''}
     ${payload.verdict           ? `<div class="verdict-txt">${fmtTxt(payload.verdict)}</div>` : ''}`;

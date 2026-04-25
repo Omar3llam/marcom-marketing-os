@@ -71,9 +71,10 @@ Evaluate: scroll-stop potential, curiosity gap, audience self-recognition, patte
 Gate: Hook Score ≥7/10.
 
 STEP 3 — AUDIENCE SIMULATION
-B2B: Economic Buyer (CFO/CEO — ROI/risk), Technical Buyer (CTO — credibility/integration), User Buyer (workflow impact), Procurement (vendor credibility/compliance).
-B2C: Cold scroller (zero awareness), Warm (mild interest), Ready to buy (high intent).
-Name the most skeptical reaction.
+Do NOT use hardcoded personas. Dynamically identify the 3 most relevant target personas based on the client context and content provided.
+Examples: B2B SaaS → "IT Director", "CFO", "End User". E-commerce → "Busy Parent", "Gift Buyer", "Returning Customer". Education → "Student", "Parent", "Institution Head". Fitness/Lifestyle → "Beginner", "Dedicated Athlete", "Health-Conscious Professional".
+For each persona: name their role/archetype, their immediate gut reaction to this content, and the single biggest credibility gap stopping them from acting.
+Output as a JSON array — see schema below.
 
 STEP 4 — STRATEGIC POSITIONING
 Category leader signals? Original insight or recycled noise? Could a competitor post this verbatim? Operationally real or aspirationally vague?
@@ -122,6 +123,11 @@ OUTPUT FORMAT — Return ONLY this JSON. No other text whatsoever:
     "text_design_harmony": <1-10 or null if no image>,
     "overall": <1-10>
   },
+  "audience_simulation": [
+    { "persona_name": "<dynamically derived persona, e.g. Busy Mom / IT Director / Gen-Z Student>", "reaction": "<their immediate gut reaction to this content>", "credibility_gap": "<the single biggest gap stopping them from acting>" },
+    { "persona_name": "<second persona>", "reaction": "<reaction>", "credibility_gap": "<gap>" },
+    { "persona_name": "<third persona>", "reaction": "<reaction>", "credibility_gap": "<gap>" }
+  ],
   "rewrite_required": "<None|Minor|Moderate|Major>",
   "verdict": "<single sentence: if published today on [Platform] as [Format] targeting [Audience], outcome: [specific prediction]>",
   "brutal_insight": "<one punchy, high-impact strategic takeaway — direct, specific, actionable. The single most important thing. Not a summary.>",

@@ -344,6 +344,21 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 .rw-body{padding:14px;font-size:13px;color:var(--ink-2);line-height:1.7;white-space:pre-wrap;}
 .verdict-txt{margin-top:10px;font-size:12px;color:var(--ink-3);line-height:1.65;font-style:italic;padding:10px 14px;background:var(--cream-2);border-radius:var(--r-md);}
 
+/* ── AUDIENCE SIMULATION TABS ──────────────────── */
+.aud-wrap{margin-top:16px;border:1.5px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:#fff;}
+.aud-hdr{padding:10px 14px 0;background:var(--cream-2);border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px;}
+.aud-title{font-size:11px;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-3);}
+.aud-tabs{display:flex;gap:4px;flex-wrap:wrap;padding-bottom:0;}
+.aud-tab{padding:7px 14px;border-radius:var(--r-md) var(--r-md) 0 0;font-family:'Poppins',sans-serif;font-size:12px;font-weight:600;border:1.5px solid transparent;border-bottom:none;cursor:pointer;background:transparent;color:var(--ink-3);transition:all 0.18s;}
+.aud-tab:hover{background:var(--cream-3);color:var(--ink-2);}
+.aud-tab.active{background:#fff;border-color:var(--border);border-bottom-color:#fff;color:var(--ink);margin-bottom:-1px;}
+.aud-panel{display:none;padding:14px 16px;flex-direction:column;gap:10px;}
+.aud-panel.active{display:flex;}
+.aud-row{display:flex;flex-direction:column;gap:4px;}
+.aud-lbl{font-size:10px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3);}
+.aud-val{font-size:13px;color:var(--ink-2);line-height:1.6;}
+.aud-gap{color:var(--coral);font-weight:600;}
+
 /* ── SOCIAL CALENDAR ───────────────────────────── */
 .pillars-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
 .pillar-chip{padding:5px 12px;border-radius:var(--r-full);font-size:11px;font-weight:700;border:1.5px solid var(--border);color:var(--ink-3);background:var(--cream-2);}
