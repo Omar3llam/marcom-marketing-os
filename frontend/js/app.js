@@ -1,7 +1,7 @@
 // ============================================================
 // MARCOM — Application Entry Point  (frontend/js/app.js)
-// Handles auth bootstrapping, send flow, config panel, and
-// the window._app facade used by inline HTML event handlers.
+// Handles auth bootstrapping, send flow, and the window._app
+// facade used by inline HTML event handlers.
 // ============================================================
 import { sendChat, exportToCRM } from './api.js';
 import { S, updateUI } from './state.js';
@@ -87,14 +87,10 @@ function boot(clerk) {
 
   const b = localStorage.getItem('mc_backend');
   const sid = localStorage.getItem('mc_session');
-  if (b)   { document.getElementById('cfgBackend').value = b; S.backend = b; }
-  if (sid) { S.sid = sid; document.getElementById('cfgSession').value = sid; }
+  if (b)   { S.backend = b; }
+  if (sid) { S.sid = sid; }
 
   updateUI(); setupTA(); buildDots();
-
-  const stAuth = document.getElementById('stAuth');
-  stAuth.textContent = clerk?.user?.primaryEmailAddress?.emailAddress || '✓ Signed in';
-  stAuth.className = 's-ok';
 }
 
 // ── TEXTAREA AUTO-RESIZE ──────────────────────────────────────
@@ -219,39 +215,21 @@ function setLoading(l) {
                     : '<span>✨</span> Send';
 }
 
-// ── MODE SWITCH ───────────────────────────────────────────────
+// ── MODE SWITCH (kept for programmatic use; no UI panel) ──────
 export function setMode(m) {
   S.forceMode = m; if (m) S.mode = m;
-  ['1','2','3','4','5','A'].forEach(x => {
-    const b = document.getElementById(`msw${x}`); if (!b) return;
-    b.className = 'msw-btn'; const n = parseInt(x);
-    if (n === m) b.className = `msw-btn a${m}`;
-    if (x === 'A' && m === null) b.className = 'msw-btn a1';
-  });
   updateUI();
 }
 
-// ── CONFIG PANEL ──────────────────────────────────────────────
-export function openCfg()  { document.getElementById('cfgPanel').classList.add('open');    document.getElementById('overlay').classList.add('vis'); }
-export function closeCfg() { document.getElementById('cfgPanel').classList.remove('open'); document.getElementById('overlay').classList.remove('vis'); }
-
-export function saveCfg() {
-  const u = document.getElementById('cfgBackend').value.trim().replace(/\/$/, '');
-  const sid = document.getElementById('cfgSession').value.trim();
-  if (u)   { S.backend = u; localStorage.setItem('mc_backend', u); }
-  if (sid) { S.sid = sid;   localStorage.setItem('mc_session', sid); }
-  updateUI(); closeCfg(); toast('Settings saved ✓', 'ok');
-}
-
+// ── SESSION RESET ─────────────────────────────────────────────
 export function clearSession() {
   if (!confirm('Clear session and start over?')) return;
   S.sid = null; S.mode = 1; S.section = 0; S.service = 0;
   S.locked = false; S.msgs = 0; S.forceMode = null;
   clearImg(); localStorage.removeItem('mc_session');
-  document.getElementById('cfgSession').value = '';
   document.getElementById('msgs').innerHTML =
     `<div class="empty" id="emptyState"><div class="empty-lumi">✨</div><div class="empty-divider"></div><div class="empty-tagline">Session cleared. Let's go again.</div></div>`;
-  updateUI(); closeCfg();
+  updateUI();
 }
 
 // ── TOAST ─────────────────────────────────────────────────────
@@ -266,8 +244,5 @@ export function toast(msg, t = 'err') {
 window._app = {
   send, qs, showWizard, selTile, wNext, wizDone, wizManual, renderWizStep, wizSetCountry,
   setWizUrl, handleFile, clearImg, syncCRMBtn, dlCSV, copyLink,
-  openCfg, closeCfg, saveCfg, clearSession, setMode, updateUI, toast, esc,
+  clearSession, setMode, updateUI, toast, esc,
 };
-
-// ESC closes config panel
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCfg(); });
