@@ -84,10 +84,21 @@ export async function getOrCreateSession(sessionId, userId) {
 export async function updateSession(recordId, userId, fields) {
   const sql = getDb();
 
-  // Trim history / logs before persisting
-  const conversationHistory = trimHistory(
-    Array.isArray(fields.conversation_history) ? fields.conversation_history : []
-  );
+  // Trim history / logs before persisting.
+  // Accept either an array (preferred) or a JSON-stringified array — earlier
+  // callers were passing JSON.stringify(arr), which silently dropped to []
+  // and wiped chat history. Now we coerce defensively in either direction.
+  let rawHistory = fields.conversation_history;
+  if (typeof rawHistory === 'string') {
+    try { rawHistory = JSON.parse(rawHistory); } catch { rawHistory = []; }
+  }
+  const conversationHistory = trimHistory(Array.isArray(rawHistory) ? rawHistory : []);
+
+  let rawServices = fields.service_history;
+  if (typeof rawServices === 'string') {
+    try { rawServices = JSON.parse(rawServices); } catch { rawServices = []; }
+  }
+  const serviceHistory = Array.isArray(rawServices) ? rawServices : [];
 
   const rows = await sql`
     UPDATE marcom_sessions SET
@@ -97,7 +108,7 @@ export async function updateSession(recordId, userId, fields) {
       context_locked    = ${fields.context_locked      ?? false},
       context_summary   = ${fields.context_summary     ?? ''},
       conversation_history = ${JSON.stringify(conversationHistory)}::jsonb,
-      service_history   = ${JSON.stringify(fields.service_history ?? [])}::jsonb,
+      service_history   = ${JSON.stringify(serviceHistory)}::jsonb,
       content_interrogation_log = ${trimLog(fields.content_interrogation_log)},
       campaign_analysis_log     = ${trimLog(fields.campaign_analysis_log)},
       hybrid_raw_data   = ${(fields.hybrid_raw_data ?? '').slice(0, 10_000)},

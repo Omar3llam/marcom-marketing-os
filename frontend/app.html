@@ -107,6 +107,13 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 .sb-recent{font-size:12px;color:var(--ink-3);position:relative;display:flex;align-items:center;}
 .sb-recent:hover{color:var(--ink-2);background:var(--sb-hover);}
 .sb-recent .sb-item-icon{font-size:13px;}
+.sb-recent.is-active{
+  background:var(--yellow-lt);
+  color:var(--ink);
+  border-left:2px solid var(--yellow);
+  padding-left:10px;
+}
+.sb-recent.is-active .sb-item-icon{color:var(--yellow-dk);}
 
 /* Delete button — hidden until row hover; always visible on touch */
 .sb-recent-del{

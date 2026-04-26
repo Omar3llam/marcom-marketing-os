@@ -312,79 +312,158 @@ async function deleteSession(sessionId) {
 /**
  * Resume a saved session: GET /api/history/:sessionId,
  * render every bubble, restore S.history.
+ *
+ * Strict state machine:
+ *   loading → (api error)  → error state
+ *   loading → (empty)      → empty state
+ *   loading → (messages)   → cleared container, bubbles rendered, scrolled
+ *
+ * Container is cleared once, immediately before the loop — never after.
+ * User content goes through textContent (XSS-safe). AI content goes
+ * through fmtTxt (the project's markdown renderer; marked is not a dep).
  */
 export async function resumeChat(sessionId) {
-  if (!sessionId) return;
+  const container = document.getElementById('msgs');
+  if (!container) {
+    console.error('[loadSession] Chat container #msgs not found.');
+    return;
+  }
+  if (!sessionId) {
+    console.error('[loadSession] sessionId missing.');
+    return;
+  }
 
-  S.sid = sessionId;
-  // Pointer to "last active session id" — small UX nicety, not chat data.
-  try { localStorage.setItem('mc_session', sessionId); } catch {}
+  // 1. Loading state
+  container.innerHTML = `
+    <div class="loading-indicator" style="padding:32px 16px;text-align:center;color:var(--ink-3);font-size:13px;">
+      <span style="display:inline-block;animation:lSpin 1s linear infinite;">✨</span>
+      <span style="margin-left:8px;">Loading conversation…</span>
+    </div>`;
 
-  const msgs = document.getElementById('msgs');
-  if (msgs) msgs.innerHTML = '';
-
-  let payload = null;
+  // 2. Fetch
+  let payload;
   try {
     const headers = await getAuthHeaders();
     const res = await fetch(`/api/history/${encodeURIComponent(sessionId)}`, { headers });
     if (!res.ok) {
-      toast(res.status === 404 ? 'Session not found' : 'Failed to load session');
+      console.error('[loadSession] API returned', res.status, 'for session', sessionId);
+      container.innerHTML = `
+        <div class="error-state" style="padding:32px 16px;text-align:center;color:var(--coral);font-size:13px;">
+          Could not load this session${res.status === 404 ? ' — it may have been deleted.' : '.'}
+        </div>`;
       return;
     }
     payload = await res.json();
   } catch (err) {
-    console.warn('[Lumi] resumeChat fetch failed:', err?.message);
-    toast('Could not load session — please try again');
+    console.error('[loadSession] Unexpected error:', err);
+    container.innerHTML = `
+      <div class="error-state" style="padding:32px 16px;text-align:center;color:var(--coral);font-size:13px;">
+        Failed to load session. Check your connection and try again.
+      </div>`;
     return;
   }
 
-  const history = Array.isArray(payload?.messages) ? payload.messages : [];
-  S.history = history.map(m => ({
+  // 3. Validate
+  const messages = Array.isArray(payload?.messages) ? payload.messages : [];
+  if (messages.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state empty" id="emptyState">
+        <div class="empty-lumi">✨</div>
+        <div class="empty-divider"></div>
+        <div class="empty-tagline" style="font-size:13px;color:var(--ink-3);">
+          This conversation is empty — send a message to continue.
+        </div>
+      </div>`;
+    // Still update session state so the next message lands on the right row.
+    S.sid = sessionId;
+    S.history = [];
+    try { localStorage.setItem('mc_session', sessionId); } catch {}
+    _highlightActiveChat(sessionId);
+    updateUI();
+    return;
+  }
+
+  // 4. Clear and render — clear happens ONCE, just before the loop, so a
+  //    race with the loading indicator can never blank rendered bubbles.
+  container.innerHTML = '';
+
+  messages.forEach(m => {
+    const role    = m.role === 'assistant' ? 'assistant' : 'user';
+    const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
+    const meta    = m.meta || (m.mode || m.service ? { mode: m.mode, service: m.service } : {});
+
+    if (role === 'assistant') {
+      // Detect structured payloads (modes 3/4/5) — historical replay shows a
+      // compact stub instead of dumping raw JSON. The LIVE Mode 4 → Modal
+      // Dashboard flow is unaffected: it runs through renderResp() in send().
+      const json = tryJSON(content);
+      if (json && (json.calendar || json.scorecard || json.campaigns)) {
+        _renderRestoredStructuredStub(container, json, meta);
+      } else {
+        _renderRestoredBubble(container, 'system', content, meta);
+      }
+    } else {
+      // User bubble — content is set via textContent inside _renderRestoredBubble's
+      // user path? No — fmtTxt also escapes. _renderRestoredBubble routes user
+      // content through fmtTxt which prefixes a full HTML escape, so this is
+      // XSS-safe. The dedicated user bubble path below makes the safety
+      // contract explicit and bypasses markdown rendering for user input.
+      _renderRestoredUserBubble(container, content);
+    }
+  });
+
+  // 5. Sync in-memory state for continued conversation
+  S.sid     = sessionId;
+  S.history = messages.map(m => ({
     role:    m.role === 'assistant' ? 'assistant' : 'user',
-    content: m.content,
+    content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? ''),
     meta:    m.meta || (m.mode || m.service ? { mode: m.mode, service: m.service } : {}),
     ts:      m.ts,
   }));
+  try { localStorage.setItem('mc_session', sessionId); } catch {}
 
-  // Restore mode/lock from message metadata so the chips render correctly
-  // and the next backend call routes to the right mode.
+  // Restore mode/forceMode from the latest AI bubble's meta so the next
+  // turn routes to the right mode handler.
   const lastAi = [...S.history].reverse().find(m => m.role === 'assistant' && m.meta?.mode);
   if (lastAi?.meta?.mode) {
     S.mode      = lastAi.meta.mode;
     S.forceMode = lastAi.meta.mode;
   }
 
-  if (!S.history.length) {
-    if (msgs) msgs.innerHTML = `
-      <div class="empty" id="emptyState">
-        <div class="empty-lumi">✨</div>
-        <div class="empty-divider"></div>
-        <div class="empty-tagline" style="font-size:13px;color:var(--ink-3);">
-          Session restored — continue the conversation below.
-        </div>
-      </div>`;
-  } else {
-    S.history.forEach(({ role, content, meta }) => {
-      if (role === 'user') {
-        _renderRestoredBubble(msgs, 'user', content, meta);
-      } else {
-        // AI bubble — detect structured JSON (modes 3/4/5) vs plain text.
-        // Mode 4 dashboard modal flow is unaffected: structured stubs are
-        // only used for HISTORICAL replay; the live response still goes
-        // through renderResp() in the send() path.
-        const json = tryJSON(content);
-        if (json && (json.calendar || json.scorecard || json.campaigns)) {
-          _renderRestoredStructuredStub(msgs, json, meta);
-        } else {
-          _renderRestoredBubble(msgs, 'system', content, meta);
-        }
-      }
-    });
-    if (msgs) msgs.scrollTop = msgs.scrollHeight;
-  }
+  // 6. Scroll + sidebar active highlight
+  container.scrollTop = container.scrollHeight;
+  _highlightActiveChat(sessionId);
 
   updateUI();
   toast('Session resumed ✓', 'ok');
+}
+
+// User bubble path — explicit textContent for XSS safety. Single
+// responsibility: never put user input through innerHTML.
+function _renderRestoredUserBubble(msgsEl, content) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg user';
+
+  const av = document.createElement('div');
+  av.className = 'user-av';
+  av.textContent = 'YOU';
+
+  const stack = document.createElement('div');
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = content;            // ← XSS-safe by construction
+  stack.appendChild(bubble);
+
+  wrap.appendChild(av);
+  wrap.appendChild(stack);
+  msgsEl.appendChild(wrap);
+}
+
+// Add or move the .is-active marker on the recent-chats sidebar.
+function _highlightActiveChat(sessionId) {
+  document.querySelectorAll('.sb-recent').forEach(el => {
+    el.classList.toggle('is-active', el.dataset.sessionId === sessionId);
+  });
 }
 
 /**

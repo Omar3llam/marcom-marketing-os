@@ -108,14 +108,20 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
       timestamp: new Date().toISOString(),
     });
 
+    // ── BUGFIX: pass raw arrays, not JSON-encoded strings.
+    // updateSession() type-checks with Array.isArray() and falls back to [],
+    // so a stringified value here was silently persisting an empty array
+    // — which is exactly why /api/history/:sessionId returned messages: [].
     await updateSession(session.recordId, userId, {
       current_mode:    modeResult.nextMode || currentMode,
       current_section: modeResult.currentSection  ?? session.current_section,
       current_service: modeResult.currentService  ?? session.current_service,
       context_locked:  modeResult.contextLocked   ?? session.context_locked,
       context_summary: modeResult.contextSummary  || session.context_summary,
-      conversation_history: JSON.stringify(conversationHistory.slice(-MAX_HISTORY)),
-      service_history:      JSON.stringify(modeResult.serviceHistory || session.service_history || []),
+      conversation_history: conversationHistory.slice(-MAX_HISTORY),
+      service_history:      Array.isArray(modeResult.serviceHistory)
+                              ? modeResult.serviceHistory
+                              : (Array.isArray(session.service_history) ? session.service_history : []),
       content_interrogation_log: appendLog(session.content_interrogation_log, modeResult.contentLog   || ''),
       campaign_analysis_log:     appendLog(session.campaign_analysis_log,     modeResult.campaignLog  || ''),
       hybrid_raw_data:   (modeResult.hybridData || session.hybrid_raw_data || '').slice(0, 10_000),
