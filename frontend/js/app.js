@@ -183,8 +183,10 @@ function _initProjectSwitcher() {
     });
   }
 
-  // Create new project button
+  // Create new project button — set force flag so onboarding skips the
+  // "already has projects → redirect to app.html" guard for this user.
   document.getElementById('create-project-btn')?.addEventListener('click', () => {
+    localStorage.setItem('lumi:forceNewProject', 'true');
     window.location.href = '/onboarding.html';
   });
 

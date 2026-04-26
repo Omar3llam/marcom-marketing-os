@@ -622,7 +622,18 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
   <!-- ── SIDEBAR ──────────────────────────────── -->
   <aside id="sidebar">
 
-    <!-- Project switcher — above logo -->
+    <!-- 1. Logo + New Chat -->
+    <div class="sb-top">
+      <div class="sb-logo">
+        <div class="sb-logo-icon">✨</div>
+        <div class="sb-logo-text"><em>LUMI</em></div>
+      </div>
+      <button class="sb-new-btn" onclick="window._app.closeSidebar();window._app.clearSession()">
+        <span class="sb-new-btn-icon">＋</span> New Chat
+      </button>
+    </div>
+
+    <!-- 2. Project switcher -->
     <div class="project-switcher" id="project-switcher">
       <div class="project-switcher__header">
         <span class="project-switcher__label">Project</span>
@@ -639,17 +650,6 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
         </svg>
       </div>
       <ul class="project-switcher__dropdown" id="project-dropdown" role="listbox" hidden></ul>
-    </div>
-
-    <!-- Top: logo + new chat -->
-    <div class="sb-top">
-      <div class="sb-logo">
-        <div class="sb-logo-icon">✨</div>
-        <div class="sb-logo-text"><em>LUMI</em></div>
-      </div>
-      <button class="sb-new-btn" onclick="window._app.closeSidebar();window._app.clearSession()">
-        <span class="sb-new-btn-icon">＋</span> New Chat
-      </button>
     </div>
 
     <!-- Middle: tools + recents -->

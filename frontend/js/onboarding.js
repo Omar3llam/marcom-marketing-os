@@ -53,21 +53,8 @@ window.addEventListener('load', async () => {
     return;
   }
 
-  // Step 2: skip the wizard if user already has at least one project
-  try {
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/projects/list', { headers });
-    if (res.ok) {
-      const projects = await res.json();
-      if (Array.isArray(projects) && projects.length > 0) {
-        window.location.replace('/app.html');
-        return;
-      }
-    }
-  } catch (err) {
-    // Network blip — proceed with wizard so user can onboard
-    console.warn('[Onboarding] Projects check failed:', err?.message);
-  }
+  // Step 2: routing guard — respects force-new-project flag
+  await checkOnboardingRouting();
 
   // Mount Clerk user button (top-right)
   if (window.Clerk.mountUserButton) {
@@ -90,6 +77,35 @@ window.addEventListener('load', async () => {
 
   initWizard();
 });
+
+// ── Routing guard ────────────────────────────────────────────
+// Checks whether to show the wizard or redirect to app.html.
+// Called after Clerk auth is confirmed.
+async function checkOnboardingRouting() {
+  const forceNew = localStorage.getItem('lumi:forceNewProject') === 'true';
+
+  if (forceNew) {
+    // User explicitly clicked + New Project — show wizard regardless of
+    // existing projects. Clear the flag immediately so a page refresh
+    // does not re-trigger force mode.
+    localStorage.removeItem('lumi:forceNewProject');
+    return;  // fall through to wizard render
+  }
+
+  // Normal returning user: if they already have projects, skip the wizard.
+  try {
+    const headers = await getAuthHeaders();
+    const res  = await fetch('/api/projects/list', { headers });
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) {
+      window.location.replace('/app.html');
+    }
+    // else: no projects → show wizard normally
+  } catch (err) {
+    // On fetch failure, show the wizard rather than a blank screen.
+    console.warn('[Onboarding] Could not check projects — showing wizard', err);
+  }
+}
 
 // ── Auth header helper (mirrors app.js) ──────────────────────
 async function getAuthHeaders() {
@@ -309,7 +325,8 @@ async function handleFinish(btn) {
     // Mark as active in localStorage so app.html loads straight into it
     localStorage.setItem('lumi:activeProjectId', projectId);
 
-    // Clean up legacy keys (forward-compat)
+    // Clean up force flag and any legacy keys
+    localStorage.removeItem('lumi:forceNewProject');
     localStorage.removeItem('lumi_context');
     localStorage.removeItem('context_locked');
 
