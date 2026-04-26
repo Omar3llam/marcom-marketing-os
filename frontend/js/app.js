@@ -329,28 +329,33 @@ function deriveTitle() {
  * never block the UI or the next message send.
  */
 async function saveSession() {
+  console.log('[saveSession] called — sid:', S.sid, '| history length:', S.history.length);
+
   if (!S.sid) {
-    console.debug('[saveSession] skipped — no session ID');
+    console.warn('[saveSession] skipped — no session ID. Was S.sid set from data.session_id?');
     return;
   }
   if (!S.history.length) {
-    console.debug('[saveSession] skipped — history is empty');
+    console.warn('[saveSession] skipped — history is empty. Was pushHistory() called before saveSession()?');
     return;
   }
+
+  const payload = {
+    sessionId: S.sid,
+    title:     deriveTitle(),
+    messages:  S.history,
+    projectId: ProjectManager.getProjectId(),
+  };
+  console.log('[saveSession] posting', payload.messages.length, 'messages for session', payload.sessionId);
+
   try {
     const headers = await getAuthHeaders();
     const res = await fetch('/api/history/save', {
       method:  'POST',
       headers,
-      body:    JSON.stringify({
-        sessionId: S.sid,
-        title:     deriveTitle(),
-        messages:  S.history,
-        projectId: ProjectManager.getProjectId(),
-      }),
+      body:    JSON.stringify(payload),
     });
     if (!res.ok) {
-      // Log enough detail to diagnose without exposing sensitive data.
       const body = await res.text().catch(() => '(unreadable)');
       console.error(
         `[saveSession] Server returned ${res.status} — messages NOT saved.\n` +
@@ -359,10 +364,10 @@ async function saveSession() {
         `  response:  ${body.slice(0, 200)}`
       );
     } else {
-      console.debug(`[saveSession] OK — ${S.history.length} messages saved for session ${S.sid}`);
+      console.log(`[saveSession] OK — ${S.history.length} messages saved for session ${S.sid}`);
     }
   } catch (err) {
-    console.error('[saveSession] Network error — messages NOT saved:', err?.message);
+    console.error('[saveSession] Network/fetch error — messages NOT saved:', err?.message, err);
   }
 }
 
@@ -933,19 +938,19 @@ export async function send() {
     }
 
     if (S.sid) {
-      // "Last active session" pointer — kept in localStorage for reload restore;
-      // not chat data.
       try { localStorage.setItem('mc_session', S.sid); } catch {}
-      // Save first, then refresh — guarantees the sidebar reads the latest
-      // title (including the newly-derived first-message title for fresh sessions).
-      // Still backgrounded so we don't block the UI.
-      saveSession().then(() => loadRecentChats());
+      saveSession()
+        .then(() => loadRecentChats())
+        .catch(err => console.error('[send] saveSession rejected:', err));
+    } else {
+      console.error('[send] S.sid is null after API response — session not saved. data.session_id was:', data?.session_id);
     }
     updateUI();
   } catch (err) {
     hideLumi();
     appendMsg('system', `⚠ ${err.message}`);
     toast(err.message);
+    console.error('[send] sendChat threw — saveSession was NOT called:', err?.message, err);
   } finally { setLoading(false); }
 }
 
@@ -1004,13 +1009,18 @@ export async function openMarketingTools() {
 
     if (S.sid) {
       try { localStorage.setItem('mc_session', S.sid); } catch {}
-      saveSession().then(() => loadRecentChats());
+      saveSession()
+        .then(() => loadRecentChats())
+        .catch(err => console.error('[openMarketingTools] saveSession rejected:', err));
+    } else {
+      console.error('[openMarketingTools] S.sid is null — session not saved. data.session_id was:', data?.session_id);
     }
     updateUI();
   } catch (err) {
     hideLumi();
     appendMsg('system', `⚠ ${err.message}`);
     toast(err.message);
+    console.error('[openMarketingTools] sendChat threw — saveSession was NOT called:', err?.message, err);
   } finally { setLoading(false); }
 }
 
