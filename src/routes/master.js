@@ -48,38 +48,40 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
     // Load or create session (scoped to userId)
     const session = await getOrCreateSession(session_id, userId);
 
-    // ── ONBOARDING-WIZARD CONTEXT INJECTION ─────────────────────
-    // If this is a fresh session row (no context yet) but the user has
-    // already completed the wizard, lift the locked context onto the
-    // session so mode handlers see it on the very first message.
-    // Mode 1 (chat-onboarding) is then bypassed for the rest of the
-    // session — Core Law 1 satisfied.
-    if (!session.context_locked && (!session.context_summary || !session.context_summary.trim())) {
+    // ── CONTEXT INJECTION ────────────────────────────────────────
+    // Rule: whenever a project_id arrives, ALWAYS load that project's
+    // context and stamp it onto the session. This guarantees that
+    // switching projects mid-session never leaves stale context from
+    // the previous project on the AI's system prompt.
+    //
+    // Legacy path (no project_id): only inject once, on first message,
+    // when the session has no context yet.
+    if (project_id) {
       try {
-        let resolvedContext = null;
-
-        // 1. Project-based path (new architecture)
-        if (project_id) {
-          const project = await getProjectById(project_id);
-          if (project?.context) resolvedContext = project.context;
-        }
-
-        // 2. Legacy fallback: UserContext DB record → inline lumi_context from body
-        if (!resolvedContext) {
-          resolvedContext = (await getUserContext(userId))
-            || (typeof lumi_context === 'string' && lumi_context.trim() ? lumi_context.trim() : null);
-        }
-
-        if (resolvedContext) {
-          session.context_summary = resolvedContext;
+        const project = await getProjectById(project_id);
+        if (project?.context) {
+          session.context_summary = project.context;
           session.context_locked  = true;
           logger.info(
-            { userId, sessionId: session.session_id, source: project_id ? 'project' : 'legacy' },
-            'Context auto-injected into fresh session'
+            { userId, sessionId: session.session_id, project_id },
+            'Project context injected/refreshed for this request'
           );
         }
       } catch (err) {
-        logger.warn({ err: err.message, userId }, 'Context lookup failed — proceeding without');
+        logger.warn({ err: err.message, userId, project_id }, 'Project context lookup failed — proceeding without');
+      }
+    } else if (!session.context_locked && (!session.context_summary || !session.context_summary.trim())) {
+      // Legacy fallback: UserContext DB record → inline lumi_context from body
+      try {
+        const resolvedContext = (await getUserContext(userId))
+          || (typeof lumi_context === 'string' && lumi_context.trim() ? lumi_context.trim() : null);
+        if (resolvedContext) {
+          session.context_summary = resolvedContext;
+          session.context_locked  = true;
+          logger.info({ userId, sessionId: session.session_id }, 'Legacy context injected into fresh session');
+        }
+      } catch (err) {
+        logger.warn({ err: err.message, userId }, 'Legacy context lookup failed — proceeding without');
       }
     }
 

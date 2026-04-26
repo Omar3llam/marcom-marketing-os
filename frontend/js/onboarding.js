@@ -9,17 +9,23 @@
 let currentStep = 1;
 const TOTAL_STEPS = 3;
 const state = {
-  companyName:    '',
-  industry:       '',
-  websiteUrl:     '',
-  primaryMarket:  '',
-  businessModel:  '',
-  targetAudience: '',
-  locations:      '',
-  competitor:     '',
-  brandTone:      '',
-  monthlyGoal:    '',
-  neverDo:        '',
+  companyName:       '',
+  industry:          '',
+  websiteUrl:        '',
+  primaryMarket:     '',
+  businessModel:     '',
+  targetAudience:    '',
+  locations:         '',
+  competitor:        '',
+  brandTone:         '',
+  monthlyGoal:       '',
+  neverDo:           '',
+  // ── Commercial Reality ──────────────────────────────────
+  revenueModel:      '',
+  monthlyBudget:     '',
+  pipelineGoal:      '',
+  topChannel:        '',
+  biggestChallenge:  '',
 };
 
 // ── Auth gate + skip-if-onboarded ────────────────────────────
@@ -158,6 +164,12 @@ function initWizard() {
   bindField('f-competitor', 'competitor');
   bindField('f-goal',       'monthlyGoal');
   bindField('f-never',      'neverDo');
+  // Commercial Reality
+  bindField('f-revenue',    'revenueModel');
+  bindField('f-budget',     'monthlyBudget');
+  bindField('f-pipeline',   'pipelineGoal');
+  bindField('f-channel',    'topChannel');
+  bindField('f-challenge',  'biggestChallenge');
 
   // Restore any previously-entered values (e.g. user refreshed mid-wizard)
   hydrateFromState();
@@ -190,6 +202,12 @@ function hydrateFromState() {
     'f-competitor': state.competitor,
     'f-goal':       state.monthlyGoal,
     'f-never':      state.neverDo,
+    // Commercial Reality
+    'f-revenue':    state.revenueModel,
+    'f-budget':     state.monthlyBudget,
+    'f-pipeline':   state.pipelineGoal,
+    'f-channel':    state.topChannel,
+    'f-challenge':  state.biggestChallenge,
   };
   for (const [id, val] of Object.entries(map)) {
     const el = document.getElementById(id);
@@ -238,7 +256,7 @@ function handleBack() {
 const REQUIRED_BY_STEP = {
   1: ['companyName', 'industry', 'primaryMarket'],
   2: ['businessModel', 'targetAudience'],
-  3: ['brandTone', 'monthlyGoal'],
+  3: ['brandTone', 'monthlyGoal', 'revenueModel', 'monthlyBudget', 'topChannel', 'biggestChallenge'],
 };
 
 function validateStep(step) {
@@ -277,6 +295,8 @@ function compileContext() {
   const t = (s) => (s && String(s).trim()) ? String(s).trim() : '—';
   return [
     '--- LUMI CONTEXT SNAPSHOT ---',
+    '',
+    '[BUSINESS CORE]',
     `Company: ${t(state.companyName)}`,
     `Industry: ${t(state.industry)}`,
     `Website: ${t(state.websiteUrl)}`,
@@ -286,8 +306,16 @@ function compileContext() {
     `Key Locations: ${t(state.locations)}`,
     `Main Competitor: ${t(state.competitor)}`,
     `Brand Tone: ${t(state.brandTone)}`,
-    `Monthly Goal: ${t(state.monthlyGoal)}`,
     `Constraints: ${t(state.neverDo)}`,
+    '',
+    '[COMMERCIAL REALITY]',
+    `Revenue Model: ${t(state.revenueModel)}`,
+    `Monthly Ad Budget: ${t(state.monthlyBudget)}`,
+    `Pipeline Goal: ${t(state.pipelineGoal)}`,
+    `Top Marketing Channel: ${t(state.topChannel)}`,
+    `Biggest Challenge: ${t(state.biggestChallenge)}`,
+    `Primary Monthly Goal: ${t(state.monthlyGoal)}`,
+    '',
     `Onboarding Completed: ${new Date().toISOString()}`,
     '-----------------------------',
   ].join('\n');

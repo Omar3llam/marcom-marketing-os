@@ -494,6 +494,81 @@ select option { background:var(--surface-2); color:var(--text); }
             <input id="f-never" type="text" placeholder="e.g. Never use formal Arabic, never mention competitors by name">
           </div>
 
+          <!-- ── COMMERCIAL REALITY ────────────────────────── -->
+          <div class="field" data-name="revenueModel">
+            <label class="field-label" for="f-revenue">Revenue Model<span class="req">*</span></label>
+            <select id="f-revenue">
+              <option value="">How do you make money?…</option>
+              <option>One-time product sales</option>
+              <option>Recurring subscription</option>
+              <option>Service retainer</option>
+              <option>Project-based fees</option>
+              <option>Commission / affiliate</option>
+              <option>Advertising / media</option>
+              <option>Freemium + upsell</option>
+              <option>Marketplace / platform</option>
+              <option>Other</option>
+            </select>
+            <div class="field-error">Select your revenue model.</div>
+          </div>
+
+          <div class="field" data-name="monthlyBudget">
+            <label class="field-label" for="f-budget">Monthly Ad Budget<span class="req">*</span></label>
+            <select id="f-budget">
+              <option value="">Select a budget range…</option>
+              <option>Under $500</option>
+              <option>$500 – $2,000</option>
+              <option>$2,000 – $5,000</option>
+              <option>$5,000 – $15,000</option>
+              <option>$15,000 – $50,000</option>
+              <option>$50,000+</option>
+              <option>No paid budget — organic only</option>
+            </select>
+            <div class="field-error">Select your monthly budget.</div>
+          </div>
+
+          <div class="field" data-name="pipelineGoal">
+            <label class="field-label" for="f-pipeline">Pipeline Goal <span class="field-hint" style="margin:0;">(optional)</span></label>
+            <input id="f-pipeline" type="text" placeholder="e.g. 50 qualified leads/month, $30k MRR by Q3">
+          </div>
+
+          <div class="field" data-name="topChannel">
+            <label class="field-label" for="f-channel">Top Marketing Channel<span class="req">*</span></label>
+            <select id="f-channel">
+              <option value="">Where do most of your customers come from?…</option>
+              <option>Instagram / Facebook Ads</option>
+              <option>Google Search Ads</option>
+              <option>TikTok Ads</option>
+              <option>Organic social media</option>
+              <option>Email marketing</option>
+              <option>SEO / content marketing</option>
+              <option>Referrals / word-of-mouth</option>
+              <option>Influencer partnerships</option>
+              <option>Events / trade shows</option>
+              <option>Cold outreach / SDR</option>
+              <option>We're still figuring this out</option>
+            </select>
+            <div class="field-error">Select your top channel.</div>
+          </div>
+
+          <div class="field" data-name="biggestChallenge">
+            <label class="field-label" for="f-challenge">Biggest Marketing Challenge<span class="req">*</span></label>
+            <select id="f-challenge">
+              <option value="">What keeps you up at night?…</option>
+              <option>Getting consistent leads</option>
+              <option>Converting leads into customers</option>
+              <option>Standing out from competitors</option>
+              <option>Creating enough content</option>
+              <option>Measuring ROI / attribution</option>
+              <option>Managing ad spend efficiently</option>
+              <option>Building brand awareness</option>
+              <option>Retaining existing customers</option>
+              <option>Scaling what already works</option>
+              <option>Don't know where to start</option>
+            </select>
+            <div class="field-error">Select your biggest challenge.</div>
+          </div>
+
           <div class="actions" style="flex-direction:column; gap:12px;">
             <button class="btn btn-primary btn-cta" data-action="finish">
               Lock Context &amp; Enter Lumi →
