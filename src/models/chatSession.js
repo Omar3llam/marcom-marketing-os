@@ -27,6 +27,26 @@ export async function ensureChatSessionSchema() {
   try {
     await sql`ALTER TABLE marcom_sessions ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT ''`;
     await sql`ALTER TABLE marcom_sessions ADD COLUMN IF NOT EXISTS project_id TEXT DEFAULT NULL`;
+
+    // Unique constraint on session_id is required for the ON CONFLICT (session_id)
+    // upsert in saveSession(). If the table was created before migrate.js added it
+    // (or created manually without it), the upsert would throw and saveSession()
+    // would fail silently — leaving conversation_history at the [] default.
+    // DO NOTHING on conflict so this is idempotent.
+    await sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conrelid = 'marcom_sessions'::regclass
+            AND contype   = 'u'
+            AND conname   = 'marcom_sessions_session_id_key'
+        ) THEN
+          ALTER TABLE marcom_sessions ADD CONSTRAINT marcom_sessions_session_id_key UNIQUE (session_id);
+        END IF;
+      END $$;
+    `;
+
     await sql`
       CREATE INDEX IF NOT EXISTS idx_sessions_user_lastupdated
         ON marcom_sessions (user_id, last_updated DESC)

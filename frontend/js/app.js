@@ -269,10 +269,17 @@ function deriveTitle() {
  * never block the UI or the next message send.
  */
 async function saveSession() {
-  if (!S.sid || !S.history.length) return;
+  if (!S.sid) {
+    console.debug('[saveSession] skipped — no session ID');
+    return;
+  }
+  if (!S.history.length) {
+    console.debug('[saveSession] skipped — history is empty');
+    return;
+  }
   try {
     const headers = await getAuthHeaders();
-    await fetch('/api/history/save', {
+    const res = await fetch('/api/history/save', {
       method:  'POST',
       headers,
       body:    JSON.stringify({
@@ -282,8 +289,20 @@ async function saveSession() {
         projectId: ProjectManager.getProjectId(),
       }),
     });
+    if (!res.ok) {
+      // Log enough detail to diagnose without exposing sensitive data.
+      const body = await res.text().catch(() => '(unreadable)');
+      console.error(
+        `[saveSession] Server returned ${res.status} — messages NOT saved.\n` +
+        `  sessionId: ${S.sid}\n` +
+        `  messages:  ${S.history.length} items\n` +
+        `  response:  ${body.slice(0, 200)}`
+      );
+    } else {
+      console.debug(`[saveSession] OK — ${S.history.length} messages saved for session ${S.sid}`);
+    }
   } catch (err) {
-    console.warn('[Lumi] saveSession failed:', err?.message);
+    console.error('[saveSession] Network error — messages NOT saved:', err?.message);
   }
 }
 
@@ -475,9 +494,15 @@ export async function resumeChat(sessionId) {
 
     payload = await res.json();
 
-    // Debug: confirm the response shape matches what the render loop expects.
+    // Debug: confirm the response shape and content.
+    // Open browser DevTools → Console (filter: [loadSession]) to read these.
     console.debug('[loadSession] API response keys:', Object.keys(payload));
-    console.debug('[loadSession] messages count:', Array.isArray(payload?.messages) ? payload.messages.length : 'not an array');
+    console.debug('[loadSession] messages count:', Array.isArray(payload?.messages) ? payload.messages.length : 'NOT AN ARRAY — check API response shape');
+    if (Array.isArray(payload?.messages) && payload.messages.length > 0) {
+      console.debug('[loadSession] first message role:', payload.messages[0]?.role, '| content preview:', String(payload.messages[0]?.content ?? '').slice(0, 60));
+    } else {
+      console.warn('[loadSession] messages array is empty or missing — session was likely not saved correctly. Check [saveSession] logs above for save errors.');
+    }
 
   } catch (err) {
     console.error('[loadSession] Fetch failed:', err);
