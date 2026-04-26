@@ -131,6 +131,10 @@ function boot(clerk) {
 
   updateUI(); setupTA(); buildDots();
   _initProjectSwitcher();
+  // Wire sidebar delegation immediately on the static container —
+  // #recent-chats-list exists in the HTML from page load, so this
+  // call is synchronous and guaranteed before any async fetch settles.
+  _wireSidebarDelegation();
   loadRecentChats();
 }
 
@@ -341,16 +345,19 @@ export async function loadRecentChats() {
 }
 
 // ── SIDEBAR EVENT DELEGATION ─────────────────────────────────
-// One listener on the container — handles both row-click (resume)
-// and delete-button click (delete) without inline onclick handlers,
-// so we can also stopPropagation cleanly.
-let _sidebarDelegationWired = false;
+// One listener on the static #recent-chats-list container — handles
+// both row-click (resume) and delete-button click (delete) without
+// per-item listeners, so dynamically injected items are covered.
+//
+// Wired state is stored as a dataset attribute on the element itself
+// (not a module-level flag) so the check survives any future scenario
+// where the element reference is re-queried after a partial failure.
 function _wireSidebarDelegation() {
-  if (_sidebarDelegationWired) return;
   const list = document.getElementById('recent-chats-list');
-  if (!list) return;
+  if (!list || list.dataset.delegationWired) return;
 
   list.addEventListener('click', (e) => {
+    // Delete button — stop propagation so the row-click branch never fires.
     const delBtn = e.target.closest('.sb-recent-del');
     if (delBtn) {
       e.stopPropagation();
@@ -358,14 +365,21 @@ function _wireSidebarDelegation() {
       if (sid) deleteSession(sid);
       return;
     }
+
+    // Row click — load the session.
     const row = e.target.closest('.sb-recent');
-    if (row) {
-      const sid = row.dataset.sessionId;
-      if (sid) resumeChat(sid);
+    if (!row) return;
+
+    const sid = row.dataset.sessionId;
+    if (!sid) {
+      console.error('[sidebar] Click handler: sessionId missing from dataset. Check that loadRecentChats() sets data-session-id on each .sb-recent row.');
+      return;
     }
+
+    resumeChat(sid);
   });
 
-  _sidebarDelegationWired = true;
+  list.dataset.delegationWired = 'true';
 }
 
 // ── DELETE SESSION ───────────────────────────────────────────
@@ -417,52 +431,64 @@ async function deleteSession(sessionId) {
  *   loading → (empty)      → empty state
  *   loading → (messages)   → cleared container, bubbles rendered, scrolled
  *
- * Container is cleared once, immediately before the loop — never after.
- * User content goes through textContent (XSS-safe). AI content goes
- * through fmtTxt (the project's markdown renderer; marked is not a dep).
+ * Container is cleared ONCE, immediately before the render loop —
+ * never after. This prevents a race where the loading indicator
+ * momentarily re-appears over rendered content.
+ *
+ * User content: textContent only (XSS-safe — never innerHTML).
+ * AI content:   fmtTxt() — the project's markdown renderer (not marked).
+ * Structured payloads (calendar / scorecard / campaigns): compact stub.
  */
 export async function resumeChat(sessionId) {
+  // 1. Verify container
   const container = document.getElementById('msgs');
   if (!container) {
-    console.error('[loadSession] Chat container #msgs not found.');
+    console.error('[loadSession] Chat container #msgs not found. Check HTML ID.');
     return;
   }
   if (!sessionId) {
-    console.error('[loadSession] sessionId missing.');
+    console.error('[loadSession] sessionId missing — cannot load session.');
     return;
   }
 
-  // 1. Loading state
+  // 2. Show loading state — replaces empty-state placeholder immediately.
   container.innerHTML = `
     <div class="loading-indicator" style="padding:32px 16px;text-align:center;color:var(--ink-3);font-size:13px;">
       <span style="display:inline-block;animation:lSpin 1s linear infinite;">✨</span>
       <span style="margin-left:8px;">Loading conversation…</span>
     </div>`;
 
-  // 2. Fetch
+  // 3. Fetch from backend (authenticated).
   let payload;
   try {
     const headers = await getAuthHeaders();
     const res = await fetch(`/api/history/${encodeURIComponent(sessionId)}`, { headers });
+
     if (!res.ok) {
       console.error('[loadSession] API returned', res.status, 'for session', sessionId);
       container.innerHTML = `
         <div class="error-state" style="padding:32px 16px;text-align:center;color:var(--coral);font-size:13px;">
-          Could not load this session${res.status === 404 ? ' — it may have been deleted.' : '.'}
+          Could not load this session${res.status === 404 ? ' — it may have been deleted.' : ` (${res.status}).`}
         </div>`;
       return;
     }
+
     payload = await res.json();
+
+    // Debug: confirm the response shape matches what the render loop expects.
+    console.debug('[loadSession] API response keys:', Object.keys(payload));
+    console.debug('[loadSession] messages count:', Array.isArray(payload?.messages) ? payload.messages.length : 'not an array');
+
   } catch (err) {
-    console.error('[loadSession] Unexpected error:', err);
+    console.error('[loadSession] Fetch failed:', err);
     container.innerHTML = `
       <div class="error-state" style="padding:32px 16px;text-align:center;color:var(--coral);font-size:13px;">
-        Failed to load session. Check your connection and try again.
+        Network error loading conversation. Check your connection and try again.
       </div>`;
     return;
   }
 
-  // 3. Validate
+  // 4. Validate messages array.
   const messages = Array.isArray(payload?.messages) ? payload.messages : [];
   if (messages.length === 0) {
     container.innerHTML = `
@@ -473,28 +499,38 @@ export async function resumeChat(sessionId) {
           This conversation is empty — send a message to continue.
         </div>
       </div>`;
-    // Still update session state so the next message lands on the right row.
-    S.sid = sessionId;
+    // Still restore session state so the next message lands on the right row.
+    S.sid     = sessionId;
     S.history = [];
+    S.msgs    = 0;
     try { localStorage.setItem('mc_session', sessionId); } catch {}
     _highlightActiveChat(sessionId);
     updateUI();
     return;
   }
 
-  // 4. Clear and render — clear happens ONCE, just before the loop, so a
-  //    race with the loading indicator can never blank rendered bubbles.
+  // 5. Clear container ONCE — immediately before the render loop.
+  //    This is the only place container.innerHTML is cleared; doing it here
+  //    means a slow network can never leave a blank screen: the loading
+  //    indicator is visible until this exact moment.
   container.innerHTML = '';
 
-  messages.forEach(m => {
+  messages.forEach((m, index) => {
     const role    = m.role === 'assistant' ? 'assistant' : 'user';
+    const isUser  = role === 'user';
     const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
     const meta    = m.meta || (m.mode || m.service ? { mode: m.mode, service: m.service } : {});
 
-    if (role === 'assistant') {
-      // Detect structured payloads (modes 3/4/5) — historical replay shows a
-      // compact stub instead of dumping raw JSON. The LIVE Mode 4 → Modal
-      // Dashboard flow is unaffected: it runs through renderResp() in send().
+    // Guard against unexpected roles (e.g., 'system' injected by older code).
+    if (m.role && m.role !== 'user' && m.role !== 'assistant') {
+      console.warn('[loadSession] Unknown role at index', index, ':', m.role, '— rendering as assistant bubble.');
+    }
+
+    if (!isUser) {
+      // AI bubble — detect structured JSON payloads (modes 3/4/5).
+      // Historical replay shows a compact stub instead of dumping raw JSON.
+      // The LIVE Mode 4 → Modal Dashboard flow is unaffected: it runs
+      // through renderResp() in the send() path, not here.
       const json = tryJSON(content);
       if (json && (json.calendar || json.scorecard || json.campaigns)) {
         _renderRestoredStructuredStub(container, json, meta);
@@ -502,17 +538,14 @@ export async function resumeChat(sessionId) {
         _renderRestoredBubble(container, 'system', content, meta);
       }
     } else {
-      // User bubble — content is set via textContent inside _renderRestoredBubble's
-      // user path? No — fmtTxt also escapes. _renderRestoredBubble routes user
-      // content through fmtTxt which prefixes a full HTML escape, so this is
-      // XSS-safe. The dedicated user bubble path below makes the safety
-      // contract explicit and bypasses markdown rendering for user input.
+      // User bubble — textContent path only. Never innerHTML. (XSS-safe.)
       _renderRestoredUserBubble(container, content);
     }
   });
 
-  // 5. Sync in-memory state for continued conversation
+  // 6. Sync in-memory state so the next message send continues this session.
   S.sid     = sessionId;
+  S.msgs    = messages.length;   // keep counter consistent with rendered bubbles
   S.history = messages.map(m => ({
     role:    m.role === 'assistant' ? 'assistant' : 'user',
     content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? ''),
@@ -521,19 +554,28 @@ export async function resumeChat(sessionId) {
   }));
   try { localStorage.setItem('mc_session', sessionId); } catch {}
 
-  // Restore mode/forceMode from the latest AI bubble's meta so the next
-  // turn routes to the right mode handler.
+  // Restore mode/forceMode from the most recent AI bubble so the next
+  // turn routes to the correct mode handler on the backend.
   const lastAi = [...S.history].reverse().find(m => m.role === 'assistant' && m.meta?.mode);
   if (lastAi?.meta?.mode) {
     S.mode      = lastAi.meta.mode;
     S.forceMode = lastAi.meta.mode;
   }
 
-  // 6. Scroll + sidebar active highlight
+  // 7. Scroll to bottom + mark active in sidebar.
   container.scrollTop = container.scrollHeight;
   _highlightActiveChat(sessionId);
 
+  // 8. Update sidebar session ID tag.
   updateUI();
+
+  // 9. Update page title if the session has a known title.
+  const activeItem = document.querySelector(`.sb-recent[data-session-id="${CSS.escape(sessionId)}"]`);
+  const sessionTitle = activeItem?.querySelector('.sb-item-label')?.textContent?.trim();
+  if (sessionTitle && sessionTitle !== 'New Chat') {
+    document.title = `${sessionTitle} — Lumi`;
+  }
+
   toast('Session resumed ✓', 'ok');
 }
 
