@@ -10,7 +10,8 @@
     "migrate": "node scripts/migrate.js",
     "build":   "node scripts/migrate.js",
     "setup":   "node scripts/setup-airtable.js",
-    "test":    "node scripts/test-system.js"
+    "test":    "node scripts/test-system.js",
+    "create-memory": "node scripts/create-memory.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk":      "^0.30.0",
