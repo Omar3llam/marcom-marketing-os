@@ -101,9 +101,20 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 .project-switcher__dropdown li{
   padding:8px 10px;border-radius:7px;font-size:0.82rem;
   color:var(--lumi-text);cursor:pointer;transition:background 0.1s;font-weight:500;
+  display:flex;align-items:center;gap:6px;
 }
 .project-switcher__dropdown li:hover{background:var(--lumi-chip-bg);}
 .project-switcher__dropdown li.is-active{color:var(--lumi-accent);font-weight:700;}
+/* Project name stretches to fill available space */
+.proj-dd-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* Delete (×) button — hidden until the row is hovered */
+.proj-dd-del{
+  background:none;border:none;color:transparent;cursor:pointer;
+  font-size:1rem;line-height:1;padding:2px 5px;border-radius:5px;
+  transition:color 0.15s,background 0.15s;flex-shrink:0;
+}
+.project-switcher__dropdown li:hover .proj-dd-del{color:#bbb;}
+.proj-dd-del:hover{color:#ef4444 !important;background:rgba(239,68,68,0.1);}
 
 /* Top */
 .sb-top{padding:10px 12px 10px;flex-shrink:0;}

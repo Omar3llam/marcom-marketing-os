@@ -165,10 +165,20 @@ function _initProjectSwitcher() {
     });
   }
 
-  // Dropdown item click
+  // Dropdown item click (handles both project-switch and delete button)
   const dropdown = document.getElementById('project-dropdown');
   if (dropdown) {
     dropdown.addEventListener('click', async (e) => {
+      // ── Delete button — stop propagation so the row-switch branch never fires.
+      const delBtn = e.target.closest('.proj-dd-del');
+      if (delBtn) {
+        e.stopPropagation();
+        const pid = delBtn.dataset.projectId;
+        if (pid) await _deleteProject(pid);
+        return;
+      }
+
+      // ── Project switch
       const li = e.target.closest('li[data-project-id]');
       if (!li) return;
       const pid = li.dataset.projectId;
@@ -204,17 +214,67 @@ function _initProjectSwitcher() {
   });
 }
 
+/**
+ * Delete a project (and all its chat sessions) via the backend.
+ * Guards: only shown when >1 project exists; backend also blocks last project.
+ */
+async function _deleteProject(projectId) {
+  const projectName = ProjectManager.getList().find(p => p.projectId === projectId)?.name ?? 'this project';
+  const confirmed = window.confirm(
+    `Delete "${projectName}"?\n\nAll chats in this project will be permanently removed. This cannot be undone.`
+  );
+  if (!confirmed) return;
+
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, {
+      method: 'DELETE',
+      headers,
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast(data.error ?? `Delete failed (${res.status})`, 'err');
+      return;
+    }
+
+    // If the deleted project was active, switch to the first remaining one.
+    if (projectId === ProjectManager.getProjectId()) {
+      const remaining = ProjectManager.getList().filter(p => p.projectId !== projectId);
+      if (remaining.length > 0) {
+        try { await ProjectManager.setActive(remaining[0].projectId); } catch {}
+      }
+    }
+
+    // Refresh project list + sidebar.
+    await ProjectManager.init();
+    _renderProjectSwitcher();
+    loadRecentChats();
+    toast('Project deleted', 'ok');
+
+  } catch (err) {
+    console.error('[_deleteProject]', err);
+    toast('Network error — project not deleted', 'err');
+  }
+}
+
 function _renderProjectSwitcher() {
   const nameEl = document.getElementById('project-active-name');
   if (nameEl) nameEl.textContent = ProjectManager.getName() || 'My Project';
 
   const list = document.getElementById('project-dropdown');
   if (!list) return;
-  const activePid = ProjectManager.getProjectId();
+  const activePid  = ProjectManager.getProjectId();
+  const multiProj  = ProjectManager.getList().length > 1;
+
   list.innerHTML = ProjectManager.getList().map(p => `
     <li role="option" data-project-id="${esc(p.projectId)}"
         class="${p.projectId === activePid ? 'is-active' : ''}">
-      ${esc(p.name)}
+      <span class="proj-dd-name">${esc(p.name)}</span>
+      ${multiProj ? `
+        <button class="proj-dd-del" data-project-id="${esc(p.projectId)}"
+                title="Delete project" aria-label="Delete ${esc(p.name)}">×</button>
+      ` : ''}
     </li>
   `).join('');
 }

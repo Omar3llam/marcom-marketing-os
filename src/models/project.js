@@ -180,8 +180,22 @@ export async function countUserProjects(userId) {
 }
 
 /**
+ * Hard-delete all chat sessions that belong to a project.
+ * Called after deleteProject() so the project's history is fully removed.
+ * userId is included in the WHERE clause as a second ownership guard.
+ */
+export async function deleteProjectSessions(projectId, userId) {
+  const sql = getDb();
+  await sql`
+    DELETE FROM marcom_sessions
+    WHERE project_id = ${projectId}
+      AND user_id    = ${userId}
+  `;
+}
+
+/**
+ * @deprecated — kept for reference; use deleteProjectSessions() instead.
  * Nullify project_id on sessions linked to a deleted project.
- * Called after deleteProject() so orphaned sessions remain accessible.
  */
 export async function disassociateProjectSessions(projectId) {
   const sql = getDb();

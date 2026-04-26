@@ -18,7 +18,7 @@ import {
   updateProject,
   deleteProject,
   countUserProjects,
-  disassociateProjectSessions,
+  deleteProjectSessions,
   migrateFromUserContext,
 } from '../models/project.js';
 
@@ -146,10 +146,10 @@ projectsRouter.delete('/:projectId', async (req, res) => {
     const deleted = await deleteProject(userId, projectId);
     if (!deleted) return res.status(404).json({ error: 'Not found or unauthorized' });
 
-    // Orphan sessions remain accessible — they just have no project link
-    await disassociateProjectSessions(projectId);
+    // Cascade-delete all chat sessions that belonged to this project.
+    await deleteProjectSessions(projectId, userId);
 
-    logger.info({ userId, projectId }, 'Project deleted');
+    logger.info({ userId, projectId }, 'Project deleted (sessions cascade-deleted)');
     return res.json({ ok: true });
   } catch (err) {
     logger.error({ err, userId, projectId }, 'projects.delete failed');
