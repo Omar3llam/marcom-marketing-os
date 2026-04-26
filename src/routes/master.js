@@ -17,6 +17,7 @@ import { runMode2 } from '../modes/mode2-service.js';
 import { runMode3 } from '../modes/mode3-social.js';
 import { runMode4 } from '../modes/mode4-content.js';
 import { runMode5 } from '../modes/mode5-campaign.js';
+import { fetchMemories, writeMemory, extractMemoryFact } from '../utils/memoryStore.js';
 
 export const masterRouter = Router();
 
@@ -105,6 +106,16 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
       }
     }
 
+    // ── MEMORY STORE: recall relevant facts for this user ──────
+    // Fires before mode routing so all mode handlers can benefit.
+    // Gracefully no-ops when ANTHROPIC_MEMORY_STORE_ID is not set.
+    const memoryBlock = await fetchMemories(userId, message);
+    if (memoryBlock && !session.context_summary?.includes('LUMI MEMORY')) {
+      // Prepend memory facts to the session context so mode prompts see them
+      session.context_summary = memoryBlock
+        + (session.context_summary ? `\n\n${session.context_summary}` : '');
+    }
+
     let modeResult;
     switch (currentMode) {
       case 1: modeResult = await runMode1(session, message, conversationHistory); break;
@@ -141,6 +152,16 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
       status: modeResult.contextLocked ? 'locked' : 'active',
       last_updated: new Date().toISOString(),
     });
+
+    // ── MEMORY STORE: persist new facts (fire-and-forget) ──────
+    // Runs after updateSession so it never delays the HTTP response.
+    // writeMemory() catches and logs its own errors — the .catch here
+    // is a final safety net for unexpected promise rejections.
+    const factToStore = extractMemoryFact(modeResult.aiResponse, message);
+    if (factToStore) {
+      writeMemory(userId, factToStore, project_id || null)
+        .catch(err => logger.error({ err: err.message }, '[master] writeMemory fire-and-forget rejected'));
+    }
 
     if (modeResult.onboardingComplete) {
       sendNotification({
