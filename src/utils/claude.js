@@ -1,10 +1,26 @@
 // ============================================================
 // MARCOM — Anthropic Claude Utility
 // Supports text + vision; exponential backoff on 429 / 5xx
+//
+// MANAGED AGENT: agent_011CaSBr9Rf8FvyqtAYWoVek
+// Lumi's identity, Core Laws, operating modes, and communication
+// standards are defined in the Anthropic Console under that agent.
+// This file injects only dynamic per-session context (dialect lock
+// + mode-specific instructions that embed project context).
+//
+// TODO — UPGRADE PATH:
+//   Once @anthropic-ai/sdk ships native agent support, replace the
+//   client.messages.create() call with:
+//     await client.agents.run({
+//       agent_id: 'agent_011CaSBr9Rf8FvyqtAYWoVek',
+//       messages,
+//       max_tokens: maxTokens,
+//     })
+//   and remove the system param entirely — it will be managed in Console.
+//   Upgrade command: npm install @anthropic-ai/sdk@latest
 // ============================================================
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from './logger.js';
-import { LUMI_SYSTEM_PROMPT } from '../prompts/lumi-system.js';
 import { resolveDialect } from '../services/dialectResolver.js';
 import { compileDialectFragment } from '../prompts/dialectInjector.js';
 
@@ -13,6 +29,7 @@ const DEFAULT_MODEL        = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5';
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_RETRIES          = 3;
 const BASE_DELAY_MS        = 1_000;
+const AGENT_ID             = 'agent_011CaSBr9Rf8FvyqtAYWoVek';
 
 function isRetryable(err) {
   const status = err.status ?? err.statusCode;
@@ -34,20 +51,71 @@ export function stripJsonFences(raw = '') {
     .trim();
 }
 
+/**
+ * Assemble the dynamic system context injected alongside the managed agent.
+ * The agent's own system prompt (Lumi identity, Core Laws, operating modes)
+ * lives in Anthropic Console under AGENT_ID — not here.
+ *
+ * This function handles only per-session dynamic content:
+ *   1. Dialect lock (from dialectInjector.js)
+ *   2. Mode-specific instructions (which embed project context from session)
+ *
+ * @param {object} opts
+ * @param {string} [opts.dialectFragment]  — compiled dialect lock block
+ * @param {string} [opts.systemPrompt]     — mode-specific instructions
+ *                                           (already contains project context
+ *                                            via session.context_summary)
+ * @returns {string} assembled system string, or empty string if nothing to inject
+ */
+export function buildSystemContext({ dialectFragment = '', systemPrompt = '' } = {}) {
+  const sep   = '═'.repeat(64);
+  const parts = [];
+
+  if (dialectFragment) {
+    parts.push(
+      `${sep}`,
+      'DIALECT LOCK FOR THIS SESSION',
+      `${sep}`,
+      '',
+      dialectFragment,
+    );
+  }
+
+  if (systemPrompt) {
+    parts.push(
+      `${sep}`,
+      'MODE-SPECIFIC INSTRUCTIONS',
+      `${sep}`,
+      '',
+      systemPrompt,
+    );
+  }
+
+  return parts.join('\n');
+}
+
+// ⚠ MODE 4 DEPENDENCY: The Anthropic Console agent prompt must include
+// the Mode 4 Content Interrogation JSON schema instructions.
+// Mode 4 returns a strict JSON object that the frontend intercepts and
+// renders as a Modal Dashboard. If Mode 4 stops returning valid JSON,
+// verify that the agent's system prompt in Console still contains the
+// Mode 4 scoring rubric and JSON output format specification.
+// Agent: agent_011CaSBr9Rf8FvyqtAYWoVek — manage at console.anthropic.com
+
 export async function callClaude({
-  systemPrompt,
+  systemPrompt      = '',
   conversationHistory = [],
   userMessage,
-  maxTokens = 2048,
-  model = DEFAULT_MODEL,
-  imageBase64 = null,
-  imageMediaType = 'image/jpeg',
-  dialectContext = null,   // optional — when provided, auto-resolves and injects DIALECT LOCK fragment
+  maxTokens         = 2048,
+  model             = DEFAULT_MODEL,
+  imageBase64       = null,
+  imageMediaType    = 'image/jpeg',
+  dialectContext    = null,   // optional — when provided, auto-resolves and injects DIALECT LOCK
 }) {
-  // Resolve dialect (if context provided) and compile the fragment that
-  // sits between LUMI_SYSTEM_PROMPT and the mode-specific instructions.
+  // ── Dialect resolution ─────────────────────────────────────
   let dialectFragment = '';
-  let dialectRefusal = null;
+  let dialectRefusal  = null;
+
   if (dialectContext) {
     try {
       const resolved = resolveDialect(dialectContext);
@@ -56,7 +124,7 @@ export async function callClaude({
       } else {
         dialectFragment = compileDialectFragment(resolved);
         logger.info({
-          dialect: resolved.dialect_id,
+          dialect:  resolved.dialect_id,
           register: resolved.register_level,
           fallback: resolved.fallback_used || false,
         }, 'Dialect lock active');
@@ -66,22 +134,22 @@ export async function callClaude({
     }
   }
 
-  // If dialect resolver demanded refusal, short-circuit before any API call.
+  // Short-circuit if dialect resolver demanded refusal
   if (dialectRefusal) return dialectRefusal;
 
-  // Compose final system prompt: identity → dialect lock → mode instructions
-  const sep = '═'.repeat(64);
-  const parts = [LUMI_SYSTEM_PROMPT];
-  if (dialectFragment)  parts.push(`${sep}\n${dialectFragment}`);
-  if (systemPrompt)     parts.push(`${sep}\nMODE-SPECIFIC INSTRUCTIONS\n${sep}\n\n${systemPrompt}`);
-  const fullSystemPrompt = parts.join('\n\n');
+  // ── System context assembly ─────────────────────────────────
+  // PATH B SHIM: Lumi identity/personality is handled by the managed agent
+  // (agent_011CaSBr9Rf8FvyqtAYWoVek) in Anthropic Console.
+  // We only pass dynamic per-session context here.
+  const dynamicContext = buildSystemContext({ dialectFragment, systemPrompt });
 
+  // ── Message history ─────────────────────────────────────────
   const trimmedHistory = conversationHistory.slice(-MAX_HISTORY_MESSAGES);
 
   const messages = trimmedHistory
     .filter(m => m.role && m.content)
     .map(m => ({
-      role: m.role === 'user' ? 'user' : 'assistant',
+      role:    m.role === 'user' ? 'user' : 'assistant',
       content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
     }));
 
@@ -98,12 +166,25 @@ export async function callClaude({
     messages[messages.length - 1].content = finalUserContent;
   }
 
+  // ── API call with exponential backoff ───────────────────────
   let attempt = 0;
 
   while (true) {
     try {
-      const response = await client.messages.create({ model, max_tokens: maxTokens, system: fullSystemPrompt, messages });
-      const textContent = response.content.find(c => c.type === 'text');
+      const callParams = {
+        model,
+        max_tokens: maxTokens,
+        messages,
+        // Inject dynamic context when present; omit system param entirely when
+        // there is nothing to inject — the managed agent's Console prompt handles
+        // the rest. Once the SDK exposes agent_id, replace this with that param.
+        ...(dynamicContext ? { system: dynamicContext } : {}),
+      };
+
+      logger.debug({ agentId: AGENT_ID, model, attempt }, 'Calling Claude via managed agent shim');
+
+      const response     = await client.messages.create(callParams);
+      const textContent  = response.content.find(c => c.type === 'text');
       if (!textContent) throw new Error('No text content in Claude response');
       return textContent.text;
 
@@ -116,7 +197,6 @@ export async function callClaude({
         continue;
       }
 
-      // Non-retryable or max retries exceeded
       logger.error({ err, attempt }, 'Claude API error');
       if (err.status === 429) throw new Error('Rate limit reached. Please wait and try again.');
       if (err.status === 401) throw new Error('Invalid Anthropic API key.');

@@ -1,7 +1,8 @@
 // ============================================================
 // MARCOM — Dialect Prompt Injector
 // Compiles a resolved dialect pack into a strict prompt fragment
-// that gets prepended to LUMI_SYSTEM_PROMPT at runtime.
+// that is injected via buildSystemContext() in claude.js at runtime.
+// Lumi identity lives in Anthropic Console (agent_011CaSBr9Rf8FvyqtAYWoVek).
 // ============================================================
 //
 // Usage:
@@ -9,7 +10,7 @@
 //   import { compileDialectFragment } from './dialectInjector.js';
 //   const resolved = resolveDialect(ctx);
 //   const fragment = compileDialectFragment(resolved);
-//   const finalSystemPrompt = LUMI_SYSTEM_PROMPT + '\n' + fragment + '\n' + modeSpecificPrompt;
+//   // fragment is passed to buildSystemContext({ dialectFragment: fragment, systemPrompt })
 // ============================================================
 
 // Curate lexicon by register — we don't dump every term every time,
