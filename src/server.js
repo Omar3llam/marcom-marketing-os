@@ -21,12 +21,14 @@ import { masterRouter }     from './routes/master.js';
 import { exportRouter }     from './routes/export.js';
 import { historyRouter }    from './routes/history.js';
 import { contextRouter }    from './routes/context.js';
-import { projectsRouter }   from './routes/projects.js';
-import { logger }           from './utils/logger.js';
+import { projectsRouter }     from './routes/projects.js';
+import { credentialsRouter }  from './routes/credentials.js';
+import { logger }             from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
 import { ensureChatSessionSchema } from './models/chatSession.js';
 import { ensureUserContextSchema } from './models/userContext.js';
 import { ensureProjectSchema }     from './models/project.js';
+import { ensureCredentialSchema }  from './models/credential.js';
 import { config }           from './config.js';
 
 const app = express();
@@ -144,6 +146,13 @@ app.use('/api/projects',
   projectsRouter
 );
 
+// Credential vault — encrypted OAuth tokens for ad platforms
+app.use('/api/credentials',
+  requireAuth,
+  apiLimiter,
+  credentialsRouter
+);
+
 // Chat endpoint also accessible from browser with Clerk token
 app.use('/api',
   requireAuth,
@@ -167,6 +176,9 @@ const server = app.listen(config.port, () => {
   );
   ensureProjectSchema().catch(err =>
     logger.warn({ err: err.message }, 'ensureProjectSchema failed at startup')
+  );
+  ensureCredentialSchema().catch(err =>
+    logger.warn({ err: err.message }, 'ensureCredentialSchema failed at startup')
   );
 });
 

@@ -23,6 +23,14 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+// Optional vars — warn but don't exit
+const OPTIONAL_WARN = ['CREDENTIAL_ENCRYPTION_KEY'];
+OPTIONAL_WARN.forEach(k => {
+  if (!process.env[k]) {
+    process.stderr.write(`[MARCOM] WARN: ${k} is not set — credential encryption will be unavailable.\n`);
+  }
+});
+
 export const config = {
   anthropicApiKey:      process.env.ANTHROPIC_API_KEY,
   anthropicModel:       process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
