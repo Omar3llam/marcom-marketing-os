@@ -829,6 +829,64 @@ export function qs(m) {
   send();
 }
 
+// ── MARKETING TOOLS SUITE TRIGGER ────────────────────────────
+// Displays a clean label in the chat bubble but sends a richer
+// system-directive to the AI so the response is structured and
+// routes the user to the right framework automatically.
+export async function openMarketingTools() {
+  if (S.loading) return;
+  const displayLabel  = 'Open Marketing Tools Suite';
+  const aiDirective   = "SYSTEM COMMAND: The user clicked the 'Marketing Tools' suite. List the core categories of your 18 specialist marketing frameworks (e.g., GTM strategy, Lead Gen, Email Sequences, etc.) in a highly structured, readable format. Ask the user to state their goal so you can auto-route them to the correct framework.";
+
+  hideEmpty();
+  appendMsg('user', displayLabel);
+  S.msgs++;
+  showLumi(); setLoading(true);
+
+  try {
+    const data = await sendChat({
+      message:    aiDirective,
+      sessionId:  S.sid,
+      mode:       S.forceMode,
+      backendUrl: S.backend,
+    });
+
+    if (data.session_id)              S.sid     = data.session_id;
+    if (data.current_mode)            S.mode    = data.current_mode;
+    if (data.current_section != null) S.section = data.current_section;
+    if (data.current_service != null) S.service = data.current_service;
+    if (data.context_locked  != null) S.locked  = data.context_locked;
+
+    S.forceMode = null;
+    hideLumi();
+
+    // History: store the display label (not the directive) so the sidebar
+    // title and session resume show a human-readable turn.
+    pushHistory('user', displayLabel);
+
+    if (data.message) {
+      renderResp(data);
+      pushHistory('assistant', data.message, {
+        mode:    data.current_mode,
+        service: data.current_service,
+      });
+    } else if (data.error) {
+      appendMsg('system', `⚠ ${data.error}`);
+      toast(data.error);
+    }
+
+    if (S.sid) {
+      try { localStorage.setItem('mc_session', S.sid); } catch {}
+      saveSession().then(() => loadRecentChats());
+    }
+    updateUI();
+  } catch (err) {
+    hideLumi();
+    appendMsg('system', `⚠ ${err.message}`);
+    toast(err.message);
+  } finally { setLoading(false); }
+}
+
 // ── CRM SYNC ──────────────────────────────────────────────────
 export async function syncCRM(type, payload) {
   toast('🚀 Sending to CRM…', 'inf');
@@ -956,4 +1014,5 @@ window._app = {
   openSidebar, closeSidebar,
   triggerAttach, resetInputArea,
   ProjectManager,
+  openMarketingTools,
 };
