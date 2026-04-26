@@ -19,18 +19,59 @@ const LUMI_THOUGHTS = [
 ];
 let thinkTimer = null, thinkIdx = 0;
 
+// ── PROJECT MANAGER ───────────────────────────────────────────
+// Single source of truth for the active project on the frontend.
+// Uses /api/projects/* endpoints and persists the active project ID
+// in localStorage so it survives page refreshes.
+const ProjectManager = (() => {
+  const STORAGE_KEY = 'lumi:activeProjectId';
+  let _projects     = [];    // [{ projectId, name, updatedAt }]
+  let _active       = null;  // { projectId, name, context, createdAt }
+
+  async function init() {
+    const headers = await getAuthHeaders();
+    const res     = await fetch('/api/projects/list', { headers });
+    if (!res.ok) throw new Error(`projects/list returned ${res.status}`);
+    _projects = await res.json();
+
+    if (!Array.isArray(_projects) || _projects.length === 0) {
+      window.location.replace('/onboarding.html');
+      return;
+    }
+
+    const storedId = localStorage.getItem(STORAGE_KEY);
+    const match    = _projects.find(p => p.projectId === storedId);
+    await _setActive((match ?? _projects[0]).projectId);
+  }
+
+  async function _setActive(projectId) {
+    const headers = await getAuthHeaders();
+    const res     = await fetch(`/api/projects/${encodeURIComponent(projectId)}`, { headers });
+    if (!res.ok) throw new Error(`projects/${projectId} returned ${res.status}`);
+    _active                  = await res.json();
+    window.__lumiActiveProject = _active;
+    localStorage.setItem(STORAGE_KEY, projectId);
+    document.dispatchEvent(new CustomEvent('lumi:projectChanged', { detail: _active }));
+  }
+
+  async function setActive(projectId) { await _setActive(projectId); }
+
+  function getContext()   { return _active?.context   ?? ''; }
+  function getProjectId() { return _active?.projectId ?? null; }
+  function getList()      { return [..._projects]; }
+  function getName()      { return _active?.name ?? ''; }
+
+  return { init, setActive, getContext, getProjectId, getList, getName };
+})();
+
 // ── CLERK INIT ────────────────────────────────────────────────
-// Using @clerk/clerk-js@4 CDN which bundles UI components.
-// window.Clerk is set as an instance by the data-clerk-publishable-key auto-init.
 window.addEventListener('load', async () => {
   const authContainer = document.getElementById('auth-container');
   const signInEl      = document.getElementById('clerk-sign-in');
 
-  console.log('[Clerk Init] window.Clerk:', typeof window.Clerk, window.Clerk);
-
   if (!window.Clerk) {
-    console.error('[Clerk Init Error]: Clerk script failed to load completely from the CDN.');
-    authContainer.style.display = 'flex';
+    console.error('[Clerk] Script not loaded from CDN');
+    if (authContainer) authContainer.style.display = 'flex';
     if (signInEl) signInEl.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;">Auth service unavailable. Please refresh.</p>';
     return;
   }
@@ -41,59 +82,32 @@ window.addEventListener('load', async () => {
         variables: { colorPrimary: '#FFD300', colorBackground: '#fff', borderRadius: '20px', fontFamily: 'Poppins' },
       },
     });
-    console.log('[Clerk Init] load() succeeded. user:', window.Clerk.user);
   } catch (err) {
-    console.error('[Clerk Init Error]:', err);
-    authContainer.style.display = 'flex';
+    console.error('[Clerk] load() failed:', err);
+    if (authContainer) authContainer.style.display = 'flex';
     if (signInEl) signInEl.innerHTML = '<p style="color:#e74c3c;font-size:13px;text-align:center;">Auth service unavailable. Please refresh.</p>';
     return;
   }
 
   const clerk = window.Clerk;
 
-  // ── Routing order is mandatory: AUTH first, CONTEXT second.
   // Step 1: Auth guard
   if (!clerk.user) {
-    console.log('[Clerk] No active session — redirecting to /');
     window.location.replace('/');
     return;
   }
 
-  // Step 2: Context guard — wizard must run before chat is reachable.
-  let lumiContext  = localStorage.getItem('lumi_context');
-  const ctxLocked  = localStorage.getItem('context_locked');
-
-  if (!ctxLocked || !lumiContext) {
-    // Backend recovery before forcing the user back through the wizard —
-    // covers the "user cleared localStorage on mobile" case.
-    try {
-      const token = await window.Clerk.session.getToken();
-      const res = await fetch('/api/context', {
-        headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
-      });
-      if (res.ok) {
-        const { context } = await res.json();
-        if (context && context.trim()) {
-          localStorage.setItem('lumi_context',   context);
-          localStorage.setItem('context_locked', 'true');
-          lumiContext = context;
-        } else {
-          window.location.replace('/onboarding.html');
-          return;
-        }
-      } else {
-        window.location.replace('/onboarding.html');
-        return;
-      }
-    } catch (err) {
-      console.warn('[Lumi] context recovery failed — sending to wizard:', err?.message);
-      window.location.replace('/onboarding.html');
-      return;
-    }
+  // Step 2: Project guard (replaces old context_locked / lumi_context check)
+  try {
+    await ProjectManager.init();
+    // init() redirects to onboarding if no projects — execution stops there
+  } catch (err) {
+    console.error('[ProjectManager] init failed:', err?.message);
+    window.location.replace('/onboarding.html');
+    return;
   }
 
-  // Step 3: Init chat with context available
-  window.__lumiContext = lumiContext;
+  // Step 3: Boot chat
   boot(clerk);
 });
 
@@ -108,17 +122,95 @@ function boot(clerk) {
     });
   }
 
-  const b = localStorage.getItem('mc_backend');
+  const b   = localStorage.getItem('mc_backend');
   const sid = localStorage.getItem('mc_session');
   if (b)   { S.backend = b; }
   if (sid) { S.sid = sid; }
 
-  // The user is authenticated AND has locked context — pin the status
-  // pill to "Context: Locked" since wizard onboarding satisfies Core Law 1.
-  S.locked = true;
+  S.locked = true;  // context always available via project
 
   updateUI(); setupTA(); buildDots();
+  _initProjectSwitcher();
   loadRecentChats();
+}
+
+// ── PROJECT SWITCHER UI ───────────────────────────────────────
+function _initProjectSwitcher() {
+  // Paint the active project name on boot
+  _renderProjectSwitcher();
+
+  // React to project changes (switching or creation)
+  document.addEventListener('lumi:projectChanged', (e) => {
+    _renderProjectSwitcher();
+    // Clear active session since context changed
+    S.sid = null; S.history = []; S.forceMode = null;
+    try { localStorage.removeItem('mc_session'); } catch {}
+    loadRecentChats();
+  });
+
+  // Toggle dropdown
+  const trigger = document.getElementById('project-current');
+  if (trigger) {
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const dropdown = document.getElementById('project-dropdown');
+      if (!dropdown) return;
+      const isOpen = !dropdown.hidden;
+      dropdown.hidden = isOpen;
+      trigger.setAttribute('aria-expanded', String(!isOpen));
+    });
+  }
+
+  // Dropdown item click
+  const dropdown = document.getElementById('project-dropdown');
+  if (dropdown) {
+    dropdown.addEventListener('click', async (e) => {
+      const li = e.target.closest('li[data-project-id]');
+      if (!li) return;
+      const pid = li.dataset.projectId;
+      if (pid === ProjectManager.getProjectId()) {
+        dropdown.hidden = true;
+        document.getElementById('project-current')?.setAttribute('aria-expanded', 'false');
+        return;
+      }
+      try {
+        await ProjectManager.setActive(pid);
+      } catch (err) {
+        toast('Could not switch project — please refresh.', 'err');
+      }
+      dropdown.hidden = true;
+      document.getElementById('project-current')?.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  // Create new project button
+  document.getElementById('create-project-btn')?.addEventListener('click', () => {
+    window.location.href = '/onboarding.html';
+  });
+
+  // Close dropdown on outside click
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#project-switcher')) {
+      const dd = document.getElementById('project-dropdown');
+      if (dd) dd.hidden = true;
+      document.getElementById('project-current')?.setAttribute('aria-expanded', 'false');
+    }
+  });
+}
+
+function _renderProjectSwitcher() {
+  const nameEl = document.getElementById('project-active-name');
+  if (nameEl) nameEl.textContent = ProjectManager.getName() || 'My Project';
+
+  const list = document.getElementById('project-dropdown');
+  if (!list) return;
+  const activePid = ProjectManager.getProjectId();
+  list.innerHTML = ProjectManager.getList().map(p => `
+    <li role="option" data-project-id="${esc(p.projectId)}"
+        class="${p.projectId === activePid ? 'is-active' : ''}">
+      ${esc(p.name)}
+    </li>
+  `).join('');
 }
 
 // ── CHAT HISTORY (backend, user-scoped) ──────────────────────
@@ -181,6 +273,7 @@ async function saveSession() {
         sessionId: S.sid,
         title:     deriveTitle(),
         messages:  S.history,
+        projectId: ProjectManager.getProjectId(),
       }),
     });
   } catch (err) {
@@ -210,8 +303,12 @@ export async function loadRecentChats() {
   if (!list) return;
 
   try {
-    const headers = await getAuthHeaders();
-    const res = await fetch('/api/history/list', { headers });
+    const headers   = await getAuthHeaders();
+    const projectId = ProjectManager.getProjectId();
+    const url       = projectId
+      ? `/api/history/list?projectId=${encodeURIComponent(projectId)}`
+      : '/api/history/list';
+    const res = await fetch(url, { headers });
     if (!res.ok) {
       list.innerHTML = '<div style="padding:6px 12px;font-size:11px;color:var(--ink-3);font-style:italic;">Could not load history.</div>';
       return;
@@ -541,7 +638,7 @@ function _renderRestoredStructuredStub(msgsEl, json, meta = {}) {
 const inputState = { files: [] };
 
 function setupTA() {
-  const ta  = document.getElementById('msgInput');
+  const ta  = document.getElementById('chat-input');
   const box = document.getElementById('lumi-input-box');
 
   // Auto-resize
@@ -553,6 +650,14 @@ function setupTA() {
   ta.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   });
+
+  // Attachment button — wire here so no onclick="" in HTML (avoids timing issues)
+  document.getElementById('attachment-btn')?.addEventListener('click', () => {
+    document.getElementById('file-upload')?.click();
+  });
+
+  // Send button — wire here too (belt-and-suspenders; onclick still present as fallback)
+  document.getElementById('send-btn')?.addEventListener('click', () => send());
 
   // File picker
   const picker = document.getElementById('file-upload');
@@ -617,8 +722,8 @@ function getFileIcon(mime = '') {
 }
 
 function updateSendBtn() {
-  const ta  = document.getElementById('msgInput');
-  const btn = document.getElementById('sendBtn');
+  const ta  = document.getElementById('chat-input');
+  const btn = document.getElementById('send-btn');
   if (!btn || !ta) return;
   const hasText  = ta.value.trim().length > 0;
   const hasFiles = inputState.files.length > 0;
@@ -634,7 +739,7 @@ function showInputError(msg) {
 }
 
 export function resetInputArea() {
-  const ta = document.getElementById('msgInput');
+  const ta = document.getElementById('chat-input');
   if (ta) { ta.value = ''; ta.style.height = 'auto'; }
   inputState.files = [];
   const container = document.getElementById('file-preview-container');
@@ -648,7 +753,7 @@ function buildDots() { /* progress bar handled by updateUI */ }
 
 // ── SEND ──────────────────────────────────────────────────────
 export async function send() {
-  const ta = document.getElementById('msgInput');
+  const ta = document.getElementById('chat-input');
   const message = ta.value.trim();
   if (!message || S.loading) return;
 
@@ -716,7 +821,7 @@ export async function send() {
 }
 
 export function qs(m) {
-  const ta = document.getElementById('msgInput');
+  const ta = document.getElementById('chat-input');
   if (ta) { ta.value = m; ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; }
   updateSendBtn();
   send();
@@ -786,8 +891,8 @@ function hideLumi() {
 
 function setLoading(l) {
   S.loading = l;
-  const btn = document.getElementById('sendBtn');
-  const ta  = document.getElementById('msgInput');
+  const btn = document.getElementById('send-btn');
+  const ta  = document.getElementById('chat-input');
   if (ta) ta.disabled = l;
   if (btn) {
     if (l) {
@@ -848,4 +953,5 @@ window._app = {
   saveChatSession, loadRecentChats, resumeChat, deleteSession,
   openSidebar, closeSidebar,
   triggerAttach, resetInputArea,
+  ProjectManager,
 };

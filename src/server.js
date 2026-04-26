@@ -21,10 +21,12 @@ import { masterRouter }     from './routes/master.js';
 import { exportRouter }     from './routes/export.js';
 import { historyRouter }    from './routes/history.js';
 import { contextRouter }    from './routes/context.js';
+import { projectsRouter }   from './routes/projects.js';
 import { logger }           from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
 import { ensureChatSessionSchema } from './models/chatSession.js';
 import { ensureUserContextSchema } from './models/userContext.js';
+import { ensureProjectSchema }     from './models/project.js';
 import { config }           from './config.js';
 
 const app = express();
@@ -51,7 +53,7 @@ app.use(cors({
     }
     cb(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-webhook-signature', 'x-webhook-timestamp'],
 }));
 
@@ -128,10 +130,18 @@ app.use('/api/history',
 );
 
 // Onboarding-wizard context endpoints (user-scoped)
+// DEPRECATED: superseded by /api/projects. Kept for backward-compat + migration.
 app.use('/api/context',
   requireAuth,
   apiLimiter,
   contextRouter
+);
+
+// Project management endpoints (user-scoped)
+app.use('/api/projects',
+  requireAuth,
+  apiLimiter,
+  projectsRouter
 );
 
 // Chat endpoint also accessible from browser with Clerk token
@@ -154,6 +164,9 @@ const server = app.listen(config.port, () => {
   );
   ensureUserContextSchema().catch(err =>
     logger.warn({ err: err.message }, 'ensureUserContextSchema failed at startup')
+  );
+  ensureProjectSchema().catch(err =>
+    logger.warn({ err: err.message }, 'ensureProjectSchema failed at startup')
   );
 });
 

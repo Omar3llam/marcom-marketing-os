@@ -53,28 +53,20 @@ window.addEventListener('load', async () => {
     return;
   }
 
-  // Step 2: skip the wizard if context is already locked locally OR in the backend
-  if (localStorage.getItem('context_locked') === 'true' && localStorage.getItem('lumi_context')) {
-    window.location.replace('/app.html');
-    return;
-  }
-
-  // Backend recovery — user may have onboarded on another device
+  // Step 2: skip the wizard if user already has at least one project
   try {
     const headers = await getAuthHeaders();
-    const res = await fetch('/api/context', { headers });
+    const res = await fetch('/api/projects/list', { headers });
     if (res.ok) {
-      const { context } = await res.json();
-      if (context && context.trim()) {
-        localStorage.setItem('lumi_context', context);
-        localStorage.setItem('context_locked', 'true');
+      const projects = await res.json();
+      if (Array.isArray(projects) && projects.length > 0) {
         window.location.replace('/app.html');
         return;
       }
     }
   } catch (err) {
-    // Network blip — proceed with wizard locally
-    console.warn('[Onboarding] Context recovery skipped:', err?.message);
+    // Network blip — proceed with wizard so user can onboard
+    console.warn('[Onboarding] Projects check failed:', err?.message);
   }
 
   // Mount Clerk user button (top-right)
@@ -287,39 +279,53 @@ function compileContext() {
 
 async function handleFinish(btn) {
   if (!validateStep(3)) return;
-  // Also re-validate earlier steps in case the user used dev tools to skip ahead
+  // Re-validate earlier steps in case user used dev tools to skip
   if (!validateStep(1)) { goToStep(1); return; }
   if (!validateStep(2)) { goToStep(2); return; }
 
-  const compiled = compileContext();
+  const compiled  = compileContext();
+  const projectId = `proj_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const name      = state.companyName || 'My Project';
 
-  // Persist locally first — instant fallback even if the backend save flakes
-  try {
-    localStorage.setItem('lumi_context',   compiled);
-    localStorage.setItem('context_locked', 'true');
-  } catch (err) {
-    console.warn('[Onboarding] localStorage write failed:', err?.message);
-  }
-
-  // Lock the button so the user can't double-submit
+  // Lock the button to prevent double-submit
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite;">✨</span> Locking context…';
+    btn.innerHTML = '<span style="display:inline-block;animation:spin 1s linear infinite;">✨</span> Creating project…';
   }
 
-  // Backend save — fire-and-forget per spec; do NOT block the redirect.
-  // We still await once to surface any auth issue cleanly, then redirect.
   try {
     const headers = await getAuthHeaders();
-    fetch('/api/context/save', {
+    const res = await fetch('/api/projects/create', {
       method:  'POST',
       headers,
-      body:    JSON.stringify({ context: compiled }),
-    }).catch((err) => console.warn('[Onboarding] context save failed:', err?.message));
+      body:    JSON.stringify({ projectId, name, context: compiled }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    // Mark as active in localStorage so app.html loads straight into it
+    localStorage.setItem('lumi:activeProjectId', projectId);
+
+    // Clean up legacy keys (forward-compat)
+    localStorage.removeItem('lumi_context');
+    localStorage.removeItem('context_locked');
+
   } catch (err) {
-    console.warn('[Onboarding] context save token fetch failed:', err?.message);
+    console.error('[Onboarding] project create failed:', err?.message);
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = 'Launch Lumi →';
+    }
+    // Surface error to user
+    const errEl = document.createElement('p');
+    errEl.style.cssText = 'color:#e74c3c;font-size:13px;margin-top:8px;text-align:center;';
+    errEl.textContent = 'Failed to create project — please try again.';
+    btn?.parentElement?.appendChild(errEl);
+    return;
   }
 
-  // Redirect — give the fire-and-forget save a tiny moment to dispatch
-  setTimeout(() => { window.location.replace('/app.html'); }, 120);
+  window.location.replace('/app.html');
 }

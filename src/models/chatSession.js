@@ -26,9 +26,14 @@ export async function ensureChatSessionSchema() {
   const sql = getDb();
   try {
     await sql`ALTER TABLE marcom_sessions ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT ''`;
+    await sql`ALTER TABLE marcom_sessions ADD COLUMN IF NOT EXISTS project_id TEXT DEFAULT NULL`;
     await sql`
       CREATE INDEX IF NOT EXISTS idx_sessions_user_lastupdated
         ON marcom_sessions (user_id, last_updated DESC)
+    `;
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_sessions_project_id
+        ON marcom_sessions (project_id)
     `;
     logger.info('[chatSession] schema ensured');
   } catch (err) {
@@ -67,23 +72,32 @@ function trimMessages(messages) {
  * List all chat sessions for a user — metadata only (no messages).
  * Sorted by last_updated DESC.
  */
-export async function listSessions(userId) {
+/**
+ * List chat sessions for a user.
+ * @param {string}      userId
+ * @param {string|null} [projectId]  — when provided, filter to that project only
+ */
+export async function listSessions(userId, projectId = null) {
   const sql = getDb();
-  const rows = await sql`
-    SELECT
-      session_id,
-      title,
-      conversation_history,
-      last_updated
-    FROM marcom_sessions
-    WHERE user_id = ${userId}
-    ORDER BY last_updated DESC
-    LIMIT 50
-  `;
+  const rows = projectId
+    ? await sql`
+        SELECT session_id, title, conversation_history, last_updated
+        FROM marcom_sessions
+        WHERE user_id    = ${userId}
+          AND project_id = ${projectId}
+        ORDER BY last_updated DESC
+        LIMIT 50
+      `
+    : await sql`
+        SELECT session_id, title, conversation_history, last_updated
+        FROM marcom_sessions
+        WHERE user_id = ${userId}
+        ORDER BY last_updated DESC
+        LIMIT 50
+      `;
 
   return rows.map(r => ({
     sessionId: r.session_id,
-    // Fall back to deriving from first user message when title is empty (old rows)
     title:     r.title && r.title.trim()
                   ? r.title
                   : deriveTitleFromMessages(r.conversation_history) || 'New Chat',
@@ -126,7 +140,7 @@ export async function getSession(userId, sessionId) {
  * Returns { sessionId, title, updatedAt } — never returns the messages
  * payload (the client already has it).
  */
-export async function saveSession(userId, { sessionId, title, messages }) {
+export async function saveSession(userId, { sessionId, title, messages, projectId = null }) {
   if (!sessionId || typeof sessionId !== 'string') {
     throw new Error('saveSession: sessionId is required');
   }
@@ -147,10 +161,10 @@ export async function saveSession(userId, { sessionId, title, messages }) {
     INSERT INTO marcom_sessions (
       session_id, user_id, title, conversation_history,
       current_mode, current_section, current_service,
-      context_locked, service_history
+      context_locked, service_history, project_id
     ) VALUES (
       ${sessionId}, ${userId}, ${cleanTitle}, ${messagesJson}::jsonb,
-      1, 0, 0, false, ${'[]'}::jsonb
+      1, 0, 0, false, ${'[]'}::jsonb, ${projectId}
     )
     ON CONFLICT (session_id) DO UPDATE SET
       title = CASE
@@ -158,7 +172,8 @@ export async function saveSession(userId, { sessionId, title, messages }) {
           THEN marcom_sessions.title
         ELSE EXCLUDED.title
       END,
-      conversation_history = EXCLUDED.conversation_history
+      conversation_history = EXCLUDED.conversation_history,
+      project_id = COALESCE(EXCLUDED.project_id, marcom_sessions.project_id)
     WHERE marcom_sessions.user_id = ${userId}
     RETURNING session_id, title, last_updated, user_id
   `;

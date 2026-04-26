@@ -77,20 +77,22 @@ export function cancelAll() {
  * Send a chat message.
  * Routes to /api/chat (Clerk-protected, used from browser).
  */
-export async function sendChat({ message, sessionId, mode, imageBase64, imageMediaType, backendUrl = '' }) {
-  // Pick up the locked wizard context from the global set by app.js.
-  // Sent on every request so a brand-new session row gets context even
-  // if the wizard's /api/context/save round-trip is still in flight.
-  const lumiContext = (typeof window !== 'undefined' && window.__lumiContext) || null;
+export async function sendChat({ message, sessionId, mode, imageBase64, imageMediaType, backendUrl = '', projectId = null }) {
+  // Send the active project ID so the backend can inject the right context
+  // into brand-new sessions. Legacy lumi_context fallback is no longer needed
+  // because the project context lives in the DB (not localStorage).
+  const activeProjectId = projectId
+    || (typeof window !== 'undefined' && window.__lumiActiveProject?.projectId)
+    || null;
 
   return apiFetch(
     `${backendUrl}/api/chat`,
     {
       message,
-      ...(sessionId            && { session_id: sessionId }),
-      ...(mode                 && { mode }),
-      ...(imageBase64          && { image_base64: imageBase64, image_media_type: imageMediaType || 'image/jpeg' }),
-      ...(lumiContext          && { lumi_context: lumiContext }),
+      ...(sessionId         && { session_id: sessionId }),
+      ...(mode              && { mode }),
+      ...(imageBase64       && { image_base64: imageBase64, image_media_type: imageMediaType || 'image/jpeg' }),
+      ...(activeProjectId   && { project_id: activeProjectId }),
     },
     'chat',
     60_000   // AI can be slow

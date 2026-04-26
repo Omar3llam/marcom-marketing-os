@@ -23,7 +23,7 @@ export const historyRouter = Router();
 // Upsert by sessionId; cross-user overwrites are blocked at the model.
 historyRouter.post('/save', async (req, res) => {
   const userId = req.userId;
-  const { sessionId, title, messages } = req.body || {};
+  const { sessionId, title, messages, projectId } = req.body || {};
 
   if (!sessionId || typeof sessionId !== 'string') {
     return res.status(400).json({ error: 'sessionId is required' });
@@ -33,7 +33,7 @@ historyRouter.post('/save', async (req, res) => {
   }
 
   try {
-    const saved = await saveSession(userId, { sessionId, title, messages });
+    const saved = await saveSession(userId, { sessionId, title, messages, projectId: projectId || null });
     return res.json({ ok: true, sessionId: saved.sessionId, title: saved.title, updatedAt: saved.updatedAt });
   } catch (err) {
     if (err.status === 403) {
@@ -49,9 +49,10 @@ historyRouter.post('/save', async (req, res) => {
 // Returns metadata only — no message arrays — so the sidebar
 // payload stays small even with many sessions.
 historyRouter.get('/list', async (req, res) => {
-  const userId = req.userId;
+  const userId    = req.userId;
+  const projectId = req.query.projectId || null;
   try {
-    const sessions = await listSessions(userId);
+    const sessions = await listSessions(userId, projectId);
     return res.json({ sessions });
   } catch (err) {
     logger.error({ err, userId }, 'history.list failed');

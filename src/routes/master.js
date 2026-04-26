@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { getOrCreateSession, updateSession } from '../utils/sessionStore.js';
 import { getUserContext } from '../models/userContext.js';
 import { sendNotification, sendErrorAlert } from '../utils/email.js';
+import { getProjectById } from '../models/project.js';
 import { sanitizeMessage } from '../utils/sanitize.js';
 import { validate, chatSchema } from '../middleware/validate.js';
 import { logger } from '../utils/logger.js';
@@ -32,7 +33,7 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
   const userId = req.userId;   // set by requireAuth
 
   try {
-    let { message, session_id, mode: forceMode, image_base64, image_media_type, lumi_context } = req.body;
+    let { message, session_id, mode: forceMode, image_base64, image_media_type, lumi_context, project_id } = req.body;
 
     // Sanitize against prompt injection
     message = sanitizeMessage(message);
@@ -54,18 +55,30 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
     // session — Core Law 1 satisfied.
     if (!session.context_locked && (!session.context_summary || !session.context_summary.trim())) {
       try {
-        // Prefer the DB record; fall back to the inline lumi_context the
-        // browser sent in case the wizard's /api/context/save round-trip
-        // hasn't landed yet (race-safe path).
-        const wizardContext = (await getUserContext(userId))
-          || (typeof lumi_context === 'string' && lumi_context.trim() ? lumi_context.trim() : null);
-        if (wizardContext) {
-          session.context_summary = wizardContext;
+        let resolvedContext = null;
+
+        // 1. Project-based path (new architecture)
+        if (project_id) {
+          const project = await getProjectById(project_id);
+          if (project?.context) resolvedContext = project.context;
+        }
+
+        // 2. Legacy fallback: UserContext DB record → inline lumi_context from body
+        if (!resolvedContext) {
+          resolvedContext = (await getUserContext(userId))
+            || (typeof lumi_context === 'string' && lumi_context.trim() ? lumi_context.trim() : null);
+        }
+
+        if (resolvedContext) {
+          session.context_summary = resolvedContext;
           session.context_locked  = true;
-          logger.info({ userId, sessionId: session.session_id }, 'Wizard context auto-injected into fresh session');
+          logger.info(
+            { userId, sessionId: session.session_id, source: project_id ? 'project' : 'legacy' },
+            'Context auto-injected into fresh session'
+          );
         }
       } catch (err) {
-        logger.warn({ err: err.message, userId }, 'Wizard context lookup failed — proceeding without');
+        logger.warn({ err: err.message, userId }, 'Context lookup failed — proceeding without');
       }
     }
 
