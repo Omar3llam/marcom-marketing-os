@@ -3,11 +3,11 @@
 // Handles auth bootstrapping, send flow, and the window._app
 // facade used by inline HTML event handlers.
 // ============================================================
-import { sendChat, exportToCRM } from './api.js';
-import { S, updateUI } from './state.js';
-import { renderResp, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js';
-import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js';
-import { handleFile, clearImg } from './media.js';
+import { sendChat, exportToCRM } from './api.js?v=20260426-3';
+import { S, updateUI } from './state.js?v=20260426-3';
+import { renderResp, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260426-3';
+import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js?v=20260426-3';
+import { handleFile, clearImg } from './media.js?v=20260426-3';
 
 // ── LUMI THOUGHTS (rotating loader text) ─────────────────────
 const LUMI_THOUGHTS = [
