@@ -153,6 +153,10 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
       hybrid_raw_data:   (modeResult.hybridData || session.hybrid_raw_data || '').slice(0, 10_000),
       status: modeResult.contextLocked ? 'locked' : 'active',
       last_updated: new Date().toISOString(),
+      // Stamp the active project onto the session so listSessions() can
+      // filter by project_id. COALESCE in updateSession never overwrites
+      // an existing project_id with null — safe to pass on every request.
+      project_id: project_id || null,
     });
 
     // ── MEMORY STORE: persist new facts (fire-and-forget) ──────

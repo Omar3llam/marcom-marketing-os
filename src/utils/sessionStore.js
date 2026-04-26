@@ -112,7 +112,8 @@ export async function updateSession(recordId, userId, fields) {
       content_interrogation_log = ${trimLog(fields.content_interrogation_log)},
       campaign_analysis_log     = ${trimLog(fields.campaign_analysis_log)},
       hybrid_raw_data   = ${(fields.hybrid_raw_data ?? '').slice(0, 10_000)},
-      status            = ${fields.status ?? 'active'}
+      status            = ${fields.status ?? 'active'},
+      project_id        = COALESCE(${fields.project_id ?? null}, project_id)
     WHERE id      = ${recordId}
       AND user_id = ${userId}
     RETURNING *
