@@ -536,12 +536,114 @@ function _renderRestoredStructuredStub(msgsEl, json, meta = {}) {
   msgsEl.appendChild(wrap);
 }
 
-// ── TEXTAREA AUTO-RESIZE ──────────────────────────────────────
+// ── INPUT CONTROLLER ─────────────────────────────────────────
+// State kept locally; S.img is still used for the image-to-AI pipeline.
+const inputState = { files: [] };
+
 function setupTA() {
-  const ta = document.getElementById('msgInput');
-  ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; });
-  ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+  const ta  = document.getElementById('msgInput');
+  const box = document.getElementById('lumi-input-box');
+
+  // Auto-resize
+  function autoResize() {
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+  }
+  ta.addEventListener('input', () => { autoResize(); updateSendBtn(); });
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+
+  // File picker
+  const picker = document.getElementById('file-upload');
+  if (picker) {
+    picker.addEventListener('change', () => {
+      Array.from(picker.files).forEach(f => addFile(f));
+      picker.value = '';
+    });
+  }
+
+  updateSendBtn();
 }
+
+export function triggerAttach() {
+  document.getElementById('file-upload')?.click();
+}
+
+function addFile(file) {
+  const MAX_FILES = 5;
+  const MAX_MB    = 20;
+  if (inputState.files.length >= MAX_FILES) {
+    showInputError(`Max ${MAX_FILES} files`); return;
+  }
+  if (file.size > MAX_MB * 1024 * 1024) {
+    showInputError(`${file.name} exceeds ${MAX_MB} MB`); return;
+  }
+  inputState.files.push(file);
+  renderFileChip(file, inputState.files.length - 1);
+}
+
+function renderFileChip(file, idx) {
+  const container = document.getElementById('file-preview-container');
+  if (!container) return;
+  const chip = document.createElement('div');
+  chip.className = 'file-chip';
+  chip.dataset.fileIdx = idx;
+  chip.innerHTML = `
+    <span class="file-chip-icon">${getFileIcon(file.type)}</span>
+    <span class="file-chip-name">${file.name}</span>
+    <button class="file-chip-rm" type="button" aria-label="Remove ${file.name}">✕</button>
+  `;
+  chip.querySelector('.file-chip-rm').addEventListener('click', () => removeFile(idx));
+  container.appendChild(chip);
+}
+
+function removeFile(idx) {
+  inputState.files.splice(idx, 1);
+  // Re-render all chips
+  const container = document.getElementById('file-preview-container');
+  if (container) {
+    container.innerHTML = '';
+    inputState.files.forEach((f, i) => renderFileChip(f, i));
+  }
+}
+
+function getFileIcon(mime = '') {
+  if (mime.startsWith('image/'))       return '🖼️';
+  if (mime === 'application/pdf')       return '📄';
+  if (mime.includes('csv'))             return '📊';
+  if (mime.includes('word') || mime.includes('docx')) return '📝';
+  return '📎';
+}
+
+function updateSendBtn() {
+  const ta  = document.getElementById('msgInput');
+  const btn = document.getElementById('sendBtn');
+  if (!btn || !ta) return;
+  const hasText  = ta.value.trim().length > 0;
+  const hasFiles = inputState.files.length > 0;
+  btn.disabled = S.loading || (!hasText && !hasFiles);
+}
+
+function showInputError(msg) {
+  const el = document.getElementById('input-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'inline';
+  setTimeout(() => { el.style.display = 'none'; el.textContent = ''; }, 3000);
+}
+
+export function resetInputArea() {
+  const ta = document.getElementById('msgInput');
+  if (ta) { ta.value = ''; ta.style.height = 'auto'; }
+  inputState.files = [];
+  const container = document.getElementById('file-preview-container');
+  if (container) container.innerHTML = '';
+  const errEl = document.getElementById('input-error');
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  updateSendBtn();
+}
+
 function buildDots() { /* progress bar handled by updateUI */ }
 
 // ── SEND ──────────────────────────────────────────────────────
@@ -553,7 +655,7 @@ export async function send() {
   hideEmpty();
   const userMsg = message;   // capture before clearing ta
   appendMsg('user', message, {}, S.img?.base64);
-  ta.value = ''; ta.style.height = 'auto';
+  resetInputArea();
   S.msgs++;
 
   const imgSend = S.img; clearImg();
@@ -613,7 +715,12 @@ export async function send() {
   } finally { setLoading(false); }
 }
 
-export function qs(m) { document.getElementById('msgInput').value = m; send(); }
+export function qs(m) {
+  const ta = document.getElementById('msgInput');
+  if (ta) { ta.value = m; ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; }
+  updateSendBtn();
+  send();
+}
 
 // ── CRM SYNC ──────────────────────────────────────────────────
 export async function syncCRM(type, payload) {
@@ -679,10 +786,21 @@ function hideLumi() {
 
 function setLoading(l) {
   S.loading = l;
-  const btn = document.getElementById('sendBtn'), ta = document.getElementById('msgInput');
-  btn.disabled = l; ta.disabled = l;
-  btn.innerHTML = l ? '<span style="animation:lSpin 1s linear infinite;display:inline-block;">✨</span> Analyzing'
-                    : '<span>✨</span> Send';
+  const btn = document.getElementById('sendBtn');
+  const ta  = document.getElementById('msgInput');
+  if (ta) ta.disabled = l;
+  if (btn) {
+    if (l) {
+      btn.classList.add('loading');
+      btn.disabled = true;
+      // Replace icon with a simple spinner SVG
+      btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" style="animation:spinSend 0.8s linear infinite;transform-origin:center"/></svg>`;
+    } else {
+      btn.classList.remove('loading');
+      btn.innerHTML = `<svg id="send-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg><span id="send-label" style="display:none">Send</span>`;
+      updateSendBtn();
+    }
+  }
 }
 
 // ── MODE SWITCH (kept for programmatic use; no UI panel) ──────
@@ -729,4 +847,5 @@ window._app = {
   clearSession, setMode, updateUI, toast, esc,
   saveChatSession, loadRecentChats, resumeChat, deleteSession,
   openSidebar, closeSidebar,
+  triggerAttach, resetInputArea,
 };

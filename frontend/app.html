@@ -229,34 +229,76 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 .qs-chip{padding:8px 18px;border-radius:var(--r-full);font-size:13px;font-weight:600;background:#fff;border:1.5px solid var(--border);color:var(--ink-2);cursor:pointer;transition:all 0.2s;box-shadow:var(--shadow-sm);}
 .qs-chip:hover{background:var(--yellow-lt);border-color:var(--yellow-dk);transform:translateY(-2px);box-shadow:var(--shadow-yellow);}
 
-/* ── INPUT AREA — floating Claude-style ─────────── */
+/* ── INPUT AREA — Claude-inspired ───────────────── */
 .input-area{flex-shrink:0;padding:8px 24px 24px;}
-.input-box{
+.chat-input-wrapper{max-width:800px;margin:0 auto;display:flex;flex-direction:column;gap:6px;}
+
+/* File preview chips row */
+#file-preview-container{display:flex;flex-wrap:wrap;gap:6px;padding:0 4px;}
+.file-chip{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:5px 10px 5px 8px;
+  background:var(--cream-2);border:1.5px solid var(--border);
+  border-radius:var(--r-full);font-size:12px;font-weight:600;color:var(--ink-2);
+  animation:chipIn 0.2s ease;max-width:200px;
+}
+.file-chip-icon{font-size:14px;flex-shrink:0;}
+.file-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.file-chip-rm{
+  flex-shrink:0;cursor:pointer;color:var(--ink-3);
+  font-size:14px;line-height:1;margin-left:2px;
+  border:none;background:none;padding:0;font-family:inherit;
+}
+.file-chip-rm:hover{color:var(--coral);}
+@keyframes chipIn{from{opacity:0;transform:scale(0.85);}to{opacity:1;transform:scale(1);}}
+
+/* Main input container */
+.lumi-input-box{
+  display:flex;align-items:flex-end;gap:0;
   background:#fff;
   border:1.5px solid var(--border);
   border-radius:var(--r-xl);
-  padding:14px 16px 10px;
+  padding:10px 10px 10px 14px;
   box-shadow:0 4px 28px rgba(0,0,0,0.09);
-  max-width:800px;margin:0 auto;
+  transition:border-color 0.2s, box-shadow 0.2s;
 }
-.input-row{display:flex;gap:8px;align-items:flex-end;}
-.upload-btn{background:var(--cream-2);border:1.5px solid var(--border);color:var(--ink-3);cursor:pointer;padding:0 14px;height:46px;border-radius:var(--r-full);font-family:'Poppins',sans-serif;font-size:12px;font-weight:600;transition:all 0.2s;display:flex;align-items:center;white-space:nowrap;gap:5px;flex-shrink:0;}
-.upload-btn:hover{border-color:var(--purple);color:var(--purple);}
-.upload-btn.has-img{border-color:var(--purple);color:var(--purple);background:var(--purple-lt);}
-#fileInput{display:none;}
-.msg-input{flex:1;background:transparent;border:none;padding:8px 10px;color:var(--ink);font-family:'Poppins',sans-serif;font-size:13.5px;line-height:1.5;resize:none;min-height:46px;max-height:140px;outline:none;}
+.lumi-input-box:focus-within{
+  border-color:var(--yellow-dk);
+  box-shadow:0 4px 28px rgba(0,0,0,0.09), 0 0 0 3px rgba(255,211,0,0.18);
+}
+.attach-btn{
+  flex-shrink:0;background:none;border:none;padding:0 10px 0 0;
+  color:var(--ink-3);cursor:pointer;display:flex;align-items:center;
+  height:40px;border-radius:var(--r-md);transition:color 0.18s;
+}
+.attach-btn:hover{color:var(--ink);}
+.msg-input{
+  flex:1;background:transparent;border:none;
+  padding:6px 8px;color:var(--ink);
+  font-family:'Poppins',sans-serif;font-size:13.5px;line-height:1.6;
+  resize:none;min-height:40px;max-height:160px;outline:none;
+}
 .msg-input::placeholder{color:var(--ink-3);}
-.send-btn{background:var(--yellow);color:var(--ink);border:none;padding:0 20px;height:46px;border-radius:var(--r-full);font-family:'Poppins',sans-serif;font-weight:700;font-size:13px;cursor:pointer;transition:all 0.18s;white-space:nowrap;display:flex;align-items:center;gap:7px;box-shadow:var(--shadow-yellow);flex-shrink:0;}
-.send-btn:hover{background:var(--yellow-dk);}
-.send-btn:active{transform:scale(0.95);}
-.send-btn:disabled{opacity:0.45;cursor:not-allowed;transform:none;}
-.img-preview{display:flex;align-items:center;gap:8px;margin-top:6px;padding:0 4px;font-size:12px;color:var(--purple);font-weight:600;}
-.img-thumb{width:32px;height:32px;border-radius:8px;object-fit:cover;border:2px solid var(--purple);}
-.img-rm{cursor:pointer;color:var(--ink-3);font-size:15px;line-height:1;}
-.img-rm:hover{color:var(--coral);}
-.hints{display:flex;gap:7px;margin-top:8px;padding:0 4px;flex-wrap:wrap;}
-.hint{padding:5px 13px;border:1.5px solid var(--border);border-radius:var(--r-full);font-size:12px;font-weight:600;color:var(--ink-3);cursor:pointer;transition:all 0.2s;background:var(--cream-2);}
-.hint:hover{border-color:var(--yellow-dk);color:var(--ink-2);background:var(--yellow-lt);transform:translateY(-1px);}
+.send-btn{
+  flex-shrink:0;background:var(--yellow);color:var(--ink);
+  border:none;width:42px;height:42px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;gap:0;
+  cursor:pointer;transition:all 0.18s;
+  box-shadow:var(--shadow-yellow);
+}
+.send-btn:hover{background:var(--yellow-dk);transform:scale(1.06);}
+.send-btn:active{transform:scale(0.94);}
+.send-btn:disabled{opacity:0.38;cursor:not-allowed;transform:none;box-shadow:none;}
+.send-btn #send-label{display:none;}/* icon-only in normal state */
+
+/* Meta row */
+.input-meta{display:flex;justify-content:space-between;align-items:center;padding:0 6px;min-height:16px;}
+.input-hint{font-size:11px;color:var(--ink-3);font-weight:500;}
+.input-error{font-size:11px;color:var(--coral);font-weight:600;}
+
+/* Spinning loader for send btn */
+@keyframes spinSend{to{transform:rotate(360deg);}}
+.send-btn.loading svg{animation:spinSend 0.8s linear infinite;}
 
 /* ── WIZARD ────────────────────────────────────── */
 .wizard-wrap{animation:msgIn 0.3s ease;max-width:620px;}
@@ -477,12 +519,10 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 
   /* Input area */
   .input-area{padding:6px 8px 16px;width:100%;box-sizing:border-box;}
-  .input-box{max-width:100%;border-radius:var(--r-lg);}
-  .input-row{gap:6px;}
-  .upload-btn{padding:0 10px;font-size:11px;}
-  .send-btn{padding:0 14px;font-size:12px;}
-  .hints{gap:5px;}
-  .hint{font-size:11px;padding:4px 10px;}
+  .chat-input-wrapper{max-width:100%;}
+  .lumi-input-box{border-radius:var(--r-lg);padding:8px 8px 8px 12px;}
+  .msg-input{font-size:16px;} /* prevent iOS zoom */
+  .send-btn{width:38px;height:38px;}
 
   /* Grids stack to single column */
   .insight-grid{grid-template-columns:1fr !important;}
@@ -636,16 +676,29 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
       </div>
     </div>
 
-    <!-- Floating input — minimal: textarea + send only. -->
+    <!-- Floating input — Claude-inspired with file attachment -->
     <div class="input-area">
-      <div class="input-box">
-        <div class="input-row">
-          <textarea class="msg-input" id="msgInput"
+      <div class="chat-input-wrapper">
+        <!-- hidden file picker -->
+        <input type="file" id="file-upload" accept="image/*,.pdf,.txt,.csv,.docx" multiple style="display:none">
+        <!-- file preview chips row -->
+        <div id="file-preview-container"></div>
+        <!-- main input row -->
+        <div class="lumi-input-box" id="lumi-input-box">
+          <button class="attach-btn" id="attach-btn" type="button" title="Attach file" onclick="window._app.triggerAttach()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <textarea id="msgInput" class="msg-input"
                     placeholder="Ask Lumi anything…"
                     rows="1"></textarea>
-          <button class="send-btn" id="sendBtn" onclick="window._app.send()">
-            <span>✨</span> Send
+          <button class="send-btn" id="sendBtn" type="button" onclick="window._app.send()">
+            <svg id="send-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            <span id="send-label">Send</span>
           </button>
+        </div>
+        <div class="input-meta">
+          <span id="input-error" class="input-error" style="display:none"></span>
+          <span class="input-hint">Shift+Enter for new line</span>
         </div>
       </div>
     </div>
