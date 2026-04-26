@@ -9,6 +9,9 @@ import { renderResp, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './render
 import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js?v=20260426-3';
 import { handleFile, clearImg } from './media.js?v=20260426-3';
 
+// ── DIAGNOSTIC — remove after confirming new JS is loading ───
+console.log('%c[LUMI] app.js v20260426-3 LOADED', 'background:#FFD300;color:#000;font-weight:bold;padding:2px 8px');
+
 // ── LUMI THOUGHTS (rotating loader text) ─────────────────────
 const LUMI_THOUGHTS = [
   'Scanning GCC competitors…', 'Extracting B2B search intent…',
@@ -887,6 +890,7 @@ function buildDots() { /* progress bar handled by updateUI */ }
 
 // ── SEND ──────────────────────────────────────────────────────
 export async function send() {
+  console.log('%c[LUMI] send() FIRED', 'background:#FFD300;color:#000;font-weight:bold;padding:2px 8px');
   const ta = document.getElementById('chat-input');
   const message = ta.value.trim();
   if (!message || S.loading) return;
