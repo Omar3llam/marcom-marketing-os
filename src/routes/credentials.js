@@ -33,6 +33,31 @@ async function assertProjectOwnership(userId, projectId, res) {
   return true;
 }
 
+// ── STATUS  GET /api/credentials/status?projectId=&platform= ─
+// Quick connectivity check — returns { connected: true/false }.
+// Used by the frontend to decide which campaign UI state to show.
+credentialsRouter.get('/status', async (req, res) => {
+  const userId    = req.userId;
+  const { projectId, platform = 'meta_ads' } = req.query;
+  if (!projectId) {
+    return res.status(400).json({ status: 'error', message: 'projectId is required' });
+  }
+  try {
+    if (!await assertProjectOwnership(userId, projectId, res)) return;
+    const cred = await getCredential(userId, projectId, platform);
+    return res.json({
+      status:    'ok',
+      connected: !!cred,
+      platform,
+      accountId: cred?.accountId ?? null,
+      expiresAt: cred?.expiresAt ?? null,
+    });
+  } catch (err) {
+    logger.error({ err: err.message, userId, projectId }, '[credentials] status error');
+    return res.status(500).json({ status: 'error', message: 'Failed to check credential status' });
+  }
+});
+
 // ── LIST  GET /api/credentials/:projectId ───────────────────
 credentialsRouter.get('/:projectId', async (req, res) => {
   const userId    = req.userId;

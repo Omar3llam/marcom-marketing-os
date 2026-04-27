@@ -24,7 +24,12 @@ if (missing.length > 0) {
 }
 
 // Optional vars — warn but don't exit
-const OPTIONAL_WARN = ['CREDENTIAL_ENCRYPTION_KEY'];
+const OPTIONAL_WARN = [
+  'CREDENTIAL_ENCRYPTION_KEY',
+  'META_APP_ID',
+  'META_APP_SECRET',
+  'META_REDIRECT_URI',
+];
 OPTIONAL_WARN.forEach(k => {
   if (!process.env[k]) {
     process.stderr.write(`[MARCOM] WARN: ${k} is not set — credential encryption will be unavailable.\n`);

@@ -23,6 +23,8 @@ import { historyRouter }    from './routes/history.js';
 import { contextRouter }    from './routes/context.js';
 import { projectsRouter }     from './routes/projects.js';
 import { credentialsRouter }  from './routes/credentials.js';
+import { authMetaRouter }     from './routes/auth/meta.js';
+import { campaignsRouter }    from './routes/campaigns.js';
 import { logger }             from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
 import { ensureChatSessionSchema } from './models/chatSession.js';
@@ -151,6 +153,17 @@ app.use('/api/credentials',
   requireAuth,
   apiLimiter,
   credentialsRouter
+);
+
+// Meta OAuth flow — /connect is Clerk-gated inside the router;
+// /callback is NOT (Meta redirects browser without Clerk JWT).
+app.use('/api/auth/meta', apiLimiter, authMetaRouter);
+
+// Campaign analysis — CSV inject + live Meta fetch
+app.use('/api/campaigns',
+  requireAuth,
+  apiLimiter,
+  campaignsRouter
 );
 
 // Chat endpoint also accessible from browser with Clerk token

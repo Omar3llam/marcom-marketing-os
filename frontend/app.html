@@ -414,6 +414,18 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 .abtn.csv:hover{border-color:var(--mint);color:var(--mint);}
 .abtn.link:hover{border-color:var(--sky);color:var(--sky);}
 
+/* ── CAMPAIGN GATE CARDS (dual-entry UI) ──────── */
+.campaign-gate-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--r-lg);padding:20px;display:flex;flex-direction:column;gap:10px;transition:box-shadow 0.2s,border-color 0.2s;}
+.campaign-gate-card:hover{border-color:var(--yellow-dk);box-shadow:0 4px 16px rgba(0,0,0,0.08);}
+.cgc-icon{font-size:28px;}
+.cgc-title{font-size:14px;font-weight:700;color:var(--ink);}
+.cgc-desc{font-size:12px;color:var(--ink-3);line-height:1.5;flex:1;}
+.cgc-btn{display:inline-block;padding:10px 16px;border-radius:var(--r-md);font-size:13px;font-weight:600;border:none;cursor:pointer;text-align:center;transition:opacity 0.15s;}
+.cgc-btn-primary{background:var(--yellow);color:#000;}
+.cgc-btn-primary:hover{opacity:0.85;}
+.cgc-btn-secondary{background:var(--cream-2);color:var(--ink);border:1.5px solid var(--border);}
+.cgc-btn-secondary:hover{background:var(--cream);}
+
 /* ── CAMPAIGN TABLE ────────────────────────────── */
 .ctable-wrap{overflow-x:auto;border-radius:var(--r-md);border:1.5px solid var(--border);}
 .ctable{width:100%;border-collapse:collapse;font-size:13px;background:#fff;}
@@ -698,11 +710,11 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
         </div>
       </div>
 
-      <div class="sb-item tool" onclick="window._app.closeSidebar();window._app.qs('I have campaign metrics')">
+      <div class="sb-item tool" onclick="window._app.closeSidebar();window._app.openCampaignAnalysis()">
         <span class="sb-item-icon">📊</span>
         <div>
           <div class="sb-item-label">Campaign Analysis</div>
-          <div class="sb-item-sub">ASC, MER, scaling</div>
+          <div class="sb-item-sub">Meta Ads · ASC · MER · scaling</div>
         </div>
       </div>
 
@@ -748,7 +760,7 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
         <div class="quick-starts">
           <span class="qs-chip" onclick="window._app.qs('social media calendar')">📅 Social Calendar</span>
           <span class="qs-chip" onclick="window._app.qs('Evaluate this content')">🔍 Score Content</span>
-          <span class="qs-chip" onclick="window._app.qs('I have campaign metrics')">📊 Campaign Analysis</span>
+          <span class="qs-chip" onclick="window._app.openCampaignAnalysis()">📊 Campaign Analysis</span>
         </div>
       </div>
     </div>

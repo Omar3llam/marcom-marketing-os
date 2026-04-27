@@ -139,6 +139,8 @@ function boot(clerk) {
   // call is synchronous and guaranteed before any async fetch settles.
   _wireSidebarDelegation();
   loadRecentChats();
+  // Detect redirect back from Meta OAuth and handle connected/error state
+  _handleMetaOAuthReturn();
 }
 
 // ── PROJECT SWITCHER UI ───────────────────────────────────────
@@ -1028,6 +1030,254 @@ export async function openMarketingTools() {
   } finally { setLoading(false); }
 }
 
+// ── CAMPAIGN ANALYSIS — DUAL ENTRY ───────────────────────────
+// Checks whether Meta Ads is connected for the active project.
+// State A (disconnected): renders two choice cards into #msgs.
+// State B (connected):    immediately fetches live Meta data and
+//                         fires the executive analysis.
+export async function openCampaignAnalysis() {
+  if (S.loading) return;
+  hideEmpty();
+
+  const projectId = ProjectManager.getProjectId();
+  if (!projectId) { toast('No active project — select one first.'); return; }
+
+  // Show a transient "checking" bubble while we query the backend
+  const msgs = document.getElementById('msgs');
+  const loaderWrap = document.createElement('div');
+  loaderWrap.className = 'msg system'; loaderWrap.id = 'campaign-gate-loader';
+  loaderWrap.innerHTML = `<div class="lumi-av">✨</div><div><div class="bubble" style="color:var(--ink-3);font-size:13px;">Checking Meta Ads connection…</div></div>`;
+  msgs.appendChild(loaderWrap);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  try {
+    const headers = await getAuthHeaders();
+    const statusRes = await fetch(
+      `/api/credentials/status?projectId=${encodeURIComponent(projectId)}&platform=meta_ads`,
+      { headers }
+    );
+    const statusData = await statusRes.json();
+    loaderWrap.remove();
+
+    if (statusData.connected) {
+      // ── STATE B: Connected — auto-fetch live data
+      _runMetaCampaignAnalysis(projectId);
+    } else {
+      // ── STATE A: Disconnected — render choice cards
+      _renderCampaignGate(projectId);
+    }
+  } catch (err) {
+    loaderWrap.remove();
+    appendMsg('system', `⚠ Could not check Meta connection: ${err.message}`);
+  }
+}
+
+/**
+ * Render the two choice cards (Connect Meta | Upload CSV).
+ * This is inserted into #msgs like any other AI response.
+ */
+function _renderCampaignGate(projectId) {
+  const msgs = document.getElementById('msgs');
+  const wrap = document.createElement('div');
+  wrap.className = 'msg system'; wrap.style.animation = 'msgIn 0.3s ease';
+  wrap.innerHTML = `
+    <div class="lumi-av">✨</div>
+    <div style="flex:1;">
+      <div class="bubble" style="padding:0;overflow:hidden;background:transparent;box-shadow:none;max-width:560px;">
+        <div style="font-size:14px;font-weight:800;color:var(--ink);margin-bottom:14px;padding:0 4px;">
+          📊 Campaign Analysis — Connect your data
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+
+          <!-- Card A: Connect Meta Ads -->
+          <div class="campaign-gate-card" id="gate-card-meta">
+            <div class="cgc-icon">🔗</div>
+            <div class="cgc-title">Connect Meta Ads API</div>
+            <div class="cgc-desc">Pull live campaign data automatically. Requires Meta Business Manager access.</div>
+            <button class="cgc-btn cgc-btn-primary"
+                    onclick="window._app._connectMeta()">
+              Connect Meta Ads
+            </button>
+          </div>
+
+          <!-- Card B: Upload CSV -->
+          <div class="campaign-gate-card" id="gate-card-csv">
+            <div class="cgc-icon">📁</div>
+            <div class="cgc-title">Upload Campaign CSV</div>
+            <div class="cgc-desc">Export from Meta Ads Manager and upload here. Supports any platform export.</div>
+            <label class="cgc-btn cgc-btn-secondary" style="cursor:pointer;">
+              Choose CSV File
+              <input type="file" accept=".csv,text/csv" style="display:none;"
+                     onchange="window._app._handleCampaignCSV(this, '${esc(projectId)}')">
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  msgs.appendChild(wrap);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+/**
+ * Triggered when the user picks a CSV file from the gate card.
+ * Reads file → sends to /api/campaigns/data-inject → renders analysis.
+ */
+export async function _handleCampaignCSV(input, projectId) {
+  const file = input.files?.[0];
+  if (!file) return;
+
+  // Replace the gate card with a loading state
+  const gateCard = input.closest('.msg');
+  if (gateCard) {
+    gateCard.innerHTML = `
+      <div class="lumi-av"><span style="display:inline-block;animation:lSpin 1s linear infinite;">✨</span></div>
+      <div><div class="bubble" style="color:var(--ink-3);font-size:13px;">
+        Reading <strong>${esc(file.name)}</strong> and running executive analysis…
+      </div></div>`;
+  }
+
+  let csvData;
+  try {
+    csvData = await file.text();
+  } catch (err) {
+    if (gateCard) gateCard.remove();
+    appendMsg('system', '⚠ Could not read the CSV file — please try again.');
+    return;
+  }
+
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/campaigns/data-inject', {
+      method:  'POST',
+      headers,
+      body:    JSON.stringify({ sessionId: S.sid, projectId, csvData }),
+    });
+    if (gateCard) gateCard.remove();
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      appendMsg('system', `⚠ ${err.message || 'Campaign analysis failed'}`);
+      return;
+    }
+
+    const data = await res.json();
+    _finaliseCampaignResponse(data);
+  } catch (err) {
+    if (gateCard) gateCard.remove();
+    appendMsg('system', `⚠ ${err.message}`);
+  }
+}
+
+/**
+ * Fetch live Meta Ads insights and run analysis.
+ * Called when credentials ARE connected (State B).
+ */
+async function _runMetaCampaignAnalysis(projectId) {
+  const wrap = document.createElement('div');
+  wrap.className = 'msg system'; wrap.id = 'meta-fetch-loader';
+  wrap.innerHTML = `
+    <div class="lumi-av"><span style="display:inline-block;animation:lSpin 1s linear infinite;">✨</span></div>
+    <div><div class="bubble" style="color:var(--ink-3);font-size:13px;">
+      Pulling live Meta Ads data and running executive analysis…
+    </div></div>`;
+  document.getElementById('msgs').appendChild(wrap);
+  document.getElementById('msgs').scrollTop = document.getElementById('msgs').scrollHeight;
+
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/campaigns/fetch-meta', {
+      method:  'POST',
+      headers,
+      body:    JSON.stringify({ sessionId: S.sid, projectId }),
+    });
+    document.getElementById('meta-fetch-loader')?.remove();
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      // If token expired, downgrade to gate UI so user can reconnect
+      if (res.status === 401) {
+        toast('Meta token expired — please reconnect.', 'err');
+        _renderCampaignGate(projectId);
+        return;
+      }
+      appendMsg('system', `⚠ ${err.message || 'Meta fetch failed'}`);
+      return;
+    }
+
+    const data = await res.json();
+    _finaliseCampaignResponse(data);
+  } catch (err) {
+    document.getElementById('meta-fetch-loader')?.remove();
+    appendMsg('system', `⚠ ${err.message}`);
+  }
+}
+
+/**
+ * Common finalisation for both CSV and Meta API paths.
+ * Renders the AI response and persists the session.
+ */
+function _finaliseCampaignResponse(data) {
+  if (data.session_id) S.sid  = data.session_id;
+  S.mode    = 5;
+  S.service = data.current_service || 0;
+
+  // Push to in-memory history (display label, not the raw CSV prompt)
+  pushHistory('user', 'Campaign Analysis — data submitted');
+  if (data.message) {
+    renderResp(data);   // will route to renderCampaign() for JSON
+    pushHistory('assistant', data.message, { mode: 5, service: data.current_service || 0 });
+  }
+
+  if (S.sid) {
+    try { localStorage.setItem('mc_session', S.sid); } catch {}
+    saveSession()
+      .then(() => loadRecentChats())
+      .catch(err => console.error('[campaign] saveSession rejected:', err));
+  }
+  updateUI();
+}
+
+/** Redirect to Meta OAuth connect — used by the gate card button */
+export function _connectMeta() {
+  const projectId = ProjectManager.getProjectId();
+  if (!projectId) { toast('No active project'); return; }
+  window.location.href = `/api/auth/meta/connect?projectId=${encodeURIComponent(projectId)}`;
+}
+
+/**
+ * Called on page load — detects a ?meta_connected=1 or ?meta_error=
+ * query param left by the OAuth callback redirect and handles it.
+ */
+function _handleMetaOAuthReturn() {
+  const params    = new URLSearchParams(window.location.search);
+  const connected = params.get('meta_connected');
+  const metaErr   = params.get('meta_error');
+
+  if (!connected && !metaErr) return;
+
+  // Clean the URL so the params don't persist after a refresh
+  const clean = window.location.pathname;
+  window.history.replaceState({}, '', clean);
+
+  if (metaErr) {
+    const msgs = {
+      denied:            'Meta connection cancelled.',
+      invalid_state:     'OAuth state mismatch — please try connecting again.',
+      project_not_found: 'Project not found — please refresh and try again.',
+      server_error:      'Server error during Meta connection. Try again.',
+    };
+    toast(msgs[metaErr] || `Meta connection failed: ${metaErr}`, 'err');
+    return;
+  }
+
+  if (connected) {
+    toast('✓ Meta Ads connected! Fetching your campaign data…', 'ok');
+    // Auto-trigger campaign analysis with the freshly connected account
+    const projectId = params.get('projectId') || ProjectManager.getProjectId();
+    if (projectId) setTimeout(() => _runMetaCampaignAnalysis(projectId), 1200);
+  }
+}
+
 // ── CRM SYNC ──────────────────────────────────────────────────
 export async function syncCRM(type, payload) {
   toast('🚀 Sending to CRM…', 'inf');
@@ -1156,4 +1406,8 @@ window._app = {
   triggerAttach, resetInputArea,
   ProjectManager,
   openMarketingTools,
+  // Campaign Analysis (Meta Ads + CSV dual-entry)
+  openCampaignAnalysis,
+  _connectMeta,
+  _handleCampaignCSV,
 };
