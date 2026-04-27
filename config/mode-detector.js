@@ -30,6 +30,15 @@ export function detectMode(session, message, forceMode) {
   // ── Context is locked — natural keyword detection ──────────
   const msg = message.toLowerCase();
 
+  // Short greetings / openers while context is locked → Mode 2 (assistant mode).
+  // Without this guard, "Hi", "Hello", "Hey", "What can you do?" etc. would fall
+  // through all keyword checks and still reach Mode 2 via the default — but
+  // adding explicit detection here makes the intent obvious and future-proof.
+  const greetings = ['hi', 'hello', 'hey', 'sup', 'good morning', 'good afternoon',
+    'good evening', 'what can you do', 'help me', 'what now', 'ready', 'start',
+    'lets go', "let's go", 'ok', 'okay', 'sure', 'yes', 'yeah'];
+  if (greetings.some(g => msg.trim() === g || msg.startsWith(g + ' ') || msg.startsWith(g + ','))) return 2;
+
   // Mode 3: Social calendar
   const social = [
     'social media calendar', 'content calendar', 'social strategy',

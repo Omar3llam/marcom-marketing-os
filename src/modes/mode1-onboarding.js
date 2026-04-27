@@ -7,7 +7,45 @@ import { callClaude } from '../utils/claude.js';
 import { fetchUrlContent } from '../utils/scraper.js';
 import { logger } from '../utils/logger.js';
 
+// ── Derive the project / company name from available session data ──
+// Priority: session.project_name (stamped by master.js) → parsed from
+// context_summary (e.g. "Company: Acme Corp | …") → generic fallback.
+function resolveProjectName(session) {
+  if (session.project_name && session.project_name.trim()) {
+    return session.project_name.trim();
+  }
+  if (session.context_summary) {
+    const m = session.context_summary.match(/Company\s*:\s*([^|\n]+)/i);
+    if (m) return m[1].trim();
+  }
+  return null; // no name available — use generic greeting
+}
+
 export async function runMode1(session, userMessage, conversationHistory) {
+  // ── HARD BAILOUT: context already locked ─────────────────────
+  // If the project context is locked, there is NOTHING for Mode 1 to do.
+  // Return a warm, personalised "ready" response and stay in Mode 2
+  // (general tools) so the user can continue naturally.
+  // This is the final safety net — it fires even if detectMode() or
+  // forceMode logic somehow lets a message slip through to Mode 1.
+  if (session.context_locked) {
+    const name = resolveProjectName(session);
+    const greeting = name
+      ? `I've got everything ready for **${name}**! 🚀\n\nHow can I help you today? You can ask me to score content, build a social calendar, analyse a campaign, or just start a conversation about your marketing strategy.`
+      : `Your business context is locked and ready. 🚀\n\nHow can I help you today? You can ask me to score content, build a social calendar, analyse a campaign, or dive into any marketing question.`;
+
+    return {
+      aiResponse:     greeting,
+      currentSection: session.current_section,
+      currentService: session.current_service || 0,
+      contextLocked:  true,
+      contextSummary: session.context_summary,
+      nextMode:       2,    // hand off to Mode 2 (tools) immediately
+      serviceHistory: session.service_history || [],
+      onboardingComplete: false,
+    };
+  }
+
   let currentSection = parseInt(session.current_section) || 0;
   // How many prior turns exist (not counting the message we just pushed)?
   const priorTurns = conversationHistory.length - 1;

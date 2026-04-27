@@ -59,13 +59,21 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
     if (project_id) {
       try {
         const project = await getProjectById(project_id);
-        if (project?.context) {
-          session.context_summary = project.context;
-          session.context_locked  = true;
-          logger.info(
-            { userId, sessionId: session.session_id, project_id },
-            'Project context injected/refreshed for this request'
-          );
+        if (project) {
+          // Stamp project name on session so mode handlers can personalise responses.
+          session.project_name = project.name || '';
+
+          // context may be an empty string (new project not yet onboarded).
+          // Only lock + inject when there is real content — use .trim() not truthiness
+          // so an empty-string context ('') never falsely triggers a lock.
+          if (project.context && project.context.trim()) {
+            session.context_summary = project.context;
+            session.context_locked  = true;
+            logger.info(
+              { userId, sessionId: session.session_id, project_id },
+              'Project context injected/refreshed for this request'
+            );
+          }
         }
       } catch (err) {
         logger.warn({ err: err.message, userId, project_id }, 'Project context lookup failed — proceeding without');
