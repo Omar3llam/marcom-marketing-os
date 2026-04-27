@@ -25,6 +25,7 @@ import { projectsRouter }     from './routes/projects.js';
 import { credentialsRouter }  from './routes/credentials.js';
 import { authMetaRouter }     from './routes/auth/meta.js';
 import { campaignsRouter }    from './routes/campaigns.js';
+import { toolsRouter }        from './routes/tools.js';
 import { logger }             from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
 import { ensureChatSessionSchema } from './models/chatSession.js';
@@ -164,6 +165,13 @@ app.use('/api/campaigns',
   requireAuth,
   apiLimiter,
   campaignsRouter
+);
+
+// Standalone AI-powered tools (content calendar, etc.)
+app.use('/api/tools',
+  requireAuth,
+  apiLimiter,
+  toolsRouter
 );
 
 // Chat endpoint also accessible from browser with Clerk token

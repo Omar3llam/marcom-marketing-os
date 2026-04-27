@@ -531,6 +531,36 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 .modal-close{position:absolute;top:16px;right:18px;background:var(--cream-2);border:1.5px solid var(--border);border-radius:var(--r-full);width:32px;height:32px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;font-family:'Poppins',sans-serif;color:var(--ink-3);}
 .modal-close:hover{background:var(--coral-lt);border-color:var(--coral);color:var(--coral);}
 
+/* ── CONTENT CALENDAR MODAL ─────────────────────── */
+.cal-modal-content{max-width:680px;padding:28px 28px 24px;}
+.cal-modal-hdr{display:flex;align-items:center;gap:14px;margin-bottom:22px;padding-right:36px;}
+.cal-form{display:flex;flex-direction:column;gap:14px;}
+.cal-form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+.cal-field{display:flex;flex-direction:column;gap:5px;}
+.cal-label{font-size:12px;font-weight:600;color:var(--ink-2);letter-spacing:0.02em;}
+.cal-input{padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--r-md);font-family:'Poppins',sans-serif;font-size:13px;color:var(--ink);background:#fff;transition:border-color 0.2s;outline:none;}
+.cal-input:focus{border-color:var(--yellow-dk);}
+.cal-textarea{resize:vertical;min-height:80px;line-height:1.5;}
+.cal-err{font-size:12px;color:var(--coral);font-weight:500;padding:8px 12px;background:var(--coral-lt);border-radius:var(--r-md);border:1px solid var(--coral);}
+.cal-generate-btn{padding:13px 24px;background:var(--yellow);color:#000;border:none;border-radius:var(--r-md);font-family:'Poppins',sans-serif;font-size:14px;font-weight:700;cursor:pointer;transition:opacity 0.2s,transform 0.1s;box-shadow:var(--shadow-yellow);}
+.cal-generate-btn:hover:not(:disabled){opacity:0.88;}
+.cal-generate-btn:active:not(:disabled){transform:scale(0.98);}
+.cal-generate-btn:disabled{opacity:0.55;cursor:not-allowed;}
+.cal-result{border-top:1.5px solid var(--border);padding-top:18px;margin-top:4px;}
+.cal-result-toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.cal-result-lbl{font-size:13px;font-weight:700;color:var(--ink);}
+.cal-copy-btn{padding:6px 14px;border:1.5px solid var(--border);border-radius:var(--r-md);background:var(--cream-2);font-size:12px;font-weight:600;cursor:pointer;color:var(--ink-2);font-family:'Poppins',sans-serif;transition:all 0.2s;}
+.cal-copy-btn:hover{border-color:var(--yellow-dk);background:var(--yellow-lt);}
+.cal-result-body{font-size:13px;line-height:1.7;color:var(--ink-2);max-height:420px;overflow-y:auto;padding-right:4px;}
+.cal-result-body::-webkit-scrollbar{width:4px;}
+.cal-result-body::-webkit-scrollbar-thumb{background:var(--border);border-radius:var(--r-full);}
+.cal-result-body h2,.cal-result-body h3{color:var(--ink);font-size:14px;margin:16px 0 6px;}
+.cal-result-body strong{color:var(--ink);}
+.cal-result-body p{margin-bottom:8px;}
+.cal-result-body ul,.cal-result-body ol{padding-left:18px;margin-bottom:8px;}
+.cal-result-body li{margin-bottom:4px;}
+@media(max-width:540px){.cal-form-row{grid-template-columns:1fr;}}
+
 /* ── TOAST ─────────────────────────────────────── */
 .toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(20px);padding:12px 22px;border-radius:var(--r-full);font-size:13px;font-weight:600;opacity:0;transition:all 0.3s;pointer-events:none;z-index:300;max-width:420px;text-align:center;box-shadow:var(--shadow-md);}
 .toast.vis{opacity:1;transform:translateX(-50%) translateY(0);}
@@ -718,6 +748,14 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
         </div>
       </div>
 
+      <div class="sb-item tool" onclick="window._app.closeSidebar();window._app.openContentCalendar()">
+        <span class="sb-item-icon">🗓️</span>
+        <div>
+          <div class="sb-item-label">Content Calendar</div>
+          <div class="sb-item-sub">4-week AI-generated plan</div>
+        </div>
+      </div>
+
       <div class="sb-divider"></div>
       <span class="sb-section-lbl">Recent</span>
       <div id="recent-chats-list"></div>
@@ -816,6 +854,70 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
   <div class="modal-content">
     <button class="modal-close" onclick="window.closeModal()">✕</button>
     <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- ── CONTENT CALENDAR MODAL ──────────────────────────────── -->
+<div id="cal-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="cal-modal-title">
+  <div class="modal-content cal-modal-content">
+    <button class="modal-close" onclick="window._app.closeContentCalendar()" aria-label="Close">✕</button>
+
+    <!-- Header -->
+    <div class="cal-modal-hdr">
+      <span style="font-size:22px;">🗓️</span>
+      <div>
+        <div id="cal-modal-title" style="font-size:16px;font-weight:800;color:var(--ink);">Content Calendar Generator</div>
+        <div style="font-size:12px;color:var(--ink-3);">AI-powered 4-week plan — context-aware, sector-specific</div>
+      </div>
+    </div>
+
+    <!-- Form -->
+    <div id="cal-form" class="cal-form">
+      <div class="cal-form-row">
+        <div class="cal-field">
+          <label class="cal-label" for="cal-month">Target Month / Year</label>
+          <input id="cal-month" class="cal-input" type="text" placeholder="e.g. July 2025"
+                 oninput="window._app._calClearErr()">
+        </div>
+        <div class="cal-field">
+          <label class="cal-label" for="cal-sector">Target Sector</label>
+          <select id="cal-sector" class="cal-input">
+            <option value="">— Select sector —</option>
+            <option value="GOV">GOV — Government &amp; Public Sector</option>
+            <option value="EDU">EDU — Education</option>
+            <option value="BFSI">BFSI — Banking, Financial Services &amp; Insurance</option>
+            <option value="Tech">Tech — Technology &amp; SaaS</option>
+            <option value="Healthcare">Healthcare</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="cal-field">
+        <label class="cal-label" for="cal-focus">Key Focus / Campaign Goal for this month</label>
+        <textarea id="cal-focus" class="cal-input cal-textarea"
+                  placeholder="e.g. Drive awareness of our new AI compliance feature among CFOs in the UAE banking sector. Increase demo bookings by 20%."
+                  rows="3" oninput="window._app._calClearErr()"></textarea>
+      </div>
+      <div id="cal-err" class="cal-err" style="display:none;"></div>
+      <button id="cal-generate-btn" class="cal-generate-btn" onclick="window._app._generateCalendar()">
+        <span id="cal-btn-label">✨ Generate Calendar</span>
+      </button>
+    </div>
+
+    <!-- Result -->
+    <div id="cal-result" class="cal-result" style="display:none;">
+      <div class="cal-result-toolbar">
+        <span class="cal-result-lbl">📋 Your Content Calendar</span>
+        <button class="cal-copy-btn" onclick="window._app._copyCalendar()" title="Copy to clipboard">⎘ Copy</button>
+      </div>
+      <div id="cal-result-body" class="cal-result-body"></div>
+      <div style="display:flex;gap:10px;margin-top:14px;">
+        <button class="cgc-btn cgc-btn-secondary" onclick="window._app._calReset()" style="flex:1;">
+          ← Generate Another
+        </button>
+      </div>
+    </div>
+
   </div>
 </div>
 

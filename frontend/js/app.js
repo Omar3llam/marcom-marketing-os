@@ -1278,6 +1278,122 @@ function _handleMetaOAuthReturn() {
   }
 }
 
+// ── CONTENT CALENDAR TOOL ─────────────────────────────────────
+// Opens the Content Calendar modal. All logic is self-contained
+// so it does not interfere with the main chat session state (S.*).
+
+export function openContentCalendar() {
+  const modal = document.getElementById('cal-modal');
+  if (!modal) return;
+  _calReset();   // clear any previous state before showing
+  modal.style.display = 'flex';
+  // Focus first input for keyboard users
+  setTimeout(() => document.getElementById('cal-month')?.focus(), 120);
+}
+
+export function closeContentCalendar() {
+  const modal = document.getElementById('cal-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+export function _calClearErr() {
+  const el = document.getElementById('cal-err');
+  if (el) el.style.display = 'none';
+}
+
+export function _calReset() {
+  const monthEl  = document.getElementById('cal-month');
+  const sectorEl = document.getElementById('cal-sector');
+  const focusEl  = document.getElementById('cal-focus');
+  const formEl   = document.getElementById('cal-form');
+  const resEl    = document.getElementById('cal-result');
+  const errEl    = document.getElementById('cal-err');
+  const btn      = document.getElementById('cal-generate-btn');
+  const btnLbl   = document.getElementById('cal-btn-label');
+
+  if (monthEl)  monthEl.value  = '';
+  if (sectorEl) sectorEl.value = '';
+  if (focusEl)  focusEl.value  = '';
+  if (errEl)    { errEl.textContent = ''; errEl.style.display = 'none'; }
+  if (formEl)   formEl.style.display = 'flex';
+  if (resEl)    resEl.style.display  = 'none';
+  if (btn)      btn.disabled = false;
+  if (btnLbl)   btnLbl.textContent = '✨ Generate Calendar';
+}
+
+export async function _generateCalendar() {
+  const projectId = ProjectManager.getProjectId();
+  const targetMonth  = document.getElementById('cal-month')?.value.trim();
+  const targetSector = document.getElementById('cal-sector')?.value;
+  const keyFocus     = document.getElementById('cal-focus')?.value.trim();
+
+  // Validate
+  const errEl = document.getElementById('cal-err');
+  const showCalErr = (msg) => {
+    if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
+  };
+  if (!projectId)   { showCalErr('No active project — select a project first.'); return; }
+  if (!targetMonth) { showCalErr('Please enter a target month and year (e.g. July 2025).'); return; }
+  if (!targetSector){ showCalErr('Please select a target sector.'); return; }
+  if (!keyFocus)    { showCalErr('Please describe your key focus or campaign goal.'); return; }
+
+  _calClearErr();
+
+  // Set loading state
+  const btn    = document.getElementById('cal-generate-btn');
+  const btnLbl = document.getElementById('cal-btn-label');
+  if (btn)    btn.disabled = true;
+  if (btnLbl) btnLbl.innerHTML = '<span style="display:inline-block;animation:lSpin 1s linear infinite;">✨</span> Generating…';
+
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/tools/content-calendar', {
+      method:  'POST',
+      headers,
+      body:    JSON.stringify({ projectId, targetMonth, targetSector, keyFocus }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || data.status !== 'ok') {
+      showCalErr(data.message || 'Calendar generation failed — please try again.');
+      if (btn)    btn.disabled = false;
+      if (btnLbl) btnLbl.textContent = '✨ Generate Calendar';
+      return;
+    }
+
+    // Render result
+    const formEl    = document.getElementById('cal-form');
+    const resEl     = document.getElementById('cal-result');
+    const bodyEl    = document.getElementById('cal-result-body');
+
+    if (formEl) formEl.style.display = 'none';
+    if (resEl)  resEl.style.display  = 'block';
+    if (bodyEl) bodyEl.innerHTML = fmtTxt(data.result);
+
+    // Store raw text for copy
+    document.getElementById('cal-result-body').dataset.raw = data.result;
+
+  } catch (err) {
+    showCalErr(`Network error: ${err.message}`);
+    if (btn)    btn.disabled = false;
+    if (btnLbl) btnLbl.textContent = '✨ Generate Calendar';
+  }
+}
+
+export function _copyCalendar() {
+  const raw = document.getElementById('cal-result-body')?.dataset.raw || '';
+  if (!raw) return;
+  navigator.clipboard?.writeText(raw)
+    .then(() => toast('Content calendar copied ✓', 'ok'))
+    .catch(() => toast('Copy failed — select the text manually', 'err'));
+}
+
+// Close cal-modal on backdrop click
+document.addEventListener('click', (e) => {
+  if (e.target?.id === 'cal-modal') closeContentCalendar();
+});
+
 // ── CRM SYNC ──────────────────────────────────────────────────
 export async function syncCRM(type, payload) {
   toast('🚀 Sending to CRM…', 'inf');
@@ -1410,4 +1526,11 @@ window._app = {
   openCampaignAnalysis,
   _connectMeta,
   _handleCampaignCSV,
+  // Content Calendar Tool
+  openContentCalendar,
+  closeContentCalendar,
+  _calReset,
+  _calClearErr,
+  _generateCalendar,
+  _copyCalendar,
 };
