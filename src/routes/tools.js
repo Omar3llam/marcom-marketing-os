@@ -176,7 +176,7 @@ toolsRouter.post('/campaign-brief', async (req, res) => {
   }
 
   const systemPrompt = `You are a Senior Campaign Strategist generating a full strategic campaign brief.
-You write with precision, commercial clarity, and zero filler. Every section must be actionable.
+You write with precision, commercial clarity, and zero filler. Every section must be actionable and specific to this brand.
 
 BRAND VOICE RULE: Always use "we/our/us" — never "I/my/me" when writing brand copy.
 
@@ -189,49 +189,51 @@ CAMPAIGN INPUTS:
 - Key message: ${keyMessage}
 ${competitor ? `- Competitor to beat: ${competitor}` : ''}
 
-TASK: Generate a complete strategic campaign brief using the project context above.
-Every field must be specific to this brand — no generic placeholders.
+ABSOLUTE OUTPUT RULE: Return ONLY a valid JSON object. No markdown fences, no intro text, no backticks, no explanation.
+Start with { and end with }. Any character outside the JSON breaks the parser.
 
-ABSOLUTE OUTPUT RULE: Return ONLY a valid JSON object. No markdown, no intro text, no backticks.
-Start with { and end with }. Any text outside the JSON breaks the parser.
-
-OUTPUT SCHEMA — return exactly this structure:
+OUTPUT SCHEMA — return exactly this structure, fully populated, no null values:
 
 {
-  "campaignName": "<A punchy, memorable campaign name — specific to the brand and objective>",
-  "bigIdea": "<The single core creative concept in one sentence — the 'why this, why now'>",
-  "audience": {
-    "segments": ["<Primary segment — specific role/profile>", "<Secondary segment>", "<Tertiary segment if relevant>"],
-    "painPoints": ["<Real pain point A — specific to this audience>", "<Pain point B>", "<Pain point C>"],
-    "triggerMoment": "<The specific moment or event that makes this audience ready to act>"
-  },
-  "strategy": {
-    "platformMix": ["<Platform — XX%: rationale in 5 words>", "<Platform — XX%: rationale>"],
-    "contentPillars": ["<Pillar 1: purpose>", "<Pillar 2: purpose>", "<Pillar 3: purpose>"],
-    "funnelApproach": "<How this campaign moves the audience from awareness to conversion — 2 sentences>"
-  },
-  "creativeBrief": {
-    "visualDirection": "<Art direction in 2–3 sentences: colour palette rationale, imagery style, typography feel>",
-    "tone": "<Tone of voice directive — 3 specific words + one sentence of context>",
-    "hookExamples": ["<Platform-native hook 1 — state which platform>", "<Hook 2>", "<Hook 3>"]
-  },
-  "executableActions": [
-    "<Specific action 1 — who does what, on which channel, in which week>",
-    "<Specific action 2>",
-    "<Specific action 3>",
-    "<Specific action 4>"
+  "campaignName": "<Punchy memorable campaign name — specific to this brand and objective>",
+  "bigIdea": "<The single core creative concept in one sentence — the why this, why now>",
+  "audience": [
+    { "segment": "<Primary role/profile — specific>", "pain": "<Their real pain point>", "color": "#6366F1" },
+    { "segment": "<Secondary role/profile>", "pain": "<Their pain point>", "color": "#8B5CF6" },
+    { "segment": "<Tertiary role/profile>", "pain": "<Their pain point>", "color": "#A855F7" }
   ],
+  "platformMix": [
+    { "name": "<Platform>", "pct": <integer 1-100>, "color": "<hex color for that platform>" },
+    { "name": "<Platform>", "pct": <integer>, "color": "<hex color>" },
+    { "name": "<Platform>", "pct": <integer>, "color": "<hex color>" },
+    { "name": "<Platform>", "pct": <integer>, "color": "<hex color>" }
+  ],
+  "contentPillars": [
+    { "num": "01", "topic": "<Pillar name>", "sub": "<One-line description of content type>" },
+    { "num": "02", "topic": "<Pillar name>", "sub": "<Description>" },
+    { "num": "03", "topic": "<Pillar name>", "sub": "<Description>" },
+    { "num": "04", "topic": "<Pillar name>", "sub": "<Description>" }
+  ],
+  "creativeDirection": {
+    "visualStyle": ["<Style tag 1>", "<Style tag 2>", "<Style tag 3>"],
+    "hooks": ["<Specific hook line 1 — no bracket placeholders>", "<Specific hook line 2>"]
+  },
   "kpis": [
-    "<KPI 1 with target number — e.g. CTR ≥ 2.5% on LinkedIn>",
-    "<KPI 2 with target>",
-    "<KPI 3 with target>"
-  ],
-  "budget": {
-    "allocation": ["<Channel — XX% of budget: rationale>", "<Channel — XX%: rationale>"],
-    "watchouts": "<One sentence on where this budget can be wasted and how to avoid it>"
-  },
-  "risks": ["<Risk 1 and mitigation>", "<Risk 2 and mitigation>"]
-}`;
+    { "label": "<Metric name>", "value": "<Target — e.g. ≤ $120>", "color": "#6366F1" },
+    { "label": "<Metric>", "value": "<Target>", "color": "#22C55E" },
+    { "label": "<Metric>", "value": "<Target>", "color": "#F59E0B" },
+    { "label": "<Metric>", "value": "<Target>", "color": "#EF4444" },
+    { "label": "<Metric>", "value": "<Target>", "color": "#8B5CF6" },
+    { "label": "<Metric>", "value": "<Target>", "color": "#06B6D4" }
+  ]
+}
+
+Platform color guidance (use these exact hex values):
+- LinkedIn: #0077B5  · Meta/Facebook/Instagram: #1877F2  · Google: #34A853
+- TikTok: #010101   · X/Twitter: #1DA1F2              · Email/Newsletter: #F59E0B
+- YouTube: #FF0000  · Other: #64748B
+
+Rules: pct values across platformMix must sum to 100. No placeholder brackets in any string field. All arrays fully populated.`;
 
   try {
     logger.info({ userId, projectId, objective }, '[tools/campaign-brief] Generating');

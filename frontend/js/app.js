@@ -5,7 +5,7 @@
 // ============================================================
 import { sendChat, exportToCRM } from './api.js?v=20260427-5';
 import { S, updateUI } from './state.js?v=20260427-5';
-import { renderResp, renderCampaign, renderScorecard, renderStrategyBrief, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260427-5';
+import { renderResp, renderCampaign, renderScorecard, renderStrategyBrief, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260427-6';
 import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js?v=20260427-5';
 import { handleFile, clearImg } from './media.js?v=20260427-5';
 
