@@ -1,16 +1,63 @@
 // ============================================================
 // MARCOM — Mode 4: Content Interrogation Engine
 // Supports text + vision (image) analysis
-// Strict JSON output → visual scorecard cards
+// Strict JSON output → visual scorecard / analysis dashboard
 // ============================================================
 import { callClaude, stripJsonFences } from '../utils/claude.js';
 import { extractDialectContext, MODE_PLATFORM_HINTS } from '../utils/dialectContext.js';
 
+// Keywords that signal the user wants a full 10-step SCORECARD
+const SCORE_SIGNALS = [
+  'score', 'scorecard', 'rate ', 'rating', 'grade', 'evaluate', 'evaluation',
+];
+
+// Keywords that signal the user wants a deep strategic ANALYSIS
+const ANALYSE_SIGNALS = [
+  'interrogate', 'interrogation', 'analyse', 'analyze', 'analysis',
+  'deep dive', 'deep-dive', 'strategic review', 'review this', 'breakdown',
+  'audit', 'critique',
+];
+
+function detectIntent(message = '') {
+  const m = message.toLowerCase();
+  // If message has no substantial content to analyse yet, flag it
+  const wordCount = m.trim().split(/\s+/).length;
+  const isRequest = wordCount <= 12; // short prompt — probably asking, not pasting content
+
+  if (ANALYSE_SIGNALS.some(k => m.includes(k))) return { type: 'analyse', isRequest };
+  if (SCORE_SIGNALS.some(k => m.includes(k)))   return { type: 'score',   isRequest };
+  return { type: 'score', isRequest }; // default to scorecard
+}
+
 export async function runMode4(session, userMessage, conversationHistory, imageBase64 = null, imageMediaType = 'image/jpeg') {
   const dialectContext = extractDialectContext(session, MODE_PLATFORM_HINTS.mode4);
+  const { type, isRequest } = detectIntent(userMessage);
+
+  // If the user has sent a short trigger phrase without actual content yet,
+  // and we have no prior turns with content in this session, ask for the
+  // content directly — never fall back to Mode 1 onboarding.
+  const hasPriorContent = conversationHistory.some(
+    m => m.role === 'user' && m.content && m.content.trim().split(/\s+/).length > 12
+  );
+
+  if (isRequest && !hasPriorContent && !imageBase64) {
+    const modeLabel = type === 'analyse' ? 'interrogate' : 'score';
+    const aiResponse = `Your business context is locked and ready. 🔍\n\nTo ${modeLabel} your content, paste the copy, caption, post, or ad you'd like me to evaluate — then let me know:\n1. **Platform** (LinkedIn / Instagram / TikTok / X / Facebook / Email)\n2. **Funnel stage** (TOFU / MOFU / BOFU / Retention)\n3. **Format** (Carousel / Reel / Static / Story / Long-form / Ad)\n4. **Intended audience**\n\nDrop everything in one message and I'll run the full analysis.`;
+
+    return {
+      aiResponse,
+      currentSection: session.current_section,
+      currentService: session.current_service,
+      contextLocked:  session.context_locked,
+      contextSummary: session.context_summary,
+      nextMode:       4,
+      serviceHistory: session.service_history || [],
+      onboardingComplete: false,
+    };
+  }
 
   const raw = await callClaude({
-    systemPrompt: buildContentPrompt(session.context_summary, !!imageBase64),
+    systemPrompt: buildContentPrompt(session.context_summary, !!imageBase64, type),
     conversationHistory,
     userMessage,
     maxTokens: 4000,
@@ -23,14 +70,14 @@ export async function runMode4(session, userMessage, conversationHistory, imageB
   const existingLog = session.content_interrogation_log || '';
   const contentLog = existingLog
     + `\n${'─'.repeat(60)}\n`
-    + `INTERROGATION: ${new Date().toISOString()}\n`
+    + `INTERROGATION [${type.toUpperCase()}]: ${new Date().toISOString()}\n`
     + aiResponse;
 
   return {
     aiResponse,
     currentSection: session.current_section,
     currentService: session.current_service,
-    contextLocked: session.context_locked,
+    contextLocked:  session.context_locked,
     contextSummary: session.context_summary,
     nextMode: 4,
     serviceHistory: session.service_history || [],
@@ -39,7 +86,7 @@ export async function runMode4(session, userMessage, conversationHistory, imageB
   };
 }
 
-function buildContentPrompt(contextSummary, hasImage) {
+function buildContentPrompt(contextSummary, hasImage, mode = 'score') {
   const visionNote = hasImage ? `
 VISION ANALYSIS ACTIVE: An image has been submitted alongside the content.
 In addition to text analysis, evaluate:
@@ -48,22 +95,34 @@ In addition to text analysis, evaluate:
 Include both metrics in the scorecard JSON.
 ` : '';
 
+  const contextBlock = contextSummary
+    ? `LOCKED BUSINESS CONTEXT (use this throughout the analysis — brand voice, audience, goals, differentiators all apply):
+${contextSummary}`
+    : `No business context available — proceed based on what the user shares.`;
+
+  const modeInstruction = mode === 'analyse'
+    ? buildAnalysisPrompt(contextBlock, visionNote)
+    : buildScorecardPrompt(contextBlock, visionNote);
+
+  return modeInstruction;
+}
+
+// ── SCORECARD MODE (10-step full evaluation) ──────────────────
+function buildScorecardPrompt(contextBlock, visionNote) {
   return `You are running the Content Interrogation Engine — a 10-step evaluation protocol.
+You are now in INTERROGATION MODE. Your analysis is grounded in the locked business context below.
 
-Deliver verdicts clearly. Frame every critique as strategic opportunity — give the truth and the solution in the same breath.
-
+${contextBlock}
+${visionNote}
 BRAND VOICE RULE: When rewriting or suggesting revised copy, always use "we/our/us" — never "I/my/me". You are writing on behalf of the brand.
 
-CLIENT CONTEXT:
-${contextSummary || 'Proceed based on what the user shares.'}
-${visionNote}
-PRE-FLIGHT: If these 4 answers are not already confirmed in the conversation, ask for them first:
+PRE-FLIGHT: If these 4 answers are not already confirmed in the conversation, ask for them first (as plain text, NOT JSON):
 1. Platform (LinkedIn / Instagram / TikTok / X / Facebook / Email / WhatsApp / Other)
 2. Funnel stage (TOFU / MOFU / BOFU / Retention)
 3. Content format (Carousel / Reel / Static post / Story / Long-form / Short-form / Email / Ad)
 4. Intended audience
 
-Once content AND all 4 pre-flight answers are confirmed, run all 10 steps and output ONLY valid JSON — no markdown fences, no preamble, no explanation outside the JSON.
+Once content AND all 4 pre-flight answers are confirmed, run all 10 steps and output ONLY valid JSON.
 
 THE 10-STEP ENGINE:
 
@@ -77,30 +136,26 @@ Evaluate: scroll-stop potential, curiosity gap, audience self-recognition, patte
 Gate: Hook Score ≥7/10.
 
 STEP 3 — AUDIENCE SIMULATION
-Do NOT use hardcoded personas. Dynamically identify the 3 most relevant target personas based on the client context and content provided.
-Examples: B2B SaaS → "IT Director", "CFO", "End User". E-commerce → "Busy Parent", "Gift Buyer", "Returning Customer". Education → "Student", "Parent", "Institution Head". Fitness/Lifestyle → "Beginner", "Dedicated Athlete", "Health-Conscious Professional".
-For each persona: name their role/archetype, their immediate gut reaction to this content, and the single biggest credibility gap stopping them from acting.
-Output as a JSON array — see schema below.
+Dynamically derive 3 target personas from the locked business context + content provided.
+For each: name their role/archetype, gut reaction, and single biggest credibility gap.
 
 STEP 4 — STRATEGIC POSITIONING
-Category leader signals? Original insight or recycled noise? Could a competitor post this verbatim? Operationally real or aspirationally vague?
+Category leader signals? Original insight or recycled noise? Could a competitor post this verbatim?
 Gate: Authority Signal ≥7/10.
 
 STEP 5 — MESSAGING FRAMEWORK COMPLIANCE
-TOFU: Hook → Problem Recognition → Insight → Soft CTA
+TOFU: Hook → Problem → Insight → Soft CTA
 MOFU: Problem → Consequence → Solution → Proof → CTA
-BOFU: Objection Handling → Proof → Urgency → Direct CTA
-Retention: Value Delivery → Community Signal → Upsell Bridge
-B2B narrative: Problem → Consequence → Solution → Insight
-B2C narrative: Relatable Moment → Emotional Consequence → Solution → Transformation
-Flag exactly where narrative breaks.
+BOFU: Objection → Proof → Urgency → Direct CTA
+Retention: Value Delivery → Community → Upsell
+Flag exactly where the narrative breaks.
 
 STEP 6 — COMMERCIAL & CONVERSION IMPACT
-Real stakes framed? Buyer anxiety reduced? Price justified? Specific action driven?
+Real stakes framed? Buyer anxiety reduced? Specific action driven?
 Gate: Commercial Impact ≥ Moderate.
 
 STEP 7 — PLATFORM, FORMAT & FUNNEL FIT
-Right format for platform? Right length for attention state? Correct funnel stage? Algorithm reward or suppress?
+Right format? Right length? Correct funnel stage? Algorithm reward or suppress?
 Gate: Platform ✓, Funnel ✓, Format ✓.
 
 STEP 8 — CLOSING LINE EVALUATION
@@ -116,18 +171,19 @@ If Rewrite Required is Minor, Moderate, or Major — produce the full rewritten 
 OUTPUT FORMAT — Return ONLY this JSON. No other text whatsoever:
 
 {
+  "mode": "scorecard",
   "overallScore": <Integer 0–100. Weighted composite of all 10 criteria.>,
   "summary": "<2–3 sentence executive verdict — what works, what breaks, single highest-leverage fix.>",
   "criteria": [
-    { "name": "AI Authenticity",    "score": <1-10>, "feedback": "<1 sentence. Specific, actionable.>" },
-    { "name": "Hook Strength",      "score": <1-10>, "feedback": "<1 sentence.>" },
-    { "name": "Audience Fit",       "score": <1-10>, "feedback": "<1 sentence.>" },
-    { "name": "Authority Signal",   "score": <1-10>, "feedback": "<1 sentence.>" },
-    { "name": "Differentiation",    "score": <1-10>, "feedback": "<1 sentence.>" },
-    { "name": "Cultural Resonance", "score": <1-10>, "feedback": "<1 sentence.>" },
-    { "name": "Closing Line",       "score": <1-10>, "feedback": "<1 sentence.>" },
-    { "name": "Commercial Impact",  "score": <1-10>, "feedback": "<1 sentence.>" },
-    { "name": "Platform Fit",       "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "AI Authenticity",     "score": <1-10>, "feedback": "<1 sentence. Specific, actionable.>" },
+    { "name": "Hook Strength",       "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Audience Fit",        "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Authority Signal",    "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Differentiation",     "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Cultural Resonance",  "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Closing Line",        "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Commercial Impact",   "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Platform Fit",        "score": <1-10>, "feedback": "<1 sentence.>" },
     { "name": "Engagement Potential","score": <1-10>, "feedback": "<1 sentence.>" }
   ],
   "recommendations": [
@@ -150,8 +206,8 @@ OUTPUT FORMAT — Return ONLY this JSON. No other text whatsoever:
   },
   "audience_simulation": [
     { "persona_name": "<dynamically derived persona>", "reaction": "<gut reaction>", "credibility_gap": "<single biggest gap>" },
-    { "persona_name": "<second persona>", "reaction": "<reaction>", "credibility_gap": "<gap>" },
-    { "persona_name": "<third persona>", "reaction": "<reaction>", "credibility_gap": "<gap>" }
+    { "persona_name": "<second persona>",              "reaction": "<reaction>",     "credibility_gap": "<gap>" },
+    { "persona_name": "<third persona>",               "reaction": "<reaction>",     "credibility_gap": "<gap>" }
   ],
   "rewrite_required": "<None|Minor|Moderate|Major>",
   "verdict": "<single sentence: if published today on [Platform] as [Format] targeting [Audience], outcome: [specific prediction]>",
@@ -160,8 +216,55 @@ OUTPUT FORMAT — Return ONLY this JSON. No other text whatsoever:
   "what_changed": ["<specific improvement 1>", "<specific improvement 2>", "<specific improvement 3>"]
 }
 
-ABSOLUTE OUTPUT RULE — READ THIS BEFORE RESPONDING:
-Return ONLY a valid JSON object. No markdown, no intro text, no explanation, no backticks, no code fences.
-Your response must start with the character { and end with the character }.
-Any text outside the JSON object will break the parser. Output NOTHING except the JSON.`;
+ABSOLUTE OUTPUT RULE: Return ONLY a valid JSON object. No markdown, no intro text, no backticks, no code fences.
+Start with { and end with }. Any character outside the JSON will break the parser.`;
+}
+
+// ── ANALYSIS MODE (strategic deep-dive) ──────────────────────
+function buildAnalysisPrompt(contextBlock, visionNote) {
+  return `You are the Content Interrogation Engine running in DEEP ANALYSIS MODE.
+You are grounded in the locked business context. Every insight must reference the brand's actual goals, voice, and audience.
+
+${contextBlock}
+${visionNote}
+BRAND VOICE RULE: When suggesting copy, always use "we/our/us" — never "I/my/me".
+
+TASK: Perform a strategic deep-dive on the content provided.
+- Assess alignment with the locked business context (brand voice, sector goals, audience profile)
+- Identify what the content gets right (strengths), what it gets wrong (weaknesses), and the strategic gaps
+- Assign an alignment score (0–100) reflecting how well the content serves the locked business goals
+- Produce a concrete action plan
+
+If the user hasn't confirmed platform / funnel stage / format / audience, infer them from context and state your assumption in the analysis.
+
+OUTPUT FORMAT — Return ONLY this JSON. No other text whatsoever:
+
+{
+  "mode": "analysis",
+  "alignmentScore": <Integer 0–100. How well the content aligns with the locked business goals and brand context.>,
+  "summary": "<2–3 sentence executive summary: what the content is trying to do, how well it succeeds, single biggest strategic miss.>",
+  "analysis": "<Paragraph-level deep dive (4–6 sentences). Cover tone, messaging, commercial intent, audience relevance, and brand alignment. Be specific — reference actual words or phrases from the content.>",
+  "strengths": [
+    "<Specific strength 1 — what works and why.>",
+    "<Specific strength 2.>",
+    "<Specific strength 3.>"
+  ],
+  "weaknesses": [
+    "<Specific weakness 1 — what fails and the consequence.>",
+    "<Specific weakness 2.>",
+    "<Specific weakness 3.>"
+  ],
+  "strategicGaps": "<How this content fails to serve the locked business goals — missed opportunity, misaligned tone, wrong audience signal, or commercial gap. Be direct.>",
+  "recommendations": [
+    "<High-priority fix 1 — specific, actionable.>",
+    "<High-priority fix 2.>",
+    "<High-priority fix 3.>"
+  ],
+  "brutal_insight": "<One punchy, high-impact strategic takeaway — direct, specific, actionable.>",
+  "rewrite_required": "<None|Minor|Moderate|Major>",
+  "rewritten_content": "<Full rewritten version if rewrite_required is not None, else empty string>"
+}
+
+ABSOLUTE OUTPUT RULE: Return ONLY a valid JSON object. No markdown, no intro text, no backticks, no code fences.
+Start with { and end with }. Any character outside the JSON will break the parser.`;
 }

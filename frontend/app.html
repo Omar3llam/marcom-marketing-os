@@ -536,6 +536,17 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 .sc-rec-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:var(--r-md);}
 .sc-rec-num{width:22px;height:22px;border-radius:50%;background:var(--yellow);color:#000;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .sc-rec-txt{font-size:13px;color:var(--ink-2);line-height:1.5;}
+
+/* ── SCORECARD / ANALYSIS SHARED EXTRAS ──────────────────── */
+.sc-mode-pill{font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:2px 7px;border-radius:var(--r-full);background:var(--purple-lt);color:var(--purple);border:1px solid var(--purple);margin-left:6px;vertical-align:middle;}
+.sc-analysis-body{font-size:13px;color:var(--ink-2);line-height:1.7;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:var(--r-md);margin-bottom:4px;}
+.sc-rec-green{background:var(--mint) !important;color:#fff !important;}
+.sc-rec-red{background:var(--coral) !important;color:#fff !important;}
+
+/* ── INTERROGATION MODE BADGE ─────────────────────────────── */
+#interrogation-badge{display:none;align-items:center;gap:6px;padding:7px 14px;margin:0 auto 0;max-width:760px;width:calc(100% - 32px);background:var(--purple-lt);border:1.5px solid var(--purple);border-radius:var(--r-full);font-size:12px;font-weight:600;color:#5a2f78;animation:msgIn 0.25s ease;}
+.intg-dot{width:7px;height:7px;border-radius:50%;background:var(--purple);animation:mPulse 2s infinite;flex-shrink:0;}
+.intg-sub{font-weight:400;color:#7a5f90;font-size:11px;}
 .verdict-txt{margin-top:10px;font-size:12px;color:var(--ink-3);line-height:1.65;font-style:italic;padding:10px 14px;background:var(--cream-2);border-radius:var(--r-md);}
 
 /* ── AUDIENCE SIMULATION TABS ──────────────────── */
@@ -862,6 +873,13 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 
     <div class="pbar" id="pbar"><div class="pbar-fill" id="pbarFill"></div></div>
 
+    <!-- Interrogation Mode badge — shown when Mode 4 is active with locked context -->
+    <div id="interrogation-badge" style="display:none;">
+      <span class="intg-dot"></span>
+      🔍 Interrogation Mode
+      <span class="intg-sub">— context locked, ready to score or analyse your content</span>
+    </div>
+
     <!-- Messages -->
     <div class="msgs" id="msgs">
       <div class="empty" id="emptyState">
@@ -1019,6 +1037,6 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 <div class="toast" id="toast"></div>
 
 <!-- App logic loaded as ES module — version query string busts the browser cache on each deploy -->
-<script type="module" src="/js/app.js?v=20260427-1"></script>
+<script type="module" src="/js/app.js?v=20260427-2"></script>
 </body>
 </html>

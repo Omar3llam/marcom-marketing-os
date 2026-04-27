@@ -24,4 +24,13 @@ export function updateUI() {
   // The progress bar (Mode 1 onboarding indicator) is also retired.
   const pbar = document.getElementById('pbar');
   if (pbar) pbar.classList.remove('visible');
+
+  // ── Interrogation Mode indicator ───────────────────────────
+  // Show a subtle badge in the chat header when the user is in
+  // Mode 4 (content scoring/analysis) with context locked.
+  // Hides automatically when the mode changes.
+  const badge = document.getElementById('interrogation-badge');
+  if (badge) {
+    badge.style.display = (S.mode === 4 && S.locked) ? 'inline-flex' : 'none';
+  }
 }

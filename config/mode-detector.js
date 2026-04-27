@@ -16,24 +16,18 @@
 const NEUTRAL_WORDS = ['rebuild', 'reset', 'clear', 'restart', 'start over', 'redo', 'refresh'];
 
 export function detectMode(session, message, forceMode) {
-  // Validate any frontend-supplied mode — must be integer 1–5
-  if (forceMode && [1, 2, 3, 4, 5].includes(parseInt(forceMode, 10))) {
-    return parseInt(forceMode, 10);
-  }
+  const fm = forceMode ? parseInt(forceMode, 10) : 0;
 
-  // Context must be locked before leaving Mode 1 — UNLESS the message is
-  // clearly a tool/content request that already has conversation context to
-  // work from. This prevents normal words like "rebuild" or "rewrite" from
-  // being misread as system resets.
-  if (!session.context_locked) {
-    const msg = message.toLowerCase();
-    // If the message is only a neutral word on its own (< 4 words, matches a
-    // neutral keyword) AND there's no prior conversation, treat it as mode 1.
-    // In all other cases, still route to mode 1 until context is locked — but
-    // mode 1 itself is now smart enough to handle mid-conversation messages.
-    return 1;
-  }
+  // forceMode 2–5: always honour — these come from explicit UI tool selections.
+  if ([2, 3, 4, 5].includes(fm)) return fm;
 
+  // forceMode 1 (or no forceMode): only send to Mode 1 if context is not yet
+  // locked. When context IS locked, ignore the force-1 signal entirely so that
+  // a history-replayed mode=1 never re-triggers the onboarding flow for a
+  // returning user whose project context is already saved.
+  if (!session.context_locked) return 1;
+
+  // ── Context is locked — natural keyword detection ──────────
   const msg = message.toLowerCase();
 
   // Mode 3: Social calendar
@@ -43,10 +37,18 @@ export function detectMode(session, message, forceMode) {
   ];
   if (social.some(t => msg.includes(t))) return 3;
 
-  // Mode 4: Content interrogation
+  // Mode 4: Content interrogation / scoring / evaluation
+  // Cast a wide net — "Evaluate this content", "Score this", "Analyze my post",
+  // "Interrogate this caption" must all reach Mode 4, not fall through to Mode 2.
   const content = [
-    'interrogate', 'evaluate content', 'check my content', 'score my content',
-    'content interrogation', 'tool 09', 'rate this', 'caption',
+    'interrogate', 'interrogation',
+    'evaluate content', 'evaluate this', 'evaluate my',
+    'check my content', 'check this content',
+    'score my content', 'score this', 'score content', 'content score',
+    'analyze this content', 'analyze my content', 'analyse this', 'analyse my',
+    'content analysis', 'content interrogation',
+    'rate this', 'rate my content',
+    'tool 09', 'tool09',
   ];
   if (content.some(t => msg.includes(t))) return 4;
 

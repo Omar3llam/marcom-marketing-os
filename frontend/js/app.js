@@ -3,11 +3,11 @@
 // Handles auth bootstrapping, send flow, and the window._app
 // facade used by inline HTML event handlers.
 // ============================================================
-import { sendChat, exportToCRM } from './api.js?v=20260427-1';
-import { S, updateUI } from './state.js?v=20260427-1';
-import { renderResp, renderCampaign, renderScorecard, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260427-1';
-import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js?v=20260427-1';
-import { handleFile, clearImg } from './media.js?v=20260427-1';
+import { sendChat, exportToCRM } from './api.js?v=20260427-2';
+import { S, updateUI } from './state.js?v=20260427-2';
+import { renderResp, renderCampaign, renderScorecard, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260427-2';
+import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js?v=20260427-2';
+import { handleFile, clearImg } from './media.js?v=20260427-2';
 
 // ── DIAGNOSTIC — remove after confirming new JS is loading ───
 console.log('%c[LUMI] app.js v20260426-3 LOADED', 'background:#FFD300;color:#000;font-weight:bold;padding:2px 8px');
@@ -641,8 +641,8 @@ export async function resumeChat(sessionId) {
         // dashboard directly — NOT a stub. The dashboard is pure DOM output
         // with no live closures, so it is safe to replay in history.
         renderCampaign(json);
-      } else if (json && (json.overallScore != null || Array.isArray(json.criteria))) {
-        // Mode 4 (new visual dashboard): pure DOM, no live closures — safe to replay.
+      } else if (json && (json.overallScore != null || Array.isArray(json.criteria) || json.alignmentScore != null)) {
+        // Mode 4 scorecard or analysis dashboard: pure DOM, no live closures — safe to replay.
         renderScorecard(json);
       } else if (json && (json.calendar || json.scorecard)) {
         // Modes 3 + 4 legacy: compact stubs because modal handlers rely on live closures.
@@ -669,10 +669,18 @@ export async function resumeChat(sessionId) {
 
   // Restore mode/forceMode from the most recent AI bubble so the next
   // turn routes to the correct mode handler on the backend.
+  // CRITICAL: Never restore forceMode=1 when context is locked — doing so
+  // re-triggers the onboarding flow for returning users whose project context
+  // is already saved. Mode 1 is only valid when context is NOT yet locked.
   const lastAi = [...S.history].reverse().find(m => m.role === 'assistant' && m.meta?.mode);
   if (lastAi?.meta?.mode) {
-    S.mode      = lastAi.meta.mode;
-    S.forceMode = lastAi.meta.mode;
+    S.mode = lastAi.meta.mode;
+    // Only carry forceMode forward if it isn't Mode 1 with a locked context
+    if (!(lastAi.meta.mode === 1 && S.locked)) {
+      S.forceMode = lastAi.meta.mode;
+    } else {
+      S.forceMode = null; // Let the backend's natural keyword detection take over
+    }
   }
 
   // 7. Scroll to bottom + mark active in sidebar.
