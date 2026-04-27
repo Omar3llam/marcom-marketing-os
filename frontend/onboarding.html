@@ -89,13 +89,20 @@ header {
 /* ── MAIN ──────────────────────────────────────────────── */
 main {
   flex:1;
-  display:flex; align-items:center; justify-content:center;
-  padding:32px 24px;
-  overflow:hidden;
+  display:flex; align-items:flex-start; justify-content:center;
+  padding:32px 24px 48px;
+  overflow-y:auto;        /* scroll tall cards — never clip behind header */
+  overflow-x:hidden;
+}
+/* On viewports large enough to centre vertically, keep the nice centred look */
+@media (min-height: 700px) {
+  main { align-items:center; }
 }
 .wizard-shell {
   width:100%; max-width:640px;
   display:flex; flex-direction:column; gap:24px;
+  /* Never let the shell compress — content must always be fully visible */
+  flex-shrink:0;
 }
 
 /* ── PROGRESS ──────────────────────────────────────────── */
@@ -273,7 +280,7 @@ select option { background:var(--surface-2); color:var(--text); }
 /* ── RESPONSIVE ────────────────────────────────────────── */
 @media (max-width: 640px) {
   header { padding:14px 18px; }
-  main { padding:18px 16px; }
+  main { padding:16px 16px 40px; align-items:flex-start; }
   .card { padding:24px 20px; gap:18px; }
   .card-headline { font-size:22px; }
   .radio-row { grid-template-columns:1fr 1fr; }
