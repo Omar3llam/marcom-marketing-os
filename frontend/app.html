@@ -724,14 +724,6 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
         </div>
       </div>
 
-      <div class="sb-item tool" onclick="window._app.closeSidebar();window._app.qs('social media calendar')">
-        <span class="sb-item-icon">📅</span>
-        <div>
-          <div class="sb-item-label">Social Calendar</div>
-          <div class="sb-item-sub">4-week content plan</div>
-        </div>
-      </div>
-
       <div class="sb-item tool" onclick="window._app.closeSidebar();window._app.qs('Evaluate this content')">
         <span class="sb-item-icon">🔍</span>
         <div>
@@ -796,7 +788,7 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
         <div class="empty-title">Hi! I'm <em>Lumi</em> 👋</div>
         <div class="empty-sub">Your AI marketing co-pilot. Drop a URL for instant analysis, paste campaign metrics, or start your onboarding.</div>
         <div class="quick-starts">
-          <span class="qs-chip" onclick="window._app.qs('social media calendar')">📅 Social Calendar</span>
+          <span class="qs-chip" onclick="window._app.openContentCalendar()">🗓️ Content Calendar</span>
           <span class="qs-chip" onclick="window._app.qs('Evaluate this content')">🔍 Score Content</span>
           <span class="qs-chip" onclick="window._app.openCampaignAnalysis()">📊 Campaign Analysis</span>
         </div>
@@ -883,11 +875,21 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
           <label class="cal-label" for="cal-sector">Target Sector</label>
           <select id="cal-sector" class="cal-input">
             <option value="">— Select sector —</option>
-            <option value="GOV">GOV — Government &amp; Public Sector</option>
-            <option value="EDU">EDU — Education</option>
-            <option value="BFSI">BFSI — Banking, Financial Services &amp; Insurance</option>
-            <option value="Tech">Tech — Technology &amp; SaaS</option>
-            <option value="Healthcare">Healthcare</option>
+            <optgroup label="B2B / B2G">
+              <option value="GOV (B2B/B2G)">GOV — Government &amp; Public Sector (B2B/B2G)</option>
+              <option value="BFSI (B2B)">BFSI — Banking, Financial Services &amp; Insurance (B2B)</option>
+              <option value="Tech (B2B)">Tech — Technology &amp; SaaS (B2B)</option>
+            </optgroup>
+            <optgroup label="B2B &amp; B2C">
+              <option value="EDU (B2B/B2C)">EDU — Education (B2B/B2C)</option>
+              <option value="Real Estate (B2B/B2C)">Real Estate &amp; Property (B2B/B2C)</option>
+              <option value="Healthcare (B2B/B2C)">Healthcare (B2B/B2C)</option>
+            </optgroup>
+            <optgroup label="B2C">
+              <option value="E-commerce &amp; Retail (B2C)">E-commerce &amp; Retail (B2C)</option>
+              <option value="FMCG (B2C)">FMCG — Fast Moving Consumer Goods (B2C)</option>
+              <option value="Hospitality &amp; Tourism (B2C)">Hospitality &amp; Tourism (B2C)</option>
+            </optgroup>
             <option value="Other">Other</option>
           </select>
         </div>
