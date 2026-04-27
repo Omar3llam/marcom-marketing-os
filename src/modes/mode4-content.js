@@ -116,6 +116,25 @@ If Rewrite Required is Minor, Moderate, or Major — produce the full rewritten 
 OUTPUT FORMAT — Return ONLY this JSON. No other text whatsoever:
 
 {
+  "overallScore": <Integer 0–100. Weighted composite of all 10 criteria.>,
+  "summary": "<2–3 sentence executive verdict — what works, what breaks, single highest-leverage fix.>",
+  "criteria": [
+    { "name": "AI Authenticity",    "score": <1-10>, "feedback": "<1 sentence. Specific, actionable.>" },
+    { "name": "Hook Strength",      "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Audience Fit",       "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Authority Signal",   "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Differentiation",    "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Cultural Resonance", "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Closing Line",       "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Commercial Impact",  "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Platform Fit",       "score": <1-10>, "feedback": "<1 sentence.>" },
+    { "name": "Engagement Potential","score": <1-10>, "feedback": "<1 sentence.>" }
+  ],
+  "recommendations": [
+    "<Concrete action 1 — specific, not vague.>",
+    "<Concrete action 2.>",
+    "<Concrete action 3.>"
+  ],
   "scorecard": {
     "ai_probability": <0-100>,
     "hook_score": <1-10>,
@@ -130,16 +149,19 @@ OUTPUT FORMAT — Return ONLY this JSON. No other text whatsoever:
     "overall": <1-10>
   },
   "audience_simulation": [
-    { "persona_name": "<dynamically derived persona, e.g. Busy Mom / IT Director / Gen-Z Student>", "reaction": "<their immediate gut reaction to this content>", "credibility_gap": "<the single biggest gap stopping them from acting>" },
+    { "persona_name": "<dynamically derived persona>", "reaction": "<gut reaction>", "credibility_gap": "<single biggest gap>" },
     { "persona_name": "<second persona>", "reaction": "<reaction>", "credibility_gap": "<gap>" },
     { "persona_name": "<third persona>", "reaction": "<reaction>", "credibility_gap": "<gap>" }
   ],
   "rewrite_required": "<None|Minor|Moderate|Major>",
   "verdict": "<single sentence: if published today on [Platform] as [Format] targeting [Audience], outcome: [specific prediction]>",
-  "brutal_insight": "<one punchy, high-impact strategic takeaway — direct, specific, actionable. The single most important thing. Not a summary.>",
+  "brutal_insight": "<one punchy, high-impact strategic takeaway — direct, specific, actionable.>",
   "rewritten_content": "<full rewritten version if rewrite_required is not None, else empty string>",
   "what_changed": ["<specific improvement 1>", "<specific improvement 2>", "<specific improvement 3>"]
 }
 
-CRITICAL: Return ONLY valid JSON. Do not wrap the response in markdown blocks or backticks. Start directly with { and end with }.`;
+ABSOLUTE OUTPUT RULE — READ THIS BEFORE RESPONDING:
+Return ONLY a valid JSON object. No markdown, no intro text, no explanation, no backticks, no code fences.
+Your response must start with the character { and end with the character }.
+Any text outside the JSON object will break the parser. Output NOTHING except the JSON.`;
 }

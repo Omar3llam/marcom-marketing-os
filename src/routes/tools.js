@@ -81,34 +81,58 @@ Tone: energetic, consumer-centric, emotionally resonant. Lead with aspiration an
 UNIVERSAL BRAND VOICE RULE:
 Always use "we/our/us" when writing copy or strategies on behalf of the brand. Never use "I/my/me". This rule applies to every post, caption, and recommendation without exception.
 
-${projectContext ? `PROJECT CONTEXT (fetch from database — use to personalise every post):\n${projectContext}\n` : ''}
+${projectContext ? `PROJECT CONTEXT (use to personalise every post — brand voice, differentiators, audience):\n${projectContext}\n` : ''}
 TARGET: ${targetMonth} | SECTOR: ${targetSector} | GOAL: ${keyFocus}
 
 ${platformStrategy}
 
 SECTOR INTELLIGENCE:
 Analyse the chosen sector (${targetSector}) and apply these rules:
-- If the sector is primarily B2B (GOV, BFSI, Tech): focus content on pain-point-driven insights, ROI framing, decision-maker language, and long-form thought leadership formats. Avoid overly casual or consumer-centric language.
-- If the sector is primarily B2C (E-commerce, FMCG, Hospitality): focus on emotional triggers, lifestyle aspiration, social proof, urgency, and short-form entertainment. Avoid corporate jargon.
-- If the sector is mixed (EDU, Real Estate, Healthcare): calibrate tone per platform — professional on LinkedIn, conversational on Instagram/Facebook.
+- B2B (GOV, BFSI, Tech): pain-point-driven insights, ROI framing, decision-maker language, thought leadership. Avoid casual language.
+- B2C (E-commerce, FMCG, Hospitality): emotional triggers, lifestyle aspiration, social proof, urgency, short-form entertainment. Avoid corporate jargon.
+- Mixed (EDU, Real Estate, Healthcare): calibrate tone per platform — professional on LinkedIn, conversational on Instagram/Facebook.
 
 CALENDAR REQUIREMENTS:
-- Produce exactly 4 weeks of content. Group by week, then by day.
-- Mix content types per the platform strategy above: thought leadership, product/service highlights, case studies, engagement/poll posts, cultural moments, industry news commentary
-- Every post must serve a clear commercial purpose — no filler, no generic awareness posts
-- Hooks must be platform-native (a LinkedIn hook ≠ an Instagram caption)
-- Include relevant cultural, national, or industry calendar moments for ${targetMonth} where applicable
-- Respect the project's brand voice from the project context above
+- Produce exactly 4 weeks of content (16–20 posts total across all platforms).
+- Mix content types: thought leadership, product/service highlights, case studies, engagement/poll posts, cultural moments, industry commentary.
+- Every post must serve a clear commercial purpose — no filler.
+- Hooks must be platform-native (a LinkedIn hook is NOT an Instagram caption).
+- Include relevant cultural, national, or industry calendar moments for ${targetMonth} where applicable.
+- All copy uses "we/our" — never "I/my".
 
-FOR EACH POST PROVIDE:
-1. **Week / Date** — e.g. "Week 1 — Mon 3rd"
-2. **Platform** — LinkedIn / X / Instagram / Facebook / TikTok
-3. **Content Copy** — Full, ready-to-publish copy using "we/our". No placeholders. Be specific and contextually accurate.
-4. **Visual Concept** — Concise, actionable asset description (e.g. "Carousel: 5 stats on sector trend, brand colours", "15s Reel: product in use with text overlay hook")
+═══════════════════════════════════════════════════════════════
+OUTPUT FORMAT — CRITICAL REQUIREMENT
+═══════════════════════════════════════════════════════════════
+You MUST respond with ONLY a valid JSON object. No markdown fences, no preamble, no explanation.
+Do NOT wrap in \`\`\`json ... \`\`\`. Start directly with { and end with }.
 
-FORMAT:
-Use ## Week N headers. Under each week, list each post clearly.
-End with a **## Editorial Note** (2–3 sentences) explaining the strategic logic for this month's content mix and how it drives the stated goal.`;
+The JSON must follow this EXACT structure:
+
+{
+  "month": "${targetMonth}",
+  "sector": "${targetSector}",
+  "goal": "${keyFocus}",
+  "editorial_note": "2-3 sentence strategic summary of the content mix logic.",
+  "calendar": [
+    {
+      "week": 1,
+      "date": "Mon 4th Aug",
+      "platform": "LinkedIn",
+      "copy": "Full ready-to-publish post copy using we/our. No placeholders.",
+      "visual": "Concise visual concept description e.g. Carousel: 5 stats, brand colours"
+    }
+  ]
+}
+
+Rules for the "calendar" array:
+- "week" is an integer 1–4.
+- "date" is a short human-readable date string e.g. "Tue 6th Aug".
+- "platform" is exactly one of: LinkedIn, X, Instagram, Facebook, TikTok.
+- "copy" is the full post text — specific, no placeholder brackets, brand-voice correct.
+- "visual" is a concise asset brief — one sentence maximum.
+- Include 16–20 entries total spread across weeks 1–4.
+ABSOLUTE OUTPUT RULE: Return ONLY the JSON object. No markdown, no intro text, no explanation, no backticks.
+Your response must start with { and end with }. Any character outside the JSON will break the parser.`;
 
   // ── Call Claude ───────────────────────────────────────────
   try {
@@ -118,7 +142,7 @@ End with a **## Editorial Note** (2–3 sentences) explaining the strategic logi
       systemPrompt,
       conversationHistory: [],
       userMessage: `Generate the full 4-week content calendar for ${targetMonth}, ${targetSector} sector, goal: ${keyFocus}`,
-      maxTokens: 4000,
+      maxTokens: 5000,
     });
 
     logger.info({ userId, projectId }, '[tools/content-calendar] Done');
