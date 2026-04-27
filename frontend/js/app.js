@@ -4,13 +4,13 @@
 // facade used by inline HTML event handlers.
 // ============================================================
 import { sendChat, exportToCRM } from './api.js?v=20260427-5';
-import { S, updateUI } from './state.js?v=20260427-5';
-import { renderResp, renderCampaign, renderScorecard, renderStrategyBrief, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260427-6';
+import { S, updateUI } from './state.js?v=20260427-7';
+import { renderResp, renderCampaign, renderScorecard, renderStrategyBrief, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260427-7';
 import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js?v=20260427-5';
 import { handleFile, clearImg } from './media.js?v=20260427-5';
 
 // ── DIAGNOSTIC — remove after confirming new JS is loading ───
-console.log('%c[LUMI] app.js v20260426-3 LOADED', 'background:#FFD300;color:#000;font-weight:bold;padding:2px 8px');
+console.log('%c[LUMI] app.js v20260427-7 LOADED (Hub-and-Spoke)', 'background:#FFD300;color:#000;font-weight:bold;padding:2px 8px');
 
 // ── LUMI THOUGHTS (rotating loader text) ─────────────────────
 const LUMI_THOUGHTS = [
@@ -142,16 +142,15 @@ function boot(clerk) {
   // Detect redirect back from Meta OAuth and handle connected/error state
   _handleMetaOAuthReturn();
 
-  // ── Auto-resume last session ──────────────────────────────────
-  // If the user had an active session (stored in localStorage), restore
-  // it automatically so S.history is populated BEFORE any new send().
-  // This prevents the critical "history wipe" bug where a page reload
-  // followed by a new message would overwrite the full conversation with
-  // only the 2 new messages, losing all prior turns.
+  // ── Route to initial view ─────────────────────────────────────
+  // If a saved session exists, auto-resume it in tool-active.
+  // Otherwise land on the Tools Hub so the user must choose a tool.
   if (sid) {
-    // Defer slightly so the loading spinner has paint time and
-    // loadRecentChats() has started its fetch (no await needed).
+    // Show hub briefly while session loads (120ms defer for paint).
+    switchView('hub');
     setTimeout(() => resumeChat(sid), 120);
+  } else {
+    switchView('hub');
   }
 }
 
@@ -167,6 +166,8 @@ function _initProjectSwitcher() {
     S.sid = null; S.history = []; S.forceMode = null;
     try { localStorage.removeItem('mc_session'); } catch {}
     loadRecentChats();
+    // Navigate back to hub with updated project meta
+    switchView('hub');
   });
 
   // Toggle dropdown
@@ -424,6 +425,7 @@ export async function loadRecentChats() {
 
     if (!sessions.length) {
       list.innerHTML = '<div style="padding:6px 12px;font-size:11px;color:var(--ink-3);font-style:italic;">No recent chats yet.</div>';
+      _renderHubRecents([]);
       return;
     }
 
@@ -439,6 +441,7 @@ export async function loadRecentChats() {
       </div>`;
     }).join('');
     _wireSidebarDelegation();
+    _renderHubRecents(sessions);
   } catch (err) {
     console.warn('[Lumi] loadRecentChats failed:', err?.message);
     list.innerHTML = '<div style="padding:6px 12px;font-size:11px;color:var(--ink-3);font-style:italic;">Offline — history unavailable.</div>';
@@ -541,6 +544,11 @@ async function deleteSession(sessionId) {
  * Structured payloads (calendar / scorecard / campaigns): compact stub.
  */
 export async function resumeChat(sessionId) {
+  // 0. Ensure tool-active view is shown before rendering into #msgs
+  if (S.currentView !== 'tool-active') {
+    switchView('tool-active', 'chat');
+  }
+
   // 1. Verify container
   const container = document.getElementById('msgs');
   if (!container) {
@@ -1880,13 +1888,14 @@ export function setMode(m) {
 export function clearSession() {
   if (!confirm('Clear session and start over?')) return;
   S.sid = null; S.mode = 1; S.section = 0; S.service = 0;
-  S.locked = false; S.msgs = 0; S.forceMode = null; S.img = null;
+  S.locked = true; S.msgs = 0; S.forceMode = null; S.img = null;
   S.history = [];
   clearImg();
   try { localStorage.removeItem('mc_session'); } catch {}
-  document.getElementById('msgs').innerHTML =
-    `<div class="empty" id="emptyState"><div class="empty-lumi">✨</div><div class="empty-divider"></div><div class="empty-tagline">Session cleared. Let's go again.</div></div>`;
-  updateUI();
+  // Clear the chat area silently, then go back to the hub
+  const msgs = document.getElementById('msgs');
+  if (msgs) msgs.innerHTML = '';
+  switchView('hub');
 }
 
 // ── TOAST ─────────────────────────────────────────────────────
@@ -1895,6 +1904,141 @@ export function toast(msg, t = 'err') {
   el.textContent = msg;
   el.className = `toast ${t === 'ok' ? 'ok' : t === 'inf' ? 'inf' : 'err'} vis`;
   setTimeout(() => el.classList.remove('vis'), 3500);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HUB-AND-SPOKE VIEW ROUTER
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Switch to a named view. All other views are hidden.
+ * Sidebar auto-collapses when entering tool-active; expands on hub.
+ */
+export function switchView(viewName, toolId = null) {
+  S.currentView = viewName;
+  if (toolId) S.activeTool = toolId;
+
+  // Show the correct view container; hide all others.
+  ['workspace', 'tools-hub', 'tool-active'].forEach(v => {
+    const el = document.getElementById(`view-${v}`);
+    if (el) el.classList.toggle('view-active', v === viewName);
+  });
+
+  // Sidebar: collapse in tool-active, expand on hub/workspace
+  const sidebar = document.getElementById('sidebar');
+  if (sidebar) {
+    const shouldCollapse = viewName === 'tool-active';
+    sidebar.classList.toggle('sidebar-collapsed', shouldCollapse);
+    // Update toggle button label
+    const lbl = document.querySelector('.sb-toggle-lbl');
+    if (lbl) lbl.textContent = shouldCollapse ? 'Expand' : 'Collapse';
+  }
+
+  // Tool topbar: update title
+  if (viewName === 'tool-active') {
+    const titleMap = {
+      tools:    'Marketing Tools',
+      score:    'Score Content',
+      analysis: 'Campaign Analysis',
+      calendar: 'Content Calendar',
+      brief:    'Campaign Brief',
+      chat:     'Chat with Lumi',
+    };
+    const titleEl = document.getElementById('tool-active-title');
+    if (titleEl) titleEl.textContent = (toolId && titleMap[toolId]) ? titleMap[toolId] : 'Workspace';
+  }
+
+  // Hub: refresh project name + recents
+  if (viewName === 'hub') {
+    _refreshHubMeta();
+  }
+
+  // Workspace: refresh project context preview
+  if (viewName === 'workspace') {
+    _refreshWorkspaceMeta();
+  }
+
+  updateUI();
+}
+
+/** Launch a tool from the Hub. Modal tools open their overlay; chat tools enter tool-active. */
+export function hubLaunch(toolId) {
+  switch (toolId) {
+    case 'tools':
+      switchView('tool-active', 'tools');
+      _startFreshSession();
+      openMarketingTools();
+      break;
+    case 'score':
+      switchView('tool-active', 'score');
+      _startFreshSession();
+      setTimeout(() => qs('Evaluate this content'), 50);
+      break;
+    case 'analysis':
+      switchView('tool-active', 'analysis');
+      openCampaignAnalysis();
+      break;
+    case 'calendar':
+      // Modal tool — no view switch needed; opens over the hub
+      openContentCalendar();
+      break;
+    case 'brief':
+      // Modal tool — no view switch needed
+      openCampaignBrief();
+      break;
+    case 'chat':
+    default:
+      switchView('tool-active', 'chat');
+      _startFreshSession();
+      break;
+  }
+}
+
+/** Toggle the sidebar collapsed/expanded (user-initiated override). */
+export function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+  const isCollapsed = sidebar.classList.toggle('sidebar-collapsed');
+  const lbl = document.querySelector('.sb-toggle-lbl');
+  if (lbl) lbl.textContent = isCollapsed ? 'Expand' : 'Collapse';
+}
+
+/** Refresh hub header with the active project name. */
+function _refreshHubMeta() {
+  const nameEl = document.getElementById('hub-project-name');
+  if (nameEl) nameEl.textContent = ProjectManager.getName() || 'your project';
+}
+
+/** Populate workspace view with active project name + context snippet. */
+function _refreshWorkspaceMeta() {
+  const nameEl = document.getElementById('workspace-project-name');
+  if (nameEl) nameEl.textContent = ProjectManager.getName() || 'My Project';
+  const ctxEl  = document.getElementById('workspace-context');
+  if (ctxEl) {
+    const ctx = ProjectManager.getContext();
+    ctxEl.textContent = ctx
+      ? (ctx.length > 500 ? ctx.slice(0, 500) + '…' : ctx)
+      : 'No context loaded.';
+  }
+}
+
+/** Render recent sessions into the hub recents panel. */
+function _renderHubRecents(sessions) {
+  const el = document.getElementById('hub-recent-sessions');
+  if (!el) return;
+  if (!sessions.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--ink-3);font-style:italic;padding:4px 2px;">No recent sessions yet. Generate something!</div>';
+    return;
+  }
+  el.innerHTML = sessions.slice(0, 5).map(s => {
+    const safeId = esc(s.sessionId || '');
+    const label  = esc((s.title || 'New Chat').slice(0, 42));
+    return `<div class="hub-recent-item" onclick="window._app.resumeChat('${safeId}')">
+      <span class="hri-icon">💬</span>
+      <span class="hri-title">${label}</span>
+      <span class="hri-arrow">→</span>
+    </div>`;
+  }).join('');
 }
 
 // ── WINDOW FACADE (used by HTML inline event handlers) ────────
@@ -1916,6 +2060,10 @@ window._app = {
   openSidebar, closeSidebar,
   triggerAttach, resetInputArea,
   ProjectManager,
+  // ── Hub-and-Spoke routing ────────────────────────────────
+  switchView,
+  hubLaunch,
+  toggleSidebar,
   openMarketingTools,
   // Campaign Analysis (Meta Ads + CSV dual-entry)
   openCampaignAnalysis,

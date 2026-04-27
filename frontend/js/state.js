@@ -10,6 +10,12 @@ export const S = {
   // In-memory canonical conversation for the active session.
   // Single source of truth that the save endpoint reads from.
   history: [],
+  // ── Hub-and-Spoke routing ─────────────────────────────────
+  // 'hub'         — Tools Hub landing screen (default after boot)
+  // 'tool-active' — Dedicated chat workspace for a chosen tool
+  // 'workspace'   — Project profile / context review screen
+  currentView: 'hub',
+  activeTool:  null,  // 'tools' | 'score' | 'analysis' | 'calendar' | 'brief' | 'chat'
 };
 
 export function updateUI() {

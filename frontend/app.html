@@ -809,6 +809,98 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 @media(max-width:400px){
   .tile-grid{grid-template-columns:1fr;}
 }
+
+/* ══════════════════════════════════════════════════
+   HUB-AND-SPOKE — VIEW CONTAINERS
+══════════════════════════════════════════════════ */
+#view-workspace,#view-tools-hub,#view-tool-active{display:none;}
+#view-workspace.view-active,#view-tools-hub.view-active{
+  flex:1;min-height:0;overflow-y:auto;background:var(--cream);
+}
+#view-tool-active.view-active{
+  flex:1;display:flex;flex-direction:column;min-height:0;
+}
+
+/* ── TOOLS HUB ───────────────────────────────────── */
+.hub-shell{max-width:880px;margin:0 auto;padding:44px 40px 64px;width:100%;}
+.hub-header{margin-bottom:36px;}
+.hub-greeting-row{display:flex;align-items:center;gap:16px;}
+.hub-lumi{font-size:42px;animation:lumiFloat 3s ease-in-out infinite;flex-shrink:0;line-height:1;}
+.hub-title{font-size:24px;font-weight:800;color:var(--ink);letter-spacing:-0.4px;line-height:1.2;}
+.hub-sub{font-size:13.5px;color:var(--ink-3);font-weight:500;margin-top:5px;}
+.hub-sub strong{color:var(--ink-2);}
+.hub-section-lbl{font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:14px;}
+.hub-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:36px;}
+@media(max-width:720px){.hub-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:480px){.hub-grid{grid-template-columns:1fr;}}
+/* Hub cards */
+.hub-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--r-lg);padding:20px 22px;cursor:pointer;transition:all 0.2s;display:flex;flex-direction:column;gap:8px;box-shadow:var(--shadow-sm);}
+.hub-card:hover{transform:translateY(-3px);box-shadow:var(--shadow-md);}
+.hub-card-icon{font-size:28px;line-height:1;}
+.hub-card-title{font-size:14.5px;font-weight:700;color:var(--ink);}
+.hub-card-desc{font-size:12px;color:var(--ink-3);line-height:1.6;flex:1;}
+.hub-card-arrow{font-size:11.5px;font-weight:700;color:var(--ink-3);transition:color 0.2s;margin-top:4px;}
+.hub-card:hover .hub-card-arrow{color:var(--yellow-dk);}
+.hc-yellow:hover{border-color:var(--yellow-dk);background:#FFFFF0;}
+.hc-purple:hover{border-color:var(--purple);background:var(--purple-lt);}
+.hc-coral:hover{border-color:var(--coral);background:var(--coral-lt);}
+.hc-sky:hover{border-color:var(--sky);background:var(--sky-lt);}
+.hc-mint:hover{border-color:var(--mint);background:var(--mint-lt);}
+.hc-ink:hover{border-color:var(--ink-2);background:var(--cream-3);}
+/* Hub recents */
+.hub-recents-label{font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:10px;}
+.hub-recents{display:flex;flex-direction:column;gap:5px;}
+.hub-recent-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:var(--r-md);background:#fff;border:1.5px solid var(--border);cursor:pointer;transition:all 0.15s;font-size:13px;color:var(--ink-2);}
+.hub-recent-item:hover{border-color:var(--yellow-dk);background:var(--yellow-lt);}
+.hub-recent-item .hri-icon{color:var(--ink-3);font-size:14px;flex-shrink:0;}
+.hub-recent-item .hri-title{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;}
+.hub-recent-item .hri-arrow{color:var(--ink-3);font-size:11px;flex-shrink:0;}
+
+/* ── TOOL TOPBAR ─────────────────────────────────── */
+.tool-topbar{display:flex;align-items:center;gap:10px;padding:0 18px;height:50px;background:#fff;border-bottom:1px solid var(--border);flex-shrink:0;position:relative;z-index:10;}
+.tool-back-btn{display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:var(--r-full);background:var(--cream-2);border:1.5px solid var(--border);font-size:12px;font-weight:600;color:var(--ink-2);cursor:pointer;font-family:'Poppins',sans-serif;transition:all 0.18s;white-space:nowrap;flex-shrink:0;}
+.tool-back-btn:hover{background:var(--yellow-lt);border-color:var(--yellow-dk);color:var(--ink);}
+.tool-topbar-title{font-size:13.5px;font-weight:700;color:var(--ink);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+/* ── WORKSPACE VIEW ──────────────────────────────── */
+.workspace-shell{max-width:600px;margin:0 auto;padding:48px 32px;width:100%;}
+.workspace-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--r-xl);padding:28px 32px;display:flex;flex-direction:column;gap:16px;box-shadow:var(--shadow-sm);}
+.workspace-project-name{font-size:22px;font-weight:800;color:var(--ink);letter-spacing:-0.3px;}
+.workspace-context{font-size:12.5px;color:var(--ink-3);line-height:1.7;background:var(--cream-2);border-radius:var(--r-md);padding:14px 16px;max-height:180px;overflow-y:auto;}
+
+/* ── SIDEBAR — COLLAPSED STATE ───────────────────── */
+#sidebar{transition:width 0.25s ease;}
+#sidebar.sidebar-collapsed{width:60px;}
+#sidebar.sidebar-collapsed .sb-logo-text,
+#sidebar.sidebar-collapsed .project-switcher,
+#sidebar.sidebar-collapsed .sb-item-label,
+#sidebar.sidebar-collapsed .sb-item-sub,
+#sidebar.sidebar-collapsed .sb-section-lbl,
+#sidebar.sidebar-collapsed .sb-new-btn,
+#sidebar.sidebar-collapsed .sb-recent,
+#sidebar.sidebar-collapsed .sb-divider,
+#sidebar.sidebar-collapsed .sb-toggle-lbl,
+#sidebar.sidebar-collapsed #user-button{display:none;}
+#sidebar.sidebar-collapsed .sb-logo{justify-content:center;padding:6px 0 14px;}
+#sidebar.sidebar-collapsed .sb-item{justify-content:center;padding:10px;gap:0;}
+#sidebar.sidebar-collapsed .sb-item-icon{width:auto;}
+#sidebar.sidebar-collapsed .sb-middle{padding:6px 4px;}
+#sidebar.sidebar-collapsed .sb-top{padding:10px 8px;}
+#sidebar.sidebar-collapsed .sb-bottom{align-items:center;padding:10px 8px;}
+#sidebar.sidebar-collapsed .sb-toggle-btn{justify-content:center;padding:7px;}
+/* Sidebar toggle button */
+.sb-toggle-btn{width:100%;display:flex;align-items:center;padding:7px 12px;border-radius:var(--r-md);background:none;border:none;cursor:pointer;font-family:'Poppins',sans-serif;font-size:12px;font-weight:500;color:var(--ink-3);gap:8px;transition:all 0.15s;margin-top:4px;}
+.sb-toggle-btn:hover{background:var(--sb-hover);color:var(--ink);}
+.sb-toggle-icon{font-size:15px;flex-shrink:0;transition:transform 0.25s;}
+.sb-toggle-lbl{font-size:12px;}
+#sidebar.sidebar-collapsed .sb-toggle-icon{transform:rotate(180deg);}
+
+/* ── HUB RESPONSIVE ──────────────────────────────── */
+@media(max-width:768px){
+  .hub-shell{padding:28px 16px 48px;}
+  .hub-title{font-size:20px;}
+  .tool-topbar{padding:0 54px 0 12px;} /* room for hamburger */
+}
 </style>
 </head>
 <body>
@@ -839,8 +931,8 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
         <div class="sb-logo-icon">✨</div>
         <div class="sb-logo-text"><em>LUMI</em></div>
       </div>
-      <button class="sb-new-btn" onclick="window._app.closeSidebar();window._app.clearSession()">
-        <span class="sb-new-btn-icon">＋</span> New Chat
+      <button class="sb-new-btn" onclick="window._app.closeSidebar();window._app.switchView('hub')">
+        <span class="sb-new-btn-icon">＋</span> Hub
       </button>
     </div>
 
@@ -921,11 +1013,13 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 
     </div>
 
-    <!-- Bottom: status chips + user.
-         Mode 1 chat-onboarding is retired in favor of the dedicated
-         wizard at /onboarding.html, so the status here is a static
-         "Context: Locked" pill — no per-mode label or chip. -->
+    <!-- Bottom: toggle + user -->
     <div class="sb-bottom">
+      <!-- Collapse / expand toggle — hidden when sidebar already full-width on hub view -->
+      <button class="sb-toggle-btn" id="sb-toggle-btn" onclick="window._app.toggleSidebar()" title="Collapse sidebar">
+        <span class="sb-toggle-icon">◀</span>
+        <span class="sb-toggle-lbl">Collapse</span>
+      </button>
       <div class="sb-user-row">
         <div id="user-button"></div>
       </div>
@@ -936,74 +1030,178 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
   <!-- ── MAIN VIEW ─────────────────────────────── -->
   <main id="main-view">
 
-    <!-- Hamburger — mobile only -->
+    <!-- Hamburger — mobile only (fixed, shows over any view) -->
     <button id="hamburger" onclick="window._app.openSidebar()" aria-label="Open menu">☰</button>
 
-    <div class="pbar" id="pbar"><div class="pbar-fill" id="pbarFill"></div></div>
-
-    <!-- Interrogation Mode badge — shown when Mode 4 is active with locked context -->
-    <div id="interrogation-badge" style="display:none;">
-      <span class="intg-dot"></span>
-      🔍 Interrogation Mode
-      <span class="intg-sub">— context locked, ready to score or analyse your content</span>
-    </div>
-
-    <!-- Messages -->
-    <div class="msgs" id="msgs">
-      <div class="empty" id="emptyState">
-        <div class="empty-lumi">✨</div>
-        <div class="empty-divider"></div>
-        <div class="empty-title">Hi! I'm <em>Lumi</em> 👋</div>
-        <div class="empty-sub">Your AI marketing co-pilot. Drop a URL for instant analysis, paste campaign metrics, or start your onboarding.</div>
-        <div class="quick-starts">
-          <span class="qs-chip" onclick="window._app.openContentCalendar()">🗓️ Content Calendar</span>
-          <span class="qs-chip" onclick="window._app.qs('Evaluate this content')">🔍 Score Content</span>
-          <span class="qs-chip" onclick="window._app.openCampaignAnalysis()">📊 Campaign Analysis</span>
+    <!-- ══ VIEW: PROJECT WORKSPACE (profile / project list) ══ -->
+    <div id="view-workspace">
+      <div class="workspace-shell">
+        <div class="workspace-card">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <span style="font-size:30px;">📁</span>
+            <div>
+              <div class="workspace-project-name" id="workspace-project-name">My Project</div>
+              <div style="font-size:12px;color:var(--ink-3);margin-top:2px;">Active project context</div>
+            </div>
+          </div>
+          <div class="workspace-context" id="workspace-context">No context loaded.</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="wbtn primary"
+              onclick="localStorage.setItem('lumi:forceNewProject','true');window.location.href='/onboarding.html'">
+              + New Project
+            </button>
+            <button class="wbtn ghost" onclick="window._app.switchView('hub')">← Back to Hub</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Floating input — Claude-inspired with file attachment -->
-    <div class="input-area">
-      <div class="chat-input-wrapper">
-        <!-- hidden file picker -->
-        <input type="file" id="file-upload" accept="image/*,.pdf,.txt,.csv,.docx" multiple style="display:none">
-        <!-- file preview chips row -->
-        <div id="file-preview-container"></div>
-        <!-- main input row -->
-        <div class="lumi-input-box" id="lumi-input-box">
-          <!-- Attachment: wired via addEventListener in setupTA() — no onclick needed -->
-          <button id="attachment-btn" class="attach-btn" type="button"
-                  title="Attach files" aria-label="Attach files">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19
-                       a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
-            </svg>
-          </button>
-          <textarea id="chat-input" class="msg-input"
-                    placeholder="Ask Lumi anything…"
-                    aria-label="Chat message" autocomplete="off"
-                    rows="1"></textarea>
-          <!-- Send: also wired via addEventListener; onclick is belt-and-suspenders -->
-          <button id="send-btn" class="send-btn" type="button"
-                  title="Send" aria-label="Send message"
-                  onclick="window._app.send()">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2.5"
-                 stroke-linecap="round" stroke-linejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"/>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-            </svg>
-          </button>
+    <!-- ══ VIEW: TOOLS HUB (landing screen — choose a tool) ══ -->
+    <div id="view-tools-hub">
+      <div class="hub-shell">
+
+        <!-- Header -->
+        <div class="hub-header">
+          <div class="hub-greeting-row">
+            <span class="hub-lumi">✨</span>
+            <div>
+              <div class="hub-title">What are we working on?</div>
+              <div class="hub-sub">
+                Context ready for <strong id="hub-project-name">your project</strong>
+                &nbsp;<span class="proj-locked-pill">✓ Locked</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="input-meta">
-          <span id="input-error" class="input-error" style="display:none"></span>
-          <span class="input-hint">Shift+Enter for new line</span>
+
+        <!-- Tool grid -->
+        <div class="hub-section-lbl">Choose a Tool</div>
+        <div class="hub-grid">
+
+          <div class="hub-card hc-yellow" onclick="window._app.hubLaunch('tools')">
+            <div class="hub-card-icon">🛠️</div>
+            <div class="hub-card-title">Marketing Tools</div>
+            <div class="hub-card-desc">18 specialist frameworks — brand positioning, competitor analysis, audience profiling &amp; more.</div>
+            <div class="hub-card-arrow">Open Workspace →</div>
+          </div>
+
+          <div class="hub-card hc-purple" onclick="window._app.hubLaunch('score')">
+            <div class="hub-card-icon">🔍</div>
+            <div class="hub-card-title">Score Content</div>
+            <div class="hub-card-desc">10-step diagnostic — hook strength, audience conviction, authority signal &amp; full AI rewrite.</div>
+            <div class="hub-card-arrow">Score Now →</div>
+          </div>
+
+          <div class="hub-card hc-coral" onclick="window._app.hubLaunch('analysis')">
+            <div class="hub-card-icon">📊</div>
+            <div class="hub-card-title">Campaign Analysis</div>
+            <div class="hub-card-desc">Scale / Kill / Optimise decisions — Meta Ads, ASC, MER &amp; horizontal scaling logic.</div>
+            <div class="hub-card-arrow">Analyse →</div>
+          </div>
+
+          <div class="hub-card hc-sky" onclick="window._app.hubLaunch('calendar')">
+            <div class="hub-card-icon">🗓️</div>
+            <div class="hub-card-title">Content Calendar</div>
+            <div class="hub-card-desc">AI-generated 4-week social plan — sector-specific, platform-native content mix.</div>
+            <div class="hub-card-arrow">Generate →</div>
+          </div>
+
+          <div class="hub-card hc-mint" onclick="window._app.hubLaunch('brief')">
+            <div class="hub-card-icon">🚀</div>
+            <div class="hub-card-title">Campaign Brief</div>
+            <div class="hub-card-desc">Full strategic execution plan — audience segments, platform mix, creative direction &amp; KPIs.</div>
+            <div class="hub-card-arrow">Build Brief →</div>
+          </div>
+
+          <div class="hub-card hc-ink" onclick="window._app.hubLaunch('chat')">
+            <div class="hub-card-icon">💬</div>
+            <div class="hub-card-title">Ask Lumi</div>
+            <div class="hub-card-desc">Open-ended marketing strategy — brainstorm, research, ideate, answer any question.</div>
+            <div class="hub-card-arrow">Start Chat →</div>
+          </div>
+
         </div>
+
+        <!-- Recent sessions -->
+        <div class="hub-recents-label">Recent Sessions</div>
+        <div class="hub-recents" id="hub-recent-sessions">
+          <div style="font-size:12px;color:var(--ink-3);font-style:italic;padding:4px 2px;">Loading…</div>
+        </div>
+
       </div>
     </div>
+
+    <!-- ══ VIEW: TOOL ACTIVE (dedicated chat workspace) ══ -->
+    <div id="view-tool-active">
+
+      <!-- Topbar: back button + tool title -->
+      <div class="tool-topbar">
+        <button class="tool-back-btn" onclick="window._app.switchView('hub')">← Hub</button>
+        <span class="tool-topbar-title" id="tool-active-title">Workspace</span>
+      </div>
+
+      <div class="pbar" id="pbar"><div class="pbar-fill" id="pbarFill"></div></div>
+
+      <!-- Interrogation Mode badge — shown when Mode 4 is active with locked context -->
+      <div id="interrogation-badge" style="display:none;">
+        <span class="intg-dot"></span>
+        🔍 Interrogation Mode
+        <span class="intg-sub">— context locked, ready to score or analyse your content</span>
+      </div>
+
+      <!-- Messages -->
+      <div class="msgs" id="msgs">
+        <div class="empty" id="emptyState">
+          <div class="empty-lumi">✨</div>
+          <div class="empty-divider"></div>
+          <div class="empty-title">Hi! I'm <em>Lumi</em> 👋</div>
+          <div class="empty-sub">Your AI marketing co-pilot. Select a tool above or start typing.</div>
+          <div class="quick-starts">
+            <span class="qs-chip" onclick="window._app.hubLaunch('calendar')">🗓️ Content Calendar</span>
+            <span class="qs-chip" onclick="window._app.hubLaunch('score')">🔍 Score Content</span>
+            <span class="qs-chip" onclick="window._app.hubLaunch('analysis')">📊 Campaign Analysis</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Floating input -->
+      <div class="input-area">
+        <div class="chat-input-wrapper">
+          <input type="file" id="file-upload" accept="image/*,.pdf,.txt,.csv,.docx" multiple style="display:none">
+          <div id="file-preview-container"></div>
+          <div class="lumi-input-box" id="lumi-input-box">
+            <button id="attachment-btn" class="attach-btn" type="button"
+                    title="Attach files" aria-label="Attach files">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19
+                         a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+              </svg>
+            </button>
+            <textarea id="chat-input" class="msg-input"
+                      placeholder="Ask Lumi anything…"
+                      aria-label="Chat message" autocomplete="off"
+                      rows="1"></textarea>
+            <button id="send-btn" class="send-btn" type="button"
+                    title="Send" aria-label="Send message"
+                    onclick="window._app.send()">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" stroke-width="2.5"
+                   stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
+          <div class="input-meta">
+            <span id="input-error" class="input-error" style="display:none"></span>
+            <span class="input-hint">Shift+Enter for new line</span>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /view-tool-active -->
 
   </main>
 
@@ -1188,6 +1386,6 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 <div class="toast" id="toast"></div>
 
 <!-- App logic loaded as ES module — version query string busts the browser cache on each deploy -->
-<script type="module" src="/js/app.js?v=20260427-6"></script>
+<script type="module" src="/js/app.js?v=20260427-7"></script>
 </body>
 </html>
