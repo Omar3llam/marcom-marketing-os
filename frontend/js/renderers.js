@@ -59,7 +59,9 @@ export function appendMsg(role, content, meta = {}, imgB64 = null) {
 // the expected JSON shape. Everything else is a plain chat bubble.
 export function renderResp(data) {
   const json = tryJSON(data.message);
-  if (data.current_mode === 5 && json?.campaigns) { renderCampaign(json); return; }
+  // Mode 5: new shape has { overview, budgetAction, campaigns }; old shape just { campaigns }.
+  // Accept either — both render correctly via renderCampaign().
+  if (data.current_mode === 5 && json && (json.campaigns || json.overview)) { renderCampaign(json); return; }
   if (data.current_mode === 4 && json?.scorecard)  { renderScorecard(json); return; }
   if (data.current_mode === 3 && json?.calendar)   { renderCalendar(json); return; }
   // All other responses — including mode-2 tool answers — are plain bubbles.

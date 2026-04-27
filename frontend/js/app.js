@@ -141,6 +141,18 @@ function boot(clerk) {
   loadRecentChats();
   // Detect redirect back from Meta OAuth and handle connected/error state
   _handleMetaOAuthReturn();
+
+  // ── Auto-resume last session ──────────────────────────────────
+  // If the user had an active session (stored in localStorage), restore
+  // it automatically so S.history is populated BEFORE any new send().
+  // This prevents the critical "history wipe" bug where a page reload
+  // followed by a new message would overwrite the full conversation with
+  // only the 2 new messages, losing all prior turns.
+  if (sid) {
+    // Defer slightly so the loading spinner has paint time and
+    // loadRecentChats() has started its fetch (no await needed).
+    setTimeout(() => resumeChat(sid), 120);
+  }
 }
 
 // ── PROJECT SWITCHER UI ───────────────────────────────────────
@@ -627,7 +639,7 @@ export async function resumeChat(sessionId) {
       // The LIVE Mode 4 → Modal Dashboard flow is unaffected: it runs
       // through renderResp() in the send() path, not here.
       const json = tryJSON(content);
-      if (json && (json.calendar || json.scorecard || json.campaigns)) {
+      if (json && (json.calendar || json.scorecard || json.campaigns || json.overview)) {
         _renderRestoredStructuredStub(container, json, meta);
       } else {
         _renderRestoredBubble(container, 'system', content, meta);
@@ -743,9 +755,9 @@ function _renderRestoredBubble(msgsEl, role, content, meta = {}) {
  */
 function _renderRestoredStructuredStub(msgsEl, json, meta = {}) {
   let icon = '📊', label = 'Analysis result';
-  if (json.calendar)  { icon = '📅'; label = '4-Week Social Calendar'; }
-  if (json.scorecard) { icon = '🔍'; label = 'Content Interrogation'; }
-  if (json.campaigns) { icon = '📊'; label = 'Campaign Decision Engine'; }
+  if (json.calendar)              { icon = '📅'; label = '4-Week Social Calendar'; }
+  if (json.scorecard)             { icon = '🔍'; label = 'Content Interrogation'; }
+  if (json.campaigns || json.overview) { icon = '📊'; label = 'Campaign Decision Engine'; }
 
   const wrap = document.createElement('div');
   wrap.className = 'msg system';
@@ -930,6 +942,33 @@ export async function send() {
 
     // ── Update in-memory history; backend save is fire-and-forget ──
     // The session_id is now confirmed by the backend response.
+    //
+    // GUARD: if S.history is empty here it means the user sent a message
+    // after a page reload without the auto-resume completing (e.g. very fast
+    // typist, or auto-resume was skipped).  Fetch the existing history from
+    // the DB first so we append rather than overwrite — prevents the critical
+    // "history wipe" bug where only the new turn would be persisted.
+    if (S.history.length === 0 && S.sid) {
+      try {
+        const hdrPre = await getAuthHeaders();
+        const preFetch = await fetch(`/api/history/${encodeURIComponent(S.sid)}`, { headers: hdrPre });
+        if (preFetch.ok) {
+          const prePay = await preFetch.json();
+          if (Array.isArray(prePay?.messages) && prePay.messages.length > 0) {
+            S.history = prePay.messages.map(m => ({
+              role:    m.role === 'assistant' ? 'assistant' : 'user',
+              content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? ''),
+              meta:    m.meta || (m.mode || m.service ? { mode: m.mode, service: m.service } : {}),
+              ts:      m.ts,
+            }));
+            console.debug('[send] Pre-fetched', S.history.length, 'existing messages to prevent history wipe.');
+          }
+        }
+      } catch (preErr) {
+        console.warn('[send] Pre-fetch of existing history failed (non-fatal):', preErr?.message);
+      }
+    }
+
     pushHistory('user', userMsg);
 
     if (data.message) {
@@ -1399,10 +1438,25 @@ export async function _generateCalendar() {
 
     if (formEl) formEl.style.display = 'none';
     if (resEl)  resEl.style.display  = 'block';
-    if (bodyEl) bodyEl.innerHTML = fmtTxt(data.result);
 
-    // Store raw text for copy
-    document.getElementById('cal-result-body').dataset.raw = data.result;
+    // Attempt JSON parse → visual dashboard; fallback to markdown
+    if (bodyEl) {
+      try {
+        const cleaned = (data.result || '')
+          .replace(/^```json\s*/i, '')
+          .replace(/^```\s*/i, '')
+          .replace(/```\s*$/g, '')
+          .trim();
+        const parsed = JSON.parse(cleaned);
+        _renderCalendarDashboard(bodyEl, parsed);
+        // Store structured copy for clipboard export
+        bodyEl.dataset.raw = _calendarToText(parsed);
+      } catch (_e) {
+        // Fallback: plain markdown render
+        bodyEl.innerHTML = fmtTxt(data.result);
+        bodyEl.dataset.raw = data.result;
+      }
+    }
 
   } catch (err) {
     showCalErr(`Network error: ${err.message}`);
@@ -1411,9 +1465,98 @@ export async function _generateCalendar() {
   }
 }
 
+// ── Calendar dashboard renderer ───────────────────────────────
+function _platformBadgeClass(platform = '') {
+  const p = platform.toLowerCase();
+  if (p === 'linkedin')  return 'cal-badge-linkedin';
+  if (p === 'instagram') return 'cal-badge-instagram';
+  if (p === 'facebook')  return 'cal-badge-facebook';
+  if (p === 'x')         return 'cal-badge-x';
+  if (p === 'tiktok')    return 'cal-badge-tiktok';
+  return 'cal-badge-default';
+}
+
+function _platformEmoji(platform = '') {
+  const p = platform.toLowerCase();
+  if (p === 'linkedin')  return '💼';
+  if (p === 'instagram') return '📸';
+  if (p === 'facebook')  return '👥';
+  if (p === 'x')         return '𝕏';
+  if (p === 'tiktok')    return '🎵';
+  return '📢';
+}
+
+function _renderCalendarDashboard(container, data) {
+  const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  let html = '';
+
+  // Editorial note banner
+  if (data.editorial_note) {
+    html += `<div class="cal-editorial-note"><strong>📝 Strategy Note:</strong> ${esc(data.editorial_note)}</div>`;
+  }
+
+  // Group posts by week
+  const byWeek = {};
+  (data.calendar || []).forEach(post => {
+    const w = post.week || 0;
+    if (!byWeek[w]) byWeek[w] = [];
+    byWeek[w].push(post);
+  });
+
+  const weeks = Object.keys(byWeek).sort((a, b) => a - b);
+  weeks.forEach(w => {
+    html += `<div class="cal-week-label">Week ${w}</div>`;
+    html += `<div class="cal-cards-grid">`;
+    byWeek[w].forEach(post => {
+      const badgeClass = _platformBadgeClass(post.platform);
+      const emoji      = _platformEmoji(post.platform);
+      html += `
+        <div class="cal-post-card">
+          <div class="cal-card-header">
+            <span class="cal-platform-badge ${badgeClass}">${emoji} ${esc(post.platform)}</span>
+            <span class="cal-card-date">${esc(post.date)}</span>
+          </div>
+          <div class="cal-card-copy">${esc(post.copy)}</div>
+          <div class="cal-card-visual">${esc(post.visual)}</div>
+        </div>`;
+    });
+    html += `</div>`;
+  });
+
+  container.innerHTML = html;
+}
+
+// Convert parsed JSON calendar to plain text for clipboard
+function _calendarToText(data) {
+  const lines = [];
+  lines.push(`CONTENT CALENDAR — ${data.month || ''} | ${data.sector || ''} | ${data.goal || ''}`);
+  lines.push('');
+  if (data.editorial_note) {
+    lines.push('STRATEGY NOTE');
+    lines.push(data.editorial_note);
+    lines.push('');
+  }
+  const byWeek = {};
+  (data.calendar || []).forEach(post => {
+    const w = post.week || 0;
+    if (!byWeek[w]) byWeek[w] = [];
+    byWeek[w].push(post);
+  });
+  Object.keys(byWeek).sort((a,b) => a-b).forEach(w => {
+    lines.push(`── WEEK ${w} ──`);
+    byWeek[w].forEach(post => {
+      lines.push(`[${post.platform}] ${post.date}`);
+      lines.push(post.copy || '');
+      lines.push(`Visual: ${post.visual || ''}`);
+      lines.push('');
+    });
+  });
+  return lines.join('\n');
+}
+
 export function _copyCalendar() {
   const raw = document.getElementById('cal-result-body')?.dataset.raw || '';
-  if (!raw) return;
+  if (!raw) { toast('Nothing to copy yet', 'err'); return; }
   navigator.clipboard?.writeText(raw)
     .then(() => toast('Content calendar copied ✓', 'ok'))
     .catch(() => toast('Copy failed — select the text manually', 'err'));

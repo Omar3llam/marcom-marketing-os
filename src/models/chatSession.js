@@ -116,13 +116,19 @@ export async function listSessions(userId, projectId = null) {
         LIMIT 50
       `;
 
-  return rows.map(r => ({
-    sessionId: r.session_id,
-    title:     r.title && r.title.trim()
-                  ? r.title
-                  : deriveTitleFromMessages(r.conversation_history) || 'New Chat',
-    updatedAt: r.last_updated,
-  }));
+  return rows.map(r => {
+    // Defensive parse for legacy rows where JSONB may be a string.
+    let hist = r.conversation_history;
+    if (typeof hist === 'string') { try { hist = JSON.parse(hist); } catch { hist = []; } }
+
+    return {
+      sessionId: r.session_id,
+      title:     r.title && r.title.trim()
+                    ? r.title
+                    : deriveTitleFromMessages(hist) || 'New Chat',
+      updatedAt: r.last_updated,
+    };
+  });
 }
 
 /**
@@ -141,10 +147,18 @@ export async function getSession(userId, sessionId) {
   `;
   if (rows.length === 0) return null;
   const r = rows[0];
+
+  // Defensive parse: postgres.js auto-parses JSONB, but guard against
+  // legacy rows where the value may have been stored as a JSON string.
+  let rawHistory = r.conversation_history;
+  if (typeof rawHistory === 'string') {
+    try { rawHistory = JSON.parse(rawHistory); } catch { rawHistory = []; }
+  }
+
   return {
     sessionId: r.session_id,
-    title:     r.title || deriveTitleFromMessages(r.conversation_history) || 'New Chat',
-    messages:  Array.isArray(r.conversation_history) ? r.conversation_history : [],
+    title:     r.title || deriveTitleFromMessages(rawHistory) || 'New Chat',
+    messages:  Array.isArray(rawHistory) ? rawHistory : [],
     updatedAt: r.last_updated,
   };
 }
