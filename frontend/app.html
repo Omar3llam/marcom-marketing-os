@@ -815,10 +815,10 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 ══════════════════════════════════════════════════ */
 #view-workspace,#view-tools-hub,#view-tool-active{display:none;}
 #view-workspace.view-active,#view-tools-hub.view-active{
-  flex:1;min-height:0;overflow-y:auto;background:var(--cream);
+  display:block;flex:1;min-height:0;overflow-y:auto;background:var(--cream);
 }
 #view-tool-active.view-active{
-  flex:1;display:flex;flex-direction:column;min-height:0;
+  display:flex;flex:1;flex-direction:column;min-height:0;
 }
 
 /* ── TOOLS HUB ───────────────────────────────────── */
@@ -932,7 +932,7 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
         <div class="sb-logo-text"><em>LUMI</em></div>
       </div>
       <button class="sb-new-btn" onclick="window._app.closeSidebar();window._app.switchView('hub')">
-        <span class="sb-new-btn-icon">＋</span> Hub
+        <span class="sb-new-btn-icon">＋</span> New Chat
       </button>
     </div>
 

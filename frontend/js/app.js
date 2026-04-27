@@ -953,6 +953,11 @@ export async function send() {
       backendUrl:     S.backend,
     });
 
+    // Capture the previous lock state so we can detect the rising-edge
+    // transition "context just got locked" — that's the moment to route
+    // the user to the Tools Hub instead of leaving them in the chat.
+    const wasLocked = S.locked;
+
     if (data.session_id)              S.sid     = data.session_id;
     if (data.current_mode)            S.mode    = data.current_mode;
     if (data.current_section != null) S.section = data.current_section;
@@ -964,6 +969,19 @@ export async function send() {
     S.forceMode = null;
 
     hideLumi();
+
+    // ── HUB-AND-SPOKE: Mode 1 lock-completion intercept ──────────
+    // If the backend just signalled that context is now locked (Mode 1
+    // onboarding completed in this turn), redirect to the Tools Hub.
+    // This prevents users from being dropped into a generic chat after
+    // finishing onboarding — they MUST pick a tool from the Hub.
+    if (!wasLocked && S.locked && data.current_mode === 1) {
+      // Defer slightly so the success bubble paints before the view swap.
+      setTimeout(() => {
+        switchView('hub');
+        toast('Context locked ✓ Choose a tool to get started', 'ok');
+      }, 600);
+    }
 
     // ── Update in-memory history; backend save is fire-and-forget ──
     // The session_id is now confirmed by the backend response.
