@@ -970,7 +970,10 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
     <div id="cal-result" class="cal-result" style="display:none;">
       <div class="cal-result-toolbar">
         <span class="cal-result-lbl">📋 Your Content Calendar</span>
-        <button class="cal-copy-btn" onclick="window._app._copyCalendar()" title="Copy to clipboard">⎘ Copy</button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="btn-export-cal-csv" class="cal-copy-btn" onclick="window._app._exportCalendarCSV()" title="Export as CSV" style="display:none;">⬇️ CSV</button>
+          <button class="cal-copy-btn" onclick="window._app._copyCalendar()" title="Copy to clipboard">⎘ Copy</button>
+        </div>
       </div>
       <div id="cal-result-body" class="cal-result-body"></div>
       <div style="display:flex;gap:10px;margin-top:14px;">

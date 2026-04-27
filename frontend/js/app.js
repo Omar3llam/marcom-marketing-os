@@ -5,7 +5,7 @@
 // ============================================================
 import { sendChat, exportToCRM } from './api.js?v=20260426-3';
 import { S, updateUI } from './state.js?v=20260426-3';
-import { renderResp, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260426-3';
+import { renderResp, renderCampaign, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260426-3';
 import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js?v=20260426-3';
 import { handleFile, clearImg } from './media.js?v=20260426-3';
 
@@ -635,11 +635,15 @@ export async function resumeChat(sessionId) {
 
     if (!isUser) {
       // AI bubble — detect structured JSON payloads (modes 3/4/5).
-      // Historical replay shows a compact stub instead of dumping raw JSON.
-      // The LIVE Mode 4 → Modal Dashboard flow is unaffected: it runs
-      // through renderResp() in the send() path, not here.
       const json = tryJSON(content);
-      if (json && (json.calendar || json.scorecard || json.campaigns || json.overview)) {
+      if (json && (json.campaigns || json.overview)) {
+        // Mode 5 (Campaign Analysis): render the full Brandwatch executive
+        // dashboard directly — NOT a stub. The dashboard is pure DOM output
+        // with no live closures, so it is safe to replay in history.
+        renderCampaign(json);
+      } else if (json && (json.calendar || json.scorecard)) {
+        // Modes 3 + 4: still use compact stubs because they rely on live
+        // JS closures (modal handlers, tab state) that can't be serialised.
         _renderRestoredStructuredStub(container, json, meta);
       } else {
         _renderRestoredBubble(container, 'system', content, meta);
@@ -1076,7 +1080,7 @@ export async function openMarketingTools() {
 //                         fires the executive analysis.
 export async function openCampaignAnalysis() {
   if (S.loading) return;
-  hideEmpty();
+  _startFreshSession();  // isolate tool from any active chat session
 
   const projectId = ProjectManager.getProjectId();
   if (!projectId) { toast('No active project — select one first.'); return; }
@@ -1317,6 +1321,27 @@ function _handleMetaOAuthReturn() {
   }
 }
 
+// ── SESSION RESET HELPER ──────────────────────────────────────
+// Clears all in-memory session state and the chat container so that
+// tool results render into a clean, tool-scoped view. Called before
+// opening any standalone tool (Content Calendar, Campaign Analysis)
+// to prevent tool output from being appended to an unrelated chat session.
+function _startFreshSession() {
+  S.sid      = null;
+  S.history  = [];
+  S.mode     = 1;
+  S.section  = 0;
+  S.service  = 0;
+  S.locked   = true;  // project context always available
+  S.msgs     = 0;
+  S.forceMode = null;
+  try { localStorage.removeItem('mc_session'); } catch {}
+
+  const msgs = document.getElementById('msgs');
+  if (msgs) msgs.innerHTML = '';    // clear chat area — no empty-state, tool fills it
+  updateUI();
+}
+
 // ── CONTENT CALENDAR TOOL ─────────────────────────────────────
 // Opens the Content Calendar modal. All logic is self-contained
 // so it does not interfere with the main chat session state (S.*).
@@ -1324,8 +1349,9 @@ function _handleMetaOAuthReturn() {
 export function openContentCalendar() {
   const modal = document.getElementById('cal-modal');
   if (!modal) return;
-  _calReset();          // clear any previous state before showing
-  _wireSectorToggle();  // attach change listener (idempotent — guards against double-wire)
+  _startFreshSession();  // isolate tool from any active chat session
+  _calReset();           // clear any previous modal state before showing
+  _wireSectorToggle();   // attach change listener (idempotent — guards against double-wire)
   modal.style.display = 'flex';
   // Focus first input for keyboard users
   setTimeout(() => document.getElementById('cal-month')?.focus(), 120);
@@ -1361,6 +1387,9 @@ export function _calReset() {
   if (resEl)          resEl.style.display  = 'none';
   if (btn)            btn.disabled = false;
   if (btnLbl)         btnLbl.textContent = '✨ Generate Calendar';
+  // Hide CSV export button — only shown after a successful JSON render
+  const csvBtn = document.getElementById('btn-export-cal-csv');
+  if (csvBtn) csvBtn.style.display = 'none';
 }
 
 // Toggle the custom sector input when "Other" is selected.
@@ -1439,22 +1468,35 @@ export async function _generateCalendar() {
     if (formEl) formEl.style.display = 'none';
     if (resEl)  resEl.style.display  = 'block';
 
-    // Attempt JSON parse → visual dashboard; fallback to markdown
+    // Attempt JSON parse → visual dashboard; fallback to markdown.
+    // Aggressive extraction: find the outermost { … } to strip any
+    // conversational padding, markdown fences, or stray backticks the
+    // AI may have injected before/after the JSON object.
     if (bodyEl) {
+      const raw = data.result || '';
+      let parsed = null;
       try {
-        const cleaned = (data.result || '')
-          .replace(/^```json\s*/i, '')
-          .replace(/^```\s*/i, '')
-          .replace(/```\s*$/g, '')
-          .trim();
-        const parsed = JSON.parse(cleaned);
+        const first = raw.indexOf('{');
+        const last  = raw.lastIndexOf('}');
+        if (first !== -1 && last > first) {
+          parsed = JSON.parse(raw.slice(first, last + 1));
+        }
+      } catch (_e) { parsed = null; }
+
+      if (parsed && parsed.calendar) {
         _renderCalendarDashboard(bodyEl, parsed);
-        // Store structured copy for clipboard export
-        bodyEl.dataset.raw = _calendarToText(parsed);
-      } catch (_e) {
+        bodyEl.dataset.raw     = _calendarToText(parsed);
+        bodyEl.dataset.calJson = JSON.stringify(parsed);   // for CSV export
+        // Unhide CSV export button
+        const csvBtn = document.getElementById('btn-export-cal-csv');
+        if (csvBtn) csvBtn.style.display = '';
+      } else {
         // Fallback: plain markdown render
-        bodyEl.innerHTML = fmtTxt(data.result);
-        bodyEl.dataset.raw = data.result;
+        bodyEl.innerHTML   = fmtTxt(raw);
+        bodyEl.dataset.raw = raw;
+        delete bodyEl.dataset.calJson;
+        const csvBtn = document.getElementById('btn-export-cal-csv');
+        if (csvBtn) csvBtn.style.display = 'none';
       }
     }
 
@@ -1552,6 +1594,33 @@ function _calendarToText(data) {
     });
   });
   return lines.join('\n');
+}
+
+// ── Calendar CSV export ───────────────────────────────────────
+export function _exportCalendarCSV() {
+  const bodyEl = document.getElementById('cal-result-body');
+  const raw    = bodyEl?.dataset?.calJson;
+  if (!raw) { toast('Generate a calendar first', 'err'); return; }
+
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch { toast('Export failed — invalid data', 'err'); return; }
+
+  const csvEsc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const header = ['Week', 'Date', 'Platform', 'Copy', 'Visual Concept'].map(csvEsc).join(',');
+  const rows   = (parsed.calendar || []).map(p =>
+    [p.week, p.date, p.platform, p.copy, p.visual].map(csvEsc).join(',')
+  );
+  const csv  = [header, ...rows].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `content-calendar-${(parsed.month || 'export').replace(/\s+/g, '-').toLowerCase()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast('CSV exported ✓', 'ok');
 }
 
 export function _copyCalendar() {
@@ -1706,4 +1775,5 @@ window._app = {
   _calClearErr,
   _generateCalendar,
   _copyCalendar,
+  _exportCalendarCSV,
 };
