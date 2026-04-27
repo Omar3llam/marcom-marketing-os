@@ -892,6 +892,11 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
             </optgroup>
             <option value="Other">Other</option>
           </select>
+          <!-- Revealed only when "Other" is selected -->
+          <input id="cal-custom-sector" class="cal-input" type="text"
+                 placeholder="Please specify your sector…"
+                 style="display:none;margin-top:8px;"
+                 oninput="window._app._calClearErr()">
         </div>
       </div>
       <div class="cal-field">

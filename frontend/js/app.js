@@ -1285,7 +1285,8 @@ function _handleMetaOAuthReturn() {
 export function openContentCalendar() {
   const modal = document.getElementById('cal-modal');
   if (!modal) return;
-  _calReset();   // clear any previous state before showing
+  _calReset();          // clear any previous state before showing
+  _wireSectorToggle();  // attach change listener (idempotent — guards against double-wire)
   modal.style.display = 'flex';
   // Focus first input for keyboard users
   setTimeout(() => document.getElementById('cal-month')?.focus(), 120);
@@ -1302,40 +1303,69 @@ export function _calClearErr() {
 }
 
 export function _calReset() {
-  const monthEl  = document.getElementById('cal-month');
-  const sectorEl = document.getElementById('cal-sector');
-  const focusEl  = document.getElementById('cal-focus');
-  const formEl   = document.getElementById('cal-form');
-  const resEl    = document.getElementById('cal-result');
-  const errEl    = document.getElementById('cal-err');
-  const btn      = document.getElementById('cal-generate-btn');
-  const btnLbl   = document.getElementById('cal-btn-label');
+  const monthEl        = document.getElementById('cal-month');
+  const sectorEl       = document.getElementById('cal-sector');
+  const customSectorEl = document.getElementById('cal-custom-sector');
+  const focusEl        = document.getElementById('cal-focus');
+  const formEl         = document.getElementById('cal-form');
+  const resEl          = document.getElementById('cal-result');
+  const errEl          = document.getElementById('cal-err');
+  const btn            = document.getElementById('cal-generate-btn');
+  const btnLbl         = document.getElementById('cal-btn-label');
 
-  if (monthEl)  monthEl.value  = '';
-  if (sectorEl) sectorEl.value = '';
-  if (focusEl)  focusEl.value  = '';
-  if (errEl)    { errEl.textContent = ''; errEl.style.display = 'none'; }
-  if (formEl)   formEl.style.display = 'flex';
-  if (resEl)    resEl.style.display  = 'none';
-  if (btn)      btn.disabled = false;
-  if (btnLbl)   btnLbl.textContent = '✨ Generate Calendar';
+  if (monthEl)        monthEl.value  = '';
+  if (sectorEl)       sectorEl.value = '';
+  if (customSectorEl) { customSectorEl.value = ''; customSectorEl.style.display = 'none'; }
+  if (focusEl)        focusEl.value  = '';
+  if (errEl)          { errEl.textContent = ''; errEl.style.display = 'none'; }
+  if (formEl)         formEl.style.display = 'flex';
+  if (resEl)          resEl.style.display  = 'none';
+  if (btn)            btn.disabled = false;
+  if (btnLbl)         btnLbl.textContent = '✨ Generate Calendar';
+}
+
+// Toggle the custom sector input when "Other" is selected.
+// Attached once on modal open via openContentCalendar().
+function _wireSectorToggle() {
+  const sectorEl       = document.getElementById('cal-sector');
+  const customSectorEl = document.getElementById('cal-custom-sector');
+  if (!sectorEl || !customSectorEl) return;
+  // Guard against double-wiring if modal is reopened
+  if (sectorEl.dataset.toggleWired) return;
+  sectorEl.addEventListener('change', () => {
+    const isOther = sectorEl.value === 'Other';
+    customSectorEl.style.display = isOther ? 'block' : 'none';
+    if (!isOther) customSectorEl.value = '';
+    _calClearErr();
+  });
+  sectorEl.dataset.toggleWired = 'true';
 }
 
 export async function _generateCalendar() {
-  const projectId = ProjectManager.getProjectId();
-  const targetMonth  = document.getElementById('cal-month')?.value.trim();
-  const targetSector = document.getElementById('cal-sector')?.value;
-  const keyFocus     = document.getElementById('cal-focus')?.value.trim();
+  const projectId      = ProjectManager.getProjectId();
+  const targetMonth    = document.getElementById('cal-month')?.value.trim();
+  const sectorRaw      = document.getElementById('cal-sector')?.value;
+  const customSector   = document.getElementById('cal-custom-sector')?.value.trim();
+  const keyFocus       = document.getElementById('cal-focus')?.value.trim();
+
+  // Resolve the final sector value sent to the backend:
+  // if "Other" was chosen, use whatever the user typed in the custom input.
+  const targetSector = sectorRaw === 'Other' ? customSector : sectorRaw;
 
   // Validate
   const errEl = document.getElementById('cal-err');
   const showCalErr = (msg) => {
     if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
   };
-  if (!projectId)   { showCalErr('No active project — select a project first.'); return; }
-  if (!targetMonth) { showCalErr('Please enter a target month and year (e.g. July 2025).'); return; }
-  if (!targetSector){ showCalErr('Please select a target sector.'); return; }
-  if (!keyFocus)    { showCalErr('Please describe your key focus or campaign goal.'); return; }
+  if (!projectId)    { showCalErr('No active project — select a project first.'); return; }
+  if (!targetMonth)  { showCalErr('Please enter a target month and year (e.g. July 2025).'); return; }
+  if (!sectorRaw)    { showCalErr('Please select a target sector.'); return; }
+  if (sectorRaw === 'Other' && !customSector) {
+    showCalErr('Please specify your sector in the text field below the dropdown.');
+    document.getElementById('cal-custom-sector')?.focus();
+    return;
+  }
+  if (!keyFocus)     { showCalErr('Please describe your key focus or campaign goal.'); return; }
 
   _calClearErr();
 
