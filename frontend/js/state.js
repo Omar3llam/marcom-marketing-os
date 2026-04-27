@@ -16,12 +16,10 @@ export function updateUI() {
   // The mode chip and hint bar were retired alongside chat-based
   // onboarding — they sit guarded so the function tolerates either
   // markup variant during deploy rollovers.
-  const sidTag = document.getElementById('sidTag');
-  if (sidTag) sidTag.textContent = S.sid ? `SID …${S.sid.slice(-6)}` : '';
+  // SID display was removed from the UI (technical detail — not user-facing).
+  // S.sid is still maintained in state for all API calls.
 
-  // Status pill is now a static "Context: Locked" — its inner markup
-  // is rendered by the HTML template; no per-call rewrite needed.
-  // The progress bar (Mode 1 onboarding indicator) is also retired.
+  // Progress bar (Mode 1 onboarding indicator) is retired.
   const pbar = document.getElementById('pbar');
   if (pbar) pbar.classList.remove('visible');
 

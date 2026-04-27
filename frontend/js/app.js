@@ -3,11 +3,11 @@
 // Handles auth bootstrapping, send flow, and the window._app
 // facade used by inline HTML event handlers.
 // ============================================================
-import { sendChat, exportToCRM } from './api.js?v=20260427-2';
-import { S, updateUI } from './state.js?v=20260427-2';
-import { renderResp, renderCampaign, renderScorecard, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260427-2';
-import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js?v=20260427-2';
-import { handleFile, clearImg } from './media.js?v=20260427-2';
+import { sendChat, exportToCRM } from './api.js?v=20260427-3';
+import { S, updateUI } from './state.js?v=20260427-3';
+import { renderResp, renderCampaign, renderScorecard, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260427-3';
+import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js?v=20260427-3';
+import { handleFile, clearImg } from './media.js?v=20260427-3';
 
 // ── DIAGNOSTIC — remove after confirming new JS is loading ───
 console.log('%c[LUMI] app.js v20260426-3 LOADED', 'background:#FFD300;color:#000;font-weight:bold;padding:2px 8px');
