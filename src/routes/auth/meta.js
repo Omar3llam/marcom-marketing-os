@@ -26,7 +26,7 @@ export const authMetaRouter = Router();
 // ── CONFIG ───────────────────────────────────────────────────
 const APP_ID       = () => process.env.META_APP_ID     || '';
 const REDIRECT_URI = () => process.env.META_REDIRECT_URI || '';
-const SCOPES       = ['ads_read', 'ads_management', 'read_insights'].join(',');
+const SCOPES       = ['ads_read', 'ads_management'].join(',');
 const API_VERSION  = 'v21.0';
 
 // HMAC key — reuse WEBHOOK_SECRET so we don't need a new env var
