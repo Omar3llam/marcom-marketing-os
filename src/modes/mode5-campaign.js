@@ -117,6 +117,17 @@ OUTPUT FORMAT — Return ONLY this JSON. No markdown, no preamble, no other text
 ═══════════════════════════════════════════════════
 
 {
+  "overview": {
+    "totalSpend": "<Total spend across all campaigns, e.g. '$12,400'>",
+    "blendedCPA": "<Blended cost per acquisition across all campaigns, e.g. '$38.20'>",
+    "wastedSpend": "<Combined spend of all KILL-decision campaigns, e.g. '$3,200'>",
+    "healthScore": <Integer 0–100. 80–100 = healthy, 50–79 = needs attention, 0–49 = action required>
+  },
+  "budgetAction": {
+    "killPercent": <Integer 0–100, % of budget recommended to kill>,
+    "optimizePercent": <Integer 0–100, % of budget recommended to optimise>,
+    "scalePercent": <Integer 0–100, % of budget recommended to scale. The three must sum to 100.>
+  },
   "campaigns": [
     {
       "campaign_name": "<name>",

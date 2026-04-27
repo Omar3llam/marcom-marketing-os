@@ -80,12 +80,66 @@ export function renderCampaign(payload) {
   const msgs = document.getElementById('msgs');
   const wrap = document.createElement('div');
   wrap.className = 'msg system'; wrap.style.animation = 'msgIn 0.3s ease';
-  const dmap = { SCALE:'db-scale', HOLD:'db-hold', OPTIMIZE:'db-optimize', PAUSE:'db-pause', KILL:'db-kill' };
+
+  // ── Section 1: KPI Hero Widgets ──────────────────────────────
+  const ov = payload.overview || {};
+  const healthScore = Math.max(0, Math.min(100, parseInt(ov.healthScore) || 0));
+  const healthColor = healthScore >= 70 ? '#27ae60' : healthScore >= 40 ? '#e67e22' : '#e74c3c';
+  const healthBg    = healthScore >= 70 ? '#D5F5E3'  : healthScore >= 40 ? '#FEF9E7'  : '#FADBD8';
+  const healthLbl   = healthScore >= 70 ? 'Good shape' : healthScore >= 40 ? 'Needs attention' : 'Action required';
+
+  const kpiHtml = (ov.totalSpend || ov.blendedCPA || ov.wastedSpend || ov.healthScore != null) ? `
+    <div class="dashboard-kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">💰 Total Spend</div>
+        <div class="kpi-value">${esc(ov.totalSpend || '—')}</div>
+        <div class="kpi-sub">Across all campaigns</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">🎯 Blended CPA</div>
+        <div class="kpi-value">${esc(ov.blendedCPA || '—')}</div>
+        <div class="kpi-sub">Cost per acquisition</div>
+      </div>
+      <div class="kpi-card kpi-warn">
+        <div class="kpi-label">⚠ Wasted Spend</div>
+        <div class="kpi-value kpi-warn-val">${esc(ov.wastedSpend || '—')}</div>
+        <div class="kpi-sub">Campaigns marked KILL</div>
+      </div>
+      <div class="kpi-card" style="background:${healthBg};border-color:${healthColor}55;">
+        <div class="kpi-label">❤ Account Health</div>
+        <div class="kpi-value" style="color:${healthColor};">${healthScore}<span class="kpi-unit">/100</span></div>
+        <div class="kpi-sub">${healthLbl}</div>
+      </div>
+    </div>` : '';
+
+  // ── Section 2: Budget Action Bar ─────────────────────────────
+  const ba      = payload.budgetAction || {};
+  const kill     = Math.max(0, parseInt(ba.killPercent)     || 0);
+  const optimize = Math.max(0, parseInt(ba.optimizePercent) || 0);
+  const scale    = Math.max(0, parseInt(ba.scalePercent)    || 0);
+
+  const actionBarHtml = (kill || optimize || scale) ? `
+    <div class="action-bar-container">
+      <div class="action-bar-label">Budget Allocation Recommendation</div>
+      <div class="action-bar-track">
+        ${kill     ? `<div class="action-bar-segment ab-kill"     style="width:${kill}%"     title="Kill: ${kill}%"></div>`         : ''}
+        ${optimize ? `<div class="action-bar-segment ab-optimize" style="width:${optimize}%" title="Optimise: ${optimize}%"></div>` : ''}
+        ${scale    ? `<div class="action-bar-segment ab-scale"    style="width:${scale}%"    title="Scale: ${scale}%"></div>`       : ''}
+      </div>
+      <div class="action-bar-legend">
+        ${kill     ? `<span class="ab-leg-item"><span class="ab-leg-dot ab-dot-kill"></span>${kill}% Kill</span>`         : ''}
+        ${optimize ? `<span class="ab-leg-item"><span class="ab-leg-dot ab-dot-optimize"></span>${optimize}% Optimise</span>` : ''}
+        ${scale    ? `<span class="ab-leg-item"><span class="ab-leg-dot ab-dot-scale"></span>${scale}% Scale</span>`       : ''}
+      </div>
+    </div>` : '';
+
+  // ── Section 3: Campaigns Table ───────────────────────────────
+  const dmap     = { SCALE:'db-scale', HOLD:'db-hold', OPTIMIZE:'db-optimize', PAUSE:'db-pause', KILL:'db-kill' };
   const campaigns = [...(payload.campaigns || [])].sort((a, b) => (b.impact_score || 0) - (a.impact_score || 0));
   const rows = campaigns.map(c => {
     const imp = Math.max(1, Math.min(10, parseInt(c.impact_score) || 5));
     const lvl = imp >= 8 ? 'imp-h' : imp >= 5 ? 'imp-m' : 'imp-l';
-    const dc = dmap[(c.decision || '').toUpperCase()] || 'db-hold';
+    const dc  = dmap[(c.decision || '').toUpperCase()] || 'db-hold';
     return `<tr>
       <td style="font-weight:700;">${esc(c.campaign_name || 'Unnamed')}</td>
       <td><span class="dbadge ${dc}">${esc(c.decision || '—')}</span></td>
@@ -94,17 +148,22 @@ export function renderCampaign(payload) {
       <td class="scale-cell">${esc(c.horizontal_scaling_advice || '—')}</td>
     </tr>`;
   }).join('');
-  const ascF = (payload.asc_grace_period_flags || []).map(f => `<span class="fbadge fbadge-asc">⏸ ${esc(f)}</span>`).join('');
-  const cacF = (payload.mer_cac_flags || []).map(f => `<span class="fbadge fbadge-cac">⚠ ${esc(f)}</span>`).join('');
+
+  const ascF    = (payload.asc_grace_period_flags || []).map(f => `<span class="fbadge fbadge-asc">⏸ ${esc(f)}</span>`).join('');
+  const cacF    = (payload.mer_cac_flags || []).map(f => `<span class="fbadge fbadge-cac">⚠ ${esc(f)}</span>`).join('');
   const flagHtml = (ascF || cacF) ? `<div class="flag-row">${ascF}${cacF}</div>` : '';
+  const hasAbove = !!(kpiHtml || actionBarHtml || flagHtml);
+
   const container = document.createElement('div'); container.style.maxWidth = '100%';
   container.innerHTML = `
-    <div style="font-size:14px;font-weight:800;color:var(--ink);margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+    <div style="font-size:14px;font-weight:800;color:var(--ink);margin-bottom:16px;display:flex;align-items:center;gap:8px;">
       <span>📊</span> Campaign Decision Engine
       <span style="font-size:11px;font-weight:500;color:var(--ink-3);">Sorted by Impact ↓</span>
     </div>
+    ${kpiHtml}
+    ${actionBarHtml}
     ${flagHtml}
-    <div class="ctable-wrap" style="${flagHtml ? 'margin-top:10px;' : ''}">
+    <div class="ctable-wrap" style="${hasAbove ? 'margin-top:16px;' : ''}">
       <table class="ctable">
         <thead><tr><th>Campaign</th><th>Decision</th><th>Impact (1–10)</th><th>Reasoning</th><th>Horizontal Scaling</th></tr></thead>
         <tbody>${rows}</tbody>
