@@ -450,3 +450,105 @@ function pickMood(t) {
   if (/great|excellent|success|win|best|top|strong/.test(l)) return '😉';
   return '😎';
 }
+
+// ── Campaign Brief Dashboard ───────────────────────────────────
+export function renderStrategyBrief(payload) {
+  const msgs = document.getElementById('msgs');
+  if (!msgs) return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'msg system'; wrap.style.animation = 'msgIn 0.3s ease';
+  wrap.innerHTML = '<div class="lumi-av">✨</div>';
+
+  const d = payload;
+  const listItems = (arr, cls = '') => (arr || []).map(x =>
+    `<div class="brief-list-item ${cls}">${esc(x)}</div>`).join('');
+
+  const platformBadges = (d.strategy?.platformMix || []).map(p => {
+    const name = p.split(/[—\-–]/)[0].trim().split(' ')[0].toLowerCase();
+    const cls  = { linkedin:'cb-li', instagram:'cb-ig', meta:'cb-ig', facebook:'cb-ig',
+                   tiktok:'cb-tt', x:'cb-x', twitter:'cb-x', google:'cb-gg' }[name] || 'cb-def';
+    return `<span class="brief-platform-badge ${cls}">${esc(p)}</span>`;
+  }).join('');
+
+  const kpiTags = (d.kpis || []).map(k =>
+    `<span class="brief-kpi-tag">${esc(k)}</span>`).join('');
+
+  const riskItems = (d.risks || []).map(r =>
+    `<div class="brief-risk-item">⚠ ${esc(r)}</div>`).join('');
+
+  const inner = document.createElement('div');
+  inner.innerHTML = `
+    <!-- Hero -->
+    <div class="brief-hero">
+      <div class="brief-hero-name">${esc(d.campaignName || 'Campaign Brief')}</div>
+      <div class="brief-hero-idea">${esc(d.bigIdea || '')}</div>
+    </div>
+
+    <!-- 4-column grid -->
+    <div class="brief-grid">
+
+      <!-- Audience -->
+      <div class="brief-card">
+        <div class="brief-card-hdr"><span class="brief-card-icon">🎯</span>Audience</div>
+        ${d.audience?.segments?.length ? `<div class="brief-card-sub">Segments</div>${listItems(d.audience.segments)}` : ''}
+        ${d.audience?.painPoints?.length ? `<div class="brief-card-sub" style="margin-top:8px;">Pain Points</div>${listItems(d.audience.painPoints, 'brief-pain')}` : ''}
+        ${d.audience?.triggerMoment ? `<div class="brief-card-sub" style="margin-top:8px;">Trigger</div><div class="brief-trigger">${esc(d.audience.triggerMoment)}</div>` : ''}
+      </div>
+
+      <!-- Channels -->
+      <div class="brief-card">
+        <div class="brief-card-hdr"><span class="brief-card-icon">📡</span>Channels</div>
+        <div class="brief-card-sub">Platform Mix</div>
+        <div class="brief-platforms">${platformBadges}</div>
+        ${d.strategy?.funnelApproach ? `<div class="brief-card-sub" style="margin-top:10px;">Funnel Approach</div><div class="brief-funnel-txt">${esc(d.strategy.funnelApproach)}</div>` : ''}
+      </div>
+
+      <!-- Content Pillars -->
+      <div class="brief-card">
+        <div class="brief-card-hdr"><span class="brief-card-icon">📌</span>Content</div>
+        <div class="brief-card-sub">Pillars</div>
+        ${listItems(d.strategy?.contentPillars)}
+        ${d.creativeBrief?.tone ? `<div class="brief-card-sub" style="margin-top:10px;">Tone</div><div class="brief-tone-tag">${esc(d.creativeBrief.tone)}</div>` : ''}
+      </div>
+
+      <!-- Creative -->
+      <div class="brief-card">
+        <div class="brief-card-hdr"><span class="brief-card-icon">🎨</span>Creative</div>
+        ${d.creativeBrief?.visualDirection ? `<div class="brief-card-sub">Visual Direction</div><div class="brief-visual-dir">${esc(d.creativeBrief.visualDirection)}</div>` : ''}
+        ${d.creativeBrief?.hookExamples?.length ? `<div class="brief-card-sub" style="margin-top:8px;">Hook Examples</div>${d.creativeBrief.hookExamples.map(h => `<div class="brief-hook">"${esc(h)}"</div>`).join('')}` : ''}
+      </div>
+    </div>
+
+    <!-- Executable Actions -->
+    ${d.executableActions?.length ? `
+    <div class="brief-section">
+      <div class="brief-section-hdr">⚡ Executable Actions</div>
+      <div class="brief-actions-list">
+        ${d.executableActions.map((a, i) => `<div class="brief-action-item"><span class="brief-action-num">${i + 1}</span><span>${esc(a)}</span></div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    <!-- Budget -->
+    ${d.budget?.allocation?.length ? `
+    <div class="brief-section">
+      <div class="brief-section-hdr">💰 Budget Allocation</div>
+      <div class="brief-budget-grid">${d.budget.allocation.map(b => `<span class="brief-budget-item">${esc(b)}</span>`).join('')}</div>
+      ${d.budget.watchouts ? `<div class="brief-watchout">⚠ ${esc(d.budget.watchouts)}</div>` : ''}
+    </div>` : ''}
+
+    <!-- KPIs -->
+    ${kpiTags ? `
+    <div class="brief-section">
+      <div class="brief-section-hdr">📊 Success Metrics</div>
+      <div class="brief-kpis">${kpiTags}</div>
+    </div>` : ''}
+
+    <!-- Risks -->
+    ${riskItems ? `<div class="brief-risks">${riskItems}</div>` : ''}
+  `;
+
+  wrap.appendChild(inner);
+  msgs.appendChild(wrap);
+  msgs.scrollTop = msgs.scrollHeight;
+}

@@ -541,6 +541,56 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 .sc-rec-num{width:22px;height:22px;border-radius:50%;background:var(--yellow);color:#000;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .sc-rec-txt{font-size:13px;color:var(--ink-2);line-height:1.5;}
 
+/* ── CAMPAIGN BRIEF DASHBOARD ─────────────────────────────── */
+.brief-modal-content{max-width:940px;padding:28px 28px 24px;}
+
+/* Hero block */
+.brief-hero{background:linear-gradient(135deg,#0A0A14 0%,#1A1A2E 100%);border-radius:var(--r-lg);padding:28px 32px;margin-bottom:16px;position:relative;overflow:hidden;}
+.brief-hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 80% at 80% 50%,rgba(255,211,0,0.12),transparent);pointer-events:none;}
+.brief-hero-name{font-size:22px;font-weight:900;color:#fff;letter-spacing:-0.4px;margin-bottom:8px;}
+.brief-hero-idea{font-size:14px;color:rgba(255,255,255,0.72);line-height:1.6;font-style:italic;border-left:3px solid var(--yellow);padding-left:14px;}
+
+/* 4-column grid */
+.brief-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;}
+@media(max-width:800px){.brief-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:480px){.brief-grid{grid-template-columns:1fr;}}
+
+/* Cards */
+.brief-card{background:#fff;border:1.5px solid var(--border);border-radius:var(--r-lg);padding:14px 16px;display:flex;flex-direction:column;gap:6px;box-shadow:var(--shadow-sm);}
+.brief-card-hdr{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:800;color:var(--ink);text-transform:uppercase;letter-spacing:0.06em;padding-bottom:8px;border-bottom:1px solid var(--cream-2);}
+.brief-card-icon{font-size:14px;}
+.brief-card-sub{font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--ink-3);margin-top:4px;}
+.brief-list-item{font-size:12px;color:var(--ink-2);padding:4px 0;border-bottom:1px solid var(--cream);line-height:1.4;}
+.brief-list-item:last-child{border-bottom:none;}
+.brief-pain{color:var(--coral);font-weight:600;}
+.brief-trigger{font-size:11px;color:var(--ink-3);font-style:italic;line-height:1.5;}
+.brief-platforms{display:flex;flex-direction:column;gap:5px;margin-top:2px;}
+.brief-platform-badge{font-size:11px;font-weight:700;padding:4px 9px;border-radius:var(--r-full);white-space:nowrap;}
+.cb-li{background:#EBF3FB;color:#0077B5;border:1px solid #b3d4f0;}
+.cb-ig{background:#FCE4EC;color:#C13584;border:1px solid #f0b3d4;}
+.cb-tt{background:#E8F5E9;color:#000;border:1px solid #a5d6a7;}
+.cb-x{background:#E3F2FD;color:#000;border:1px solid #90caf9;}
+.cb-gg{background:#FFF3E0;color:#DB4437;border:1px solid #ffcc80;}
+.cb-def{background:var(--cream-2);color:var(--ink-2);border:1px solid var(--border);}
+.brief-funnel-txt{font-size:11px;color:var(--ink-3);line-height:1.5;}
+.brief-tone-tag{font-size:11px;font-weight:600;background:var(--purple-lt);color:var(--purple);border:1px solid var(--purple);padding:3px 8px;border-radius:var(--r-full);display:inline-block;}
+.brief-visual-dir{font-size:11px;color:var(--ink-2);line-height:1.5;}
+.brief-hook{font-size:11px;color:var(--ink-3);font-style:italic;padding:3px 0;border-left:2px solid var(--yellow-dk);padding-left:8px;margin-top:4px;}
+
+/* Sections below the grid */
+.brief-section{margin-bottom:12px;}
+.brief-section-hdr{font-size:11px;font-weight:800;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid var(--cream-2);}
+.brief-actions-list{display:flex;flex-direction:column;gap:6px;}
+.brief-action-item{display:flex;align-items:flex-start;gap:10px;font-size:12px;color:var(--ink-2);line-height:1.5;}
+.brief-action-num{width:20px;height:20px;border-radius:50%;background:var(--yellow);color:#000;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.brief-budget-grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;}
+.brief-budget-item{font-size:11px;padding:4px 10px;background:var(--mint-lt);border:1px solid var(--mint);border-radius:var(--r-full);color:#1a7a44;font-weight:600;}
+.brief-watchout{font-size:11px;color:var(--coral);font-style:italic;padding:6px 10px;background:var(--coral-lt);border-radius:var(--r-sm);}
+.brief-kpis{display:flex;flex-wrap:wrap;gap:7px;}
+.brief-kpi-tag{font-size:11px;font-weight:700;padding:5px 12px;background:var(--sky-lt);border:1.5px solid var(--sky);border-radius:var(--r-full);color:#1a5c8a;}
+.brief-risks{display:flex;flex-direction:column;gap:5px;margin-top:4px;}
+.brief-risk-item{font-size:11px;color:#7a5d00;background:var(--yellow-lt);border:1px solid var(--yellow-dk);border-radius:var(--r-sm);padding:6px 10px;}
+
 /* ── SCORECARD / ANALYSIS SHARED EXTRAS ──────────────────── */
 .sc-mode-pill{font-size:9px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:2px 7px;border-radius:var(--r-full);background:var(--purple-lt);color:var(--purple);border:1px solid var(--purple);margin-left:6px;vertical-align:middle;}
 .sc-analysis-body{font-size:13px;color:var(--ink-2);line-height:1.7;padding:10px 14px;background:#fff;border:1px solid var(--border);border-radius:var(--r-md);margin-bottom:4px;}
@@ -846,6 +896,14 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
         </div>
       </div>
 
+      <div class="sb-item tool" onclick="window._app.closeSidebar();window._app.openCampaignBrief()">
+        <span class="sb-item-icon">🚀</span>
+        <div>
+          <div class="sb-item-label">Campaign Brief</div>
+          <div class="sb-item-sub">Full strategic execution plan</div>
+        </div>
+      </div>
+
       <div class="sb-divider"></div>
       <span class="sb-section-lbl">Recent</span>
       <div id="recent-chats-list"></div>
@@ -1030,12 +1088,95 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
   </div>
 </div>
 
+<!-- ── CAMPAIGN BRIEF BUILDER MODAL ───────────────────────── -->
+<div id="brief-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="brief-modal-title">
+  <div class="modal-content brief-modal-content">
+    <button class="modal-close" onclick="window._app.closeCampaignBrief()" aria-label="Close">✕</button>
+
+    <!-- Header -->
+    <div class="cal-modal-hdr">
+      <span style="font-size:22px;">🚀</span>
+      <div>
+        <div id="brief-modal-title" style="font-size:16px;font-weight:800;color:var(--ink);">Campaign Brief Builder</div>
+        <div style="font-size:12px;color:var(--ink-3);">AI-generated strategic execution plan — context-aware</div>
+      </div>
+    </div>
+
+    <!-- Form -->
+    <div id="brief-form" class="cal-form">
+      <div class="cal-form-row">
+        <div class="cal-field">
+          <label class="cal-label" for="brief-objective">Campaign Objective</label>
+          <select id="brief-objective" class="cal-input">
+            <option value="">— Select objective —</option>
+            <option>Lead Generation</option>
+            <option>Brand Awareness</option>
+            <option>Product Launch</option>
+            <option>Sales Conversion</option>
+            <option>Customer Retention</option>
+            <option>Event Promotion</option>
+            <option>App / Sign-up Growth</option>
+          </select>
+        </div>
+        <div class="cal-field">
+          <label class="cal-label" for="brief-duration">Campaign Duration</label>
+          <select id="brief-duration" class="cal-input">
+            <option value="4 weeks">4 Weeks</option>
+            <option value="6 weeks">6 Weeks</option>
+            <option value="8 weeks">8 Weeks</option>
+            <option value="3 months">3 Months</option>
+            <option value="6 months">6 Months</option>
+          </select>
+        </div>
+      </div>
+      <div class="cal-form-row">
+        <div class="cal-field">
+          <label class="cal-label" for="brief-budget">Budget Range</label>
+          <select id="brief-budget" class="cal-input">
+            <option value="">— Select range —</option>
+            <option>Under $1,000</option>
+            <option>$1,000 – $5,000</option>
+            <option>$5,000 – $15,000</option>
+            <option>$15,000 – $50,000</option>
+            <option>$50,000+</option>
+            <option>Not specified</option>
+          </select>
+        </div>
+        <div class="cal-field">
+          <label class="cal-label" for="brief-competitor">Main Competitor to Beat <span style="font-weight:400;color:var(--ink-3);">(optional)</span></label>
+          <input id="brief-competitor" class="cal-input" type="text" placeholder="e.g. Competitor X — their weakness to exploit">
+        </div>
+      </div>
+      <div class="cal-field">
+        <label class="cal-label" for="brief-key-message">Key Message / Campaign Focus</label>
+        <textarea id="brief-key-message" class="cal-input cal-textarea" rows="3"
+          placeholder="e.g. We help logistics companies cut delivery costs by 30% without new headcount — launch campaign targeting ops directors in KSA."></textarea>
+      </div>
+      <div id="brief-err" class="cal-err" style="display:none;"></div>
+      <button id="brief-generate-btn" class="cal-generate-btn" onclick="window._app._generateBrief()">
+        <span id="brief-btn-label">✨ Build Campaign Brief</span>
+      </button>
+    </div>
+
+    <!-- Result -->
+    <div id="brief-result" style="display:none;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+        <button class="cal-copy-btn" onclick="window._app._generateBrief()">↻ Regenerate</button>
+        <button class="cal-copy-btn" onclick="window._app._copyBrief()">⎘ Copy Brief</button>
+        <button class="cal-copy-btn" onclick="document.getElementById('brief-form').style.display='flex';document.getElementById('brief-result').style.display='none';">← Edit Inputs</button>
+      </div>
+      <div id="brief-result-body" class="cal-result-body" style="max-height:68vh;overflow-y:auto;"></div>
+    </div>
+
+  </div>
+</div>
+
 <!-- Mobile sidebar overlay -->
 <div id="mobile-overlay" onclick="window._app.closeSidebar()"></div>
 
 <div class="toast" id="toast"></div>
 
 <!-- App logic loaded as ES module — version query string busts the browser cache on each deploy -->
-<script type="module" src="/js/app.js?v=20260427-4"></script>
+<script type="module" src="/js/app.js?v=20260427-5"></script>
 </body>
 </html>

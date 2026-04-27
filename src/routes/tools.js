@@ -153,3 +153,98 @@ Your response must start with { and end with }. Any character outside the JSON w
     return res.status(500).json({ status: 'error', message: err.message || 'Calendar generation failed' });
   }
 });
+
+// ── POST /api/tools/campaign-brief ───────────────────────────
+// Body: { projectId, objective, duration, budget, keyMessage, competitor }
+// Returns: { status, result } — strict JSON campaign brief
+toolsRouter.post('/campaign-brief', async (req, res) => {
+  const userId = req.userId;
+  const { projectId, objective, duration, budget, keyMessage, competitor } = req.body;
+
+  if (!projectId)  return res.status(400).json({ status: 'error', message: 'projectId is required' });
+  if (!objective)  return res.status(400).json({ status: 'error', message: 'Campaign objective is required' });
+  if (!keyMessage) return res.status(400).json({ status: 'error', message: 'Key message is required' });
+
+  let projectContext = '';
+  let projectName    = '';
+  try {
+    const project = await getProjectById(projectId);
+    projectContext = project?.context || '';
+    projectName    = project?.name    || '';
+  } catch (err) {
+    logger.warn({ err: err.message, userId, projectId }, '[tools/campaign-brief] project lookup failed — proceeding without context');
+  }
+
+  const systemPrompt = `You are a Senior Campaign Strategist generating a full strategic campaign brief.
+You write with precision, commercial clarity, and zero filler. Every section must be actionable.
+
+BRAND VOICE RULE: Always use "we/our/us" — never "I/my/me" when writing brand copy.
+
+${projectContext ? `PROJECT CONTEXT (use throughout — brand voice, audience, differentiators, goals):\n${projectContext}\n` : ''}
+CAMPAIGN INPUTS:
+- Project / Brand: ${projectName || 'The client brand'}
+- Objective: ${objective}
+- Duration: ${duration || '4 weeks'}
+- Budget range: ${budget || 'Not specified'}
+- Key message: ${keyMessage}
+${competitor ? `- Competitor to beat: ${competitor}` : ''}
+
+TASK: Generate a complete strategic campaign brief using the project context above.
+Every field must be specific to this brand — no generic placeholders.
+
+ABSOLUTE OUTPUT RULE: Return ONLY a valid JSON object. No markdown, no intro text, no backticks.
+Start with { and end with }. Any text outside the JSON breaks the parser.
+
+OUTPUT SCHEMA — return exactly this structure:
+
+{
+  "campaignName": "<A punchy, memorable campaign name — specific to the brand and objective>",
+  "bigIdea": "<The single core creative concept in one sentence — the 'why this, why now'>",
+  "audience": {
+    "segments": ["<Primary segment — specific role/profile>", "<Secondary segment>", "<Tertiary segment if relevant>"],
+    "painPoints": ["<Real pain point A — specific to this audience>", "<Pain point B>", "<Pain point C>"],
+    "triggerMoment": "<The specific moment or event that makes this audience ready to act>"
+  },
+  "strategy": {
+    "platformMix": ["<Platform — XX%: rationale in 5 words>", "<Platform — XX%: rationale>"],
+    "contentPillars": ["<Pillar 1: purpose>", "<Pillar 2: purpose>", "<Pillar 3: purpose>"],
+    "funnelApproach": "<How this campaign moves the audience from awareness to conversion — 2 sentences>"
+  },
+  "creativeBrief": {
+    "visualDirection": "<Art direction in 2–3 sentences: colour palette rationale, imagery style, typography feel>",
+    "tone": "<Tone of voice directive — 3 specific words + one sentence of context>",
+    "hookExamples": ["<Platform-native hook 1 — state which platform>", "<Hook 2>", "<Hook 3>"]
+  },
+  "executableActions": [
+    "<Specific action 1 — who does what, on which channel, in which week>",
+    "<Specific action 2>",
+    "<Specific action 3>",
+    "<Specific action 4>"
+  ],
+  "kpis": [
+    "<KPI 1 with target number — e.g. CTR ≥ 2.5% on LinkedIn>",
+    "<KPI 2 with target>",
+    "<KPI 3 with target>"
+  ],
+  "budget": {
+    "allocation": ["<Channel — XX% of budget: rationale>", "<Channel — XX%: rationale>"],
+    "watchouts": "<One sentence on where this budget can be wasted and how to avoid it>"
+  },
+  "risks": ["<Risk 1 and mitigation>", "<Risk 2 and mitigation>"]
+}`;
+
+  try {
+    logger.info({ userId, projectId, objective }, '[tools/campaign-brief] Generating');
+    const result = await callClaude({
+      systemPrompt,
+      conversationHistory: [],
+      userMessage: `Generate the full campaign brief for objective: ${objective}, duration: ${duration || '4 weeks'}, key message: ${keyMessage}`,
+      maxTokens: 4000,
+    });
+    logger.info({ userId, projectId }, '[tools/campaign-brief] Done');
+    return res.json({ status: 'ok', result });
+  } catch (err) {
+    logger.error({ err: err.message, userId, projectId }, '[tools/campaign-brief] Claude error');
+    return res.status(500).json({ status: 'error', message: err.message || 'Brief generation failed' });
+  }
+});

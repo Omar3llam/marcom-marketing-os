@@ -3,11 +3,11 @@
 // Handles auth bootstrapping, send flow, and the window._app
 // facade used by inline HTML event handlers.
 // ============================================================
-import { sendChat, exportToCRM } from './api.js?v=20260427-4';
-import { S, updateUI } from './state.js?v=20260427-4';
-import { renderResp, renderCampaign, renderScorecard, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260427-4';
-import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js?v=20260427-4';
-import { handleFile, clearImg } from './media.js?v=20260427-4';
+import { sendChat, exportToCRM } from './api.js?v=20260427-5';
+import { S, updateUI } from './state.js?v=20260427-5';
+import { renderResp, renderCampaign, renderScorecard, renderStrategyBrief, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260427-5';
+import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js?v=20260427-5';
+import { handleFile, clearImg } from './media.js?v=20260427-5';
 
 // ── DIAGNOSTIC — remove after confirming new JS is loading ───
 console.log('%c[LUMI] app.js v20260426-3 LOADED', 'background:#FFD300;color:#000;font-weight:bold;padding:2px 8px');
@@ -641,6 +641,9 @@ export async function resumeChat(sessionId) {
         // dashboard directly — NOT a stub. The dashboard is pure DOM output
         // with no live closures, so it is safe to replay in history.
         renderCampaign(json);
+      } else if (json && (json.campaignName || json.bigIdea)) {
+        // Campaign Brief dashboard: pure DOM — safe to replay directly.
+        renderStrategyBrief(json);
       } else if (json && (json.overallScore != null || Array.isArray(json.criteria) || json.alignmentScore != null)) {
         // Mode 4 scorecard or analysis dashboard: pure DOM, no live closures — safe to replay.
         renderScorecard(json);
@@ -1372,6 +1375,146 @@ export function closeContentCalendar() {
   if (modal) modal.style.display = 'none';
 }
 
+// ── CAMPAIGN BRIEF BUILDER ────────────────────────────────────
+export function openCampaignBrief() {
+  const modal = document.getElementById('brief-modal');
+  if (!modal) return;
+  _startFreshSession();   // isolate from any active chat session
+  _briefReset();
+  modal.style.display = 'flex';
+  setTimeout(() => document.getElementById('brief-objective')?.focus(), 120);
+}
+
+export function closeCampaignBrief() {
+  const modal = document.getElementById('brief-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+function _briefReset() {
+  ['brief-objective', 'brief-duration', 'brief-budget', 'brief-key-message', 'brief-competitor']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.value = el.tagName === 'SELECT' ? '' : ''; }
+    });
+  const errEl  = document.getElementById('brief-err');
+  const formEl = document.getElementById('brief-form');
+  const resEl  = document.getElementById('brief-result');
+  const btn    = document.getElementById('brief-generate-btn');
+  const btnLbl = document.getElementById('brief-btn-label');
+  if (errEl)  { errEl.style.display = 'none'; errEl.textContent = ''; }
+  if (formEl) formEl.style.display = 'flex';
+  if (resEl)  resEl.style.display  = 'none';
+  if (btn)    btn.disabled = false;
+  if (btnLbl) btnLbl.textContent = '✨ Build Campaign Brief';
+}
+
+export async function _generateBrief() {
+  const projectId  = ProjectManager.getProjectId();
+  const objective  = document.getElementById('brief-objective')?.value;
+  const duration   = document.getElementById('brief-duration')?.value;
+  const budget     = document.getElementById('brief-budget')?.value;
+  const keyMessage = document.getElementById('brief-key-message')?.value.trim();
+  const competitor = document.getElementById('brief-competitor')?.value.trim();
+
+  const errEl = document.getElementById('brief-err');
+  const showErr = msg => { if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; } };
+
+  if (!projectId)  { showErr('No active project — select one first.'); return; }
+  if (!objective)  { showErr('Please select a campaign objective.'); return; }
+  if (!keyMessage) { showErr('Please enter your key message.'); return; }
+  if (errEl) errEl.style.display = 'none';
+
+  const btn    = document.getElementById('brief-generate-btn');
+  const btnLbl = document.getElementById('brief-btn-label');
+  if (btn)    btn.disabled = true;
+  if (btnLbl) btnLbl.innerHTML = '<span style="display:inline-block;animation:lSpin 1s linear infinite;">✨</span> Building…';
+
+  try {
+    const headers = await getAuthHeaders();
+    const res = await fetch('/api/tools/campaign-brief', {
+      method: 'POST', headers,
+      body: JSON.stringify({ projectId, objective, duration, budget, keyMessage, competitor }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.status !== 'ok') {
+      showErr(data.message || 'Brief generation failed — please try again.');
+      if (btn)    btn.disabled = false;
+      if (btnLbl) btnLbl.textContent = '✨ Build Campaign Brief';
+      return;
+    }
+
+    // Parse brief JSON and render
+    const raw = data.result || '';
+    let parsed = null;
+    try {
+      const first = raw.indexOf('{'), last = raw.lastIndexOf('}');
+      if (first !== -1 && last > first) parsed = JSON.parse(raw.slice(first, last + 1));
+    } catch (_e) { parsed = null; }
+
+    const formEl = document.getElementById('brief-form');
+    const resEl  = document.getElementById('brief-result');
+    const bodyEl = document.getElementById('brief-result-body');
+    if (formEl) formEl.style.display = 'none';
+    if (resEl)  resEl.style.display  = 'block';
+
+    if (parsed && (parsed.campaignName || parsed.bigIdea) && bodyEl) {
+      bodyEl.innerHTML = '';
+      // Build a mini DOM version of the brief renderer for the modal
+      const dummy = document.createElement('div');
+      dummy.id = 'msgs'; dummy.style.display = 'none'; document.body.appendChild(dummy);
+      renderStrategyBrief(parsed);
+      const rendered = dummy.lastElementChild;
+      if (rendered) {
+        rendered.style.animation = 'none';
+        rendered.querySelector('.lumi-av')?.remove();
+        bodyEl.appendChild(rendered);
+      }
+      document.body.removeChild(dummy);
+      bodyEl.dataset.raw = JSON.stringify(parsed);
+    } else {
+      // Fallback: formatted text
+      if (bodyEl) bodyEl.innerHTML = fmtTxt(raw);
+    }
+
+  } catch (err) {
+    showErr(`Network error: ${err.message}`);
+    if (btn)    btn.disabled = false;
+    if (btnLbl) btnLbl.textContent = '✨ Build Campaign Brief';
+  }
+}
+
+export function _copyBrief() {
+  const bodyEl = document.getElementById('brief-result-body');
+  if (!bodyEl) return;
+  const raw = bodyEl.dataset.raw;
+  let text = '';
+  if (raw) {
+    try {
+      const d = JSON.parse(raw);
+      text = [
+        `CAMPAIGN: ${d.campaignName || ''}`,
+        `BIG IDEA: ${d.bigIdea || ''}`,
+        '',
+        'AUDIENCE:',
+        ...(d.audience?.segments || []).map(s => `  • ${s}`),
+        '',
+        'PLATFORM MIX:',
+        ...(d.strategy?.platformMix || []).map(p => `  • ${p}`),
+        '',
+        'CONTENT PILLARS:',
+        ...(d.strategy?.contentPillars || []).map(p => `  • ${p}`),
+        '',
+        'HOOKS:',
+        ...(d.creativeBrief?.hookExamples || []).map(h => `  "${h}"`),
+        '',
+        'KPIS:',
+        ...(d.kpis || []).map(k => `  • ${k}`),
+      ].join('\n');
+    } catch (_e) { text = bodyEl.innerText; }
+  } else { text = bodyEl.innerText; }
+  navigator.clipboard?.writeText(text).then(() => toast('Brief copied!')).catch(() => toast('Copy failed'));
+}
+
 export function _calClearErr() {
   const el = document.getElementById('cal-err');
   if (el) el.style.display = 'none';
@@ -1786,4 +1929,9 @@ window._app = {
   _generateCalendar,
   _copyCalendar,
   _exportCalendarCSV,
+  // Campaign Brief Builder
+  openCampaignBrief,
+  closeCampaignBrief,
+  _generateBrief,
+  _copyBrief,
 };
