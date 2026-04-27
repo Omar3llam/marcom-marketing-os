@@ -897,9 +897,28 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 
 /* ── HUB RESPONSIVE ──────────────────────────────── */
 @media(max-width:768px){
-  .hub-shell{padding:28px 16px 48px;}
+  /* Top padding accommodates the fixed-position hamburger (52px tall) */
+  .hub-shell{padding:64px 16px 48px;}
   .hub-title{font-size:20px;}
   .tool-topbar{padding:0 54px 0 12px;} /* room for hamburger */
+  .workspace-shell{padding:64px 16px 32px;}
+  /* CRITICAL: on mobile the sidebar is a slide-out menu (width:280px,
+     position:fixed). The desktop "collapsed" 60px width must NOT apply
+     here — when the user enters tool-active on mobile, we want the
+     slide-out menu to keep its full width when opened. */
+  #sidebar.sidebar-collapsed{width:280px;}
+  #sidebar.sidebar-collapsed .sb-logo-text,
+  #sidebar.sidebar-collapsed .project-switcher,
+  #sidebar.sidebar-collapsed .sb-item-label,
+  #sidebar.sidebar-collapsed .sb-item-sub,
+  #sidebar.sidebar-collapsed .sb-section-lbl,
+  #sidebar.sidebar-collapsed .sb-new-btn,
+  #sidebar.sidebar-collapsed .sb-recent,
+  #sidebar.sidebar-collapsed .sb-divider,
+  #sidebar.sidebar-collapsed .sb-toggle-lbl,
+  #sidebar.sidebar-collapsed #user-button{display:flex;}
+  #sidebar.sidebar-collapsed .sb-item{justify-content:flex-start;padding:9px 12px;gap:10px;}
+  #sidebar.sidebar-collapsed .sb-toggle-btn{display:none;} /* desktop-only affordance */
 }
 </style>
 </head>
@@ -1386,6 +1405,6 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 <div class="toast" id="toast"></div>
 
 <!-- App logic loaded as ES module — version query string busts the browser cache on each deploy -->
-<script type="module" src="/js/app.js?v=20260427-7"></script>
+<script type="module" src="/js/app.js?v=20260427-8"></script>
 </body>
 </html>

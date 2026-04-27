@@ -10,7 +10,7 @@ import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCo
 import { handleFile, clearImg } from './media.js?v=20260427-5';
 
 // ── DIAGNOSTIC — remove after confirming new JS is loading ───
-console.log('%c[LUMI] app.js v20260427-7 LOADED (Hub-and-Spoke)', 'background:#FFD300;color:#000;font-weight:bold;padding:2px 8px');
+console.log('%c[LUMI] app.js v20260427-8 LOADED (Hub-and-Spoke + audit fixes)', 'background:#FFD300;color:#000;font-weight:bold;padding:2px 8px');
 
 // ── LUMI THOUGHTS (rotating loader text) ─────────────────────
 const LUMI_THOUGHTS = [
@@ -419,6 +419,7 @@ export async function loadRecentChats() {
     const res = await fetch(url, { headers });
     if (!res.ok) {
       list.innerHTML = '<div style="padding:6px 12px;font-size:11px;color:var(--ink-3);font-style:italic;">Could not load history.</div>';
+      _renderHubRecents([]); // clear hub "Loading…" placeholder
       return;
     }
     const { sessions = [] } = await res.json();
@@ -445,6 +446,7 @@ export async function loadRecentChats() {
   } catch (err) {
     console.warn('[Lumi] loadRecentChats failed:', err?.message);
     list.innerHTML = '<div style="padding:6px 12px;font-size:11px;color:var(--ink-3);font-style:italic;">Offline — history unavailable.</div>';
+    _renderHubRecents([]); // clear hub "Loading…" placeholder
   }
 }
 
@@ -544,12 +546,8 @@ async function deleteSession(sessionId) {
  * Structured payloads (calendar / scorecard / campaigns): compact stub.
  */
 export async function resumeChat(sessionId) {
-  // 0. Ensure tool-active view is shown before rendering into #msgs
-  if (S.currentView !== 'tool-active') {
-    switchView('tool-active', 'chat');
-  }
-
-  // 1. Verify container
+  // 1. Verify container + sessionId BEFORE flipping the view, so a bad
+  //    invocation can't leave the user staring at a blank tool workspace.
   const container = document.getElementById('msgs');
   if (!container) {
     console.error('[loadSession] Chat container #msgs not found. Check HTML ID.');
@@ -558,6 +556,12 @@ export async function resumeChat(sessionId) {
   if (!sessionId) {
     console.error('[loadSession] sessionId missing — cannot load session.');
     return;
+  }
+
+  // 2. Switch to the tool-active view (placeholder title — corrected
+  //    after we fetch the messages and can derive the actual tool type).
+  if (S.currentView !== 'tool-active') {
+    switchView('tool-active', 'chat');
   }
 
   // 2. Show loading state — replaces empty-state placeholder immediately.
@@ -605,6 +609,15 @@ export async function resumeChat(sessionId) {
 
   // 4. Validate messages array.
   const messages = Array.isArray(payload?.messages) ? payload.messages : [];
+
+  // 4b. Derive the tool kind from the messages so the topbar shows the
+  //     right title for resumed sessions (e.g. "Score Content" for Mode 4
+  //     transcripts, not the generic "Chat with Lumi" placeholder).
+  const derivedTool = _deriveToolFromMessages(messages);
+  if (S.activeTool !== derivedTool) {
+    switchView('tool-active', derivedTool);
+  }
+
   if (messages.length === 0) {
     container.innerHTML = `
       <div class="empty-state empty" id="emptyState">
@@ -1990,10 +2003,13 @@ export function hubLaunch(toolId) {
     case 'score':
       switchView('tool-active', 'score');
       _startFreshSession();
+      _ensureEmptyChatState('Paste or attach the content you\'d like me to score below.');
       setTimeout(() => qs('Evaluate this content'), 50);
       break;
     case 'analysis':
       switchView('tool-active', 'analysis');
+      // openCampaignAnalysis() already calls _startFreshSession internally
+      // and renders its own gate cards into #msgs.
       openCampaignAnalysis();
       break;
     case 'calendar':
@@ -2008,8 +2024,29 @@ export function hubLaunch(toolId) {
     default:
       switchView('tool-active', 'chat');
       _startFreshSession();
+      _ensureEmptyChatState();
       break;
   }
+}
+
+/** Re-inject the friendly empty state into #msgs after _startFreshSession blanked it. */
+function _ensureEmptyChatState(subline) {
+  const msgs = document.getElementById('msgs');
+  if (!msgs || msgs.children.length > 0) return;
+  const sub = subline ||
+    'Your AI marketing co-pilot. Type your question below or pick another tool.';
+  msgs.innerHTML = `
+    <div class="empty" id="emptyState">
+      <div class="empty-lumi">✨</div>
+      <div class="empty-divider"></div>
+      <div class="empty-title">Hi! I'm <em>Lumi</em> 👋</div>
+      <div class="empty-sub">${esc(sub)}</div>
+      <div class="quick-starts">
+        <span class="qs-chip" onclick="window._app.hubLaunch('calendar')">🗓️ Content Calendar</span>
+        <span class="qs-chip" onclick="window._app.hubLaunch('score')">🔍 Score Content</span>
+        <span class="qs-chip" onclick="window._app.hubLaunch('analysis')">📊 Campaign Analysis</span>
+      </div>
+    </div>`;
 }
 
 /** Toggle the sidebar collapsed/expanded (user-initiated override). */
@@ -2040,23 +2077,56 @@ function _refreshWorkspaceMeta() {
   }
 }
 
+/** Derive the tool kind for the topbar from a list of session messages. */
+function _deriveToolFromMessages(messages) {
+  if (!Array.isArray(messages)) return 'chat';
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m?.role !== 'assistant') continue;
+    const mode = m.meta?.mode || m.mode;
+    if (mode === 5) return 'analysis';
+    if (mode === 4) return 'score';
+    if (mode === 3) return 'calendar';
+    if (mode === 2) return 'tools';
+    // Mode 1 messages are onboarding → fall through to chat
+  }
+  return 'chat';
+}
+
 /** Render recent sessions into the hub recents panel. */
 function _renderHubRecents(sessions) {
   const el = document.getElementById('hub-recent-sessions');
   if (!el) return;
-  if (!sessions.length) {
+  if (!Array.isArray(sessions) || !sessions.length) {
     el.innerHTML = '<div style="font-size:12px;color:var(--ink-3);font-style:italic;padding:4px 2px;">No recent sessions yet. Generate something!</div>';
+    _wireHubRecentsDelegation();
     return;
   }
+  // Render with data attributes only — click handling is delegated, so
+  // session IDs containing quotes/HTML can never break the markup.
   el.innerHTML = sessions.slice(0, 5).map(s => {
     const safeId = esc(s.sessionId || '');
     const label  = esc((s.title || 'New Chat').slice(0, 42));
-    return `<div class="hub-recent-item" onclick="window._app.resumeChat('${safeId}')">
+    return `<div class="hub-recent-item" data-session-id="${safeId}">
       <span class="hri-icon">💬</span>
       <span class="hri-title">${label}</span>
       <span class="hri-arrow">→</span>
     </div>`;
   }).join('');
+  _wireHubRecentsDelegation();
+}
+
+/** Wire a single delegated click listener on the hub recents container. */
+function _wireHubRecentsDelegation() {
+  const el = document.getElementById('hub-recent-sessions');
+  if (!el || el.dataset.delegationWired) return;
+  el.addEventListener('click', (e) => {
+    const item = e.target.closest('.hub-recent-item');
+    if (!item) return;
+    const sid = item.dataset.sessionId;
+    if (sid) resumeChat(sid);
+  });
+  el.dataset.delegationWired = 'true';
 }
 
 // ── WINDOW FACADE (used by HTML inline event handlers) ────────
