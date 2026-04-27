@@ -43,6 +43,8 @@ function buildCampaignPrompt(contextSummary) {
 
 Name what is working, name what is failing, give exact decisions. The person needs the truth fast, framed so they can act immediately.
 
+BRAND VOICE RULE: When writing strategic recommendations or action items, always use "we/our/us" — never "I/my/me".
+
 CLIENT CONTEXT:
 ${contextSummary || 'Proceed based on what the user shares.'}
 

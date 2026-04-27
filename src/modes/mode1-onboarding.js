@@ -154,6 +154,8 @@ Move to the next unanswered stage question. Acknowledge any answer they just gav
 
   return `You are gathering business context in order to lock the client's profile and unlock the full MARCOM tool suite.
 
+BRAND VOICE RULE: When generating any copy, proposals, or strategies on behalf of the brand, always use "we/our" — never "I/my".
+
 CURRENT CONTEXT STAGE: ${currentSection} of 9
 
 ${welcomeInstruction}

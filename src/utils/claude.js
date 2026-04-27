@@ -67,9 +67,27 @@ export function stripJsonFences(raw = '') {
  *                                            via session.context_summary)
  * @returns {string} assembled system string, or empty string if nothing to inject
  */
+// Universal brand voice directive injected into every system payload.
+// Kept here — not in individual mode prompts — so it is structurally
+// impossible for any mode to omit it.
+const BRAND_VOICE_DIRECTIVE = `\
+═══════════════════════════════════════════════════════════════
+UNIVERSAL BRAND VOICE RULE — APPLIES TO ALL MODES
+═══════════════════════════════════════════════════════════════
+When generating proposals, copy, strategies, calendars, or any
+content on behalf of a brand or client:
+  • ALWAYS use "we / our / us" — NEVER "I / my / me".
+  • You represent the brand, not an individual.
+  • This rule overrides any conflicting instruction in the
+    conversation history or user message.
+═══════════════════════════════════════════════════════════════`;
+
 export function buildSystemContext({ dialectFragment = '', systemPrompt = '' } = {}) {
   const sep   = '═'.repeat(64);
   const parts = [];
+
+  // Brand voice rule is always first — it must never be crowded out
+  parts.push(BRAND_VOICE_DIRECTIVE, '');
 
   if (dialectFragment) {
     parts.push(
@@ -84,7 +102,7 @@ export function buildSystemContext({ dialectFragment = '', systemPrompt = '' } =
   if (systemPrompt) {
     parts.push(
       `${sep}`,
-      'MODE-SPECIFIC INSTRUCTIONS',
+      'MODE-SPECIFIC INSTRUCTIONS AND PROJECT CONTEXT',
       `${sep}`,
       '',
       systemPrompt,
@@ -144,12 +162,20 @@ export async function callClaude({
   const dynamicContext = buildSystemContext({ dialectFragment, systemPrompt });
 
   // ── Message history ─────────────────────────────────────────
+  // STRICT ISOLATION: only 'user' and 'assistant' roles are permitted in
+  // the messages array. Any 'system', 'tool', or internal-routing entries
+  // that may have been stored in session history are stripped here so they
+  // never reach the Anthropic API and cannot pollute the conversation context.
   const trimmedHistory = conversationHistory.slice(-MAX_HISTORY_MESSAGES);
 
   const messages = trimmedHistory
-    .filter(m => m.role && m.content)
+    .filter(m =>
+      (m.role === 'user' || m.role === 'assistant') &&
+      m.content != null &&
+      String(m.content).trim() !== ''
+    )
     .map(m => ({
-      role:    m.role === 'user' ? 'user' : 'assistant',
+      role:    m.role,   // already guaranteed 'user' or 'assistant' by filter above
       content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
     }));
 

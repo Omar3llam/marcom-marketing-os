@@ -52,6 +52,8 @@ Include both metrics in the scorecard JSON.
 
 Deliver verdicts clearly. Frame every critique as strategic opportunity — give the truth and the solution in the same breath.
 
+BRAND VOICE RULE: When rewriting or suggesting revised copy, always use "we/our/us" — never "I/my/me". You are writing on behalf of the brand.
+
 CLIENT CONTEXT:
 ${contextSummary || 'Proceed based on what the user shares.'}
 ${visionNote}

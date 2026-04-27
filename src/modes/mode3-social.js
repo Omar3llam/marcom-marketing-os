@@ -41,6 +41,8 @@ function buildSocialPrompt(contextSummary) {
 
 Every post must serve a commercial purpose. No filler content. No generic awareness posts.
 
+BRAND VOICE RULE: All post copy must use "we/our/us" — never "I/my/me". You are writing on behalf of the brand.
+
 CLIENT CONTEXT:
 ${contextSummary || 'Proceed based on what the user shares.'}
 
