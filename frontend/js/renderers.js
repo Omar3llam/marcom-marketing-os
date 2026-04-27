@@ -62,7 +62,7 @@ export function renderResp(data) {
   // Mode 5: new shape has { overview, budgetAction, campaigns }; old shape just { campaigns }.
   // Accept either — both render correctly via renderCampaign().
   if (data.current_mode === 5 && json && (json.campaigns || json.overview)) { renderCampaign(json); return; }
-  if (data.current_mode === 4 && json?.scorecard)  { renderScorecard(json); return; }
+  if (data.current_mode === 4 && json && (json.scorecard || json.overallScore != null || Array.isArray(json.criteria))) { renderScorecard(json); return; }
   if (data.current_mode === 3 && json?.calendar)   { renderCalendar(json); return; }
   // All other responses — including mode-2 tool answers — are plain bubbles.
   appendMsg('system', data.message, { mode: data.current_mode, service: data.current_service });
@@ -255,26 +255,102 @@ document.addEventListener('click', e => {
   if (e.target.id === 'dashboard-modal') window.closeModal();
 });
 
-export function renderScorecard(payload) {
-  const dashboardHTML = buildScorecardHTML(payload);
-  const ov = payload.scorecard?.overall;
-  const rwLvl = (payload.rewrite_required || 'none').toLowerCase();
-  const encoded = encodeURIComponent(dashboardHTML);
+// ── Visual Scorecard Dashboard (new — inline in #msgs) ────────
+function _renderScorecardDashboard(container, data) {
+  const overall = Math.max(0, Math.min(100, parseInt(data.overallScore) || 0));
+  const gaugeColor = overall >= 80 ? '#27ae60' : overall >= 60 ? '#e67e22' : '#e74c3c';
+  const gaugeBg    = overall >= 80 ? '#D5F5E3'  : overall >= 60 ? '#FEF9E7'  : '#FADBD8';
+  const gaugeLabel = overall >= 80 ? 'Strong'   : overall >= 60 ? 'Needs Work' : 'Weak';
 
-  // Append a compact stub message with a "View Dashboard" button
+  // ── Gauge ──
+  const gaugeHtml = `
+    <div class="sc-gauge-wrap">
+      <div class="sc-gauge" style="background:${gaugeBg};border-color:${gaugeColor}55;">
+        <div class="sc-gauge-num" style="color:${gaugeColor};">${overall}</div>
+        <div class="sc-gauge-max">/100</div>
+        <div class="sc-gauge-lbl" style="color:${gaugeColor};">${gaugeLabel}</div>
+      </div>
+      <div class="sc-gauge-meta">
+        <div class="sc-dash-title">🔍 Content Diagnostic</div>
+        ${data.summary ? `<div class="sc-summary">${esc(data.summary)}</div>` : ''}
+      </div>
+    </div>`;
+
+  // ── Criteria bars ──
+  const criteriaHtml = Array.isArray(data.criteria) && data.criteria.length ? `
+    <div class="sc-section-lbl">📊 Criteria Breakdown</div>
+    <div class="criteria-grid">
+      ${data.criteria.map(c => {
+        const score = Math.max(1, Math.min(10, parseInt(c.score) || 0));
+        const pct   = score * 10;
+        const fillCls = score >= 8 ? 'cbf-green' : score >= 5 ? 'cbf-yellow' : 'cbf-red';
+        const scoreCol= score >= 8 ? '#27ae60'    : score >= 5 ? '#e67e22'    : '#e74c3c';
+        return `
+          <div class="criteria-bar-item">
+            <div class="cbi-header">
+              <span class="cbi-name">${esc(c.name || '')}</span>
+              <span class="cbi-score" style="color:${scoreCol};">${score}<span class="cbi-max">/10</span></span>
+            </div>
+            <div class="cbi-track"><div class="criteria-bar-fill ${fillCls}" style="width:${pct}%"></div></div>
+            ${c.feedback ? `<div class="cbi-feedback">${esc(c.feedback)}</div>` : ''}
+          </div>`;
+      }).join('')}
+    </div>` : '';
+
+  // ── Recommendations ──
+  const recsHtml = Array.isArray(data.recommendations) && data.recommendations.length ? `
+    <div class="sc-section-lbl">✅ Action Plan</div>
+    <div class="sc-recs">
+      ${data.recommendations.map((r, i) => `
+        <div class="sc-rec-item">
+          <span class="sc-rec-num">${i + 1}</span>
+          <span class="sc-rec-txt">${esc(r)}</span>
+        </div>`).join('')}
+    </div>` : '';
+
+  // ── Audience Simulation (tabs — reuse existing helper) ──
+  const audHtml = buildAudienceTabs(data.audience_simulation);
+
+  // ── Brutal Insight + Rewrite ──
+  const extraHtml = [
+    data.brutal_insight    ? `<div class="brutal-box"><div class="bi-lbl">⚡ Brutal Insight</div><div class="bi-txt">${fmtTxt(data.brutal_insight)}</div></div>` : '',
+    data.verdict           ? `<div class="verdict-txt">${fmtTxt(data.verdict)}</div>` : '',
+    data.rewritten_content ? `<div class="rw-box"><div class="rw-top"><span class="rw-top-lbl">✦ Rewritten Version</span><span class="rw-pill ${({ None:'rw-none', Minor:'rw-minor', Moderate:'rw-moderate', Major:'rw-major' }[data.rewrite_required] || 'rw-minor')}">${esc(data.rewrite_required || '')}</span></div><div class="rw-body">${fmtTxt(data.rewritten_content)}</div></div>` : '',
+  ].filter(Boolean).join('');
+
+  const div = document.createElement('div'); div.style.maxWidth = '100%';
+  div.innerHTML = gaugeHtml + criteriaHtml + recsHtml + audHtml + extraHtml;
+  container.appendChild(div);
+}
+
+export function renderScorecard(payload) {
   const msgs = document.getElementById('msgs');
   const wrap = document.createElement('div');
   wrap.className = 'msg system'; wrap.style.animation = 'msgIn 0.3s ease';
-  wrap.innerHTML = `<div class="lumi-av">✨</div><div>
-    <div class="bubble" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-      <span style="font-size:20px;">🔍</span>
-      <div>
-        <div style="font-weight:700;color:var(--ink);margin-bottom:3px;">Content Interrogation Complete</div>
-        <div style="font-size:12px;color:var(--ink-3);">Score: <strong>${ov != null ? `${ov}/10` : '—'}</strong> &nbsp;·&nbsp; Rewrite: <strong>${esc(rwLvl)}</strong></div>
-      </div>
-      <button class="abtn crm" style="margin-left:auto;" onclick="window.showDashboard(this.dataset.html)" data-html="${esc(encoded)}">📊 View Dashboard</button>
-    </div>
-  </div>`;
+  wrap.innerHTML = '<div class="lumi-av">✨</div>';
+  const inner = document.createElement('div');
+  wrap.appendChild(inner);
+
+  if (payload.overallScore != null || Array.isArray(payload.criteria)) {
+    // New visual dashboard — render fully inline (no modal needed)
+    _renderScorecardDashboard(inner, payload);
+  } else {
+    // Legacy payload (old sessions, scorecard-only shape) — keep modal stub
+    const dashboardHTML = buildScorecardHTML(payload);
+    const ov     = payload.scorecard?.overall;
+    const rwLvl  = (payload.rewrite_required || 'none').toLowerCase();
+    const encoded = encodeURIComponent(dashboardHTML);
+    inner.innerHTML = `
+      <div class="bubble" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <span style="font-size:20px;">🔍</span>
+        <div>
+          <div style="font-weight:700;color:var(--ink);margin-bottom:3px;">Content Interrogation Complete</div>
+          <div style="font-size:12px;color:var(--ink-3);">Score: <strong>${ov != null ? `${ov}/10` : '—'}</strong> &nbsp;·&nbsp; Rewrite: <strong>${esc(rwLvl)}</strong></div>
+        </div>
+        <button class="abtn crm" style="margin-left:auto;" onclick="window.showDashboard(this.dataset.html)" data-html="${esc(encoded)}">📊 View Dashboard</button>
+      </div>`;
+  }
+
   msgs.appendChild(wrap); msgs.scrollTop = msgs.scrollHeight;
 }
 

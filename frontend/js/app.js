@@ -3,11 +3,11 @@
 // Handles auth bootstrapping, send flow, and the window._app
 // facade used by inline HTML event handlers.
 // ============================================================
-import { sendChat, exportToCRM } from './api.js?v=20260426-3';
-import { S, updateUI } from './state.js?v=20260426-3';
-import { renderResp, renderCampaign, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260426-3';
-import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js?v=20260426-3';
-import { handleFile, clearImg } from './media.js?v=20260426-3';
+import { sendChat, exportToCRM } from './api.js?v=20260427-1';
+import { S, updateUI } from './state.js?v=20260427-1';
+import { renderResp, renderCampaign, renderScorecard, appendMsg, esc, hideEmpty, tryJSON, fmtTxt } from './renderers.js?v=20260427-1';
+import { showWizard, renderWizStep, selTile, wNext, wizDone, wizManual, wizSetCountry, setWizUrl } from './wizard.js?v=20260427-1';
+import { handleFile, clearImg } from './media.js?v=20260427-1';
 
 // ── DIAGNOSTIC — remove after confirming new JS is loading ───
 console.log('%c[LUMI] app.js v20260426-3 LOADED', 'background:#FFD300;color:#000;font-weight:bold;padding:2px 8px');
@@ -641,9 +641,11 @@ export async function resumeChat(sessionId) {
         // dashboard directly — NOT a stub. The dashboard is pure DOM output
         // with no live closures, so it is safe to replay in history.
         renderCampaign(json);
+      } else if (json && (json.overallScore != null || Array.isArray(json.criteria))) {
+        // Mode 4 (new visual dashboard): pure DOM, no live closures — safe to replay.
+        renderScorecard(json);
       } else if (json && (json.calendar || json.scorecard)) {
-        // Modes 3 + 4: still use compact stubs because they rely on live
-        // JS closures (modal handlers, tab state) that can't be serialised.
+        // Modes 3 + 4 legacy: compact stubs because modal handlers rely on live closures.
         _renderRestoredStructuredStub(container, json, meta);
       } else {
         _renderRestoredBubble(container, 'system', content, meta);

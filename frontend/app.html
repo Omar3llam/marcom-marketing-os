@@ -509,6 +509,33 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 .rw-top{padding:8px 14px;background:rgba(155,89,182,0.12);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(155,89,182,0.2);}
 .rw-top-lbl{font-size:11px;font-weight:700;color:var(--purple);}
 .rw-body{padding:14px;font-size:13px;color:var(--ink-2);line-height:1.7;white-space:pre-wrap;}
+/* ── SCORECARD VISUAL DASHBOARD (inline in #msgs) ── */
+.sc-gauge-wrap{display:flex;align-items:center;gap:20px;padding:16px 0 20px;flex-wrap:wrap;}
+.sc-gauge{width:100px;height:100px;border-radius:50%;border:4px solid;display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;transition:background 0.4s,border-color 0.4s;}
+.sc-gauge-num{font-size:32px;font-weight:900;line-height:1;transition:color 0.4s;}
+.sc-gauge-max{font-size:11px;font-weight:600;color:var(--ink-3);margin-top:1px;}
+.sc-gauge-lbl{font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;margin-top:4px;transition:color 0.4s;}
+.sc-gauge-meta{flex:1;min-width:160px;}
+.sc-dash-title{font-size:16px;font-weight:800;color:var(--ink);margin-bottom:6px;}
+.sc-summary{font-size:13px;color:var(--ink-2);line-height:1.6;}
+.sc-section-lbl{font-size:11px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;color:var(--ink-3);margin:18px 0 10px;padding-bottom:5px;border-bottom:1px solid var(--cream-2);}
+.criteria-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px 18px;}
+@media(max-width:600px){.criteria-grid{grid-template-columns:1fr;}}
+.criteria-bar-item{padding:10px 12px;background:var(--cream);border:1px solid var(--border);border-radius:var(--r-md);}
+.cbi-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;}
+.cbi-name{font-size:12px;font-weight:700;color:var(--ink);}
+.cbi-score{font-size:16px;font-weight:900;transition:color 0.3s;}
+.cbi-max{font-size:11px;font-weight:500;color:var(--ink-3);}
+.cbi-track{height:5px;background:var(--cream-2);border-radius:var(--r-full);overflow:hidden;margin-bottom:6px;}
+.criteria-bar-fill{height:100%;border-radius:var(--r-full);transition:width 0.9s ease;}
+.cbf-green{background:var(--mint);}
+.cbf-yellow{background:var(--yellow-dk);}
+.cbf-red{background:var(--coral);}
+.cbi-feedback{font-size:11px;color:var(--ink-3);line-height:1.5;}
+.sc-recs{display:flex;flex-direction:column;gap:8px;margin-bottom:4px;}
+.sc-rec-item{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--border);border-radius:var(--r-md);}
+.sc-rec-num{width:22px;height:22px;border-radius:50%;background:var(--yellow);color:#000;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.sc-rec-txt{font-size:13px;color:var(--ink-2);line-height:1.5;}
 .verdict-txt{margin-top:10px;font-size:12px;color:var(--ink-3);line-height:1.65;font-style:italic;padding:10px 14px;background:var(--cream-2);border-radius:var(--r-md);}
 
 /* ── AUDIENCE SIMULATION TABS ──────────────────── */
@@ -992,6 +1019,6 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 <div class="toast" id="toast"></div>
 
 <!-- App logic loaded as ES module — version query string busts the browser cache on each deploy -->
-<script type="module" src="/js/app.js?v=20260426-3"></script>
+<script type="module" src="/js/app.js?v=20260427-1"></script>
 </body>
 </html>
