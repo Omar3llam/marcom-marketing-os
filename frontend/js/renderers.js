@@ -10,6 +10,13 @@ export function esc(t = '') {
 export function fmtTxt(text) {
   return text
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/^\|(.+?)\|\s*\n\|[\s:-|]+\|(?:\s*\n((?:\|.*\|\s*\n?)+))?/gm, (m, header, body) => {
+      const cols = header.split('|').map(s => s.trim()).filter(Boolean);
+      const rows = (body || '').trim().split(/\r?\n/).filter(Boolean).map(line => line.split('|').slice(1, -1).map(c => c.trim()));
+      const ths = cols.map(c => `<th>${c}</th>`).join('');
+      const trs = rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('');
+      return `<table class="inline-table"><thead><tr>${ths}</tr></thead><tbody>${trs}</tbody></table>`;
+    })
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/^#{2,3} (.+)$/gm, '<div class="shdr">$1</div>')
     .replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -360,19 +367,19 @@ export function renderScorecard(payload) {
     // New visual dashboard — render fully inline (no modal needed)
     _renderScorecardDashboard(inner, payload);
   } else {
-    // Legacy payload (old sessions, scorecard-only shape) — keep modal stub
-    const dashboardHTML = buildScorecardHTML(payload);
-    const ov     = payload.scorecard?.overall;
-    const rwLvl  = (payload.rewrite_required || 'none').toLowerCase();
-    const encoded = encodeURIComponent(dashboardHTML);
+    // Legacy payload (old sessions, scorecard-only shape) — render as inline chat card
+    const ov = payload.scorecard?.overall;
+    const rwLvl = (payload.rewrite_required || 'none').toLowerCase();
     inner.innerHTML = `
-      <div class="bubble" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-        <span style="font-size:20px;">🔍</span>
-        <div>
-          <div style="font-weight:700;color:var(--ink);margin-bottom:3px;">Content Interrogation Complete</div>
-          <div style="font-size:12px;color:var(--ink-3);">Score: <strong>${ov != null ? `${ov}/10` : '—'}</strong> &nbsp;·&nbsp; Rewrite: <strong>${esc(rwLvl)}</strong></div>
+      <div class="bubble">
+        <div class="inline-card">
+          <div class="inline-card-title">🔍 Content Interrogation Complete</div>
+          <div class="inline-card-content">
+            <div><strong>Score:</strong> ${ov != null ? `${ov}/10` : '—'}</div>
+            <div><strong>Rewrite:</strong> ${esc(rwLvl)}</div>
+            ${payload.scorecard?.summary ? `<div style="margin-top:12px;">${fmtTxt(payload.scorecard.summary)}</div>` : ''}
+          </div>
         </div>
-        <button class="abtn crm" style="margin-left:auto;" onclick="window.showDashboard(this.dataset.html)" data-html="${esc(encoded)}">📊 View Dashboard</button>
       </div>`;
   }
 

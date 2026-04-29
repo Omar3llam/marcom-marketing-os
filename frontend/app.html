@@ -868,12 +868,17 @@ html,body{height:100%;font-family:'Poppins',sans-serif;background:var(--cream);c
 .tool-dashboard-container{display:none;}
 .tool-local-chat{display:flex;flex-direction:column;height:100%;overflow:hidden;background:var(--cream);flex:1;}
 .tool-local-chat .msgs{flex:1;overflow-y:auto;padding:32px 20px;max-width:900px;margin:0 auto;width:100%;}
+.tool-local-chat .bubble{max-width:100%;}
 .tool-local-chat .input-area{flex-shrink:0;padding:20px;border-top:1px solid var(--border);display:flex;justify-content:center;background:var(--cream);}
 .chat-input-wrapper{width:100%;max-width:900px;}
 @media(max-width:768px){
   .tool-local-chat .msgs{padding:20px 16px;}
   .tool-local-chat .input-area{padding:16px;}
 }
+.bubble table{width:100%;border-collapse:collapse;margin:14px 0;}
+.bubble th,.bubble td{border:1px solid var(--border);padding:10px;text-align:left;font-size:13px;}
+.bubble th{background:var(--cream-2);font-weight:700;}
+.bubble tr:nth-child(even){background:rgba(0,0,0,0.025);}    
 
 /* ── INLINE CARDS — DASHBOARD DATA IN CHAT BUBBLES ──────────────────────────── */
 .inline-card{background:#f8f9fa;border-radius:var(--r-md);padding:16px;margin:12px 0;border-left:3px solid var(--yellow-dk);}
