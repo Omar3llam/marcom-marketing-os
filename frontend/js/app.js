@@ -1977,6 +1977,41 @@ export function switchView(viewName, toolId = null) {
     };
     const titleEl = document.getElementById('tool-active-title');
     if (titleEl) titleEl.textContent = (toolId && titleMap[toolId]) ? titleMap[toolId] : 'Workspace';
+
+    // ── STATE SEGREGATION: Tool-specific chat management ─────────────
+    // Initialize or retrieve the isolated chat history for this tool
+    S.toolChats[toolId] = S.toolChats[toolId] || [];
+
+    // Update dashboard title to match the selected tool
+    const dashTitle = document.querySelector('#view-tool-active .dash-title');
+    if (dashTitle) {
+      dashTitle.textContent = (toolId && titleMap[toolId]) ? titleMap[toolId] : 'Dashboard';
+    }
+
+    // Clear and re-render messages from this tool's isolated history
+    const msgs = document.getElementById('msgs');
+    if (msgs) {
+      msgs.innerHTML = '';
+      // Re-render all messages from S.toolChats[toolId]
+      if (S.toolChats[toolId] && S.toolChats[toolId].length > 0) {
+        S.toolChats[toolId].forEach(msgObj => {
+          const wrap = document.createElement('div');
+          wrap.className = `msg ${msgObj.role === 'user' ? 'user' : 'system'}`;
+          const avHtml = msgObj.role === 'user' ? '<div class="user-av">YOU</div>' : '<div class="lumi-av">✨</div>';
+          const fmtContent = msgObj.content;
+          let metaHtml = '';
+          if (msgObj.role === 'system' && msgObj.meta && msgObj.meta.mode) {
+            const mn = { 1:'Context', 2:'Tools', 3:'Social', 4:'Content', 5:'Campaign' };
+            let mt = `Mode ${msgObj.meta.mode} — ${mn[msgObj.meta.mode] || ''}`;
+            if (msgObj.meta.service && msgObj.meta.service > 0) mt += ` — Tool ${String(msgObj.meta.service).padStart(2, '0')}`;
+            metaHtml = `<div class="bubble-meta">${mt}</div>`;
+          }
+          wrap.innerHTML = `${avHtml}<div><div class="bubble">${fmtContent}</div>${metaHtml}</div>`;
+          msgs.appendChild(wrap);
+        });
+        msgs.scrollTop = msgs.scrollHeight;
+      }
+    }
   }
 
   // Hub: refresh project name + recents
