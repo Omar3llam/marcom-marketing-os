@@ -1,20 +1,18 @@
 // ============================================================
-// MARCOM / Lumi — BullMQ Queue Registry (Phase 2)
+// MARCOM / Lumi — BullMQ Queue Registry
 // ------------------------------------------------------------
-// Two queues are introduced in Phase 2:
-//
-//   actionQueue   — executes Action rows (Meta/Google ad ops,
-//                   pause/scale/budget changes). Uses the
-//                   Action.idempotencyKey as the BullMQ jobId so
-//                   duplicate webhook deliveries collapse to one
-//                   job server-side.
-//
-//   observerQueue — Phase 3. Repeatable cron job that scans
-//                   recently-executed actions and computes
-//                   delta KPIs into DecisionMemory.
+// Resilience: when src/queues/connection.js sets REDIS_DISABLED
+// (no REDIS_URL in production, or REDIS_URL points at localhost),
+// we export `null` queues + helpers that throw a clear error.
+// Routes that depend on the queue MUST short-circuit on
+// `if (!actionQueue)` and return 503.
 // ============================================================
 import { Queue } from 'bullmq';
-import { bullConnection, QUEUE_PREFIX } from './connection.js';
+import {
+  bullConnection,
+  QUEUE_PREFIX,
+  REDIS_DISABLED,
+} from './connection.js';
 
 export const ACTION_QUEUE_NAME   = 'actions';
 export const OBSERVER_QUEUE_NAME = 'observer';
@@ -25,19 +23,21 @@ const queueOpts = {
   defaultJobOptions: {
     attempts:     3,
     backoff:      { type: 'exponential', delay: 5_000 },
-    removeOnComplete: { age: 60 * 60 * 24, count: 5_000 },   // 24h / 5k cap
-    removeOnFail:     { age: 60 * 60 * 24 * 7 },             // 7 days
+    removeOnComplete: { age: 60 * 60 * 24, count: 5_000 },
+    removeOnFail:     { age: 60 * 60 * 24 * 7 },
   },
 };
 
-export const actionQueue   = new Queue(ACTION_QUEUE_NAME,   queueOpts);
-export const observerQueue = new Queue(OBSERVER_QUEUE_NAME, queueOpts);
+// When Redis is disabled, both queues are `null`. Importers must
+// guard with `if (!actionQueue) return 503`.
+export const actionQueue   = REDIS_DISABLED ? null : new Queue(ACTION_QUEUE_NAME,   queueOpts);
+export const observerQueue = REDIS_DISABLED ? null : new Queue(OBSERVER_QUEUE_NAME, queueOpts);
 
 // ── Helper: enqueue an Action row ────────────────────────────
-// Uses the row's idempotencyKey as jobId — BullMQ refuses to
-// re-add a job with the same jobId, so duplicate webhooks +
-// double API calls converge cleanly.
 export async function enqueueAction(actionRow) {
+  if (!actionQueue) {
+    throw new Error('Queue subsystem unavailable — set REDIS_URL to a real Redis instance');
+  }
   return actionQueue.add(
     'execute',
     { actionId: actionRow.id, workspaceId: actionRow.workspaceId },
@@ -45,8 +45,11 @@ export async function enqueueAction(actionRow) {
   );
 }
 
-// ── Helper: schedule the temporal observer (Phase 3) ─────────
+// ── Helper: schedule the temporal observer ───────────────────
 export async function scheduleObserver() {
+  if (!observerQueue) {
+    throw new Error('Queue subsystem unavailable — set REDIS_URL to a real Redis instance');
+  }
   const cron = process.env.OBSERVER_CRON || '*/15 * * * *';
   await observerQueue.add(
     'sweep',

@@ -513,10 +513,17 @@ lumiRouter.post('/orchestrate/:campaignId', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 lumiRouter.get('/_health', async (_req, res) => {
   try {
-    const [actions, queue] = await Promise.all([
-      prisma.action.count(),
-      actionQueue.getJobCounts('waiting', 'active', 'failed', 'completed'),
-    ]);
+    const actions = await prisma.action.count().catch(() => null);
+    let queue = null;
+    if (actionQueue) {
+      try {
+        queue = await actionQueue.getJobCounts('waiting', 'active', 'failed', 'completed');
+      } catch (err) {
+        queue = { error: err.message };
+      }
+    } else {
+      queue = { disabled: true, reason: 'REDIS_URL not configured' };
+    }
     res.json({ ok: true, actions, queue });
   } catch (err) {
     res.status(503).json({ ok: false, error: err.message });
