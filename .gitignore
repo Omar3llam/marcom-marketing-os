@@ -22,6 +22,11 @@ Thumbs.db
 # Build output
 dist/
 build/
+# …except the committed React production build, which Render serves directly.
+# We also try to rebuild it during deploy (see render.yaml buildCommand), but
+# the committed copy is the deterministic fallback.
+!client/dist/
+!client/dist/**
 
 # Test artifacts
 coverage/

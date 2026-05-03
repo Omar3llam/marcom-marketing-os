@@ -220,21 +220,37 @@ if (config.nodeEnv === 'production') {
   const CLIENT_DIST = path.resolve(__dirname, '..', 'client', 'dist');
   const INDEX_HTML  = path.resolve(CLIENT_DIST, 'index.html');
 
-  // Boot-time visibility: surface a missing client build immediately
-  // in deploy logs instead of relying on a runtime 500.
-  import('fs').then(({ existsSync, readdirSync }) => {
-    if (!existsSync(INDEX_HTML)) {
-      logger.error(
-        { path: CLIENT_DIST },
-        '[server] client build NOT FOUND — vite build likely failed; check buildCommand and NODE_ENV during install',
-      );
-      // Best-effort: list parent contents to make Render-log forensics easier.
-      try {
-        const parent = path.resolve(CLIENT_DIST, '..');
-        logger.error({ parent, contents: readdirSync(parent) }, '[server] parent dir contents');
-      } catch { /* ignore */ }
+  // Boot-time visibility: log cwd + path resolution + dist contents so a
+  // missing build is debuggable straight from Render's deploy log.
+  import('fs').then(({ existsSync, readdirSync, statSync }) => {
+    logger.info({
+      cwd:       process.cwd(),
+      __dirname,
+      CLIENT_DIST,
+      INDEX_HTML,
+    }, '[server] static-serving paths');
+
+    if (existsSync(INDEX_HTML)) {
+      logger.info({
+        path:      CLIENT_DIST,
+        contents:  readdirSync(CLIENT_DIST),
+        indexSize: statSync(INDEX_HTML).size,
+      }, '[server] client build detected');
     } else {
-      logger.info({ path: CLIENT_DIST }, '[server] client build detected');
+      logger.error({ path: CLIENT_DIST },
+        '[server] client build NOT FOUND — vite build likely failed; check buildCommand and NODE_ENV during install');
+      // Walk up to find the highest existing ancestor and list its contents.
+      let probe = CLIENT_DIST;
+      for (let i = 0; i < 4; i++) {
+        const parent = path.resolve(probe, '..');
+        if (existsSync(parent)) {
+          try {
+            logger.error({ parent, contents: readdirSync(parent) }, '[server] parent dir listing');
+          } catch { /* ignore */ }
+          break;
+        }
+        probe = parent;
+      }
     }
   });
 
