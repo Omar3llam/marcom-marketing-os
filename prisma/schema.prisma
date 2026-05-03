@@ -86,6 +86,12 @@ model User {
   // until Clerk is fully retired in Phase 5+.
   clerkId     String?  @unique
   role        UserRole @default(VIEWER)
+  // ── Onboarding context (B3 decision) ───────────────────────
+  // Brand voice / business model / market / etc. captured by the
+  // OnboardingPage wizard. JSON shape is defined by the client
+  // (see client/src/pages/OnboardingPage.jsx). Null until the
+  // user completes onboarding; blocks the /app route until set.
+  context     Json?
   createdAt   DateTime @default(now())
 
   workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

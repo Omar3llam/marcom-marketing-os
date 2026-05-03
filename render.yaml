@@ -81,6 +81,10 @@ services:
         sync: false
       - key: CLERK_SECRET_KEY
         sync: false
+      # Vite client env — baked into the bundle at build time.
+      # MUST be the SAME publishable key as CLERK_PUBLISHABLE_KEY.
+      - key: VITE_CLERK_PUBLISHABLE_KEY
+        sync: false
 
       # Credential vault
       - key: CREDENTIAL_ENCRYPTION_KEY

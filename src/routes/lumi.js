@@ -339,21 +339,13 @@ export function demoFeedHandler(_req, res) {
 // }
 // ─────────────────────────────────────────────────────────────
 lumiRouter.get('/feed', async (req, res) => {
-  if (!req.workspaceId) return res.status(401).json({ error: 'Unauthenticated' });
-  const wsId = req.workspaceId;
+  // Workspace fallback supports both the new JWT path and the legacy
+  // Clerk-only path during the auth cutover.
+  const wsId = req.workspaceId || (req.userId ? `clerk:${req.userId}` : null);
+  if (!wsId) return res.status(401).json({ error: 'Unauthenticated' });
 
   try {
-    // ── Pull everything in parallel ──────────────────────────
-    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
-    const [
-      campaignStates,
-      pendingActions,
-      recentActions,
-      recentMemory,
-      countersExecuted24h,
-      countersLearned24h,
-    ] = await Promise.all([
+    const [campaignStates, pendingActions, recentMemory] = await Promise.all([
       prisma.campaignState.findMany({
         where:   { workspaceId: wsId },
         orderBy: { lastAnalysis: 'desc' },
@@ -363,118 +355,156 @@ lumiRouter.get('/feed', async (req, res) => {
         orderBy: { createdAt: 'desc' },
         take:    200,
       }),
-      prisma.action.findMany({
-        where:   {
-          workspaceId: wsId,
-          status:      { in: ['EXECUTED_SUCCESS', 'FAILED', 'ROLLED_BACK'] },
-          executedAt:  { gte: since24h },
-        },
-        orderBy: { executedAt: 'desc' },
-        include: {
-          auditLogs: { orderBy: { performedAt: 'desc' }, take: 1 },
-        },
-        take: 500,
-      }),
       prisma.decisionMemory.findMany({
         where:   { workspaceId: wsId },
         orderBy: { recordedAt: 'desc' },
         take:    200,
       }),
-      prisma.action.count({
-        where: { workspaceId: wsId, executedAt: { gte: since24h } },
-      }),
-      prisma.decisionMemory.count({
-        where: { workspaceId: wsId, recordedAt: { gte: since24h } },
-      }),
     ]);
 
-    // ── Group by campaignId ──────────────────────────────────
+    // Build the same campaign-grouped / alert-flattened shape as
+    // /demo-feed so the client adapter works without changes.
     const byCampaign = new Map();
-
-    const ensure = (campaignId) => {
-      if (!byCampaign.has(campaignId)) {
-        byCampaign.set(campaignId, {
-          campaignId,
-          stage:        null,
-          healthScore:  null,
-          lastAnalysis: null,
-          actions:      { pending: [], recent: [] },
-          memory:       [],
+    const ensure = (state) => {
+      if (!byCampaign.has(state.campaignId)) {
+        byCampaign.set(state.campaignId, {
+          campaign_id: state.campaignName || state.campaignId,
+          stage:       state.stage,
+          alerts:      [],
         });
       }
-      return byCampaign.get(campaignId);
+      return byCampaign.get(state.campaignId);
     };
-
-    for (const s of campaignStates) {
-      const slot = ensure(s.campaignId);
-      slot.stage        = s.stage;
-      slot.healthScore  = s.healthScore;
-      slot.lastAnalysis = s.lastAnalysis;
+    for (const cs of campaignStates) {
+      ensure({ ...cs, campaignName: pendingActions.find(a => a.campaignId === cs.campaignId)?.payload?.campaignName });
     }
 
     for (const a of pendingActions) {
-      ensure(a.campaignId).actions.pending.push({
-        id: a.id, kind: a.payload?.kind || 'unknown',
-        payload: a.payload, createdAt: a.createdAt,
+      const stateRow = campaignStates.find(s => s.campaignId === a.campaignId);
+      if (!stateRow) continue;
+      const slot = ensure({ ...stateRow, campaignName: a.payload?.campaignName });
+      const p    = a.payload || {};
+      const m    = p.metrics || {};
+
+      slot.alerts.push({
+        action_id:        a.id,
+        idempotency_key:  a.idempotencyKey,
+        priority:         p.priority || 'LOW',
+        analysis: {
+          verdict:    p.verdict   || p.strategicAnalysis?.verdict   || 'HOLD',
+          root_cause: p.rootCause || p.strategicAnalysis?.rootCause || 'UNKNOWN',
+        },
+        historical_insight:
+          p.strategicAnalysis?.diagnosis ||
+          p.rationale ||
+          null,
+        action_plan: {
+          action:           p.strategicAnalysis?.actionPlan?.action || p.rationale || '(awaiting orchestration)',
+          status:           a.status,
+          imageUrl:         null,
+          reference_prompt: p.creativeAssets?.variants?.[0]?.visual_direction || null,
+        },
+        // Synthesize the structured signal rows the UI expects from
+        // the raw metric block stored at upload time.
+        metrics: signalsFromMetrics(m, slot.stage),
+        memory:  recentMemory
+          .filter(mem => mem.campaignId === a.campaignId)
+          .slice(0, 3)
+          .map(mem => ({
+            actionType:        mem.actionType,
+            decisionRationale: mem.decisionRationale,
+            isSustainable:     mem.isSustainable,
+            impactDurationHrs: mem.impactDurationHrs,
+          })),
+        creative_assets: p.creativeAssets || null,
       });
     }
 
-    for (const a of recentActions) {
-      ensure(a.campaignId).actions.recent.push({
-        id: a.id, kind: a.payload?.kind || 'unknown',
-        status: a.status, executedAt: a.executedAt,
-        audit: a.auditLogs[0]
-          ? {
-              previousState: a.auditLogs[0].previousState,
-              newState:      a.auditLogs[0].newState,
-              performedBy:   a.auditLogs[0].performedBy,
-              performedAt:   a.auditLogs[0].performedAt,
-            }
-          : null,
-      });
-    }
-
-    // Memory — keep last 3 per campaign (ordered desc by recordedAt)
-    for (const m of recentMemory) {
-      const slot = ensure(m.campaignId);
-      if (slot.memory.length < 3) {
-        slot.memory.push({
-          actionType:        m.actionType,
-          resultStatus:      m.resultStatus,
-          deltaCtr:          m.deltaCtr,
-          deltaRoas:         m.deltaRoas,
-          isSustainable:     m.isSustainable,
-          impactDurationHrs: m.impactDurationHrs,
-          recordedAt:        m.recordedAt,
-        });
-      }
-    }
-
-    // Stable ordering: stage priority then healthScore desc
-    const stageRank = {
-      DYING: 0, FATIGUED: 1, TESTING: 2, SCALING: 3, STABLE: 4,
-    };
-    const campaigns = [...byCampaign.values()].sort((a, b) => {
-      const ra = stageRank[a.stage] ?? 99;
-      const rb = stageRank[b.stage] ?? 99;
-      if (ra !== rb) return ra - rb;
-      return (b.healthScore ?? 0) - (a.healthScore ?? 0);
-    });
+    const stageRank = { DYING: 0, FATIGUED: 1, TESTING: 2, SCALING: 3, STABLE: 4 };
+    const campaigns = [...byCampaign.values()]
+      .filter(c => c.alerts.length > 0)
+      .sort((a, b) => (stageRank[a.stage] ?? 99) - (stageRank[b.stage] ?? 99));
 
     return res.json({
       workspaceId: wsId,
       generatedAt: new Date().toISOString(),
-      summary: {
-        campaigns:           campaigns.length,
-        actionsPending:      pendingActions.length,
-        actionsExecuted24h:  countersExecuted24h,
-        learningEvents24h:   countersLearned24h,
-      },
       campaigns,
     });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/feed] failed');
     return res.status(500).json({ error: 'FeedUnavailable', message: err.message });
+  }
+});
+
+// Build the structured-signal rows the DecisionTheater renders.
+function signalsFromMetrics(m = {}, stage = 'TESTING') {
+  const rows = [];
+  const fmtPct  = (v) => `${(Number(v) || 0).toFixed(2)}%`;
+  const fmtRoas = (v) => `${(Number(v) || 0).toFixed(2)}x`;
+  const fmtFreq = (v) => `${(Number(v) || 0).toFixed(2)}`;
+  const fmtUsd  = (v) => `$${(Number(v) || 0).toFixed(2)}`;
+
+  const ctrStatus  = m.ctr  >= 2 ? 'positive' : m.ctr  >= 1 ? 'warning' : 'danger';
+  const roasStatus = m.roas >= 3 ? 'positive' : m.roas >= 1 ? 'warning' : 'danger';
+  const freqStatus = m.frequency <= 2 ? 'positive' : m.frequency <= 3 ? 'warning' : 'danger';
+  const cprStatus  = m.costPerResult > 0 && m.costPerResult <= 20 ? 'positive'
+                   : m.costPerResult <= 50 ? 'warning' : 'danger';
+
+  rows.push({ metric: 'CTR',       trend: ctrStatus  === 'danger' ? 'down' : 'up',   value: fmtPct(m.ctr),       delta: '',  context: 'Per CSV upload', status: ctrStatus  });
+  rows.push({ metric: 'ROAS',      trend: roasStatus === 'danger' ? 'down' : 'up',   value: fmtRoas(m.roas),     delta: '',  context: 'Per CSV upload', status: roasStatus });
+  rows.push({ metric: 'Frequency', trend: freqStatus === 'danger' ? 'up'   : 'flat', value: fmtFreq(m.frequency), delta: '',  context: 'Per CSV upload', status: freqStatus });
+  rows.push({ metric: 'CPA',       trend: cprStatus  === 'danger' ? 'up'   : 'flat', value: fmtUsd(m.costPerResult), delta: '', context: 'Cost per result', status: cprStatus  });
+  return rows;
+}
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/lumi/orchestrate/:campaignId  (JWT-protected)
+// ─────────────────────────────────────────────────────────────
+// Runs the dual-agent pipeline (Claude analysis → conditional
+// OpenAI creative) against the most recent PENDING action for
+// the given campaignId. Persists the full output onto that
+// Action.payload and returns it.
+//
+// Long-running: typically 5–30s end-to-end. The frontend must
+// surface a loading state — see DecisionTheater.handleOrchestrate.
+// ─────────────────────────────────────────────────────────────
+lumiRouter.post('/orchestrate/:campaignId', async (req, res) => {
+  const { campaignId } = req.params;
+  const wsId   = req.workspaceId || (req.userId ? `clerk:${req.userId}` : null);
+  const userId = req.userId;
+  if (!wsId)        return res.status(401).json({ error: 'Unauthenticated' });
+  if (!campaignId)  return res.status(400).json({ error: 'campaignId required' });
+
+  try {
+    // Pick the most recent PENDING action for this campaign as the
+    // canonical row to write the orchestration output onto.
+    const action = await prisma.action.findFirst({
+      where:   { workspaceId: wsId, campaignId, status: 'PENDING' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!action) {
+      return res.status(404).json({ error: 'No PENDING action for this campaign' });
+    }
+
+    // Lazy-import to keep the route module load-time light.
+    const { runOrchestration } = await import('../agents/orchestrator.js');
+
+    const result = await runOrchestration({
+      campaignId,
+      workspaceId: wsId,
+      actionId:    action.id,
+      userId,
+    });
+
+    return res.json({
+      ok:        true,
+      actionId:  action.id,
+      campaignId,
+      ...result,
+    });
+  } catch (err) {
+    logger.error({ err: err.message, campaignId, wsId }, '[lumi/orchestrate] failed');
+    return res.status(500).json({ error: 'OrchestrationFailed', detail: err.message });
   }
 });
 

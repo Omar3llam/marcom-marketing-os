@@ -13,6 +13,10 @@
 // ============================================================
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { api } from '../lib/api.js';
+
+const PRIMARY_FEED  = '/api/lumi/feed';
+const FALLBACK_FEED = '/api/lumi/demo-feed';
 
 // ── Adapter: backend feed shape → flat `decisions` array ────
 // All field accesses use optional chaining + ?? defaults so a
@@ -52,8 +56,29 @@ export function adaptFeedPayload(data) {
         isSustainable:     mem?.isSustainable,
         impactDurationHrs: mem?.impactDurationHrs,
       })),
+      // Surface orchestrator output (Phase-8 dual-agent) when present.
+      creativeAssets: alert?.creative_assets ?? null,
     })),
   );
+}
+
+// Try the JWT-protected real feed first; fall back to /demo-feed if
+// the user isn't authed yet OR the feed is empty (zero campaigns
+// uploaded). This keeps the public demo URL useful while showing
+// real data the moment a CSV is uploaded.
+async function fetchFeed(signal) {
+  try {
+    const res = await api.get(PRIMARY_FEED, { signal });
+    if (Array.isArray(res.data?.campaigns) && res.data.campaigns.length > 0) {
+      return res.data;
+    }
+    // Empty real feed → fall through to demo so the UI is never blank.
+  } catch (err) {
+    if (axios.isCancel?.(err) || err?.name === 'CanceledError') throw err;
+    // 401 / 5xx / network → silently try demo.
+  }
+  const demo = await api.get(FALLBACK_FEED, { signal });
+  return demo.data;
 }
 
 export function useFeed() {
@@ -66,10 +91,8 @@ export function useFeed() {
   const fetchOnce = useCallback((signal) => {
     setLoading(true);
     setError(null);
-    return axios.get('/api/lumi/demo-feed', { signal })
-      .then((res) => {
-        setDecisions(adaptFeedPayload(res.data));
-      })
+    return fetchFeed(signal)
+      .then((data) => setDecisions(adaptFeedPayload(data)))
       .catch((err) => {
         if (axios.isCancel?.(err) || err?.name === 'CanceledError') return;
         setError(err?.message || 'Unknown error');
@@ -81,12 +104,10 @@ export function useFeed() {
     const ctrl = new AbortController();
     let cancelled = false;
 
-    // Belt-and-braces: even with AbortController, guard state
-    // writes against late-resolving promises after unmount.
-    axios.get('/api/lumi/demo-feed', { signal: ctrl.signal })
-      .then((res) => {
+    fetchFeed(ctrl.signal)
+      .then((data) => {
         if (cancelled) return;
-        setDecisions(adaptFeedPayload(res.data));
+        setDecisions(adaptFeedPayload(data));
       })
       .catch((err) => {
         if (cancelled) return;

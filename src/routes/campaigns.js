@@ -12,6 +12,8 @@
 //   then runs Mode 5 analysis. Returns same shape as data-inject.
 // ============================================================
 import { Router }          from 'express';
+import multer              from 'multer';
+import { parse as csvParse } from 'csv-parse/sync';
 import { getOrCreateSession, updateSession } from '../utils/sessionStore.js';
 import { getCredential }   from '../models/credential.js';
 import { getProjectById }  from '../models/project.js';
@@ -20,10 +22,24 @@ import {
   formatInsightsForPrompt,
 } from '../services/metaAdsService.js';
 import { runMode5 }        from '../modes/mode5-campaign.js';
+import { classifyCampaignStage } from '../services/campaignClassifier.js';
+import { generateAlerts }        from '../services/alertGenerator.js';
+import { prisma }          from '../lib/prisma.js';
 import { logger }          from '../utils/logger.js';
-import { sanitizeMessage } from '../utils/sanitize.js';
+import { randomUUID }      from 'crypto';
 
 export const campaignsRouter = Router();
+
+// ── CSV upload — memoryStorage so Render's ephemeral disk is bypassed ──
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_req, file, cb) => {
+    const ok = ['text/csv', 'application/vnd.ms-excel', 'application/csv'].includes(file.mimetype)
+            || /\.csv$/i.test(file.originalname || '');
+    cb(ok ? null : new Error('Only .csv files are accepted'), ok);
+  },
+});
 
 const MAX_CSV_CHARS  = 40_000;   // Hard cap so mode5 prompt stays sane
 const MAX_HISTORY    = 40;
@@ -175,3 +191,224 @@ campaignsRouter.post('/fetch-meta', async (req, res) => {
     return res.status(500).json({ status: 'error', message: 'Failed to fetch Meta campaign data' });
   }
 });
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/campaigns/upload-csv
+// ─────────────────────────────────────────────────────────────
+// Multipart form: field "campaignData" → .csv file (≤10 MB).
+// Parses Meta / Google Ads exports, normalizes, classifies into
+// CampaignState rows, and seeds Action alerts. Workspace-scoped.
+//
+// Response: { uploaded, processed, alerts_created, errors }
+// ─────────────────────────────────────────────────────────────
+campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded — expected field "campaignData"' });
+  }
+
+  // workspaceId resolution: prefer the JWT path (set by requireJwt),
+  // fall back to a deterministic per-user workspace id when only the
+  // legacy Clerk middleware is active. Belt-and-braces for the cutover.
+  const workspaceId = req.workspaceId || (req.userId ? `clerk:${req.userId}` : null);
+  if (!workspaceId) {
+    return res.status(401).json({ error: 'Unauthenticated' });
+  }
+
+  let rows;
+  try {
+    rows = csvParse(req.file.buffer, {
+      columns:          true,
+      skip_empty_lines: true,
+      trim:             true,
+      bom:              true,
+    });
+  } catch (err) {
+    logger.warn({ err: err.message }, '[campaigns/upload-csv] CSV parse failed');
+    return res.status(422).json({ error: 'Could not parse CSV', detail: err.message });
+  }
+
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return res.status(422).json({ error: 'CSV contained no data rows' });
+  }
+
+  const platform = detectPlatform(req.file.originalname || '');
+  const errors   = [];
+  let processed  = 0;
+  let alertsCreated = 0;
+
+  for (const row of rows) {
+    try {
+      const normalized = normalizeRow(row, platform);
+      if (!normalized.campaignName) continue;
+
+      normalized.stage = classifyCampaignStage(normalized.metrics);
+      const alerts     = generateAlerts(normalized);
+
+      // ── Upsert CampaignState ─────────────────────────────────
+      const cs = await prisma.campaignState.upsert({
+        where:  { campaignId: normalized.campaignId },
+        update: {
+          stage:        normalized.stage,
+          healthScore:  computeHealthScore(normalized.metrics),
+          lastAnalysis: new Date(),
+        },
+        create: {
+          campaignId:   normalized.campaignId,
+          workspaceId,
+          stage:        normalized.stage,
+          healthScore:  computeHealthScore(normalized.metrics),
+          lastAnalysis: new Date(),
+        },
+      });
+
+      // ── Seed PENDING Action rows for each alert ──────────────
+      for (const alert of alerts) {
+        await prisma.action.create({
+          data: {
+            workspaceId,
+            campaignId:     cs.campaignId,
+            idempotencyKey: `csv:${cs.campaignId}:${alert.verdict}:${Date.now()}:${randomUUID().slice(0, 8)}`,
+            status:         'PENDING',
+            payload: {
+              kind:        `lumi.${alert.verdict.toLowerCase()}`,
+              priority:    alert.priority,
+              verdict:     alert.verdict,
+              rootCause:   alert.rootCause,
+              rationale:   alert.rationale,
+              campaignName: normalized.campaignName,
+              platform:    normalized.platform,
+              metrics:     normalized.metrics,
+              dateRange:   normalized.dateRange,
+              source:      'csv-upload',
+            },
+          },
+        });
+        alertsCreated++;
+      }
+
+      processed++;
+    } catch (err) {
+      logger.warn({ err: err.message, campaign: row['Campaign Name'] || row['Campaign'] || '?' },
+        '[campaigns/upload-csv] row failed');
+      errors.push({ row: row['Campaign Name'] ?? '?', error: err.message });
+    }
+  }
+
+  logger.info({ workspaceId, uploaded: rows.length, processed, alertsCreated, errors: errors.length },
+    '[campaigns/upload-csv] complete');
+
+  return res.json({
+    uploaded:        rows.length,
+    processed,
+    alerts_created:  alertsCreated,
+    errors,
+  });
+});
+
+// ── /me/context — light user-context endpoints (B3) ──────────
+// Onboarding writes here; the React router uses GET to gate /app
+// behind a non-null context value.
+campaignsRouter.get('/me/context', async (req, res) => {
+  const userId = req.userId;
+  if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+  try {
+    const user = await prisma.user.findFirst({
+      where: { OR: [{ id: userId }, { clerkId: userId }] },
+      select: { context: true },
+    }).catch(() => null);
+    return res.json({ context: user?.context ?? null });
+  } catch (err) {
+    logger.warn({ err: err.message }, '[campaigns/me/context] read failed');
+    return res.json({ context: null });
+  }
+});
+
+campaignsRouter.put('/me/context', async (req, res) => {
+  const userId = req.userId;
+  if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
+  const ctx = req.body?.context;
+  if (!ctx || typeof ctx !== 'object') {
+    return res.status(400).json({ error: 'context object required in body' });
+  }
+  try {
+    // Upsert by clerkId — covers the cutover where the User row
+    // may not exist yet at first onboarding.
+    const user = await prisma.user.upsert({
+      where:  { clerkId: userId },
+      update: { context: ctx },
+      create: {
+        clerkId:     userId,
+        email:       req.body?.email ?? `${userId}@unknown.local`,
+        workspace:   { create: { name: req.body?.workspaceName ?? 'My Workspace' } },
+        context:     ctx,
+      },
+      select: { id: true, workspaceId: true, context: true },
+    });
+    return res.json({ ok: true, user });
+  } catch (err) {
+    logger.error({ err: err.message }, '[campaigns/me/context] write failed');
+    return res.status(500).json({ error: 'Could not save context', detail: err.message });
+  }
+});
+
+// ── Helpers ──────────────────────────────────────────────────
+
+function detectPlatform(filename) {
+  const f = (filename || '').toLowerCase();
+  if (/google|gads|adwords/.test(f)) return 'GOOGLE';
+  if (/meta|facebook|fb|instagram|ig/.test(f)) return 'META';
+  return 'META';
+}
+
+function pickColumn(row, ...needles) {
+  const keys = Object.keys(row);
+  for (const needle of needles) {
+    const k = keys.find((k) => k.toLowerCase().includes(needle.toLowerCase()));
+    if (k != null) return row[k];
+  }
+  return undefined;
+}
+
+function num(v) {
+  if (v == null || v === '') return 0;
+  const s = String(v).replace(/[^0-9.\-]/g, '');
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeRow(row, platform) {
+  const campaignName = pickColumn(row, 'Campaign Name', 'Campaign');
+  const campaignId   = pickColumn(row, 'Campaign ID', 'Campaign Id') || `csv:${randomUUID()}`;
+
+  return {
+    campaignId:   String(campaignId),
+    campaignName: campaignName ? String(campaignName) : null,
+    platform,
+    status:       pickColumn(row, 'Status', 'Delivery'),
+    metrics: {
+      impressions:   num(pickColumn(row, 'Impressions')),
+      reach:         num(pickColumn(row, 'Reach')),
+      frequency:     num(pickColumn(row, 'Frequency')),
+      clicks:        num(pickColumn(row, 'Clicks', 'Link Clicks')),
+      ctr:           num(pickColumn(row, 'CTR')),
+      cpc:           num(pickColumn(row, 'CPC', 'Cost per Click')),
+      cpm:           num(pickColumn(row, 'CPM')),
+      spend:         num(pickColumn(row, 'Amount Spent', 'Cost', 'Spend')),
+      results:       num(pickColumn(row, 'Results', 'Conversions')),
+      costPerResult: num(pickColumn(row, 'Cost per Result', 'Cost / Conv')),
+      roas:          num(pickColumn(row, 'ROAS', 'Purchase ROAS', 'Conversion Value / Cost')),
+      revenue:       num(pickColumn(row, 'Revenue', 'Conversion Value', 'Purchases Conversion Value')),
+    },
+    dateRange: {
+      start: pickColumn(row, 'Start Date', 'Reporting Starts'),
+      end:   pickColumn(row, 'End Date', 'Reporting Ends'),
+    },
+  };
+}
+
+function computeHealthScore(m = {}) {
+  const roas = Math.max(0, Math.min(5, m.roas ?? 0)) / 5;
+  const ctr  = Math.max(0, Math.min(5, m.ctr  ?? 0)) / 5;
+  const freq = 1 - Math.min(1, Math.max(0, ((m.frequency ?? 0) - 1.5) / 4));
+  return Math.round(((roas * 0.5) + (ctr * 0.3) + (freq * 0.2)) * 100) / 100;
+}
