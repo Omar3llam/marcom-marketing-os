@@ -5,17 +5,19 @@ import { ClerkProvider, useAuth } from '@clerk/clerk-react';
 import { Toaster }          from 'sonner';
 import App                  from './App.jsx';
 import { bindClerkTokenGetter } from './lib/api.js';
+import ErrorBoundary        from './components/ui/ErrorBoundary.jsx';
 import './index.css';
 
-// Vite injects this at build time — set VITE_CLERK_PUBLISHABLE_KEY
-// in client/.env (or in Render → lumi-backend env vars).
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+// Build-time stamp so we can confirm Render rebuilt the bundle.
+// Bumped manually whenever we need a forced cache-bust.
+const BUILD_ID = 'phase-8.1-bundle-bust';
 
-if (!PUBLISHABLE_KEY) {
-  // Hard-fail at build/boot so a missing env var can't silently
-  // ship as broken auth in production.
-  console.error('[lumi] VITE_CLERK_PUBLISHABLE_KEY is missing');
-}
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+const KEY_VALID = typeof PUBLISHABLE_KEY === 'string'
+  && /^pk_(test|live)_[A-Za-z0-9_-]+$/.test(PUBLISHABLE_KEY);
+
+// eslint-disable-next-line no-console
+console.info('[lumi] build', BUILD_ID, '| Clerk key valid:', KEY_VALID);
 
 // Tiny shim that wires the axios interceptor to Clerk's getToken()
 // once the auth context is mounted.
@@ -27,15 +29,53 @@ function ClerkTokenBridge({ children }) {
   return children;
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+// Standalone error page when the publishable key is missing or
+// malformed. ClerkProvider crashes synchronously on bad keys, so
+// we guard on the OUTSIDE and never call ClerkProvider with junk.
+function ConfigErrorPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-gray-950 p-6 text-gray-200">
+      <div className="w-full max-w-xl rounded-2xl border border-yellow-500/30 bg-gray-900 p-6">
+        <h1 className="text-lg font-bold text-yellow-300">
+          Lumi can't start: Clerk publishable key is missing
+        </h1>
+        <p className="mt-2 text-sm text-gray-400">
+          The environment variable <code className="text-gray-200">VITE_CLERK_PUBLISHABLE_KEY</code>{' '}
+          was empty or invalid at build time, so authentication can't initialize.
+        </p>
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-gray-400">
+          <li>Set <code className="text-gray-200">VITE_CLERK_PUBLISHABLE_KEY</code> in the Render web service environment.</li>
+          <li>It MUST start with <code className="text-gray-200">pk_test_</code> or <code className="text-gray-200">pk_live_</code>.</li>
+          <li>Trigger a fresh deploy so Vite can bake it into the bundle.</li>
+        </ul>
+        <p className="mt-4 text-xs text-gray-500">
+          Build: {BUILD_ID} · Detected key prefix:{' '}
+          <code className="text-gray-300">
+            {PUBLISHABLE_KEY ? `${String(PUBLISHABLE_KEY).slice(0, 10)}…` : '(none)'}
+          </code>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+
+root.render(
   <React.StrictMode>
-    <ClerkProvider publishableKey={PUBLISHABLE_KEY || 'pk_missing'}>
-      <BrowserRouter>
-        <ClerkTokenBridge>
-          <App />
-        </ClerkTokenBridge>
-      </BrowserRouter>
-    </ClerkProvider>
-    <Toaster theme="dark" position="bottom-right" />
+    <ErrorBoundary>
+      {KEY_VALID ? (
+        <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+          <BrowserRouter>
+            <ClerkTokenBridge>
+              <App />
+            </ClerkTokenBridge>
+          </BrowserRouter>
+        </ClerkProvider>
+      ) : (
+        <ConfigErrorPage />
+      )}
+      <Toaster theme="dark" position="bottom-right" />
+    </ErrorBoundary>
   </React.StrictMode>,
 );
