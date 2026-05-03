@@ -75,7 +75,18 @@ root.render(
       ) : (
         <ConfigErrorPage />
       )}
-      <Toaster theme="dark" position="bottom-right" />
+      <Toaster
+        position="bottom-right"
+        toastOptions={{
+          style: {
+            background: '#141720',
+            border:     '1px solid #1E2130',
+            color:      '#E8ECF2',
+            fontFamily: 'Inter, sans-serif',
+            fontSize:   '13px',
+          },
+        }}
+      />
     </ErrorBoundary>
   </React.StrictMode>,
 );

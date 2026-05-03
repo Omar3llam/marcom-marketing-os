@@ -1,11 +1,17 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import path from 'path';
 
-// Vite config for the Lumi Decision OS client.
-// Dev server runs on :5173 by default; the Express backend on :3000.
-// Use the proxy below to call /api/lumi/* without CORS during development.
+// Dev server proxies /api → :3000 so the React client can call the
+// Express backend without CORS friction. The `@` alias matches the
+// design-system spec.
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(process.cwd(), 'src'),
+    },
+  },
   server: {
     port: 5173,
     proxy: {

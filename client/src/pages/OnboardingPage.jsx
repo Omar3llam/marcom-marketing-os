@@ -17,10 +17,10 @@ import {
   Building2, Globe, Briefcase, Megaphone, Upload,
   ArrowRight, ArrowLeft, Loader2, Sparkles, CheckCircle2,
 } from 'lucide-react';
-import { api }                       from '../lib/api.js';
-import { cn }                        from '../lib/utils.js';
-import CsvUploader                   from '../components/upload/CsvUploader.jsx';
-import { primeContextCache }         from '../router/ProtectedRoute.jsx';
+import { api }                       from '@/lib/api.js';
+import { cn }                        from '@/lib/utils.js';
+import CsvUploader                   from '@/components/upload/CsvUploader.jsx';
+import { primeContextCache }         from '@/router/ProtectedRoute.jsx';
 
 const INDUSTRIES = ['E-commerce', 'SaaS', 'Real Estate', 'Healthcare', 'F&B', 'Fashion', 'Education', 'Finance', 'Other'];
 const MARKETS    = ['Egypt', 'Saudi Arabia', 'UAE', 'Kuwait', 'Lebanon', 'Jordan', 'Morocco', 'USA', 'UK', 'Europe', 'Global'];

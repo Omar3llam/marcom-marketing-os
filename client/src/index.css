@@ -2,4 +2,73 @@
 @tailwind components;
 @tailwind utilities;
 
-html, body, #root { height: 100%; }
+/* ============================================================
+ * MARCOM / Lumi — global reset + design-system primitives
+ * ============================================================ */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-lumi-bg text-lumi-text font-body;
+    font-size: 14px;
+  }
+
+  /* ── Scrollbar ── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-lumi-border rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-lumi-border-strong; }
+
+  /* ── Selection ── */
+  ::selection {
+    background: rgba(229, 176, 92, 0.20);
+    color: #E5B05C;
+  }
+
+  /* ── Focus ring (never remove — re-skin it) ── */
+  :focus-visible {
+    outline: 2px solid rgba(229, 176, 92, 0.6);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@layer components {
+  /* Monospaced metric values w/ tabular nums for perfect alignment */
+  .metric-value {
+    @apply font-mono text-lumi-text font-medium tabular-nums;
+  }
+
+  /* Section labels — uppercase, tracked, used everywhere */
+  .section-label {
+    @apply text-xs font-display font-semibold uppercase tracking-widest text-lumi-subtle;
+  }
+
+  /* Glass surface for floating panels */
+  .glass {
+    background: rgba(15, 17, 23, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  /* Decision-pill base — every priority/verdict/stage badge uses this */
+  .decision-pill {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
+           text-xs font-display font-semibold uppercase tracking-wide;
+  }
+}

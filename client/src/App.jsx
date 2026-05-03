@@ -1,40 +1,57 @@
 // ============================================================
-// MARCOM / Lumi — Routing shell  (Phase 8)
+// MARCOM / Lumi — Routing shell
 // ------------------------------------------------------------
-// /            → /login
-// /login/*     → LoginPage           (Clerk SignIn — public)
-// /signup/*    → SignupPage          (Clerk SignUp — public)
-// /onboarding  → OnboardingPage      (OnboardingRoute guard)
-// /app         → MainAppPage         (ProtectedRoute guard)
-// *            → 404 fallback        (redirects to /login)
+// Public:    /login, /signup
+// Gated:     /onboarding   (OnboardingRoute — needs Clerk session, no context)
+//            /app/*        (ProtectedRoute  — needs session AND context)
+//   index   → /app/feed
+//   feed    → DecisionFeed
+//   tools/* → MarketingTools | SocialCalendar | ScoreContent | CampaignAnalysis
+//   settings→ Settings
 // ============================================================
 import { Routes, Route, Navigate } from 'react-router-dom';
-import LoginPage      from './pages/LoginPage.jsx';
-import SignupPage     from './pages/SignupPage.jsx';
-import OnboardingPage from './pages/OnboardingPage.jsx';
-import MainAppPage    from './pages/MainAppPage.jsx';
-import { ProtectedRoute, OnboardingRoute } from './router/ProtectedRoute.jsx';
+import AuthPage         from '@/pages/AuthPage.jsx';
+import OnboardingPage   from '@/pages/OnboardingPage.jsx';
+import MainLayout       from '@/components/layout/MainLayout.jsx';
+import DecisionFeed     from '@/pages/DecisionFeed.jsx';
+import MarketingTools   from '@/pages/tools/MarketingTools.jsx';
+import SocialCalendar   from '@/pages/tools/SocialCalendar.jsx';
+import ScoreContent     from '@/pages/tools/ScoreContent.jsx';
+import CampaignAnalysis from '@/pages/tools/CampaignAnalysis.jsx';
+import SettingsPage     from '@/pages/Settings.jsx';
+import { ProtectedRoute, OnboardingRoute } from '@/router/ProtectedRoute.jsx';
 
 export default function App() {
   return (
     <Routes>
-      <Route path="/"          element={<Navigate to="/login" replace />} />
+      <Route path="/"          element={<Navigate to="/app/feed" replace />} />
 
-      {/* Clerk's SignIn / SignUp use catch-all subroutes for verification flows */}
-      <Route path="/login/*"   element={<LoginPage />} />
-      <Route path="/signup/*"  element={<SignupPage />} />
+      {/* Public — Clerk hosted UI */}
+      <Route path="/login/*"   element={<AuthPage mode="login"  />} />
+      <Route path="/signup/*"  element={<AuthPage mode="signup" />} />
 
+      {/* Onboarding — gated, blocks if context already saved */}
       <Route
         path="/onboarding"
         element={<OnboardingRoute><OnboardingPage /></OnboardingRoute>}
       />
 
+      {/* Authenticated app shell with nested children */}
       <Route
-        path="/app/*"
-        element={<ProtectedRoute><MainAppPage /></ProtectedRoute>}
-      />
+        path="/app"
+        element={<ProtectedRoute><MainLayout /></ProtectedRoute>}
+      >
+        <Route index               element={<Navigate to="feed" replace />} />
+        <Route path="feed"         element={<DecisionFeed />} />
+        <Route path="tools/marketing" element={<MarketingTools />} />
+        <Route path="tools/calendar"  element={<SocialCalendar />} />
+        <Route path="tools/score"     element={<ScoreContent />} />
+        <Route path="tools/campaigns" element={<CampaignAnalysis />} />
+        <Route path="settings"     element={<SettingsPage />} />
+      </Route>
 
-      <Route path="*" element={<Navigate to="/login" replace />} />
+      {/* 404 → home */}
+      <Route path="*" element={<Navigate to="/app/feed" replace />} />
     </Routes>
   );
 }

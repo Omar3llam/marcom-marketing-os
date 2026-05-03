@@ -1,8 +1,107 @@
 /** @type {import('tailwindcss').Config} */
+// ============================================================
+// MARCOM / Lumi — Tailwind theme
+// ------------------------------------------------------------
+// All design tokens live here. Components must reference these
+// (e.g. text-lumi-text, bg-lumi-surface). Raw hex in component
+// code is a code-review block.
+// ============================================================
 export default {
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
   theme: {
-    extend: {},
+    extend: {
+      colors: {
+        // ── Base surfaces ─────────────────────────────────────
+        'lumi-bg':            '#0A0B0F',
+        'lumi-surface':       '#0F1117',
+        'lumi-elevated':      '#141720',
+        'lumi-border':        '#1E2130',
+        'lumi-border-strong': '#2A2F45',
+
+        // ── Text hierarchy ────────────────────────────────────
+        'lumi-text':          '#E8ECF2',
+        'lumi-muted':         '#8A93A4',
+        'lumi-subtle':        '#4A5168',
+
+        // ── Brand accent (golden yellow) ──────────────────────
+        'lumi-accent':        '#E5B05C',
+        'lumi-accent-soft':   'rgba(229,176,92,0.12)',
+        'lumi-accent-hover':  '#F5C06C',
+
+        // ── Decision-system semantic signals ──────────────────
+        'signal-kill':        '#EF4444',
+        'signal-kill-bg':     'rgba(239,68,68,0.10)',
+        'signal-hold':        '#F59E0B',
+        'signal-hold-bg':     'rgba(245,158,11,0.10)',
+        'signal-scale':       '#10B981',
+        'signal-scale-bg':    'rgba(16,185,129,0.10)',
+
+        // ── Campaign stages ───────────────────────────────────
+        'stage-dying':        '#EF4444',
+        'stage-fatigued':     '#F59E0B',
+        'stage-testing':      '#6366F1',
+        'stage-stable':       '#10B981',
+        'stage-scaling':      '#06B6D4',
+
+        // ── Metric trends ─────────────────────────────────────
+        'trend-danger':       '#EF4444',
+        'trend-warning':      '#F59E0B',
+        'trend-positive':     '#10B981',
+        'trend-neutral':      '#8A93A4',
+      },
+
+      fontFamily: {
+        display: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
+        body:    ['Inter', 'system-ui', 'sans-serif'],
+        mono:    ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+      },
+
+      fontSize: {
+        'xs':   ['11px', { lineHeight: '16px', letterSpacing: '0.04em' }],
+        'sm':   ['12px', { lineHeight: '18px', letterSpacing: '0.02em' }],
+        'base': ['14px', { lineHeight: '22px' }],
+        'md':   ['15px', { lineHeight: '24px' }],
+        'lg':   ['17px', { lineHeight: '26px' }],
+        'xl':   ['20px', { lineHeight: '28px', letterSpacing: '-0.01em' }],
+        '2xl':  ['24px', { lineHeight: '32px', letterSpacing: '-0.02em' }],
+        '3xl':  ['30px', { lineHeight: '38px', letterSpacing: '-0.03em' }],
+      },
+
+      boxShadow: {
+        'card':        '0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)',
+        'card-hover':  '0 4px 16px rgba(0,0,0,0.5)',
+        'panel':       '0 8px 32px rgba(0,0,0,0.6)',
+        'modal':       '0 24px 64px rgba(0,0,0,0.8)',
+        'accent-glow': '0 0 24px rgba(229,176,92,0.15)',
+        'kill-glow':   '0 0 16px rgba(239,68,68,0.12)',
+        'scale-glow':  '0 0 16px rgba(16,185,129,0.12)',
+        'active-ring': '0 0 0 1px rgba(99,102,241,0.4), 0 0 16px rgba(99,102,241,0.1)',
+      },
+
+      animation: {
+        'fade-in':     'fadeIn 150ms ease-out',
+        'slide-up':    'slideUp 200ms cubic-bezier(0.16,1,0.3,1)',
+        'slide-right': 'slideRight 200ms cubic-bezier(0.16,1,0.3,1)',
+        'pulse-slow':  'pulse 3s ease-in-out infinite',
+        'shimmer':     'shimmer 1.5s ease-in-out infinite',
+      },
+
+      keyframes: {
+        fadeIn:     { from: { opacity: 0 }, to: { opacity: 1 } },
+        slideUp:    {
+          from: { opacity: 0, transform: 'translateY(6px)' },
+          to:   { opacity: 1, transform: 'translateY(0)' },
+        },
+        slideRight: {
+          from: { opacity: 0, transform: 'translateX(-6px)' },
+          to:   { opacity: 1, transform: 'translateX(0)' },
+        },
+        shimmer: {
+          '0%, 100%': { opacity: 0.4 },
+          '50%':      { opacity: 0.8 },
+        },
+      },
+    },
   },
   plugins: [],
 };
