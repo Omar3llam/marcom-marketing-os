@@ -9,17 +9,18 @@ import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   Sparkles, ChevronDown, ChevronRight, Plus, MessageSquare,
-  Wrench, CalendarDays, ScanSearch, BarChart3, Settings,
-  PanelLeftClose, Upload,
+  LayoutDashboard, BarChart3, Target, ScanSearch, CalendarDays,
+  Settings, PanelLeftClose, Upload,
 } from 'lucide-react';
 import { useUser } from '@clerk/clerk-react';
 import { cn } from '@/lib/utils.js';
 
 const tools = [
-  { label: 'Marketing Tools',   sub: '18 specialist frameworks', icon: Wrench,       path: '/app/tools/marketing'  },
-  { label: 'Social Calendar',   sub: '4-week content plan',      icon: CalendarDays, path: '/app/tools/calendar'   },
-  { label: 'Score Content',     sub: '10-step scorecard',        icon: ScanSearch,   path: '/app/tools/score'      },
-  { label: 'Campaign Analysis', sub: 'ASC, MER, scaling',        icon: BarChart3,    path: '/app/tools/campaigns'  },
+  { label: 'Command Hub',       sub: 'Your OS launchpad',           icon: LayoutDashboard, path: '/app/feed'           },
+  { label: 'Campaign Analysis', sub: 'SCALE / HOLD / KILL verdicts', icon: BarChart3,       path: '/app/campaigns'      },
+  { label: 'Growth Strategy',   sub: 'CMO memory layer',             icon: Target,          path: '/app/growth'         },
+  { label: 'Score Content',     sub: '10-step MARCOM framework',     icon: ScanSearch,      path: '/app/tools/score'    },
+  { label: 'Social Calendar',   sub: '4-week content plan',          icon: CalendarDays,    path: '/app/tools/calendar' },
 ];
 
 // Mock projects + recents until /api/projects + /api/history are wired
