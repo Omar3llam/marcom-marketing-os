@@ -215,6 +215,15 @@ app.use('/api',
 if (config.nodeEnv === 'production') {
   // server.js lives in /src — the client build sits one level up
   const CLIENT_DIST = join(__dirname, '..', 'client', 'dist');
+  // Boot-time visibility: surface a missing client build immediately
+  // in deploy logs instead of relying on a runtime 500.
+  import('fs').then(({ existsSync }) => {
+    if (!existsSync(join(CLIENT_DIST, 'index.html'))) {
+      logger.error({ path: CLIENT_DIST }, '[server] client build NOT FOUND — vite build likely failed; check buildCommand and NODE_ENV during install');
+    } else {
+      logger.info({ path: CLIENT_DIST }, '[server] client build detected');
+    }
+  });
   app.use(express.static(CLIENT_DIST));
 
   // SPA fallback. Belt-and-braces: explicitly bail if anything
