@@ -20,7 +20,7 @@ import {
 import { api }                       from '../lib/api.js';
 import { cn }                        from '../lib/utils.js';
 import CsvUploader                   from '../components/upload/CsvUploader.jsx';
-import { clearContextCache }         from '../router/ProtectedRoute.jsx';
+import { primeContextCache }         from '../router/ProtectedRoute.jsx';
 
 const INDUSTRIES = ['E-commerce', 'SaaS', 'Real Estate', 'Healthcare', 'F&B', 'Fashion', 'Education', 'Finance', 'Other'];
 const MARKETS    = ['Egypt', 'Saudi Arabia', 'UAE', 'Kuwait', 'Lebanon', 'Jordan', 'Morocco', 'USA', 'UK', 'Europe', 'Global'];
@@ -69,18 +69,42 @@ export default function OnboardingPage() {
 
   const finish = async (afterCsv = false) => {
     if (busy) return;
+
+    // Hard precondition: companyName is required by the route guard.
+    // If the user somehow finishes Step 4 without it, bounce back to
+    // Step 1 instead of looping after a successful PUT.
+    if (!form.companyName || !form.industry || !form.market || !form.businessType || !form.tone || !form.monthlyGoal) {
+      toast.error('Please complete all required fields before finishing.');
+      setStep(1);
+      return;
+    }
+
     setBusy(true);
     try {
-      await api.put('/api/campaigns/me/context', {
+      const res = await api.put('/api/campaigns/me/context', {
         context: form,
         email:   user?.primaryEmailAddress?.emailAddress,
         workspaceName: form.companyName || 'My Workspace',
       });
-      clearContextCache();
+
+      // Prime the route-guard cache from the PUT response itself —
+      // eliminates the race where /app's ProtectedRoute fires a
+      // refetch and momentarily sees `hasContext: false`. We pass
+      // the saved context (with companyName) so isOnboarded() === true.
+      primeContextCache(res.data?.user?.context ?? form);
+
       toast.success(afterCsv ? 'Context saved · CSV processed.' : 'Context saved — welcome aboard.');
-      navigate('/app');
+
+      // tick the event loop once so React commits the cache update
+      // before we navigate.
+      await Promise.resolve();
+      navigate('/app', { replace: true });
     } catch (err) {
-      toast.error(err.response?.data?.error || err.message || 'Could not save context');
+      const detail = err.response?.data;
+      const msg    = detail?.hint || detail?.detail || detail?.error || err.message || 'Could not save context';
+      // eslint-disable-next-line no-console
+      console.error('[onboarding] PUT /me/context failed', detail || err);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }

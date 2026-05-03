@@ -21,34 +21,62 @@ function FullscreenLoader({ label = 'Loading…' }) {
   );
 }
 
-// Shared hook: returns { loading, hasContext } based on the
-// /api/campaigns/me/context probe. Cached so route changes don't
-// re-fetch on every navigation.
+// ── Shared cache + onboarded predicate ─────────────────────
+// Strict check: a context is only "complete" once the wizard's
+// required field (companyName) is populated. An empty {} object
+// does NOT count as onboarded, even though it's truthy in JS.
+function isOnboarded(context) {
+  return Boolean(context && typeof context === 'object' && context.companyName);
+}
+
+// Module-level cache so route flips between /app and /onboarding
+// don't trigger a refetch storm. Three states:
+//   null            → never fetched, useEffect will fetch
+//   { loading:true} → fetch in flight
+//   { hasContext}   → resolved (true OR false)
 let _cached = null;
+const _subs  = new Set();   // listeners for live cache updates
+
+function publish(next) {
+  _cached = next;
+  // null means "invalidated — next mount will refetch". Subscribers
+  // get a transient loading state so the UI doesn't flash an empty
+  // object into a route guard.
+  const broadcast = next ?? { loading: true, hasContext: false };
+  _subs.forEach((fn) => fn(broadcast));
+}
+
 function useUserContext() {
   const { isSignedIn, isLoaded } = useAuth();
   const [state, setState] = useState(_cached || { loading: true, hasContext: false });
 
   useEffect(() => {
+    // Re-render whenever the cache is updated by ANY subscriber
+    // (incl. clearContextCache / primeContextCache from elsewhere).
+    _subs.add(setState);
+    return () => { _subs.delete(setState); };
+  }, []);
+
+  useEffect(() => {
     if (!isLoaded || !isSignedIn) {
-      setState({ loading: false, hasContext: false });
+      publish({ loading: false, hasContext: false });
       return;
     }
-    if (_cached) {
+    if (_cached && !_cached.loading) {
+      // Already resolved → just sync local state.
       setState(_cached);
       return;
     }
     let cancelled = false;
+    publish({ loading: true, hasContext: _cached?.hasContext ?? false });
     api.get('/api/campaigns/me/context')
       .then((res) => {
-        const next = { loading: false, hasContext: Boolean(res.data?.context) };
-        _cached = next;
-        if (!cancelled) setState(next);
+        if (cancelled) return;
+        publish({ loading: false, hasContext: isOnboarded(res.data?.context) });
       })
       .catch(() => {
-        const next = { loading: false, hasContext: false };
-        _cached = next;
-        if (!cancelled) setState(next);
+        if (cancelled) return;
+        publish({ loading: false, hasContext: false });
       });
     return () => { cancelled = true; };
   }, [isLoaded, isSignedIn]);
@@ -56,7 +84,16 @@ function useUserContext() {
   return state;
 }
 
-export function clearContextCache() { _cached = null; }
+// Prime the cache directly from a PUT response — eliminates the
+// race where navigate('/app') fires a refetch before the new
+// context is visible to the route guard.
+export function primeContextCache(context) {
+  publish({ loading: false, hasContext: isOnboarded(context) });
+}
+
+export function clearContextCache() {
+  publish(null);
+}
 
 export function ProtectedRoute({ children }) {
   const { isSignedIn, isLoaded } = useAuth();
