@@ -330,24 +330,81 @@ campaignsRouter.put('/me/context', async (req, res) => {
   if (!ctx || typeof ctx !== 'object') {
     return res.status(400).json({ error: 'context object required in body' });
   }
+
+  const email = req.body?.email || `${userId}@unknown.local`;
+  const workspaceName = req.body?.workspaceName || 'My Workspace';
+
   try {
-    // Upsert by clerkId — covers the cutover where the User row
-    // may not exist yet at first onboarding.
-    const user = await prisma.user.upsert({
+    // ── Two-step upsert (resilient to orphaned User rows) ────
+    // We can't rely on a single nested upsert because two failure
+    // modes coexist:
+    //   A. User row exists but lacks a Workspace (data drift)
+    //   B. User row doesn't exist at all (first onboarding)
+    // Doing the workspace creation outside the upsert handles both.
+    let existing = await prisma.user.findUnique({
       where:  { clerkId: userId },
-      update: { context: ctx },
-      create: {
-        clerkId:     userId,
-        email:       req.body?.email ?? `${userId}@unknown.local`,
-        workspace:   { create: { name: req.body?.workspaceName ?? 'My Workspace' } },
-        context:     ctx,
-      },
+      select: { id: true, workspaceId: true },
+    });
+
+    if (!existing) {
+      // Create workspace + user atomically
+      const created = await prisma.user.create({
+        data: {
+          clerkId:   userId,
+          email,
+          context:   ctx,
+          workspace: { create: { name: workspaceName } },
+        },
+        select: { id: true, workspaceId: true, context: true },
+      });
+      logger.info({ userId, userRowId: created.id, workspaceId: created.workspaceId },
+        '[campaigns/me/context] created new user + workspace');
+      return res.json({ ok: true, user: created, created: true });
+    }
+
+    // User row exists — just update context. If by some accident
+    // workspaceId is null/missing, repair it inline.
+    let workspaceId = existing.workspaceId;
+    if (!workspaceId) {
+      const ws = await prisma.workspace.create({ data: { name: workspaceName } });
+      workspaceId = ws.id;
+      await prisma.user.update({
+        where: { id: existing.id },
+        data:  { workspaceId },
+      });
+      logger.warn({ userId, repairedWorkspaceId: workspaceId },
+        '[campaigns/me/context] repaired orphaned user (no workspace)');
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: existing.id },
+      data:  { context: ctx },
       select: { id: true, workspaceId: true, context: true },
     });
-    return res.json({ ok: true, user });
+    return res.json({ ok: true, user: updated, created: false });
   } catch (err) {
-    logger.error({ err: err.message }, '[campaigns/me/context] write failed');
-    return res.status(500).json({ error: 'Could not save context', detail: err.message });
+    // Verbose logging — Prisma errors carry a `code` (P2002, P2025,
+    // etc.), `meta.target` (the column or constraint), and a long
+    // `message` that's the most useful single line. Surface all of
+    // it to Render's log stream and to the client (so the dev sees
+    // it in DevTools without us hunting through deploy logs).
+    const detail = {
+      name:    err?.name,
+      code:    err?.code,
+      meta:    err?.meta,
+      message: err?.message,
+    };
+    // eslint-disable-next-line no-console
+    console.error('[campaigns/me/context] Prisma write failed:', JSON.stringify(detail, null, 2));
+    logger.error(detail, '[campaigns/me/context] write failed');
+    return res.status(500).json({
+      error:  'Could not save context',
+      code:   err?.code ?? null,
+      detail: err?.message ?? 'Unknown error',
+      hint:   err?.code === 'P2021' || /does not exist/i.test(err?.message || '')
+        ? 'The User table or context column is missing. Build needs to run prisma db push against DATABASE_URL.'
+        : null,
+    });
   }
 });
 
