@@ -7,7 +7,7 @@
   "scripts": {
     "start":               "node src/server.js",
     "dev":                 "node --watch src/server.js",
-    "build":               "npm install --include=dev --prefix client && npm run build --prefix client",
+    "build":               "npm install --include=dev && npm install --include=dev --prefix client && npm run build --prefix client",
     "build:client":        "npm run build --prefix client",
     "build:migrate":       "node scripts/migrate.js",
     "postinstall":         "npm install --include=dev --prefix client --no-audit --no-fund",

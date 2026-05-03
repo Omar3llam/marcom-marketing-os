@@ -12,7 +12,7 @@ import express              from 'express';
 import cors                 from 'cors';
 import { readFile }         from 'fs/promises';
 import { fileURLToPath }    from 'url';
-import { dirname, join }    from 'path';
+import path, { dirname, join } from 'path';
 import { clerkAuthMiddleware, requireAuth } from './middleware/clerkAuth.js';
 import { validateWebhook, captureRawBody } from './middleware/validateWebhook.js';
 import { apiLimiter, chatLimiter }          from './middleware/rateLimit.js';
@@ -213,27 +213,52 @@ app.use('/api',
 // MUST be registered AFTER every /api/* and /webhook/* mount so
 // the catch-all never shadows a real route.
 if (config.nodeEnv === 'production') {
-  // server.js lives in /src — the client build sits one level up
-  const CLIENT_DIST = join(__dirname, '..', 'client', 'dist');
+  // server.js lives in /src — the client build sits one level up.
+  // path.resolve produces an absolute path regardless of cwd, which
+  // matters on Render where the worker process cwd is not always
+  // the repo root.
+  const CLIENT_DIST = path.resolve(__dirname, '..', 'client', 'dist');
+  const INDEX_HTML  = path.resolve(CLIENT_DIST, 'index.html');
+
   // Boot-time visibility: surface a missing client build immediately
   // in deploy logs instead of relying on a runtime 500.
-  import('fs').then(({ existsSync }) => {
-    if (!existsSync(join(CLIENT_DIST, 'index.html'))) {
-      logger.error({ path: CLIENT_DIST }, '[server] client build NOT FOUND — vite build likely failed; check buildCommand and NODE_ENV during install');
+  import('fs').then(({ existsSync, readdirSync }) => {
+    if (!existsSync(INDEX_HTML)) {
+      logger.error(
+        { path: CLIENT_DIST },
+        '[server] client build NOT FOUND — vite build likely failed; check buildCommand and NODE_ENV during install',
+      );
+      // Best-effort: list parent contents to make Render-log forensics easier.
+      try {
+        const parent = path.resolve(CLIENT_DIST, '..');
+        logger.error({ parent, contents: readdirSync(parent) }, '[server] parent dir contents');
+      } catch { /* ignore */ }
     } else {
       logger.info({ path: CLIENT_DIST }, '[server] client build detected');
     }
   });
+
   app.use(express.static(CLIENT_DIST));
 
-  // SPA fallback. Belt-and-braces: explicitly bail if anything
-  // /api/ or /webhook/ slipped past — should never happen given
-  // mount order, but keeps misconfig from silently 200-ing.
+  // SPA fallback. MUST be the LAST registered route before errorHandler.
+  // Belt-and-braces: explicitly bail if anything /api/ or /webhook/
+  // slipped past — should never happen given mount order, but keeps a
+  // misconfig from silently 200-ing.
   app.get('*', (req, res) => {
     if (req.path.startsWith('/api/') || req.path.startsWith('/webhook/')) {
       return res.status(404).json({ error: 'Route not found' });
     }
-    res.sendFile(join(CLIENT_DIST, 'index.html'));
+    res.sendFile(INDEX_HTML, (err) => {
+      if (err) {
+        logger.error({ err: err.message, path: INDEX_HTML }, '[server] sendFile failed for SPA fallback');
+        if (!res.headersSent) {
+          res.status(500).type('text/plain').send(
+            'Frontend build is missing on the server. ' +
+            'Check Render deploy logs for "[server] client build NOT FOUND".',
+          );
+        }
+      }
+    });
   });
 }
 
