@@ -26,6 +26,8 @@ import { credentialsRouter }  from './routes/credentials.js';
 import { authMetaRouter }     from './routes/auth/meta.js';
 import { campaignsRouter }    from './routes/campaigns.js';
 import { toolsRouter }        from './routes/tools.js';
+import { lumiRouter, quickActionHandler, demoFeedHandler } from './routes/lumi.js';
+import { requireJwt }         from './middleware/jwtAuth.js';
 import { logger }             from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
 import { ensureChatSessionSchema } from './models/chatSession.js';
@@ -65,23 +67,31 @@ app.use(cors({
 // ── CLERK (global — populates req.auth on every request) ─────
 app.use(clerkAuthMiddleware());
 
-// ── STATIC FRONTEND ──────────────────────────────────────────
-// Serve all assets except index.html statically.
-// index.html is served via a route below so we can inject env vars.
-app.use(express.static(FRONTEND_DIR, { index: false }));
+// ── STATIC FRONTEND (DEV / LEGACY VANILLA SHELL) ─────────────
+// In production the React client (client/dist) is served by the
+// catch-all block at the bottom of this file. In dev we keep the
+// legacy vanilla shell on /, served from frontend/, with the
+// Clerk publishable key injected at request time.
+if (config.nodeEnv !== 'production') {
+  app.use(express.static(FRONTEND_DIR, { index: false }));
 
-// Serve index.html with CLERK_PUBLISHABLE_KEY injected from env.
-// The placeholder %%CLERK_PUBLISHABLE_KEY%% is replaced at request time —
-// the key is never hardcoded in the repository.
-app.get('/', async (req, res) => {
-  try {
-    const html = await readFile(join(FRONTEND_DIR, 'index.html'), 'utf8');
-    const injected = html.replace('%%CLERK_PUBLISHABLE_KEY%%', config.clerkPublishableKey);
-    res.type('html').send(injected);
-  } catch (err) {
-    logger.error({ err }, 'Failed to serve index.html');
-    res.status(500).send('Application failed to load. Please try again.');
-  }
+  app.get('/', async (req, res) => {
+    try {
+      const html = await readFile(join(FRONTEND_DIR, 'index.html'), 'utf8');
+      const injected = html.replace('%%CLERK_PUBLISHABLE_KEY%%', config.clerkPublishableKey);
+      res.type('html').send(injected);
+    } catch (err) {
+      logger.error({ err }, 'Failed to serve index.html');
+      res.status(500).send('Application failed to load. Please try again.');
+    }
+  });
+}
+
+// ── HEALTH CHECK — Render.com probe path ─────────────────────
+// Lightweight, no DB call. Required for render.yaml
+// `healthCheckPath: /api/health`.
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // ── HEALTH CHECK (public, queries DB) ────────────────────────
@@ -120,6 +130,24 @@ app.use('/webhook',
 // ─────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// ── LUMI QUICK-ACTION (HMAC-signed link, NO JWT) ─────────────
+// Must be mounted BEFORE the JWT-protected /api/lumi router so
+// the middleware doesn't reject HMAC-only callers from email/Slack.
+app.post('/api/lumi/quick-action', apiLimiter, quickActionHandler);
+
+// ── LUMI DEMO FEED (PUBLIC — NO JWT, NO HMAC) ────────────────
+// Read-only, deterministic fixture for stakeholder demos.
+// Mount BEFORE /api/lumi so requireJwt doesn't reject it.
+app.get('/api/lumi/demo-feed', apiLimiter, demoFeedHandler);
+
+// ── LUMI CORE ROUTES (JWT-protected) ─────────────────────────
+// Phases 5 + 6: rollback, feed, _health
+app.use('/api/lumi',
+  requireJwt,
+  apiLimiter,
+  lumiRouter
+);
 
 app.use('/api',
   requireAuth,                  // enforces Clerk userId
@@ -181,8 +209,43 @@ app.use('/api',
   masterRouter
 );
 
+// ── PRODUCTION: serve React client (client/dist) ─────────────
+// MUST be registered AFTER every /api/* and /webhook/* mount so
+// the catch-all never shadows a real route.
+if (config.nodeEnv === 'production') {
+  // server.js lives in /src — the client build sits one level up
+  const CLIENT_DIST = join(__dirname, '..', 'client', 'dist');
+  app.use(express.static(CLIENT_DIST));
+
+  // SPA fallback. Belt-and-braces: explicitly bail if anything
+  // /api/ or /webhook/ slipped past — should never happen given
+  // mount order, but keeps misconfig from silently 200-ing.
+  app.get('*', (req, res) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/webhook/')) {
+      return res.status(404).json({ error: 'Route not found' });
+    }
+    res.sendFile(join(CLIENT_DIST, 'index.html'));
+  });
+}
+
 // ── GLOBAL ERROR HANDLER ─────────────────────────────────────
 app.use(errorHandler);
+
+// ── ROUTE ORDER (final, do not reorder) ──────────────────────
+// 1.  CORS
+// 2.  Clerk middleware (populates req.auth)
+// 3.  Static + GET '/'              [dev only — vanilla shell]
+// 4.  GET  /api/health              [Render probe]
+// 5.  GET  /health                  [legacy probe + DB ping]
+// 6.  /webhook/*                    [HMAC]
+// 7.  POST /api/lumi/quick-action   [HMAC, NO JWT]
+// 7b. GET  /api/lumi/demo-feed      [PUBLIC — stakeholder demo]
+// 8.  /api/lumi/*                   [JWT]
+// 9.  /api/*                        [Clerk JWT — history, projects,
+//                                    credentials, campaigns, tools, etc.]
+// 10. PRODUCTION: static client/dist + GET '*' SPA fallback
+// 11. errorHandler  (last)
+// ────────────────────────────────────────────────────────────
 
 // ── START + GRACEFUL SHUTDOWN ────────────────────────────────
 const server = app.listen(config.port, () => {

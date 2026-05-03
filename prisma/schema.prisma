@@ -1,0 +1,196 @@
+// ============================================================
+// MARCOM / Lumi — Prisma Schema (Phase 1: Temporal Brain)
+// ============================================================
+// Database: PostgreSQL
+// Generator: prisma-client-js
+//
+// This schema introduces the persistent "temporal intelligence"
+// layer for Lumi: Workspaces, Users, OAuth tokens, the Action
+// engine with audit + idempotency, Campaign state tracking,
+// Decision memory, and Webhook deduplication.
+//
+// IMPORTANT: This schema is additive. It does NOT yet replace
+// the existing Airtable-backed `MARCOM_Sessions` table or the
+// Postgres tables used by /api/history/* and /api/projects/*.
+// Migration paths for those legacy stores are listed in the
+// "Migration conflict notes" section accompanying this file.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Enums ────────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  VIEWER
+}
+
+enum ActionStatus {
+  PENDING
+  QUEUED
+  EXECUTED_SUCCESS
+  FAILED
+  ROLLED_BACK
+}
+
+enum CampaignStage {
+  TESTING
+  SCALING
+  STABLE
+  FATIGUED
+  DYING
+}
+
+enum WebhookProvider {
+  META
+  GOOGLE
+}
+
+enum WebhookStatus {
+  RECEIVED
+  PROCESSED
+  DUPLICATE
+  FAILED
+}
+
+// ── Core Models ──────────────────────────────────────────────
+
+model Workspace {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  createdAt DateTime @default(now())
+
+  users          User[]
+  actions        Action[]
+  campaignStates CampaignState[]
+  decisionMemory DecisionMemory[]
+
+  @@map("workspaces")
+}
+
+model User {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  email       String   @unique
+  // ── Clerk → JWT cutover ────────────────────────────────────
+  // Nullable string mapping the legacy Clerk subject (e.g.
+  // "user_2abcXYZ...") to the new internal UUID. AuthMiddleware
+  // resolves an inbound JWT `sub` claim to User.id via this column
+  // until Clerk is fully retired in Phase 5+.
+  clerkId     String?  @unique
+  role        UserRole @default(VIEWER)
+  createdAt   DateTime @default(now())
+
+  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  oauthTokens OAuthToken[]
+
+  @@index([workspaceId])
+  @@map("users")
+}
+
+model OAuthToken {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @db.Uuid
+  provider          String
+  accessToken       String
+  refreshToken      String?
+  encryptionVersion String
+  expiresAt         DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, provider])
+  @@map("oauth_tokens")
+}
+
+// ── Action Engine ────────────────────────────────────────────
+
+model Action {
+  id             String       @id @default(uuid()) @db.Uuid
+  workspaceId    String       @db.Uuid
+  campaignId     String
+  idempotencyKey String       @unique
+  status         ActionStatus @default(PENDING)
+  payload        Json
+  createdAt      DateTime     @default(now())
+  executedAt     DateTime?
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  auditLogs AuditLog[]
+
+  @@index([workspaceId, status])
+  @@index([campaignId])
+  @@map("actions")
+}
+
+model AuditLog {
+  id            String   @id @default(uuid()) @db.Uuid
+  actionId      String   @db.Uuid
+  previousState Json
+  newState      Json
+  performedBy   String
+  performedAt   DateTime @default(now())
+
+  action Action @relation(fields: [actionId], references: [id], onDelete: Cascade)
+
+  @@index([actionId])
+  @@map("audit_logs")
+}
+
+// ── Temporal Intelligence ────────────────────────────────────
+
+model CampaignState {
+  id           String        @id @default(uuid()) @db.Uuid
+  campaignId   String        @unique
+  workspaceId  String        @db.Uuid
+  stage        CampaignStage
+  healthScore  Float
+  lastAnalysis DateTime
+  updatedAt    DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@map("campaign_states")
+}
+
+model DecisionMemory {
+  id                String   @id @default(uuid()) @db.Uuid
+  campaignId        String
+  workspaceId       String   @db.Uuid
+  actionType        String
+  decisionRationale String
+  resultStatus      String
+  deltaCtr          Float?
+  deltaRoas         Float?
+  impactDurationHrs Int?
+  isSustainable     Boolean?
+  recordedAt        DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, recordedAt(sort: Desc)])
+  @@index([workspaceId])
+  @@map("decision_memory")
+}
+
+// ── Webhook Deduplication ────────────────────────────────────
+
+model WebhookEvent {
+  id              String          @id @default(uuid()) @db.Uuid
+  provider        WebhookProvider
+  externalEventId String          @unique
+  payload         Json
+  processedAt     DateTime        @default(now())
+  status          WebhookStatus   @default(RECEIVED)
+
+  @@index([provider, status])
+  @@map("webhook_events")
+}

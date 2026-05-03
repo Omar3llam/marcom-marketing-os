@@ -5,24 +5,39 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "migrate": "node scripts/migrate.js",
-    "build": "node scripts/migrate.js",
-    "setup": "node scripts/setup-airtable.js",
-    "test": "node scripts/test-system.js",
-    "create-memory": "node scripts/create-memory.js"
+    "start":               "node src/server.js",
+    "dev":                 "node --watch src/server.js",
+    "build":               "npm install --prefix client && npm run build --prefix client",
+    "build:client":        "npm run build --prefix client",
+    "build:migrate":       "node scripts/migrate.js",
+    "postinstall":         "npm install --prefix client --no-audit --no-fund",
+    "migrate":             "node scripts/migrate.js",
+    "setup":               "node scripts/setup-airtable.js",
+    "test":                "node scripts/test-system.js",
+    "create-memory":       "node scripts/create-memory.js",
+    "prisma:generate":     "prisma generate",
+    "prisma:push":         "prisma db push",
+    "prisma:migrate":      "prisma migrate dev",
+    "prisma:studio":       "prisma studio",
+    "migrate:credentials": "node scripts/migrate-credentials-to-oauth.js",
+    "worker":              "node src/workers/index.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
+    "openai": "^4.73.0",
     "@clerk/clerk-sdk-node": "^4.13.23",
     "@clerk/express": "^1.0.0",
+    "@prisma/client": "^5.22.0",
     "airtable": "^0.12.2",
+    "bullmq": "^5.21.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^7.4.0",
     "facebook-nodejs-business-sdk": "^24.0.1",
+    "ioredis": "^5.4.1",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.1.0",
     "node-fetch": "^3.3.2",
     "nodemailer": "^6.9.13",
     "pino": "^9.0.0",
@@ -31,6 +46,9 @@
     "redis": "^4.7.1",
     "uuid": "^10.0.0",
     "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "prisma": "^5.22.0"
   },
   "engines": {
     "node": ">=18.0.0"
