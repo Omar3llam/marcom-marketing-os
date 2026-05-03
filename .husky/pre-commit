@@ -1,0 +1,43 @@
+# ============================================================
+# MARCOM / Lumi — pre-commit hook
+# ------------------------------------------------------------
+# When the staged changeset touches any input that affects the
+# React production bundle, rebuild client/dist/ and re-stage it
+# so the deployed artefact is never out of sync with source.
+#
+# When the changeset doesn't touch the client, do nothing fast.
+# ============================================================
+
+# Files that, if staged, force a client rebuild.
+# Tested against `git diff --cached --name-only` via grep -E.
+CLIENT_TRIGGER_REGEX='^client/(src/|index\.html$|package(-lock)?\.json$|vite\.config\.js$|tailwind\.config\.js$|postcss\.config\.js$)'
+
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR | grep -E "$CLIENT_TRIGGER_REGEX" || true)
+
+if [ -z "$STAGED" ]; then
+  # Nothing client-relevant staged — skip fast.
+  exit 0
+fi
+
+echo ""
+echo "──────────────────────────────────────────────────"
+echo "  pre-commit: client source changed → rebuilding"
+echo "──────────────────────────────────────────────────"
+echo "$STAGED" | sed 's/^/  · /'
+echo ""
+
+# Build the client. Fail the commit if the build fails — better
+# to block now than to ship a broken bundle.
+if ! npm run build --prefix client; then
+  echo ""
+  echo "✗ pre-commit: vite build failed — commit aborted."
+  echo "  Fix the build, then re-stage and commit again."
+  exit 1
+fi
+
+# Re-stage the freshly-built artefact so it lands in this commit.
+git add client/dist
+
+echo ""
+echo "✓ pre-commit: client/dist rebuilt and staged."
+echo ""
