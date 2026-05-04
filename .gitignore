@@ -33,3 +33,4 @@ coverage/
 
 # Claude Code local settings (keep shared settings.json but not local overrides)
 .claude/settings.local.json
+client/src/pages/AuthPage-Clerk-BACKUP.jsx

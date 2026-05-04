@@ -1,12 +1,13 @@
 // ============================================================
 // MARCOM — Firebase Admin SDK Initialization
 // ------------------------------------------------------------
-// Initializes firebase-admin using the service account JSON file.
+// Initializes firebase-admin using service account JSON from env var.
 // Used by auth middleware to verify Firebase ID tokens.
+//
+// Set FIREBASE_SERVICE_ACCOUNT_JSON in Render environment with the
+// full JSON content of your Firebase service account file.
 // ============================================================
 import admin from 'firebase-admin';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
 import { logger } from './logger.js';
 
 let _initialized = false;
@@ -15,13 +16,18 @@ export function initializeFirebaseAdmin() {
   if (_initialized) return admin;
 
   try {
-    // Path to service account JSON (set via env or default location)
-    const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH
-      || resolve(process.cwd(), 'src/config/firebase-service-account.json');
+    const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
 
-    logger.info({ path: serviceAccountPath }, '[firebase-admin] Loading service account');
+    if (!serviceAccountJson) {
+      throw new Error(
+        'FIREBASE_SERVICE_ACCOUNT_JSON environment variable is not set. ' +
+        'Please add your Firebase service account JSON to Render environment variables.'
+      );
+    }
 
-    const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
+    logger.info('[firebase-admin] Loading service account from env var');
+
+    const serviceAccount = JSON.parse(serviceAccountJson);
 
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
@@ -29,7 +35,7 @@ export function initializeFirebaseAdmin() {
     });
 
     _initialized = true;
-    logger.info('[firebase-admin] Initialized successfully');
+    logger.info({ projectId: serviceAccount.project_id }, '[firebase-admin] Initialized successfully');
   } catch (err) {
     logger.error({ err: err.message }, '[firebase-admin] Initialization failed');
     throw new Error(`Firebase Admin initialization failed: ${err.message}`);
