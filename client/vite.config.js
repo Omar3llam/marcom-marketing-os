@@ -1,15 +1,20 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
+import { fileURLToPath, URL } from 'url';
 
-// Dev server proxies /api → :3000 so the React client can call the
-// Express backend without CORS friction. The `@` alias matches the
-// design-system spec.
+// Anchor the `@` alias to THIS file's directory using
+// fileURLToPath(import.meta.url). Using process.cwd() here is
+// fragile: the resolver runs in a worker whose cwd may not be
+// the client/ directory, so `@/foo` would silently fail to
+// resolve, Vite would drop the import, and the bundle would
+// quietly omit every aliased module.
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(process.cwd(), 'src'),
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
   server: {
@@ -21,5 +26,13 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: true,
+    rollupOptions: {
+      output: {
+        // Force a single chunk to bypass an upstream code-splitting bug
+        // that was silently dropping page modules from the bundle.
+        // Lazy-loaded routes still split (React.lazy in App.jsx).
+        manualChunks: undefined,
+      },
+    },
   },
 });

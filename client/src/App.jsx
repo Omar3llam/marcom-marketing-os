@@ -14,21 +14,22 @@
 // ============================================================
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import LandingPage      from '@/pages/LandingPage.jsx';
-import AuthPage         from '@/pages/AuthPage.jsx';
-import OnboardingPage   from '@/pages/OnboardingPage.jsx';
-import MainLayout       from '@/components/layout/MainLayout.jsx';
-import CommandHub       from '@/pages/CommandHub.jsx';
-import MarketingTools   from '@/pages/tools/MarketingTools.jsx';
-import SocialCalendar   from '@/pages/tools/SocialCalendar.jsx';
-import ScoreContent     from '@/pages/tools/ScoreContent.jsx';
-import SettingsPage     from '@/pages/Settings.jsx';
-import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
-import { ProtectedRoute, OnboardingRoute } from '@/router/ProtectedRoute.jsx';
+import LandingPage      from './pages/LandingPage.jsx';
+import AuthPage         from './pages/AuthPage.jsx';
+import OnboardingPage   from './pages/OnboardingPage.jsx';
+import MainLayout       from './components/layout/MainLayout.jsx';
+import DecisionFeed     from './pages/DecisionFeed.jsx';
+import MarketingTools   from './pages/tools/MarketingTools.jsx';
+import SocialCalendar   from './pages/tools/SocialCalendar.jsx';
+import ScoreContent     from './pages/tools/ScoreContent.jsx';
+import SettingsPage     from './pages/Settings.jsx';
+import { CardSkeleton } from './components/ui/Skeleton.jsx';
+import { ProtectedRoute, OnboardingRoute } from './router/ProtectedRoute.jsx';
 
 // ── Heavy views — lazy-load to keep the initial bundle slim ──
-const CampaignAnalysis    = lazy(() => import('@/pages/CampaignAnalysis.jsx'));
-const GrowthStrategyBoard = lazy(() => import('@/pages/GrowthStrategyBoard.jsx'));
+const CampaignAnalysis    = lazy(() => import('./pages/CampaignAnalysis.jsx'));
+const GrowthStrategyBoard = lazy(() => import('./pages/GrowthStrategyBoard.jsx'));
+
 
 function PageFallback() {
   return (
@@ -60,7 +61,7 @@ export default function App() {
         element={<ProtectedRoute><MainLayout /></ProtectedRoute>}
       >
         <Route index             element={<Navigate to="feed" replace />} />
-        <Route path="feed"       element={<CommandHub />} />
+        <Route path="feed"       element={<DecisionFeed />} />
         <Route path="campaigns"  element={
           <Suspense fallback={<PageFallback />}><CampaignAnalysis /></Suspense>
         } />

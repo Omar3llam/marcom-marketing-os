@@ -73,8 +73,10 @@ export default {
         'panel':       '0 8px 32px rgba(0,0,0,0.6)',
         'modal':       '0 24px 64px rgba(0,0,0,0.8)',
         'accent-glow': '0 0 24px rgba(229,176,92,0.15)',
-        'kill-glow':   '0 0 16px rgba(239,68,68,0.12)',
-        'scale-glow':  '0 0 16px rgba(16,185,129,0.12)',
+        'kill-glow':   '0 0 20px rgba(239,68,68,0.25), 0 0 40px rgba(239,68,68,0.10)',
+        'scale-glow':  '0 0 20px rgba(16,185,129,0.25), 0 0 40px rgba(16,185,129,0.10)',
+        'hold-glow':   '0 0 20px rgba(245,158,11,0.20)',
+        'optimize-glow': '0 0 20px rgba(99,102,241,0.20)',
         'active-ring': '0 0 0 1px rgba(99,102,241,0.4), 0 0 16px rgba(99,102,241,0.1)',
       },
 
@@ -82,8 +84,10 @@ export default {
         'fade-in':     'fadeIn 150ms ease-out',
         'slide-up':    'slideUp 200ms cubic-bezier(0.16,1,0.3,1)',
         'slide-right': 'slideRight 200ms cubic-bezier(0.16,1,0.3,1)',
-        'pulse-slow':  'pulse 3s ease-in-out infinite',
-        'shimmer':     'shimmer 1.5s ease-in-out infinite',
+        'pulse-slow':     'pulse 3s ease-in-out infinite',
+        'shimmer':        'shimmer 1.5s ease-in-out infinite',
+        'progress-sweep': 'progressSweep 1.6s cubic-bezier(0.65,0.05,0.36,1) infinite',
+        'blink':          'blink 1.1s steps(2,start) infinite',
       },
 
       keyframes: {
@@ -99,6 +103,16 @@ export default {
         shimmer: {
           '0%, 100%': { opacity: 0.4 },
           '50%':      { opacity: 0.8 },
+        },
+        // Theatre progress sweep: 0 → 100% width loop
+        progressSweep: {
+          '0%':   { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(100%)' },
+        },
+        // Block-cursor blink for terminal aesthetic
+        blink: {
+          '0%, 49%':   { opacity: 1 },
+          '50%, 100%': { opacity: 0 },
         },
       },
     },
