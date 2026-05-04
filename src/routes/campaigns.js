@@ -344,19 +344,23 @@ campaignsRouter.put('/me/context', async (req, res) => {
   const workspaceName = req.body?.workspaceName || 'My Workspace';
 
   try {
-    // ── Two-step upsert (resilient to orphaned User rows) ────
-    // We can't rely on a single nested upsert because two failure
-    // modes coexist:
-    //   A. User row exists but lacks a Workspace (data drift)
-    //   B. User row doesn't exist at all (first onboarding)
-    // Doing the workspace creation outside the upsert handles both.
-    let existing = await prisma.user.findUnique({
-      where:  { clerkId: userId },
-      select: { id: true, workspaceId: true },
+    // ── Robust upsert: find by clerkId OR email ────────────────
+    // Handles three scenarios:
+    //   A. User exists with matching clerkId → update context
+    //   B. User exists with matching email but no/different clerkId → update clerkId + context
+    //   C. User doesn't exist at all → create new user + workspace
+    let existing = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { clerkId: userId },
+          { email },
+        ],
+      },
+      select: { id: true, workspaceId: true, clerkId: true, email: true },
     });
 
     if (!existing) {
-      // Create workspace + user atomically
+      // No existing user — create workspace + user atomically
       const created = await prisma.user.create({
         data: {
           clerkId:   userId,
@@ -371,8 +375,8 @@ campaignsRouter.put('/me/context', async (req, res) => {
       return res.json({ ok: true, user: created, created: true });
     }
 
-    // User row exists — just update context. If by some accident
-    // workspaceId is null/missing, repair it inline.
+    // User exists — update context and ensure clerkId + email are current.
+    // If by some accident workspaceId is null/missing, repair it inline.
     let workspaceId = existing.workspaceId;
     if (!workspaceId) {
       const ws = await prisma.workspace.create({ data: { name: workspaceName } });
@@ -385,11 +389,18 @@ campaignsRouter.put('/me/context', async (req, res) => {
         '[campaigns/me/context] repaired orphaned user (no workspace)');
     }
 
+    // Update context + sync clerkId/email in case they've changed
     const updated = await prisma.user.update({
       where: { id: existing.id },
-      data:  { context: ctx },
+      data:  {
+        context:  ctx,
+        clerkId:  userId,  // Sync clerkId if it was missing or changed
+        email,             // Sync email if it changed
+      },
       select: { id: true, workspaceId: true, context: true },
     });
+    logger.info({ userId, userRowId: updated.id, wasClerkIdMissing: !existing.clerkId },
+      '[campaigns/me/context] updated existing user');
     return res.json({ ok: true, user: updated, created: false });
   } catch (err) {
     // Verbose logging — Prisma errors carry a `code` (P2002, P2025,
