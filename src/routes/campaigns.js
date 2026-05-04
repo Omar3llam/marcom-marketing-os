@@ -237,65 +237,58 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
   let processed  = 0;
   let alertsCreated = 0;
 
-  // ── Smart CSV parsing with fuzzy headers, garbage filtering, graceful defaults ──
-  const smartRows = parseSmartCSV(rows, platform);
-  if (smartRows.length === 0) {
-    logger.warn({ workspaceId, uploaded: rows.length }, '[campaigns/upload-csv] no valid rows after smart parse');
+  // ── Forgiving CSV parsing: minimal filtering, pass raw data to LLM ──
+  const parsedRows = parseSmartCSV(rows, platform);
+  if (parsedRows.length === 0) {
+    logger.warn({ workspaceId, uploaded: rows.length }, '[campaigns/upload-csv] no valid rows after parsing');
     return res.json({
       uploaded:       rows.length,
       processed:      0,
       alerts_created: 0,
-      errors:         [{ error: 'No valid campaign rows found — all rows were filtered as garbage or missing campaign names' }],
+      errors:         [{ error: 'No valid campaigns found (all rows filtered: missing spend or campaign name)' }],
     });
   }
 
-  for (const normalized of smartRows) {
-    try {  // normalized is already cleaned by parseSmartCSV, ready for stage classification
-
-      normalized.stage = classifyCampaignStage(normalized.metrics);
-      const alerts     = generateAlerts(normalized);
-
-      // ── Upsert CampaignState ─────────────────────────────────
+  for (const normalized of parsedRows) {
+    try {
+      // ── Upsert CampaignState with basic info ──────────────────
       const cs = await prisma.campaignState.upsert({
         where:  { campaignId: normalized.campaignId },
         update: {
-          stage:        normalized.stage,
-          healthScore:  computeHealthScore(normalized.metrics),
           lastAnalysis: new Date(),
         },
         create: {
           campaignId:   normalized.campaignId,
           workspaceId,
-          stage:        normalized.stage,
-          healthScore:  computeHealthScore(normalized.metrics),
+          stage:        'UNKNOWN', // Let Claude figure out the stage
+          healthScore:  0.5,       // Neutral pending analysis
           lastAnalysis: new Date(),
         },
       });
 
-      // ── Seed PENDING Action rows for each alert ──────────────
-      for (const alert of alerts) {
-        await prisma.action.create({
-          data: {
-            workspaceId,
-            campaignId:     cs.campaignId,
-            idempotencyKey: `csv:${cs.campaignId}:${alert.verdict}:${Date.now()}:${randomUUID().slice(0, 8)}`,
-            status:         'PENDING',
-            payload: {
-              kind:        `lumi.${alert.verdict.toLowerCase()}`,
-              priority:    alert.priority,
-              verdict:     alert.verdict,
-              rootCause:   alert.rootCause,
-              rationale:   alert.rationale,
-              campaignName: normalized.campaignName,
-              platform:    normalized.platform,
-              metrics:     normalized.metrics,
-              dateRange:   normalized.dateRange,
-              source:      'csv-upload',
-            },
+      // ── Seed single ANALYSIS Action with raw CSV data ─────────
+      // Let Claude analyze the full context, not just computed metrics
+      await prisma.action.create({
+        data: {
+          workspaceId,
+          campaignId:     cs.campaignId,
+          idempotencyKey: `csv:${cs.campaignId}:analysis:${Date.now()}:${randomUUID().slice(0, 8)}`,
+          status:         'PENDING',
+          payload: {
+            kind:        'lumi.csv-analysis',
+            source:      'csv-upload',
+            campaignName: normalized.campaignName,
+            platform:    normalized.platform,
+            spend:       normalized.spend,
+            results:     normalized.results,
+            // Pass raw row for Claude to parse contextually
+            rawData:     normalized.rawData,
+            // Include header names so Claude knows the data structure
+            dataHeaders: normalized.rawHeaders,
           },
-        });
-        alertsCreated++;
-      }
+        },
+      });
+      alertsCreated++;
 
       processed++;
     } catch (err) {
