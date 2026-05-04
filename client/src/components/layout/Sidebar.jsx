@@ -12,7 +12,7 @@ import {
   LayoutDashboard, BarChart3, Target, ScanSearch, CalendarDays,
   Settings, PanelLeftClose, Upload,
 } from 'lucide-react';
-import { useUser } from '@clerk/clerk-react';
+import { useAuth } from '@/context/AuthContext.jsx';
 import { cn } from '@/lib/utils.js';
 
 const tools = [
@@ -36,13 +36,13 @@ const mockRecent = [
 
 export default function Sidebar({ collapsed, onToggle }) {
   const navigate = useNavigate();
-  const { user } = useUser();
+  const { currentUser } = useAuth();
   const [projectOpen, setProjectOpen] = useState(false);
   const [toolsOpen,   setToolsOpen]   = useState(true);
   const [activeProject, setActiveProject] = useState(mockProjects[0]);
 
-  const initial = (user?.firstName?.[0] || user?.primaryEmailAddress?.emailAddress?.[0] || 'L').toUpperCase();
-  const userLabel = user?.firstName || user?.primaryEmailAddress?.emailAddress?.split('@')[0] || 'User';
+  const initial = (currentUser?.displayName?.[0] || currentUser?.email?.[0] || 'L').toUpperCase();
+  const userLabel = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
 
   return (
     <aside

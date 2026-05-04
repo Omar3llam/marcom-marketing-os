@@ -1,12 +1,12 @@
 // ============================================================
 // MARCOM / Lumi — Route guards
 // ------------------------------------------------------------
-// ProtectedRoute  — requires Clerk session AND a saved user context.
-// OnboardingRoute — requires Clerk session, blocks if context already set.
+// ProtectedRoute  — requires Firebase session AND a saved user context.
+// OnboardingRoute — requires Firebase session, blocks if context already set.
 // ============================================================
 import { useEffect, useState } from 'react';
 import { Navigate }            from 'react-router-dom';
-import { useAuth, useUser }    from '@clerk/clerk-react';
+import { useAuth }             from '../context/AuthContext.jsx';
 import { api }                 from '../lib/api.js';
 import { Loader2 }             from 'lucide-react';
 
@@ -73,7 +73,7 @@ function publish(next) {
 }
 
 function useUserContext() {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
 
   // Initialize from localStorage if available to prevent onboarding redirect on refresh
   const storedState = getStoredOnboardingState();
@@ -91,10 +91,16 @@ function useUserContext() {
   }, []);
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn) {
+    if (authLoading) {
+      // Firebase auth is still initializing
+      return;
+    }
+
+    if (!currentUser) {
       publish({ loading: false, hasContext: false });
       return;
     }
+
     if (_cached && !_cached.loading) {
       // Already resolved → just sync local state.
       setState(_cached);
@@ -121,7 +127,7 @@ function useUserContext() {
         publish({ loading: false, hasContext: false });
       });
     return () => { cancelled = true; };
-  }, [isLoaded, isSignedIn]);
+  }, [authLoading, currentUser]);
 
   return state;
 }
@@ -145,21 +151,21 @@ export function clearContextCache() {
 }
 
 export function ProtectedRoute({ children }) {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
   const { loading, hasContext }  = useUserContext();
 
-  if (!isLoaded || loading) return <FullscreenLoader label="Restoring your session…" />;
-  if (!isSignedIn)          return <Navigate to="/login" replace />;
-  if (!hasContext)          return <Navigate to="/onboarding" replace />;
+  if (authLoading || loading) return <FullscreenLoader label="Restoring your session…" />;
+  if (!currentUser)           return <Navigate to="/login" replace />;
+  if (!hasContext)            return <Navigate to="/onboarding" replace />;
   return children;
 }
 
 export function OnboardingRoute({ children }) {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { currentUser, loading: authLoading } = useAuth();
   const { loading, hasContext }  = useUserContext();
 
-  if (!isLoaded || loading) return <FullscreenLoader label="Checking your account…" />;
-  if (!isSignedIn)          return <Navigate to="/login" replace />;
-  if (hasContext)           return <Navigate to="/app" replace />;
+  if (authLoading || loading) return <FullscreenLoader label="Checking your account…" />;
+  if (!currentUser)           return <Navigate to="/login" replace />;
+  if (hasContext)             return <Navigate to="/app" replace />;
   return children;
 }

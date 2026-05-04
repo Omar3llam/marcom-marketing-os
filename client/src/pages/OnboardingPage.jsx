@@ -10,7 +10,7 @@
 // ============================================================
 import { useState }     from 'react';
 import { useNavigate }  from 'react-router-dom';
-import { useUser }      from '@clerk/clerk-react';
+import { useAuth }      from '@/context/AuthContext.jsx';
 import { toast }        from 'sonner';
 import {
   Building2, Globe, Briefcase, Megaphone,
@@ -39,11 +39,11 @@ const STEPS = [
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
-  const { user } = useUser();
+  const { currentUser } = useAuth();
   const [step, setStep]   = useState(1);
   const [busy, setBusy]   = useState(false);
   const [form, setForm]   = useState({
-    companyName:    user?.publicMetadata?.companyName || '',
+    companyName:    currentUser?.displayName || '',
     industry:       '',
     website:        '',
     market:         '',
@@ -78,7 +78,7 @@ export default function OnboardingPage() {
     try {
       const res = await api.put('/api/campaigns/me/context', {
         context: form,
-        email:   user?.primaryEmailAddress?.emailAddress,
+        email:   currentUser?.email,
         workspaceName: form.companyName || 'My Workspace',
       });
 

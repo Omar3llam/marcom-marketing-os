@@ -1,9 +1,9 @@
 // ============================================================
-// MARCOM / Lumi — Axios client w/ Clerk JWT injection
+// MARCOM / Lumi — Axios client w/ Firebase JWT injection
 // ------------------------------------------------------------
 // Replaces direct `axios.get('/api/...')` calls with `api.get(...)`.
-// Every request automatically attaches a fresh Clerk session token,
-// so JWT-protected backend routes (req.userId / req.workspaceId)
+// Every request automatically attaches a fresh Firebase ID token,
+// so JWT-protected backend routes (req.user.uid / req.workspaceId)
 // see an authenticated caller.
 // ============================================================
 import axios from 'axios';
@@ -11,11 +11,11 @@ import axios from 'axios';
 let _getToken = null;
 
 /**
- * Wire the Clerk session token getter (called once from main.jsx
- * after Clerk has loaded). Until this is set, requests still go
- * out — but unauthenticated.
+ * Wire the Firebase ID token getter (called once from main.jsx
+ * after Firebase auth has loaded). Until this is set, requests
+ * still go out — but unauthenticated.
  */
-export function bindClerkTokenGetter(fn) {
+export function bindFirebaseTokenGetter(fn) {
   _getToken = fn;
 }
 

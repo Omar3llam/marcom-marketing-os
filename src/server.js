@@ -24,7 +24,7 @@ import express              from 'express';
 import cors                 from 'cors';
 import { readFile }         from 'fs/promises';
 import path from 'path';
-import { clerkAuthMiddleware, requireAuth } from './middleware/clerkAuth.js';
+import { firebaseAuthMiddleware, requireAuth } from './middleware/firebaseAuth.js';
 import { validateWebhook, captureRawBody } from './middleware/validateWebhook.js';
 import { apiLimiter, chatLimiter }          from './middleware/rateLimit.js';
 import { errorHandler }     from './middleware/errorHandler.js';
@@ -75,8 +75,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'x-webhook-signature', 'x-webhook-timestamp'],
 }));
 
-// ── CLERK (global — populates req.auth on every request) ─────
-app.use(clerkAuthMiddleware());
+// ── FIREBASE AUTH (global — populates req.user on every request) ─────
+app.use(firebaseAuthMiddleware);
 
 // ── STATIC FRONTEND (DEV / LEGACY VANILLA SHELL) ─────────────
 // In production the React client (client/dist) is served by the

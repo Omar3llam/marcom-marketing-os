@@ -1,57 +1,54 @@
 import React, { useEffect } from 'react';
 import ReactDOM             from 'react-dom/client';
 import { BrowserRouter }    from 'react-router-dom';
-import { ClerkProvider, useAuth } from '@clerk/clerk-react';
 import { Toaster }          from 'sonner';
 import App                  from './App.jsx';
-import { bindClerkTokenGetter } from './lib/api.js';
+import { AuthProvider, useAuth } from './context/AuthContext.jsx';
+import { bindFirebaseTokenGetter } from './lib/api.js';
 import ErrorBoundary        from './components/ui/ErrorBoundary.jsx';
 import './index.css';
 
 // Build-time stamp so we can confirm Render rebuilt the bundle.
 // Bumped manually whenever we need a forced cache-bust.
-const BUILD_ID = 'phase-8.1-bundle-bust';
+const BUILD_ID = 'phase-9-firebase-migration';
 
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-const KEY_VALID = typeof PUBLISHABLE_KEY === 'string'
-  && /^pk_(test|live)_[A-Za-z0-9_-]+$/.test(PUBLISHABLE_KEY);
+const FIREBASE_PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+const CONFIG_VALID = typeof FIREBASE_PROJECT_ID === 'string' && FIREBASE_PROJECT_ID.length > 0;
 
 // eslint-disable-next-line no-console
-console.info('[lumi] build', BUILD_ID, '| Clerk key valid:', KEY_VALID);
+console.info('[lumi] build', BUILD_ID, '| Firebase project:', FIREBASE_PROJECT_ID || '(missing)');
 
-// Tiny shim that wires the axios interceptor to Clerk's getToken()
+// Tiny shim that wires the axios interceptor to Firebase's getIdToken()
 // once the auth context is mounted.
-function ClerkTokenBridge({ children }) {
-  const { getToken } = useAuth();
+function FirebaseTokenBridge({ children }) {
+  const { getIdToken } = useAuth();
   useEffect(() => {
-    bindClerkTokenGetter(getToken);
-  }, [getToken]);
+    bindFirebaseTokenGetter(getIdToken);
+  }, [getIdToken]);
   return children;
 }
 
-// Standalone error page when the publishable key is missing or
-// malformed. ClerkProvider crashes synchronously on bad keys, so
-// we guard on the OUTSIDE and never call ClerkProvider with junk.
+// Standalone error page when Firebase config is missing
 function ConfigErrorPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-950 p-6 text-gray-200">
       <div className="w-full max-w-xl rounded-2xl border border-yellow-500/30 bg-gray-900 p-6">
         <h1 className="text-lg font-bold text-yellow-300">
-          Lumi can't start: Clerk publishable key is missing
+          Lumi can't start: Firebase configuration is missing
         </h1>
         <p className="mt-2 text-sm text-gray-400">
-          The environment variable <code className="text-gray-200">VITE_CLERK_PUBLISHABLE_KEY</code>{' '}
-          was empty or invalid at build time, so authentication can't initialize.
+          The environment variable <code className="text-gray-200">VITE_FIREBASE_PROJECT_ID</code>{' '}
+          was empty at build time, so authentication can't initialize.
         </p>
         <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-gray-400">
-          <li>Set <code className="text-gray-200">VITE_CLERK_PUBLISHABLE_KEY</code> in the Render web service environment.</li>
-          <li>It MUST start with <code className="text-gray-200">pk_test_</code> or <code className="text-gray-200">pk_live_</code>.</li>
-          <li>Trigger a fresh deploy so Vite can bake it into the bundle.</li>
+          <li>Set Firebase environment variables in the Render web service (see .env.example).</li>
+          <li>Required: VITE_FIREBASE_PROJECT_ID, VITE_FIREBASE_API_KEY, etc.</li>
+          <li>Trigger a fresh deploy so Vite can bake them into the bundle.</li>
         </ul>
         <p className="mt-4 text-xs text-gray-500">
-          Build: {BUILD_ID} · Detected key prefix:{' '}
+          Build: {BUILD_ID} · Detected project:{' '}
           <code className="text-gray-300">
-            {PUBLISHABLE_KEY ? `${String(PUBLISHABLE_KEY).slice(0, 10)}…` : '(none)'}
+            {FIREBASE_PROJECT_ID || '(none)'}
           </code>
         </p>
       </div>
@@ -64,14 +61,14 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
     <ErrorBoundary>
-      {KEY_VALID ? (
-        <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+      {CONFIG_VALID ? (
+        <AuthProvider>
           <BrowserRouter>
-            <ClerkTokenBridge>
+            <FirebaseTokenBridge>
               <App />
-            </ClerkTokenBridge>
+            </FirebaseTokenBridge>
           </BrowserRouter>
-        </ClerkProvider>
+        </AuthProvider>
       ) : (
         <ConfigErrorPage />
       )}

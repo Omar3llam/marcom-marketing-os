@@ -318,11 +318,19 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
 // Onboarding writes here; the React router uses GET to gate /app
 // behind a non-null context value.
 campaignsRouter.get('/me/context', async (req, res) => {
-  const userId = req.userId;
+  const userId = req.userId;  // Firebase UID from firebaseAuth middleware
   if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
   try {
+    // First try to find by Firebase UID (stored in clerkId column for backward compat)
+    // Then fall back to email from Firebase token
+    const email = req.user?.email;
     const user = await prisma.user.findFirst({
-      where: { OR: [{ id: userId }, { clerkId: userId }] },
+      where: {
+        OR: [
+          { clerkId: userId },  // Firebase UID stored here
+          ...(email ? [{ email }] : []),
+        ],
+      },
       select: { context: true },
     }).catch(() => null);
     return res.json({ context: user?.context ?? null });
@@ -333,26 +341,27 @@ campaignsRouter.get('/me/context', async (req, res) => {
 });
 
 campaignsRouter.put('/me/context', async (req, res) => {
-  const userId = req.userId;
+  const userId = req.userId;  // Firebase UID
   if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
   const ctx = req.body?.context;
   if (!ctx || typeof ctx !== 'object') {
     return res.status(400).json({ error: 'context object required in body' });
   }
 
-  const email = req.body?.email || `${userId}@unknown.local`;
+  // Get email from Firebase token or request body
+  const email = req.user?.email || req.body?.email || `${userId}@unknown.local`;
   const workspaceName = req.body?.workspaceName || 'My Workspace';
 
   try {
-    // ── Robust upsert: find by clerkId OR email ────────────────
+    // ── Robust upsert: find by Firebase UID (stored in clerkId) OR email ────
     // Handles three scenarios:
-    //   A. User exists with matching clerkId → update context
-    //   B. User exists with matching email but no/different clerkId → update clerkId + context
+    //   A. User exists with matching Firebase UID → update context
+    //   B. User exists with matching email but no/different Firebase UID → update UID + context
     //   C. User doesn't exist at all → create new user + workspace
     let existing = await prisma.user.findFirst({
       where: {
         OR: [
-          { clerkId: userId },
+          { clerkId: userId },  // Firebase UID stored here
           { email },
         ],
       },
@@ -361,17 +370,18 @@ campaignsRouter.put('/me/context', async (req, res) => {
 
     if (!existing) {
       // No existing user — create workspace + user atomically
+      // Store Firebase UID in clerkId column for backward compatibility
       const created = await prisma.user.create({
         data: {
-          clerkId:   userId,
+          clerkId:   userId,  // Firebase UID
           email,
           context:   ctx,
           workspace: { create: { name: workspaceName } },
         },
         select: { id: true, workspaceId: true, context: true },
       });
-      logger.info({ userId, userRowId: created.id, workspaceId: created.workspaceId },
-        '[campaigns/me/context] created new user + workspace');
+      logger.info({ firebaseUid: userId, userRowId: created.id, workspaceId: created.workspaceId },
+        '[campaigns/me/context] created new user + workspace (Firebase)');
       return res.json({ ok: true, user: created, created: true });
     }
 
@@ -389,18 +399,18 @@ campaignsRouter.put('/me/context', async (req, res) => {
         '[campaigns/me/context] repaired orphaned user (no workspace)');
     }
 
-    // Update context + sync clerkId/email in case they've changed
+    // Update context + sync Firebase UID/email in case they've changed
     const updated = await prisma.user.update({
       where: { id: existing.id },
       data:  {
         context:  ctx,
-        clerkId:  userId,  // Sync clerkId if it was missing or changed
+        clerkId:  userId,  // Sync Firebase UID (stored in clerkId column)
         email,             // Sync email if it changed
       },
       select: { id: true, workspaceId: true, context: true },
     });
-    logger.info({ userId, userRowId: updated.id, wasClerkIdMissing: !existing.clerkId },
-      '[campaigns/me/context] updated existing user');
+    logger.info({ firebaseUid: userId, userRowId: updated.id, wasUidMissing: !existing.clerkId },
+      '[campaigns/me/context] updated existing user (Firebase)');
     return res.json({ ok: true, user: updated, created: false });
   } catch (err) {
     // Verbose logging — Prisma errors carry a `code` (P2002, P2025,
