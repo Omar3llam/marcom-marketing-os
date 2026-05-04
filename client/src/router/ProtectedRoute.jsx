@@ -29,6 +29,28 @@ function isOnboarded(context) {
   return Boolean(context && typeof context === 'object' && context.companyName);
 }
 
+// ── LocalStorage persistence ────────────────────────────────
+const STORAGE_KEY = 'marcom:onboarded';
+
+function getStoredOnboardingState() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === 'true') return true;
+    if (stored === 'false') return false;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function setStoredOnboardingState(value) {
+  try {
+    localStorage.setItem(STORAGE_KEY, String(value));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 // Module-level cache so route flips between /app and /onboarding
 // don't trigger a refetch storm. Three states:
 //   null            → never fetched, useEffect will fetch
@@ -39,6 +61,10 @@ const _subs  = new Set();   // listeners for live cache updates
 
 function publish(next) {
   _cached = next;
+  // Sync to localStorage when we have a definitive answer
+  if (next && !next.loading) {
+    setStoredOnboardingState(next.hasContext);
+  }
   // null means "invalidated — next mount will refetch". Subscribers
   // get a transient loading state so the UI doesn't flash an empty
   // object into a route guard.
@@ -48,7 +74,14 @@ function publish(next) {
 
 function useUserContext() {
   const { isSignedIn, isLoaded } = useAuth();
-  const [state, setState] = useState(_cached || { loading: true, hasContext: false });
+
+  // Initialize from localStorage if available to prevent onboarding redirect on refresh
+  const storedState = getStoredOnboardingState();
+  const initialState = _cached || (storedState !== null
+    ? { loading: false, hasContext: storedState }
+    : { loading: true, hasContext: false });
+
+  const [state, setState] = useState(initialState);
 
   useEffect(() => {
     // Re-render whenever the cache is updated by ANY subscriber
@@ -67,6 +100,15 @@ function useUserContext() {
       setState(_cached);
       return;
     }
+
+    // If we have a stored state, use it as the initial value
+    // and skip the API call unless explicitly invalidated
+    const stored = getStoredOnboardingState();
+    if (stored !== null && !_cached) {
+      publish({ loading: false, hasContext: stored });
+      return;
+    }
+
     let cancelled = false;
     publish({ loading: true, hasContext: _cached?.hasContext ?? false });
     api.get('/api/campaigns/me/context')
@@ -88,10 +130,17 @@ function useUserContext() {
 // race where navigate('/app') fires a refetch before the new
 // context is visible to the route guard.
 export function primeContextCache(context) {
-  publish({ loading: false, hasContext: isOnboarded(context) });
+  const hasContext = isOnboarded(context);
+  setStoredOnboardingState(hasContext);
+  publish({ loading: false, hasContext });
 }
 
 export function clearContextCache() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Ignore storage errors
+  }
   publish(null);
 }
 

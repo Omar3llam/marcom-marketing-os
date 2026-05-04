@@ -236,6 +236,7 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
   const errors   = [];
   let processed  = 0;
   let alertsCreated = 0;
+  const campaignIds = []; // Track all created campaign IDs
 
   // ── 100% pass-through parsing: no filtering, just parse and pass to Claude ──
   const parsedRows = parseSmartCSV(rows, platform);
@@ -246,6 +247,7 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
       uploaded:       rows.length,
       processed:      0,
       alerts_created: 0,
+      campaign_ids:   [],
       errors:         [{ error: 'CSV could not be parsed or contained no rows' }],
     });
   }
@@ -290,6 +292,7 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
         },
       });
       alertsCreated++;
+      campaignIds.push(cs.campaignId); // Track the created campaign
 
       processed++;
     } catch (err) {
@@ -306,6 +309,7 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
     uploaded:        rows.length,
     processed,
     alerts_created:  alertsCreated,
+    campaign_ids:    campaignIds, // Return all created campaign IDs
     errors,
   });
 });

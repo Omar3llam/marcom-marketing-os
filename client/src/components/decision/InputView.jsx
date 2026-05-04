@@ -85,15 +85,16 @@ function CampaignInput({ initialData, onSubmit, onCancel }) {
         });
         toast.success(`Processed ${data.processed} of ${data.uploaded} rows.`);
         await refetch();
-        // After upload — pick the most recent CampaignState id (best-effort)
-        // The user may also pick from the dropdown that appears after fetch.
-        const next = await api.get('/api/lumi/feed').catch(() => null);
-        const firstId = next?.data?.campaigns?.[0]?.campaign_id;
-        if (!firstId) {
-          setError('Upload succeeded but no campaign was created. Try a different CSV.');
+
+        // Use the campaign IDs directly from the upload response
+        // No client-side filtering — accept whatever the backend created
+        if (!data.campaign_ids || data.campaign_ids.length === 0) {
+          setError('Upload succeeded but no campaigns were created. The CSV may be empty or invalid.');
           return;
         }
-        onSubmit({ campaignId: firstId, source: 'csv-upload' });
+
+        // Use the first created campaign ID
+        onSubmit({ campaignId: data.campaign_ids[0], source: 'csv-upload' });
       } catch (err) {
         const detail = err.response?.data?.error || err.message || 'Upload failed';
         setError(detail);

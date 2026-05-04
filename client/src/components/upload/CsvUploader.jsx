@@ -58,8 +58,9 @@ export default function CsvUploader({ onSuccess, compact = false }) {
         },
       });
       setResult(res.data);
+      const campaignCount = res.data.campaign_ids?.length || 0;
       toast.success(
-        `Processed ${res.data.processed} of ${res.data.uploaded} rows · ${res.data.alerts_created} alerts created.`,
+        `Processed ${res.data.processed} of ${res.data.uploaded} rows · ${campaignCount} campaigns created.`,
       );
       onSuccess?.(res.data);
     } catch (err) {
