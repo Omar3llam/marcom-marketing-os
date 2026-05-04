@@ -82,20 +82,9 @@ app.use(firebaseAuthMiddleware);
 // In production the React client (client/dist) is served by the
 // catch-all block at the bottom of this file. In dev we keep the
 // legacy vanilla shell on /, served from frontend/, with the
-// Clerk publishable key injected at request time.
+// Static file serving (no key injection needed with Firebase)
 if (config.nodeEnv !== 'production') {
-  app.use(express.static(FRONTEND_DIR, { index: false }));
-
-  app.get('/', async (req, res) => {
-    try {
-      const html = await readFile(join(FRONTEND_DIR, 'index.html'), 'utf8');
-      const injected = html.replace('%%CLERK_PUBLISHABLE_KEY%%', config.clerkPublishableKey);
-      res.type('html').send(injected);
-    } catch (err) {
-      logger.error({ err }, 'Failed to serve index.html');
-      res.status(500).send('Application failed to load. Please try again.');
-    }
-  });
+  app.use(express.static(FRONTEND_DIR));
 }
 
 // ── HEALTH CHECK — Render.com probe path ─────────────────────
