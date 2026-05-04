@@ -237,54 +237,55 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
   let processed  = 0;
   let alertsCreated = 0;
 
-  // ── Forgiving CSV parsing: minimal filtering, pass raw data to LLM ──
+  // ── 100% pass-through parsing: no filtering, just parse and pass to Claude ──
   const parsedRows = parseSmartCSV(rows, platform);
+
   if (parsedRows.length === 0) {
-    logger.warn({ workspaceId, uploaded: rows.length }, '[campaigns/upload-csv] no valid rows after parsing');
+    logger.warn({ workspaceId, uploaded: rows.length }, '[campaigns/upload-csv] no rows parsed');
     return res.json({
       uploaded:       rows.length,
       processed:      0,
       alerts_created: 0,
-      errors:         [{ error: 'No valid campaigns found (all rows filtered: missing spend or campaign name)' }],
+      errors:         [{ error: 'CSV could not be parsed or contained no rows' }],
     });
   }
 
-  for (const normalized of parsedRows) {
+  for (const parsed of parsedRows) {
     try {
-      // ── Upsert CampaignState with basic info ──────────────────
+      // Generate a campaign ID from row data
+      const campaignId = `csv:${Date.now()}:${Math.random().toString(36).slice(2, 9)}`;
+
+      // ── Upsert CampaignState with minimal info ──────────────────
       const cs = await prisma.campaignState.upsert({
-        where:  { campaignId: normalized.campaignId },
+        where:  { campaignId },
         update: {
           lastAnalysis: new Date(),
         },
         create: {
-          campaignId:   normalized.campaignId,
+          campaignId,
           workspaceId,
-          stage:        'UNKNOWN', // Let Claude figure out the stage
-          healthScore:  0.5,       // Neutral pending analysis
+          stage:        'UNKNOWN',
+          healthScore:  0.5,
           lastAnalysis: new Date(),
         },
       });
 
-      // ── Seed single ANALYSIS Action with raw CSV data ─────────
-      // Let Claude analyze the full context, not just computed metrics
+      // ── Seed single raw data action for Claude ─────────────────
+      // Pass entire row + headers, let Claude figure it out
       await prisma.action.create({
         data: {
           workspaceId,
           campaignId:     cs.campaignId,
-          idempotencyKey: `csv:${cs.campaignId}:analysis:${Date.now()}:${randomUUID().slice(0, 8)}`,
+          idempotencyKey: `csv:${campaignId}:${Date.now()}:${randomUUID().slice(0, 8)}`,
           status:         'PENDING',
           payload: {
-            kind:        'lumi.csv-analysis',
-            source:      'csv-upload',
-            campaignName: normalized.campaignName,
-            platform:    normalized.platform,
-            spend:       normalized.spend,
-            results:     normalized.results,
-            // Pass raw row for Claude to parse contextually
-            rawData:     normalized.rawData,
-            // Include header names so Claude knows the data structure
-            dataHeaders: normalized.rawHeaders,
+            kind:   'lumi.csv-data',
+            source: 'csv-upload',
+            platform: parsed.platform,
+            // Raw CSV row as-is
+            row: parsed.rowData,
+            // Column names for context
+            headers: parsed.headers,
           },
         },
       });
@@ -292,9 +293,9 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
 
       processed++;
     } catch (err) {
-      logger.warn({ err: err.message, campaign: normalized.campaignName || '?' },
+      logger.warn({ err: err.message, rowIndex: parsedRows.indexOf(parsed) },
         '[campaigns/upload-csv] row processing failed');
-      errors.push({ row: normalized.campaignName ?? '?', error: err.message });
+      errors.push({ row: `row ${parsedRows.indexOf(parsed)}`, error: err.message });
     }
   }
 
