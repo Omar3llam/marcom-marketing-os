@@ -1,18 +1,29 @@
 // ============================================================
 // MARCOM — Main Server  (server.js)
-// Import order matters:
-//   1. Config validation (exits if env vars missing)
-//   2. Dotenv (already loaded by config.js via dotenv/config)
-//   3. Everything else
+// ============================================================
+// ⚠️ CRITICAL: dotenv MUST be configured FIRST, before any other imports.
+// The .env file is in the parent directory (project root).
+// ============================================================
+import { fileURLToPath } from 'url';
+import { dirname, join, resolve } from 'path';
+import { config as dotenvConfig } from 'dotenv';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = dirname(__filename);
+const ENV_PATH   = resolve(__dirname, '..', '.env');
+
+// Load .env from parent directory BEFORE any other imports
+dotenvConfig({ path: ENV_PATH });
+
+// ============================================================
+// Now it's safe to import config.js (which validates env vars)
 // ============================================================
 import './config.js';           // Validates env vars; exits on failure
-import 'dotenv/config';
 
 import express              from 'express';
 import cors                 from 'cors';
 import { readFile }         from 'fs/promises';
-import { fileURLToPath }    from 'url';
-import path, { dirname, join } from 'path';
+import path from 'path';
 import { clerkAuthMiddleware, requireAuth } from './middleware/clerkAuth.js';
 import { validateWebhook, captureRawBody } from './middleware/validateWebhook.js';
 import { apiLimiter, chatLimiter }          from './middleware/rateLimit.js';
@@ -27,6 +38,7 @@ import { authMetaRouter }     from './routes/auth/meta.js';
 import { campaignsRouter }    from './routes/campaigns.js';
 import { toolsRouter }        from './routes/tools.js';
 import { lumiRouter, quickActionHandler, demoFeedHandler } from './routes/lumi.js';
+import paidRouter             from './routes/paid.js';
 import { requireJwt }         from './middleware/jwtAuth.js';
 import { logger }             from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
@@ -39,7 +51,6 @@ import { config }           from './config.js';
 const app = express();
 
 // ── PATHS ────────────────────────────────────────────────────
-const __dirname    = dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIR = join(__dirname, '..', 'frontend');
 
 // ── TRUST PROXY (for accurate IP in rate-limit behind nginx/Heroku) ─
@@ -99,8 +110,10 @@ app.get('/health', async (req, res) => {
   let dbOk = false;
   try {
     const sql = getDb();
-    await sql`SELECT 1`;
-    dbOk = true;
+    if (sql) {
+      await sql`SELECT 1`;
+      dbOk = true;
+    }
   } catch { /* DB may not be configured in dev */ }
 
   res.status(dbOk ? 200 : 503).json({
@@ -202,6 +215,13 @@ app.use('/api/tools',
   toolsRouter
 );
 
+// Paid Decision Engine — Phase 1.2 (Meta MCP + Claude Orchestrator)
+app.use('/api/v1/paid',
+  requireAuth,
+  apiLimiter,
+  paidRouter
+);
+
 // Chat endpoint also accessible from browser with Clerk token
 app.use('/api',
   requireAuth,
@@ -300,20 +320,30 @@ app.use(errorHandler);
 // ── START + GRACEFUL SHUTDOWN ────────────────────────────────
 const server = app.listen(config.port, () => {
   logger.info({ port: config.port, env: config.nodeEnv }, 'MARCOM v4 online');
-  // Idempotent migration for the chat-history feature — adds the title
-  // column + per-user index if they don't exist. Non-fatal on failure.
-  ensureChatSessionSchema().catch(err =>
-    logger.warn({ err: err.message }, 'ensureChatSessionSchema failed at startup')
-  );
-  ensureUserContextSchema().catch(err =>
-    logger.warn({ err: err.message }, 'ensureUserContextSchema failed at startup')
-  );
-  ensureProjectSchema().catch(err =>
-    logger.warn({ err: err.message }, 'ensureProjectSchema failed at startup')
-  );
-  ensureCredentialSchema().catch(err =>
-    logger.warn({ err: err.message }, 'ensureCredentialSchema failed at startup')
-  );
+
+  // Try to connect to DB and run schema migrations.
+  // In dev mode, if DB is unavailable, just log and continue.
+  const sql = getDb();
+  if (sql) {
+    // Idempotent migration for the chat-history feature — adds the title
+    // column + per-user index if they don't exist. Non-fatal on failure.
+    ensureChatSessionSchema().catch(err =>
+      logger.warn({ err: err.message }, 'ensureChatSessionSchema failed at startup')
+    );
+    ensureUserContextSchema().catch(err =>
+      logger.warn({ err: err.message }, 'ensureUserContextSchema failed at startup')
+    );
+    ensureProjectSchema().catch(err =>
+      logger.warn({ err: err.message }, 'ensureProjectSchema failed at startup')
+    );
+    ensureCredentialSchema().catch(err =>
+      logger.warn({ err: err.message }, 'ensureCredentialSchema failed at startup')
+    );
+  } else if (config.nodeEnv === 'development') {
+    logger.info('[DEV MODE] PostgreSQL bypassed. Phase 1 AI/Meta endpoints will work without DB.');
+  } else {
+    logger.error('DATABASE_URL is required in production. Server started but DB-dependent routes will fail.');
+  }
 });
 
 async function shutdown(signal) {

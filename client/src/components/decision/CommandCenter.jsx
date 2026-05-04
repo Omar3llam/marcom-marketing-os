@@ -1,88 +1,165 @@
 // ============================================================
-// MARCOM / Lumi — CommandCenter (FSM state A)
+// MARCOM / Lumi — CommandCenter v4.1 (Enterprise Dual-Zone)
 // ------------------------------------------------------------
-// "What do you want to decide today?" — 3 mode cards with
-// gradient accent bars + agent attribution chips, plus a
-// horizontal Decision Memory strip backed by localStorage.
+// ZONE A (TOP): 🔴 ACTIVE RADAR — Proactive bleeding campaign alerts
+// ZONE B (BOTTOM): MANUAL OS TOOLS — Reactive 3-card grid
+//
+// This is NOT a chatbot. Every alert ends in a strict Verdict.
+// The system is proactive (radar) AND reactive (manual upload).
 // ============================================================
 import { useState } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import {
   BarChart3, Target, ScanSearch, Clock, Brain, ArrowRight, Trash2,
+  AlertTriangle, TrendingDown, Lock,
 } from 'lucide-react';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { cn } from '@/lib/utils.js';
 
+// ── MOCK RADAR ALERTS (Production: fetch from /api/radar) ───
+const MOCK_ALERTS = [
+  {
+    id: 'alert-001',
+    mode: 'campaign',
+    title: 'Summer Collection — US East',
+    verdict: 'KILL',
+    confidence: 92,
+    impact: 'Burn Rate: $247/day detected',
+    risk_level: 'HIGH',
+    why: [
+      'CTR dropped 68% in last 48h (0.42% → 0.13%)',
+      'Frequency spike at 9.2x — creative fatigue confirmed',
+      '$1,480 wasted on zero conversions since May 2',
+    ],
+    action: { type: 'pause_campaign', target_id: 'camp_23847dh', payload: {} },
+  },
+  {
+    id: 'alert-002',
+    mode: 'campaign',
+    title: 'Ramadan Promo — UAE/KSA',
+    verdict: 'HOLD',
+    confidence: 78,
+    impact: 'Burn Rate: $89/day detected',
+    risk_level: 'MEDIUM',
+    why: [
+      'ROAS at 1.8x (below 2.2x target)',
+      'CPM increased 34% in 24h — auction pressure',
+      'Still profitable but declining trend',
+    ],
+    action: { type: 'update_budget', target_id: 'camp_88291kk', payload: { new_budget: 50 } },
+  },
+];
+
 const MODES = [
   {
     mode: 'campaign',
-    badge: 'MODE 3',
+    badge: 'TOOL 01',
     accent: 'card-accent-campaign',
     iconCls: 'text-signal-kill bg-signal-kill-bg',
     badgeCls: 'text-signal-kill bg-signal-kill-bg',
     icon: BarChart3,
-    title: 'Analyze Campaign Data',
-    body: 'Upload Meta or Google Ads CSV. Get SCALE / HOLD / KILL verdicts with financial impact and wasted-spend breakdown.',
+    title: 'Analyze Campaign',
+    body: 'Upload CSV or sync Meta API. Get KILL / SCALE / HOLD verdicts with financial impact.',
     cta: 'Run analysis',
-    agents: ['claude', 'openai'],
+    enabled: true,
   },
   {
     mode: 'strategy',
-    badge: 'MODE 2',
+    badge: 'TOOL 02',
     accent: 'card-accent-strategy',
     iconCls: 'text-stage-scaling bg-stage-scaling/10',
     badgeCls: 'text-stage-scaling bg-stage-scaling/10',
     icon: Target,
-    title: 'Generate Campaign Brief',
-    body: 'Brief Lumi on your goal. Get a structured campaign strategy tied to your commercial reality. No generic templates.',
-    cta: 'Start strategy session',
-    agents: ['claude'],
+    title: 'Growth Strategy',
+    body: 'Generate strategic campaign briefs. Locked until Phase 2.',
+    cta: 'Start session',
+    enabled: false,
   },
   {
     mode: 'content',
-    badge: 'MODE 4',
+    badge: 'TOOL 03',
     accent: 'card-accent-content',
     iconCls: 'text-signal-hold bg-signal-hold-bg',
     badgeCls: 'text-signal-hold bg-signal-hold-bg',
     icon: ScanSearch,
-    title: 'Score Content',
-    body: 'Paste any ad, post or landing-page copy. Lumi runs the 10-step MARCOM framework and returns scores with rewrites.',
+    title: 'Content Score',
+    body: 'Score ad copy with the MARCOM framework. Locked until Phase 3.',
     cta: 'Submit content',
-    agents: ['claude'],
+    enabled: false,
   },
 ];
 
-export default function CommandCenter({ history, onStartFlow, onReplay, onClearHistory }) {
+export default function CommandCenter({
+  history,
+  radarAlerts = MOCK_ALERTS,
+  onStartFlow,
+  onReviewAlert,
+  onReplay,
+  onClearHistory,
+}) {
   const { user } = useUser();
   const name = user?.firstName || user?.primaryEmailAddress?.emailAddress?.split('@')[0] || 'there';
   const [confirmingClear, setConfirmingClear] = useState(false);
 
   return (
-    <div className="p-6 lg:p-12 max-w-6xl mx-auto animate-fade-in">
+    <div className="p-6 lg:p-12 max-w-7xl mx-auto animate-fade-in">
       {/* Header */}
-      <header className="mb-10">
+      <header className="mb-8">
         <h1 className="font-display font-bold text-2xl lg:text-3xl text-lumi-text">
-          What do you want to decide today, {name}?
+          Command Center
         </h1>
-        <p className="mt-2 font-mono text-sm text-lumi-muted">
+        <p className="mt-2 font-mono text-sm text-lumi-muted inline-flex items-center gap-2">
+          <Lock className="w-3 h-3 text-signal-scale" strokeWidth={1.5} />
           Context locked · Code81 · MENA market
         </p>
       </header>
 
-      {/* Mode cards */}
-      <section aria-label="Decision modes" className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {MODES.map((m, i) => (
-          <ModeCard
-            key={m.mode}
-            cfg={m}
-            stagger={i * 75}
-            onClick={() => onStartFlow(m.mode)}
-          />
-        ))}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* ZONE A — ACTIVE RADAR (PROACTIVE)                          */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <section aria-labelledby="radar-heading" className="mb-12">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" aria-hidden="true" />
+          <h2 id="radar-heading" className="font-display font-bold text-lg text-lumi-text">
+            🔴 Active Radar
+          </h2>
+          <span className="font-mono text-xs text-lumi-subtle ml-2">
+            {radarAlerts.length} bleeding campaign{radarAlerts.length !== 1 ? 's' : ''} detected
+          </span>
+        </div>
+
+        {radarAlerts.length === 0 ? (
+          <EmptyRadar />
+        ) : (
+          <div className="space-y-3">
+            {radarAlerts.map((alert) => (
+              <RadarAlertCard key={alert.id} alert={alert} onReview={() => onReviewAlert(alert)} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* ═══════════════════════════════════════════════════════════ */}
+      {/* ZONE B — MANUAL OS TOOLS (REACTIVE)                        */}
+      {/* ═══════════════════════════════════════════════════════════ */}
+      <section aria-labelledby="tools-heading" className="mb-12">
+        <h2 id="tools-heading" className="section-label mb-4">
+          Manual OS Tools
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {MODES.map((m, i) => (
+            <ModeCard
+              key={m.mode}
+              cfg={m}
+              stagger={i * 75}
+              onClick={() => m.enabled && onStartFlow(m.mode)}
+            />
+          ))}
+        </div>
       </section>
 
       {/* Decision Memory */}
-      <section aria-labelledby="memory-heading" className="mt-12">
+      <section aria-labelledby="memory-heading">
         <div className="flex items-center justify-between mb-3">
           <h2 id="memory-heading" className="section-label inline-flex items-center gap-1.5">
             <Brain className="w-3 h-3" strokeWidth={1.5} /> Decision Memory
@@ -122,50 +199,123 @@ export default function CommandCenter({ history, onStartFlow, onReplay, onClearH
   );
 }
 
-// ── Mode card ────────────────────────────────────────────────
+// ── Radar Alert Card ─────────────────────────────────────────
+function RadarAlertCard({ alert, onReview }) {
+  const riskBg = alert.risk_level === 'HIGH'   ? 'bg-red-500/5 border-red-500/20'
+               : alert.risk_level === 'MEDIUM' ? 'bg-yellow-500/5 border-yellow-500/20'
+               : 'bg-blue-500/5 border-blue-500/20';
+
+  const riskText = alert.risk_level === 'HIGH'   ? 'text-red-400'
+                 : alert.risk_level === 'MEDIUM' ? 'text-yellow-400'
+                 : 'text-blue-400';
+
+  return (
+    <article
+      className={cn(
+        'rounded-2xl border p-5 transition-all hover:border-lumi-accent/40',
+        riskBg,
+      )}
+    >
+      <div className="flex items-start gap-4">
+        {/* Alert Icon */}
+        <div className="shrink-0 mt-1">
+          <div className="w-10 h-10 rounded-xl bg-lumi-elevated border border-lumi-border flex items-center justify-center">
+            <TrendingDown className={cn('w-5 h-5', riskText)} strokeWidth={1.5} />
+          </div>
+        </div>
+
+        {/* Alert Content */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <h3 className="font-display font-bold text-base text-lumi-text">{alert.title}</h3>
+            <VerdictPill verdict={alert.verdict} />
+          </div>
+
+          {/* Impact (Psychological UX: Use exact copy) */}
+          <div className="mb-3 inline-flex items-center gap-2 rounded-lg bg-lumi-elevated border border-lumi-border px-3 py-1.5">
+            <AlertTriangle className="w-4 h-4 text-red-400" strokeWidth={1.5} />
+            <span className="font-mono text-sm text-red-400">{alert.impact}</span>
+          </div>
+
+          {/* Why Breakdown */}
+          <ul className="space-y-1 mb-4">
+            {alert.why.map((reason, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-lumi-muted">
+                <span className="text-lumi-accent mt-0.5">•</span>
+                <span>{reason}</span>
+              </li>
+            ))}
+          </ul>
+
+          {/* Confidence + Review Button */}
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-mono text-xs text-lumi-subtle">
+              Confidence: <span className="text-lumi-text tabular-nums">{alert.confidence}%</span>
+            </span>
+            <button
+              type="button"
+              onClick={onReview}
+              className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 font-display font-semibold text-sm bg-lumi-accent text-lumi-bg hover:bg-lumi-accent-hover shadow-accent-glow transition-all"
+            >
+              Review Alert <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function EmptyRadar() {
+  return (
+    <div className="rounded-2xl border border-dashed border-lumi-border bg-lumi-surface/40 py-12 text-center">
+      <div className="w-12 h-12 mx-auto rounded-full bg-signal-scale-bg flex items-center justify-center mb-3">
+        <AlertTriangle className="w-6 h-6 text-signal-scale" strokeWidth={1.5} />
+      </div>
+      <p className="text-lumi-text font-display font-semibold">All clear</p>
+      <p className="mt-1 text-lumi-muted text-sm">No bleeding campaigns detected. Radar monitoring active.</p>
+    </div>
+  );
+}
+
+// ── Mode card (Manual Tools) ─────────────────────────────────
 function ModeCard({ cfg, stagger, onClick }) {
   const Icon = cfg.icon;
+  const disabled = !cfg.enabled;
+
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       style={{ animationDelay: `${stagger}ms` }}
       className={cn(
         'reveal group flex flex-col items-stretch text-left',
         'bg-lumi-surface border border-lumi-border rounded-2xl overflow-hidden',
-        'hover:border-lumi-accent/40 hover:shadow-accent-glow active:scale-[0.99]',
         'transition-all duration-200 focus-visible:border-lumi-accent/60',
+        disabled
+          ? 'opacity-50 cursor-not-allowed'
+          : 'hover:border-lumi-accent/40 hover:shadow-accent-glow active:scale-[0.99]',
       )}
     >
       <div className={cn('card-accent', cfg.accent)} aria-hidden="true" />
       <div className="p-6 flex flex-col flex-1">
         <div className="flex items-center justify-between">
           <span className={cn('font-mono text-xs px-2 py-1 rounded-lg', cfg.badgeCls)}>{cfg.badge}</span>
-          <div className="flex items-center gap-1">
-            {cfg.agents.map((a) => <AgentChip key={a} agent={a} />)}
-          </div>
+          {disabled && <Lock className="w-3.5 h-3.5 text-lumi-subtle" strokeWidth={1.5} />}
         </div>
         <div className={cn('mt-4 w-12 h-12 rounded-xl p-2.5 flex items-center justify-center', cfg.iconCls)}>
           <Icon className="w-7 h-7" strokeWidth={1.5} />
         </div>
         <h3 className="mt-4 font-display font-bold text-xl text-lumi-text">{cfg.title}</h3>
         <p className="mt-2 text-lumi-muted text-sm leading-relaxed">{cfg.body}</p>
-        <span className="mt-6 inline-flex items-center gap-1 text-lumi-accent font-mono text-sm group-hover:underline">
-          {cfg.cta} <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
-        </span>
+        {cfg.enabled && (
+          <span className="mt-6 inline-flex items-center gap-1 text-lumi-accent font-mono text-sm group-hover:underline">
+            {cfg.cta} <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
+          </span>
+        )}
       </div>
     </button>
-  );
-}
-
-function AgentChip({ agent }) {
-  const cls = agent === 'claude'
-    ? 'text-orange-400  bg-orange-500/10  border-orange-500/25'
-    : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25';
-  return (
-    <span className={cn('font-mono text-[10px] px-1.5 py-0.5 rounded border', cls)}>
-      {agent === 'claude' ? 'Claude' : 'ChatGPT'}
-    </span>
   );
 }
 

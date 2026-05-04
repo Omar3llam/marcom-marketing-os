@@ -24,6 +24,8 @@ const DEFAULT_HINT = 'The analysis could not complete. Try again or start fresh.
 export default function ErrorView({ error, onRetry, onBack }) {
   const hint = HINTS[error?.code] || DEFAULT_HINT;
   const retryable = error?.retryable !== false;
+  const classification = error?.classification;
+  const fallbackAction = error?.fallbackAction;
 
   return (
     <div className="max-w-md mx-auto p-8 flex flex-col items-center animate-fade-in">
@@ -38,10 +40,24 @@ export default function ErrorView({ error, onRetry, onBack }) {
           </div>
 
           {error?.code && (
-            <div className="mt-2 font-mono text-xs text-lumi-subtle">Code · {error.code}</div>
+            <div className="mt-2 flex items-center justify-center gap-2 text-xs">
+              <span className="font-mono text-lumi-subtle">Code · {error.code}</span>
+              {classification && (
+                <>
+                  <span className="text-lumi-border">|</span>
+                  <span className="font-mono text-lumi-subtle capitalize">{classification}</span>
+                </>
+              )}
+            </div>
           )}
 
           <p className="mt-4 text-sm text-lumi-muted leading-relaxed max-w-xs mx-auto">{hint}</p>
+
+          {fallbackAction && (
+            <div className="mt-3 text-xs text-yellow-400 bg-yellow-500/10 border border-yellow-500/30 px-3 py-2 rounded-lg">
+              💡 Fallback: {fallbackAction}
+            </div>
+          )}
 
           <div className="mt-6 flex flex-col gap-2">
             {retryable && (

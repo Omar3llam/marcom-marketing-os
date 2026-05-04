@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
+    "dev": "node --env-file=.env --watch src/server.js",
     "build": "node -e \"console.log('===PRE BUILD===','cwd=',process.cwd(),'| VITE_CLERK key set:',Boolean(process.env.VITE_CLERK_PUBLISHABLE_KEY),'| DATABASE_URL set:',Boolean(process.env.DATABASE_URL))\" && npm install --include=dev && npm install --include=dev --prefix client && echo '===PRISMA GENERATE===' && npx prisma generate && echo '===PRISMA DB PUSH===' && (npx prisma db push --skip-generate --accept-data-loss || echo '[!] prisma db push failed — DB-touching routes will 500 until DATABASE_URL is reachable') && echo '===VITE BUILD===' && npm run build --prefix client && node -e \"const f=require('fs');const p=require('path');const i=p.resolve('client/dist/index.html');console.log('===POST BUILD=== exists:',f.existsSync(i),'| path:',i)\"",
     "build:client": "npm run build --prefix client",
     "build:migrate": "node scripts/migrate.js",
@@ -27,6 +27,7 @@
     "@anthropic-ai/sdk": "^0.91.1",
     "@clerk/clerk-sdk-node": "^4.13.23",
     "@clerk/express": "^1.0.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@prisma/client": "^5.22.0",
     "airtable": "^0.12.2",
     "bullmq": "^5.21.2",

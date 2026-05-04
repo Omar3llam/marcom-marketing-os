@@ -7,9 +7,10 @@
 //     queue subsystem DISABLED and export a sentinel `null`
 //     connection. Routes that need Redis return a 503 instead
 //     of letting BullMQ spam reconnect errors every 2 s.
-//   - In development, fall back to localhost (the historical
-//     behaviour) so `npm run dev` still works without a
-//     dedicated Redis container.
+//   - In development, ALSO disable Redis if not explicitly
+//     configured. This allows Phase 1 AI/Meta endpoints to
+//     work without spamming ECONNREFUSED errors. Devs can
+//     set REDIS_URL to enable queues when needed.
 //   - Always cap reconnect attempts at 5 so a misconfig can't
 //     fill the log stream.
 // ============================================================
@@ -17,19 +18,29 @@ import IORedis  from 'ioredis';
 import { logger } from '../utils/logger.js';
 
 const isProd  = process.env.NODE_ENV === 'production';
+const isDev   = process.env.NODE_ENV === 'development';
 const rawUrl  = process.env.REDIS_URL;
 const isLocal = !rawUrl || /^redis:\/\/(127\.0\.0\.1|localhost|0\.0\.0\.0)(:|\/|$)/i.test(rawUrl);
 
-export const REDIS_DISABLED = isProd && isLocal;
+// Disable Redis if:
+// 1. Production + no valid REDIS_URL
+// 2. Development + no REDIS_URL set (graceful degradation for AI-only mode)
+export const REDIS_DISABLED = (isProd && isLocal) || (isDev && !rawUrl);
 export const QUEUE_PREFIX   = process.env.BULLMQ_PREFIX || 'lumi';
 
 let _conn = null;
 
 if (REDIS_DISABLED) {
-  logger.warn(
-    { reason: rawUrl ? 'REDIS_URL points at localhost' : 'REDIS_URL not set' },
-    '[bullmq:redis] DISABLED — queue-dependent routes will return 503 until a real REDIS_URL is configured',
-  );
+  if (isDev) {
+    logger.info(
+      '[DEV MODE] Redis/BullMQ bypassed. Running in stateless AI mode (queue-dependent routes will skip writes).',
+    );
+  } else {
+    logger.warn(
+      { reason: rawUrl ? 'REDIS_URL points at localhost' : 'REDIS_URL not set' },
+      '[bullmq:redis] DISABLED — queue-dependent routes will return 503 until a real REDIS_URL is configured',
+    );
+  }
 } else {
   const url = rawUrl || 'redis://localhost:6379';
   _conn = new IORedis(url, {

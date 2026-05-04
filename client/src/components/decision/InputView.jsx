@@ -23,30 +23,47 @@ const TITLES = {
   content:  'Score Content',
 };
 
-export default function InputView({ mode, onSubmit, onCancel }) {
+export default function InputView({ mode, initialData, onSubmit, onCancel }) {
   return (
     <div className="max-w-2xl mx-auto p-6 lg:p-8 animate-fade-in">
       <header className="mb-6">
         <span className="section-label">Mode {mode === 'campaign' ? '3' : mode === 'strategy' ? '2' : '4'}</span>
         <h1 className="mt-1 font-display font-bold text-2xl text-lumi-text">{TITLES[mode]}</h1>
+        {initialData && (
+          <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/30 px-3 py-1.5 text-xs text-yellow-400">
+            <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} />
+            Pre-filled from radar alert
+          </div>
+        )}
       </header>
 
-      {mode === 'campaign' && <CampaignInput onSubmit={onSubmit} onCancel={onCancel} />}
-      {mode === 'strategy' && <StrategyInput onSubmit={onSubmit} onCancel={onCancel} />}
-      {mode === 'content'  && <ContentInput  onSubmit={onSubmit} onCancel={onCancel} />}
+      {mode === 'campaign' && <CampaignInput initialData={initialData} onSubmit={onSubmit} onCancel={onCancel} />}
+      {mode === 'strategy' && <StrategyInput initialData={initialData} onSubmit={onSubmit} onCancel={onCancel} />}
+      {mode === 'content'  && <ContentInput initialData={initialData} onSubmit={onSubmit} onCancel={onCancel} />}
     </div>
   );
 }
 
 // ── CAMPAIGN ────────────────────────────────────────────────
-function CampaignInput({ onSubmit, onCancel }) {
+function CampaignInput({ initialData, onSubmit, onCancel }) {
   const inputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [campaignId, setCampaignId] = useState('');
+  const [campaignId, setCampaignId] = useState(initialData?.action?.target_id || '');
   const { campaigns, refetch } = useCampaignFeed();
+
+  // If coming from radar alert, auto-submit
+  useEffect(() => {
+    if (initialData?.action?.target_id && !file) {
+      // Give user 2 seconds to review before auto-submitting
+      const timer = setTimeout(() => {
+        onSubmit({ campaignId: initialData.action.target_id, source: 'radar-alert' });
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [initialData, file, onSubmit]);
 
   const pick = (f) => {
     setError(null);
@@ -160,7 +177,7 @@ function CampaignInput({ onSubmit, onCancel }) {
 }
 
 // ── STRATEGY ────────────────────────────────────────────────
-function StrategyInput({ onSubmit, onCancel }) {
+function StrategyInput({ initialData, onSubmit, onCancel }) {
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({ objective: '', audience: '', budget: '', timeline: '' });
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
@@ -246,7 +263,7 @@ function StrategyInput({ onSubmit, onCancel }) {
 }
 
 // ── CONTENT ─────────────────────────────────────────────────
-function ContentInput({ onSubmit, onCancel }) {
+function ContentInput({ initialData, onSubmit, onCancel }) {
   const [platform, setPlatform] = useState('');
   const [text, setText] = useState('');
   const [error, setError] = useState(null);

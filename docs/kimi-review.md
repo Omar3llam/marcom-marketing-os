@@ -66,7 +66,7 @@ marketing-os-v3/
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
+    "dev": "node --env-file=.env --watch src/server.js",
     "setup": "node scripts/setup-airtable.js",
     "test": "node scripts/test-system.js"
   },
