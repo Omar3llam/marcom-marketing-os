@@ -24,6 +24,7 @@ import {
 import { runMode5 }        from '../modes/mode5-campaign.js';
 import { classifyCampaignStage } from '../services/campaignClassifier.js';
 import { generateAlerts }        from '../services/alertGenerator.js';
+import { parseSmartCSV }        from '../utils/csvParser.js';
 import { prisma }          from '../lib/prisma.js';
 import { logger }          from '../utils/logger.js';
 import { randomUUID }      from 'crypto';
@@ -236,10 +237,20 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
   let processed  = 0;
   let alertsCreated = 0;
 
-  for (const row of rows) {
-    try {
-      const normalized = normalizeRow(row, platform);
-      if (!normalized.campaignName) continue;
+  // ── Smart CSV parsing with fuzzy headers, garbage filtering, graceful defaults ──
+  const smartRows = parseSmartCSV(rows, platform);
+  if (smartRows.length === 0) {
+    logger.warn({ workspaceId, uploaded: rows.length }, '[campaigns/upload-csv] no valid rows after smart parse');
+    return res.json({
+      uploaded:       rows.length,
+      processed:      0,
+      alerts_created: 0,
+      errors:         [{ error: 'No valid campaign rows found — all rows were filtered as garbage or missing campaign names' }],
+    });
+  }
+
+  for (const normalized of smartRows) {
+    try {  // normalized is already cleaned by parseSmartCSV, ready for stage classification
 
       normalized.stage = classifyCampaignStage(normalized.metrics);
       const alerts     = generateAlerts(normalized);
@@ -288,9 +299,9 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
 
       processed++;
     } catch (err) {
-      logger.warn({ err: err.message, campaign: row['Campaign Name'] || row['Campaign'] || '?' },
-        '[campaigns/upload-csv] row failed');
-      errors.push({ row: row['Campaign Name'] ?? '?', error: err.message });
+      logger.warn({ err: err.message, campaign: normalized.campaignName || '?' },
+        '[campaigns/upload-csv] row processing failed');
+      errors.push({ row: normalized.campaignName ?? '?', error: err.message });
     }
   }
 
@@ -415,52 +426,6 @@ function detectPlatform(filename) {
   if (/google|gads|adwords/.test(f)) return 'GOOGLE';
   if (/meta|facebook|fb|instagram|ig/.test(f)) return 'META';
   return 'META';
-}
-
-function pickColumn(row, ...needles) {
-  const keys = Object.keys(row);
-  for (const needle of needles) {
-    const k = keys.find((k) => k.toLowerCase().includes(needle.toLowerCase()));
-    if (k != null) return row[k];
-  }
-  return undefined;
-}
-
-function num(v) {
-  if (v == null || v === '') return 0;
-  const s = String(v).replace(/[^0-9.\-]/g, '');
-  const n = parseFloat(s);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function normalizeRow(row, platform) {
-  const campaignName = pickColumn(row, 'Campaign Name', 'Campaign');
-  const campaignId   = pickColumn(row, 'Campaign ID', 'Campaign Id') || `csv:${randomUUID()}`;
-
-  return {
-    campaignId:   String(campaignId),
-    campaignName: campaignName ? String(campaignName) : null,
-    platform,
-    status:       pickColumn(row, 'Status', 'Delivery'),
-    metrics: {
-      impressions:   num(pickColumn(row, 'Impressions')),
-      reach:         num(pickColumn(row, 'Reach')),
-      frequency:     num(pickColumn(row, 'Frequency')),
-      clicks:        num(pickColumn(row, 'Clicks', 'Link Clicks')),
-      ctr:           num(pickColumn(row, 'CTR')),
-      cpc:           num(pickColumn(row, 'CPC', 'Cost per Click')),
-      cpm:           num(pickColumn(row, 'CPM')),
-      spend:         num(pickColumn(row, 'Amount Spent', 'Cost', 'Spend')),
-      results:       num(pickColumn(row, 'Results', 'Conversions')),
-      costPerResult: num(pickColumn(row, 'Cost per Result', 'Cost / Conv')),
-      roas:          num(pickColumn(row, 'ROAS', 'Purchase ROAS', 'Conversion Value / Cost')),
-      revenue:       num(pickColumn(row, 'Revenue', 'Conversion Value', 'Purchases Conversion Value')),
-    },
-    dateRange: {
-      start: pickColumn(row, 'Start Date', 'Reporting Starts'),
-      end:   pickColumn(row, 'End Date', 'Reporting Ends'),
-    },
-  };
 }
 
 function computeHealthScore(m = {}) {

@@ -1,10 +1,9 @@
 // ============================================================
 // MARCOM / Lumi — OnboardingPage
 // ------------------------------------------------------------
-// Four-step wizard collecting the brand context (Decision B3:
+// Three-step wizard collecting the brand context (Decision B3:
 // stored on User.context). On finish: PUT /api/campaigns/me/context
-// then redirect to /app. Step 4 also offers an immediate CSV
-// upload via <CsvUploader>.
+// then redirect to /app.
 //
 // State is local — back navigation between steps preserves all
 // fields. No external state library needed.
@@ -14,12 +13,11 @@ import { useNavigate }  from 'react-router-dom';
 import { useUser }      from '@clerk/clerk-react';
 import { toast }        from 'sonner';
 import {
-  Building2, Globe, Briefcase, Megaphone, Upload,
+  Building2, Globe, Briefcase, Megaphone,
   ArrowRight, ArrowLeft, Loader2, Sparkles, CheckCircle2,
 } from 'lucide-react';
 import { api }                       from '@/lib/api.js';
 import { cn }                        from '@/lib/utils.js';
-import CsvUploader                   from '@/components/upload/CsvUploader.jsx';
 import { primeContextCache }         from '@/router/ProtectedRoute.jsx';
 
 const INDUSTRIES = ['E-commerce', 'SaaS', 'Real Estate', 'Healthcare', 'F&B', 'Fashion', 'Education', 'Finance', 'Other'];
@@ -37,7 +35,6 @@ const STEPS = [
   { n: 1, label: 'Company',    icon: Building2 },
   { n: 2, label: 'Business',   icon: Briefcase },
   { n: 3, label: 'Voice',      icon: Megaphone },
-  { n: 4, label: 'First data', icon: Upload },
 ];
 
 export default function OnboardingPage() {
@@ -64,15 +61,13 @@ export default function OnboardingPage() {
     if (n === 1) return form.companyName && form.industry && form.market;
     if (n === 2) return form.businessType && form.targetAudience;
     if (n === 3) return form.tone && form.monthlyGoal;
-    return true;
   };
 
   const finish = async (afterCsv = false) => {
     if (busy) return;
 
     // Hard precondition: companyName is required by the route guard.
-    // If the user somehow finishes Step 4 without it, bounce back to
-    // Step 1 instead of looping after a successful PUT.
+    // All required fields must be completed before navigating to /app.
     if (!form.companyName || !form.industry || !form.market || !form.businessType || !form.tone || !form.monthlyGoal) {
       toast.error('Please complete all required fields before finishing.');
       setStep(1);
@@ -249,29 +244,8 @@ export default function OnboardingPage() {
             </Section>
           )}
 
-          {step === 4 && (
-            <Section title="Upload your first campaign data">
-              <p className="-mt-2 mb-4 text-sm text-gray-400">
-                Drop a CSV from Meta Ads Manager or Google Ads. We'll classify
-                it and seed your decision feed in seconds.
-              </p>
-              <CsvUploader
-                onSuccess={() => finish(true)}
-                compact
-              />
-              <button
-                type="button"
-                onClick={() => finish(false)}
-                disabled={busy}
-                className="mt-4 w-full rounded-xl border border-gray-700 px-4 py-2 text-sm text-gray-300 hover:bg-gray-800/60"
-              >
-                I'll upload later — take me into the app
-              </button>
-            </Section>
-          )}
-
           {/* ── Nav row ───────────────────────────────────────── */}
-          {step < 4 && (
+          {step < 3 && (
             <div className="mt-6 flex justify-between">
               <button
                 type="button"
@@ -288,7 +262,7 @@ export default function OnboardingPage() {
                     toast.error('Fill in the required fields to continue.');
                     return;
                   }
-                  setStep((n) => Math.min(4, n + 1));
+                  setStep((n) => Math.min(3, n + 1));
                 }}
                 className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500"
               >
@@ -296,9 +270,43 @@ export default function OnboardingPage() {
               </button>
             </div>
           )}
-          {step === 4 && busy && (
-            <div className="mt-4 flex items-center justify-center gap-2 text-sm text-gray-400">
-              <Loader2 className="h-4 w-4 animate-spin" /> Saving your context…
+          {step === 3 && (
+            <div className="mt-6 flex justify-between">
+              <button
+                type="button"
+                onClick={() => setStep((n) => Math.max(1, n - 1))}
+                disabled={false}
+                className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-gray-400 hover:bg-gray-800 disabled:opacity-30"
+              >
+                <ArrowLeft className="h-4 w-4" /> Back
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!validate(step)) {
+                    toast.error('Fill in the required fields to continue.');
+                    return;
+                  }
+                  finish(false);
+                }}
+                disabled={busy}
+                className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
+              >
+                {busy ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" /> Completing…
+                  </>
+                ) : (
+                  <>
+                    Complete & Enter App <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+          {step === 3 && busy && (
+            <div className="mt-2 text-center text-xs text-gray-400">
+              Saving your context…
             </div>
           )}
         </div>
