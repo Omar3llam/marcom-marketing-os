@@ -18,13 +18,27 @@
 import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { api } from '@/lib/api.js';
+import { auth } from '@/firebase.js';
 
 const PRIMARY  = '/api/lumi/feed';
 const FALLBACK = '/api/lumi/demo-feed';
 
 async function fetchFeed(signal) {
+  // Retrieve Firebase ID token for authentication
+  let token = null;
   try {
-    const res = await api.get(PRIMARY, { signal });
+    token = await auth.currentUser?.getIdToken();
+  } catch (err) {
+    console.warn('[useCampaignFeed] Failed to get Firebase token:', err);
+  }
+
+  const config = { signal };
+  if (token) {
+    config.headers = { Authorization: `Bearer ${token}` };
+  }
+
+  try {
+    const res = await api.get(PRIMARY, config);
     if (Array.isArray(res.data?.campaigns) && res.data.campaigns.length > 0) {
       return res.data;
     }
