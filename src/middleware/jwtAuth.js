@@ -13,7 +13,7 @@
 //      User.id via the `User.clerkId` column.
 //
 //   3. Firebase ID token — verified against Firebase Admin SDK.
-//      uid is mapped to the internal User via the firebaseUid column.
+//      uid is mapped to the internal User via the clerkId column (backward compatibility).
 //
 // On success the request is decorated with:
 //   req.userId       — internal UUID (User.id)
@@ -57,7 +57,7 @@ function getClerkSigningKey(header, callback) {
   });
 }
 
-// ── Per-request user cache (resolves clerkId/firebaseUid once per request) ──
+// ── Per-request user cache (resolves clerkId/uid once per request) ──
 async function resolveUserFromSub(sub, source) {
   if (source === 'lumi') {
     // sub IS the internal UUID
@@ -74,9 +74,9 @@ async function resolveUserFromSub(sub, source) {
     });
   }
   if (source === 'firebase') {
-    // Firebase path — sub is the Firebase uid
+    // Firebase path — sub is the Firebase uid (stored in clerkId column)
     return prisma.user.findUnique({
-      where: { firebaseUid: sub },
+      where: { clerkId: sub },
       select: { id: true, workspaceId: true, role: true },
     });
   }

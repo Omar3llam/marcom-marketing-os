@@ -38,10 +38,10 @@ export async function firebaseAuthMiddleware(req, res, next) {
     // For backward compatibility with existing code that uses req.userId
     req.userId = decodedToken.uid;
 
-    // Resolve workspaceId from database using Firebase uid
+    // Resolve workspaceId from database using Firebase uid (stored in clerkId column)
     try {
       const user = await prisma.user.findUnique({
-        where: { firebaseUid: decodedToken.uid },
+        where: { clerkId: decodedToken.uid },
         select: { id: true, workspaceId: true, role: true },
       });
 
