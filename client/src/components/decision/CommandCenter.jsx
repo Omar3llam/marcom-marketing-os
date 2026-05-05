@@ -8,7 +8,7 @@
 // The system is proactive (radar) AND reactive (manual upload).
 // ============================================================
 import { useState } from 'react';
-import { useUser } from '@clerk/clerk-react';
+import { useAuth } from '@/context/AuthContext';
 import {
   BarChart3, Target, ScanSearch, Clock, Brain, ArrowRight, Trash2,
   AlertTriangle, TrendingDown, Lock,
@@ -97,8 +97,8 @@ export default function CommandCenter({
   onReplay,
   onClearHistory,
 }) {
-  const { user } = useUser();
-  const name = user?.firstName || user?.primaryEmailAddress?.emailAddress?.split('@')[0] || 'there';
+  const { currentUser } = useAuth();
+  const name = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'there';
   const [confirmingClear, setConfirmingClear] = useState(false);
 
   return (

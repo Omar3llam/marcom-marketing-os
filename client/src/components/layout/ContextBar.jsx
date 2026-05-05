@@ -5,13 +5,13 @@
 // session id (right). Always visible across the /app/* shell.
 // ============================================================
 import { Circle, Zap } from 'lucide-react';
-import { useUser } from '@clerk/clerk-react';
+import { useAuth } from '@/context/AuthContext';
 
 export default function ContextBar() {
-  const { user } = useUser();
-  // Truncated Clerk session/user id is fine as a pseudo-session marker
+  const { currentUser } = useAuth();
+  // Truncated Firebase uid is fine as a pseudo-session marker
   // until we wire the real ChatSession id from the backend.
-  const sid = (user?.id || '').replace(/^user_/, '').slice(0, 6).toUpperCase() || 'NSD87T';
+  const sid = (currentUser?.uid || '').slice(0, 6).toUpperCase() || 'NSD87T';
 
   return (
     <div className="flex items-center justify-between h-11 px-4 border-t border-lumi-border bg-lumi-surface/80 backdrop-blur-sm flex-shrink-0">
