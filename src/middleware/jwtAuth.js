@@ -2,7 +2,7 @@
 // MARCOM / Lumi — JWT Auth Middleware (Phase 2)
 // ------------------------------------------------------------
 // Replaces Clerk's session cookie middleware with a stateless
-// Bearer-token check. Two verification paths run in order:
+// Bearer-token check. Three verification paths run in order:
 //
 //   1. Lumi-issued HS256 token — verified against JWT_SECRET.
 //      `sub` is interpreted directly as the internal User.id (UUID).
@@ -10,18 +10,22 @@
 //   2. Legacy Clerk RS256 token — verified against Clerk's JWKS
 //      endpoint (CLERK_JWKS_URL). `sub` is a Clerk subject
 //      (e.g. "user_2abc..."). It is mapped to the internal
-//      User.id via the `User.clerkId` column added in Phase 1.
+//      User.id via the `User.clerkId` column.
+//
+//   3. Firebase ID token — verified against Firebase Admin SDK.
+//      uid is mapped to the internal User via the firebaseUid column.
 //
 // On success the request is decorated with:
 //   req.userId       — internal UUID (User.id)
 //   req.workspaceId  — User.workspaceId
 //   req.userRole     — UserRole enum
-//   req.authSource   — 'lumi' | 'clerk'
+//   req.authSource   — 'lumi' | 'clerk' | 'firebase'
 //
 // Failures return 401 { error: 'Unauthenticated', reason }.
 // ============================================================
 import jwt        from 'jsonwebtoken';
 import jwksClient from 'jwks-rsa';
+import admin      from '../utils/firebaseAdmin.js';
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
 
@@ -53,7 +57,7 @@ function getClerkSigningKey(header, callback) {
   });
 }
 
-// ── Per-request user cache (resolves clerkId once per request) ──
+// ── Per-request user cache (resolves clerkId/firebaseUid once per request) ──
 async function resolveUserFromSub(sub, source) {
   if (source === 'lumi') {
     // sub IS the internal UUID
@@ -62,11 +66,21 @@ async function resolveUserFromSub(sub, source) {
       select: { id: true, workspaceId: true, role: true },
     });
   }
-  // Clerk path — sub looks like "user_2abc..."
-  return prisma.user.findUnique({
-    where: { clerkId: sub },
-    select: { id: true, workspaceId: true, role: true },
-  });
+  if (source === 'clerk') {
+    // Clerk path — sub looks like "user_2abc..."
+    return prisma.user.findUnique({
+      where: { clerkId: sub },
+      select: { id: true, workspaceId: true, role: true },
+    });
+  }
+  if (source === 'firebase') {
+    // Firebase path — sub is the Firebase uid
+    return prisma.user.findUnique({
+      where: { firebaseUid: sub },
+      select: { id: true, workspaceId: true, role: true },
+    });
+  }
+  return null;
 }
 
 // ── Verifiers ────────────────────────────────────────────────
@@ -94,6 +108,15 @@ function verifyClerk(token) {
   });
 }
 
+async function verifyFirebase(token) {
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    return { sub: decodedToken.uid, uid: decodedToken.uid, email: decodedToken.email };
+  } catch (err) {
+    throw err;
+  }
+}
+
 // ── Public middleware ────────────────────────────────────────
 export async function requireJwt(req, res, next) {
   const hdr = req.headers.authorization || '';
@@ -109,15 +132,28 @@ export async function requireJwt(req, res, next) {
     source  = 'lumi';
   } catch (lumiErr) {
     if (!CLERK_JWKS) {
-      logger.debug({ err: lumiErr.message }, '[jwtAuth] lumi verify failed; no clerk fallback configured');
-      return res.status(401).json({ error: 'Unauthenticated', reason: 'invalid_token' });
-    }
-    try {
-      payload = await verifyClerk(token);
-      source  = 'clerk';
-    } catch (clerkErr) {
-      logger.debug({ lumi: lumiErr.message, clerk: clerkErr.message }, '[jwtAuth] both verifiers failed');
-      return res.status(401).json({ error: 'Unauthenticated', reason: 'invalid_token' });
+      logger.debug({ err: lumiErr.message }, '[jwtAuth] lumi verify failed; trying firebase');
+      try {
+        payload = await verifyFirebase(token);
+        source = 'firebase';
+      } catch (firebaseErr) {
+        logger.debug({ lumi: lumiErr.message, firebase: firebaseErr.message }, '[jwtAuth] lumi and firebase verifiers failed');
+        return res.status(401).json({ error: 'Unauthenticated', reason: 'invalid_token' });
+      }
+    } else {
+      try {
+        payload = await verifyClerk(token);
+        source  = 'clerk';
+      } catch (clerkErr) {
+        logger.debug({ lumi: lumiErr.message, clerk: clerkErr.message }, '[jwtAuth] lumi and clerk verifiers failed; trying firebase');
+        try {
+          payload = await verifyFirebase(token);
+          source = 'firebase';
+        } catch (firebaseErr) {
+          logger.debug({ lumi: lumiErr.message, clerk: clerkErr.message, firebase: firebaseErr.message }, '[jwtAuth] all verifiers failed');
+          return res.status(401).json({ error: 'Unauthenticated', reason: 'invalid_token' });
+        }
+      }
     }
   }
 
@@ -138,7 +174,7 @@ export async function requireJwt(req, res, next) {
   if (!user) {
     return res.status(401).json({
       error:  'Unauthenticated',
-      reason: source === 'clerk' ? 'clerk_user_not_provisioned' : 'unknown_user',
+      reason: source === 'clerk' ? 'clerk_user_not_provisioned' : source === 'firebase' ? 'firebase_user_not_provisioned' : 'unknown_user',
     });
   }
 
