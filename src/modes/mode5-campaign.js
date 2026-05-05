@@ -6,12 +6,18 @@
 // ============================================================
 import { callClaude, stripJsonFences } from '../utils/claude.js';
 import { extractDialectContext, MODE_PLATFORM_HINTS } from '../utils/dialectContext.js';
+import { buildSystemPrompt } from '../utils/promptBuilder.js';
 
-export async function runMode5(session, userMessage, conversationHistory) {
+export async function runMode5(session, userMessage, conversationHistory, userContext) {
   const dialectContext = extractDialectContext(session, MODE_PLATFORM_HINTS.mode5);
 
+  // Use centralized system prompt builder with multi-tenant context enforcement
+  const systemPrompt = userContext 
+    ? buildSystemPrompt(userContext)
+    : buildCampaignPrompt(session.context_summary);
+
   const raw = await callClaude({
-    systemPrompt: buildCampaignPrompt(session.context_summary),
+    systemPrompt,
     conversationHistory,
     userMessage,
     maxTokens: 4000,

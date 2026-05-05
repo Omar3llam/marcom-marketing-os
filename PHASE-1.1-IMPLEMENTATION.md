@@ -435,9 +435,16 @@ client/src/
 - Guardrails prevent accidental execution
 
 ### 2. MENA Native by Design
-- Context lock: Code81, MENA market
-- Local pricing intelligence
-- Cultural adaptation layer (future)
+🔒 **Context Lock (Multi-Tenant Dynamic)**
+The Context Lock is no longer statically bound to Code81. Instead, Lumi dynamically injects a tenant-specific business context based on the authenticated user's workspace profile.
+
+Each AI execution is strictly scoped using:
+- Company Name
+- Industry
+- Market (e.g., Egypt, KSA, UAE)
+- Platform context (Meta, Google, etc.)
+
+This ensures complete isolation between tenants, high-relevance decision outputs, and elimination of generic AI responses. All backend AI calls must consume a centralized `buildSystemPrompt(context)` function.
 
 ### 3. Close the Loop (Learn & Improve)
 - Decision history persisted

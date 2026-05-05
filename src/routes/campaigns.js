@@ -27,6 +27,8 @@ import { generateAlerts }        from '../services/alertGenerator.js';
 import { parseSmartCSV }        from '../utils/csvParser.js';
 import { prisma }          from '../lib/prisma.js';
 import { logger }          from '../utils/logger.js';
+import { contextGuard }    from '../middleware/contextGuard.js';
+import { buildSystemPrompt } from '../utils/promptBuilder.js';
 import { randomUUID }      from 'crypto';
 
 export const campaignsRouter = Router();
@@ -46,7 +48,7 @@ const MAX_CSV_CHARS  = 40_000;   // Hard cap so mode5 prompt stays sane
 const MAX_HISTORY    = 40;
 
 // ── SHARED: run analysis and return serialisable result ──────
-async function runCampaignAnalysis(session, dataText) {
+async function runCampaignAnalysis(session, dataText, userContext) {
   const AUTO_PROMPT =
     `New campaign metrics loaded. Perform an executive analysis on Spend, CPA, CTR, and Conversions. `
     + `Provide 2 actionable strategic decisions to optimize the campaign.\n\n`
@@ -59,7 +61,7 @@ async function runCampaignAnalysis(session, dataText) {
     timestamp: new Date().toISOString(),
   });
 
-  const result = await runMode5(session, AUTO_PROMPT, conversationHistory);
+  const result = await runMode5(session, AUTO_PROMPT, conversationHistory, userContext);
 
   conversationHistory.push({
     role: 'assistant',
@@ -96,8 +98,10 @@ async function runCampaignAnalysis(session, dataText) {
 // ── POST /api/campaigns/data-inject ─────────────────────────
 // Body: { sessionId?, projectId, csvData }
 // csvData is the raw text of the uploaded CSV file.
-campaignsRouter.post('/data-inject', async (req, res) => {
+// PROTECTED: contextGuard ensures user has complete workspace context
+campaignsRouter.post('/data-inject', contextGuard, async (req, res) => {
   const userId    = req.userId;
+  const userContext = req.context;
   const { sessionId, projectId, csvData } = req.body;
 
   if (!csvData || typeof csvData !== 'string' || !csvData.trim()) {
@@ -129,7 +133,7 @@ campaignsRouter.post('/data-inject', async (req, res) => {
     const truncated = csvData.trim().slice(0, MAX_CSV_CHARS);
     const dataText  = `[CSV CAMPAIGN DATA]\n${truncated}`;
 
-    const payload = await runCampaignAnalysis(session, dataText);
+    const payload = await runCampaignAnalysis(session, dataText, userContext);
     logger.info({ userId, projectId, sessionId: session.session_id }, '[campaigns] CSV inject complete');
     return res.json(payload);
   } catch (err) {
