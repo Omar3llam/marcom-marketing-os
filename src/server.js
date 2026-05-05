@@ -39,6 +39,7 @@ import { campaignsRouter }    from './routes/campaigns.js';
 import { toolsRouter }        from './routes/tools.js';
 import { lumiRouter, quickActionHandler, demoFeedHandler } from './routes/lumi.js';
 import paidRouter             from './routes/paid.js';
+import executionRouter        from './routes/execution.js';
 import { requireJwt }         from './middleware/jwtAuth.js';
 import { logger }             from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
@@ -195,6 +196,13 @@ app.use('/api/campaigns',
   requireAuth,
   apiLimiter,
   campaignsRouter
+);
+
+// Meta Execution — production-grade action execution with audit logging
+app.use('/api/execute',
+  requireAuth,
+  apiLimiter,
+  executionRouter
 );
 
 // Standalone AI-powered tools (content calendar, etc.)

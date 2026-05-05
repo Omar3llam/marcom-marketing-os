@@ -39,13 +39,6 @@ const VERDICT_TEXT = {
   OPTIMIZE: 'text-stage-testing bg-stage-testing/10',
 };
 
-const VERDICT_ACTIONS = {
-  KILL:     'Execute KILL Action',
-  SCALE:    'Execute SCALE Action',
-  HOLD:     'Execute HOLD Action',
-  OPTIMIZE: 'Execute OPTIMIZE Action',
-};
-
 export default function DecisionFrame({
   data,
   view,
@@ -146,12 +139,12 @@ export default function DecisionFrame({
               'flex-1 inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3',
               'font-display font-semibold transition-all',
               isLocked
-                ? 'bg-lumi-border text-lumi-subtle cursor-not-allowed opacity-50'
-                : 'bg-lumi-accent text-lumi-bg hover:bg-lumi-accent-hover shadow-accent-glow',
+                ? 'bg-surface-border text-dark-soft cursor-not-allowed opacity-50'
+                : 'bg-lumi-gold hover:bg-lumi-deep text-dark-base shadow-gold-glow',
             )}
           >
             <Lock className="w-4 h-4" strokeWidth={2} />
-            {VERDICT_ACTIONS[data.verdict]}
+            🔒 Execute {data.verdict} on Meta
           </button>
         )}
 
@@ -203,45 +196,83 @@ export default function DecisionFrame({
 
 // ── CONFIRMATION MODAL ───────────────────────────────────────
 function ExecutionConfirmModal({ verdict, action, onConfirm, onCancel }) {
+  // Extract financial impact from action data
+  const dailySpendImpact = action?.dailySpendImpact || '$0/day';
+  const estimatedMonthlyImpact = action?.estimatedMonthlyImpact || '$0';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="bg-lumi-surface border border-lumi-border rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6 animate-scale-in">
+      <div className="bg-surface-card border border-surface-border rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6 animate-scale-in">
         <div className="flex items-start gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center shrink-0">
-            <AlertTriangle className="w-5 h-5 text-yellow-400" strokeWidth={1.5} />
+          <div className="w-10 h-10 rounded-xl bg-signal-hold/10 border border-signal-hold/30 flex items-center justify-center shrink-0">
+            <AlertTriangle className="w-5 h-5 text-signal-hold" strokeWidth={1.5} />
           </div>
           <div>
-            <h3 className="font-display font-bold text-lg text-lumi-text">
-              Confirm Execution
+            <h3 className="font-display font-bold text-lg text-dark-base">
+              Confirm {verdict} Execution
             </h3>
-            <p className="mt-1 text-sm text-lumi-muted">
-              Are you sure you want to execute this <span className="font-mono text-lumi-text">{verdict}</span> action via Meta API?
+            <p className="mt-1 text-sm text-dark-soft">
+              This action will be applied via Meta API immediately.
             </p>
           </div>
         </div>
 
-        <div className="mb-6 rounded-xl bg-lumi-bg border border-lumi-border p-4">
-          <div className="text-xs font-mono text-lumi-subtle mb-1">Action Details:</div>
-          <div className="text-sm text-lumi-text">
-            <span className="font-semibold">Type:</span> {action?.type || 'pause_campaign'}
-          </div>
-          <div className="text-sm text-lumi-text">
-            <span className="font-semibold">Target:</span> <code className="font-mono text-xs bg-lumi-elevated px-1 py-0.5 rounded">{action?.target_id || 'N/A'}</code>
+        {/* Financial Impact Warning */}
+        <div className="mb-6 rounded-xl bg-signal-kill/5 border border-signal-kill/20 p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="w-5 h-5 text-signal-kill shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-display font-semibold text-signal-kill text-sm mb-2">
+                ⚠️ Financial Impact
+              </p>
+              <div className="space-y-1 text-xs text-dark-base font-mono">
+                <div className="flex justify-between">
+                  <span className="text-dark-soft">Daily spend:</span>
+                  <span className="font-semibold">{dailySpendImpact}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-dark-soft">Est. monthly:</span>
+                  <span className="font-semibold">{estimatedMonthlyImpact}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
+        {/* Action Details */}
+        <div className="mb-6 rounded-xl bg-surface-light border border-surface-border p-4">
+          <div className="text-xs font-mono text-dark-soft mb-2 section-label">Action Details</div>
+          <div className="space-y-2 text-sm">
+            <div>
+              <span className="text-dark-soft">Verdict:</span>
+              <span className="ml-2 font-mono text-dark-base font-semibold">{verdict}</span>
+            </div>
+            <div>
+              <span className="text-dark-soft">Type:</span>
+              <span className="ml-2 font-mono text-dark-base font-semibold">{action?.type || 'pause_campaign'}</span>
+            </div>
+            <div>
+              <span className="text-dark-soft">Target:</span>
+              <code className="ml-2 font-mono text-xs bg-dark-soft/10 px-1.5 py-0.5 rounded text-dark-base">
+                {action?.target_id || 'N/A'}
+              </code>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
         <div className="flex gap-2">
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-3 font-display font-semibold text-sm text-lumi-muted border border-lumi-border hover:text-lumi-text hover:border-lumi-border-strong transition-colors"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-3 font-display font-semibold text-sm text-dark-soft border border-surface-border hover:text-dark-base hover:border-surface-border transition-colors"
           >
             <X className="w-4 h-4" strokeWidth={1.5} /> Cancel
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-3 font-display font-semibold text-sm bg-lumi-accent text-lumi-bg hover:bg-lumi-accent-hover shadow-accent-glow transition-all"
+            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl px-4 py-3 font-display font-semibold text-sm bg-lumi-gold text-dark-base hover:bg-lumi-deep shadow-gold-glow transition-all"
           >
             <CheckCircle2 className="w-4 h-4" strokeWidth={2} /> Confirm Execute
           </button>
@@ -272,16 +303,16 @@ function ExecutionProgressModal({ verdict, onComplete }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-lumi-surface border border-lumi-border rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6">
+      <div className="bg-surface-card border border-surface-border rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-lumi-accent/10 border border-lumi-accent/30 flex items-center justify-center shrink-0">
-            <Loader2 className="w-5 h-5 text-lumi-accent animate-spin" strokeWidth={1.5} />
+          <div className="w-10 h-10 rounded-xl bg-lumi-gold/10 border border-lumi-gold/30 flex items-center justify-center shrink-0">
+            <Loader2 className="w-5 h-5 text-lumi-gold animate-spin" strokeWidth={1.5} />
           </div>
           <div>
-            <h3 className="font-display font-bold text-lg text-lumi-text">
+            <h3 className="font-display font-bold text-lg text-dark-base">
               Executing {verdict} Action
             </h3>
-            <p className="mt-1 text-sm text-lumi-muted">
+            <p className="mt-1 text-sm text-dark-soft">
               Communicating with Meta API...
             </p>
           </div>
@@ -290,17 +321,17 @@ function ExecutionProgressModal({ verdict, onComplete }) {
         <div className="mb-4">
           <div className="flex items-baseline justify-between text-xs mb-1">
             <span className="section-label">Progress</span>
-            <span className="font-mono text-lumi-text tabular-nums">{Math.round(progress)}%</span>
+            <span className="font-mono text-dark-base tabular-nums">{Math.round(progress)}%</span>
           </div>
-          <div className="h-2 rounded-full bg-lumi-border overflow-hidden">
+          <div className="h-2 rounded-full bg-surface-border overflow-hidden">
             <div
-              className="h-full bg-lumi-accent transition-all duration-100"
+              className="h-full bg-lumi-gold transition-all duration-100"
               style={{ width: `${progress}%` }}
             />
           </div>
         </div>
 
-        <div className="text-center text-xs text-lumi-subtle">
+        <div className="text-center text-xs text-dark-soft">
           <Lock className="w-3 h-3 inline-block mr-1" strokeWidth={1.5} />
           UI locked during execution
         </div>

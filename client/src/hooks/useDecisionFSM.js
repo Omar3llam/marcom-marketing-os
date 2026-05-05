@@ -291,11 +291,17 @@ export function useDecisionFSM() {
   }, []);
 
   const reportError = useCallback((message, code, classification = 'network', retryable = true, fallbackAction = null) => {
+    // Strict error classification: only allow auth, network, platform, validation
+    const VALID_CLASSIFICATIONS = ['auth', 'network', 'platform', 'validation'];
+    const sanitizedClassification = VALID_CLASSIFICATIONS.includes(classification)
+      ? classification
+      : 'network';
+
     dispatch({
       type: 'PROCESS_ERROR',
       message,
       code,
-      classification,
+      classification: sanitizedClassification,
       retryable,
       fallbackAction,
     });

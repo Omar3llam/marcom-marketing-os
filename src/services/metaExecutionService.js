@@ -1,0 +1,211 @@
+// ============================================================
+// MARCOM / Lumi — Meta Execution Service
+// ============================================================
+// Orchestrates all interactions with Meta Ads API.
+// CRITICAL: Retrieves tenant-specific tokens from database.
+// No global .env tokens — every call is scoped to workspace.
+//
+// API Layer: Meta Graph API v19.0+
+// Auth: Bearer token from Integration model
+// Execution: Pause, Resume, Scale, Optimize campaigns/adsets
+// ============================================================
+import axios from 'axios';
+import { prisma } from '@/lib/prisma.js';
+import { logger } from '@/utils/logger.js';
+
+const META_API_VERSION = 'v19.0';
+const META_API_BASE = `https://graph.instagram.com/${META_API_VERSION}`;
+
+// ── Action Type → Meta API Mapping ────────────────────────
+
+const ACTION_ENDPOINTS = {
+  PAUSE_CAMPAIGN: (id) => `/${id}?fields=status&status=PAUSED`,
+  RESUME_CAMPAIGN: (id) => `/${id}?fields=status&status=ACTIVE`,
+  PAUSE_ADSET: (id) => `/${id}?fields=status&status=PAUSED`,
+  RESUME_ADSET: (id) => `/${id}?fields=status&status=ACTIVE`,
+  INCREASE_BUDGET: (id, amount) => `/${id}?fields=daily_budget&daily_budget=${amount}`,
+  DECREASE_BUDGET: (id, amount) => `/${id}?fields=daily_budget&daily_budget=${amount}`,
+  SCALE_CAMPAIGN: (id, scale) => `/${id}?fields=daily_budget&daily_budget=${scale}`,
+  OPTIMIZE_CAMPAIGN: (id, data) => `/${id}?${new URLSearchParams(data).toString()}`,
+};
+
+// ── Main Execution Function ──────────────────────────────
+
+/**
+ * Execute a Meta Ads action with full tenant context.
+ *
+ * @param {string} workspaceId - Tenant workspace ID (from req.user.workspaceId)
+ * @param {string} userId - User ID for audit log
+ * @param {string} actionType - e.g., 'PAUSE_CAMPAIGN', 'INCREASE_BUDGET'
+ * @param {string} targetId - Campaign/AdSet ID from Meta
+ * @param {object} options - Action-specific options (amount, scale, etc.)
+ * @returns {Promise<{success: boolean, data?: object, error?: string}>}
+ * @throws {Error} If token not found, API fails, etc.
+ */
+export async function executeMetaAction(
+  workspaceId,
+  userId,
+  actionType,
+  targetId,
+  options = {}
+) {
+  try {
+    // ─────────────────────────────────────────────────────
+    // Layer 1: Fetch tenant-specific Meta token
+    // ─────────────────────────────────────────────────────
+    const integration = await prisma.integration.findUnique({
+      where: {
+        workspaceId_platform: {
+          workspaceId,
+          platform: 'META',
+        },
+      },
+    });
+
+    if (!integration) {
+      throw new Error(`Meta integration not found for workspace ${workspaceId}`);
+    }
+
+    if (!integration.isActive) {
+      throw new Error('Meta integration is disabled');
+    }
+
+    const token = integration.accessToken; // Encrypted at rest, decrypted by DB
+    if (!token) {
+      throw new Error('Meta access token not available');
+    }
+
+    // ─────────────────────────────────────────────────────
+    // Layer 2: Build request URL + payload
+    // ─────────────────────────────────────────────────────
+    const endpoint = buildEndpoint(actionType, targetId, options);
+    const url = `${META_API_BASE}${endpoint}&access_token=${token}`;
+
+    logger.info(`[MetaExecutionService] Executing ${actionType} on ${targetId}`, {
+      workspaceId,
+      userId,
+      actionType,
+      targetId,
+    });
+
+    // ─────────────────────────────────────────────────────
+    // Layer 3: Execute HTTP request with timeout
+    // ─────────────────────────────────────────────────────
+    const response = await axios.post(url, {}, {
+      timeout: 10000, // 10s timeout
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    });
+
+    logger.info(`[MetaExecutionService] Action succeeded`, {
+      workspaceId,
+      actionType,
+      targetId,
+      responseStatus: response.status,
+    });
+
+    return {
+      success: true,
+      data: response.data,
+      platformStatus: response.status,
+    };
+  } catch (err) {
+    const errorMessage = err.response?.data?.error?.message || err.message;
+
+    logger.error(`[MetaExecutionService] Action failed`, {
+      workspaceId,
+      userId,
+      actionType,
+      targetId,
+      error: errorMessage,
+      statusCode: err.response?.status,
+    });
+
+    return {
+      success: false,
+      error: errorMessage,
+      platformStatus: err.response?.status || 0,
+      code: err.response?.data?.error?.code || 'UNKNOWN_ERROR',
+    };
+  }
+}
+
+// ── Endpoint Builder ─────────────────────────────────────
+
+function buildEndpoint(actionType, targetId, options) {
+  switch (actionType) {
+    case 'PAUSE_CAMPAIGN':
+    case 'RESUME_CAMPAIGN':
+    case 'PAUSE_ADSET':
+    case 'RESUME_ADSET': {
+      const newStatus = actionType.includes('PAUSE') ? 'PAUSED' : 'ACTIVE';
+      return `/${targetId}?status=${newStatus}`;
+    }
+
+    case 'INCREASE_BUDGET':
+    case 'DECREASE_BUDGET':
+    case 'SCALE_CAMPAIGN': {
+      const dailyBudget = options.dailyBudget || options.amount;
+      if (!dailyBudget) throw new Error('dailyBudget required for budget actions');
+      return `/${targetId}?daily_budget=${Math.round(dailyBudget)}`;
+    }
+
+    case 'OPTIMIZE_CAMPAIGN': {
+      const params = new URLSearchParams(options || {});
+      return `/${targetId}?${params.toString()}`;
+    }
+
+    default:
+      throw new Error(`Unknown action type: ${actionType}`);
+  }
+}
+
+// ── Validation Helpers ───────────────────────────────────
+
+/**
+ * Validate that the action type matches the target type.
+ * E.g., PAUSE_CAMPAIGN can only target campaigns, not adsets.
+ */
+export function validateActionTarget(actionType, targetType) {
+  const VALID_TARGETS = {
+    PAUSE_CAMPAIGN: ['campaign'],
+    RESUME_CAMPAIGN: ['campaign'],
+    SCALE_CAMPAIGN: ['campaign'],
+    OPTIMIZE_CAMPAIGN: ['campaign'],
+    INCREASE_BUDGET: ['campaign', 'adset'],
+    DECREASE_BUDGET: ['campaign', 'adset'],
+    PAUSE_ADSET: ['adset'],
+    RESUME_ADSET: ['adset'],
+  };
+
+  const valid = VALID_TARGETS[actionType] || [];
+  return valid.includes(targetType.toLowerCase());
+}
+
+/**
+ * Check if Meta token for workspace is still valid.
+ */
+export async function checkIntegrationHealth(workspaceId) {
+  try {
+    const integration = await prisma.integration.findUnique({
+      where: {
+        workspaceId_platform: {
+          workspaceId,
+          platform: 'META',
+        },
+      },
+    });
+
+    if (!integration) return { healthy: false, reason: 'No integration found' };
+    if (!integration.isActive) return { healthy: false, reason: 'Integration disabled' };
+    if (integration.expiresAt && new Date() > integration.expiresAt) {
+      return { healthy: false, reason: 'Token expired' };
+    }
+
+    return { healthy: true, lastSynced: integration.lastSyncedAt };
+  } catch (err) {
+    logger.error('[MetaExecutionService] Health check failed', { workspaceId, error: err.message });
+    return { healthy: false, reason: err.message };
+  }
+}

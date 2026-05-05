@@ -40,6 +40,23 @@ enum ActionStatus {
   ROLLED_BACK
 }
 
+enum ExecutionStatus {
+  SUCCESS
+  FAILED
+  PENDING
+}
+
+enum ActionType {
+  PAUSE_CAMPAIGN
+  RESUME_CAMPAIGN
+  INCREASE_BUDGET
+  DECREASE_BUDGET
+  PAUSE_ADSET
+  RESUME_ADSET
+  SCALE_CAMPAIGN
+  OPTIMIZE_CAMPAIGN
+}
+
 enum CampaignStage {
   TESTING
   SCALING
@@ -71,6 +88,8 @@ model Workspace {
   actions        Action[]
   campaignStates CampaignState[]
   decisionMemory DecisionMemory[]
+  integrations   Integration[]
+  auditLogs      AuditLog[]
 
   @@map("workspaces")
 }
@@ -116,6 +135,28 @@ model OAuthToken {
   @@map("oauth_tokens")
 }
 
+// ── Platform Integrations (encrypted tokens) ──────────────────
+
+model Integration {
+  id              String    @id @default(uuid()) @db.Uuid
+  workspaceId     String    @db.Uuid
+  platform        String    // e.g., "META", "GOOGLE"
+  accessToken     String    // Encrypted at rest
+  refreshToken    String?   // Encrypted at rest
+  expiresAt       DateTime?
+  lastSyncedAt    DateTime?
+  isActive        Boolean   @default(true)
+  metadata        Json?     // Platform-specific config (e.g., ad account IDs)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, platform])
+  @@index([workspaceId])
+  @@map("integrations")
+}
+
 // ── Action Engine ────────────────────────────────────────────
 
 model Action {
@@ -137,16 +178,26 @@ model Action {
 }
 
 model AuditLog {
-  id            String   @id @default(uuid()) @db.Uuid
-  actionId      String   @db.Uuid
-  previousState Json
-  newState      Json
-  performedBy   String
-  performedAt   DateTime @default(now())
+  id            String          @id @default(uuid()) @db.Uuid
+  workspaceId   String          @db.Uuid
+  userId        String          @db.Uuid
+  actionId      String?         @db.Uuid
+  actionType    ActionType
+  targetId      String          // Campaign ID, AdSet ID, etc.
+  platform      String          // e.g., "META", "GOOGLE"
+  status        ExecutionStatus @default(PENDING)
+  payload       Json?           // Original request payload
+  response      Json?           // Platform response
+  errorMessage  String?         // If status = FAILED
+  performedAt   DateTime        @default(now())
 
-  action Action @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  action    Action?   @relation(fields: [actionId], references: [id], onDelete: SetNull)
 
-  @@index([actionId])
+  @@index([workspaceId, performedAt(sort: Desc)])
+  @@index([targetId])
+  @@index([actionType])
+  @@index([status])
   @@map("audit_logs")
 }
 

@@ -17,7 +17,9 @@
 // - Toast notifications for execution success
 // ============================================================
 import { useEffect } from 'react';
+import axios from 'axios';
 import { toast } from 'sonner';
+import { useAuth } from '@/context/AuthContext.jsx';
 import {
   useDecisionFSM,
   loadHistoryFromStorage,
@@ -32,6 +34,7 @@ import ErrorView          from '@/components/decision/ErrorView.jsx';
 import DecisionBreadcrumb from '@/components/decision/DecisionBreadcrumb.jsx';
 
 export default function DecisionFeed() {
+  const { auth } = useAuth();
   const {
     state,
     dispatch,
@@ -78,16 +81,120 @@ export default function DecisionFeed() {
   }, [state.view]);
 
   // ══════════════════════════════════════════════════════════════
-  // API_EXECUTION: Mock Meta API execution (1.5s delay)
+  // API_EXECUTION: Execute action via Meta API (real execution)
   // ══════════════════════════════════════════════════════════════
   useEffect(() => {
-    if (state.view === 'API_EXECUTION') {
-      const timer = setTimeout(() => {
-        executionComplete();
-      }, 1500);
-      return () => clearTimeout(timer);
+    if (state.view === 'API_EXECUTION' && state.outputData) {
+      executeMetaAction();
     }
-  }, [state.view, executionComplete]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.view]);
+
+  /**
+   * Execute Meta Ads action with real API call.
+   * Maps verdict to actionType, validates data, and handles errors.
+   */
+  async function executeMetaAction() {
+    try {
+      // Get Firebase token
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) {
+        reportError(
+          'Authentication required',
+          'NO_TOKEN',
+          'auth',
+          true,
+          'Please sign in again'
+        );
+        return;
+      }
+
+      // Map verdict to actionType
+      const verdict = state.outputData?.verdict;
+      const actionTypeMap = {
+        KILL: 'PAUSE_CAMPAIGN',
+        PAUSE: 'PAUSE_CAMPAIGN',
+        HOLD: 'PAUSE_CAMPAIGN',
+        SCALE: 'SCALE_CAMPAIGN',
+        OPTIMIZE: 'OPTIMIZE_CAMPAIGN',
+      };
+      const actionType = actionTypeMap[verdict] || 'PAUSE_CAMPAIGN';
+
+      // Extract target information from action
+      const targetId = state.outputData?.action?.target_id || state.outputData?.targetId;
+      const targetType = state.outputData?.action?.target_type || state.outputData?.targetType || 'campaign';
+
+      if (!targetId) {
+        reportError(
+          'Invalid target ID',
+          'INVALID_TARGET',
+          'validation',
+          false,
+          'Target campaign/adset not found'
+        );
+        return;
+      }
+
+      // Build request payload
+      const payload = {
+        actionType,
+        targetId,
+        targetType,
+        options: state.outputData?.options || {},
+      };
+
+      // Make API call
+      const response = await axios.post('/api/execute/meta', payload, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        timeout: 15000,
+      });
+
+      if (response.data.success) {
+        toast.success('Action executed successfully', {
+          description: `${verdict} action applied to ${targetId}`,
+          duration: 2000,
+        });
+        executionComplete();
+      } else {
+        reportError(
+          response.data.error || 'Execution failed',
+          response.data.code || 'EXECUTION_ERROR',
+          'platform',
+          true,
+          'Check Meta Ads account and retry'
+        );
+      }
+    } catch (err) {
+      // Classify error based on type
+      let classification = 'network';
+      let fallbackAction = 'Check your connection and retry';
+
+      if (err.response?.status === 401 || err.response?.status === 403) {
+        classification = 'auth';
+        fallbackAction = 'Please sign in again';
+      } else if (err.response?.status === 400 || err.response?.status === 422) {
+        classification = 'validation';
+        fallbackAction = 'Review the action parameters and retry';
+      } else if (err.response?.status >= 500) {
+        classification = 'platform';
+        fallbackAction = 'Meta API error - try again in a few moments';
+      } else if (err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT') {
+        classification = 'network';
+        fallbackAction = 'Request timed out - please retry';
+      }
+
+      reportError(
+        err.response?.data?.error || err.message || 'Failed to execute action',
+        err.response?.data?.code || err.code || 'UNKNOWN_ERROR',
+        classification,
+        true,
+        fallbackAction
+      );
+    }
+  }
 
   // ══════════════════════════════════════════════════════════════
   // MEMORY_COMMIT: Show success toast and commit to memory
@@ -105,7 +212,7 @@ export default function DecisionFeed() {
   }, [state.view, state.outputData, commitToMemory]);
 
   return (
-    <div className="flex flex-col h-full bg-lumi-bg">
+    <div className="flex flex-col h-full bg-surface-light">
       {/* Breadcrumb navigation (hide on COMMAND_CENTER) */}
       {state.view !== 'COMMAND_CENTER' && (
         <DecisionBreadcrumb
