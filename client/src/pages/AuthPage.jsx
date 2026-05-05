@@ -90,32 +90,32 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-surface-light flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 text-white mb-3">
-            <Sparkles className="h-6 w-6 text-yellow-400" />
+          <div className="inline-flex items-center gap-2 text-dark-base mb-3">
+            <Sparkles className="h-6 w-6 text-lumi-gold" />
             <span className="font-bold text-2xl tracking-tight">Lumi</span>
           </div>
-          <h1 className="text-xl font-semibold text-white">
+          <h1 className="text-xl font-semibold text-dark-base">
             {isLogin ? 'Welcome back' : 'Create your account'}
           </h1>
-          <p className="mt-1 text-sm text-gray-400">
+          <p className="mt-1 text-sm text-dark-soft">
             {isLogin ? 'Sign in to continue to your workspace' : 'Get started with your AI marketing co-pilot'}
           </p>
         </div>
 
         {/* Auth Card */}
-        <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-6 backdrop-blur-sm">
+        <div className="rounded-2xl border border-surface-border bg-surface-card p-6 shadow-card">
           {/* Google Sign-in */}
           <button
             type="button"
             onClick={handleGoogleSignIn}
             disabled={busy}
             className={cn(
-              'w-full flex items-center justify-center gap-3 rounded-xl border border-gray-700',
-              'bg-white/5 hover:bg-white/10 px-4 py-3 text-sm font-medium text-white',
+              'w-full flex items-center justify-center gap-3 rounded-xl border border-surface-border',
+              'bg-surface-light hover:bg-lumi-gold/5 px-4 py-3 text-sm font-medium text-dark-base',
               'transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
             )}
           >
@@ -146,20 +146,20 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
 
           {/* Divider */}
           <div className="flex items-center gap-3 my-6">
-            <div className="flex-1 h-px bg-gray-800" />
-            <span className="text-xs text-gray-500 uppercase tracking-wider">Or</span>
-            <div className="flex-1 h-px bg-gray-800" />
+            <div className="flex-1 h-px bg-surface-border" />
+            <span className="text-xs text-dark-soft uppercase tracking-wider">Or</span>
+            <div className="flex-1 h-px bg-surface-border" />
           </div>
 
           {/* Email/Password Form */}
           <form onSubmit={handleEmailAuth} className="space-y-4">
             {/* Email */}
             <div>
-              <label htmlFor="email" className="block text-xs font-semibold text-gray-400 mb-1.5">
+              <label htmlFor="email" className="block text-xs font-semibold text-dark-soft mb-1.5">
                 Email
               </label>
               <div className="relative">
-                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-dark-soft" />
                 <input
                   id="email"
                   type="email"
@@ -168,9 +168,9 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
                   disabled={busy}
                   placeholder="you@company.com"
                   className={cn(
-                    'w-full rounded-lg border border-gray-700 bg-gray-800/60 pl-10 pr-3 py-2.5',
-                    'text-sm text-white placeholder:text-gray-500',
-                    'focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500',
+                    'w-full rounded-lg border border-surface-border bg-surface-light pl-10 pr-3 py-2.5',
+                    'text-sm text-dark-base placeholder:text-dark-soft',
+                    'focus:border-lumi-gold focus:outline-none focus:ring-1 focus:ring-lumi-gold',
                     'disabled:opacity-50 disabled:cursor-not-allowed'
                   )}
                 />
@@ -179,11 +179,11 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
 
             {/* Password */}
             <div>
-              <label htmlFor="password" className="block text-xs font-semibold text-gray-400 mb-1.5">
+              <label htmlFor="password" className="block text-xs font-semibold text-dark-soft mb-1.5">
                 Password
               </label>
               <div className="relative">
-                <Lock className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
+                <Lock className="absolute left-3 top-2.5 h-4 w-4 text-dark-soft" />
                 <input
                   id="password"
                   type="password"
@@ -192,15 +192,15 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
                   disabled={busy}
                   placeholder="••••••••"
                   className={cn(
-                    'w-full rounded-lg border border-gray-700 bg-gray-800/60 pl-10 pr-3 py-2.5',
-                    'text-sm text-white placeholder:text-gray-500',
-                    'focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500',
+                    'w-full rounded-lg border border-surface-border bg-surface-light pl-10 pr-3 py-2.5',
+                    'text-sm text-dark-base placeholder:text-dark-soft',
+                    'focus:border-lumi-gold focus:outline-none focus:ring-1 focus:ring-lumi-gold',
                     'disabled:opacity-50 disabled:cursor-not-allowed'
                   )}
                 />
               </div>
               {!isLogin && (
-                <p className="mt-1 text-xs text-gray-500">
+                <p className="mt-1 text-xs text-dark-soft">
                   Must be at least 6 characters
                 </p>
               )}
@@ -208,9 +208,9 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
 
             {/* Error */}
             {error && (
-              <div className="flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-sm">
-                <AlertCircle className="h-4 w-4 shrink-0 text-red-400 mt-0.5" />
-                <span className="text-red-200">{error}</span>
+              <div className="flex items-start gap-2 rounded-lg border border-signal-kill/20 bg-signal-kill/5 p-3 text-sm">
+                <AlertCircle className="h-4 w-4 shrink-0 text-signal-kill mt-0.5" />
+                <span className="text-signal-kill">{error}</span>
               </div>
             )}
 
@@ -220,8 +220,8 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
               disabled={busy}
               className={cn(
                 'w-full flex items-center justify-center gap-2 rounded-lg',
-                'bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white',
-                'transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
+                'bg-lumi-gold hover:bg-lumi-deep px-4 py-2.5 text-sm font-semibold text-dark-base',
+                'transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-card hover:shadow-gold-glow'
               )}
             >
               {busy && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -231,7 +231,7 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
         </div>
 
         {/* Toggle Mode */}
-        <p className="mt-6 text-center text-sm text-gray-400">
+        <p className="mt-6 text-center text-sm text-dark-soft">
           {isLogin ? "Don't have an account? " : "Already have an account? "}
           <button
             type="button"
@@ -239,14 +239,14 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
               setMode(isLogin ? 'signup' : 'login');
               setError(null);
             }}
-            className="font-semibold text-blue-400 hover:text-blue-300 transition-colors"
+            className="font-semibold text-lumi-gold hover:text-lumi-deep transition-colors"
           >
             {isLogin ? 'Sign up' : 'Sign in'}
           </button>
         </p>
 
         {/* Footer */}
-        <p className="mt-8 text-center text-xs text-gray-600">
+        <p className="mt-8 text-center text-xs text-dark-soft">
           By continuing, you agree to our Terms of Service and Privacy Policy
         </p>
       </div>

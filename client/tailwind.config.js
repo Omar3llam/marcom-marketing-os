@@ -11,29 +11,41 @@ export default {
   theme: {
     extend: {
       colors: {
-        // ── Base surfaces ─────────────────────────────────────
-        'lumi-bg':            '#0A0B0F',
-        'lumi-surface':       '#0F1117',
-        'lumi-elevated':      '#141720',
-        'lumi-border':        '#1E2130',
-        'lumi-border-strong': '#2A2F45',
+        // ── Lumi Gold Brand Palette (Premium Glowing Intelligence OS) ────
+        'lumi': {
+          'gold':  '#F6C945',  // Primary brand gold
+          'deep':  '#E0A800',  // Deep gold for hover states
+          'glow':  '#FFD95A',  // Bright glow for accents and highlights
+        },
 
-        // ── Text hierarchy ────────────────────────────────────
-        'lumi-text':          '#E8ECF2',
-        'lumi-muted':         '#8A93A4',
-        'lumi-subtle':        '#4A5168',
+        // ── Accent Colors (Warm & Premium) ────────────────────
+        'accent': {
+          'warm':  '#F59E0B',  // Warm amber for secondary actions
+          'amber': '#FBBF24',  // Soft amber for tertiary elements
+        },
 
-        // ── Brand accent (golden yellow) ──────────────────────
-        'lumi-accent':        '#E5B05C',
-        'lumi-accent-soft':   'rgba(229,176,92,0.12)',
-        'lumi-accent-hover':  '#F5C06C',
+        // ── Surface Colors (Light & Premium) ──────────────────
+        'surface': {
+          'light':  '#F8F6F2',  // Light warm background
+          'card':   '#FFFFFF',  // Pure white for cards
+          'border': '#EDEAE4',  // Soft warm border
+        },
 
-        // ── Decision-system semantic signals ──────────────────
-        'signal-kill':        '#EF4444',
+        // ── Dark Colors (Professional & Warm) ─────────────────
+        'dark': {
+          'base': '#2B2B2B',    // Primary dark text
+          'soft': '#3A3A3A',    // Secondary dark text (lighter than base)
+        },
+
+        // ── Accent Blush ─────────────────────────────────────
+        'blush': '#F8B4B4',     // Warm blush for selected/hover states
+
+        // ── Decision-system semantic signals (UNCHANGED) ──────────────────
+        'signal-kill':        '#EF4444',   // Red for KILL verdicts
         'signal-kill-bg':     'rgba(239,68,68,0.10)',
-        'signal-hold':        '#F59E0B',
+        'signal-hold':        '#F59E0B',   // Amber for HOLD verdicts
         'signal-hold-bg':     'rgba(245,158,11,0.10)',
-        'signal-scale':       '#10B981',
+        'signal-scale':       '#10B981',   // Green for SCALE verdicts
         'signal-scale-bg':    'rgba(16,185,129,0.10)',
 
         // ── Campaign stages ───────────────────────────────────
@@ -68,16 +80,17 @@ export default {
       },
 
       boxShadow: {
-        'card':        '0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3)',
-        'card-hover':  '0 4px 16px rgba(0,0,0,0.5)',
-        'panel':       '0 8px 32px rgba(0,0,0,0.6)',
-        'modal':       '0 24px 64px rgba(0,0,0,0.8)',
-        'accent-glow': '0 0 24px rgba(229,176,92,0.15)',
+        'card':        '0 2px 8px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
+        'card-hover':  '0 8px 24px rgba(0,0,0,0.12)',
+        'panel':       '0 12px 40px rgba(0,0,0,0.15)',
+        'modal':       '0 24px 64px rgba(0,0,0,0.20)',
+        'gold-glow':   '0 0 24px rgba(246,201,69,0.20), 0 0 48px rgba(246,201,69,0.10)',
+        'accent-glow': '0 0 24px rgba(245,158,11,0.15)',
         'kill-glow':   '0 0 20px rgba(239,68,68,0.25), 0 0 40px rgba(239,68,68,0.10)',
         'scale-glow':  '0 0 20px rgba(16,185,129,0.25), 0 0 40px rgba(16,185,129,0.10)',
         'hold-glow':   '0 0 20px rgba(245,158,11,0.20)',
         'optimize-glow': '0 0 20px rgba(99,102,241,0.20)',
-        'active-ring': '0 0 0 1px rgba(99,102,241,0.4), 0 0 16px rgba(99,102,241,0.1)',
+        'active-ring': '0 0 0 2px rgba(246,201,69,0.3), 0 0 16px rgba(246,201,69,0.1)',
       },
 
       animation: {

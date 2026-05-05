@@ -24,15 +24,15 @@
   }
 
   body {
-    @apply bg-lumi-bg text-lumi-text font-body;
+    @apply bg-surface-light text-dark-base font-body;
     font-size: 14px;
   }
 
   /* ── Scrollbar ── */
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { @apply bg-lumi-border rounded-full; }
-  ::-webkit-scrollbar-thumb:hover { @apply bg-lumi-border-strong; }
+  ::-webkit-scrollbar-thumb { @apply bg-surface-border rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-dark-soft; }
 
   /* ── Selection ── */
   ::selection {
@@ -51,12 +51,12 @@
 @layer components {
   /* Monospaced metric values w/ tabular nums for perfect alignment */
   .metric-value {
-    @apply font-mono text-lumi-text font-medium tabular-nums;
+    @apply font-mono text-dark-base font-medium tabular-nums;
   }
 
   /* Section labels — uppercase, tracked, used everywhere */
   .section-label {
-    @apply text-xs font-display font-semibold uppercase tracking-widest text-lumi-subtle;
+    @apply text-xs font-display font-semibold uppercase tracking-widest text-dark-soft;
   }
 
   /* Glass surface for floating panels */
