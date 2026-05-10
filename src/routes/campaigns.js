@@ -212,11 +212,17 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
     return res.status(400).json({ error: 'No file uploaded — expected field "campaignData"' });
   }
 
-  // workspaceId resolution: prefer JWT path; fall back to Firebase UID.
-  const workspaceId = req.workspaceId
-    || (req.userId  ? `firebase:${req.userId}` : null);
+  // workspaceId MUST be a real UUID from the User → Workspace FK chain.
+  // req.workspaceId is populated by firebaseAuthMiddleware (Prisma lookup).
+  // Falling back to a non-UUID string causes every prisma.upsert to fail
+  // with "invalid input syntax for type uuid" — do NOT do that.
+  const workspaceId = req.workspaceId;
   if (!workspaceId) {
-    return res.status(401).json({ error: 'Unauthenticated' });
+    return res.status(401).json({
+      error:   'Workspace not found.',
+      hint:    'Complete onboarding to create your workspace, then upload again.',
+      userId:  req.userId || null,
+    });
   }
 
   logger.info({
