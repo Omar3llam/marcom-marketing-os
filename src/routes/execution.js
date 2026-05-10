@@ -14,11 +14,11 @@
 // - Idempotent (same action twice = ignored if within 60s)
 // ============================================================
 import { Router } from 'express';
-import { prisma } from '@/lib/prisma.js';
-import { executeMetaAction, validateActionTarget } from '@/services/metaExecutionService.js';
-import { firebaseAuthMiddleware } from '@/middleware/firebaseAuth.js';
-import { contextGuard } from '@/middleware/contextGuard.js';
-import { logger } from '@/utils/logger.js';
+import { prisma } from '../lib/prisma.js';
+import { executeMetaAction, validateActionTarget } from '../services/metaExecutionService.js';
+import { firebaseAuthMiddleware } from '../middleware/firebaseAuth.js';
+import { contextGuard } from '../middleware/contextGuard.js';
+import { logger } from '../utils/logger.js';
 const router = Router();
 
 // ── Constants ────────────────────────────────────────────

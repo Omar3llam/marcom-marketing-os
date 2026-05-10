@@ -10,8 +10,8 @@
 // Execution: Pause, Resume, Scale, Optimize campaigns/adsets
 // ============================================================
 import axios from 'axios';
-import { prisma } from '@/lib/prisma.js';
-import { logger } from '@/utils/logger.js';
+import { prisma } from '../lib/prisma.js';
+import { logger } from '../utils/logger.js';
 
 const META_API_VERSION = 'v19.0';
 const META_API_BASE = `https://graph.instagram.com/${META_API_VERSION}`;

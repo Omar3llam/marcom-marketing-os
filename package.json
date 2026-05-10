@@ -24,7 +24,7 @@
     "worker":    "node src/workers/index.js",
     "lint":      "eslint src/",
     "lint:fix":  "eslint src/ --fix",
-    "check":     "node -e \"const{execSync}=require('child_process');const files=require('fs').readdirSync('src',{recursive:true}).filter(f=>f.endsWith('.js')).map(f=>'src/'+f);let ok=true;files.forEach(f=>{try{execSync('node --check '+f,{stdio:'pipe'})}catch(e){console.error('BROKEN:',f,'\\n',e.stderr?.toString());ok=false}});if(ok)console.log('✅ All JS syntax valid (',files.length,'files)');else process.exit(1)\"",
+    "check":     "node scripts/check.js",
     "prestart":  "npm run check"
   },
   "dependencies": {

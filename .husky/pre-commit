@@ -29,7 +29,17 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-echo "✅ Syntax and lint checks passed."
+echo "🔍 Checking for @/ path aliases in backend..."
+ALIAS_COUNT=$(grep -rn "from '@/" src/ --include="*.js" 2>/dev/null | wc -l)
+if [ "$ALIAS_COUNT" -gt "0" ]; then
+  echo "❌ Found $ALIAS_COUNT @/ alias import(s) in src/. Node.js cannot resolve these at runtime."
+  echo "   Replace with relative paths (e.g. '../lib/prisma.js')"
+  grep -rn "from '@/" src/ --include="*.js"
+  exit 1
+fi
+echo "✅ No @/ aliases in backend."
+
+echo "✅ Syntax, lint, and alias checks passed."
 
 # ── Client rebuild (only when client source is staged) ──────
 CLIENT_TRIGGER_REGEX='^client/(src/|index\.html$|package(-lock)?\.json$|vite\.config\.js$|tailwind\.config\.js$|postcss\.config\.js$)'
