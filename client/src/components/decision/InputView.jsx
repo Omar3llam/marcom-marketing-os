@@ -9,6 +9,7 @@
 // to THEATER state.
 // ============================================================
 import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Upload, ArrowRight, ArrowLeft, CheckCircle2, X,
 } from 'lucide-react';
@@ -16,6 +17,7 @@ import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
 import { api } from '@/lib/api.js';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils.js';
+import { clearContextCache } from '@/router/ProtectedRoute.jsx';
 
 const TITLES = {
   campaign: 'Campaign Analysis',
@@ -46,6 +48,7 @@ export default function InputView({ mode, initialData, onSubmit, onCancel }) {
 
 // ── CAMPAIGN ────────────────────────────────────────────────
 function CampaignInput({ initialData, onSubmit, onCancel }) {
+  const navigate = useNavigate();
   const inputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [error, setError] = useState(null);
@@ -103,10 +106,13 @@ function CampaignInput({ initialData, onSubmit, onCancel }) {
         // Use the first created campaign ID
         onSubmit({ campaignId: data.campaign_ids[0], source: 'csv-upload' });
       } catch (err) {
-        // 401 from the upload endpoint means the workspace wasn't found.
-        // Direct the user to refresh (ProtectedRoute will fix their session).
+        // 401 from the upload endpoint means no workspace exists for this user.
+        // Clear the stale session state and redirect to onboarding so the
+        // user creates their workspace row — then uploads will work.
         if (err.response?.status === 401) {
-          setError('Session issue detected. Please refresh the page and try again.');
+          toast.error('Session needs setup. Redirecting to onboarding…');
+          clearContextCache();
+          navigate('/onboarding');
           return;
         }
         const detail = err.response?.data?.error || err.response?.data?.hint

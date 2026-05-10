@@ -47,10 +47,62 @@ export async function firebaseAuthMiddleware(req, res, next) {
 
       if (user) {
         req.workspaceId = user.workspaceId;
-        req.userRole = user.role;
-        req.authSource = 'firebase';
+        req.userRole    = user.role;
+        req.authSource  = 'firebase';
       } else {
-        req.workspaceId = null;
+        // No Prisma row for this Firebase UID.
+        // Auto-provision: create Workspace + User atomically so the
+        // session is immediately functional. context=null means the user
+        // is NOT onboarded — ProtectedRoute will redirect to /onboarding.
+        try {
+          const email       = decodedToken.email || `${decodedToken.uid}@unknown.local`;
+          const displayName = decodedToken.name  || email.split('@')[0];
+
+          const created = await prisma.user.create({
+            data: {
+              clerkId:  decodedToken.uid,
+              email,
+              role:     'VIEWER',
+              context:  null,           // null = not onboarded yet
+              workspace: {
+                create: { name: `${displayName}'s Workspace` },
+              },
+            },
+            select: { id: true, workspaceId: true, role: true },
+          });
+
+          req.workspaceId = created.workspaceId;
+          req.userRole    = created.role;
+          req.authSource  = 'firebase-auto-provisioned';
+
+          logger.info(
+            { uid: decodedToken.uid, workspaceId: created.workspaceId },
+            '[firebase-auth] auto-provisioned User + Workspace for new Firebase user',
+          );
+        } catch (provisionErr) {
+          // Likely a unique-constraint race (two simultaneous requests).
+          // Try a second read before giving up.
+          try {
+            const retried = await prisma.user.findUnique({
+              where:  { clerkId: decodedToken.uid },
+              select: { id: true, workspaceId: true, role: true },
+            });
+            if (retried) {
+              req.workspaceId = retried.workspaceId;
+              req.userRole    = retried.role;
+              req.authSource  = 'firebase-retry';
+            } else {
+              req.workspaceId = null;
+              logger.error(
+                { uid: decodedToken.uid, err: provisionErr.message },
+                '[firebase-auth] auto-provision failed and retry also failed',
+              );
+            }
+          } catch (retryErr) {
+            req.workspaceId = null;
+            logger.error({ err: retryErr.message }, '[firebase-auth] auto-provision retry threw');
+          }
+        }
       }
     } catch (dbErr) {
       logger.warn({ err: dbErr.message, uid: decodedToken.uid }, '[firebase-auth] workspace lookup failed');

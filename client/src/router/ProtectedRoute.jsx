@@ -75,61 +75,65 @@ function publish(next) {
 function useUserContext() {
   const { currentUser, loading: authLoading } = useAuth();
 
-  // Initialize from localStorage if available to prevent onboarding redirect on refresh
-  const storedState = getStoredOnboardingState();
-  const initialState = _cached || (storedState !== null
-    ? { loading: false, hasContext: storedState }
-    : { loading: true, hasContext: false });
-
-  const [state, setState] = useState(initialState);
+  // ── Initial state ─────────────────────────────────────────
+  // Always start with loading:true on fresh page load (_cached is null).
+  // If _cached is populated from a previous in-session API call, reuse it
+  // so we don't flash a spinner on every route transition.
+  //
+  // IMPORTANT: when _cached is null we must NOT set loading:false here,
+  // even if localStorage says true. A loading:false/hasContext:true initial
+  // state causes ProtectedRoute to render children (the app) synchronously,
+  // BEFORE the API verifies the Prisma row exists — bypassing onboarding.
+  const [state, setState] = useState(
+    _cached || { loading: true, hasContext: getStoredOnboardingState() ?? false },
+  );
 
   useEffect(() => {
-    // Re-render whenever the cache is updated by ANY subscriber
-    // (incl. clearContextCache / primeContextCache from elsewhere).
+    // Subscribe to cache updates (clearContextCache, primeContextCache, etc.)
     _subs.add(setState);
     return () => { _subs.delete(setState); };
   }, []);
 
   useEffect(() => {
-    if (authLoading) {
-      // Firebase auth is still initializing
-      return;
-    }
+    if (authLoading) return;   // Firebase still initialising
 
     if (!currentUser) {
       publish({ loading: false, hasContext: false });
       return;
     }
 
+    // In-session memory cache: populated after the first API call completes.
+    // Prevents refetch storms on tab/route switches within the same session.
+    // Hard refresh (F5) clears _cached (module-level), so every new page
+    // load always calls the API at least once.
     if (_cached && !_cached.loading) {
-      // Already resolved → just sync local state.
       setState(_cached);
       return;
     }
 
-    // Always call the API to verify the Prisma row actually exists.
-    // localStorage is used ONLY as an optimistic hint to prevent the
-    // loading spinner from flashing — it is NOT authoritative.
-    // If we skip the API call (as the old code did), a user with a valid
-    // Firebase session but no Prisma User/Workspace row bypasses onboarding
-    // entirely, causing every CSV upload to fail with workspaceId = null.
+    // ── Always call the API on first mount ────────────────────
+    // localStorage is optimistic UI only (prevents blank screen while
+    // the spinner resolves). The API is the authoritative source for
+    // whether a Prisma User/Workspace row exists.
     const stored = getStoredOnboardingState();
-    const optimistic = stored !== null ? stored : false;
-    publish({ loading: true, hasContext: optimistic });
+    publish({ loading: true, hasContext: stored ?? false });
 
     let cancelled = false;
     api.get('/api/campaigns/me/context')
       .then((res) => {
         if (cancelled) return;
-        publish({ loading: false, hasContext: isOnboarded(res.data?.context) });
+        const hasContext = isOnboarded(res.data?.context);
+        // Sync localStorage with the real answer from the DB
+        setStoredOnboardingState(hasContext);
+        publish({ loading: false, hasContext });
       })
       .catch(() => {
         if (cancelled) return;
-        // API failed — clear stale localStorage so the user is sent to
-        // onboarding instead of being silently stuck in a broken state.
+        // API failed — wipe stale localStorage so user goes to onboarding
         setStoredOnboardingState(false);
         publish({ loading: false, hasContext: false });
       });
+
     return () => { cancelled = true; };
   }, [authLoading, currentUser]);
 
