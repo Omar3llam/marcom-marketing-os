@@ -19,8 +19,6 @@ import { executeMetaAction, validateActionTarget } from '@/services/metaExecutio
 import { firebaseAuthMiddleware } from '@/middleware/firebaseAuth.js';
 import { contextGuard } from '@/middleware/contextGuard.js';
 import { logger } from '@/utils/logger.js';
-import { ActionType } from '@prisma/client';
-
 const router = Router();
 
 // ── Constants ────────────────────────────────────────────
@@ -89,7 +87,7 @@ router.post('/meta', async (req, res) => {
         data: {
           workspaceId,
           userId,
-          actionType: actionType as ActionType,
+          actionType: actionType,
           targetId,
           platform: 'META',
           status: 'FAILED',
@@ -110,7 +108,7 @@ router.post('/meta', async (req, res) => {
     // ═══════════════════════════════════════════════════════
     const duplicateLog = await checkIdempotency(
       workspaceId,
-      actionType as ActionType,
+      actionType,
       targetId
     );
 
@@ -157,7 +155,7 @@ router.post('/meta', async (req, res) => {
       data: {
         workspaceId,
         userId,
-        actionType: actionType as ActionType,
+        actionType: actionType,
         targetId,
         platform: 'META',
         status: executionResult.success ? 'SUCCESS' : 'FAILED',
@@ -211,7 +209,7 @@ router.post('/meta', async (req, res) => {
         data: {
           workspaceId,
           userId,
-          actionType: actionType as ActionType,
+          actionType: actionType,
           targetId,
           platform: 'META',
           status: 'FAILED',
@@ -255,8 +253,8 @@ router.get('/audit', async (req, res) => {
     const logs = await prisma.auditLog.findMany({
       where,
       orderBy: { performedAt: 'desc' },
-      skip: parseInt(offset as string, 10),
-      take: parseInt(limit as string, 10),
+      skip: parseInt(String(offset), 10),
+      take: parseInt(String(limit), 10),
     });
 
     const total = await prisma.auditLog.count({ where });
@@ -271,8 +269,8 @@ router.get('/audit', async (req, res) => {
     return res.json({
       logs,
       total,
-      limit: parseInt(limit as string, 10),
-      offset: parseInt(offset as string, 10),
+      limit: parseInt(String(limit), 10),
+      offset: parseInt(String(offset), 10),
     });
   } catch (err) {
     logger.error('[ExecutionRouter] Audit query failed', {

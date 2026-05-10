@@ -1,21 +1,43 @@
+#!/usr/bin/env sh
 # ============================================================
 # MARCOM / Lumi — pre-commit hook
 # ------------------------------------------------------------
-# When the staged changeset touches any input that affects the
-# React production bundle, rebuild client/dist/ and re-stage it
-# so the deployed artefact is never out of sync with source.
+# GUARD 1: JS syntax check (npm run check)
+#   Blocks commits if any src/*.js file has a SyntaxError.
+#   Catches TypeScript-style syntax (as X, : Type, etc.) that
+#   Node.js would reject at runtime.
 #
-# When the changeset doesn't touch the client, do nothing fast.
+# GUARD 2: ESLint scan
+#   Catches undefined vars, unused imports, etc.
+#
+# GUARD 3: Client rebuild (if src or config changed)
+#   Rebuilds client/dist/ and re-stages it so the deployed
+#   artefact is never out of sync with source.
 # ============================================================
 
-# Files that, if staged, force a client rebuild.
-# Tested against `git diff --cached --name-only` via grep -E.
+echo "🔍 Running JS syntax check..."
+npm run check
+if [ $? -ne 0 ]; then
+  echo "❌ Syntax errors found in .js files. Fix before committing."
+  exit 1
+fi
+
+echo "🔍 Running ESLint..."
+npm run lint
+if [ $? -ne 0 ]; then
+  echo "❌ ESLint errors found. Run 'npm run lint:fix' or fix manually."
+  exit 1
+fi
+
+echo "✅ Syntax and lint checks passed."
+
+# ── Client rebuild (only when client source is staged) ──────
 CLIENT_TRIGGER_REGEX='^client/(src/|index\.html$|package(-lock)?\.json$|vite\.config\.js$|tailwind\.config\.js$|postcss\.config\.js$)'
 
 STAGED=$(git diff --cached --name-only --diff-filter=ACMR | grep -E "$CLIENT_TRIGGER_REGEX" || true)
 
 if [ -z "$STAGED" ]; then
-  # Nothing client-relevant staged — skip fast.
+  echo "✅ All pre-commit checks passed."
   exit 0
 fi
 
@@ -26,8 +48,6 @@ echo "────────────────────────�
 echo "$STAGED" | sed 's/^/  · /'
 echo ""
 
-# Build the client. Fail the commit if the build fails — better
-# to block now than to ship a broken bundle.
 if ! npm run build --prefix client; then
   echo ""
   echo "✗ pre-commit: vite build failed — commit aborted."
@@ -35,9 +55,9 @@ if ! npm run build --prefix client; then
   exit 1
 fi
 
-# Re-stage the freshly-built artefact so it lands in this commit.
 git add client/dist
 
 echo ""
 echo "✓ pre-commit: client/dist rebuilt and staged."
+echo "✅ All pre-commit checks passed."
 echo ""
