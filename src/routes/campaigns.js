@@ -25,6 +25,7 @@ import { runMode5 }        from '../modes/mode5-campaign.js';
 import { classifyCampaignStage } from '../services/campaignClassifier.js';
 import { generateAlerts }        from '../services/alertGenerator.js';
 import { parseSmartCSV }        from '../utils/csvParser.js';
+import { parseMetaAdsCsv }      from '../services/metaAdsParser.js';
 import { prisma }          from '../lib/prisma.js';
 import { logger }          from '../utils/logger.js';
 import { contextGuard }    from '../middleware/contextGuard.js';
@@ -201,119 +202,134 @@ campaignsRouter.post('/fetch-meta', async (req, res) => {
 // POST /api/campaigns/upload-csv
 // ─────────────────────────────────────────────────────────────
 // Multipart form: field "campaignData" → .csv file (≤10 MB).
-// Parses Meta / Google Ads exports, normalizes, classifies into
+// Parses Meta Ads Manager exports (ad-set level), normalises into
 // CampaignState rows, and seeds Action alerts. Workspace-scoped.
 //
-// Response: { uploaded, processed, alerts_created, errors }
+// Response: { uploaded, processed, alerts_created, campaign_ids, errors }
 // ─────────────────────────────────────────────────────────────
 campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded — expected field "campaignData"' });
   }
 
-  // workspaceId resolution: prefer the JWT path (set by requireJwt),
-  // fall back to a deterministic per-user workspace id when only the
-  // legacy Clerk middleware is active. Belt-and-braces for the cutover.
-  const workspaceId = req.workspaceId || (req.userId ? `clerk:${req.userId}` : null);
+  // workspaceId resolution: prefer JWT path; fall back to Firebase UID.
+  const workspaceId = req.workspaceId
+    || (req.userId  ? `firebase:${req.userId}` : null);
   if (!workspaceId) {
     return res.status(401).json({ error: 'Unauthenticated' });
   }
 
-  let rows;
-  try {
-    rows = csvParse(req.file.buffer, {
-      columns:          true,
-      skip_empty_lines: true,
-      trim:             true,
-      bom:              true,
-    });
-  } catch (err) {
-    logger.warn({ err: err.message }, '[campaigns/upload-csv] CSV parse failed');
-    return res.status(422).json({ error: 'Could not parse CSV', detail: err.message });
-  }
+  logger.info({
+    filename:    req.file.originalname,
+    size:        req.file.size,
+    workspaceId,
+  }, '[campaigns/upload-csv] received');
 
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return res.status(422).json({ error: 'CSV contained no data rows' });
-  }
+  // ── Parse with the Meta-aware parser ─────────────────────────
+  const { campaigns: parsed, errors: parseErrors, stats } = parseMetaAdsCsv(req.file.buffer);
 
-  const platform = detectPlatform(req.file.originalname || '');
-  const errors   = [];
-  let processed  = 0;
-  let alertsCreated = 0;
-  const campaignIds = []; // Track all created campaign IDs
+  logger.info({ stats, parseErrors }, '[campaigns/upload-csv] parse complete');
 
-  // ── 100% pass-through parsing: no filtering, just parse and pass to Claude ──
-  const parsedRows = parseSmartCSV(rows, platform);
-
-  if (parsedRows.length === 0) {
-    logger.warn({ workspaceId, uploaded: rows.length }, '[campaigns/upload-csv] no rows parsed');
-    return res.json({
-      uploaded:       rows.length,
-      processed:      0,
-      alerts_created: 0,
-      campaign_ids:   [],
-      errors:         [{ error: 'CSV could not be parsed or contained no rows' }],
+  if (!parsed || parsed.length === 0) {
+    return res.status(400).json({
+      success:  false,
+      error:    'Upload succeeded but no campaigns were created. The CSV may be empty or invalid.',
+      stats,
+      errors:   parseErrors ? parseErrors.slice(0, 5) : [],
+      hint: [
+        'Expected format: Meta Ads Manager CSV export.',
+        'Required columns: "Campaign name", "Ad set name", "Amount spent (EGP)", "Impressions".',
+        'Make sure you are exporting at campaign or ad set level.',
+        'Row 2 (summary totals) is automatically skipped.',
+      ],
     });
   }
 
-  for (const parsed of parsedRows) {
+  const errors      = [];
+  const campaignIds = [];
+  let   processed   = 0;
+  let   alertsCreated = 0;
+
+  for (const c of parsed) {
     try {
-      // Generate a campaign ID from row data
-      const campaignId = `csv:${Date.now()}:${Math.random().toString(36).slice(2, 9)}`;
+      // ── Upsert CampaignState (stable slug ID → no duplicates) ──
+      // Schema fields: campaignId, workspaceId, stage, healthScore, lastAnalysis
+      const healthScore = computeHealthScore({ roas: c.roas, ctr: c.ctr, frequency: c.frequency });
+      const stage       = classifyStage(c.roas, c.ctr, c.frequency);
 
-      // ── Upsert CampaignState with minimal info ──────────────────
       const cs = await prisma.campaignState.upsert({
-        where:  { campaignId },
+        where:  { campaignId: c.campaignId },
         update: {
+          stage,
+          healthScore,
           lastAnalysis: new Date(),
         },
         create: {
-          campaignId,
+          campaignId:   c.campaignId,
           workspaceId,
-          stage:        'UNKNOWN',
-          healthScore:  0.5,
+          stage,
+          healthScore,
           lastAnalysis: new Date(),
         },
       });
 
-      // ── Seed single raw data action for Claude ─────────────────
-      // Pass entire row + headers, let Claude figure it out
+      // ── Seed PENDING Action with full parsed metrics ────────────
       await prisma.action.create({
         data: {
           workspaceId,
           campaignId:     cs.campaignId,
-          idempotencyKey: `csv:${campaignId}:${Date.now()}:${randomUUID().slice(0, 8)}`,
+          idempotencyKey: `meta:${cs.campaignId}:${Date.now()}:${randomUUID().slice(0, 8)}`,
           status:         'PENDING',
           payload: {
-            kind:   'lumi.csv-data',
-            source: 'csv-upload',
-            platform: parsed.platform,
-            // Raw CSV row as-is
-            row: parsed.rowData,
-            // Column names for context
-            headers: parsed.headers,
+            kind:         'lumi.csv-data',
+            source:       'csv-upload',
+            platform:     'META',
+            campaignName: c.campaignName,
+            adsetName:    c.adsetName,
+            priority:     stage === 'DYING' ? 'HIGH' : stage === 'FATIGUED' ? 'MEDIUM' : 'LOW',
+            verdict:      stage === 'DYING'    ? 'KILL'
+                        : stage === 'SCALING'  ? 'SCALE'
+                        : stage === 'FATIGUED' ? 'HOLD' : 'HOLD',
+            rootCause:    stage === 'DYING'    ? 'CRITICAL_PERFORMANCE_DECLINE'
+                        : stage === 'FATIGUED' ? 'CREATIVE_FATIGUE'
+                        : 'SCALING_OPPORTUNITY',
+            rationale:    buildRationale(c),
+            metrics: {
+              spend:          c.spend,
+              impressions:    c.impressions,
+              results:        c.results,
+              frequency:      c.frequency,
+              reach:          c.reach,
+              ctr:            c.ctr,
+              cpc:            c.cpc,
+              roas:           c.roas,
+              costPerResult:  c.costPerResult,
+            },
+            deliveryStatus: c.deliveryStatus,
+            // Raw record for Claude context
+            rawRecord: c.rawRecord,
           },
         },
       });
-      alertsCreated++;
-      campaignIds.push(cs.campaignId); // Track the created campaign
 
+      alertsCreated++;
+      campaignIds.push(cs.campaignId);
       processed++;
     } catch (err) {
-      logger.warn({ err: err.message, rowIndex: parsedRows.indexOf(parsed) },
-        '[campaigns/upload-csv] row processing failed');
-      errors.push({ row: `row ${parsedRows.indexOf(parsed)}`, error: err.message });
+      logger.warn({ err: err.message, campaignId: c.campaignId },
+        '[campaigns/upload-csv] row failed');
+      errors.push({ campaign: c.campaignName, error: err.message });
     }
   }
 
-  logger.info({ workspaceId, uploaded: rows.length, processed, alertsCreated, errors: errors.length },
+  logger.info({ workspaceId, processed, alertsCreated, errors: errors.length },
     '[campaigns/upload-csv] complete');
 
   return res.json({
-    uploaded:        rows.length,
+    uploaded:        stats.total_rows,
     processed,
     alerts_created:  alertsCreated,
-    campaign_ids:    campaignIds, // Return all created campaign IDs
+    campaign_ids:    campaignIds,
     errors,
   });
 });
@@ -456,4 +472,23 @@ function computeHealthScore(m = {}) {
   const ctr  = Math.max(0, Math.min(5, m.ctr  ?? 0)) / 5;
   const freq = 1 - Math.min(1, Math.max(0, ((m.frequency ?? 0) - 1.5) / 4));
   return Math.round(((roas * 0.5) + (ctr * 0.3) + (freq * 0.2)) * 100) / 100;
+}
+
+/** Map metrics → CampaignStage enum (must match prisma schema). */
+function classifyStage(roas = 0, ctr = 0, frequency = 1) {
+  if (roas < 0.5 || (ctr < 0.5 && frequency > 4)) return 'DYING';
+  if (roas < 1.0 || frequency > 3 || ctr < 1.0)   return 'FATIGUED';
+  if (roas >= 3.0 && ctr >= 2.0 && frequency < 2)  return 'SCALING';
+  if (roas >= 1.5 && ctr >= 1.5)                   return 'STABLE';
+  return 'TESTING';
+}
+
+/** Build a one-line rationale for the Action.payload from parsed metrics. */
+function buildRationale(c) {
+  const parts = [];
+  if (c.roas  > 0) parts.push(`ROAS ${c.roas}x`);
+  if (c.ctr   > 0) parts.push(`CTR ${c.ctr}%`);
+  if (c.frequency > 0) parts.push(`Frequency ${c.frequency}`);
+  if (c.spend > 0) parts.push(`Spend ${c.spend} EGP`);
+  return parts.length > 0 ? parts.join(' | ') : 'No metrics available';
 }
