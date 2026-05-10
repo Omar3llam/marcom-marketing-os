@@ -48,6 +48,7 @@ import { ensureUserContextSchema } from './models/userContext.js';
 import { ensureProjectSchema }     from './models/project.js';
 import { ensureCredentialSchema }  from './models/credential.js';
 import { config }           from './config.js';
+import metaMCP              from './services/metaMCP.js';
 
 const app = express();
 
@@ -315,8 +316,8 @@ app.use(errorHandler);
 // ────────────────────────────────────────────────────────────
 
 // ── START + GRACEFUL SHUTDOWN ────────────────────────────────
-const server = app.listen(config.port, () => {
-  logger.info({ port: config.port, env: config.nodeEnv }, 'MARCOM v4 online');
+const server = app.listen(config.port, '0.0.0.0', () => {
+  logger.info({ port: config.port, host: '0.0.0.0', env: config.nodeEnv }, 'MARCOM v4 online');
 
   // Try to connect to DB and run schema migrations.
   // In dev mode, if DB is unavailable, just log and continue.
@@ -345,6 +346,18 @@ const server = app.listen(config.port, () => {
 
 async function shutdown(signal) {
   logger.info({ signal }, 'Graceful shutdown initiated');
+
+  // Disconnect MetaMCP child process FIRST — before closing the HTTP server.
+  // metaMCP.js no longer owns process signals (rogue handlers were removed);
+  // disconnecting here ensures the stdio transport is torn down cleanly
+  // without interfering with the event loop while the port is still open.
+  try {
+    await metaMCP.disconnect();
+    logger.info('MetaMCP disconnected');
+  } catch (err) {
+    logger.warn({ err: err.message }, 'MetaMCP disconnect failed (non-fatal)');
+  }
+
   server.close(async () => {
     logger.info('HTTP server closed');
     await closeDb();

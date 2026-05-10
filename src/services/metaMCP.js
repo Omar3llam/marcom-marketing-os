@@ -243,17 +243,10 @@ class MetaMCPService {
 }
 
 // Singleton instance
+// NOTE: Signal handlers (SIGTERM/SIGINT) intentionally NOT registered here.
+// A module must never own process signals — only the entrypoint (server.js)
+// does. Signal handling is wired into server.js shutdown() which calls
+// metaMCP.disconnect() in the correct order before closing the HTTP server.
 const metaMCP = new MetaMCPService();
-
-// Graceful shutdown handler
-process.on('SIGTERM', async () => {
-  logger.info('[MetaMCP] SIGTERM received, disconnecting...');
-  await metaMCP.disconnect();
-});
-
-process.on('SIGINT', async () => {
-  logger.info('[MetaMCP] SIGINT received, disconnecting...');
-  await metaMCP.disconnect();
-});
 
 export default metaMCP;
