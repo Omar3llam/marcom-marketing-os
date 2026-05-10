@@ -14,6 +14,7 @@ import {
   signOut,
   onAuthStateChanged,
 } from '../firebase.js';
+import { clearContextCache } from '../router/ProtectedRoute.jsx';
 
 const AuthContext = createContext({
   currentUser: null,
@@ -54,6 +55,14 @@ export function AuthProvider({ children }) {
 
   // Logout
   const logout = async () => {
+    console.log('[AuthContext] logout called — clearing onboarding cache');
+
+    // CRITICAL: Clear the onboarding cache BEFORE signing out.
+    // This prevents stale onboarding state from persisting across
+    // user sessions, which could cause User B to bypass onboarding
+    // if User A's cache wasn't properly invalidated.
+    clearContextCache();
+
     return signOut(auth);
   };
 

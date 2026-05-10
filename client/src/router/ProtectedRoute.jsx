@@ -26,7 +26,26 @@ function FullscreenLoader({ label = 'Loading…' }) {
 // required field (companyName) is populated. An empty {} object
 // does NOT count as onboarded, even though it's truthy in JS.
 function isOnboarded(context) {
-  return Boolean(context && typeof context === 'object' && context.companyName);
+  console.log('[isOnboarded] input:', context);
+
+  if (!context || typeof context !== 'object') {
+    console.log('[isOnboarded] → false (invalid type)');
+    return false;
+  }
+
+  const companyName = context.companyName;
+
+  if (typeof companyName !== 'string') {
+    console.log('[isOnboarded] → false (companyName not a string)');
+    return false;
+  }
+
+  const trimmed = companyName.trim();
+  const result = trimmed.length > 0;
+
+  console.log('[isOnboarded] companyName:', JSON.stringify(companyName), '→', result);
+
+  return result;
 }
 
 // ── LocalStorage persistence ────────────────────────────────
@@ -76,61 +95,92 @@ function useUserContext() {
   const { currentUser, loading: authLoading } = useAuth();
 
   // ── Initial state ─────────────────────────────────────────
-  // Always start with loading:true on fresh page load (_cached is null).
-  // If _cached is populated from a previous in-session API call, reuse it
-  // so we don't flash a spinner on every route transition.
+  // CRITICAL: Always start pessimistic (loading:true, hasContext:false).
+  // localStorage and _cached can contain stale data from:
+  //   - Previous user sessions (if logout didn't clear cache)
+  //   - Incomplete onboarding attempts
+  //   - API responses that haven't been revalidated
   //
-  // IMPORTANT: when _cached is null we must NOT set loading:false here,
-  // even if localStorage says true. A loading:false/hasContext:true initial
-  // state causes ProtectedRoute to render children (the app) synchronously,
-  // BEFORE the API verifies the Prisma row exists — bypassing onboarding.
-  const [state, setState] = useState(
-    _cached || { loading: true, hasContext: getStoredOnboardingState() ?? false },
-  );
+  // The API is the ONLY source of truth. We show a loader until the API
+  // confirms the current user's onboarding state.
+  const [state, setState] = useState({
+    loading: true,
+    hasContext: false,
+  });
+
+  console.log('[useUserContext] initial state:', state);
+  console.log('[useUserContext] _cached:', _cached);
+  console.log('[useUserContext] localStorage:', getStoredOnboardingState());
 
   useEffect(() => {
     // Subscribe to cache updates (clearContextCache, primeContextCache, etc.)
-    _subs.add(setState);
-    return () => { _subs.delete(setState); };
+    const listener = (newState) => {
+      console.log('[useUserContext] cache update received:', newState);
+      setState(newState);
+    };
+    _subs.add(listener);
+    return () => { _subs.delete(listener); };
   }, []);
 
   useEffect(() => {
+    console.log('[useUserContext] effect fired', { authLoading, currentUser: !!currentUser });
+
     if (authLoading) return;   // Firebase still initialising
 
     if (!currentUser) {
+      console.log('[useUserContext] no user — publishing false');
       publish({ loading: false, hasContext: false });
       return;
     }
 
-    // In-session memory cache: populated after the first API call completes.
-    // Prevents refetch storms on tab/route switches within the same session.
-    // Hard refresh (F5) clears _cached (module-level), so every new page
-    // load always calls the API at least once.
-    if (_cached && !_cached.loading) {
-      setState(_cached);
-      return;
-    }
+    // ── CRITICAL FIX: Always call the API ─────────────────────
+    // The previous implementation had an early return here that reused
+    // _cached if it existed. This caused a SEVERE bug:
+    //
+    //   1. User A completes onboarding
+    //   2. _cached = { loading: false, hasContext: true }
+    //   3. User A logs out (cache not cleared properly)
+    //   4. User B logs in (new user, not onboarded)
+    //   5. This effect runs, sees _cached exists, and returns early
+    //   6. API is NEVER called for User B
+    //   7. User B bypasses onboarding
+    //
+    // FIX: ALWAYS call the API for the current user. The backend is the
+    // authoritative source. We cannot trust module-level cache across
+    // auth state changes.
 
-    // ── Always call the API on first mount ────────────────────
-    // localStorage is optimistic UI only (prevents blank screen while
-    // the spinner resolves). The API is the authoritative source for
-    // whether a Prisma User/Workspace row exists.
-    const stored = getStoredOnboardingState();
-    publish({ loading: true, hasContext: stored ?? false });
+    console.log('[useUserContext] calling API for current user...');
+    publish({ loading: true, hasContext: false });
 
     let cancelled = false;
     api.get('/api/campaigns/me/context')
       .then((res) => {
         if (cancelled) return;
-        const hasContext = isOnboarded(res.data?.context);
+
+        console.log('[guard] API response:', res.data);
+
+        // Normalize the response — backend may return various shapes
+        const context = res?.data?.context ?? null;
+
+        console.log('[guard] normalized context:', context);
+
+        const hasContext = isOnboarded(context);
+
+        console.log('[guard] strict onboard result:', hasContext);
+
         // Sync localStorage with the real answer from the DB
         setStoredOnboardingState(hasContext);
+
         publish({ loading: false, hasContext });
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
+
+        console.error('[guard] API failed:', err);
+
         // API failed — wipe stale localStorage so user goes to onboarding
         setStoredOnboardingState(false);
+
         publish({ loading: false, hasContext: false });
       });
 
@@ -150,21 +200,51 @@ export function primeContextCache(context) {
 }
 
 export function clearContextCache() {
+  console.log('[clearContextCache] clearing all onboarding state');
+
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
     // Ignore storage errors
   }
-  publish(null);
+
+  // Explicitly reset module-level cache to force a fresh API call on next mount
+  _cached = null;
+
+  // Publish a definitive "not onboarded" state to all subscribers
+  publish({
+    loading: false,
+    hasContext: false,
+  });
 }
 
 export function ProtectedRoute({ children }) {
   const { currentUser, loading: authLoading } = useAuth();
   const { loading, hasContext }  = useUserContext();
 
-  if (authLoading || loading) return <FullscreenLoader label="Restoring your session…" />;
-  if (!currentUser)           return <Navigate to="/login" replace />;
-  if (!hasContext)            return <Navigate to="/onboarding" replace />;
+  console.log('[ProtectedRoute]', {
+    authLoading,
+    loading,
+    hasContext,
+    currentUser: !!currentUser,
+  });
+
+  if (authLoading || loading) {
+    console.log('[ProtectedRoute] showing loader');
+    return <FullscreenLoader label="Restoring your session…" />;
+  }
+
+  if (!currentUser) {
+    console.log('[ProtectedRoute] no user → /login');
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!hasContext) {
+    console.log('[ProtectedRoute] not onboarded → /onboarding');
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  console.log('[ProtectedRoute] ✅ rendering protected content');
   return children;
 }
 
@@ -172,8 +252,28 @@ export function OnboardingRoute({ children }) {
   const { currentUser, loading: authLoading } = useAuth();
   const { loading, hasContext }  = useUserContext();
 
-  if (authLoading || loading) return <FullscreenLoader label="Checking your account…" />;
-  if (!currentUser)           return <Navigate to="/login" replace />;
-  if (hasContext)             return <Navigate to="/app" replace />;
+  console.log('[OnboardingRoute]', {
+    authLoading,
+    loading,
+    hasContext,
+    currentUser: !!currentUser,
+  });
+
+  if (authLoading || loading) {
+    console.log('[OnboardingRoute] showing loader');
+    return <FullscreenLoader label="Checking your account…" />;
+  }
+
+  if (!currentUser) {
+    console.log('[OnboardingRoute] no user → /login');
+    return <Navigate to="/login" replace />;
+  }
+
+  if (hasContext) {
+    console.log('[OnboardingRoute] already onboarded → /app');
+    return <Navigate to="/app" replace />;
+  }
+
+  console.log('[OnboardingRoute] ✅ rendering onboarding wizard');
   return children;
 }
