@@ -10,9 +10,14 @@ import './index.css';
 
 // Build-time stamp so we can confirm Render rebuilt the bundle.
 // Bumped manually whenever we need a forced cache-bust.
-const BUILD_ID = 'phase-9-firebase-migration';
+const BUILD_ID = 'phase-10-firebase-env-fix';
 
-const FIREBASE_PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID;
+// Accept either the env var (baked in by Vite from render.yaml) OR the
+// hardcoded fallback from firebase.js. firebase.js always works without env
+// vars — the guard here was over-strict and would show ConfigErrorPage even
+// when the app was fully functional.
+const FIREBASE_PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID
+  || 'marcom-ai-722f0';   // hardcoded fallback matching firebase.js
 const CONFIG_VALID = typeof FIREBASE_PROJECT_ID === 'string' && FIREBASE_PROJECT_ID.length > 0;
 
 // eslint-disable-next-line no-console

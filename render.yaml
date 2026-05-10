@@ -76,14 +76,25 @@ services:
       - key: WEBHOOK_SECRET
         sync: false
 
-      # Legacy Clerk (during cutover only)
-      - key: CLERK_PUBLISHABLE_KEY
-        sync: false
-      - key: CLERK_SECRET_KEY
-        sync: false
-      # Vite client env — baked into the bundle at build time.
-      # MUST be the SAME publishable key as CLERK_PUBLISHABLE_KEY.
-      - key: VITE_CLERK_PUBLISHABLE_KEY
+      # Firebase client config — baked into the bundle at Vite build time.
+      # Values sourced from firebase.js hardcoded fallbacks (non-secret public config).
+      # VITE_FIREBASE_PROJECT_ID is also tested by main.jsx CONFIG_VALID guard;
+      # without it the app renders ConfigErrorPage instead of App.
+      - key: VITE_FIREBASE_API_KEY
+        value: AIzaSyCLtn1Q7dzhN-SU_BwsfVulFBzZcQJNgqw
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        value: marcom-ai-722f0.firebaseapp.com
+      - key: VITE_FIREBASE_PROJECT_ID
+        value: marcom-ai-722f0
+      - key: VITE_FIREBASE_STORAGE_BUCKET
+        value: marcom-ai-722f0.firebasestorage.app
+      - key: VITE_FIREBASE_MESSAGING_SENDER_ID
+        value: "117077763726"
+      - key: VITE_FIREBASE_APP_ID
+        value: "1:117077763726:web:64f5bedc1e39204d4a4bdf"
+
+      # Firebase Admin SDK (server-side — required for token verification)
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
         sync: false
 
       # Credential vault
