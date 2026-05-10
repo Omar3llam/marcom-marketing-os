@@ -31,10 +31,19 @@ const TONES      = [
 ];
 const GOALS = ['Generate Leads', 'Build Awareness', 'Drive Sales', 'Grow Following', 'Launch Product', 'Retain Customers'];
 
+const PLATFORMS = [
+  { id: 'meta',     label: 'Meta Ads',     icon: '📘' },
+  { id: 'google',   label: 'Google Ads',   icon: '🔍' },
+  { id: 'tiktok',   label: 'TikTok Ads',   icon: '🎵' },
+  { id: 'linkedin', label: 'LinkedIn Ads', icon: '💼' },
+  { id: 'snapchat', label: 'Snapchat Ads', icon: '👻' },
+  { id: 'twitter',  label: 'X / Twitter',  icon: '🐦' },
+];
+
 const STEPS = [
-  { n: 1, label: 'Company',    icon: Building2 },
-  { n: 2, label: 'Business',   icon: Briefcase },
-  { n: 3, label: 'Voice',      icon: Megaphone },
+  { n: 1, label: 'Company',  icon: Building2 },
+  { n: 2, label: 'Business', icon: Briefcase },
+  { n: 3, label: 'Voice',    icon: Megaphone },
 ];
 
 export default function OnboardingPage() {
@@ -53,9 +62,18 @@ export default function OnboardingPage() {
     tone:           '',
     monthlyGoal:    '',
     neverDo:        '',
+    platforms:      [],
   });
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const togglePlatform = (id) =>
+    setForm((f) => ({
+      ...f,
+      platforms: f.platforms.includes(id)
+        ? f.platforms.filter((p) => p !== id)
+        : [...f.platforms, id],
+    }));
 
   const validate = (n) => {
     if (n === 1) return form.companyName && form.industry && form.market;
@@ -106,21 +124,26 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
+    <div className="min-h-screen bg-surface-light font-body">
       <div className="mx-auto max-w-2xl px-4 py-10">
+
         {/* ── Header ──────────────────────────────────────────── */}
-        <div className="mb-6 text-center">
-          <div className="inline-flex items-center gap-2 text-white">
-            <Sparkles className="h-5 w-5 text-yellow-400" />
-            <span className="font-bold tracking-widest uppercase">Lumi · Onboarding</span>
+        <div className="mb-8 text-center">
+          <div className="inline-flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-lumi-gold" />
+            <span className="font-mono text-xs font-semibold uppercase tracking-widest text-dark-soft">
+              Lumi · Onboarding
+            </span>
           </div>
-          <h1 className="mt-2 text-2xl font-bold">Tell us how to think about your brand</h1>
-          <p className="mt-1 text-sm text-gray-400">
+          <h1 className="mt-2 font-display text-2xl font-bold text-dark-base">
+            Tell us how to think about your brand
+          </h1>
+          <p className="mt-1 font-body text-sm text-dark-soft">
             Lumi grounds every recommendation in the context you set here.
           </p>
         </div>
 
-        {/* ── Progress bar ─────────────────────────────────────── */}
+        {/* ── Progress stepper ─────────────────────────────────── */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
             {STEPS.map((s, i) => {
@@ -130,34 +153,52 @@ export default function OnboardingPage() {
               return (
                 <div key={s.n} className="flex flex-1 items-center">
                   <div className={cn(
-                    'flex h-8 w-8 items-center justify-center rounded-full border-2',
-                    active && 'border-blue-500 bg-blue-500/15 text-blue-300',
-                    done   && 'border-green-500 bg-green-500/15 text-green-300',
-                    !active && !done && 'border-gray-700 text-gray-500',
+                    'flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all',
+                    active && 'border-lumi-gold bg-lumi-gold text-dark-base shadow-gold-glow',
+                    done   && 'border-lumi-gold bg-lumi-gold/15 text-lumi-deep',
+                    !active && !done && 'border-surface-border bg-surface-card text-dark-soft',
                   )}>
                     {done ? <CheckCircle2 className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
                   </div>
                   {i < STEPS.length - 1 && (
                     <div className={cn(
-                      'mx-2 h-0.5 flex-1',
-                      step > s.n ? 'bg-green-500/40' : 'bg-gray-800',
+                      'mx-2 h-0.5 flex-1 transition-colors',
+                      step > s.n ? 'bg-lumi-gold/40' : 'bg-surface-border',
                     )} />
                   )}
                 </div>
               );
             })}
           </div>
-          <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-widest text-gray-500">
-            {STEPS.map((s) => <span key={s.n}>{s.label}</span>)}
+          <div className="mt-2 flex items-center justify-between">
+            {STEPS.map((s) => (
+              <span
+                key={s.n}
+                className={cn(
+                  'font-mono text-[10px] uppercase tracking-widest transition-colors',
+                  step === s.n && 'font-semibold text-lumi-deep',
+                  step > s.n  && 'text-signal-scale',
+                  step < s.n  && 'text-dark-soft opacity-50',
+                )}
+              >
+                {s.label}
+              </span>
+            ))}
           </div>
         </div>
 
         {/* ── Card ─────────────────────────────────────────────── */}
-        <div className="rounded-2xl border border-gray-800 bg-gray-900/60 p-6">
+        <div className="rounded-2xl border border-surface-border bg-surface-card p-6 shadow-card">
+
           {step === 1 && (
             <Section title="Company basics">
               <Field label="Company Name *">
-                <input className={inputCls} value={form.companyName} onChange={(e) => set('companyName', e.target.value)} placeholder="Acme Inc." />
+                <input
+                  className={inputCls}
+                  value={form.companyName}
+                  onChange={(e) => set('companyName', e.target.value)}
+                  placeholder="Acme Inc."
+                />
               </Field>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="Industry *">
@@ -175,8 +216,13 @@ export default function OnboardingPage() {
               </div>
               <Field label="Website (optional)">
                 <div className="relative">
-                  <Globe className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
-                  <input className={cn(inputCls, 'pl-9')} value={form.website} onChange={(e) => set('website', e.target.value)} placeholder="https://acme.com" />
+                  <Globe className="absolute left-3 top-2.5 h-4 w-4 text-dark-soft/50" />
+                  <input
+                    className={cn(inputCls, 'pl-9')}
+                    value={form.website}
+                    onChange={(e) => set('website', e.target.value)}
+                    placeholder="https://acme.com"
+                  />
                 </div>
               </Field>
             </Section>
@@ -192,20 +238,60 @@ export default function OnboardingPage() {
                       type="button"
                       onClick={() => set('businessType', t)}
                       className={cn(
-                        'rounded-xl border p-3 text-sm font-semibold',
+                        'rounded-xl border p-3 text-sm font-semibold transition-all',
                         form.businessType === t
-                          ? 'border-blue-500/60 bg-blue-500/10 text-blue-200'
-                          : 'border-gray-800 bg-gray-900/40 text-gray-300 hover:border-gray-700',
+                          ? 'border-lumi-gold bg-lumi-gold/10 text-dark-base shadow-gold-glow'
+                          : 'border-surface-border bg-surface-light text-dark-soft hover:border-lumi-gold/40 hover:bg-lumi-gold/5',
                       )}
-                    >{t}</button>
+                    >
+                      {t}
+                    </button>
                   ))}
                 </div>
               </Field>
+
+              <Field label="Ad Platforms (select all you use)">
+                <div className="grid grid-cols-3 gap-2">
+                  {PLATFORMS.map((p) => {
+                    const active = form.platforms.includes(p.id);
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => togglePlatform(p.id)}
+                        className={cn(
+                          'flex items-center gap-2 rounded-xl border p-3 text-left text-sm transition-all',
+                          active
+                            ? 'border-lumi-gold bg-lumi-gold/10 text-dark-base shadow-gold-glow'
+                            : 'border-surface-border bg-surface-light text-dark-soft hover:border-lumi-gold/40',
+                        )}
+                      >
+                        <span>{p.icon}</span>
+                        <span className="font-body text-xs font-medium">{p.label}</span>
+                        {active && (
+                          <CheckCircle2 className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-lumi-deep" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+
               <Field label="Target Audience *">
-                <textarea className={cn(inputCls, 'min-h-[80px]')} value={form.targetAudience} onChange={(e) => set('targetAudience', e.target.value)} placeholder="Who specifically are you trying to reach?" />
+                <textarea
+                  className={cn(inputCls, 'min-h-[80px]')}
+                  value={form.targetAudience}
+                  onChange={(e) => set('targetAudience', e.target.value)}
+                  placeholder="Who specifically are you trying to reach?"
+                />
               </Field>
               <Field label="Main Competitor (optional)">
-                <input className={inputCls} value={form.competitor} onChange={(e) => set('competitor', e.target.value)} placeholder="Name a competitor whose ads you study." />
+                <input
+                  className={inputCls}
+                  value={form.competitor}
+                  onChange={(e) => set('competitor', e.target.value)}
+                  placeholder="Name a competitor whose ads you study."
+                />
               </Field>
             </Section>
           )}
@@ -220,14 +306,14 @@ export default function OnboardingPage() {
                       type="button"
                       onClick={() => set('tone', t.id)}
                       className={cn(
-                        'w-full rounded-xl border p-3 text-left',
+                        'w-full rounded-xl border p-3 text-left transition-all',
                         form.tone === t.id
-                          ? 'border-blue-500/60 bg-blue-500/10'
-                          : 'border-gray-800 bg-gray-900/40 hover:border-gray-700',
+                          ? 'border-lumi-gold bg-lumi-gold/10 shadow-gold-glow'
+                          : 'border-surface-border bg-surface-light hover:border-lumi-gold/40 hover:bg-lumi-gold/5',
                       )}
                     >
-                      <div className="text-sm font-semibold text-white">{t.title}</div>
-                      <div className="text-xs text-gray-400">{t.desc}</div>
+                      <div className="font-display text-sm font-semibold text-dark-base">{t.title}</div>
+                      <div className="font-body text-xs text-dark-soft">{t.desc}</div>
                     </button>
                   ))}
                 </div>
@@ -238,8 +324,13 @@ export default function OnboardingPage() {
                   {GOALS.map((g) => <option key={g} value={g}>{g}</option>)}
                 </select>
               </Field>
-              <Field label="One thing Lumi must NEVER do (optional)">
-                <input className={inputCls} value={form.neverDo} onChange={(e) => set('neverDo', e.target.value)} placeholder='e.g. "Never use exclamation marks"' />
+              <Field label='One thing Lumi must NEVER do (optional)'>
+                <input
+                  className={inputCls}
+                  value={form.neverDo}
+                  onChange={(e) => set('neverDo', e.target.value)}
+                  placeholder='e.g. "Never use exclamation marks"'
+                />
               </Field>
             </Section>
           )}
@@ -251,7 +342,7 @@ export default function OnboardingPage() {
                 type="button"
                 onClick={() => setStep((n) => Math.max(1, n - 1))}
                 disabled={step === 1}
-                className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-gray-400 hover:bg-gray-800 disabled:opacity-30"
+                className="inline-flex items-center gap-1 rounded-lg px-3 py-2 font-body text-sm text-dark-soft hover:bg-surface-border disabled:opacity-30 transition-colors"
               >
                 <ArrowLeft className="h-4 w-4" /> Back
               </button>
@@ -264,19 +355,20 @@ export default function OnboardingPage() {
                   }
                   setStep((n) => Math.min(3, n + 1));
                 }}
-                className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500"
+                className="inline-flex items-center gap-1 rounded-xl bg-lumi-gold px-5 py-2.5 font-display text-sm font-semibold text-dark-base hover:bg-lumi-deep active:scale-[0.98] shadow-gold-glow transition-all"
               >
                 Continue <ArrowRight className="h-4 w-4" />
               </button>
             </div>
           )}
+
           {step === 3 && (
             <div className="mt-6 flex justify-between">
               <button
                 type="button"
                 onClick={() => setStep((n) => Math.max(1, n - 1))}
                 disabled={false}
-                className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-gray-400 hover:bg-gray-800 disabled:opacity-30"
+                className="inline-flex items-center gap-1 rounded-lg px-3 py-2 font-body text-sm text-dark-soft hover:bg-surface-border disabled:opacity-30 transition-colors"
               >
                 <ArrowLeft className="h-4 w-4" /> Back
               </button>
@@ -290,7 +382,7 @@ export default function OnboardingPage() {
                   finish(false);
                 }}
                 disabled={busy}
-                className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-500 disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded-xl bg-lumi-gold px-5 py-2.5 font-display text-sm font-semibold text-dark-base hover:bg-lumi-deep active:scale-[0.98] shadow-gold-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {busy ? (
                   <>
@@ -298,14 +390,15 @@ export default function OnboardingPage() {
                   </>
                 ) : (
                   <>
-                    Complete & Enter App <ArrowRight className="h-4 w-4" />
+                    Complete &amp; Enter App <ArrowRight className="h-4 w-4" />
                   </>
                 )}
               </button>
             </div>
           )}
+
           {step === 3 && busy && (
-            <div className="mt-2 text-center text-xs text-gray-400">
+            <div className="mt-2 text-center font-mono text-xs text-dark-soft animate-pulse">
               Saving your context…
             </div>
           )}
@@ -316,12 +409,12 @@ export default function OnboardingPage() {
 }
 
 const inputCls =
-  'w-full rounded-lg border border-gray-700 bg-gray-800/60 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-blue-500 focus:outline-none';
+  'w-full rounded-lg border border-surface-border bg-surface-light px-3 py-2 font-body text-sm text-dark-base placeholder:text-dark-soft/40 focus:border-lumi-gold focus:ring-2 focus:ring-lumi-gold/20 focus:outline-none transition-colors';
 
 function Section({ title, children }) {
   return (
     <div>
-      <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-gray-400">{title}</h2>
+      <h2 className="mb-4 font-mono text-xs font-bold uppercase tracking-widest text-dark-soft">{title}</h2>
       <div className="space-y-4">{children}</div>
     </div>
   );
@@ -330,7 +423,7 @@ function Section({ title, children }) {
 function Field({ label, children }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-semibold text-gray-400">{label}</span>
+      <span className="mb-1 block font-mono text-xs font-semibold uppercase tracking-wide text-dark-soft">{label}</span>
       {children}
     </label>
   );
