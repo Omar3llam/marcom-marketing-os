@@ -107,16 +107,17 @@ function useUserContext() {
       return;
     }
 
-    // If we have a stored state, use it as the initial value
-    // and skip the API call unless explicitly invalidated
+    // Always call the API to verify the Prisma row actually exists.
+    // localStorage is used ONLY as an optimistic hint to prevent the
+    // loading spinner from flashing — it is NOT authoritative.
+    // If we skip the API call (as the old code did), a user with a valid
+    // Firebase session but no Prisma User/Workspace row bypasses onboarding
+    // entirely, causing every CSV upload to fail with workspaceId = null.
     const stored = getStoredOnboardingState();
-    if (stored !== null && !_cached) {
-      publish({ loading: false, hasContext: stored });
-      return;
-    }
+    const optimistic = stored !== null ? stored : false;
+    publish({ loading: true, hasContext: optimistic });
 
     let cancelled = false;
-    publish({ loading: true, hasContext: _cached?.hasContext ?? false });
     api.get('/api/campaigns/me/context')
       .then((res) => {
         if (cancelled) return;
@@ -124,6 +125,9 @@ function useUserContext() {
       })
       .catch(() => {
         if (cancelled) return;
+        // API failed — clear stale localStorage so the user is sent to
+        // onboarding instead of being silently stuck in a broken state.
+        setStoredOnboardingState(false);
         publish({ loading: false, hasContext: false });
       });
     return () => { cancelled = true; };

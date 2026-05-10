@@ -86,17 +86,31 @@ function CampaignInput({ initialData, onSubmit, onCancel }) {
         toast.success(`Processed ${data.processed} of ${data.uploaded} rows.`);
         await refetch();
 
-        // Use the campaign IDs directly from the upload response
-        // No client-side filtering — accept whatever the backend created
+        // 0-processed guard — surface a specific hint so the user knows
+        // whether it's a CSV format issue or a session/workspace issue.
         if (!data.campaign_ids || data.campaign_ids.length === 0) {
-          setError('Upload succeeded but no campaigns were created. The CSV may be empty or invalid.');
+          if (data.uploaded > 0 && data.processed === 0) {
+            setError(
+              `Upload found ${data.uploaded} rows but could not process any. ` +
+              `Try refreshing the page — your session may need to be re-established.`,
+            );
+          } else {
+            setError('Upload succeeded but no campaigns were created. The CSV may be empty or invalid.');
+          }
           return;
         }
 
         // Use the first created campaign ID
         onSubmit({ campaignId: data.campaign_ids[0], source: 'csv-upload' });
       } catch (err) {
-        const detail = err.response?.data?.error || err.message || 'Upload failed';
+        // 401 from the upload endpoint means the workspace wasn't found.
+        // Direct the user to refresh (ProtectedRoute will fix their session).
+        if (err.response?.status === 401) {
+          setError('Session issue detected. Please refresh the page and try again.');
+          return;
+        }
+        const detail = err.response?.data?.error || err.response?.data?.hint
+          || err.message || 'Upload failed';
         setError(detail);
       } finally {
         setBusy(false);
