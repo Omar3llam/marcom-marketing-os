@@ -4,9 +4,10 @@
 // PRODUCTION-GRADE AUTHENTICATED API CLIENT
 //
 // Every request automatically:
-//   1. Attaches fresh Firebase ID token
-//   2. Handles 401 → redirect to /login
-//   3. Clears stale cached state on auth failure
+//   1. Attaches fresh Firebase ID token (direct SDK, no hooks)
+//   2. Injects idempotency keys for write operations
+//   3. Handles 401 → redirect to /login
+//   4. Clears stale cached state on auth failure
 //
 // Replaces manual token attachment throughout the app.
 // All API calls MUST use this client:
@@ -14,17 +15,7 @@
 //   await api.get('/api/...');
 // ============================================================
 import axios from 'axios';
-
-let _getToken = null;
-
-/**
- * Wire the Firebase ID token getter (called once from main.jsx
- * after Firebase auth has loaded). Until this is set, requests
- * still go out — but unauthenticated.
- */
-export function bindFirebaseTokenGetter(fn) {
-  _getToken = fn;
-}
+import { auth } from '../firebase.js';
 
 export const api = axios.create({
   baseURL: '/',
@@ -32,28 +23,29 @@ export const api = axios.create({
   timeout: 60_000,
 });
 
-// ── REQUEST INTERCEPTOR: Auto-inject Firebase JWT ───────────
+// ── REQUEST INTERCEPTOR: Auto-inject Firebase JWT & Idempotency ───────────
 api.interceptors.request.use(
   async (config) => {
-    if (_getToken) {
-      try {
-        const token = await _getToken();
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        } else {
-          console.warn('[api] Firebase token unavailable — request will be unauthenticated');
-        }
-      } catch (err) {
-        console.error('[api] Failed to fetch Firebase token:', err);
-        // Let request proceed unauthenticated; backend will reject if auth required.
+    // 1. JWT Injection (direct Firebase SDK access)
+    try {
+      const currentUser = auth?.currentUser;
+      if (currentUser) {
+        const token = await currentUser.getIdToken();
+        config.headers.Authorization = `Bearer ${token}`;
       }
+    } catch (err) {
+      console.warn('[api] Failed to fetch Firebase token:', err);
     }
+
+    // 2. Idempotency Key Injection (For POST, PUT, PATCH, DELETE)
+    const method = config.method?.toLowerCase();
+    if (['post', 'put', 'patch', 'delete'].includes(method)) {
+      config.headers['X-Idempotency-Key'] = crypto.randomUUID();
+    }
+
     return config;
   },
-  (error) => {
-    console.error('[api] Request interceptor error:', error);
-    return Promise.reject(error);
-  }
+  (error) => Promise.reject(error)
 );
 
 // ── RESPONSE INTERCEPTOR: Handle 401 globally ────────────────

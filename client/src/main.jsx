@@ -1,10 +1,9 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import ReactDOM             from 'react-dom/client';
 import { BrowserRouter }    from 'react-router-dom';
 import { Toaster }          from 'sonner';
 import App                  from './App.jsx';
-import { AuthProvider, useAuth } from './context/AuthContext.jsx';
-import { bindFirebaseTokenGetter } from './lib/api.js';
+import { AuthProvider }     from './context/AuthContext.jsx';
 import ErrorBoundary        from './components/ui/ErrorBoundary.jsx';
 import './index.css';
 
@@ -22,16 +21,6 @@ const CONFIG_VALID = typeof FIREBASE_PROJECT_ID === 'string' && FIREBASE_PROJECT
 
 // eslint-disable-next-line no-console
 console.info('[lumi] build', BUILD_ID, '| Firebase project:', FIREBASE_PROJECT_ID || '(missing)');
-
-// Tiny shim that wires the axios interceptor to Firebase's getIdToken()
-// once the auth context is mounted.
-function FirebaseTokenBridge({ children }) {
-  const { getIdToken } = useAuth();
-  useEffect(() => {
-    bindFirebaseTokenGetter(getIdToken);
-  }, [getIdToken]);
-  return children;
-}
 
 // Standalone error page when Firebase config is missing
 function ConfigErrorPage() {
@@ -69,9 +58,7 @@ root.render(
       {CONFIG_VALID ? (
         <AuthProvider>
           <BrowserRouter>
-            <FirebaseTokenBridge>
-              <App />
-            </FirebaseTokenBridge>
+            <App />
           </BrowserRouter>
         </AuthProvider>
       ) : (
