@@ -27,6 +27,20 @@ export const COLUMN_ALIASES = {
     'importe gastado',
     'coût',
     'المبلغ المنفق', // Arabic: "amount spent"
+    'تكلفة',         // Arabic: "cost"
+    // Currency-prefixed variants
+    'egp spend',
+    'usd spend',
+    'sar spend',
+    'aed spend',
+    'gbp spend',
+    'eur spend',
+    'cad spend',
+    'aud spend',
+    'egp cost',
+    'usd cost',
+    'sar cost',
+    'aed cost',
   ],
 
   results: [
@@ -41,6 +55,8 @@ export const COLUMN_ALIASES = {
     'registrations',
     'resultados',
     'résultats',
+    'النتائج',       // Arabic: "results"
+    'conversations', // Common typo/variant
   ],
 
   costPerResult: [
@@ -51,9 +67,12 @@ export const COLUMN_ALIASES = {
     'cost per conversion',
     'cost per action',
     'cpp',
+    'cpr',
     'cost per results',
+    'cost/result',
     'coste por resultado',
     'coût par résultat',
+    'تكلفة النتيجة', // Arabic: "cost per result"
   ],
 
   impressions: [

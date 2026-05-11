@@ -9,7 +9,7 @@
 // ============================================================
 import { useMemo, useState } from 'react';
 import {
-  Upload, ChevronUp, ChevronDown, BarChart3, X,
+  Upload, ChevronUp, ChevronDown, BarChart3, X, RefreshCw,
 } from 'lucide-react';
 import { useCampaignFeed, metricValue } from '@/hooks/useCampaignFeed.js';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
@@ -17,6 +17,9 @@ import InlineBar       from '@/components/ui/InlineBar.jsx';
 import CsvUploader     from '@/components/upload/CsvUploader.jsx';
 import { cn }          from '@/lib/utils.js';
 import { transformDecisionsToFeed } from '@/lib/feedTransform.js';
+import { useWorkspace } from '@/hooks/useWorkspace.js';
+import { api } from '@/lib/api.js';
+import { toast } from 'sonner';
 
 // Flatten campaigns → rows the table can sort + render.
 function flatten(campaigns) {
@@ -51,10 +54,12 @@ const sortableCols = new Set(['campaign', 'spend', 'ctr', 'roas', 'impact']);
 
 export default function CampaignAnalysis() {
   const { campaigns, loading, refetch, setCampaigns } = useCampaignFeed();
+  const { workspace } = useWorkspace();
   const [sortKey, setSortKey] = useState('spend');
   const [sortDir, setSortDir] = useState('desc');
   const [expanded, setExpanded] = useState(new Set());
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   // Handle stateless CSV analysis: transform decisions → feed format → render
   const handleAnalysisComplete = (uploadResult) => {
@@ -66,6 +71,42 @@ export default function CampaignAnalysis() {
       // DB-write mode: refetch from /api/lumi/feed
       refetch();
       setUploadOpen(false);
+    }
+  };
+
+  // Handle Meta live sync: fetch from API → analyze → render
+  const handleMetaSync = async () => {
+    if (syncing) return;
+    if (!workspace?.id) {
+      toast.error('No workspace found. Please complete onboarding first.');
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      const res = await api.post('/api/campaigns/fetch-meta', {
+        mode: 'analyze',
+        projectId: workspace.id,
+        datePreset: 'last_7d',
+      });
+
+      if (res.data.success && res.data.decisions) {
+        const transformed = transformDecisionsToFeed(res.data);
+        setCampaigns(transformed);
+        toast.success(
+          `Synced ${res.data.stats?.analyzed || 0} campaign${res.data.stats?.analyzed === 1 ? '' : 's'} from Meta`,
+          { description: 'Live analysis complete — rendering dashboard' }
+        );
+      } else {
+        toast.error(res.data.error || 'Failed to sync Meta campaigns');
+      }
+    } catch (err) {
+      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Sync failed';
+      toast.error(msg, {
+        description: err.response?.data?.hint || 'Check that Meta OAuth is connected',
+      });
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -118,13 +159,27 @@ export default function CampaignAnalysis() {
             {rows.length === 0 ? 'No data uploaded yet' : `${rows.length} campaign${rows.length === 1 ? '' : 's'} · live`}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setUploadOpen(true)}
-          className="inline-flex items-center gap-1.5 bg-lumi-elevated border border-lumi-border rounded-xl px-4 py-2 text-sm font-display text-lumi-text hover:border-lumi-accent/40 transition-all"
-        >
-          <Upload className="w-3.5 h-3.5" strokeWidth={1.5} /> Upload New Data
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleMetaSync}
+            disabled={syncing}
+            className={cn(
+              "inline-flex items-center gap-1.5 bg-lumi-accent text-lumi-bg border border-lumi-accent rounded-xl px-4 py-2 text-sm font-display font-semibold shadow-accent-glow transition-all",
+              syncing ? "opacity-60 cursor-not-allowed" : "hover:bg-lumi-accent-hover"
+            )}
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", syncing && "animate-spin")} strokeWidth={2} />
+            {syncing ? 'Syncing...' : 'Sync Live Meta'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setUploadOpen(true)}
+            className="inline-flex items-center gap-1.5 bg-lumi-elevated border border-lumi-border rounded-xl px-4 py-2 text-sm font-display text-lumi-text hover:border-lumi-accent/40 transition-all"
+          >
+            <Upload className="w-3.5 h-3.5" strokeWidth={1.5} /> Upload CSV
+          </button>
+        </div>
       </header>
 
       {/* ── KPI CARDS ───────────────────────────────────────── */}
