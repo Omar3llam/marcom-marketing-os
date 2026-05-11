@@ -10,9 +10,12 @@
 # GUARD 2: ESLint scan
 #   Catches undefined vars, unused imports, etc.
 #
-# GUARD 3: Client rebuild (if src or config changed)
-#   Rebuilds client/dist/ and re-stages it so the deployed
-#   artefact is never out of sync with source.
+# GUARD 3: Client build validation (if src or config changed)
+#   Runs `vite build` to catch build-time errors at commit time.
+#   Build output is NOT auto-staged — Render rebuilds client/dist
+#   server-side via render.yaml `buildCommand: npm run build`.
+#   Override: set RELEASE_MODE=true to opt-in to staging the build
+#   output (e.g. when shipping a tag the deploy pipeline can't rebuild).
 # ============================================================
 
 echo "🔍 Running JS syntax check..."
@@ -65,9 +68,15 @@ if ! npm run build --prefix client; then
   exit 1
 fi
 
-git add client/dist
+if [ "$RELEASE_MODE" = "true" ]; then
+  git add client/dist
+  echo ""
+  echo "✓ pre-commit: client/dist rebuilt and staged (RELEASE_MODE=true)."
+else
+  echo ""
+  echo "✓ pre-commit: client/dist rebuilt locally — NOT staged (source-only commit)."
+  echo "  Render rebuilds dist server-side on deploy."
+fi
 
-echo ""
-echo "✓ pre-commit: client/dist rebuilt and staged."
 echo "✅ All pre-commit checks passed."
 echo ""
