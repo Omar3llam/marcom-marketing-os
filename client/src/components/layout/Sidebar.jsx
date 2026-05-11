@@ -8,9 +8,9 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
-  Sparkles, ChevronDown, ChevronRight, Plus, MessageSquare,
+  Sparkles, ChevronDown, ChevronRight, Plus,
   LayoutDashboard, BarChart3, Target, ScanSearch, CalendarDays,
-  Settings, PanelLeftClose, Upload,
+  Settings, PanelLeftClose,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { cn } from '@/lib/utils.js';
@@ -83,25 +83,6 @@ export default function Sidebar({ collapsed, onToggle }) {
 
       {/* ── SCROLL ───────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden py-3 gap-1">
-
-        {/* New Chat */}
-        <div className={cn('px-3', collapsed && 'px-2')}>
-          <button
-            onClick={() => navigate('/app/feed')}
-            title={collapsed ? 'New Chat' : undefined}
-            className={cn(
-              'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl',
-              'bg-lumi-elevated border border-lumi-border',
-              'text-lumi-text font-display font-medium text-sm',
-              'hover:border-lumi-accent/40 hover:shadow-accent-glow',
-              'transition-all duration-150',
-              collapsed && 'justify-center px-0',
-            )}
-          >
-            <Plus className="w-4 h-4 flex-shrink-0" strokeWidth={1.5} />
-            {!collapsed && <span>New Chat</span>}
-          </button>
-        </div>
 
         {/* Project switcher (expanded) */}
         {!collapsed && (
@@ -217,30 +198,6 @@ export default function Sidebar({ collapsed, onToggle }) {
             </NavLink>
           ))}
         </div>
-
-        {/* Recents */}
-        {!collapsed && (
-          <div className="px-3 mt-3">
-            <div className="section-label mb-2 px-1">Recent</div>
-            <div className="space-y-0.5">
-              {mockRecent.map((chat) => (
-                <button
-                  key={chat.id}
-                  className={cn(
-                    'w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-left',
-                    'text-sm transition-all duration-150',
-                    chat.active
-                      ? 'bg-lumi-accent-soft text-lumi-accent border border-lumi-accent/20'
-                      : 'text-lumi-muted hover:text-lumi-text hover:bg-lumi-elevated/60',
-                  )}
-                >
-                  <MessageSquare className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.5} />
-                  <span className="truncate font-body text-[13px]">{chat.title}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ── FOOTER ───────────────────────────────────────────── */}
@@ -248,20 +205,6 @@ export default function Sidebar({ collapsed, onToggle }) {
         'flex-shrink-0 border-t border-lumi-border p-3',
         collapsed ? 'flex flex-col items-center gap-2' : 'space-y-1',
       )}>
-        <button
-          onClick={() => navigate('/app/feed?upload=1')}
-          title={collapsed ? 'Upload CSV' : undefined}
-          aria-label="Upload CSV"
-          className={cn(
-            'flex items-center gap-2.5 rounded-xl text-lumi-muted',
-            'hover:text-lumi-text hover:bg-lumi-elevated transition-all duration-150',
-            collapsed ? 'p-2.5' : 'w-full px-3 py-2 text-sm',
-          )}
-        >
-          <Upload className="w-4 h-4 flex-shrink-0" strokeWidth={1.5} />
-          {!collapsed && <span className="font-body text-[13px]">Upload CSV</span>}
-        </button>
-
         <NavLink
           to="/app/settings"
           title={collapsed ? 'Settings' : undefined}
