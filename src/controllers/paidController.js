@@ -24,39 +24,11 @@ const executeSchema = z.object({
   payload: z.record(z.any()).optional().default({}),
 });
 
-// ── MOCK FALLBACK DATA ───────────────────────────────────────
-// Used when MCP connection fails, so frontend radar doesn't crash
-const MOCK_RADAR_ALERTS = [
-  {
-    id: 'mock-alert-001',
-    mode: 'campaign',
-    title: 'MCP Connection Failed — Using Mock Data',
-    verdict: 'HOLD',
-    confidence: 0.5,
-    impact: '⚠️ Radar offline — Enable MCP for live alerts',
-    risk_level: 'MEDIUM',
-    why: [
-      'Meta Ads MCP server is not connected',
-      'Check META_ACCESS_TOKEN environment variable',
-      'Verify npx meta-ads-mcp is installed',
-    ],
-    action: {
-      type: 'pause_campaign',
-      target_id: 'mock_campaign',
-      payload: {},
-    },
-    timestamp: new Date().toISOString(),
-    agentsUsed: ['mock'],
-    financialImpact: '⚠️ Radar offline',
-    whyBreakdown: [
-      'Meta Ads MCP server is not connected',
-      'Check META_ACCESS_TOKEN environment variable',
-    ],
-    actionLabel: 'Check MCP Connection',
-    riskLevel: 'MEDIUM',
-    modeSpecificData: {},
-  },
-];
+// MOCK_RADAR_ALERTS retained for test fixtures only — never sent to client.
+// On MCP failure, radarHandler now returns 503 + alerts:[] so the frontend
+// can render a proper empty/error state instead of silently rendering
+// placeholder data as if it were real.
+// const MOCK_RADAR_ALERTS = [ ... ];
 
 /**
  * GET /api/v1/paid/radar
@@ -74,13 +46,12 @@ export async function radarHandler(req, res) {
         datePreset: req.query.datePreset || 'last_7d',
       });
     } catch (mcpError) {
-      logger.warn({ err: mcpError.message }, '[PaidController] MCP fetch failed, using mock data');
-      // Return mock data instead of crashing
-      return res.json({
-        success: true,
-        alerts: MOCK_RADAR_ALERTS,
-        source: 'mock',
-        message: 'MCP connection failed, showing mock alerts',
+      logger.warn({ err: mcpError.message }, '[PaidController] MCP fetch failed');
+      return res.status(503).json({
+        success: false,
+        alerts: [],
+        source: 'unavailable',
+        message: 'Meta MCP not connected. Set META_ACCESS_TOKEN to enable live radar.',
       });
     }
 
@@ -97,12 +68,11 @@ export async function radarHandler(req, res) {
   } catch (error) {
     logger.error({ err: error.message }, '[PaidController] Radar handler failed');
 
-    // Graceful fallback to mock data
-    return res.json({
-      success: true,
-      alerts: MOCK_RADAR_ALERTS,
-      source: 'mock',
-      message: 'Analysis failed, showing mock alerts',
+    return res.status(503).json({
+      success: false,
+      alerts: [],
+      source: 'unavailable',
+      message: 'Meta MCP not connected. Set META_ACCESS_TOKEN to enable live radar.',
       error: error.message,
     });
   }
