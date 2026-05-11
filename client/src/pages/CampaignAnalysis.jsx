@@ -16,6 +16,7 @@ import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import InlineBar       from '@/components/ui/InlineBar.jsx';
 import CsvUploader     from '@/components/upload/CsvUploader.jsx';
 import { cn }          from '@/lib/utils.js';
+import { transformDecisionsToFeed } from '@/lib/feedTransform.js';
 
 // Flatten campaigns → rows the table can sort + render.
 function flatten(campaigns) {
@@ -49,11 +50,24 @@ function flatten(campaigns) {
 const sortableCols = new Set(['campaign', 'spend', 'ctr', 'roas', 'impact']);
 
 export default function CampaignAnalysis() {
-  const { campaigns, loading, refetch } = useCampaignFeed();
+  const { campaigns, loading, refetch, setCampaigns } = useCampaignFeed();
   const [sortKey, setSortKey] = useState('spend');
   const [sortDir, setSortDir] = useState('desc');
   const [expanded, setExpanded] = useState(new Set());
   const [uploadOpen, setUploadOpen] = useState(false);
+
+  // Handle stateless CSV analysis: transform decisions → feed format → render
+  const handleAnalysisComplete = (uploadResult) => {
+    if (uploadResult.mode === 'analyze' && uploadResult.decisions) {
+      const transformed = transformDecisionsToFeed(uploadResult);
+      setCampaigns(transformed);
+      setUploadOpen(false);
+    } else {
+      // DB-write mode: refetch from /api/lumi/feed
+      refetch();
+      setUploadOpen(false);
+    }
+  };
 
   const rows = useMemo(() => {
     const all = flatten(campaigns);
@@ -231,7 +245,7 @@ export default function CampaignAnalysis() {
                 <X className="w-4 h-4" strokeWidth={1.5} />
               </button>
             </div>
-            <CsvUploader onSuccess={() => { setUploadOpen(false); refetch(); }} />
+            <CsvUploader mode="analyze" onSuccess={handleAnalysisComplete} />
           </div>
         </div>
       )}

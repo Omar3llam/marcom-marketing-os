@@ -13,7 +13,16 @@ import { cn }    from '../../lib/utils.js';
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
-export default function CsvUploader({ onSuccess, compact = false }) {
+/**
+ * CsvUploader component
+ * @param {object} props
+ * @param {function} props.onSuccess - Callback when upload succeeds
+ * @param {boolean} props.compact - Compact layout flag
+ * @param {'analyze'|'db-write'} props.mode - Upload mode:
+ *   - 'analyze': stateless AI analysis (no DB writes, returns decisions)
+ *   - 'db-write' (default): persists to DB, creates Action rows
+ */
+export default function CsvUploader({ onSuccess, compact = false, mode = 'db-write' }) {
   const inputRef   = useRef(null);
   const [file,     setFile]     = useState(null);
   const [progress, setProgress] = useState(0);
@@ -51,17 +60,34 @@ export default function CsvUploader({ onSuccess, compact = false }) {
     form.append('campaignData', file);
 
     try {
-      const res = await api.post('/api/campaigns/upload-csv', form, {
+      // Append ?mode=analyze query param if in analyze mode
+      const endpoint = mode === 'analyze'
+        ? '/api/campaigns/upload-csv?mode=analyze'
+        : '/api/campaigns/upload-csv';
+
+      const res = await api.post(endpoint, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (evt) => {
           if (evt.total) setProgress(Math.round((evt.loaded / evt.total) * 100));
         },
       });
+
       setResult(res.data);
-      const campaignCount = res.data.campaign_ids?.length || 0;
-      toast.success(
-        `Processed ${res.data.processed} of ${res.data.uploaded} rows · ${campaignCount} campaigns created.`,
-      );
+
+      // Show success toast based on mode
+      if (mode === 'analyze') {
+        const analyzed = res.data.stats?.analyzed || res.data.decisions?.length || 0;
+        toast.success(
+          `Analyzed ${analyzed} campaign${analyzed === 1 ? '' : 's'} · ${res.data.decisions?.length || 0} decision${res.data.decisions?.length === 1 ? '' : 's'} generated`,
+          { description: 'AI analysis complete — rendering dashboard' },
+        );
+      } else {
+        const campaignCount = res.data.campaign_ids?.length || 0;
+        toast.success(
+          `Processed ${res.data.processed} of ${res.data.uploaded} rows · ${campaignCount} campaign${campaignCount === 1 ? '' : 's'} created.`,
+        );
+      }
+
       onSuccess?.(res.data);
     } catch (err) {
       const msg = err.response?.data?.error || err.message || 'Upload failed';
@@ -158,9 +184,20 @@ export default function CsvUploader({ onSuccess, compact = false }) {
           <div className="text-green-200">
             <div className="font-semibold">Upload complete</div>
             <div className="text-xs text-green-300/80">
-              {result.processed} processed · {result.alerts_created} alerts seeded
-              {Array.isArray(result.errors) && result.errors.length > 0 && (
-                <span> · {result.errors.length} row error(s)</span>
+              {mode === 'analyze' ? (
+                <>
+                  {result.stats?.analyzed || 0} analyzed · {result.decisions?.length || 0} decisions
+                  {Array.isArray(result.errors) && result.errors.length > 0 && (
+                    <span> · {result.errors.length} error(s)</span>
+                  )}
+                </>
+              ) : (
+                <>
+                  {result.processed} processed · {result.alerts_created} alerts seeded
+                  {Array.isArray(result.errors) && result.errors.length > 0 && (
+                    <span> · {result.errors.length} row error(s)</span>
+                  )}
+                </>
               )}
             </div>
           </div>
