@@ -14,6 +14,7 @@
 // ============================================================
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import LandingPage      from './pages/LandingPage.jsx';
 import AuthPage         from './pages/AuthPage.jsx';
 import OnboardingPage   from './pages/OnboardingPage.jsx';
@@ -25,6 +26,7 @@ import ScoreContent     from './pages/tools/ScoreContent.jsx';
 import SettingsPage     from './pages/Settings.jsx';
 import { CardSkeleton } from './components/ui/Skeleton.jsx';
 import { ProtectedRoute, OnboardingRoute } from './router/ProtectedRoute.jsx';
+import { useAuth } from './context/AuthContext.jsx';
 
 // ── Heavy views — lazy-load to keep the initial bundle slim ──
 const CampaignAnalysis    = lazy(() => import('./pages/CampaignAnalysis.jsx'));
@@ -41,7 +43,26 @@ function PageFallback() {
   );
 }
 
+function AuthLoadingScreen() {
+  return (
+    <div className="flex h-screen items-center justify-center bg-gray-950">
+      <div className="flex items-center gap-2 text-gray-400">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        <span className="text-sm">Initializing authentication…</span>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
+  const { loading: authLoading } = useAuth();
+
+  // CRITICAL: Don't render any routes until Firebase auth state resolves.
+  // This prevents components from accessing currentUser before it's available.
+  if (authLoading) {
+    return <AuthLoadingScreen />;
+  }
+
   return (
     <Routes>
       {/* ── Public ───────────────────────────────────────── */}
