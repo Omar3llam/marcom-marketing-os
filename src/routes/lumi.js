@@ -437,7 +437,7 @@ lumiRouter.get('/feed', async (req, res) => {
 });
 
 // Build the structured-signal rows the DecisionTheater renders.
-function signalsFromMetrics(m = {}, stage = 'TESTING') {
+function signalsFromMetrics(m = {}, _stage = 'TESTING') {
   const rows = [];
   const fmtPct  = (v) => `${(Number(v) || 0).toFixed(2)}%`;
   const fmtRoas = (v) => `${(Number(v) || 0).toFixed(2)}x`;

@@ -3,7 +3,7 @@
 // ============================================================
 import { logger } from '../utils/logger.js';
 
-export function errorHandler(err, req, res, next) {
+export function errorHandler(err, req, res, _next) {
   const status = err.status || err.statusCode || 500;
   logger.error({ err, reqId: req.id, status }, 'Unhandled error');
 

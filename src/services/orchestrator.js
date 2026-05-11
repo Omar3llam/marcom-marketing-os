@@ -10,7 +10,6 @@
 // ============================================================
 import Anthropic from '@anthropic-ai/sdk';
 import { logger } from '../utils/logger.js';
-import { config } from '../config.js';
 
 // Initialize Anthropic client
 const anthropic = new Anthropic({

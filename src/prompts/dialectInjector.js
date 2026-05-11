@@ -51,7 +51,7 @@ function curateLexicon(pack, registerLevel) {
 }
 
 // Curate example translations for the active register
-function curateExamples(pack, registerLevel) {
+function curateExamples(pack, _registerLevel) {
   const all = pack.example_translations || [];
   if (!all.length) return [];
   // Keep up to 4 — model gets the pattern from a few well-chosen examples

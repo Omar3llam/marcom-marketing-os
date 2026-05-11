@@ -13,7 +13,6 @@
 // ============================================================
 import { Router }          from 'express';
 import multer              from 'multer';
-import { parse as csvParse } from 'csv-parse/sync';
 import { getOrCreateSession, updateSession } from '../utils/sessionStore.js';
 import { getCredential }   from '../models/credential.js';
 import { getProjectById }  from '../models/project.js';
@@ -22,14 +21,10 @@ import {
   formatInsightsForPrompt,
 } from '../services/metaAdsService.js';
 import { runMode5 }        from '../modes/mode5-campaign.js';
-import { classifyCampaignStage } from '../services/campaignClassifier.js';
-import { generateAlerts }        from '../services/alertGenerator.js';
-import { parseSmartCSV }        from '../utils/csvParser.js';
 import { parseMetaAdsCsv }      from '../services/metaAdsParser.js';
 import { prisma }          from '../lib/prisma.js';
 import { logger }          from '../utils/logger.js';
 import { contextGuard }    from '../middleware/contextGuard.js';
-import { buildSystemPrompt } from '../utils/promptBuilder.js';
 import { randomUUID }      from 'crypto';
 
 export const campaignsRouter = Router();
@@ -459,7 +454,6 @@ campaignsRouter.put('/me/context', async (req, res) => {
       meta:    err?.meta,
       message: err?.message,
     };
-    // eslint-disable-next-line no-console
     console.error('[campaigns/me/context] Prisma write failed:', JSON.stringify(detail, null, 2));
     logger.error(detail, '[campaigns/me/context] write failed');
     return res.status(500).json({
@@ -474,13 +468,6 @@ campaignsRouter.put('/me/context', async (req, res) => {
 });
 
 // ── Helpers ──────────────────────────────────────────────────
-
-function detectPlatform(filename) {
-  const f = (filename || '').toLowerCase();
-  if (/google|gads|adwords/.test(f)) return 'GOOGLE';
-  if (/meta|facebook|fb|instagram|ig/.test(f)) return 'META';
-  return 'META';
-}
 
 function computeHealthScore(m = {}) {
   const roas = Math.max(0, Math.min(5, m.roas ?? 0)) / 5;

@@ -22,7 +22,6 @@ import './config.js';           // Validates env vars; exits on failure
 
 import express              from 'express';
 import cors                 from 'cors';
-import { readFile }         from 'fs/promises';
 import path from 'path';
 import { firebaseAuthMiddleware, requireAuth } from './middleware/firebaseAuth.js';
 import { validateWebhook, captureRawBody } from './middleware/validateWebhook.js';
