@@ -178,3 +178,74 @@ export function formatInsightsForPrompt(insights, adAccountId) {
 
   return lines.join('\n');
 }
+
+/**
+ * Normalize Meta API insights into campaign objects for orchestrator analysis.
+ * Output matches the shape produced by metaAdsParser so the same analysis
+ * logic can be reused.
+ *
+ * @param {Array} insights - Raw Meta API insights from fetchCampaignInsights
+ * @returns {Array} - Normalized campaign objects
+ */
+export function normalizeInsightsForAnalysis(insights) {
+  if (!insights || insights.length === 0) return [];
+
+  return insights.map((row) => {
+    const d = row._data || row;
+
+    // Extract conversions (results) from actions array
+    const conversions = (d.actions || []).find(
+      a => a.action_type === 'offsite_conversion.fb_pixel_purchase' || a.action_type === 'lead'
+    )?.value || 0;
+
+    const spend       = parseFloat(d.spend || 0);
+    const impressions = parseInt(d.impressions || 0, 10);
+    const reach       = parseInt(d.reach || 0, 10);
+    const frequency   = parseFloat(d.frequency || 0);
+    const ctr         = parseFloat(d.ctr || 0);
+    const cpc         = parseFloat(d.cpc || 0);
+    const results     = parseInt(conversions, 10);
+
+    // Estimate ROAS from CTR + frequency (same heuristic as CSV parser)
+    const roasEstimate = estimateRoas(ctr, frequency);
+
+    // Cost per result (CPA)
+    const costPerResult = results > 0 ? spend / results : 0;
+
+    // Stable composite ID (campaign_id from Meta or fallback slug)
+    const campaignId = d.campaign_id
+      ? `meta__${d.campaign_id}`
+      : `meta__${String(d.campaign_name || 'unknown').toLowerCase().replace(/[^a-z0-9_]/g, '_')}`;
+
+    return {
+      campaignId,
+      campaignName:   d.campaign_name || 'Unnamed Campaign',
+      adsetName:      'Campaign-level aggregate', // Meta API returns campaign-level, not adset
+      deliveryStatus: 'ACTIVE', // Meta API doesn't return delivery_status at campaign level
+      spend:          round2(spend),
+      impressions,
+      results,
+      frequency:      round2(frequency),
+      reach,
+      costPerResult:  round2(costPerResult),
+      ctr:            round2(ctr),
+      cpc:            round2(cpc),
+      roas:           round2(roasEstimate),
+      // Preserve raw Meta API response for Claude context
+      rawRecord:      d,
+    };
+  });
+}
+
+// ── Helpers (duplicated from metaAdsParser for independence) ────
+
+function estimateRoas(ctr, frequency) {
+  const base       = 1.5;
+  const ctrBonus   = ctr > 1 ? (ctr - 1) * 0.1 : 0;
+  const freqFactor = frequency > 3 ? 1 - (frequency - 3) * 0.15 : 1;
+  return Math.max(0.1, (base + ctrBonus) * freqFactor);
+}
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}

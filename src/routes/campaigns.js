@@ -19,6 +19,7 @@ import { getProjectById }  from '../models/project.js';
 import {
   fetchCampaignInsights,
   formatInsightsForPrompt,
+  normalizeInsightsForAnalysis,
 } from '../services/metaAdsService.js';
 import { runMode5 }        from '../modes/mode5-campaign.js';
 import { parseMetaAdsCsv }      from '../services/metaAdsParser.js';
@@ -140,12 +141,21 @@ campaignsRouter.post('/data-inject', contextGuard, async (req, res) => {
 });
 
 // ── POST /api/campaigns/fetch-meta ──────────────────────────
-// Body: { sessionId?, projectId, datePreset? }
-// Pulls live campaign insights from Meta Ads using stored credentials,
-// then runs Mode 5 analysis. Returns same shape as data-inject.
+// Body: { sessionId?, projectId, datePreset?, mode? }
+//
+// TWO MODES:
+// 1. ?mode=analyze (STATELESS)
+//    - Fetches live Meta data → Claude orchestrator → structured JSON
+//    - NO database writes, NO session requirement
+//    - Returns: { decisions: Array<OrchestratorDecision> }
+//
+// 2. Default mode (STATEFUL — LEGACY)
+//    - Fetches Meta data → Mode 5 conversational agent → session update
+//    - Response: { status: 'ok', session_id, message, current_mode: 5 }
+// ─────────────────────────────────────────────────────────────
 campaignsRouter.post('/fetch-meta', async (req, res) => {
   const userId  = req.userId;
-  const { sessionId, projectId, datePreset = 'last_30d' } = req.body;
+  const { sessionId, projectId, datePreset = 'last_30d', mode } = req.body;
 
   if (!projectId) {
     return res.status(400).json({ status: 'error', message: 'projectId is required' });
@@ -168,8 +178,104 @@ campaignsRouter.post('/fetch-meta', async (req, res) => {
     }
 
     // Fetch live data from Meta
-    logger.info({ userId, projectId, accountId: cred.accountId, datePreset }, '[campaigns] Fetching Meta insights');
+    logger.info({ userId, projectId, accountId: cred.accountId, datePreset, mode }, '[campaigns] Fetching Meta insights');
     const insights = await fetchCampaignInsights(cred.accessToken, cred.accountId, datePreset);
+
+    // ═══════════════════════════════════════════════════════════
+    // MODE 1: STATELESS ANALYSIS (mode=analyze)
+    // ═══════════════════════════════════════════════════════════
+    if (mode === 'analyze') {
+      if (!insights || insights.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error:   'No campaigns found in Meta account for the selected date range',
+          stats:   { fetched: 0, analyzed: 0 },
+        });
+      }
+
+      // Hard cap: same as CSV upload
+      const MAX_CAMPAIGNS = 20;
+      if (insights.length > MAX_CAMPAIGNS) {
+        return res.status(400).json({
+          success: false,
+          error:   `Account has ${insights.length} campaigns. Maximum for analysis mode is ${MAX_CAMPAIGNS}.`,
+          hint:    'Use a shorter date range (e.g., last_7d) or filter campaigns in Meta Ads Manager.',
+        });
+      }
+
+      // Normalize Meta API insights → campaign objects
+      const normalized = normalizeInsightsForAnalysis(insights);
+
+      // Analyze each campaign with Claude orchestrator
+      const decisions = [];
+      const errors    = [];
+
+      for (const c of normalized) {
+        try {
+          const dataForClaude = {
+            campaignId:   c.campaignId,
+            campaignName: c.campaignName,
+            adsetName:    c.adsetName,
+            metrics: {
+              spend:         c.spend,
+              impressions:   c.impressions,
+              results:       c.results,
+              ctr:           c.ctr,
+              cpc:           c.cpc,
+              roas:          c.roas,
+              frequency:     c.frequency,
+              reach:         c.reach,
+              costPerResult: c.costPerResult,
+            },
+            deliveryStatus: c.deliveryStatus,
+            rawRecord:      c.rawRecord,
+          };
+
+          const decision = await orchestrator.analyzeCampaignData(dataForClaude, 'meta-api');
+
+          // Enrich with campaign identifiers
+          decision.campaignId   = c.campaignId;
+          decision.campaignName = c.campaignName;
+          decision.adsetName    = c.adsetName;
+
+          decisions.push(decision);
+        } catch (err) {
+          logger.error({ err: err.message, campaignId: c.campaignId },
+            '[campaigns/fetch-meta] orchestrator.analyzeCampaignData failed');
+          errors.push({
+            campaign: c.campaignName,
+            error:    err.message,
+          });
+        }
+      }
+
+      logger.info({
+        userId,
+        projectId,
+        fetched:  insights.length,
+        analyzed: decisions.length,
+        errors:   errors.length,
+      }, '[campaigns/fetch-meta] ANALYZE mode complete');
+
+      return res.json({
+        success:   true,
+        mode:      'analyze',
+        source:    'meta-api',
+        decisions,
+        errors,
+        stats: {
+          fetched:  insights.length,
+          analyzed: decisions.length,
+          failed:   errors.length,
+        },
+        datePreset,
+        accountId: cred.accountId,
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // MODE 2: STATEFUL SESSION-BASED ANALYSIS (legacy)
+    // ═══════════════════════════════════════════════════════════
     const dataText = formatInsightsForPrompt(insights, cred.accountId);
 
     // Load or create session
