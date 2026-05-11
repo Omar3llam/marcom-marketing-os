@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import admin from '../utils/firebaseAdmin.js';
 import { logger } from '../utils/logger.js';
+import { prisma } from '../lib/prisma.js';
 
 const auth = admin.auth();
 const db = admin.firestore();
@@ -173,11 +174,18 @@ userRouter.patch('/workspace', async (req, res) => {
 // ══════════════════════════════════════════════════════════════
 /**
  * DANGER ZONE: Permanently delete user account, workspace, and all data.
+ *
+ * Architecture:
+ *   - Uses Prisma/PostgreSQL (NOT Firestore)
+ *   - Deletes workspace → CASCADE deletes all related data:
+ *     * Users, Actions, CampaignStates, DecisionMemory, Integrations, AuditLogs
+ *   - Deletes Firebase Auth user to invalidate tokens
+ *
  * Steps:
- *   1. Fetch workspaceId from Firestore (not JWT — custom claims not set)
- *   2. Delete Firestore: campaigns, workspaces, users
+ *   1. Find user in Prisma by Firebase UID (stored in clerkId)
+ *   2. Delete workspace (CASCADE handles all related data)
  *   3. Delete Firebase Auth user (invalidates all tokens)
- *   4. Client must sign out and clear localStorage
+ *   4. Client signs out and clears localStorage
  *
  * Response: { success: true }
  */
@@ -191,18 +199,22 @@ userRouter.delete('/account', async (req, res) => {
 
     logger.warn('[userRouter] DELETE /account initiated:', { uid });
 
-    // ✅ Step 1: Fetch workspaceId from Firestore user doc
-    // Firebase JWTs don't include workspaceId by default — must fetch separately
-    const userDoc = await db.collection('users').doc(uid).get();
+    // ✅ Step 1: Find user in Prisma by Firebase UID
+    // Firebase UID is stored in clerkId column (legacy name from Clerk → Firebase migration)
+    const user = await prisma.user.findFirst({
+      where: { clerkId: uid },
+      select: { id: true, workspaceId: true, email: true },
+    });
 
-    if (!userDoc.exists) {
-      logger.info('[userRouter] User doc not found — deleting auth user only');
-      // User doc already gone, but auth might still exist
+    if (!user) {
+      logger.info('[userRouter] User not found in Prisma — attempting Firebase Auth cleanup only');
+      // User might be in Firebase Auth but not in database
       try {
         await auth.deleteUser(uid);
+        logger.info('[userRouter] Firebase Auth user deleted (no Prisma record)');
       } catch (authErr) {
         if (authErr.code === 'auth/user-not-found') {
-          logger.info('[userRouter] Auth user already deleted');
+          logger.info('[userRouter] Firebase Auth user already deleted');
           return res.json({ success: true });
         }
         throw authErr;
@@ -210,77 +222,82 @@ userRouter.delete('/account', async (req, res) => {
       return res.json({ success: true });
     }
 
-    const userData = userDoc.data();
-    const workspaceId = userData?.workspaceId;
+    const { workspaceId, email } = user;
 
-    logger.info('[userRouter] Deleting account:', { uid, workspaceId });
+    logger.info('[userRouter] Deleting account:', {
+      uid,
+      userId: user.id,
+      workspaceId,
+      email
+    });
 
-    // ✅ Step 2: Delete Firestore data in parallel
-    const deleteOps = [];
-
-    // Delete user doc
-    deleteOps.push(db.collection('users').doc(uid).delete());
-
-    // Delete workspace if we have the ID
+    // ✅ Step 2: Delete workspace (CASCADE deletes all related data)
+    // Prisma schema has onDelete: Cascade for:
+    //   - users, actions, campaignStates, decisionMemory, integrations, auditLogs
     if (workspaceId) {
-      // Delete workspace doc
-      deleteOps.push(db.collection('workspaces').doc(workspaceId).delete());
-
-      // Delete campaign subcollections (batch delete for performance)
-      deleteOps.push(
-        db.collection('campaigns')
-          .where('workspaceId', '==', workspaceId)
-          .get()
-          .then((snapshot) => {
-            if (snapshot.empty) return;
-            const batch = db.batch();
-            snapshot.docs.forEach((doc) => batch.delete(doc.ref));
-            return batch.commit();
-          })
-      );
-
-      // Delete any other workspace-scoped collections
-      // (add more collections here as needed)
-      deleteOps.push(
-        db.collection('actions')
-          .where('workspaceId', '==', workspaceId)
-          .get()
-          .then((snapshot) => {
-            if (snapshot.empty) return;
-            const batch = db.batch();
-            snapshot.docs.forEach((doc) => batch.delete(doc.ref));
-            return batch.commit();
-          })
-      );
+      await prisma.workspace.delete({
+        where: { id: workspaceId },
+      });
+      logger.info('[userRouter] Workspace deleted (with CASCADE):', { workspaceId });
+    } else {
+      // No workspace — delete user record directly
+      await prisma.user.delete({
+        where: { id: user.id },
+      });
+      logger.info('[userRouter] User deleted (no workspace):', { userId: user.id });
     }
 
-    await Promise.all(deleteOps);
-
     // ✅ Step 3: Delete Firebase Auth user LAST
-    // (this invalidates all tokens, so do it after Firestore cleanup)
-    await auth.deleteUser(uid);
+    // This invalidates all tokens, so do it after database cleanup
+    try {
+      await auth.deleteUser(uid);
+      logger.info('[userRouter] Firebase Auth user deleted:', { uid });
+    } catch (authErr) {
+      // If auth user already deleted, treat as success (idempotent)
+      if (authErr.code === 'auth/user-not-found') {
+        logger.info('[userRouter] Firebase Auth user already deleted');
+      } else {
+        // Auth deletion failed but database already cleaned up
+        // Log error but still return success (database is source of truth)
+        logger.error('[userRouter] Firebase Auth deletion failed (DB already clean):', {
+          code: authErr.code,
+          message: authErr.message,
+        });
+      }
+    }
 
-    logger.warn('[userRouter] Account deleted successfully:', { uid, workspaceId });
+    logger.warn('[userRouter] Account deletion complete:', {
+      uid,
+      email,
+      workspaceId
+    });
 
     res.json({ success: true });
+
   } catch (err) {
     logger.error('[userRouter] DELETE /account error:', {
+      uid: req.user?.uid,
       code: err.code,
       message: err.message,
       stack: err.stack,
     });
 
-    // If user is already deleted from Auth but Firestore cleanup failed,
-    // still return success (idempotent)
-    if (err.code === 'auth/user-not-found') {
-      logger.info('[userRouter] Auth user already deleted — treating as success');
+    // Check if this is a "record not found" error (user already deleted)
+    if (err.code === 'P2025') {
+      logger.info('[userRouter] Record already deleted — treating as success');
+      // Attempt Firebase Auth cleanup
+      try {
+        await auth.deleteUser(req.user?.uid);
+      } catch {
+        // Ignore errors
+      }
       return res.json({ success: true });
     }
 
     res.status(500).json({
       error: 'Failed to delete account',
-      code: err.code,
       message: err.message,
+      hint: 'Contact support if this persists',
     });
   }
 });
