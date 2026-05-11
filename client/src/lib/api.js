@@ -1,10 +1,17 @@
 // ============================================================
 // MARCOM / Lumi — Axios client w/ Firebase JWT injection
 // ------------------------------------------------------------
-// Replaces direct `axios.get('/api/...')` calls with `api.get(...)`.
-// Every request automatically attaches a fresh Firebase ID token,
-// so JWT-protected backend routes (req.user.uid / req.workspaceId)
-// see an authenticated caller.
+// PRODUCTION-GRADE AUTHENTICATED API CLIENT
+//
+// Every request automatically:
+//   1. Attaches fresh Firebase ID token
+//   2. Handles 401 → redirect to /login
+//   3. Clears stale cached state on auth failure
+//
+// Replaces manual token attachment throughout the app.
+// All API calls MUST use this client:
+//   import { api } from '@/lib/api';
+//   await api.get('/api/...');
 // ============================================================
 import axios from 'axios';
 
@@ -25,14 +32,58 @@ export const api = axios.create({
   timeout: 60_000,
 });
 
-api.interceptors.request.use(async (config) => {
-  if (_getToken) {
-    try {
-      const token = await _getToken();
-      if (token) config.headers.Authorization = `Bearer ${token}`;
-    } catch {
-      // Token unavailable; let the request proceed unauthenticated.
+// ── REQUEST INTERCEPTOR: Auto-inject Firebase JWT ───────────
+api.interceptors.request.use(
+  async (config) => {
+    if (_getToken) {
+      try {
+        const token = await _getToken();
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        } else {
+          console.warn('[api] Firebase token unavailable — request will be unauthenticated');
+        }
+      } catch (err) {
+        console.error('[api] Failed to fetch Firebase token:', err);
+        // Let request proceed unauthenticated; backend will reject if auth required.
+      }
     }
+    return config;
+  },
+  (error) => {
+    console.error('[api] Request interceptor error:', error);
+    return Promise.reject(error);
   }
-  return config;
-});
+);
+
+// ── RESPONSE INTERCEPTOR: Handle 401 globally ────────────────
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // 401 Unauthorized → session expired or invalid
+    if (error.response?.status === 401) {
+      console.warn('[api] 401 Unauthorized — clearing cached state and redirecting to login');
+
+      // Clear localStorage cached state (onboarding, history, etc.)
+      try {
+        localStorage.removeItem('lumi:decisionHistory');
+        localStorage.removeItem('lumi:radarAlerts');
+        localStorage.removeItem('lumi:onboardingState');
+      } catch {
+        // localStorage may be unavailable in some environments
+      }
+
+      // Redirect to login (avoid infinite loop if already on /login)
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login?session_expired=1';
+      }
+    }
+
+    // 403 Forbidden → insufficient permissions (workspace/role issue)
+    if (error.response?.status === 403) {
+      console.error('[api] 403 Forbidden — user lacks required permissions');
+    }
+
+    return Promise.reject(error);
+  }
+);

@@ -28,6 +28,7 @@ import {
 } from '@/hooks/useDecisionFSM.js';
 import { useOrchestrate } from '@/hooks/useOrchestrate.js';
 import { connectExecutionStream } from '@/lib/events.js';
+import { api } from '@/lib/api.js';
 import CommandCenter      from '@/components/decision/CommandCenter.jsx';
 import InputView          from '@/components/decision/InputView.jsx';
 import TheatreView        from '@/components/decision/TheatreView.jsx';
@@ -175,22 +176,10 @@ export default function DecisionFeed() {
   /**
    * Execute Meta Ads action with real API call.
    * Maps verdict to actionType, validates data, and handles errors.
+   * Firebase JWT is auto-injected by api.js interceptor.
    */
   async function executeMetaAction() {
     try {
-      // Get Firebase token
-      const token = await auth.currentUser?.getIdToken();
-      if (!token) {
-        reportError(
-          'Authentication required',
-          'NO_TOKEN',
-          'auth',
-          true,
-          'Please sign in again'
-        );
-        return;
-      }
-
       // Map verdict to actionType
       const verdict = state.outputData?.verdict;
       const actionTypeMap = {
@@ -225,12 +214,8 @@ export default function DecisionFeed() {
         options: state.outputData?.options || {},
       };
 
-      // Make API call
-      const response = await axios.post('/api/execute/meta', payload, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+      // Make API call (token auto-injected by api.js interceptor)
+      const response = await api.post('/api/execute/meta', payload, {
         timeout: 15000,
       });
 
