@@ -15,7 +15,7 @@
 import { useReducer, useCallback, useRef, useEffect } from 'react';
 import { validateDecisionContract } from '@/types/decision.js';
 
-/** @typedef {'COMMAND_CENTER'|'INPUT_VALIDATION'|'THEATER'|'SUCCESS'|'CONFIRM_EXECUTION'|'API_EXECUTION'|'MEMORY_COMMIT'|'ERROR'} FSMView */
+/** @typedef {'COMMAND_CENTER'|'INPUT_VALIDATION'|'THEATER'|'SUCCESS'|'CONFIRM_EXECUTION'|'API_EXECUTION'|'EXECUTION_QUEUED'|'EXECUTING'|'EXECUTED_SUCCESS'|'EXECUTED_FAILED'|'MEMORY_COMMIT'|'ERROR'} FSMView */
 
 export const initialState = {
   view: 'COMMAND_CENTER',
@@ -28,25 +28,27 @@ export const initialState = {
   theatreStep: 0,
   history: [],
   radarAlerts: [],
+  executionStatus: null, // Track live execution status from SSE
 };
 
 // ── Legal transitions ────────────────────────────────────────
 const LEGAL = {
-  START_FLOW:           ['COMMAND_CENTER'],
-  REVIEW_ALERT:         ['COMMAND_CENTER'],
-  SUBMIT_INPUT:         ['INPUT_VALIDATION', 'ERROR'],
-  THEATRE_ADVANCE:      ['THEATER'],
-  PROCESS_SUCCESS:      ['THEATER'],
-  PROCESS_ERROR:        ['THEATER', 'INPUT_VALIDATION', 'API_EXECUTION'],
-  CONFIRM_EXECUTION:    ['SUCCESS'],
-  EXECUTE_ACTION:       ['CONFIRM_EXECUTION'],
-  EXECUTION_COMPLETE:   ['API_EXECUTION'],
-  COMMIT_TO_MEMORY:     ['API_EXECUTION'],
-  RESET_FLOW:           ['INPUT_VALIDATION', 'THEATER', 'SUCCESS', 'ERROR', 'COMMAND_CENTER', 'CONFIRM_EXECUTION', 'MEMORY_COMMIT'],
-  REPLAY_DECISION:      ['COMMAND_CENTER'],
-  LOAD_HISTORY:         ['COMMAND_CENTER', 'INPUT_VALIDATION', 'THEATER', 'SUCCESS', 'ERROR'],
-  LOAD_RADAR_ALERTS:    ['COMMAND_CENTER'],
-  CLEAR_HISTORY:        ['COMMAND_CENTER'],
+  START_FLOW:              ['COMMAND_CENTER'],
+  REVIEW_ALERT:            ['COMMAND_CENTER'],
+  SUBMIT_INPUT:            ['INPUT_VALIDATION', 'ERROR'],
+  THEATRE_ADVANCE:         ['THEATER'],
+  PROCESS_SUCCESS:         ['THEATER'],
+  PROCESS_ERROR:           ['THEATER', 'INPUT_VALIDATION', 'API_EXECUTION', 'EXECUTING', 'EXECUTED_FAILED'],
+  CONFIRM_EXECUTION:       ['SUCCESS'],
+  EXECUTE_ACTION:          ['CONFIRM_EXECUTION'],
+  EXECUTION_STATUS_UPDATE: ['CONFIRM_EXECUTION', 'API_EXECUTION', 'EXECUTION_QUEUED', 'EXECUTING', 'EXECUTED_SUCCESS', 'EXECUTED_FAILED'],
+  EXECUTION_COMPLETE:      ['EXECUTED_SUCCESS'],
+  COMMIT_TO_MEMORY:        ['EXECUTED_SUCCESS'],
+  RESET_FLOW:              ['INPUT_VALIDATION', 'THEATER', 'SUCCESS', 'ERROR', 'COMMAND_CENTER', 'CONFIRM_EXECUTION', 'MEMORY_COMMIT', 'EXECUTION_QUEUED', 'EXECUTING', 'EXECUTED_SUCCESS', 'EXECUTED_FAILED'],
+  REPLAY_DECISION:         ['COMMAND_CENTER'],
+  LOAD_HISTORY:            ['COMMAND_CENTER', 'INPUT_VALIDATION', 'THEATER', 'SUCCESS', 'ERROR'],
+  LOAD_RADAR_ALERTS:       ['COMMAND_CENTER'],
+  CLEAR_HISTORY:           ['COMMAND_CENTER'],
 };
 
 function legal(view, type) {
@@ -198,7 +200,59 @@ export function decisionReducer(state, action) {
         view: 'API_EXECUTION',
         isProcessing: true,
         isLocked: true, // LOCK during API execution
+        executionStatus: null,
       };
+
+    case 'EXECUTION_STATUS_UPDATE': {
+      // Handle SSE execution status updates
+      const { status, error } = action;
+
+      if (status === 'QUEUED') {
+        return {
+          ...state,
+          view: 'EXECUTION_QUEUED',
+          executionStatus: { status: 'QUEUED', timestamp: action.timestamp },
+        };
+      }
+
+      if (status === 'EXECUTING') {
+        return {
+          ...state,
+          view: 'EXECUTING',
+          executionStatus: { status: 'EXECUTING', timestamp: action.timestamp },
+          isProcessing: true,
+        };
+      }
+
+      if (status === 'EXECUTED_SUCCESS') {
+        return {
+          ...state,
+          view: 'EXECUTED_SUCCESS',
+          executionStatus: { status: 'SUCCESS', timestamp: action.timestamp },
+          isProcessing: false,
+          isLocked: false,
+        };
+      }
+
+      if (status === 'EXECUTED_FAILED') {
+        return {
+          ...state,
+          view: 'EXECUTED_FAILED',
+          executionStatus: { status: 'FAILED', error, timestamp: action.timestamp },
+          isProcessing: false,
+          isLocked: false,
+          errorDetails: {
+            message: error || 'Execution failed',
+            code: 'EXECUTION_FAILED',
+            classification: 'platform',
+            retryable: true,
+            fallbackAction: 'Review error and try again',
+          },
+        };
+      }
+
+      return state;
+    }
 
     case 'EXECUTION_COMPLETE':
       return {
@@ -343,6 +397,15 @@ export function useDecisionFSM() {
     dispatch({ type: 'LOAD_RADAR_ALERTS', alerts });
   }, []);
 
+  const updateExecutionStatus = useCallback((status, error = null, timestamp = null) => {
+    dispatch({
+      type: 'EXECUTION_STATUS_UPDATE',
+      status,
+      error,
+      timestamp: timestamp || new Date().toISOString(),
+    });
+  }, []);
+
   return {
     state,
     dispatch,
@@ -359,5 +422,6 @@ export function useDecisionFSM() {
     reset,
     replay,
     loadRadarAlerts,
+    updateExecutionStatus,
   };
 }

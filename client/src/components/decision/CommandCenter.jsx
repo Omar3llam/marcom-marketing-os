@@ -16,40 +16,6 @@ import {
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { cn } from '@/lib/utils.js';
 
-// ── MOCK RADAR ALERTS (Production: fetch from /api/radar) ───
-const MOCK_ALERTS = [
-  {
-    id: 'alert-001',
-    mode: 'campaign',
-    title: 'Summer Collection — US East',
-    verdict: 'KILL',
-    confidence: 92,
-    impact: 'Burn Rate: $247/day detected',
-    risk_level: 'HIGH',
-    why: [
-      'CTR dropped 68% in last 48h (0.42% → 0.13%)',
-      'Frequency spike at 9.2x — creative fatigue confirmed',
-      '$1,480 wasted on zero conversions since May 2',
-    ],
-    action: { type: 'pause_campaign', target_id: 'camp_23847dh', payload: {} },
-  },
-  {
-    id: 'alert-002',
-    mode: 'campaign',
-    title: 'Ramadan Promo — UAE/KSA',
-    verdict: 'HOLD',
-    confidence: 78,
-    impact: 'Burn Rate: $89/day detected',
-    risk_level: 'MEDIUM',
-    why: [
-      'ROAS at 1.8x (below 2.2x target)',
-      'CPM increased 34% in 24h — auction pressure',
-      'Still profitable but declining trend',
-    ],
-    action: { type: 'update_budget', target_id: 'camp_88291kk', payload: { new_budget: 50 } },
-  },
-];
-
 const MODES = [
   {
     mode: 'campaign',
@@ -91,7 +57,7 @@ const MODES = [
 
 export default function CommandCenter({
   history,
-  radarAlerts = MOCK_ALERTS,
+  radarAlerts = [],
   onStartFlow,
   onReviewAlert,
   onReplay,

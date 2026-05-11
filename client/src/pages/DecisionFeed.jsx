@@ -15,8 +15,9 @@
 // - No direct execution (always through confirmation modal)
 // - AbortController protection for all async operations
 // - Toast notifications for execution success
+// - Real-time SSE execution updates
 // ============================================================
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext.jsx';
@@ -26,6 +27,7 @@ import {
   loadRadarAlertsFromStorage,
 } from '@/hooks/useDecisionFSM.js';
 import { useOrchestrate } from '@/hooks/useOrchestrate.js';
+import { connectExecutionStream } from '@/lib/events.js';
 import CommandCenter      from '@/components/decision/CommandCenter.jsx';
 import InputView          from '@/components/decision/InputView.jsx';
 import TheatreView        from '@/components/decision/TheatreView.jsx';
@@ -51,6 +53,7 @@ export default function DecisionFeed() {
     reset,
     replay,
     loadRadarAlerts,
+    updateExecutionStatus,
   } = useDecisionFSM();
 
   const { execute, cancel } = useOrchestrate({
@@ -58,6 +61,8 @@ export default function DecisionFeed() {
     onError:   reportError,
     onStep:    (step) => dispatch({ type: 'THEATRE_ADVANCE', step }),
   });
+
+  const sseDisconnectRef = useRef(null);
 
   // ══════════════════════════════════════════════════════════════
   // HYDRATION: Load history + radar alerts from localStorage on mount
@@ -69,6 +74,83 @@ export default function DecisionFeed() {
     const alerts = loadRadarAlertsFromStorage();
     if (alerts.length > 0) loadRadarAlerts(alerts);
   }, [dispatch, loadRadarAlerts]);
+
+  // ══════════════════════════════════════════════════════════════
+  // SSE: Connect to real-time execution stream after auth ready
+  // ══════════════════════════════════════════════════════════════
+  useEffect(() => {
+    let disconnect = null;
+
+    async function setupSSE() {
+      if (!auth.currentUser) return;
+
+      try {
+        const token = await auth.currentUser.getIdToken();
+        if (!token) return;
+
+        disconnect = connectExecutionStream(token, {
+          onExecutionUpdate: (event) => {
+            console.log('[DecisionFeed] SSE execution update:', event);
+
+            // Dispatch FSM update based on SSE event
+            if (event.status) {
+              updateExecutionStatus(event.status, event.error, event.timestamp);
+            }
+
+            // Show toast notifications for execution lifecycle
+            if (event.status === 'QUEUED') {
+              toast.info('Action queued', {
+                description: `${event.actionType} for ${event.targetId}`,
+                duration: 2000,
+              });
+            } else if (event.status === 'EXECUTING') {
+              toast.loading('Executing action...', {
+                description: 'Applying changes to Meta Ads',
+                duration: 2000,
+              });
+            } else if (event.status === 'EXECUTED_SUCCESS') {
+              toast.success('Action executed successfully', {
+                description: 'Changes applied to Meta Ads',
+                duration: 3000,
+              });
+            } else if (event.status === 'EXECUTED_FAILED') {
+              toast.error('Execution failed', {
+                description: event.error || 'Unknown error',
+                duration: 4000,
+              });
+            }
+          },
+          onError: (err) => {
+            console.error('[DecisionFeed] SSE error:', err);
+            // Only show toast if it's a persistent connection issue
+            if (err.code === 'MAX_RECONNECT_EXCEEDED') {
+              toast.error('Real-time updates disconnected', {
+                description: 'Refresh the page to reconnect',
+                duration: 5000,
+              });
+            }
+          },
+          onConnected: () => {
+            console.log('[DecisionFeed] SSE connected');
+          },
+        });
+
+        sseDisconnectRef.current = disconnect;
+      } catch (err) {
+        console.error('[DecisionFeed] Failed to setup SSE:', err);
+      }
+    }
+
+    setupSSE();
+
+    // Cleanup: disconnect SSE on unmount
+    return () => {
+      if (sseDisconnectRef.current) {
+        sseDisconnectRef.current();
+        sseDisconnectRef.current = null;
+      }
+    };
+  }, [auth.currentUser, updateExecutionStatus]);
 
   // ══════════════════════════════════════════════════════════════
   // THEATER: When FSM transitions to THEATER, fire orchestration call

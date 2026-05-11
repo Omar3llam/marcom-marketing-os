@@ -19,6 +19,7 @@ import { executeMetaAction, validateActionTarget } from '../services/metaExecuti
 import { firebaseAuthMiddleware } from '../middleware/firebaseAuth.js';
 import { contextGuard } from '../middleware/contextGuard.js';
 import { logger } from '../utils/logger.js';
+import { broadcastWorkspaceEvent } from './events.js';
 const router = Router();
 
 // ── Constants ────────────────────────────────────────────
@@ -132,12 +133,31 @@ router.post('/meta', async (req, res) => {
     // ═══════════════════════════════════════════════════════
     // LAYER 3: EXECUTION (call Meta API)
     // ═══════════════════════════════════════════════════════
+
+    // Broadcast: QUEUED
+    broadcastWorkspaceEvent(workspaceId, {
+      type: 'EXECUTION_STATUS',
+      status: 'QUEUED',
+      targetId,
+      actionType,
+      timestamp: new Date().toISOString(),
+    });
+
     logger.info(`[ExecutionRouter] Starting execution`, {
       workspaceId,
       userId,
       actionType,
       targetId,
       targetType,
+    });
+
+    // Broadcast: EXECUTING
+    broadcastWorkspaceEvent(workspaceId, {
+      type: 'EXECUTION_STATUS',
+      status: 'EXECUTING',
+      targetId,
+      actionType,
+      timestamp: new Date().toISOString(),
     });
 
     const executionResult = await executeMetaAction(
@@ -173,6 +193,30 @@ router.post('/meta', async (req, res) => {
       success: executionResult.success,
       auditLogId: auditLog.id,
     });
+
+    // ─────────────────────────────────────────────────────
+    // Broadcast: SUCCESS or FAILED
+    // ─────────────────────────────────────────────────────
+    if (executionResult.success) {
+      broadcastWorkspaceEvent(workspaceId, {
+        type: 'EXECUTION_STATUS',
+        status: 'EXECUTED_SUCCESS',
+        targetId,
+        actionType,
+        auditLogId: auditLog.id,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      broadcastWorkspaceEvent(workspaceId, {
+        type: 'EXECUTION_STATUS',
+        status: 'EXECUTED_FAILED',
+        targetId,
+        actionType,
+        auditLogId: auditLog.id,
+        error: executionResult.error,
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     // ─────────────────────────────────────────────────────
     // Return response to client
