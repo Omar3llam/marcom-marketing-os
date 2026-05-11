@@ -37,7 +37,7 @@ import ErrorView          from '@/components/decision/ErrorView.jsx';
 import DecisionBreadcrumb from '@/components/decision/DecisionBreadcrumb.jsx';
 
 export default function DecisionFeed() {
-  const { auth } = useAuth();
+  const { currentUser } = useAuth();
   const {
     state,
     dispatch,
@@ -83,10 +83,10 @@ export default function DecisionFeed() {
     let disconnect = null;
 
     async function setupSSE() {
-      if (!auth.currentUser) return;
+      if (!currentUser) return;
 
       try {
-        const token = await auth.currentUser.getIdToken();
+        const token = await currentUser.getIdToken();
         if (!token) return;
 
         disconnect = connectExecutionStream(token, {
@@ -151,7 +151,7 @@ export default function DecisionFeed() {
         sseDisconnectRef.current = null;
       }
     };
-  }, [auth.currentUser, updateExecutionStatus]);
+  }, [currentUser, updateExecutionStatus]);
 
   // ══════════════════════════════════════════════════════════════
   // THEATER: When FSM transitions to THEATER, fire orchestration call
