@@ -121,9 +121,10 @@ userRouter.patch('/workspace', async (req, res) => {
 /**
  * DANGER ZONE: Permanently delete user account, workspace, and all data.
  * Steps:
- *   1. Delete Firestore: workspaces/{workspaceId} + users/{uid}
- *   2. Delete Firebase Auth user
- *   3. Client must sign out and clear localStorage
+ *   1. Fetch workspaceId from Firestore (not JWT — custom claims not set)
+ *   2. Delete Firestore: campaigns, workspaces, users
+ *   3. Delete Firebase Auth user (invalidates all tokens)
+ *   4. Client must sign out and clear localStorage
  *
  * Response: { success: true }
  */
@@ -137,39 +138,96 @@ userRouter.delete('/account', async (req, res) => {
 
     logger.warn('[userRouter] DELETE /account initiated:', { uid });
 
-    // 1. Find and delete workspace(s) owned by this user
-    const workspacesSnapshot = await db.collection('workspaces')
-      .where('ownerId', '==', uid)
-      .get();
+    // ✅ Step 1: Fetch workspaceId from Firestore user doc
+    // Firebase JWTs don't include workspaceId by default — must fetch separately
+    const userDoc = await db.collection('users').doc(uid).get();
 
-    const batch = db.batch();
-
-    for (const doc of workspacesSnapshot.docs) {
-      logger.info('[userRouter] Deleting workspace:', { workspaceId: doc.id });
-      batch.delete(doc.ref);
+    if (!userDoc.exists) {
+      logger.info('[userRouter] User doc not found — deleting auth user only');
+      // User doc already gone, but auth might still exist
+      try {
+        await auth.deleteUser(uid);
+      } catch (authErr) {
+        if (authErr.code === 'auth/user-not-found') {
+          logger.info('[userRouter] Auth user already deleted');
+          return res.json({ success: true });
+        }
+        throw authErr;
+      }
+      return res.json({ success: true });
     }
 
-    // 2. Delete user doc
-    const userRef = db.collection('users').doc(uid);
-    batch.delete(userRef);
+    const userData = userDoc.data();
+    const workspaceId = userData?.workspaceId;
 
-    await batch.commit();
+    logger.info('[userRouter] Deleting account:', { uid, workspaceId });
 
-    // 3. Delete Firebase Auth user (this invalidates all tokens)
+    // ✅ Step 2: Delete Firestore data in parallel
+    const deleteOps = [];
+
+    // Delete user doc
+    deleteOps.push(db.collection('users').doc(uid).delete());
+
+    // Delete workspace if we have the ID
+    if (workspaceId) {
+      // Delete workspace doc
+      deleteOps.push(db.collection('workspaces').doc(workspaceId).delete());
+
+      // Delete campaign subcollections (batch delete for performance)
+      deleteOps.push(
+        db.collection('campaigns')
+          .where('workspaceId', '==', workspaceId)
+          .get()
+          .then((snapshot) => {
+            if (snapshot.empty) return;
+            const batch = db.batch();
+            snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+            return batch.commit();
+          })
+      );
+
+      // Delete any other workspace-scoped collections
+      // (add more collections here as needed)
+      deleteOps.push(
+        db.collection('actions')
+          .where('workspaceId', '==', workspaceId)
+          .get()
+          .then((snapshot) => {
+            if (snapshot.empty) return;
+            const batch = db.batch();
+            snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+            return batch.commit();
+          })
+      );
+    }
+
+    await Promise.all(deleteOps);
+
+    // ✅ Step 3: Delete Firebase Auth user LAST
+    // (this invalidates all tokens, so do it after Firestore cleanup)
     await auth.deleteUser(uid);
 
-    logger.warn('[userRouter] Account deleted:', { uid });
+    logger.warn('[userRouter] Account deleted successfully:', { uid, workspaceId });
 
     res.json({ success: true });
   } catch (err) {
-    logger.error('[userRouter] DELETE /account error:', err);
+    logger.error('[userRouter] DELETE /account error:', {
+      code: err.code,
+      message: err.message,
+      stack: err.stack,
+    });
 
     // If user is already deleted from Auth but Firestore cleanup failed,
     // still return success (idempotent)
     if (err.code === 'auth/user-not-found') {
+      logger.info('[userRouter] Auth user already deleted — treating as success');
       return res.json({ success: true });
     }
 
-    res.status(500).json({ error: 'Failed to delete account' });
+    res.status(500).json({
+      error: 'Failed to delete account',
+      code: err.code,
+      message: err.message,
+    });
   }
 });

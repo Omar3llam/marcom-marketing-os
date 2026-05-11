@@ -86,10 +86,15 @@ export default function DecisionFeed() {
       if (!currentUser) return;
 
       try {
-        const token = await currentUser.getIdToken();
-        if (!token) return;
+        // ✅ Pass token getter function instead of static token
+        // This allows SSE to fetch a fresh token on each reconnect,
+        // handling token expiration (Firebase JWTs expire after 1h)
+        const getToken = async () => {
+          if (!currentUser) return null;
+          return await currentUser.getIdToken(true); // force refresh
+        };
 
-        disconnect = connectExecutionStream(token, {
+        disconnect = connectExecutionStream(getToken, {
           onExecutionUpdate: (event) => {
             console.log('[DecisionFeed] SSE execution update:', event);
 

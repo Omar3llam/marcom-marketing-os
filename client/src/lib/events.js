@@ -19,21 +19,15 @@ const RECONNECT_DELAY_MS = 3000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
 /**
- * Connect to the SSE execution stream.
- * @param {string} token - Firebase JWT token
+ * Connect to the SSE execution stream with automatic token refresh.
+ * @param {string|Function} tokenOrGetter - Firebase JWT token or function that returns a fresh token
  * @param {Object} handlers - Event handlers
  * @param {Function} handlers.onExecutionUpdate - Called with execution status events
  * @param {Function} handlers.onError - Called on stream error
  * @param {Function} handlers.onConnected - Called when connection established
  * @returns {Function} disconnect - Call to close the stream
  */
-export function connectExecutionStream(token, handlers = {}) {
-  if (!token) {
-    console.warn('[SSE] No token provided — cannot connect');
-    handlers.onError?.({ message: 'Authentication token required' });
-    return () => {};
-  }
-
+export function connectExecutionStream(tokenOrGetter, handlers = {}) {
   const {
     onExecutionUpdate = () => {},
     onError = () => {},
@@ -45,8 +39,29 @@ export function connectExecutionStream(token, handlers = {}) {
   let isClosed = false;
   let reconnectTimer = null;
 
-  function connect() {
+  // Support both static token and token getter function
+  const getToken = typeof tokenOrGetter === 'function'
+    ? tokenOrGetter
+    : () => Promise.resolve(tokenOrGetter);
+
+  async function connect() {
     if (isClosed) return;
+
+    // ✅ Get fresh token on each connection attempt
+    // This handles token expiration (Firebase JWTs expire after 1 hour)
+    let token;
+    try {
+      token = await getToken();
+      if (!token) {
+        console.warn('[SSE] No token available — cannot connect');
+        onError({ message: 'Authentication token required' });
+        return;
+      }
+    } catch (err) {
+      console.error('[SSE] Failed to get token:', err);
+      onError({ message: 'Failed to get authentication token', code: 'TOKEN_ERROR' });
+      return;
+    }
 
     // EventSource doesn't support custom headers (no Authorization).
     // Instead, pass token as query param (server validates via firebaseAuth).
@@ -95,15 +110,17 @@ export function connectExecutionStream(token, handlers = {}) {
         }
 
         // Attempt reconnect if not manually closed
+        // ✅ Each reconnect will fetch a fresh token via getToken()
+        // This handles 401 errors from token expiration (1h JWT lifetime)
         if (!isClosed) {
           if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttempts++;
             console.log(
-              `[SSE] Reconnecting in ${RECONNECT_DELAY_MS}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`
+              `[SSE] Reconnecting with fresh token in ${RECONNECT_DELAY_MS}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`
             );
 
             reconnectTimer = setTimeout(() => {
-              connect();
+              connect(); // Will call getToken() again for fresh token
             }, RECONNECT_DELAY_MS);
           } else {
             console.error('[SSE] Max reconnect attempts reached — giving up');
