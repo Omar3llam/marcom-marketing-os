@@ -177,6 +177,7 @@ export default function DecisionFeed() {
    * Execute Meta Ads action with real API call.
    * Maps verdict to actionType, validates data, and handles errors.
    * Firebase JWT is auto-injected by api.js interceptor.
+   * Idempotency key prevents duplicate executions.
    */
   async function executeMetaAction() {
     try {
@@ -206,11 +207,15 @@ export default function DecisionFeed() {
         return;
       }
 
+      // Generate idempotency key (prevents duplicate executions)
+      const idempotencyKey = crypto.randomUUID();
+
       // Build request payload
       const payload = {
         actionType,
         targetId,
         targetType,
+        idempotencyKey,
         options: state.outputData?.options || {},
       };
 
@@ -220,8 +225,13 @@ export default function DecisionFeed() {
       });
 
       if (response.data.success) {
-        toast.success('Action executed successfully', {
-          description: `${verdict} action applied to ${targetId}`,
+        // Check if this was an idempotent replay
+        const isReplay = response.data.idempotentReplay === true;
+
+        toast.success(isReplay ? 'Action already executed' : 'Action executed successfully', {
+          description: isReplay
+            ? `${verdict} was previously applied to ${targetId}`
+            : `${verdict} action applied to ${targetId}`,
           duration: 2000,
         });
         executionComplete();

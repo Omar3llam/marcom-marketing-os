@@ -201,6 +201,28 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+// ── Idempotency Protection ──────────────────────────────────
+// Prevents duplicate Meta executions from double-clicks, retries,
+// and flaky networks. Each execution request generates a unique
+// idempotencyKey. If the same key arrives again, we replay the
+// stored response instead of re-executing on Meta.
+
+model ExecutionRequest {
+  id             String   @id @default(cuid())
+  workspaceId    String   @db.Uuid
+  idempotencyKey String   @unique
+  actionType     String
+  targetId       String
+  status         String   // PENDING, EXECUTED_SUCCESS, FAILED
+  payload        Json?    // Original request payload
+  response       Json?    // Meta API response (success or error)
+  createdAt      DateTime @default(now())
+
+  @@index([workspaceId])
+  @@index([createdAt])
+  @@map("execution_requests")
+}
+
 // ── Temporal Intelligence ────────────────────────────────────
 
 model CampaignState {

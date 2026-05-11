@@ -3,7 +3,7 @@
 // ============================================================
 // STRICT ENTERPRISE GUARDRAILS:
 //   Layer 1: VALIDATION (allowed actions, target types)
-//   Layer 2: IDEMPOTENCY (prevent duplicates in last 60s)
+//   Layer 2: IDEMPOTENCY (prevent duplicates via unique keys)
 //   Layer 3: EXECUTION (call Meta API via service)
 //   Layer 4: AUDIT LOGGING (log all outcomes)
 //
@@ -11,7 +11,7 @@
 // - Multi-tenant scoped (workspaceId from auth context)
 // - Validated before execution
 // - Logged before returning to client
-// - Idempotent (same action twice = ignored if within 60s)
+// - Idempotent (same key = replay stored response, no re-execution)
 // ============================================================
 import { Router } from 'express';
 import { prisma } from '../lib/prisma.js';
@@ -36,8 +36,7 @@ const ALLOWED_ACTIONS = {
   RESUME_ADSET: ['adset'],
 };
 
-/** Idempotency window: 60 seconds */
-const IDEMPOTENCY_WINDOW_MS = 60 * 1000;
+/** Idempotency: deduplicate based on unique keys, not time windows */
 
 // ── Middleware ───────────────────────────────────────────
 
@@ -54,26 +53,30 @@ router.use(contextGuard);
  *   "actionType": "PAUSE_CAMPAIGN" | "INCREASE_BUDGET" | etc.,
  *   "targetId": "123456789",
  *   "targetType": "campaign" | "adset",
+ *   "idempotencyKey": "uuid",  // Required for deduplication
  *   "options": { "amount": 5000 }  // Optional, action-dependent
  * }
  *
  * Response:
  * {
  *   "success": true|false,
+ *   "idempotentReplay": boolean,  // true if replayed from cache
+ *   "executionId": "uuid",
  *   "auditLogId": "uuid",
+ *   "status": "EXECUTED_SUCCESS" | "EXECUTED_FAILED",
  *   "data": { ... },  // Meta API response
  *   "error": "..."    // If failed
  * }
  */
 router.post('/meta', async (req, res) => {
-  const { actionType, targetId, targetType, options } = req.body;
+  const { actionType, targetId, targetType, idempotencyKey, options } = req.body;
   const { userId, workspaceId } = req.user;
 
   try {
     // ═══════════════════════════════════════════════════════
     // LAYER 1: VALIDATION
     // ═══════════════════════════════════════════════════════
-    const validationError = validateRequest(actionType, targetId, targetType);
+    const validationError = validateRequest(actionType, targetId, targetType, idempotencyKey);
     if (validationError) {
       logger.warn(`[ExecutionRouter] Validation failed`, {
         workspaceId,
@@ -107,28 +110,51 @@ router.post('/meta', async (req, res) => {
     // ═══════════════════════════════════════════════════════
     // LAYER 2: IDEMPOTENCY CHECK
     // ═══════════════════════════════════════════════════════
-    const duplicateLog = await checkIdempotency(
-      workspaceId,
-      actionType,
-      targetId
-    );
+    const existingRequest = await prisma.executionRequest.findUnique({
+      where: { idempotencyKey },
+    });
 
-    if (duplicateLog) {
-      logger.info(`[ExecutionRouter] Idempotent request (duplicate within 60s)`, {
+    if (existingRequest) {
+      // Idempotent replay: return previous response
+      logger.info(`[ExecutionRouter] Idempotent replay`, {
         workspaceId,
         userId,
         actionType,
         targetId,
-        previousAuditId: duplicateLog.id,
+        idempotencyKey,
+        executionId: existingRequest.id,
+        status: existingRequest.status,
       });
 
       return res.status(200).json({
-        success: true,
-        message: 'Action already executed within last 60 seconds',
-        auditLogId: duplicateLog.id,
-        isDuplicate: true,
+        success: existingRequest.status === 'EXECUTED_SUCCESS',
+        idempotentReplay: true,
+        executionId: existingRequest.id,
+        status: existingRequest.status,
+        ...(existingRequest.response && { data: existingRequest.response }),
+        ...(existingRequest.status === 'FAILED' && existingRequest.response?.error && {
+          error: existingRequest.response.error,
+        }),
       });
     }
+
+    // Create ExecutionRequest BEFORE execution
+    const executionRequest = await prisma.executionRequest.create({
+      data: {
+        workspaceId,
+        idempotencyKey,
+        actionType,
+        targetId,
+        status: 'PENDING',
+        payload: req.body,
+      },
+    });
+
+    logger.info(`[ExecutionRouter] Created ExecutionRequest`, {
+      executionId: executionRequest.id,
+      idempotencyKey,
+      workspaceId,
+    });
 
     // ═══════════════════════════════════════════════════════
     // LAYER 3: EXECUTION (call Meta API)
@@ -219,19 +245,39 @@ router.post('/meta', async (req, res) => {
     }
 
     // ─────────────────────────────────────────────────────
+    // Update ExecutionRequest with result
+    // ─────────────────────────────────────────────────────
+    const finalStatus = executionResult.success ? 'EXECUTED_SUCCESS' : 'FAILED';
+    await prisma.executionRequest.update({
+      where: { id: executionRequest.id },
+      data: {
+        status: finalStatus,
+        response: executionResult.success
+          ? executionResult.data
+          : { error: executionResult.error, code: executionResult.code },
+      },
+    });
+
+    // ─────────────────────────────────────────────────────
     // Return response to client
     // ─────────────────────────────────────────────────────
     if (executionResult.success) {
       return res.status(200).json({
         success: true,
+        idempotentReplay: false,
+        executionId: executionRequest.id,
         auditLogId: auditLog.id,
+        status: finalStatus,
         data: executionResult.data,
         message: `${actionType} executed successfully on Meta`,
       });
     } else {
       return res.status(400).json({
         success: false,
+        idempotentReplay: false,
+        executionId: executionRequest.id,
         auditLogId: auditLog.id,
+        status: finalStatus,
         error: executionResult.error,
         code: executionResult.code,
         message: `${actionType} failed: ${executionResult.error}`,
@@ -335,7 +381,12 @@ router.get('/audit', async (req, res) => {
  * Layer 1: Validate request format and action type.
  * Returns error string if invalid, null if valid.
  */
-function validateRequest(actionType, targetId, targetType) {
+function validateRequest(actionType, targetId, targetType, idempotencyKey) {
+  // Ensure idempotency key is provided
+  if (!idempotencyKey || typeof idempotencyKey !== 'string' || idempotencyKey.trim().length === 0) {
+    return 'idempotencyKey is required and must be a non-empty string (use crypto.randomUUID() on client)';
+  }
+
   // Ensure action type is in allowed list
   if (!actionType || !ALLOWED_ACTIONS[actionType]) {
     return `Invalid action type: ${actionType}. Must be one of: ${Object.keys(ALLOWED_ACTIONS).join(', ')}`;
@@ -352,32 +403,6 @@ function validateRequest(actionType, targetId, targetType) {
   }
 
   return null;
-}
-
-// ── Idempotency Check ────────────────────────────────────
-
-/**
- * Layer 2: Check if the exact same action was executed
- * on the same target within the last 60 seconds.
- * Returns the duplicate AuditLog if found, null otherwise.
- */
-async function checkIdempotency(workspaceId, actionType, targetId) {
-  const oneMinuteAgo = new Date(Date.now() - IDEMPOTENCY_WINDOW_MS);
-
-  const recent = await prisma.auditLog.findFirst({
-    where: {
-      workspaceId,
-      actionType,
-      targetId,
-      status: 'SUCCESS',
-      performedAt: {
-        gte: oneMinuteAgo,
-      },
-    },
-    orderBy: { performedAt: 'desc' },
-  });
-
-  return recent || null;
 }
 
 export default router;
