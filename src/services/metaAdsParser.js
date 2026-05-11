@@ -94,6 +94,19 @@ export function parseMetaAdsCsv(fileBuffer) {
 
       if (campaign) {
         campaigns.push(campaign);
+
+        // ✅ Debug: Log first parsed campaign to verify header mapping
+        if (campaigns.length === 1) {
+          console.log('[metaAdsParser] First parsed campaign:', {
+            campaignId: campaign.campaignId,
+            campaignName: campaign.campaignName,
+            spend: campaign.spend,
+            impressions: campaign.impressions,
+            results: campaign.results,
+            ctr: campaign.ctr,
+            roas: campaign.roas,
+          });
+        }
       } else {
         errors.push(`Row ${idx + 2}: could not parse — skipped`);
       }
