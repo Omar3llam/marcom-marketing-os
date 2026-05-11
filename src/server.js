@@ -41,6 +41,7 @@ import { lumiRouter, quickActionHandler, demoFeedHandler } from './routes/lumi.j
 import paidRouter             from './routes/paid.js';
 import executionRouter        from './routes/execution.js';
 import eventsRouter           from './routes/events.js';
+import { userRouter }         from './routes/user.js';
 import { requireJwt }         from './middleware/jwtAuth.js';
 import { logger }             from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
@@ -211,6 +212,13 @@ app.use('/api/execute',
 app.use('/api/events',
   requireAuth,
   eventsRouter
+);
+
+// User account management — profile, workspace, account deletion
+app.use('/api/user',
+  requireAuth,
+  apiLimiter,
+  userRouter
 );
 
 // Standalone AI-powered tools (content calendar, etc.)
