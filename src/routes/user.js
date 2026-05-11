@@ -5,9 +5,11 @@
 // All routes require Firebase JWT authentication via requireAuth middleware.
 // ============================================================
 import { Router } from 'express';
-import { auth } from '../lib/firebase-admin.js';
-import { db } from '../lib/firestore.js';
+import admin from '../utils/firebaseAdmin.js';
 import { logger } from '../utils/logger.js';
+
+const auth = admin.auth();
+const db = admin.firestore();
 
 export const userRouter = Router();
 
