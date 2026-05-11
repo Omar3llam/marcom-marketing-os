@@ -26,6 +26,7 @@ import { prisma }          from '../lib/prisma.js';
 import { logger }          from '../utils/logger.js';
 import { contextGuard }    from '../middleware/contextGuard.js';
 import { randomUUID }      from 'crypto';
+import orchestrator        from '../services/orchestrator.js';
 
 export const campaignsRouter = Router();
 
@@ -197,16 +198,125 @@ campaignsRouter.post('/fetch-meta', async (req, res) => {
 // POST /api/campaigns/upload-csv
 // ─────────────────────────────────────────────────────────────
 // Multipart form: field "campaignData" → .csv file (≤10 MB).
-// Parses Meta Ads Manager exports (ad-set level), normalises into
-// CampaignState rows, and seeds Action alerts. Workspace-scoped.
 //
-// Response: { uploaded, processed, alerts_created, campaign_ids, errors }
+// TWO MODES:
+// 1. ?mode=analyze (STATELESS)
+//    - Pure AI analysis pipeline: CSV → Claude orchestrator → structured JSON
+//    - NO database writes, NO workspace requirement
+//    - Returns: { decisions: Array<OrchestratorDecision> }
+//
+// 2. Default mode (STATEFUL)
+//    - Parses Meta Ads Manager exports (ad-set level), normalises into
+//      CampaignState rows, and seeds Action alerts. Workspace-scoped.
+//    - Response: { uploaded, processed, alerts_created, campaign_ids, errors }
 // ─────────────────────────────────────────────────────────────
 campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded — expected field "campaignData"' });
   }
 
+  const mode = req.query.mode;  // 'analyze' or undefined
+
+  // ═════════════════════════════════════════════════════════════
+  // MODE 1: STATELESS ANALYSIS (mode=analyze)
+  // ═════════════════════════════════════════════════════════════
+  if (mode === 'analyze') {
+    logger.info({
+      filename: req.file.originalname,
+      size:     req.file.size,
+      userId:   req.userId,
+    }, '[campaigns/upload-csv] ANALYZE mode');
+
+    // ── Parse CSV ──────────────────────────────────────────────
+    const { campaigns: parsed, errors: parseErrors, stats } = parseMetaAdsCsv(req.file.buffer);
+
+    if (!parsed || parsed.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error:   'No valid campaigns found in CSV',
+        stats,
+        errors:  parseErrors || [],
+      });
+    }
+
+    // Hard cap: orchestrator calls are expensive (Claude API + time)
+    const MAX_ROWS_ANALYZE = 20;
+    if (parsed.length > MAX_ROWS_ANALYZE) {
+      return res.status(400).json({
+        success: false,
+        error:   `CSV has ${parsed.length} rows. Maximum for analysis mode is ${MAX_ROWS_ANALYZE}.`,
+        hint:    'Split your export into smaller date ranges or use default mode for bulk DB storage.',
+      });
+    }
+
+    // ── Analyze each campaign with Claude orchestrator ─────────
+    const decisions = [];
+    const errors    = [];
+
+    for (const c of parsed) {
+      try {
+        // Build analysis payload from parsed campaign
+        const dataForClaude = {
+          campaignId:   c.campaignId,
+          campaignName: c.campaignName,
+          adsetName:    c.adsetName,
+          metrics: {
+            spend:         c.spend,
+            impressions:   c.impressions,
+            results:       c.results,
+            ctr:           c.ctr,
+            cpc:           c.cpc,
+            roas:          c.roas,
+            frequency:     c.frequency,
+            reach:         c.reach,
+            costPerResult: c.costPerResult,
+          },
+          deliveryStatus: c.deliveryStatus,
+          // Include raw CSV row so Claude sees all columns
+          rawRecord:      c.rawRecord,
+        };
+
+        const decision = await orchestrator.analyzeCampaignData(dataForClaude, 'csv');
+
+        // Enrich with campaign identifiers for frontend mapping
+        decision.campaignId   = c.campaignId;
+        decision.campaignName = c.campaignName;
+        decision.adsetName    = c.adsetName;
+
+        decisions.push(decision);
+      } catch (err) {
+        logger.error({ err: err.message, campaignId: c.campaignId },
+          '[campaigns/upload-csv] orchestrator.analyzeCampaignData failed');
+        errors.push({
+          campaign: c.campaignName,
+          error:    err.message,
+        });
+      }
+    }
+
+    logger.info({
+      userId:    req.userId,
+      analyzed:  decisions.length,
+      errors:    errors.length,
+      totalRows: parsed.length,
+    }, '[campaigns/upload-csv] ANALYZE mode complete');
+
+    return res.json({
+      success:   true,
+      mode:      'analyze',
+      decisions,
+      errors,
+      stats: {
+        uploaded: stats.total_rows,
+        analyzed: decisions.length,
+        failed:   errors.length,
+      },
+    });
+  }
+
+  // ═════════════════════════════════════════════════════════════
+  // MODE 2: STATEFUL DB WRITES (default)
+  // ═════════════════════════════════════════════════════════════
   // workspaceId MUST be a real UUID from the User → Workspace FK chain.
   // req.workspaceId is populated by firebaseAuthMiddleware (Prisma lookup).
   // Falling back to a non-UUID string causes every prisma.upsert to fail
@@ -224,7 +334,7 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
     filename:    req.file.originalname,
     size:        req.file.size,
     workspaceId,
-  }, '[campaigns/upload-csv] received');
+  }, '[campaigns/upload-csv] DB WRITE mode');
 
   // ── Parse with the Meta-aware parser ─────────────────────────
   const { campaigns: parsed, errors: parseErrors, stats } = parseMetaAdsCsv(req.file.buffer);
