@@ -282,15 +282,13 @@ export default function DecisionFeed() {
   // MEMORY_COMMIT: Show success toast and commit to memory
   // ══════════════════════════════════════════════════════════════
   useEffect(() => {
-    if (state.view === 'MEMORY_COMMIT') {
-      toast.success('Action executed successfully', {
-        description: `${state.outputData?.verdict} action applied via Meta API`,
-        duration: 3000,
-      });
-      setTimeout(() => {
-        commitToMemory();
-      }, 500);
-    }
+    if (state.view !== 'MEMORY_COMMIT') return;
+    toast.success('Action executed successfully', {
+      description: `${state.outputData?.verdict} action applied via Meta API`,
+      duration: 3000,
+    });
+    const t = setTimeout(() => commitToMemory(), 500);
+    return () => clearTimeout(t);
   }, [state.view, state.outputData, commitToMemory]);
 
   return (
