@@ -14,6 +14,59 @@ const db = admin.firestore();
 export const userRouter = Router();
 
 // ══════════════════════════════════════════════════════════════
+// GET /api/user/workspace — Fetch user's workspace
+// ══════════════════════════════════════════════════════════════
+/**
+ * Fetch the workspace owned by the current user.
+ * Returns workspace metadata (id, name, slug) for the sidebar dropdown.
+ *
+ * Response: {
+ *   workspace: { id, name, slug, ownerId, createdAt, updatedAt } | null,
+ *   hasWorkspace: boolean
+ * }
+ */
+userRouter.get('/workspace', async (req, res) => {
+  try {
+    const uid = req.user?.uid;
+
+    if (!uid) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // Find workspace owned by this user
+    const workspacesSnapshot = await db.collection('workspaces')
+      .where('ownerId', '==', uid)
+      .limit(1)
+      .get();
+
+    if (workspacesSnapshot.empty) {
+      return res.json({
+        workspace: null,
+        hasWorkspace: false,
+      });
+    }
+
+    const workspaceDoc = workspacesSnapshot.docs[0];
+    const workspaceData = workspaceDoc.data();
+
+    res.json({
+      workspace: {
+        id: workspaceDoc.id,
+        name: workspaceData.name || 'Untitled Workspace',
+        slug: workspaceData.slug,
+        ownerId: workspaceData.ownerId,
+        createdAt: workspaceData.createdAt,
+        updatedAt: workspaceData.updatedAt,
+      },
+      hasWorkspace: true,
+    });
+  } catch (err) {
+    logger.error('[userRouter] GET /workspace error:', err);
+    res.status(500).json({ error: 'Failed to fetch workspace' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
 // PATCH /api/user/profile — Update user display name
 // ══════════════════════════════════════════════════════════════
 /**

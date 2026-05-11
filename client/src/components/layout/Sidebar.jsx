@@ -13,6 +13,7 @@ import {
   Settings, PanelLeftClose,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
+import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { cn } from '@/lib/utils.js';
 
 const tools = [
@@ -23,26 +24,20 @@ const tools = [
   { label: 'Social Calendar',   sub: '4-week content plan',          icon: CalendarDays,    path: '/app/tools/calendar' },
 ];
 
-// Mock projects + recents until /api/projects + /api/history are wired
-const mockProjects = [
-  { id: '1', name: 'Code81', active: true },
-  { id: '2', name: 'MARCOM Internal', active: false },
-];
-const mockRecent = [
-  { id: '1', title: 'Open Marketing Tools S…', active: true },
-  { id: '2', title: 'Social media calendar' },
-  { id: '3', title: 'Campaign analysis Q3' },
-];
-
 export default function Sidebar({ collapsed, onToggle }) {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const { workspace, hasWorkspace, loading: workspaceLoading } = useWorkspace();
   const [projectOpen, setProjectOpen] = useState(false);
   const [toolsOpen,   setToolsOpen]   = useState(true);
-  const [activeProject, setActiveProject] = useState(mockProjects[0]);
 
   const initial = (currentUser?.displayName?.[0] || currentUser?.email?.[0] || 'L').toUpperCase();
   const userLabel = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
+
+  // Workspace display name (fallback for loading/empty states)
+  const workspaceName = workspaceLoading
+    ? 'Loading...'
+    : workspace?.name || 'No Project';
 
   return (
     <aside
@@ -91,17 +86,22 @@ export default function Sidebar({ collapsed, onToggle }) {
             <button
               onClick={() => setProjectOpen((p) => !p)}
               aria-expanded={projectOpen}
+              disabled={workspaceLoading}
               className={cn(
                 'w-full flex items-center gap-2.5 px-3 py-2 rounded-xl',
                 'border transition-all duration-150 text-left',
                 projectOpen
                   ? 'bg-lumi-elevated border-lumi-border-strong'
                   : 'bg-transparent border-lumi-border hover:border-lumi-border-strong',
+                workspaceLoading && 'opacity-50 cursor-not-allowed',
               )}
             >
-              <span className="w-2 h-2 rounded-full bg-signal-scale flex-shrink-0" />
+              <span className={cn(
+                'w-2 h-2 rounded-full flex-shrink-0',
+                hasWorkspace ? 'bg-signal-scale' : 'bg-lumi-subtle',
+              )} />
               <span className="flex-1 text-sm font-display font-medium text-lumi-text truncate">
-                {activeProject.name}
+                {workspaceName}
               </span>
               <ChevronDown
                 className={cn(
@@ -114,31 +114,22 @@ export default function Sidebar({ collapsed, onToggle }) {
 
             {projectOpen && (
               <div className="mt-1 bg-lumi-elevated border border-lumi-border rounded-xl overflow-hidden shadow-panel animate-slide-up">
-                {mockProjects.map((project) => {
-                  const isActive = project.id === activeProject.id;
-                  return (
-                    <button
-                      key={project.id}
-                      onClick={() => { setActiveProject(project); setProjectOpen(false); }}
-                      className={cn(
-                        'w-full flex items-center gap-2.5 px-3 py-2.5 text-left',
-                        'text-sm font-display transition-colors duration-100',
-                        isActive
-                          ? 'text-lumi-accent bg-lumi-accent-soft'
-                          : 'text-lumi-text hover:bg-lumi-surface',
-                      )}
-                    >
-                      <span className={cn(
-                        'w-2 h-2 rounded-full flex-shrink-0',
-                        isActive ? 'bg-lumi-accent' : 'bg-lumi-subtle',
-                      )} />
-                      {project.name}
-                    </button>
-                  );
-                })}
-                <div className="border-t border-lumi-border">
+                {hasWorkspace && workspace && (
+                  <div className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-sm font-display text-lumi-accent bg-lumi-accent-soft border-b border-lumi-border">
+                    <span className="w-2 h-2 rounded-full bg-lumi-accent flex-shrink-0" />
+                    <span className="truncate">{workspace.name}</span>
+                  </div>
+                )}
+
+                {!hasWorkspace && (
+                  <div className="px-3 py-2.5 text-xs text-lumi-subtle text-center">
+                    No project yet — create one below
+                  </div>
+                )}
+
+                <div className={cn(!hasWorkspace && 'border-t border-lumi-border')}>
                   <button
-                    onClick={() => { setProjectOpen(false); navigate('/onboarding?force=true'); }}
+                    onClick={() => { setProjectOpen(false); navigate('/onboarding'); }}
                     className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left
                                text-sm text-lumi-muted hover:text-lumi-accent
                                hover:bg-lumi-accent-soft transition-colors duration-100"
@@ -154,8 +145,11 @@ export default function Sidebar({ collapsed, onToggle }) {
 
         {/* Project dot (collapsed) */}
         {collapsed && (
-          <div className="flex justify-center px-2 mt-2" title={activeProject.name}>
-            <span className="w-2 h-2 rounded-full bg-signal-scale" />
+          <div className="flex justify-center px-2 mt-2" title={workspaceName}>
+            <span className={cn(
+              'w-2 h-2 rounded-full',
+              hasWorkspace ? 'bg-signal-scale' : 'bg-lumi-subtle',
+            )} />
           </div>
         )}
 
@@ -227,7 +221,7 @@ export default function Sidebar({ collapsed, onToggle }) {
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <div className="text-[13px] font-display font-medium text-lumi-text truncate">{userLabel}</div>
-              <div className="text-xs text-lumi-subtle truncate">{activeProject.name?.toUpperCase()}</div>
+              <div className="text-xs text-lumi-subtle truncate">{workspaceName?.toUpperCase()}</div>
             </div>
           )}
         </div>
