@@ -8,11 +8,18 @@
 //   - BOM character (0xFEFF) at file start
 //   - Row 2 is a SUMMARY/TOTAL row (empty Campaign name) — skipped
 //   - No Campaign ID column — composite ID from campaign + adset name
-//   - Currency column is "Amount spent (EGP)" not "Spend"
+//   - Multi-currency support (EGP, USD, SAR, AED, GBP, EUR)
 //   - No ROAS column — estimated from CTR + frequency
 //   - "Results" = conversion count (not clicks)
+//
+// V2 HARDENING:
+//   - Centralized column alias registry (handles 40+ variants)
+//   - Robust monetary value parsing (US + EU formats)
+//   - Validation warnings for unmapped headers
+//   - Early detection of spend=0 data loss
 // ============================================================
 import { parse } from 'csv-parse/sync';
+import { resolveHeader, cleanMonetaryValue, COLUMN_ALIASES } from '../lib/csvColumnAliases.js';
 
 /**
  * Parse a Meta Ads Manager CSV export buffer.
@@ -44,12 +51,36 @@ export function parseMetaAdsCsv(fileBuffer) {
       };
     }
 
+    // ── 3. Build header→field mapping ONCE ───────────────────
+    const rawHeaders = Object.keys(records[0]);
+    const headerMap = {};
+
+    console.log('[metaAdsParser] Raw CSV headers:', rawHeaders);
+
+    for (const rawHeader of rawHeaders) {
+      const field = resolveHeader(rawHeader, COLUMN_ALIASES);
+      if (field) {
+        headerMap[rawHeader] = field;
+      }
+    }
+
+    // Warn about unmapped headers (catch regressions)
+    const unmappedHeaders = rawHeaders.filter((h) => !headerMap[h]);
+    if (unmappedHeaders.length > 0) {
+      console.warn(
+        '[metaAdsParser] Unmapped headers (not used in parsing):',
+        unmappedHeaders,
+      );
+    }
+
+    console.log('[metaAdsParser] Header mapping:', headerMap);
+
     const campaigns = [];
     const errors    = [];
     let   skipped   = 0;
 
     records.forEach((record, idx) => {
-      // ── 3. Skip summary/total rows (empty Campaign name) ─────
+      // ── 4. Skip summary/total rows (empty Campaign name) ─────
       const campaignName = record['Campaign name']
         ? String(record['Campaign name']).trim()
         : '';
@@ -59,7 +90,7 @@ export function parseMetaAdsCsv(fileBuffer) {
         return;
       }
 
-      const campaign = buildCampaign(record);
+      const campaign = buildCampaign(record, headerMap);
 
       if (campaign) {
         campaigns.push(campaign);
@@ -67,6 +98,30 @@ export function parseMetaAdsCsv(fileBuffer) {
         errors.push(`Row ${idx + 2}: could not parse — skipped`);
       }
     });
+
+    // ── 5. Validate: detect silent data loss ─────────────────
+    const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
+
+    if (totalSpend === 0 && campaigns.length > 0) {
+      console.error(
+        '[metaAdsParser] CRITICAL: Parsed',
+        campaigns.length,
+        'campaigns but total spend is $0.00',
+        '\n  → Raw headers:', rawHeaders,
+        '\n  → Mapped fields:', Object.values(headerMap),
+        '\n  → This indicates column mapping failure!',
+      );
+      errors.push(
+        'Warning: All campaigns have $0 spend. This may indicate a CSV format mismatch.',
+      );
+    }
+
+    console.log(
+      '[metaAdsParser] Parse complete:',
+      campaigns.length,
+      'campaigns, total spend:',
+      `$${totalSpend.toFixed(2)}`,
+    );
 
     return {
       campaigns,
@@ -89,10 +144,22 @@ export function parseMetaAdsCsv(fileBuffer) {
 
 // ── Internals ────────────────────────────────────────────────
 
-function buildCampaign(record) {
+/**
+ * Build a campaign object from a CSV record using the header map.
+ * Uses robust monetary parsing and falls back gracefully for missing fields.
+ *
+ * @param {object} record - Single CSV row as key-value pairs
+ * @param {object} headerMap - Mapping of raw headers to standardized field names
+ * @returns {object|null} - Campaign object, or null if invalid
+ */
+function buildCampaign(record, headerMap) {
   try {
-    const campaignName = String(record['Campaign name'] || '').trim();
-    const adsetName    = String(record['Ad set name']   || '').trim();
+    // ── Extract campaign identifiers ──────────────────────────
+    const campaignName = getFieldValue(record, headerMap, 'campaignName')
+      || String(record['Campaign name'] || '').trim();
+
+    const adsetName = getFieldValue(record, headerMap, 'adsetName')
+      || String(record['Ad set name'] || '').trim();
 
     if (!campaignName) return null;
 
@@ -107,18 +174,35 @@ function buildCampaign(record) {
 
     const campaignId = `meta__${slug}`;
 
-    // ── Parse numeric fields ──────────────────────────────────
-    // Try "Amount spent (EGP)" first, then generic fallbacks.
-    const spend = parseNum(
-      pickColumn(record, 'Amount spent (EGP)', 'Amount spent', 'Spend', 'Cost'),
+    // ── Parse numeric fields using robust monetary parser ─────
+    const spend = cleanMonetaryValue(
+      getFieldValue(record, headerMap, 'spend')
+      || pickColumn(record, 'Amount spent (EGP)', 'Amount spent', 'Spend', 'Cost'),
     );
 
-    const impressions   = parseNum(record['Impressions']);
-    const results       = parseNum(record['Results']);       // conversions
-    const frequency     = parseNum(record['Frequency']) || 1;
-    const reach         = parseNum(record['Reach']);
-    const costPerResult = parseNum(
-      pickColumn(record, 'Cost per result', 'Cost per Result', 'CPA'),
+    const impressions = parseNum(
+      getFieldValue(record, headerMap, 'impressions')
+      || record['Impressions'],
+    );
+
+    const results = parseNum(
+      getFieldValue(record, headerMap, 'results')
+      || record['Results'],
+    );
+
+    const frequency = parseNum(
+      getFieldValue(record, headerMap, 'frequency')
+      || record['Frequency'],
+    ) || 1;
+
+    const reach = parseNum(
+      getFieldValue(record, headerMap, 'reach')
+      || record['Reach'],
+    );
+
+    const costPerResult = cleanMonetaryValue(
+      getFieldValue(record, headerMap, 'costPerResult')
+      || pickColumn(record, 'Cost per result', 'Cost per Result', 'CPA'),
     );
 
     // ── Derived metrics ───────────────────────────────────────
@@ -127,7 +211,8 @@ function buildCampaign(record) {
     const cpc  = results    > 0 ? spend / results            : 0;
     const roas = estimateRoas(ctr, frequency);
 
-    const deliveryStatus = String(record['Delivery status'] || 'unknown').trim();
+    const deliveryStatus = getFieldValue(record, headerMap, 'deliveryStatus')
+      || String(record['Delivery status'] || 'unknown').trim();
 
     // Keep raw row for Claude context (the orchestrator can read any column)
     return {
@@ -155,8 +240,33 @@ function buildCampaign(record) {
 }
 
 /**
+ * Get a field value from a record using the header map.
+ * Falls back to direct field access if mapping fails.
+ *
+ * @param {object} record - CSV row
+ * @param {object} headerMap - Raw header → standard field mapping
+ * @param {string} fieldName - Standardized field name (e.g., 'spend')
+ * @returns {string|null} - Field value, or null if not found
+ */
+function getFieldValue(record, headerMap, fieldName) {
+  // Find the raw header that maps to this field
+  const rawHeader = Object.keys(headerMap).find(
+    (key) => headerMap[key] === fieldName,
+  );
+
+  if (rawHeader && record[rawHeader] !== undefined) {
+    return record[rawHeader];
+  }
+
+  return null;
+}
+
+/**
  * Pick the first non-empty value from a list of possible column names.
+ * Legacy fallback for direct column access.
  * Handles Meta's habit of appending currency to headers.
+ *
+ * @deprecated - Use headerMap + getFieldValue instead for new code
  */
 function pickColumn(record, ...names) {
   for (const name of names) {
@@ -177,13 +287,30 @@ function pickColumn(record, ...names) {
 }
 
 /**
- * Parse a numeric cell value.
- * Handles commas, currency symbols, spaces, empty strings.
+ * Parse a numeric cell value (non-monetary).
+ * Handles commas, spaces, empty strings, percentage signs.
+ * For monetary values, use cleanMonetaryValue() instead.
  */
 function parseNum(val) {
-  if (val === null || val === undefined || val === '') return 0;
-  const cleaned = String(val).replace(/[^0-9.\-]/g, '');
-  const num     = parseFloat(cleaned);
+  if (val === null || val === undefined || val === '' || val === '-' || val === 'N/A') {
+    return 0;
+  }
+
+  let str = String(val).trim();
+
+  // Handle percentage values (e.g., "2.5%" → 2.5)
+  const isPercentage = str.endsWith('%');
+  if (isPercentage) {
+    str = str.slice(0, -1).trim();
+  }
+
+  // Remove commas (thousands separators)
+  str = str.replace(/,/g, '');
+
+  // Remove currency symbols and other non-numeric chars (keep dot, minus)
+  str = str.replace(/[^0-9.\-]/g, '');
+
+  const num = parseFloat(str);
   return Number.isFinite(num) ? num : 0;
 }
 
