@@ -256,6 +256,15 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
   let   processed   = 0;
   let   alertsCreated = 0;
 
+  const MAX_ROWS = 100;
+  if (parsed.length > MAX_ROWS) {
+    return res.status(400).json({
+      success: false,
+      error: `CSV has ${parsed.length} rows. Maximum is ${MAX_ROWS}.`,
+      hint: 'Split your export into smaller date ranges and re-upload.',
+    });
+  }
+
   for (const c of parsed) {
     try {
       // ── Upsert CampaignState (stable slug ID → no duplicates) ──
