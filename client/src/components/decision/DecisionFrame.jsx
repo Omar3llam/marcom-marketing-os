@@ -43,6 +43,7 @@ export default function DecisionFrame({
   data,
   view,
   isLocked,
+  executionStatus,
   onConfirmExecution,
   onExecuteAction,
   onCommitToMemory,
@@ -183,11 +184,20 @@ export default function DecisionFrame({
         />
       )}
 
-      {/* ── API EXECUTION MODAL (Locked) ── */}
-      {view === 'API_EXECUTION' && (
+      {/* ── EXECUTION PROGRESS MODALS (Locked) ── */}
+      {(view === 'API_EXECUTION' || view === 'EXECUTION_QUEUED' || view === 'EXECUTING') && (
         <ExecutionProgressModal
           verdict={data.verdict}
+          status={executionStatus?.status || 'EXECUTING'}
           onComplete={onCommitToMemory}
+        />
+      )}
+
+      {/* ── EXECUTION SUCCESS MODAL ── */}
+      {view === 'EXECUTED_SUCCESS' && (
+        <ExecutionSuccessModal
+          verdict={data.verdict}
+          onContinue={onCommitToMemory}
         />
       )}
     </div>
@@ -283,10 +293,28 @@ function ExecutionConfirmModal({ verdict, action, onConfirm, onCancel }) {
 }
 
 // ── API EXECUTION MODAL (Locked, with progress) ──────────────
-function ExecutionProgressModal({ verdict, onComplete }) {
+function ExecutionProgressModal({ verdict, status = 'EXECUTING', onComplete }) {
   const [progress, setProgress] = useState(0);
 
+  // Status-specific messaging
+  const statusConfig = {
+    QUEUED: {
+      title: 'Queued for Execution',
+      subtitle: 'Waiting in execution queue...',
+      showProgress: false,
+    },
+    EXECUTING: {
+      title: `Executing ${verdict} Action`,
+      subtitle: 'Communicating with Meta API...',
+      showProgress: true,
+    },
+  };
+
+  const config = statusConfig[status] || statusConfig.EXECUTING;
+
   useEffect(() => {
+    if (!config.showProgress) return;
+
     const interval = setInterval(() => {
       setProgress((prev) => {
         if (prev >= 100) {
@@ -299,7 +327,7 @@ function ExecutionProgressModal({ verdict, onComplete }) {
     }, 100);
 
     return () => clearInterval(interval);
-  }, [onComplete]);
+  }, [onComplete, config.showProgress]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -310,31 +338,64 @@ function ExecutionProgressModal({ verdict, onComplete }) {
           </div>
           <div>
             <h3 className="font-display font-bold text-lg text-dark-base">
-              Executing {verdict} Action
+              {config.title}
             </h3>
             <p className="mt-1 text-sm text-dark-soft">
-              Communicating with Meta API...
+              {config.subtitle}
             </p>
           </div>
         </div>
 
-        <div className="mb-4">
-          <div className="flex items-baseline justify-between text-xs mb-1">
-            <span className="section-label">Progress</span>
-            <span className="font-mono text-dark-base tabular-nums">{Math.round(progress)}%</span>
+        {config.showProgress && (
+          <div className="mb-4">
+            <div className="flex items-baseline justify-between text-xs mb-1">
+              <span className="section-label">Progress</span>
+              <span className="font-mono text-dark-base tabular-nums">{Math.round(progress)}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-surface-border overflow-hidden">
+              <div
+                className="h-full bg-lumi-gold transition-all duration-100"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
           </div>
-          <div className="h-2 rounded-full bg-surface-border overflow-hidden">
-            <div
-              className="h-full bg-lumi-gold transition-all duration-100"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
+        )}
 
         <div className="text-center text-xs text-dark-soft">
           <Lock className="w-3 h-3 inline-block mr-1" strokeWidth={1.5} />
           UI locked during execution
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ── EXECUTION SUCCESS MODAL ───────────────────────────────────
+function ExecutionSuccessModal({ verdict, onContinue }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-surface-card border border-surface-border rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-green-500/10 border border-green-500/30 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-5 h-5 text-green-600" strokeWidth={1.5} />
+          </div>
+          <div>
+            <h3 className="font-display font-bold text-lg text-dark-base">
+              Execution Successful
+            </h3>
+            <p className="mt-1 text-sm text-dark-soft">
+              {verdict} action executed on Meta
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onContinue}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3 font-display font-semibold text-sm bg-lumi-gold text-dark-base hover:bg-lumi-deep shadow-gold-glow transition-all"
+        >
+          Continue
+        </button>
       </div>
     </div>
   );

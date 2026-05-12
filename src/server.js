@@ -137,6 +137,9 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // ── LUMI QUICK-ACTION (HMAC-signed link, NO JWT) ─────────────
+// ── LUMI QUICK ACTION (HMAC-protected, not JWT) ─────────────
+// Used by email/Slack "one-click approve" links. HMAC signature
+// validation happens inside quickActionHandler (line 157-160).
 // Must be mounted BEFORE the JWT-protected /api/lumi router so
 // the middleware doesn't reject HMAC-only callers from email/Slack.
 app.post('/api/lumi/quick-action', apiLimiter, quickActionHandler);
