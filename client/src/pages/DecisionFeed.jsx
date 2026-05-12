@@ -77,6 +77,34 @@ export default function DecisionFeed() {
   }, [dispatch, loadRadarAlerts]);
 
   // ══════════════════════════════════════════════════════════════
+  // RADAR: Wire radar alerts from live API (runs once after mount)
+  // Falls back to localStorage silently if API fails or returns 503.
+  // ══════════════════════════════════════════════════════════════
+  useEffect(() => {
+    let cancelled = false;
+
+    api.get('/api/v1/paid/radar')
+      .then((res) => {
+        if (cancelled) return;
+        const alerts = res.data?.alerts;
+        // Only update if we got real alerts (not mock/empty)
+        if (Array.isArray(alerts) && alerts.length > 0 && res.data?.source !== 'mock') {
+          loadRadarAlerts(alerts);
+          // Persist so next load is instant
+          try {
+            localStorage.setItem('lumi:radarAlerts', JSON.stringify(alerts));
+          } catch { /* quota exceeded */ }
+        }
+      })
+      .catch(() => {
+        // API down or 503 (MCP not connected) — keep localStorage version
+        // Silent fail: user already sees localStorage alerts from above
+      });
+
+    return () => { cancelled = true; };
+  }, [loadRadarAlerts]); // Run once on mount
+
+  // ══════════════════════════════════════════════════════════════
   // SSE: Connect to real-time execution stream after auth ready
   // ══════════════════════════════════════════════════════════════
   useEffect(() => {
@@ -342,17 +370,21 @@ export default function DecisionFeed() {
           />
         )}
 
-        {/* ──────────────────────────────────────────────────── */}
-        {/* STATES: SUCCESS / CONFIRM_EXECUTION / API_EXECUTION   */}
-        {/* ──────────────────────────────────────────────────── */}
+        {/* ──────────────────────────────────────────────────────────────── */}
+        {/* STATES: SUCCESS / CONFIRM_EXECUTION / API_EXECUTION / EXECUTING */}
+        {/* ──────────────────────────────────────────────────────────────── */}
         {(state.view === 'SUCCESS' ||
           state.view === 'CONFIRM_EXECUTION' ||
-          state.view === 'API_EXECUTION') &&
+          state.view === 'API_EXECUTION' ||
+          state.view === 'EXECUTION_QUEUED' ||
+          state.view === 'EXECUTING' ||
+          state.view === 'EXECUTED_SUCCESS') &&
           state.outputData && (
             <DecisionFrame
               data={state.outputData}
               view={state.view}
               isLocked={state.isLocked}
+              executionStatus={state.executionStatus}
               onConfirmExecution={confirmExecution}
               onExecuteAction={executeAction}
               onCommitToMemory={commitToMemory}
@@ -361,9 +393,9 @@ export default function DecisionFeed() {
           )}
 
         {/* ──────────────────────────────────────────────────── */}
-        {/* STATE: ERROR                                          */}
+        {/* STATE: ERROR / EXECUTED_FAILED                        */}
         {/* ──────────────────────────────────────────────────── */}
-        {state.view === 'ERROR' && state.errorDetails && (
+        {(state.view === 'ERROR' || state.view === 'EXECUTED_FAILED') && state.errorDetails && (
           <ErrorView
             error={state.errorDetails}
             onRetry={() => {
