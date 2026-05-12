@@ -111,15 +111,15 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
         className={cn(
           'rounded-xl border-2 border-dashed p-8 text-center cursor-pointer',
           'transition-colors',
-          dragOver ? 'border-blue-500/60 bg-blue-500/5' : 'border-gray-700 bg-gray-900/40 hover:border-gray-600',
+          dragOver ? 'border-lumi-gold/60 bg-lumi-gold/10' : 'border-surface-border bg-surface-light hover:border-lumi-gold/40',
           compact && 'p-5',
         )}
       >
-        <CloudUpload className={cn('mx-auto mb-3 text-gray-400', compact ? 'h-6 w-6' : 'h-10 w-10')} />
-        <p className="text-sm font-medium text-white">
+        <CloudUpload className={cn('mx-auto mb-3 text-lumi-gold', compact ? 'h-6 w-6' : 'h-10 w-10')} />
+        <p className="font-display text-sm font-medium text-dark-base">
           Drag &amp; drop a CSV here, or click to choose
         </p>
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 font-mono text-xs text-dark-soft">
           Meta Ads Manager or Google Ads export · up to 10 MB
         </p>
         <input
@@ -133,12 +133,12 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
 
       {/* Selected file row */}
       {file && (
-        <div className="mt-4 flex items-center justify-between rounded-xl border border-gray-800 bg-gray-900/60 p-3">
+        <div className="mt-4 flex items-center justify-between rounded-xl border border-surface-border bg-surface-card p-3 shadow-card">
           <div className="flex min-w-0 items-center gap-3">
-            <FileText className="h-4 w-4 shrink-0 text-blue-400" />
+            <FileText className="h-4 w-4 shrink-0 text-lumi-gold" />
             <div className="min-w-0">
-              <div className="truncate text-sm text-white">{file.name}</div>
-              <div className="text-xs text-gray-500">{(file.size / 1024).toFixed(1)} KB</div>
+              <div className="truncate font-body text-sm text-dark-base">{file.name}</div>
+              <div className="font-mono text-xs text-dark-soft">{(file.size / 1024).toFixed(1)} KB</div>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -148,7 +148,7 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
               disabled={busy}
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold',
-                'bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed',
+                'bg-lumi-gold text-dark-base hover:bg-lumi-deep disabled:opacity-60 disabled:cursor-not-allowed font-display',
               )}
             >
               {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
@@ -159,7 +159,7 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
               onClick={reset}
               disabled={busy}
               aria-label="Remove"
-              className="rounded-md p-1 text-gray-500 hover:bg-gray-800 hover:text-white"
+              className="rounded-md p-1 text-dark-soft hover:bg-surface-border hover:text-dark-base transition-colors"
             >
               <X className="h-4 w-4" />
             </button>
@@ -169,9 +169,9 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
 
       {/* Progress bar */}
       {busy && (
-        <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-gray-800">
+        <div className="mt-3 h-1 w-full overflow-hidden rounded-full bg-surface-border">
           <div
-            className="h-full bg-blue-500 transition-all"
+            className="h-full bg-lumi-gold transition-all"
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -179,11 +179,11 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
 
       {/* Result panel */}
       {result && !result.error && (
-        <div className="mt-4 flex items-start gap-2 rounded-lg border border-green-500/20 bg-green-500/5 p-3 text-sm">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-400" />
-          <div className="text-green-200">
-            <div className="font-semibold">Upload complete</div>
-            <div className="text-xs text-green-300/80">
+        <div className="mt-4 flex items-start gap-2 rounded-lg border border-signal-scale/20 bg-signal-scale-bg p-3 text-sm">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-signal-scale" />
+          <div className="text-signal-scale">
+            <div className="font-display font-semibold">Upload complete</div>
+            <div className="font-mono text-xs text-signal-scale/80">
               {mode === 'analyze' ? (
                 <>
                   {result.stats?.analyzed || 0} analyzed · {result.decisions?.length || 0} decisions
@@ -204,11 +204,11 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
         </div>
       )}
       {result?.error && (
-        <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-sm">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-          <div className="text-red-200">
-            <div className="font-semibold">{result.error}</div>
-            {result.detail && <div className="text-xs text-red-300/80">{result.detail}</div>}
+        <div className="mt-4 flex items-start gap-2 rounded-lg border border-signal-kill/20 bg-signal-kill-bg p-3 text-sm">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-signal-kill" />
+          <div className="text-signal-kill">
+            <div className="font-display font-semibold">{result.error}</div>
+            {result.detail && <div className="font-mono text-xs text-signal-kill/80">{result.detail}</div>}
           </div>
         </div>
       )}
