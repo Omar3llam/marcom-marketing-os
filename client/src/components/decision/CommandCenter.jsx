@@ -58,6 +58,7 @@ const MODES = [
 export default function CommandCenter({
   history,
   radarAlerts = [],
+  summary,
   onStartFlow,
   onReviewAlert,
   onReplay,

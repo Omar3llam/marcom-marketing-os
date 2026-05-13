@@ -27,6 +27,7 @@ import {
   loadRadarAlertsFromStorage,
 } from '@/hooks/useDecisionFSM.js';
 import { useOrchestrate } from '@/hooks/useOrchestrate.js';
+import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
 import { connectExecutionStream } from '@/lib/events.js';
 import { api } from '@/lib/api.js';
 import CommandCenter      from '@/components/decision/CommandCenter.jsx';
@@ -62,6 +63,8 @@ export default function DecisionFeed() {
     onError:   reportError,
     onStep:    (step) => dispatch({ type: 'THEATRE_ADVANCE', step }),
   });
+
+  const { summary } = useCampaignFeed();
 
   const sseDisconnectRef = useRef(null);
 
@@ -340,6 +343,7 @@ export default function DecisionFeed() {
           <CommandCenter
             history={state.history}
             radarAlerts={state.radarAlerts}
+            summary={summary}
             onStartFlow={startFlow}
             onReviewAlert={reviewAlert}
             onReplay={replay}
