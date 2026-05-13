@@ -1,9 +1,8 @@
 // ============================================================
 // MARCOM / Lumi — useCampaignFeed
 // ------------------------------------------------------------
-// Single source of truth for live campaign data sourced from
-// GET /api/lumi/feed. Returns:
-//   { campaigns, loading, error, refetch, summary }
+// Delegates to CampaignFeedContext for singleton fetch behavior.
+// Returns: { campaigns, loading, error, refetch, summary }
 //
 // Where `campaigns` is the raw backend shape:
 //   [{ campaign_id, stage, alerts: [
@@ -15,27 +14,7 @@
 // Falls back to /api/lumi/demo-feed when /feed is empty or 401
 // (so the public stakeholder-demo URL still renders something).
 // ============================================================
-import { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
-import { api } from '@/lib/api.js';
-
-const PRIMARY  = '/api/lumi/feed';
-const FALLBACK = '/api/lumi/demo-feed';
-
-async function fetchFeed(signal) {
-  // Firebase token is auto-injected by api.js interceptor
-  try {
-    const res = await api.get(PRIMARY, { signal });
-    if (Array.isArray(res.data?.campaigns) && res.data.campaigns.length > 0) {
-      return res.data;
-    }
-    // Empty real feed → drop to demo so the UI shows something
-  } catch (err) {
-    if (axios.isCancel?.(err) || err?.name === 'CanceledError') throw err;
-  }
-  const demo = await api.get(FALLBACK, { signal });
-  return demo.data;
-}
+import { useCampaignFeedContext } from '@/context/CampaignFeedContext.jsx';
 
 // ── Helper: pull a metric value from an alert's signal rows ──
 // Matches metric names case-insensitively. Returns the numeric
@@ -87,42 +66,15 @@ export function summarize(campaigns = []) {
   return out;
 }
 
+// ── Hook wrapper — delegates to context, no duplicate fetch ──
 export function useCampaignFeed() {
-  const [campaigns, setCampaigns] = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [error,     setError]     = useState(null);
-
-  const load = useCallback((signal) => {
-    setLoading(true); setError(null);
-    return fetchFeed(signal)
-      .then((data) => setCampaigns(data?.campaigns ?? []))
-      .catch((err) => {
-        if (axios.isCancel?.(err) || err?.name === 'CanceledError') return;
-        setError(err?.message || 'Unknown error');
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    const ctrl = new AbortController();
-    let cancelled = false;
-    fetchFeed(ctrl.signal)
-      .then((data) => { if (!cancelled) setCampaigns(data?.campaigns ?? []); })
-      .catch((err) => {
-        if (cancelled) return;
-        if (axios.isCancel?.(err) || err?.name === 'CanceledError') return;
-        setError(err?.message || 'Unknown error');
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; ctrl.abort(); };
-  }, []);
-
+  const { campaigns, loading, error, refetch, setCampaigns } = useCampaignFeedContext();
   return {
     campaigns,
     loading,
     error,
-    refetch: () => load(),
-    summary: summarize(campaigns),
+    refetch,
     setCampaigns,
+    summary: summarize(campaigns),
   };
 }
