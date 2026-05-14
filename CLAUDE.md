@@ -50,3 +50,43 @@ npm test                        # integration tests (server must be running)
 1. Add guide to `serviceGuides` in mode2-service.js
 2. Add keywords to `detectService()`
 3. If hybrid (URL scrape): add to `HYBRID_SERVICES` array
+
+## AUDIT MISMATCH GOVERNANCE RULE
+
+When executing any prompt that assumes a specific codebase state:
+
+1. **Run pre-flight greps first.** Every patch has a PROOF step. Run it.
+
+2. **If assumption matches codebase** → proceed with the described patch.
+
+3. **If assumption does NOT match** → STOP and print:
+   ```
+   AUDIT MISMATCH DETECTED
+   Expected:  [what the prompt assumed]
+   Actual:    [what grep found]
+   Impact:    [what would break if we applied the patch blindly]
+   Safe path: [minimal change that is still safe given actual state]
+   Decision:  [proceed with safe path / BLOCKED — needs human input]
+   ```
+
+Never silently reinterpret scope. If the intended UX change
+requires a component that doesn't exist yet, say so explicitly.
+Do not invent a different solution without flagging the substitution.
+Never combine audit mismatch adaptation with scope expansion.
+Fix the mismatch first. New scope = new prompt.
+
+### Examples
+
+**Correct behavior:**
+```
+Pre-flight confirmed: TrustStrip component does not exist.
+AUDIT MISMATCH: prompt assumed fake metrics in TrustStrip.
+Safe adaptation: wire summary prop infrastructure only.
+Blocking visual metric replacement until TrustStrip exists.
+```
+
+**Incorrect behavior (what to avoid):**
+```
+[silently creates TrustStrip with different design than intended,
+or wires infrastructure and calls it "done" without flagging the gap]
+```
