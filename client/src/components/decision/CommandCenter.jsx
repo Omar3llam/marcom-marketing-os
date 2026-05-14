@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { cn } from '@/lib/utils.js';
+import { displaySpend, displayCount } from '@/lib/metricDisplay.js';
 
 const MODES = [
   {
@@ -163,10 +164,8 @@ export default function CommandCenter({
 
   // Wire summary metrics into campaign hero card
   const campaignMetrics = {
-    total: summary?.total > 0   ? `${summary.total} active`  : null,
-    spend: summary?.spend > 0
-      ? `EGP ${summary.spend.toLocaleString('en-EG', { maximumFractionDigits: 0 })}`
-      : null,
+    total: displayCount(summary?.total, 'active'),
+    spend: displaySpend(summary?.spend),
   };
 
   return (
