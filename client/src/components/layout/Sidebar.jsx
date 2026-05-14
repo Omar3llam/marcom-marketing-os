@@ -24,6 +24,85 @@ const tools = [
   { label: 'Social Calendar',   sub: '4-week content plan',          icon: CalendarDays,    path: '/app/tools/calendar' },
 ];
 
+// ══════════════════════════════════════════════════════════════
+// WorkspaceHQ — Operational header showing company identity
+// ══════════════════════════════════════════════════════════════
+function WorkspaceHQ({ workspace, onNewProject }) {
+  const [open, setOpen] = useState(false);
+
+  // Generate 2-letter initials from company name
+  const initials = workspace.name
+    .split(' ')
+    .map((w) => w[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || 'WS';
+
+  return (
+    <div className="px-3 mt-2">
+      <div className="section-label mb-2 px-1">Workspace</div>
+
+      {/* HQ Card */}
+      <div className="rounded-xl border border-lumi-border bg-lumi-elevated p-3">
+        {/* Company header */}
+        <div className="flex items-start gap-2.5 mb-3">
+          <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-lumi-accent to-lumi-accent/70 flex items-center justify-center flex-shrink-0 shadow-accent-glow">
+            <span className="text-sm font-display font-bold text-lumi-bg">{initials}</span>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-display font-semibold text-lumi-text truncate">
+              {workspace.name}
+            </div>
+            <div className="text-xs text-lumi-subtle mt-0.5 font-mono">
+              Market: <span className="text-lumi-muted">—</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Spend tier */}
+        <div className="text-xs text-lumi-subtle mb-2 font-mono">
+          Spend tier: <span className="text-lumi-muted">—</span>
+        </div>
+
+        {/* Connected channels (placeholder) */}
+        <div className="flex items-center gap-1.5 mb-3">
+          <span className="text-xs text-lumi-subtle font-mono">Channels:</span>
+          <span className="text-xs text-lumi-muted font-mono">—</span>
+        </div>
+
+        {/* Actions */}
+        <button
+          onClick={() => setOpen((p) => !p)}
+          className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg
+                     text-xs text-lumi-muted hover:text-lumi-text hover:bg-lumi-surface
+                     transition-colors duration-100"
+        >
+          <span className="font-display font-medium">Manage</span>
+          <ChevronDown
+            className={cn('w-3 h-3 transition-transform duration-150', open && 'rotate-180')}
+            strokeWidth={1.5}
+          />
+        </button>
+
+        {open && (
+          <div className="mt-2 pt-2 border-t border-lumi-border animate-slide-up">
+            <button
+              onClick={() => { setOpen(false); onNewProject(); }}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg
+                         text-xs text-lumi-muted hover:text-lumi-accent hover:bg-lumi-accent-soft
+                         transition-colors duration-100"
+            >
+              <Plus className="w-3 h-3" strokeWidth={1.5} />
+              <span className="font-display font-medium">New Workspace</span>
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Sidebar({ collapsed, onToggle }) {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
@@ -79,67 +158,32 @@ export default function Sidebar({ collapsed, onToggle }) {
       {/* ── SCROLL ───────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden py-3 gap-1">
 
-        {/* Project switcher (expanded) */}
-        {!collapsed && (
+        {/* WorkspaceHQ (expanded) */}
+        {!collapsed && hasWorkspace && workspace && (
+          <WorkspaceHQ workspace={workspace} onNewProject={() => navigate('/onboarding')} />
+        )}
+
+        {/* Fallback: No workspace (expanded) */}
+        {!collapsed && !hasWorkspace && !workspaceLoading && (
           <div className="px-3 mt-2">
-            <div className="section-label mb-2 px-1">Project</div>
+            <div className="section-label mb-2 px-1">Workspace</div>
             <button
-              onClick={() => setProjectOpen((p) => !p)}
-              aria-expanded={projectOpen}
-              disabled={workspaceLoading}
-              className={cn(
-                'w-full flex items-center gap-2.5 px-3 py-2 rounded-xl',
-                'border transition-all duration-150 text-left',
-                projectOpen
-                  ? 'bg-lumi-elevated border-lumi-border-strong'
-                  : 'bg-transparent border-lumi-border hover:border-lumi-border-strong',
-                workspaceLoading && 'opacity-50 cursor-not-allowed',
-              )}
+              onClick={() => navigate('/onboarding')}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl
+                         border border-dashed border-lumi-border hover:border-lumi-accent
+                         bg-transparent hover:bg-lumi-accent-soft/30 transition-all duration-150"
             >
-              <span className={cn(
-                'w-2 h-2 rounded-full flex-shrink-0',
-                hasWorkspace ? 'bg-signal-scale' : 'bg-lumi-subtle',
-              )} />
-              <span className="flex-1 text-sm font-display font-medium text-lumi-text truncate">
-                {workspaceName}
-              </span>
-              <ChevronDown
-                className={cn(
-                  'w-3.5 h-3.5 text-lumi-muted transition-transform duration-150',
-                  projectOpen && 'rotate-180',
-                )}
-                strokeWidth={1.5}
-              />
+              <Plus className="w-4 h-4 text-lumi-muted" strokeWidth={1.5} />
+              <span className="text-sm font-display font-medium text-lumi-muted">Create Workspace</span>
             </button>
+          </div>
+        )}
 
-            {projectOpen && (
-              <div className="mt-1 bg-lumi-elevated border border-lumi-border rounded-xl overflow-hidden shadow-panel animate-slide-up">
-                {hasWorkspace && workspace && (
-                  <div className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left text-sm font-display text-lumi-accent bg-lumi-accent-soft border-b border-lumi-border">
-                    <span className="w-2 h-2 rounded-full bg-lumi-accent flex-shrink-0" />
-                    <span className="truncate">{workspace.name}</span>
-                  </div>
-                )}
-
-                {!hasWorkspace && (
-                  <div className="px-3 py-2.5 text-xs text-lumi-subtle text-center">
-                    No project yet — create one below
-                  </div>
-                )}
-
-                <div className={cn(!hasWorkspace && 'border-t border-lumi-border')}>
-                  <button
-                    onClick={() => { setProjectOpen(false); navigate('/onboarding'); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left
-                               text-sm text-lumi-muted hover:text-lumi-accent
-                               hover:bg-lumi-accent-soft transition-colors duration-100"
-                  >
-                    <Plus className="w-3.5 h-3.5" strokeWidth={1.5} />
-                    New Project
-                  </button>
-                </div>
-              </div>
-            )}
+        {/* Loading state (expanded) */}
+        {!collapsed && workspaceLoading && (
+          <div className="px-3 mt-2">
+            <div className="section-label mb-2 px-1">Workspace</div>
+            <div className="px-3 py-2.5 text-xs text-lumi-subtle">Loading...</div>
           </div>
         )}
 
