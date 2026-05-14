@@ -1,24 +1,16 @@
-import { useState, useEffect } from 'react';
-import { api } from '@/lib/api.js';
+// ============================================================
+// MARCOM / Lumi — useMemory
+// ------------------------------------------------------------
+// Delegates to IntelligenceContext for singleton fetch behavior.
+// Returns: { patterns, narratives, total, loading, recordDecision }
+// ============================================================
+import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 
 export function useMemory() {
-  const [data, setData]     = useState({ patterns: [], narratives: [], total: 0 });
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    api.get('/api/memory/patterns')
-      .then(res => { if (!cancelled) setData(res.data); })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
-
-  const recordDecision = async ({ campaignId, actionType, decisionRationale }) => {
-    try {
-      await api.post('/api/memory/record', { campaignId, actionType, decisionRationale });
-    } catch {}
+  const { memory, loading, recordDecision } = useIntelligence();
+  return {
+    ...memory,
+    loading,
+    recordDecision,
   };
-
-  return { ...data, loading, recordDecision };
 }

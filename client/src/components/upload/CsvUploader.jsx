@@ -10,6 +10,7 @@ import { CloudUpload, FileText, X, Loader2, CheckCircle2, AlertTriangle } from '
 import { toast } from 'sonner';
 import { api }   from '../../lib/api.js';
 import { cn }    from '../../lib/utils.js';
+import { useIntelligence } from '../../context/IntelligenceContext.jsx';
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
@@ -29,6 +30,7 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
   const [busy,     setBusy]     = useState(false);
   const [result,   setResult]   = useState(null);
   const [dragOver, setDragOver] = useState(false);
+  const { refresh } = useIntelligence();
 
   const pickFile = (f) => {
     if (!f) return;
@@ -89,6 +91,8 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
       }
 
       onSuccess?.(res.data);
+      // Trigger intelligence refresh: campaigns + memory update simultaneously
+      refresh();
     } catch (err) {
       const msg = err.response?.data?.error || err.message || 'Upload failed';
       toast.error(msg);

@@ -27,7 +27,7 @@ import SettingsPage     from './pages/Settings.jsx';
 import { CardSkeleton } from './components/ui/Skeleton.jsx';
 import { ProtectedRoute, OnboardingRoute } from './router/ProtectedRoute.jsx';
 import { useAuth } from './context/AuthContext.jsx';
-import { CampaignFeedProvider } from './context/CampaignFeedContext.jsx';
+import { IntelligenceProvider } from './context/IntelligenceContext.jsx';
 
 // ── Heavy views — lazy-load to keep the initial bundle slim ──
 const CampaignAnalysis    = lazy(() => import('./pages/CampaignAnalysis.jsx'));
@@ -82,9 +82,9 @@ export default function App() {
         path="/app"
         element={
           <ProtectedRoute>
-            <CampaignFeedProvider>
+            <IntelligenceProvider>
               <MainLayout />
-            </CampaignFeedProvider>
+            </IntelligenceProvider>
           </ProtectedRoute>
         }
       >

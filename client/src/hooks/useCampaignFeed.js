@@ -1,7 +1,7 @@
 // ============================================================
 // MARCOM / Lumi — useCampaignFeed
 // ------------------------------------------------------------
-// Delegates to CampaignFeedContext for singleton fetch behavior.
+// Delegates to IntelligenceContext for singleton fetch behavior.
 // Returns: { campaigns, loading, error, refetch, summary }
 //
 // Where `campaigns` is the raw backend shape:
@@ -14,7 +14,7 @@
 // Falls back to /api/lumi/demo-feed when /feed is empty or 401
 // (so the public stakeholder-demo URL still renders something).
 // ============================================================
-import { useCampaignFeedContext } from '@/context/CampaignFeedContext.jsx';
+import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 
 // ── Helper: pull a metric value from an alert's signal rows ──
 // Matches metric names case-insensitively. Returns the numeric
@@ -66,15 +66,15 @@ export function summarize(campaigns = []) {
   return out;
 }
 
-// ── Hook wrapper — delegates to context, no duplicate fetch ──
+// ── Hook wrapper — delegates to IntelligenceContext ─────────
 export function useCampaignFeed() {
-  const { campaigns, loading, error, refetch, setCampaigns } = useCampaignFeedContext();
+  const { campaigns, loading, error, refresh, setCampaigns, summary } = useIntelligence();
   return {
     campaigns,
     loading,
     error,
-    refetch,
+    refetch: refresh,
     setCampaigns,
-    summary: summarize(campaigns),
+    summary,
   };
 }
