@@ -64,20 +64,9 @@ export default function SuccessView({ data, onReset, onCommit }) {
         </div>
       </section>
 
-      {/* ── SECTION 2 — Financial impact (400ms) ── */}
+      {/* ── SECTION 2 — Confidence metrics (400ms) ── */}
       <section className="reveal mb-6" style={{ animationDelay: '400ms' }}>
-        <div className={cn(
-          'rounded-r-xl bg-lumi-elevated p-4 flex items-start gap-3',
-          'border-l-4',
-          isLoss ? 'border-l-signal-kill' : 'border-l-signal-scale',
-        )}>
-          {isLoss
-            ? <TrendingDown className="w-5 h-5 text-signal-kill shrink-0 mt-0.5" strokeWidth={1.5} />
-            : <DollarSign  className="w-5 h-5 text-signal-scale shrink-0 mt-0.5" strokeWidth={1.5} />}
-          <p className="font-display font-semibold text-lumi-text leading-snug">
-            {data.financialImpact}
-          </p>
-        </div>
+        <ConfidenceCard data={data} />
       </section>
 
       {/* ── SECTION 3 — Why breakdown (800ms) ── */}
@@ -168,6 +157,56 @@ function RiskBadge({ level }) {
     <span className={cn('font-mono text-xs uppercase tracking-wide px-2 py-1 rounded border', cls)}>
       {level} Risk
     </span>
+  );
+}
+
+// ── Confidence Card (auditable AI verdict) ──────────────────
+function ConfidenceCard({ data }) {
+  const { confidence = 0, riskLevel = 'Medium', financialImpact, whyBreakdown = [] } = data;
+
+  const riskColor =
+    riskLevel === 'High'   ? 'text-signal-kill bg-signal-kill-bg border-signal-kill/20' :
+    riskLevel === 'Medium' ? 'text-signal-hold bg-signal-hold-bg border-signal-hold/20' :
+                             'text-signal-scale bg-signal-scale-bg border-signal-scale/20';
+
+  return (
+    <div className="rounded-xl border border-lumi-border bg-lumi-elevated p-5 shadow-card">
+      {/* Title */}
+      <p className="font-mono text-[10px] uppercase tracking-widest text-lumi-subtle mb-4">
+        Verdict intelligence
+      </p>
+
+      {/* Metrics row */}
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        <div className="text-center">
+          <div className="font-display font-bold text-2xl text-lumi-text tabular-nums">
+            {confidence}%
+          </div>
+          <div className="font-mono text-[10px] text-lumi-subtle mt-0.5">Confidence</div>
+        </div>
+        <div className="text-center">
+          <div className={`inline-flex px-3 py-1 rounded-lg border font-mono text-sm font-semibold ${riskColor}`}>
+            {riskLevel}
+          </div>
+          <div className="font-mono text-[10px] text-lumi-subtle mt-0.5">Risk level</div>
+        </div>
+        <div className="text-center">
+          <div className="font-display font-bold text-2xl text-lumi-text tabular-nums">
+            {whyBreakdown.length}
+          </div>
+          <div className="font-mono text-[10px] text-lumi-subtle mt-0.5">Signals analyzed</div>
+        </div>
+      </div>
+
+      {/* Financial impact */}
+      {financialImpact && (
+        <div className="rounded-lg border border-signal-kill/20 bg-signal-kill-bg px-4 py-2.5">
+          <p className="font-mono text-sm text-signal-kill font-semibold">
+            {financialImpact}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
