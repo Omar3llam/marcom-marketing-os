@@ -111,6 +111,7 @@ export default function OnboardingPage() {
       // tick the event loop once so React commits the cache update
       // before we navigate.
       await Promise.resolve();
+      sessionStorage.setItem('marcom:firstActivation', '1');
       navigate('/app', { replace: true });
     } catch (err) {
       const detail = err.response?.data;

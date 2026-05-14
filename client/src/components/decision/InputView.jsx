@@ -156,6 +156,15 @@ function CampaignInput({ initialData, onSubmit, onCancel }) {
         <input ref={inputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => pick(e.target.files?.[0])} />
       </div>
 
+      {/* Time-to-value compression message */}
+      {!file && !campaignId && (
+        <div className="mt-3 text-center">
+          <p className="font-mono text-xs text-dark-soft/60">
+            After upload: verdict arrives in <span className="text-lumi-gold font-semibold">~18 seconds</span>
+          </p>
+        </div>
+      )}
+
       {file && (
         <div className="mt-4 flex items-center justify-between rounded-xl border border-lumi-border bg-lumi-elevated p-3">
           <div className="flex items-center gap-2 min-w-0">
