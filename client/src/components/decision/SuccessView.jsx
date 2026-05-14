@@ -97,6 +97,7 @@ export default function SuccessView({ data, onReset, onCommit }) {
         {data.mode === 'strategy' && data.modeSpecificData?.strategyMarkdown && (
           <StrategyMarkdownBlock markdown={data.modeSpecificData.strategyMarkdown} />
         )}
+        <AutonomousRecommendation rec={data.modeSpecificData?.autonomousRecommendation} />
       </section>
 
       {/* ── SECTION 5 — Actions (1600ms) ── */}
@@ -204,6 +205,46 @@ function ConfidenceCard({ data }) {
           <p className="font-mono text-sm text-signal-kill font-semibold">
             {financialImpact}
           </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Autonomous Recommendation ───────────────────────────────
+function AutonomousRecommendation({ rec }) {
+  if (!rec?.action) return null;
+
+  return (
+    <div className="rounded-2xl border border-lumi-gold/25 bg-lumi-gold/5 p-5 shadow-card">
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-1.5 h-1.5 rounded-full bg-lumi-gold animate-pulse" />
+        <p className="font-mono text-[10px] uppercase tracking-widest text-lumi-gold">
+          Autonomous recommendation
+        </p>
+      </div>
+
+      <p className="font-display font-bold text-base text-dark-base mb-3">
+        {rec.action}
+      </p>
+
+      {rec.reallocation && (
+        <div className="mb-3 px-3 py-2 rounded-lg bg-surface-card border border-surface-border">
+          <span className="font-mono text-xs text-dark-soft">Reallocation: </span>
+          <span className="font-mono text-xs font-semibold text-dark-base">{rec.reallocation}</span>
+        </div>
+      )}
+
+      <p className="font-body text-sm text-dark-soft leading-relaxed mb-2">
+        {rec.rationale}
+      </p>
+
+      {rec.expectedOutcome && (
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-surface-border">
+          <span className="font-mono text-xs text-dark-soft">Expected: </span>
+          <span className="font-mono text-xs font-semibold text-signal-scale">
+            {rec.expectedOutcome}
+          </span>
         </div>
       )}
     </div>

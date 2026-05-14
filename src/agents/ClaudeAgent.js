@@ -31,12 +31,38 @@ export async function runClaudeAgent({
 }) {
   const ctxBlock = campaignId ? await getRenderedContext(campaignId) : '';
 
+  const RECOMMENDATION_BLOCK = `
+AUTONOMOUS RECOMMENDATION REQUIREMENT:
+After every verdict, you MUST include an "autonomousRecommendation" field.
+This is not optional. It must be specific, actionable, and financially quantified.
+
+Format:
+{
+  "autonomousRecommendation": {
+    "action": "string — the specific action to take",
+    "reallocation": "string | null — if budget should move, where and how much (in EGP or %)",
+    "rationale": "string — 1 sentence referencing historical patterns if available",
+    "expectedOutcome": "string — quantified expected result in EGP or % within a timeframe"
+  }
+}
+
+Examples:
+BAD: "Consider pausing the campaign."
+GOOD: {
+  "action": "Pause Meta campaign and reallocate budget to top-performing ad set",
+  "reallocation": "Move EGP 1,200/week from Campaign A to Ad Set B",
+  "rationale": "Ad Set B maintained ROAS 3.1x over 14 days — consistent with your Q4 pattern",
+  "expectedOutcome": "Projected CPA reduction of EGP 18/conversion within 7 days"
+}
+`;
+
   const systemPrompt = [
     role || 'You are Lumi, an autonomous marketing intelligence agent.',
     ctxBlock || '',
     'Use the campaign context above to ground every recommendation. ' +
     'If a recent decision regressed, do NOT recommend the same action again ' +
     'unless you can articulate what would change.',
+    RECOMMENDATION_BLOCK,
   ].filter(Boolean).join('\n\n');
 
   const result = await callClaude({
