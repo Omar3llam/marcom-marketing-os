@@ -100,8 +100,8 @@ function EmptyRadar() {
       <div className="w-12 h-12 mx-auto rounded-full bg-signal-scale/10 flex items-center justify-center mb-3">
         <AlertTriangle className="w-6 h-6 text-signal-scale" strokeWidth={1.5} />
       </div>
-      <p className="text-dark-base font-display font-semibold">All clear</p>
-      <p className="mt-1 text-dark-soft text-sm">No bleeding campaigns detected. Radar monitoring active.</p>
+      <p className="text-dark-base font-display font-semibold">Radar sweep complete — market stable</p>
+      <p className="mt-1 text-dark-soft text-sm">No bleeding campaigns detected. Intelligence monitoring active.</p>
     </div>
   );
 }

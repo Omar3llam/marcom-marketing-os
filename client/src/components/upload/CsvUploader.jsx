@@ -81,7 +81,7 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
         const analyzed = res.data.stats?.analyzed || res.data.decisions?.length || 0;
         toast.success(
           `Analyzed ${analyzed} campaign${analyzed === 1 ? '' : 's'} · ${res.data.decisions?.length || 0} decision${res.data.decisions?.length === 1 ? '' : 's'} generated`,
-          { description: 'AI analysis complete — rendering dashboard' },
+          { description: 'AI analysis complete — rendering intelligence layer' },
         );
       } else {
         const campaignCount = res.data.campaign_ids?.length || 0;

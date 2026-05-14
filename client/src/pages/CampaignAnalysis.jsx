@@ -95,7 +95,7 @@ export default function CampaignAnalysis() {
         setCampaigns(transformed);
         toast.success(
           `Synced ${res.data.stats?.analyzed || 0} campaign${res.data.stats?.analyzed === 1 ? '' : 's'} from Meta`,
-          { description: 'Live analysis complete — rendering dashboard' }
+          { description: 'Live analysis complete — rendering intelligence layer' }
         );
       } else {
         toast.error(res.data.error || 'Failed to sync Meta campaigns');

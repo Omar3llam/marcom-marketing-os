@@ -4,37 +4,37 @@ import { cn } from '@/lib/utils.js';
 const MODES = [
   {
     mode: 'campaign',
-    badge: 'TOOL 01',
+    badge: 'MODULE 01',
     accent: 'card-accent-campaign',
     iconCls: 'text-signal-kill bg-signal-kill-bg',
     badgeCls: 'text-signal-kill bg-signal-kill-bg',
     icon: BarChart3,
-    title: 'Analyze Campaign',
-    body: 'Upload CSV or sync Meta API. Get KILL / SCALE / HOLD verdicts with financial impact.',
-    cta: 'Run analysis',
+    title: 'Campaign Intelligence',
+    body: 'Connect campaign data via CSV or Meta API. Get KILL / SCALE / HOLD verdicts with financial impact.',
+    cta: 'Run intelligence scan',
     enabled: true,
   },
   {
     mode: 'strategy',
-    badge: 'TOOL 02',
+    badge: 'MODULE 02',
     accent: 'card-accent-strategy',
     iconCls: 'text-stage-scaling bg-stage-scaling/10',
     badgeCls: 'text-stage-scaling bg-stage-scaling/10',
     icon: Target,
-    title: 'Growth Strategy',
-    body: 'Generate strategic campaign briefs. Locked until Phase 2.',
+    title: 'Strategic Intelligence',
+    body: 'Generate strategic campaign briefs. Capability locked until Phase 2.',
     cta: 'Start session',
     enabled: false,
   },
   {
     mode: 'content',
-    badge: 'TOOL 03',
+    badge: 'MODULE 03',
     accent: 'card-accent-content',
     iconCls: 'text-signal-hold bg-signal-hold-bg',
     badgeCls: 'text-signal-hold bg-signal-hold-bg',
     icon: ScanSearch,
-    title: 'Content Score',
-    body: 'Score ad copy with the MARCOM framework. Locked until Phase 3.',
+    title: 'Content Intelligence',
+    body: 'Score ad copy with the MARCOM framework. Capability locked until Phase 3.',
     cta: 'Submit content',
     enabled: false,
   },
@@ -44,7 +44,7 @@ export default function HeroToolCard({ campaignMetrics, onStartFlow }) {
   return (
     <section aria-labelledby="tools-heading" className="mb-12">
       <h2 id="tools-heading" className="section-label mb-4">
-        Manual OS Tools
+        Decision Modules
       </h2>
 
       {/* Campaign card — hero entry point (full width, dominant) */}

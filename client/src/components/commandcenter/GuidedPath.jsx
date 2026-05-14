@@ -17,7 +17,7 @@ export default function GuidedPath({ onStartFlow }) {
     }`}>
       <Clock className={`w-8 h-8 mx-auto ${isFirstActivation ? 'text-lumi-gold' : 'text-dark-soft'}`} strokeWidth={1.5} />
       <p className={`mt-3 text-sm ${isFirstActivation ? 'text-dark-base font-display font-semibold' : 'text-dark-soft'}`}>
-        {isFirstActivation ? 'Ready to analyze your first campaign' : 'No decisions yet. Run your first analysis.'}
+        {isFirstActivation ? 'Ready to run intelligence scan on your first campaign' : 'Memory layer is empty — first verdict initializes it'}
       </p>
       {isFirstActivation && (
         <button
