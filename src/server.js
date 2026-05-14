@@ -40,6 +40,7 @@ import { lumiRouter, quickActionHandler, demoFeedHandler } from './routes/lumi.j
 import paidRouter             from './routes/paid.js';
 import executionRouter        from './routes/execution.js';
 import eventsRouter           from './routes/events.js';
+import memoryRouter           from './routes/memory.js';
 import { userRouter }         from './routes/user.js';
 import { requireJwt }         from './middleware/jwtAuth.js';
 import { logger }             from './utils/logger.js';
@@ -214,6 +215,13 @@ app.use('/api/execute',
 app.use('/api/events',
   requireAuth,
   eventsRouter
+);
+
+// Decision Memory — CMO learning system (pattern analysis)
+app.use('/api/memory',
+  requireAuth,
+  apiLimiter,
+  memoryRouter
 );
 
 // User account management — profile, workspace, account deletion

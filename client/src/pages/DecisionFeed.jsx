@@ -28,6 +28,7 @@ import {
 } from '@/hooks/useDecisionFSM.js';
 import { useOrchestrate } from '@/hooks/useOrchestrate.js';
 import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
+import { useMemory } from '@/hooks/useMemory.js';
 import { connectExecutionStream } from '@/lib/events.js';
 import { api } from '@/lib/api.js';
 import CommandCenter      from '@/components/decision/CommandCenter.jsx';
@@ -65,6 +66,7 @@ export default function DecisionFeed() {
   });
 
   const { summary } = useCampaignFeed();
+  const { recordDecision } = useMemory();
 
   const sseDisconnectRef = useRef(null);
 
@@ -318,9 +320,17 @@ export default function DecisionFeed() {
       description: `${state.outputData?.verdict} action applied via Meta API`,
       duration: 3000,
     });
+
+    // Persist decision to CMO memory system
+    recordDecision({
+      campaignId:        state.outputData?.campaignId ?? state.inputData?.campaignId ?? 'unknown',
+      actionType:        state.outputData?.verdict ?? 'UNKNOWN',
+      decisionRationale: state.outputData?.whyBreakdown?.[0] ?? state.outputData?.why ?? '',
+    }).catch(() => {}); // Silent fail — memory write is non-critical
+
     const t = setTimeout(() => commitToMemory(), 500);
     return () => clearTimeout(t);
-  }, [state.view, state.outputData, commitToMemory]);
+  }, [state.view, state.outputData, state.inputData, commitToMemory, recordDecision]);
 
   return (
     <div className="flex flex-col h-full bg-surface-light">
