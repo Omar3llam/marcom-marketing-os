@@ -34,6 +34,17 @@ frontend/index.html             — Marshmallow Light UI, Clerk JS, Lumi mascot,
 - High border-radius on all cards/buttons, soft box-shadows
 - Lumi (✨) as mascot avatar throughout
 
+## Color Discipline Rule
+
+Every view may use at most **3 brand colors** simultaneously:
+- 1 structural (surface-border, surface-card)
+- 1 accent (lumi-gold for CTAs only)
+- 1 semantic (signal-kill OR signal-scale OR signal-hold — not all three)
+
+**Never use more than one signal color in the same visual zone.**
+
+Restraint = premium. More colors = cheaper feel.
+
 ## Key Variables
 - `current_service` — internal DB/routing only; user sees "Tool 01–18"
 - `MARCOM_Sessions` — Airtable table name

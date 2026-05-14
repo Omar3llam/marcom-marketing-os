@@ -80,10 +80,10 @@ export default {
       },
 
       boxShadow: {
-        'card':        '0 2px 8px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
-        'card-hover':  '0 8px 24px rgba(0,0,0,0.12)',
-        'panel':       '0 12px 40px rgba(0,0,0,0.15)',
-        'modal':       '0 24px 64px rgba(0,0,0,0.20)',
+        'card':        '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+        'card-hover':  '0 8px 24px rgba(0,0,0,0.10)',
+        'panel':       '0 12px 40px rgba(0,0,0,0.12)',
+        'modal':       '0 24px 64px rgba(0,0,0,0.16)',
         'gold-glow':   '0 0 24px rgba(246,201,69,0.20), 0 0 48px rgba(246,201,69,0.10)',
         'accent-glow': '0 0 24px rgba(245,158,11,0.15)',
         'kill-glow':   '0 0 20px rgba(239,68,68,0.25), 0 0 40px rgba(239,68,68,0.10)',
@@ -94,14 +94,20 @@ export default {
       },
 
       animation: {
-        'fade-in':     'fadeIn 150ms ease-out',
-        'scale-in':    'scaleIn 200ms cubic-bezier(0.16,1,0.3,1)',
-        'slide-up':    'slideUp 200ms cubic-bezier(0.16,1,0.3,1)',
-        'slide-right': 'slideRight 200ms cubic-bezier(0.16,1,0.3,1)',
+        'fade-in':     'fadeIn 400ms ease-out both',
+        'scale-in':    'scaleIn 350ms cubic-bezier(0.16,1,0.3,1) both',
+        'slide-up':    'slideUp 350ms cubic-bezier(0.16,1,0.3,1) both',
+        'slide-right': 'slideRight 350ms cubic-bezier(0.16,1,0.3,1) both',
         'pulse-slow':     'pulse 3s ease-in-out infinite',
         'shimmer':        'shimmer 1.5s ease-in-out infinite',
         'progress-sweep': 'progressSweep 1.6s cubic-bezier(0.65,0.05,0.36,1) infinite',
         'blink':          'blink 1.1s steps(2,start) infinite',
+      },
+
+      transitionDuration: {
+        DEFAULT: '250ms',
+        fast:    '150ms',
+        slow:    '400ms',
       },
 
       keyframes: {

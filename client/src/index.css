@@ -56,7 +56,12 @@
 
   /* Section labels — uppercase, tracked, used everywhere */
   .section-label {
-    @apply text-xs font-display font-semibold uppercase tracking-widest text-dark-soft;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-secondary);
   }
 
   /* Glass surface for floating panels */
