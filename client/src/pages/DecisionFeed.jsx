@@ -21,6 +21,7 @@ import { useEffect, useRef } from 'react';
 import axios from 'axios';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext.jsx';
+import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 import {
   useDecisionFSM,
   loadHistoryFromStorage,
@@ -67,6 +68,7 @@ export default function DecisionFeed() {
 
   const { summary } = useCampaignFeed();
   const { recordDecision } = useMemory();
+  const { refresh } = useIntelligence();
 
   const sseDisconnectRef = useRef(null);
 
@@ -328,9 +330,12 @@ export default function DecisionFeed() {
       decisionRationale: state.outputData?.whyBreakdown?.[0] ?? state.outputData?.why ?? '',
     }).catch(() => {}); // Silent fail — memory write is non-critical
 
-    const t = setTimeout(() => commitToMemory(), 500);
+    const t = setTimeout(() => {
+      commitToMemory();
+      refresh(); // cascade: radar, ticker, trust strip all update
+    }, 500);
     return () => clearTimeout(t);
-  }, [state.view, state.outputData, state.inputData, commitToMemory, recordDecision]);
+  }, [state.view, state.outputData, state.inputData, commitToMemory, recordDecision, refresh]);
 
   return (
     <div className="flex flex-col h-full bg-surface-light">
