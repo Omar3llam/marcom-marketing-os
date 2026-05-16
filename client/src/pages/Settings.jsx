@@ -218,7 +218,7 @@ export default function Settings() {
         {/* ── Header ──────────────────────────────────────────── */}
         <div className="mb-8">
           <div className="section-label">Settings</div>
-          <h1 className="mt-1 font-display font-bold text-2xl text-lumi-text">
+          <h1 className="mt-1 font-display font-bold text-lg text-lumi-text">
             Account Settings
           </h1>
           <p className="mt-2 text-lumi-muted text-sm">
@@ -229,10 +229,10 @@ export default function Settings() {
         {/* ══════════════════════════════════════════════════════ */}
         {/* SECTION 1: Profile                                     */}
         {/* ══════════════════════════════════════════════════════ */}
-        <section className="bg-white rounded-xl border border-gray-200/80 p-6 mb-4 shadow-sm">
+        <section className="bg-surface-card rounded-xl border border-surface-border p-6 mb-4 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <Mail className="w-4 h-4 text-gray-400" strokeWidth={2} />
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+            <Mail className="w-4 h-4 text-dark-soft" strokeWidth={2} />
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-dark-soft">
               Profile
             </h2>
           </div>
@@ -240,7 +240,7 @@ export default function Settings() {
           <div className="space-y-4">
             {/* Avatar Display */}
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-500 flex items-center justify-center text-white font-display font-bold text-xl shadow-md">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-lumi-gold to-lumi-deep flex items-center justify-center text-surface-card font-display font-bold text-lg shadow-md">
                 {getInitials(displayName || currentUser.email)}
               </div>
               <div>
@@ -263,7 +263,7 @@ export default function Settings() {
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Enter your name"
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-lumi-text placeholder:text-gray-400 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 outline-none transition-all"
+                className="w-full rounded-lg border border-surface-border bg-surface-card px-3 py-2 text-sm text-lumi-text placeholder:text-dark-soft focus:border-lumi-gold focus:ring-2 focus:ring-lumi-gold/20 outline-none transition-all"
               />
             </div>
 
@@ -276,7 +276,7 @@ export default function Settings() {
                 type="email"
                 value={currentUser.email || ''}
                 disabled
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500 cursor-not-allowed"
+                className="w-full rounded-lg border border-surface-border bg-surface-light px-3 py-2 text-sm text-dark-soft cursor-not-allowed"
               />
               <p className="mt-1 text-xs text-lumi-muted">
                 Email is managed by Firebase and cannot be changed here
@@ -288,7 +288,7 @@ export default function Settings() {
               <button
                 onClick={handleSaveProfile}
                 disabled={busy}
-                className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="inline-flex items-center gap-2 rounded-lg bg-dark-base px-4 py-2 text-sm font-medium text-surface-card hover:bg-dark-soft disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <Save className="w-4 h-4" strokeWidth={2} />
                 Save Changes
@@ -300,10 +300,10 @@ export default function Settings() {
         {/* ══════════════════════════════════════════════════════ */}
         {/* SECTION 2: Workspace                                   */}
         {/* ══════════════════════════════════════════════════════ */}
-        <section className="bg-white rounded-xl border border-gray-200/80 p-6 mb-4 shadow-sm">
+        <section className="bg-white rounded-xl border border-surface-border/80 p-6 mb-4 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <Shield className="w-4 h-4 text-gray-400" strokeWidth={2} />
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+            <Shield className="w-4 h-4 text-dark-soft" strokeWidth={2} />
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-dark-soft">
               Workspace
             </h2>
           </div>
@@ -319,7 +319,7 @@ export default function Settings() {
                 value={workspaceName}
                 onChange={(e) => setWorkspaceName(e.target.value)}
                 placeholder="My Workspace"
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-lumi-text placeholder:text-gray-400 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 outline-none transition-all"
+                className="w-full rounded-lg border border-surface-border bg-surface-card px-3 py-2 text-sm text-lumi-text placeholder:text-dark-soft focus:border-lumi-gold focus:ring-2 focus:ring-lumi-gold/20 outline-none transition-all"
               />
             </div>
 
@@ -332,7 +332,7 @@ export default function Settings() {
                 type="text"
                 value={workspaceSlug}
                 disabled
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-500 cursor-not-allowed font-mono"
+                className="w-full rounded-lg border border-surface-border bg-surface-light px-3 py-2 text-sm text-dark-soft cursor-not-allowed font-mono"
               />
               <p className="mt-1 text-xs text-lumi-muted">
                 Used in your API tokens — contact support to change
@@ -344,7 +344,7 @@ export default function Settings() {
               <label className="block text-sm font-medium text-lumi-text mb-1.5">
                 Current Plan
               </label>
-              <div className="inline-flex items-center gap-1.5 rounded-full bg-yellow-500/10 border border-yellow-500/30 px-3 py-1 text-xs font-medium text-yellow-600">
+              <div className="inline-flex items-center gap-1.5 rounded-full bg-lumi-gold/10 border border-lumi-gold/30 px-3 py-1 text-xs font-medium text-lumi-deep">
                 ✨ FREE
               </div>
             </div>
@@ -354,7 +354,7 @@ export default function Settings() {
               <button
                 onClick={handleSaveWorkspace}
                 disabled={busy}
-                className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="inline-flex items-center gap-2 rounded-lg bg-dark-base px-4 py-2 text-sm font-medium text-surface-card hover:bg-dark-soft disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <Save className="w-4 h-4" strokeWidth={2} />
                 Save Changes
@@ -366,10 +366,10 @@ export default function Settings() {
         {/* ══════════════════════════════════════════════════════ */}
         {/* SECTION 3: Notifications                               */}
         {/* ══════════════════════════════════════════════════════ */}
-        <section className="bg-white rounded-xl border border-gray-200/80 p-6 mb-4 shadow-sm">
+        <section className="bg-white rounded-xl border border-surface-border/80 p-6 mb-4 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <Bell className="w-4 h-4 text-gray-400" strokeWidth={2} />
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+            <Bell className="w-4 h-4 text-dark-soft" strokeWidth={2} />
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-dark-soft">
               Notifications
             </h2>
           </div>
@@ -394,7 +394,7 @@ export default function Settings() {
                   setNotifChanged(true);
                 }}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  notifPrefs.emailExecutionUpdates ? 'bg-yellow-500' : 'bg-gray-300'
+                  notifPrefs.emailExecutionUpdates ? 'bg-lumi-gold' : 'bg-surface-border'
                 }`}
               >
                 <span
@@ -418,7 +418,7 @@ export default function Settings() {
                   setNotifChanged(true);
                 }}
                 placeholder="https://hooks.slack.com/services/..."
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-lumi-text placeholder:text-gray-400 focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 outline-none transition-all font-mono text-xs"
+                className="w-full rounded-lg border border-surface-border bg-surface-card px-3 py-2 text-sm text-lumi-text placeholder:text-dark-soft focus:border-lumi-gold focus:ring-2 focus:ring-lumi-gold/20 outline-none transition-all font-mono text-xs"
               />
             </div>
 
@@ -438,7 +438,7 @@ export default function Settings() {
                   setNotifChanged(true);
                 }}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                  notifPrefs.weeklyDigest ? 'bg-yellow-500' : 'bg-gray-300'
+                  notifPrefs.weeklyDigest ? 'bg-lumi-gold' : 'bg-surface-border'
                 }`}
               >
                 <span
@@ -453,7 +453,7 @@ export default function Settings() {
             {notifChanged && (
               <button
                 onClick={handleSaveNotifications}
-                className="inline-flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 transition-colors"
+                className="inline-flex items-center gap-2 rounded-lg bg-dark-base px-4 py-2 text-sm font-medium text-surface-card hover:bg-dark-soft transition-colors"
               >
                 <Save className="w-4 h-4" strokeWidth={2} />
                 Save Preferences
@@ -465,10 +465,10 @@ export default function Settings() {
         {/* ══════════════════════════════════════════════════════ */}
         {/* SECTION 4: Security                                    */}
         {/* ══════════════════════════════════════════════════════ */}
-        <section className="bg-white rounded-xl border border-gray-200/80 p-6 mb-4 shadow-sm">
+        <section className="bg-white rounded-xl border border-surface-border/80 p-6 mb-4 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <Key className="w-4 h-4 text-gray-400" strokeWidth={2} />
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+            <Key className="w-4 h-4 text-dark-soft" strokeWidth={2} />
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-dark-soft">
               Security
             </h2>
           </div>
@@ -485,7 +485,7 @@ export default function Settings() {
               <button
                 onClick={handlePasswordReset}
                 disabled={busy}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-lumi-text hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="inline-flex items-center gap-2 rounded-lg border border-surface-border bg-surface-card px-4 py-2 text-sm font-medium text-lumi-text hover:bg-surface-light disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <Key className="w-4 h-4" strokeWidth={2} />
                 Change Password
@@ -497,7 +497,7 @@ export default function Settings() {
               <p className="text-sm font-medium text-lumi-text mb-3">
                 Active Sessions
               </p>
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <div className="rounded-lg border border-surface-border bg-surface-light p-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-lumi-text">
@@ -507,7 +507,7 @@ export default function Settings() {
                       Last sign-in: {formatDate(currentUser.metadata?.lastSignInTime)}
                     </p>
                   </div>
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-green-500/10 border border-green-500/30 px-2.5 py-0.5 text-xs font-medium text-green-600">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-signal-scale-bg border border-signal-scale/30 px-2.5 py-0.5 text-xs font-medium text-signal-scale">
                     Current session
                   </span>
                 </div>
@@ -563,7 +563,7 @@ export default function Settings() {
               <button
                 type="button"
                 onClick={() => setShowDeleteModal(true)}
-                className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-red-50 px-3 py-1.5 text-xs font-display font-semibold text-red-600 hover:bg-red-100 transition-colors"
+                className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-red-500/40 bg-signal-kill-bg px-3 py-1.5 text-xs font-display font-semibold text-signal-kill hover:bg-signal-kill/10 transition-colors"
               >
                 <Trash2 className="w-3 h-3" strokeWidth={2} />
                 Delete Account
@@ -578,10 +578,10 @@ export default function Settings() {
       {/* ══════════════════════════════════════════════════════ */}
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+          <div className="bg-surface-card rounded-xl shadow-2xl max-w-md w-full p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5 text-red-600" strokeWidth={2} />
+              <div className="w-10 h-10 rounded-full bg-signal-kill/10 flex items-center justify-center">
+                <AlertTriangle className="w-5 h-5 text-signal-kill" strokeWidth={2} />
               </div>
               <h3 className="font-display font-bold text-lg text-lumi-text">
                 Delete Account
@@ -602,7 +602,7 @@ export default function Settings() {
                 value={deleteConfirmText}
                 onChange={(e) => setDeleteConfirmText(e.target.value)}
                 placeholder="DELETE"
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-lumi-text placeholder:text-gray-400 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 outline-none transition-all font-mono"
+                className="w-full rounded-lg border border-surface-border bg-surface-card px-3 py-2 text-sm text-lumi-text placeholder:text-dark-soft focus:border-red-500 focus:ring-2 focus:ring-red-500/20 outline-none transition-all font-mono"
               />
             </div>
 
@@ -613,14 +613,14 @@ export default function Settings() {
                   setDeleteConfirmText('');
                 }}
                 disabled={busy}
-                className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-lumi-text hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                className="flex-1 rounded-lg border border-surface-border bg-surface-card px-4 py-2 text-sm font-medium text-lumi-text hover:bg-surface-light disabled:opacity-50 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteAccount}
                 disabled={busy || deleteConfirmText !== 'DELETE'}
-                className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex-1 rounded-lg bg-signal-kill px-4 py-2 text-sm font-medium text-surface-card hover:bg-signal-kill disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {busy ? 'Deleting...' : 'Delete Account'}
               </button>
