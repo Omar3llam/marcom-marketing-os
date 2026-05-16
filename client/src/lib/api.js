@@ -49,25 +49,54 @@ api.interceptors.request.use(
 );
 
 // ── RESPONSE INTERCEPTOR: Handle 401 globally ────────────────
+// Fix A: Only redirect on auth-critical endpoints, NOT on feature endpoints
+// (e.g. /api/lumi/feed or /api/memory/patterns returning 401 because the
+// workspace isn't provisioned yet). Those 401s are handled per-hook.
+//
+// Fix B: Deduplicate simultaneous 401s — multiple parallel requests that
+// all 401 at once (race condition on first render) must not each trigger
+// a logout. A 3s cooldown prevents the login death loop.
+const AUTH_ENDPOINTS = [
+  '/api/user/profile',
+  '/api/user/me',
+  '/api/auth/verify',
+  '/api/campaigns/me/context', // onboarding context write
+];
+
+let _isRedirectingToLogin = false;
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // 401 Unauthorized → session expired or invalid
     if (error.response?.status === 401) {
-      console.warn('[api] 401 Unauthorized — clearing cached state and redirecting to login');
+      const url = error.config?.url || '';
+      const isAuthEndpoint = AUTH_ENDPOINTS.some((ep) => url.includes(ep));
 
-      // Clear localStorage cached state (onboarding, history, etc.)
-      try {
-        localStorage.removeItem('lumi:decisionHistory');
-        localStorage.removeItem('lumi:radarAlerts');
-        localStorage.removeItem('lumi:onboardingState');
-      } catch {
-        // localStorage may be unavailable in some environments
-      }
+      if (isAuthEndpoint && !_isRedirectingToLogin) {
+        // True auth failure on a critical endpoint → session is invalid
+        console.warn(
+          '[api] 401 on auth endpoint — clearing cached state and redirecting to login',
+          url,
+        );
 
-      // Redirect to login (avoid infinite loop if already on /login)
-      if (!window.location.pathname.startsWith('/login')) {
-        window.location.href = '/login?session_expired=1';
+        _isRedirectingToLogin = true;
+        setTimeout(() => { _isRedirectingToLogin = false; }, 3_000);
+
+        try {
+          localStorage.removeItem('lumi:decisionHistory');
+          localStorage.removeItem('lumi:radarAlerts');
+          localStorage.removeItem('lumi:onboardingState');
+        } catch {
+          // localStorage may be unavailable in some environments
+        }
+
+        if (!window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login?session_expired=1';
+        }
+      } else if (!isAuthEndpoint) {
+        // Feature endpoint 401 (workspace not provisioned, missing resource, etc.)
+        // Log it so it's visible in DevTools but DO NOT log out the user.
+        console.debug('[api] 401 on feature endpoint (not an auth failure):', url);
       }
     }
 
