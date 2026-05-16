@@ -6,6 +6,11 @@
 // Without this, a single broken component (e.g. ClerkProvider
 // rejecting an invalid publishable key) renders nothing.
 // ============================================================
+// DESIGN SYSTEM NOTE: This component intentionally uses dark
+// mode grays (bg-gray-900, bg-gray-950) for the error screen.
+// It is explicitly exempt from the no-generic-tailwind lint rule.
+// See: design-system/lint/no-generic-tailwind.js → EXEMPT_FILES
+// ============================================================
 import React from 'react';
 
 export default class ErrorBoundary extends React.Component {
