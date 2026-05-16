@@ -1,0 +1,38 @@
+{
+  "_comment": "MARCOM Design Token Source of Truth — Spacing",
+  "_version": "1.0.0",
+  "_philosophy": "Every level maps to a cognitive unit in the decision UX.",
+
+  "scale": {
+    "micro":       { "value": "4px",  "tailwind": "gap-1 / p-1",  "usage": "Between icon and label" },
+    "dense":       { "value": "8px",  "tailwind": "gap-2 / p-2",  "usage": "Within a component" },
+    "standard":    { "value": "12px", "tailwind": "gap-3 / p-3",  "usage": "Between related elements" },
+    "group":       { "value": "16px", "tailwind": "p-4",          "usage": "Action clusters, card padding" },
+    "section":     { "value": "24px", "tailwind": "p-6",          "usage": "Decision sections, card outer" },
+    "zone":        { "value": "40px", "tailwind": "p-10",         "usage": "Between major page zones" },
+    "page":        { "value": "48px", "tailwind": "p-12",         "usage": "Page-level padding" }
+  },
+
+  "borderRadius": {
+    "sm":   "6px",
+    "md":   "8px",
+    "lg":   "12px",
+    "xl":   "16px",
+    "2xl":  "20px",
+    "pill": "9999px"
+  },
+
+  "shadows": {
+    "card":          "0 2px 8px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)",
+    "card-hover":    "0 8px 24px rgba(0,0,0,0.12)",
+    "panel":         "0 12px 40px rgba(0,0,0,0.15)",
+    "modal":         "0 24px 64px rgba(0,0,0,0.20)",
+    "gold-glow":     "0 0 24px rgba(246,201,69,0.20), 0 0 48px rgba(246,201,69,0.10)",
+    "accent-glow":   "0 0 24px rgba(245,158,11,0.15)",
+    "kill-glow":     "0 0 20px rgba(239,68,68,0.25), 0 0 40px rgba(239,68,68,0.10)",
+    "scale-glow":    "0 0 20px rgba(16,185,129,0.25), 0 0 40px rgba(16,185,129,0.10)",
+    "hold-glow":     "0 0 20px rgba(245,158,11,0.20)",
+    "optimize-glow": "0 0 20px rgba(99,102,241,0.20)",
+    "active-ring":   "0 0 0 2px rgba(246,201,69,0.3), 0 0 16px rgba(246,201,69,0.1)"
+  }
+}
