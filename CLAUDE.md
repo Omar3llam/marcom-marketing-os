@@ -1,103 +1,180 @@
-# MARCOM v4 — Claude Code Project Guide
+# MARCOM v4.1 — Claude Code Project Guide
+**Last updated: post-Firebase migration, post-dual-agent, post-Prisma**
 
-## Stack
-- Node.js 18+ (ES Modules), Express.js, Anthropic Claude, Airtable, Clerk Auth, ScrapingBee, Gmail
+> Full architecture: see MARCOM-ARCHITECTURE.md  
+> Design system: see MARCOM-DESIGN-BIBLE.md  
+> This file: quick reference for Claude Code sessions
 
-## Architecture
+---
+
+## Current Stack
+
+### Frontend
+- React 18 + Vite + Tailwind CSS + shadcn/ui (select components)
+- Firebase Auth (NOT Clerk — Clerk was removed)
+- Axios via `client/src/lib/api.js` (the ONLY API client)
+- FSM state machine: `client/src/hooks/useDecisionFSM.js`
+
+### Backend
+- Node.js 22 + Express + ES Modules
+- Prisma + PostgreSQL (NOT MongoDB, NOT Airtable)
+- BullMQ + Redis (async job queue)
+- Firebase Admin SDK (token verification)
+- Anthropic Claude + OpenAI GPT (dual-agent)
+
+---
+
+## Entry Points
+
 ```
-src/server.js                   — Entry point. /webhook (secret), /api (Clerk JWT)
-src/routes/master.js            — Mode router (1-5) + image payload
-src/routes/export.js            — POST /api/export → N8N_EXPORT_WEBHOOK
-src/modes/mode1-onboarding.js   — Agentic URL + graceful degradation
-src/modes/mode2-service.js      — 18 tools dispatcher
-src/modes/mode3-social.js       — 4-week calendar JSON
-src/modes/mode4-content.js      — 10-step scorecard + vision
-src/modes/mode5-campaign.js     — 2025/2026 media buying (ASC, MER, Horizontal)
-src/utils/claude.js             — Anthropic SDK (text + vision)
-src/utils/airtable.js           — MARCOM_Sessions CRUD
-src/utils/scraper.js            — ScrapingBee URL fetcher
-src/utils/email.js              — Nodemailer notifications
-src/middleware/clerkAuth.js     — ClerkExpressRequireAuth → { error: "Unauthenticated" }
-src/middleware/validateWebhook.js
-src/middleware/errorHandler.js
-frontend/index.html             — Marshmallow Light UI, Clerk JS, Lumi mascot, wizard
+client/src/main.jsx        → React app root
+client/src/App.jsx         → Router + route definitions
+src/server.js              → Express app + all route mounting
+prisma/schema.prisma       → Database schema (source of truth for models)
 ```
 
-## Auth Model
-- `/webhook/*` — protected by WEBHOOK_SECRET header (for n8n)
-- `/api/*` — protected by Clerk JWT (Bearer token from frontend)
-- Frontend awaits `window.Clerk.session.getToken()` before every `/api/*` fetch
+---
 
-## UI Design (Marshmallow)
-- Light mode: creamy off-white (#FAFAF7), yellow (#FFD300), mint, coral
-- Font: Poppins (Google Fonts)
-- High border-radius on all cards/buttons, soft box-shadows
-- Lumi (✨) as mascot avatar throughout
+## Auth Model (Firebase, NOT Clerk)
 
-## Color Discipline Rule
+**Frontend:**  Firebase SDK → `auth.currentUser.getIdToken()`  
+               Axios interceptor in `api.js` attaches token automatically  
+**Backend:**   `src/middleware/firebaseAuth.js` → `req.user` + `req.workspaceId`  
+**Protected:** `requireAuth` on all `/api/*` (see `server.js` for exceptions)
 
-Every view may use at most **3 brand colors** simultaneously:
-- 1 structural (surface-border, surface-card)
-- 1 accent (lumi-gold for CTAs only)
-- 1 semantic (signal-kill OR signal-scale OR signal-hold — not all three)
+**NEVER use `clerkAuth.js` — it is a dead file from v1.**
 
-**Never use more than one signal color in the same visual zone.**
+---
 
-Restraint = premium. More colors = cheaper feel.
+## The ONE WAY ONLY Rules (summary — full laws in ARCHITECTURE.md)
 
-## Key Variables
-- `current_service` — internal DB/routing only; user sees "Tool 01–18"
-- `MARCOM_Sessions` — Airtable table name
-- `N8N_EXPORT_WEBHOOK` — server-side only; frontend never provides it
+**API calls:**     `api.get`/`post` via `client/src/lib/api.js` ONLY  
+**State:**         `useState` / `useReducer` / Context ONLY (no Redux/Zustand)  
+**Styling:**       Semantic tokens from `design-system/tokens/` ONLY (no `bg-gray-*`)  
+**AI calls:**      `src/agents/orchestrator.js` ONLY (not `services/orchestrator.js`)  
+**Sessions:**      `src/utils/sessionStore.js` (active sessions, `master.js`)  
+**Memory:**        `src/utils/memoryStore.js` (Anthropic Memory API, `lumi.js`)  
+**History:**       `src/models/chatSession.js` (chat history, `history.js`)
+
+---
+
+## Critical Files
+
+### Frontend
+
+```
+client/src/lib/api.js              — Axios client with Firebase token interceptor
+client/src/hooks/useDecisionFSM.js — 8-state FSM (the brain of the UI)
+client/src/hooks/useCampaignFeed.js — Campaign data fetching hook
+client/src/pages/DecisionFeed.jsx  — Main FSM container page
+client/src/context/AuthContext.jsx — Firebase auth state
+```
+
+### Backend
+
+```
+src/server.js                      — All routes mounted here
+src/routes/lumi.js                 — Campaign feed, orchestration, rollback
+src/routes/campaigns.js            — CSV upload, Meta fetch, context
+src/routes/execution.js            — Meta action execution (4-layer guards)
+src/agents/orchestrator.js         — CANONICAL dual-agent (Claude + GPT)
+src/utils/csvParser.js             — CSV parsing with BOM removal, EGP handling
+prisma/schema.prisma               — DB schema
+```
+
+---
+
+## Deprecated / Dead Files (DO NOT IMPORT)
+
+```
+src/services/orchestrator.js  → DEPRECATED. Use src/agents/orchestrator.js
+src/middleware/clerkAuth.js   → DEAD. Firebase replaced Clerk.
+src/models/userContext.js     → DEAD. Replaced by campaigns/me/context route.
+src/utils/airtable.js         → DEAD. Airtable replaced by PostgreSQL.
+src/utils/scraper.js          → Check if still used before touching.
+```
+
+---
 
 ## Commands
+
 ```bash
-npm install && npm run setup    # install + verify Airtable
-npm run dev                     # start with --watch
-npm test                        # integration tests (server must be running)
+# Development
+npm run dev                         # start server (src/server.js)
+cd client && npm run dev            # start frontend (Vite)
+
+# Frontend only
+cd client && npm run lint           # ESLint with design system rules
+cd client && npm run build          # production build (bundle < 700KB target)
+
+# Database
+npx prisma studio                   # visual DB browser
+npx prisma migrate dev              # run new migrations
+npx prisma generate                 # regenerate client after schema change
+
+# Testing
+node src/tests/dialect.test.js      # dialect resolution tests
 ```
 
-## Add a New Tool
-1. Add guide to `serviceGuides` in mode2-service.js
-2. Add keywords to `detectService()`
-3. If hybrid (URL scrape): add to `HYBRID_SERVICES` array
+---
 
-## AUDIT MISMATCH GOVERNANCE RULE
+## Prisma Models (source of truth)
 
-When executing any prompt that assumes a specific codebase state:
-
-1. **Run pre-flight greps first.** Every patch has a PROOF step. Run it.
-
-2. **If assumption matches codebase** → proceed with the described patch.
-
-3. **If assumption does NOT match** → STOP and print:
-   ```
-   AUDIT MISMATCH DETECTED
-   Expected:  [what the prompt assumed]
-   Actual:    [what grep found]
-   Impact:    [what would break if we applied the patch blindly]
-   Safe path: [minimal change that is still safe given actual state]
-   Decision:  [proceed with safe path / BLOCKED — needs human input]
-   ```
-
-Never silently reinterpret scope. If the intended UX change
-requires a component that doesn't exist yet, say so explicitly.
-Do not invent a different solution without flagging the substitution.
-Never combine audit mismatch adaptation with scope expansion.
-Fix the mismatch first. New scope = new prompt.
-
-### Examples
-
-**Correct behavior:**
 ```
-Pre-flight confirmed: TrustStrip component does not exist.
-AUDIT MISMATCH: prompt assumed fake metrics in TrustStrip.
-Safe adaptation: wire summary prop infrastructure only.
-Blocking visual metric replacement until TrustStrip exists.
+User              → workspace membership, Firebase UID
+Workspace         → the company/account unit
+CampaignState     → campaign health snapshot from CSV
+Action            → executed Meta API actions (audit log)
+DecisionMemory    → AI decision history with ROAS delta
 ```
 
-**Incorrect behavior (what to avoid):**
+Full schema: `prisma/schema.prisma`
+
+---
+
+## Forbidden Patterns (enforced by lint + CI)
+
+```javascript
+// ❌ Direct fetch — always use api client
+fetch('/api/anything')
+
+// ❌ Raw axios — always use api client
+await axios.post('/api/execute/meta', payload)
+
+// ❌ Import deprecated orchestrator
+import from '../services/orchestrator.js'
+
+// ❌ Prisma in loops (N+1)
+for (const x of items) { await prisma.model.create(...) }
+
+// ❌ useEffect without cleanup
+useEffect(() => { api.get('/x').then(setState); }, [])
+
+// ❌ Raw hex or gray-* in JSX (use design tokens)
+className="bg-gray-900 text-white #F6C945"
 ```
-[silently creates TrustStrip with different design than intended,
-or wires infrastructure and calls it "done" without flagging the gap]
+
+---
+
+## File Size Budget
+
 ```
+Page component:    max 300 lines
+Route file:        max 400 lines
+Hook:              max 200 lines
+UI primitive:      max 150 lines
+Context:           max 100 lines
+```
+
+---
+
+## AI Prompt Requirements
+
+Every prompt must include:
+
+- **MAX_FILES_TO_MODIFY**
+- **PROOF_BEFORE_PATCH**
+- **NO_SCOPE_CREEP**
+- **NO_SILENT_SUCCESS**
+- **ATOMIC**
+- **AUDIT_MISMATCH_RULE**
