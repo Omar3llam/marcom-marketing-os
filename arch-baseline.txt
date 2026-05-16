@@ -1,0 +1,43 @@
+
+── CHECK 1: File size limits ──────────────────────
+  ❌ Page component too large: G:\MARCOM\marketing-os-v3\client\src\pages\CampaignAnalysis.jsx = 388 lines (max 300)
+  ❌ Page component too large: G:\MARCOM\marketing-os-v3\client\src\pages\DecisionFeed.jsx = 434 lines (max 300)
+  🟡 Page component approaching limit: G:\MARCOM\marketing-os-v3\client\src\pages\GrowthStrategyBoard.jsx = 304/300 lines
+  ❌ Page component too large: G:\MARCOM\marketing-os-v3\client\src\pages\LandingPage.jsx = 391 lines (max 300)
+  ❌ Page component too large: G:\MARCOM\marketing-os-v3\client\src\pages\OnboardingPage.jsx = 432 lines (max 300)
+  ❌ Page component too large: G:\MARCOM\marketing-os-v3\client\src\pages\Settings.jsx = 634 lines (max 300)
+  ❌ Hook too large: G:\MARCOM\marketing-os-v3\client\src\hooks\useDecisionFSM.js = 428 lines (max 200)
+  🟡 Context approaching limit: G:\MARCOM\marketing-os-v3\client\src\context\AuthContext.jsx = 106/100 lines
+  🟡 Context approaching limit: G:\MARCOM\marketing-os-v3\client\src\context\IntelligenceContext.jsx = 115/100 lines
+  ❌ Route handler too large: G:\MARCOM\marketing-os-v3\src\routes\campaigns.js = 713 lines (max 400)
+  🟡 Route handler approaching limit: G:\MARCOM\marketing-os-v3\src\routes\execution.js = 409/400 lines
+  ❌ Route handler too large: G:\MARCOM\marketing-os-v3\src\routes\lumi.js = 638 lines (max 400)
+
+── CHECK 2: Forbidden imports ──────────────────────
+  ❌ Forbidden import in G:\MARCOM\marketing-os-v3\src\controllers\paidController.js: Import of DEPRECATED services/orchestrator.js. Use agents/orchestrator.js
+  ❌ Forbidden import in G:\MARCOM\marketing-os-v3\src\routes\campaigns.js: Import of DEPRECATED services/orchestrator.js. Use agents/orchestrator.js
+  ❌ Forbidden import in G:\MARCOM\marketing-os-v3\src\routes\context.js: Import of DEAD userContext.js. Use campaigns/me/context route.
+  ❌ Forbidden import in G:\MARCOM\marketing-os-v3\src\routes\master.js: Import of DEAD userContext.js. Use campaigns/me/context route.
+  ❌ Forbidden import in G:\MARCOM\marketing-os-v3\src\workers\syncWorker.js: Import of DEPRECATED services/orchestrator.js. Use agents/orchestrator.js
+
+── CHECK 3: Raw hex in JSX (design token discipline) ──────────────────────
+  ✅ No raw hex values in JSX className props
+
+── CHECK 4: useEffect cleanup discipline ──────────────────────
+  🟡 G:\MARCOM\marketing-os-v3\client\src\hooks\useWorkspace.js has useEffect with API call but no visible cleanup
+  ✅ useEffect cleanup check passed (static analysis — verify in PR)
+
+── CHECK 5: N+1 Prisma query detection ──────────────────────
+  ❌ Possible N+1 Prisma query in G:\MARCOM\marketing-os-v3\src\services\temporalObserver.js — use createMany/updateMany instead
+
+── CHECK 6: Component registry — detect similar names ──────────────────────
+  ✅ No suspicious component name clusters detected
+
+══════════════════════════════════════════════
+Architecture Check Results:
+  Checks run:  6
+  ✅ Failures: 14
+  🟡 Warnings: 5
+══════════════════════════════════════════════
+
+❌ Architecture check FAILED. Fix violations before merging.
