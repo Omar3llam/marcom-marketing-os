@@ -7,6 +7,15 @@
 //
 // State is local — back navigation between steps preserves all
 // fields. No external state library needed.
+//
+// Design audit pass (7 fixes):
+//   P1 - near-black bg + radial gold ambient; glassy card
+//   P2 - vertical whitespace reduction (py-10→8, mb-8→4/5)
+//   P3 - centered stepper, lumi-gold active, animated fill connector
+//   P4 - header "why" sentence, muted mono label
+//   P5 - Field primary prop elevates Company Name label weight
+//   P6 - border-t divider above CTA rows; ghost back button
+//   P7 - improved input contrast; white/* opacity tokens throughout
 // ============================================================
 import { useState }     from 'react';
 import { useNavigate }  from 'react-router-dom';
@@ -84,8 +93,6 @@ export default function OnboardingPage() {
   const finish = async (afterCsv = false) => {
     if (busy) return;
 
-    // Hard precondition: companyName is required by the route guard.
-    // All required fields must be completed before navigating to /app.
     if (!form.companyName || !form.industry || !form.market || !form.businessType || !form.tone || !form.monthlyGoal) {
       toast.error('Please complete all required fields before finishing.');
       setStep(1);
@@ -100,16 +107,8 @@ export default function OnboardingPage() {
         workspaceName: form.companyName || 'My Workspace',
       });
 
-      // Prime the route-guard cache from the PUT response itself —
-      // eliminates the race where /app's ProtectedRoute fires a
-      // refetch and momentarily sees `hasContext: false`. We pass
-      // the saved context (with companyName) so isOnboarded() === true.
       primeContextCache(res.data?.user?.context ?? form);
-
       toast.success(afterCsv ? 'Context saved · CSV processed.' : 'Context saved — welcome aboard.');
-
-      // tick the event loop once so React commits the cache update
-      // before we navigate.
       await Promise.resolve();
       sessionStorage.setItem('marcom:firstActivation', '1');
       navigate('/app', { replace: true });
@@ -125,75 +124,85 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-surface-light font-body">
-      <div className="mx-auto max-w-2xl px-4 py-10">
+    <div
+      className="min-h-screen bg-[#0F0F0F] text-gray-100"
+      style={{ backgroundImage: 'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(246,201,69,0.06) 0%, transparent 60%)' }}
+    >
+      {/* P2: py-10 → py-8 */}
+      <div className="mx-auto max-w-2xl px-4 py-8">
 
-        {/* ── Header ──────────────────────────────────────────── */}
-        <div className="mb-8 text-center">
+        {/* ── Header (P4) ───────────────────────────────────── */}
+        {/* P2: mb-8 → mb-4 */}
+        <div className="mb-4 text-center">
           <div className="inline-flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-lumi-gold" />
-            <span className="font-mono text-xs font-semibold uppercase tracking-widest text-dark-soft">
-              Lumi · Onboarding
+            <Sparkles className="h-4 w-4 text-lumi-gold" />
+            <span className="font-mono text-xs font-semibold uppercase tracking-widest text-lumi-gold/80">
+              Lumi · Setup
             </span>
           </div>
-          <h1 className="mt-2 font-display text-2xl font-bold text-dark-base">
+          <h1 className="mt-3 font-display text-2xl font-bold text-white">
             Tell us how to think about your brand
           </h1>
-          <p className="mt-1 font-body text-sm text-dark-soft">
-            Lumi grounds every recommendation in the context you set here.
+          {/* P4: added "why" clarity sentence */}
+          <p className="mt-2 mx-auto max-w-sm text-sm text-white/45 leading-relaxed">
+            This helps Lumi generate market-specific verdicts, campaign analysis,
+            and growth decisions tailored to your business.
           </p>
         </div>
 
-        {/* ── Progress stepper ─────────────────────────────────── */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
+        {/* ── Progress stepper (P3) ────────────────────────── */}
+        {/* P2: mb-8 → mb-5 */}
+        <div className="mb-5">
+          <div className="flex items-center justify-center gap-0">
             {STEPS.map((s, i) => {
               const Icon   = s.icon;
               const active = step === s.n;
               const done   = step > s.n;
               return (
-                <div key={s.n} className="flex flex-1 items-center">
-                  <div className={cn(
-                    'flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all',
-                    active && 'border-lumi-gold bg-lumi-gold text-dark-base shadow-gold-glow',
-                    done   && 'border-lumi-gold bg-lumi-gold/15 text-lumi-deep',
-                    !active && !done && 'border-surface-border bg-surface-card text-dark-soft',
-                  )}>
-                    {done ? <CheckCircle2 className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
-                  </div>
-                  {i < STEPS.length - 1 && (
+                <div key={s.n} className="flex items-center">
+                  <div className="flex flex-col items-center gap-1.5">
                     <div className={cn(
-                      'mx-2 h-0.5 flex-1 transition-colors',
-                      step > s.n ? 'bg-lumi-gold/40' : 'bg-surface-border',
-                    )} />
+                      'flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all duration-300',
+                      active && 'border-lumi-gold bg-lumi-gold/15 text-lumi-gold scale-110',
+                      done   && 'border-signal-scale bg-signal-scale/15 text-signal-scale',
+                      !active && !done && 'border-white/15 text-white/30',
+                    )}>
+                      {done
+                        ? <CheckCircle2 className="h-4 w-4" />
+                        : <Icon className={cn('h-4 w-4', active && 'drop-shadow-[0_0_6px_rgba(246,201,69,0.6)]')} />
+                      }
+                    </div>
+                    <span className={cn(
+                      'text-[10px] font-semibold tracking-widest uppercase transition-colors duration-300',
+                      active && 'text-lumi-gold',
+                      done   && 'text-signal-scale',
+                      !active && !done && 'text-white/25',
+                    )}>
+                      {s.label}
+                    </span>
+                  </div>
+                  {/* Animated fill connector — not after last step */}
+                  {i < STEPS.length - 1 && (
+                    <div className="relative mx-3 h-0.5 w-20 overflow-hidden rounded-full bg-white/10">
+                      <div className={cn(
+                        'absolute inset-y-0 left-0 rounded-full transition-all duration-500',
+                        done ? 'w-full bg-signal-scale/60' : 'w-0',
+                      )} />
+                    </div>
                   )}
                 </div>
               );
             })}
           </div>
-          <div className="mt-2 flex items-center justify-between">
-            {STEPS.map((s) => (
-              <span
-                key={s.n}
-                className={cn(
-                  'font-mono text-[10px] uppercase tracking-widest transition-colors',
-                  step === s.n && 'font-semibold text-lumi-deep',
-                  step > s.n  && 'text-signal-scale',
-                  step < s.n  && 'text-dark-soft opacity-50',
-                )}
-              >
-                {s.label}
-              </span>
-            ))}
-          </div>
         </div>
 
-        {/* ── Card ─────────────────────────────────────────────── */}
-        <div className="rounded-2xl border border-surface-border bg-surface-card p-6 shadow-card">
+        {/* ── Card (P1) ─────────────────────────────────────── */}
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-7 shadow-xl shadow-black/30 ring-1 ring-white/5">
 
           {step === 1 && (
             <Section title="Company basics">
-              <Field label="Company Name *">
+              {/* P5: primary prop → heavier label weight */}
+              <Field label="Company Name *" primary>
                 <input
                   className={inputCls}
                   value={form.companyName}
@@ -217,7 +226,7 @@ export default function OnboardingPage() {
               </div>
               <Field label="Website (optional)">
                 <div className="relative">
-                  <Globe className="absolute left-3 top-2.5 h-4 w-4 text-dark-soft/50" />
+                  <Globe className="absolute left-3 top-2.5 h-4 w-4 text-white/30" />
                   <input
                     className={cn(inputCls, 'pl-9')}
                     value={form.website}
@@ -241,8 +250,8 @@ export default function OnboardingPage() {
                       className={cn(
                         'rounded-xl border p-3 text-sm font-semibold transition-all',
                         form.businessType === t
-                          ? 'border-lumi-gold bg-lumi-gold/10 text-dark-base shadow-gold-glow'
-                          : 'border-surface-border bg-surface-light text-dark-soft hover:border-lumi-gold/40 hover:bg-lumi-gold/5',
+                          ? 'border-lumi-gold/50 bg-lumi-gold/10 text-lumi-gold'
+                          : 'border-white/8 bg-white/[0.03] text-white/50 hover:border-white/20 hover:text-white/70',
                       )}
                     >
                       {t}
@@ -263,14 +272,14 @@ export default function OnboardingPage() {
                         className={cn(
                           'flex items-center gap-2 rounded-xl border p-3 text-left text-sm transition-all',
                           active
-                            ? 'border-lumi-gold bg-lumi-gold/10 text-dark-base shadow-gold-glow'
-                            : 'border-surface-border bg-surface-light text-dark-soft hover:border-lumi-gold/40',
+                            ? 'border-lumi-gold/50 bg-lumi-gold/10 text-lumi-gold'
+                            : 'border-white/8 bg-white/[0.03] text-white/50 hover:border-white/20',
                         )}
                       >
                         <span>{p.icon}</span>
-                        <span className="font-body text-xs font-medium">{p.label}</span>
+                        <span className="text-xs font-medium">{p.label}</span>
                         {active && (
-                          <CheckCircle2 className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-lumi-deep" />
+                          <CheckCircle2 className="ml-auto h-3.5 w-3.5 flex-shrink-0 text-lumi-gold" />
                         )}
                       </button>
                     );
@@ -309,12 +318,12 @@ export default function OnboardingPage() {
                       className={cn(
                         'w-full rounded-xl border p-3 text-left transition-all',
                         form.tone === t.id
-                          ? 'border-lumi-gold bg-lumi-gold/10 shadow-gold-glow'
-                          : 'border-surface-border bg-surface-light hover:border-lumi-gold/40 hover:bg-lumi-gold/5',
+                          ? 'border-lumi-gold/50 bg-lumi-gold/8'
+                          : 'border-white/8 bg-white/[0.03] hover:border-white/20',
                       )}
                     >
-                      <div className="font-display text-sm font-semibold text-dark-base">{t.title}</div>
-                      <div className="font-body text-xs text-dark-soft">{t.desc}</div>
+                      <div className="text-sm font-semibold text-white/90">{t.title}</div>
+                      <div className="text-xs text-white/45 mt-0.5">{t.desc}</div>
                     </button>
                   ))}
                 </div>
@@ -336,14 +345,14 @@ export default function OnboardingPage() {
             </Section>
           )}
 
-          {/* ── Nav row ───────────────────────────────────────── */}
+          {/* ── Nav row (P6: border-t divider) ───────────────── */}
           {step < 3 && (
-            <div className="mt-6 flex justify-between">
+            <div className="mt-6 flex justify-between border-t border-white/8 pt-5">
               <button
                 type="button"
                 onClick={() => setStep((n) => Math.max(1, n - 1))}
                 disabled={step === 1}
-                className="inline-flex items-center gap-1 rounded-lg px-3 py-2 font-body text-sm text-dark-soft hover:bg-surface-border disabled:opacity-30 transition-colors"
+                className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-white/40 hover:text-white/70 hover:bg-white/5 disabled:opacity-30 transition-colors"
               >
                 <ArrowLeft className="h-4 w-4" /> Back
               </button>
@@ -364,12 +373,12 @@ export default function OnboardingPage() {
           )}
 
           {step === 3 && (
-            <div className="mt-6 flex justify-between">
+            <div className="mt-6 flex justify-between border-t border-white/8 pt-5">
               <button
                 type="button"
                 onClick={() => setStep((n) => Math.max(1, n - 1))}
                 disabled={false}
-                className="inline-flex items-center gap-1 rounded-lg px-3 py-2 font-body text-sm text-dark-soft hover:bg-surface-border disabled:opacity-30 transition-colors"
+                className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-white/40 hover:text-white/70 hover:bg-white/5 disabled:opacity-30 transition-colors"
               >
                 <ArrowLeft className="h-4 w-4" /> Back
               </button>
@@ -399,7 +408,7 @@ export default function OnboardingPage() {
           )}
 
           {step === 3 && busy && (
-            <div className="mt-2 text-center font-mono text-xs text-dark-soft animate-pulse">
+            <div className="mt-2 text-center font-mono text-xs text-white/35 animate-pulse">
               Saving your context…
             </div>
           )}
@@ -409,22 +418,32 @@ export default function OnboardingPage() {
   );
 }
 
+// P7: improved input contrast — white/5 bg, white/10 border, lumi-gold focus ring
 const inputCls =
-  'w-full rounded-lg border border-surface-border bg-surface-light px-3 py-2 font-body text-sm text-dark-base placeholder:text-dark-soft/40 focus:border-lumi-gold focus:ring-2 focus:ring-lumi-gold/20 focus:outline-none transition-colors';
+  'w-full rounded-lg border border-white/10 bg-white/[0.05] px-3 py-2.5 text-sm text-white/90 placeholder:text-white/30 focus:border-lumi-gold/60 focus:bg-white/[0.07] focus:outline-none focus:ring-1 focus:ring-lumi-gold/20 transition-all duration-150';
 
+// P7: Section title — muted mono label
 function Section({ title, children }) {
   return (
     <div>
-      <h2 className="mb-4 font-mono text-xs font-bold uppercase tracking-widest text-dark-soft">{title}</h2>
+      <h2 className="mb-5 font-mono text-xs font-semibold uppercase tracking-widest text-white/35">{title}</h2>
       <div className="space-y-4">{children}</div>
     </div>
   );
 }
 
-function Field({ label, children }) {
+// P5: primary prop elevates Company Name label weight
+function Field({ label, primary = false, children }) {
   return (
     <label className="block">
-      <span className="mb-1 block font-mono text-xs font-semibold uppercase tracking-wide text-dark-soft">{label}</span>
+      <span className={cn(
+        'mb-1.5 block',
+        primary
+          ? 'text-sm font-semibold text-white/80'
+          : 'font-mono text-xs font-medium uppercase tracking-wide text-white/40',
+      )}>
+        {label}
+      </span>
       {children}
     </label>
   );
