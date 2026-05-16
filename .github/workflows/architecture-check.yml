@@ -1,0 +1,52 @@
+# ============================================================
+# MARCOM Architecture Check — Runs on every PR to main
+# ============================================================
+name: Architecture Check
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  architecture-audit:
+    name: Architecture & Token Discipline
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: 'client/package-lock.json'
+
+      - name: Install frontend dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Run ESLint (token discipline)
+        working-directory: client
+        run: npm run lint:ci
+        # Fails if any no-generic-tailwind violations exist
+
+      - name: Run architecture audit
+        run: node scripts/arch-check.js
+        # Fails on: size violations, forbidden imports, raw hex, N+1, duplicates
+
+      - name: Check bundle size
+        working-directory: client
+        run: |
+          npm run build 2>&1
+          # Check bundle size stays under 700KB
+          bundle_size=$(find dist/assets -name "*.js" | xargs wc -c | tail -1 | awk '{print $1}')
+          max_size=$((700 * 1024))
+          if [ "$bundle_size" -gt "$max_size" ]; then
+            echo "❌ Bundle too large: ${bundle_size} bytes (max 716800)"
+            exit 1
+          fi
+          echo "✅ Bundle size: ${bundle_size} bytes"
