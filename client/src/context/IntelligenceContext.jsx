@@ -19,15 +19,16 @@ const IntelligenceCtx = createContext(null);
 async function fetchCampaigns(signal) {
   try {
     const res = await api.get('/api/lumi/feed', { signal });
-    if (Array.isArray(res.data?.campaigns) && res.data.campaigns.length > 0) {
-      return res.data;
-    }
+    // Authenticated users: always return the real feed, even if campaigns = [].
+    // Empty array = new user with 0 uploads → show empty state, NOT demo data.
+    // Demo data leaking to new users is a false-positive that erodes trust.
+    return res.data;
   } catch (err) {
     if (axios.isCancel?.(err) || err?.name === 'CanceledError') throw err;
+    // On error (e.g. 401), return an empty payload rather than demo data.
+    // Callers can detect error separately via the error state.
+    return { campaigns: [] };
   }
-  // Empty real feed → fallback to demo
-  const demo = await api.get('/api/lumi/demo-feed', { signal });
-  return demo.data;
 }
 
 async function fetchMemory(signal) {
