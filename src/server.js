@@ -113,7 +113,7 @@ app.get('/health', async (req, res) => {
     status: dbOk ? 'ok' : 'degraded',
     system: 'MARCOM',
     version: '4.0.0',
-    db: dbOk ? 'ok' : 'unavailable',
+    db: dbOk,
     timestamp: new Date().toISOString(),
     environment: config.nodeEnv,
   });
