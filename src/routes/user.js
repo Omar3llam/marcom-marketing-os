@@ -10,7 +10,8 @@ import { logger } from '../utils/logger.js';
 import { prisma } from '../lib/prisma.js';
 
 const auth = admin.auth();
-const db = admin.firestore();
+// NOTE: This project uses Prisma/PostgreSQL — do NOT add admin.firestore() here.
+// Firestore is not initialised and will throw on any .collection() call.
 
 export const userRouter = Router();
 
@@ -27,6 +28,8 @@ export const userRouter = Router();
  * }
  */
 userRouter.get('/workspace', async (req, res) => {
+  // NOTE: This project uses Prisma/PostgreSQL — NOT Firestore.
+  // Firebase UID is stored in the clerkId column (legacy naming).
   try {
     const uid = req.user?.uid;
 
@@ -34,36 +37,54 @@ userRouter.get('/workspace', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Find workspace owned by this user
-    const workspacesSnapshot = await db.collection('workspaces')
-      .where('ownerId', '==', uid)
-      .limit(1)
-      .get();
+    // Look up user + their workspace via Prisma
+    const user = await prisma.user.findFirst({
+      where: { clerkId: uid },
+      select: { id: true, workspaceId: true, email: true },
+    });
 
-    if (workspacesSnapshot.empty) {
-      return res.json({
-        workspace: null,
-        hasWorkspace: false,
-      });
+    if (!user) {
+      // User has a valid Firebase token but no Prisma row yet.
+      // This happens before onboarding completes (firebaseAuthMiddleware
+      // auto-provisions the row, but it may not have run yet for this
+      // request path). Return hasWorkspace:false so the client knows to
+      // redirect to onboarding rather than treating this as an error.
+      return res.json({ workspace: null, hasWorkspace: false });
     }
 
-    const workspaceDoc = workspacesSnapshot.docs[0];
-    const workspaceData = workspaceDoc.data();
+    if (!user.workspaceId) {
+      return res.json({ workspace: null, hasWorkspace: false });
+    }
 
-    res.json({
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: user.workspaceId },
+      select: { id: true, name: true, createdAt: true },
+    });
+
+    if (!workspace) {
+      return res.json({ workspace: null, hasWorkspace: false });
+    }
+
+    return res.json({
       workspace: {
-        id: workspaceDoc.id,
-        name: workspaceData.name || 'Untitled Workspace',
-        slug: workspaceData.slug,
-        ownerId: workspaceData.ownerId,
-        createdAt: workspaceData.createdAt,
-        updatedAt: workspaceData.updatedAt,
+        id:        workspace.id,
+        name:      workspace.name,
+        ownerId:   uid,
+        createdAt: workspace.createdAt,
       },
       hasWorkspace: true,
     });
+
   } catch (err) {
-    logger.error('[userRouter] GET /workspace error:', err);
-    res.status(500).json({ error: 'Failed to fetch workspace' });
+    logger.error('[userRouter] GET /workspace error:', {
+      uid: req.user?.uid,
+      code: err.code,
+      message: err.message,
+    });
+    return res.status(500).json({
+      error:  'Failed to fetch workspace',
+      detail: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    });
   }
 });
 
@@ -96,16 +117,11 @@ userRouter.patch('/profile', async (req, res) => {
       return res.status(400).json({ error: 'displayName too long (max 100 chars)' });
     }
 
-    // Update Firebase Auth
+    // Update Firebase Auth display name (source of truth for auth)
     await auth.updateUser(uid, { displayName: trimmed });
 
-    // Update Firestore user doc
-    const userRef = db.collection('users').doc(uid);
-    await userRef.set(
-      { displayName: trimmed, updatedAt: new Date() },
-      { merge: true }
-    );
-
+    // Prisma doesn't store displayName separately — Firebase Auth is the source.
+    // Log and return success; the client reads displayName from the Firebase token.
     logger.info('[userRouter] Profile updated:', { uid, displayName: trimmed });
 
     res.json({ success: true, displayName: trimmed });
@@ -144,23 +160,22 @@ userRouter.patch('/workspace', async (req, res) => {
       return res.status(400).json({ error: 'workspaceName too long (max 100 chars)' });
     }
 
-    // Find workspace owned by this user
-    const workspacesSnapshot = await db.collection('workspaces')
-      .where('ownerId', '==', uid)
-      .limit(1)
-      .get();
+    // Look up the user's workspace via Prisma (not Firestore)
+    const user = await prisma.user.findFirst({
+      where: { clerkId: uid },
+      select: { workspaceId: true },
+    });
 
-    if (workspacesSnapshot.empty) {
+    if (!user?.workspaceId) {
       return res.status(404).json({ error: 'Workspace not found' });
     }
 
-    const workspaceDoc = workspacesSnapshot.docs[0];
-    await workspaceDoc.ref.update({
-      name: trimmed,
-      updatedAt: new Date(),
+    await prisma.workspace.update({
+      where: { id: user.workspaceId },
+      data:  { name: trimmed },
     });
 
-    logger.info('[userRouter] Workspace updated:', { uid, workspaceId: workspaceDoc.id, workspaceName: trimmed });
+    logger.info('[userRouter] Workspace updated:', { uid, workspaceId: user.workspaceId, workspaceName: trimmed });
 
     res.json({ success: true, workspaceName: trimmed });
   } catch (err) {
