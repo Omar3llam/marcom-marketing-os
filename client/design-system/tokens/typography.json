@@ -1,0 +1,35 @@
+{
+  "_comment": "MARCOM Design Token Source of Truth — Typography",
+  "_version": "1.0.0",
+  "_law": "Never use text-xl font-bold. Use semantic role classes.",
+
+  "families": {
+    "display": ["\"Space Grotesk\"", "system-ui", "sans-serif"],
+    "body":    ["Inter", "system-ui", "sans-serif"],
+    "mono":    ["\"JetBrains Mono\"", "ui-monospace", "monospace"]
+  },
+
+  "scale": {
+    "xs":   { "size": "11px", "lineHeight": "16px", "letterSpacing": "0.04em" },
+    "sm":   { "size": "12px", "lineHeight": "18px", "letterSpacing": "0.02em" },
+    "base": { "size": "14px", "lineHeight": "22px" },
+    "md":   { "size": "15px", "lineHeight": "24px" },
+    "lg":   { "size": "17px", "lineHeight": "26px" },
+    "xl":   { "size": "20px", "lineHeight": "28px", "letterSpacing": "-0.01em" },
+    "2xl":  { "size": "24px", "lineHeight": "32px", "letterSpacing": "-0.02em" },
+    "3xl":  { "size": "30px", "lineHeight": "38px", "letterSpacing": "-0.03em" }
+  },
+
+  "roles": {
+    "decision-title":   { "family": "display", "size": "20px", "weight": "700", "letterSpacing": "-0.02em", "usage": "Verdict/campaign name header" },
+    "metric-display":   { "family": "mono",    "size": "24px", "weight": "600", "letterSpacing": "-0.02em", "tabular": true, "usage": "CPA, ROAS, spend numbers" },
+    "financial-impact": { "family": "mono",    "size": "18px", "weight": "700", "letterSpacing": "-0.01em", "tabular": true, "usage": "EGP 4,200/week callout" },
+    "radar-label":      { "family": "display", "size": "13px", "weight": "600", "letterSpacing": "-0.01em", "usage": "Campaign name in alert card" },
+    "intel-caption":    { "family": "mono",    "size": "11px", "weight": "400", "letterSpacing": "0.04em",  "usage": "Scanned 14 vectors — AI status" },
+    "system-mono":      { "family": "mono",    "size": "11px", "weight": "500", "letterSpacing": "0.08em",  "transform": "uppercase", "usage": "Status keys, identifiers" },
+    "section-label":    { "family": "display", "size": "11px", "weight": "600", "letterSpacing": "0.08em",  "transform": "uppercase", "usage": "Section headers" },
+    "signal-timestamp": { "family": "mono",    "size": "10px", "weight": "400", "letterSpacing": "0.04em",  "usage": "2m ago, live timestamps" },
+    "verdict-number":   { "family": "mono",    "size": "32px", "weight": "700", "letterSpacing": "-0.03em", "tabular": true, "usage": "Confidence %, large metric" },
+    "command-label":    { "family": "display", "size": "12px", "weight": "500", "letterSpacing": "0.01em",  "usage": "Sidebar/header navigation" }
+  }
+}
