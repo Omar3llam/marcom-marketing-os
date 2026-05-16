@@ -346,3 +346,49 @@ Every AI prompt touching this codebase MUST include:
 It reads, audits, patches surgically, and validates.  
 It does NOT redesign, does NOT rename existing stable APIs,  
 does NOT refactor outside the described scope.
+
+---
+
+## 13. Component Registry
+
+**Source of truth:** `client/design-system/ui-registry.md`
+
+Before creating ANY new UI component, consult the registry.  
+If a similar component exists → extend it. Don't create a duplicate.
+
+### Current Component Inventory (19 components)
+
+**UI Primitives (7):**
+- DecisionPill variants: VerdictPill, PriorityPill, StagePill
+- InlineBar, LumiLoader, Skeleton, ErrorBoundary
+
+**Decision Components (8):**
+- CommandCenter, InputView, TheatreView, SuccessView
+- DecisionFrame, ErrorView, DecisionBreadcrumb, MemoryPanel
+
+**Layout (3):** MainLayout, Sidebar, ContextBar  
+**Upload (1):** CsvUploader
+
+### Anti-Pattern Prevention
+
+The registry explicitly blocks these forbidden duplicates:
+
+| Forbidden | Reason | Use Instead |
+|---|---|---|
+| InlineBar2, ProgressBar, MetricBar, ConfidenceLine | Duplicates InlineBar | Extend InlineBar with props |
+| AlertBadge, StatusTag, VerdictChip, SignalPill | Duplicates DecisionPill | Use VerdictPill/PriorityPill/StagePill |
+| AISpinner, ThinkingLoader, IntelLoader | Duplicates LumiLoader | Use LumiLoader |
+| NavBar, TopBar, Header | Conflicts with Sidebar | Extend Sidebar or use ContextBar |
+
+### Adding a New Component — Law
+
+1. Check `ui-registry.md` first
+2. If similar exists → extend it, don't duplicate
+3. Choose directory: `ui/` (primitives), `decision/` (FSM), `layout/`, `upload/`
+4. Keep primitives stateless (no API calls, no hooks)
+5. Add to registry in the same PR
+6. Document states in `component-states.md`
+7. File size: primitives ≤ 150 lines, decision ≤ 300 lines
+
+**Violation:** Creating a component without checking the registry  
+**Result:** PR rejected, component deleted, registry consulted, work re-done
