@@ -2,58 +2,120 @@
 // MARCOM / Lumi — Real-Time Events (SSE)
 // ============================================================
 // Server-Sent Events endpoint for live execution updates.
-// Multi-tenant isolated, authenticated via Firebase JWT.
 //
-// Stream lifecycle:
-//   1. Client connects → /api/events/stream
-//   2. Server validates auth → adds to workspaceStreams
-//   3. Execution events broadcast → workspace subscribers
-//   4. Client disconnects → cleanup subscriber
+// SECURITY: Firebase JWTs must NEVER appear in SSE URLs because
+// browser history and server access logs record query params in
+// plaintext. Instead we use a two-step exchange:
+//
+//   Step 1 — POST /api/events/token (Authorization: Bearer <firebase-jwt>)
+//     → validates the Firebase JWT via requireAuth
+//     → issues a short-lived (60s), single-use UUIDv4 stream token
+//     → returns { streamToken, expiresIn }
+//
+//   Step 2 — GET /api/events/stream?token=<uuid>
+//     → validates the UUIDv4 stream token (NOT the Firebase JWT)
+//     → deletes the token on first use (single-use)
+//     → upgrades to SSE stream
+//
+// The UUID in the URL is harmless if logged: it carries no PII,
+// expires in 60s, and is consumed on first connect.
 // ============================================================
 import { Router } from 'express';
-import { firebaseAuthMiddleware } from '../middleware/firebaseAuth.js';
-import { contextGuard } from '../middleware/contextGuard.js';
-import { logger } from '../utils/logger.js';
+import { requireAuth } from '../middleware/firebaseAuth.js';
+import { logger }      from '../utils/logger.js';
 
 const router = Router();
+
+// ── Stream token store ───────────────────────────────────────
+// Map<streamToken: string, { userId, workspaceId, expiresAt: ms }>
+// In-memory per process — intentionally not Redis; stream tokens
+// are single-use and 60s TTL so in-process is sufficient.
+const STREAM_TOKEN_TTL_MS = 60_000;
+const streamTokens = new Map();
+
+// Periodic cleanup so expired tokens don't accumulate in memory.
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, data] of streamTokens) {
+    if (data.expiresAt < now) {
+      streamTokens.delete(token);
+    }
+  }
+}, 30_000);
 
 // ── In-Memory Subscriber Registry (per workspace) ───────────
 // Map<workspaceId, Set<Response>>
 const workspaceStreams = new Map();
 
-// ── SSE Auth Middleware (query param support) ────────────────
+// ── POST /api/events/token ───────────────────────────────────
 /**
- * EventSource doesn't support custom headers, so we accept
- * the Firebase token as a query param for SSE routes only.
- * This middleware extracts ?token=... and sets it as an
- * Authorization header so firebaseAuthMiddleware can validate it.
+ * Exchange a Firebase JWT (sent in Authorization header via the
+ * standard api.js interceptor) for a short-lived stream token.
+ * The stream token is a UUIDv4 — safe to put in a URL.
  */
-function sseAuthAdapter(req, res, next) {
-  const tokenFromQuery = req.query.token;
-  if (tokenFromQuery && !req.headers.authorization) {
-    req.headers.authorization = `Bearer ${tokenFromQuery}`;
-  }
-  next();
-}
+router.post('/token', requireAuth, (req, res) => {
+  const uid         = req.user?.uid;
+  const workspaceId = req.user?.workspaceId || req.workspaceId;
 
-// ── Middleware ───────────────────────────────────────────────
-router.use(sseAuthAdapter);
-router.use(firebaseAuthMiddleware);
-router.use(contextGuard);
+  if (!uid) {
+    return res.status(401).json({ error: 'Unauthenticated' });
+  }
+  if (!workspaceId) {
+    // User authenticated but not yet onboarded (no workspace).
+    // Return 400 — client should redirect to onboarding instead.
+    return res.status(400).json({
+      error: 'Workspace not found',
+      hint:  'Complete onboarding before connecting to the event stream',
+    });
+  }
+
+  const streamToken = crypto.randomUUID();
+  streamTokens.set(streamToken, {
+    userId:      uid,
+    workspaceId,
+    expiresAt:   Date.now() + STREAM_TOKEN_TTL_MS,
+  });
+
+  logger.debug({ uid, workspaceId }, '[SSE] stream token issued');
+  return res.json({ streamToken, expiresIn: STREAM_TOKEN_TTL_MS / 1000 });
+});
 
 // ── GET /api/events/stream ───────────────────────────────────
 /**
- * SSE endpoint for real-time execution updates.
- * Client opens EventSource connection authenticated via Firebase JWT.
- * Server pushes execution lifecycle events (QUEUED, EXECUTING, SUCCESS, FAILED).
+ * SSE endpoint. Authenticated via short-lived stream token
+ * (issued by POST /api/events/token), NOT via Firebase JWT.
+ * The stream token is single-use and deleted on first connect.
  */
 router.get('/stream', (req, res) => {
-  const { userId, workspaceId } = req.user;
+  const streamToken = req.query.token;
 
-  if (!workspaceId) {
-    logger.warn({ userId }, '[SSE] missing workspaceId — rejecting stream');
-    return res.status(400).json({ error: 'Workspace ID required' });
+  // ── Validate stream token ─────────────────────────────────
+  if (!streamToken) {
+    return res.status(401).json({
+      error: 'Stream token required',
+      hint:  'Call POST /api/events/token first to obtain a short-lived token',
+    });
   }
+
+  const tokenData = streamTokens.get(streamToken);
+
+  if (!tokenData) {
+    return res.status(401).json({ error: 'Invalid stream token' });
+  }
+
+  if (tokenData.expiresAt < Date.now()) {
+    streamTokens.delete(streamToken);
+    return res.status(401).json({
+      error:      'Stream token expired',
+      hint:       'Tokens expire after 60s — call POST /api/events/token again',
+    });
+  }
+
+  // Single-use: consume the token immediately.
+  // A reconnect will require a new exchange.
+  streamTokens.delete(streamToken);
+
+  const { userId, workspaceId } = tokenData;
 
   // ── SSE Headers ────────────────────────────────────────────
   res.setHeader('Content-Type', 'text/event-stream');
@@ -69,7 +131,7 @@ router.get('/stream', (req, res) => {
 
   logger.info(
     { userId, workspaceId, subscriberCount: workspaceStreams.get(workspaceId).size },
-    '[SSE] client connected'
+    '[SSE] client connected',
   );
 
   // ── Send initial connection confirmation ───────────────────
@@ -78,7 +140,7 @@ router.get('/stream', (req, res) => {
   // ── Heartbeat (prevent idle timeout) ───────────────────────
   const heartbeatInterval = setInterval(() => {
     res.write(': heartbeat\n\n');
-  }, 30_000); // 30s
+  }, 30_000);
 
   // ── Cleanup on client disconnect ───────────────────────────
   req.on('close', () => {
@@ -94,7 +156,7 @@ router.get('/stream', (req, res) => {
 
     logger.info(
       { userId, workspaceId, remainingSubscribers: subscribers?.size || 0 },
-      '[SSE] client disconnected'
+      '[SSE] client disconnected',
     );
   });
 });
@@ -102,16 +164,6 @@ router.get('/stream', (req, res) => {
 // ── Broadcast Helper (used by execution.js) ──────────────────
 /**
  * Broadcast an event to all subscribers in a workspace.
- * Event format:
- * {
- *   type: 'EXECUTION_STATUS',
- *   status: 'QUEUED' | 'EXECUTING' | 'EXECUTED_SUCCESS' | 'EXECUTED_FAILED',
- *   targetId: string,
- *   actionType: string,
- *   timestamp: ISO string,
- *   error?: string,        // only on FAILED
- *   auditLogId?: string,   // only on SUCCESS/FAILED
- * }
  */
 export function broadcastWorkspaceEvent(workspaceId, event) {
   const subscribers = workspaceStreams.get(workspaceId);
@@ -121,31 +173,28 @@ export function broadcastWorkspaceEvent(workspaceId, event) {
   }
 
   const payload = `data: ${JSON.stringify(event)}\n\n`;
-  let deadStreams = [];
+  const deadStreams = [];
 
   for (const res of subscribers) {
     try {
       res.write(payload);
     } catch (err) {
-      logger.warn({ workspaceId, error: err.message }, '[SSE] failed to write to subscriber — marking dead');
+      logger.warn({ workspaceId, error: err.message }, '[SSE] failed to write — marking dead');
       deadStreams.push(res);
     }
   }
 
-  // Cleanup dead streams
   if (deadStreams.length > 0) {
-    for (const deadRes of deadStreams) {
-      subscribers.delete(deadRes);
-    }
+    for (const dead of deadStreams) subscribers.delete(dead);
     logger.info(
       { workspaceId, removed: deadStreams.length, remaining: subscribers.size },
-      '[SSE] cleaned up dead streams'
+      '[SSE] cleaned up dead streams',
     );
   }
 
   logger.debug(
     { workspaceId, eventType: event.type, deliveredTo: subscribers.size },
-    '[SSE] event broadcast'
+    '[SSE] event broadcast',
   );
 }
 

@@ -1,82 +1,119 @@
 // ============================================================
 // MARCOM / Lumi — SSE Client (Real-Time Execution Updates)
 // ============================================================
-// EventSource wrapper with auto-reconnect and error handling.
-// Streams execution lifecycle events from /api/events/stream.
+// EventSource wrapper with automatic token exchange + reconnect.
+//
+// SECURITY: Firebase JWTs must never appear in URLs (server logs
+// record query params in plaintext). Instead:
+//   1. Exchange Firebase JWT → short-lived UUIDv4 stream token
+//      via POST /api/events/token (Authorization header — not URL)
+//   2. Open EventSource with the UUID token in the URL
+//      (UUID carries no PII, single-use, 60s TTL)
 //
 // Usage:
-//   const disconnect = connectExecutionStream(token, {
+//   const disconnect = connectExecutionStream(getToken, {
 //     onExecutionUpdate: (event) => { ... },
 //     onError: (err) => { ... },
 //     onConnected: () => { ... },
 //   });
-//
 //   // Later: disconnect();
 // ============================================================
 
 const SSE_ENDPOINT = '/api/events/stream';
+const TOKEN_ENDPOINT = '/api/events/token';
 const RECONNECT_DELAY_MS = 3000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
 /**
- * Connect to the SSE execution stream with automatic token refresh.
- * @param {string|Function} tokenOrGetter - Firebase JWT token or function that returns a fresh token
- * @param {Object} handlers - Event handlers
- * @param {Function} handlers.onExecutionUpdate - Called with execution status events
- * @param {Function} handlers.onError - Called on stream error
- * @param {Function} handlers.onConnected - Called when connection established
- * @returns {Function} disconnect - Call to close the stream
+ * Connect to the SSE execution stream.
+ * @param {Function} getFirebaseToken - async function returning a fresh Firebase ID token
+ * @param {Object}   handlers
+ * @param {Function} handlers.onExecutionUpdate
+ * @param {Function} handlers.onError
+ * @param {Function} handlers.onConnected
+ * @returns {Function} disconnect
  */
-export function connectExecutionStream(tokenOrGetter, handlers = {}) {
+export function connectExecutionStream(getFirebaseToken, handlers = {}) {
   const {
     onExecutionUpdate = () => {},
-    onError = () => {},
-    onConnected = () => {},
+    onError           = () => {},
+    onConnected       = () => {},
   } = handlers;
 
-  let eventSource = null;
+  let eventSource       = null;
   let reconnectAttempts = 0;
-  let isClosed = false;
-  let reconnectTimer = null;
+  let isClosed          = false;
+  let reconnectTimer    = null;
 
-  // Support both static token and token getter function
-  const getToken = typeof tokenOrGetter === 'function'
-    ? tokenOrGetter
-    : () => Promise.resolve(tokenOrGetter);
+  // Support both a static token string (legacy) and a token getter function.
+  const getToken = typeof getFirebaseToken === 'function'
+    ? getFirebaseToken
+    : () => Promise.resolve(getFirebaseToken);
 
   async function connect() {
     if (isClosed) return;
 
-    // ✅ Get fresh token on each connection attempt
-    // This handles token expiration (Firebase JWTs expire after 1 hour)
-    let token;
+    // ── Step 1: Exchange Firebase JWT for a short-lived stream token ──
+    // The exchange happens via a POST with the Authorization header —
+    // the Firebase JWT never touches a URL or server access log.
+    let streamToken;
     try {
-      token = await getToken();
-      if (!token) {
-        console.warn('[SSE] No token available — cannot connect');
-        onError({ message: 'Authentication token required' });
+      const firebaseToken = await getToken();
+      if (!firebaseToken) {
+        console.warn('[SSE] No Firebase token available — cannot connect');
+        onError({ message: 'Authentication token required', code: 'NO_TOKEN' });
         return;
       }
+
+      const response = await fetch(TOKEN_ENDPOINT, {
+        method:  'POST',
+        headers: {
+          Authorization:  `Bearer ${firebaseToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw Object.assign(
+          new Error(body.error || `Token exchange failed (${response.status})`),
+          { status: response.status, code: 'TOKEN_EXCHANGE_FAILED' },
+        );
+      }
+
+      const data = await response.json();
+      streamToken = data.streamToken;
+
+      if (!streamToken) {
+        throw new Error('Token exchange returned no streamToken');
+      }
     } catch (err) {
-      console.error('[SSE] Failed to get token:', err);
-      onError({ message: 'Failed to get authentication token', code: 'TOKEN_ERROR' });
+      console.error('[SSE] Token exchange failed:', err.message);
+      onError({ message: err.message, code: err.code || 'TOKEN_EXCHANGE_FAILED' });
+
+      // Retry after delay — the Firebase token may have just expired.
+      if (!isClosed && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+        reconnectAttempts++;
+        reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS);
+      } else if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+        onError({ message: 'Max reconnect attempts reached', code: 'MAX_RECONNECT_EXCEEDED' });
+      }
       return;
     }
 
-    // EventSource doesn't support custom headers (no Authorization).
-    // Instead, pass token as query param (server validates via firebaseAuth).
-    const url = `${SSE_ENDPOINT}?token=${encodeURIComponent(token)}`;
+    // ── Step 2: Open EventSource with the safe stream token ──
+    // The UUIDv4 token in the URL carries no PII, is single-use,
+    // and expires after 60 seconds.
+    const url = `${SSE_ENDPOINT}?token=${streamToken}`;
 
     try {
       eventSource = new EventSource(url);
 
-      // ── Connection opened ────────────────────────────────
       eventSource.addEventListener('open', () => {
         console.log('[SSE] Connection established');
-        reconnectAttempts = 0; // Reset on successful connection
+        reconnectAttempts = 0;
       });
 
-      // ── Message received ─────────────────────────────────
       eventSource.addEventListener('message', (event) => {
         try {
           const data = JSON.parse(event.data);
@@ -99,35 +136,25 @@ export function connectExecutionStream(tokenOrGetter, handlers = {}) {
         }
       });
 
-      // ── Error occurred ───────────────────────────────────
-      eventSource.addEventListener('error', (err) => {
-        console.error('[SSE] Stream error:', err);
-
-        // Close current connection
+      eventSource.addEventListener('error', () => {
         if (eventSource) {
           eventSource.close();
           eventSource = null;
         }
 
-        // Attempt reconnect if not manually closed
-        // ✅ Each reconnect will fetch a fresh token via getToken()
-        // This handles 401 errors from token expiration (1h JWT lifetime)
+        // Each reconnect will call connect() which re-exchanges for a fresh
+        // stream token — this also handles Firebase token expiration.
         if (!isClosed) {
           if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
             reconnectAttempts++;
             console.log(
-              `[SSE] Reconnecting with fresh token in ${RECONNECT_DELAY_MS}ms (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`
+              `[SSE] Reconnecting with fresh token in ${RECONNECT_DELAY_MS}ms`
+              + ` (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`,
             );
-
-            reconnectTimer = setTimeout(() => {
-              connect(); // Will call getToken() again for fresh token
-            }, RECONNECT_DELAY_MS);
+            reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS);
           } else {
             console.error('[SSE] Max reconnect attempts reached — giving up');
-            onError({
-              message: 'Connection lost and could not reconnect',
-              code: 'MAX_RECONNECT_EXCEEDED',
-            });
+            onError({ message: 'Connection lost', code: 'MAX_RECONNECT_EXCEEDED' });
           }
         }
       });
@@ -137,22 +164,12 @@ export function connectExecutionStream(tokenOrGetter, handlers = {}) {
     }
   }
 
-  // Start initial connection
   connect();
 
-  // Return disconnect function
   return function disconnect() {
     console.log('[SSE] Disconnecting');
     isClosed = true;
-
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-
-    if (eventSource) {
-      eventSource.close();
-      eventSource = null;
-    }
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    if (eventSource)    { eventSource.close(); eventSource = null; }
   };
 }

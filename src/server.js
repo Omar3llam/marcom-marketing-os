@@ -211,11 +211,13 @@ app.use('/api/execute',
   executionRouter
 );
 
-// Real-Time Events (SSE) — live execution status updates
-app.use('/api/events',
-  requireAuth,
-  eventsRouter
-);
+// Real-Time Events (SSE) — live execution status updates.
+// requireAuth is intentionally NOT applied here at the router level:
+//   POST /api/events/token  — applies requireAuth internally (Firebase JWT via header)
+//   GET  /api/events/stream — validates its own short-lived stream token (not Firebase JWT)
+// This split is required because EventSource (SSE) cannot set custom headers,
+// so the stream endpoint uses a different, URL-safe auth mechanism.
+app.use('/api/events', eventsRouter);
 
 // Decision Memory — CMO learning system (pattern analysis)
 app.use('/api/memory',
