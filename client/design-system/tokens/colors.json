@@ -1,0 +1,92 @@
+{
+  "_comment": "MARCOM Design Token Source of Truth — Colors",
+  "_version": "1.0.0",
+  "_warning": "Edit THIS file, not tailwind.config.js. Tailwind reads from here.",
+
+  "brand": {
+    "gold":  "#F6C945",
+    "deep":  "#E0A800",
+    "glow":  "#FFD95A"
+  },
+
+  "accent": {
+    "warm":  "#F59E0B",
+    "amber": "#FBBF24"
+  },
+
+  "surface": {
+    "light":    "#F8F6F2",
+    "card":     "#FFFFFF",
+    "border":   "#EDEAE4",
+    "elevated": "#F1EEE8",
+    "border-strong": "#D4CFCA"
+  },
+
+  "text": {
+    "base":   "#2B2B2B",
+    "soft":   "#3A3A3A",
+    "muted":  "#6B6B6B",
+    "subtle": "#9A9A9A"
+  },
+
+  "blush": "#F8B4B4",
+
+  "signal": {
+    "kill":       "#EF4444",
+    "kill-bg":    "rgba(239,68,68,0.10)",
+    "hold":       "#F59E0B",
+    "hold-bg":    "rgba(245,158,11,0.10)",
+    "scale":      "#10B981",
+    "scale-bg":   "rgba(16,185,129,0.10)"
+  },
+
+  "stage": {
+    "dying":    "#EF4444",
+    "fatigued": "#F59E0B",
+    "testing":  "#6366F1",
+    "stable":   "#10B981",
+    "scaling":  "#06B6D4"
+  },
+
+  "trend": {
+    "danger":   "#EF4444",
+    "warning":  "#F59E0B",
+    "positive": "#10B981",
+    "neutral":  "#8A93A4"
+  },
+
+  "lumi": {
+    "bg":            "#F8F6F2",
+    "surface":       "#FFFFFF",
+    "elevated":      "#F1EEE8",
+    "border":        "#EDEAE4",
+    "border-strong": "#D4CFCA",
+    "text":          "#2B2B2B",
+    "muted":         "#6B6B6B",
+    "subtle":        "#9A9A9A",
+    "accent":        "#E0A800"
+  },
+
+  "radar": {
+    "active":   "#F6C945",
+    "idle":     "#9A9A9A",
+    "critical": "#EF4444",
+    "stable":   "#10B981"
+  },
+
+  "intel": {
+    "verified":  "#F6C945",
+    "pending":   "#F59E0B",
+    "muted":     "#9A9A9A",
+    "surface":   "rgba(246,201,69,0.06)"
+  },
+
+  "verdict": {
+    "kill-bg":    "rgba(239,68,68,0.08)",
+    "hold-bg":    "rgba(245,158,11,0.08)",
+    "scale-bg":   "rgba(16,185,129,0.08)",
+    "kill-text":  "#DC2626",
+    "hold-text":  "#D97706",
+    "scale-text": "#059669"
+  }
+}
