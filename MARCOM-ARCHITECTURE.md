@@ -392,3 +392,27 @@ The registry explicitly blocks these forbidden duplicates:
 
 **Violation:** Creating a component without checking the registry  
 **Result:** PR rejected, component deleted, registry consulted, work re-done
+
+---
+
+## 14. Architecture Decision Records
+
+Major architectural decisions are documented in `/docs/adr/`.
+
+**Consult before questioning why something is "weird":**
+
+| Decision | Short reason |
+|---|---|
+| [ADR-001](docs/adr/ADR-001-firebase-over-clerk.md) | Firebase cheaper + better for MENA; `clerkId` column name kept intentionally |
+| [ADR-002](docs/adr/ADR-002-postgres-over-airtable.md) | PostgreSQL handles joins/transactions; Airtable hit rate limits |
+| [ADR-003](docs/adr/ADR-003-dual-agent-architecture.md) | Claude for analysis, GPT for creative; two agents = better output |
+| [ADR-004](docs/adr/ADR-004-fsm-ui-pattern.md) | FSM prevents impossible states in 8-step decision flow |
+| [ADR-005](docs/adr/ADR-005-bullmq-execution-layer.md) | Async Meta execution with idempotency + SSE status |
+
+**When to write a new ADR:**  
+Decision is hard to reverse AND affects multiple systems AND will confuse future engineers without context.
+
+**When NOT to write an ADR:**  
+Adding a component, endpoint, or refactoring within an existing pattern.
+
+**Format:** Context → Problem → Decision → Tradeoffs → Consequences → Evidence in code
