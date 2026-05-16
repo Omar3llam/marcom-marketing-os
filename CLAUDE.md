@@ -88,11 +88,17 @@ prisma/schema.prisma               — DB schema
 
 ```
 src/services/orchestrator.js  → DEPRECATED. Use src/agents/orchestrator.js
-src/middleware/clerkAuth.js   → DEAD. Firebase replaced Clerk.
-src/models/userContext.js     → DEAD. Replaced by campaigns/me/context route.
-src/utils/airtable.js         → DEAD. Airtable replaced by PostgreSQL.
+                                 Still used by: paidController, campaigns, syncWorker
+src/middleware/clerkAuth.js   → LEGACY. Still used by auth/meta.js
+                                 Replace with firebaseAuth.js when refactoring OAuth
+src/models/userContext.js     → LEGACY. Still used by project.js
+                                 Replace with campaigns/me/context route
+src/utils/airtable.js         → DEAD. Zero imports. Safe to delete.
 src/utils/scraper.js          → Check if still used before touching.
 ```
+
+**WARNING:** Files marked LEGACY are not truly dead — they have active imports.
+Check `arch-check.js` output or `git grep` before deleting.
 
 ---
 
@@ -178,3 +184,36 @@ Every prompt must include:
 - **NO_SILENT_SUCCESS**
 - **ATOMIC**
 - **AUDIT_MISMATCH_RULE**
+
+---
+
+## Dead Code Register
+**Maintained by: Architecture Check CI (scripts/arch-check.js)**  
+**Last audit: 2026-05-16**
+
+| File | Status | Reason | Imports | Safe to delete? |
+|---|---|---|---|---|
+| `src/services/orchestrator.js` | DEPRECATED | Replaced by agents/orchestrator.js | 3 (paidController, campaigns, syncWorker) | NO — refactor importers first |
+| `src/middleware/clerkAuth.js` | LEGACY | Firebase replaced Clerk | 1 (auth/meta.js OAuth route) | NO — refactor OAuth first |
+| `src/models/userContext.js` | LEGACY | Replaced by /api/campaigns/me/context | 1 (project.js) | NO — refactor project.js first |
+| `src/utils/airtable.js` | DEAD | PostgreSQL replaced Airtable | 0 | YES — verified zero imports |
+| `client/src/pages/AuthPage-Clerk-BACKUP.jsx` | DEAD | Backup from Clerk → Firebase migration | 0 | YES — backup file, not in routes |
+| `client/src/pages/PlaceholderPage.jsx` | STUB | Placeholder, not in App.jsx routes | 0 | YES — verify not in router first |
+
+### Deletion Protocol
+
+**Never delete without:**
+1. Running `grep -rn "filename" src/ client/src/` to confirm zero imports
+2. Checking `npm run arch-check` passes after deletion
+3. Testing `npm run build` (frontend) or `npm run check` (backend) passes
+4. Separate commit per deletion with reason in message
+5. Git blame to understand why file was created (avoid deleting active experiments)
+
+**Sprint cleanup target:**  
+Delete verified dead files (0 imports, DEAD status) every 2-week architecture sprint.
+
+**Refactor target:**  
+Convert DEPRECATED/LEGACY files to new canonical equivalents, then delete.
+- `services/orchestrator.js` → `agents/orchestrator.js` (3 files to refactor)
+- `clerkAuth.js` → `firebaseAuth.js` (1 OAuth route to refactor)
+- `userContext.js` → API route (1 model file to refactor)
