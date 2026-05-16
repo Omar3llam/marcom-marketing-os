@@ -1,4 +1,23 @@
 // ============================================================
+// ⚠️  DEPRECATED — DO NOT IMPORT THIS FILE
+// ============================================================
+// This file is the pre-dual-agent Claude orchestrator from v3.
+// It was replaced by src/agents/orchestrator.js which implements
+// the dual-agent pattern (Claude → GPT) with better context handling.
+//
+// Status:        DEPRECATED as of MARCOM v4.1 (dual-agent sprint)
+// Replaced by:   src/agents/orchestrator.js
+// Still used by: paidController.js, campaigns.js, syncWorker.js (3 imports)
+// Safe to delete: NO — after refactoring the 3 files above
+//
+// If you are seeing this because you got an import error:
+//   Change your import to: import orchestrator from '../agents/orchestrator.js'
+//
+// Architecture Check will FAIL if this file gains NEW imports.
+// ============================================================
+//
+// === ORIGINAL CODE BELOW (do not modify) ===
+//
 // MARCOM / Lumi — Claude Orchestrator (The Brain)
 // ------------------------------------------------------------
 // Anthropic Claude API wrapper for decision intelligence.
