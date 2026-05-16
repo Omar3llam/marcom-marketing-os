@@ -28,16 +28,13 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       output: {
-        // Force a single chunk to bypass an upstream code-splitting bug
-        // that was silently dropping page modules from the bundle.
-        // Lazy-loaded routes still split (React.lazy in App.jsx).
-        manualChunks: undefined,
-        // TODO: When CommandCenter.jsx exceeds 400 lines or main chunk
-        // exceeds 700KB, extract GuidedPath/TrustStrip/ActivityTicker/
-        // LiveScanStamp/MetricLine/OutcomePill to CommandCenterExtras.jsx
-        // and lazy-import via React.lazy + Suspense in CommandCenter.
-        // Current baseline: ~590KB (React + Firebase + Vite runtime).
-        // Target: keep main chunk under 700KB as UX enhancements ship.
+        manualChunks: {
+          // Firebase SDK (~200KB) — separately cacheable so app-code
+          // deploys don't force returning users to re-download Firebase.
+          'vendor-firebase': ['firebase/app', 'firebase/auth'],
+          // React core + router — also stable across deploys.
+          'vendor-react':    ['react', 'react-dom', 'react-router-dom'],
+        },
       },
     },
   },
