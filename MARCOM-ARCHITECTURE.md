@@ -306,6 +306,24 @@ useEffect(() => {
 for (const item of items) {
   await prisma.model.create({ data: item }); // do createMany instead
 }
+
+// ❌ Wildcard CORS (breaks with credentials: true + leaks to all origins)
+app.use(cors({ origin: '*' }))
+
+// ❌ Missing credentials on CORS (breaks OAuth cookies)
+app.use(cors({ origin: allowlist }))  // without credentials: true
+
+// ❌ PUT requests without 'PUT' in CORS methods
+methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS']  // missing PUT
+
+// ✅ CORRECT — full CORS policy
+app.use(cors({
+  origin: allowlistFn,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', ...],
+  maxAge: 600,
+}))
 ```
 
 ---
