@@ -4,13 +4,14 @@
 // Sections:
 //   1. Profile — display name, email (read-only), avatar
 //   2. Workspace — name, slug (read-only), plan
+//   2.5. Integrations — Meta Ads (LIVE status), Google Ads (soon)
 //   3. Notifications — email, Slack, digest (localStorage)
 //   4. Security — password reset, active sessions
 //   5. Danger Zone — re-run setup, delete account
 // ============================================================
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, Mail, Key, Trash2, AlertTriangle, Save, Bell, Shield } from 'lucide-react';
+import { RefreshCw, Mail, Key, Trash2, AlertTriangle, Save, Bell, Shield, Link2, Check, ChevronRight, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { sendPasswordResetEmail, auth } from '@/firebase.js';
 import { api } from '@/lib/api.js';
@@ -41,6 +42,12 @@ export default function Settings() {
   });
   const [notifChanged, setNotifChanged] = useState(false);
 
+  // ── Meta Integration State ─────────────────────────────────
+  const [metaStatus, setMetaStatus] = useState('loading'); // loading | connected | disconnected
+  const [metaExpires, setMetaExpires] = useState(null);
+  const [metaAccountId, setMetaAccountId] = useState(null);
+  const [connectingMeta, setConnectingMeta] = useState(false);
+
   // ── Delete Account Modal ───────────────────────────────────
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -62,6 +69,26 @@ export default function Settings() {
       }
     }
   }, [currentUser]);
+
+  // ── Fetch Meta Integration Status ──────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    if (currentUser?.uid) {
+      api.get('/api/credentials/status', {
+        params: { platform: 'meta_ads', projectId: currentUser.uid },
+      })
+        .then(res => {
+          if (cancelled) return;
+          setMetaStatus(res.data?.connected ? 'connected' : 'disconnected');
+          setMetaExpires(res.data?.expiresAt ?? null);
+          setMetaAccountId(res.data?.accountId ?? null);
+        })
+        .catch(() => {
+          if (!cancelled) setMetaStatus('disconnected');
+        });
+    }
+    return () => { cancelled = true; };
+  }, [currentUser?.uid]);
 
   // ── Track Profile Changes ──────────────────────────────────
   useEffect(() => {
@@ -150,6 +177,11 @@ export default function Settings() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleMetaConnect = () => {
+    setConnectingMeta(true);
+    window.location.href = '/api/auth/meta/connect';
   };
 
   const handleResetSetup = () => {
@@ -360,6 +392,88 @@ export default function Settings() {
                 Save Changes
               </button>
             )}
+          </div>
+        </section>
+
+        {/* ══════════════════════════════════════════════════════ */}
+        {/* SECTION 2.5: Integrations (Meta Ads)                   */}
+        {/* ══════════════════════════════════════════════════════ */}
+        <section className="bg-white rounded-xl border border-surface-border/80 p-6 mb-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <Link2 className="w-4 h-4 text-dark-soft" strokeWidth={2} />
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-dark-soft">
+              Integrations
+            </h2>
+          </div>
+
+          <div className="space-y-4">
+            {/* Meta Ads Integration */}
+            <div className="flex items-center justify-between py-1">
+              <div>
+                <p className="text-sm font-semibold text-lumi-text">Meta Ads</p>
+                <p className="text-xs text-lumi-muted mt-0.5">
+                  {metaStatus === 'loading' ? (
+                    'Checking connection...'
+                  ) : metaStatus === 'connected' ? (
+                    <>
+                      Connected
+                      {metaAccountId && <span className="font-mono"> · {metaAccountId}</span>}
+                      {metaExpires && (
+                        <span>
+                          {' · Expires '}
+                          {new Date(metaExpires) < new Date() ? (
+                            <span className="font-semibold text-trend-warning">EXPIRED</span>
+                          ) : (
+                            new Date(metaExpires).toLocaleDateString()
+                          )}
+                        </span>
+                      )}
+                    </>
+                  ) : (
+                    'Connect to enable Sync Live Meta and execution.'
+                  )}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Status Badge */}
+                {metaStatus === 'loading' && (
+                  <Loader2 className="w-4 h-4 animate-spin text-dark-soft/40" />
+                )}
+                {metaStatus === 'connected' && (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-signal-scale">
+                    <Check className="w-3.5 h-3.5" /> Connected
+                  </span>
+                )}
+
+                {/* Connect/Reconnect Button */}
+                <button
+                  type="button"
+                  onClick={handleMetaConnect}
+                  disabled={connectingMeta || metaStatus === 'loading'}
+                  className="inline-flex items-center gap-1 rounded-lg border border-surface-border bg-surface-card px-3 py-1.5 text-xs font-medium text-lumi-text hover:border-lumi-gold/40 hover:bg-surface-light transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {connectingMeta ? (
+                    <><Loader2 className="w-3 h-3 animate-spin" /> Connecting...</>
+                  ) : metaStatus === 'connected' ? (
+                    <><RefreshCw className="w-3 h-3" /> Reconnect</>
+                  ) : (
+                    <>Connect <ChevronRight className="w-3 h-3" /></>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <hr className="border-surface-border" />
+
+            {/* Google Ads — Coming Soon */}
+            <div className="flex items-center justify-between py-1 opacity-40">
+              <div>
+                <p className="text-sm font-semibold text-lumi-text">Google Ads</p>
+                <p className="text-xs text-lumi-muted mt-0.5">Coming soon.</p>
+              </div>
+              <span className="text-xs font-mono text-dark-soft">SOON</span>
+            </div>
           </div>
         </section>
 
