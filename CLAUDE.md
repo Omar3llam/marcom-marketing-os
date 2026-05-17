@@ -193,7 +193,7 @@ Every prompt must include:
 
 | File | Status | Reason | Imports | Safe to delete? |
 |---|---|---|---|---|
-| `src/services/orchestrator.js` | DEPRECATED | Replaced by agents/orchestrator.js | 3 (paidController, campaigns, syncWorker) | NO — refactor importers first |
+| `src/services/orchestrator.js` | DEPRECATED | Replaced by agents/orchestrator.js | 2 (campaigns, syncWorker) | NO — refactor importers first |
 | `src/middleware/clerkAuth.js` | DEAD | Firebase replaced Clerk (auth/meta.js now uses firebaseAuth) | 0 | YES — verified zero imports |
 | `src/models/userContext.js` | LEGACY | Replaced by /api/campaigns/me/context | 1 (project.js) | NO — refactor project.js first |
 | `src/utils/airtable.js` | DEAD | PostgreSQL replaced Airtable | 0 | YES — verified zero imports |
@@ -214,12 +214,13 @@ Delete verified dead files (0 imports, DEAD status) every 2-week architecture sp
 
 **Refactor target:**  
 Convert DEPRECATED/LEGACY files to new canonical equivalents, then delete.
-- `services/orchestrator.js` → `agents/orchestrator.js` (3 files to refactor)
-  - **BLOCKED:** `paidController.js` uses 3 methods from services/orchestrator that don't exist in agents/orchestrator:
-    - `.analyzeRadarData()` (line 59) → no equivalent in agents/orchestrator
-    - `.analyzeCampaignData()` (line 157) → no equivalent in agents/orchestrator
-    - `.healthCheck()` (line 255) → no equivalent in agents/orchestrator
-  - agents/orchestrator only exports `runOrchestration({campaignId, workspaceId, actionId, userId})`
-  - Migration requires adapter design or adding missing methods to agents/orchestrator (Phase B sprint)
+- `services/orchestrator.js` → `agents/orchestrator.js` (2 files remaining)
+  - ~~`paidController.js`~~ ✅ COMPLETED (uses adapter methods from agents/orchestrator)
+  - `campaigns.js` — needs migration (uses deprecated single-agent)
+  - `syncWorker.js` — needs migration (uses deprecated single-agent)
+  - **Adapter pattern:** agents/orchestrator now exports compatibility methods:
+    - `analyzeRadarData(campaigns)` → wraps ClaudeAgent
+    - `analyzeCampaignData(data, source)` → wraps ClaudeAgent
+    - `healthCheck()` → checks dual-agent health
 - ~~`clerkAuth.js` → `firebaseAuth.js`~~ ✅ COMPLETED (auth/meta.js refactored)
 - `userContext.js` → API route (1 model file to refactor)
