@@ -9,7 +9,11 @@
 // - POST /execute — Execute Meta API actions
 // ============================================================
 import metaMCP from '../services/metaMCP.js';
-import orchestrator from '../services/orchestrator.js';
+import {
+  analyzeRadarData,
+  analyzeCampaignData,
+  healthCheck,
+} from '../agents/orchestrator.js';
 import { logger } from '../utils/logger.js';
 import { parse } from 'csv-parse/sync';
 import { z } from 'zod';
@@ -56,7 +60,7 @@ export async function radarHandler(req, res) {
     }
 
     // 2. Pass data to Claude orchestrator for analysis
-    const alerts = await orchestrator.analyzeRadarData(campaigns);
+    const alerts = await analyzeRadarData(campaigns);
 
     // 3. Return formatted alerts
     return res.json({
@@ -154,7 +158,7 @@ export async function analyzeHandler(req, res) {
     // For simplicity, analyze the first campaign if multiple
     const targetCampaign = campaignData.campaigns?.[0] || campaignData;
 
-    const verdict = await orchestrator.analyzeCampaignData(targetCampaign, source);
+    const verdict = await analyzeCampaignData(targetCampaign, source);
 
     return res.json({
       success: true,
@@ -252,7 +256,7 @@ export async function healthHandler(req, res) {
     // Check both MCP and Orchestrator
     const [mcpHealth, orchestratorHealth] = await Promise.all([
       metaMCP.healthCheck(),
-      orchestrator.healthCheck(),
+      healthCheck(),
     ]);
 
     const overallStatus =
