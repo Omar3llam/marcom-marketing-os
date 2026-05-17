@@ -38,6 +38,10 @@ jobs:
         run: node scripts/arch-check.js
         # Fails on: size violations, forbidden imports, raw hex, N+1, duplicates
 
+      - name: Security audit
+        run: node scripts/security-check.js
+        # Fails on: IDOR, SQL injection, XSS, 403 leakage
+
       - name: Check bundle size
         working-directory: client
         run: |

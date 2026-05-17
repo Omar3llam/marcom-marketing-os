@@ -434,3 +434,61 @@ Decision is hard to reverse AND affects multiple systems AND will confuse future
 Adding a component, endpoint, or refactoring within an existing pattern.
 
 **Format:** Context → Problem → Decision → Tradeoffs → Consequences → Evidence in code
+
+---
+
+## 15. Security Architecture Layer
+
+### Endpoint Security Checklist (required for every new route)
+
+| Layer | Question | Failure = |
+|---|---|---|
+| **Auth** | Is `requireAuth` on this route? | 401 Unauthorized |
+| **Ownership** | Is userId in the SQL WHERE clause? | IDOR / tenant isolation |
+| **Validation** | Is request body validated (Zod/manual)? | injection / crashes |
+| **Rate limit** | Is `apiLimiter` applied? | abuse / DoS |
+| **Output** | Does response expose internal IDs? | enumeration |
+| **Error** | Does 404 replace 403 on ownership fail? | resource enumeration |
+| **Observability** | Is failure logged with context? | silent bugs |
+| **Cache** | Does response set Vary: Authorization? | cross-user leakage |
+
+### Ownership Rule (anti-IDOR)
+
+```javascript
+// ❌ WRONG — fetches then checks (vulnerable to IDOR + race condition)
+const project = await getProjectById(projectId);
+if (project.user_id !== req.userId) return res.status(403).json(...)
+
+// ✅ CORRECT — ownership inside the query
+const project = await getProjectById(projectId, req.userId);
+if (!project) return res.status(404).json({ error: 'Project not found' });
+// 404 not 403 — never confirm resource existence to wrong user
+```
+
+### XSS Rule (AI-generated content)
+
+```javascript
+// ❌ WRONG — AI output injected as HTML
+element.innerHTML = aiResponse.content;
+
+// ✅ CORRECT option 1 — React JSX (auto-escaped)
+<p>{aiResponse.content}</p>
+
+// ✅ CORRECT option 2 — DOMPurify if HTML is needed
+import DOMPurify from 'dompurify';
+<div dangerouslySetInnerHTML={{
+  __html: DOMPurify.sanitize(aiResponse.html, {
+    ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'p', 'br', 'ul', 'li'],
+    ALLOWED_ATTR: [],
+  })
+}} />
+```
+
+### Security Check CI
+
+```bash
+npm run security-check  # runs scripts/security-check.js
+```
+
+Runs on every PR via `.github/workflows/architecture-check.yml`.
+Blocks merge on: IDOR calls, SQL injection patterns, 403 leakage.
