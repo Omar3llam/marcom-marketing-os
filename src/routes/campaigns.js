@@ -669,15 +669,16 @@ campaignsRouter.put('/me/context', async (req, res) => {
       code:    err?.code,
       meta:    err?.meta,
       message: err?.message,
+      userId:  req.userId,
+      workspaceId: req.workspaceId,
     };
-    console.error('[campaigns/me/context] Prisma write failed:', JSON.stringify(detail, null, 2));
-    logger.error(detail, '[campaigns/me/context] write failed');
+    logger.error(detail, '[campaigns/me/context] Prisma write failed — check schema migrations');
     return res.status(500).json({
       error:  'Could not save context',
       code:   err?.code ?? null,
       detail: err?.message ?? 'Unknown error',
       hint:   err?.code === 'P2021' || /does not exist/i.test(err?.message || '')
-        ? 'The User table or context column is missing. Build needs to run prisma db push against DATABASE_URL.'
+        ? 'The User table or context column is missing. Run: npx prisma migrate deploy'
         : null,
     });
   }

@@ -109,12 +109,40 @@ export async function firebaseAuthMiddleware(req, res, next) {
       req.workspaceId = null;
     }
 
-    // Log successful auth (optional, remove in production for less noise)
-    // logger.debug({ uid: decodedToken.uid, email: decodedToken.email }, '[firebase-auth] Token verified');
+    // Log successful auth (optional, enable with LOG_LEVEL=debug)
+    logger.debug({ uid: decodedToken.uid, email: decodedToken.email }, '[firebase-auth] Token verified ✓');
   } catch (err) {
-    // Token verification failed — log but don't reject the request.
+    // Token verification failed — classify the error for better diagnostics.
     // Route-level guards (requireAuth) will handle rejection.
-    logger.warn({ err: err.message, token: token.slice(0, 20) + '...' }, '[firebase-auth] Token verification failed');
+    const errorCode = err?.code || err?.errorInfo?.code;
+    const errorMessage = err?.message || 'Unknown error';
+
+    // Firebase Admin SDK error codes: https://firebase.google.com/docs/auth/admin/errors
+    const classification = {
+      // Token expiry
+      'auth/id-token-expired': { level: 'info', reason: 'Token expired (>1 hour old)', action: 'Client will refresh automatically' },
+      'auth/session-cookie-expired': { level: 'info', reason: 'Session expired', action: 'Re-authentication required' },
+
+      // Invalid tokens
+      'auth/id-token-revoked': { level: 'warn', reason: 'Token revoked by user/admin', action: 'Force re-login' },
+      'auth/invalid-id-token': { level: 'warn', reason: 'Malformed token', action: 'Check token format' },
+      'auth/argument-error': { level: 'warn', reason: 'Invalid token argument', action: 'Check Authorization header' },
+
+      // Firebase service issues
+      'auth/internal-error': { level: 'error', reason: 'Firebase verification service error', action: 'Check Firebase status' },
+      'auth/network-request-failed': { level: 'error', reason: 'Network error contacting Firebase', action: 'Check connectivity' },
+    }[errorCode] || { level: 'warn', reason: 'Unknown verification failure', action: 'Check logs' };
+
+    logger[classification.level]({
+      errorCode,
+      errorMessage,
+      reason: classification.reason,
+      action: classification.action,
+      tokenPrefix: token.slice(0, 20) + '...',
+      path: req.path,
+      method: req.method,
+    }, `[firebase-auth] ${classification.reason}`);
+
     req.user = null;
     req.userId = null;
     req.workspaceId = null;
@@ -132,6 +160,14 @@ export async function firebaseAuthMiddleware(req, res, next) {
  */
 export function requireAuth(req, res, next) {
   if (!req.user || !req.user.uid) {
+    // Log 401 rejections for debugging (includes path/method for correlation)
+    logger.debug({
+      path: req.path,
+      method: req.method,
+      hasAuthHeader: !!req.headers.authorization,
+      reason: req.headers.authorization ? 'Token invalid/expired' : 'No Authorization header',
+    }, '[firebase-auth] requireAuth rejected request');
+
     return res.status(401).json({ error: 'Unauthenticated' });
   }
 
