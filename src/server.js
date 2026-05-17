@@ -36,7 +36,7 @@ import { credentialsRouter }  from './routes/credentials.js';
 import { authMetaRouter }     from './routes/auth/meta.js';
 import { campaignsRouter }    from './routes/campaigns.js';
 import { toolsRouter }        from './routes/tools.js';
-import { lumiRouter, quickActionHandler, demoFeedHandler } from './routes/lumi.js';
+import { lumiRouter, quickActionHandler, demoFeedHandler } from './routes/lumi/index.js';
 import paidRouter             from './routes/paid.js';
 import executionRouter        from './routes/execution.js';
 import eventsRouter           from './routes/events.js';
