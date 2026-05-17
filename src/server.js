@@ -75,8 +75,30 @@ app.use(cors({
     }
     cb(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-webhook-signature', 'x-webhook-timestamp'],
+
+  // GAP 3 FIX: add PUT (used by PUT /api/campaigns/me/context)
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+
+  // GAP 1 FIX: credentials: true enables cookie forwarding for
+  // Meta OAuth callback session. Required for any cross-origin
+  // request that uses cookies OR Authorization header reliably.
+  credentials: true,
+
+  // GAP 2 FIX: cache preflight for 10 minutes.
+  // Without this, EVERY request with Authorization header triggers
+  // an OPTIONS preflight first — doubles request count on Render.
+  // 600s = safe default (doesn't affect token refresh frequency).
+  maxAge: 600,
+
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'x-webhook-signature',
+    'x-webhook-timestamp',
+  ],
+
+  // Expose headers the frontend may need to read
+  exposedHeaders: ['X-Request-Id'],
 }));
 
 // ── FIREBASE AUTH (global — populates req.user on every request) ─────
