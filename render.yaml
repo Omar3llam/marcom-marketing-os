@@ -28,6 +28,8 @@ services:
     healthCheckPath: /api/health
     autoDeploy: true
     envVars:
+      - key: ALLOWED_ORIGINS
+        value: "https://marcom-marketing-os.onrender.com"
       - key: NODE_ENV
         value: production
       - key: PORT
