@@ -13,6 +13,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RefreshCw, Mail, Key, Trash2, AlertTriangle, Save, Bell, Shield, Link2, Check, ChevronRight, Loader2 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
+import { useProjectId } from '@/hooks/useProjectId.js';
 import { sendPasswordResetEmail, auth } from '@/firebase.js';
 import { api } from '@/lib/api.js';
 import { toast } from 'sonner';
@@ -23,6 +24,7 @@ const NOTIFICATION_PREFS_KEY = 'lumi_notification_prefs';
 export default function Settings() {
   const navigate = useNavigate();
   const { currentUser, logout } = useAuth();
+  const { projectId, loading: projectLoading } = useProjectId();
   const [busy, setBusy] = useState(false);
 
   // ── Profile State ──────────────────────────────────────────
@@ -72,23 +74,24 @@ export default function Settings() {
 
   // ── Fetch Meta Integration Status ──────────────────────────
   useEffect(() => {
+    // Wait for projectId to resolve before fetching status
+    if (!projectId) return;
+
     let cancelled = false;
-    if (currentUser?.uid) {
-      api.get('/api/credentials/status', {
-        params: { platform: 'meta_ads', projectId: currentUser.uid },
+    api.get('/api/credentials/status', {
+      params: { platform: 'meta_ads', projectId },
+    })
+      .then(res => {
+        if (cancelled) return;
+        setMetaStatus(res.data?.connected ? 'connected' : 'disconnected');
+        setMetaExpires(res.data?.expiresAt ?? null);
+        setMetaAccountId(res.data?.accountId ?? null);
       })
-        .then(res => {
-          if (cancelled) return;
-          setMetaStatus(res.data?.connected ? 'connected' : 'disconnected');
-          setMetaExpires(res.data?.expiresAt ?? null);
-          setMetaAccountId(res.data?.accountId ?? null);
-        })
-        .catch(() => {
-          if (!cancelled) setMetaStatus('disconnected');
-        });
-    }
+      .catch(() => {
+        if (!cancelled) setMetaStatus('disconnected');
+      });
     return () => { cancelled = true; };
-  }, [currentUser?.uid]);
+  }, [projectId]);
 
   // ── Track Profile Changes ──────────────────────────────────
   useEffect(() => {
@@ -180,8 +183,14 @@ export default function Settings() {
   };
 
   const handleMetaConnect = () => {
+    // Guard: must have projectId before redirecting to OAuth
+    if (!projectId) {
+      toast.error('Complete workspace setup before connecting Meta Ads.');
+      return;
+    }
     setConnectingMeta(true);
-    window.location.href = '/api/auth/meta/connect';
+    // projectId passed as query param — backend uses it to scope the credential
+    window.location.href = `/api/auth/meta/connect?projectId=${encodeURIComponent(projectId)}`;
   };
 
   const handleResetSetup = () => {
@@ -450,7 +459,7 @@ export default function Settings() {
                 <button
                   type="button"
                   onClick={handleMetaConnect}
-                  disabled={connectingMeta || metaStatus === 'loading'}
+                  disabled={connectingMeta || metaStatus === 'loading' || projectLoading || !projectId}
                   className="inline-flex items-center gap-1 rounded-lg border border-surface-border bg-surface-card px-3 py-1.5 text-xs font-medium text-lumi-text hover:border-lumi-gold/40 hover:bg-surface-light transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {connectingMeta ? (
