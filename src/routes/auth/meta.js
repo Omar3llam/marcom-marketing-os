@@ -1,18 +1,18 @@
 // ============================================================
 // MARCOM — Meta OAuth Routes  (/api/auth/meta/*)
 //
-// GET /api/auth/meta/connect   — Clerk-authenticated (cookie).
+// GET /api/auth/meta/connect   — Firebase-authenticated (JWT).
 //   Encodes userId + projectId into an HMAC-signed state param,
 //   then redirects the browser to the Meta OAuth consent screen.
 //
-// GET /api/auth/meta/callback  — NOT Clerk-authenticated.
+// GET /api/auth/meta/callback  — NOT Firebase-authenticated.
 //   Meta redirects here with ?code=&state=. We verify the HMAC
 //   state, exchange the code for a long-lived token, discover the
 //   user's ad accounts, and persist everything to marcom_credentials.
 // ============================================================
 import { Router }   from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
-import { requireAuth } from '../../middleware/clerkAuth.js';
+import { requireAuth } from '../../middleware/firebaseAuth.js';
 import { saveCredential } from '../../models/credential.js';
 import { getProject }    from '../../models/project.js';
 import {
