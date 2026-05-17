@@ -68,6 +68,51 @@ if (REDIS_DISABLED) {
     _lastErrCode = code;
     logger.warn({ code, msg: err?.message }, '[bullmq:redis] error');
   });
+
+  // ── PRODUCTION SAFETY: Validate Redis eviction policy ─────────
+  // BullMQ stores job queue data in Redis. If the eviction policy
+  // is NOT 'noeviction', Redis will silently delete job data under
+  // memory pressure, causing jobs to disappear without any error.
+  //
+  // REQUIRED POLICY: noeviction
+  // DANGEROUS POLICIES: allkeys-lru, allkeys-lfu, volatile-lru, etc.
+  //
+  // On Render.com, configure via Dashboard → Redis → Advanced → maxmemory-policy
+  (async () => {
+    try {
+      await _conn.connect();
+      const config = await _conn.config('GET', 'maxmemory-policy');
+      const policy = config?.[1]; // ['maxmemory-policy', 'allkeys-lru']
+
+      if (policy !== 'noeviction') {
+        logger.error(
+          {
+            current_policy: policy,
+            required_policy: 'noeviction',
+            impact: 'BullMQ job data can be silently evicted under memory pressure',
+            fix: 'Set maxmemory-policy=noeviction in Redis config',
+          },
+          '❌ [bullmq:redis] DANGEROUS EVICTION POLICY DETECTED',
+        );
+
+        if (isProd) {
+          logger.fatal(
+            '[bullmq:redis] FATAL: Production Redis has wrong eviction policy. Jobs will be lost.',
+          );
+          // In strict mode, exit immediately to prevent silent job loss
+          // Uncomment the line below to enforce hard failure:
+          // process.exit(1);
+        }
+      } else {
+        logger.info({ policy }, '[bullmq:redis] eviction policy validated ✓');
+      }
+    } catch (err) {
+      logger.warn(
+        { err: err.message },
+        '[bullmq:redis] Could not validate eviction policy (connection may not be ready yet)',
+      );
+    }
+  })();
 }
 
 export const bullConnection = _conn;
