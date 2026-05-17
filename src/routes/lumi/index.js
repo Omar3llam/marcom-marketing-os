@@ -4,11 +4,11 @@
 // Mount point: app.use('/api/lumi', requireJwt, lumiRouter)
 // ============================================================
 import { Router }              from 'express';
-import { rollbackRouter }      from './rollback.js';
-import { quickActionRouter, quickActionHandler } from './quickaction.js';
+import { rollbackRouter }            from './rollback.js';
+import { quickActionHandler }        from './quickaction.js';
 import { feedRouter, demoFeedHandler } from './feed.js';
-import { intelligenceRouter }  from './intelligence.js';
-import { healthRouter }        from './health.js';
+import { intelligenceRouter }        from './intelligence.js';
+import { healthRouter }              from './health.js';
 
 export const lumiRouter = Router();
 

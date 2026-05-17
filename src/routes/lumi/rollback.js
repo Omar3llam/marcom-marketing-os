@@ -3,10 +3,10 @@
 // POST /api/lumi/rollback/:actionId
 // Extracted from lumi.js for architecture size compliance.
 // ============================================================
-import { Router }  from 'express';
-import { prisma }  from '../../lib/prisma.js';
-import { actionQueue, enqueueAction } from '../../queues/index.js';
-import { logger }  from '../../utils/logger.js';
+import { Router }        from 'express';
+import { prisma }        from '../../lib/prisma.js';
+import { enqueueAction } from '../../queues/index.js';
+import { logger }        from '../../utils/logger.js';
 
 export const rollbackRouter = Router();
 
