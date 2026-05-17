@@ -24,12 +24,18 @@ class MetaMCPService {
 
   /**
    * Spawns the meta-ads-mcp server and establishes connection
-   * @returns {Promise<void>}
+   * @returns {Promise<boolean>} true if connected, false if token missing
    */
   async connect() {
     if (this.isConnected) {
       logger.info('[MetaMCP] Already connected');
-      return;
+      return true;
+    }
+
+    // Graceful degradation: if no Meta token configured, skip MCP entirely
+    if (!process.env.META_ACCESS_TOKEN) {
+      logger.warn('[MetaMCP] META_ACCESS_TOKEN not set — Meta sync unavailable');
+      return false;   // caller should check return value
     }
 
     try {
@@ -56,6 +62,7 @@ class MetaMCPService {
       this.isConnected = true;
 
       logger.info('[MetaMCP] Connected successfully');
+      return true;
     } catch (error) {
       logger.error({ err: error.message }, '[MetaMCP] Failed to connect');
       this.isConnected = false;
@@ -89,7 +96,10 @@ class MetaMCPService {
    */
   async getCampaignInsights(options = {}) {
     if (!this.isConnected) {
-      await this.connect();
+      const connected = await this.connect();
+      if (!connected) {
+        throw new Error('META_ACCESS_TOKEN not configured — Meta sync unavailable');
+      }
     }
 
     try {
@@ -143,7 +153,10 @@ class MetaMCPService {
    */
   async executeAction(toolName, args) {
     if (!this.isConnected) {
-      await this.connect();
+      const connected = await this.connect();
+      if (!connected) {
+        throw new Error('META_ACCESS_TOKEN not configured — Meta actions unavailable');
+      }
     }
 
     try {
@@ -173,7 +186,11 @@ class MetaMCPService {
    */
   async listTools() {
     if (!this.isConnected) {
-      await this.connect();
+      const connected = await this.connect();
+      if (!connected) {
+        logger.warn('[MetaMCP] Cannot list tools — META_ACCESS_TOKEN not configured');
+        return [];
+      }
     }
 
     try {
@@ -219,7 +236,15 @@ class MetaMCPService {
   async healthCheck() {
     try {
       if (!this.isConnected) {
-        await this.connect();
+        const connected = await this.connect();
+        if (!connected) {
+          return {
+            status: 'unavailable',
+            connected: false,
+            reason: 'META_ACCESS_TOKEN not configured',
+            timestamp: new Date().toISOString(),
+          };
+        }
       }
 
       // Try to list tools as a connection test
