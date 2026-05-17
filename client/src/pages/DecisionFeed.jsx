@@ -103,9 +103,15 @@ export default function DecisionFeed() {
           } catch { /* quota exceeded */ }
         }
       })
-      .catch(() => {
-        // API down or 503 (MCP not connected) — keep localStorage version
-        // Silent fail: user already sees localStorage alerts from above
+      .catch((err) => {
+        if (cancelled) return;
+        // 503 (MCP not connected) is expected — keep localStorage version.
+        // Log non-503 errors for observability without surfacing to user;
+        // the localStorage alerts loaded above are the correct fallback.
+        const status = err?.response?.status;
+        if (status !== 503) {
+          console.warn('[RadarFetch] live fetch failed:', status, err?.message);
+        }
       });
 
     return () => { cancelled = true; };
