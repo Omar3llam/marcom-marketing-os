@@ -18,6 +18,7 @@ import CsvUploader     from '@/components/upload/CsvUploader.jsx';
 import { cn }          from '@/lib/utils.js';
 import { transformDecisionsToFeed } from '@/lib/feedTransform.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
+import { useProjectId } from '@/hooks/useProjectId.js';
 import { api } from '@/lib/api.js';
 import { toast } from 'sonner';
 
@@ -55,6 +56,7 @@ const sortableCols = new Set(['campaign', 'spend', 'ctr', 'roas', 'impact']);
 export default function CampaignAnalysis() {
   const { campaigns, loading, refetch, setCampaigns } = useCampaignFeed();
   const { workspace } = useWorkspace();
+  const { projectId } = useProjectId();
   const [sortKey, setSortKey] = useState('spend');
   const [sortDir, setSortDir] = useState('desc');
   const [expanded, setExpanded] = useState(new Set());
@@ -77,19 +79,30 @@ export default function CampaignAnalysis() {
   // Handle Meta live sync: fetch from API → analyze → render
   const handleMetaSync = async () => {
     if (syncing) return;
+
+    // Guard: cannot sync without a projectId
+    if (!projectId) {
+      toast.error('Complete onboarding before syncing Meta campaigns.');
+      return;
+    }
+
     setSyncing(true);
     try {
-      await api.post('/api/campaigns/fetch-meta', { datePreset: 'last_30d' });
+      await api.post('/api/campaigns/fetch-meta', {
+        datePreset: 'last_30d',
+        projectId,              // ← required by backend
+      });
       await refetch();
       toast.success('Meta campaigns synced.');
     } catch (err) {
-      const msg = err.response?.data?.message || 'Sync failed';
       if (err.response?.status === 404) {
-        toast.error('No Meta credential found. Connect Meta in Settings → Integrations.');
+        toast.error('Meta not connected. Go to Settings → Integrations to connect.');
       } else if (err.response?.status === 401) {
-        toast.error('Meta token expired. Reconnect in Settings → Integrations.');
+        toast.error('Meta session expired. Reconnect in Settings → Integrations.');
+      } else if (err.response?.status === 400) {
+        toast.error('Workspace setup incomplete. Complete onboarding first.');
       } else {
-        toast.error(msg);
+        toast.error('Sync failed. Try again in a moment.');
       }
     } finally {
       setSyncing(false);
