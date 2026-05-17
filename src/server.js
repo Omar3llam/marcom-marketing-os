@@ -101,6 +101,27 @@ app.use(cors({
   exposedHeaders: ['X-Request-Id'],
 }));
 
+// ── CONTENT SECURITY POLICY (defense-in-depth XSS protection) ────────
+// Restricts where scripts, styles, and other resources can be loaded from.
+// Even if an XSS vulnerability exists in code, CSP blocks execution.
+app.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' https://apis.google.com",             // Firebase Auth SDK
+      "style-src 'self' 'unsafe-inline'",                     // Tailwind inline styles
+      "img-src 'self' data: https:",                          // images + data URIs
+      "connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com https://*.firebase.com https://api.anthropic.com https://api.openai.com", // API calls
+      "frame-src https://accounts.google.com",                // Google OAuth iframe
+      "object-src 'none'",                                    // block Flash, Java, etc
+      "base-uri 'self'",                                      // prevent base tag hijacking
+      "form-action 'self'",                                   // only submit forms to same origin
+    ].join('; ')
+  );
+  next();
+});
+
 // ── FIREBASE AUTH (global — populates req.user on every request) ─────
 app.use(firebaseAuthMiddleware);
 
