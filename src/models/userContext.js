@@ -24,9 +24,17 @@ export async function ensureUserContextSchema() {
         saved_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
       )
     `;
-    logger.info('[userContext] schema ensured');
+    logger.info('[userContext] schema ensured ✓');
   } catch (err) {
-    logger.warn({ err: err.message }, '[userContext] ensureSchema failed (non-fatal)');
+    const code = err?.code || err?.sqlState;
+
+    if (code === '42P07') {
+      // 42P07 = duplicate_table (expected with IF NOT EXISTS)
+      logger.debug({ code }, '[userContext] table already exists (expected)');
+    } else {
+      // Unexpected error
+      logger.warn({ code, msg: err.message }, '[userContext] ensureSchema failed');
+    }
   }
 }
 

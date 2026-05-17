@@ -55,9 +55,23 @@ export async function ensureChatSessionSchema() {
       CREATE INDEX IF NOT EXISTS idx_sessions_project_id
         ON marcom_sessions (project_id)
     `;
-    logger.info('[chatSession] schema ensured');
+    logger.info('[chatSession] schema ensured ✓');
   } catch (err) {
-    logger.warn({ err: err.message }, '[chatSession] ensureSchema failed (non-fatal)');
+    // PostgreSQL error codes: https://www.postgresql.org/docs/current/errcodes-appendix.html
+    // 42P07 = duplicate_table, 42710 = duplicate_object (index/constraint exists)
+    // 42701 = duplicate_column, 23505 = unique_violation
+    const code = err?.code || err?.sqlState;
+
+    if (code === '42P07' || code === '42710' || code === '42701') {
+      // Expected: table/index/column already exists (IF NOT EXISTS should handle this, but log just in case)
+      logger.debug({ code, msg: err.message }, '[chatSession] schema already exists (expected)');
+    } else if (code === '42P01') {
+      // 42P01 = undefined_table (marcom_sessions doesn't exist — critical error)
+      logger.error({ code, msg: err.message }, '[chatSession] marcom_sessions table does not exist! Run migrations.');
+    } else {
+      // Unexpected error — this IS a problem
+      logger.warn({ code, msg: err.message }, '[chatSession] ensureSchema failed — check database state');
+    }
   }
 }
 

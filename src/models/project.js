@@ -42,9 +42,19 @@ export async function ensureProjectSchema() {
       CREATE INDEX IF NOT EXISTS idx_sessions_project_id
         ON marcom_sessions (project_id)
     `;
-    logger.info('[project] schema ensured');
+    logger.info('[project] schema ensured ✓');
   } catch (err) {
-    logger.warn({ err: err.message }, '[project] ensureSchema failed (non-fatal)');
+    const code = err?.code || err?.sqlState;
+
+    if (code === '42P07' || code === '42710' || code === '42701') {
+      // 42P07 = duplicate_table, 42710 = duplicate_object (index), 42701 = duplicate_column
+      logger.debug({ code }, '[project] schema already exists (expected)');
+    } else if (code === '42P01') {
+      // 42P01 = undefined_table (marcom_sessions doesn't exist for ALTER TABLE)
+      logger.error({ code, msg: err.message }, '[project] marcom_sessions table missing! Run migrations.');
+    } else {
+      logger.warn({ code, msg: err.message }, '[project] ensureSchema failed');
+    }
   }
 }
 

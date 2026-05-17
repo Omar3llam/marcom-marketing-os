@@ -49,28 +49,39 @@ function decrypt(stored) {
 // ── SCHEMA MIGRATION ─────────────────────────────────────────
 export async function ensureCredentialSchema() {
   const sql = getDb();
-  await sql`
-    CREATE TABLE IF NOT EXISTS marcom_credentials (
-      id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      project_id      TEXT        NOT NULL,
-      user_id         TEXT        NOT NULL,
-      platform        TEXT        NOT NULL,
-      access_token_enc  TEXT,
-      refresh_token_enc TEXT,
-      account_id      TEXT,
-      scopes          TEXT,
-      expires_at      TIMESTAMPTZ,
-      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      UNIQUE (project_id, platform)
-    )
-  `;
-  // Index for per-user look-ups (list all credentials for a user)
-  await sql`
-    CREATE INDEX IF NOT EXISTS idx_marcom_credentials_user
-      ON marcom_credentials (user_id)
-  `;
-  logger.info('[credentials] Schema ensured');
+  try {
+    await sql`
+      CREATE TABLE IF NOT EXISTS marcom_credentials (
+        id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id      TEXT        NOT NULL,
+        user_id         TEXT        NOT NULL,
+        platform        TEXT        NOT NULL,
+        access_token_enc  TEXT,
+        refresh_token_enc TEXT,
+        account_id      TEXT,
+        scopes          TEXT,
+        expires_at      TIMESTAMPTZ,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (project_id, platform)
+      )
+    `;
+    // Index for per-user look-ups (list all credentials for a user)
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_marcom_credentials_user
+        ON marcom_credentials (user_id)
+    `;
+    logger.info('[credentials] schema ensured ✓');
+  } catch (err) {
+    const code = err?.code || err?.sqlState;
+
+    if (code === '42P07' || code === '42710') {
+      // 42P07 = duplicate_table, 42710 = duplicate_object (index/constraint)
+      logger.debug({ code }, '[credentials] schema already exists (expected)');
+    } else {
+      logger.warn({ code, msg: err.message }, '[credentials] ensureSchema failed');
+    }
+  }
 }
 
 // ── PUBLIC API ───────────────────────────────────────────────
