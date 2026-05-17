@@ -189,12 +189,12 @@ Every prompt must include:
 
 ## Dead Code Register
 **Maintained by: Architecture Check CI (scripts/arch-check.js)**  
-**Last audit: 2026-05-16**
+**Last audit: 2026-05-17**
 
 | File | Status | Reason | Imports | Safe to delete? |
 |---|---|---|---|---|
 | `src/services/orchestrator.js` | DEPRECATED | Replaced by agents/orchestrator.js | 3 (paidController, campaigns, syncWorker) | NO — refactor importers first |
-| `src/middleware/clerkAuth.js` | LEGACY | Firebase replaced Clerk | 1 (auth/meta.js OAuth route) | NO — refactor OAuth first |
+| `src/middleware/clerkAuth.js` | DEAD | Firebase replaced Clerk (auth/meta.js now uses firebaseAuth) | 0 | YES — verified zero imports |
 | `src/models/userContext.js` | LEGACY | Replaced by /api/campaigns/me/context | 1 (project.js) | NO — refactor project.js first |
 | `src/utils/airtable.js` | DEAD | PostgreSQL replaced Airtable | 0 | YES — verified zero imports |
 | `client/src/pages/AuthPage-Clerk-BACKUP.jsx` | DEAD | Backup from Clerk → Firebase migration | 0 | YES — backup file, not in routes |
@@ -215,5 +215,11 @@ Delete verified dead files (0 imports, DEAD status) every 2-week architecture sp
 **Refactor target:**  
 Convert DEPRECATED/LEGACY files to new canonical equivalents, then delete.
 - `services/orchestrator.js` → `agents/orchestrator.js` (3 files to refactor)
-- `clerkAuth.js` → `firebaseAuth.js` (1 OAuth route to refactor)
+  - **BLOCKED:** `paidController.js` uses 3 methods from services/orchestrator that don't exist in agents/orchestrator:
+    - `.analyzeRadarData()` (line 59) → no equivalent in agents/orchestrator
+    - `.analyzeCampaignData()` (line 157) → no equivalent in agents/orchestrator
+    - `.healthCheck()` (line 255) → no equivalent in agents/orchestrator
+  - agents/orchestrator only exports `runOrchestration({campaignId, workspaceId, actionId, userId})`
+  - Migration requires adapter design or adding missing methods to agents/orchestrator (Phase B sprint)
+- ~~`clerkAuth.js` → `firebaseAuth.js`~~ ✅ COMPLETED (auth/meta.js refactored)
 - `userContext.js` → API route (1 model file to refactor)
