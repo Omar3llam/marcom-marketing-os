@@ -35,7 +35,9 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const MODEL = 'claude-3-5-sonnet-20241022';
+// claude-3-5-sonnet-20241022 retired January 5, 2026
+// Migrated to claude-sonnet-4-6 (released Feb 2026)
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 const MAX_TOKENS = 4096;
 
 // ── SYSTEM PROMPT ────────────────────────────────────────────
