@@ -2,9 +2,9 @@ import PlaceholderPage from '@/pages/PlaceholderPage.jsx';
 export default function ScoreContent() {
   return (
     <PlaceholderPage
-      label="Tools · Score"
-      title="Score Content"
-      description="Paste or upload an asset and Lumi runs the 10-step Decision Scorecard. Ports the legacy Mode-4 interrogation flow."
+      label="TOOLS · SCORE"
+      title="Content Scoring"
+      description="Paste any ad copy and Lumi scores it across 10 dimensions: hook strength, emotional resonance, brand alignment, CTR potential, and more."
     />
   );
 }

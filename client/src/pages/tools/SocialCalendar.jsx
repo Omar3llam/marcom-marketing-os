@@ -2,9 +2,9 @@ import PlaceholderPage from '@/pages/PlaceholderPage.jsx';
 export default function SocialCalendar() {
   return (
     <PlaceholderPage
-      label="Tools · Calendar"
+      label="TOOLS · CALENDAR"
       title="Social Calendar"
-      description="4-week, multi-platform content calendar generated from the locked brand context. Wraps POST /api/tools/content-calendar."
+      description="Generate a 4-week content plan from your brand context — with platform-native formats, hooks, and scheduling for Meta, LinkedIn, and TikTok."
     />
   );
 }
