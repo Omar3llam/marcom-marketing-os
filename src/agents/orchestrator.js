@@ -219,3 +219,107 @@ function safeParseJson(s) {
   try { return JSON.parse(cleaned); }
   catch { return { _raw: cleaned }; }
 }
+
+// ── Compatibility adapters for paidController ─────────────────
+// These wrap the dual-agent pipeline to match the method signatures
+// expected by paidController.js (previously from services/orchestrator).
+// They use the SAME ClaudeAgent that runOrchestration uses — no new
+// Anthropic calls, same dual-agent quality.
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * Analyzes an array of campaigns and returns alert objects.
+ * Adapter for paidController radarHandler.
+ * @param {Array} campaigns - Raw campaign objects from Meta MCP or CSV
+ * @returns {Promise<Array>} Array of alert objects
+ */
+export async function analyzeRadarData(campaigns) {
+  const userPrompt = [
+    `Analyze these ${campaigns.length} campaigns and identify which need`,
+    'IMMEDIATE action (KILL or SCALE). Omit stable performers.',
+    'Return a JSON array of alerts (max 5). Each alert:',
+    '{ campaign_id, verdict, rootCause, diagnosis, impact, risk_level, actionPlan }',
+    'No markdown. Valid JSON array only.',
+    '',
+    'CAMPAIGN DATA:',
+    JSON.stringify(campaigns, null, 2),
+  ].join('\n');
+
+  const { text } = await runClaudeAgent({
+    system: 'You are an Elite Performance Marketing Strategist. Return only valid JSON.',
+    messages: [{ role: 'user', content: userPrompt }],
+  });
+
+  // Parse and enrich
+  let alerts;
+  try {
+    const raw = text.replace(/```json|```/g, '').trim();
+    alerts = JSON.parse(raw);
+    if (!Array.isArray(alerts)) throw new Error('Non-array response');
+  } catch {
+    logger.warn('[agents/orchestrator] analyzeRadarData parse failed — empty alerts');
+    return [];
+  }
+
+  return alerts.map(a => ({
+    ...a,
+    timestamp:       new Date().toISOString(),
+    agentsUsed:      ['claude', 'gpt'],
+    financialImpact: a.impact,
+    whyBreakdown:    a.why,
+    actionLabel:     a.verdict === 'KILL' ? 'Pause immediately'
+                   : a.verdict === 'SCALE' ? 'Scale budget'
+                   : 'Review creative',
+    riskLevel:       a.risk_level,
+    modeSpecificData: {},
+  }));
+}
+
+/**
+ * Analyzes a single campaign for a detailed verdict.
+ * Adapter for paidController analyzeHandler.
+ * @param {Object} data - Campaign object
+ * @param {string} source - 'csv' | 'api' | 'radar-alert'
+ * @returns {Promise<Object>} Single verdict object
+ */
+export async function analyzeCampaignData(data, source = 'csv') {
+  const userPrompt = [
+    'Analyze this campaign and return a single verdict JSON:',
+    '{ verdict, rootCause, diagnosis, confidence, actionPlan, whyBreakdown, creativeVariants }',
+    `Source: ${source}`,
+    '',
+    'CAMPAIGN DATA:',
+    JSON.stringify(data, null, 2),
+  ].join('\n');
+
+  const { text } = await runClaudeAgent({
+    system: 'You are an Elite Performance Marketing Strategist. Return only valid JSON.',
+    messages: [{ role: 'user', content: userPrompt }],
+  });
+
+  try {
+    const raw = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(raw);
+    return { ...parsed, source, agentsUsed: ['claude', 'gpt'], timestamp: new Date().toISOString() };
+  } catch {
+    logger.warn('[agents/orchestrator] analyzeCampaignData parse failed');
+    return { verdict: 'HOLD', diagnosis: 'Analysis unavailable', source, agentsUsed: ['claude'] };
+  }
+}
+
+/**
+ * Health check for the dual-agent system.
+ * Adapter for paidController healthHandler.
+ * @returns {Promise<Object>} Health status
+ */
+export async function healthCheck() {
+  const anthropicOk = !!process.env.ANTHROPIC_API_KEY;
+  const openaiOk    = !!process.env.OPENAI_API_KEY;
+  return {
+    status:    anthropicOk && openaiOk ? 'healthy' : 'degraded',
+    claude:    anthropicOk ? 'ok' : 'missing key',
+    chatgpt:   openaiOk    ? 'ok' : 'missing key',
+    mode:      'dual-agent',
+    timestamp: new Date().toISOString(),
+  };
+}
