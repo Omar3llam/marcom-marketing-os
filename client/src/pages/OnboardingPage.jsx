@@ -30,7 +30,42 @@ import { cn }                        from '@/lib/utils.js';
 import { primeContextCache }         from '@/router/ProtectedRoute.jsx';
 
 const INDUSTRIES = ['E-commerce', 'SaaS', 'Real Estate', 'Healthcare', 'F&B', 'Fashion', 'Education', 'Finance', 'Other'];
-const MARKETS    = ['Egypt', 'Saudi Arabia', 'UAE', 'Kuwait', 'Lebanon', 'Jordan', 'Morocco', 'USA', 'UK', 'Europe', 'Global'];
+
+// MENA-first market list with dialect mapping
+const MARKETS = [
+  'Egypt', 'Saudi Arabia', 'UAE', 'Kuwait', 'Qatar', 'Bahrain', 'Oman',
+  'Jordan', 'Lebanon', 'Iraq', 'Libya', 'Tunisia', 'Algeria', 'Morocco',
+  'Palestine', 'Yemen', 'Sudan',
+  'USA', 'UK', 'Europe', 'Global',
+];
+
+// Dialect each AI response should use per market
+const DIALECT_MAP = {
+  'Egypt':        'Egyptian Arabic (عامية مصرية)',
+  'Saudi Arabia': 'Gulf Arabic / Najdi (خليجي نجدي)',
+  'UAE':          'Gulf Arabic / Emirati (خليجي إماراتي)',
+  'Kuwait':       'Gulf Arabic / Kuwaiti (خليجي كويتي)',
+  'Qatar':        'Gulf Arabic / Qatari (خليجي قطري)',
+  'Bahrain':      'Gulf Arabic / Bahraini (خليجي بحريني)',
+  'Oman':         'Gulf Arabic / Omani (خليجي عماني)',
+  'Jordan':       'Levantine Arabic / Jordanian (شامي أردني)',
+  'Lebanon':      'Levantine Arabic / Lebanese (شامي لبناني)',
+  'Iraq':         'Iraqi Arabic (عامية عراقية)',
+  'Libya':        'Libyan Arabic (عامية ليبية)',
+  'Tunisia':      'Tunisian Arabic (دارجة تونسية)',
+  'Algeria':      'Algerian Arabic (دارجة جزائرية)',
+  'Morocco':      'Moroccan Darija (دارجة مغربية)',
+  'Palestine':    'Levantine Arabic / Palestinian (شامي فلسطيني)',
+  'Yemen':        'Yemeni Arabic (عامية يمنية)',
+  'Sudan':        'Sudanese Arabic (عامية سودانية)',
+  'USA':          'American English',
+  'UK':           'British English',
+  'Europe':       'European English',
+  'Global':       'Modern Standard Arabic / English',
+};
+
+const LANGUAGES = ['Arabic', 'English', 'Arabic + English (bilingual)'];
+
 const TONES      = [
   { id: 'bold',    title: 'Bold & Direct',         desc: 'Punchy, confident, conversion-first.' },
   { id: 'warm',    title: 'Warm & Human',          desc: 'Conversational, empathetic, story-led.' },
@@ -65,6 +100,8 @@ export default function OnboardingPage() {
     industry:       '',
     website:        '',
     market:         '',
+    dialect:        '',           // auto-set from DIALECT_MAP on market change
+    language:       'Arabic',     // default: Arabic
     businessType:   'B2C',
     targetAudience: '',
     competitor:     '',
@@ -85,7 +122,7 @@ export default function OnboardingPage() {
     }));
 
   const validate = (n) => {
-    if (n === 1) return form.companyName && form.industry && form.market;
+    if (n === 1) return form.companyName && form.industry && form.market && form.language;
     if (n === 2) return form.businessType && form.targetAudience;
     if (n === 3) return form.tone && form.monthlyGoal;
   };
@@ -125,7 +162,7 @@ export default function OnboardingPage() {
 
   return (
     <div
-      className="min-h-screen bg-[#0F0F0F] text-gray-100"
+      className="min-h-screen bg-[#0F0F0F] text-white/90"
       style={{ backgroundImage: 'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(246,201,69,0.06) 0%, transparent 60%)' }}
     >
       {/* P2: py-10 → py-8 */}
@@ -218,12 +255,51 @@ export default function OnboardingPage() {
                   </select>
                 </Field>
                 <Field label="Primary Market *">
-                  <select className={inputCls} value={form.market} onChange={(e) => set('market', e.target.value)}>
+                  <select
+                    className={inputCls}
+                    value={form.market}
+                    onChange={(e) => {
+                      const m = e.target.value;
+                      set('market', m);
+                      set('dialect', DIALECT_MAP[m] || '');
+                    }}
+                  >
                     <option value="">Select…</option>
-                    {MARKETS.map((x) => <option key={x} value={x}>{x}</option>)}
+                    <optgroup label="MENA Region">
+                      {MARKETS.slice(0, 17).map((x) => <option key={x} value={x}>{x}</option>)}
+                    </optgroup>
+                    <optgroup label="International">
+                      {MARKETS.slice(17).map((x) => <option key={x} value={x}>{x}</option>)}
+                    </optgroup>
                   </select>
                 </Field>
               </div>
+              {/* Language preference */}
+              <Field label="Content Language *">
+                <div className="grid grid-cols-3 gap-2">
+                  {LANGUAGES.map((lang) => (
+                    <button
+                      key={lang}
+                      type="button"
+                      onClick={() => set('language', lang)}
+                      className={cn(
+                        'rounded-xl border p-2.5 text-xs font-semibold text-center transition-all',
+                        form.language === lang
+                          ? 'border-lumi-gold/50 bg-lumi-gold/10 text-lumi-gold'
+                          : 'border-white/8 bg-white/[0.03] text-white/50 hover:border-white/20 hover:text-white/70',
+                      )}
+                    >
+                      {lang}
+                    </button>
+                  ))}
+                </div>
+                {/* Show auto-detected dialect when market is selected */}
+                {form.dialect && (
+                  <p className="mt-1.5 text-[11px] text-lumi-gold/70 font-mono">
+                    ✦ Dialect: {form.dialect}
+                  </p>
+                )}
+              </Field>
               <Field label="Website (optional)">
                 <div className="relative">
                   <Globe className="absolute left-3 top-2.5 h-4 w-4 text-white/30" />
