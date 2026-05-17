@@ -10,28 +10,10 @@ import {
   listCredentials,
   deleteCredential,
 } from '../models/credential.js';
-import { getProjectById } from '../models/project.js';
+import { assertProjectOwnership } from '../models/project.js';
 import { logger } from '../utils/logger.js';
 
 export const credentialsRouter = Router();
-
-// ── HELPERS ──────────────────────────────────────────────────
-async function assertProjectOwnership(userId, projectId, res) {
-  if (!projectId) {
-    res.status(400).json({ status: 'error', message: 'project_id is required' });
-    return false;
-  }
-  const project = await getProjectById(projectId);
-  if (!project) {
-    res.status(404).json({ status: 'error', message: 'Project not found' });
-    return false;
-  }
-  if (project.userId !== userId) {
-    res.status(403).json({ status: 'error', message: 'Forbidden' });
-    return false;
-  }
-  return true;
-}
 
 // ── STATUS  GET /api/credentials/status?projectId=&platform= ─
 // Quick connectivity check — returns { connected: true/false }.
@@ -43,7 +25,8 @@ credentialsRouter.get('/status', async (req, res) => {
     return res.status(400).json({ status: 'error', message: 'projectId is required' });
   }
   try {
-    if (!await assertProjectOwnership(userId, projectId, res)) return;
+    // SECURITY: Throws 404 if user doesn't own project (prevents IDOR)
+    await assertProjectOwnership(projectId, userId);
     const cred = await getCredential(userId, projectId, platform);
     return res.json({
       status:    'ok',
@@ -54,7 +37,7 @@ credentialsRouter.get('/status', async (req, res) => {
     });
   } catch (err) {
     logger.error({ err: err.message, userId, projectId }, '[credentials] status error');
-    return res.status(500).json({ status: 'error', message: 'Failed to check credential status' });
+    return res.status(err.statusCode ?? 500).json({ status: 'error', message: err.message || 'Failed to check credential status' });
   }
 });
 
@@ -63,12 +46,13 @@ credentialsRouter.get('/:projectId', async (req, res) => {
   const userId    = req.userId;
   const projectId = req.params.projectId;
   try {
-    if (!await assertProjectOwnership(userId, projectId, res)) return;
+    // SECURITY: Throws 404 if user doesn't own project (prevents IDOR)
+    await assertProjectOwnership(projectId, userId);
     const list = await listCredentials(userId, projectId);
     return res.json({ status: 'ok', credentials: list });
   } catch (err) {
     logger.error({ err: err.message, userId, projectId }, '[credentials] list error');
-    return res.status(500).json({ status: 'error', message: 'Failed to list credentials' });
+    return res.status(err.statusCode ?? 500).json({ status: 'error', message: err.message || 'Failed to list credentials' });
   }
 });
 
@@ -90,7 +74,8 @@ credentialsRouter.post('/', async (req, res) => {
     return res.status(400).json({ status: 'error', message: 'platform is required' });
   }
   try {
-    if (!await assertProjectOwnership(userId, projectId, res)) return;
+    // SECURITY: Throws 404 if user doesn't own project (prevents IDOR)
+    await assertProjectOwnership(projectId, userId);
     const expiresAt = expiresAtRaw ? new Date(expiresAtRaw) : undefined;
     const saved = await saveCredential(userId, {
       projectId, platform, accessToken, refreshToken, accountId, scopes, expiresAt,
@@ -103,7 +88,7 @@ credentialsRouter.post('/', async (req, res) => {
     if (err.message.includes('CREDENTIAL_ENCRYPTION_KEY')) {
       return res.status(503).json({ status: 'error', message: 'Credential encryption is not configured on this server.' });
     }
-    return res.status(500).json({ status: 'error', message: 'Failed to save credential' });
+    return res.status(err.statusCode ?? 500).json({ status: 'error', message: err.message || 'Failed to save credential' });
   }
 });
 
@@ -114,7 +99,8 @@ credentialsRouter.get('/:projectId/:platform', async (req, res) => {
   const userId    = req.userId;
   const { projectId, platform } = req.params;
   try {
-    if (!await assertProjectOwnership(userId, projectId, res)) return;
+    // SECURITY: Throws 404 if user doesn't own project (prevents IDOR)
+    await assertProjectOwnership(projectId, userId);
     const cred = await getCredential(userId, projectId, platform);
     if (!cred) {
       return res.status(404).json({ status: 'error', message: 'Credential not found' });
@@ -125,7 +111,7 @@ credentialsRouter.get('/:projectId/:platform', async (req, res) => {
     return res.json({ status: 'ok', credential: { ...safe, connected: true } });
   } catch (err) {
     logger.error({ err: err.message, userId, projectId, platform }, '[credentials] get error');
-    return res.status(500).json({ status: 'error', message: 'Failed to retrieve credential' });
+    return res.status(err.statusCode ?? 500).json({ status: 'error', message: err.message || 'Failed to retrieve credential' });
   }
 });
 
@@ -134,11 +120,12 @@ credentialsRouter.delete('/:projectId/:platform', async (req, res) => {
   const userId    = req.userId;
   const { projectId, platform } = req.params;
   try {
-    if (!await assertProjectOwnership(userId, projectId, res)) return;
+    // SECURITY: Throws 404 if user doesn't own project (prevents IDOR)
+    await assertProjectOwnership(projectId, userId);
     await deleteCredential(userId, projectId, platform);
     return res.json({ status: 'ok' });
   } catch (err) {
     logger.error({ err: err.message, userId, projectId, platform }, '[credentials] delete error');
-    return res.status(500).json({ status: 'error', message: 'Failed to delete credential' });
+    return res.status(err.statusCode ?? 500).json({ status: 'error', message: err.message || 'Failed to delete credential' });
   }
 });

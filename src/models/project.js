@@ -104,17 +104,29 @@ export async function getProject(userId, projectId) {
 }
 
 /**
- * Internal lookup — no userId check.
- * Used by master.js for context injection when the session already
- * belongs to the authenticated user (ownership verified at session level).
+ * Fetch a project by ID with ownership validation.
+ * Authorization is enforced INSIDE the query — not after fetch.
+ *
+ * Returns null (not throws) when:
+ *   - Project doesn't exist
+ *   - Project exists but belongs to different user
+ * This prevents IDOR: attackers get no signal about whether an ID exists.
+ *
+ * SECURITY: This function replaced an unsafe "internal lookup" that had
+ * no userId check. All callers MUST pass req.userId as second argument.
+ *
+ * @param {string} projectId - The project_id to fetch
+ * @param {string} userId    - The requesting user's ID (REQUIRED)
+ * @returns {Object|null}    - Project row or null
  */
-export async function getProjectById(projectId) {
-  if (!projectId) return null;
+export async function getProjectById(projectId, userId) {
+  if (!projectId || !userId) return null;
   const sql = getDb();
   const rows = await sql`
-    SELECT project_id, name, context
+    SELECT project_id, name, context, user_id
     FROM marcom_projects
     WHERE project_id = ${projectId}
+      AND user_id    = ${userId}
     LIMIT 1
   `;
   if (rows.length === 0) return null;
@@ -122,7 +134,42 @@ export async function getProjectById(projectId) {
     projectId: rows[0].project_id,
     name:      rows[0].name,
     context:   rows[0].context,
+    userId:    rows[0].user_id,
   };
+}
+
+/**
+ * Fetch project and assert ownership atomically.
+ * Uses getProjectById(projectId, userId) — ownership is in the SQL query.
+ * Throws with 404 status (not 403) to prevent resource enumeration.
+ *
+ * SECURITY: 404 not 403. Attackers must not learn whether a projectId exists.
+ * Returns same error whether project is missing or belongs to another user.
+ *
+ * @param {string} projectId - The project_id to fetch
+ * @param {string} userId    - The requesting user's ID (REQUIRED)
+ * @returns {Object}         - Project row
+ * @throws {Error}           - statusCode: 404, message: 'Project not found'
+ */
+export async function assertProjectOwnership(projectId, userId) {
+  if (!projectId || !userId) {
+    const err = new Error('Project not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  // Ownership validated inside the query — returns null if not owner
+  const project = await getProjectById(projectId, userId);
+
+  if (!project) {
+    // Return 404 regardless of whether project exists or belongs to another user.
+    // Attackers must not learn whether a projectId is valid.
+    const err = new Error('Project not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  return project;
 }
 
 export async function updateProject(userId, projectId, fields) {

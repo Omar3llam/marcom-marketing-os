@@ -32,7 +32,8 @@ toolsRouter.post('/content-calendar', async (req, res) => {
   // ── Load project context (with ownership check) ───────────
   let projectContext = '';
   try {
-    const project = await getProjectById(projectId);
+    // SECURITY: Ownership validated in query — returns null if user doesn't own project
+    const project = await getProjectById(projectId, userId);
     if (!project) {
       return res.status(404).json({ status: 'error', message: 'Project not found' });
     }
@@ -168,9 +169,13 @@ toolsRouter.post('/campaign-brief', async (req, res) => {
   let projectContext = '';
   let projectName    = '';
   try {
-    const project = await getProjectById(projectId);
+    // SECURITY: Ownership validated in query — returns null if user doesn't own project
+    const project = await getProjectById(projectId, userId);
     projectContext = project?.context || '';
     projectName    = project?.name    || '';
+    if (!project) {
+      logger.warn({ userId, projectId }, '[tools/campaign-brief] project not found or access denied — proceeding without context');
+    }
   } catch (err) {
     logger.warn({ err: err.message, userId, projectId }, '[tools/campaign-brief] project lookup failed — proceeding without context');
   }

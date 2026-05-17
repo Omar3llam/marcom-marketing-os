@@ -110,8 +110,8 @@ campaignsRouter.post('/data-inject', contextGuard, async (req, res) => {
   }
 
   try {
-    // Validate project ownership
-    const project = await getProjectById(projectId);
+    // SECURITY: Validate project ownership — returns null if user doesn't own project
+    const project = await getProjectById(projectId, userId);
     if (!project) {
       return res.status(404).json({ status: 'error', message: 'Project not found' });
     }
@@ -171,8 +171,8 @@ campaignsRouter.post('/fetch-meta', async (req, res) => {
       return res.status(400).json({ status: 'error', message: 'No Ad Account ID stored. Reconnect Meta Ads to auto-detect your account.' });
     }
 
-    // Validate project ownership
-    const project = await getProjectById(projectId);
+    // SECURITY: Validate project ownership — returns null if user doesn't own project
+    const project = await getProjectById(projectId, userId);
     if (!project) {
       return res.status(404).json({ status: 'error', message: 'Project not found' });
     }

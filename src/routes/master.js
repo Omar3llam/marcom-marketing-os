@@ -58,7 +58,8 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
     // when the session has no context yet.
     if (project_id) {
       try {
-        const project = await getProjectById(project_id);
+        // SECURITY: Ownership validated in query — returns null if user doesn't own project
+        const project = await getProjectById(project_id, userId);
         if (project) {
           // Stamp project name on session so mode handlers can personalise responses.
           session.project_name = project.name || '';
@@ -74,6 +75,9 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
               'Project context injected/refreshed for this request'
             );
           }
+        } else {
+          // Project not found or user doesn't own it — log but continue (session proceeds without context)
+          logger.warn({ userId, project_id }, 'Project not found or access denied — proceeding without context');
         }
       } catch (err) {
         logger.warn({ err: err.message, userId, project_id }, 'Project context lookup failed — proceeding without');
