@@ -9,16 +9,23 @@ import { execSync } from 'child_process';
 console.log('===PRISMA MIGRATE DEPLOY===');
 
 try {
-  execSync('npx prisma migrate deploy', {
-    stdio: 'inherit',
+  // Capture output to check for P3005 in stderr
+  const output = execSync('npx prisma migrate deploy', {
+    stdio: 'pipe',  // Capture instead of inherit
     env: process.env,
+    encoding: 'utf-8',
   });
+  console.log(output);  // Print captured output
   console.log('✅ Migrations deployed successfully');
 } catch (err) {
-  const errorMessage = err.message || err.toString();
+  // err.stderr contains the actual error from Prisma
+  const errorOutput = err.stderr?.toString() || err.stdout?.toString() || err.message || '';
+
+  // Print the error output
+  console.error(errorOutput);
 
   // P3005: Database not empty but no migration history
-  if (errorMessage.includes('P3005')) {
+  if (errorOutput.includes('P3005')) {
     console.log('\n⚠️  P3005 detected: Database needs baseline');
     console.log('📋 Auto-applying baseline migration marker...\n');
 
@@ -47,6 +54,6 @@ try {
   }
 
   // Other migration errors
-  console.error('\n❌ Migration failed:', errorMessage);
+  console.error('\n❌ Migration failed:', errorOutput);
   throw err;
 }
