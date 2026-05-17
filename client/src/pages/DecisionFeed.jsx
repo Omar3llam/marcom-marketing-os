@@ -94,10 +94,12 @@ export default function DecisionFeed() {
       .then((res) => {
         if (cancelled) return;
         const alerts = res.data?.alerts;
-        // Only update if we got real alerts (not mock/empty)
-        if (Array.isArray(alerts) && alerts.length > 0 && res.data?.source !== 'mock') {
+
+        // Always update radar state when we get a successful response,
+        // even if alerts is empty (clears stale localStorage alerts when Meta disconnected)
+        if (Array.isArray(alerts) && res.data?.source !== 'mock') {
           loadRadarAlerts(alerts);
-          // Persist so next load is instant
+          // Persist so next load is instant (empty array clears stale data)
           try {
             localStorage.setItem('lumi:radarAlerts', JSON.stringify(alerts));
           } catch { /* quota exceeded */ }
