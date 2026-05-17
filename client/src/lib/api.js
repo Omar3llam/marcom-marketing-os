@@ -21,6 +21,11 @@ export const api = axios.create({
   baseURL: '/',
   // Long-running orchestration calls take 5–30s; allow 60s ceiling.
   timeout: 60_000,
+  // withCredentials: true enables cookies on cross-origin requests.
+  // Required for Meta OAuth session cookies after callback redirect.
+  // Safe to enable — backend CORS uses an allowlist, not wildcard '*'.
+  // (Cannot use withCredentials=true with origin:'*' — browser blocks it.)
+  withCredentials: true,
 });
 
 // ── REQUEST INTERCEPTOR: Auto-inject Firebase JWT & Idempotency ───────────
