@@ -219,15 +219,23 @@ export function clearContextCache() {
 }
 
 export function ProtectedRoute({ children }) {
-  const { currentUser, loading: authLoading } = useAuth();
+  const { currentUser, loading: authLoading, authReady } = useAuth();
   const { loading, hasContext }  = useUserContext();
 
   console.log('[ProtectedRoute]', {
     authLoading,
+    authReady,
     loading,
     hasContext,
     currentUser: !!currentUser,
   });
+
+  // Wait for Firebase to complete initial auth check before redirecting.
+  // Without this, OAuth callbacks briefly show currentUser=null and bounce to login.
+  if (!authReady) {
+    console.log('[ProtectedRoute] waiting for Firebase auth init');
+    return <FullscreenLoader label="Restoring your session…" />;
+  }
 
   if (authLoading || loading) {
     console.log('[ProtectedRoute] showing loader');
@@ -249,15 +257,22 @@ export function ProtectedRoute({ children }) {
 }
 
 export function OnboardingRoute({ children }) {
-  const { currentUser, loading: authLoading } = useAuth();
+  const { currentUser, loading: authLoading, authReady } = useAuth();
   const { loading, hasContext }  = useUserContext();
 
   console.log('[OnboardingRoute]', {
     authLoading,
+    authReady,
     loading,
     hasContext,
     currentUser: !!currentUser,
   });
+
+  // Wait for Firebase to complete initial auth check before redirecting.
+  if (!authReady) {
+    console.log('[OnboardingRoute] waiting for Firebase auth init');
+    return <FullscreenLoader label="Checking your account…" />;
+  }
 
   if (authLoading || loading) {
     console.log('[OnboardingRoute] showing loader');

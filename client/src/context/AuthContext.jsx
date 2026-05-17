@@ -38,6 +38,11 @@ export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // authReady: true after Firebase has completed the initial auth check.
+  // Components should wait for authReady before calling protected APIs.
+  // Without this, post-OAuth-redirect race conditions cause false 401s.
+  const [authReady, setAuthReady] = useState(false);
+
   // Sign in with Google
   const signInWithGoogle = async () => {
     return signInWithPopup(auth, googleProvider);
@@ -82,6 +87,8 @@ export function AuthProvider({ children }) {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
       setLoading(false);
+      // Mark auth as resolved — safe for API calls now
+      setAuthReady(true);
     });
 
     return unsubscribe;
@@ -90,6 +97,7 @@ export function AuthProvider({ children }) {
   const value = {
     currentUser,
     loading,
+    authReady,
     signInWithGoogle,
     signInWithEmail,
     signUpWithEmail,
