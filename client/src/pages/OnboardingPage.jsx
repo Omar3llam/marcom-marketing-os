@@ -162,11 +162,11 @@ export default function OnboardingPage() {
 
   return (
     <div
-      className="min-h-screen bg-[#0F0F0F] text-white/90"
+      className="min-h-screen bg-[#0F0F0F] text-white/90 overflow-x-hidden"
       style={{ backgroundImage: 'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(246,201,69,0.06) 0%, transparent 60%)' }}
     >
-      {/* P2: py-10 → py-8 */}
-      <div className="mx-auto max-w-2xl px-4 py-8">
+      {/* P2: py-10 → py-8 → mobile: py-6 sm:py-8 */}
+      <div className="mx-auto max-w-2xl px-3 sm:px-4 py-6 sm:py-8">
 
         {/* ── Header (P4) ───────────────────────────────────── */}
         {/* P2: mb-8 → mb-4 */}
@@ -199,7 +199,7 @@ export default function OnboardingPage() {
                 <div key={s.n} className="flex items-center">
                   <div className="flex flex-col items-center gap-1.5">
                     <div className={cn(
-                      'flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all duration-300',
+                      'flex h-7 w-7 sm:h-9 sm:w-9 items-center justify-center rounded-full border-2 transition-all duration-300',
                       active && 'border-lumi-gold bg-lumi-gold/15 text-lumi-gold scale-110',
                       done   && 'border-signal-scale bg-signal-scale/15 text-signal-scale',
                       !active && !done && 'border-white/15 text-white/30',
@@ -220,7 +220,7 @@ export default function OnboardingPage() {
                   </div>
                   {/* Animated fill connector — not after last step */}
                   {i < STEPS.length - 1 && (
-                    <div className="relative mx-3 h-0.5 w-20 overflow-hidden rounded-full bg-white/10">
+                    <div className="relative mx-1 sm:mx-3 h-0.5 w-20 overflow-hidden rounded-full bg-white/10">
                       <div className={cn(
                         'absolute inset-y-0 left-0 rounded-full transition-all duration-500',
                         done ? 'w-full bg-signal-scale/60' : 'w-0',
@@ -234,7 +234,7 @@ export default function OnboardingPage() {
         </div>
 
         {/* ── Card (P1) ─────────────────────────────────────── */}
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-7 shadow-xl shadow-black/30 ring-1 ring-white/5">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 sm:p-7 shadow-xl shadow-black/30 ring-1 ring-white/5">
 
           {step === 1 && (
             <Section title="Company basics">
@@ -247,7 +247,7 @@ export default function OnboardingPage() {
                   placeholder="Acme Inc."
                 />
               </Field>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <Field label="Industry *">
                   <select className={inputCls} value={form.industry} onChange={(e) => set('industry', e.target.value)}>
                     <option value="">Select…</option>
@@ -276,14 +276,14 @@ export default function OnboardingPage() {
               </div>
               {/* Language preference */}
               <Field label="Content Language *">
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   {LANGUAGES.map((lang) => (
                     <button
                       key={lang}
                       type="button"
                       onClick={() => set('language', lang)}
                       className={cn(
-                        'rounded-xl border p-2.5 text-xs font-semibold text-center transition-all',
+                        'rounded-xl border p-2 sm:p-2.5 text-xs sm:text-sm font-semibold text-center transition-all',
                         form.language === lang
                           ? 'border-lumi-gold/50 bg-lumi-gold/10 text-lumi-gold'
                           : 'border-white/8 bg-white/[0.03] text-white/50 hover:border-white/20 hover:text-white/70',
@@ -317,14 +317,14 @@ export default function OnboardingPage() {
           {step === 2 && (
             <Section title="Business model">
               <Field label="Business Type *">
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-3 gap-2 sm:gap-3">
                   {['B2B', 'B2C', 'Both'].map((t) => (
                     <button
                       key={t}
                       type="button"
                       onClick={() => set('businessType', t)}
                       className={cn(
-                        'rounded-xl border p-3 text-sm font-semibold transition-all',
+                        'rounded-xl border p-2.5 sm:p-3 text-xs sm:text-sm font-semibold transition-all',
                         form.businessType === t
                           ? 'border-lumi-gold/50 bg-lumi-gold/10 text-lumi-gold'
                           : 'border-white/8 bg-white/[0.03] text-white/50 hover:border-white/20 hover:text-white/70',
@@ -365,7 +365,7 @@ export default function OnboardingPage() {
 
               <Field label="Target Audience *">
                 <textarea
-                  className={cn(inputCls, 'min-h-[80px]')}
+                  className={cn(inputCls, 'min-h-[72px] sm:min-h-[88px]')}
                   value={form.targetAudience}
                   onChange={(e) => set('targetAudience', e.target.value)}
                   placeholder="Who specifically are you trying to reach?"
@@ -392,7 +392,7 @@ export default function OnboardingPage() {
                       type="button"
                       onClick={() => set('tone', t.id)}
                       className={cn(
-                        'w-full rounded-xl border p-3 text-left transition-all',
+                        'w-full rounded-xl border p-2.5 sm:p-3 text-left transition-all',
                         form.tone === t.id
                           ? 'border-lumi-gold/50 bg-lumi-gold/8'
                           : 'border-white/8 bg-white/[0.03] hover:border-white/20',
@@ -423,7 +423,7 @@ export default function OnboardingPage() {
 
           {/* ── Nav row (P6: border-t divider) ───────────────── */}
           {step < 3 && (
-            <div className="mt-6 flex justify-between border-t border-white/8 pt-5">
+            <div className="mt-5 sm:mt-6 flex justify-between gap-2 border-t border-white/8 pt-5">
               <button
                 type="button"
                 onClick={() => setStep((n) => Math.max(1, n - 1))}
@@ -441,7 +441,7 @@ export default function OnboardingPage() {
                   }
                   setStep((n) => Math.min(3, n + 1));
                 }}
-                className="inline-flex items-center gap-1 rounded-xl bg-lumi-gold px-5 py-2.5 font-display text-sm font-semibold text-dark-base hover:bg-lumi-deep active:scale-[0.98] shadow-gold-glow transition-all"
+                className="inline-flex items-center justify-center gap-1 rounded-xl bg-lumi-gold px-5 py-2.5 sm:py-2.5 font-display text-sm font-semibold text-dark-base hover:bg-lumi-deep active:scale-[0.98] shadow-gold-glow transition-all min-w-[120px]"
               >
                 Continue <ArrowRight className="h-4 w-4" />
               </button>
@@ -449,7 +449,7 @@ export default function OnboardingPage() {
           )}
 
           {step === 3 && (
-            <div className="mt-6 flex justify-between border-t border-white/8 pt-5">
+            <div className="mt-5 sm:mt-6 flex justify-between gap-2 border-t border-white/8 pt-5">
               <button
                 type="button"
                 onClick={() => setStep((n) => Math.max(1, n - 1))}
@@ -468,7 +468,7 @@ export default function OnboardingPage() {
                   finish(false);
                 }}
                 disabled={busy}
-                className="inline-flex items-center gap-1 rounded-xl bg-lumi-gold px-5 py-2.5 font-display text-sm font-semibold text-dark-base hover:bg-lumi-deep active:scale-[0.98] shadow-gold-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center justify-center gap-1 rounded-xl bg-lumi-gold px-5 py-2.5 font-display text-sm font-semibold text-dark-base hover:bg-lumi-deep active:scale-[0.98] shadow-gold-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-[160px] sm:min-w-0"
               >
                 {busy ? (
                   <>
@@ -502,8 +502,8 @@ const inputCls =
 function Section({ title, children }) {
   return (
     <div>
-      <h2 className="mb-5 font-mono text-xs font-semibold uppercase tracking-widest text-white/35">{title}</h2>
-      <div className="space-y-4">{children}</div>
+      <h2 className="mb-4 sm:mb-5 font-mono text-xs font-semibold uppercase tracking-widest text-white/35">{title}</h2>
+      <div className="space-y-3 sm:space-y-4">{children}</div>
     </div>
   );
 }
