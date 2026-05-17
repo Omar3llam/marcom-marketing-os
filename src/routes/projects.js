@@ -82,6 +82,62 @@ projectsRouter.get('/list', async (req, res) => {
   }
 });
 
+// ── GET /api/projects/mine ───────────────────────────────────
+// Returns the user's active projectId (most-recently-updated project).
+// Creates one if none exists (idempotent, safe to call on every app mount).
+// Used by frontend to resolve projectId before Meta connect, credential checks, etc.
+projectsRouter.get('/mine', async (req, res) => {
+  const userId = req.userId;
+  if (!userId) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    // 1. Try to find existing projects
+    let projects = await listProjects(userId);
+
+    if (projects.length === 0) {
+      // 2. No projects — try to migrate from legacy UserContext
+      const migratedId = await migrateFromUserContext(userId);
+      if (migratedId) {
+        logger.info({ userId, migratedId }, '[projects/mine] auto-migrated from userContext');
+        return res.json({
+          projectId: migratedId,
+          name:      'My First Project',
+          source:    'migrated',
+        });
+      }
+
+      // 3. No legacy context either — create a blank project
+      const projectId = `proj_${userId.slice(-8)}_${Date.now()}`;
+      await createProject(userId, {
+        projectId,
+        name:    'My Workspace',
+        context: '',
+      });
+
+      logger.info({ userId, projectId }, '[projects/mine] created blank project');
+      return res.json({
+        projectId,
+        name:   'My Workspace',
+        source: 'created',
+      });
+    }
+
+    // Return most-recently-updated project
+    const active = projects[0];
+    return res.json({
+      projectId: active.projectId,
+      name:      active.name,
+      source:    'existing',
+    });
+
+  } catch (err) {
+    logger.error({ err: err.message, userId }, '[projects/mine] handler failed');
+    return res.status(500).json({ error: 'Could not resolve project' });
+  }
+});
+
 // ── GET /api/projects/:projectId ─────────────────────────────
 // Returns full project including context. 404 if not found or wrong user.
 projectsRouter.get('/:projectId', async (req, res) => {
