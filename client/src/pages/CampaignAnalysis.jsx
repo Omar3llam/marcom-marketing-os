@@ -9,7 +9,7 @@
 // ============================================================
 import { useMemo, useState } from 'react';
 import {
-  Upload, ChevronUp, ChevronDown, BarChart3, X, RefreshCw,
+  Upload, ChevronUp, ChevronDown, BarChart3, X, RefreshCw, Loader2,
 } from 'lucide-react';
 import { useCampaignFeed, metricValue } from '@/hooks/useCampaignFeed.js';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
@@ -77,34 +77,20 @@ export default function CampaignAnalysis() {
   // Handle Meta live sync: fetch from API → analyze → render
   const handleMetaSync = async () => {
     if (syncing) return;
-    if (!workspace?.id) {
-      toast.error('No workspace found. Please complete onboarding first.');
-      return;
-    }
-
     setSyncing(true);
     try {
-      const res = await api.post('/api/campaigns/fetch-meta', {
-        mode: 'analyze',
-        projectId: workspace.id,
-        datePreset: 'last_7d',
-      });
-
-      if (res.data.success && res.data.decisions) {
-        const transformed = transformDecisionsToFeed(res.data);
-        setCampaigns(transformed);
-        toast.success(
-          `Synced ${res.data.stats?.analyzed || 0} campaign${res.data.stats?.analyzed === 1 ? '' : 's'} from Meta`,
-          { description: 'Live analysis complete — rendering intelligence layer' }
-        );
-      } else {
-        toast.error(res.data.error || 'Failed to sync Meta campaigns');
-      }
+      await api.post('/api/campaigns/fetch-meta', { datePreset: 'last_30d' });
+      await refetch();
+      toast.success('Meta campaigns synced.');
     } catch (err) {
-      const msg = err.response?.data?.error || err.response?.data?.message || err.message || 'Sync failed';
-      toast.error(msg, {
-        description: err.response?.data?.hint || 'Check that Meta OAuth is connected',
-      });
+      const msg = err.response?.data?.message || 'Sync failed';
+      if (err.response?.status === 404) {
+        toast.error('No Meta credential found. Connect Meta in Settings → Integrations.');
+      } else if (err.response?.status === 401) {
+        toast.error('Meta token expired. Reconnect in Settings → Integrations.');
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setSyncing(false);
     }
@@ -164,13 +150,13 @@ export default function CampaignAnalysis() {
             type="button"
             onClick={handleMetaSync}
             disabled={syncing}
-            className={cn(
-              "inline-flex items-center gap-1.5 bg-lumi-accent text-lumi-bg border border-lumi-accent rounded-xl px-4 py-2 text-sm font-display font-semibold shadow-accent-glow transition-all",
-              syncing ? "opacity-60 cursor-not-allowed" : "hover:bg-lumi-accent-hover"
-            )}
+            className="inline-flex items-center gap-1.5 bg-lumi-gold text-dark-base rounded-xl px-4 py-2 text-sm font-semibold hover:bg-lumi-deep disabled:opacity-60 transition-all"
           >
-            <RefreshCw className={cn("w-3.5 h-3.5", syncing && "animate-spin")} strokeWidth={2} />
-            {syncing ? 'Syncing...' : 'Sync Live Meta'}
+            {syncing
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <RefreshCw className="w-3.5 h-3.5" strokeWidth={2} />
+            }
+            {syncing ? 'Syncing…' : 'Sync Live Meta'}
           </button>
           <button
             type="button"
