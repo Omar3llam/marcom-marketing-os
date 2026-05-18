@@ -69,6 +69,7 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
 
       const res = await api.post(endpoint, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: mode === 'analyze' ? 180_000 : 60_000, // 3 min for AI analysis, 1 min for DB write
         onUploadProgress: (evt) => {
           if (evt.total) setProgress(Math.round((evt.loaded / evt.total) * 100));
         },
@@ -156,7 +157,13 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
               )}
             >
               {busy && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {busy ? `Uploading ${progress}%` : 'Upload'}
+              {busy
+                ? progress < 100
+                  ? `Uploading ${progress}%`
+                  : mode === 'analyze'
+                    ? 'Analyzing with AI...'
+                    : 'Processing...'
+                : 'Upload'}
             </button>
             <button
               type="button"

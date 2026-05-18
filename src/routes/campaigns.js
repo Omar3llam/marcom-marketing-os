@@ -355,12 +355,9 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
       });
     }
 
-    // ── Analyze each campaign with Claude orchestrator ─────────
-    const decisions = [];
-    const errors    = [];
-
-    for (const c of parsed) {
-      try {
+    // ── Analyze campaigns in parallel with Claude orchestrator ─────────
+    const results = await Promise.allSettled(
+      parsed.map(async (c) => {
         // Build analysis payload from parsed campaign
         const dataForClaude = {
           campaignId:   c.campaignId,
@@ -389,16 +386,26 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
         decision.campaignName = c.campaignName;
         decision.adsetName    = c.adsetName;
 
-        decisions.push(decision);
-      } catch (err) {
-        logger.error({ err: err.message, campaignId: c.campaignId },
+        return decision;
+      }),
+    );
+
+    // Separate successful decisions from errors
+    const decisions = [];
+    const errors    = [];
+
+    results.forEach((result, idx) => {
+      if (result.status === 'fulfilled') {
+        decisions.push(result.value);
+      } else {
+        logger.error({ err: result.reason?.message, campaignId: parsed[idx].campaignId },
           '[campaigns/upload-csv] orchestrator.analyzeCampaignData failed');
         errors.push({
-          campaign: c.campaignName,
-          error:    err.message,
+          campaign: parsed[idx].campaignName,
+          error:    result.reason?.message || 'Analysis failed',
         });
       }
-    }
+    });
 
     logger.info({
       userId:    req.userId,
