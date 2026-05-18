@@ -104,13 +104,13 @@ authMetaRouter.get('/callback', async (req, res) => {
   // ── User denied the OAuth permission dialog
   if (oauthError) {
     logger.warn({ oauthError, error_description }, '[meta-auth] User denied Meta OAuth');
-    return res.redirect('/app.html?meta_error=denied');
+    return res.redirect('/app/settings?meta_error=denied');
   }
 
   // ── Validate state HMAC
   const stateData = parseState(stateParam || '');
   if (!stateData) {
-    return res.redirect('/app.html?meta_error=invalid_state');
+    return res.redirect('/app/settings?meta_error=invalid_state');
   }
   const { userId, projectId } = stateData;
 
@@ -118,7 +118,7 @@ authMetaRouter.get('/callback', async (req, res) => {
   const project = await getProject(userId, projectId).catch(() => null);
   if (!project) {
     logger.warn({ userId, projectId }, '[meta-auth] Project not found in callback');
-    return res.redirect('/app.html?meta_error=project_not_found');
+    return res.redirect('/app/settings?meta_error=project_not_found');
   }
 
   try {
@@ -166,11 +166,11 @@ authMetaRouter.get('/callback', async (req, res) => {
 
     // ── Redirect back to app with success flag
     return res.redirect(
-      `/app.html?meta_connected=1&projectId=${encodeURIComponent(projectId)}`
+      `/app/settings?meta_connected=1&projectId=${encodeURIComponent(projectId)}`
       + (adAccountId ? `&adAccountId=${encodeURIComponent(adAccountId)}` : '')
     );
   } catch (err) {
     logger.error({ err: err.message, userId, projectId }, '[meta-auth] Callback error');
-    return res.redirect(`/app.html?meta_error=server_error`);
+    return res.redirect(`/app/settings?meta_error=server_error`);
   }
 });

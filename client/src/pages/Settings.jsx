@@ -54,6 +54,27 @@ export default function Settings() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
+  // ── Detect successful Meta OAuth callback ──────────────────
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('meta_connected') === '1') {
+      toast.success('Meta Ads connected successfully!');
+      setMetaStatus('connected');
+      // Clean URL without reload
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('meta_error')) {
+      const errorType = params.get('meta_error');
+      const errorMessages = {
+        denied: 'Meta connection was cancelled',
+        invalid_state: 'Invalid OAuth state - please try again',
+        project_not_found: 'Workspace not found',
+        server_error: 'Server error during Meta connection',
+      };
+      toast.error(errorMessages[errorType] || 'Failed to connect Meta Ads');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
   // ── Initialize from Firebase + localStorage ────────────────
   useEffect(() => {
     if (currentUser) {
