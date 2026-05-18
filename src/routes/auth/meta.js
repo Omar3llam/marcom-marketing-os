@@ -25,7 +25,8 @@ export const authMetaRouter = Router();
 
 // ── CONFIG ───────────────────────────────────────────────────
 const APP_ID       = () => process.env.META_APP_ID     || '';
-const REDIRECT_URI = () => process.env.META_REDIRECT_URI || '';
+const REDIRECT_URI = () => process.env.META_REDIRECT_URI
+  || `${process.env.APP_BASE_URL || 'https://marcom-marketing-os.onrender.com'}/api/auth/meta/callback`;
 const SCOPES       = ['ads_read', 'ads_management'].join(',');
 const API_VERSION  = 'v21.0';
 
@@ -81,9 +82,6 @@ authMetaRouter.get('/connect', requireAuth, (req, res) => {
   }
   if (!APP_ID()) {
     return res.status(503).json({ error: 'META_APP_ID is not configured on this server.' });
-  }
-  if (!REDIRECT_URI()) {
-    return res.status(503).json({ error: 'META_REDIRECT_URI is not configured on this server.' });
   }
 
   const state = buildState(userId, projectId);
