@@ -35,7 +35,10 @@ export function VerdictPill({ verdict }) {
   const c = verdictConfig[verdict];
   return (
     <span
-      className={cn('decision-pill border', c?.bg, c?.text, c?.border, !c && fallback)}
+      className={cn(
+        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-display font-semibold uppercase tracking-wide border',
+        c?.bg, c?.text, c?.border, !c && fallback
+      )}
       aria-label={`Verdict: ${verdict}`}
     >
       {verdict}
@@ -47,7 +50,10 @@ export function PriorityPill({ priority }) {
   const c = priorityConfig[priority];
   return (
     <span
-      className={cn('decision-pill border', c?.bg, c?.text, c?.border, !c && fallback)}
+      className={cn(
+        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-display font-semibold uppercase tracking-wide border',
+        c?.bg, c?.text, c?.border, !c && fallback
+      )}
       aria-label={`Priority: ${priority}`}
     >
       {priority}
@@ -58,7 +64,10 @@ export function PriorityPill({ priority }) {
 export function StagePill({ stage }) {
   return (
     <span
-      className={cn('decision-pill border', stageConfig[stage] ?? fallback)}
+      className={cn(
+        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-display font-semibold uppercase tracking-wide border',
+        stageConfig[stage] ?? fallback
+      )}
       aria-label={`Stage: ${stage}`}
     >
       {stage}

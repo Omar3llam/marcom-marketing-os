@@ -104,19 +104,23 @@ app.use(cors({
 // ── CONTENT SECURITY POLICY (defense-in-depth XSS protection) ────────
 // Restricts where scripts, styles, and other resources can be loaded from.
 // Even if an XSS vulnerability exists in code, CSP blocks execution.
+//
+// SECURITY NOTE: Fonts are now self-hosted via @fontsource (no Google CDN).
+// Firebase Auth requires both accounts.google.com AND *.firebaseapp.com iframes.
 app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
     [
       "default-src 'self'",
-      "script-src 'self' https://apis.google.com",             // Firebase Auth SDK
-      "style-src 'self' 'unsafe-inline'",                     // Tailwind inline styles
-      "img-src 'self' data: https:",                          // images + data URIs
+      "script-src 'self' https://apis.google.com",                          // Firebase Auth SDK
+      "style-src 'self' 'unsafe-inline'",                                   // Tailwind inline styles
+      "font-src 'self' data:",                                              // Self-hosted fonts + data URIs
+      "img-src 'self' data: https:",                                        // Images + data URIs
       "connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com https://*.firebase.com https://api.anthropic.com https://api.openai.com", // API calls
-      "frame-src https://accounts.google.com",                // Google OAuth iframe
-      "object-src 'none'",                                    // block Flash, Java, etc
-      "base-uri 'self'",                                      // prevent base tag hijacking
-      "form-action 'self'",                                   // only submit forms to same origin
+      "frame-src https://accounts.google.com https://*.firebaseapp.com",    // Google OAuth + Firebase Auth iframes
+      "object-src 'none'",                                                  // Block Flash, Java, etc
+      "base-uri 'self'",                                                    // Prevent base tag hijacking
+      "form-action 'self'",                                                 // Only submit forms to same origin
     ].join('; ')
   );
   next();

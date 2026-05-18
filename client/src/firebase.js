@@ -10,6 +10,8 @@
 import { initializeApp } from 'firebase/app';
 import {
   getAuth,
+  initializeAuth,
+  browserLocalPersistence,
   GoogleAuthProvider,
   signInWithPopup,
   signInWithEmailAndPassword,
@@ -65,6 +67,10 @@ let _auth = null;  // Internal auth instance
 /**
  * Initializes Firebase app (lazy singleton pattern).
  * Throws if config validation fails.
+ *
+ * ARCHITECTURE NOTE:
+ * Uses initializeAuth with explicit browserLocalPersistence to prevent
+ * IndexedDB heartbeat-store corruption issues in production.
  */
 function initializeFirebase() {
   if (app) return app;
@@ -78,7 +84,11 @@ function initializeFirebase() {
   }
 
   app = initializeApp(validation.config);
-  _auth = getAuth(app);
+
+  // Use initializeAuth with explicit persistence (prevents IndexedDB corruption)
+  _auth = initializeAuth(app, {
+    persistence: browserLocalPersistence,
+  });
 
   return app;
 }

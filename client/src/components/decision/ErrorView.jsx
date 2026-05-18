@@ -31,7 +31,7 @@ export default function ErrorView({ error, onRetry, onBack }) {
   return (
     <div className="max-w-md mx-auto p-8 flex flex-col items-center animate-fade-in">
       <div className="w-full bg-lumi-surface border border-trend-danger/30 rounded-2xl overflow-hidden">
-        <div className="card-accent card-accent-error" aria-hidden="true" />
+        <div className="h-[3px] w-full bg-gradient-to-r from-signal-kill to-signal-hold" aria-hidden="true" />
         <div className="p-8 text-center">
           <AlertTriangle className="w-12 h-12 mx-auto text-trend-danger" strokeWidth={1.5} />
           <DecisionTitle as="h2" className="mt-4 text-lumi-text">Analysis failed</DecisionTitle>

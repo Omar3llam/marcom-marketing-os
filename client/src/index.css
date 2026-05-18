@@ -57,12 +57,17 @@
   --color-text-subtle: #9A9A9A;
 
   /* ── Signal System (Kill/Hold/Scale) ─────────────────────── */
-  --color-signal-kill: #EF4444;
-  --color-signal-kill-bg: rgba(239, 68, 68, 0.10);
-  --color-signal-hold: #F59E0B;
-  --color-signal-hold-bg: rgba(245, 158, 11, 0.10);
-  --color-signal-scale: #10B981;
-  --color-signal-scale-bg: rgba(16, 185, 129, 0.10);
+  --color-signal-kill-rgb: 239 68 68;
+  --color-signal-kill: rgb(var(--color-signal-kill-rgb));
+  --color-signal-kill-bg: rgb(var(--color-signal-kill-rgb) / 0.1);
+
+  --color-signal-hold-rgb: 245 158 11;
+  --color-signal-hold: rgb(var(--color-signal-hold-rgb));
+  --color-signal-hold-bg: rgb(var(--color-signal-hold-rgb) / 0.1);
+
+  --color-signal-scale-rgb: 16 185 129;
+  --color-signal-scale: rgb(var(--color-signal-scale-rgb));
+  --color-signal-scale-bg: rgb(var(--color-signal-scale-rgb) / 0.1);
 
   /* ── Stage Tokens ────────────────────────────────────────── */
   --color-stage-dying: #EF4444;
@@ -232,84 +237,6 @@
  * ============================================================ */
 
 @layer components {
-  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   * TYPOGRAPHY ROLE CLASSES
-   * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   * PURPOSE:
-   * - Eliminate generic text-xl/text-2xl drift
-   * - Enforce semantic typography hierarchy
-   * - Align with design-system lint rules
-   * - Single source of truth for text styles
-   *
-   * USAGE:
-   * Before: <h2 className="text-xl font-display">
-   * After:  <h2 className="decision-title">
-   *
-   * BENEFIT:
-   * - One place to change all decision titles
-   * - Lint can enforce usage
-   * - Easier to theme/rebrand
-   * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-
-  /* ── Headings ────────────────────────────────────────────── */
-  .decision-title {
-    @apply text-xl font-display font-semibold text-dark-base tracking-tight;
-  }
-
-  .panel-heading {
-    @apply text-lg font-display font-semibold text-dark-base;
-  }
-
-  .section-heading {
-    @apply text-base font-display font-semibold text-dark-soft uppercase tracking-wide;
-  }
-
-  /* ── Labels ──────────────────────────────────────────────── */
-  .section-label {
-    @apply font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-dark-soft;
-  }
-
-  .radar-label {
-    @apply font-mono text-xs font-medium uppercase tracking-wide text-dark-soft;
-  }
-
-  /* ── Metric Display ──────────────────────────────────────── */
-  .metric-display {
-    @apply font-display text-3xl font-bold text-dark-base tabular-nums;
-  }
-
-  .metric-value {
-    @apply font-mono text-base font-medium text-dark-base tabular-nums;
-  }
-
-  .verdict-number {
-    @apply font-mono text-2xl font-bold tabular-nums;
-  }
-
-  /* ── Body Text ───────────────────────────────────────────── */
-  .body-muted {
-    @apply text-sm text-dark-soft leading-relaxed;
-  }
-
-  .body-subtle {
-    @apply text-sm text-dark-muted leading-relaxed;
-  }
-
-  /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   * SEMANTIC UI PRIMITIVES
-   * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
-
-  /* ── Decision Pills ──────────────────────────────────────── */
-  /*
-   * PURPOSE: Base for all verdict/priority/stage badges
-   * USAGE: Extended via Tailwind utilities (not variants here)
-   * FUTURE: Consider cva() for variant management in React
-   */
-  .decision-pill {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
-           text-xs font-display font-semibold uppercase tracking-wide;
-  }
-
   /* ── Toast Notifications ─────────────────────────────────── */
   /*
    * PURPOSE: Sonner toast styling (design system aligned)
@@ -319,55 +246,6 @@
   .lumi-toast {
     @apply bg-surface-card border border-surface-border-strong text-dark-base
            font-body text-sm shadow-lg;
-  }
-
-  /* ── Card Accent Bars ────────────────────────────────────── */
-  /*
-   * CHANGE: Replaced theme() with CSS variables
-   * REASON:
-   * - theme() creates runtime coupling to Tailwind config
-   * - CSS vars enable dynamic theming
-   * - Safer for white-label customization
-   *
-   * ARCHITECTURE:
-   * - Base class defines structure
-   * - Variant classes define gradients
-   * - Gradients use CSS vars (not hard-coded colors)
-   */
-  .card-accent {
-    @apply h-[3px] w-full;
-  }
-
-  .card-accent-campaign {
-    background: linear-gradient(
-      90deg,
-      var(--color-signal-kill) 0%,
-      var(--color-signal-hold) 100%
-    );
-  }
-
-  .card-accent-strategy {
-    background: linear-gradient(
-      90deg,
-      var(--color-lumi-accent) 0%,
-      var(--color-stage-scaling) 100%
-    );
-  }
-
-  .card-accent-content {
-    background: linear-gradient(
-      90deg,
-      var(--color-stage-testing) 0%,
-      var(--color-signal-scale) 100%
-    );
-  }
-
-  .card-accent-error {
-    background: linear-gradient(
-      90deg,
-      var(--color-signal-kill) 0%,
-      var(--color-signal-hold) 100%
-    );
   }
 }
 
