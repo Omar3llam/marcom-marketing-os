@@ -297,9 +297,11 @@
    * USAGE: SuccessView sections, staggered content entrance
    * ARCHITECTURE: Uses Tailwind's animate-* (references global keyframes)
    * CHANGE: Simplified from inline keyframes reference
+   * FIX v4.2: Added animation-fill-mode to ensure content stays visible
    */
   .reveal {
     @apply opacity-0 animate-slide-up;
+    animation-fill-mode: forwards;
   }
 
   /* ── Stagger Delays (for .reveal sequences) ──────────────── */
