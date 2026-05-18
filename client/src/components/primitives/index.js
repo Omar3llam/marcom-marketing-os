@@ -30,3 +30,9 @@ export { ConfidenceIndicator }      from './flows/ConfidenceIndicator';
 export { RiskSignal }               from './flows/RiskSignal';
 export { UrgencyBadge }             from './flows/UrgencyBadge';
 export { RecommendationStrength }   from './flows/RecommendationStrength';
+
+// Input primitives (decision intake layer)
+export { InputSection }             from './flows/InputSection';
+export { InputLabel }               from './flows/InputLabel';
+export { InputHint }                from './flows/InputHint';
+export { InputField }               from './flows/InputField';

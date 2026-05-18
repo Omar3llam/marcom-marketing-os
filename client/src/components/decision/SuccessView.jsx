@@ -15,7 +15,17 @@ import {
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import InlineBar       from '@/components/ui/InlineBar.jsx';
 import { cn }          from '@/lib/utils.js';
-import { DecisionTitle, MetricValue, VerdictBadge } from '@/components/primitives';
+import {
+  DecisionTitle,
+  MetricValue,
+  SectionLabel,
+  Text,
+  BodyMuted,
+  BodySubtle,
+  RiskSignal,
+  RecommendationStrength,
+} from '@/components/primitives';
+import { DecisionTrustCluster } from '@/components/assemblies';
 
 const VERDICT_GLOW = {
   KILL:     'shadow-kill-glow border-signal-kill/30',
@@ -31,31 +41,35 @@ const VERDICT_TEXT = {
   OPTIMIZE: 'text-stage-testing bg-stage-testing/10',
 };
 
+// Risk level mapping moved to DecisionTrustCluster assembly
+
 export default function SuccessView({ data, onReset, onCommit }) {
   const isLoss = data.verdict === 'KILL' || data.verdict === 'HOLD';
   return (
     <div className="max-w-3xl mx-auto p-6 lg:p-8">
       {/* Subtle context header */}
-      <div className="flex items-center gap-2 text-xs font-mono text-lumi-subtle mb-6">
+      <div className="flex items-center gap-2 mb-6">
         <Lock className="w-3 h-3 text-signal-scale" strokeWidth={1.5} />
-        Calibrated for context lock · Mode {data.mode === 'campaign' ? '3' : data.mode === 'strategy' ? '2' : '4'}
+        <Text as="span" variant="data" intent="subtle" size="xs" className="font-mono">
+          Calibrated for context lock · Mode {data.mode === 'campaign' ? '3' : data.mode === 'strategy' ? '2' : '4'}
+        </Text>
         <span className="ml-auto inline-flex items-center gap-1">
-          Analysis by:{' '}
+          <Text as="span" variant="data" intent="subtle" size="xs">
+            Analysis by:{' '}
+          </Text>
           {data.agentsUsed?.includes('claude') && <AgentChip agent="claude" />}
           {data.agentsUsed?.includes('openai') && <AgentChip agent="openai" />}
         </span>
       </div>
 
-      {/* ── SECTION 1 — Verdict + confidence + risk (0ms) ── */}
-      <section className="reveal flex flex-col sm:flex-row sm:items-center gap-4 mb-6" style={{ animationDelay: '0ms' }}>
-        <VerdictBadge verdict={data.verdict} />
-        <div className="flex-1">
-          <DecisionTitle as="h1" className="text-lumi-text">{data.title}</DecisionTitle>
-          <div className="mt-2 flex items-center gap-3">
-            <ConfidenceBar value={data.confidence} />
-            <RiskBadge level={data.riskLevel} />
-          </div>
-        </div>
+      {/* ── SECTION 1 — Hero Verdict Zone (0ms) ── */}
+      <section className="reveal mb-6" style={{ animationDelay: '0ms' }}>
+        <DecisionTrustCluster
+          verdict={data.verdict}
+          title={data.title}
+          confidence={data.confidence}
+          riskLevel={data.riskLevel}
+        />
       </section>
 
       {/* ── SECTION 2 — Confidence metrics (400ms) ── */}
@@ -66,14 +80,16 @@ export default function SuccessView({ data, onReset, onCommit }) {
       {/* ── SECTION 3 — Why breakdown (800ms) ── */}
       {data.whyBreakdown.length > 0 && (
         <section className="reveal mb-6" style={{ animationDelay: '800ms' }}>
-          <div className="section-label mb-2">Why this verdict</div>
+          <SectionLabel as="div" className="mb-2">Why this verdict</SectionLabel>
           <ol className="space-y-2 border-l-2 border-lumi-accent/30 pl-3">
             {data.whyBreakdown.map((item, i) => (
               <li key={i} className="flex items-start gap-3">
-                <span className="font-mono text-xs bg-lumi-elevated text-lumi-muted px-2 py-0.5 rounded shrink-0 mt-0.5">
+                <Text as="span" variant="data" intent="muted" size="xs" className="font-mono bg-lumi-elevated px-2 py-0.5 rounded shrink-0 mt-0.5">
                   {String(i + 1).padStart(2, '0')}
-                </span>
-                <span className="text-lumi-text font-body text-sm leading-relaxed">{item}</span>
+                </Text>
+                <Text as="span" variant="body" intent="primary" size="sm" className="leading-relaxed">
+                  {item}
+                </Text>
               </li>
             ))}
           </ol>
@@ -124,52 +140,18 @@ export default function SuccessView({ data, onReset, onCommit }) {
 }
 
 // ── Confidence + risk ───────────────────────────────────────
-function ConfidenceBar({ value }) {
-  const v = Math.max(0, Math.min(100, value));
-  const fillClass =
-      v < 50 ? 'bg-signal-kill'
-    : v < 75 ? 'bg-signal-hold'
-    :          'bg-signal-scale';
-  return (
-    <div className="flex-1 max-w-xs">
-      <div className="flex items-baseline justify-between text-xs">
-        <span className="section-label">Confidence</span>
-        <span className="font-mono text-lumi-text tabular-nums">{v}%</span>
-      </div>
-      <div className="mt-1 h-1.5 rounded-full bg-lumi-border overflow-hidden"
-        role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={v} aria-label={`Confidence ${v}%`}>
-        <div className={cn('h-full transition-[width] duration-500', fillClass)} style={{ width: `${v}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function RiskBadge({ level }) {
-  const cls = level === 'High'   ? 'text-signal-kill bg-signal-kill-bg border-signal-kill/30'
-            : level === 'Low'    ? 'text-signal-scale bg-signal-scale-bg border-signal-scale/30'
-            :                      'text-signal-hold bg-signal-hold-bg border-signal-hold/30';
-  return (
-    <span className={cn('font-mono text-xs uppercase tracking-wide px-2 py-1 rounded border', cls)}>
-      {level} Risk
-    </span>
-  );
-}
+// Replaced by semantic primitives: ConfidenceIndicator, RiskSignal
 
 // ── Confidence Card (auditable AI verdict) ──────────────────
 function ConfidenceCard({ data }) {
   const { confidence = 0, riskLevel = 'Medium', financialImpact, whyBreakdown = [] } = data;
 
-  const riskColor =
-    riskLevel === 'High'   ? 'text-signal-kill bg-signal-kill-bg border-signal-kill/20' :
-    riskLevel === 'Medium' ? 'text-signal-hold bg-signal-hold-bg border-signal-hold/20' :
-                             'text-signal-scale bg-signal-scale-bg border-signal-scale/20';
-
   return (
     <div className="rounded-xl border border-lumi-border bg-lumi-elevated p-5 shadow-card">
       {/* Title */}
-      <p className="font-mono text-[10px] uppercase tracking-widest text-lumi-subtle mb-4">
+      <SectionLabel as="p" className="mb-4">
         Verdict intelligence
-      </p>
+      </SectionLabel>
 
       {/* Metrics row */}
       <div className="grid grid-cols-3 gap-3 mb-4">
@@ -177,35 +159,44 @@ function ConfidenceCard({ data }) {
           <MetricValue as="div" className="text-lumi-text tabular-nums">
             {confidence}%
           </MetricValue>
-          <div className="font-mono text-[10px] text-lumi-subtle mt-0.5">Confidence</div>
+          <BodySubtle as="div" size="xs" className="font-mono mt-0.5">
+            Confidence
+          </BodySubtle>
         </div>
         <div className="text-center">
-          <div className={`inline-flex px-3 py-1 rounded-lg border font-mono text-sm font-semibold ${riskColor}`}>
-            {riskLevel}
-          </div>
-          <div className="font-mono text-[10px] text-lumi-subtle mt-0.5">Risk level</div>
+          <RiskSignal
+            severity={mapRiskLevelToSeverity(riskLevel)}
+            showLabel
+            showIcon={false}
+            className="inline-flex px-3 py-1"
+          />
+          <BodySubtle as="div" size="xs" className="font-mono mt-0.5">
+            Risk level
+          </BodySubtle>
         </div>
         <div className="text-center">
           <MetricValue as="div" className="text-lumi-text tabular-nums">
             {whyBreakdown.length}
           </MetricValue>
-          <div className="font-mono text-[10px] text-lumi-subtle mt-0.5">Signals analyzed</div>
+          <BodySubtle as="div" size="xs" className="font-mono mt-0.5">
+            Signals analyzed
+          </BodySubtle>
         </div>
       </div>
 
       {/* Financial impact */}
       {financialImpact && (
         <div className="rounded-lg border border-signal-kill/20 bg-signal-kill-bg px-4 py-2.5">
-          <p className="font-mono text-sm text-signal-kill font-semibold">
+          <Text as="p" variant="data" intent="danger" size="sm" className="font-mono font-semibold">
             {financialImpact}
-          </p>
+          </Text>
         </div>
       )}
     </div>
   );
 }
 
-// ── Autonomous Recommendation ───────────────────────────────
+// ── Autonomous Recommendation (Momentum Layer) ───────────────
 function AutonomousRecommendation({ rec }) {
   if (!rec?.action) return null;
 
@@ -213,32 +204,38 @@ function AutonomousRecommendation({ rec }) {
     <div className="rounded-2xl border border-lumi-gold/25 bg-lumi-gold/5 p-5 shadow-card">
       <div className="flex items-center gap-2 mb-4">
         <div className="w-1.5 h-1.5 rounded-full bg-lumi-gold animate-pulse" />
-        <p className="font-mono text-[10px] uppercase tracking-widest text-lumi-gold">
+        <SectionLabel as="p" intent="primary" className="text-lumi-gold">
           Autonomous recommendation
-        </p>
+        </SectionLabel>
       </div>
 
-      <p className="font-display font-bold text-base text-dark-base mb-3">
+      <DecisionTitle as="p" className="text-base mb-3">
         {rec.action}
-      </p>
+      </DecisionTitle>
 
       {rec.reallocation && (
         <div className="mb-3 px-3 py-2 rounded-lg bg-surface-card border border-surface-border">
-          <span className="font-mono text-xs text-dark-soft">Reallocation: </span>
-          <span className="font-mono text-xs font-semibold text-dark-base">{rec.reallocation}</span>
+          <BodyMuted as="span" size="xs" className="font-mono">
+            Reallocation:{' '}
+          </BodyMuted>
+          <Text as="span" variant="data" intent="primary" size="xs" className="font-mono font-semibold">
+            {rec.reallocation}
+          </Text>
         </div>
       )}
 
-      <p className="font-body text-sm text-dark-soft leading-relaxed mb-2">
+      <BodyMuted as="p" size="sm" className="leading-relaxed mb-2">
         {rec.rationale}
-      </p>
+      </BodyMuted>
 
       {rec.expectedOutcome && (
         <div className="flex items-center gap-2 mt-3 pt-3 border-t border-surface-border">
-          <span className="font-mono text-xs text-dark-soft">Expected: </span>
-          <span className="font-mono text-xs font-semibold text-signal-scale">
+          <BodyMuted as="span" size="xs" className="font-mono">
+            Expected:{' '}
+          </BodyMuted>
+          <Text as="span" variant="data" intent="success" size="xs" className="font-mono font-semibold">
             {rec.expectedOutcome}
-          </span>
+          </Text>
         </div>
       )}
     </div>
@@ -252,28 +249,40 @@ function CreativeAssetsBlock({ assets }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
-        <span className="section-label">AI Creative Variants</span>
-        <span className="font-mono text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded">ChatGPT</span>
+        <SectionLabel as="span">AI Creative Variants</SectionLabel>
+        <Text as="span" variant="data" size="xs" className="font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded">
+          ChatGPT
+        </Text>
       </div>
       {assets.creative_strategy_rationale && (
-        <p className="text-xs italic text-lumi-muted mb-3">{assets.creative_strategy_rationale}</p>
+        <BodyMuted as="p" size="xs" className="italic mb-3">
+          {assets.creative_strategy_rationale}
+        </BodyMuted>
       )}
       <div className="flex gap-3 overflow-x-auto pb-3">
         {variants.map((v, i) => (
           <article key={i} className="w-72 flex-shrink-0 rounded-2xl border border-lumi-border bg-lumi-surface p-4">
-            <h4 className="text-xs font-display font-semibold text-lumi-accent">{v.angle_name}</h4>
-            <p className="mt-2 font-display text-base text-lumi-text">{v.headline}</p>
-            <p className="mt-1 text-sm text-lumi-muted">{v.primary_text}</p>
+            <Text as="h4" variant="data" intent="secondary" size="xs" className="font-display font-semibold">
+              {v.angle_name}
+            </Text>
+            <Text as="p" variant="body" intent="primary" className="mt-2 font-display">
+              {v.headline}
+            </Text>
+            <BodyMuted as="p" size="sm" className="mt-1">
+              {v.primary_text}
+            </BodyMuted>
             {v.visual_direction && (
-              <blockquote className="mt-3 flex gap-2 rounded-lg border-l-2 border-yellow-400/50 bg-lumi-bg p-2 text-xs text-lumi-muted">
+              <blockquote className="mt-3 flex gap-2 rounded-lg border-l-2 border-yellow-400/50 bg-lumi-bg p-2">
                 <Palette className="w-3.5 h-3.5 shrink-0 text-yellow-300" strokeWidth={1.5} />
-                <span className="italic">{v.visual_direction}</span>
+                <BodyMuted as="span" size="xs" className="italic">
+                  {v.visual_direction}
+                </BodyMuted>
               </blockquote>
             )}
             {v.platform_notes && (
-              <span className="mt-2 inline-block font-mono text-[10px] bg-lumi-elevated text-lumi-muted border border-lumi-border px-1.5 py-0.5 rounded">
+              <Text as="span" variant="data" intent="muted" size="xs" className="mt-2 inline-block font-mono bg-lumi-elevated border border-lumi-border px-1.5 py-0.5 rounded">
                 {v.platform_notes}
-              </span>
+              </Text>
             )}
           </article>
         ))}
@@ -286,17 +295,19 @@ function ContentRewriteBlock({ rewrite }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <span className="section-label">Rewrite</span>
-        <span className="font-mono text-xs bg-signal-scale-bg text-signal-scale border border-signal-scale/30 px-2 py-0.5 rounded">
+        <SectionLabel as="span">Rewrite</SectionLabel>
+        <Text as="span" variant="data" intent="success" size="xs" className="font-mono bg-signal-scale-bg border border-signal-scale/30 px-2 py-0.5 rounded">
           Score → {rewrite.score}/100
-        </span>
+        </Text>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Pane title="Original" tone="kill" body={rewrite.original} />
         <Pane title="Lumi Rewrite" tone="scale" body={rewrite.rewrite} />
       </div>
       {rewrite.platformNotes && (
-        <p className="mt-3 text-xs text-lumi-muted italic">Platform note: {rewrite.platformNotes}</p>
+        <BodyMuted as="p" size="xs" className="mt-3 italic">
+          Platform note: {rewrite.platformNotes}
+        </BodyMuted>
       )}
     </div>
   );
@@ -304,12 +315,16 @@ function ContentRewriteBlock({ rewrite }) {
 
 function Pane({ title, tone, body }) {
   const cls = tone === 'kill'
-    ? 'border-l-2 border-l-signal-kill bg-lumi-bg text-lumi-muted'
-    : 'border-l-2 border-l-signal-scale bg-signal-scale-bg/10 text-lumi-text';
+    ? 'border-l-2 border-l-signal-kill bg-lumi-bg'
+    : 'border-l-2 border-l-signal-scale bg-signal-scale-bg/10';
+  const textIntent = tone === 'kill' ? 'muted' : 'primary';
+
   return (
     <div className={cn('rounded-xl border border-lumi-border p-4', cls)}>
-      <div className="section-label mb-2">{title}</div>
-      <p className="text-sm leading-relaxed whitespace-pre-wrap">{body || '—'}</p>
+      <SectionLabel as="div" className="mb-2">{title}</SectionLabel>
+      <Text as="p" variant="body" intent={textIntent} size="sm" className="leading-relaxed whitespace-pre-wrap">
+        {body || '—'}
+      </Text>
     </div>
   );
 }
@@ -320,10 +335,16 @@ function StrategyMarkdownBlock({ markdown }) {
   // until @tailwindcss/typography is added later.
   return (
     <div>
-      <div className="section-label mb-2">Strategy Brief</div>
-      <pre className="rounded-xl border border-lumi-border bg-lumi-surface p-4 font-body text-sm text-lumi-text leading-relaxed whitespace-pre-wrap break-words">
+      <SectionLabel as="div" className="mb-2">Strategy Brief</SectionLabel>
+      <Text
+        as="pre"
+        variant="body"
+        intent="primary"
+        size="sm"
+        className="rounded-xl border border-lumi-border bg-lumi-surface p-4 font-body leading-relaxed whitespace-pre-wrap break-words"
+      >
         {markdown}
-      </pre>
+      </Text>
     </div>
   );
 }
@@ -333,8 +354,13 @@ function AgentChip({ agent }) {
     ? 'text-orange-400 bg-orange-500/10 border-orange-500/25'
     : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25';
   return (
-    <span className={cn('font-mono text-xs px-1.5 py-0.5 rounded border', cls)}>
+    <Text
+      as="span"
+      variant="data"
+      size="xs"
+      className={cn('font-mono px-1.5 py-0.5 rounded border', cls)}
+    >
       {agent === 'claude' ? 'Claude' : 'ChatGPT'}
-    </span>
+    </Text>
   );
 }

@@ -24,7 +24,13 @@ import {
 } from 'lucide-react';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { cn } from '@/lib/utils.js';
-import { DecisionTitle, VerdictBadge } from '@/components/primitives';
+import {
+  DecisionTitle,
+  SectionLabel,
+  Text,
+  BodyMuted,
+} from '@/components/primitives';
+import { DecisionTrustCluster } from '@/components/assemblies';
 
 const VERDICT_GLOW = {
   KILL:     'shadow-kill-glow border-signal-kill/30',
@@ -39,6 +45,8 @@ const VERDICT_TEXT = {
   HOLD:     'text-signal-hold bg-signal-hold-bg',
   OPTIMIZE: 'text-stage-testing bg-stage-testing/10',
 };
+
+// Risk level mapping moved to DecisionTrustCluster assembly
 
 export default function DecisionFrame({
   data,
@@ -55,26 +63,28 @@ export default function DecisionFrame({
   return (
     <div className="max-w-3xl mx-auto p-6 lg:p-8">
       {/* Subtle context header */}
-      <div className="flex items-center gap-2 text-xs font-mono text-lumi-subtle mb-6">
+      <div className="flex items-center gap-2 mb-6">
         <Lock className="w-3 h-3 text-signal-scale" strokeWidth={1.5} />
-        Calibrated for context lock · Mode {data.mode === 'campaign' ? '3' : data.mode === 'strategy' ? '2' : '4'}
+        <Text as="span" variant="data" intent="subtle" size="xs" className="font-mono">
+          Calibrated for context lock · Mode {data.mode === 'campaign' ? '3' : data.mode === 'strategy' ? '2' : '4'}
+        </Text>
         <span className="ml-auto inline-flex items-center gap-1">
-          Analysis by:{' '}
+          <Text as="span" variant="data" intent="subtle" size="xs">
+            Analysis by:{' '}
+          </Text>
           {data.agentsUsed?.includes('claude') && <AgentChip agent="claude" />}
           {data.agentsUsed?.includes('openai') && <AgentChip agent="openai" />}
         </span>
       </div>
 
       {/* ── SECTION 1 — Verdict + confidence + risk (0ms) ── */}
-      <section className="reveal flex flex-col sm:flex-row sm:items-center gap-4 mb-6" style={{ animationDelay: '0ms' }}>
-        <VerdictBadge verdict={data.verdict} />
-        <div className="flex-1">
-          <DecisionTitle as="h1" className="text-lumi-text">{data.title}</DecisionTitle>
-          <div className="mt-2 flex items-center gap-3">
-            <ConfidenceBar value={data.confidence} />
-            <RiskBadge level={data.riskLevel} />
-          </div>
-        </div>
+      <section className="reveal mb-6" style={{ animationDelay: '0ms' }}>
+        <DecisionTrustCluster
+          verdict={data.verdict}
+          title={data.title}
+          confidence={data.confidence}
+          riskLevel={data.riskLevel}
+        />
       </section>
 
       {/* ── SECTION 2 — Financial impact (400ms) ── */}
@@ -87,23 +97,25 @@ export default function DecisionFrame({
           {isLoss
             ? <TrendingDown className="w-5 h-5 text-signal-kill shrink-0 mt-0.5" strokeWidth={1.5} />
             : <DollarSign  className="w-5 h-5 text-signal-scale shrink-0 mt-0.5" strokeWidth={1.5} />}
-          <p className="font-display font-semibold text-lumi-text leading-snug">
+          <Text as="p" variant="data" intent="primary" className="font-display font-semibold leading-snug">
             {data.financialImpact}
-          </p>
+          </Text>
         </div>
       </section>
 
       {/* ── SECTION 3 — Why breakdown (800ms) ── */}
       {data.whyBreakdown.length > 0 && (
         <section className="reveal mb-6" style={{ animationDelay: '800ms' }}>
-          <div className="section-label mb-2">Why this verdict</div>
+          <SectionLabel as="div" className="mb-2">Why this verdict</SectionLabel>
           <ol className="space-y-2 border-l-2 border-lumi-accent/30 pl-3">
             {data.whyBreakdown.map((item, i) => (
               <li key={i} className="flex items-start gap-3">
                 <span className="font-mono text-xs bg-lumi-elevated text-lumi-muted px-2 py-0.5 rounded shrink-0 mt-0.5">
                   {String(i + 1).padStart(2, '0')}
                 </span>
-                <span className="text-lumi-text font-body text-sm leading-relaxed">{item}</span>
+                <Text as="span" variant="body" intent="primary" size="sm" className="leading-relaxed">
+                  {item}
+                </Text>
               </li>
             ))}
           </ol>
@@ -212,12 +224,12 @@ function ExecutionConfirmModal({ verdict, action, onConfirm, onCancel }) {
             <AlertTriangle className="w-5 h-5 text-signal-hold" strokeWidth={1.5} />
           </div>
           <div>
-            <h3 className="font-display font-bold text-lg text-dark-base">
+            <DecisionTitle as="h3" className="text-lg">
               Confirm {verdict} Execution
-            </h3>
-            <p className="mt-1 text-sm text-dark-soft">
+            </DecisionTitle>
+            <BodyMuted as="p" size="sm" className="mt-1">
               This action will be applied via Meta API immediately.
-            </p>
+            </BodyMuted>
           </div>
         </div>
 
@@ -226,17 +238,25 @@ function ExecutionConfirmModal({ verdict, action, onConfirm, onCancel }) {
           <div className="flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-signal-kill shrink-0 mt-0.5" />
             <div className="flex-1">
-              <p className="font-display font-semibold text-signal-kill text-sm mb-2">
+              <Text as="p" variant="data" intent="danger" size="sm" className="font-display font-semibold mb-2">
                 ⚠️ Financial Impact
-              </p>
-              <div className="space-y-1 text-xs text-dark-base font-mono">
+              </Text>
+              <div className="space-y-1">
                 <div className="flex justify-between">
-                  <span className="text-dark-soft">Daily spend:</span>
-                  <span className="font-semibold">{dailySpendImpact}</span>
+                  <Text as="span" variant="data" intent="muted" size="xs" className="font-mono">
+                    Daily spend:
+                  </Text>
+                  <Text as="span" variant="data" intent="primary" size="xs" className="font-mono font-semibold">
+                    {dailySpendImpact}
+                  </Text>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-dark-soft">Est. monthly:</span>
-                  <span className="font-semibold">{estimatedMonthlyImpact}</span>
+                  <Text as="span" variant="data" intent="muted" size="xs" className="font-mono">
+                    Est. monthly:
+                  </Text>
+                  <Text as="span" variant="data" intent="primary" size="xs" className="font-mono font-semibold">
+                    {estimatedMonthlyImpact}
+                  </Text>
                 </div>
               </div>
             </div>
@@ -245,21 +265,25 @@ function ExecutionConfirmModal({ verdict, action, onConfirm, onCancel }) {
 
         {/* Action Details */}
         <div className="mb-6 rounded-xl bg-surface-light border border-surface-border p-4">
-          <div className="text-xs font-mono text-dark-soft mb-2 section-label">Action Details</div>
-          <div className="space-y-2 text-sm">
+          <SectionLabel as="div" className="mb-2">Action Details</SectionLabel>
+          <div className="space-y-2">
             <div>
-              <span className="text-dark-soft">Verdict:</span>
-              <span className="ml-2 font-mono text-dark-base font-semibold">{verdict}</span>
+              <BodyMuted as="span" size="sm">Verdict:</BodyMuted>
+              <Text as="span" variant="data" intent="primary" size="sm" className="ml-2 font-mono font-semibold">
+                {verdict}
+              </Text>
             </div>
             <div>
-              <span className="text-dark-soft">Type:</span>
-              <span className="ml-2 font-mono text-dark-base font-semibold">{action?.type || 'pause_campaign'}</span>
+              <BodyMuted as="span" size="sm">Type:</BodyMuted>
+              <Text as="span" variant="data" intent="primary" size="sm" className="ml-2 font-mono font-semibold">
+                {action?.type || 'pause_campaign'}
+              </Text>
             </div>
             <div>
-              <span className="text-dark-soft">Target:</span>
-              <code className="ml-2 font-mono text-xs bg-dark-soft/10 px-1.5 py-0.5 rounded text-dark-base">
+              <BodyMuted as="span" size="sm">Target:</BodyMuted>
+              <Text as="code" variant="data" intent="primary" size="xs" className="ml-2 font-mono bg-dark-soft/10 px-1.5 py-0.5 rounded">
                 {action?.target_id || 'N/A'}
-              </code>
+              </Text>
             </div>
           </div>
         </div>
@@ -331,20 +355,22 @@ function ExecutionProgressModal({ verdict, status = 'EXECUTING', onComplete }) {
             <Loader2 className="w-5 h-5 text-lumi-gold animate-spin" strokeWidth={1.5} />
           </div>
           <div>
-            <h3 className="font-display font-bold text-lg text-dark-base">
+            <DecisionTitle as="h3" className="text-lg">
               {config.title}
-            </h3>
-            <p className="mt-1 text-sm text-dark-soft">
+            </DecisionTitle>
+            <BodyMuted as="p" size="sm" className="mt-1">
               {config.subtitle}
-            </p>
+            </BodyMuted>
           </div>
         </div>
 
         {config.showProgress && (
           <div className="mb-4">
-            <div className="flex items-baseline justify-between text-xs mb-1">
-              <span className="section-label">Progress</span>
-              <span className="font-mono text-dark-base tabular-nums">{Math.round(progress)}%</span>
+            <div className="flex items-baseline justify-between mb-1">
+              <SectionLabel as="span">Progress</SectionLabel>
+              <Text as="span" variant="data" intent="primary" size="xs" className="font-mono tabular-nums">
+                {Math.round(progress)}%
+              </Text>
             </div>
             <div className="h-2 rounded-full bg-surface-border overflow-hidden">
               <div
@@ -355,9 +381,11 @@ function ExecutionProgressModal({ verdict, status = 'EXECUTING', onComplete }) {
           </div>
         )}
 
-        <div className="text-center text-xs text-dark-soft">
+        <div className="text-center">
           <Lock className="w-3 h-3 inline-block mr-1" strokeWidth={1.5} />
-          UI locked during execution
+          <BodyMuted as="span" size="xs">
+            UI locked during execution
+          </BodyMuted>
         </div>
       </div>
     </div>
@@ -374,12 +402,12 @@ function ExecutionSuccessModal({ verdict, onContinue }) {
             <CheckCircle2 className="w-5 h-5 text-signal-scale" strokeWidth={1.5} />
           </div>
           <div>
-            <h3 className="font-display font-bold text-lg text-dark-base">
+            <DecisionTitle as="h3" className="text-lg">
               Execution Successful
-            </h3>
-            <p className="mt-1 text-sm text-dark-soft">
+            </DecisionTitle>
+            <BodyMuted as="p" size="sm" className="mt-1">
               {verdict} action executed on Meta
-            </p>
+            </BodyMuted>
           </div>
         </div>
 
@@ -396,36 +424,7 @@ function ExecutionSuccessModal({ verdict, onContinue }) {
 }
 
 // ── Confidence + risk ───────────────────────────────────────
-function ConfidenceBar({ value }) {
-  const v = Math.max(0, Math.min(100, value));
-  const fillClass =
-      v < 50 ? 'bg-signal-kill'
-    : v < 75 ? 'bg-signal-hold'
-    :          'bg-signal-scale';
-  return (
-    <div className="flex-1 max-w-xs">
-      <div className="flex items-baseline justify-between text-xs">
-        <span className="section-label">Confidence</span>
-        <span className="font-mono text-lumi-text tabular-nums">{v}%</span>
-      </div>
-      <div className="mt-1 h-1.5 rounded-full bg-lumi-border overflow-hidden"
-        role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={v} aria-label={`Confidence ${v}%`}>
-        <div className={cn('h-full transition-[width] duration-500', fillClass)} style={{ width: `${v}%` }} />
-      </div>
-    </div>
-  );
-}
-
-function RiskBadge({ level }) {
-  const cls = level === 'High'   ? 'text-signal-kill bg-signal-kill-bg border-signal-kill/30'
-            : level === 'Low'    ? 'text-signal-scale bg-signal-scale-bg border-signal-scale/30'
-            :                      'text-signal-hold bg-signal-hold-bg border-signal-hold/30';
-  return (
-    <span className={cn('font-mono text-xs uppercase tracking-wide px-2 py-1 rounded border', cls)}>
-      {level} Risk
-    </span>
-  );
-}
+// Replaced by semantic primitives: ConfidenceIndicator, RiskSignal
 
 // ── Mode-specific renderers ─────────────────────────────────
 function CreativeAssetsBlock({ assets }) {
@@ -434,28 +433,38 @@ function CreativeAssetsBlock({ assets }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-2">
-        <span className="section-label">AI Creative Variants</span>
+        <SectionLabel as="span">AI Creative Variants</SectionLabel>
         <span className="font-mono text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-1.5 py-0.5 rounded">ChatGPT</span>
       </div>
       {assets.creative_strategy_rationale && (
-        <p className="text-xs italic text-lumi-muted mb-3">{assets.creative_strategy_rationale}</p>
+        <BodyMuted as="p" size="xs" className="italic mb-3">
+          {assets.creative_strategy_rationale}
+        </BodyMuted>
       )}
       <div className="flex gap-3 overflow-x-auto pb-3">
         {variants.map((v, i) => (
           <article key={i} className="w-72 flex-shrink-0 rounded-2xl border border-lumi-border bg-lumi-surface p-4">
-            <h4 className="text-xs font-display font-semibold text-lumi-accent">{v.angle_name}</h4>
-            <p className="mt-2 font-display text-base text-lumi-text">{v.headline}</p>
-            <p className="mt-1 text-sm text-lumi-muted">{v.primary_text}</p>
+            <Text as="h4" variant="data" intent="secondary" size="xs" className="font-display font-semibold">
+              {v.angle_name}
+            </Text>
+            <Text as="p" variant="body" intent="primary" className="mt-2 font-display">
+              {v.headline}
+            </Text>
+            <BodyMuted as="p" size="sm" className="mt-1">
+              {v.primary_text}
+            </BodyMuted>
             {v.visual_direction && (
-              <blockquote className="mt-3 flex gap-2 rounded-lg border-l-2 border-yellow-400/50 bg-lumi-bg p-2 text-xs text-lumi-muted">
+              <blockquote className="mt-3 flex gap-2 rounded-lg border-l-2 border-yellow-400/50 bg-lumi-bg p-2">
                 <Palette className="w-3.5 h-3.5 shrink-0 text-yellow-300" strokeWidth={1.5} />
-                <span className="italic">{v.visual_direction}</span>
+                <BodyMuted as="span" size="xs" className="italic">
+                  {v.visual_direction}
+                </BodyMuted>
               </blockquote>
             )}
             {v.platform_notes && (
-              <span className="mt-2 inline-block font-mono text-[10px] bg-lumi-elevated text-lumi-muted border border-lumi-border px-1.5 py-0.5 rounded">
+              <Text as="span" variant="data" intent="muted" size="xs" className="mt-2 inline-block font-mono bg-lumi-elevated border border-lumi-border px-1.5 py-0.5 rounded">
                 {v.platform_notes}
-              </span>
+              </Text>
             )}
           </article>
         ))}
@@ -468,17 +477,19 @@ function ContentRewriteBlock({ rewrite }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
-        <span className="section-label">Rewrite</span>
-        <span className="font-mono text-xs bg-signal-scale-bg text-signal-scale border border-signal-scale/30 px-2 py-0.5 rounded">
+        <SectionLabel as="span">Rewrite</SectionLabel>
+        <Text as="span" variant="data" intent="success" size="xs" className="font-mono bg-signal-scale-bg border border-signal-scale/30 px-2 py-0.5 rounded">
           Score → {rewrite.score}/100
-        </span>
+        </Text>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Pane title="Original" tone="kill" body={rewrite.original} />
         <Pane title="Lumi Rewrite" tone="scale" body={rewrite.rewrite} />
       </div>
       {rewrite.platformNotes && (
-        <p className="mt-3 text-xs text-lumi-muted italic">Platform note: {rewrite.platformNotes}</p>
+        <BodyMuted as="p" size="xs" className="mt-3 italic">
+          Platform note: {rewrite.platformNotes}
+        </BodyMuted>
       )}
     </div>
   );
@@ -486,12 +497,16 @@ function ContentRewriteBlock({ rewrite }) {
 
 function Pane({ title, tone, body }) {
   const cls = tone === 'kill'
-    ? 'border-l-2 border-l-signal-kill bg-lumi-bg text-lumi-muted'
-    : 'border-l-2 border-l-signal-scale bg-signal-scale-bg/10 text-lumi-text';
+    ? 'border-l-2 border-l-signal-kill bg-lumi-bg'
+    : 'border-l-2 border-l-signal-scale bg-signal-scale-bg/10';
+  const textIntent = tone === 'kill' ? 'muted' : 'primary';
+
   return (
     <div className={cn('rounded-xl border border-lumi-border p-4', cls)}>
-      <div className="section-label mb-2">{title}</div>
-      <p className="text-sm leading-relaxed whitespace-pre-wrap">{body || '—'}</p>
+      <SectionLabel as="div" className="mb-2">{title}</SectionLabel>
+      <Text as="p" variant="body" intent={textIntent} size="sm" className="leading-relaxed whitespace-pre-wrap">
+        {body || '—'}
+      </Text>
     </div>
   );
 }
@@ -499,10 +514,16 @@ function Pane({ title, tone, body }) {
 function StrategyMarkdownBlock({ markdown }) {
   return (
     <div>
-      <div className="section-label mb-2">Strategy Brief</div>
-      <pre className="rounded-xl border border-lumi-border bg-lumi-surface p-4 font-body text-sm text-lumi-text leading-relaxed whitespace-pre-wrap break-words">
+      <SectionLabel as="div" className="mb-2">Strategy Brief</SectionLabel>
+      <Text
+        as="pre"
+        variant="body"
+        intent="primary"
+        size="sm"
+        className="rounded-xl border border-lumi-border bg-lumi-surface p-4 font-body leading-relaxed whitespace-pre-wrap break-words"
+      >
         {markdown}
-      </pre>
+      </Text>
     </div>
   );
 }
@@ -512,8 +533,13 @@ function AgentChip({ agent }) {
     ? 'text-orange-400 bg-orange-500/10 border-orange-500/25'
     : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/25';
   return (
-    <span className={cn('font-mono text-xs px-1.5 py-0.5 rounded border', cls)}>
+    <Text
+      as="span"
+      variant="data"
+      size="xs"
+      className={cn('font-mono px-1.5 py-0.5 rounded border', cls)}
+    >
       {agent === 'claude' ? 'Claude' : 'ChatGPT'}
-    </span>
+    </Text>
   );
 }
