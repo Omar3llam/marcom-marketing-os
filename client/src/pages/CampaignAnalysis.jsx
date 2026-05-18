@@ -17,7 +17,6 @@ import InlineBar       from '@/components/ui/InlineBar.jsx';
 import CsvUploader     from '@/components/upload/CsvUploader.jsx';
 import { cn }          from '@/lib/utils.js';
 import { transformDecisionsToFeed } from '@/lib/feedTransform.js';
-import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useProjectId } from '@/hooks/useProjectId.js';
 import { api } from '@/lib/api.js';
 import { toast } from 'sonner';
@@ -55,7 +54,6 @@ const sortableCols = new Set(['campaign', 'spend', 'ctr', 'roas', 'impact']);
 
 export default function CampaignAnalysis() {
   const { campaigns, loading, refetch, setCampaigns } = useCampaignFeed();
-  const { workspace } = useWorkspace();
   const { projectId } = useProjectId();
   const [sortKey, setSortKey] = useState('spend');
   const [sortDir, setSortDir] = useState('desc');

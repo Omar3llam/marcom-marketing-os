@@ -386,6 +386,20 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
         decision.campaignName = c.campaignName;
         decision.adsetName    = c.adsetName;
 
+        // Preserve source metrics so the frontend table can render them.
+        // Without this, transformDecisionsToFeed has no spend/CTR/ROAS data.
+        decision.sourceMetrics = {
+          spend:         c.spend         ?? 0,
+          impressions:   c.impressions   ?? 0,
+          results:       c.results       ?? 0,
+          ctr:           c.ctr           ?? 0,
+          cpc:           c.cpc           ?? 0,
+          roas:          c.roas          ?? 0,
+          frequency:     c.frequency     ?? 0,
+          reach:         c.reach         ?? 0,
+          costPerResult: c.costPerResult ?? 0,
+        };
+
         return decision;
       }),
     );

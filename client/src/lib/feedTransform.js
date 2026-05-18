@@ -90,26 +90,30 @@ function inferPriority(verdict, riskLevel) {
 
 /**
  * Build structured metrics array from orchestrator decision.
- * Claude returns "impact" string — we parse it for display.
- * Real metric values come from modeSpecificData.campaignTable if present.
+ * Source metrics (spend/CTR/ROAS/etc) are preserved by the backend at
+ * decision.sourceMetrics. Falls back to legacy campaignTable shape.
  */
 function buildMetricsFromDecision(decision) {
   const rows = [];
 
-  // Extract metrics from the enriched decision object if available
-  // (orchestrator passes through the parsed campaign data)
-  const raw = decision.modeSpecificData?.campaignTable?.[0];
-  if (raw) {
-    const ctr  = raw.ctr  ?? 0;
-    const roas = raw.roas ?? 0;
-    const freq = raw.frequency ?? 0;
-    const cpa  = raw.costPerResult ?? 0;
+  // Preferred: sourceMetrics preserved by backend after Claude analysis
+  const src = decision.sourceMetrics
+            ?? decision.modeSpecificData?.campaignTable?.[0]
+            ?? null;
+
+  if (src) {
+    const spend = src.spend ?? 0;
+    const ctr   = src.ctr   ?? 0;
+    const roas  = src.roas  ?? 0;
+    const freq  = src.frequency ?? 0;
+    const cpa   = src.costPerResult ?? 0;
 
     rows.push(
-      { metric: 'CTR',       trend: trendFor('ctr', ctr),   value: `${ctr.toFixed(2)}%`,  delta: '', context: 'Per CSV upload', status: statusFor('ctr', ctr) },
-      { metric: 'ROAS',      trend: trendFor('roas', roas), value: `${roas.toFixed(2)}x`, delta: '', context: 'Per CSV upload', status: statusFor('roas', roas) },
-      { metric: 'Frequency', trend: trendFor('freq', freq), value: `${freq.toFixed(2)}`,  delta: '', context: 'Per CSV upload', status: statusFor('freq', freq) },
-      { metric: 'CPA',       trend: trendFor('cpa', cpa),   value: `$${cpa.toFixed(2)}`,  delta: '', context: 'Per CSV upload', status: statusFor('cpa', cpa) },
+      { metric: 'spend',     trend: 'flat',                 value: `$${spend.toFixed(2)}`, delta: '', context: 'Per CSV upload', status: 'neutral' },
+      { metric: 'CTR',       trend: trendFor('ctr', ctr),   value: `${ctr.toFixed(2)}%`,   delta: '', context: 'Per CSV upload', status: statusFor('ctr', ctr) },
+      { metric: 'ROAS',      trend: trendFor('roas', roas), value: `${roas.toFixed(2)}x`,  delta: '', context: 'Per CSV upload', status: statusFor('roas', roas) },
+      { metric: 'Frequency', trend: trendFor('freq', freq), value: `${freq.toFixed(2)}`,   delta: '', context: 'Per CSV upload', status: statusFor('freq', freq) },
+      { metric: 'CPA',       trend: trendFor('cpa', cpa),   value: `$${cpa.toFixed(2)}`,   delta: '', context: 'Per CSV upload', status: statusFor('cpa', cpa) },
     );
   } else {
     // Fallback: parse impact string for display (less structured)
