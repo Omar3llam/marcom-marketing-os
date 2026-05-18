@@ -14,6 +14,8 @@ import {
   browserLocalPersistence,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
@@ -141,6 +143,25 @@ export function getGoogleProvider() {
   return _googleProvider;
 }
 
+// ── User Agent Detection ─────────────────────────────────────
+
+/**
+ * Detects if the current browser is an embedded webview or mobile browser.
+ * Google blocks OAuth in embedded webviews (Facebook, Instagram, etc.).
+ * @returns {boolean} true if embedded webview or mobile browser
+ */
+export function isEmbeddedWebviewOrMobile() {
+  const ua = navigator.userAgent || navigator.vendor || window.opera;
+
+  // Check for embedded webviews (Facebook, Instagram, LINE, etc.)
+  const isEmbedded = /FBAN|FBAV|Instagram|Line/i.test(ua);
+
+  // Check for mobile browsers
+  const isMobile = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(ua);
+
+  return isEmbedded || isMobile;
+}
+
 // ── IndexedDB Cleanup Utility ────────────────────────────────
 // BUGFIX: Clear corrupted Firebase IndexedDB stores
 // Call this if you encounter "firebase-heartbeat-store" errors
@@ -174,6 +195,8 @@ if (import.meta.env.DEV) {
 
 export {
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,

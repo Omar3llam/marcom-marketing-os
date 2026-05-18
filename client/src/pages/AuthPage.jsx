@@ -8,9 +8,10 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { toast } from 'sonner';
-import { Sparkles, Mail, Lock, Loader2, AlertCircle } from 'lucide-react';
+import { Sparkles, Mail, Lock, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { MetricValue, DecisionTitle } from '@/components/primitives';
+import { isEmbeddedWebviewOrMobile } from '@/firebase.js';
 
 export default function AuthPage({ mode: defaultMode = 'login' }) {
   const [searchParams] = useSearchParams();
@@ -22,34 +23,65 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [showEmbeddedWarning, setShowEmbeddedWarning] = useState(false);
 
   const isLogin = mode === 'login';
+  const inEmbeddedBrowser = isEmbeddedWebviewOrMobile();
 
   const handleGoogleSignIn = async () => {
     setError(null);
+    setShowEmbeddedWarning(false);
     setBusy(true);
 
     // 15-second safety timeout: if the popup is closed without completing,
     // or auth silently fails (e.g. redirect flow stalls), reset the UI
     // so the buttons don't stay frozen indefinitely.
+    // NOTE: For redirect flow (mobile/embedded), this is expected behavior
     const timeout = setTimeout(() => {
-      setBusy(false);
-      setError('Sign in is taking too long. Please try again.');
+      // Don't show timeout error for redirect flow — user is being redirected
+      if (!inEmbeddedBrowser) {
+        setBusy(false);
+        setError('Sign in is taking too long. Please try again.');
+      }
     }, 15_000);
 
     try {
       await signInWithGoogle();
       clearTimeout(timeout);
-      toast.success('Signed in with Google!');
-      navigate('/onboarding');
+
+      // For redirect flow, this code won't execute — user is redirected away
+      // and comes back via getRedirectResult in AuthContext
+      if (!inEmbeddedBrowser) {
+        toast.success('Signed in with Google!');
+        navigate('/onboarding');
+      }
     } catch (err) {
       clearTimeout(timeout);
       setBusy(false);
+
+      console.error('[AuthPage] Google sign-in error:', err);
+
       // Suppress "popup closed by user" — that's intentional, not an error
       if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
         return;
       }
-      const msg = err.message || 'Google sign-in failed';
+
+      // Handle specific OAuth errors
+      let msg = 'Google sign-in failed';
+
+      if (err.code === 'auth/operation-not-allowed') {
+        msg = 'Google sign-in is not enabled. Please contact support.';
+      } else if (err.code === 'auth/unauthorized-domain') {
+        msg = 'This domain is not authorized for Google sign-in. Please contact support.';
+      } else if (err.code === 'auth/network-request-failed') {
+        msg = 'Network error. Please check your connection and try again.';
+      } else if (err.message?.includes('disallowed_useragent') || err.message?.includes('Error 403')) {
+        msg = 'Sign in blocked by Google. Please open this page in your default browser (Safari, Chrome).';
+        setShowEmbeddedWarning(true);
+      } else if (err.message) {
+        msg = err.message;
+      }
+
       setError(msg);
       toast.error(msg);
     }
@@ -131,6 +163,36 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
             {isLogin ? 'Sign in to continue to your workspace' : 'Get started with your AI marketing co-pilot'}
           </p>
         </div>
+
+        {/* Embedded Browser Warning */}
+        {showEmbeddedWarning && (
+          <div className="mb-4 rounded-xl border border-lumi-gold/30 bg-lumi-gold/5 p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 shrink-0 text-lumi-gold mt-0.5" />
+              <div className="flex-1 text-sm">
+                <p className="font-medium text-dark-base mb-1">
+                  Open in your browser
+                </p>
+                <p className="text-dark-soft mb-3">
+                  You&apos;re viewing this in an embedded browser (like Facebook Messenger).
+                  Google blocks sign-in here for security. Please open this page in Safari, Chrome, or your default browser.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Copy current URL to clipboard
+                    navigator.clipboard?.writeText(window.location.href);
+                    toast.success('Link copied! Paste it in your browser.');
+                  }}
+                  className="inline-flex items-center gap-2 text-sm font-medium text-lumi-gold hover:text-lumi-deep transition-colors"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Copy link
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Auth Card */}
         <div className="rounded-2xl border border-surface-border bg-surface-card p-6 shadow-card">
