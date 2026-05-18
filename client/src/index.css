@@ -310,6 +310,17 @@
            text-xs font-display font-semibold uppercase tracking-wide;
   }
 
+  /* ── Toast Notifications ─────────────────────────────────── */
+  /*
+   * PURPOSE: Sonner toast styling (design system aligned)
+   * ARCHITECTURE: Uses semantic tokens for theming
+   * USAGE: Applied via Toaster toastOptions={{ className: 'lumi-toast' }}
+   */
+  .lumi-toast {
+    @apply bg-surface-card border border-surface-border-strong text-dark-base
+           font-body text-sm shadow-lg;
+  }
+
   /* ── Card Accent Bars ────────────────────────────────────── */
   /*
    * CHANGE: Replaced theme() with CSS variables

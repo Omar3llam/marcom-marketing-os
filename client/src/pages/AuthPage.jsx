@@ -10,6 +10,7 @@ import { useAuth } from '@/context/AuthContext.jsx';
 import { toast } from 'sonner';
 import { Sparkles, Mail, Lock, Loader2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
+import { MetricValue, DecisionTitle } from '@/components/primitives';
 
 export default function AuthPage({ mode: defaultMode = 'login' }) {
   const [searchParams] = useSearchParams();
@@ -110,11 +111,11 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 text-dark-base mb-3">
             <Sparkles className="h-6 w-6 text-lumi-gold" />
-            <span className="font-bold text-2xl tracking-tight">Lumi</span>
+            <MetricValue as="span" className="tracking-tight">Lumi</MetricValue>
           </div>
-          <h1 className="text-xl font-semibold text-dark-base">
+          <DecisionTitle as="h1" className="text-dark-base">
             {isLogin ? 'Welcome back' : 'Create your account'}
-          </h1>
+          </DecisionTitle>
           <p className="mt-1 text-sm text-dark-soft">
             {isLogin ? 'Sign in to continue to your workspace' : 'Get started with your AI marketing co-pilot'}
           </p>

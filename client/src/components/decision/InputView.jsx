@@ -18,6 +18,7 @@ import { api } from '@/lib/api.js';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils.js';
 import { clearContextCache } from '@/router/ProtectedRoute.jsx';
+import { MetricValue } from '@/components/primitives';
 
 const TITLES = {
   campaign: 'Campaign Analysis',
@@ -30,7 +31,7 @@ export default function InputView({ mode, initialData, onSubmit, onCancel }) {
     <div className="max-w-2xl mx-auto p-6 lg:p-8 animate-fade-in">
       <header className="mb-6">
         <span className="section-label">Mode {mode === 'campaign' ? '3' : mode === 'strategy' ? '2' : '4'}</span>
-        <h1 className="mt-1 font-display font-bold text-2xl text-lumi-text">{TITLES[mode]}</h1>
+        <MetricValue as="h1" className="mt-1 text-lumi-text">{TITLES[mode]}</MetricValue>
         {initialData && (
           <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-yellow-500/10 border border-yellow-500/30 px-3 py-1.5 text-xs text-yellow-400">
             <CheckCircle2 className="w-3.5 h-3.5" strokeWidth={1.5} />

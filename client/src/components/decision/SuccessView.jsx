@@ -15,6 +15,7 @@ import {
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import InlineBar       from '@/components/ui/InlineBar.jsx';
 import { cn }          from '@/lib/utils.js';
+import { DecisionTitle, MetricValue, VerdictBadge } from '@/components/primitives';
 
 const VERDICT_GLOW = {
   KILL:     'shadow-kill-glow border-signal-kill/30',
@@ -47,16 +48,9 @@ export default function SuccessView({ data, onReset, onCommit }) {
 
       {/* ── SECTION 1 — Verdict + confidence + risk (0ms) ── */}
       <section className="reveal flex flex-col sm:flex-row sm:items-center gap-4 mb-6" style={{ animationDelay: '0ms' }}>
-        <div className={cn(
-          'inline-flex items-center gap-2 rounded-2xl border px-6 py-3',
-          'font-display font-bold text-xl',
-          VERDICT_TEXT[data.verdict],
-          VERDICT_GLOW[data.verdict],
-        )}>
-          {data.verdict}
-        </div>
+        <VerdictBadge verdict={data.verdict} />
         <div className="flex-1">
-          <h1 className="font-display font-bold text-xl text-lumi-text">{data.title}</h1>
+          <DecisionTitle as="h1" className="text-lumi-text">{data.title}</DecisionTitle>
           <div className="mt-2 flex items-center gap-3">
             <ConfidenceBar value={data.confidence} />
             <RiskBadge level={data.riskLevel} />
@@ -180,9 +174,9 @@ function ConfidenceCard({ data }) {
       {/* Metrics row */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="text-center">
-          <div className="font-display font-bold text-2xl text-lumi-text tabular-nums">
+          <MetricValue as="div" className="text-lumi-text tabular-nums">
             {confidence}%
-          </div>
+          </MetricValue>
           <div className="font-mono text-[10px] text-lumi-subtle mt-0.5">Confidence</div>
         </div>
         <div className="text-center">
@@ -192,9 +186,9 @@ function ConfidenceCard({ data }) {
           <div className="font-mono text-[10px] text-lumi-subtle mt-0.5">Risk level</div>
         </div>
         <div className="text-center">
-          <div className="font-display font-bold text-2xl text-lumi-text tabular-nums">
+          <MetricValue as="div" className="text-lumi-text tabular-nums">
             {whyBreakdown.length}
-          </div>
+          </MetricValue>
           <div className="font-mono text-[10px] text-lumi-subtle mt-0.5">Signals analyzed</div>
         </div>
       </div>

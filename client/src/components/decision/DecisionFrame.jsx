@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { cn } from '@/lib/utils.js';
+import { DecisionTitle, VerdictBadge } from '@/components/primitives';
 
 const VERDICT_GLOW = {
   KILL:     'shadow-kill-glow border-signal-kill/30',
@@ -66,16 +67,9 @@ export default function DecisionFrame({
 
       {/* ── SECTION 1 — Verdict + confidence + risk (0ms) ── */}
       <section className="reveal flex flex-col sm:flex-row sm:items-center gap-4 mb-6" style={{ animationDelay: '0ms' }}>
-        <div className={cn(
-          'inline-flex items-center gap-2 rounded-2xl border px-6 py-3',
-          'font-display font-bold text-xl',
-          VERDICT_TEXT[data.verdict],
-          VERDICT_GLOW[data.verdict],
-        )}>
-          {data.verdict}
-        </div>
+        <VerdictBadge verdict={data.verdict} />
         <div className="flex-1">
-          <h1 className="font-display font-bold text-xl text-lumi-text">{data.title}</h1>
+          <DecisionTitle as="h1" className="text-lumi-text">{data.title}</DecisionTitle>
           <div className="mt-2 flex items-center gap-3">
             <ConfidenceBar value={data.confidence} />
             <RiskBadge level={data.riskLevel} />
@@ -376,8 +370,8 @@ function ExecutionSuccessModal({ verdict, onContinue }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-surface-card border border-surface-border rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 rounded-xl bg-green-500/10 border border-green-500/30 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-5 h-5 text-green-600" strokeWidth={1.5} />
+          <div className="w-10 h-10 rounded-xl bg-signal-scale-bg border border-signal-scale/30 flex items-center justify-center shrink-0">
+            <CheckCircle2 className="w-5 h-5 text-signal-scale" strokeWidth={1.5} />
           </div>
           <div>
             <h3 className="font-display font-bold text-lg text-dark-base">

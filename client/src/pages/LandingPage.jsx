@@ -309,7 +309,7 @@ function HowItWorks() {
           <div className="p-4 space-y-2">
             <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-lumi-elevated border border-lumi-border-strong">
               <span className="w-2 h-2 rounded-full bg-signal-scale" />
-              <span className="font-display text-sm text-lumi-text">Code81</span>
+              <span className="font-display text-sm text-lumi-text">MARCOM-AI</span>
             </div>
             {[
               { label: 'Command Hub',       active: false },

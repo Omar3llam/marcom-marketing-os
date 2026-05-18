@@ -1,5 +1,6 @@
 import { BarChart3, Target, ScanSearch, ArrowRight, Lock } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
+import { DecisionTitle } from '@/components/primitives';
 
 const MODES = [
   {
@@ -121,7 +122,7 @@ function ModeCard({ cfg, stagger, onClick, hero = false }) {
         <div className={cn('mt-4 w-12 h-12 rounded-xl p-2.5 flex items-center justify-center', cfg.iconCls)}>
           <Icon className="w-7 h-7" strokeWidth={1.5} />
         </div>
-        <h3 className="mt-4 font-display font-bold text-xl text-dark-base">{cfg.title}</h3>
+        <DecisionTitle as="h3" className="mt-4 text-dark-base">{cfg.title}</DecisionTitle>
         <p className="mt-2 text-dark-soft text-sm leading-relaxed">{cfg.body}</p>
         {cfg.enabled && (
           hero ? (

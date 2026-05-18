@@ -46,8 +46,8 @@ function PageFallback() {
 
 function AuthLoadingScreen() {
   return (
-    <div className="flex h-screen items-center justify-center bg-gray-950">
-      <div className="flex items-center gap-2 text-gray-400">
+    <div className="flex h-screen items-center justify-center bg-surface-dark">
+      <div className="flex items-center gap-2 text-dark-soft">
         <Loader2 className="h-4 w-4 animate-spin" />
         <span className="text-sm">Initializing authentication…</span>
       </div>

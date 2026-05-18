@@ -43,6 +43,7 @@ const BANNED_PATTERNS = [
 // Files exempt from the rule (document the reason)
 const EXEMPT_FILES = [
   'ErrorBoundary.jsx',  // Dark mode error screen — intentional gray palette
+  'VerdictBadge.jsx',   // Composite state primitive — hardcoded typography is intentional
 ];
 
 function extractClassStrings(node) {

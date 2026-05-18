@@ -5,6 +5,7 @@
 // so the user knows whether to refresh, wait, retry, or report.
 // ============================================================
 import { AlertTriangle, RotateCcw, ArrowLeft } from 'lucide-react';
+import { DecisionTitle } from '@/components/primitives';
 
 const HINTS = {
   '401': 'Your session has expired. Please log in again.',
@@ -33,7 +34,7 @@ export default function ErrorView({ error, onRetry, onBack }) {
         <div className="card-accent card-accent-error" aria-hidden="true" />
         <div className="p-8 text-center">
           <AlertTriangle className="w-12 h-12 mx-auto text-trend-danger" strokeWidth={1.5} />
-          <h2 className="mt-4 font-display font-bold text-xl text-lumi-text">Analysis failed</h2>
+          <DecisionTitle as="h2" className="mt-4 text-lumi-text">Analysis failed</DecisionTitle>
 
           <div className="mt-3 font-mono text-sm text-trend-danger bg-signal-kill-bg border border-signal-kill/20 px-3 py-2 rounded-lg break-words">
             {error?.message || 'Unknown error'}
