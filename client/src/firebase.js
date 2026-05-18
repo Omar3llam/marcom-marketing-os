@@ -34,9 +34,16 @@ const REQUIRED_ENV = [
  * @returns {{ valid: boolean, missing: string[], config: object | null }}
  */
 export function validateFirebaseConfig() {
+  console.log('[Firebase] Validating config. Environment variables:', {
+    API_KEY: import.meta.env.VITE_FIREBASE_API_KEY ? '✓ present' : '✗ missing',
+    PROJECT_ID: import.meta.env.VITE_FIREBASE_PROJECT_ID ? '✓ present' : '✗ missing',
+    APP_ID: import.meta.env.VITE_FIREBASE_APP_ID ? '✓ present' : '✗ missing',
+  });
+
   const missing = REQUIRED_ENV.filter(key => !import.meta.env[key]);
 
   if (missing.length > 0) {
+    console.error('[Firebase] Config validation failed. Missing:', missing);
     return { valid: false, missing, config: null };
   }
 
@@ -110,8 +117,10 @@ function initializeFirebase() {
  */
 export function getFirebaseAuth() {
   if (!_auth) {
+    console.log('[Firebase] Auth not yet initialized, calling initializeFirebase()');
     initializeFirebase();
   }
+  console.log('[Firebase] getFirebaseAuth returning:', { defined: !!_auth, type: typeof _auth });
   return _auth;
 }
 

@@ -59,6 +59,15 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
     e.preventDefault();
     setError(null);
 
+    console.log('[AuthPage] Form submitted', {
+      mode: isLogin ? 'login' : 'signup',
+      email,
+      emailLength: email?.length,
+      passwordLength: password?.length,
+      hasEmail: !!email,
+      hasPassword: !!password,
+    });
+
     if (!email || !password) {
       setError('Email and password are required');
       return;
@@ -75,11 +84,13 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
         await signInWithEmail(email, password);
         toast.success('Signed in successfully!');
       } else {
+        console.log('[AuthPage] Calling signUpWithEmail');
         await signUpWithEmail(email, password);
         toast.success('Account created! Welcome aboard.');
       }
       navigate('/onboarding');
     } catch (err) {
+      console.error('[AuthPage] Auth error:', err);
       let msg = 'Authentication failed';
 
       // Firebase error codes

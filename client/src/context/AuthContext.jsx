@@ -50,11 +50,39 @@ export function AuthProvider({ children }) {
 
   // Sign in with Email/Password
   const signInWithEmail = async (email, password) => {
+    console.log('[AuthContext] signInWithEmail called', {
+      authDefined: !!auth,
+      emailDefined: !!email,
+      passwordDefined: !!password,
+    });
+
+    if (!auth) {
+      throw new Error('Firebase auth not initialized');
+    }
+    if (!email || !password) {
+      throw new Error('Email and password are required');
+    }
+
     return signInWithEmailAndPassword(auth, email, password);
   };
 
   // Sign up with Email/Password
   const signUpWithEmail = async (email, password) => {
+    console.log('[AuthContext] signUpWithEmail called', {
+      authDefined: !!auth,
+      emailDefined: !!email,
+      passwordDefined: !!password,
+      emailLength: email?.length,
+      passwordLength: password?.length,
+    });
+
+    if (!auth) {
+      throw new Error('Firebase auth not initialized');
+    }
+    if (!email || !password) {
+      throw new Error('Email and password are required');
+    }
+
     return createUserWithEmailAndPassword(auth, email, password);
   };
 
