@@ -205,8 +205,12 @@ app.use('/api/lumi',
   lumiRouter
 );
 
+// Meta OAuth flow — MUST be mounted BEFORE blanket /api + requireAuth
+// because /callback is NOT authenticated (Meta redirects browser without token).
+app.use('/api/auth/meta', apiLimiter, authMetaRouter);
+
 app.use('/api',
-  requireAuth,                  // enforces Clerk userId
+  requireAuth,                  // enforces Firebase UID (formerly Clerk)
   apiLimiter,
   exportRouter
 );
@@ -239,10 +243,6 @@ app.use('/api/credentials',
   apiLimiter,
   credentialsRouter
 );
-
-// Meta OAuth flow — /connect is Clerk-gated inside the router;
-// /callback is NOT (Meta redirects browser without Clerk JWT).
-app.use('/api/auth/meta', apiLimiter, authMetaRouter);
 
 // Campaign analysis — CSV inject + live Meta fetch
 app.use('/api/campaigns',
