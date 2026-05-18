@@ -182,15 +182,27 @@ export default function Settings() {
     }
   };
 
-  const handleMetaConnect = () => {
+  const handleMetaConnect = async () => {
     // Guard: must have projectId before redirecting to OAuth
     if (!projectId) {
       toast.error('Complete workspace setup before connecting Meta Ads.');
       return;
     }
     setConnectingMeta(true);
-    // projectId passed as query param — backend uses it to scope the credential
-    window.location.href = `/api/auth/meta/connect?projectId=${encodeURIComponent(projectId)}`;
+
+    try {
+      // Fetch OAuth URL via authenticated API call (axios will attach Firebase token)
+      const response = await api.get('/api/auth/meta/connect', {
+        params: { projectId },
+      });
+
+      // Redirect to Meta OAuth dialog
+      window.location.href = response.data.oauthUrl;
+    } catch (err) {
+      console.error('[Settings] Meta connect error:', err);
+      toast.error(err.response?.data?.error || 'Failed to initiate Meta connection');
+      setConnectingMeta(false);
+    }
   };
 
   const handleResetSetup = () => {

@@ -69,18 +69,21 @@ function parseState(stateB64) {
 }
 
 // ── CONNECT  GET /api/auth/meta/connect?projectId=xxx ────────
+// Returns OAuth URL as JSON for frontend to redirect to.
+// This allows the frontend to make an authenticated API call via axios,
+// then redirect to the returned URL (avoiding the need to pass tokens in query strings).
 authMetaRouter.get('/connect', requireAuth, (req, res) => {
   const userId    = req.userId;
   const projectId = req.query.projectId;
 
   if (!projectId) {
-    return res.status(400).send('Missing projectId query parameter.');
+    return res.status(400).json({ error: 'Missing projectId query parameter.' });
   }
   if (!APP_ID()) {
-    return res.status(503).send('META_APP_ID is not configured on this server.');
+    return res.status(503).json({ error: 'META_APP_ID is not configured on this server.' });
   }
   if (!REDIRECT_URI()) {
-    return res.status(503).send('META_REDIRECT_URI is not configured on this server.');
+    return res.status(503).json({ error: 'META_REDIRECT_URI is not configured on this server.' });
   }
 
   const state = buildState(userId, projectId);
@@ -90,8 +93,8 @@ authMetaRouter.get('/connect', requireAuth, (req, res) => {
     + `&scope=${encodeURIComponent(SCOPES)}`
     + `&state=${encodeURIComponent(state)}`;
 
-  logger.info({ userId, projectId }, '[meta-auth] Redirecting to Meta OAuth');
-  return res.redirect(302, oauthUrl);
+  logger.info({ userId, projectId }, '[meta-auth] Generated Meta OAuth URL');
+  return res.json({ oauthUrl });
 });
 
 // ── CALLBACK  GET /api/auth/meta/callback ────────────────────
