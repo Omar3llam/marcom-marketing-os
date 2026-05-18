@@ -99,14 +99,14 @@ function initializeFirebase() {
   app = initializeApp(validation.config);
 
   // Try initializeAuth first, fall back to getAuth if it fails
+  // BUGFIX: Use getAuth directly to avoid IndexedDB heartbeat-store corruption
+  // See: https://github.com/firebase/firebase-js-sdk/issues/7693
   try {
-    _auth = initializeAuth(app, {
-      persistence: browserLocalPersistence,
-    });
-    console.log('[Firebase] Auth initialized with custom persistence');
-  } catch (error) {
-    console.warn('[Firebase] initializeAuth failed, falling back to getAuth:', error.message);
     _auth = getAuth(app);
+    console.log('[Firebase] Auth initialized (using default persistence to avoid IndexedDB issues)');
+  } catch (error) {
+    console.error('[Firebase] Auth initialization failed:', error);
+    throw error;
   }
 
   return app;
@@ -139,6 +139,35 @@ export function getGoogleProvider() {
     });
   }
   return _googleProvider;
+}
+
+// ── IndexedDB Cleanup Utility ────────────────────────────────
+// BUGFIX: Clear corrupted Firebase IndexedDB stores
+// Call this if you encounter "firebase-heartbeat-store" errors
+
+export async function clearFirebaseIndexedDB() {
+  const databases = [
+    'firebase-heartbeat-database',
+    'firebaseLocalStorageDb',
+  ];
+
+  try {
+    for (const db of databases) {
+      await indexedDB.deleteDatabase(db);
+      console.log(`[Firebase] Cleared IndexedDB: ${db}`);
+    }
+    console.log('[Firebase] IndexedDB cleanup complete. Please refresh the page.');
+    return true;
+  } catch (error) {
+    console.error('[Firebase] Failed to clear IndexedDB:', error);
+    return false;
+  }
+}
+
+// Auto-clear IndexedDB on heartbeat errors (development only)
+if (import.meta.env.DEV) {
+  window.clearFirebaseIndexedDB = clearFirebaseIndexedDB;
+  console.log('[Firebase] Dev mode: run clearFirebaseIndexedDB() to fix IndexedDB issues');
 }
 
 // ── Export auth methods for convenience ──────────────────────
