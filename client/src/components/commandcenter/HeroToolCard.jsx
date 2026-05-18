@@ -84,9 +84,9 @@ function ModeCard({ cfg, stagger, onClick, hero = false }) {
       className={cn(
         'reveal group text-left w-full',
         'bg-surface-card border rounded-2xl overflow-hidden shadow-card',
-        'transition-all duration-200 focus-visible:border-lumi-gold/60 focus-visible:shadow-gold-glow',
+        'transition-all duration-200 focus-visible:border-lumi-gold/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-lumi-gold/20 focus-visible:shadow-gold-glow',
         hero
-          ? 'flex flex-row items-stretch border-lumi-gold/30 shadow-gold-glow'
+          ? 'flex flex-col lg:flex-row items-stretch border-lumi-gold/30 shadow-gold-glow'
           : 'flex flex-col items-stretch border-surface-border',
         disabled
           ? 'opacity-50 cursor-not-allowed'
@@ -94,13 +94,66 @@ function ModeCard({ cfg, stagger, onClick, hero = false }) {
             ? 'hover:border-lumi-gold/60 hover:brightness-[1.02] active:scale-[0.99]'
             : 'hover:border-lumi-gold/40 hover:shadow-card-hover active:scale-[0.99]',
       )}
+      aria-label={`${cfg.title} - ${cfg.body}`}
+      aria-disabled={disabled}
     >
       <div className={cn('card-accent', cfg.accent)} aria-hidden="true" />
 
-      {/* Hero-only: right panel with session metrics */}
+      {/* Main content section */}
+      <div className="p-4 sm:p-6 flex flex-col flex-1">
+        <div className="flex items-center justify-between">
+          <span className={cn('font-mono text-xs px-2 py-1 rounded-lg', cfg.badgeCls)}>{cfg.badge}</span>
+          {disabled && <Lock className="w-3.5 h-3.5 text-dark-soft" strokeWidth={1.5} aria-label="Locked" />}
+        </div>
+        <div className={cn('mt-4 w-12 h-12 rounded-xl p-2.5 flex items-center justify-center', cfg.iconCls)} aria-hidden="true">
+          <Icon className="w-7 h-7" strokeWidth={1.5} />
+        </div>
+        <DecisionTitle as="h3" className="mt-4 text-dark-base">{cfg.title}</DecisionTitle>
+        <p className="mt-2 text-dark-soft text-sm leading-relaxed">{cfg.body}</p>
+
+        {/* Hero metrics — show on mobile/tablet as well */}
+        {hero && cfg._metrics && (
+          <div className="mt-4 lg:hidden grid grid-cols-3 gap-3 p-3 rounded-xl bg-lumi-gold/5 border border-lumi-gold/20">
+            <HeroMetricMobile label="Campaigns" value={cfg._metrics.total} />
+            <HeroMetricMobile label="Spend" value={cfg._metrics.spend} />
+            <HeroMetricMobile label="Verdict" value="~18s" />
+          </div>
+        )}
+
+        {cfg.enabled && (
+          hero ? (
+            // Hero variant: explicit full-width button + time-to-value line
+            <div className="mt-auto pt-5">
+              <div
+                className="w-full flex items-center justify-center gap-2
+                           px-4 sm:px-5 py-3 rounded-xl
+                           bg-lumi-gold text-dark-base
+                           font-display font-bold text-sm
+                           shadow-gold-glow
+                           group-hover:bg-lumi-deep
+                           transition-colors"
+                aria-label={cfg.cta}
+              >
+                {cfg.cta}
+                <ArrowRight className="w-4 h-4" strokeWidth={2.5} aria-hidden="true" />
+              </div>
+              <p className="mt-2 text-center font-mono text-xs text-dark-soft/70">
+                Drop CSV → verdict in ~18s
+              </p>
+            </div>
+          ) : (
+            // Secondary variant: subtle link
+            <span className="mt-6 inline-flex items-center gap-1 text-lumi-gold font-mono text-sm group-hover:underline">
+              {cfg.cta} <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} aria-hidden="true" />
+            </span>
+          )
+        )}
+      </div>
+
+      {/* Hero-only: right panel with session metrics (desktop only) */}
       {hero && (
         <div className="hidden lg:flex flex-col justify-center
-                        px-6 py-6 border-l border-lumi-gold/20
+                        px-6 py-6 border-t lg:border-t-0 lg:border-l border-lumi-gold/20
                         bg-lumi-gold/5 min-w-[180px] shrink-0">
           <p className="font-mono text-[10px] uppercase tracking-widest
                         text-dark-soft mb-3">
@@ -113,45 +166,6 @@ function ModeCard({ cfg, stagger, onClick, hero = false }) {
           </div>
         </div>
       )}
-
-      <div className="p-6 flex flex-col flex-1">
-        <div className="flex items-center justify-between">
-          <span className={cn('font-mono text-xs px-2 py-1 rounded-lg', cfg.badgeCls)}>{cfg.badge}</span>
-          {disabled && <Lock className="w-3.5 h-3.5 text-dark-soft" strokeWidth={1.5} />}
-        </div>
-        <div className={cn('mt-4 w-12 h-12 rounded-xl p-2.5 flex items-center justify-center', cfg.iconCls)}>
-          <Icon className="w-7 h-7" strokeWidth={1.5} />
-        </div>
-        <DecisionTitle as="h3" className="mt-4 text-dark-base">{cfg.title}</DecisionTitle>
-        <p className="mt-2 text-dark-soft text-sm leading-relaxed">{cfg.body}</p>
-        {cfg.enabled && (
-          hero ? (
-            // Hero variant: explicit full-width button + time-to-value line
-            <div className="mt-auto pt-5">
-              <div
-                className="w-full flex items-center justify-center gap-2
-                           px-5 py-3 rounded-xl
-                           bg-lumi-gold text-dark-base
-                           font-display font-bold text-sm
-                           shadow-gold-glow
-                           group-hover:bg-lumi-deep
-                           transition-colors"
-              >
-                {cfg.cta}
-                <ArrowRight className="w-4 h-4" strokeWidth={2.5} />
-              </div>
-              <p className="mt-2 text-center font-mono text-xs text-dark-soft/70">
-                Drop CSV → verdict in ~18s
-              </p>
-            </div>
-          ) : (
-            // Secondary variant: subtle link (unchanged)
-            <span className="mt-6 inline-flex items-center gap-1 text-lumi-gold font-mono text-sm group-hover:underline">
-              {cfg.cta} <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
-            </span>
-          )
-        )}
-      </div>
     </button>
   );
 }
@@ -168,6 +182,15 @@ function HeroMetric({ label, value, note }) {
           </span>
         )}
       </div>
+    </div>
+  );
+}
+
+function HeroMetricMobile({ label, value }) {
+  return (
+    <div className="text-center">
+      <div className="font-display font-bold text-sm text-dark-base tabular-nums">{value}</div>
+      <div className="font-mono text-[10px] text-dark-soft mt-0.5">{label}</div>
     </div>
   );
 }
