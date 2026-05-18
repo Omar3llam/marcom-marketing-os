@@ -17,8 +17,22 @@ export default {
       colors: {
         'lumi':         colors.brand,
         'accent':       colors.accent,
-        'surface':      colors.surface,
-        'dark':         { base: colors.text.base, soft: colors.text.soft },
+
+        // Surface tokens (flat mapping for @apply compatibility)
+        'surface':             colors.surface,  // nested object for surface.light, etc.
+        'surface-light':       colors.surface.light,
+        'surface-card':        colors.surface.card,
+        'surface-border':      colors.surface.border,
+        'surface-elevated':    colors.surface.elevated,
+        'surface-border-strong': colors.surface['border-strong'],
+
+        // Text tokens (flat + nested for maximum compatibility)
+        'dark':         { base: colors.text.base, soft: colors.text.soft, muted: colors.text.muted, subtle: colors.text.subtle },
+        'dark-base':    colors.text.base,
+        'dark-soft':    colors.text.soft,
+        'dark-muted':   colors.text.muted,
+        'dark-subtle':  colors.text.subtle,
+
         'blush':        colors.blush,
 
         // Semantic signal tokens
