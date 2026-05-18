@@ -14,14 +14,15 @@ import { Text } from '../core/Text';
 // ============================================================
 
 export const MetricValue = forwardRef(function MetricValue(
-  { as = 'p', ...props },
+  { as = 'p', intent = 'primary', ...props },
   ref
 ) {
   return (
     <Text
       ref={ref}
       as={as}
-      role="metric-value"
+      variant="metric"
+      intent={intent}
       {...props}
     />
   );

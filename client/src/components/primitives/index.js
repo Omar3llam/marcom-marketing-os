@@ -22,5 +22,11 @@ export { SectionLabel }   from './typography/SectionLabel';
 export { BodyMuted }      from './typography/BodyMuted';
 export { BodySubtle }     from './typography/BodySubtle';
 
-// State primitives
+// State primitives (business signals)
 export { VerdictBadge }   from './signals/VerdictBadge';
+
+// Decision flow primitives (cognitive layer)
+export { ConfidenceIndicator }      from './flows/ConfidenceIndicator';
+export { RiskSignal }               from './flows/RiskSignal';
+export { UrgencyBadge }             from './flows/UrgencyBadge';
+export { RecommendationStrength }   from './flows/RecommendationStrength';

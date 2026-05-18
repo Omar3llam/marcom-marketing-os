@@ -21,7 +21,8 @@ export const BodySubtle = forwardRef(function BodySubtle(
     <Text
       ref={ref}
       as={as}
-      role="body-subtle"
+      variant="body"
+      intent="subtle"
       {...props}
     />
   );

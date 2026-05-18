@@ -14,14 +14,15 @@ import { Text } from '../core/Text';
 // ============================================================
 
 export const SectionLabel = forwardRef(function SectionLabel(
-  { as = 'h3', ...props },
+  { as = 'h3', intent = 'subtle', ...props },
   ref
 ) {
   return (
     <Text
       ref={ref}
       as={as}
-      role="section-label"
+      variant="label"
+      intent={intent}
       {...props}
     />
   );

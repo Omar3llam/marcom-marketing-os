@@ -14,14 +14,15 @@ import { Text } from '../core/Text';
 // ============================================================
 
 export const DecisionTitle = forwardRef(function DecisionTitle(
-  { as = 'h2', ...props },
+  { as = 'h2', intent = 'primary', ...props },
   ref
 ) {
   return (
     <Text
       ref={ref}
       as={as}
-      role="decision-title"
+      variant="title"
+      intent={intent}
       {...props}
     />
   );

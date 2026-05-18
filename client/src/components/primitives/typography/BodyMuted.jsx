@@ -21,7 +21,8 @@ export const BodyMuted = forwardRef(function BodyMuted(
     <Text
       ref={ref}
       as={as}
-      role="body-muted"
+      variant="body"
+      intent="muted"
       {...props}
     />
   );
