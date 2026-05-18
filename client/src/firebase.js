@@ -71,6 +71,7 @@ let _auth = null;  // Internal auth instance
  * ARCHITECTURE NOTE:
  * Uses initializeAuth with explicit browserLocalPersistence to prevent
  * IndexedDB heartbeat-store corruption issues in production.
+ * Falls back to getAuth if initializeAuth fails (e.g., already initialized).
  */
 function initializeFirebase() {
   if (app) return app;
@@ -83,12 +84,23 @@ function initializeFirebase() {
     );
   }
 
+  console.log('[Firebase] Initializing with config:', {
+    projectId: validation.config.projectId,
+    authDomain: validation.config.authDomain,
+  });
+
   app = initializeApp(validation.config);
 
-  // Use initializeAuth with explicit persistence (prevents IndexedDB corruption)
-  _auth = initializeAuth(app, {
-    persistence: browserLocalPersistence,
-  });
+  // Try initializeAuth first, fall back to getAuth if it fails
+  try {
+    _auth = initializeAuth(app, {
+      persistence: browserLocalPersistence,
+    });
+    console.log('[Firebase] Auth initialized with custom persistence');
+  } catch (error) {
+    console.warn('[Firebase] initializeAuth failed, falling back to getAuth:', error.message);
+    _auth = getAuth(app);
+  }
 
   return app;
 }
