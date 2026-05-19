@@ -37,7 +37,7 @@ OPTIONAL_WARN.forEach(k => {
 
 export const config = {
   anthropicApiKey:              process.env.ANTHROPIC_API_KEY,
-  anthropicModel:               process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
+  anthropicModel:               process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6',
   databaseUrl:                  process.env.DATABASE_URL,
   firebaseServiceAccountJson:   process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
   webhookSecret:                process.env.WEBHOOK_SECRET,

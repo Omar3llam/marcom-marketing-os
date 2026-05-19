@@ -25,7 +25,7 @@ import { resolveDialect } from '../services/dialectResolver.js';
 import { compileDialectFragment } from '../prompts/dialectInjector.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-const DEFAULT_MODEL        = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5';
+const DEFAULT_MODEL        = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-6';
 const MAX_HISTORY_MESSAGES = 20;
 const MAX_RETRIES          = 3;
 const BASE_DELAY_MS        = 1_000;
