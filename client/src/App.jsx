@@ -28,10 +28,17 @@ import { CardSkeleton } from './components/ui/Skeleton.jsx';
 import { ProtectedRoute, OnboardingRoute } from './router/ProtectedRoute.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { IntelligenceProvider } from './context/IntelligenceContext.jsx';
+import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 
 // ── Heavy views — lazy-load to keep the initial bundle slim ──
 const CampaignAnalysis    = lazy(() => import('./pages/CampaignAnalysis.jsx'));
 const GrowthStrategyBoard = lazy(() => import('./pages/GrowthStrategyBoard.jsx'));
+
+// ── v2 views (gradual migration via Strangler Pattern) ────────
+const DecisionViewV2 = lazy(() => import('./pages/v2/DecisionViewV2.tsx').then(m => ({ default: m.DecisionViewV2 })));
+
+// ── Dev tools ──────────────────────────────────────────────────
+import { ComparisonRoute } from './components/dev/ComparisonHarness.tsx';
 
 
 function PageFallback() {
@@ -65,46 +72,92 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      {/* ── Public ───────────────────────────────────────── */}
-      <Route path="/"         element={<LandingPage />} />
-      <Route path="/login/*"  element={<AuthPage mode="login" />} />
-      <Route path="/signup/*" element={<AuthPage mode="signup" />} />
+    <ErrorBoundary boundaryId="root">
+      <Routes>
+        {/* ── Public ───────────────────────────────────────── */}
+        <Route path="/"         element={<LandingPage />} />
+        <Route path="/login/*"  element={<AuthPage mode="login" />} />
+        <Route path="/signup/*" element={<AuthPage mode="signup" />} />
 
-      {/* ── Onboarding gate ──────────────────────────────── */}
-      <Route
-        path="/onboarding"
-        element={<OnboardingRoute><OnboardingPage /></OnboardingRoute>}
-      />
+        {/* ── Onboarding gate ──────────────────────────────── */}
+        <Route
+          path="/onboarding"
+          element={<OnboardingRoute><OnboardingPage /></OnboardingRoute>}
+        />
 
-      {/* ── Authenticated app shell ──────────────────────── */}
-      <Route
-        path="/app"
-        element={
-          <ProtectedRoute>
-            <IntelligenceProvider>
-              <MainLayout />
-            </IntelligenceProvider>
-          </ProtectedRoute>
-        }
-      >
-        <Route index             element={<Navigate to="feed" replace />} />
-        <Route path="feed"       element={<DecisionFeed />} />
-        <Route path="campaigns"  element={
-          <Suspense fallback={<PageFallback />}><CampaignAnalysis /></Suspense>
-        } />
-        <Route path="growth"     element={
-          <Suspense fallback={<PageFallback />}><GrowthStrategyBoard /></Suspense>
-        } />
-        <Route path="tools/score"    element={<ScoreContent />} />
-        <Route path="tools/calendar" element={<SocialCalendar />} />
-        {/* Legacy tools mount kept so the sidebar's old "/marketing" deep-link still resolves */}
-        <Route path="tools/marketing" element={<MarketingTools />} />
-        <Route path="settings"   element={<SettingsPage />} />
-      </Route>
+        {/* ── Authenticated app shell ──────────────────────── */}
+        <Route
+          path="/app"
+          element={
+            <ProtectedRoute>
+              <IntelligenceProvider>
+                <MainLayout />
+              </IntelligenceProvider>
+            </ProtectedRoute>
+          }
+        >
+          <Route index             element={<Navigate to="feed" replace />} />
+          <Route path="feed"       element={
+            <ErrorBoundary boundaryId="feed">
+              <DecisionFeed />
+            </ErrorBoundary>
+          } />
+          <Route path="campaigns"  element={
+            <ErrorBoundary boundaryId="campaigns">
+              <Suspense fallback={<PageFallback />}><CampaignAnalysis /></Suspense>
+            </ErrorBoundary>
+          } />
+          <Route path="growth"     element={
+            <ErrorBoundary boundaryId="growth">
+              <Suspense fallback={<PageFallback />}><GrowthStrategyBoard /></Suspense>
+            </ErrorBoundary>
+          } />
+          <Route path="tools/score"    element={
+            <ErrorBoundary boundaryId="tools-score">
+              <ScoreContent />
+            </ErrorBoundary>
+          } />
+          <Route path="tools/calendar" element={
+            <ErrorBoundary boundaryId="tools-calendar">
+              <SocialCalendar />
+            </ErrorBoundary>
+          } />
+          {/* Legacy tools mount kept so the sidebar's old "/marketing" deep-link still resolves */}
+          <Route path="tools/marketing" element={
+            <ErrorBoundary boundaryId="tools-marketing">
+              <MarketingTools />
+            </ErrorBoundary>
+          } />
+          <Route path="settings"   element={
+            <ErrorBoundary boundaryId="settings">
+              <SettingsPage />
+            </ErrorBoundary>
+          } />
 
-      {/* 404 → home (NOT app, so unauthed visitors don't bounce-loop) */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+          {/* ── v2 routes (Strangler Pattern migration) ─────── */}
+          <Route path="v2/decision" element={
+            <ErrorBoundary boundaryId="v2-decision">
+              <Suspense fallback={<PageFallback />}><DecisionViewV2 /></Suspense>
+            </ErrorBoundary>
+          } />
+
+          {/* ── Comparison routes (dev harness) ─────────────── */}
+          <Route path="compare/decision" element={
+            <ErrorBoundary boundaryId="compare-decision">
+              <Suspense fallback={<PageFallback />}>
+                <ComparisonRoute
+                  v1={<DecisionFeed />}
+                  v2={<DecisionViewV2 />}
+                  label="Decision View"
+                />
+              </Suspense>
+            </ErrorBoundary>
+          } />
+        </Route>
+
+        {/* 404 → home (NOT app, so unauthed visitors don't bounce-loop) */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </ErrorBoundary>
   );
 }

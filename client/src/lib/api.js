@@ -4,6 +4,7 @@
 // Single Axios instance used by ALL frontend API calls.
 // Handles:
 //   - Firebase token attachment (request interceptor)
+//   - Contract version header (x-contract-version)
 //   - Token expiry recovery (401 retry with force-refresh)
 //   - withCredentials for OAuth session cookies
 //
@@ -13,13 +14,17 @@
 import axios from 'axios';
 import { auth } from '../firebase.js';
 
+// Contract version - updated when API contracts change
+// See: client/src/contracts/COMPATIBILITY.md
+const CONTRACT_VERSION = '2.1.0';
+
 export const api = axios.create({
   baseURL:          '/',
   timeout:          60_000,
   withCredentials:  true,    // Required for Meta OAuth session cookies
 });
 
-// ── REQUEST: Attach Firebase ID token ────────────────────────
+// ── REQUEST: Attach Firebase ID token + Contract Version ─────
 api.interceptors.request.use(
   async (config) => {
     try {
@@ -39,6 +44,9 @@ api.interceptors.request.use(
       } else {
         console.warn('[api] No token available - auth.currentUser is null');
       }
+
+      // Attach contract version for backend validation + drift detection
+      config.headers['x-contract-version'] = CONTRACT_VERSION;
     } catch (err) {
       // Auth not ready yet (e.g. page just loaded) — proceed without token.
       // Backend will return 401 which the response interceptor handles.
