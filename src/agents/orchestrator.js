@@ -19,6 +19,7 @@ import { prisma }                           from '../lib/prisma.js';
 import { runClaudeAgent }                   from './ClaudeAgent.js';
 import { runChatGPTAgent }                  from './ChatGPTAgent.js';
 import { logger }                           from '../utils/logger.js';
+import { trackDegradedState }               from '../lib/errorTelemetry.js';
 
 // Root causes that warrant a creative pass. Anything outside this
 // list gets strategic analysis only — saves OpenAI quota and
@@ -185,6 +186,20 @@ export async function runOrchestration({ campaignId, workspaceId, actionId, user
     } catch (err) {
       // Creative is best-effort — log and continue with strategic only.
       logger.warn({ err: err.message, campaignId }, '[orchestrator] OpenAI creative failed — returning strategic only');
+
+      // Track degraded state for observability (Phase 11D)
+      trackDegradedState({
+        feature: 'creative_generation',
+        degradationType: 'openai_failure',
+        cause: err.code || err.name || 'OPENAI_ERROR',
+        metadata: {
+          campaignId,
+          rootCause: strategicAnalysis?.rootCause,
+          errorMessage: err.message,
+          hasApiKey: !!process.env.OPENAI_API_KEY,
+        },
+      });
+
       creativeAssets = { error: err.message };
     }
   }

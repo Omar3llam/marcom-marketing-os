@@ -30,10 +30,10 @@ intelligenceRouter.post('/orchestrate/:campaignId', async (req, res) => {
       return res.status(404).json({ error: 'No PENDING action for this campaign' });
     }
 
-    // Lazy-import to keep the route module load-time light.
-    const { runOrchestration } = await import('../../agents/orchestrator.js');
+    // Use circuit breaker wrapper for resilience (Phase 11B)
+    const { executeOrchestration } = await import('../../resilience/orchestratorCircuit.js');
 
-    const result = await runOrchestration({
+    const result = await executeOrchestration({
       campaignId,
       workspaceId: wsId,
       actionId:    action.id,

@@ -22,15 +22,17 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
+// Phase 11D: Use XState machine via compatibility adapter
 import {
   useDecisionFSM,
   loadHistoryFromStorage,
   loadRadarAlertsFromStorage,
-} from '@/hooks/useDecisionFSM.js';
+} from '@/fsm/useDecisionFSMCompat';
 import { useOrchestrate } from '@/hooks/useOrchestrate.js';
 import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
 import { useMemory } from '@/hooks/useMemory.js';
-import { connectExecutionStream } from '@/lib/events.js';
+// Phase 11D: Use Phase 11C SSE client with exponential backoff
+import { useSSE } from '@/services/useSSE';
 import { api } from '@/lib/api.js';
 import CommandCenter      from '@/components/decision/CommandCenter.jsx';
 import InputView          from '@/components/decision/InputView.jsx';
@@ -69,8 +71,6 @@ export default function DecisionFeed() {
   const { summary } = useCampaignFeed();
   const { recordDecision } = useMemory();
   const { refresh } = useIntelligence();
-
-  const sseDisconnectRef = useRef(null);
 
   // ══════════════════════════════════════════════════════════════
   // HYDRATION: Load history + radar alerts from localStorage on mount
@@ -120,86 +120,85 @@ export default function DecisionFeed() {
   }, [loadRadarAlerts]); // Run once on mount
 
   // ══════════════════════════════════════════════════════════════
-  // SSE: Connect to real-time execution stream after auth ready
+  // SSE: Phase 11C client with exponential backoff
+  // ══════════════════════════════════════════════════════════════
+  const { state: sseState, metrics: sseMetrics, isConnected: sseConnected } = useSSE({
+    onMessage: (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('[DecisionFeed] SSE message:', data);
+
+        // Handle EXECUTION_STATUS events
+        if (data.type === 'EXECUTION_STATUS') {
+          const { status, error, timestamp, actionType, targetId } = data;
+
+          // Update FSM state
+          updateExecutionStatus(status, error, timestamp);
+
+          // Show toast notifications for execution lifecycle
+          if (status === 'QUEUED') {
+            toast.info('Action queued', {
+              description: `${actionType || 'Action'} for ${targetId || 'target'}`,
+              duration: 2000,
+            });
+          } else if (status === 'EXECUTING') {
+            toast.loading('Executing action...', {
+              description: 'Applying changes to Meta Ads',
+              duration: 2000,
+            });
+          } else if (status === 'EXECUTED_SUCCESS') {
+            toast.success('Action executed successfully', {
+              description: 'Changes applied to Meta Ads',
+              duration: 3000,
+            });
+          } else if (status === 'EXECUTED_FAILED') {
+            toast.error('Execution failed', {
+              description: error || 'Unknown error',
+              duration: 4000,
+            });
+          }
+        }
+      } catch (err) {
+        console.error('[DecisionFeed] Failed to parse SSE message:', err);
+      }
+    },
+    onError: (error) => {
+      console.error('[DecisionFeed] SSE error:', error);
+
+      // Only show toast for critical errors (max reconnect exceeded)
+      if (sseState === 'FAILED') {
+        toast.error('Real-time updates disconnected', {
+          description: 'Refresh the page to reconnect',
+          duration: 5000,
+        });
+      }
+    },
+    autoConnect: true, // Auto-connect when auth is ready
+    maxRetries: 5,
+    baseDelay: 2000,
+    maxDelay: 32000,
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // SSE State Monitoring: Send FSM events on connection state changes
   // ══════════════════════════════════════════════════════════════
   useEffect(() => {
-    let disconnect = null;
-
-    async function setupSSE() {
-      if (!currentUser) return;
-
-      try {
-        // ✅ Pass token getter function instead of static token
-        // This allows SSE to fetch a fresh token on each reconnect,
-        // handling token expiration (Firebase JWTs expire after 1h)
-        const getToken = async () => {
-          if (!currentUser) return null;
-          return await currentUser.getIdToken(true); // force refresh
-        };
-
-        disconnect = connectExecutionStream(getToken, {
-          onExecutionUpdate: (event) => {
-            console.log('[DecisionFeed] SSE execution update:', event);
-
-            // Dispatch FSM update based on SSE event
-            if (event.status) {
-              updateExecutionStatus(event.status, event.error, event.timestamp);
-            }
-
-            // Show toast notifications for execution lifecycle
-            if (event.status === 'QUEUED') {
-              toast.info('Action queued', {
-                description: `${event.actionType} for ${event.targetId}`,
-                duration: 2000,
-              });
-            } else if (event.status === 'EXECUTING') {
-              toast.loading('Executing action...', {
-                description: 'Applying changes to Meta Ads',
-                duration: 2000,
-              });
-            } else if (event.status === 'EXECUTED_SUCCESS') {
-              toast.success('Action executed successfully', {
-                description: 'Changes applied to Meta Ads',
-                duration: 3000,
-              });
-            } else if (event.status === 'EXECUTED_FAILED') {
-              toast.error('Execution failed', {
-                description: event.error || 'Unknown error',
-                duration: 4000,
-              });
-            }
-          },
-          onError: (err) => {
-            console.error('[DecisionFeed] SSE error:', err);
-            // Only show toast if it's a persistent connection issue
-            if (err.code === 'MAX_RECONNECT_EXCEEDED') {
-              toast.error('Real-time updates disconnected', {
-                description: 'Refresh the page to reconnect',
-                duration: 5000,
-              });
-            }
-          },
-          onConnected: () => {
-            console.log('[DecisionFeed] SSE connected');
-          },
-        });
-
-        sseDisconnectRef.current = disconnect;
-      } catch (err) {
-        console.error('[DecisionFeed] Failed to setup SSE:', err);
-      }
+    // Notify FSM when SSE drops during execution
+    if (sseState === 'RECONNECTING' && state.isProcessing) {
+      console.warn('[DecisionFeed] SSE dropped during execution, FSM will switch to polling');
+      dispatch({ type: 'SSE_DISCONNECTED' });
     }
 
-    setupSSE();
-
-    // Cleanup: disconnect SSE on unmount
-    return () => {
-      if (sseDisconnectRef.current) {
-        sseDisconnectRef.current();
-        sseDisconnectRef.current = null;
-      }
-    };
-  }, [currentUser, updateExecutionStatus]);
+    // Log SSE metrics for observability
+    if (sseMetrics.reconnectAttempts > 0) {
+      console.log('[DecisionFeed] SSE metrics:', {
+        state: sseState,
+        attempts: sseMetrics.reconnectAttempts,
+        downtime: sseMetrics.downtime,
+        totalMessages: sseMetrics.totalMessages,
+      });
+    }
+  }, [sseState, sseMetrics, state.isProcessing, dispatch]);
 
   // ══════════════════════════════════════════════════════════════
   // THEATER: When FSM transitions to THEATER, fire orchestration call
