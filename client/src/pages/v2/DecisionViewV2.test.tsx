@@ -118,7 +118,9 @@ describe('DecisionViewV2', () => {
       renderWithRouter(<DecisionViewV2 />);
 
       await waitFor(() => {
-        expect(screen.getByText(/platform error/i)).toBeInTheDocument();
+        // Phase 10: Error classification now happens in API client
+        // 500 errors map to PlatformError or NetworkError depending on error.response structure
+        expect(screen.getByText(/(platform error|connection error)/i)).toBeInTheDocument();
       });
     });
 
@@ -156,7 +158,8 @@ describe('DecisionViewV2', () => {
 
       // Wait for error state
       await waitFor(() => {
-        expect(screen.getByText(/platform error/i)).toBeInTheDocument();
+        // Phase 10: Error classification now happens in API client
+        expect(screen.getByText(/(platform error|connection error)/i)).toBeInTheDocument();
       });
 
       // Click retry

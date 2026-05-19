@@ -1,5 +1,11 @@
 /**
- * ErrorView — Typed error display with retry/reset actions
+ * ErrorView — Typed error display with retry/reset actions (Phase 10C)
+ *
+ * Severity-aware error display for route-level failures.
+ * Maps error severity to visual presentation.
+ *
+ * Note: This component is for high/critical severity errors (route boundaries).
+ * Low/medium severity errors should use Toast/InlineWarning components instead.
  */
 import { Shell, Panel, Button, Stack } from '@/primitives';
 import { AppError } from '@/contracts/errors';
@@ -12,42 +18,76 @@ interface ErrorViewProps {
 
 export function ErrorView({ error, onRetry, onReset }: ErrorViewProps) {
   const classification = error.classification;
+  const severity = error.severity;
   const isRetryable = error.retryable;
 
+  // Severity → color mapping
+  const severityColors = {
+    low: 'var(--color-status-success)',
+    medium: 'var(--color-status-warning)',
+    high: 'var(--color-status-danger)',
+    critical: 'var(--color-text-primary)',
+  };
+
+  // Classification → metadata mapping (Phase 10 domain errors)
   const errorMeta = {
     auth: {
       title: 'Authentication Required',
-      color: 'var(--color-status-warning)',
       icon: '🔒',
       action: 'Sign in again',
     },
     network: {
       title: 'Connection Error',
-      color: 'var(--color-status-danger)',
       icon: '📡',
       action: 'Retry',
     },
     platform: {
       title: 'Platform Error',
-      color: 'var(--color-status-danger)',
       icon: '⚠️',
       action: 'Retry',
     },
     validation: {
       title: 'Invalid Request',
-      color: 'var(--color-status-warning)',
       icon: '❌',
       action: 'Reset',
     },
-    parsing: {
+    contract: {
       title: 'Data Format Error',
-      color: 'var(--color-status-danger)',
       icon: '📋',
       action: 'Contact support',
     },
+    parsing: {
+      title: 'Data Format Error', // Legacy alias
+      icon: '📋',
+      action: 'Contact support',
+    },
+    decision_engine: {
+      title: 'AI Engine Error',
+      icon: '🤖',
+      action: 'Retry',
+    },
+    workspace: {
+      title: 'Workspace Error',
+      icon: '🏢',
+      action: 'Contact admin',
+    },
+    stream: {
+      title: 'Stream Disconnected',
+      icon: '📶',
+      action: 'Reconnecting...',
+    },
+    execution: {
+      title: 'Action Failed',
+      icon: '⚡',
+      action: 'Try again',
+    },
+    rate_limit: {
+      title: 'Rate Limited',
+      icon: '⏱️',
+      action: 'Wait and retry',
+    },
   }[classification] || {
     title: 'Unknown Error',
-    color: 'var(--color-status-danger)',
     icon: '⚠️',
     action: 'Retry',
   };
@@ -84,12 +124,26 @@ export function ErrorView({ error, onRetry, onReset }: ErrorViewProps) {
               style={{
                 fontSize: 'var(--font-size-xl)',
                 fontWeight: 600,
-                color: errorMeta.color,
+                color: severityColors[severity],
                 marginBottom: 'var(--spacing-sm)',
               }}
             >
               {errorMeta.title}
             </h2>
+
+            {/* Error code (debugging aid) */}
+            {error.code && (
+              <p
+                style={{
+                  fontSize: 'var(--font-size-xs)',
+                  color: 'var(--color-text-tertiary)',
+                  fontFamily: 'var(--font-mono)',
+                  marginBottom: 'var(--spacing-sm)',
+                }}
+              >
+                [{error.code}]
+              </p>
+            )}
 
             {/* Message */}
             <p
