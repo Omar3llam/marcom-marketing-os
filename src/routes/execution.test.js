@@ -14,8 +14,12 @@ vi.mock('../lib/prisma.js', () => ({
   prisma: {
     executionRequest: {
       findUnique: vi.fn(),
+      findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
+    },
+    executionTransition: {
+      findMany: vi.fn(),
     },
     auditLog: {
       create: vi.fn(),
@@ -295,6 +299,252 @@ describe('Execution Router - Reconciliation Endpoint', () => {
       // incoming.version < local.version → DROP EVENT
       expect(response.body.version).toBe(7);
       expect(typeof response.body.version).toBe('number');
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────
+  // Operations Runtime Layer — three read-only endpoints
+  // ─────────────────────────────────────────────────────────
+
+  describe('GET /api/execute/active', () => {
+    it('should return in-flight executions for the workspace', async () => {
+      const workspaceId = 'test-workspace-456';
+
+      prisma.executionRequest.findMany.mockResolvedValue([
+        {
+          id: 'exec-1',
+          actionType: 'PAUSE_ADSET',
+          targetId: 'adset-100',
+          status: 'EXECUTING',
+          version: 4,
+          correlationId: 'corr-A',
+          createdAt: new Date('2026-05-20T10:00:00.000Z'),
+          updatedAt: new Date('2026-05-20T10:00:08.000Z'),
+          transitions: [{ actor: 'WORKER' }],
+        },
+        {
+          id: 'exec-2',
+          actionType: 'INCREASE_BUDGET',
+          targetId: 'campaign-200',
+          status: 'QUEUED',
+          version: 1,
+          correlationId: 'corr-B',
+          createdAt: new Date('2026-05-20T10:00:05.000Z'),
+          updatedAt: new Date('2026-05-20T10:00:05.000Z'),
+          transitions: [],
+        },
+      ]);
+
+      const response = await request(app).get('/api/execute/active').expect(200);
+
+      expect(prisma.executionRequest.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            workspaceId,
+            status: { in: ['PENDING', 'QUEUED', 'EXECUTING', 'RETRYING'] },
+          },
+          orderBy: { updatedAt: 'desc' },
+          take: 100,
+        }),
+      );
+
+      expect(response.body.executions).toHaveLength(2);
+      expect(response.body.executions[0]).toMatchObject({
+        id: 'exec-1',
+        status: 'EXECUTING',
+        actor: 'WORKER',
+        version: 4,
+      });
+      // Empty transitions array falls back to SYSTEM
+      expect(response.body.executions[1].actor).toBe('SYSTEM');
+      expect(response.body.executions[0]).toHaveProperty('ageSeconds');
+      expect(typeof response.body.executions[0].ageSeconds).toBe('number');
+      expect(response.body.serverNow).toBeDefined();
+    });
+
+    it('should return empty list when nothing is in flight', async () => {
+      prisma.executionRequest.findMany.mockResolvedValue([]);
+
+      const response = await request(app).get('/api/execute/active').expect(200);
+
+      expect(response.body.executions).toEqual([]);
+    });
+
+    it('should return 500 on prisma failure', async () => {
+      prisma.executionRequest.findMany.mockRejectedValue(new Error('boom'));
+
+      const response = await request(app).get('/api/execute/active').expect(500);
+
+      expect(response.body.code).toBe('ACTIVE_LIST_ERROR');
+    });
+  });
+
+  describe('GET /api/execute/:id/transitions', () => {
+    const executionId = 'exec-trans-1';
+    const workspaceId = 'test-workspace-456';
+
+    const baseExecution = {
+      id: executionId,
+      workspaceId,
+      actionType: 'PAUSE_ADSET',
+      targetId: 'adset-100',
+      status: 'EXECUTED_SUCCESS',
+      version: 3,
+      correlationId: 'corr-T',
+      createdAt: new Date('2026-05-20T10:00:00.000Z'),
+      updatedAt: new Date('2026-05-20T10:00:22.000Z'),
+    };
+
+    it('should return execution + ordered transition chain', async () => {
+      prisma.executionRequest.findUnique.mockResolvedValue(baseExecution);
+      prisma.executionTransition.findMany.mockResolvedValue([
+        {
+          id: 't1', fromStatus: 'PENDING', toStatus: 'QUEUED', actor: 'API',
+          previousVersion: 0, newVersion: 1, reason: null, metadata: null,
+          correlationId: 'corr-T', createdAt: new Date('2026-05-20T10:00:01.000Z'),
+        },
+        {
+          id: 't2', fromStatus: 'QUEUED', toStatus: 'EXECUTING', actor: 'WORKER',
+          previousVersion: 1, newVersion: 2, reason: null, metadata: null,
+          correlationId: 'corr-T', createdAt: new Date('2026-05-20T10:00:05.000Z'),
+        },
+      ]);
+
+      const response = await request(app)
+        .get(`/api/execute/${executionId}/transitions`)
+        .expect(200);
+
+      expect(prisma.executionTransition.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { executionId, workspaceId },
+          orderBy: { createdAt: 'asc' },
+        }),
+      );
+      expect(response.body.execution.id).toBe(executionId);
+      expect(response.body.transitions).toHaveLength(2);
+      expect(response.body.transitions[0].toStatus).toBe('QUEUED');
+    });
+
+    it('should return 404 when execution is missing', async () => {
+      prisma.executionRequest.findUnique.mockResolvedValue(null);
+
+      const response = await request(app)
+        .get(`/api/execute/${executionId}/transitions`)
+        .expect(404);
+
+      expect(response.body.code).toBe('NOT_FOUND');
+      expect(prisma.executionTransition.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should return 403 on workspace mismatch', async () => {
+      prisma.executionRequest.findUnique.mockResolvedValue({
+        ...baseExecution,
+        workspaceId: 'other-workspace',
+      });
+
+      const response = await request(app)
+        .get(`/api/execute/${executionId}/transitions`)
+        .expect(403);
+
+      expect(response.body.code).toBe('FORBIDDEN');
+      expect(prisma.executionTransition.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /api/execute/:id/incident', () => {
+    const executionId = 'exec-inc-1';
+    const workspaceId = 'test-workspace-456';
+
+    it('should derive winner/loser + telemetry for failed execution', async () => {
+      prisma.executionRequest.findUnique.mockResolvedValue({
+        id: executionId,
+        workspaceId,
+        actionType: 'PAUSE_ADSET',
+        targetId: 'adset-911',
+        status: 'TIMED_OUT',
+        version: 14,
+        correlationId: 'corr-INC',
+        createdAt: new Date('2026-05-20T14:00:00.000Z'),
+        updatedAt: new Date('2026-05-20T14:09:08.000Z'),
+      });
+
+      prisma.executionTransition.findMany.mockResolvedValue([
+        { id: 't1', fromStatus: 'PENDING',   toStatus: 'QUEUED',    actor: 'API',
+          previousVersion: 0, newVersion: 1, reason: null, metadata: null,
+          correlationId: 'corr-INC', createdAt: new Date('2026-05-20T14:00:01.000Z') },
+        { id: 't2', fromStatus: 'QUEUED',    toStatus: 'EXECUTING', actor: 'WORKER',
+          previousVersion: 1, newVersion: 2, reason: null, metadata: null,
+          correlationId: 'corr-INC', createdAt: new Date('2026-05-20T14:00:05.000Z') },
+        { id: 't3', fromStatus: 'EXECUTING', toStatus: 'TIMED_OUT', actor: 'TIMEOUT_HANDLER',
+          previousVersion: 2, newVersion: 14, reason: 'timeout exceeded', metadata: { occConflict: true },
+          correlationId: 'corr-INC', createdAt: new Date('2026-05-20T14:09:08.000Z') },
+      ]);
+
+      const response = await request(app)
+        .get(`/api/execute/${executionId}/incident`)
+        .expect(200);
+
+      expect(response.body.incident).not.toBeNull();
+      expect(response.body.incident.winner).toBe('TIMEOUT_HANDLER');
+      expect(response.body.incident.loser).toBe('WORKER');
+      expect(response.body.incident.title).toBe('FAILED at v14');
+      expect(response.body.incident.cause).toBe('timeout exceeded');
+      expect(response.body.incident.graph).toMatchObject({
+        from: 'EXECUTING',
+        winner: 'TIMEOUT_HANDLER',
+        loser: 'WORKER',
+        resolution: 'TIMED_OUT',
+      });
+
+      const tags = response.body.incident.telemetry.map((t) => t.tag);
+      expect(tags).toEqual(expect.arrayContaining([
+        'occ_conflict', 'retry_count', 'lock_holder', 'correlation', 'last_known_state',
+      ]));
+      const occRow = response.body.incident.telemetry.find((t) => t.tag === 'occ_conflict');
+      expect(occRow.tone).toBe('kill');
+    });
+
+    it('should return incident=null for successful execution', async () => {
+      prisma.executionRequest.findUnique.mockResolvedValue({
+        id: executionId,
+        workspaceId,
+        actionType: 'PAUSE_ADSET',
+        targetId: 'adset-1',
+        status: 'EXECUTED_SUCCESS',
+        version: 3,
+        correlationId: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prisma.executionTransition.findMany.mockResolvedValue([
+        { id: 't1', fromStatus: 'PENDING', toStatus: 'QUEUED', actor: 'API',
+          previousVersion: 0, newVersion: 1, reason: null, metadata: null,
+          correlationId: null, createdAt: new Date() },
+      ]);
+
+      const response = await request(app)
+        .get(`/api/execute/${executionId}/incident`)
+        .expect(200);
+
+      expect(response.body.incident).toBeNull();
+      expect(response.body.transitions).toHaveLength(1);
+    });
+
+    it('should return 403 on workspace mismatch', async () => {
+      prisma.executionRequest.findUnique.mockResolvedValue({
+        id: executionId,
+        workspaceId: 'someone-else',
+        status: 'EXECUTED_FAILED',
+        version: 1,
+        actionType: 'X', targetId: 'Y', correlationId: null,
+        createdAt: new Date(), updatedAt: new Date(),
+      });
+
+      const response = await request(app)
+        .get(`/api/execute/${executionId}/incident`)
+        .expect(403);
+
+      expect(response.body.code).toBe('FORBIDDEN');
     });
   });
 });

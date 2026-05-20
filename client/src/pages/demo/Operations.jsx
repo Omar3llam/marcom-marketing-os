@@ -7,29 +7,38 @@
 //   3. Incident Panel    — failure forensics
 //   4. Workflow Graph    — DAG of nodes
 //
-// Ported from MARCOM Demo prototype (project/operations.jsx).
-// Lucide icons swapped in for the prototype's hand-traced set.
-// Design tokens scoped via Operations.module.css to avoid leak.
+// Wired to live ExecutionTransition data via:
+//   GET /api/execute/active
+//   GET /api/execute/:id/transitions
+//   GET /api/execute/:id/incident
 // ============================================================
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Activity, History, AlertTriangle, Layers,
   Cpu, Search, ChevronRight, ArrowRight,
-  RotateCcw, FileText, X,
+  RotateCcw, FileText, X, Loader2,
 } from 'lucide-react';
+import { api } from '../../lib/api.js';
 import styles from './Operations.module.css';
 
 // ── State design language ────────────────────────────────────
 const STATE_CFG = {
-  PENDING:   { color: 'var(--c-text-muted)',  bg: 'var(--c-surface-elevated)', label: 'PENDING',   dot: 'muted' },
-  QUEUED:    { color: '#3B82F6',              bg: 'rgba(59,130,246,0.10)',     label: 'QUEUED',    dot: 'blue'  },
-  EXECUTING: { color: 'var(--c-gold-deep)',   bg: 'rgba(246,201,69,0.12)',     label: 'EXECUTING', dot: 'pulse' },
-  RETRYING:  { color: '#A855F7',              bg: 'rgba(168,85,247,0.10)',     label: 'RETRYING',  dot: 'pulse' },
-  SUCCESS:   { color: 'var(--c-scale-text)',  bg: 'var(--c-scale-bg)',         label: 'SUCCESS',   dot: 'solid' },
-  FAILED:    { color: 'var(--c-kill-text)',   bg: 'var(--c-kill-bg)',          label: 'FAILED',    dot: 'sharp' },
-  TIMED_OUT: { color: 'var(--c-hold-text)',   bg: 'var(--c-hold-bg)',          label: 'TIMED_OUT', dot: 'warn'  },
-  CANCELLED: { color: 'var(--c-text-subtle)', bg: 'var(--c-surface-elevated)', label: 'CANCELLED', dot: 'faded' },
+  PENDING:         { color: 'var(--c-text-muted)',  bg: 'var(--c-surface-elevated)', label: 'PENDING',   dot: 'muted' },
+  QUEUED:          { color: '#3B82F6',              bg: 'rgba(59,130,246,0.10)',     label: 'QUEUED',    dot: 'blue'  },
+  EXECUTING:       { color: 'var(--c-gold-deep)',   bg: 'rgba(246,201,69,0.12)',     label: 'EXECUTING', dot: 'pulse' },
+  RETRYING:        { color: '#A855F7',              bg: 'rgba(168,85,247,0.10)',     label: 'RETRYING',  dot: 'pulse' },
+  // Backend uses EXECUTED_SUCCESS / EXECUTED_FAILED canonically; render as
+  // SUCCESS / FAILED for the UI but keep both keys mapped so either resolves.
+  SUCCESS:         { color: 'var(--c-scale-text)',  bg: 'var(--c-scale-bg)',         label: 'SUCCESS',   dot: 'solid' },
+  EXECUTED_SUCCESS:{ color: 'var(--c-scale-text)',  bg: 'var(--c-scale-bg)',         label: 'SUCCESS',   dot: 'solid' },
+  FAILED:          { color: 'var(--c-kill-text)',   bg: 'var(--c-kill-bg)',          label: 'FAILED',    dot: 'sharp' },
+  EXECUTED_FAILED: { color: 'var(--c-kill-text)',   bg: 'var(--c-kill-bg)',          label: 'FAILED',    dot: 'sharp' },
+  TIMED_OUT:       { color: 'var(--c-hold-text)',   bg: 'var(--c-hold-bg)',          label: 'TIMED_OUT', dot: 'warn'  },
+  CANCELLED:       { color: 'var(--c-text-subtle)', bg: 'var(--c-surface-elevated)', label: 'CANCELLED', dot: 'faded' },
 };
+
+const IN_FLIGHT = ['PENDING', 'QUEUED', 'EXECUTING', 'RETRYING'];
+const FAILURE = ['EXECUTED_FAILED', 'TIMED_OUT'];
 
 function StatePill({ state, size = 'sm' }) {
   const c = STATE_CFG[state] || STATE_CFG.PENDING;
@@ -59,56 +68,43 @@ function StatePill({ state, size = 'sm' }) {
   );
 }
 
-// ── Demo executions ──────────────────────────────────────────
-const EXECUTIONS = [
-  { id: 'A72F', action: 'meta.pause_adset',       target: '#4218990', actor: 'lumi', state: 'EXECUTING', version: 14, age: '0:08',  duration: '8s',   correlation: 'corr-3814' },
-  { id: 'B91C', action: 'meta.reallocate_budget', target: '#4099120', actor: 'lumi', state: 'QUEUED',    version: 3,  age: '0:02',  duration: '—',    correlation: 'corr-3814' },
-  { id: 'C30E', action: 'meta.update_creative',   target: '#5510042', actor: 'omar', state: 'RETRYING',  version: 8,  age: '0:24',  duration: '24s',  correlation: 'corr-3791' },
-  { id: 'D88A', action: 'meta.pause_adset',       target: '#8821110', actor: 'lumi', state: 'SUCCESS',   version: 9,  age: '1:42',  duration: '4s',   correlation: 'corr-3776' },
-  { id: 'E14B', action: 'meta.update_status',     target: '#7110488', actor: 'lumi', state: 'FAILED',    version: 11, age: '2:18',  duration: '18s',  correlation: 'corr-3771' },
-  { id: 'F22D', action: 'meta.duplicate_adset',   target: '#9009987', actor: 'omar', state: 'TIMED_OUT', version: 6,  age: '3:04',  duration: '60s',  correlation: 'corr-3760' },
-  { id: 'G55F', action: 'meta.set_budget',        target: '#3344298', actor: 'lumi', state: 'PENDING',   version: 1,  age: '—',     duration: '—',    correlation: 'corr-3820' },
-  { id: 'H77C', action: 'meta.update_creative',   target: '#1199003', actor: 'omar', state: 'CANCELLED', version: 4,  age: '4:51',  duration: '0s',   correlation: 'corr-3748' },
-];
+// ── Format helpers ───────────────────────────────────────────
+function shortId(id) {
+  if (!id) return '—';
+  return id.length > 6 ? id.slice(-6).toUpperCase() : id.toUpperCase();
+}
 
-const TIMELINE_A72F = [
-  { ts: '09:31:02.140', from: '∅',         to: 'PENDING',   actor: 'API',          note: 'request accepted',           correlation: 'corr-3814' },
-  { ts: '09:31:02.290', from: 'PENDING',   to: 'QUEUED',    actor: 'API',          note: 'enqueued · q:meta',          correlation: 'corr-3814' },
-  { ts: '09:31:05.012', from: 'QUEUED',    to: 'EXECUTING', actor: 'WORKER-7',     note: 'lock acquired v=12',         correlation: 'corr-3814' },
-  { ts: '09:31:11.450', from: 'EXECUTING', to: 'RETRYING',  actor: 'RETRY_POLICY', note: '503 from Graph · attempt 1/3', correlation: 'corr-3814' },
-  { ts: '09:31:14.880', from: 'RETRYING',  to: 'EXECUTING', actor: 'WORKER-7',     note: 'backoff 3.4s · v=14',        correlation: 'corr-3814' },
-  { ts: '09:31:22.310', from: 'EXECUTING', to: 'SUCCESS',   actor: 'WORKER-7',     note: 'meta.pause_adset OK',        correlation: 'corr-3814' },
-];
+function formatAge(seconds) {
+  if (seconds == null || Number.isNaN(seconds)) return '—';
+  if (seconds < 60) return `0:${String(seconds).padStart(2, '0')}`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 
-const INCIDENT_E14B = {
-  id: 'E14B',
-  title: 'FAILED at v14',
-  cause: 'timeout collision',
-  winner: 'TIMEOUT_HANDLER',
-  loser: 'WORKER-3',
-  transitions: [
-    { ts: '14:08:02', from: '∅',         to: 'PENDING',   actor: 'API' },
-    { ts: '14:08:03', from: 'PENDING',   to: 'QUEUED',    actor: 'API' },
-    { ts: '14:08:08', from: 'QUEUED',    to: 'EXECUTING', actor: 'WORKER-3' },
-    { ts: '14:09:08', from: 'EXECUTING', to: 'TIMED_OUT', actor: 'TIMEOUT_HANDLER', highlight: true },
-    { ts: '14:09:09', from: 'TIMED_OUT', to: 'FAILED',    actor: 'SUPERVISOR',      highlight: true },
-  ],
-  telemetry: [
-    { tag: 'occ_conflict',     value: '1 detected at v=14',         tone: 'kill' },
-    { tag: 'retry_count',      value: '3 / 3 exhausted',            tone: 'hold' },
-    { tag: 'stale_packets',    value: '2 dropped',                  tone: 'hold' },
-    { tag: 'lock_holder',      value: 'WORKER-3 → SUPERVISOR',      tone: 'neutral' },
-    { tag: 'correlation',      value: 'corr-3771 · lineage 4 deep', tone: 'neutral' },
-    { tag: 'last_known_state', value: 'EXECUTING (v=14, age 60.2s)', tone: 'neutral' },
-  ],
-  graph: { from: 'EXECUTING', winner: 'TIMEOUT_HANDLER', loser: 'WORKER-3', resolution: 'FAILED' },
-};
+function durationBetween(a, b) {
+  if (!a || !b) return '';
+  const ms = new Date(b).getTime() - new Date(a).getTime();
+  if (ms < 0) return '';
+  return `+${(ms / 1000).toFixed(2)}s`;
+}
+
+function formatTs(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toISOString().slice(11, 23); // HH:MM:SS.mmm
+}
 
 // ══════════════════════════════════════════════════════════════
 // ROOT
 // ══════════════════════════════════════════════════════════════
 export default function Operations() {
   const [tab, setTab] = useState('monitor');
+  const [selectedExecutionId, setSelectedExecutionId] = useState(null);
+
+  const openTimeline = (id) => { setSelectedExecutionId(id); setTab('timeline'); };
+  const openIncident = (id) => { setSelectedExecutionId(id); setTab('incident'); };
 
   const tabs = [
     { id: 'monitor',  label: 'Live Monitor',       Icon: Activity },
@@ -163,9 +159,9 @@ export default function Operations() {
         </div>
 
         <div key={tab} className="anim-fade-in">
-          {tab === 'monitor'  && <LiveMonitor />}
-          {tab === 'timeline' && <ExecutionTimeline />}
-          {tab === 'incident' && <IncidentPanel />}
+          {tab === 'monitor'  && <LiveMonitor onOpen={openTimeline} onOpenIncident={openIncident} />}
+          {tab === 'timeline' && <ExecutionTimeline executionId={selectedExecutionId} onBack={() => setTab('monitor')} />}
+          {tab === 'incident' && <IncidentPanel executionId={selectedExecutionId} onBack={() => setTab('monitor')} />}
           {tab === 'graph'    && <WorkflowGraph />}
         </div>
       </div>
@@ -177,13 +173,13 @@ export default function Operations() {
 function RuntimeHealthStrip() {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-      <Vital label="In-flight"    value="3"    color="var(--c-gold)"  pulse />
+      <Vital label="In-flight"    value="—"    color="var(--c-gold)"  pulse />
       <Divider />
-      <Vital label="Success / hr" value="142"  color="var(--c-scale)" />
+      <Vital label="Success / hr" value="—"    color="var(--c-scale)" />
       <Divider />
-      <Vital label="Failed / hr"  value="3"    color="var(--c-kill)" />
+      <Vital label="Failed / hr"  value="—"    color="var(--c-kill)" />
       <Divider />
-      <Vital label="p95"          value="412ms" mono />
+      <Vital label="p95"          value="—ms"  mono />
     </div>
   );
 }
@@ -218,25 +214,76 @@ function Vital({ label, value, color, pulse, mono }) {
   );
 }
 
+// ── Generic stateful blocks ──────────────────────────────────
+function PanelMessage({ icon: Icon, title, hint }) {
+  return (
+    <div style={{
+      background: 'var(--c-surface-card)',
+      border: '1px dashed var(--c-surface-border-strong)',
+      borderRadius: 14,
+      padding: '40px 24px',
+      textAlign: 'center',
+      color: 'var(--c-text-muted)',
+    }}>
+      {Icon && <Icon size={24} style={{ color: 'var(--c-text-subtle)', marginBottom: 8 }} />}
+      <div className="font-display" style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-base)' }}>{title}</div>
+      {hint && <div className="font-mono" style={{ fontSize: 11, marginTop: 6, color: 'var(--c-text-muted)' }}>{hint}</div>}
+    </div>
+  );
+}
+
+function LoadingBlock({ label = 'Loading…' }) {
+  return (
+    <div style={{
+      background: 'var(--c-surface-card)',
+      border: '1px solid var(--c-surface-border)',
+      borderRadius: 14,
+      padding: '40px 24px',
+      textAlign: 'center',
+      color: 'var(--c-text-muted)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+    }}>
+      <Loader2 size={16} className="anim-spin" style={{ animation: 'intel-pulse 1.4s ease-in-out infinite' }} />
+      <span className="font-mono" style={{ fontSize: 12 }}>{label}</span>
+    </div>
+  );
+}
+
 // ══════════════════════════════════════════════════════════════
 // 1. LIVE MONITOR
 // ══════════════════════════════════════════════════════════════
-function LiveMonitor() {
+function LiveMonitor({ onOpen, onOpenIncident }) {
   const [filter, setFilter] = useState('all');
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 2000);
-    return () => clearInterval(id);
+  const [executions, setExecutions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async () => {
+    try {
+      const { data } = await api.get('/api/execute/active');
+      setExecutions(data.executions || []);
+      setError(null);
+    } catch (err) {
+      setError(err?.message || 'Failed to load executions');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  const filters = ['all', 'in-flight', 'failed', 'stale'];
-  const isInFlight = (s) => ['QUEUED', 'EXECUTING', 'RETRYING', 'PENDING'].includes(s);
-  const isFailed   = (s) => ['FAILED', 'TIMED_OUT'].includes(s);
-  const isStale    = (e) => isInFlight(e.state) && parseFloat(e.age) > 0.5;
+  useEffect(() => {
+    load();
+    const id = setInterval(load, 5000); // poll every 5s (no SSE yet for this surface)
+    return () => clearInterval(id);
+  }, [load]);
 
-  const rows = EXECUTIONS.filter((e) => {
-    if (filter === 'in-flight') return isInFlight(e.state);
-    if (filter === 'failed')    return isFailed(e.state);
+  const filters = ['all', 'in-flight', 'failed', 'stale'];
+  const isInFlight = (s) => IN_FLIGHT.includes(s);
+  const isFailed   = (s) => FAILURE.includes(s);
+  const isStale    = (e) => isInFlight(e.status) && typeof e.ageSeconds === 'number' && e.ageSeconds > 30;
+
+  const rows = executions.filter((e) => {
+    if (filter === 'in-flight') return isInFlight(e.status);
+    if (filter === 'failed')    return isFailed(e.status);
     if (filter === 'stale')     return isStale(e);
     return true;
   });
@@ -278,7 +325,7 @@ function LiveMonitor() {
               boxShadow: '0 0 6px var(--c-scale)',
               animation: 'intel-pulse 1.6s ease-in-out infinite',
             }} />
-            SSE live · {rows.length} rows
+            Polling · {rows.length} rows
           </span>
           <button type="button" className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }}>
             <Search size={12} />
@@ -287,64 +334,86 @@ function LiveMonitor() {
         </div>
       </div>
 
-      <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 12, padding: '12px 16px', background: 'var(--c-surface-elevated)', borderBottom: '1px solid var(--c-surface-border)' }}>
-          {['Exec ID', 'Action / Target', 'State', 'Correlation', 'Actor', 'Ver', 'Age', 'Duration', ''].map((h, idx) => (
-            <span key={`${h}-${idx}`} className="font-mono" style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)' }}>
-              {h}
-            </span>
-          ))}
-        </div>
-        {rows.map((e) => {
-          const stale = isStale(e);
-          return (
-            <div
-              key={e.id}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: gridCols,
-                gap: 12,
-                padding: '14px 16px',
-                borderBottom: '1px solid var(--c-surface-border)',
-                alignItems: 'center',
-                background: stale ? 'rgba(245,158,11,0.04)' : 'transparent',
-                cursor: 'pointer',
-                transition: 'background 120ms',
-              }}
-              onMouseEnter={(ev) => { ev.currentTarget.style.background = stale ? 'rgba(245,158,11,0.08)' : 'var(--c-surface-elevated)'; }}
-              onMouseLeave={(ev) => { ev.currentTarget.style.background = stale ? 'rgba(245,158,11,0.04)' : 'transparent'; }}
-            >
-              <span className="font-mono" style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-base)' }}>#{e.id}</span>
-              <div>
-                <div className="font-mono" style={{ fontSize: 12, color: 'var(--c-text-base)' }}>{e.action}</div>
-                <div className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-subtle)', marginTop: 2 }}>→ {e.target}</div>
-              </div>
-              <StatePill state={e.state} />
-              <span className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-muted)' }}>{e.correlation}</span>
-              <ActorBadge name={e.actor} />
-              <span className="font-mono tabular-nums" style={{ fontSize: 11, color: 'var(--c-text-soft)' }}>v{e.version}</span>
-              <span className="font-mono tabular-nums" style={{ fontSize: 11, color: stale ? 'var(--c-hold-text)' : 'var(--c-text-muted)' }}>
-                {stale && <AlertTriangle size={10} style={{ marginRight: 4, verticalAlign: 'middle' }} />}
-                {e.age}
+      {loading && executions.length === 0 ? (
+        <LoadingBlock label="Loading active executions…" />
+      ) : error ? (
+        <PanelMessage icon={AlertTriangle} title="Could not load executions" hint={error} />
+      ) : rows.length === 0 ? (
+        <PanelMessage
+          icon={Activity}
+          title="No executions match this filter"
+          hint="The runtime is idle, or your filter is too narrow."
+        />
+      ) : (
+        <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, overflow: 'hidden', boxShadow: 'var(--sh-card)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: gridCols, gap: 12, padding: '12px 16px', background: 'var(--c-surface-elevated)', borderBottom: '1px solid var(--c-surface-border)' }}>
+            {['Exec ID', 'Action / Target', 'State', 'Correlation', 'Actor', 'Ver', 'Age', 'Duration', ''].map((h, idx) => (
+              <span key={`${h}-${idx}`} className="font-mono" style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)' }}>
+                {h}
               </span>
-              <span className="font-mono tabular-nums" style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{e.duration}</span>
-              <ChevronRight size={14} style={{ color: 'var(--c-text-subtle)' }} />
-            </div>
-          );
-        })}
-      </div>
+            ))}
+          </div>
+          {rows.map((e) => {
+            const stale = isStale(e);
+            const failed = isFailed(e.status);
+            const onClick = () => (failed ? onOpenIncident(e.id) : onOpen(e.id));
+            const duration = e.createdAt && e.updatedAt
+              ? `${Math.max(0, Math.round((new Date(e.updatedAt).getTime() - new Date(e.createdAt).getTime()) / 1000))}s`
+              : '—';
+            return (
+              <div
+                key={e.id}
+                role="button"
+                tabIndex={0}
+                onClick={onClick}
+                onKeyDown={(ev) => { if (ev.key === 'Enter') onClick(); }}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: gridCols,
+                  gap: 12,
+                  padding: '14px 16px',
+                  borderBottom: '1px solid var(--c-surface-border)',
+                  alignItems: 'center',
+                  background: stale ? 'rgba(245,158,11,0.04)' : 'transparent',
+                  cursor: 'pointer',
+                  transition: 'background 120ms',
+                }}
+                onMouseEnter={(ev) => { ev.currentTarget.style.background = stale ? 'rgba(245,158,11,0.08)' : 'var(--c-surface-elevated)'; }}
+                onMouseLeave={(ev) => { ev.currentTarget.style.background = stale ? 'rgba(245,158,11,0.04)' : 'transparent'; }}
+              >
+                <span className="font-mono" style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-base)' }}>#{shortId(e.id)}</span>
+                <div>
+                  <div className="font-mono" style={{ fontSize: 12, color: 'var(--c-text-base)' }}>{e.actionType}</div>
+                  <div className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-subtle)', marginTop: 2 }}>→ {e.targetId || '—'}</div>
+                </div>
+                <StatePill state={e.status} />
+                <span className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-muted)' }}>{e.correlationId || '—'}</span>
+                <ActorBadge name={e.actor || 'SYSTEM'} />
+                <span className="font-mono tabular-nums" style={{ fontSize: 11, color: 'var(--c-text-soft)' }}>v{e.version ?? 0}</span>
+                <span className="font-mono tabular-nums" style={{ fontSize: 11, color: stale ? 'var(--c-hold-text)' : 'var(--c-text-muted)' }}>
+                  {stale && <AlertTriangle size={10} style={{ marginRight: 4, verticalAlign: 'middle' }} />}
+                  {formatAge(e.ageSeconds)}
+                </span>
+                <span className="font-mono tabular-nums" style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{duration}</span>
+                <ChevronRight size={14} style={{ color: 'var(--c-text-subtle)' }} />
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="font-mono" style={{ marginTop: 12, fontSize: 10, color: 'var(--c-text-subtle)', display: 'flex', alignItems: 'center', gap: 14 }}>
         <span><span style={{ color: 'var(--c-hold)' }}>●</span> stale = in-flight &gt; 30s</span>
         <span>·</span>
-        <span>workspace-isolated · tenant: maison-salam</span>
+        <span>workspace-isolated · polled every 5s</span>
       </div>
     </div>
   );
 }
 
 function ActorBadge({ name }) {
-  const isMachine = ['lumi', 'worker', 'api', 'retry_policy', 'supervisor', 'timeout_handler']
+  if (!name) return null;
+  const isMachine = ['lumi', 'worker', 'api', 'retry_policy', 'supervisor', 'timeout_handler', 'system', 'reconciliation']
     .some((x) => name.toLowerCase().includes(x));
   return (
     <span
@@ -372,98 +441,162 @@ function ActorBadge({ name }) {
 // ══════════════════════════════════════════════════════════════
 // 2. EXECUTION TIMELINE
 // ══════════════════════════════════════════════════════════════
-function parseTs(s) {
-  const [h, m, secMs] = s.split(':');
-  const [sec, ms] = secMs.split('.');
-  return (+h * 3600) + (+m * 60) + (+sec) + (+ms / 1000);
-}
+function ExecutionTimeline({ executionId, onBack }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-function ExecutionTimeline() {
-  const rows = TIMELINE_A72F.map((t, i, arr) => {
-    let delta = '';
-    if (i > 0) {
-      const a = parseTs(arr[i - 1].ts);
-      const b = parseTs(t.ts);
-      delta = `+${(b - a).toFixed(2)}s`;
-    }
-    return { ...t, delta };
-  });
+  useEffect(() => {
+    if (!executionId) return;
+    let cancelled = false;
+    setLoading(true);
+    api.get(`/api/execute/${executionId}/transitions`)
+      .then((res) => { if (!cancelled) { setData(res.data); setError(null); } })
+      .catch((err) => { if (!cancelled) setError(err?.message || 'Failed to load transitions'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [executionId]);
+
+  if (!executionId) {
+    return (
+      <PanelMessage
+        icon={History}
+        title="No execution selected"
+        hint="Pick a row from the Live Monitor to see its transition chain."
+      />
+    );
+  }
+  if (loading && !data) return <LoadingBlock label="Loading transitions…" />;
+  if (error) return <PanelMessage icon={AlertTriangle} title="Could not load timeline" hint={error} />;
+  if (!data) return null;
+
+  const { execution, transitions } = data;
+  const rows = transitions.map((t, i, arr) => ({
+    ...t,
+    delta: i > 0 ? durationBetween(arr[i - 1].createdAt, t.createdAt) : '',
+  }));
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 18 }}>
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 12 }}>
           <div>
+            <button
+              type="button"
+              onClick={onBack}
+              className="font-mono"
+              style={{
+                background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+                color: 'var(--c-text-muted)', fontSize: 11, letterSpacing: '0.06em',
+                textTransform: 'uppercase', marginBottom: 6,
+              }}
+            >
+              ← Live Monitor
+            </button>
             <div className="font-mono" style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-gold-deep)' }}>
               Execution
             </div>
             <div className="font-display" style={{ fontSize: 22, fontWeight: 700, color: 'var(--c-text-base)', marginTop: 2 }}>
-              #A72F · meta.pause_adset
+              #{shortId(execution.id)} · {execution.actionType}
             </div>
             <div className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 2 }}>
-              corr-3814 · v=14 · workspace: maison-salam
+              {execution.correlationId || 'no correlation'} · v={execution.version}
             </div>
           </div>
-          <StatePill state="SUCCESS" size="lg" />
+          <StatePill state={execution.status} size="lg" />
         </div>
 
-        <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, padding: 8, boxShadow: 'var(--sh-card)' }}>
-          {rows.map((r, i) => (
-            <TransitionRow key={`${r.ts}-${i}`} r={r} last={i === rows.length - 1} />
-          ))}
-        </div>
+        {rows.length === 0 ? (
+          <PanelMessage icon={History} title="No transitions recorded" hint="This execution hasn't moved through any states yet." />
+        ) : (
+          <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, padding: 8, boxShadow: 'var(--sh-card)' }}>
+            {rows.map((r, i) => (
+              <TransitionRow key={r.id} r={r} last={i === rows.length - 1} />
+            ))}
+          </div>
+        )}
 
         <div className="font-mono" style={{ marginTop: 12, fontSize: 10, color: 'var(--c-text-subtle)' }}>
-          Total wall time: <span style={{ color: 'var(--c-text-base)' }}>20.17s</span> · v=12 → v=14 (1 retry)
+          {rows.length > 0 && rows[0].createdAt && rows[rows.length - 1].createdAt && (
+            <>
+              Total wall time: <span style={{ color: 'var(--c-text-base)' }}>
+                {((new Date(rows[rows.length - 1].createdAt).getTime() - new Date(rows[0].createdAt).getTime()) / 1000).toFixed(2)}s
+              </span>
+              {' · '}{rows.length} transition{rows.length === 1 ? '' : 's'}
+            </>
+          )}
         </div>
       </div>
 
       <aside>
         <div className="section-label" style={{ marginBottom: 10 }}>Correlation lineage</div>
         <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 12, padding: 14, boxShadow: 'var(--sh-card)' }}>
-          {[
-            { id: 'corr-3814', label: 'Decision · KILL',               cur: false },
-            { id: '↳ #A72F',   label: 'pause_adset',                   cur: true  },
-            { id: '↳ #B91C',   label: 'reallocate_budget · sibling',   cur: false },
-          ].map((c, i) => (
-            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: i ? '1px dashed var(--c-surface-border)' : 'none' }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: c.cur ? 'var(--c-gold)' : 'var(--c-surface-border-strong)', flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="font-mono" style={{ fontSize: 11, color: c.cur ? 'var(--c-text-base)' : 'var(--c-text-soft)', fontWeight: c.cur ? 600 : 400 }}>{c.id}</div>
-                <div className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-subtle)', marginTop: 1 }}>{c.label}</div>
-              </div>
+          {execution.correlationId ? (
+            <>
+              <LineageRow id={execution.correlationId} label="Correlation root" cur={false} first />
+              <LineageRow id={`↳ #${shortId(execution.id)}`} label={execution.actionType} cur />
+            </>
+          ) : (
+            <div className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-subtle)' }}>
+              No correlation ID attached to this execution.
             </div>
-          ))}
+          )}
         </div>
 
         <div className="section-label" style={{ marginTop: 18, marginBottom: 10 }}>Version jumps</div>
         <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 12, padding: 14 }}>
-          <VersionDelta from="12" to="13" actor="WORKER-7" />
-          <VersionDelta from="13" to="14" actor="WORKER-7 (retry)" highlight />
+          {rows.length === 0 ? (
+            <div className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-subtle)' }}>—</div>
+          ) : (
+            rows.map((r, i) => (
+              <VersionDelta
+                key={r.id}
+                from={r.previousVersion}
+                to={r.newVersion}
+                actor={r.actor}
+                highlight={r.toStatus === 'RETRYING' || r.toStatus === 'EXECUTING' && r.fromStatus === 'RETRYING'}
+                first={i === 0}
+              />
+            ))
+          )}
         </div>
       </aside>
     </div>
   );
 }
 
+function LineageRow({ id, label, cur, first }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: first ? 'none' : '1px dashed var(--c-surface-border)' }}>
+      <span style={{ width: 8, height: 8, borderRadius: '50%', background: cur ? 'var(--c-gold)' : 'var(--c-surface-border-strong)', flexShrink: 0 }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="font-mono" style={{ fontSize: 11, color: cur ? 'var(--c-text-base)' : 'var(--c-text-soft)', fontWeight: cur ? 600 : 400 }}>{id}</div>
+        <div className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-subtle)', marginTop: 1 }}>{label}</div>
+      </div>
+    </div>
+  );
+}
+
 function TransitionRow({ r, last }) {
-  const toCfg = STATE_CFG[r.to];
+  const toCfg = STATE_CFG[r.toStatus] || STATE_CFG.PENDING;
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '120px 22px 1fr 120px 60px', gap: 14, alignItems: 'center', padding: '10px 12px', borderBottom: last ? 'none' : '1px solid var(--c-surface-border)' }}>
-      <span className="font-mono tabular-nums" style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{r.ts}</span>
+      <span className="font-mono tabular-nums" style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{formatTs(r.createdAt)}</span>
       <div style={{ display: 'flex', justifyContent: 'center', position: 'relative' }}>
         <span style={{
           width: 8, height: 8, borderRadius: '50%',
           background: toCfg.color,
-          boxShadow: r.to === 'EXECUTING' || r.to === 'RETRYING' ? `0 0 8px ${toCfg.color}` : 'none',
+          boxShadow: r.toStatus === 'EXECUTING' || r.toStatus === 'RETRYING' ? `0 0 8px ${toCfg.color}` : 'none',
         }} />
         {!last && <span style={{ position: 'absolute', top: 14, width: 1, height: 18, background: 'var(--c-surface-border)' }} />}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-        {r.from !== '∅' ? <StatePill state={r.from} /> : <span className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-subtle)' }}>∅</span>}
+        <StatePill state={r.fromStatus} />
         <ArrowRight size={11} style={{ color: 'var(--c-text-subtle)' }} />
-        <StatePill state={r.to} />
-        <span style={{ fontSize: 11, color: 'var(--c-text-soft)', marginLeft: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.note}</span>
+        <StatePill state={r.toStatus} />
+        {r.reason && (
+          <span style={{ fontSize: 11, color: 'var(--c-text-soft)', marginLeft: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.reason}</span>
+        )}
       </div>
       <ActorBadge name={r.actor} />
       <span className="font-mono tabular-nums" style={{ fontSize: 10, color: 'var(--c-text-subtle)', textAlign: 'right' }}>{r.delta}</span>
@@ -471,9 +604,9 @@ function TransitionRow({ r, last }) {
   );
 }
 
-function VersionDelta({ from, to, actor, highlight }) {
+function VersionDelta({ from, to, actor, highlight, first }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: '1px dashed var(--c-surface-border)' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderTop: first ? 'none' : '1px dashed var(--c-surface-border)' }}>
       <span className="font-mono tabular-nums" style={{ fontSize: 12, fontWeight: 600, color: highlight ? 'var(--c-gold-deep)' : 'var(--c-text-soft)' }}>v{from}</span>
       <ArrowRight size={11} style={{ color: 'var(--c-text-subtle)' }} />
       <span className="font-mono tabular-nums" style={{ fontSize: 12, fontWeight: 700, color: highlight ? 'var(--c-gold-deep)' : 'var(--c-text-base)' }}>v{to}</span>
@@ -485,65 +618,120 @@ function VersionDelta({ from, to, actor, highlight }) {
 // ══════════════════════════════════════════════════════════════
 // 3. INCIDENT PANEL
 // ══════════════════════════════════════════════════════════════
-function IncidentPanel() {
-  const inc = INCIDENT_E14B;
+function IncidentPanel({ executionId, onBack }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!executionId) return;
+    let cancelled = false;
+    setLoading(true);
+    api.get(`/api/execute/${executionId}/incident`)
+      .then((res) => { if (!cancelled) { setData(res.data); setError(null); } })
+      .catch((err) => { if (!cancelled) setError(err?.message || 'Failed to load incident'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [executionId]);
+
+  if (!executionId) {
+    return (
+      <PanelMessage
+        icon={AlertTriangle}
+        title="No execution selected"
+        hint="Pick a failed row from the Live Monitor to inspect the incident."
+      />
+    );
+  }
+  if (loading && !data) return <LoadingBlock label="Loading incident…" />;
+  if (error) return <PanelMessage icon={AlertTriangle} title="Could not load incident" hint={error} />;
+  if (!data) return null;
+
+  const { execution, transitions, incident } = data;
+
+  if (!incident) {
+    return (
+      <PanelMessage
+        icon={AlertTriangle}
+        title="No incident for this execution"
+        hint={`#${shortId(execution.id)} is in ${execution.status} — incident view is for failed executions only.`}
+      />
+    );
+  }
+
   const toneColor = (t) => t === 'kill' ? 'var(--c-kill-text)' : t === 'hold' ? 'var(--c-hold-text)' : 'var(--c-text-base)';
   const toneBg    = (t) => t === 'kill' ? 'var(--c-kill-bg)'   : t === 'hold' ? 'var(--c-hold-bg)'   : 'var(--c-surface-elevated)';
 
   return (
     <div>
+      <button
+        type="button"
+        onClick={onBack}
+        className="font-mono"
+        style={{
+          background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+          color: 'var(--c-text-muted)', fontSize: 11, letterSpacing: '0.06em',
+          textTransform: 'uppercase', marginBottom: 12,
+        }}
+      >
+        ← Live Monitor
+      </button>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 18, background: 'var(--c-surface-card)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 16, marginBottom: 18, boxShadow: '0 0 24px rgba(239,68,68,0.06)' }}>
         <div style={{ width: 44, height: 44, borderRadius: 12, background: 'var(--c-kill-bg)', color: 'var(--c-kill-text)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <AlertTriangle size={22} />
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--c-text-base)' }}>
-            Execution #{inc.id} · {inc.title}
+            Execution #{shortId(execution.id)} · {incident.title}
           </div>
           <div className="font-mono" style={{ fontSize: 12, color: 'var(--c-text-soft)', marginTop: 2 }}>
-            Cause: <span style={{ color: 'var(--c-kill-text)', fontWeight: 600 }}>{inc.cause}</span> · Winner: <strong>{inc.winner}</strong> · Loser: <strong>{inc.loser}</strong>
+            Cause: <span style={{ color: 'var(--c-kill-text)', fontWeight: 600 }}>{incident.cause}</span> · Winner: <strong>{incident.winner}</strong> · Loser: <strong>{incident.loser}</strong>
           </div>
         </div>
-        <StatePill state="FAILED" size="lg" />
+        <StatePill state={execution.status} size="lg" />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 18 }}>
         <div>
           <div className="section-label" style={{ marginBottom: 10 }}>Transition chain</div>
           <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, padding: 8, marginBottom: 18, boxShadow: 'var(--sh-card)' }}>
-            {inc.transitions.map((t, i) => (
-              <div
-                key={`${t.ts}-${i}`}
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '90px 1fr 110px',
-                  gap: 12,
-                  alignItems: 'center',
-                  padding: '10px 12px',
-                  borderBottom: i === inc.transitions.length - 1 ? 'none' : '1px solid var(--c-surface-border)',
-                  background: t.highlight ? 'rgba(239,68,68,0.04)' : 'transparent',
-                  borderLeft: t.highlight ? '2px solid var(--c-kill)' : '2px solid transparent',
-                }}
-              >
-                <span className="font-mono tabular-nums" style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{t.ts}</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  {t.from !== '∅' ? <StatePill state={t.from} /> : <span className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-subtle)' }}>∅</span>}
-                  <ArrowRight size={11} style={{ color: 'var(--c-text-subtle)' }} />
-                  <StatePill state={t.to} />
+            {transitions.map((t, i) => {
+              const isFailureRow = FAILURE.includes(t.toStatus);
+              return (
+                <div
+                  key={t.id}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '90px 1fr 110px',
+                    gap: 12,
+                    alignItems: 'center',
+                    padding: '10px 12px',
+                    borderBottom: i === transitions.length - 1 ? 'none' : '1px solid var(--c-surface-border)',
+                    background: isFailureRow ? 'rgba(239,68,68,0.04)' : 'transparent',
+                    borderLeft: isFailureRow ? '2px solid var(--c-kill)' : '2px solid transparent',
+                  }}
+                >
+                  <span className="font-mono tabular-nums" style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{formatTs(t.createdAt)}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <StatePill state={t.fromStatus} />
+                    <ArrowRight size={11} style={{ color: 'var(--c-text-subtle)' }} />
+                    <StatePill state={t.toStatus} />
+                  </div>
+                  <ActorBadge name={t.actor} />
                 </div>
-                <ActorBadge name={t.actor} />
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="section-label" style={{ marginBottom: 10 }}>Collision resolution</div>
-          <CollisionGraph graph={inc.graph} />
+          <CollisionGraph graph={incident.graph} />
         </div>
 
         <div>
           <div className="section-label" style={{ marginBottom: 10 }}>Telemetry</div>
           <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, padding: 4, boxShadow: 'var(--sh-card)' }}>
-            {inc.telemetry.map((t, i) => (
+            {incident.telemetry.map((t, i) => (
               <div
                 key={t.tag}
                 style={{
@@ -551,7 +739,7 @@ function IncidentPanel() {
                   gridTemplateColumns: '150px 1fr',
                   gap: 12,
                   padding: '12px 14px',
-                  borderBottom: i === inc.telemetry.length - 1 ? 'none' : '1px solid var(--c-surface-border)',
+                  borderBottom: i === incident.telemetry.length - 1 ? 'none' : '1px solid var(--c-surface-border)',
                   alignItems: 'center',
                 }}
               >
@@ -576,11 +764,11 @@ function IncidentPanel() {
           </div>
 
           <div style={{ marginTop: 16, display: 'flex', gap: 8, flexDirection: 'column' }}>
-            <button type="button" className="btn-gold" style={{ width: '100%', justifyContent: 'center', padding: '11px 14px', fontSize: 13 }}>
+            <button type="button" className="btn-gold" style={{ width: '100%', justifyContent: 'center', padding: '11px 14px', fontSize: 13 }} disabled>
               <RotateCcw size={14} />
               Retry from last known good
             </button>
-            <button type="button" className="btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '10px 14px', fontSize: 13 }}>
+            <button type="button" className="btn-ghost" style={{ width: '100%', justifyContent: 'center', padding: '10px 14px', fontSize: 13 }} disabled>
               <FileText size={13} />
               Open raw audit log
             </button>
@@ -631,18 +819,18 @@ function CollisionGraph({ graph }) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// 4. WORKFLOW GRAPH
+// 4. WORKFLOW GRAPH — static FSM diagram
 // ══════════════════════════════════════════════════════════════
 function WorkflowGraph() {
   const nodes = [
-    { id: 'csv',      label: 'CSV ingest',      state: 'SUCCESS',   x: 80,   y: 60,  w: 130 },
-    { id: 'validate', label: 'Validate',        state: 'SUCCESS',   x: 260,  y: 60,  w: 130 },
-    { id: 'scan',     label: 'Scan 14 vectors', state: 'EXECUTING', x: 440,  y: 60,  w: 150 },
-    { id: 'memory',   label: 'Memory lookup',   state: 'SUCCESS',   x: 440,  y: 160, w: 150 },
-    { id: 'verdict',  label: 'Lock verdict',    state: 'PENDING',   x: 640,  y: 110, w: 130 },
-    { id: 'auth',     label: 'Auth + lock',     state: 'PENDING',   x: 820,  y: 60,  w: 130 },
-    { id: 'exec',     label: 'Meta Graph',      state: 'PENDING',   x: 820,  y: 160, w: 130 },
-    { id: 'audit',    label: 'Audit log',       state: 'PENDING',   x: 1000, y: 110, w: 130 },
+    { id: 'csv',      label: 'CSV ingest',      state: 'EXECUTED_SUCCESS', x: 80,   y: 60,  w: 130 },
+    { id: 'validate', label: 'Validate',        state: 'EXECUTED_SUCCESS', x: 260,  y: 60,  w: 130 },
+    { id: 'scan',     label: 'Scan 14 vectors', state: 'EXECUTING',        x: 440,  y: 60,  w: 150 },
+    { id: 'memory',   label: 'Memory lookup',   state: 'EXECUTED_SUCCESS', x: 440,  y: 160, w: 150 },
+    { id: 'verdict',  label: 'Lock verdict',    state: 'PENDING',          x: 640,  y: 110, w: 130 },
+    { id: 'auth',     label: 'Auth + lock',     state: 'PENDING',          x: 820,  y: 60,  w: 130 },
+    { id: 'exec',     label: 'Meta Graph',      state: 'PENDING',          x: 820,  y: 160, w: 130 },
+    { id: 'audit',    label: 'Audit log',       state: 'PENDING',          x: 1000, y: 110, w: 130 },
   ];
   const edges = [
     ['csv', 'validate'], ['validate', 'scan'], ['validate', 'memory'],
@@ -724,7 +912,9 @@ function WorkflowGraph() {
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 14, padding: '10px 14px', background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 10 }}>
-        {Object.keys(STATE_CFG).map((s) => <StatePill key={s} state={s} />)}
+        {['PENDING', 'QUEUED', 'EXECUTING', 'RETRYING', 'EXECUTED_SUCCESS', 'EXECUTED_FAILED', 'TIMED_OUT', 'CANCELLED'].map((s) => (
+          <StatePill key={s} state={s} />
+        ))}
       </div>
     </div>
   );
