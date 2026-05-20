@@ -170,16 +170,63 @@ export default function Operations() {
 }
 
 // ── Runtime health strip ─────────────────────────────────────
+function formatLatency(ms) {
+  if (ms == null) return '—';
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
 function RuntimeHealthStrip() {
+  const [vitals, setVitals] = useState(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const { data } = await api.get('/api/execute/vitals');
+        if (!cancelled) {
+          setVitals(data);
+          setError(false);
+        }
+      } catch {
+        if (!cancelled) setError(true);
+      }
+    };
+    load();
+    const id = setInterval(load, 10000); // 10s — vitals don't change as fast as the monitor
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+
+  const v = vitals;
+  const placeholder = error ? '!' : '—';
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-      <Vital label="In-flight"    value="—"    color="var(--c-gold)"  pulse />
+      <Vital
+        label="In-flight"
+        value={v ? String(v.inFlightCount) : placeholder}
+        color="var(--c-gold)"
+        pulse={!!v && v.inFlightCount > 0}
+      />
       <Divider />
-      <Vital label="Success / hr" value="—"    color="var(--c-scale)" />
+      <Vital
+        label="Success / hr"
+        value={v ? String(v.successPerHour) : placeholder}
+        color="var(--c-scale)"
+      />
       <Divider />
-      <Vital label="Failed / hr"  value="—"    color="var(--c-kill)" />
+      <Vital
+        label="Failed / hr"
+        value={v ? String(v.failedPerHour) : placeholder}
+        color="var(--c-kill)"
+      />
       <Divider />
-      <Vital label="p95"          value="—ms"  mono />
+      <Vital
+        label="p95"
+        value={v ? formatLatency(v.p95LatencyMs) : placeholder}
+        mono
+      />
     </div>
   );
 }
