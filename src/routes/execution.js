@@ -20,6 +20,7 @@ import { firebaseAuthMiddleware } from '../middleware/firebaseAuth.js';
 import { contextGuard } from '../middleware/contextGuard.js';
 import { logger } from '../utils/logger.js';
 import { broadcastWorkspaceEvent } from './events.js';
+import { lifecycleService } from '../services/execution/ExecutionLifecycleService.js';
 const router = Router();
 
 // ── Constants ────────────────────────────────────────────
@@ -371,6 +372,117 @@ router.get('/audit', async (req, res) => {
     return res.status(500).json({
       error: 'Failed to retrieve audit logs',
       code: 'AUDIT_QUERY_ERROR',
+    });
+  }
+});
+
+// ── GET /api/execute/:id/active ─────────────────────────
+
+/**
+ * Reconciliation Endpoint (Phase 11B Task 5)
+ *
+ * Backend authority for execution state.
+ * Used by frontend after SSE disconnect / refresh / crash.
+ *
+ * Architecture Gate Decision 1:
+ * - Backend reconciliation = single source of truth
+ * - sessionStorage = transient optimization cache only
+ * - SSE = best effort transport
+ * - This endpoint = recovery authority
+ *
+ * Response format (ExecutionReconciliationPayload):
+ * {
+ *   "executionId": "...",
+ *   "correlationId": "...",
+ *   "status": "EXECUTING",
+ *   "version": 12,
+ *   "isTerminal": false,
+ *   "updatedAt": "2026-05-20T...",
+ *   "lastTransitionAt": "2026-05-20T...",
+ *   "serverNow": "2026-05-20T...",
+ *   "canResume": true,
+ *   "isStale": false,
+ *   "activeStep": "GENERATE_STRATEGY",
+ *   "retryMetadata": { ... },
+ *   "response": { ... }  // Only for terminal states
+ * }
+ *
+ * IMPORTANT:
+ * - Completely idempotent (no side effects)
+ * - Read-only authority
+ * - No implicit retries / auto-fix / hidden mutations
+ * - Version field enables stale detection (incoming.version < local.version → DROP EVENT)
+ */
+router.get('/:id/active', async (req, res) => {
+  const { id: executionId } = req.params;
+  const { workspaceId, userId } = req.user;
+
+  try {
+    logger.debug({
+      executionId,
+      workspaceId,
+      userId,
+    }, '[ExecutionRouter] Reconciliation request');
+
+    // Verify execution exists and belongs to workspace FIRST (security check)
+    const execution = await prisma.executionRequest.findUnique({
+      where: { id: executionId },
+      select: { workspaceId: true },
+    });
+
+    if (!execution) {
+      logger.warn({
+        executionId,
+        workspaceId,
+        userId,
+      }, '[ExecutionRouter] Execution not found');
+
+      return res.status(404).json({
+        error: 'Execution not found',
+        code: 'NOT_FOUND',
+      });
+    }
+
+    if (execution.workspaceId !== workspaceId) {
+      logger.warn({
+        executionId,
+        workspaceId,
+        executionWorkspaceId: execution.workspaceId,
+        userId,
+      }, '[ExecutionRouter] Workspace mismatch');
+
+      return res.status(403).json({
+        error: 'Access denied',
+        code: 'FORBIDDEN',
+      });
+    }
+
+    // Fetch execution state via lifecycle service
+    const state = await lifecycleService.getExecutionState(executionId);
+
+    logger.info({
+      executionId,
+      workspaceId,
+      userId,
+      status: state.status,
+      version: state.version,
+      isTerminal: state.isTerminal,
+      isStale: state.isStale,
+    }, '[ExecutionRouter] Reconciliation successful');
+
+    return res.json(state);
+  } catch (err) {
+    logger.error('[ExecutionRouter] Reconciliation failed', {
+      executionId,
+      workspaceId,
+      userId,
+      error: err.message,
+      stack: err.stack,
+    });
+
+    return res.status(500).json({
+      error: 'Failed to fetch execution state',
+      code: 'RECONCILIATION_ERROR',
     });
   }
 });

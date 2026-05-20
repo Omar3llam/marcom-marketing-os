@@ -462,7 +462,8 @@ describe('ExecutionLifecycleService', () => {
 
       const payload = await service.getExecutionState(executionId);
 
-      expect(payload).toEqual({
+      // Verify core payload structure
+      expect(payload).toMatchObject({
         executionId,
         status: ExecutionStatus.EXECUTING,
         version: 3,
@@ -475,7 +476,13 @@ describe('ExecutionLifecycleService', () => {
           nextRetryAt: '2026-05-20T10:05:00Z',
         },
         isTerminal: false,
+        canResume: true, // Non-terminal, not stale
+        isStale: false,  // Recently updated
       });
+
+      // Verify new timestamp fields exist
+      expect(payload.lastTransitionAt).toBeDefined();
+      expect(payload.serverNow).toBeDefined();
     });
 
     it('should throw error if execution not found', async () => {

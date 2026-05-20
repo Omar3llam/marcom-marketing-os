@@ -316,7 +316,19 @@ export class ExecutionLifecycleService {
    * Get Current Execution State
    *
    * Fetches execution with reconciliation payload format.
-   * Used by GET /api/execution/active endpoint.
+   * Used by GET /api/execution/:id/active endpoint.
+   *
+   * This endpoint provides authoritative state for client recovery after:
+   * - SSE disconnect
+   * - Browser refresh
+   * - Tab crash
+   * - Worker restart
+   * - Race conflict
+   * - Timeout transition
+   *
+   * IMPORTANT: This is read-only authority. No side effects, no mutations.
+   * sessionStorage is transient optimization cache only.
+   * This endpoint is the single source of truth.
    *
    * @param {string} executionId - Execution request ID
    * @returns {Promise<object>} ExecutionReconciliationPayload
@@ -330,17 +342,57 @@ export class ExecutionLifecycleService {
       throw new Error(`ExecutionRequest ${executionId} not found`);
     }
 
+    const now = new Date();
+    const terminal = isTerminalState(execution.status);
+
+    // Calculate stale detection metadata
+    const lastTransitionAt = execution.updatedAt;
+    const elapsedSinceTransition = now - new Date(lastTransitionAt);
+    const timeout = getTimeoutForStatus(execution.status);
+
+    // Execution is stale if:
+    // 1. Non-terminal AND exceeded timeout threshold
+    // 2. Terminal states are never stale (immutable)
+    const isStale = !terminal && timeout !== null && elapsedSinceTransition > timeout;
+
+    // canResume: true if non-terminal and not stale
+    // Clients can resume polling/SSE for non-terminal, fresh executions
+    const canResume = !terminal && !isStale;
+
     // Format as reconciliation payload (Architecture Gate Decision 1)
-    return {
+    const payload = {
+      // Identity
       executionId: execution.id,
+      correlationId: execution.correlationId || execution.id,
+
+      // State
       status: execution.status,
       version: execution.version,
+      isTerminal: terminal,
+
+      // Timestamps
       updatedAt: execution.updatedAt.toISOString(),
-      correlationId: execution.correlationId || execution.id,
+      lastTransitionAt: lastTransitionAt.toISOString(),
+      serverNow: now.toISOString(),
+
+      // Resumability
+      canResume,
+      isStale,
+
+      // Step tracking
       activeStep: execution.activeStep || null,
+
+      // Retry metadata
       retryMetadata: execution.retryMetadata || null,
-      isTerminal: isTerminalState(execution.status),
     };
+
+    // For terminal states: include final response/error
+    // This prevents "infinite spinner syndrome" 🌀
+    if (terminal && execution.response) {
+      payload.response = execution.response;
+    }
+
+    return payload;
   }
 
   /**
