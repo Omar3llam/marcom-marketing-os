@@ -20,8 +20,6 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import {
   updateWithOCC,
-  getCurrentVersion,
-  ConcurrencyError,
   isConcurrencyError,
 } from '../../utils/occHelpers.js';
 import {
@@ -46,7 +44,6 @@ import {
   TransitionActor,
   getTimeoutForStatus,
   isExecutionTimedOut,
-  calculateNextRetry,
 } from './transitionRules.js';
 
 /**
