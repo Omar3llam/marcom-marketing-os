@@ -33,6 +33,7 @@ import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 // ── Heavy views — lazy-load to keep the initial bundle slim ──
 const CampaignAnalysis    = lazy(() => import('./pages/CampaignAnalysis.jsx'));
 const GrowthStrategyBoard = lazy(() => import('./pages/GrowthStrategyBoard.jsx'));
+const Operations          = lazy(() => import('./pages/demo/Operations.jsx'));
 
 // ── v2 views (gradual migration via Strangler Pattern) ────────
 const DecisionViewV2 = lazy(() => import('./pages/v2/DecisionViewV2.tsx').then(m => ({ default: m.DecisionViewV2 })));
@@ -131,6 +132,13 @@ export default function App() {
           <Route path="settings"   element={
             <ErrorBoundary boundaryId="settings">
               <SettingsPage />
+            </ErrorBoundary>
+          } />
+
+          {/* ── Demo · Operations / Runtime panel (Phase 11B surface) ── */}
+          <Route path="demo/operations" element={
+            <ErrorBoundary boundaryId="demo-operations">
+              <Suspense fallback={<PageFallback />}><Operations /></Suspense>
             </ErrorBoundary>
           } />
 
