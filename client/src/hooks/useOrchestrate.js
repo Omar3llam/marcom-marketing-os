@@ -5,20 +5,32 @@
 // the right backend route based on mode, advances the theatre
 // step counter, and surfaces the response as a DecisionContract.
 //
-// Auth: uses `api` from lib/api.js (Clerk JWT auto-injected).
+// Auth: uses `api` from lib/api.js (Firebase JWT auto-injected).
 // Cancellation: AbortController so RESET_FLOW kills in-flight.
+// Resilience: Retry policy for NetworkError and PlatformError (Phase 11A).
+// Timeout: 90s max orchestration timeout (Phase 11A).
 // ============================================================
 import { useCallback, useRef } from 'react';
 import axios from 'axios';
 import { api } from '@/lib/api.js';
+import { executeWithRetry, getRetryStrategy } from '@/contracts/errors/retryPolicy';
+import { NetworkError, PlatformError } from '@/contracts/errors';
+import { trackRetryAttempt } from '@/lib/errorTelemetry';
 
 export function useOrchestrate({ onSuccess, onError, onStep }) {
   const abortRef = useRef(null);
+  const timeoutRef = useRef(null);
 
   const execute = useCallback(async (mode, inputData) => {
     abortRef.current?.abort();
     abortRef.current = new AbortController();
     const signal = abortRef.current.signal;
+
+    // Global orchestration timeout (90s max)
+    timeoutRef.current = setTimeout(() => {
+      abortRef.current?.abort();
+      onError('Orchestration timeout - analysis took longer than expected', 'TIMEOUT');
+    }, 90_000);
 
     try {
       // Step 0 — Parsing
@@ -29,7 +41,7 @@ export function useOrchestrate({ onSuccess, onError, onStep }) {
       onStep(1);
       const contextLock = await fetchContext(signal).catch(() => null);
 
-      // Step 2 — Agent analysis (mode-specific)
+      // Step 2 — Agent analysis (mode-specific) with retry policy
       onStep(2);
 
       let result;
@@ -47,16 +59,37 @@ export function useOrchestrate({ onSuccess, onError, onStep }) {
       onStep(3);
       await delay(350);
 
+      // Clear timeout on success
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
       onSuccess(result);
     } catch (err) {
+      // Clear timeout on error
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+
       if (axios.isCancel?.(err) || err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
+
       const status = err?.response?.status;
       const message = err?.response?.data?.error || err?.response?.data?.detail || err?.message || 'Unknown error';
-      onError(message, status ? String(status) : 'NETWORK_ERROR');
+      const code = status ? String(status) : 'NETWORK_ERROR';
+
+      onError(message, code);
     }
   }, [onSuccess, onError, onStep]);
 
-  const cancel = useCallback(() => abortRef.current?.abort(), []);
+  const cancel = useCallback(() => {
+    abortRef.current?.abort();
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
 
   return { execute, cancel };
 }
@@ -71,30 +104,114 @@ async function runCampaignFlow(inputData, contextLock, signal) {
   const campaignId = inputData?.campaignId;
   if (!campaignId) throw new Error('No campaign selected — upload a CSV and pick a campaign first.');
 
-  const { data } = await api.post(
-    `/api/lumi/orchestrate/${encodeURIComponent(campaignId)}`,
-    { contextLock },
-    { signal, timeout: 60_000 },
-  );
-  return mapOrchestrator(data, 'campaign', campaignId);
+  // Retry wrapper for orchestration API call (handles NetworkError, PlatformError)
+  const makeRequest = async () => {
+    const { data } = await api.post(
+      `/api/lumi/orchestrate/${encodeURIComponent(campaignId)}`,
+      { contextLock },
+      { signal, timeout: 60_000 },
+    );
+    return data;
+  };
+
+  try {
+    const data = await makeRequest();
+    return mapOrchestrator(data, 'campaign', campaignId);
+  } catch (err) {
+    // Check if error is retryable (NetworkError, PlatformError)
+    const strategy = getRetryStrategy(err);
+    if (strategy && !signal?.aborted) {
+      console.log('[useOrchestrate] Retrying campaign flow with strategy:', strategy.type);
+
+      // Track retry with telemetry
+      const data = await executeWithRetry(
+        makeRequest,
+        strategy,
+        (attempt, delay) => {
+          trackRetryAttempt(err, {
+            attempt,
+            delay,
+            maxAttempts: strategy.maxAttempts,
+            strategy: strategy.type,
+          });
+        }
+      );
+      return mapOrchestrator(data, 'campaign', campaignId);
+    }
+    throw err;
+  }
 }
 
 async function runContentFlow(inputData, contextLock, signal) {
-  const { data } = await api.post(
-    '/api/lumi/analyze-content',
-    { content: inputData?.text, platform: inputData?.platform, contextLock },
-    { signal, timeout: 30_000 },
-  );
-  return mapContent(data);
+  const makeRequest = async () => {
+    const { data } = await api.post(
+      '/api/lumi/analyze-content',
+      { content: inputData?.text, platform: inputData?.platform, contextLock },
+      { signal, timeout: 30_000 },
+    );
+    return data;
+  };
+
+  try {
+    const data = await makeRequest();
+    return mapContent(data);
+  } catch (err) {
+    const strategy = getRetryStrategy(err);
+    if (strategy && !signal?.aborted) {
+      console.log('[useOrchestrate] Retrying content flow with strategy:', strategy.type);
+
+      const data = await executeWithRetry(
+        makeRequest,
+        strategy,
+        (attempt, delay) => {
+          trackRetryAttempt(err, {
+            attempt,
+            delay,
+            maxAttempts: strategy.maxAttempts,
+            strategy: strategy.type,
+          });
+        }
+      );
+      return mapContent(data);
+    }
+    throw err;
+  }
 }
 
 async function runStrategyFlow(inputData, contextLock, signal) {
-  const { data } = await api.post(
-    '/api/lumi/strategy-brief',
-    { ...inputData, contextLock },
-    { signal, timeout: 45_000 },
-  );
-  return mapStrategy(data);
+  const makeRequest = async () => {
+    const { data } = await api.post(
+      '/api/lumi/strategy-brief',
+      { ...inputData, contextLock },
+      { signal, timeout: 45_000 },
+    );
+    return data;
+  };
+
+  try {
+    const data = await makeRequest();
+    return mapStrategy(data);
+  } catch (err) {
+    const strategy = getRetryStrategy(err);
+    if (strategy && !signal?.aborted) {
+      console.log('[useOrchestrate] Retrying strategy flow with strategy:', strategy.type);
+
+      const data = await executeWithRetry(
+        makeRequest,
+        strategy,
+        (attempt, delay) => {
+          trackRetryAttempt(err, {
+            attempt,
+            delay,
+            maxAttempts: strategy.maxAttempts,
+            strategy: strategy.type,
+          });
+        }
+      );
+      return mapStrategy(data);
+    }
+    throw err;
+  }
 }
 
 // ── Mappers — backend → DecisionContract ───────────────────

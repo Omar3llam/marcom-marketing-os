@@ -27,7 +27,7 @@ import { prisma }          from '../lib/prisma.js';
 import { logger }          from '../utils/logger.js';
 import { contextGuard }    from '../middleware/contextGuard.js';
 import { randomUUID }      from 'crypto';
-import orchestrator        from '../services/orchestrator.js';
+import { analyzeCampaignData } from '../agents/orchestrator.js';
 
 export const campaignsRouter = Router();
 
@@ -231,7 +231,7 @@ campaignsRouter.post('/fetch-meta', async (req, res) => {
             rawRecord:      c.rawRecord,
           };
 
-          const decision = await orchestrator.analyzeCampaignData(dataForClaude, 'meta-api');
+          const decision = await analyzeCampaignData(dataForClaude, 'meta-api');
 
           // Enrich with campaign identifiers
           decision.campaignId   = c.campaignId;
@@ -379,7 +379,7 @@ campaignsRouter.post('/upload-csv', upload.single('campaignData'), async (req, r
           rawRecord:      c.rawRecord,
         };
 
-        const decision = await orchestrator.analyzeCampaignData(dataForClaude, 'csv');
+        const decision = await analyzeCampaignData(dataForClaude, 'csv');
 
         // Enrich with campaign identifiers for frontend mapping
         decision.campaignId   = c.campaignId;

@@ -313,12 +313,18 @@ export function decisionReducer(state, action) {
 export function useDecisionFSM() {
   const [state, dispatch] = useReducer(decisionReducer, initialState);
   const abortControllerRef = useRef(null);
+  const executionTimeoutRef = useRef(null);
 
-  // Cleanup abort controller on unmount
+  // Cleanup abort controller and timeouts on unmount
   useEffect(() => {
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+      if (executionTimeoutRef.current) {
+        clearTimeout(executionTimeoutRef.current);
+        executionTimeoutRef.current = null;
       }
     };
   }, []);
@@ -332,10 +338,13 @@ export function useDecisionFSM() {
   }, []);
 
   const submitInput = useCallback((inputData) => {
-    // Create new AbortController for this async operation
+    // Abort any in-flight operations before starting new one
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
+
+    // Create new AbortController for this async operation
     abortControllerRef.current = new AbortController();
     dispatch({ type: 'SUBMIT_INPUT', inputData });
   }, []);
@@ -366,15 +375,42 @@ export function useDecisionFSM() {
   }, []);
 
   const executeAction = useCallback(() => {
-    // Create new AbortController for API execution
+    // Abort any in-flight operations before starting execution
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
+
+    // Clear any existing execution timeout
+    if (executionTimeoutRef.current) {
+      clearTimeout(executionTimeoutRef.current);
+      executionTimeoutRef.current = null;
+    }
+
+    // Create new AbortController for API execution
     abortControllerRef.current = new AbortController();
+
+    // Set execution timeout (120s max for Meta API operations)
+    executionTimeoutRef.current = setTimeout(() => {
+      dispatch({
+        type: 'PROCESS_ERROR',
+        message: 'Execution timeout - Meta API operation took too long',
+        code: 'EXECUTION_TIMEOUT',
+        classification: 'platform',
+        retryable: true,
+        fallbackAction: 'Try again or contact support if issue persists',
+      });
+    }, 120_000);
+
     dispatch({ type: 'EXECUTE_ACTION' });
   }, []);
 
   const executionComplete = useCallback(() => {
+    // Clear execution timeout
+    if (executionTimeoutRef.current) {
+      clearTimeout(executionTimeoutRef.current);
+      executionTimeoutRef.current = null;
+    }
     dispatch({ type: 'EXECUTION_COMPLETE' });
   }, []);
 
@@ -385,6 +421,11 @@ export function useDecisionFSM() {
   const reset = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    if (executionTimeoutRef.current) {
+      clearTimeout(executionTimeoutRef.current);
+      executionTimeoutRef.current = null;
     }
     dispatch({ type: 'RESET_FLOW' });
   }, []);
@@ -398,6 +439,14 @@ export function useDecisionFSM() {
   }, []);
 
   const updateExecutionStatus = useCallback((status, error = null, timestamp = null) => {
+    // Clear execution timeout on any status update (execution is progressing)
+    if (status === 'EXECUTED_SUCCESS' || status === 'EXECUTED_FAILED') {
+      if (executionTimeoutRef.current) {
+        clearTimeout(executionTimeoutRef.current);
+        executionTimeoutRef.current = null;
+      }
+    }
+
     dispatch({
       type: 'EXECUTION_STATUS_UPDATE',
       status,
