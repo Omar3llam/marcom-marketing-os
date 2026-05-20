@@ -77,6 +77,16 @@ enum WebhookStatus {
   FAILED
 }
 
+enum TransitionActor {
+  WORKER
+  TIMEOUT_HANDLER
+  USER
+  API
+  RECONCILIATION
+  RETRY_POLICY
+  SYSTEM
+}
+
 // ── Core Models ──────────────────────────────────────────────
 
 model Workspace {
@@ -213,14 +223,67 @@ model ExecutionRequest {
   idempotencyKey String   @unique
   actionType     String
   targetId       String
-  status         String   // PENDING, EXECUTED_SUCCESS, FAILED
+  status         String   // PENDING, QUEUED, EXECUTING, EXECUTED_SUCCESS, EXECUTED_FAILED, TIMED_OUT, CANCELLED
   payload        Json?    // Original request payload
   response       Json?    // Meta API response (success or error)
   createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // ── Phase 11B: Lifecycle Governance ───────────────────────
+  version        Int      @default(0)     // Optimistic concurrency control (OCC)
+  correlationId  String?                  // Correlation lineage for distributed tracing
+  activeStep     String?                  // Current orchestration step
+  retryMetadata  Json?                    // { attempt, maxAttempts, nextRetryAt }
+
+  transitions    ExecutionTransition[]
 
   @@index([workspaceId])
   @@index([createdAt])
+  @@index([status])
+  @@index([correlationId])
   @@map("execution_requests")
+}
+
+// ── Phase 11B Task 7: ExecutionTransition Audit Log ──────────
+// Immutable append-only log of every state transition.
+// Enables forensic debugging, replay, timeline UI, and incident analysis.
+//
+// Architectural Law:
+// Every state mutation must emit a durable transition record.
+//
+// Query patterns:
+// - Execution timeline: WHERE executionId = ? ORDER BY createdAt
+// - Actor audit: WHERE actor = 'worker' AND workspaceId = ?
+// - Version conflicts: WHERE executionId = ? AND previousVersion != newVersion - 1
+// - Correlation lineage: WHERE correlationId = ? ORDER BY createdAt
+
+model ExecutionTransition {
+  id              String          @id @default(cuid())
+  executionId     String
+  workspaceId     String          @db.Uuid
+
+  fromStatus      String
+  toStatus        String
+
+  actor           TransitionActor
+
+  correlationId   String?
+  reason          String?         // e.g., "sse_disconnect", "timeout_exceeded", "user_cancel"
+
+  previousVersion Int
+  newVersion      Int
+
+  metadata        Json?           // Optional metadata (e.g., retry attempt, error context)
+
+  createdAt       DateTime        @default(now())
+
+  execution       ExecutionRequest @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId, createdAt])
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([actor])
+  @@index([correlationId])
+  @@map("execution_transitions")
 }
 
 // ── Temporal Intelligence ────────────────────────────────────
