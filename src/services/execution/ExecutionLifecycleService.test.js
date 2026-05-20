@@ -448,12 +448,13 @@ describe('ExecutionLifecycleService', () => {
   describe('getExecutionState()', () => {
     it('should return reconciliation payload', async () => {
       const executionId = 'exec-reconcile';
+      const recentDate = new Date(Date.now() - 30000); // 30 seconds ago (not stale)
 
       prisma.executionRequest.findUnique.mockResolvedValue({
         id: executionId,
         status: ExecutionStatus.EXECUTING,
         version: 3,
-        updatedAt: new Date('2026-05-20T10:00:00Z'),
+        updatedAt: recentDate,
         correlationId: 'corr-reconcile',
         activeStep: 'meta-api-call',
         retryMetadata: {
@@ -470,7 +471,7 @@ describe('ExecutionLifecycleService', () => {
         executionId,
         status: ExecutionStatus.EXECUTING,
         version: 3,
-        updatedAt: '2026-05-20T10:00:00.000Z',
+        updatedAt: recentDate.toISOString(),
         correlationId: 'corr-reconcile',
         activeStep: 'meta-api-call',
         retryMetadata: {
@@ -480,7 +481,7 @@ describe('ExecutionLifecycleService', () => {
         },
         isTerminal: false,
         canResume: true, // Non-terminal, not stale
-        isStale: false,  // Recently updated
+        isStale: false,  // Recently updated (30s < 2min timeout)
       });
 
       // Verify new timestamp fields exist
