@@ -10,18 +10,19 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   Sparkles, ChevronDown, ChevronRight, Plus,
   LayoutDashboard, BarChart3, Target, ScanSearch, CalendarDays,
-  Settings, PanelLeftClose,
+  Settings, PanelLeftClose, Activity,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { cn } from '@/lib/utils.js';
 
 const tools = [
-  { label: 'Command Hub',       sub: 'Your OS launchpad',           icon: LayoutDashboard, path: '/app/feed'           },
-  { label: 'Campaign Analysis', sub: 'SCALE / HOLD / KILL verdicts', icon: BarChart3,       path: '/app/campaigns'      },
-  { label: 'Growth Strategy',   sub: 'CMO memory layer',             icon: Target,          path: '/app/growth'         },
-  { label: 'Score Content',     sub: '10-step MARCOM framework',     icon: ScanSearch,      path: '/app/tools/score'    },
-  { label: 'Social Calendar',   sub: '4-week content plan',          icon: CalendarDays,    path: '/app/tools/calendar' },
+  { label: 'Command Hub',       sub: 'Your OS launchpad',            icon: LayoutDashboard, path: '/app/feed'             },
+  { label: 'Campaign Analysis', sub: 'SCALE / HOLD / KILL verdicts',  icon: BarChart3,       path: '/app/campaigns'        },
+  { label: 'Operations',        sub: 'Runtime monitor + audit trail', icon: Activity,        path: '/app/demo/operations'  },
+  { label: 'Growth Strategy',   sub: 'CMO memory layer',              icon: Target,          path: '/app/growth'           },
+  { label: 'Score Content',     sub: '10-step MARCOM framework',      icon: ScanSearch,      path: '/app/tools/score'      },
+  { label: 'Social Calendar',   sub: '4-week content plan',           icon: CalendarDays,    path: '/app/tools/calendar'   },
 ];
 
 // ══════════════════════════════════════════════════════════════
