@@ -505,6 +505,120 @@ const IN_FLIGHT_STATUSES = ['PENDING', 'QUEUED', 'EXECUTING', 'RETRYING'];
 const FAILURE_STATUSES = ['EXECUTED_FAILED', 'TIMED_OUT'];
 
 /**
+ * GET /api/execute/vitals
+ *
+ * Returns rolling runtime vitals for the requesting workspace. Powers
+ * the Operations · RuntimeHealthStrip header.
+ *
+ * Response: {
+ *   inFlightCount: number,    // current executions in PENDING/QUEUED/EXECUTING/RETRYING
+ *   successPerHour: number,   // EXECUTED_SUCCESS in the last 60 minutes
+ *   failedPerHour: number,    // EXECUTED_FAILED + TIMED_OUT in the last 60 minutes
+ *   p95LatencyMs: number|null, // 95th percentile of terminal execution durations in last hour
+ *   serverNow: ISOString,
+ *   windowMinutes: 60,
+ * }
+ *
+ * Notes:
+ * - Read-only, no side effects.
+ * - p95 computed in JS over a single Prisma fetch — the dataset is small
+ *   (one hour of terminal executions per workspace). Switch to a raw SQL
+ *   percentile_cont() if volume grows beyond ~10k/hour per workspace.
+ */
+router.get('/vitals', async (req, res) => {
+  const { workspaceId, userId } = req.user;
+  const now = new Date();
+  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+  try {
+    const [inFlightCount, successPerHour, failedPerHour, terminalDurations] = await Promise.all([
+      prisma.executionRequest.count({
+        where: { workspaceId, status: { in: IN_FLIGHT_STATUSES } },
+      }),
+      prisma.executionRequest.count({
+        where: {
+          workspaceId,
+          status: 'EXECUTED_SUCCESS',
+          updatedAt: { gte: oneHourAgo },
+        },
+      }),
+      prisma.executionRequest.count({
+        where: {
+          workspaceId,
+          status: { in: FAILURE_STATUSES },
+          updatedAt: { gte: oneHourAgo },
+        },
+      }),
+      prisma.executionRequest.findMany({
+        where: {
+          workspaceId,
+          status: { in: ['EXECUTED_SUCCESS', ...FAILURE_STATUSES] },
+          updatedAt: { gte: oneHourAgo },
+        },
+        select: { createdAt: true, updatedAt: true },
+      }),
+    ]);
+
+    const p95LatencyMs = computeP95Latency(terminalDurations);
+
+    logger.debug({
+      workspaceId,
+      userId,
+      inFlightCount,
+      successPerHour,
+      failedPerHour,
+      p95LatencyMs,
+      sampleSize: terminalDurations.length,
+    }, '[ExecutionRouter] Runtime vitals');
+
+    return res.json({
+      inFlightCount,
+      successPerHour,
+      failedPerHour,
+      p95LatencyMs,
+      serverNow: now.toISOString(),
+      windowMinutes: 60,
+    });
+  } catch (err) {
+    logger.error('[ExecutionRouter] Vitals fetch failed', {
+      workspaceId,
+      userId,
+      error: err.message,
+      stack: err.stack,
+    });
+    return res.status(500).json({
+      error: 'Failed to fetch runtime vitals',
+      code: 'VITALS_ERROR',
+    });
+  }
+});
+
+/**
+ * Compute the 95th percentile latency (in ms) from a list of executions
+ * with createdAt + updatedAt fields. Returns null for empty input.
+ *
+ * Uses the linear-interpolation percentile method (nearest-rank with
+ * fraction). For small samples this gives a stable, non-jittery vital.
+ */
+function computeP95Latency(records) {
+  if (!records || records.length === 0) return null;
+
+  const durations = records
+    .map((r) => new Date(r.updatedAt).getTime() - new Date(r.createdAt).getTime())
+    .filter((d) => Number.isFinite(d) && d >= 0)
+    .sort((a, b) => a - b);
+
+  if (durations.length === 0) return null;
+  if (durations.length === 1) return durations[0];
+
+  const rank = 0.95 * (durations.length - 1);
+  const lower = Math.floor(rank);
+  const upper = Math.ceil(rank);
+  const weight = rank - lower;
+  return Math.round(durations[lower] + (durations[upper] - durations[lower]) * weight);
+}
+
+/**
  * GET /api/execute/active
  *
  * Lists in-flight executions for the requesting workspace, ordered by
