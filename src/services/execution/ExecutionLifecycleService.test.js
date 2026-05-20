@@ -16,6 +16,9 @@ vi.mock('../../lib/prisma.js', () => ({
       updateMany: vi.fn(),
       findUnique: vi.fn(),
     },
+    executionTransition: {
+      create: vi.fn(),
+    },
     $queryRaw: vi.fn(),
   },
 }));
@@ -513,6 +516,303 @@ describe('ExecutionLifecycleService', () => {
 
       expect(result.status).toBe('unhealthy');
       expect(result.error).toBe('Database connection failed');
+    });
+  });
+
+  describe('ExecutionTransition Audit Log (Task 7)', () => {
+    it('should create audit log record on successful transition', async () => {
+      const executionId = 'exec-audit-123';
+      const currentVersion = 1;
+      const workspaceId = 'workspace-abc';
+
+      // Mock current state
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        id: executionId,
+        status: ExecutionStatus.QUEUED,
+        version: currentVersion,
+        correlationId: 'corr-123',
+        workspaceId,
+        updatedAt: new Date(),
+      });
+
+      // Mock OCC write success
+      prisma.executionRequest.updateMany.mockResolvedValue({ count: 1 });
+
+      // Mock updated state
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        id: executionId,
+        status: ExecutionStatus.EXECUTING,
+        version: currentVersion + 1,
+        correlationId: 'corr-123',
+        workspaceId,
+        updatedAt: new Date(),
+      });
+
+      // Mock audit log creation
+      prisma.executionTransition.create.mockResolvedValue({
+        id: 'transition-123',
+        executionId,
+        workspaceId,
+        fromStatus: ExecutionStatus.QUEUED,
+        toStatus: ExecutionStatus.EXECUTING,
+        actor: TransitionActor.WORKER,
+        correlationId: 'corr-123',
+        reason: null,
+        previousVersion: currentVersion,
+        newVersion: currentVersion + 1,
+        metadata: null,
+        createdAt: new Date(),
+      });
+
+      await service.transition({
+        executionId,
+        newStatus: ExecutionStatus.EXECUTING,
+        expectedVersion: currentVersion,
+        actor: TransitionActor.WORKER,
+        correlationId: 'corr-123',
+      });
+
+      // Verify audit log was created
+      expect(prisma.executionTransition.create).toHaveBeenCalledWith({
+        data: {
+          executionId,
+          workspaceId,
+          fromStatus: ExecutionStatus.QUEUED,
+          toStatus: ExecutionStatus.EXECUTING,
+          actor: TransitionActor.WORKER,
+          correlationId: 'corr-123',
+          reason: null,
+          previousVersion: currentVersion,
+          newVersion: currentVersion + 1,
+          metadata: null,
+        },
+      });
+    });
+
+    it('should include reason in audit log when provided', async () => {
+      const executionId = 'exec-reason-456';
+      const currentVersion = 2;
+      const workspaceId = 'workspace-xyz';
+
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        id: executionId,
+        status: ExecutionStatus.EXECUTING,
+        version: currentVersion,
+        correlationId: 'corr-456',
+        workspaceId,
+        updatedAt: new Date(),
+      });
+
+      prisma.executionRequest.updateMany.mockResolvedValue({ count: 1 });
+
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        id: executionId,
+        status: ExecutionStatus.EXECUTED_SUCCESS,
+        version: currentVersion + 1,
+        correlationId: 'corr-456',
+        workspaceId,
+        updatedAt: new Date(),
+      });
+
+      prisma.executionTransition.create.mockResolvedValue({
+        id: 'transition-456',
+        executionId,
+        workspaceId,
+        fromStatus: ExecutionStatus.EXECUTING,
+        toStatus: ExecutionStatus.EXECUTED_SUCCESS,
+        actor: TransitionActor.WORKER,
+        correlationId: 'corr-456',
+        reason: 'meta_api_success',
+        previousVersion: currentVersion,
+        newVersion: currentVersion + 1,
+        metadata: { campaignId: 'camp-123' },
+        createdAt: new Date(),
+      });
+
+      await service.transition({
+        executionId,
+        newStatus: ExecutionStatus.EXECUTED_SUCCESS,
+        expectedVersion: currentVersion,
+        actor: TransitionActor.WORKER,
+        correlationId: 'corr-456',
+        metadata: {
+          reason: 'meta_api_success',
+          auditMetadata: { campaignId: 'camp-123' },
+        },
+      });
+
+      expect(prisma.executionTransition.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          reason: 'meta_api_success',
+          metadata: { campaignId: 'camp-123' },
+        }),
+      });
+    });
+
+    it('should not fail transition if audit log creation fails', async () => {
+      const executionId = 'exec-resilient-789';
+      const currentVersion = 0;
+      const workspaceId = 'workspace-resilient';
+
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        id: executionId,
+        status: ExecutionStatus.PENDING,
+        version: currentVersion,
+        correlationId: 'corr-789',
+        workspaceId,
+        updatedAt: new Date(),
+      });
+
+      prisma.executionRequest.updateMany.mockResolvedValue({ count: 1 });
+
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        id: executionId,
+        status: ExecutionStatus.QUEUED,
+        version: currentVersion + 1,
+        correlationId: 'corr-789',
+        workspaceId,
+        updatedAt: new Date(),
+      });
+
+      // Mock audit log creation failure
+      prisma.executionTransition.create.mockRejectedValue(
+        new Error('Database write failed')
+      );
+
+      // Transition should still succeed despite audit log failure
+      const result = await service.transition({
+        executionId,
+        newStatus: ExecutionStatus.QUEUED,
+        expectedVersion: currentVersion,
+        actor: TransitionActor.API,
+        correlationId: 'corr-789',
+      });
+
+      expect(result.status).toBe(ExecutionStatus.QUEUED);
+      expect(result.version).toBe(currentVersion + 1);
+    });
+
+    it('should create audit log for timeout transition', async () => {
+      const executionId = 'exec-timeout-audit';
+      const currentVersion = 2;
+      const workspaceId = 'workspace-timeout';
+
+      // Mock execution that has timed out
+      const oldDate = new Date(Date.now() - 5 * 60 * 1000);
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        id: executionId,
+        status: ExecutionStatus.EXECUTING,
+        version: currentVersion,
+        correlationId: 'corr-timeout',
+        workspaceId,
+        updatedAt: oldDate,
+      });
+
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        id: executionId,
+        status: ExecutionStatus.EXECUTING,
+        version: currentVersion,
+        correlationId: 'corr-timeout',
+        workspaceId,
+        updatedAt: oldDate,
+      });
+
+      prisma.executionRequest.updateMany.mockResolvedValue({ count: 1 });
+
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        id: executionId,
+        status: ExecutionStatus.TIMED_OUT,
+        version: currentVersion + 1,
+        correlationId: 'corr-timeout',
+        workspaceId,
+        updatedAt: new Date(),
+      });
+
+      prisma.executionTransition.create.mockResolvedValue({
+        id: 'transition-timeout',
+        executionId,
+        workspaceId,
+        fromStatus: ExecutionStatus.EXECUTING,
+        toStatus: ExecutionStatus.TIMED_OUT,
+        actor: TransitionActor.TIMEOUT_HANDLER,
+        correlationId: 'corr-timeout',
+        reason: null,
+        previousVersion: currentVersion,
+        newVersion: currentVersion + 1,
+        metadata: null,
+        createdAt: new Date(),
+      });
+
+      await service.timeout(executionId, 'corr-timeout');
+
+      expect(prisma.executionTransition.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          actor: TransitionActor.TIMEOUT_HANDLER,
+          fromStatus: ExecutionStatus.EXECUTING,
+          toStatus: ExecutionStatus.TIMED_OUT,
+        }),
+      });
+    });
+
+    it('should create audit log for cancellation', async () => {
+      const executionId = 'exec-cancel-audit';
+      const userId = 'user-123';
+      const currentVersion = 1;
+      const workspaceId = 'workspace-cancel';
+
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        id: executionId,
+        status: ExecutionStatus.QUEUED,
+        version: currentVersion,
+        correlationId: 'corr-cancel',
+        workspaceId,
+        updatedAt: new Date(),
+      });
+
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        id: executionId,
+        status: ExecutionStatus.QUEUED,
+        version: currentVersion,
+        correlationId: 'corr-cancel',
+        workspaceId,
+        updatedAt: new Date(),
+      });
+
+      prisma.executionRequest.updateMany.mockResolvedValue({ count: 1 });
+
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        id: executionId,
+        status: ExecutionStatus.CANCELLED,
+        version: currentVersion + 1,
+        correlationId: 'corr-cancel',
+        workspaceId,
+        updatedAt: new Date(),
+      });
+
+      prisma.executionTransition.create.mockResolvedValue({
+        id: 'transition-cancel',
+        executionId,
+        workspaceId,
+        fromStatus: ExecutionStatus.QUEUED,
+        toStatus: ExecutionStatus.CANCELLED,
+        actor: TransitionActor.USER,
+        correlationId: 'corr-cancel',
+        reason: null,
+        previousVersion: currentVersion,
+        newVersion: currentVersion + 1,
+        metadata: null,
+        createdAt: new Date(),
+      });
+
+      await service.cancel(executionId, userId, 'corr-cancel');
+
+      expect(prisma.executionTransition.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          actor: TransitionActor.USER,
+          fromStatus: ExecutionStatus.QUEUED,
+          toStatus: ExecutionStatus.CANCELLED,
+        }),
+      });
     });
   });
 });

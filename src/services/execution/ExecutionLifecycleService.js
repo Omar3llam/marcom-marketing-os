@@ -167,7 +167,22 @@ export class ExecutionLifecycleService {
       throw error;
     }
 
-    // Step 5: Emit transition event (telemetry + audit)
+    // Step 5: Persist transition to audit log
+    // (Task 7 Architectural Law: Every state mutation must emit a durable transition record)
+    await this._createTransitionAuditLog({
+      executionId,
+      workspaceId: currentExecution.workspaceId,
+      fromStatus: currentStatus,
+      toStatus: newStatus,
+      actor,
+      correlationId: updateData.correlationId,
+      reason: metadata.reason || null,
+      previousVersion: expectedVersion,
+      newVersion: updatedExecution.version,
+      metadata: metadata.auditMetadata || null,
+    });
+
+    // Step 6: Emit transition event (telemetry + observability)
     // (Architectural Law 4: Transition events are first-class citizens)
     const transitionEvent = createTransitionEvent({
       executionId,
@@ -393,6 +408,83 @@ export class ExecutionLifecycleService {
     }
 
     return payload;
+  }
+
+  /**
+   * Create Transition Audit Log
+   *
+   * Persists immutable transition record to ExecutionTransition table.
+   * This is the "black box recorder" for forensic debugging.
+   *
+   * ARCHITECTURAL LAW (Task 7):
+   * Every state mutation must emit a durable transition record.
+   *
+   * @private
+   * @param {object} params - Transition parameters
+   * @param {string} params.executionId - Execution request ID
+   * @param {string} params.workspaceId - Workspace ID
+   * @param {string} params.fromStatus - Previous status
+   * @param {string} params.toStatus - New status
+   * @param {string} params.actor - TransitionActor value
+   * @param {string} params.correlationId - Correlation lineage ID
+   * @param {string|null} params.reason - Optional transition reason
+   * @param {number} params.previousVersion - Previous version
+   * @param {number} params.newVersion - New version
+   * @param {object|null} params.metadata - Optional metadata
+   * @returns {Promise<object>} Created ExecutionTransition record
+   */
+  async _createTransitionAuditLog({
+    executionId,
+    workspaceId,
+    fromStatus,
+    toStatus,
+    actor,
+    correlationId,
+    reason,
+    previousVersion,
+    newVersion,
+    metadata,
+  }) {
+    try {
+      const transition = await prisma.executionTransition.create({
+        data: {
+          executionId,
+          workspaceId,
+          fromStatus,
+          toStatus,
+          actor,
+          correlationId,
+          reason,
+          previousVersion,
+          newVersion,
+          metadata,
+        },
+      });
+
+      logger.debug({
+        transitionId: transition.id,
+        executionId,
+        transition: `${fromStatus} → ${toStatus}`,
+        actor,
+        version: `${previousVersion} → ${newVersion}`,
+      }, 'Transition audit log created');
+
+      return transition;
+    } catch (error) {
+      // Log error but don't fail the transition
+      // Audit log creation failure should not block execution flow
+      logger.error({
+        executionId,
+        fromStatus,
+        toStatus,
+        actor,
+        error: error.message,
+      }, 'Failed to create transition audit log');
+
+      // Don't throw - audit log is best-effort
+      // The transition already succeeded (OCC write)
+      return null;
+    }
   }
 
   /**

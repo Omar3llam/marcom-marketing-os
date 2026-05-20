@@ -97,15 +97,17 @@ export function calculateNextRetry(attempt, baseDelay = 1000, maxDelay = 60000) 
  *
  * Defines who/what initiated a state transition.
  * Used for audit logging + telemetry.
+ *
+ * IMPORTANT: Values must match Prisma TransitionActor enum exactly.
  */
 export const TransitionActor = Object.freeze({
-  WORKER: 'worker',               // BullMQ worker executing job
-  TIMEOUT_HANDLER: 'timeout-handler', // Automatic timeout daemon
-  USER: 'user',                   // Direct user action (cancel)
-  API: 'api',                     // REST API endpoint
-  RECONCILIATION: 'reconciliation', // Frontend reconciliation after disconnect
-  RETRY_POLICY: 'retry-policy',   // Automatic retry after failure
-  SYSTEM: 'system',               // Internal system transition
+  WORKER: 'WORKER',               // BullMQ worker executing job
+  TIMEOUT_HANDLER: 'TIMEOUT_HANDLER', // Automatic timeout daemon
+  USER: 'USER',                   // Direct user action (cancel)
+  API: 'API',                     // REST API endpoint
+  RECONCILIATION: 'RECONCILIATION', // Frontend reconciliation after disconnect
+  RETRY_POLICY: 'RETRY_POLICY',   // Automatic retry after failure
+  SYSTEM: 'SYSTEM',               // Internal system transition
 });
 
 /**
