@@ -5,7 +5,7 @@
 // safety-net poll. Version-filtered merges keep state coherent
 // against out-of-order packets.
 // ============================================================
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Activity, AlertTriangle, Search, ChevronRight } from 'lucide-react';
 import { api } from '../../../lib/api.js';
 import { connectExecutionStream } from '../../../lib/events.js';
@@ -16,6 +16,23 @@ import { PanelMessage } from './components/PanelMessage.jsx';
 import { LoadingBlock } from './components/LoadingBlock.jsx';
 import { IN_FLIGHT, FAILURE } from './utils/stateConfig.js';
 import { shortId, formatAge } from './utils/formatting.js';
+
+// 1-second tick used to repaint age + stale state without re-fetching.
+// Pure clock — no execution-list mutations happen on this interval.
+function useNowTick(intervalMs = 1000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+// Status predicates — hoisted out of the component so they keep a
+// stable identity (cleaner deps for useMemo).
+const isInFlight = (s) => IN_FLIGHT.includes(s);
+const isFailed   = (s) => FAILURE.includes(s);
+const isStale    = (e) => isInFlight(e.status) && typeof e.liveAgeSeconds === 'number' && e.liveAgeSeconds > 30;
 
 const GRID_COLS = '90px 1fr 130px 140px 80px 80px 90px 90px 32px';
 const FILTERS = ['all', 'in-flight', 'failed', 'stale'];
@@ -129,16 +146,27 @@ export function LiveMonitor({ onOpen, onOpenIncident }) {
     };
   }, []);
 
-  const isInFlight = (s) => IN_FLIGHT.includes(s);
-  const isFailed   = (s) => FAILURE.includes(s);
-  const isStale    = (e) => isInFlight(e.status) && typeof e.ageSeconds === 'number' && e.ageSeconds > 30;
+  // 1-second clock for animated age + stale evaluation. Decoupled from
+  // state mutations so the executions list isn't reallocated each tick.
+  const now = useNowTick(1000);
 
-  const rows = executions.filter((e) => {
+  // Each row is recomputed against `now` so age stays fresh between
+  // SSE events. Pure projection of state + clock; no allocations on
+  // unrelated re-renders.
+  const liveRows = useMemo(() => executions.map((e) => {
+    const updatedAtMs = e.updatedAt ? new Date(e.updatedAt).getTime() : null;
+    const liveAgeSeconds = updatedAtMs != null
+      ? Math.max(0, Math.floor((now - updatedAtMs) / 1000))
+      : e.ageSeconds;
+    return { ...e, liveAgeSeconds };
+  }), [executions, now]);
+
+  const rows = useMemo(() => liveRows.filter((e) => {
     if (filter === 'in-flight') return isInFlight(e.status);
     if (filter === 'failed')    return isFailed(e.status);
     if (filter === 'stale')     return isStale(e);
     return true;
-  });
+  }), [liveRows, filter]);
 
   return (
     <div>
@@ -242,7 +270,7 @@ export function LiveMonitor({ onOpen, onOpenIncident }) {
                 <span className="font-mono tabular-nums" style={{ fontSize: 11, color: 'var(--c-text-soft)' }}>v{e.version ?? 0}</span>
                 <span className="font-mono tabular-nums" style={{ fontSize: 11, color: stale ? 'var(--c-hold-text)' : 'var(--c-text-muted)' }}>
                   {stale && <AlertTriangle size={10} style={{ marginRight: 4, verticalAlign: 'middle' }} />}
-                  {formatAge(e.ageSeconds)}
+                  {formatAge(e.liveAgeSeconds)}
                 </span>
                 <span className="font-mono tabular-nums" style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{duration}</span>
                 <ChevronRight size={14} style={{ color: 'var(--c-text-subtle)' }} />
