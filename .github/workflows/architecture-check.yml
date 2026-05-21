@@ -1,13 +1,16 @@
 # ============================================================
-# MARCOM Architecture Check — Runs on every PR to main
+# MARCOM Architecture Check — runs on every PR + push to master
+# ============================================================
+# Token-discipline lint, architecture audit, security audit, and
+# bundle-size budget. Workspace-aware (PR #8: npm workspaces).
 # ============================================================
 name: Architecture Check
 
 on:
   pull_request:
-    branches: [ main ]
+    branches: [ master ]
   push:
-    branches: [ main ]
+    branches: [ master ]
 
 jobs:
   architecture-audit:
@@ -23,15 +26,18 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: 'client/package-lock.json'
+          # Workspaces use the root lockfile (client/package-lock.json
+          # was removed by PR #8).
+          cache-dependency-path: 'package-lock.json'
 
-      - name: Install frontend dependencies
-        working-directory: client
+      - name: Install dependencies (workspace-wide)
+        # Single hoisted install covers root + client + packages/*
         run: npm ci
 
       - name: Run ESLint (token discipline)
-        working-directory: client
-        run: npm run lint:ci
+        # Workspace invocation so the script runs inside client/ with
+        # its own eslint config + plugins.
+        run: npm run lint:ci --workspace client
         # Fails if any no-generic-tailwind violations exist
 
       - name: Run architecture audit
@@ -42,15 +48,16 @@ jobs:
         run: node scripts/security-check.js
         # Fails on: IDOR, SQL injection, XSS, 403 leakage
 
-      - name: Check bundle size
+      - name: Build client
+        run: npm run build --workspace client
+
+      - name: Bundle size budget (<700KB)
         working-directory: client
         run: |
-          npm run build 2>&1
-          # Check bundle size stays under 700KB
           bundle_size=$(find dist/assets -name "*.js" | xargs wc -c | tail -1 | awk '{print $1}')
           max_size=$((700 * 1024))
           if [ "$bundle_size" -gt "$max_size" ]; then
-            echo "❌ Bundle too large: ${bundle_size} bytes (max 716800)"
+            echo "::error::Bundle too large: ${bundle_size} bytes (max ${max_size})"
             exit 1
           fi
           echo "✅ Bundle size: ${bundle_size} bytes"
