@@ -3,16 +3,24 @@
 // ============================================================
 // Per-execution transition chain with correlation lineage +
 // version-jump sidebar. Loaded via GET /:id/transitions.
+//
+// Polish layer (Phase 11C follow-up):
+//   - useMemo on row + summary derivations
+//   - Summary banner: retries / OCC conflicts / timeouts / wall time
+//   - OCC conflict marker per row (from metadata.occConflict)
+//   - Timeout-overage marker per row (segment elapsed > policy budget)
+//   - Duration pills replace inline delta text
 // ============================================================
-import { useState, useEffect } from 'react';
-import { History, AlertTriangle, ArrowRight } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { History, AlertTriangle, ArrowRight, Clock, Zap, Hourglass } from 'lucide-react';
 import { api } from '../../../lib/api.js';
 import { StatePill } from './components/StatePill.jsx';
 import { ActorBadge } from './components/ActorBadge.jsx';
 import { PanelMessage } from './components/PanelMessage.jsx';
 import { LoadingBlock } from './components/LoadingBlock.jsx';
 import { STATE_CFG } from './utils/stateConfig.js';
-import { shortId, durationBetween, formatTs } from './utils/formatting.js';
+import { shortId, formatTs } from './utils/formatting.js';
+import { getTimeoutOverageMs } from './utils/timeoutPolicy.js';
 
 export function ExecutionTimeline({ executionId, onBack }) {
   const [data, setData] = useState(null);
@@ -30,6 +38,34 @@ export function ExecutionTimeline({ executionId, onBack }) {
     return () => { cancelled = true; };
   }, [executionId]);
 
+  // Pre-compute every per-row derivation so React doesn't repeat work
+  // on each render (large chains can be 30+ transitions).
+  const rows = useMemo(() => {
+    if (!data?.transitions) return [];
+    return data.transitions.map((t, i, arr) => {
+      const prevTs = i > 0 ? arr[i - 1].createdAt : null;
+      const deltaMs = prevTs ? new Date(t.createdAt).getTime() - new Date(prevTs).getTime() : null;
+      // Overage applies to the state HELD during the segment that just
+      // closed — i.e. the row's `fromStatus`. Skip the first transition
+      // (no prior segment to budget against).
+      const overageMs = i > 0 ? getTimeoutOverageMs(t.fromStatus, deltaMs) : null;
+      const occConflict = Boolean(t.metadata && t.metadata.occConflict);
+      return { ...t, deltaMs, overageMs, occConflict };
+    });
+  }, [data]);
+
+  const summary = useMemo(() => {
+    if (rows.length === 0) return null;
+    const retries = rows.filter((r) => r.toStatus === 'RETRYING').length;
+    const occConflicts = rows.filter((r) => r.occConflict).length;
+    const timeouts = rows.filter((r) => r.toStatus === 'TIMED_OUT').length;
+    const overages = rows.filter((r) => r.overageMs != null).length;
+    const firstMs = new Date(rows[0].createdAt).getTime();
+    const lastMs = new Date(rows[rows.length - 1].createdAt).getTime();
+    const totalWallSec = Math.max(0, (lastMs - firstMs) / 1000);
+    return { retries, occConflicts, timeouts, overages, totalWallSec };
+  }, [rows]);
+
   if (!executionId) {
     return (
       <PanelMessage
@@ -43,11 +79,7 @@ export function ExecutionTimeline({ executionId, onBack }) {
   if (error) return <PanelMessage icon={AlertTriangle} title="Could not load timeline" hint={error} />;
   if (!data) return null;
 
-  const { execution, transitions } = data;
-  const rows = transitions.map((t, i, arr) => ({
-    ...t,
-    delta: i > 0 ? durationBetween(arr[i - 1].createdAt, t.createdAt) : '',
-  }));
+  const { execution } = data;
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 18 }}>
@@ -79,6 +111,8 @@ export function ExecutionTimeline({ executionId, onBack }) {
           <StatePill state={execution.status} size="lg" />
         </div>
 
+        {summary && <SummaryBanner summary={summary} transitionCount={rows.length} />}
+
         {rows.length === 0 ? (
           <PanelMessage icon={History} title="No transitions recorded" hint="This execution hasn't moved through any states yet." />
         ) : (
@@ -88,17 +122,6 @@ export function ExecutionTimeline({ executionId, onBack }) {
             ))}
           </div>
         )}
-
-        <div className="font-mono" style={{ marginTop: 12, fontSize: 10, color: 'var(--c-text-subtle)' }}>
-          {rows.length > 0 && rows[0].createdAt && rows[rows.length - 1].createdAt && (
-            <>
-              Total wall time: <span style={{ color: 'var(--c-text-base)' }}>
-                {((new Date(rows[rows.length - 1].createdAt).getTime() - new Date(rows[0].createdAt).getTime()) / 1000).toFixed(2)}s
-              </span>
-              {' · '}{rows.length} transition{rows.length === 1 ? '' : 's'}
-            </>
-          )}
-        </div>
       </div>
 
       <aside>
@@ -127,7 +150,7 @@ export function ExecutionTimeline({ executionId, onBack }) {
                 from={r.previousVersion}
                 to={r.newVersion}
                 actor={r.actor}
-                highlight={r.toStatus === 'RETRYING' || r.toStatus === 'EXECUTING' && r.fromStatus === 'RETRYING'}
+                highlight={r.toStatus === 'RETRYING' || (r.toStatus === 'EXECUTING' && r.fromStatus === 'RETRYING')}
                 first={i === 0}
               />
             ))
@@ -139,6 +162,58 @@ export function ExecutionTimeline({ executionId, onBack }) {
 }
 
 // ── Private helpers ──────────────────────────────────────────
+
+function SummaryBanner({ summary, transitionCount }) {
+  const { retries, occConflicts, timeouts, overages, totalWallSec } = summary;
+  const items = [
+    { label: 'Wall time', value: `${totalWallSec.toFixed(2)}s`, tone: 'neutral' },
+    { label: 'Transitions', value: String(transitionCount), tone: 'neutral' },
+    { label: 'Retries',     value: String(retries),     tone: retries > 0 ? 'hold' : 'neutral' },
+    { label: 'OCC conflicts', value: String(occConflicts), tone: occConflicts > 0 ? 'kill' : 'neutral' },
+    { label: 'Timeouts',    value: String(timeouts),    tone: timeouts > 0 ? 'kill' : 'neutral' },
+    { label: 'Overages',    value: String(overages),    tone: overages > 0 ? 'hold' : 'neutral' },
+  ];
+  const colorFor = (t) => t === 'kill' ? 'var(--c-kill-text)' : t === 'hold' ? 'var(--c-hold-text)' : 'var(--c-text-base)';
+
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(6, 1fr)',
+      gap: 0,
+      background: 'var(--c-surface-card)',
+      border: '1px solid var(--c-surface-border)',
+      borderRadius: 12,
+      marginBottom: 12,
+      overflow: 'hidden',
+      boxShadow: 'var(--sh-card)',
+    }}>
+      {items.map((it, i) => (
+        <div
+          key={it.label}
+          style={{
+            padding: '10px 14px',
+            borderRight: i < items.length - 1 ? '1px solid var(--c-surface-border)' : 'none',
+          }}
+        >
+          <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)' }}>
+            {it.label}
+          </div>
+          <div
+            className="font-mono tabular-nums"
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: colorFor(it.tone),
+              marginTop: 2,
+            }}
+          >
+            {it.value}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function LineageRow({ id, label, cur, first }) {
   return (
@@ -152,10 +227,109 @@ function LineageRow({ id, label, cur, first }) {
   );
 }
 
+function DurationPill({ deltaMs }) {
+  if (deltaMs == null) {
+    return (
+      <span className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-subtle)' }}>—</span>
+    );
+  }
+  const seconds = deltaMs / 1000;
+  const label = seconds < 60 ? `${seconds.toFixed(2)}s` : `${(seconds / 60).toFixed(1)}m`;
+  return (
+    <span
+      className="font-mono tabular-nums"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '2px 8px',
+        borderRadius: 999,
+        background: 'var(--c-surface-elevated)',
+        border: '1px solid var(--c-surface-border)',
+        color: 'var(--c-text-soft)',
+        fontSize: 10,
+        fontWeight: 600,
+        letterSpacing: '0.02em',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <Clock size={9} />
+      {label}
+    </span>
+  );
+}
+
+function OccMarker() {
+  return (
+    <span
+      className="font-mono"
+      title="OCC conflict — version drift detected at this transition"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '1px 6px',
+        borderRadius: 4,
+        background: 'var(--c-kill-bg)',
+        color: 'var(--c-kill-text)',
+        fontSize: 9,
+        fontWeight: 700,
+        letterSpacing: '0.08em',
+        textTransform: 'uppercase',
+        border: '1px solid rgba(239,68,68,0.3)',
+      }}
+    >
+      <Zap size={9} />
+      OCC
+    </span>
+  );
+}
+
+function OverageMarker({ overageMs }) {
+  const overSec = overageMs / 1000;
+  const label = overSec < 60 ? `+${overSec.toFixed(1)}s over` : `+${(overSec / 60).toFixed(1)}m over`;
+  return (
+    <span
+      className="font-mono"
+      title="Segment exceeded its timeout policy budget"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        padding: '1px 6px',
+        borderRadius: 4,
+        background: 'var(--c-hold-bg)',
+        color: 'var(--c-hold-text)',
+        fontSize: 9,
+        fontWeight: 700,
+        letterSpacing: '0.04em',
+        textTransform: 'uppercase',
+        border: '1px solid rgba(245,158,11,0.3)',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <Hourglass size={9} />
+      {label}
+    </span>
+  );
+}
+
 function TransitionRow({ r, last }) {
   const toCfg = STATE_CFG[r.toStatus] || STATE_CFG.PENDING;
+  const hasOverage = r.overageMs != null;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '120px 22px 1fr 120px 60px', gap: 14, alignItems: 'center', padding: '10px 12px', borderBottom: last ? 'none' : '1px solid var(--c-surface-border)' }}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '120px 22px 1fr 120px 90px',
+        gap: 14,
+        alignItems: 'center',
+        padding: '10px 12px',
+        borderBottom: last ? 'none' : '1px solid var(--c-surface-border)',
+        background: hasOverage ? 'rgba(245,158,11,0.04)' : 'transparent',
+        borderLeft: hasOverage ? '2px solid var(--c-hold)' : '2px solid transparent',
+      }}
+    >
       <span className="font-mono tabular-nums" style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{formatTs(r.createdAt)}</span>
       <div style={{ display: 'flex', justifyContent: 'center', position: 'relative' }}>
         <span style={{
@@ -165,16 +339,20 @@ function TransitionRow({ r, last }) {
         }} />
         {!last && <span style={{ position: 'absolute', top: 14, width: 1, height: 18, background: 'var(--c-surface-border)' }} />}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flexWrap: 'wrap' }}>
         <StatePill state={r.fromStatus} />
         <ArrowRight size={11} style={{ color: 'var(--c-text-subtle)' }} />
         <StatePill state={r.toStatus} />
+        {r.occConflict && <OccMarker />}
+        {hasOverage && <OverageMarker overageMs={r.overageMs} />}
         {r.reason && (
-          <span style={{ fontSize: 11, color: 'var(--c-text-soft)', marginLeft: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.reason}</span>
+          <span style={{ fontSize: 11, color: 'var(--c-text-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.reason}</span>
         )}
       </div>
       <ActorBadge name={r.actor} />
-      <span className="font-mono tabular-nums" style={{ fontSize: 10, color: 'var(--c-text-subtle)', textAlign: 'right' }}>{r.delta}</span>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <DurationPill deltaMs={r.deltaMs} />
+      </div>
     </div>
   );
 }
