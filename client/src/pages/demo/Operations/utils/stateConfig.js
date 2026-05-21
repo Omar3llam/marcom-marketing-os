@@ -1,10 +1,13 @@
 // ============================================================
-// Operations · state design language
+// Operations · state design language (UI visual config)
 // ------------------------------------------------------------
-// Single source of truth for the visual representation of every
+// Visual representation (color / bg / label / dot style) for every
 // execution status the runtime can emit. Backend uses
 // EXECUTED_SUCCESS / EXECUTED_FAILED canonically; we map the
 // shorthand SUCCESS / FAILED here too so either resolves.
+//
+// Semantic categorizations (IN_FLIGHT_STATUSES, FAILURE_STATUSES,
+// transition matrix, etc.) live in @marcom/runtime-contracts.
 // ============================================================
 
 export const STATE_CFG = {
@@ -19,6 +22,3 @@ export const STATE_CFG = {
   TIMED_OUT:        { color: 'var(--c-hold-text)',   bg: 'var(--c-hold-bg)',          label: 'TIMED_OUT', dot: 'warn'  },
   CANCELLED:        { color: 'var(--c-text-subtle)', bg: 'var(--c-surface-elevated)', label: 'CANCELLED', dot: 'faded' },
 };
-
-export const IN_FLIGHT = ['PENDING', 'QUEUED', 'EXECUTING', 'RETRYING'];
-export const FAILURE = ['EXECUTED_FAILED', 'TIMED_OUT'];

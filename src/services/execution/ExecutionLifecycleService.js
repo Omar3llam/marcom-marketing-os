@@ -25,7 +25,10 @@ import {
 import {
   ExecutionStatus,
   isTerminalState,
-} from '../../types/execution.js';
+  TransitionActor,
+  getTimeoutForStatus,
+  isExecutionTimedOut,
+} from '@marcom/runtime-contracts';
 import {
   validateTransition,
   validateTransitionRequest,
@@ -41,11 +44,6 @@ import {
   emitTimeoutEvent,
 } from './lifecycleTelemetry.js';
 import { broadcastWorkspaceEvent } from '../../lib/sseRegistry.js';
-import {
-  TransitionActor,
-  getTimeoutForStatus,
-  isExecutionTimedOut,
-} from './transitionRules.js';
 
 /**
  * Execution Lifecycle Service

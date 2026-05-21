@@ -4,13 +4,16 @@
   "description": "MARCOM — AI Marketing Co-pilot SaaS (Production-Ready)",
   "main": "src/server.js",
   "type": "module",
+  "workspaces": [
+    "packages/*",
+    "client"
+  ],
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --env-file=.env --watch src/server.js",
-    "build": "node -e \"console.log('===PRE BUILD===','cwd=',process.cwd(),'| DATABASE_URL set:',Boolean(process.env.DATABASE_URL))\" && npm install --include=dev && npm install --include=dev --prefix client && echo '===PRISMA GENERATE===' && npx prisma generate && node scripts/prisma-migrate-safe.js && echo '===VITE BUILD===' && npm run build --prefix client && node -e \"const f=require('fs');const p=require('path');const i=p.resolve('client/dist/index.html');console.log('===POST BUILD=== exists:',f.existsSync(i),'| path:',i)\"",
-    "build:client": "npm run build --prefix client",
+    "build": "node -e \"console.log('===PRE BUILD===','cwd=',process.cwd(),'| DATABASE_URL set:',Boolean(process.env.DATABASE_URL))\" && npm install --include=dev && echo '===PRISMA GENERATE===' && npx prisma generate && node scripts/prisma-migrate-safe.js && echo '===VITE BUILD===' && npm run build --workspace client && node -e \"const f=require('fs');const p=require('path');const i=p.resolve('client/dist/index.html');console.log('===POST BUILD=== exists:',f.existsSync(i),'| path:',i)\"",
+    "build:client": "npm run build --workspace client",
     "build:migrate": "node scripts/migrate.js",
-    "postinstall": "npm install --include=dev --prefix client --no-audit --no-fund",
     "prepare": "husky || true",
     "migrate": "node scripts/migrate.js",
     "setup": "node scripts/setup-airtable.js",
@@ -32,6 +35,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",
+    "@marcom/runtime-contracts": "*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@prisma/client": "^5.22.0",
     "airtable": "^0.12.2",
@@ -64,7 +68,8 @@
     "globals": "^17.6.0",
     "husky": "^9.1.7",
     "prisma": "^5.22.0",
-    "supertest": "^7.2.2"
+    "supertest": "^7.2.2",
+    "vitest": "^4.1.7"
   },
   "engines": {
     "node": ">=18.0.0"

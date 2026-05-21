@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import executionRouter from './execution.js';
-import { ExecutionStatus } from '../types/execution.js';
+import { ExecutionStatus } from '@marcom/runtime-contracts';
 
 // Mock dependencies
 vi.mock('../lib/prisma.js', () => ({

@@ -12,7 +12,7 @@
 // ============================================================
 
 import { logger } from '../../utils/logger.js';
-import { isTerminalState } from '../../types/execution.js';
+import { isTerminalState } from '@marcom/runtime-contracts';
 
 /**
  * Create Transition Event

@@ -1,6 +1,9 @@
 // ============================================================
-// ExecutionStatus Transition Matrix Tests
-// Phase 11B Task 1: Validate state machine logic
+// @marcom/runtime-contracts — contract tests
+// ============================================================
+// Validates the shared state machine + reconciliation payload
+// shape. Backend services + frontend consumers depend on these
+// invariants, so this is the canonical regression net.
 // ============================================================
 
 import { describe, it, expect } from 'vitest';
@@ -12,7 +15,7 @@ import {
   IllegalTransitionError,
   validateReconciliationPayload,
   createReconciliationPayload,
-} from './execution.js';
+} from './index.js';
 
 describe('ExecutionStatus Enum', () => {
   it('should have all 7 status values', () => {

@@ -9,13 +9,13 @@ import { useState, useEffect } from 'react';
 import { AlertTriangle, ArrowRight, RotateCcw, FileText, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../lib/api.js';
+import { FAILURE_STATUSES } from '@marcom/runtime-contracts';
 import { StatePill } from './components/StatePill.jsx';
 import { ActorBadge } from './components/ActorBadge.jsx';
 import { PanelMessage } from './components/PanelMessage.jsx';
 import { LoadingBlock } from './components/LoadingBlock.jsx';
 import { CollisionGraph } from './components/CollisionGraph.jsx';
 import { RawAuditLogModal } from './components/RawAuditLogModal.jsx';
-import { FAILURE } from './utils/stateConfig.js';
 import { shortId, formatTs } from './utils/formatting.js';
 
 export function IncidentPanel({ executionId, onBack }) {
@@ -121,7 +121,7 @@ export function IncidentPanel({ executionId, onBack }) {
           <div className="section-label" style={{ marginBottom: 10 }}>Transition chain</div>
           <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, padding: 8, marginBottom: 18, boxShadow: 'var(--sh-card)' }}>
             {transitions.map((t, i) => {
-              const isFailureRow = FAILURE.includes(t.toStatus);
+              const isFailureRow = FAILURE_STATUSES.includes(t.toStatus);
               return (
                 <div
                   key={t.id}

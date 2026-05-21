@@ -10,11 +10,11 @@ import { Activity, AlertTriangle, Search, ChevronRight } from 'lucide-react';
 import { api } from '../../../lib/api.js';
 import { connectExecutionStream } from '../../../lib/events.js';
 import { auth } from '../../../firebase.js';
+import { IN_FLIGHT_STATUSES, FAILURE_STATUSES } from '@marcom/runtime-contracts';
 import { StatePill } from './components/StatePill.jsx';
 import { ActorBadge } from './components/ActorBadge.jsx';
 import { PanelMessage } from './components/PanelMessage.jsx';
 import { LoadingBlock } from './components/LoadingBlock.jsx';
-import { IN_FLIGHT, FAILURE } from './utils/stateConfig.js';
 import { shortId, formatAge } from './utils/formatting.js';
 
 // 1-second tick used to repaint age + stale state without re-fetching.
@@ -30,8 +30,8 @@ function useNowTick(intervalMs = 1000) {
 
 // Status predicates — hoisted out of the component so they keep a
 // stable identity (cleaner deps for useMemo).
-const isInFlight = (s) => IN_FLIGHT.includes(s);
-const isFailed   = (s) => FAILURE.includes(s);
+const isInFlight = (s) => IN_FLIGHT_STATUSES.includes(s);
+const isFailed   = (s) => FAILURE_STATUSES.includes(s);
 const isStale    = (e) => isInFlight(e.status) && typeof e.liveAgeSeconds === 'number' && e.liveAgeSeconds > 30;
 
 const GRID_COLS = '90px 1fr 130px 140px 80px 80px 90px 90px 32px';
@@ -77,7 +77,7 @@ export function LiveMonitor({ onOpen, onOpenIncident }) {
         if (!incoming?.id) return;
 
         const incomingActor = event.actor || 'SYSTEM';
-        const isTerminalIncoming = !IN_FLIGHT.includes(incoming.status);
+        const isTerminalIncoming = !IN_FLIGHT_STATUSES.includes(incoming.status);
 
         setExecutions((prev) => {
           const idx = prev.findIndex((row) => row.id === incoming.id);

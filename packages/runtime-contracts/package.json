@@ -1,0 +1,19 @@
+{
+  "name": "@marcom/runtime-contracts",
+  "version": "0.1.0",
+  "description": "Shared runtime contracts: execution status, transition matrix, actor types, timeout policy, reconciliation payloads. Single source of truth for backend + workers + frontend.",
+  "type": "module",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.js",
+      "types": "./src/index.d.ts"
+    }
+  },
+  "files": [
+    "src"
+  ],
+  "private": true,
+  "license": "UNLICENSED"
+}

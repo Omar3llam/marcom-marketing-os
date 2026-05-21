@@ -18,9 +18,9 @@ import { StatePill } from './components/StatePill.jsx';
 import { ActorBadge } from './components/ActorBadge.jsx';
 import { PanelMessage } from './components/PanelMessage.jsx';
 import { LoadingBlock } from './components/LoadingBlock.jsx';
+import { getTimeoutOverageMs } from '@marcom/runtime-contracts';
 import { STATE_CFG } from './utils/stateConfig.js';
 import { shortId, formatTs } from './utils/formatting.js';
-import { getTimeoutOverageMs } from './utils/timeoutPolicy.js';
 
 export function ExecutionTimeline({ executionId, onBack }) {
   const [data, setData] = useState(null);

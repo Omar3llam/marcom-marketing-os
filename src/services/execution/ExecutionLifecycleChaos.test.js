@@ -17,9 +17,8 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import ExecutionLifecycleService from './ExecutionLifecycleService.js';
-import { ExecutionStatus, IllegalTransitionError } from '../../types/execution.js';
+import { ExecutionStatus, IllegalTransitionError, TransitionActor } from '@marcom/runtime-contracts';
 import { ConcurrencyError } from '../../utils/occHelpers.js';
-import { TransitionActor } from './transitionRules.js';
 
 // Mock prisma client
 vi.mock('../../lib/prisma.js', () => ({
