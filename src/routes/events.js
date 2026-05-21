@@ -23,6 +23,11 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/firebaseAuth.js';
 import { logger }      from '../utils/logger.js';
+import {
+  addSubscriber,
+  removeSubscriber,
+  broadcastWorkspaceEvent,
+} from '../lib/sseRegistry.js';
 
 const router = Router();
 
@@ -42,10 +47,6 @@ setInterval(() => {
     }
   }
 }, 30_000);
-
-// ── In-Memory Subscriber Registry (per workspace) ───────────
-// Map<workspaceId, Set<Response>>
-const workspaceStreams = new Map();
 
 // ── POST /api/events/token ───────────────────────────────────
 /**
@@ -124,13 +125,10 @@ router.get('/stream', (req, res) => {
   res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
 
   // ── Add subscriber to workspace registry ───────────────────
-  if (!workspaceStreams.has(workspaceId)) {
-    workspaceStreams.set(workspaceId, new Set());
-  }
-  workspaceStreams.get(workspaceId).add(res);
+  const subscriberCount = addSubscriber(workspaceId, res);
 
   logger.info(
-    { userId, workspaceId, subscriberCount: workspaceStreams.get(workspaceId).size },
+    { userId, workspaceId, subscriberCount },
     '[SSE] client connected',
   );
 
@@ -145,57 +143,18 @@ router.get('/stream', (req, res) => {
   // ── Cleanup on client disconnect ───────────────────────────
   req.on('close', () => {
     clearInterval(heartbeatInterval);
-
-    const subscribers = workspaceStreams.get(workspaceId);
-    if (subscribers) {
-      subscribers.delete(res);
-      if (subscribers.size === 0) {
-        workspaceStreams.delete(workspaceId);
-      }
-    }
+    const remaining = removeSubscriber(workspaceId, res);
 
     logger.info(
-      { userId, workspaceId, remainingSubscribers: subscribers?.size || 0 },
+      { userId, workspaceId, remainingSubscribers: remaining },
       '[SSE] client disconnected',
     );
   });
 });
 
-// ── Broadcast Helper (used by execution.js) ──────────────────
-/**
- * Broadcast an event to all subscribers in a workspace.
- */
-export function broadcastWorkspaceEvent(workspaceId, event) {
-  const subscribers = workspaceStreams.get(workspaceId);
-  if (!subscribers || subscribers.size === 0) {
-    logger.debug({ workspaceId, event }, '[SSE] no subscribers — skipping broadcast');
-    return;
-  }
-
-  const payload = `data: ${JSON.stringify(event)}\n\n`;
-  const deadStreams = [];
-
-  for (const res of subscribers) {
-    try {
-      res.write(payload);
-    } catch (err) {
-      logger.warn({ workspaceId, error: err.message }, '[SSE] failed to write — marking dead');
-      deadStreams.push(res);
-    }
-  }
-
-  if (deadStreams.length > 0) {
-    for (const dead of deadStreams) subscribers.delete(dead);
-    logger.info(
-      { workspaceId, removed: deadStreams.length, remaining: subscribers.size },
-      '[SSE] cleaned up dead streams',
-    );
-  }
-
-  logger.debug(
-    { workspaceId, eventType: event.type, deliveredTo: subscribers.size },
-    '[SSE] event broadcast',
-  );
-}
+// Re-export the broadcast helper for any callers that still target the
+// router module. Production code should import directly from
+// lib/sseRegistry.js (no Firebase/Express dependency).
+export { broadcastWorkspaceEvent };
 
 export default router;

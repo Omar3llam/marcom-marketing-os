@@ -19,6 +19,8 @@ import {
   RotateCcw, FileText, X, Loader2,
 } from 'lucide-react';
 import { api } from '../../lib/api.js';
+import { connectExecutionStream } from '../../lib/events.js';
+import { auth } from '../../firebase.js';
 import styles from './Operations.module.css';
 
 // ── State design language ────────────────────────────────────
@@ -304,6 +306,7 @@ function LiveMonitor({ onOpen, onOpenIncident }) {
   const [executions, setExecutions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [sseConnected, setSseConnected] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -317,11 +320,98 @@ function LiveMonitor({ onOpen, onOpenIncident }) {
     }
   }, []);
 
+  // Initial load + safety-net poll (30s, slower than before because SSE
+  // is the primary delivery channel now).
   useEffect(() => {
     load();
-    const id = setInterval(load, 5000); // poll every 5s (no SSE yet for this surface)
+    const id = setInterval(load, 30000);
     return () => clearInterval(id);
   }, [load]);
+
+  // SSE subscription — merges execution.transition events into the list
+  // with a version filter so out-of-order packets never regress state.
+  useEffect(() => {
+    const getToken = () => auth.currentUser?.getIdToken();
+
+    const disconnect = connectExecutionStream(getToken, {
+      onConnected: () => setSseConnected(true),
+      onError: () => setSseConnected(false),
+      onTransition: (event) => {
+        const incoming = event.execution;
+        if (!incoming?.id) return;
+
+        // Compute actor from the top-level event field (lifecycle service
+        // sends it alongside the execution snapshot).
+        const incomingActor = event.actor || 'SYSTEM';
+        const isTerminalIncoming = !IN_FLIGHT.includes(incoming.status);
+
+        setExecutions((prev) => {
+          const idx = prev.findIndex((row) => row.id === incoming.id);
+
+          // Terminal arrives for an unknown row → nothing to do (already
+          // gone from the in-flight set or never tracked here).
+          if (idx === -1) {
+            if (isTerminalIncoming) return prev;
+            // New in-flight execution we haven't seen yet — inject.
+            return [
+              {
+                id: incoming.id,
+                actionType: incoming.actionType,
+                targetId: incoming.targetId,
+                status: incoming.status,
+                version: incoming.version,
+                correlationId: incoming.correlationId,
+                createdAt: incoming.updatedAt,
+                updatedAt: incoming.updatedAt,
+                actor: incomingActor,
+                ageSeconds: 0,
+              },
+              ...prev,
+            ];
+          }
+
+          const existing = prev[idx];
+
+          // CRITICAL STALE-EVENT LAW: drop out-of-order packets.
+          // incoming.version <= existing.version → REGRESSION, ignore.
+          if (typeof incoming.version === 'number'
+              && typeof existing.version === 'number'
+              && incoming.version <= existing.version) {
+            return prev;
+          }
+
+          // Terminal transition → row leaves the in-flight list.
+          if (isTerminalIncoming) {
+            return prev.filter((_, i) => i !== idx);
+          }
+
+          // In-flight update → replace in place, preserving createdAt
+          // so the "Duration" column stays anchored to original start.
+          const updatedAt = incoming.updatedAt || new Date().toISOString();
+          const ageSeconds = Math.max(
+            0,
+            Math.floor((Date.now() - new Date(updatedAt).getTime()) / 1000),
+          );
+          const next = [...prev];
+          next[idx] = {
+            ...existing,
+            status: incoming.status,
+            version: incoming.version,
+            correlationId: incoming.correlationId ?? existing.correlationId,
+            updatedAt,
+            actor: incomingActor,
+            ageSeconds,
+          };
+          return next;
+        });
+      },
+    });
+
+    return () => {
+      disconnect();
+      setSseConnected(false);
+    };
+  }, []);
 
   const filters = ['all', 'in-flight', 'failed', 'stale'];
   const isInFlight = (s) => IN_FLIGHT.includes(s);
@@ -368,11 +458,11 @@ function LiveMonitor({ onOpen, onOpenIncident }) {
           <span className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-subtle)', display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{
               width: 6, height: 6, borderRadius: '50%',
-              background: 'var(--c-scale)',
-              boxShadow: '0 0 6px var(--c-scale)',
+              background: sseConnected ? 'var(--c-scale)' : 'var(--c-hold)',
+              boxShadow: sseConnected ? '0 0 6px var(--c-scale)' : '0 0 6px var(--c-hold)',
               animation: 'intel-pulse 1.6s ease-in-out infinite',
             }} />
-            Polling · {rows.length} rows
+            {sseConnected ? 'SSE live' : 'Polling fallback'} · {rows.length} rows
           </span>
           <button type="button" className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }}>
             <Search size={12} />
@@ -452,7 +542,7 @@ function LiveMonitor({ onOpen, onOpenIncident }) {
       <div className="font-mono" style={{ marginTop: 12, fontSize: 10, color: 'var(--c-text-subtle)', display: 'flex', alignItems: 'center', gap: 14 }}>
         <span><span style={{ color: 'var(--c-hold)' }}>●</span> stale = in-flight &gt; 30s</span>
         <span>·</span>
-        <span>workspace-isolated · polled every 5s</span>
+        <span>workspace-isolated · SSE primary · 30s safety-net poll</span>
       </div>
     </div>
   );
