@@ -21,6 +21,7 @@
     "@fontsource/inter": "^5.2.8",
     "@fontsource/jetbrains-mono": "^5.2.8",
     "@fontsource/space-grotesk": "^5.2.10",
+    "@marcom/runtime-contracts": "*",
     "@vitejs/plugin-react": "^4.3.4",
     "@xstate/react": "^5.0.5",
     "autoprefixer": "^10.4.20",

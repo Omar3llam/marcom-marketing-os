@@ -21,8 +21,7 @@ import { contextGuard } from '../middleware/contextGuard.js';
 import { logger } from '../utils/logger.js';
 import { broadcastWorkspaceEvent } from './events.js';
 import { lifecycleService } from '../services/execution/ExecutionLifecycleService.js';
-import { TransitionActor } from '../services/execution/transitionRules.js';
-import { ExecutionStatus } from '../types/execution.js';
+import { ExecutionStatus, TransitionActor } from '@marcom/runtime-contracts';
 const router = Router();
 
 // ── Constants ────────────────────────────────────────────

@@ -12,7 +12,7 @@ import {
   isLegalTransition,
   isTerminalState,
   IllegalTransitionError,
-} from '../../types/execution.js';
+} from '@marcom/runtime-contracts';
 import { logger } from '../../utils/logger.js';
 
 /**
