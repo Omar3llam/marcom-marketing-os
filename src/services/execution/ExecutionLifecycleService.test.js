@@ -33,7 +33,13 @@ vi.mock('../../utils/logger.js', () => ({
   },
 }));
 
+// Mock SSE registry so broadcast calls are observable + injectable.
+vi.mock('../../lib/sseRegistry.js', () => ({
+  broadcastWorkspaceEvent: vi.fn(),
+}));
+
 import { prisma } from '../../lib/prisma.js';
+import { broadcastWorkspaceEvent } from '../../lib/sseRegistry.js';
 
 describe('ExecutionLifecycleService', () => {
   let service;
@@ -814,6 +820,135 @@ describe('ExecutionLifecycleService', () => {
           toStatus: ExecutionStatus.CANCELLED,
         }),
       });
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────
+  // Phase 11C Task 2 — SSE broadcast on successful transitions
+  // ────────────────────────────────────────────────────────────
+  describe('SSE broadcast', () => {
+    const baseExecution = {
+      id: 'exec-sse-1',
+      workspaceId: 'workspace-A',
+      actionType: 'PAUSE_ADSET',
+      targetId: 'adset-1',
+      status: ExecutionStatus.PENDING,
+      version: 0,
+      correlationId: 'corr-sse',
+      updatedAt: new Date('2026-05-20T10:00:00.000Z'),
+    };
+
+    it('should broadcast execution.transition event to workspace on success', async () => {
+      prisma.executionRequest.findUnique.mockResolvedValueOnce(baseExecution);
+      prisma.executionRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        ...baseExecution,
+        status: ExecutionStatus.QUEUED,
+        version: 1,
+        updatedAt: new Date('2026-05-20T10:00:01.000Z'),
+      });
+      prisma.executionTransition.create.mockResolvedValue({ id: 'tr-1' });
+
+      await service.transition({
+        executionId: baseExecution.id,
+        newStatus: ExecutionStatus.QUEUED,
+        expectedVersion: 0,
+        actor: TransitionActor.API,
+        correlationId: 'corr-sse',
+      });
+
+      expect(broadcastWorkspaceEvent).toHaveBeenCalledTimes(1);
+      const [workspaceId, event] = broadcastWorkspaceEvent.mock.calls[0];
+      expect(workspaceId).toBe('workspace-A');
+      expect(event).toMatchObject({
+        type: 'execution.transition',
+        eventType: 'execution.transition',
+        executionId: baseExecution.id,
+        correlationId: 'corr-sse',
+        actor: TransitionActor.API,
+        transition: { from: ExecutionStatus.PENDING, to: ExecutionStatus.QUEUED },
+        version: { from: 0, to: 1 },
+        execution: {
+          id: baseExecution.id,
+          actionType: 'PAUSE_ADSET',
+          targetId: 'adset-1',
+          status: ExecutionStatus.QUEUED,
+          version: 1,
+          correlationId: 'corr-sse',
+        },
+      });
+    });
+
+    it('should NOT broadcast when OCC fails (concurrency violation)', async () => {
+      prisma.executionRequest.findUnique.mockResolvedValueOnce(baseExecution);
+      // updateMany returns 0 → updateWithOCC throws ConcurrencyError
+      prisma.executionRequest.updateMany.mockResolvedValue({ count: 0 });
+      // getCurrentVersion lookup for the error payload
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        id: baseExecution.id,
+        version: 5,
+      });
+
+      await expect(
+        service.transition({
+          executionId: baseExecution.id,
+          newStatus: ExecutionStatus.QUEUED,
+          expectedVersion: 0,
+          actor: TransitionActor.API,
+          correlationId: 'corr-sse',
+        }),
+      ).rejects.toThrow(ConcurrencyError);
+
+      expect(broadcastWorkspaceEvent).not.toHaveBeenCalled();
+    });
+
+    it('should NOT broadcast when transition is illegal (rejected before OCC)', async () => {
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        ...baseExecution,
+        status: ExecutionStatus.PENDING,
+      });
+
+      await expect(
+        service.transition({
+          executionId: baseExecution.id,
+          // Illegal: PENDING → EXECUTING skips QUEUED
+          newStatus: ExecutionStatus.EXECUTING,
+          expectedVersion: 0,
+          actor: TransitionActor.API,
+          correlationId: 'corr-sse',
+        }),
+      ).rejects.toThrow(IllegalTransitionError);
+
+      expect(broadcastWorkspaceEvent).not.toHaveBeenCalled();
+      expect(prisma.executionRequest.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('should NOT fail the transition when broadcast throws', async () => {
+      prisma.executionRequest.findUnique.mockResolvedValueOnce(baseExecution);
+      prisma.executionRequest.updateMany.mockResolvedValue({ count: 1 });
+      prisma.executionRequest.findUnique.mockResolvedValueOnce({
+        ...baseExecution,
+        status: ExecutionStatus.QUEUED,
+        version: 1,
+      });
+      prisma.executionTransition.create.mockResolvedValue({ id: 'tr-2' });
+
+      // Make broadcast blow up — transition should still succeed
+      broadcastWorkspaceEvent.mockImplementationOnce(() => {
+        throw new Error('SSE channel offline');
+      });
+
+      const result = await service.transition({
+        executionId: baseExecution.id,
+        newStatus: ExecutionStatus.QUEUED,
+        expectedVersion: 0,
+        actor: TransitionActor.API,
+        correlationId: 'corr-sse',
+      });
+
+      expect(result.status).toBe(ExecutionStatus.QUEUED);
+      expect(result.version).toBe(1);
+      expect(broadcastWorkspaceEvent).toHaveBeenCalledTimes(1);
     });
   });
 });

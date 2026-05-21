@@ -28,7 +28,8 @@ const MAX_RECONNECT_ATTEMPTS = 5;
  * Connect to the SSE execution stream.
  * @param {Function} getFirebaseToken - async function returning a fresh Firebase ID token
  * @param {Object}   handlers
- * @param {Function} handlers.onExecutionUpdate
+ * @param {Function} handlers.onExecutionUpdate - fires on legacy 'EXECUTION_STATUS' events
+ * @param {Function} handlers.onTransition      - fires on 'execution.transition' events (Phase 11C)
  * @param {Function} handlers.onError
  * @param {Function} handlers.onConnected
  * @returns {Function} disconnect
@@ -36,6 +37,7 @@ const MAX_RECONNECT_ATTEMPTS = 5;
 export function connectExecutionStream(getFirebaseToken, handlers = {}) {
   const {
     onExecutionUpdate = () => {},
+    onTransition      = () => {},
     onError           = () => {},
     onConnected       = () => {},
   } = handlers;
@@ -127,6 +129,14 @@ export function connectExecutionStream(getFirebaseToken, handlers = {}) {
           if (data.type === 'EXECUTION_STATUS') {
             console.log('[SSE] Execution update:', data);
             onExecutionUpdate(data);
+            return;
+          }
+
+          // Phase 11C — lifecycle service broadcasts these on every
+          // successful transition. The Operations Live Monitor uses
+          // them to drop polling.
+          if (data.type === 'execution.transition') {
+            onTransition(data);
             return;
           }
 

@@ -40,6 +40,7 @@ import {
   createTimeoutEvent,
   emitTimeoutEvent,
 } from './lifecycleTelemetry.js';
+import { broadcastWorkspaceEvent } from '../../lib/sseRegistry.js';
 import {
   TransitionActor,
   getTimeoutForStatus,
@@ -195,6 +196,33 @@ export class ExecutionLifecycleService {
       metadata,
     });
     emitTransitionEvent(transitionEvent);
+
+    // Step 7: SSE broadcast to workspace subscribers (Phase 11C Task 2)
+    // Best-effort: a broadcast failure must NOT fail the transition.
+    // SSE = transport optimization; reconciliation is the authority.
+    try {
+      broadcastWorkspaceEvent(currentExecution.workspaceId, {
+        type: 'execution.transition',
+        ...transitionEvent,
+        // Carry the canonical action + target so subscribers can update
+        // the Live Monitor row without an extra fetch.
+        execution: {
+          id: executionId,
+          actionType: currentExecution.actionType,
+          targetId: currentExecution.targetId,
+          status: newStatus,
+          version: updatedExecution.version,
+          correlationId: updateData.correlationId,
+          updatedAt: updatedExecution.updatedAt,
+        },
+      });
+    } catch (err) {
+      logger.warn({
+        executionId,
+        workspaceId: currentExecution.workspaceId,
+        error: err.message,
+      }, 'SSE broadcast failed (non-fatal)');
+    }
 
     logger.info({
       executionId,
