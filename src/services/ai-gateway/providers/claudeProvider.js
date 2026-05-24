@@ -116,7 +116,7 @@ function parseJSON(text) {
     }
 
     return JSON.parse(cleaned);
-  } catch (error) {
+  } catch (_error) {
     logger.warn({ text }, '[ClaudeProvider] JSON parse failed');
     return null;
   }
