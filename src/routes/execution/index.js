@@ -22,6 +22,7 @@ import { registerReconciliationRoute } from './reconciliation.js';
 import { registerTransitionsRoute } from './transitions.js';
 import { registerIncidentRoute } from './incident.js';
 import { registerRetryRoute } from './retry.js';
+import { registerTraceRoute } from './trace.js';
 
 const router = Router();
 
@@ -40,5 +41,6 @@ registerReconciliationRoute(router);
 registerTransitionsRoute(router);
 registerIncidentRoute(router);
 registerRetryRoute(router);
+registerTraceRoute(router);
 
 export default router;

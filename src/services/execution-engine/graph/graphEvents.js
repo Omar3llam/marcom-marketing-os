@@ -14,11 +14,17 @@ function generateEventId() {
 }
 
 // Create a structured graph event with required identity fields + caller-supplied payload.
+// Correlation fields (executionId, workerId, graphNodeId, attempt) must be supplied
+// by the caller when known — they default to null so traces can detect missing context.
 export function createGraphEvent(eventType, payload = {}) {
   return {
     eventType,
-    eventId:   generateEventId(),
-    timestamp: new Date().toISOString(),
+    eventId:     generateEventId(),
+    timestamp:   new Date().toISOString(),
+    executionId: null,
+    workerId:    null,
+    graphNodeId: null,
+    attempt:     1,
     ...payload,
   };
 }
