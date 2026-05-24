@@ -18,7 +18,7 @@ import {
   fetchCampaignInsights,
   normalizeInsightsForAnalysis,
 } from '../services/metaAdsService.js';
-import orchestrator from '../services/orchestrator.js';
+import { analyzeCampaignData } from '../agents/orchestrator.js';
 import { randomUUID } from 'crypto';
 
 const MAX_CAMPAIGNS_PER_WORKSPACE = 20;
@@ -145,7 +145,7 @@ async function syncWorkspace(workspaceId, datePreset) {
         rawRecord:      c.rawRecord,
       };
 
-      const decision = await orchestrator.analyzeCampaignData(dataForClaude, 'auto-sync');
+      const decision = await analyzeCampaignData(dataForClaude, 'auto-sync');
 
       // Upsert CampaignState
       const stage = inferStage(decision.verdict, decision.risk_level);

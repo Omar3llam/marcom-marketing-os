@@ -4,7 +4,6 @@
 // ============================================================
 import { Router } from 'express';
 import { getOrCreateSession, updateSession } from '../utils/sessionStore.js';
-import { getUserContext } from '../models/userContext.js';
 import { sendNotification, sendErrorAlert } from '../utils/email.js';
 import { getProjectById } from '../models/project.js';
 import { sanitizeMessage } from '../utils/sanitize.js';
@@ -83,17 +82,11 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
         logger.warn({ err: err.message, userId, project_id }, 'Project context lookup failed — proceeding without');
       }
     } else if (!session.context_locked && (!session.context_summary || !session.context_summary.trim())) {
-      // Legacy fallback: UserContext DB record → inline lumi_context from body
-      try {
-        const resolvedContext = (await getUserContext(userId))
-          || (typeof lumi_context === 'string' && lumi_context.trim() ? lumi_context.trim() : null);
-        if (resolvedContext) {
-          session.context_summary = resolvedContext;
-          session.context_locked  = true;
-          logger.info({ userId, sessionId: session.session_id }, 'Legacy context injected into fresh session');
-        }
-      } catch (err) {
-        logger.warn({ err: err.message, userId }, 'Legacy context lookup failed — proceeding without');
+      const resolvedContext = typeof lumi_context === 'string' && lumi_context.trim() ? lumi_context.trim() : null;
+      if (resolvedContext) {
+        session.context_summary = resolvedContext;
+        session.context_locked  = true;
+        logger.info({ userId, sessionId: session.session_id }, 'Context injected from request body');
       }
     }
 

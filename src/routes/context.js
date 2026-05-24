@@ -1,14 +1,15 @@
 // ============================================================
 // MARCOM — User Context API
-//   POST /api/context/save   { context }   → upsert by Clerk userId
+//   POST /api/context/save   { context }   → upsert by userId
 //   GET  /api/context                       → { context: string|null }
 //
-// Auth: req.userId is set by src/middleware/clerkAuth.js#requireAuth,
-// which is applied at the /api router level in server.js.
+// Backed by the `marcom_user_context` raw-SQL table (not Prisma).
+// This route exists for legacy compatibility; new code should use
+// the project-scoped context at POST/GET /api/projects/:id/context.
 // ============================================================
 import { Router } from 'express';
+import { getDb }  from '../utils/db.js';
 import { logger } from '../utils/logger.js';
-import { saveUserContext, getUserContext } from '../models/userContext.js';
 
 export const contextRouter = Router();
 
@@ -29,7 +30,14 @@ contextRouter.post('/save', async (req, res) => {
   }
 
   try {
-    await saveUserContext(userId, context);
+    const sql = getDb();
+    await sql`
+      INSERT INTO marcom_user_context (user_id, context, saved_at)
+      VALUES (${userId}, ${context}, NOW())
+      ON CONFLICT (user_id) DO UPDATE SET
+        context  = EXCLUDED.context,
+        saved_at = NOW()
+    `;
     return res.json({ ok: true });
   } catch (err) {
     logger.error({ err, userId }, 'context.save failed');
@@ -41,8 +49,14 @@ contextRouter.post('/save', async (req, res) => {
 contextRouter.get('/', async (req, res) => {
   const userId = req.userId;
   try {
-    const context = await getUserContext(userId);
-    return res.json({ context });   // null when not yet onboarded
+    const sql  = getDb();
+    const rows = await sql`
+      SELECT context FROM marcom_user_context
+      WHERE user_id = ${userId}
+      LIMIT 1
+    `;
+    const ctx = rows[0]?.context ?? null;
+    return res.json({ context: (typeof ctx === 'string' && ctx.trim()) ? ctx : null });
   } catch (err) {
     logger.error({ err, userId }, 'context.get failed');
     return res.status(500).json({ error: 'Lookup failed' });
