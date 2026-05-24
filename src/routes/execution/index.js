@@ -17,6 +17,7 @@ import { registerMetaRoute } from './meta.js';
 import { registerAuditRoute } from './audit.js';
 import { registerVitalsRoute } from './vitals.js';
 import { registerActiveRoute } from './active.js';
+import { registerMetricsSummaryRoute } from './metrics.js';
 import { registerReconciliationRoute } from './reconciliation.js';
 import { registerTransitionsRoute } from './transitions.js';
 import { registerIncidentRoute } from './incident.js';
@@ -32,6 +33,7 @@ registerMetaRoute(router);
 registerAuditRoute(router);
 registerVitalsRoute(router);
 registerActiveRoute(router);
+registerMetricsSummaryRoute(router);
 
 // :id paths last — must not shadow the literal segments above.
 registerReconciliationRoute(router);

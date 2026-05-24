@@ -44,6 +44,7 @@ import {
   emitTimeoutEvent,
 } from './lifecycleTelemetry.js';
 import { broadcastWorkspaceEvent } from '../../lib/sseRegistry.js';
+import { recordExecutionMetric } from '../executionMetrics.js';
 
 /**
  * Execution Lifecycle Service
@@ -220,6 +221,12 @@ export class ExecutionLifecycleService {
         workspaceId: currentExecution.workspaceId,
         error: err.message,
       }, 'SSE broadcast failed (non-fatal)');
+    }
+
+    // Step 8: Fire-and-forget metrics recording for terminal transitions.
+    // Errors are caught inside recordExecutionMetric — never blocks the transition.
+    if (isTerminalState(newStatus)) {
+      recordExecutionMetric(executionId, currentExecution.workspaceId, newStatus);
     }
 
     logger.info({
