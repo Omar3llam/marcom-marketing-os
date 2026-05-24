@@ -54,7 +54,6 @@ const LEGAL = {
 function legal(view, type) {
   if (!LEGAL[type]) return true;
   if (LEGAL[type].includes(view)) return true;
-  // eslint-disable-next-line no-console
   console.warn(`[DecisionFSM] illegal transition ${type} from ${view}`);
   return false;
 }

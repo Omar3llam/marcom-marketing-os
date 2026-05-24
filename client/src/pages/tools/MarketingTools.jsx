@@ -5,7 +5,7 @@ export default function MarketingTools() {
         <div className="text-xs font-medium tracking-wider text-text-subtle uppercase">
           Tools · Marketing
         </div>
-        <h1 className="text-3xl font-bold text-text-primary">
+        <h1 className="decision-title text-text-primary">
           Marketing Tools
         </h1>
         <p className="text-base text-text-secondary leading-relaxed">

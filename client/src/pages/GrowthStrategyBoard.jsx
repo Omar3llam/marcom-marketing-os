@@ -61,7 +61,7 @@ export default function GrowthStrategyBoard() {
       {/* ── HEADER ──────────────────────────────────────────── */}
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-8">
         <div>
-          <h1 className="font-display font-bold text-2xl text-lumi-text">Growth Strategy</h1>
+          <h1 className="decision-title text-lumi-text">Growth Strategy</h1>
           <p className="text-lumi-muted text-sm mt-1">The macro view — CMO memory layer active</p>
         </div>
         <div className="inline-flex items-center gap-1.5 bg-stage-testing/10 border border-stage-testing/25 text-stage-testing font-mono text-xs px-3 py-1 rounded-full self-start sm:self-auto">
@@ -141,7 +141,7 @@ function MetricCard({ label, primary, secondary, footer }) {
   return (
     <article className="bg-lumi-surface border border-lumi-border rounded-xl p-5 flex flex-col">
       <div className="section-label">{label}</div>
-      <div className="mt-2 font-mono font-bold text-2xl tabular-nums text-lumi-text">{primary}</div>
+      <div className="mt-2 metric-display text-lumi-text">{primary}</div>
       <div className="mt-1 text-xs text-lumi-muted">{secondary}</div>
       {footer && <div className="mt-3">{footer}</div>}
     </article>

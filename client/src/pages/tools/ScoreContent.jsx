@@ -5,7 +5,7 @@ export default function ScoreContent() {
         <div className="text-xs font-medium tracking-wider text-text-subtle uppercase">
           TOOLS · SCORE
         </div>
-        <h1 className="text-3xl font-bold text-text-primary">
+        <h1 className="decision-title text-text-primary">
           Content Scoring
         </h1>
         <p className="text-base text-text-secondary leading-relaxed">

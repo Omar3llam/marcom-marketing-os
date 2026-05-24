@@ -172,6 +172,9 @@ export function useExecutionReconciliation({ onStateChange, onError, getFirebase
 
       throw err;
     }
+  // connectSSE is defined later in the hook; adding it to deps would create a
+  // circular dependency chain. The ref-based SSE connection is stable in practice.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onStateChange, onError]);
 
   /**

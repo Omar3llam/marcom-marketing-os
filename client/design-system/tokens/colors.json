@@ -19,7 +19,8 @@
     "card":     "#FFFFFF",
     "border":   "#EDEAE4",
     "elevated": "#F1EEE8",
-    "border-strong": "#D4CFCA"
+    "border-strong": "#D4CFCA",
+    "dark":     "#0F0F0F"
   },
 
   "text": {

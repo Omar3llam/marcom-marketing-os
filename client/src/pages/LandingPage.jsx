@@ -244,7 +244,7 @@ function CapabilitiesGrid() {
     <section id="features" ref={ref} className="px-4 sm:px-6 py-20">
       <div className="max-w-7xl mx-auto">
         <header className="text-center mb-12">
-          <h2 className="font-display font-bold text-3xl sm:text-4xl text-lumi-text">
+          <h2 className="decision-title sm:text-4xl text-lumi-text">
             One agent. Every marketing decision.
           </h2>
           <p className="mt-3 text-lumi-muted text-base max-w-lg mx-auto">
@@ -356,7 +356,7 @@ function BottomCTA({ onCta }) {
     <section id="pricing" className="px-4 sm:px-6 py-20">
       <div className="max-w-4xl mx-auto bg-lumi-elevated border border-lumi-border-strong rounded-3xl p-8 sm:p-12 shadow-modal text-center">
         <div className="section-label">The Decision Engine</div>
-        <h2 className="mt-2 font-display font-bold text-3xl sm:text-4xl text-lumi-text">
+        <h2 className="mt-2 decision-title sm:text-4xl text-lumi-text">
           Your marketing team just got an AI co-pilot.
         </h2>
         <p className="mt-4 max-w-lg mx-auto text-lumi-muted text-sm sm:text-base">

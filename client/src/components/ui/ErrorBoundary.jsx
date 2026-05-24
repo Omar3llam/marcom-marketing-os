@@ -27,7 +27,6 @@ export default class ErrorBoundary extends React.Component {
     this.setState({ info });
     // Surface to console so DevTools and remote logging see it
     // even if the UI does manage to render the fallback below.
-    // eslint-disable-next-line no-console
     console.error('[lumi] React tree crashed:', error, info?.componentStack);
   }
 
