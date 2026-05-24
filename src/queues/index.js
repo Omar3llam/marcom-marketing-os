@@ -14,9 +14,10 @@ import {
   REDIS_DISABLED,
 } from './connection.js';
 
-export const ACTION_QUEUE_NAME   = 'actions';
-export const OBSERVER_QUEUE_NAME = 'observer';
-export const SYNC_QUEUE_NAME     = 'campaign-sync';
+export const ACTION_QUEUE_NAME     = 'actions';
+export const OBSERVER_QUEUE_NAME   = 'observer';
+export const SYNC_QUEUE_NAME       = 'campaign-sync';
+export const EXECUTION_QUEUE_NAME  = 'executions';
 
 const queueOpts = {
   connection: bullConnection,
@@ -31,9 +32,29 @@ const queueOpts = {
 
 // When Redis is disabled, all queues are `null`. Importers must
 // guard with `if (!actionQueue) return 503`.
-export const actionQueue   = REDIS_DISABLED ? null : new Queue(ACTION_QUEUE_NAME,   queueOpts);
-export const observerQueue = REDIS_DISABLED ? null : new Queue(OBSERVER_QUEUE_NAME, queueOpts);
-export const syncQueue     = REDIS_DISABLED ? null : new Queue(SYNC_QUEUE_NAME,     queueOpts);
+export const actionQueue    = REDIS_DISABLED ? null : new Queue(ACTION_QUEUE_NAME,    queueOpts);
+export const observerQueue  = REDIS_DISABLED ? null : new Queue(OBSERVER_QUEUE_NAME,  queueOpts);
+export const syncQueue      = REDIS_DISABLED ? null : new Queue(SYNC_QUEUE_NAME,      queueOpts);
+export const executionQueue = REDIS_DISABLED ? null : new Queue(EXECUTION_QUEUE_NAME, queueOpts);
+
+// ── Helper: enqueue an ExecutionRequest ──────────────────────
+// Called by meta.js after PENDING → QUEUED transition.
+// jobId = executionId for BullMQ-level idempotency (duplicate
+// enqueue of the same executionId is a no-op).
+export async function enqueueExecution({ executionId, workspaceId, userId, actionType, targetId, options }) {
+  if (!executionQueue) {
+    throw new Error('Execution queue unavailable — set REDIS_URL to a real Redis instance');
+  }
+  return executionQueue.add(
+    'execute',
+    { executionId, workspaceId, userId, actionType, targetId, options },
+    {
+      jobId:   executionId,
+      attempts: Number(process.env.EXECUTION_MAX_RETRIES || 3),
+      backoff:  { type: 'exponential', delay: 5_000 },
+    },
+  );
+}
 
 // ── Helper: enqueue an Action row ────────────────────────────
 export async function enqueueAction(actionRow) {

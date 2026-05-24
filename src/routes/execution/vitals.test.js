@@ -11,18 +11,16 @@ vi.mock('../../lib/prisma.js', () => ({
   prisma: {
     executionRequest: {
       findUnique: vi.fn(),
-      findMany: vi.fn(),
-      count: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
+      findMany:   vi.fn(),
+      count:      vi.fn(),
+      create:     vi.fn(),
+      update:     vi.fn(),
     },
-    executionTransition: {
-      findMany: vi.fn(),
-    },
+    executionTransition: { findMany: vi.fn() },
     auditLog: {
-      create: vi.fn(),
+      create:   vi.fn(),
       findMany: vi.fn(),
-      count: vi.fn(),
+      count:    vi.fn(),
     },
   },
 }));
@@ -30,16 +28,13 @@ vi.mock('../../lib/prisma.js', () => ({
 vi.mock('../../services/execution/ExecutionLifecycleService.js', () => ({
   lifecycleService: {
     getExecutionState: vi.fn(),
-    transition: vi.fn(),
+    transition:        vi.fn(),
   },
 }));
 
 vi.mock('../../middleware/firebaseAuth.js', () => ({
   firebaseAuthMiddleware: (req, res, next) => {
-    req.user = {
-      userId: 'test-user-123',
-      workspaceId: 'test-workspace-456',
-    };
+    req.user = { userId: 'test-user-123', workspaceId: 'test-workspace-456' };
     next();
   },
 }));
@@ -49,12 +44,7 @@ vi.mock('../../middleware/contextGuard.js', () => ({
 }));
 
 vi.mock('../../utils/logger.js', () => ({
-  logger: {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-  },
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 vi.mock('../events.js', () => ({
@@ -65,7 +55,30 @@ vi.mock('../../services/metaExecutionService.js', () => ({
   executeMetaAction: vi.fn(),
 }));
 
-import { prisma } from '../../lib/prisma.js';
+// vi.mock factories are hoisted before variable declarations.
+// Use vi.fn() directly inside the factory; import the mocked
+// module below to get handles for per-test configuration.
+vi.mock('../../queues/index.js', () => ({
+  executionQueue: {
+    getFailedCount: vi.fn(),
+    count:          vi.fn(),
+  },
+  enqueueExecution:     vi.fn(),
+  actionQueue:          null,
+  observerQueue:        null,
+  syncQueue:            null,
+  EXECUTION_QUEUE_NAME: 'executions',
+  ACTION_QUEUE_NAME:    'actions',
+}));
+
+vi.mock('../../services/execution/workerHealth.js', () => ({
+  startHeartbeat:      vi.fn(() => ({ workerId: 'test', stop: vi.fn() })),
+  getWorkerHeartbeats: vi.fn(),
+}));
+
+import { prisma }               from '../../lib/prisma.js';
+import { executionQueue }       from '../../queues/index.js';
+import { getWorkerHeartbeats }  from '../../services/execution/workerHealth.js';
 
 describe('GET /api/execute/vitals', () => {
   let app;
@@ -73,22 +86,27 @@ describe('GET /api/execute/vitals', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Default queue stats — zero for clean baseline.
+    executionQueue.getFailedCount.mockResolvedValue(0);
+    executionQueue.count.mockResolvedValue(0);
+    getWorkerHeartbeats.mockResolvedValue([]);
+
     app = express();
     app.use(express.json());
     app.use('/api/execute', executionRouter);
   });
 
-  it('should return counts and p95 latency for the workspace', async () => {
+  it('returns counts and p95 latency for the workspace', async () => {
     prisma.executionRequest.count
       .mockResolvedValueOnce(3)    // inFlightCount
       .mockResolvedValueOnce(142)  // successPerHour
-      .mockResolvedValueOnce(3);   // failedPerHour
+      .mockResolvedValueOnce(3)    // failedPerHour
+      .mockResolvedValueOnce(0);   // stalePendingCount
 
-    // Five terminal executions with known durations (in ms):
-    //   100, 200, 300, 400, 500   → sorted
-    // p95 rank = 0.95 * (5 - 1) = 3.8
-    //   lower=3 (400), upper=4 (500), weight=0.8
-    //   p95 = 400 + (500 - 400) * 0.8 = 480
+    // Five terminal executions — known durations (ms): 100 200 300 400 500.
+    // p95 rank = 0.95 × 4 = 3.8 → lower=3 (400), upper=4 (500), weight=0.8
+    // p95 = 400 + (500 - 400) × 0.8 = 480
     const t0 = new Date('2026-05-20T13:00:00.000Z');
     prisma.executionRequest.findMany.mockResolvedValueOnce([
       { createdAt: t0, updatedAt: new Date(t0.getTime() + 100) },
@@ -101,24 +119,21 @@ describe('GET /api/execute/vitals', () => {
     const response = await request(app).get('/api/execute/vitals').expect(200);
 
     expect(response.body).toMatchObject({
-      inFlightCount: 3,
+      inFlightCount:  3,
       successPerHour: 142,
-      failedPerHour: 3,
-      p95LatencyMs: 480,
-      windowMinutes: 60,
+      failedPerHour:  3,
+      p95LatencyMs:   480,
+      windowMinutes:  60,
     });
     expect(response.body.serverNow).toBeDefined();
 
-    // Confirm each count was workspace-scoped
+    // Confirm each count was workspace-scoped.
     const countCalls = prisma.executionRequest.count.mock.calls.map((c) => c[0]);
     expect(countCalls[0].where).toMatchObject({
       workspaceId,
       status: { in: ['PENDING', 'QUEUED', 'EXECUTING', 'RETRYING'] },
     });
-    expect(countCalls[1].where).toMatchObject({
-      workspaceId,
-      status: 'EXECUTED_SUCCESS',
-    });
+    expect(countCalls[1].where).toMatchObject({ workspaceId, status: 'EXECUTED_SUCCESS' });
     expect(countCalls[1].where.updatedAt.gte).toBeInstanceOf(Date);
     expect(countCalls[2].where).toMatchObject({
       workspaceId,
@@ -126,28 +141,22 @@ describe('GET /api/execute/vitals', () => {
     });
   });
 
-  it('should return p95=null when no terminal executions exist', async () => {
-    prisma.executionRequest.count
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(0);
-    prisma.executionRequest.findMany.mockResolvedValueOnce([]);
+  it('returns p95=null when no terminal executions exist', async () => {
+    prisma.executionRequest.count.mockResolvedValue(0);
+    prisma.executionRequest.findMany.mockResolvedValue([]);
 
     const response = await request(app).get('/api/execute/vitals').expect(200);
 
     expect(response.body).toMatchObject({
-      inFlightCount: 0,
+      inFlightCount:  0,
       successPerHour: 0,
-      failedPerHour: 0,
-      p95LatencyMs: null,
+      failedPerHour:  0,
+      p95LatencyMs:   null,
     });
   });
 
-  it('should return the only sample when exactly one terminal execution exists', async () => {
-    prisma.executionRequest.count
-      .mockResolvedValueOnce(0)
-      .mockResolvedValueOnce(1)
-      .mockResolvedValueOnce(0);
+  it('returns the only sample when exactly one terminal execution exists', async () => {
+    prisma.executionRequest.count.mockResolvedValue(0);
     const t = new Date();
     prisma.executionRequest.findMany.mockResolvedValueOnce([
       { createdAt: t, updatedAt: new Date(t.getTime() + 750) },
@@ -158,7 +167,64 @@ describe('GET /api/execute/vitals', () => {
     expect(response.body.p95LatencyMs).toBe(750);
   });
 
-  it('should return 500 on prisma failure', async () => {
+  it('includes deadLetterCount and queueDepth from BullMQ', async () => {
+    prisma.executionRequest.count.mockResolvedValue(0);
+    prisma.executionRequest.findMany.mockResolvedValue([]);
+    executionQueue.getFailedCount.mockResolvedValue(7);
+    executionQueue.count.mockResolvedValue(3);
+
+    const response = await request(app).get('/api/execute/vitals').expect(200);
+
+    expect(response.body.deadLetterCount).toBe(7);
+    expect(response.body.queueDepth).toBe(3);
+  });
+
+  it('returns null for queue stats when queue throws (Redis degradation)', async () => {
+    prisma.executionRequest.count.mockResolvedValue(0);
+    prisma.executionRequest.findMany.mockResolvedValue([]);
+    executionQueue.getFailedCount.mockRejectedValue(new Error('Redis down'));
+    executionQueue.count.mockRejectedValue(new Error('Redis down'));
+
+    const response = await request(app).get('/api/execute/vitals').expect(200);
+
+    // Graceful degradation — queue stats are null, not 500.
+    expect(response.body.deadLetterCount).toBeNull();
+    expect(response.body.queueDepth).toBeNull();
+  });
+
+  it('includes stalePendingCount for orphaned PENDING executions', async () => {
+    prisma.executionRequest.count
+      .mockResolvedValueOnce(1)  // inFlightCount
+      .mockResolvedValueOnce(0)  // successPerHour
+      .mockResolvedValueOnce(0)  // failedPerHour
+      .mockResolvedValueOnce(2); // stalePendingCount
+    prisma.executionRequest.findMany.mockResolvedValue([]);
+
+    const response = await request(app).get('/api/execute/vitals').expect(200);
+
+    expect(response.body.stalePendingCount).toBe(2);
+
+    // Confirm stale PENDING query is workspace-scoped with correct status + date filter.
+    const stalePendingCall = prisma.executionRequest.count.mock.calls[3][0];
+    expect(stalePendingCall.where.status).toBe('PENDING');
+    expect(stalePendingCall.where.workspaceId).toBe(workspaceId);
+    expect(stalePendingCall.where.createdAt.lt).toBeInstanceOf(Date);
+  });
+
+  it('includes activeWorkerCount from heartbeats', async () => {
+    prisma.executionRequest.count.mockResolvedValue(0);
+    prisma.executionRequest.findMany.mockResolvedValue([]);
+    getWorkerHeartbeats.mockResolvedValue([
+      { workerId: '1234', lastBeatAt: new Date().toISOString(), aliveMs: 5000 },
+      { workerId: '5678', lastBeatAt: new Date().toISOString(), aliveMs: 3000 },
+    ]);
+
+    const response = await request(app).get('/api/execute/vitals').expect(200);
+
+    expect(response.body.activeWorkerCount).toBe(2);
+  });
+
+  it('returns 500 on prisma failure', async () => {
     prisma.executionRequest.count.mockRejectedValueOnce(new Error('boom'));
 
     const response = await request(app).get('/api/execute/vitals').expect(500);
