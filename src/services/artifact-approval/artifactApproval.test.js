@@ -131,7 +131,6 @@ import {
   getApprovalStatus,
   artifactRequiresApproval,
   APPROVAL_STATUS,
-  APPROVAL_REQUIRED,
 } from './index.js';
 
 describe('Artifact Approval Service', () => {

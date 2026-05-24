@@ -23,7 +23,6 @@ import {
   requestRevision,
   getPendingApprovals,
   getApprovalStatus,
-  getApproval,
 } from '../services/artifact-approval/index.js';
 import { getArtifact } from '../services/artifact-storage/index.js';
 import { logger } from '../utils/logger.js';
