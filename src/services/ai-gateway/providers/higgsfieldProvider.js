@@ -14,8 +14,9 @@
 //   Returns structured error objects (never throws).
 // ============================================================
 import { ERROR_TYPE } from '../providerTypes.js';
-import { getSystemPrompt } from '../prompts/systemPrompts.js';
-import { buildVisualBriefPrompt } from '../prompts/visualBriefPrompts.js';
+// Future PR will use these for actual API call:
+// import { getSystemPrompt } from '../prompts/systemPrompts.js';
+// import { buildVisualBriefPrompt } from '../prompts/visualBriefPrompts.js';
 import { logger } from '../../../utils/logger.js';
 
 // Mock implementation — real Higgsfield API integration in future PR
@@ -23,8 +24,9 @@ export async function generateVideoPrompt(input) {
   const startTime = Date.now();
 
   try {
-    const systemPrompt = getSystemPrompt('VISUAL_STRATEGIST');
-    const userPrompt = buildVisualBriefPrompt('GENERATE_VIDEO_PROMPT', input);
+    // Future PR will use these for actual API call:
+    // const systemPrompt = getSystemPrompt('VISUAL_STRATEGIST');
+    // const userPrompt = buildVisualBriefPrompt('GENERATE_VIDEO_PROMPT', input);
 
     // For now, generate a deterministic prompt based on input
     // Future PR will call actual Higgsfield API

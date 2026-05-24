@@ -109,7 +109,7 @@ function classifyError(error) {
 function parseJSON(text) {
   try {
     return JSON.parse(text.trim());
-  } catch (error) {
+  } catch (_error) {
     logger.warn({ text }, '[OpenAIProvider] JSON parse failed');
     return null;
   }
