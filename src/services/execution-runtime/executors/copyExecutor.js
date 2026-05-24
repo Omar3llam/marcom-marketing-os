@@ -1,37 +1,80 @@
 // ============================================================
-// Copy Executor — mock copy generation
+// Copy Executor — AI-powered copy generation
 // ============================================================
 // Handles: GENERATE_HOOK_VARIANTS, GENERATE_CAPTION_VARIANTS
 //
-// This is a MOCK executor for PR #24.
-// Real implementation (PR #25+) will call Claude API.
+// Wires execution-runtime to AI Provider Gateway.
+// Routes to Claude API for hook/caption generation.
 //
 // DETERMINISM:
-//   Given same input, returns same output (no randomness).
+//   Request IDs are deterministic (same input → same ID).
+//   Provider responses may vary (AI non-determinism).
 // ============================================================
+import { execute, CAPABILITY, ERROR_TYPE } from '../../ai-gateway/index.js';
+import { NODE_TYPE } from '../../execution-planner/index.js';
+import { logger } from '../../../utils/logger.js';
+
+// Map nodeType → capability
+const NODE_TO_CAPABILITY = {
+  [NODE_TYPE.GENERATE_HOOK_VARIANTS]:    CAPABILITY.GENERATE_HOOKS,
+  [NODE_TYPE.GENERATE_CAPTION_VARIANTS]: CAPABILITY.GENERATE_CAPTIONS,
+};
 
 export async function executeCopyGeneration(nodeId, nodeType, context) {
-  const { diagnosis } = context;
+  const capability = NODE_TO_CAPABILITY[nodeType];
 
-  // Mock copy variants (deterministic based on node type)
-  const variants = [
-    `${nodeType}_variant_1_for_${diagnosis}`,
-    `${nodeType}_variant_2_for_${diagnosis}`,
-    `${nodeType}_variant_3_for_${diagnosis}`,
-  ];
+  if (!capability) {
+    logger.error({ nodeId, nodeType }, '[copyExecutor] unknown nodeType');
+    return {
+      success: false,
+      output: { error: `Unknown nodeType: ${nodeType}` },
+      artifacts: [],
+    };
+  }
+
+  // Call AI Provider Gateway
+  const result = await execute({
+    capability,
+    input: {
+      diagnosis: context.diagnosis || 'UNKNOWN',
+      brandVoice: context.brandVoice || 'professional',
+      targetAudience: context.targetAudience || 'general',
+      currentCTR: context.currentCTR || 0,
+    },
+  });
+
+  // Handle provider errors
+  if (!result.success) {
+    logger.error({
+      nodeId,
+      nodeType,
+      capability,
+      errorType: result.error?.type,
+      errorMessage: result.error?.message,
+    }, '[copyExecutor] provider error');
+
+    return {
+      success: false,
+      output: {
+        error: result.error?.message || 'Provider error',
+        errorType: result.error?.type || ERROR_TYPE.PROVIDER_ERROR,
+      },
+      artifacts: [],
+    };
+  }
+
+  // Success — return artifacts
+  logger.debug({
+    nodeId,
+    nodeType,
+    capability,
+    provider: result.metadata?.provider,
+    requestId: result.metadata?.requestId,
+  }, '[copyExecutor] generation successful');
 
   return {
     success: true,
-    output: {
-      variants,
-      count: variants.length,
-      nodeType,
-      diagnosis,
-    },
-    artifacts: variants.map((text, index) => ({
-      type: 'text',
-      id: `${nodeId}_copy_${index}`,
-      content: text,
-    })),
+    output: result.output,
+    artifacts: result.artifacts,
   };
 }

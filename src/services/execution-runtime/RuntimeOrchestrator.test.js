@@ -24,6 +24,57 @@ vi.mock('../../utils/logger.js', () => ({
   },
 }));
 
+// Mock AI Gateway BEFORE imports (returns deterministic mock data)
+vi.mock('../ai-gateway/index.js', () => ({
+  execute: vi.fn(async ({ capability, input }) => ({
+    success: true,
+    output: {
+      generated: true,
+      capability,
+      diagnosis: input?.diagnosis || 'TEST',
+    },
+    artifacts: [
+      {
+        type: 'test_artifact',
+        id: `${capability}_artifact`,
+        content: `Mock content for ${capability}`,
+      },
+    ],
+    metadata: {
+      provider: 'MOCK',
+      requestId: 'mock_request_id',
+      attempt: 1,
+      tokens: 100,
+      latency: 50,
+    },
+  })),
+  CAPABILITY: {
+    GENERATE_HOOKS: 'GENERATE_HOOKS',
+    GENERATE_CAPTIONS: 'GENERATE_CAPTIONS',
+    GENERATE_COPY: 'GENERATE_COPY',
+    GENERATE_STRATEGY: 'GENERATE_STRATEGY',
+    GENERATE_AUDIENCE: 'GENERATE_AUDIENCE',
+    GENERATE_ANGLE: 'GENERATE_ANGLE',
+    GENERATE_VISUAL_BRIEF: 'GENERATE_VISUAL_BRIEF',
+    GENERATE_VIDEO_PROMPT: 'GENERATE_VIDEO_PROMPT',
+    VALIDATE_CONTENT: 'VALIDATE_CONTENT',
+    RANK_VARIANTS: 'RANK_VARIANTS',
+  },
+  ERROR_TYPE: {
+    RATE_LIMIT: 'RATE_LIMIT',
+    TIMEOUT: 'TIMEOUT',
+    INVALID_RESPONSE: 'INVALID_RESPONSE',
+    AUTH_ERROR: 'AUTH_ERROR',
+    PROVIDER_ERROR: 'PROVIDER_ERROR',
+    VALIDATION_ERROR: 'VALIDATION_ERROR',
+  },
+  PROVIDER: {
+    CLAUDE: 'CLAUDE',
+    OPENAI: 'OPENAI',
+    HIGGSFIELD: 'HIGGSFIELD',
+  },
+}));
+
 import { executeExecutionPlan }    from './RuntimeOrchestrator.js';
 import { ExecutionGraph }          from './ExecutionGraph.js';
 import { RUNTIME_EVENT, EXECUTION_STATUS, NODE_STATUS } from './runtimeEvents.js';

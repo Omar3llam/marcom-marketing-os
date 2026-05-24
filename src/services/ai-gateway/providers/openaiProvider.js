@@ -18,9 +18,19 @@ import { buildCopyPrompt } from '../prompts/copyPrompts.js';
 import { buildVisualBriefPrompt } from '../prompts/visualBriefPrompts.js';
 import { logger } from '../../../utils/logger.js';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Lazy client instantiation (allows tests to run without API key)
+let openai = null;
+function getClient() {
+  if (!openai) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY environment variable is required');
+    }
+    openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  return openai;
+}
 
 const DEFAULT_MODEL = MODEL.GPT_4O;
 const DEFAULT_MAX_TOKENS = 2048;
@@ -37,7 +47,8 @@ async function callOpenAI({ systemPrompt, userPrompt, maxTokens = DEFAULT_MAX_TO
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    const response = await openai.chat.completions.create({
+    const client = getClient();
+    const response = await client.chat.completions.create({
       model: DEFAULT_MODEL,
       max_tokens: maxTokens,
       messages: [
