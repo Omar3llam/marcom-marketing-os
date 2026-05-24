@@ -151,7 +151,7 @@ export default function CampaignAnalysis() {
       {/* ── HEADER ──────────────────────────────────────────── */}
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
         <div>
-          <h1 className="font-display font-bold text-2xl text-lumi-text">Campaign Analysis</h1>
+          <h1 className="decision-title text-lumi-text">Campaign Analysis</h1>
           <p className="font-mono text-xs text-lumi-subtle mt-1">
             {rows.length === 0 ? 'No data uploaded yet' : `${rows.length} campaign${rows.length === 1 ? '' : 's'} · live`}
           </p>
@@ -310,7 +310,7 @@ function KpiCard({ label, value, valueClass, delta, deltaClass, footer }) {
   return (
     <article className="bg-lumi-surface border border-lumi-border rounded-xl p-5">
       <div className="section-label">{label}</div>
-      <div className={cn('mt-2 font-mono font-bold text-3xl tabular-nums text-lumi-text', valueClass)}>{value}</div>
+      <div className={cn('mt-2 metric-display text-lumi-text', valueClass)}>{value}</div>
       {delta && <div className={cn('mt-1 text-xs font-mono', deltaClass)}>{delta}</div>}
       {footer && <div className="mt-3">{footer}</div>}
     </article>

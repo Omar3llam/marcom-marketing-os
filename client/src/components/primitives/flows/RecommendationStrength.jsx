@@ -136,7 +136,7 @@ export const RecommendationStrength = forwardRef(function RecommendationStrength
 
       {/* Reasoning (optional) */}
       {reasoning && (
-        <p className="text-xs text-gray-600 leading-snug mt-1">
+        <p className="text-xs text-dark-muted leading-snug mt-1">
           {reasoning}
         </p>
       )}

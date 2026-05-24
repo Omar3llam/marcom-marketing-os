@@ -25,6 +25,7 @@ export default {
         'surface-border':      colors.surface.border,
         'surface-elevated':    colors.surface.elevated,
         'surface-border-strong': colors.surface['border-strong'],
+        'surface-dark':          colors.surface.dark,
 
         // Text tokens (flat + nested for maximum compatibility)
         'dark':         { base: colors.text.base, soft: colors.text.soft, muted: colors.text.muted, subtle: colors.text.subtle },

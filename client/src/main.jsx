@@ -31,7 +31,6 @@ const BUILD_ID = import.meta.env.VITE_BUILD_ID
 const firebaseValidation = validateFirebaseConfig();
 const CONFIG_VALID = firebaseValidation.valid;
 
-// eslint-disable-next-line no-console
 console.info(
   '[lumi] build:',
   BUILD_ID,
@@ -54,9 +53,9 @@ function ConfigErrorPage() {
     <div className="flex min-h-screen items-center justify-center bg-surface-light p-6">
       <div className="w-full max-w-xl rounded-2xl border border-signal-hold/30 bg-surface-card p-6 shadow-lg">
         <div className="mb-4 flex items-start gap-3">
-          <div className="font-display text-3xl font-bold text-dark-base leading-none">⚠️</div>
+          <div className="metric-display text-dark-base leading-none">⚠️</div>
           <div>
-            <h1 className="text-xl font-display font-semibold text-signal-hold tracking-tight">
+            <h1 className="decision-title text-signal-hold">
               Platform services failed to initialize
             </h1>
             <p className="text-sm text-dark-muted leading-relaxed mt-1">

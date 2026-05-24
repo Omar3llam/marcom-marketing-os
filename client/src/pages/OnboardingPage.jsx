@@ -152,7 +152,6 @@ export default function OnboardingPage() {
     } catch (err) {
       const detail = err.response?.data;
       const msg    = detail?.hint || detail?.detail || detail?.error || err.message || 'Could not save context';
-      // eslint-disable-next-line no-console
       console.error('[onboarding] PUT /me/context failed', detail || err);
       toast.error(msg);
     } finally {
@@ -162,7 +161,7 @@ export default function OnboardingPage() {
 
   return (
     <div
-      className="min-h-screen bg-[#0F0F0F] text-white/90 overflow-x-hidden"
+      className="min-h-screen bg-surface-dark text-white/90 overflow-x-hidden"
       style={{ backgroundImage: 'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(246,201,69,0.06) 0%, transparent 60%)' }}
     >
       {/* P2: py-10 → py-8 → mobile: py-6 sm:py-8 */}
@@ -177,7 +176,7 @@ export default function OnboardingPage() {
               Lumi · Setup
             </span>
           </div>
-          <h1 className="mt-3 font-display text-2xl font-bold text-white">
+          <h1 className="mt-3 decision-title text-white">
             Tell us how to think about your brand
           </h1>
           {/* P4: added "why" clarity sentence */}

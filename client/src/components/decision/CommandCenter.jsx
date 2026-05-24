@@ -108,7 +108,7 @@ export default function CommandCenter({
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-lumi-gold/10 border border-lumi-gold/20">
               <Upload className="h-7 w-7 text-lumi-gold" strokeWidth={1.5} />
             </div>
-            <h2 className="font-display font-bold text-xl text-dark-base mb-2">
+            <h2 className="decision-title text-dark-base mb-2">
               Welcome to MARCOM Intelligence
             </h2>
             <p className="text-sm text-dark-soft max-w-md mx-auto mb-8">
