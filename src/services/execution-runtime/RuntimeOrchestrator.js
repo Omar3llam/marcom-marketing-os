@@ -38,6 +38,7 @@ import { RUNTIME_EVENT, EXECUTION_STATUS, NODE_STATUS } from './runtimeEvents.js
 import { logger }                 from '../../utils/logger.js';
 import { storeArtifact }          from '../artifact-storage/index.js';
 import { createApprovalRequest, artifactRequiresApproval } from '../artifact-approval/index.js';
+import { createCheckpoint, PAUSE_REASONS } from '../execution-checkpoint/index.js';
 
 const MAX_RETRIES = 3;
 
@@ -260,6 +261,74 @@ export async function executeExecutionPlan(plan, context = {}) {
 
           // Attach stored artifact IDs to result for tracking
           result.storedArtifactIds = storedArtifactIds;
+
+          // PR #29: Pause execution if node requires approval
+          if (node.requiresApproval && storedArtifactIds.length > 0) {
+            try {
+              // Serialize current execution state for resume
+              const serializedState = {
+                plan: { diagnosis, executionType, priority, graph },
+                context,
+                executedNodes,
+                currentNodeIndex: sortedNodes.indexOf(node),
+                remainingNodes: sortedNodes.slice(sortedNodes.indexOf(node) + 1),
+                events,
+              };
+
+              // Create checkpoint
+              const checkpoint = await createCheckpoint(
+                context.executionId,
+                context.workspaceId,
+                node.id,
+                serializedState,
+                PAUSE_REASONS.AWAITING_ARTIFACT_APPROVAL
+              );
+
+              // Emit events
+              events.push({ type: RUNTIME_EVENT.CHECKPOINT_CREATED, nodeId: node.id, checkpointId: checkpoint.id });
+              events.push({ type: RUNTIME_EVENT.APPROVAL_REQUESTED, nodeId: node.id, artifactIds: storedArtifactIds });
+              events.push({ type: RUNTIME_EVENT.EXECUTION_PAUSED, nodeId: node.id, checkpointId: checkpoint.id });
+
+              logger.info({
+                executionId: context.executionId,
+                checkpointId: checkpoint.id,
+                nodeId: node.id,
+                artifactCount: storedArtifactIds.length,
+              }, '[RuntimeOrchestrator] execution paused for approval');
+
+              // Return early with paused status
+              executedNodes.push({
+                nodeId: node.id,
+                nodeType: node.type,
+                status: NODE_STATUS.SUCCESS,
+                output: result?.output || {},
+                artifacts: result?.artifacts || [],
+                storedArtifactIds: result?.storedArtifactIds || [],
+                attempts,
+              });
+
+              return {
+                status: EXECUTION_STATUS.PAUSED_FOR_APPROVAL,
+                executedNodes,
+                events,
+                summary: {
+                  totalNodes: sortedNodes.length,
+                  successful: executedNodes.filter(n => n.status === NODE_STATUS.SUCCESS).length,
+                  failed: executedNodes.filter(n => n.status === NODE_STATUS.FAILURE).length,
+                  skipped: executedNodes.filter(n => n.status === NODE_STATUS.SKIPPED).length,
+                  paused: true,
+                },
+                checkpointId: checkpoint.id,
+              };
+            } catch (checkpointError) {
+              // Log error but continue execution (graceful degradation)
+              logger.error({
+                error: checkpointError.message,
+                nodeId: node.id,
+                executionId: context.executionId,
+              }, '[RuntimeOrchestrator] failed to create checkpoint, continuing execution');
+            }
+          }
         }
 
         break;
@@ -320,3 +389,234 @@ export async function executeExecutionPlan(plan, context = {}) {
     summary,
   };
 }
+
+// ============================================================
+// PR #29: Resume Execution from Checkpoint
+// ============================================================
+// Resumes a paused execution from its checkpoint.
+//
+// INVARIANTS:
+//   - Never re-executes completed nodes (deterministic resume)
+//   - Idempotent (double resume returns cached result)
+//   - Preserves event chronology
+//
+// PROCESS:
+//   1. Load checkpoint from DB
+//   2. Validate checkpoint is resumable (PAUSED_FOR_APPROVAL)
+//   3. Mark checkpoint as RESUMING
+//   4. Restore execution graph state
+//   5. Continue from remaining nodes only
+//   6. Mark checkpoint as RESUMED on completion
+//
+// INPUT:
+//   checkpointId: string
+//
+// OUTPUT:
+//   Same as executeExecutionPlan
+// ============================================================
+
+export async function resumeExecutionFromCheckpoint(checkpointId) {
+  const { getLatestCheckpoint, updateCheckpointStatus, markCheckpointResumed } = await import('../execution-checkpoint/index.js');
+
+  try {
+    // Load checkpoint
+    const checkpoint = await prisma.executionCheckpoint.findUnique({
+      where: { id: checkpointId },
+    });
+
+    if (!checkpoint) {
+      throw new Error(`Checkpoint ${checkpointId} not found`);
+    }
+
+    // Validate checkpoint is resumable
+    if (checkpoint.status !== 'PAUSED_FOR_APPROVAL') {
+      throw new Error(`Checkpoint ${checkpointId} is not in PAUSED_FOR_APPROVAL state (current: ${checkpoint.status})`);
+    }
+
+    if (checkpoint.resumedAt) {
+      logger.warn({
+        checkpointId,
+        executionId: checkpoint.executionId,
+        resumedAt: checkpoint.resumedAt,
+      }, '[RuntimeOrchestrator] checkpoint already resumed, returning cached result');
+
+      // Idempotency: return success without re-executing
+      return {
+        status: EXECUTION_STATUS.SUCCESS,
+        alreadyResumed: true,
+        resumedAt: checkpoint.resumedAt,
+      };
+    }
+
+    // Mark checkpoint as RESUMING
+    await updateCheckpointStatus(checkpointId, 'RESUMING');
+
+    // Deserialize execution state
+    const { plan, context, executedNodes: previousNodes, remainingNodes, events: previousEvents } = checkpoint.serializedState;
+
+    logger.info({
+      checkpointId,
+      executionId: checkpoint.executionId,
+      remainingNodeCount: remainingNodes.length,
+    }, '[RuntimeOrchestrator] resuming execution from checkpoint');
+
+    // Initialize resumed execution state
+    const events = [...previousEvents];
+    const executedNodes = [...previousNodes];
+
+    // Emit resume event
+    events.push({ type: RUNTIME_EVENT.EXECUTION_RESUMED, checkpointId });
+
+    // Build execution graph for remaining nodes
+    const executionGraph = new ExecutionGraph(plan.graph);
+
+    // Mark already-executed nodes as SUCCESS in graph
+    for (const executedNode of previousNodes) {
+      if (executedNode.status === NODE_STATUS.SUCCESS) {
+        executionGraph.updateNodeStatus(executedNode.nodeId, NODE_STATUS.SUCCESS);
+      } else if (executedNode.status === NODE_STATUS.FAILURE) {
+        executionGraph.updateNodeStatus(executedNode.nodeId, NODE_STATUS.FAILURE);
+      } else if (executedNode.status === NODE_STATUS.SKIPPED) {
+        executionGraph.updateNodeStatus(executedNode.nodeId, NODE_STATUS.SKIPPED);
+      }
+    }
+
+    // Execute remaining nodes
+    for (const node of remainingNodes) {
+      // Check if node should be skipped due to failed dependencies
+      if (executionGraph.shouldSkipNode(node.id)) {
+        executionGraph.updateNodeStatus(node.id, NODE_STATUS.SKIPPED);
+        events.push({ type: RUNTIME_EVENT.NODE_SKIPPED, nodeId: node.id });
+
+        executedNodes.push({
+          nodeId: node.id,
+          nodeType: node.type,
+          status: NODE_STATUS.SKIPPED,
+          output: { reason: 'dependency_failed' },
+          artifacts: [],
+          attempts: 0,
+        });
+
+        logger.debug({ nodeId: node.id, nodeType: node.type }, '[RuntimeOrchestrator] node skipped during resume');
+        continue;
+      }
+
+      // Execute node with retries
+      executionGraph.updateNodeStatus(node.id, NODE_STATUS.RUNNING);
+      events.push({ type: RUNTIME_EVENT.NODE_START, nodeId: node.id, attempt: 1 });
+
+      let result = null;
+      let attempts = 0;
+      let finalStatus = NODE_STATUS.FAILURE;
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        attempts = attempt;
+
+        if (attempt > 1) {
+          events.push({ type: RUNTIME_EVENT.NODE_RETRY, nodeId: node.id, attempt });
+          logger.debug({ nodeId: node.id, attempt }, '[RuntimeOrchestrator] retrying node during resume');
+        }
+
+        result = await executeNode(node, { ...plan, ...context }, attempt);
+
+        if (result.success) {
+          finalStatus = NODE_STATUS.SUCCESS;
+          executionGraph.updateNodeStatus(node.id, NODE_STATUS.SUCCESS);
+          events.push({ type: RUNTIME_EVENT.NODE_SUCCESS, nodeId: node.id, attempt });
+
+          logger.debug({
+            nodeId: node.id,
+            nodeType: node.type,
+            attempt,
+          }, '[RuntimeOrchestrator] node succeeded during resume');
+
+          // Store artifacts if workspaceId and executionId provided
+          if (context.workspaceId && context.executionId && result.artifacts && result.artifacts.length > 0) {
+            const storedArtifactIds = await storeNodeArtifacts({
+              workspaceId: context.workspaceId,
+              executionId: context.executionId,
+              nodeId: node.id,
+              nodeType: node.type,
+              artifacts: result.artifacts,
+              metadata: result.metadata || {},
+            });
+
+            result.storedArtifactIds = storedArtifactIds;
+          }
+
+          break;
+        }
+
+        // Failed — check if we should retry
+        if (attempt === MAX_RETRIES) {
+          finalStatus = NODE_STATUS.FAILURE;
+          executionGraph.updateNodeStatus(node.id, NODE_STATUS.FAILURE);
+          events.push({ type: RUNTIME_EVENT.NODE_FAILURE, nodeId: node.id, attempt });
+
+          logger.warn({
+            nodeId: node.id,
+            nodeType: node.type,
+            attempts,
+          }, '[RuntimeOrchestrator] node failed during resume after max retries');
+        }
+      }
+
+      executedNodes.push({
+        nodeId: node.id,
+        nodeType: node.type,
+        status: finalStatus,
+        output: result?.output || {},
+        artifacts: result?.artifacts || [],
+        storedArtifactIds: result?.storedArtifactIds || [],
+        attempts,
+      });
+    }
+
+    // Mark checkpoint as RESUMED
+    await markCheckpointResumed(checkpointId);
+
+    // Calculate summary
+    const allNodes = [...previousNodes, ...executedNodes];
+    const summary = {
+      totalNodes: plan.graph.nodes.length,
+      successful: allNodes.filter(n => n.status === NODE_STATUS.SUCCESS).length,
+      failed: allNodes.filter(n => n.status === NODE_STATUS.FAILURE).length,
+      skipped: allNodes.filter(n => n.status === NODE_STATUS.SKIPPED).length,
+    };
+
+    // Determine overall status
+    let status = EXECUTION_STATUS.SUCCESS;
+    if (summary.failed > 0) {
+      status = summary.successful > 0 ? EXECUTION_STATUS.PARTIAL_SUCCESS : EXECUTION_STATUS.FAILURE;
+    } else if (summary.skipped > 0 && summary.successful === 0) {
+      status = EXECUTION_STATUS.FAILURE;
+    }
+
+    events.push({ type: RUNTIME_EVENT.EXECUTION_SUCCESS, status });
+
+    logger.info({
+      status,
+      summary,
+      checkpointId,
+    }, '[RuntimeOrchestrator] resumed execution completed');
+
+    return {
+      status,
+      executedNodes: allNodes,
+      events,
+      summary,
+      resumed: true,
+      checkpointId,
+    };
+  } catch (error) {
+    logger.error({
+      error: error.message,
+      checkpointId,
+    }, '[RuntimeOrchestrator] failed to resume execution from checkpoint');
+    throw error;
+  }
+}
+
+// Need PrismaClient for checkpoint loading in resume
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();

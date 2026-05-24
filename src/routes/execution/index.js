@@ -23,6 +23,8 @@ import { registerTransitionsRoute } from './transitions.js';
 import { registerIncidentRoute } from './incident.js';
 import { registerRetryRoute } from './retry.js';
 import { registerTraceRoute } from './trace.js';
+import { registerResumeRoute } from './resume.js';         // PR #29
+import { registerCheckpointRoute } from './checkpoint.js';  // PR #29
 
 const router = Router();
 
@@ -35,6 +37,7 @@ registerAuditRoute(router);
 registerVitalsRoute(router);
 registerActiveRoute(router);
 registerMetricsSummaryRoute(router);
+registerCheckpointRoute(router);  // PR #29: /paused, /:id/checkpoint
 
 // :id paths last — must not shadow the literal segments above.
 registerReconciliationRoute(router);
@@ -42,5 +45,6 @@ registerTransitionsRoute(router);
 registerIncidentRoute(router);
 registerRetryRoute(router);
 registerTraceRoute(router);
+registerResumeRoute(router);       // PR #29: /:id/resume
 
 export default router;

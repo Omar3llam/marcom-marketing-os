@@ -44,6 +44,9 @@ enum ExecutionStatus {
   SUCCESS
   FAILED
   PENDING
+  PAUSED_FOR_APPROVAL
+  RESUMING
+  RESUMED
 }
 
 enum ActionType {
@@ -241,6 +244,7 @@ model ExecutionRequest {
   metrics        ExecutionMetric[]
   decisionMemory DecisionMemory[]
   artifacts      Artifact[]
+  checkpoints    ExecutionCheckpoint[]
 
   @@index([workspaceId])
   @@index([createdAt])
@@ -321,6 +325,37 @@ model ExecutionMetric {
   @@index([workspaceId, recordedAt(sort: Desc)])
   @@index([executionId])
   @@map("execution_metrics")
+}
+
+// ── PR #29: Execution Checkpoints ────────────────────────────
+// Persistent state snapshots for resumable execution.
+// Enables pause/resume capability for human-in-the-loop approval workflows.
+//
+// Architectural Law:
+// Every execution pause must create a durable checkpoint.
+//
+// Query patterns:
+// - Latest checkpoint: WHERE executionId = ? ORDER BY createdAt DESC LIMIT 1
+// - Resume candidates: WHERE status = 'PAUSED' AND resumedAt IS NULL
+// - Checkpoint timeline: WHERE executionId = ? ORDER BY createdAt
+
+model ExecutionCheckpoint {
+  id              String    @id @default(cuid())
+  executionId     String
+  workspaceId     String    @db.Uuid
+  nodeId          String // Current node position in execution graph
+  status          String // PAUSED_FOR_APPROVAL, RESUMING, RESUMED
+  serializedState Json // Full execution graph state for deterministic resume
+  pausedReason    String? // e.g., "awaiting_artifact_approval", "manual_pause"
+  createdAt       DateTime  @default(now())
+  resumedAt       DateTime?
+
+  execution ExecutionRequest @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId, createdAt(sort: Desc)])
+  @@index([workspaceId, status])
+  @@index([status])
+  @@map("execution_checkpoints")
 }
 
 // ── Temporal Intelligence ────────────────────────────────────
