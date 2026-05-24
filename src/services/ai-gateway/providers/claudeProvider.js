@@ -1,0 +1,425 @@
+// ============================================================
+// Claude Provider — Anthropic Claude API integration
+// ============================================================
+// Implements AI capabilities using Claude Sonnet 4.5.
+//
+// CAPABILITIES:
+//   - generateCopy (hooks, captions, full copy)
+//   - generateStrategy (audience, angle variants)
+//   - validateContent (brand compliance)
+//   - rankVariants (performance prediction)
+//
+// ERROR HANDLING:
+//   Returns structured error objects (never throws).
+//   Error types: RATE_LIMIT, TIMEOUT, INVALID_RESPONSE, AUTH_ERROR
+// ============================================================
+import Anthropic from '@anthropic-ai/sdk';
+import { ERROR_TYPE, MODEL } from '../providerTypes.js';
+import { getSystemPrompt } from '../prompts/systemPrompts.js';
+import { buildCopyPrompt } from '../prompts/copyPrompts.js';
+import { buildCaptionPrompt } from '../prompts/captionPrompts.js';
+import { buildVisualBriefPrompt } from '../prompts/visualBriefPrompts.js';
+import { logger } from '../../../utils/logger.js';
+
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+});
+
+const DEFAULT_MODEL = MODEL.CLAUDE_SONNET_4;
+const DEFAULT_MAX_TOKENS = 2048;
+const DEFAULT_TIMEOUT = 30000; // 30s
+
+// ============================================================
+// Core API call wrapper
+// ============================================================
+
+async function callClaude({ systemPrompt, userPrompt, maxTokens = DEFAULT_MAX_TOKENS, timeout = DEFAULT_TIMEOUT }) {
+  const startTime = Date.now();
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    const response = await anthropic.messages.create({
+      model: DEFAULT_MODEL,
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    }, {
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const text = response.content[0]?.text || '';
+    const latency = Date.now() - startTime;
+
+    return {
+      success: true,
+      text,
+      metadata: {
+        model: response.model,
+        tokens: response.usage.input_tokens + response.usage.output_tokens,
+        latency,
+      },
+    };
+  } catch (error) {
+    const latency = Date.now() - startTime;
+
+    logger.error({
+      error: error.message,
+      latency,
+    }, '[ClaudeProvider] API call failed');
+
+    return {
+      success: false,
+      error: {
+        type: classifyError(error),
+        message: error.message,
+      },
+      metadata: {
+        model: DEFAULT_MODEL,
+        tokens: 0,
+        latency,
+      },
+    };
+  }
+}
+
+function classifyError(error) {
+  const message = error.message?.toLowerCase() || '';
+
+  if (message.includes('rate limit') || message.includes('429')) {
+    return ERROR_TYPE.RATE_LIMIT;
+  }
+  if (message.includes('timeout') || message.includes('aborted')) {
+    return ERROR_TYPE.TIMEOUT;
+  }
+  if (message.includes('authentication') || message.includes('api key') || message.includes('401')) {
+    return ERROR_TYPE.AUTH_ERROR;
+  }
+  if (message.includes('invalid') || message.includes('malformed')) {
+    return ERROR_TYPE.INVALID_RESPONSE;
+  }
+
+  return ERROR_TYPE.PROVIDER_ERROR;
+}
+
+function parseJSON(text) {
+  try {
+    // Remove markdown code fences if present
+    let cleaned = text.trim();
+    if (cleaned.startsWith('```json')) {
+      cleaned = cleaned.replace(/^```json\s*/i, '').replace(/\s*```\s*$/, '');
+    } else if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```\s*$/, '');
+    }
+
+    return JSON.parse(cleaned);
+  } catch (error) {
+    logger.warn({ text }, '[ClaudeProvider] JSON parse failed');
+    return null;
+  }
+}
+
+// ============================================================
+// Capability implementations
+// ============================================================
+
+export async function generateCopy(input) {
+  const systemPrompt = getSystemPrompt('CREATIVE_COPYWRITER');
+  const userPrompt = buildCopyPrompt('GENERATE_COPY', input);
+
+  const result = await callClaude({ systemPrompt, userPrompt });
+
+  if (!result.success) {
+    return result;
+  }
+
+  const parsed = parseJSON(result.text);
+  if (!parsed || !parsed.hook) {
+    return {
+      success: false,
+      error: {
+        type: ERROR_TYPE.INVALID_RESPONSE,
+        message: 'Failed to parse copy generation response',
+      },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: {
+      hook: parsed.hook,
+      body: parsed.body,
+      cta: parsed.cta,
+      rationale: parsed.rationale,
+    },
+    artifacts: [
+      { type: 'copy', id: 'hook', content: parsed.hook },
+      { type: 'copy', id: 'body', content: parsed.body },
+    ],
+    metadata: result.metadata,
+  };
+}
+
+export async function generateHooks(input) {
+  const systemPrompt = getSystemPrompt('CREATIVE_COPYWRITER');
+  const userPrompt = buildCopyPrompt('GENERATE_HOOKS', input);
+
+  const result = await callClaude({ systemPrompt, userPrompt });
+
+  if (!result.success) {
+    return result;
+  }
+
+  const parsed = parseJSON(result.text);
+  if (!parsed || !Array.isArray(parsed)) {
+    return {
+      success: false,
+      error: {
+        type: ERROR_TYPE.INVALID_RESPONSE,
+        message: 'Failed to parse hooks response',
+      },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: {
+      hooks: parsed,
+      count: parsed.length,
+    },
+    artifacts: parsed.map((h, index) => ({
+      type: 'hook',
+      id: `hook_${index}`,
+      content: h.hook,
+      angle: h.angle,
+    })),
+    metadata: result.metadata,
+  };
+}
+
+export async function generateCaptions(input) {
+  const systemPrompt = getSystemPrompt('CREATIVE_COPYWRITER');
+  const userPrompt = buildCopyPrompt('GENERATE_CAPTIONS', input);
+
+  const result = await callClaude({ systemPrompt, userPrompt });
+
+  if (!result.success) {
+    return result;
+  }
+
+  const parsed = parseJSON(result.text);
+  if (!parsed || !Array.isArray(parsed)) {
+    return {
+      success: false,
+      error: {
+        type: ERROR_TYPE.INVALID_RESPONSE,
+        message: 'Failed to parse captions response',
+      },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: {
+      captions: parsed,
+      count: parsed.length,
+    },
+    artifacts: parsed.map((c, index) => ({
+      type: 'caption',
+      id: `caption_${index}`,
+      content: c.caption,
+      tone: c.tone,
+    })),
+    metadata: result.metadata,
+  };
+}
+
+export async function generateAudienceHypotheses(input) {
+  const systemPrompt = getSystemPrompt('MARKETING_STRATEGIST');
+  const userPrompt = buildCaptionPrompt('GENERATE_AUDIENCE_HYPOTHESES', input);
+
+  const result = await callClaude({ systemPrompt, userPrompt });
+
+  if (!result.success) {
+    return result;
+  }
+
+  const parsed = parseJSON(result.text);
+  if (!parsed || !Array.isArray(parsed)) {
+    return {
+      success: false,
+      error: {
+        type: ERROR_TYPE.INVALID_RESPONSE,
+        message: 'Failed to parse audience hypotheses response',
+      },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: {
+      hypotheses: parsed,
+      count: parsed.length,
+    },
+    artifacts: parsed.map((h, index) => ({
+      type: 'audience_hypothesis',
+      id: `hypothesis_${index}`,
+      content: h.hypothesis,
+    })),
+    metadata: result.metadata,
+  };
+}
+
+export async function generateAngleVariants(input) {
+  const systemPrompt = getSystemPrompt('MARKETING_STRATEGIST');
+  const userPrompt = buildCaptionPrompt('GENERATE_ANGLE_VARIANTS', input);
+
+  const result = await callClaude({ systemPrompt, userPrompt });
+
+  if (!result.success) {
+    return result;
+  }
+
+  const parsed = parseJSON(result.text);
+  if (!parsed || !Array.isArray(parsed)) {
+    return {
+      success: false,
+      error: {
+        type: ERROR_TYPE.INVALID_RESPONSE,
+        message: 'Failed to parse angle variants response',
+      },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: {
+      angles: parsed,
+      count: parsed.length,
+    },
+    artifacts: parsed.map((a, index) => ({
+      type: 'angle',
+      id: `angle_${index}`,
+      content: a.angle,
+    })),
+    metadata: result.metadata,
+  };
+}
+
+export async function validateContent(input) {
+  const systemPrompt = getSystemPrompt('MARKETING_STRATEGIST');
+  const userPrompt = buildVisualBriefPrompt('VALIDATE_CONTENT', input);
+
+  const result = await callClaude({ systemPrompt, userPrompt, maxTokens: 1024 });
+
+  if (!result.success) {
+    return result;
+  }
+
+  const parsed = parseJSON(result.text);
+  if (!parsed || typeof parsed.isValid !== 'boolean') {
+    return {
+      success: false,
+      error: {
+        type: ERROR_TYPE.INVALID_RESPONSE,
+        message: 'Failed to parse validation response',
+      },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: {
+      isValid: parsed.isValid,
+      score: parsed.score,
+      issues: parsed.issues || [],
+      suggestions: parsed.suggestions || [],
+      approved: parsed.approved,
+    },
+    artifacts: [],
+    metadata: result.metadata,
+  };
+}
+
+export async function rankVariants(input) {
+  const systemPrompt = getSystemPrompt('MARKETING_STRATEGIST');
+  const userPrompt = buildVisualBriefPrompt('RANK_VARIANTS', input);
+
+  const result = await callClaude({ systemPrompt, userPrompt, maxTokens: 1536 });
+
+  if (!result.success) {
+    return result;
+  }
+
+  const parsed = parseJSON(result.text);
+  if (!parsed || !Array.isArray(parsed)) {
+    return {
+      success: false,
+      error: {
+        type: ERROR_TYPE.INVALID_RESPONSE,
+        message: 'Failed to parse ranking response',
+      },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: {
+      rankings: parsed,
+      count: parsed.length,
+    },
+    artifacts: [],
+    metadata: result.metadata,
+  };
+}
+
+export async function generateVisualBrief(input) {
+  const systemPrompt = getSystemPrompt('VISUAL_STRATEGIST');
+  const userPrompt = buildVisualBriefPrompt('GENERATE_VISUAL_BRIEF', input);
+
+  const result = await callClaude({ systemPrompt, userPrompt });
+
+  if (!result.success) {
+    return result;
+  }
+
+  const parsed = parseJSON(result.text);
+  if (!parsed || !parsed.concept) {
+    return {
+      success: false,
+      error: {
+        type: ERROR_TYPE.INVALID_RESPONSE,
+        message: 'Failed to parse visual brief response',
+      },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: {
+      concept: parsed.concept,
+      colorPalette: parsed.colorPalette || [],
+      composition: parsed.composition,
+      typography: parsed.typography,
+      mobileOptimization: parsed.mobileOptimization,
+      rationale: parsed.rationale,
+    },
+    artifacts: [{
+      type: 'visual_brief',
+      id: 'brief',
+      content: parsed,
+    }],
+    metadata: result.metadata,
+  };
+}
