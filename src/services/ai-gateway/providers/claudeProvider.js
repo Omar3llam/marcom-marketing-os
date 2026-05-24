@@ -21,9 +21,19 @@ import { buildCaptionPrompt } from '../prompts/captionPrompts.js';
 import { buildVisualBriefPrompt } from '../prompts/visualBriefPrompts.js';
 import { logger } from '../../../utils/logger.js';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Lazy client instantiation (allows tests to run without API key)
+let anthropic = null;
+function getClient() {
+  if (!anthropic) {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY environment variable is required');
+    }
+    anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+  }
+  return anthropic;
+}
 
 const DEFAULT_MODEL = MODEL.CLAUDE_SONNET_4;
 const DEFAULT_MAX_TOKENS = 2048;
@@ -40,7 +50,8 @@ async function callClaude({ systemPrompt, userPrompt, maxTokens = DEFAULT_MAX_TO
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    const response = await anthropic.messages.create({
+    const client = getClient();
+    const response = await client.messages.create({
       model: DEFAULT_MODEL,
       max_tokens: maxTokens,
       system: systemPrompt,

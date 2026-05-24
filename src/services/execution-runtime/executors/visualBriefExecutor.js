@@ -1,42 +1,81 @@
 // ============================================================
-// Visual Brief Executor — mock visual brief generation
+// Visual Brief Executor — AI-powered visual/validation
 // ============================================================
 // Handles: GENERATE_VISUAL_BRIEF, VALIDATE_HOOKS, RANK_HOOKS
 //
-// This is a MOCK executor for PR #24.
-// Real implementation (PR #25+) will call Claude API.
+// Wires execution-runtime to AI Provider Gateway.
+// Routes to Claude API for visual briefs and content validation.
 //
 // DETERMINISM:
-//   Given same input, returns same output (no randomness).
+//   Request IDs are deterministic (same input → same ID).
+//   Provider responses may vary (AI non-determinism).
 // ============================================================
+import { execute, CAPABILITY, ERROR_TYPE } from '../../ai-gateway/index.js';
+import { NODE_TYPE } from '../../execution-planner/index.js';
+import { logger } from '../../../utils/logger.js';
+
+// Map nodeType → capability
+const NODE_TO_CAPABILITY = {
+  [NODE_TYPE.GENERATE_VISUAL_BRIEF]: CAPABILITY.GENERATE_VISUAL_BRIEF,
+  [NODE_TYPE.VALIDATE_HOOKS]:        CAPABILITY.VALIDATE_CONTENT,
+  [NODE_TYPE.RANK_HOOKS]:            CAPABILITY.VALIDATE_CONTENT,
+};
 
 export async function executeVisualBrief(nodeId, nodeType, context) {
-  const { diagnosis, executionType } = context;
+  const capability = NODE_TO_CAPABILITY[nodeType];
 
-  // Mock visual brief (deterministic)
-  const brief = {
-    theme: `${executionType}_theme`,
-    style: 'modern_minimal',
-    colorPalette: ['#FF6B6B', '#4ECDC4', '#45B7D1'],
-    mood: diagnosis === 'CREATIVE_FATIGUE' ? 'energetic' : 'aspirational',
-    requirements: [
-      'high-contrast',
-      'mobile-first',
-      'brand-aligned',
-    ],
-  };
+  if (!capability) {
+    logger.error({ nodeId, nodeType }, '[visualBriefExecutor] unknown nodeType');
+    return {
+      success: false,
+      output: { error: `Unknown nodeType: ${nodeType}` },
+      artifacts: [],
+    };
+  }
+
+  // Call AI Provider Gateway
+  const result = await execute({
+    capability,
+    input: {
+      diagnosis: context.diagnosis || 'UNKNOWN',
+      executionType: context.executionType || 'CONTENT_OPTIMIZATION',
+      brandGuidelines: context.brandGuidelines || {},
+      content: context.content || [],
+    },
+  });
+
+  // Handle provider errors
+  if (!result.success) {
+    logger.error({
+      nodeId,
+      nodeType,
+      capability,
+      errorType: result.error?.type,
+      errorMessage: result.error?.message,
+    }, '[visualBriefExecutor] provider error');
+
+    return {
+      success: false,
+      output: {
+        error: result.error?.message || 'Provider error',
+        errorType: result.error?.type || ERROR_TYPE.PROVIDER_ERROR,
+      },
+      artifacts: [],
+    };
+  }
+
+  // Success — return artifacts
+  logger.debug({
+    nodeId,
+    nodeType,
+    capability,
+    provider: result.metadata?.provider,
+    requestId: result.metadata?.requestId,
+  }, '[visualBriefExecutor] generation successful');
 
   return {
     success: true,
-    output: {
-      brief,
-      nodeType,
-      diagnosis,
-    },
-    artifacts: [{
-      type: 'visual_brief',
-      id: `${nodeId}_brief`,
-      content: brief,
-    }],
+    output: result.output,
+    artifacts: result.artifacts,
   };
 }
