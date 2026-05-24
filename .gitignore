@@ -26,6 +26,7 @@ build/
 
 # Test artifacts
 coverage/
+artifacts/
 
 # Claude Code local settings (keep shared settings.json but not local overrides)
 .claude/settings.local.json

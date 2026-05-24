@@ -39,6 +39,7 @@ import { toolsRouter }        from './routes/tools.js';
 import { lumiRouter, quickActionHandler, demoFeedHandler } from './routes/lumi/index.js';
 import paidRouter             from './routes/paid.js';
 import executionRouter        from './routes/execution/index.js';
+import artifactApprovalRouter from './routes/artifact-approval.js';
 import eventsRouter           from './routes/events.js';
 import memoryRouter           from './routes/memory.js';
 import decisionMemoryRouter   from './routes/decision-memory/index.js';
@@ -257,6 +258,13 @@ app.use('/api/execute',
   requireAuth,
   apiLimiter,
   executionRouter
+);
+
+// Artifact Approval — human-in-the-loop review for AI-generated content (PR #28)
+app.use('/api/artifacts',
+  requireAuth,
+  apiLimiter,
+  artifactApprovalRouter
 );
 
 // Real-Time Events (SSE) — live execution status updates.

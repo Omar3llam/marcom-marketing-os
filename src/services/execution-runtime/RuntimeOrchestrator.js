@@ -37,6 +37,7 @@ import { getExecutor }            from './NodeExecutorRegistry.js';
 import { RUNTIME_EVENT, EXECUTION_STATUS, NODE_STATUS } from './runtimeEvents.js';
 import { logger }                 from '../../utils/logger.js';
 import { storeArtifact }          from '../artifact-storage/index.js';
+import { createApprovalRequest, artifactRequiresApproval } from '../artifact-approval/index.js';
 
 const MAX_RETRIES = 3;
 
@@ -81,6 +82,24 @@ async function storeNodeArtifacts({
         type: artifact.type,
         duplicate: stored.duplicate,
       }, '[RuntimeOrchestrator] artifact stored');
+
+      // Create approval request if artifact type requires approval (PR #28)
+      if (artifactRequiresApproval(artifact.type)) {
+        try {
+          await createApprovalRequest(stored.id, workspaceId);
+          logger.debug({
+            artifactId: stored.id,
+            type: artifact.type,
+          }, '[RuntimeOrchestrator] approval request created');
+        } catch (approvalError) {
+          // Log error but don't fail execution
+          logger.error({
+            error: approvalError.message,
+            artifactId: stored.id,
+            type: artifact.type,
+          }, '[RuntimeOrchestrator] failed to create approval request');
+        }
+      }
     } catch (error) {
       // Log error but don't fail execution
       logger.error({
