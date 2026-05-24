@@ -64,8 +64,7 @@ function nextStage(current, recentScores) {
 export async function runObserverSweep() {
   const cutoff = new Date(Date.now() - WINDOW_HRS * 60 * 60 * 1000);
 
-  // 1. Find actions that have aged past the impact window and
-  //    don't yet have a DecisionMemory entry.
+  // 1. Find actions that have aged past the impact window.
   const candidates = await prisma.action.findMany({
     where: {
       status:     'EXECUTED_SUCCESS',
@@ -79,20 +78,53 @@ export async function runObserverSweep() {
   });
 
   logger.info({ count: candidates.length, cutoff }, '[observer] sweep started');
-  let learned = 0;
+
+  if (candidates.length === 0) {
+    return { scanned: 0, learned: 0 };
+  }
+
+  // ── Pre-fetch: batch load existing memories + campaign states ──
+  // Single query per table instead of one per candidate (eliminates N+1).
+  const campaignIds = [...new Set(candidates.map(a => a.campaignId))];
+
+  const [existingMemories, currentStates] = await Promise.all([
+    prisma.decisionMemory.findMany({
+      where:   { campaignId: { in: campaignIds } },
+      orderBy: { recordedAt: 'desc' },
+      select:  { campaignId: true, recordedAt: true, deltaRoas: true },
+    }),
+    prisma.campaignState.findMany({
+      where:  { campaignId: { in: campaignIds } },
+      select: { campaignId: true, stage: true },
+    }),
+  ]);
+
+  // Build O(1) lookup maps for the per-action decisions below.
+  const memoriesByCampaign = new Map();
+  for (const m of existingMemories) {
+    if (!memoriesByCampaign.has(m.campaignId)) memoriesByCampaign.set(m.campaignId, []);
+    memoriesByCampaign.get(m.campaignId).push(m);
+  }
+  const stageByCampaign = new Map(currentStates.map(s => [s.campaignId, s.stage]));
+
+  // ── Accumulate writes — no Prisma calls inside this loop ─────
+  const newMemories  = [];          // for createMany
+  const statePatches = new Map();   // campaignId → patch object
 
   for (const action of candidates) {
-    // Skip if memory already recorded
-    const existing = await prisma.decisionMemory.findFirst({
-      where: { campaignId: action.campaignId, recordedAt: { gte: action.executedAt } },
-      select: { id: true },
-    });
-    if (existing) continue;
+    // Skip if memory already recorded for this campaign after executedAt.
+    const priorMemories = memoriesByCampaign.get(action.campaignId) ?? [];
+    const hasExisting = priorMemories.some(
+      m => new Date(m.recordedAt) >= new Date(action.executedAt),
+    );
+    if (hasExisting) continue;
 
     let kpiBefore, kpiAfter;
     try {
-      kpiBefore = await fetchKpis(action.campaignId, action.executedAt);
-      kpiAfter  = await fetchKpis(action.campaignId, new Date());
+      [kpiBefore, kpiAfter] = await Promise.all([
+        fetchKpis(action.campaignId, action.executedAt),
+        fetchKpis(action.campaignId, new Date()),
+      ]);
     } catch (err) {
       logger.warn({ err: err.message, actionId: action.id }, '[observer] KPI fetch failed');
       continue;
@@ -102,61 +134,63 @@ export async function runObserverSweep() {
     const deltaRoas = kpiAfter.roas - kpiBefore.roas;
     const sustained = deltaCtr >= 0 && deltaRoas >= 0;
 
-    await prisma.decisionMemory.create({
-      data: {
-        campaignId:        action.campaignId,
-        workspaceId:       action.workspaceId,
-        actionType:        action.payload?.kind ?? 'unknown',
-        decisionRationale: action.payload?.rationale ?? '',
-        resultStatus:      sustained ? 'sustained_lift' : 'regression',
-        deltaCtr,
-        deltaRoas,
-        impactDurationHrs: WINDOW_HRS,
-        isSustainable:     sustained,
-      },
-    });
-    learned++;
-
-    // 2. Update CampaignState
-    const recent = await prisma.decisionMemory.findMany({
-      where:   { campaignId: action.campaignId },
-      orderBy: { recordedAt: 'desc' },
-      take:    5,
-      select:  { deltaRoas: true },
-    });
-    const recentScores = recent.map(r => Number(r.deltaRoas ?? 0));
-
-    const state = await prisma.campaignState.findUnique({
-      where: { campaignId: action.campaignId },
-    });
-    const currentStage = state?.stage ?? 'TESTING';
-    const newStage     = nextStage(currentStage, recentScores);
-
-    await prisma.campaignState.upsert({
-      where:  { campaignId: action.campaignId },
-      update: {
-        stage:        newStage,
-        healthScore:  kpiAfter.healthScore,
-        lastAnalysis: new Date(),
-      },
-      create: {
-        campaignId:   action.campaignId,
-        workspaceId:  action.workspaceId,
-        stage:        newStage,
-        healthScore:  kpiAfter.healthScore,
-        lastAnalysis: new Date(),
-      },
+    newMemories.push({
+      campaignId:        action.campaignId,
+      workspaceId:       action.workspaceId,
+      actionType:        action.payload?.kind ?? 'unknown',
+      decisionRationale: action.payload?.rationale ?? '',
+      resultStatus:      sustained ? 'sustained_lift' : 'regression',
+      deltaCtr,
+      deltaRoas,
+      impactDurationHrs: WINDOW_HRS,
+      isSustainable:     sustained,
     });
 
-    if (newStage !== currentStage) {
-      logger.info({
-        campaignId: action.campaignId,
-        from: currentStage, to: newStage,
-      }, '[observer] stage transition');
+    // Compute next stage from pre-fetched data + new deltaRoas (no DB read).
+    const recentScores  = [deltaRoas, ...priorMemories.slice(0, 4).map(m => Number(m.deltaRoas ?? 0))];
+    const currentStage  = stageByCampaign.get(action.campaignId) ?? 'TESTING';
+    const newStage      = nextStage(currentStage, recentScores);
+
+    statePatches.set(action.campaignId, {
+      workspaceId: action.workspaceId,
+      stage:       newStage,
+      healthScore: kpiAfter.healthScore,
+      from:        currentStage,
+    });
+  }
+
+  // ── Batch writes ──────────────────────────────────────────────
+  const learned = newMemories.length;
+
+  if (learned > 0) {
+    await prisma.decisionMemory.createMany({ data: newMemories });
+  }
+
+  if (statePatches.size > 0) {
+    await prisma.$transaction(
+      [...statePatches.entries()].map(([campaignId, s]) =>
+        prisma.campaignState.upsert({
+          where:  { campaignId },
+          update: { stage: s.stage, healthScore: s.healthScore, lastAnalysis: new Date() },
+          create: {
+            campaignId,
+            workspaceId:  s.workspaceId,
+            stage:        s.stage,
+            healthScore:  s.healthScore,
+            lastAnalysis: new Date(),
+          },
+        }),
+      ),
+    );
+
+    for (const [campaignId, s] of statePatches.entries()) {
+      if (s.from !== s.stage) {
+        logger.info({ campaignId, from: s.from, to: s.stage }, '[observer] stage transition');
+      }
     }
   }
 
-  logger.info({ learned }, '[observer] sweep complete');
+  logger.info({ scanned: candidates.length, learned }, '[observer] sweep complete');
   return { scanned: candidates.length, learned };
 }
 
