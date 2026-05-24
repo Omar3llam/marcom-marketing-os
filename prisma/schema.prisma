@@ -236,6 +236,7 @@ model ExecutionRequest {
   retryMetadata  Json?                    // { attempt, maxAttempts, nextRetryAt }
 
   transitions    ExecutionTransition[]
+  metrics        ExecutionMetric[]
 
   @@index([workspaceId])
   @@index([createdAt])
@@ -284,6 +285,38 @@ model ExecutionTransition {
   @@index([actor])
   @@index([correlationId])
   @@map("execution_transitions")
+}
+
+// ── PR #14: Execution Metrics ────────────────────────────────
+// Append-only record written after every terminal transition.
+// Used by GET /api/execute/metrics/summary.
+// READ-ONLY from the observability layer — never mutates execution state.
+
+model ExecutionMetric {
+  id              String   @id @default(cuid())
+  executionId     String
+  workspaceId     String   @db.Uuid
+
+  // Timing (derived from ExecutionTransition audit log)
+  queueWaitMs     Int?     // PENDING → EXECUTING elapsed ms
+  executionMs     Int?     // EXECUTING → terminal elapsed ms
+
+  // Outcome counters
+  retryCount      Int      @default(0)
+  timeoutOccurred Boolean  @default(false)
+
+  // Agent attribution (from execution response payload)
+  agentUsed       String?  // "claude" | "openai" | "hybrid"
+  tokenEstimate   Int?
+
+  finalStatus     String   // EXECUTED_SUCCESS | EXECUTED_FAILED | TIMED_OUT
+  recordedAt      DateTime @default(now())
+
+  execution ExecutionRequest @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, recordedAt(sort: Desc)])
+  @@index([executionId])
+  @@map("execution_metrics")
 }
 
 // ── Temporal Intelligence ────────────────────────────────────
