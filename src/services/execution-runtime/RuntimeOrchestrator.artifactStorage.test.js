@@ -4,31 +4,14 @@
 // Tests the full flow from execution to artifact persistence.
 // ============================================================
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
-import { executeExecutionPlan } from './RuntimeOrchestrator.js';
-import { getArtifact, listArtifacts } from '../artifact-storage/index.js';
-import { EXECUTION_TYPE, NODE_TYPE, PLAN_PRIORITY } from '../execution-planner/index.js';
-import { EXECUTION_STATUS, NODE_STATUS } from './runtimeEvents.js';
-import * as aiGateway from '../ai-gateway/index.js';
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
+// IMPORTANT: Mock Prisma BEFORE any imports that use it
+const mockArtifacts = new Map();
+let idCounter = 1;
 
-// Mock AI Gateway
-vi.mock('../ai-gateway/index.js', async () => {
-  const actual = await vi.importActual('../ai-gateway/index.js');
-  return {
-    ...actual,
-    execute: vi.fn(),
-  };
-});
-
-// Mock Prisma for tests
-vi.mock('@prisma/client', () => {
-  const mockArtifacts = new Map();
-  let idCounter = 1;
-
-  return {
-    PrismaClient: vi.fn(() => ({
+vi.mock('@prisma/client', () => ({
+  PrismaClient: function() {
+    return {
       artifact: {
         findFirst: vi.fn(async ({ where }) => {
           const artifacts = Array.from(mockArtifacts.values());
@@ -64,16 +47,32 @@ vi.mock('@prisma/client', () => {
           );
         }),
 
-        update: vi.fn(async ({ where, data }) => {
-          const artifact = mockArtifacts.get(where.id);
-          if (!artifact) return null;
-          Object.assign(artifact, data);
-          return artifact;
-        }),
-      },
-    })),
+      update: vi.fn(async ({ where, data }) => {
+        const artifact = mockArtifacts.get(where.id);
+        if (!artifact) return null;
+        Object.assign(artifact, data);
+        return artifact;
+      }),
+    },
+  };
+  },
+}));
+
+// Mock AI Gateway
+vi.mock('../ai-gateway/index.js', async () => {
+  const actual = await vi.importActual('../ai-gateway/index.js');
+  return {
+    ...actual,
+    execute: vi.fn(),
   };
 });
+
+// Now import modules that depend on the mocks
+import { executeExecutionPlan } from './RuntimeOrchestrator.js';
+import { getArtifact, listArtifacts } from '../artifact-storage/index.js';
+import { EXECUTION_TYPE, NODE_TYPE, PLAN_PRIORITY } from '../execution-planner/index.js';
+import { EXECUTION_STATUS } from './runtimeEvents.js';
+import * as aiGateway from '../ai-gateway/index.js';
 
 describe('RuntimeOrchestrator + Artifact Storage Integration', () => {
   const defaultSuccessImpl = async ({ capability, input }) => ({
