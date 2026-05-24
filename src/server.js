@@ -41,6 +41,7 @@ import paidRouter             from './routes/paid.js';
 import executionRouter        from './routes/execution/index.js';
 import eventsRouter           from './routes/events.js';
 import memoryRouter           from './routes/memory.js';
+import decisionMemoryRouter   from './routes/decision-memory/index.js';
 import { userRouter }         from './routes/user.js';
 import { requireJwt }         from './middleware/jwtAuth.js';
 import { logger }             from './utils/logger.js';
@@ -271,6 +272,13 @@ app.use('/api/memory',
   requireAuth,
   apiLimiter,
   memoryRouter
+);
+
+// Decision Memory Foundation (PR #20) — append-only strategic memory
+app.use('/api/decision-memory',
+  requireAuth,
+  apiLimiter,
+  decisionMemoryRouter
 );
 
 // User account management — profile, workspace, account deletion

@@ -237,6 +237,7 @@ model ExecutionRequest {
 
   transitions    ExecutionTransition[]
   metrics        ExecutionMetric[]
+  decisionMemory DecisionMemory[]
 
   @@index([workspaceId])
   @@index([createdAt])
@@ -337,22 +338,24 @@ model CampaignState {
 }
 
 model DecisionMemory {
-  id                String   @id @default(uuid()) @db.Uuid
-  campaignId        String
-  workspaceId       String   @db.Uuid
-  actionType        String
-  decisionRationale String
-  resultStatus      String
-  deltaCtr          Float?
-  deltaRoas         Float?
-  impactDurationHrs Int?
-  isSustainable     Boolean?
-  recordedAt        DateTime @default(now())
+  id            String   @id @default(cuid())
+  workspaceId   String   @db.Uuid
+  executionId   String
+  correlationId String?
+  decisionType  String
+  signalType    String
+  diagnosis     String
+  actionTaken   String
+  outcome       String
+  confidence    Float
+  createdAt     DateTime @default(now())
 
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace  Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  execution  ExecutionRequest @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
-  @@index([campaignId, recordedAt(sort: Desc)])
-  @@index([workspaceId])
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([executionId])
+  @@index([correlationId])
   @@map("decision_memory")
 }
 

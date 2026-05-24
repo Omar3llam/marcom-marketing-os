@@ -1,100 +1,98 @@
-import { Router }  from 'express';
-import { prisma }  from '../lib/prisma.js';
-import { logger }  from '../utils/logger.js';
+// ============================================================
+// /api/memory — Legacy decision memory routes
+// ============================================================
+// POST /api/memory/record   → thin wrapper over DecisionMemoryService
+// GET  /api/memory/patterns → aggregate stats over recent memory rows
+//
+// NOTE: As of PR #20, the canonical write path is
+// DecisionMemoryService.recordDecisionMemory().  This router
+// remains for backward compatibility but delegates to the same
+// service layer.
+// ============================================================
+import { Router }                 from 'express';
+import { prisma }                 from '../lib/prisma.js';
+import { logger }                 from '../utils/logger.js';
+import { decisionMemoryService }  from '../services/decision-memory/index.js';
 
 const router = Router();
 
 // POST /api/memory/record
-// Called after every committed decision to persist it with outcome metadata
+// Persists a decision memory row via the canonical service.
+// Required body: executionId, decisionType, signalType, diagnosis,
+//                actionTaken, outcome, confidence (0–1)
+// Optional body: correlationId
 router.post('/record', async (req, res) => {
   try {
-    const { workspaceId } = req;
+    const { workspaceId, userId } = req.user;
     if (!workspaceId) return res.status(401).json({ error: 'Unauthenticated' });
 
-    const {
-      campaignId,
-      actionType,
-      decisionRationale,
-      resultStatus = 'PENDING',
-      deltaCtr     = null,
-      deltaRoas    = null,
-    } = req.body;
-
-    if (!campaignId || !actionType || !decisionRationale) {
-      return res.status(400).json({
-        error: 'campaignId, actionType, and decisionRationale are required',
-      });
-    }
-
-    const record = await prisma.decisionMemory.create({
-      data: {
-        campaignId,
-        workspaceId,
-        actionType,
-        decisionRationale,
-        resultStatus,
-        deltaCtr,
-        deltaRoas,
-      },
+    const record = await decisionMemoryService.recordDecisionMemory({
+      workspaceId,
+      ...req.body,
     });
 
-    logger.info({ id: record.id, campaignId }, '[memory] decision recorded');
-    res.status(201).json({ success: true, id: record.id });
+    logger.info({ id: record.id, workspaceId, userId }, '[memory] decision recorded');
+    return res.status(201).json({ success: true, id: record.id });
 
   } catch (err) {
+    const isValidation = err.message.includes('is required') ||
+                         err.message.includes('must be a number');
+    if (isValidation) {
+      return res.status(400).json({ error: err.message });
+    }
     logger.error({ err: err.message }, '[memory] record failed');
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 
 // GET /api/memory/patterns
-// Returns semantic memory patterns for the CMO — "what worked before"
+// Aggregates the last 50 memory rows into per-decisionType stats.
 router.get('/patterns', async (req, res) => {
   try {
-    const { workspaceId } = req;
+    const { workspaceId } = req.user;
     if (!workspaceId) return res.status(401).json({ error: 'Unauthenticated' });
 
     const memories = await prisma.decisionMemory.findMany({
       where:   { workspaceId },
-      orderBy: { recordedAt: 'desc' },
+      orderBy: { createdAt: 'desc' },
       take:    50,
     });
 
-    // Group by actionType and compute pattern stats
-    const byAction = {};
+    const byDecisionType = {};
     for (const m of memories) {
-      if (!byAction[m.actionType]) {
-        byAction[m.actionType] = { count: 0, avgDeltaRoas: 0, sustainable: 0, total: 0 };
+      if (!byDecisionType[m.decisionType]) {
+        byDecisionType[m.decisionType] = {
+          count:         0,
+          totalConfidence: 0,
+          outcomeFreq:   {},
+        };
       }
-      const g = byAction[m.actionType];
+      const g = byDecisionType[m.decisionType];
       g.count++;
-      if (m.deltaRoas !== null) { g.avgDeltaRoas += m.deltaRoas; g.total++; }
-      if (m.isSustainable === true) g.sustainable++;
+      g.totalConfidence += m.confidence;
+      g.outcomeFreq[m.outcome] = (g.outcomeFreq[m.outcome] || 0) + 1;
     }
 
-    const patterns = Object.entries(byAction).map(([action, stats]) => ({
-      action,
-      count: stats.count,
-      avgDeltaRoas: stats.total > 0
-        ? Math.round((stats.avgDeltaRoas / stats.total) * 100) / 100
-        : null,
-      sustainableRate: stats.count > 0
-        ? Math.round((stats.sustainable / stats.count) * 100)
+    const patterns = Object.entries(byDecisionType).map(([decisionType, stats]) => ({
+      decisionType,
+      count:          stats.count,
+      avgConfidence:  stats.count > 0
+        ? Math.round((stats.totalConfidence / stats.count) * 100) / 100
         : 0,
+      outcomeFreq:    stats.outcomeFreq,
     }));
 
-    // Recent narrative lines for CMO display
-    const narratives = memories.slice(0, 5).map(m => ({
-      id:       m.id,
-      line:     `${m.actionType} on ${m.campaignId.slice(-8)} — ${m.decisionRationale.slice(0, 80)}`,
-      roas:     m.deltaRoas,
-      recorded: m.recordedAt,
+    const narratives = memories.slice(0, 5).map((m) => ({
+      id:         m.id,
+      line:       `${m.decisionType} — ${m.diagnosis.slice(0, 80)} → ${m.outcome}`,
+      confidence: m.confidence,
+      recorded:   m.createdAt,
     }));
 
-    res.json({ patterns, narratives, total: memories.length });
+    return res.json({ patterns, narratives, total: memories.length });
 
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
 
