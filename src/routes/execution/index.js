@@ -1,0 +1,42 @@
+// ============================================================
+// MARCOM / Lumi — Meta Execution Router (assembly)
+// ============================================================
+// This file is the public entry point for the /api/execute mount.
+// Each endpoint lives in its own module; this file is responsible
+// for:
+//   1. Applying router-wide middleware (auth + context guard).
+//   2. Registering handlers in the correct order — specific paths
+//      (`/meta`, `/audit`, `/vitals`, `/active`) BEFORE `/:id/*`
+//      so Express doesn't match `:id` against literal segments.
+// ============================================================
+import { Router } from 'express';
+import { firebaseAuthMiddleware } from '../../middleware/firebaseAuth.js';
+import { contextGuard } from '../../middleware/contextGuard.js';
+
+import { registerMetaRoute } from './meta.js';
+import { registerAuditRoute } from './audit.js';
+import { registerVitalsRoute } from './vitals.js';
+import { registerActiveRoute } from './active.js';
+import { registerReconciliationRoute } from './reconciliation.js';
+import { registerTransitionsRoute } from './transitions.js';
+import { registerIncidentRoute } from './incident.js';
+import { registerRetryRoute } from './retry.js';
+
+const router = Router();
+
+router.use(firebaseAuthMiddleware);
+router.use(contextGuard);
+
+// Specific paths first — order matters for Express route matching.
+registerMetaRoute(router);
+registerAuditRoute(router);
+registerVitalsRoute(router);
+registerActiveRoute(router);
+
+// :id paths last — must not shadow the literal segments above.
+registerReconciliationRoute(router);
+registerTransitionsRoute(router);
+registerIncidentRoute(router);
+registerRetryRoute(router);
+
+export default router;
