@@ -16,10 +16,7 @@ import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import InlineBar       from '@/components/ui/InlineBar.jsx';
 import CsvUploader     from '@/components/upload/CsvUploader.jsx';
 import { cn }          from '@/lib/utils.js';
-import { transformDecisionsToFeed } from '@/lib/feedTransform.js';
-import { useProjectId } from '@/hooks/useProjectId.js';
-import { api } from '@/lib/api.js';
-import { toast } from 'sonner';
+import { useCampaignAnalysis } from '@/hooks/useCampaignAnalysis.js';
 
 // Flatten campaigns → rows the table can sort + render.
 function flatten(campaigns) {
@@ -54,58 +51,14 @@ const sortableCols = new Set(['campaign', 'spend', 'ctr', 'roas', 'impact']);
 
 export default function CampaignAnalysis() {
   const { campaigns, loading, refetch, setCampaigns } = useCampaignFeed();
-  const { projectId } = useProjectId();
   const [sortKey, setSortKey] = useState('spend');
   const [sortDir, setSortDir] = useState('desc');
   const [expanded, setExpanded] = useState(new Set());
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [syncing, setSyncing] = useState(false);
 
-  // Handle stateless CSV analysis: transform decisions → feed format → render
-  const handleAnalysisComplete = (uploadResult) => {
-    if (uploadResult.mode === 'analyze' && uploadResult.decisions) {
-      const transformed = transformDecisionsToFeed(uploadResult);
-      setCampaigns(transformed);
-      setUploadOpen(false);
-    } else {
-      // DB-write mode: refetch from /api/lumi/feed
-      refetch();
-      setUploadOpen(false);
-    }
-  };
-
-  // Handle Meta live sync: fetch from API → analyze → render
-  const handleMetaSync = async () => {
-    if (syncing) return;
-
-    // Guard: cannot sync without a projectId
-    if (!projectId) {
-      toast.error('Complete onboarding before syncing Meta campaigns.');
-      return;
-    }
-
-    setSyncing(true);
-    try {
-      await api.post('/api/campaigns/fetch-meta', {
-        datePreset: 'last_30d',
-        projectId,              // ← required by backend
-      });
-      await refetch();
-      toast.success('Meta campaigns synced.');
-    } catch (err) {
-      if (err.response?.status === 404) {
-        toast.error('Meta not connected. Go to Settings → Integrations to connect.');
-      } else if (err.response?.status === 401) {
-        toast.error('Meta session expired. Reconnect in Settings → Integrations.');
-      } else if (err.response?.status === 400) {
-        toast.error('Workspace setup incomplete. Complete onboarding first.');
-      } else {
-        toast.error('Sync failed. Try again in a moment.');
-      }
-    } finally {
-      setSyncing(false);
-    }
-  };
+  const { syncing, handleAnalysisComplete, handleMetaSync } = useCampaignAnalysis({
+    refetch, setCampaigns, setUploadOpen,
+  });
 
   const rows = useMemo(() => {
     const all = flatten(campaigns);

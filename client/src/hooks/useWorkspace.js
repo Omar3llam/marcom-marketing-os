@@ -58,8 +58,38 @@ export function useWorkspace() {
   };
 
   useEffect(() => {
-    fetchWorkspace();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let cancelled = false;
+    const run = async () => {
+      if (!currentUser) {
+        setWorkspace(null);
+        setHasWorkspace(false);
+        setLoading(false);
+        return;
+      }
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await api.get('/api/user/workspace');
+        if (cancelled) return;
+        if (response.data.hasWorkspace) {
+          setWorkspace(response.data.workspace);
+          setHasWorkspace(true);
+        } else {
+          setWorkspace(null);
+          setHasWorkspace(false);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        console.error('[useWorkspace] Failed to fetch workspace:', err);
+        setError(err.response?.data?.error || 'Failed to load workspace');
+        setWorkspace(null);
+        setHasWorkspace(false);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
   }, [currentUser]);
 
   return {
