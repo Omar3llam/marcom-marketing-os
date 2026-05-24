@@ -38,7 +38,7 @@ import { campaignsRouter }    from './routes/campaigns.js';
 import { toolsRouter }        from './routes/tools.js';
 import { lumiRouter, quickActionHandler, demoFeedHandler } from './routes/lumi/index.js';
 import paidRouter             from './routes/paid.js';
-import executionRouter        from './routes/execution.js';
+import executionRouter        from './routes/execution/index.js';
 import eventsRouter           from './routes/events.js';
 import memoryRouter           from './routes/memory.js';
 import { userRouter }         from './routes/user.js';
