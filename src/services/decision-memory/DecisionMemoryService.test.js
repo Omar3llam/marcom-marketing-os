@@ -49,7 +49,7 @@ describe('recordDecisionMemory', () => {
   });
 
   it('correlationId is null when omitted', async () => {
-    const { correlationId: _, ...noCorr } = VALID_PAYLOAD;
+    const noCorr = Object.fromEntries(Object.entries(VALID_PAYLOAD).filter(([k]) => k !== 'correlationId'));
     prisma.decisionMemory.create.mockResolvedValueOnce({ id: 'mem-2', ...noCorr, correlationId: null });
 
     await decisionMemoryService.recordDecisionMemory(noCorr);
@@ -59,13 +59,13 @@ describe('recordDecisionMemory', () => {
   });
 
   it('throws when executionId is missing', async () => {
-    const { executionId: _, ...bad } = VALID_PAYLOAD;
+    const bad = Object.fromEntries(Object.entries(VALID_PAYLOAD).filter(([k]) => k !== 'executionId'));
     await expect(decisionMemoryService.recordDecisionMemory(bad))
       .rejects.toThrow('executionId is required');
   });
 
   it('throws when signalType is missing', async () => {
-    const { signalType: _, ...bad } = VALID_PAYLOAD;
+    const bad = Object.fromEntries(Object.entries(VALID_PAYLOAD).filter(([k]) => k !== 'signalType'));
     await expect(decisionMemoryService.recordDecisionMemory(bad))
       .rejects.toThrow('signalType is required');
   });
