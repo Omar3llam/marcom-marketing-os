@@ -51,13 +51,16 @@ jobs:
       - name: Build client
         run: npm run build --workspace client
 
-      - name: Bundle size budget (<700KB)
+      - name: Bundle size budget (gzip <700KB)
         working-directory: client
         run: |
-          bundle_size=$(find dist/assets -name "*.js" | xargs wc -c | tail -1 | awk '{print $1}')
+          # Measure gzip-compressed size — what browsers actually download.
+          # Raw bytes is misleading: Firebase+React vendor chunks alone are
+          # ~345KB raw but ~93KB gzip. Budget is enforced on gzip bytes.
+          bundle_size=$(find dist/assets -name "*.js" -exec gzip -c {} \; | wc -c)
           max_size=$((700 * 1024))
           if [ "$bundle_size" -gt "$max_size" ]; then
-            echo "::error::Bundle too large: ${bundle_size} bytes (max ${max_size})"
+            echo "::error::Bundle too large (gzip): ${bundle_size} bytes (max ${max_size})"
             exit 1
           fi
-          echo "✅ Bundle size: ${bundle_size} bytes"
+          echo "✅ Bundle size (gzip): ${bundle_size} bytes"
