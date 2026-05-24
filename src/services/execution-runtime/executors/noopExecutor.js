@@ -12,7 +12,7 @@
 //   Always succeeds immediately with minimal output.
 // ============================================================
 
-export async function executeNoop(nodeId, nodeType, context) {
+export async function executeNoop(nodeId, nodeType, _context) {
   return {
     success: true,
     output: {

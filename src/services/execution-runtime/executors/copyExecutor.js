@@ -11,7 +11,7 @@
 // ============================================================
 
 export async function executeCopyGeneration(nodeId, nodeType, context) {
-  const { diagnosis, executionType } = context;
+  const { diagnosis } = context;
 
   // Mock copy variants (deterministic based on node type)
   const variants = [

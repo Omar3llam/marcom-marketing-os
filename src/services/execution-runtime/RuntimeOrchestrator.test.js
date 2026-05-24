@@ -12,7 +12,7 @@
 //   - Event ordering (deterministic)
 //   - Fixture scenarios (12 canonical scenarios)
 // ============================================================
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 
 // Mock logger BEFORE imports
 vi.mock('../../utils/logger.js', () => ({

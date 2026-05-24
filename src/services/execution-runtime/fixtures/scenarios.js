@@ -8,7 +8,7 @@
 // Run via RuntimeOrchestrator.test.js fixture verification suite.
 // ============================================================
 import { EXECUTION_TYPE, NODE_TYPE, PLAN_PRIORITY } from '../../execution-planner/index.js';
-import { EXECUTION_STATUS, NODE_STATUS }            from '../runtimeEvents.js';
+import { EXECUTION_STATUS }                         from '../runtimeEvents.js';
 
 export const SCENARIOS = [
   // ── 1 ── empty graph → no-op success ───────────────────

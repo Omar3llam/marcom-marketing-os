@@ -11,7 +11,7 @@
 // ============================================================
 
 export async function executeCaptionGeneration(nodeId, nodeType, context) {
-  const { diagnosis, executionType } = context;
+  const { diagnosis } = context;
 
   // Mock captions/angles (deterministic)
   const items = [
