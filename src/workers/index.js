@@ -9,15 +9,17 @@
 // behind the same Redis — BullMQ handles partitioning.
 // ============================================================
 import 'dotenv/config';
-import { startActionWorker }       from './actionWorker.js';
-import { startObserverWorker }     from '../services/temporalObserver.js';
-import { startSyncWorker }         from './syncWorker.js';
-import { scheduleCampaignSync }    from '../queues/index.js';
-import { logger }                  from '../utils/logger.js';
+import { startActionWorker }    from './actionWorker.js';
+import { startExecutionWorker } from './executionWorker.js';
+import { startObserverWorker }  from '../services/temporalObserver.js';
+import { startSyncWorker }      from './syncWorker.js';
+import { scheduleCampaignSync } from '../queues/index.js';
+import { logger }               from '../utils/logger.js';
 
-const actionWorker   = startActionWorker();
-const observerWorker = startObserverWorker();
-const syncWorker     = startSyncWorker();
+const actionWorker    = startActionWorker();
+const executionWorker = startExecutionWorker();
+const observerWorker  = startObserverWorker();
+const syncWorker      = startSyncWorker();
 
 // Schedule automatic campaign sync cron job (daily by default)
 scheduleCampaignSync()
@@ -28,6 +30,7 @@ async function shutdown(signal) {
   logger.info({ signal }, '[worker] shutting down');
   await Promise.allSettled([
     actionWorker.close(),
+    executionWorker.close(),
     observerWorker.close(),
     syncWorker.close(),
   ]);

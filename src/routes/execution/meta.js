@@ -1,56 +1,59 @@
 // ============================================================
 // POST /api/execute/meta — Execute a Meta Ads action
 // ============================================================
-// STRICT ENTERPRISE GUARDRAILS:
-//   Layer 1: VALIDATION (allowed actions, target types)
-//   Layer 2: IDEMPOTENCY (prevent duplicates via unique keys)
-//   Layer 3: EXECUTION (call Meta API via service)
-//   Layer 4: AUDIT LOGGING (log all outcomes)
+// FOUR-LAYER GUARD PATTERN (PR #18: async execution):
 //
-// Every action is:
-// - Multi-tenant scoped (workspaceId from auth context)
-// - Validated before execution
-// - Logged before returning to client
-// - Idempotent (same key = replay stored response, no re-execution)
+//   Layer 1: VALIDATION    — allowed actions, target types
+//   Layer 2: IDEMPOTENCY   — prevent duplicates via unique key
+//   Layer 3: QUEUEING      — backpressure check → PENDING→QUEUED
+//                            transition → enqueue → 202 Accepted
+//   Layer 4: AUDIT LOG     — record every queued action attempt
+//
+// The Meta API call happens asynchronously in executionWorker.js.
+// Workers broadcast SSE events via lifecycleService.transition().
+//
+// Invariants enforced here:
+//   VI-4 — backpressure before queueing (MAX_QUEUE_DEPTH)
+//   I-2  — correlationId set at creation time
+//   II-3 — PENDING → QUEUED via lifecycleService (no direct update)
 // ============================================================
-import { prisma } from '../../lib/prisma.js';
-import { executeMetaAction } from '../../services/metaExecutionService.js';
-import { logger } from '../../utils/logger.js';
-import { broadcastWorkspaceEvent } from '../events.js';
+import { prisma }          from '../../lib/prisma.js';
+import { logger }          from '../../utils/logger.js';
+import { lifecycleService } from '../../services/execution/ExecutionLifecycleService.js';
+import { executionQueue, enqueueExecution } from '../../queues/index.js';
+import { ExecutionStatus, TransitionActor } from '@marcom/runtime-contracts';
+
+const MAX_QUEUE_DEPTH = Number(process.env.MAX_QUEUE_DEPTH || 500);
 
 /** Map of allowed action types to valid target types */
 const ALLOWED_ACTIONS = {
-  PAUSE_CAMPAIGN: ['campaign'],
-  RESUME_CAMPAIGN: ['campaign'],
-  SCALE_CAMPAIGN: ['campaign'],
+  PAUSE_CAMPAIGN:    ['campaign'],
+  RESUME_CAMPAIGN:   ['campaign'],
+  SCALE_CAMPAIGN:    ['campaign'],
   OPTIMIZE_CAMPAIGN: ['campaign'],
-  INCREASE_BUDGET: ['campaign', 'adset'],
-  DECREASE_BUDGET: ['campaign', 'adset'],
-  PAUSE_ADSET: ['adset'],
-  RESUME_ADSET: ['adset'],
+  INCREASE_BUDGET:   ['campaign', 'adset'],
+  DECREASE_BUDGET:   ['campaign', 'adset'],
+  PAUSE_ADSET:       ['adset'],
+  RESUME_ADSET:      ['adset'],
 };
 
 /**
- * Layer 1: Validate request format and action type.
- * Returns error string if invalid, null if valid.
+ * Layer 1 validation.
+ * Returns an error string if invalid, null if valid.
  */
 function validateRequest(actionType, targetId, targetType, idempotencyKey) {
   if (!idempotencyKey || typeof idempotencyKey !== 'string' || idempotencyKey.trim().length === 0) {
-    return 'idempotencyKey is required and must be a non-empty string (use crypto.randomUUID() on client)';
+    return 'idempotencyKey is required and must be a non-empty string';
   }
-
   if (!actionType || !ALLOWED_ACTIONS[actionType]) {
     return `Invalid action type: ${actionType}. Must be one of: ${Object.keys(ALLOWED_ACTIONS).join(', ')}`;
   }
-
   if (!targetId || typeof targetId !== 'string' || targetId.trim().length === 0) {
     return 'targetId is required and must be a non-empty string';
   }
-
   if (!targetType || !ALLOWED_ACTIONS[actionType].includes(targetType.toLowerCase())) {
     return `Invalid target type "${targetType}" for action "${actionType}". Must be one of: ${ALLOWED_ACTIONS[actionType].join(', ')}`;
   }
-
   return null;
 }
 
@@ -65,20 +68,14 @@ export function registerMetaRoute(router) {
       // ═══════════════════════════════════════════════════════
       const validationError = validateRequest(actionType, targetId, targetType, idempotencyKey);
       if (validationError) {
-        logger.warn(`[ExecutionRouter] Validation failed`, {
-          workspaceId,
-          userId,
-          actionType,
-          targetId,
-          reason: validationError,
+        logger.warn('[ExecutionRouter] Validation failed', {
+          workspaceId, userId, actionType, targetId, reason: validationError,
         });
 
         await prisma.auditLog.create({
           data: {
-            workspaceId,
-            userId,
-            actionType: actionType,
-            targetId,
+            workspaceId, userId,
+            actionType, targetId,
             platform: 'META',
             status: 'FAILED',
             errorMessage: validationError,
@@ -88,8 +85,8 @@ export function registerMetaRoute(router) {
 
         return res.status(400).json({
           success: false,
-          error: validationError,
-          code: 'VALIDATION_ERROR',
+          error:   validationError,
+          code:    'VALIDATION_ERROR',
         });
       }
 
@@ -101,191 +98,139 @@ export function registerMetaRoute(router) {
       });
 
       if (existingRequest) {
-        logger.info(`[ExecutionRouter] Idempotent replay`, {
-          workspaceId,
-          userId,
-          actionType,
-          targetId,
-          idempotencyKey,
+        logger.info('[ExecutionRouter] Idempotent replay', {
+          workspaceId, userId, actionType, targetId,
           executionId: existingRequest.id,
-          status: existingRequest.status,
+          status:      existingRequest.status,
         });
 
         return res.status(200).json({
-          success: existingRequest.status === 'EXECUTED_SUCCESS',
+          success:         existingRequest.status === 'EXECUTED_SUCCESS',
           idempotentReplay: true,
-          executionId: existingRequest.id,
-          status: existingRequest.status,
+          executionId:     existingRequest.id,
+          status:          existingRequest.status,
           ...(existingRequest.response && { data: existingRequest.response }),
-          ...(existingRequest.status === 'FAILED' && existingRequest.response?.error && {
-            error: existingRequest.response.error,
-          }),
         });
       }
 
+      // ═══════════════════════════════════════════════════════
+      // LAYER 3: QUEUEING
+      // ═══════════════════════════════════════════════════════
+
+      // Guard: queue subsystem must be available. Invariant VI-1.
+      if (!executionQueue) {
+        logger.warn('[ExecutionRouter] Queue unavailable', { workspaceId, userId });
+        return res.status(503).json({
+          success: false,
+          error:   'Execution queue unavailable. Please try again later.',
+          code:    'QUEUE_UNAVAILABLE',
+        });
+      }
+
+      // Guard: backpressure. Invariant VI-4.
+      const queueDepth = await executionQueue.count();
+      if (queueDepth >= MAX_QUEUE_DEPTH) {
+        logger.warn('[ExecutionRouter] Queue full — rejecting', {
+          workspaceId, queueDepth, MAX_QUEUE_DEPTH,
+        });
+        return res.status(429).json({
+          success:     false,
+          error:       'Execution queue is full. Please try again later.',
+          code:        'QUEUE_FULL',
+          retryAfter:  30,
+        });
+      }
+
+      // Create ExecutionRequest at PENDING. Invariant I-1 (id immutable after create).
       const executionRequest = await prisma.executionRequest.create({
         data: {
           workspaceId,
           idempotencyKey,
           actionType,
           targetId,
-          status: 'PENDING',
-          payload: req.body,
+          status:        ExecutionStatus.PENDING,
+          correlationId: idempotencyKey, // Invariant I-2: set at creation
+          payload:       req.body,
         },
       });
 
-      logger.info(`[ExecutionRouter] Created ExecutionRequest`, {
+      logger.info('[ExecutionRouter] ExecutionRequest created', {
+        executionId: executionRequest.id, idempotencyKey, workspaceId,
+      });
+
+      // Transition PENDING → QUEUED via lifecycle service.
+      // Invariant II-3: all state changes go through lifecycleService.
+      await lifecycleService.transition({
+        executionId:     executionRequest.id,
+        newStatus:       ExecutionStatus.QUEUED,
+        expectedVersion: executionRequest.version,
+        actor:           TransitionActor.API,
+        correlationId:   executionRequest.correlationId,
+        metadata:        { userId, workspaceId },
+      });
+
+      // Enqueue. jobId = executionId for BullMQ-level deduplication.
+      await enqueueExecution({
         executionId: executionRequest.id,
-        idempotencyKey,
-        workspaceId,
-      });
-
-      // ═══════════════════════════════════════════════════════
-      // LAYER 3: EXECUTION (call Meta API)
-      // ═══════════════════════════════════════════════════════
-      broadcastWorkspaceEvent(workspaceId, {
-        type: 'EXECUTION_STATUS',
-        status: 'QUEUED',
-        targetId,
-        actionType,
-        timestamp: new Date().toISOString(),
-      });
-
-      logger.info(`[ExecutionRouter] Starting execution`, {
         workspaceId,
         userId,
         actionType,
         targetId,
-        targetType,
+        options: options ?? {},
       });
 
-      broadcastWorkspaceEvent(workspaceId, {
-        type: 'EXECUTION_STATUS',
-        status: 'EXECUTING',
-        targetId,
-        actionType,
-        timestamp: new Date().toISOString(),
+      logger.info('[ExecutionRouter] Execution queued', {
+        executionId: executionRequest.id, actionType, targetId, workspaceId,
       });
 
-      const executionResult = await executeMetaAction(
-        workspaceId,
-        userId,
-        actionType,
-        targetId,
-        options
-      );
-
       // ═══════════════════════════════════════════════════════
-      // LAYER 4: AUDIT LOGGING (always log the outcome)
+      // LAYER 4: AUDIT LOG
       // ═══════════════════════════════════════════════════════
-      const auditLog = await prisma.auditLog.create({
+      await prisma.auditLog.create({
         data: {
-          workspaceId,
-          userId,
-          actionType: actionType,
-          targetId,
+          workspaceId, userId,
+          actionType, targetId,
           platform: 'META',
-          status: executionResult.success ? 'SUCCESS' : 'FAILED',
-          payload: req.body,
-          response: executionResult.success ? executionResult.data : null,
-          errorMessage: executionResult.success ? null : executionResult.error,
+          status:   'QUEUED',
+          payload:  req.body,
         },
+      }).catch((err) => {
+        // Audit log failure must not fail the execution. Log and continue.
+        logger.error('[ExecutionRouter] Audit log write failed', {
+          executionId: executionRequest.id, err: err.message,
+        });
       });
 
-      logger.info(`[ExecutionRouter] Execution completed`, {
-        workspaceId,
-        userId,
-        actionType,
-        targetId,
-        success: executionResult.success,
-        auditLogId: auditLog.id,
+      // 202 Accepted: the execution is queued, not yet complete.
+      return res.status(202).json({
+        success:          true,
+        idempotentReplay: false,
+        executionId:      executionRequest.id,
+        status:           ExecutionStatus.QUEUED,
+        message:          `${actionType} queued for execution`,
       });
 
-      if (executionResult.success) {
-        broadcastWorkspaceEvent(workspaceId, {
-          type: 'EXECUTION_STATUS',
-          status: 'EXECUTED_SUCCESS',
-          targetId,
-          actionType,
-          auditLogId: auditLog.id,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        broadcastWorkspaceEvent(workspaceId, {
-          type: 'EXECUTION_STATUS',
-          status: 'EXECUTED_FAILED',
-          targetId,
-          actionType,
-          auditLogId: auditLog.id,
-          error: executionResult.error,
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      const finalStatus = executionResult.success ? 'EXECUTED_SUCCESS' : 'FAILED';
-      await prisma.executionRequest.update({
-        where: { id: executionRequest.id },
-        data: {
-          status: finalStatus,
-          response: executionResult.success
-            ? executionResult.data
-            : { error: executionResult.error, code: executionResult.code },
-        },
-      });
-
-      if (executionResult.success) {
-        return res.status(200).json({
-          success: true,
-          idempotentReplay: false,
-          executionId: executionRequest.id,
-          auditLogId: auditLog.id,
-          status: finalStatus,
-          data: executionResult.data,
-          message: `${actionType} executed successfully on Meta`,
-        });
-      } else {
-        return res.status(400).json({
-          success: false,
-          idempotentReplay: false,
-          executionId: executionRequest.id,
-          auditLogId: auditLog.id,
-          status: finalStatus,
-          error: executionResult.error,
-          code: executionResult.code,
-          message: `${actionType} failed: ${executionResult.error}`,
-        });
-      }
     } catch (err) {
-      logger.error(`[ExecutionRouter] Unhandled error`, {
-        workspaceId,
-        userId,
-        actionType,
-        targetId,
-        error: err.message,
-        stack: err.stack,
+      logger.error('[ExecutionRouter] Unhandled error', {
+        workspaceId, userId, actionType, targetId,
+        error: err.message, stack: err.stack,
       });
 
-      try {
-        await prisma.auditLog.create({
-          data: {
-            workspaceId,
-            userId,
-            actionType: actionType,
-            targetId,
-            platform: 'META',
-            status: 'FAILED',
-            errorMessage: err.message,
-            payload: req.body,
-          },
-        });
-      } catch (logErr) {
-        logger.error('[ExecutionRouter] Failed to create audit log', { error: logErr.message });
-      }
+      await prisma.auditLog.create({
+        data: {
+          workspaceId, userId,
+          actionType, targetId,
+          platform: 'META',
+          status: 'FAILED',
+          errorMessage: err.message,
+          payload: req.body,
+        },
+      }).catch(() => {});
 
       return res.status(500).json({
         success: false,
-        error: 'Internal server error during execution',
-        code: 'INTERNAL_ERROR',
+        error:   'Internal server error during execution',
+        code:    'INTERNAL_ERROR',
       });
     }
   });

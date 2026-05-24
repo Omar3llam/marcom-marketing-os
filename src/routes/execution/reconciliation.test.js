@@ -63,6 +63,15 @@ vi.mock('../events.js', () => ({
   broadcastWorkspaceEvent: vi.fn(),
 }));
 
+vi.mock('../../queues/index.js', () => ({
+  executionQueue:   { getFailedCount: vi.fn(), count: vi.fn() },
+  enqueueExecution: vi.fn(),
+}));
+
+vi.mock('../../services/execution/workerHealth.js', () => ({
+  getWorkerHeartbeats: vi.fn().mockResolvedValue([]),
+}));
+
 vi.mock('../../services/metaExecutionService.js', () => ({
   executeMetaAction: vi.fn(),
 }));

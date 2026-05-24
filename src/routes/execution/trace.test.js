@@ -47,6 +47,15 @@ vi.mock('../../services/metaExecutionService.js', () => ({
   executeMetaAction: vi.fn(),
 }));
 
+vi.mock('../../queues/index.js', () => ({
+  executionQueue:   { getFailedCount: vi.fn(), count: vi.fn() },
+  enqueueExecution: vi.fn(),
+}));
+
+vi.mock('../../services/execution/workerHealth.js', () => ({
+  getWorkerHeartbeats: vi.fn().mockResolvedValue([]),
+}));
+
 import { prisma } from '../../lib/prisma.js';
 
 const EXECUTION_ID = 'exec-trace-route-1';
