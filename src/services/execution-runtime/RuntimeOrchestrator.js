@@ -11,17 +11,23 @@
 //   - same skip logic
 //
 // ISOLATION CONTRACT:
-//   Never writes to DB. Never enqueues jobs. Never calls SSE.
-//   Executors are pure-ish — all side effects happen here.
+//   Executors are pure (no side effects).
+//   Orchestrator handles side effects (artifact storage, DB writes).
 //
 // INPUT:
 //   plan: { diagnosis, executionType, priority, graph: { nodes, edges } }
-//   context: { diagnosis, executionType, [additionalContext] }
+//   context: {
+//     diagnosis,
+//     executionType,
+//     workspaceId?, // Optional: enables artifact storage
+//     executionId?, // Optional: enables artifact storage
+//     [additionalContext]
+//   }
 //
 // OUTPUT:
 //   {
 //     status: 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILURE',
-//     executedNodes: [{ nodeId, nodeType, status, output, artifacts, attempts }],
+//     executedNodes: [{ nodeId, nodeType, status, output, artifacts, attempts, storedArtifactIds? }],
 //     events: [{ type, nodeId, attempt }],
 //     summary: { totalNodes, successful, failed, skipped }
 //   }
@@ -30,8 +36,63 @@ import { ExecutionGraph }         from './ExecutionGraph.js';
 import { getExecutor }            from './NodeExecutorRegistry.js';
 import { RUNTIME_EVENT, EXECUTION_STATUS, NODE_STATUS } from './runtimeEvents.js';
 import { logger }                 from '../../utils/logger.js';
+import { storeArtifact }          from '../artifact-storage/index.js';
 
 const MAX_RETRIES = 3;
+
+// ============================================================
+// Artifact storage helper
+// ============================================================
+
+async function storeNodeArtifacts({
+  workspaceId,
+  executionId,
+  nodeId,
+  nodeType,
+  artifacts,
+  metadata,
+}) {
+  const storedIds = [];
+
+  for (const artifact of artifacts) {
+    try {
+      const stored = await storeArtifact({
+        workspaceId,
+        executionId,
+        nodeId,
+        nodeType,
+        type: artifact.type,
+        content: typeof artifact.content === 'string' ? artifact.content : JSON.stringify(artifact.content),
+        capability: metadata.capability || 'UNKNOWN',
+        provider: metadata.provider || 'UNKNOWN',
+        metadata: {
+          ...metadata,
+          artifactId: artifact.id,
+          angle: artifact.angle,
+          tone: artifact.tone,
+        },
+      });
+
+      storedIds.push(stored.id);
+
+      logger.debug({
+        artifactId: stored.id,
+        nodeId,
+        type: artifact.type,
+        duplicate: stored.duplicate,
+      }, '[RuntimeOrchestrator] artifact stored');
+    } catch (error) {
+      // Log error but don't fail execution
+      logger.error({
+        error: error.message,
+        nodeId,
+        artifactType: artifact.type,
+      }, '[RuntimeOrchestrator] failed to store artifact');
+    }
+  }
+
+  return storedIds;
+}
 
 function validatePlan(plan) {
   if (!plan || typeof plan !== 'object') {
@@ -167,6 +228,21 @@ export async function executeExecutionPlan(plan, context = {}) {
           attempt,
         }, '[RuntimeOrchestrator] node succeeded');
 
+        // Store artifacts if workspaceId and executionId provided
+        if (context.workspaceId && context.executionId && result.artifacts && result.artifacts.length > 0) {
+          const storedArtifactIds = await storeNodeArtifacts({
+            workspaceId: context.workspaceId,
+            executionId: context.executionId,
+            nodeId: node.id,
+            nodeType: node.type,
+            artifacts: result.artifacts,
+            metadata: result.metadata || {},
+          });
+
+          // Attach stored artifact IDs to result for tracking
+          result.storedArtifactIds = storedArtifactIds;
+        }
+
         break;
       }
 
@@ -190,6 +266,7 @@ export async function executeExecutionPlan(plan, context = {}) {
       status: finalStatus,
       output: result?.output || {},
       artifacts: result?.artifacts || [],
+      storedArtifactIds: result?.storedArtifactIds || [],
       attempts,
     });
   }

@@ -100,6 +100,7 @@ model Workspace {
   decisionMemory DecisionMemory[]
   integrations   Integration[]
   auditLogs      AuditLog[]
+  artifacts      Artifact[]
 
   @@map("workspaces")
 }
@@ -238,6 +239,7 @@ model ExecutionRequest {
   transitions    ExecutionTransition[]
   metrics        ExecutionMetric[]
   decisionMemory DecisionMemory[]
+  artifacts      Artifact[]
 
   @@index([workspaceId])
   @@index([createdAt])
@@ -371,4 +373,38 @@ model WebhookEvent {
 
   @@index([provider, status])
   @@map("webhook_events")
+}
+
+// ── PR #27: Artifact Storage ─────────────────────────────────
+// Persistent storage for AI-generated artifacts (hooks, captions,
+// visual briefs, etc.). Supports versioning, retrieval, and
+// metadata tracking. Actual artifact content stored via adapter
+// (local filesystem or S3), this table tracks metadata + location.
+
+model Artifact {
+  id            String   @id @default(cuid())
+  workspaceId   String   @db.Uuid
+  executionId   String
+  nodeId        String
+  nodeType      String
+  type          String   // 'hook', 'caption', 'visual_brief', 'audience_hypothesis', 'angle', etc.
+  storageKey    String   // Adapter-specific storage location (local path or S3 key)
+  capability    String   // GENERATE_HOOKS, GENERATE_CAPTIONS, etc.
+  provider      String   // CLAUDE, OPENAI
+  version       Int      @default(1)
+  size          Int?     // Artifact size in bytes
+  contentHash   String?  // SHA256 hash for deduplication
+  content       String?  // Optional: store small artifacts inline (< 1KB)
+  metadata      Json?    // Provider metadata (tokens, latency, requestId, model, etc.)
+  createdAt     DateTime @default(now())
+
+  workspace  Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  execution  ExecutionRequest @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, type])
+  @@index([executionId])
+  @@index([nodeId])
+  @@index([createdAt(sort: Desc)])
+  @@index([contentHash])
+  @@map("artifacts")
 }
