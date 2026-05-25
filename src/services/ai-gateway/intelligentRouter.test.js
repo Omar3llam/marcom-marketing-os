@@ -1,8 +1,8 @@
 // ============================================================
-// Intelligent Router Tests — PR #38 + PR #39
+// Intelligent Router Tests — PR #38 + PR #39 + PR #40
 // ============================================================
-// Tests intelligent provider routing with fallback strategies
-// and active routing with A/B testing.
+// Tests intelligent provider routing with fallback strategies,
+// active routing with A/B testing, and cost-quality optimization.
 // ============================================================
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
@@ -502,6 +502,151 @@ describe('Intelligent Provider Router (PR #38)', () => {
       // Allow 3% margin of error (statistical variance)
       expect(actualPercentage).toBeGreaterThan(controlPercentage - 3);
       expect(actualPercentage).toBeLessThan(controlPercentage + 3);
+    });
+  });
+
+  // ============================================================
+  // PR #40 — Cost Optimization Tests
+  // ============================================================
+
+  describe('Cost-Quality Optimization (PR #40)', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      delete process.env.ENABLE_INTELLIGENT_ROUTING;
+      delete process.env.ENABLE_ACTIVE_ROUTING;
+      delete process.env.ENABLE_COST_OPTIMIZATION;
+      delete process.env.MAX_COST_PER_APPROVAL;
+    });
+
+    it('should use cost-quality scoring when optimizeForCost enabled', async () => {
+      // Mock analytics returning cost-quality score with cost metrics
+      mockGetBestProvider.mockResolvedValueOnce({
+        provider: 'openai',
+        reason: '85% approval rate, $0.0050/approval (value score: 75.00, 25 decisions)',
+        score: {
+          provider: 'openai',
+          approvalRate: 85,
+          riskScore: 0.3,
+          total: 25,
+          confidence: 0.95,
+          executionCost: 0.0042,
+          costPerApproval: 0.0050,
+          qualityScore: 80.75,
+          valueScore: 75.00,
+        },
+      });
+
+      mockGetProviderForCapability.mockReturnValueOnce({
+        provider: 'claude',
+        method: vi.fn(),
+      });
+
+      mockGetMethodForProvider.mockReturnValueOnce({
+        provider: 'openai',
+        method: vi.fn(),
+      });
+
+      const result = await routeCapability('GENERATE_CAPTIONS', {
+        enableIntelligentRouting: true,
+        enableActiveRouting: true,
+        optimizeForCost: true,
+        requestId: 'cost-test-request',
+      });
+
+      expect(mockGetBestProvider).toHaveBeenCalledWith(
+        'GENERATE_CAPTIONS',
+        expect.objectContaining({
+          optimizeForCost: true,
+        })
+      );
+
+      // Should include cost metrics in performance data
+      if (result.routingDecision.performanceData) {
+        expect(result.routingDecision.performanceData).toHaveProperty('costPerApproval');
+        expect(result.routingDecision.performanceData).toHaveProperty('valueScore');
+      }
+    });
+
+    it('should pass maxCostPerApproval to performance scorer', async () => {
+      mockGetBestProvider.mockResolvedValueOnce({
+        provider: 'openai',
+        reason: '90% approval rate, $0.0045/approval',
+        score: {
+          provider: 'openai',
+          approvalRate: 90,
+          riskScore: 0.2,
+          total: 30,
+          confidence: 0.98,
+          costPerApproval: 0.0045,
+          valueScore: 85.0,
+        },
+      });
+
+      mockGetProviderForCapability.mockReturnValueOnce({
+        provider: 'claude',
+        method: vi.fn(),
+      });
+
+      mockGetMethodForProvider.mockReturnValueOnce({
+        provider: 'openai',
+        method: vi.fn(),
+      });
+
+      await routeCapability('GENERATE_CAPTIONS', {
+        enableIntelligentRouting: true,
+        enableActiveRouting: true,
+        optimizeForCost: true,
+        maxCostPerApproval: 0.01, // $0.01 limit
+        requestId: 'budget-test',
+      });
+
+      expect(mockGetBestProvider).toHaveBeenCalledWith(
+        'GENERATE_CAPTIONS',
+        expect.objectContaining({
+          maxCostPerApproval: 0.01,
+        })
+      );
+    });
+
+    it('should pass costWeight to performance scorer', async () => {
+      mockGetBestProvider.mockResolvedValueOnce({
+        provider: 'claude',
+        reason: '95% approval rate, $0.0195/approval',
+        score: {
+          provider: 'claude',
+          approvalRate: 95,
+          riskScore: 0.1,
+          total: 40,
+          confidence: 0.99,
+        },
+      });
+
+      mockGetProviderForCapability.mockReturnValueOnce({
+        provider: 'claude',
+        method: vi.fn(),
+      });
+
+      await routeCapability('GENERATE_HOOKS', {
+        enableIntelligentRouting: true,
+        optimizeForCost: true,
+        costWeight: 0.7, // Favor cost over quality (70% cost, 30% quality)
+      });
+
+      expect(mockGetBestProvider).toHaveBeenCalledWith(
+        'GENERATE_HOOKS',
+        expect.objectContaining({
+          costWeight: 0.7,
+        })
+      );
+    });
+
+    it('should include cost optimization flags in routing stats', () => {
+      const stats = getRoutingStats();
+
+      expect(stats).toHaveProperty('costOptimizationEnabled');
+      expect(stats).toHaveProperty('maxCostPerApproval');
+      expect(stats.featureFlagSource).toHaveProperty('costOptimization');
+      expect(stats.featureFlagSource).toHaveProperty('maxCostPerApproval');
     });
   });
 });

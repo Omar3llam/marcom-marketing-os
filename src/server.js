@@ -44,6 +44,7 @@ import eventsRouter           from './routes/events.js';
 import memoryRouter           from './routes/memory.js';
 import decisionMemoryRouter   from './routes/decision-memory/index.js';
 import analyticsRouter        from './routes/analytics/index.js';
+import attributionRouter      from './routes/attribution.js';
 import { userRouter }         from './routes/user.js';
 import { requireJwt }         from './middleware/jwtAuth.js';
 import { logger }             from './utils/logger.js';
@@ -295,6 +296,13 @@ app.use('/api/analytics',
   requireAuth,
   apiLimiter,
   analyticsRouter
+);
+
+// Attribution (PR #41) — outcome attribution & real performance metrics
+app.use('/api/attribution',
+  requireAuth,
+  apiLimiter,
+  attributionRouter
 );
 
 // User account management — profile, workspace, account deletion

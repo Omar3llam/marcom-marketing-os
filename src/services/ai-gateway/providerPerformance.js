@@ -1,5 +1,5 @@
 // ============================================================
-// Provider Performance Scorer — PR #38
+// Provider Performance Scorer — PR #38 + PR #40
 // ============================================================
 // Queries approval decision analytics to score AI providers
 // by capability, enabling data-driven provider routing.
@@ -7,6 +7,9 @@
 // USAGE:
 //   const scores = await getProviderPerformance('GENERATE_HOOKS');
 //   // Returns ranked list of providers with approval rates
+//
+//   const costScores = await getProviderCostPerformance('GENERATE_HOOKS');
+//   // Returns ranked list with cost-quality ratio (PR #40)
 //
 // CACHING:
 //   Results cached in-memory with 5-minute TTL to avoid
@@ -16,9 +19,15 @@
 //   Primary: approval rate (% of APPROVED decisions)
 //   Secondary: risk score (weighted rejection/regen count)
 //   Tertiary: total sample size (confidence penalty for low N)
+//
+// PR #40 — COST-QUALITY SCORING:
+//   Cost per approval: execution cost / approval rate
+//   Quality score: approval rate × confidence (0-100)
+//   Value score: quality score / cost per approval (higher is better)
 // ============================================================
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../../utils/logger.js';
+import { calculateCostPerApproval, calculateExecutionCost } from './providerCosts.js';
 
 const prisma = new PrismaClient();
 
@@ -168,9 +177,70 @@ export async function getProviderPerformance(capability, options = {}) {
  *
  * @param {string} capability - The capability to route
  * @param {object} options - Query options (same as getProviderPerformance)
+ * @param {boolean} options.optimizeForCost - Use cost-quality optimization (PR #40)
+ * @param {boolean} options.optimizeForRealPerformance - Use real CTR/ROAS data (PR #41)
+ * @param {number} options.costWeight - Weight for cost vs quality (0-1, default 0.5)
  * @returns {Promise<{ provider: string, score: object, reason: string } | null>}
  */
 export async function getBestProvider(capability, options = {}) {
+  const {
+    optimizeForCost = false,
+    optimizeForRealPerformance = false,
+    costWeight = 0.5,
+  } = options;
+
+  // PR #41: Use real performance data if enabled
+  if (optimizeForRealPerformance) {
+    const realScores = await getProviderRealPerformance(capability, options);
+    if (realScores.length === 0) {
+      logger.debug({
+        capability,
+        workspaceId: options.workspaceId,
+      }, '[providerPerformance] no real performance data, falling back to cost-quality');
+
+      // Fall back to cost-quality if no real data
+      return getBestProvider(capability, { ...options, optimizeForRealPerformance: false });
+    }
+
+    const best = realScores[0];
+
+    if (!best.hasRealData) {
+      // Top provider has no real data, fall back
+      logger.debug({
+        capability,
+        provider: best.provider,
+      }, '[providerPerformance] top provider has no real data, using cost-quality only');
+
+      return {
+        provider: best.provider,
+        score: best,
+        reason: `${best.approvalRate}% approval rate, $${best.costPerApproval.toFixed(4)}/approval (no real performance data yet)`,
+      };
+    }
+
+    return {
+      provider: best.provider,
+      score: best,
+      reason: `${best.approvalRate}% approval, $${best.costPerApproval.toFixed(4)}/approval, ${best.ctr}% CTR, ${best.roas}x ROAS (final score: ${best.finalScore.toFixed(2)})`,
+    };
+  }
+
+  // PR #40: Use cost-quality optimization if enabled
+  if (optimizeForCost) {
+    const costScores = await getProviderCostPerformance(capability, { ...options, costWeight });
+    if (costScores.length === 0) {
+      return null;
+    }
+
+    const best = costScores[0];
+    return {
+      provider: best.provider,
+      score: best,
+      reason: `${best.approvalRate}% approval rate, $${best.costPerApproval.toFixed(4)}/approval (value score: ${best.valueScore.toFixed(2)}, ${best.total} decisions)`,
+    };
+  }
+
+  // Original PR #38 behavior: pure quality optimization
   const scores = await getProviderPerformance(capability, options);
 
   if (scores.length === 0) {
@@ -184,6 +254,249 @@ export async function getBestProvider(capability, options = {}) {
     score: best,
     reason: `${best.approvalRate}% approval rate (${best.total} decisions, ${Math.round(best.confidence * 100)}% confidence)`,
   };
+}
+
+// ============================================================
+// PR #40 — Cost-Quality Optimization
+// ============================================================
+
+/**
+ * Get provider performance with cost-quality metrics.
+ *
+ * @param {string} capability - The capability to score
+ * @param {object} options - Query options (same as getProviderPerformance)
+ * @param {number} options.costWeight - Weight for cost optimization (0=pure quality, 1=pure cost, default 0.5)
+ * @param {number} options.maxCostPerApproval - Maximum cost per approval filter (USD, optional)
+ * @returns {Promise<Array<{ provider, approvalRate, riskScore, total, confidence, executionCost, costPerApproval, qualityScore, valueScore }>>}
+ */
+export async function getProviderCostPerformance(capability, options = {}) {
+  const { costWeight = 0.5, maxCostPerApproval = null } = options;
+
+  // Get base performance scores
+  const performanceScores = await getProviderPerformance(capability, options);
+
+  if (performanceScores.length === 0) {
+    return [];
+  }
+
+  // Enrich with cost data
+  const costScores = [];
+
+  for (const score of performanceScores) {
+    const executionCost = calculateExecutionCost(score.provider, capability);
+    const costPerApproval = calculateCostPerApproval(score.provider, capability, score.approvalRate);
+
+    // Skip providers with no cost data
+    if (executionCost === null || costPerApproval === null) {
+      logger.debug({
+        capability,
+        provider: score.provider,
+      }, '[providerPerformance] skipping provider (no cost data)');
+      continue;
+    }
+
+    // Filter by max cost per approval if specified
+    if (maxCostPerApproval !== null && costPerApproval > maxCostPerApproval) {
+      logger.debug({
+        capability,
+        provider: score.provider,
+        costPerApproval,
+        maxCostPerApproval,
+      }, '[providerPerformance] skipping provider (exceeds max cost per approval)');
+      continue;
+    }
+
+    // Quality score: approval rate weighted by confidence (0-100)
+    const qualityScore = score.approvalRate * score.confidence;
+
+    // Value score: hybrid of quality and cost
+    // Higher quality score = better, Lower cost = better
+    // Normalize cost to 0-100 scale (assuming $0.01-$1.00 range)
+    const normalizedCost = Math.min(100, (costPerApproval / 0.01) * 100);
+    const costScore = 100 - normalizedCost; // Invert so higher is better
+
+    // Weighted combination (default 50/50)
+    const valueScore = (qualityScore * (1 - costWeight)) + (costScore * costWeight);
+
+    costScores.push({
+      ...score,
+      executionCost: Math.round(executionCost * 10000) / 10000,   // 4 decimals
+      costPerApproval: Math.round(costPerApproval * 10000) / 10000, // 4 decimals
+      qualityScore: Math.round(qualityScore * 100) / 100,          // 2 decimals
+      valueScore: Math.round(valueScore * 100) / 100,              // 2 decimals
+    });
+  }
+
+  // Sort by value score (descending)
+  costScores.sort((a, b) => b.valueScore - a.valueScore);
+
+  logger.info({
+    capability,
+    providersScored: costScores.length,
+    topProvider: costScores[0]?.provider,
+    topValueScore: costScores[0]?.valueScore,
+    topCostPerApproval: costScores[0]?.costPerApproval,
+  }, '[providerPerformance] cost-quality scores calculated');
+
+  return costScores;
+}
+
+// ============================================================
+// PR #41 — Real Performance Metrics (CTR, CPC, ROAS)
+// ============================================================
+
+/**
+ * Get provider performance with real business metrics from Meta.
+ *
+ * Combines:
+ * - Approval rate (from approval decisions)
+ * - Cost per approval (from token pricing)
+ * - Real CTR/CPC/ROAS (from Meta API via ProviderPerformanceMetrics)
+ *
+ * @param {string} capability - The capability to score
+ * @param {object} options - Query options
+ * @param {string} options.workspaceId - Workspace ID (required for real metrics)
+ * @param {number} options.approvalWeight - Weight for approval score (0-1, default 0.33)
+ * @param {number} options.costWeight - Weight for cost score (0-1, default 0.33)
+ * @param {number} options.performanceWeight - Weight for real performance (0-1, default 0.34)
+ * @param {Date} options.performanceStartDate - Start date for real metrics (default: 7 days ago)
+ * @param {Date} options.performanceEndDate - End date for real metrics (default: now)
+ * @returns {Promise<Array<{ provider, approvalRate, executionCost, costPerApproval, ctr, roas, performanceScore, finalScore }>>}
+ */
+export async function getProviderRealPerformance(capability, options = {}) {
+  const {
+    workspaceId = null,
+    approvalWeight = 0.33,
+    costWeight = 0.33,
+    performanceWeight = 0.34,
+    performanceStartDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days ago
+    performanceEndDate = new Date(),
+  } = options;
+
+  if (!workspaceId) {
+    logger.warn({
+      capability,
+    }, '[providerPerformance] workspaceId required for real performance metrics');
+    return [];
+  }
+
+  // Get base performance scores (approval + cost)
+  const costScores = await getProviderCostPerformance(capability, options);
+
+  if (costScores.length === 0) {
+    return [];
+  }
+
+  // Query real performance metrics from Meta
+  const realMetrics = await prisma.providerPerformanceMetrics.groupBy({
+    by: ['provider', 'capability'],
+    where: {
+      workspaceId,
+      capability,
+      startDate: { gte: performanceStartDate },
+      endDate: { lte: performanceEndDate },
+    },
+    _avg: {
+      ctr: true,
+      cpc: true,
+      roas: true,
+    },
+    _sum: {
+      impressions: true,
+      clicks: true,
+      spend: true,
+      revenue: true,
+    },
+    _count: {
+      id: true,
+    },
+  });
+
+  logger.debug({
+    capability,
+    workspaceId,
+    realMetricsCount: realMetrics.length,
+  }, '[providerPerformance] queried real performance metrics');
+
+  // Build lookup map for real metrics
+  const realMetricsMap = new Map();
+  for (const metric of realMetrics) {
+    realMetricsMap.set(metric.provider, {
+      avgCtr: metric._avg.ctr || 0,
+      avgCpc: metric._avg.cpc || 0,
+      avgRoas: metric._avg.roas || 0,
+      totalImpressions: metric._sum.impressions || 0,
+      totalClicks: metric._sum.clicks || 0,
+      totalSpend: metric._sum.spend || 0,
+      totalRevenue: metric._sum.revenue || 0,
+      dataPoints: metric._count.id,
+    });
+  }
+
+  // Enrich cost scores with real performance
+  const enrichedScores = [];
+
+  for (const score of costScores) {
+    const realMetric = realMetricsMap.get(score.provider);
+
+    if (!realMetric || realMetric.dataPoints === 0) {
+      // No real performance data yet — use approval + cost only
+      logger.debug({
+        capability,
+        provider: score.provider,
+      }, '[providerPerformance] no real performance data, using approval + cost only');
+
+      enrichedScores.push({
+        ...score,
+        ctr: null,
+        cpc: null,
+        roas: null,
+        performanceScore: 0,
+        finalScore: score.valueScore, // Fall back to cost-quality score
+        hasRealData: false,
+      });
+      continue;
+    }
+
+    // Calculate performance score (0-100)
+    // CTR weight: 40%, ROAS weight: 60%
+    const ctrScore = Math.min(100, (realMetric.avgCtr || 0) * 10); // 10% CTR = 100pts
+    const roasScore = Math.min(100, (realMetric.avgRoas || 0) * 10); // 10x ROAS = 100pts
+    const performanceScore = (ctrScore * 0.4) + (roasScore * 0.6);
+
+    // Calculate final score (weighted combination)
+    const approvalScore = score.qualityScore; // 0-100
+    const costScore = 100 - Math.min(100, (score.costPerApproval / 0.01) * 100); // 0-100
+    const finalScore =
+      (approvalScore * approvalWeight) +
+      (costScore * costWeight) +
+      (performanceScore * performanceWeight);
+
+    enrichedScores.push({
+      ...score,
+      ctr: Math.round(realMetric.avgCtr * 100) / 100,
+      cpc: Math.round(realMetric.avgCpc * 10000) / 10000,
+      roas: Math.round(realMetric.avgRoas * 100) / 100,
+      performanceScore: Math.round(performanceScore * 100) / 100,
+      finalScore: Math.round(finalScore * 100) / 100,
+      hasRealData: true,
+      realDataPoints: realMetric.dataPoints,
+    });
+  }
+
+  // Sort by final score (descending)
+  enrichedScores.sort((a, b) => b.finalScore - a.finalScore);
+
+  logger.info({
+    capability,
+    workspaceId,
+    providersScored: enrichedScores.length,
+    topProvider: enrichedScores[0]?.provider,
+    topFinalScore: enrichedScores[0]?.finalScore,
+    topHasRealData: enrichedScores[0]?.hasRealData,
+  }, '[providerPerformance] real performance scores calculated');
+
+  return enrichedScores;
 }
 
 // ============================================================
