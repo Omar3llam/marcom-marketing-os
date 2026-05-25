@@ -105,6 +105,7 @@ model Workspace {
   auditLogs         AuditLog[]
   artifacts         Artifact[]
   artifactApprovals ArtifactApproval[]
+  approvalDecisions ApprovalDecision[]
 
   @@map("workspaces")
 }
@@ -240,11 +241,12 @@ model ExecutionRequest {
   activeStep    String? // Current orchestration step
   retryMetadata Json? // { attempt, maxAttempts, nextRetryAt }
 
-  transitions    ExecutionTransition[]
-  metrics        ExecutionMetric[]
-  decisionMemory DecisionMemory[]
-  artifacts      Artifact[]
-  checkpoints    ExecutionCheckpoint[]
+  transitions       ExecutionTransition[]
+  metrics           ExecutionMetric[]
+  decisionMemory    DecisionMemory[]
+  artifacts         Artifact[]
+  checkpoints       ExecutionCheckpoint[]
+  approvalDecisions ApprovalDecision[]
 
   @@index([workspaceId])
   @@index([createdAt])
@@ -434,9 +436,10 @@ model Artifact {
   metadata    Json? // Provider metadata (tokens, latency, requestId, model, etc.)
   createdAt   DateTime @default(now())
 
-  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  execution ExecutionRequest  @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  execution ExecutionRequest   @relation(fields: [executionId], references: [id], onDelete: Cascade)
   approval  ArtifactApproval?
+  decisions ApprovalDecision[]
 
   @@index([workspaceId, type])
   @@index([executionId])
@@ -485,8 +488,9 @@ model ArtifactApproval {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  artifact  Artifact  @relation(fields: [artifactId], references: [id], onDelete: Cascade)
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  artifact         Artifact          @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  approvalDecision ApprovalDecision?
 
   @@index([workspaceId, status])
   @@index([artifactId])
@@ -495,4 +499,59 @@ model ArtifactApproval {
   @@index([escalatedTo])
   @@index([createdAt(sort: Desc)])
   @@map("artifact_approvals")
+}
+
+// ── PR #37: Approval Decision Analytics ──────────────────────────
+// Captures approval decisions for intelligence feedback loops.
+// Enables provider performance tracking, feedback pattern detection,
+// and artifact risk scoring.
+//
+// Architectural Law:
+// Every approval decision must be recorded for learning.
+//
+// Query patterns:
+// - Provider performance: WHERE provider = ? AND decision = ? GROUP BY decision
+// - Feedback patterns: GROUP BY feedbackType ORDER BY count DESC
+// - Artifact risk: WHERE capability = ? AND decision IN ('REGENERATE', 'REJECTED')
+// - Reviewer behavior: WHERE reviewerId = ? AND reviewedAt > ?
+// - Severity distribution: GROUP BY severity, decision
+
+model ApprovalDecision {
+  id          String @id @default(cuid())
+  approvalId  String @unique
+  artifactId  String
+  executionId String
+  workspaceId String @db.Uuid
+
+  // Decision data (from frontend ApprovalForm)
+  decision        String   // APPROVED | REJECTED | REGENERATE | REQUEST_REVISION | ESCALATE
+  feedback        String?  // Free-form feedback text
+  feedbackType    String?  // hook_angle, tone, cta, clarity, length, brand_voice, etc.
+  severity        String?  // LOW | MEDIUM | HIGH
+  preserveAspects String[] // brand_voice, tone, cta, color_palette, etc.
+
+  // Attribution (from Artifact record for provider performance tracking)
+  provider   String? // claude, openai, higgsfield
+  capability String? // GENERATE_HOOKS, GENERATE_CAPTIONS, GENERATE_VISUAL_BRIEF, etc.
+  model      String? // claude-opus-4, gpt-4, claude-sonnet-3-5, etc.
+
+  // Reviewer tracking
+  reviewerId String   @db.Uuid
+  reviewedAt DateTime @default(now())
+
+  // Relations
+  approval  ArtifactApproval @relation(fields: [approvalId], references: [id], onDelete: Cascade)
+  artifact  Artifact         @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  execution ExecutionRequest @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // Analytics indexes
+  @@index([workspaceId, reviewedAt(sort: Desc)])
+  @@index([provider, decision])
+  @@index([capability, decision])
+  @@index([feedbackType])
+  @@index([severity])
+  @@index([executionId])
+  @@index([reviewerId])
+  @@map("approval_decisions")
 }
