@@ -20,7 +20,7 @@
 // FEATURE FLAG:
 //   Set ENABLE_INTELLIGENT_ROUTING=true in .env to enable
 // ============================================================
-import { PROVIDER_REGISTRY, getProviderForCapability } from './providerRegistry.js';
+import { getProviderForCapability } from './providerRegistry.js';
 import { getBestProvider } from './providerPerformance.js';
 import { logger } from '../../utils/logger.js';
 
