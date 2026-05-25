@@ -33,6 +33,27 @@ export async function executeVisualBrief(nodeId, nodeType, context) {
     };
   }
 
+  // PR #32: Extract decision context for re-execution
+  const isReExecution = context.isReExecution || false;
+  const feedback = context.feedback?.[nodeId];
+  const revisionInstructions = context.revisionInstructions?.[nodeId];
+  const regenerationHint = context.regenerationHints?.[nodeId];
+  const originalNode = context.originalNode;
+
+  // PR #32: Determine artifact version (v1 for new, v2+ for re-execution)
+  const artifactVersion = isReExecution && originalNode?.artifacts?.[0]?.version
+    ? originalNode.artifacts[0].version + 1
+    : 1;
+
+  logger.debug({
+    nodeId,
+    nodeType,
+    isReExecution,
+    hasFeedback: !!feedback,
+    hasRevisionInstructions: !!revisionInstructions,
+    artifactVersion,
+  }, '[visualBriefExecutor] execution context');
+
   // Call AI Provider Gateway
   const result = await execute({
     capability,
@@ -42,6 +63,11 @@ export async function executeVisualBrief(nodeId, nodeType, context) {
       brandGuidelines: context.brandGuidelines || {},
       content: context.content || [],
     },
+    // PR #32: Pass decision context to AI gateway
+    feedback,
+    revisionInstructions,
+    regenerationHint,
+    isReExecution,
   });
 
   // Handle provider errors
@@ -71,12 +97,26 @@ export async function executeVisualBrief(nodeId, nodeType, context) {
     capability,
     provider: result.metadata?.provider,
     requestId: result.metadata?.requestId,
+    artifactVersion,
+    isReExecution,
   }, '[visualBriefExecutor] generation successful');
+
+  // PR #32: Attach version and re-execution metadata to artifacts
+  const versionedArtifacts = result.artifacts.map(artifact => ({
+    ...artifact,
+    version: artifactVersion,
+    isRegeneration: isReExecution,
+    regenerationContext: isReExecution ? {
+      hasFeedback: !!feedback,
+      hasRevisionInstructions: !!revisionInstructions,
+      hasRegenerationHint: !!regenerationHint,
+    } : undefined,
+  }));
 
   return {
     success: true,
     output: result.output,
-    artifacts: result.artifacts,
+    artifacts: versionedArtifacts,
     metadata: {
       capability,
       provider: result.metadata?.provider,
@@ -84,6 +124,8 @@ export async function executeVisualBrief(nodeId, nodeType, context) {
       tokens: result.metadata?.tokens,
       latency: result.metadata?.latency,
       model: result.metadata?.model,
+      artifactVersion,
+      isReExecution,
     },
   };
 }

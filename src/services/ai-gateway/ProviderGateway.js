@@ -17,7 +17,11 @@
 // INPUT:
 //   {
 //     capability: CAPABILITY enum,
-//     input: { ...capability-specific data }
+//     input: { ...capability-specific data },
+//     feedback?: string,              // PR #32: reviewer feedback
+//     revisionInstructions?: string,   // PR #32: revision instructions
+//     regenerationHint?: string,       // PR #32: regeneration hint
+//     isReExecution?: boolean          // PR #32: re-execution flag
 //   }
 //
 // OUTPUT:
@@ -70,11 +74,11 @@ function calculateBackoff(attempt) {
 /**
  * Execute an AI capability through the appropriate provider.
  *
- * @param {{ capability: string, input: object }} request
+ * @param {{ capability: string, input: object, feedback?: string, revisionInstructions?: string, regenerationHint?: string, isReExecution?: boolean }} request
  * @returns {Promise<{ success: boolean, output?: object, artifacts?: array, metadata: object, error?: object }>}
  */
 export async function execute(request) {
-  const { capability, input } = request;
+  const { capability, input, feedback, revisionInstructions, regenerationHint, isReExecution } = request;
 
   if (!capability) {
     return {
@@ -148,10 +152,18 @@ export async function execute(request) {
       capability,
       provider,
       attempt,
+      isReExecution: isReExecution || false,
+      hasFeedback: !!feedback,
     }, '[ProviderGateway] calling provider');
 
     try {
-      const result = await method(input);
+      // PR #32: Pass decision context to provider
+      const result = await method(input, {
+        feedback,
+        revisionInstructions,
+        regenerationHint,
+        isReExecution,
+      });
 
       if (result.success) {
         logger.info({

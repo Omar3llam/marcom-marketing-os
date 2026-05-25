@@ -137,9 +137,9 @@ function parseJSON(text) {
 // Capability implementations
 // ============================================================
 
-export async function generateCopy(input) {
+export async function generateCopy(input, decisionContext = {}) {
   const systemPrompt = getSystemPrompt('CREATIVE_COPYWRITER');
-  const userPrompt = buildCopyPrompt('GENERATE_COPY', input);
+  const userPrompt = buildCopyPrompt('GENERATE_COPY', input, decisionContext);
 
   const result = await callClaude({ systemPrompt, userPrompt });
 
@@ -175,9 +175,9 @@ export async function generateCopy(input) {
   };
 }
 
-export async function generateHooks(input) {
+export async function generateHooks(input, decisionContext = {}) {
   const systemPrompt = getSystemPrompt('CREATIVE_COPYWRITER');
-  const userPrompt = buildCopyPrompt('GENERATE_HOOKS', input);
+  const userPrompt = buildCopyPrompt('GENERATE_HOOKS', input, decisionContext);
 
   const result = await callClaude({ systemPrompt, userPrompt });
 
@@ -213,9 +213,9 @@ export async function generateHooks(input) {
   };
 }
 
-export async function generateCaptions(input) {
+export async function generateCaptions(input, decisionContext = {}) {
   const systemPrompt = getSystemPrompt('CREATIVE_COPYWRITER');
-  const userPrompt = buildCopyPrompt('GENERATE_CAPTIONS', input);
+  const userPrompt = buildCopyPrompt('GENERATE_CAPTIONS', input, decisionContext);
 
   const result = await callClaude({ systemPrompt, userPrompt });
 
@@ -251,9 +251,9 @@ export async function generateCaptions(input) {
   };
 }
 
-export async function generateAudienceHypotheses(input) {
+export async function generateAudienceHypotheses(input, decisionContext = {}) {
   const systemPrompt = getSystemPrompt('MARKETING_STRATEGIST');
-  const userPrompt = buildCaptionPrompt('GENERATE_AUDIENCE_HYPOTHESES', input);
+  const userPrompt = buildCaptionPrompt('GENERATE_AUDIENCE_HYPOTHESES', input, decisionContext);
 
   const result = await callClaude({ systemPrompt, userPrompt });
 
@@ -288,9 +288,9 @@ export async function generateAudienceHypotheses(input) {
   };
 }
 
-export async function generateAngleVariants(input) {
+export async function generateAngleVariants(input, decisionContext = {}) {
   const systemPrompt = getSystemPrompt('MARKETING_STRATEGIST');
-  const userPrompt = buildCaptionPrompt('GENERATE_ANGLE_VARIANTS', input);
+  const userPrompt = buildCaptionPrompt('GENERATE_ANGLE_VARIANTS', input, decisionContext);
 
   const result = await callClaude({ systemPrompt, userPrompt });
 
@@ -325,9 +325,9 @@ export async function generateAngleVariants(input) {
   };
 }
 
-export async function validateContent(input) {
+export async function validateContent(input, decisionContext = {}) {
   const systemPrompt = getSystemPrompt('MARKETING_STRATEGIST');
-  const userPrompt = buildVisualBriefPrompt('VALIDATE_CONTENT', input);
+  const userPrompt = buildVisualBriefPrompt('VALIDATE_CONTENT', input, decisionContext);
 
   const result = await callClaude({ systemPrompt, userPrompt, maxTokens: 1024 });
 
@@ -361,9 +361,9 @@ export async function validateContent(input) {
   };
 }
 
-export async function rankVariants(input) {
+export async function rankVariants(input, decisionContext = {}) {
   const systemPrompt = getSystemPrompt('MARKETING_STRATEGIST');
-  const userPrompt = buildVisualBriefPrompt('RANK_VARIANTS', input);
+  const userPrompt = buildVisualBriefPrompt('RANK_VARIANTS', input, decisionContext);
 
   const result = await callClaude({ systemPrompt, userPrompt, maxTokens: 1536 });
 
@@ -394,9 +394,9 @@ export async function rankVariants(input) {
   };
 }
 
-export async function generateVisualBrief(input) {
+export async function generateVisualBrief(input, decisionContext = {}) {
   const systemPrompt = getSystemPrompt('VISUAL_STRATEGIST');
-  const userPrompt = buildVisualBriefPrompt('GENERATE_VISUAL_BRIEF', input);
+  const userPrompt = buildVisualBriefPrompt('GENERATE_VISUAL_BRIEF', input, decisionContext);
 
   const result = await callClaude({ systemPrompt, userPrompt });
 
