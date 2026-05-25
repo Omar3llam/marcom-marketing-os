@@ -2,7 +2,10 @@
 // AI Gateway — visual brief prompts
 // ============================================================
 // Prompt templates for visual strategy and image generation briefs.
+//
+// PR #34: Integrated with Selective Prompt Mutation Engine
 // ============================================================
+import { applyPromptMutation, hasMutationRule } from './promptMutationEngine.js';
 
 export const VISUAL_BRIEF_PROMPTS = Object.freeze({
   GENERATE_VISUAL_BRIEF: {
@@ -172,25 +175,130 @@ export function buildVisualBriefPrompt(capability, variables, decisionContext = 
     prompt = prompt.replace(new RegExp(`\\{${key}\\}`, 'g'), stringValue);
   }
 
-  // PR #32: Append decision context if present (re-execution guidance)
-  if (decisionContext.isReExecution) {
+  // PR #34: Apply selective prompt mutation if structured feedback exists
+  if (decisionContext.isReExecution && decisionContext.feedbackType && hasMutationRule(decisionContext.feedbackType)) {
+    // Use mutation engine for surgical modifications
+    prompt = applyPromptMutation(prompt, {
+      feedbackType: decisionContext.feedbackType,
+      severity: decisionContext.severity,
+      feedback: decisionContext.feedback,
+      preserveAspects: decisionContext.preserveAspects,
+    });
+
+    // Add re-execution context header
     prompt += '\n\n---\n\n**RE-EXECUTION CONTEXT:**\n';
-    prompt += 'This is a regeneration based on reviewer feedback. Please address the following:\n\n';
+    prompt += 'This is a regeneration based on structured reviewer feedback. ';
+    prompt += 'See modified REQUIREMENTS section above for targeted constraints.\n';
 
-    if (decisionContext.feedback) {
-      prompt += `**Reviewer Feedback:**\n${decisionContext.feedback}\n\n`;
+  } else if (decisionContext.isReExecution) {
+    // PR #32/33: Fallback to append-only approach (backward compatibility)
+    prompt += '\n\n---\n\n**RE-EXECUTION CONTEXT:**\n';
+    prompt += 'This is a regeneration based on reviewer feedback.\n\n';
+
+    if (decisionContext.feedbackType) {
+      prompt += _buildStructuredVisualFeedbackGuidance(decisionContext);
+    } else {
+      prompt += _buildUnstructuredFeedbackGuidance(decisionContext);
     }
 
-    if (decisionContext.revisionInstructions) {
-      prompt += `**Revision Instructions:**\n${decisionContext.revisionInstructions}\n\n`;
+    if (decisionContext.preserveAspects?.length > 0) {
+      const aspectsList = decisionContext.preserveAspects
+        .map(aspect => `- ${aspect.replace('_', ' ')}`)
+        .join('\n');
+      prompt += `\n**DO NOT CHANGE:**\n${aspectsList}\n\n`;
     }
 
-    if (decisionContext.regenerationHint) {
-      prompt += `**Regeneration Hint:**\n${decisionContext.regenerationHint}\n\n`;
-    }
-
-    prompt += 'Incorporate the above feedback while maintaining the original requirements and constraints.';
+    prompt += 'Incorporate the feedback while maintaining the original requirements and constraints.';
   }
 
   return prompt;
+}
+
+/**
+ * PR #33: Build targeted prompt guidance for visual briefs based on feedback type.
+ *
+ * @private
+ */
+function _buildStructuredVisualFeedbackGuidance(decisionContext) {
+  const { feedbackType, severity, feedback } = decisionContext;
+
+  let guidance = '';
+
+  // Severity header
+  const severityLabel = severity ? `**[${severity} PRIORITY]** ` : '';
+
+  switch (feedbackType) {
+    case 'visual_concept':
+      guidance += `${severityLabel}**Issue: Visual Concept**\n`;
+      guidance += 'The core visual idea/metaphor needs adjustment.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: developing a new visual concept while keeping color palette and composition.\n\n';
+      break;
+
+    case 'color_palette':
+      guidance += `${severityLabel}**Issue: Color Palette**\n`;
+      guidance += 'The color choices need adjustment.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: selecting new colors while keeping the visual concept and composition.\n\n';
+      break;
+
+    case 'composition':
+      guidance += `${severityLabel}**Issue: Composition**\n`;
+      guidance += 'The layout/framing needs adjustment.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: improving composition while keeping the visual concept and color palette.\n\n';
+      break;
+
+    case 'mobile_optimization':
+      guidance += `${severityLabel}**Issue: Mobile Optimization**\n`;
+      guidance += 'The visual doesn\'t work well on mobile.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: optimizing for mobile viewing while keeping the core visual concept.\n\n';
+      break;
+
+    case 'brand_voice':
+      guidance += `${severityLabel}**Issue: Brand Voice**\n`;
+      guidance += 'The visual doesn\'t match the brand personality.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: aligning with brand voice while keeping the composition.\n\n';
+      break;
+
+    case 'brand_guidelines':
+      guidance += `${severityLabel}**Issue: Brand Guidelines**\n`;
+      guidance += 'The visual violates brand style guide rules.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: adhering to brand guidelines while keeping the core concept.\n\n';
+      break;
+
+    default:
+      // Fallback for unknown feedbackType
+      guidance += `${severityLabel}**Feedback Type: ${feedbackType}**\n`;
+      if (feedback) guidance += `${feedback}\n\n`;
+      break;
+  }
+
+  return guidance;
+}
+
+/**
+ * PR #32: Build unstructured feedback guidance (backward compatibility).
+ *
+ * @private
+ */
+function _buildUnstructuredFeedbackGuidance(decisionContext) {
+  let guidance = '';
+
+  if (decisionContext.feedback) {
+    guidance += `**Reviewer Feedback:**\n${decisionContext.feedback}\n\n`;
+  }
+
+  if (decisionContext.revisionInstructions) {
+    guidance += `**Revision Instructions:**\n${decisionContext.revisionInstructions}\n\n`;
+  }
+
+  if (decisionContext.regenerationHint) {
+    guidance += `**Regeneration Hint:**\n${decisionContext.regenerationHint}\n\n`;
+  }
+
+  return guidance;
 }

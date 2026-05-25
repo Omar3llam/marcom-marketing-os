@@ -39,6 +39,11 @@ export async function executeCopyGeneration(nodeId, nodeType, context) {
   const regenerationHint = context.regenerationHints?.[nodeId];
   const originalNode = context.originalNode;
 
+  // PR #33: Extract structured feedback
+  const feedbackType = context.feedbackType?.[nodeId];
+  const severity = context.severity?.[nodeId];
+  const preserveAspects = context.preserveAspects?.[nodeId] || [];
+
   // PR #32: Determine artifact version (v1 for new, v2+ for re-execution)
   const artifactVersion = isReExecution && originalNode?.artifacts?.[0]?.version
     ? originalNode.artifacts[0].version + 1
@@ -67,6 +72,10 @@ export async function executeCopyGeneration(nodeId, nodeType, context) {
     revisionInstructions,
     regenerationHint,
     isReExecution,
+    // PR #33: Pass structured feedback
+    feedbackType,
+    severity,
+    preserveAspects,
   });
 
   // Handle provider errors

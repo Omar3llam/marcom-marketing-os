@@ -8,7 +8,10 @@
 //
 // VERSIONING:
 //   Never modify existing prompts — create new versions.
+//
+// PR #34: Integrated with Selective Prompt Mutation Engine
 // ============================================================
+import { applyPromptMutation, hasMutationRule } from './promptMutationEngine.js';
 
 export const COPY_PROMPTS = Object.freeze({
   GENERATE_HOOKS: {
@@ -114,25 +117,156 @@ export function buildCopyPrompt(capability, variables, decisionContext = {}) {
     prompt = prompt.replace(new RegExp(`\\{${key}\\}`, 'g'), value || 'N/A');
   }
 
-  // PR #32: Append decision context if present (re-execution guidance)
-  if (decisionContext.isReExecution) {
+  // PR #34: Apply selective prompt mutation if structured feedback exists
+  if (decisionContext.isReExecution && decisionContext.feedbackType && hasMutationRule(decisionContext.feedbackType)) {
+    // Use mutation engine for surgical modifications
+    prompt = applyPromptMutation(prompt, {
+      feedbackType: decisionContext.feedbackType,
+      severity: decisionContext.severity,
+      feedback: decisionContext.feedback,
+      preserveAspects: decisionContext.preserveAspects,
+    });
+
+    // Add re-execution context header
     prompt += '\n\n---\n\n**RE-EXECUTION CONTEXT:**\n';
-    prompt += 'This is a regeneration based on reviewer feedback. Please address the following:\n\n';
+    prompt += 'This is a regeneration based on structured reviewer feedback. ';
+    prompt += 'See modified REQUIREMENTS section above for targeted constraints.\n';
 
-    if (decisionContext.feedback) {
-      prompt += `**Reviewer Feedback:**\n${decisionContext.feedback}\n\n`;
+  } else if (decisionContext.isReExecution) {
+    // PR #32/33: Fallback to append-only approach (backward compatibility)
+    // Used when: (1) no feedbackType, or (2) feedbackType has no mutation rule
+    prompt += '\n\n---\n\n**RE-EXECUTION CONTEXT:**\n';
+    prompt += 'This is a regeneration based on reviewer feedback.\n\n';
+
+    if (decisionContext.feedbackType) {
+      // Structured feedback without mutation rule (shouldn't happen, but defensive)
+      prompt += _buildStructuredFeedbackGuidance(decisionContext);
+    } else {
+      // Unstructured feedback (PR #32 compatibility)
+      prompt += _buildUnstructuredFeedbackGuidance(decisionContext);
     }
 
-    if (decisionContext.revisionInstructions) {
-      prompt += `**Revision Instructions:**\n${decisionContext.revisionInstructions}\n\n`;
+    // Legacy preservation constraints (append-only)
+    if (decisionContext.preserveAspects?.length > 0) {
+      const aspectsList = decisionContext.preserveAspects
+        .map(aspect => `- ${aspect.replace('_', ' ')}`)
+        .join('\n');
+      prompt += `\n**DO NOT CHANGE:**\n${aspectsList}\n\n`;
     }
 
-    if (decisionContext.regenerationHint) {
-      prompt += `**Regeneration Hint:**\n${decisionContext.regenerationHint}\n\n`;
-    }
-
-    prompt += 'Incorporate the above feedback while maintaining the original requirements and constraints.';
+    prompt += 'Incorporate the feedback while maintaining the original requirements and constraints.';
   }
 
   return prompt;
+}
+
+/**
+ * PR #33: Build targeted prompt guidance based on structured feedback type.
+ * Routes feedback to specific copy layers (hook/tone/CTA/etc).
+ *
+ * @private
+ */
+function _buildStructuredFeedbackGuidance(decisionContext) {
+  const { feedbackType, severity, feedback } = decisionContext;
+
+  let guidance = '';
+
+  // Severity header
+  const severityLabel = severity ? `**[${severity} PRIORITY]** ` : '';
+
+  switch (feedbackType) {
+    case 'hook_angle':
+      guidance += `${severityLabel}**Issue: Hook Angle**\n`;
+      guidance += 'The psychological trigger in the hook needs adjustment.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: changing the hook angle (problem/benefit/curiosity) while keeping tone and CTA.\n\n';
+      break;
+
+    case 'tone':
+      guidance += `${severityLabel}**Issue: Tone**\n`;
+      guidance += 'The voice/personality needs adjustment.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: adjusting tone (urgent/casual/professional) while keeping hook and CTA.\n\n';
+      break;
+
+    case 'cta':
+      guidance += `${severityLabel}**Issue: Call-to-Action**\n`;
+      guidance += 'The CTA needs to be stronger or clearer.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: improving CTA strength and clarity while keeping hook and tone.\n\n';
+      break;
+
+    case 'clarity':
+      guidance += `${severityLabel}**Issue: Message Clarity**\n`;
+      guidance += 'The message is unclear or confusing.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: improving clarity and readability while keeping the core angle.\n\n';
+      break;
+
+    case 'length':
+      guidance += `${severityLabel}**Issue: Length**\n`;
+      guidance += 'The copy is too long or too short.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: adjusting length while keeping the core message and tone.\n\n';
+      break;
+
+    case 'brand_voice':
+      guidance += `${severityLabel}**Issue: Brand Voice**\n`;
+      guidance += 'The copy doesn\'t match the brand personality.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: aligning with brand voice while keeping the hook structure.\n\n';
+      break;
+
+    case 'brand_guidelines':
+      guidance += `${severityLabel}**Issue: Brand Guidelines**\n`;
+      guidance += 'The copy violates brand style guide rules.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: adhering to brand guidelines while keeping the strategy.\n\n';
+      break;
+
+    case 'audience_fit':
+      guidance += `${severityLabel}**Issue: Audience Fit**\n`;
+      guidance += 'The copy doesn\'t resonate with the target audience.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: improving audience resonance while keeping the hook angle.\n\n';
+      break;
+
+    case 'message_positioning':
+      guidance += `${severityLabel}**Issue: Message Positioning**\n`;
+      guidance += 'The value proposition or angle needs adjustment.\n';
+      if (feedback) guidance += `Specific feedback: ${feedback}\n`;
+      guidance += 'Focus regeneration on: repositioning the message while keeping tone and format.\n\n';
+      break;
+
+    default:
+      // Fallback for unknown feedbackType
+      guidance += `${severityLabel}**Feedback Type: ${feedbackType}**\n`;
+      if (feedback) guidance += `${feedback}\n\n`;
+      break;
+  }
+
+  return guidance;
+}
+
+/**
+ * PR #32: Build unstructured feedback guidance (backward compatibility).
+ *
+ * @private
+ */
+function _buildUnstructuredFeedbackGuidance(decisionContext) {
+  let guidance = '';
+
+  if (decisionContext.feedback) {
+    guidance += `**Reviewer Feedback:**\n${decisionContext.feedback}\n\n`;
+  }
+
+  if (decisionContext.revisionInstructions) {
+    guidance += `**Revision Instructions:**\n${decisionContext.revisionInstructions}\n\n`;
+  }
+
+  if (decisionContext.regenerationHint) {
+    guidance += `**Regeneration Hint:**\n${decisionContext.regenerationHint}\n\n`;
+  }
+
+  return guidance;
 }

@@ -23,7 +23,7 @@ const mockCheckpoints = new Map();
 let checkpointIdCounter = 1;
 
 vi.mock('../execution-checkpoint/index.js', () => ({
-  getCheckpoint: vi.fn(async (checkpointId) => {
+  getCheckpointById: vi.fn(async (checkpointId) => {
     return mockCheckpoints.get(checkpointId) || null;
   }),
   createCheckpoint: vi.fn(async (executionId, workspaceId, nodeId, serializedState, pauseReason) => {
