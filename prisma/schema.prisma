@@ -103,9 +103,11 @@ model Workspace {
   decisionMemory    DecisionMemory[]
   integrations      Integration[]
   auditLogs         AuditLog[]
-  artifacts         Artifact[]
-  artifactApprovals ArtifactApproval[]
-  approvalDecisions ApprovalDecision[]
+  artifacts                  Artifact[]
+  artifactApprovals          ArtifactApproval[]
+  approvalDecisions          ApprovalDecision[]
+  publishedCreatives         PublishedCreative[]
+  providerPerformanceMetrics ProviderPerformanceMetrics[]
 
   @@map("workspaces")
 }
@@ -436,10 +438,11 @@ model Artifact {
   metadata    Json? // Provider metadata (tokens, latency, requestId, model, etc.)
   createdAt   DateTime @default(now())
 
-  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  execution ExecutionRequest   @relation(fields: [executionId], references: [id], onDelete: Cascade)
-  approval  ArtifactApproval?
-  decisions ApprovalDecision[]
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  execution          ExecutionRequest    @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  approval           ArtifactApproval?
+  decisions          ApprovalDecision[]
+  publishedCreatives PublishedCreative[]
 
   @@index([workspaceId, type])
   @@index([executionId])
@@ -554,4 +557,85 @@ model ApprovalDecision {
   @@index([executionId])
   @@index([reviewerId])
   @@map("approval_decisions")
+}
+
+// ── PR #41: Outcome Attribution Engine ───────────────────────────
+// Links artifacts to Meta ads and tracks real business performance.
+// Enables provider routing based on actual CTR/CPC/ROAS, not just approval rates.
+//
+// Flow: Artifact → Approval (APPROVED) → PublishedCreative (Meta ad) → ProviderPerformanceMetrics (CTR/CPC/ROAS)
+//
+// Query patterns:
+// - Published artifacts: WHERE artifactId = ?
+// - Ad performance: WHERE metaAdId = ?
+// - Provider attribution: JOIN artifacts → publishedCreatives → performanceMetrics WHERE provider = ?
+// - Campaign performance: WHERE metaCampaignId = ?
+
+model PublishedCreative {
+  id          String   @id @default(cuid())
+  artifactId  String
+  workspaceId String   @db.Uuid
+
+  // Meta attribution
+  metaAdId       String // Meta ad ID
+  metaCampaignId String // Meta campaign ID
+  metaAdsetId    String? // Meta adset ID (optional)
+
+  // Publishing metadata
+  publishedBy String   @db.Uuid // User who published
+  publishedAt DateTime @default(now())
+
+  // Creative metadata
+  adName   String? // Meta ad name
+  adStatus String? // ACTIVE, PAUSED, ARCHIVED
+
+  // Relations
+  artifact           Artifact                     @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  workspace          Workspace                    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  performanceMetrics ProviderPerformanceMetrics[]
+
+  @@index([workspaceId, publishedAt(sort: Desc)])
+  @@index([artifactId])
+  @@index([metaAdId])
+  @@index([metaCampaignId])
+  @@map("published_creatives")
+}
+
+model ProviderPerformanceMetrics {
+  id                  String   @id @default(cuid())
+  publishedCreativeId String
+  workspaceId         String   @db.Uuid
+
+  // Attribution (denormalized for fast queries)
+  provider   String  // claude, openai, higgsfield
+  capability String  // GENERATE_HOOKS, GENERATE_CAPTIONS, etc.
+  model      String? // claude-opus-4, gpt-4, etc.
+
+  // Meta performance metrics
+  impressions Int   @default(0)
+  clicks      Int   @default(0)
+  ctr         Float? // Click-through rate (clicks / impressions)
+  cpc         Float? // Cost per click
+  spend       Float @default(0)
+  conversions Int   @default(0)
+  revenue     Float @default(0)
+  roas        Float? // Return on ad spend (revenue / spend)
+
+  // Performance period
+  startDate DateTime
+  endDate   DateTime
+
+  // Data freshness
+  fetchedAt DateTime @default(now())
+
+  // Relations
+  publishedCreative PublishedCreative @relation(fields: [publishedCreativeId], references: [id], onDelete: Cascade)
+  workspace         Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([publishedCreativeId, startDate, endDate])
+  @@index([workspaceId, fetchedAt(sort: Desc)])
+  @@index([publishedCreativeId])
+  @@index([provider, capability])
+  @@index([startDate, endDate])
+  @@map("provider_performance_metrics")
 }

@@ -50,6 +50,9 @@ const MAX_COST_PER_APPROVAL = process.env.MAX_COST_PER_APPROVAL
   ? parseFloat(process.env.MAX_COST_PER_APPROVAL)
   : null;
 
+// PR #41: Real performance optimization flags
+const REAL_PERFORMANCE_ENABLED = process.env.ENABLE_REAL_PERFORMANCE === 'true';
+
 /**
  * Determine if request should be in A/B test control group.
  * Uses deterministic hashing to ensure same identifier → same group.
@@ -73,6 +76,7 @@ function isInControlGroup(identifier, controlPercentage = AB_TEST_CONTROL_PERCEN
  *
  * PR #39: Now supports active routing with A/B testing.
  * PR #40: Now supports cost-quality optimization.
+ * PR #41: Now supports real performance optimization (CTR, ROAS).
  *
  * @param {string} capability - The capability to route
  * @param {object} options - Routing options
@@ -81,6 +85,7 @@ function isInControlGroup(identifier, controlPercentage = AB_TEST_CONTROL_PERCEN
  * @param {boolean} options.enableIntelligentRouting - Override feature flag (optional)
  * @param {boolean} options.enableActiveRouting - Override active routing flag (optional)
  * @param {boolean} options.optimizeForCost - Use cost-quality optimization (PR #40, optional)
+ * @param {boolean} options.optimizeForRealPerformance - Use real CTR/ROAS data (PR #41, optional)
  * @param {number} options.costWeight - Balance cost vs quality, 0-1 (PR #40, optional, default 0.5)
  * @param {number} options.maxCostPerApproval - Max cost per approval in USD (PR #40, optional)
  * @param {object} options.performanceOptions - Options to pass to performance scorer (optional)
@@ -93,6 +98,7 @@ export async function routeCapability(capability, options = {}) {
     enableIntelligentRouting = INTELLIGENT_ROUTING_ENABLED,
     enableActiveRouting = ACTIVE_ROUTING_ENABLED,
     optimizeForCost = COST_OPTIMIZATION_ENABLED,
+    optimizeForRealPerformance = REAL_PERFORMANCE_ENABLED,
     costWeight = 0.5,
     maxCostPerApproval = MAX_COST_PER_APPROVAL,
     performanceOptions = {},
@@ -117,6 +123,7 @@ export async function routeCapability(capability, options = {}) {
     bestProvider = await getBestProvider(capability, {
       workspaceId,
       optimizeForCost,
+      optimizeForRealPerformance,
       costWeight,
       maxCostPerApproval,
       ...performanceOptions,
@@ -292,12 +299,14 @@ export function getRoutingStats() {
     abTestControlPercentage: AB_TEST_CONTROL_PERCENTAGE,
     costOptimizationEnabled: COST_OPTIMIZATION_ENABLED,
     maxCostPerApproval: MAX_COST_PER_APPROVAL,
+    realPerformanceEnabled: REAL_PERFORMANCE_ENABLED,
     featureFlagSource: {
       intelligentRouting: process.env.ENABLE_INTELLIGENT_ROUTING ? 'env' : 'default',
       activeRouting: process.env.ENABLE_ACTIVE_ROUTING ? 'env' : 'default',
       abTestControl: process.env.AB_TEST_CONTROL_PERCENTAGE ? 'env' : 'default',
       costOptimization: process.env.ENABLE_COST_OPTIMIZATION ? 'env' : 'default',
       maxCostPerApproval: process.env.MAX_COST_PER_APPROVAL ? 'env' : 'default',
+      realPerformance: process.env.ENABLE_REAL_PERFORMANCE ? 'env' : 'default',
     },
   };
 }
