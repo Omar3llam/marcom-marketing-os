@@ -428,11 +428,8 @@ export async function resumeExecutionFromCheckpoint(checkpointId) {
       throw new Error(`Checkpoint ${checkpointId} not found`);
     }
 
-    // Validate checkpoint is resumable
-    if (checkpoint.status !== 'PAUSED_FOR_APPROVAL') {
-      throw new Error(`Checkpoint ${checkpointId} is not in PAUSED_FOR_APPROVAL state (current: ${checkpoint.status})`);
-    }
-
+    // Idempotency check BEFORE status validation (PR #29 fix)
+    // If already resumed, return cached result even if status changed
     if (checkpoint.resumedAt) {
       logger.warn({
         checkpointId,
@@ -446,6 +443,11 @@ export async function resumeExecutionFromCheckpoint(checkpointId) {
         alreadyResumed: true,
         resumedAt: checkpoint.resumedAt,
       };
+    }
+
+    // Validate checkpoint is resumable
+    if (checkpoint.status !== 'PAUSED_FOR_APPROVAL') {
+      throw new Error(`Checkpoint ${checkpointId} is not in PAUSED_FOR_APPROVAL state (current: ${checkpoint.status})`);
     }
 
     // Mark checkpoint as RESUMING
@@ -481,8 +483,20 @@ export async function resumeExecutionFromCheckpoint(checkpointId) {
       }
     }
 
+    // Get sorted nodes from graph and filter out already-executed ones
+    const sortedNodes = executionGraph.getSortedNodes();
+    const nodesToExecute = sortedNodes.filter(
+      node => !previousNodes.find(prev => prev.nodeId === node.id)
+    );
+
+    logger.debug({
+      totalNodes: sortedNodes.length,
+      previouslyExecuted: previousNodes.length,
+      toExecute: nodesToExecute.length,
+    }, '[RuntimeOrchestrator] resume execution plan');
+
     // Execute remaining nodes
-    for (const node of remainingNodes) {
+    for (const node of nodesToExecute) {
       // Check if node should be skipped due to failed dependencies
       if (executionGraph.shouldSkipNode(node.id)) {
         executionGraph.updateNodeStatus(node.id, NODE_STATUS.SKIPPED);
@@ -576,7 +590,8 @@ export async function resumeExecutionFromCheckpoint(checkpointId) {
     await markCheckpointResumed(checkpointId);
 
     // Calculate summary
-    const allNodes = [...previousNodes, ...executedNodes];
+    // executedNodes already includes previousNodes (initialized at line 467)
+    const allNodes = executedNodes;
     const summary = {
       totalNodes: plan.graph.nodes.length,
       successful: allNodes.filter(n => n.status === NODE_STATUS.SUCCESS).length,

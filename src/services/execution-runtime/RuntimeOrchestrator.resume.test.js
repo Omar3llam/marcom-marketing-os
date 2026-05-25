@@ -34,11 +34,17 @@ let executionIdCounter = 1;
 let artifactIdCounter = 1;
 let approvalIdCounter = 1;
 
+// Test control flags
+let shouldFailCheckpointCreation = false;
+
 vi.mock('@prisma/client', () => ({
   PrismaClient: function() {
     return {
       executionCheckpoint: {
         create: vi.fn(async ({ data }) => {
+          if (shouldFailCheckpointCreation) {
+            throw new Error('DB connection failed');
+          }
           const checkpoint = {
             id: `checkpoint_${checkpointIdCounter++}`,
             ...data,
@@ -182,6 +188,7 @@ describe('RuntimeOrchestrator - Interruptible Execution (PR #29)', () => {
     mockArtifacts.clear();
     mockApprovals.clear();
     checkpointIdCounter = 1;
+    shouldFailCheckpointCreation = false; // Reset flag
     executionIdCounter = 1;
     artifactIdCounter = 1;
     approvalIdCounter = 1;
@@ -466,10 +473,8 @@ describe('RuntimeOrchestrator - Interruptible Execution (PR #29)', () => {
         executionId: 'exec_checkpoint_fail_test',
       };
 
-      // Mock checkpoint creation failure
-      const { PrismaClient } = await import('@prisma/client');
-      const prisma = new PrismaClient();
-      prisma.executionCheckpoint.create = vi.fn().mockRejectedValue(new Error('DB connection failed'));
+      // Simulate checkpoint creation failure
+      shouldFailCheckpointCreation = true;
 
       registerTestExecutor('GENERATE_HOOK_VARIANTS', async () => ({
         success: true,
