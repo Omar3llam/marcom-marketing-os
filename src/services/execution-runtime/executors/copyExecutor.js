@@ -63,7 +63,7 @@ export async function executeCopyGeneration(nodeId, nodeType, context) {
     };
   }
 
-  // Success — return artifacts
+  // Success — return artifacts + metadata
   logger.debug({
     nodeId,
     nodeType,
@@ -76,5 +76,13 @@ export async function executeCopyGeneration(nodeId, nodeType, context) {
     success: true,
     output: result.output,
     artifacts: result.artifacts,
+    metadata: {
+      capability,
+      provider: result.metadata?.provider,
+      requestId: result.metadata?.requestId,
+      tokens: result.metadata?.tokens,
+      latency: result.metadata?.latency,
+      model: result.metadata?.model,
+    },
   };
 }

@@ -44,6 +44,9 @@ enum ExecutionStatus {
   SUCCESS
   FAILED
   PENDING
+  PAUSED_FOR_APPROVAL
+  RESUMING
+  RESUMED
 }
 
 enum ActionType {
@@ -94,12 +97,14 @@ model Workspace {
   name      String
   createdAt DateTime @default(now())
 
-  users          User[]
-  actions        Action[]
-  campaignStates CampaignState[]
-  decisionMemory DecisionMemory[]
-  integrations   Integration[]
-  auditLogs      AuditLog[]
+  users             User[]
+  actions           Action[]
+  campaignStates    CampaignState[]
+  decisionMemory    DecisionMemory[]
+  integrations      Integration[]
+  auditLogs         AuditLog[]
+  artifacts         Artifact[]
+  artifactApprovals ArtifactApproval[]
 
   @@map("workspaces")
 }
@@ -148,17 +153,17 @@ model OAuthToken {
 // ── Platform Integrations (encrypted tokens) ──────────────────
 
 model Integration {
-  id              String    @id @default(uuid()) @db.Uuid
-  workspaceId     String    @db.Uuid
-  platform        String    // e.g., "META", "GOOGLE"
-  accessToken     String    // Encrypted at rest
-  refreshToken    String?   // Encrypted at rest
-  expiresAt       DateTime?
-  lastSyncedAt    DateTime?
-  isActive        Boolean   @default(true)
-  metadata        Json?     // Platform-specific config (e.g., ad account IDs)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id           String    @id @default(uuid()) @db.Uuid
+  workspaceId  String    @db.Uuid
+  platform     String // e.g., "META", "GOOGLE"
+  accessToken  String // Encrypted at rest
+  refreshToken String? // Encrypted at rest
+  expiresAt    DateTime?
+  lastSyncedAt DateTime?
+  isActive     Boolean   @default(true)
+  metadata     Json? // Platform-specific config (e.g., ad account IDs)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -188,18 +193,18 @@ model Action {
 }
 
 model AuditLog {
-  id            String          @id @default(uuid()) @db.Uuid
-  workspaceId   String          @db.Uuid
-  userId        String          @db.Uuid
-  actionId      String?         @db.Uuid
-  actionType    ActionType
-  targetId      String          // Campaign ID, AdSet ID, etc.
-  platform      String          // e.g., "META", "GOOGLE"
-  status        ExecutionStatus @default(PENDING)
-  payload       Json?           // Original request payload
-  response      Json?           // Platform response
-  errorMessage  String?         // If status = FAILED
-  performedAt   DateTime        @default(now())
+  id           String          @id @default(uuid()) @db.Uuid
+  workspaceId  String          @db.Uuid
+  userId       String          @db.Uuid
+  actionId     String?         @db.Uuid
+  actionType   ActionType
+  targetId     String // Campaign ID, AdSet ID, etc.
+  platform     String // e.g., "META", "GOOGLE"
+  status       ExecutionStatus @default(PENDING)
+  payload      Json? // Original request payload
+  response     Json? // Platform response
+  errorMessage String? // If status = FAILED
+  performedAt  DateTime        @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   action    Action?   @relation(fields: [actionId], references: [id], onDelete: SetNull)
@@ -223,21 +228,23 @@ model ExecutionRequest {
   idempotencyKey String   @unique
   actionType     String
   targetId       String
-  status         String   // PENDING, QUEUED, EXECUTING, EXECUTED_SUCCESS, EXECUTED_FAILED, TIMED_OUT, CANCELLED
-  payload        Json?    // Original request payload
-  response       Json?    // Meta API response (success or error)
+  status         String // PENDING, QUEUED, EXECUTING, EXECUTED_SUCCESS, EXECUTED_FAILED, TIMED_OUT, CANCELLED
+  payload        Json? // Original request payload
+  response       Json? // Meta API response (success or error)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   // ── Phase 11B: Lifecycle Governance ───────────────────────
-  version        Int      @default(0)     // Optimistic concurrency control (OCC)
-  correlationId  String?                  // Correlation lineage for distributed tracing
-  activeStep     String?                  // Current orchestration step
-  retryMetadata  Json?                    // { attempt, maxAttempts, nextRetryAt }
+  version       Int     @default(0) // Optimistic concurrency control (OCC)
+  correlationId String? // Correlation lineage for distributed tracing
+  activeStep    String? // Current orchestration step
+  retryMetadata Json? // { attempt, maxAttempts, nextRetryAt }
 
   transitions    ExecutionTransition[]
   metrics        ExecutionMetric[]
   decisionMemory DecisionMemory[]
+  artifacts      Artifact[]
+  checkpoints    ExecutionCheckpoint[]
 
   @@index([workspaceId])
   @@index([createdAt])
@@ -260,26 +267,26 @@ model ExecutionRequest {
 // - Correlation lineage: WHERE correlationId = ? ORDER BY createdAt
 
 model ExecutionTransition {
-  id              String          @id @default(cuid())
-  executionId     String
-  workspaceId     String          @db.Uuid
+  id          String @id @default(cuid())
+  executionId String
+  workspaceId String @db.Uuid
 
-  fromStatus      String
-  toStatus        String
+  fromStatus String
+  toStatus   String
 
-  actor           TransitionActor
+  actor TransitionActor
 
-  correlationId   String?
-  reason          String?         // e.g., "sse_disconnect", "timeout_exceeded", "user_cancel"
+  correlationId String?
+  reason        String? // e.g., "sse_disconnect", "timeout_exceeded", "user_cancel"
 
   previousVersion Int
   newVersion      Int
 
-  metadata        Json?           // Optional metadata (e.g., retry attempt, error context)
+  metadata Json? // Optional metadata (e.g., retry attempt, error context)
 
-  createdAt       DateTime        @default(now())
+  createdAt DateTime @default(now())
 
-  execution       ExecutionRequest @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  execution ExecutionRequest @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@index([executionId, createdAt])
   @@index([workspaceId, createdAt(sort: Desc)])
@@ -294,30 +301,61 @@ model ExecutionTransition {
 // READ-ONLY from the observability layer — never mutates execution state.
 
 model ExecutionMetric {
-  id              String   @id @default(cuid())
-  executionId     String
-  workspaceId     String   @db.Uuid
+  id          String @id @default(cuid())
+  executionId String
+  workspaceId String @db.Uuid
 
   // Timing (derived from ExecutionTransition audit log)
-  queueWaitMs     Int?     // PENDING → EXECUTING elapsed ms
-  executionMs     Int?     // EXECUTING → terminal elapsed ms
+  queueWaitMs Int? // PENDING → EXECUTING elapsed ms
+  executionMs Int? // EXECUTING → terminal elapsed ms
 
   // Outcome counters
-  retryCount      Int      @default(0)
-  timeoutOccurred Boolean  @default(false)
+  retryCount      Int     @default(0)
+  timeoutOccurred Boolean @default(false)
 
   // Agent attribution (from execution response payload)
-  agentUsed       String?  // "claude" | "openai" | "hybrid"
-  tokenEstimate   Int?
+  agentUsed     String? // "claude" | "openai" | "hybrid"
+  tokenEstimate Int?
 
-  finalStatus     String   // EXECUTED_SUCCESS | EXECUTED_FAILED | TIMED_OUT
-  recordedAt      DateTime @default(now())
+  finalStatus String // EXECUTED_SUCCESS | EXECUTED_FAILED | TIMED_OUT
+  recordedAt  DateTime @default(now())
 
   execution ExecutionRequest @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, recordedAt(sort: Desc)])
   @@index([executionId])
   @@map("execution_metrics")
+}
+
+// ── PR #29: Execution Checkpoints ────────────────────────────
+// Persistent state snapshots for resumable execution.
+// Enables pause/resume capability for human-in-the-loop approval workflows.
+//
+// Architectural Law:
+// Every execution pause must create a durable checkpoint.
+//
+// Query patterns:
+// - Latest checkpoint: WHERE executionId = ? ORDER BY createdAt DESC LIMIT 1
+// - Resume candidates: WHERE status = 'PAUSED' AND resumedAt IS NULL
+// - Checkpoint timeline: WHERE executionId = ? ORDER BY createdAt
+
+model ExecutionCheckpoint {
+  id              String    @id @default(cuid())
+  executionId     String
+  workspaceId     String    @db.Uuid
+  nodeId          String // Current node position in execution graph
+  status          String // PAUSED_FOR_APPROVAL, RESUMING, RESUMED
+  serializedState Json // Full execution graph state for deterministic resume
+  pausedReason    String? // e.g., "awaiting_artifact_approval", "manual_pause"
+  createdAt       DateTime  @default(now())
+  resumedAt       DateTime?
+
+  execution ExecutionRequest @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  @@index([executionId, createdAt(sort: Desc)])
+  @@index([workspaceId, status])
+  @@index([status])
+  @@map("execution_checkpoints")
 }
 
 // ── Temporal Intelligence ────────────────────────────────────
@@ -350,8 +388,8 @@ model DecisionMemory {
   confidence    Float
   createdAt     DateTime @default(now())
 
-  workspace  Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  execution  ExecutionRequest @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  workspace Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  execution ExecutionRequest @relation(fields: [executionId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([executionId])
@@ -371,4 +409,90 @@ model WebhookEvent {
 
   @@index([provider, status])
   @@map("webhook_events")
+}
+
+// ── PR #27: Artifact Storage ─────────────────────────────────
+// Persistent storage for AI-generated artifacts (hooks, captions,
+// visual briefs, etc.). Supports versioning, retrieval, and
+// metadata tracking. Actual artifact content stored via adapter
+// (local filesystem or S3), this table tracks metadata + location.
+
+model Artifact {
+  id          String   @id @default(cuid())
+  workspaceId String   @db.Uuid
+  executionId String
+  nodeId      String
+  nodeType    String
+  type        String // 'hook', 'caption', 'visual_brief', 'audience_hypothesis', 'angle', etc.
+  storageKey  String // Adapter-specific storage location (local path or S3 key)
+  capability  String // GENERATE_HOOKS, GENERATE_CAPTIONS, etc.
+  provider    String // CLAUDE, OPENAI
+  version     Int      @default(1)
+  size        Int? // Artifact size in bytes
+  contentHash String? // SHA256 hash for deduplication
+  content     String? // Optional: store small artifacts inline (< 1KB)
+  metadata    Json? // Provider metadata (tokens, latency, requestId, model, etc.)
+  createdAt   DateTime @default(now())
+
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  execution ExecutionRequest  @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  approval  ArtifactApproval?
+
+  @@index([workspaceId, type])
+  @@index([executionId])
+  @@index([nodeId])
+  @@index([createdAt(sort: Desc)])
+  @@index([contentHash])
+  @@map("artifacts")
+}
+
+// ── PR #28: Artifact Approval Workflow ───────────────────────────
+// Human-in-the-loop approval system for AI-generated artifacts.
+// Enables review/approve/reject flow before publishing.
+// Phase 1: Approval tracking (no runtime pause/resume yet).
+//
+// ── PR #30: Approval Decision Engine ─────────────────────────────
+// Rich decision semantics beyond boolean approve/reject.
+// Enables selective re-execution, escalation, and revision requests.
+//
+// Decision taxonomy:
+// - APPROVED: Artifact ready for publishing
+// - REJECTED: Artifact discarded, execution continues
+// - REQUEST_REVISION: Request changes with specific instructions
+// - REGENERATE: Re-run generation node with same inputs
+// - ESCALATE: Route to human reviewer/manager for decision
+//
+// Architectural Law:
+// rejection ≠ regeneration — different failure modes need different responses.
+
+model ArtifactApproval {
+  id          String @id @default(cuid())
+  artifactId  String @unique
+  workspaceId String @db.Uuid
+
+  status     String // PENDING, COMPLETED (workflow state)
+  decision   String? // APPROVED, REJECTED, REQUEST_REVISION, REGENERATE, ESCALATE (decision outcome)
+  reviewerId String? @db.Uuid // User who made the decision
+  feedback   String? // Decision reason/notes
+
+  // PR #30: Rich decision metadata
+  decisionMetadata Json? // { revisionInstructions, targetNodes, escalationReason, regenerationHint }
+  escalatedTo      String? @db.Uuid // User/role ID for escalation target
+  escalatedAt      DateTime?
+
+  approvedAt DateTime?
+  rejectedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  artifact  Artifact  @relation(fields: [artifactId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@index([artifactId])
+  @@index([status])
+  @@index([decision])
+  @@index([escalatedTo])
+  @@index([createdAt(sort: Desc)])
+  @@map("artifact_approvals")
 }
