@@ -38,7 +38,7 @@ import { RUNTIME_EVENT, EXECUTION_STATUS, NODE_STATUS } from './runtimeEvents.js
 import { logger }                 from '../../utils/logger.js';
 import { storeArtifact }          from '../artifact-storage/index.js';
 import { createApprovalRequest, artifactRequiresApproval } from '../artifact-approval/index.js';
-import { createCheckpoint, getCheckpoint, PAUSE_REASONS } from '../execution-checkpoint/index.js';
+import { createCheckpoint, getLatestCheckpoint, getCheckpointById, PAUSE_REASONS } from '../execution-checkpoint/index.js';
 
 const MAX_RETRIES = 3;
 
@@ -648,7 +648,7 @@ export async function resumeExecutionFromCheckpoint(checkpointId) {
 export async function reExecuteNodes(checkpointId, nodeIdsToReExecute, decisionContext = {}) {
   try {
     // Load checkpoint
-    const checkpoint = await getCheckpoint(checkpointId);
+    const checkpoint = await getCheckpointById(checkpointId);
 
     if (!checkpoint) {
       throw new Error(`Checkpoint ${checkpointId} not found`);

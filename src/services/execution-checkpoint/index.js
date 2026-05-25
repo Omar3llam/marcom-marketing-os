@@ -88,6 +88,27 @@ export async function createCheckpoint(
 }
 
 /**
+ * Get checkpoint by ID
+ * @param {string} checkpointId - Checkpoint ID
+ * @returns {Promise<object|null>} Checkpoint or null
+ */
+export async function getCheckpointById(checkpointId) {
+  try {
+    const checkpoint = await prisma.executionCheckpoint.findUnique({
+      where: { id: checkpointId },
+    });
+
+    return checkpoint;
+  } catch (error) {
+    logger.error({
+      error: error.message,
+      checkpointId,
+    }, '[checkpoint] failed to retrieve checkpoint by ID');
+    throw error;
+  }
+}
+
+/**
  * Get latest checkpoint for execution
  * @param {string} executionId - Execution ID
  * @returns {Promise<object|null>} Latest checkpoint or null
