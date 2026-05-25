@@ -2,7 +2,10 @@
 // AI Gateway — visual brief prompts
 // ============================================================
 // Prompt templates for visual strategy and image generation briefs.
+//
+// PR #34: Integrated with Selective Prompt Mutation Engine
 // ============================================================
+import { applyPromptMutation, hasMutationRule } from './promptMutationEngine.js';
 
 export const VISUAL_BRIEF_PROMPTS = Object.freeze({
   GENERATE_VISUAL_BRIEF: {
@@ -172,20 +175,32 @@ export function buildVisualBriefPrompt(capability, variables, decisionContext = 
     prompt = prompt.replace(new RegExp(`\\{${key}\\}`, 'g'), stringValue);
   }
 
-  // PR #32/33: Append decision context if present (re-execution guidance)
-  if (decisionContext.isReExecution) {
+  // PR #34: Apply selective prompt mutation if structured feedback exists
+  if (decisionContext.isReExecution && decisionContext.feedbackType && hasMutationRule(decisionContext.feedbackType)) {
+    // Use mutation engine for surgical modifications
+    prompt = applyPromptMutation(prompt, {
+      feedbackType: decisionContext.feedbackType,
+      severity: decisionContext.severity,
+      feedback: decisionContext.feedback,
+      preserveAspects: decisionContext.preserveAspects,
+    });
+
+    // Add re-execution context header
+    prompt += '\n\n---\n\n**RE-EXECUTION CONTEXT:**\n';
+    prompt += 'This is a regeneration based on structured reviewer feedback. ';
+    prompt += 'See modified REQUIREMENTS section above for targeted constraints.\n';
+
+  } else if (decisionContext.isReExecution) {
+    // PR #32/33: Fallback to append-only approach (backward compatibility)
     prompt += '\n\n---\n\n**RE-EXECUTION CONTEXT:**\n';
     prompt += 'This is a regeneration based on reviewer feedback.\n\n';
 
-    // PR #33: Build targeted guidance based on feedbackType
     if (decisionContext.feedbackType) {
       prompt += _buildStructuredVisualFeedbackGuidance(decisionContext);
     } else {
-      // PR #32: Fallback to unstructured feedback (backward compat)
       prompt += _buildUnstructuredFeedbackGuidance(decisionContext);
     }
 
-    // PR #33: Specify what to preserve
     if (decisionContext.preserveAspects?.length > 0) {
       const aspectsList = decisionContext.preserveAspects
         .map(aspect => `- ${aspect.replace('_', ' ')}`)

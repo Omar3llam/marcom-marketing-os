@@ -1,8 +1,11 @@
 // ============================================================
-// Structured Feedback Prompt Building Tests — PR #33
+// Structured Feedback Prompt Building Tests — PR #33/34
 // ============================================================
 // Verifies that prompt builders generate targeted guidance
 // based on structured feedback (feedbackType + severity + preserveAspects).
+//
+// PR #34 UPDATE: Tests now expect mutation engine format (surgical REQUIREMENTS
+// modifications) instead of append-only format.
 // ============================================================
 import { describe, it, expect } from 'vitest';
 import { buildCopyPrompt } from './copyPrompts.js';
@@ -29,12 +32,12 @@ describe('Structured Feedback Prompt Building', () => {
 
       const prompt = buildCopyPrompt('GENERATE_HOOKS', variables, decisionContext);
 
-      expect(prompt).toContain('RE-EXECUTION CONTEXT');
-      expect(prompt).toContain('[HIGH PRIORITY]');
-      expect(prompt).toContain('Issue: Hook Angle');
-      expect(prompt).toContain('psychological trigger');
+      // PR #34: Mutation engine injects into REQUIREMENTS section
+      expect(prompt).toContain('REQUIREMENTS:');
+      expect(prompt).toContain('CRITICAL: Change the psychological trigger');
       expect(prompt).toContain('Add urgency trigger in first 5 words');
-      expect(prompt).toContain('changing the hook angle');
+      expect(prompt).toContain('RE-EXECUTION CONTEXT');
+      expect(prompt).toContain('structured reviewer feedback');
     });
 
     it('should build targeted guidance for TONE feedback', () => {
@@ -54,11 +57,9 @@ describe('Structured Feedback Prompt Building', () => {
 
       const prompt = buildCopyPrompt('GENERATE_HOOKS', variables, decisionContext);
 
-      expect(prompt).toContain('[MEDIUM PRIORITY]');
-      expect(prompt).toContain('Issue: Tone');
-      expect(prompt).toContain('voice/personality');
+      // PR #34: Mutation engine format
+      expect(prompt).toContain('IMPORTANT: Adjust voice/personality');
       expect(prompt).toContain('Too formal, needs to be more casual');
-      expect(prompt).toContain('adjusting tone');
     });
 
     it('should include preserveAspects in prompt', () => {
@@ -77,7 +78,8 @@ describe('Structured Feedback Prompt Building', () => {
 
       const prompt = buildCopyPrompt('GENERATE_HOOKS', variables, decisionContext);
 
-      expect(prompt).toContain('DO NOT CHANGE');
+      // PR #34: Preservation constraints in REQUIREMENTS section
+      expect(prompt).toContain('PRESERVE (do not change):');
       expect(prompt).toContain('brand voice');
       expect(prompt).toContain('cta');
     });
@@ -124,11 +126,9 @@ describe('Structured Feedback Prompt Building', () => {
 
       const prompt = buildVisualBriefPrompt('GENERATE_VISUAL_BRIEF', variables, decisionContext);
 
-      expect(prompt).toContain('[HIGH PRIORITY]');
-      expect(prompt).toContain('Issue: Visual Concept');
-      expect(prompt).toContain('visual idea/metaphor');
-      expect(prompt).toContain('Concept too generic');
-      expect(prompt).toContain('developing a new visual concept');
+      // PR #34: Mutation engine format
+      expect(prompt).toContain('CRITICAL: Develop new visual concept/metaphor');
+      expect(prompt).toContain('Concept too generic, needs more specificity');
     });
 
     it('should build targeted guidance for COLOR_PALETTE feedback', () => {
@@ -149,9 +149,10 @@ describe('Structured Feedback Prompt Building', () => {
 
       const prompt = buildVisualBriefPrompt('GENERATE_VISUAL_BRIEF', variables, decisionContext);
 
-      expect(prompt).toContain('Issue: Color Palette');
-      expect(prompt).toContain('selecting new colors');
-      expect(prompt).toContain('DO NOT CHANGE');
+      // PR #34: Mutation engine format
+      expect(prompt).toContain('IMPORTANT: Select new color palette');
+      expect(prompt).toContain('Colors too muted, need more vibrance');
+      expect(prompt).toContain('PRESERVE (do not change):');
       expect(prompt).toContain('visual concept');
     });
   });
@@ -173,10 +174,9 @@ describe('Structured Feedback Prompt Building', () => {
 
       const prompt = buildCaptionPrompt('GENERATE_AUDIENCE_HYPOTHESES', variables, decisionContext);
 
-      expect(prompt).toContain('[HIGH PRIORITY]');
-      expect(prompt).toContain('Issue: Audience Fit');
-      expect(prompt).toContain('demographic/psychographic');
-      expect(prompt).toContain('Too broad, need to narrow');
+      // PR #34: Mutation engine format
+      expect(prompt).toContain('CRITICAL: Improve resonance with target audience');
+      expect(prompt).toContain('Too broad, need to narrow to tech professionals');
     });
 
     it('should build targeted guidance for CREATIVE_ANGLE feedback', () => {
@@ -196,7 +196,8 @@ describe('Structured Feedback Prompt Building', () => {
 
       const prompt = buildCaptionPrompt('GENERATE_ANGLE_VARIANTS', variables, decisionContext);
 
-      expect(prompt).toContain('Issue: Creative Angle');
+      // PR #34: Mutation engine format
+      expect(prompt).toContain('IMPORTANT: Change creative angle');
       expect(prompt).toContain('problem-solution vs aspirational');
       expect(prompt).toContain('Try aspirational instead');
     });
