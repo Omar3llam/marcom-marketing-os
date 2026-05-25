@@ -19,17 +19,33 @@ import { NODE_STATUS } from './runtimeEvents.js';
 
 export class ExecutionGraph {
   constructor({ nodes, edges }) {
-    this.nodeTypes = nodes;
     this.edges = edges;
 
-    // Create node metadata
-    this.nodes = nodes.map((type, index) => ({
-      id: `${type}_${index}`,
-      type,
-      status: NODE_STATUS.PENDING,
-      dependencies: [],
-      dependents: [],
-    }));
+    // Support both string[] and object[] formats for nodes
+    // String format: ['NODE_TYPE_1', 'NODE_TYPE_2', ...]
+    // Object format: [{ type: 'NODE_TYPE_1', id?: string, requiresApproval?: boolean }, ...]
+    this.nodes = nodes.map((node, index) => {
+      // Normalize to object format
+      const normalized = typeof node === 'string'
+        ? { type: node }
+        : node;
+
+      // Generate ID if not provided
+      const id = normalized.id || `${normalized.type}_${index}`;
+
+      return {
+        id,
+        type: normalized.type,
+        status: NODE_STATUS.PENDING,
+        dependencies: [],
+        dependents: [],
+        // PR #29: Support requiresApproval flag for interruptible execution
+        requiresApproval: normalized.requiresApproval || false,
+      };
+    });
+
+    // Keep backward compatibility for nodeTypes (deprecated, use nodes)
+    this.nodeTypes = nodes.map(n => typeof n === 'string' ? n : n.type);
 
     // Build dependency map
     this._buildDependencyMap();

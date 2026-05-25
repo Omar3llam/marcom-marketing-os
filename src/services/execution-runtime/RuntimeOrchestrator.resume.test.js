@@ -107,16 +107,40 @@ vi.mock('@prisma/client', () => ({
   },
 }));
 
-// Mock artifact storage adapter (filesystem/S3)
-vi.mock('../../adapters/storage-adapter.js', () => ({
-  storageAdapter: {
-    save: vi.fn(async (key, content) => {
-      return { key, size: content.length, contentHash: 'mock-hash' };
-    }),
-    retrieve: vi.fn(async (key) => 'mock artifact content'),
-    delete: vi.fn(async (key) => true),
-    exists: vi.fn(async (key) => true),
-  },
+// Mock artifact storage service
+let artifactCounter = 1;
+vi.mock('../artifact-storage/index.js', () => ({
+  storeArtifact: vi.fn().mockImplementation(async ({ workspaceId, executionId, nodeId, type, content }) => {
+    const artifactId = `artifact_${artifactCounter++}`;
+    const artifact = {
+      id: artifactId,
+      workspaceId,
+      executionId,
+      nodeId,
+      type,
+      storageKey: `test/${artifactId}`,
+      duplicate: false,
+    };
+    return artifact;
+  }),
+}));
+
+// Mock artifact approval service
+let approvalCounter = 1;
+vi.mock('../artifact-approval/index.js', () => ({
+  createApprovalRequest: vi.fn().mockImplementation(async ({ workspaceId, artifactId }) => {
+    const approvalId = `approval_${approvalCounter++}`;
+    const approval = {
+      id: approvalId,
+      workspaceId,
+      artifactId,
+      status: 'PENDING',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    return approval;
+  }),
+  artifactRequiresApproval: vi.fn().mockReturnValue(true),
 }));
 
 // Mock Node Executors
@@ -150,6 +174,9 @@ function registerTestExecutor(nodeType, executorFn) {
 
 describe('RuntimeOrchestrator - Interruptible Execution (PR #29)', () => {
   beforeEach(() => {
+    // Reset artifact and approval counters
+    artifactCounter = 1;
+    approvalCounter = 1;
     mockCheckpoints.clear();
     mockExecutions.clear();
     mockArtifacts.clear();
