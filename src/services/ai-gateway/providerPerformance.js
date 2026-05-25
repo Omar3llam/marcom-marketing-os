@@ -1,5 +1,5 @@
 // ============================================================
-// Provider Performance Scorer — PR #38
+// Provider Performance Scorer — PR #38 + PR #40
 // ============================================================
 // Queries approval decision analytics to score AI providers
 // by capability, enabling data-driven provider routing.
@@ -7,6 +7,9 @@
 // USAGE:
 //   const scores = await getProviderPerformance('GENERATE_HOOKS');
 //   // Returns ranked list of providers with approval rates
+//
+//   const costScores = await getProviderCostPerformance('GENERATE_HOOKS');
+//   // Returns ranked list with cost-quality ratio (PR #40)
 //
 // CACHING:
 //   Results cached in-memory with 5-minute TTL to avoid
@@ -16,9 +19,15 @@
 //   Primary: approval rate (% of APPROVED decisions)
 //   Secondary: risk score (weighted rejection/regen count)
 //   Tertiary: total sample size (confidence penalty for low N)
+//
+// PR #40 — COST-QUALITY SCORING:
+//   Cost per approval: execution cost / approval rate
+//   Quality score: approval rate × confidence (0-100)
+//   Value score: quality score / cost per approval (higher is better)
 // ============================================================
 import { PrismaClient } from '@prisma/client';
 import { logger } from '../../utils/logger.js';
+import { calculateCostPerApproval, calculateExecutionCost } from './providerCosts.js';
 
 const prisma = new PrismaClient();
 
@@ -168,9 +177,29 @@ export async function getProviderPerformance(capability, options = {}) {
  *
  * @param {string} capability - The capability to route
  * @param {object} options - Query options (same as getProviderPerformance)
+ * @param {boolean} options.optimizeForCost - Use cost-quality optimization (PR #40)
+ * @param {number} options.costWeight - Weight for cost vs quality (0-1, default 0.5)
  * @returns {Promise<{ provider: string, score: object, reason: string } | null>}
  */
 export async function getBestProvider(capability, options = {}) {
+  const { optimizeForCost = false, costWeight = 0.5 } = options;
+
+  // PR #40: Use cost-quality optimization if enabled
+  if (optimizeForCost) {
+    const costScores = await getProviderCostPerformance(capability, { ...options, costWeight });
+    if (costScores.length === 0) {
+      return null;
+    }
+
+    const best = costScores[0];
+    return {
+      provider: best.provider,
+      score: best,
+      reason: `${best.approvalRate}% approval rate, $${best.costPerApproval.toFixed(4)}/approval (value score: ${best.valueScore.toFixed(2)}, ${best.total} decisions)`,
+    };
+  }
+
+  // Original PR #38 behavior: pure quality optimization
   const scores = await getProviderPerformance(capability, options);
 
   if (scores.length === 0) {
@@ -184,6 +213,91 @@ export async function getBestProvider(capability, options = {}) {
     score: best,
     reason: `${best.approvalRate}% approval rate (${best.total} decisions, ${Math.round(best.confidence * 100)}% confidence)`,
   };
+}
+
+// ============================================================
+// PR #40 — Cost-Quality Optimization
+// ============================================================
+
+/**
+ * Get provider performance with cost-quality metrics.
+ *
+ * @param {string} capability - The capability to score
+ * @param {object} options - Query options (same as getProviderPerformance)
+ * @param {number} options.costWeight - Weight for cost optimization (0=pure quality, 1=pure cost, default 0.5)
+ * @param {number} options.maxCostPerApproval - Maximum cost per approval filter (USD, optional)
+ * @returns {Promise<Array<{ provider, approvalRate, riskScore, total, confidence, executionCost, costPerApproval, qualityScore, valueScore }>>}
+ */
+export async function getProviderCostPerformance(capability, options = {}) {
+  const { costWeight = 0.5, maxCostPerApproval = null } = options;
+
+  // Get base performance scores
+  const performanceScores = await getProviderPerformance(capability, options);
+
+  if (performanceScores.length === 0) {
+    return [];
+  }
+
+  // Enrich with cost data
+  const costScores = [];
+
+  for (const score of performanceScores) {
+    const executionCost = calculateExecutionCost(score.provider, capability);
+    const costPerApproval = calculateCostPerApproval(score.provider, capability, score.approvalRate);
+
+    // Skip providers with no cost data
+    if (executionCost === null || costPerApproval === null) {
+      logger.debug({
+        capability,
+        provider: score.provider,
+      }, '[providerPerformance] skipping provider (no cost data)');
+      continue;
+    }
+
+    // Filter by max cost per approval if specified
+    if (maxCostPerApproval !== null && costPerApproval > maxCostPerApproval) {
+      logger.debug({
+        capability,
+        provider: score.provider,
+        costPerApproval,
+        maxCostPerApproval,
+      }, '[providerPerformance] skipping provider (exceeds max cost per approval)');
+      continue;
+    }
+
+    // Quality score: approval rate weighted by confidence (0-100)
+    const qualityScore = score.approvalRate * score.confidence;
+
+    // Value score: hybrid of quality and cost
+    // Higher quality score = better, Lower cost = better
+    // Normalize cost to 0-100 scale (assuming $0.01-$1.00 range)
+    const normalizedCost = Math.min(100, (costPerApproval / 0.01) * 100);
+    const costScore = 100 - normalizedCost; // Invert so higher is better
+
+    // Weighted combination (default 50/50)
+    const valueScore = (qualityScore * (1 - costWeight)) + (costScore * costWeight);
+
+    costScores.push({
+      ...score,
+      executionCost: Math.round(executionCost * 10000) / 10000,   // 4 decimals
+      costPerApproval: Math.round(costPerApproval * 10000) / 10000, // 4 decimals
+      qualityScore: Math.round(qualityScore * 100) / 100,          // 2 decimals
+      valueScore: Math.round(valueScore * 100) / 100,              // 2 decimals
+    });
+  }
+
+  // Sort by value score (descending)
+  costScores.sort((a, b) => b.valueScore - a.valueScore);
+
+  logger.info({
+    capability,
+    providersScored: costScores.length,
+    topProvider: costScores[0]?.provider,
+    topValueScore: costScores[0]?.valueScore,
+    topCostPerApproval: costScores[0]?.costPerApproval,
+  }, '[providerPerformance] cost-quality scores calculated');
+
+  return costScores;
 }
 
 // ============================================================

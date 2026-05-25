@@ -1,5 +1,5 @@
 // ============================================================
-// Intelligent Provider Router — PR #38 + PR #39
+// Intelligent Provider Router — PR #38 + PR #39 + PR #40
 // ============================================================
 // Routes AI capabilities to providers based on approval analytics
 // performance data, with fallback to static registry.
@@ -8,7 +8,8 @@
 //   const registration = await routeCapability('GENERATE_HOOKS', {
 //     workspaceId: 'ws-123',
 //     enableIntelligentRouting: true,
-//     enableActiveRouting: true
+//     enableActiveRouting: true,
+//     optimizeForCost: true,  // PR #40
 //   });
 //   // Returns { provider, method, routingDecision }
 //
@@ -21,10 +22,17 @@
 //      b. 90% treatment group → analytics-recommended provider
 //   5. If analytics provider doesn't support capability → static fallback
 //
+// PR #40 — COST OPTIMIZATION:
+//   - optimizeForCost: Use cost-quality value score instead of pure quality
+//   - costWeight: Balance between cost (1.0) and quality (0.0), default 0.5
+//   - maxCostPerApproval: Hard limit on cost per approved artifact
+//
 // FEATURE FLAGS:
 //   ENABLE_INTELLIGENT_ROUTING=true  (default: false, enables analytics query)
 //   ENABLE_ACTIVE_ROUTING=true       (default: false, enables provider switching)
 //   AB_TEST_CONTROL_PERCENTAGE=10    (default: 10, % in control group)
+//   ENABLE_COST_OPTIMIZATION=true    (default: false, PR #40)
+//   MAX_COST_PER_APPROVAL=0.10       (default: null, PR #40)
 // ============================================================
 import crypto from 'crypto';
 import { getProviderForCapability, getMethodForProvider } from './providerRegistry.js';
@@ -35,6 +43,12 @@ import { logger } from '../../utils/logger.js';
 const INTELLIGENT_ROUTING_ENABLED = process.env.ENABLE_INTELLIGENT_ROUTING === 'true';
 const ACTIVE_ROUTING_ENABLED = process.env.ENABLE_ACTIVE_ROUTING === 'true';
 const AB_TEST_CONTROL_PERCENTAGE = parseInt(process.env.AB_TEST_CONTROL_PERCENTAGE || '10', 10);
+
+// PR #40: Cost optimization flags
+const COST_OPTIMIZATION_ENABLED = process.env.ENABLE_COST_OPTIMIZATION === 'true';
+const MAX_COST_PER_APPROVAL = process.env.MAX_COST_PER_APPROVAL
+  ? parseFloat(process.env.MAX_COST_PER_APPROVAL)
+  : null;
 
 /**
  * Determine if request should be in A/B test control group.
@@ -58,6 +72,7 @@ function isInControlGroup(identifier, controlPercentage = AB_TEST_CONTROL_PERCEN
  * Route a capability to the best-performing provider.
  *
  * PR #39: Now supports active routing with A/B testing.
+ * PR #40: Now supports cost-quality optimization.
  *
  * @param {string} capability - The capability to route
  * @param {object} options - Routing options
@@ -65,6 +80,9 @@ function isInControlGroup(identifier, controlPercentage = AB_TEST_CONTROL_PERCEN
  * @param {string} options.requestId - Request ID for A/B test bucketing (optional)
  * @param {boolean} options.enableIntelligentRouting - Override feature flag (optional)
  * @param {boolean} options.enableActiveRouting - Override active routing flag (optional)
+ * @param {boolean} options.optimizeForCost - Use cost-quality optimization (PR #40, optional)
+ * @param {number} options.costWeight - Balance cost vs quality, 0-1 (PR #40, optional, default 0.5)
+ * @param {number} options.maxCostPerApproval - Max cost per approval in USD (PR #40, optional)
  * @param {object} options.performanceOptions - Options to pass to performance scorer (optional)
  * @returns {Promise<{ provider: string, method: function, routingDecision: object }>}
  */
@@ -74,6 +92,9 @@ export async function routeCapability(capability, options = {}) {
     requestId = null,
     enableIntelligentRouting = INTELLIGENT_ROUTING_ENABLED,
     enableActiveRouting = ACTIVE_ROUTING_ENABLED,
+    optimizeForCost = COST_OPTIMIZATION_ENABLED,
+    costWeight = 0.5,
+    maxCostPerApproval = MAX_COST_PER_APPROVAL,
     performanceOptions = {},
   } = options;
 
@@ -95,6 +116,9 @@ export async function routeCapability(capability, options = {}) {
   try {
     bestProvider = await getBestProvider(capability, {
       workspaceId,
+      optimizeForCost,
+      costWeight,
+      maxCostPerApproval,
       ...performanceOptions,
     });
   } catch (error) {
@@ -266,10 +290,14 @@ export function getRoutingStats() {
     intelligentRoutingEnabled: INTELLIGENT_ROUTING_ENABLED,
     activeRoutingEnabled: ACTIVE_ROUTING_ENABLED,
     abTestControlPercentage: AB_TEST_CONTROL_PERCENTAGE,
+    costOptimizationEnabled: COST_OPTIMIZATION_ENABLED,
+    maxCostPerApproval: MAX_COST_PER_APPROVAL,
     featureFlagSource: {
       intelligentRouting: process.env.ENABLE_INTELLIGENT_ROUTING ? 'env' : 'default',
       activeRouting: process.env.ENABLE_ACTIVE_ROUTING ? 'env' : 'default',
       abTestControl: process.env.AB_TEST_CONTROL_PERCENTAGE ? 'env' : 'default',
+      costOptimization: process.env.ENABLE_COST_OPTIMIZATION ? 'env' : 'default',
+      maxCostPerApproval: process.env.MAX_COST_PER_APPROVAL ? 'env' : 'default',
     },
   };
 }
