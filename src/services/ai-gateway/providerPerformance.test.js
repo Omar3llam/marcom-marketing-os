@@ -172,19 +172,23 @@ describe('Provider Performance Scorer (PR #38)', () => {
         { provider: 'claude', decision: 'APPROVED' },
       ];
 
+      // Use fixed dates to ensure cache key remains the same
+      const startDate = new Date('2026-05-01');
+      const endDate = new Date('2026-05-25');
+
       mockFindMany.mockResolvedValue(mockDecisions);
 
       // First call - should hit DB
-      await getProviderPerformance('GENERATE_HOOKS');
+      await getProviderPerformance('GENERATE_HOOKS', { startDate, endDate });
       expect(mockFindMany).toHaveBeenCalledTimes(1);
 
       // Second call - should use cache
-      await getProviderPerformance('GENERATE_HOOKS');
+      await getProviderPerformance('GENERATE_HOOKS', { startDate, endDate });
       expect(mockFindMany).toHaveBeenCalledTimes(1); // Still 1 (cache hit)
 
       // Clear cache and call again - should hit DB
       clearPerformanceCache();
-      await getProviderPerformance('GENERATE_HOOKS');
+      await getProviderPerformance('GENERATE_HOOKS', { startDate, endDate });
       expect(mockFindMany).toHaveBeenCalledTimes(2);
     });
 
