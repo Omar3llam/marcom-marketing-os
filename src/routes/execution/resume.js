@@ -34,7 +34,7 @@
 import { PrismaClient } from '@prisma/client';
 import { resumeExecutionFromCheckpoint } from '../../services/execution-runtime/RuntimeOrchestrator.js';
 import { getLatestCheckpoint } from '../../services/execution-checkpoint/index.js';
-import { executeDecision, DECISION_TYPE } from '../../services/approval-decision/index.js';
+import { executeDecision } from '../../services/approval-decision/index.js';
 import { logger } from '../../utils/logger.js';
 
 const prisma = new PrismaClient();
@@ -171,7 +171,7 @@ async function _processApprovalDecisions(executionId, decisions, reviewerId, wor
       }
 
       // Execute decision
-      const updatedApproval = await executeDecision(approvalId, decision, {
+      await executeDecision(approvalId, decision, {
         reviewerId,
         feedback,
         decisionMetadata,
