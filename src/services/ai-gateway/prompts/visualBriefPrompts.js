@@ -186,12 +186,11 @@ export function buildVisualBriefPrompt(capability, variables, decisionContext = 
     }
 
     // PR #33: Specify what to preserve
-    if (decisionContext.preserveAspects && decisionContext.preserveAspects.length > 0) {
-      prompt += '\n**DO NOT CHANGE:**\n';
-      decisionContext.preserveAspects.forEach(aspect => {
-        prompt += `- ${aspect.replace('_', ' ')}\n`;
-      });
-      prompt += '\n';
+    if (decisionContext.preserveAspects?.length > 0) {
+      const aspectsList = decisionContext.preserveAspects
+        .map(aspect => `- ${aspect.replace('_', ' ')}`)
+        .join('\n');
+      prompt += `\n**DO NOT CHANGE:**\n${aspectsList}\n\n`;
     }
 
     prompt += 'Incorporate the feedback while maintaining the original requirements and constraints.';

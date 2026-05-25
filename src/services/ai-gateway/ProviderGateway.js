@@ -38,6 +38,7 @@
 // ============================================================
 import { getProviderForCapability } from './providerRegistry.js';
 import { ERROR_TYPE } from './providerTypes.js';
+import { validateStructuredFeedback } from '../../types/feedbackTypes.js';
 import { logger } from '../../utils/logger.js';
 import crypto from 'crypto';
 
@@ -124,6 +125,26 @@ export async function execute(request) {
         latency: 0,
       },
     };
+  }
+
+  // PR #33: Validate structured feedback if present (defense-in-depth)
+  if (feedbackType || severity || preserveAspects) {
+    const validation = validateStructuredFeedback({ feedbackType, severity, preserveAspects });
+    if (!validation.valid) {
+      return {
+        success: false,
+        error: {
+          type: ERROR_TYPE.VALIDATION_ERROR,
+          message: `Invalid structured feedback: ${validation.errors.join(', ')}`,
+        },
+        metadata: {
+          provider: 'UNKNOWN',
+          model: 'UNKNOWN',
+          tokens: 0,
+          latency: 0,
+        },
+      };
+    }
   }
 
   const requestId = generateRequestId(capability, input);

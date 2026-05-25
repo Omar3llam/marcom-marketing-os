@@ -267,4 +267,79 @@ describe('RuntimeOrchestrator Integration — AI Gateway', () => {
     expect(call1.capability).toBe(call2.capability);
     expect(call1.input.diagnosis).toBe(call2.input.diagnosis);
   });
+
+  it('should handle different feedbackTypes per node in multi-node execution', async () => {
+    const plan = {
+      diagnosis: 'CREATIVE_FATIGUE',
+      executionType: EXECUTION_TYPE.CONTENT_OPTIMIZATION,
+      priority: PLAN_PRIORITY.HIGH,
+      graph: {
+        nodes: [
+          NODE_TYPE.GENERATE_HOOK_VARIANTS,
+          NODE_TYPE.GENERATE_CAPTION_VARIANTS,
+          NODE_TYPE.GENERATE_VISUAL_BRIEF,
+        ],
+        edges: [],
+      },
+    };
+
+    // Node IDs are generated as ${nodeType}_${index} by ExecutionGraph
+    const hookNodeId = `${NODE_TYPE.GENERATE_HOOK_VARIANTS}_0`;
+    const captionNodeId = `${NODE_TYPE.GENERATE_CAPTION_VARIANTS}_1`;
+    const visualNodeId = `${NODE_TYPE.GENERATE_VISUAL_BRIEF}_2`;
+
+    // Context with node-scoped structured feedback
+    const context = {
+      diagnosis: 'CREATIVE_FATIGUE',
+      isReExecution: true,
+      feedbackType: {
+        [hookNodeId]: 'hook_angle',
+        [captionNodeId]: 'tone',
+        [visualNodeId]: 'visual_concept',
+      },
+      severity: {
+        [hookNodeId]: 'HIGH',
+        [captionNodeId]: 'MEDIUM',
+        [visualNodeId]: 'LOW',
+      },
+      preserveAspects: {
+        [hookNodeId]: ['brand_voice', 'cta'],
+        [captionNodeId]: ['hook_angle'],
+        [visualNodeId]: ['color_palette'],
+      },
+    };
+
+    const result = await executeExecutionPlan(plan, context);
+
+    // Verify all nodes executed successfully
+    expect(result.status).toBe(EXECUTION_STATUS.SUCCESS);
+    expect(result.summary.successful).toBe(3);
+
+    // Verify AI Gateway was called 3 times with correct node-scoped feedback
+    expect(aiGateway.execute).toHaveBeenCalledTimes(3);
+
+    // Check first node (GENERATE_HOOK_VARIANTS)
+    const hookCall = aiGateway.execute.mock.calls[0][0];
+    expect(hookCall.capability).toBe(aiGateway.CAPABILITY.GENERATE_HOOKS);
+    expect(hookCall.feedbackType).toBe('hook_angle');
+    expect(hookCall.severity).toBe('HIGH');
+    expect(hookCall.preserveAspects).toEqual(['brand_voice', 'cta']);
+    expect(hookCall.isReExecution).toBe(true);
+
+    // Check second node (GENERATE_CAPTION_VARIANTS)
+    const captionCall = aiGateway.execute.mock.calls[1][0];
+    expect(captionCall.capability).toBe(aiGateway.CAPABILITY.GENERATE_CAPTIONS);
+    expect(captionCall.feedbackType).toBe('tone');
+    expect(captionCall.severity).toBe('MEDIUM');
+    expect(captionCall.preserveAspects).toEqual(['hook_angle']);
+    expect(captionCall.isReExecution).toBe(true);
+
+    // Check third node (GENERATE_VISUAL_BRIEF)
+    const visualCall = aiGateway.execute.mock.calls[2][0];
+    expect(visualCall.capability).toBe(aiGateway.CAPABILITY.GENERATE_VISUAL_BRIEF);
+    expect(visualCall.feedbackType).toBe('visual_concept');
+    expect(visualCall.severity).toBe('LOW');
+    expect(visualCall.preserveAspects).toEqual(['color_palette']);
+    expect(visualCall.isReExecution).toBe(true);
+  });
 });
