@@ -196,11 +196,12 @@ async function _processApprovalDecisions(executionId, decisions, reviewerId, wor
       decision,
       feedback,
       decisionMetadata,
-      // PR #33: Structured feedback fields
-      feedbackType,
-      severity,
-      preserveAspects,
     } = decisionInput;
+
+    // PR #33/37: Extract structured feedback fields from decisionMetadata
+    const feedbackType = decisionMetadata?.feedbackType || null;
+    const severity = decisionMetadata?.severity || null;
+    const preserveAspects = decisionMetadata?.preserveAspects || [];
 
     try {
       // PR #33: Validate structured feedback if provided
@@ -225,6 +226,21 @@ async function _processApprovalDecisions(executionId, decisions, reviewerId, wor
         reviewerId,
         feedback,
         decisionMetadata,
+      });
+
+      // PR #37: Capture decision analytics
+      await _captureDecisionAnalytics({
+        approvalId,
+        artifactId: approval.artifactId,
+        executionId,
+        workspaceId,
+        decision,
+        feedback,
+        feedbackType,
+        severity,
+        preserveAspects,
+        artifact: approval.artifact,
+        reviewerId,
       });
 
       results.successful.push({
@@ -316,4 +332,82 @@ async function _processApprovalDecisions(executionId, decisions, reviewerId, wor
     nodesToReExecute,
     decisionContext,
   };
+}
+
+// ============================================================
+// PR #37: Decision Analytics Capture
+// ============================================================
+
+/**
+ * Capture approval decision for analytics and intelligence learning.
+ *
+ * @private
+ * @param {Object} params - Decision data
+ * @param {string} params.approvalId - Approval ID
+ * @param {string} params.artifactId - Artifact ID
+ * @param {string} params.executionId - Execution ID
+ * @param {string} params.workspaceId - Workspace ID
+ * @param {string} params.decision - Decision type (APPROVED, REJECTED, etc.)
+ * @param {string} [params.feedback] - Free-form feedback
+ * @param {string} [params.feedbackType] - Structured feedback type
+ * @param {string} [params.severity] - Severity level
+ * @param {string[]} [params.preserveAspects] - Aspects to preserve
+ * @param {Object} params.artifact - Artifact record (for provider attribution)
+ * @param {string} params.reviewerId - User ID making decision
+ */
+async function _captureDecisionAnalytics({
+  approvalId,
+  artifactId,
+  executionId,
+  workspaceId,
+  decision,
+  feedback,
+  feedbackType,
+  severity,
+  preserveAspects,
+  artifact,
+  reviewerId,
+}) {
+  try {
+    // Extract provider attribution from artifact
+    const provider = artifact?.provider || null;
+    const capability = artifact?.capability || null;
+    const model = artifact?.metadata?.model || null;
+
+    // Create ApprovalDecision record
+    await prisma.approvalDecision.create({
+      data: {
+        approvalId,
+        artifactId,
+        executionId,
+        workspaceId,
+        decision,
+        feedback: feedback || null,
+        feedbackType: feedbackType || null,
+        severity: severity || null,
+        preserveAspects: preserveAspects || [],
+        provider,
+        capability,
+        model,
+        reviewerId,
+      },
+    });
+
+    logger.debug({
+      approvalId,
+      artifactId,
+      decision,
+      provider,
+      capability,
+      feedbackType,
+      severity,
+    }, '[execution/resume] decision analytics captured');
+  } catch (error) {
+    // Log error but don't fail resume operation
+    logger.error({
+      error: error.message,
+      approvalId,
+      artifactId,
+    }, '[execution/resume] failed to capture decision analytics');
+  }
 }

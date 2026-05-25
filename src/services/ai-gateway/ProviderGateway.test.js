@@ -25,6 +25,24 @@ vi.mock('../../utils/logger.js', () => ({
   },
 }));
 
+// PR #38: Mock intelligent router to use static routing in tests
+vi.mock('./intelligentRouter.js', async () => {
+  const actual = await vi.importActual('./providerRegistry.js');
+  return {
+    routeCapability: vi.fn(async (capability) => {
+      const registration = actual.getProviderForCapability(capability);
+      return {
+        ...registration,
+        routingDecision: {
+          strategy: 'static',
+          reason: 'Test mode - using static registry',
+          fallback: false,
+        },
+      };
+    }),
+  };
+});
+
 // Mock providers
 vi.mock('./providers/claudeProvider.js', () => ({
   generateHooks: vi.fn(),

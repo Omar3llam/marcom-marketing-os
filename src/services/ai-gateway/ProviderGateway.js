@@ -24,7 +24,8 @@
 //     isReExecution?: boolean,         // PR #32: re-execution flag
 //     feedbackType?: string,           // PR #33: structured feedback type
 //     severity?: string,               // PR #33: feedback severity (LOW/MEDIUM/HIGH)
-//     preserveAspects?: string[]       // PR #33: aspects to preserve during regen
+//     preserveAspects?: string[],      // PR #33: aspects to preserve during regen
+//     workspaceId?: string,            // PR #38: for workspace-scoped provider routing
 //   }
 //
 // OUTPUT:
@@ -32,11 +33,18 @@
 //     success: boolean,
 //     output: {...},
 //     artifacts: [...],
-//     metadata: { provider, model, tokens, latency },
+//     metadata: {
+//       provider,
+//       model,
+//       tokens,
+//       latency,
+//       routingDecision // PR #38: how provider was selected
+//     },
 //     error?: { type, message }
 //   }
 // ============================================================
 import { getProviderForCapability } from './providerRegistry.js';
+import { routeCapability } from './intelligentRouter.js'; // PR #38
 import { ERROR_TYPE } from './providerTypes.js';
 import { validateStructuredFeedback } from '../../types/feedbackTypes.js';
 import { logger } from '../../utils/logger.js';
@@ -78,7 +86,7 @@ function calculateBackoff(attempt) {
 /**
  * Execute an AI capability through the appropriate provider.
  *
- * @param {{ capability: string, input: object, feedback?: string, revisionInstructions?: string, regenerationHint?: string, isReExecution?: boolean, feedbackType?: string, severity?: string, preserveAspects?: string[] }} request
+ * @param {{ capability: string, input: object, feedback?: string, revisionInstructions?: string, regenerationHint?: string, isReExecution?: boolean, feedbackType?: string, severity?: string, preserveAspects?: string[], workspaceId?: string }} request
  * @returns {Promise<{ success: boolean, output?: object, artifacts?: array, metadata: object, error?: object }>}
  */
 export async function execute(request) {
@@ -93,6 +101,8 @@ export async function execute(request) {
     feedbackType,
     severity,
     preserveAspects,
+    // PR #38: Intelligent routing
+    workspaceId,
   } = request;
 
   if (!capability) {
@@ -152,28 +162,49 @@ export async function execute(request) {
   logger.debug({
     requestId,
     capability,
+    workspaceId,
   }, '[ProviderGateway] executing capability');
 
+  // PR #38: Use intelligent routing to select provider
   let registration;
   try {
-    registration = getProviderForCapability(capability);
+    registration = await routeCapability(capability, {
+      workspaceId,
+      enableIntelligentRouting: true, // Always try intelligent routing, fallback handled internally
+    });
   } catch (error) {
-    return {
-      success: false,
-      error: {
-        type: ERROR_TYPE.VALIDATION_ERROR,
-        message: error.message,
-      },
-      metadata: {
-        provider: 'UNKNOWN',
-        model: 'UNKNOWN',
-        tokens: 0,
-        latency: 0,
-      },
-    };
+    // Fallback to static registry if routing fails
+    logger.warn({
+      requestId,
+      capability,
+      error: error.message,
+    }, '[ProviderGateway] routing failed, falling back to static registry');
+
+    try {
+      registration = getProviderForCapability(capability);
+      registration.routingDecision = {
+        strategy: 'static',
+        reason: `Routing error: ${error.message}`,
+        fallback: true,
+      };
+    } catch (fallbackError) {
+      return {
+        success: false,
+        error: {
+          type: ERROR_TYPE.VALIDATION_ERROR,
+          message: fallbackError.message,
+        },
+        metadata: {
+          provider: 'UNKNOWN',
+          model: 'UNKNOWN',
+          tokens: 0,
+          latency: 0,
+        },
+      };
+    }
   }
 
-  const { provider, method } = registration;
+  const { provider, method, routingDecision } = registration;
 
   // Execute with retries
   let attempt = 0;
@@ -212,6 +243,7 @@ export async function execute(request) {
           attempt,
           tokens: result.metadata.tokens,
           latency: result.metadata.latency,
+          routingStrategy: routingDecision?.strategy, // PR #38
         }, '[ProviderGateway] capability executed successfully');
 
         return {
@@ -221,6 +253,7 @@ export async function execute(request) {
             provider,
             requestId,
             attempt,
+            routingDecision, // PR #38: include routing decision in metadata
           },
         };
       }
@@ -261,6 +294,7 @@ export async function execute(request) {
           provider,
           requestId,
           attempt,
+          routingDecision, // PR #38
         },
       };
     } catch (error) {
@@ -294,6 +328,7 @@ export async function execute(request) {
           latency: 0,
           requestId,
           attempt,
+          routingDecision, // PR #38
         },
       };
     }
@@ -313,6 +348,7 @@ export async function execute(request) {
       latency: 0,
       requestId,
       attempt: MAX_RETRIES,
+      routingDecision, // PR #38
     },
   };
 }
