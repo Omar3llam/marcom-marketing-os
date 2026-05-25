@@ -4,26 +4,21 @@
 // Tests storage, retrieval, versioning, and deduplication.
 // ============================================================
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
-import { storeArtifact, getArtifact, listArtifacts, deleteArtifact, healthCheck } from './index.js';
-import { PrismaClient } from '@prisma/client';
-import fs from 'fs/promises';
-import path from 'path';
 
-const prisma = new PrismaClient();
+// Mock Prisma FIRST, before importing the module being tested
+// Export reset function to clear mock state between tests
+let mockArtifacts = new Map();
+let idCounter = 1;
 
-// Test data
-const TEST_WORKSPACE_ID = '00000000-0000-0000-0000-000000000001';
-const TEST_EXECUTION_ID = 'test_execution_001';
-const TEST_NODE_ID = 'node_generate_hooks';
-const TEST_NODE_TYPE = 'GENERATE_HOOK_VARIANTS';
+export function resetMockArtifacts() {
+  mockArtifacts.clear();
+  idCounter = 1;
+}
 
-// Mock Prisma for tests (avoid real DB dependency)
 vi.mock('@prisma/client', () => {
-  const mockArtifacts = new Map();
-  let idCounter = 1;
-
   return {
-    PrismaClient: vi.fn(() => ({
+    PrismaClient: vi.fn(function() {
+      return {
       artifact: {
         findFirst: vi.fn(async ({ where, orderBy }) => {
           const artifacts = Array.from(mockArtifacts.values());
@@ -93,14 +88,26 @@ vi.mock('@prisma/client', () => {
           return artifact;
         }),
       },
-    })),
+      };
+    }),
   };
 });
+
+// NOW import the module after mock is registered
+import { storeArtifact, getArtifact, listArtifacts, deleteArtifact, healthCheck } from './index.js';
+import fs from 'fs/promises';
+import path from 'path';
+
+// Test data
+const TEST_WORKSPACE_ID = '00000000-0000-0000-0000-000000000001';
+const TEST_EXECUTION_ID = 'test_execution_001';
+const TEST_NODE_ID = 'node_generate_hooks';
+const TEST_NODE_TYPE = 'GENERATE_HOOK_VARIANTS';
 
 describe('Artifact Storage Service', () => {
   beforeEach(async () => {
     // Clear mock artifacts before each test
-    const mockArtifacts = new Map();
+    resetMockArtifacts();
     vi.clearAllMocks();
   });
 
