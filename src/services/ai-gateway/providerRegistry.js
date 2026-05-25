@@ -86,3 +86,60 @@ export function getProviderForCapability(capability) {
   }
   return registration;
 }
+
+// ============================================================
+// PR #39 — Provider Method Lookup
+// ============================================================
+// Maps (provider, capability) → method for active routing.
+// Allows switching providers when analytics recommends different provider.
+//
+// USAGE:
+//   const method = getMethodForProvider('CLAUDE', 'GENERATE_CAPTIONS');
+//   const result = await method(input);
+// ============================================================
+
+const PROVIDER_METHOD_MAP = Object.freeze({
+  [PROVIDER.CLAUDE]: {
+    [CAPABILITY.GENERATE_HOOKS]: claudeProvider.generateHooks,
+    [CAPABILITY.GENERATE_COPY]: claudeProvider.generateCopy,
+    [CAPABILITY.GENERATE_CAPTIONS]: claudeProvider.generateCaptions,
+    [CAPABILITY.GENERATE_AUDIENCE]: claudeProvider.generateAudienceHypotheses,
+    [CAPABILITY.GENERATE_STRATEGY]: claudeProvider.generateAngleVariants,
+    [CAPABILITY.ANALYZE_CREATIVE]: claudeProvider.validateContent,
+    [CAPABILITY.VALIDATE_CONTENT]: claudeProvider.validateContent,
+    [CAPABILITY.RANK_VARIANTS]: claudeProvider.rankVariants,
+    [CAPABILITY.GENERATE_VISUAL_BRIEF]: claudeProvider.generateVisualBrief,
+  },
+  [PROVIDER.OPENAI]: {
+    [CAPABILITY.GENERATE_CAPTIONS]: openaiProvider.generateCaptions,
+    [CAPABILITY.GENERATE_VISUAL_PROMPT]: openaiProvider.generateVisualPrompt,
+  },
+  [PROVIDER.HIGGSFIELD]: {
+    [CAPABILITY.GENERATE_VIDEO_PROMPT]: higgsfieldProvider.generateVideoPrompt,
+  },
+});
+
+/**
+ * Get provider method for a given (provider, capability) pair.
+ * Used for active routing when analytics recommends different provider.
+ *
+ * @param {string} provider - Provider name (e.g., 'CLAUDE', 'OPENAI')
+ * @param {string} capability - Capability name (e.g., 'GENERATE_HOOKS')
+ * @returns {{ provider: string, method: function } | null} Registration or null if not supported
+ */
+export function getMethodForProvider(provider, capability) {
+  const providerMethods = PROVIDER_METHOD_MAP[provider];
+  if (!providerMethods) {
+    return null; // Provider not found
+  }
+
+  const method = providerMethods[capability];
+  if (!method) {
+    return null; // Provider doesn't support this capability
+  }
+
+  return {
+    provider,
+    method,
+  };
+}
