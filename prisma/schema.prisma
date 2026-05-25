@@ -450,15 +450,35 @@ model Artifact {
 // Human-in-the-loop approval system for AI-generated artifacts.
 // Enables review/approve/reject flow before publishing.
 // Phase 1: Approval tracking (no runtime pause/resume yet).
+//
+// ── PR #30: Approval Decision Engine ─────────────────────────────
+// Rich decision semantics beyond boolean approve/reject.
+// Enables selective re-execution, escalation, and revision requests.
+//
+// Decision taxonomy:
+// - APPROVED: Artifact ready for publishing
+// - REJECTED: Artifact discarded, execution continues
+// - REQUEST_REVISION: Request changes with specific instructions
+// - REGENERATE: Re-run generation node with same inputs
+// - ESCALATE: Route to human reviewer/manager for decision
+//
+// Architectural Law:
+// rejection ≠ regeneration — different failure modes need different responses.
 
 model ArtifactApproval {
   id          String @id @default(cuid())
   artifactId  String @unique
   workspaceId String @db.Uuid
 
-  status     String // PENDING, APPROVED, REJECTED, REVISION_REQUESTED
-  reviewerId String? @db.Uuid // Optional: user who approved/rejected
-  feedback   String? // Optional: approval/rejection reason
+  status     String // PENDING, COMPLETED (workflow state)
+  decision   String? // APPROVED, REJECTED, REQUEST_REVISION, REGENERATE, ESCALATE (decision outcome)
+  reviewerId String? @db.Uuid // User who made the decision
+  feedback   String? // Decision reason/notes
+
+  // PR #30: Rich decision metadata
+  decisionMetadata Json? // { revisionInstructions, targetNodes, escalationReason, regenerationHint }
+  escalatedTo      String? @db.Uuid // User/role ID for escalation target
+  escalatedAt      DateTime?
 
   approvedAt DateTime?
   rejectedAt DateTime?
@@ -471,6 +491,8 @@ model ArtifactApproval {
   @@index([workspaceId, status])
   @@index([artifactId])
   @@index([status])
+  @@index([decision])
+  @@index([escalatedTo])
   @@index([createdAt(sort: Desc)])
   @@map("artifact_approvals")
 }
