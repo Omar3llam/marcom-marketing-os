@@ -159,7 +159,7 @@ Return JSON array (sorted by rank):
   },
 });
 
-export function buildVisualBriefPrompt(capability, variables) {
+export function buildVisualBriefPrompt(capability, variables, decisionContext = {}) {
   const promptTemplate = VISUAL_BRIEF_PROMPTS[capability];
   if (!promptTemplate) {
     throw new Error(`Unknown visual brief capability: ${capability}`);
@@ -170,6 +170,26 @@ export function buildVisualBriefPrompt(capability, variables) {
   for (const [key, value] of Object.entries(variables)) {
     const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value || 'N/A');
     prompt = prompt.replace(new RegExp(`\\{${key}\\}`, 'g'), stringValue);
+  }
+
+  // PR #32: Append decision context if present (re-execution guidance)
+  if (decisionContext.isReExecution) {
+    prompt += '\n\n---\n\n**RE-EXECUTION CONTEXT:**\n';
+    prompt += 'This is a regeneration based on reviewer feedback. Please address the following:\n\n';
+
+    if (decisionContext.feedback) {
+      prompt += `**Reviewer Feedback:**\n${decisionContext.feedback}\n\n`;
+    }
+
+    if (decisionContext.revisionInstructions) {
+      prompt += `**Revision Instructions:**\n${decisionContext.revisionInstructions}\n\n`;
+    }
+
+    if (decisionContext.regenerationHint) {
+      prompt += `**Regeneration Hint:**\n${decisionContext.regenerationHint}\n\n`;
+    }
+
+    prompt += 'Incorporate the above feedback while maintaining the original requirements and constraints.';
   }
 
   return prompt;

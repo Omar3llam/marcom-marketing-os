@@ -61,7 +61,7 @@ Return JSON array:
   },
 });
 
-export function buildCaptionPrompt(capability, variables) {
+export function buildCaptionPrompt(capability, variables, decisionContext = {}) {
   const promptTemplate = CAPTION_PROMPTS[capability];
   if (!promptTemplate) {
     throw new Error(`Unknown caption capability: ${capability}`);
@@ -71,6 +71,26 @@ export function buildCaptionPrompt(capability, variables) {
 
   for (const [key, value] of Object.entries(variables)) {
     prompt = prompt.replace(new RegExp(`\\{${key}\\}`, 'g'), value || 'N/A');
+  }
+
+  // PR #32: Append decision context if present (re-execution guidance)
+  if (decisionContext.isReExecution) {
+    prompt += '\n\n---\n\n**RE-EXECUTION CONTEXT:**\n';
+    prompt += 'This is a regeneration based on reviewer feedback. Please address the following:\n\n';
+
+    if (decisionContext.feedback) {
+      prompt += `**Reviewer Feedback:**\n${decisionContext.feedback}\n\n`;
+    }
+
+    if (decisionContext.revisionInstructions) {
+      prompt += `**Revision Instructions:**\n${decisionContext.revisionInstructions}\n\n`;
+    }
+
+    if (decisionContext.regenerationHint) {
+      prompt += `**Regeneration Hint:**\n${decisionContext.regenerationHint}\n\n`;
+    }
+
+    prompt += 'Incorporate the above feedback while maintaining the original requirements and constraints.';
   }
 
   return prompt;

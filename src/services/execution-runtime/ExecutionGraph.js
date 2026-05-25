@@ -147,6 +147,34 @@ export class ExecutionGraph {
     return node ? node.dependents.map(id => this.getNode(id)) : [];
   }
 
+  /**
+   * Get all nodes that transitively depend on the given node (PR #31).
+   * Used for dependency cascade during selective re-execution.
+   *
+   * @param {string} nodeId - Node ID to find dependents for
+   * @returns {string[]} Array of dependent node IDs (includes direct + transitive)
+   */
+  getAllDependents(nodeId) {
+    const visited = new Set();
+    const queue = [nodeId];
+
+    while (queue.length > 0) {
+      const currentId = queue.shift();
+      const node = this.getNode(currentId);
+
+      if (!node) continue;
+
+      for (const dependentId of node.dependents) {
+        if (!visited.has(dependentId)) {
+          visited.add(dependentId);
+          queue.push(dependentId);
+        }
+      }
+    }
+
+    return Array.from(visited);
+  }
+
   areDependenciesMet(nodeId) {
     const dependencies = this.getDependencies(nodeId);
     return dependencies.every(dep => dep.status === NODE_STATUS.SUCCESS);

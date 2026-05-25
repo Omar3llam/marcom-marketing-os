@@ -99,6 +99,11 @@ describe('RuntimeOrchestrator Integration — AI Gateway', () => {
         diagnosis: 'CREATIVE_FATIGUE',
         brandVoice: 'professional',
       }),
+      // PR #32: Decision context parameters (undefined for initial execution)
+      feedback: undefined,
+      revisionInstructions: undefined,
+      regenerationHint: undefined,
+      isReExecution: false,
     });
 
     // Verify artifacts were generated
