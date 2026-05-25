@@ -104,6 +104,10 @@ describe('RuntimeOrchestrator Integration — AI Gateway', () => {
       revisionInstructions: undefined,
       regenerationHint: undefined,
       isReExecution: false,
+      // PR #33: Structured feedback parameters (undefined for initial execution)
+      feedbackType: undefined,
+      severity: undefined,
+      preserveAspects: [],
     });
 
     // Verify artifacts were generated

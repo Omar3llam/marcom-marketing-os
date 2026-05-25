@@ -35,6 +35,7 @@ import { PrismaClient } from '@prisma/client';
 import { resumeExecutionFromCheckpoint, reExecuteNodes } from '../../services/execution-runtime/RuntimeOrchestrator.js';
 import { getLatestCheckpoint } from '../../services/execution-checkpoint/index.js';
 import { executeDecision, DECISION_TYPE } from '../../services/approval-decision/index.js';
+import { validateStructuredFeedback } from '../../types/feedbackTypes.js';
 import { logger } from '../../utils/logger.js';
 
 const prisma = new PrismaClient();
@@ -168,6 +169,10 @@ async function _processApprovalDecisions(executionId, decisions, reviewerId, wor
     feedback: {},
     revisionInstructions: {},
     regenerationHints: {},
+    // PR #33: Structured feedback fields
+    feedbackType: {},      // nodeId → FEEDBACK_TYPE
+    severity: {},          // nodeId → SEVERITY
+    preserveAspects: {},   // nodeId → string[]
   };
 
   // Get all pending approvals for this execution
@@ -186,9 +191,29 @@ async function _processApprovalDecisions(executionId, decisions, reviewerId, wor
 
   // Process each decision
   for (const decisionInput of decisions) {
-    const { approvalId, decision, feedback, decisionMetadata } = decisionInput;
+    const {
+      approvalId,
+      decision,
+      feedback,
+      decisionMetadata,
+      // PR #33: Structured feedback fields
+      feedbackType,
+      severity,
+      preserveAspects,
+    } = decisionInput;
 
     try {
+      // PR #33: Validate structured feedback if provided
+      const validationResult = validateStructuredFeedback({
+        feedbackType,
+        severity,
+        preserveAspects,
+      });
+
+      if (!validationResult.valid) {
+        throw new Error(`Invalid structured feedback: ${validationResult.errors.join(', ')}`);
+      }
+
       // Validate approval belongs to this execution and workspace
       const approval = pendingApprovals.find(a => a.id === approvalId);
       if (!approval) {
@@ -216,7 +241,7 @@ async function _processApprovalDecisions(executionId, decisions, reviewerId, wor
           nodesToReExecute.push(nodeId);
         }
 
-        // Store decision context for this node
+        // Store decision context for this node (PR #31)
         if (feedback) {
           decisionContext.feedback[nodeId] = feedback;
         }
@@ -229,11 +254,27 @@ async function _processApprovalDecisions(executionId, decisions, reviewerId, wor
           decisionContext.regenerationHints[nodeId] = decisionMetadata.regenerationHint;
         }
 
+        // PR #33: Store structured feedback fields
+        if (feedbackType) {
+          decisionContext.feedbackType[nodeId] = feedbackType;
+        }
+
+        if (severity) {
+          decisionContext.severity[nodeId] = severity;
+        }
+
+        if (preserveAspects && preserveAspects.length > 0) {
+          decisionContext.preserveAspects[nodeId] = preserveAspects;
+        }
+
         logger.info({
           nodeId,
           decision,
           artifactId: approval.artifactId,
-        }, '[execution/resume] node marked for re-execution');
+          feedbackType,
+          severity,
+          preserveAspects: preserveAspects?.length || 0,
+        }, '[execution/resume] node marked for re-execution with structured feedback');
       }
 
       logger.debug({

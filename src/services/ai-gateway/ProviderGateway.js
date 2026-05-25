@@ -21,7 +21,10 @@
 //     feedback?: string,              // PR #32: reviewer feedback
 //     revisionInstructions?: string,   // PR #32: revision instructions
 //     regenerationHint?: string,       // PR #32: regeneration hint
-//     isReExecution?: boolean          // PR #32: re-execution flag
+//     isReExecution?: boolean,         // PR #32: re-execution flag
+//     feedbackType?: string,           // PR #33: structured feedback type
+//     severity?: string,               // PR #33: feedback severity (LOW/MEDIUM/HIGH)
+//     preserveAspects?: string[]       // PR #33: aspects to preserve during regen
 //   }
 //
 // OUTPUT:
@@ -74,11 +77,22 @@ function calculateBackoff(attempt) {
 /**
  * Execute an AI capability through the appropriate provider.
  *
- * @param {{ capability: string, input: object, feedback?: string, revisionInstructions?: string, regenerationHint?: string, isReExecution?: boolean }} request
+ * @param {{ capability: string, input: object, feedback?: string, revisionInstructions?: string, regenerationHint?: string, isReExecution?: boolean, feedbackType?: string, severity?: string, preserveAspects?: string[] }} request
  * @returns {Promise<{ success: boolean, output?: object, artifacts?: array, metadata: object, error?: object }>}
  */
 export async function execute(request) {
-  const { capability, input, feedback, revisionInstructions, regenerationHint, isReExecution } = request;
+  const {
+    capability,
+    input,
+    feedback,
+    revisionInstructions,
+    regenerationHint,
+    isReExecution,
+    // PR #33: Structured feedback
+    feedbackType,
+    severity,
+    preserveAspects,
+  } = request;
 
   if (!capability) {
     return {
@@ -163,6 +177,10 @@ export async function execute(request) {
         revisionInstructions,
         regenerationHint,
         isReExecution,
+        // PR #33: Pass structured feedback
+        feedbackType,
+        severity,
+        preserveAspects,
       });
 
       if (result.success) {
