@@ -185,13 +185,13 @@ describe('PR #31: Selective Re-execution', () => {
     });
 
     // Setup executors
-    setupMockExecutor('NODE_TYPE_2', async (nodeId, nodeType, ctx) => ({
+    setupMockExecutor('NODE_TYPE_2', async (_nodeId, _nodeType, _ctx) => ({
       success: true,
       output: { result: 'v2_regenerated' },
       artifacts: [{ type: 'test', content: 'regenerated content' }],
     }));
 
-    setupMockExecutor('NODE_TYPE_3', async (nodeId, nodeType, ctx) => ({
+    setupMockExecutor('NODE_TYPE_3', async (_nodeId, _nodeType, _ctx) => ({
       success: true,
       output: { result: 'v1' },
       artifacts: [],
