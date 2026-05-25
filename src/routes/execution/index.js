@@ -25,6 +25,7 @@ import { registerRetryRoute } from './retry.js';
 import { registerTraceRoute } from './trace.js';
 import { registerResumeRoute } from './resume.js';         // PR #29
 import { registerCheckpointRoute } from './checkpoint.js';  // PR #29
+import { registerArtifactsRoute } from './artifacts.js';    // PR #35
 
 const router = Router();
 
@@ -46,5 +47,6 @@ registerIncidentRoute(router);
 registerRetryRoute(router);
 registerTraceRoute(router);
 registerResumeRoute(router);       // PR #29: /:id/resume
+registerArtifactsRoute(router);    // PR #35: /:executionId/artifacts, /artifacts/:id
 
 export default router;

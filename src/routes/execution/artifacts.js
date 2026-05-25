@@ -1,0 +1,316 @@
+// ============================================================
+// Artifact Retrieval API — PR #35
+// ============================================================
+// HTTP endpoints for retrieving AI-generated artifacts.
+// Consumed by Approval UI (PR #36) and artifact inspection tools.
+//
+// ENDPOINTS:
+//   GET /api/execute/:executionId/artifacts
+//     - List all artifacts for an execution
+//     - Supports filtering by type, nodeId
+//     - Returns artifact metadata + approval status
+//
+//   GET /api/execute/:executionId/artifacts/pending-approval
+//     - List artifacts awaiting approval decision
+//     - Filtered to PENDING approval status only
+//     - Optimized for approval UI batch operations
+//
+//   GET /api/artifacts/:id
+//     - Retrieve single artifact by ID
+//     - Returns full content + metadata + approval status
+//     - Content fetched from storage adapter (local/S3)
+//
+// AUTHORIZATION:
+//   Workspace-scoped via firebaseAuth + contextGuard middleware
+//   All queries filtered by req.workspaceId
+//
+// RESPONSE FORMAT:
+//   {
+//     artifact: { id, type, content, metadata, ... },
+//     approval: { status, decision, reviewerId, ... } | null
+//   }
+// ============================================================
+import { prisma } from '../../lib/prisma.js';
+import { getArtifact } from '../../services/artifact-storage/index.js';
+import { logger } from '../../utils/logger.js';
+
+// ============================================================
+// GET /api/execute/:executionId/artifacts
+// ============================================================
+
+export function registerArtifactsRoute(router) {
+  router.get('/:executionId/artifacts', async (req, res) => {
+    try {
+      const { executionId } = req.params;
+      const { workspaceId } = req;
+      const { type, nodeId, limit = 100, offset = 0 } = req.query;
+
+      // Verify execution belongs to workspace
+      const execution = await prisma.executionRequest.findUnique({
+        where: { id: executionId },
+      });
+
+      if (!execution) {
+        return res.status(404).json({ error: 'Execution not found' });
+      }
+
+      if (execution.workspaceId !== workspaceId) {
+        return res.status(403).json({
+          error: 'Unauthorized: execution belongs to different workspace',
+        });
+      }
+
+      // Build filters
+      const where = {
+        workspaceId,
+        executionId,
+      };
+
+      if (type) where.type = type;
+      if (nodeId) where.nodeId = nodeId;
+
+      // Query artifacts with approval status
+      const artifacts = await prisma.artifact.findMany({
+        where,
+        include: {
+          approval: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take: parseInt(limit),
+        skip: parseInt(offset),
+      });
+
+      // Get total count for pagination
+      const total = await prisma.artifact.count({ where });
+
+      logger.debug(
+        {
+          executionId,
+          workspaceId,
+          count: artifacts.length,
+          total,
+          filters: { type, nodeId },
+        },
+        '[artifacts] listed artifacts for execution'
+      );
+
+      res.json({
+        artifacts: artifacts.map(_formatArtifactResponse),
+        pagination: {
+          total,
+          limit: parseInt(limit),
+          offset: parseInt(offset),
+          hasMore: parseInt(offset) + artifacts.length < total,
+        },
+      });
+    } catch (error) {
+      logger.error(
+        {
+          error: error.message,
+          stack: error.stack,
+          executionId: req.params.executionId,
+        },
+        '[artifacts] failed to list artifacts'
+      );
+
+      res.status(500).json({
+        error: error.message,
+      });
+    }
+  });
+
+  // ============================================================
+  // GET /api/execute/:executionId/artifacts/pending-approval
+  // ============================================================
+
+  router.get('/:executionId/artifacts/pending-approval', async (req, res) => {
+    try {
+      const { executionId } = req.params;
+      const { workspaceId } = req;
+
+      // Verify execution belongs to workspace
+      const execution = await prisma.executionRequest.findUnique({
+        where: { id: executionId },
+      });
+
+      if (!execution) {
+        return res.status(404).json({ error: 'Execution not found' });
+      }
+
+      if (execution.workspaceId !== workspaceId) {
+        return res.status(403).json({
+          error: 'Unauthorized: execution belongs to different workspace',
+        });
+      }
+
+      // Query artifacts with PENDING approval
+      const artifacts = await prisma.artifact.findMany({
+        where: {
+          workspaceId,
+          executionId,
+          approval: {
+            status: 'PENDING',
+          },
+        },
+        include: {
+          approval: true,
+        },
+        orderBy: { createdAt: 'asc' }, // Oldest first for approval queue
+      });
+
+      logger.debug(
+        {
+          executionId,
+          workspaceId,
+          pendingCount: artifacts.length,
+        },
+        '[artifacts] listed pending approval artifacts'
+      );
+
+      res.json({
+        artifacts: artifacts.map(_formatArtifactResponse),
+        count: artifacts.length,
+      });
+    } catch (error) {
+      logger.error(
+        {
+          error: error.message,
+          stack: error.stack,
+          executionId: req.params.executionId,
+        },
+        '[artifacts] failed to list pending approval artifacts'
+      );
+
+      res.status(500).json({
+        error: error.message,
+      });
+    }
+  });
+
+  // ============================================================
+  // GET /api/artifacts/:id
+  // ============================================================
+
+  router.get('/artifacts/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { workspaceId } = req;
+
+      // Verify artifact belongs to workspace
+      const artifactMetadata = await prisma.artifact.findUnique({
+        where: { id },
+        include: {
+          approval: true,
+        },
+      });
+
+      if (!artifactMetadata) {
+        return res.status(404).json({ error: 'Artifact not found' });
+      }
+
+      if (artifactMetadata.workspaceId !== workspaceId) {
+        return res.status(403).json({
+          error: 'Unauthorized: artifact belongs to different workspace',
+        });
+      }
+
+      // Fetch full content from storage adapter
+      const artifact = await getArtifact(id);
+
+      if (!artifact) {
+        logger.error(
+          { artifactId: id, workspaceId },
+          '[artifacts] artifact metadata exists but content retrieval failed'
+        );
+
+        return res.status(500).json({
+          error: 'Failed to retrieve artifact content',
+        });
+      }
+
+      logger.debug(
+        {
+          artifactId: id,
+          workspaceId,
+          type: artifact.type,
+          size: artifact.size,
+        },
+        '[artifacts] retrieved artifact'
+      );
+
+      res.json({
+        artifact: {
+          id: artifact.id,
+          executionId: artifact.executionId,
+          nodeId: artifact.nodeId,
+          nodeType: artifact.nodeType,
+          type: artifact.type,
+          capability: artifact.capability,
+          provider: artifact.provider,
+          version: artifact.version,
+          size: artifact.size,
+          content: artifact.content,
+          metadata: artifact.metadata,
+          createdAt: artifact.createdAt,
+        },
+        approval: artifactMetadata.approval || null,
+      });
+    } catch (error) {
+      logger.error(
+        {
+          error: error.message,
+          stack: error.stack,
+          artifactId: req.params.id,
+        },
+        '[artifacts] failed to retrieve artifact'
+      );
+
+      res.status(500).json({
+        error: error.message,
+      });
+    }
+  });
+}
+
+// ============================================================
+// Helpers
+// ============================================================
+
+/**
+ * Format artifact response with approval status.
+ * Excludes large content field from list responses.
+ *
+ * @private
+ */
+function _formatArtifactResponse(artifact) {
+  return {
+    id: artifact.id,
+    executionId: artifact.executionId,
+    nodeId: artifact.nodeId,
+    nodeType: artifact.nodeType,
+    type: artifact.type,
+    capability: artifact.capability,
+    provider: artifact.provider,
+    version: artifact.version,
+    size: artifact.size,
+    contentHash: artifact.contentHash,
+    // Exclude large 'content' field from list responses
+    // Use GET /api/artifacts/:id to fetch full content
+    metadata: artifact.metadata,
+    createdAt: artifact.createdAt,
+    approval: artifact.approval
+      ? {
+          id: artifact.approval.id,
+          status: artifact.approval.status,
+          decision: artifact.approval.decision,
+          reviewerId: artifact.approval.reviewerId,
+          feedback: artifact.approval.feedback,
+          decisionMetadata: artifact.approval.decisionMetadata,
+          approvedAt: artifact.approval.approvedAt,
+          rejectedAt: artifact.approval.rejectedAt,
+          createdAt: artifact.approval.createdAt,
+          updatedAt: artifact.approval.updatedAt,
+        }
+      : null,
+  };
+}
