@@ -38,7 +38,7 @@ import { RUNTIME_EVENT, EXECUTION_STATUS, NODE_STATUS } from './runtimeEvents.js
 import { logger }                 from '../../utils/logger.js';
 import { storeArtifact }          from '../artifact-storage/index.js';
 import { createApprovalRequest, artifactRequiresApproval } from '../artifact-approval/index.js';
-import { createCheckpoint, PAUSE_REASONS } from '../execution-checkpoint/index.js';
+import { createCheckpoint, getCheckpoint, PAUSE_REASONS } from '../execution-checkpoint/index.js';
 
 const MAX_RETRIES = 3;
 
@@ -628,6 +628,270 @@ export async function resumeExecutionFromCheckpoint(checkpointId) {
       error: error.message,
       checkpointId,
     }, '[RuntimeOrchestrator] failed to resume execution from checkpoint');
+    throw error;
+  }
+}
+
+// ============================================================
+// PR #31: Selective Re-execution
+// ============================================================
+
+/**
+ * Re-execute specific nodes and their dependents based on approval decisions.
+ * Used when REGENERATE or REQUEST_REVISION decisions are made.
+ *
+ * @param {string} checkpointId - Checkpoint ID to resume from
+ * @param {string[]} nodeIdsToReExecute - Node IDs marked for regeneration
+ * @param {Object} decisionContext - Context from approval decisions (feedback, revisionInstructions, etc.)
+ * @returns {Promise<Object>} Execution result
+ */
+export async function reExecuteNodes(checkpointId, nodeIdsToReExecute, decisionContext = {}) {
+  try {
+    // Load checkpoint
+    const checkpoint = await getCheckpoint(checkpointId);
+
+    if (!checkpoint) {
+      throw new Error(`Checkpoint ${checkpointId} not found`);
+    }
+
+    // Idempotency check
+    if (checkpoint.resumedAt) {
+      logger.warn({
+        checkpointId,
+        executionId: checkpoint.executionId,
+        resumedAt: checkpoint.resumedAt,
+      }, '[RuntimeOrchestrator] checkpoint already resumed, returning cached result');
+
+      return {
+        status: EXECUTION_STATUS.SUCCESS,
+        alreadyResumed: true,
+        resumedAt: checkpoint.resumedAt,
+      };
+    }
+
+    // Validate checkpoint is resumable
+    if (checkpoint.status !== 'PAUSED_FOR_APPROVAL') {
+      throw new Error(`Checkpoint ${checkpointId} is not in PAUSED_FOR_APPROVAL state`);
+    }
+
+    // Deserialize execution state
+    const { plan, context, executedNodes: previousNodes, events: previousEvents } = checkpoint.serializedState;
+
+    // Build execution graph
+    const executionGraph = new ExecutionGraph(plan.graph);
+
+    // Calculate all nodes that need re-execution (requested + dependents)
+    const nodesToReExecuteSet = new Set(nodeIdsToReExecute);
+
+    for (const nodeId of nodeIdsToReExecute) {
+      const dependents = executionGraph.getAllDependents(nodeId);
+      dependents.forEach(depId => nodesToReExecuteSet.add(depId));
+    }
+
+    logger.info({
+      checkpointId,
+      requestedNodes: nodeIdsToReExecute.length,
+      totalNodesToReExecute: nodesToReExecuteSet.size,
+      nodeIds: Array.from(nodesToReExecuteSet),
+    }, '[RuntimeOrchestrator] selective re-execution started');
+
+    // Separate previously executed nodes into re-execute vs keep
+    const nodesToKeep = previousNodes.filter(n => !nodesToReExecuteSet.has(n.nodeId));
+    const nodesToReExecute = previousNodes.filter(n => nodesToReExecuteSet.has(n.nodeId));
+
+    // Initialize execution state
+    const events = [...previousEvents];
+    const executedNodes = [...nodesToKeep];
+
+    // Emit re-execution event
+    events.push({
+      type: RUNTIME_EVENT.REEXECUTION_STARTED,
+      checkpointId,
+      nodeCount: nodesToReExecuteSet.size,
+      nodeIds: Array.from(nodesToReExecuteSet),
+    });
+
+    // Mark kept nodes as their original status in graph
+    for (const node of nodesToKeep) {
+      executionGraph.updateNodeStatus(node.nodeId, node.status);
+    }
+
+    // Get all nodes in execution order
+    const sortedNodes = executionGraph.getSortedNodes();
+
+    // Filter to nodes that need execution (either new or re-execution)
+    const nodesToExecute = sortedNodes.filter(node =>
+      !nodesToKeep.find(n => n.nodeId === node.id)
+    );
+
+    logger.debug({
+      totalNodes: sortedNodes.length,
+      keptNodes: nodesToKeep.length,
+      toExecute: nodesToExecute.length,
+    }, '[RuntimeOrchestrator] re-execution plan');
+
+    // Execute nodes (re-execute + remaining)
+    for (const node of nodesToExecute) {
+      // Check if node should be skipped due to failed dependencies
+      if (executionGraph.shouldSkipNode(node.id)) {
+        executionGraph.updateNodeStatus(node.id, NODE_STATUS.SKIPPED);
+        events.push({ type: RUNTIME_EVENT.NODE_SKIPPED, nodeId: node.id });
+
+        executedNodes.push({
+          nodeId: node.id,
+          nodeType: node.type,
+          status: NODE_STATUS.SKIPPED,
+          output: { reason: 'dependency_failed' },
+          artifacts: [],
+          attempts: 0,
+        });
+
+        logger.debug({ nodeId: node.id, nodeType: node.type }, '[RuntimeOrchestrator] node skipped during re-execution');
+        continue;
+      }
+
+      // Execute node with retries
+      executionGraph.updateNodeStatus(node.id, NODE_STATUS.RUNNING);
+
+      const isReExecution = nodesToReExecuteSet.has(node.id);
+      const eventType = isReExecution ? RUNTIME_EVENT.NODE_REEXECUTION : RUNTIME_EVENT.NODE_START;
+
+      events.push({ type: eventType, nodeId: node.id, attempt: 1 });
+
+      let result = null;
+      let attempts = 0;
+      let finalStatus = NODE_STATUS.FAILURE;
+
+      // Merge decision context into execution context
+      const enhancedContext = {
+        ...plan,
+        ...context,
+        ...decisionContext,
+        isReExecution,
+        originalNode: nodesToReExecute.find(n => n.nodeId === node.id),
+      };
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        attempts = attempt;
+
+        if (attempt > 1) {
+          events.push({ type: RUNTIME_EVENT.NODE_RETRY, nodeId: node.id, attempt });
+          logger.debug({ nodeId: node.id, attempt }, '[RuntimeOrchestrator] retrying node during re-execution');
+        }
+
+        result = await executeNode(node, enhancedContext, attempt);
+
+        if (result.success) {
+          finalStatus = NODE_STATUS.SUCCESS;
+          executionGraph.updateNodeStatus(node.id, NODE_STATUS.SUCCESS);
+          events.push({ type: RUNTIME_EVENT.NODE_SUCCESS, nodeId: node.id, attempt });
+
+          logger.debug({
+            nodeId: node.id,
+            nodeType: node.type,
+            attempt,
+            isReExecution,
+          }, '[RuntimeOrchestrator] node succeeded during re-execution');
+
+          // Store artifacts
+          if (context.workspaceId && context.executionId && result.artifacts && result.artifacts.length > 0) {
+            const storedArtifactIds = await storeNodeArtifacts({
+              workspaceId: context.workspaceId,
+              executionId: context.executionId,
+              nodeId: node.id,
+              nodeType: node.type,
+              artifacts: result.artifacts,
+              metadata: result.metadata || {},
+            });
+
+            result.storedArtifactIds = storedArtifactIds;
+
+            logger.debug({
+              nodeId: node.id,
+              artifactCount: storedArtifactIds.length,
+              isReExecution,
+            }, '[RuntimeOrchestrator] artifacts stored during re-execution');
+          }
+
+          break;
+        }
+
+        // Failed — check if we should retry
+        if (attempt === MAX_RETRIES) {
+          finalStatus = NODE_STATUS.FAILURE;
+          executionGraph.updateNodeStatus(node.id, NODE_STATUS.FAILURE);
+          events.push({ type: RUNTIME_EVENT.NODE_FAILURE, nodeId: node.id, attempt });
+
+          logger.warn({
+            nodeId: node.id,
+            nodeType: node.type,
+            attempts,
+            isReExecution,
+          }, '[RuntimeOrchestrator] node failed after max retries during re-execution');
+        }
+      }
+
+      executedNodes.push({
+        nodeId: node.id,
+        nodeType: node.type,
+        status: finalStatus,
+        output: result?.output || {},
+        artifacts: result?.artifacts || [],
+        storedArtifactIds: result?.storedArtifactIds || [],
+        attempts,
+        reExecuted: isReExecution,
+      });
+    }
+
+    // Mark checkpoint as resumed
+    await prisma.executionCheckpoint.update({
+      where: { id: checkpointId },
+      data: {
+        status: 'RESUMED',
+        resumedAt: new Date(),
+      },
+    });
+
+    // Calculate summary
+    const allNodes = executedNodes;
+    const summary = {
+      totalNodes: sortedNodes.length,
+      successful: allNodes.filter(n => n.status === NODE_STATUS.SUCCESS).length,
+      failed: allNodes.filter(n => n.status === NODE_STATUS.FAILURE).length,
+      skipped: allNodes.filter(n => n.status === NODE_STATUS.SKIPPED).length,
+      reExecuted: allNodes.filter(n => n.reExecuted).length,
+    };
+
+    // Determine overall status
+    let status = EXECUTION_STATUS.SUCCESS;
+    if (summary.failed > 0) {
+      status = summary.successful > 0 ? EXECUTION_STATUS.PARTIAL_SUCCESS : EXECUTION_STATUS.FAILURE;
+    } else if (summary.skipped > 0 && summary.successful === 0) {
+      status = EXECUTION_STATUS.FAILURE;
+    }
+
+    events.push({ type: RUNTIME_EVENT.EXECUTION_SUCCESS, status });
+
+    logger.info({
+      status,
+      summary,
+      checkpointId,
+    }, '[RuntimeOrchestrator] re-execution completed');
+
+    return {
+      status,
+      executedNodes: allNodes,
+      events,
+      summary,
+      reExecuted: true,
+      checkpointId,
+    };
+  } catch (error) {
+    logger.error({
+      error: error.message,
+      checkpointId,
+      nodeIds: nodeIdsToReExecute,
+    }, '[RuntimeOrchestrator] failed to re-execute nodes');
     throw error;
   }
 }
