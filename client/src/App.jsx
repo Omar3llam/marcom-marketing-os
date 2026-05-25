@@ -34,6 +34,7 @@ import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 const CampaignAnalysis    = lazy(() => import('./pages/CampaignAnalysis.jsx'));
 const GrowthStrategyBoard = lazy(() => import('./pages/GrowthStrategyBoard.jsx'));
 const Operations          = lazy(() => import('./pages/demo/Operations/index.jsx'));
+const ApprovalQueue       = lazy(() => import('./pages/ApprovalQueue.jsx')); // PR #36
 
 // ── v2 views (gradual migration via Strangler Pattern) ────────
 const DecisionViewV2 = lazy(() => import('./pages/v2/DecisionViewV2.tsx').then(m => ({ default: m.DecisionViewV2 })));
@@ -132,6 +133,13 @@ export default function App() {
           <Route path="settings"   element={
             <ErrorBoundary boundaryId="settings">
               <SettingsPage />
+            </ErrorBoundary>
+          } />
+
+          {/* ── PR #36 · Approval Queue (Artifact Review Workflow) ── */}
+          <Route path="approvals/:executionId" element={
+            <ErrorBoundary boundaryId="approvals">
+              <Suspense fallback={<PageFallback />}><ApprovalQueue /></Suspense>
             </ErrorBoundary>
           } />
 
