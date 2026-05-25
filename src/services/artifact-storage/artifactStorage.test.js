@@ -3,7 +3,7 @@
 // ============================================================
 // Tests storage, retrieval, versioning, and deduplication.
 // ============================================================
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterAll, beforeEach, vi } from 'vitest';
 
 // Mock Prisma FIRST, before importing the module being tested
 // Export reset function to clear mock state between tests
@@ -96,7 +96,6 @@ vi.mock('@prisma/client', () => {
 // NOW import the module after mock is registered
 import { storeArtifact, getArtifact, listArtifacts, deleteArtifact, healthCheck } from './index.js';
 import fs from 'fs/promises';
-import path from 'path';
 
 // Test data
 const TEST_WORKSPACE_ID = '00000000-0000-0000-0000-000000000001';
@@ -115,7 +114,7 @@ describe('Artifact Storage Service', () => {
     // Cleanup test artifacts directory
     try {
       await fs.rm('./artifacts', { recursive: true });
-    } catch (error) {
+    } catch {
       // Ignore errors if directory doesn't exist
     }
   });
