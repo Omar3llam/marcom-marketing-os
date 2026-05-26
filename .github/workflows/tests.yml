@@ -23,6 +23,24 @@ jobs:
     name: Backend + package contract tests
     runs-on: ubuntu-latest
 
+    env:
+      DATABASE_URL: "postgresql://test_user:test_password@localhost:5432/marcom_test"
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: marcom_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,6 +54,9 @@ jobs:
 
       - name: Install dependencies (workspace-wide)
         run: npm ci
+
+      - name: Set up test database schema
+        run: npx prisma migrate deploy
 
       - name: Run backend + contract tests
         # Explicit directory list keeps frontend tests out — those have
