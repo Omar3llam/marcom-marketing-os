@@ -94,9 +94,11 @@ function WorkspaceHQ({ workspace, onNewProject, countdown }) {
               WATCHING
             </span>
           </div>
-          <span className="font-mono text-[10px] text-dark-soft">
-            · {workspace.adSetsCount || 14} ad sets
-          </span>
+          {workspace.adSetsCount && (
+            <span className="font-mono text-[10px] text-dark-soft">
+              · {workspace.adSetsCount} ad sets
+            </span>
+          )}
         </div>
 
         {/* Next sweep countdown */}
@@ -403,7 +405,7 @@ export default function Sidebar({
           <div className="mt-4">
             <RecentDecisions
               decisions={recentDecisions}
-              totalCount={47}
+              totalCount={recentDecisions.length}
               onViewAll={() => navigate('/app/decisions')}
             />
           </div>

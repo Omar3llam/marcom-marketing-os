@@ -10,41 +10,77 @@
 //   │      │   ContextBar (44px)             │
 //   └──────┴─────────────────────────────────┘
 // ============================================================
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet }   from 'react-router-dom';
 import Sidebar      from './Sidebar.jsx';
 import ContextBar   from './ContextBar.jsx';
+import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
+import { api } from '@/lib/api.js';
 
 export default function MainLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [recentDecisions, setRecentDecisions] = useState([]);
 
-  // Mock alert data (replace with real API call or context)
-  const mockAlerts = [
-    {
-      id: '1',
-      campaign: 'Eid Carousel - Desktop',
-      signal: 'Frequency 4.2 · CTR ↓ 36% in 48h',
-      verdict: 'KILL',
-      priority: 'HIGH',
-      timestamp: '2m ago',
-    },
-    {
-      id: '2',
-      campaign: 'Summer Sale PMax',
-      signal: 'ROAS ↓ 0.4 · CPA +22%',
-      verdict: 'HOLD',
-      priority: 'HIGH',
-      timestamp: '15m ago',
-    },
-  ];
+  // Fetch campaign feed for high-priority alerts
+  const { campaigns } = useCampaignFeed();
 
-  // Mock recent decisions (replace with real API call or context)
-  const mockRecentDecisions = [
-    { id: '1', campaign: 'Spring Collection', verdict: 'KILL', timestamp: '2h ago' },
-    { id: '2', campaign: 'Brand Awareness Q2', verdict: 'SCALE', timestamp: '4h ago' },
-    { id: '3', campaign: 'Summer Launch', verdict: 'HOLD', timestamp: '6h ago' },
-  ];
+  // Extract high-priority alerts from campaigns feed
+  const highPriorityAlerts = campaigns.flatMap((campaign) =>
+    (campaign.alerts || [])
+      .filter((alert) => alert.priority === 'HIGH')
+      .map((alert) => ({
+        id: alert.action_id,
+        campaign: campaign.campaign_name || campaign.campaign_id,
+        signal: alert.analysis?.diagnosis || 'No diagnosis available',
+        verdict: alert.analysis?.verdict || 'HOLD',
+        priority: alert.priority,
+        timestamp: alert.created_at || 'recent',
+      }))
+  );
+
+  // Fetch recent decisions from memory API
+  useEffect(() => {
+    let cancelled = false;
+    const fetchDecisions = async () => {
+      try {
+        const response = await api.get('/api/memory/patterns');
+        if (cancelled) return;
+
+        const narratives = response.data?.narratives || [];
+        const decisions = narratives.map((n) => ({
+          id: n.id,
+          campaign: n.line.split('—')[0]?.trim() || 'Unknown',
+          verdict: n.line.includes('KILL') ? 'KILL'
+                 : n.line.includes('SCALE') ? 'SCALE'
+                 : n.line.includes('HOLD') ? 'HOLD'
+                 : 'TEST',
+          timestamp: formatTimestamp(n.recorded),
+        }));
+        setRecentDecisions(decisions);
+      } catch (err) {
+        console.error('[MainLayout] Failed to fetch recent decisions:', err);
+        // Silent fail - empty state will be shown
+      }
+    };
+    fetchDecisions();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Format timestamp as relative time
+  const formatTimestamp = (date) => {
+    if (!date) return 'recent';
+    const now = new Date();
+    const then = new Date(date);
+    const diffMs = now - then;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHrs = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHrs / 24);
+
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHrs < 24) return `${diffHrs}h ago`;
+    return `${diffDays}d ago`;
+  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-lumi-bg">
@@ -68,8 +104,8 @@ export default function MainLayout() {
       <Sidebar
         collapsed={collapsed}
         onToggle={() => setCollapsed((c) => !c)}
-        alertsData={mockAlerts}
-        recentDecisions={mockRecentDecisions}
+        alertsData={highPriorityAlerts}
+        recentDecisions={recentDecisions}
         mobileMenuOpen={mobileMenuOpen}
         onMobileMenuToggle={() => setMobileMenuOpen((m) => !m)}
         aria-label="Main navigation"
