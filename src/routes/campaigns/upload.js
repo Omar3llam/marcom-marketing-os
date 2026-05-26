@@ -47,7 +47,13 @@ export function mountUploadRoutes(router) {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded — expected field "campaignData"' });
 
     const mode = req.query.mode;
-    logger.info({ filename: req.file.originalname, size: req.file.size, mode, userId: req.userId, workspaceId: req.workspaceId }, '[CSV_PIPELINE] CSV_RECEIVED');
+
+    // Generate deterministic upload session ID for idempotency
+    // All actions created from this single CSV upload share the same session ID
+    // Format: workspace:timestamp:randomsuffix (timestamp makes retry attempts distinguishable)
+    const uploadSessionId = `${req.workspaceId}:${Date.now()}:${randomUUID().slice(0, 8)}`;
+
+    logger.info({ filename: req.file.originalname, size: req.file.size, mode, userId: req.userId, workspaceId: req.workspaceId, uploadSessionId }, '[CSV_PIPELINE] CSV_RECEIVED');
 
     if (mode === 'analyze') {
       const workspaceId = req.workspaceId;
@@ -90,66 +96,83 @@ export function mountUploadRoutes(router) {
         }
       });
 
-      // ── Step 2: Persist to database (like default mode) ─────────
+      // ── Step 2: Persist to database (TRANSACTION-WRAPPED) ───────
       const campaignIds = [];
       let processed = 0;
       let alertsCreated = 0;
 
-      // Upsert CampaignState records
-      const upsertResults = await Promise.allSettled(
-        campaignsToSave.map(({ campaign: c, decision }) => {
-          const healthScore = computeHealthScore({ roas: c.roas, ctr: c.ctr, frequency: c.frequency });
-          const stage = classifyStage(c.roas, c.ctr, c.frequency);
-          return prisma.campaignState.upsert({
-            where:  { campaignId: c.campaignId },
-            update: { stage, healthScore, lastAnalysis: new Date() },
-            create: { campaignId: c.campaignId, workspaceId, stage, healthScore, lastAnalysis: new Date() },
-          }).then(cs => ({ c, cs, stage, decision }));
-        }),
-      );
+      // Wrap persistence in a single transaction to prevent orphaned state
+      // If ANY operation fails, the entire upload is rolled back
+      await prisma.$transaction(async (tx) => {
+        // Upsert CampaignState records
+        const upsertResults = await Promise.allSettled(
+          campaignsToSave.map(({ campaign: c, decision }) => {
+            const healthScore = computeHealthScore({ roas: c.roas, ctr: c.ctr, frequency: c.frequency });
+            const stage = classifyStage(c.roas, c.ctr, c.frequency);
+            return tx.campaignState.upsert({
+              where:  { campaignId_workspaceId: { campaignId: c.campaignId, workspaceId } },
+              update: { stage, healthScore, lastAnalysis: new Date() },
+              create: { campaignId: c.campaignId, workspaceId, stage, healthScore, lastAnalysis: new Date() },
+            }).then(cs => ({ c, cs, stage, decision }));
+          }),
+        );
 
-      // Create Action records with AI analysis results
-      const actionData = [];
-      upsertResults.forEach((result) => {
-        if (result.status === 'fulfilled') {
-          const { c, cs, stage, decision } = result.value;
-          actionData.push({
-            workspaceId,
-            campaignId:     cs.campaignId,
-            idempotencyKey: `meta:${cs.campaignId}:${Date.now()}:${randomUUID().slice(0, 8)}`,
-            status:         'PENDING',
-            payload: {
-              kind: 'lumi.csv-data-analyzed',
-              source: 'csv-upload-analyze',
-              platform: 'META',
-              campaignName: c.campaignName,
-              adsetName: c.adsetName,
-              // Use AI analysis results
-              priority: decision.verdict === 'KILL' ? 'HIGH' : decision.verdict === 'SCALE' ? 'MEDIUM' : 'LOW',
-              verdict: decision.verdict || 'HOLD',
-              rootCause: decision.rootCause || decision.diagnosis,
-              rationale: decision.diagnosis,
-              strategicAnalysis: {
-                verdict: decision.verdict,
-                rootCause: decision.rootCause,
-                diagnosis: decision.diagnosis,
-                actionPlan: decision.actionPlan,
+        // Create Action records with AI analysis results
+        const actionData = [];
+        upsertResults.forEach((result, idx) => {
+          if (result.status === 'fulfilled') {
+            const { c, cs, stage, decision } = result.value;
+            actionData.push({
+              workspaceId,
+              campaignId:     cs.campaignId,
+              // Deterministic idempotency key: same campaign in same upload = same key
+              // Enables retry-safety: re-uploading the same CSV won't create duplicates
+              idempotencyKey: `meta:csv:${uploadSessionId}:${cs.campaignId}`,
+              status:         'PENDING',
+              payload: {
+                kind: 'lumi.csv-data-analyzed',
+                source: 'csv-upload-analyze',
+                platform: 'META',
+                campaignName: c.campaignName,
+                adsetName: c.adsetName,
+                // Use AI analysis results
+                priority: decision.verdict === 'KILL' ? 'HIGH' : decision.verdict === 'SCALE' ? 'MEDIUM' : 'LOW',
+                verdict: decision.verdict || 'HOLD',
+                rootCause: decision.rootCause || decision.diagnosis,
+                rationale: decision.diagnosis,
+                strategicAnalysis: {
+                  verdict: decision.verdict,
+                  rootCause: decision.rootCause,
+                  diagnosis: decision.diagnosis,
+                  actionPlan: decision.actionPlan,
+                },
+                metrics: { spend: c.spend, impressions: c.impressions, results: c.results, frequency: c.frequency, reach: c.reach, ctr: c.ctr, cpc: c.cpc, roas: c.roas, costPerResult: c.costPerResult },
+                deliveryStatus: c.deliveryStatus,
+                rawRecord: c.rawRecord,
               },
-              metrics: { spend: c.spend, impressions: c.impressions, results: c.results, frequency: c.frequency, reach: c.reach, ctr: c.ctr, cpc: c.cpc, roas: c.roas, costPerResult: c.costPerResult },
-              deliveryStatus: c.deliveryStatus,
-              rawRecord: c.rawRecord,
-            },
-          });
-          campaignIds.push(cs.campaignId);
-          processed++;
+            });
+            campaignIds.push(cs.campaignId);
+            processed++;
+          } else {
+            // Capture persistence failures
+            logger.error({ err: result.reason?.message, campaignId: campaignsToSave[idx]?.campaign?.campaignId }, '[campaigns/upload-csv] persistence failed');
+            errors.push({ campaign: campaignsToSave[idx]?.campaign?.campaignName || 'Unknown', error: `Persistence failed: ${result.reason?.message || 'Unknown error'}` });
+          }
+        });
+
+        // Batch insert actions (in same transaction)
+        if (actionData.length > 0) {
+          await tx.action.createMany({ data: actionData });
+          alertsCreated = actionData.length;
         }
       });
 
-      // Batch insert actions
-      if (actionData.length > 0) {
-        await prisma.action.createMany({ data: actionData });
-        alertsCreated = actionData.length;
-        const totalSpend = actionData.reduce((sum, a) => sum + (a.payload?.metrics?.spend || 0), 0);
+      // Log metrics AFTER transaction commits
+      if (alertsCreated > 0) {
+        const totalSpend = campaignIds.reduce((sum, campaignId) => {
+          const campaign = campaignsToSave.find(({ campaign: c }) => c.campaignId === campaignId)?.campaign;
+          return sum + (campaign?.spend || 0);
+        }, 0);
         logger.info({
           workspaceId,
           campaignsPersisted: processed,
@@ -158,15 +181,24 @@ export function mountUploadRoutes(router) {
         }, '[CSV_PIPELINE] ANALYZE_MODE_CAMPAIGNS_PERSISTED');
       }
 
-      logger.info({ userId: req.userId, analyzed: decisions.length, errors: errors.length, totalRows: parsed.length, persisted: processed }, '[campaigns/upload-csv] ANALYZE mode complete');
+      // Determine success status based on operational truth
+      // success = true ONLY if analysis + persistence both succeeded
+      const analyzed = decisions.length;
+      const isFullSuccess = analyzed > 0 && processed === analyzed && errors.length === 0;
+      const isPartialSuccess = analyzed > 0 && processed > 0 && processed < analyzed;
+      const isFailure = processed === 0;
+
+      logger.info({ userId: req.userId, analyzed, errors: errors.length, totalRows: parsed.length, persisted: processed, isPartialSuccess }, '[campaigns/upload-csv] ANALYZE mode complete');
+
       return res.json({
-        success: true,
+        success: isFullSuccess,
+        partial: isPartialSuccess, // New flag: some succeeded, some failed
         mode: 'analyze',
         decisions,
         errors,
         stats: {
           uploaded: stats.total_rows,
-          analyzed: decisions.length,
+          analyzed,
           failed: errors.length,
           persisted: processed,
           alerts_created: alertsCreated,
@@ -222,54 +254,67 @@ export function mountUploadRoutes(router) {
     let   processed   = 0;
     let   alertsCreated = 0;
 
-    // Upsert all campaign states concurrently (avoids N+1)
-    const upsertResults = await Promise.allSettled(
-      parsed.map(c => {
-        const healthScore = computeHealthScore({ roas: c.roas, ctr: c.ctr, frequency: c.frequency });
-        const stage       = classifyStage(c.roas, c.ctr, c.frequency);
-        return prisma.campaignState.upsert({
-          where:  { campaignId: c.campaignId },
-          update: { stage, healthScore, lastAnalysis: new Date() },
-          create: { campaignId: c.campaignId, workspaceId, stage, healthScore, lastAnalysis: new Date() },
-        }).then(cs => ({ c, cs, stage }));
-      }),
-    );
+    // Wrap persistence in a single transaction to prevent orphaned state
+    // If ANY operation fails, the entire upload is rolled back
+    await prisma.$transaction(async (tx) => {
+      // Upsert all campaign states concurrently (avoids N+1)
+      const upsertResults = await Promise.allSettled(
+        parsed.map(c => {
+          const healthScore = computeHealthScore({ roas: c.roas, ctr: c.ctr, frequency: c.frequency });
+          const stage       = classifyStage(c.roas, c.ctr, c.frequency);
+          return tx.campaignState.upsert({
+            where:  { campaignId_workspaceId: { campaignId: c.campaignId, workspaceId } },
+            update: { stage, healthScore, lastAnalysis: new Date() },
+            create: { campaignId: c.campaignId, workspaceId, stage, healthScore, lastAnalysis: new Date() },
+          }).then(cs => ({ c, cs, stage }));
+        }),
+      );
 
-    // Collect successful upserts into action records
-    const actionData = [];
-    upsertResults.forEach((result, i) => {
-      if (result.status === 'fulfilled') {
-        const { c, cs, stage } = result.value;
-        actionData.push({
-          workspaceId,
-          campaignId:     cs.campaignId,
-          idempotencyKey: `meta:${cs.campaignId}:${Date.now()}:${randomUUID().slice(0, 8)}`,
-          status:         'PENDING',
-          payload: {
-            kind: 'lumi.csv-data', source: 'csv-upload', platform: 'META',
-            campaignName: c.campaignName, adsetName: c.adsetName,
-            priority: stage === 'DYING' ? 'HIGH' : stage === 'FATIGUED' ? 'MEDIUM' : 'LOW',
-            verdict:  stage === 'DYING' ? 'KILL' : stage === 'SCALING' ? 'SCALE' : 'HOLD',
-            rootCause: stage === 'DYING' ? 'CRITICAL_PERFORMANCE_DECLINE' : stage === 'FATIGUED' ? 'CREATIVE_FATIGUE' : 'SCALING_OPPORTUNITY',
-            rationale: buildRationale(c),
-            metrics: { spend: c.spend, impressions: c.impressions, results: c.results, frequency: c.frequency, reach: c.reach, ctr: c.ctr, cpc: c.cpc, roas: c.roas, costPerResult: c.costPerResult },
-            deliveryStatus: c.deliveryStatus,
-            rawRecord: c.rawRecord,
-          },
-        });
-        campaignIds.push(cs.campaignId);
-        processed++;
-      } else {
-        logger.warn({ err: result.reason?.message, campaignId: parsed[i].campaignId }, '[campaigns/upload-csv] row failed');
-        errors.push({ campaign: parsed[i].campaignName, error: result.reason?.message || 'Unknown error' });
+      // Collect successful upserts into action records
+      const actionData = [];
+      upsertResults.forEach((result, i) => {
+        if (result.status === 'fulfilled') {
+          const { c, cs, stage } = result.value;
+          actionData.push({
+            workspaceId,
+            campaignId:     cs.campaignId,
+            // Deterministic idempotency key: same campaign in same upload = same key
+            // Enables retry-safety: re-uploading the same CSV won't create duplicates
+            idempotencyKey: `meta:csv:${uploadSessionId}:${cs.campaignId}`,
+            status:         'PENDING',
+            payload: {
+              kind: 'lumi.csv-data', source: 'csv-upload', platform: 'META',
+              campaignName: c.campaignName, adsetName: c.adsetName,
+              priority: stage === 'DYING' ? 'HIGH' : stage === 'FATIGUED' ? 'MEDIUM' : 'LOW',
+              verdict:  stage === 'DYING' ? 'KILL' : stage === 'SCALING' ? 'SCALE' : 'HOLD',
+              rootCause: stage === 'DYING' ? 'CRITICAL_PERFORMANCE_DECLINE' : stage === 'FATIGUED' ? 'CREATIVE_FATIGUE' : 'SCALING_OPPORTUNITY',
+              rationale: buildRationale(c),
+              metrics: { spend: c.spend, impressions: c.impressions, results: c.results, frequency: c.frequency, reach: c.reach, ctr: c.ctr, cpc: c.cpc, roas: c.roas, costPerResult: c.costPerResult },
+              deliveryStatus: c.deliveryStatus,
+              rawRecord: c.rawRecord,
+            },
+          });
+          campaignIds.push(cs.campaignId);
+          processed++;
+        } else {
+          logger.warn({ err: result.reason?.message, campaignId: parsed[i].campaignId }, '[campaigns/upload-csv] row failed');
+          errors.push({ campaign: parsed[i].campaignName, error: result.reason?.message || 'Unknown error' });
+        }
+      });
+
+      // Batch insert all action records in a single query (in same transaction)
+      if (actionData.length > 0) {
+        await tx.action.createMany({ data: actionData });
+        alertsCreated = actionData.length;
       }
     });
 
-    // Batch insert all action records in a single query
-    if (actionData.length > 0) {
-      await prisma.action.createMany({ data: actionData });
-      alertsCreated = actionData.length;
-      const totalSpend = actionData.reduce((sum, a) => sum + (a.payload?.metrics?.spend || 0), 0);
+    // Log metrics AFTER transaction commits
+    if (alertsCreated > 0) {
+      const totalSpend = parsed
+        .filter(c => campaignIds.includes(c.campaignId))
+        .reduce((sum, c) => sum + (c.spend || 0), 0);
+
       logger.info({
         workspaceId,
         campaignsPersisted: processed,

@@ -77,13 +77,36 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
 
       setResult(res.data);
 
-      // Show success toast based on mode
+      // Show success/warning toast based on mode and operational truth
       if (mode === 'analyze') {
-        const analyzed = res.data.stats?.analyzed || res.data.decisions?.length || 0;
-        toast.success(
-          `Analyzed ${analyzed} campaign${analyzed === 1 ? '' : 's'} · ${res.data.decisions?.length || 0} decision${res.data.decisions?.length === 1 ? '' : 's'} generated`,
-          { description: 'AI analysis complete — rendering intelligence layer' },
-        );
+        const analyzed = res.data.stats?.analyzed || 0;
+        const persisted = res.data.stats?.persisted || 0;
+        const failed = res.data.stats?.failed || 0;
+
+        // Partial success: some campaigns persisted, some failed
+        if (res.data.partial) {
+          toast.warning(
+            `Partial upload: ${persisted} of ${analyzed} campaigns persisted`,
+            {
+              description: `${failed} campaign${failed === 1 ? '' : 's'} failed to save. Check errors below.`,
+              duration: 8000,
+            },
+          );
+        }
+        // Full success: all campaigns analyzed and persisted
+        else if (res.data.success) {
+          toast.success(
+            `Analyzed ${analyzed} campaign${analyzed === 1 ? '' : 's'} · ${persisted} persisted`,
+            { description: 'AI analysis complete — rendering intelligence layer' },
+          );
+        }
+        // Total failure: no campaigns persisted
+        else {
+          toast.error(
+            `Upload failed: ${failed} error${failed === 1 ? '' : 's'}`,
+            { description: 'No campaigns were saved. Check errors below.' },
+          );
+        }
       } else {
         const campaignCount = res.data.campaign_ids?.length || 0;
         toast.success(
