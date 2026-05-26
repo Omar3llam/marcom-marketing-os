@@ -19,6 +19,14 @@ ALTER TABLE "campaign_states"
 
 -- Add composite unique constraint for workspace-scoped uniqueness
 -- This ensures campaignId is unique WITHIN a workspace, not globally
-ALTER TABLE "campaign_states"
-  ADD CONSTRAINT "campaign_states_campaignId_workspaceId_key"
-  UNIQUE ("campaignId", "workspaceId");
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'campaign_states_campaignId_workspaceId_key'
+  ) THEN
+    ALTER TABLE "campaign_states"
+      ADD CONSTRAINT "campaign_states_campaignId_workspaceId_key"
+      UNIQUE ("campaignId", "workspaceId");
+  END IF;
+END $$;
