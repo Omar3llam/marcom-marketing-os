@@ -150,7 +150,6 @@ export const STEP_DEFINITIONS = [
   { key: 'channels',  label: 'Ad channels' },
   { key: 'spend',     label: 'Spend tier' },
   { key: 'objective', label: 'Objective' },
-  { key: 'plan',      label: 'Plan' },
   { key: 'review',    label: 'Review' },
 ];
 
@@ -170,6 +169,4 @@ export const DEFAULTS = {
   currency: 'EGP',
   objective: 'roas',
   customObjective: '',
-  plan: 'pro',
-  billing: 'monthly',
 };

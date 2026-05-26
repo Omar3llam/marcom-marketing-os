@@ -14,7 +14,6 @@ import { VoiceStep }           from './steps/VoiceStep.jsx';
 import { ChannelsStep }        from './steps/ChannelsStep.jsx';
 import { SpendStep }           from './steps/SpendStep.jsx';
 import { ObjectiveStep }       from './steps/ObjectiveStep.jsx';
-import { PlanStep }            from './steps/PlanStep.jsx';
 import { ReviewStep }          from './steps/ReviewStep.jsx';
 
 const STEPS = STEP_DEFINITIONS;
@@ -51,8 +50,6 @@ export default function OnboardingPage() {
         return form.spendTier;
       case 'objective':
         return form.objective && (form.objective !== 'custom' || form.customObjective);
-      case 'plan':
-        return form.plan;
       case 'review':
         return true;
       default:
@@ -148,7 +145,6 @@ export default function OnboardingPage() {
           {currentStepKey === 'channels' && <ChannelsStep form={form} set={set} />}
           {currentStepKey === 'spend' && <SpendStep form={form} set={set} />}
           {currentStepKey === 'objective' && <ObjectiveStep form={form} set={set} />}
-          {currentStepKey === 'plan' && <PlanStep form={form} set={set} />}
           {currentStepKey === 'review' && <ReviewStep form={form} onEdit={goToStep} />}
 
           {/* Navigation */}

@@ -3,7 +3,7 @@
 // ============================================================
 
 import { CheckCircle2, Edit2 } from 'lucide-react';
-import { MARKETS, AGE_BANDS, GENDERS, LANGUAGES, DIALECTS, TONES, CHANNELS, SPEND_TIERS, OBJECTIVES, PLANS } from '../constants.js';
+import { MARKETS, AGE_BANDS, GENDERS, LANGUAGES, DIALECTS, TONES, CHANNELS, SPEND_TIERS, OBJECTIVES } from '../constants.js';
 import { BigHeader, Lede } from '../shared.jsx';
 
 export function ReviewStep({ form, onEdit }) {
@@ -14,7 +14,6 @@ export function ReviewStep({ form, onEdit }) {
   const selectedTone = TONES.find((t) => t.id === form.tone);
   const selectedSpendTier = SPEND_TIERS.find((t) => t.id === form.spendTier);
   const selectedObjective = OBJECTIVES.find((o) => o.id === form.objective);
-  const selectedPlan = PLANS.find((p) => p.id === form.plan);
 
   const selectedAges = AGE_BANDS.filter((band) => form.ages[band.id]).map((b) => b.label);
   const selectedInterests = Object.keys(form.interests).filter((k) => form.interests[k]);
@@ -65,14 +64,6 @@ export function ReviewStep({ form, onEdit }) {
         ...(form.objective === 'custom' && form.customObjective
           ? [{ label: 'Custom objective', value: form.customObjective }]
           : []),
-      ],
-    },
-    {
-      step: 7,
-      title: 'Plan',
-      items: [
-        { label: 'Selected plan', value: selectedPlan?.name || '—' },
-        { label: 'Billing', value: form.billing === 'yearly' ? 'Yearly (save 17%)' : 'Monthly' },
       ],
     },
   ];

@@ -23,20 +23,21 @@ function FullscreenLoader({ label = 'Loading…' }) {
 
 // ── Shared cache + onboarded predicate ─────────────────────
 // Strict check: a context is only "complete" once the wizard's
-// required field (companyName) is populated. An empty {} object
+// required field (name) is populated. An empty {} object
 // does NOT count as onboarded, even though it's truthy in JS.
 function isOnboarded(context) {
   if (!context || typeof context !== 'object') {
     return false;
   }
 
-  const companyName = context.companyName;
+  // Check both 'name' (new) and 'companyName' (legacy) for backwards compatibility
+  const brandName = context.name || context.companyName;
 
-  if (typeof companyName !== 'string') {
+  if (typeof brandName !== 'string') {
     return false;
   }
 
-  const trimmed = companyName.trim();
+  const trimmed = brandName.trim();
   return trimmed.length > 0;
 }
 
