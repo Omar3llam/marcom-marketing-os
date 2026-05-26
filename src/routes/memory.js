@@ -23,7 +23,8 @@ const router = Router();
 // Optional body: correlationId
 router.post('/record', async (req, res) => {
   try {
-    const { workspaceId, userId } = req.user;
+    const workspaceId = req.workspaceId;
+    const userId = req.userId;
     if (!workspaceId) return res.status(401).json({ error: 'Unauthenticated' });
 
     const record = await decisionMemoryService.recordDecisionMemory({
@@ -49,7 +50,7 @@ router.post('/record', async (req, res) => {
 // Aggregates the last 50 memory rows into per-decisionType stats.
 router.get('/patterns', async (req, res) => {
   try {
-    const { workspaceId } = req.user;
+    const workspaceId = req.workspaceId;
     if (!workspaceId) return res.status(401).json({ error: 'Unauthenticated' });
 
     const memories = await prisma.decisionMemory.findMany({
