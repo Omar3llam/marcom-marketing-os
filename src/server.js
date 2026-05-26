@@ -46,7 +46,6 @@ import decisionMemoryRouter   from './routes/decision-memory/index.js';
 import analyticsRouter        from './routes/analytics/index.js';
 import attributionRouter      from './routes/attribution.js';
 import { userRouter }         from './routes/user.js';
-import { requireJwt }         from './middleware/jwtAuth.js';
 import { logger }             from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
 import { ensureChatSessionSchema } from './models/chatSession.js';
@@ -201,10 +200,11 @@ app.post('/api/lumi/quick-action', apiLimiter, quickActionHandler);
 // Mount BEFORE /api/lumi so requireJwt doesn't reject it.
 app.get('/api/lumi/demo-feed', apiLimiter, demoFeedHandler);
 
-// ── LUMI CORE ROUTES (JWT-protected) ─────────────────────────
+// ── LUMI CORE ROUTES (Firebase-protected) ─────────────────────────
 // Phases 5 + 6: rollback, feed, _health
+// BUGFIX (PR #44): Changed from requireJwt → requireAuth (Firebase migration)
 app.use('/api/lumi',
-  requireJwt,
+  requireAuth,
   apiLimiter,
   lumiRouter
 );
