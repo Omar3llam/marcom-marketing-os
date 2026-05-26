@@ -45,6 +45,7 @@ import memoryRouter           from './routes/memory.js';
 import decisionMemoryRouter   from './routes/decision-memory/index.js';
 import analyticsRouter        from './routes/analytics/index.js';
 import attributionRouter      from './routes/attribution.js';
+import { observabilityRouter } from './routes/observability/index.js';
 import { userRouter }         from './routes/user.js';
 import { logger }             from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
@@ -303,6 +304,13 @@ app.use('/api/attribution',
   requireAuth,
   apiLimiter,
   attributionRouter
+);
+
+// Observability (PR #45) — Mission Control for live execution monitoring
+app.use('/api/observability',
+  requireAuth,
+  apiLimiter,
+  observabilityRouter
 );
 
 // User account management — profile, workspace, account deletion
