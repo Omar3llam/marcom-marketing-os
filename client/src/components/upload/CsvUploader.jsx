@@ -68,7 +68,7 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
         : '/api/campaigns/upload-csv';
 
       const res = await api.post(endpoint, form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
+        // Don't set Content-Type manually — axios sets multipart/form-data with boundary automatically
         timeout: mode === 'analyze' ? 180_000 : 60_000, // 3 min for AI analysis, 1 min for DB write
         onUploadProgress: (evt) => {
           if (evt.total) setProgress(Math.round((evt.loaded / evt.total) * 100));

@@ -90,9 +90,7 @@ function CampaignInput({ initialData, onSubmit, onCancel }) {
       const form = new FormData();
       form.append('campaignData', file);
       try {
-        const { data } = await api.post('/api/campaigns/upload-csv', form, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
+        const { data } = await api.post('/api/campaigns/upload-csv', form);
         toast.success(`Processed ${data.processed} of ${data.uploaded} rows.`);
         await refetch();
 
