@@ -50,12 +50,16 @@ export function mountUploadRoutes(router) {
     logger.info({ filename: req.file.originalname, size: req.file.size, mode, userId: req.userId, workspaceId: req.workspaceId }, '[CSV_PIPELINE] CSV_RECEIVED');
 
     if (mode === 'analyze') {
-      logger.info({ filename: req.file.originalname, size: req.file.size, userId: req.userId }, '[campaigns/upload-csv] ANALYZE mode');
+      const workspaceId = req.workspaceId;
+      if (!workspaceId) return res.status(401).json({ error: 'Workspace not found.', hint: 'Complete onboarding to create your workspace, then upload again.', userId: req.userId || null });
+
+      logger.info({ filename: req.file.originalname, size: req.file.size, userId: req.userId, workspaceId }, '[campaigns/upload-csv] ANALYZE mode');
 
       const { campaigns: parsed, errors: parseErrors, stats } = parseMetaAdsCsv(req.file.buffer);
       if (!parsed || parsed.length === 0) return res.status(400).json({ success: false, error: 'No valid campaigns found in CSV', stats, errors: parseErrors || [] });
       if (parsed.length > MAX_ROWS_ANALYZE) return res.status(400).json({ success: false, error: `CSV has ${parsed.length} rows. Maximum for analysis mode is ${MAX_ROWS_ANALYZE}.`, hint: 'Split your export into smaller date ranges or use default mode for bulk DB storage.' });
 
+      // ── Step 1: Run AI analysis ─────────────────────────────────
       const results = await Promise.allSettled(
         parsed.map(async (c) => {
           const dataForClaude = {
@@ -68,22 +72,107 @@ export function mountUploadRoutes(router) {
           decision.campaignName = c.campaignName;
           decision.adsetName = c.adsetName;
           decision.sourceMetrics = { spend: c.spend ?? 0, impressions: c.impressions ?? 0, results: c.results ?? 0, ctr: c.ctr ?? 0, cpc: c.cpc ?? 0, roas: c.roas ?? 0, frequency: c.frequency ?? 0, reach: c.reach ?? 0, costPerResult: c.costPerResult ?? 0 };
-          return decision;
+          return { decision, campaign: c };
         }),
       );
 
       const decisions = [];
       const errors    = [];
+      const campaignsToSave = [];
+
       results.forEach((result, idx) => {
-        if (result.status === 'fulfilled') { decisions.push(result.value); }
-        else {
+        if (result.status === 'fulfilled') {
+          decisions.push(result.value.decision);
+          campaignsToSave.push(result.value);
+        } else {
           logger.error({ err: result.reason?.message, campaignId: parsed[idx].campaignId }, '[campaigns/upload-csv] orchestrator.analyzeCampaignData failed');
           errors.push({ campaign: parsed[idx].campaignName, error: result.reason?.message || 'Analysis failed' });
         }
       });
 
-      logger.info({ userId: req.userId, analyzed: decisions.length, errors: errors.length, totalRows: parsed.length }, '[campaigns/upload-csv] ANALYZE mode complete');
-      return res.json({ success: true, mode: 'analyze', decisions, errors, stats: { uploaded: stats.total_rows, analyzed: decisions.length, failed: errors.length } });
+      // ── Step 2: Persist to database (like default mode) ─────────
+      const campaignIds = [];
+      let processed = 0;
+      let alertsCreated = 0;
+
+      // Upsert CampaignState records
+      const upsertResults = await Promise.allSettled(
+        campaignsToSave.map(({ campaign: c, decision }) => {
+          const healthScore = computeHealthScore({ roas: c.roas, ctr: c.ctr, frequency: c.frequency });
+          const stage = classifyStage(c.roas, c.ctr, c.frequency);
+          return prisma.campaignState.upsert({
+            where:  { campaignId: c.campaignId },
+            update: { stage, healthScore, lastAnalysis: new Date() },
+            create: { campaignId: c.campaignId, workspaceId, stage, healthScore, lastAnalysis: new Date() },
+          }).then(cs => ({ c, cs, stage, decision }));
+        }),
+      );
+
+      // Create Action records with AI analysis results
+      const actionData = [];
+      upsertResults.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          const { c, cs, stage, decision } = result.value;
+          actionData.push({
+            workspaceId,
+            campaignId:     cs.campaignId,
+            idempotencyKey: `meta:${cs.campaignId}:${Date.now()}:${randomUUID().slice(0, 8)}`,
+            status:         'PENDING',
+            payload: {
+              kind: 'lumi.csv-data-analyzed',
+              source: 'csv-upload-analyze',
+              platform: 'META',
+              campaignName: c.campaignName,
+              adsetName: c.adsetName,
+              // Use AI analysis results
+              priority: decision.verdict === 'KILL' ? 'HIGH' : decision.verdict === 'SCALE' ? 'MEDIUM' : 'LOW',
+              verdict: decision.verdict || 'HOLD',
+              rootCause: decision.rootCause || decision.diagnosis,
+              rationale: decision.diagnosis,
+              strategicAnalysis: {
+                verdict: decision.verdict,
+                rootCause: decision.rootCause,
+                diagnosis: decision.diagnosis,
+                actionPlan: decision.actionPlan,
+              },
+              metrics: { spend: c.spend, impressions: c.impressions, results: c.results, frequency: c.frequency, reach: c.reach, ctr: c.ctr, cpc: c.cpc, roas: c.roas, costPerResult: c.costPerResult },
+              deliveryStatus: c.deliveryStatus,
+              rawRecord: c.rawRecord,
+            },
+          });
+          campaignIds.push(cs.campaignId);
+          processed++;
+        }
+      });
+
+      // Batch insert actions
+      if (actionData.length > 0) {
+        await prisma.action.createMany({ data: actionData });
+        alertsCreated = actionData.length;
+        const totalSpend = actionData.reduce((sum, a) => sum + (a.payload?.metrics?.spend || 0), 0);
+        logger.info({
+          workspaceId,
+          campaignsPersisted: processed,
+          actionsPersisted: alertsCreated,
+          totalSpend,
+        }, '[CSV_PIPELINE] ANALYZE_MODE_CAMPAIGNS_PERSISTED');
+      }
+
+      logger.info({ userId: req.userId, analyzed: decisions.length, errors: errors.length, totalRows: parsed.length, persisted: processed }, '[campaigns/upload-csv] ANALYZE mode complete');
+      return res.json({
+        success: true,
+        mode: 'analyze',
+        decisions,
+        errors,
+        stats: {
+          uploaded: stats.total_rows,
+          analyzed: decisions.length,
+          failed: errors.length,
+          persisted: processed,
+          alerts_created: alertsCreated,
+        },
+        campaign_ids: campaignIds,
+      });
     }
 
     const workspaceId = req.workspaceId;
