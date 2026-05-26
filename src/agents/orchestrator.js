@@ -139,7 +139,7 @@ export async function runOrchestration({ campaignId, workspaceId, actionId, user
       : Promise.resolve(null),
     prisma.decisionMemory.findMany({
       where:   { workspaceId },
-      orderBy: { recordedAt: 'desc' },
+      orderBy: { createdAt: 'desc' },
       take:    3,
     }),
   ]);

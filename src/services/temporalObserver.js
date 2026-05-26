@@ -90,8 +90,8 @@ export async function runObserverSweep() {
   const [existingMemories, currentStates] = await Promise.all([
     prisma.decisionMemory.findMany({
       where:   { campaignId: { in: campaignIds } },
-      orderBy: { recordedAt: 'desc' },
-      select:  { campaignId: true, recordedAt: true, deltaRoas: true },
+      orderBy: { createdAt: 'desc' },
+      select:  { campaignId: true, createdAt: true, deltaRoas: true },
     }),
     prisma.campaignState.findMany({
       where:  { campaignId: { in: campaignIds } },
@@ -115,7 +115,7 @@ export async function runObserverSweep() {
     // Skip if memory already recorded for this campaign after executedAt.
     const priorMemories = memoriesByCampaign.get(action.campaignId) ?? [];
     const hasExisting = priorMemories.some(
-      m => new Date(m.recordedAt) >= new Date(action.executedAt),
+      m => new Date(m.createdAt) >= new Date(action.executedAt),
     );
     if (hasExisting) continue;
 

@@ -150,7 +150,7 @@ feedRouter.get('/feed', async (req, res) => {
       }),
       prisma.decisionMemory.findMany({
         where:   { workspaceId: wsId },
-        orderBy: { recordedAt: 'desc' },
+        orderBy: { createdAt: 'desc' },
         take:    200,
       }),
     ]);

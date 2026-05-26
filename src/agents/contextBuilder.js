@@ -31,12 +31,12 @@ export async function buildCampaignContext(campaignId) {
     }),
     prisma.decisionMemory.findMany({
       where:   { campaignId },
-      orderBy: { recordedAt: 'desc' },
+      orderBy: { createdAt: 'desc' },
       take:    3,                                  // hard cap per spec
       select: {
         actionType: true, decisionRationale: true, resultStatus: true,
         deltaCtr: true, deltaRoas: true,
-        impactDurationHrs: true, isSustainable: true, recordedAt: true,
+        impactDurationHrs: true, isSustainable: true, createdAt: true,
       },
     }),
   ]);
