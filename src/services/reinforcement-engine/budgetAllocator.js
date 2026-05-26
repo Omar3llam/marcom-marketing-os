@@ -175,16 +175,15 @@ function _applyWeightConstraints(idealWeights, currentWeights, constraints) {
     const ideal = idealWeights[provider];
     const current = currentWeights[provider] || 0;
 
-    // Limit change rate
-    let constrained = ideal;
-    if (ideal > current) {
-      constrained = Math.min(ideal, current + maxWeightChange);
-    } else {
-      constrained = Math.max(ideal, current - maxWeightChange);
-    }
+    // Apply min/max bounds first
+    let constrained = Math.max(minProviderWeight, Math.min(maxProviderWeight, ideal));
 
-    // Apply min/max bounds
-    constrained = Math.max(minProviderWeight, Math.min(maxProviderWeight, constrained));
+    // Then limit change rate (this takes precedence over min/max bounds)
+    if (constrained > current) {
+      constrained = Math.min(constrained, current + maxWeightChange);
+    } else if (constrained < current) {
+      constrained = Math.max(constrained, current - maxWeightChange);
+    }
 
     constrainedWeights[provider] = constrained;
   }
