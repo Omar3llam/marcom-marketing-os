@@ -14,7 +14,7 @@ import fs from 'fs';
 import path from 'path';
 import pdfParse from 'pdf-parse';
 import XLSX from 'xlsx';
-import { parseCsv } from './csvParser.js';
+import { parseMetaAdsCsv } from '../services/metaAdsParser.js';
 
 /**
  * Parse uploaded file based on extension/MIME type
@@ -52,14 +52,17 @@ export async function parseUploadedFile(file) {
 
 // ── CSV Parser (existing logic) ──────────────────────────────
 async function parseCsvFile(file) {
-  const campaigns = await parseCsv(file.path);
+  const buffer = fs.readFileSync(file.path);
+  const { campaigns, errors, stats } = parseMetaAdsCsv(buffer);
 
   return {
     type: 'csv',
     format: 'structured',
-    data: campaigns,
+    data: campaigns || [],
+    errors: errors || [],
+    stats,
     raw: null, // CSV is already structured, no raw text needed
-    rowCount: campaigns.length,
+    rowCount: (campaigns || []).length,
   };
 }
 

@@ -87,8 +87,9 @@ export function mountUploadRoutes(router) {
 
       // Handle structured data (CSV, Excel with campaign columns)
       if (parsedFile.format === 'structured' && parsedFile.type === 'csv') {
-        const { campaigns: parsed, errors: parseErrors, stats } = parseMetaAdsCsv(req.file.buffer);
-        if (!parsed || parsed.length === 0) return res.status(400).json({ success: false, error: 'No valid campaigns found in file', stats, errors: parseErrors || [] });
+        // CSV already parsed by parseUploadedFile
+        const parsed = parsedFile.data;
+        if (!parsed || parsed.length === 0) return res.status(400).json({ success: false, error: 'No valid campaigns found in file', errors: parsedFile.errors || [] });
         if (parsed.length > MAX_ROWS_ANALYZE) return res.status(400).json({ success: false, error: `File has ${parsed.length} rows. Maximum for analysis mode is ${MAX_ROWS_ANALYZE}.`, hint: 'Split your export into smaller date ranges.' });
 
         parsedFile.campaigns = parsed;
