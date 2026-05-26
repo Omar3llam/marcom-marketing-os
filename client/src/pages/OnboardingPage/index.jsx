@@ -113,8 +113,7 @@ export default function OnboardingPage() {
 
   return (
     <div
-      className="min-h-screen bg-surface-dark text-white/90 overflow-x-hidden"
-      style={{ backgroundImage: 'radial-gradient(ellipse 80% 60% at 50% -10%, rgba(246,201,69,0.06) 0%, transparent 60%)' }}
+      className="min-h-screen bg-[#F8F6F2] text-gray-900 overflow-x-hidden"
     >
       <div className="mx-auto max-w-3xl px-3 sm:px-4 py-6 sm:py-8">
         {/* Progress bar */}
@@ -123,15 +122,15 @@ export default function OnboardingPage() {
             <div className="flex items-center justify-between mb-2">
               <div className="inline-flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-lumi-gold" />
-                <span className="font-mono text-xs font-semibold uppercase tracking-widest text-lumi-gold/80">
+                <span className="font-mono text-xs font-semibold uppercase tracking-widest text-lumi-gold">
                   Step {step + 1} of {totalSteps}
                 </span>
               </div>
-              <span className="font-mono text-xs text-white/40">
+              <span className="font-mono text-xs text-gray-500">
                 {Math.round(progress)}% complete
               </span>
             </div>
-            <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+            <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
               <div
                 className="absolute inset-y-0 left-0 rounded-full bg-lumi-gold transition-all duration-500 ease-out"
                 style={{ width: `${progress}%` }}
@@ -140,7 +139,7 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5 sm:p-8 shadow-xl shadow-black/30 ring-1 ring-white/5">
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 sm:p-8 shadow-lg">
           {/* Step content */}
           {currentStepKey === 'welcome' && <WelcomeStep />}
           {currentStepKey === 'identity' && <IdentityStep form={form} set={set} />}
@@ -153,12 +152,12 @@ export default function OnboardingPage() {
           {currentStepKey === 'review' && <ReviewStep form={form} onEdit={goToStep} />}
 
           {/* Navigation */}
-          <div className="mt-6 sm:mt-8 flex justify-between gap-2 border-t border-white/8 pt-6">
+          <div className="mt-6 sm:mt-8 flex justify-between gap-2 border-t border-gray-200 pt-6">
             <button
               type="button"
               onClick={prevStep}
               disabled={step === 0}
-              className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-white/40 hover:text-white/70 hover:bg-white/5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              className="inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-gray-400 hover:text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ArrowLeft className="h-4 w-4" /> Back
             </button>
@@ -192,7 +191,7 @@ export default function OnboardingPage() {
           </div>
 
           {busy && (
-            <div className="mt-2 text-center font-mono text-xs text-white/35 animate-pulse">
+            <div className="mt-2 text-center font-mono text-xs text-gray-400 animate-pulse">
               Saving your context…
             </div>
           )}

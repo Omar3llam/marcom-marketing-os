@@ -35,11 +35,11 @@ export function SpendStep({ form, set }) {
               label={tier.label}
             />
             {/* Visual bar indicator */}
-            <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-white/5 overflow-hidden rounded-full">
+            <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-gray-100 overflow-hidden rounded-full">
               <div
                 className={cn(
                   'h-full transition-all duration-300',
-                  form.spendTier === tier.id ? 'bg-lumi-gold/60' : 'bg-white/10'
+                  form.spendTier === tier.id ? 'bg-lumi-gold' : 'bg-gray-200'
                 )}
                 style={{ width: `${tier.bar * 100}%` }}
               />
@@ -48,11 +48,11 @@ export function SpendStep({ form, set }) {
         ))}
       </div>
 
-      <div className="mt-5 p-4 rounded-lg bg-white/[0.02] border border-white/10">
-        <div className="text-xs font-medium text-white/60 mb-1">
+      <div className="mt-5 p-4 rounded-lg bg-gray-50 border border-gray-200">
+        <div className="text-xs font-medium text-gray-700 mb-1">
           Why we ask —
         </div>
-        <div className="text-xs text-white/40 leading-relaxed">
+        <div className="text-xs text-gray-600 leading-relaxed">
           Higher-spend accounts get tighter guardrails on budget allocation,
           while lower tiers get more aggressive exploration and testing recommendations.
         </div>

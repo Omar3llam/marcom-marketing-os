@@ -41,18 +41,18 @@ export function ObjectiveStep({ form, set }) {
               rows={4}
               className={textareaBase}
             />
-            <div className="mt-1.5 text-xs text-white/40">
+            <div className="mt-1.5 text-xs text-gray-500">
               Be specific — include target metrics, geography, or constraints
             </div>
           </Field>
         </div>
       )}
 
-      <div className="mt-5 p-4 rounded-lg bg-white/[0.02] border border-white/10">
-        <div className="text-xs font-medium text-white/60 mb-1">
+      <div className="mt-5 p-4 rounded-lg bg-gray-50 border border-gray-200">
+        <div className="text-xs font-medium text-gray-700 mb-1">
           What this means —
         </div>
-        <div className="text-xs text-white/40 leading-relaxed">
+        <div className="text-xs text-gray-600 leading-relaxed">
           Lumi will factor your objective into every verdict. For example, if you prioritize ROAS,
           it'll be more aggressive about killing low-performing creative. If you prioritize conversions,
           it'll tolerate higher CPAs to drive volume.

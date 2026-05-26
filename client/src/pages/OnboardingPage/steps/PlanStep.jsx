@@ -61,29 +61,29 @@ export function PlanStep({ form, set }) {
                 </div>
               )}
 
-              <div className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-1">
+              <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
                 {plan.tag}
               </div>
 
-              <div className="text-xl font-display font-bold text-white mb-1">
+              <div className="text-xl font-display font-bold text-gray-900 mb-1">
                 {plan.name}
               </div>
 
               <div className="mb-4">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl font-display font-bold text-white">
+                  <span className="text-2xl font-display font-bold text-gray-900">
                     {price.toLocaleString()}
                   </span>
-                  <span className="text-sm text-white/50">
+                  <span className="text-sm text-gray-600">
                     {form.currency}
                   </span>
                 </div>
-                <div className="text-xs text-white/40">
+                <div className="text-xs text-gray-500">
                   {priceLabel}
                 </div>
               </div>
 
-              <ul className="space-y-2 text-xs text-white/70 flex-1">
+              <ul className="space-y-2 text-xs text-gray-700 flex-1">
                 {plan.bullets.map((bullet, i) => (
                   <li key={i} className="flex items-start gap-2">
                     <Check className="h-3.5 w-3.5 text-lumi-gold flex-shrink-0 mt-0.5" />
@@ -96,11 +96,11 @@ export function PlanStep({ form, set }) {
         })}
       </div>
 
-      <div className="mt-5 p-4 rounded-lg bg-white/[0.02] border border-white/10">
-        <div className="text-xs font-medium text-white/60 mb-1">
+      <div className="mt-5 p-4 rounded-lg bg-gray-50 border border-gray-200">
+        <div className="text-xs font-medium text-gray-700 mb-1">
           7-day free trial —
         </div>
-        <div className="text-xs text-white/40 leading-relaxed">
+        <div className="text-xs text-gray-600 leading-relaxed">
           You won't be charged until the trial ends. You can cancel anytime from your workspace settings.
         </div>
       </div>
