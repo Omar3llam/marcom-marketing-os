@@ -4,19 +4,20 @@
 // Replaces/enhances Command Hub with operational dashboard.
 // Shows: account health stats, alerts, AI insights, quick actions
 // ============================================================
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart, Target, AlertTriangle, Activity,
-  Brain, Zap, ArrowRight, Upload, Play,
+  Upload, ArrowRight,
 } from 'lucide-react';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 import StatCard from '@/components/ui/StatCard.jsx';
-import Panel from '@/components/ui/Panel.jsx';
-import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
-import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
+import AlertsPanel from './Home/AlertsPanel.jsx';
+import AIInsightPanel from './Home/AIInsightPanel.jsx';
+import QuickActionsPanel from './Home/QuickActionsPanel.jsx';
+import ActivityFeed from './Home/ActivityFeed.jsx';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -196,187 +197,6 @@ export default function HomePage() {
           {/* Recent activity */}
           <ActivityFeed activity={recentActivity} loading={loading} />
         </>
-      )}
-    </div>
-  );
-}
-
-// ── Alerts Panel ─────────────────────────────────────────────
-function AlertsPanel({ alerts, onReviewAlert }) {
-  return (
-    <Panel
-      title="Alerts"
-      Icon={AlertTriangle}
-      iconTone="kill"
-      meta={`${alerts.length} high priority`}
-    >
-      {alerts.length === 0 ? (
-        <EmptyPanel text="Nothing burning right now." Icon={AlertTriangle} />
-      ) : (
-        <div className="space-y-2">
-          {alerts.slice(0, 3).map((alert) => (
-            <button
-              key={alert.id}
-              onClick={() => onReviewAlert(alert)}
-              aria-label={`Review alert for ${alert.campaign}: ${alert.signal}`}
-              className="w-full flex items-center gap-2.5 p-3 bg-surface-elevated border border-surface-border hover:bg-surface-card
-                         rounded-lg transition-colors text-left focus:outline-none focus:ring-2 focus:ring-lumi-accent focus:ring-offset-2 focus:ring-offset-surface-dark"
-              style={{ borderLeft: `3px solid var(--c-${alert.verdict.toLowerCase()})` }}
-            >
-              <div className="flex-1 min-w-0">
-                <div className="font-display font-semibold text-xs text-dark-base truncate">
-                  {alert.campaign}
-                </div>
-                <div className="font-mono text-[10px] text-dark-muted mt-1">
-                  {alert.signal}
-                </div>
-              </div>
-              <VerdictPill verdict={alert.verdict} size="sm" showIcon={false} />
-            </button>
-          ))}
-        </div>
-      )}
-    </Panel>
-  );
-}
-
-// ── AI Insight Panel ─────────────────────────────────────────
-function AIInsightPanel({ workspace, topAlert, onAct }) {
-  if (!topAlert || !topAlert.alertData) {
-    return (
-      <Panel
-        title="AI Insight"
-        Icon={Brain}
-        iconTone="gold"
-        meta="no alerts"
-      >
-        <EmptyPanel text="No actionable insights right now. All campaigns look healthy!" Icon={Brain} />
-      </Panel>
-    );
-  }
-
-  const { campaign, alertData } = topAlert;
-  const rootCause = alertData.analysis?.root_cause || 'Performance degradation detected';
-  const actionPlan = alertData.action_plan || 'Review campaign metrics and consider adjustments.';
-
-  return (
-    <Panel
-      title="AI Insight"
-      Icon={Brain}
-      iconTone="gold"
-      meta="updated recently"
-    >
-      <div className="font-mono text-[10px] tracking-[0.08em] uppercase text-lumi-accent mb-2">
-        Top recommendation
-      </div>
-      <p className="text-[13px] text-dark-soft leading-relaxed mb-3.5">
-        Your <strong className="text-dark-base">{campaign}</strong> campaign: {rootCause}.
-        {' '}{actionPlan}
-      </p>
-      <button
-        onClick={onAct}
-        aria-label="Review AI recommendation verdict"
-        className="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 bg-lumi-accent hover:bg-lumi-accent/90
-                   text-white rounded-lg transition-all duration-150 font-display font-semibold text-[13px] shadow-accent-glow
-                   focus:outline-none focus:ring-2 focus:ring-lumi-accent focus:ring-offset-2 focus:ring-offset-surface-dark"
-      >
-        <Zap className="w-3.5 h-3.5" strokeWidth={1.5} />
-        Review verdict
-        <ArrowRight className="w-3.5 h-3.5" strokeWidth={1.5} />
-      </button>
-    </Panel>
-  );
-}
-
-// ── Quick Actions Panel ──────────────────────────────────────
-function QuickActionsPanel({ onUploadCSV, onStartFlow }) {
-  const actions = [
-    { key: 'upload', label: 'Upload new data', icon: Upload, variant: 'primary' },
-    { key: 'run', label: 'Run intelligence scan', icon: Play, variant: 'secondary' },
-  ];
-
-  return (
-    <Panel
-      title="Quick Actions"
-      Icon={Zap}
-      iconTone="gold"
-      meta="shortcuts"
-    >
-      <div className="space-y-2">
-        {actions.map((action) => (
-          <button
-            key={action.key}
-            onClick={action.key === 'upload' ? onUploadCSV : onStartFlow}
-            aria-label={action.label}
-            className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg transition-all duration-150 font-display font-medium text-sm
-              focus:outline-none focus:ring-2 focus:ring-lumi-accent focus:ring-offset-2 focus:ring-offset-surface-dark ${
-              action.variant === 'primary'
-                ? 'bg-lumi-accent hover:bg-lumi-accent/90 text-white shadow-accent-glow'
-                : 'bg-surface-elevated hover:bg-surface-card text-dark-base border border-surface-border'
-            }`}
-          >
-            <action.icon className="w-4 h-4" strokeWidth={1.5} />
-            {action.label}
-          </button>
-        ))}
-      </div>
-    </Panel>
-  );
-}
-
-// ── Activity Feed ────────────────────────────────────────────
-function ActivityFeed({ activity, loading }) {
-  return (
-    <div className="bg-surface-card border border-surface-border rounded-xl p-5 shadow-card">
-      <h3 className="font-display font-semibold text-[15px] text-dark-base mb-4">
-        Recent Activity
-      </h3>
-      {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="flex items-start gap-3 pb-3 border-b border-surface-border last:border-0 animate-pulse">
-              <div className="w-8 h-8 rounded-lg bg-surface-elevated flex-shrink-0" />
-              <div className="flex-1 min-w-0 space-y-2">
-                <div className="h-4 bg-surface-elevated rounded w-3/4" />
-                <div className="h-3 bg-surface-elevated rounded w-1/2" />
-              </div>
-              <div className="h-4 w-16 bg-surface-elevated rounded" />
-            </div>
-          ))}
-        </div>
-      ) : activity.length === 0 ? (
-        <EmptyPanel text="No recent activity yet." Icon={Activity} />
-      ) : (
-        <div className="space-y-3">
-          {activity.map((item) => (
-          <div
-            key={item.id}
-            className="flex items-start gap-3 pb-3 border-b border-surface-border last:border-0 last:pb-0"
-          >
-            <div
-              className="w-8 h-8 rounded-lg bg-lumi-accent/10 flex items-center justify-center flex-shrink-0 text-lumi-accent"
-            >
-              {item.type === 'EXECUTION' ? (
-                <Play className="w-4 h-4" strokeWidth={1.5} />
-              ) : item.type === 'VERDICT' ? (
-                <Brain className="w-4 h-4" strokeWidth={1.5} />
-              ) : (
-                <Upload className="w-4 h-4" strokeWidth={1.5} />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-display font-medium text-sm text-dark-base">
-                {item.campaign}
-              </div>
-              <div className="text-xs text-dark-muted mt-0.5">{item.action}</div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] text-dark-subtle">{item.time}</span>
-              {item.verdict && <VerdictPill verdict={item.verdict} size="sm" showIcon={false} />}
-            </div>
-          </div>
-        ))}
-        </div>
       )}
     </div>
   );

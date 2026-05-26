@@ -7,24 +7,12 @@
 -- The table uses CUID for IDs and matches the Prisma schema.
 -- ============================================================
 
-CREATE TABLE IF NOT EXISTS "execution_requests" (
-  "id"              TEXT NOT NULL,
-  "workspaceId"     UUID NOT NULL,
-  "idempotencyKey"  TEXT NOT NULL,
-  "actionType"      TEXT NOT NULL,
-  "targetId"        TEXT NOT NULL,
-  "status"          TEXT NOT NULL,
-  "payload"         JSONB,
-  "response"        JSONB,
-  "createdAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "updatedAt"       TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "version"         INTEGER NOT NULL DEFAULT 0,
-  "correlationId"   TEXT,
-  "activeStep"      TEXT,
-  "retryMetadata"   JSONB,
-
-  CONSTRAINT "execution_requests_pkey" PRIMARY KEY ("id")
-);
+-- Add columns introduced in this migration (idempotent)
+ALTER TABLE "execution_requests"
+  ADD COLUMN IF NOT EXISTS "version" INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS "correlationId" TEXT,
+  ADD COLUMN IF NOT EXISTS "activeStep" TEXT,
+  ADD COLUMN IF NOT EXISTS "retryMetadata" JSONB;
 
 -- Create unique constraint on idempotencyKey
 CREATE UNIQUE INDEX IF NOT EXISTS "execution_requests_idempotencyKey_key"
