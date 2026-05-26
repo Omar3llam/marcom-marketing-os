@@ -11,7 +11,7 @@
 // CRON SCHEDULE:
 //   Run every 6 hours to keep performance data fresh.
 // ============================================================
-import prisma from '../lib/prisma.js';
+import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
 import { getMetaClient } from '../utils/meta.js';
 

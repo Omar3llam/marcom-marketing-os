@@ -8,8 +8,13 @@ import { Router }        from 'express';
 import { getProjectById } from '../models/project.js';
 import { callClaude }    from '../utils/claude.js';
 import { logger }        from '../utils/logger.js';
+import { generateContent } from './tools/content-generate.js';
 
 export const toolsRouter = Router();
+
+// ── POST /api/tools/content-generate ─────────────────────────
+// Content Lab: generate ad copy, headlines, CTAs, visuals, video
+toolsRouter.post('/content-generate', generateContent);
 
 // ── POST /api/tools/content-calendar ─────────────────────────
 // Body: { projectId, targetMonth, targetSector, keyFocus }

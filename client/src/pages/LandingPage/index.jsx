@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Sparkles, ArrowRight, Menu, X } from 'lucide-react';
+import { ArrowRight, Menu, X } from 'lucide-react';
 import { Hero, MockOSWindow } from './HeroSection.jsx';
 import { CapabilitiesGrid, HowItWorks } from './FeaturesSection.jsx';
+import { Pricing } from './PricingSection.jsx';
 import { BottomCTA } from './CTASection.jsx';
 
 export default function LandingPage() {
@@ -16,6 +17,7 @@ export default function LandingPage() {
       <MockOSWindow />
       <CapabilitiesGrid />
       <HowItWorks />
+      <Pricing />
       <BottomCTA onCta={() => navigate('/signup')} />
       <Footer />
     </div>
@@ -27,7 +29,12 @@ function Navbar({ onCta, menuOpen, setMenuOpen }) {
     <header className="sticky top-0 z-50 bg-lumi-bg/80 backdrop-blur-md border-b border-lumi-border/50">
       <nav className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 h-14">
         <Link to="/" className="flex items-center gap-2" aria-label="Lumi home">
-          <Sparkles className="w-5 h-5 text-lumi-accent" strokeWidth={1.5} />
+          <img
+            src="/assets/lumi-mascot.png"
+            alt="Lumi"
+            className="w-7 h-7"
+            style={{ filter: 'drop-shadow(0 2px 4px rgba(246,201,69,0.3))' }}
+          />
           <span className="font-display font-bold tracking-tight text-lumi-accent">LUMI</span>
         </Link>
 

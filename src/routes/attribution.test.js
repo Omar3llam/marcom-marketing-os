@@ -5,11 +5,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import attributionRouter from './attribution.js';
-import prisma from '../lib/prisma.js';
+import { prisma } from '../lib/prisma.js';
 
 // Mock Prisma
 vi.mock('../lib/prisma.js', () => ({
-  default: {
+  prisma: {
     artifact: {
       findFirst: vi.fn(),
     },

@@ -1,34 +1,40 @@
 // ============================================================
-// MARCOM / Lumi — Sidebar
+// MARCOM / Lumi — Sidebar (Enhanced with Figma Design)
 // ------------------------------------------------------------
-// 260px expanded, 64px collapsed. Holds: logo, project switcher,
-// New Chat CTA, tools nav, recent chats, footer (CSV upload +
-// Settings + user pill). All icons stroke-width 1.5.
+// 268px expanded, 64px collapsed. Features:
+// - Lumi mascot image + notification bell
+// - Live "WATCHING" status + countdown timer
+// - Cmd+K search affordance
+// - Alert badges on nav items
+// - Simplified navigation structure
+// All icons stroke-width 1.5.
 // ============================================================
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
-  Sparkles, ChevronDown, ChevronRight, Plus,
-  LayoutDashboard, BarChart3, Target, ScanSearch, CalendarDays,
-  Settings, PanelLeftClose, Activity,
+  Layout, BarChart3, Target, Send, CalendarDays,
+  Settings, PanelLeftClose, Plus, Search, ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { cn } from '@/lib/utils.js';
+import NotificationBell from '@/components/ui/NotificationBell.jsx';
+import NotificationPopover from '@/components/ui/NotificationPopover.jsx';
+import RecentDecisions from '@/components/ui/RecentDecisions.jsx';
 
+// Simplified navigation structure from Figma
 const tools = [
-  { label: 'Command Hub',       sub: 'Your OS launchpad',            icon: LayoutDashboard, path: '/app/feed'             },
-  { label: 'Campaign Analysis', sub: 'SCALE / HOLD / KILL verdicts',  icon: BarChart3,       path: '/app/campaigns'        },
-  { label: 'Operations',        sub: 'Runtime monitor + audit trail', icon: Activity,        path: '/app/demo/operations'  },
-  { label: 'Growth Strategy',   sub: 'CMO memory layer',              icon: Target,          path: '/app/growth'           },
-  { label: 'Score Content',     sub: '10-step MARCOM framework',      icon: ScanSearch,      path: '/app/tools/score'      },
-  { label: 'Social Calendar',   sub: '4-week content plan',           icon: CalendarDays,    path: '/app/tools/calendar'   },
+  { key: 'home',       label: 'Home',         sub: 'Account pulse',                icon: Layout,        path: '/app/home'             },
+  { key: 'campaigns',  label: 'Campaigns',    sub: 'Verdicts + diagnosis',         icon: BarChart3,     path: '/app/campaigns'        },
+  { key: 'content',    label: 'Content Lab',  sub: 'Copy + visual generation',     icon: Send,          path: '/app/content'          },
+  { key: 'growth',     label: 'Growth',       sub: 'Memory layer + opportunities', icon: Target,        path: '/app/growth'           },
+  { key: 'calendar',   label: 'Calendar',     sub: '4-week content plan',          icon: CalendarDays,  path: '/app/tools/calendar'   },
 ];
 
 // ══════════════════════════════════════════════════════════════
-// WorkspaceHQ — Operational header showing company identity
+// WorkspaceHQ — Enhanced with live status + countdown from Figma
 // ══════════════════════════════════════════════════════════════
-function WorkspaceHQ({ workspace, onNewProject }) {
+function WorkspaceHQ({ workspace, onNewProject, countdown }) {
   const [open, setOpen] = useState(false);
 
   // Generate 2-letter initials from company name
@@ -40,14 +46,30 @@ function WorkspaceHQ({ workspace, onNewProject }) {
     .join('')
     .toUpperCase() || 'WS';
 
-  return (
-    <div className="px-3 mt-2">
-      <div className="section-label mb-2 px-1">Workspace</div>
+  // Format countdown (seconds to MM:SS)
+  const minutes = Math.floor(countdown / 60);
+  const seconds = countdown % 60;
+  const countdownStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
-      {/* HQ Card */}
-      <div className="rounded-xl border border-lumi-border bg-lumi-elevated p-3">
+  return (
+    <div className="px-3">
+      {/* HQ Card with corner glow */}
+      <div
+        className="rounded-xl border border-lumi-border bg-lumi-elevated p-3 relative overflow-hidden"
+        style={{
+          boxShadow: '0 0 20px rgba(246,201,69,0.08)',
+        }}
+      >
+        {/* Gold corner glow */}
+        <div
+          className="absolute top-0 right-0 w-16 h-16 opacity-20"
+          style={{
+            background: 'radial-gradient(circle at top right, var(--c-gold-glow), transparent)',
+          }}
+        />
+
         {/* Company header */}
-        <div className="flex items-start gap-2.5 mb-3">
+        <div className="flex items-start gap-2.5 mb-3 relative">
           <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-lumi-accent to-lumi-accent/70 flex items-center justify-center flex-shrink-0 shadow-accent-glow">
             <span className="text-sm font-display font-bold text-lumi-bg">{initials}</span>
           </div>
@@ -56,20 +78,30 @@ function WorkspaceHQ({ workspace, onNewProject }) {
               {workspace.name}
             </div>
             <div className="text-xs text-lumi-subtle mt-0.5 font-mono">
-              Market: <span className="text-lumi-muted">—</span>
+              Market: <span className="text-lumi-muted">{workspace.market || 'EG'}</span>
             </div>
           </div>
         </div>
 
-        {/* Spend tier */}
-        <div className="text-xs text-lumi-subtle mb-2 font-mono">
-          Spend tier: <span className="text-lumi-muted">—</span>
+        {/* Live WATCHING status */}
+        <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-lg bg-signal-scale-bg">
+          <div className="flex items-center gap-1.5">
+            <span
+              className="w-1.5 h-1.5 rounded-full bg-signal-scale"
+              style={{ animation: 'pulse 2s ease-in-out infinite' }}
+            />
+            <span className="font-mono text-[10px] font-semibold tracking-[0.08em] uppercase text-signal-scale">
+              WATCHING
+            </span>
+          </div>
+          <span className="font-mono text-[10px] text-dark-soft">
+            · {workspace.adSetsCount || 14} ad sets
+          </span>
         </div>
 
-        {/* Connected channels (placeholder) */}
-        <div className="flex items-center gap-1.5 mb-3">
-          <span className="text-xs text-lumi-subtle font-mono">Channels:</span>
-          <span className="text-xs text-lumi-muted font-mono">—</span>
+        {/* Next sweep countdown */}
+        <div className="text-xs text-lumi-subtle mb-3 font-mono px-2">
+          Next sweep <span className="text-lumi-muted font-semibold">{countdownStr}</span>
         </div>
 
         {/* Actions */}
@@ -104,12 +136,52 @@ function WorkspaceHQ({ workspace, onNewProject }) {
   );
 }
 
-export default function Sidebar({ collapsed, onToggle }) {
+export default function Sidebar({
+  collapsed,
+  onToggle,
+  alertsData = [],
+  recentDecisions = [],
+  mobileMenuOpen = false,
+  onMobileMenuToggle,
+}) {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { workspace, hasWorkspace, loading: workspaceLoading } = useWorkspace();
-  const [projectOpen, setProjectOpen] = useState(false);
-  const [toolsOpen,   setToolsOpen]   = useState(true);
+
+  // UI state
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [cmdkOpen, setCmdkOpen] = useState(false);
+
+  // Live countdown timer (60 seconds loop)
+  const [countdown, setCountdown] = useState(47);
+  useEffect(() => {
+    const id = setInterval(() => {
+      setCountdown((s) => (s <= 1 ? 60 : s - 1));
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setCmdkOpen((p) => !p);
+      } else if (e.key === 'Escape') {
+        setCmdkOpen(false);
+        setNotifOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // High-priority alerts for notification bell
+  const highAlerts = alertsData.filter((a) => a.priority === 'HIGH');
+  const alertCount = highAlerts.length;
+
+  // Alert counts per nav item
+  const alertsByKey = { home: alertCount };
 
   const initial = (currentUser?.displayName?.[0] || currentUser?.email?.[0] || 'L').toUpperCase();
   const userLabel = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
@@ -123,45 +195,104 @@ export default function Sidebar({ collapsed, onToggle }) {
     <aside
       className={cn(
         'flex flex-col h-full bg-lumi-surface border-r border-lumi-border',
-        'transition-all duration-200 ease-out flex-shrink-0',
-        collapsed ? 'w-[64px]' : 'w-[260px]',
+        'transition-all duration-200 ease-out',
+        // Desktop: normal sidebar behavior
+        'hidden lg:flex flex-shrink-0',
+        collapsed ? 'lg:w-[64px]' : 'lg:w-[268px]',
+        // Mobile: drawer overlay
+        'lg:relative fixed inset-y-0 left-0 z-50',
+        'lg:translate-x-0',
+        mobileMenuOpen ? 'translate-x-0' : '-translate-x-full',
+        // Mobile always expanded width
+        'w-[268px]',
       )}
     >
-      {/* ── HEADER ───────────────────────────────────────────── */}
+      {/* ── HEADER with Lumi mascot + notifications ─────────── */}
       <div className={cn(
-        'flex items-center h-14 px-4 border-b border-lumi-border flex-shrink-0',
-        collapsed ? 'justify-center' : 'justify-between',
+        'flex items-center h-14 border-b border-lumi-border flex-shrink-0 relative',
+        collapsed ? 'justify-center px-2' : 'justify-between px-3.5',
       )}>
         <button
           onClick={onToggle}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? 'Expand sidebar' : undefined}
           className="flex items-center gap-2 group"
           title={collapsed ? 'Expand sidebar' : undefined}
         >
-          <Sparkles className="w-5 h-5 text-lumi-accent" strokeWidth={1.5} />
+          <img
+            src="/assets/lumi-mascot.png"
+            alt="Lumi"
+            className={cn(
+              'object-contain',
+              collapsed ? 'w-[30px] h-[30px]' : 'w-[34px] h-[34px]',
+            )}
+            style={{ filter: 'drop-shadow(0 2px 6px rgba(246,201,69,0.4))' }}
+          />
           {!collapsed && (
-            <span className="font-display font-bold text-lg text-lumi-accent tracking-tight">
+            <span className="font-display font-bold text-[18px] text-lumi-accent tracking-tight">
               LUMI
             </span>
           )}
         </button>
+
         {!collapsed && (
-          <button
-            onClick={onToggle}
-            aria-label="Collapse sidebar"
-            className="p-1.5 rounded-lg text-lumi-muted hover:text-lumi-text hover:bg-lumi-elevated transition-colors duration-150"
-          >
-            <PanelLeftClose className="w-4 h-4" strokeWidth={1.5} />
-          </button>
+          <div className="flex items-center gap-0.5">
+            <NotificationBell
+              alertCount={alertCount}
+              open={notifOpen}
+              onToggle={() => setNotifOpen((p) => !p)}
+            >
+              <NotificationPopover
+                alerts={highAlerts}
+                onClose={() => setNotifOpen(false)}
+                onSelectAlert={(alert) => {
+                  console.log('Selected alert:', alert);
+                  navigate('/app/home');
+                  onMobileMenuToggle?.(); // Close mobile menu on navigation
+                }}
+              />
+            </NotificationBell>
+
+            {/* Desktop: collapse button, Mobile: close button */}
+            <button
+              onClick={onMobileMenuToggle || onToggle}
+              aria-label={onMobileMenuToggle ? 'Close menu' : 'Collapse sidebar'}
+              className="p-1.5 rounded-lg text-lumi-muted hover:text-lumi-text hover:bg-lumi-elevated transition-colors duration-150"
+            >
+              <PanelLeftClose className="w-4 h-4" strokeWidth={1.5} />
+            </button>
+          </div>
         )}
       </div>
 
       {/* ── SCROLL ───────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 overflow-y-auto overflow-x-hidden py-3 gap-1">
 
+        {/* Cmd+K Search affordance */}
+        {!collapsed && (
+          <div className="px-3 mb-3">
+            <button
+              onClick={() => setCmdkOpen(true)}
+              className="w-full flex items-center gap-2 px-2.5 py-2 bg-lumi-elevated border border-lumi-border rounded-lg
+                         text-lumi-muted hover:border-lumi-accent/40 hover:bg-lumi-surface transition-all duration-150"
+            >
+              <Search className="w-3.5 h-3.5 flex-shrink-0" strokeWidth={1.5} />
+              <span className="flex-1 text-left text-xs text-lumi-subtle font-body">
+                Search decisions…
+              </span>
+              <span className="font-mono text-[9px] px-1.5 py-0.5 rounded border border-lumi-border bg-lumi-surface text-lumi-muted tracking-wider">
+                ⌘K
+              </span>
+            </button>
+          </div>
+        )}
+
         {/* WorkspaceHQ (expanded) */}
         {!collapsed && hasWorkspace && workspace && (
-          <WorkspaceHQ workspace={workspace} onNewProject={() => navigate('/onboarding')} />
+          <WorkspaceHQ
+            workspace={workspace}
+            onNewProject={() => navigate('/onboarding')}
+            countdown={countdown}
+          />
         )}
 
         {/* Fallback: No workspace (expanded) */}
@@ -198,48 +329,88 @@ export default function Sidebar({ collapsed, onToggle }) {
           </div>
         )}
 
-        {/* Tools */}
+        {/* Navigation */}
         <div className={cn('mt-3', collapsed ? 'px-2' : 'px-3')}>
           {!collapsed && (
-            <button
-              onClick={() => setToolsOpen((p) => !p)}
-              aria-expanded={toolsOpen}
-              className="w-full flex items-center justify-between px-1 mb-2 section-label hover:text-lumi-muted transition-colors"
-            >
-              <span>Tools</span>
-              <ChevronRight
-                className={cn('w-3 h-3 transition-transform duration-150', toolsOpen && 'rotate-90')}
-                strokeWidth={2}
-              />
-            </button>
+            <div className="section-label px-1 mb-2">Navigation</div>
           )}
 
-          {(toolsOpen || collapsed) && tools.map((tool) => (
-            <NavLink
-              key={tool.path}
-              to={tool.path}
-              title={collapsed ? tool.label : undefined}
-              className={({ isActive }) => cn(
-                'flex items-center gap-3 rounded-xl transition-all duration-150 mb-0.5 text-sm group',
-                collapsed ? 'justify-center p-3' : 'px-3 py-2.5',
-                isActive
-                  ? 'bg-lumi-elevated border border-lumi-border text-lumi-text shadow-card'
-                  : 'text-lumi-muted hover:text-lumi-text hover:bg-lumi-elevated/60',
-              )}
-            >
-              <tool.icon className={cn('flex-shrink-0', collapsed ? 'w-5 h-5' : 'w-4 h-4')} strokeWidth={1.5} />
-              {!collapsed && (
-                <div className="flex-1 min-w-0">
-                  <div className="font-display font-medium text-sm leading-tight truncate">{tool.label}</div>
-                  <div className="text-xs text-lumi-subtle truncate mt-0.5">{tool.sub}</div>
-                </div>
-              )}
-            </NavLink>
-          ))}
+          {tools.map((tool) => {
+            const badge = alertsByKey[tool.key];
+            return (
+              <NavLink
+                key={tool.path}
+                to={tool.path}
+                title={collapsed ? tool.label : undefined}
+                onClick={() => onMobileMenuToggle?.()} // Close mobile menu on navigation
+                className={({ isActive }) => cn(
+                  'flex items-center gap-3 rounded-xl transition-all duration-150 mb-0.5 text-sm group relative',
+                  collapsed ? 'justify-center p-3' : 'px-3 py-2.5',
+                  isActive
+                    ? 'bg-lumi-elevated border border-lumi-border text-lumi-text shadow-card'
+                    : 'text-lumi-muted hover:text-lumi-text hover:bg-lumi-elevated/60',
+                )}
+              >
+                {({ isActive }) => (
+                  <>
+                    {isActive && !collapsed && (
+                      <div
+                        className="absolute left-0 top-0 bottom-0 w-0.5 rounded-r-full bg-lumi-accent"
+                        style={{ boxShadow: '0 0 8px rgba(246,201,69,0.6)' }}
+                      />
+                    )}
+                    <tool.icon
+                      className={cn(
+                        'flex-shrink-0',
+                        collapsed ? 'w-5 h-5' : 'w-4 h-4',
+                        isActive && 'text-lumi-accent',
+                      )}
+                      strokeWidth={1.5}
+                    />
+                    {!collapsed && (
+                      <div className="flex-1 min-w-0 flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className={cn(
+                            'font-display font-medium text-sm leading-tight truncate',
+                            isActive && 'font-semibold',
+                          )}>
+                            {tool.label}
+                          </div>
+                          <div className="text-xs text-lumi-subtle truncate mt-0.5">{tool.sub}</div>
+                        </div>
+                        {badge > 0 && (
+                          <span className="ml-2 px-1.5 py-0.5 rounded-full bg-signal-kill text-white text-[10px] font-mono font-semibold">
+                            {badge}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {collapsed && badge > 0 && (
+                      <span
+                        className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-signal-kill"
+                        style={{ boxShadow: '0 0 4px var(--c-kill)' }}
+                      />
+                    )}
+                  </>
+                )}
+              </NavLink>
+            );
+          })}
         </div>
+
+        {/* Recent Decisions with sparkline (expanded only) */}
+        {!collapsed && (
+          <div className="mt-4">
+            <RecentDecisions
+              decisions={recentDecisions}
+              totalCount={47}
+              onViewAll={() => navigate('/app/decisions')}
+            />
+          </div>
+        )}
       </div>
 
-      {/* ── FOOTER ───────────────────────────────────────────── */}
+      {/* ── FOOTER with online status ──────────────────────── */}
       <div className={cn(
         'flex-shrink-0 border-t border-lumi-border p-3',
         collapsed ? 'flex flex-col items-center gap-2' : 'space-y-1',
@@ -248,6 +419,7 @@ export default function Sidebar({ collapsed, onToggle }) {
           to="/app/settings"
           title={collapsed ? 'Settings' : undefined}
           aria-label="Settings"
+          onClick={() => onMobileMenuToggle?.()} // Close mobile menu on navigation
           className={({ isActive }) => cn(
             'flex items-center gap-2.5 rounded-xl text-lumi-muted',
             'hover:text-lumi-text hover:bg-lumi-elevated transition-all duration-150',
@@ -260,13 +432,20 @@ export default function Sidebar({ collapsed, onToggle }) {
         </NavLink>
 
         <div className={cn('flex items-center gap-2.5', collapsed ? 'mt-1' : 'px-3 py-2 mt-1')}>
-          <div className="w-7 h-7 rounded-full bg-lumi-accent/20 border border-lumi-accent/30 flex items-center justify-center flex-shrink-0">
+          <div className="relative w-7 h-7 rounded-full bg-lumi-accent/20 border border-lumi-accent/30 flex items-center justify-center flex-shrink-0">
             <span className="text-xs font-display font-bold text-lumi-accent">{initial}</span>
+            {/* Online dot */}
+            <span
+              className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-signal-scale border-2 border-lumi-surface"
+              style={{ boxShadow: '0 0 4px rgba(16,185,129,0.5)' }}
+            />
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <div className="text-[13px] font-display font-medium text-lumi-text truncate">{userLabel}</div>
-              <div className="text-xs text-lumi-subtle truncate">{workspaceName?.toUpperCase()}</div>
+              <div className="text-[10px] text-lumi-subtle truncate">
+                <span className="font-mono">Operator · {workspace?.market || 'EG'}</span>
+              </div>
             </div>
           )}
         </div>

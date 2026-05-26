@@ -4,7 +4,7 @@
 // Tracks artifact publishing to Meta and queries attribution metrics.
 // ============================================================
 import express from 'express';
-import prisma from '../lib/prisma.js';
+import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/firebaseAuth.js';
 import { logger } from '../utils/logger.js';
 

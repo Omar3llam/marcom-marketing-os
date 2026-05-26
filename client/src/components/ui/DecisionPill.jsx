@@ -2,17 +2,18 @@
 // MARCOM / Lumi — Decision pills
 // ------------------------------------------------------------
 // Three flavours, one base class (.decision-pill from index.css):
-//   <VerdictPill  verdict='KILL|HOLD|SCALE|TEST' />
+//   <VerdictPill  verdict='KILL|HOLD|SCALE|TEST' size='xs|sm|md' showIcon={boolean} />
 //   <PriorityPill priority='HIGH|MEDIUM|LOW' />
 //   <StagePill    stage='DYING|FATIGUED|TESTING|STABLE|SCALING' />
 // ============================================================
 import { cn } from '@/lib/utils.js';
+import { XCircle, Pause, TrendingUp, FlaskConical } from 'lucide-react';
 
 const verdictConfig = {
-  KILL:  { bg: 'bg-signal-kill-bg',   text: 'text-signal-kill',   border: 'border-signal-kill/25'   },
-  HOLD:  { bg: 'bg-signal-hold-bg',   text: 'text-signal-hold',   border: 'border-signal-hold/25'   },
-  SCALE: { bg: 'bg-signal-scale-bg',  text: 'text-signal-scale',  border: 'border-signal-scale/25'  },
-  TEST:  { bg: 'bg-stage-testing/10', text: 'text-stage-testing', border: 'border-stage-testing/25' },
+  KILL:  { bg: 'bg-signal-kill-bg',   text: 'text-signal-kill',   border: 'border-signal-kill/25',   icon: XCircle },
+  HOLD:  { bg: 'bg-signal-hold-bg',   text: 'text-signal-hold',   border: 'border-signal-hold/25',   icon: Pause },
+  SCALE: { bg: 'bg-signal-scale-bg',  text: 'text-signal-scale',  border: 'border-signal-scale/25',  icon: TrendingUp },
+  TEST:  { bg: 'bg-stage-testing/10', text: 'text-stage-testing', border: 'border-stage-testing/25', icon: FlaskConical },
 };
 
 const priorityConfig = {
@@ -31,16 +32,27 @@ const stageConfig = {
 
 const fallback = 'bg-lumi-elevated text-lumi-muted border-lumi-border';
 
-export function VerdictPill({ verdict }) {
+const sizeConfig = {
+  xs: { padding: 'px-1.5 py-0.5', text: 'text-[9px]', icon: 'w-2.5 h-2.5', gap: 'gap-1' },
+  sm: { padding: 'px-2 py-0.5',   text: 'text-[10px]', icon: 'w-3 h-3',     gap: 'gap-1' },
+  md: { padding: 'px-2.5 py-1',   text: 'text-xs',     icon: 'w-3.5 h-3.5', gap: 'gap-1.5' },
+};
+
+export function VerdictPill({ verdict, size = 'md', showIcon = true }) {
   const c = verdictConfig[verdict];
+  const s = sizeConfig[size] || sizeConfig.md;
+  const Icon = c?.icon;
+
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-display font-semibold uppercase tracking-wide border',
+        'inline-flex items-center rounded-full font-display font-semibold uppercase tracking-wide border',
+        s.padding, s.text, s.gap,
         c?.bg, c?.text, c?.border, !c && fallback
       )}
       aria-label={`Verdict: ${verdict}`}
     >
+      {showIcon && Icon && <Icon className={s.icon} strokeWidth={2} />}
       {verdict}
     </span>
   );

@@ -108,6 +108,7 @@ model Workspace {
   approvalDecisions          ApprovalDecision[]
   publishedCreatives         PublishedCreative[]
   providerPerformanceMetrics ProviderPerformanceMetrics[]
+  reinforcementSnapshots     ReinforcementSnapshot[]
 
   @@map("workspaces")
 }
@@ -638,4 +639,33 @@ model ProviderPerformanceMetrics {
   @@index([provider, capability])
   @@index([startDate, endDate])
   @@map("provider_performance_metrics")
+}
+
+model ReinforcementSnapshot {
+  id         String   @id @default(cuid())
+  workspaceId String?  @db.Uuid
+
+  // Provider + Capability (learning is scoped to this pair)
+  provider   String  // claude, openai, higgsfield
+  capability String  // GENERATE_HOOKS, GENERATE_CAPTIONS, etc.
+
+  // Adaptive scores
+  score      Float   // Composite score (approval rate, CTR, ROAS, cost efficiency)
+  confidence Float   // Confidence level (0.0 - 1.0) based on sample size
+  sampleSize Int     // Number of data points in this snapshot
+
+  // Performance window
+  windowStart DateTime
+  windowEnd   DateTime
+
+  // Append-only audit trail
+  createdAt DateTime @default(now())
+
+  // Relations
+  workspace Workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([provider, capability, createdAt(sort: Desc)])
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([windowStart, windowEnd])
+  @@map("reinforcement_snapshots")
 }

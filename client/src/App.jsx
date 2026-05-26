@@ -19,7 +19,9 @@ import LandingPage      from './pages/LandingPage.jsx';
 import AuthPage         from './pages/AuthPage.jsx';
 import OnboardingPage   from './pages/OnboardingPage.jsx';
 import MainLayout       from './components/layout/MainLayout.jsx';
+import HomePage         from './pages/Home.jsx';
 import DecisionFeed     from './pages/DecisionFeed.jsx';
+import ContentLab       from './pages/ContentLab/index.jsx';
 import MarketingTools   from './pages/tools/MarketingTools.jsx';
 import SocialCalendar   from './pages/tools/SocialCalendar.jsx';
 import ScoreContent     from './pages/tools/ScoreContent.jsx';
@@ -98,7 +100,12 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index             element={<Navigate to="feed" replace />} />
+          <Route index             element={<Navigate to="home" replace />} />
+          <Route path="home"       element={
+            <ErrorBoundary boundaryId="home">
+              <HomePage />
+            </ErrorBoundary>
+          } />
           <Route path="feed"       element={
             <ErrorBoundary boundaryId="feed">
               <DecisionFeed />
@@ -107,6 +114,11 @@ export default function App() {
           <Route path="campaigns"  element={
             <ErrorBoundary boundaryId="campaigns">
               <Suspense fallback={<PageFallback />}><CampaignAnalysis /></Suspense>
+            </ErrorBoundary>
+          } />
+          <Route path="content"    element={
+            <ErrorBoundary boundaryId="content">
+              <ContentLab />
             </ErrorBoundary>
           } />
           <Route path="growth"     element={

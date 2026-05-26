@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MARCOM · Lumi — Decision OS demo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="ext-resource-dependency" content="assets/lumi-mascot.png" data-resource-id="lumiMascot" />
+  <template id="__bundler_thumbnail" data-bg-color="#F8F6F2">
+    <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+      <rect width="1200" height="800" fill="#F8F6F2"/>
+      <circle cx="600" cy="400" r="170" fill="none" stroke="#E0A800" stroke-width="14"/>
+      <circle cx="600" cy="400" r="56" fill="#F6C945"/>
+      <text x="600" y="640" text-anchor="middle" font-family="Space Grotesk, sans-serif" font-weight="700" font-size="64" letter-spacing="-2" fill="#2B2B2B">Marcom<tspan fill="#E0A800">AI</tspan></text>
+      <text x="600" y="690" text-anchor="middle" font-family="JetBrains Mono, monospace" font-size="20" letter-spacing="3" fill="#6B6B6B">VERDICTS, NOT DASHBOARDS</text>
+    </svg>
+  </template>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script src="data.js"></script>
+  <script type="text/babel" src="icons.jsx"></script>
+  <script type="text/babel" src="primitives.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="shell.jsx"></script>
+  <script type="text/babel" src="command-hub.jsx"></script>
+  <script type="text/babel" src="home.jsx"></script>
+  <script type="text/babel" src="campaigns-page.jsx"></script>
+  <script type="text/babel" src="content-lab.jsx"></script>
+  <script type="text/babel" src="growth-calendar.jsx"></script>
+  <script type="text/babel" src="input-view.jsx"></script>
+  <script type="text/babel" src="theatre-view.jsx"></script>
+  <script type="text/babel" src="success-view.jsx"></script>
+  <script type="text/babel" src="execution-view.jsx"></script>
+  <script type="text/babel" src="misc-views.jsx"></script>
+  <script type="text/babel" src="app.jsx"></script>
+</body>
+</html>

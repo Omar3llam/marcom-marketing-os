@@ -190,6 +190,9 @@ for (const file of backendFiles) {
   const content = readFile(file);
   const name    = file.replace(ROOT + '/', '');
 
+  // Skip test files (test data creation loops are intentional)
+  if (name.includes('.test.js') || name.includes('.spec.js')) continue;
+
   // Heuristic: for/forEach/map containing await prisma.
   const loopPrisma = /for\s*\(.*\).*\{[\s\S]{0,300}await\s+prisma\./m.test(content) ||
                      /\.forEach.*\{[\s\S]{0,200}await\s+prisma\./m.test(content);
