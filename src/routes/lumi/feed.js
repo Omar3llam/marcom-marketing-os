@@ -226,12 +226,15 @@ feedRouter.get('/feed', async (req, res) => {
 });
 
 // Build the structured-signal rows the DecisionTheater renders.
+// CRITICAL: These metrics are extracted by useCampaignFeed.summarize() for dashboard stats.
+// Missing metrics here = $0 values in dashboard.
 function signalsFromMetrics(m = {}, _stage = 'TESTING') {
   const rows = [];
   const fmtPct  = (v) => `${(Number(v) || 0).toFixed(2)}%`;
   const fmtRoas = (v) => `${(Number(v) || 0).toFixed(2)}x`;
   const fmtFreq = (v) => `${(Number(v) || 0).toFixed(2)}`;
   const fmtUsd  = (v) => `$${(Number(v) || 0).toFixed(2)}`;
+  const fmtNum  = (v) => Number(v || 0).toLocaleString('en-US');
 
   const ctrStatus  = m.ctr  >= 2 ? 'positive' : m.ctr  >= 1 ? 'warning' : 'danger';
   const roasStatus = m.roas >= 3 ? 'positive' : m.roas >= 1 ? 'warning' : 'danger';
@@ -239,9 +242,18 @@ function signalsFromMetrics(m = {}, _stage = 'TESTING') {
   const cprStatus  = m.costPerResult > 0 && m.costPerResult <= 20 ? 'positive'
                    : m.costPerResult <= 50 ? 'warning' : 'danger';
 
+  // Core performance signals (visible in DecisionTheater)
   rows.push({ metric: 'CTR',       trend: ctrStatus  === 'danger' ? 'down' : 'up',   value: fmtPct(m.ctr),       delta: '',  context: 'Per CSV upload', status: ctrStatus  });
   rows.push({ metric: 'ROAS',      trend: roasStatus === 'danger' ? 'down' : 'up',   value: fmtRoas(m.roas),     delta: '',  context: 'Per CSV upload', status: roasStatus });
   rows.push({ metric: 'Frequency', trend: freqStatus === 'danger' ? 'up'   : 'flat', value: fmtFreq(m.frequency), delta: '',  context: 'Per CSV upload', status: freqStatus });
   rows.push({ metric: 'CPA',       trend: cprStatus  === 'danger' ? 'up'   : 'flat', value: fmtUsd(m.costPerResult), delta: '', context: 'Cost per result', status: cprStatus  });
+
+  // Essential metrics for dashboard summary (useCampaignFeed.summarize extracts these)
+  // Without these, dashboard shows $0 spend, 0 impressions, etc.
+  rows.push({ metric: 'Spend',       trend: 'neutral', value: fmtUsd(m.spend),       delta: '', context: 'Total', status: 'neutral' });
+  rows.push({ metric: 'Impressions', trend: 'neutral', value: fmtNum(m.impressions), delta: '', context: 'Total', status: 'neutral' });
+  rows.push({ metric: 'Results',     trend: 'neutral', value: fmtNum(m.results),     delta: '', context: 'Total', status: 'neutral' });
+  rows.push({ metric: 'Reach',       trend: 'neutral', value: fmtNum(m.reach),       delta: '', context: 'Unique', status: 'neutral' });
+
   return rows;
 }

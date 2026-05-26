@@ -19,7 +19,7 @@ export function OutputEmpty() {
       </div>
       <div className="font-display font-bold text-lg text-dark-base">Pick what to generate</div>
       <p className="mt-2 text-[13px] text-dark-soft max-w-[380px] leading-relaxed">
-        Lumi will draft copy + visuals grounded in your brand voice, dialect, and the campaign's diagnosed problem.
+        Lumi will draft copy + visuals grounded in your brand voice, dialect, and the campaign&apos;s diagnosed problem.
       </p>
     </div>
   );

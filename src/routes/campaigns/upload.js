@@ -47,6 +47,7 @@ export function mountUploadRoutes(router) {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded — expected field "campaignData"' });
 
     const mode = req.query.mode;
+    logger.info({ filename: req.file.originalname, size: req.file.size, mode, userId: req.userId, workspaceId: req.workspaceId }, '[CSV_PIPELINE] CSV_RECEIVED');
 
     if (mode === 'analyze') {
       logger.info({ filename: req.file.originalname, size: req.file.size, userId: req.userId }, '[campaigns/upload-csv] ANALYZE mode');
@@ -91,7 +92,20 @@ export function mountUploadRoutes(router) {
     logger.info({ filename: req.file.originalname, size: req.file.size, workspaceId }, '[campaigns/upload-csv] DB WRITE mode');
 
     const { campaigns: parsed, errors: parseErrors, stats } = parseMetaAdsCsv(req.file.buffer);
-    logger.info({ stats, parseErrors }, '[campaigns/upload-csv] parse complete');
+    logger.info({ stats, parseErrors, totalRows: parsed?.length || 0 }, '[CSV_PIPELINE] CSV_PARSED');
+
+    // Log first campaign metrics to verify parsing (diagnostic aid)
+    if (parsed && parsed.length > 0) {
+      logger.info({
+        sample: {
+          campaignId: parsed[0].campaignId,
+          spend: parsed[0].spend,
+          impressions: parsed[0].impressions,
+          ctr: parsed[0].ctr,
+          roas: parsed[0].roas,
+        }
+      }, '[CSV_PIPELINE] ROWS_NORMALIZED - sample row');
+    }
 
     if (!parsed || parsed.length === 0) return res.status(400).json({ success: false, error: 'Upload succeeded but no campaigns were created. The CSV may be empty or invalid.', stats, errors: parseErrors ? parseErrors.slice(0, 5) : [], hint: ['Expected format: Meta Ads Manager CSV export.', 'Required columns: "Campaign name", "Ad set name", "Amount spent (EGP)", "Impressions".', 'Make sure you are exporting at campaign or ad set level.', 'Row 2 (summary totals) is automatically skipped.'] });
     if (parsed.length > MAX_ROWS) return res.status(400).json({ success: false, error: `CSV has ${parsed.length} rows. Maximum is ${MAX_ROWS}.`, hint: 'Split your export into smaller date ranges and re-upload.' });
@@ -148,9 +162,15 @@ export function mountUploadRoutes(router) {
     if (actionData.length > 0) {
       await prisma.action.createMany({ data: actionData });
       alertsCreated = actionData.length;
+      logger.info({
+        workspaceId,
+        campaignsPersisted: processed,
+        actionsPersisted: alertsCreated,
+        totalSpend: actionData.reduce((sum, a) => sum + (a.payload?.metrics?.spend || 0), 0),
+      }, '[CSV_PIPELINE] CAMPAIGNS_PERSISTED');
     }
 
-    logger.info({ workspaceId, processed, alertsCreated, errors: errors.length }, '[campaigns/upload-csv] complete');
+    logger.info({ workspaceId, processed, alertsCreated, errors: errors.length }, '[CSV_PIPELINE] PIPELINE_COMPLETE');
     return res.json({ uploaded: stats.total_rows, processed, alerts_created: alertsCreated, campaign_ids: campaignIds, errors });
   });
 }

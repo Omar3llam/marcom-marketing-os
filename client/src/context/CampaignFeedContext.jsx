@@ -10,21 +10,14 @@ import axios from 'axios';
 import { api } from '@/lib/api.js';
 
 const PRIMARY  = '/api/lumi/feed';
-const FALLBACK = '/api/lumi/demo-feed';
 
 async function fetchFeed(signal) {
   // Firebase token is auto-injected by api.js interceptor
-  try {
-    const res = await api.get(PRIMARY, { signal });
-    if (Array.isArray(res.data?.campaigns) && res.data.campaigns.length > 0) {
-      return res.data;
-    }
-    // Empty real feed → drop to demo so the UI shows something
-  } catch (err) {
-    if (axios.isCancel?.(err) || err?.name === 'CanceledError') throw err;
-  }
-  const demo = await api.get(FALLBACK, { signal });
-  return demo.data;
+  // IMPORTANT: Always return real data, even if campaigns = [].
+  // Empty array = new user with no uploads → show empty state, NOT demo data.
+  // Demo data leaking to authenticated users creates false positives and erodes trust.
+  const res = await api.get(PRIMARY, { signal });
+  return res.data ?? { campaigns: [] };
 }
 
 // Re-export summarize so consumers don't need to import from useCampaignFeed
