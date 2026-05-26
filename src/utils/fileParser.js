@@ -12,9 +12,13 @@
 // ============================================================
 import fs from 'fs';
 import path from 'path';
-import pdfParse from 'pdf-parse';
+import { createRequire } from 'module';
 import XLSX from 'xlsx';
 import { parseMetaAdsCsv } from '../services/metaAdsParser.js';
+
+// pdf-parse is CommonJS, need to require it
+const require = createRequire(import.meta.url);
+const pdfParse = require('pdf-parse');
 
 /**
  * Parse uploaded file based on extension/MIME type
