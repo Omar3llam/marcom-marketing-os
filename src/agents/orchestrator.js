@@ -298,6 +298,13 @@ export async function analyzeRadarData(campaigns) {
  * @returns {Promise<Object>} Single verdict object
  */
 export async function analyzeCampaignData(data, source = 'csv') {
+  // ── Validation Checkpoint 1: Input Data ─────────────────────
+  if (!data || typeof data !== 'object') {
+    logger.error({ data }, '[orchestrator] analyzeCampaignData: invalid data parameter');
+    throw new Error('analyzeCampaignData requires a valid data object');
+  }
+
+  // ── Validation Checkpoint 2: Build User Prompt ──────────────
   const userPrompt = [
     'Analyze this campaign and return a single verdict JSON:',
     '{ verdict, rootCause, diagnosis, confidence, actionPlan, whyBreakdown, creativeVariants }',
@@ -307,18 +314,42 @@ export async function analyzeCampaignData(data, source = 'csv') {
     JSON.stringify(data, null, 2),
   ].join('\n');
 
+  if (!userPrompt || userPrompt.trim().length === 0) {
+    logger.error('[orchestrator] analyzeCampaignData: generated empty prompt');
+    throw new Error('Failed to build analysis prompt');
+  }
+
+  logger.debug({ promptLength: userPrompt.length, source }, '[orchestrator] analyzeCampaignData: prompt built');
+
+  // ── Validation Checkpoint 3: Call ClaudeAgent (correct params) ───
   const { text } = await runClaudeAgent({
-    system: 'You are an Elite Performance Marketing Strategist. Return only valid JSON.',
-    messages: [{ role: 'user', content: userPrompt }],
+    role: 'You are an Elite Performance Marketing Strategist. Return only valid JSON.',
+    task: userPrompt,
+    campaignId: null,  // No campaign context needed for CSV analysis
+    maxTokens: 2000,
   });
+
+  // ── Validation Checkpoint 4: Response Validation ────────────
+  if (!text || typeof text !== 'string' || text.trim().length === 0) {
+    logger.error({ text }, '[orchestrator] analyzeCampaignData: empty response from Claude');
+    return { verdict: 'HOLD', diagnosis: 'Analysis failed: empty response', source, agentsUsed: ['claude'] };
+  }
 
   try {
     const raw = text.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(raw);
-    return { ...parsed, source, agentsUsed: ['claude', 'gpt'], timestamp: new Date().toISOString() };
-  } catch {
-    logger.warn('[agents/orchestrator] analyzeCampaignData parse failed');
-    return { verdict: 'HOLD', diagnosis: 'Analysis unavailable', source, agentsUsed: ['claude'] };
+
+    // ── Validation Checkpoint 5: Parsed Result ──────────────────
+    if (!parsed.verdict) {
+      logger.warn({ parsed }, '[orchestrator] analyzeCampaignData: missing verdict in response');
+      parsed.verdict = 'HOLD';
+    }
+
+    logger.info({ verdict: parsed.verdict, source }, '[orchestrator] analyzeCampaignData: success');
+    return { ...parsed, source, agentsUsed: ['claude'], timestamp: new Date().toISOString() };
+  } catch (parseError) {
+    logger.warn({ err: parseError.message, text: text.slice(0, 200) }, '[orchestrator] analyzeCampaignData: JSON parse failed');
+    return { verdict: 'HOLD', diagnosis: 'Analysis unavailable: invalid JSON', source, agentsUsed: ['claude'] };
   }
 }
 

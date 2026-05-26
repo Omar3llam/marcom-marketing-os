@@ -130,6 +130,29 @@ export async function callClaude({
   imageMediaType    = 'image/jpeg',
   dialectContext    = null,   // optional — when provided, auto-resolves and injects DIALECT LOCK
 }) {
+  // ── Validation Checkpoint 1: Required Parameters ────────────
+  if (!userMessage || (typeof userMessage !== 'string' && !Array.isArray(userMessage))) {
+    logger.error({
+      userMessage,
+      userMessageType: typeof userMessage,
+      systemPrompt: systemPrompt?.slice(0, 50),
+    }, '[claude] callClaude: missing or invalid userMessage parameter');
+    throw new Error('callClaude requires a non-empty "userMessage" parameter (string or content array)');
+  }
+
+  if (typeof userMessage === 'string' && userMessage.trim().length === 0) {
+    logger.error('[claude] callClaude: userMessage is an empty string');
+    throw new Error('callClaude userMessage cannot be empty');
+  }
+
+  logger.debug({
+    model,
+    maxTokens,
+    hasSystemPrompt: Boolean(systemPrompt),
+    historyLength: conversationHistory.length,
+    userMessageLength: typeof userMessage === 'string' ? userMessage.length : 'array',
+  }, '[claude] callClaude: validated inputs');
+
   // ── Dialect resolution ─────────────────────────────────────
   let dialectFragment = '';
   let dialectRefusal  = null;

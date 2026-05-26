@@ -29,6 +29,19 @@ export async function runClaudeAgent({
   campaignId, role, task, history = [],
   tools = [], onTool = null, maxTokens = 2000,
 }) {
+  // ── Validation Checkpoint 1: Required Parameters ────────────
+  if (!task || typeof task !== 'string' || task.trim().length === 0) {
+    logger.error({ task, role, campaignId }, '[ClaudeAgent] runClaudeAgent: missing or empty task parameter');
+    throw new Error('runClaudeAgent requires a non-empty "task" parameter (user message)');
+  }
+
+  logger.debug({
+    campaignId: campaignId || 'none',
+    taskLength: task.length,
+    hasHistory: history.length > 0,
+    toolsCount: tools.length,
+  }, '[ClaudeAgent] runClaudeAgent: starting');
+
   const ctxBlock = campaignId ? await getRenderedContext(campaignId) : '';
 
   const RECOMMENDATION_BLOCK = `
