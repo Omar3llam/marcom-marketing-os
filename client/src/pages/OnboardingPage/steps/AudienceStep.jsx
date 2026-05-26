@@ -41,7 +41,7 @@ export function AudienceStep({ form, set }) {
               </button>
             ))}
           </div>
-          <div className="mt-2 text-xs text-gray-500">
+          <div className="mt-2 text-xs text-dark-soft">
             Select one or more age ranges
           </div>
         </Field>
@@ -74,7 +74,7 @@ export function AudienceStep({ form, set }) {
               </button>
             ))}
           </div>
-          <div className="mt-2 text-xs text-gray-500">
+          <div className="mt-2 text-xs text-dark-soft">
             Helps Lumi spot signals in your creative and targeting
           </div>
         </Field>

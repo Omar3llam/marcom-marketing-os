@@ -92,7 +92,7 @@ export function Pricing() {
               )}
 
               <div className="mb-6">
-                <h3 className="font-display font-bold text-2xl text-lumi-text mb-2">
+                <h3 className="font-display font-bold text-[1.5rem] text-lumi-text mb-2">
                   {tier.name}
                 </h3>
                 <div className="flex items-baseline gap-1 mb-3">

@@ -67,7 +67,7 @@ export default function Observability() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="font-display text-2xl font-bold text-dark-base">
+            <h1 className="font-display text-[1.5rem] font-bold text-dark-base">
               🛰️ LUMI Mission Control
             </h1>
             <p className="font-body text-sm text-dark-soft">
@@ -204,8 +204,8 @@ function MetricCard({ label, value, icon, color }) {
     <div className="rounded-lg border border-surface-border bg-surface-light p-4">
       <div className="mb-1 font-body text-xs text-dark-soft">{label}</div>
       <div className={cn('flex items-baseline gap-2', color)}>
-        <span className="text-2xl">{icon}</span>
-        <span className="font-display text-3xl font-bold">{value}</span>
+        <span className="text-[1.5rem]">{icon}</span>
+        <span className="font-display text-[1.875rem] font-bold">{value}</span>
       </div>
     </div>
   );
