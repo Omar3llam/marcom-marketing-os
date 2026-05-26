@@ -26,26 +26,18 @@ function FullscreenLoader({ label = 'Loading…' }) {
 // required field (companyName) is populated. An empty {} object
 // does NOT count as onboarded, even though it's truthy in JS.
 function isOnboarded(context) {
-  console.log('[isOnboarded] input:', context);
-
   if (!context || typeof context !== 'object') {
-    console.log('[isOnboarded] → false (invalid type)');
     return false;
   }
 
   const companyName = context.companyName;
 
   if (typeof companyName !== 'string') {
-    console.log('[isOnboarded] → false (companyName not a string)');
     return false;
   }
 
   const trimmed = companyName.trim();
-  const result = trimmed.length > 0;
-
-  console.log('[isOnboarded] companyName:', JSON.stringify(companyName), '→', result);
-
-  return result;
+  return trimmed.length > 0;
 }
 
 // ── LocalStorage persistence ────────────────────────────────
@@ -108,14 +100,9 @@ function useUserContext() {
     hasContext: false,
   });
 
-  console.log('[useUserContext] initial state:', state);
-  console.log('[useUserContext] _cached:', _cached);
-  console.log('[useUserContext] localStorage:', getStoredOnboardingState());
-
   useEffect(() => {
     // Subscribe to cache updates (clearContextCache, primeContextCache, etc.)
     const listener = (newState) => {
-      console.log('[useUserContext] cache update received:', newState);
       setState(newState);
     };
     _subs.add(listener);
@@ -123,12 +110,9 @@ function useUserContext() {
   }, []);
 
   useEffect(() => {
-    console.log('[useUserContext] effect fired', { authLoading, currentUser: !!currentUser });
-
     if (authLoading) return;   // Firebase still initialising
 
     if (!currentUser) {
-      console.log('[useUserContext] no user — publishing false');
       publish({ loading: false, hasContext: false });
       return;
     }
@@ -149,7 +133,6 @@ function useUserContext() {
     // authoritative source. We cannot trust module-level cache across
     // auth state changes.
 
-    console.log('[useUserContext] calling API for current user...');
     publish({ loading: true, hasContext: false });
 
     let cancelled = false;
@@ -157,16 +140,9 @@ function useUserContext() {
       .then((res) => {
         if (cancelled) return;
 
-        console.log('[guard] API response:', res.data);
-
         // Normalize the response — backend may return various shapes
         const context = res?.data?.context ?? null;
-
-        console.log('[guard] normalized context:', context);
-
         const hasContext = isOnboarded(context);
-
-        console.log('[guard] strict onboard result:', hasContext);
 
         // Sync localStorage with the real answer from the DB
         setStoredOnboardingState(hasContext);
@@ -176,7 +152,7 @@ function useUserContext() {
       .catch((err) => {
         if (cancelled) return;
 
-        console.error('[guard] API failed:', err);
+        console.error('[ProtectedRoute] Context API failed:', err);
 
         // API failed — wipe stale localStorage so user goes to onboarding
         setStoredOnboardingState(false);
@@ -200,8 +176,6 @@ export function primeContextCache(context) {
 }
 
 export function clearContextCache() {
-  console.log('[clearContextCache] clearing all onboarding state');
-
   try {
     localStorage.removeItem(STORAGE_KEY);
   } catch {
@@ -222,37 +196,24 @@ export function ProtectedRoute({ children }) {
   const { currentUser, loading: authLoading, authReady } = useAuth();
   const { loading, hasContext }  = useUserContext();
 
-  console.log('[ProtectedRoute]', {
-    authLoading,
-    authReady,
-    loading,
-    hasContext,
-    currentUser: !!currentUser,
-  });
-
   // Wait for Firebase to complete initial auth check before redirecting.
   // Without this, OAuth callbacks briefly show currentUser=null and bounce to login.
   if (!authReady) {
-    console.log('[ProtectedRoute] waiting for Firebase auth init');
     return <FullscreenLoader label="Restoring your session…" />;
   }
 
   if (authLoading || loading) {
-    console.log('[ProtectedRoute] showing loader');
     return <FullscreenLoader label="Restoring your session…" />;
   }
 
   if (!currentUser) {
-    console.log('[ProtectedRoute] no user → /login');
     return <Navigate to="/login" replace />;
   }
 
   if (!hasContext) {
-    console.log('[ProtectedRoute] not onboarded → /onboarding');
     return <Navigate to="/onboarding" replace />;
   }
 
-  console.log('[ProtectedRoute] ✅ rendering protected content');
   return children;
 }
 
@@ -260,35 +221,22 @@ export function OnboardingRoute({ children }) {
   const { currentUser, loading: authLoading, authReady } = useAuth();
   const { loading, hasContext }  = useUserContext();
 
-  console.log('[OnboardingRoute]', {
-    authLoading,
-    authReady,
-    loading,
-    hasContext,
-    currentUser: !!currentUser,
-  });
-
   // Wait for Firebase to complete initial auth check before redirecting.
   if (!authReady) {
-    console.log('[OnboardingRoute] waiting for Firebase auth init');
     return <FullscreenLoader label="Checking your account…" />;
   }
 
   if (authLoading || loading) {
-    console.log('[OnboardingRoute] showing loader');
     return <FullscreenLoader label="Checking your account…" />;
   }
 
   if (!currentUser) {
-    console.log('[OnboardingRoute] no user → /login');
     return <Navigate to="/login" replace />;
   }
 
   if (hasContext) {
-    console.log('[OnboardingRoute] already onboarded → /app');
     return <Navigate to="/app" replace />;
   }
 
-  console.log('[OnboardingRoute] ✅ rendering onboarding wizard');
   return children;
 }
