@@ -1,7 +1,9 @@
 // ============================================================
-// MARCOM / Lumi — CsvUploader
+// MARCOM / Lumi — Universal File Uploader
 // ------------------------------------------------------------
-// Drag-drop or click upload of Meta / Google Ads CSV exports.
+// Drag-drop or click upload of campaign data in any format.
+// Supports: CSV, Excel (.xlsx/.xls), PDF, and text files.
+// AI extracts campaign data from any document structure.
 // Hits POST /api/campaigns/upload-csv with field name "campaignData".
 // Surfaces upload progress, success summary, and granular errors.
 // ============================================================
@@ -15,7 +17,10 @@ import { useIntelligence } from '../../context/IntelligenceContext.jsx';
 const MAX_BYTES = 10 * 1024 * 1024;
 
 /**
- * CsvUploader component
+ * Universal File Uploader component
+ * Accepts CSV, Excel, PDF, or TXT files with campaign data.
+ * AI automatically extracts campaign metrics from any format.
+ *
  * @param {object} props
  * @param {function} props.onSuccess - Callback when upload succeeds
  * @param {boolean} props.compact - Compact layout flag
@@ -34,8 +39,11 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
 
   const pickFile = (f) => {
     if (!f) return;
-    if (!/\.csv$/i.test(f.name) && f.type !== 'text/csv') {
-      toast.error('Only .csv files are accepted.');
+    // Accept any file type - backend will handle parsing
+    // Supported: .csv, .xlsx, .xls, .pdf, .txt
+    const validExtensions = /\.(csv|xlsx?|pdf|txt)$/i;
+    if (!validExtensions.test(f.name)) {
+      toast.error('Unsupported file type. Supported: CSV, Excel, PDF, TXT');
       return;
     }
     if (f.size > MAX_BYTES) {
@@ -145,15 +153,15 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
       >
         <CloudUpload className={cn('mx-auto mb-3 text-lumi-gold', compact ? 'h-6 w-6' : 'h-10 w-10')} />
         <p className="font-display text-sm font-medium text-dark-base">
-          Drag &amp; drop a CSV here, or click to choose
+          Drag &amp; drop a file here, or click to choose
         </p>
         <p className="mt-1 font-mono text-xs text-dark-soft">
-          Meta Ads Manager or Google Ads export · up to 10 MB
+          CSV, Excel, PDF, or TXT · up to 10 MB
         </p>
         <input
           ref={inputRef}
           type="file"
-          accept=".csv,text/csv"
+          accept=".csv,.xlsx,.xls,.pdf,.txt,text/csv,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           className="hidden"
           onChange={(e) => pickFile(e.target.files?.[0])}
         />

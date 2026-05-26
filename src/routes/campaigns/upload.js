@@ -4,15 +4,24 @@ import { analyzeCampaignData } from '../../agents/orchestrator.js';
 import { prisma }              from '../../lib/prisma.js';
 import { logger }              from '../../utils/logger.js';
 import { randomUUID }          from 'crypto';
+import { parseUploadedFile }   from '../../utils/fileParser.js';
+import path from 'path';
+import fs from 'fs';
 
+// Accept any file type - AI will extract campaign data
 const upload = multer({
-  storage: multer.memoryStorage(),
-  limits:  { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => {
-    const ok = ['text/csv', 'application/vnd.ms-excel', 'application/csv'].includes(file.mimetype)
-            || /\.csv$/i.test(file.originalname || '');
-    cb(ok ? null : new Error('Only .csv files are accepted'), ok);
-  },
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const uploadDir = path.join(process.cwd(), 'uploads');
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+      cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+      const uniqueName = `${Date.now()}-${randomUUID().slice(0, 8)}${path.extname(file.originalname)}`;
+      cb(null, uniqueName);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB max
 });
 
 const MAX_ROWS_ANALYZE = 20;
@@ -59,11 +68,55 @@ export function mountUploadRoutes(router) {
       const workspaceId = req.workspaceId;
       if (!workspaceId) return res.status(401).json({ error: 'Workspace not found.', hint: 'Complete onboarding to create your workspace, then upload again.', userId: req.userId || null });
 
-      logger.info({ filename: req.file.originalname, size: req.file.size, userId: req.userId, workspaceId }, '[campaigns/upload-csv] ANALYZE mode');
+      logger.info({ filename: req.file.originalname, size: req.file.size, userId: req.userId, workspaceId }, '[campaigns/upload] ANALYZE mode');
 
-      const { campaigns: parsed, errors: parseErrors, stats } = parseMetaAdsCsv(req.file.buffer);
-      if (!parsed || parsed.length === 0) return res.status(400).json({ success: false, error: 'No valid campaigns found in CSV', stats, errors: parseErrors || [] });
-      if (parsed.length > MAX_ROWS_ANALYZE) return res.status(400).json({ success: false, error: `CSV has ${parsed.length} rows. Maximum for analysis mode is ${MAX_ROWS_ANALYZE}.`, hint: 'Split your export into smaller date ranges or use default mode for bulk DB storage.' });
+      // Parse file based on format (CSV, PDF, Excel, etc.)
+      let parsedFile;
+      try {
+        parsedFile = await parseUploadedFile(req.file);
+        logger.info({ type: parsedFile.type, format: parsedFile.format, rowCount: parsedFile.rowCount }, '[campaigns/upload] File parsed');
+      } catch (err) {
+        logger.error({ err: err.message, filename: req.file.originalname }, '[campaigns/upload] File parsing failed');
+        return res.status(400).json({ success: false, error: `Failed to parse file: ${err.message}` });
+      } finally {
+        // Clean up uploaded file
+        if (req.file.path && fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+      }
+
+      // Handle structured data (CSV, Excel with campaign columns)
+      if (parsedFile.format === 'structured' && parsedFile.type === 'csv') {
+        const { campaigns: parsed, errors: parseErrors, stats } = parseMetaAdsCsv(req.file.buffer);
+        if (!parsed || parsed.length === 0) return res.status(400).json({ success: false, error: 'No valid campaigns found in file', stats, errors: parseErrors || [] });
+        if (parsed.length > MAX_ROWS_ANALYZE) return res.status(400).json({ success: false, error: `File has ${parsed.length} rows. Maximum for analysis mode is ${MAX_ROWS_ANALYZE}.`, hint: 'Split your export into smaller date ranges.' });
+
+        parsedFile.campaigns = parsed;
+      }
+      // Handle unstructured data (PDF, text, Excel without campaign columns)
+      else {
+        // Send raw text to AI for extraction
+        const extractionPrompt = `Extract campaign performance data from this document. Return a JSON array of campaigns with fields: campaignName, spend, impressions, results, ctr, frequency, reach, costPerResult.\n\nDocument content:\n${parsedFile.raw?.slice(0, 8000) || JSON.stringify(parsedFile.data)}`;
+
+        try {
+          const extracted = await analyzeCampaignData({ rawDocument: extractionPrompt }, 'document');
+          if (!extracted || !Array.isArray(extracted.campaigns) || extracted.campaigns.length === 0) {
+            return res.status(400).json({
+              success: false,
+              error: 'No campaign data found in document',
+              hint: 'Make sure the file contains campaign performance metrics (spend, impressions, CTR, etc.)'
+            });
+          }
+          parsedFile.campaigns = extracted.campaigns;
+          logger.info({ extracted: extracted.campaigns.length }, '[campaigns/upload] AI extracted campaigns from unstructured data');
+        } catch (err) {
+          logger.error({ err: err.message }, '[campaigns/upload] AI extraction failed');
+          return res.status(400).json({ success: false, error: `AI extraction failed: ${err.message}` });
+        }
+      }
+
+      const parsed = parsedFile.campaigns;
+      if (!parsed || parsed.length === 0) return res.status(400).json({ success: false, error: 'No valid campaigns found in file' });
 
       // ── Step 1: Run AI analysis ─────────────────────────────────
       const results = await Promise.allSettled(
