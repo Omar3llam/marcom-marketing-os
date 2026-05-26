@@ -24,43 +24,43 @@ export function WelcomeStep() {
       </Lede>
 
       <div className="max-w-md mx-auto space-y-3 text-left">
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-white border border-gray-200">
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-white border border-surface-border">
           <div className="flex-shrink-0 w-6 h-6 rounded-full bg-lumi-gold/20 flex items-center justify-center text-lumi-gold font-mono text-xs font-bold">
             1
           </div>
           <div>
-            <div className="text-sm font-medium text-gray-900 mb-0.5">
+            <div className="text-sm font-medium text-dark-primary mb-0.5">
               9 quick steps
             </div>
-            <div className="text-xs text-gray-600">
+            <div className="text-xs text-dark-secondary">
               Takes ~3 minutes to complete
             </div>
           </div>
         </div>
 
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-white border border-gray-200">
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-white border border-surface-border">
           <div className="flex-shrink-0 w-6 h-6 rounded-full bg-lumi-gold/20 flex items-center justify-center text-lumi-gold font-mono text-xs font-bold">
             2
           </div>
           <div>
-            <div className="text-sm font-medium text-gray-900 mb-0.5">
+            <div className="text-sm font-medium text-dark-primary mb-0.5">
               MENA-first intelligence
             </div>
-            <div className="text-xs text-gray-600">
+            <div className="text-xs text-dark-secondary">
               Arabic dialects, local currencies, and region-specific insights
             </div>
           </div>
         </div>
 
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-white border border-gray-200">
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-white border border-surface-border">
           <div className="flex-shrink-0 w-6 h-6 rounded-full bg-lumi-gold/20 flex items-center justify-center text-lumi-gold font-mono text-xs font-bold">
             3
           </div>
           <div>
-            <div className="text-sm font-medium text-gray-900 mb-0.5">
+            <div className="text-sm font-medium text-dark-primary mb-0.5">
               Start optimizing immediately
             </div>
-            <div className="text-xs text-gray-600">
+            <div className="text-xs text-dark-secondary">
               Connect your ad accounts and let Lumi analyze your campaigns
             </div>
           </div>

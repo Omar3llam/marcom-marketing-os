@@ -58,10 +58,10 @@ export function ChannelsStep({ form, set }) {
 
       <div className="mt-5 p-4 rounded-lg bg-surface-light border border-surface-border">
         <div className="text-xs font-medium text-dark-base mb-1">
-          Don't worry —
+          Don&apos;t worry —
         </div>
         <div className="text-xs text-dark-soft leading-relaxed">
-          You'll connect your actual ad accounts in the next step after onboarding.
+          You&apos;ll connect your actual ad accounts in the next step after onboarding.
           This just tells Lumi which platforms to prepare for.
         </div>
       </div>

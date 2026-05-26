@@ -83,14 +83,14 @@ export function ReviewStep({ form, onEdit }) {
         {sections.map((section) => (
           <div
             key={section.step}
-            className="p-4 rounded-lg bg-white border border-gray-200"
+            className="p-4 rounded-lg bg-white border border-surface-border"
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <div className="flex-shrink-0 w-5 h-5 rounded-full bg-lumi-gold/20 flex items-center justify-center text-lumi-gold font-mono text-[10px] font-bold">
                   {section.step}
                 </div>
-                <h3 className="text-sm font-semibold text-gray-900">
+                <h3 className="text-sm font-semibold text-dark-primary">
                   {section.title}
                 </h3>
               </div>
@@ -107,8 +107,8 @@ export function ReviewStep({ form, onEdit }) {
             <dl className="space-y-2">
               {section.items.map((item, i) => (
                 <div key={i} className="flex justify-between gap-4 text-xs">
-                  <dt className="text-gray-500 font-medium">{item.label}</dt>
-                  <dd className="text-gray-700 text-right">{item.value}</dd>
+                  <dt className="text-dark-tertiary font-medium">{item.label}</dt>
+                  <dd className="text-dark-secondary text-right">{item.value}</dd>
                 </div>
               ))}
             </dl>
@@ -117,12 +117,12 @@ export function ReviewStep({ form, onEdit }) {
       </div>
 
       <div className="mt-6 p-4 rounded-lg bg-lumi-gold/10 border border-lumi-gold/30">
-        <div className="text-sm font-medium text-gray-900 mb-1">
+        <div className="text-sm font-medium text-dark-primary mb-1">
           What happens next?
         </div>
-        <ol className="text-xs text-gray-700 leading-relaxed space-y-1 list-decimal list-inside">
-          <li>We'll create your workspace with these settings</li>
-          <li>You'll connect your ad accounts (Meta, Google, etc.)</li>
+        <ol className="text-xs text-dark-secondary leading-relaxed space-y-1 list-decimal list-inside">
+          <li>We&apos;ll create your workspace with these settings</li>
+          <li>You&apos;ll connect your ad accounts (Meta, Google, etc.)</li>
           <li>Lumi starts analyzing campaigns and generating verdicts</li>
         </ol>
       </div>

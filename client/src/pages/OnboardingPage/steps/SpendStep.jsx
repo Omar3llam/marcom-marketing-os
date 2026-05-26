@@ -19,9 +19,9 @@ export function SpendStep({ form, set }) {
 
   return (
     <div>
-      <BigHeader className="mb-3">What's your monthly ad spend?</BigHeader>
+      <BigHeader className="mb-3">What&apos;s your monthly ad spend?</BigHeader>
       <Lede className="mb-8">
-        This helps Lumi calibrate recommendations. We'll use {selectedMarket?.label || 'your market'} pricing in {currencySymbol}.
+        This helps Lumi calibrate recommendations. We&apos;ll use {selectedMarket?.label || 'your market'} pricing in {currencySymbol}.
       </Lede>
 
       <div className="space-y-3">
@@ -35,11 +35,11 @@ export function SpendStep({ form, set }) {
               label={tier.label}
             />
             {/* Visual bar indicator */}
-            <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-gray-100 overflow-hidden rounded-full">
+            <div className="absolute left-0 right-0 bottom-0 h-0.5 bg-surface-muted overflow-hidden rounded-full">
               <div
                 className={cn(
                   'h-full transition-all duration-300',
-                  form.spendTier === tier.id ? 'bg-lumi-gold' : 'bg-gray-200'
+                  form.spendTier === tier.id ? 'bg-lumi-gold' : 'bg-surface-border'
                 )}
                 style={{ width: `${tier.bar * 100}%` }}
               />
@@ -48,11 +48,11 @@ export function SpendStep({ form, set }) {
         ))}
       </div>
 
-      <div className="mt-5 p-4 rounded-lg bg-gray-50 border border-gray-200">
-        <div className="text-xs font-medium text-gray-700 mb-1">
+      <div className="mt-5 p-4 rounded-lg bg-surface-muted border border-surface-border">
+        <div className="text-xs font-medium text-dark-secondary mb-1">
           Why we ask —
         </div>
-        <div className="text-xs text-gray-600 leading-relaxed">
+        <div className="text-xs text-dark-secondary leading-relaxed">
           Higher-spend accounts get tighter guardrails on budget allocation,
           while lower tiers get more aggressive exploration and testing recommendations.
         </div>
