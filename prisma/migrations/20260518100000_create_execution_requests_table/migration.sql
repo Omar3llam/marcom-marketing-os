@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS "execution_requests" (
   "version"         INTEGER NOT NULL DEFAULT 0,
   "correlationId"   TEXT,
   "activeStep"      TEXT,
-  "retryMetadata"   JSONB
+  "retryMetadata"   JSONB,
 
   CONSTRAINT "execution_requests_pkey" PRIMARY KEY ("id")
 );
