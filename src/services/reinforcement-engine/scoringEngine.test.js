@@ -124,6 +124,7 @@ describe('scoringEngine', () => {
           provider: 'test-provider-1',
           status: 'COMPLETED',
           requestedAt: now,
+          idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
         },
       });
 
@@ -161,6 +162,7 @@ describe('scoringEngine', () => {
           provider: 'test-provider-2',
           status: 'COMPLETED',
           requestedAt: now,
+          idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
         },
       });
 
@@ -215,6 +217,7 @@ describe('scoringEngine', () => {
           provider: 'test-provider-3',
           status: 'COMPLETED',
           requestedAt: now,
+          idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
         },
       });
 
@@ -270,6 +273,7 @@ describe('scoringEngine', () => {
           provider: 'test-provider-4',
           status: 'COMPLETED',
           requestedAt: now,
+          idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
         },
       });
 
@@ -326,6 +330,7 @@ describe('scoringEngine', () => {
             provider,
             status: 'COMPLETED',
             requestedAt: now,
+            idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
           },
         });
 
@@ -366,6 +371,7 @@ describe('scoringEngine', () => {
           provider: 'test-provider-high',
           status: 'COMPLETED',
           requestedAt: now,
+          idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
         },
       });
 
@@ -394,6 +400,7 @@ describe('scoringEngine', () => {
           provider: 'test-provider-low',
           status: 'COMPLETED',
           requestedAt: now,
+          idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
         },
       });
 

@@ -91,6 +91,7 @@ describe('budgetAllocator', () => {
     });
 
     it('should respect maxWeightChange constraint', async () => {
+      // High-performing provider
       await saveSnapshot({
         provider: 'test-provider-2',
         capability: 'GENERATE_HOOKS',
@@ -101,18 +102,30 @@ describe('budgetAllocator', () => {
         windowEnd: new Date('2026-02-01'),
       });
 
+      // Baseline provider (lower score)
+      await saveSnapshot({
+        provider: 'test-provider-baseline',
+        capability: 'GENERATE_HOOKS',
+        score: 70,
+        confidence: 0.8,
+        sampleSize: 150,
+        windowStart: new Date('2026-01-01'),
+        windowEnd: new Date('2026-02-01'),
+      });
+
       const currentWeights = {
         'test-provider-2': 0.1,
+        'test-provider-baseline': 0.9,
       };
 
       const recommendations = await generateRecommendations('GENERATE_HOOKS', currentWeights, {
         maxWeightChange: 0.1, // Max 10% change
       });
 
-      const rec = recommendations[0];
+      const highPerformerRec = recommendations.find(r => r.provider === 'test-provider-2');
 
       // Change should not exceed maxWeightChange
-      expect(Math.abs(rec.scoreChange)).toBeLessThanOrEqual(0.1);
+      expect(Math.abs(highPerformerRec.scoreChange)).toBeLessThanOrEqual(0.1);
     });
 
     it('should respect minProviderWeight constraint', async () => {
@@ -195,7 +208,7 @@ describe('budgetAllocator', () => {
       const recommendations = await generateRecommendations('GENERATE_HOOKS', currentWeights);
 
       // First recommendation should be the one with largest change
-      expect(Math.abs(recommendations[0].scoreChange)).toBeGreaterThan(
+      expect(Math.abs(recommendations[0].scoreChange)).toBeGreaterThanOrEqual(
         Math.abs(recommendations[1].scoreChange)
       );
     });

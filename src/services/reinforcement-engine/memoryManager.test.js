@@ -20,6 +20,18 @@ describe('memoryManager', () => {
     await prisma.reinforcementSnapshot.deleteMany({
       where: { provider: { startsWith: 'test-' } },
     });
+
+    // Create test workspaces (for foreign key constraint)
+    await prisma.workspace.upsert({
+      where: { id: '00000000-0000-0000-0000-000000000001' },
+      create: { id: '00000000-0000-0000-0000-000000000001', name: 'Test Workspace 1' },
+      update: {},
+    });
+    await prisma.workspace.upsert({
+      where: { id: '00000000-0000-0000-0000-000000000002' },
+      create: { id: '00000000-0000-0000-0000-000000000002', name: 'Test Workspace 2' },
+      update: {},
+    });
   });
 
   afterEach(async () => {
