@@ -137,7 +137,7 @@ router.get('/stream', (req, res) => {
 
   // ── Heartbeat (prevent idle timeout) ───────────────────────
   const heartbeatInterval = setInterval(() => {
-    res.write(': heartbeat\n\n');
+    res.write(`data: ${JSON.stringify({ type: 'HEARTBEAT', timestamp: new Date().toISOString() })}\n\n`);
   }, 30_000);
 
   // ── Cleanup on client disconnect ───────────────────────────

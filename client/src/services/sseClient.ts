@@ -109,7 +109,7 @@ export class SSEClient {
     this.baseDelay = options.baseDelay ?? 2000;
     this.maxDelay = options.maxDelay ?? 32_000;
     this.jitter = options.jitter ?? 0.1;
-    this.heartbeatTimeoutMs = options.heartbeatTimeout ?? 30_000;
+    this.heartbeatTimeoutMs = options.heartbeatTimeout ?? 65_000;
   }
 
   /**
@@ -253,8 +253,8 @@ export class SSEClient {
       // Parse message data
       const data = JSON.parse(event.data);
 
-      // Handle heartbeat (server sends ': heartbeat\n\n')
-      if (data.type === 'HEARTBEAT' || event.data === ': heartbeat') {
+      // Handle heartbeat
+      if (data.type === 'HEARTBEAT') {
         // Heartbeat received — no-op
         return;
       }
@@ -475,6 +475,6 @@ export function createSSEClient(
     baseDelay: 2000,
     maxDelay: 32_000,
     jitter: 0.1,
-    heartbeatTimeout: 30_000,
+    heartbeatTimeout: 65_000,
   });
 }
