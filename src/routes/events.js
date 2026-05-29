@@ -56,7 +56,7 @@ setInterval(() => {
  */
 router.post('/token', requireAuth, (req, res) => {
   const uid         = req.user?.uid;
-  const workspaceId = req.user?.workspaceId || req.workspaceId;
+  const workspaceId = req.workspaceId;
 
   if (!uid) {
     return res.status(401).json({ error: 'Unauthenticated' });

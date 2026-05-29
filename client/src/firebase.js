@@ -52,8 +52,12 @@ export function validateFirebaseConfig() {
   // Production: strict mode (no fallbacks)
   // Development: allow fallbacks for localhost convenience
   const isDev = import.meta.env.DEV;
-  const fallback = (envKey, devDefault) =>
-    import.meta.env[envKey] || (isDev ? devDefault : '');
+  const fallback = (envKey, devDefault) => {
+    if (import.meta.env[envKey]) return import.meta.env[envKey];
+    if (isDev) return devDefault;
+    console.error(`[Firebase] Missing required env var in production: ${envKey}`);
+    return '';
+  };
 
   const config = {
     apiKey:            fallback('VITE_FIREBASE_API_KEY', 'AIzaSyCLtn1Q7dzhN-SU_BwsfVulFBzZcQJNgqw'),
