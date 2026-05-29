@@ -354,6 +354,71 @@ export async function analyzeCampaignData(data, source = 'csv') {
 }
 
 /**
+ * Batch analysis for CSV uploads — single Claude call for all campaigns.
+ * Prevents timeout by replacing N parallel API calls with one batched call.
+ * @param {Array} campaigns - Array of campaign objects from CSV parser
+ * @returns {Promise<Object>} { decisions: Array<Object> }
+ */
+export async function analyzeCampaignsBatch(campaigns) {
+  if (!campaigns || !Array.isArray(campaigns) || campaigns.length === 0) {
+    throw new Error('analyzeCampaignsBatch requires non-empty campaigns array');
+  }
+
+  const prompt = `Analyze these ${campaigns.length} Meta Ads campaigns and return a JSON array of decisions.
+
+For each campaign return:
+{
+  "campaignId": "<string>",
+  "verdict": "SCALE" | "HOLD" | "KILL" | "OPTIMIZE" | "PAUSE_AND_RELAUNCH",
+  "rootCause": "<string>",
+  "diagnosis": "<2-3 sentence plain-language diagnosis>",
+  "confidence": "HIGH" | "MEDIUM" | "LOW",
+  "actionPlan": {
+    "primaryAction": "<one specific action>",
+    "reasoning": "<single sentence>",
+    "steps": ["<step 1>", "<step 2>", ...]
+  }
+}
+
+CAMPAIGNS:
+${JSON.stringify(campaigns.map(c => ({
+  campaignId: c.campaignId,
+  campaignName: c.campaignName,
+  adsetName: c.adsetName,
+  metrics: c.metrics,
+  deliveryStatus: c.deliveryStatus,
+})), null, 2)}
+
+Return ONLY valid JSON in this exact format:
+{ "decisions": [ ... ] }`;
+
+  const { text } = await runClaudeAgent({
+    role: 'You are an Elite Performance Marketing Strategist. Analyze campaigns and return only valid JSON.',
+    task: prompt,
+    campaignId: null,
+    maxTokens: 4096,
+  });
+
+  // Parse JSON from response
+  const cleaned = text.replace(/```json|```/g, '').trim();
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    logger.error({ text: text.slice(0, 200) }, '[orchestrator] analyzeCampaignsBatch: no JSON found in response');
+    throw new Error('No JSON found in batch analysis response');
+  }
+
+  const parsed = JSON.parse(jsonMatch[0]);
+
+  if (!parsed.decisions || !Array.isArray(parsed.decisions)) {
+    logger.error({ parsed }, '[orchestrator] analyzeCampaignsBatch: invalid response structure');
+    throw new Error('Invalid batch analysis response: missing decisions array');
+  }
+
+  logger.info({ campaignCount: campaigns.length, decisionsCount: parsed.decisions.length }, '[orchestrator] analyzeCampaignsBatch: success');
+  return parsed;
+}
+
+/**
  * Health check for the dual-agent system.
  * Adapter for paidController healthHandler.
  * @returns {Promise<Object>} Health status

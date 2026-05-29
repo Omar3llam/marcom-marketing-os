@@ -1,6 +1,6 @@
 import multer from 'multer';
 import { parseMetaAdsCsv }    from '../../services/metaAdsParser.js';
-import { analyzeCampaignData } from '../../agents/orchestrator.js';
+import { analyzeCampaignData, analyzeCampaignsBatch } from '../../agents/orchestrator.js';
 import { prisma }              from '../../lib/prisma.js';
 import { logger }              from '../../utils/logger.js';
 import { randomUUID }          from 'crypto';
@@ -119,22 +119,65 @@ export function mountUploadRoutes(router) {
       const parsed = parsedFile.campaigns;
       if (!parsed || parsed.length === 0) return res.status(400).json({ success: false, error: 'No valid campaigns found in file' });
 
-      // ── Step 1: Run AI analysis ─────────────────────────────────
-      const results = await Promise.allSettled(
-        parsed.map(async (c) => {
-          const dataForClaude = {
-            campaignId: c.campaignId, campaignName: c.campaignName, adsetName: c.adsetName,
-            metrics: { spend: c.spend, impressions: c.impressions, results: c.results, ctr: c.ctr, cpc: c.cpc, roas: c.roas, frequency: c.frequency, reach: c.reach, costPerResult: c.costPerResult },
-            deliveryStatus: c.deliveryStatus, rawRecord: c.rawRecord,
-          };
-          const decision = await analyzeCampaignData(dataForClaude, 'csv');
-          decision.campaignId = c.campaignId;
-          decision.campaignName = c.campaignName;
-          decision.adsetName = c.adsetName;
-          decision.sourceMetrics = { spend: c.spend ?? 0, impressions: c.impressions ?? 0, results: c.results ?? 0, ctr: c.ctr ?? 0, cpc: c.cpc ?? 0, roas: c.roas ?? 0, frequency: c.frequency ?? 0, reach: c.reach ?? 0, costPerResult: c.costPerResult ?? 0 };
-          return { decision, campaign: c };
-        }),
-      );
+      // ── Step 1: Run AI analysis (BATCHED — single Claude call for all campaigns)
+      const campaignsForAnalysis = parsed.map(c => ({
+        campaignId: c.campaignId,
+        campaignName: c.campaignName,
+        adsetName: c.adsetName,
+        metrics: {
+          spend: c.spend,
+          impressions: c.impressions,
+          results: c.results,
+          ctr: c.ctr,
+          cpc: c.cpc,
+          roas: c.roas,
+          frequency: c.frequency,
+          reach: c.reach,
+          costPerResult: c.costPerResult,
+        },
+        deliveryStatus: c.deliveryStatus,
+      }));
+
+      let batchResult;
+      try {
+        batchResult = await analyzeCampaignsBatch(campaignsForAnalysis);
+      } catch (err) {
+        logger.error({ err: err.message }, '[campaigns/upload] Batch analysis failed');
+        return res.status(500).json({ success: false, error: `AI analysis failed: ${err.message}` });
+      }
+
+      // Map batch decisions back to campaigns
+      const decisionMap = new Map(batchResult.decisions.map(d => [d.campaignId, d]));
+      const results = parsed.map(c => {
+        const decision = decisionMap.get(c.campaignId) || {
+          verdict: 'HOLD',
+          rootCause: 'No analysis',
+          diagnosis: 'Analysis not available for this campaign',
+          confidence: 'LOW',
+          actionPlan: { primaryAction: 'Review manually', reasoning: 'Batch analysis did not include this campaign', steps: [] },
+        };
+
+        // Enrich decision with campaign metadata
+        decision.campaignId = c.campaignId;
+        decision.campaignName = c.campaignName;
+        decision.adsetName = c.adsetName;
+        decision.sourceMetrics = {
+          spend: c.spend ?? 0,
+          impressions: c.impressions ?? 0,
+          results: c.results ?? 0,
+          ctr: c.ctr ?? 0,
+          cpc: c.cpc ?? 0,
+          roas: c.roas ?? 0,
+          frequency: c.frequency ?? 0,
+          reach: c.reach ?? 0,
+          costPerResult: c.costPerResult ?? 0,
+        };
+
+        return {
+          status: 'fulfilled',
+          value: { decision, campaign: c },
+        };
+      });
 
       const decisions = [];
       const errors    = [];
