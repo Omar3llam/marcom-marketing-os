@@ -82,11 +82,17 @@ export function useSSE(options: UseSSEOptions): UseSSEResult {
 
   const clientRef = useRef<SSEClient | null>(null);
 
-  // Initialize client on mount
+  // Store callbacks in refs so SSEClient is not recreated when they change
+  const onMessageRef = useRef(options.onMessage);
+  const onErrorRef = useRef(options.onError);
+  useEffect(() => { onMessageRef.current = options.onMessage; }, [options.onMessage]);
+  useEffect(() => { onErrorRef.current = options.onError; }, [options.onError]);
+
+  // Create SSEClient ONCE on mount — never recreate it
   useEffect(() => {
     const client = new SSEClient({
-      onMessage: options.onMessage,
-      onError: options.onError,
+      onMessage: (event) => onMessageRef.current(event),
+      onError: (error) => onErrorRef.current?.(error),
       onStateChange: (newState) => {
         setState(newState);
         setMetrics(client.getMetrics());
@@ -98,23 +104,14 @@ export function useSSE(options: UseSSEOptions): UseSSEResult {
 
     clientRef.current = client;
 
-    // Auto-connect if enabled
     if (options.autoConnect) {
       client.connect();
     }
 
-    // Cleanup on unmount
     return () => {
       client.disconnect();
     };
-  }, [
-    options.onMessage,
-    options.onError,
-    options.autoConnect,
-    options.maxRetries,
-    options.baseDelay,
-    options.maxDelay,
-  ]);
+  }, []); // ← EMPTY dependency array: create once, never recreate
 
   // Update metrics periodically while connected
   useEffect(() => {
@@ -124,40 +121,31 @@ export function useSSE(options: UseSSEOptions): UseSSEResult {
           setMetrics(clientRef.current.getMetrics());
         }
       }, 1000);
-
       return () => clearInterval(interval);
     }
   }, [state]);
 
-  // Connect method
   const connect = useCallback(async () => {
     if (clientRef.current) {
       await clientRef.current.connect();
     }
   }, []);
 
-  // Disconnect method
   const disconnect = useCallback(() => {
     if (clientRef.current) {
       clientRef.current.disconnect();
     }
   }, []);
 
-  // Derived state
-  const isConnected = state === 'CONNECTED';
-  const isConnecting = state === 'CONNECTING';
-  const isReconnecting = state === 'RECONNECTING';
-  const isFailed = state === 'FAILED';
-
   return {
     state,
     metrics,
     connect,
     disconnect,
-    isConnected,
-    isConnecting,
-    isReconnecting,
-    isFailed,
+    isConnected: state === 'CONNECTED',
+    isConnecting: state === 'CONNECTING',
+    isReconnecting: state === 'RECONNECTING',
+    isFailed: state === 'FAILED',
   };
 }
 

@@ -157,6 +157,19 @@ export class SSEClient {
         maxRetries: this.maxRetries,
       });
     } catch (error: any) {
+      // Special handling for rate limit — back off much longer
+      const isRateLimit = error?.httpStatus === 429 || error?.code === 'RATE_LIMIT_EXCEEDED';
+      if (isRateLimit) {
+        const retryAfterSec = parseInt(error?.context?.retryAfter || '60', 10);
+        const retryMs = Math.max(retryAfterSec * 1000, 60_000);
+        console.warn(`[SSEClient] Rate limited on token request — waiting ${retryMs}ms before retry`);
+        this.transitionTo('RECONNECTING');
+        this.reconnectTimeout = setTimeout(() => {
+          this.reconnectAttempts = 0; // reset so retry budget is fresh after the long wait
+          this.connect();
+        }, retryMs);
+        return;
+      }
       this.handleConnectionError(error);
     }
   }

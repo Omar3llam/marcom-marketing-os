@@ -152,13 +152,30 @@ function useUserContext() {
       })
       .catch((err) => {
         if (cancelled) return;
-
         console.error('[ProtectedRoute] Context API failed:', err);
 
-        // API failed — wipe stale localStorage so user goes to onboarding
-        setStoredOnboardingState(false);
+        // Classify the error
+        const isTransient =
+          err?.httpStatus === 429 ||  // rate limit
+          err?.httpStatus >= 500 ||   // server error
+          err?.code === 'RATE_LIMIT_EXCEEDED' ||
+          err?.code === 'NETWORK_ERROR' ||
+          err?.code === 'NETWORK_TIMEOUT' ||
+          !err?.httpStatus;           // no response at all (offline)
 
-        publish({ loading: false, hasContext: false });
+        if (isTransient) {
+          // Transient error — do NOT wipe cache. Fall back to whatever localStorage says.
+          // If localStorage says onboarded, keep them in the app.
+          // If localStorage is empty/false, redirect to onboarding as before.
+          const cached = getStoredOnboardingState();
+          console.warn('[ProtectedRoute] Transient error — using cached onboarding state:', cached);
+          publish({ loading: false, hasContext: cached === true });
+        } else {
+          // Auth errors (401, 403) or explicit null context from the API
+          // → treat as not onboarded, wipe cache
+          setStoredOnboardingState(false);
+          publish({ loading: false, hasContext: false });
+        }
       });
 
     return () => { cancelled = true; };
