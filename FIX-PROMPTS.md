@@ -565,6 +565,86 @@ import errors exist.
 
 ---
 
+## Phase 9 — Fix CSV Upload 500: Duplicate campaignId for Unicode Campaign Names (Critical, ~10 min)
+
+> **What:** The slug generator in `metaAdsParser.js` strips all Unicode characters to `_`, then collapses runs of `_`. Multiple campaigns with Unicode-heavy names (e.g., all three "Instagram post: 𝑺𝒘𝒊𝒑𝒆…", "Instagram post: 𝗟𝗲𝗮𝘃𝗶𝗻𝗴…", "Instagram post: 𝒀𝒐𝒖𝒓…") all produce the identical `campaignId`: `meta__instagram_post_instagram_post`. When `createMany` tries to insert multiple `Action` rows with the same `idempotencyKey` (`meta:csv:<session>:meta__instagram_post_instagram_post`), Prisma throws a unique constraint violation. The `$transaction` has no outer try-catch, so this propagates as an unhandled 500. Confirmed live — **every upload of a real Meta CSV with multiple Instagram posts fails 100% of the time.**
+
+```
+Fix duplicate campaignId generation in src/services/metaAdsParser.js.
+
+ROOT CAUSE (lines ~182–188):
+  const slug = `${campaignName}__${adsetName}`
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_')   // ← strips ALL Unicode to '_'
+    .replace(/_+/g, '_')            // ← collapses duplicates
+    .slice(0, 100);
+  const campaignId = `meta__${slug}`;
+
+Campaign names with Unicode math/bold/italic characters (very common in Meta exports
+from MENA markets) all collapse to the same slug. Multiple campaigns like:
+  "Instagram post: 𝑺𝒘𝒊𝒑𝒆 𝒕𝒉𝒓𝒐𝒖𝒈𝒉..." + "Instagram Post"
+  "Instagram post: 𝗟𝗲𝗮𝘃𝗶𝗻𝗴 𝗳𝗼𝗿 𝘃𝗮𝗰𝗮𝘁𝗶𝗼𝗻..." + "Instagram Post"
+  "Instagram post: 𝒀𝒐𝒖𝒓 𝒇𝒂𝒎𝒊𝒍𝒚..." + "Instagram Post"
+all produce: meta__instagram_post_instagram_post
+This causes a unique constraint violation in createMany → transaction rollback → 500.
+
+FIX — Append a short deterministic hash of the ORIGINAL (pre-slug) names to guarantee uniqueness:
+
+In src/services/metaAdsParser.js, find the campaignId construction block
+(around lines 182–188) and replace it:
+
+BEFORE:
+  const slug = `${campaignName}__${adsetName}`
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 100);
+
+  const campaignId = `meta__${slug}`;
+
+AFTER:
+  import { createHash } from 'crypto';  // add to top of file if not already imported
+
+  const slug = `${campaignName}__${adsetName}`
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 80);  // shorten to leave room for hash suffix
+
+  // Append 8-char hash of ORIGINAL names to disambiguate Unicode-heavy duplicates.
+  // Same campaign name always produces same hash (deterministic/idempotent).
+  const nameHash = createHash('sha256')
+    .update(`${campaignName}|${adsetName}`)
+    .digest('hex')
+    .slice(0, 8);
+
+  const campaignId = `meta__${slug}_${nameHash}`;
+
+This ensures:
+- Same campaign on re-upload = same campaignId (hash is deterministic)
+- Different campaigns with identical Unicode slugs = different campaignId (different hash)
+- No collisions in idempotencyKey → no unique constraint violations
+
+Check if `createHash` is already imported at the top of metaAdsParser.js.
+If not, add: import { createHash } from 'crypto';
+
+Make only this change. No other modifications.
+After editing, verify: node -e "
+  import { createHash } from 'crypto';
+  const names = [
+    ['Instagram post: UNICODE1', 'Instagram Post'],
+    ['Instagram post: UNICODE2', 'Instagram Post'],
+  ];
+  names.forEach(([c, a]) => {
+    const slug = (c+'__'+a).toLowerCase().replace(/[^a-z0-9_]/g,'_').replace(/_+/g,'_').slice(0,80);
+    const hash = createHash('sha256').update(c+'|'+a).digest('hex').slice(0,8);
+    console.log('meta__'+slug+'_'+hash);
+  });
+" — they should produce DIFFERENT IDs.
+```
+
+---
+
 ## Summary
 
 | Phase | What it fixes | Files touched | Time |
@@ -576,4 +656,5 @@ import errors exist.
 | 5 | Verify phases 1–4 | (read-only checks) | ~5 min |
 | 6 | SSE retry storm (1000+ req/min in prod) | `client/src/services/useSSE.ts`, `client/src/services/sseClient.ts` | ~20 min |
 | 7 | ProtectedRoute false-logout on 429/503 | `client/src/router/ProtectedRoute.jsx` | ~15 min |
-| 8 | CSV upload 502 (N parallel Claude calls) | `src/routes/campaigns/upload.js`, `src/agents/orchestrator.js` | ~25 min |
+| 8 | CSV upload 502 (N parallel Claude calls) — already fixed in code | `src/routes/campaigns/upload.js`, `src/agents/orchestrator.js` | N/A |
+| 9 | CSV upload 500 (duplicate campaignId for Unicode names) | `src/services/metaAdsParser.js` | ~10 min |
