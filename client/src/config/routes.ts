@@ -15,6 +15,7 @@
 //   Step 3: Enable feature flag → /decision uses v2
 //   Step 4: Remove v1 code once v2 stable
 // ============================================================
+import { features } from './features.js';
 
 export const routes = {
   // ── v1 routes (existing stable) ────────────────────────────
@@ -58,9 +59,6 @@ export function getActiveRoute(
   route: keyof typeof routes.v1,
   forceVersion?: 'v1' | 'v2'
 ): string {
-  // Import here to avoid circular dependency
-  const { features } = await import('./features.js');
-
   if (forceVersion === 'v2') {
     return routes.v2[route] || routes.v1[route];
   }
