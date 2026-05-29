@@ -19,6 +19,7 @@
 //   - Early detection of spend=0 data loss
 // ============================================================
 import { parse } from 'csv-parse/sync';
+import { createHash } from 'crypto';
 import { resolveHeader, cleanMonetaryValue, COLUMN_ALIASES } from '../lib/csvColumnAliases.js';
 
 /**
@@ -183,9 +184,16 @@ function buildCampaign(record, headerMap) {
       .toLowerCase()
       .replace(/[^a-z0-9_]/g, '_')
       .replace(/_+/g, '_')
-      .slice(0, 100);
+      .slice(0, 80);  // shorten to leave room for hash suffix
 
-    const campaignId = `meta__${slug}`;
+    // Append 8-char hash of ORIGINAL names to disambiguate Unicode-heavy duplicates.
+    // Same campaign name always produces same hash (deterministic/idempotent).
+    const nameHash = createHash('sha256')
+      .update(`${campaignName}|${adsetName}`)
+      .digest('hex')
+      .slice(0, 8);
+
+    const campaignId = `meta__${slug}_${nameHash}`;
 
     // ── Parse numeric fields using robust monetary parser ─────
     const spend = cleanMonetaryValue(
