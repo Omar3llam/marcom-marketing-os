@@ -462,6 +462,109 @@ the getStoredOnboardingState import/usage is correct within the same file scope.
 
 ---
 
+## Phase 8 — Fix CSV Upload 502 Timeout (Critical — Found in Upload Test, ~25 min)
+
+> **What:** `POST /api/campaigns/upload-csv?mode=analyze` fires **one Claude API call per campaign row in parallel** via `Promise.allSettled`. With a 14-row CSV this launches 14 simultaneous Anthropic requests. On Render's Starter plan (30s request timeout) this consistently returns 502 Bad Gateway. Confirmed live: every upload attempt fails with 502.
+
+```
+Fix the CSV upload timeout in src/routes/campaigns/upload.js.
+
+PROBLEM (lines 123–137):
+The analyze mode fires one Claude API call per campaign in parallel:
+
+  const results = await Promise.allSettled(
+    parsed.map(async (c) => {
+      const decision = await analyzeCampaignData(dataForClaude, 'csv');
+      ...
+    }),
+  );
+
+With 14 campaigns, this launches 14 concurrent Anthropic API calls.
+Each takes ~3–5s. Render's 30s request timeout fires before all complete → 502.
+
+FIX — Replace N parallel calls with ONE batched call:
+
+Step 1: Check if analyzeCampaignData supports a batch mode. Search for it in
+src/agents/orchestrator.js. If it accepts an array of campaigns, use that.
+
+Step 2: If no batch mode exists, add a batch function to the orchestrator:
+
+In src/agents/orchestrator.js, add an export:
+
+export async function analyzeCampaignsBatch(campaigns) {
+  // Build a single prompt with all campaigns
+  const prompt = `Analyze these ${campaigns.length} Meta Ads campaigns and return a JSON array
+of decisions. For each campaign return:
+{ campaignId, verdict (SCALE|HOLD|KILL|OPTIMIZE|PAUSE_AND_RELAUNCH),
+  rootCause, confidence (HIGH|MEDIUM|LOW),
+  actionPlan: { primaryAction, reasoning, steps[] },
+  signals: [{ metric, value, threshold, status }] }
+
+Campaigns:
+${JSON.stringify(campaigns.map(c => ({
+  campaignId: c.campaignId,
+  campaignName: c.campaignName,
+  adsetName: c.adsetName,
+  metrics: c.metrics,
+  deliveryStatus: c.deliveryStatus,
+})), null, 2)}
+
+Return ONLY valid JSON: { decisions: [...] }`;
+
+  const response = await anthropic.messages.create({
+    model: process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5',
+    max_tokens: 4096,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const text = response.content[0].text;
+  // Parse JSON from response
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('No JSON found in batch analysis response');
+  return JSON.parse(jsonMatch[0]);
+}
+
+Step 3: In src/routes/campaigns/upload.js, replace the Promise.allSettled block
+(lines ~123–137) with a single batch call:
+
+  // ── Step 1: Run AI analysis (BATCHED — single Claude call for all campaigns)
+  const campaignsForAnalysis = parsed.map(c => ({
+    campaignId: c.campaignId,
+    campaignName: c.campaignName,
+    adsetName: c.adsetName,
+    metrics: { spend: c.spend, impressions: c.impressions, results: c.results,
+               ctr: c.ctr, cpc: c.cpc, roas: c.roas, frequency: c.frequency,
+               reach: c.reach, costPerResult: c.costPerResult },
+    deliveryStatus: c.deliveryStatus,
+  }));
+
+  let batchResult;
+  try {
+    batchResult = await analyzeCampaignsBatch(campaignsForAnalysis);
+  } catch (err) {
+    logger.error({ err: err.message }, '[campaigns/upload] Batch analysis failed');
+    return res.status(500).json({ success: false, error: 'AI analysis failed: ' + err.message });
+  }
+
+  // Map batch decisions back to campaigns
+  const decisionMap = new Map(batchResult.decisions.map(d => [d.campaignId, d]));
+  const results = parsed.map(c => ({
+    status: 'fulfilled',
+    value: {
+      decision: decisionMap.get(c.campaignId) || { verdict: 'HOLD', rootCause: 'No analysis', confidence: 'LOW' },
+      campaign: c,
+    },
+  }));
+
+Also import analyzeCampaignsBatch at the top of upload.js:
+  import { analyzeCampaignData, analyzeCampaignsBatch } from '../../agents/orchestrator.js';
+
+After making these changes, verify by checking the code reads correctly and no
+import errors exist.
+```
+
+---
+
 ## Summary
 
 | Phase | What it fixes | Files touched | Time |
@@ -473,3 +576,4 @@ the getStoredOnboardingState import/usage is correct within the same file scope.
 | 5 | Verify phases 1–4 | (read-only checks) | ~5 min |
 | 6 | SSE retry storm (1000+ req/min in prod) | `client/src/services/useSSE.ts`, `client/src/services/sseClient.ts` | ~20 min |
 | 7 | ProtectedRoute false-logout on 429/503 | `client/src/router/ProtectedRoute.jsx` | ~15 min |
+| 8 | CSV upload 502 (N parallel Claude calls) | `src/routes/campaigns/upload.js`, `src/agents/orchestrator.js` | ~25 min |
