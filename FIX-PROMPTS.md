@@ -1,8 +1,9 @@
 # MARCOM Wiring Fix — Phased Prompts
 **Based on:** WIRING-AUDIT-2026-05-29.md  
-**GitHub verified:** 2026-05-29 (all findings confirmed on master)
+**GitHub verified:** 2026-05-29 (all findings confirmed on master)  
+**Live browser audit:** 2026-05-29 — 2 additional critical bugs found in production
 
-Use each prompt below in a new Claude Code session. Run them in order — Phase 1 and 2 are independent of each other but should both be done before Phase 3.
+Use each prompt below in a new Claude Code session. Phases 1–5 address the original static audit. **Phases 6–7 are new critical bugs found during live browser testing and should be treated as urgent.**
 
 ---
 
@@ -250,6 +251,217 @@ If any fail, show the diff needed to fix it.
 
 ---
 
+## Phase 6 — Fix SSE Retry Storm (Critical — Found in Live Audit, ~20 min)
+
+> **What:** `useSSE` lists `options.onMessage` in its `useEffect` dependency array. Since callers (like `DecisionFeed`) pass inline arrow functions, the reference changes every render, re-running the effect, recreating the SSEClient from scratch (resetting `reconnectAttempts` to 0), and restarting the connection loop. This produced **1,000+ network requests and 6,669 console messages** on the `/app/feed` page in production within minutes. Additionally, the SSEClient doesn't treat 429 responses specially — it retries them with backoff just like any other error, making a rate-limit situation dramatically worse.
+
+```
+Fix two related SSE problems in marcom-marketing-os that were found during live browser testing.
+
+─── PROBLEM 1: useSSE re-creates SSEClient on every render ─────────────────
+
+File: client/src/services/useSSE.ts
+
+The useEffect that creates the SSEClient (lines 86–117) lists options.onMessage,
+options.onError, options.autoConnect, options.maxRetries, options.baseDelay, and
+options.maxDelay in its dependency array. When callers pass inline functions (which
+get a new reference on every render), this effect re-runs constantly — disconnecting
+the old client and creating a new one with reconnectAttempts = 0, bypassing the
+maxRetries guard completely.
+
+FIX — Store callbacks in refs so the SSEClient is created ONCE:
+
+Replace the entire useSSE function with this implementation:
+
+export function useSSE(options: UseSSEOptions): UseSSEResult {
+  const [state, setState] = useState<SSEState>('IDLE');
+  const [metrics, setMetrics] = useState<SSEMetrics>({
+    state: 'IDLE',
+    reconnectAttempts: 0,
+    lastConnected: null,
+    lastDisconnected: null,
+    downtime: 0,
+    totalMessages: 0,
+    totalErrors: 0,
+  });
+
+  const clientRef = useRef<SSEClient | null>(null);
+
+  // Store callbacks in refs so SSEClient is not recreated when they change
+  const onMessageRef = useRef(options.onMessage);
+  const onErrorRef = useRef(options.onError);
+  useEffect(() => { onMessageRef.current = options.onMessage; }, [options.onMessage]);
+  useEffect(() => { onErrorRef.current = options.onError; }, [options.onError]);
+
+  // Create SSEClient ONCE on mount — never recreate it
+  useEffect(() => {
+    const client = new SSEClient({
+      onMessage: (event) => onMessageRef.current(event),
+      onError: (error) => onErrorRef.current?.(error),
+      onStateChange: (newState) => {
+        setState(newState);
+        setMetrics(client.getMetrics());
+      },
+      maxRetries: options.maxRetries,
+      baseDelay: options.baseDelay,
+      maxDelay: options.maxDelay,
+    });
+
+    clientRef.current = client;
+
+    if (options.autoConnect) {
+      client.connect();
+    }
+
+    return () => {
+      client.disconnect();
+    };
+  }, []); // ← EMPTY dependency array: create once, never recreate
+
+  // Update metrics periodically while connected
+  useEffect(() => {
+    if (state === 'CONNECTED' || state === 'RECONNECTING') {
+      const interval = setInterval(() => {
+        if (clientRef.current) {
+          setMetrics(clientRef.current.getMetrics());
+        }
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [state]);
+
+  const connect = useCallback(async () => {
+    if (clientRef.current) {
+      await clientRef.current.connect();
+    }
+  }, []);
+
+  const disconnect = useCallback(() => {
+    if (clientRef.current) {
+      clientRef.current.disconnect();
+    }
+  }, []);
+
+  return {
+    state,
+    metrics,
+    connect,
+    disconnect,
+    isConnected: state === 'CONNECTED',
+    isConnecting: state === 'CONNECTING',
+    isReconnecting: state === 'RECONNECTING',
+    isFailed: state === 'FAILED',
+  };
+}
+
+─── PROBLEM 2: SSEClient retries on 429 instead of backing off ─────────────
+
+File: client/src/services/sseClient.ts
+
+In the connect() method, when api.post('/api/events/token') fails with a 429
+(RateLimitError), handleConnectionError() calls scheduleReconnect() with normal
+exponential backoff. But each retry hits the same rate limit, making it worse
+and driving the retry count to FAILED — after which a re-mount (from Problem 1)
+starts the whole cycle over.
+
+FIX — In the connect() method's catch block, check for 429 and use the
+Retry-After header if available, or a 60s minimum:
+
+In sseClient.ts, change the catch block of connect() from:
+  } catch (error: any) {
+    this.handleConnectionError(error);
+  }
+
+To:
+  } catch (error: any) {
+    // Special handling for rate limit — back off much longer
+    const isRateLimit = error?.httpStatus === 429 || error?.code === 'RATE_LIMIT_EXCEEDED';
+    if (isRateLimit) {
+      const retryAfterSec = parseInt(error?.context?.retryAfter || '60', 10);
+      const retryMs = Math.max(retryAfterSec * 1000, 60_000);
+      console.warn(`[SSEClient] Rate limited on token request — waiting ${retryMs}ms before retry`);
+      this.transitionTo('RECONNECTING');
+      this.reconnectTimeout = setTimeout(() => {
+        this.reconnectAttempts = 0; // reset so retry budget is fresh after the long wait
+        this.connect();
+      }, retryMs);
+      return;
+    }
+    this.handleConnectionError(error);
+  }
+
+Make only these two targeted changes to useSSE.ts and sseClient.ts.
+After editing, confirm no TypeScript errors with: cd client && npx tsc --noEmit 2>&1 | grep -E "useSSE|sseClient"
+```
+
+---
+
+## Phase 7 — Fix ProtectedRoute False-Logout on Transient Errors (Critical — Found in Live Audit, ~15 min)
+
+> **What:** `ProtectedRoute`'s context API error handler treats **any** failure — including 429 rate limits, 5xx errors, network timeouts — as "user is not onboarded". It wipes localStorage and publishes `hasContext: false`, bouncing the authenticated user to `/onboarding`. This was triggered in production simply by navigating between pages quickly. The fix is to distinguish transient errors (fall back to cached state) from real "not onboarded" signals (only when API explicitly returns `{context: null}`).
+
+```
+Fix the ProtectedRoute false-logout bug in client/src/router/ProtectedRoute.jsx.
+
+PROBLEM:
+In the useUserContext hook, the .catch() block (around line 153) does this on ANY error:
+  setStoredOnboardingState(false);
+  publish({ loading: false, hasContext: false });
+
+This includes 429 (rate limit), 503, network errors, and timeouts — all of which are
+transient and have nothing to do with whether the user is onboarded. The result: a
+user who navigates between pages quickly triggers the rate limiter, gets their 
+localStorage wiped, and gets bounced to /onboarding even though they're fully onboarded.
+
+FIX:
+Replace the .catch() block with error-type-aware handling:
+
+BEFORE:
+  .catch((err) => {
+    if (cancelled) return;
+    console.error('[ProtectedRoute] Context API failed:', err);
+    // API failed — wipe stale localStorage so user goes to onboarding
+    setStoredOnboardingState(false);
+    publish({ loading: false, hasContext: false });
+  });
+
+AFTER:
+  .catch((err) => {
+    if (cancelled) return;
+    console.error('[ProtectedRoute] Context API failed:', err);
+
+    // Classify the error
+    const isTransient =
+      err?.httpStatus === 429 ||  // rate limit
+      err?.httpStatus >= 500 ||   // server error
+      err?.code === 'RATE_LIMIT_EXCEEDED' ||
+      err?.code === 'NETWORK_ERROR' ||
+      err?.code === 'NETWORK_TIMEOUT' ||
+      !err?.httpStatus;           // no response at all (offline)
+
+    if (isTransient) {
+      // Transient error — do NOT wipe cache. Fall back to whatever localStorage says.
+      // If localStorage says onboarded, keep them in the app.
+      // If localStorage is empty/false, redirect to onboarding as before.
+      const cached = getStoredOnboardingState();
+      console.warn('[ProtectedRoute] Transient error — using cached onboarding state:', cached);
+      publish({ loading: false, hasContext: cached === true });
+    } else {
+      // Auth errors (401, 403) or explicit null context from the API
+      // → treat as not onboarded, wipe cache
+      setStoredOnboardingState(false);
+      publish({ loading: false, hasContext: false });
+    }
+  });
+
+Make only this targeted change. The function getStoredOnboardingState() is already
+defined in the same file (it reads the 'marcom:onboarded' localStorage key).
+After editing, verify the logic by reading the function to ensure it compiles and
+the getStoredOnboardingState import/usage is correct within the same file scope.
+```
+
+---
+
 ## Summary
 
 | Phase | What it fixes | Files touched | Time |
@@ -258,4 +470,6 @@ If any fail, show the diff needed to fix it.
 | 2 | SSE heartbeat reconnect loop | `src/routes/events.js`, `client/src/services/sseClient.ts` | ~10 min |
 | 3 | Stale/duplicate env config | `client/.env.example`, `.env.example`, `.env` | ~15 min |
 | 4 | Dead code + silent prod misconfiguration | `src/routes/events.js`, `client/src/firebase.js` | ~10 min |
-| 5 | Verify all fixes | (read-only checks) | ~5 min |
+| 5 | Verify phases 1–4 | (read-only checks) | ~5 min |
+| 6 | SSE retry storm (1000+ req/min in prod) | `client/src/services/useSSE.ts`, `client/src/services/sseClient.ts` | ~20 min |
+| 7 | ProtectedRoute false-logout on 429/503 | `client/src/router/ProtectedRoute.jsx` | ~15 min |
