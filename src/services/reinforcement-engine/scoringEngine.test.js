@@ -126,6 +126,7 @@ describe('scoringEngine', () => {
           requestedAt: now,
           idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
           actionType: 'GENERATE_HOOKS',
+          targetId: 'test-target-id',
         },
       });
 
@@ -165,6 +166,7 @@ describe('scoringEngine', () => {
           requestedAt: now,
           idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
           actionType: 'GENERATE_HOOKS',
+          targetId: 'test-target-id',
         },
       });
 
@@ -221,6 +223,7 @@ describe('scoringEngine', () => {
           requestedAt: now,
           idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
           actionType: 'GENERATE_HOOKS',
+          targetId: 'test-target-id',
         },
       });
 
@@ -278,6 +281,7 @@ describe('scoringEngine', () => {
           requestedAt: now,
           idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
           actionType: 'GENERATE_HOOKS',
+          targetId: 'test-target-id',
         },
       });
 
@@ -336,6 +340,7 @@ describe('scoringEngine', () => {
             requestedAt: now,
             idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
             actionType: 'GENERATE_HOOKS',
+            targetId: 'test-target-id',
           },
         });
 
@@ -378,6 +383,7 @@ describe('scoringEngine', () => {
           requestedAt: now,
           idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
           actionType: 'GENERATE_HOOKS',
+          targetId: 'test-target-id',
         },
       });
 
@@ -408,6 +414,7 @@ describe('scoringEngine', () => {
           requestedAt: now,
           idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
           actionType: 'GENERATE_HOOKS',
+          targetId: 'test-target-id',
         },
       });
 
