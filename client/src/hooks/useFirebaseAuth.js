@@ -64,28 +64,37 @@ export function useFirebaseAuth() {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    // getRedirectResult must resolve before we declare auth ready.
+    // Without this, onAuthStateChanged can fire with user=null (no cached session)
+    // before the redirect credential is processed. That null leaks through
+    // ProtectedRoute → navigate to /login, and any in-flight API calls fire
+    // with no token → 401 → blank page.
+    //
+    // After the first startup the promise is already resolved, so subsequent
+    // onAuthStateChanged calls (logout, token refresh) have zero extra latency.
+    const redirectPromise = getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          console.log('[AuthContext] Redirect result received:', {
+            user: result.user?.email,
+            providerId: result.providerId,
+          });
+        }
+      })
+      .catch((err) => {
+        console.error('[AuthContext] Redirect result error:', err);
+      });
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      await redirectPromise;
       setCurrentUser(user);
       setLoading(false);
       setAuthReady(true);
     });
-    return unsubscribe;
-  }, []);
 
-  // BUGFIX: Handle Google OAuth redirect flow (signInWithRedirect) on mount.
-  useEffect(() => {
-    const handleRedirectResult = async () => {
-      try {
-        const result = await getRedirectResult(auth);
-        if (result) {
-          console.log('[AuthContext] Redirect result received:', { user: result.user?.email, providerId: result.providerId });
-        }
-      } catch (error) {
-        console.error('[AuthContext] Redirect result error:', error);
-        // Don't throw — let the user retry sign-in
-      }
+    return () => {
+      unsubscribe();
     };
-    handleRedirectResult();
   }, []);
 
   return { currentUser, loading, authReady, signInWithGoogle, signInWithEmail, signUpWithEmail, logout, getIdToken };

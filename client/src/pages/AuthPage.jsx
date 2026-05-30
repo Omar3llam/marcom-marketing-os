@@ -4,7 +4,7 @@
 // Modern Tailwind UI with Email/Password and Google Sign-in.
 // Replace the old AuthPage.jsx with this file.
 // ============================================================
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { toast } from 'sonner';
@@ -16,7 +16,7 @@ import { isEmbeddedWebviewOrMobile } from '@/firebase.js';
 export default function AuthPage({ mode: defaultMode = 'login' }) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
+  const { signInWithGoogle, signInWithEmail, signUpWithEmail, currentUser, authReady } = useAuth();
 
   const [mode, setMode] = useState(searchParams.get('mode') || defaultMode);
   const [email, setEmail] = useState('');
@@ -24,6 +24,21 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [showEmbeddedWarning, setShowEmbeddedWarning] = useState(false);
+
+  // Navigate away once Firebase auth resolves to an authenticated user.
+  //
+  // Two races this guards against:
+  //  1. Popup flow: navigate('/onboarding') fires before onAuthStateChanged, so
+  //     OnboardingRoute sees currentUser=null and bounces back to /login. The
+  //     user is stuck here until this effect fires and re-drives navigation.
+  //  2. Redirect flow: signInWithRedirect returns the user to /login; the hook
+  //     doesn't call navigate(), so without this effect the user stays on the
+  //     login page even though they're authenticated.
+  useEffect(() => {
+    if (currentUser && authReady) {
+      navigate('/onboarding');
+    }
+  }, [currentUser, authReady, navigate]);
 
   const isLogin = mode === 'login';
   const inEmbeddedBrowser = isEmbeddedWebviewOrMobile();
