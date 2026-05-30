@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils.js';
 import NotificationBell from '@/components/ui/NotificationBell.jsx';
 import NotificationPopover from '@/components/ui/NotificationPopover.jsx';
 import RecentDecisions from '@/components/ui/RecentDecisions.jsx';
+import CommandPalette from '@/components/ui/CommandPalette.jsx';
 
 // Simplified navigation structure from Figma
 const tools = [
@@ -194,6 +195,7 @@ export default function Sidebar({
     : workspace?.name || 'No Project';
 
   return (
+    <>
     <aside
       className={cn(
         'flex flex-col h-full bg-lumi-surface border-r border-lumi-border',
@@ -453,5 +455,16 @@ export default function Sidebar({
         </div>
       </div>
     </aside>
+
+    {/* ⌘K / Ctrl+K command palette — rendered outside <aside> so its
+        fixed overlay isn't clipped by the sidebar's transform. */}
+    <CommandPalette
+      open={cmdkOpen}
+      onClose={() => setCmdkOpen(false)}
+      navItems={tools}
+      decisions={recentDecisions}
+      onNavigate={(path) => { navigate(path); onMobileMenuToggle?.(); }}
+    />
+    </>
   );
 }
