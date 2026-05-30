@@ -10,6 +10,77 @@ import admin from '../utils/firebaseAdmin.js';
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
 
+// ── Workspace resolution hardening ───────────────────────────
+// A single page load fires ~4 concurrent authenticated requests, each of which
+// previously hit the DB to resolve workspaceId. Under pool pressure any one of
+// those reads could blip, leaving req.workspaceId = null for a fully
+// authenticated user — surfacing downstream as spurious 401s/500s.
+//
+// Two defences:
+//   1. A short-TTL per-uid cache collapses the concurrent reads into one and
+//      rides over momentary DB unavailability between page loads.
+//   2. A retry wrapper absorbs a transient read failure before giving up.
+//
+// Only POSITIVE resolutions are cached — a miss must never stick, or a newly
+// provisioned workspace would stay invisible until the TTL expired.
+const WORKSPACE_CACHE_TTL_MS = Number(process.env.WORKSPACE_CACHE_TTL_MS || 60_000);
+const WORKSPACE_LOOKUP_ATTEMPTS = Number(process.env.WORKSPACE_LOOKUP_ATTEMPTS || 3);
+
+const workspaceCache = new Map(); // uid -> { workspaceId, role, expiresAt }
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function cacheGetWorkspace(uid) {
+  const entry = workspaceCache.get(uid);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    workspaceCache.delete(uid);
+    return null;
+  }
+  return entry;
+}
+
+function cacheSetWorkspace(uid, workspaceId, role) {
+  if (!workspaceId) return; // never cache a miss
+  workspaceCache.set(uid, {
+    workspaceId,
+    role,
+    expiresAt: Date.now() + WORKSPACE_CACHE_TTL_MS,
+  });
+}
+
+/**
+ * Invalidate a cached workspace entry. Call after onboarding / workspace
+ * changes so the next request re-reads fresh state instead of serving stale.
+ */
+export function invalidateWorkspaceCache(uid) {
+  if (uid) workspaceCache.delete(uid);
+}
+
+/**
+ * Read a user row by Firebase uid (clerkId column) with bounded retries.
+ * Returns the user (or null if genuinely absent). Throws only after every
+ * attempt fails with a hard error — callers treat that as workspaceId=null.
+ */
+async function findUserByUidWithRetry(uid) {
+  let lastErr;
+  for (let attempt = 1; attempt <= WORKSPACE_LOOKUP_ATTEMPTS; attempt++) {
+    try {
+      return await prisma.user.findUnique({
+        where:  { clerkId: uid },
+        select: { id: true, workspaceId: true, role: true },
+      });
+    } catch (err) {
+      lastErr = err;
+      if (attempt < WORKSPACE_LOOKUP_ATTEMPTS) {
+        // jittered backoff: 50ms, 100ms, ... + up to 25ms jitter
+        await sleep(50 * attempt + Math.random() * 25);
+      }
+    }
+  }
+  throw lastErr;
+}
+
 /**
  * Middleware: Verify Firebase ID token from Authorization header.
  * Populates req.user with decoded token data on success.
@@ -38,17 +109,26 @@ export async function firebaseAuthMiddleware(req, res, next) {
     // For backward compatibility with existing code that uses req.userId
     req.userId = decodedToken.uid;
 
-    // Resolve workspaceId from database using Firebase uid (stored in clerkId column)
+    // Resolve workspaceId. Serve from the short-TTL cache when warm — this
+    // collapses the concurrent per-page-load reads and rides over momentary
+    // DB unavailability between loads.
+    const cached = cacheGetWorkspace(decodedToken.uid);
+    if (cached) {
+      req.workspaceId = cached.workspaceId;
+      req.userRole    = cached.role;
+      req.authSource  = 'firebase-cache';
+      return next();
+    }
+
+    // Cache miss → read from DB with bounded retries (clerkId column holds uid).
     try {
-      const user = await prisma.user.findUnique({
-        where: { clerkId: decodedToken.uid },
-        select: { id: true, workspaceId: true, role: true },
-      });
+      const user = await findUserByUidWithRetry(decodedToken.uid);
 
       if (user) {
         req.workspaceId = user.workspaceId;
         req.userRole    = user.role;
         req.authSource  = 'firebase';
+        cacheSetWorkspace(decodedToken.uid, user.workspaceId, user.role);
       } else {
         // No Prisma row for this Firebase UID.
         // Auto-provision: create Workspace + User atomically so the
@@ -74,6 +154,7 @@ export async function firebaseAuthMiddleware(req, res, next) {
           req.workspaceId = created.workspaceId;
           req.userRole    = created.role;
           req.authSource  = 'firebase-auto-provisioned';
+          cacheSetWorkspace(decodedToken.uid, created.workspaceId, created.role);
 
           logger.info(
             { uid: decodedToken.uid, workspaceId: created.workspaceId },
@@ -91,6 +172,7 @@ export async function firebaseAuthMiddleware(req, res, next) {
               req.workspaceId = retried.workspaceId;
               req.userRole    = retried.role;
               req.authSource  = 'firebase-retry';
+              cacheSetWorkspace(decodedToken.uid, retried.workspaceId, retried.role);
             } else {
               req.workspaceId = null;
               logger.error(
