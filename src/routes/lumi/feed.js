@@ -128,10 +128,36 @@ export function demoFeedHandler(_req, res) {
 // GET /api/lumi/feed         (JWT-protected)
 // ─────────────────────────────────────────────────────────────
 feedRouter.get('/feed', async (req, res) => {
-  // Workspace fallback supports both the new JWT path and the legacy
-  // Clerk-only path during the auth cutover.
-  const wsId = req.workspaceId || (req.userId ? `clerk:${req.userId}` : null);
-  if (!wsId) return res.status(401).json({ error: 'Unauthenticated' });
+  // Resolve workspaceId. firebaseAuthMiddleware normally sets req.workspaceId,
+  // but a transient DB lookup miss can leave it null even for a fully
+  // authenticated user. Fall back to a direct lookup keyed on the Firebase uid
+  // (stored in the clerkId column) rather than fabricating a synthetic id.
+  //
+  // CRITICAL: never fall back to `clerk:${uid}`. All workspaceId columns are
+  // @db.Uuid — a non-UUID string makes Prisma throw on the cast, which is the
+  // 500 this endpoint returned on every page load.
+  let wsId = req.workspaceId;
+  if (!wsId && req.userId) {
+    try {
+      const u = await prisma.user.findUnique({
+        where:  { clerkId: req.userId },
+        select: { workspaceId: true },
+      });
+      wsId = u?.workspaceId ?? null;
+    } catch (fallbackErr) {
+      logger.error({ err: fallbackErr.message, userId: req.userId }, '[lumi/feed] workspaceId fallback lookup failed');
+    }
+  }
+
+  // No workspace → graceful empty feed (correct shape, never a 500/401 here).
+  // The user is authenticated; they just have no resolvable workspace yet.
+  if (!wsId) {
+    return res.json({
+      workspaceId: null,
+      generatedAt: new Date().toISOString(),
+      campaigns:   [],
+    });
+  }
 
   try {
     // ── Enhanced Debug Logging (PR #44) ───────────────────────────
