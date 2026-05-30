@@ -16,6 +16,30 @@ import { decisionMemoryService }  from '../services/decision-memory/index.js';
 
 const router = Router();
 
+/**
+ * Resolve the caller's workspace UUID.
+ *
+ * firebaseAuthMiddleware normally sets req.workspaceId, but a transient DB
+ * lookup miss can leave it null for a fully authenticated user. Fall back to a
+ * direct lookup keyed on the Firebase uid (stored in the clerkId column).
+ *
+ * Returns null only when the user genuinely has no workspace — never throws.
+ */
+async function resolveWorkspaceId(req) {
+  if (req.workspaceId) return req.workspaceId;
+  if (!req.userId) return null;
+  try {
+    const u = await prisma.user.findUnique({
+      where:  { clerkId: req.userId },
+      select: { workspaceId: true },
+    });
+    return u?.workspaceId ?? null;
+  } catch (err) {
+    logger.error({ err: err.message, userId: req.userId }, '[memory] workspaceId fallback lookup failed');
+    return null;
+  }
+}
+
 // POST /api/memory/record
 // Persists a decision memory row via the canonical service.
 // Required body: executionId, decisionType, signalType, diagnosis,
@@ -23,9 +47,16 @@ const router = Router();
 // Optional body: correlationId
 router.post('/record', async (req, res) => {
   try {
-    const workspaceId = req.workspaceId;
     const userId = req.userId;
-    if (!workspaceId) return res.status(401).json({ error: 'Unauthenticated' });
+    const workspaceId = await resolveWorkspaceId(req);
+    // 403, not 401: the user is authenticated (requireAuth already passed);
+    // they just have no resolvable workspace to write into.
+    if (!workspaceId) {
+      return res.status(403).json({
+        error: 'Workspace not found.',
+        hint:  'Complete onboarding to create your workspace.',
+      });
+    }
 
     const record = await decisionMemoryService.recordDecisionMemory({
       workspaceId,
@@ -50,8 +81,13 @@ router.post('/record', async (req, res) => {
 // Aggregates the last 50 memory rows into per-decisionType stats.
 router.get('/patterns', async (req, res) => {
   try {
-    const workspaceId = req.workspaceId;
-    if (!workspaceId) return res.status(401).json({ error: 'Unauthenticated' });
+    const workspaceId = await resolveWorkspaceId(req);
+    // No workspace → graceful empty result (the sidebar polls this 4x/load).
+    // The user is authenticated; an empty pattern set is the correct answer,
+    // never a 401.
+    if (!workspaceId) {
+      return res.json({ patterns: [], narratives: [], total: 0 });
+    }
 
     const memories = await prisma.decisionMemory.findMany({
       where:   { workspaceId },
