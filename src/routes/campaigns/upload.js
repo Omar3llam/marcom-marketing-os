@@ -5,6 +5,7 @@ import { prisma }              from '../../lib/prisma.js';
 import { logger }              from '../../utils/logger.js';
 import { randomUUID }          from 'crypto';
 import { parseUploadedFile }   from '../../utils/fileParser.js';
+import { requireAuth }         from '../../middleware/firebaseAuth.js';
 import path from 'path';
 import fs from 'fs';
 
@@ -52,21 +53,45 @@ function buildRationale(c) {
 }
 
 export function mountUploadRoutes(router) {
-  router.post('/upload-csv', upload.single('campaignData'), async (req, res) => {
+  router.post('/upload-csv', requireAuth, upload.single('campaignData'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded — expected field "campaignData"' });
 
     const mode = req.query.mode;
 
+    // Resolve workspaceId with a fallback DB lookup.
+    // firebaseAuthMiddleware sets req.workspaceId but its Prisma query can fail
+    // transiently (cold start, connection pool exhaustion), leaving it null even
+    // for a fully authenticated user. That null propagated as a 401 because the
+    // old code had: `if (!workspaceId) return res.status(401)`. A missing workspace
+    // is NOT an auth failure — recover here before touching the file.
+    let workspaceId = req.workspaceId;
+    if (!workspaceId && req.userId) {
+      try {
+        const u = await prisma.user.findUnique({
+          where:  { clerkId: req.userId },
+          select: { workspaceId: true },
+        });
+        workspaceId = u?.workspaceId ?? null;
+      } catch (fallbackErr) {
+        logger.error({ err: fallbackErr.message, userId: req.userId }, '[campaigns/upload] workspaceId fallback lookup failed');
+      }
+    }
+    if (!workspaceId) {
+      return res.status(403).json({
+        error: 'Workspace not found.',
+        hint:  'Complete onboarding to create your workspace, then upload again.',
+        userId: req.userId || null,
+      });
+    }
+
     // Generate deterministic upload session ID for idempotency
     // All actions created from this single CSV upload share the same session ID
     // Format: workspace:timestamp:randomsuffix (timestamp makes retry attempts distinguishable)
-    const uploadSessionId = `${req.workspaceId}:${Date.now()}:${randomUUID().slice(0, 8)}`;
+    const uploadSessionId = `${workspaceId}:${Date.now()}:${randomUUID().slice(0, 8)}`;
 
-    logger.info({ filename: req.file.originalname, size: req.file.size, mode, userId: req.userId, workspaceId: req.workspaceId, uploadSessionId }, '[CSV_PIPELINE] CSV_RECEIVED');
+    logger.info({ filename: req.file.originalname, size: req.file.size, mode, userId: req.userId, workspaceId, uploadSessionId }, '[CSV_PIPELINE] CSV_RECEIVED');
 
     if (mode === 'analyze') {
-      const workspaceId = req.workspaceId;
-      if (!workspaceId) return res.status(401).json({ error: 'Workspace not found.', hint: 'Complete onboarding to create your workspace, then upload again.', userId: req.userId || null });
 
       logger.info({ filename: req.file.originalname, size: req.file.size, userId: req.userId, workspaceId }, '[campaigns/upload] ANALYZE mode');
 
@@ -303,9 +328,6 @@ export function mountUploadRoutes(router) {
         campaign_ids: campaignIds,
       });
     }
-
-    const workspaceId = req.workspaceId;
-    if (!workspaceId) return res.status(401).json({ error: 'Workspace not found.', hint: 'Complete onboarding to create your workspace, then upload again.', userId: req.userId || null });
 
     logger.info({ filename: req.file.originalname, size: req.file.size, workspaceId }, '[campaigns/upload-csv] DB WRITE mode');
 
