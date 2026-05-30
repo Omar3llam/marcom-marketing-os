@@ -12,12 +12,14 @@ import {
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useContentGeneration } from '@/hooks/useContentGeneration.js';
+import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
 import { OutputEmpty, OutputGenerating, OutputDone, OutputError } from './OutputComponents.jsx';
 
 export default function ContentLab() {
   const navigate = useNavigate();
   const { workspace } = useWorkspace();
   const { currentUser } = useAuth();
+  const { campaigns } = useCampaignFeed();
   const {
     generate: generateContent,
     content,
@@ -36,6 +38,7 @@ export default function ContentLab() {
   });
   const [tone, setTone] = useState('Warm & familial');
   const [contextCampaign, setContextCampaign] = useState(null);
+  const [campaignMenuOpen, setCampaignMenuOpen] = useState(false);
 
   // Derive phase from hook state
   const phase = loading ? 'generating' : apiError ? 'error' : content ? 'done' : 'idle';
@@ -103,13 +106,69 @@ export default function ContentLab() {
               </div>
             </div>
           ) : (
-            <button
-              onClick={() => navigate('/app/campaigns')}
-              className="w-full flex items-center justify-between p-3 bg-surface-elevated border border-surface-border rounded-lg hover:bg-surface-card transition-colors mb-3.5"
-            >
-              <span className="font-display text-[13px] text-dark-soft">Select a campaign…</span>
-              <ChevronDown className="w-3.5 h-3.5 text-dark-muted" strokeWidth={1.5} />
-            </button>
+            <div className="relative mb-3.5">
+              <button
+                type="button"
+                onClick={() => setCampaignMenuOpen((open) => !open)}
+                aria-haspopup="listbox"
+                aria-expanded={campaignMenuOpen}
+                className="w-full flex items-center justify-between p-3 bg-surface-elevated border border-surface-border rounded-lg hover:bg-surface-card transition-colors"
+              >
+                <span className="font-display text-[13px] text-dark-soft">Select a campaign…</span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-dark-muted transition-transform ${campaignMenuOpen ? 'rotate-180' : ''}`}
+                  strokeWidth={1.5}
+                />
+              </button>
+
+              {campaignMenuOpen && (
+                <>
+                  {/* Click-away backdrop — closes the menu without a global listener */}
+                  <div
+                    className="fixed inset-0 z-10"
+                    onClick={() => setCampaignMenuOpen(false)}
+                  />
+                  <ul
+                    role="listbox"
+                    className="absolute left-0 right-0 z-20 mt-1 max-h-64 overflow-y-auto bg-surface-card border border-surface-border rounded-lg shadow-card py-1"
+                  >
+                    {campaigns.length === 0 ? (
+                      <li>
+                        <button
+                          type="button"
+                          onClick={() => { setCampaignMenuOpen(false); navigate('/app/campaigns'); }}
+                          className="w-full text-left px-3 py-2.5 hover:bg-surface-elevated transition-colors"
+                        >
+                          <span className="font-display text-[13px] text-dark-soft">
+                            No campaigns yet — open Campaigns
+                          </span>
+                        </button>
+                      </li>
+                    ) : (
+                      campaigns.map((c) => (
+                        <li key={c.campaign_id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setContextCampaign({ campaign: c.campaign_id, adset: c.stage });
+                              setCampaignMenuOpen(false);
+                            }}
+                            className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-surface-elevated transition-colors"
+                          >
+                            <span className="font-display text-[13px] text-dark-base truncate">
+                              {c.campaign_id}
+                            </span>
+                            <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-dark-muted flex-shrink-0">
+                              {c.stage}
+                            </span>
+                          </button>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                </>
+              )}
+            </div>
           )}
 
           {/* Problem detected */}
