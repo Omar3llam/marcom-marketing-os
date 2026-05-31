@@ -10,6 +10,7 @@ import { useMemo } from 'react';
 import { Target, Brain, Zap } from 'lucide-react';
 import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
 import { cn } from '@/lib/utils.js';
+import { fmtRelative } from '@/lib/dateUtils.js';
 
 export default function GrowthStrategyBoard() {
   const { campaigns, summary, loading } = useCampaignFeed();
@@ -277,27 +278,11 @@ function EmptyMemory() {
   );
 }
 
-// ── helpers ───────────────────────────────────────────────
 function confidenceFor(alert) {
-  // Crude confidence proxy: SCALE > HOLD > KILL, modulated by priority.
   const v = alert?.analysis?.verdict;
   const p = alert?.priority;
   let base = v === 'SCALE' ? 78 : v === 'HOLD' ? 55 : v === 'KILL' ? 90 : 50;
   if (p === 'HIGH') base = Math.min(95, base + 8);
   if (p === 'LOW')  base = Math.max(20, base - 12);
   return base;
-}
-
-function fmtRelative(iso) {
-  if (!iso) return '—';
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return '—';
-  const mins = Math.floor((Date.now() - t) / 60000);
-  if (mins < 1)     return 'just now';
-  if (mins < 60)    return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24)     return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 30)    return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
 }
