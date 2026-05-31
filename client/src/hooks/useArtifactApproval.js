@@ -65,7 +65,7 @@ export function useArtifactApproval(executionId) {
   const [decisions, setDecisions] = useState({});
 
   // ── Fetch pending artifacts ───────────────────────────────
-  const fetchArtifacts = useCallback(async () => {
+  const fetchArtifacts = useCallback(async (signal) => {
     if (!executionId) {
       setError('No execution ID provided');
       setLoading(false);
@@ -77,11 +77,13 @@ export function useArtifactApproval(executionId) {
 
     try {
       const response = await api.get(
-        `/api/execute/${executionId}/artifacts/pending-approval`
+        `/api/execute/${executionId}/artifacts/pending-approval`,
+        { signal }
       );
 
       setArtifacts(response.data.artifacts || []);
     } catch (err) {
+      if (err.name === 'AbortError' || err.name === 'CanceledError' || err.code === 'ERR_CANCELED') return;
       console.error('[useArtifactApproval] Failed to fetch artifacts:', err);
       setError(err.message || 'Failed to load pending artifacts');
     } finally {
@@ -91,7 +93,9 @@ export function useArtifactApproval(executionId) {
 
   // Fetch on mount and when executionId changes
   useEffect(() => {
-    fetchArtifacts();
+    const controller = new AbortController();
+    fetchArtifacts(controller.signal);
+    return () => controller.abort();
   }, [fetchArtifacts]);
 
   // ── Decision management ────────────────────────────────────

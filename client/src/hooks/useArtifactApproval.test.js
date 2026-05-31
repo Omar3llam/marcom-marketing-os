@@ -66,7 +66,8 @@ describe('useArtifactApproval Hook — PR #36', () => {
       });
 
       expect(api.get).toHaveBeenCalledWith(
-        `/api/execute/${mockExecutionId}/artifacts/pending-approval`
+        `/api/execute/${mockExecutionId}/artifacts/pending-approval`,
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
       expect(result.current.artifacts).toEqual(mockArtifacts);
       expect(result.current.error).toBeNull();
