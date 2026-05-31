@@ -1,17 +1,12 @@
-// ============================================================
-// MARCOM / Lumi — Firebase Auth Page (Login/Signup)
-// ------------------------------------------------------------
-// Modern Tailwind UI with Email/Password and Google Sign-in.
-// Replace the old AuthPage.jsx with this file.
-// ============================================================
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { toast } from 'sonner';
-import { Sparkles, Mail, Lock, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
-import { cn } from '@/lib/utils.js';
+import { Sparkles, AlertCircle, ExternalLink } from 'lucide-react';
 import { MetricValue, DecisionTitle } from '@/components/primitives';
 import { isEmbeddedWebviewOrMobile } from '@/firebase.js';
+import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton.jsx';
+import { LoginForm } from '@/components/auth/LoginForm.jsx';
 
 export default function AuthPage({ mode: defaultMode = 'login' }) {
   const [searchParams] = useSearchParams();
@@ -25,19 +20,10 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
   const [error, setError] = useState(null);
   const [showEmbeddedWarning, setShowEmbeddedWarning] = useState(false);
 
-  // Navigate away once Firebase auth resolves to an authenticated user.
-  //
-  // Two races this guards against:
-  //  1. Popup flow: navigate('/onboarding') fires before onAuthStateChanged, so
-  //     OnboardingRoute sees currentUser=null and bounces back to /login. The
-  //     user is stuck here until this effect fires and re-drives navigation.
-  //  2. Redirect flow: signInWithRedirect returns the user to /login; the hook
-  //     doesn't call navigate(), so without this effect the user stays on the
-  //     login page even though they're authenticated.
+  // Navigate once Firebase resolves an authenticated user. Guards both popup
+  // and redirect flows where auth state arrives after this component mounts.
   useEffect(() => {
-    if (currentUser && authReady) {
-      navigate('/onboarding');
-    }
+    if (currentUser && authReady) navigate('/onboarding');
   }, [currentUser, authReady, navigate]);
 
   const isLogin = mode === 'login';
@@ -48,12 +34,8 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
     setShowEmbeddedWarning(false);
     setBusy(true);
 
-    // 15-second safety timeout: if the popup is closed without completing,
-    // or auth silently fails (e.g. redirect flow stalls), reset the UI
-    // so the buttons don't stay frozen indefinitely.
-    // NOTE: For redirect flow (mobile/embedded), this is expected behavior
+    // 15-second safety timeout: resets UI if popup stalls (redirect flow excluded).
     const timeout = setTimeout(() => {
-      // Don't show timeout error for redirect flow — user is being redirected
       if (!inEmbeddedBrowser) {
         setBusy(false);
         setError('Sign in is taking too long. Please try again.');
@@ -63,9 +45,6 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
     try {
       await signInWithGoogle();
       clearTimeout(timeout);
-
-      // For redirect flow, this code won't execute — user is redirected away
-      // and comes back via getRedirectResult in AuthContext
       if (!inEmbeddedBrowser) {
         toast.success('Signed in with Google!');
         navigate('/onboarding');
@@ -73,30 +52,16 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
     } catch (err) {
       clearTimeout(timeout);
       setBusy(false);
-
       console.error('[AuthPage] Google sign-in error:', err);
-
-      // Suppress "popup closed by user" — that's intentional, not an error
-      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
-        return;
-      }
-
-      // Handle specific OAuth errors
+      if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') return;
       let msg = 'Google sign-in failed';
-
-      if (err.code === 'auth/operation-not-allowed') {
-        msg = 'Google sign-in is not enabled. Please contact support.';
-      } else if (err.code === 'auth/unauthorized-domain') {
-        msg = 'This domain is not authorized for Google sign-in. Please contact support.';
-      } else if (err.code === 'auth/network-request-failed') {
-        msg = 'Network error. Please check your connection and try again.';
-      } else if (err.message?.includes('disallowed_useragent') || err.message?.includes('Error 403')) {
+      if (err.code === 'auth/operation-not-allowed') msg = 'Google sign-in is not enabled. Please contact support.';
+      else if (err.code === 'auth/unauthorized-domain') msg = 'This domain is not authorized for Google sign-in. Please contact support.';
+      else if (err.code === 'auth/network-request-failed') msg = 'Network error. Please check your connection and try again.';
+      else if (err.message?.includes('disallowed_useragent') || err.message?.includes('Error 403')) {
         msg = 'Sign in blocked by Google. Please open this page in your default browser (Safari, Chrome).';
         setShowEmbeddedWarning(true);
-      } else if (err.message) {
-        msg = err.message;
-      }
-
+      } else if (err.message) msg = err.message;
       setError(msg);
       toast.error(msg);
     }
@@ -115,15 +80,8 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
       hasPassword: !!password,
     });
 
-    if (!email || !password) {
-      setError('Email and password are required');
-      return;
-    }
-
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
+    if (!email || !password) { setError('Email and password are required'); return; }
+    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
 
     setBusy(true);
     try {
@@ -139,22 +97,12 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
     } catch (err) {
       console.error('[AuthPage] Auth error:', err);
       let msg = 'Authentication failed';
-
-      // Firebase error codes
-      if (err.code === 'auth/email-already-in-use') {
-        msg = 'Email already in use. Try logging in instead.';
-      } else if (err.code === 'auth/invalid-email') {
-        msg = 'Invalid email address';
-      } else if (err.code === 'auth/user-not-found') {
-        msg = 'No account found with this email';
-      } else if (err.code === 'auth/wrong-password') {
-        msg = 'Incorrect password';
-      } else if (err.code === 'auth/weak-password') {
-        msg = 'Password is too weak. Use at least 6 characters.';
-      } else if (err.message) {
-        msg = err.message;
-      }
-
+      if (err.code === 'auth/email-already-in-use') msg = 'Email already in use. Try logging in instead.';
+      else if (err.code === 'auth/invalid-email') msg = 'Invalid email address';
+      else if (err.code === 'auth/user-not-found') msg = 'No account found with this email';
+      else if (err.code === 'auth/wrong-password') msg = 'Incorrect password';
+      else if (err.code === 'auth/weak-password') msg = 'Password is too weak. Use at least 6 characters.';
+      else if (err.message) msg = err.message;
       setError(msg);
       toast.error(msg);
     } finally {
@@ -165,7 +113,6 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
   return (
     <div className="min-h-screen bg-surface-light flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 text-dark-base mb-3">
             <Sparkles className="h-6 w-6 text-lumi-gold" />
@@ -179,26 +126,19 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
           </p>
         </div>
 
-        {/* Embedded Browser Warning */}
         {showEmbeddedWarning && (
           <div className="mb-4 rounded-xl border border-lumi-gold/30 bg-lumi-gold/5 p-4">
             <div className="flex items-start gap-3">
               <AlertCircle className="h-5 w-5 shrink-0 text-lumi-gold mt-0.5" />
               <div className="flex-1 text-sm">
-                <p className="font-medium text-dark-base mb-1">
-                  Open in your browser
-                </p>
+                <p className="font-medium text-dark-base mb-1">Open in your browser</p>
                 <p className="text-dark-soft mb-3">
                   You&apos;re viewing this in an embedded browser (like Facebook Messenger).
                   Google blocks sign-in here for security. Please open this page in Safari, Chrome, or your default browser.
                 </p>
                 <button
                   type="button"
-                  onClick={() => {
-                    // Copy current URL to clipboard
-                    navigator.clipboard?.writeText(window.location.href);
-                    toast.success('Link copied! Paste it in your browser.');
-                  }}
+                  onClick={() => { navigator.clipboard?.writeText(window.location.href); toast.success('Link copied! Paste it in your browser.'); }}
                   className="inline-flex items-center gap-2 text-sm font-medium text-lumi-gold hover:text-lumi-deep transition-colors"
                 >
                   <ExternalLink className="h-4 w-4" />
@@ -209,139 +149,36 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
           </div>
         )}
 
-        {/* Auth Card */}
         <div className="rounded-2xl border border-surface-border bg-surface-card p-6 shadow-card">
-          {/* Google Sign-in */}
-          <button
-            type="button"
-            onClick={handleGoogleSignIn}
-            disabled={busy}
-            className={cn(
-              'w-full flex items-center justify-center gap-3 rounded-xl border border-surface-border',
-              'bg-surface-light hover:bg-lumi-gold/5 px-4 py-3 text-sm font-medium text-dark-base',
-              'transition-colors disabled:opacity-50 disabled:cursor-not-allowed'
-            )}
-          >
-            {busy ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Signing in with Google…
-              </>
-            ) : (
-              <>
-                <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
-                  <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                  <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                  <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
-                  <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                </svg>
-                Continue with Google
-              </>
-            )}
-          </button>
-
-          {/* Divider */}
+          <GoogleSignInButton busy={busy} onClick={handleGoogleSignIn} />
           <div className="flex items-center gap-3 my-6">
             <div className="flex-1 h-px bg-surface-border" />
             <span className="text-xs text-dark-soft uppercase tracking-wider">Or</span>
             <div className="flex-1 h-px bg-surface-border" />
           </div>
-
-          {/* Email/Password Form */}
-          <form onSubmit={handleEmailAuth} className="space-y-4">
-            {/* Email */}
-            <div>
-              <label htmlFor="email" className="block text-xs font-semibold text-dark-soft mb-1.5">
-                Email
-              </label>
-              <div className="relative">
-                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-dark-soft" />
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={busy}
-                  placeholder="you@company.com"
-                  className={cn(
-                    'w-full rounded-lg border border-surface-border bg-surface-light pl-10 pr-3 py-2.5',
-                    'text-sm text-dark-base placeholder:text-dark-soft',
-                    'focus:border-lumi-gold focus:outline-none focus:ring-1 focus:ring-lumi-gold',
-                    'disabled:opacity-50 disabled:cursor-not-allowed'
-                  )}
-                />
-              </div>
-            </div>
-
-            {/* Password */}
-            <div>
-              <label htmlFor="password" className="block text-xs font-semibold text-dark-soft mb-1.5">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-2.5 h-4 w-4 text-dark-soft" />
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={busy}
-                  placeholder="••••••••"
-                  className={cn(
-                    'w-full rounded-lg border border-surface-border bg-surface-light pl-10 pr-3 py-2.5',
-                    'text-sm text-dark-base placeholder:text-dark-soft',
-                    'focus:border-lumi-gold focus:outline-none focus:ring-1 focus:ring-lumi-gold',
-                    'disabled:opacity-50 disabled:cursor-not-allowed'
-                  )}
-                />
-              </div>
-              {!isLogin && (
-                <p className="mt-1 text-xs text-dark-soft">
-                  Must be at least 6 characters
-                </p>
-              )}
-            </div>
-
-            {/* Error */}
-            {error && (
-              <div className="flex items-start gap-2 rounded-lg border border-signal-kill/20 bg-signal-kill/5 p-3 text-sm">
-                <AlertCircle className="h-4 w-4 shrink-0 text-signal-kill mt-0.5" />
-                <span className="text-signal-kill">{error}</span>
-              </div>
-            )}
-
-            {/* Submit */}
-            <button
-              type="submit"
-              disabled={busy}
-              className={cn(
-                'w-full flex items-center justify-center gap-2 rounded-lg',
-                'bg-lumi-gold hover:bg-lumi-deep px-4 py-2.5 text-sm font-semibold text-dark-base',
-                'transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-card hover:shadow-gold-glow'
-              )}
-            >
-              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
-              {isLogin ? 'Sign in' : 'Create account'}
-            </button>
-          </form>
+          <LoginForm
+            isLogin={isLogin}
+            email={email}
+            password={password}
+            onEmailChange={setEmail}
+            onPasswordChange={setPassword}
+            busy={busy}
+            error={error}
+            onSubmit={handleEmailAuth}
+          />
         </div>
 
-        {/* Toggle Mode */}
         <p className="mt-6 text-center text-sm text-dark-soft">
           {isLogin ? "Don't have an account? " : "Already have an account? "}
           <button
             type="button"
-            onClick={() => {
-              setMode(isLogin ? 'signup' : 'login');
-              setError(null);
-            }}
+            onClick={() => { setMode(isLogin ? 'signup' : 'login'); setError(null); }}
             className="font-semibold text-lumi-gold hover:text-lumi-deep transition-colors"
           >
             {isLogin ? 'Sign up' : 'Sign in'}
           </button>
         </p>
 
-        {/* Footer */}
         <p className="mt-8 text-center text-xs text-dark-soft">
           By continuing, you agree to our Terms of Service and Privacy Policy
         </p>
