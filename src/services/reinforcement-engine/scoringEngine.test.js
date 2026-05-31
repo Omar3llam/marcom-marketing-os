@@ -1,7 +1,7 @@
 // ============================================================
 // Scoring Engine Tests — PR #42
 // ============================================================
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import {
   calculateDecayFactor,
   calculateConfidence,
@@ -13,7 +13,25 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+const TEST_WORKSPACE_ID = '00000000-0000-0000-0000-000000000001';
+
 describe('scoringEngine', () => {
+  beforeAll(async () => {
+    await prisma.workspace.upsert({
+      where:  { id: TEST_WORKSPACE_ID },
+      update: {},
+      create: { id: TEST_WORKSPACE_ID, name: 'Test Workspace' },
+    });
+  });
+
+  afterAll(async () => {
+    // Delete child records first (no cascade configured on ExecutionRequest → Workspace)
+    await prisma.approvalDecision.deleteMany({ where: { workspaceId: TEST_WORKSPACE_ID } });
+    await prisma.executionRequest.deleteMany({ where: { workspaceId: TEST_WORKSPACE_ID } });
+    await prisma.workspace.delete({ where: { id: TEST_WORKSPACE_ID } });
+    await prisma.$disconnect();
+  });
+
   describe('calculateDecayFactor', () => {
     it('should return 1.0 for 0 days ago', () => {
       expect(calculateDecayFactor(0)).toBe(1.0);
