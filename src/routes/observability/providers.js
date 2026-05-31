@@ -22,32 +22,51 @@ providersRouter.get('/providers', async (req, res) => {
     const now = new Date();
     const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
+    const runQuery = async (name, fn) => {
+      try {
+        return await fn();
+      } catch (err) {
+        console.error({
+          msg: `[observability/providers] query failed: ${name}`,
+          workspaceId,
+          errorCode: err.code,
+          errorMessage: err.message,
+          meta: err.meta,
+        });
+        throw err;
+      }
+    };
+
     // Fetch execution metrics from last 24h
-    const metrics = await prisma.executionMetric.findMany({
-      where: {
-        workspaceId,
-        recordedAt: { gte: twentyFourHoursAgo },
-      },
-      select: {
-        agentUsed: true,
-        finalStatus: true,
-        executionMs: true,
-        tokenEstimate: true,
-        executionId: true,
-      },
-    });
+    const metrics = await runQuery('findMany:executionMetrics', () =>
+      prisma.executionMetric.findMany({
+        where: {
+          workspaceId,
+          recordedAt: { gte: twentyFourHoursAgo },
+        },
+        select: {
+          agentUsed: true,
+          finalStatus: true,
+          executionMs: true,
+          tokenEstimate: true,
+          executionId: true,
+        },
+      })
+    );
 
     // Fetch approval decisions from last 24h for approval rate calculation
-    const approvals = await prisma.approvalDecision.findMany({
-      where: {
-        workspaceId,
-        reviewedAt: { gte: twentyFourHoursAgo },
-      },
-      select: {
-        provider: true,
-        decision: true,
-      },
-    });
+    const approvals = await runQuery('findMany:approvalDecisions', () =>
+      prisma.approvalDecision.findMany({
+        where: {
+          workspaceId,
+          reviewedAt: { gte: twentyFourHoursAgo },
+        },
+        select: {
+          provider: true,
+          decision: true,
+        },
+      })
+    );
 
     // Group metrics by provider
     const providerStats = {};
@@ -128,7 +147,13 @@ providersRouter.get('/providers', async (req, res) => {
       generated_at: now.toISOString(),
     });
   } catch (err) {
-    console.error('[observability/providers] Error:', err);
+    console.error({
+      msg: '[observability/providers] unhandled error',
+      workspaceId,
+      errorCode: err.code,
+      errorMessage: err.message,
+      meta: err.meta,
+    });
     return res.status(500).json({ error: 'Failed to fetch provider metrics' });
   }
 });

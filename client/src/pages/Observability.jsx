@@ -16,18 +16,19 @@ export default function Observability() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchData = async () => {
+  const fetchData = async (signal) => {
     try {
       const [live, providers, failures] = await Promise.all([
-        api.get('/api/observability/live'),
-        api.get('/api/observability/providers'),
-        api.get('/api/observability/failures'),
+        api.get('/api/observability/live', { signal }),
+        api.get('/api/observability/providers', { signal }),
+        api.get('/api/observability/failures', { signal }),
       ]);
       setLiveData(live.data);
       setProvidersData(providers.data);
       setFailuresData(failures.data);
       setError(null);
     } catch (err) {
+      if (err.name === 'CanceledError' || err.name === 'AbortError') return;
       console.error('[Observability] Fetch error:', err);
       setError(err.response?.data?.error || 'Failed to load observability data');
     } finally {
@@ -36,9 +37,13 @@ export default function Observability() {
   };
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
+    const ctrl = new AbortController();
+    fetchData(ctrl.signal);
+    const interval = setInterval(() => fetchData(ctrl.signal), 5000);
+    return () => {
+      ctrl.abort();
+      clearInterval(interval);
+    };
   }, []);
 
   if (loading) {

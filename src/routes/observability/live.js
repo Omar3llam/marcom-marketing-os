@@ -23,20 +23,33 @@ liveRouter.get('/live', async (req, res) => {
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
 
     // Parallel queries for dashboard metrics
+    const runQuery = async (name, fn) => {
+      try {
+        return await fn();
+      } catch (err) {
+        console.error({
+          msg: `[observability/live] query failed: ${name}`,
+          workspaceId,
+          errorCode: err.code,
+          errorMessage: err.message,
+          meta: err.meta,
+        });
+        throw err;
+      }
+    };
+
     const [
       executionCounts,
       queuedExecutions,
       recentActivity,
     ] = await Promise.all([
-      // Count executions by status
-      prisma.executionRequest.groupBy({
+      runQuery('groupBy:status', () => prisma.executionRequest.groupBy({
         by: ['status'],
         where: { workspaceId },
         _count: { id: true },
-      }),
+      })),
 
-      // Queue depth and oldest queued execution
-      prisma.executionRequest.findMany({
+      runQuery('findMany:queued', () => prisma.executionRequest.findMany({
         where: {
           workspaceId,
           status: { in: ['PENDING', 'QUEUED'] },
@@ -46,10 +59,9 @@ liveRouter.get('/live', async (req, res) => {
           createdAt: true,
         },
         orderBy: { createdAt: 'asc' },
-      }),
+      })),
 
-      // Recent active/executing/paused executions (last 20)
-      prisma.executionRequest.findMany({
+      runQuery('findMany:recentActivity', () => prisma.executionRequest.findMany({
         where: {
           workspaceId,
           status: {
@@ -66,7 +78,7 @@ liveRouter.get('/live', async (req, res) => {
         },
         orderBy: { updatedAt: 'desc' },
         take: 20,
-      }),
+      })),
     ]);
 
     // Aggregate execution counts by status
@@ -78,13 +90,15 @@ liveRouter.get('/live', async (req, res) => {
     const active = (statusMap.EXECUTING || 0) + (statusMap.RESUMING || 0);
     const paused = statusMap.PAUSED_FOR_APPROVAL || 0;
     const queued = (statusMap.PENDING || 0) + (statusMap.QUEUED || 0);
-    const failedLastHour = await prisma.executionRequest.count({
-      where: {
-        workspaceId,
-        status: { in: ['FAILED', 'TIMED_OUT', 'CANCELLED'] },
-        updatedAt: { gte: oneHourAgo },
-      },
-    });
+    const failedLastHour = await runQuery('count:failedLastHour', () =>
+      prisma.executionRequest.count({
+        where: {
+          workspaceId,
+          status: { in: ['FAILED', 'TIMED_OUT', 'CANCELLED'] },
+          updatedAt: { gte: oneHourAgo },
+        },
+      })
+    );
 
     // Calculate queue metrics
     const queueDepth = queuedExecutions.length;
@@ -125,7 +139,13 @@ liveRouter.get('/live', async (req, res) => {
       generated_at: now.toISOString(),
     });
   } catch (err) {
-    console.error('[observability/live] Error:', err);
+    console.error({
+      msg: '[observability/live] Prisma query failed',
+      workspaceId,
+      errorCode: err.code,
+      errorMessage: err.message,
+      meta: err.meta,
+    });
     return res.status(500).json({ error: 'Failed to fetch live metrics' });
   }
 });
