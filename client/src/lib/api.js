@@ -107,11 +107,14 @@ function mapTransportError(error) {
   }
 
   if (status === 403) {
+    const serverError = error.response?.data?.error;
+    const serverHint  = error.response?.data?.hint;
+    const serverCode  = error.response?.data?.code;
     return new AuthError({
-      message: 'Access denied',
-      code: 'AUTH_ACCESS_DENIED',
+      message: serverError || 'Access denied',
+      code: serverCode || 'AUTH_ACCESS_DENIED',
       httpStatus: 403,
-      fallbackAction: 'Contact workspace admin for access',
+      fallbackAction: serverHint || 'Contact workspace admin for access',
       requestId,
       sessionId,
       context: { endpoint },

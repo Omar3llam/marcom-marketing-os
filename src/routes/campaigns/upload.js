@@ -78,8 +78,9 @@ export function mountUploadRoutes(router) {
     }
     if (!workspaceId) {
       return res.status(403).json({
-        error: 'Workspace not found.',
-        hint:  'Complete onboarding to create your workspace, then upload again.',
+        error: 'Workspace not found — complete onboarding before uploading.',
+        code:  'WORKSPACE_NOT_FOUND',
+        hint:  'Visit the onboarding page to create your workspace, then upload again.',
         userId: req.userId || null,
       });
     }
