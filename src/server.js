@@ -117,7 +117,13 @@ app.use((req, res, next) => {
     [
       "default-src 'self'",
       "script-src 'self' https://apis.google.com",                          // Firebase Auth SDK
-      "style-src 'self' 'unsafe-inline'",                                   // Tailwind inline styles
+      // SECURITY NOTE: 'unsafe-inline' is required here. React's style={} prop and
+      // several primitive/layout components use inline style objects (274 occurrences
+      // across 50 files as of 2026-05-31). Switching to nonces would require threading
+      // a per-request nonce through every component that uses style={}. This is a known
+      // limitation — tracked as a future hardening task. Mitigation: script-src has no
+      // unsafe-inline, so injected scripts cannot run even if styles can be injected.
+      "style-src 'self' 'unsafe-inline'",
       "font-src 'self' data:",                                              // Self-hosted fonts + data URIs
       "img-src 'self' data: https:",                                        // Images + data URIs
       "connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com https://*.firebase.com https://api.anthropic.com https://api.openai.com", // API calls
