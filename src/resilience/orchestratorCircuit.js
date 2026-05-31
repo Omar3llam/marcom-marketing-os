@@ -12,6 +12,7 @@
 import { CircuitBreaker } from './circuitBreaker.js';
 import { runOrchestration } from '../agents/orchestrator.js';
 import { logger } from '../utils/logger.js';
+import { broadcastWorkspaceEvent } from '../lib/sseRegistry.js';
 
 // ══════════════════════════════════════════════════════════════
 // Circuit Breaker Instance
@@ -47,12 +48,12 @@ export const orchestratorCircuit = new CircuitBreaker({
         '[OrchestratorCircuit] Circuit OPEN — AI orchestration degraded'
       );
 
-      // TODO: Emit SSE event to connected clients
-      // broadcastWorkspaceEvent('system', {
-      //   type: 'CIRCUIT_BREAKER_OPEN',
-      //   service: 'orchestrator',
-      //   message: 'AI analysis temporarily unavailable. Using fallback mode.',
-      // });
+      broadcastWorkspaceEvent('system', {
+        type: 'CIRCUIT_BREAKER_OPEN',
+        service: 'orchestrator',
+        message: 'AI analysis temporarily unavailable. Using fallback mode.',
+        openedAt: Date.now(),
+      });
     }
 
     if (state === 'CLOSED') {
@@ -66,12 +67,12 @@ export const orchestratorCircuit = new CircuitBreaker({
         '[OrchestratorCircuit] Circuit CLOSED — orchestrator recovered'
       );
 
-      // TODO: Emit SSE recovery event
-      // broadcastWorkspaceEvent('system', {
-      //   type: 'CIRCUIT_BREAKER_CLOSED',
-      //   service: 'orchestrator',
-      //   message: 'AI analysis restored.',
-      // });
+      broadcastWorkspaceEvent('system', {
+        type: 'CIRCUIT_BREAKER_CLOSED',
+        service: 'orchestrator',
+        message: 'AI analysis restored.',
+        downtime,
+      });
     }
 
     if (state === 'HALF_OPEN') {

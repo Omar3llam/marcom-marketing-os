@@ -14,6 +14,14 @@ import {
   executeOrchestration,
   getOrchestratorHealth,
 } from '../resilience/orchestratorCircuit.js';
+import * as sseRegistry from '../lib/sseRegistry.js';
+
+vi.mock('../lib/sseRegistry.js', () => ({
+  broadcastWorkspaceEvent: vi.fn(),
+  addSubscriber: vi.fn(),
+  removeSubscriber: vi.fn(),
+  _resetForTests: vi.fn(),
+}));
 import {
   getRetryStrategy,
   executeWithRetry,
@@ -308,6 +316,44 @@ describe('Resilience Wiring Integration Tests', () => {
         expect.objectContaining({
           service: 'orchestrator',
           downtime: 5000,
+        })
+      );
+    });
+  });
+
+  describe('SSE Broadcast on Circuit State Change', () => {
+    beforeEach(() => {
+      orchestratorCircuit.reset();
+      vi.mocked(sseRegistry.broadcastWorkspaceEvent).mockClear();
+    });
+
+    it('should broadcast CIRCUIT_BREAKER_OPEN when circuit opens', () => {
+      orchestratorCircuit.forceOpen();
+
+      expect(sseRegistry.broadcastWorkspaceEvent).toHaveBeenCalledWith(
+        'system',
+        expect.objectContaining({
+          type: 'CIRCUIT_BREAKER_OPEN',
+          service: 'orchestrator',
+          message: expect.stringContaining('unavailable'),
+          openedAt: expect.any(Number),
+        })
+      );
+    });
+
+    it('should broadcast CIRCUIT_BREAKER_CLOSED when circuit closes', () => {
+      orchestratorCircuit.forceOpen();
+      vi.mocked(sseRegistry.broadcastWorkspaceEvent).mockClear();
+
+      orchestratorCircuit.forceClose();
+
+      expect(sseRegistry.broadcastWorkspaceEvent).toHaveBeenCalledWith(
+        'system',
+        expect.objectContaining({
+          type: 'CIRCUIT_BREAKER_CLOSED',
+          service: 'orchestrator',
+          message: 'AI analysis restored.',
+          downtime: expect.any(Number),
         })
       );
     });
