@@ -16,7 +16,7 @@ export const liveRouter = Router();
 // ─────────────────────────────────────────────────────────────
 liveRouter.get('/live', async (req, res) => {
   const workspaceId = req.workspaceId;
-  if (!workspaceId) return res.status(401).json({ error: 'Unauthenticated' });
+  if (!workspaceId) return res.status(403).json({ error: 'Workspace not resolved — please reload' });
 
   try {
     const now = new Date();

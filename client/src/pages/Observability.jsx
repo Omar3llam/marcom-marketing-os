@@ -3,7 +3,7 @@
 // ============================================================
 // Real-time execution monitoring. Auto-refreshes every 5 seconds.
 // ============================================================
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../lib/api.js';
 import { MetricsSummary }    from '@/components/observability/MetricsSummary.jsx';
 import { ProviderPerformance } from '@/components/observability/ProviderPerformance.jsx';
@@ -15,6 +15,8 @@ export default function Observability() {
   const [failuresData, setFailuresData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // Holds the interval ID so fetchData can clear it on non-retryable auth errors.
+  const intervalRef = useRef(null);
 
   const fetchData = async (signal) => {
     try {
@@ -30,7 +32,14 @@ export default function Observability() {
     } catch (err) {
       if (err.name === 'CanceledError' || err.name === 'AbortError') return;
       console.error('[Observability] Fetch error:', err);
-      setError(err.response?.data?.error || 'Failed to load observability data');
+      const status = err?.httpStatus;
+      if (status === 401 || status === 403) {
+        // Auth errors won't resolve by retrying — stop polling immediately.
+        clearInterval(intervalRef.current);
+        setError('Unable to load — workspace not found or session invalid. Reload the page.');
+      } else {
+        setError(err?.message || 'Failed to load observability data');
+      }
     } finally {
       setLoading(false);
     }
@@ -39,10 +48,10 @@ export default function Observability() {
   useEffect(() => {
     const ctrl = new AbortController();
     fetchData(ctrl.signal);
-    const interval = setInterval(() => fetchData(ctrl.signal), 5000);
+    intervalRef.current = setInterval(() => fetchData(ctrl.signal), 5000);
     return () => {
       ctrl.abort();
-      clearInterval(interval);
+      clearInterval(intervalRef.current);
     };
   }, []);
 

@@ -167,10 +167,10 @@ describe('GET /live — happy path', () => {
     });
   });
 
-  it('returns 401 when workspaceId is missing', async () => {
+  it('returns 403 when workspaceId is missing', async () => {
     const app = buildApp(null);
     const res = await supertest(app).get('/live');
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 
   it('returns 500 when Prisma throws', async () => {
@@ -213,9 +213,9 @@ describe('GET /providers — happy path', () => {
     expect(claude.approval_rate).toBe(0.5); // 1 approved / 2 total
   });
 
-  it('returns 401 when workspaceId is missing', async () => {
+  it('returns 403 when workspaceId is missing', async () => {
     const res = await supertest(buildApp(null)).get('/providers');
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 });
 
@@ -261,8 +261,8 @@ describe('GET /failures — happy path', () => {
     expect(res.body.count).toBe(0);
   });
 
-  it('returns 401 when workspaceId is missing', async () => {
+  it('returns 403 when workspaceId is missing', async () => {
     const res = await supertest(buildApp(null)).get('/failures');
-    expect(res.status).toBe(401);
+    expect(res.status).toBe(403);
   });
 });
