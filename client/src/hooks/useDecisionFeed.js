@@ -87,6 +87,7 @@ export function useDecisionFeed() {
       }
     },
     autoConnect: true,
+    workspaceId: currentUser?.uid ?? null,
     maxRetries: 5,
     baseDelay: 2000,
     maxDelay: 32000,
