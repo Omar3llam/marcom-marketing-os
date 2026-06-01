@@ -28,6 +28,8 @@ describe('scoringEngine', () => {
   afterAll(async () => {
     // Delete child records first (no cascade configured on ExecutionRequest → Workspace)
     await prisma.approvalDecision.deleteMany({ where: { workspaceId: TEST_WORKSPACE_ID } });
+    await prisma.artifactApproval.deleteMany({ where: { workspaceId: TEST_WORKSPACE_ID } });
+    await prisma.artifact.deleteMany({ where: { workspaceId: TEST_WORKSPACE_ID } });
     await prisma.executionRequest.deleteMany({ where: { workspaceId: TEST_WORKSPACE_ID } });
     await prisma.workspace.delete({ where: { id: TEST_WORKSPACE_ID } });
     await prisma.$disconnect();
@@ -113,6 +115,15 @@ describe('scoringEngine', () => {
       await prisma.approvalDecision.deleteMany({
         where: { provider: { startsWith: 'test-' } },
       });
+      await prisma.artifactApproval.deleteMany({
+        where: { id: { startsWith: 'test-approval-' } },
+      });
+      await prisma.artifact.deleteMany({
+        where: { id: { startsWith: 'test-artifact-' } },
+      });
+      await prisma.executionRequest.deleteMany({
+        where: { id: { startsWith: 'test-exec-' } },
+      });
       await prisma.providerPerformanceMetrics.deleteMany({
         where: { provider: { startsWith: 'test-' } },
       });
@@ -123,6 +134,15 @@ describe('scoringEngine', () => {
       await prisma.approvalDecision.deleteMany({
         where: { provider: { startsWith: 'test-' } },
       });
+      await prisma.artifactApproval.deleteMany({
+        where: { id: { startsWith: 'test-approval-' } },
+      });
+      await prisma.artifact.deleteMany({
+        where: { id: { startsWith: 'test-artifact-' } },
+      });
+      await prisma.executionRequest.deleteMany({
+        where: { id: { startsWith: 'test-exec-' } },
+      });
       await prisma.providerPerformanceMetrics.deleteMany({
         where: { provider: { startsWith: 'test-' } },
       });
@@ -131,7 +151,8 @@ describe('scoringEngine', () => {
     it('should return zero score for insufficient sample size', async () => {
       // Create only 5 decisions (below MIN_SAMPLE_SIZE of 10)
       const now = new Date();
-      const executionId = `test-exec-${Date.now()}`;
+      const timestamp = Date.now();
+      const executionId = `test-exec-${timestamp}`;
       const workspaceId = TEST_WORKSPACE_ID;
 
       // Need to create execution request first (for foreign key)
@@ -140,18 +161,49 @@ describe('scoringEngine', () => {
           id: executionId,
           workspaceId,
           status: 'COMPLETED',
-          idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
+          idempotencyKey: `test-idem-${timestamp}-${Math.random()}`,
           actionType: 'GENERATE_HOOKS',
           targetId: 'test-target-id',
         },
       });
 
+      // Create 5 decisions (below MIN_SAMPLE_SIZE of 10)
       for (let i = 0; i < 5; i++) {
+        const artifactId = `test-artifact-${timestamp}-${i}`;
+        const approvalId = `test-approval-${timestamp}-${i}`;
+
+        // Create Artifact first
+        await prisma.artifact.create({
+          data: {
+            id: artifactId,
+            workspaceId,
+            executionId,
+            nodeId: `node-${i}`,
+            nodeType: 'GENERATION',
+            type: 'hook',
+            storageKey: `test/artifact/${artifactId}`,
+            capability: 'GENERATE_HOOKS',
+            provider: 'test-provider-1',
+          },
+        });
+
+        // Create ArtifactApproval
+        await prisma.artifactApproval.create({
+          data: {
+            id: approvalId,
+            artifactId,
+            workspaceId,
+            status: 'COMPLETED',
+            decision: 'APPROVED',
+          },
+        });
+
+        // Create ApprovalDecision
         await prisma.approvalDecision.create({
           data: {
-            id: `test-decision-${Date.now()}-${i}`,
-            approvalId: `test-approval-${Date.now()}-${i}`,
-            artifactId: `test-artifact-${Date.now()}-${i}`,
+            id: `test-decision-${timestamp}-${i}`,
+            approvalId,
+            artifactId,
             executionId,
             workspaceId,
             capability: 'GENERATE_HOOKS',
@@ -172,7 +224,8 @@ describe('scoringEngine', () => {
 
     it('should calculate score with sufficient approval data', async () => {
       const now = new Date();
-      const executionId = `test-exec-${Date.now()}`;
+      const timestamp = Date.now();
+      const executionId = `test-exec-${timestamp}`;
       const workspaceId = TEST_WORKSPACE_ID;
 
       await prisma.executionRequest.create({
@@ -180,43 +233,70 @@ describe('scoringEngine', () => {
           id: executionId,
           workspaceId,
           status: 'COMPLETED',
-          idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
+          idempotencyKey: `test-idem-${timestamp}-${Math.random()}`,
           actionType: 'GENERATE_HOOKS',
           targetId: 'test-target-id',
         },
       });
 
-      // Create 15 decisions (10 approved, 5 rejected) using createMany
-      const timestamp = Date.now();
-      const approvedDecisions = Array.from({ length: 10 }, (_, i) => ({
-        id: `test-decision-approved-${timestamp}-${i}`,
-        approvalId: `test-approval-approved-${timestamp}-${i}`,
-        artifactId: `test-artifact-approved-${timestamp}-${i}`,
-        executionId,
-        workspaceId,
-        capability: 'GENERATE_HOOKS',
-        provider: 'test-provider-2',
-        decision: 'APPROVED',
-        reviewerId: TEST_REVIEWER_ID,
-        reviewedAt: now,
-      }));
+      // Create 15 decisions (10 approved, 5 rejected)
+      const decisions = [
+        ...Array.from({ length: 10 }, (_, i) => ({
+          decision: 'APPROVED',
+          index: i,
+        })),
+        ...Array.from({ length: 5 }, (_, i) => ({
+          decision: 'REJECTED',
+          index: 10 + i,
+        })),
+      ];
 
-      const rejectedDecisions = Array.from({ length: 5 }, (_, i) => ({
-        id: `test-decision-rejected-${timestamp}-${i}`,
-        approvalId: `test-approval-rejected-${timestamp}-${i}`,
-        artifactId: `test-artifact-rejected-${timestamp}-${i}`,
-        executionId,
-        workspaceId,
-        capability: 'GENERATE_HOOKS',
-        provider: 'test-provider-2',
-        decision: 'REJECTED',
-        reviewerId: TEST_REVIEWER_ID,
-        reviewedAt: now,
-      }));
+      for (const { decision, index } of decisions) {
+        const artifactId = `test-artifact-approved-${timestamp}-${index}`;
+        const approvalId = `test-approval-approved-${timestamp}-${index}`;
 
-      await prisma.approvalDecision.createMany({
-        data: [...approvedDecisions, ...rejectedDecisions],
-      });
+        // Create Artifact
+        await prisma.artifact.create({
+          data: {
+            id: artifactId,
+            workspaceId,
+            executionId,
+            nodeId: `node-${index}`,
+            nodeType: 'GENERATION',
+            type: 'hook',
+            storageKey: `test/artifact/${artifactId}`,
+            capability: 'GENERATE_HOOKS',
+            provider: 'test-provider-2',
+          },
+        });
+
+        // Create ArtifactApproval
+        await prisma.artifactApproval.create({
+          data: {
+            id: approvalId,
+            artifactId,
+            workspaceId,
+            status: 'COMPLETED',
+            decision,
+          },
+        });
+
+        // Create ApprovalDecision
+        await prisma.approvalDecision.create({
+          data: {
+            id: `test-decision-approved-${timestamp}-${index}`,
+            approvalId,
+            artifactId,
+            executionId,
+            workspaceId,
+            capability: 'GENERATE_HOOKS',
+            provider: 'test-provider-2',
+            decision,
+            reviewerId: TEST_REVIEWER_ID,
+            reviewedAt: now,
+          },
+        });
+      }
 
       const result = await calculateProviderScore('test-provider-2', 'GENERATE_HOOKS');
 
@@ -230,7 +310,8 @@ describe('scoringEngine', () => {
     it('should apply recency weighting (recent data weighs more)', async () => {
       const now = new Date();
       const oldDate = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000); // 60 days ago
-      const executionId = `test-exec-${Date.now()}`;
+      const timestamp = Date.now();
+      const executionId = `test-exec-${timestamp}`;
       const workspaceId = TEST_WORKSPACE_ID;
 
       await prisma.executionRequest.create({
@@ -238,7 +319,7 @@ describe('scoringEngine', () => {
           id: executionId,
           workspaceId,
           status: 'COMPLETED',
-          idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
+          idempotencyKey: `test-idem-${timestamp}-${Math.random()}`,
           actionType: 'GENERATE_HOOKS',
           targetId: 'test-target-id',
         },
@@ -246,11 +327,38 @@ describe('scoringEngine', () => {
 
       // Create 10 old REJECTED decisions
       for (let i = 0; i < 10; i++) {
+        const artifactId = `test-artifact-old-${timestamp}-${i}`;
+        const approvalId = `test-approval-old-${timestamp}-${i}`;
+
+        await prisma.artifact.create({
+          data: {
+            id: artifactId,
+            workspaceId,
+            executionId,
+            nodeId: `node-old-${i}`,
+            nodeType: 'GENERATION',
+            type: 'hook',
+            storageKey: `test/artifact/${artifactId}`,
+            capability: 'GENERATE_HOOKS',
+            provider: 'test-provider-3',
+          },
+        });
+
+        await prisma.artifactApproval.create({
+          data: {
+            id: approvalId,
+            artifactId,
+            workspaceId,
+            status: 'COMPLETED',
+            decision: 'REJECTED',
+          },
+        });
+
         await prisma.approvalDecision.create({
           data: {
-            id: `test-decision-old-${Date.now()}-${i}`,
-            approvalId: `test-approval-old-${Date.now()}-${i}`,
-            artifactId: `test-artifact-old-${Date.now()}-${i}`,
+            id: `test-decision-old-${timestamp}-${i}`,
+            approvalId,
+            artifactId,
             executionId,
             workspaceId,
             capability: 'GENERATE_HOOKS',
@@ -264,11 +372,38 @@ describe('scoringEngine', () => {
 
       // Create 10 recent APPROVED decisions
       for (let i = 0; i < 10; i++) {
+        const artifactId = `test-artifact-new-${timestamp}-${i}`;
+        const approvalId = `test-approval-new-${timestamp}-${i}`;
+
+        await prisma.artifact.create({
+          data: {
+            id: artifactId,
+            workspaceId,
+            executionId,
+            nodeId: `node-new-${i}`,
+            nodeType: 'GENERATION',
+            type: 'hook',
+            storageKey: `test/artifact/${artifactId}`,
+            capability: 'GENERATE_HOOKS',
+            provider: 'test-provider-3',
+          },
+        });
+
+        await prisma.artifactApproval.create({
+          data: {
+            id: approvalId,
+            artifactId,
+            workspaceId,
+            status: 'COMPLETED',
+            decision: 'APPROVED',
+          },
+        });
+
         await prisma.approvalDecision.create({
           data: {
-            id: `test-decision-new-${Date.now()}-${i}`,
-            approvalId: `test-approval-new-${Date.now()}-${i}`,
-            artifactId: `test-artifact-new-${Date.now()}-${i}`,
+            id: `test-decision-new-${timestamp}-${i}`,
+            approvalId,
+            artifactId,
             executionId,
             workspaceId,
             capability: 'GENERATE_HOOKS',
@@ -289,7 +424,8 @@ describe('scoringEngine', () => {
 
     it('should be deterministic (same data → same score)', async () => {
       const now = new Date();
-      const executionId = `test-exec-${Date.now()}`;
+      const timestamp = Date.now();
+      const executionId = `test-exec-${timestamp}`;
       const workspaceId = TEST_WORKSPACE_ID;
 
       await prisma.executionRequest.create({
@@ -297,18 +433,45 @@ describe('scoringEngine', () => {
           id: executionId,
           workspaceId,
           status: 'COMPLETED',
-          idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
+          idempotencyKey: `test-idem-${timestamp}-${Math.random()}`,
           actionType: 'GENERATE_HOOKS',
           targetId: 'test-target-id',
         },
       });
 
       for (let i = 0; i < 15; i++) {
+        const artifactId = `test-artifact-${timestamp}-${i}`;
+        const approvalId = `test-approval-${timestamp}-${i}`;
+
+        await prisma.artifact.create({
+          data: {
+            id: artifactId,
+            workspaceId,
+            executionId,
+            nodeId: `node-${i}`,
+            nodeType: 'GENERATION',
+            type: 'hook',
+            storageKey: `test/artifact/${artifactId}`,
+            capability: 'GENERATE_HOOKS',
+            provider: 'test-provider-4',
+          },
+        });
+
+        await prisma.artifactApproval.create({
+          data: {
+            id: approvalId,
+            artifactId,
+            workspaceId,
+            status: 'COMPLETED',
+            decision: 'APPROVED',
+          },
+        });
+
         await prisma.approvalDecision.create({
           data: {
-            id: `test-decision-${Date.now()}-${i}`,
-            approvalId: `test-approval-${Date.now()}-${i}`,
-            artifactId: `test-artifact-${Date.now()}-${i}`,
+            id: `test-decision-${timestamp}-${i}`,
+            approvalId,
+            artifactId,
             executionId,
             workspaceId,
             capability: 'GENERATE_HOOKS',
@@ -334,39 +497,85 @@ describe('scoringEngine', () => {
       await prisma.approvalDecision.deleteMany({
         where: { provider: { startsWith: 'test-' } },
       });
+      await prisma.artifactApproval.deleteMany({
+        where: { id: { startsWith: 'test-approval-' } },
+      });
+      await prisma.artifact.deleteMany({
+        where: { id: { startsWith: 'test-artifact-' } },
+      });
+      await prisma.executionRequest.deleteMany({
+        where: { id: { startsWith: 'test-exec-' } },
+      });
     });
 
     afterEach(async () => {
       await prisma.approvalDecision.deleteMany({
         where: { provider: { startsWith: 'test-' } },
       });
+      await prisma.artifactApproval.deleteMany({
+        where: { id: { startsWith: 'test-approval-' } },
+      });
+      await prisma.artifact.deleteMany({
+        where: { id: { startsWith: 'test-artifact-' } },
+      });
+      await prisma.executionRequest.deleteMany({
+        where: { id: { startsWith: 'test-exec-' } },
+      });
     });
 
     it('should return scores for all providers with data', async () => {
       const now = new Date();
       const workspaceId = TEST_WORKSPACE_ID;
+      const timestamp = Date.now();
 
       // Create data for two providers
       for (const provider of ['test-provider-a', 'test-provider-b']) {
-        const executionId = `test-exec-${provider}-${Date.now()}`;
+        const executionId = `test-exec-${provider}-${timestamp}`;
 
         await prisma.executionRequest.create({
           data: {
             id: executionId,
             workspaceId,
             status: 'COMPLETED',
-            idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
+            idempotencyKey: `test-idem-${timestamp}-${provider}-${Math.random()}`,
             actionType: 'GENERATE_HOOKS',
             targetId: 'test-target-id',
           },
         });
 
         for (let i = 0; i < 15; i++) {
+          const artifactId = `test-artifact-${provider}-${timestamp}-${i}`;
+          const approvalId = `test-approval-${provider}-${timestamp}-${i}`;
+
+          await prisma.artifact.create({
+            data: {
+              id: artifactId,
+              workspaceId,
+              executionId,
+              nodeId: `node-${provider}-${i}`,
+              nodeType: 'GENERATION',
+              type: 'hook',
+              storageKey: `test/artifact/${artifactId}`,
+              capability: 'GENERATE_HOOKS',
+              provider,
+            },
+          });
+
+          await prisma.artifactApproval.create({
+            data: {
+              id: approvalId,
+              artifactId,
+              workspaceId,
+              status: 'COMPLETED',
+              decision: 'APPROVED',
+            },
+          });
+
           await prisma.approvalDecision.create({
             data: {
-              id: `test-decision-${provider}-${Date.now()}-${i}`,
-              approvalId: `test-approval-${provider}-${Date.now()}-${i}`,
-              artifactId: `test-artifact-${provider}-${Date.now()}-${i}`,
+              id: `test-decision-${provider}-${timestamp}-${i}`,
+              approvalId,
+              artifactId,
               executionId,
               workspaceId,
               capability: 'GENERATE_HOOKS',
@@ -389,26 +598,54 @@ describe('scoringEngine', () => {
     it('should sort by score descending', async () => {
       const now = new Date();
       const workspaceId = TEST_WORKSPACE_ID;
+      const timestamp = Date.now();
 
       // Provider A: high approval rate
-      const execA = `test-exec-a-${Date.now()}`;
+      const execA = `test-exec-a-${timestamp}`;
       await prisma.executionRequest.create({
         data: {
           id: execA,
           workspaceId,
           status: 'COMPLETED',
-          idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
+          idempotencyKey: `test-idem-${timestamp}-a-${Math.random()}`,
           actionType: 'GENERATE_HOOKS',
           targetId: 'test-target-id',
         },
       });
 
       for (let i = 0; i < 15; i++) {
+        const artifactId = `test-artifact-high-${timestamp}-${i}`;
+        const approvalId = `test-approval-high-${timestamp}-${i}`;
+
+        await prisma.artifact.create({
+          data: {
+            id: artifactId,
+            workspaceId,
+            executionId: execA,
+            nodeId: `node-high-${i}`,
+            nodeType: 'GENERATION',
+            type: 'hook',
+            storageKey: `test/artifact/${artifactId}`,
+            capability: 'GENERATE_HOOKS',
+            provider: 'test-provider-high',
+          },
+        });
+
+        await prisma.artifactApproval.create({
+          data: {
+            id: approvalId,
+            artifactId,
+            workspaceId,
+            status: 'COMPLETED',
+            decision: 'APPROVED',
+          },
+        });
+
         await prisma.approvalDecision.create({
           data: {
-            id: `test-decision-high-${Date.now()}-${i}`,
-            approvalId: `test-approval-high-${Date.now()}-${i}`,
-            artifactId: `test-artifact-high-${Date.now()}-${i}`,
+            id: `test-decision-high-${timestamp}-${i}`,
+            approvalId,
+            artifactId,
             executionId: execA,
             workspaceId,
             capability: 'GENERATE_HOOKS',
@@ -421,29 +658,58 @@ describe('scoringEngine', () => {
       }
 
       // Provider B: low approval rate
-      const execB = `test-exec-b-${Date.now()}`;
+      const execB = `test-exec-b-${timestamp}`;
       await prisma.executionRequest.create({
         data: {
           id: execB,
           workspaceId,
           status: 'COMPLETED',
-          idempotencyKey: `test-idem-${Date.now()}-${Math.random()}`,
+          idempotencyKey: `test-idem-${timestamp}-b-${Math.random()}`,
           actionType: 'GENERATE_HOOKS',
           targetId: 'test-target-id',
         },
       });
 
       for (let i = 0; i < 10; i++) {
+        const artifactId = `test-artifact-low-${timestamp}-${i}`;
+        const approvalId = `test-approval-low-${timestamp}-${i}`;
+
+        const decision = i < 5 ? 'APPROVED' : 'REJECTED';
+
+        await prisma.artifact.create({
+          data: {
+            id: artifactId,
+            workspaceId,
+            executionId: execB,
+            nodeId: `node-low-${i}`,
+            nodeType: 'GENERATION',
+            type: 'hook',
+            storageKey: `test/artifact/${artifactId}`,
+            capability: 'GENERATE_HOOKS',
+            provider: 'test-provider-low',
+          },
+        });
+
+        await prisma.artifactApproval.create({
+          data: {
+            id: approvalId,
+            artifactId,
+            workspaceId,
+            status: 'COMPLETED',
+            decision,
+          },
+        });
+
         await prisma.approvalDecision.create({
           data: {
-            id: `test-decision-low-${Date.now()}-${i}`,
-            approvalId: `test-approval-low-${Date.now()}-${i}`,
-            artifactId: `test-artifact-low-${Date.now()}-${i}`,
+            id: `test-decision-low-${timestamp}-${i}`,
+            approvalId,
+            artifactId,
             executionId: execB,
             workspaceId,
             capability: 'GENERATE_HOOKS',
             provider: 'test-provider-low',
-            decision: i < 5 ? 'APPROVED' : 'REJECTED',
+            decision,
             reviewerId: TEST_REVIEWER_ID,
             reviewedAt: now,
           },
