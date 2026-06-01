@@ -13,7 +13,7 @@
 // - Better responsive design
 // - Integrated Memory API data
 // ============================================================
-import { Upload, AlertCircle, RefreshCw } from 'lucide-react';
+import { Upload, AlertCircle, RefreshCw, WifiOff } from 'lucide-react';
 import OutcomeHeader  from '../commandcenter/OutcomeHeader.jsx';
 import RadarFeed      from '../commandcenter/RadarFeed.jsx';
 import HeroToolCard   from '../commandcenter/HeroToolCard.jsx';
@@ -27,6 +27,7 @@ export default function CommandCenter({
   history,
   radarAlerts = [],
   summary,
+  metaStatus = 'unknown',
   onStartFlow,
   onReviewAlert,
   onReplay,
@@ -98,6 +99,23 @@ export default function CommandCenter({
     <div className="min-h-screen bg-surface-light p-4 sm:p-6 lg:p-12 max-w-7xl mx-auto animate-fade-in">
       <OutcomeHeader />
       <ActivityTicker radarAlerts={radarAlerts} history={history} summary={summary} />
+
+      {/* Meta Ads disconnected banner — shown when /api/v1/paid/radar returns 503 */}
+      {metaStatus === 'disconnected' && (
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-lumi-gold/30 bg-lumi-gold/5 px-4 py-3">
+          <WifiOff className="h-4 w-4 shrink-0 text-lumi-gold" strokeWidth={1.5} />
+          <div className="flex-1 min-w-0">
+            <span className="font-display text-sm font-semibold text-dark-base">Meta Ads not connected</span>
+            <span className="ml-2 font-body text-sm text-dark-soft">
+              Radar alerts are unavailable. Connect your account in{' '}
+              <a href="/settings/integrations" className="underline underline-offset-2 text-lumi-gold hover:text-lumi-deep transition-colors">
+                Settings → Integrations
+              </a>
+              .
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════ */}
       {/* EMPTY STATE: Enhanced with clear CTAs and onboarding guidance  */}

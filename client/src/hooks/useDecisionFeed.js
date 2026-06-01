@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
@@ -32,13 +32,21 @@ export function useDecisionFeed() {
   const { recordDecision } = useMemory();
   const { refresh } = useIntelligence();
 
+  const [metaStatus, setMetaStatus] = useState('unknown');
+
+  // Stable ref so the radar effect only fires once (not on every loadRadarAlerts identity change).
+  const loadRadarAlertsRef = useRef(loadRadarAlerts);
+  useEffect(() => { loadRadarAlertsRef.current = loadRadarAlerts; }, [loadRadarAlerts]);
+
   useEffect(() => {
     const history = loadHistoryFromStorage();
     if (history.length > 0) dispatch({ type: 'LOAD_HISTORY', history });
     const alerts = loadRadarAlertsFromStorage();
-    if (alerts.length > 0) loadRadarAlerts(alerts);
-  }, [dispatch, loadRadarAlerts]);
+    if (alerts.length > 0) loadRadarAlertsRef.current(alerts);
+  }, [dispatch]);
 
+  // Fetch radar alerts exactly once on mount.
+  // 503 = Meta not configured — stop immediately, do not retry.
   useEffect(() => {
     let cancelled = false;
     api.get('/api/v1/paid/radar')
@@ -46,17 +54,23 @@ export function useDecisionFeed() {
         if (cancelled) return;
         const alerts = res.data?.alerts;
         if (Array.isArray(alerts) && res.data?.source !== 'mock') {
-          loadRadarAlerts(alerts);
+          loadRadarAlertsRef.current(alerts);
+          setMetaStatus('connected');
           try { localStorage.setItem('lumi:radarAlerts', JSON.stringify(alerts)); } catch { /* quota exceeded */ }
         }
       })
       .catch((err) => {
         if (cancelled) return;
         const status = err?.response?.status;
-        if (status !== 503) console.warn('[RadarFetch] live fetch failed:', status, err?.message);
+        if (status === 503) {
+          console.warn('[RadarFetch] Meta Ads not connected (503) — radar polling suspended');
+          setMetaStatus('disconnected');
+        } else {
+          console.warn('[RadarFetch] live fetch failed:', status, err?.message);
+        }
       });
     return () => { cancelled = true; };
-  }, [loadRadarAlerts]);
+  }, []); // intentional: fire once — 503 means not configured, retry on next page load after user connects
 
   const { state: sseState, metrics: sseMetrics } = useSSE({
     onMessage: (event) => {
@@ -175,6 +189,6 @@ export function useDecisionFeed() {
     commitToMemory, reset, replay,
     execute, cancel,
     summary, sseState, sseMetrics,
-    currentUser,
+    currentUser, metaStatus,
   };
 }

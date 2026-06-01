@@ -12,7 +12,7 @@ export default function DecisionFeed() {
     startFlow, reviewAlert, submitInput, confirmExecution, executeAction,
     commitToMemory, reset, replay,
     execute, cancel,
-    summary,
+    summary, metaStatus,
   } = useDecisionFeed();
 
   return (
@@ -33,6 +33,7 @@ export default function DecisionFeed() {
             history={state.history}
             radarAlerts={state.radarAlerts}
             summary={summary}
+            metaStatus={metaStatus}
             onStartFlow={startFlow}
             onReviewAlert={reviewAlert}
             onReplay={replay}
