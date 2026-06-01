@@ -396,11 +396,27 @@ Return ONLY valid JSON in this exact format:
     role: 'You are an Elite Performance Marketing Strategist. Analyze campaigns and return only valid JSON.',
     task: prompt,
     campaignId: null,
-    maxTokens: 4096,
+    maxTokens: 16000,
   });
 
   // Parse JSON from response
   const cleaned = text.replace(/```json|```/g, '').trim();
+
+  // Defensive truncation guard (FIX C)
+  logger.info({
+    responseLength: cleaned.length,
+    endsWithBracket: cleaned.endsWith('}') || cleaned.endsWith(']'),
+    campaignCount: campaigns.length
+  }, '[batch-analysis] About to parse AI response');
+
+  if (!cleaned.endsWith('}') && !cleaned.endsWith(']')) {
+    logger.error({
+      textLength: cleaned.length,
+      lastChars: cleaned.slice(-50)
+    }, '[batch-analysis] Response truncated — increase max_tokens');
+    throw new Error('AI response truncated mid-JSON — increase max_tokens or reduce batch size');
+  }
+
   const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     logger.error({ text: text.slice(0, 200) }, '[orchestrator] analyzeCampaignsBatch: no JSON found in response');
