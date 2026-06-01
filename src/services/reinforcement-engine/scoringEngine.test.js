@@ -14,6 +14,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const TEST_WORKSPACE_ID = '00000000-0000-0000-0000-000000000001';
+const TEST_REVIEWER_ID = '00000000-0000-0000-0000-000000000002';
 
 describe('scoringEngine', () => {
   beforeAll(async () => {
@@ -131,7 +132,7 @@ describe('scoringEngine', () => {
       // Create only 5 decisions (below MIN_SAMPLE_SIZE of 10)
       const now = new Date();
       const executionId = `test-exec-${Date.now()}`;
-      const workspaceId = '00000000-0000-0000-0000-000000000001';
+      const workspaceId = TEST_WORKSPACE_ID;
 
       // Need to create execution request first (for foreign key)
       await prisma.executionRequest.create({
@@ -149,11 +150,14 @@ describe('scoringEngine', () => {
         await prisma.approvalDecision.create({
           data: {
             id: `test-decision-${Date.now()}-${i}`,
+            approvalId: `test-approval-${Date.now()}-${i}`,
+            artifactId: `test-artifact-${Date.now()}-${i}`,
             executionId,
             workspaceId,
             capability: 'GENERATE_HOOKS',
             provider: 'test-provider-1',
             decision: 'APPROVED',
+            reviewerId: TEST_REVIEWER_ID,
             reviewedAt: now,
           },
         });
@@ -169,7 +173,7 @@ describe('scoringEngine', () => {
     it('should calculate score with sufficient approval data', async () => {
       const now = new Date();
       const executionId = `test-exec-${Date.now()}`;
-      const workspaceId = '00000000-0000-0000-0000-000000000001';
+      const workspaceId = TEST_WORKSPACE_ID;
 
       await prisma.executionRequest.create({
         data: {
@@ -186,24 +190,28 @@ describe('scoringEngine', () => {
       const timestamp = Date.now();
       const approvedDecisions = Array.from({ length: 10 }, (_, i) => ({
         id: `test-decision-approved-${timestamp}-${i}`,
+        approvalId: `test-approval-approved-${timestamp}-${i}`,
+        artifactId: `test-artifact-approved-${timestamp}-${i}`,
         executionId,
         workspaceId,
         capability: 'GENERATE_HOOKS',
         provider: 'test-provider-2',
         decision: 'APPROVED',
+        reviewerId: TEST_REVIEWER_ID,
         reviewedAt: now,
-        executionCost: 0.05,
       }));
 
       const rejectedDecisions = Array.from({ length: 5 }, (_, i) => ({
         id: `test-decision-rejected-${timestamp}-${i}`,
+        approvalId: `test-approval-rejected-${timestamp}-${i}`,
+        artifactId: `test-artifact-rejected-${timestamp}-${i}`,
         executionId,
         workspaceId,
         capability: 'GENERATE_HOOKS',
         provider: 'test-provider-2',
         decision: 'REJECTED',
+        reviewerId: TEST_REVIEWER_ID,
         reviewedAt: now,
-        executionCost: 0.05,
       }));
 
       await prisma.approvalDecision.createMany({
@@ -223,7 +231,7 @@ describe('scoringEngine', () => {
       const now = new Date();
       const oldDate = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000); // 60 days ago
       const executionId = `test-exec-${Date.now()}`;
-      const workspaceId = '00000000-0000-0000-0000-000000000001';
+      const workspaceId = TEST_WORKSPACE_ID;
 
       await prisma.executionRequest.create({
         data: {
@@ -241,13 +249,15 @@ describe('scoringEngine', () => {
         await prisma.approvalDecision.create({
           data: {
             id: `test-decision-old-${Date.now()}-${i}`,
+            approvalId: `test-approval-old-${Date.now()}-${i}`,
+            artifactId: `test-artifact-old-${Date.now()}-${i}`,
             executionId,
             workspaceId,
             capability: 'GENERATE_HOOKS',
             provider: 'test-provider-3',
             decision: 'REJECTED',
+            reviewerId: TEST_REVIEWER_ID,
             reviewedAt: oldDate,
-            executionCost: 0.05,
           },
         });
       }
@@ -257,13 +267,15 @@ describe('scoringEngine', () => {
         await prisma.approvalDecision.create({
           data: {
             id: `test-decision-new-${Date.now()}-${i}`,
+            approvalId: `test-approval-new-${Date.now()}-${i}`,
+            artifactId: `test-artifact-new-${Date.now()}-${i}`,
             executionId,
             workspaceId,
             capability: 'GENERATE_HOOKS',
             provider: 'test-provider-3',
             decision: 'APPROVED',
+            reviewerId: TEST_REVIEWER_ID,
             reviewedAt: now,
-            executionCost: 0.05,
           },
         });
       }
@@ -278,7 +290,7 @@ describe('scoringEngine', () => {
     it('should be deterministic (same data → same score)', async () => {
       const now = new Date();
       const executionId = `test-exec-${Date.now()}`;
-      const workspaceId = '00000000-0000-0000-0000-000000000001';
+      const workspaceId = TEST_WORKSPACE_ID;
 
       await prisma.executionRequest.create({
         data: {
@@ -295,13 +307,15 @@ describe('scoringEngine', () => {
         await prisma.approvalDecision.create({
           data: {
             id: `test-decision-${Date.now()}-${i}`,
+            approvalId: `test-approval-${Date.now()}-${i}`,
+            artifactId: `test-artifact-${Date.now()}-${i}`,
             executionId,
             workspaceId,
             capability: 'GENERATE_HOOKS',
             provider: 'test-provider-4',
             decision: 'APPROVED',
+            reviewerId: TEST_REVIEWER_ID,
             reviewedAt: now,
-            executionCost: 0.05,
           },
         });
       }
@@ -330,7 +344,7 @@ describe('scoringEngine', () => {
 
     it('should return scores for all providers with data', async () => {
       const now = new Date();
-      const workspaceId = '00000000-0000-0000-0000-000000000001';
+      const workspaceId = TEST_WORKSPACE_ID;
 
       // Create data for two providers
       for (const provider of ['test-provider-a', 'test-provider-b']) {
@@ -351,13 +365,15 @@ describe('scoringEngine', () => {
           await prisma.approvalDecision.create({
             data: {
               id: `test-decision-${provider}-${Date.now()}-${i}`,
+              approvalId: `test-approval-${provider}-${Date.now()}-${i}`,
+              artifactId: `test-artifact-${provider}-${Date.now()}-${i}`,
               executionId,
               workspaceId,
               capability: 'GENERATE_HOOKS',
               provider,
               decision: 'APPROVED',
+              reviewerId: TEST_REVIEWER_ID,
               reviewedAt: now,
-              executionCost: 0.05,
             },
           });
         }
@@ -372,7 +388,7 @@ describe('scoringEngine', () => {
 
     it('should sort by score descending', async () => {
       const now = new Date();
-      const workspaceId = '00000000-0000-0000-0000-000000000001';
+      const workspaceId = TEST_WORKSPACE_ID;
 
       // Provider A: high approval rate
       const execA = `test-exec-a-${Date.now()}`;
@@ -391,13 +407,15 @@ describe('scoringEngine', () => {
         await prisma.approvalDecision.create({
           data: {
             id: `test-decision-high-${Date.now()}-${i}`,
+            approvalId: `test-approval-high-${Date.now()}-${i}`,
+            artifactId: `test-artifact-high-${Date.now()}-${i}`,
             executionId: execA,
             workspaceId,
             capability: 'GENERATE_HOOKS',
             provider: 'test-provider-high',
             decision: 'APPROVED',
+            reviewerId: TEST_REVIEWER_ID,
             reviewedAt: now,
-            executionCost: 0.05,
           },
         });
       }
@@ -419,13 +437,15 @@ describe('scoringEngine', () => {
         await prisma.approvalDecision.create({
           data: {
             id: `test-decision-low-${Date.now()}-${i}`,
+            approvalId: `test-approval-low-${Date.now()}-${i}`,
+            artifactId: `test-artifact-low-${Date.now()}-${i}`,
             executionId: execB,
             workspaceId,
             capability: 'GENERATE_HOOKS',
             provider: 'test-provider-low',
             decision: i < 5 ? 'APPROVED' : 'REJECTED',
+            reviewerId: TEST_REVIEWER_ID,
             reviewedAt: now,
-            executionCost: 0.05,
           },
         });
       }
