@@ -1,6 +1,21 @@
-import { Key, AlertTriangle, Trash2, RefreshCw } from 'lucide-react';
+import { Key, AlertTriangle, Trash2, RefreshCw, LogOut } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/context/AuthContext.jsx';
+import { toast } from 'sonner';
 
 export function SecurityTab({ currentUser, handlePasswordReset, handleResetSetup, busy, showDeleteModal, setShowDeleteModal, deleteConfirmText, setDeleteConfirmText, handleDeleteAccount, formatDate }) {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (err) {
+      console.error('[Settings] Logout failed:', err);
+      toast.error('Sign out failed. Please try again.');
+    }
+  };
   return (
     <>
       <section className="bg-white rounded-xl border border-surface-border/80 p-6 mb-4 shadow-sm">
@@ -35,6 +50,24 @@ export function SecurityTab({ currentUser, handlePasswordReset, handleResetSetup
               </div>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ── SIGN OUT ──────────────────────────────────── */}
+      <section className="bg-white rounded-xl border border-surface-border/80 p-6 mb-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-lumi-text mb-1">Sign out of this device</p>
+            <p className="text-xs text-lumi-muted">You will be redirected to the login page. Your workspace and data are saved.</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-signal-kill/40 bg-signal-kill-bg px-3 py-1.5 text-xs font-display font-semibold text-signal-kill hover:bg-signal-kill/15 transition-colors"
+          >
+            <LogOut className="w-3 h-3" strokeWidth={2} />
+            Sign Out
+          </button>
         </div>
       </section>
 
