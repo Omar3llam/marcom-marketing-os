@@ -1,6 +1,6 @@
 export function fmtCurrency(n) {
   if (typeof n !== 'number' || !Number.isFinite(n)) return '—';
-  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 });
+  return n.toLocaleString('en-EG', { style: 'currency', currency: 'EGP', maximumFractionDigits: 2 });
 }
 export function pct(part, total) {
   if (!total) return 0;

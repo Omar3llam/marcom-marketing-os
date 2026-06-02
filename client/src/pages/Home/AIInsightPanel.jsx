@@ -18,7 +18,8 @@ export default function AIInsightPanel({ workspace, topAlert, onAct }) {
 
   const { campaign, alertData } = topAlert;
   const rootCause = alertData.analysis?.root_cause || 'Performance degradation detected';
-  const actionPlan = alertData.action_plan || 'Review campaign metrics and consider adjustments.';
+  // FIX: action_plan is an object {action, status, imageUrl, reference_prompt}, not a string
+  const actionPlan = alertData.action_plan?.action || 'Review campaign metrics and consider adjustments.';
 
   return (
     <Panel

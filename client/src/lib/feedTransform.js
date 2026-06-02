@@ -109,11 +109,11 @@ function buildMetricsFromDecision(decision) {
     const cpa   = src.costPerResult ?? 0;
 
     rows.push(
-      { metric: 'spend',     trend: 'flat',                 value: `$${spend.toFixed(2)}`, delta: '', context: 'Per CSV upload', status: 'neutral' },
-      { metric: 'CTR',       trend: trendFor('ctr', ctr),   value: `${ctr.toFixed(2)}%`,   delta: '', context: 'Per CSV upload', status: statusFor('ctr', ctr) },
-      { metric: 'ROAS',      trend: trendFor('roas', roas), value: `${roas.toFixed(2)}x`,  delta: '', context: 'Per CSV upload', status: statusFor('roas', roas) },
-      { metric: 'Frequency', trend: trendFor('freq', freq), value: `${freq.toFixed(2)}`,   delta: '', context: 'Per CSV upload', status: statusFor('freq', freq) },
-      { metric: 'CPA',       trend: trendFor('cpa', cpa),   value: `$${cpa.toFixed(2)}`,   delta: '', context: 'Per CSV upload', status: statusFor('cpa', cpa) },
+      { metric: 'spend',     trend: 'flat',                 value: `EGP ${spend.toFixed(2)}`, delta: '', context: 'Per CSV upload', status: 'neutral' },
+      { metric: 'CTR',       trend: trendFor('ctr', ctr),   value: `${ctr.toFixed(2)}%`,      delta: '', context: 'Per CSV upload', status: statusFor('ctr', ctr) },
+      { metric: 'ROAS',      trend: trendFor('roas', roas), value: `${roas.toFixed(2)}x`,     delta: '', context: 'Per CSV upload', status: statusFor('roas', roas) },
+      { metric: 'Frequency', trend: trendFor('freq', freq), value: `${freq.toFixed(2)}`,      delta: '', context: 'Per CSV upload', status: statusFor('freq', freq) },
+      { metric: 'CPA',       trend: trendFor('cpa', cpa),   value: `EGP ${cpa.toFixed(2)}`,   delta: '', context: 'Per CSV upload', status: statusFor('cpa', cpa) },
     );
   } else {
     // Fallback: parse impact string for display (less structured)

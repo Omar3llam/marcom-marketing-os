@@ -5,13 +5,14 @@
 // All metrics derived from the live /api/lumi/feed payload.
 // ============================================================
 import { useMemo, useState } from 'react';
-import { Upload, RefreshCw, Loader2, X } from 'lucide-react';
+import { Upload, RefreshCw, Loader2, X, Download } from 'lucide-react';
 import { useCampaignFeed, metricValue } from '@/hooks/useCampaignFeed.js';
 import CsvUploader from '@/components/upload/CsvUploader.jsx';
 import { useCampaignAnalysis } from '@/hooks/useCampaignAnalysis.js';
 import { MetricsPanel }    from '@/components/campaign-analysis/MetricsPanel.jsx';
 import { PerformanceChart } from '@/components/campaign-analysis/PerformanceChart.jsx';
 import { AnalysisSummary } from '@/components/campaign-analysis/AnalysisSummary.jsx';
+import { generateCampaignReport, generateTextReport } from '@/lib/pdfExport.js';
 
 // Flatten campaigns → rows the table can sort + render.
 function flatten(campaigns) {
@@ -44,6 +45,36 @@ export default function CampaignAnalysis() {
   const { syncing, handleAnalysisComplete, handleMetaSync } = useCampaignAnalysis({
     refetch, setCampaigns, setUploadOpen,
   });
+
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    if (rows.length === 0) {
+      alert('No campaign data to export');
+      return;
+    }
+
+    setDownloading(true);
+    try {
+      await generateCampaignReport({
+        campaigns: rows,
+        totals,
+        healthScore,
+        healthLabel,
+      });
+    } catch (error) {
+      console.error('PDF generation failed:', error);
+      // Fallback to text export
+      generateTextReport({
+        campaigns: rows,
+        totals,
+        healthScore,
+        healthLabel,
+      });
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const rows = useMemo(() => {
     const all = flatten(campaigns);
@@ -87,6 +118,16 @@ export default function CampaignAnalysis() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleDownloadPdf}
+            disabled={downloading || rows.length === 0}
+            className="inline-flex items-center gap-1.5 bg-lumi-elevated border border-lumi-border rounded-xl px-4 py-2 text-sm font-display text-lumi-text hover:border-lumi-accent/40 disabled:opacity-60 transition-all"
+            title={rows.length === 0 ? 'No data to export' : 'Download PDF Report'}
+          >
+            {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" strokeWidth={1.5} />}
+            {downloading ? 'Generating…' : 'PDF Report'}
+          </button>
           <button
             type="button"
             onClick={handleMetaSync}
