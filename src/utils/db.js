@@ -13,6 +13,24 @@ let _sql = null;
 let _connectionFailed = false;
 const isDev = process.env.NODE_ENV === 'development';
 
+function shouldUseSsl(databaseUrl) {
+  // Neon requires TLS, including in development.
+  if (databaseUrl.includes('.neon.tech')) {
+    return true;
+  }
+
+  // Respect explicit sslmode in connection string.
+  if (/sslmode=require/i.test(databaseUrl)) {
+    return true;
+  }
+
+  if (/sslmode=disable/i.test(databaseUrl)) {
+    return false;
+  }
+
+  return process.env.NODE_ENV === 'production';
+}
+
 export function getDb() {
   if (_connectionFailed) {
     return null; // Already tried and failed
@@ -29,11 +47,12 @@ export function getDb() {
     }
 
     try {
+      const useSsl = shouldUseSsl(process.env.DATABASE_URL);
       _sql = postgres(process.env.DATABASE_URL, {
         max:         10,
         idle_timeout: 20,
         connect_timeout: 10,
-        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+        ssl: useSsl ? { rejectUnauthorized: false } : false,
         onnotice: () => {},   // suppress NOTICE messages
       });
     } catch (error) {

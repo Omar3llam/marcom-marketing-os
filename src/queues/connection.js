@@ -24,8 +24,9 @@ const isLocal = !rawUrl || /^redis:\/\/(127\.0\.0\.1|localhost|0\.0\.0\.0)(:|\/|
 
 // Disable Redis if:
 // 1. Production + no valid REDIS_URL
-// 2. Development + no REDIS_URL set (graceful degradation for AI-only mode)
-export const REDIS_DISABLED = (isProd && isLocal) || (isDev && !rawUrl);
+// 2. Development + REDIS_URL missing OR pointing to localhost
+//    (graceful degradation for AI-only mode by default)
+export const REDIS_DISABLED = (isProd && isLocal) || (isDev && isLocal);
 export const QUEUE_PREFIX   = process.env.BULLMQ_PREFIX || 'lumi';
 
 let _conn = null;
