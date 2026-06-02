@@ -373,6 +373,7 @@ model CampaignState {
   healthScore  Float
   lastAnalysis DateTime
   updatedAt    DateTime      @updatedAt
+  currency     String        @default("USD")  // ISO 4217 currency code (EGP, USD, SAR, AED, EUR, GBP)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 

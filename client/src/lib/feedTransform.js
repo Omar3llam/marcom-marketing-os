@@ -7,6 +7,7 @@
 // Input: { decisions: Array<OrchestratorDecision> }
 // Output: Array<CampaignFeedItem>
 // ============================================================
+import { formatCurrency } from './currencyFormatter.js';
 
 /**
  * Transform orchestrator decisions into campaign feed format.
@@ -50,8 +51,9 @@ export function transformDecisionsToFeed(uploadResult) {
         imageUrl:         null,
         reference_prompt: null,
       },
-      metrics: buildMetricsFromDecision(d),
-      memory:  [],
+      currency: d.sourceMetrics?.currency || d.currency || 'USD',  // Preserve currency from backend
+      metrics:  buildMetricsFromDecision(d, d.sourceMetrics?.currency || d.currency || 'USD'),
+      memory:   [],
       // Preserve raw decision for debugging
       _rawDecision: d,
     });
@@ -92,8 +94,11 @@ function inferPriority(verdict, riskLevel) {
  * Build structured metrics array from orchestrator decision.
  * Source metrics (spend/CTR/ROAS/etc) are preserved by the backend at
  * decision.sourceMetrics. Falls back to legacy campaignTable shape.
+ *
+ * @param {object} decision - Orchestrator decision object
+ * @param {string} currency - ISO 4217 currency code (e.g., "EGP", "USD")
  */
-function buildMetricsFromDecision(decision) {
+function buildMetricsFromDecision(decision, currency = 'USD') {
   const rows = [];
 
   // Preferred: sourceMetrics preserved by backend after Claude analysis
@@ -109,11 +114,11 @@ function buildMetricsFromDecision(decision) {
     const cpa   = src.costPerResult ?? 0;
 
     rows.push(
-      { metric: 'spend',     trend: 'flat',                 value: `EGP ${spend.toFixed(2)}`, delta: '', context: 'Per CSV upload', status: 'neutral' },
-      { metric: 'CTR',       trend: trendFor('ctr', ctr),   value: `${ctr.toFixed(2)}%`,      delta: '', context: 'Per CSV upload', status: statusFor('ctr', ctr) },
-      { metric: 'ROAS',      trend: trendFor('roas', roas), value: `${roas.toFixed(2)}x`,     delta: '', context: 'Per CSV upload', status: statusFor('roas', roas) },
-      { metric: 'Frequency', trend: trendFor('freq', freq), value: `${freq.toFixed(2)}`,      delta: '', context: 'Per CSV upload', status: statusFor('freq', freq) },
-      { metric: 'CPA',       trend: trendFor('cpa', cpa),   value: `EGP ${cpa.toFixed(2)}`,   delta: '', context: 'Per CSV upload', status: statusFor('cpa', cpa) },
+      { metric: 'spend',     trend: 'flat',                 value: formatCurrency(spend, currency), delta: '', context: 'Per CSV upload', status: 'neutral' },
+      { metric: 'CTR',       trend: trendFor('ctr', ctr),   value: `${ctr.toFixed(2)}%`,            delta: '', context: 'Per CSV upload', status: statusFor('ctr', ctr) },
+      { metric: 'ROAS',      trend: trendFor('roas', roas), value: `${roas.toFixed(2)}x`,           delta: '', context: 'Per CSV upload', status: statusFor('roas', roas) },
+      { metric: 'Frequency', trend: trendFor('freq', freq), value: `${freq.toFixed(2)}`,            delta: '', context: 'Per CSV upload', status: statusFor('freq', freq) },
+      { metric: 'CPA',       trend: trendFor('cpa', cpa),   value: formatCurrency(cpa, currency),   delta: '', context: 'Per CSV upload', status: statusFor('cpa', cpa) },
     );
   } else {
     // Fallback: parse impact string for display (less structured)

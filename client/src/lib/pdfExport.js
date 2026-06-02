@@ -3,6 +3,7 @@
 // ------------------------------------------------------------
 // Generates PDF reports from campaign analysis data
 // ============================================================
+import { formatCurrency } from './currencyFormatter.js';
 
 /**
  * Generate and download a PDF report of campaign analysis
@@ -19,6 +20,9 @@ export async function generateCampaignReport({ campaigns, totals, healthScore, h
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   let yPos = 20;
+
+  // Detect primary currency from campaigns
+  const currency = campaigns[0]?.currency || 'USD';
 
   // Title
   doc.setFontSize(20);
@@ -45,14 +49,14 @@ export async function generateCampaignReport({ campaigns, totals, healthScore, h
 
   const summaryLines = [
     `Total Campaigns: ${campaigns.length}`,
-    `Total Spend: EGP ${totals.spend.toFixed(2)}`,
+    `Total Spend: ${formatCurrency(totals.spend, currency)}`,
     `Health Score: ${healthScore}/100 (${healthLabel})`,
     `Wasted Spend: ${totals.wastedPct}%`,
     '',
     'Verdict Breakdown:',
-    `  KILL: EGP ${totals.kill.toFixed(2)} (${campaigns.filter(c => c.verdict === 'KILL').length} campaigns)`,
-    `  HOLD: EGP ${totals.hold.toFixed(2)} (${campaigns.filter(c => c.verdict === 'HOLD').length} campaigns)`,
-    `  SCALE: EGP ${totals.scale.toFixed(2)} (${campaigns.filter(c => c.verdict === 'SCALE').length} campaigns)`,
+    `  KILL: ${formatCurrency(totals.kill, currency)} (${campaigns.filter(c => c.verdict === 'KILL').length} campaigns)`,
+    `  HOLD: ${formatCurrency(totals.hold, currency)} (${campaigns.filter(c => c.verdict === 'HOLD').length} campaigns)`,
+    `  SCALE: ${formatCurrency(totals.scale, currency)} (${campaigns.filter(c => c.verdict === 'SCALE').length} campaigns)`,
   ];
 
   summaryLines.forEach(line => {
@@ -77,7 +81,7 @@ export async function generateCampaignReport({ campaigns, totals, healthScore, h
   doc.setFont(undefined, 'bold');
   doc.text('Campaign', 20, yPos);
   doc.text('Verdict', 80, yPos);
-  doc.text('Spend (EGP)', 110, yPos);
+  doc.text(`Spend (${currency})`, 110, yPos);
   doc.text('ROAS', 145, yPos);
   doc.text('CTR%', 165, yPos);
   yPos += 6;
@@ -197,32 +201,36 @@ export async function generateCampaignReport({ campaigns, totals, healthScore, h
  * Fallback: Generate a simple text-based report if jsPDF is not available
  */
 export function generateTextReport({ campaigns, totals, healthScore, healthLabel }) {
+  // Detect primary currency from campaigns
+  const currency = campaigns[0]?.currency || 'USD';
+
   const lines = [
     '='.repeat(60),
     'MARCOM CAMPAIGN ANALYSIS REPORT',
-    `Generated: ${new Date().toLocaleString('en-EG')}`,
+    `Generated: ${new Date().toLocaleString()}`,
     '='.repeat(60),
     '',
     'SUMMARY',
     '-'.repeat(60),
     `Total Campaigns: ${campaigns.length}`,
-    `Total Spend: EGP ${totals.spend.toFixed(2)}`,
+    `Total Spend: ${formatCurrency(totals.spend, currency)}`,
     `Health Score: ${healthScore}/100 (${healthLabel})`,
     `Wasted Spend: ${totals.wastedPct}%`,
     '',
     'VERDICT BREAKDOWN',
-    `  KILL:  EGP ${totals.kill.toFixed(2)} (${campaigns.filter(c => c.verdict === 'KILL').length} campaigns)`,
-    `  HOLD:  EGP ${totals.hold.toFixed(2)} (${campaigns.filter(c => c.verdict === 'HOLD').length} campaigns)`,
-    `  SCALE: EGP ${totals.scale.toFixed(2)} (${campaigns.filter(c => c.verdict === 'SCALE').length} campaigns)`,
+    `  KILL:  ${formatCurrency(totals.kill, currency)} (${campaigns.filter(c => c.verdict === 'KILL').length} campaigns)`,
+    `  HOLD:  ${formatCurrency(totals.hold, currency)} (${campaigns.filter(c => c.verdict === 'HOLD').length} campaigns)`,
+    `  SCALE: ${formatCurrency(totals.scale, currency)} (${campaigns.filter(c => c.verdict === 'SCALE').length} campaigns)`,
     '',
     'CAMPAIGN DETAILS',
     '-'.repeat(60),
   ];
 
   campaigns.forEach(campaign => {
+    const campaignCurrency = campaign.currency || currency;
     lines.push(
       `Campaign: ${campaign.campaign}`,
-      `  Verdict: ${campaign.verdict} | Spend: EGP ${campaign.spend.toFixed(2)} | ROAS: ${campaign.roas.toFixed(2)} | CTR: ${campaign.ctr.toFixed(2)}%`,
+      `  Verdict: ${campaign.verdict} | Spend: ${formatCurrency(campaign.spend, campaignCurrency)} | ROAS: ${campaign.roas.toFixed(2)} | CTR: ${campaign.ctr.toFixed(2)}%`,
       `  Reason: ${campaign.reasoning}`,
       ''
     );

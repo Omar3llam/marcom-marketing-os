@@ -42,7 +42,7 @@ function EmptyTable({ onUpload, loading }) {
   );
 }
 
-export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expanded, setExpanded, onUpload }) {
+export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expanded, setExpanded, onUpload, currency = 'USD' }) {
   return (
     <section className="bg-lumi-surface border border-lumi-border rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
       {rows.length === 0 ? (
@@ -71,7 +71,7 @@ export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expa
                       <div className="font-display font-medium text-sm text-lumi-text">{r.campaign}</div>
                       <div className="font-mono text-xs text-lumi-subtle mt-0.5">{r.platform}</div>
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-lumi-text">{fmtCurrency(r.spend)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-lumi-text">{fmtCurrency(r.spend, r.currency || currency)}</td>
                     <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-lumi-text">{r.ctr.toFixed(2)}%</td>
                     <td className={cn('px-4 py-3 text-right font-mono text-sm tabular-nums', roasColor(r.roas))}>{r.roas.toFixed(2)}x</td>
                     <td className={cn('px-4 py-3 text-right font-mono text-sm tabular-nums', freqColor(r.freq))}>{r.freq.toFixed(2)}</td>

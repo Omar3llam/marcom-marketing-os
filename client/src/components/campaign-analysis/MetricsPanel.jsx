@@ -13,24 +13,24 @@ function KpiCard({ label, value, valueClass, delta, deltaClass, footer }) {
   );
 }
 
-export function MetricsPanel({ totals, loading, healthScore, healthLabel, healthColor }) {
+export function MetricsPanel({ totals, loading, healthScore, healthLabel, healthColor, currency = 'USD' }) {
   return (
     <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
       <KpiCard
         label="Total Spend"
-        value={fmtCurrency(totals.spend)}
+        value={fmtCurrency(totals.spend, currency)}
         delta={loading ? '—' : 'Live · CSV-derived'}
         deltaClass="text-lumi-subtle"
       />
       <KpiCard
         label="Blended CPA"
-        value={totals.blendedCpa != null ? fmtCurrency(totals.blendedCpa) : '—'}
+        value={totals.blendedCpa != null ? fmtCurrency(totals.blendedCpa, currency) : '—'}
         delta={totals.blendedCpa != null ? 'Per-campaign avg' : 'No CPA in dataset'}
         deltaClass="text-lumi-subtle"
       />
       <KpiCard
         label="Wasted Spend"
-        value={fmtCurrency(totals.kill)}
+        value={fmtCurrency(totals.kill, currency)}
         valueClass="text-trend-danger"
         delta={`${totals.wastedPct}% of total`}
         deltaClass="text-trend-danger"

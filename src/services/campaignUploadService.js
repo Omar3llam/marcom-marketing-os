@@ -338,10 +338,11 @@ export async function processDbWriteUpload(file, workspaceId, userId) {
       parsed.map(c => {
         const healthScore = computeHealthScore({ roas: c.roas, ctr: c.ctr, frequency: c.frequency });
         const stage       = classifyStage(c.roas, c.ctr, c.frequency);
+        const currency    = c.currency || 'USD';
         return tx.campaignState.upsert({
           where:  { campaignId_workspaceId: { campaignId: c.campaignId, workspaceId } },
-          update: { stage, healthScore, lastAnalysis: new Date() },
-          create: { campaignId: c.campaignId, workspaceId, stage, healthScore, lastAnalysis: new Date() },
+          update: { stage, healthScore, currency, lastAnalysis: new Date() },
+          create: { campaignId: c.campaignId, workspaceId, stage, healthScore, currency, lastAnalysis: new Date() },
         }).then(cs => ({ c, cs, stage }));
       }),
     );

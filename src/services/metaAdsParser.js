@@ -21,6 +21,7 @@
 import { parse } from 'csv-parse/sync';
 import { createHash } from 'crypto';
 import { resolveHeader, cleanMonetaryValue, COLUMN_ALIASES } from '../lib/csvColumnAliases.js';
+import { detectCurrencyFromHeaders } from '../lib/currencyDetector.js';
 
 /**
  * Parse a Meta Ads Manager CSV export buffer.
@@ -58,6 +59,10 @@ export function parseMetaAdsCsv(fileBuffer) {
 
     console.log('[metaAdsParser] Raw CSV headers:', rawHeaders);
 
+    // ── 3a. Detect currency from CSV headers ─────────────────
+    const currency = detectCurrencyFromHeaders(rawHeaders);
+    console.log('[metaAdsParser] Detected currency:', currency);
+
     for (const rawHeader of rawHeaders) {
       const field = resolveHeader(rawHeader, COLUMN_ALIASES);
       if (field) {
@@ -91,7 +96,7 @@ export function parseMetaAdsCsv(fileBuffer) {
         return;
       }
 
-      const campaign = buildCampaign(record, headerMap);
+      const campaign = buildCampaign(record, headerMap, currency);
 
       if (campaign) {
         campaigns.push(campaign);
@@ -164,9 +169,10 @@ export function parseMetaAdsCsv(fileBuffer) {
  *
  * @param {object} record - Single CSV row as key-value pairs
  * @param {object} headerMap - Mapping of raw headers to standardized field names
+ * @param {string} currency - ISO 4217 currency code detected from headers
  * @returns {object|null} - Campaign object, or null if invalid
  */
-function buildCampaign(record, headerMap) {
+function buildCampaign(record, headerMap, currency = 'USD') {
   try {
     // ── Extract campaign identifiers ──────────────────────────
     const campaignName = getFieldValue(record, headerMap, 'campaignName')
@@ -250,6 +256,7 @@ function buildCampaign(record, headerMap) {
       ctr:            round2(ctr),
       cpc:            round2(cpc),
       roas:           round2(roas),
+      currency,       // ISO 4217 currency code (EGP, USD, SAR, etc.)
       // Raw record forwarded to Claude via Action.payload
       rawRecord:      record,
     };

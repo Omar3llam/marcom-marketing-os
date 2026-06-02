@@ -27,7 +27,8 @@ function flatten(campaigns) {
       const reason   = a.analysis?.root_cause || a.action_plan?.action || '—';
       const platform = (a.action_plan?.kind || a.action_plan?.platform || a.platform || 'META').toUpperCase();
       const impact = verdict === 'KILL' ? 9 : verdict === 'HOLD' ? 6 : verdict === 'SCALE' ? 4 : 5;
-      rows.push({ id: a.action_id, campaign: c.campaign_id, platform, spend, ctr, roas, freq, verdict, impact, reasoning: reason });
+      const currency = a.currency || a._rawDecision?.currency || 'USD';  // Extract currency from alert
+      rows.push({ id: a.action_id, campaign: c.campaign_id, platform, spend, ctr, roas, freq, verdict, impact, reasoning: reason, currency });
     }
   }
   return rows;
@@ -84,6 +85,14 @@ export default function CampaignAnalysis() {
       return sortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
     });
   }, [campaigns, sortKey, sortDir]);
+
+  // Detect primary currency from campaigns (first non-USD currency wins, or USD if all are USD)
+  const currency = useMemo(() => {
+    for (const row of rows) {
+      if (row.currency && row.currency !== 'USD') return row.currency;
+    }
+    return rows[0]?.currency || 'USD';
+  }, [rows]);
 
   const totals = useMemo(() => {
     const r = { spend: 0, kill: 0, hold: 0, scale: 0, cpaSum: 0, cpaCount: 0 };
@@ -153,9 +162,10 @@ export default function CampaignAnalysis() {
         healthScore={healthScore}
         healthLabel={healthLabel}
         healthColor={healthColor}
+        currency={currency}
       />
 
-      <PerformanceChart totals={totals} />
+      <PerformanceChart totals={totals} currency={currency} />
 
       <AnalysisSummary
         rows={rows}
@@ -166,6 +176,7 @@ export default function CampaignAnalysis() {
         expanded={expanded}
         setExpanded={setExpanded}
         onUpload={() => setUploadOpen(true)}
+        currency={currency}
       />
 
       {uploadOpen && (
