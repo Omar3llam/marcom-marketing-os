@@ -23,7 +23,8 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL") // Required for migrations on Neon pooler
+  // Required for migrations on Neon pooler (falls back to DATABASE_URL if not set)
+  directUrl = env("DIRECT_URL")
 }
 
 // ── Enums ────────────────────────────────────────────────────

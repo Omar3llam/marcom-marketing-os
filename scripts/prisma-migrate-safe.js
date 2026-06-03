@@ -6,6 +6,14 @@
 // ============================================================
 import { execSync } from 'child_process';
 
+// Ensure DIRECT_URL is set (fallback to DATABASE_URL if not present)
+// Required for Prisma Migrate on Neon pooler connections
+if (!process.env.DIRECT_URL && process.env.DATABASE_URL) {
+  console.log('⚠️  DIRECT_URL not set, falling back to DATABASE_URL');
+  console.log('   (Set DIRECT_URL to Neon direct endpoint if using pooler)\n');
+  process.env.DIRECT_URL = process.env.DATABASE_URL;
+}
+
 console.log('===PRISMA MIGRATE DEPLOY===');
 
 try {
