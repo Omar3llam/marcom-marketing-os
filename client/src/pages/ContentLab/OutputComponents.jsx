@@ -6,9 +6,8 @@
 import { useState } from 'react';
 import {
   Sparkles, Check, RotateCcw, FileText, Zap, Layers, Play,
-  Database, ArrowUpRight, AlertTriangle,
+  Database, ArrowUpRight, AlertTriangle, Loader2,
 } from 'lucide-react';
-import LumiLoader from '@/components/ui/LumiLoader.jsx';
 
 // ── Empty state ──────────────────────────────────────────────
 export function OutputEmpty() {
@@ -35,8 +34,17 @@ export function OutputGenerating({ progress }) {
       <div aria-live="polite" aria-atomic="true" className="sr-only">
         Generating content: {Math.floor(progress)}% complete. Current step: {steps[activeIdx]}
       </div>
-      <LumiLoader label="Generating" sub={`${Math.floor(progress)}%`} />
-      <div className="mt-7 flex flex-col gap-2">
+
+      {/* Progress indicator */}
+      <div className="flex flex-col items-center gap-3 mb-7">
+        <Loader2 className="w-8 h-8 text-lumi-accent animate-spin" strokeWidth={1.5} />
+        <div className="text-center">
+          <p className="font-display font-semibold text-sm text-dark-base">Generating</p>
+          <p className="font-mono text-xs text-dark-muted mt-1">{Math.floor(progress)}%</p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
         {steps.map((s, i) => (
           <div key={s} className="flex items-center gap-2">
             <span className="w-3.5 flex justify-center">
