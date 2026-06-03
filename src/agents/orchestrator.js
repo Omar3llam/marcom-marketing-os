@@ -401,9 +401,6 @@ export async function analyzeCampaignsBatch(campaigns) {
     throw new Error('analyzeCampaignsBatch requires non-empty campaigns array');
   }
 
-  logger.info({ campaignCount: campaigns.length }, '[orchestrator] analyzeCampaignsBatch started');
-  const apiCallStart = Date.now();
-
   const prompt = `Analyze these ${campaigns.length} Meta Ads campaigns and return a JSON array of decisions.
 
 For each campaign return:
@@ -438,13 +435,6 @@ Return ONLY valid JSON in this exact format:
     campaignId: null,
     maxTokens: 16000,
   });
-
-  const apiCallMs = Date.now() - apiCallStart;
-  logger.info({
-    campaignCount: campaigns.length,
-    apiDurationMs: apiCallMs,
-    avgMsPerCampaign: Math.round(apiCallMs / campaigns.length)
-  }, '[orchestrator] Claude API call complete');
 
   // Parse JSON from response
   const cleaned = text.replace(/```json|```/g, '').trim();

@@ -136,18 +136,10 @@ export async function processAnalyzeUpload(file, workspaceId, userId) {
   }));
 
   let batchResult;
-  const analysisStart = Date.now();
-  logger.info({ campaignCount: campaignsForAnalysis.length }, '[campaigns/upload] Starting batch analysis');
   try {
     batchResult = await analyzeCampaignsBatch(campaignsForAnalysis);
-    const analysisMs = Date.now() - analysisStart;
-    logger.info({
-      campaignCount: campaignsForAnalysis.length,
-      durationMs: analysisMs,
-      avgMsPerCampaign: Math.round(analysisMs / campaignsForAnalysis.length)
-    }, '[campaigns/upload] Batch analysis complete');
   } catch (err) {
-    logger.error({ err: err.message, durationMs: Date.now() - analysisStart }, '[campaigns/upload] Batch analysis failed');
+    logger.error({ err: err.message }, '[campaigns/upload] Batch analysis failed');
     throw new UploadError(500, { success: false, error: `AI analysis failed: ${err.message}` });
   }
 
@@ -189,8 +181,6 @@ export async function processAnalyzeUpload(file, workspaceId, userId) {
   let processed     = 0;
   let alertsCreated = 0;
 
-  const persistStart = Date.now();
-  logger.info({ recordCount: campaignsToSave.length }, '[campaigns/upload] Starting DB persistence');
   await prisma.$transaction(async (tx) => {
     const upsertResults = await Promise.allSettled(
       campaignsToSave.map(({ campaign: c, decision }) => {
@@ -245,13 +235,6 @@ export async function processAnalyzeUpload(file, workspaceId, userId) {
       alertsCreated = actionData.length;
     }
   });
-
-  const persistMs = Date.now() - persistStart;
-  logger.info({
-    recordCount: processed,
-    actionsCount: alertsCreated,
-    durationMs: persistMs
-  }, '[campaigns/upload] DB persistence complete');
 
   if (alertsCreated > 0) {
     const totalSpend = campaignIds.reduce((sum, campaignId) => {
