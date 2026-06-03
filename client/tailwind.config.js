@@ -104,9 +104,14 @@ export default {
         '3xl':  ['30px', { lineHeight: '38px', letterSpacing: '-0.03em' }],
       },
 
-      boxShadow:  spacing.shadows,
-      animation:  motion.animations,
-      keyframes:  motion.keyframes,
+      boxShadow:     spacing.shadows,
+      borderRadius:  spacing.borderRadius,
+      animation:     motion.animations,
+      keyframes:     motion.keyframes,
+
+      fontVariantNumeric: {
+        'tabular-nums': 'tabular-nums',
+      },
     },
   },
   plugins: [],
