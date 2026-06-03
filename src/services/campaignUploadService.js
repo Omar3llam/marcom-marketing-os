@@ -110,6 +110,18 @@ export async function processAnalyzeUpload(file, workspaceId, userId) {
   if (!parsed || parsed.length === 0)
     throw new UploadError(400, { success: false, error: 'No valid campaigns found in file' });
 
+  // ── Auto-detect and update workspace currency (first non-USD wins) ──
+  const detectedCurrency = parsed.find(c => c.currency && c.currency !== 'USD')?.currency || 'USD';
+  try {
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { currency: detectedCurrency },
+    });
+    logger.info({ workspaceId, currency: detectedCurrency }, '[campaigns/upload] Workspace currency updated');
+  } catch (err) {
+    logger.warn({ err: err.message, workspaceId }, '[campaigns/upload] Failed to update workspace currency (non-blocking)');
+  }
+
   // ── Step 1: AI batch analysis ──────────────────────────────
   const campaignsForAnalysis = parsed.map(c => ({
     campaignId:     c.campaignId,
@@ -174,10 +186,11 @@ export async function processAnalyzeUpload(file, workspaceId, userId) {
       campaignsToSave.map(({ campaign: c, decision }) => {
         const healthScore = computeHealthScore({ roas: c.roas, ctr: c.ctr, frequency: c.frequency });
         const stage       = classifyStage(c.roas, c.ctr, c.frequency);
+        const currency    = c.currency || 'USD';
         return tx.campaignState.upsert({
           where:  { campaignId_workspaceId: { campaignId: c.campaignId, workspaceId } },
-          update: { stage, healthScore, lastAnalysis: new Date() },
-          create: { campaignId: c.campaignId, workspaceId, stage, healthScore, lastAnalysis: new Date() },
+          update: { stage, healthScore, currency, lastAnalysis: new Date() },
+          create: { campaignId: c.campaignId, workspaceId, stage, healthScore, currency, lastAnalysis: new Date() },
         }).then(cs => ({ c, cs, stage, decision }));
       }),
     );
@@ -326,6 +339,18 @@ export async function processDbWriteUpload(file, workspaceId, userId) {
       error: `CSV has ${parsed.length} rows. Maximum is ${MAX_ROWS}.`,
       hint:  'Split your export into smaller date ranges and re-upload.',
     });
+
+  // ── Auto-detect and update workspace currency (first non-USD wins) ──
+  const detectedCurrency = parsed.find(c => c.currency && c.currency !== 'USD')?.currency || 'USD';
+  try {
+    await prisma.workspace.update({
+      where: { id: workspaceId },
+      data: { currency: detectedCurrency },
+    });
+    logger.info({ workspaceId, currency: detectedCurrency }, '[campaigns/upload] Workspace currency updated');
+  } catch (err) {
+    logger.warn({ err: err.message, workspaceId }, '[campaigns/upload] Failed to update workspace currency (non-blocking)');
+  }
 
   const errors      = [];
   const campaignIds = [];

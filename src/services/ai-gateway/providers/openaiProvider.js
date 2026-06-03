@@ -115,7 +115,7 @@ async function callOpenAI({
         message: error.message,
       },
       metadata: {
-        model: DEFAULT_MODEL,
+        model: model || UTILITY_MODEL,  // Use actual model or fallback to utility
         tokens: 0,
         latency,
       },

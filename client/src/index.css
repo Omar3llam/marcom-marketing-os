@@ -83,7 +83,7 @@
 
   /* ── Typography Scale ────────────────────────────────────── */
   --font-display: "Space Grotesk", system-ui, sans-serif;
-  --font-body: Inter, system-ui, sans-serif;
+  --font-body: Inter, "Noto Sans", system-ui, sans-serif;  /* Noto Sans for Unicode support */
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 
   /* ── Effects & Overlays ──────────────────────────────────── */

@@ -95,6 +95,7 @@ enum TransitionActor {
 model Workspace {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
+  currency  String   @default("USD")  // ISO 4217 currency code (EGP, USD, SAR, AED, etc.)
   createdAt DateTime @default(now())
 
   users             User[]

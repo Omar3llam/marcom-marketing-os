@@ -13,6 +13,7 @@ import {
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
+import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
 import StatCard from '@/components/ui/StatCard.jsx';
 import AlertsPanel from './Home/AlertsPanel.jsx';
 import AIInsightPanel from './Home/AIInsightPanel.jsx';
@@ -30,22 +31,14 @@ export default function HomePage() {
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
   const userName = currentUser?.displayName?.split(' ')[0] || 'there';
 
-  // Currency formatter
+  // Currency detection from workspace (defaults to USD)
   const currency = workspace?.currency || 'USD';
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
 
   // Extract stats from intelligence summary
   const stats = {
-    spend: summary?.spend > 0 ? formatCurrency(summary.spend) : workspace?.spendTier?.split(' ').slice(0, 2).join(' ') || '$0',
-    cpa: summary?.blendedCpa ? formatCurrency(summary.blendedCpa) : 'No data',
-    waste: summary?.wasted > 0 ? `${formatCurrency(summary.wasted)}/mo` : '$0/mo',
+    spend: summary?.spend > 0 ? formatCurrencyWhole(summary.spend, currency) : workspace?.spendTier?.split(' ').slice(0, 2).join(' ') || '$0',
+    cpa: summary?.blendedCpa ? formatCurrencyWhole(summary.blendedCpa, currency) : 'No data',
+    waste: summary?.wasted > 0 ? `${formatCurrencyWhole(summary.wasted, currency)}/mo` : '$0/mo',
     health: summary?.health || 0,
   };
 
