@@ -31,7 +31,6 @@ const tools = [
   { key: 'content',    label: 'Content Lab',  sub: 'Copy + visual generation',     icon: Send,          path: '/app/content'          },
   { key: 'growth',     label: 'Growth',       sub: 'Memory layer + opportunities', icon: Target,        path: '/app/growth'           },
   { key: 'calendar',   label: 'Calendar',     sub: '4-week content plan',          icon: CalendarDays,  path: '/app/tools/calendar'   },
-  { key: 'operations', label: 'Operations',   sub: 'Runtime monitor',              icon: Activity,      path: '/app/operations'       },
 ];
 
 // ══════════════════════════════════════════════════════════════
