@@ -151,6 +151,14 @@ export async function runOrchestration({ campaignId, workspaceId, actionId, user
   const contextLock = user?.context ?? null;
 
   // ── Agent 1: Claude (always) ────────────────────────────────
+  // 🔍 VERIFICATION LOG — Track orchestrator usage
+  console.log('[ORCHESTRATOR]', {
+    provider: 'CLAUDE',
+    model: 'claude-sonnet-4.5',
+    feature: 'strategic-analysis',
+    campaignId,
+  });
+
   let strategicAnalysis;
   try {
     strategicAnalysis = await analyzeWithClaude({
@@ -168,6 +176,15 @@ export async function runOrchestration({ campaignId, workspaceId, actionId, user
   const needsCreative = CREATIVE_TRIGGERS.has(strategicAnalysis?.rootCause);
 
   if (needsCreative) {
+    // 🔍 VERIFICATION LOG — Track orchestrator OpenAI usage
+    console.log('[ORCHESTRATOR]', {
+      provider: 'OPENAI',
+      model: 'gpt-4o-mini',
+      feature: 'creative-generation',
+      campaignId,
+      trigger: strategicAnalysis?.rootCause,
+    });
+
     try {
       creativeAssets = await generateCreativeAssets({
         contextLock,
@@ -249,6 +266,16 @@ function safeParseJson(s) {
  * @returns {Promise<Array>} Array of alert objects
  */
 export async function analyzeRadarData(campaigns) {
+  // 🔍 VERIFICATION LOG — Track analyzeRadarData usage (deprecated path)
+  console.log('[ORCHESTRATOR]', {
+    provider: 'CLAUDE',
+    model: 'claude-sonnet-4.5',
+    feature: 'analyzeRadarData',
+    campaignCount: campaigns.length,
+    deprecated: true,
+    message: '⚠️  Routes should use AI Gateway instead of orchestrator',
+  });
+
   const userPrompt = [
     `Analyze these ${campaigns.length} campaigns and identify which need`,
     'IMMEDIATE action (KILL or SCALE). Omit stable performers.',
@@ -298,6 +325,16 @@ export async function analyzeRadarData(campaigns) {
  * @returns {Promise<Object>} Single verdict object
  */
 export async function analyzeCampaignData(data, source = 'csv') {
+  // 🔍 VERIFICATION LOG — Track analyzeCampaignData usage (deprecated path)
+  console.log('[ORCHESTRATOR]', {
+    provider: 'CLAUDE',
+    model: 'claude-sonnet-4.5',
+    feature: 'analyzeCampaignData',
+    source,
+    deprecated: true,
+    message: '⚠️  Routes should use AI Gateway instead of orchestrator',
+  });
+
   // ── Validation Checkpoint 1: Input Data ─────────────────────
   if (!data || typeof data !== 'object') {
     logger.error({ data }, '[orchestrator] analyzeCampaignData: invalid data parameter');

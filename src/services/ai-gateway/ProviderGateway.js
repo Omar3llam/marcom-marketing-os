@@ -206,6 +206,14 @@ export async function execute(request) {
 
   const { provider, method, routingDecision } = registration;
 
+  // 🔍 VERIFICATION LOG — Track which provider is actually being used
+  console.log('[AI-GATEWAY]', {
+    provider,
+    model: registration.model || 'UNKNOWN',
+    capability,
+    routingStrategy: routingDecision?.strategy || 'static',
+  });
+
   // Execute with retries
   let attempt = 0;
   let lastError = null;
