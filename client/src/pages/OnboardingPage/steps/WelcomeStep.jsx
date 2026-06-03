@@ -2,69 +2,44 @@
 // MARCOM / Lumi — Onboarding Step 0: Welcome
 // ============================================================
 
-import { Sparkles } from 'lucide-react';
+import { Sparkles, Layout, Eye, Globe, Zap } from 'lucide-react';
 import { Eyebrow, BigHeader, Lede } from '../shared.jsx';
 
 export function WelcomeStep() {
+  const valueProps = [
+    { Icon: Layout, title: 'Identity', body: 'Who you are, where you operate.' },
+    { Icon: Eye, title: 'Audience', body: 'Who you sell to.' },
+    { Icon: Globe, title: 'Voice', body: 'Language, dialect, tone.' },
+    { Icon: Zap, title: 'Toolkit', body: 'Channels, content, objective.' },
+  ];
+
   return (
-    <div className="text-center py-8">
-      <div className="inline-flex items-center gap-2 mb-4">
-        <Sparkles className="h-5 w-5 text-lumi-gold" />
-        <Eyebrow>Lumi · Setup</Eyebrow>
-      </div>
-
-      <BigHeader className="mb-4">
-        Get Lumi watching your campaigns
-      </BigHeader>
-
-      <Lede className="mx-auto mb-8">
-        Tell us how to think about your brand, your audience, and your goals.
-        This helps Lumi generate market-specific verdicts, campaign analysis,
-        and growth decisions tailored to your business.
+    <div>
+      <Eyebrow>Welcome to Marcom AI</Eyebrow>
+      <BigHeader>Let&apos;s get Lumi watching your campaigns.</BigHeader>
+      <Lede>
+        Nine quick questions — about two minutes. Once you&apos;re done, Lumi knows your market, your audience,
+        your voice, and what success looks like. Every verdict, every piece of content scored, every social
+        post planned will be grounded in that context.
       </Lede>
 
-      <div className="max-w-md mx-auto space-y-3 text-left">
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-white border border-surface-border">
-          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-lumi-gold/20 flex items-center justify-center text-lumi-gold font-mono text-xs font-bold">
-            1
-          </div>
-          <div>
-            <div className="text-sm font-medium text-dark-primary mb-0.5">
-              9 quick steps
+      <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {valueProps.map((card) => (
+          <div
+            key={card.title}
+            className="p-4 bg-surface-card border border-surface-border rounded-xl hover:border-lumi-accent/40 transition-colors"
+          >
+            <div className="w-8 h-8 rounded-lg bg-lumi-accent/10 text-lumi-accent flex items-center justify-center mb-3">
+              <card.Icon className="w-4 h-4" strokeWidth={1.5} />
             </div>
-            <div className="text-xs text-dark-secondary">
-              Takes ~3 minutes to complete
+            <div className="font-display text-sm font-bold text-dark-base mb-1">
+              {card.title}
             </div>
-          </div>
-        </div>
-
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-white border border-surface-border">
-          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-lumi-gold/20 flex items-center justify-center text-lumi-gold font-mono text-xs font-bold">
-            2
-          </div>
-          <div>
-            <div className="text-sm font-medium text-dark-primary mb-0.5">
-              MENA-first intelligence
-            </div>
-            <div className="text-xs text-dark-secondary">
-              Arabic dialects, local currencies, and region-specific insights
+            <div className="text-xs text-dark-soft leading-relaxed">
+              {card.body}
             </div>
           </div>
-        </div>
-
-        <div className="flex items-start gap-3 p-3 rounded-lg bg-white border border-surface-border">
-          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-lumi-gold/20 flex items-center justify-center text-lumi-gold font-mono text-xs font-bold">
-            3
-          </div>
-          <div>
-            <div className="text-sm font-medium text-dark-primary mb-0.5">
-              Start optimizing immediately
-            </div>
-            <div className="text-xs text-dark-secondary">
-              Connect your ad accounts and let Lumi analyze your campaigns
-            </div>
-          </div>
-        </div>
+        ))}
       </div>
     </div>
   );

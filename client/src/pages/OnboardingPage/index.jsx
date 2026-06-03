@@ -116,22 +116,25 @@ export default function OnboardingPage() {
         {/* Progress bar */}
         {step > 0 && (
           <div className="mb-6">
-            <div className="flex items-center justify-between mb-2">
-              <div className="inline-flex items-center gap-2">
-                <Sparkles className="h-4 w-4 text-lumi-gold" />
-                <span className="font-mono text-xs font-semibold uppercase tracking-widest text-lumi-gold">
-                  Step {step + 1} of {totalSteps}
-                </span>
-              </div>
-              <span className="font-mono text-xs text-dark-soft">
-                {Math.round(progress)}% complete
+            <div className="flex items-center justify-between mb-2.5">
+              <span className="font-mono text-[11px] tracking-[0.1em] uppercase text-dark-muted">
+                Step {step + 1} of {totalSteps} · {STEPS[step]?.label}
+              </span>
+              <span className="font-mono text-[11px] text-dark-muted tabular-nums">
+                {Math.round(progress)}%
               </span>
             </div>
-            <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-surface-border">
-              <div
-                className="absolute inset-y-0 left-0 rounded-full bg-lumi-gold transition-all duration-500 ease-out"
-                style={{ width: `${progress}%` }}
-              />
+            <div className="flex gap-1">
+              {STEPS.map((s, i) => (
+                <div
+                  key={s.key}
+                  className="flex-1 h-1 rounded-sm transition-all duration-300"
+                  style={{
+                    backgroundColor: i <= step ? 'var(--c-lumi-accent)' : 'var(--c-surface-border)',
+                    boxShadow: i === step ? '0 0 8px rgba(246,201,69,0.5)' : 'none',
+                  }}
+                />
+              ))}
             </div>
           </div>
         )}
@@ -145,7 +148,7 @@ export default function OnboardingPage() {
           {currentStepKey === 'channels' && <ChannelsStep form={form} set={set} />}
           {currentStepKey === 'spend' && <SpendStep form={form} set={set} />}
           {currentStepKey === 'objective' && <ObjectiveStep form={form} set={set} />}
-          {currentStepKey === 'review' && <ReviewStep form={form} onEdit={goToStep} />}
+          {currentStepKey === 'review' && <ReviewStep form={form} />}
 
           {/* Navigation */}
           <div className="mt-6 sm:mt-8 flex justify-between gap-2 border-t border-surface-border pt-6">
@@ -171,15 +174,17 @@ export default function OnboardingPage() {
                 type="button"
                 onClick={finish}
                 disabled={busy}
-                className="inline-flex items-center justify-center gap-1 rounded-xl bg-lumi-gold px-5 py-2.5 font-display text-sm font-semibold text-dark-base hover:bg-lumi-deep active:scale-[0.98] shadow-gold-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-[160px]"
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-lumi-accent px-6 py-3 font-display text-sm font-semibold text-dark-base hover:shadow-card-hover active:scale-[0.98] shadow-gold-glow transition-all disabled:opacity-50 disabled:cursor-not-allowed min-w-[180px]"
               >
                 {busy ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Completing…
+                    <Loader2 className="h-4 w-4 animate-spin" /> Launching…
                   </>
                 ) : (
                   <>
-                    Complete &amp; Enter App <ArrowRight className="h-4 w-4" />
+                    <Sparkles className="h-4 w-4" strokeWidth={2} />
+                    Launch Lumi
+                    <ArrowRight className="h-4 w-4" strokeWidth={2} />
                   </>
                 )}
               </button>

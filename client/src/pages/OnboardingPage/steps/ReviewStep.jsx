@@ -1,130 +1,104 @@
 // ============================================================
-// MARCOM / Lumi — Onboarding Step 8: Review
+// MARCOM / Lumi — Onboarding Step 7: Review
 // ============================================================
 
-import { CheckCircle2, Edit2 } from 'lucide-react';
+import { Sparkles, Layout, Globe, Eye, Send, Wifi, BarChart, Target, TrendingUp, Layers, Brain } from 'lucide-react';
 import { MARKETS, AGE_BANDS, GENDERS, LANGUAGES, DIALECTS, TONES, CHANNELS, SPEND_TIERS, OBJECTIVES } from '../constants.js';
-import { BigHeader, Lede } from '../shared.jsx';
+import { Eyebrow, BigHeader, Lede } from '../shared.jsx';
 
-export function ReviewStep({ form, onEdit }) {
-  const selectedMarket = MARKETS.find((m) => m.id === form.market);
-  const selectedGender = GENDERS.find((g) => g.id === form.gender);
-  const selectedLanguage = LANGUAGES.find((l) => l.id === form.language);
-  const selectedDialect = DIALECTS.find((d) => d.id === form.dialect);
-  const selectedTone = TONES.find((t) => t.id === form.tone);
-  const selectedSpendTier = SPEND_TIERS.find((t) => t.id === form.spendTier);
-  const selectedObjective = OBJECTIVES.find((o) => o.id === form.objective);
+const OBJECTIVE_ICONS = {
+  roas: TrendingUp,
+  conversions: Target,
+  ltv: Layers,
+  custom: Brain,
+};
 
-  const selectedAges = AGE_BANDS.filter((band) => form.ages[band.id]).map((b) => b.label);
-  const selectedInterests = Object.keys(form.interests).filter((k) => form.interests[k]);
-  const selectedChannels = CHANNELS.filter((ch) => form.channels[ch.id]);
+export function ReviewStep({ form }) {
+  const market = MARKETS.find((m) => m.id === form.market);
+  const gender = GENDERS.find((g) => g.id === form.gender);
+  const language = LANGUAGES.find((l) => l.id === form.language);
+  const dialect = DIALECTS.find((d) => d.id === form.dialect);
+  const tone = TONES.find((t) => t.id === form.tone);
+  const spendTier = SPEND_TIERS.find((t) => t.id === form.spendTier);
+  const objective = OBJECTIVES.find((o) => o.id === form.objective);
 
-  const sections = [
-    {
-      step: 1,
-      title: 'Workspace identity',
-      items: [
-        { label: 'Brand name', value: form.name || '—' },
-        { label: 'Market', value: selectedMarket?.label || '—' },
-        { label: 'City', value: form.city || '—' },
-        { label: 'Tag', value: form.tag || 'None' },
-      ],
-    },
-    {
-      step: 2,
-      title: 'Audience',
-      items: [
-        { label: 'Age range', value: selectedAges.join(', ') || '—' },
-        { label: 'Gender lean', value: selectedGender?.label || '—' },
-        { label: 'Interests', value: selectedInterests.join(', ') || 'None' },
-      ],
-    },
-    {
-      step: 3,
-      title: 'Brand voice',
-      items: [
-        { label: 'Language', value: selectedLanguage?.label || '—' },
-        { label: 'Dialect', value: selectedDialect ? `${selectedDialect.label} (${selectedDialect.sub})` : '—' },
-        { label: 'Tone', value: selectedTone?.label || '—' },
-      ],
-    },
-    {
-      step: 4,
-      title: 'Ad channels',
-      items: [
-        { label: 'Platforms', value: selectedChannels.map((ch) => ch.label).join(', ') || 'None selected' },
-      ],
-    },
-    {
-      step: 5,
-      title: 'Budget & objective',
-      items: [
-        { label: 'Monthly spend', value: selectedSpendTier?.label || '—' },
-        { label: 'Objective', value: selectedObjective?.label || '—' },
-        ...(form.objective === 'custom' && form.customObjective
-          ? [{ label: 'Custom objective', value: form.customObjective }]
-          : []),
-      ],
-    },
-  ];
+  const ages = AGE_BANDS.filter((band) => form.ages[band.id]).map((b) => b.label);
+  const interests = Object.keys(form.interests).filter((k) => form.interests[k]);
+  const channels = CHANNELS.filter((ch) => form.channels[ch.id]).map((c) => c.label);
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-3">
-        <CheckCircle2 className="h-6 w-6 text-lumi-gold" />
-        <BigHeader className="mb-0">Ready to go</BigHeader>
-      </div>
-
-      <Lede className="mb-8">
-        Review your setup. You can change any of these settings later from your workspace.
+      <Eyebrow>Step 8 · Review</Eyebrow>
+      <BigHeader>One last look.</BigHeader>
+      <Lede>
+        Confirm the setup. Lumi will bootstrap with this context and start watching the moment you launch.
       </Lede>
 
-      <div className="space-y-4">
-        {sections.map((section) => (
-          <div
-            key={section.step}
-            className="p-4 rounded-lg bg-white border border-surface-border"
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="flex-shrink-0 w-5 h-5 rounded-full bg-lumi-gold/20 flex items-center justify-center text-lumi-gold font-mono text-[10px] font-bold">
-                  {section.step}
-                </div>
-                <h3 className="text-sm font-semibold text-dark-primary">
-                  {section.title}
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => onEdit(section.step)}
-                className="inline-flex items-center gap-1 text-xs text-lumi-gold hover:text-lumi-deep transition-colors"
-              >
-                <Edit2 className="h-3 w-3" />
-                Edit
-              </button>
-            </div>
-
-            <dl className="space-y-2">
-              {section.items.map((item, i) => (
-                <div key={i} className="flex justify-between gap-4 text-xs">
-                  <dt className="text-dark-tertiary font-medium">{item.label}</dt>
-                  <dd className="text-dark-secondary text-right">{item.value}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
-        ))}
+      <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-3xl">
+        <ReviewRow label="Brand" icon={Layout} value={form.name || '—'} />
+        <ReviewRow label="Market" icon={Globe} value={`${market?.label || '—'} · ${form.city}`} />
+        <ReviewRow
+          label="Audience"
+          icon={Eye}
+          value={`${ages.join(', ') || '—'} · ${gender?.label || '—'}`}
+          sub={interests.join(' · ')}
+          wide
+        />
+        <ReviewRow
+          label="Voice"
+          icon={Send}
+          value={`${language?.label || '—'} · ${dialect?.label || '—'}`}
+          sub={tone?.label}
+        />
+        <ReviewRow label="Channels" icon={Wifi} value={channels.join(' · ') || '—'} />
+        <ReviewRow label="Spend" icon={BarChart} value={`${form.currency} ${spendTier?.label || ''}`} />
+        <ReviewRow
+          label="Objective"
+          icon={OBJECTIVE_ICONS[form.objective] || Target}
+          value={objective?.label || '—'}
+          sub={form.objective === 'custom' ? form.customObjective : objective?.sub}
+          wide
+        />
       </div>
 
-      <div className="mt-6 p-4 rounded-lg bg-lumi-gold/10 border border-lumi-gold/30">
-        <div className="text-sm font-medium text-dark-primary mb-1">
-          What happens next?
+      <div className="mt-6 p-5 rounded-xl bg-lumi-accent/6 border border-lumi-accent/30 flex gap-3.5 items-start max-w-3xl">
+        <Sparkles className="w-5 h-5 text-lumi-accent flex-shrink-0 mt-0.5" strokeWidth={1.5} />
+        <div>
+          <div className="font-display text-sm font-bold text-dark-base">
+            Lumi&apos;s first sweep starts on launch.
+          </div>
+          <div className="text-xs text-dark-soft mt-1 leading-relaxed">
+            We&apos;ll scan your last 14 days and stamp every verdict with cash impact. Lumi will be tuned to
+            your audience, voice, and objective from day one.
+          </div>
         </div>
-        <ol className="text-xs text-dark-secondary leading-relaxed space-y-1 list-decimal list-inside">
-          <li>We&apos;ll create your workspace with these settings</li>
-          <li>You&apos;ll connect your ad accounts (Meta, Google, etc.)</li>
-          <li>Lumi starts analyzing campaigns and generating verdicts</li>
-        </ol>
+      </div>
+    </div>
+  );
+}
+
+function ReviewRow({ label, value, sub, icon: Icon, wide }) {
+  return (
+    <div
+      className={`${
+        wide ? 'sm:col-span-2' : ''
+      } flex gap-3 p-3.5 bg-surface-card border border-surface-border rounded-xl`}
+    >
+      <div className="w-7 h-7 rounded-lg bg-lumi-accent/10 text-lumi-accent flex items-center justify-center flex-shrink-0">
+        <Icon className="w-3.5 h-3.5" strokeWidth={1.5} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-mono text-[10px] tracking-widest uppercase text-dark-muted">
+          {label}
+        </div>
+        <div className="font-display text-sm font-semibold text-dark-base mt-0.5">
+          {value}
+        </div>
+        {sub && (
+          <div className="text-xs text-dark-soft mt-0.5">
+            {sub}
+          </div>
+        )}
       </div>
     </div>
   );
