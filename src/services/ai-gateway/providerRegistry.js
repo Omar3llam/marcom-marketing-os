@@ -18,7 +18,8 @@ import { CAPABILITY, PROVIDER } from './providerTypes.js';
 import { claudeProvider, openaiProvider, higgsfieldProvider } from './providers/index.js';
 
 export const PROVIDER_REGISTRY = Object.freeze({
-  // Copy generation → Claude
+  // Copy generation → Claude (better at hooks + strategic copy)
+  // TODO: Migrate to OpenAI GPT-4o-mini for cost savings (need to implement methods first)
   [CAPABILITY.GENERATE_HOOKS]: {
     provider: PROVIDER.CLAUDE,
     method: claudeProvider.generateHooks,
@@ -29,7 +30,7 @@ export const PROVIDER_REGISTRY = Object.freeze({
     method: claudeProvider.generateCopy,
   },
 
-  // Captions → OpenAI (better conversational tone)
+  // Captions → OpenAI (better conversational tone + cheaper with GPT-4o-mini)
   [CAPABILITY.GENERATE_CAPTIONS]: {
     provider: PROVIDER.OPENAI,
     method: openaiProvider.generateCaptions,

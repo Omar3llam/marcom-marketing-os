@@ -32,7 +32,9 @@ function getClient() {
   return openai;
 }
 
-const DEFAULT_MODEL = MODEL.GPT_4O;
+// Use GPT-4o-mini for content generation (70% cheaper than GPT-4o)
+// Switch to GPT_4O via env var if higher quality needed
+const DEFAULT_MODEL = process.env.OPENAI_MODEL || MODEL.GPT_4O_MINI;
 const DEFAULT_MAX_TOKENS = 2048;
 const DEFAULT_TIMEOUT = 30000; // 30s
 
