@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Menu, X } from 'lucide-react';
-import { Hero, MockOSWindow } from './HeroSection.jsx';
+import { Hero } from './HeroSection.jsx';
+import { TrustedBy } from './SocialProofSection.jsx';
 import { CapabilitiesGrid, HowItWorks } from './FeaturesSection.jsx';
 import { Pricing } from './PricingSection.jsx';
 import { BottomCTA } from './CTASection.jsx';
@@ -11,10 +12,10 @@ export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-lumi-bg text-lumi-text">
+    <div className="min-h-screen bg-surface-light text-dark-base">
       <Navbar onCta={() => navigate('/signup')} menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
-      <Hero      onPrimary={() => navigate('/signup')} />
-      <MockOSWindow />
+      <Hero onPrimary={() => navigate('/signup')} />
+      <TrustedBy />
       <CapabilitiesGrid />
       <HowItWorks />
       <Pricing />
@@ -25,26 +26,38 @@ export default function LandingPage() {
 }
 
 function Navbar({ onCta, menuOpen, setMenuOpen }) {
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    window.addEventListener('scroll', onScroll);
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   return (
-    <header className="sticky top-0 z-50 bg-lumi-bg/80 backdrop-blur-md border-b border-lumi-border/50">
-      <nav className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 h-14">
-        <Link to="/" className="flex items-center gap-2" aria-label="Lumi home">
-          <img
-            src="/assets/lumi-mascot.png"
-            alt="Lumi"
-            className="w-7 h-7"
-            style={{ filter: 'drop-shadow(0 2px 4px rgba(246,201,69,0.3))' }}
-          />
-          <span className="font-display font-bold tracking-tight text-lumi-accent">LUMI</span>
-        </Link>
+    <header
+      className={`sticky top-0 z-50 transition-all duration-240 ${
+        scrolled
+          ? 'bg-surface-light/82 backdrop-blur-xl border-b border-surface-border'
+          : 'bg-transparent border-b border-transparent'
+      }`}
+    >
+      <nav
+        className={`max-w-7xl mx-auto flex items-center justify-between gap-8 transition-all duration-240 ${
+          scrolled ? 'px-4 sm:px-6 py-3' : 'px-4 sm:px-6 py-5'
+        }`}
+      >
+        <BrandMark scrolled={scrolled} />
 
         <ul className="hidden md:flex items-center gap-8">
-          {['Features', 'How It Works', 'Pricing'].map((label) => (
+          {['How it works', 'Inside Lumi', 'Pricing'].map((label) => (
             <li key={label}>
               <a
                 href={`#${label.toLowerCase().replace(/\s+/g, '-')}`}
-                className="text-sm font-body text-lumi-muted hover:text-lumi-text transition-colors"
-              >{label}</a>
+                className="font-display text-[13px] font-medium text-dark-soft hover:text-dark-base transition-colors"
+              >
+                {label}
+              </a>
             </li>
           ))}
         </ul>
@@ -52,14 +65,19 @@ function Navbar({ onCta, menuOpen, setMenuOpen }) {
         <div className="hidden md:flex items-center gap-2">
           <Link
             to="/login"
-            className="text-sm font-display font-medium text-lumi-muted hover:text-lumi-text px-3 py-1.5 rounded-lg"
-          >Log in</Link>
+            className="font-display text-[13px] font-medium text-dark-muted hover:text-dark-base px-3 py-1.5 rounded-lg transition-colors"
+          >
+            Sign in
+          </Link>
           <button
             type="button"
             onClick={onCta}
-            className="bg-lumi-accent text-lumi-bg font-display font-semibold hover:bg-lumi-accent-hover shadow-accent-glow px-4 py-2 rounded-xl text-sm inline-flex items-center gap-1.5 transition-all"
+            className={`btn-gold inline-flex items-center gap-1.5 text-[13px] rounded-xl transition-all ${
+              scrolled ? 'px-4 py-2' : 'px-4 py-2.5'
+            }`}
           >
-            Get Started <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
+            Start free
+            <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
           </button>
         </div>
 
@@ -67,33 +85,42 @@ function Navbar({ onCta, menuOpen, setMenuOpen }) {
           type="button"
           aria-label={menuOpen ? 'Close menu' : 'Open menu'}
           onClick={() => setMenuOpen((o) => !o)}
-          className="md:hidden p-2 text-lumi-muted hover:text-lumi-text"
+          className="md:hidden p-2 text-dark-muted hover:text-dark-base"
         >
           {menuOpen ? <X className="w-5 h-5" strokeWidth={1.5} /> : <Menu className="w-5 h-5" strokeWidth={1.5} />}
         </button>
       </nav>
 
       {menuOpen && (
-        <div className="md:hidden border-t border-lumi-border bg-lumi-surface animate-fade-in">
+        <div className="md:hidden border-t border-surface-border bg-surface-card animate-fade-in">
           <div className="flex flex-col gap-1 p-4">
-            {['Features', 'How It Works', 'Pricing'].map((label) => (
+            {['How it works', 'Inside Lumi', 'Pricing'].map((label) => (
               <a
                 key={label}
                 href={`#${label.toLowerCase().replace(/\s+/g, '-')}`}
                 onClick={() => setMenuOpen(false)}
-                className="px-3 py-2 text-sm font-display text-lumi-muted hover:text-lumi-text rounded-lg"
-              >{label}</a>
+                className="px-3 py-2 text-sm font-display text-dark-muted hover:text-dark-base rounded-lg"
+              >
+                {label}
+              </a>
             ))}
             <Link
               to="/login"
               onClick={() => setMenuOpen(false)}
-              className="px-3 py-2 text-sm font-display text-lumi-muted hover:text-lumi-text rounded-lg"
-            >Log in</Link>
+              className="px-3 py-2 text-sm font-display text-dark-muted hover:text-dark-base rounded-lg"
+            >
+              Sign in
+            </Link>
             <button
               type="button"
-              onClick={() => { setMenuOpen(false); onCta(); }}
-              className="mt-1 w-full bg-lumi-accent text-lumi-bg font-display font-semibold px-4 py-2 rounded-xl text-sm"
-            >Get Started →</button>
+              onClick={() => {
+                setMenuOpen(false);
+                onCta();
+              }}
+              className="mt-1 w-full btn-gold px-4 py-2 rounded-xl text-sm"
+            >
+              Start free →
+            </button>
           </div>
         </div>
       )}
@@ -101,10 +128,37 @@ function Navbar({ onCta, menuOpen, setMenuOpen }) {
   );
 }
 
+function BrandMark({ scrolled }) {
+  const size = scrolled ? 'sm' : 'md';
+  const fs = size === 'sm' ? 13 : 16;
+
+  return (
+    <Link to="/" className="inline-flex items-center gap-2.5 no-underline">
+      {/* Geometric monogram — concentric ring + dot */}
+      <span className="relative flex-shrink-0" style={{ width: fs + 6, height: fs + 6 }}>
+        <span
+          className="absolute inset-0 rounded-full border-lumi-accent"
+          style={{ borderWidth: '1.5px' }}
+        />
+        <span
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-lumi-accent shadow-gold-glow"
+          style={{ width: fs * 0.35, height: fs * 0.35 }}
+        />
+      </span>
+      <span
+        className="font-display font-bold tracking-tight text-dark-base"
+        style={{ fontSize: fs, letterSpacing: '-0.02em' }}
+      >
+        Marcom<span className="text-lumi-accent">AI</span>
+      </span>
+    </Link>
+  );
+}
+
 function Footer() {
   return (
-    <footer className="px-4 sm:px-6 py-8 border-t border-lumi-border/50">
-      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-lumi-subtle font-mono">
+    <footer className="px-4 sm:px-6 py-8 border-t border-surface-border/50">
+      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-dark-subtle font-mono">
         <span>© {new Date().getFullYear()} MARCOM AI</span>
         <span>Lumi · Decision OS</span>
       </div>

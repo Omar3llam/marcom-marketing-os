@@ -1,96 +1,210 @@
-import { Zap, ArrowRight } from 'lucide-react';
-import { cn } from '@/lib/utils.js';
+import { Zap, ArrowRight, Skull, Pause, Rocket } from 'lucide-react';
 import { useReveal } from './useReveal.js';
 
 export function Hero({ onPrimary }) {
+  const kill = <strong className="text-verdict-kill-text font-bold">KILL</strong>;
+  const hold = <strong className="text-verdict-hold-text font-bold">HOLD</strong>;
+  const scale = <strong className="text-verdict-scale-text font-bold">SCALE</strong>;
+
   return (
-    <section className="relative grid-bg min-h-[calc(100vh-3.5rem)] flex flex-col justify-center">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-20">
-        <div className="inline-flex items-center gap-2 bg-lumi-accent-soft border border-lumi-accent/30 text-lumi-accent text-xs font-display font-semibold uppercase tracking-widest px-3 py-1.5 rounded-full">
-          <Zap className="w-3 h-3" strokeWidth={1.5} />
-          NOW LIVE — LUMI AGENT V2
+    <section id="top" className="relative pt-20 pb-24 px-4 sm:px-6">
+      {/* Faint dot grid background */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: 'radial-gradient(rgba(43,43,43,0.05) 1px, transparent 1px)',
+          backgroundSize: '24px 24px',
+          maskImage: 'radial-gradient(ellipse at 50% 30%, black, transparent 75%)',
+          WebkitMaskImage: 'radial-gradient(ellipse at 50% 30%, black, transparent 75%)',
+        }}
+      />
+      {/* Gold blob */}
+      <div
+        className="absolute -top-32 right-[8%] w-[560px] h-[560px] pointer-events-none"
+        style={{
+          background: 'radial-gradient(circle, rgba(246,201,69,0.18), transparent 65%)',
+          filter: 'blur(20px)',
+        }}
+      />
+
+      <div className="max-w-7xl mx-auto grid lg:grid-cols-[1.05fr_0.95fr] gap-20 items-center relative">
+        {/* LEFT */}
+        <div>
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-lumi-accent/10 border border-lumi-accent/28 mb-7">
+            <span className="w-1.5 h-1.5 rounded-full bg-lumi-accent shadow-gold-glow animate-pulse" />
+            <span className="font-mono text-[11px] tracking-[0.1em] uppercase text-lumi-accent font-semibold">
+              New · Lumi v4.3 · Outcome attribution
+            </span>
+          </div>
+
+          <h1 className="font-display font-extrabold tracking-[-0.045em] leading-[0.94] text-lumi-text text-balance text-5xl sm:text-6xl lg:text-7xl xl:text-8xl">
+            Verdicts,<br />
+            not dashboards.
+          </h1>
+
+          <p className="mt-7 text-lg text-dark-soft max-w-[540px] leading-relaxed">
+            Marcom AI builds Lumi — the agent that turns your Meta exports into a sharp call. Drop a CSV, get {kill}, {hold}, or {scale} with the cash impact attached, then watch the real CTR and ROAS roll back in. Built for media buyers across MENA.
+          </p>
+
+          <div className="mt-10 flex flex-wrap items-center gap-4">
+            <button
+              type="button"
+              onClick={onPrimary}
+              className="btn-gold inline-flex items-center gap-2 px-7 py-3.5 text-[15px] rounded-xl shadow-gold-glow hover:shadow-card-hover transition-all"
+            >
+              <Zap className="w-4 h-4" strokeWidth={2} />
+              Launch the live demo
+              <ArrowRight className="w-4 h-4" strokeWidth={2} />
+            </button>
+            <a
+              href="#how"
+              className="btn-ghost inline-flex items-center gap-2 px-5 py-3 text-sm rounded-xl transition-all"
+            >
+              See how it works
+            </a>
+          </div>
+
+          <div className="mt-12 flex flex-wrap items-center gap-7">
+            <MicroStat label="Median verdict" value="18s" />
+            <DividerV />
+            <MicroStat label="Avg verdict ROAS" value="3.8x" />
+            <DividerV />
+            <MicroStat label="Currencies" value="EGP · SAR · AED · KWD" mono />
+          </div>
         </div>
 
-        <h1 className="mt-6 font-display font-bold tracking-tight text-lumi-text text-5xl sm:text-6xl lg:text-7xl leading-[1.05]">
-          <span className="block">Meet Lumi.</span>
-          <span className="block">Your Agentic Marketing</span>
-          <span className="block text-lumi-accent">
-            Decision Engine.<span className="inline-block w-[3px] h-[0.85em] bg-lumi-accent ml-2 align-middle animate-pulse-slow" aria-hidden="true" />
-          </span>
-        </h1>
-
-        <p className="mt-6 max-w-xl text-lumi-muted font-body text-base sm:text-lg leading-relaxed">
-          Drop a URL. Lock your context in 30 seconds. Get SCALE / HOLD / KILL verdicts on every campaign.
-          No consultants. No dashboards. Just decisions.
-        </p>
-
-        <div className="mt-8 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={onPrimary}
-            className="bg-lumi-accent text-lumi-bg font-display font-semibold hover:bg-lumi-accent-hover shadow-accent-glow px-5 py-3 rounded-xl text-sm inline-flex items-center gap-2 transition-all"
-          >
-            Start for free <ArrowRight className="w-4 h-4" strokeWidth={2} />
-          </button>
-          <a
-            href="#how-it-works"
-            className="font-display font-medium text-lumi-muted hover:text-lumi-text border border-lumi-border hover:border-lumi-border-strong px-5 py-3 rounded-xl text-sm transition-colors"
-          >See how it works ↓</a>
-        </div>
+        {/* RIGHT — Hero composition with verdict cards */}
+        <HeroComposition />
       </div>
     </section>
   );
 }
 
-export function MockOSWindow() {
-  const [ref, shown] = useReveal();
+function DividerV() {
+  return <span className="w-px h-8 bg-surface-border-strong" />;
+}
+
+function MicroStat({ label, value, mono }) {
   return (
-    <section ref={ref} className="px-4 sm:px-6 py-20">
-      <div className={cn('max-w-4xl mx-auto', shown && 'animate-slide-up')}>
-        <div className="bg-lumi-surface border border-lumi-border rounded-2xl shadow-modal overflow-hidden">
-          <div className="bg-lumi-elevated border-b border-lumi-border px-4 py-3 flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-signal-kill" aria-hidden="true" />
-            <span className="w-3 h-3 rounded-full bg-signal-hold" aria-hidden="true" />
-            <span className="w-3 h-3 rounded-full bg-signal-scale" aria-hidden="true" />
-            <span className="ml-3 font-display text-sm text-lumi-muted">Lumi OS — Context Lock</span>
-          </div>
+    <div>
+      <div className={`${mono ? 'system-mono tabular-nums' : 'metric-display'} font-bold text-dark-base`}>
+        {value}
+      </div>
+      <div className="font-mono text-[10px] text-dark-muted tracking-[0.1em] uppercase mt-1">
+        {label}
+      </div>
+    </div>
+  );
+}
 
-          <div className="p-6 space-y-3">
-            <div className="font-mono text-sm text-lumi-muted">
-              <span className="text-lumi-subtle mr-2">›</span>
-              marcomaiagency.com
-            </div>
-
-            <div className="bg-lumi-bg border-l-2 border-lumi-accent p-4 rounded-r-xl font-mono text-sm text-lumi-text leading-relaxed whitespace-pre">
-{`CONTEXT LOCK INITIATED
-──────────────────────
-Company:     MARCOM AI
-Industry:    B2B Marketing Agency
-Market:      MENA (EG, SA, UAE)
-Target:      CMOs, Marketing Directors
-Competitors: Identified (3)
-Tone:        Professional-Aggressive`}
-              <div className="mt-3 inline-flex items-center gap-1.5 bg-signal-scale-bg text-signal-scale border border-signal-scale/25 px-2.5 py-1 rounded-full text-xs font-display font-semibold uppercase tracking-wide">
-                <span className="w-1.5 h-1.5 rounded-full bg-signal-scale" /> Locked in 28s
-              </div>
-            </div>
-          </div>
+// ── Hero composition: 3 floating verdict cards ──
+function HeroComposition() {
+  return (
+    <div className="relative h-[540px] hidden lg:block">
+      {/* BACK: Small context card */}
+      <div
+        className="absolute top-0 right-0 w-64 bg-surface-card border border-surface-border rounded-2xl p-4 shadow-card"
+        style={{
+          transform: 'rotate(4deg)',
+          animation: 'float-y 8s ease-in-out infinite',
+        }}
+      >
+        <div className="font-mono text-[9px] tracking-[0.08em] uppercase text-dark-muted mb-3">
+          Context snapshot
         </div>
+        {[
+          { tag: 'CPM', txt: '$14.80 avg', bad: false },
+          { tag: 'CTR', txt: '1.2% TOFU drop', bad: true },
+          { tag: 'GEO', txt: 'Cairo dominant', bad: false },
+        ].map((r) => (
+          <div key={r.tag} className="flex items-center gap-2 py-1 border-t border-dashed border-surface-border">
+            <span className="font-mono text-[9px] font-semibold tracking-[0.08em] px-1.5 py-0.5 rounded bg-lumi-accent/10 text-lumi-accent min-w-[38px] text-center">
+              {r.tag}
+            </span>
+            <span className={`text-[11px] ${r.bad ? 'text-verdict-kill-text' : 'text-dark-soft'}`}>
+              {r.txt}
+            </span>
+          </div>
+        ))}
+      </div>
 
-        <div className="mt-6 bg-lumi-elevated border border-lumi-border rounded-xl px-2 py-3 sm:px-6 grid grid-cols-2 sm:grid-cols-4 divide-x divide-lumi-border">
-          {[
-            ['5',   'AI Modes'],
-            ['18',  'Marketing Tools'],
-            ['30s', 'Context Build'],
-            ['GCC', 'Calibrated'],
-          ].map(([value, label]) => (
-            <div key={label} className="flex flex-col items-center justify-center py-2 px-2 sm:px-4">
-              <div className="font-mono font-bold text-lg text-lumi-accent">{value}</div>
-              <div className="text-xs text-lumi-muted mt-0.5 text-center">{label}</div>
-            </div>
-          ))}
+      {/* MIDDLE: Big verdict KILL card */}
+      <div
+        className="absolute top-24 left-0 w-96 bg-surface-card border border-signal-kill/20 rounded-2xl p-6 shadow-panel"
+        style={{
+          transform: 'rotate(-1.5deg)',
+          animation: 'float-y 6s ease-in-out infinite 0.6s',
+          boxShadow: '0 28px 56px rgba(0,0,0,0.10), 0 0 40px rgba(239,68,68,0.08)',
+        }}
+      >
+        <div className="flex justify-between items-center mb-3.5">
+          <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-lumi-accent font-semibold">
+            Verdict locked · 92%
+          </span>
+          <StagePill stage="DYING" />
+        </div>
+        <div className="flex items-baseline gap-3.5 mb-2.5">
+          <Skull className="w-9 h-9 text-verdict-kill-text" strokeWidth={1.5} />
+          <span className="font-display text-7xl font-extrabold tracking-[-0.05em] leading-none text-verdict-kill-text">
+            KILL
+          </span>
+        </div>
+        <div className="font-display text-base font-semibold text-dark-base mb-4 leading-snug">
+          Stop the bleed.<br />Reallocate to PMax warm.
+        </div>
+        <div className="p-3.5 bg-verdict-kill-bg rounded-lg">
+          <div className="font-mono text-[10px] text-dark-muted tracking-[0.08em] uppercase">
+            Financial impact
+          </div>
+          <div className="metric-display text-dark-base mt-0.5">
+            $1,180 / wk
+          </div>
+          <div className="font-mono text-[11px] text-verdict-kill-text font-semibold mt-0.5">
+            saved by killing now
+          </div>
         </div>
       </div>
-    </section>
+
+      {/* FRONT: Radar tick card */}
+      <div
+        className="absolute bottom-8 right-10 w-58 bg-surface-card border border-surface-border rounded-xl p-4.5 shadow-card"
+        style={{ transform: 'rotate(2deg)' }}
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <span className="w-1.5 h-1.5 rounded-full bg-signal-scale shadow-scale-glow animate-pulse" />
+          <span className="font-mono text-[10px] tracking-[0.08em] uppercase text-signal-scale font-semibold">
+            Watching · 14 ad sets
+          </span>
+        </div>
+        <div className="flex gap-1 items-end h-9">
+          {[12, 18, 10, 22, 28, 16, 30, 24, 18, 32, 26, 36, 20].map((h, i) => (
+            <div
+              key={i}
+              className={`flex-1 rounded-sm ${i === 12 ? 'bg-lumi-accent' : 'bg-surface-border-strong'}`}
+              style={{ height: `${h}px` }}
+            />
+          ))}
+        </div>
+        <div className="flex justify-between mt-2.5 text-[10px] text-dark-muted font-mono">
+          <span>Mon</span>
+          <span>Sun</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StagePill({ stage }) {
+  const colors = {
+    DYING: 'bg-stage-dying/10 text-stage-dying border-stage-dying/30',
+    FATIGUED: 'bg-stage-fatigued/10 text-stage-fatigued border-stage-fatigued/30',
+    TESTING: 'bg-stage-testing/10 text-stage-testing border-stage-testing/30',
+    STABLE: 'bg-stage-stable/10 text-stage-stable border-stage-stable/30',
+    SCALING: 'bg-stage-scaling/10 text-stage-scaling border-stage-scaling/30',
+  };
+  return (
+    <span className={`font-mono text-[9px] tracking-[0.08em] uppercase font-semibold px-2 py-1 rounded border ${colors[stage]}`}>
+      {stage}
+    </span>
   );
 }
