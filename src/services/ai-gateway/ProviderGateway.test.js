@@ -362,12 +362,12 @@ describe('ProviderGateway — capability routing', () => {
     expect(openaiProvider.generateHooks).toHaveBeenCalledTimes(1);
   });
 
-  it('should route GENERATE_COPY to Claude', async () => {
-    claudeProvider.generateCopy.mockResolvedValue({
+  it('should route GENERATE_COPY to OpenAI', async () => {
+    openaiProvider.generateCopy.mockResolvedValue({
       success: true,
       output: { hook: 'test', body: 'test', cta: 'test' },
       artifacts: [],
-      metadata: { provider: 'CLAUDE', model: 'test', tokens: 0, latency: 0 },
+      metadata: { provider: 'OPENAI', model: 'gpt-4o-mini', tokens: 0, latency: 0 },
     });
 
     const result = await execute({
@@ -376,7 +376,7 @@ describe('ProviderGateway — capability routing', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(claudeProvider.generateCopy).toHaveBeenCalledTimes(1);
+    expect(openaiProvider.generateCopy).toHaveBeenCalledTimes(1);
   });
 
   it('should route VALIDATE_CONTENT to Claude', async () => {
