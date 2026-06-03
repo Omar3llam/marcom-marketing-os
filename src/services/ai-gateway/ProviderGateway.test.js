@@ -70,7 +70,7 @@ vi.mock('./providers/higgsfieldProvider.js', () => ({
 import { execute }                   from './ProviderGateway.js';
 import { CAPABILITY, ERROR_TYPE }    from './providerTypes.js';
 import { MOCK_RESPONSES }            from './fixtures/providerResponses.js';
-import { claudeProvider }            from './providers/index.js';
+import { claudeProvider, openaiProvider } from './providers/index.js';
 
 // ============================================================
 // Input Validation
@@ -125,7 +125,7 @@ describe('ProviderGateway — successful execution', () => {
   });
 
   it('should execute GENERATE_HOOKS successfully', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
 
     const result = await execute({
       capability: CAPABILITY.GENERATE_HOOKS,
@@ -147,7 +147,7 @@ describe('ProviderGateway — successful execution', () => {
   });
 
   it('should include request ID in metadata', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
 
     const result = await execute({
       capability: CAPABILITY.GENERATE_HOOKS,
@@ -161,7 +161,7 @@ describe('ProviderGateway — successful execution', () => {
   });
 
   it('should generate deterministic request IDs', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
 
     const input = { diagnosis: 'CREATIVE_FATIGUE', brandVoice: 'professional' };
 
@@ -172,7 +172,7 @@ describe('ProviderGateway — successful execution', () => {
   });
 
   it('should propagate provider metadata', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
 
     const result = await execute({
       capability: CAPABILITY.GENERATE_HOOKS,
@@ -196,7 +196,7 @@ describe('ProviderGateway — error handling', () => {
   });
 
   it('should handle rate limit error', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.RATE_LIMIT_ERROR);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.RATE_LIMIT_ERROR);
 
     const result = await execute({
       capability: CAPABILITY.GENERATE_HOOKS,
@@ -208,7 +208,7 @@ describe('ProviderGateway — error handling', () => {
   });
 
   it('should handle timeout error', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.TIMEOUT_ERROR);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.TIMEOUT_ERROR);
 
     const result = await execute({
       capability: CAPABILITY.GENERATE_HOOKS,
@@ -220,7 +220,7 @@ describe('ProviderGateway — error handling', () => {
   });
 
   it('should handle auth error', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.AUTH_ERROR);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.AUTH_ERROR);
 
     const result = await execute({
       capability: CAPABILITY.GENERATE_HOOKS,
@@ -232,7 +232,7 @@ describe('ProviderGateway — error handling', () => {
   });
 
   it('should handle invalid response error', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.INVALID_RESPONSE_ERROR);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.INVALID_RESPONSE_ERROR);
 
     const result = await execute({
       capability: CAPABILITY.GENERATE_HOOKS,
@@ -244,7 +244,7 @@ describe('ProviderGateway — error handling', () => {
   });
 
   it('should include error metadata', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.AUTH_ERROR);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.AUTH_ERROR);
 
     const result = await execute({
       capability: CAPABILITY.GENERATE_HOOKS,
@@ -268,7 +268,7 @@ describe('ProviderGateway — retry logic', () => {
   });
 
   it('should retry on rate limit error', async () => {
-    claudeProvider.generateHooks
+    openaiProvider.generateHooks
       .mockResolvedValueOnce(MOCK_RESPONSES.RATE_LIMIT_ERROR)
       .mockResolvedValueOnce(MOCK_RESPONSES.RATE_LIMIT_ERROR)
       .mockResolvedValueOnce(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
@@ -280,11 +280,11 @@ describe('ProviderGateway — retry logic', () => {
 
     expect(result.success).toBe(true);
     expect(result.metadata.attempt).toBe(3);
-    expect(claudeProvider.generateHooks).toHaveBeenCalledTimes(3);
+    expect(openaiProvider.generateHooks).toHaveBeenCalledTimes(3);
   });
 
   it('should retry on timeout error', async () => {
-    claudeProvider.generateHooks
+    openaiProvider.generateHooks
       .mockResolvedValueOnce(MOCK_RESPONSES.TIMEOUT_ERROR)
       .mockResolvedValueOnce(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
 
@@ -295,11 +295,11 @@ describe('ProviderGateway — retry logic', () => {
 
     expect(result.success).toBe(true);
     expect(result.metadata.attempt).toBe(2);
-    expect(claudeProvider.generateHooks).toHaveBeenCalledTimes(2);
+    expect(openaiProvider.generateHooks).toHaveBeenCalledTimes(2);
   });
 
   it('should NOT retry on auth error', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.AUTH_ERROR);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.AUTH_ERROR);
 
     const result = await execute({
       capability: CAPABILITY.GENERATE_HOOKS,
@@ -309,11 +309,11 @@ describe('ProviderGateway — retry logic', () => {
     expect(result.success).toBe(false);
     expect(result.error.type).toBe(ERROR_TYPE.AUTH_ERROR);
     expect(result.metadata.attempt).toBe(1);
-    expect(claudeProvider.generateHooks).toHaveBeenCalledTimes(1);
+    expect(openaiProvider.generateHooks).toHaveBeenCalledTimes(1);
   });
 
   it('should NOT retry on invalid response error', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.INVALID_RESPONSE_ERROR);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.INVALID_RESPONSE_ERROR);
 
     const result = await execute({
       capability: CAPABILITY.GENERATE_HOOKS,
@@ -323,11 +323,11 @@ describe('ProviderGateway — retry logic', () => {
     expect(result.success).toBe(false);
     expect(result.error.type).toBe(ERROR_TYPE.INVALID_RESPONSE);
     expect(result.metadata.attempt).toBe(1);
-    expect(claudeProvider.generateHooks).toHaveBeenCalledTimes(1);
+    expect(openaiProvider.generateHooks).toHaveBeenCalledTimes(1);
   });
 
   it('should stop after max retries', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.RATE_LIMIT_ERROR);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES.RATE_LIMIT_ERROR);
 
     const result = await execute({
       capability: CAPABILITY.GENERATE_HOOKS,
@@ -337,7 +337,7 @@ describe('ProviderGateway — retry logic', () => {
     expect(result.success).toBe(false);
     expect(result.error.type).toBe(ERROR_TYPE.RATE_LIMIT);
     expect(result.metadata.attempt).toBe(3);
-    expect(claudeProvider.generateHooks).toHaveBeenCalledTimes(3);
+    expect(openaiProvider.generateHooks).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -351,7 +351,7 @@ describe('ProviderGateway — capability routing', () => {
   });
 
   it('should route GENERATE_HOOKS to Claude', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
 
     const result = await execute({
       capability: CAPABILITY.GENERATE_HOOKS,
@@ -359,7 +359,7 @@ describe('ProviderGateway — capability routing', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(claudeProvider.generateHooks).toHaveBeenCalledTimes(1);
+    expect(openaiProvider.generateHooks).toHaveBeenCalledTimes(1);
   });
 
   it('should route GENERATE_COPY to Claude', async () => {
@@ -407,7 +407,7 @@ describe('ProviderGateway — determinism', () => {
   });
 
   it('should generate same request ID for same input', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
 
     const input = { diagnosis: 'CREATIVE_FATIGUE', brandVoice: 'professional' };
 
@@ -418,7 +418,7 @@ describe('ProviderGateway — determinism', () => {
   });
 
   it('should generate different request IDs for different inputs', async () => {
-    claudeProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
+    openaiProvider.generateHooks.mockResolvedValue(MOCK_RESPONSES[CAPABILITY.GENERATE_HOOKS]);
 
     const result1 = await execute({
       capability: CAPABILITY.GENERATE_HOOKS,
