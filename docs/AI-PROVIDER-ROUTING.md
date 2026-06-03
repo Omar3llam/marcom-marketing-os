@@ -14,27 +14,27 @@ MARCOM uses an intelligent AI gateway that routes tasks to different providers b
 
 | Task | Provider | Model | Cost |
 |------|----------|-------|------|
-| Hooks | Claude | Sonnet 4.5 | $$$ |
-| Copy | Claude | Sonnet 4.5 | $$$ |
+| **Hooks** | **OpenAI** | **GPT-4o-mini** | **$** |
+| **Copy** | **OpenAI** | **GPT-4o-mini** | **$** |
 | **Captions** | **OpenAI** | **GPT-4o-mini** | **$** |
 | Strategy | Claude | Sonnet 4.5 | $$$ |
 | Audience | Claude | Sonnet 4.5 | $$$ |
 | Analysis | Claude | Sonnet 4.5 | $$$ |
-| Visual Prompts | OpenAI | GPT-4o | $$ |
+| **Visual Prompts** | **OpenAI** | **GPT-4o-mini** | **$** |
 
 ---
 
 ## Recommended Routing (Cost Optimized)
 
-| Task | Current | Recommended | Savings |
-|------|---------|-------------|---------|
-| Hooks | Claude Sonnet | OpenAI GPT-4o-mini | ~70% |
-| Copy | Claude Sonnet | OpenAI GPT-4o-mini | ~70% |
-| Captions | OpenAI GPT-4o-mini | ✅ Already optimized | — |
-| Strategy | Claude Sonnet | ✅ Keep Claude | — |
-| Audience | Claude Sonnet | ✅ Keep Claude | — |
-| Analysis | Claude Sonnet | ✅ Keep Claude | — |
-| Visual Prompts | OpenAI GPT-4o | OpenAI GPT-4o-mini | ~70% |
+| Task | Status | Provider | Savings |
+|------|--------|----------|---------|
+| Hooks | ✅ Optimized | OpenAI GPT-4o-mini | ~70% |
+| Copy | ✅ Optimized | OpenAI GPT-4o-mini | ~70% |
+| Captions | ✅ Optimized | OpenAI GPT-4o-mini | ~70% |
+| Strategy | ✅ Keep Claude | Claude Sonnet | — |
+| Audience | ✅ Keep Claude | Claude Sonnet | — |
+| Analysis | ✅ Keep Claude | Claude Sonnet | — |
+| Visual Prompts | ✅ Optimized | OpenAI GPT-4o-mini | ~70% |
 
 ### Cost Impact
 
@@ -88,13 +88,13 @@ OPENAI_MODEL=gpt-4o-mini
 
 ### Content Tasks (Cheap: OpenAI GPT-4o-mini)
 
-✅ **Already routed to OpenAI:**
+✅ **Routed to OpenAI GPT-4o-mini:**
+- Hooks (ad hooks, CTAs)
+- Copy (full ad copy, landing pages)
 - Captions (social media, ad descriptions)
 - Visual prompts (DALL·E, Midjourney)
 
-❌ **Still routed to Claude (needs implementation):**
-- Hooks (ad hooks, CTAs)
-- Copy (full ad copy, landing pages)
+⏳ **Future content tasks:**
 - Email copy
 - Carousel content
 
@@ -127,31 +127,36 @@ COST_WEIGHT=0.5
 - Existing OpenAI routes (captions, visual prompts) will use cost optimization
 - No code changes required
 
-### Phase 2: Add OpenAI Content Methods (Next Sprint)
+### Phase 2: Add OpenAI Content Methods ✅ COMPLETE
 
-**Files to update:**
-- `src/services/ai-gateway/providers/openaiProvider.js`
+**Status:** ✅ Implemented on 2026-06-03
 
-**Methods to add:**
+**Files updated:**
+- ✅ `src/services/ai-gateway/providers/openaiProvider.js` — Added `generateHooks()` and `generateCopy()` methods
+- ✅ `src/services/ai-gateway/providerRegistry.js` — Updated routing to use OpenAI for hooks and copy
+
+**Methods added:**
 ```javascript
-export async function generateHooks(input) { ... }
-export async function generateCopy(input) { ... }
-export async function generateEmailCopy(input) { ... }
+export async function generateHooks(input, decisionContext) { ... }
+export async function generateCopy(input, decisionContext) { ... }
 ```
 
-**Update routing:**
-- `src/services/ai-gateway/providerRegistry.js`
-
+**Routing updated:**
 ```javascript
 [CAPABILITY.GENERATE_HOOKS]: {
   provider: PROVIDER.OPENAI,  // Changed from CLAUDE
   method: openaiProvider.generateHooks,
 },
+[CAPABILITY.GENERATE_COPY]: {
+  provider: PROVIDER.OPENAI,  // Changed from CLAUDE
+  method: openaiProvider.generateCopy,
+},
 ```
 
 **Impact:**
-- 70% cost reduction on content generation
-- Estimated savings: $500-1000/month (depends on volume)
+- ✅ 70% cost reduction on content generation
+- ✅ All content tasks now use GPT-4o-mini ($0.15/1M vs Claude $3.00/1M)
+- ✅ Estimated savings: $500-1000/month (depends on volume)
 
 ### Phase 3: Performance-Based Auto-Switching (Future)
 
@@ -297,10 +302,11 @@ const result = await execute(CAPABILITY.GENERATE_HOOKS, input, {
 
 ## Next Steps
 
-1. ✅ **Immediate:** Set environment variables for cost optimization
-2. ⏳ **Next Sprint:** Implement OpenAI content methods (hooks, copy)
+1. ✅ **COMPLETE:** Set environment variables for cost optimization
+2. ✅ **COMPLETE:** Implement OpenAI content methods (hooks, copy)
 3. ⏳ **Future:** Add Settings UI for provider configuration
 4. ⏳ **Future:** Add DeepSeek/Gemini as additional providers
+5. ⏳ **Future:** Implement email copy and carousel content methods
 
 ---
 

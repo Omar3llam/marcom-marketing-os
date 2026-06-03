@@ -4,6 +4,8 @@
 // Implements AI capabilities using GPT-4o.
 //
 // CAPABILITIES:
+//   - generateHooks (ad hooks, CTAs)
+//   - generateCopy (full ad copy)
 //   - generateCaptions (optimized for creative + conversational)
 //   - generateVisualPrompt (DALL·E-ready prompts)
 //   - summarizeCreative (creative brief summaries)
@@ -131,6 +133,82 @@ function parseJSON(text) {
 // ============================================================
 // Capability implementations
 // ============================================================
+
+export async function generateHooks(input, decisionContext = {}) {
+  const systemPrompt = getSystemPrompt('CREATIVE_COPYWRITER');
+  const userPrompt = buildCopyPrompt('GENERATE_HOOKS', input, decisionContext);
+
+  const result = await callOpenAI({ systemPrompt, userPrompt, maxTokens: 1024 });
+
+  if (!result.success) {
+    return result;
+  }
+
+  const parsed = parseJSON(result.text);
+  if (!parsed || !Array.isArray(parsed.hooks)) {
+    return {
+      success: false,
+      error: {
+        type: ERROR_TYPE.INVALID_RESPONSE,
+        message: 'Failed to parse hooks response',
+      },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: {
+      hooks: parsed.hooks,
+      count: parsed.hooks.length,
+    },
+    artifacts: parsed.hooks.map((h, index) => ({
+      type: 'hook',
+      id: `hook_${index}`,
+      content: h.hook || h,
+    })),
+    metadata: result.metadata,
+  };
+}
+
+export async function generateCopy(input, decisionContext = {}) {
+  const systemPrompt = getSystemPrompt('CREATIVE_COPYWRITER');
+  const userPrompt = buildCopyPrompt('GENERATE_COPY', input, decisionContext);
+
+  const result = await callOpenAI({ systemPrompt, userPrompt, maxTokens: 2048 });
+
+  if (!result.success) {
+    return result;
+  }
+
+  const parsed = parseJSON(result.text);
+  if (!parsed || !parsed.hook) {
+    return {
+      success: false,
+      error: {
+        type: ERROR_TYPE.INVALID_RESPONSE,
+        message: 'Failed to parse copy generation response',
+      },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: {
+      hook: parsed.hook,
+      body: parsed.body,
+      cta: parsed.cta,
+      rationale: parsed.rationale,
+    },
+    artifacts: [
+      { type: 'hook', id: 'hook', content: parsed.hook },
+      { type: 'body', id: 'body', content: parsed.body },
+      { type: 'cta', id: 'cta', content: parsed.cta },
+    ],
+    metadata: result.metadata,
+  };
+}
 
 export async function generateCaptions(input) {
   const systemPrompt = getSystemPrompt('CREATIVE_COPYWRITER');

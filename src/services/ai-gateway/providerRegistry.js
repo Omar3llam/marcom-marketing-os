@@ -4,10 +4,10 @@
 // Maps each CAPABILITY to its provider and method.
 //
 // ROUTING RULES:
-//   - Copy generation → Claude (better at hooks/copy)
-//   - Captions → OpenAI (better at conversational tone)
+//   - Copy generation → OpenAI GPT-4o-mini (70% cheaper, good quality)
+//   - Captions → OpenAI GPT-4o-mini (better at conversational tone)
 //   - Strategy → Claude (better at analysis)
-//   - Visual prompts → OpenAI (optimized for DALL·E)
+//   - Visual prompts → OpenAI GPT-4o-mini (optimized for DALL·E)
 //   - Video prompts → Higgsfield
 //
 // SWAPPABLE:
@@ -18,16 +18,15 @@ import { CAPABILITY, PROVIDER } from './providerTypes.js';
 import { claudeProvider, openaiProvider, higgsfieldProvider } from './providers/index.js';
 
 export const PROVIDER_REGISTRY = Object.freeze({
-  // Copy generation → Claude (better at hooks + strategic copy)
-  // TODO: Migrate to OpenAI GPT-4o-mini for cost savings (need to implement methods first)
+  // Copy generation → OpenAI GPT-4o-mini (70% cheaper than Claude)
   [CAPABILITY.GENERATE_HOOKS]: {
-    provider: PROVIDER.CLAUDE,
-    method: claudeProvider.generateHooks,
+    provider: PROVIDER.OPENAI,
+    method: openaiProvider.generateHooks,
   },
 
   [CAPABILITY.GENERATE_COPY]: {
-    provider: PROVIDER.CLAUDE,
-    method: claudeProvider.generateCopy,
+    provider: PROVIDER.OPENAI,
+    method: openaiProvider.generateCopy,
   },
 
   // Captions → OpenAI (better conversational tone + cheaper with GPT-4o-mini)
@@ -112,6 +111,8 @@ const PROVIDER_METHOD_MAP = Object.freeze({
     [CAPABILITY.GENERATE_VISUAL_BRIEF]: claudeProvider.generateVisualBrief,
   },
   [PROVIDER.OPENAI]: {
+    [CAPABILITY.GENERATE_HOOKS]: openaiProvider.generateHooks,
+    [CAPABILITY.GENERATE_COPY]: openaiProvider.generateCopy,
     [CAPABILITY.GENERATE_CAPTIONS]: openaiProvider.generateCaptions,
     [CAPABILITY.GENERATE_VISUAL_PROMPT]: openaiProvider.generateVisualPrompt,
   },
