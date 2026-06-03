@@ -152,7 +152,6 @@ export async function calculateProviderScore(provider, capability, options = {})
     select: {
       decision: true,
       reviewedAt: true,
-      executionCost: true,
     },
   });
 
@@ -266,9 +265,11 @@ export async function calculateProviderScore(provider, capability, options = {})
     : 0;
 
   // 6. Calculate cost efficiency (inverse of cost per approval)
-  const totalCost = approvalDecisions.reduce((sum, d) => sum + (d.executionCost || 0), 0);
+  // NOTE: executionCost field not yet in ApprovalDecision schema
+  // TODO: Add executionCost tracking in future PR for full cost optimization
+  const totalCost = 0; // Cost tracking not yet implemented
   const approvedCount = approvalDecisions.filter(d => d.decision === 'APPROVED').length;
-  const costPerApproval = approvedCount > 0 ? totalCost / approvedCount : Infinity;
+  const costPerApproval = totalCost > 0 && approvedCount > 0 ? totalCost / approvedCount : 0;
 
   // Normalize cost efficiency (lower cost = higher score)
   // Assume cost per approval range: $0.01 - $0.50

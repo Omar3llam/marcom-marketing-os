@@ -56,6 +56,8 @@ vi.mock('./providers/claudeProvider.js', () => ({
 }));
 
 vi.mock('./providers/openaiProvider.js', () => ({
+  generateHooks: vi.fn(),
+  generateCopy: vi.fn(),
   generateCaptions: vi.fn(),
   generateVisualPrompt: vi.fn(),
   summarizeCreative: vi.fn(),
