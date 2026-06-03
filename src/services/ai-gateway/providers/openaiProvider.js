@@ -34,9 +34,23 @@ function getClient() {
   return openai;
 }
 
-// Use GPT-4o-mini for content generation (70% cheaper than GPT-4o)
-// Switch to GPT_4O via env var if higher quality needed
-const DEFAULT_MODEL = process.env.OPENAI_MODEL || MODEL.GPT_4O_MINI;
+// ============================================================
+// Model Configuration — Quality vs Cost Balance
+// ============================================================
+// CONTENT_MODEL: Used for hooks, copy, headlines (quality matters)
+// UTILITY_MODEL: Used for captions, visual prompts (speed matters)
+//
+// Environment Variables:
+//   OPENAI_CONTENT_MODEL=gpt-4o         (high-quality marketing content)
+//   OPENAI_UTILITY_MODEL=gpt-4o-mini    (fast utility generation)
+//   OPENAI_CONTENT_TEMPERATURE=0.9      (creativity for content)
+// ============================================================
+
+const CONTENT_MODEL = process.env.OPENAI_CONTENT_MODEL || MODEL.GPT_4O;  // Default: gpt-4o (better quality)
+const UTILITY_MODEL = process.env.OPENAI_UTILITY_MODEL || MODEL.GPT_4O_MINI;  // Default: gpt-4o-mini (faster)
+const CONTENT_TEMPERATURE = parseFloat(process.env.OPENAI_CONTENT_TEMPERATURE || '0.9');  // Higher = more creative
+const UTILITY_TEMPERATURE = 0.7;  // Standard temperature for utility tasks
+
 const DEFAULT_MAX_TOKENS = 2048;
 const DEFAULT_TIMEOUT = 30000; // 30s
 
@@ -44,7 +58,14 @@ const DEFAULT_TIMEOUT = 30000; // 30s
 // Core API call wrapper
 // ============================================================
 
-async function callOpenAI({ systemPrompt, userPrompt, maxTokens = DEFAULT_MAX_TOKENS, timeout = DEFAULT_TIMEOUT }) {
+async function callOpenAI({
+  systemPrompt,
+  userPrompt,
+  model = UTILITY_MODEL,
+  temperature = UTILITY_TEMPERATURE,
+  maxTokens = DEFAULT_MAX_TOKENS,
+  timeout = DEFAULT_TIMEOUT,
+}) {
   const startTime = Date.now();
 
   try {
@@ -53,13 +74,13 @@ async function callOpenAI({ systemPrompt, userPrompt, maxTokens = DEFAULT_MAX_TO
 
     const client = getClient();
     const response = await client.chat.completions.create({
-      model: DEFAULT_MODEL,
+      model,
       max_tokens: maxTokens,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      temperature: 0.7,
+      temperature,
       response_format: { type: 'json_object' },
     }, {
       signal: controller.signal,
@@ -138,7 +159,14 @@ export async function generateHooks(input, decisionContext = {}) {
   const systemPrompt = getSystemPrompt('CREATIVE_COPYWRITER');
   const userPrompt = buildCopyPrompt('GENERATE_HOOKS', input, decisionContext);
 
-  const result = await callOpenAI({ systemPrompt, userPrompt, maxTokens: 1024 });
+  // Use high-quality model for marketing hooks (quality > cost)
+  const result = await callOpenAI({
+    systemPrompt,
+    userPrompt,
+    model: CONTENT_MODEL,
+    temperature: CONTENT_TEMPERATURE,
+    maxTokens: 1024,
+  });
 
   if (!result.success) {
     return result;
@@ -175,7 +203,14 @@ export async function generateCopy(input, decisionContext = {}) {
   const systemPrompt = getSystemPrompt('CREATIVE_COPYWRITER');
   const userPrompt = buildCopyPrompt('GENERATE_COPY', input, decisionContext);
 
-  const result = await callOpenAI({ systemPrompt, userPrompt, maxTokens: 2048 });
+  // Use high-quality model for marketing copy (quality > cost)
+  const result = await callOpenAI({
+    systemPrompt,
+    userPrompt,
+    model: CONTENT_MODEL,
+    temperature: CONTENT_TEMPERATURE,
+    maxTokens: 2048,
+  });
 
   if (!result.success) {
     return result;

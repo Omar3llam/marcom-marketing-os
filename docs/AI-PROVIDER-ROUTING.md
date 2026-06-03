@@ -52,12 +52,27 @@ MARCOM uses an intelligent AI gateway that routes tasks to different providers b
 
 ## Environment Variables
 
-### Enable Cost Optimization
+### Model Configuration (Quality vs Cost)
 
 ```bash
 # .env
 
-# Enable intelligent routing (uses performance analytics)
+# ── OPENAI MODEL CONFIGURATION ─────────────────────────────
+# CONTENT_MODEL: Used for hooks, copy, headlines (quality matters)
+# UTILITY_MODEL: Used for captions, visual prompts (speed matters)
+# CONTENT_TEMPERATURE: Creativity level (0.0-1.0, higher = more creative)
+#
+# Recommendation for Marketing Content:
+#   gpt-4o for content (better quality)
+#   gpt-4o-mini for utility (faster, cheaper)
+#   temperature 0.9 for creative content
+
+OPENAI_CONTENT_MODEL=gpt-4o          # High-quality marketing content
+OPENAI_UTILITY_MODEL=gpt-4o-mini     # Fast utility generation
+OPENAI_CONTENT_TEMPERATURE=0.9       # High creativity for hooks/copy
+
+# ── INTELLIGENT ROUTING ────────────────────────────────────
+# Enable performance-based provider selection
 ENABLE_INTELLIGENT_ROUTING=true
 
 # Enable active routing (switches providers based on performance)
@@ -76,10 +91,6 @@ MAX_COST_PER_APPROVAL=0.10
 
 # A/B test control group percentage (default: 10%)
 AB_TEST_CONTROL_PERCENTAGE=10
-
-# OpenAI model override (default: GPT-4o-mini)
-# Options: gpt-4o-mini, gpt-4o, o1
-OPENAI_MODEL=gpt-4o-mini
 ```
 
 ---
