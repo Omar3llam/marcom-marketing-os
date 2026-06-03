@@ -403,17 +403,24 @@ export async function analyzeCampaignsBatch(campaigns) {
 
   const prompt = `Analyze these ${campaigns.length} Meta Ads campaigns and return a JSON array of decisions.
 
+Be extremely concise. For each campaign return ONLY:
+verdict (KILL/HOLD/SCALE/OPTIMIZE/PAUSE_AND_RELAUNCH), confidence (HIGH/MEDIUM/LOW), one-line reason (max 15 words),
+priority (HIGH/MEDIUM/LOW), stage (DYING/FATIGUED/TESTING/STABLE/SCALING).
+No long explanations. Total response must be under 4000 tokens.
+
 For each campaign return:
 {
   "campaignId": "<string>",
   "verdict": "SCALE" | "HOLD" | "KILL" | "OPTIMIZE" | "PAUSE_AND_RELAUNCH",
-  "rootCause": "<string>",
-  "diagnosis": "<2-3 sentence plain-language diagnosis>",
+  "rootCause": "<max 15 words>",
+  "diagnosis": "<single sentence, max 15 words>",
   "confidence": "HIGH" | "MEDIUM" | "LOW",
+  "priority": "HIGH" | "MEDIUM" | "LOW",
+  "stage": "DYING" | "FATIGUED" | "TESTING" | "STABLE" | "SCALING",
   "actionPlan": {
-    "primaryAction": "<one specific action>",
-    "reasoning": "<single sentence>",
-    "steps": ["<step 1>", "<step 2>", ...]
+    "primaryAction": "<one specific action, max 10 words>",
+    "reasoning": "<single sentence, max 10 words>",
+    "steps": ["<step 1>", "<step 2>"]
   }
 }
 
@@ -433,7 +440,7 @@ Return ONLY valid JSON in this exact format:
     role: 'You are an Elite Performance Marketing Strategist. Analyze campaigns and return only valid JSON.',
     task: prompt,
     campaignId: null,
-    maxTokens: 16000,
+    maxTokens: 4000,
   });
 
   // Parse JSON from response

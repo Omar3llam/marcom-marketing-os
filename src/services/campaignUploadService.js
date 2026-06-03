@@ -137,7 +137,11 @@ export async function processAnalyzeUpload(file, workspaceId, userId) {
 
   let batchResult;
   try {
-    batchResult = await analyzeCampaignsBatch(campaignsForAnalysis);
+    const analysisPromise = analyzeCampaignsBatch(campaignsForAnalysis);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Analysis timeout after 45s')), 45_000)
+    );
+    batchResult = await Promise.race([analysisPromise, timeoutPromise]);
   } catch (err) {
     logger.error({ err: err.message }, '[campaigns/upload] Batch analysis failed');
     throw new UploadError(500, { success: false, error: `AI analysis failed: ${err.message}` });

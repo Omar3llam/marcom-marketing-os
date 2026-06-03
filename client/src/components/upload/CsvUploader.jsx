@@ -192,7 +192,7 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
                 ? progress < 100
                   ? `Uploading ${progress}%`
                   : mode === 'analyze'
-                    ? 'Analyzing with AI...'
+                    ? 'Analyzing campaigns... (usually 15-30 seconds)'
                     : 'Processing...'
                 : 'Upload'}
             </button>
