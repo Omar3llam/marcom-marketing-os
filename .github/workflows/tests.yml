@@ -25,6 +25,7 @@ jobs:
 
     env:
       DATABASE_URL: "postgresql://test_user:test_password@localhost:5432/marcom_test"
+      DIRECT_URL: "postgresql://test_user:test_password@localhost:5432/marcom_test"
 
     services:
       postgres:
