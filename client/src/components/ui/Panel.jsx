@@ -13,27 +13,31 @@
 // ============================================================
 
 export default function Panel({ title, Icon, iconTone, meta, children }) {
-  const iconColorCfg = {
-    gold:  'text-lumi-accent',
-    kill:  'text-signal-kill',
-    scale: 'text-signal-scale',
-    hold:  'text-signal-hold',
-  }[iconTone] || 'text-lumi-accent';
+  const tone = {
+    gold:    { color: 'var(--c-gold-deep)',   bg: 'rgba(246,201,69,0.10)' },
+    kill:    { color: 'var(--c-kill-text)',   bg: 'var(--c-kill-bg)' },
+    scale:   { color: 'var(--c-scale-text)',  bg: 'var(--c-scale-bg)' },
+    hold:    { color: 'var(--c-hold-text)',   bg: 'var(--c-hold-bg)' },
+    neutral: { color: 'var(--c-text-soft)',   bg: 'var(--c-surface-elevated)' },
+  }[iconTone] || { color: 'var(--c-gold-deep)', bg: 'rgba(246,201,69,0.10)' };
 
   return (
-    <div className="bg-surface-card border border-surface-border rounded-xl p-5 shadow-card">
+    <div className="bg-surface-card border border-surface-border rounded-xl p-[18px] shadow-card">
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-3.5">
         <div className="flex items-center gap-2.5">
-          <div className={`${iconColorCfg}`}>
-            <Icon className="w-4 h-4" strokeWidth={1.5} />
+          <div
+            className="w-[26px] h-[26px] rounded-lg flex items-center justify-center"
+            style={{ background: tone.bg, color: tone.color }}
+          >
+            <Icon className="w-[13px] h-[13px]" strokeWidth={1.5} />
           </div>
-          <h3 className="font-display font-semibold text-[15px] text-dark-base">
+          <h3 className="font-display font-bold text-sm text-dark-base tracking-tight">
             {title}
           </h3>
         </div>
         {meta && (
-          <span className="font-mono text-[10px] text-dark-subtle uppercase tracking-[0.08em]">
+          <span className="font-mono text-[10px] text-dark-subtle">
             {meta}
           </span>
         )}
