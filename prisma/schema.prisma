@@ -540,6 +540,7 @@ model ApprovalDecision {
   provider   String? // claude, openai, higgsfield
   capability String? // GENERATE_HOOKS, GENERATE_CAPTIONS, GENERATE_VISUAL_BRIEF, etc.
   model      String? // claude-opus-4, gpt-4, claude-sonnet-3-5, etc.
+  // NOTE: executionCost NOT included - cost tracking to be added in future PR
 
   // Reviewer tracking
   reviewerId String   @db.Uuid
