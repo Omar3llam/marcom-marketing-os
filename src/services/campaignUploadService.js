@@ -199,8 +199,8 @@ export async function processAnalyzeUpload(file, workspaceId, userId) {
         const currency    = c.currency || 'USD';
         return tx.campaignState.upsert({
           where:  { campaignId_workspaceId: { campaignId: c.campaignId, workspaceId } },
-          update: { stage, healthScore, currency, lastAnalysis: new Date() },
-          create: { campaignId: c.campaignId, workspaceId, stage, healthScore, currency, lastAnalysis: new Date() },
+          update: { campaignName: c.campaignName || c.campaignId, stage, healthScore, currency, lastAnalysis: new Date() },
+          create: { campaignId: c.campaignId, campaignName: c.campaignName || c.campaignId, workspaceId, stage, healthScore, currency, lastAnalysis: new Date() },
         }).then(cs => ({ c, cs, stage, decision }));
       }),
     );

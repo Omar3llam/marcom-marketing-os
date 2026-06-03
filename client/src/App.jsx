@@ -102,7 +102,7 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index             element={<Navigate to="home" replace />} />
+          <Route index             element={<Navigate to="campaigns" replace />} />
           <Route path="home"       element={
             <ErrorBoundary boundaryId="home">
               <HomePage />

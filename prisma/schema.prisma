@@ -369,6 +369,7 @@ model ExecutionCheckpoint {
 model CampaignState {
   id           String        @id @default(uuid()) @db.Uuid
   campaignId   String
+  campaignName String        @default("")
   workspaceId  String        @db.Uuid
   stage        CampaignStage
   healthScore  Float

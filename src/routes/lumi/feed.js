@@ -201,13 +201,13 @@ feedRouter.get('/feed', async (req, res) => {
       return byCampaign.get(state.campaignId);
     };
     for (const cs of campaignStates) {
-      ensure({ ...cs, campaignName: pendingActions.find(a => a.campaignId === cs.campaignId)?.payload?.campaignName });
+      ensure({ ...cs, campaignName: cs.campaignName || pendingActions.find(a => a.campaignId === cs.campaignId)?.payload?.campaignName || cs.campaignId });
     }
 
     for (const a of pendingActions) {
       const stateRow = campaignStates.find(s => s.campaignId === a.campaignId);
       if (!stateRow) continue;
-      const slot = ensure({ ...stateRow, campaignName: a.payload?.campaignName });
+      const slot = ensure({ ...stateRow, campaignName: stateRow.campaignName || a.payload?.campaignName || stateRow.campaignId });
       const p    = a.payload || {};
       const m    = p.metrics || {};
 
