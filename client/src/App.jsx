@@ -27,6 +27,7 @@ import SocialCalendar   from './pages/tools/SocialCalendar.jsx';
 import ScoreContent     from './pages/tools/ScoreContent.jsx';
 import SettingsPage     from './pages/Settings.jsx';
 import Observability    from './pages/Observability.jsx';
+import OperationsPage   from './pages/OperationsPage.jsx';
 import { CardSkeleton } from './components/ui/Skeleton.jsx';
 import { ProtectedRoute, OnboardingRoute } from './router/ProtectedRoute.jsx';
 import { useAuth } from './context/AuthContext.jsx';
@@ -146,6 +147,11 @@ export default function App() {
           <Route path="settings"   element={
             <ErrorBoundary boundaryId="settings">
               <SettingsPage />
+            </ErrorBoundary>
+          } />
+          <Route path="operations" element={
+            <ErrorBoundary boundaryId="operations">
+              <OperationsPage />
             </ErrorBoundary>
           } />
 

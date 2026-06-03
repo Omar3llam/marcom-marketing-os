@@ -12,8 +12,8 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
-  Layout, BarChart3, Target, Send, CalendarDays,
-  Settings, PanelLeftClose, Plus, Search, ChevronDown,
+  Layout, BarChart3, Target, Send, CalendarDays, Activity,
+  Settings, PanelLeftClose, Plus, Search, ChevronDown, Radar,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
@@ -22,6 +22,7 @@ import NotificationBell from '@/components/ui/NotificationBell.jsx';
 import NotificationPopover from '@/components/ui/NotificationPopover.jsx';
 import RecentDecisions from '@/components/ui/RecentDecisions.jsx';
 import CommandPalette from '@/components/ui/CommandPalette.jsx';
+import RadarStrip from './RadarStrip.jsx';
 
 // Simplified navigation structure from Figma
 const tools = [
@@ -30,12 +31,13 @@ const tools = [
   { key: 'content',    label: 'Content Lab',  sub: 'Copy + visual generation',     icon: Send,          path: '/app/content'          },
   { key: 'growth',     label: 'Growth',       sub: 'Memory layer + opportunities', icon: Target,        path: '/app/growth'           },
   { key: 'calendar',   label: 'Calendar',     sub: '4-week content plan',          icon: CalendarDays,  path: '/app/tools/calendar'   },
+  { key: 'operations', label: 'Operations',   sub: 'Runtime monitor',              icon: Activity,      path: '/app/operations'       },
 ];
 
 // ══════════════════════════════════════════════════════════════
-// WorkspaceHQ — Enhanced with live status + countdown from Figma
+// WorkspaceHQ — Enhanced with live status from Figma
 // ══════════════════════════════════════════════════════════════
-function WorkspaceHQ({ workspace, onNewProject, countdown }) {
+function WorkspaceHQ({ workspace, onNewProject }) {
   const [open, setOpen] = useState(false);
 
   // Generate 2-letter initials from company name
@@ -46,11 +48,6 @@ function WorkspaceHQ({ workspace, onNewProject, countdown }) {
     .slice(0, 2)
     .join('')
     .toUpperCase() || 'WS';
-
-  // Format countdown (seconds to MM:SS)
-  const minutes = Math.floor(countdown / 60);
-  const seconds = countdown % 60;
-  const countdownStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
 
   return (
     <div className="px-3">
@@ -85,7 +82,7 @@ function WorkspaceHQ({ workspace, onNewProject, countdown }) {
         </div>
 
         {/* Live WATCHING status */}
-        <div className="flex items-center gap-2 mb-2 px-2 py-1.5 rounded-lg bg-signal-scale-bg">
+        <div className="flex items-center gap-2 mb-3 px-2 py-1.5 rounded-lg bg-signal-scale-bg">
           <div className="flex items-center gap-1.5">
             <span
               className="w-1.5 h-1.5 rounded-full bg-signal-scale"
@@ -100,11 +97,6 @@ function WorkspaceHQ({ workspace, onNewProject, countdown }) {
               · {workspace.adSetsCount} ad sets
             </span>
           )}
-        </div>
-
-        {/* Next sweep countdown */}
-        <div className="text-xs text-lumi-subtle mb-3 font-mono px-2">
-          Next sweep <span className="text-lumi-muted font-semibold">{countdownStr}</span>
         </div>
 
         {/* Actions */}
@@ -295,7 +287,6 @@ export default function Sidebar({
           <WorkspaceHQ
             workspace={workspace}
             onNewProject={() => navigate('/onboarding')}
-            countdown={countdown}
           />
         )}
 
@@ -413,6 +404,11 @@ export default function Sidebar({
           </div>
         )}
       </div>
+
+      {/* ── RADAR STRIP (live countdown + alert pulse) ─────── */}
+      {!collapsed && (
+        <RadarStrip countdown={countdown} hasHighAlerts={alertCount > 0} />
+      )}
 
       {/* ── FOOTER with online status ──────────────────────── */}
       <div className={cn(
