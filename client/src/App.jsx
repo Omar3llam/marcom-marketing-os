@@ -35,7 +35,7 @@ import { IntelligenceProvider } from './context/IntelligenceContext.jsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 
 // ── Heavy views — lazy-load to keep the initial bundle slim ──
-const CampaignAnalysis    = lazy(() => import('./pages/CampaignAnalysis.jsx'));
+const CampaignAnalysis    = lazy(() => import('./pages/CampaignAnalysis/index.jsx'));
 const GrowthStrategyBoard = lazy(() => import('./pages/GrowthStrategyBoard.jsx'));
 const Operations          = lazy(() => import('./pages/demo/Operations/index.jsx'));
 const ApprovalQueue       = lazy(() => import('./pages/ApprovalQueue.jsx')); // PR #36
