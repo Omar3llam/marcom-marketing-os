@@ -284,8 +284,7 @@ function NavLink({ href, children, sub = false }) {
         textDecoration: 'none',
         transition: 'color 150ms',
       }}
-      onMouseEnter={(e) => e.currentTarget.style.color = 'var(--c-text-base)'}
-      onMouseLeave={(e) => e.currentTarget.style.color = sub ? 'var(--c-text-muted)' : 'var(--c-text-soft)'}
+      className="hover-color-base"
     >
       {children}
     </a>
@@ -703,6 +702,7 @@ function TrustedBy() {
           {partners.map((p) => (
             <div
               key={p.name}
+              className="hover-lift"
               style={{
                 padding: '14px 16px',
                 display: 'flex',
@@ -713,8 +713,6 @@ function TrustedBy() {
                 transition: 'transform 200ms, color 200ms',
                 cursor: 'default',
               }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
             >
               <div className="font-display" style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--c-text-soft)' }}>
                 {p.name}

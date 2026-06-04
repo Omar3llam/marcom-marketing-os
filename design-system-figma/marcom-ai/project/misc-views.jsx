@@ -54,6 +54,7 @@ export function CampaignsList({ workspace, alerts, onStartFlow, onReviewAlert })
           <div
             key={a.id}
             onClick={() => onReviewAlert(a)}
+            className="hover-bg-elevated"
             style={{
               padding: '14px 18px',
               borderBottom: '1px solid var(--c-surface-border)',
@@ -64,8 +65,6 @@ export function CampaignsList({ workspace, alerts, onStartFlow, onReviewAlert })
               cursor: 'pointer',
               transition: 'background 120ms',
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--c-surface-elevated)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             <VerdictPill verdict={a.verdict} />
             <div>

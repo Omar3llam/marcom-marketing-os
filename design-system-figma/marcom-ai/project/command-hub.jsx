@@ -318,6 +318,7 @@ function ModuleCard({ cfg, onStartFlow, workspace }) {
       <button
         onClick={click}
         disabled={disabled}
+        className="hover-card-lift"
         style={{
           width: '100%',
           display: 'flex',
@@ -331,8 +332,6 @@ function ModuleCard({ cfg, onStartFlow, workspace }) {
           boxShadow: 'var(--sh-gold-glow)',
           transition: 'all 200ms',
         }}
-        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(246,201,69,0.6)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(246,201,69,0.3)'; e.currentTarget.style.transform = 'translateY(0)'; }}
       >
         <div style={{ flex: 1, padding: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -479,6 +478,7 @@ function MemoryStrip({ sessions, workspace }) {
         {sessions.map((s) => (
           <div
             key={s.id}
+            className="hover-bg-elevated"
             style={{
               padding: '14px 18px',
               borderBottom: '1px solid var(--c-surface-border)',
@@ -489,8 +489,6 @@ function MemoryStrip({ sessions, workspace }) {
               cursor: 'pointer',
               transition: 'background 120ms',
             }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--c-surface-elevated)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
           >
             <VerdictPill verdict={s.verdict} />
             <span className="font-display" style={{ fontWeight: 500, fontSize: 14, color: 'var(--c-text-base)' }}>{s.label}</span>

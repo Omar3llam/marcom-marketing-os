@@ -100,6 +100,7 @@ function AlertsPanel({ alerts, onReview }) {
             <button
               key={a.id}
               onClick={() => onReview(a)}
+              className="hover-bg-card"
               style={{
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '10px 12px',
@@ -109,8 +110,6 @@ function AlertsPanel({ alerts, onReview }) {
                 borderRadius: 8, textAlign: 'left', cursor: 'pointer',
                 transition: 'background 120ms',
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--c-surface-card)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'var(--c-surface-elevated)'}
             >
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="font-display" style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-base)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.campaign}</div>
@@ -164,6 +163,7 @@ function QuickActionsPanel({ onStartFlow, onNav }) {
           <button
             key={a.label}
             onClick={a.onClick}
+            className="hover-bg-card hover-border-gold"
             style={{
               display: 'flex', alignItems: 'center', gap: 12,
               padding: '10px 12px',
@@ -172,8 +172,6 @@ function QuickActionsPanel({ onStartFlow, onNav }) {
               borderRadius: 8, textAlign: 'left', cursor: 'pointer',
               transition: 'all 150ms',
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(246,201,69,0.4)'; e.currentTarget.style.background = 'var(--c-surface-card)'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--c-surface-border)'; e.currentTarget.style.background = 'var(--c-surface-elevated)'; }}
           >
             <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(246,201,69,0.10)', color: 'var(--c-gold-deep)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <a.Icon style={{ fontSize: 14 }} />

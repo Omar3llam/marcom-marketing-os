@@ -383,6 +383,16 @@ button:focus-visible,
 }
 .context-link:hover { color: var(--c-gold-deep); }
 
+/* ── Page hover utilities ────────────────────────────────────── */
+.hover-bg-elevated:hover  { background: var(--c-surface-elevated) !important; }
+.hover-bg-card:hover      { background: var(--c-surface-card) !important; }
+.hover-bg-lumi:hover      { background: var(--c-lumi-elevated) !important; }
+.hover-border-gold:hover  { border-color: rgba(246,201,69,0.4) !important; }
+.hover-color-gold:hover   { color: var(--c-gold-deep) !important; }
+.hover-color-base:hover   { color: var(--c-text-base) !important; }
+.hover-card-lift:hover    { border-color: rgba(246,201,69,0.6) !important; transform: translateY(-2px); }
+.hover-lift:hover         { transform: translateY(-2px); }
+
 /* ── Specific scan grid background for Theatre ─────────────── */
 .theatre-grid {
   background-image:

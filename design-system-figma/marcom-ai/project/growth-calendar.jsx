@@ -237,7 +237,9 @@ export function CalendarPage({ workspace, onNav }) {
                   </span>
                 </div>
                 {post && (
-                  <div style={{
+                  <div
+                  className="hover-bg-card"
+                  style={{
                     padding: '6px 8px',
                     background: 'var(--c-surface-elevated)',
                     border: '1px solid var(--c-surface-border)',
@@ -246,8 +248,6 @@ export function CalendarPage({ workspace, onNav }) {
                     cursor: 'pointer',
                     transition: 'all 150ms',
                   }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--c-surface-card)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'var(--c-surface-elevated)'}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
                       <span className="font-mono" style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.06em', padding: '1px 4px', borderRadius: 2, background: `${platformColor[post.platform]}1a`, color: platformColor[post.platform] }}>{post.platform}</span>
