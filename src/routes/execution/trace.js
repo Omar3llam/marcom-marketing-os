@@ -14,7 +14,7 @@ import { serializeTrace } from '../../services/execution-engine/observability/tr
 
 export function registerTraceRoute(router) {
   router.get('/:id/trace', async (req, res) => {
-    const { workspaceId } = req.user;
+    const workspaceId = req.workspaceId;
     const { id: executionId } = req.params;
 
     try {

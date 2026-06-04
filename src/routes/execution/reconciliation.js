@@ -22,7 +22,8 @@ import { lifecycleService } from '../../services/execution/ExecutionLifecycleSer
 export function registerReconciliationRoute(router) {
   router.get('/:id/active', async (req, res) => {
     const { id: executionId } = req.params;
-    const { workspaceId, userId } = req.user;
+    const workspaceId = req.workspaceId;
+    const userId      = req.userId;
 
     try {
       logger.debug({

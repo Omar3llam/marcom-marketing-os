@@ -37,7 +37,8 @@ const RETRYABLE_STATUSES = ['EXECUTED_FAILED', 'TIMED_OUT'];
 export function registerRetryRoute(router) {
   router.post('/:id/retry', async (req, res) => {
     const { id: originalId } = req.params;
-    const { workspaceId, userId } = req.user;
+    const workspaceId = req.workspaceId;
+    const userId      = req.userId;
 
     try {
       const original = await prisma.executionRequest.findUnique({

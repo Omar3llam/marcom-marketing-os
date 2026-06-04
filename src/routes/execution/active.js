@@ -17,7 +17,8 @@ import { IN_FLIGHT_STATUSES } from '@marcom/runtime-contracts';
 
 export function registerActiveRoute(router) {
   router.get('/active', async (req, res) => {
-    const { workspaceId, userId } = req.user;
+    const workspaceId = req.workspaceId;
+    const userId      = req.userId;
 
     try {
       const executions = await prisma.executionRequest.findMany({

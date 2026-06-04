@@ -60,7 +60,8 @@ function validateRequest(actionType, targetId, targetType, idempotencyKey) {
 export function registerMetaRoute(router) {
   router.post('/meta', async (req, res) => {
     const { actionType, targetId, targetType, idempotencyKey, options } = req.body;
-    const { userId, workspaceId } = req.user;
+    const workspaceId = req.workspaceId;
+    const userId      = req.userId;
 
     try {
       // ═══════════════════════════════════════════════════════

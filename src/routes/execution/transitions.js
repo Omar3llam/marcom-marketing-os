@@ -17,7 +17,8 @@ import { loadExecutionForWorkspace } from './_helpers.js';
 export function registerTransitionsRoute(router) {
   router.get('/:id/transitions', async (req, res) => {
     const { id: executionId } = req.params;
-    const { workspaceId, userId } = req.user;
+    const workspaceId = req.workspaceId;
+    const userId      = req.userId;
 
     try {
       const { execution } = await loadExecutionForWorkspace(executionId, workspaceId);

@@ -19,7 +19,8 @@ router.use(firebaseAuthMiddleware);
 router.use(contextGuard);
 
 router.get('/recent', async (req, res) => {
-  const { workspaceId, userId } = req.user;
+  const workspaceId = req.workspaceId;
+  const userId      = req.userId;
 
   try {
     const memories = await decisionMemoryService.getRecentMemories(workspaceId, 20);

@@ -57,7 +57,8 @@ function computeP95Latency(records) {
 
 export function registerVitalsRoute(router) {
   router.get('/vitals', async (req, res) => {
-    const { workspaceId, userId } = req.user;
+    const workspaceId = req.workspaceId;
+    const userId      = req.userId;
     const now        = new Date();
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1_000);
     const staleBefore = new Date(now.getTime() - STALE_PENDING_MS);

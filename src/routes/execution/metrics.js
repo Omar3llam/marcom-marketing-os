@@ -39,7 +39,8 @@ function topAgent(metrics) {
 
 export function registerMetricsSummaryRoute(router) {
   router.get('/metrics/summary', async (req, res) => {
-    const { workspaceId, userId } = req.user;
+    const workspaceId = req.workspaceId;
+    const userId      = req.userId;
     const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
     try {

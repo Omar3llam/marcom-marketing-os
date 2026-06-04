@@ -12,7 +12,8 @@ import { logger } from '../../utils/logger.js';
 
 export function registerAuditRoute(router) {
   router.get('/audit', async (req, res) => {
-    const { workspaceId, userId } = req.user;
+    const workspaceId = req.workspaceId;
+    const userId      = req.userId;
     const { limit = 50, offset = 0, status, actionType } = req.query;
 
     try {
