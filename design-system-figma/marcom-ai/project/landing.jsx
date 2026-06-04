@@ -7,9 +7,15 @@
 // section rhythm enforced by an 8pt vertical scale.
 // ============================================================
 
-const DEMO_URL   = './MARCOM%20Demo.html';         // "Launch the demo" → straight into the app
-const SIGNUP_URL = './MARCOM%20Onboarding.html';  // "Start trial / Get started" → onboarding wizard
-const APP_URL    = DEMO_URL;                       // alias for sign-in
+import { Icons }                                          from './icons.jsx';
+import { StagePill }                                      from './primitives.jsx';
+import { useTweaks, TweaksPanel, TweakSection,
+         TweakRadio, TweakColor }                         from './tweaks-panel.jsx';
+
+// TODO: Replace with router paths when bundled.
+const DEMO_URL   = '/demo';          // in-app demo route
+const SIGNUP_URL = '/onboarding';    // onboarding route
+const APP_URL    = '/signin';        // sign-in route (not demo)
 
 // ── Tweakable defaults (host can rewrite these on disk) ───────
 // Palette: [accent, accentDeep, surfaceLight, surfaceCard, textBase, textSoft]
@@ -62,39 +68,47 @@ const SX = {
 // Apply palette tokens onto :root so every var()-based component re-themes.
 function useLandingPalette(palette) {
   React.useEffect(() => {
-    if (!palette || !Array.isArray(palette)) return;
+    if (!palette || !Array.isArray(palette) || palette.length < 6) return;
     const [accent, accentDeep, sLight, sCard, tBase, tSoft] = palette;
     const root = document.documentElement.style;
-    root.setProperty('--c-gold',       accent);
-    root.setProperty('--c-gold-deep',  accentDeep);
-    root.setProperty('--c-gold-glow',  accent);
-    root.setProperty('--c-surface-light',    sLight);
-    root.setProperty('--c-surface-card',     sCard);
-    root.setProperty('--c-text-base',  tBase);
-    root.setProperty('--c-text-soft',  tSoft);
-    // Derive surface-elevated and borders from accent vs base (lightness flip).
+    const props = [
+      '--c-gold', '--c-gold-deep', '--c-gold-glow',
+      '--c-surface-light', '--c-surface-card', '--c-text-base', '--c-text-soft',
+      '--c-surface-elevated', '--c-surface-border', '--c-surface-border-strong',
+      '--c-text-muted', '--c-text-subtle', '--sh-gold-glow',
+    ];
+    root.setProperty('--c-gold',      accent);
+    root.setProperty('--c-gold-deep', accentDeep);
+    // --c-gold-glow is a lighter, more transparent version of accent (not identical).
+    const glowRgb = __hexToRgb(accent);
+    root.setProperty('--c-gold-glow', `rgba(${glowRgb},0.5)`);
+    root.setProperty('--c-surface-light', sLight);
+    root.setProperty('--c-surface-card',  sCard);
+    root.setProperty('--c-text-base',     tBase);
+    root.setProperty('--c-text-soft',     tSoft);
+    // Derive surface-elevated and borders from sLight lightness.
     const isDark = __landingIsDark(sLight);
-    root.setProperty('--c-surface-elevated', isDark ? '#1A1A23' : '#F1EEE8');
-    root.setProperty('--c-surface-border',   isDark ? '#22222D' : '#EDEAE4');
+    root.setProperty('--c-surface-elevated',      isDark ? '#1A1A23' : '#F1EEE8');
+    root.setProperty('--c-surface-border',        isDark ? '#22222D' : '#EDEAE4');
     root.setProperty('--c-surface-border-strong', isDark ? '#2D2D3A' : '#D4CFCA');
-    root.setProperty('--c-text-muted',  isDark ? '#8B8B93' : '#6B6B6B');
-    root.setProperty('--c-text-subtle', isDark ? '#5C5C66' : '#9A9A9A');
-    // Re-tune the gold-glow shadow with the new accent.
+    root.setProperty('--c-text-muted',            isDark ? '#8B8B93' : '#6B6B6B');
+    root.setProperty('--c-text-subtle',           isDark ? '#5C5C66' : '#9A9A9A');
     const rgb = __hexToRgb(accent);
     root.setProperty('--sh-gold-glow', `0 0 24px rgba(${rgb},0.22), 0 0 48px rgba(${rgb},0.12)`);
-    document.documentElement.dataset.landingTheme = isDark ? 'dark' : 'light';
+    return () => { props.forEach(p => root.removeProperty(p)); };
   }, [palette]);
 }
 
 function __landingIsDark(hex) {
-  const c = (hex || '').replace('#', '');
+  let c = (hex || '').replace('#', '');
+  if (c.length === 3) c = c.split('').map(x => x + x).join('');
   if (c.length !== 6) return false;
   const r = parseInt(c.slice(0,2),16), g = parseInt(c.slice(2,4),16), b = parseInt(c.slice(4,6),16);
-  // Relative luminance approximation.
   return (0.299*r + 0.587*g + 0.114*b) < 128;
 }
 function __hexToRgb(hex) {
-  const c = (hex || '').replace('#', '');
+  let c = (hex || '').replace('#', '');
+  if (c.length === 3) c = c.split('').map(x => x + x).join('');
   if (c.length !== 6) return '246,201,69';
   return [parseInt(c.slice(0,2),16), parseInt(c.slice(2,4),16), parseInt(c.slice(4,6),16)].join(',');
 }
@@ -1688,4 +1702,9 @@ function SectionHeader({ eyebrow, title, sub }) {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(<Landing />);
+const rootEl = document.getElementById('root');
+if (rootEl) {
+  ReactDOM.createRoot(rootEl).render(<Landing />);
+} else {
+  console.error('[Landing] #root element not found. Cannot mount.');
+}
