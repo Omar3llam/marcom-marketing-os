@@ -11,6 +11,7 @@ import { Icons }                                          from './icons.jsx';
 import { StagePill }                                      from './primitives.jsx';
 import { useTweaks, TweaksPanel, TweakSection,
          TweakRadio, TweakColor }                         from './tweaks-panel.jsx';
+import { DEMO_DATA }                                      from './data.js';
 
 // TODO: Replace with router paths when bundled.
 const DEMO_URL   = '/demo';          // in-app demo route
@@ -690,21 +691,19 @@ function HeroComposition() {
 
 // ── Trusted by ───────────────────────────────────────────────
 function TrustedBy() {
-  const partners = [
-    { name: 'Maison Salam',    tag: 'Apparel · Cairo' },
-    { name: 'Layla & Co.',     tag: 'Beauty · Riyadh' },
-    { name: 'Forge Studio',    tag: 'SaaS · Dubai' },
-    { name: 'Karim Foods',     tag: 'FMCG · Cairo' },
-    { name: 'Atlas Mobility',  tag: 'Logistics · Amman' },
-  ];
+  const partners = Object.values(DEMO_DATA.WORKSPACES).map(ws => ({
+    name: ws.name,
+    tag:  `${ws.tag}`,
+  }));
   const r = useReveal(0.4);
   return (
-    <section style={{ padding: '32px 32px 8px' }}>
+    <section aria-label="Trusted by MENA operators" style={{ padding: '32px 32px 8px' }}>
       <div ref={r.ref} className={r.className} style={{ maxWidth: SX.containerW, margin: '0 auto' }}>
         <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--c-text-muted)', textAlign: 'center', marginBottom: 24 }}>
           Operators using Lumi every day
         </div>
         <div
+          role="list"
           style={{
             display: 'grid',
             gridTemplateColumns: `repeat(${partners.length}, 1fr)`,
@@ -716,16 +715,14 @@ function TrustedBy() {
           {partners.map((p) => (
             <div
               key={p.name}
-              className="hover-lift"
+              role="listitem"
+              className="partner-card"
               style={{
                 padding: '14px 16px',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
                 gap: 4,
-                borderLeft: '1px solid var(--c-surface-border)',
-                transition: 'transform 200ms, color 200ms',
-                cursor: 'default',
               }}
             >
               <div className="font-display" style={{ fontSize: 15, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--c-text-soft)' }}>
@@ -803,23 +800,18 @@ function HowItWorks() {
 
 function StepCard({ step, highlight }) {
   const r = useReveal(0.25);
-  const [hover, setHover] = React.useState(false);
   return (
     <div
       ref={r.ref}
-      className={r.className}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      className={`${r.className} step-card`}
       style={{
         position: 'relative',
         background: 'var(--c-surface-card)',
-        border: `1px solid ${hover ? 'rgba(246,201,69,0.55)' : 'var(--c-surface-border)'}`,
+        border: '1px solid var(--c-surface-border)',
         borderRadius: 20,
         padding: 32,
-        boxShadow: hover ? '0 18px 40px rgba(0,0,0,0.10)' : '0 2px 8px rgba(0,0,0,0.04)',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
         overflow: 'hidden',
-        transition: 'border-color 240ms, box-shadow 240ms, transform 240ms',
-        transform: hover ? 'translateY(-4px)' : 'translateY(0)',
       }}
     >
       {highlight && (
@@ -828,21 +820,21 @@ function StepCard({ step, highlight }) {
             position: 'absolute',
             top: -80, right: -80,
             width: 220, height: 220,
-            background: 'radial-gradient(circle, rgba(246,201,69,0.16), transparent 65%)',
+            background: 'radial-gradient(circle, var(--c-lumi-tint-bg), transparent 65%)',
             pointerEvents: 'none',
           }}
         />
       )}
       <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32 }}>
-        <span className="font-mono" style={{ fontSize: 38, fontWeight: 700, color: hover ? 'rgba(246,201,69,0.45)' : 'var(--c-surface-border-strong)', letterSpacing: '-0.04em', transition: 'color 240ms' }}>{step.n}</span>
+        <span className="font-mono step-num" style={{ fontSize: 38, fontWeight: 700, color: 'var(--c-surface-border-strong)', letterSpacing: '-0.04em', transition: 'color 240ms' }}>{step.n}</span>
         <div
+          className="step-icon"
           style={{
             width: 48, height: 48, borderRadius: 12,
-            background: hover ? 'var(--c-gold)' : 'rgba(246,201,69,0.10)',
-            border: '1px solid rgba(246,201,69,0.25)',
-            color: hover ? 'var(--c-text-base)' : 'var(--c-gold-deep)',
+            background: 'var(--c-lumi-tint-bg)',
+            border: '1px solid var(--c-lumi-tint-border)',
+            color: 'var(--c-gold-deep)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            transition: 'background 240ms, color 240ms',
           }}
         >
           <step.Icon style={{ fontSize: 24 }} />
