@@ -160,9 +160,7 @@ feedRouter.get('/feed', async (req, res) => {
   }
 
   try {
-    // ── Enhanced Debug Logging (PR #44) ───────────────────────────
-    console.log('\n========== FEED ENDPOINT DEBUG ==========');
-    console.log('🔍 FETCHING DATA FOR:', { workspaceId: wsId });
+    logger.debug({ workspaceId: wsId }, '[lumi/feed] fetching data');
 
     const [campaignStates, pendingActions, recentMemory] = await Promise.all([
       prisma.campaignState.findMany({
@@ -181,11 +179,11 @@ feedRouter.get('/feed', async (req, res) => {
       }),
     ]);
 
-    console.log('📦 DATABASE QUERY RESULTS:', {
+    logger.debug({
       campaignStatesFound: campaignStates.length,
       pendingActionsFound: pendingActions.length,
-      recentMemoryFound: recentMemory.length,
-    });
+      recentMemoryFound:   recentMemory.length,
+    }, '[lumi/feed] db query results');
 
     // Build the same campaign-grouped / alert-flattened shape as
     // /demo-feed so the client adapter works without changes.
@@ -250,23 +248,15 @@ feedRouter.get('/feed', async (req, res) => {
       .filter(c => c.alerts.length > 0)
       .sort((a, b) => (stageRank[a.stage] ?? 99) - (stageRank[b.stage] ?? 99));
 
-    // ── Enhanced Debug Logging (PR #44) ───────────────────────────
-    const totalSpend = campaigns.reduce((sum, c) => {
-      return sum + c.alerts.reduce((alertSum, alert) => {
-        const spend = alert.metrics?.find(m => m.metric === 'Spend')?.value || '$0';
-        return alertSum + parseFloat(spend.replace(/[$,]/g, '')) || 0;
-      }, 0);
-    }, 0);
+    const stageBreakdown = campaigns.reduce((acc, c) => {
+      acc[c.stage] = (acc[c.stage] || 0) + 1;
+      return acc;
+    }, {});
 
-    console.log('📊 FEED CALCULATED:', {
+    logger.debug({
       campaignsFound: campaigns.length,
-      totalSpendCalculated: `$${totalSpend.toFixed(2)}`,
-      stageBreakdown: campaigns.reduce((acc, c) => {
-        acc[c.stage] = (acc[c.stage] || 0) + 1;
-        return acc;
-      }, {}),
-    });
-    console.log('==========================================\n');
+      stageBreakdown,
+    }, '[lumi/feed] feed calculated');
 
     return res.json({
       workspaceId: wsId,
