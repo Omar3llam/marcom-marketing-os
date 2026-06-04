@@ -8,7 +8,9 @@ import decisionMemoryRouter from './index.js';
 
 vi.mock('../../middleware/firebaseAuth.js', () => ({
   firebaseAuthMiddleware: (req, _res, next) => {
-    req.user = { userId: 'user-1', workspaceId: 'ws-abc' };
+    req.user = { uid: 'user-1' };
+    req.workspaceId = 'ws-abc';
+    req.userId = 'user-1';
     next();
   },
 }));

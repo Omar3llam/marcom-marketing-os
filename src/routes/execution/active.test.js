@@ -36,10 +36,9 @@ vi.mock('../../services/execution/ExecutionLifecycleService.js', () => ({
 
 vi.mock('../../middleware/firebaseAuth.js', () => ({
   firebaseAuthMiddleware: (req, res, next) => {
-    req.user = {
-      userId: 'test-user-123',
-      workspaceId: 'test-workspace-456',
-    };
+    req.user = { uid: 'test-user-123' };
+    req.workspaceId = 'test-workspace-456';
+    req.userId = 'test-user-123';
     next();
   },
 }));

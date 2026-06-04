@@ -19,7 +19,9 @@ function makeApp(workspaceId = 'ws-uuid-0001') {
   const app = express();
   const router = express.Router();
   router.use((req, _res, next) => {
-    req.user = { workspaceId, userId: 'user-1' };
+    req.user = { uid: 'user-1' };
+    req.workspaceId = workspaceId;
+    req.userId = 'user-1';
     next();
   });
   registerMetricsSummaryRoute(router);
