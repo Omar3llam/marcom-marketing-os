@@ -24,6 +24,7 @@
 // ============================================================
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../lib/api.js';
+import { submitApproval } from './useArtifactApproval/submitApproval.js';
 
 /**
  * Validate structured feedback client-side.
@@ -159,43 +160,15 @@ export function useArtifactApproval(executionId) {
    * @returns {Promise<Object>} Resume result
    */
   const submitDecisions = useCallback(async () => {
-    if (!canSubmit()) {
-      throw new Error('Cannot submit: not all approvals have decisions');
-    }
-
-    setSubmitting(true);
-    setError(null);
-
-    try {
-      // Build decisions array for API
-      const decisionsArray = artifacts
-        .filter(a => a.approval?.status === 'PENDING')
-        .map(a => {
-          const decision = decisions[a.approval.id];
-          return {
-            approvalId: a.approval.id,
-            decision: decision.decision,
-            feedback: decision.feedback || null,
-            decisionMetadata: decision.decisionMetadata || null,
-          };
-        });
-
-      const response = await api.post(
-        `/api/execute/${executionId}/resume`,
-        { decisions: decisionsArray }
-      );
-
-      // Clear local decisions on success
-      setDecisions({});
-
-      return response.data;
-    } catch (err) {
-      console.error('[useArtifactApproval] Failed to submit decisions:', err);
-      setError(err.message || 'Failed to submit approval decisions');
-      throw err;
-    } finally {
-      setSubmitting(false);
-    }
+    return submitApproval({
+      executionId,
+      artifacts,
+      decisions,
+      canSubmit,
+      setSubmitting,
+      setError,
+      setDecisions,
+    });
   }, [executionId, artifacts, decisions, canSubmit]);
 
   return {

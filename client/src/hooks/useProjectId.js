@@ -26,27 +26,22 @@ export function useProjectId() {
       return;
     }
 
-    let cancelled = false;
+    const ctrl = new AbortController();
     setLoading(true);
     setError(null);
 
-    api.get('/api/projects/mine')
+    api.get('/api/projects/mine', { signal: ctrl.signal })
       .then(res => {
-        if (!cancelled) {
-          setProjectId(res.data?.projectId ?? null);
-        }
+        setProjectId(res.data?.projectId ?? null);
       })
       .catch(err => {
-        if (!cancelled) {
-          setError(err.response?.data?.error || 'Could not load project');
-          setProjectId(null);
-        }
+        if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return;
+        setError(err.response?.data?.error || 'Could not load project');
+        setProjectId(null);
       })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+      .finally(() => setLoading(false));
 
-    return () => { cancelled = true; };
+    return () => ctrl.abort();
   }, [currentUser]);  // re-fetch if user changes
 
   return { projectId, loading, error };
