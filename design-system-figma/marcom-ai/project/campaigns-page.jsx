@@ -140,8 +140,81 @@ function HealthBar({ pct }) {
   );
 }
 
+// ── MetricRow component ───────────────────────────────────────
+function MetricRow({ label, value, trend, status, delta, context }) {
+  // Status-based coloring
+  const statusColor = status === 'danger' ? 'var(--c-kill-text)'
+                    : status === 'warning' ? 'var(--c-hold-text)'
+                    : status === 'success' ? 'var(--c-scale-text)'
+                    : 'var(--c-text-base)';
+
+  // Trend indicator
+  const trendSymbol = trend === 'up' ? '↑' : trend === 'down' ? '↓' : '';
+
+  return (
+    <div style={{ padding: '10px 12px', background: 'var(--c-surface-elevated)', borderRadius: 8 }}>
+      <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)' }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 4, marginTop: 3 }}>
+        <span className="font-mono tabular-nums" style={{ fontSize: 14, fontWeight: 700, color: statusColor }}>
+          {value ?? '—'}
+        </span>
+        {trendSymbol && (
+          <span style={{ fontSize: 11, color: statusColor }}>{trendSymbol}</span>
+        )}
+      </div>
+      {delta && (
+        <div className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-muted)', marginTop: 2 }}>
+          {delta}
+        </div>
+      )}
+      {context && (
+        <div style={{ fontSize: 10, color: 'var(--c-text-subtle)', marginTop: 3, lineHeight: 1.3 }}>
+          {context}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── MemoryEntry component ─────────────────────────────────────
+function MemoryEntry({ actionType, rationale, sustainable, durationHrs }) {
+  const sustainableLabel = sustainable === true ? 'Sustained'
+                         : sustainable === false ? 'Temporary'
+                         : 'Unknown';
+
+  const sustainableColor = sustainable === true ? 'var(--c-scale-text)'
+                         : sustainable === false ? 'var(--c-hold-text)'
+                         : 'var(--c-text-muted)';
+
+  return (
+    <div style={{ padding: '12px 14px', background: 'var(--c-surface-elevated)', border: '1px solid var(--c-surface-border)', borderRadius: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+        <span className="font-mono" style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)', fontWeight: 600 }}>
+          {actionType ?? 'DECISION'}
+        </span>
+        <span style={{ fontSize: 10, color: sustainableColor, fontWeight: 600 }}>
+          {sustainableLabel}
+        </span>
+      </div>
+      <p style={{ fontSize: 12, color: 'var(--c-text-soft)', fontStyle: 'italic', lineHeight: 1.55, margin: 0 }}>
+        "{rationale ?? 'No rationale provided.'}"
+      </p>
+      {durationHrs != null && (
+        <div className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-subtle)', marginTop: 6 }}>
+          Impact duration: {durationHrs}h
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Right-slide detail panel ─────────────────────────────────
 function DetailPanel({ alert, workspace, onClose, onReviewVerdict, onFixContent }) {
+  // Top-level guard for missing alert
+  if (!alert) return null;
+
   React.useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -150,25 +223,6 @@ function DetailPanel({ alert, workspace, onClose, onReviewVerdict, onFixContent 
 
   const health = alert.verdict === 'KILL' ? 28 : alert.verdict === 'HOLD' ? 56 : 82;
   const verdictColor = alert.verdict === 'KILL' ? 'var(--c-kill-text)' : alert.verdict === 'SCALE' ? 'var(--c-scale-text)' : 'var(--c-hold-text)';
-
-  // Demo metrics
-  const metrics = {
-    KILL:  { spend: '84.3k',  ctr: '0.84%', roas: '0.6x', freq: '4.2' },
-    HOLD:  { spend: '32.1k',  ctr: '1.10%', roas: '1.8x', freq: '3.1' },
-    SCALE: { spend: '21.7k',  ctr: '2.45%', roas: '4.8x', freq: '1.9' },
-  }[alert.verdict] || { spend: '—', ctr: '—', roas: '—', freq: '—' };
-
-  const diagnosis = {
-    KILL:  'Creative fatigue detected. Hook isn\'t engaging in the first 3 seconds. CPA is 73% above target and worsening 7 days running.',
-    HOLD:  'Volume is holding but CTR fragile. 48h re-scan recommended before any spend changes.',
-    SCALE: 'Stable ROAS at 4.8x for 6 days. Audience hasn\'t saturated. Safe to lift 2× and monitor frequency.',
-  }[alert.verdict] || '';
-
-  const memory = {
-    KILL:  'Last image swap had 24h impact only. Reallocation to PMax warm recovered 92% of equivalent spend within 6 days.',
-    HOLD:  'Two prior HOLDs on cold MENA audiences resolved to KILL within 4 days. Watch the next 48h closely.',
-    SCALE: 'Three prior SCALEs at 2× lift maintained ROAS for 8+ days. One needed pull-back at 10 days.',
-  }[alert.verdict] || '';
 
   return (
     <>
@@ -226,25 +280,48 @@ function DetailPanel({ alert, workspace, onClose, onReviewVerdict, onFixContent 
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
           {/* Performance */}
           <Section title="Performance" hint="last 14 days">
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-              <Metric label="Spend"     value={`${workspace.currency} ${metrics.spend}`} />
-              <Metric label="CTR"       value={metrics.ctr} />
-              <Metric label="ROAS"      value={metrics.roas} />
-              <Metric label="Frequency" value={metrics.freq} />
-            </div>
+            {alert.metrics && alert.metrics.length > 0 ? (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 10 }}>
+                {alert.metrics.map((m) => (
+                  <MetricRow
+                    key={m.metric}
+                    label={m.metric}
+                    value={m.value}
+                    trend={m.trend}
+                    status={m.status}
+                    delta={m.delta}
+                    context={m.context}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div style={{ padding: '14px 16px', background: 'var(--c-surface-elevated)', border: '1px solid var(--c-surface-border)', borderRadius: 10, fontSize: 12, color: 'var(--c-text-muted)', textAlign: 'center' }}>
+                No metrics available for this campaign.
+              </div>
+            )}
           </Section>
 
           {/* AI Diagnosis */}
           <Section title="AI Diagnosis" Icon={Icons.Brain}>
             <div style={{ padding: '14px 16px', background: 'rgba(246,201,69,0.06)', border: '1px solid rgba(246,201,69,0.25)', borderRadius: 10 }}>
-              <p style={{ fontSize: 13, color: 'var(--c-text-soft)', margin: 0, lineHeight: 1.55 }}>
-                {diagnosis}
+              <p style={{ fontSize: 13, color: 'var(--c-text-soft)', margin: 0, lineHeight: 1.55, marginBottom: 8 }}>
+                {alert.historical_insight ?? 'No historical insight available.'}
               </p>
+              {alert.analysis?.root_cause && (
+                <p style={{ fontSize: 12, color: 'var(--c-text-muted)', margin: 0, fontWeight: 600, fontFamily: 'var(--font-mono)' }}>
+                  Root cause: {alert.analysis.root_cause}
+                </p>
+              )}
             </div>
           </Section>
 
           {/* Recommended action */}
           <Section title="Recommended action">
+            <div style={{ padding: '14px 16px', background: 'rgba(246,201,69,0.06)', border: '1px solid rgba(246,201,69,0.25)', borderRadius: 10, marginBottom: 12 }}>
+              <p style={{ fontSize: 13, color: 'var(--c-text-soft)', margin: 0, lineHeight: 1.55 }}>
+                {alert.action_plan?.action ?? 'Awaiting analysis.'}
+              </p>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <button onClick={onFixContent} className="btn-gold" style={{ width: '100%', justifyContent: 'flex-start', padding: '12px 14px', fontSize: 13 }}>
                 <Icons.Send style={{ fontSize: 14 }} />
@@ -261,9 +338,23 @@ function DetailPanel({ alert, workspace, onClose, onReviewVerdict, onFixContent 
 
           {/* Decision memory */}
           <Section title="Decision memory" Icon={Icons.Database}>
-            <div style={{ padding: '12px 14px', background: 'var(--c-surface-elevated)', border: '1px solid var(--c-surface-border)', borderRadius: 10, fontSize: 12, color: 'var(--c-text-soft)', fontStyle: 'italic', lineHeight: 1.55 }}>
-              "{memory}"
-            </div>
+            {alert.memory && alert.memory.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {alert.memory.map((entry, i) => (
+                  <MemoryEntry
+                    key={i}
+                    actionType={entry.actionType}
+                    rationale={entry.decisionRationale}
+                    sustainable={entry.isSustainable}
+                    durationHrs={entry.impactDurationHrs}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div style={{ padding: '12px 14px', background: 'var(--c-surface-elevated)', border: '1px solid var(--c-surface-border)', borderRadius: 10, fontSize: 12, color: 'var(--c-text-muted)', textAlign: 'center' }}>
+                No decision history available.
+              </div>
+            )}
           </Section>
         </div>
       </aside>
