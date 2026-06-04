@@ -139,7 +139,7 @@ export async function processAnalyzeUpload(file, workspaceId, userId) {
   try {
     const analysisPromise = analyzeCampaignsBatch(campaignsForAnalysis);
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Analysis timeout after 45s')), 45_000)
+      setTimeout(() => reject(new Error('Analysis timeout after 90s')), 90_000)
     );
     batchResult = await Promise.race([analysisPromise, timeoutPromise]);
   } catch (err) {

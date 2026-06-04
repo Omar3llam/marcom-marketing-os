@@ -441,6 +441,7 @@ Return ONLY valid JSON in this exact format:
     task: prompt,
     campaignId: null,
     maxTokens: 4000,
+    skipRecommendations: true,
   });
 
   // Parse JSON from response

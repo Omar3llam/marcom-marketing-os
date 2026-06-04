@@ -28,6 +28,7 @@ const TOOL_TIMEOUT_MS = 10_000;     // Phase-4 spec: 10 s per tool
 export async function runClaudeAgent({
   campaignId, role, task, history = [],
   tools = [], onTool = null, maxTokens = 2000,
+  skipRecommendations = false,
 }) {
   // ── Validation Checkpoint 1: Required Parameters ────────────
   if (!task || typeof task !== 'string' || task.trim().length === 0) {
@@ -75,7 +76,7 @@ GOOD: {
     'Use the campaign context above to ground every recommendation. ' +
     'If a recent decision regressed, do NOT recommend the same action again ' +
     'unless you can articulate what would change.',
-    RECOMMENDATION_BLOCK,
+    skipRecommendations ? null : RECOMMENDATION_BLOCK,
   ].filter(Boolean).join('\n\n');
 
   const result = await callClaude({
