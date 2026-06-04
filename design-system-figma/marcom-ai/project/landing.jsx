@@ -196,7 +196,7 @@ function useReveal(threshold = 0.18) {
 function BrandMark({ size = 'md' }) {
   const fs = size === 'lg' ? 22 : size === 'sm' ? 13 : 16;
   return (
-    <a href="#top" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
+    <a href="#top" aria-label="Marcom AI – go to top" style={{ display: 'inline-flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
       {/* Geometric monogram — concentric ring + dot */}
       <span style={{ position: 'relative', width: fs + 6, height: fs + 6, flexShrink: 0 }}>
         <span
@@ -239,19 +239,21 @@ function Nav() {
   const [scrolled, setScrolled] = React.useState(false);
   React.useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 8);
-    window.addEventListener('scroll', onScroll);
+    window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
   return (
     <nav
+      aria-label="Main navigation"
       style={{
         position: 'sticky',
         top: 0,
         zIndex: 30,
-        background: scrolled ? 'rgba(248,246,242,0.82)' : 'transparent',
-        backdropFilter: scrolled ? 'blur(14px)' : 'none',
+        background: scrolled ? 'var(--c-nav-frosted)' : 'transparent',
+        backdropFilter:       scrolled ? 'blur(14px)' : 'none',
+        WebkitBackdropFilter: scrolled ? 'blur(14px)' : 'none',
         borderBottom: scrolled ? '1px solid var(--c-surface-border)' : '1px solid transparent',
-        transition: 'all 240ms cubic-bezier(0.16,1,0.3,1)',
+        transition: 'background 240ms cubic-bezier(0.16,1,0.3,1), border-color 240ms cubic-bezier(0.16,1,0.3,1), backdrop-filter 240ms cubic-bezier(0.16,1,0.3,1)',
       }}
     >
       <div
@@ -290,15 +292,13 @@ function NavLink({ href, children, sub = false }) {
   return (
     <a
       href={href}
+      className={`nav-link${sub ? ' nav-link--sub' : ''}`}
       style={{
         fontFamily: 'var(--f-display)',
         fontSize: 13,
         fontWeight: 500,
-        color: sub ? 'var(--c-text-muted)' : 'var(--c-text-soft)',
         textDecoration: 'none',
-        transition: 'color 150ms',
       }}
-      className="hover-color-base"
     >
       {children}
     </a>

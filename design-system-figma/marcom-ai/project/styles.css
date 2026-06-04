@@ -18,6 +18,7 @@
   --c-surface-border: #EDEAE4;
   --c-surface-elevated: #F1EEE8;
   --c-surface-border-strong: #D4CFCA;
+  --c-nav-frosted: rgba(248,246,242,0.85);
 
   /* Text */
   --c-text-base: #2B2B2B;
@@ -108,6 +109,7 @@
   --c-text-muted: #8B8B93;
   --c-text-subtle: #5C5C66;
   --c-on-gold: #1A1A1A;
+  --c-nav-frosted: rgba(14,14,20,0.85);
 
   --c-lumi-bg: #0B0B0F;
   --c-lumi-surface: #14141B;
@@ -392,6 +394,9 @@ button:focus-visible,
 .hover-border-gold:hover  { border-color: rgba(246,201,69,0.4) !important; }
 .hover-color-gold:hover   { color: var(--c-gold-deep) !important; }
 .hover-color-base:hover   { color: var(--c-text-base) !important; }
+.nav-link        { color: var(--c-text-soft);  transition: color 150ms; }
+.nav-link--sub   { color: var(--c-text-muted); }
+.nav-link:hover  { color: var(--c-text-base); }
 .hover-card-lift:hover    { border-color: rgba(246,201,69,0.6) !important; transform: translateY(-2px); }
 .hover-lift:hover         { transform: translateY(-2px); }
 
