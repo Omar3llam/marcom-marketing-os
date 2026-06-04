@@ -320,7 +320,7 @@ function Hero({ pose = 'cards', copyKey = 'decisive' }) {
         style={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: 'radial-gradient(rgba(43,43,43,0.05) 1px, transparent 1px)',
+          backgroundImage: 'radial-gradient(var(--c-dot-grid) 1px, transparent 1px)',
           backgroundSize: '24px 24px',
           maskImage: 'radial-gradient(ellipse at 50% 30%, black, transparent 75%)',
           WebkitMaskImage: 'radial-gradient(ellipse at 50% 30%, black, transparent 75%)',
@@ -333,17 +333,17 @@ function Hero({ pose = 'cards', copyKey = 'decisive' }) {
           position: 'absolute',
           top: -140, right: '8%',
           width: 560, height: 560,
-          background: 'radial-gradient(circle, rgba(246,201,69,0.18), transparent 65%)',
+          background: 'radial-gradient(circle, var(--c-lumi-tint-glow-sm), transparent 65%)',
           filter: 'blur(20px)',
           pointerEvents: 'none',
         }}
       />
 
-      <div style={{ maxWidth: SX.containerW, margin: '0 auto', display: 'grid', gridTemplateColumns: '1.05fr 0.95fr', gap: 80, alignItems: 'center', position: 'relative' }}>
+      <div style={{ maxWidth: SX.containerW, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'center', position: 'relative' }}>
         {/* LEFT */}
         <div>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 999, background: 'rgba(246,201,69,0.10)', border: '1px solid rgba(246,201,69,0.28)', marginBottom: 28 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-gold)', boxShadow: '0 0 6px var(--c-gold)', animation: 'intel-pulse 1.8s ease-in-out infinite' }} />
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 999, background: 'var(--c-lumi-tint-bg)', border: '1px solid rgba(246,201,69,0.28)', marginBottom: 28 }}>
+            <span className="anim-intel-pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-gold)', boxShadow: '0 0 6px var(--c-gold)' }} />
             <span className="font-mono" style={{ fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--c-gold-deep)', fontWeight: 600 }}>
               {c.eyebrow}
             </span>
@@ -353,7 +353,7 @@ function Hero({ pose = 'cards', copyKey = 'decisive' }) {
             className="font-display"
             style={{
               fontSize: 84,
-              fontWeight: 800,
+              fontWeight: 700,
               letterSpacing: '-0.045em',
               lineHeight: 0.94,
               margin: 0,
@@ -425,7 +425,7 @@ function HeroTypography() {
         style={{
           position: 'absolute', inset: 0,
           backgroundImage:
-            'linear-gradient(rgba(43,43,43,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(43,43,43,0.06) 1px, transparent 1px)',
+            'linear-gradient(var(--c-dot-grid-strong) 1px, transparent 1px), linear-gradient(90deg, var(--c-dot-grid-strong) 1px, transparent 1px)',
           backgroundSize: '32px 32px',
           maskImage: 'radial-gradient(circle at 50% 50%, black, transparent 78%)',
           WebkitMaskImage: 'radial-gradient(circle at 50% 50%, black, transparent 78%)',
@@ -435,13 +435,14 @@ function HeroTypography() {
       {rows.map((r) => (
         <div
           key={r.l}
+          className="anim-vector-pop"
           style={{
             position: 'relative',
             display: 'flex',
             alignItems: 'center',
             gap: 24,
             opacity: 0,
-            animation: `vector-pop 600ms cubic-bezier(0.16,1,0.3,1) ${r.delay}ms both`,
+            animationDelay: `${r.delay}ms`,
           }}
         >
           <span style={{ width: 10, height: 10, borderRadius: '50%', background: r.c, boxShadow: `0 0 14px ${r.c}` }} />
@@ -450,7 +451,7 @@ function HeroTypography() {
             className="font-display"
             style={{
               fontSize: 96,
-              fontWeight: 800,
+              fontWeight: 700,
               letterSpacing: '-0.05em',
               lineHeight: 0.85,
               color: r.c,
@@ -490,7 +491,7 @@ function HeroRadar() {
           transform: 'translate(-50%, -50%)',
           borderRadius: '50%',
           background: 'radial-gradient(circle, rgba(246,201,69,0.06), transparent 70%)',
-          border: '1px solid rgba(246,201,69,0.18)',
+          border: '1px solid var(--c-lumi-tint-glow-sm)',
         }}
       />
       {[0.32, 0.55, 0.78, 1].map((s, i) => (
@@ -508,6 +509,7 @@ function HeroRadar() {
       ))}
       {/* Sweep */}
       <div
+        className="anim-radar-sweep"
         style={{
           position: 'absolute',
           top: '50%', left: '50%',
@@ -515,14 +517,13 @@ function HeroRadar() {
           marginLeft: -220, marginTop: -220,
           borderRadius: '50%',
           background: 'conic-gradient(from 0deg, transparent 0deg, transparent 290deg, rgba(246,201,69,0.55) 358deg, transparent 360deg)',
-          animation: 'radar-sweep 3.6s cubic-bezier(0.4,0,0.6,1) infinite',
           maskImage: 'radial-gradient(circle, transparent 8%, black 9%, black 100%)',
           WebkitMaskImage: 'radial-gradient(circle, transparent 8%, black 9%, black 100%)',
         }}
       />
       {/* Crosshair lines */}
-      <div style={{ position: 'absolute', top: '50%', left: 'calc(50% - 220px)', width: 440, height: 1, background: 'rgba(246,201,69,0.18)' }} />
-      <div style={{ position: 'absolute', left: '50%', top: 'calc(50% - 220px)', height: 440, width: 1, background: 'rgba(246,201,69,0.18)' }} />
+      <div style={{ position: 'absolute', top: '50%', left: 'calc(50% - 220px)', width: 440, height: 1, background: 'var(--c-lumi-tint-glow-sm)' }} />
+      <div style={{ position: 'absolute', left: '50%', top: 'calc(50% - 220px)', height: 440, width: 1, background: 'var(--c-lumi-tint-glow-sm)' }} />
       {/* Center */}
       <div
         style={{
@@ -548,11 +549,11 @@ function HeroRadar() {
           }}
         >
           <span
+            className="anim-intel-pulse"
             style={{
               width: 8, height: 8, borderRadius: '50%',
               background: tg.hot ? 'var(--c-kill-text)' : 'var(--c-gold)',
               boxShadow: `0 0 ${tg.hot ? 14 : 8}px ${tg.hot ? 'var(--c-kill-text)' : 'var(--c-gold)'}`,
-              animation: 'intel-pulse 1.8s ease-in-out infinite',
             }}
           />
           <span className="font-mono" style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: tg.hot ? 'var(--c-kill-text)' : 'var(--c-text-muted)', fontWeight: 600 }}>
@@ -574,7 +575,7 @@ function HeroRadar() {
           boxShadow: '0 8px 24px rgba(0,0,0,0.08)',
         }}
       >
-        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-scale)', boxShadow: '0 0 8px var(--c-scale)', animation: 'intel-pulse 1.8s ease-in-out infinite' }} />
+        <span className="anim-intel-pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-scale)', boxShadow: '0 0 8px var(--c-scale)' }} />
         <span className="font-mono" style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--c-text-muted)' }}>
           Sweeping · 14 ad sets · 2 hot
         </span>
@@ -589,6 +590,7 @@ function HeroComposition() {
     <div className="hero-decor-only" style={{ position: 'relative', height: 540 }}>
       {/* BACK: Memory ledger card */}
       <div
+        className="anim-float-slow"
         style={{
           position: 'absolute',
           top: 6, right: 8,
@@ -599,7 +601,6 @@ function HeroComposition() {
           padding: 18,
           boxShadow: '0 12px 32px rgba(0,0,0,0.07)',
           transform: 'rotate(3deg)',
-          animation: 'float-y 7s ease-in-out infinite',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
@@ -613,7 +614,7 @@ function HeroComposition() {
           { tag: 'GEO',  txt: 'Cairo dominant',      bad: false },
         ].map((r) => (
           <div key={r.tag} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderTop: '1px dashed var(--c-surface-border)' }}>
-            <span className="font-mono" style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', padding: '2px 6px', borderRadius: 3, background: 'rgba(246,201,69,0.10)', color: 'var(--c-gold-deep)', minWidth: 38, textAlign: 'center' }}>
+            <span className="font-mono" style={{ fontSize: 9, fontWeight: 600, letterSpacing: '0.08em', padding: '2px 6px', borderRadius: 3, background: 'var(--c-lumi-tint-bg)', color: 'var(--c-gold-deep)', minWidth: 38, textAlign: 'center' }}>
               {r.tag}
             </span>
             <span style={{ fontSize: 11, color: r.bad ? 'var(--c-kill-text)' : 'var(--c-text-soft)' }}>{r.txt}</span>
@@ -623,18 +624,17 @@ function HeroComposition() {
 
       {/* MIDDLE: Big verdict card */}
       <div
+        className="anim-float-fast"
         style={{
           position: 'absolute',
           top: 90, left: 0,
           width: 380,
           background: 'var(--c-surface-card)',
-          border: '1px solid rgba(239,68,68,0.22)',
+          border: '1px solid var(--c-kill-border)',
           borderRadius: 20,
           padding: 26,
-          boxShadow: '0 28px 56px rgba(0,0,0,0.10), 0 0 40px rgba(239,68,68,0.08)',
+          boxShadow: '0 28px 56px rgba(0,0,0,0.10), var(--sh-kill-glow)',
           transform: 'rotate(-1.5deg)',
-          animation: 'float-y 6s ease-in-out infinite',
-          animationDelay: '0.6s',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
@@ -645,7 +645,7 @@ function HeroComposition() {
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 10 }}>
           <Icons.Skull style={{ fontSize: 38, color: 'var(--c-kill-text)' }} />
-          <span className="font-display" style={{ fontSize: 84, fontWeight: 800, letterSpacing: '-0.05em', lineHeight: 0.82, color: 'var(--c-kill-text)' }}>KILL</span>
+          <span className="font-display" style={{ fontSize: 84, fontWeight: 700, letterSpacing: '-0.05em', lineHeight: 0.82, color: 'var(--c-kill-text)' }}>KILL</span>
         </div>
         <div className="font-display" style={{ fontSize: 16, fontWeight: 600, color: 'var(--c-text-base)', marginBottom: 16, lineHeight: 1.35 }}>
           Stop the bleed.<br />Reallocate to PMax warm.
@@ -672,12 +672,12 @@ function HeroComposition() {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-scale)', boxShadow: '0 0 6px var(--c-scale)', animation: 'intel-pulse 1.8s ease-in-out infinite' }} />
+          <span className="anim-intel-pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-scale)', boxShadow: '0 0 6px var(--c-scale)' }} />
           <span className="section-label" style={{ color: 'var(--c-scale-text)' }}>Watching · 14 ad sets</span>
         </div>
         <div style={{ display: 'flex', gap: 4, alignItems: 'flex-end', height: 36 }}>
           {[12, 18, 10, 22, 28, 16, 30, 24, 18, 32, 26, 36, 20].map((h, i) => (
-            <div key={i} style={{ flex: 1, height: `${h}px`, borderRadius: 2, background: i === 12 ? 'var(--c-gold)' : 'var(--c-surface-border-strong)' }} />
+            <div key={`bar-${i}`} style={{ flex: 1, height: `${h}px`, borderRadius: 2, background: i === 12 ? 'var(--c-gold)' : 'var(--c-surface-border-strong)' }} />
           ))}
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, fontSize: 10, color: 'var(--c-text-muted)' }} className="font-mono">
