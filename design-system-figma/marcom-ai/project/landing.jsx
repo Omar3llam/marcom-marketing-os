@@ -851,9 +851,9 @@ function StepCard({ step, highlight }) {
 // ══════════════════════════════════════════════════════════════
 function VerdictPreview() {
   const cards = [
-    { v: 'KILL',  title: 'Eid Carousel · Cold ME',  impact: '$1,180 / wk saved',   sub: 'CPA breached, frequency 4.2' },
-    { v: 'HOLD',  title: 'Reels TOFU · LAL 2%',     impact: '3-day re-scan',       sub: 'CTR fragile but volume holds' },
-    { v: 'SCALE', title: 'PMax Retargeting Warm',   impact: '+$5,100 / mo proj',   sub: 'ROAS 4.8x, stable 6 days' },
+    { v: 'KILL',  title: 'Eid Carousel · Cold ME',  impact: 'EGP 4,200 / wk saved',        sub: 'CPA breached, frequency 4.2' },
+    { v: 'HOLD',  title: 'Reels TOFU · LAL 2%',     impact: '3-day re-scan',                sub: 'CTR fragile but volume holds' },
+    { v: 'SCALE', title: 'PMax Retargeting Warm',   impact: '+EGP 18,200 / mo projected',   sub: 'ROAS 4.8x, stable 6 days' },
   ];
   const colors = {
     KILL:  { fg: 'var(--c-kill-text)',  bg: 'var(--c-kill-bg)',  Icon: Icons.Skull },
@@ -863,6 +863,7 @@ function VerdictPreview() {
   return (
     <section style={{ padding: '0 32px 120px' }}>
       <div style={{ maxWidth: SX.containerW, margin: '0 auto' }}>
+        <SectionHeader eyebrow="Live verdict examples" title="KILL. HOLD. SCALE." />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
           {cards.map((c, i) => (
             <VerdictPreviewCard key={c.v} card={c} cfg={colors[c.v]} delay={i * 80} />
@@ -875,27 +876,22 @@ function VerdictPreview() {
 
 function VerdictPreviewCard({ card, cfg, delay }) {
   const r = useReveal(0.2);
-  const [hover, setHover] = React.useState(false);
   return (
     <a
       href={DEMO_URL}
       ref={r.ref}
-      className={r.className}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      className={`${r.className} verdict-card verdict-card--${card.v.toLowerCase()}`}
+      aria-label={`${card.v} verdict example: ${card.title} — ${card.impact}. See in demo.`}
       style={{
         textDecoration: 'none',
         background: 'var(--c-surface-card)',
-        border: `1px solid ${hover ? `${cfg.fg}40` : 'var(--c-surface-border)'}`,
+        border: '1px solid var(--c-surface-border)',
         borderLeft: `4px solid ${cfg.fg}`,
         borderRadius: 18,
         padding: 28,
         display: 'block',
-        boxShadow: hover ? '0 18px 36px rgba(0,0,0,0.08)' : '0 2px 8px rgba(0,0,0,0.04)',
-        transform: hover ? 'translateY(-4px)' : 'translateY(0)',
-        transition: 'border-color 240ms, box-shadow 240ms, transform 240ms',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
         transitionDelay: `${delay}ms`,
-        cursor: 'pointer',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 20 }}>
@@ -908,18 +904,17 @@ function VerdictPreviewCard({ card, cfg, delay }) {
         <div className="font-mono tabular-nums" style={{ fontSize: 14, fontWeight: 700, color: cfg.fg }}>{card.impact}</div>
       </div>
       <div
+        className="card-cta"
         style={{
           marginTop: 18,
           display: 'flex', alignItems: 'center', gap: 6,
           fontSize: 12,
           fontFamily: 'var(--f-display)',
           fontWeight: 500,
-          color: hover ? cfg.fg : 'var(--c-text-muted)',
-          transition: 'color 240ms',
         }}
       >
         See this in the demo
-        <Icons.ArrowRight style={{ fontSize: 12, transform: hover ? 'translateX(4px)' : 'translateX(0)', transition: 'transform 240ms' }} />
+        <Icons.ArrowRight style={{ fontSize: 12 }} />
       </div>
     </a>
   );
@@ -984,30 +979,21 @@ function InsideLumi() {
 
 function FeatureCard({ feat, delay, wide }) {
   const r = useReveal(0.2);
-  const [hover, setHover] = React.useState(false);
   return (
     <div
       ref={r.ref}
-      className={r.className}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      className={`${r.className}${!wide ? ' feature-card' : ''}`}
       style={{
         position: 'relative',
         gridColumn: wide ? '1 / -1' : 'auto',
         background: wide ? 'var(--c-text-base)' : 'var(--c-surface-light)',
         color: wide ? 'var(--c-surface-light)' : 'inherit',
-        border: wide
-          ? '1px solid rgba(246,201,69,0.35)'
-          : `1px solid ${hover ? 'rgba(246,201,69,0.4)' : 'var(--c-surface-border)'}`,
+        border: wide ? '1px solid rgba(246,201,69,0.35)' : '1px solid var(--c-surface-border)',
         borderRadius: 18,
         padding: wide ? '36px 36px' : 32,
         display: 'flex',
         gap: 22,
-        transform: hover && !wide ? 'translateY(-2px)' : 'translateY(0)',
-        boxShadow: wide
-          ? '0 18px 40px rgba(0,0,0,0.14), 0 0 40px rgba(246,201,69,0.10)'
-          : (hover ? '0 12px 28px rgba(0,0,0,0.06)' : 'none'),
-        transition: 'border-color 240ms, transform 240ms, box-shadow 240ms',
+        boxShadow: wide ? '0 18px 40px rgba(0,0,0,0.14), 0 0 40px rgba(246,201,69,0.10)' : 'none',
         transitionDelay: `${delay}ms`,
         overflow: 'hidden',
       }}
@@ -1024,15 +1010,15 @@ function FeatureCard({ feat, delay, wide }) {
         />
       )}
       <div
+        className={!wide ? 'feature-icon' : undefined}
         style={{
           position: 'relative',
           width: wide ? 56 : 48, height: wide ? 56 : 48, borderRadius: wide ? 14 : 12,
-          background: wide ? 'var(--c-gold)' : (hover ? 'var(--c-gold)' : 'rgba(246,201,69,0.10)'),
-          border: wide ? '1px solid rgba(246,201,69,0.5)' : '1px solid rgba(246,201,69,0.25)',
-          color: wide ? 'var(--c-text-base)' : (hover ? 'var(--c-text-base)' : 'var(--c-gold-deep)'),
+          background: wide ? 'var(--c-gold)' : 'var(--c-lumi-tint-bg)',
+          border: wide ? '1px solid rgba(246,201,69,0.5)' : '1px solid var(--c-lumi-tint-border)',
+          color: wide ? 'var(--c-text-base)' : 'var(--c-gold-deep)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
-          transition: 'background 240ms, color 240ms',
         }}
       >
         <feat.Icon style={{ fontSize: wide ? 26 : 22 }} />
@@ -1077,14 +1063,11 @@ function NumbersBand() {
             overflow: 'hidden',
           }}
         >
-          {nums.map((n, i) => (
+          {nums.map((n) => (
             <div
               key={n.l}
-              style={{
-                padding: '0 32px',
-                borderLeft: i === 0 ? 'none' : '1px solid var(--c-surface-border)',
-                display: 'flex', flexDirection: 'column', justifyContent: 'center',
-              }}
+              className="stat-cell"
+              style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
             >
               <div className="font-display tabular-nums" style={{ fontSize: 52, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: 'var(--c-gold-deep)' }}>{n.v}</div>
               <div style={{ marginTop: 12, fontSize: 13, color: 'var(--c-text-muted)' }}>{n.l}</div>
