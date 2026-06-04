@@ -381,6 +381,9 @@ button:focus-visible,
    (c) inline-style overrides for React grid/padding/font idioms.
    Touch the JSX with the useIsMobile() hook for cases this can't
    reach — anything not driven by a stable style fingerprint.
+
+   MAINTENANCE LAW: Never add new [style*="..."] selectors here.
+   Add a CSS class to the JSX instead and target the class.
    ============================================================ */
 @media (max-width: 760px) {
   :root {
@@ -388,8 +391,6 @@ button:focus-visible,
     --sp-10: 24px;
     --sp-12: 28px;
   }
-
-  body { font-size: 14px; }
 
   /* — Buttons land touch-friendly — */
   .btn-gold,
@@ -408,17 +409,20 @@ button:focus-visible,
   /* — Tighten card padding & section padding — */
   .card { border-radius: 14px; }
 
-  /* — Stack any explicit 2- or 3-col grid that uses fr units —
-     This is broad on purpose; layouts that MUST stay multi-col
-     opt out by adding the .mob-keep-cols class. */
-  [style*="grid-template-columns"]:not(.mob-keep-cols) {
+  /* — Stack fr-unit multi-column grids on mobile —
+     Only collapses grids using fr-unit repeat/multi-col patterns.
+     Table-style grids with fixed px widths opt out with .mob-keep-cols. */
+  [style*="grid-template-columns: repeat"]:not(.mob-keep-cols),
+  [style*="grid-template-columns: 1fr 1fr"]:not(.mob-keep-cols),
+  [style*="grid-template-columns: 1fr 1fr 1fr"]:not(.mob-keep-cols) {
     grid-template-columns: 1fr !important;
   }
   /* For the explicit "fixed pixel-width sidebar + flex" patterns
      (e.g. the demo shell), the JSX edits handle layout. */
 
   /* — Section padding compression for prose pages —
-     Targets inline padding like "120px 32px" / "88px 32px". */
+     TODO: Replace with a CSS class (e.g. .page-padding-view) set in JSX.
+     This selector will break if the inline style value changes. */
   [style*="padding: 120px 32px"],
   [style*="padding: 100px 32px"],
   [style*="padding: 88px 32px"],
@@ -430,7 +434,9 @@ button:focus-visible,
     padding: 56px 20px !important;
   }
 
-  /* — View container compression (Home, Campaigns, Content Lab, etc.) — */
+  /* — View container compression (Home, Campaigns, Content Lab, etc.) —
+     TODO: Replace with a CSS class (e.g. .page-padding-view) set in JSX.
+     This selector will break if the inline style value changes. */
   [style*="padding: 32px 32px 24px"],
   [style*="padding: 32px 32px 40px"],
   [style*="padding: 32px 32px 8px"],
