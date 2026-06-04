@@ -7,6 +7,9 @@
 import { Icons } from './icons.jsx';
 import { VerdictPill, StagePill } from './primitives.jsx';
 
+// DEPRECATED — use CampaignsPage from campaigns-page.jsx instead.
+// Kept temporarily for the MARCOM Demo.html standalone file.
+// Remove when standalone demo is updated.
 export function CampaignsList({ workspace, alerts, onStartFlow, onReviewAlert }) {
   return (
     <div data-screen-label="Campaign Analysis" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px' }}>
@@ -43,7 +46,7 @@ export function CampaignsList({ workspace, alerts, onStartFlow, onReviewAlert })
             gap: 16,
           }}
         >
-          {['Verdict','Campaign / Ad set','Stage','CPA','Frequency','Time'].map((h) => (
+          {['Verdict','Campaign / Ad set','Stage','Signal','Bleed/wk','Time'].map((h) => (
             <span key={h} className="font-mono" style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)' }}>{h}</span>
           ))}
         </div>
@@ -70,8 +73,8 @@ export function CampaignsList({ workspace, alerts, onStartFlow, onReviewAlert })
               <div className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 2 }}>{a.adset}</div>
             </div>
             <StagePill stage={a.stage} />
-            <span className="font-mono tabular-nums" style={{ fontSize: 12, color: 'var(--c-text-soft)' }}>{a.detail.match(/EGP|SAR|AED/) ? a.detail.split('·')[0].trim().split(' ')[1] || '—' : '—'}</span>
-            <span className="font-mono tabular-nums" style={{ fontSize: 12, color: a.bleed !== '—' ? 'var(--c-kill-text)' : 'var(--c-text-muted)' }}>{a.bleed}</span>
+            <span className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.analysis?.root_cause ?? '—'}</span>
+            <span className="font-mono tabular-nums" style={{ fontSize: 12, color: (a.bleed ?? '—') !== '—' ? 'var(--c-kill-text)' : 'var(--c-text-muted)' }}>{a.bleed ?? '—'}</span>
             <span className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-subtle)' }}>{a.time}</span>
           </div>
         ))}

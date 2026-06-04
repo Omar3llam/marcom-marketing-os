@@ -13,18 +13,23 @@ export function ExecutionView({ workspace, featured, onComplete, onBackToHub }) 
   const steps = DEMO_DATA.EXECUTION;
   const [done, setDone] = React.useState(-1); // index of last completed step
   const [phase, setPhase] = React.useState('running'); // running | complete
+  const intervalRef = React.useRef(null);
 
-  React.useEffect(() => {
+  const startProgress = () => {
     let i = 0;
-    const id = setInterval(() => {
+    intervalRef.current = setInterval(() => {
       setDone(i);
       i++;
       if (i >= steps.length) {
-        clearInterval(id);
+        clearInterval(intervalRef.current);
         setTimeout(() => setPhase('complete'), 500);
       }
     }, 480);
-    return () => clearInterval(id);
+  };
+
+  React.useEffect(() => {
+    startProgress();
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
   if (phase === 'complete') return <DoneView workspace={workspace} featured={featured} onBackToHub={onBackToHub} />;

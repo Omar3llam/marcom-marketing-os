@@ -12,10 +12,15 @@ const THEATRE_DURATION_MS = 3800;
 
 export function TheatreView({ workspace, featured, onComplete }) {
   const [elapsed, setElapsed] = React.useState(0);
+  const timersRef = React.useRef([]);
   const vectors = DEMO_DATA.VECTORS.map(v => ({
     ...v,
     unit: v.unit.replace('{currency}', workspace.currencySym),
   }));
+
+  React.useEffect(() => {
+    return () => timersRef.current.forEach(clearTimeout);
+  }, []);
 
   React.useEffect(() => {
     const start = performance.now();
@@ -24,7 +29,7 @@ export function TheatreView({ workspace, featured, onComplete }) {
       const e = performance.now() - start;
       setElapsed(e);
       if (e < THEATRE_DURATION_MS) raf = requestAnimationFrame(tick);
-      else setTimeout(onComplete, 350);
+      else timersRef.current.push(setTimeout(onComplete, 350));
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
