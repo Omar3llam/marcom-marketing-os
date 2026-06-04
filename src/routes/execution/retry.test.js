@@ -76,6 +76,7 @@ vi.mock('../../services/metaExecutionService.js', () => ({
 
 import { prisma } from '../../lib/prisma.js';
 import { lifecycleService } from '../../services/execution/ExecutionLifecycleService.js';
+import { firebaseAuthMiddleware } from '../../middleware/firebaseAuth.js';
 
 describe('POST /api/execute/:id/retry', () => {
   let app;
@@ -96,6 +97,7 @@ describe('POST /api/execute/:id/retry', () => {
     vi.clearAllMocks();
     app = express();
     app.use(express.json());
+    app.use(firebaseAuthMiddleware);
     app.use('/api/execute', executionRouter);
   });
 
