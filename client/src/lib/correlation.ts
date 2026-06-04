@@ -30,9 +30,7 @@ const SESSION_ID_KEY = 'marcom_session_id';
  * @returns Unique request ID
  */
 export function generateRequestId(): string {
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 8);
-  return `req_${timestamp}_${random}`;
+  return `req_${crypto.randomUUID()}`;
 }
 
 /**
@@ -55,9 +53,7 @@ export function getSessionId(): string {
     }
 
     // Generate new session ID
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).substring(2, 8);
-    const sessionId = `ses_${timestamp}_${random}`;
+    const sessionId = `sess_${crypto.randomUUID()}`;
 
     // Persist to sessionStorage
     sessionStorage.setItem(SESSION_ID_KEY, sessionId);

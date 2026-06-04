@@ -52,7 +52,7 @@ const events: TelemetryEvent[] = [];
 function getSessionId(): string {
   let sessionId = sessionStorage.getItem('telemetry_session_id');
   if (!sessionId) {
-    sessionId = `session_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    sessionId = `session_${crypto.randomUUID()}`;
     sessionStorage.setItem('telemetry_session_id', sessionId);
   }
   return sessionId;
