@@ -3,6 +3,11 @@
 // ============================================================
 // Realistic MENA media-buyer fixture data for the sales demo.
 // Three workspaces selectable via Tweaks; default is Cairo apparel.
+//
+// Field conventions:
+//   Raw numeric field   → spend, cpa, cpaTarget, cpaDelta, roas, ctr, ctrPrev, frequency
+//   Formatted display   → spendFmt, cpaFmt, cpaTargetFmt, cpaDeltaFmt, roasFmt, ctrFmt, ctrPrevFmt
+//   API-aligned (radar) → action_id, analysis{verdict,root_cause}, historical_insight, action_plan, metrics, memory
 
 const DEMO_WORKSPACES = {
   apparel: {
@@ -70,30 +75,28 @@ const FEATURED_CAMPAIGN = {
       audience: 'Cold ME — 18-44, female',
       adset: 'Carousel · 5 SKUs',
       daysRun: 14,
-      // Live metrics
-      spend: 'EGP 84,310',
-      cpa: 'EGP 312',
-      cpaTarget: 'EGP 180',
-      cpaDelta: '+73%',
-      roas: '0.6x',
-      roasTarget: '2.4x',
-      ctr: '0.84%',
-      ctrPrev: '1.32%',
-      frequency: '4.2',
+      // Raw numeric metrics
+      spend:      84310,        spendFmt:     'EGP 84,310',
+      cpa:        312,          cpaFmt:       'EGP 312',
+      cpaTarget:  180,          cpaTargetFmt: 'EGP 180',
+      cpaDelta:   0.73,         cpaDeltaFmt:  '+73%',
+      roas:       0.6,          roasFmt:      '0.6x',
+      roasTarget: 2.4,          roasTargetFmt: '2.4x',
+      ctr:        0.0084,       ctrFmt:       '0.84%',
+      ctrPrev:    0.0132,       ctrPrevFmt:   '1.32%',
+      frequency:  4.2,
       // Verdict outcome
       verdict: 'KILL',
       confidence: 92,
       financialImpact: { value: 'EGP 4,200', cadence: 'per week', sub: 'saved by killing now' },
       monthlyProj: 'EGP 18,200 / mo recovered',
       title: 'Stop the bleed. Reallocate to PMax warm.',
-      // Reasoning bullets — what the AI saw
       reasoning: [
         { tag: 'CPA', body: 'CPA at EGP 312 — 73% above your EGP 180 target. Deteriorating 7 days running.' },
         { tag: 'FREQUENCY', body: 'Frequency 4.2 on cold audience. Past your fatigue threshold (3.5).' },
         { tag: 'CTR', body: 'CTR collapsed 36% in 48h (1.32% → 0.84%). Creative is burned.' },
         { tag: 'MEMORY', body: 'Three Eid cold-audience launches this year hit fatigue by day 14. This matches.' },
       ],
-      // Recommended reallocation
       action: {
         title: 'Kill ad set, reallocate budget',
         verb: 'Pause',
@@ -116,15 +119,15 @@ const FEATURED_CAMPAIGN = {
       audience: 'Cold ME — 22-38, female',
       adset: 'Static · 3 creatives',
       daysRun: 11,
-      spend: 'SAR 52,400',
-      cpa: 'SAR 298',
-      cpaTarget: 'SAR 195',
-      cpaDelta: '+53%',
-      roas: '0.9x',
-      roasTarget: '2.2x',
-      ctr: '0.71%',
-      ctrPrev: '1.18%',
-      frequency: '3.9',
+      spend:      52400,        spendFmt:     'SAR 52,400',
+      cpa:        298,          cpaFmt:       'SAR 298',
+      cpaTarget:  195,          cpaTargetFmt: 'SAR 195',
+      cpaDelta:   0.53,         cpaDeltaFmt:  '+53%',
+      roas:       0.9,          roasFmt:      '0.9x',
+      roasTarget: 2.2,          roasTargetFmt: '2.2x',
+      ctr:        0.0071,       ctrFmt:       '0.71%',
+      ctrPrev:    0.0118,       ctrPrevFmt:   '1.18%',
+      frequency:  3.9,
       verdict: 'KILL',
       confidence: 89,
       financialImpact: { value: 'SAR 5,200', cadence: 'per week', sub: 'saved by killing now' },
@@ -158,15 +161,15 @@ const FEATURED_CAMPAIGN = {
       audience: 'Broad — UAE Founders/CTO',
       adset: 'Lead Form · 2 variants',
       daysRun: 9,
-      spend: 'AED 18,900',
-      cpa: 'AED 412',
-      cpaTarget: 'AED 240',
-      cpaDelta: '+72%',
-      roas: '—',
-      roasTarget: '—',
-      ctr: '0.62%',
-      ctrPrev: '0.94%',
-      frequency: '3.7',
+      spend:      18900,        spendFmt:     'AED 18,900',
+      cpa:        412,          cpaFmt:       'AED 412',
+      cpaTarget:  240,          cpaTargetFmt: 'AED 240',
+      cpaDelta:   0.72,         cpaDeltaFmt:  '+72%',
+      roas:       null,         roasFmt:      '—',
+      roasTarget: null,         roasTargetFmt: '—',
+      ctr:        0.0062,       ctrFmt:       '0.62%',
+      ctrPrev:    0.0094,       ctrPrevFmt:   '0.94%',
+      frequency:  3.7,
       verdict: 'KILL',
       confidence: 87,
       financialImpact: { value: 'AED 2,100', cadence: 'per week', sub: 'saved by killing now' },
@@ -191,9 +194,18 @@ const FEATURED_CAMPAIGN = {
 };
 
 // ── Active radar alerts (Command Hub) ────────────────────────
+// Each item carries both demo-friendly flat fields AND API-aligned nested fields.
 const RADAR_ALERTS_BY_WS = {
   apparel: [
     {
+      // API-aligned fields
+      action_id: 'r1',
+      analysis: { verdict: 'KILL', root_cause: 'CPA breach' },
+      historical_insight: 'CPA EGP 312 (target 180) · 7 days deteriorating',
+      action_plan: { action: 'Investigate: CPA breach', status: 'PENDING' },
+      metrics: [],
+      memory: [],
+      // Demo-friendly flat fields
       id: 'r1',
       priority: 'HIGH',
       campaign: 'Eid Drop · Carousel · Cold ME',
@@ -206,6 +218,12 @@ const RADAR_ALERTS_BY_WS = {
       verdict: 'KILL',
     },
     {
+      action_id: 'r2',
+      analysis: { verdict: 'HOLD', root_cause: 'CTR collapse' },
+      historical_insight: 'CTR down 38% in 48h — creative fatigue',
+      action_plan: { action: 'Investigate: CTR collapse', status: 'PENDING' },
+      metrics: [],
+      memory: [],
       id: 'r2',
       priority: 'HIGH',
       campaign: 'Reels TOFU · LAL 2%',
@@ -218,6 +236,12 @@ const RADAR_ALERTS_BY_WS = {
       verdict: 'HOLD',
     },
     {
+      action_id: 'r3',
+      analysis: { verdict: 'HOLD', root_cause: 'Audience stale' },
+      historical_insight: 'No new conversions from 41% of segment · 14 days',
+      action_plan: { action: 'Investigate: Audience stale', status: 'PENDING' },
+      metrics: [],
+      memory: [],
       id: 'r3',
       priority: 'MEDIUM',
       campaign: 'PMax · Retargeting Warm',
@@ -230,6 +254,12 @@ const RADAR_ALERTS_BY_WS = {
       verdict: 'HOLD',
     },
     {
+      action_id: 'r4',
+      analysis: { verdict: 'SCALE', root_cause: 'New scaling opp' },
+      historical_insight: 'ROAS 4.8x, CPA stable for 6 days — ready to scale 2x',
+      action_plan: { action: 'Investigate: New scaling opp', status: 'PENDING' },
+      metrics: [],
+      memory: [],
       id: 'r4',
       priority: 'LOW',
       campaign: 'Influencer · Layla',
@@ -244,6 +274,12 @@ const RADAR_ALERTS_BY_WS = {
   ],
   riyadh: [
     {
+      action_id: 'r1',
+      analysis: { verdict: 'KILL', root_cause: 'CPA breach' },
+      historical_insight: 'CPA SAR 298 (target 195) · 5 days deteriorating',
+      action_plan: { action: 'Investigate: CPA breach', status: 'PENDING' },
+      metrics: [],
+      memory: [],
       id: 'r1',
       priority: 'HIGH',
       campaign: 'Static · Cold ME · Beauty Bundle',
@@ -256,6 +292,12 @@ const RADAR_ALERTS_BY_WS = {
       verdict: 'KILL',
     },
     {
+      action_id: 'r2',
+      analysis: { verdict: 'HOLD', root_cause: 'Mixed signal' },
+      historical_insight: 'CPA stable but ROAS flatlining at 2.0x',
+      action_plan: { action: 'Investigate: Mixed signal', status: 'PENDING' },
+      metrics: [],
+      memory: [],
       id: 'r2',
       priority: 'MEDIUM',
       campaign: 'Meta UGC Reels',
@@ -268,6 +310,12 @@ const RADAR_ALERTS_BY_WS = {
       verdict: 'HOLD',
     },
     {
+      action_id: 'r3',
+      analysis: { verdict: 'SCALE', root_cause: 'Scaling green light' },
+      historical_insight: 'CPA stable SAR 64 · 6 days · ready for 2x lift',
+      action_plan: { action: 'Investigate: Scaling green light', status: 'PENDING' },
+      metrics: [],
+      memory: [],
       id: 'r3',
       priority: 'LOW',
       campaign: 'Snap · Influencer push',
@@ -282,6 +330,12 @@ const RADAR_ALERTS_BY_WS = {
   ],
   dubai: [
     {
+      action_id: 'r1',
+      analysis: { verdict: 'KILL', root_cause: 'CPL breach' },
+      historical_insight: 'CPL AED 412 (target 240) · 6 days trending up',
+      action_plan: { action: 'Investigate: CPL breach', status: 'PENDING' },
+      metrics: [],
+      memory: [],
       id: 'r1',
       priority: 'HIGH',
       campaign: 'Meta Lead Form · Broad · CTO',
@@ -294,6 +348,12 @@ const RADAR_ALERTS_BY_WS = {
       verdict: 'KILL',
     },
     {
+      action_id: 'r2',
+      analysis: { verdict: 'SCALE', root_cause: 'Scaling opp' },
+      historical_insight: 'CPL AED 168, stable 8 days — ready to 1.5x',
+      action_plan: { action: 'Investigate: Scaling opp', status: 'PENDING' },
+      metrics: [],
+      memory: [],
       id: 'r2',
       priority: 'MEDIUM',
       campaign: 'LinkedIn · CTO ICP',
@@ -317,21 +377,22 @@ const ACTIVITY_TICKER = [
 ];
 
 // ── Theatre vectors — what the AI "scans" ────────────────────
+// {currency} is replaced at render time with workspace.currencySym
 const SCAN_VECTORS = [
-  { id: 1, label: 'CPA trajectory',          unit: 'last 14d' },
-  { id: 2, label: 'Frequency saturation',    unit: 'cold audience' },
-  { id: 3, label: 'CTR decay slope',         unit: '48h window' },
-  { id: 4, label: 'Creative fatigue signal', unit: 'engagement Δ' },
-  { id: 5, label: 'Audience overlap',        unit: 'vs warm pool' },
-  { id: 6, label: 'Budget velocity',         unit: 'EGP/day' },
-  { id: 7, label: 'Time-of-day pacing',      unit: 'last 168h' },
-  { id: 8, label: 'Geo concentration',       unit: '12 markets' },
-  { id: 9, label: 'Placement breakdown',     unit: 'Reels / Feed / Stories' },
-  { id: 10, label: 'Memory: prior outcomes', unit: '3 matches found' },
-  { id: 11, label: 'Market dialect signal',  unit: 'MENA cold launches' },
+  { id: 1,  label: 'CPA trajectory',          unit: 'last 14d' },
+  { id: 2,  label: 'Frequency saturation',    unit: 'cold audience' },
+  { id: 3,  label: 'CTR decay slope',         unit: '48h window' },
+  { id: 4,  label: 'Creative fatigue signal', unit: 'engagement Δ' },
+  { id: 5,  label: 'Audience overlap',        unit: 'vs warm pool' },
+  { id: 6,  label: 'Budget velocity',         unit: '{currency}/day' },
+  { id: 7,  label: 'Time-of-day pacing',      unit: 'last 168h' },
+  { id: 8,  label: 'Geo concentration',       unit: '12 markets' },
+  { id: 9,  label: 'Placement breakdown',     unit: 'Reels / Feed / Stories' },
+  { id: 10, label: 'Memory: prior outcomes',  unit: '3 matches found' },
+  { id: 11, label: 'Market dialect signal',   unit: 'MENA cold launches' },
   { id: 12, label: 'Financial counterfactual', unit: 'reallocation paths' },
-  { id: 13, label: 'Risk envelope',          unit: 'σ confidence' },
-  { id: 14, label: 'Verdict locked',         unit: 'KILL · 92%' },
+  { id: 13, label: 'Risk envelope',           unit: 'σ confidence' },
+  { id: 14, label: 'Verdict locked',          unit: 'KILL · 92%' },
 ];
 
 // ── Execution steps (after user confirms) ────────────────────
@@ -346,9 +407,9 @@ const EXECUTION_STEPS = [
 
 export const DEMO_DATA = {
   WORKSPACES: DEMO_WORKSPACES,
-  FEATURED: FEATURED_CAMPAIGN,
+  FEATURED:   FEATURED_CAMPAIGN,
   RADAR_BY_WS: RADAR_ALERTS_BY_WS,
-  ACTIVITY: ACTIVITY_TICKER,
-  VECTORS: SCAN_VECTORS,
-  EXECUTION: EXECUTION_STEPS,
+  ACTIVITY:   ACTIVITY_TICKER,
+  VECTORS:    SCAN_VECTORS,
+  EXECUTION:  EXECUTION_STEPS,
 };

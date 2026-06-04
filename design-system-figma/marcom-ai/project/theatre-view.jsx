@@ -12,7 +12,10 @@ const THEATRE_DURATION_MS = 3800;
 
 export function TheatreView({ workspace, featured, onComplete }) {
   const [elapsed, setElapsed] = React.useState(0);
-  const vectors = DEMO_DATA.VECTORS;
+  const vectors = DEMO_DATA.VECTORS.map(v => ({
+    ...v,
+    unit: v.unit.replace('{currency}', workspace.currencySym),
+  }));
 
   React.useEffect(() => {
     const start = performance.now();
