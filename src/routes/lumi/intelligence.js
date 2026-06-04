@@ -14,7 +14,21 @@ export const intelligenceRouter = Router();
 // ─────────────────────────────────────────────────────────────
 intelligenceRouter.post('/orchestrate/:campaignId', async (req, res) => {
   const { campaignId } = req.params;
-  const wsId   = req.workspaceId || (req.userId ? `clerk:${req.userId}` : null);
+  let wsId = req.workspaceId;
+  if (!wsId && req.userId) {
+    try {
+      const u = await prisma.user.findUnique({
+        where:  { clerkId: req.userId },
+        select: { workspaceId: true },
+      });
+      wsId = u?.workspaceId ?? null;
+    } catch (fallbackErr) {
+      logger.error(
+        { err: fallbackErr.message, userId: req.userId },
+        '[lumi/orchestrate] workspaceId fallback lookup failed'
+      );
+    }
+  }
   const userId = req.userId;
   if (!wsId)        return res.status(401).json({ error: 'Unauthenticated' });
   if (!campaignId)  return res.status(400).json({ error: 'campaignId required' });
