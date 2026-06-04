@@ -8,6 +8,7 @@
   --c-gold: #F6C945;
   --c-gold-deep: #E0A800;
   --c-gold-glow: #FFD95A;
+  --c-on-gold: #1A1A1A;
   --c-accent-warm: #F59E0B;
   --c-accent-amber: #FBBF24;
 
@@ -106,6 +107,7 @@
   --c-text-soft: #C7C7CD;
   --c-text-muted: #8B8B93;
   --c-text-subtle: #5C5C66;
+  --c-on-gold: #1A1A1A;
 
   --c-lumi-bg: #0B0B0F;
   --c-lumi-surface: #14141B;

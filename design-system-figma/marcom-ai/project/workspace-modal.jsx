@@ -115,7 +115,7 @@ export function CreateWorkspaceModal({ onClose, onCreate }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px', borderBottom: '1px solid var(--c-surface-border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, var(--c-gold), var(--c-gold-deep))', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--sh-gold-glow)' }}>
-              <Icons.Plus style={{ fontSize: 16, color: '#2b2b2b' }} />
+              <Icons.Plus style={{ fontSize: 16, color: 'var(--c-on-gold)' }} />
             </div>
             <div>
               <div className="font-display" style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text-base)' }}>Create workspace</div>
@@ -298,7 +298,7 @@ function CWStepReview({ data, market, channelList }) {
       <div style={{ marginTop: 20, padding: 16, background: 'var(--c-surface-elevated)', border: '1px solid var(--c-surface-border)', borderRadius: 14 }}>
         <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
           <div style={{ width: 40, height: 40, borderRadius: 9, background: 'linear-gradient(135deg, var(--c-gold), var(--c-gold-deep))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: 'var(--sh-gold-glow)' }}>
-            <span className="font-display" style={{ fontWeight: 700, fontSize: 14, color: '#2b2b2b' }}>{initials}</span>
+            <span className="font-display" style={{ fontWeight: 700, fontSize: 14, color: 'var(--c-on-gold)' }}>{initials}</span>
           </div>
           <div style={{ minWidth: 0, flex: 1 }}>
             <div className="font-display" style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text-base)' }}>{data.name || 'Untitled'}</div>

@@ -879,7 +879,7 @@ function PreviewPane({ data, market, step }) {
           <div style={{ position: 'absolute', top: -40, right: -40, width: 80, height: 80, borderRadius: '50%', background: 'radial-gradient(circle, rgba(246,201,69,0.18), transparent 70%)', pointerEvents: 'none' }} />
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
             <div style={{ width: 34, height: 34, borderRadius: 8, background: 'linear-gradient(135deg, var(--c-gold), var(--c-gold-deep))', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--sh-gold-glow)', flexShrink: 0 }}>
-              <span className="font-display" style={{ fontWeight: 700, fontSize: 12, color: '#2b2b2b' }}>{initials}</span>
+              <span className="font-display" style={{ fontWeight: 700, fontSize: 12, color: 'var(--c-on-gold)' }}>{initials}</span>
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div className="font-display" style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-text-base)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{data.name || 'Your workspace'}</div>

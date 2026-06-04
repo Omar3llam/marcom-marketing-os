@@ -259,8 +259,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
                     flexShrink: 0,
                   }}
                 >
-                  {/* SH04: was color: '#2b2b2b' — must use CSS variable for theme compat */}
-                  <span className="font-display" style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-base)' }}>{workspace.initials}</span>
+                  <span className="font-display" style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-on-gold)' }}>{workspace.initials}</span>
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="font-display" style={{ fontWeight: 600, fontSize: 13, color: 'var(--c-lumi-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -348,7 +347,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
-              <span className="font-display" style={{ fontWeight: 700, fontSize: 12, color: 'var(--c-text-base)' }}>{workspace.initials}</span>
+              <span className="font-display" style={{ fontWeight: 700, fontSize: 12, color: 'var(--c-on-gold)' }}>{workspace.initials}</span>
               {alertCount > 0 && (
                 <span style={{
                   position: 'absolute', top: -4, right: -4,
@@ -858,8 +857,7 @@ function WorkspaceSwitcher({ personas, currentPersona, onPick }) {
                 flexShrink: 0,
               }}
             >
-              {/* SH04: was color: '#2b2b2b' */}
-              <span className="font-display" style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text-base)' }}>{p.initials}</span>
+              <span className="font-display" style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-on-gold)' }}>{p.initials}</span>
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="font-display" style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-lumi-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
