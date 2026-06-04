@@ -2,7 +2,10 @@
 // MARCOM Demo — Shell (Sidebar + ContextBar)
 // ============================================================
 
-function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sessions, radarAlerts = [], personas, onSwitchPersona, currentPersona }) {
+import { Icons } from './icons.jsx';
+import { VerdictPill, GlowDot } from './primitives.jsx';
+
+export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sessions, radarAlerts = [], personas, onSwitchPersona, currentPersona }) {
   const coreTools = [
     { key: 'home',       label: 'Home',         sub: 'Account pulse',                Icon: Icons.Layout },
     { key: 'campaigns',  label: 'Campaigns',    sub: 'Verdicts + diagnosis',         Icon: Icons.BarChart },
@@ -724,7 +727,7 @@ function DecisionSparkline() {
 }
 
 // ── Bottom context bar (status / health) ─────────────────────
-function ContextBar({ workspace, lastSync = '14 sec ago' }) {
+export function ContextBar({ workspace, lastSync = '14 sec ago' }) {
   return (
     <div
       style={{
@@ -1076,4 +1079,3 @@ function CmdKRow({ Icon, iconColor, label, sub, right, onClick }) {
   );
 }
 
-Object.assign(window, { Sidebar, ContextBar });

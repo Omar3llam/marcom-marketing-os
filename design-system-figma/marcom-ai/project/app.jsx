@@ -2,6 +2,22 @@
 // Lumi — Root App (router + Tweaks + Shell)
 // ============================================================
 
+import { Icons }                                          from './icons.jsx';
+import { VerdictPill, PriorityPill, StagePill,
+         InlineBar, GlowDot, LumiLoader, SectionLabel,
+         MetricRow, Card, Skeleton, useIsMobile }         from './primitives.jsx';
+import { Sidebar, ContextBar }                            from './shell.jsx';
+import { DEMO_DATA }                                      from './data.js';
+import { HomePage }                                       from './home.jsx';
+import { CampaignsPage }                                  from './campaigns-page.jsx';
+import { ContentLab }                                     from './content-lab.jsx';
+import { InputView }                                      from './input-view.jsx';
+import { TheatreView }                                    from './theatre-view.jsx';
+import { SuccessView }                                    from './success-view.jsx';
+import { ExecutionView }                                  from './execution-view.jsx';
+import { GrowthPage, CalendarPage }                       from './growth-calendar.jsx';
+import { GenericPage }                                    from './misc-views.jsx';
+
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "light",
   "density": "comfortable",
@@ -40,9 +56,9 @@ function App() {
     document.documentElement.setAttribute('data-density', t.density);
   }, [t.theme, t.density]);
 
-  const workspace    = window.DEMO_DATA.WORKSPACES[t.persona] || window.DEMO_DATA.WORKSPACES.apparel;
-  const featured     = window.DEMO_DATA.FEATURED[t.persona]   || window.DEMO_DATA.FEATURED.apparel;
-  const radarAlerts  = window.DEMO_DATA.RADAR_BY_WS[t.persona] || window.DEMO_DATA.RADAR_BY_WS.apparel;
+  const workspace    = DEMO_DATA.WORKSPACES[t.persona] || DEMO_DATA.WORKSPACES.apparel;
+  const featured     = DEMO_DATA.FEATURED[t.persona]   || DEMO_DATA.FEATURED.apparel;
+  const radarAlerts  = DEMO_DATA.RADAR_BY_WS[t.persona] || DEMO_DATA.RADAR_BY_WS.apparel;
 
   // ── Handlers ──────────────────────────────────────────────
   const startFlow = (mode) => {
@@ -246,7 +262,7 @@ function App() {
           onNav={handleNav}
           sessions={workspace.sessions}
           radarAlerts={radarAlerts}
-          personas={window.DEMO_DATA.WORKSPACES}
+          personas={DEMO_DATA.WORKSPACES}
           currentPersona={t.persona}
           onSwitchPersona={(p) => setTweak('persona', p)}
         />

@@ -2,7 +2,11 @@
 // MARCOM Demo — Command Hub (the war-room home view)
 // ============================================================
 
-function CommandHub({ workspace, radarAlerts, sessions, onStartFlow, onReviewAlert }) {
+import { Icons } from './icons.jsx';
+import { VerdictPill, StagePill, GlowDot, SectionLabel } from './primitives.jsx';
+import { DEMO_DATA } from './data.js';
+
+export function CommandHub({ workspace, radarAlerts, sessions, onStartFlow, onReviewAlert }) {
   return (
     <div data-screen-label="Command Hub" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 32px 24px' }}>
       <CommandHeader workspace={workspace} alertCount={radarAlerts.filter((a) => a.priority === 'HIGH').length} />
@@ -73,7 +77,7 @@ function ActivityTicker() {
     return () => clearInterval(id);
   }, []);
 
-  const rows = window.DEMO_DATA.ACTIVITY;
+  const rows = DEMO_DATA.ACTIVITY;
   const visible = rows.slice(0, (tick % rows.length) + 1).reverse();
 
   const typeIcon = {
@@ -503,4 +507,3 @@ function MemoryStrip({ sessions, workspace }) {
   );
 }
 
-Object.assign(window, { CommandHub });

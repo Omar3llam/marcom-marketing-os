@@ -2,7 +2,9 @@
 // MARCOM Demo — Input View (CSV upload + validation)
 // ============================================================
 
-function InputView({ workspace, featured, onAnalyze, onCancel }) {
+import { Icons } from './icons.jsx';
+
+export function InputView({ workspace, featured, onAnalyze, onCancel }) {
   const [stage, setStage] = React.useState('idle'); // idle | dragging | uploading | parsed
   const [progress, setProgress] = React.useState(0);
 
@@ -190,7 +192,7 @@ function SelectCard({ label, value, sub }) {
   );
 }
 
-function Breadcrumb({ crumbs }) {
+export function Breadcrumb({ crumbs }) {
   return (
     <div className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-muted)', display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
       {crumbs.map((c, i) => (
@@ -212,5 +214,3 @@ function Breadcrumb({ crumbs }) {
   );
 }
 
-window.InputView = InputView;
-window.Breadcrumb = Breadcrumb;

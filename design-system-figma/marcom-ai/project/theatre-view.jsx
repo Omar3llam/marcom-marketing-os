@@ -5,11 +5,14 @@
 // (production says ~18s). This is the moment of value reveal.
 // ============================================================
 
+import { Icons } from './icons.jsx';
+import { DEMO_DATA } from './data.js';
+
 const THEATRE_DURATION_MS = 3800;
 
-function TheatreView({ workspace, featured, onComplete }) {
+export function TheatreView({ workspace, featured, onComplete }) {
   const [elapsed, setElapsed] = React.useState(0);
-  const vectors = window.DEMO_DATA.VECTORS;
+  const vectors = DEMO_DATA.VECTORS;
 
   React.useEffect(() => {
     const start = performance.now();
@@ -317,4 +320,3 @@ function MemoryCard({ title, sub, Icon, delay = 0, highlight = false }) {
   );
 }
 
-window.TheatreView = TheatreView;

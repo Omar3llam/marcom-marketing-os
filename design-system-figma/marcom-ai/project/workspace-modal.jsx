@@ -6,6 +6,8 @@
 // switch into it seamlessly.
 // ============================================================
 
+import { Icons } from './icons.jsx';
+
 const CW_MARKETS = [
   { id: 'eg', label: 'Egypt',        currency: 'EGP', cities: ['Cairo','Alexandria','Giza','Other'] },
   { id: 'sa', label: 'Saudi Arabia', currency: 'SAR', cities: ['Riyadh','Jeddah','Dammam','Mecca','Other'] },
@@ -22,7 +24,7 @@ const CW_TIERS = [
   { id: 't4', label: '1M+ / mo'          },
 ];
 
-function CreateWorkspaceModal({ onClose, onCreate }) {
+export function CreateWorkspaceModal({ onClose, onCreate }) {
   const [step, setStep] = React.useState(0);
   const [data, setData] = React.useState({
     name: '',
@@ -367,4 +369,3 @@ const CW_CHIP = (on) => ({
   cursor: 'pointer', transition: 'all 150ms',
 });
 
-window.CreateWorkspaceModal = CreateWorkspaceModal;

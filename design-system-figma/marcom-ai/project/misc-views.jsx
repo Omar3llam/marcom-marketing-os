@@ -4,7 +4,10 @@
 // Lightweight stand-ins for nav targets that aren't part of the
 // core decision flow demo.
 
-function CampaignsList({ workspace, alerts, onStartFlow, onReviewAlert }) {
+import { Icons } from './icons.jsx';
+import { VerdictPill, StagePill } from './primitives.jsx';
+
+export function CampaignsList({ workspace, alerts, onStartFlow, onReviewAlert }) {
   return (
     <div data-screen-label="Campaign Analysis" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px' }}>
       <header style={{ marginBottom: 24 }}>
@@ -77,7 +80,7 @@ function CampaignsList({ workspace, alerts, onStartFlow, onReviewAlert }) {
   );
 }
 
-function GenericPage({ title, sub, Icon, locked = true }) {
+export function GenericPage({ title, sub, Icon, locked = true }) {
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', padding: '80px 32px', textAlign: 'center' }}>
       <div
@@ -103,5 +106,3 @@ function GenericPage({ title, sub, Icon, locked = true }) {
   );
 }
 
-window.CampaignsList = CampaignsList;
-window.GenericPage = GenericPage;

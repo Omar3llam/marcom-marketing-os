@@ -5,7 +5,10 @@
 // Optionally pre-loaded with a campaign context.
 // ============================================================
 
-function ContentLab({ workspace, contextCampaign, onClearContext, onNav }) {
+import { Icons } from './icons.jsx';
+import { LumiLoader } from './primitives.jsx';
+
+export function ContentLab({ workspace, contextCampaign, onClearContext, onNav }) {
   const [opts, setOpts] = React.useState({
     copy: true,
     headlines: true,
@@ -382,4 +385,3 @@ function CopyRow({ tag, text }) {
   );
 }
 
-window.ContentLab = ContentLab;

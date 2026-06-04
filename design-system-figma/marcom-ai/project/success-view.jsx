@@ -5,6 +5,9 @@
 // reasoning bullets, evidence trail, one-tap execute.
 // ============================================================
 
+import { Icons } from './icons.jsx';
+import { VerdictPill, StagePill, Card, SectionLabel } from './primitives.jsx';
+
 const VERDICT_VISUALS = {
   KILL:  { color: 'var(--c-kill-text)', glow: 'var(--sh-kill-glow)', bg: 'var(--c-kill-bg)',  Icon: Icons.Skull,        verb: 'Stop' },
   HOLD:  { color: 'var(--c-hold-text)', glow: 'var(--sh-hold-glow)', bg: 'var(--c-hold-bg)',  Icon: Icons.Pause2,       verb: 'Hold' },
@@ -12,7 +15,7 @@ const VERDICT_VISUALS = {
   TEST:  { color: 'var(--c-hold-text)', glow: 'var(--sh-hold-glow)', bg: 'var(--c-hold-bg)',  Icon: Icons.ScanSearch,   verb: 'Test' },
 };
 
-function SuccessView({ workspace, featured, verdictStyle = 'editorial', onExecute, onCancel, onBackToHub }) {
+export function SuccessView({ workspace, featured, verdictStyle = 'editorial', onExecute, onCancel, onBackToHub }) {
   const c = featured.campaign;
   const vis = VERDICT_VISUALS[c.verdict];
 
@@ -402,4 +405,3 @@ function ActionRow({ label, value, Icon, last }) {
   );
 }
 
-window.SuccessView = SuccessView;

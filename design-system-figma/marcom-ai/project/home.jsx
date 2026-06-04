@@ -5,7 +5,10 @@
 // alerts panel, AI insight, quick actions, recent activity.
 // ============================================================
 
-function HomePage({ workspace, radarAlerts, sessions, onNav, onReviewAlert, onStartFlow }) {
+import { Icons } from './icons.jsx';
+import { VerdictPill } from './primitives.jsx';
+
+export function HomePage({ workspace, radarAlerts, sessions, onNav, onReviewAlert, onStartFlow }) {
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
@@ -234,4 +237,3 @@ function EmptyPanel({ text }) {
   return <div style={{ padding: '20px 8px', textAlign: 'center', fontSize: 12, color: 'var(--c-text-muted)' }}>{text}</div>;
 }
 
-window.HomePage = HomePage;

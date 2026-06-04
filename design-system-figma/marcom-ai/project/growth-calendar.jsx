@@ -2,8 +2,11 @@
 // Lumi — Growth + Calendar pages
 // ============================================================
 
+import { Icons } from './icons.jsx';
+import { SectionLabel } from './primitives.jsx';
+
 // ── Growth ───────────────────────────────────────────────────
-function GrowthPage({ workspace, onNav }) {
+export function GrowthPage({ workspace, onNav }) {
   const opportunities = [
     {
       Icon: Icons.BarChart,
@@ -121,7 +124,7 @@ function GrowthPage({ workspace, onNav }) {
 }
 
 // ── Calendar ─────────────────────────────────────────────────
-function CalendarPage({ workspace, onNav }) {
+export function CalendarPage({ workspace, onNav }) {
   const today = new Date(2026, 4, 24); // May 24, 2026 — locked for demo
   const startDay = new Date(today);
   startDay.setDate(today.getDate() - today.getDay()); // back to Sunday
@@ -284,5 +287,3 @@ function LegendDot({ color, label }) {
   );
 }
 
-window.GrowthPage = GrowthPage;
-window.CalendarPage = CalendarPage;

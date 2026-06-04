@@ -5,6 +5,8 @@
 // LumiLoader, SectionLabel, MetricRow, GlowDot
 // ============================================================
 
+import { Icons } from './icons.jsx';
+
 const VERDICT_CFG = {
   KILL:  { cls: 'v-kill',  label: 'KILL',  Icon: Icons.Skull },
   HOLD:  { cls: 'v-hold',  label: 'HOLD',  Icon: Icons.Pause2 },
@@ -12,7 +14,7 @@ const VERDICT_CFG = {
   TEST:  { cls: 'v-hold',  label: 'TEST',  Icon: Icons.ScanSearch },
 };
 
-function VerdictPill({ verdict, size = 'sm', className = '', showIcon = true }) {
+export function VerdictPill({ verdict, size = 'sm', className = '', showIcon = true }) {
   const cfg = VERDICT_CFG[verdict] || VERDICT_CFG.HOLD;
   const sizeCls = size === 'lg'
     ? { padding: '8px 14px', fontSize: 13, gap: 6 }
@@ -41,7 +43,7 @@ const PRIORITY_CFG = {
   LOW:    { color: 'var(--c-text-muted)', bg: 'var(--c-surface-elevated)' },
 };
 
-function PriorityPill({ priority }) {
+export function PriorityPill({ priority }) {
   const cfg = PRIORITY_CFG[priority] || PRIORITY_CFG.LOW;
   return (
     <span
@@ -74,7 +76,7 @@ const STAGE_CFG = {
   SCALING:  { color: 'var(--c-stage-scaling)' },
 };
 
-function StagePill({ stage }) {
+export function StagePill({ stage }) {
   const cfg = STAGE_CFG[stage] || STAGE_CFG.STABLE;
   return (
     <span
@@ -101,7 +103,7 @@ function StagePill({ stage }) {
 }
 
 // ── Inline progress / data bar ───────────────────────────────
-function InlineBar({ value, max = 100, label, sub, color = 'var(--c-gold)', height = 4, animate = true, delay = 0 }) {
+export function InlineBar({ value, max = 100, label, sub, color = 'var(--c-gold)', height = 4, animate = true, delay = 0 }) {
   const pct = Math.max(0, Math.min(100, (value / max) * 100));
   return (
     <div style={{ width: '100%' }}>
@@ -137,7 +139,7 @@ function InlineBar({ value, max = 100, label, sub, color = 'var(--c-gold)', heig
 }
 
 // ── Pulsing dot (live/active indicator) ──────────────────────
-function GlowDot({ color = 'var(--c-scale)', size = 8, pulse = true }) {
+export function GlowDot({ color = 'var(--c-scale)', size = 8, pulse = true }) {
   return (
     <span
       className="pulse-dot"
@@ -152,7 +154,7 @@ function GlowDot({ color = 'var(--c-scale)', size = 8, pulse = true }) {
 }
 
 // ── Lumi loader (radar sweep) ────────────────────────────────
-function LumiLoader({ label, sub, size = 80 }) {
+export function LumiLoader({ label, sub, size = 80 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
       <div style={{ position: 'relative', width: size, height: size }}>
@@ -195,7 +197,7 @@ function LumiLoader({ label, sub, size = 80 }) {
 }
 
 // ── Section label (consistent uppercase header) ──────────────
-function SectionLabel({ children, accent, right }) {
+export function SectionLabel({ children, accent, right }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -208,7 +210,7 @@ function SectionLabel({ children, accent, right }) {
 }
 
 // ── Metric callout (label + tabular value) ───────────────────
-function MetricRow({ label, value, sub, trend }) {
+export function MetricRow({ label, value, sub, trend }) {
   const trendColor = trend === 'up' ? 'var(--c-scale)' : trend === 'down' ? 'var(--c-kill)' : 'var(--c-text-muted)';
   const TrendIcon = trend === 'up' ? Icons.TrendingUp : trend === 'down' ? Icons.TrendingDown : null;
   return (
@@ -224,7 +226,7 @@ function MetricRow({ label, value, sub, trend }) {
 }
 
 // ── Card wrapper ─────────────────────────────────────────────
-function Card({ children, className = '', style = {}, hover = false, accent = false }) {
+export function Card({ children, className = '', style = {}, hover = false, accent = false }) {
   return (
     <div
       className={`card ${hover ? 'card-hover' : ''} ${className}`}
@@ -237,7 +239,7 @@ function Card({ children, className = '', style = {}, hover = false, accent = fa
 }
 
 // ── Skeleton ─────────────────────────────────────────────────
-function Skeleton({ width = '100%', height = 16, radius = 6 }) {
+export function Skeleton({ width = '100%', height = 16, radius = 6 }) {
   return (
     <div
       style={{
@@ -252,15 +254,8 @@ function Skeleton({ width = '100%', height = 16, radius = 6 }) {
   );
 }
 
-Object.assign(window, {
-  VerdictPill, PriorityPill, StagePill,
-  InlineBar, GlowDot, LumiLoader,
-  SectionLabel, MetricRow, Card, Skeleton,
-  useIsMobile,
-});
-
 // ── useIsMobile: < 760px = mobile (matches styles.css breakpoint) ─
-function useIsMobile(bp = 760) {
+export function useIsMobile(bp = 760) {
   const [m, setM] = React.useState(() =>
     typeof window !== 'undefined' && window.matchMedia
       ? window.matchMedia(`(max-width: ${bp}px)`).matches

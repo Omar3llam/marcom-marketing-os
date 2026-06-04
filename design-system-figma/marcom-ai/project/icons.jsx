@@ -10,7 +10,7 @@ const I = (path, viewBox = '0 0 24 24') => (props) => (
   </svg>
 );
 
-const Icons = {
+export const Icons = {
   Sparkles: I(<><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2 2M16.4 16.4l2 2M5.6 18.4l2-2M16.4 7.6l2-2"/><path d="M12 8.5l1.2 2.3L15.5 12l-2.3 1.2L12 15.5l-1.2-2.3L8.5 12l2.3-1.2z"/></>),
   Upload: I(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></>),
   Bell: I(<><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></>),
@@ -58,6 +58,5 @@ const Icons = {
   Globe: I(<><circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a14.4 14.4 0 0 1 4 9 14.4 14.4 0 0 1-4 9 14.4 14.4 0 0 1-4-9 14.4 14.4 0 0 1 4-9z"/></>),
   CircleDot: I(<><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2" fill="currentColor"/></>),
   Dot: I(<circle cx="12" cy="12" r="3" fill="currentColor"/>),
+  Filter: I(<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>),
 };
-
-window.Icons = Icons;

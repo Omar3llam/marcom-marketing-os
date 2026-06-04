@@ -5,8 +5,12 @@
 // Demo animates each step at ~450ms; ~3s total.
 // ============================================================
 
-function ExecutionView({ workspace, featured, onComplete, onBackToHub }) {
-  const steps = window.DEMO_DATA.EXECUTION;
+import { Icons } from './icons.jsx';
+import { VerdictPill } from './primitives.jsx';
+import { DEMO_DATA } from './data.js';
+
+export function ExecutionView({ workspace, featured, onComplete, onBackToHub }) {
+  const steps = DEMO_DATA.EXECUTION;
   const [done, setDone] = React.useState(-1); // index of last completed step
   const [phase, setPhase] = React.useState('running'); // running | complete
 
@@ -140,7 +144,7 @@ function Stat({ label, value, tone }) {
 // ══════════════════════════════════════════════════════════════
 // Done — confirmation + next steps
 // ══════════════════════════════════════════════════════════════
-function DoneView({ workspace, featured, onBackToHub }) {
+export function DoneView({ workspace, featured, onBackToHub }) {
   const c = featured.campaign;
   return (
     <div data-screen-label="Done" style={{ maxWidth: 880, margin: '0 auto', padding: '60px 32px' }}>
@@ -256,5 +260,3 @@ function DoneStat({ label, value, positive }) {
   );
 }
 
-window.ExecutionView = ExecutionView;
-window.DoneView = DoneView;

@@ -5,7 +5,10 @@
 // with diagnosis + Fix Content / Adjust Budget CTAs.
 // ============================================================
 
-function CampaignsPage({ workspace, alerts, loading = false, onStartFlow, onReviewAlert, onFixContent }) {
+import { Icons } from './icons.jsx';
+import { VerdictPill, StagePill } from './primitives.jsx';
+
+export function CampaignsPage({ workspace, alerts, loading = false, onStartFlow, onReviewAlert, onFixContent }) {
   const [selectedId, setSelectedId] = React.useState(null);
   const [filter, setFilter] = React.useState('All');
 
@@ -588,4 +591,3 @@ function Metric({ label, value }) {
   );
 }
 
-window.CampaignsPage = CampaignsPage;

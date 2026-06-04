@@ -344,7 +344,7 @@ const EXECUTION_STEPS = [
   { id: 6, label: 'Notify · workspace #maison-salam',       sub: 'WebSocket · 1 listener' },
 ];
 
-window.DEMO_DATA = {
+export const DEMO_DATA = {
   WORKSPACES: DEMO_WORKSPACES,
   FEATURED: FEATURED_CAMPAIGN,
   RADAR_BY_WS: RADAR_ALERTS_BY_WS,

@@ -2,6 +2,8 @@
 // Marcom AI — Onboarding wizard (v2 — expanded context)
 // ============================================================
 
+import { Icons } from './icons.jsx';
+
 const APP_URL      = './MARCOM%20Demo.html';
 const LANDING_URL  = './MARCOM%20Landing.html';
 const STORAGE_KEY  = 'marcom-onboarding-v2';
@@ -133,7 +135,7 @@ const STEPS = [
 // ══════════════════════════════════════════════════════════════
 // ROOT
 // ══════════════════════════════════════════════════════════════
-function Onboarding() {
+export function Onboarding() {
   const [step, setStep] = React.useState(0);
   const [data, setData] = React.useState(() => {
     try {
