@@ -6,21 +6,22 @@
 // ============================================================
 
 import { Icons } from './icons.jsx';
-import { VerdictPill } from './primitives.jsx';
+import { VerdictPill, formatCurrency } from './primitives.jsx';
 
 export function HomePage({ workspace, radarAlerts, sessions, onNav, onReviewAlert, onStartFlow }) {
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
-  // Synthetic stats derived from workspace
-  const stats = {
-    spend:    workspace.spendTier.split(' ').slice(0, 2).join(' '),
-    cpa:      workspace.currency === 'EGP' ? 'EGP 248' : workspace.currency === 'SAR' ? 'SAR 195' : 'AED 312',
-    waste:    workspace.currency === 'EGP' ? 'EGP 4,200/wk' : workspace.currency === 'SAR' ? 'SAR 5,200/wk' : 'AED 2,100/wk',
-    health:   72,
-  };
   const highAlerts = radarAlerts.filter((a) => a.priority === 'HIGH');
+  const stats = {
+    spend:  workspace.spendTier,
+    cpa:    workspace.benchmarks?.avgCpa
+              ? formatCurrency(workspace.benchmarks.avgCpa, workspace.currencySym)
+              : `${workspace.currencySym} —`,
+    waste:  formatCurrency(highAlerts.reduce((s, a) => s + (a.bleedRaw ?? 0), 0), workspace.currencySym) + '/wk',
+    health: workspace.healthScore ?? 72,
+  };
 
   return (
     <div data-screen-label="Home" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 32px 24px' }}>
@@ -30,7 +31,7 @@ export function HomePage({ workspace, radarAlerts, sessions, onNav, onReviewAler
           Account Pulse · {workspace.name}
         </div>
         <h1 className="font-display" style={{ fontWeight: 700, fontSize: 36, letterSpacing: '-0.03em', margin: 0, color: 'var(--c-text-base)', lineHeight: 1.1 }}>
-          {greeting}, Omar. Here's your account pulse.
+          {greeting}, {workspace.user?.name ?? 'there'}. Here's your account pulse.
         </h1>
       </header>
 

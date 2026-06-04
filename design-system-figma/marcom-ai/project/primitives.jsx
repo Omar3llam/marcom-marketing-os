@@ -289,6 +289,11 @@ try {
   }
 } catch {}
 
+// ── Currency formatter ────────────────────────────────────────
+export function formatCurrency(amount, currencySym) {
+  return `${currencySym} ${amount.toLocaleString('en-US')}`;
+}
+
 // ── Error boundary ────────────────────────────────────────────
 export class ErrorBoundarySimple extends React.Component {
   state = { error: null };

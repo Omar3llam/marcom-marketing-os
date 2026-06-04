@@ -15,10 +15,13 @@ const DEMO_WORKSPACES = {
     name: 'Maison Salam',
     tag: 'Cairo · Modest fashion',
     initials: 'MS',
+    user: { name: 'Omar', initials: 'O' },
     market: 'Egypt',
     currency: 'EGP',
     currencySym: 'EGP',
     spendTier: 'EGP 240k / mo',
+    healthScore: 72,
+    benchmarks: { avgCpa: 248 },
     channels: ['Meta', 'TikTok', 'Google'],
     sessions: [
       { id: 'sess-04', label: 'Eid drop — Carousel ME', verdict: 'KILL', impact: 'EGP 4,200/wk saved', ts: '2h ago', delta: '+12%' },
@@ -32,10 +35,13 @@ const DEMO_WORKSPACES = {
     name: 'Layla & Co.',
     tag: 'Riyadh · Beauty DTC',
     initials: 'LC',
+    user: { name: 'Layla', initials: 'L' },
     market: 'Saudi Arabia',
     currency: 'SAR',
     currencySym: 'SAR',
     spendTier: 'SAR 380k / mo',
+    healthScore: 68,
+    benchmarks: { avgCpa: 195 },
     channels: ['Meta', 'Snap', 'TikTok'],
     sessions: [
       { id: 'sess-r4', label: 'Snap — Influencer push', verdict: 'SCALE', impact: '+SAR 32k/mo proj', ts: '1h ago', delta: '+31%' },
@@ -48,10 +54,13 @@ const DEMO_WORKSPACES = {
     name: 'Forge Studio',
     tag: 'Dubai · B2B SaaS',
     initials: 'FS',
+    user: { name: 'Faris', initials: 'F' },
     market: 'UAE',
     currency: 'AED',
     currencySym: 'AED',
     spendTier: 'AED 120k / mo',
+    healthScore: 81,
+    benchmarks: { avgCpa: 312 },
     channels: ['Meta', 'LinkedIn', 'Google'],
     sessions: [
       { id: 'sess-d3', label: 'LinkedIn — CTO ICP', verdict: 'SCALE', impact: '+AED 9.4k/mo proj', ts: '5h ago', delta: '+17%' },
@@ -215,6 +224,7 @@ const RADAR_ALERTS_BY_WS = {
       stage: 'DYING',
       time: '2m ago',
       bleed: 'EGP 600/day',
+      bleedRaw: 4200,
       verdict: 'KILL',
     },
     {
@@ -233,6 +243,7 @@ const RADAR_ALERTS_BY_WS = {
       stage: 'FATIGUED',
       time: '14m ago',
       bleed: 'EGP 280/day',
+      bleedRaw: 1960,
       verdict: 'HOLD',
     },
     {
@@ -289,6 +300,7 @@ const RADAR_ALERTS_BY_WS = {
       stage: 'DYING',
       time: '4m ago',
       bleed: 'SAR 700/day',
+      bleedRaw: 4900,
       verdict: 'KILL',
     },
     {
@@ -345,6 +357,7 @@ const RADAR_ALERTS_BY_WS = {
       stage: 'FATIGUED',
       time: '8m ago',
       bleed: 'AED 300/day',
+      bleedRaw: 2100,
       verdict: 'KILL',
     },
     {
