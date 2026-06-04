@@ -7,7 +7,28 @@
 
 function CampaignsPage({ workspace, alerts, onStartFlow, onReviewAlert, onFixContent }) {
   const [selectedId, setSelectedId] = React.useState(null);
-  const selected = alerts.find((a) => a.id === selectedId);
+  const [filter, setFilter] = React.useState('All');
+
+  // Guard: reset selection when the selected item disappears from the list
+  React.useEffect(() => {
+    if (selectedId && !alerts.some((a) => a.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [alerts, selectedId]);
+
+  // Derive filtered list from raw alerts
+  const filteredAlerts = React.useMemo(
+    () =>
+      filter === 'All'
+        ? alerts
+        : alerts.filter((a) => a.verdict === filter),
+    [alerts, filter],
+  );
+
+  const selected = React.useMemo(
+    () => filteredAlerts.find((a) => a.id === selectedId) ?? null,
+    [filteredAlerts, selectedId],
+  );
 
   return (
     <div data-screen-label="Campaigns" style={{ maxWidth: 1400, margin: '0 auto', padding: '32px 32px 24px', position: 'relative' }}>
@@ -17,7 +38,7 @@ function CampaignsPage({ workspace, alerts, onStartFlow, onReviewAlert, onFixCon
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <h1 className="font-display" style={{ fontSize: 30, fontWeight: 700, letterSpacing: '-0.03em', margin: 0, color: 'var(--c-text-base)' }}>
-            {alerts.length} active campaigns · {alerts.filter((a) => a.priority === 'HIGH').length} need attention.
+            {filteredAlerts.length} active campaigns · {alerts.filter((a) => a.priority === 'HIGH').length} need attention.
           </h1>
           <button className="btn-gold" onClick={() => onStartFlow('campaign')}>
             <Icons.Upload style={{ fontSize: 14 }} />
@@ -28,21 +49,25 @@ function CampaignsPage({ workspace, alerts, onStartFlow, onReviewAlert, onFixCon
 
       {/* Filter chips */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
-        {['All','KILL','HOLD','SCALE'].map((f, i) => (
-          <button
-            key={f}
-            className="font-mono"
-            style={{
-              padding: '6px 12px',
-              background: i === 0 ? 'var(--c-lumi-elevated)' : 'var(--c-surface-card)',
-              border: '1px solid var(--c-surface-border)',
-              color: i === 0 ? 'var(--c-text-base)' : 'var(--c-text-muted)',
-              borderRadius: 999, fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer',
-            }}
-          >
-            {f === 'All' ? `All · ${alerts.length}` : f}
-          </button>
-        ))}
+        {['All','KILL','HOLD','SCALE'].map((f) => {
+          const isActive = filter === f;
+          return (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className="font-mono"
+              style={{
+                padding: '6px 12px',
+                background: isActive ? 'var(--c-lumi-elevated)' : 'var(--c-surface-card)',
+                border: '1px solid var(--c-surface-border)',
+                color: isActive ? 'var(--c-text-base)' : 'var(--c-text-muted)',
+                borderRadius: 999, fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer',
+              }}
+            >
+              {f === 'All' ? `All · ${alerts.length}` : f}
+            </button>
+          );
+        })}
       </div>
 
       {/* Table */}
@@ -52,7 +77,7 @@ function CampaignsPage({ workspace, alerts, onStartFlow, onReviewAlert, onFixCon
             <span key={h} className="font-mono" style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)' }}>{h}</span>
           ))}
         </div>
-        {alerts.map((a) => {
+        {filteredAlerts.map((a) => {
           const isSelected = a.id === selectedId;
           const health = a.verdict === 'KILL' ? 28 : a.verdict === 'HOLD' ? 56 : 82;
           return (
