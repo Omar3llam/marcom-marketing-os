@@ -1,5 +1,5 @@
 # MARCOM UI Component Registry
-**Version 1.0 — Consult before creating any new component**
+**Version 1.1 — Consult before creating any new component**
 
 > Law: Before creating a new component, check this registry.
 > If a similar component exists, extend it. Don't create a duplicate.
@@ -7,17 +7,25 @@
 
 ---
 
-## UI Primitives (client/src/components/ui/)
+## UI Primitives
 
-| Component | File | Purpose | Key Props |
+> Note: UI primitives currently live in `/primitives.jsx` (window-global
+> exports for the demo prototype). They have not yet been migrated to
+> `client/src/components/ui/`.
+
+| Component | Type | Purpose | Key Props |
 |---|---|---|---|
-| `VerdictPill` | DecisionPill.jsx | KILL/HOLD/SCALE verdict badge | `verdict: string` |
-| `PriorityPill` | DecisionPill.jsx | HIGH/MEDIUM/LOW priority badge | `priority: string` |
-| `StagePill` | DecisionPill.jsx | Campaign stage badge | `stage: string` |
-| `InlineBar` | InlineBar.jsx | Horizontal progress/value bar | `value, max, label` |
-| `LumiLoader` | LumiLoader.jsx | AI analysis loading orb | `label, size` |
-| `Skeleton` | Skeleton.jsx | Loading skeleton placeholder | `className` |
-| `ErrorBoundary` | ErrorBoundary.jsx | React error boundary wrapper | `children` |
+| `VerdictPill` | component | KILL/HOLD/SCALE verdict badge | `verdict: string` |
+| `PriorityPill` | component | HIGH/MEDIUM/LOW priority badge | `priority: string` |
+| `StagePill` | component | Campaign stage badge | `stage: string` |
+| `InlineBar` | component | Horizontal progress/value bar | `value, max, label` |
+| `GlowDot` | component | Status indicator dot with glow | `color, size` |
+| `LumiLoader` | component | AI analysis loading orb | `label, size` |
+| `SectionLabel` | component | Uppercase section heading label | `children` |
+| `MetricRow` | component | Label + value metric row | `label, value` |
+| `Card` | component | Surface container with border/shadow | `children, className` |
+| `Skeleton` | component | Loading skeleton placeholder | `className` |
+| `useIsMobile` | hook | Responsive breakpoint detection | — |
 
 ---
 
@@ -25,14 +33,11 @@
 
 | Component | File | Purpose | FSM State |
 |---|---|---|---|
-| `CommandCenter` | CommandCenter.jsx | War room home view | `COMMAND_CENTER` |
-| `InputView` | InputView.jsx | CSV upload + mode select | `INPUT_VALIDATION` |
-| `TheatreView` | TheatreView.jsx | AI analysis progress | `THEATER` |
+| `InputView` | InputView.jsx | CSV upload + mode select | `INPUT` |
+| `TheatreView` | TheatreView.jsx | AI analysis progress | `THEATRE` |
 | `SuccessView` | SuccessView.jsx | Verdict display | `SUCCESS` |
-| `DecisionFrame` | DecisionFrame.jsx | Confirm + Execute wrapper | `CONFIRM/EXECUTION` |
-| `ErrorView` | ErrorView.jsx | Error state display | `ERROR` |
-| `DecisionBreadcrumb` | DecisionBreadcrumb.jsx | FSM navigation breadcrumb | All non-HOME |
-| `MemoryPanel` | MemoryPanel.jsx | AI memory context panel | N/A (overlay) |
+| `DecisionFrame` | DecisionFrame.jsx | Confirm + Execute wrapper | `SUCCESS` (nested) |
+| `ErrorView` | ErrorView.jsx | Error state display | N/A (inline) |
 
 ---
 
@@ -46,34 +51,43 @@
 
 ---
 
-## Upload Components (client/src/components/upload/)
+## Page Components (design-system-figma/marcom-ai/project/)
 
-| Component | File | Purpose |
-|---|---|---|
-| `CsvUploader` | CsvUploader.jsx | Drag-drop CSV upload with progress |
+| Component | File | FSM State |
+| --- | --- | --- |
+| `HomePage` | home.jsx | `HOME` |
+| `CampaignsPage` | campaigns-page.jsx | `CAMPAIGNS` |
+| `ContentLab` | content-lab.jsx | `CONTENT` |
+| `GrowthPage` | growth-calendar.jsx | `GROWTH` |
+| `CalendarPage` | growth-calendar.jsx | `CALENDAR` |
+| `ExecutionView` | execution-view.jsx | `EXECUTION` |
 
 ---
 
 ## Decision Rules for New Components
 
-### Before creating a new primitive:
+### Before creating a new primitive
 
 **InlineBar variants:**
+
 - Use `InlineBar` for: simple value/max ratios (budget utilization, progress, metrics)
 - ❌ Do NOT create: `ProgressBar`, `MetricBar`, `ConfidenceLine`, `ValueBar` — extend InlineBar instead
 
-**DecisionPill variants:**
+**Pill variants:**
+
 - `VerdictPill` for: KILL/HOLD/SCALE/TEST verdict badges
 - `PriorityPill` for: HIGH/MEDIUM/LOW priority badges
 - `StagePill` for: DYING/FATIGUED/TESTING/STABLE/SCALING campaign stages
 - ❌ Do NOT create: `AlertBadge`, `StatusTag`, `VerdictChip`, `SignalPill` — use existing pills
 
 **Loading states:**
-- `LumiLoader` for: AI analysis in progress (THEATER state)
+
+- `LumiLoader` for: AI analysis in progress (THEATRE state)
 - `Skeleton` for: data loading placeholders (empty states)
 - ❌ Do NOT create: `AISpinner`, `ThinkingLoader`, `ProcessingIcon`, `IntelLoader`
 
 **Layout:**
+
 - `MainLayout` is the ONLY full-page shell
 - `Sidebar` is the ONLY left navigation component
 - ❌ Do NOT create: `NavBar`, `TopBar`, `Header` — use existing layout
@@ -87,7 +101,6 @@
    - `client/src/components/ui/` → stateless primitives (no API calls, no hooks)
    - `client/src/components/decision/` → FSM-aware views (props only, no direct API)
    - `client/src/components/layout/` → shell components (only if MainLayout insufficient)
-   - `client/src/components/upload/` → file upload components
 3. **Keep primitives stateless:** No API calls. No useEffect. Props in, JSX out.
 4. **Add to this registry** in the same PR (document what you built).
 5. **Document states** in `component-states.md` (empty, loading, active, error, etc.).
@@ -105,9 +118,9 @@ These components should NEVER be created:
 | `InlineBar2` | Duplicate of InlineBar | Extend InlineBar with props |
 | `ConfidenceLine` | Duplicate of InlineBar | Use InlineBar with label prop |
 | `MetricProgress` | Duplicate of InlineBar | Use InlineBar |
-| `AlertBadge` | Duplicate of DecisionPill | Use VerdictPill or PriorityPill |
-| `StatusTag` | Duplicate of DecisionPill | Use StagePill |
-| `VerdictChip` | Duplicate of DecisionPill | Use VerdictPill |
+| `AlertBadge` | Duplicate of pill variants | Use VerdictPill or PriorityPill |
+| `StatusTag` | Duplicate of pill variants | Use StagePill |
+| `VerdictChip` | Duplicate of pill variants | Use VerdictPill |
 | `AISpinner` | Duplicate of LumiLoader | Use LumiLoader |
 | `ThinkingLoader` | Duplicate of LumiLoader | Use LumiLoader |
 | `NavBar` | Conflicts with Sidebar | Extend Sidebar |
@@ -117,10 +130,10 @@ These components should NEVER be created:
 
 ## Component Count Summary
 
-- UI Primitives: 7 components (5 files — DecisionPill exports 3 variants)
-- Decision Components: 8 components
-- Layout Components: 3 components
-- Upload Components: 1 component
-- **Total: 19 components across 17 files**
+- UI Primitives: 10 components + 1 hook (1 file — `primitives.jsx`, pending migration)
+- Decision Components: 5 components (5 files)
+- Layout Components: 3 components (3 files)
+- Page Components: 6 components (5 files — GrowthPage and CalendarPage share `growth-calendar.jsx`)
+- **Total: 24 components + 1 hook across 14 files**
 
-Last updated: 2026-05-16 (post-architecture cleanup sprint)
+Last updated: 2026-06-04
