@@ -31,6 +31,7 @@
   },
 
   "blush": "#F8B4B4",
+  "_blush_status": "orphaned — not in use; remove in next token audit",
 
   "signal": {
     "kill":       "#EF4444",
@@ -50,6 +51,7 @@
   },
 
   "trend": {
+    "_css_vars": "generated as --c-trend-danger, --c-trend-warning, etc.",
     "danger":   "#EF4444",
     "warning":  "#F59E0B",
     "positive": "#10B981",
@@ -76,6 +78,7 @@
   },
 
   "intel": {
+    "_css_vars": "generated as --c-intel-verified, --c-intel-pending, etc.",
     "verified":  "#F6C945",
     "pending":   "#F59E0B",
     "muted":     "#9A9A9A",
@@ -83,9 +86,9 @@
   },
 
   "verdict": {
-    "kill-bg":    "rgba(239,68,68,0.08)",
-    "hold-bg":    "rgba(245,158,11,0.08)",
-    "scale-bg":   "rgba(16,185,129,0.08)",
+    "kill-bg":    "rgba(239,68,68,0.10)",
+    "hold-bg":    "rgba(245,158,11,0.10)",
+    "scale-bg":   "rgba(16,185,129,0.10)",
     "kill-text":  "#DC2626",
     "hold-text":  "#D97706",
     "scale-text": "#059669"
