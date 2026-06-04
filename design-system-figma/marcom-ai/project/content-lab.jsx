@@ -63,8 +63,8 @@ export function ContentLab({ workspace, contextCampaign, onClearContext, onNav }
               marginBottom: 14,
               position: 'relative',
             }}>
-              <button onClick={onClearContext} style={{ position: 'absolute', top: 8, right: 8, background: 'transparent', border: 'none', color: 'var(--c-text-muted)', cursor: 'pointer', padding: 2, display: 'flex' }}>
-                <Icons.X style={{ fontSize: 12 }} />
+              <button onClick={onClearContext} aria-label="Remove campaign context" style={{ position: 'absolute', top: 8, right: 8, background: 'transparent', border: 'none', color: 'var(--c-text-muted)', cursor: 'pointer', padding: 2, display: 'flex' }}>
+                <Icons.X style={{ fontSize: 12 }} aria-hidden="true" />
               </button>
               <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-gold-deep)', marginBottom: 4 }}>
                 Pre-loaded from Campaigns

@@ -122,8 +122,8 @@ export function CreateWorkspaceModal({ onClose, onCreate }) {
               <div className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-muted)' }}>Step {step + 1} of 3</div>
             </div>
           </div>
-          <button onClick={onClose} style={{ background: 'transparent', border: 'none', padding: 6, color: 'var(--c-text-muted)', cursor: 'pointer', display: 'flex' }}>
-            <Icons.X style={{ fontSize: 16 }} />
+          <button onClick={onClose} aria-label="Close" style={{ background: 'transparent', border: 'none', padding: 6, color: 'var(--c-text-muted)', cursor: 'pointer', display: 'flex' }}>
+            <Icons.X style={{ fontSize: 16 }} aria-hidden="true" />
           </button>
         </div>
 

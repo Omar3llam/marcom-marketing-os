@@ -198,6 +198,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
             <button
               onClick={() => setCmdkOpen(true)}
               title="Search (⌘K)"
+              aria-label="Search (⌘K)"
               style={{
                 width: 36, height: 36, borderRadius: 9,
                 background: 'var(--c-lumi-elevated)',
@@ -207,7 +208,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
                 cursor: 'pointer',
               }}
             >
-              <Icons.Search style={{ fontSize: 14 }} />
+              <Icons.Search style={{ fontSize: 14 }} aria-hidden="true" />
             </button>
           </div>
         )}
@@ -220,9 +221,10 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
               <button
                 onClick={() => setWsOpen((p) => !p)}
                 title="Switch workspace"
+                aria-label="Switch workspace"
                 style={{ background: 'transparent', border: 'none', color: 'var(--c-lumi-subtle)', padding: 2, display: 'flex', cursor: 'pointer', borderRadius: 4 }}
               >
-                <Icons.ChevronDown style={{ fontSize: 11, transform: wsOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 150ms' }} />
+                <Icons.ChevronDown style={{ fontSize: 11, transform: wsOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 150ms' }} aria-hidden="true" />
               </button>
             </div>
             <div
@@ -448,6 +450,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
         <button
           onClick={() => onNav('settings')}
           title={collapsed ? 'Settings' : undefined}
+          aria-label="Settings"
           style={{
             width: '100%',
             display: 'flex',
@@ -463,7 +466,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
             marginBottom: 4,
           }}
         >
-          <Icons.Settings style={{ fontSize: 16 }} />
+          <Icons.Settings style={{ fontSize: 16 }} aria-hidden="true" />
           {!collapsed && <span className="font-body">Settings</span>}
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: collapsed ? 0 : '8px 12px', justifyContent: collapsed ? 'center' : 'flex-start' }}>
@@ -520,6 +523,7 @@ function NavItem({ tool, collapsed, isActive, badge, onClick }) {
       onClick={onClick}
       disabled={tool.locked}
       title={collapsed ? tool.label : undefined}
+      aria-label={tool.label}
       className={!isActive && !tool.locked ? 'nav-item-hover' : undefined}
       style={{
         position: 'relative',
@@ -630,9 +634,10 @@ function NotificationsPopover({ alerts, onClose, onPick }) {
           </div>
           <button
             onClick={onClose}
+            aria-label="Close notifications"
             style={{ background: 'transparent', border: 'none', color: 'var(--c-text-muted)', display: 'flex', padding: 2 }}
           >
-            <Icons.X style={{ fontSize: 13 }} />
+            <Icons.X style={{ fontSize: 13 }} aria-hidden="true" />
           </button>
         </div>
         {alerts.map((a) => (
