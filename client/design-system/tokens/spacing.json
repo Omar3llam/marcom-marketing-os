@@ -29,10 +29,10 @@
     "modal":         "0 24px 64px rgba(0,0,0,0.20)",
     "gold-glow":     "0 0 24px rgba(246,201,69,0.20), 0 0 48px rgba(246,201,69,0.10)",
     "accent-glow":   "0 0 24px rgba(245,158,11,0.15)",
+    "optimize-glow": "0 0 20px rgba(99,102,241,0.20)",
     "kill-glow":     "0 0 20px rgba(239,68,68,0.25), 0 0 40px rgba(239,68,68,0.10)",
     "scale-glow":    "0 0 20px rgba(16,185,129,0.25), 0 0 40px rgba(16,185,129,0.10)",
     "hold-glow":     "0 0 20px rgba(245,158,11,0.20)",
-    "optimize-glow": "0 0 20px rgba(99,102,241,0.20)",
     "active-ring":   "0 0 0 2px rgba(246,201,69,0.3), 0 0 16px rgba(246,201,69,0.1)"
   }
 }
