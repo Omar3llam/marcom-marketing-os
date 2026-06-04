@@ -22,6 +22,15 @@ rollbackRouter.post('/:actionId', async (req, res) => {
   }
 
   try {
+    // Resolve Prisma User record — AuditLog.userId expects User.id (UUID), not Firebase uid
+    const userRecord = await prisma.user.findUnique({
+      where:  { clerkId: req.userId },
+      select: { id: true },
+    });
+    if (!userRecord) {
+      return res.status(401).json({ error: 'User record not found' });
+    }
+
     const action = await prisma.action.findUnique({
       where:   { id: actionId },
       include: {
@@ -31,9 +40,9 @@ rollbackRouter.post('/:actionId', async (req, res) => {
 
     if (!action) return res.status(404).json({ error: 'Action not found' });
 
-    // Workspace isolation — request must come from the same workspace
+    // Workspace isolation — return 404 to avoid leaking that action exists
     if (action.workspaceId !== req.workspaceId) {
-      return res.status(403).json({ error: 'Forbidden — workspace mismatch' });
+      return res.status(404).json({ error: 'Action not found' });
     }
 
     // ── Status & window enforcement ─────────────────────────
@@ -60,6 +69,9 @@ rollbackRouter.post('/:actionId', async (req, res) => {
     // ── Build inverse payload ────────────────────────────────
     const inversePayload = invertPayload(action.payload, previousState);
 
+    // Extract audit metadata from original action payload
+    const { platform, actionType } = extractAuditMetadata(action.payload);
+
     const inverse = await prisma.$transaction(async (tx) => {
       const created = await tx.action.create({
         data: {
@@ -76,10 +88,19 @@ rollbackRouter.post('/:actionId', async (req, res) => {
       });
       await tx.auditLog.create({
         data: {
-          actionId:      action.id,
-          previousState: { status: 'EXECUTED_SUCCESS' },
-          newState:      { status: 'ROLLED_BACK', inverseActionId: created.id },
-          performedBy:   `user:${req.userId}`,
+          workspaceId: action.workspaceId,
+          userId:      userRecord.id,
+          actionId:    action.id,
+          actionType,
+          targetId:    action.campaignId,
+          platform,
+          status:      'SUCCESS',
+          payload: {
+            rollback: true,
+            originalActionId: action.id,
+            inverseActionId:  created.id,
+            performedBy: `user:${req.userId}`,
+          },
         },
       });
       return created;
@@ -119,4 +140,22 @@ function invertPayload(payload, previousState) {
     default:
       return { kind: 'restore_state', restore: previousState, originalKind: kind };
   }
+}
+
+// Extract platform and actionType from payload for AuditLog
+function extractAuditMetadata(payload) {
+  const kind = payload?.kind || '';
+
+  // Derive platform from payload.kind prefix
+  let platform = 'UNKNOWN';
+  if (kind.startsWith('meta.')) platform = 'META';
+  else if (kind.startsWith('google.')) platform = 'GOOGLE';
+
+  // Map payload.kind to ActionType enum values
+  let actionType = 'OPTIMIZE_CAMPAIGN'; // fallback
+  if (kind.includes('pause_ad') || kind.includes('pause')) actionType = 'PAUSE_ADSET';
+  else if (kind.includes('resume_ad') || kind.includes('resume')) actionType = 'RESUME_ADSET';
+  else if (kind.includes('scale') || kind.includes('budget')) actionType = 'SCALE_CAMPAIGN';
+
+  return { platform, actionType };
 }
