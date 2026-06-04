@@ -30,10 +30,26 @@ function CampaignsPage({ workspace, alerts, onStartFlow, onReviewAlert, onFixCon
     [filteredAlerts, selectedId],
   );
 
-  // FIX 2: Stable callbacks to prevent event listener churn
+  // Memoize summary stats (total + by-verdict counts)
+  const summary = React.useMemo(() => {
+    return alerts.reduce(
+      (acc, a) => {
+        acc.total += 1;
+        if (a.priority === 'HIGH') acc.needAttention += 1;
+        if (a.verdict === 'KILL') acc.KILL += 1;
+        if (a.verdict === 'HOLD') acc.HOLD += 1;
+        if (a.verdict === 'SCALE') acc.SCALE += 1;
+        return acc;
+      },
+      { total: 0, needAttention: 0, KILL: 0, HOLD: 0, SCALE: 0 },
+    );
+  }, [alerts]);
+
+  // Stable callbacks to prevent event listener churn + row re-renders
   const handleClose = React.useCallback(() => setSelectedId(null), []);
   const handleReviewAlert = React.useCallback(() => onReviewAlert(selected), [onReviewAlert, selected]);
   const handleFixContent = React.useCallback(() => onFixContent(selected), [onFixContent, selected]);
+  const handleSelectRow = React.useCallback((id) => setSelectedId(id), []);
 
   return (
     <div data-screen-label="Campaigns" style={{ maxWidth: 1400, margin: '0 auto', padding: '32px 32px 24px', position: 'relative' }}>
@@ -43,7 +59,7 @@ function CampaignsPage({ workspace, alerts, onStartFlow, onReviewAlert, onFixCon
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <h1 className="font-display" style={{ fontSize: 30, fontWeight: 700, letterSpacing: '-0.03em', margin: 0, color: 'var(--c-text-base)' }}>
-            {filteredAlerts.length} active campaigns · {alerts.filter((a) => a.priority === 'HIGH').length} need attention.
+            {filteredAlerts.length} active campaigns · {summary.needAttention} need attention.
           </h1>
           <button className="btn-gold" onClick={() => onStartFlow('campaign')}>
             <Icons.Upload style={{ fontSize: 14 }} />
@@ -69,7 +85,7 @@ function CampaignsPage({ workspace, alerts, onStartFlow, onReviewAlert, onFixCon
                 borderRadius: 999, fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer',
               }}
             >
-              {f === 'All' ? `All · ${alerts.length}` : f}
+              {f === 'All' ? `All · ${summary.total}` : f}
             </button>
           );
         })}
@@ -88,7 +104,7 @@ function CampaignsPage({ workspace, alerts, onStartFlow, onReviewAlert, onFixCon
           return (
             <div
               key={a.id}
-              onClick={() => setSelectedId(a.id)}
+              onClick={() => handleSelectRow(a.id)}
               className="campaign-row"
               style={{
                 display: 'grid',
