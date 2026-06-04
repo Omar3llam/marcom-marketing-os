@@ -87,7 +87,11 @@ export async function saveSession(session) {
 export async function deleteSession(sessionId) {
   const redis = await getRedis();
   if (redis) {
-    try { await redis.del(`session:${sessionId}`); } catch {}
+    try {
+      await redis.del(`session:${sessionId}`);
+    } catch (err) {
+      logger.warn({ err: err.message, sessionId }, '[session-store] redis del failed');
+    }
   }
   inMemoryStore.delete(sessionId);
 }

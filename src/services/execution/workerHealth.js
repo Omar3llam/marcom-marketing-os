@@ -50,7 +50,9 @@ export function startHeartbeat(workerId = String(process.pid)) {
     stop() {
       clearInterval(timer);
       // Delete the key so vitals stop showing the worker immediately.
-      bullConnection.del(key).catch(() => {});
+      bullConnection.del(key).catch((err) => {
+        logger.warn({ err: err.message, key }, '[workerHealth] heartbeat key cleanup failed');
+      });
     },
   };
 }

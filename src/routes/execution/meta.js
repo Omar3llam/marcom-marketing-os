@@ -226,7 +226,12 @@ export function registerMetaRoute(router) {
           errorMessage: err.message,
           payload: req.body,
         },
-      }).catch(() => {});
+      }).catch((auditErr) => {
+        logger.warn(
+          { err: auditErr.message, workspaceId, actionType },
+          '[ExecutionRouter] audit log write failed in error handler'
+        );
+      });
 
       return res.status(500).json({
         success: false,
