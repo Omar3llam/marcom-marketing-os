@@ -5,7 +5,7 @@
 // with diagnosis + Fix Content / Adjust Budget CTAs.
 // ============================================================
 
-function CampaignsPage({ workspace, alerts, onStartFlow, onReviewAlert, onFixContent }) {
+function CampaignsPage({ workspace, alerts, loading = false, onStartFlow, onReviewAlert, onFixContent }) {
   const [selectedId, setSelectedId] = React.useState(null);
   const [filter, setFilter] = React.useState('All');
 
@@ -50,6 +50,147 @@ function CampaignsPage({ workspace, alerts, onStartFlow, onReviewAlert, onFixCon
   const handleReviewAlert = React.useCallback(() => onReviewAlert(selected), [onReviewAlert, selected]);
   const handleFixContent = React.useCallback(() => onFixContent(selected), [onFixContent, selected]);
   const handleSelectRow = React.useCallback((id) => setSelectedId(id), []);
+
+  // FIX 1: Loading skeleton
+  if (loading) {
+    return (
+      <div data-screen-label="Campaigns" style={{ maxWidth: 1400, margin: '0 auto', padding: '32px 32px 24px' }}>
+        <header style={{ marginBottom: 20 }}>
+          <div className="font-mono" style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)', marginBottom: 8 }}>
+            Campaigns · {workspace?.name ?? 'Loading...'}
+          </div>
+          <div className="skeleton-pulse" style={{ width: 320, height: 36, background: 'var(--c-surface-elevated)', borderRadius: 8, marginBottom: 12 }} />
+        </header>
+
+        <div className="campaigns-skeleton" role="status" aria-busy="true" aria-label="Loading campaigns">
+          <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, overflow: 'hidden', boxShadow: 'var(--sh-card)', padding: '18px' }}>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={i}
+                className="skeleton-row"
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '90px 1fr 120px 110px 110px 110px 32px',
+                  gap: 14,
+                  padding: '14px 0',
+                  alignItems: 'center',
+                  borderBottom: i < 4 ? '1px solid var(--c-surface-border)' : 'none',
+                }}
+              >
+                <div className="skeleton-pulse" style={{ width: 70, height: 24, background: 'var(--c-surface-elevated)', borderRadius: 6 }} />
+                <div>
+                  <div className="skeleton-pulse" style={{ width: '60%', height: 14, background: 'var(--c-surface-elevated)', borderRadius: 4, marginBottom: 6 }} />
+                  <div className="skeleton-pulse" style={{ width: '40%', height: 11, background: 'var(--c-surface-elevated)', borderRadius: 4 }} />
+                </div>
+                <div className="skeleton-pulse" style={{ width: 80, height: 20, background: 'var(--c-surface-elevated)', borderRadius: 6 }} />
+                <div className="skeleton-pulse" style={{ width: 60, height: 12, background: 'var(--c-surface-elevated)', borderRadius: 4 }} />
+                <div className="skeleton-pulse" style={{ width: 50, height: 12, background: 'var(--c-surface-elevated)', borderRadius: 4 }} />
+                <div className="skeleton-pulse" style={{ width: 40, height: 11, background: 'var(--c-surface-elevated)', borderRadius: 4 }} />
+                <div className="skeleton-pulse" style={{ width: 16, height: 16, background: 'var(--c-surface-elevated)', borderRadius: 3 }} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <style>{`
+          @keyframes skeleton-pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+          }
+          .skeleton-pulse {
+            animation: skeleton-pulse 1.5s ease-in-out infinite;
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // FIX 2: Empty state
+  if (!loading && filteredAlerts.length === 0) {
+    const isFiltered = filter !== 'All';
+    return (
+      <div data-screen-label="Campaigns" style={{ maxWidth: 1400, margin: '0 auto', padding: '32px 32px 24px' }}>
+        <header style={{ marginBottom: 20 }}>
+          <div className="font-mono" style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)', marginBottom: 8 }}>
+            Campaigns · {workspace?.name ?? 'Loading...'}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+            <h1 className="font-display" style={{ fontSize: 30, fontWeight: 700, letterSpacing: '-0.03em', margin: 0, color: 'var(--c-text-base)' }}>
+              0 active campaigns · 0 need attention.
+            </h1>
+            <button className="btn-gold" onClick={() => onStartFlow('campaign')}>
+              <Icons.Upload style={{ fontSize: 14 }} />
+              Upload new data
+            </button>
+          </div>
+        </header>
+
+        {/* Show filter chips when filtered */}
+        {isFiltered && (
+          <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+            {['All','KILL','HOLD','SCALE'].map((f) => {
+              const isActive = filter === f;
+              return (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className="font-mono"
+                  style={{
+                    padding: '6px 12px',
+                    background: isActive ? 'var(--c-lumi-elevated)' : 'var(--c-surface-card)',
+                    border: '1px solid var(--c-surface-border)',
+                    color: isActive ? 'var(--c-text-base)' : 'var(--c-text-muted)',
+                    borderRadius: 999, fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', cursor: 'pointer',
+                  }}
+                >
+                  {f === 'All' ? `All · 0` : f}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div
+          role="status"
+          style={{
+            background: 'var(--c-surface-card)',
+            border: isFiltered ? '1px solid var(--c-hold)' : '1px dashed var(--c-surface-border)',
+            borderRadius: 14,
+            padding: '64px 32px',
+            textAlign: 'center',
+            boxShadow: 'var(--sh-card)',
+          }}
+        >
+          <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 56, height: 56, borderRadius: 12, background: isFiltered ? 'rgba(246,201,69,0.08)' : 'var(--c-surface-elevated)', border: '1px solid var(--c-surface-border)', marginBottom: 16 }}>
+            {isFiltered ? (
+              <Icons.Filter style={{ fontSize: 24, color: 'var(--c-gold)' }} />
+            ) : (
+              <Icons.BarChart style={{ fontSize: 24, color: 'var(--c-text-muted)' }} />
+            )}
+          </div>
+          <h3 className="font-display" style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.01em', color: 'var(--c-text-base)', marginBottom: 8 }}>
+            {isFiltered ? `No ${filter} campaigns` : 'No campaigns detected'}
+          </h3>
+          <p style={{ fontSize: 13, color: 'var(--c-text-muted)', maxWidth: 400, margin: '0 auto 20px', lineHeight: 1.5 }}>
+            {isFiltered
+              ? `All campaigns are currently filtered out. Try selecting 'All'.`
+              : 'Upload your campaign CSV to begin Lumi analysis.'}
+          </p>
+          {isFiltered && (
+            <button
+              type="button"
+              onClick={() => setFilter('All')}
+              className="btn-ghost"
+              style={{ padding: '10px 20px', fontSize: 13 }}
+            >
+              <Icons.X style={{ fontSize: 14 }} />
+              Clear filter
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div data-screen-label="Campaigns" style={{ maxWidth: 1400, margin: '0 auto', padding: '32px 32px 24px', position: 'relative' }}>
