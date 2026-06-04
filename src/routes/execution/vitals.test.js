@@ -81,6 +81,7 @@ vi.mock('../../services/execution/workerHealth.js', () => ({
 import { prisma }               from '../../lib/prisma.js';
 import { executionQueue }       from '../../queues/index.js';
 import { getWorkerHeartbeats }  from '../../services/execution/workerHealth.js';
+import { firebaseAuthMiddleware } from '../../middleware/firebaseAuth.js';
 
 describe('GET /api/execute/vitals', () => {
   let app;
@@ -96,6 +97,7 @@ describe('GET /api/execute/vitals', () => {
 
     app = express();
     app.use(express.json());
+    app.use(firebaseAuthMiddleware);
     app.use('/api/execute', executionRouter);
   });
 

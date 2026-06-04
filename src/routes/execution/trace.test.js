@@ -59,6 +59,7 @@ vi.mock('../../services/execution/workerHealth.js', () => ({
 }));
 
 import { prisma } from '../../lib/prisma.js';
+import { firebaseAuthMiddleware } from '../../middleware/firebaseAuth.js';
 
 const EXECUTION_ID = 'exec-trace-route-1';
 const WORKSPACE_ID = 'ws-111';
@@ -100,6 +101,7 @@ describe('GET /api/execute/:id/trace', () => {
   beforeEach(() => {
     app = express();
     app.use(express.json());
+    app.use(firebaseAuthMiddleware);
     app.use('/api/execute', executionRouter);
   });
 
