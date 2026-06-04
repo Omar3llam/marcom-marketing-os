@@ -5,7 +5,7 @@
 import { Icons }                                          from './icons.jsx';
 import { VerdictPill, PriorityPill, StagePill,
          InlineBar, GlowDot, LumiLoader, SectionLabel,
-         MetricRow, Card, Skeleton, useIsMobile }         from './primitives.jsx';
+         MetricRowSimple, Card, Skeleton, useIsMobile }   from './primitives.jsx';
 import { Sidebar, ContextBar }                            from './shell.jsx';
 import { DEMO_DATA }                                      from './data.js';
 import { HomePage }                                       from './home.jsx';

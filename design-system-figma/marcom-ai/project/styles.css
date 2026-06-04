@@ -335,6 +335,7 @@ button:focus-visible,
   background: inherit;
   animation: ring-pulse 1.8s ease-out infinite;
 }
+.pulse-dot.no-pulse::after { animation: none; }
 
 /* ── Sales-demo overlay (replay button + step indicator) ──── */
 .demo-replay {

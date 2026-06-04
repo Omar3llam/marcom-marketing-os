@@ -2,7 +2,7 @@
 // MARCOM Demo — Reusable primitives
 // ============================================================
 // VerdictPill, StagePill, PriorityPill, InlineBar, Skeleton,
-// LumiLoader, SectionLabel, MetricRow, GlowDot
+// LumiLoader, SectionLabel, MetricRowSimple, GlowDot
 // ============================================================
 
 import { Icons } from './icons.jsx';
@@ -68,12 +68,15 @@ export function PriorityPill({ priority }) {
   );
 }
 
+// rgba values mirror the CSS variable resolved colors.
+// Using rgba() directly because CSS variables cannot have hex alpha
+// suffixes appended to them — `var(--x)40` is invalid CSS.
 const STAGE_CFG = {
-  DYING:    { color: 'var(--c-stage-dying)' },
-  FATIGUED: { color: 'var(--c-stage-fatigued)' },
-  TESTING:  { color: 'var(--c-stage-testing)' },
-  STABLE:   { color: 'var(--c-stage-stable)' },
-  SCALING:  { color: 'var(--c-stage-scaling)' },
+  DYING:    { color: 'var(--c-stage-dying)',    border: 'rgba(239,68,68,0.25)',   bg: 'rgba(239,68,68,0.10)' },
+  FATIGUED: { color: 'var(--c-stage-fatigued)', border: 'rgba(245,158,11,0.25)', bg: 'rgba(245,158,11,0.10)' },
+  TESTING:  { color: 'var(--c-stage-testing)',  border: 'rgba(99,102,241,0.25)', bg: 'rgba(99,102,241,0.10)' },
+  STABLE:   { color: 'var(--c-stage-stable)',   border: 'rgba(16,185,129,0.25)', bg: 'rgba(16,185,129,0.10)' },
+  SCALING:  { color: 'var(--c-stage-scaling)',  border: 'rgba(6,182,212,0.25)',  bg: 'rgba(6,182,212,0.10)' },
 };
 
 export function StagePill({ stage }) {
@@ -92,8 +95,8 @@ export function StagePill({ stage }) {
         textTransform: 'uppercase',
         borderRadius: 4,
         color: cfg.color,
-        border: `1px solid ${cfg.color}40`,
-        background: `${cfg.color}10`,
+        border: `1px solid ${cfg.border}`,
+        background: cfg.bg,
       }}
     >
       <span style={{ width: 5, height: 5, borderRadius: '50%', background: cfg.color }} />
@@ -139,16 +142,13 @@ export function InlineBar({ value, max = 100, label, sub, color = 'var(--c-gold)
 }
 
 // ── Pulsing dot (live/active indicator) ──────────────────────
+// pulse=false adds .no-pulse which suppresses the ::after ring via CSS
+// (inline animation: none on the host doesn't reach the ::after pseudo-element)
 export function GlowDot({ color = 'var(--c-scale)', size = 8, pulse = true }) {
   return (
     <span
-      className="pulse-dot"
-      style={{
-        background: color,
-        width: size,
-        height: size,
-        animation: pulse ? undefined : 'none',
-      }}
+      className={`pulse-dot${!pulse ? ' no-pulse' : ''}`}
+      style={{ background: color, width: size, height: size }}
     />
   );
 }
@@ -209,8 +209,10 @@ export function SectionLabel({ children, accent, right }) {
   );
 }
 
-// ── Metric callout (label + tabular value) ───────────────────
-export function MetricRow({ label, value, sub, trend }) {
+// ── Metric callout (label + tabular value + optional trend icon) ─
+// Named MetricRowSimple to avoid collision with campaigns-page.jsx's
+// local MetricRow which has a different, richer interface.
+export function MetricRowSimple({ label, value, sub, trend }) {
   const trendColor = trend === 'up' ? 'var(--c-scale)' : trend === 'down' ? 'var(--c-kill)' : 'var(--c-text-muted)';
   const TrendIcon = trend === 'up' ? Icons.TrendingUp : trend === 'down' ? Icons.TrendingDown : null;
   return (
@@ -286,4 +288,3 @@ try {
       window.matchMedia('(max-width: 760px)').matches ? 'mobile' : 'desktop';
   }
 } catch {}
-
