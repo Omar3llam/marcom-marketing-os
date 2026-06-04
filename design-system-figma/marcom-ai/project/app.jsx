@@ -5,7 +5,8 @@
 import { Icons }                                          from './icons.jsx';
 import { VerdictPill, PriorityPill, StagePill,
          InlineBar, GlowDot, LumiLoader, SectionLabel,
-         MetricRowSimple, Card, Skeleton, useIsMobile }   from './primitives.jsx';
+         MetricRowSimple, Card, Skeleton, useIsMobile,
+         ErrorBoundarySimple }                            from './primitives.jsx';
 import { Sidebar, ContextBar }                            from './shell.jsx';
 import { DEMO_DATA }                                      from './data.js';
 import { HomePage }                                       from './home.jsx';
@@ -50,6 +51,8 @@ function App() {
   const [genericTarget, setGenericTarget] = React.useState(null);
   // Content Lab can be pre-loaded with a campaign
   const [contentContext, setContentContext] = React.useState(null);
+  const [reviewingAlert, setReviewingAlert] = React.useState(null);
+  const [dataLoading, setDataLoading] = React.useState(false);
 
   React.useEffect(() => {
     document.documentElement.setAttribute('data-theme', t.theme);
@@ -69,7 +72,9 @@ function App() {
   };
 
   const reviewAlert = (alert) => {
-    if (['KILL', 'HOLD', 'SCALE'].includes(alert?.verdict)) setState(FSM.SUCCESS);
+    if (!alert?.verdict) return;
+    setReviewingAlert(alert);
+    setState(FSM.SUCCESS);
   };
 
   const fixContent = (alert) => {
@@ -105,6 +110,7 @@ function App() {
         <SuccessView
           workspace={workspace}
           featured={featured}
+          alert={reviewingAlert}
           verdictStyle={t.verdictStyle}
           onExecute={() => setState(FSM.EXECUTION)}
           onCancel={() => setState(FSM.INPUT)}
@@ -120,6 +126,7 @@ function App() {
         <CampaignsPage
           workspace={workspace}
           alerts={radarAlerts}
+          loading={dataLoading}
           onStartFlow={startFlow}
           onReviewAlert={reviewAlert}
           onFixContent={fixContent}
@@ -203,7 +210,7 @@ function App() {
           <button
             onClick={() => handleNav('campaigns')}
             className="font-mono"
-            aria-label="Search"
+            aria-label="Campaigns"
             style={{
               background: 'var(--c-gold)',
               color: 'var(--c-text-base)',
@@ -218,8 +225,8 @@ function App() {
               gap: 6,
             }}
           >
-            <Icons.Plus style={{ fontSize: 13 }} />
-            NEW
+            <Icons.BarChart style={{ fontSize: 13 }} />
+            Campaigns
           </button>
         </header>
       )}
@@ -270,7 +277,20 @@ function App() {
 
       <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ flex: 1 }}>
-          {body}
+          <ErrorBoundarySimple
+            fallback={
+              <div style={{ padding: 40, textAlign: 'center' }}>
+                <div style={{ color: 'var(--c-kill-text)', marginBottom: 12 }}>
+                  Something went wrong.
+                </div>
+                <button className="btn-ghost" onClick={goHome}>
+                  Return to Home
+                </button>
+              </div>
+            }
+          >
+            {body}
+          </ErrorBoundarySimple>
         </div>
         <ContextBar workspace={workspace} onNav={handleNav} />
       </main>

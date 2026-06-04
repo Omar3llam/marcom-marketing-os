@@ -288,3 +288,13 @@ try {
       window.matchMedia('(max-width: 760px)').matches ? 'mobile' : 'desktop';
   }
 } catch {}
+
+// ── Error boundary ────────────────────────────────────────────
+export class ErrorBoundarySimple extends React.Component {
+  state = { error: null };
+  static getDerivedStateFromError(e) { return { error: e }; }
+  render() {
+    if (this.state.error) return this.props.fallback ?? null;
+    return this.props.children;
+  }
+}
