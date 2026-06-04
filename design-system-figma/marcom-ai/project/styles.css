@@ -361,6 +361,28 @@ button:focus-visible,
 }
 .demo-replay:hover { border-color: var(--c-gold); color: var(--c-text-base); transform: translateY(-1px); }
 
+/* ── Shell hover utilities (SH07) ───────────────────────────── */
+.shell-row-hover:hover { background: var(--c-lumi-elevated); }
+.shell-row-search:hover { border-color: rgba(246,201,69,0.4) !important; background: var(--c-lumi-surface) !important; }
+.nav-item-hover:hover { background: rgba(246,201,69,0.04); }
+.cmdk-row:hover,
+.cmdk-row[data-active="true"] { background: var(--c-surface-elevated); }
+
+/* ── Context bar links (SH05) ───────────────────────────────── */
+.context-link {
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--c-text-muted);
+  font-family: var(--f-mono);
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.context-link:hover { color: var(--c-gold-deep); }
+
 /* ── Specific scan grid background for Theatre ─────────────── */
 .theatre-grid {
   background-image:

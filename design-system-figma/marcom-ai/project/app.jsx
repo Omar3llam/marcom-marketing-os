@@ -272,7 +272,7 @@ function App() {
         <div style={{ flex: 1 }}>
           {body}
         </div>
-        <ContextBar workspace={workspace} />
+        <ContextBar workspace={workspace} onNav={handleNav} />
       </main>
 
       {/* Replay demo — only show after entering the verdict flow */}

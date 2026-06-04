@@ -7,26 +7,21 @@ import { VerdictPill, GlowDot } from './primitives.jsx';
 
 export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sessions, radarAlerts = [], personas, onSwitchPersona, currentPersona }) {
   const coreTools = [
-    { key: 'home',       label: 'Home',         sub: 'Account pulse',                Icon: Icons.Layout },
-    { key: 'campaigns',  label: 'Campaigns',    sub: 'Verdicts + diagnosis',         Icon: Icons.BarChart },
-    { key: 'content',    label: 'Content Lab',  sub: 'Copy + visual generation',     Icon: Icons.Send },
-    { key: 'growth',     label: 'Growth',       sub: 'Memory layer + opportunities', Icon: Icons.Target },
-    { key: 'calendar',   label: 'Calendar',     sub: '4-week content plan',          Icon: Icons.Calendar },
+    { key: 'home',      label: 'Home',        sub: 'Account pulse',                Icon: Icons.Layout },
+    { key: 'campaigns', label: 'Campaigns',   sub: 'Verdicts + diagnosis',         Icon: Icons.BarChart },
+    { key: 'content',   label: 'Content Lab', sub: 'Copy + visual generation',     Icon: Icons.Send },
+    { key: 'growth',    label: 'Growth',      sub: 'Memory layer + opportunities', Icon: Icons.Target },
+    { key: 'calendar',  label: 'Calendar',    sub: '4-week content plan',          Icon: Icons.Calendar },
   ];
-  const proTools = [];
 
-  const highAlerts = radarAlerts.filter((a) => a.priority === 'HIGH');
-  const alertCount = highAlerts.length;
+  const highAlerts  = radarAlerts.filter((a) => a.priority === 'HIGH');
+  const alertCount  = highAlerts.length;
   const alertsByKey = { home: alertCount };
 
-  // Notifications popover
   const [notifOpen, setNotifOpen] = React.useState(false);
-  // Workspace switcher
-  const [wsOpen, setWsOpen] = React.useState(false);
-  // Cmd+K palette
-  const [cmdkOpen, setCmdkOpen] = React.useState(false);
+  const [wsOpen,    setWsOpen]    = React.useState(false);
+  const [cmdkOpen,  setCmdkOpen]  = React.useState(false);
 
-  // Wire Cmd/Ctrl+K keyboard shortcut
   React.useEffect(() => {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -42,7 +37,6 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Live "next sweep" countdown (visual only — wraps from 60)
   const [secs, setSecs] = React.useState(47);
   React.useEffect(() => {
     const id = setInterval(() => setSecs((s) => (s <= 1 ? 60 : s - 1)), 1000);
@@ -157,23 +151,23 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
           </div>
         )}
 
-        {/* ── Notifications popover ──────────────────────── */}
         {notifOpen && !collapsed && (
           <NotificationsPopover
             alerts={highAlerts}
             onClose={() => setNotifOpen(false)}
-            onPick={(a) => { setNotifOpen(false); onNav('home'); }}
+            onPick={() => { setNotifOpen(false); onNav('home'); }}
           />
         )}
       </div>
 
-      {/* ── Body (natural height; footer stays sticky at viewport bottom) */}
+      {/* ── Body ─────────────────────────────────────────────── */}
       <div style={{ padding: '12px 0' }} className="no-scrollbar">
-        {/* Cmd+K Search affordance */}
+        {/* Cmd+K search affordance — expanded */}
         {!collapsed && (
           <div style={{ padding: '0 12px', marginBottom: 14 }}>
             <button
               onClick={() => setCmdkOpen(true)}
+              className="shell-row-search"
               style={{
                 width: '100%',
                 display: 'flex',
@@ -187,8 +181,6 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
                 cursor: 'pointer',
                 transition: 'all 150ms',
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(246,201,69,0.4)'; e.currentTarget.style.background = 'var(--c-lumi-surface)'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--c-lumi-border)'; e.currentTarget.style.background = 'var(--c-lumi-elevated)'; }}
             >
               <Icons.Search style={{ fontSize: 13, flexShrink: 0 }} />
               <span className="font-body" style={{ flex: 1, fontSize: 12, textAlign: 'left', color: 'var(--c-lumi-subtle)' }}>
@@ -200,6 +192,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
             </button>
           </div>
         )}
+        {/* Cmd+K search affordance — collapsed */}
         {collapsed && (
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }}>
             <button
@@ -219,7 +212,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
           </div>
         )}
 
-        {/* Workspace HQ */}
+        {/* Workspace HQ — expanded */}
         {!collapsed && (
           <div style={{ padding: '0 12px', marginBottom: 14 }}>
             <div className="section-label" style={{ paddingLeft: 4, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -243,7 +236,6 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
                 transition: 'border-color 150ms',
               }}
             >
-              {/* Subtle gold glow corner */}
               <div
                 style={{
                   position: 'absolute',
@@ -265,7 +257,8 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
                     flexShrink: 0,
                   }}
                 >
-                  <span className="font-display" style={{ fontWeight: 700, fontSize: 13, color: '#2b2b2b' }}>{workspace.initials}</span>
+                  {/* SH04: was color: '#2b2b2b' — must use CSS variable for theme compat */}
+                  <span className="font-display" style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-base)' }}>{workspace.initials}</span>
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div className="font-display" style={{ fontWeight: 600, fontSize: 13, color: 'var(--c-lumi-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -277,7 +270,6 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
                 </div>
               </div>
 
-              {/* WATCHING status */}
               <div
                 style={{
                   display: 'flex',
@@ -307,13 +299,12 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
                 </span>
               </div>
 
-              {/* Spend + channels */}
               <div className="font-mono" style={{ fontSize: 10, color: 'var(--c-lumi-subtle)', marginBottom: 8 }}>
                 Spend tier: <span style={{ color: 'var(--c-lumi-muted)' }}>{workspace.spendTier}</span>
               </div>
-              <ChannelHealth channels={workspace.channels} />
+              {/* SH09: pass channelStates so ChannelHealth isn't fully hardcoded */}
+              <ChannelHealth channels={workspace.channels} channelStates={workspace.channelStates} />
 
-              {/* Next sweep countdown */}
               <div
                 style={{
                   marginTop: 10,
@@ -334,7 +325,6 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
               </div>
             </div>
 
-            {/* Workspace switcher dropdown */}
             {wsOpen && personas && (
               <WorkspaceSwitcher
                 personas={personas}
@@ -345,6 +335,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
           </div>
         )}
 
+        {/* Workspace avatar — collapsed */}
         {collapsed && (
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 12 }} title={workspace.name}>
             <div
@@ -355,7 +346,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}
             >
-              <span className="font-display" style={{ fontWeight: 700, fontSize: 12, color: '#2b2b2b' }}>{workspace.initials}</span>
+              <span className="font-display" style={{ fontWeight: 700, fontSize: 12, color: 'var(--c-text-base)' }}>{workspace.initials}</span>
               {alertCount > 0 && (
                 <span style={{
                   position: 'absolute', top: -4, right: -4,
@@ -388,8 +379,6 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
           ))}
         </div>
 
-        {/* Pro modules — removed; all tools now in Core */}
-
         {/* Recent decisions */}
         {!collapsed && (
           <div style={{ padding: '20px 12px 0' }}>
@@ -400,6 +389,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
             {sessions.slice(0, 4).map((s) => (
               <div
                 key={s.id}
+                className="shell-row-hover"
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -409,8 +399,6 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
                   marginBottom: 2,
                   cursor: 'pointer',
                 }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--c-lumi-elevated)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
                 <VerdictPill verdict={s.verdict} size="sm" showIcon={false} />
                 <div style={{ minWidth: 0, flex: 1 }}>
@@ -423,6 +411,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
                 </div>
               </div>
             ))}
+            {/* SH08: dynamic count instead of hardcoded 47 */}
             <button
               style={{
                 width: '100%',
@@ -438,13 +427,13 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
               className="font-mono"
             >
               <Icons.History style={{ fontSize: 11 }} />
-              View all 47 decisions
+              View all {sessions.length} decisions
             </button>
           </div>
         )}
       </div>
 
-      {/* ── Footer (sticky at viewport bottom) ─────────────── */}
+      {/* ── Footer ─────────────────────────────────────────────── */}
       <div
         style={{
           marginTop: 'auto',
@@ -510,7 +499,6 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
         </div>
       </div>
 
-      {/* Cmd+K command palette */}
       {cmdkOpen && (
         <CmdKPalette
           onClose={() => setCmdkOpen(false)}
@@ -524,13 +512,15 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
   );
 }
 
-// ── NavItem (extracted for reuse + gold-rail active state) ───
+// ── NavItem ──────────────────────────────────────────────────
+// SH07: onMouseEnter/Leave replaced with nav-item-hover CSS class
 function NavItem({ tool, collapsed, isActive, badge, onClick }) {
   return (
     <button
       onClick={onClick}
       disabled={tool.locked}
       title={collapsed ? tool.label : undefined}
+      className={!isActive && !tool.locked ? 'nav-item-hover' : undefined}
       style={{
         position: 'relative',
         width: '100%',
@@ -551,10 +541,7 @@ function NavItem({ tool, collapsed, isActive, badge, onClick }) {
         transition: 'all 150ms',
         overflow: 'hidden',
       }}
-      onMouseEnter={(e) => { if (!isActive && !tool.locked) e.currentTarget.style.background = 'rgba(246,201,69,0.04)'; }}
-      onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
     >
-      {/* Gold left rail for active */}
       {isActive && !collapsed && (
         <span
           style={{
@@ -616,7 +603,6 @@ function NavItem({ tool, collapsed, isActive, badge, onClick }) {
 function NotificationsPopover({ alerts, onClose, onPick }) {
   return (
     <>
-      {/* backdrop */}
       <div
         onClick={onClose}
         style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'transparent' }}
@@ -673,8 +659,9 @@ function NotificationsPopover({ alerts, onClose, onPick }) {
               </span>
               <span className="font-mono" style={{ fontSize: 9, color: 'var(--c-text-subtle)', flexShrink: 0 }}>{a.time}</span>
             </div>
+            {/* SH06: a.signal → a.analysis?.root_cause; a.bleed with null-coalescing */}
             <div style={{ fontSize: 11, color: 'var(--c-text-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {a.signal}{a.bleed !== '—' ? ` · ${a.bleed}` : ''}
+              {a.analysis?.root_cause}{(a.bleed ?? '—') !== '—' ? ` · ${a.bleed}` : ''}
             </div>
           </button>
         ))}
@@ -699,9 +686,8 @@ function NotificationsPopover({ alerts, onClose, onPick }) {
 }
 
 // ── 7-day decisions sparkline ────────────────────────────────
-function DecisionSparkline() {
-  // Static demo data: decisions per day for the last 7 days
-  const data = [2, 4, 1, 3, 5, 2, 3];
+// SH09: accept data prop so callers can pass real history
+function DecisionSparkline({ data = [2, 4, 1, 3, 5, 2, 3] }) {
   const max = Math.max(...data);
   const w = 64, h = 16;
   const bw = (w - 6) / data.length;
@@ -726,8 +712,9 @@ function DecisionSparkline() {
   );
 }
 
-// ── Bottom context bar (status / health) ─────────────────────
-export function ContextBar({ workspace, lastSync = '14 sec ago' }) {
+// ── Bottom context bar ────────────────────────────────────────
+// SH05: onNav prop replaces filesystem hrefs; buttons replace <a> tags
+export function ContextBar({ workspace, lastSync = '14 sec ago', onNav }) {
   return (
     <div
       style={{
@@ -763,26 +750,15 @@ export function ContextBar({ workspace, lastSync = '14 sec ago' }) {
         </span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: 'var(--c-text-subtle)' }}>
-        <a
-          href="MARCOM%20Onboarding.html"
-          style={{ color: 'var(--c-text-muted)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-          onMouseEnter={(e) => e.currentTarget.style.color = 'var(--c-gold-deep)'}
-          onMouseLeave={(e) => e.currentTarget.style.color = 'var(--c-text-muted)'}
-          title="Re-run workspace setup"
-        >
-          <Icons.Settings style={{ fontSize: 10 }} />
+        <button onClick={() => onNav?.('onboarding')} className="context-link" title="Re-run workspace setup">
+          <Icons.Settings style={{ fontSize: 10 }} aria-hidden="true" />
           Setup
-        </a>
+        </button>
         <span>·</span>
-        <a
-          href="MARCOM%20Landing.html"
-          style={{ color: 'var(--c-text-muted)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-          onMouseEnter={(e) => e.currentTarget.style.color = 'var(--c-gold-deep)'}
-          onMouseLeave={(e) => e.currentTarget.style.color = 'var(--c-text-muted)'}
-        >
-          <Icons.ChevronLeft style={{ fontSize: 10 }} />
+        <button onClick={() => window.open('/', '_blank')} className="context-link">
+          <Icons.ChevronLeft style={{ fontSize: 10 }} aria-hidden="true" />
           Landing
-        </a>
+        </button>
         <span>·</span>
         <span>{workspace.market}</span>
         <span>·</span>
@@ -792,16 +768,18 @@ export function ContextBar({ workspace, lastSync = '14 sec ago' }) {
   );
 }
 
-// ── ChannelHealth — Meta/TikTok/Google status row ───────────
-function ChannelHealth({ channels }) {
-  // Demo data: most channels healthy, one with throttling
-  const states = {
-    Meta:     { tone: 'ok',    label: 'connected · 412ms' },
-    TikTok:   { tone: 'warn',  label: 'rate-limited' },
-    Snap:     { tone: 'ok',    label: 'connected · 280ms' },
-    Google:   { tone: 'ok',    label: 'connected · 196ms' },
-    LinkedIn: { tone: 'ok',    label: 'connected · 320ms' },
+// ── ChannelHealth ─────────────────────────────────────────────
+// SH09: channelStates prop lets callers override per-channel status;
+// defaults keep the demo working without data.js changes
+function ChannelHealth({ channels, channelStates = {} }) {
+  const defaultStates = {
+    Meta:     { tone: 'ok',   label: 'connected · 412ms' },
+    TikTok:   { tone: 'warn', label: 'rate-limited' },
+    Snap:     { tone: 'ok',   label: 'connected · 280ms' },
+    Google:   { tone: 'ok',   label: 'connected · 196ms' },
+    LinkedIn: { tone: 'ok',   label: 'connected · 320ms' },
   };
+  const states = { ...defaultStates, ...channelStates };
   const toneColor = (t) => t === 'ok' ? 'var(--c-scale)' : t === 'warn' ? 'var(--c-hold)' : 'var(--c-kill)';
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -831,6 +809,7 @@ function ChannelHealth({ channels }) {
 }
 
 // ── Workspace switcher dropdown ──────────────────────────────
+// SH07: onMouseEnter/Leave replaced with shell-row-hover CSS class
 function WorkspaceSwitcher({ personas, currentPersona, onPick }) {
   return (
     <div
@@ -851,6 +830,7 @@ function WorkspaceSwitcher({ personas, currentPersona, onPick }) {
           <button
             key={p.id}
             onClick={() => onPick(p.id)}
+            className={!isCurrent ? 'shell-row-hover' : undefined}
             style={{
               width: '100%',
               display: 'flex',
@@ -864,8 +844,6 @@ function WorkspaceSwitcher({ personas, currentPersona, onPick }) {
               cursor: 'pointer',
               marginBottom: 2,
             }}
-            onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.background = 'var(--c-lumi-elevated)'; }}
-            onMouseLeave={(e) => { if (!isCurrent) e.currentTarget.style.background = 'transparent'; }}
           >
             <div
               style={{
@@ -875,7 +853,8 @@ function WorkspaceSwitcher({ personas, currentPersona, onPick }) {
                 flexShrink: 0,
               }}
             >
-              <span className="font-display" style={{ fontSize: 11, fontWeight: 700, color: '#2b2b2b' }}>{p.initials}</span>
+              {/* SH04: was color: '#2b2b2b' */}
+              <span className="font-display" style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-text-base)' }}>{p.initials}</span>
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="font-display" style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-lumi-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
@@ -910,22 +889,51 @@ function WorkspaceSwitcher({ personas, currentPersona, onPick }) {
 }
 
 // ── Cmd+K Palette ────────────────────────────────────────────
+// SH02: boxShadow uses CSS var with fallback
+// SH03: arrow-key navigation with activeIdx state
+// SH07: CmdKRow hover via .cmdk-row CSS class
 function CmdKPalette({ onClose, sessions, radarAlerts, onNav, onStartFlow }) {
-  const [query, setQuery] = React.useState('');
+  const [query,     setQuery]     = React.useState('');
+  const [activeIdx, setActiveIdx] = React.useState(-1);
   const inputRef = React.useRef(null);
   React.useEffect(() => { inputRef.current?.focus(); }, []);
 
   const lower = query.toLowerCase();
   const navItems = [
-    { id: 'n-feed',    label: 'Command Hub',       sub: 'OS launchpad',         Icon: Icons.Layout,    action: () => { onNav('feed'); onClose(); } },
-    { id: 'n-camp',    label: 'Campaign Analysis', sub: 'KILL / SCALE / HOLD',  Icon: Icons.BarChart,  action: () => { onNav('campaigns'); onClose(); } },
-    { id: 'n-upload',  label: 'Upload CSV',        sub: 'Run intelligence scan', Icon: Icons.Upload,   action: () => onStartFlow() },
-    { id: 'n-set',     label: 'Settings',          sub: 'Workspace, API, billing', Icon: Icons.Settings, action: () => { onNav('settings'); onClose(); } },
+    { id: 'n-feed',   label: 'Command Hub',       sub: 'OS launchpad',            Icon: Icons.Layout,   action: () => { onNav('feed'); onClose(); } },
+    { id: 'n-camp',   label: 'Campaign Analysis', sub: 'KILL / SCALE / HOLD',     Icon: Icons.BarChart, action: () => { onNav('campaigns'); onClose(); } },
+    { id: 'n-upload', label: 'Upload CSV',        sub: 'Run intelligence scan',   Icon: Icons.Upload,   action: () => onStartFlow() },
+    { id: 'n-set',    label: 'Settings',          sub: 'Workspace, API, billing', Icon: Icons.Settings, action: () => { onNav('settings'); onClose(); } },
   ];
 
-  const filteredNav = navItems.filter((i) => !lower || (i.label + i.sub).toLowerCase().includes(lower));
-  const filteredAlerts = (radarAlerts || []).filter((a) => !lower || a.campaign.toLowerCase().includes(lower));
+  const filteredNav      = navItems.filter((i) => !lower || (i.label + i.sub).toLowerCase().includes(lower));
+  const filteredAlerts   = (radarAlerts || []).filter((a) => !lower || a.campaign.toLowerCase().includes(lower));
   const filteredSessions = (sessions || []).filter((s) => !lower || s.label.toLowerCase().includes(lower));
+
+  const allItems = [
+    ...filteredNav,
+    ...filteredAlerts.slice(0, 4).map(a => ({ ...a, action: () => { onNav('feed'); onClose(); } })),
+    ...filteredSessions.map(s => ({ ...s, action: () => { onNav('campaigns'); onClose(); } })),
+  ];
+
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setActiveIdx(i => Math.min(i + 1, allItems.length - 1));
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setActiveIdx(i => Math.max(i - 1, 0));
+      } else if (e.key === 'Enter' && activeIdx >= 0) {
+        allItems[activeIdx]?.action?.();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [allItems, activeIdx]);
+
+  // Monotonically increasing index shared across all rendered CmdKRow items
+  let rowIdx = 0;
 
   return (
     <>
@@ -949,7 +957,7 @@ function CmdKPalette({ onClose, sessions, radarAlerts, onNav, onStartFlow }) {
           background: 'var(--c-surface-card)',
           border: '1px solid var(--c-surface-border)',
           borderRadius: 16,
-          boxShadow: 'var(--sh-modal)',
+          boxShadow: 'var(--sh-modal, 0 24px 64px rgba(0,0,0,0.20))',
           overflow: 'hidden',
           animation: 'slide-up 260ms cubic-bezier(0.16,1,0.3,1) both',
         }}
@@ -960,7 +968,7 @@ function CmdKPalette({ onClose, sessions, radarAlerts, onNav, onStartFlow }) {
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { setQuery(e.target.value); setActiveIdx(-1); }}
             placeholder="Search decisions, campaigns, alerts…"
             style={{
               flex: 1,
@@ -980,38 +988,47 @@ function CmdKPalette({ onClose, sessions, radarAlerts, onNav, onStartFlow }) {
         <div style={{ maxHeight: 420, overflowY: 'auto', padding: 8 }}>
           {filteredNav.length > 0 && (
             <CmdKGroup title="Jump to">
-              {filteredNav.map((i) => (
-                <CmdKRow key={i.id} Icon={i.Icon} label={i.label} sub={i.sub} onClick={i.action} />
-              ))}
+              {filteredNav.map((i) => {
+                const idx = rowIdx++;
+                return <CmdKRow key={i.id} isActive={activeIdx === idx} Icon={i.Icon} label={i.label} sub={i.sub} onClick={i.action} />;
+              })}
             </CmdKGroup>
           )}
           {filteredAlerts.length > 0 && (
             <CmdKGroup title="Active radar alerts">
-              {filteredAlerts.slice(0, 4).map((a) => (
-                <CmdKRow
-                  key={a.id}
-                  Icon={Icons.AlertTriangle}
-                  iconColor={a.verdict === 'KILL' ? 'var(--c-kill)' : a.verdict === 'SCALE' ? 'var(--c-scale)' : 'var(--c-hold)'}
-                  label={a.campaign}
-                  sub={`${a.signal} · ${a.time}`}
-                  right={<VerdictPill verdict={a.verdict} size="sm" showIcon={false} />}
-                  onClick={() => { onNav('feed'); onClose(); }}
-                />
-              ))}
+              {filteredAlerts.slice(0, 4).map((a) => {
+                const idx = rowIdx++;
+                return (
+                  <CmdKRow
+                    key={a.id}
+                    isActive={activeIdx === idx}
+                    Icon={Icons.AlertTriangle}
+                    iconColor={a.verdict === 'KILL' ? 'var(--c-kill)' : a.verdict === 'SCALE' ? 'var(--c-scale)' : 'var(--c-hold)'}
+                    label={a.campaign}
+                    sub={`${a.analysis?.root_cause ?? ''} · ${a.time}`}
+                    right={<VerdictPill verdict={a.verdict} size="sm" showIcon={false} />}
+                    onClick={() => { onNav('feed'); onClose(); }}
+                  />
+                );
+              })}
             </CmdKGroup>
           )}
           {filteredSessions.length > 0 && (
             <CmdKGroup title="Recent decisions">
-              {filteredSessions.map((s) => (
-                <CmdKRow
-                  key={s.id}
-                  Icon={Icons.History}
-                  label={s.label}
-                  sub={`${s.verdict} · ${s.impact} · ${s.ts}`}
-                  right={<VerdictPill verdict={s.verdict} size="sm" showIcon={false} />}
-                  onClick={() => { onNav('campaigns'); onClose(); }}
-                />
-              ))}
+              {filteredSessions.map((s) => {
+                const idx = rowIdx++;
+                return (
+                  <CmdKRow
+                    key={s.id}
+                    isActive={activeIdx === idx}
+                    Icon={Icons.History}
+                    label={s.label}
+                    sub={`${s.verdict} · ${s.impact} · ${s.ts}`}
+                    right={<VerdictPill verdict={s.verdict} size="sm" showIcon={false} />}
+                    onClick={() => { onNav('campaigns'); onClose(); }}
+                  />
+                );
+              })}
             </CmdKGroup>
           )}
           {filteredNav.length === 0 && filteredAlerts.length === 0 && filteredSessions.length === 0 && (
@@ -1049,10 +1066,13 @@ function CmdKGroup({ title, children }) {
   );
 }
 
-function CmdKRow({ Icon, iconColor, label, sub, right, onClick }) {
+// SH07: hover via .cmdk-row CSS class; SH03: isActive → data-active attr
+function CmdKRow({ Icon, iconColor, label, sub, right, onClick, isActive }) {
   return (
     <button
       onClick={onClick}
+      className="cmdk-row"
+      data-active={isActive}
       style={{
         width: '100%',
         display: 'flex',
@@ -1066,8 +1086,6 @@ function CmdKRow({ Icon, iconColor, label, sub, right, onClick }) {
         cursor: 'pointer',
         transition: 'background 120ms',
       }}
-      onMouseEnter={(e) => e.currentTarget.style.background = 'var(--c-surface-elevated)'}
-      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
     >
       <Icon style={{ fontSize: 14, color: iconColor || 'var(--c-text-muted)', flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -1078,4 +1096,3 @@ function CmdKRow({ Icon, iconColor, label, sub, right, onClick }) {
     </button>
   );
 }
-
