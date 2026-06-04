@@ -3,15 +3,14 @@
 // ============================================================
 // This file is the public entry point for the /api/execute mount.
 // Each endpoint lives in its own module; this file is responsible
-// for:
-//   1. Applying router-wide middleware (auth + context guard).
-//   2. Registering handlers in the correct order — specific paths
-//      (`/meta`, `/audit`, `/vitals`, `/active`) BEFORE `/:id/*`
-//      so Express doesn't match `:id` against literal segments.
+// for registering handlers in the correct order — specific paths
+// (`/meta`, `/audit`, `/vitals`, `/active`) BEFORE `/:id/*`
+// so Express doesn't match `:id` against literal segments.
+//
+// Auth is already applied globally in server.js via requireAuth
+// on the /api/execute mount. No router-level middleware needed.
 // ============================================================
 import { Router } from 'express';
-import { firebaseAuthMiddleware } from '../../middleware/firebaseAuth.js';
-import { contextGuard } from '../../middleware/contextGuard.js';
 
 import { registerMetaRoute } from './meta.js';
 import { registerAuditRoute } from './audit.js';
@@ -28,9 +27,6 @@ import { registerCheckpointRoute } from './checkpoint.js';  // PR #29
 import { registerArtifactsRoute } from './artifacts.js';    // PR #35
 
 const router = Router();
-
-router.use(firebaseAuthMiddleware);
-router.use(contextGuard);
 
 // Specific paths first — order matters for Express route matching.
 registerMetaRoute(router);
