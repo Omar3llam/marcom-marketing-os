@@ -50,6 +50,12 @@ function CampaignsPage({ workspace, alerts, loading = false, onStartFlow, onRevi
   const handleReviewAlert = React.useCallback(() => onReviewAlert(selected), [onReviewAlert, selected]);
   const handleFixContent = React.useCallback(() => onFixContent(selected), [onFixContent, selected]);
   const handleSelectRow = React.useCallback((id) => setSelectedId(id), []);
+  const handleRowKeyDown = React.useCallback((e, id) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setSelectedId(id);
+    }
+  }, []);
 
   // FIX 1: Loading skeleton
   if (loading) {
@@ -118,8 +124,8 @@ function CampaignsPage({ workspace, alerts, loading = false, onStartFlow, onRevi
             <h1 className="font-display" style={{ fontSize: 30, fontWeight: 700, letterSpacing: '-0.03em', margin: 0, color: 'var(--c-text-base)' }}>
               0 active campaigns · 0 need attention.
             </h1>
-            <button className="btn-gold" onClick={() => onStartFlow('campaign')}>
-              <Icons.Upload style={{ fontSize: 14 }} />
+            <button type="button" className="btn-gold" onClick={() => onStartFlow('campaign')}>
+              <Icons.Upload style={{ fontSize: 14 }} aria-hidden="true" />
               Upload new data
             </button>
           </div>
@@ -127,13 +133,16 @@ function CampaignsPage({ workspace, alerts, loading = false, onStartFlow, onRevi
 
         {/* Show filter chips when filtered */}
         {isFiltered && (
-          <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+          <div role="group" aria-label="Campaign filters" style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
             {['All','KILL','HOLD','SCALE'].map((f) => {
               const isActive = filter === f;
               return (
                 <button
                   key={f}
+                  type="button"
                   onClick={() => setFilter(f)}
+                  aria-label={`Filter by ${f}`}
+                  aria-pressed={isActive ? 'true' : 'false'}
                   className="font-mono"
                   style={{
                     padding: '6px 12px',
@@ -183,7 +192,7 @@ function CampaignsPage({ workspace, alerts, loading = false, onStartFlow, onRevi
               className="btn-ghost"
               style={{ padding: '10px 20px', fontSize: 13 }}
             >
-              <Icons.X style={{ fontSize: 14 }} />
+              <Icons.X style={{ fontSize: 14 }} aria-hidden="true" />
               Clear filter
             </button>
           )}
@@ -202,21 +211,25 @@ function CampaignsPage({ workspace, alerts, loading = false, onStartFlow, onRevi
           <h1 className="font-display" style={{ fontSize: 30, fontWeight: 700, letterSpacing: '-0.03em', margin: 0, color: 'var(--c-text-base)' }}>
             {filteredAlerts.length} active campaigns · {summary.needAttention} need attention.
           </h1>
-          <button className="btn-gold" onClick={() => onStartFlow('campaign')}>
-            <Icons.Upload style={{ fontSize: 14 }} />
+          <button type="button" className="btn-gold" onClick={() => onStartFlow('campaign')}>
+            <Icons.Upload style={{ fontSize: 14 }} aria-hidden="true" />
             Upload new data
           </button>
         </div>
       </header>
 
       {/* Filter chips */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+      <div role="group" aria-label="Campaign filters" style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
         {['All','KILL','HOLD','SCALE'].map((f) => {
           const isActive = filter === f;
+          const pressedState = isActive ? 'true' : 'false';
           return (
             <button
               key={f}
+              type="button"
               onClick={() => setFilter(f)}
+              aria-label={`Filter by ${f}`}
+              aria-pressed={pressedState}
               className="font-mono"
               style={{
                 padding: '6px 12px',
@@ -242,10 +255,18 @@ function CampaignsPage({ workspace, alerts, loading = false, onStartFlow, onRevi
         {filteredAlerts.map((a) => {
           const isSelected = a.id === selectedId;
           const health = a.verdict === 'KILL' ? 28 : a.verdict === 'HOLD' ? 56 : 82;
+          const expandedState = isSelected ? 'true' : 'false';
+          const controlsId = isSelected ? 'campaign-detail-panel' : undefined;
           return (
             <div
               key={a.id}
+              role="button"
+              tabIndex={0}
               onClick={() => handleSelectRow(a.id)}
+              onKeyDown={(e) => handleRowKeyDown(e, a.id)}
+              aria-label={`View details for ${a.campaign}`}
+              aria-expanded={expandedState}
+              aria-controls={controlsId}
               className="campaign-row"
               style={{
                 display: 'grid',
@@ -269,7 +290,7 @@ function CampaignsPage({ workspace, alerts, loading = false, onStartFlow, onRevi
               <HealthBar pct={health} />
               <span className="font-mono tabular-nums" style={{ fontSize: 12, color: a.bleed !== '—' ? 'var(--c-kill-text)' : 'var(--c-text-muted)' }}>{a.bleed}</span>
               <span className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-subtle)' }}>{a.time}</span>
-              <Icons.ChevronRight style={{ fontSize: 14, color: 'var(--c-text-subtle)' }} />
+              <Icons.ChevronRight style={{ fontSize: 14, color: 'var(--c-text-subtle)' }} aria-hidden="true" />
             </div>
           );
         })}
@@ -407,6 +428,9 @@ function DetailPanel({ alert, workspace, onClose, onReviewVerdict, onFixContent 
         }}
       />
       <aside
+        id="campaign-detail-panel"
+        role="complementary"
+        aria-label="Campaign detail"
         style={{
           position: 'fixed',
           top: 0, right: 0, bottom: 0,
@@ -432,8 +456,8 @@ function DetailPanel({ alert, workspace, onClose, onReviewVerdict, onFixContent 
               </h2>
               <div className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 4 }}>{alert.adset}</div>
             </div>
-            <button onClick={onClose} style={{ background: 'transparent', border: 'none', padding: 6, color: 'var(--c-text-muted)', cursor: 'pointer', display: 'flex' }}>
-              <Icons.X style={{ fontSize: 16 }} />
+            <button type="button" onClick={onClose} aria-label="Close detail panel" style={{ background: 'transparent', border: 'none', padding: 6, color: 'var(--c-text-muted)', cursor: 'pointer', display: 'flex' }}>
+              <Icons.X style={{ fontSize: 16 }} aria-hidden="true" />
             </button>
           </div>
 
@@ -494,15 +518,15 @@ function DetailPanel({ alert, workspace, onClose, onReviewVerdict, onFixContent 
               </p>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button onClick={onFixContent} className="btn-gold" style={{ width: '100%', justifyContent: 'flex-start', padding: '12px 14px', fontSize: 13 }}>
-                <Icons.Send style={{ fontSize: 14 }} />
+              <button type="button" onClick={onFixContent} className="btn-gold" style={{ width: '100%', justifyContent: 'flex-start', padding: '12px 14px', fontSize: 13 }}>
+                <Icons.Send style={{ fontSize: 14 }} aria-hidden="true" />
                 Fix content in Content Lab
-                <Icons.ArrowRight style={{ fontSize: 13, marginLeft: 'auto' }} />
+                <Icons.ArrowRight style={{ fontSize: 13, marginLeft: 'auto' }} aria-hidden="true" />
               </button>
-              <button onClick={onReviewVerdict} className="btn-ghost" style={{ width: '100%', justifyContent: 'flex-start', padding: '11px 14px', fontSize: 13 }}>
-                <Icons.BarChart style={{ fontSize: 14 }} />
+              <button type="button" onClick={onReviewVerdict} className="btn-ghost" style={{ width: '100%', justifyContent: 'flex-start', padding: '11px 14px', fontSize: 13 }}>
+                <Icons.BarChart style={{ fontSize: 14 }} aria-hidden="true" />
                 Adjust budget · review verdict
-                <Icons.ArrowRight style={{ fontSize: 13, marginLeft: 'auto' }} />
+                <Icons.ArrowRight style={{ fontSize: 13, marginLeft: 'auto' }} aria-hidden="true" />
               </button>
             </div>
           </Section>
