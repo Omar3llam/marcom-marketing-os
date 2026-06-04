@@ -4,11 +4,23 @@
 // All icons share the .icon CSS class (stroke=currentColor, w/h=1em).
 // Size via fontSize: parent inherits.
 
-const I = (path, viewBox = '0 0 24 24') => (props) => (
-  <svg viewBox={viewBox} className={`icon ${props.className || ''}`} style={props.style} aria-hidden="true">
-    {path}
-  </svg>
-);
+const I = (path, viewBox = '0 0 24 24') => ({ className, style,
+    'aria-label': ariaLabel, 'aria-hidden': ariaHidden, role, ...rest }) => {
+  const isDecorative = !ariaLabel;
+  return (
+    <svg
+      viewBox={viewBox}
+      className={['icon', className].filter(Boolean).join(' ')}
+      style={style}
+      aria-hidden={ariaHidden ?? (isDecorative ? 'true' : undefined)}
+      aria-label={ariaLabel}
+      role={role ?? (ariaLabel ? 'img' : undefined)}
+      {...rest}
+    >
+      {path}
+    </svg>
+  );
+};
 
 export const Icons = {
   Sparkles: I(<><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2 2M16.4 16.4l2 2M5.6 18.4l2-2M16.4 7.6l2-2"/><path d="M12 8.5l1.2 2.3L15.5 12l-2.3 1.2L12 15.5l-1.2-2.3L8.5 12l2.3-1.2z"/></>),
