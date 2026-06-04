@@ -30,11 +30,16 @@ function CampaignsPage({ workspace, alerts, onStartFlow, onReviewAlert, onFixCon
     [filteredAlerts, selectedId],
   );
 
+  // FIX 2: Stable callbacks to prevent event listener churn
+  const handleClose = React.useCallback(() => setSelectedId(null), []);
+  const handleReviewAlert = React.useCallback(() => onReviewAlert(selected), [onReviewAlert, selected]);
+  const handleFixContent = React.useCallback(() => onFixContent(selected), [onFixContent, selected]);
+
   return (
     <div data-screen-label="Campaigns" style={{ maxWidth: 1400, margin: '0 auto', padding: '32px 32px 24px', position: 'relative' }}>
       <header style={{ marginBottom: 20 }}>
         <div className="font-mono" style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)', marginBottom: 8 }}>
-          Campaigns · {workspace.name}
+          Campaigns · {workspace?.name ?? 'Loading...'}
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
           <h1 className="font-display" style={{ fontSize: 30, fontWeight: 700, letterSpacing: '-0.03em', margin: 0, color: 'var(--c-text-base)' }}>
@@ -84,6 +89,7 @@ function CampaignsPage({ workspace, alerts, onStartFlow, onReviewAlert, onFixCon
             <div
               key={a.id}
               onClick={() => setSelectedId(a.id)}
+              className="campaign-row"
               style={{
                 display: 'grid',
                 gridTemplateColumns: '90px 1fr 120px 110px 110px 110px 32px',
@@ -96,8 +102,6 @@ function CampaignsPage({ workspace, alerts, onStartFlow, onReviewAlert, onFixCon
                 paddingLeft: isSelected ? 15 : 18,
                 transition: 'all 150ms',
               }}
-              onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = 'var(--c-surface-elevated)'; }}
-              onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
             >
               <VerdictPill verdict={a.verdict} />
               <div>
@@ -119,11 +123,17 @@ function CampaignsPage({ workspace, alerts, onStartFlow, onReviewAlert, onFixCon
         <DetailPanel
           alert={selected}
           workspace={workspace}
-          onClose={() => setSelectedId(null)}
-          onReviewVerdict={() => onReviewAlert(selected)}
-          onFixContent={() => onFixContent(selected)}
+          onClose={handleClose}
+          onReviewVerdict={handleReviewAlert}
+          onFixContent={handleFixContent}
         />
       )}
+
+      <style>{`
+        .campaign-row:not([style*="rgba(246,201,69"]):hover {
+          background: var(--c-surface-elevated) !important;
+        }
+      `}</style>
     </div>
   );
 }
@@ -215,11 +225,15 @@ function DetailPanel({ alert, workspace, onClose, onReviewVerdict, onFixContent 
   // Top-level guard for missing alert
   if (!alert) return null;
 
+  // FIX 2: Stable event listener via ref to prevent re-registration churn
+  const onCloseRef = React.useRef(onClose);
+  React.useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
+
   React.useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e) => { if (e.key === 'Escape') onCloseRef.current?.(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, []); // stable — never re-registers
 
   const health = alert.verdict === 'KILL' ? 28 : alert.verdict === 'HOLD' ? 56 : 82;
   const verdictColor = alert.verdict === 'KILL' ? 'var(--c-kill-text)' : alert.verdict === 'SCALE' ? 'var(--c-scale-text)' : 'var(--c-hold-text)';
