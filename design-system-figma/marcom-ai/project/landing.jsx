@@ -18,6 +18,8 @@ const DEMO_URL   = '/demo';          // in-app demo route
 const SIGNUP_URL = '/onboarding';    // onboarding route
 const APP_URL    = '/signin';        // sign-in route (not demo)
 
+const LUMI_MEDIAN_VERDICT_SECS = 18;
+
 // ── Tweakable defaults (host can rewrite these on disk) ───────
 // Palette: [accent, accentDeep, surfaceLight, surfaceCard, textBase, textSoft]
 const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
@@ -61,11 +63,12 @@ const HERO_COPY = {
 
 // ── Shared rhythm: section padding, container width ──────────
 const SX = {
-  containerW: 1200,
-  sectionPad: '120px 32px',
-  sectionPadSm: '88px 32px',
-  ctaPad: '80px 56px',
-  borderRadiusXxl: 32,
+  containerW:      1200,
+  containerNarrow: 880,
+  containerCTA:    1100,
+  sectionPad:      '120px 32px',
+  sectionPadSm:    '88px 32px',
+  ctaPad:          '80px 56px',
 };
 
 // Apply palette tokens onto :root so every var()-based component re-themes.
@@ -123,16 +126,18 @@ function Landing() {
   return (
     <div style={{ background: 'var(--c-surface-light)', minHeight: '100vh', overflow: 'hidden', color: 'var(--c-text-base)' }}>
       <Nav />
-      <Hero pose={t.heroPose} copyKey={t.heroCopy} />
-      <TrustedBy />
-      <ProblemSection />
-      <HowItWorks />
-      <VerdictPreview />
-      <InsideLumi />
-      <NumbersBand />
-      <Pricing />
-      <FAQ />
-      <BigCTA />
+      <main>
+        <Hero pose={t.heroPose} copyKey={t.heroCopy} />
+        <TrustedBy />
+        <ProblemSection />
+        <HowItWorks />
+        <VerdictPreview />
+        <InsideLumi />
+        <NumbersBand />
+        <Pricing />
+        <FAQ />
+        <BigCTA />
+      </main>
       <Footer />
       <LandingTweaks t={t} setTweak={setTweak} />
     </div>
@@ -192,7 +197,7 @@ function useReveal(threshold = 0.18) {
     io.observe(ref.current);
     return () => io.disconnect();
   }, [shown, threshold]);
-  return { ref, className: shown ? 'reveal-init reveal-on' : 'reveal-init', style: shown ? { transitionDelay: '0ms' } : undefined };
+  return { ref, className: shown ? 'reveal-init reveal-on' : 'reveal-init' };
 }
 
 // ── BRAND MARK (typographic, no mascot) ─────────────────────
@@ -311,7 +316,10 @@ function NavLink({ href, children, sub = false }) {
 // ══════════════════════════════════════════════════════════════
 // HERO
 // ══════════════════════════════════════════════════════════════
+const HERO_COMPOSE = { cards: HeroComposition, type: HeroTypography, radar: HeroRadar };
+
 function Hero({ pose = 'cards', copyKey = 'decisive' }) {
+  const HeroVisual = HERO_COMPOSE[pose] ?? HeroComposition;
   const c = HERO_COPY[copyKey] || HERO_COPY.decisive;
   const kill  = <strong style={{ color: 'var(--c-kill-text)'  }}>KILL</strong>;
   const hold  = <strong style={{ color: 'var(--c-hold-text)'  }}>HOLD</strong>;
@@ -384,7 +392,7 @@ function Hero({ pose = 'cards', copyKey = 'decisive' }) {
           </div>
 
           <div style={{ marginTop: 48, display: 'flex', alignItems: 'center', gap: 28, flexWrap: 'wrap' }}>
-            <MicroStat label="Median verdict" value="18s" />
+            <MicroStat label="Median verdict" value={`${LUMI_MEDIAN_VERDICT_SECS}s`} />
             <DividerV />
             <MicroStat label="Avg verdict ROAS" value="3.8x" />
             <DividerV />
@@ -393,16 +401,14 @@ function Hero({ pose = 'cards', copyKey = 'decisive' }) {
         </div>
 
         {/* RIGHT — composition swappable via Tweaks → Pose */}
-        {pose === 'type'  && <HeroTypography />}
-        {pose === 'radar' && <HeroRadar />}
-        {pose !== 'type' && pose !== 'radar' && <HeroComposition />}
+        <HeroVisual />
       </div>
     </section>
   );
 }
 
 function DividerV() {
-  return <span style={{ width: 1, height: 32, background: 'var(--c-surface-border-strong)' }} />;
+  return <div role="separator" aria-hidden="true" style={{ width: 1, height: 32, background: 'var(--c-surface-border-strong)', flexShrink: 0 }} />;
 }
 
 function MicroStat({ label, value, mono }) {
@@ -747,7 +753,7 @@ function TrustedBy() {
 function ProblemSection() {
   return (
     <section style={{ padding: SX.sectionPadSm, borderTop: '1px solid var(--c-surface-border)', background: 'var(--c-surface-card)' }}>
-      <div style={{ maxWidth: 880, margin: '0 auto', textAlign: 'center' }}>
+      <div style={{ maxWidth: SX.containerNarrow, margin: '0 auto', textAlign: 'center' }}>
         <div className="section-label" style={{ color: 'var(--c-kill-text)', marginBottom: 18 }}>
           The unspoken cost of "let it run"
         </div>
@@ -889,7 +895,7 @@ function VerdictPreviewCard({ card, cfg, delay }) {
         background: 'var(--c-surface-card)',
         border: '1px solid var(--c-surface-border)',
         borderLeft: `4px solid ${cfg.fg}`,
-        borderRadius: 18,
+        borderRadius: 'var(--r-feature)',
         padding: 28,
         display: 'block',
         boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
@@ -991,7 +997,7 @@ function FeatureCard({ feat, delay, wide }) {
         background: wide ? 'var(--c-text-base)' : 'var(--c-surface-light)',
         color: wide ? 'var(--c-surface-light)' : 'inherit',
         border: wide ? '1px solid rgba(246,201,69,0.35)' : '1px solid var(--c-surface-border)',
-        borderRadius: 18,
+        borderRadius: 'var(--r-feature)',
         padding: wide ? '36px 36px' : 32,
         display: 'flex',
         gap: 22,
@@ -1061,7 +1067,7 @@ function NumbersBand() {
             padding: '40px 0',
             background: 'var(--c-surface-card)',
             border: '1px solid var(--c-surface-border)',
-            borderRadius: 24,
+            borderRadius: 'var(--r-numbers)',
             overflow: 'hidden',
           }}
         >
@@ -1153,6 +1159,11 @@ const PRICING_PLANS = [
 function fmtPrice(n) {
   if (n == null || isNaN(n)) return '—';
   return n >= 1000 ? n.toLocaleString('en-US') : n.toString();
+}
+
+function formatCurrencyDisplay(sym, amount, symBefore) {
+  const formatted = fmtPrice(amount);
+  return symBefore ? `${sym}${formatted}` : `${formatted} ${sym}`;
 }
 
 function Pricing() {
@@ -1287,7 +1298,7 @@ function PricingCard({ plan, cur, curCfg, annual }) {
         background: isFeatured ? 'var(--c-pricing-featured-bg)' : 'var(--c-surface-light)',
         color: isFeatured ? 'var(--c-surface-light)' : 'var(--c-text-base)',
         border: `1px solid ${isFeatured ? 'rgba(246,201,69,0.4)' : 'var(--c-surface-border)'}`,
-        borderRadius: 22,
+        borderRadius: 'var(--r-pricing)',
         padding: 32,
         display: 'flex',
         flexDirection: 'column',
@@ -1363,7 +1374,7 @@ function PricingCard({ plan, cur, curCfg, annual }) {
         </div>
         {annual && (
           <div className="font-mono" style={{ marginTop: 6, fontSize: 11, color: isFeatured ? 'rgba(248,246,242,0.55)' : 'var(--c-text-subtle)' }}>
-            Billed {curCfg.sym}{symBefore ? '' : ' '}{fmtPrice(yearly)}/year · save {curCfg.sym}{symBefore ? '' : ' '}{fmtPrice(Math.max(0, monthly * 12 - yearly))}
+            Billed {formatCurrencyDisplay(curCfg.sym, yearly, symBefore)}/year · save {formatCurrencyDisplay(curCfg.sym, Math.max(0, monthly * 12 - yearly), symBefore)}
           </div>
         )}
         {!annual && (
@@ -1485,7 +1496,7 @@ function FAQ() {
   );
   return (
     <section style={{ padding: SX.sectionPad }}>
-      <div style={{ maxWidth: 880, margin: '0 auto' }}>
+      <div style={{ maxWidth: SX.containerNarrow, margin: '0 auto' }}>
         <header style={{ marginBottom: 40, textAlign: 'center' }}>
           <div className="section-label" style={{ marginBottom: 14 }}>FAQ</div>
           <h2 className="font-display" style={{ fontSize: 44, fontWeight: 700, letterSpacing: '-0.03em', margin: 0, color: 'var(--c-text-base)', lineHeight: 1.06 }}>
@@ -1510,7 +1521,7 @@ function FAQRow({ item, open, onToggle }) {
       style={{
         background: 'var(--c-surface-card)',
         border: `1px solid ${open ? 'rgba(246,201,69,0.4)' : 'var(--c-surface-border)'}`,
-        borderRadius: 14,
+        borderRadius: 'var(--r-faq)',
         overflow: 'hidden',
         transition: 'border-color 200ms',
       }}
@@ -1577,11 +1588,11 @@ function BigCTA() {
     <section style={{ padding: '60px 32px 120px' }}>
       <div
         style={{
-          maxWidth: 1100,
+          maxWidth: SX.containerCTA,
           margin: '0 auto',
           position: 'relative',
           background: 'var(--c-text-base)',
-          borderRadius: SX.borderRadiusXxl,
+          borderRadius: 'var(--r-cta)',
           padding: SX.ctaPad,
           overflow: 'hidden',
           color: 'var(--c-surface-light)',
@@ -1616,7 +1627,7 @@ function BigCTA() {
             </div>
             <h2 className="font-display" style={{ fontSize: 56, fontWeight: 800, letterSpacing: '-0.035em', lineHeight: 1.02, margin: 0, textWrap: 'balance' }}>
               Try the demo.<br />
-              It takes <span style={{ color: 'var(--c-gold)' }}>18 seconds.</span>
+              It takes <span style={{ color: 'var(--c-gold)' }}>{LUMI_MEDIAN_VERDICT_SECS} seconds.</span>
             </h2>
             <p style={{ marginTop: 22, fontSize: 16, color: 'rgba(248,246,242,0.7)', maxWidth: 520, lineHeight: 1.6, textWrap: 'pretty' }}>
               No signup. Walk through a live campaign, watch Lumi reach a verdict, and execute it against a sandbox Meta API.
