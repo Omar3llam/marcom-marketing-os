@@ -64,6 +64,8 @@ const SX = {
   containerW: 1200,
   sectionPad: '120px 32px',
   sectionPadSm: '88px 32px',
+  ctaPad: '80px 56px',
+  borderRadiusXxl: 32,
 };
 
 // Apply palette tokens onto :root so every var()-based component re-themes.
@@ -1476,7 +1478,11 @@ const FAQ_ITEMS = [
 ];
 
 function FAQ() {
-  const [open, setOpen] = React.useState(0);
+  const [open, setOpen] = React.useState(null);
+  const handleFAQToggle = React.useCallback(
+    (i) => setOpen(prev => prev === i ? null : i),
+    [],
+  );
   return (
     <section style={{ padding: SX.sectionPad }}>
       <div style={{ maxWidth: 880, margin: '0 auto' }}>
@@ -1489,7 +1495,7 @@ function FAQ() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {FAQ_ITEMS.map((item, i) => (
-            <FAQRow key={i} item={item} open={open === i} onToggle={() => setOpen(open === i ? -1 : i)} />
+            <FAQRow key={item.q.slice(0, 30)} item={item} open={open === i} onToggle={() => handleFAQToggle(i)} />
           ))}
         </div>
       </div>
@@ -1498,6 +1504,7 @@ function FAQ() {
 }
 
 function FAQRow({ item, open, onToggle }) {
+  const answerId = `faq-answer-${item.q.slice(0, 20).replace(/\s/g, '-').toLowerCase()}`;
   return (
     <div
       style={{
@@ -1509,7 +1516,10 @@ function FAQRow({ item, open, onToggle }) {
       }}
     >
       <button
+        type="button"
         onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={answerId}
         style={{
           width: '100%',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -1537,13 +1547,24 @@ function FAQRow({ item, open, onToggle }) {
           <Icons.Plus style={{ fontSize: 14 }} />
         </span>
       </button>
-      {open && (
-        <div className="anim-slide-up" style={{ padding: '0 22px 20px' }}>
+      <div
+        style={{
+          maxHeight: open ? '500px' : '0',
+          overflow: 'hidden',
+          transition: 'max-height 280ms cubic-bezier(0.16,1,0.3,1)',
+        }}
+      >
+        <div
+          id={answerId}
+          role="region"
+          aria-label={item.q}
+          style={{ padding: '0 22px 20px' }}
+        >
           <p style={{ margin: 0, fontSize: 14, color: 'var(--c-text-soft)', lineHeight: 1.65, maxWidth: 680 }}>
             {item.a}
           </p>
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -1560,8 +1581,8 @@ function BigCTA() {
           margin: '0 auto',
           position: 'relative',
           background: 'var(--c-text-base)',
-          borderRadius: 32,
-          padding: '80px 56px',
+          borderRadius: SX.borderRadiusXxl,
+          padding: SX.ctaPad,
           overflow: 'hidden',
           color: 'var(--c-surface-light)',
         }}
@@ -1588,7 +1609,7 @@ function BigCTA() {
           }}
         />
 
-        <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr auto', gap: 56, alignItems: 'center' }}>
+        <div className="big-cta-inner" style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr auto', gap: 56, alignItems: 'center' }}>
           <div>
             <div className="font-mono" style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'var(--c-gold)', marginBottom: 16 }}>
               Stop watching campaigns bleed.
@@ -1606,15 +1627,15 @@ function BigCTA() {
                 Launch the demo
                 <Icons.ArrowRight style={{ fontSize: 16 }} />
               </a>
-              <a href={SIGNUP_URL} style={{ fontFamily: 'var(--f-display)', fontSize: 14, color: 'rgba(248,246,242,0.85)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                Personalize your setup
+              <a href="https://cal.com/marcomai/demo" style={{ fontFamily: 'var(--f-display)', fontSize: 14, color: 'rgba(248,246,242,0.85)', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                Book a 15-min walkthrough
                 <Icons.ArrowUpRight style={{ fontSize: 12 }} />
               </a>
             </div>
           </div>
 
-          {/* Right column — typographic verdict trio */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+          {/* Right column — typographic verdict trio (decorative) */}
+          <div aria-hidden="true" className="big-cta-verdicts" style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
             {[
               { l: 'KILL',  c: 'var(--c-kill)' },
               { l: 'HOLD',  c: 'var(--c-hold)' },
@@ -1660,11 +1681,11 @@ function Footer() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 26, fontSize: 12, color: 'var(--c-text-muted)' }} className="font-mono">
           <a href={DEMO_URL} style={{ color: 'inherit', textDecoration: 'none' }}>Demo</a>
-          <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Pricing</a>
-          <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Docs</a>
-          <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Status</a>
-          <a href="#" style={{ color: 'inherit', textDecoration: 'none' }}>Privacy</a>
-          <span>© 2026 Marcom AI</span>
+          <a href="#pricing" style={{ color: 'inherit', textDecoration: 'none' }}>Pricing</a>
+          <a href="/docs" style={{ color: 'inherit', textDecoration: 'none' }}>Docs</a>
+          <a href="https://status.marcom.ai" style={{ color: 'inherit', textDecoration: 'none' }}>Status</a>
+          <a href="/privacy" style={{ color: 'inherit', textDecoration: 'none' }}>Privacy</a>
+          <span>© {new Date().getFullYear()} Marcom AI</span>
         </div>
       </div>
     </footer>

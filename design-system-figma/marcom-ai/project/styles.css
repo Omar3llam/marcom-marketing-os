@@ -443,6 +443,10 @@ button:focus-visible,
   .stat-cell               { padding: 24px 24px; }
   .stat-cell + .stat-cell  { border-top: 1px solid var(--c-surface-border); }
 }
+@media (max-width: 760px) {
+  .big-cta-inner    { grid-template-columns: 1fr !important; }
+  .big-cta-verdicts { display: none; }
+}
 .pricing-card              { transition: border-color 240ms, box-shadow 240ms, transform 240ms; }
 .pricing-card:not(.pricing-card--featured):hover {
   border-color: rgba(246,201,69,0.5) !important;
@@ -590,7 +594,7 @@ button:focus-visible,
   img { max-width: 100%; height: auto; }
 
   /* — Tables/horiz-scroll containers — */
-  .mob-scroll-x { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .mob-scroll-x { overflow-x: auto; }
 
   /* — Tap targets minimum — */
   button, [role="button"], a.btn-gold, a.btn-ghost { min-height: 40px; }
@@ -612,7 +616,7 @@ button:focus-visible,
   [style*="borderRadius: 32"] { border-radius: 20px !important; }
 
   /* — Sticky/floating elements should respect safe areas — */
-  nav[style*="position: sticky"] { -webkit-backdrop-filter: blur(14px); }
+  nav[style*="position: sticky"] { -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
 
   /* — ContextBar (bottom status strip in demo) — */
   .context-bar {
