@@ -643,3 +643,42 @@ button:focus-visible,
 html[data-viewport="mobile"] .desktop-only { display: none !important; }
 html:not([data-viewport="mobile"]) .mobile-only { display: none !important; }
 
+/* ── Hero blob: GPU blur on desktop, stripped on mobile ─────── */
+.hero-blob {
+  filter: blur(20px);
+  will-change: transform;
+}
+@media (max-width: 760px) {
+  .hero-blob        { filter: none; opacity: 0.4; }
+  /* Stop float/pop animations on hero decor hidden on mobile */
+  .hero-decor-only * { animation: none !important; }
+  /* BigCTA: tighter padding on small screens */
+  .big-cta-card     { padding: 40px 24px !important; }
+}
+
+/* ── Gold tint utilities (flat background) ──────────────────── */
+.gold-tint-06  { background: rgba(246,201,69,0.06); }
+.gold-tint-08  { background: rgba(246,201,69,0.08); }
+.gold-tint-10  { background: rgba(246,201,69,0.10); }
+.gold-tint-16  { background: rgba(246,201,69,0.16); }
+.gold-tint-18  { background: rgba(246,201,69,0.18); }
+.gold-tint-22  { background: rgba(246,201,69,0.22); }
+.gold-tint-30  { background: rgba(246,201,69,0.30); }
+.gold-border-25 { border: 1px solid rgba(246,201,69,0.25); }
+.gold-border-28 { border: 1px solid rgba(246,201,69,0.28); }
+
+/* ── Decorative glow orbs (aria-hidden blobs, radial variants) ─ */
+.decor-glow-06 { background: radial-gradient(circle, rgba(246,201,69,0.06), transparent 70%); pointer-events: none; }
+.decor-glow-20 { background: radial-gradient(circle, rgba(246,201,69,0.20), transparent 60%); pointer-events: none; }
+.decor-glow-22 { background: radial-gradient(circle, rgba(246,201,69,0.22), transparent 65%); pointer-events: none; }
+.decor-glow-30 { background: radial-gradient(circle, rgba(246,201,69,0.30), transparent 60%); pointer-events: none; }
+
+/* ── Decorative gold grid lines ─────────────────────────────── */
+.decor-grid-06 {
+  background-image:
+    linear-gradient(rgba(246,201,69,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(246,201,69,0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+

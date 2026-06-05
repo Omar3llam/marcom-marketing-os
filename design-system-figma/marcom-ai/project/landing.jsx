@@ -344,12 +344,12 @@ function Hero({ pose = 'cards', copyKey = 'decisive' }) {
       {/* Gold blob */}
       <div
         aria-hidden="true"
+        className="hero-blob"
         style={{
           position: 'absolute',
           top: -140, right: '8%',
           width: 560, height: 560,
           background: 'radial-gradient(circle, var(--c-lumi-tint-glow-sm), transparent 65%)',
-          filter: 'blur(20px)',
           pointerEvents: 'none',
         }}
       />
@@ -357,7 +357,7 @@ function Hero({ pose = 'cards', copyKey = 'decisive' }) {
       <div style={{ maxWidth: SX.containerW, margin: '0 auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 80, alignItems: 'center', position: 'relative' }}>
         {/* LEFT */}
         <div>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 999, background: 'var(--c-lumi-tint-bg)', border: '1px solid rgba(246,201,69,0.28)', marginBottom: 28 }}>
+          <div className="gold-border-28" style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 999, background: 'var(--c-lumi-tint-bg)', marginBottom: 28 }}>
             <span className="anim-intel-pulse" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-gold)', boxShadow: '0 0 6px var(--c-gold)' }} />
             <span className="font-mono" style={{ fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--c-gold-deep)', fontWeight: 600 }}>
               {c.eyebrow}
@@ -1012,12 +1012,12 @@ function FeatureCard({ feat, delay, wide }) {
     >
       {wide && (
         <div
+          aria-hidden="true"
+          className="decor-glow-22"
           style={{
             position: 'absolute',
             top: -120, right: -100,
             width: 360, height: 360,
-            background: 'radial-gradient(circle, rgba(246,201,69,0.22), transparent 65%)',
-            pointerEvents: 'none',
           }}
         />
       )}
@@ -1055,13 +1055,14 @@ function FeatureCard({ feat, delay, wide }) {
 // ══════════════════════════════════════════════════════════════
 function NumbersBand() {
   const nums = [
-    { v: '18s',     l: 'Median verdict time' },
-    { v: '3.8x',    l: 'Avg ROAS on SCALE verdicts' },
-    { v: '94%',     l: 'Verdicts confirmed by operators' },
-    { v: '240+',    l: 'Active MENA workspaces' },
+    { v: '18s',  l: 'Median verdict time',             stat: 'median-verdict-time' },
+    { v: '3.8x', l: 'Avg ROAS on SCALE verdicts',      stat: 'avg-roas-scale' },
+    { v: '94%',  l: 'Verdicts confirmed by operators', stat: 'verdicts-confirmed' },
+    { v: '240+', l: 'Active MENA workspaces',          stat: 'active-workspaces' },
   ];
+  const r = useReveal(0.25);
   return (
-    <section id="numbers" aria-label="Key statistics" style={{ padding: SX.sectionPadSm }}>
+    <section ref={r.ref} className={r.className} id="numbers" aria-label="Key statistics" style={{ padding: SX.sectionPadSm }}>
       <div style={{ maxWidth: SX.containerW, margin: '0 auto' }}>
         <div
           style={{
@@ -1079,6 +1080,7 @@ function NumbersBand() {
             <div
               key={n.l}
               className="stat-cell"
+              data-stat={n.stat}
               style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
             >
               <dl style={{ margin: 0 }}>
@@ -1087,6 +1089,9 @@ function NumbersBand() {
               </dl>
             </div>
           ))}
+        </div>
+        <div className="font-mono" style={{ textAlign: 'center', marginTop: 16, fontSize: 10, color: 'var(--c-text-subtle)' }}>
+          *Based on internal beta data, June {new Date().getFullYear()}.
         </div>
       </div>
     </section>
@@ -1292,7 +1297,14 @@ function PricingCard({ plan, cur, curCfg, annual }) {
 
   const monthly = plan.prices[cur];
   const yearly  = plan.yearly[cur];
-  const effective = annual ? Math.floor(yearly / 12) : monthly;
+  const effective = React.useMemo(
+    () => annual ? Math.floor(yearly / 12) : monthly,
+    [annual, yearly, monthly],
+  );
+  const yearlySavings = React.useMemo(
+    () => Math.max(0, monthly * 12 - yearly),
+    [monthly, yearly],
+  );
   const symBefore = cur === 'USD';
 
   return (
@@ -1315,12 +1327,12 @@ function PricingCard({ plan, cur, curCfg, annual }) {
       {/* Featured glow */}
       {isFeatured && (
         <div
+          aria-hidden="true"
+          className="decor-glow-20"
           style={{
             position: 'absolute',
             top: -100, right: -100,
             width: 320, height: 320,
-            background: 'radial-gradient(circle, rgba(246,201,69,0.20), transparent 60%)',
-            pointerEvents: 'none',
           }}
         />
       )}
@@ -1380,7 +1392,7 @@ function PricingCard({ plan, cur, curCfg, annual }) {
         </div>
         {annual && (
           <div className="font-mono" style={{ marginTop: 6, fontSize: 11, color: isFeatured ? 'rgba(248,246,242,0.55)' : 'var(--c-text-subtle)' }}>
-            Billed {formatCurrencyDisplay(curCfg.sym, yearly, symBefore)}/year · save {formatCurrencyDisplay(curCfg.sym, Math.max(0, monthly * 12 - yearly), symBefore)}
+            Billed {formatCurrencyDisplay(curCfg.sym, yearly, symBefore)}/year · save {formatCurrencyDisplay(curCfg.sym, yearlySavings, symBefore)}
           </div>
         )}
         {!annual && (
@@ -1593,6 +1605,7 @@ function BigCTA() {
   return (
     <section style={{ padding: '60px 32px 120px' }}>
       <div
+        className="big-cta-card"
         style={{
           maxWidth: SX.containerCTA,
           margin: '0 auto',
@@ -1606,23 +1619,22 @@ function BigCTA() {
       >
         {/* Gold glow */}
         <div
+          aria-hidden="true"
+          className="decor-glow-30"
           style={{
             position: 'absolute',
             top: -140, right: -140,
             width: 460, height: 460,
-            background: 'radial-gradient(circle, rgba(246,201,69,0.30), transparent 60%)',
-            pointerEvents: 'none',
           }}
         />
         {/* Faint grid */}
         <div
+          aria-hidden="true"
+          className="decor-grid-06"
           style={{
             position: 'absolute', inset: 0,
-            backgroundImage: 'linear-gradient(rgba(246,201,69,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(246,201,69,0.06) 1px, transparent 1px)',
-            backgroundSize: '40px 40px',
             maskImage: 'radial-gradient(ellipse at 70% 50%, black, transparent 70%)',
             WebkitMaskImage: 'radial-gradient(ellipse at 70% 50%, black, transparent 70%)',
-            pointerEvents: 'none',
           }}
         />
 
