@@ -297,6 +297,8 @@ function Nav() {
 }
 
 function NavLink({ href, children, sub = false }) {
+  // Landing page has no active nav state — all links are section anchors.
+  // TODO: set aria-current="true" via scroll-spy hook when implemented.
   return (
     <a
       href={href}
@@ -328,6 +330,7 @@ function Hero({ pose = 'cards', copyKey = 'decisive' }) {
     <section id="top" style={{ position: 'relative', padding: '80px 32px 100px' }}>
       {/* Faint dot grid background */}
       <div
+        aria-hidden="true"
         style={{
           position: 'absolute',
           inset: 0,
@@ -340,6 +343,7 @@ function Hero({ pose = 'cards', copyKey = 'decisive' }) {
       />
       {/* Gold blob */}
       <div
+        aria-hidden="true"
         style={{
           position: 'absolute',
           top: -140, right: '8%',
@@ -428,7 +432,7 @@ function HeroTypography() {
     { l: 'SCALE', c: 'var(--c-scale-text)', ico: Icons.Rocket,   delay: 240 },
   ];
   return (
-    <div className="hero-decor-only" style={{ position: 'relative', height: 540, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 22, paddingLeft: 24 }}>
+    <div aria-hidden="true" className="hero-decor-only" style={{ position: 'relative', height: 540, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 22, paddingLeft: 24 }}>
       {/* Crosshair grid */}
       <div
         style={{
@@ -490,7 +494,7 @@ function HeroRadar() {
     { x: 82, y: 58, label: 'roas',  hot: false },
   ];
   return (
-    <div className="hero-decor-only" style={{ position: 'relative', height: 540 }}>
+    <div aria-hidden="true" className="hero-decor-only" style={{ position: 'relative', height: 540 }}>
       {/* Radar disc */}
       <div
         style={{
@@ -596,7 +600,7 @@ function HeroRadar() {
 // Hero illustration — three layered UI shards, no mascot
 function HeroComposition() {
   return (
-    <div className="hero-decor-only" style={{ position: 'relative', height: 540 }}>
+    <div aria-hidden="true" className="hero-decor-only" style={{ position: 'relative', height: 540 }}>
       {/* BACK: Memory ledger card */}
       <div
         className="anim-float-slow"
@@ -793,7 +797,7 @@ function HowItWorks() {
     },
   ];
   return (
-    <section id="how" style={{ padding: SX.sectionPad }}>
+    <section id="how" aria-labelledby="section-how-it-works" style={{ padding: SX.sectionPad }}>
       <div style={{ maxWidth: SX.containerW, margin: '0 auto' }}>
         <SectionHeader eyebrow="How it works" title="Three steps. Eighteen seconds." />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
@@ -961,12 +965,12 @@ function InsideLumi() {
     },
   ];
   return (
-    <section id="inside" style={{ padding: SX.sectionPad, background: 'var(--c-surface-card)', borderTop: '1px solid var(--c-surface-border)', borderBottom: '1px solid var(--c-surface-border)' }}>
+    <section id="inside" aria-labelledby="section-inside-lumi" style={{ padding: SX.sectionPad, background: 'var(--c-surface-card)', borderTop: '1px solid var(--c-surface-border)', borderBottom: '1px solid var(--c-surface-border)' }}>
       <div style={{ maxWidth: SX.containerW, margin: '0 auto' }}>
         <header style={{ marginBottom: 64, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 64, alignItems: 'flex-end' }}>
           <div>
             <div className="section-label" style={{ marginBottom: 14 }}>Inside Lumi</div>
-            <h2 className="font-display" style={{ fontSize: 52, fontWeight: 700, letterSpacing: '-0.035em', margin: 0, color: 'var(--c-text-base)', lineHeight: 1.02, textWrap: 'balance' }}>
+            <h2 id="section-inside-lumi" className="font-display" style={{ fontSize: 52, fontWeight: 700, letterSpacing: '-0.035em', margin: 0, color: 'var(--c-text-base)', lineHeight: 1.02, textWrap: 'balance' }}>
               Built like a trading desk, not a BI tool.
             </h2>
           </div>
@@ -1057,7 +1061,7 @@ function NumbersBand() {
     { v: '240+',    l: 'Active MENA workspaces' },
   ];
   return (
-    <section id="numbers" style={{ padding: SX.sectionPadSm }}>
+    <section id="numbers" aria-label="Key statistics" style={{ padding: SX.sectionPadSm }}>
       <div style={{ maxWidth: SX.containerW, margin: '0 auto' }}>
         <div
           style={{
@@ -1077,8 +1081,10 @@ function NumbersBand() {
               className="stat-cell"
               style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}
             >
-              <div className="font-display tabular-nums" style={{ fontSize: 52, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: 'var(--c-gold-deep)' }}>{n.v}</div>
-              <div style={{ marginTop: 12, fontSize: 13, color: 'var(--c-text-muted)' }}>{n.l}</div>
+              <dl style={{ margin: 0 }}>
+                <dt style={{ marginTop: 12, fontSize: 13, color: 'var(--c-text-muted)' }}>{n.l}</dt>
+                <dd className="font-display tabular-nums" style={{ margin: 0, fontSize: 52, fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 1, color: 'var(--c-gold-deep)' }}>{n.v}</dd>
+              </dl>
             </div>
           ))}
         </div>
@@ -1708,7 +1714,7 @@ function SectionHeader({ eyebrow, title, sub }) {
   return (
     <header style={{ marginBottom: 56, maxWidth: 760 }}>
       <div className="section-label" style={{ marginBottom: 14 }}>{eyebrow}</div>
-      <h2 className="font-display" style={{ fontSize: 52, fontWeight: 700, letterSpacing: '-0.035em', margin: 0, color: 'var(--c-text-base)', lineHeight: 1.04, textWrap: 'balance' }}>{title}</h2>
+      <h2 id={`section-${eyebrow.replace(/\s+/g, '-').toLowerCase()}`} className="font-display" style={{ fontSize: 52, fontWeight: 700, letterSpacing: '-0.035em', margin: 0, color: 'var(--c-text-base)', lineHeight: 1.04, textWrap: 'balance' }}>{title}</h2>
       {sub && <p style={{ marginTop: 16, fontSize: 17, color: 'var(--c-text-soft)', lineHeight: 1.55, textWrap: 'pretty' }}>{sub}</p>}
     </header>
   );
