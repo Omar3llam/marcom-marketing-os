@@ -15,6 +15,7 @@
   --c-lumi-tint-border:  rgba(246,201,69,0.25);
   --c-lumi-tint-glow-sm: rgba(246,201,69,0.18);
   --c-gold-faint:        rgba(246,201,69,0.45);
+  --c-pricing-featured-bg: #1C1C22;
   --c-dot-grid:          rgba(43,43,43,0.05);
   --c-dot-grid-strong:   rgba(43,43,43,0.06);
 
@@ -129,6 +130,7 @@
 
   --sh-card: 0 2px 12px rgba(0,0,0,0.55), 0 1px 2px rgba(0,0,0,0.4);
   --sh-card-hover: 0 8px 32px rgba(0,0,0,0.7);
+  --c-pricing-featured-bg: #0F0F15;
 }
 
 * { box-sizing: border-box; }
@@ -440,6 +442,12 @@ button:focus-visible,
 @media (max-width: 760px) {
   .stat-cell               { padding: 24px 24px; }
   .stat-cell + .stat-cell  { border-top: 1px solid var(--c-surface-border); }
+}
+.pricing-card              { transition: border-color 240ms, box-shadow 240ms, transform 240ms; }
+.pricing-card:not(.pricing-card--featured):hover {
+  border-color: rgba(246,201,69,0.5) !important;
+  box-shadow: 0 16px 36px rgba(0,0,0,0.08) !important;
+  transform: translateY(-4px);
 }
 
 /* ── Specific scan grid background for Theatre ─────────────── */

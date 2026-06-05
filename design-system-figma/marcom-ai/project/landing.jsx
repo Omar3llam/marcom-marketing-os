@@ -1148,10 +1148,18 @@ const PRICING_PLANS = [
   },
 ];
 
+function fmtPrice(n) {
+  if (n == null || isNaN(n)) return '—';
+  return n >= 1000 ? n.toLocaleString('en-US') : n.toString();
+}
+
 function Pricing() {
   const [cur, setCur] = React.useState('USD');
   const [annual, setAnnual] = React.useState(false);
-  const curCfg = PRICING_CURRENCIES.find((c) => c.code === cur);
+  const curCfg = PRICING_CURRENCIES.find((c) => c.code === cur) ?? PRICING_CURRENCIES[0];
+
+  const handleCurrencyChange = React.useCallback((code) => setCur(code), []);
+  const handleBillingChange  = React.useCallback((val)  => setAnnual(val), []);
 
   return (
     <section id="pricing" style={{ padding: SX.sectionPad, background: 'var(--c-surface-card)', borderTop: '1px solid var(--c-surface-border)', borderBottom: '1px solid var(--c-surface-border)' }}>
@@ -1174,7 +1182,8 @@ function Pricing() {
             {PRICING_CURRENCIES.map((c) => (
               <button
                 key={c.code}
-                onClick={() => setCur(c.code)}
+                type="button"
+                onClick={() => handleCurrencyChange(c.code)}
                 className="font-mono"
                 style={{
                   padding: '7px 16px',
@@ -1203,7 +1212,8 @@ function Pricing() {
             ].map((b) => (
               <button
                 key={String(b.id)}
-                onClick={() => setAnnual(b.id)}
+                type="button"
+                onClick={() => handleBillingChange(b.id)}
                 className="font-display"
                 style={{
                   padding: '7px 16px',
@@ -1258,38 +1268,28 @@ function Pricing() {
 
 function PricingCard({ plan, cur, curCfg, annual }) {
   const r = useReveal(0.18);
-  const [hover, setHover] = React.useState(false);
   const isFeatured = !!plan.featured;
   const isAgency = plan.id === 'agency';
 
   const monthly = plan.prices[cur];
   const yearly  = plan.yearly[cur];
-  const effective = annual ? Math.round(yearly / 12) : monthly;
+  const effective = annual ? Math.floor(yearly / 12) : monthly;
   const symBefore = cur === 'USD';
-
-  const fmt = (n) => {
-    if (n >= 1000) return n.toLocaleString('en-US');
-    return n.toString();
-  };
 
   return (
     <div
       ref={r.ref}
-      className={r.className}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+      className={`${r.className} pricing-card${isFeatured ? ' pricing-card--featured' : ''}`}
       style={{
         position: 'relative',
-        background: isFeatured ? 'var(--c-text-base)' : 'var(--c-surface-light)',
+        background: isFeatured ? 'var(--c-pricing-featured-bg)' : 'var(--c-surface-light)',
         color: isFeatured ? 'var(--c-surface-light)' : 'var(--c-text-base)',
-        border: `1px solid ${isFeatured ? 'rgba(246,201,69,0.4)' : (hover ? 'rgba(246,201,69,0.5)' : 'var(--c-surface-border)')}`,
+        border: `1px solid ${isFeatured ? 'rgba(246,201,69,0.4)' : 'var(--c-surface-border)'}`,
         borderRadius: 22,
         padding: 32,
         display: 'flex',
         flexDirection: 'column',
-        boxShadow: isFeatured ? '0 24px 48px rgba(0,0,0,0.18), 0 0 40px rgba(246,201,69,0.10)' : (hover ? '0 16px 36px rgba(0,0,0,0.08)' : '0 2px 8px rgba(0,0,0,0.04)'),
-        transform: hover && !isFeatured ? 'translateY(-4px)' : 'translateY(0)',
-        transition: 'border-color 240ms, box-shadow 240ms, transform 240ms',
+        boxShadow: isFeatured ? '0 24px 48px rgba(0,0,0,0.18), 0 0 40px rgba(246,201,69,0.10)' : '0 2px 8px rgba(0,0,0,0.04)',
         overflow: 'hidden',
       }}
     >
@@ -1348,7 +1348,7 @@ function PricingCard({ plan, cur, curCfg, annual }) {
               color: isFeatured ? 'var(--c-surface-light)' : 'var(--c-text-base)',
             }}
           >
-            {fmt(effective)}
+            {fmtPrice(effective)}
           </span>
           {!symBefore && (
             <span className="font-display" style={{ fontSize: 16, fontWeight: 600, color: isFeatured ? 'rgba(248,246,242,0.65)' : 'var(--c-text-muted)', marginLeft: 6 }}>
@@ -1361,7 +1361,7 @@ function PricingCard({ plan, cur, curCfg, annual }) {
         </div>
         {annual && (
           <div className="font-mono" style={{ marginTop: 6, fontSize: 11, color: isFeatured ? 'rgba(248,246,242,0.55)' : 'var(--c-text-subtle)' }}>
-            Billed {curCfg.sym}{symBefore ? '' : ' '}{fmt(yearly)}/year · save {curCfg.sym}{symBefore ? '' : ' '}{fmt(monthly * 12 - yearly)}
+            Billed {curCfg.sym}{symBefore ? '' : ' '}{fmtPrice(yearly)}/year · save {curCfg.sym}{symBefore ? '' : ' '}{fmtPrice(Math.max(0, monthly * 12 - yearly))}
           </div>
         )}
         {!annual && (
@@ -1373,7 +1373,7 @@ function PricingCard({ plan, cur, curCfg, annual }) {
 
       {/* CTA */}
       <a
-        href={isAgency ? '#' : SIGNUP_URL}
+        href={isAgency ? 'mailto:sales@marcom.ai' : DEMO_URL}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -1387,7 +1387,7 @@ function PricingCard({ plan, cur, curCfg, annual }) {
           letterSpacing: '-0.01em',
           textDecoration: 'none',
           background: isFeatured ? 'var(--c-gold)' : (isAgency ? 'transparent' : 'var(--c-surface-card)'),
-          color: isFeatured ? 'var(--c-text-base)' : (isAgency ? 'var(--c-text-base)' : 'var(--c-text-base)'),
+          color: 'var(--c-text-base)',
           border: isFeatured ? 'none' : (isAgency ? '1px solid var(--c-text-soft)' : '1px solid var(--c-surface-border-strong)'),
           boxShadow: isFeatured ? 'var(--sh-gold-glow)' : 'none',
           transition: 'all 200ms',
@@ -1399,10 +1399,11 @@ function PricingCard({ plan, cur, curCfg, annual }) {
       </a>
 
       {/* Features */}
-      <ul style={{ marginTop: 24, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10, position: 'relative' }}>
+      <ul aria-label={`${plan.name} plan features`} style={{ marginTop: 24, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10, position: 'relative' }}>
         {plan.features.map((f, i) => (
-          <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, opacity: f.ok ? 1 : 0.4 }}>
+          <li key={`${plan.id}-feat-${i}`} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, opacity: f.ok ? 1 : 0.4 }}>
             <span
+              aria-hidden="true"
               style={{
                 width: 18, height: 18, borderRadius: '50%',
                 background: f.ok
@@ -1417,16 +1418,20 @@ function PricingCard({ plan, cur, curCfg, annual }) {
               }}
             >
               {f.ok
-                ? <Icons.Check style={{ fontSize: 11, strokeWidth: 3 }} />
-                : <Icons.X style={{ fontSize: 9 }} />
+                ? <Icons.Check style={{ fontSize: 11, strokeWidth: 3 }} aria-hidden="true" />
+                : <Icons.X style={{ fontSize: 9 }} aria-hidden="true" />
               }
             </span>
             <span style={{
+              position: 'relative',
               fontSize: 13,
               lineHeight: 1.5,
               color: isFeatured ? (f.ok ? 'rgba(248,246,242,0.92)' : 'rgba(248,246,242,0.5)') : (f.ok ? 'var(--c-text-soft)' : 'var(--c-text-muted)'),
               textDecoration: f.ok ? 'none' : 'line-through',
             }}>
+              <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0,0,0,0)' }}>
+                {f.ok ? 'Included: ' : 'Not included: '}
+              </span>
               {f.text}
             </span>
           </li>
