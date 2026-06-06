@@ -3,7 +3,7 @@
 // ============================================================
 
 import { Icons } from './icons.jsx';
-import { VerdictPill, StagePill, GlowDot, SectionLabel } from './primitives.jsx';
+import { VerdictPill, StagePill, GlowDot, SectionLabel, formatCurrencyCompact, formatBleed } from './primitives.jsx';
 import { DEMO_DATA } from './data.js';
 
 export function CommandHub({ workspace, radarAlerts, sessions, onStartFlow, onReviewAlert }) {
@@ -50,7 +50,7 @@ function CommandHeader({ workspace, alertCount }) {
         {/* Health ring */}
         <div style={{ display: 'flex', gap: 24 }}>
           <HealthBlock label="Active ad sets" value="14" tone="neutral" />
-          <HealthBlock label="Bleeding" value="2" tone="danger" sub={workspace.currencySym + ' 880/d'} />
+          <HealthBlock label="Bleeding" value="2" tone="danger" sub={workspace.currency + ' 880/d'} />
           <HealthBlock label="Scaling" value="3" tone="positive" sub="+18% MoM" />
         </div>
       </div>
@@ -223,12 +223,12 @@ function RadarCard({ alert, onReview, delay, workspace }) {
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          {alert.bleed !== '—' ? (
+          {alert.bleedDailyMinor != null ? (
             <>
               <div className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-muted)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                 Bleeding
               </div>
-              <div className="font-mono tabular-nums" style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-kill-text)' }}>{alert.bleed}</div>
+              <div className="font-mono tabular-nums" style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-kill-text)' }}>{formatBleed(alert.bleedDailyMinor, workspace.currency)}</div>
             </>
           ) : (
             <>
@@ -388,7 +388,7 @@ function ModuleCard({ cfg, onStartFlow, workspace }) {
             Live feed
           </div>
           <FeedMetric label="Campaigns tracked" value="14" />
-          <FeedMetric label={`Spend in feed`} value={workspace.spendTier.split(' ').slice(0, 2).join(' ')} />
+          <FeedMetric label={`Spend in feed`} value={formatCurrencyCompact(workspace.spendMonthlyMinor, workspace.currency)} />
           <FeedMetric label="Avg verdict time" value="18s" sub="median" />
           <FeedMetric label="Decisions / wk" value="9" />
         </div>

@@ -6,7 +6,7 @@
 // ============================================================
 
 import { Icons } from './icons.jsx';
-import { VerdictPill, StagePill, Card, SectionLabel } from './primitives.jsx';
+import { VerdictPill, StagePill, Card, SectionLabel, formatCurrency } from './primitives.jsx';
 
 const VERDICT_VISUALS = {
   KILL:  { color: 'var(--c-kill-text)', glow: 'var(--sh-kill-glow)', bg: 'var(--c-kill-bg)',  Icon: Icons.Skull,        verb: 'Stop' },
@@ -29,9 +29,9 @@ export function SuccessView({ workspace, featured, verdictStyle = 'editorial', o
 
       {/* ── Hero verdict band ──────────────────────────────── */}
       {verdictStyle === 'editorial' ? (
-        <EditorialVerdict campaign={c} vis={vis} />
+        <EditorialVerdict campaign={c} vis={vis} currency={workspace.currency} />
       ) : (
-        <CardVerdict campaign={c} vis={vis} />
+        <CardVerdict campaign={c} vis={vis} currency={workspace.currency} />
       )}
 
       {/* ── Reasoning + evidence + action ──────────────────── */}
@@ -66,18 +66,18 @@ export function SuccessView({ workspace, featured, verdictStyle = 'editorial', o
             >
               <BigMetric
                 label="CPA"
-                value={c.cpa}
-                target={`Target: ${c.cpaTarget}`}
+                value={formatCurrency(c.cpaMinor, workspace.currency)}
+                target={`Target: ${formatCurrency(c.cpaTargetMinor, workspace.currency)}`}
                 delta={c.cpaDelta}
                 trend="down"
                 bad
               />
               <BigMetric
                 label="ROAS"
-                value={c.roas}
-                target={c.roasTarget !== '—' ? `Target: ${c.roasTarget}` : 'Lead gen (no ROAS)'}
+                value={c.roas != null ? c.roas : '—'}
+                target={c.roasTarget != null ? `Target: ${c.roasTarget}` : 'Lead gen (no ROAS)'}
                 trend="down"
-                bad={c.roas !== '—'}
+                bad={c.roas != null}
               />
               <BigMetric
                 label="Frequency"
@@ -118,7 +118,7 @@ export function SuccessView({ workspace, featured, verdictStyle = 'editorial', o
             </div>
 
             <div style={{ padding: '0 20px' }}>
-              <ActionRow label="Budget reallocation" value={c.action.budgetMove} Icon={Icons.ArrowUpRight} />
+              <ActionRow label="Budget reallocation" value={`${formatCurrency(c.action.budgetMoveDailyMinor, workspace.currency)}/day → ${c.action.budgetMoveTarget}`} Icon={Icons.ArrowUpRight} />
               <ActionRow label="Confidence" value={c.action.confidence} Icon={Icons.Brain} />
               <ActionRow label="Evidence" value={c.action.evidence} Icon={Icons.Database} last />
             </div>
@@ -159,7 +159,7 @@ export function SuccessView({ workspace, featured, verdictStyle = 'editorial', o
 // ══════════════════════════════════════════════════════════════
 // Variant A — Editorial (Bold typography, magazine layout)
 // ══════════════════════════════════════════════════════════════
-function EditorialVerdict({ campaign, vis }) {
+function EditorialVerdict({ campaign, vis, currency }) {
   const c = campaign;
   return (
     <section
@@ -211,7 +211,7 @@ function EditorialVerdict({ campaign, vis }) {
             {c.title}
           </h2>
           <p style={{ fontSize: 14, color: 'var(--c-text-soft)', margin: 0, maxWidth: 480, lineHeight: 1.5 }}>
-            <strong style={{ color: 'var(--c-text-base)' }}>{c.name}</strong> · {c.audience} · {c.daysRun} days · {c.spend} spent
+            <strong style={{ color: 'var(--c-text-base)' }}>{c.name}</strong> · {c.audience} · {c.daysRun} days · {formatCurrency(c.spendMinor, currency)} spent
           </p>
         </div>
 
@@ -221,7 +221,7 @@ function EditorialVerdict({ campaign, vis }) {
             Financial impact
           </div>
           <div className="font-mono tabular-nums" style={{ fontSize: 42, fontWeight: 700, letterSpacing: '-0.03em', color: 'var(--c-text-base)', lineHeight: 1 }}>
-            {c.financialImpact.value}
+            {formatCurrency(c.financialImpact.savedWeeklyMinor, currency)}
           </div>
           <div className="font-mono" style={{ fontSize: 13, color: 'var(--c-text-muted)', marginTop: 4 }}>
             {c.financialImpact.cadence}
@@ -240,7 +240,7 @@ function EditorialVerdict({ campaign, vis }) {
             }}
           >
             <span className="font-display" style={{ fontWeight: 600 }}>Monthly projection:</span>{' '}
-            <span className="font-mono tabular-nums">{c.monthlyProj}</span>
+            <span className="font-mono tabular-nums">{formatCurrency(c.monthlyRecoveredMinor, currency)} / mo recovered</span>
           </div>
         </div>
       </div>
@@ -251,7 +251,7 @@ function EditorialVerdict({ campaign, vis }) {
 // ══════════════════════════════════════════════════════════════
 // Variant B — Composed Card (restrained)
 // ══════════════════════════════════════════════════════════════
-function CardVerdict({ campaign, vis }) {
+function CardVerdict({ campaign, vis, currency }) {
   const c = campaign;
   return (
     <section
@@ -285,13 +285,13 @@ function CardVerdict({ campaign, vis }) {
             Financial impact
           </div>
           <div className="font-mono tabular-nums" style={{ fontSize: 32, fontWeight: 700, color: 'var(--c-text-base)' }}>
-            {c.financialImpact.value}
+            {formatCurrency(c.financialImpact.savedWeeklyMinor, currency)}
           </div>
           <div className="font-mono" style={{ fontSize: 12, color: 'var(--c-text-muted)', marginTop: 4 }}>
             {c.financialImpact.cadence} · {c.financialImpact.sub}
           </div>
           <div className="font-mono tabular-nums" style={{ fontSize: 13, color: vis.color, marginTop: 8, fontWeight: 600 }}>
-            {c.monthlyProj}
+            {formatCurrency(c.monthlyRecoveredMinor, currency)} / mo recovered
           </div>
         </div>
 

@@ -6,7 +6,7 @@
 // ============================================================
 
 import { Icons } from './icons.jsx';
-import { VerdictPill, formatCurrency } from './primitives.jsx';
+import { VerdictPill, formatCurrency, formatCurrencyCompact } from './primitives.jsx';
 
 export function HomePage({ workspace, radarAlerts, sessions, onNav, onReviewAlert, onStartFlow }) {
   const now = new Date();
@@ -15,11 +15,11 @@ export function HomePage({ workspace, radarAlerts, sessions, onNav, onReviewAler
 
   const highAlerts = radarAlerts.filter((a) => a.priority === 'HIGH');
   const stats = {
-    spend:  workspace.spendTier,
-    cpa:    workspace.benchmarks?.avgCpa
-              ? formatCurrency(workspace.benchmarks.avgCpa, workspace.currencySym)
-              : `${workspace.currencySym} —`,
-    waste:  formatCurrency(highAlerts.reduce((s, a) => s + (a.bleedRaw ?? 0), 0), workspace.currencySym) + '/wk',
+    spend:  `${formatCurrencyCompact(workspace.spendMonthlyMinor, workspace.currency)} / mo`,
+    cpa:    workspace.benchmarks?.avgCpaMinor != null
+              ? formatCurrency(workspace.benchmarks.avgCpaMinor, workspace.currency)
+              : `${workspace.currency} —`,
+    waste:  formatCurrency(highAlerts.reduce((s, a) => s + (a.bleedWeeklyMinor ?? 0), 0), workspace.currency) + '/wk',
     health: workspace.healthScore ?? 72,
   };
 

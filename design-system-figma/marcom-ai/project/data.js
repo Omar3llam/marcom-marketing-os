@@ -1,13 +1,25 @@
 // ============================================================
-// MARCOM Demo — Demo data
+// MARCOM Demo — Demo data  (Phase 1: numeric substrate)
 // ============================================================
 // Realistic MENA media-buyer fixture data for the sales demo.
 // Three workspaces selectable via Tweaks; default is Cairo apparel.
 //
+// SUBSTRATE RULES (Phase 1):
+//   • Money is stored as INTEGER minor units (piastres/halalas/fils)
+//     plus an ISO 4217 `currency` code — never a pre-formatted string.
+//     Formatting happens at the presentation layer via formatCurrency()
+//     / formatCurrencyCompact() / formatBleed() in primitives.jsx.
+//   • Ratios (roas, ctr, frequency, cpaDelta) stay as plain numbers.
+//   • A normalized entity graph (Account → Campaign → AdSet → Ad →
+//     Creative) lives under GRAPH; spend/revenue rolls up via rollup().
+//   • Narrative copy (radar detail / historical_insight, session impact)
+//     is illustrative AI text, not a stored metric.
+//
 // Field conventions:
-//   Raw numeric field   → spend, cpa, cpaTarget, cpaDelta, roas, ctr, ctrPrev, frequency
-//   Formatted display   → spendFmt, cpaFmt, cpaTargetFmt, cpaDeltaFmt, roasFmt, ctrFmt, ctrPrevFmt
-//   API-aligned (radar) → action_id, analysis{verdict,root_cause}, historical_insight, action_plan, metrics, memory
+//   Money (minor units)   → *Minor (spendMinor, cpaMinor, bleedDailyMinor…)
+//   Ratios (numbers)      → roas, ctr, ctrPrev, frequency, cpaDelta
+//   API-aligned (radar)   → action_id, analysis{verdict,root_cause},
+//                           historical_insight, action_plan, metrics, memory
 
 const DEMO_WORKSPACES = {
   apparel: {
@@ -18,10 +30,9 @@ const DEMO_WORKSPACES = {
     user: { name: 'Omar', initials: 'O' },
     market: 'Egypt',
     currency: 'EGP',
-    currencySym: 'EGP',
-    spendTier: 'EGP 240k / mo',
+    spendMonthlyMinor: 24000000, // EGP 240,000 / mo
     healthScore: 72,
-    benchmarks: { avgCpa: 248 },
+    benchmarks: { avgCpaMinor: 24800 }, // EGP 248
     channels: ['Meta', 'TikTok', 'Google'],
     sessions: [
       { id: 'sess-04', label: 'Eid drop — Carousel ME', verdict: 'KILL', impact: 'EGP 4,200/wk saved', ts: '2h ago', delta: '+12%' },
@@ -38,10 +49,9 @@ const DEMO_WORKSPACES = {
     user: { name: 'Layla', initials: 'L' },
     market: 'Saudi Arabia',
     currency: 'SAR',
-    currencySym: 'SAR',
-    spendTier: 'SAR 380k / mo',
+    spendMonthlyMinor: 38000000, // SAR 380,000 / mo
     healthScore: 68,
-    benchmarks: { avgCpa: 195 },
+    benchmarks: { avgCpaMinor: 19500 }, // SAR 195
     channels: ['Meta', 'Snap', 'TikTok'],
     sessions: [
       { id: 'sess-r4', label: 'Snap — Influencer push', verdict: 'SCALE', impact: '+SAR 32k/mo proj', ts: '1h ago', delta: '+31%' },
@@ -57,10 +67,9 @@ const DEMO_WORKSPACES = {
     user: { name: 'Faris', initials: 'F' },
     market: 'UAE',
     currency: 'AED',
-    currencySym: 'AED',
-    spendTier: 'AED 120k / mo',
+    spendMonthlyMinor: 12000000, // AED 120,000 / mo
     healthScore: 81,
-    benchmarks: { avgCpa: 312 },
+    benchmarks: { avgCpaMinor: 31200 }, // AED 312
     channels: ['Meta', 'LinkedIn', 'Google'],
     sessions: [
       { id: 'sess-d3', label: 'LinkedIn — CTO ICP', verdict: 'SCALE', impact: '+AED 9.4k/mo proj', ts: '5h ago', delta: '+17%' },
@@ -84,21 +93,22 @@ const FEATURED_CAMPAIGN = {
       audience: 'Cold ME — 18-44, female',
       adset: 'Carousel · 5 SKUs',
       daysRun: 14,
-      // Raw numeric metrics
-      spend:      84310,        spendFmt:     'EGP 84,310',
-      cpa:        312,          cpaFmt:       'EGP 312',
-      cpaTarget:  180,          cpaTargetFmt: 'EGP 180',
-      cpaDelta:   0.73,         cpaDeltaFmt:  '+73%',
-      roas:       0.6,          roasFmt:      '0.6x',
-      roasTarget: 2.4,          roasTargetFmt: '2.4x',
-      ctr:        0.0084,       ctrFmt:       '0.84%',
-      ctrPrev:    0.0132,       ctrPrevFmt:   '1.32%',
+      // Money — minor units
+      spendMinor:     8431000, // EGP 84,310
+      cpaMinor:       31200,   // EGP 312
+      cpaTargetMinor: 18000,   // EGP 180
+      // Ratios — plain numbers
+      cpaDelta:   0.73,
+      roas:       0.6,
+      roasTarget: 2.4,
+      ctr:        0.0084,
+      ctrPrev:    0.0132,
       frequency:  4.2,
       // Verdict outcome
       verdict: 'KILL',
       confidence: 92,
-      financialImpact: { value: 'EGP 4,200', cadence: 'per week', sub: 'saved by killing now' },
-      monthlyProj: 'EGP 18,200 / mo recovered',
+      financialImpact: { savedWeeklyMinor: 420000, cadence: 'per week', sub: 'saved by killing now' }, // EGP 4,200
+      monthlyRecoveredMinor: 1820000, // EGP 18,200 / mo recovered
       title: 'Stop the bleed. Reallocate to PMax warm.',
       reasoning: [
         { tag: 'CPA', body: 'CPA at EGP 312 — 73% above your EGP 180 target. Deteriorating 7 days running.' },
@@ -110,7 +120,8 @@ const FEATURED_CAMPAIGN = {
         title: 'Kill ad set, reallocate budget',
         verb: 'Pause',
         target: 'Meta · Ad Set #4218990',
-        budgetMove: 'EGP 600/day → PMax Retargeting Warm',
+        budgetMoveDailyMinor: 60000, // EGP 600/day
+        budgetMoveTarget: 'PMax Retargeting Warm',
         confidence: 'High (92%)',
         evidence: '14 days · 312 conversions · 3 prior matches in memory',
       },
@@ -128,19 +139,19 @@ const FEATURED_CAMPAIGN = {
       audience: 'Cold ME — 22-38, female',
       adset: 'Static · 3 creatives',
       daysRun: 11,
-      spend:      52400,        spendFmt:     'SAR 52,400',
-      cpa:        298,          cpaFmt:       'SAR 298',
-      cpaTarget:  195,          cpaTargetFmt: 'SAR 195',
-      cpaDelta:   0.53,         cpaDeltaFmt:  '+53%',
-      roas:       0.9,          roasFmt:      '0.9x',
-      roasTarget: 2.2,          roasTargetFmt: '2.2x',
-      ctr:        0.0071,       ctrFmt:       '0.71%',
-      ctrPrev:    0.0118,       ctrPrevFmt:   '1.18%',
+      spendMinor:     5240000, // SAR 52,400
+      cpaMinor:       29800,   // SAR 298
+      cpaTargetMinor: 19500,   // SAR 195
+      cpaDelta:   0.53,
+      roas:       0.9,
+      roasTarget: 2.2,
+      ctr:        0.0071,
+      ctrPrev:    0.0118,
       frequency:  3.9,
       verdict: 'KILL',
       confidence: 89,
-      financialImpact: { value: 'SAR 5,200', cadence: 'per week', sub: 'saved by killing now' },
-      monthlyProj: 'SAR 22,500 / mo recovered',
+      financialImpact: { savedWeeklyMinor: 520000, cadence: 'per week', sub: 'saved by killing now' }, // SAR 5,200
+      monthlyRecoveredMinor: 2250000, // SAR 22,500 / mo recovered
       title: 'Static is burned. Move spend to Snap influencer.',
       reasoning: [
         { tag: 'CPA', body: 'CPA at SAR 298 — 53% above your SAR 195 target. Trending up 5 days.' },
@@ -152,7 +163,8 @@ const FEATURED_CAMPAIGN = {
         title: 'Pause ad set, reallocate to Snap',
         verb: 'Pause',
         target: 'Meta · Ad Set #8821110',
-        budgetMove: 'SAR 700/day → Snap Influencer push',
+        budgetMoveDailyMinor: 70000, // SAR 700/day
+        budgetMoveTarget: 'Snap Influencer push',
         confidence: 'High (89%)',
         evidence: '11 days · 176 conversions · 2 prior matches in memory',
       },
@@ -170,19 +182,19 @@ const FEATURED_CAMPAIGN = {
       audience: 'Broad — UAE Founders/CTO',
       adset: 'Lead Form · 2 variants',
       daysRun: 9,
-      spend:      18900,        spendFmt:     'AED 18,900',
-      cpa:        412,          cpaFmt:       'AED 412',
-      cpaTarget:  240,          cpaTargetFmt: 'AED 240',
-      cpaDelta:   0.72,         cpaDeltaFmt:  '+72%',
-      roas:       null,         roasFmt:      '—',
-      roasTarget: null,         roasTargetFmt: '—',
-      ctr:        0.0062,       ctrFmt:       '0.62%',
-      ctrPrev:    0.0094,       ctrPrevFmt:   '0.94%',
+      spendMinor:     1890000, // AED 18,900
+      cpaMinor:       41200,   // AED 412
+      cpaTargetMinor: 24000,   // AED 240
+      cpaDelta:   0.72,
+      roas:       null,
+      roasTarget: null,
+      ctr:        0.0062,
+      ctrPrev:    0.0094,
       frequency:  3.7,
       verdict: 'KILL',
       confidence: 87,
-      financialImpact: { value: 'AED 2,100', cadence: 'per week', sub: 'saved by killing now' },
-      monthlyProj: 'AED 9,200 / mo recovered',
+      financialImpact: { savedWeeklyMinor: 210000, cadence: 'per week', sub: 'saved by killing now' }, // AED 2,100
+      monthlyRecoveredMinor: 920000, // AED 9,200 / mo recovered
       title: 'Broad is leaking. Push LinkedIn CTO ICP.',
       reasoning: [
         { tag: 'CPL', body: 'CPL at AED 412 — 72% above target. B2B should never break ratio.' },
@@ -194,7 +206,8 @@ const FEATURED_CAMPAIGN = {
         title: 'Pause ad set, push LinkedIn',
         verb: 'Pause',
         target: 'Meta · Ad Set #5510042',
-        budgetMove: 'AED 300/day → LinkedIn CTO ICP',
+        budgetMoveDailyMinor: 30000, // AED 300/day
+        budgetMoveTarget: 'LinkedIn CTO ICP',
         confidence: 'High (87%)',
         evidence: '9 days · 46 leads · 1 prior match in memory',
       },
@@ -204,17 +217,16 @@ const FEATURED_CAMPAIGN = {
 
 // ── Active radar alerts (Command Hub) ────────────────────────
 // Each item carries both demo-friendly flat fields AND API-aligned nested fields.
+// Bleed is numeric minor units: bleedDailyMinor (per-day) + bleedWeeklyMinor.
 const RADAR_ALERTS_BY_WS = {
   apparel: [
     {
-      // API-aligned fields
       action_id: 'r1',
       analysis: { verdict: 'KILL', root_cause: 'CPA breach' },
       historical_insight: 'CPA EGP 312 (target 180) · 7 days deteriorating',
       action_plan: { action: 'Investigate: CPA breach', status: 'PENDING' },
       metrics: [],
       memory: [],
-      // Demo-friendly flat fields
       id: 'r1',
       priority: 'HIGH',
       campaign: 'Eid Drop · Carousel · Cold ME',
@@ -223,8 +235,8 @@ const RADAR_ALERTS_BY_WS = {
       detail: 'CPA EGP 312 (target 180) · 7 days deteriorating',
       stage: 'DYING',
       time: '2m ago',
-      bleed: 'EGP 600/day',
-      bleedRaw: 4200,
+      bleedDailyMinor: 60000,   // EGP 600/day
+      bleedWeeklyMinor: 420000, // EGP 4,200/wk
       verdict: 'KILL',
     },
     {
@@ -242,8 +254,8 @@ const RADAR_ALERTS_BY_WS = {
       detail: 'CTR down 38% in 48h — creative fatigue',
       stage: 'FATIGUED',
       time: '14m ago',
-      bleed: 'EGP 280/day',
-      bleedRaw: 1960,
+      bleedDailyMinor: 28000,   // EGP 280/day
+      bleedWeeklyMinor: 196000, // EGP 1,960/wk
       verdict: 'HOLD',
     },
     {
@@ -261,7 +273,8 @@ const RADAR_ALERTS_BY_WS = {
       detail: 'No new conversions from 41% of segment · 14 days',
       stage: 'STABLE',
       time: '1h ago',
-      bleed: '—',
+      bleedDailyMinor: null,
+      bleedWeeklyMinor: null,
       verdict: 'HOLD',
     },
     {
@@ -279,7 +292,8 @@ const RADAR_ALERTS_BY_WS = {
       detail: 'ROAS 4.8x, CPA stable for 6 days — ready to scale 2x',
       stage: 'SCALING',
       time: '3h ago',
-      bleed: '—',
+      bleedDailyMinor: null,
+      bleedWeeklyMinor: null,
       verdict: 'SCALE',
     },
   ],
@@ -299,8 +313,8 @@ const RADAR_ALERTS_BY_WS = {
       detail: 'CPA SAR 298 (target 195) · 5 days deteriorating',
       stage: 'DYING',
       time: '4m ago',
-      bleed: 'SAR 700/day',
-      bleedRaw: 4900,
+      bleedDailyMinor: 70000,   // SAR 700/day
+      bleedWeeklyMinor: 490000, // SAR 4,900/wk
       verdict: 'KILL',
     },
     {
@@ -318,7 +332,8 @@ const RADAR_ALERTS_BY_WS = {
       detail: 'CPA stable but ROAS flatlining at 2.0x',
       stage: 'STABLE',
       time: '32m ago',
-      bleed: '—',
+      bleedDailyMinor: null,
+      bleedWeeklyMinor: null,
       verdict: 'HOLD',
     },
     {
@@ -336,7 +351,8 @@ const RADAR_ALERTS_BY_WS = {
       detail: 'CPA stable SAR 64 · 6 days · ready for 2x lift',
       stage: 'SCALING',
       time: '2h ago',
-      bleed: '—',
+      bleedDailyMinor: null,
+      bleedWeeklyMinor: null,
       verdict: 'SCALE',
     },
   ],
@@ -356,8 +372,8 @@ const RADAR_ALERTS_BY_WS = {
       detail: 'CPL AED 412 (target 240) · 6 days trending up',
       stage: 'FATIGUED',
       time: '8m ago',
-      bleed: 'AED 300/day',
-      bleedRaw: 2100,
+      bleedDailyMinor: 30000,   // AED 300/day
+      bleedWeeklyMinor: 210000, // AED 2,100/wk
       verdict: 'KILL',
     },
     {
@@ -375,10 +391,81 @@ const RADAR_ALERTS_BY_WS = {
       detail: 'CPL AED 168, stable 8 days — ready to 1.5x',
       stage: 'SCALING',
       time: '1h ago',
-      bleed: '—',
+      bleedDailyMinor: null,
+      bleedWeeklyMinor: null,
       verdict: 'SCALE',
     },
   ],
+};
+
+// ── Normalized entity graph (Account → Campaign → AdSet → Ad → Creative) ──
+// Leaf creatives carry numeric minor-unit spend/revenue. Parent totals are
+// NOT stored — they are derived with rollup() from primitives.jsx, proving
+// spend/revenue rolls up creative → ad → ad set → campaign → account.
+const ENTITY_GRAPH = {
+  apparel: {
+    level: 'ACCOUNT', id: 'acct-apparel', name: 'Maison Salam · Meta', channel: 'META', currency: 'EGP',
+    children: [
+      {
+        level: 'CAMPAIGN', id: 'camp-apparel-eid', name: 'Eid Drop · Carousel · Cold ME', channel: 'META',
+        children: [
+          {
+            level: 'ADSET', id: 'adset-4218990', name: 'Carousel · 5 SKUs', channel: 'META',
+            children: [
+              { level: 'AD', id: 'ad-apparel-a', name: 'Carousel A', channel: 'META', children: [
+                { level: 'CREATIVE', id: 'cr-apparel-a', name: 'Eid Hero 01', channel: 'META', spendMinor: 5000000, revenueMinor: 3000000 },
+              ] },
+              { level: 'AD', id: 'ad-apparel-b', name: 'Carousel B', channel: 'META', children: [
+                { level: 'CREATIVE', id: 'cr-apparel-b', name: 'Eid Hero 02', channel: 'META', spendMinor: 3431000, revenueMinor: 2058600 },
+              ] },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  riyadh: {
+    level: 'ACCOUNT', id: 'acct-riyadh', name: 'Layla & Co. · Snap', channel: 'SNAP', currency: 'SAR',
+    children: [
+      {
+        level: 'CAMPAIGN', id: 'camp-riyadh-static', name: 'Static · Cold ME · Beauty Bundle', channel: 'SNAP',
+        children: [
+          {
+            level: 'ADSET', id: 'adset-8821110', name: 'Static · 3 creatives', channel: 'SNAP',
+            children: [
+              { level: 'AD', id: 'ad-riyadh-a', name: 'Static A', channel: 'SNAP', children: [
+                { level: 'CREATIVE', id: 'cr-riyadh-a', name: 'Bundle Still 01', channel: 'SNAP', spendMinor: 3000000, revenueMinor: 2700000 },
+              ] },
+              { level: 'AD', id: 'ad-riyadh-b', name: 'Static B', channel: 'SNAP', children: [
+                { level: 'CREATIVE', id: 'cr-riyadh-b', name: 'Bundle Still 02', channel: 'SNAP', spendMinor: 2240000, revenueMinor: 2016000 },
+              ] },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  dubai: {
+    level: 'ACCOUNT', id: 'acct-dubai', name: 'Forge Studio · Meta', channel: 'LINKEDIN', currency: 'AED',
+    children: [
+      {
+        level: 'CAMPAIGN', id: 'camp-dubai-lead', name: 'Meta Lead Form · Broad · CTO', channel: 'LINKEDIN',
+        children: [
+          {
+            level: 'ADSET', id: 'adset-5510042', name: 'Lead Form · 2 variants', channel: 'LINKEDIN',
+            children: [
+              { level: 'AD', id: 'ad-dubai-a', name: 'Lead Form A', channel: 'LINKEDIN', children: [
+                { level: 'CREATIVE', id: 'cr-dubai-a', name: 'CTO Hook 01', channel: 'LINKEDIN', spendMinor: 1000000, revenueMinor: 0 },
+              ] },
+              { level: 'AD', id: 'ad-dubai-b', name: 'Lead Form B', channel: 'LINKEDIN', children: [
+                { level: 'CREATIVE', id: 'cr-dubai-b', name: 'CTO Hook 02', channel: 'LINKEDIN', spendMinor: 890000, revenueMinor: 0 },
+              ] },
+            ],
+          },
+        ],
+      },
+    ],
+  },
 };
 
 // ── Live activity ticker rows (Command Hub) ──────────────────
@@ -390,7 +477,7 @@ const ACTIVITY_TICKER = [
 ];
 
 // ── Theatre vectors — what the AI "scans" ────────────────────
-// {currency} is replaced at render time with workspace.currencySym
+// {currency} is replaced at render time with workspace.currency
 const SCAN_VECTORS = [
   { id: 1,  label: 'CPA trajectory',          unit: 'last 14d' },
   { id: 2,  label: 'Frequency saturation',    unit: 'cold audience' },
@@ -422,6 +509,7 @@ export const DEMO_DATA = {
   WORKSPACES: DEMO_WORKSPACES,
   FEATURED:   FEATURED_CAMPAIGN,
   RADAR_BY_WS: RADAR_ALERTS_BY_WS,
+  GRAPH:      ENTITY_GRAPH,
   ACTIVITY:   ACTIVITY_TICKER,
   VECTORS:    SCAN_VECTORS,
   EXECUTION:  EXECUTION_STEPS,
