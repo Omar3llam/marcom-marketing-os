@@ -6,7 +6,7 @@
 // ============================================================
 
 import { Icons } from './icons.jsx';
-import { VerdictPill } from './primitives.jsx';
+import { VerdictPill, formatCurrency } from './primitives.jsx';
 import { DEMO_DATA } from './data.js';
 
 export function ExecutionView({ workspace, featured, onComplete, onBackToHub }) {
@@ -54,7 +54,7 @@ export function ExecutionView({ workspace, featured, onComplete, onBackToHub }) 
           {c.action.title}
         </h1>
         <p style={{ marginTop: 8, fontSize: 14, color: 'var(--c-text-soft)' }}>
-          {c.action.target} · {c.action.budgetMove}
+          {c.action.target} · {formatCurrency(c.action.budgetMoveDailyMinor, workspace.currency)}/day → {c.action.budgetMoveTarget}
         </p>
       </header>
 
@@ -234,8 +234,8 @@ export function DoneView({ workspace, featured, onBackToHub }) {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-          <DoneStat label="Saved / wk" value={c.financialImpact.value} positive />
-          <DoneStat label="Reallocated" value={c.action.budgetMove.split('→')[0].trim()} />
+          <DoneStat label="Saved / wk" value={formatCurrency(c.financialImpact.savedWeeklyMinor, workspace.currency)} positive />
+          <DoneStat label="Reallocated" value={`${formatCurrency(c.action.budgetMoveDailyMinor, workspace.currency)}/day`} />
           <DoneStat label="To" value="PMax Warm" />
           <DoneStat label="Confidence" value={`${c.confidence}%`} />
         </div>

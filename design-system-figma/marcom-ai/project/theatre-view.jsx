@@ -15,7 +15,7 @@ export function TheatreView({ workspace, featured, onComplete }) {
   const timersRef = React.useRef([]);
   const vectors = DEMO_DATA.VECTORS.map(v => ({
     ...v,
-    unit: v.unit.replace('{currency}', workspace.currencySym),
+    unit: v.unit.replace('{currency}', workspace.currency),
   }));
 
   React.useEffect(() => {

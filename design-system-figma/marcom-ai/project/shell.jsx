@@ -3,7 +3,7 @@
 // ============================================================
 
 import { Icons } from './icons.jsx';
-import { VerdictPill, GlowDot } from './primitives.jsx';
+import { VerdictPill, GlowDot, formatCurrencyCompact, formatBleed } from './primitives.jsx';
 
 export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sessions, radarAlerts = [], personas, onSwitchPersona, currentPersona }) {
   const coreTools = [
@@ -301,7 +301,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
               </div>
 
               <div className="font-mono" style={{ fontSize: 10, color: 'var(--c-lumi-subtle)', marginBottom: 8 }}>
-                Spend tier: <span style={{ color: 'var(--c-lumi-muted)' }}>{workspace.spendTier}</span>
+                Spend tier: <span style={{ color: 'var(--c-lumi-muted)' }}>{formatCurrencyCompact(workspace.spendMonthlyMinor, workspace.currency)} / mo</span>
               </div>
               {/* SH09: pass channelStates so ChannelHealth isn't fully hardcoded */}
               <ChannelHealth channels={workspace.channels} channelStates={workspace.channelStates} />
@@ -663,9 +663,9 @@ function NotificationsPopover({ alerts, onClose, onPick }) {
               </span>
               <span className="font-mono" style={{ fontSize: 9, color: 'var(--c-text-subtle)', flexShrink: 0 }}>{a.time}</span>
             </div>
-            {/* SH06: a.signal → a.analysis?.root_cause; a.bleed with null-coalescing */}
+            {/* SH06: a.signal → a.analysis?.root_cause; bleed from numeric bleedDailyMinor */}
             <div style={{ fontSize: 11, color: 'var(--c-text-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {a.analysis?.root_cause}{(a.bleed ?? '—') !== '—' ? ` · ${a.bleed}` : ''}
+              {a.analysis?.root_cause}{a.bleedDailyMinor != null ? ` · ${formatBleed(a.bleedDailyMinor, workspace.currency)}` : ''}
             </div>
           </button>
         ))}

@@ -150,7 +150,7 @@ function ParsedSummary({ featured, workspace }) {
         <div style={{ flex: 1 }}>
           <div className="font-display" style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text-base)' }}>{featured.file}</div>
           <div className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-subtle)', marginTop: 2 }}>
-            {featured.fileSize} · {featured.rows} rows · {featured.dateRange} · {workspace.currencySym}
+            {featured.fileSize} · {featured.rows} rows · {featured.dateRange} · {workspace.currency}
           </div>
         </div>
         <button className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }}>
@@ -163,7 +163,7 @@ function ParsedSummary({ featured, workspace }) {
         <StatBlock label="Rows parsed" value={featured.rows.toString()} />
         <StatBlock label="Campaigns" value="3" sub="1 flagged" />
         <StatBlock label="Date range" value="30 days" sub={featured.dateRange.split(' – ').pop()} />
-        <StatBlock label="Currency" value={workspace.currencySym} sub="auto-detected" />
+        <StatBlock label="Currency" value={workspace.currency} sub="auto-detected" />
       </div>
     </div>
   );

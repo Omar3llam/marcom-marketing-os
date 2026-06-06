@@ -23,6 +23,7 @@
     "prisma:push": "prisma db push",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
+    "seed": "prisma db seed",
     "migrate:credentials": "node scripts/migrate-credentials-to-oauth.js",
     "worker": "node src/workers/index.js",
     "lint": "eslint src/",
@@ -32,6 +33,9 @@
     "arch-check:ci": "node scripts/arch-check.js 2>&1 | tee arch-check.log; exit ${PIPESTATUS[0]}",
     "security-check": "node scripts/security-check.js",
     "prestart": "npm run check"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.91.1",

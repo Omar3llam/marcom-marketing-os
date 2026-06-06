@@ -70,6 +70,63 @@ enum CampaignStage {
   DYING
 }
 
+// ── Phase 1: Marketing OS substrate enums ────────────────────
+// The platform an entity physically lives on.
+enum Channel {
+  META
+  GOOGLE
+  TIKTOK
+  SNAP
+  LINKEDIN
+}
+
+// Level of an entity in the normalized graph
+// (Account → Campaign → AdSet → Ad → Creative).
+enum EntityLevel {
+  ACCOUNT
+  CAMPAIGN
+  ADSET
+  AD
+  CREATIVE
+}
+
+enum EntityStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+// Origin of a metric. Intentionally distinct from `Channel`:
+// a Meta entity can have conversion truth sourced from GA4 or
+// Shopify. Keeping this separate from day one means the
+// Conversion Truth join (Phase N) does NOT require a table rebuild.
+enum DataSource {
+  META
+  GOOGLE
+  TIKTOK
+  SNAP
+  LINKEDIN
+  GA4
+  SHOPIFY
+  MANUAL
+}
+
+// Time grain of a MetricSnapshot row.
+enum Granularity {
+  HOURLY
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+// Marketing decision verdict (the Lumi call on an entity).
+enum Verdict {
+  KILL
+  HOLD
+  SCALE
+  WATCH
+}
+
 enum WebhookProvider {
   META
   GOOGLE
@@ -112,6 +169,17 @@ model Workspace {
   publishedCreatives         PublishedCreative[]
   providerPerformanceMetrics ProviderPerformanceMetrics[]
   reinforcementSnapshots     ReinforcementSnapshot[]
+
+  // ── Phase 1: Marketing OS substrate ──────────────────────────
+  accounts             Account[]
+  campaignEntities     Campaign[]
+  adSets               AdSet[]
+  ads                  Ad[]
+  creatives            Creative[]
+  metricSnapshots      MetricSnapshot[]
+  decisions            Decision[]
+  outcomeSnapshots     OutcomeSnapshot[]
+  decisionMemoryEntries DecisionMemoryEntry[]
 
   @@map("workspaces")
 }
@@ -675,4 +743,226 @@ model ReinforcementSnapshot {
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([windowStart, windowEnd])
   @@map("reinforcement_snapshots")
+}
+
+// ════════════════════════════════════════════════════════════
+// PHASE 1 — MARKETING OS DATA SUBSTRATE
+// ════════════════════════════════════════════════════════════
+// Two interlocking graphs:
+//   1. Entity graph:   Account → Campaign → AdSet → Ad → Creative
+//   2. Decision graph: Entity → Decision → Outcome → Memory
+// Plus a NUMERIC time-series (MetricSnapshot). No metric is ever
+// stored as a pre-formatted string — money lives as integer minor
+// units + an ISO 4217 currency code, formatted only at the
+// presentation layer. See src/lib/money.js.
+//
+// The new `Campaign` model is the entity-graph node and is distinct
+// from the legacy `CampaignState` (health snapshot) above. The new
+// `Decision`/`OutcomeSnapshot`/`DecisionMemoryEntry` models are the
+// marketing decision graph and are distinct from the legacy,
+// execution-engine-scoped `DecisionMemory` model above.
+// ════════════════════════════════════════════════════════════
+
+// ── Entity graph ─────────────────────────────────────────────
+
+model Account {
+  id          String       @id @default(uuid()) @db.Uuid
+  workspaceId String       @db.Uuid
+  channel     Channel
+  status      EntityStatus @default(ACTIVE)
+  name        String
+  externalId  String? // platform-native id (e.g. act_98441)
+  createdAt   DateTime     @default(now())
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaigns Campaign[]
+
+  @@index([workspaceId])
+  @@map("accounts")
+}
+
+model Campaign {
+  id          String       @id @default(uuid()) @db.Uuid
+  workspaceId String       @db.Uuid
+  accountId   String       @db.Uuid // parentId
+  channel     Channel
+  status      EntityStatus @default(ACTIVE)
+  name        String
+  externalId  String?
+  createdAt   DateTime     @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  adSets    AdSet[]
+
+  @@index([workspaceId])
+  @@index([accountId])
+  @@map("campaign_entities")
+}
+
+model AdSet {
+  id          String       @id @default(uuid()) @db.Uuid
+  workspaceId String       @db.Uuid
+  campaignId  String       @db.Uuid // parentId
+  channel     Channel
+  status      EntityStatus @default(ACTIVE)
+  name        String
+  externalId  String?
+  createdAt   DateTime     @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  campaign  Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  ads       Ad[]
+
+  @@index([workspaceId])
+  @@index([campaignId])
+  @@map("ad_sets")
+}
+
+model Ad {
+  id          String       @id @default(uuid()) @db.Uuid
+  workspaceId String       @db.Uuid
+  adSetId     String       @db.Uuid // parentId
+  channel     Channel
+  status      EntityStatus @default(ACTIVE)
+  name        String
+  externalId  String?
+  createdAt   DateTime     @default(now())
+
+  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  adSet     AdSet      @relation(fields: [adSetId], references: [id], onDelete: Cascade)
+  creatives Creative[]
+
+  @@index([workspaceId])
+  @@index([adSetId])
+  @@map("ads")
+}
+
+model Creative {
+  id          String       @id @default(uuid()) @db.Uuid
+  workspaceId String       @db.Uuid
+  adId        String       @db.Uuid // parentId
+  channel     Channel
+  status      EntityStatus @default(ACTIVE)
+  name        String
+  externalId  String?
+  createdAt   DateTime     @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  ad        Ad        @relation(fields: [adId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+  @@index([adId])
+  @@map("creatives")
+}
+
+// ── Numeric time-series ──────────────────────────────────────
+// Polymorphic: a snapshot attaches to any entity level via
+// (entityId, entityLevel) rather than a hard FK. Money fields are
+// integer minor units; ratios are floats. `source` is the metric
+// origin (may differ from the entity's channel); `granularity` is
+// the time grain.
+
+model MetricSnapshot {
+  id          String      @id @default(uuid()) @db.Uuid
+  workspaceId String      @db.Uuid
+  entityId    String      @db.Uuid
+  entityLevel EntityLevel
+  date        DateTime
+  source      DataSource
+  granularity Granularity @default(DAILY)
+
+  // Money — integer minor units (e.g. piastres, halalas, fils, cents).
+  spendMinor   Int  @default(0)
+  revenueMinor Int  @default(0)
+  cpaMinor     Int?
+
+  // Counters
+  impressions Int @default(0)
+  clicks      Int @default(0)
+  conversions Int @default(0)
+
+  // Ratios (not money) — plain floats
+  ctr       Float?
+  roas      Float?
+  frequency Float?
+
+  currency String // ISO 4217 (EGP, SAR, AED, KWD, USD, …)
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([entityId, entityLevel, date, granularity, source])
+  @@index([workspaceId, entityId, entityLevel, date])
+  @@index([entityId, date])
+  @@map("metric_snapshots")
+}
+
+// ── Decision graph: Entity → Decision → Outcome → Memory ─────
+// This is what makes Lumi an operating system rather than a
+// dashboard. Phase 1 scaffolds the schema + contracts; feature
+// logic lands in later phases.
+
+model Decision {
+  id          String      @id @default(uuid()) @db.Uuid
+  workspaceId String      @db.Uuid
+  entityId    String      @db.Uuid
+  entityLevel EntityLevel
+  verdict     Verdict
+  confidence  Float // 0.0 – 1.0
+  diagnosis   String
+  rootCause   String?
+  status      String      @default("PROPOSED") // PROPOSED | EXECUTED | DISMISSED
+  createdAt   DateTime    @default(now())
+
+  workspace Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  outcomes  OutcomeSnapshot[]
+  memories  DecisionMemoryEntry[]
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([entityId, entityLevel])
+  @@map("decisions")
+}
+
+model OutcomeSnapshot {
+  id          String      @id @default(uuid()) @db.Uuid
+  workspaceId String      @db.Uuid
+  decisionId  String      @db.Uuid
+  entityId    String      @db.Uuid
+  entityLevel EntityLevel
+
+  // Realized result of acting on the decision (minor units).
+  spendDeltaMinor   Int?
+  revenueDeltaMinor Int?
+  roasDelta         Float?
+
+  windowStart DateTime?
+  windowEnd   DateTime?
+  sustained   Boolean? // did the lift hold?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  decision  Decision  @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([decisionId])
+  @@map("outcome_snapshots")
+}
+
+model DecisionMemoryEntry {
+  id          String   @id @default(uuid()) @db.Uuid
+  workspaceId String   @db.Uuid
+  decisionId  String?  @db.Uuid
+  entityId    String?  @db.Uuid
+  actionType  String?
+  rationale   String
+  isSustainable     Boolean?
+  impactDurationHrs Int?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  decision  Decision? @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([decisionId])
+  @@map("decision_memory_entries")
 }

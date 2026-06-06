@@ -289,9 +289,74 @@ try {
   }
 } catch {}
 
-// ── Currency formatter ────────────────────────────────────────
-export function formatCurrency(amount, currencySym) {
-  return `${currencySym} ${amount.toLocaleString('en-US')}`;
+// ── Money (minor units) — presentation layer ──────────────────
+// Demo mirror of src/lib/money.js. Money is passed around as an
+// INTEGER number of minor units (piastres, halalas, fils, cents)
+// plus an ISO 4217 code; it is formatted ONLY here. No formatted
+// currency string is ever stored in data.js.
+const MINOR_DIGITS = {
+  USD: 2, EUR: 2, GBP: 2, EGP: 2, SAR: 2, AED: 2, QAR: 2,
+  KWD: 3, BHD: 3, OMR: 3, JOD: 3, JPY: 0,
+};
+
+export function minorUnitDigits(code) {
+  return MINOR_DIGITS[(code || 'USD').toUpperCase()] ?? 2;
+}
+
+export function fromMinor(amountMinor, code) {
+  if (typeof amountMinor !== 'number' || !Number.isFinite(amountMinor)) return 0;
+  return amountMinor / 10 ** minorUnitDigits(code);
+}
+
+/**
+ * Format integer minor units as a code-prefixed amount, e.g.
+ * formatCurrency(8431000, 'EGP') → "EGP 84,310". Non-finite → "—".
+ */
+export function formatCurrency(amountMinor, code = 'USD') {
+  if (typeof amountMinor !== 'number' || !Number.isFinite(amountMinor)) return '—';
+  const digits = minorUnitDigits(code);
+  const major = fromMinor(amountMinor, code);
+  return `${code} ${major.toLocaleString('en-US', { maximumFractionDigits: digits })}`;
+}
+
+/** Compact form, e.g. formatCurrencyCompact(24000000, 'EGP') → "EGP 240k". */
+export function formatCurrencyCompact(amountMinor, code = 'USD') {
+  if (typeof amountMinor !== 'number' || !Number.isFinite(amountMinor)) return '—';
+  const major = fromMinor(amountMinor, code);
+  const abs = Math.abs(major);
+  let body;
+  if (abs >= 1e6) body = `${+(major / 1e6).toFixed(1)}m`;
+  else if (abs >= 1e3) body = `${+(major / 1e3).toFixed(major % 1e3 === 0 ? 0 : 1)}k`;
+  else body = major.toLocaleString('en-US');
+  return `${code} ${body}`;
+}
+
+/** Daily-bleed display, e.g. "EGP 600/day"; null minor → "—". */
+export function formatBleed(amountMinor, code = 'USD') {
+  if (amountMinor == null) return '—';
+  return `${formatCurrency(amountMinor, code)}/day`;
+}
+
+/**
+ * Roll spend/revenue up the entity graph (creative → ad → ad set →
+ * campaign → account). Sums leaf spendMinor/revenueMinor across the
+ * subtree. Demo mirror of src/lib/money.js#rollup.
+ */
+export function rollup(node) {
+  if (!node) return { spendMinor: 0, revenueMinor: 0 };
+  const children = Array.isArray(node.children) ? node.children : [];
+  if (children.length === 0) {
+    return { spendMinor: node.spendMinor ?? 0, revenueMinor: node.revenueMinor ?? 0 };
+  }
+  return children.reduce(
+    (acc, child) => {
+      const r = rollup(child);
+      acc.spendMinor += r.spendMinor;
+      acc.revenueMinor += r.revenueMinor;
+      return acc;
+    },
+    { spendMinor: 0, revenueMinor: 0 },
+  );
 }
 
 // ── Error boundary ────────────────────────────────────────────

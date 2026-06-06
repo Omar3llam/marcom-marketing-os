@@ -6,7 +6,7 @@
 // ============================================================
 
 import { Icons } from './icons.jsx';
-import { VerdictPill, StagePill } from './primitives.jsx';
+import { VerdictPill, StagePill, formatBleed } from './primitives.jsx';
 
 export function CampaignsPage({ workspace, alerts, loading = false, onStartFlow, onReviewAlert, onFixContent }) {
   const [selectedId, setSelectedId] = React.useState(null);
@@ -291,7 +291,7 @@ export function CampaignsPage({ workspace, alerts, loading = false, onStartFlow,
               </div>
               <StagePill stage={a.stage} />
               <HealthBar pct={health} />
-              <span className="font-mono tabular-nums" style={{ fontSize: 12, color: a.bleed !== '—' ? 'var(--c-kill-text)' : 'var(--c-text-muted)' }}>{a.bleed}</span>
+              <span className="font-mono tabular-nums" style={{ fontSize: 12, color: a.bleedDailyMinor != null ? 'var(--c-kill-text)' : 'var(--c-text-muted)' }}>{formatBleed(a.bleedDailyMinor, workspace?.currency)}</span>
               <span className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-subtle)' }}>{a.time}</span>
               <Icons.ChevronRight style={{ fontSize: 14, color: 'var(--c-text-subtle)' }} aria-hidden="true" />
             </div>

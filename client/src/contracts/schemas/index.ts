@@ -91,3 +91,53 @@ export {
   type LumiFeedResponse,
   type ErrorResponse,
 } from './api.schema';
+
+// ──────────────────────────────────────────────────────────
+// Phase 1 substrate — Entity graph
+// ──────────────────────────────────────────────────────────
+export {
+  ChannelSchema,
+  EntityLevelSchema,
+  EntityStatusSchema,
+  AccountNodeSchema,
+  CampaignNodeSchema,
+  AdSetNodeSchema,
+  AdNodeSchema,
+  CreativeNodeSchema,
+  type Channel,
+  type EntityLevel,
+  type EntityStatus,
+  type AccountNode,
+  type CampaignNode,
+  type AdSetNode,
+  type AdNode,
+  type CreativeNode,
+} from './entity.schema';
+
+// ──────────────────────────────────────────────────────────
+// Phase 1 substrate — Numeric MetricSnapshot
+// ──────────────────────────────────────────────────────────
+export {
+  DataSourceSchema,
+  GranularitySchema,
+  MetricSnapshotSchema,
+  type DataSource,
+  type Granularity,
+  type MetricSnapshot,
+} from './metricSnapshot.schema';
+
+// ──────────────────────────────────────────────────────────
+// Phase 1 substrate — Decision graph (Entity → Decision → Outcome → Memory)
+// ──────────────────────────────────────────────────────────
+export {
+  VerdictSchema,
+  DecisionStatusSchema,
+  DecisionSchema,
+  OutcomeSnapshotSchema,
+  DecisionMemoryEntrySchema,
+  type Verdict,
+  type DecisionStatus,
+  type Decision,
+  type OutcomeSnapshot,
+  type DecisionMemoryEntry,
+} from './decision.schema';

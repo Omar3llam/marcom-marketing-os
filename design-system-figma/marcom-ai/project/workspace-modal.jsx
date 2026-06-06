@@ -17,11 +17,13 @@ const CW_MARKETS = [
   { id: 'ma', label: 'Morocco',      currency: 'MAD', cities: ['Casablanca','Rabat','Other'] },
 ];
 const CW_CHANNELS = ['Meta','TikTok','Google','Snap','LinkedIn'];
+// monthlyMinor = representative monthly spend in minor units (assumes a
+// 2-digit currency, which covers the demo's MENA markets EGP/SAR/AED/QAR).
 const CW_TIERS = [
-  { id: 't1', label: 'Under 50k / mo'    },
-  { id: 't2', label: '50k – 250k / mo'   },
-  { id: 't3', label: '250k – 1M / mo'    },
-  { id: 't4', label: '1M+ / mo'          },
+  { id: 't1', label: 'Under 50k / mo', monthlyMinor: 4000000   },
+  { id: 't2', label: '50k – 250k / mo', monthlyMinor: 15000000 },
+  { id: 't3', label: '250k – 1M / mo', monthlyMinor: 60000000  },
+  { id: 't4', label: '1M+ / mo', monthlyMinor: 150000000       },
 ];
 
 export function CreateWorkspaceModal({ onClose, onCreate }) {
@@ -72,8 +74,7 @@ export function CreateWorkspaceModal({ onClose, onCreate }) {
       initials,
       market: market.label,
       currency: data.currency,
-      currencySym: data.currency,
-      spendTier: `${data.currency} ${tier?.label || ''}`,
+      spendMonthlyMinor: tier?.monthlyMinor ?? 0, // numeric substrate; format at render
       channels: channelList,
       sessions: [],
     };
