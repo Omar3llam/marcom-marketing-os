@@ -60,6 +60,9 @@ enum ActionType {
   RESUME_ADSET
   SCALE_CAMPAIGN
   OPTIMIZE_CAMPAIGN
+  // Phase 2 — first-class verdict execution paths
+  REALLOCATE_BUDGET
+  REFRESH_CREATIVE
 }
 
 enum CampaignStage {
@@ -125,6 +128,24 @@ enum Verdict {
   HOLD
   SCALE
   WATCH
+  // Phase 2 — first-class verdicts with their own execution paths
+  REALLOCATE
+  REFRESH
+}
+
+// Comparator for guardrail rule conditions.
+enum Comparator {
+  GT
+  GTE
+  LT
+  LTE
+}
+
+// Unit a guardrail threshold is expressed in.
+enum ThresholdUnit {
+  MINOR // integer minor units (money)
+  RATIO // e.g. roas 2.4, frequency 3.5
+  PCT   // percentage points, e.g. "+50%" over target
 }
 
 enum WebhookProvider {
@@ -180,6 +201,8 @@ model Workspace {
   decisions            Decision[]
   outcomeSnapshots     OutcomeSnapshot[]
   decisionMemoryEntries DecisionMemoryEntry[]
+  fatiguePredictions   FatiguePrediction[]
+  guardrailRules       GuardrailRule[]
 
   @@map("workspaces")
 }
@@ -965,4 +988,60 @@ model DecisionMemoryEntry {
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([decisionId])
   @@map("decision_memory_entries")
+}
+
+// ════════════════════════════════════════════════════════════
+// PHASE 2 — PREDICTIVE + GUARDRAILS
+// ════════════════════════════════════════════════════════════
+
+// Forward-looking creative-fatigue forecast for an entity. Written
+// each sweep; on resolution (actual breach or REFRESH executed) a
+// DecisionMemoryEntry is written capturing predicted-vs-actual.
+model FatiguePrediction {
+  id                 String      @id @default(uuid()) @db.Uuid
+  workspaceId        String      @db.Uuid
+  entityId           String      @db.Uuid
+  entityLevel        EntityLevel
+  metric             String      @default("frequency") // signal that will breach
+  ceiling            Float // breach threshold (e.g. 3.5)
+  projectedBreachDate DateTime
+  confidence         Float // 0.0 – 1.0
+  basis              String? // short human-readable basis of the projection
+  createdAt          DateTime    @default(now())
+
+  // Resolution (set when the forecast is confirmed or invalidated)
+  resolvedAt        DateTime?
+  actualBreachDate  DateTime?
+  accuracy          Float? // |projected - actual| scored 0..1 at resolution
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([entityId, entityLevel])
+  @@index([resolvedAt])
+  @@map("fatigue_predictions")
+}
+
+// User-defined recurring rule Lumi enforces each sweep. Hits produce
+// radar verdicts (Decisions, status PROPOSED) — never auto-execution.
+model GuardrailRule {
+  id           String        @id @default(uuid()) @db.Uuid
+  workspaceId  String        @db.Uuid
+  name         String
+  enabled      Boolean       @default(true)
+  scopeLevel   EntityLevel   @default(ADSET)
+  audienceTag  String? // optional filter, e.g. "cold"
+  metric       String // e.g. "cpaOverTargetPct", "frequency", "roas"
+  comparator   Comparator
+  threshold    Float // interpreted per `unit`
+  unit         ThresholdUnit @default(RATIO)
+  sustainedDays Int          @default(1)
+  emitVerdict  Verdict       @default(WATCH)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, enabled])
+  @@map("guardrail_rules")
 }

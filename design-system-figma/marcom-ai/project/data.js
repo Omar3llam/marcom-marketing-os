@@ -505,11 +505,118 @@ const EXECUTION_STEPS = [
   { id: 6, label: 'Notify · workspace #maison-salam',       sub: 'WebSocket · 1 listener' },
 ];
 
+// ── Phase 2: multi-level verdict drill-down (keyed by alert id) ──
+// Each alert can expand to a campaign → ad-set → creative tree where
+// EVERY level carries its own verdict — and a campaign can be SCALE
+// while a child ad set is KILL (see apparel r3 below).
+const DRILLDOWN_BY_WS = {
+  apparel: {
+    r1: {
+      campaign: { name: 'Eid Drop · Carousel · Cold ME', verdict: 'KILL', rationale: 'ROAS 0.6 below break-even with frequency 4.2 past the 3.5 ceiling.' },
+      adsets: [
+        {
+          id: 'adset-4218990', name: 'Carousel · 5 SKUs', verdict: 'KILL', rationale: 'CPA EGP 312 — 73% over target, deteriorating 7 days.',
+          creatives: [
+            { name: 'Eid Hero 01', verdict: 'KILL',    rationale: 'CTR collapsed 36% in 48h — burned.' },
+            { name: 'Eid Hero 02', verdict: 'REFRESH', rationale: 'Still profitable but fatiguing — swap the hook.' },
+          ],
+        },
+      ],
+    },
+    // Headline example: a SCALE campaign that contains a KILL ad set.
+    r3: {
+      campaign: { name: 'PMax · Retargeting Warm', verdict: 'SCALE', rationale: 'Net ROAS 3.1 — strong enough to scale despite one leaking ad set.' },
+      adsets: [
+        {
+          id: 'adset-pmax-dyn', name: 'Dynamic · auto', verdict: 'SCALE', rationale: 'ROAS 4.8, CPA stable 6 days — ready to lift 2×.',
+          creatives: [{ name: 'Dynamic feed', verdict: 'SCALE', rationale: 'Top performer — duplicate the winner.' }],
+        },
+        {
+          id: 'adset-pmax-lal', name: 'Warm LAL 2%', verdict: 'KILL', rationale: 'No new conversions from 41% of segment for 14 days.',
+          creatives: [{ name: 'LAL static', verdict: 'KILL', rationale: 'Audience exhausted — stop the bleed.' }],
+        },
+      ],
+    },
+  },
+  riyadh: {
+    r1: {
+      campaign: { name: 'Static · Cold ME · Beauty Bundle', verdict: 'KILL', rationale: 'ROAS 0.9 below break-even, frequency past ceiling.' },
+      adsets: [
+        {
+          id: 'adset-8821110', name: 'Static · 3 creatives', verdict: 'KILL', rationale: 'CPA SAR 298 — 53% over target.',
+          creatives: [
+            { name: 'Bundle Still 01', verdict: 'KILL',    rationale: 'CTR fell 40% in 4 days.' },
+            { name: 'Bundle Still 02', verdict: 'REALLOCATE', rationale: 'Move spend to the Snap influencer push.' },
+          ],
+        },
+      ],
+    },
+  },
+  dubai: {
+    r1: {
+      campaign: { name: 'Meta Lead Form · Broad · CTO', verdict: 'KILL', rationale: 'CPL AED 412 — 72% over target, trending up.' },
+      adsets: [
+        {
+          id: 'adset-5510042', name: 'Lead Form · 2 variants', verdict: 'REALLOCATE', rationale: 'Reallocate budget to LinkedIn CTO ICP (2.5× cheaper).',
+          creatives: [
+            { name: 'CTO Hook 01', verdict: 'REFRESH', rationale: 'Hook not landing on CTOs — refresh.' },
+            { name: 'CTO Hook 02', verdict: 'KILL',    rationale: 'No leads in 6 days.' },
+          ],
+        },
+      ],
+    },
+  },
+};
+
+// ── Phase 2: forward-looking fatigue predictions (keyed by alert id) ──
+const FATIGUE_BY_WS = {
+  apparel: {
+    r2: { willBreach: true, metric: 'frequency', ceiling: 3.5, daysToBreach: 3, projectedBreachDate: 'May 22', confidence: 0.86, note: 'Reels UGC · 3 hooks projected to breach frequency 3.5 in ~3 days' },
+  },
+  riyadh: {
+    r2: { willBreach: true, metric: 'frequency', ceiling: 3.5, daysToBreach: 4, projectedBreachDate: 'May 23', confidence: 0.79, note: 'Meta UGC Reels projected to breach frequency 3.5 in ~4 days' },
+  },
+  dubai: {},
+};
+
+// ── Phase 2: user-defined guardrail rules + their radar hits ──────
+// Rules run every sweep; hits become PROPOSED radar verdicts the human
+// confirms — never silent auto-execution.
+const GUARDRAILS_BY_WS = {
+  apparel: {
+    rules: [
+      { id: 'g1', name: 'Cold CPA breach', scopeLevel: 'ADSET', audienceTag: 'cold', metric: 'cpaOverTargetPct', comparator: 'GTE', threshold: 50, unit: 'PCT', sustainedDays: 2, emitVerdict: 'KILL', enabled: true },
+      { id: 'g2', name: 'ROAS floor', scopeLevel: 'ADSET', metric: 'roas', comparator: 'LT', threshold: 1, unit: 'RATIO', sustainedDays: 1, emitVerdict: 'WATCH', enabled: true },
+      { id: 'g3', name: 'Frequency ceiling (cold)', scopeLevel: 'ADSET', audienceTag: 'cold', metric: 'frequency', comparator: 'GTE', threshold: 3.5, unit: 'RATIO', sustainedDays: 1, emitVerdict: 'REFRESH', enabled: false },
+    ],
+    hits: [
+      { ruleId: 'g1', ruleName: 'Cold CPA breach', entity: 'Carousel · 5 SKUs', verdict: 'KILL', rationale: 'CPA ≥ +50% over target for 2 days', status: 'PROPOSED' },
+    ],
+  },
+  riyadh: {
+    rules: [
+      { id: 'g1', name: 'Cold CPA breach', scopeLevel: 'ADSET', audienceTag: 'cold', metric: 'cpaOverTargetPct', comparator: 'GTE', threshold: 50, unit: 'PCT', sustainedDays: 2, emitVerdict: 'KILL', enabled: true },
+    ],
+    hits: [
+      { ruleId: 'g1', ruleName: 'Cold CPA breach', entity: 'Static · 3 creatives', verdict: 'KILL', rationale: 'CPA ≥ +50% over target for 2 days', status: 'PROPOSED' },
+    ],
+  },
+  dubai: {
+    rules: [
+      { id: 'g1', name: 'B2B CPL ceiling', scopeLevel: 'ADSET', metric: 'cpaOverTargetPct', comparator: 'GTE', threshold: 60, unit: 'PCT', sustainedDays: 2, emitVerdict: 'REALLOCATE', enabled: true },
+    ],
+    hits: [],
+  },
+};
+
 export const DEMO_DATA = {
   WORKSPACES: DEMO_WORKSPACES,
   FEATURED:   FEATURED_CAMPAIGN,
   RADAR_BY_WS: RADAR_ALERTS_BY_WS,
   GRAPH:      ENTITY_GRAPH,
+  DRILLDOWN_BY_WS: DRILLDOWN_BY_WS,
+  FATIGUE_BY_WS:   FATIGUE_BY_WS,
+  GUARDRAILS_BY_WS: GUARDRAILS_BY_WS,
   ACTIVITY:   ACTIVITY_TICKER,
   VECTORS:    SCAN_VECTORS,
   EXECUTION:  EXECUTION_STEPS,

@@ -35,6 +35,9 @@ const ALLOWED_ACTIONS = {
   DECREASE_BUDGET:   ['campaign', 'adset'],
   PAUSE_ADSET:       ['adset'],
   RESUME_ADSET:      ['adset'],
+  // Phase 2 — first-class verdict execution paths (human still confirms)
+  REALLOCATE_BUDGET: ['campaign', 'adset'],
+  REFRESH_CREATIVE:  ['adset', 'ad'],
 };
 
 /**

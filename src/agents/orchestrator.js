@@ -33,18 +33,24 @@ const CREATIVE_TRIGGERS = new Set([
  * Adapter — wraps runClaudeAgent and forces a strict JSON output
  * shape the orchestrator can consume programmatically.
  */
-async function analyzeWithClaude({ campaignState, decisionMemory, contextLock }) {
+async function analyzeWithClaude({ campaignState, decisionMemory, contextLock, grounding = {} }) {
   const role =
     'You are an Elite Performance Marketing Strategist. ' +
     'You diagnose ad-platform campaigns from raw metrics + the brand context lock + ' +
-    'recent decision memory, and return a strict JSON verdict.';
+    'recent decision memory, and return a strict JSON verdict. Deterministic engines have ' +
+    'already computed the per-level verdicts, the fatigue forecast, and any guardrail hits — ' +
+    'treat those as the source of truth and explain/reconcile them; do not contradict them.';
+
+  const { levelVerdicts = null, fatigueForecast = null, guardrailHits = null } = grounding;
 
   const task = [
     'Analyze the campaign below and return JSON with this EXACT shape (no markdown fences, no commentary):',
     '{',
-    '  "verdict": "KILL" | "HOLD" | "SCALE" | "REFRESH",',
+    '  "verdict": "KILL" | "HOLD" | "SCALE" | "REFRESH" | "REALLOCATE" | "WATCH",',
     '  "rootCause": "CRITICAL_PERFORMANCE_DECLINE" | "CREATIVE_FATIGUE" | "AUDIENCE_SATURATION" | "SCALING_OPPORTUNITY" | "OTHER",',
     '  "diagnosis": "<2-3 sentence plain-language diagnosis>",',
+    '  "levelVerdicts": [ { "level": "CAMPAIGN"|"ADSET"|"CREATIVE", "entityId": "<id>", "verdict": "<verdict>", "rationale": "<one sentence>" } ],',
+    '  "fatigueForecast": { "willBreach": <bool>, "metric": "frequency", "daysToBreach": <number|null>, "projectedBreachDate": "<ISO|null>", "note": "<plain-language, e.g. \'breaches frequency 3.5 in ~3 days\'>" },',
     '  "actionPlan": { "action": "<one specific action>", "expectedImpact": "<single sentence>" },',
     '  "confidence": <integer 0-100, your certainty in this verdict>,',
     '  "riskLevel": "High" | "Medium" | "Low",',
@@ -52,11 +58,17 @@ async function analyzeWithClaude({ campaignState, decisionMemory, contextLock })
     '  "financialImpact": "<string in EGP, e.g. \'Wasting EGP 2,400/week\' or \'Could gain EGP 15,000/month\'>"',
     '}',
     '',
-    'IMPORTANT: AI must be auditable. Include confidence (0-100), risk level, evidence count, and financial impact in EGP.',
+    'RULES: The top-level "verdict" must equal the CAMPAIGN-level verdict in DETERMINISTIC LEVEL VERDICTS when provided. ',
+    'Echo DETERMINISTIC LEVEL VERDICTS into "levelVerdicts" (you may add a rationale). ',
+    'Echo the DETERMINISTIC FATIGUE FORECAST into "fatigueForecast" with a human-readable "note". ',
+    'AI must be auditable: include confidence (0-100), risk level, evidence count, financial impact in EGP.',
     '',
-    'CAMPAIGN STATE:',         JSON.stringify(campaignState ?? {}, null, 2),
-    'RECENT DECISION MEMORY:', JSON.stringify(decisionMemory ?? [], null, 2),
-    'BRAND CONTEXT LOCK:',     JSON.stringify(contextLock ?? {}, null, 2),
+    'CAMPAIGN STATE:',                 JSON.stringify(campaignState ?? {}, null, 2),
+    'DETERMINISTIC LEVEL VERDICTS:',   JSON.stringify(levelVerdicts ?? '(none — derive from state)', null, 2),
+    'DETERMINISTIC FATIGUE FORECAST:', JSON.stringify(fatigueForecast ?? '(none)', null, 2),
+    'GUARDRAIL HITS:',                 JSON.stringify(guardrailHits ?? '(none)', null, 2),
+    'RECENT DECISION MEMORY:',         JSON.stringify(decisionMemory ?? [], null, 2),
+    'BRAND CONTEXT LOCK:',             JSON.stringify(contextLock ?? {}, null, 2),
   ].join('\n');
 
   const { text } = await runClaudeAgent({
@@ -128,7 +140,7 @@ async function generateCreativeAssets({ contextLock, strategicBrief }) {
  * @param {string} [args.actionId]   — Action row to persist onto (optional; if absent, no DB write)
  * @param {string} [args.userId]     — for fetching the user's context lock
  */
-export async function runOrchestration({ campaignId, workspaceId, actionId, userId }) {
+export async function runOrchestration({ campaignId, workspaceId, actionId, userId, grounding = {} }) {
   if (!campaignId) throw new Error('orchestrator: campaignId required');
 
   // ── Gather the three inputs in parallel ─────────────────────
@@ -165,6 +177,7 @@ export async function runOrchestration({ campaignId, workspaceId, actionId, user
       campaignState:  campaign,
       decisionMemory: memory,
       contextLock,
+      grounding, // deterministic levelVerdicts / fatigueForecast / guardrailHits
     });
   } catch (err) {
     logger.error({ err: err.message, campaignId }, '[orchestrator] Claude failed');
@@ -173,7 +186,11 @@ export async function runOrchestration({ campaignId, workspaceId, actionId, user
 
   // ── Agent 2: OpenAI (conditional) ───────────────────────────
   let creativeAssets = null;
-  const needsCreative = CREATIVE_TRIGGERS.has(strategicAnalysis?.rootCause);
+  // REFRESH verdicts always warrant a creative pass (the whole point of the
+  // verdict is to swap creative), in addition to the root-cause triggers.
+  const needsCreative =
+    CREATIVE_TRIGGERS.has(strategicAnalysis?.rootCause) ||
+    strategicAnalysis?.verdict === 'REFRESH';
 
   if (needsCreative) {
     // 🔍 VERIFICATION LOG — Track orchestrator OpenAI usage

@@ -15,8 +15,8 @@
 import { z } from 'zod';
 import { EntityLevelSchema } from './entity.schema';
 
-/** Marketing decision verdict. */
-export const VerdictSchema = z.enum(['KILL', 'HOLD', 'SCALE', 'WATCH']);
+/** Marketing decision verdict. Phase 2 adds REALLOCATE + REFRESH. */
+export const VerdictSchema = z.enum(['KILL', 'HOLD', 'SCALE', 'WATCH', 'REALLOCATE', 'REFRESH']);
 
 /** Workflow status of a decision. */
 export const DecisionStatusSchema = z.enum(['PROPOSED', 'EXECUTED', 'DISMISSED']);
@@ -64,6 +64,19 @@ export const DecisionMemoryEntrySchema = z.object({
   createdAt: z.coerce.date(),
 });
 
+/**
+ * A verdict at one entity level — the unit of the multi-level
+ * drill-down (a campaign can be SCALE while a child ad set is KILL).
+ */
+export const LevelVerdictSchema = z.object({
+  entityId: z.string().min(1),
+  entityLevel: EntityLevelSchema,
+  verdict: VerdictSchema,
+  confidence: z.number().min(0).max(1),
+  rationale: z.string().nullish(),
+});
+
+export type LevelVerdict = z.infer<typeof LevelVerdictSchema>;
 export type Verdict = z.infer<typeof VerdictSchema>;
 export type DecisionStatus = z.infer<typeof DecisionStatusSchema>;
 export type Decision = z.infer<typeof DecisionSchema>;

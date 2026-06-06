@@ -257,12 +257,48 @@ async function seedDecisionGraph(ws) {
   });
 }
 
+async function seedPhase2(ws) {
+  // Apparel only: a couple of guardrail rules + a forward-looking
+  // fatigue prediction, to exercise the Phase 2 verdict intelligence.
+  const workspaceId = det(`ws:${ws.key}`);
+  const adSetId = det(`adset:${ws.key}:Carousel · 5 SKUs`);
+
+  const rules = [
+    { key: 'cold-cpa', name: 'Cold CPA breach', scopeLevel: 'ADSET', audienceTag: 'cold',
+      metric: 'cpaOverTargetPct', comparator: 'GTE', threshold: 50, unit: 'PCT', sustainedDays: 2, emitVerdict: 'KILL' },
+    { key: 'roas-floor', name: 'ROAS floor', scopeLevel: 'ADSET', audienceTag: null,
+      metric: 'roas', comparator: 'LT', threshold: 1, unit: 'RATIO', sustainedDays: 1, emitVerdict: 'WATCH' },
+  ];
+  for (const r of rules) {
+    const id = det(`guardrail:${ws.key}:${r.key}`);
+    const data = {
+      workspaceId, name: r.name, enabled: true, scopeLevel: r.scopeLevel, audienceTag: r.audienceTag,
+      metric: r.metric, comparator: r.comparator, threshold: r.threshold, unit: r.unit,
+      sustainedDays: r.sustainedDays, emitVerdict: r.emitVerdict,
+    };
+    await prisma.guardrailRule.upsert({ where: { id }, create: { id, ...data }, update: data });
+  }
+
+  const predId = det(`fatigue:${ws.key}:carousel`);
+  const projected = new Date(DATE.getTime() + 3 * 86_400_000); // ~3 days out
+  await prisma.fatiguePrediction.upsert({
+    where: { id: predId },
+    create: {
+      id: predId, workspaceId, entityId: adSetId, entityLevel: 'ADSET',
+      metric: 'frequency', ceiling: 3.5, projectedBreachDate: projected, confidence: 0.86,
+      basis: 'frequency rising +0.3/day over 4-day trend, CTR decaying',
+    },
+    update: {},
+  });
+}
+
 async function main() {
   for (const ws of WORKSPACES) {
     await seedWorkspace(ws);
   }
   await seedDecisionGraph(WORKSPACES[0]); // apparel
-  console.log('✓ Seeded entity graph + metric snapshots + decision graph for apparel/riyadh/dubai.');
+  await seedPhase2(WORKSPACES[0]);        // apparel guardrails + fatigue prediction
+  console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction.');
 }
 
 main()

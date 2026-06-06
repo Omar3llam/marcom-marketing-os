@@ -7,6 +7,7 @@
 
 import { Icons } from './icons.jsx';
 import { VerdictPill, StagePill, formatBleed } from './primitives.jsx';
+import { DEMO_DATA } from './data.js';
 
 export function CampaignsPage({ workspace, alerts, loading = false, onStartFlow, onReviewAlert, onFixContent }) {
   const [selectedId, setSelectedId] = React.useState(null);
@@ -299,6 +300,9 @@ export function CampaignsPage({ workspace, alerts, loading = false, onStartFlow,
         })}
       </div>
 
+      {/* Guardrails — user-defined rules + their radar verdicts (confirm, never auto-execute) */}
+      <GuardrailPanel workspace={workspace} onReview={onReviewAlert} />
+
       {/* Detail panel */}
       {selected && (
         <DetailPanel
@@ -419,6 +423,10 @@ function DetailPanel({ alert, workspace, onClose, onReviewVerdict, onFixContent 
   const health = alert.verdict === 'KILL' ? 28 : alert.verdict === 'HOLD' ? 56 : 82;
   const verdictColor = alert.verdict === 'KILL' ? 'var(--c-kill-text)' : alert.verdict === 'SCALE' ? 'var(--c-scale-text)' : 'var(--c-hold-text)';
 
+  // Phase 2: multi-level drill-down + forward-looking fatigue forecast.
+  const drill   = DEMO_DATA.DRILLDOWN_BY_WS?.[workspace?.id]?.[alert.id] ?? null;
+  const fatigue = DEMO_DATA.FATIGUE_BY_WS?.[workspace?.id]?.[alert.id] ?? null;
+
   return (
     <>
       {/* backdrop */}
@@ -476,6 +484,16 @@ function DetailPanel({ alert, workspace, onClose, onReviewVerdict, onFixContent 
 
         {/* Body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+          {/* Phase 2: forward-looking fatigue forecast */}
+          {fatigue && <FatigueBanner fatigue={fatigue} />}
+
+          {/* Phase 2: multi-level verdict drill-down */}
+          {drill && (
+            <Section title="Verdict breakdown" hint="every level">
+              <Drilldown drill={drill} />
+            </Section>
+          )}
+
           {/* Performance */}
           <Section title="Performance" hint="last 14 days">
             {alert.metrics && alert.metrics.length > 0 ? (
@@ -588,6 +606,131 @@ function Metric({ label, value }) {
       <div className="font-mono" style={{ fontSize: 9, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)' }}>{label}</div>
       <div className="font-mono tabular-nums" style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-text-base)', marginTop: 3 }}>{value}</div>
     </div>
+  );
+}
+
+// ── Phase 2: forward-looking fatigue banner ───────────────────
+function FatigueBanner({ fatigue }) {
+  if (!fatigue?.willBreach) return null;
+  return (
+    <div
+      role="note"
+      style={{
+        display: 'flex', alignItems: 'flex-start', gap: 12,
+        padding: '12px 14px', marginBottom: 18,
+        background: 'var(--c-refresh-bg)', border: '1px solid var(--c-refresh-text)', borderRadius: 12,
+      }}
+    >
+      <Icons.TrendingUp style={{ fontSize: 16, color: 'var(--c-refresh-text)', flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+      <div style={{ minWidth: 0 }}>
+        <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--c-refresh-text)', marginBottom: 3 }}>
+          Fatigue forecast · {Math.round((fatigue.confidence ?? 0) * 100)}% confidence
+        </div>
+        <div className="font-display" style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-base)', lineHeight: 1.4 }}>
+          {fatigue.note}
+        </div>
+        <div className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 3 }}>
+          Breaches {fatigue.metric} {fatigue.ceiling} · ~{fatigue.daysToBreach}d (≈ {fatigue.projectedBreachDate}) — act before it bleeds.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Phase 2: multi-level verdict drill-down tree ──────────────
+function Drilldown({ drill }) {
+  return (
+    <div style={{ background: 'var(--c-surface-elevated)', border: '1px solid var(--c-surface-border)', borderRadius: 10, padding: 12 }}>
+      <VerdictTreeRow level={0} name={drill.campaign.name} verdict={drill.campaign.verdict} rationale={drill.campaign.rationale} levelLabel="Campaign" />
+      {drill.adsets.map((as) => (
+        <React.Fragment key={as.id || as.name}>
+          <VerdictTreeRow level={1} name={as.name} verdict={as.verdict} rationale={as.rationale} levelLabel="Ad set" />
+          {(as.creatives || []).map((cr) => (
+            <VerdictTreeRow key={cr.name} level={2} name={cr.name} verdict={cr.verdict} rationale={cr.rationale} levelLabel="Creative" />
+          ))}
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+function VerdictTreeRow({ level, name, verdict, rationale, levelLabel }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 0', paddingLeft: level * 18, borderTop: level === 0 ? 'none' : '1px solid var(--c-surface-border)' }}>
+      <VerdictPill verdict={verdict} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+          <span className="font-display" style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-base)' }}>{name}</span>
+          <span className="font-mono" style={{ fontSize: 9, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--c-text-subtle)' }}>{levelLabel}</span>
+        </div>
+        {rationale && <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 2, lineHeight: 1.4 }}>{rationale}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── Phase 2: guardrail rules + their radar verdicts ───────────
+const CMP_SYMBOL = { GT: '>', GTE: '≥', LT: '<', LTE: '≤' };
+
+function GuardrailPanel({ workspace, onReview }) {
+  const cfg = DEMO_DATA.GUARDRAILS_BY_WS?.[workspace?.id];
+  if (!cfg) return null;
+  const { rules = [], hits = [] } = cfg;
+
+  const handleReview = (hit) => {
+    // Guardrail hits are PROPOSED radar verdicts — route to the confirm
+    // flow. They are NEVER auto-executed; a human confirms here.
+    onReview?.({ id: `guardrail-${hit.ruleId}`, verdict: hit.verdict, campaign: hit.entity, source: 'guardrail' });
+  };
+
+  return (
+    <section aria-label="Guardrails" style={{ marginTop: 22, background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, boxShadow: 'var(--sh-card)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: '1px solid var(--c-surface-border)', background: 'var(--c-surface-elevated)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Icons.Target style={{ fontSize: 14, color: 'var(--c-gold-deep)' }} aria-hidden="true" />
+          <span className="section-label">Guardrails &amp; playbooks</span>
+        </div>
+        <span className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-subtle)' }}>{rules.filter((r) => r.enabled).length} active · enforced each sweep</span>
+      </div>
+
+      {/* Rules */}
+      <div style={{ padding: '8px 18px' }}>
+        {rules.map((r) => (
+          <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid var(--c-surface-border)' }}>
+            <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: r.enabled ? 'var(--c-scale)' : 'var(--c-surface-border-strong)', flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div className="font-display" style={{ fontSize: 13, fontWeight: 600, color: r.enabled ? 'var(--c-text-base)' : 'var(--c-text-muted)' }}>{r.name}</div>
+              <div className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 1 }}>
+                {r.scopeLevel.toLowerCase()}{r.audienceTag ? ` · ${r.audienceTag}` : ''} · {r.metric} {CMP_SYMBOL[r.comparator]} {r.threshold}{r.unit === 'PCT' ? '%' : ''} · {r.sustainedDays}d
+              </div>
+            </div>
+            <VerdictPill verdict={r.emitVerdict} />
+          </div>
+        ))}
+      </div>
+
+      {/* Hits — radar verdicts awaiting confirm */}
+      {hits.length > 0 && (
+        <div style={{ padding: '12px 18px', borderTop: '1px solid var(--c-surface-border)', background: 'rgba(239,68,68,0.03)' }}>
+          <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)', marginBottom: 8 }}>
+            Triggered this sweep · confirm to act
+          </div>
+          {hits.map((h, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0' }}>
+              <VerdictPill verdict={h.verdict} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="font-display" style={{ fontSize: 13, fontWeight: 500, color: 'var(--c-text-base)' }}>{h.entity}</div>
+                <div className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>{h.ruleName}: {h.rationale}</div>
+              </div>
+              <button type="button" onClick={() => handleReview(h)} className="btn-ghost" style={{ padding: '6px 12px', fontSize: 12 }}>
+                Review
+                <Icons.ArrowRight style={{ fontSize: 12 }} aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

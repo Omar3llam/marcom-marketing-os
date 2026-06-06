@@ -19,6 +19,7 @@ import {
   normalizeInsightsForAnalysis,
 } from '../services/metaAdsService.js';
 import { analyzeCampaignData } from '../agents/orchestrator.js';
+import { sweepGuardrails } from '../services/guardrail-engine/GuardrailSweepService.js';
 import { randomUUID } from 'crypto';
 
 const MAX_CAMPAIGNS_PER_WORKSPACE = 20;
@@ -219,12 +220,24 @@ async function syncWorkspace(workspaceId, datePreset) {
     }
   }
 
+  // ── Guardrail sweep ─────────────────────────────────────────
+  // After fresh metrics land, enforce the workspace's guardrail rules.
+  // Hits become PROPOSED Decisions (radar verdicts) the human confirms —
+  // never auto-executed. Best-effort: never fail the sync on a sweep error.
+  let guardrails = { rules: 0, hits: 0, decisionsCreated: 0 };
+  try {
+    guardrails = await sweepGuardrails(workspaceId);
+  } catch (err) {
+    logger.warn({ workspaceId, err: err.message }, '[syncWorker] guardrail sweep failed — continuing');
+  }
+
   logger.info({
     workspaceId,
     fetched:  insights.length,
     analyzed: normalized.length,
     created:  created.length,
     errors:   errors.length,
+    guardrailHits: guardrails.hits,
   }, '[syncWorker] workspace sync complete');
 
   return {
@@ -232,6 +245,7 @@ async function syncWorkspace(workspaceId, datePreset) {
     analyzed: normalized.length,
     created:  created.length,
     errors:   errors.length,
+    guardrails,
   };
 }
 
