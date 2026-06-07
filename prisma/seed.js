@@ -292,13 +292,91 @@ async function seedPhase2(ws) {
   });
 }
 
+async function seedPhase3(ws) {
+  // Apparel only: portfolio-level fixtures for the capital-allocation layer.
+  //  • META account: an ACCOUNT-level platform snapshot + a GA4 ACTUAL
+  //    snapshot on the SAME entity → the channel RECONCILES, surfacing the
+  //    platform-over-reporting gap (blended < platform).
+  //  • A second GOOGLE account with a platform snapshot but NO GA4 actual →
+  //    stays UNVERIFIED (raw platform number, flagged low-confidence).
+  //  • One PROPOSED AllocationPlan (its budget doubles as the monthly ceiling
+  //    PortfolioService paces against).
+  const workspaceId = det(`ws:${ws.key}`);
+  const currency = ws.currency; // EGP
+
+  // Helper: upsert a channel-level MetricSnapshot with an explicit source.
+  async function channelSnap(key, { accountId, source, spend, revenue, impressions, clicks, conversions }) {
+    const id = det(`p3snap:${key}`);
+    const spendMinor = toMinor(spend, currency);
+    const revenueMinor = toMinor(revenue, currency);
+    const data = {
+      workspaceId, entityId: accountId, entityLevel: 'ACCOUNT', date: DATE, source,
+      granularity: 'DAILY', spendMinor, revenueMinor,
+      cpaMinor: conversions > 0 ? Math.round(spendMinor / conversions) : null,
+      impressions, clicks, conversions,
+      ctr: impressions > 0 ? clicks / impressions : null,
+      roas: spendMinor > 0 ? revenueMinor / spendMinor : null,
+      frequency: null, currency,
+    };
+    await prisma.metricSnapshot.upsert({ where: { id }, create: { id, ...data }, update: data });
+  }
+
+  // ── Channel 1: META (reconciled) ──
+  const metaAccountId = det(`acct:${ws.key}`); // the existing Meta account
+  // Platform claims 50,586 EGP revenue on 84,310 spend (= the creative rollup).
+  await channelSnap('apparel:meta:platform', {
+    accountId: metaAccountId, source: 'META',
+    spend: 84310, revenue: 50586, impressions: 2529300, clicks: 25293, conversions: 168,
+  });
+  // GA4 actual: only 38,000 EGP truly attributable → ~25% platform inflation.
+  await channelSnap('apparel:meta:ga4', {
+    accountId: metaAccountId, source: 'GA4',
+    spend: 0, revenue: 38000, impressions: 0, clicks: 0, conversions: 126,
+  });
+
+  // ── Channel 2: GOOGLE (unverified — no GA4 actual) ──
+  const googleAccountId = det(`acct:${ws.key}:google`);
+  const ent = { workspaceId, channel: 'GOOGLE', status: 'ACTIVE' };
+  await prisma.account.upsert({
+    where: { id: googleAccountId },
+    create: { id: googleAccountId, ...ent, name: 'Maison Salam · Google' },
+    update: { ...ent, name: 'Maison Salam · Google' },
+  });
+  await channelSnap('apparel:google:platform', {
+    accountId: googleAccountId, source: 'GOOGLE',
+    spend: 40000, revenue: 96000, impressions: 800000, clicks: 16000, conversions: 200,
+  });
+
+  // ── A proposed allocation plan (budget = monthly ceiling) ──
+  const planId = det(`alloc:${ws.key}:eid`);
+  await prisma.allocationPlan.upsert({
+    where: { id: planId },
+    create: {
+      id: planId, workspaceId,
+      goalType: 'GROWTH_CEILING', goalValue: null,
+      totalBudgetMinor: toMinor(150000, currency), // 150k EGP monthly ceiling
+      currency,
+      projectedRoas: 1.9, projectedCpaMinor: toMinor(410, currency),
+      merBefore: 1.65, merAfter: 1.9,
+      reasoning: [
+        'Goal GROWTH_CEILING: distribute 150,000 EGP toward marginal efficiency; projected blended ROAS 1.65x → 1.90x.',
+        'Grow Google (blended ROAS 2.40x, verified-pending) — strongest marginal return.',
+        'Trim Meta: GA4 shows ~25% revenue over-report; blended ROAS 0.45x, below break-even.',
+      ].join('\n'),
+      status: 'PROPOSED',
+    },
+    update: {},
+  });
+}
+
 async function main() {
   for (const ws of WORKSPACES) {
     await seedWorkspace(ws);
   }
   await seedDecisionGraph(WORKSPACES[0]); // apparel
   await seedPhase2(WORKSPACES[0]);        // apparel guardrails + fatigue prediction
-  console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction.');
+  await seedPhase3(WORKSPACES[0]);        // apparel portfolio + blended truth + allocation plan
+  console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction + allocation.');
 }
 
 main()

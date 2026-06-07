@@ -148,6 +148,19 @@ enum ThresholdUnit {
   PCT   // percentage points, e.g. "+50%" over target
 }
 
+// Phase 3 — capital allocation goal. Engine is goal-generic; only
+// GROWTH_CEILING is implemented today (TARGET_CAC/TARGET_ROAS reserved).
+enum GoalType {
+  GROWTH_CEILING
+}
+
+// Lifecycle of a proposed allocation plan.
+enum AllocationStatus {
+  PROPOSED
+  ACCEPTED
+  REJECTED
+}
+
 enum WebhookProvider {
   META
   GOOGLE
@@ -203,6 +216,7 @@ model Workspace {
   decisionMemoryEntries DecisionMemoryEntry[]
   fatiguePredictions   FatiguePrediction[]
   guardrailRules       GuardrailRule[]
+  allocationPlans      AllocationPlan[]
 
   @@map("workspaces")
 }
@@ -1044,4 +1058,40 @@ model GuardrailRule {
 
   @@index([workspaceId, enabled])
   @@map("guardrail_rules")
+}
+
+// ════════════════════════════════════════════════════════════
+// PHASE 3 — CAPITAL ALLOCATION
+// ════════════════════════════════════════════════════════════
+
+// A proposed cross-channel budget distribution toward a goal, built on
+// BLENDED truth (not platform claims). The container persists the goal,
+// budget, projected blended impact, and the reasoning trail; each
+// individual move is a PROPOSED REALLOCATE Decision linked back via
+// `Decision.rootCause = "allocation:<planId>"`, so reallocations flow
+// through the existing confirm→execute governance + audit. Never
+// auto-executes.
+model AllocationPlan {
+  id               String           @id @default(uuid()) @db.Uuid
+  workspaceId      String           @db.Uuid
+  goalType         GoalType
+  goalValue        Float? // interpretation depends on goalType (null for GROWTH_CEILING)
+  totalBudgetMinor Int // the spend ceiling, integer minor units
+  currency         String           @default("USD")
+
+  // Projected blended impact (minor units / ratios).
+  projectedRoas     Float?
+  projectedCpaMinor Int?
+  merBefore         Float? // blended MER before the reallocation
+  merAfter          Float? // blended MER after the reallocation
+
+  reasoning String // newline-joined reasoning trail
+  status    AllocationStatus @default(PROPOSED)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@map("allocation_plans")
 }

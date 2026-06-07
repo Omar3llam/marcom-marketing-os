@@ -11,6 +11,9 @@ export function decisionReducer(state, action) {
     case 'REVIEW_ALERT':
       return { ...state, view: 'INPUT_VALIDATION', activeMode: 'campaign', inputData: action.alertData, outputData: null, errorDetails: null, isProcessing: false, isLocked: false, theatreStep: 0 };
 
+    case 'VIEW_PORTFOLIO':
+      return { ...state, view: 'PORTFOLIO', activeMode: null, inputData: null, outputData: null, errorDetails: null, isProcessing: false, isLocked: false, theatreStep: 0 };
+
     case 'SUBMIT_INPUT':
       return { ...state, view: 'THEATER', inputData: action.inputData, isProcessing: true, isLocked: true, theatreStep: 0, errorDetails: null };
 

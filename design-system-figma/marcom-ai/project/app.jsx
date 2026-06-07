@@ -11,6 +11,7 @@ import { Sidebar, ContextBar }                            from './shell.jsx';
 import { DEMO_DATA }                                      from './data.js';
 import { HomePage }                                       from './home.jsx';
 import { CampaignsPage }                                  from './campaigns-page.jsx';
+import { PortfolioPage }                                  from './portfolio-page.jsx';
 import { ContentLab }                                     from './content-lab.jsx';
 import { InputView }                                      from './input-view.jsx';
 import { TheatreView }                                    from './theatre-view.jsx';
@@ -29,6 +30,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 const FSM = {
   HOME:      'HOME',
   CAMPAIGNS: 'CAMPAIGNS',
+  PORTFOLIO: 'PORTFOLIO',
   CONTENT:   'CONTENT',
   GROWTH:    'GROWTH',
   CALENDAR:  'CALENDAR',
@@ -90,6 +92,7 @@ function App() {
     setMobileMenuOpen(false);
     if (key === 'home')      setState(FSM.HOME);
     else if (key === 'campaigns') setState(FSM.CAMPAIGNS);
+    else if (key === 'portfolio') setState(FSM.PORTFOLIO);
     else if (key === 'content')   setState(FSM.CONTENT);
     else if (key === 'growth')    setState(FSM.GROWTH);
     else if (key === 'calendar')  setState(FSM.CALENDAR);
@@ -132,6 +135,9 @@ function App() {
           onFixContent={fixContent}
         />
       );
+      break;
+    case FSM.PORTFOLIO:
+      body = <PortfolioPage workspace={workspace} onNav={handleNav} onStartFlow={startFlow} />;
       break;
     case FSM.CONTENT:
       body = (
