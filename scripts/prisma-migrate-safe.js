@@ -16,21 +16,61 @@ if (!process.env.DIRECT_URL && process.env.DATABASE_URL) {
 
 console.log('===PRISMA MIGRATE DEPLOY===');
 
-try {
-  // Capture output to check for errors in stderr
-  const output = execSync('npx prisma migrate deploy', {
+// Transient connectivity (P1001) is common on serverless Postgres (Neon)
+// when the compute is suspended and cold-starting — the first connect can
+// time out before the endpoint wakes. Retry a bounded number of times with
+// a fixed delay so a cold start self-heals instead of failing the build.
+const MAX_CONN_RETRIES = Number(process.env.MIGRATE_CONN_RETRIES || 6);
+const RETRY_DELAY_MS   = Number(process.env.MIGRATE_RETRY_DELAY_MS || 5000);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function runDeploy() {
+  return execSync('npx prisma migrate deploy', {
     stdio: 'pipe',  // Capture instead of inherit
     env: process.env,
     encoding: 'utf-8',
   });
-  console.log(output);  // Print captured output
-  console.log('✅ Migrations deployed successfully');
-} catch (err) {
+}
+
+let err = null;
+for (let attempt = 1; attempt <= MAX_CONN_RETRIES; attempt++) {
+  try {
+    const output = runDeploy();
+    console.log(output);  // Print captured output
+    console.log('✅ Migrations deployed successfully');
+    process.exit(0);
+  } catch (e) {
+    err = e;
+    const out = e.stderr?.toString() || e.stdout?.toString() || e.message || '';
+    const isConnError = out.includes('P1001') || /Can't reach database server/i.test(out);
+    // Only retry pure connectivity errors, and only while attempts remain.
+    // P3005/P3009 etc. mean we DID connect — fall through to recovery below.
+    if (isConnError && attempt < MAX_CONN_RETRIES) {
+      console.warn(`⚠️  P1001 — can't reach DB (attempt ${attempt}/${MAX_CONN_RETRIES}). ` +
+        `Neon may be cold-starting; retrying in ${RETRY_DELAY_MS}ms…`);
+      await sleep(RETRY_DELAY_MS);
+      continue;
+    }
+    break; // non-connectivity error, or out of retries → handle below
+  }
+}
+
+{
+  // err is set: the loop exhausted retries or hit a non-connectivity error.
   // err.stderr contains the actual error from Prisma
   const errorOutput = err.stderr?.toString() || err.stdout?.toString() || err.message || '';
 
   // Print the error output
   console.error(errorOutput);
+
+  if (errorOutput.includes('P1001') || /Can't reach database server/i.test(errorOutput)) {
+    console.error('\n❌ Database unreachable after retries (P1001).');
+    console.error('   This is a connectivity/config issue, not a migration error:');
+    console.error('   • Confirm the Neon compute is active (not suspended/deleted).');
+    console.error('   • Set DIRECT_URL in Render to the Neon DIRECT endpoint');
+    console.error('     (host WITHOUT "-pooler") — migrations need a direct connection.\n');
+    process.exit(1);
+  }
 
   // P3009: Failed migration found in database
   if (errorOutput.includes('P3009')) {
