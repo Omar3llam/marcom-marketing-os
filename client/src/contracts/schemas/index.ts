@@ -209,3 +209,39 @@ export {
   type PortfolioChannel,
   type PortfolioView,
 } from './portfolio.schema';
+
+// ──────────────────────────────────────────────────────────
+// Phase 4 — Testing OS (experiments + agenda + readout)
+// ──────────────────────────────────────────────────────────
+export {
+  TestDimensionSchema,
+  TestStatusSchema,
+  TestMetricSchema,
+  ConfidenceLabelSchema,
+  TestVariantSchema,
+  TestExperimentSchema,
+  type TestDimension,
+  type TestStatus,
+  type TestMetric,
+  type ConfidenceLabel,
+  type TestVariant,
+  type TestExperiment,
+} from './testExperiment.schema';
+
+export {
+  TestSuggestionVariantSchema,
+  TestSuggestionSchema,
+  TestAgendaSchema,
+  type TestSuggestionVariant,
+  type TestSuggestion,
+  type TestAgenda,
+} from './testAgenda.schema';
+
+export {
+  TestVerdictSchema,
+  TestReadoutSchema,
+  ConcludeTestResponseSchema,
+  type TestVerdict,
+  type TestReadout,
+  type ConcludeTestResponse,
+} from './testReadout.schema';

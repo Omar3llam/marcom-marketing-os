@@ -12,6 +12,7 @@ import { DEMO_DATA }                                      from './data.js';
 import { HomePage }                                       from './home.jsx';
 import { CampaignsPage }                                  from './campaigns-page.jsx';
 import { PortfolioPage }                                  from './portfolio-page.jsx';
+import { TestingPage }                                    from './testing-page.jsx';
 import { ContentLab }                                     from './content-lab.jsx';
 import { InputView }                                      from './input-view.jsx';
 import { TheatreView }                                    from './theatre-view.jsx';
@@ -31,6 +32,7 @@ const FSM = {
   HOME:      'HOME',
   CAMPAIGNS: 'CAMPAIGNS',
   PORTFOLIO: 'PORTFOLIO',
+  TESTING:   'TESTING',
   CONTENT:   'CONTENT',
   GROWTH:    'GROWTH',
   CALENDAR:  'CALENDAR',
@@ -93,6 +95,7 @@ function App() {
     if (key === 'home')      setState(FSM.HOME);
     else if (key === 'campaigns') setState(FSM.CAMPAIGNS);
     else if (key === 'portfolio') setState(FSM.PORTFOLIO);
+    else if (key === 'testing')   setState(FSM.TESTING);
     else if (key === 'content')   setState(FSM.CONTENT);
     else if (key === 'growth')    setState(FSM.GROWTH);
     else if (key === 'calendar')  setState(FSM.CALENDAR);
@@ -138,6 +141,9 @@ function App() {
       break;
     case FSM.PORTFOLIO:
       body = <PortfolioPage workspace={workspace} onNav={handleNav} onStartFlow={startFlow} />;
+      break;
+    case FSM.TESTING:
+      body = <TestingPage workspace={workspace} onNav={handleNav} />;
       break;
     case FSM.CONTENT:
       body = (

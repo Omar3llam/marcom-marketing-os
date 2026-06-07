@@ -161,6 +161,24 @@ enum AllocationStatus {
   REJECTED
 }
 
+// ── Phase 4: Testing OS ──────────────────────────────────────
+// The four dimensions a performance buyer actually tests each week.
+enum TestDimension {
+  HOOK
+  OFFER
+  AUDIENCE
+  CREATIVE_ANGLE
+}
+
+// Lifecycle of an experiment. A test is "finished" only at CONCLUDED —
+// when its outcome is read and written to Decision Memory.
+enum TestStatus {
+  PROPOSED
+  RUNNING
+  CONCLUDED
+  ABANDONED
+}
+
 enum WebhookProvider {
   META
   GOOGLE
@@ -217,6 +235,7 @@ model Workspace {
   fatiguePredictions   FatiguePrediction[]
   guardrailRules       GuardrailRule[]
   allocationPlans      AllocationPlan[]
+  testExperiments      TestExperiment[]
 
   @@map("workspaces")
 }
@@ -954,6 +973,7 @@ model Decision {
   workspace Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   outcomes  OutcomeSnapshot[]
   memories  DecisionMemoryEntry[]
+  tests     TestExperiment[]
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([entityId, entityLevel])
@@ -1094,4 +1114,83 @@ model AllocationPlan {
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@map("allocation_plans")
+}
+
+// ════════════════════════════════════════════════════════════
+// PHASE 4 — TESTING OS (closed-loop weekly experiments)
+// ════════════════════════════════════════════════════════════
+
+// A single weekly experiment across one of the four testing dimensions.
+// Proposed by the generator, run by the buyer, and CONCLUDED by the
+// readout — which writes the outcome to Decision Memory and (when the
+// winner is confident + governance-valid) links a REFRESH/SCALE Decision.
+model TestExperiment {
+  id          String      @id @default(uuid()) @db.Uuid
+  workspaceId String      @db.Uuid
+  entityId    String?     @db.Uuid // the campaign/adset the test runs on
+  entityLevel EntityLevel?
+
+  dimension      TestDimension
+  hypothesis     String
+  metric         String // the watched signal: CTR | CVR | ROAS | CPA
+  expectedSignal String
+  priority       Float         @default(0)
+  status         TestStatus    @default(PROPOSED)
+  currency       String        @default("USD")
+
+  startedAt   DateTime?
+  concludedAt DateTime?
+
+  // Readout (set at conclusion).
+  winnerLabel     String?
+  lift            Float? // % improvement of winner vs control
+  confidence      Float?
+  confidenceLabel String? // HIGH | MODERATE | LOW | INCONCLUSIVE
+  sampleNote      String?
+
+  // The verdict Decision this test produced (null until/unless a
+  // confident, governance-valid winner emerges).
+  decisionId String?   @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  decision  Decision?     @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+  variants  TestVariant[]
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([status])
+  @@index([entityId, entityLevel])
+  @@map("test_experiments")
+}
+
+// One arm of a test (control or challenger). Carries the raw counts the
+// readout engine reads — refreshed live from Meta Insights on conclude,
+// or recorded manually for the demo/CI path.
+model TestVariant {
+  id          String  @id @default(uuid()) @db.Uuid
+  testId      String  @db.Uuid
+  label       String // "A", "B", "Hook A", …
+  description String  @default("")
+  isControl   Boolean @default(false)
+
+  // Maps the arm to its Meta entity so insights can be pulled live.
+  metaEntityId String?
+  metaLevel    String? // AD | ADSET
+
+  // Performance counts (money in integer minor units).
+  impressions  Int     @default(0)
+  clicks       Int     @default(0)
+  conversions  Int     @default(0)
+  spendMinor   Int     @default(0)
+  revenueMinor Int     @default(0)
+  isWinner     Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  test TestExperiment @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@index([testId])
+  @@map("test_variants")
 }
