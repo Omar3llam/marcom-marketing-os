@@ -340,14 +340,13 @@ const STATUS_RANK = { ESTABLISHED: 0, EMERGING: 1, CONFLICTED: 2, SUPERSEDED: 3 
  * @param {object} args
  * @param {Array}  args.decisions — [{ id, entityId, entityLevel, verdict, audienceTag?, createdAt }]
  * @param {Array}  args.outcomes  — [{ decisionId, sustained }]
- * @param {Array}  [args.memory]  — DecisionMemoryEntry rows (reserved)
  * @param {Array}  args.snapshots — [{ entityId, date, frequency, roas, ctr, spendMinor }]
  * @param {Array}  args.tests     — TestExperiment rows
  * @param {Date}   [args.now]
  * @param {object} [args.config]
  * @returns {Array} patterns (each with accuracy, status, promotable, supersededByKey)
  */
-export function extractPatterns({ decisions = [], outcomes = [], memory = [], snapshots = [], tests = [], now = new Date(), config = {} } = {}) {
+export function extractPatterns({ decisions = [], outcomes = [], snapshots = [], tests = [], now = new Date(), config = {} } = {}) {
   const cfg = { ...DEFAULTS, ...config };
   const outcomeById = new Map(outcomes.map((o) => [o.decisionId, o]));
   const snapsByEntity = indexSnapshots(snapshots);
