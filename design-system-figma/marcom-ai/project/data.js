@@ -829,6 +829,51 @@ const TESTING_BY_WS = {
   },
 };
 
+// ── Phase 5: Memory Moat — what Lumi has learned about this account ──
+const BRIEFING_BY_WS = {
+  apparel: {
+    patterns: [
+      { id: 'p5-fatigue', kind: 'FATIGUE_CEILING', status: 'ESTABLISHED', promotable: true,
+        statement: 'On cold adsets, KILL once frequency passes ~3.5.',
+        accuracy: 0.85, support: 5, recency: 'mostly the last 40 days' },
+      { id: 'p5-scaling', kind: 'SCALING_WINDOW', status: 'EMERGING', promotable: false,
+        statement: 'Scaling campaigns held when ROAS was ≥ 3.0.',
+        accuracy: 1.0, support: 2, recency: '2 recent wins — still thin' },
+      { id: 'p5-angle', kind: 'CREATIVE_ANGLE_LONGEVITY', status: 'ESTABLISHED', promotable: false,
+        statement: 'Hook / angle tests produced a confident winner in 2 of 3 runs — keep refreshing.',
+        accuracy: 0.66, support: 3, recency: 'the last 30 days' },
+    ],
+    conflicts: [
+      { id: 'p5-conflict',
+        statement: 'On warm adsets, two competing rules disagree: KILL at frequency ~4.0 vs REFRESH at ~4.2.',
+        note: 'Both are equally accurate (70%) so far — Lumi will not pick for you. Review before promoting either.' },
+    ],
+    // Network is DARK by default — honest cold start.
+    network: { status: 'NOT_CONSENTED' },
+    networkExample: {
+      cohortTag: 'EG apparel',
+      statement: 'Across 7 consenting EG apparel accounts, this fatigue ceiling held in ~78% of cases.',
+      band: [0.71, 0.84], contributingWorkspaces: 7,
+    },
+  },
+  riyadh: {
+    patterns: [
+      { id: 'r5-fatigue', kind: 'FATIGUE_CEILING', status: 'EMERGING', promotable: false,
+        statement: 'Snap broad audiences fatigue around frequency ~4.2.',
+        accuracy: 0.7, support: 2, recency: 'last 3 weeks' },
+    ],
+    conflicts: [],
+    network: { status: 'NOT_CONSENTED' },
+    networkExample: null,
+  },
+  dubai: {
+    patterns: [],
+    conflicts: [],
+    network: { status: 'NOT_CONSENTED' },
+    networkExample: null,
+  },
+};
+
 export const DEMO_DATA = {
   WORKSPACES: DEMO_WORKSPACES,
   FEATURED:   FEATURED_CAMPAIGN,
@@ -839,6 +884,7 @@ export const DEMO_DATA = {
   GUARDRAILS_BY_WS: GUARDRAILS_BY_WS,
   PORTFOLIO_BY_WS:  PORTFOLIO_BY_WS,
   TESTING_BY_WS:    TESTING_BY_WS,
+  BRIEFING_BY_WS:   BRIEFING_BY_WS,
   ACTIVITY:   ACTIVITY_TICKER,
   VECTORS:    SCAN_VECTORS,
   EXECUTION:  EXECUTION_STEPS,

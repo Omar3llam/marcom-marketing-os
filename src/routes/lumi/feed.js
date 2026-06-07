@@ -239,6 +239,30 @@ feedRouter.get('/feed', async (req, res) => {
       logger.debug({ err: testErr.message, wsId }, '[lumi/feed] testing best-effort skipped');
     }
 
+    // Phase 5: account learnings — top patterns + promotable count.
+    // Reads persisted AccountPattern rows (cheap); the full extraction
+    // runs on the dedicated /briefing route, not on every feed poll.
+    let accountBriefing = { patterns: [], promotableCount: 0, conflictCount: 0 };
+    try {
+      const learned = await prisma.accountPattern.findMany({
+        where:   { workspaceId: wsId, status: { in: ['ESTABLISHED', 'EMERGING', 'CONFLICTED'] } },
+        orderBy: [{ status: 'asc' }, { confidence: 'desc' }],
+        take:    50,
+      });
+      accountBriefing = {
+        patterns: learned
+          .filter((p) => p.status !== 'CONFLICTED')
+          .slice(0, 5)
+          .map((p) => ({ id: p.id, kind: p.kind, statement: p.statement, status: p.status, accuracy: p.accuracy, confidence: p.confidence })),
+        promotableCount: learned.filter((p) =>
+          p.status === 'ESTABLISHED' && p.emitVerdict && p.threshold != null &&
+          p.accuracy != null && p.accuracy >= 0.6 && !p.promotedRuleId).length,
+        conflictCount: learned.filter((p) => p.status === 'CONFLICTED').length,
+      };
+    } catch (briefErr) {
+      logger.debug({ err: briefErr.message, wsId }, '[lumi/feed] briefing best-effort skipped');
+    }
+
     logger.debug({
       campaignStatesFound: campaignStates.length,
       pendingActionsFound: pendingActions.length,
@@ -377,6 +401,8 @@ feedRouter.get('/feed', async (req, res) => {
         startedAt:   t.startedAt,
         variants:    t.variants.map((v) => ({ label: v.label, isControl: v.isControl, isWinner: v.isWinner })),
       })),
+      // Phase 5 — account memory surfacing
+      accountBriefing,
     });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/feed] failed');
