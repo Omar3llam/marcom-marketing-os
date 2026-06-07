@@ -15,7 +15,11 @@ import { startTest, recordVariantMetrics, concludeTest } from '../../services/te
 export const testingRouter = Router();
 
 // Resolve workspaceId — mirrors lumi/feed.js + portfolio.js. Never
-// fabricate a synthetic id (workspaceId columns are @db.Uuid).
+/**
+ * Resolve the workspace identifier for a request.
+ * @param {object} req - Express-like request object; may include `workspaceId` (string) or `userId` (string).
+ * @returns {string|null} The workspaceId (UUID string) if available, otherwise `null`.
+ */
 async function resolveWorkspaceId(req) {
   if (req.workspaceId) return req.workspaceId;
   if (!req.userId) return null;

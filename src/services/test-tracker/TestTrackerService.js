@@ -36,7 +36,13 @@ const LEVEL_TO_TARGET = Object.freeze({
   ACCOUNT: 'campaign', CAMPAIGN: 'campaign', ADSET: 'adset', AD: 'ad', CREATIVE: 'creative',
 });
 
-/** PROPOSED → RUNNING. */
+/**
+ * Transition a test experiment to RUNNING and record its start time.
+ *
+ * @param {string} testId - The ID of the test experiment to start.
+ * @returns {object} The updated test experiment record.
+ * @throws {Error} If `testId` is not provided.
+ */
 export async function startTest(testId) {
   if (!testId) throw new Error('startTest: testId required');
   return prisma.testExperiment.update({
@@ -46,12 +52,16 @@ export async function startTest(testId) {
 }
 
 /**
- * Record per-variant performance counts. Batched as a single
- * $transaction over an array of updates — no `await` inside a loop,
- * so arch-check's no-N+1 rule is satisfied.
+ * Apply batched updates to test variants' performance metrics.
  *
- * @param {string} testId
- * @param {Array<{variantId, impressions?, clicks?, conversions?, spendMinor?, revenueMinor?}>} rows
+ * Performs a single atomic transaction that updates only the numeric fields
+ * provided for each variant (impressions, clicks, conversions, spendMinor,
+ * revenueMinor).
+ *
+ * @param {string} testId - ID of the test experiment to which variants belong.
+ * @param {Array<{variantId: string, impressions?: number, clicks?: number, conversions?: number, spendMinor?: number, revenueMinor?: number}>} rows - Update rows; entries without `variantId` are ignored.
+ * @returns {{updated: number}} Object with `updated` equal to the number of update operations executed (0 when no ops).
+ * @throws {Error} If `testId` is falsy.
  */
 export async function recordVariantMetrics(testId, rows = []) {
   if (!testId) throw new Error('recordVariantMetrics: testId required');
@@ -73,12 +83,14 @@ export async function recordVariantMetrics(testId, rows = []) {
 }
 
 /**
- * Pure: normalize a raw Meta /insights row into variant counts in
- * minor units. Exported for unit testing without a network call.
+ * Normalize a Meta insights row into integer counts and monetary values in minor units.
  *
- * @param {object} insight — Meta insights row (impressions, clicks, spend, conversions, purchase_roas)
- * @param {string} currency
- * @returns {{impressions, clicks, conversions, spendMinor, revenueMinor}}
+ * Handles an optional `_data` wrapper on the insight object. When `purchase_roas` is an array,
+ * selects the entry with `action_type === 'omni_purchase'` if present; otherwise uses the first entry.
+ *
+ * @param {object} insight - Meta insights row containing fields like `impressions`, `clicks`, `conversions`, `spend`, and `purchase_roas`.
+ * @param {string} currency - ISO currency code used to convert spend and revenue to minor units.
+ * @returns {{impressions: number, clicks: number, conversions: number, spendMinor: number, revenueMinor: number}}
  */
 export function parseVariantInsights(insight, currency) {
   const d = insight?._data || insight || {};
@@ -155,10 +167,16 @@ export async function refreshFromMeta(testId) {
 }
 
 /**
- * Pure: reconcile the readout's verdict with what is governance-valid
- * at the test's entity level. Returns the verdict+actionType to persist,
- * or { verdict:null } when no valid auto-action fits (memory-only).
- * Exported for unit testing.
+ * Map a readout verdict to a governance-valid action for the given entity level.
+ *
+ * Attempts to resolve the provided `readoutVerdict` to an `actionType` that
+ * passes target validation for `entityLevel`. If the original verdict is not
+ * valid, a fallback between `SCALE` and `REFRESH` is attempted. If no valid
+ * mapping exists, returns nulls to indicate no auto-action should be persisted.
+ *
+ * @param {string|null|undefined} readoutVerdict - Verdict produced by the readout (e.g., `'SCALE'`, `'REFRESH'`).
+ * @param {string} entityLevel - Entity level of the test used to derive the target for validation.
+ * @returns {{ verdict: string|null, actionType: string|null }} `verdict` and `actionType` to persist; `null` values indicate no governance-valid auto-action.
  */
 export function resolveVerdict(readoutVerdict, entityLevel) {
   if (!readoutVerdict) return { verdict: null, actionType: null };
@@ -178,11 +196,15 @@ export function resolveVerdict(readoutVerdict, entityLevel) {
 }
 
 /**
- * Conclude a test — THE LOOP. Best-effort live refresh, honest readout,
- * then one transaction that writes the outcome to memory and (when
- * warranted + valid) emits a PROPOSED verdict Decision.
+ * Finalizes a test: optionally refreshes live variant metrics, performs the readout, and persists the outcome and memory; creates a PROPOSED decision when a governance-valid verdict is resolved.
  *
- * @returns {Promise<{ readout, memoryId, decisionId, verdict, actionType }>}
+ * @param {string} testId - The testExperiment id to conclude.
+ * @param {Object} [options]
+ * @param {boolean} [options.refresh=true] - If true, attempts a best-effort refresh of variant metrics from Meta before computing the readout.
+ * @returns {Promise<{ readout: Object, memoryId: string|null, decisionId: string|null, verdict: string|null, actionType: string|null }>} An object containing the readout produced by the readTest engine, the created decisionMemoryEntry id, the created decision id (if any), and the resolved verdict and actionType (or `null` when not applicable).
+ * @throws {Error} If `testId` is falsy (message: "concludeTest: testId required").
+ * @throws {Error} If the test is not found (message: "concludeTest: test <id> not found").
+ * @throws {Error} If the test has fewer than 2 variants (message: "concludeTest: test <id> needs ≥2 variants").
  */
 export async function concludeTest(testId, { refresh = true } = {}) {
   if (!testId) throw new Error('concludeTest: testId required');

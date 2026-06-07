@@ -19,7 +19,11 @@ const DIM_LABEL = {
   HOOK: 'Hook A/B', OFFER: 'Offer angle', AUDIENCE: 'Audience', CREATIVE_ANGLE: 'Creative angle',
 };
 
-// Dimension chip.
+/**
+ * Render a compact, uppercase label for a test dimension.
+ * @param {{dimension: string}} props - `dimension` is the dimension key to display; if a friendly name exists in `DIM_LABEL` it will be used, otherwise `dimension` is shown as-is.
+ * @returns {JSX.Element} A styled <span> element containing the dimension label.
+ */
 function DimChip({ dimension }) {
   return (
     <span className="font-mono" style={{
@@ -30,7 +34,13 @@ function DimChip({ dimension }) {
   );
 }
 
-// Honest confidence badge.
+/**
+ * Render a compact confidence badge that displays a label and visual styling based on its strength.
+ *
+ * @param {Object} props
+ * @param {string} props.label - Confidence label text; `'HIGH'` or `'MODERATE'` are treated as strong confidence.
+ * @returns {JSX.Element} A styled <span> showing the label with a title that indicates whether the result is "Statistically warranted" (strong) or "Sample too thin / no clear winner — not callable" (other labels).
+ */
 function ConfidenceBadge({ label }) {
   const strong = label === 'HIGH' || label === 'MODERATE';
   return (
@@ -44,7 +54,20 @@ function ConfidenceBadge({ label }) {
   );
 }
 
-// One agenda suggestion card.
+/**
+ * Render a card for a single testing agenda suggestion with UI to mark it as proposed.
+ *
+ * @param {Object} props
+ * @param {Object} props.s - Suggestion data to display.
+ * @param {string} props.s.dimension - Dimension key (e.g., "HOOK", "OFFER") used for the dimension chip.
+ * @param {string} props.s.name - Display name of the suggested test.
+ * @param {string} props.s.metric - Metric being watched for the test.
+ * @param {number|string} props.s.priority - Priority score; displayed as a decimal with one digit.
+ * @param {string} props.s.hypothesis - Hypothesis text for the suggestion.
+ * @param {string} props.s.expectedSignal - Short description of the expected signal.
+ * @param {Array<{label: string, isControl?: boolean}>} props.s.variants - List of variants; each variant shows its label and whether it is the control.
+ * @returns {JSX.Element} A React element representing the suggestion card.
+ */
 function SuggestionCard({ s }) {
   const [proposed, setProposed] = React.useState(false);
   return (
@@ -82,6 +105,14 @@ function SuggestionCard({ s }) {
   );
 }
 
+/**
+ * Render the Testing OS page that presents a ranked weekly agenda, running experiments, and concluded tests for a workspace.
+ *
+ * Renders three sections sourced from demo data keyed by `workspace.id`: "This week's agenda" (suggested tests), "In flight" (running experiments, shown if any), and "Concluded" (closed-loop outcomes and rationale). Each section displays dimension chips, variant details, confidence/verdict indicators, and memory/write status where applicable.
+ *
+ * @param {{ id?: string, name?: string }} props.workspace - Workspace context used to select persona-specific demo data and to display the workspace name.
+ * @returns {JSX.Element} The Testing page component tree.
+ */
 export function TestingPage({ workspace }) {
   const persona = workspace?.id ?? 'apparel';
   const data = DEMO_DATA.TESTING_BY_WS?.[persona] ?? DEMO_DATA.TESTING_BY_WS.apparel;

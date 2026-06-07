@@ -24,14 +24,17 @@ const PLATFORM_SOURCES = new Set(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN'
 const TEST_MEMORY_PREFIX = 'test:';
 
 /**
- * Pure: fold platform MetricSnapshot rows into generator entity inputs.
- * Ratios derive from summed counts; frequency is the latest seen.
- * Exported for unit testing without a DB.
+ * Aggregate platform MetricSnapshot rows into generator-ready entity inputs.
  *
- * @param {Array<object>} snapshots — MetricSnapshot rows
- * @param {Map<string,{name,currency,level}>} [labelsById]
- * @param {Map<string,string>} [verdictByEntity]
- * @returns {Array<object>} generator entity inputs
+ * Each output entry represents one entity with summed numeric totals and derived metrics;
+ * CTR and ROAS are computed from aggregated counts, CPA uses aggregated spend converted to major units,
+ * and frequency uses the latest observed snapshot value.
+ *
+ * @param {Array<object>} snapshots - MetricSnapshot rows; only rows with supported platform sources are considered.
+ * @param {Map<string,{name?:string,currency?:string,level?:string}>} [labelsById] - Optional lookup to override an entity's name, currency, and level.
+ * @param {Map<string,string>} [verdictByEntity] - Optional lookup of precomputed verdicts by entityId; if missing, verdict defaults to `'HOLD'`.
+ * @returns {Array<object>} Array of entity inputs with shape: { entityId, name, level, currency, verdict, metrics }
+ * where `metrics` contains: { ctr, roas, frequency, cpa, conversions, spendMinor }.
  */
 export function buildEntityInputs(snapshots, labelsById = new Map(), verdictByEntity = new Map()) {
   const byEntity = new Map();
@@ -81,11 +84,10 @@ export function buildEntityInputs(snapshots, labelsById = new Map(), verdictByEn
 }
 
 /**
- * Pure: fold concluded-test memory rows into generator memory priors.
- * Exported for unit testing without a DB.
+ * Converts decision memory entries whose actionType starts with "test:" into generator memory priors.
  *
- * @param {Array<object>} entries — DecisionMemoryEntry rows
- * @returns {Array<{entityId, dimension, outcome, isSustainable}>}
+ * @param {Array<object>} entries - DecisionMemoryEntry rows to convert; entries with an actionType not starting with "test:" are ignored.
+ * @returns {Array<{entityId: string, dimension: string, outcome: string|null, isSustainable: boolean|null}>} An array of memory priors containing the entityId, the dimension (the actionType suffix after "test:"), outcome (rationale or `null`), and isSustainable (boolean or `null`).
  */
 export function buildMemoryInputs(entries) {
   return entries
@@ -99,8 +101,13 @@ export function buildMemoryInputs(entries) {
 }
 
 /**
- * Build the ranked weekly testing agenda for a workspace. NO writes.
- * @returns {Promise<Array<object>>}
+ * Builds a ranked weekly testing agenda for the given workspace.
+ *
+ * @param {string} workspaceId - Workspace identifier to build the agenda for.
+ * @param {{lookbackDays?: number}} [options] - Optional settings.
+ * @param {number} [options.lookbackDays=LOOKBACK_DAYS] - Number of days to look back when collecting metrics.
+ * @returns {Array<object>} An array of agenda item objects ordered by rank.
+ * @throws {Error} If `workspaceId` is not provided.
  */
 export async function getWeeklyAgenda(workspaceId, { lookbackDays = LOOKBACK_DAYS } = {}) {
   if (!workspaceId) throw new Error('getWeeklyAgenda: workspaceId required');
@@ -129,12 +136,13 @@ export async function getWeeklyAgenda(workspaceId, { lookbackDays = LOOKBACK_DAY
 }
 
 /**
- * Persist picked suggestions as PROPOSED experiments + their variants.
- * Two createMany calls; explicit UUIDs link parent→children (no N+1).
+ * Create proposed test experiments and their variants from agenda picks.
  *
- * @param {string} workspaceId
- * @param {Array<object>} picks — suggestions from getWeeklyAgenda (must carry entityId)
- * @returns {Promise<{ created: number, variants: number, testIds: string[] }>}
+ * Filters out invalid picks, generates UUIDs for each test, persists experiments and their variants together, and returns creation counts and generated test IDs.
+ *
+ * @param {string} workspaceId - Workspace identifier; required.
+ * @param {Array<object>} picks - Agenda picks to persist. Each pick must include `entityId` and `dimension`; `variants` may be provided as an array of variant objects.
+ * @returns {{ created: number, variants: number, testIds: string[] }} Counts of created tests and variants and the list of generated test IDs.
  */
 export async function commitAgenda(workspaceId, picks = []) {
   if (!workspaceId) throw new Error('commitAgenda: workspaceId required');

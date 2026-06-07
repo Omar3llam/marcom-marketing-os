@@ -1,6 +1,16 @@
 import { validateDecisionContract } from '@/types/decision.js';
 import { initialState, legal, persistHistory, clearStoredHistory } from './state.js';
 
+/**
+ * Update the decision workflow state in response to an action.
+ *
+ * Applies a validated Redux-style state transition based on `action.type`; if the action
+ * is not legal for the current `state.view` or the `type` is unrecognized, returns the
+ * original state unchanged.
+ *
+ * @param {Object} state - Current workflow state.
+ * @param {Object} action - Action object whose `type` determines the state transition and whose other fields provide payload (e.g., `mode`, `inputData`, `data`, `message`, `history`, `alerts`, etc.).
+ * @returns {Object} The next workflow state after applying the action, or the original `state` if no transition is performed.
 export function decisionReducer(state, action) {
   if (!legal(state.view, action.type)) return state;
 

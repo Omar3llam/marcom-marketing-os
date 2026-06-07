@@ -292,6 +292,11 @@ async function seedPhase2(ws) {
   });
 }
 
+/**
+ * Seed account-level reconciled channel snapshots, a secondary channel account, and a proposed allocation plan for the given workspace.
+ *
+ * Upserts: (1) ACCOUNT-level metric snapshots that demonstrate a reconciled META channel (platform vs GA4 actual), (2) a GOOGLE account with a platform snapshot (no GA4 actual, marked unverified), and (3) one PROPOSED AllocationPlan containing a monthly budget ceiling and projected metrics.
+ * @param {Object} ws - Workspace fixture object; must include `key` (string) used for deterministic ids and `currency` (string) used to convert monetary values to minor units.
 async function seedPhase3(ws) {
   // Apparel only: portfolio-level fixtures for the capital-allocation layer.
   //  • META account: an ACCOUNT-level platform snapshot + a GA4 ACTUAL
@@ -369,6 +374,20 @@ async function seedPhase3(ws) {
   });
 }
 
+/**
+ * Seed Phase 4 "Testing OS" data for a workspace: upserts several test experiments,
+ * their variants, linked decisions, and decision-memory entries to represent a weekly
+ * agenda and closed-loop outcomes.
+ *
+ * Creates four scenarios for the apparel ad set: a PROPOSED hook test, a RUNNING
+ * audience test with partial counts, a CONCLUDED hook test that produces a linked
+ * PROPOSED decision and a decision memory entry (loop closed), and a CONCLUDED
+ * thin-sample test that records a memory entry with no verdict.
+ *
+ * @param {Object} ws - Workspace fixture used for seeding.
+ * @param {string} ws.key - Deterministic key for id generation.
+ * @param {string} ws.currency - Currency code used for minor-unit conversions.
+ */
 async function seedPhase4(ws) {
   // Apparel only: the Testing OS — a weekly agenda in flight plus a
   // visibly CLOSED loop.
@@ -478,6 +497,11 @@ async function seedPhase4(ws) {
   });
 }
 
+/**
+ * Seed the database with deterministic fixtures, metric snapshots, decision graph data, guardrails, fatigue predictions, allocation plans, and testing OS records.
+ *
+ * Runs workspace seeding for all fixtures, then executes Phase 1–4 pipelines (decision graph, guardrails/fatigue, portfolio reconciliation, and testing) for the apparel workspace to create idempotent upserts of entities and metric snapshots.
+ */
 async function main() {
   for (const ws of WORKSPACES) {
     await seedWorkspace(ws);

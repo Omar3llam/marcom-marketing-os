@@ -5,6 +5,22 @@
 import { Icons } from './icons.jsx';
 import { VerdictPill, GlowDot, formatCurrencyCompact, formatBleed } from './primitives.jsx';
 
+/**
+ * Render the application's left sidebar with workspace info, navigation, recent decisions, notifications, and a Cmd+K palette.
+ *
+ * @param {Object} props - Component props.
+ * @param {boolean} props.collapsed - Whether the sidebar is collapsed (narrow) or expanded.
+ * @param {() => void} props.onToggle - Callback invoked to toggle sidebar collapsed state.
+ * @param {Object} props.workspace - Current workspace data (expects fields like initials, name, tag, market, spendMonthlyMinor, currency, channels, channelStates).
+ * @param {string} props.activeNav - Key of the currently active navigation item.
+ * @param {(key: string) => void} props.onNav - Navigation callback invoked with a navigation key.
+ * @param {Array<Object>} props.sessions - Recent decision/session objects (expects at least id, label, verdict, ts).
+ * @param {Array<Object>} [props.radarAlerts=[]] - List of radar alert objects; high-priority alerts are surfaced in the UI.
+ * @param {Object<string, Object>} [props.personas] - Persona/workspace map passed to the workspace switcher.
+ * @param {(personaId: string) => void} [props.onSwitchPersona] - Callback invoked when a persona is selected.
+ * @param {string} [props.currentPersona] - ID of the currently selected persona.
+ * @returns {JSX.Element} The sidebar React element.
+ */
 export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sessions, radarAlerts = [], personas, onSwitchPersona, currentPersona }) {
   const coreTools = [
     { key: 'home',      label: 'Home',        sub: 'Account pulse',                Icon: Icons.Layout },
