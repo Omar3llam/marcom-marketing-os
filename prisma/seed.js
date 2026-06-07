@@ -478,6 +478,89 @@ async function seedPhase4(ws) {
   });
 }
 
+async function seedPhase5(ws) {
+  // Apparel only: the Memory Moat — what Lumi has learned about this account.
+  //  • An ESTABLISHED, high-accuracy fatigue ceiling (promotable, un-promoted).
+  //  • An EMERGING scaling window (thin support — not yet promotable).
+  //  • An informational creative-angle learning (no executable spec).
+  //  • A CONFLICTED pair on the same audience (honest "review" state).
+  //  • A small PatternObservation audit trail proving "was Lumi right?".
+  //  • cohortTag set, networkConsent OFF — the network stays dark (honest cold start).
+  const workspaceId = det(`ws:${ws.key}`);
+  const day = (n) => new Date(DATE.getTime() - n * 86_400_000);
+
+  await prisma.workspace.update({
+    where: { id: workspaceId },
+    data:  { cohortTag: 'EG-apparel', networkConsent: false, consentedAt: null },
+  });
+
+  async function pattern(key, data) {
+    const id = det(`p5pat:${ws.key}:${key}`);
+    const row = { workspaceId, patternKey: key, firstObservedAt: day(60), lastObservedAt: day(5), ...data };
+    await prisma.accountPattern.upsert({ where: { id }, create: { id, ...row }, update: row });
+    return id;
+  }
+
+  // 1. ESTABLISHED + promotable fatigue ceiling.
+  const fatigueId = await pattern('FATIGUE|ADSET|cold|KILL', {
+    kind: 'FATIGUE_CEILING',
+    statement: 'On cold adsets, KILL once frequency passes ~3.5 (5× seen, right 85%).',
+    basis: 'weighted-median frequency at KILL across 5 decisions',
+    support: 5, effectiveSupport: 4.5, accuracy: 0.85, confidence: 0.8, status: 'ESTABLISHED',
+    metric: 'frequency', scopeLevel: 'ADSET', audienceTag: 'cold',
+    comparator: 'GTE', threshold: 3.5, unit: 'RATIO', emitVerdict: 'KILL', sustainedDays: 1,
+  });
+  // its accuracy audit trail
+  const obs = [
+    { occurrenceKey: 'p5obs-1', predicted: 'KILL', actual: 'sustained', correct: true,  observedAt: day(40) },
+    { occurrenceKey: 'p5obs-2', predicted: 'KILL', actual: 'sustained', correct: true,  observedAt: day(28) },
+    { occurrenceKey: 'p5obs-3', predicted: 'KILL', actual: 'regressed', correct: false, observedAt: day(18) },
+    { occurrenceKey: 'p5obs-4', predicted: 'KILL', actual: 'sustained', correct: true,  observedAt: day(9) },
+  ];
+  for (const o of obs) {
+    const id = det(`p5obs:${ws.key}:${o.occurrenceKey}`);
+    const row = { workspaceId, patternId: fatigueId, entityId: det(`adset:${ws.key}:Carousel · 5 SKUs`), ...o };
+    await prisma.patternObservation.upsert({ where: { id }, create: { id, ...row }, update: row });
+  }
+
+  // 2. EMERGING scaling window (thin support).
+  await pattern('SCALING|CAMPAIGN|null', {
+    kind: 'SCALING_WINDOW',
+    statement: 'Scaling campaigns held when ROAS was ≥ 3.0 (2× seen, held 100%).',
+    basis: 'ROAS floor where SCALE decisions sustained across 2 decisions',
+    support: 2, effectiveSupport: 2.0, accuracy: 1.0, confidence: 0.66, status: 'EMERGING',
+    metric: 'roas', scopeLevel: 'CAMPAIGN', audienceTag: null,
+    comparator: 'GTE', threshold: 3.0, unit: 'RATIO', emitVerdict: 'SCALE', sustainedDays: 1,
+  });
+
+  // 3. Informational creative-angle longevity.
+  await pattern('ANGLE|account', {
+    kind: 'CREATIVE_ANGLE_LONGEVITY',
+    statement: 'Hook / creative-angle tests produced a confident winner in 2 of 3 runs — keep refreshing the angle.',
+    basis: 'concluded HOOK/CREATIVE_ANGLE tests with a called winner',
+    support: 3, effectiveSupport: 3.0, accuracy: 0.66, confidence: 0.66, status: 'ESTABLISHED',
+    metric: null, scopeLevel: null, audienceTag: null,
+  });
+
+  // 4. CONFLICTED pair on the SAME audience — opposite actions, honest "review".
+  await pattern('FATIGUE|ADSET|warm|KILL', {
+    kind: 'FATIGUE_CEILING',
+    statement: 'On warm adsets, KILL once frequency passes ~4.0 (3× seen, right 70%).',
+    basis: 'weighted-median frequency at KILL across 3 decisions',
+    support: 3, effectiveSupport: 3.0, accuracy: 0.7, confidence: 0.7, status: 'CONFLICTED',
+    metric: 'frequency', scopeLevel: 'ADSET', audienceTag: 'warm',
+    comparator: 'GTE', threshold: 4.0, unit: 'RATIO', emitVerdict: 'KILL', sustainedDays: 1,
+  });
+  await pattern('FATIGUE|ADSET|warm|REFRESH', {
+    kind: 'FATIGUE_CEILING',
+    statement: 'On warm adsets, REFRESH once frequency passes ~4.2 (3× seen, right 70%).',
+    basis: 'weighted-median frequency at REFRESH across 3 decisions',
+    support: 3, effectiveSupport: 3.0, accuracy: 0.7, confidence: 0.7, status: 'CONFLICTED',
+    metric: 'frequency', scopeLevel: 'ADSET', audienceTag: 'warm',
+    comparator: 'GTE', threshold: 4.2, unit: 'RATIO', emitVerdict: 'REFRESH', sustainedDays: 1,
+  });
+}
+
 async function main() {
   for (const ws of WORKSPACES) {
     await seedWorkspace(ws);
@@ -486,7 +569,8 @@ async function main() {
   await seedPhase2(WORKSPACES[0]);        // apparel guardrails + fatigue prediction
   await seedPhase3(WORKSPACES[0]);        // apparel portfolio + blended truth + allocation plan
   await seedPhase4(WORKSPACES[0]);        // apparel testing OS — agenda + closed loop
-  console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction + allocation.');
+  await seedPhase5(WORKSPACES[0]);        // apparel memory moat — learnings + conflicts
+  console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction + allocation + testing + memory.');
 }
 
 main()
