@@ -13,7 +13,8 @@
 import { createHash } from 'crypto';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { aggregateNetwork, NETWORK_STATUS } from './networkEngine.js';
+import { aggregateNetwork }  from './networkEngine.js';
+import { NETWORK_STATUS }    from './networkTypes.js';
 
 // Opaque, non-reversible workspace token used ONLY to count distinct
 // contributors for k-anonymity. Never returned to any caller.
