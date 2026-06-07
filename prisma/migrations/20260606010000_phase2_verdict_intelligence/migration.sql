@@ -9,9 +9,13 @@
 ALTER TYPE "Verdict" ADD VALUE 'REALLOCATE';
 ALTER TYPE "Verdict" ADD VALUE 'REFRESH';
 
--- AlterEnum: new verdict execution action types
-ALTER TYPE "ActionType" ADD VALUE 'REALLOCATE_BUDGET';
-ALTER TYPE "ActionType" ADD VALUE 'REFRESH_CREATIVE';
+-- NOTE: ActionType is a Prisma-level enum only — in the database the
+-- audit_logs.actionType / execution columns are TEXT (see the init
+-- migration), so there is no "ActionType" Postgres type to ALTER. The
+-- new REALLOCATE_BUDGET / REFRESH_CREATIVE values are enforced
+-- application-side (ALLOWED_ACTIONS in src/routes/execution/meta.js and
+-- validateActionTarget in src/services/metaExecutionService.js). No DDL
+-- is needed here for them.
 
 -- CreateEnum
 CREATE TYPE "Comparator" AS ENUM ('GT', 'GTE', 'LT', 'LTE');
