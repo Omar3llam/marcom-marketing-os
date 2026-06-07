@@ -160,3 +160,52 @@ export {
   type ThresholdUnit,
   type GuardrailRule,
 } from './guardrailRule.schema';
+
+// ──────────────────────────────────────────────────────────
+// Phase 3 — Capital allocation (blended truth + pacing + allocation + portfolio)
+// ──────────────────────────────────────────────────────────
+export {
+  CoverageSchema,
+  ConfidenceSchema,
+  BlendedChannelSchema,
+  BlendedPortfolioSchema,
+  BlendedTruthSchema,
+  type Coverage,
+  type Confidence,
+  type BlendedChannel,
+  type BlendedPortfolio,
+  type BlendedTruth,
+} from './blendedTruth.schema';
+
+export {
+  PaceStatusSchema,
+  PacingSchema,
+  type PaceStatus,
+  type Pacing,
+} from './pacing.schema';
+
+export {
+  GoalTypeSchema,
+  AllocationStatusSchema,
+  AllocationGoalSchema,
+  AllocationMoveSchema,
+  AllocationProjectedSchema,
+  AllocationPlanPreviewSchema,
+  AllocationPlanSchema,
+  type GoalType,
+  type AllocationStatus,
+  type AllocationGoal,
+  type AllocationMove,
+  type AllocationProjected,
+  type AllocationPlanPreview,
+  type AllocationPlan,
+} from './allocationPlan.schema';
+
+export {
+  PortfolioTotalsSchema,
+  PortfolioChannelSchema,
+  PortfolioViewSchema,
+  type PortfolioTotals,
+  type PortfolioChannel,
+  type PortfolioView,
+} from './portfolio.schema';

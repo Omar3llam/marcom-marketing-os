@@ -609,6 +609,129 @@ const GUARDRAILS_BY_WS = {
   },
 };
 
+// ── Phase 3: portfolio + blended truth + capital allocation ───────
+// All money is integer minor units. Each channel carries the platform
+// CLAIM and (where a GA4/Shopify connector exists) the ACTUAL — the
+// blended truth allocation keys off the actual, flagging UNVERIFIED
+// channels. Pacing answers "Meta exhausts budget N days early".
+const PORTFOLIO_BY_WS = {
+  apparel: {
+    currency: 'EGP',
+    monthlyBudgetMinor: 15000000, // EGP 150,000 ceiling
+    totals: {
+      spendMinor: 12431000, platformRevenueMinor: 14658600, blendedRevenueMinor: 13400000,
+      platformRoas: 1.18, blendedRoas: 1.08, gapPct: 0.086, reconciledCount: 1, unverifiedCount: 1,
+    },
+    channels: [
+      {
+        channelId: 'acct-meta', channel: 'Meta', currency: 'EGP',
+        spendMinor: 8431000, platformRevenueMinor: 5058600, actualRevenueMinor: 3800000,
+        blendedRevenueMinor: 3800000, gapPct: 0.249, platformRoas: 0.60, blendedRoas: 0.45,
+        coverage: 'RECONCILED', confidence: 'HIGH',
+        pacing: { status: 'OVER', daysEarly: 6, projectedSpendMinor: 10100000 },
+      },
+      {
+        channelId: 'acct-google', channel: 'Google', currency: 'EGP',
+        spendMinor: 4000000, platformRevenueMinor: 9600000, actualRevenueMinor: null,
+        blendedRevenueMinor: 9600000, gapPct: 0, platformRoas: 2.40, blendedRoas: 2.40,
+        coverage: 'UNVERIFIED', confidence: 'LOW',
+        pacing: { status: 'UNDER', daysEarly: -4, projectedSpendMinor: 4600000 },
+      },
+    ],
+    // Scenario preview for the budget+goal recommender.
+    allocation: {
+      goal: { type: 'GROWTH_CEILING', value: null },
+      totalBudgetMinor: 15000000, currency: 'EGP',
+      allocations: [
+        { channelId: 'acct-google', channel: 'Google', verdict: 'SCALE', currentSpendMinor: 4000000, recommendedSpendMinor: 9000000, deltaMinor: 5000000, blendedRoas: 2.40, rationale: 'Grow Google by 5,000,000 (SCALE, blended ROAS 2.40x) — strongest marginal return.' },
+        { channelId: 'acct-meta', channel: 'Meta', verdict: 'REALLOCATE', currentSpendMinor: 8431000, recommendedSpendMinor: 6000000, deltaMinor: -2431000, blendedRoas: 0.45, rationale: 'Trim Meta by 2,431,000 (REALLOCATE, blended ROAS 0.45x) — GA4 shows ~25% over-report, below break-even.' },
+      ],
+      projected: { blendedRevenueMinor: 24300000, projectedCpaMinor: 41000, merBefore: 1.08, merAfter: 1.62 },
+      reasoningTrail: [
+        'Goal GROWTH_CEILING: distribute 150,000 EGP toward marginal efficiency; projected blended ROAS 1.08x → 1.62x.',
+        'Grow Google (blended ROAS 2.40x) — strongest marginal return.',
+        'Trim Meta: GA4 actual shows ~25% revenue over-report; blended ROAS 0.45x, below break-even.',
+      ],
+    },
+  },
+  riyadh: {
+    currency: 'SAR',
+    monthlyBudgetMinor: 38000000,
+    totals: {
+      spendMinor: 21000000, platformRevenueMinor: 58000000, blendedRevenueMinor: 49000000,
+      platformRoas: 2.76, blendedRoas: 2.33, gapPct: 0.155, reconciledCount: 1, unverifiedCount: 1,
+    },
+    channels: [
+      {
+        channelId: 'acct-snap', channel: 'Snap', currency: 'SAR',
+        spendMinor: 13000000, platformRevenueMinor: 39000000, actualRevenueMinor: 31000000,
+        blendedRevenueMinor: 31000000, gapPct: 0.205, platformRoas: 3.00, blendedRoas: 2.38,
+        coverage: 'RECONCILED', confidence: 'HIGH',
+        pacing: { status: 'OVER', daysEarly: 3, projectedSpendMinor: 15000000 },
+      },
+      {
+        channelId: 'acct-meta', channel: 'Meta', currency: 'SAR',
+        spendMinor: 8000000, platformRevenueMinor: 19000000, actualRevenueMinor: null,
+        blendedRevenueMinor: 19000000, gapPct: 0, platformRoas: 2.38, blendedRoas: 2.38,
+        coverage: 'UNVERIFIED', confidence: 'LOW',
+        pacing: { status: 'ON_TRACK', daysEarly: 0, projectedSpendMinor: 16000000 },
+      },
+    ],
+    allocation: {
+      goal: { type: 'GROWTH_CEILING', value: null },
+      totalBudgetMinor: 38000000, currency: 'SAR',
+      allocations: [
+        { channelId: 'acct-snap', channel: 'Snap', verdict: 'SCALE', currentSpendMinor: 13000000, recommendedSpendMinor: 22000000, deltaMinor: 9000000, blendedRoas: 2.38, rationale: 'Grow Snap by 9,000,000 (SCALE, blended ROAS 2.38x).' },
+        { channelId: 'acct-meta', channel: 'Meta', verdict: 'HOLD', currentSpendMinor: 8000000, recommendedSpendMinor: 16000000, deltaMinor: 8000000, blendedRoas: 2.38, rationale: 'Grow Meta by 8,000,000 (HOLD, blended ROAS 2.38x — unverified, pending GA4).' },
+      ],
+      projected: { blendedRevenueMinor: 90400000, projectedCpaMinor: 18000, merBefore: 2.33, merAfter: 2.38 },
+      reasoningTrail: [
+        'Goal GROWTH_CEILING: distribute 380,000 SAR toward marginal efficiency; projected blended ROAS 2.33x → 2.38x.',
+        'Snap reconciles via Shopify — grow it first.',
+        'Meta is unverified (no connector yet) — grow cautiously, flag low-confidence.',
+      ],
+    },
+  },
+  dubai: {
+    currency: 'AED',
+    monthlyBudgetMinor: 12000000,
+    totals: {
+      spendMinor: 6800000, platformRevenueMinor: 14000000, blendedRevenueMinor: 14000000,
+      platformRoas: 2.06, blendedRoas: 2.06, gapPct: 0, reconciledCount: 0, unverifiedCount: 2,
+    },
+    channels: [
+      {
+        channelId: 'acct-linkedin', channel: 'LinkedIn', currency: 'AED',
+        spendMinor: 3800000, platformRevenueMinor: 9800000, actualRevenueMinor: null,
+        blendedRevenueMinor: 9800000, gapPct: 0, platformRoas: 2.58, blendedRoas: 2.58,
+        coverage: 'UNVERIFIED', confidence: 'LOW',
+        pacing: { status: 'OVER', daysEarly: 5, projectedSpendMinor: 4600000 },
+      },
+      {
+        channelId: 'acct-meta', channel: 'Meta', currency: 'AED',
+        spendMinor: 3000000, platformRevenueMinor: 4200000, actualRevenueMinor: null,
+        blendedRevenueMinor: 4200000, gapPct: 0, platformRoas: 1.40, blendedRoas: 1.40,
+        coverage: 'UNVERIFIED', confidence: 'LOW',
+        pacing: { status: 'UNDER', daysEarly: -6, projectedSpendMinor: 2400000 },
+      },
+    ],
+    allocation: {
+      goal: { type: 'GROWTH_CEILING', value: null },
+      totalBudgetMinor: 12000000, currency: 'AED',
+      allocations: [
+        { channelId: 'acct-linkedin', channel: 'LinkedIn', verdict: 'SCALE', currentSpendMinor: 3800000, recommendedSpendMinor: 8000000, deltaMinor: 4200000, blendedRoas: 2.58, rationale: 'Grow LinkedIn by 4,200,000 (SCALE, blended ROAS 2.58x).' },
+        { channelId: 'acct-meta', channel: 'Meta', verdict: 'REALLOCATE', currentSpendMinor: 3000000, recommendedSpendMinor: 4000000, deltaMinor: 1000000, blendedRoas: 1.40, rationale: 'Hold-grow Meta by 1,000,000 (REALLOCATE, blended ROAS 1.40x).' },
+      ],
+      projected: { blendedRevenueMinor: 26240000, projectedCpaMinor: 28000, merBefore: 2.06, merAfter: 2.19 },
+      reasoningTrail: [
+        'Goal GROWTH_CEILING: distribute 120,000 AED toward marginal efficiency; projected blended ROAS 2.06x → 2.19x.',
+        'No GA4/Shopify connector yet — every channel is UNVERIFIED; numbers rest on platform claims.',
+        'LinkedIn carries the best platform ROAS — grow it, but verify before scaling hard.',
+      ],
+    },
+  },
+};
+
 export const DEMO_DATA = {
   WORKSPACES: DEMO_WORKSPACES,
   FEATURED:   FEATURED_CAMPAIGN,
@@ -617,6 +740,7 @@ export const DEMO_DATA = {
   DRILLDOWN_BY_WS: DRILLDOWN_BY_WS,
   FATIGUE_BY_WS:   FATIGUE_BY_WS,
   GUARDRAILS_BY_WS: GUARDRAILS_BY_WS,
+  PORTFOLIO_BY_WS:  PORTFOLIO_BY_WS,
   ACTIVITY:   ACTIVITY_TICKER,
   VECTORS:    SCAN_VECTORS,
   EXECUTION:  EXECUTION_STEPS,

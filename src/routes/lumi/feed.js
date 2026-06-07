@@ -7,6 +7,7 @@
 import { Router }  from 'express';
 import { prisma }  from '../../lib/prisma.js';
 import { logger }  from '../../utils/logger.js';
+import { getPortfolio } from '../../services/portfolio/PortfolioService.js';
 
 export const feedRouter = Router();
 
@@ -162,7 +163,7 @@ feedRouter.get('/feed', async (req, res) => {
   try {
     logger.debug({ workspaceId: wsId }, '[lumi/feed] fetching data');
 
-    const [campaignStates, pendingActions, recentMemory, fatiguePredictions, guardrailVerdicts] = await Promise.all([
+    const [campaignStates, pendingActions, recentMemory, fatiguePredictions, guardrailVerdicts, allocationPlans] = await Promise.all([
       prisma.campaignState.findMany({
         where:   { workspaceId: wsId },
         orderBy: { lastAnalysis: 'desc' },
@@ -189,7 +190,35 @@ feedRouter.get('/feed', async (req, res) => {
         orderBy: { createdAt: 'desc' },
         take:    100,
       }).catch(() => []),
+      // Phase 3: open (proposed) capital-allocation plans awaiting human confirm.
+      prisma.allocationPlan.findMany({
+        where:   { workspaceId: wsId, status: 'PROPOSED' },
+        orderBy: { createdAt: 'desc' },
+        take:    20,
+      }).catch(() => []),
     ]);
+
+    // Phase 3: pacing alerts (best-effort; never blocks the feed).
+    let pacingAlerts = [];
+    try {
+      const portfolio = await getPortfolio(wsId);
+      if (portfolio?.pacing && portfolio.pacing.status === 'OVER') {
+        pacingAlerts.push({
+          scope: 'portfolio',
+          status: portfolio.pacing.status,
+          daysEarly: portfolio.pacing.daysEarly,
+          projectedSpendMinor: portfolio.pacing.projectedSpendMinor,
+          monthlyBudgetMinor: portfolio.monthlyBudgetMinor,
+        });
+      }
+      for (const ch of portfolio?.channels ?? []) {
+        if (ch.pacing && ch.pacing.status === 'OVER') {
+          pacingAlerts.push({ scope: 'channel', channelId: ch.channelId, channel: ch.channel, status: ch.pacing.status, daysEarly: ch.pacing.daysEarly });
+        }
+      }
+    } catch (pacingErr) {
+      logger.debug({ err: pacingErr.message, wsId }, '[lumi/feed] pacing best-effort skipped');
+    }
 
     logger.debug({
       campaignStatesFound: campaignStates.length,
@@ -296,6 +325,18 @@ feedRouter.get('/feed', async (req, res) => {
         rationale:   d.diagnosis,
         rule:        d.rootCause?.replace(/^guardrail:/, '') ?? null,
         status:      d.status, // PROPOSED → awaits human confirm
+      })),
+      // Phase 3 — capital-allocation surfacing
+      pacingAlerts,
+      allocationPlans: allocationPlans.map(p => ({
+        id:                p.id,
+        goalType:          p.goalType,
+        totalBudgetMinor:  p.totalBudgetMinor,
+        currency:          p.currency,
+        merBefore:         p.merBefore,
+        merAfter:          p.merAfter,
+        projectedCpaMinor: p.projectedCpaMinor,
+        status:            p.status, // PROPOSED → awaits human confirm
       })),
     });
   } catch (err) {

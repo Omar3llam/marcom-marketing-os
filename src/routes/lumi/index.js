@@ -9,6 +9,7 @@ import { quickActionHandler }        from './quickaction.js';
 import { feedRouter, demoFeedHandler } from './feed.js';
 import { intelligenceRouter }        from './intelligence.js';
 import { healthRouter }              from './health.js';
+import { portfolioRouter }           from './portfolio.js';
 
 export const lumiRouter = Router();
 
@@ -20,3 +21,4 @@ lumiRouter.use('/rollback', rollbackRouter);
 lumiRouter.use('/', feedRouter);
 lumiRouter.use('/', intelligenceRouter);
 lumiRouter.use('/', healthRouter);
+lumiRouter.use('/', portfolioRouter);
