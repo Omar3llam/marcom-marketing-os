@@ -8,10 +8,14 @@
 import { Icons } from './icons.jsx';
 
 const VERDICT_CFG = {
-  KILL:  { cls: 'v-kill',  label: 'KILL',  Icon: Icons.Skull },
-  HOLD:  { cls: 'v-hold',  label: 'HOLD',  Icon: Icons.Pause2 },
-  SCALE: { cls: 'v-scale', label: 'SCALE', Icon: Icons.Rocket },
-  TEST:  { cls: 'v-hold',  label: 'TEST',  Icon: Icons.ScanSearch },
+  KILL:       { cls: 'v-kill',    label: 'KILL',       Icon: Icons.Skull },
+  HOLD:       { cls: 'v-hold',    label: 'HOLD',       Icon: Icons.Pause2 },
+  SCALE:      { cls: 'v-scale',   label: 'SCALE',      Icon: Icons.Rocket },
+  TEST:       { cls: 'v-hold',    label: 'TEST',       Icon: Icons.ScanSearch },
+  // Phase 2 — first-class verdicts
+  REALLOCATE: { cls: 'v-realloc', label: 'REALLOCATE', Icon: Icons.ArrowUpRight },
+  REFRESH:    { cls: 'v-refresh', label: 'REFRESH',    Icon: Icons.RotateCcw },
+  WATCH:      { cls: 'v-watch',   label: 'WATCH',      Icon: Icons.Eye },
 };
 
 export function VerdictPill({ verdict, size = 'sm', className = '', showIcon = true }) {

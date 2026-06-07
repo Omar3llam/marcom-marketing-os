@@ -135,9 +135,28 @@ export {
   DecisionSchema,
   OutcomeSnapshotSchema,
   DecisionMemoryEntrySchema,
+  LevelVerdictSchema,
   type Verdict,
   type DecisionStatus,
   type Decision,
   type OutcomeSnapshot,
   type DecisionMemoryEntry,
+  type LevelVerdict,
 } from './decision.schema';
+
+// ──────────────────────────────────────────────────────────
+// Phase 2 substrate — Fatigue prediction + Guardrail rules
+// ──────────────────────────────────────────────────────────
+export {
+  FatiguePredictionSchema,
+  type FatiguePrediction,
+} from './fatiguePrediction.schema';
+
+export {
+  ComparatorSchema,
+  ThresholdUnitSchema,
+  GuardrailRuleSchema,
+  type Comparator,
+  type ThresholdUnit,
+  type GuardrailRule,
+} from './guardrailRule.schema';

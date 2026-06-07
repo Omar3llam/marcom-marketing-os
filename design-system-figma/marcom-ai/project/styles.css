@@ -44,6 +44,13 @@
   --c-scale: #10B981;
   --c-scale-bg: rgba(16,185,129,0.10);
   --c-scale-text: #059669;
+  /* Phase 2 verdicts */
+  --c-realloc: #6366F1;
+  --c-realloc-bg: rgba(99,102,241,0.10);
+  --c-realloc-text: #4F46E5;
+  --c-refresh: #06B6D4;
+  --c-refresh-bg: rgba(6,182,212,0.10);
+  --c-refresh-text: #0891B2;
 
   /* Stage */
   --c-stage-dying: #EF4444;
@@ -267,9 +274,12 @@ h1, h2, h3 { overflow-wrap: break-word; }
 }
 
 /* ── Verdict colors ────────────────────────────────────────── */
-.v-kill  { color: var(--c-kill-text);  background: var(--c-kill-bg); }
-.v-hold  { color: var(--c-hold-text);  background: var(--c-hold-bg); }
-.v-scale { color: var(--c-scale-text); background: var(--c-scale-bg); }
+.v-kill    { color: var(--c-kill-text);    background: var(--c-kill-bg); }
+.v-hold    { color: var(--c-hold-text);    background: var(--c-hold-bg); }
+.v-scale   { color: var(--c-scale-text);   background: var(--c-scale-bg); }
+.v-realloc { color: var(--c-realloc-text); background: var(--c-realloc-bg); }
+.v-refresh { color: var(--c-refresh-text); background: var(--c-refresh-bg); }
+.v-watch   { color: var(--c-text-muted);   background: var(--c-surface-elevated); }
 
 /* ── Scrollbar (subtle) ────────────────────────────────────── */
 ::-webkit-scrollbar { width: 10px; height: 10px; }

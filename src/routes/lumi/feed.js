@@ -162,7 +162,7 @@ feedRouter.get('/feed', async (req, res) => {
   try {
     logger.debug({ workspaceId: wsId }, '[lumi/feed] fetching data');
 
-    const [campaignStates, pendingActions, recentMemory] = await Promise.all([
+    const [campaignStates, pendingActions, recentMemory, fatiguePredictions, guardrailVerdicts] = await Promise.all([
       prisma.campaignState.findMany({
         where:   { workspaceId: wsId },
         orderBy: { lastAnalysis: 'desc' },
@@ -177,6 +177,18 @@ feedRouter.get('/feed', async (req, res) => {
         orderBy: { createdAt: 'desc' },
         take:    200,
       }),
+      // Phase 2: forward-looking fatigue forecasts (unresolved).
+      prisma.fatiguePrediction.findMany({
+        where:   { workspaceId: wsId, resolvedAt: null },
+        orderBy: { projectedBreachDate: 'asc' },
+        take:    100,
+      }).catch(() => []),
+      // Phase 2: guardrail-sourced radar verdicts awaiting human confirm.
+      prisma.decision.findMany({
+        where:   { workspaceId: wsId, status: 'PROPOSED', rootCause: { startsWith: 'guardrail:' } },
+        orderBy: { createdAt: 'desc' },
+        take:    100,
+      }).catch(() => []),
     ]);
 
     logger.debug({
@@ -240,6 +252,11 @@ feedRouter.get('/feed', async (req, res) => {
             impactDurationHrs: mem.impactDurationHrs,
           })),
         creative_assets: p.creativeAssets || null,
+        // Phase 2: multi-level drill-down + forward-looking forecast +
+        // provenance (reactive analysis vs a user guardrail rule).
+        source:          p.source === 'guardrail' ? 'guardrail' : 'reactive',
+        levelVerdicts:   p.levelVerdicts || p.strategicAnalysis?.levelVerdicts || [],
+        fatigueForecast: p.fatigueForecast || p.strategicAnalysis?.fatigueForecast || null,
       });
     }
 
@@ -262,6 +279,24 @@ feedRouter.get('/feed', async (req, res) => {
       workspaceId: wsId,
       generatedAt: new Date().toISOString(),
       campaigns,
+      // Phase 2 — predictive + guardrail surfacing
+      fatiguePredictions: fatiguePredictions.map(fp => ({
+        entityId:            fp.entityId,
+        entityLevel:         fp.entityLevel,
+        metric:              fp.metric,
+        ceiling:             fp.ceiling,
+        projectedBreachDate: fp.projectedBreachDate,
+        confidence:          fp.confidence,
+        basis:               fp.basis,
+      })),
+      guardrailVerdicts: guardrailVerdicts.map(d => ({
+        entityId:    d.entityId,
+        entityLevel: d.entityLevel,
+        verdict:     d.verdict,
+        rationale:   d.diagnosis,
+        rule:        d.rootCause?.replace(/^guardrail:/, '') ?? null,
+        status:      d.status, // PROPOSED → awaits human confirm
+      })),
     });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/feed] failed');

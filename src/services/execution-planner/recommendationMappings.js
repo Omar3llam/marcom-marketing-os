@@ -83,4 +83,30 @@ export const RECOMMENDATION_TO_EXECUTION = Object.freeze({
     nodes:         [NODE_TYPE.CONTINUE_MONITORING],
     edges:         [],
   },
+
+  // ── Phase 2: REALLOCATE verdict → move budget ────────────────
+  [REC_TYPE.REALLOCATE_BUDGET]: {
+    executionType: EXECUTION_TYPE.BUDGET_REALLOCATION,
+    priority:      PLAN_PRIORITY.HIGH,
+    nodes: [
+      NODE_TYPE.CALCULATE_OPTIMAL_BUDGET,
+      NODE_TYPE.GENERATE_REALLOCATION_PLAN,
+    ],
+    edges: [
+      { from: NODE_TYPE.CALCULATE_OPTIMAL_BUDGET, to: NODE_TYPE.GENERATE_REALLOCATION_PLAN },
+    ],
+  },
+
+  // ── Phase 2: REFRESH verdict → swap creative ─────────────────
+  [REC_TYPE.REFRESH_CREATIVE]: {
+    executionType: EXECUTION_TYPE.VISUAL_GENERATION,
+    priority:      PLAN_PRIORITY.HIGH,
+    nodes: [
+      NODE_TYPE.GENERATE_VISUAL_BRIEF,
+      NODE_TYPE.GENERATE_CAPTION_VARIANTS,
+    ],
+    edges: [
+      { from: NODE_TYPE.GENERATE_VISUAL_BRIEF, to: NODE_TYPE.GENERATE_CAPTION_VARIANTS },
+    ],
+  },
 });

@@ -145,10 +145,20 @@ function buildEndpoint(actionType, targetId, options) {
 
     case 'INCREASE_BUDGET':
     case 'DECREASE_BUDGET':
-    case 'SCALE_CAMPAIGN': {
+    case 'SCALE_CAMPAIGN':
+    case 'REALLOCATE_BUDGET': {
+      // REALLOCATE moves budget; the cross-entity move is orchestrated by the
+      // execution graph (reduce source, raise target). At the Meta API layer
+      // this sets the resolved daily_budget on the target entity.
       const dailyBudget = options.dailyBudget || options.amount;
       if (!dailyBudget) throw new Error('dailyBudget required for budget actions');
       return `/${targetId}?daily_budget=${Math.round(dailyBudget)}`;
+    }
+
+    case 'REFRESH_CREATIVE': {
+      const creativeId = options.creativeId || options.creative_id;
+      if (!creativeId) throw new Error('creativeId required for REFRESH_CREATIVE');
+      return `/${targetId}?creative[creative_id]=${creativeId}`;
     }
 
     case 'OPTIMIZE_CAMPAIGN': {
@@ -177,6 +187,8 @@ export function validateActionTarget(actionType, targetType) {
     DECREASE_BUDGET: ['campaign', 'adset'],
     PAUSE_ADSET: ['adset'],
     RESUME_ADSET: ['adset'],
+    REALLOCATE_BUDGET: ['campaign', 'adset'],
+    REFRESH_CREATIVE: ['adset', 'ad'],
   };
 
   const valid = VALID_TARGETS[actionType] || [];
