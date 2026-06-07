@@ -35,7 +35,14 @@ const SCALE_LIFT_PCT = 30;
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
-/** The watched metric's value for a variant (proportion / ratio). */
+/**
+ * Compute the observed metric value for a single variant.
+ *
+ * @param {Object} v - Variant measurement object (may contain impressions, clicks, conversions, spendMinor, revenueMinor).
+ * @param {string} metric - Metric identifier (one of METRIC.CTR, METRIC.CVR, METRIC.ROAS, METRIC.CPA).
+ * @returns {number} For `CTR`/`CVR`, the proportion (clicks/impressions or conversions/clicks). For `ROAS`, revenue divided by spend. For `CPA`, spend divided by conversions. Returns `0` when the relevant denominator is zero or negative (except `CPA` returns `Infinity` when conversions are zero or negative).
+ * @throws {Error} If `metric` is not supported.
+ */
 function metricValue(v, metric) {
   switch (metric) {
     case METRIC.CTR:  return v.impressions > 0 ? v.clicks / v.impressions : 0;
@@ -46,13 +53,27 @@ function metricValue(v, metric) {
   }
 }
 
-/** successes (x) and trials (n) for the rate-metric z-test. */
+/**
+ * Return the success count (`x`) and trial count (`n`) used for a two-proportion z-test for a variant and metric.
+ * @param {Object} v - Variant record containing numeric fields used by the metric (e.g., `clicks`, `impressions`, `conversions`).
+ * @param {string} metric - Metric identifier (e.g., `METRIC.CTR`, `METRIC.CVR`).
+ * @returns {{x: number, n: number}} `x` is the number of successes and `n` is the number of trials; for `CTR` this is `{ x: clicks, n: impressions }`, otherwise `{ x: conversions, n: clicks }`.
+ */
 function trials(v, metric) {
   return metric === METRIC.CTR
     ? { x: v.clicks,      n: v.impressions }
     : { x: v.conversions, n: v.clicks };
 }
 
+/**
+ * Selects the per-variant sample count used for sample-floor checks.
+ * @param {Object} v - Variant stats object.
+ * @param {number} v.impressions - Total impressions for the variant.
+ * @param {number} v.clicks - Total clicks for the variant.
+ * @param {number} v.conversions - Total conversions for the variant.
+ * @param {string} metric - Metric identifier (e.g., METRIC.CTR, METRIC.CVR, METRIC.ROAS, METRIC.CPA).
+ * @returns {number} The sample count: impressions for CTR, clicks for CVR, conversions for other metrics.
+ */
 function sampleSize(v, metric) {
   switch (metric) {
     case METRIC.CTR:  return v.impressions;
@@ -61,7 +82,15 @@ function sampleSize(v, metric) {
   }
 }
 
-/** Two-proportion z-test. Returns |z| (0 when undefined). */
+/**
+ * Compute the absolute z-score for a two-proportion z-test comparing two variants.
+ *
+ * @param {Object} winner - Variant record treated as the first sample in the test.
+ * @param {Object} control - Variant record treated as the second sample (control).
+ * @param {string} metric - Metric key used to extract trials (e.g., "CTR" or "CVR").
+ * @returns {number} The absolute z-score magnitude; returns `0` when the z-score is undefined
+ * (for example, when either sample size is nonpositive or the standard error is zero/non-finite).
+ */
 function twoProportionZ(winner, control, metric) {
   const a = trials(winner, metric);
   const b = trials(control, metric);

@@ -43,8 +43,18 @@ const clamp01 = (n) => (n < 0 ? 0 : n > 1 ? 1 : n);
 const round4   = (n) => Math.round(n * 1e4) / 1e4;
 
 /**
- * Per-dimension severity in [0,1] from an entity's signals. Returns 0
- * when the dimension is not triggered (so it won't be suggested).
+ * Compute a severity score (0–1) for a test dimension based on an entity's signals.
+ *
+ * Uses metrics from `m` to determine how strongly the given `dimension` is triggered;
+ * returns `0` when the dimension is not triggered and should not be suggested.
+ *
+ * @param {string} dimension - One of the TEST_DIMENSION values.
+ * @param {Object} m - Metrics object.
+ * @param {number} [m.ctr] - Click-through rate.
+ * @param {number} [m.roas] - Return on ad spend.
+ * @param {number} [m.frequency] - Impression frequency.
+ * @param {string} [m.verdict] - Prior test verdict (e.g., `'REALLOCATE'`).
+ * @returns {number} Severity score between 0 and 1; `0` means "not triggered."
  */
 function dimensionSeverity(dimension, m) {
   const ctr  = m.ctr ?? 0;
@@ -81,7 +91,16 @@ function dimensionSeverity(dimension, m) {
   }
 }
 
-// The hypothesis + expected-signal + variants copy for each dimension.
+/**
+ * Provide the test plan (hypothesis, expected signal, and variants) for a given test dimension and entity name.
+ * @param {string} dimension - One of the TEST_DIMENSION values indicating which dimension to plan for.
+ * @param {string} name - Entity display name used inside the hypothesis text.
+ * @returns {{ hypothesis: string, expectedSignal: string, variants: Array<{label: string, description: string, isControl: boolean}> }}
+ *          An object containing:
+ *            - `hypothesis`: a short hypothesis string referencing the provided name,
+ *            - `expectedSignal`: the metric change expected if the hypothesis is correct,
+ *            - `variants`: an array of variant descriptors with `label`, `description`, and `isControl`.
+ */
 function dimensionPlan(dimension, name) {
   switch (dimension) {
     case TEST_DIMENSION.HOOK:
@@ -127,9 +146,12 @@ function dimensionPlan(dimension, name) {
 }
 
 /**
- * Memory multiplier for an (entityId, dimension) pair given prior
- * concluded-test outcomes. No memory at all on the dimension → an
- * exploration nudge; a sustained win → mild demote; a fizzle → demote.
+ * Compute the priority multiplier for a given entity and test dimension based on prior concluded-test outcomes.
+ *
+ * @param {string} entityId - The entity identifier.
+ * @param {string} dimension - The test dimension name.
+ * @param {Array<Object>} memory - Array of past test outcome records. Each record may include `entityId`, `dimension`, and `isSustainable` (boolean).
+ * @returns {number} The multiplier to apply to priority: `MEM.UNEXPLORED` when no matching memory exists, `MEM.UNSUSTAINABLE` if any matching record has `isSustainable === false`, `MEM.SUSTAINED` if any matching record has `isSustainable === true`, otherwise `1.0`.
  */
 function memoryMultiplier(entityId, dimension, memory) {
   const relevant = memory.filter((e) => e.entityId === entityId && e.dimension === dimension);
@@ -141,13 +163,16 @@ function memoryMultiplier(entityId, dimension, memory) {
 }
 
 /**
- * Generate a ranked weekly testing agenda.
+ * Produce a deterministic, ranked weekly testing agenda of suggested experiments.
  *
- * @param {object}  args
- * @param {Array}   args.entities  — [{ entityId, name, level, currency, metrics:{ctr,roas,frequency,cpa,conversions,spendMinor,verdict?}, verdict? }]
- * @param {Array}   [args.memory]  — [{ entityId, dimension, outcome, isSustainable }]
- * @param {object}  [args.constraints] — { maxSuggestions?, minPriority? }
- * @returns {Array} ranked suggestions
+ * @param {object} args - Input container.
+ * @param {Array<object>} args.entities - Array of entities to evaluate; each must include `entityId`. Optional fields: `name`, `level`, `currency`, and `metrics` (object with `ctr`, `roas`, `frequency`, `cpa`, `conversions`, `spendMinor`, `verdict`).
+ * @param {Array<object>} [args.memory=[]] - Historical test outcomes; entries may include `entityId`, `dimension`, `outcome`, and `isSustainable`.
+ * @param {object} [args.constraints={}] - Generation constraints.
+ * @param {number} [args.constraints.maxSuggestions=12] - Maximum number of suggestions to return.
+ * @param {number} [args.constraints.minPriority=0] - Minimum priority required for a suggestion to be included.
+ * @returns {Array<object>} Sorted suggestions (by priority desc). Each suggestion includes: `entityId`, `entityLevel`, `name`, `currency`, `dimension`, `metric`, `hypothesis`, `expectedSignal`, `variants`, `priority`, `severity`, and `rationale`.
+ * @throws {Error} If `entities` is not an array.
  */
 export function generateAgenda({ entities, memory = [], constraints = {} } = {}) {
   if (!Array.isArray(entities)) throw new Error('generateAgenda: entities must be an array');

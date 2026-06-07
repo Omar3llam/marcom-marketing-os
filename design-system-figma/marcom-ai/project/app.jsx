@@ -45,6 +45,21 @@ const FSM = {
   GENERIC:   'GENERIC',
 };
 
+/**
+ * Top-level application component that manages UI state, routing, and layout for the Lumi demo.
+ *
+ * Controls a finite-state navigation machine (home, input, theatre, success, execution, campaigns,
+ * portfolio, testing, content, growth, calendar, generic), exposes handlers for starting flows,
+ * reviewing alerts, fixing content, and navigation, and wires the sidebar, main page body, demo
+ * tweaks, and responsive mobile behavior.
+ *
+ * The component derives workspace, featured items, and radar alerts from demo data based on the
+ * current persona, keeps tweak-driven theme and density on the document root, and wraps page bodies
+ * in an error boundary. It renders a mobile top bar, a collapsible sidebar (or overlay drawer on
+ * mobile), the main content area with contextual controls, and the DemoTweaks panel.
+ *
+ * @returns {JSX.Element} The root React element for the Lumi application UI.
+ */
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [state, setState] = React.useState(FSM.HOME);
