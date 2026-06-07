@@ -263,6 +263,35 @@ feedRouter.get('/feed', async (req, res) => {
       logger.debug({ err: briefErr.message, wsId }, '[lumi/feed] briefing best-effort skipped');
     }
 
+    // Phase 6: active plan's goal landing + sustainability (best-effort).
+    // Reads persisted rows only — the full assembly runs on /plans, not here.
+    let planning = { activePlan: null, goal: null };
+    try {
+      const plan = await prisma.plan.findFirst({
+        where:   { workspaceId: wsId, status: { in: ['ACTIVE', 'DRAFT'] } },
+        orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+        include: { goals: true },
+      });
+      if (plan) {
+        const g = plan.goals?.[0] ?? null;
+        planning = {
+          activePlan: {
+            id: plan.id, name: plan.name, status: plan.status,
+            totalBudgetMinor: plan.totalBudgetMinor, currency: plan.currency,
+            sustainabilityBand: plan.projections?.economics?.sustainabilityBand ?? null,
+            memoryBasisCount: Array.isArray(plan.memoryBasis) ? plan.memoryBasis.length : 0,
+          },
+          goal: g ? {
+            id: g.id, metric: g.metric, comparator: g.comparator,
+            targetValue: g.targetValue, status: g.status,
+            landing: plan.projections?.goalLanding?.trendBasedLandingEstimate ?? null,
+          } : null,
+        };
+      }
+    } catch (planErr) {
+      logger.debug({ err: planErr.message, wsId }, '[lumi/feed] planning best-effort skipped');
+    }
+
     logger.debug({
       campaignStatesFound: campaignStates.length,
       pendingActionsFound: pendingActions.length,
@@ -403,6 +432,8 @@ feedRouter.get('/feed', async (req, res) => {
       })),
       // Phase 5 — account memory surfacing
       accountBriefing,
+      // Phase 6 — planning surfacing (active plan goal landing + sustainability)
+      planning,
     });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/feed] failed');

@@ -40,8 +40,9 @@ function validate(series) {
   }
 }
 
-/** Least-squares slope/intercept/R² of y over x. */
-function linearFit(xs, ys) {
+/** Least-squares slope/intercept/R² of y over x. Exported so the
+ *  goal-tracker (Phase 6) reuses the exact same trend primitive. */
+export function linearFit(xs, ys) {
   const n = xs.length;
   const xBar = xs.reduce((a, b) => a + b, 0) / n;
   const yBar = ys.reduce((a, b) => a + b, 0) / n;

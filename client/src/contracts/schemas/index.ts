@@ -273,3 +273,45 @@ export {
   BriefingSchema,
   type Briefing,
 } from './briefing.schema';
+
+// ──────────────────────────────────────────────────────────
+// Phase 6 — Planning OS (scenario + unit economics + plans/goals)
+// ──────────────────────────────────────────────────────────
+export {
+  ScenarioTypeSchema,
+  RangeSchema,
+  ScenarioProjectionsSchema,
+  ScenarioSchema,
+  type ScenarioType,
+  type Range,
+  type ScenarioProjections,
+  type Scenario,
+} from './scenario.schema';
+
+export {
+  SustainabilityBandSchema,
+  SustainabilityBandRangeSchema,
+  AccountEconomicsSchema,
+  UnitEconomicsSchema,
+  type SustainabilityBand,
+  type AccountEconomics,
+  type UnitEconomics,
+} from './unitEconomics.schema';
+
+export {
+  PlanStatusSchema,
+  GoalStatusSchema,
+  LeadingSignalSchema,
+  MemoryBasisSchema,
+  GoalLandingSchema,
+  NorthStarGoalSchema,
+  PlanProjectionsSchema,
+  PlanSchema,
+  type PlanStatus,
+  type GoalStatus,
+  type LeadingSignal,
+  type MemoryBasis,
+  type GoalLanding,
+  type NorthStarGoal,
+  type Plan,
+} from './plan.schema';
