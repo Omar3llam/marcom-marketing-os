@@ -145,7 +145,7 @@ enum Comparator {
 enum ThresholdUnit {
   MINOR // integer minor units (money)
   RATIO // e.g. roas 2.4, frequency 3.5
-  PCT   // percentage points, e.g. "+50%" over target
+  PCT // percentage points, e.g. "+50%" over target
 }
 
 // Phase 3 — capital allocation goal. Engine is goal-generic; only
@@ -198,6 +198,32 @@ enum PatternStatus {
   CONFLICTED
 }
 
+// ── Phase 6: Planning OS ─────────────────────────────────────
+// Lifecycle of a forward-looking plan (budget + mix + tests + goal).
+enum PlanStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+// North-star tracking status. AT_RISK can fire from the lagging trend OR
+// a leading fatigue signal that breaches before period end.
+enum GoalStatus {
+  ON_TRACK
+  AT_RISK
+  OFF_TRACK
+  ACHIEVED
+  MISSED
+}
+
+// Is current CAC sustainable given LTV? HEALTHY ≥ target (3.0),
+// THIN 1–3, UNDERWATER < 1.
+enum SustainabilityBand {
+  HEALTHY
+  THIN
+  UNDERWATER
+}
+
 enum WebhookProvider {
   META
   GOOGLE
@@ -225,7 +251,7 @@ enum TransitionActor {
 model Workspace {
   id        String   @id @default(uuid()) @db.Uuid
   name      String
-  currency  String   @default("USD")  // ISO 4217 currency code (EGP, USD, SAR, AED, etc.)
+  currency  String   @default("USD") // ISO 4217 currency code (EGP, USD, SAR, AED, etc.)
   createdAt DateTime @default(now())
 
   // ── Phase 5: network memory (opt-in, anonymized) ─────────────
@@ -235,12 +261,12 @@ model Workspace {
   cohortTag      String? // e.g. "EG-apparel" — the anonymization cohort
   consentedAt    DateTime?
 
-  users             User[]
-  actions           Action[]
-  campaignStates    CampaignState[]
-  decisionMemory    DecisionMemory[]
-  integrations      Integration[]
-  auditLogs         AuditLog[]
+  users                      User[]
+  actions                    Action[]
+  campaignStates             CampaignState[]
+  decisionMemory             DecisionMemory[]
+  integrations               Integration[]
+  auditLogs                  AuditLog[]
   artifacts                  Artifact[]
   artifactApprovals          ArtifactApproval[]
   approvalDecisions          ApprovalDecision[]
@@ -249,21 +275,26 @@ model Workspace {
   reinforcementSnapshots     ReinforcementSnapshot[]
 
   // ── Phase 1: Marketing OS substrate ──────────────────────────
-  accounts             Account[]
-  campaignEntities     Campaign[]
-  adSets               AdSet[]
-  ads                  Ad[]
-  creatives            Creative[]
-  metricSnapshots      MetricSnapshot[]
-  decisions            Decision[]
-  outcomeSnapshots     OutcomeSnapshot[]
+  accounts              Account[]
+  campaignEntities      Campaign[]
+  adSets                AdSet[]
+  ads                   Ad[]
+  creatives             Creative[]
+  metricSnapshots       MetricSnapshot[]
+  decisions             Decision[]
+  outcomeSnapshots      OutcomeSnapshot[]
   decisionMemoryEntries DecisionMemoryEntry[]
-  fatiguePredictions   FatiguePrediction[]
-  guardrailRules       GuardrailRule[]
-  allocationPlans      AllocationPlan[]
-  testExperiments      TestExperiment[]
-  accountPatterns      AccountPattern[]
-  patternObservations  PatternObservation[]
+  fatiguePredictions    FatiguePrediction[]
+  guardrailRules        GuardrailRule[]
+  allocationPlans       AllocationPlan[]
+  testExperiments       TestExperiment[]
+  accountPatterns       AccountPattern[]
+  patternObservations   PatternObservation[]
+
+  // ── Phase 6: Planning OS ─────────────────────────────────────
+  accountEconomics AccountEconomics?
+  plans            Plan[]
+  northStarGoals   NorthStarGoal[]
 
   @@map("workspaces")
 }
@@ -529,7 +560,7 @@ model CampaignState {
   healthScore  Float
   lastAnalysis DateTime
   updatedAt    DateTime      @updatedAt
-  currency     String        @default("USD")  // ISO 4217 currency code (EGP, USD, SAR, AED, EUR, GBP)
+  currency     String        @default("USD") // ISO 4217 currency code (EGP, USD, SAR, AED, EUR, GBP)
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -642,7 +673,7 @@ model ArtifactApproval {
 
   // PR #30: Rich decision metadata
   decisionMetadata Json? // { revisionInstructions, targetNodes, escalationReason, regenerationHint }
-  escalatedTo      String? @db.Uuid // User/role ID for escalation target
+  escalatedTo      String?   @db.Uuid // User/role ID for escalation target
   escalatedAt      DateTime?
 
   approvedAt DateTime?
@@ -686,10 +717,10 @@ model ApprovalDecision {
   workspaceId String @db.Uuid
 
   // Decision data (from frontend ApprovalForm)
-  decision        String   // APPROVED | REJECTED | REGENERATE | REQUEST_REVISION | ESCALATE
-  feedback        String?  // Free-form feedback text
-  feedbackType    String?  // hook_angle, tone, cta, clarity, length, brand_voice, etc.
-  severity        String?  // LOW | MEDIUM | HIGH
+  decision        String // APPROVED | REJECTED | REGENERATE | REQUEST_REVISION | ESCALATE
+  feedback        String? // Free-form feedback text
+  feedbackType    String? // hook_angle, tone, cta, clarity, length, brand_voice, etc.
+  severity        String? // LOW | MEDIUM | HIGH
   preserveAspects String[] // brand_voice, tone, cta, color_palette, etc.
 
   // Attribution (from Artifact record for provider performance tracking)
@@ -732,9 +763,9 @@ model ApprovalDecision {
 // - Campaign performance: WHERE metaCampaignId = ?
 
 model PublishedCreative {
-  id          String   @id @default(cuid())
+  id          String @id @default(cuid())
   artifactId  String
-  workspaceId String   @db.Uuid
+  workspaceId String @db.Uuid
 
   // Meta attribution
   metaAdId       String // Meta ad ID
@@ -762,23 +793,23 @@ model PublishedCreative {
 }
 
 model ProviderPerformanceMetrics {
-  id                  String   @id @default(cuid())
+  id                  String @id @default(cuid())
   publishedCreativeId String
-  workspaceId         String   @db.Uuid
+  workspaceId         String @db.Uuid
 
   // Attribution (denormalized for fast queries)
-  provider   String  // claude, openai, higgsfield
-  capability String  // GENERATE_HOOKS, GENERATE_CAPTIONS, etc.
+  provider   String // claude, openai, higgsfield
+  capability String // GENERATE_HOOKS, GENERATE_CAPTIONS, etc.
   model      String? // claude-opus-4, gpt-4, etc.
 
   // Meta performance metrics
-  impressions Int   @default(0)
-  clicks      Int   @default(0)
+  impressions Int    @default(0)
+  clicks      Int    @default(0)
   ctr         Float? // Click-through rate (clicks / impressions)
   cpc         Float? // Cost per click
-  spend       Float @default(0)
-  conversions Int   @default(0)
-  revenue     Float @default(0)
+  spend       Float  @default(0)
+  conversions Int    @default(0)
+  revenue     Float  @default(0)
   roas        Float? // Return on ad spend (revenue / spend)
 
   // Performance period
@@ -801,17 +832,17 @@ model ProviderPerformanceMetrics {
 }
 
 model ReinforcementSnapshot {
-  id         String   @id @default(cuid())
-  workspaceId String?  @db.Uuid
+  id          String  @id @default(cuid())
+  workspaceId String? @db.Uuid
 
   // Provider + Capability (learning is scoped to this pair)
-  provider   String  // claude, openai, higgsfield
-  capability String  // GENERATE_HOOKS, GENERATE_CAPTIONS, etc.
+  provider   String // claude, openai, higgsfield
+  capability String // GENERATE_HOOKS, GENERATE_CAPTIONS, etc.
 
   // Adaptive scores
-  score      Float   // Composite score (approval rate, CTR, ROAS, cost efficiency)
-  confidence Float   // Confidence level (0.0 - 1.0) based on sample size
-  sampleSize Int     // Number of data points in this snapshot
+  score      Float // Composite score (approval rate, CTR, ROAS, cost efficiency)
+  confidence Float // Confidence level (0.0 - 1.0) based on sample size
+  sampleSize Int // Number of data points in this snapshot
 
   // Performance window
   windowStart DateTime
@@ -1034,15 +1065,15 @@ model OutcomeSnapshot {
 }
 
 model DecisionMemoryEntry {
-  id          String   @id @default(uuid()) @db.Uuid
-  workspaceId String   @db.Uuid
-  decisionId  String?  @db.Uuid
-  entityId    String?  @db.Uuid
-  actionType  String?
-  rationale   String
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @db.Uuid
+  decisionId        String?  @db.Uuid
+  entityId          String?  @db.Uuid
+  actionType        String?
+  rationale         String
   isSustainable     Boolean?
   impactDurationHrs Int?
-  createdAt   DateTime @default(now())
+  createdAt         DateTime @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   decision  Decision? @relation(fields: [decisionId], references: [id], onDelete: SetNull)
@@ -1060,21 +1091,21 @@ model DecisionMemoryEntry {
 // each sweep; on resolution (actual breach or REFRESH executed) a
 // DecisionMemoryEntry is written capturing predicted-vs-actual.
 model FatiguePrediction {
-  id                 String      @id @default(uuid()) @db.Uuid
-  workspaceId        String      @db.Uuid
-  entityId           String      @db.Uuid
-  entityLevel        EntityLevel
-  metric             String      @default("frequency") // signal that will breach
-  ceiling            Float // breach threshold (e.g. 3.5)
+  id                  String      @id @default(uuid()) @db.Uuid
+  workspaceId         String      @db.Uuid
+  entityId            String      @db.Uuid
+  entityLevel         EntityLevel
+  metric              String      @default("frequency") // signal that will breach
+  ceiling             Float // breach threshold (e.g. 3.5)
   projectedBreachDate DateTime
-  confidence         Float // 0.0 – 1.0
-  basis              String? // short human-readable basis of the projection
-  createdAt          DateTime    @default(now())
+  confidence          Float // 0.0 – 1.0
+  basis               String? // short human-readable basis of the projection
+  createdAt           DateTime    @default(now())
 
   // Resolution (set when the forecast is confirmed or invalidated)
-  resolvedAt        DateTime?
-  actualBreachDate  DateTime?
-  accuracy          Float? // |projected - actual| scored 0..1 at resolution
+  resolvedAt       DateTime?
+  actualBreachDate DateTime?
+  accuracy         Float? // |projected - actual| scored 0..1 at resolution
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -1087,20 +1118,20 @@ model FatiguePrediction {
 // User-defined recurring rule Lumi enforces each sweep. Hits produce
 // radar verdicts (Decisions, status PROPOSED) — never auto-execution.
 model GuardrailRule {
-  id           String        @id @default(uuid()) @db.Uuid
-  workspaceId  String        @db.Uuid
-  name         String
-  enabled      Boolean       @default(true)
-  scopeLevel   EntityLevel   @default(ADSET)
-  audienceTag  String? // optional filter, e.g. "cold"
-  metric       String // e.g. "cpaOverTargetPct", "frequency", "roas"
-  comparator   Comparator
-  threshold    Float // interpreted per `unit`
-  unit         ThresholdUnit @default(RATIO)
-  sustainedDays Int          @default(1)
-  emitVerdict  Verdict       @default(WATCH)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id            String        @id @default(uuid()) @db.Uuid
+  workspaceId   String        @db.Uuid
+  name          String
+  enabled       Boolean       @default(true)
+  scopeLevel    EntityLevel   @default(ADSET)
+  audienceTag   String? // optional filter, e.g. "cold"
+  metric        String // e.g. "cpaOverTargetPct", "frequency", "roas"
+  comparator    Comparator
+  threshold     Float // interpreted per `unit`
+  unit          ThresholdUnit @default(RATIO)
+  sustainedDays Int           @default(1)
+  emitVerdict   Verdict       @default(WATCH)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
@@ -1120,12 +1151,12 @@ model GuardrailRule {
 // through the existing confirm→execute governance + audit. Never
 // auto-executes.
 model AllocationPlan {
-  id               String           @id @default(uuid()) @db.Uuid
-  workspaceId      String           @db.Uuid
+  id               String   @id @default(uuid()) @db.Uuid
+  workspaceId      String   @db.Uuid
   goalType         GoalType
   goalValue        Float? // interpretation depends on goalType (null for GROWTH_CEILING)
   totalBudgetMinor Int // the spend ceiling, integer minor units
-  currency         String           @default("USD")
+  currency         String   @default("USD")
 
   // Projected blended impact (minor units / ratios).
   projectedRoas     Float?
@@ -1153,9 +1184,9 @@ model AllocationPlan {
 // readout — which writes the outcome to Decision Memory and (when the
 // winner is confident + governance-valid) links a REFRESH/SCALE Decision.
 model TestExperiment {
-  id          String      @id @default(uuid()) @db.Uuid
-  workspaceId String      @db.Uuid
-  entityId    String?     @db.Uuid // the campaign/adset the test runs on
+  id          String       @id @default(uuid()) @db.Uuid
+  workspaceId String       @db.Uuid
+  entityId    String?      @db.Uuid // the campaign/adset the test runs on
   entityLevel EntityLevel?
 
   dimension      TestDimension
@@ -1178,7 +1209,7 @@ model TestExperiment {
 
   // The verdict Decision this test produced (null until/unless a
   // confident, governance-valid winner emerges).
-  decisionId String?   @db.Uuid
+  decisionId String? @db.Uuid
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1233,8 +1264,8 @@ model TestVariant {
 // pattern carries an executable guardrail spec; a SUPERSEDED/CONFLICTED
 // pattern (conflict resolution) is never promoted.
 model AccountPattern {
-  id          String        @id @default(uuid()) @db.Uuid
-  workspaceId String        @db.Uuid
+  id          String      @id @default(uuid()) @db.Uuid
+  workspaceId String      @db.Uuid
   patternKey  String // deterministic engine key — stable across re-extractions
   kind        PatternKind
   statement   String
@@ -1248,13 +1279,13 @@ model AccountPattern {
   status           PatternStatus
 
   // Promotable guardrail spec (null for informational kinds).
-  metric       String?
-  scopeLevel   EntityLevel?
-  audienceTag  String?
-  comparator   Comparator?
-  threshold    Float?
-  unit         ThresholdUnit?
-  emitVerdict  Verdict?
+  metric        String?
+  scopeLevel    EntityLevel?
+  audienceTag   String?
+  comparator    Comparator?
+  threshold     Float?
+  unit          ThresholdUnit?
+  emitVerdict   Verdict?
   sustainedDays Int?
 
   // Conflict resolution + promotion provenance.
@@ -1298,4 +1329,86 @@ model PatternObservation {
   @@unique([patternId, occurrenceKey])
   @@index([workspaceId, observedAt])
   @@map("pattern_observations")
+}
+
+// ════════════════════════════════════════════════════════════
+// Phase 6 — Planning OS
+// ════════════════════════════════════════════════════════════
+
+// Per-workspace unit economics the strategist sets once and edits. Feeds
+// the unit-economics engine (LTV / payback / contribution margin) AND the
+// scenario engine's revenue/gross-profit outputs. AOV is seeded from
+// blended truth when unset. Money in integer minor units.
+model AccountEconomics {
+  id                   String   @id @default(uuid()) @db.Uuid
+  workspaceId          String   @unique @db.Uuid
+  currency             String   @default("USD")
+  aovMinor             Int // average order value, minor units
+  grossMarginPct       Float // gross margin as a ratio [0,1]
+  repeatRate           Float    @default(0) // informational; folds into avgOrders
+  avgOrdersPerCustomer Float    @default(1) // lifetime orders per customer
+  targetLtvToCac       Float    @default(3) // sustainability target
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("account_economics")
+}
+
+// A quarterly north-star: e.g. "blended CAC ≤ X at Y spend". The
+// goal-tracker engine projects a trend-based landing ESTIMATE (a range)
+// and folds in leading fatigue signals. Optionally linked to the Plan it
+// belongs to.
+model NorthStarGoal {
+  id                String     @id @default(uuid()) @db.Uuid
+  workspaceId       String     @db.Uuid
+  name              String
+  metric            String // e.g. "blendedCac", "blendedRoas", "mer"
+  comparator        Comparator // GTE for ROAS, LTE for CAC, …
+  targetValue       Float
+  spendCeilingMinor Int? // the "at Y spend" half of the target
+  currency          String     @default("USD")
+  periodStart       DateTime
+  periodEnd         DateTime
+  status            GoalStatus @default(ON_TRACK)
+  planId            String?    @db.Uuid
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan      Plan?     @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, status])
+  @@map("north_star_goals")
+}
+
+// A forward-looking plan: assembled budget + channel mix + testing agenda
+// + projections, all snapshotted as JSON. `memoryBasis` records WHICH
+// Phase-5 patterns the plan leaned on (traceability — "why did Lumi
+// suggest this?"). The mix promotes to PROPOSED REALLOCATE Decisions via
+// the existing Phase-3 governance (allocationPlanId set on promote) — no
+// new execution code.
+model Plan {
+  id               String     @id @default(uuid()) @db.Uuid
+  workspaceId      String     @db.Uuid
+  name             String
+  periodStart      DateTime
+  periodEnd        DateTime
+  totalBudgetMinor Int
+  currency         String     @default("USD")
+  status           PlanStatus @default(DRAFT)
+  channelMix       Json // snapshot of the allocation preview
+  testingAgenda    Json // snapshot of the Phase-4 weekly agenda
+  projections      Json // scenario + econ + landing ranges, with assumptions
+  memoryBasis      Json // [{ patternId, kind, statement, accuracy }] — "Powered by Memory"
+  allocationPlanId String?    @db.Uuid // set when the mix is promoted (Phase-3 loop)
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  goals     NorthStarGoal[]
+
+  @@index([workspaceId, status])
+  @@map("plans")
 }

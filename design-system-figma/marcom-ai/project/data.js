@@ -874,6 +874,154 @@ const BRIEFING_BY_WS = {
   },
 };
 
+// ── Phase 6: Planning OS ─────────────────────────────────────
+// A built next-quarter plan: budget + channel mix + scenario RANGES +
+// north-star (with a leading-fatigue risk) + unit economics + the patterns
+// the plan leaned on (memoryBasis). Money in integer minor units. Every
+// projection is a { low, expected, high } range — never a point.
+const PLAN_BY_WS = {
+  apparel: {
+    name: 'Q3 — Scale within payback',
+    periodLabel: 'Jul – Sep 2026',
+    currency: 'EGP',
+    budgetMinor: 10_000_000, // EGP 100,000
+    // Two scenarios off the SAME baseline: a reallocation and an expansion.
+    scenarios: {
+      reallocation: {
+        scenarioType: 'CHANNEL_REALLOCATION',
+        label: 'Move 20% Meta → TikTok',
+        projections: {
+          blendedCacMinor:  { low: 38_500, expected: 42_000, high: 47_500 },
+          volume:           { low: 1_980,  expected: 2_180,  high: 2_360 },
+          revenueMinor:     { low: 35_600_000, expected: 39_200_000, high: 42_500_000 },
+          grossProfitMinor: { low: 19_580_000, expected: 21_560_000, high: 23_375_000 },
+          merAfter:         { low: 3.56, expected: 3.92, high: 4.25 },
+        },
+        assumptions: [
+          'pessimistic: moved budget retains 70% of marginal efficiency',
+          'expected: moved budget retains 85% of marginal efficiency',
+          'optimistic: moved budget retains 100% of marginal efficiency',
+          'memory accuracy 82% widened the band by ±9%',
+        ],
+        confidence: 0.74,
+        basis: 'CHANNEL_REALLOCATION: projected as a range under 3 retention assumptions',
+      },
+      expansion: {
+        scenarioType: 'BUDGET_EXPANSION',
+        label: 'Spend +50% (100k → 150k)',
+        projections: {
+          blendedCacMinor:  { low: 44_000, expected: 49_500, high: 58_000 },
+          volume:           { low: 2_760,  expected: 3_030,  high: 3_280 },
+          revenueMinor:     { low: 49_700_000, expected: 54_500_000, high: 59_000_000 },
+          grossProfitMinor: { low: 27_335_000, expected: 29_975_000, high: 32_450_000 },
+          merAfter:         { low: 3.31, expected: 3.63, high: 3.93 },
+        },
+        assumptions: [
+          'pessimistic: added budget retains 70% of marginal efficiency',
+          'expected: added budget retains 85% of marginal efficiency',
+          'optimistic: added budget retains 100% of marginal efficiency',
+          'diminishing returns above +15% per-channel spend swing',
+          'memory accuracy 82% widened the band by ±9%',
+        ],
+        confidence: 0.71,
+        basis: 'BUDGET_EXPANSION: CAC may rise, but gross profit grows (CAC worse / profit better)',
+      },
+    },
+    // Unit economics — is current CAC sustainable?
+    economics: {
+      aovMinor: 180_000,            // EGP 1,800 AOV
+      grossMarginPct: 0.55,
+      contributionPerOrderMinor: 99_000, // EGP 990
+      ltvMinor: 178_200,            // 1.8 lifetime orders
+      paybackOrders: 1,
+      ltvToCac:           { low: 3.07, expected: 4.24, high: 4.63 },     // worst→best across CAC range
+      sustainabilityBand: { low: 'HEALTHY', expected: 'HEALTHY', high: 'HEALTHY' },
+    },
+    // North-star: lagging trend is fine, but a leading fatigue signal flags risk.
+    goal: {
+      name: 'Blended CAC ≤ EGP 450 at EGP 100k spend',
+      metric: 'blendedCac',
+      comparator: 'LTE',
+      targetValueMinor: 45_000,
+      currency: 'EGP',
+      pctOfPeriodElapsed: 0.5,
+      trendBasedLandingEstimate: { low: 39_000, expected: 42_500, high: 46_000 },
+      laggingStatus: 'ON_TRACK',
+      status: 'AT_RISK',
+      leadingSignal: { signal: 'creative_fatigue', entity: 'Carousel #4', daysToBreach: 21 },
+    },
+    testingAgenda: [
+      { name: 'UGC problem-led hook vs studio hero', dimension: 'HOOK',           hypothesis: 'Problem-led opener lifts 3-sec view-rate on cold TikTok.' },
+      { name: 'Free-shipping threshold offer',        dimension: 'OFFER',          hypothesis: 'EGP 1,500 threshold raises AOV without denting CVR.' },
+      { name: '1% purchaser lookalike vs 3% broad',   dimension: 'AUDIENCE',       hypothesis: 'Tighter seed holds ROAS as we scale spend.' },
+    ],
+    // The patterns this plan leaned on — "Powered by Memory".
+    memoryBasis: [
+      { patternId: 'p5-fatigue', kind: 'FATIGUE_CEILING', statement: 'KILL cold adsets past frequency ~3.5.', accuracy: 0.85 },
+      { patternId: 'p5-scaling', kind: 'SCALING_WINDOW',   statement: 'Scaling held when ROAS ≥ 3.0.',          accuracy: 0.74 },
+      { patternId: 'p5-angle',   kind: 'CREATIVE_ANGLE_LONGEVITY', statement: 'Hook tests produced a winner 2 of 3 runs.', accuracy: 0.66 },
+    ],
+    mix: [
+      { channel: 'Meta',   currentSpendMinor: 6_000_000, recommendedSpendMinor: 4_800_000, deltaMinor: -1_200_000, verdict: 'REALLOCATE' },
+      { channel: 'TikTok', currentSpendMinor: 1_000_000, recommendedSpendMinor: 2_200_000, deltaMinor:  1_200_000, verdict: 'SCALE' },
+      { channel: 'Google', currentSpendMinor: 3_000_000, recommendedSpendMinor: 3_000_000, deltaMinor:          0, verdict: 'HOLD' },
+    ],
+  },
+  riyadh: {
+    name: 'Q3 — Hold CAC, prove TikTok',
+    periodLabel: 'Jul – Sep 2026',
+    currency: 'SAR',
+    budgetMinor: 6_000_000,
+    scenarios: {
+      reallocation: {
+        scenarioType: 'CHANNEL_REALLOCATION',
+        label: 'Move 15% Snap → TikTok',
+        projections: {
+          blendedCacMinor:  { low: 7_400, expected: 8_100, high: 9_200 },
+          volume:           { low: 690,   expected: 760,   high: 820 },
+          revenueMinor:     { low: 5_200_000, expected: 5_700_000, high: 6_150_000 },
+          grossProfitMinor: { low: 2_860_000, expected: 3_135_000, high: 3_382_000 },
+          merAfter:         { low: 3.46, expected: 3.80, high: 4.10 },
+        },
+        assumptions: [
+          'pessimistic: moved budget retains 70% of marginal efficiency',
+          'expected: moved budget retains 85% of marginal efficiency',
+          'optimistic: moved budget retains 100% of marginal efficiency',
+          'no learned memory yet — assumed 60% prior (band widened ±20%)',
+        ],
+        confidence: 0.48,
+        basis: 'CHANNEL_REALLOCATION: projected as a range under 3 retention assumptions',
+      },
+    },
+    economics: {
+      aovMinor: 38_000, grossMarginPct: 0.5, contributionPerOrderMinor: 19_000,
+      ltvMinor: 28_500, paybackOrders: 1,
+      ltvToCac:           { low: 3.09, expected: 3.51, high: 3.85 },
+      sustainabilityBand: { low: 'HEALTHY', expected: 'HEALTHY', high: 'HEALTHY' },
+    },
+    goal: {
+      name: 'Blended CAC ≤ SAR 85 at SAR 60k spend',
+      metric: 'blendedCac', comparator: 'LTE', targetValueMinor: 8_500, currency: 'SAR',
+      pctOfPeriodElapsed: 0.34,
+      trendBasedLandingEstimate: { low: 7_600, expected: 8_300, high: 9_400 },
+      laggingStatus: 'AT_RISK', status: 'AT_RISK', leadingSignal: null,
+    },
+    testingAgenda: [
+      { name: 'Arabic-first hook vs bilingual', dimension: 'HOOK', hypothesis: 'Native-Arabic opener lifts completion on Snap.' },
+    ],
+    memoryBasis: [
+      { patternId: 'r5-fatigue', kind: 'FATIGUE_CEILING', statement: 'Snap broad audiences fatigue around freq ~4.2.', accuracy: 0.70 },
+    ],
+    mix: [
+      { channel: 'Snap',   currentSpendMinor: 3_500_000, recommendedSpendMinor: 2_975_000, deltaMinor: -525_000, verdict: 'REALLOCATE' },
+      { channel: 'TikTok', currentSpendMinor: 1_500_000, recommendedSpendMinor: 2_025_000, deltaMinor:  525_000, verdict: 'SCALE' },
+      { channel: 'Meta',   currentSpendMinor: 1_000_000, recommendedSpendMinor: 1_000_000, deltaMinor:        0, verdict: 'HOLD' },
+    ],
+  },
+  // Cold-start workspace: no plan built yet — honest empty state.
+  dubai: null,
+};
+
 export const DEMO_DATA = {
   WORKSPACES: DEMO_WORKSPACES,
   FEATURED:   FEATURED_CAMPAIGN,
@@ -885,6 +1033,7 @@ export const DEMO_DATA = {
   PORTFOLIO_BY_WS:  PORTFOLIO_BY_WS,
   TESTING_BY_WS:    TESTING_BY_WS,
   BRIEFING_BY_WS:   BRIEFING_BY_WS,
+  PLAN_BY_WS:       PLAN_BY_WS,
   ACTIVITY:   ACTIVITY_TICKER,
   VECTORS:    SCAN_VECTORS,
   EXECUTION:  EXECUTION_STEPS,

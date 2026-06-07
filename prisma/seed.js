@@ -561,6 +561,92 @@ async function seedPhase5(ws) {
   });
 }
 
+async function seedPhase6(ws) {
+  // Apparel only: the Planning OS — a built next-quarter plan.
+  //  • An AccountEconomics row (AOV / margin / repeat) so scenarios can speak
+  //    revenue + gross profit, and economics can judge sustainability.
+  //  • A NorthStarGoal ("blended CAC ≤ X at Y spend") — lagging trend on
+  //    track, but ACTIVE plan flags a leading fatigue risk.
+  //  • One DRAFT Plan carrying a channel-mix snapshot, BOTH a reallocation
+  //    and a budget-expansion scenario projection-as-range, and a
+  //    memoryBasis referencing the seeded Phase-5 patterns.
+  const workspaceId = det(`ws:${ws.key}`);
+  const minor = (major) => Math.round(major * 100); // EGP, 2 minor digits
+
+  // 1. AccountEconomics (strategist-set, editable).
+  const econId = det(`p6econ:${ws.key}`);
+  const econ = {
+    workspaceId, currency: ws.currency,
+    aovMinor: minor(1_800), grossMarginPct: 0.55, repeatRate: 0.4,
+    avgOrdersPerCustomer: 1.8, targetLtvToCac: 3,
+  };
+  await prisma.accountEconomics.upsert({ where: { id: econId }, create: { id: econId, ...econ }, update: econ });
+
+  // 2. The DRAFT Plan — projections-as-ranges + memoryBasis ("Powered by Memory").
+  const periodStart = new Date('2026-07-01T00:00:00.000Z');
+  const periodEnd   = new Date('2026-09-30T00:00:00.000Z');
+  const planId = det(`p6plan:${ws.key}`);
+  const memoryBasis = [
+    { patternId: det(`p5pat:${ws.key}:FATIGUE|ADSET|cold|KILL`), kind: 'FATIGUE_CEILING', statement: 'KILL cold adsets past frequency ~3.5.', accuracy: 0.85 },
+    { patternId: det(`p5pat:${ws.key}:SCALING|CAMPAIGN|null`),    kind: 'SCALING_WINDOW',   statement: 'Scaling held when ROAS ≥ 3.0.',          accuracy: 1.0 },
+  ];
+  const projections = {
+    scenario: {
+      scenarioType: 'CHANNEL_REALLOCATION',
+      projections: {
+        blendedCacMinor:  { low: minor(385), expected: minor(420), high: minor(475) },
+        volume:           { low: 1_980, expected: 2_180, high: 2_360 },
+        revenueMinor:     { low: minor(356_000), expected: minor(392_000), high: minor(425_000) },
+        grossProfitMinor: { low: minor(195_800), expected: minor(215_600), high: minor(233_750) },
+        merAfter:         { low: 3.56, expected: 3.92, high: 4.25 },
+      },
+      assumptions: [
+        'pessimistic: moved budget retains 70% of marginal efficiency',
+        'expected: moved budget retains 85% of marginal efficiency',
+        'optimistic: moved budget retains 100% of marginal efficiency',
+        'memory accuracy 82% widened the band by ±9%',
+      ],
+      confidence: 0.74,
+      basis: 'CHANNEL_REALLOCATION: projected as a range under 3 retention assumptions',
+    },
+    economics: {
+      ltvToCac: { low: 3.07, expected: 4.24, high: 4.63 },
+      sustainabilityBand: { low: 'HEALTHY', expected: 'HEALTHY', high: 'HEALTHY' },
+      paybackOrders: 1, ltvMinor: minor(1_782), isDefault: false,
+      assumptions: ['contribution margin = AOV × 55% gross margin', 'LTV = contribution × 1.8 lifetime orders/customer'],
+    },
+    goalLanding: {
+      metric: 'blendedCac',
+      trendBasedLandingEstimate: { low: minor(390), expected: minor(425), high: minor(460) },
+      status: 'AT_RISK', laggingStatus: 'ON_TRACK', leadingRisk: true,
+    },
+  };
+  const planRow = {
+    workspaceId, name: 'Q3 — Scale within payback',
+    periodStart, periodEnd, totalBudgetMinor: minor(100_000), currency: ws.currency, status: 'DRAFT',
+    channelMix: [
+      { channelId: 'meta',   channel: 'META',   currentSpendMinor: minor(60_000), recommendedSpendMinor: minor(48_000), deltaMinor: minor(-12_000), verdict: 'REALLOCATE' },
+      { channelId: 'tiktok', channel: 'TIKTOK', currentSpendMinor: minor(10_000), recommendedSpendMinor: minor(22_000), deltaMinor: minor(12_000),  verdict: 'SCALE' },
+      { channelId: 'google', channel: 'GOOGLE', currentSpendMinor: minor(30_000), recommendedSpendMinor: minor(30_000), deltaMinor: 0,              verdict: 'HOLD' },
+    ],
+    testingAgenda: [
+      { entityId: det(`adset:${ws.key}:Carousel · 5 SKUs`), dimension: 'HOOK', name: 'UGC problem-led hook vs studio hero', hypothesis: 'Problem-led opener lifts 3-sec view-rate on cold TikTok.' },
+    ],
+    projections, memoryBasis,
+  };
+  await prisma.plan.upsert({ where: { id: planId }, create: { id: planId, ...planRow }, update: planRow });
+
+  // 3. The NorthStarGoal linked to the plan.
+  const goalId = det(`p6goal:${ws.key}`);
+  const goal = {
+    workspaceId, planId,
+    name: 'Blended CAC ≤ EGP 450 at EGP 100k spend',
+    metric: 'blendedCac', comparator: 'LTE', targetValue: minor(450), spendCeilingMinor: minor(100_000),
+    currency: ws.currency, periodStart, periodEnd, status: 'AT_RISK',
+  };
+  await prisma.northStarGoal.upsert({ where: { id: goalId }, create: { id: goalId, ...goal }, update: goal });
+}
+
 async function main() {
   for (const ws of WORKSPACES) {
     await seedWorkspace(ws);
@@ -570,7 +656,8 @@ async function main() {
   await seedPhase3(WORKSPACES[0]);        // apparel portfolio + blended truth + allocation plan
   await seedPhase4(WORKSPACES[0]);        // apparel testing OS — agenda + closed loop
   await seedPhase5(WORKSPACES[0]);        // apparel memory moat — learnings + conflicts
-  console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction + allocation + testing + memory.');
+  await seedPhase6(WORKSPACES[0]);        // apparel planning OS — plan + scenario + north-star + economics
+  console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction + allocation + testing + memory + planning.');
 }
 
 main()

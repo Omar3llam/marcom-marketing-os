@@ -12,6 +12,7 @@ import { healthRouter }              from './health.js';
 import { portfolioRouter }           from './portfolio.js';
 import { testingRouter }             from './testing.js';
 import { memoryRouter }              from './memory.js';
+import { planningRouter }            from './planning.js';
 
 export const lumiRouter = Router();
 
@@ -26,3 +27,4 @@ lumiRouter.use('/', healthRouter);
 lumiRouter.use('/', portfolioRouter);
 lumiRouter.use('/', testingRouter);
 lumiRouter.use('/', memoryRouter);
+lumiRouter.use('/', planningRouter);
