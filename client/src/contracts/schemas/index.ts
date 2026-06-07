@@ -245,3 +245,31 @@ export {
   type TestReadout,
   type ConcludeTestResponse,
 } from './testReadout.schema';
+
+// ──────────────────────────────────────────────────────────
+// Phase 5 — Memory Moat (account patterns + briefing + gated network)
+// ──────────────────────────────────────────────────────────
+export {
+  PatternKindSchema,
+  PatternStatusSchema,
+  PromotableSpecSchema,
+  AccountPatternSchema,
+  type PatternKind,
+  type PatternStatus,
+  type PromotableSpec,
+  type AccountPattern,
+} from './accountPattern.schema';
+
+export {
+  NetworkStatusSchema,
+  NetworkInsightSchema,
+  NetworkResponseSchema,
+  type NetworkStatus,
+  type NetworkInsight,
+  type NetworkResponse,
+} from './networkInsight.schema';
+
+export {
+  BriefingSchema,
+  type Briefing,
+} from './briefing.schema';

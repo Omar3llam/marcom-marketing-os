@@ -179,6 +179,25 @@ enum TestStatus {
   ABANDONED
 }
 
+// ── Phase 5: Memory Moat ─────────────────────────────────────
+// The kinds of durable pattern mined from one workspace's own history.
+enum PatternKind {
+  FATIGUE_CEILING
+  SCALING_WINDOW
+  CREATIVE_ANGLE_LONGEVITY
+  SEASONAL_EFFECT
+}
+
+// Pattern lifecycle. ESTABLISHED requires recency-weighted support AND
+// accuracy; SUPERSEDED/CONFLICTED are conflict-resolution outcomes (a
+// reconciled or contested pattern is never promoted to a rule).
+enum PatternStatus {
+  EMERGING
+  ESTABLISHED
+  SUPERSEDED
+  CONFLICTED
+}
+
 enum WebhookProvider {
   META
   GOOGLE
@@ -209,6 +228,13 @@ model Workspace {
   currency  String   @default("USD")  // ISO 4217 currency code (EGP, USD, SAR, AED, etc.)
   createdAt DateTime @default(now())
 
+  // ── Phase 5: network memory (opt-in, anonymized) ─────────────
+  // Sharing this account's anonymized patterns into the cross-account
+  // network is OFF by default — a governance decision, never a default.
+  networkConsent Boolean   @default(false)
+  cohortTag      String? // e.g. "EG-apparel" — the anonymization cohort
+  consentedAt    DateTime?
+
   users             User[]
   actions           Action[]
   campaignStates    CampaignState[]
@@ -236,6 +262,8 @@ model Workspace {
   guardrailRules       GuardrailRule[]
   allocationPlans      AllocationPlan[]
   testExperiments      TestExperiment[]
+  accountPatterns      AccountPattern[]
+  patternObservations  PatternObservation[]
 
   @@map("workspaces")
 }
@@ -1193,4 +1221,81 @@ model TestVariant {
 
   @@index([testId])
   @@map("test_variants")
+}
+
+// ════════════════════════════════════════════════════════════
+// PHASE 5 — MEMORY MOAT (per-account learning → playbooks)
+// ════════════════════════════════════════════════════════════
+
+// A durable pattern Lumi has learned about ONE account, mined from its own
+// Decisions/Outcomes/Tests/MetricSnapshots. Confidence is truth-weighted
+// (recency-weighted accuracy × support), not a raw count. A promotable
+// pattern carries an executable guardrail spec; a SUPERSEDED/CONFLICTED
+// pattern (conflict resolution) is never promoted.
+model AccountPattern {
+  id          String        @id @default(uuid()) @db.Uuid
+  workspaceId String        @db.Uuid
+  patternKey  String // deterministic engine key — stable across re-extractions
+  kind        PatternKind
+  statement   String
+  basis       String?
+
+  // Truth, not just volume.
+  support          Int           @default(1) // raw occurrence count
+  effectiveSupport Float         @default(0) // recency-weighted support
+  accuracy         Float? // recency-weighted "was Lumi right?" (null until known outcomes)
+  confidence       Float
+  status           PatternStatus
+
+  // Promotable guardrail spec (null for informational kinds).
+  metric       String?
+  scopeLevel   EntityLevel?
+  audienceTag  String?
+  comparator   Comparator?
+  threshold    Float?
+  unit         ThresholdUnit?
+  emitVerdict  Verdict?
+  sustainedDays Int?
+
+  // Conflict resolution + promotion provenance.
+  supersededById String? @db.Uuid
+  promotedRuleId String? @db.Uuid
+
+  firstObservedAt DateTime
+  lastObservedAt  DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  workspace    Workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  observations PatternObservation[]
+  supersededBy AccountPattern?      @relation("PatternSupersede", fields: [supersededById], references: [id], onDelete: SetNull)
+  supersedes   AccountPattern[]     @relation("PatternSupersede")
+
+  @@unique([workspaceId, patternKey])
+  @@index([workspaceId, status])
+  @@map("account_patterns")
+}
+
+// The accuracy audit trail — one row per pattern occurrence, recording
+// what Lumi predicted vs what actually happened. This is what lets the
+// memory answer "was Lumi right?" and decay stale evidence by date.
+model PatternObservation {
+  id            String   @id @default(uuid()) @db.Uuid
+  workspaceId   String   @db.Uuid
+  patternId     String   @db.Uuid
+  decisionId    String?  @db.Uuid
+  entityId      String?  @db.Uuid
+  occurrenceKey String // stable dedup key so re-extraction never double-counts
+  predicted     String
+  actual        String?
+  correct       Boolean?
+  observedAt    DateTime
+  createdAt     DateTime @default(now())
+
+  workspace Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  pattern   AccountPattern @relation(fields: [patternId], references: [id], onDelete: Cascade)
+
+  @@unique([patternId, occurrenceKey])
+  @@index([workspaceId, observedAt])
+  @@map("pattern_observations")
 }
