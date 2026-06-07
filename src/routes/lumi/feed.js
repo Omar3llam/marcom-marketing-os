@@ -8,6 +8,7 @@ import { Router }  from 'express';
 import { prisma }  from '../../lib/prisma.js';
 import { logger }  from '../../utils/logger.js';
 import { getPortfolio } from '../../services/portfolio/PortfolioService.js';
+import { getWeeklyAgenda } from '../../services/test-generator/TestGeneratorService.js';
 
 export const feedRouter = Router();
 
@@ -220,6 +221,24 @@ feedRouter.get('/feed', async (req, res) => {
       logger.debug({ err: pacingErr.message, wsId }, '[lumi/feed] pacing best-effort skipped');
     }
 
+    // Phase 4: weekly testing agenda + open (running) experiments
+    // (best-effort; never blocks the feed).
+    let testingAgenda = [];
+    let openTests = [];
+    try {
+      [testingAgenda, openTests] = await Promise.all([
+        getWeeklyAgenda(wsId).then((a) => a.slice(0, 5)),
+        prisma.testExperiment.findMany({
+          where:   { workspaceId: wsId, status: 'RUNNING' },
+          orderBy: { startedAt: 'desc' },
+          take:    20,
+          include: { variants: true },
+        }),
+      ]);
+    } catch (testErr) {
+      logger.debug({ err: testErr.message, wsId }, '[lumi/feed] testing best-effort skipped');
+    }
+
     logger.debug({
       campaignStatesFound: campaignStates.length,
       pendingActionsFound: pendingActions.length,
@@ -337,6 +356,26 @@ feedRouter.get('/feed', async (req, res) => {
         merAfter:          p.merAfter,
         projectedCpaMinor: p.projectedCpaMinor,
         status:            p.status, // PROPOSED → awaits human confirm
+      })),
+      // Phase 4 — Testing OS surfacing
+      testingAgenda: testingAgenda.map((s) => ({
+        entityId:       s.entityId,
+        entityLevel:    s.entityLevel,
+        name:           s.name,
+        dimension:      s.dimension,
+        metric:         s.metric,
+        hypothesis:     s.hypothesis,
+        expectedSignal: s.expectedSignal,
+        priority:       s.priority,
+      })),
+      openTests: openTests.map((t) => ({
+        id:          t.id,
+        dimension:   t.dimension,
+        metric:      t.metric,
+        status:      t.status,
+        hypothesis:  t.hypothesis,
+        startedAt:   t.startedAt,
+        variants:    t.variants.map((v) => ({ label: v.label, isControl: v.isControl, isWinner: v.isWinner })),
       })),
     });
   } catch (err) {

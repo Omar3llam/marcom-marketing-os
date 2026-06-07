@@ -732,6 +732,103 @@ const PORTFOLIO_BY_WS = {
   },
 };
 
+// ── Phase 4: Testing OS — weekly agenda + the closed loop ──────
+const TESTING_BY_WS = {
+  apparel: {
+    currency: 'EGP',
+    agenda: [
+      { entityId: 'adset-carousel', name: 'Carousel · 5 SKUs', dimension: 'HOOK', metric: 'CTR', priority: 2.4,
+        hypothesis: 'A sharper first-frame hook will lift CTR on "Carousel · 5 SKUs".',
+        expectedSignal: 'CTR rises within 3–4 days at similar or lower CPM.',
+        variants: [
+          { label: 'A', description: 'Current hook (control)', isControl: true },
+          { label: 'B', description: 'Sharper first-frame hook / opening line', isControl: false },
+        ] },
+      { entityId: 'adset-cold-lal', name: 'Cold · 1% LAL', dimension: 'OFFER', metric: 'ROAS', priority: 1.9,
+        hypothesis: 'A stronger offer angle will convert existing traffic into return.',
+        expectedSignal: 'ROAS / conversion rate improves while CTR holds.',
+        variants: [
+          { label: 'A', description: 'Current offer (control)', isControl: true },
+          { label: 'B', description: 'Bundle / urgency / discount angle', isControl: false },
+        ] },
+      { entityId: 'adset-retarget', name: 'Retargeting · 30d', dimension: 'AUDIENCE', metric: 'CPA', priority: 1.5,
+        hypothesis: 'A fresher audience will lower CPA by breaking saturation.',
+        expectedSignal: 'CPA falls and frequency resets on the new audience.',
+        variants: [
+          { label: 'A', description: 'Current audience (control)', isControl: true },
+          { label: 'B', description: 'Broad / advantage+', isControl: false },
+          { label: 'C', description: '1–3% lookalike', isControl: false },
+        ] },
+    ],
+    running: [
+      { id: 'audience-running', name: 'Carousel · 5 SKUs', dimension: 'AUDIENCE', metric: 'CPA', status: 'RUNNING',
+        hypothesis: 'A fresher audience will lower CPA by breaking saturation.',
+        variants: [
+          { label: 'A', metricText: 'CPA EGP 40.0', sampleText: '120k impr', isControl: true },
+          { label: 'B', metricText: 'CPA EGP 31.9', sampleText: '110k impr', isControl: false },
+        ] },
+    ],
+    concluded: [
+      { id: 'hook-concluded', name: 'Carousel · 5 SKUs', dimension: 'HOOK', metric: 'CTR',
+        winnerLabel: 'B', lift: 22.2, confidenceLabel: 'MODERATE',
+        sampleNote: '60,000 impressions on the smaller arm.',
+        verdict: 'REFRESH', memoryWritten: true,
+        rationale: 'Hook B beat Hook A by 22.2% CTR (1.83% vs 1.5%), moderate confidence.',
+        variants: [
+          { label: 'A', metricText: '1.50% CTR', isControl: true,  isWinner: false },
+          { label: 'B', metricText: '1.83% CTR', isControl: false, isWinner: true },
+        ] },
+      { id: 'angle-thin', name: 'Carousel · 5 SKUs', dimension: 'CREATIVE_ANGLE', metric: 'CTR',
+        winnerLabel: null, lift: 0, confidenceLabel: 'INCONCLUSIVE',
+        sampleNote: 'Only 320 impressions on the smaller arm — too thin to call (need 1000).',
+        verdict: null, memoryWritten: true,
+        rationale: 'No variant beat the control on CTR at a callable sample — inconclusive.',
+        variants: [
+          { label: 'A', metricText: '1.47% CTR', isControl: true,  isWinner: false },
+          { label: 'B', metricText: '2.19% CTR', isControl: false, isWinner: false },
+        ] },
+    ],
+  },
+  riyadh: {
+    currency: 'SAR',
+    agenda: [
+      { entityId: 'adset-snap-broad', name: 'Snap · Broad', dimension: 'CREATIVE_ANGLE', metric: 'CTR', priority: 1.7,
+        hypothesis: 'A UGC, problem-led angle will re-engage a plateaued audience.',
+        expectedSignal: 'CTR recovers as a new angle resets attention.',
+        variants: [
+          { label: 'A', description: 'Current angle (control)', isControl: true },
+          { label: 'B', description: 'UGC, problem-led re-framing', isControl: false },
+        ] },
+    ],
+    running: [],
+    concluded: [
+      { id: 'snap-offer', name: 'Snap · Broad', dimension: 'OFFER', metric: 'ROAS',
+        winnerLabel: 'B', lift: 48.0, confidenceLabel: 'MODERATE',
+        sampleNote: '90 conversions on the smaller arm.',
+        verdict: 'SCALE', memoryWritten: true,
+        rationale: 'Offer B beat Offer A by 48% ROAS (3.0x vs 2.0x), moderate confidence.',
+        variants: [
+          { label: 'A', metricText: '2.00× ROAS', isControl: true,  isWinner: false },
+          { label: 'B', metricText: '2.96× ROAS', isControl: false, isWinner: true },
+        ] },
+    ],
+  },
+  dubai: {
+    currency: 'AED',
+    agenda: [
+      { entityId: 'adset-li', name: 'LinkedIn · ABM', dimension: 'HOOK', metric: 'CTR', priority: 1.4,
+        hypothesis: 'A sharper opening line will lift CTR on the ABM set.',
+        expectedSignal: 'CTR rises within 3–4 days at similar or lower CPM.',
+        variants: [
+          { label: 'A', description: 'Current hook (control)', isControl: true },
+          { label: 'B', description: 'Sharper opening line', isControl: false },
+        ] },
+    ],
+    running: [],
+    concluded: [],
+  },
+};
+
 export const DEMO_DATA = {
   WORKSPACES: DEMO_WORKSPACES,
   FEATURED:   FEATURED_CAMPAIGN,
@@ -741,6 +838,7 @@ export const DEMO_DATA = {
   FATIGUE_BY_WS:   FATIGUE_BY_WS,
   GUARDRAILS_BY_WS: GUARDRAILS_BY_WS,
   PORTFOLIO_BY_WS:  PORTFOLIO_BY_WS,
+  TESTING_BY_WS:    TESTING_BY_WS,
   ACTIVITY:   ACTIVITY_TICKER,
   VECTORS:    SCAN_VECTORS,
   EXECUTION:  EXECUTION_STEPS,

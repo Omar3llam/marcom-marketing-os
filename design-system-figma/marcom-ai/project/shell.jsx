@@ -10,6 +10,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
     { key: 'home',      label: 'Home',        sub: 'Account pulse',                Icon: Icons.Layout },
     { key: 'campaigns', label: 'Campaigns',   sub: 'Verdicts + diagnosis',         Icon: Icons.BarChart },
     { key: 'portfolio', label: 'Portfolio',   sub: 'Blended truth + allocation',   Icon: Icons.Layers },
+    { key: 'testing',   label: 'Testing OS',  sub: 'Weekly agenda + closed loop',  Icon: Icons.Zap },
     { key: 'content',   label: 'Content Lab', sub: 'Copy + visual generation',     Icon: Icons.Send },
     { key: 'growth',    label: 'Growth',      sub: 'Memory layer + opportunities', Icon: Icons.Target },
     { key: 'calendar',  label: 'Calendar',    sub: '4-week content plan',          Icon: Icons.Calendar },

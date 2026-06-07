@@ -369,6 +369,115 @@ async function seedPhase3(ws) {
   });
 }
 
+async function seedPhase4(ws) {
+  // Apparel only: the Testing OS — a weekly agenda in flight plus a
+  // visibly CLOSED loop.
+  //  • PROPOSED HOOK test (awaiting launch).
+  //  • RUNNING AUDIENCE test with partial counts (being watched).
+  //  • CONCLUDED HOOK test → confident winner → a linked PROPOSED REFRESH
+  //    Decision + a first-class DecisionMemoryEntry (the loop, closed).
+  //  • CONCLUDED thin-sample test → memory written, NO verdict (honesty).
+  const workspaceId = det(`ws:${ws.key}`);
+  const adSetId = det(`adset:${ws.key}:Carousel · 5 SKUs`);
+
+  // Upsert a test + its variants. `decision`/`memory` optional (loop-closed).
+  async function upsertTest(key, test, variants) {
+    const id = det(`p4test:${ws.key}:${key}`);
+    const data = { workspaceId, entityId: adSetId, entityLevel: 'ADSET', currency: ws.currency, ...test };
+    await prisma.testExperiment.upsert({ where: { id }, create: { id, ...data }, update: data });
+    for (const v of variants) {
+      const vid = det(`p4var:${ws.key}:${key}:${v.label}`);
+      const vdata = { testId: id, ...v };
+      await prisma.testVariant.upsert({ where: { id: vid }, create: { id: vid, ...vdata }, update: vdata });
+    }
+    return id;
+  }
+
+  // (a) PROPOSED — Hook A vs B, awaiting launch.
+  await upsertTest('hook-proposed', {
+    dimension: 'HOOK', metric: 'CTR', priority: 2.4, status: 'PROPOSED',
+    hypothesis: 'A sharper first-frame hook will lift CTR on "Carousel · 5 SKUs".',
+    expectedSignal: 'CTR rises within 3–4 days at similar or lower CPM.',
+  }, [
+    { label: 'A', description: 'Current hook (control)',                 isControl: true  },
+    { label: 'B', description: 'Sharper first-frame hook / opening line', isControl: false },
+  ]);
+
+  // (b) RUNNING — broad vs lookalike audience, partial data in.
+  await upsertTest('audience-running', {
+    dimension: 'AUDIENCE', metric: 'CPA', priority: 1.8, status: 'RUNNING', startedAt: DATE,
+    hypothesis: 'A fresher audience will lower CPA by breaking saturation.',
+    expectedSignal: 'CPA falls and frequency resets on the new audience.',
+  }, [
+    { label: 'A', description: 'Current audience (control)', isControl: true,
+      impressions: 120000, clicks: 1800, conversions: 60, spendMinor: toMinor(2400, ws.currency), revenueMinor: toMinor(6000, ws.currency) },
+    { label: 'B', description: 'Broad / advantage+',         isControl: false,
+      impressions: 110000, clicks: 1760, conversions: 72, spendMinor: toMinor(2300, ws.currency), revenueMinor: toMinor(7200, ws.currency) },
+  ]);
+
+  // (c) CONCLUDED — Hook B beat A by ~22% CTR, MODERATE confidence →
+  //     a linked PROPOSED REFRESH Decision + first-class memory (loop closed).
+  const concludedDecisionId = det(`decision:${ws.key}:hook-win`);
+  await prisma.decision.upsert({
+    where: { id: concludedDecisionId },
+    create: {
+      id: concludedDecisionId, workspaceId, entityId: adSetId, entityLevel: 'ADSET',
+      verdict: 'REFRESH', confidence: 0.9,
+      diagnosis: 'Hook B beat Hook A by 22.2% CTR (1.83% vs 1.5%), moderate confidence.',
+      rootCause: `test:${det(`p4test:${ws.key}:hook-concluded`)}`, status: 'PROPOSED',
+    },
+    update: {},
+  });
+  await upsertTest('hook-concluded', {
+    dimension: 'HOOK', metric: 'CTR', priority: 2.1, status: 'CONCLUDED',
+    hypothesis: 'A sharper first-frame hook will lift CTR.',
+    expectedSignal: 'CTR rises within 3–4 days at similar or lower CPM.',
+    startedAt: new Date(DATE.getTime() - 10 * 86_400_000), concludedAt: DATE,
+    winnerLabel: 'B', lift: 22.2, confidence: 0.9, confidenceLabel: 'MODERATE',
+    sampleNote: '60,000 impressions on the smaller arm.', decisionId: concludedDecisionId,
+  }, [
+    { label: 'A', description: 'Current hook (control)', isControl: true,
+      impressions: 60000, clicks: 900, conversions: 36, spendMinor: toMinor(1500, ws.currency), revenueMinor: toMinor(3600, ws.currency) },
+    { label: 'B', description: 'Sharper first-frame hook', isControl: false, isWinner: true,
+      impressions: 60000, clicks: 1100, conversions: 50, spendMinor: toMinor(1500, ws.currency), revenueMinor: toMinor(5200, ws.currency) },
+  ]);
+  const winMemoryId = det(`memory:${ws.key}:hook-win`);
+  await prisma.decisionMemoryEntry.upsert({
+    where: { id: winMemoryId },
+    create: {
+      id: winMemoryId, workspaceId, decisionId: concludedDecisionId, entityId: adSetId,
+      actionType: 'test:HOOK',
+      rationale: 'Hook B beat Hook A by 22.2% CTR (1.83% vs 1.5%), moderate confidence.',
+      isSustainable: true,
+    },
+    update: {},
+  });
+
+  // (d) CONCLUDED thin sample — memory written, NO verdict (honesty).
+  await upsertTest('angle-thin', {
+    dimension: 'CREATIVE_ANGLE', metric: 'CTR', priority: 0.9, status: 'CONCLUDED',
+    hypothesis: 'A UGC, problem-led angle will re-engage the audience.',
+    expectedSignal: 'CTR recovers as a new angle resets attention.',
+    startedAt: new Date(DATE.getTime() - 4 * 86_400_000), concludedAt: DATE,
+    winnerLabel: null, lift: 0, confidence: 0, confidenceLabel: 'INCONCLUSIVE',
+    sampleNote: 'Only 320 impressions on the smaller arm — too thin to call (need 1000).',
+  }, [
+    { label: 'A', description: 'Current angle (control)',    isControl: true,  impressions: 340, clicks: 5 },
+    { label: 'B', description: 'UGC, problem-led re-framing', isControl: false, impressions: 320, clicks: 7 },
+  ]);
+  const thinMemoryId = det(`memory:${ws.key}:angle-thin`);
+  await prisma.decisionMemoryEntry.upsert({
+    where: { id: thinMemoryId },
+    create: {
+      id: thinMemoryId, workspaceId, decisionId: null, entityId: adSetId,
+      actionType: 'test:CREATIVE_ANGLE',
+      rationale: 'No variant beat the control on CTR at a callable sample — inconclusive.',
+      isSustainable: null,
+    },
+    update: {},
+  });
+}
+
 async function main() {
   for (const ws of WORKSPACES) {
     await seedWorkspace(ws);
@@ -376,6 +485,7 @@ async function main() {
   await seedDecisionGraph(WORKSPACES[0]); // apparel
   await seedPhase2(WORKSPACES[0]);        // apparel guardrails + fatigue prediction
   await seedPhase3(WORKSPACES[0]);        // apparel portfolio + blended truth + allocation plan
+  await seedPhase4(WORKSPACES[0]);        // apparel testing OS — agenda + closed loop
   console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction + allocation.');
 }
 
