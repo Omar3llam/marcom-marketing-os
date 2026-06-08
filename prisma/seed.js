@@ -647,6 +647,43 @@ async function seedPhase6(ws) {
   await prisma.northStarGoal.upsert({ where: { id: goalId }, create: { id: goalId, ...goal }, update: goal });
 }
 
+async function seedPhase7(ws) {
+  // Apparel only: the Measurement OS — Agency/Enterprise depth.
+  //  • measurementTier ENTERPRISE (unlocks the gated surface).
+  //  • ONE CONCLUDED IncrementalityTest on Meta with a real positive lift +
+  //    a CI that excludes zero (so the causal column + DATA model light up).
+  //  • PathTouch stays EMPTY — path attribution models honestly report
+  //    INSUFFICIENT_DATA (no journey data, no invented credit).
+  //  • Other workspaces stay NONE → honest gated/locked state.
+  const workspaceId = det(`ws:${ws.key}`);
+  const minor = (major) => Math.round(major * 100); // EGP
+
+  await prisma.workspace.update({ where: { id: workspaceId }, data: { measurementTier: 'ENTERPRISE' } });
+
+  const testId = det(`p7inc:${ws.key}:META`);
+  const row = {
+    workspaceId,
+    name: 'Meta conversion holdout — Q2',
+    channel: 'META',
+    entityId: det(`account:${ws.key}`),
+    entityLevel: 'ACCOUNT',
+    holdoutPct: 0.1,
+    mde: 0.15,
+    sampleSizePerArm: 8_400,
+    durationDays: 21,
+    guardrails: { minDurationDays: 7, maxDurationDays: 56, maxHoldoutShare: 0.25, stopIfSpendBreachPct: 0.2 },
+    status: 'CONCLUDED',
+    // exposed 2.4% vs holdout 2.0% → ~+18% incremental, CI excludes zero.
+    exposedUsers: 84_000, exposedConversions: 2_016,
+    holdoutUsers: 9_000,  holdoutConversions: 180,
+    liftPct: 18.2, ciLow: 0.012, ciHigh: 0.024, confidenceLabel: 'HIGH',
+    incrementalRevenueMinor: minor(61_500),
+    startedAt: new Date(DATE.getTime() - 35 * 86_400_000),
+    concludedAt: new Date(DATE.getTime() - 7 * 86_400_000),
+  };
+  await prisma.incrementalityTest.upsert({ where: { id: testId }, create: { id: testId, ...row }, update: row });
+}
+
 async function main() {
   for (const ws of WORKSPACES) {
     await seedWorkspace(ws);
@@ -657,7 +694,8 @@ async function main() {
   await seedPhase4(WORKSPACES[0]);        // apparel testing OS — agenda + closed loop
   await seedPhase5(WORKSPACES[0]);        // apparel memory moat — learnings + conflicts
   await seedPhase6(WORKSPACES[0]);        // apparel planning OS — plan + scenario + north-star + economics
-  console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction + allocation + testing + memory + planning.');
+  await seedPhase7(WORKSPACES[0]);        // apparel measurement OS — tier + concluded holdout (causal lift)
+  console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction + allocation + testing + memory + planning + measurement.');
 }
 
 main()

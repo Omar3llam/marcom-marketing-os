@@ -15,6 +15,7 @@ import { PortfolioPage }                                  from './portfolio-page
 import { TestingPage }                                    from './testing-page.jsx';
 import { MemoryPage }                                     from './memory-page.jsx';
 import { PlanPage }                                       from './plan-page.jsx';
+import { MeasurePage }                                    from './measure-page.jsx';
 import { ContentLab }                                     from './content-lab.jsx';
 import { InputView }                                      from './input-view.jsx';
 import { TheatreView }                                    from './theatre-view.jsx';
@@ -37,6 +38,7 @@ const FSM = {
   TESTING:   'TESTING',
   MEMORY:    'MEMORY',
   PLAN:      'PLAN',
+  MEASURE:   'MEASURE',
   CONTENT:   'CONTENT',
   GROWTH:    'GROWTH',
   CALENDAR:  'CALENDAR',
@@ -102,6 +104,7 @@ function App() {
     else if (key === 'testing')   setState(FSM.TESTING);
     else if (key === 'memory')    setState(FSM.MEMORY);
     else if (key === 'plan')      setState(FSM.PLAN);
+    else if (key === 'measure')   setState(FSM.MEASURE);
     else if (key === 'content')   setState(FSM.CONTENT);
     else if (key === 'growth')    setState(FSM.GROWTH);
     else if (key === 'calendar')  setState(FSM.CALENDAR);
@@ -156,6 +159,9 @@ function App() {
       break;
     case FSM.PLAN:
       body = <PlanPage workspace={workspace} onNav={handleNav} />;
+      break;
+    case FSM.MEASURE:
+      body = <MeasurePage workspace={workspace} onNav={handleNav} />;
       break;
     case FSM.CONTENT:
       body = (

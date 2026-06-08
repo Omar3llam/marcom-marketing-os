@@ -315,3 +315,43 @@ export {
   type NorthStarGoal,
   type Plan,
 } from './plan.schema';
+
+// ──────────────────────────────────────────────────────────
+// Phase 7 — Measurement OS (attribution + incrementality + reconciliation)
+// ──────────────────────────────────────────────────────────
+export {
+  AttributionSourceSchema,
+  ConfidenceLevelSchema,
+  AttributedSchema,
+  type AttributionSource,
+  type ConfidenceLevel,
+  type Attributed,
+} from './attributed.schema';
+
+export {
+  AttributionModelSchema,
+  AttributionStatusSchema,
+  AttributionChannelSchema,
+  AttributionResultSchema,
+  type AttributionModel,
+  type AttributionStatus,
+  type AttributionResult,
+} from './attribution.schema';
+
+export {
+  IncrementalityStatusSchema,
+  HoldoutDesignSchema,
+  IncrementalityReadoutSchema,
+  IncrementalityTestSchema,
+  type IncrementalityStatus,
+  type HoldoutDesign,
+  type IncrementalityReadout,
+  type IncrementalityTest,
+} from './incrementality.schema';
+
+export {
+  ReconciliationRowSchema,
+  ReconciliationSchema,
+  type ReconciliationRow,
+  type Reconciliation,
+} from './reconciliation.schema';

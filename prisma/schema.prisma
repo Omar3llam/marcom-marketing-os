@@ -224,6 +224,43 @@ enum SustainabilityBand {
   UNDERWATER
 }
 
+// ── Phase 7: Measurement OS ──────────────────────────────────
+// Attribution/incrementality is Agency/Enterprise depth, OFF by default.
+enum MeasurementTier {
+  NONE
+  AGENCY
+  ENTERPRISE
+}
+
+// Attribution models. NOTE the deliberate absence of a DATA_DRIVEN id:
+// market "DDA" means Google's path-based Shapley/Markov over user journeys,
+// which we cannot compute honestly (no path data). Our causal model is
+// INCREMENTALITY_WEIGHTED (credit by MEASURED holdout lift) — naming it
+// DATA_DRIVEN would itself be a quiet lie.
+enum AttributionModel {
+  FIRST_TOUCH
+  LAST_TOUCH
+  LINEAR
+  POSITION_BASED
+  INCREMENTALITY_WEIGHTED
+}
+
+// A holdout is "finished" only at CONCLUDED — when its lift is read out
+// with a confidence interval and written to memory.
+enum IncrementalityStatus {
+  DESIGNED
+  RUNNING
+  CONCLUDED
+  ABANDONED
+}
+
+// The confidence half of the honesty contract.
+enum ConfidenceLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 enum WebhookProvider {
   META
   GOOGLE
@@ -295,6 +332,12 @@ model Workspace {
   accountEconomics AccountEconomics?
   plans            Plan[]
   northStarGoals   NorthStarGoal[]
+
+  // ── Phase 7: Measurement OS ──────────────────────────────────
+  // Attribution/incrementality is gated; OFF by default (not core).
+  measurementTier     MeasurementTier      @default(NONE)
+  incrementalityTests IncrementalityTest[]
+  pathTouches         PathTouch[]
 
   @@map("workspaces")
 }
@@ -1411,4 +1454,75 @@ model Plan {
 
   @@index([workspaceId, status])
   @@map("plans")
+}
+
+// ════════════════════════════════════════════════════════════
+// PHASE 7 — MEASUREMENT OS (attribution · incrementality)
+// ════════════════════════════════════════════════════════════
+
+// A holdout/incrementality experiment — the only CAUSAL measurement we
+// run. Designed via a power calc, read out as a lift with a CONFIDENCE
+// INTERVAL (never a point), and written to Decision Memory on conclude
+// (mirrors the Phase-4 test loop). Money in integer minor units.
+model IncrementalityTest {
+  id          String       @id @default(uuid()) @db.Uuid
+  workspaceId String       @db.Uuid
+  name        String
+  channel     String // e.g. "META" — the channel being held out
+  entityId    String?      @db.Uuid
+  entityLevel EntityLevel?
+
+  // Design (from the power calc).
+  holdoutPct       Float
+  mde              Float // minimum detectable (relative) lift
+  sampleSizePerArm Int
+  durationDays     Int
+  guardrails       Json
+
+  status IncrementalityStatus @default(DESIGNED)
+
+  // Observed counters (filled as the holdout runs).
+  exposedUsers       Int @default(0)
+  exposedConversions Int @default(0)
+  holdoutUsers       Int @default(0)
+  holdoutConversions Int @default(0)
+
+  // Readout (causal lift + CI). Null until CONCLUDED.
+  liftPct                 Float?
+  ciLow                   Float?
+  ciHigh                  Float?
+  confidenceLabel         ConfidenceLevel?
+  incrementalRevenueMinor Int?
+  decisionId              String?          @db.Uuid // optional PROPOSED Decision on a confident result
+
+  startedAt   DateTime?
+  concludedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status])
+  @@map("incrementality_tests")
+}
+
+// The ingestion table that makes multi-touch attribution honest WHEN it is
+// populated. Empty until a path/journey source (GA4 path export, etc.) is
+// connected — until then the path-based attribution models honestly return
+// INSUFFICIENT_DATA rather than invent journey credit.
+model PathTouch {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @db.Uuid
+  conversionId      String // groups touches into one conversion journey
+  channel           String
+  entityId          String?  @db.Uuid
+  touchPosition     Int // 0-based order within the journey
+  occurredAt        DateTime
+  isConversionTouch Boolean  @default(false)
+  createdAt         DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, conversionId, touchPosition])
+  @@map("path_touches")
 }
