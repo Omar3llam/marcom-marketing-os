@@ -10,13 +10,18 @@ import {
   CONSTANTS,
 } from './scoringEngine.js';
 import { PrismaClient } from '@prisma/client';
+import { dbAvailable } from '../../tests/dbProbe.js';
 
 const prisma = new PrismaClient();
 
 const TEST_WORKSPACE_ID = '00000000-0000-0000-0000-000000000001';
 const TEST_REVIEWER_ID = '00000000-0000-0000-0000-000000000002';
 
-describe('scoringEngine', () => {
+// DB-integration suite: skips when no migrated database is reachable (green
+// locally), runs in full against a real DB (CI).
+const DB_OK = await dbAvailable();
+
+describe.skipIf(!DB_OK)('scoringEngine', () => {
   beforeAll(async () => {
     await prisma.workspace.upsert({
       where:  { id: TEST_WORKSPACE_ID },

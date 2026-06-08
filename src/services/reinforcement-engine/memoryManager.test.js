@@ -11,10 +11,15 @@ import {
   getCapabilityStats,
 } from './memoryManager.js';
 import { PrismaClient } from '@prisma/client';
+import { dbAvailable } from '../../tests/dbProbe.js';
 
 const prisma = new PrismaClient();
 
-describe('memoryManager', () => {
+// DB-integration suite: skips when no migrated database is reachable (green
+// locally), runs in full against a real DB (CI).
+const DB_OK = await dbAvailable();
+
+describe.skipIf(!DB_OK)('memoryManager', () => {
   beforeEach(async () => {
     // Clean up test snapshots
     await prisma.reinforcementSnapshot.deleteMany({
