@@ -561,6 +561,13 @@ async function seedPhase5(ws) {
   });
 }
 
+/**
+ * Seed planning data for a workspace: creates AccountEconomics, a DRAFT Plan (with channel mix, projections, testing agenda, and memory basis), and a linked NorthStarGoal.
+ * 
+ * The seeded rows use deterministic IDs derived from the workspace key and store monetary values in minor units (EGP cents).
+ * 
+ * @param {Object} ws - Workspace fixture containing at least `key` and `currency` used to build deterministic IDs and currency fields.
+ */
 async function seedPhase6(ws) {
   // Apparel only: the Planning OS — a built next-quarter plan.
   //  • An AccountEconomics row (AOV / margin / repeat) so scenarios can speak
@@ -647,6 +654,13 @@ async function seedPhase6(ws) {
   await prisma.northStarGoal.upsert({ where: { id: goalId }, create: { id: goalId, ...goal }, update: goal });
 }
 
+/**
+ * Seed Measurement OS fixtures for the given workspace, enabling enterprise-level measurement and a concluded Meta incrementality test.
+ *
+ * Updates the workspace's measurementTier to "ENTERPRISE" and upserts a single concluded IncrementalityTest for the META channel with a positive observed lift whose confidence interval excludes zero and an incremental revenue value stored in minor currency units.
+ *
+ * @param {Object} ws - Workspace fixture (from WORKSPACES) to seed phase 7 data for; its `key` is used to derive deterministic IDs.
+ */
 async function seedPhase7(ws) {
   // Apparel only: the Measurement OS — Agency/Enterprise depth.
   //  • measurementTier ENTERPRISE (unlocks the gated surface).
@@ -684,6 +698,12 @@ async function seedPhase7(ws) {
   await prisma.incrementalityTest.upsert({ where: { id: testId }, create: { id: testId, ...row }, update: row });
 }
 
+/**
+ * Orchestrates seeding of the database: seeds all workspaces and runs phases 1–7 for the first workspace ("apparel").
+ *
+ * Executes workspace graph creation for every entry in WORKSPACES, then runs the decision, guardrails/fatigue,
+ * portfolio/allocation, testing, memory, planning, and measurement seeding routines for WORKSPACES[0].
+ */
 async function main() {
   for (const ws of WORKSPACES) {
     await seedWorkspace(ws);

@@ -17,7 +17,12 @@ import { logger } from '../../utils/logger.js';
 import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
 import { attributed, ATTRIBUTION_SOURCE, CONFIDENCE_LEVEL } from '../attribution-engine/attributionTypes.js';
 
-/** Concluded holdouts keyed by the channel they measured. */
+/**
+ * Fetch concluded incrementality tests for a workspace and map each test to the channel it measured.
+ * @param {string} workspaceId - Workspace identifier used to query concluded tests.
+ * @param {Array<Object>} channels - Channel objects to match against; each should include `channelId` and `channel`.
+ * @returns {Map<string, Object>} Map keyed by `channelId` with the concluded test that matches that channel. A test matches a channel when `test.entityId === channel.channelId` or `test.channel === channel.channel`. If the test query fails, an empty Map is returned.
+ */
 async function concludedByChannel(workspaceId, channels) {
   const tests = await prisma.incrementalityTest.findMany({
     where: { workspaceId, status: 'CONCLUDED' },
@@ -31,8 +36,18 @@ async function concludedByChannel(workspaceId, channels) {
 }
 
 /**
- * The reconciliation surface: three Attributed columns per channel + gaps.
- * READ-ONLY.
+ * Build a read-only reconciliation view per channel with platform, blended, and incremental attributions plus explicit gap metrics.
+ *
+ * Throws if `workspaceId` is not provided.
+ *
+ * @param {string} workspaceId - Identifier of the workspace to reconcile.
+ * @returns {Object} An object describing reconciliation state:
+ *   - `status` {'OK'|'INSUFFICIENT_DATA'}: overall result.
+ *   - `rows` {Array} when `status` is 'OK': per-channel objects with
+ *       `channelId`, `channel`, `platform`, `blended`, `incremental`, and `gaps` (`platformVsBlendedMinor`, `blendedVsIncrementalMinor`).
+ *     Empty array when `status` is 'INSUFFICIENT_DATA'.
+ *   - `portfolio` {Object|null}: portfolio-level totals and gap metrics when `status` is 'OK', otherwise `null`.
+ * @throws {Error} If `workspaceId` is missing.
  */
 export async function getReconciliation(workspaceId) {
   if (!workspaceId) throw new Error('getReconciliation: workspaceId required');
@@ -79,10 +94,17 @@ export async function getReconciliation(workspaceId) {
 }
 
 /**
- * Allocation feed: P3 channel inputs whose marginalEfficiency is discounted
- * by the MEASURED incremental/claimed ratio (tested channels only; untested
- * channels keep blendedRoas, flagged). Fed to allocate() — no engine change.
- * @returns {Promise<{ channels, anyIncremental }>}
+ * Build the allocation feed: per-channel inputs with marginalEfficiency adjusted
+ * by the measured incremental/claimed ratio for channels with concluded tests.
+ *
+ * The returned channels are suitable for the allocation engine; untested channels
+ * keep their blended ROAS and are marked with a `basis` of `"blended"`.
+ *
+ * @returns {{ channels: Array<Object>, anyIncremental: boolean }} An object where
+ *   `channels` is an array of per-channel allocation inputs and `anyIncremental`
+ *   is `true` if at least one channel's marginalEfficiency was derived from
+ *   measured incremental data.
+ * @throws {Error} If `workspaceId` is not provided.
  */
 export async function incrementalChannels(workspaceId) {
   if (!workspaceId) throw new Error('incrementalChannels: workspaceId required');

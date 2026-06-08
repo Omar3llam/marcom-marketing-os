@@ -1,6 +1,15 @@
 import { validateDecisionContract } from '@/types/decision.js';
 import { initialState, legal, persistHistory, clearStoredHistory } from './state.js';
 
+/**
+ * Updates the decision FSM state based on the provided action.
+ *
+ * Determines and returns the next reducer state for the decision flow; if the action is not permitted in the current view or is unrecognized, the original state is returned unchanged.
+ *
+ * @param {Object} state - Current FSM state.
+ * @param {Object} action - Action object containing a `type` string and any action-specific payload.
+ * @returns {Object} The new state object after applying the action, or the original state if no transition is performed.
+ */
 export function decisionReducer(state, action) {
   if (!legal(state.view, action.type)) return state;
 

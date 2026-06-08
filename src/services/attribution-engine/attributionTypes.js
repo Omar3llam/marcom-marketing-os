@@ -45,9 +45,16 @@ export const MODEL_CAVEAT = Object.freeze({
 });
 
 /**
- * THE HONESTY PRIMITIVE. No revenue/efficiency value leaves an engine as a
- * bare number — it is wrapped with where it came from and how much to trust
- * it. `band` optionally carries a confidence interval [lo, hi].
+ * Wraps a numeric attribution value with provenance and trust metadata.
+ *
+ * @param {?number} value - Numeric value to attribute; normalized to `null` if `null` or `undefined`.
+ * @param {string} source - Origin of the value (use values from `ATTRIBUTION_SOURCE`).
+ * @param {string} confidence - Confidence level for the value (use values from `CONFIDENCE_LEVEL`).
+ * @param {Object} [opts] - Optional metadata.
+ * @param {?string} [opts.modelName=null] - Attribution model name (use values from `ATTRIBUTION_MODEL`) or `null`.
+ * @param {?[number,number]} [opts.band=null] - Optional confidence interval expressed as `[lo, hi]`, or `null`.
+ * @param {?string} [opts.caveat=null] - Optional human-readable caveat explaining limitations, or `null`.
+ * @returns {{value: number|null, source: string, confidence: string, modelName: string|null, band: [number,number]|null, caveat: string|null}} An object containing the normalized value and its provenance/trust metadata.
  */
 export function attributed(value, source, confidence, { modelName = null, band = null, caveat = null } = {}) {
   return { value: value == null ? null : value, source, confidence, modelName, band, caveat };

@@ -26,6 +26,13 @@ const CONF_COLOR = {
   LOW:    'var(--c-text-muted)',
 };
 
+/**
+ * Render a compact, uppercase label chip for an attribution source.
+ *
+ * @param {{source: string}} props - Component props.
+ * @param {string} props.source - Source key to display; uses a human-friendly label when available.
+ * @returns {JSX.Element} The chip element showing the mapped label or the raw source. 
+ */
 function SourceChip({ source }) {
   return (
     <span className="font-mono" style={{
@@ -35,6 +42,12 @@ function SourceChip({ source }) {
   );
 }
 
+/**
+ * Render a small circular color indicator for a confidence level with a tooltip.
+ *
+ * @param {('HIGH'|'MEDIUM'|'LOW'|string)} confidence - Confidence key used to select the dot color; unknown keys fall back to a muted color.
+ * @returns {JSX.Element} A span element sized 8×8px, circular and colored for the given confidence, with a title of "{confidence} confidence".
+ */
 function ConfidenceDot({ confidence }) {
   return (
     <span title={`${confidence} confidence`} style={{
@@ -44,7 +57,14 @@ function ConfidenceDot({ confidence }) {
   );
 }
 
-// An Attributed figure: value + source + confidence, never bare.
+/**
+ * Render an attributed monetary value with its source and confidence badge.
+ *
+ * @param {Object} props
+ * @param {{value: number|null, source?: string, confidence?: string, caveat?: string}|null} props.a - Attribution data; when falsy the component renders an em dash. If present, `value` may be `null` to indicate "no causal read"; `caveat` is used as tooltip text.
+ * @param {string} props.currency - Currency code passed to formatCurrency for numeric values.
+ * @param {'right'|'left'} [props.align='right'] - Horizontal alignment for the rendered content.
+ * @returns {JSX.Element} A React element showing the formatted value (or placeholder), plus a source chip and a confidence dot.
 function AttributedValue({ a, currency, align = 'right' }) {
   if (!a) return <span style={{ color: 'var(--c-text-muted)' }}>—</span>;
   const val = a.value == null
@@ -60,6 +80,16 @@ function AttributedValue({ a, currency, align = 'right' }) {
   );
 }
 
+/**
+ * Render a styled card with a header (title, optional accent, and optional right-aligned sub) and body content.
+ *
+ * @param {object} props - Component props.
+ * @param {string|JSX.Element} props.title - Header title shown on the left.
+ * @param {string|JSX.Element} [props.sub] - Optional right-aligned subheading displayed in muted text.
+ * @param {JSX.Element} [props.accent] - Optional element rendered next to the title (e.g., a badge).
+ * @param {JSX.Element} props.children - Card body content rendered below the header.
+ * @returns {JSX.Element} The card element containing the header and children. 
+ */
 function Card({ title, sub, accent, children }) {
   return (
     <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, padding: 18, boxShadow: 'var(--sh-card)' }}>
@@ -73,6 +103,16 @@ function Card({ title, sub, accent, children }) {
   );
 }
 
+/**
+ * Render a reconciliation card comparing platform, blended, and incremental values per channel.
+ *
+ * Renders a four-column grid with a header row, one row per channel (showing a channel label, platform, blended, and incremental attributed values), an inline warning when platform over-reports blended, and a short explanatory note about incremental being the proven causal column only when a holdout exists.
+ *
+ * @param {Object} props
+ * @param {Array<Object>} props.rows - Array of reconciliation rows. Each row should include at least: `channel` (string), `gaps.platformVsBlendedMinor` (number), and `platform`, `blended`, `incremental` attributed-value objects consumed by AttributedValue.
+ * @param {string} props.currency - Currency code used by formatCurrency when rendering monetary values.
+ * @returns {import('react').ReactElement} The reconciliation card element.
+ */
 function ReconciliationCard({ rows, currency }) {
   return (
     <Card title="Reconciliation" sub="platform · blended · causal">
@@ -101,6 +141,11 @@ function ReconciliationCard({ rows, currency }) {
   );
 }
 
+/**
+ * Render the "Attribution models" card listing available and dark (insufficient-data) attribution models.
+ * @param {{ available: { model: string, note?: string }[], dark: { model: string, reason: string }[] }} attribution - Attribution groups to display. `available` items show `model` and optional `note`; `dark` items show `model` and `reason` for being insufficient.
+ * @returns {JSX.Element} The card element containing the lists and explanatory note.
+ */
 function AttributionCard({ attribution }) {
   return (
     <Card title="Attribution models" accent={<span className="font-mono" style={{ fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--c-text-muted)' }}>· honest by default</span>}>
@@ -127,6 +172,14 @@ function AttributionCard({ attribution }) {
   );
 }
 
+/**
+ * Render a horizontal confidence-interval bar with a zero marker and a positioned lift percentage label.
+ *
+ * @param {{ci: [number, number], liftPct: number}} props
+ * @param {[number, number]} props.ci - Two-element array [lo, hi] giving the confidence interval bounds in percent.
+ * @param {number} props.liftPct - Lift percentage used to position and label the marker on the bar.
+ * @returns {JSX.Element} The rendered confidence-interval bar with colored interval, zero marker, and lift label.
+ */
 function CiBar({ ci, liftPct }) {
   // Map a [lo, hi]% CI onto a -10%..+40% track; mark zero.
   const lo = ci[0], hi = ci[1];
@@ -145,6 +198,24 @@ function CiBar({ ci, liftPct }) {
   );
 }
 
+/**
+ * Render the Incrementality card showing a conclusive holdout's lift interval and an inconclusive example.
+ *
+ * @param {Object} props
+ * @param {Object} props.holdout - Data for the conclusive holdout.
+ * @param {string} props.holdout.channel - Holdout channel name.
+ * @param {string} props.holdout.confidenceLabel - Short confidence label (e.g., "95%").
+ * @param {number} props.holdout.incrementalRevenueMinor - Incremental revenue in minor currency units.
+ * @param {number[]} props.holdout.ci - 2-element confidence interval as percentages [lo, hi].
+ * @param {number} props.holdout.liftPct - Point estimate lift percentage used for positioning the label.
+ * @param {number} props.holdout.sampleSizePerArm - Sample size per arm.
+ * @param {number} props.holdout.durationDays - Duration of the holdout in days.
+ * @param {Object} props.inconclusive - Data for the inconclusive example.
+ * @param {string} props.inconclusive.channel - Holdout channel name for the inconclusive example.
+ * @param {string} props.inconclusive.rationale - Short explanation why the result is inconclusive.
+ * @param {string} props.currency - ISO currency code used to format monetary values.
+ * @returns {JSX.Element} The rendered Incrementality card component.
+ */
 function IncrementalityCard({ holdout, inconclusive, currency }) {
   return (
     <Card title="Incrementality" sub="causal lift, as an interval">
@@ -173,6 +244,17 @@ function IncrementalityCard({ holdout, inconclusive, currency }) {
   );
 }
 
+/**
+ * Render a card comparing a meta (claimed) ROAS to the incremental (causal) ROAS and display an explanatory note.
+ *
+ * @param {object} props
+ * @param {object} props.feed - Allocation feed data.
+ * @param {object} props.feed.meta - Meta information containing ROAS values.
+ * @param {number} props.feed.meta.claimedRoas - The claimed ROAS from meta data (displayed struck through).
+ * @param {number} props.feed.meta.incrementalRoas - The incremental (causal) ROAS (displayed as the emphasized value).
+ * @param {string} props.feed.note - Descriptive note or explanation shown below the ROAS comparison.
+ * @returns {JSX.Element} A card element that visualizes claimed vs incremental ROAS and renders the feed note.
+ */
 function AllocationFeedCard({ feed }) {
   const { meta } = feed;
   return (
@@ -193,6 +275,14 @@ function AllocationFeedCard({ feed }) {
   );
 }
 
+/**
+ * Render a centered locked/gated UI explaining that advanced measurement is reserved for Agency/Enterprise tiers.
+ *
+ * Displays a dashed panel with an icon, a title, and explanatory text. The panel references the workspace name when provided.
+ *
+ * @param {{name?: string}} workspace - Workspace object; `workspace.name` (if present) is inserted into the message, otherwise "This workspace" is used.
+ * @returns {JSX.Element} The locked-state React element.
+ */
 function LockedState({ workspace }) {
   return (
     <div style={{ maxWidth: 620, margin: '40px auto 0', textAlign: 'center', padding: '40px 24px', borderRadius: 16, border: '1px dashed var(--c-surface-border)', background: 'var(--c-surface-card)' }}>
@@ -205,6 +295,13 @@ function LockedState({ workspace }) {
   );
 }
 
+/**
+ * Render the "Measure" page that either shows a locked, tier-gated message or a set of measurement cards.
+ *
+ * Renders a header with workspace context and, when measurement is available for the workspace's persona, a responsive grid containing reconciliation, attribution, incrementality, and allocation cards; otherwise renders a locked state prompting upgrade.
+ *
+ * @param {Object} props.workspace - Optional workspace object used to determine persona and display context. Expected fields: `id` (persona key), `name` (display name), and `currency` (ISO currency code).
+ * @returns {JSX.Element} The Measure page UI.
 export function MeasurePage({ workspace }) {
   const persona = workspace?.id ?? 'apparel';
   const data = DEMO_DATA.MEASUREMENT_BY_WS?.[persona] ?? { tier: 'NONE' };

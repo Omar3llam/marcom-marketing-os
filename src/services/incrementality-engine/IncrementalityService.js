@@ -19,8 +19,17 @@ import { getEconomics } from '../unit-economics/EconomicsService.js';
 const MEMORY_PREFIX = 'incrementality:';
 
 /**
- * Pure: map a conclusive holdout readout to the DecisionMemoryEntry shape.
- * Exported for unit testing without a DB.
+ * Convert an incrementality readout into a DecisionMemoryEntry-shaped object.
+ *
+ * @param {Object} test - Persisted test metadata; must include `workspaceId` and `channel`. `entityId` is optional and will be set to `null` in the returned object when absent.
+ * @param {Object} readout - Result of incrementality analysis. When `readout.conclusive` is true the function uses `liftPct`, `ci` (array with [low, high]) and `confidenceLabel` to format the rationale; otherwise it uses `readout.rationale`.
+ * @returns {Object} A DecisionMemoryEntry-shaped object containing:
+ *   - `workspaceId` (string)
+ *   - `entityId` (string|null)
+ *   - `actionType` (string) — prefixed with `incrementality:`
+ *   - `rationale` (string)
+ *   - `isSustainable` (boolean) — true only when the readout is conclusive and `confidenceLabel` is `"HIGH"`.
+ * @throws {Error} If `test.workspaceId` is missing.
  */
 export function incrementalityToMemory(test, readout) {
   if (!test?.workspaceId) throw new Error('incrementalityToMemory: test.workspaceId required');
@@ -37,7 +46,22 @@ export function incrementalityToMemory(test, readout) {
   };
 }
 
-/** Design a holdout (power calc) and persist it as DESIGNED. */
+/**
+ * Compute a holdout test design (sample, duration, guardrails) and persist it with status `DESIGNED`.
+ *
+ * @param {string} workspaceId - Workspace identifier; required.
+ * @param {Object} [opts] - Design inputs and metadata for the test.
+ * @param {string} [opts.name] - Human-readable test name; defaults to `\${channel} holdout`.
+ * @param {string} opts.channel - Channel for the holdout (e.g., "email", "paid"); required.
+ * @param {string} [opts.entityId] - Optional entity id associated with the test.
+ * @param {string} [opts.entityLevel] - Optional entity level (e.g., "CAMPAIGN").
+ * @param {number} [opts.baselineCvr] - Baseline conversion rate used for power calculations.
+ * @param {number} [opts.mde] - Minimum detectable effect (as a proportion) for the design.
+ * @param {number} [opts.dailyEligible] - Estimated number of eligible users per day.
+ * @param {number} [opts.holdoutPct] - Target holdout percentage to include in the design.
+ * @returns {Object} The created `incrementalityTest` database record augmented with the computed `design` object.
+ * @throws {Error} If `workspaceId` or `channel` is missing.
+ */
 export async function designTest(workspaceId, { name, channel, entityId, entityLevel, baselineCvr, mde, dailyEligible, holdoutPct } = {}) {
   if (!workspaceId) throw new Error('designTest: workspaceId required');
   if (!channel) throw new Error('designTest: channel required');
@@ -58,20 +82,36 @@ export async function designTest(workspaceId, { name, channel, entityId, entityL
   return { ...created, design };
 }
 
+/**
+ * Retrieve up to 50 most-recent incrementality tests for a workspace.
+ * @param {string} workspaceId - Workspace identifier to filter tests.
+ * @returns {Array<Object>} An array of incrementalityTest records ordered by newest first (maximum 50).
+ * @throws {Error} If `workspaceId` is not provided.
+ */
 export async function listTests(workspaceId) {
   if (!workspaceId) throw new Error('listTests: workspaceId required');
   return prisma.incrementalityTest.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 50 });
 }
 
+/**
+ * Fetches a single incrementality test by id within the given workspace.
+ * @param {string} workspaceId - Workspace identifier.
+ * @param {string} testId - Incrementality test identifier.
+ * @returns {Object|null} The incrementalityTest record if found, otherwise `null`.
+ */
 export async function getTest(workspaceId, testId) {
   if (!workspaceId) throw new Error('getTest: workspaceId required');
   return prisma.incrementalityTest.findFirst({ where: { id: testId, workspaceId } });
 }
 
 /**
- * Conclude a holdout: read out the causal lift (with CI) and close the loop
- * into memory. Mirrors TestTrackerService.concludeTest.
- * @returns {Promise<{ readout, memoryId, decisionId }>}
+ * Conclude a holdout test by computing causal lift with confidence intervals, persisting the conclusion, writing a decision memory entry, and optionally creating a proposed decision.
+ * @param {string} workspaceId - Workspace identifier for the test.
+ * @param {string} testId - Identifier of the incrementality test to conclude.
+ * @returns {{ readout: Object, memoryId: string, decisionId: string | null }} An object containing:
+ *   - `readout`: the computed incrementality readout (lift, CI, confidence label, incremental revenue, and related metrics);
+ *   - `memoryId`: the id of the created DecisionMemoryEntry;
+ *   - `decisionId`: the id of the created Decision when one was created, or `null` otherwise.
  */
 export async function concludeIncrementality(workspaceId, testId) {
   if (!workspaceId) throw new Error('concludeIncrementality: workspaceId required');
