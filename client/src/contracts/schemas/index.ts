@@ -355,3 +355,48 @@ export {
   type ReconciliationRow,
   type Reconciliation,
 } from './reconciliation.schema';
+
+// ──────────────────────────────────────────────────────────
+// Phase 8 — Collaboration & Reporting OS (roles · narratives · approvals)
+// ──────────────────────────────────────────────────────────
+export {
+  EvidenceKindSchema,
+  FigureSchema,
+  ClaimSchema,
+  NarrativeSectionSchema,
+  type EvidenceKind,
+  type Figure,
+  type Claim,
+  type NarrativeSection,
+} from './evidenceClaim.schema';
+
+export {
+  NarrativePeriodSchema,
+  NarrativeAudienceSchema,
+  ConfidenceComponentSchema,
+  ReportConfidenceSchema,
+  StakeholderNarrativeSchema,
+  type NarrativePeriod,
+  type NarrativeAudience,
+  type ConfidenceComponent,
+  type ReportConfidence,
+  type StakeholderNarrative,
+} from './narrative.schema';
+
+export {
+  WorkspaceRoleSchema,
+  RoleScopeSchema,
+  type WorkspaceRole,
+  type RoleScope,
+} from './role.schema';
+
+export {
+  ApprovalStateSchema,
+  ApprovalRequestSchema,
+  CollaborationEventTypeSchema,
+  HandoffSchema,
+  type ApprovalState,
+  type ApprovalRequest,
+  type CollaborationEventType,
+  type Handoff,
+} from './approval.schema';

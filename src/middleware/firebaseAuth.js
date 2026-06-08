@@ -40,11 +40,12 @@ function cacheGetWorkspace(uid) {
   return entry;
 }
 
-function cacheSetWorkspace(uid, workspaceId, role) {
+function cacheSetWorkspace(uid, workspaceId, role, collabRole = null) {
   if (!workspaceId) return; // never cache a miss
   workspaceCache.set(uid, {
     workspaceId,
     role,
+    collabRole,
     expiresAt: Date.now() + WORKSPACE_CACHE_TTL_MS,
   });
 }
@@ -69,7 +70,7 @@ async function findUserByUidWithRetry(uid, attempt = 1) {
   try {
     return await prisma.user.findUnique({
       where:  { clerkId: uid },
-      select: { id: true, workspaceId: true, role: true },
+      select: { id: true, workspaceId: true, role: true, collabRole: true },
     });
   } catch (err) {
     if (attempt >= WORKSPACE_LOOKUP_ATTEMPTS) throw err;
@@ -114,6 +115,7 @@ export async function firebaseAuthMiddleware(req, res, next) {
     if (cached) {
       req.workspaceId = cached.workspaceId;
       req.userRole    = cached.role;
+      req.collabRole  = cached.collabRole ?? null;
       req.authSource  = 'firebase-cache';
       return next();
     }
@@ -125,8 +127,9 @@ export async function firebaseAuthMiddleware(req, res, next) {
       if (user) {
         req.workspaceId = user.workspaceId;
         req.userRole    = user.role;
+        req.collabRole  = user.collabRole ?? null;
         req.authSource  = 'firebase';
-        cacheSetWorkspace(decodedToken.uid, user.workspaceId, user.role);
+        cacheSetWorkspace(decodedToken.uid, user.workspaceId, user.role, user.collabRole);
       } else {
         // No Prisma row for this Firebase UID.
         // Auto-provision: create Workspace + User atomically so the
@@ -146,13 +149,14 @@ export async function firebaseAuthMiddleware(req, res, next) {
                 create: { name: `${displayName}'s Workspace` },
               },
             },
-            select: { id: true, workspaceId: true, role: true },
+            select: { id: true, workspaceId: true, role: true, collabRole: true },
           });
 
           req.workspaceId = created.workspaceId;
           req.userRole    = created.role;
+          req.collabRole  = created.collabRole ?? null;
           req.authSource  = 'firebase-auto-provisioned';
-          cacheSetWorkspace(decodedToken.uid, created.workspaceId, created.role);
+          cacheSetWorkspace(decodedToken.uid, created.workspaceId, created.role, created.collabRole);
 
           logger.info(
             { uid: decodedToken.uid, workspaceId: created.workspaceId },
@@ -164,13 +168,14 @@ export async function firebaseAuthMiddleware(req, res, next) {
           try {
             const retried = await prisma.user.findUnique({
               where:  { clerkId: decodedToken.uid },
-              select: { id: true, workspaceId: true, role: true },
+              select: { id: true, workspaceId: true, role: true, collabRole: true },
             });
             if (retried) {
               req.workspaceId = retried.workspaceId;
               req.userRole    = retried.role;
+              req.collabRole  = retried.collabRole ?? null;
               req.authSource  = 'firebase-retry';
-              cacheSetWorkspace(decodedToken.uid, retried.workspaceId, retried.role);
+              cacheSetWorkspace(decodedToken.uid, retried.workspaceId, retried.role, retried.collabRole);
             } else {
               req.workspaceId = null;
               logger.error(

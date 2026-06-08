@@ -9,6 +9,7 @@ import { prisma }  from '../../lib/prisma.js';
 import { logger }  from '../../utils/logger.js';
 import { getPortfolio } from '../../services/portfolio/PortfolioService.js';
 import { getWeeklyAgenda } from '../../services/test-generator/TestGeneratorService.js';
+import { surfaceCollaboration } from './feedSurfacing.js';
 
 // The static public demo feed lives in its own module (route-file size).
 export { demoFeedHandler } from './demoFeed.js';
@@ -205,6 +206,10 @@ feedRouter.get('/feed', async (req, res) => {
       logger.debug({ err: measErr.message, wsId }, '[lumi/feed] measurement best-effort skipped');
     }
 
+    // Phase 8: collaboration surfacing — role-scoped narrative + approvals
+    // (extracted to feedSurfacing.js; best-effort, never blocks the feed).
+    const collaboration = await surfaceCollaboration(wsId, req.collabRole);
+
     logger.debug({
       campaignStatesFound: campaignStates.length,
       pendingActionsFound: pendingActions.length,
@@ -349,6 +354,8 @@ feedRouter.get('/feed', async (req, res) => {
       planning,
       // Phase 7 — measurement surfacing (gated; null unless tier ≠ NONE)
       measurement,
+      // Phase 8 — collaboration surfacing (role-scoped narrative + approvals)
+      collaboration,
     });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/feed] failed');

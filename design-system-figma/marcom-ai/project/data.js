@@ -1081,6 +1081,111 @@ const MEASUREMENT_BY_WS = {
   dubai:  { tier: 'NONE' },
 };
 
+// ── Phase 8: Collaboration & Reporting OS ────────────────────
+// The auto-generated LEADERSHIP narrative — prose, not a dashboard. Every
+// figure carries an `ev` (evidenceRef) + `kind`, rendered as a click-through
+// chip: the visible proof of zero-hallucination. A report-confidence score
+// (with its 4 component drivers) sits up top. A pending approval strip
+// demonstrates approvals-through-audit. NO charts anywhere.
+const COLLAB_BY_WS = {
+  apparel: {
+    defaultRole: 'STRATEGIST',
+    narrative: {
+      period: 'WEEKLY', audience: 'LEADERSHIP',
+      headline: '3 actions this period, 1 causally proven.',
+      reportConfidence: {
+        score: 88, label: 'HIGH',
+        components: [
+          { key: 'memoryCoverage',         label: 'Memory coverage',        weight: 0.30, value: 0.80 },
+          { key: 'incrementalityCoverage', label: 'Incrementality coverage', weight: 0.30, value: 0.50 },
+          { key: 'blendedConfidence',      label: 'Blended-truth confidence', weight: 0.25, value: 0.90 },
+          { key: 'attributionConfidence',  label: 'Attribution confidence',  weight: 0.15, value: 0.80 },
+        ],
+      },
+      sections: [
+        { key: 'DID', title: 'What we did', claims: [
+          { text: 'We acted on 3 entities this period — killed 2, reallocated 1, freeing EGP 2,000 of spend.',
+            figures: [{ value: 200_000, unit: 'EGP', evidenceRef: 'outcome:o1', kind: 'OUTCOME' }], tier: 'exec', proven: true },
+        ] },
+        { key: 'ALLOCATED', title: 'Where it went', claims: [
+          { text: 'Moved EGP 2,000 into PMax Warm Audiences, out of cold Meta prospecting.',
+            figures: [{ value: 200_000, unit: 'EGP', evidenceRef: 'plan:p1', kind: 'ALLOCATION' }], tier: 'exec', proven: true },
+        ] },
+        { key: 'CHANGED', title: 'What it changed', claims: [
+          { text: 'Blended ROAS improved 12.0% vs the prior period.',
+            figures: [{ value: 12.0, unit: '%', evidenceRef: 'blended:acc-meta', kind: 'BLENDED' }], tier: 'exec', proven: true },
+          { text: 'Platform-reported revenue over-states blended truth by 38%.',
+            figures: [{ value: 38, unit: '%', evidenceRef: 'blended:acc-meta', kind: 'BLENDED' }], tier: 'exec', proven: true },
+        ] },
+        { key: 'PROVED', title: 'What we proved', claims: [
+          { text: 'A Meta holdout proved a +18.2% causal lift (95% CI 12.0–24.4%, excludes zero).',
+            figures: [{ value: 18.2, unit: '%', evidenceRef: 'holdout:t1', kind: 'INCREMENTALITY' }], tier: 'exec', proven: true },
+        ] },
+        { key: 'GOAL', title: 'Against the goal', claims: [
+          { text: 'North-star "Q3 Blended ROAS" is ahead (target 3.5x). Trend-based landing estimate: 3.7x.',
+            figures: [{ value: 3.5, unit: 'x', evidenceRef: 'goal:g1', kind: 'GOAL' }], tier: 'exec', proven: true },
+        ] },
+      ],
+    },
+    approval: { id: 'req1', subject: 'Q3 Growth Plan — channel reallocation', subjectType: 'PLAN', state: 'PENDING', requestedBy: 'Strategist', requestedAgo: '2h ago' },
+    inbox: [
+      { kind: 'RADAR', severity: 'HIGH', headline: 'Cold Prospecting #3 frequency breaching ceiling' },
+      { kind: 'PACING', severity: 'MEDIUM', headline: 'Meta pacing 3 days ahead of budget' },
+      { kind: 'NARRATIVE', severity: 'LOW', headline: 'Weekly leadership narrative ready' },
+    ],
+  },
+  riyadh: {
+    defaultRole: 'STRATEGIST',
+    narrative: {
+      period: 'WEEKLY', audience: 'LEADERSHIP',
+      headline: 'No material changes this period.',
+      reportConfidence: {
+        score: 41, label: 'LOW',
+        components: [
+          { key: 'memoryCoverage',         label: 'Memory coverage',        weight: 0.30, value: 0.30 },
+          { key: 'incrementalityCoverage', label: 'Incrementality coverage', weight: 0.30, value: 0.00 },
+          { key: 'blendedConfidence',      label: 'Blended-truth confidence', weight: 0.25, value: 0.70 },
+          { key: 'attributionConfidence',  label: 'Attribution confidence',  weight: 0.15, value: 0.30 },
+        ],
+      },
+      sections: [
+        { key: 'DID', title: 'What we did', claims: [
+          { text: 'Lumi made no material moves this period — nothing to report rather than something to invent.', figures: [], tier: 'exec', proven: true },
+        ] },
+      ],
+    },
+    approval: null,
+    inbox: [{ kind: 'NARRATIVE', severity: 'LOW', headline: 'Weekly leadership narrative ready' }],
+  },
+  dubai: {
+    defaultRole: 'STRATEGIST',
+    narrative: {
+      period: 'WEEKLY', audience: 'LEADERSHIP',
+      headline: '1 action this period.',
+      reportConfidence: {
+        score: 58, label: 'MODERATE',
+        components: [
+          { key: 'memoryCoverage',         label: 'Memory coverage',        weight: 0.30, value: 0.50 },
+          { key: 'incrementalityCoverage', label: 'Incrementality coverage', weight: 0.30, value: 0.00 },
+          { key: 'blendedConfidence',      label: 'Blended-truth confidence', weight: 0.25, value: 0.90 },
+          { key: 'attributionConfidence',  label: 'Attribution confidence',  weight: 0.15, value: 0.50 },
+        ],
+      },
+      sections: [
+        { key: 'DID', title: 'What we did', claims: [
+          { text: 'We acted on 1 entity this period — scaled 1.', figures: [], tier: 'exec', proven: true },
+        ] },
+        { key: 'CHANGED', title: 'What it changed', claims: [
+          { text: 'Blended ROAS stands at 2.80x (reconciled against actuals).',
+            figures: [{ value: 2.80, unit: 'x', evidenceRef: 'blended:acc-dubai', kind: 'BLENDED' }], tier: 'exec', proven: true },
+        ] },
+      ],
+    },
+    approval: null,
+    inbox: [{ kind: 'NARRATIVE', severity: 'LOW', headline: 'Weekly leadership narrative ready' }],
+  },
+};
+
 export const DEMO_DATA = {
   WORKSPACES: DEMO_WORKSPACES,
   FEATURED:   FEATURED_CAMPAIGN,
@@ -1094,6 +1199,7 @@ export const DEMO_DATA = {
   BRIEFING_BY_WS:   BRIEFING_BY_WS,
   PLAN_BY_WS:       PLAN_BY_WS,
   MEASUREMENT_BY_WS: MEASUREMENT_BY_WS,
+  COLLAB_BY_WS:      COLLAB_BY_WS,
   ACTIVITY:   ACTIVITY_TICKER,
   VECTORS:    SCAN_VECTORS,
   EXECUTION:  EXECUTION_STEPS,
