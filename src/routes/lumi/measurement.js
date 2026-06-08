@@ -16,7 +16,12 @@ import { designTest, listTests, getTest, concludeIncrementality } from '../../se
 
 export const measurementRouter = Router();
 
-// Resolve workspaceId — mirrors lumi/planning.js. Never fabricate a uuid.
+/**
+ * Determine the workspace ID associated with the incoming request.
+ * May read an existing `req.workspaceId` or resolve it from `req.userId` via a datastore lookup; does not create or fabricate a workspace.
+ * @param {import('express').Request & { workspaceId?: string, userId?: string }} req - Express request object.
+ * @returns {string|null} The workspace ID if found, `null` otherwise.
+ */
 async function resolveWorkspaceId(req) {
   if (req.workspaceId) return req.workspaceId;
   if (!req.userId) return null;
@@ -31,7 +36,19 @@ async function resolveWorkspaceId(req) {
 
 // ── The tier gate (the honesty/product seam) ──────────────────
 // Measurement is Agency/Enterprise depth, OFF by default. NONE → 403.
-// Resolves the workspace once and stashes it on req for the handlers.
+/**
+ * Enforces workspace-level measurement access and attaches the resolved workspace and tier to the request.
+ *
+ * Resolves the workspace ID for the incoming request, then checks the workspace's measurement tier
+ * (or the MEASUREMENT_TIER_OVERRIDE env var). If no workspace can be resolved, responds 409 with
+ * `{ error: "NoWorkspace" }`. If the resolved tier is `'NONE'`, responds 403 with
+ * `{ error: "MeasurementGated", tier: "NONE" }`. Otherwise sets `req.measurementWorkspaceId` and
+ * `req.measurementTier` and calls `next()`.
+ *
+ * @param {import('express').Request} req - Express request; on success will have `measurementWorkspaceId` (string) and `measurementTier` (string) set.
+ * @param {import('express').Response} res - Express response used to send 409/403 error responses.
+ * @param {import('express').NextFunction} next - Express next function called when access is permitted.
+ */
 async function requireMeasurementTier(req, res, next) {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });

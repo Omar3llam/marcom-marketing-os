@@ -46,8 +46,9 @@ export function planToDecisionRows(plan, { workspaceId, planId }) {
 }
 
 /**
- * Compose blended truth + current verdicts into allocation channel inputs.
- * @returns {Promise<Array<object>>}
+ * Build allocation channel inputs by combining blended-truth channel metrics with each channel's latest decision verdict (defaults to `'HOLD'` when none exists).
+ * @param {string} workspaceId - Workspace identifier.
+ * @returns {Promise<Array<object>>} An array of channel input objects containing: `channelId`, `channel`, `blendedRoas`, `currentSpendMinor`, `currentRevenueMinor`, `verdict`, and `currency`.
  */
 async function buildChannels(workspaceId) {
   const { channels } = await getBlendedTruth(workspaceId);
@@ -73,11 +74,9 @@ async function buildChannels(workspaceId) {
 }
 
 /**
- * Compose allocation inputs from INCREMENTAL (causal) efficiency instead of
- * claimed/blended — Phase 7 acceptance #3. Reuses ReconciliationService's
- * incrementality-adjusted marginalEfficiency; the allocation ENGINE is
- * unchanged (it already prefers marginalEfficiency when finite).
- */
+ * Build allocation channel inputs using incremental (causal) efficiency while applying the latest stored decision verdicts.
+ * @param {string} workspaceId - Workspace identifier used to load incremental channels and their latest decisions.
+ * @returns {Array<Object>} An array of channel input objects augmented with incremental efficiency fields and a `verdict` property set to the most recent decision verdict for that channel, or `'HOLD'` if no decision exists. */
 async function buildIncrementalChannels(workspaceId) {
   // Lazy import avoids a static cycle (Reconciliation → BlendedTruth only).
   const { incrementalChannels } = await import('../reconciliation/ReconciliationService.js');
@@ -95,9 +94,14 @@ async function buildIncrementalChannels(workspaceId) {
 }
 
 /**
- * Scenario preview — allocation + projected impact, NO writes.
- * @param {object} [opts] — { totalBudgetMinor, goal, basis: 'blended'|'incremental' }
- * @returns {Promise<object|null>} the plan, or null if no channels
+ * Produce an allocation scenario and projected impact without persisting any data.
+ * @param {string} workspaceId - Workspace identifier for which to build the scenario.
+ * @param {object} [opts] - Preview options.
+ * @param {number} [opts.totalBudgetMinor] - Total budget in minor currency units to pass to the allocator.
+ * @param {object} [opts.goal] - Allocation goal object (if omitted, a default growth-ceiling goal is used).
+ * @param {'blended'|'incremental'} [opts.basis='blended'] - Which channel efficiency basis to use when building inputs.
+ * @returns {object|null} The allocation plan (augmented with the selected `basis`) or `null` when there are no channels to allocate.
+ * @throws {Error} When `workspaceId` is not provided.
  */
 export async function previewAllocation(workspaceId, { totalBudgetMinor, goal, basis = 'blended' } = {}) {
   if (!workspaceId) throw new Error('previewAllocation: workspaceId required');

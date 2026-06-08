@@ -1,7 +1,11 @@
 // ============================================================
 // MARCOM / Lumi — Static demo feed (PUBLIC stakeholder preview)
 // Extracted from feed.js for route-file size compliance.
-// ============================================================
+/**
+ * Sends a fixed demo feed JSON containing a workspaceId, a generatedAt ISO timestamp, and sample campaigns with alerts.
+ *
+ * The response payload includes three example campaigns (DYING, FATIGUED, STABLE), each with nested alert entries demonstrating analysis, action plans, metrics, and memory.
+ */
 
 export function demoFeedHandler(_req, res) {
   res.json({

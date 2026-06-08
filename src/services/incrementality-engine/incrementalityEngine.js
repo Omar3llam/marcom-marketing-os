@@ -27,9 +27,22 @@ const round2 = (n) => Math.round(n * 100) / 100;
 const round4 = (n) => Math.round(n * 10_000) / 10_000;
 
 /**
- * Power calc for a two-proportion holdout: how many users per arm, and how
- * long, to detect a relative `mde` lift on `baselineCvr`. Returns the design
- * plus the assumptions behind it (uncertainty labelled, not hidden).
+ * Compute a two-arm holdout sampling design to detect a relative conversion-rate lift.
+ *
+ * @param {Object} params
+ * @param {number} params.baselineCvr - Baseline conversion rate (must be > 0 and < 1).
+ * @param {number} params.mde - Minimum detectable relative lift (e.g., 0.10 for 10%).
+ * @param {number} params.dailyEligible - Average number of eligible users per day (must be > 0).
+ * @param {number} [params.holdoutPct=0.1] - Fraction of daily eligible assigned to the holdout arm.
+ * @param {number} [params.alpha] - Z-score for significance; when omitted a default constant is used.
+ * @param {number} [params.power] - Z-score for power; when omitted a default constant is used.
+ * @returns {Object} Design object containing:
+ *  - sampleSizePerArm: required users per arm,
+ *  - durationDays: holdout duration in days (clamped to guardrails),
+ *  - holdoutPct: fraction assigned to holdout,
+ *  - guardrails: object with min/max duration and holdout-share limits,
+ *  - assumptions: human-readable array describing the baseline, target, alpha/power, and holdout share.
+ * @throws {Error} If baselineCvr is not a number in (0,1), if mde is not a number > 0, or if dailyEligible is not a number > 0.
  */
 export function designHoldout({ baselineCvr, mde, dailyEligible, holdoutPct = 0.1, alpha, power } = {}) {
   if (typeof baselineCvr !== 'number' || baselineCvr <= 0 || baselineCvr >= 1) {
@@ -72,7 +85,14 @@ export function designHoldout({ baselineCvr, mde, dailyEligible, holdoutPct = 0.
   };
 }
 
-/** Two-proportion z for the difference exposedCvr − holdoutCvr. */
+/**
+ * Compute the z-statistic and standard error for the difference between two proportions.
+ * @param {number} pe - Proportion in the exposed group (e.g., exposed conversions / exposed users).
+ * @param {number} ph - Proportion in the holdout group (e.g., holdout conversions / holdout users).
+ * @param {number} ne - Sample size for the exposed group (number of users).
+ * @param {number} nh - Sample size for the holdout group (number of users).
+ * @returns {{z: number, se: number}} The z-statistic for (pe − ph) and its standard error; if the standard error is non-finite or zero, returns `{ z: 0, se: 0 }`.
+ */
 function diffZ(pe, ph, ne, nh) {
   const se = Math.sqrt((pe * (1 - pe)) / ne + (ph * (1 - ph)) / nh);
   if (!Number.isFinite(se) || se === 0) return { z: 0, se: 0 };

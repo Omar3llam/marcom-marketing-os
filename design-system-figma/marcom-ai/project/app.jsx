@@ -51,6 +51,16 @@ const FSM = {
   GENERIC:   'GENERIC',
 };
 
+/**
+ * Root application component that provides the app shell, responsive navigation, and route-like view selection.
+ *
+ * Renders the sidebar/context bar, mobile top bar and drawer, and the main content area which switches between
+ * pages and a multi-step "verdict flow" based on an internal finite-state machine. Applies theme and density
+ * attributes to the document root, exposes demo tweaks, and wraps content in an error boundary with a home
+ * fallback.
+ *
+ * @returns {JSX.Element} The root React element composing the application shell and current view. 
+ */
 function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [state, setState] = React.useState(FSM.HOME);

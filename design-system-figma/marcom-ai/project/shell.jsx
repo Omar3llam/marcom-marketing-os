@@ -6,6 +6,24 @@ import { Icons } from './icons.jsx';
 import { VerdictPill, GlowDot, formatCurrencyCompact, formatBleed } from './primitives.jsx';
 import { DEMO_DATA } from './data.js';
 
+/**
+ * Render the application's left sidebar with collapsible layout, workspace header, navigation, notifications, recent decisions, and footer controls.
+ *
+ * The navigation list conditionally includes the "Measure" item when the workspace/persona measurement tier (derived from DEMO_DATA using `currentPersona` or `workspace.id`) is not `'NONE'`.
+ *
+ * @param {Object} props
+ * @param {boolean} props.collapsed - Whether the sidebar is collapsed.
+ * @param {() => void} props.onToggle - Callback invoked to toggle the collapsed state.
+ * @param {Object} props.workspace - Current workspace object (expects fields like `id`, `name`, `initials`, `tag`, `channels`, `channelStates`, `spendMonthlyMinor`, `currency`, `market`).
+ * @param {string} props.activeNav - Key of the currently active navigation item.
+ * @param {(key: string) => void} props.onNav - Navigation callback invoked with a tool key.
+ * @param {Array<Object>} props.sessions - Recent decision sessions to display.
+ * @param {Array<Object>} [props.radarAlerts=[]] - Radar alerts; high-priority alerts are surfaced in notifications and the Cmd+K palette.
+ * @param {Object<string, Object>} [props.personas] - Optional persona map used by the workspace switcher.
+ * @param {(personaId: string) => void} [props.onSwitchPersona] - Callback invoked when a persona/workspace is selected.
+ * @param {string} [props.currentPersona] - Currently selected persona id (used to resolve measurement tier).
+ * @returns {JSX.Element} The rendered sidebar element.
+ */
 export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sessions, radarAlerts = [], personas, onSwitchPersona, currentPersona }) {
   // Phase 7: the Measure nav is gated — shown only when the workspace's
   // measurementTier ≠ NONE (Agency/Enterprise). Honest "not core" surfacing.

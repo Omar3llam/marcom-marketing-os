@@ -21,9 +21,14 @@ import { getEconomics } from '../unit-economics/EconomicsService.js';
 const PLATFORM_SOURCES = new Set(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
 
 /**
- * Pure: fold blended-truth channels + conversions + concluded holdouts into
- * the attribution engine's per-channel inputs + the incrementality map.
- * Exported for unit testing without a DB.
+ * Build the attribution engine's per-channel inputs and an incrementality lookup from blended-truth channels, platform conversions, and concluded holdout tests.
+ *
+ * @param {Array<Object>} channels - Blended-truth channel records each containing at least `channelId`, `channel`, `platformRevenueMinor`, `blendedRevenueMinor`, `spendMinor`, and `currency`.
+ * @param {Map<string, number>} [conversionsByChannel=new Map()] - Map from `channelId` to platform-reported conversion count; missing keys are treated as `0`.
+ * @param {Array<Object>} [concludedTests=[]] - Concluded holdout test records; tests may include `entityId`, `channel`, `confidenceLabel`, `ciLow`, `ciHigh`, and an enriched `_incrementalConversions` numeric value or `null`.
+ * @returns {Object} An object with:
+ *   - `engineChannels` — array of engine channel objects ({ channelId, channel, conversions, platformRevenueMinor, blendedRevenueMinor, spendMinor, currency }),
+ *   - `incrementality` — lookup keyed by `channelId` with values ({ incrementalConversions: number|null, confidenceLabel, ciLow, ciHigh }) for channels matched to concluded tests.
  */
 export function buildAttributionInputs(channels, conversionsByChannel = new Map(), concludedTests = []) {
   const engineChannels = channels.map((c) => ({
@@ -54,9 +59,14 @@ export function buildAttributionInputs(channels, conversionsByChannel = new Map(
 }
 
 /**
- * Compute attribution for a workspace under a model.
- * @returns {Promise<object>} attributeCredit() output (Attributed wrappers)
- */
+ * Compute attribution for a workspace using the specified attribution model.
+ *
+ * Builds engine inputs from blended-truth channels, platform-reported conversions, concluded holdout tests, and optional path touches, then runs the deterministic attribution engine.
+ * @param {string} workspaceId - Workspace identifier.
+ * @param {Object} [options] - Optional settings.
+ * @param {string} [options.model] - Attribution model to use (defaults to INCREMENTALITY_WEIGHTED).
+ * @throws {Error} If `workspaceId` is falsy.
+ * @returns {Promise<object>} Attribution engine result object containing status and attribution details.
 export async function getAttribution(workspaceId, { model = ATTRIBUTION_MODEL.INCREMENTALITY_WEIGHTED } = {}) {
   if (!workspaceId) throw new Error('getAttribution: workspaceId required');
 
