@@ -23,6 +23,9 @@ export function decisionReducer(state, action) {
     case 'VIEW_PLAN':
       return { ...state, view: 'PLAN', activeMode: null, inputData: null, outputData: null, errorDetails: null, isProcessing: false, isLocked: false, theatreStep: 0 };
 
+    case 'VIEW_MEASURE':
+      return { ...state, view: 'MEASURE', activeMode: null, inputData: null, outputData: null, errorDetails: null, isProcessing: false, isLocked: false, theatreStep: 0 };
+
     case 'SUBMIT_INPUT':
       return { ...state, view: 'THEATER', inputData: action.inputData, isProcessing: true, isLocked: true, theatreStep: 0, errorDetails: null };
 

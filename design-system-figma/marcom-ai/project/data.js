@@ -1022,6 +1022,65 @@ const PLAN_BY_WS = {
   dubai: null,
 };
 
+// ── Phase 7: Measurement OS ──────────────────────────────────
+// Gated (Agency/Enterprise). apparel = ENTERPRISE (full surface);
+// riyadh/dubai = NONE (honest locked state). Every figure carries a source
+// + confidence; path attribution is honestly dark (no journey data). Money
+// in integer minor units.
+const MEASUREMENT_BY_WS = {
+  apparel: {
+    tier: 'ENTERPRISE',
+    // Three honest columns per channel, gaps explicit.
+    reconciliation: [
+      { channel: 'Meta',   platform: { value: 10_000_000, source: 'PLATFORM', confidence: 'MEDIUM' },
+        blended: { value: 8_200_000, source: 'BLENDED', confidence: 'HIGH' },
+        incremental: { value: 6_150_000, source: 'INCREMENTALITY', confidence: 'HIGH', band: [0.14, 0.22] },
+        gaps: { platformVsBlendedMinor: 1_800_000, blendedVsIncrementalMinor: 2_050_000 } },
+      { channel: 'Google', platform: { value: 6_000_000, source: 'PLATFORM', confidence: 'MEDIUM' },
+        blended: { value: 5_600_000, source: 'BLENDED', confidence: 'HIGH' },
+        incremental: { value: null, source: 'INCREMENTALITY', confidence: 'LOW', caveat: 'no holdout on this channel — not proven causal' },
+        gaps: { platformVsBlendedMinor: 400_000, blendedVsIncrementalMinor: null } },
+      { channel: 'TikTok', platform: { value: 1_800_000, source: 'PLATFORM', confidence: 'MEDIUM' },
+        blended: { value: 1_800_000, source: 'BLENDED', confidence: 'LOW', caveat: 'unverified — no actuals source' },
+        incremental: { value: null, source: 'INCREMENTALITY', confidence: 'LOW', caveat: 'no holdout yet' },
+        gaps: { platformVsBlendedMinor: 0, blendedVsIncrementalMinor: null } },
+    ],
+    // Attribution models — path-based honestly dark; causal where tested.
+    attribution: {
+      available: [
+        { model: 'LAST_TOUCH', status: 'OK', note: '= platform last-click', confidence: 'MEDIUM' },
+        { model: 'INCREMENTALITY_WEIGHTED', status: 'OK', note: 'causal · incrementality-weighted · not Google DDA', confidence: 'HIGH' },
+      ],
+      dark: [
+        { model: 'FIRST_TOUCH', reason: 'no path data connected' },
+        { model: 'LINEAR', reason: 'no path data connected' },
+        { model: 'POSITION_BASED', reason: 'no path data connected' },
+      ],
+    },
+    // A concluded holdout, read out as lift + a confidence interval.
+    holdout: {
+      channel: 'Meta', status: 'CONCLUDED',
+      liftPct: 18.2, ci: [12.0, 24.4], confidenceLabel: 'HIGH',
+      incrementalRevenueMinor: 6_150_000,
+      sampleSizePerArm: 8_400, durationDays: 21, holdoutPct: 0.1,
+      rationale: 'Exposed 2.4% vs holdout 2.0% CVR → +18.2% incremental, HIGH confidence.',
+    },
+    // An inconclusive example — refuses to call it.
+    inconclusive: {
+      channel: 'TikTok', status: 'CONCLUDED',
+      liftPct: 9.4, ci: [-2.1, 21.0], confidenceLabel: 'LOW',
+      rationale: 'Lift CI [-2.1%, 21.0%] includes zero — cannot rule out no effect. INCONCLUSIVE.',
+    },
+    // Allocation feed: claimed vs incremental efficiency.
+    allocationFeed: {
+      meta:   { claimedRoas: 4.2, incrementalRoas: 2.6 },
+      note:   'Budget recommendations now optimize on incremental, not claimed, performance.',
+    },
+  },
+  riyadh: { tier: 'NONE' },
+  dubai:  { tier: 'NONE' },
+};
+
 export const DEMO_DATA = {
   WORKSPACES: DEMO_WORKSPACES,
   FEATURED:   FEATURED_CAMPAIGN,
@@ -1034,6 +1093,7 @@ export const DEMO_DATA = {
   TESTING_BY_WS:    TESTING_BY_WS,
   BRIEFING_BY_WS:   BRIEFING_BY_WS,
   PLAN_BY_WS:       PLAN_BY_WS,
+  MEASUREMENT_BY_WS: MEASUREMENT_BY_WS,
   ACTIVITY:   ACTIVITY_TICKER,
   VECTORS:    SCAN_VECTORS,
   EXECUTION:  EXECUTION_STEPS,
