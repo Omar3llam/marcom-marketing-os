@@ -4,8 +4,12 @@
 
 import { Icons } from './icons.jsx';
 import { VerdictPill, GlowDot, formatCurrencyCompact, formatBleed } from './primitives.jsx';
+import { DEMO_DATA } from './data.js';
 
 export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sessions, radarAlerts = [], personas, onSwitchPersona, currentPersona }) {
+  // Phase 7: the Measure nav is gated — shown only when the workspace's
+  // measurementTier ≠ NONE (Agency/Enterprise). Honest "not core" surfacing.
+  const measurementTier = DEMO_DATA.MEASUREMENT_BY_WS?.[currentPersona ?? workspace?.id]?.tier ?? 'NONE';
   const coreTools = [
     { key: 'home',      label: 'Home',        sub: 'Account pulse',                Icon: Icons.Layout },
     { key: 'campaigns', label: 'Campaigns',   sub: 'Verdicts + diagnosis',         Icon: Icons.BarChart },
@@ -13,6 +17,9 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
     { key: 'testing',   label: 'Testing OS',  sub: 'Weekly agenda + closed loop',  Icon: Icons.Zap },
     { key: 'memory',    label: 'Memory',      sub: 'Learnings + playbooks',        Icon: Icons.Activity },
     { key: 'plan',      label: 'Plan',        sub: 'Scenarios + north-star',       Icon: Icons.TrendingUp },
+    ...(measurementTier !== 'NONE'
+      ? [{ key: 'measure', label: 'Measure', sub: 'Attribution + incrementality', Icon: Icons.Search }]
+      : []),
     { key: 'content',   label: 'Content Lab', sub: 'Copy + visual generation',     Icon: Icons.Send },
     { key: 'growth',    label: 'Growth',      sub: 'Memory layer + opportunities', Icon: Icons.Target },
     { key: 'calendar',  label: 'Calendar',    sub: '4-week content plan',          Icon: Icons.Calendar },

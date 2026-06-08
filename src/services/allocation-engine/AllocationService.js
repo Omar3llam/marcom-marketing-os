@@ -73,14 +73,40 @@ async function buildChannels(workspaceId) {
 }
 
 /**
+ * Compose allocation inputs from INCREMENTAL (causal) efficiency instead of
+ * claimed/blended — Phase 7 acceptance #3. Reuses ReconciliationService's
+ * incrementality-adjusted marginalEfficiency; the allocation ENGINE is
+ * unchanged (it already prefers marginalEfficiency when finite).
+ */
+async function buildIncrementalChannels(workspaceId) {
+  // Lazy import avoids a static cycle (Reconciliation → BlendedTruth only).
+  const { incrementalChannels } = await import('../reconciliation/ReconciliationService.js');
+  const { channels } = await incrementalChannels(workspaceId);
+  if (channels.length === 0) return [];
+
+  const decisions = await prisma.decision.findMany({
+    where:   { workspaceId, entityId: { in: channels.map((c) => c.channelId) } },
+    orderBy: { createdAt: 'desc' },
+  });
+  const verdictByEntity = new Map();
+  for (const d of decisions) if (!verdictByEntity.has(d.entityId)) verdictByEntity.set(d.entityId, d.verdict);
+
+  return channels.map((c) => ({ ...c, verdict: verdictByEntity.get(c.channelId) ?? 'HOLD' }));
+}
+
+/**
  * Scenario preview — allocation + projected impact, NO writes.
+ * @param {object} [opts] — { totalBudgetMinor, goal, basis: 'blended'|'incremental' }
  * @returns {Promise<object|null>} the plan, or null if no channels
  */
-export async function previewAllocation(workspaceId, { totalBudgetMinor, goal } = {}) {
+export async function previewAllocation(workspaceId, { totalBudgetMinor, goal, basis = 'blended' } = {}) {
   if (!workspaceId) throw new Error('previewAllocation: workspaceId required');
-  const channels = await buildChannels(workspaceId);
+  const channels = basis === 'incremental'
+    ? await buildIncrementalChannels(workspaceId)
+    : await buildChannels(workspaceId);
   if (channels.length === 0) return null;
-  return allocate({ totalBudgetMinor, goal: goal ?? { type: GOAL_TYPE.GROWTH_CEILING }, channels });
+  const plan = allocate({ totalBudgetMinor, goal: goal ?? { type: GOAL_TYPE.GROWTH_CEILING }, channels });
+  return { ...plan, basis };
 }
 
 /**
