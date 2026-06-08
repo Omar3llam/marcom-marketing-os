@@ -16,6 +16,7 @@ import { TestingPage }                                    from './testing-page.j
 import { MemoryPage }                                     from './memory-page.jsx';
 import { PlanPage }                                       from './plan-page.jsx';
 import { MeasurePage }                                    from './measure-page.jsx';
+import { ReportPage }                                     from './report-page.jsx';
 import { ContentLab }                                     from './content-lab.jsx';
 import { InputView }                                      from './input-view.jsx';
 import { TheatreView }                                    from './theatre-view.jsx';
@@ -39,6 +40,7 @@ const FSM = {
   MEMORY:    'MEMORY',
   PLAN:      'PLAN',
   MEASURE:   'MEASURE',
+  REPORT:    'REPORT',
   CONTENT:   'CONTENT',
   GROWTH:    'GROWTH',
   CALENDAR:  'CALENDAR',
@@ -58,6 +60,9 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   const [activeNav, setActiveNav] = React.useState('home');
+  // Phase 8: the caller's collaboration role — re-scopes the nav (Strategist
+  // sees all; Buyer loses Plan/Measure; Client collapses to Report only).
+  const [collabRole, setCollabRole] = React.useState('STRATEGIST');
   const [genericTarget, setGenericTarget] = React.useState(null);
   // Content Lab can be pre-loaded with a campaign
   const [contentContext, setContentContext] = React.useState(null);
@@ -105,6 +110,7 @@ function App() {
     else if (key === 'memory')    setState(FSM.MEMORY);
     else if (key === 'plan')      setState(FSM.PLAN);
     else if (key === 'measure')   setState(FSM.MEASURE);
+    else if (key === 'report')    setState(FSM.REPORT);
     else if (key === 'content')   setState(FSM.CONTENT);
     else if (key === 'growth')    setState(FSM.GROWTH);
     else if (key === 'calendar')  setState(FSM.CALENDAR);
@@ -162,6 +168,9 @@ function App() {
       break;
     case FSM.MEASURE:
       body = <MeasurePage workspace={workspace} onNav={handleNav} />;
+      break;
+    case FSM.REPORT:
+      body = <ReportPage workspace={workspace} role={collabRole} onRole={setCollabRole} />;
       break;
     case FSM.CONTENT:
       body = (
@@ -302,6 +311,7 @@ function App() {
           personas={DEMO_DATA.WORKSPACES}
           currentPersona={t.persona}
           onSwitchPersona={(p) => setTweak('persona', p)}
+          collabRole={collabRole}
         />
       </div>
 

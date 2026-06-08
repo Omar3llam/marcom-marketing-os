@@ -14,6 +14,7 @@ import { testingRouter }             from './testing.js';
 import { memoryRouter }              from './memory.js';
 import { planningRouter }            from './planning.js';
 import { measurementRouter }         from './measurement.js';
+import { collaborationRouter }       from './collaboration.js';
 
 export const lumiRouter = Router();
 
@@ -30,3 +31,4 @@ lumiRouter.use('/', testingRouter);
 lumiRouter.use('/', memoryRouter);
 lumiRouter.use('/', planningRouter);
 lumiRouter.use('/', measurementRouter);
+lumiRouter.use('/', collaborationRouter);

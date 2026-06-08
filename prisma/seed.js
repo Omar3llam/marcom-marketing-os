@@ -14,6 +14,9 @@
 import { PrismaClient } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { toMinor } from '../src/lib/money.js';
+import { getBlendedTruth } from '../src/services/blended-truth/BlendedTruthService.js';
+import { buildNarrativeInputs } from '../src/services/narrative-engine/NarrativeService.js';
+import { composeNarrative } from '../src/services/narrative-engine/narrativeEngine.js';
 
 const prisma = new PrismaClient();
 
@@ -684,6 +687,85 @@ async function seedPhase7(ws) {
   await prisma.incrementalityTest.upsert({ where: { id: testId }, create: { id: testId, ...row }, update: row });
 }
 
+async function seedPhase8(ws) {
+  // Apparel only: the Collaboration & Reporting OS.
+  //  • Three role-bearing seats: STRATEGIST / BUYER / CLIENT (demo users).
+  //  • ONE persisted WEEKLY LEADERSHIP StakeholderNarrative — composed from
+  //    the REAL seeded rows (decisions+outcomes, blended truth, the concluded
+  //    holdout, the north-star goal, the memory patterns). Every figure is
+  //    evidence-bound, so the narrative carries zero hallucinated numbers.
+  //  • The Phase-6 Plan gated behind a PENDING ApprovalRequest, with the
+  //    CollaborationEvent audit trail (request).
+  //  • Other workspaces seed no roles → null collabRole → STRATEGIST default.
+  const workspaceId = det(`ws:${ws.key}`);
+  const planId = det(`p6plan:${ws.key}`);
+
+  // 1. Three demo seats with collaboration roles.
+  const seats = [
+    { role: 'STRATEGIST', email: `strategist@demo.${ws.key}.local` },
+    { role: 'BUYER',      email: `buyer@demo.${ws.key}.local` },
+    { role: 'CLIENT',     email: `client@demo.${ws.key}.local` },
+  ];
+  for (const s of seats) {
+    const id = det(`p8user:${ws.key}:${s.role}`);
+    const data = { workspaceId, email: s.email, role: 'VIEWER', collabRole: s.role };
+    await prisma.user.upsert({ where: { id }, create: { id, ...data }, update: { collabRole: s.role } });
+  }
+
+  // 2. Compose a grounded LEADERSHIP narrative from the real seeded rows.
+  const [decisions, blended, concludedTests, goals, patterns, accounts, campaigns, adSets] = await Promise.all([
+    prisma.decision.findMany({ where: { workspaceId }, include: { outcomes: { orderBy: { createdAt: 'desc' }, take: 1 } }, take: 50 }),
+    getBlendedTruth(workspaceId).catch(() => null),
+    prisma.incrementalityTest.findMany({ where: { workspaceId, status: 'CONCLUDED' } }),
+    prisma.northStarGoal.findMany({ where: { workspaceId } }),
+    prisma.accountPattern.findMany({ where: { workspaceId }, select: { status: true } }),
+    prisma.account.findMany({ where: { workspaceId }, select: { id: true, name: true } }),
+    prisma.campaign.findMany({ where: { workspaceId }, select: { id: true, name: true } }),
+    prisma.adSet.findMany({ where: { workspaceId }, select: { id: true, name: true } }),
+  ]);
+  const labelsById = new Map([...accounts, ...campaigns, ...adSets].map((r) => [r.id, r.name]));
+
+  const inputs = buildNarrativeInputs({
+    decisions,
+    allocationPlanIds: new Set(),
+    blended, concludedTests, goals, patterns, labelsById,
+    currency: ws.currency, measurementTier: 'ENTERPRISE',
+  });
+  const periodEnd = new Date(DATE);
+  const periodStart = new Date(DATE.getTime() - 7 * 86_400_000);
+  const narrative = composeNarrative({ period: 'WEEKLY', audience: 'LEADERSHIP', periodStart, periodEnd, ...inputs, now: DATE });
+
+  const narrId = det(`p8narr:${ws.key}:WEEKLY:LEADERSHIP`);
+  const narrRow = {
+    workspaceId, period: 'WEEKLY', audience: 'LEADERSHIP', periodStart, periodEnd,
+    headline: narrative.headline,
+    body: { sections: narrative.sections },
+    evidenceRefs: narrative.evidenceRefs,
+    confidenceScore: narrative.reportConfidence.score,
+    confidenceBasis: narrative.reportConfidence.components,
+  };
+  await prisma.stakeholderNarrative.upsert({ where: { id: narrId }, create: { id: narrId, ...narrRow }, update: narrRow });
+
+  // 3. Gate the Phase-6 plan behind a PENDING approval (+ audit trail).
+  const plan = await prisma.plan.findUnique({ where: { id: planId } }).catch(() => null);
+  if (plan) {
+    await prisma.plan.update({ where: { id: planId }, data: { requiresApproval: true, approvalState: 'PENDING' } });
+    const reqId = det(`p8appr:${ws.key}:${planId}`);
+    const reqRow = {
+      workspaceId, planId, subjectType: 'PLAN', subjectId: planId,
+      requestedById: det(`p8user:${ws.key}:STRATEGIST`), state: 'PENDING',
+    };
+    await prisma.approvalRequest.upsert({ where: { id: reqId }, create: { id: reqId, ...reqRow }, update: { state: 'PENDING' } });
+
+    const evId = det(`p8evt:${ws.key}:APPROVAL_REQUESTED:${planId}`);
+    const evRow = {
+      workspaceId, actorId: det(`p8user:${ws.key}:STRATEGIST`), type: 'APPROVAL_REQUESTED',
+      subjectType: 'PLAN', subjectId: planId, detail: { requestId: reqId, planId },
+    };
+    await prisma.collaborationEvent.upsert({ where: { id: evId }, create: { id: evId, ...evRow }, update: evRow });
+  }
+}
+
 async function main() {
   for (const ws of WORKSPACES) {
     await seedWorkspace(ws);
@@ -695,7 +777,8 @@ async function main() {
   await seedPhase5(WORKSPACES[0]);        // apparel memory moat — learnings + conflicts
   await seedPhase6(WORKSPACES[0]);        // apparel planning OS — plan + scenario + north-star + economics
   await seedPhase7(WORKSPACES[0]);        // apparel measurement OS — tier + concluded holdout (causal lift)
-  console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction + allocation + testing + memory + planning + measurement.');
+  await seedPhase8(WORKSPACES[0]);        // apparel collaboration OS — roles + leadership narrative + pending approval
+  console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction + allocation + testing + memory + planning + measurement + collaboration.');
 }
 
 main()
