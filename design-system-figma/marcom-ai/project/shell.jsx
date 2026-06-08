@@ -6,10 +6,19 @@ import { Icons } from './icons.jsx';
 import { VerdictPill, GlowDot, formatCurrencyCompact, formatBleed } from './primitives.jsx';
 import { DEMO_DATA } from './data.js';
 
-export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sessions, radarAlerts = [], personas, onSwitchPersona, currentPersona }) {
+export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sessions, radarAlerts = [], personas, onSwitchPersona, currentPersona, collabRole = 'STRATEGIST' }) {
   // Phase 7: the Measure nav is gated — shown only when the workspace's
   // measurementTier ≠ NONE (Agency/Enterprise). Honest "not core" surfacing.
   const measurementTier = DEMO_DATA.MEASUREMENT_BY_WS?.[currentPersona ?? workspace?.id]?.tier ?? 'NONE';
+  // Phase 8: collaboration roles re-scope the surface. STRATEGIST sees all;
+  // BUYER loses Plan/Measure (strategy); CLIENT collapses to Report only.
+  const ROLE_VISIBLE = {
+    STRATEGIST: null, // all
+    BUYER:   new Set(['home', 'campaigns', 'testing', 'content', 'report']),
+    CLIENT:  new Set(['report']),
+  };
+  const allow = ROLE_VISIBLE[collabRole] ?? null;
+  const visible = (key) => allow == null || allow.has(key);
   const coreTools = [
     { key: 'home',      label: 'Home',        sub: 'Account pulse',                Icon: Icons.Layout },
     { key: 'campaigns', label: 'Campaigns',   sub: 'Verdicts + diagnosis',         Icon: Icons.BarChart },
@@ -20,10 +29,11 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
     ...(measurementTier !== 'NONE'
       ? [{ key: 'measure', label: 'Measure', sub: 'Attribution + incrementality', Icon: Icons.Search }]
       : []),
+    { key: 'report',    label: 'Report',      sub: 'Stakeholder narrative',        Icon: Icons.FileText },
     { key: 'content',   label: 'Content Lab', sub: 'Copy + visual generation',     Icon: Icons.Send },
     { key: 'growth',    label: 'Growth',      sub: 'Memory layer + opportunities', Icon: Icons.Target },
     { key: 'calendar',  label: 'Calendar',    sub: '4-week content plan',          Icon: Icons.Calendar },
-  ];
+  ].filter((tool) => visible(tool.key));
 
   const highAlerts  = radarAlerts.filter((a) => a.priority === 'HIGH');
   const alertCount  = highAlerts.length;

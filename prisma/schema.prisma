@@ -261,6 +261,42 @@ enum ConfidenceLevel {
   HIGH
 }
 
+// ── Phase 8: Collaboration & Reporting OS ────────────────────
+// Collaboration role — orthogonal to the system UserRole (ADMIN/VIEWER).
+// A null collabRole falls back to STRATEGIST so seats predating Phase 8 are
+// never locked out.
+enum WorkspaceRole {
+  STRATEGIST
+  BUYER
+  CLIENT
+}
+
+enum NarrativePeriod {
+  WEEKLY
+  MONTHLY
+}
+
+enum NarrativeAudience {
+  STRATEGIST
+  BUYER
+  LEADERSHIP
+}
+
+enum ApprovalState {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// The collaboration audit-log event types (CollaborationEvent). Distinct from
+// the execution-typed AuditLog so we never overload ActionType.
+enum CollaborationEventType {
+  APPROVAL_REQUESTED
+  APPROVAL_DECIDED
+  HANDOFF
+  NARRATIVE_GENERATED
+}
+
 enum WebhookProvider {
   META
   GOOGLE
@@ -339,27 +375,35 @@ model Workspace {
   incrementalityTests IncrementalityTest[]
   pathTouches         PathTouch[]
 
+  // ── Phase 8: Collaboration & Reporting OS ────────────────────
+  stakeholderNarratives StakeholderNarrative[]
+  approvalRequests      ApprovalRequest[]
+  collaborationEvents   CollaborationEvent[]
+
   @@map("workspaces")
 }
 
 model User {
-  id          String   @id @default(uuid()) @db.Uuid
-  workspaceId String   @db.Uuid
-  email       String   @unique
+  id          String         @id @default(uuid()) @db.Uuid
+  workspaceId String         @db.Uuid
+  email       String         @unique
   // ── Clerk → JWT cutover ────────────────────────────────────
   // Nullable string mapping the legacy Clerk subject (e.g.
   // "user_2abcXYZ...") to the new internal UUID. AuthMiddleware
   // resolves an inbound JWT `sub` claim to User.id via this column
   // until Clerk is fully retired in Phase 5+.
-  clerkId     String?  @unique
-  role        UserRole @default(VIEWER)
+  clerkId     String?        @unique
+  role        UserRole       @default(VIEWER)
+  // ── Phase 8: collaboration role (orthogonal to system `role`) ──
+  // STRATEGIST / BUYER / CLIENT. Null ⇒ treated as STRATEGIST by roleScope.
+  collabRole  WorkspaceRole?
   // ── Onboarding context (B3 decision) ───────────────────────
   // Brand voice / business model / market / etc. captured by the
   // OnboardingPage wizard. JSON shape is defined by the client
   // (see client/src/pages/OnboardingPage.jsx). Null until the
   // user completes onboarding; blocks the /app route until set.
   context     Json?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime       @default(now())
 
   workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   oauthTokens OAuthToken[]
@@ -1433,24 +1477,30 @@ model NorthStarGoal {
 // the existing Phase-3 governance (allocationPlanId set on promote) — no
 // new execution code.
 model Plan {
-  id               String     @id @default(uuid()) @db.Uuid
-  workspaceId      String     @db.Uuid
+  id               String         @id @default(uuid()) @db.Uuid
+  workspaceId      String         @db.Uuid
   name             String
   periodStart      DateTime
   periodEnd        DateTime
   totalBudgetMinor Int
-  currency         String     @default("USD")
-  status           PlanStatus @default(DRAFT)
+  currency         String         @default("USD")
+  status           PlanStatus     @default(DRAFT)
   channelMix       Json // snapshot of the allocation preview
   testingAgenda    Json // snapshot of the Phase-4 weekly agenda
   projections      Json // scenario + econ + landing ranges, with assumptions
   memoryBasis      Json // [{ patternId, kind, statement, accuracy }] — "Powered by Memory"
-  allocationPlanId String?    @db.Uuid // set when the mix is promoted (Phase-3 loop)
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  allocationPlanId String?        @db.Uuid // set when the mix is promoted (Phase-3 loop)
+  // ── Phase 8: approval gate (opt-in per plan) ──────────────────
+  // When requiresApproval, a buyer cannot promote/execute the plan until a
+  // strategist signs off; approvalState tracks that PENDING→APPROVED gate.
+  requiresApproval Boolean        @default(false)
+  approvalState    ApprovalState?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
-  workspace Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workspace Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   goals     NorthStarGoal[]
+  approvals ApprovalRequest[]
 
   @@index([workspaceId, status])
   @@map("plans")
@@ -1525,4 +1575,80 @@ model PathTouch {
 
   @@index([workspaceId, conversionId, touchPosition])
   @@map("path_touches")
+}
+
+// ════════════════════════════════════════════════════════════
+// PHASE 8 — COLLABORATION & REPORTING OS
+// ════════════════════════════════════════════════════════════
+
+// A persisted, auto-generated stakeholder narrative — reasoned prose, NOT a
+// dashboard. `body` holds the sections+claims+figures; EVERY figure carries an
+// evidenceRef (a real row id) so nothing is hallucinated. `confidenceScore` +
+// `confidenceBasis` keep the report-confidence itself auditable at rest (never
+// a bare %). Leadership needs the durable weekly/monthly record, so these are
+// persisted (alerts, by contrast, are routed live — no table).
+model StakeholderNarrative {
+  id              String            @id @default(uuid()) @db.Uuid
+  workspaceId     String            @db.Uuid
+  period          NarrativePeriod
+  audience        NarrativeAudience
+  periodStart     DateTime
+  periodEnd       DateTime
+  headline        String
+  body            Json // { sections:[{ key, title, claims:[{ text, figures:[{value,unit,evidenceRef}] }] }] }
+  evidenceRefs    Json // string[] — the de-duplicated audit trail of cited rows
+  confidenceScore Float // 0–100 report-level confidence
+  confidenceBasis Json // [{ key, weight, value }] — the score's own breakdown
+  createdAt       DateTime          @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@map("stakeholder_narratives")
+}
+
+// An approval gate on a plan/reallocation. Opt-in (Plan.requiresApproval): a
+// strategist's plan can require a sign-off before a buyer executes it. Request
+// + decision both write a CollaborationEvent — "all in the audit log."
+model ApprovalRequest {
+  id            String        @id @default(uuid()) @db.Uuid
+  workspaceId   String        @db.Uuid
+  planId        String?       @db.Uuid
+  subjectType   String // e.g. "PLAN", "REALLOCATION"
+  subjectId     String
+  requestedById String        @db.Uuid
+  state         ApprovalState @default(PENDING)
+  decidedById   String?       @db.Uuid
+  reason        String?
+  createdAt     DateTime      @default(now())
+  decidedAt     DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  plan      Plan?     @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, state])
+  @@index([planId])
+  @@map("approval_requests")
+}
+
+// The collaboration audit log — every approval, handoff, and narrative
+// generation. Sibling to the execution-typed AuditLog (which is tied to
+// ActionType/Meta); collaboration events don't fit that, so they live here.
+model CollaborationEvent {
+  id          String                 @id @default(uuid()) @db.Uuid
+  workspaceId String                 @db.Uuid
+  actorId     String?                @db.Uuid
+  type        CollaborationEventType
+  subjectType String
+  subjectId   String
+  fromRole    WorkspaceRole?
+  toRole      WorkspaceRole?
+  detail      Json?
+  createdAt   DateTime               @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([subjectId])
+  @@map("collaboration_events")
 }
