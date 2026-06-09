@@ -56,6 +56,10 @@ export function HomePage({ workspace, radarAlerts, sessions, onNav, onReviewAler
         <AgendaBand band={home.strategistBand} Icon={Icons.TrendingUp} tone="neutral" onAct={(i) => onNav('plan')} />
       </div>
 
+      {/* The Proof Engine (Phase X) — does Lumi actually get sharper as it learns?
+          Calibration, gated: a number only when coverage is RELIABLE. */}
+      <ProofBar proof={home.proof} accuracy={DEMO_DATA.ACCURACY_BY_WS?.[persona]} />
+
       {/* Account-pulse strip (context, not the headline). */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
         <StatCard label="Total spend" value={stats.spend} Icon={Icons.BarChart} sub="last 30 days" />
@@ -66,6 +70,58 @@ export function HomePage({ workspace, radarAlerts, sessions, onNav, onReviewAler
 
       {/* Recent activity */}
       <ActivityFeed sessions={sessions} />
+    </div>
+  );
+}
+
+// ── Proof Engine bar (Phase X) ───────────────────────────────
+// "Does Lumi get sharper as it learns your account?" The honest answer:
+// calibration error falling over time, GATED — below RELIABLE coverage we show
+// only "still learning", never a calibration number. The reliability table is
+// the evidence (a table, not a chart — the anti-Looker guard still holds).
+function ProofBar({ proof, accuracy }) {
+  if (!proof) return null;
+  const reliable = !proof.gated;
+  const bins = reliable ? (accuracy?.calibration?.bins ?? []) : [];
+  const vel = reliable ? (accuracy?.velocity?.periods ?? []) : [];
+  return (
+    <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, padding: '14px 18px', marginBottom: 24, boxShadow: 'var(--sh-card)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <Icons.Target style={{ fontSize: 14, color: reliable ? 'var(--c-gold)' : 'var(--c-text-muted)' }} />
+        <span className="font-mono" style={{ fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--c-text-muted)' }}>Decision accuracy · proof of learning</span>
+      </div>
+      <p style={{ margin: '8px 0 0', fontSize: reliable ? 16 : 13, fontWeight: reliable ? 600 : 500, color: reliable ? 'var(--c-text-base)' : 'var(--c-text-muted)', lineHeight: 1.35 }}>
+        {proof.headline}
+      </p>
+      {reliable && vel.length > 0 && (
+        <div className="font-mono" style={{ display: 'flex', gap: 14, marginTop: 8, fontSize: 11, color: 'var(--c-text-muted)' }}>
+          {vel.map((p) => (
+            <span key={p.label}>{p.label}: <strong style={{ color: 'var(--c-text-base)' }}>{Math.round(p.calibrationError * 100)}%</strong> err</span>
+          ))}
+        </div>
+      )}
+      {reliable && bins.length > 0 && (
+        <table style={{ width: '100%', marginTop: 12, borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ color: 'var(--c-text-muted)', textAlign: 'left' }}>
+              <th style={{ padding: '4px 8px', fontWeight: 600 }}>Confidence band</th>
+              <th style={{ padding: '4px 8px', fontWeight: 600 }}>Lumi said</th>
+              <th style={{ padding: '4px 8px', fontWeight: 600 }}>Actually right</th>
+              <th style={{ padding: '4px 8px', fontWeight: 600 }}>n</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bins.map((b) => (
+              <tr key={b.band} style={{ borderTop: '1px solid var(--c-surface-border)' }}>
+                <td className="font-mono" style={{ padding: '4px 8px' }}>{b.band}</td>
+                <td className="font-mono" style={{ padding: '4px 8px' }}>{Math.round(b.predicted * 100)}%</td>
+                <td className="font-mono" style={{ padding: '4px 8px', color: 'var(--c-text-base)' }}>{Math.round(b.observed * 100)}%</td>
+                <td className="font-mono" style={{ padding: '4px 8px', color: 'var(--c-text-muted)' }}>{b.count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   );
 }

@@ -17,6 +17,8 @@ import { logger } from '../../utils/logger.js';
 import { planAgenda } from './agenticPlanner.js';
 import { buildLoopInputs, runSweep, getLoopState, LOOP_MIN_INTERVAL_MS } from './AgenticLoopService.js';
 import { normalizeRole, WORKSPACE_ROLE } from '../collaboration/roleScope.js';
+import { getAccuracy } from '../decision-accuracy/DecisionAccuracyService.js';
+import { accuracySurface } from '../decision-accuracy/accuracyTypes.js';
 
 // ── Pure builders (independently unit-tested) ───────────────────
 
@@ -98,6 +100,16 @@ export async function getHome(workspaceId, role) {
   const buyerBand = r === WORKSPACE_ROLE.CLIENT ? null : buildBuyerBand(agenda);
   const strategistBand = buildStrategistBand(agenda);
 
+  // Proof Engine headline (Phase X) — strategist altitude only, best-effort, and
+  // GATED: accuracySurface() emits a calibration number only when coverage is
+  // RELIABLE, else just "still learning". A failure here never blanks the home.
+  let proof = null;
+  try {
+    proof = accuracySurface(await getAccuracy(workspaceId, { now }));
+  } catch (err) {
+    logger.warn({ err: err.message, workspaceId }, '[AgentHome] accuracy headline skipped');
+  }
+
   logger.info({ workspaceId, role: r, loopHealth: loop.loopHealth }, '[AgentHome] composed');
-  return { role: r, summary: agenda.summary, buyerBand, strategistBand, loop };
+  return { role: r, summary: agenda.summary, buyerBand, strategistBand, loop, proof };
 }

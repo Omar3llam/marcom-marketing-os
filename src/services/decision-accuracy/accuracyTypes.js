@@ -1,0 +1,154 @@
+// ============================================================
+// Decision-Accuracy — shared types, per-verdict success predicates,
+// the coverage/lift/calibration enums, and the gated surface helper.
+// ============================================================
+// THE PROOF DISCIPLINE (the design's first principle):
+//   This engine answers the one unproven question in the whole architecture —
+//   does "Learn" actually improve decision quality, or just store memories?
+//   A Proof Engine that overstates learning is WORSE than none: it turns a
+//   measurable thesis back into a confident story — the exact failure the
+//   product exists to avoid. So every choice here takes the honest reading:
+//   calibration (not accuracy) is the headline, immature outcomes are EXCLUDED
+//   (never counted as failures), survivorship is made VISIBLE (not papered
+//   over), and a claim is SUPPRESSED unless coverage is RELIABLE.
+//
+// THE BOUNDARY (§2.4 — load-bearing, enforced by a test):
+//   This module must NEVER import from narrative-engine/narrativeTypes.js.
+//   `confidenceScore()` there is REPORT-confidence — how much evidence backs a
+//   narrative. `Decision.confidence` here is DECISION-confidence — P(this call
+//   succeeds). They are different quantities; mixing them destroys the metric.
+//   This file reads only Decision.confidence and OutcomeSnapshot fields.
+// ============================================================
+
+// ── Enums ────────────────────────────────────────────────────────
+export const COVERAGE_VERDICT = Object.freeze({
+  RELIABLE:          'RELIABLE',
+  THIN:              'THIN',
+  INSUFFICIENT_DATA: 'INSUFFICIENT_DATA',
+});
+
+export const LIFT_STATUS = Object.freeze({
+  IMPROVING:         'IMPROVING',
+  FLAT:              'FLAT',
+  DEGRADING:         'DEGRADING',
+  INSUFFICIENT_DATA: 'INSUFFICIENT_DATA',
+});
+
+export const CALIBRATION_DIRECTION = Object.freeze({
+  OVERCONFIDENT:  'OVERCONFIDENT',
+  UNDERCONFIDENT: 'UNDERCONFIDENT',
+  CALIBRATED:     'CALIBRATED',
+});
+
+// Three-state maturity — NEVER two. Treating an immature null as "failure"
+// would make recent decisions score worse purely because they're recent,
+// manufacturing a fake "degrading" signal (§2.2).
+export const MATURITY = Object.freeze({
+  SCORED:             'SCORED',             // window closed, sustained known → counts
+  PENDING_MATURATION: 'PENDING_MATURATION', // not yet due → excluded from every num/denom
+  UNSCORABLE:         'UNSCORABLE',          // past deadline, no usable outcome → data-quality gap
+  NOT_A_PREDICTION:   'NOT_A_PREDICTION',    // WATCH — "not deciding yet", out of accuracy entirely
+});
+
+// ── Config ───────────────────────────────────────────────────────
+export const DEFAULT_CONFIG = Object.freeze({
+  maturationDays:    7,    // outcome window; a decision younger than this with no result is pending
+  minSample:         30,   // floor below which lift/velocity refuse to emit a claim
+  minBinCount:       20,   // a reliability bin below this is collapsed, never shown raw
+  bins:              10,    // start at deciles
+  binFallbacks:      Object.freeze([10, 5, 4, 2, 1]), // collapse ladder
+  earlyRecentSplit:  50,   // first-50 vs latest-50 windows; fall back to thirds under 100 scored
+  fullWindowMin:     100,  // ≥ this many scored → use fixed-size windows, else thirds
+  holdTolerance:     0.10, // a HOLD is "right" if |roasDelta| ≤ this (no material adverse move)
+  reliableFraction:  0.50, // scoredFraction ≥ this (and ≥ minSample scored) → RELIABLE, else THIN
+  liftEpsilon:       0.05, // |improvementPct| ≤ this → FLAT
+  velocitySlopeEps:  0.005,// |slope| ≤ this → FLAT trend
+  velocityPeriod:    'MONTHLY',
+});
+
+// ── Per-verdict success predicates (§2.1) ────────────────────────
+// The single most important correctness decision in the service. "Success" is
+// VERDICT-RELATIVE: a successful KILL produces LESS spend and often less revenue
+// — scoring all verdicts by one rule (e.g. roasDelta > 0) makes Lumi look worst
+// exactly where it is most decisive. Each predicate takes a MATURE outcome and
+// returns boolean (right/wrong) or null (missing the field it needs → UNSCORABLE).
+const isNum = (v) => typeof v === 'number' && !Number.isNaN(v);
+
+export const SUCCESS_PREDICATES = Object.freeze({
+  // The bleed stopped and stayed stopped. Revenue falling is EXPECTED, not failure.
+  KILL: (o) => (isNum(o.spendDeltaMinor) ? (o.spendDeltaMinor < 0 && o.sustained !== false) : null),
+
+  // It returned at higher spend AND held (not a one-day spike).
+  SCALE: (o) => (isNum(o.roasDelta) ? (o.roasDelta >= 0 && o.sustained === true) : null),
+
+  // No material adverse move — stayed inside the tolerance band.
+  HOLD: (o, cfg) => (isNum(o.roasDelta) ? Math.abs(o.roasDelta) <= cfg.holdTolerance : null),
+
+  // Portfolio-level: the freed budget's new home outperformed its old one.
+  REALLOCATE: (o) => (isNum(o.roasDelta) ? o.roasDelta >= 0 : null),
+
+  // Post-swap recovery vs pre-swap (roasDelta/sustained proxy until a CTR series is wired).
+  REFRESH: (o) => {
+    if (!isNum(o.roasDelta) && o.sustained == null) return null;
+    return (isNum(o.roasDelta) && o.roasDelta > 0) || o.sustained === true;
+  },
+
+  // A WATCH is "I'm not deciding yet" — scoring it as a prediction is a category error.
+  WATCH: () => null,
+});
+
+// Verdicts that are predictions at all (WATCH is not).
+export const SCORABLE_VERDICT = Object.freeze({
+  KILL: true, SCALE: true, HOLD: true, REALLOCATE: true, REFRESH: true, WATCH: false,
+});
+
+// ── The gated surface helper (§5.1 / §6 — the highest-stakes line) ─
+/**
+ * Turn an accuracy result into a surface payload. THE HARD GATE: a calibration
+ * claim is emitted ONLY when coverage.verdict === RELIABLE. Below that the
+ * surface carries no lift claim and no calibration number — only an honest
+ * "still learning" line (the N/M are sample counts, not a calibration figure).
+ * Suppression is enforced by a test, not by the politeness of a default.
+ *
+ * @param {object} result — the calculateDecisionAccuracy() contract
+ * @returns {{ gated:boolean, headline:string, status:string|null,
+ *             calibrationErrorPct:number|null, improvementPct:number|null,
+ *             scored:number, needed:number }}
+ */
+export function accuracySurface(result, config = {}) {
+  const cfg = { ...DEFAULT_CONFIG, ...config };
+  const coverage = result?.coverage ?? {};
+  const scored = coverage.scored ?? 0;
+
+  if (coverage.verdict !== COVERAGE_VERDICT.RELIABLE) {
+    return {
+      gated: true,
+      headline: `Still learning this account (${scored} decisions scored, need ${cfg.minSample})`,
+      status: null,
+      calibrationErrorPct: null, // SUPPRESSED — no calibration number below RELIABLE
+      improvementPct: null,
+      scored,
+      needed: cfg.minSample,
+    };
+  }
+
+  const lift = result.accountLift ?? {};
+  const recentEcePct = Math.round((lift.recentWindow?.calibrationError ?? 0) * 100);
+  const earlyEcePct = Math.round((lift.earlyWindow?.calibrationError ?? 0) * 100);
+  const improvementPct = lift.calibrationImprovementPct == null
+    ? null
+    : Math.round(lift.calibrationImprovementPct * 100);
+  const verb = lift.status === LIFT_STATUS.IMPROVING ? 'improving'
+    : lift.status === LIFT_STATUS.DEGRADING ? 'degrading' : 'holding steady';
+
+  return {
+    gated: false,
+    headline: `Lumi's calls on this account: calibration error ${recentEcePct}% `
+      + `(was ${earlyEcePct}% in your first window) — ${verb}`,
+    status: lift.status ?? null,
+    calibrationErrorPct: recentEcePct,
+    improvementPct,
+    scored,
+    needed: cfg.minSample,
+  };
+}
