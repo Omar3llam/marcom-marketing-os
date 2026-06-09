@@ -32,9 +32,15 @@ import {
   NO_RETRY,
 } from '../../client/src/contracts/errors/retryPolicy.ts';
 import { NetworkError, PlatformError, RateLimitError } from '../../client/src/contracts/errors/index.ts';
+import { dbAvailable } from './dbProbe.js';
+
+// The Circuit Breaker block drives runOrchestration, which reads from the DB;
+// it skips when no migrated database is reachable (the rest of the file is
+// DB-free and always runs).
+const DB_OK = await dbAvailable();
 
 describe('Resilience Wiring Integration Tests', () => {
-  describe('Circuit Breaker Integration', () => {
+  describe.skipIf(!DB_OK)('Circuit Breaker Integration', () => {
     beforeEach(() => {
       // Reset circuit breaker state before each test
       orchestratorCircuit.reset();

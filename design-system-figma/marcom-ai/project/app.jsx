@@ -201,6 +201,8 @@ function App() {
           onNav={handleNav}
           onReviewAlert={reviewAlert}
           onStartFlow={startFlow}
+          role={collabRole}
+          onRunSweep={() => setState(FSM.HOME)}
         />
       );
   }

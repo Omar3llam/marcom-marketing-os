@@ -766,6 +766,35 @@ async function seedPhase8(ws) {
   }
 }
 
+async function seedPhase9(ws) {
+  // Apparel only: the Agentic OS — one recent SCHEDULED loop sweep showing a
+  // visibly-CLOSED loop (every stage fresh, HEALTHY, nothing stale), so the
+  // unified home + demo light up on "the loop is turning."
+  const workspaceId = det(`ws:${ws.key}`);
+  const runId = det(`p9loop:${ws.key}`);
+  const stageStatus = [
+    { stage: 'PLAN',     state: 'ACTIVE', lastAt: new Date(DATE.getTime() - 2 * 86_400_000).toISOString(), count: 1 },
+    { stage: 'ALLOCATE', state: 'ACTIVE', lastAt: new Date(DATE.getTime() - 3 * 86_400_000).toISOString(), count: 1 },
+    { stage: 'EXECUTE',  state: 'ACTIVE', lastAt: new Date(DATE.getTime() - 1 * 86_400_000).toISOString(), count: 2 },
+    { stage: 'TEST',     state: 'ACTIVE', lastAt: new Date(DATE.getTime() - 2 * 86_400_000).toISOString(), count: 1 },
+    { stage: 'MEASURE',  state: 'ACTIVE', lastAt: new Date(DATE.getTime() - 1 * 86_400_000).toISOString(), count: 1 },
+    { stage: 'LEARN',    state: 'ACTIVE', lastAt: new Date(DATE.getTime() - 1 * 86_400_000).toISOString(), count: 1 },
+  ];
+  const row = {
+    workspaceId,
+    trigger: 'SCHEDULED',
+    startedAt: new Date(DATE.getTime() - 30 * 60 * 1000),
+    finishedAt: new Date(DATE.getTime() - 30 * 60 * 1000 + 4000),
+    proposalsByType: { VERDICT: 2, TEST: 1, PLAN_ADJUSTMENT: 1 },
+    stageStatus,
+    summary: '4 to decide, 1 to steer.',
+    closed: true,
+    loopHealth: 'HEALTHY',
+    staleStages: [],
+  };
+  await prisma.loopRun.upsert({ where: { id: runId }, create: { id: runId, ...row }, update: row });
+}
+
 async function main() {
   for (const ws of WORKSPACES) {
     await seedWorkspace(ws);
@@ -778,7 +807,8 @@ async function main() {
   await seedPhase6(WORKSPACES[0]);        // apparel planning OS — plan + scenario + north-star + economics
   await seedPhase7(WORKSPACES[0]);        // apparel measurement OS — tier + concluded holdout (causal lift)
   await seedPhase8(WORKSPACES[0]);        // apparel collaboration OS — roles + leadership narrative + pending approval
-  console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction + allocation + testing + memory + planning + measurement + collaboration.');
+  await seedPhase9(WORKSPACES[0]);        // apparel agentic OS — one recent CLOSED loop sweep
+  console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction + allocation + testing + memory + planning + measurement + collaboration + agentic loop.');
 }
 
 main()
