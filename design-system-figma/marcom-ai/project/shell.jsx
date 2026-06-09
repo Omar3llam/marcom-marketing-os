@@ -923,11 +923,19 @@ function CmdKPalette({ onClose, sessions, radarAlerts, onNav, onStartFlow }) {
   React.useEffect(() => { inputRef.current?.focus(); }, []);
 
   const lower = query.toLowerCase();
+  // Universal command surface — reach any surface, entity, verdict, test,
+  // plan, or report, plus the agentic loop's "Run sweep now".
   const navItems = [
-    { id: 'n-feed',   label: 'Command Hub',       sub: 'OS launchpad',            Icon: Icons.Layout,   action: () => { onNav('feed'); onClose(); } },
-    { id: 'n-camp',   label: 'Campaign Analysis', sub: 'KILL / SCALE / HOLD',     Icon: Icons.BarChart, action: () => { onNav('campaigns'); onClose(); } },
-    { id: 'n-upload', label: 'Upload CSV',        sub: 'Run intelligence scan',   Icon: Icons.Upload,   action: () => onStartFlow() },
-    { id: 'n-set',    label: 'Settings',          sub: 'Workspace, API, billing', Icon: Icons.Settings, action: () => { onNav('settings'); onClose(); } },
+    { id: 'n-home',   label: 'Home',              sub: 'The agentic loop',        Icon: Icons.Layout,    action: () => { onNav('home'); onClose(); } },
+    { id: 'n-sweep',  label: 'Run sweep now',     sub: 'Re-run the loop',         Icon: Icons.Radar,     action: () => { onNav('home'); onClose(); } },
+    { id: 'n-camp',   label: 'Campaign Analysis', sub: 'KILL / SCALE / HOLD',     Icon: Icons.BarChart,  action: () => { onNav('campaigns'); onClose(); } },
+    { id: 'n-port',   label: 'Portfolio',         sub: 'Blended truth + allocation', Icon: Icons.Layers, action: () => { onNav('portfolio'); onClose(); } },
+    { id: 'n-test',   label: 'Testing OS',        sub: 'Agenda + experiments',    Icon: Icons.Zap,       action: () => { onNav('testing'); onClose(); } },
+    { id: 'n-mem',    label: 'Memory',            sub: 'Learnings + playbooks',   Icon: Icons.Activity,  action: () => { onNav('memory'); onClose(); } },
+    { id: 'n-plan',   label: 'Plan',              sub: 'Scenarios + north-star',  Icon: Icons.TrendingUp, action: () => { onNav('plan'); onClose(); } },
+    { id: 'n-report', label: 'Report',            sub: 'Stakeholder narrative',   Icon: Icons.FileText,  action: () => { onNav('report'); onClose(); } },
+    { id: 'n-upload', label: 'Upload CSV',        sub: 'Run intelligence scan',   Icon: Icons.Upload,    action: () => onStartFlow() },
+    { id: 'n-set',    label: 'Settings',          sub: 'Workspace, API, billing', Icon: Icons.Settings,  action: () => { onNav('settings'); onClose(); } },
   ];
 
   const filteredNav      = navItems.filter((i) => !lower || (i.label + i.sub).toLowerCase().includes(lower));

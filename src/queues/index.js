@@ -18,6 +18,7 @@ export const ACTION_QUEUE_NAME     = 'actions';
 export const OBSERVER_QUEUE_NAME   = 'observer';
 export const SYNC_QUEUE_NAME       = 'campaign-sync';
 export const EXECUTION_QUEUE_NAME  = 'executions';
+export const AGENTIC_QUEUE_NAME    = 'agentic';
 
 const queueOpts = {
   connection: bullConnection,
@@ -36,6 +37,7 @@ export const actionQueue    = REDIS_DISABLED ? null : new Queue(ACTION_QUEUE_NAM
 export const observerQueue  = REDIS_DISABLED ? null : new Queue(OBSERVER_QUEUE_NAME,  queueOpts);
 export const syncQueue      = REDIS_DISABLED ? null : new Queue(SYNC_QUEUE_NAME,      queueOpts);
 export const executionQueue = REDIS_DISABLED ? null : new Queue(EXECUTION_QUEUE_NAME, queueOpts);
+export const agenticQueue   = REDIS_DISABLED ? null : new Queue(AGENTIC_QUEUE_NAME,   queueOpts);
 
 // ── Helper: enqueue an ExecutionRequest ──────────────────────
 // Called by meta.js after PENDING → QUEUED transition.
@@ -79,6 +81,24 @@ export async function scheduleObserver() {
     {},
     {
       jobId:   'observer-cron',
+      repeat:  { pattern: cron },
+    },
+  );
+}
+
+// ── Helper: schedule the agentic loop sweep (Phase 9) ────────
+// The proactivity heartbeat: every AGENTIC_CRON the worker runs the unified
+// detect→propose sweep for each workspace. Mirrors scheduleObserver.
+export async function scheduleAgenticSweep() {
+  if (!agenticQueue) {
+    throw new Error('Queue subsystem unavailable — set REDIS_URL to a real Redis instance');
+  }
+  const cron = process.env.AGENTIC_CRON || '*/15 * * * *';
+  await agenticQueue.add(
+    'sweep',
+    {},
+    {
+      jobId:   'agentic-cron',
       repeat:  { pattern: cron },
     },
   );
