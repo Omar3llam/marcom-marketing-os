@@ -1218,6 +1218,7 @@ const AGENT_HOME_BY_WS = {
         { id: 'b1', type: 'PLAN_ADJUSTMENT', title: 'Platform over-reports revenue by 38%', rationale: 'Blended truth diverges from Meta claims — steer allocation on reconciled performance.', severity: 'MEDIUM', humanAction: 'review' },
       ],
     },
+    proof: { gated: false, status: 'IMPROVING', headline: "Lumi's calls on this account: calibration error 11% (was 28% in your first window) — improving", calibrationErrorPct: 11, improvementPct: 61, scored: 124, needed: 30 },
   },
   riyadh: {
     summary: 'Nothing needs a decision right now — the loop is quiet.',
@@ -1226,6 +1227,7 @@ const AGENT_HOME_BY_WS = {
     strategistBand: { title: 'How the portfolio is tracking to goal', items: [
       { id: 'g1', type: 'PLAN_ADJUSTMENT', title: 'No active plan yet', rationale: 'Build a next-quarter plan so Lumi can track to goal.', severity: 'LOW', humanAction: 'adjust' },
     ] },
+    proof: { gated: true, status: null, headline: 'Still learning this account (12 decisions scored, need 30)', calibrationErrorPct: null, improvementPct: null, scored: 12, needed: 30 },
   },
   dubai: {
     summary: '1 to decide, 0 to steer.',
@@ -1234,12 +1236,37 @@ const AGENT_HOME_BY_WS = {
       { id: 'v1', type: 'VERDICT', title: 'SCALE Ramadan Bundle', rationale: 'ROAS held ≥ 3.0 for 5 days — scaling window open.', severity: 'MEDIUM', humanAction: 'confirm', verdict: 'SCALE' },
     ] },
     strategistBand: { title: 'How the portfolio is tracking to goal', items: [] },
+    proof: { gated: true, status: null, headline: 'Still learning this account (4 decisions scored, need 30)', calibrationErrorPct: null, improvementPct: null, scored: 4, needed: 30 },
   },
+};
+
+// Phase X — Proof Engine. The reliability table is the honest proof (not a chart).
+// apparel is RELIABLE (shows the table); riyadh/dubai are gated (suppressed).
+const ACCURACY_BY_WS = {
+  apparel: {
+    coverage: { verdict: 'RELIABLE', scored: 124, unscorable: 6, pendingMaturation: 9, dismissed: 21, scoredFraction: 0.95, note: 'calibration measured on executed decisions only; 21 dismissed calls are not represented' },
+    calibration: { direction: 'OVERCONFIDENT', expectedCalibrationError: 0.11, brierScore: 0.14, accuracy: 0.71, sampleSize: 124, bins: [
+      { band: '50-60%', predicted: 0.55, observed: 0.48, count: 22, gap: 0.07 },
+      { band: '60-70%', predicted: 0.65, observed: 0.58, count: 28, gap: 0.07 },
+      { band: '70-80%', predicted: 0.75, observed: 0.66, count: 31, gap: 0.09 },
+      { band: '80-90%', predicted: 0.85, observed: 0.79, count: 26, gap: 0.06 },
+      { band: '90-100%', predicted: 0.94, observed: 0.88, count: 27, gap: 0.06 },
+    ] },
+    velocity: { trend: 'IMPROVING', slope: -0.041, periods: [
+      { label: '2026-01', calibrationError: 0.28, sampleSize: 34 },
+      { label: '2026-02', calibrationError: 0.21, sampleSize: 41 },
+      { label: '2026-03', calibrationError: 0.16, sampleSize: 49 },
+    ] },
+    accountLift: { status: 'IMPROVING', calibrationImprovementPct: 0.61, earlyWindow: { calibrationError: 0.28, accuracy: 0.62, sampleSize: 50 }, recentWindow: { calibrationError: 0.11, accuracy: 0.78, sampleSize: 50 } },
+  },
+  riyadh: { coverage: { verdict: 'THIN', scored: 12, scoredFraction: 0.4, dismissed: 3, note: 'calibration measured on executed decisions only' }, calibration: null, velocity: null, accountLift: { status: 'INSUFFICIENT_DATA' } },
+  dubai: { coverage: { verdict: 'INSUFFICIENT_DATA', scored: 4, scoredFraction: 1, dismissed: 0, note: 'calibration measured on executed decisions only' }, calibration: null, velocity: null, accountLift: { status: 'INSUFFICIENT_DATA' } },
 };
 
 export const DEMO_DATA = {
   WORKSPACES: DEMO_WORKSPACES,
   AGENT_HOME_BY_WS: AGENT_HOME_BY_WS,
+  ACCURACY_BY_WS: ACCURACY_BY_WS,
   FEATURED:   FEATURED_CAMPAIGN,
   RADAR_BY_WS: RADAR_ALERTS_BY_WS,
   GRAPH:      ENTITY_GRAPH,

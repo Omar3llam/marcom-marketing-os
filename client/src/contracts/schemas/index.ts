@@ -436,3 +436,31 @@ export {
   type AgendaBandView,
   type AgentHome,
 } from './home.schema';
+
+// ──────────────────────────────────────────────────────────
+// Phase X — Proof Engine (decision accuracy · calibration · velocity)
+// ──────────────────────────────────────────────────────────
+export {
+  CoverageVerdictSchema,
+  LiftStatusSchema,
+  CalibrationDirectionSchema,
+  ReliabilityBinSchema,
+  CalibrationSchema,
+  AccountLiftSchema,
+  VelocityPeriodSchema,
+  VelocitySchema,
+  AccuracyCoverageSchema,
+  AccuracySurfaceSchema,
+  DecisionAccuracySchema,
+  type CoverageVerdict,
+  type LiftStatus,
+  type CalibrationDirection,
+  type ReliabilityBin,
+  type Calibration,
+  type AccountLift,
+  type VelocityPeriod,
+  type Velocity,
+  type AccuracyCoverage,
+  type AccuracySurface,
+  type DecisionAccuracy,
+} from './accuracy.schema';
