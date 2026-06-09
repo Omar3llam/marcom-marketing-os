@@ -13,6 +13,7 @@ import { startActionWorker }    from './actionWorker.js';
 import { startExecutionWorker } from './executionWorker.js';
 import { startObserverWorker }  from '../services/temporalObserver.js';
 import { startSyncWorker }      from './syncWorker.js';
+import { startAgenticWorker }   from './agenticWorker.js';
 import { scheduleCampaignSync } from '../queues/index.js';
 import { logger }               from '../utils/logger.js';
 
@@ -20,6 +21,7 @@ const actionWorker    = startActionWorker();
 const executionWorker = startExecutionWorker();
 const observerWorker  = startObserverWorker();
 const syncWorker      = startSyncWorker();
+const agenticWorker   = startAgenticWorker(); // Phase 9 — proactive loop sweep
 
 // Schedule automatic campaign sync cron job (daily by default)
 scheduleCampaignSync()
@@ -33,6 +35,7 @@ async function shutdown(signal) {
     executionWorker.close(),
     observerWorker.close(),
     syncWorker.close(),
+    agenticWorker.close(),
   ]);
   process.exit(0);
 }

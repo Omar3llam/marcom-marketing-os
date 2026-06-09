@@ -297,6 +297,21 @@ enum CollaborationEventType {
   NARRATIVE_GENERATED
 }
 
+// ── Phase 9: Agentic OS ──────────────────────────────────────
+// What kicked off a loop sweep.
+enum LoopTrigger {
+  SCHEDULED // the cron heartbeat (proactive)
+  MANUAL // a human pressed "Run sweep now"
+  ON_READ // the home loaded and the last sweep was stale (no cron)
+}
+
+// Overall loop health — a queryable column so monitoring doesn't dig JSON.
+enum LoopHealth {
+  HEALTHY // closed loop, nothing stale
+  DEGRADED // a non-blocking stage is ageing/stale
+  STALLED // proposals piling up unexecuted, or the loop never closed
+}
+
 enum WebhookProvider {
   META
   GOOGLE
@@ -379,6 +394,9 @@ model Workspace {
   stakeholderNarratives StakeholderNarrative[]
   approvalRequests      ApprovalRequest[]
   collaborationEvents   CollaborationEvent[]
+
+  // ── Phase 9: Agentic OS ──────────────────────────────────────
+  loopRuns LoopRun[]
 
   @@map("workspaces")
 }
@@ -1651,4 +1669,39 @@ model CollaborationEvent {
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([subjectId])
   @@map("collaboration_events")
+}
+
+// ════════════════════════════════════════════════════════════
+// PHASE 9 — AGENTIC OS (the nervous system: run the loop)
+// ════════════════════════════════════════════════════════════
+
+// One audit row per loop sweep — when Lumi ran the detect→propose pass, what
+// it surfaced, and whether the loop is closed. The proposals themselves stay
+// in their existing rows (Decision/TestExperiment/AllocationPlan); this is the
+// thin audit, NOT a parallel proposal store. The monitoring fields (closed /
+// loopHealth / staleStages) are lifted out of `stageStatus` JSON so queries
+// like "show stalled loops" are an index scan, not a JSON dig.
+model LoopRun {
+  id          String      @id @default(uuid()) @db.Uuid
+  workspaceId String      @db.Uuid
+  trigger     LoopTrigger
+  startedAt   DateTime
+  finishedAt  DateTime?
+
+  proposalsByType Json // { VERDICT, REALLOCATION, TEST, PLAN_ADJUSTMENT, ... } counts
+  stageStatus     Json // full per-stage detail [{ stage, state, lastAt, count }]
+  summary         String
+
+  // Queryable monitoring (lifted out of stageStatus JSON).
+  closed      Boolean
+  loopHealth  LoopHealth
+  staleStages Json // the stale LOOP_STAGE keys, e.g. ["EXECUTE","LEARN"]
+
+  createdAt DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([workspaceId, loopHealth])
+  @@map("loop_runs")
 }

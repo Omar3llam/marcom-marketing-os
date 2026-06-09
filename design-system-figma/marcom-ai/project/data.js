@@ -1186,8 +1186,60 @@ const COLLAB_BY_WS = {
   },
 };
 
+// ── Phase 9: Agentic OS — the unified two-band home + loop status ──
+// Lumi runs the loop proactively; the human confirms. Buyer band = "what
+// needs a decision today"; strategist band = "tracking to goal". The loop
+// ring shows plan→allocate→execute→test→measure→learn closing. NO charts.
+const LOOP_STAGES_CLOSED = [
+  { stage: 'PLAN',     state: 'ACTIVE', count: 1 },
+  { stage: 'ALLOCATE', state: 'ACTIVE', count: 1 },
+  { stage: 'EXECUTE',  state: 'ACTIVE', count: 2 },
+  { stage: 'TEST',     state: 'ACTIVE', count: 1 },
+  { stage: 'MEASURE',  state: 'ACTIVE', count: 1 },
+  { stage: 'LEARN',    state: 'ACTIVE', count: 1 },
+];
+const AGENT_HOME_BY_WS = {
+  apparel: {
+    summary: '4 to decide, 1 to steer.',
+    loop: { closed: true, loopHealth: 'HEALTHY', staleStages: [], lastRunAt: '32 min ago', nextRunAt: 'in 13 min', stageStatus: LOOP_STAGES_CLOSED },
+    buyerBand: {
+      title: 'What needs a decision today',
+      items: [
+        { id: 'v1', type: 'VERDICT', title: 'KILL Cold Prospecting #1', rationale: 'Frequency 4.2 — past your 3.5 ceiling; bleeding EGP 1,200/day.', severity: 'HIGH', humanAction: 'confirm', verdict: 'KILL' },
+        { id: 'p1', type: 'PACING', title: 'Meta over-pacing', rationale: 'Exhausts ~4 days early at the current run rate.', severity: 'MEDIUM', humanAction: 'confirm', verdict: 'REALLOCATE' },
+        { id: 'f1', type: 'FATIGUE', title: 'Eid Carousel nearing ceiling', rationale: 'Projected to breach frequency 3.5 in ~2 days.', severity: 'MEDIUM', humanAction: 'review', verdict: 'WATCH' },
+        { id: 't1', type: 'TEST', title: 'Test: PMax warm hook variants', rationale: 'Memory says hook angle drives 60% of CTR lift here.', severity: 'LOW', humanAction: 'review', verdict: 'WATCH' },
+      ],
+    },
+    strategistBand: {
+      title: 'How the portfolio is tracking to goal',
+      items: [
+        { id: 'g1', type: 'PLAN_ADJUSTMENT', title: 'Q3 blended-CAC goal is at risk', rationale: 'Trend-based landing estimate EGP 420 vs target 385 — a leading fatigue signal is pulling it.', severity: 'MEDIUM', humanAction: 'adjust' },
+        { id: 'b1', type: 'PLAN_ADJUSTMENT', title: 'Platform over-reports revenue by 38%', rationale: 'Blended truth diverges from Meta claims — steer allocation on reconciled performance.', severity: 'MEDIUM', humanAction: 'review' },
+      ],
+    },
+  },
+  riyadh: {
+    summary: 'Nothing needs a decision right now — the loop is quiet.',
+    loop: { closed: false, loopHealth: 'DEGRADED', staleStages: ['TEST', 'MEASURE'], lastRunAt: '1h ago', nextRunAt: 'in 5 min', stageStatus: LOOP_STAGES_CLOSED.map((s) => (['TEST', 'MEASURE'].includes(s.stage) ? { ...s, state: 'STALE', count: 0 } : s)) },
+    buyerBand: { title: 'What needs a decision today', items: [] },
+    strategistBand: { title: 'How the portfolio is tracking to goal', items: [
+      { id: 'g1', type: 'PLAN_ADJUSTMENT', title: 'No active plan yet', rationale: 'Build a next-quarter plan so Lumi can track to goal.', severity: 'LOW', humanAction: 'adjust' },
+    ] },
+  },
+  dubai: {
+    summary: '1 to decide, 0 to steer.',
+    loop: { closed: true, loopHealth: 'HEALTHY', staleStages: [], lastRunAt: '11 min ago', nextRunAt: 'in 4 min', stageStatus: LOOP_STAGES_CLOSED },
+    buyerBand: { title: 'What needs a decision today', items: [
+      { id: 'v1', type: 'VERDICT', title: 'SCALE Ramadan Bundle', rationale: 'ROAS held ≥ 3.0 for 5 days — scaling window open.', severity: 'MEDIUM', humanAction: 'confirm', verdict: 'SCALE' },
+    ] },
+    strategistBand: { title: 'How the portfolio is tracking to goal', items: [] },
+  },
+};
+
 export const DEMO_DATA = {
   WORKSPACES: DEMO_WORKSPACES,
+  AGENT_HOME_BY_WS: AGENT_HOME_BY_WS,
   FEATURED:   FEATURED_CAMPAIGN,
   RADAR_BY_WS: RADAR_ALERTS_BY_WS,
   GRAPH:      ENTITY_GRAPH,

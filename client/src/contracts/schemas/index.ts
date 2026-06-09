@@ -400,3 +400,39 @@ export {
   type CollaborationEventType,
   type Handoff,
 } from './approval.schema';
+
+// ──────────────────────────────────────────────────────────
+// Phase 9 — Agentic OS (unified home · agenda · loop status)
+// ──────────────────────────────────────────────────────────
+export {
+  AgendaBandSchema,
+  AgendaTypeSchema,
+  AgendaSeveritySchema,
+  HumanActionSchema,
+  AgendaItemSchema,
+  type AgendaBand,
+  type AgendaType,
+  type AgendaSeverity,
+  type HumanAction,
+  type AgendaItem,
+} from './agenda.schema';
+
+export {
+  LoopStageSchema,
+  StageStateSchema,
+  LoopHealthSchema,
+  StageStatusSchema,
+  LoopStatusSchema,
+  type LoopStage,
+  type StageState,
+  type LoopHealth,
+  type StageStatus,
+  type LoopStatus,
+} from './loop.schema';
+
+export {
+  AgendaBandViewSchema,
+  AgentHomeSchema,
+  type AgendaBandView,
+  type AgentHome,
+} from './home.schema';

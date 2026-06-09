@@ -6,13 +6,21 @@
 // ============================================================
 
 import { Icons } from './icons.jsx';
+import { DEMO_DATA } from './data.js';
 import { VerdictPill, formatCurrency, formatCurrencyCompact } from './primitives.jsx';
 
-export function HomePage({ workspace, radarAlerts, sessions, onNav, onReviewAlert, onStartFlow }) {
+const SEV_COLOR = { HIGH: 'var(--c-kill, #c0392b)', MEDIUM: 'var(--c-hold-text, #9a6a10)', LOW: 'var(--c-text-muted)' };
+const STAGE_COLOR = { ACTIVE: 'var(--c-scale, #1f8a4c)', IDLE: 'var(--c-hold-text, #9a6a10)', STALE: 'var(--c-text-subtle)' };
+const HEALTH_COLOR = { HEALTHY: 'var(--c-scale-text, #1f8a4c)', DEGRADED: 'var(--c-hold-text, #9a6a10)', STALLED: 'var(--c-kill, #c0392b)' };
+const ACTION_VERB = { confirm: 'Confirm', review: 'Review', adjust: 'Adjust' };
+
+export function HomePage({ workspace, radarAlerts, sessions, onNav, onReviewAlert, onStartFlow, role = 'STRATEGIST', onRunSweep }) {
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
+  const persona = workspace?.id ?? 'apparel';
+  const home = DEMO_DATA.AGENT_HOME_BY_WS?.[persona] ?? DEMO_DATA.AGENT_HOME_BY_WS?.apparel;
   const highAlerts = radarAlerts.filter((a) => a.priority === 'HIGH');
   const stats = {
     spend:  `${formatCurrencyCompact(workspace.spendMonthlyMinor, workspace.currency)} / mo`,
@@ -23,19 +31,32 @@ export function HomePage({ workspace, radarAlerts, sessions, onNav, onReviewAler
     health: workspace.healthScore ?? 72,
   };
 
+  // A proposal's Confirm launches the existing decision motion (coherence).
+  const confirmItem = (item) => onReviewAlert?.({ id: item.id, campaign: item.title, verdict: item.verdict ?? 'WATCH', signal: item.rationale });
+  const showBuyer = role !== 'CLIENT';
+
   return (
     <div data-screen-label="Home" style={{ maxWidth: 1280, margin: '0 auto', padding: '32px 32px 24px' }}>
-      <header style={{ marginBottom: 24 }}>
+      <header style={{ marginBottom: 18 }}>
         <div className="font-mono" style={{ fontSize: 11, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-text-muted)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Icons.Radar style={{ fontSize: 13, color: 'var(--c-gold)' }} />
-          Account Pulse · {workspace.name}
+          Lumi is running the loop · {workspace.name}
         </div>
-        <h1 className="font-display" style={{ fontWeight: 700, fontSize: 36, letterSpacing: '-0.03em', margin: 0, color: 'var(--c-text-base)', lineHeight: 1.1 }}>
-          {greeting}, {workspace.user?.name ?? 'there'}. Here's your account pulse.
+        <h1 className="font-display" style={{ fontWeight: 700, fontSize: 34, letterSpacing: '-0.03em', margin: 0, color: 'var(--c-text-base)', lineHeight: 1.1 }}>
+          {greeting}. {home.summary}
         </h1>
       </header>
 
-      {/* 4 stat cards */}
+      {/* The closed-loop status bar — Lumi proposes, you confirm. */}
+      <LoopStatusBar loop={home.loop} onRunSweep={onRunSweep} />
+
+      {/* Two altitudes, one home. */}
+      <div style={{ display: 'grid', gridTemplateColumns: showBuyer ? '1fr 1fr' : '1fr', gap: 14, margin: '18px 0 24px' }}>
+        {showBuyer && <AgendaBand band={home.buyerBand} Icon={Icons.Zap} tone="gold" onAct={confirmItem} />}
+        <AgendaBand band={home.strategistBand} Icon={Icons.TrendingUp} tone="neutral" onAct={(i) => onNav('plan')} />
+      </div>
+
+      {/* Account-pulse strip (context, not the headline). */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 24 }}>
         <StatCard label="Total spend" value={stats.spend} Icon={Icons.BarChart} sub="last 30 days" />
         <StatCard label="Blended CPA" value={stats.cpa} Icon={Icons.Target} sub="↓ 8% vs prev" tone="positive" />
@@ -43,16 +64,77 @@ export function HomePage({ workspace, radarAlerts, sessions, onNav, onReviewAler
         <StatCard label="Account health" value={`${stats.health}/100`} Icon={Icons.Activity} sub="Fair — needs review" tone="warn" gauge={stats.health} />
       </div>
 
-      {/* 3 column row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginBottom: 24 }}>
-        <AlertsPanel alerts={highAlerts} onReview={onReviewAlert} />
-        <AIInsightPanel workspace={workspace} onAct={() => onStartFlow('campaign')} />
-        <QuickActionsPanel onStartFlow={onStartFlow} onNav={onNav} />
-      </div>
-
       {/* Recent activity */}
       <ActivityFeed sessions={sessions} />
     </div>
+  );
+}
+
+// ── Closed-loop status bar ───────────────────────────────────
+// The six stages plan→allocate→execute→test→measure→learn, each with its
+// freshness. Makes the loop visibly closed. A status strip, NOT a chart.
+function LoopStatusBar({ loop, onRunSweep }) {
+  return (
+    <div style={{ background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', borderRadius: 14, padding: '14px 18px', boxShadow: 'var(--sh-card)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: HEALTH_COLOR[loop.loopHealth] }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: HEALTH_COLOR[loop.loopHealth] }} />
+          {loop.closed ? 'Loop closed' : 'Loop ' + loop.loopHealth.toLowerCase()}
+        </span>
+        <span className="font-mono" style={{ fontSize: 11, color: 'var(--c-text-muted)' }}>swept {loop.lastRunAt} · next {loop.nextRunAt}</span>
+        <button onClick={onRunSweep} className="hover-border-gold" style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: '1px solid var(--c-surface-border)', background: 'var(--c-surface-elevated)', color: 'var(--c-text-base)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+          <Icons.Radar style={{ fontSize: 13 }} /> Run sweep now
+        </button>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+        {loop.stageStatus.map((s, i) => (
+          <React.Fragment key={s.stage}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, minWidth: 84 }}>
+              <span style={{ width: 12, height: 12, borderRadius: '50%', background: STAGE_COLOR[s.state], boxShadow: s.state === 'ACTIVE' ? `0 0 0 4px ${STAGE_COLOR.ACTIVE}22` : 'none' }} />
+              <span className="font-mono" style={{ fontSize: 9, letterSpacing: '0.05em', textTransform: 'uppercase', color: s.state === 'STALE' ? 'var(--c-text-subtle)' : 'var(--c-text-muted)' }}>{s.stage}</span>
+            </div>
+            {i < loop.stageStatus.length - 1 && (
+              <div style={{ flex: 1, height: 2, background: s.state === 'STALE' ? 'var(--c-surface-border)' : STAGE_COLOR.ACTIVE, opacity: 0.5, margin: '0 -2px', marginBottom: 14 }} />
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Agenda band (buyer or strategist) ────────────────────────
+function AgendaBand({ band, Icon, tone, onAct }) {
+  return (
+    <Panel title={band.title} Icon={Icon} iconTone={tone} meta={`${band.items.length} item${band.items.length === 1 ? '' : 's'}`}>
+      {band.items.length === 0 ? (
+        <EmptyPanel text="Nothing here needs you right now." />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {band.items.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => onAct?.(item)}
+              className="hover-bg-card"
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 12px',
+                background: 'var(--c-surface-elevated)', border: '1px solid var(--c-surface-border)',
+                borderLeft: `3px solid ${SEV_COLOR[item.severity]}`, borderRadius: 8, textAlign: 'left',
+                cursor: 'pointer', transition: 'background 120ms',
+              }}
+            >
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="font-display" style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-base)' }}>{item.title}</div>
+                <div style={{ fontSize: 11, color: 'var(--c-text-muted)', marginTop: 3, lineHeight: 1.45 }}>{item.rationale}</div>
+              </div>
+              <span className="font-mono" style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', padding: '4px 9px', borderRadius: 6, background: 'var(--c-surface-card)', border: '1px solid var(--c-surface-border)', color: 'var(--c-text-base)' }}>
+                {ACTION_VERB[item.humanAction] ?? 'Open'}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </Panel>
   );
 }
 
@@ -80,111 +162,6 @@ function StatCard({ label, value, sub, Icon, tone, gauge }) {
         </div>
       )}
     </div>
-  );
-}
-
-// ── Alerts panel ─────────────────────────────────────────────
-function AlertsPanel({ alerts, onReview }) {
-  return (
-    <Panel
-      title="Alerts"
-      Icon={Icons.AlertTriangle}
-      iconTone="kill"
-      meta={`${alerts.length} high priority`}
-    >
-      {alerts.length === 0 ? (
-        <EmptyPanel text="Nothing burning right now." />
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {alerts.slice(0, 3).map((a) => (
-            <button
-              key={a.id}
-              onClick={() => onReview(a)}
-              className="hover-bg-card"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 12px',
-                background: 'var(--c-surface-elevated)',
-                border: '1px solid var(--c-surface-border)',
-                borderLeft: `3px solid var(--c-${a.verdict === 'KILL' ? 'kill' : a.verdict === 'SCALE' ? 'scale' : 'hold'})`,
-                borderRadius: 8, textAlign: 'left', cursor: 'pointer',
-                transition: 'background 120ms',
-              }}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="font-display" style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-base)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.campaign}</div>
-                <div className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-muted)', marginTop: 2 }}>{a.signal}</div>
-              </div>
-              <VerdictPill verdict={a.verdict} showIcon={false} />
-            </button>
-          ))}
-        </div>
-      )}
-    </Panel>
-  );
-}
-
-// ── AI Insight panel ─────────────────────────────────────────
-function AIInsightPanel({ workspace, onAct }) {
-  return (
-    <Panel
-      title="AI Insight"
-      Icon={Icons.Brain}
-      iconTone="gold"
-      meta="updated 6m ago"
-    >
-      <div className="font-mono" style={{ fontSize: 10, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--c-gold-deep)', marginBottom: 8 }}>
-        Top recommendation
-      </div>
-      <p style={{ fontSize: 13, color: 'var(--c-text-soft)', lineHeight: 1.55, margin: '0 0 14px' }}>
-        Your <strong style={{ color: 'var(--c-text-base)' }}>Eid Carousel</strong> ad set is showing creative fatigue at v=4.2 frequency. Lumi recommends pausing it and reallocating to <strong style={{ color: 'var(--c-text-base)' }}>PMax Warm</strong> — historically you've recovered 92% of equivalent spend within 6 days.
-      </p>
-      <button onClick={onAct} className="btn-gold" style={{ width: '100%', justifyContent: 'center', padding: '10px 14px', fontSize: 13 }}>
-        <Icons.Zap style={{ fontSize: 13 }} />
-        Review verdict
-        <Icons.ArrowRight style={{ fontSize: 13 }} />
-      </button>
-    </Panel>
-  );
-}
-
-// ── Quick actions ────────────────────────────────────────────
-function QuickActionsPanel({ onStartFlow, onNav }) {
-  const actions = [
-    { label: 'Upload new CSV',     sub: 'Get a fresh verdict',         Icon: Icons.Upload,    onClick: () => onStartFlow('campaign') },
-    { label: 'Fix bleeding copy',  sub: 'Open Content Lab',            Icon: Icons.Send,      onClick: () => onNav('content') },
-    { label: 'Plan next 4 weeks',  sub: 'Social Calendar',             Icon: Icons.Calendar,  onClick: () => onNav('calendar') },
-    { label: 'Find growth signal', sub: 'Open Growth board',           Icon: Icons.Target,    onClick: () => onNav('growth') },
-  ];
-  return (
-    <Panel title="Quick actions" Icon={Icons.Zap} iconTone="gold" meta={`${actions.length} ready`}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {actions.map((a) => (
-          <button
-            key={a.label}
-            onClick={a.onClick}
-            className="hover-bg-card hover-border-gold"
-            style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              padding: '10px 12px',
-              background: 'var(--c-surface-elevated)',
-              border: '1px solid var(--c-surface-border)',
-              borderRadius: 8, textAlign: 'left', cursor: 'pointer',
-              transition: 'all 150ms',
-            }}
-          >
-            <div style={{ width: 28, height: 28, borderRadius: 7, background: 'rgba(246,201,69,0.10)', color: 'var(--c-gold-deep)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-              <a.Icon style={{ fontSize: 14 }} />
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div className="font-display" style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-base)' }}>{a.label}</div>
-              <div className="font-mono" style={{ fontSize: 10, color: 'var(--c-text-muted)', marginTop: 1 }}>{a.sub}</div>
-            </div>
-            <Icons.ArrowRight style={{ fontSize: 12, color: 'var(--c-text-subtle)' }} />
-          </button>
-        ))}
-      </div>
-    </Panel>
   );
 }
 
