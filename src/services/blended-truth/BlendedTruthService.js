@@ -14,6 +14,7 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { reconcile } from './blendedTruthEngine.js';
 import { isStale } from '../connectors/connectorTypes.js';
+import { listConnections } from '../connectors/credentialStore.js';
 
 export const PLATFORM_SOURCES = Object.freeze(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
 export const ACTUAL_SOURCES   = Object.freeze(['GA4', 'SHOPIFY']);
@@ -82,14 +83,11 @@ export async function getBlendedTruth(workspaceId, { lookbackDays = LOOKBACK_DAY
   // connector's health WITHOUT touching the reconciled numbers. A channel synced
   // long ago (or whose last sync FAILED) is flagged so the panel never renders a
   // confident gap over mixed-freshness inputs. Keyed off lastSuccessfulSync.
-  const integrations = await prisma.integration.findMany({
-    where: { workspaceId },
-    select: { platform: true, lastSyncedAt: true, metadata: true },
-  });
+  const conns = await listConnections(workspaceId); // marcom_credentials, channel-keyed, no tokens
   const freshnessByPlatform = new Map(
-    integrations.map((i) => {
-      const lastSuccess = i.metadata?.health?.lastSuccessfulSync ?? i.lastSyncedAt ?? null;
-      return [String(i.platform).toUpperCase(), { lastSuccessfulSync: lastSuccess, lastSyncedAt: i.lastSyncedAt ?? null }];
+    conns.map((c) => {
+      const lastSuccess = c.health?.lastSuccessfulSync ?? c.lastSyncedAt ?? null;
+      return [String(c.platform).toUpperCase(), { lastSuccessfulSync: lastSuccess, lastSyncedAt: c.lastSyncedAt ?? null }];
     }),
   );
   const now = new Date();

@@ -9,31 +9,26 @@
 // moment Google snapshots land tagged source:GOOGLE on a GOOGLE Account, blended
 // truth reconciles Meta-vs-Google for free.
 // ============================================================
-import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { ChannelConnector, assertNormalized } from './ChannelConnector.js';
 import { googleNormalize } from './normalize/googleNormalize.js';
+import { resolveCredential } from './credentialStore.js';
 import { CHANNEL } from './connectorTypes.js';
 
 export class GoogleAdsConnector extends ChannelConnector {
   channel = CHANNEL.GOOGLE;
 
   async authenticate(workspaceId) {
-    const integ = await prisma.integration.findUnique({
-      where: { workspaceId_platform: { workspaceId, platform: 'GOOGLE' } },
-    });
-    if (!integ || !integ.isActive || !integ.accessToken) {
-      return { ok: false, error: 'Google integration missing or inactive' };
-    }
-    const accountExternalId = integ.metadata?.customerId ?? integ.metadata?.accountId ?? null;
-    if (!accountExternalId) return { ok: false, error: 'Google integration has no customerId in metadata' };
+    const cred = await resolveCredential(workspaceId, CHANNEL.GOOGLE);
+    if (!cred || !cred.accessToken) return { ok: false, error: 'Google credential missing or inactive' };
+    if (!cred.accountId) return { ok: false, error: 'Google credential has no customerId' };
     return {
       ok: true,
-      accessToken: integ.accessToken,
-      refreshToken: integ.refreshToken,
-      accountExternalId,
-      accountName: integ.metadata?.accountName ?? null,
-      currency: integ.metadata?.currency ?? 'USD',
+      accessToken: cred.accessToken,
+      refreshToken: cred.refreshToken,
+      accountExternalId: cred.accountId,
+      accountName: null,
+      currency: 'USD',
     };
   }
 
