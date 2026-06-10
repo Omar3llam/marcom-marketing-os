@@ -14,7 +14,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   Layout, BarChart3, Target, Send, CalendarDays, Activity,
   Settings, PanelLeftClose, Plus, Search, ChevronDown, Radar,
-  Scale, Gauge,
+  Scale, Gauge, Plug,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
@@ -37,6 +37,7 @@ const tools = [
   { key: 'content',    label: 'Content Lab',  sub: 'Copy + visual generation',     icon: Send,          path: '/app/content'          },
   { key: 'growth',     label: 'Growth',       sub: 'Memory layer + opportunities', icon: Target,        path: '/app/growth'           },
   { key: 'calendar',   label: 'Calendar',     sub: '4-week content plan',          icon: CalendarDays,  path: '/app/tools/calendar'   },
+  { key: 'connections',label: 'Channels',     sub: 'Connected data sources',       icon: Plug,          path: '/app/connections',     roles: ['STRATEGIST', 'BUYER'] },
 ];
 
 // ══════════════════════════════════════════════════════════════

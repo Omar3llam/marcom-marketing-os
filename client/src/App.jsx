@@ -43,6 +43,7 @@ const ApprovalQueue       = lazy(() => import('./pages/ApprovalQueue.jsx')); // 
 // ── Phase 11A · surfacing the built brain (role-gated) ────────
 const BlendedTruth = lazy(() => import('./pages/BlendedTruth.jsx'));
 const Proof        = lazy(() => import('./pages/Proof.jsx'));
+const Connections  = lazy(() => import('./pages/Connections.jsx'));
 
 // ── v2 views (gradual migration via Strangler Pattern) ────────
 const DecisionViewV2 = lazy(() => import('./pages/v2/DecisionViewV2.tsx').then(m => ({ default: m.DecisionViewV2 })));
@@ -136,6 +137,15 @@ export default function App() {
           <Route path="proof"      element={
             <ErrorBoundary boundaryId="proof">
               <Suspense fallback={<PageFallback />}><Proof /></Suspense>
+            </ErrorBoundary>
+          } />
+
+          {/* ── Phase 12 · Connected Channels (STRATEGIST/BUYER; CLIENT → Home) ── */}
+          <Route path="connections" element={
+            <ErrorBoundary boundaryId="connections">
+              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<Navigate to="/app/home" replace />}>
+                <Suspense fallback={<PageFallback />}><Connections /></Suspense>
+              </RoleGate>
             </ErrorBoundary>
           } />
           <Route path="content"    element={

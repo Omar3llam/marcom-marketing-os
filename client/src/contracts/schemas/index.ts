@@ -464,3 +464,15 @@ export {
   type AccuracySurface,
   type DecisionAccuracy,
 } from './accuracy.schema';
+
+// ──────────────────────────────────────────────────────────
+// Phase 12 — Connectors (connection status · health; display fields only)
+// ──────────────────────────────────────────────────────────
+export {
+  ConnectorHealthSchema,
+  ConnectionSchema,
+  ConnectionsResponseSchema,
+  type ConnectorHealth,
+  type Connection,
+  type ConnectionsResponse,
+} from './connections.schema';
