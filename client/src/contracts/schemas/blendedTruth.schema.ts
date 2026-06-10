@@ -28,6 +28,11 @@ export const BlendedChannelSchema = z.object({
   blendedRoas: z.number(),
   coverage: CoverageSchema,
   confidence: ConfidenceSchema,
+  // Phase 12 — connector freshness. `stale` only when a connector tracks this
+  // channel and its last SUCCESSFUL sync is past the threshold; null lastSyncedAt
+  // when no connector tracks it (seed/CSV). Numbers are unchanged by staleness.
+  stale: z.boolean().optional(),
+  lastSyncedAt: z.string().nullish(),
 });
 
 export const BlendedPortfolioSchema = z.object({
@@ -40,6 +45,7 @@ export const BlendedPortfolioSchema = z.object({
   blendedRoas: z.number(),
   reconciledCount: z.number().int(),
   unverifiedCount: z.number().int(),
+  hasStale: z.boolean().optional(), // any tracked channel stale → render the honesty banner
 });
 
 export const BlendedTruthSchema = z.object({
