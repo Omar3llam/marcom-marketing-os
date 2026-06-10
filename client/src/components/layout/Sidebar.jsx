@@ -14,8 +14,11 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   Layout, BarChart3, Target, Send, CalendarDays, Activity,
   Settings, PanelLeftClose, Plus, Search, ChevronDown, Radar,
+  Scale, Gauge,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
+import { useCollabRole } from '@/hooks/useCollabRole.js';
+import { roleAllowed } from '@/components/auth/RoleGate.jsx';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { cn } from '@/lib/utils.js';
 import NotificationBell from '@/components/ui/NotificationBell.jsx';
@@ -24,10 +27,13 @@ import RecentDecisions from '@/components/ui/RecentDecisions.jsx';
 import CommandPalette from '@/components/ui/CommandPalette.jsx';
 import RadarStrip from './RadarStrip.jsx';
 
-// Simplified navigation structure from Figma
+// Simplified navigation structure from Figma. `roles` (optional) gates an item
+// to the listed collabRoles; absent = visible to all (backwards-compatible).
 const tools = [
   { key: 'home',       label: 'Home',         sub: 'Account pulse',                icon: Layout,        path: '/app/home'             },
   { key: 'campaigns',  label: 'Campaigns',    sub: 'Verdicts + diagnosis',         icon: BarChart3,     path: '/app/campaigns'        },
+  { key: 'truth',      label: 'Blended Truth',sub: 'Platform claims vs reality',   icon: Scale,         path: '/app/truth',           roles: ['STRATEGIST', 'BUYER'] },
+  { key: 'proof',      label: 'Proof',        sub: 'Is Lumi getting sharper?',     icon: Gauge,         path: '/app/proof'            },
   { key: 'content',    label: 'Content Lab',  sub: 'Copy + visual generation',     icon: Send,          path: '/app/content'          },
   { key: 'growth',     label: 'Growth',       sub: 'Memory layer + opportunities', icon: Target,        path: '/app/growth'           },
   { key: 'calendar',   label: 'Calendar',     sub: '4-week content plan',          icon: CalendarDays,  path: '/app/tools/calendar'   },
@@ -140,7 +146,11 @@ export default function Sidebar({
 }) {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
+  const { role: collabRole } = useCollabRole();
   const { workspace, hasWorkspace, loading: workspaceLoading } = useWorkspace();
+
+  // Role-gated navigation — items with a `roles` constraint hide for other roles.
+  const navItems = tools.filter((t) => roleAllowed(collabRole, t.roles));
 
   // UI state
   const [notifOpen, setNotifOpen] = useState(false);
@@ -329,7 +339,7 @@ export default function Sidebar({
             <div className="section-label px-1 mb-2">Navigation</div>
           )}
 
-          {tools.map((tool) => {
+          {navItems.map((tool) => {
             const badge = alertsByKey[tool.key];
             return (
               <NavLink
@@ -456,7 +466,7 @@ export default function Sidebar({
     <CommandPalette
       open={cmdkOpen}
       onClose={() => setCmdkOpen(false)}
-      navItems={tools}
+      navItems={navItems}
       decisions={recentDecisions}
       onNavigate={(path) => { navigate(path); onMobileMenuToggle?.(); }}
     />

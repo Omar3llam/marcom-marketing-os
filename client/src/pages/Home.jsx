@@ -15,6 +15,8 @@ import { useAuth } from '@/context/AuthContext.jsx';
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
 import StatCard from '@/components/ui/StatCard.jsx';
+import { useAccuracy } from '@/hooks/useAccuracy.js';
+import { ProofSummary } from './Proof.jsx';
 import AlertsPanel from './Home/AlertsPanel.jsx';
 import AIInsightPanel from './Home/AIInsightPanel.jsx';
 import QuickActionsPanel from './Home/QuickActionsPanel.jsx';
@@ -25,6 +27,7 @@ export default function HomePage() {
   const { currentUser } = useAuth();
   const { workspace } = useWorkspace();
   const { campaigns, summary, loading: intelligenceLoading } = useIntelligence();
+  const { surface: proofSurface } = useAccuracy(); // gated proof one-liner (best-effort)
 
   // Greeting based on time of day
   const hour = new Date().getHours();
@@ -110,6 +113,13 @@ export default function HomePage() {
           {greeting}, {userName}. Here&apos;s your account pulse.
         </h1>
       </header>
+
+      {/* Proof of learning — the gated one-liner (RELIABLE only, else "still learning"). */}
+      {proofSurface && (
+        <div className="mb-6 rounded-xl border border-lumi-border bg-lumi-elevated px-4 py-3">
+          <ProofSummary surface={proofSurface} />
+        </div>
+      )}
 
       {/* Empty state: no campaigns uploaded yet */}
       {!loading && !hasData && (

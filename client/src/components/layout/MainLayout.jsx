@@ -16,8 +16,17 @@ import Sidebar      from './Sidebar.jsx';
 import ContextBar   from './ContextBar.jsx';
 import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
 import { api } from '@/lib/api.js';
+import { RoleProvider } from '@/context/RoleContext.jsx';
 
 export default function MainLayout() {
+  return (
+    <RoleProvider>
+      <MainLayoutShell />
+    </RoleProvider>
+  );
+}
+
+function MainLayoutShell() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [recentDecisions, setRecentDecisions] = useState([]);
