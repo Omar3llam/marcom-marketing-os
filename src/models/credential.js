@@ -26,7 +26,7 @@ function getEncKey() {
 // ── ENCRYPTION HELPERS ───────────────────────────────────────
 // Format stored:  <iv_hex>:<authTag_hex>:<ciphertext_hex>
 
-function encrypt(plaintext) {
+export function encrypt(plaintext) {
   const key = getEncKey();
   if (!key) throw new Error('CREDENTIAL_ENCRYPTION_KEY is not configured');
   const iv  = randomBytes(12);                             // 96-bit IV for GCM
@@ -36,7 +36,7 @@ function encrypt(plaintext) {
   return `${iv.toString('hex')}:${tag.toString('hex')}:${ct.toString('hex')}`;
 }
 
-function decrypt(stored) {
+export function decrypt(stored) {
   const key = getEncKey();
   if (!key) throw new Error('CREDENTIAL_ENCRYPTION_KEY is not configured');
   const [ivHex, tagHex, ctHex] = stored.split(':');
@@ -70,6 +70,18 @@ export async function ensureCredentialSchema() {
     await sql`
       CREATE INDEX IF NOT EXISTS idx_marcom_credentials_user
         ON marcom_credentials (user_id)
+    `;
+    // Phase 12B — make marcom_credentials the workspace-scoped connector
+    // connection-of-record. Idempotent column adds (raw-SQL table, no Prisma
+    // migration). workspace_id is the connector key (set by the workspace-aware
+    // OAuth connect endpoint); health/last_synced_at carry connector observability.
+    await sql`ALTER TABLE marcom_credentials ADD COLUMN IF NOT EXISTS workspace_id   TEXT`;
+    await sql`ALTER TABLE marcom_credentials ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ`;
+    await sql`ALTER TABLE marcom_credentials ADD COLUMN IF NOT EXISTS is_active      BOOLEAN DEFAULT true`;
+    await sql`ALTER TABLE marcom_credentials ADD COLUMN IF NOT EXISTS health         JSONB`;
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_marcom_credentials_workspace
+        ON marcom_credentials (workspace_id, platform)
     `;
     logger.info('[credentials] schema ensured ✓');
   } catch (err) {

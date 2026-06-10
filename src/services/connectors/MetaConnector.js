@@ -6,31 +6,26 @@
 // estimate-based normalizer). Credentials resolve from Integration (the source
 // of truth) — never a loose config.
 // ============================================================
-import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { fetchCampaignInsights } from '../metaAdsService.js';
 import { ChannelConnector, assertNormalized } from './ChannelConnector.js';
 import { metaNormalize } from './normalize/metaNormalize.js';
+import { resolveCredential } from './credentialStore.js';
 import { CHANNEL } from './connectorTypes.js';
 
 export class MetaConnector extends ChannelConnector {
   channel = CHANNEL.META;
 
   async authenticate(workspaceId) {
-    const integ = await prisma.integration.findUnique({
-      where: { workspaceId_platform: { workspaceId, platform: 'META' } },
-    });
-    if (!integ || !integ.isActive || !integ.accessToken) {
-      return { ok: false, error: 'Meta integration missing or inactive' };
-    }
-    const accountExternalId = integ.metadata?.accountId ?? integ.metadata?.adAccountId ?? null;
-    if (!accountExternalId) return { ok: false, error: 'Meta integration has no accountId in metadata' };
+    const cred = await resolveCredential(workspaceId, CHANNEL.META);
+    if (!cred || !cred.accessToken) return { ok: false, error: 'Meta credential missing or inactive' };
+    if (!cred.accountId) return { ok: false, error: 'Meta credential has no accountId' };
     return {
       ok: true,
-      accessToken: integ.accessToken, // decrypted at the DB layer
-      accountExternalId,
-      accountName: integ.metadata?.accountName ?? null,
-      currency: integ.metadata?.currency ?? 'USD',
+      accessToken: cred.accessToken,
+      accountExternalId: cred.accountId,
+      accountName: null,
+      currency: 'USD',
     };
   }
 
