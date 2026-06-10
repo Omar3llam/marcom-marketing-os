@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { getPortfolio }       from '../../services/portfolio/PortfolioService.js';
+import { getBlendedTruth }    from '../../services/blended-truth/BlendedTruthService.js';
 import { previewAllocation, commitAllocation } from '../../services/allocation-engine/AllocationService.js';
 import { GOAL_TYPE }          from '../../services/allocation-engine/allocationEngine.js';
 
@@ -57,6 +58,29 @@ portfolioRouter.get('/portfolio', async (req, res) => {
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/portfolio] failed');
     return res.status(500).json({ error: 'PortfolioUnavailable', message: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/lumi/blended — platform-claimed vs reconciled "blended truth".
+// Surfaces the "don't trust platform-reported performance" thesis the engine
+// already enforces. Read-only; workspace-scoped. Returns { channels, portfolio }
+// (BlendedTruthSchema). Empty (no connected channels) → empty arrays, not a fake.
+// ─────────────────────────────────────────────────────────────
+portfolioRouter.get('/blended', async (req, res) => {
+  const wsId = await resolveWorkspaceId(req);
+  if (!wsId) {
+    return res.json({
+      workspaceId: null, generatedAt: new Date().toISOString(),
+      channels: [], portfolio: { spendMinor: 0, platformRevenueMinor: 0, blendedRevenueMinor: 0, gapMinor: 0, gapPct: 0, platformRoas: 0, blendedRoas: 0, reconciledCount: 0, unverifiedCount: 0 },
+    });
+  }
+  try {
+    const truth = await getBlendedTruth(wsId);
+    return res.json({ workspaceId: wsId, generatedAt: new Date().toISOString(), ...truth });
+  } catch (err) {
+    logger.error({ err: err.message, wsId }, '[lumi/portfolio] blended truth failed');
+    return res.status(500).json({ error: 'BlendedTruthUnavailable', message: err.message });
   }
 });
 

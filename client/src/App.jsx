@@ -29,6 +29,7 @@ import SettingsPage     from './pages/Settings.jsx';
 import Observability    from './pages/Observability.jsx';
 import { CardSkeleton } from './components/ui/Skeleton.jsx';
 import { ProtectedRoute, OnboardingRoute } from './router/ProtectedRoute.jsx';
+import RoleGate from './components/auth/RoleGate.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { IntelligenceProvider } from './context/IntelligenceContext.jsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
@@ -38,6 +39,10 @@ const CampaignAnalysis    = lazy(() => import('./pages/CampaignAnalysis.jsx'));
 const GrowthStrategyBoard = lazy(() => import('./pages/GrowthStrategyBoard.jsx'));
 const Operations          = lazy(() => import('./pages/demo/Operations/index.jsx'));
 const ApprovalQueue       = lazy(() => import('./pages/ApprovalQueue.jsx')); // PR #36
+
+// ── Phase 11A · surfacing the built brain (role-gated) ────────
+const BlendedTruth = lazy(() => import('./pages/BlendedTruth.jsx'));
+const Proof        = lazy(() => import('./pages/Proof.jsx'));
 
 // ── v2 views (gradual migration via Strangler Pattern) ────────
 const DecisionViewV2 = lazy(() => import('./pages/v2/DecisionViewV2.tsx').then(m => ({ default: m.DecisionViewV2 })));
@@ -115,6 +120,22 @@ export default function App() {
           <Route path="campaigns"  element={
             <ErrorBoundary boundaryId="campaigns">
               <Suspense fallback={<PageFallback />}><CampaignAnalysis /></Suspense>
+            </ErrorBoundary>
+          } />
+
+          {/* ── Phase 11A · Blended Truth (STRATEGIST/BUYER; CLIENT → Home) ── */}
+          <Route path="truth"      element={
+            <ErrorBoundary boundaryId="truth">
+              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<Navigate to="/app/home" replace />}>
+                <Suspense fallback={<PageFallback />}><BlendedTruth /></Suspense>
+              </RoleGate>
+            </ErrorBoundary>
+          } />
+
+          {/* ── Phase 11A · Proof of Learning (all roles; view narrows by role) ── */}
+          <Route path="proof"      element={
+            <ErrorBoundary boundaryId="proof">
+              <Suspense fallback={<PageFallback />}><Proof /></Suspense>
             </ErrorBoundary>
           } />
           <Route path="content"    element={
