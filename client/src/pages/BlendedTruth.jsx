@@ -38,9 +38,19 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST }) {
   const single = channels.length < 2;
   const currency = channels[0]?.currency ?? 'USD';
   const isStrategist = role === WORKSPACE_ROLE.STRATEGIST;
+  const staleChannels = channels.filter((c) => c.stale);
 
   return (
     <div className="space-y-4">
+      {/* Staleness honesty (Phase 12) — never a confident gap over stale inputs. */}
+      {staleChannels.length > 0 && (
+        <div className="rounded-2xl border border-signal-kill/40 bg-signal-kill-bg px-4 py-3 flex items-start gap-2.5">
+          <AlertTriangle className="w-4 h-4 mt-0.5 text-signal-kill flex-shrink-0" strokeWidth={1.5} />
+          <p className="text-sm text-lumi-text">
+            {staleChannels.map((c) => c.channel).join(', ')} data is stale — reconciliation may be incomplete. Re-sync to refresh the gap.
+          </p>
+        </div>
+      )}
       {/* Hero — the gap is the whole point. */}
       {!single && portfolio && (
         <div className="rounded-2xl border border-lumi-border bg-lumi-elevated p-5">

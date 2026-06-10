@@ -1,0 +1,54 @@
+// ============================================================
+// metaNormalize — raw Meta insights → NormalizedSnapshot[] (PURE)
+// ============================================================
+// Reads the REAL Meta fields. Revenue = the purchase action_value, landed as-is
+// (PLATFORM_CLAIMED); when Meta reports no purchase value we land 0, never an
+// ESTIMATE. (The legacy normalizeInsightsForAnalysis derives ROAS from CTR +
+// frequency — that is exactly the "platform-claimed number wearing a trusted
+// badge" the governing rule forbids, so the connector does not use it.)
+// ============================================================
+import { toMinor } from '../../../lib/money.js';
+import { num, accountRollup } from './fieldUtils.js';
+import { CHANNEL, DATA_SOURCE } from '../connectorTypes.js';
+
+const PURCHASE_ACTIONS = new Set(['offsite_conversion.fb_pixel_purchase', 'omni_purchase', 'purchase']);
+
+function actionValue(arr, match) {
+  if (!Array.isArray(arr)) return 0;
+  return num(arr.find((a) => match.has(a.action_type))?.value);
+}
+
+/**
+ * @param {{ accountExternalId, accountName?, currency, date, rows }} input
+ *   rows = raw Meta insight objects (campaign-level)
+ * @returns {NormalizedSnapshot[]} one ACCOUNT rollup + one CAMPAIGN row each
+ */
+export function metaNormalize({ accountExternalId, accountName = null, currency = 'USD', date, rows = [] }) {
+  const d = date instanceof Date ? date : new Date(date);
+  const campaigns = rows.map((r) => {
+    const conversions = actionValue(r.actions, PURCHASE_ACTIONS);
+    const revenueMajor = actionValue(r.action_values, PURCHASE_ACTIONS); // real claimed value; 0 if none
+    const clicks = num(r.clicks ?? r.inline_link_clicks);
+    return {
+      externalId: String(r.campaign_id ?? r.campaign_name ?? 'unknown'),
+      entityLevel: 'CAMPAIGN',
+      parentExternalId: accountExternalId,
+      channel: CHANNEL.META,
+      source: DATA_SOURCE.META,
+      name: r.campaign_name || 'Unnamed Campaign',
+      date: d,
+      currency,
+      spendMinor: toMinor(num(r.spend), currency),
+      revenueMinor: toMinor(revenueMajor, currency),
+      impressions: Math.round(num(r.impressions)),
+      clicks: Math.round(clicks),
+      conversions: Math.round(conversions),
+      frequency: r.frequency != null ? num(r.frequency) : null,
+    };
+  });
+
+  const account = accountRollup(campaigns, {
+    accountExternalId, accountName, channel: CHANNEL.META, source: DATA_SOURCE.META, date: d, currency,
+  });
+  return [account, ...campaigns];
+}

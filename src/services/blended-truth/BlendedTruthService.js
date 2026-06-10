@@ -13,6 +13,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { reconcile } from './blendedTruthEngine.js';
+import { isStale } from '../connectors/connectorTypes.js';
 
 export const PLATFORM_SOURCES = Object.freeze(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
 export const ACTUAL_SOURCES   = Object.freeze(['GA4', 'SHOPIFY']);
@@ -76,6 +77,35 @@ export async function getBlendedTruth(workspaceId, { lookbackDays = LOOKBACK_DAY
   }
 
   const result = reconcile({ channels });
-  logger.info({ workspaceId, channels: result.channels.length, gapPct: result.portfolio.gapPct }, '[BlendedTruthService] reconciled');
+
+  // Staleness honesty (Phase 12): surface per-channel freshness from the
+  // connector's health WITHOUT touching the reconciled numbers. A channel synced
+  // long ago (or whose last sync FAILED) is flagged so the panel never renders a
+  // confident gap over mixed-freshness inputs. Keyed off lastSuccessfulSync.
+  const integrations = await prisma.integration.findMany({
+    where: { workspaceId },
+    select: { platform: true, lastSyncedAt: true, metadata: true },
+  });
+  const freshnessByPlatform = new Map(
+    integrations.map((i) => {
+      const lastSuccess = i.metadata?.health?.lastSuccessfulSync ?? i.lastSyncedAt ?? null;
+      return [String(i.platform).toUpperCase(), { lastSuccessfulSync: lastSuccess, lastSyncedAt: i.lastSyncedAt ?? null }];
+    }),
+  );
+  const now = new Date();
+  let hasStale = false;
+  for (const ch of result.channels) {
+    const f = ch.channel ? freshnessByPlatform.get(String(ch.channel).toUpperCase()) : null;
+    // Staleness only applies to channels a connector actually tracks. Non-connector
+    // data (seed/CSV with no Integration) is not "stale" — we can't claim freshness
+    // about it, so we don't flag it.
+    const stale = f ? isStale(f.lastSuccessfulSync, now) : false;
+    ch.stale = stale;
+    ch.lastSyncedAt = f?.lastSyncedAt ? new Date(f.lastSyncedAt).toISOString() : null;
+    if (stale) hasStale = true;
+  }
+  result.portfolio.hasStale = hasStale;
+
+  logger.info({ workspaceId, channels: result.channels.length, gapPct: result.portfolio.gapPct, hasStale }, '[BlendedTruthService] reconciled');
   return result;
 }
