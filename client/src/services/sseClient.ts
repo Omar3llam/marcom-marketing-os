@@ -14,9 +14,9 @@
  * @example
  * ```tsx
  * const client = new SSEClient({
- *   onMessage: (event) => console.log('Event:', event),
+ *   onMessage: (event) => handleEvent(event),
  *   onError: (error) => console.error('SSE error:', error),
- *   onStateChange: (state) => console.log('State:', state),
+ *   onStateChange: (state) => updateState(state),
  * });
  *
  * await client.connect();
@@ -62,6 +62,8 @@ export interface SSEClientOptions {
   jitter?: number;
   /** Heartbeat timeout (default: 30000ms) */
   heartbeatTimeout?: number;
+  /** Optional Firebase token getter for legacy callers */
+  getAuthToken?: () => Promise<string | null | undefined> | string | null | undefined;
 }
 
 export interface SSEMetrics {
@@ -100,6 +102,7 @@ export class SSEClient {
   private readonly maxDelay: number;
   private readonly jitter: number;
   private readonly heartbeatTimeoutMs: number;
+  private readonly getAuthToken?: SSEClientOptions['getAuthToken'];
 
   constructor(options: SSEClientOptions) {
     this.onMessage = options.onMessage;
@@ -110,6 +113,7 @@ export class SSEClient {
     this.maxDelay = options.maxDelay ?? 32_000;
     this.jitter = options.jitter ?? 0.1;
     this.heartbeatTimeoutMs = options.heartbeatTimeout ?? 65_000;
+    this.getAuthToken = options.getAuthToken;
   }
 
   /**
@@ -129,7 +133,10 @@ export class SSEClient {
 
     try {
       // Step 1: Obtain stream token (exchange Firebase JWT for short-lived UUID)
-      const tokenResponse = await api.post('/api/events/token');
+      const authToken = this.getAuthToken ? await this.getAuthToken() : null;
+      const tokenResponse = await api.post('/api/events/token', null, authToken ? {
+        headers: { Authorization: `Bearer ${authToken}` },
+      } : undefined);
       this.streamToken = tokenResponse.data.streamToken;
 
       if (!this.streamToken) {
@@ -366,10 +373,6 @@ export class SSEClient {
     // Calculate exponential backoff delay with jitter
     const delay = this.calculateBackoffDelay(this.reconnectAttempts);
 
-    console.log(
-      `[SSEClient] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxRetries})`
-    );
-
     track('sse_reconnect_scheduled', {
       attempt: this.reconnectAttempts,
       delay,
@@ -433,8 +436,6 @@ export class SSEClient {
     const oldState = this.state;
     this.state = newState;
 
-    console.log(`[SSEClient] State: ${oldState} → ${newState}`);
-
     if (this.onStateChange) {
       this.onStateChange(newState);
     }
@@ -479,11 +480,13 @@ export class SSEClient {
  */
 export function createSSEClient(
   onMessage: (event: MessageEvent) => void,
-  onError?: (error: Error) => void
+  onError?: (error: Error) => void,
+  options: Partial<SSEClientOptions> = {}
 ): SSEClient {
   return new SSEClient({
     onMessage,
     onError,
+    ...options,
     maxRetries: 5,
     baseDelay: 2000,
     maxDelay: 32_000,

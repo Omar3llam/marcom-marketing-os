@@ -24,7 +24,6 @@ export function useFirebaseAuth() {
   // to avoid Google OAuth "disallowed_useragent" error (Error 403).
   const signInWithGoogle = async () => {
     const useRedirect = isEmbeddedWebviewOrMobile();
-    console.log('[AuthContext] signInWithGoogle called', { useRedirect, userAgent: navigator.userAgent });
     if (useRedirect) {
       return signInWithRedirect(auth, googleProvider);
     }
@@ -32,14 +31,12 @@ export function useFirebaseAuth() {
   };
 
   const signInWithEmail = async (email, password) => {
-    console.log('[AuthContext] signInWithEmail called', { authDefined: !!auth, emailDefined: !!email, passwordDefined: !!password });
     if (!auth) throw new Error('Firebase auth not initialized');
     if (!email || !password) throw new Error('Email and password are required');
     return signInWithEmailAndPassword(auth, email, password);
   };
 
   const signUpWithEmail = async (email, password) => {
-    console.log('[AuthContext] signUpWithEmail called', { authDefined: !!auth, emailDefined: !!email, passwordDefined: !!password, emailLength: email?.length, passwordLength: password?.length });
     if (!auth) throw new Error('Firebase auth not initialized');
     if (!email || !password) throw new Error('Email and password are required');
     return createUserWithEmailAndPassword(auth, email, password);
@@ -48,7 +45,6 @@ export function useFirebaseAuth() {
   // CRITICAL: Clear the onboarding cache BEFORE signing out to prevent stale
   // onboarding state from persisting across user sessions.
   const logout = async () => {
-    console.log('[AuthContext] logout called — clearing onboarding cache');
     clearContextCache();
     return signOut(auth);
   };
@@ -75,10 +71,7 @@ export function useFirebaseAuth() {
     const redirectPromise = getRedirectResult(auth)
       .then((result) => {
         if (result?.user) {
-          console.log('[AuthContext] Redirect result received:', {
-            user: result.user?.email,
-            providerId: result.providerId,
-          });
+          // User successfully signed in via redirect.
         }
       })
       .catch((err) => {

@@ -26,41 +26,9 @@ export function useWorkspace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchWorkspace = async () => {
-    if (!currentUser) {
-      setWorkspace(null);
-      setHasWorkspace(false);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      const response = await api.get('/api/user/workspace');
-
-      if (response.data.hasWorkspace) {
-        setWorkspace(response.data.workspace);
-        setHasWorkspace(true);
-      } else {
-        setWorkspace(null);
-        setHasWorkspace(false);
-      }
-    } catch (err) {
-      console.error('[useWorkspace] Failed to fetch workspace:', err);
-      setError(err.response?.data?.error || 'Failed to load workspace');
-      setWorkspace(null);
-      setHasWorkspace(false);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
+  const fetchWorkspace = async ({ isCancelled = () => false } = {}) => {
       if (!currentUser) {
+        if (isCancelled()) return;
         setWorkspace(null);
         setHasWorkspace(false);
         setLoading(false);
@@ -70,7 +38,7 @@ export function useWorkspace() {
         setLoading(true);
         setError(null);
         const response = await api.get('/api/user/workspace');
-        if (cancelled) return;
+        if (isCancelled()) return;
         if (response.data.hasWorkspace) {
           setWorkspace(response.data.workspace);
           setHasWorkspace(true);
@@ -79,17 +47,22 @@ export function useWorkspace() {
           setHasWorkspace(false);
         }
       } catch (err) {
-        if (cancelled) return;
+        if (isCancelled()) return;
         console.error('[useWorkspace] Failed to fetch workspace:', err);
         setError(err.response?.data?.error || 'Failed to load workspace');
         setWorkspace(null);
         setHasWorkspace(false);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!isCancelled()) setLoading(false);
       }
-    };
-    run();
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchWorkspace({ isCancelled: () => cancelled });
     return () => { cancelled = true; };
+  // fetchWorkspace closes over currentUser; including it would recreate the effect every render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser]);
 
   return {

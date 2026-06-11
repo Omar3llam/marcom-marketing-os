@@ -45,7 +45,12 @@ export async function runConnectorSync(workspaceId = null, { datePreset = 'last_
       await recordSync(wsId, channel, { ok: true, records: landed.snapshots, now });
       results.push({ workspaceId: wsId, platform: channel, status: 'success', ...landed });
     } catch (err) {
-      await recordSync(wsId, channel, { ok: false, error: err.message, now }).catch(() => {});
+      await recordSync(wsId, channel, { ok: false, error: err.message, now })
+        .catch((recordErr) => logger.warn({
+          workspaceId: wsId,
+          platform: channel,
+          err: recordErr.message,
+        }, '[connectorSync] failed to record sync failure'));
       logger.error({ workspaceId: wsId, platform: channel, err: err.message }, '[connectorSync] channel failed (isolated)');
       results.push({ workspaceId: wsId, platform: channel, status: 'error', error: err.message });
     }

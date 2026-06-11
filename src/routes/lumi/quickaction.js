@@ -48,7 +48,7 @@ export async function quickActionHandler(req, res) {
 
   } catch (err) {
     logger.error({ err: err.message }, '[lumi/quick-action] failed');
-    return res.status(500).json({ error: 'EnqueueFailed', message: err.message });
+    return res.status(500).json({ error: 'EnqueueFailed', message: 'Request failed' });
   }
 }
 

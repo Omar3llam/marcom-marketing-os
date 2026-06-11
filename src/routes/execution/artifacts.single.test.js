@@ -181,7 +181,7 @@ describe('Artifact Retrieval API — PR #35', () => {
       expect(response.body.error).toContain('Artifact not found');
     });
 
-    it('should return 403 for artifact in different workspace', async () => {
+    it('should return 404 for artifact in different workspace', async () => {
       prisma.artifact.findUnique.mockResolvedValue({
         id: 'other-artifact',
         workspaceId: otherWorkspaceId,
@@ -190,9 +190,9 @@ describe('Artifact Retrieval API — PR #35', () => {
 
       const response = await request(app)
         .get('/api/artifacts/other-artifact')
-        .expect(403);
+        .expect(404);
 
-      expect(response.body.error).toContain('Unauthorized');
+      expect(response.body.error).toContain('Artifact not found');
     });
 
     it('should return 500 when content retrieval fails', async () => {

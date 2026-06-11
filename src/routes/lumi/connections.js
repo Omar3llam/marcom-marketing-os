@@ -46,6 +46,6 @@ connectionsRouter.get('/connections', async (req, res) => {
     return res.json({ workspaceId: wsId, connections });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/connections] failed');
-    return res.status(500).json({ error: 'ConnectionsUnavailable', message: err.message });
+    return res.status(500).json({ error: 'ConnectionsUnavailable', message: 'Request failed' });
   }
 });

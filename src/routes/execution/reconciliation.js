@@ -59,9 +59,9 @@ export function registerReconciliationRoute(router) {
           userId,
         }, '[ExecutionRouter] Workspace mismatch');
 
-        return res.status(403).json({
-          error: 'Access denied',
-          code: 'FORBIDDEN',
+        return res.status(404).json({
+          error: 'Execution not found',
+          code: 'NOT_FOUND',
         });
       }
 
