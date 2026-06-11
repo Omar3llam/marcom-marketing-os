@@ -13,7 +13,9 @@
 import { Router }   from 'express';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { requireAuth } from '../../middleware/firebaseAuth.js';
+import { prisma } from '../../lib/prisma.js';
 import { saveCredential } from '../../models/credential.js';
+import { attachWorkspaceToCredential } from '../../services/connectors/credentialStore.js';
 import { getProject }    from '../../models/project.js';
 import {
   exchangeForLongLivedToken,
@@ -163,6 +165,23 @@ authMetaRouter.get('/callback', async (req, res) => {
     });
 
     logger.info({ userId, projectId, adAccountId }, '[meta-auth] Meta credential saved');
+
+    // ── Bridge to the workspace-scoped connector world (Phase 12c).
+    // Stamp workspace_id on the just-saved project-keyed row so the Meta connector
+    // (which resolves by workspace_id) can see it. ADDITIVE — the legacy feed still
+    // reads the same row by (project_id, user_id). Best-effort: a user with no
+    // Prisma workspace keeps a working feed; the connector simply won't see it yet.
+    try {
+      const u = await prisma.user.findUnique({ where: { clerkId: userId }, select: { workspaceId: true } });
+      if (u?.workspaceId) {
+        await attachWorkspaceToCredential({ projectId, userId, platform: 'meta_ads', workspaceId: u.workspaceId });
+        logger.info({ userId, projectId, workspaceId: u.workspaceId }, '[meta-auth] stamped workspace on Meta credential');
+      } else {
+        logger.warn({ userId }, '[meta-auth] no Prisma workspace for user — Meta connector will not see this credential yet');
+      }
+    } catch (stampErr) {
+      logger.warn({ err: stampErr.message, userId }, '[meta-auth] workspace stamp failed (non-fatal — feed unaffected)');
+    }
 
     // ── Redirect back to app with success flag
     return res.redirect(

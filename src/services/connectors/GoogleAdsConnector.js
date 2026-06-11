@@ -2,12 +2,12 @@
 // GoogleAdsConnector — the second real channel
 // ============================================================
 // normalize() is pure + fully unit-tested (micros→minor, fractional conversions
-// preserved, null where Google has no equivalent). authenticate/fetchRaw are
-// scaffolded against Integration(platform:'GOOGLE') + the Google Ads API and are
-// exercised ONLY on a real connect (no creds/network in this environment) — they
-// are intentionally thin and clearly marked. Nothing downstream changes: the
-// moment Google snapshots land tagged source:GOOGLE on a GOOGLE Account, blended
-// truth reconciles Meta-vs-Google for free.
+// preserved, null where Google has no equivalent). authenticate resolves creds
+// from marcom_credentials via credentialStore (workspace-keyed); fetchRaw hits the
+// Google Ads API (GAQL) and is exercised ONLY on a real connect (no creds/network
+// in this environment) — intentionally thin and clearly marked. Nothing downstream
+// changes: the moment Google snapshots land tagged source:GOOGLE on a GOOGLE
+// Account, blended truth reconciles Meta-vs-Google for free.
 // ============================================================
 import { logger } from '../../utils/logger.js';
 import { ChannelConnector, assertNormalized } from './ChannelConnector.js';
