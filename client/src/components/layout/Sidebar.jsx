@@ -2,7 +2,7 @@
 // MARCOM / Lumi — Sidebar (Enhanced with Figma Design)
 // ------------------------------------------------------------
 // 268px expanded, 64px collapsed. Features:
-// - Lumi star mark + notification bell
+// - MarcomAI mark + notification bell
 // - Live "WATCHING" status + countdown timer
 // - Cmd+K search affordance
 // - Alert badges on nav items
@@ -27,7 +27,7 @@ import RecentDecisions from '@/components/ui/RecentDecisions.jsx';
 import CommandPalette from '@/components/ui/CommandPalette.jsx';
 import RadarStrip from './RadarStrip.jsx';
 import { appRoutes } from '@/app/routeManifest.js';
-import LumiStar from '@/components/brand/LumiStar.jsx';
+import MarcomAIMark, { MarcomAIWordmark } from '@/components/brand/MarcomAIMark.jsx';
 
 // Simplified navigation structure from Figma. `roles` (optional) gates an item
 // to the listed collabRoles; absent = visible to all (backwards-compatible).
@@ -213,7 +213,7 @@ export default function Sidebar({
         'w-[268px]',
       )}
     >
-      {/* ── HEADER with Lumi star + notifications ─────────── */}
+      {/* ── HEADER with MarcomAI mark + notifications ─────────── */}
       <div className={cn(
         'flex items-center h-14 border-b border-lumi-border flex-shrink-0 relative',
         collapsed ? 'justify-center px-2' : 'justify-between px-3.5',
@@ -224,16 +224,12 @@ export default function Sidebar({
           className="flex items-center gap-2 group"
           title={collapsed ? 'Expand sidebar' : undefined}
         >
-          <LumiStar
+          <MarcomAIMark
             size="md"
-            title="Lumi"
+            title="MarcomAI"
             className={collapsed ? 'h-[30px] w-[30px]' : 'h-[34px] w-[34px]'}
           />
-          {!collapsed && (
-            <span className="font-display font-bold text-[18px] text-lumi-accent tracking-tight">
-              LUMI
-            </span>
-          )}
+          {!collapsed && <MarcomAIWordmark />}
         </button>
 
         {!collapsed && (

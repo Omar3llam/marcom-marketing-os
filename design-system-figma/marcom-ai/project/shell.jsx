@@ -5,6 +5,7 @@
 import { Icons } from './icons.jsx';
 import { VerdictPill, GlowDot, formatCurrencyCompact, formatBleed } from './primitives.jsx';
 import { DEMO_DATA } from './data.js';
+import { BrandMark } from './brand-mark.jsx';
 
 export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sessions, radarAlerts = [], personas, onSwitchPersona, currentPersona, collabRole = 'STRATEGIST' }) {
   // Phase 7: the Measure nav is gated — shown only when the workspace's
@@ -108,21 +109,7 @@ export function Sidebar({ collapsed, onToggle, workspace, activeNav, onNav, sess
             color: 'var(--c-lumi-accent)',
           }}
         >
-          <img
-            src={(typeof window !== "undefined" && window.__resources && window.__resources.lumiMascot) || "assets/lumi-mascot.png"}
-            alt="Lumi"
-            style={{
-              width: collapsed ? 30 : 34,
-              height: collapsed ? 30 : 34,
-              objectFit: 'contain',
-              filter: 'drop-shadow(0 2px 6px rgba(246,201,69,0.4))',
-            }}
-          />
-          {!collapsed && (
-            <span className="font-display" style={{ fontWeight: 700, fontSize: 18, letterSpacing: '-0.02em' }}>
-              LUMI
-            </span>
-          )}
+          <BrandMark size={collapsed ? 30 : 34} showWordmark={!collapsed} />
         </button>
 
         {!collapsed && (
@@ -692,11 +679,9 @@ function NotificationsPopover({ alerts, onClose, onPick }) {
         ))}
         {alerts.length === 0 && (
           <div style={{ padding: '20px 16px', textAlign: 'center' }}>
-            <img
-              src={(typeof window !== "undefined" && window.__resources && window.__resources.lumiMascot) || "assets/lumi-mascot.png"}
-              alt="Lumi"
-              style={{ width: 56, height: 56, objectFit: 'contain', objectPosition: 'top', opacity: 0.9, marginBottom: 8 }}
-            />
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+              <BrandMark size={56} />
+            </div>
             <div className="font-display" style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-base)' }}>
               All systems nominal.
             </div>
@@ -1065,7 +1050,9 @@ function CmdKPalette({ onClose, sessions, radarAlerts, onNav, onStartFlow }) {
           )}
           {filteredNav.length === 0 && filteredAlerts.length === 0 && filteredSessions.length === 0 && (
             <div style={{ padding: 32, textAlign: 'center' }}>
-              <img src={(typeof window !== "undefined" && window.__resources && window.__resources.lumiMascot) || "assets/lumi-mascot.png"} alt="" style={{ width: 56, height: 56, objectFit: 'contain', objectPosition: 'top', opacity: 0.7, marginBottom: 6 }} />
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 6 }}>
+                <BrandMark size={56} />
+              </div>
               <div className="font-mono" style={{ fontSize: 12, color: 'var(--c-text-muted)' }}>
                 Nothing matches "{query}"
               </div>

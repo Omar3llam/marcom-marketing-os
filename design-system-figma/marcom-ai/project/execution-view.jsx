@@ -8,6 +8,7 @@
 import { Icons } from './icons.jsx';
 import { VerdictPill, formatCurrency } from './primitives.jsx';
 import { DEMO_DATA } from './data.js';
+import { BrandMark } from './brand-mark.jsx';
 
 export function ExecutionView({ workspace, featured, onComplete, onBackToHub }) {
   const steps = DEMO_DATA.EXECUTION;
@@ -170,19 +171,7 @@ export function DoneView({ workspace, featured, onBackToHub }) {
               background: 'radial-gradient(circle, rgba(16,185,129,0.20), transparent 65%)',
             }}
           />
-          <img
-            src={(typeof window !== "undefined" && window.__resources && window.__resources.lumiMascot) || "assets/lumi-mascot.png"}
-            alt="Lumi celebrating"
-            style={{
-              position: 'relative',
-              width: 120,
-              height: 120,
-              objectFit: 'contain',
-              objectPosition: 'top',
-              filter: 'drop-shadow(0 8px 20px rgba(16,185,129,0.25)) drop-shadow(0 2px 6px rgba(246,201,69,0.3))',
-              animation: 'float-y 3s ease-in-out infinite',
-            }}
-          />
+          <BrandMark size={108} />
           {/* Small green check badge */}
           <div
             style={{

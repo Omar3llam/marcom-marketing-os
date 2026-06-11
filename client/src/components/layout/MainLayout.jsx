@@ -17,7 +17,7 @@ import ContextBar   from './ContextBar.jsx';
 import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
 import { useRecentDecisions } from '@/features/shell';
 import { RoleProvider } from '@/context/RoleContext.jsx';
-import LumiStar from '@/components/brand/LumiStar.jsx';
+import MarcomAIMark, { MarcomAIWordmark } from '@/components/brand/MarcomAIMark.jsx';
 
 export default function MainLayout() {
   return (
@@ -91,10 +91,8 @@ function MainLayoutShell() {
             </svg>
           </button>
           <div className="flex items-center gap-2">
-            <LumiStar size="sm" title="Lumi" />
-            <span className="font-display font-bold text-lg text-lumi-accent tracking-tight">
-              LUMI
-            </span>
+            <MarcomAIMark size="sm" title="MarcomAI" />
+            <MarcomAIWordmark className="text-lg" />
           </div>
           <div className="w-9" /> {/* Spacer for centering */}
         </header>

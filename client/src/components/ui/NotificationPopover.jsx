@@ -2,7 +2,7 @@
 // MARCOM UI Primitive — NotificationPopover
 // ============================================================
 // Dropdown popover for notification bell displaying high-priority alerts.
-// Shows the Lumi star when empty.
+// Shows the MarcomAI intelligence mark when empty.
 //
 // Props:
 //   alerts: Array<{ id, campaign, signal, verdict }> (alert items)
@@ -11,7 +11,7 @@
 // ============================================================
 import { X } from 'lucide-react';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
-import LumiStar from '@/components/brand/LumiStar.jsx';
+import MarcomAIMark from '@/components/brand/MarcomAIMark.jsx';
 
 export default function NotificationPopover({ alerts, onClose, onSelectAlert }) {
   const hasAlerts = alerts && alerts.length > 0;
@@ -37,7 +37,7 @@ export default function NotificationPopover({ alerts, onClose, onSelectAlert }) 
         {!hasAlerts ? (
           // Empty state
           <div className="px-4 py-8 text-center">
-            <LumiStar size="lg" className="mx-auto mb-3 opacity-60" title="Lumi" />
+            <MarcomAIMark size="lg" className="mx-auto mb-3 opacity-70" title="MarcomAI" />
             <p className="text-xs text-dark-subtle leading-relaxed">
               All systems nominal
               <br />

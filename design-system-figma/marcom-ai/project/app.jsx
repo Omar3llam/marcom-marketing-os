@@ -8,6 +8,7 @@ import { VerdictPill, PriorityPill, StagePill,
          MetricRowSimple, Card, Skeleton, useIsMobile,
          ErrorBoundarySimple }                            from './primitives.jsx';
 import { Sidebar, ContextBar }                            from './shell.jsx';
+import { BrandMark }                                      from './brand-mark.jsx';
 import { DEMO_DATA }                                      from './data.js';
 import { HomePage }                                       from './home.jsx';
 import { CampaignsPage }                                  from './campaigns-page.jsx';
@@ -241,12 +242,7 @@ function App() {
             <span className="font-display" style={{ fontSize: 13, fontWeight: 600 }}>Menu</span>
           </button>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <img
-              src={(typeof window !== "undefined" && window.__resources && window.__resources.lumiMascot) || "assets/lumi-mascot.png"}
-              alt="Lumi"
-              style={{ width: 28, height: 28, objectFit: 'contain' }}
-            />
-            <span className="font-display" style={{ fontSize: 16, fontWeight: 700, letterSpacing: '-0.02em' }}>LUMI</span>
+            <BrandMark size={28} showWordmark />
           </div>
           <button
             onClick={() => handleNav('campaigns')}

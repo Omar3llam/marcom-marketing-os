@@ -227,8 +227,6 @@ h1, h2, h3 { overflow-wrap: break-word; }
 @keyframes shimmer       { 0% { background-position: -200% 0 } 100% { background-position: 200% 0 } }
 @keyframes ring-pulse    { 0% { transform: scale(0.5); opacity: 0.9 } 100% { transform: scale(2.6); opacity: 0 } }
 @keyframes float-y       { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-6px) } }
-@keyframes mascot-bob    { 0%,100% { transform: translateY(0) rotate(0deg) } 33% { transform: translateY(-3px) rotate(-1deg) } 66% { transform: translateY(-1px) rotate(1deg) } }
-@keyframes mascot-shadow { 0%,100% { transform: translateX(-50%) scale(1); opacity: 0.5 } 50% { transform: translateX(-50%) scale(0.78); opacity: 0.35 } }
 
 /* ── Reveal-on-view animation (used by landing IntersectionObserver) ── */
 .reveal-init { opacity: 0; transform: translateY(18px); transition: opacity 700ms cubic-bezier(0.16,1,0.3,1), transform 700ms cubic-bezier(0.16,1,0.3,1); }

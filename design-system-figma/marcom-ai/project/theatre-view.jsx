@@ -7,6 +7,7 @@
 
 import { Icons } from './icons.jsx';
 import { DEMO_DATA } from './data.js';
+import { BrandMark } from './brand-mark.jsx';
 
 const THEATRE_DURATION_MS = 3800;
 
@@ -260,7 +261,7 @@ function RadarCanvas({ pct }) {
         />
       ))}
 
-      {/* Center mascot */}
+      {/* Center intelligence mark */}
       <div
         style={{
           position: 'absolute',
@@ -277,19 +278,7 @@ function RadarCanvas({ pct }) {
           overflow: 'hidden',
         }}
       >
-        <img
-          src={(typeof window !== "undefined" && window.__resources && window.__resources.lumiMascot) || "assets/lumi-mascot.png"}
-          alt="Lumi"
-          style={{
-            width: 64,
-            height: 64,
-            objectFit: 'contain',
-            objectPosition: 'top',
-            animation: 'float-y 3s ease-in-out infinite',
-            filter: 'drop-shadow(0 4px 8px rgba(246,201,69,0.3))',
-            marginTop: 8,
-          }}
-        />
+        <BrandMark size={56} />
       </div>
     </div>
   );
