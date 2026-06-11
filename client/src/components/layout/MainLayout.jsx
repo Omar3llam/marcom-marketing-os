@@ -17,6 +17,7 @@ import ContextBar   from './ContextBar.jsx';
 import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
 import { useRecentDecisions } from '@/features/shell';
 import { RoleProvider } from '@/context/RoleContext.jsx';
+import LumiStar from '@/components/brand/LumiStar.jsx';
 
 export default function MainLayout() {
   return (
@@ -90,12 +91,7 @@ function MainLayoutShell() {
             </svg>
           </button>
           <div className="flex items-center gap-2">
-            <img
-              src="/assets/lumi-mascot.png"
-              alt="Lumi"
-              className="w-7 h-7"
-              style={{ filter: 'drop-shadow(0 2px 4px rgba(246,201,69,0.3))' }}
-            />
+            <LumiStar size="sm" title="Lumi" />
             <span className="font-display font-bold text-lg text-lumi-accent tracking-tight">
               LUMI
             </span>
