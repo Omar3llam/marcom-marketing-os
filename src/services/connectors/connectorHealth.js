@@ -3,8 +3,8 @@
 // ============================================================
 // After 3–4 connectors `lastSyncedAt` alone can't answer "is Google working? did
 // Meta fail? when did it last SUCCEED? how many rows?" This adds a small health
-// record, persisted in the EXISTING Integration.metadata.health (display-safe;
-// no new Prisma model, no migration — tokens stay in their typed fields).
+// record, persisted in marcom_credentials.health (display-safe; no new Prisma
+// model, no migration — tokens stay in their encrypted columns).
 //
 //   { platform, lastSuccessfulSync, lastAttemptedSync, lastError, recordsImported }
 //

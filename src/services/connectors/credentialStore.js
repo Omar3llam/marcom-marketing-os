@@ -102,6 +102,36 @@ export async function recordSync(workspaceId, channel, { ok, error = null, recor
 }
 
 /**
+ * ADDITIVE STAMP (Phase 12c) — relate a legacy project-keyed credential row to the
+ * v4 workspace so the workspace-scoped connector can resolve it, WITHOUT re-keying:
+ * the same physical row keeps serving the legacy feed by (project_id, user_id).
+ *
+ * `platform` is the marcom_credentials.platform string (e.g. 'meta_ads'). Enforces
+ * one-account-per-(workspace, platform): the stamped row becomes the sole active
+ * one; any OTHER row sharing (workspace_id, platform) is deactivated so
+ * resolveCredential's LIMIT 1 is unambiguous (not merely newest-wins).
+ */
+export async function attachWorkspaceToCredential({ projectId, userId, platform, workspaceId } = {}) {
+  if (!workspaceId || !platform || !projectId) return { stamped: false };
+  const sql = getDb();
+  const stamped = userId
+    ? await sql`UPDATE marcom_credentials SET workspace_id = ${workspaceId}, is_active = true, updated_at = NOW() WHERE project_id = ${projectId} AND user_id = ${userId} AND platform = ${platform} RETURNING id`
+    : await sql`UPDATE marcom_credentials SET workspace_id = ${workspaceId}, is_active = true, updated_at = NOW() WHERE project_id = ${projectId} AND platform = ${platform} RETURNING id`;
+  if (stamped.length === 0) return { stamped: false };
+  const keepId = stamped[0].id;
+  const losers = await sql`
+    UPDATE marcom_credentials SET is_active = false, updated_at = NOW()
+    WHERE workspace_id = ${workspaceId} AND platform = ${platform} AND id <> ${keepId} AND is_active = true
+    RETURNING id
+  `;
+  if (losers.length > 0) {
+    logger.warn({ workspaceId, platform, deactivated: losers.length }, '[credentialStore] one-account rule deactivated other rows for this channel');
+  }
+  logger.info({ workspaceId, platform, projectId }, '[credentialStore] stamped workspace on credential');
+  return { stamped: true, id: keepId, deactivated: losers.length };
+}
+
+/**
  * Upsert a workspace-scoped credential (the OAuth callback writes this). Keyed by
  * (project_id, platform) with project_id = workspaceId so one row per
  * (workspace, channel). Tokens encrypted at rest.
