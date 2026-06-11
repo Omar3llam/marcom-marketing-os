@@ -142,7 +142,7 @@ describe('GET /api/execute/:id/transitions', () => {
     expect(prisma.executionTransition.findMany).not.toHaveBeenCalled();
   });
 
-  it('should return 403 on workspace mismatch', async () => {
+  it('should return 404 on workspace mismatch', async () => {
     prisma.executionRequest.findUnique.mockResolvedValue({
       ...baseExecution,
       workspaceId: 'other-workspace',
@@ -150,9 +150,9 @@ describe('GET /api/execute/:id/transitions', () => {
 
     const response = await request(app)
       .get(`/api/execute/${executionId}/transitions`)
-      .expect(403);
+      .expect(404);
 
-    expect(response.body.code).toBe('FORBIDDEN');
+    expect(response.body.code).toBe('NOT_FOUND');
     expect(prisma.executionTransition.findMany).not.toHaveBeenCalled();
   });
 });

@@ -10,8 +10,7 @@
  *
  * const result = AlertSchema.safeParse(payload);
  * if (result.success) {
- *   console.log(result.data.priority); // 'HIGH' | 'MEDIUM' | 'LOW'
- *   console.log(result.data.action_plan.action); // 'PAUSE_CAMPAIGN'
+ *   useAlert(result.data);
  * }
  * ```
  */

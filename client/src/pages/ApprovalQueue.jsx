@@ -50,9 +50,7 @@ export default function ApprovalQueue() {
   // ── Handle decision submission ────────────────────────────
   const handleSubmit = async () => {
     try {
-      const result = await submitDecisions();
-
-      console.log('[ApprovalQueue] Decisions submitted:', result);
+      await submitDecisions();
 
       // Show success message and redirect
       // TODO: Replace alert with toast notification

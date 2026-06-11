@@ -251,7 +251,6 @@ export default function Sidebar({
                 alerts={highAlerts}
                 onClose={() => setNotifOpen(false)}
                 onSelectAlert={(alert) => {
-                  console.log('Selected alert:', alert);
                   navigate('/app/home');
                   onMobileMenuToggle?.(); // Close mobile menu on navigation
                 }}

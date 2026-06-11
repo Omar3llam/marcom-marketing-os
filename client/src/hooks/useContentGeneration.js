@@ -15,7 +15,7 @@ export function useContentGeneration() {
   const [content, setContent] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress] = useState(null);
 
   /**
    * Generate content with options
@@ -24,16 +24,8 @@ export function useContentGeneration() {
   const generate = useCallback(async ({ campaignContext, options, tone, brandVoice }) => {
     setLoading(true);
     setError(null);
-    setProgress(0);
+    setProgress(null);
     setContent(null);
-
-    // Simulate progress for UX (real API call happens in parallel)
-    const progressInterval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 95) return 95; // Cap at 95% until real response
-        return prev + Math.random() * 15;
-      });
-    }, 150);
 
     try {
       const response = await api.post('/api/tools/content-generate', {
@@ -43,7 +35,6 @@ export function useContentGeneration() {
         brandVoice,
       });
 
-      clearInterval(progressInterval);
       setProgress(100);
 
       if (response.data?.status === 'ok' && response.data?.content) {
@@ -53,7 +44,6 @@ export function useContentGeneration() {
       }
 
     } catch (err) {
-      clearInterval(progressInterval);
       const errorMessage = err.response?.data?.message || err.message || 'Content generation failed';
       setError(errorMessage);
       console.error('[useContentGeneration] Error:', err);
@@ -70,7 +60,7 @@ export function useContentGeneration() {
     setContent(null);
     setLoading(false);
     setError(null);
-    setProgress(0);
+    setProgress(null);
   }, []);
 
   return {

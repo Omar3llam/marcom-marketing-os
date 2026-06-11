@@ -193,7 +193,7 @@ describe('POST /api/execute/:id/retry', () => {
     expect(lifecycleService.transition).not.toHaveBeenCalled();
   });
 
-  it('should return 403 when original belongs to a different workspace', async () => {
+  it('should return 404 when original belongs to a different workspace', async () => {
     prisma.executionRequest.findUnique.mockResolvedValueOnce({
       ...failedOriginal,
       workspaceId: 'someone-else',
@@ -201,9 +201,9 @@ describe('POST /api/execute/:id/retry', () => {
 
     const response = await request(app)
       .post(`/api/execute/${originalId}/retry`)
-      .expect(403);
+      .expect(404);
 
-    expect(response.body.code).toBe('FORBIDDEN');
+    expect(response.body.code).toBe('NOT_FOUND');
     expect(prisma.executionRequest.create).not.toHaveBeenCalled();
     expect(lifecycleService.transition).not.toHaveBeenCalled();
   });

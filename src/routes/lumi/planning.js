@@ -45,7 +45,7 @@ planningRouter.post('/scenario', async (req, res) => {
     const bad = /change\.type|baseline|economics|shifts/i.test(err.message);
     if (bad) return res.status(400).json({ error: 'BadScenario', message: err.message });
     logger.error({ err: err.message, wsId }, '[lumi/planning] scenario failed');
-    return res.status(500).json({ error: 'ScenarioUnavailable', message: err.message });
+    return res.status(500).json({ error: 'ScenarioUnavailable', message: 'Request failed' });
   }
 });
 
@@ -61,7 +61,7 @@ planningRouter.get('/economics', async (req, res) => {
     return res.json({ workspaceId: wsId, economics, isDefault });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/planning] economics get failed');
-    return res.status(500).json({ error: 'EconomicsUnavailable', message: err.message });
+    return res.status(500).json({ error: 'EconomicsUnavailable', message: 'Request failed' });
   }
 });
 
@@ -75,7 +75,7 @@ planningRouter.put('/economics', async (req, res) => {
     const bad = /aovMinor|grossMarginPct|required/i.test(err.message);
     if (bad) return res.status(400).json({ error: 'BadEconomics', message: err.message });
     logger.error({ err: err.message, wsId }, '[lumi/planning] economics put failed');
-    return res.status(500).json({ error: 'EconomicsSaveFailed', message: err.message });
+    return res.status(500).json({ error: 'EconomicsSaveFailed', message: 'Request failed' });
   }
 });
 
@@ -91,7 +91,7 @@ planningRouter.get('/goals', async (req, res) => {
     return res.json({ workspaceId: wsId, goals });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/planning] goals list failed');
-    return res.status(500).json({ error: 'GoalsUnavailable', message: err.message });
+    return res.status(500).json({ error: 'GoalsUnavailable', message: 'Request failed' });
   }
 });
 
@@ -117,7 +117,7 @@ planningRouter.post('/goals', async (req, res) => {
     return res.status(201).json({ workspaceId: wsId, goal });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/planning] goal create failed');
-    return res.status(500).json({ error: 'GoalCreateFailed', message: err.message });
+    return res.status(500).json({ error: 'GoalCreateFailed', message: 'Request failed' });
   }
 });
 
@@ -132,7 +132,7 @@ planningRouter.get('/plans', async (req, res) => {
     return res.json({ workspaceId: wsId, plans: await listPlans(wsId) });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/planning] plans list failed');
-    return res.status(500).json({ error: 'PlansUnavailable', message: err.message });
+    return res.status(500).json({ error: 'PlansUnavailable', message: 'Request failed' });
   }
 });
 
@@ -153,7 +153,7 @@ planningRouter.post('/plans', async (req, res) => {
     const bad = /totalBudgetMinor|periodEnd|required/i.test(err.message);
     if (bad) return res.status(400).json({ error: 'BadPlan', message: err.message });
     logger.error({ err: err.message, wsId }, '[lumi/planning] plan build failed');
-    return res.status(500).json({ error: 'PlanBuildFailed', message: err.message });
+    return res.status(500).json({ error: 'PlanBuildFailed', message: 'Request failed' });
   }
 });
 
@@ -169,7 +169,7 @@ planningRouter.get('/plans/:id', async (req, res) => {
     return res.json({ workspaceId: wsId, plan });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/planning] plan get failed');
-    return res.status(500).json({ error: 'PlanUnavailable', message: err.message });
+    return res.status(500).json({ error: 'PlanUnavailable', message: 'Request failed' });
   }
 });
 
@@ -188,6 +188,6 @@ planningRouter.post('/plans/:id/promote', async (req, res) => {
     if (/not found/i.test(err.message)) return res.status(404).json({ error: 'PlanNotFound', message: err.message });
     if (/no channels/i.test(err.message)) return res.status(409).json({ error: 'NothingToPromote', message: err.message });
     logger.error({ err: err.message, wsId }, '[lumi/planning] promote failed');
-    return res.status(500).json({ error: 'PromoteFailed', message: err.message });
+    return res.status(500).json({ error: 'PromoteFailed', message: 'Request failed' });
   }
 });

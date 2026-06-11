@@ -226,7 +226,7 @@ describe('GET /api/execute/:id/active', () => {
     expect(response.body.code).toBe('NOT_FOUND');
   });
 
-  it('should return 403 if execution belongs to different workspace', async () => {
+  it('should return 404 if execution belongs to different workspace', async () => {
     const executionId = 'exec-forbidden-123';
     const actualWorkspaceId = 'other-workspace-999';
 
@@ -251,9 +251,9 @@ describe('GET /api/execute/:id/active', () => {
 
     const response = await request(app)
       .get(`/api/execute/${executionId}/active`)
-      .expect(403);
+      .expect(404);
 
-    expect(response.body.code).toBe('FORBIDDEN');
+    expect(response.body.code).toBe('NOT_FOUND');
   });
 
   it('should return 500 on internal error', async () => {

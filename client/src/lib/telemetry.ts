@@ -85,11 +85,6 @@ export function track(
     events.shift(); // Remove oldest event
   }
 
-  // Log in dev mode
-  if (import.meta.env.DEV) {
-    console.debug('[telemetry]', type, data);
-  }
-
   // Persist to localStorage (dev only)
   if (import.meta.env.DEV) {
     try {

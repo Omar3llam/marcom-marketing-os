@@ -25,6 +25,7 @@ import cors                 from 'cors';
 import path from 'path';
 import { firebaseAuthMiddleware, requireAuth } from './middleware/firebaseAuth.js';
 import { validateWebhook, captureRawBody } from './middleware/validateWebhook.js';
+import { dedupeWebhookEvent } from './middleware/webhookDedup.js';
 import { apiLimiter, chatLimiter }          from './middleware/rateLimit.js';
 import { errorHandler }     from './middleware/errorHandler.js';
 import { masterRouter }     from './routes/master.js';
@@ -73,6 +74,10 @@ const _allowedOrigins = [
   ...config.allowedOrigins,
   process.env.RENDER_EXTERNAL_URL,   // auto-populated on Render
 ].filter(Boolean);
+
+if (config.nodeEnv === 'production' && _allowedOrigins.length === 0) {
+  logger.warn('[cors] No production origins configured; browser clients will be rejected by CORS.');
+}
 
 app.use(cors({
   origin: (origin, cb) => {
@@ -194,6 +199,7 @@ app.get('/health', async (req, res) => {
 app.use('/webhook',
   captureRawBody,               // saves req.rawBody before body is parsed
   validateWebhook,              // HMAC-SHA256 + replay protection
+  dedupeWebhookEvent,           // optional provider event-id dedup
   express.json({ limit: '10mb' }),
   chatLimiter,
   masterRouter

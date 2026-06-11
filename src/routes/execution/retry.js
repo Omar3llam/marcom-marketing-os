@@ -64,9 +64,9 @@ export function registerRetryRoute(router) {
       if (original.workspaceId !== workspaceId) {
         logger.warn({ originalId, workspaceId, executionWorkspaceId: original.workspaceId, userId },
           '[ExecutionRouter] Retry blocked by workspace mismatch');
-        return res.status(403).json({
-          error: 'Access denied',
-          code: 'FORBIDDEN',
+        return res.status(404).json({
+          error: 'Execution not found',
+          code: 'NOT_FOUND',
         });
       }
 

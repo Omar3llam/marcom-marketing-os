@@ -18,11 +18,9 @@ export function useExecutionReconciliation({ onStateChange, onError, getFirebase
 
   const reconcile = useCallback(async (executionId, reason = 'manual') => {
     if (!executionId) { console.warn('[ExecutionReconciliation] Cannot reconcile: no executionId'); return; }
-    console.log(`[ExecutionReconciliation] Starting reconciliation (reason: ${reason})`, { executionId, reason });
     emitTelemetry('execution_reconciliation_started', { executionId, reason, timestamp: new Date().toISOString() });
     try {
       const { data } = await api.get(`/api/execute/${executionId}/active`);
-      console.log('[ExecutionReconciliation] Reconciliation successful', { executionId, status: data.status, version: data.version, isTerminal: data.isTerminal, canResume: data.canResume, isStale: data.isStale });
       const newState = {
         executionId: data.executionId, status: data.status, version: data.version,
         isTerminal: data.isTerminal, canResume: data.canResume, isStale: data.isStale,
@@ -36,10 +34,8 @@ export function useExecutionReconciliation({ onStateChange, onError, getFirebase
       emitTelemetry('execution_reconciliation_succeeded', { executionId, reason, status: data.status, version: data.version, isTerminal: data.isTerminal, timestamp: new Date().toISOString() });
       if (onStateChange) onStateChange(newState);
       if (data.canResume && !disconnectSSERef.current) {
-        console.log('[ExecutionReconciliation] Resuming SSE (canResume=true)');
         connectSSE(executionId);
       } else if (!data.canResume && disconnectSSERef.current) {
-        console.log('[ExecutionReconciliation] Stopping SSE (canResume=false)');
         disconnectSSERef.current();
         disconnectSSERef.current = null;
       }
@@ -56,7 +52,6 @@ export function useExecutionReconciliation({ onStateChange, onError, getFirebase
 
   const handleExecutionUpdate = useCallback((event) => {
     const { status, targetId, timestamp, version } = event;
-    console.log('[ExecutionReconciliation] SSE event received', { status, targetId, timestamp, version });
     if (version != null && version < currentVersionRef.current) {
       console.warn('[ExecutionReconciliation] Dropping stale SSE event', { incomingVersion: version, localVersion: currentVersionRef.current, status });
       emitTelemetry('execution_stale_event_dropped', { executionId: targetId, incomingVersion: version, localVersion: currentVersionRef.current, status, timestamp: new Date().toISOString() });
@@ -68,7 +63,6 @@ export function useExecutionReconciliation({ onStateChange, onError, getFirebase
       if (targetId) persistExecutionSnapshot(targetId, updatedState);
       if (onStateChange) onStateChange(updatedState);
       if (isTerminalStatus(status)) {
-        console.log('[ExecutionReconciliation] Terminal state reached, disconnecting SSE', { status });
         if (disconnectSSERef.current) { disconnectSSERef.current(); disconnectSSERef.current = null; }
       }
       return updatedState;
@@ -77,14 +71,12 @@ export function useExecutionReconciliation({ onStateChange, onError, getFirebase
 
   const connectSSE = useCallback((executionId) => {
     if (disconnectSSERef.current) { disconnectSSERef.current(); disconnectSSERef.current = null; }
-    console.log('[ExecutionReconciliation] Connecting SSE', { executionId });
     disconnectSSERef.current = connectExecutionStream(getFirebaseToken, {
       onExecutionUpdate: handleExecutionUpdate,
       onError: (err) => {
         console.error('[ExecutionReconciliation] SSE error', err);
         if (reconciliationTimerRef.current) clearTimeout(reconciliationTimerRef.current);
         reconciliationTimerRef.current = setTimeout(() => {
-          console.log('[ExecutionReconciliation] SSE disconnect detected, triggering reconciliation');
           reconcile(executionId, 'sse_disconnect').catch((reconcileErr) => {
             console.error('[ExecutionReconciliation] Reconciliation after SSE error failed', reconcileErr);
           });
@@ -92,7 +84,6 @@ export function useExecutionReconciliation({ onStateChange, onError, getFirebase
         if (onError) onError(err);
       },
       onConnected: () => {
-        console.log('[ExecutionReconciliation] SSE connected');
         if (reconciliationTimerRef.current) { clearTimeout(reconciliationTimerRef.current); reconciliationTimerRef.current = null; }
       },
     });
@@ -100,11 +91,9 @@ export function useExecutionReconciliation({ onStateChange, onError, getFirebase
 
   const startExecution = useCallback((executionId) => {
     if (!executionId) { console.warn('[ExecutionReconciliation] Cannot start execution: no executionId'); return; }
-    console.log('[ExecutionReconciliation] Starting execution tracking', { executionId });
     currentExecutionIdRef.current = executionId;
     const cached = loadExecutionSnapshot(executionId);
     if (cached) {
-      console.log('[ExecutionReconciliation] Restored execution from cache', { executionId, status: cached.status, version: cached.version });
       setExecutionState(cached);
       currentVersionRef.current = cached.version;
       if (onStateChange) onStateChange(cached);
@@ -119,7 +108,6 @@ export function useExecutionReconciliation({ onStateChange, onError, getFirebase
   }, [connectSSE, onStateChange]);
 
   const disconnect = useCallback(() => {
-    console.log('[ExecutionReconciliation] Disconnecting');
     if (disconnectSSERef.current) { disconnectSSERef.current(); disconnectSSERef.current = null; }
     if (reconciliationTimerRef.current) { clearTimeout(reconciliationTimerRef.current); reconciliationTimerRef.current = null; }
     currentExecutionIdRef.current = null;
@@ -130,7 +118,6 @@ export function useExecutionReconciliation({ onStateChange, onError, getFirebase
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (!document.hidden && currentExecutionIdRef.current) {
-        console.log('[ExecutionReconciliation] Page visible, triggering reconciliation');
         reconcile(currentExecutionIdRef.current, 'visibility_restore').catch((err) => {
           console.error('[ExecutionReconciliation] Visibility reconciliation failed', err);
         });

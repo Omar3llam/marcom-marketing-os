@@ -31,16 +31,6 @@ const BUILD_ID = import.meta.env.VITE_BUILD_ID
 const firebaseValidation = validateFirebaseConfig();
 const CONFIG_VALID = firebaseValidation.valid;
 
-console.info(
-  '[lumi] build:',
-  BUILD_ID,
-  '| mode:',
-  import.meta.env.MODE,
-  '| firebase:',
-  firebaseValidation.valid ? '✓' : '✗',
-  firebaseValidation.missing.length > 0 ? `(missing: ${firebaseValidation.missing.join(', ')})` : ''
-);
-
 // ── Configuration Error Page ─────────────────────────────────
 // Shown when required Firebase environment variables are missing
 // ARCHITECTURE: Uses design system tokens (not hardcoded colors)

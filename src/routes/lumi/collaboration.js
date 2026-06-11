@@ -63,7 +63,7 @@ collaborationRouter.get('/narratives', async (req, res) => {
     return res.json({ workspaceId: wsId, narratives: await listNarratives(wsId, { audience }) });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/collaboration] list narratives failed');
-    return res.status(500).json({ error: 'NarrativesUnavailable', message: err.message });
+    return res.status(500).json({ error: 'NarrativesUnavailable', message: 'Request failed' });
   }
 });
 
@@ -75,7 +75,7 @@ collaborationRouter.get('/narratives/:id', async (req, res) => {
     return res.json({ workspaceId: wsId, narrative: n });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/collaboration] get narrative failed');
-    return res.status(500).json({ error: 'NarrativesUnavailable', message: err.message });
+    return res.status(500).json({ error: 'NarrativesUnavailable', message: 'Request failed' });
   }
 });
 
@@ -90,7 +90,7 @@ collaborationRouter.post('/narratives/generate', requireCollabRole(WORKSPACE_ROL
     return res.status(201).json({ workspaceId: wsId, narrative });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/collaboration] generate narrative failed');
-    return res.status(500).json({ error: 'NarrativeGenerationFailed', message: err.message });
+    return res.status(500).json({ error: 'NarrativeGenerationFailed', message: 'Request failed' });
   }
 });
 
@@ -104,7 +104,7 @@ collaborationRouter.get('/approvals', async (req, res) => {
     return res.json({ workspaceId: wsId, approvals: await listApprovals(wsId, { state }) });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/collaboration] list approvals failed');
-    return res.status(500).json({ error: 'ApprovalsUnavailable', message: err.message });
+    return res.status(500).json({ error: 'ApprovalsUnavailable', message: 'Request failed' });
   }
 });
 
@@ -117,7 +117,7 @@ collaborationRouter.post('/approvals', async (req, res) => {
     return res.status(201).json({ workspaceId: wsId, request });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/collaboration] request approval failed');
-    return res.status(500).json({ error: 'ApprovalRequestFailed', message: err.message });
+    return res.status(500).json({ error: 'ApprovalRequestFailed', message: 'Request failed' });
   }
 });
 
@@ -135,7 +135,7 @@ collaborationRouter.post('/approvals/:id/decide', requireCollabRole(WORKSPACE_RO
     if (/not found/i.test(err.message)) return res.status(404).json({ error: 'ApprovalNotFound', message: err.message });
     if (/already/i.test(err.message)) return res.status(409).json({ error: 'AlreadyDecided', message: err.message });
     logger.error({ err: err.message, wsId }, '[lumi/collaboration] decide approval failed');
-    return res.status(500).json({ error: 'ApprovalDecisionFailed', message: err.message });
+    return res.status(500).json({ error: 'ApprovalDecisionFailed', message: 'Request failed' });
   }
 });
 
@@ -153,7 +153,7 @@ collaborationRouter.post('/handoff', async (req, res) => {
   } catch (err) {
     if (err.code === 'RoleForbidden') return res.status(403).json({ error: 'RoleForbidden', message: err.message });
     logger.error({ err: err.message, wsId }, '[lumi/collaboration] handoff failed');
-    return res.status(500).json({ error: 'HandoffFailed', message: err.message });
+    return res.status(500).json({ error: 'HandoffFailed', message: 'Request failed' });
   }
 });
 
@@ -178,6 +178,6 @@ collaborationRouter.get('/inbox', async (req, res) => {
     return res.json({ workspaceId: wsId, ...inbox });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/collaboration] inbox failed');
-    return res.status(500).json({ error: 'InboxUnavailable', message: err.message });
+    return res.status(500).json({ error: 'InboxUnavailable', message: 'Request failed' });
   }
 });

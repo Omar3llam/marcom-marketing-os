@@ -27,5 +27,6 @@ export function loadExecutionSnapshot(executionId) {
 }
 
 export function emitTelemetry(eventType, data) {
-  console.debug(`[Telemetry] ${eventType}`, data);
+  void eventType;
+  void data;
 }

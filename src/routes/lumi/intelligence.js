@@ -62,7 +62,7 @@ intelligenceRouter.post('/orchestrate/:campaignId', async (req, res) => {
     });
   } catch (err) {
     logger.error({ err: err.message, campaignId, wsId }, '[lumi/orchestrate] failed');
-    return res.status(500).json({ error: 'OrchestrationFailed', detail: err.message });
+    return res.status(500).json({ error: 'OrchestrationFailed', detail: 'Request failed' });
   }
 });
 
@@ -117,7 +117,7 @@ intelligenceRouter.post('/analyze-content', async (req, res) => {
     });
   } catch (err) {
     logger.error({ err: err.message }, '[lumi/analyze-content] failed');
-    return res.status(500).json({ error: 'Content scoring failed', detail: err.message });
+    return res.status(500).json({ error: 'Content scoring failed', detail: 'Request failed' });
   }
 });
 
@@ -168,6 +168,6 @@ intelligenceRouter.post('/strategy-brief', async (req, res) => {
     });
   } catch (err) {
     logger.error({ err: err.message }, '[lumi/strategy-brief] failed');
-    return res.status(500).json({ error: 'Strategy generation failed', detail: err.message });
+    return res.status(500).json({ error: 'Strategy generation failed', detail: 'Request failed' });
   }
 });

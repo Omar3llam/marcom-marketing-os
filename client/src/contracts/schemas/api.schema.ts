@@ -10,8 +10,7 @@
  *
  * const result = LumiFeedResponseSchema.safeParse(payload);
  * if (result.success) {
- *   console.log(result.data.campaigns.length);
- *   console.log(result.data.generatedAt);
+ *   useFeed(result.data);
  * }
  * ```
  */

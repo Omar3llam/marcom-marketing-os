@@ -42,7 +42,7 @@ memoryRouter.get('/briefing', async (req, res) => {
     return res.json({ workspaceId: wsId, generatedAt: new Date().toISOString(), ...briefing, network });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/memory] briefing failed');
-    return res.status(500).json({ error: 'BriefingUnavailable', message: err.message });
+    return res.status(500).json({ error: 'BriefingUnavailable', message: 'Request failed' });
   }
 });
 
@@ -64,7 +64,7 @@ memoryRouter.post('/patterns/:id/promote', async (req, res) => {
     const governance = /ESTABLISHED|accuracy|CONFLICTED|SUPERSEDED|informational|spec|already|not found/i.test(err.message);
     if (governance) return res.status(409).json({ error: 'NotPromotable', message: err.message });
     logger.error({ err: err.message, wsId }, '[lumi/memory] promote failed');
-    return res.status(500).json({ error: 'PromoteFailed', message: err.message });
+    return res.status(500).json({ error: 'PromoteFailed', message: 'Request failed' });
   }
 });
 
@@ -79,7 +79,7 @@ memoryRouter.post('/network/consent', async (req, res) => {
     return res.json({ workspaceId: wsId, ...result });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/memory] consent failed');
-    return res.status(500).json({ error: 'ConsentFailed', message: err.message });
+    return res.status(500).json({ error: 'ConsentFailed', message: 'Request failed' });
   }
 });
 
@@ -93,6 +93,6 @@ memoryRouter.get('/network', async (req, res) => {
     return res.json(await getNetworkInsights(wsId));
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/memory] network failed');
-    return res.status(500).json({ error: 'NetworkUnavailable', message: err.message });
+    return res.status(500).json({ error: 'NetworkUnavailable', message: 'Request failed' });
   }
 });

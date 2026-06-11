@@ -47,7 +47,7 @@ agenticRouter.get('/home', async (req, res) => {
     return res.json({ workspaceId: wsId, generatedAt: new Date().toISOString(), ...home });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/agentic] home failed');
-    return res.status(500).json({ error: 'HomeUnavailable', message: err.message });
+    return res.status(500).json({ error: 'HomeUnavailable', message: 'Request failed' });
   }
 });
 
@@ -60,7 +60,7 @@ agenticRouter.get('/loop', async (req, res) => {
     return res.json({ workspaceId: wsId, ...(await getLoopState(wsId)) });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/agentic] loop state failed');
-    return res.status(500).json({ error: 'LoopStateUnavailable', message: err.message });
+    return res.status(500).json({ error: 'LoopStateUnavailable', message: 'Request failed' });
   }
 });
 
@@ -76,6 +76,6 @@ agenticRouter.post('/loop/run', async (req, res) => {
     return res.status(201).json({ workspaceId: wsId, loopRun: result.loopRun, agenda: result.agenda });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/agentic] manual sweep failed');
-    return res.status(500).json({ error: 'SweepFailed', message: err.message });
+    return res.status(500).json({ error: 'SweepFailed', message: 'Request failed' });
   }
 });

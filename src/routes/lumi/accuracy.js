@@ -49,6 +49,6 @@ accuracyRouter.get('/accuracy', async (req, res) => {
     });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/accuracy] failed');
-    return res.status(500).json({ error: 'AccuracyUnavailable', message: err.message });
+    return res.status(500).json({ error: 'AccuracyUnavailable', message: 'Request failed' });
   }
 });

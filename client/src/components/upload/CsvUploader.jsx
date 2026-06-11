@@ -2,7 +2,7 @@
 // MARCOM / Lumi — Universal File Uploader
 // ------------------------------------------------------------
 // Drag-drop or click upload of campaign data in any format.
-// Supports: CSV, Excel (.xlsx/.xls), PDF, and text files.
+// Supports: CSV, Excel (.xlsx), PDF, and text files.
 // AI extracts campaign data from any document structure.
 // Hits POST /api/campaigns/upload-csv with field name "campaignData".
 // Surfaces upload progress, success summary, and granular errors.
@@ -40,8 +40,8 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
   const pickFile = (f) => {
     if (!f) return;
     // Accept any file type - backend will handle parsing
-    // Supported: .csv, .xlsx, .xls, .pdf, .txt
-    const validExtensions = /\.(csv|xlsx?|pdf|txt)$/i;
+    // Supported: .csv, .xlsx, .pdf, .txt
+    const validExtensions = /\.(csv|xlsx|pdf|txt)$/i;
     if (!validExtensions.test(f.name)) {
       toast.error('Unsupported file type. Supported: CSV, Excel, PDF, TXT');
       return;
@@ -161,7 +161,7 @@ export default function CsvUploader({ onSuccess, compact = false, mode = 'db-wri
         <input
           ref={inputRef}
           type="file"
-          accept=".csv,.xlsx,.xls,.pdf,.txt,text/csv,application/pdf,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          accept=".csv,.xlsx,.pdf,.txt,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           className="hidden"
           onChange={(e) => pickFile(e.target.files?.[0])}
         />

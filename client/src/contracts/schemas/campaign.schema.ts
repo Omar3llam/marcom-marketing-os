@@ -10,8 +10,7 @@
  *
  * const result = CampaignSchema.safeParse(payload);
  * if (result.success) {
- *   console.log(result.data.stage); // 'DYING' | 'FATIGUED' | ...
- *   console.log(result.data.alerts.length); // Number of alerts
+ *   useCampaign(result.data);
  * }
  * ```
  */

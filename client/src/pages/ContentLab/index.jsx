@@ -246,8 +246,7 @@ export default function ContentLab() {
           {phase === 'generating' && (
             <div className="mt-3 h-0.5 rounded-sm bg-surface-border overflow-hidden">
               <div
-                className="h-full bg-lumi-accent transition-all duration-100 linear"
-                style={{ width: `${progress}%` }}
+                className="h-full w-1/3 bg-lumi-accent animate-progress-sweep"
               />
             </div>
           )}

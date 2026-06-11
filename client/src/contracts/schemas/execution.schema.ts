@@ -10,8 +10,7 @@
  *
  * const result = ExecuteMetaRequestSchema.safeParse(payload);
  * if (result.success) {
- *   console.log(result.data.actionType); // 'PAUSE_CAMPAIGN'
- *   console.log(result.data.targetId); // '123456'
+ *   submitExecution(result.data);
  * }
  * ```
  */

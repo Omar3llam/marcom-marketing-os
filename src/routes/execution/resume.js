@@ -42,7 +42,7 @@ export function registerResumeRoute(router) {
         userId: user?.uid,
       }, '[execution/resume] resume execution failed');
 
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: 'Request failed' });
     }
   });
 }
