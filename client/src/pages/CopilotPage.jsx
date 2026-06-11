@@ -1,20 +1,15 @@
-import { Bot, Lock, Sparkles } from 'lucide-react';
+import { Bot, ClipboardCheck, Lock, Radar, Sparkles } from 'lucide-react';
+import { EvidencePanel, MetricTile, PageHeader } from '@/design-system/patterns';
 
 export default function CopilotPage() {
   return (
     <div className="min-h-full bg-lumi-bg p-6 lg:p-8">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
-        <div>
-          <div className="section-label">AI Copilot</div>
-          <h1 className="decision-title mt-2 text-lumi-text">
-            Reserved for the Marketing OS copilot
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-lumi-muted">
-            This route is intentionally reserved in the primary navigation so the assistant can
-            grow across campaigns, intelligence, proof, decisions, and content without another
-            sidebar restructure.
-          </p>
-        </div>
+        <PageHeader
+          eyebrow="AI Copilot"
+          title="Reserved for the Marketing OS copilot"
+          description="This route is intentionally reserved in the primary navigation so the assistant can grow across campaigns, intelligence, proof, decisions, and content without another sidebar restructure."
+        />
 
         <section className="rounded-xl border border-lumi-border bg-lumi-surface p-5 shadow-card">
           <div className="flex items-start gap-4">
@@ -40,18 +35,35 @@ export default function CopilotPage() {
         </section>
 
         <div className="grid gap-3 md:grid-cols-3">
-          {[
-            ['Campaign context', 'Read portfolio state and active diagnoses.'],
-            ['Evidence memory', 'Reason over insights, proof, and outcomes.'],
-            ['Decision support', 'Prepare recommendations and next actions.'],
-          ].map(([title, copy]) => (
-            <div key={title} className="rounded-xl border border-lumi-border bg-lumi-elevated p-4">
-              <Sparkles className="mb-3 h-4 w-4 text-lumi-accent" strokeWidth={1.5} />
-              <h3 className="font-display text-sm font-semibold text-lumi-text">{title}</h3>
-              <p className="mt-1 text-xs leading-5 text-lumi-muted">{copy}</p>
-            </div>
-          ))}
+          <MetricTile
+            label="Campaign context"
+            value="Ready"
+            detail="Read portfolio state and active diagnoses."
+            icon={Radar}
+            tone="intelligence"
+          />
+          <MetricTile
+            label="Evidence memory"
+            value="Planned"
+            detail="Reason over insights, proof, and outcomes."
+            icon={Sparkles}
+          />
+          <MetricTile
+            label="Decision support"
+            value="Reserved"
+            detail="Prepare recommendations and next actions."
+            icon={ClipboardCheck}
+          />
         </div>
+
+        <EvidencePanel
+          title="Copilot dependencies"
+          evidence={[
+            { label: 'Campaigns', description: 'Portfolio context must be stable before Copilot can answer operational questions.', value: 'Core' },
+            { label: 'Intelligence', description: 'Blended Truth, Insights, and Proof provide the evidence layer.', value: 'Core' },
+            { label: 'Decisions', description: 'Approvals and execution history define what the assistant can recommend next.', value: 'Core' },
+          ]}
+        />
       </div>
     </div>
   );

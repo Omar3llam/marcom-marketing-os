@@ -7,6 +7,7 @@ import { api } from '@/lib/api.js';
 import { toast } from 'sonner';
 import { clearContextCache } from '@/router/ProtectedRoute.jsx';
 import { settingsSections } from '@/app/routeManifest.js';
+import { EmptyState, PageHeader } from '@/design-system/patterns';
 import { ProfileTab } from './ProfileTab.jsx';
 import { IntegrationsTab } from './IntegrationsTab.jsx';
 import { NotificationsTab } from './NotificationsTab.jsx';
@@ -259,11 +260,11 @@ export default function Settings() {
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       <div className="max-w-5xl mx-auto w-full p-6 lg:p-8">
-        <div className="mb-8">
-          <div className="section-label">Settings</div>
-          <h1 className="mt-1 font-display font-bold text-lg text-lumi-text">Workspace Settings</h1>
-          <p className="mt-2 text-lumi-muted text-sm">Configure the system without mixing settings into core marketing workflows.</p>
-        </div>
+        <PageHeader
+          eyebrow="Settings"
+          title="Workspace Settings"
+          description="Configure the system without mixing settings into core marketing workflows."
+        />
 
         <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
           <nav className="space-y-1" aria-label="Settings sections">
@@ -291,9 +292,6 @@ export default function Settings() {
 
 function SettingsPlaceholder({ title, copy }) {
   return (
-    <section className="rounded-xl border border-surface-border/80 bg-white p-6 shadow-sm">
-      <h2 className="font-display text-base font-semibold text-lumi-text">{title}</h2>
-      <p className="mt-2 text-sm leading-6 text-lumi-muted">{copy}</p>
-    </section>
+    <EmptyState title={title} description={copy} />
   );
 }
