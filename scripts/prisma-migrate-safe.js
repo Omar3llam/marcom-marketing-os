@@ -14,6 +14,12 @@ if (!process.env.DIRECT_URL && process.env.DATABASE_URL) {
   process.env.DIRECT_URL = process.env.DATABASE_URL;
 }
 
+if (process.env.DIRECT_URL?.includes('-pooler.')) {
+  console.warn('⚠️  DIRECT_URL appears to use a Neon pooler host.');
+  console.warn('   Prisma Migrate is more reliable with the Neon direct endpoint');
+  console.warn('   (usually the same host without "-pooler").\n');
+}
+
 console.log('===PRISMA MIGRATE DEPLOY===');
 
 // Transient connectivity (P1001) is common on serverless Postgres (Neon)
@@ -21,6 +27,7 @@ console.log('===PRISMA MIGRATE DEPLOY===');
 // time out before the endpoint wakes. Retry a bounded number of times with
 // a fixed delay so a cold start self-heals instead of failing the build.
 const MAX_CONN_RETRIES = Number(process.env.MIGRATE_CONN_RETRIES || 6);
+const MAX_LOCK_RETRIES = Number(process.env.MIGRATE_LOCK_RETRIES || 6);
 const RETRY_DELAY_MS   = Number(process.env.MIGRATE_RETRY_DELAY_MS || 5000);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -32,8 +39,18 @@ function runDeploy() {
   });
 }
 
+function isConnectivityError(out) {
+  return out.includes('P1001') || /Can't reach database server/i.test(out);
+}
+
+function isAdvisoryLockTimeout(out) {
+  return out.includes('P1002')
+    && /advisory lock|pg_advisory_lock|Timed out trying to acquire/i.test(out);
+}
+
 let err = null;
-for (let attempt = 1; attempt <= MAX_CONN_RETRIES; attempt++) {
+const maxAttempts = Math.max(MAX_CONN_RETRIES, MAX_LOCK_RETRIES);
+for (let attempt = 1; attempt <= maxAttempts; attempt++) {
   try {
     const output = runDeploy();
     console.log(output);  // Print captured output
@@ -42,12 +59,20 @@ for (let attempt = 1; attempt <= MAX_CONN_RETRIES; attempt++) {
   } catch (e) {
     err = e;
     const out = e.stderr?.toString() || e.stdout?.toString() || e.message || '';
-    const isConnError = out.includes('P1001') || /Can't reach database server/i.test(out);
+    const connError = isConnectivityError(out);
+    const lockTimeout = isAdvisoryLockTimeout(out);
     // Only retry pure connectivity errors, and only while attempts remain.
     // P3005/P3009 etc. mean we DID connect — fall through to recovery below.
-    if (isConnError && attempt < MAX_CONN_RETRIES) {
+    if (connError && attempt < MAX_CONN_RETRIES) {
       console.warn(`⚠️  P1001 — can't reach DB (attempt ${attempt}/${MAX_CONN_RETRIES}). ` +
         `Neon may be cold-starting; retrying in ${RETRY_DELAY_MS}ms…`);
+      await sleep(RETRY_DELAY_MS);
+      continue;
+    }
+    if (lockTimeout && attempt < MAX_LOCK_RETRIES) {
+      console.warn(`⚠️  P1002 — Prisma migration advisory lock is busy ` +
+        `(attempt ${attempt}/${MAX_LOCK_RETRIES}). ` +
+        `Another deploy may still be migrating; retrying in ${RETRY_DELAY_MS}ms…`);
       await sleep(RETRY_DELAY_MS);
       continue;
     }
@@ -63,12 +88,20 @@ for (let attempt = 1; attempt <= MAX_CONN_RETRIES; attempt++) {
   // Print the error output
   console.error(errorOutput);
 
-  if (errorOutput.includes('P1001') || /Can't reach database server/i.test(errorOutput)) {
+  if (isConnectivityError(errorOutput)) {
     console.error('\n❌ Database unreachable after retries (P1001).');
     console.error('   This is a connectivity/config issue, not a migration error:');
     console.error('   • Confirm the Neon compute is active (not suspended/deleted).');
     console.error('   • Set DIRECT_URL in Render to the Neon DIRECT endpoint');
     console.error('     (host WITHOUT "-pooler") — migrations need a direct connection.\n');
+    process.exit(1);
+  }
+
+  if (isAdvisoryLockTimeout(errorOutput)) {
+    console.error('\n❌ Prisma migration advisory lock timed out after retries (P1002).');
+    console.error('   Usually this means another deploy or manual migration is still holding the lock.');
+    console.error('   If this repeats, set DIRECT_URL in Render to the Neon DIRECT endpoint');
+    console.error('   (host WITHOUT "-pooler") and retry the deploy.\n');
     process.exit(1);
   }
 
