@@ -263,7 +263,7 @@ if (registryPass) pass('No suspicious component name clusters detected');
 // ══════════════════════════════════════════════════════════════
 console.log('\n══════════════════════════════════════════════');
 console.log(`Architecture Check Results:`);
-console.log(`  Checks run:  6`);
+console.log(`  Checks run:  7`);
 console.log(`  ✅ Failures: ${failures}`);
 console.log(`  🟡 Warnings: ${warnings}`);
 console.log('══════════════════════════════════════════════\n');

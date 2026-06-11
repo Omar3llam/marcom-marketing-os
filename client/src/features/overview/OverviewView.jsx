@@ -17,10 +17,10 @@ import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
 import StatCard from '@/components/ui/StatCard.jsx';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
 import { ProofSummary } from '@/features/intelligence/proof/ProofView.jsx';
-import AlertsPanel from '@/pages/Home/AlertsPanel.jsx';
-import AIInsightPanel from '@/pages/Home/AIInsightPanel.jsx';
-import QuickActionsPanel from '@/pages/Home/QuickActionsPanel.jsx';
-import ActivityFeed from '@/pages/Home/ActivityFeed.jsx';
+import AlertsPanel from './components/AlertsPanel.jsx';
+import AIInsightPanel from './components/AIInsightPanel.jsx';
+import QuickActionsPanel from './components/QuickActionsPanel.jsx';
+import ActivityFeed from './components/ActivityFeed.jsx';
 
 export default function OverviewView() {
   const navigate = useNavigate();
