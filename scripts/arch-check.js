@@ -133,6 +133,36 @@ for (const file of frontendFiles) {
 
 if (importPass) pass('No forbidden imports detected');
 
+section('CHECK 2B: Frontend API boundary');
+
+const API_BOUNDARY_DIRS = [
+  join(CLIENT, 'app'),
+  join(CLIENT, 'features'),
+  join(CLIENT, 'design-system'),
+  join(CLIENT, 'components', 'layout'),
+];
+const apiBoundaryFiles = API_BOUNDARY_DIRS.flatMap((dir) => getAllFiles(dir, ['.js', '.jsx', '.ts', '.tsx']));
+const forbiddenApiBoundaryImport = /from\s+['"][^'"]*(?:@\/lib\/api|\/lib\/api|\.\.?\/.*lib\/api)[^'"]*['"]/;
+const directFetchCall = /\bfetch\s*\(/;
+let apiBoundaryPass = true;
+
+for (const file of apiBoundaryFiles) {
+  const content = readFile(file);
+  const name = file.replace(ROOT + '/', '');
+
+  if (forbiddenApiBoundaryImport.test(content)) {
+    fail(`Direct shared API client import in ${name} — use feature services and @/api/client`);
+    apiBoundaryPass = false;
+  }
+
+  if (directFetchCall.test(content)) {
+    fail(`Raw fetch call in ${name} — use feature services and @/api/client`);
+    apiBoundaryPass = false;
+  }
+}
+
+if (apiBoundaryPass) pass('New frontend layers respect the API boundary');
+
 // ══════════════════════════════════════════════════════════════
 // CHECK 3 — Raw hex in JSX files
 // ══════════════════════════════════════════════════════════════
@@ -233,7 +263,7 @@ if (registryPass) pass('No suspicious component name clusters detected');
 // ══════════════════════════════════════════════════════════════
 console.log('\n══════════════════════════════════════════════');
 console.log(`Architecture Check Results:`);
-console.log(`  Checks run:  6`);
+console.log(`  Checks run:  7`);
 console.log(`  ✅ Failures: ${failures}`);
 console.log(`  🟡 Warnings: ${warnings}`);
 console.log('══════════════════════════════════════════════\n');

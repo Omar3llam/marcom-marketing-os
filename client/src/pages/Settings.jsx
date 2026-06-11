@@ -1,1 +1,1 @@
-export { default } from './Settings/index.jsx';
+export { default } from '@/features/settings/SettingsView.jsx';

@@ -10,12 +10,12 @@
 //   │      │   ContextBar (44px)             │
 //   └──────┴─────────────────────────────────┘
 // ============================================================
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Outlet }   from 'react-router-dom';
 import Sidebar      from './Sidebar.jsx';
 import ContextBar   from './ContextBar.jsx';
 import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
-import { api } from '@/lib/api.js';
+import { useRecentDecisions } from '@/features/shell';
 import { RoleProvider } from '@/context/RoleContext.jsx';
 
 export default function MainLayout() {
@@ -29,7 +29,7 @@ export default function MainLayout() {
 function MainLayoutShell() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [recentDecisions, setRecentDecisions] = useState([]);
+  const { data: recentDecisions = [] } = useRecentDecisions();
 
   // Fetch campaign feed for high-priority alerts
   const { campaigns } = useCampaignFeed();
@@ -47,49 +47,6 @@ function MainLayoutShell() {
         timestamp: alert.created_at || 'recent',
       }))
   );
-
-  // Fetch recent decisions from memory API
-  useEffect(() => {
-    let cancelled = false;
-    const fetchDecisions = async () => {
-      try {
-        const response = await api.get('/api/memory/patterns');
-        if (cancelled) return;
-
-        const narratives = response.data?.narratives || [];
-        const decisions = narratives.map((n) => ({
-          id: n.id,
-          campaign: n.line.split('—')[0]?.trim() || 'Unknown',
-          verdict: n.line.includes('KILL') ? 'KILL'
-                 : n.line.includes('SCALE') ? 'SCALE'
-                 : n.line.includes('HOLD') ? 'HOLD'
-                 : 'TEST',
-          timestamp: formatTimestamp(n.recorded),
-        }));
-        setRecentDecisions(decisions);
-      } catch (err) {
-        console.error('[MainLayout] Failed to fetch recent decisions:', err);
-        // Silent fail - empty state will be shown
-      }
-    };
-    fetchDecisions();
-    return () => { cancelled = true; };
-  }, []);
-
-  // Format timestamp as relative time
-  const formatTimestamp = (date) => {
-    if (!date) return 'recent';
-    const now = new Date();
-    const then = new Date(date);
-    const diffMs = now - then;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHrs = Math.floor(diffMins / 60);
-    const diffDays = Math.floor(diffHrs / 24);
-
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHrs < 24) return `${diffHrs}h ago`;
-    return `${diffDays}d ago`;
-  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-lumi-bg">
