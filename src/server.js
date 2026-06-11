@@ -50,6 +50,7 @@ import { observabilityRouter } from './routes/observability/index.js';
 import { userRouter }         from './routes/user.js';
 import { logger }             from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
+import { getFirebaseAdminReadiness } from './utils/firebaseAdmin.js';
 import { ensureChatSessionSchema } from './models/chatSession.js';
 import { ensureUserContextSchema } from './models/userContext.js';
 import { ensureProjectSchema }     from './models/project.js';
@@ -153,7 +154,12 @@ if (config.nodeEnv !== 'production') {
 // Lightweight, no DB call. Required for render.yaml
 // `healthCheckPath: /api/health`.
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  const firebaseAdmin = getFirebaseAdminReadiness();
+  res.status(firebaseAdmin.ok ? 200 : 503).json({
+    status: firebaseAdmin.ok ? 'ok' : 'degraded',
+    firebaseAdmin: firebaseAdmin.status,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // ── HEALTH CHECK (public, queries DB) ────────────────────────
@@ -167,11 +173,15 @@ app.get('/health', async (req, res) => {
     }
   } catch { /* DB may not be configured in dev */ }
 
-  res.status(dbOk ? 200 : 503).json({
-    status: dbOk ? 'ok' : 'degraded',
+  const firebaseAdmin = getFirebaseAdminReadiness();
+  const ok = dbOk && firebaseAdmin.ok;
+
+  res.status(ok ? 200 : 503).json({
+    status: ok ? 'ok' : 'degraded',
     system: 'MARCOM',
     version: '4.0.0',
     db: dbOk,
+    firebaseAdmin: firebaseAdmin.status,
     timestamp: new Date().toISOString(),
     environment: config.nodeEnv,
   });

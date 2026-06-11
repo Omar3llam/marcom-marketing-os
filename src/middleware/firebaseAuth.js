@@ -7,6 +7,7 @@
 // Replaces the old Clerk auth middleware.
 // ============================================================
 import admin from '../utils/firebaseAdmin.js';
+import { getFirebaseAdminReadiness } from '../utils/firebaseAdmin.js';
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
 
@@ -90,6 +91,24 @@ async function findUserByUidWithRetry(uid, attempt = 1) {
  *   app.use(firebaseAuthMiddleware);
  */
 export async function firebaseAuthMiddleware(req, res, next) {
+  const firebaseAdmin = getFirebaseAdminReadiness();
+  if (!firebaseAdmin.ok) {
+    req.authInfraError = {
+      code: 'FIREBASE_ADMIN_UNINITIALIZED',
+      message: firebaseAdmin.error || 'Firebase Admin is not initialized',
+    };
+    req.user = null;
+    req.userId = null;
+    req.workspaceId = null;
+    logger.error({
+      path: req.path,
+      method: req.method,
+      errorCode: req.authInfraError.code,
+      errorMessage: req.authInfraError.message,
+    }, '[firebase-auth] Firebase Admin unavailable');
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -244,6 +263,20 @@ export async function firebaseAuthMiddleware(req, res, next) {
  *   router.get('/protected', requireAuth, (req, res) => { ... });
  */
 export function requireAuth(req, res, next) {
+  if (req.authInfraError) {
+    logger.error({
+      path: req.path,
+      method: req.method,
+      errorCode: req.authInfraError.code,
+      errorMessage: req.authInfraError.message,
+    }, '[firebase-auth] requireAuth blocked by auth infrastructure');
+
+    return res.status(503).json({
+      error: 'AuthInfrastructureUnavailable',
+      message: 'Authentication infrastructure is not ready. Check server logs and /health.',
+    });
+  }
+
   if (!req.user || !req.user.uid) {
     // Log 401 rejections for debugging (includes path/method for correlation)
     logger.debug({
