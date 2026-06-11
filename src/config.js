@@ -7,7 +7,6 @@
 const REQUIRED = [
   'ANTHROPIC_API_KEY',
   'DATABASE_URL',
-  'FIREBASE_SERVICE_ACCOUNT_JSON',
   'WEBHOOK_SECRET',
 ];
 
@@ -25,13 +24,14 @@ if (missing.length > 0) {
 // Optional vars — warn but don't exit
 const OPTIONAL_WARN = [
   'CREDENTIAL_ENCRYPTION_KEY',
+  'FIREBASE_SERVICE_ACCOUNT_JSON',
   'META_APP_ID',
   'META_APP_SECRET',
   'META_REDIRECT_URI',
 ];
 OPTIONAL_WARN.forEach(k => {
   if (!process.env[k]) {
-    process.stderr.write(`[MARCOM] WARN: ${k} is not set — credential encryption will be unavailable.\n`);
+    process.stderr.write(`[MARCOM] WARN: ${k} is not set — dependent features will report degraded readiness.\n`);
   }
 });
 
