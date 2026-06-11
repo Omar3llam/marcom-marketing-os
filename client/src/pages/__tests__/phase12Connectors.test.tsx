@@ -52,7 +52,14 @@ describe('Connections view', () => {
     expect(screen.getByText('Meta Ads')).toBeInTheDocument();
     expect(screen.getByText(/stale — reconnect/i)).toBeInTheDocument();
     expect(screen.getByText(/token expired/i)).toBeInTheDocument();
-    expect(screen.getAllByText('connect').length).toBeGreaterThan(0); // TikTok/LinkedIn/Snap not connected
+    // OAuth-unsupported channels (TikTok/LinkedIn/Snap) show "soon", not "connect".
+    expect(screen.getAllByText('soon').length).toBeGreaterThan(0);
+  });
+  it('a not-connected Google row offers a "connect" affordance', () => {
+    render(<ConnectionsView connections={[{ platform: 'META', isActive: true, connected: true, stale: false, lastSyncedAt: new Date().toISOString() }]} />);
+    // Google is absent from the list → not connected → a connect button (OAuth-supported).
+    expect(screen.getByText('Google Ads')).toBeInTheDocument();
+    expect(screen.getAllByText('connect').length).toBeGreaterThan(0);
   });
 });
 

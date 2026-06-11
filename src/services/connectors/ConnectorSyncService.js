@@ -8,11 +8,10 @@
 // that channel's health and surfaced as staleness, never silently corrupting
 // blended truth.
 // ============================================================
-import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { resolve, isSyncable } from './connectorRegistry.js';
 import { landSnapshots } from './snapshotSink.js';
-import { recordSyncHealth } from './connectorHealth.js';
+import { listActiveSyncable, recordSync } from './credentialStore.js';
 
 /**
  * Run the connector sync.
@@ -20,35 +19,35 @@ import { recordSyncHealth } from './connectorHealth.js';
  * @param {{ datePreset?: string, now?: Date }} [opts]
  */
 export async function runConnectorSync(workspaceId = null, { datePreset = 'last_7d', now = new Date() } = {}) {
-  const where = { isActive: true, ...(workspaceId ? { workspaceId } : {}) };
-  const integrations = await prisma.integration.findMany({ where });
-  const syncable = integrations.filter((i) => isSyncable(i.platform));
+  const connections = await listActiveSyncable(workspaceId);
+  const syncable = connections.filter((c) => isSyncable(c.channel));
 
   if (syncable.length === 0) {
-    logger.info({ workspaceId }, '[connectorSync] no active syncable integrations');
+    logger.info({ workspaceId }, '[connectorSync] no active syncable credentials');
     return { synced: 0, failed: 0, results: [] };
   }
 
   const results = [];
-  for (const integ of syncable) {
+  for (const conn of syncable) {
+    const { workspaceId: wsId, channel } = conn;
     // Per-channel isolation: a throw here is caught, recorded, and the loop continues.
     try {
-      const connector = resolve(integ.platform);
-      const auth = await connector.authenticate(integ.workspaceId);
+      const connector = resolve(channel);
+      const auth = await connector.authenticate(wsId);
       if (!auth.ok) {
-        await recordSyncHealth(integ, { ok: false, error: auth.error, now });
-        results.push({ workspaceId: integ.workspaceId, platform: integ.platform, status: 'skipped', reason: auth.error });
+        await recordSync(wsId, channel, { ok: false, error: auth.error, now });
+        results.push({ workspaceId: wsId, platform: channel, status: 'skipped', reason: auth.error });
         continue;
       }
       const raw = await connector.fetchRaw(auth, { datePreset });
       const normalized = connector.normalize({ ...auth, date: now, rows: raw });
-      const landed = await landSnapshots(integ.workspaceId, connector.channel, normalized);
-      await recordSyncHealth(integ, { ok: true, records: landed.snapshots, now });
-      results.push({ workspaceId: integ.workspaceId, platform: integ.platform, status: 'success', ...landed });
+      const landed = await landSnapshots(wsId, connector.channel, normalized);
+      await recordSync(wsId, channel, { ok: true, records: landed.snapshots, now });
+      results.push({ workspaceId: wsId, platform: channel, status: 'success', ...landed });
     } catch (err) {
-      await recordSyncHealth(integ, { ok: false, error: err.message, now }).catch(() => {});
-      logger.error({ workspaceId: integ.workspaceId, platform: integ.platform, err: err.message }, '[connectorSync] channel failed (isolated)');
-      results.push({ workspaceId: integ.workspaceId, platform: integ.platform, status: 'error', error: err.message });
+      await recordSync(wsId, channel, { ok: false, error: err.message, now }).catch(() => {});
+      logger.error({ workspaceId: wsId, platform: channel, err: err.message }, '[connectorSync] channel failed (isolated)');
+      results.push({ workspaceId: wsId, platform: channel, status: 'error', error: err.message });
     }
   }
 

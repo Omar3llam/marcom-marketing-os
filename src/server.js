@@ -34,6 +34,7 @@ import { contextRouter }    from './routes/context.js';
 import { projectsRouter }     from './routes/projects.js';
 import { credentialsRouter }  from './routes/credentials.js';
 import { authMetaRouter }     from './routes/auth/meta.js';
+import { authGoogleRouter }   from './routes/auth/google.js';
 import { campaignsRouter }    from './routes/campaigns.js';
 import { toolsRouter }        from './routes/tools.js';
 import { lumiRouter, quickActionHandler, demoFeedHandler } from './routes/lumi/index.js';
@@ -219,6 +220,8 @@ app.use('/api/lumi',
 // Meta OAuth flow — MUST be mounted BEFORE blanket /api + requireAuth
 // because /callback is NOT authenticated (Meta redirects browser without token).
 app.use('/api/auth/meta', apiLimiter, authMetaRouter);
+// Google Ads OAuth — same rule: /callback is unauthenticated (Google redirects).
+app.use('/api/auth/google', apiLimiter, authGoogleRouter);
 
 app.use('/api',
   requireAuth,                  // enforces Firebase UID (formerly Clerk)

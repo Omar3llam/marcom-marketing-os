@@ -9,13 +9,9 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { isStale } from '../../services/connectors/connectorTypes.js';
+import { listConnections } from '../../services/connectors/credentialStore.js';
 
 export const connectionsRouter = Router();
-
-// Tokens are deliberately NOT selected.
-const INTEGRATION_DISPLAY_SELECT = Object.freeze({
-  platform: true, isActive: true, lastSyncedAt: true, expiresAt: true, metadata: true,
-});
 
 async function resolveWorkspaceId(req) {
   if (req.workspaceId) return req.workspaceId;
@@ -33,23 +29,18 @@ connectionsRouter.get('/connections', async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.json({ workspaceId: null, connections: [] });
   try {
-    const rows = await prisma.integration.findMany({
-      where: { workspaceId: wsId },
-      select: INTEGRATION_DISPLAY_SELECT,
-      orderBy: { platform: 'asc' },
-    });
+    const rows = await listConnections(wsId); // marcom_credentials display fields — no tokens
     const now = new Date();
-    const connections = rows.map((i) => {
-      const health = i.metadata?.health ?? null;
-      const lastSuccess = health?.lastSuccessfulSync ?? i.lastSyncedAt ?? null;
+    const connections = rows.map((c) => {
+      const lastSuccess = c.health?.lastSuccessfulSync ?? c.lastSyncedAt ?? null;
       return {
-        platform: i.platform,
-        isActive: i.isActive,
-        connected: i.isActive,
+        platform: c.platform,
+        isActive: c.isActive,
+        connected: c.isActive,
         stale: isStale(lastSuccess, now),
-        lastSyncedAt: i.lastSyncedAt ? new Date(i.lastSyncedAt).toISOString() : null,
-        accountId: i.metadata?.accountId ?? i.metadata?.customerId ?? null,
-        health,
+        lastSyncedAt: c.lastSyncedAt ?? null,
+        accountId: c.accountId ?? null,
+        health: c.health ?? null,
       };
     });
     return res.json({ workspaceId: wsId, connections });

@@ -7,9 +7,20 @@
 // loop). Assembly of existing primitives; no new primitive.
 // ============================================================
 import { Scale, Plus, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { api } from '@/lib/api.js';
 import { useConnections } from '@/hooks/useConnections.js';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
+
+// Kick the OAuth flow for a platform: ask the backend for the consent URL, then
+// redirect the browser to it (mirrors how Meta connect is triggered).
+const CONNECT_PATH = { GOOGLE: '/api/auth/google/connect', META: '/api/auth/meta/connect' };
+export async function startConnect(platform) {
+  const path = CONNECT_PATH[platform];
+  if (!path) return;
+  const res = await api.get(path);
+  if (res.data?.oauthUrl) window.location.href = res.data.oauthUrl;
+}
 
 const KNOWN = ['META', 'GOOGLE', 'TIKTOK', 'LINKEDIN', 'SNAP'];
 const LABEL = { META: 'Meta Ads', GOOGLE: 'Google Ads', TIKTOK: 'TikTok', LINKEDIN: 'LinkedIn', SNAP: 'Snap' };
@@ -44,8 +55,10 @@ export function ConnectionsView({ connections = [] }) {
                 last sync {ago(c.lastSyncedAt)}{stale ? ' · stale — reconnect' : ''}
                 {c.health?.lastError ? ` · ${c.health.lastError}` : ''}
               </span>
+            ) : CONNECT_PATH[platform] ? (
+              <button onClick={() => startConnect(platform)} className="font-mono text-xs text-lumi-accent hover:underline">connect</button>
             ) : (
-              <span className="font-mono text-xs text-lumi-accent">connect</span>
+              <span className="font-mono text-xs text-lumi-subtle">soon</span>
             )}
           </div>
         );
