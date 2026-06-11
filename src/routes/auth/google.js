@@ -12,10 +12,14 @@
 // calls — exercised only on a real connect (no creds/network in this env).
 // ============================================================
 import { Router } from 'express';
-import { createHmac, timingSafeEqual } from 'crypto';
 import { requireAuth } from '../../middleware/firebaseAuth.js';
 import { upsertWorkspaceCredential } from '../../services/connectors/credentialStore.js';
+import { buildState, parseState } from './oauthState.js';
 import { logger } from '../../utils/logger.js';
+
+// Re-export the pure state helpers (their canonical home is oauthState.js, which
+// is Firebase-free so tests can import them without booting Firebase Admin).
+export { buildState, parseState } from './oauthState.js';
 
 export const authGoogleRouter = Router();
 
@@ -24,38 +28,6 @@ const CLIENT_SECRET = () => process.env.GOOGLE_ADS_CLIENT_SECRET || '';
 const REDIRECT_URI = () => process.env.GOOGLE_REDIRECT_URI
   || `${process.env.APP_BASE_URL || 'https://marcom-marketing-os.onrender.com'}/api/auth/google/callback`;
 const SCOPE = 'https://www.googleapis.com/auth/adwords';
-
-function hmacKey() {
-  const k = process.env.WEBHOOK_SECRET || '';
-  if (!k) logger.warn('[google-auth] WEBHOOK_SECRET not set — state HMAC will be weak');
-  return k;
-}
-
-// State: <workspaceId>:<userId>:<ts>:<mac>, base64url. Exported for tests.
-export function buildState(workspaceId, userId) {
-  const payload = `${workspaceId}:${userId}:${Date.now()}`;
-  const mac = createHmac('sha256', hmacKey()).update(payload).digest('hex');
-  return Buffer.from(`${payload}:${mac}`).toString('base64url');
-}
-
-export function parseState(stateB64) {
-  try {
-    const parts = Buffer.from(stateB64, 'base64url').toString('utf8').split(':');
-    if (parts.length < 4) throw new Error('bad state parts');
-    const mac = parts.pop();
-    const payload = parts.join(':');
-    const expected = createHmac('sha256', hmacKey()).update(payload).digest('hex');
-    const a = Buffer.from(mac, 'hex');
-    const b = Buffer.from(expected, 'hex');
-    if (a.length !== b.length || !timingSafeEqual(a, b)) throw new Error('state HMAC mismatch');
-    const [workspaceId, userId, tsStr] = parts;
-    if (Date.now() - parseInt(tsStr, 10) > 10 * 60 * 1000) throw new Error('state expired');
-    return { workspaceId, userId };
-  } catch (err) {
-    logger.warn({ err: err.message }, '[google-auth] invalid OAuth state');
-    return null;
-  }
-}
 
 // ── CONNECT ──────────────────────────────────────────────────
 authGoogleRouter.get('/connect', requireAuth, (req, res) => {

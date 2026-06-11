@@ -7,7 +7,7 @@ process.env.WEBHOOK_SECRET = 'test-webhook-secret';
 import { buildGaqlReportQuery, mapGoogleAdsResponse } from './google/googleAdsClient.js';
 import { googleNormalize } from './normalize/googleNormalize.js';
 import { assertNormalized } from './ChannelConnector.js';
-import { buildState, parseState } from '../../routes/auth/google.js';
+import { buildState, parseState } from '../../routes/auth/oauthState.js';
 
 describe('googleAdsClient — pure seams', () => {
   it('buildGaqlReportQuery is a stable campaign report for a date range', () => {
