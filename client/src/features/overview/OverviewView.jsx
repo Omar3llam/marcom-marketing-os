@@ -16,7 +16,7 @@ import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
 import StatCard from '@/components/ui/StatCard.jsx';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
-import { ProofSummary } from '@/pages/Proof.jsx';
+import { ProofSummary } from '@/features/intelligence/proof/ProofView.jsx';
 import AlertsPanel from '@/pages/Home/AlertsPanel.jsx';
 import AIInsightPanel from '@/pages/Home/AIInsightPanel.jsx';
 import QuickActionsPanel from '@/pages/Home/QuickActionsPanel.jsx';
