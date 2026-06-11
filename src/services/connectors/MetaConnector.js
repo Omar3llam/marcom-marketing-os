@@ -3,8 +3,8 @@
 // ============================================================
 // fetchRaw wraps the existing metaAdsService.fetchCampaignInsights (raw insights);
 // normalize maps the REAL fields via the pure metaNormalize (NOT the legacy
-// estimate-based normalizer). Credentials resolve from Integration (the source
-// of truth) — never a loose config.
+// estimate-based normalizer). Credentials resolve from marcom_credentials via
+// credentialStore.resolveCredential (workspace-keyed) — never a loose config.
 // ============================================================
 import { logger } from '../../utils/logger.js';
 import { fetchCampaignInsights } from '../metaAdsService.js';
