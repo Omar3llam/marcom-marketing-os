@@ -22,6 +22,7 @@ import MainLayout       from './components/layout/MainLayout.jsx';
 import HomePage         from './pages/Home.jsx';
 import DecisionFeed     from './pages/DecisionFeed.jsx';
 import ContentLab       from './pages/ContentLab/index.jsx';
+import CopilotPage      from './pages/CopilotPage.jsx';
 import MarketingTools   from './pages/tools/MarketingTools.jsx';
 import SocialCalendar   from './pages/tools/SocialCalendar.jsx';
 import ScoreContent     from './pages/tools/ScoreContent.jsx';
@@ -33,6 +34,7 @@ import RoleGate from './components/auth/RoleGate.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { IntelligenceProvider } from './context/IntelligenceContext.jsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
+import { appRoutes } from './app/routeManifest.js';
 
 // ── Heavy views — lazy-load to keep the initial bundle slim ──
 const CampaignAnalysis    = lazy(() => import('./pages/CampaignAnalysis.jsx'));
@@ -43,7 +45,6 @@ const ApprovalQueue       = lazy(() => import('./pages/ApprovalQueue.jsx')); // 
 // ── Phase 11A · surfacing the built brain (role-gated) ────────
 const BlendedTruth = lazy(() => import('./pages/BlendedTruth.jsx'));
 const Proof        = lazy(() => import('./pages/Proof.jsx'));
-const Connections  = lazy(() => import('./pages/Connections.jsx'));
 
 // ── v2 views (gradual migration via Strangler Pattern) ────────
 const DecisionViewV2 = lazy(() => import('./pages/v2/DecisionViewV2.tsx').then(m => ({ default: m.DecisionViewV2 })));
@@ -107,13 +108,13 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index             element={<Navigate to="campaigns" replace />} />
-          <Route path="home"       element={
+          <Route index             element={<Navigate to={appRoutes.overview} replace />} />
+          <Route path="overview"   element={
             <ErrorBoundary boundaryId="home">
               <HomePage />
             </ErrorBoundary>
           } />
-          <Route path="feed"       element={
+          <Route path="decisions"  element={
             <ErrorBoundary boundaryId="feed">
               <DecisionFeed />
             </ErrorBoundary>
@@ -124,40 +125,43 @@ export default function App() {
             </ErrorBoundary>
           } />
 
+          <Route path="intelligence" element={<Navigate to={appRoutes.blendedTruth} replace />} />
+
           {/* ── Phase 11A · Blended Truth (STRATEGIST/BUYER; CLIENT → Home) ── */}
-          <Route path="truth"      element={
+          <Route path="intelligence/blended-truth" element={
             <ErrorBoundary boundaryId="truth">
-              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<Navigate to="/app/home" replace />}>
+              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<Navigate to={appRoutes.overview} replace />}>
                 <Suspense fallback={<PageFallback />}><BlendedTruth /></Suspense>
               </RoleGate>
             </ErrorBoundary>
           } />
 
           {/* ── Phase 11A · Proof of Learning (all roles; view narrows by role) ── */}
-          <Route path="proof"      element={
+          <Route path="intelligence/proof" element={
             <ErrorBoundary boundaryId="proof">
               <Suspense fallback={<PageFallback />}><Proof /></Suspense>
             </ErrorBoundary>
           } />
 
-          {/* ── Phase 12 · Connected Channels (STRATEGIST/BUYER; CLIENT → Home) ── */}
-          <Route path="connections" element={
-            <ErrorBoundary boundaryId="connections">
-              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<Navigate to="/app/home" replace />}>
-                <Suspense fallback={<PageFallback />}><Connections /></Suspense>
-              </RoleGate>
+          <Route path="intelligence/insights" element={
+            <ErrorBoundary boundaryId="growth">
+              <Suspense fallback={<PageFallback />}><GrowthStrategyBoard /></Suspense>
             </ErrorBoundary>
           } />
+
+          {/* ── Phase 12 · Connected Channels (STRATEGIST/BUYER; CLIENT → Home) ── */}
+          <Route path="connections" element={<Navigate to={appRoutes.settingsIntegrations} replace />} />
           <Route path="content"    element={
             <ErrorBoundary boundaryId="content">
               <ContentLab />
             </ErrorBoundary>
           } />
-          <Route path="growth"     element={
-            <ErrorBoundary boundaryId="growth">
-              <Suspense fallback={<PageFallback />}><GrowthStrategyBoard /></Suspense>
+          <Route path="copilot"    element={
+            <ErrorBoundary boundaryId="copilot">
+              <CopilotPage />
             </ErrorBoundary>
           } />
+          <Route path="growth"     element={<Navigate to={appRoutes.insights} replace />} />
           <Route path="tools/score"    element={
             <ErrorBoundary boundaryId="tools-score">
               <ScoreContent />
@@ -179,6 +183,16 @@ export default function App() {
               <SettingsPage />
             </ErrorBoundary>
           } />
+          <Route path="settings/:section" element={
+            <ErrorBoundary boundaryId="settings-section">
+              <SettingsPage />
+            </ErrorBoundary>
+          } />
+
+          <Route path="home"  element={<Navigate to={appRoutes.overview} replace />} />
+          <Route path="feed"  element={<Navigate to={appRoutes.decisions} replace />} />
+          <Route path="truth" element={<Navigate to={appRoutes.blendedTruth} replace />} />
+          <Route path="proof" element={<Navigate to={appRoutes.proof} replace />} />
 
           {/* ── PR #45 · Mission Control (Observability Dashboard) ── */}
           <Route path="observability" element={

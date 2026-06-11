@@ -4,6 +4,7 @@ import { BrowserRouter }    from 'react-router-dom';
 import { Toaster }          from 'sonner';
 import App                  from './App.jsx';
 import { AuthProvider }     from './context/AuthContext.jsx';
+import { ServerStateProvider } from './app/providers/ServerStateProvider.jsx';
 import ErrorBoundary        from './components/ui/ErrorBoundary.jsx';
 import { validateFirebaseConfig } from './firebase.js';
 
@@ -89,9 +90,11 @@ root.render(
     <ErrorBoundary>
       {CONFIG_VALID ? (
         <AuthProvider>
-          <BrowserRouter>
-            <App />
-          </BrowserRouter>
+          <ServerStateProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </ServerStateProvider>
         </AuthProvider>
       ) : (
         <ConfigErrorPage />

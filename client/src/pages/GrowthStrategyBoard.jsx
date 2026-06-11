@@ -1,5 +1,5 @@
 // ============================================================
-// MARCOM / Lumi — GrowthStrategyBoard  (/app/growth)
+// MARCOM / Lumi — GrowthStrategyBoard  (/app/intelligence/insights)
 // ------------------------------------------------------------
 // CMO war room: 4 macro metrics + horizontal active-bets strip
 // + memory-layer timeline. MRR / LTV:CAC / CAC don't exist as

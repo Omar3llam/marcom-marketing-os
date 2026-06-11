@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useProjectId } from '@/hooks/useProjectId.js';
 import { sendPasswordResetEmail, auth } from '@/firebase.js';
 import { api } from '@/lib/api.js';
 import { toast } from 'sonner';
 import { clearContextCache } from '@/router/ProtectedRoute.jsx';
+import { settingsSections } from '@/app/routeManifest.js';
 import { ProfileTab } from './ProfileTab.jsx';
 import { IntegrationsTab } from './IntegrationsTab.jsx';
 import { NotificationsTab } from './NotificationsTab.jsx';
@@ -15,6 +16,7 @@ const NOTIFICATION_PREFS_KEY = 'lumi_notification_prefs';
 
 export default function Settings() {
   const navigate = useNavigate();
+  const { section } = useParams();
   const { currentUser, logout } = useAuth();
   const { projectId, loading: projectLoading } = useProjectId();
   const [busy, setBusy] = useState(false);
@@ -166,20 +168,132 @@ export default function Settings() {
 
   if (!currentUser) return <div className="flex items-center justify-center h-full"><p className="text-lumi-muted">Loading...</p></div>;
 
+  const activeSection = settingsSections.some((item) => item.key === section)
+    ? section
+    : 'general';
+
+  const renderSection = () => {
+    switch (activeSection) {
+      case 'integrations':
+        return (
+          <IntegrationsTab
+            workspaceName={workspaceName}
+            setWorkspaceName={setWorkspaceName}
+            workspaceSlug={workspaceSlug}
+            workspaceChanged={workspaceChanged}
+            handleSaveWorkspace={handleSaveWorkspace}
+            busy={busy}
+            metaStatus={metaStatus}
+            metaExpires={metaExpires}
+            metaAccountId={metaAccountId}
+            connectingMeta={connectingMeta}
+            handleMetaConnect={handleMetaConnect}
+            projectId={projectId}
+            projectLoading={projectLoading}
+            showWorkspace={false}
+          />
+        );
+      case 'team':
+        return <SettingsPlaceholder title="Team & Roles" copy="Invite teammates, assign roles, and review workspace access from this settings section." />;
+      case 'billing':
+        return <SettingsPlaceholder title="Billing" copy="Billing configuration is reserved here so plan and payment controls stay separate from marketing workflows." />;
+      case 'workspace':
+        return (
+          <IntegrationsTab
+            workspaceName={workspaceName}
+            setWorkspaceName={setWorkspaceName}
+            workspaceSlug={workspaceSlug}
+            workspaceChanged={workspaceChanged}
+            handleSaveWorkspace={handleSaveWorkspace}
+            busy={busy}
+            metaStatus={metaStatus}
+            metaExpires={metaExpires}
+            metaAccountId={metaAccountId}
+            connectingMeta={connectingMeta}
+            handleMetaConnect={handleMetaConnect}
+            projectId={projectId}
+            projectLoading={projectLoading}
+            showIntegrations={false}
+          />
+        );
+      case 'security':
+        return (
+          <SecurityTab
+            currentUser={currentUser}
+            handlePasswordReset={handlePasswordReset}
+            handleResetSetup={handleResetSetup}
+            busy={busy}
+            showDeleteModal={showDeleteModal}
+            setShowDeleteModal={setShowDeleteModal}
+            deleteConfirmText={deleteConfirmText}
+            setDeleteConfirmText={setDeleteConfirmText}
+            handleDeleteAccount={handleDeleteAccount}
+            formatDate={formatDate}
+          />
+        );
+      case 'general':
+      default:
+        return (
+          <>
+            <ProfileTab
+              displayName={displayName}
+              setDisplayName={setDisplayName}
+              currentUser={currentUser}
+              profileChanged={profileChanged}
+              handleSaveProfile={handleSaveProfile}
+              busy={busy}
+              getInitials={getInitials}
+            />
+            <NotificationsTab
+              notifPrefs={notifPrefs}
+              setNotifPrefs={setNotifPrefs}
+              notifChanged={notifChanged}
+              setNotifChanged={setNotifChanged}
+              handleSaveNotifications={handleSaveNotifications}
+            />
+          </>
+        );
+    }
+  };
+
   return (
     <div className="flex flex-col h-full overflow-y-auto">
-      <div className="max-w-3xl mx-auto w-full p-6 lg:p-8">
+      <div className="max-w-5xl mx-auto w-full p-6 lg:p-8">
         <div className="mb-8">
           <div className="section-label">Settings</div>
-          <h1 className="mt-1 font-display font-bold text-lg text-lumi-text">Account Settings</h1>
-          <p className="mt-2 text-lumi-muted text-sm">Manage your profile, workspace, and account preferences.</p>
+          <h1 className="mt-1 font-display font-bold text-lg text-lumi-text">Workspace Settings</h1>
+          <p className="mt-2 text-lumi-muted text-sm">Configure the system without mixing settings into core marketing workflows.</p>
         </div>
 
-        <ProfileTab displayName={displayName} setDisplayName={setDisplayName} currentUser={currentUser} profileChanged={profileChanged} handleSaveProfile={handleSaveProfile} busy={busy} getInitials={getInitials} />
-        <IntegrationsTab workspaceName={workspaceName} setWorkspaceName={setWorkspaceName} workspaceSlug={workspaceSlug} workspaceChanged={workspaceChanged} handleSaveWorkspace={handleSaveWorkspace} busy={busy} metaStatus={metaStatus} metaExpires={metaExpires} metaAccountId={metaAccountId} connectingMeta={connectingMeta} handleMetaConnect={handleMetaConnect} projectId={projectId} projectLoading={projectLoading} />
-        <NotificationsTab notifPrefs={notifPrefs} setNotifPrefs={setNotifPrefs} notifChanged={notifChanged} setNotifChanged={setNotifChanged} handleSaveNotifications={handleSaveNotifications} />
-        <SecurityTab currentUser={currentUser} handlePasswordReset={handlePasswordReset} handleResetSetup={handleResetSetup} busy={busy} showDeleteModal={showDeleteModal} setShowDeleteModal={setShowDeleteModal} deleteConfirmText={deleteConfirmText} setDeleteConfirmText={setDeleteConfirmText} handleDeleteAccount={handleDeleteAccount} formatDate={formatDate} />
+        <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <nav className="space-y-1" aria-label="Settings sections">
+            {settingsSections.map((item) => (
+              <NavLink
+                key={item.key}
+                to={item.path}
+                className={({ isActive }) => `block rounded-lg px-3 py-2 text-sm transition-colors ${
+                  isActive || activeSection === item.key
+                    ? 'bg-lumi-elevated text-lumi-text'
+                    : 'text-lumi-muted hover:bg-lumi-elevated/60 hover:text-lumi-text'
+                }`}
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+
+          <div>{renderSection()}</div>
+        </div>
       </div>
     </div>
+  );
+}
+
+function SettingsPlaceholder({ title, copy }) {
+  return (
+    <section className="rounded-xl border border-surface-border/80 bg-white p-6 shadow-sm">
+      <h2 className="font-display text-base font-semibold text-lumi-text">{title}</h2>
+      <p className="mt-2 text-sm leading-6 text-lumi-muted">{copy}</p>
+    </section>
   );
 }

@@ -12,9 +12,9 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
-  Layout, BarChart3, Target, Send, CalendarDays, Activity,
-  Settings, PanelLeftClose, Plus, Search, ChevronDown, Radar,
-  Scale, Gauge, Plug,
+  Layout, BarChart3, Send,
+  Settings, PanelLeftClose, Plus, Search, ChevronDown,
+  Brain, ClipboardCheck, Bot,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
@@ -26,18 +26,17 @@ import NotificationPopover from '@/components/ui/NotificationPopover.jsx';
 import RecentDecisions from '@/components/ui/RecentDecisions.jsx';
 import CommandPalette from '@/components/ui/CommandPalette.jsx';
 import RadarStrip from './RadarStrip.jsx';
+import { appRoutes } from '@/app/routeManifest.js';
 
 // Simplified navigation structure from Figma. `roles` (optional) gates an item
 // to the listed collabRoles; absent = visible to all (backwards-compatible).
 const tools = [
-  { key: 'home',       label: 'Home',         sub: 'Account pulse',                icon: Layout,        path: '/app/home'             },
-  { key: 'campaigns',  label: 'Campaigns',    sub: 'Verdicts + diagnosis',         icon: BarChart3,     path: '/app/campaigns'        },
-  { key: 'truth',      label: 'Blended Truth',sub: 'Platform claims vs reality',   icon: Scale,         path: '/app/truth',           roles: ['STRATEGIST', 'BUYER'] },
-  { key: 'proof',      label: 'Proof',        sub: 'Is Lumi getting sharper?',     icon: Gauge,         path: '/app/proof'            },
-  { key: 'content',    label: 'Content Lab',  sub: 'Copy + visual generation',     icon: Send,          path: '/app/content'          },
-  { key: 'growth',     label: 'Growth',       sub: 'Memory layer + opportunities', icon: Target,        path: '/app/growth'           },
-  { key: 'calendar',   label: 'Calendar',     sub: '4-week content plan',          icon: CalendarDays,  path: '/app/tools/calendar'   },
-  { key: 'connections',label: 'Channels',     sub: 'Connected data sources',       icon: Plug,          path: '/app/connections',     roles: ['STRATEGIST', 'BUYER'] },
+  { key: 'overview',     label: 'Overview',     sub: 'Marketing OS command',        icon: Layout,         path: appRoutes.overview },
+  { key: 'campaigns',    label: 'Campaigns',    sub: 'Portfolio + diagnosis',       icon: BarChart3,      path: appRoutes.campaigns },
+  { key: 'intelligence', label: 'Intelligence', sub: 'Truth, insights, proof',      icon: Brain,          path: appRoutes.intelligence, roles: ['STRATEGIST', 'BUYER'] },
+  { key: 'decisions',    label: 'Decisions',    sub: 'Recommendations + actions',   icon: ClipboardCheck, path: appRoutes.decisions },
+  { key: 'content',      label: 'Content Lab',  sub: 'Context-aware creation',      icon: Send,           path: appRoutes.contentLab },
+  { key: 'copilot',      label: 'Copilot',      sub: 'Reserved AI assistant',       icon: Bot,            path: appRoutes.copilot },
 ];
 
 // ══════════════════════════════════════════════════════════════
@@ -186,7 +185,7 @@ export default function Sidebar({
   const alertCount = highAlerts.length;
 
   // Alert counts per nav item
-  const alertsByKey = { home: alertCount };
+  const alertsByKey = { overview: alertCount };
 
   const initial = (currentUser?.displayName?.[0] || currentUser?.email?.[0] || 'L').toUpperCase();
   const userLabel = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
@@ -251,7 +250,7 @@ export default function Sidebar({
                 alerts={highAlerts}
                 onClose={() => setNotifOpen(false)}
                 onSelectAlert={(alert) => {
-                  navigate('/app/home');
+                  navigate(appRoutes.overview);
                   onMobileMenuToggle?.(); // Close mobile menu on navigation
                 }}
               />
@@ -425,7 +424,7 @@ export default function Sidebar({
         collapsed ? 'flex flex-col items-center gap-2' : 'space-y-1',
       )}>
         <NavLink
-          to="/app/settings"
+          to={appRoutes.settings}
           title={collapsed ? 'Settings' : undefined}
           aria-label="Settings"
           onClick={() => onMobileMenuToggle?.()} // Close mobile menu on navigation

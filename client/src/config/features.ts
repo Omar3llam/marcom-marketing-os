@@ -44,6 +44,24 @@ export interface FeatureFlags {
   /** New navigation with FSM state awareness */
   newNavigation: boolean;
 
+  /** Canonical Overview rebuild route */
+  newOverview: boolean;
+
+  /** Canonical Campaigns rebuild route */
+  newCampaigns: boolean;
+
+  /** Intelligence group rebuild: Blended Truth, Insights, Proof */
+  newIntelligence: boolean;
+
+  /** Settings rebuild and integrations migration */
+  newSettings: boolean;
+
+  /** Content Lab rebuild after core dependencies settle */
+  newContentLab: boolean;
+
+  /** Copilot route/readiness flag; nav slot remains reserved */
+  copilotEnabled: boolean;
+
   // ── Infrastructure ─────────────────────────────────────────
   /** Enable side-by-side comparison harness (dev only) */
   comparisonHarness: boolean;
@@ -61,6 +79,12 @@ const defaultFlags: FeatureFlags = {
   newExecutionFlow: false,
   newPrimitives: false,
   newNavigation: false,
+  newOverview: false,
+  newCampaigns: false,
+  newIntelligence: false,
+  newSettings: false,
+  newContentLab: false,
+  copilotEnabled: false,
   comparisonHarness: false,
   telemetry: false,
 };

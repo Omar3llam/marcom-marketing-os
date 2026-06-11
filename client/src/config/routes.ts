@@ -16,8 +16,11 @@
 //   Step 4: Remove v1 code once v2 stable
 // ============================================================
 import { features } from './features.js';
+import { appRoutes } from '../app/routeManifest.js';
 
 export const routes = {
+  app: appRoutes,
+
   // ── v1 routes (existing stable) ────────────────────────────
   v1: {
     root: '/',
