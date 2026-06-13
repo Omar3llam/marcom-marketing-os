@@ -22,6 +22,7 @@ import AIInsightPanel from './Home/AIInsightPanel.jsx';
 import QuickActionsPanel from './Home/QuickActionsPanel.jsx';
 import ActivityFeed from './Home/ActivityFeed.jsx';
 import ConnectionHealthStrip from './Home/ConnectionHealthStrip.jsx';
+import PacingWidget from './Home/PacingWidget.jsx';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -170,6 +171,9 @@ export default function HomePage() {
       {/* Dashboard content: only show when data exists */}
       {hasData && (
         <>
+          {/* Budget pacing — honest burn-rate (gated; refuses misleading single-channel pacing). */}
+          <PacingWidget />
+
           {/* 4 stat cards - responsive: 1 col mobile, 2 col tablet, 4 col desktop */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
         <StatCard
