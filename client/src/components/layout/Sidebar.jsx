@@ -157,15 +157,6 @@ export default function Sidebar({
   const [notifOpen, setNotifOpen] = useState(false);
   const [cmdkOpen, setCmdkOpen] = useState(false);
 
-  // Live countdown timer (60 seconds loop)
-  const [countdown, setCountdown] = useState(47);
-  useEffect(() => {
-    const id = setInterval(() => {
-      setCountdown((s) => (s <= 1 ? 60 : s - 1));
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-
   // Keyboard shortcuts
   useEffect(() => {
     const onKey = (e) => {
@@ -417,7 +408,7 @@ export default function Sidebar({
 
       {/* ── RADAR STRIP (live countdown + alert pulse) ─────── */}
       {!collapsed && (
-        <RadarStrip countdown={countdown} hasHighAlerts={alertCount > 0} />
+        <RadarStrip hasHighAlerts={alertCount > 0} />
       )}
 
       {/* ── FOOTER with online status ──────────────────────── */}
