@@ -2,8 +2,6 @@ import { useState, useEffect, useMemo } from 'react';
 
 export default function ActivityTicker({ radarAlerts, history, summary }) {
   const [pulseIdx, setPulseIdx]       = useState(0);
-  const [confidence, setConfidence]   = useState(87);
-  const [scanCount, setScanCount]     = useState(0);
 
   // Generate personalized insights from real campaign data
   const insights = useMemo(() => {
@@ -82,20 +80,6 @@ export default function ActivityTicker({ radarAlerts, history, summary }) {
     return () => clearInterval(id);
   }, [insights.length]);
 
-  // Drift confidence ±1 every 8s — subtle AI "thinking" feel
-  useEffect(() => {
-    const id = setInterval(() => {
-      setConfidence(c => Math.min(99, Math.max(72, c + (Math.random() > 0.5 ? 1 : -1))));
-    }, 8000);
-    return () => clearInterval(id);
-  }, []);
-
-  // Increment scan count every 30s — "monitoring" feel
-  useEffect(() => {
-    const id = setInterval(() => setScanCount(n => n + 1), 30000);
-    return () => clearInterval(id);
-  }, []);
-
   const currentInsight = insights[pulseIdx] || insights[0];
   const hasAlerts = radarAlerts.length > 0;
 
@@ -111,13 +95,10 @@ export default function ActivityTicker({ radarAlerts, history, summary }) {
           <span className="font-mono text-xs text-dark-soft">
             {hasAlerts
               ? `${radarAlerts.length} alert${radarAlerts.length > 1 ? 's' : ''} active`
-              : `System monitoring · scan #${scanCount + 1}`}
+              : 'System monitoring'}
           </span>
         </div>
         <div className="flex items-center gap-4">
-          <span className="font-mono text-xs text-dark-soft/60">
-            Confidence <span className="text-dark-base font-semibold">{confidence}%</span>
-          </span>
           <span className="font-mono text-xs text-lumi-gold font-semibold">LIVE</span>
         </div>
       </div>

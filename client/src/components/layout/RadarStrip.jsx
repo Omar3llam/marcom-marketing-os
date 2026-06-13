@@ -1,24 +1,23 @@
 // ============================================================
 // MARCOM / Lumi — Radar Strip
 // ------------------------------------------------------------
-// Live countdown + alert pulse indicator
-// Displayed at bottom of sidebar navigation (above footer)
+// Honest monitoring status + alert pulse indicator.
+// Displayed at bottom of sidebar navigation (above footer).
+// NOTE: previously rendered a fabricated "Next sweep" countdown
+// (a hardcoded 47s UI timer with no real schedule behind it).
+// Removed — we don't have a real next-sweep timestamp wired, so
+// we show an honest status instead of a fake ticking clock.
 // ============================================================
 import { Radar } from 'lucide-react';
 
-export default function RadarStrip({ countdown, hasHighAlerts }) {
-  // Format countdown (seconds to M:SS)
-  const minutes = Math.floor(countdown / 60);
-  const seconds = countdown % 60;
-  const countdownStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
+export default function RadarStrip({ hasHighAlerts }) {
   return (
     <div className="px-3 py-2 border-t border-lumi-border/50">
       <div className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-lumi-elevated/60 border border-lumi-border/70">
         <div className="flex items-center gap-2">
           <Radar className="w-3.5 h-3.5 text-lumi-accent" strokeWidth={1.5} />
           <span className="font-mono text-[10px] text-lumi-muted">
-            Next sweep
+            Radar
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -31,8 +30,8 @@ export default function RadarStrip({ countdown, hasHighAlerts }) {
               }}
             />
           )}
-          <span className="font-mono text-[11px] font-semibold text-lumi-text tabular-nums">
-            {countdownStr}
+          <span className="font-mono text-[11px] font-semibold text-lumi-text">
+            {hasHighAlerts ? 'Alerts active' : 'Monitoring'}
           </span>
         </div>
       </div>
