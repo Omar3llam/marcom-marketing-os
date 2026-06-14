@@ -25,6 +25,7 @@ import cors                 from 'cors';
 import path from 'path';
 import { firebaseAuthMiddleware, requireAuth } from './middleware/firebaseAuth.js';
 import { validateWebhook, captureRawBody } from './middleware/validateWebhook.js';
+import { dedupeWebhookEvent } from './middleware/webhookDedup.js';
 import { apiLimiter, chatLimiter }          from './middleware/rateLimit.js';
 import { errorHandler }     from './middleware/errorHandler.js';
 import { masterRouter }     from './routes/master.js';
@@ -50,6 +51,7 @@ import { observabilityRouter } from './routes/observability/index.js';
 import { userRouter }         from './routes/user.js';
 import { logger }             from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
+import { getFirebaseAdminReadiness } from './utils/firebaseAdmin.js';
 import { ensureChatSessionSchema } from './models/chatSession.js';
 import { ensureUserContextSchema } from './models/userContext.js';
 import { ensureProjectSchema }     from './models/project.js';
@@ -72,6 +74,10 @@ const _allowedOrigins = [
   ...config.allowedOrigins,
   process.env.RENDER_EXTERNAL_URL,   // auto-populated on Render
 ].filter(Boolean);
+
+if (config.nodeEnv === 'production' && _allowedOrigins.length === 0) {
+  logger.warn('[cors] No production origins configured; browser clients will be rejected by CORS.');
+}
 
 app.use(cors({
   origin: (origin, cb) => {
@@ -153,7 +159,12 @@ if (config.nodeEnv !== 'production') {
 // Lightweight, no DB call. Required for render.yaml
 // `healthCheckPath: /api/health`.
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  const firebaseAdmin = getFirebaseAdminReadiness();
+  res.status(firebaseAdmin.ok ? 200 : 503).json({
+    status: firebaseAdmin.ok ? 'ok' : 'degraded',
+    firebaseAdmin: firebaseAdmin.status,
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // ── HEALTH CHECK (public, queries DB) ────────────────────────
@@ -167,11 +178,15 @@ app.get('/health', async (req, res) => {
     }
   } catch { /* DB may not be configured in dev */ }
 
-  res.status(dbOk ? 200 : 503).json({
-    status: dbOk ? 'ok' : 'degraded',
+  const firebaseAdmin = getFirebaseAdminReadiness();
+  const ok = dbOk && firebaseAdmin.ok;
+
+  res.status(ok ? 200 : 503).json({
+    status: ok ? 'ok' : 'degraded',
     system: 'MARCOM',
     version: '4.0.0',
     db: dbOk,
+    firebaseAdmin: firebaseAdmin.status,
     timestamp: new Date().toISOString(),
     environment: config.nodeEnv,
   });
@@ -184,6 +199,7 @@ app.get('/health', async (req, res) => {
 app.use('/webhook',
   captureRawBody,               // saves req.rawBody before body is parsed
   validateWebhook,              // HMAC-SHA256 + replay protection
+  dedupeWebhookEvent,           // optional provider event-id dedup
   express.json({ limit: '10mb' }),
   chatLimiter,
   masterRouter

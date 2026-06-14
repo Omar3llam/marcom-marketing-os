@@ -145,10 +145,6 @@ export function registerIncidentRoute(router) {
 
       return res.json({ execution, transitions, incident });
     } catch (err) {
-      if (err.code === 'FORBIDDEN') {
-        logger.warn({ executionId, workspaceId, userId }, '[ExecutionRouter] Workspace mismatch (incident)');
-        return res.status(403).json({ error: 'Access denied', code: 'FORBIDDEN' });
-      }
       logger.error('[ExecutionRouter] Incident fetch failed', {
         executionId,
         workspaceId,

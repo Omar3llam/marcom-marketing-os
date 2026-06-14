@@ -55,9 +55,7 @@ export function registerArtifactsRoute(router) {
       }
 
       if (execution.workspaceId !== workspaceId) {
-        return res.status(403).json({
-          error: 'Unauthorized: execution belongs to different workspace',
-        });
+        return res.status(404).json({ error: 'Execution not found' });
       }
 
       // Build filters
@@ -113,9 +111,7 @@ export function registerArtifactsRoute(router) {
         '[artifacts] failed to list artifacts'
       );
 
-      res.status(500).json({
-        error: error.message,
-      });
+      res.status(500).json({ error: 'Failed to list artifacts' });
     }
   });
 
@@ -138,9 +134,7 @@ export function registerArtifactsRoute(router) {
       }
 
       if (execution.workspaceId !== workspaceId) {
-        return res.status(403).json({
-          error: 'Unauthorized: execution belongs to different workspace',
-        });
+        return res.status(404).json({ error: 'Execution not found' });
       }
 
       // Query artifacts with PENDING approval
@@ -181,9 +175,7 @@ export function registerArtifactsRoute(router) {
         '[artifacts] failed to list pending approval artifacts'
       );
 
-      res.status(500).json({
-        error: error.message,
-      });
+      res.status(500).json({ error: 'Failed to list pending approval artifacts' });
     }
   });
 
@@ -209,9 +201,7 @@ export function registerArtifactsRoute(router) {
       }
 
       if (artifactMetadata.workspaceId !== workspaceId) {
-        return res.status(403).json({
-          error: 'Unauthorized: artifact belongs to different workspace',
-        });
+        return res.status(404).json({ error: 'Artifact not found' });
       }
 
       // Fetch full content from storage adapter
@@ -265,9 +255,7 @@ export function registerArtifactsRoute(router) {
         '[artifacts] failed to retrieve artifact'
       );
 
-      res.status(500).json({
-        error: error.message,
-      });
+      res.status(500).json({ error: 'Failed to retrieve artifact' });
     }
   });
 }

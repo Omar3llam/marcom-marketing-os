@@ -20,6 +20,10 @@ rollbackRouter.post('/:actionId', async (req, res) => {
   if (!req.userId) {
     return res.status(401).json({ error: 'Unauthenticated' });
   }
+  if (req.userRole !== 'ADMIN') {
+    logger.warn({ actionId, userId: req.userId, userRole: req.userRole }, '[lumi/rollback] forbidden');
+    return res.status(403).json({ error: 'Forbidden' });
+  }
 
   try {
     // Resolve Prisma User record — AuditLog.userId expects User.id (UUID), not Firebase uid
@@ -117,7 +121,7 @@ rollbackRouter.post('/:actionId', async (req, res) => {
 
   } catch (err) {
     logger.error({ err: err.message, actionId, userId: req.userId }, '[lumi/rollback] failed');
-    return res.status(500).json({ error: 'RollbackFailed', message: err.message });
+    return res.status(500).json({ error: 'RollbackFailed', message: 'Request failed' });
   }
 });
 

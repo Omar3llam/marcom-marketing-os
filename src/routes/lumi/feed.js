@@ -359,7 +359,7 @@ feedRouter.get('/feed', async (req, res) => {
     });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/feed] failed');
-    return res.status(500).json({ error: 'FeedUnavailable', message: err.message });
+    return res.status(500).json({ error: 'FeedUnavailable', message: 'Request failed' });
   }
 });
 

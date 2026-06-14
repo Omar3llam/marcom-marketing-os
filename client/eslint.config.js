@@ -48,6 +48,23 @@ export default [
       // ── DESIGN SYSTEM ENFORCEMENT ─────────────────────
       // Enforces: every color must be a semantic token
       'marcom-ds/no-generic-tailwind': 'error',
+      'no-restricted-properties': ['error',
+        {
+          object: 'console',
+          property: 'log',
+          message: 'Do not use console.log in client code. Use telemetry or console.warn/error for actionable failures.',
+        },
+        {
+          object: 'console',
+          property: 'info',
+          message: 'Do not use console.info in client code. Use telemetry or console.warn/error for actionable failures.',
+        },
+        {
+          object: 'console',
+          property: 'debug',
+          message: 'Do not use console.debug in client code. Use telemetry or console.warn/error for actionable failures.',
+        },
+      ],
     },
 
     settings: {

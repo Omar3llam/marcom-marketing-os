@@ -50,7 +50,7 @@ testingRouter.get('/tests', async (req, res) => {
     return res.json({ workspaceId: wsId, generatedAt: new Date().toISOString(), agenda, experiments });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/testing] list failed');
-    return res.status(500).json({ error: 'TestsUnavailable', message: err.message });
+    return res.status(500).json({ error: 'TestsUnavailable', message: 'Request failed' });
   }
 });
 
@@ -69,7 +69,7 @@ testingRouter.post('/tests', async (req, res) => {
     return res.status(201).json({ workspaceId: wsId, ...result });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/testing] commit failed');
-    return res.status(500).json({ error: 'TestCommitFailed', message: err.message });
+    return res.status(500).json({ error: 'TestCommitFailed', message: 'Request failed' });
   }
 });
 
@@ -84,7 +84,7 @@ testingRouter.post('/tests/:id/start', async (req, res) => {
     return res.json({ workspaceId: wsId, test });
   } catch (err) {
     logger.error({ err: err.message, wsId, testId: req.params.id }, '[lumi/testing] start failed');
-    return res.status(500).json({ error: 'TestStartFailed', message: err.message });
+    return res.status(500).json({ error: 'TestStartFailed', message: 'Request failed' });
   }
 });
 
@@ -103,7 +103,7 @@ testingRouter.post('/tests/:id/metrics', async (req, res) => {
     return res.json({ workspaceId: wsId, ...result });
   } catch (err) {
     logger.error({ err: err.message, wsId, testId: req.params.id }, '[lumi/testing] metrics failed');
-    return res.status(500).json({ error: 'TestMetricsFailed', message: err.message });
+    return res.status(500).json({ error: 'TestMetricsFailed', message: 'Request failed' });
   }
 });
 
@@ -123,6 +123,6 @@ testingRouter.post('/tests/:id/conclude', async (req, res) => {
     return res.json({ workspaceId: wsId, ...result });
   } catch (err) {
     logger.error({ err: err.message, wsId, testId: req.params.id }, '[lumi/testing] conclude failed');
-    return res.status(500).json({ error: 'TestConcludeFailed', message: err.message });
+    return res.status(500).json({ error: 'TestConcludeFailed', message: 'Request failed' });
   }
 });

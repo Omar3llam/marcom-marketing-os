@@ -198,7 +198,7 @@ masterRouter.post('/chat', validate(chatSchema), async (req, res) => {
   } catch (err) {
     logger.error({ err, userId }, 'Master router error');
     sendErrorAlert({ error: err.message, sessionId: req.body?.session_id || 'unknown', mode: 'master-router' })
-      .catch(() => {});
+      .catch((alertErr) => logger.warn({ err: alertErr.message, userId }, 'Error alert email failed'));
     return res.status(500).json({
       status: 'error',
       message: 'A system error occurred. Please try again.',

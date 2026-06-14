@@ -311,7 +311,7 @@ describe('Artifact Retrieval API — PR #35', () => {
       expect(response.body.error).toContain('Execution not found');
     });
 
-    it('should return 403 for execution in different workspace', async () => {
+    it('should return 404 for execution in different workspace', async () => {
       prisma.executionRequest.findUnique.mockResolvedValue({
         id: 'other-execution',
         workspaceId: otherWorkspaceId,
@@ -319,9 +319,9 @@ describe('Artifact Retrieval API — PR #35', () => {
 
       const response = await request(app)
         .get('/api/execute/other-execution/artifacts')
-        .expect(403);
+        .expect(404);
 
-      expect(response.body.error).toContain('Unauthorized');
+      expect(response.body.error).toContain('Execution not found');
     });
   });
 });

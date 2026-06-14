@@ -10,8 +10,7 @@
  *
  * const result = MetricSchema.safeParse(payload);
  * if (result.success) {
- *   console.log(result.data.metric); // 'CPC'
- *   console.log(result.data.status); // 'danger' | 'warning' | 'neutral' | 'positive'
+ *   useMetric(result.data);
  * }
  * ```
  */

@@ -5,11 +5,11 @@
 // All routes require Firebase JWT authentication via requireAuth middleware.
 // ============================================================
 import { Router } from 'express';
-import admin from '../utils/firebaseAdmin.js';
+import { requireFirebaseAdminReady } from '../utils/firebaseAdmin.js';
 import { logger } from '../utils/logger.js';
 import { prisma } from '../lib/prisma.js';
 
-const auth = admin.auth();
+const getAuth = () => requireFirebaseAdminReady().auth();
 // NOTE: This project uses Prisma/PostgreSQL — do NOT add admin.firestore() here.
 // Firestore is not initialised and will throw on any .collection() call.
 
@@ -118,7 +118,7 @@ userRouter.patch('/profile', async (req, res) => {
     }
 
     // Update Firebase Auth display name (source of truth for auth)
-    await auth.updateUser(uid, { displayName: trimmed });
+    await getAuth().updateUser(uid, { displayName: trimmed });
 
     // Prisma doesn't store displayName separately — Firebase Auth is the source.
     // Log and return success; the client reads displayName from the Firebase token.
@@ -225,7 +225,7 @@ userRouter.delete('/account', async (req, res) => {
       logger.info('[userRouter] User not found in Prisma — attempting Firebase Auth cleanup only');
       // User might be in Firebase Auth but not in database
       try {
-        await auth.deleteUser(uid);
+        await getAuth().deleteUser(uid);
         logger.info('[userRouter] Firebase Auth user deleted (no Prisma record)');
       } catch (authErr) {
         if (authErr.code === 'auth/user-not-found') {
@@ -265,7 +265,7 @@ userRouter.delete('/account', async (req, res) => {
     // ✅ Step 3: Delete Firebase Auth user LAST
     // This invalidates all tokens, so do it after database cleanup
     try {
-      await auth.deleteUser(uid);
+      await getAuth().deleteUser(uid);
       logger.info('[userRouter] Firebase Auth user deleted:', { uid });
     } catch (authErr) {
       // If auth user already deleted, treat as success (idempotent)
@@ -302,7 +302,7 @@ userRouter.delete('/account', async (req, res) => {
       logger.info('[userRouter] Record already deleted — treating as success');
       // Attempt Firebase Auth cleanup
       try {
-        await auth.deleteUser(req.user?.uid);
+        await getAuth().deleteUser(req.user?.uid);
       } catch {
         // Ignore errors
       }

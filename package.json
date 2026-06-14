@@ -47,6 +47,7 @@
     "cors": "^2.8.5",
     "csv-parse": "^6.2.1",
     "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
     "express": "^4.19.2",
     "express-rate-limit": "^7.4.0",
     "facebook-nodejs-business-sdk": "^24.0.1",
@@ -65,8 +66,7 @@
     "postgres": "^3.4.0",
     "redis": "^4.7.1",
     "uuid": "^10.0.0",
-    "xlsx": "^0.18.5",
-    "zod": "^3.23.0"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

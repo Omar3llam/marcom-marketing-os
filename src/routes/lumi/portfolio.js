@@ -57,7 +57,7 @@ portfolioRouter.get('/portfolio', async (req, res) => {
     return res.json({ workspaceId: wsId, generatedAt: new Date().toISOString(), ...view });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/portfolio] failed');
-    return res.status(500).json({ error: 'PortfolioUnavailable', message: err.message });
+    return res.status(500).json({ error: 'PortfolioUnavailable', message: 'Request failed' });
   }
 });
 
@@ -80,7 +80,7 @@ portfolioRouter.get('/blended', async (req, res) => {
     return res.json({ workspaceId: wsId, generatedAt: new Date().toISOString(), ...truth });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/portfolio] blended truth failed');
-    return res.status(500).json({ error: 'BlendedTruthUnavailable', message: err.message });
+    return res.status(500).json({ error: 'BlendedTruthUnavailable', message: 'Request failed' });
   }
 });
 
@@ -100,7 +100,7 @@ portfolioRouter.post('/portfolio/allocate', async (req, res) => {
     return res.json({ workspaceId: wsId, plan });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/portfolio] allocate preview failed');
-    return res.status(500).json({ error: 'AllocationFailed', message: err.message });
+    return res.status(500).json({ error: 'AllocationFailed', message: 'Request failed' });
   }
 });
 
@@ -123,6 +123,6 @@ portfolioRouter.post('/portfolio/allocate/commit', async (req, res) => {
     return res.status(201).json({ workspaceId: wsId, planId, decisionsCreated, plan });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/portfolio] allocate commit failed');
-    return res.status(500).json({ error: 'AllocationCommitFailed', message: err.message });
+    return res.status(500).json({ error: 'AllocationCommitFailed', message: 'Request failed' });
   }
 });

@@ -27,12 +27,17 @@ export async function dbAvailable() {
     const probe = prisma.workspace
       .findFirst({ select: { id: true, networkConsent: true } })
       .then(() => true)
-      .catch(() => false);
+      .catch((err) => {
+        console.warn('[dbProbe] database probe failed:', err.message);
+        return false;
+      });
     cached = await Promise.race([probe, timeout]);
   } catch {
     cached = false;
   } finally {
-    await prisma.$disconnect().catch(() => {});
+    await prisma.$disconnect().catch((err) => {
+      console.warn('[dbProbe] failed to disconnect:', err.message);
+    });
   }
   if (!cached) {
     console.warn('[dbProbe] no migrated database reachable — DB integration suites will skip.');

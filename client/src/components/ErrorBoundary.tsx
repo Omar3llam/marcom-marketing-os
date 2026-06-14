@@ -187,7 +187,7 @@ function DefaultErrorFallback({ error, onReset }: { error: Error | null; onReset
             Try again
           </button>
           <button
-            onClick={() => (window.location.href = '/app/feed')}
+            onClick={() => (window.location.href = '/app/decisions')}
             style={{
               padding: 'var(--spacing-sm) var(--spacing-lg)',
               background: 'transparent',

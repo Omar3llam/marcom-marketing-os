@@ -76,7 +76,6 @@ export function useDecisionFeed() {
     onMessage: (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log('[DecisionFeed] SSE message:', data);
         if (data.type === 'EXECUTION_STATUS') {
           const { status, error, timestamp, actionType, targetId } = data;
           updateExecutionStatus(status, error, timestamp);
@@ -113,7 +112,7 @@ export function useDecisionFeed() {
       dispatch({ type: 'SSE_DISCONNECTED' });
     }
     if (sseMetrics.reconnectAttempts > 0) {
-      console.log('[DecisionFeed] SSE metrics:', { state: sseState, attempts: sseMetrics.reconnectAttempts, downtime: sseMetrics.downtime, totalMessages: sseMetrics.totalMessages });
+      // Metrics are exposed through useSSE; avoid emitting client logs for routine reconnects.
     }
   }, [sseState, sseMetrics, state.isProcessing, dispatch]);
 
@@ -178,7 +177,9 @@ export function useDecisionFeed() {
       campaignId:        state.outputData?.campaignId ?? state.inputData?.campaignId ?? 'unknown',
       actionType:        state.outputData?.verdict ?? 'UNKNOWN',
       decisionRationale: state.outputData?.whyBreakdown?.[0] ?? state.outputData?.why ?? '',
-    }).catch(() => {});
+    }).catch((err) => {
+      console.warn('[DecisionFeed] Failed to record decision', err);
+    });
     const t = setTimeout(() => { commitToMemory(); refresh(); }, 500);
     return () => clearTimeout(t);
   }, [state.view, state.outputData, state.inputData, commitToMemory, recordDecision, refresh]);

@@ -175,7 +175,7 @@ export function useSSE(options: UseSSEOptions): UseSSEResult {
  * function ExecutionMonitor({ actionId }) {
  *   const { status, error, isConnected } = useExecutionStream({
  *     onStatusUpdate: (status, error) => {
- *       console.log('Status:', status, error);
+ *       updateStatus(status, error);
  *     },
  *   });
  *

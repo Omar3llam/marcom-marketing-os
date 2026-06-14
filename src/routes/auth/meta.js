@@ -75,26 +75,39 @@ function parseState(stateB64) {
 // Returns OAuth URL as JSON for frontend to redirect to.
 // This allows the frontend to make an authenticated API call via axios,
 // then redirect to the returned URL (avoiding the need to pass tokens in query strings).
-authMetaRouter.get('/connect', requireAuth, (req, res) => {
+authMetaRouter.get('/connect', requireAuth, (req, res, next) => {
   const userId    = req.userId;
   const projectId = req.query.projectId;
 
-  if (!projectId) {
-    return res.status(400).json({ error: 'Missing projectId query parameter.' });
-  }
-  if (!APP_ID()) {
-    return res.status(503).json({ error: 'META_APP_ID is not configured on this server.' });
-  }
+  try {
+    if (!projectId) {
+      logger.warn({ userId }, '[meta-auth] connect rejected: missing projectId');
+      return res.status(400).json({ error: 'Missing projectId query parameter.' });
+    }
+    if (!APP_ID()) {
+      logger.error({ userId, projectId }, '[meta-auth] connect unavailable: META_APP_ID missing');
+      return res.status(503).json({ error: 'META_APP_ID is not configured on this server.' });
+    }
 
-  const state = buildState(userId, projectId);
-  const oauthUrl = `https://www.facebook.com/${API_VERSION}/dialog/oauth`
-    + `?client_id=${encodeURIComponent(APP_ID())}`
-    + `&redirect_uri=${encodeURIComponent(REDIRECT_URI())}`
-    + `&scope=${encodeURIComponent(SCOPES)}`
-    + `&state=${encodeURIComponent(state)}`;
+    const state = buildState(userId, projectId);
+    const oauthUrl = `https://www.facebook.com/${API_VERSION}/dialog/oauth`
+      + `?client_id=${encodeURIComponent(APP_ID())}`
+      + `&redirect_uri=${encodeURIComponent(REDIRECT_URI())}`
+      + `&scope=${encodeURIComponent(SCOPES)}`
+      + `&state=${encodeURIComponent(state)}`;
 
-  logger.info({ userId, projectId }, '[meta-auth] Generated Meta OAuth URL');
-  return res.json({ oauthUrl });
+    logger.info({ userId, projectId }, '[meta-auth] Generated Meta OAuth URL');
+    return res.json({ oauthUrl });
+  } catch (err) {
+    logger.error({
+      err: err.message,
+      stack: err.stack,
+      userId,
+      projectId,
+      path: req.path,
+    }, '[meta-auth] connect failed unexpectedly');
+    return next(err);
+  }
 });
 
 // ── CALLBACK  GET /api/auth/meta/callback ────────────────────

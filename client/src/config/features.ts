@@ -44,6 +44,24 @@ export interface FeatureFlags {
   /** New navigation with FSM state awareness */
   newNavigation: boolean;
 
+  /** Canonical Overview rebuild route */
+  newOverview: boolean;
+
+  /** Canonical Campaigns rebuild route */
+  newCampaigns: boolean;
+
+  /** Intelligence group rebuild: Blended Truth, Insights, Proof */
+  newIntelligence: boolean;
+
+  /** Settings rebuild and integrations migration */
+  newSettings: boolean;
+
+  /** Content Lab rebuild after core dependencies settle */
+  newContentLab: boolean;
+
+  /** Copilot route/readiness flag; nav slot remains reserved */
+  copilotEnabled: boolean;
+
   // ── Infrastructure ─────────────────────────────────────────
   /** Enable side-by-side comparison harness (dev only) */
   comparisonHarness: boolean;
@@ -61,6 +79,12 @@ const defaultFlags: FeatureFlags = {
   newExecutionFlow: false,
   newPrimitives: false,
   newNavigation: false,
+  newOverview: false,
+  newCampaigns: false,
+  newIntelligence: false,
+  newSettings: false,
+  newContentLab: false,
+  copilotEnabled: false,
   comparisonHarness: false,
   telemetry: false,
 };
@@ -95,7 +119,6 @@ export function enableFeature(flag: keyof FeatureFlags) {
   const current = loadFlagsFromStorage();
   current[flag] = true;
   localStorage.setItem('features', JSON.stringify(current));
-  console.info(`[features] Enabled: ${flag} — reload to apply`);
 }
 
 // ── Dev helper: disable flag programmatically ───────────────
@@ -103,23 +126,11 @@ export function disableFeature(flag: keyof FeatureFlags) {
   const current = loadFlagsFromStorage();
   current[flag] = false;
   localStorage.setItem('features', JSON.stringify(current));
-  console.info(`[features] Disabled: ${flag} — reload to apply`);
 }
 
 // ── Dev helper: reset all flags to defaults ─────────────────
 export function resetFeatures() {
   localStorage.removeItem('features');
-  console.info('[features] Reset to defaults — reload to apply');
-}
-
-// ── Log active flags on startup (dev visibility) ────────────
-if (import.meta.env.DEV) {
-  const active = Object.entries(features).filter(([_, v]) => v === true);
-  if (active.length > 0) {
-    console.info('[features] Active flags:', active.map(([k]) => k));
-  } else {
-    console.info('[features] All flags OFF (v1 stable)');
-  }
 }
 
 // ── Export for window access (dev console) ──────────────────

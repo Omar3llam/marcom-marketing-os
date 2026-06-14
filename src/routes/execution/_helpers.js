@@ -9,9 +9,8 @@ import { prisma } from '../../lib/prisma.js';
 
 /**
  * Workspace-isolated lookup of an execution by id.
- * Returns { execution: null } when not found.
- * Throws { code: 'FORBIDDEN' } when the execution exists but
- * belongs to a different workspace.
+ * Returns { execution: null } when not found or when the execution
+ * belongs to a different workspace. This avoids leaking ID existence.
  *
  * Used by GET /:id/transitions and GET /:id/incident.
  */
@@ -32,10 +31,6 @@ export async function loadExecutionForWorkspace(executionId, workspaceId) {
   });
 
   if (!execution) return { execution: null };
-  if (execution.workspaceId !== workspaceId) {
-    const err = new Error('Workspace mismatch');
-    err.code = 'FORBIDDEN';
-    throw err;
-  }
+  if (execution.workspaceId !== workspaceId) return { execution: null };
   return { execution };
 }

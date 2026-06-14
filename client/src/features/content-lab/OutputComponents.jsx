@@ -26,29 +26,26 @@ export function OutputEmpty() {
 }
 
 // ── Generating state ─────────────────────────────────────────
-export function OutputGenerating({ progress }) {
+export function OutputGenerating() {
   const steps = ['Reading diagnosis', 'Loading brand voice', 'Drafting copy', 'Composing visuals', 'Pressure-testing'];
-  const activeIdx = Math.min(steps.length - 1, Math.floor((progress / 100) * steps.length));
 
   return (
     <div className="bg-surface-card border border-surface-border rounded-xl p-8 min-h-[480px] flex flex-col items-center justify-center text-center shadow-card">
       <div aria-live="polite" aria-atomic="true" className="sr-only">
-        Generating content: {Math.floor(progress)}% complete. Current step: {steps[activeIdx]}
+        Generating content.
       </div>
-      <LumiLoader label="Generating" sub={`${Math.floor(progress)}%`} />
+      <LumiLoader label="Generating" sub="Working" />
       <div className="mt-7 flex flex-col gap-2">
         {steps.map((s, i) => (
           <div key={s} className="flex items-center gap-2">
             <span className="w-3.5 flex justify-center">
-              {i < activeIdx ? (
-                <Check className="w-3 h-3 text-signal-scale" strokeWidth={2} />
-              ) : i === activeIdx ? (
+              {i === 0 ? (
                 <span className="w-2 h-2 rounded-full bg-lumi-accent animate-pulse" />
               ) : (
                 <span className="w-1.5 h-1.5 rounded-full border border-dark-subtle" />
               )}
             </span>
-            <span className={`font-mono text-xs ${i <= activeIdx ? 'text-dark-base' : 'text-dark-subtle'}`}>
+            <span className={`font-mono text-xs ${i === 0 ? 'text-dark-base' : 'text-dark-subtle'}`}>
               {s}
             </span>
           </div>

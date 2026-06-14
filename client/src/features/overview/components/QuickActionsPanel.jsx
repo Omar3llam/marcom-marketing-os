@@ -1,6 +1,7 @@
 import { Zap, Upload, Send, CalendarDays, Target, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Panel from '@/components/ui/Panel.jsx';
+import { appRoutes } from '@/app/routeManifest.js';
 
 export default function QuickActionsPanel({ onUploadCSV, onStartFlow }) {
   const navigate = useNavigate();
@@ -9,7 +10,7 @@ export default function QuickActionsPanel({ onUploadCSV, onStartFlow }) {
     { key: 'upload', label: 'Upload new CSV', sub: 'Get a fresh verdict', icon: Upload, onClick: onUploadCSV },
     { key: 'content', label: 'Fix bleeding copy', sub: 'Open Content Lab', icon: Send, onClick: () => navigate('/app/content') },
     { key: 'calendar', label: 'Plan next 4 weeks', sub: 'Social Calendar', icon: CalendarDays, onClick: () => navigate('/app/tools/calendar') },
-    { key: 'growth', label: 'Find growth signal', sub: 'Open Growth board', icon: Target, onClick: () => navigate('/app/growth') },
+    { key: 'growth', label: 'Find growth signal', sub: 'Open Insights', icon: Target, onClick: () => navigate(appRoutes.insights) },
   ];
 
   return (

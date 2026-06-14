@@ -63,7 +63,7 @@ measurementRouter.get('/attribution', async (req, res) => {
     return res.json({ workspaceId: wsId, generatedAt: new Date().toISOString(), attribution: await getAttribution(wsId, { model }) });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/measurement] attribution failed');
-    return res.status(500).json({ error: 'AttributionUnavailable', message: err.message });
+    return res.status(500).json({ error: 'AttributionUnavailable', message: 'Request failed' });
   }
 });
 
@@ -76,7 +76,7 @@ measurementRouter.get('/reconciliation', async (req, res) => {
     return res.json({ workspaceId: wsId, generatedAt: new Date().toISOString(), ...(await getReconciliation(wsId)) });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/measurement] reconciliation failed');
-    return res.status(500).json({ error: 'ReconciliationUnavailable', message: err.message });
+    return res.status(500).json({ error: 'ReconciliationUnavailable', message: 'Request failed' });
   }
 });
 
@@ -90,7 +90,7 @@ measurementRouter.get('/incrementality', async (req, res) => {
     return res.json({ workspaceId: wsId, tests: await listTests(wsId) });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/measurement] incrementality list failed');
-    return res.status(500).json({ error: 'IncrementalityUnavailable', message: err.message });
+    return res.status(500).json({ error: 'IncrementalityUnavailable', message: 'Request failed' });
   }
 });
 
@@ -107,7 +107,7 @@ measurementRouter.post('/incrementality', async (req, res) => {
     const bad = /baselineCvr|mde|dailyEligible|required/i.test(err.message);
     if (bad) return res.status(400).json({ error: 'BadHoldout', message: err.message });
     logger.error({ err: err.message, wsId }, '[lumi/measurement] holdout design failed');
-    return res.status(500).json({ error: 'HoldoutDesignFailed', message: err.message });
+    return res.status(500).json({ error: 'HoldoutDesignFailed', message: 'Request failed' });
   }
 });
 
@@ -123,7 +123,7 @@ measurementRouter.post('/incrementality/:id/conclude', async (req, res) => {
   } catch (err) {
     if (/not found/i.test(err.message)) return res.status(404).json({ error: 'HoldoutNotFound', message: err.message });
     logger.error({ err: err.message, wsId }, '[lumi/measurement] conclude failed');
-    return res.status(500).json({ error: 'ConcludeFailed', message: err.message });
+    return res.status(500).json({ error: 'ConcludeFailed', message: 'Request failed' });
   }
 });
 
@@ -136,6 +136,6 @@ measurementRouter.get('/incrementality/:id', async (req, res) => {
     return res.json({ workspaceId: wsId, test });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/measurement] get holdout failed');
-    return res.status(500).json({ error: 'IncrementalityUnavailable', message: err.message });
+    return res.status(500).json({ error: 'IncrementalityUnavailable', message: 'Request failed' });
   }
 });

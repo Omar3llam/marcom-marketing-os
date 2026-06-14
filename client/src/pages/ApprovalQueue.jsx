@@ -27,6 +27,7 @@ import { ArtifactCard } from '../components/approval/ArtifactCard.jsx';
 import { ApprovalForm } from '../components/approval/ApprovalForm.jsx';
 import { useArtifactApproval } from '../hooks/useArtifactApproval.js';
 import { cn } from '../lib/utils';
+import { appRoutes } from '../app/routeManifest.js';
 
 /**
  * Approval queue page component.
@@ -50,16 +51,14 @@ export default function ApprovalQueue() {
   // ── Handle decision submission ────────────────────────────
   const handleSubmit = async () => {
     try {
-      const result = await submitDecisions();
-
-      console.log('[ApprovalQueue] Decisions submitted:', result);
+      await submitDecisions();
 
       // Show success message and redirect
       // TODO: Replace alert with toast notification
       alert(`Execution resumed successfully!\n\nStatus: ${result.status}\nRe-executed: ${result.reExecuted}`);
 
       // Redirect to execution view or feed
-      navigate('/app/feed');
+      navigate(appRoutes.decisions);
     } catch (err) {
       console.error('[ApprovalQueue] Failed to submit decisions:', err);
       // Error already set in hook state
@@ -110,7 +109,7 @@ export default function ApprovalQueue() {
           All artifacts have been reviewed for this execution.
         </Text>
         <button
-          onClick={() => navigate('/app/feed')}
+          onClick={() => navigate(appRoutes.decisions)}
           className="mt-4 px-4 py-2 bg-brand-gold text-surface-dark rounded-lg font-medium hover:bg-brand-gold/90"
         >
           Back to Feed

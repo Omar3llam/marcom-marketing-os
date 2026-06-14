@@ -37,7 +37,7 @@ export function registerCheckpointRoute(router) {
       }
 
       if (execution.workspaceId !== workspaceId) {
-        return res.status(403).json({ error: 'Unauthorized: execution belongs to different workspace' });
+        return res.status(404).json({ error: 'Execution not found' });
       }
 
       // Get latest checkpoint
@@ -72,9 +72,7 @@ export function registerCheckpointRoute(router) {
         userId: req.user?.uid,
       }, '[execution/checkpoint] get checkpoint status failed');
 
-      res.status(500).json({
-        error: error.message,
-      });
+      res.status(500).json({ error: 'Failed to retrieve checkpoint' });
     }
   });
 
@@ -115,9 +113,7 @@ export function registerCheckpointRoute(router) {
         userId: req.user?.uid,
       }, '[execution/checkpoint] get paused executions failed');
 
-      res.status(500).json({
-        error: error.message,
-      });
+      res.status(500).json({ error: 'Failed to retrieve paused executions' });
     }
   });
 }

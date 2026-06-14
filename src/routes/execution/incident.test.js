@@ -164,7 +164,7 @@ describe('GET /api/execute/:id/incident', () => {
     expect(response.body.transitions).toHaveLength(1);
   });
 
-  it('should return 403 on workspace mismatch', async () => {
+  it('should return 404 on workspace mismatch', async () => {
     prisma.executionRequest.findUnique.mockResolvedValue({
       id: executionId,
       workspaceId: 'someone-else',
@@ -176,8 +176,8 @@ describe('GET /api/execute/:id/incident', () => {
 
     const response = await request(app)
       .get(`/api/execute/${executionId}/incident`)
-      .expect(403);
+      .expect(404);
 
-    expect(response.body.code).toBe('FORBIDDEN');
+    expect(response.body.code).toBe('NOT_FOUND');
   });
 });

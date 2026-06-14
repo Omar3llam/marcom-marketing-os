@@ -13,7 +13,7 @@
 import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
-import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import { parseMetaAdsCsv } from '../services/metaAdsParser.js';
 
 // pdf-parse is CommonJS, need to require it
@@ -35,8 +35,10 @@ export async function parseUploadedFile(file) {
       return await parseCsvFile(file);
 
     case '.xlsx':
-    case '.xls':
       return await parseExcelFile(buffer, file.originalname);
+
+    case '.xls':
+      throw new Error('Legacy .xls files are not supported. Please upload .xlsx or CSV.');
 
     case '.pdf':
       return await parsePdfFile(buffer, file.originalname);
@@ -48,7 +50,7 @@ export async function parseUploadedFile(file) {
       // Fallback: try to read as text
       try {
         return parseTextFile(buffer, file.originalname);
-      } catch (_err) {
+      } catch {
         throw new Error(`Unsupported file format: ${ext}`);
       }
   }
@@ -72,12 +74,35 @@ async function parseCsvFile(file) {
 
 // ── Excel Parser ─────────────────────────────────────────────
 async function parseExcelFile(buffer, _filename) {
-  const workbook = XLSX.read(buffer, { type: 'buffer' });
-  const sheetName = workbook.SheetNames[0]; // Use first sheet
-  const sheet = workbook.Sheets[sheetName];
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+  const sheet = workbook.worksheets[0];
 
-  // Convert to JSON (array of objects, using first row as headers)
-  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  if (!sheet) {
+    throw new Error('Excel workbook does not contain any sheets');
+  }
+
+  const sheetName = sheet.name;
+  const headers = [];
+  sheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
+    headers[colNumber - 1] = String(cell.value ?? '').trim();
+  });
+
+  const rows = [];
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const record = {};
+    let hasValue = false;
+
+    headers.forEach((header, index) => {
+      if (!header) return;
+      const value = normalizeExcelCellValue(row.getCell(index + 1).value);
+      if (value !== '') hasValue = true;
+      record[header] = value;
+    });
+
+    if (hasValue || Object.keys(record).length > 0) rows.push(record);
+  });
 
   // Try to detect if this is campaign data by looking for common columns
   const hasCommonColumns = rows.length > 0 && (
@@ -96,6 +121,18 @@ async function parseExcelFile(buffer, _filename) {
     rowCount: rows.length,
     sheetName,
   };
+}
+
+function normalizeExcelCellValue(value) {
+  if (value == null) return '';
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object') {
+    if ('text' in value) return value.text ?? '';
+    if ('result' in value) return value.result ?? '';
+    if ('richText' in value) return value.richText.map(part => part.text).join('');
+    if ('hyperlink' in value && 'text' in value) return value.text ?? value.hyperlink;
+  }
+  return value;
 }
 
 // ── PDF Parser ───────────────────────────────────────────────

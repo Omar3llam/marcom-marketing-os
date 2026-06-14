@@ -37,19 +37,10 @@ export const api = axios.create({
 api.interceptors.request.use(
   async (config) => {
     try {
-      // DEBUG: Log auth state before getting token
-      console.log('[api] Request interceptor:', {
-        url: config.url,
-        authDefined: !!auth,
-        currentUserDefined: !!auth.currentUser,
-        currentUserEmail: auth.currentUser?.email,
-      });
-
       // getIdToken() returns cached token if valid, refreshes if near-expiry
       const token = await auth.currentUser?.getIdToken();
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-        console.log('[api] Token attached:', token.slice(0, 20) + '...');
       } else {
         console.warn('[api] No token available - auth.currentUser is null');
       }

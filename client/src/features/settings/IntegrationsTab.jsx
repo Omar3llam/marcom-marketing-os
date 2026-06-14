@@ -1,8 +1,25 @@
 import { Save, Shield, Link2, Check, ChevronRight, Loader2, RefreshCw } from 'lucide-react';
 
-export function IntegrationsTab({ workspaceName, setWorkspaceName, workspaceSlug, workspaceChanged, handleSaveWorkspace, busy, metaStatus, metaExpires, metaAccountId, connectingMeta, handleMetaConnect, projectId, projectLoading }) {
+export function IntegrationsTab({
+  workspaceName,
+  setWorkspaceName,
+  workspaceSlug,
+  workspaceChanged,
+  handleSaveWorkspace,
+  busy,
+  metaStatus,
+  metaExpires,
+  metaAccountId,
+  connectingMeta,
+  handleMetaConnect,
+  projectId,
+  projectLoading,
+  showWorkspace = true,
+  showIntegrations = true,
+}) {
   return (
     <>
+      {showWorkspace && (
       <section className="bg-white rounded-xl border border-surface-border/80 p-6 mb-4 shadow-sm">
         <div className="flex items-center gap-2 mb-4">
           <Shield className="w-4 h-4 text-dark-soft" strokeWidth={2} />
@@ -49,7 +66,9 @@ export function IntegrationsTab({ workspaceName, setWorkspaceName, workspaceSlug
           )}
         </div>
       </section>
+      )}
 
+      {showIntegrations && (
       <section className="bg-white rounded-xl border border-surface-border/80 p-6 mb-4 shadow-sm">
         <div className="flex items-center gap-2 mb-4">
           <Link2 className="w-4 h-4 text-dark-soft" strokeWidth={2} />
@@ -114,6 +133,7 @@ export function IntegrationsTab({ workspaceName, setWorkspaceName, workspaceSlug
           </div>
         </div>
       </section>
+      )}
     </>
   );
 }

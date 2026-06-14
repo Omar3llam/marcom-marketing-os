@@ -56,10 +56,6 @@ export function registerTransitionsRoute(router) {
 
       return res.json({ execution, transitions });
     } catch (err) {
-      if (err.code === 'FORBIDDEN') {
-        logger.warn({ executionId, workspaceId, userId }, '[ExecutionRouter] Workspace mismatch (transitions)');
-        return res.status(403).json({ error: 'Access denied', code: 'FORBIDDEN' });
-      }
       logger.error('[ExecutionRouter] Transitions fetch failed', {
         executionId,
         workspaceId,
