@@ -27,6 +27,9 @@ async function fetchMemory(signal) {
 export function useIntelligenceData() {
   const [campaigns, setCampaigns] = useState([]);
   const [memory, setMemory] = useState({ patterns: [], narratives: [], total: 0 });
+  // Top-level feed field (Phase 2 forward signal) — fetched alongside campaigns
+  // but dropped here until now; surfaced for the Intelligence FatigueForecast.
+  const [fatiguePredictions, setFatiguePredictions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -39,6 +42,7 @@ export function useIntelligenceData() {
         fetchMemory(signal),
       ]);
       setCampaigns(feedData?.campaigns ?? []);
+      setFatiguePredictions(Array.isArray(feedData?.fatiguePredictions) ? feedData.fatiguePredictions : []);
       setMemory(memData);
     } catch (err) {
       if (axios.isCancel?.(err) || err?.name === 'CanceledError') return;
@@ -69,6 +73,7 @@ export function useIntelligenceData() {
     setCampaigns,
     summary: summarize(campaigns),
     memory,
+    fatiguePredictions,
     recordDecision,
     loading,
     error,
