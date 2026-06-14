@@ -25,8 +25,9 @@ export default function GrowthStrategyBoard() {
           status:    a.action_plan?.status === 'PENDING' ? 'ACTIVE' : 'CONCLUDED',
           title:     a.action_plan?.action || a.analysis?.root_cause || c.campaign_id,
           campaign:  c.campaign_id,
-          mode:      'MODE 3',
-          confidence: confidenceFor(a),
+          // Real signals straight off the alert — never an inferred confidence %.
+          priority:  a.priority || 'MEDIUM',
+          verdict:   a.analysis?.verdict || 'HOLD',
           conclusion: a.action_plan?.status === 'PENDING' ? null : 'Awaiting outcome data',
         });
       }
@@ -155,10 +156,15 @@ function BetCard({ bet }) {
   : bet.status === 'PAUSED'    ? 'text-signal-hold  bg-signal-hold-bg'
   :                              'text-signal-scale bg-signal-scale-bg';
 
-  const confColor =
-    bet.confidence < 40 ? 'bg-signal-kill'
-  : bet.confidence < 70 ? 'bg-signal-hold'
-  :                        'bg-signal-scale';
+  const prioColor =
+    bet.priority === 'HIGH' ? 'text-signal-kill bg-signal-kill-bg'
+  : bet.priority === 'LOW'  ? 'text-lumi-subtle bg-lumi-elevated'
+  :                           'text-signal-hold bg-signal-hold-bg';
+
+  const verdictColor =
+    bet.verdict === 'KILL'  ? 'text-signal-kill'
+  : bet.verdict === 'SCALE' ? 'text-signal-scale'
+  :                           'text-signal-hold';
 
   return (
     <article
@@ -171,22 +177,12 @@ function BetCard({ bet }) {
       <h3 className="font-display font-semibold text-sm text-lumi-text leading-snug mt-2 line-clamp-3">{bet.title}</h3>
       <p className="text-xs text-lumi-subtle mt-1 truncate">{bet.campaign}</p>
 
-      <div className="mt-4">
-        <div className="flex items-center justify-between font-mono text-xs text-lumi-muted">
-          <span>Confidence</span>
-          <span className="text-lumi-text">{bet.confidence}%</span>
-        </div>
-        <div
-          className="h-1.5 rounded-full bg-lumi-border mt-1.5 overflow-hidden"
-          role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={bet.confidence}
-          aria-label={`Confidence ${bet.confidence}%`}
-        >
-          <div className={cn('h-full', confColor)} style={{ width: `${bet.confidence}%` }} />
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between mt-3 font-mono text-xs">
-        <span className="text-lumi-subtle">{bet.mode}</span>
+      {/* Real per-alert signals — priority + verdict from the feed, not an
+          inferred confidence number. */}
+      <div className="mt-4 flex items-center gap-2 font-mono text-xs">
+        <span className={cn('uppercase px-2 py-0.5 rounded', prioColor)}>{bet.priority}</span>
+        <span className="text-lumi-subtle" aria-hidden="true">·</span>
+        <span className={cn('uppercase', verdictColor)}>{bet.verdict}</span>
       </div>
 
       {bet.conclusion && (
@@ -276,13 +272,4 @@ function EmptyMemory() {
       </p>
     </div>
   );
-}
-
-function confidenceFor(alert) {
-  const v = alert?.analysis?.verdict;
-  const p = alert?.priority;
-  let base = v === 'SCALE' ? 78 : v === 'HOLD' ? 55 : v === 'KILL' ? 90 : 50;
-  if (p === 'HIGH') base = Math.min(95, base + 8);
-  if (p === 'LOW')  base = Math.max(20, base - 12);
-  return base;
 }
