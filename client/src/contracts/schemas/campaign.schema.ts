@@ -42,12 +42,17 @@ export const CampaignStageSchema = z.enum([
  * - campaign_id: Meta campaign ID
  * - campaign_name: Human-readable campaign name (optional)
  * - stage: Current health stage
+ * - health_score: Real per-campaign health from the analysis pipeline,
+ *   normalized 0.00–1.00 (computeHealthScore over roas/ctr/frequency).
+ *   Nullable: a campaign with no score yet is null, never an inferred number.
+ *   The UI scales ×100 for display.
  * - alerts: Array of alerts/recommendations for this campaign
  */
 export const CampaignSchema = z.object({
   campaign_id: z.string().min(1, 'Campaign ID required'),
   campaign_name: z.string().optional(),
   stage: CampaignStageSchema,
+  health_score: z.number().min(0).max(1).nullable().optional(),
   alerts: z.array(AlertSchema),
 });
 

@@ -222,9 +222,11 @@ feedRouter.get('/feed', async (req, res) => {
     const ensure = (state) => {
       if (!byCampaign.has(state.campaignId)) {
         byCampaign.set(state.campaignId, {
-          campaign_id: state.campaignName || state.campaignId,
-          stage:       state.stage,
-          alerts:      [],
+          campaign_id:  state.campaignName || state.campaignId,
+          stage:        state.stage,
+          // Real persisted health (computeHealthScore, 0.00–1.00); client scales ×100. Never inferred.
+          health_score: Number.isFinite(state.healthScore) ? state.healthScore : null,
+          alerts:       [],
         });
       }
       return byCampaign.get(state.campaignId);
@@ -274,6 +276,7 @@ feedRouter.get('/feed', async (req, res) => {
         // Phase 2: multi-level drill-down + forward-looking forecast +
         // provenance (reactive analysis vs a user guardrail rule).
         source:          p.source === 'guardrail' ? 'guardrail' : 'reactive',
+        platform:        p.platform || null,   // real channel from payload; drives client filter (null = absent)
         levelVerdicts:   p.levelVerdicts || p.strategicAnalysis?.levelVerdicts || [],
         fatigueForecast: p.fatigueForecast || p.strategicAnalysis?.fatigueForecast || null,
       });
@@ -363,9 +366,8 @@ feedRouter.get('/feed', async (req, res) => {
   }
 });
 
-// Build the structured-signal rows the DecisionTheater renders.
-// CRITICAL: These metrics are extracted by useCampaignFeed.summarize() for dashboard stats.
-// Missing metrics here = $0 values in dashboard.
+// Structured-signal rows for DecisionTheater. CRITICAL: useCampaignFeed.summarize()
+// reads these for dashboard stats — a missing metric here = $0 in the dashboard.
 function signalsFromMetrics(m = {}, _stage = 'TESTING') {
   const rows = [];
   const fmtPct  = (v) => `${(Number(v) || 0).toFixed(2)}%`;
@@ -373,6 +375,8 @@ function signalsFromMetrics(m = {}, _stage = 'TESTING') {
   const fmtFreq = (v) => `${(Number(v) || 0).toFixed(2)}`;
   const fmtUsd  = (v) => `$${(Number(v) || 0).toFixed(2)}`;
   const fmtNum  = (v) => Number(v || 0).toLocaleString('en-US');
+  // Typed numeric beside the formatted string (null = absent, distinct from 0 → client renders "—").
+  const num     = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
 
   const ctrStatus  = m.ctr  >= 2 ? 'positive' : m.ctr  >= 1 ? 'warning' : 'danger';
   const roasStatus = m.roas >= 3 ? 'positive' : m.roas >= 1 ? 'warning' : 'danger';
@@ -380,18 +384,16 @@ function signalsFromMetrics(m = {}, _stage = 'TESTING') {
   const cprStatus  = m.costPerResult > 0 && m.costPerResult <= 20 ? 'positive'
                    : m.costPerResult <= 50 ? 'warning' : 'danger';
 
-  // Core performance signals (visible in DecisionTheater)
-  rows.push({ metric: 'CTR',       trend: ctrStatus  === 'danger' ? 'down' : 'up',   value: fmtPct(m.ctr),       delta: '',  context: 'Per CSV upload', status: ctrStatus  });
-  rows.push({ metric: 'ROAS',      trend: roasStatus === 'danger' ? 'down' : 'up',   value: fmtRoas(m.roas),     delta: '',  context: 'Per CSV upload', status: roasStatus });
-  rows.push({ metric: 'Frequency', trend: freqStatus === 'danger' ? 'up'   : 'flat', value: fmtFreq(m.frequency), delta: '',  context: 'Per CSV upload', status: freqStatus });
-  rows.push({ metric: 'CPA',       trend: cprStatus  === 'danger' ? 'up'   : 'flat', value: fmtUsd(m.costPerResult), delta: '', context: 'Cost per result', status: cprStatus  });
+  rows.push({ metric: 'CTR',       trend: ctrStatus  === 'danger' ? 'down' : 'up',   value: fmtPct(m.ctr),       raw: num(m.ctr),           delta: '',  context: 'Per CSV upload', status: ctrStatus  });
+  rows.push({ metric: 'ROAS',      trend: roasStatus === 'danger' ? 'down' : 'up',   value: fmtRoas(m.roas),     raw: num(m.roas),          delta: '',  context: 'Per CSV upload', status: roasStatus });
+  rows.push({ metric: 'Frequency', trend: freqStatus === 'danger' ? 'up'   : 'flat', value: fmtFreq(m.frequency), raw: num(m.frequency),    delta: '',  context: 'Per CSV upload', status: freqStatus });
+  rows.push({ metric: 'CPA',       trend: cprStatus  === 'danger' ? 'up'   : 'flat', value: fmtUsd(m.costPerResult), raw: num(m.costPerResult), delta: '', context: 'Cost per result', status: cprStatus  });
 
-  // Essential metrics for dashboard summary (useCampaignFeed.summarize extracts these)
-  // Without these, dashboard shows $0 spend, 0 impressions, etc.
-  rows.push({ metric: 'Spend',       trend: 'neutral', value: fmtUsd(m.spend),       delta: '', context: 'Total', status: 'neutral' });
-  rows.push({ metric: 'Impressions', trend: 'neutral', value: fmtNum(m.impressions), delta: '', context: 'Total', status: 'neutral' });
-  rows.push({ metric: 'Results',     trend: 'neutral', value: fmtNum(m.results),     delta: '', context: 'Total', status: 'neutral' });
-  rows.push({ metric: 'Reach',       trend: 'neutral', value: fmtNum(m.reach),       delta: '', context: 'Unique', status: 'neutral' });
+  // Essential totals the dashboard summary reads (omitting any → $0 in dashboard).
+  rows.push({ metric: 'Spend',       trend: 'neutral', value: fmtUsd(m.spend),       raw: num(m.spend),       delta: '', context: 'Total', status: 'neutral' });
+  rows.push({ metric: 'Impressions', trend: 'neutral', value: fmtNum(m.impressions), raw: num(m.impressions), delta: '', context: 'Total', status: 'neutral' });
+  rows.push({ metric: 'Results',     trend: 'neutral', value: fmtNum(m.results),     raw: num(m.results),     delta: '', context: 'Total', status: 'neutral' });
+  rows.push({ metric: 'Reach',       trend: 'neutral', value: fmtNum(m.reach),       raw: num(m.reach),       delta: '', context: 'Unique', status: 'neutral' });
 
   return rows;
 }

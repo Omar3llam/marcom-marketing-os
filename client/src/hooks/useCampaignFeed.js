@@ -17,13 +17,21 @@
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 
 // ── Helper: pull a metric value from an alert's signal rows ──
-// Matches metric names case-insensitively. Returns the numeric
-// value parsed from the formatted string, or null if absent.
+// Matches metric names case-insensitively. Prefers the typed `raw` numeric the
+// feed now emits; falls back to parsing the formatted display string (the
+// legacy/demo path, which carries no `raw`). Returns null when the metric row
+// is absent — a missing metric is null, never 0, so callers can render "—".
+//
+// DEPENDENCY: the string-parse fallback assumes `value` is a formatted number
+// (e.g. "EGP 4,200", "2.50%"). If the feed ever stops sending `raw`, this is
+// the only thing keeping the column alive — keep `raw` populated server-side.
 export function metricValue(alert, name) {
   const row = (alert?.metrics ?? []).find(
     (m) => String(m?.metric || '').toLowerCase() === name.toLowerCase(),
   );
-  if (!row?.value) return null;
+  if (!row) return null;
+  if (Number.isFinite(row.raw)) return row.raw;
+  if (row.value == null) return null;
   const n = parseFloat(String(row.value).replace(/[^0-9.\-]/g, ''));
   return Number.isFinite(n) ? n : null;
 }
@@ -41,10 +49,17 @@ export function summarize(campaigns = []) {
     health:     0,
   };
   let cpaSum = 0, cpaCount = 0;
-  let healthSum = 0, healthCount = 0;
+  let healthSum = 0, healthCount = 0;   // mean of REAL per-campaign health_score (0–1)
 
   for (const c of campaigns) {
     out.byStage[c.stage] = (out.byStage[c.stage] || 0) + 1;
+
+    // Account health = mean of the REAL per-campaign health_score the feed
+    // exposes (computeHealthScore over roas/ctr/frequency, 0.00–1.00). No
+    // verdict→number inference: a campaign with no score is simply excluded,
+    // so health traces to backing rows or reads 0 ("no score yet").
+    if (Number.isFinite(c.health_score)) { healthSum += c.health_score; healthCount++; }
+
     for (const a of c.alerts ?? []) {
       out.pending++;
       out.byVerdict[a.analysis?.verdict ?? 'HOLD'] = (out.byVerdict[a.analysis?.verdict ?? 'HOLD'] || 0) + 1;
@@ -54,15 +69,11 @@ export function summarize(campaigns = []) {
       out.spend += spend;
       if (a.analysis?.verdict === 'KILL') out.wasted += spend;
       if (cpa != null) { cpaSum += cpa; cpaCount++; }
-
-      // Health inference: SCALE → 80, HOLD → 55, KILL → 25
-      const h = a.analysis?.verdict === 'SCALE' ? 80
-              : a.analysis?.verdict === 'KILL'  ? 25 : 55;
-      healthSum += h; healthCount++;
     }
   }
   out.blendedCpa = cpaCount > 0 ? cpaSum / cpaCount : null;
-  out.health     = healthCount > 0 ? Math.round(healthSum / healthCount) : 0;
+  // Scale the 0–1 mean to the 0–100 the UI gauges expect. 0 when nothing scored.
+  out.health     = healthCount > 0 ? Math.round((healthSum / healthCount) * 100) : 0;
   return out;
 }
 

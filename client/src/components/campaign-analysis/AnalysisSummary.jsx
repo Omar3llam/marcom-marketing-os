@@ -24,8 +24,21 @@ function Th({ children, k, current, dir, onSort, className }) {
   );
 }
 
-function EmptyTable({ onUpload, loading }) {
+// Missing metric → em-dash, never 0.00. A blank value and a true zero must not
+// look identical (governing-law honest-empty rule).
+const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
+
+function EmptyTable({ onUpload, loading, emptyChannel }) {
   if (loading) return <div className="p-12 text-center text-lumi-subtle">Loading…</div>;
+  if (emptyChannel) {
+    return (
+      <div className="p-12 text-center">
+        <BarChart3 className="w-12 h-12 mx-auto text-lumi-subtle" strokeWidth={1.5} />
+        <p className="mt-3 font-display text-lumi-text">No {emptyChannel} campaigns in this workspace.</p>
+        <p className="mt-1 text-lumi-muted text-sm">Switch the channel filter to “All” to see every campaign.</p>
+      </div>
+    );
+  }
   return (
     <div className="p-12 text-center">
       <BarChart3 className="w-12 h-12 mx-auto text-lumi-subtle" strokeWidth={1.5} />
@@ -42,11 +55,11 @@ function EmptyTable({ onUpload, loading }) {
   );
 }
 
-export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expanded, setExpanded, onUpload, currency = 'USD' }) {
+export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expanded, setExpanded, onUpload, currency = 'USD', emptyChannel = null }) {
   return (
     <section className="bg-lumi-surface border border-lumi-border rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
       {rows.length === 0 ? (
-        <EmptyTable onUpload={onUpload} loading={loading} />
+        <EmptyTable onUpload={onUpload} loading={loading} emptyChannel={emptyChannel} />
       ) : (
         <div className="overflow-auto">
           <table className="w-full">
@@ -71,10 +84,10 @@ export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expa
                       <div className="font-display font-medium text-sm text-lumi-text">{r.campaign}</div>
                       <div className="font-mono text-xs text-lumi-subtle mt-0.5">{r.platform}</div>
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-lumi-text">{fmtCurrency(r.spend, r.currency || currency)}</td>
-                    <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-lumi-text">{r.ctr.toFixed(2)}%</td>
-                    <td className={cn('px-4 py-3 text-right font-mono text-sm tabular-nums', roasColor(r.roas))}>{r.roas.toFixed(2)}x</td>
-                    <td className={cn('px-4 py-3 text-right font-mono text-sm tabular-nums', freqColor(r.freq))}>{r.freq.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-lumi-text">{r.spend == null ? <Dash /> : fmtCurrency(r.spend, r.currency || currency)}</td>
+                    <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-lumi-text">{r.ctr == null ? <Dash /> : `${r.ctr.toFixed(2)}%`}</td>
+                    <td className={cn('px-4 py-3 text-right font-mono text-sm tabular-nums', r.roas == null ? 'text-lumi-subtle' : roasColor(r.roas))}>{r.roas == null ? <Dash /> : `${r.roas.toFixed(2)}x`}</td>
+                    <td className={cn('px-4 py-3 text-right font-mono text-sm tabular-nums', r.freq == null ? 'text-lumi-subtle' : freqColor(r.freq))}>{r.freq == null ? <Dash /> : r.freq.toFixed(2)}</td>
                     <td className="px-4 py-3 text-center"><VerdictPill verdict={r.verdict} /></td>
                     <td className="px-4 py-3">
                       <div className="font-mono text-xs text-lumi-text">{r.impact}/10</div>
