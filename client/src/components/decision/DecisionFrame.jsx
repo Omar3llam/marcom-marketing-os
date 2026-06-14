@@ -9,7 +9,7 @@
 //   2. User clicks → Transition to CONFIRM_EXECUTION
 //   3. Show modal: "Are you sure you want to execute via Meta API?"
 //   4. User confirms → Transition to API_EXECUTION (locked)
-//   5. Mock 1.5s API call → Transition to MEMORY_COMMIT
+//   5. Real Meta execution → on confirmed status → Transition to MEMORY_COMMIT
 //   6. Success toast → Reset to COMMAND_CENTER
 //
 // STRICT GUARDRAILS:
@@ -17,7 +17,7 @@
 // - UI locked during API_EXECUTION
 // - Clear error handling with fallback actions
 // ============================================================
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import {
   DollarSign, TrendingDown, Sparkles, ArrowLeft, Palette, Lock,
   AlertTriangle, CheckCircle2, Loader2, X,
@@ -212,9 +212,11 @@ export default function DecisionFrame({
 
 // ── CONFIRMATION MODAL ───────────────────────────────────────
 function ExecutionConfirmModal({ verdict, action, onConfirm, onCancel }) {
-  // Extract financial impact from action data
-  const dailySpendImpact = action?.dailySpendImpact || '$0/day';
-  const estimatedMonthlyImpact = action?.estimatedMonthlyImpact || '$0';
+  // Only show figures the action actually carries. Absent → honest "—", never a
+  // fabricated "$0" that reads like this action has zero financial impact.
+  const dailySpendImpact = action?.dailySpendImpact ?? null;
+  const estimatedMonthlyImpact = action?.estimatedMonthlyImpact ?? null;
+  const hasImpactFigures = dailySpendImpact != null || estimatedMonthlyImpact != null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in">
@@ -241,24 +243,30 @@ function ExecutionConfirmModal({ verdict, action, onConfirm, onCancel }) {
               <Text as="p" variant="data" intent="danger" size="sm" className="font-display font-semibold mb-2">
                 ⚠️ Financial Impact
               </Text>
-              <div className="space-y-1">
-                <div className="flex justify-between">
-                  <Text as="span" variant="data" intent="muted" size="xs" className="font-mono">
-                    Daily spend:
-                  </Text>
-                  <Text as="span" variant="data" intent="primary" size="xs" className="font-mono font-semibold">
-                    {dailySpendImpact}
-                  </Text>
+              {hasImpactFigures ? (
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <Text as="span" variant="data" intent="muted" size="xs" className="font-mono">
+                      Daily spend:
+                    </Text>
+                    <Text as="span" variant="data" intent="primary" size="xs" className="font-mono font-semibold">
+                      {dailySpendImpact ?? '—'}
+                    </Text>
+                  </div>
+                  <div className="flex justify-between">
+                    <Text as="span" variant="data" intent="muted" size="xs" className="font-mono">
+                      Est. monthly:
+                    </Text>
+                    <Text as="span" variant="data" intent="primary" size="xs" className="font-mono font-semibold">
+                      {estimatedMonthlyImpact ?? '—'}
+                    </Text>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <Text as="span" variant="data" intent="muted" size="xs" className="font-mono">
-                    Est. monthly:
-                  </Text>
-                  <Text as="span" variant="data" intent="primary" size="xs" className="font-mono font-semibold">
-                    {estimatedMonthlyImpact}
-                  </Text>
-                </div>
-              </div>
+              ) : (
+                <Text as="p" variant="data" intent="muted" size="xs" className="font-mono">
+                  Not estimated for this action — review in Meta Ads before confirming.
+                </Text>
+              )}
             </div>
           </div>
         </div>
@@ -312,40 +320,31 @@ function ExecutionConfirmModal({ verdict, action, onConfirm, onCancel }) {
 
 // ── API EXECUTION MODAL (Locked, with progress) ──────────────
 function ExecutionProgressModal({ verdict, status = 'EXECUTING', onComplete }) {
-  const [progress, setProgress] = useState(0);
-
-  // Status-specific messaging
+  // The Meta API call is discrete (queued → executing → done) and reports no
+  // percentage — so we never show a fabricated progress number, only an honest
+  // indeterminate "working" indicator.
   const statusConfig = {
     QUEUED: {
       title: 'Queued for Execution',
-      subtitle: 'Waiting in execution queue...',
-      showProgress: false,
+      subtitle: 'Waiting in execution queue…',
+      active: false,
     },
     EXECUTING: {
       title: `Executing ${verdict} Action`,
-      subtitle: 'Communicating with Meta API...',
-      showProgress: true,
+      subtitle: 'Communicating with Meta API…',
+      active: true,
     },
   };
 
   const config = statusConfig[status] || statusConfig.EXECUTING;
 
+  // Short dwell lets the "executing" state register before advancing to the
+  // memory-commit step; the real outcome is confirmed by the execution status.
   useEffect(() => {
-    if (!config.showProgress) return;
-
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => onComplete(), 500);
-          return 100;
-        }
-        return prev + (100 / 15); // 1.5s total (15 ticks * 100ms)
-      });
-    }, 100);
-
-    return () => clearInterval(interval);
-  }, [onComplete, config.showProgress]);
+    if (!config.active) return;
+    const t = setTimeout(() => onComplete(), 1500);
+    return () => clearTimeout(t);
+  }, [onComplete, config.active]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -364,19 +363,11 @@ function ExecutionProgressModal({ verdict, status = 'EXECUTING', onComplete }) {
           </div>
         </div>
 
-        {config.showProgress && (
+        {config.active && (
           <div className="mb-4">
-            <div className="flex items-baseline justify-between mb-1">
-              <SectionLabel as="span">Progress</SectionLabel>
-              <Text as="span" variant="data" intent="primary" size="xs" className="font-mono tabular-nums">
-                {Math.round(progress)}%
-              </Text>
-            </div>
-            <div className="h-2 rounded-full bg-surface-border overflow-hidden">
-              <div
-                className="h-full bg-lumi-gold transition-all duration-100"
-                style={{ width: `${progress}%` }}
-              />
+            <SectionLabel as="span">Working…</SectionLabel>
+            <div className="mt-1 h-2 rounded-full bg-surface-border overflow-hidden" role="progressbar" aria-label="Executing action">
+              <div className="h-full w-1/3 rounded-full bg-lumi-gold animate-progress-sweep" />
             </div>
           </div>
         )}

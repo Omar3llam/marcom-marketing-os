@@ -107,8 +107,11 @@ function mapOrchestrator(data, mode, campaignId) {
     mode,
     title:           `Campaign · ${String(campaignId).slice(-8).toUpperCase()}`,
     verdict,
-    confidence:      Number(a.confidence) || verdictDefaults(verdict).confidence,
-    riskLevel:       a.riskLevel || verdictDefaults(verdict).risk,
+    // Real AI confidence (0–100) / risk when the model returns them; null when
+    // it doesn't — never a verdict-based placeholder. The trust cluster hides
+    // the indicator on null rather than showing a fabricated number.
+    confidence:      Number.isFinite(Number(a.confidence)) ? Number(a.confidence) : null,
+    riskLevel:       a.riskLevel ?? null,
     financialImpact: impact,
     whyBreakdown:    why.slice(0, 5),
     actionLabel:     action,
@@ -152,8 +155,10 @@ function mapStrategy(data) {
     mode:            'strategy',
     title:           String(data?.title || 'Growth Strategy'),
     verdict:         'SCALE',
-    confidence:      85,
-    riskLevel:       'Low',
+    // A strategy brief is a generated document, not a graded verdict — the
+    // backend returns no confidence/risk, so we surface none (no fabricated 85%).
+    confidence:      null,
+    riskLevel:       null,
     financialImpact: String(data?.financialImpact || 'Strategy generated'),
     whyBreakdown:    Array.isArray(data?.keyPoints) ? data.keyPoints.slice(0, 5) : [],
     actionLabel:     'Download Strategy Brief',
@@ -168,13 +173,6 @@ function normalizeVerdict(v) {
   if (['KILL', 'SCALE', 'HOLD', 'OPTIMIZE'].includes(k)) return k;
   if (k === 'REFRESH') return 'OPTIMIZE';
   return 'HOLD';
-}
-
-function verdictDefaults(v) {
-  if (v === 'KILL')     return { confidence: 90, risk: 'High'   };
-  if (v === 'SCALE')    return { confidence: 80, risk: 'Low'    };
-  if (v === 'OPTIMIZE') return { confidence: 65, risk: 'Medium' };
-  return { confidence: 60, risk: 'Medium' };
 }
 
 function uuid() {
