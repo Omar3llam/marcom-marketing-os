@@ -34,6 +34,9 @@ export const MetricStatusSchema = z.enum(['danger', 'warning', 'neutral', 'posit
  * - metric: Metric name (e.g., 'CPC', 'CTR', 'ROAS')
  * - trend: Direction of change (up, down, flat)
  * - value: Current value with formatting (e.g., '$2.34', '1.2%')
+ * - raw: Typed numeric behind `value`, so consumers read a real number instead
+ *   of parsing the display string. Nullable: null = genuinely absent (distinct
+ *   from a true 0). Optional for the legacy/demo path that has no `raw`.
  * - delta: Change amount (e.g., '+15%', '-0.3$')
  * - context: Contextual explanation (e.g., 'vs. last 7 days')
  * - status: Health classification (danger, warning, neutral, positive)
@@ -42,6 +45,7 @@ export const MetricSchema = z.object({
   metric: z.string().min(1, 'Metric name required'),
   trend: MetricTrendSchema,
   value: z.string(),
+  raw: z.number().nullable().optional(),
   delta: z.string(),
   context: z.string(),
   status: MetricStatusSchema,

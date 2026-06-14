@@ -406,9 +406,10 @@ export async function generateCampaignReport({ campaigns, totals, healthScore, h
     // Metrics
     doc.setFont(undefined, 'normal');
     doc.setTextColor(...colors.dark);
-    doc.text(formatCurrency(campaign.spend, campaign.currency || currency), 115, yPos);
-    doc.text(`${campaign.roas.toFixed(2)}x`, 155, yPos);  // ✅ Added "x"
-    doc.text(`${campaign.ctr.toFixed(2)}%`, 175, yPos);   // ✅ Added "%"
+    // Missing metric → em-dash, never a fabricated 0.00 (matches the table).
+    doc.text(campaign.spend == null ? '—' : formatCurrency(campaign.spend, campaign.currency || currency), 115, yPos);
+    doc.text(campaign.roas == null ? '—' : `${campaign.roas.toFixed(2)}x`, 155, yPos);
+    doc.text(campaign.ctr  == null ? '—' : `${campaign.ctr.toFixed(2)}%`, 175, yPos);
 
     yPos += 5;
   });
@@ -480,7 +481,7 @@ export function generateTextReport({ campaigns, totals, healthScore, healthLabel
     const campaignName = sanitizeText(campaign.campaign);
     lines.push(
       `Campaign: ${campaignName}`,
-      `  Verdict: ${campaign.verdict} | Spend: ${formatCurrency(campaign.spend, campaignCurrency)} | ROAS: ${campaign.roas.toFixed(2)}x | CTR: ${campaign.ctr.toFixed(2)}%`,
+      `  Verdict: ${campaign.verdict} | Spend: ${campaign.spend == null ? '—' : formatCurrency(campaign.spend, campaignCurrency)} | ROAS: ${campaign.roas == null ? '—' : `${campaign.roas.toFixed(2)}x`} | CTR: ${campaign.ctr == null ? '—' : `${campaign.ctr.toFixed(2)}%`}`,
       `  Reason: ${sanitizeText(campaign.reasoning)}`,
       ''
     );

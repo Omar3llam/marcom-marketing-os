@@ -12,6 +12,7 @@ export function demoFeedHandler(_req, res) {
       {
         campaign_id: 'Summer Promo — Broad Lookalike',
         stage:       'DYING',
+        health_score: 0.18,   // illustrative, tracks the DYING metrics below
         alerts: [
           {
             action_id:        'demo-act-001',
@@ -48,6 +49,7 @@ export function demoFeedHandler(_req, res) {
       {
         campaign_id: 'Brand Awareness — IG Reels Q2',
         stage:       'FATIGUED',
+        health_score: 0.46,   // illustrative, tracks the FATIGUED metrics below
         alerts: [
           {
             action_id:        'demo-act-002',
@@ -83,6 +85,7 @@ export function demoFeedHandler(_req, res) {
       {
         campaign_id: 'Brand Search — Always-On',
         stage:       'STABLE',
+        health_score: 0.93,   // illustrative, tracks the STABLE metrics below
         alerts: [
           {
             action_id:        'demo-act-003',
