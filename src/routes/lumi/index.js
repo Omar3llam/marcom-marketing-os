@@ -18,6 +18,7 @@ import { collaborationRouter }       from './collaboration.js';
 import { agenticRouter }             from './agentic.js';
 import { accuracyRouter }            from './accuracy.js';
 import { connectionsRouter }         from './connections.js';
+import { entitiesRouter }            from './entities.js';
 
 export const lumiRouter = Router();
 
@@ -38,3 +39,4 @@ lumiRouter.use('/', collaborationRouter);
 lumiRouter.use('/', agenticRouter);
 lumiRouter.use('/', accuracyRouter);
 lumiRouter.use('/', connectionsRouter);
+lumiRouter.use('/', entitiesRouter);
