@@ -9,7 +9,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { isStale } from '../../services/connectors/connectorTypes.js';
-import { listConnections } from '../../services/connectors/credentialStore.js';
+import { listConnections, updateCredentialAccount } from '../../services/connectors/credentialStore.js';
 import { runConnectorSync } from '../../services/connectors/ConnectorSyncService.js';
 
 export const connectionsRouter = Router();
@@ -41,6 +41,7 @@ connectionsRouter.get('/connections', async (req, res) => {
         stale: isStale(lastSuccess, now),
         lastSyncedAt: c.lastSyncedAt ?? null,
         accountId: c.accountId ?? null,
+        availableAccounts: c.availableAccounts ?? [],
         health: c.health ?? null,
       };
     });
@@ -68,5 +69,47 @@ connectionsRouter.post('/connections/sync', async (req, res) => {
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/connections/sync] failed');
     return res.status(500).json({ error: 'SyncFailed', message: 'Sync failed' });
+  }
+});
+
+// PATCH /api/lumi/connections/account — switch the ACTIVE ad account for a channel
+// without re-running OAuth, then re-sync so the new account's data lands now. The
+// auto-pick at connect time is a guess; this is how a user corrects it when the
+// token grants more than one ad account. accountId is validated server-side
+// against the token's stored availableAccounts — a user can only switch between
+// accounts the token already proves access to, never inject an arbitrary id.
+connectionsRouter.patch('/connections/account', async (req, res) => {
+  const wsId = await resolveWorkspaceId(req);
+  if (!wsId) return res.status(400).json({ error: 'WorkspaceNotFound', message: 'No workspace for this user' });
+
+  const platform = String(req.body?.platform || '').toUpperCase();
+  const accountId = req.body?.accountId == null ? '' : String(req.body.accountId);
+  if (!platform || !accountId) {
+    return res.status(400).json({ error: 'BadRequest', message: 'platform and accountId are required' });
+  }
+
+  try {
+    const rows = await listConnections(wsId);
+    const target = rows.find((c) => c.platform === platform);
+    const allowed = (target?.availableAccounts ?? []).map((a) => String(a.id));
+    if (!allowed.includes(accountId)) {
+      return res.status(403).json({ error: 'AccountNotAllowed', message: 'That ad account is not associated with the connected token.' });
+    }
+
+    const switched = await updateCredentialAccount(wsId, platform, accountId);
+    if (!switched) return res.status(404).json({ error: 'ConnectionNotFound', message: 'No active connection for this channel' });
+
+    // Best-effort re-sync: a sync failure must NOT fail the switch — it surfaces as
+    // staleness on the next connections read, never a silent corruption.
+    let sync = null;
+    try {
+      sync = await runConnectorSync(wsId, { datePreset: 'last_30d' });
+    } catch (syncErr) {
+      logger.warn({ err: syncErr.message, wsId, platform }, '[lumi/connections/account] re-sync after switch failed');
+    }
+    return res.json({ ok: true, platform, accountId, sync });
+  } catch (err) {
+    logger.error({ err: err.message, wsId, platform }, '[lumi/connections/account] failed');
+    return res.status(500).json({ error: 'AccountSwitchFailed', message: 'Request failed' });
   }
 });

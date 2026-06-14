@@ -18,6 +18,12 @@ export const ConnectorHealthSchema = z.object({
   recordsImported: z.number().nullish(),
 });
 
+// An ad account the connected token proves access to — powers the account picker.
+export const AdAccountSchema = z.object({
+  id: z.string(),
+  name: z.string().nullish(),
+});
+
 export const ConnectionSchema = z.object({
   platform: z.string(),
   isActive: z.boolean(),
@@ -25,6 +31,7 @@ export const ConnectionSchema = z.object({
   stale: z.boolean(),
   lastSyncedAt: z.string().nullish(),
   accountId: z.string().nullish(),
+  availableAccounts: z.array(AdAccountSchema).nullish(),
   health: ConnectorHealthSchema.nullish(),
 });
 
@@ -34,5 +41,6 @@ export const ConnectionsResponseSchema = z.object({
 });
 
 export type ConnectorHealth = z.infer<typeof ConnectorHealthSchema>;
+export type AdAccount = z.infer<typeof AdAccountSchema>;
 export type Connection = z.infer<typeof ConnectionSchema>;
 export type ConnectionsResponse = z.infer<typeof ConnectionsResponseSchema>;

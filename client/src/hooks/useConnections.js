@@ -4,15 +4,18 @@
 // GET /api/lumi/connections → validate against ConnectionsResponseSchema →
 // { data, loading, error }. Display fields only (no tokens). Typed api client.
 // ============================================================
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '@/lib/api.js';
 import { ConnectionsResponseSchema } from '@/contracts/schemas';
 
 export function useConnections() {
   const [state, setState] = useState({ data: null, loading: true, error: null });
+  // Bumped by refetch() to re-run the effect after an account switch lands.
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setState((s) => ({ ...s, loading: true, error: null }));
     (async () => {
       try {
         const res = await api.get('/api/lumi/connections');
@@ -29,7 +32,9 @@ export function useConnections() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadKey]);
 
-  return state;
+  const refetch = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  return { ...state, refetch };
 }

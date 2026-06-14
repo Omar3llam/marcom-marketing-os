@@ -6,6 +6,8 @@
 // a stale/failed channel surfaces for the user to fix (closing the 8.2 honesty
 // loop). Assembly of existing primitives; no new primitive.
 // ============================================================
+import { useState } from 'react';
+import { toast } from 'sonner';
 import { Scale, Plus, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { api } from '@/lib/api.js';
 import { useConnections } from '@/hooks/useConnections.js';
@@ -38,7 +40,7 @@ function ago(iso) {
 }
 
 // ── Pure, prop-driven view (unit-tested directly) ───────────────
-export function ConnectionsView({ connections = [], projectId }) {
+export function ConnectionsView({ connections = [], projectId, onSwitchAccount, switching }) {
   const byPlatform = new Map(connections.map((c) => [c.platform, c]));
   return (
     <div className="rounded-2xl border border-lumi-border bg-lumi-surface overflow-hidden">
@@ -46,6 +48,10 @@ export function ConnectionsView({ connections = [], projectId }) {
         const c = byPlatform.get(platform);
         const connected = !!c?.connected;
         const stale = !!c?.stale;
+        // A picker only when the token grants more than one ad account — the
+        // single-account user sees no change. Lets the user correct connect-time's
+        // auto-pick (first active account ≠ always the one with delivery).
+        const accounts = connected ? (c.availableAccounts ?? []) : [];
         return (
           <div key={platform} className="flex items-center gap-3 px-4 py-3 border-b border-lumi-border/60 last:border-0">
             <span className="flex-shrink-0">
@@ -54,10 +60,24 @@ export function ConnectionsView({ connections = [], projectId }) {
               {!connected && <Plus className="w-4 h-4 text-lumi-subtle" strokeWidth={1.5} />}
             </span>
             <span className="flex-1 text-sm text-lumi-text font-display font-medium">{LABEL[platform] ?? platform}</span>
+            {accounts.length > 1 && (
+              <select
+                value={c.accountId ?? ''}
+                disabled={switching === platform}
+                onChange={(e) => onSwitchAccount?.(platform, e.target.value)}
+                aria-label={`Active ${LABEL[platform] ?? platform} ad account`}
+                className="font-mono text-xs bg-lumi-surface border border-lumi-border rounded px-2 py-1 text-lumi-text disabled:opacity-50 max-w-[14rem]"
+              >
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name ? `${a.name} (${a.id})` : a.id}</option>
+                ))}
+              </select>
+            )}
             {connected ? (
               <span className="font-mono text-xs text-lumi-subtle">
-                last sync {ago(c.lastSyncedAt)}{stale ? ' · stale — reconnect' : ''}
-                {c.health?.lastError ? ` · ${c.health.lastError}` : ''}
+                {switching === platform ? 'switching…' : `last sync ${ago(c.lastSyncedAt)}`}
+                {switching !== platform && stale ? ' · stale — reconnect' : ''}
+                {switching !== platform && c.health?.lastError ? ` · ${c.health.lastError}` : ''}
               </span>
             ) : CONNECT_PATH[platform] ? (
               <button onClick={() => startConnect(platform, projectId)} className="font-mono text-xs text-lumi-accent hover:underline">connect</button>
@@ -73,8 +93,27 @@ export function ConnectionsView({ connections = [], projectId }) {
 
 // ── Page wrapper: fetch + three states ──────────────────────────
 export default function Connections() {
-  const { data, loading, error } = useConnections();
+  const { data, loading, error, refetch } = useConnections();
   const { projectId } = useProjectId();
+  const [switching, setSwitching] = useState(null);
+
+  // Switch the active ad account (server validates it against the token's accounts),
+  // then refetch so the new account's freshness shows. The PATCH re-syncs server-
+  // side, so by the time it resolves the new account's campaigns have landed.
+  const handleSwitchAccount = async (platform, accountId) => {
+    if (!accountId || switching) return;
+    setSwitching(platform);
+    try {
+      await api.patch('/api/lumi/connections/account', { platform, accountId });
+      toast.success('Ad account switched — re-syncing its campaigns…');
+      refetch();
+    } catch (err) {
+      toast.error(err?.message || "Couldn't switch ad account");
+    } finally {
+      setSwitching(null);
+    }
+  };
+
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
       <h1 className="decision-title text-lumi-text mb-1">Connected Channels</h1>
@@ -82,7 +121,14 @@ export default function Connections() {
 
       {loading && <div className="space-y-3"><CardSkeleton /></div>}
       {!loading && error && <EmptyPanel Icon={Scale} text="Couldn't load connections right now. Try again shortly." />}
-      {!loading && !error && <ConnectionsView connections={data?.connections ?? []} projectId={projectId} />}
+      {!loading && !error && (
+        <ConnectionsView
+          connections={data?.connections ?? []}
+          projectId={projectId}
+          onSwitchAccount={handleSwitchAccount}
+          switching={switching}
+        />
+      )}
     </div>
   );
 }
