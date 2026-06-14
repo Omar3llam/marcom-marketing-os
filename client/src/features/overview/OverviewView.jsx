@@ -21,6 +21,8 @@ import AlertsPanel from './components/AlertsPanel.jsx';
 import AIInsightPanel from './components/AIInsightPanel.jsx';
 import QuickActionsPanel from './components/QuickActionsPanel.jsx';
 import ActivityFeed from './components/ActivityFeed.jsx';
+import ConnectionHealthStrip from './components/ConnectionHealthStrip.jsx';
+import PacingWidget from './components/PacingWidget.jsx';
 
 export default function OverviewView() {
   const navigate = useNavigate();
@@ -44,6 +46,23 @@ export default function OverviewView() {
     waste: summary?.wasted > 0 ? `${formatCurrencyWhole(summary.wasted, currency)}/mo` : '$0/mo',
     health: summary?.health || 0,
   };
+
+  // Account-health label + tone derived from the real score (no hardcoded verdict).
+  const healthTone  = stats.health >= 75 ? 'positive'
+                    : stats.health >= 50 ? 'warn'
+                    : stats.health > 0   ? 'danger' : 'neutral';
+  const healthLabel = stats.health >= 75 ? 'Healthy'
+                    : stats.health >= 50 ? 'Fair — review soon'
+                    : stats.health > 0   ? 'Needs attention' : 'No score yet';
+
+  // Real count of KILL-verdict ad sets (traces to campaign alerts — no fabricated count).
+  const killCount = useMemo(
+    () => campaigns.reduce(
+      (n, c) => n + (c.alerts || []).filter((a) => a.analysis?.verdict === 'KILL').length,
+      0,
+    ),
+    [campaigns],
+  );
 
   // Extract high-priority alerts (KILL and HIGH-IMPACT HOLD verdicts)
   const highAlerts = useMemo(() => {
@@ -121,6 +140,11 @@ export default function OverviewView() {
         </div>
       )}
 
+      {/* Channel health — honest "is data flowing?" signal from the real
+          connections contract. Shown regardless of campaign data, since a
+          disconnected channel is often *why* there's no data. */}
+      <ConnectionHealthStrip />
+
       {/* Empty state: no campaigns uploaded yet */}
       {!loading && !hasData && (
         <div className="flex flex-col items-center justify-center min-h-[480px] p-10 bg-surface-card border border-dashed border-surface-border-strong rounded-xl text-center">
@@ -147,6 +171,9 @@ export default function OverviewView() {
       {/* Dashboard content: only show when data exists */}
       {hasData && (
         <>
+          {/* Budget pacing — honest burn-rate (gated; refuses misleading single-channel pacing). */}
+          <PacingWidget />
+
           {/* 4 stat cards - responsive: 1 col mobile, 2 col tablet, 4 col desktop */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
         <StatCard
@@ -159,23 +186,23 @@ export default function OverviewView() {
         <StatCard
           label="Blended CPA"
           value={stats.cpa}
-          sub="↓ 8% vs prev"
+          sub="across active campaigns"
           Icon={Target}
-          tone="positive"
+          tone="neutral"
         />
         <StatCard
           label="Wasted spend"
           value={stats.waste}
-          sub="2 bleeding ad sets"
+          sub={killCount > 0 ? `${killCount} KILL-verdict ad set${killCount === 1 ? '' : 's'}` : 'flagged for review'}
           Icon={AlertTriangle}
           tone="danger"
         />
         <StatCard
           label="Account health"
           value={`${stats.health}/100`}
-          sub="Fair — needs review"
+          sub={healthLabel}
           Icon={Activity}
-          tone="warn"
+          tone={healthTone}
           gauge={stats.health}
         />
       </div>
