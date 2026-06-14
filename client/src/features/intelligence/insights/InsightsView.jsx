@@ -9,11 +9,18 @@
 import { useMemo } from 'react';
 import { Target, Brain, Zap } from 'lucide-react';
 import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
+import { useAccountBriefing } from '@/hooks/useAccountBriefing.js';
 import { cn } from '@/lib/utils.js';
 import { fmtRelative } from '@/lib/dateUtils.js';
+import { PriorityBadge, StageBadge } from '@/layouts';
+import { FatigueForecast } from './FatigueForecast.jsx';
+import { AccountBriefing } from './AccountBriefing.jsx';
+
+const STAGES = ['DYING', 'FATIGUED', 'TESTING', 'SCALING', 'STABLE'];
 
 export default function GrowthStrategyBoard() {
-  const { campaigns, summary, loading } = useCampaignFeed();
+  const { campaigns, summary, loading, fatiguePredictions } = useCampaignFeed();
+  const { briefing, loading: briefingLoading, error: briefingError } = useAccountBriefing();
 
   // Active bets = pending alerts, treated as hypotheses under test.
   const bets = useMemo(() => {
@@ -25,9 +32,10 @@ export default function GrowthStrategyBoard() {
           status:    a.action_plan?.status === 'PENDING' ? 'ACTIVE' : 'CONCLUDED',
           title:     a.action_plan?.action || a.analysis?.root_cause || c.campaign_id,
           campaign:  c.campaign_id,
-          // Real signals straight off the alert — never an inferred confidence %.
+          // Real signals straight off the alert/campaign — never an inferred %.
           priority:  a.priority || 'MEDIUM',
           verdict:   a.analysis?.verdict || 'HOLD',
+          stage:     STAGES.includes(c.stage) ? c.stage : null,
           conclusion: a.action_plan?.status === 'PENDING' ? null : 'Awaiting outcome data',
         });
       }
@@ -59,7 +67,7 @@ export default function GrowthStrategyBoard() {
   }, [campaigns]);
 
   return (
-    <div className="flex flex-col h-full p-6 lg:p-8 animate-fade-in">
+    <div className="flex flex-col h-full overflow-y-auto p-6 lg:p-8 animate-fade-in">
       {/* ── HEADER ──────────────────────────────────────────── */}
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-8">
         <div>
@@ -117,8 +125,11 @@ export default function GrowthStrategyBoard() {
         )}
       </section>
 
+      {/* ── FATIGUE FORECAST (forward signal) ───────────────── */}
+      <FatigueForecast predictions={fatiguePredictions} loading={loading} />
+
       {/* ── MEMORY LAYER TIMELINE ───────────────────────────── */}
-      <section className="flex-1 min-h-0">
+      <section className="mb-10">
         <div className="section-label">System Learnings — The Memory Layer</div>
         <p className="mt-1 text-lumi-muted text-sm mb-4">
           Rules the AI has learned from your campaigns. Applied to every future decision.
@@ -133,6 +144,9 @@ export default function GrowthStrategyBoard() {
           </ol>
         )}
       </section>
+
+      {/* ── WHAT LUMI KNOWS (account briefing) ───────────────── */}
+      <AccountBriefing briefing={briefing} loading={briefingLoading} error={briefingError} />
     </div>
   );
 }
@@ -156,11 +170,6 @@ function BetCard({ bet }) {
   : bet.status === 'PAUSED'    ? 'text-signal-hold  bg-signal-hold-bg'
   :                              'text-signal-scale bg-signal-scale-bg';
 
-  const prioColor =
-    bet.priority === 'HIGH' ? 'text-signal-kill bg-signal-kill-bg'
-  : bet.priority === 'LOW'  ? 'text-lumi-subtle bg-lumi-elevated'
-  :                           'text-signal-hold bg-signal-hold-bg';
-
   const verdictColor =
     bet.verdict === 'KILL'  ? 'text-signal-kill'
   : bet.verdict === 'SCALE' ? 'text-signal-scale'
@@ -177,11 +186,11 @@ function BetCard({ bet }) {
       <h3 className="font-display font-semibold text-sm text-lumi-text leading-snug mt-2 line-clamp-3">{bet.title}</h3>
       <p className="text-xs text-lumi-subtle mt-1 truncate">{bet.campaign}</p>
 
-      {/* Real per-alert signals — priority + verdict from the feed, not an
-          inferred confidence number. */}
-      <div className="mt-4 flex items-center gap-2 font-mono text-xs">
-        <span className={cn('uppercase px-2 py-0.5 rounded', prioColor)}>{bet.priority}</span>
-        <span className="text-lumi-subtle" aria-hidden="true">·</span>
+      {/* Real per-alert/-campaign signals via the frozen primitives — priority
+          + stage + verdict from the feed, never an inferred confidence number. */}
+      <div className="mt-4 flex items-center flex-wrap gap-2 font-mono text-xs">
+        <PriorityBadge priority={bet.priority} />
+        {bet.stage && <StageBadge stage={bet.stage} />}
         <span className={cn('uppercase', verdictColor)}>{bet.verdict}</span>
       </div>
 

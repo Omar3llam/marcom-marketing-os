@@ -79,7 +79,7 @@ export function summarize(campaigns = []) {
 
 // ── Hook wrapper — delegates to IntelligenceContext ─────────
 export function useCampaignFeed() {
-  const { campaigns, loading, error, refresh, setCampaigns, summary } = useIntelligence();
+  const { campaigns, loading, error, refresh, setCampaigns, summary, fatiguePredictions } = useIntelligence();
   return {
     campaigns,
     loading,
@@ -87,5 +87,6 @@ export function useCampaignFeed() {
     refetch: refresh,
     setCampaigns,
     summary,
+    fatiguePredictions,
   };
 }
