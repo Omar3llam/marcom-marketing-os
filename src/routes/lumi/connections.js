@@ -10,6 +10,7 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { isStale } from '../../services/connectors/connectorTypes.js';
 import { listConnections } from '../../services/connectors/credentialStore.js';
+import { runConnectorSync } from '../../services/connectors/ConnectorSyncService.js';
 
 export const connectionsRouter = Router();
 
@@ -47,5 +48,25 @@ connectionsRouter.get('/connections', async (req, res) => {
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/connections] failed');
     return res.status(500).json({ error: 'ConnectionsUnavailable', message: 'Request failed' });
+  }
+});
+
+// POST /api/lumi/connections/sync — manual trigger for the connector sync loop,
+// scoped to the caller's workspace. Runs the SAME path as the cron (authenticate
+// → fetchRaw → normalize → landSnapshots → recordSync) so the button and the
+// scheduler can never drift. Workspace-scoped on purpose: connectors read
+// marcom_credentials by workspace_id (the Phase 12c bridge), NOT the legacy
+// project-scoped meta_ads credential. Per-channel failures are isolated inside
+// the service and surface in `results`, so a single bad channel still returns 200.
+connectionsRouter.post('/connections/sync', async (req, res) => {
+  const wsId = await resolveWorkspaceId(req);
+  if (!wsId) return res.status(400).json({ error: 'WorkspaceNotFound', message: 'No workspace for this user' });
+  try {
+    const datePreset = typeof req.body?.datePreset === 'string' ? req.body.datePreset : 'last_30d';
+    const result = await runConnectorSync(wsId, { datePreset });
+    return res.json({ ok: true, workspaceId: wsId, ...result });
+  } catch (err) {
+    logger.error({ err: err.message, wsId }, '[lumi/connections/sync] failed');
+    return res.status(500).json({ error: 'SyncFailed', message: 'Sync failed' });
   }
 });

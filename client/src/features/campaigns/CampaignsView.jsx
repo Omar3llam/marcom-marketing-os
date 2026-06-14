@@ -8,11 +8,13 @@ import { useMemo, useState } from 'react';
 import { Upload, RefreshCw, Loader2, X, Download } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { useCampaignFeed, metricValue } from '@/hooks/useCampaignFeed.js';
+import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import CsvUploader from '@/components/upload/CsvUploader.jsx';
 import { useCampaignAnalysis } from '@/hooks/useCampaignAnalysis.js';
 import { MetricsPanel }    from '@/components/campaign-analysis/MetricsPanel.jsx';
 import { PerformanceChart } from '@/components/campaign-analysis/PerformanceChart.jsx';
 import { AnalysisSummary } from '@/components/campaign-analysis/AnalysisSummary.jsx';
+import { ConnectorCampaignsPanel } from '@/features/campaigns/ConnectorCampaignsPanel.jsx';
 import { generateCampaignReport, generateTextReport } from '@/lib/pdfExport.js';
 
 // Flatten campaigns → rows the table can sort + render.
@@ -56,18 +58,27 @@ export default function CampaignsView() {
   const { campaigns, loading, refetch, setCampaigns } = useCampaignFeed();
   const [sortKey, setSortKey] = useState('spend');
   const [sortDir, setSortDir] = useState('desc');
-  // `expanded` drives the per-row reasoning expand/collapse (a real feature).
-  // NOTE: entity-level (AdSet) drill-down is intentionally NOT wired here. The
-  // feed identifies campaigns by name string, which does not join to
-  // MetricSnapshot.entityId (a UUID), and no /adsets route exists yet — so a
-  // drill-down would have nothing real to load. Deferred until the entity graph
-  // is linked to the feed; we don't fake an empty expansion.
+  // `expanded` drives the per-row reasoning expand/collapse on the CSV-fed table.
+  // AdSet drill-down lives in <ConnectorCampaignsPanel> instead: it reads the
+  // connector entity graph (keyed by Campaign.id UUID via /api/lumi/entities),
+  // the only substrate that carries ad-set detail. The CSV feed is
+  // campaign-level only, so it has nothing to drill into.
   const [expanded, setExpanded] = useState(new Set());
   const [uploadOpen, setUploadOpen] = useState(false);
   const [channel, setChannel] = useState('ALL');   // CAPABILITY 2 — channel filter
 
+  // Connector entity graph — the substrate the Sync button writes (disjoint from
+  // the CSV feed above). Rendered as its own "Connected channels" section so
+  // synced campaigns are visible + drillable; refetched after a successful sync.
+  const {
+    campaigns: connectorCampaigns,
+    loading: connectorLoading,
+    error: connectorError,
+    refetch: refetchConnectors,
+  } = useConnectorCampaigns();
+
   const { syncing, handleAnalysisComplete, handleMetaSync } = useCampaignAnalysis({
-    refetch, setCampaigns, setUploadOpen,
+    refetch, setCampaigns, setUploadOpen, refetchConnectors,
   });
 
   const [downloading, setDownloading] = useState(false);
@@ -242,6 +253,12 @@ export default function CampaignsView() {
         onUpload={() => setUploadOpen(true)}
         currency={currency}
         emptyChannel={channel !== 'ALL' && tableRows.length === 0 ? channel : null}
+      />
+
+      <ConnectorCampaignsPanel
+        campaigns={connectorCampaigns}
+        loading={connectorLoading}
+        error={connectorError}
       />
 
       {uploadOpen && (
