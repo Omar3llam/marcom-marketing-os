@@ -51,7 +51,7 @@ export async function listConnections(workspaceId) {
   if (!workspaceId) return [];
   const sql = getDb();
   const rows = await sql`
-    SELECT platform, account_id, last_synced_at, is_active, health, expires_at
+    SELECT platform, account_id, last_synced_at, is_active, health, metadata, expires_at
     FROM marcom_credentials
     WHERE workspace_id = ${workspaceId}
     ORDER BY platform
@@ -61,8 +61,32 @@ export async function listConnections(workspaceId) {
     isActive: r.is_active !== false,
     lastSyncedAt: r.last_synced_at ? new Date(r.last_synced_at).toISOString() : null,
     accountId: r.account_id ?? null,
+    // The ad accounts the token proves access to (for the picker). Empty when the
+    // credential predates the picker — the UI then shows no switch affordance.
+    availableAccounts: Array.isArray(r.metadata?.availableAccounts) ? r.metadata.availableAccounts : [],
     health: r.health ?? null,
   }));
+}
+
+/**
+ * Switch the active ad account for a workspace+channel WITHOUT re-running OAuth.
+ * The CALLER MUST first verify accountId ∈ the stored availableAccounts (never a
+ * free-form update). Scoped to the single active row resolveCredential reads.
+ * @returns {Promise<boolean>} true when a row was updated.
+ */
+export async function updateCredentialAccount(workspaceId, channel, accountId) {
+  const platform = dbPlatform(channel);
+  if (!workspaceId || !platform || !accountId) return false;
+  const sql = getDb();
+  const updated = await sql`
+    UPDATE marcom_credentials
+    SET account_id = ${String(accountId)}, updated_at = NOW()
+    WHERE workspace_id = ${workspaceId} AND platform = ${platform} AND is_active = true
+    RETURNING id
+  `;
+  if (updated.length === 0) return false;
+  logger.info({ workspaceId, channel, accountId }, '[credentialStore] switched active ad account');
+  return true;
 }
 
 /** Active, connector-syncable credentials (workspace-scoped). For the sync loop. */

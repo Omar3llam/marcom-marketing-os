@@ -79,6 +79,9 @@ export async function ensureCredentialSchema() {
     await sql`ALTER TABLE marcom_credentials ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ`;
     await sql`ALTER TABLE marcom_credentials ADD COLUMN IF NOT EXISTS is_active      BOOLEAN DEFAULT true`;
     await sql`ALTER TABLE marcom_credentials ADD COLUMN IF NOT EXISTS health         JSONB`;
+    // metadata carries the ad-account picker payload (availableAccounts the token
+    // proves access to) so a user can switch the active account without re-OAuth.
+    await sql`ALTER TABLE marcom_credentials ADD COLUMN IF NOT EXISTS metadata       JSONB`;
     await sql`
       CREATE INDEX IF NOT EXISTS idx_marcom_credentials_workspace
         ON marcom_credentials (workspace_id, platform)
@@ -174,7 +177,7 @@ async function backfillWorkspaceIds(sql) {
  * @param {string} [params.scopes]
  * @param {Date}   [params.expiresAt]
  */
-export async function saveCredential(userId, { projectId, platform, accessToken, refreshToken, accountId, scopes, expiresAt }) {
+export async function saveCredential(userId, { projectId, platform, accessToken, refreshToken, accountId, scopes, expiresAt, metadata }) {
   const sql = getDb();
 
   const accessEnc  = accessToken  ? encrypt(accessToken)  : null;
@@ -182,9 +185,9 @@ export async function saveCredential(userId, { projectId, platform, accessToken,
 
   const rows = await sql`
     INSERT INTO marcom_credentials
-      (project_id, user_id, platform, access_token_enc, refresh_token_enc, account_id, scopes, expires_at, updated_at)
+      (project_id, user_id, platform, access_token_enc, refresh_token_enc, account_id, scopes, expires_at, metadata, updated_at)
     VALUES
-      (${projectId}, ${userId}, ${platform}, ${accessEnc}, ${refreshEnc}, ${accountId ?? null}, ${scopes ?? null}, ${expiresAt ?? null}, NOW())
+      (${projectId}, ${userId}, ${platform}, ${accessEnc}, ${refreshEnc}, ${accountId ?? null}, ${scopes ?? null}, ${expiresAt ?? null}, ${metadata ? sql.json(metadata) : null}, NOW())
     ON CONFLICT (project_id, platform)
     DO UPDATE SET
       access_token_enc  = EXCLUDED.access_token_enc,
@@ -192,6 +195,7 @@ export async function saveCredential(userId, { projectId, platform, accessToken,
       account_id        = COALESCE(EXCLUDED.account_id,  marcom_credentials.account_id),
       scopes            = COALESCE(EXCLUDED.scopes,       marcom_credentials.scopes),
       expires_at        = COALESCE(EXCLUDED.expires_at,   marcom_credentials.expires_at),
+      metadata          = COALESCE(EXCLUDED.metadata,     marcom_credentials.metadata),
       updated_at        = NOW()
     WHERE marcom_credentials.user_id = ${userId}
     RETURNING *

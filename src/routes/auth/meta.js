@@ -158,10 +158,15 @@ authMetaRouter.get('/callback', async (req, res) => {
 
     // ── Discover ad accounts — take the first active one
     let adAccountId = null;
+    let availableAccounts = [];
     try {
       const accounts = await listAdAccounts(longToken);
       const active   = accounts.filter(a => a.accountStatus === 1); // 1 = ACTIVE
       adAccountId    = (active[0] || accounts[0])?.id || null;
+      // Auto-pick is a GUESS — with >1 ad account the first active one may not be
+      // the one with delivery. Store every account the token proves access to so
+      // the user can switch the active account later without re-running OAuth.
+      availableAccounts = accounts.map(a => ({ id: a.id, name: a.name }));
       logger.info({ userId, projectId, accountCount: accounts.length, adAccountId }, '[meta-auth] Ad accounts discovered');
     } catch (err) {
       logger.warn({ err: err.message }, '[meta-auth] Could not list ad accounts — saving token only');
@@ -175,6 +180,7 @@ authMetaRouter.get('/callback', async (req, res) => {
       accountId:    adAccountId,
       scopes:       SCOPES,
       expiresAt,
+      metadata:     availableAccounts.length ? { availableAccounts } : undefined,
     });
 
     logger.info({ userId, projectId, adAccountId }, '[meta-auth] Meta credential saved');
