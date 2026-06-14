@@ -53,7 +53,9 @@ export default function ContentLabView() {
       campaignContext: contextCampaign ? {
         name: contextCampaign.campaign,
         adset: contextCampaign.adset,
-        problem: 'Hook is not engaging in the first 3 seconds. CTR fell 36% in 48h.',
+        // Ground generation in the campaign's REAL diagnosis (or omit it) —
+        // never a hardcoded "CTR fell 36%" the campaign never produced.
+        problem: contextCampaign.diagnosis || undefined,
       } : null,
       options: opts,
       tone,
@@ -66,7 +68,10 @@ export default function ContentLabView() {
   };
 
   const problem = contextCampaign
-    ? { tag: 'CREATIVE_FATIGUE', body: 'Hook is not engaging in the first 3 seconds. CTR fell 36% in 48h.' }
+    ? {
+        tag:  contextCampaign.tag || 'DIAGNOSIS',
+        body: contextCampaign.diagnosis || 'No diagnosis recorded for this campaign yet — generation will use brand voice only.',
+      }
     : { tag: 'NO CONTEXT', body: 'Select a campaign to ground generation in real diagnosis.' };
 
   return (
@@ -151,7 +156,15 @@ export default function ContentLabView() {
                           <button
                             type="button"
                             onClick={() => {
-                              setContextCampaign({ campaign: c.campaign_id, adset: c.stage });
+                              // Capture the campaign's REAL diagnosis (its first
+                              // alert's root cause), not a hardcoded problem string.
+                              const firstAlert = c.alerts?.[0];
+                              setContextCampaign({
+                                campaign:  c.campaign_id,
+                                adset:     c.stage,
+                                diagnosis: firstAlert?.analysis?.root_cause || null,
+                                tag:       firstAlert?.analysis?.verdict || c.stage,
+                              });
                               setCampaignMenuOpen(false);
                             }}
                             className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-surface-elevated transition-colors"
