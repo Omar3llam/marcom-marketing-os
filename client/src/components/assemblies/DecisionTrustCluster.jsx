@@ -56,9 +56,12 @@ export function DecisionTrustCluster({
   className,
   ...props
 }) {
-  // Normalize confidence to 0-1 if it's 0-100
-  const normalizedConfidence = confidence > 1 ? confidence / 100 : confidence;
-  const riskSeverity = mapRiskLevelToSeverity(riskLevel);
+  // Only surface confidence/risk when they are real. A missing value renders
+  // nothing here — never a fabricated default — keeping the trust signal honest.
+  const hasConfidence = Number.isFinite(confidence);
+  const normalizedConfidence = !hasConfidence ? null : confidence > 1 ? confidence / 100 : confidence;
+  const riskSeverity = riskLevel ? mapRiskLevelToSeverity(riskLevel) : null;
+  const hasRisk = ['low', 'moderate', 'high', 'critical'].includes(riskSeverity);
 
   return (
     <div
@@ -73,16 +76,22 @@ export function DecisionTrustCluster({
         <DecisionTitle as="h1" className="text-lumi-text">
           {title}
         </DecisionTitle>
-        <div className="mt-2 flex items-center gap-3">
-          <ConfidenceIndicator
-            level={normalizedConfidence}
-            showLabel={showConfidenceLabel}
-          />
-          <RiskSignal
-            severity={riskSeverity}
-            showIcon={showRiskIcon}
-          />
-        </div>
+        {(hasConfidence || hasRisk) && (
+          <div className="mt-2 flex items-center gap-3">
+            {hasConfidence && (
+              <ConfidenceIndicator
+                level={normalizedConfidence}
+                showLabel={showConfidenceLabel}
+              />
+            )}
+            {hasRisk && (
+              <RiskSignal
+                severity={riskSeverity}
+                showIcon={showRiskIcon}
+              />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
