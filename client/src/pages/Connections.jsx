@@ -9,16 +9,20 @@
 import { Scale, Plus, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { api } from '@/lib/api.js';
 import { useConnections } from '@/hooks/useConnections.js';
+import { useProjectId } from '@/hooks/useProjectId.js';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
 
 // Kick the OAuth flow for a platform: ask the backend for the consent URL, then
-// redirect the browser to it (mirrors how Meta connect is triggered).
+// redirect the browser to it. Meta connect is PROJECT-scoped (the route 400s
+// without ?projectId); Google connect is WORKSPACE-scoped (no projectId). The
+// old Settings flow passed projectId — without it the connect silently no-ops.
 const CONNECT_PATH = { GOOGLE: '/api/auth/google/connect', META: '/api/auth/meta/connect' };
-export async function startConnect(platform) {
+export async function startConnect(platform, projectId) {
   const path = CONNECT_PATH[platform];
   if (!path) return;
-  const res = await api.get(path);
+  const config = platform === 'META' && projectId ? { params: { projectId } } : undefined;
+  const res = await api.get(path, config);
   if (res.data?.oauthUrl) window.location.href = res.data.oauthUrl;
 }
 
@@ -34,7 +38,7 @@ function ago(iso) {
 }
 
 // ── Pure, prop-driven view (unit-tested directly) ───────────────
-export function ConnectionsView({ connections = [] }) {
+export function ConnectionsView({ connections = [], projectId }) {
   const byPlatform = new Map(connections.map((c) => [c.platform, c]));
   return (
     <div className="rounded-2xl border border-lumi-border bg-lumi-surface overflow-hidden">
@@ -56,7 +60,7 @@ export function ConnectionsView({ connections = [] }) {
                 {c.health?.lastError ? ` · ${c.health.lastError}` : ''}
               </span>
             ) : CONNECT_PATH[platform] ? (
-              <button onClick={() => startConnect(platform)} className="font-mono text-xs text-lumi-accent hover:underline">connect</button>
+              <button onClick={() => startConnect(platform, projectId)} className="font-mono text-xs text-lumi-accent hover:underline">connect</button>
             ) : (
               <span className="font-mono text-xs text-lumi-subtle">soon</span>
             )}
@@ -70,6 +74,7 @@ export function ConnectionsView({ connections = [] }) {
 // ── Page wrapper: fetch + three states ──────────────────────────
 export default function Connections() {
   const { data, loading, error } = useConnections();
+  const { projectId } = useProjectId();
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
       <h1 className="decision-title text-lumi-text mb-1">Connected Channels</h1>
@@ -77,7 +82,7 @@ export default function Connections() {
 
       {loading && <div className="space-y-3"><CardSkeleton /></div>}
       {!loading && error && <EmptyPanel Icon={Scale} text="Couldn't load connections right now. Try again shortly." />}
-      {!loading && !error && <ConnectionsView connections={data?.connections ?? []} />}
+      {!loading && !error && <ConnectionsView connections={data?.connections ?? []} projectId={projectId} />}
     </div>
   );
 }

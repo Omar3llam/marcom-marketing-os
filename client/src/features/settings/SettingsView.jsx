@@ -1,20 +1,18 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext.jsx';
-import { useProjectId } from '@/hooks/useProjectId.js';
 import { sendPasswordResetEmail, auth } from '@/firebase.js';
 import { toast } from 'sonner';
 import { clearContextCache } from '@/router/ProtectedRoute.jsx';
 import { settingsSections } from '@/app/routeManifest.js';
 import { EmptyState, PageHeader } from '@/design-system/patterns';
+import Connections from '@/pages/Connections.jsx';
 import { ProfileTab } from './ProfileTab.jsx';
-import { IntegrationsTab } from './IntegrationsTab.jsx';
+import { WorkspaceTab } from './WorkspaceTab.jsx';
 import { NotificationsTab } from './NotificationsTab.jsx';
 import { SecurityTab } from './SecurityTab.jsx';
 import {
   deleteUserAccount,
-  getMetaConnectUrl,
-  getMetaCredentialStatus,
   updateUserProfile,
   updateWorkspaceName,
 } from './services.js';
@@ -25,28 +23,23 @@ export default function Settings() {
   const navigate = useNavigate();
   const { section } = useParams();
   const { currentUser, logout } = useAuth();
-  const { projectId, loading: projectLoading } = useProjectId();
   const [busy, setBusy] = useState(false);
 
   const [displayName, setDisplayName] = useState('');
   const [profileChanged, setProfileChanged] = useState(false);
   const [workspaceName, setWorkspaceName] = useState('');
-  const [workspaceSlug] = useState('workspace-001');
   const [workspaceChanged, setWorkspaceChanged] = useState(false);
   const [notifPrefs, setNotifPrefs] = useState({ emailExecutionUpdates: true, slackWebhook: '', weeklyDigest: false });
   const [notifChanged, setNotifChanged] = useState(false);
-  const [metaStatus, setMetaStatus] = useState('loading');
-  const [metaExpires, setMetaExpires] = useState(null);
-  const [metaAccountId, setMetaAccountId] = useState(null);
-  const [connectingMeta, setConnectingMeta] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
+  // Meta OAuth return toast — the connect flow now lives in <Connections>, but
+  // the callback still redirects here with ?meta_connected / ?meta_error.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('meta_connected') === '1') {
       toast.success('Meta Ads connected successfully!');
-      setMetaStatus('connected');
       window.history.replaceState({}, '', window.location.pathname);
     } else if (params.get('meta_error')) {
       const errorType = params.get('meta_error');
@@ -66,25 +59,6 @@ export default function Settings() {
       } catch { /* Invalid JSON, ignore */ }
     }
   }, [currentUser]);
-
-  useEffect(() => {
-    if (!projectId) return;
-    let cancelled = false;
-    getMetaCredentialStatus(projectId)
-      .then(data => {
-        if (cancelled) return;
-        setMetaStatus(data?.connected ? 'connected' : 'disconnected');
-        setMetaExpires(data?.expiresAt ?? null);
-        setMetaAccountId(data?.accountId ?? null);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.warn('[Settings] Failed to load Meta credential status', err);
-          setMetaStatus('disconnected');
-        }
-      });
-    return () => { cancelled = true; };
-  }, [projectId]);
 
   useEffect(() => {
     if (currentUser) setProfileChanged(displayName !== (currentUser.displayName || ''));
@@ -136,18 +110,6 @@ export default function Settings() {
     } finally { setBusy(false); }
   };
 
-  const handleMetaConnect = async () => {
-    if (!projectId) { toast.error('Complete workspace setup before connecting Meta Ads.'); return; }
-    setConnectingMeta(true);
-    try {
-      const oauthUrl = await getMetaConnectUrl(projectId);
-      window.location.href = oauthUrl;
-    } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to initiate Meta connection');
-      setConnectingMeta(false);
-    }
-  };
-
   const handleResetSetup = () => { clearContextCache(); navigate('/onboarding'); };
 
   const handleDeleteAccount = async () => {
@@ -187,45 +149,21 @@ export default function Settings() {
   const renderSection = () => {
     switch (activeSection) {
       case 'integrations':
-        return (
-          <IntegrationsTab
-            workspaceName={workspaceName}
-            setWorkspaceName={setWorkspaceName}
-            workspaceSlug={workspaceSlug}
-            workspaceChanged={workspaceChanged}
-            handleSaveWorkspace={handleSaveWorkspace}
-            busy={busy}
-            metaStatus={metaStatus}
-            metaExpires={metaExpires}
-            metaAccountId={metaAccountId}
-            connectingMeta={connectingMeta}
-            handleMetaConnect={handleMetaConnect}
-            projectId={projectId}
-            projectLoading={projectLoading}
-            showWorkspace={false}
-          />
-        );
+        // ONE connection-status implementation: the workspace-scoped <Connections>
+        // surface (GET /api/lumi/connections), not a second Meta-only panel.
+        return <Connections />;
       case 'team':
         return <SettingsPlaceholder title="Team & Roles" copy="Invite teammates, assign roles, and review workspace access from this settings section." />;
       case 'billing':
         return <SettingsPlaceholder title="Billing" copy="Billing configuration is reserved here so plan and payment controls stay separate from marketing workflows." />;
       case 'workspace':
         return (
-          <IntegrationsTab
+          <WorkspaceTab
             workspaceName={workspaceName}
             setWorkspaceName={setWorkspaceName}
-            workspaceSlug={workspaceSlug}
             workspaceChanged={workspaceChanged}
             handleSaveWorkspace={handleSaveWorkspace}
             busy={busy}
-            metaStatus={metaStatus}
-            metaExpires={metaExpires}
-            metaAccountId={metaAccountId}
-            connectingMeta={connectingMeta}
-            handleMetaConnect={handleMetaConnect}
-            projectId={projectId}
-            projectLoading={projectLoading}
-            showIntegrations={false}
           />
         );
       case 'security':
