@@ -5,7 +5,10 @@
 // CRITICAL: Retrieves tenant-specific tokens from database.
 // No global .env tokens — every call is scoped to workspace.
 //
-// API Layer: Meta Graph API v19.0+
+// API Layer: Meta Marketing API on graph.facebook.com (v21.0, env-overridable) —
+//   matches auth/meta.js, metaAdsService.js, TestTrackerService.js. (Previously
+//   graph.instagram.com/v19.0 — the Instagram Graph host, which rejects
+//   campaign/adset status + budget mutations.)
 // Auth: workspace-scoped token from credentialStore (marcom_credentials) — the
 //   OAuth-authoritative store. NOTE: the Integration Prisma model is write-dead
 //   (nothing populates it), so this service used to read it and NEVER find a
@@ -18,8 +21,8 @@ import axios from 'axios';
 import { logger } from '../utils/logger.js';
 import { resolveCredential } from './connectors/credentialStore.js';
 
-const META_API_VERSION = 'v19.0';
-const META_API_BASE = `https://graph.instagram.com/${META_API_VERSION}`;
+const META_API_VERSION = process.env.META_API_VERSION || 'v21.0';
+const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
 
 // ── Action Type → Meta API Mapping ────────────────────────
 
