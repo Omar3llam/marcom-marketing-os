@@ -99,7 +99,6 @@ router.post('/analyze', upload.single('file'), analyzeHandler);
  * {
  *   status: 'healthy' | 'degraded' | 'unhealthy',
  *   components: {
- *     metaMCP: { status, ... },
  *     orchestrator: { status, ... }
  *   },
  *   timestamp: '2026-05-04T...'

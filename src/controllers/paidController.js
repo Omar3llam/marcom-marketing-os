@@ -9,9 +9,8 @@
 // - GET  /health  — Dual-agent orchestrator health
 //
 // NOTE: radar now sources campaigns from the workspace-scoped connector entity
-// graph (EntityGraphService) — NOT a global META_ACCESS_TOKEN. This controller
-// no longer references metaMCP at all; the only remaining metaMCP reference is
-// the server.js disconnect hook, removed when metaMCP.js is deleted (PR C).
+// graph (EntityGraphService) — NOT a global META_ACCESS_TOKEN. metaMCP has been
+// removed entirely (PR C); no product path reads META_ACCESS_TOKEN.
 // (The /execute endpoint + /analyze "api" branch were pruned in PR A.)
 // ============================================================
 import {
