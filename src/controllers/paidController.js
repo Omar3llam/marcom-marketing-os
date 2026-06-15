@@ -4,9 +4,15 @@
 // Handles HTTP requests for the Paid Decision Engine API.
 //
 // Endpoints:
-// - GET /radar — Proactive radar alerts
-// - POST /analyze — CSV/manual campaign analysis
-// - POST /execute — Execute Meta API actions
+// - GET  /radar   — Proactive radar alerts (Meta MCP; pending move to entity graph)
+// - POST /analyze — CSV / direct-JSON campaign analysis (dual-agent)
+// - GET  /health  — Dual-agent orchestrator health
+//
+// NOTE: the Meta-MCP-dependent /execute endpoint and the /analyze "api" branch
+// were removed — both were unreachable from the product and duplicated the
+// workspace-scoped real paths (execution.js / metaExecutionService). metaMCP
+// now survives only behind radarHandler, which is itself slated to move to the
+// entity graph (after which metaMCP + META_ACCESS_TOKEN can be retired).
 // ============================================================
 import metaMCP from '../services/metaMCP.js';
 import {
@@ -16,17 +22,6 @@ import {
 } from '../agents/orchestrator.js';
 import { logger } from '../utils/logger.js';
 import { parse } from 'csv-parse/sync';
-import { z } from 'zod';
-
-// ── ZOD VALIDATION SCHEMAS ───────────────────────────────────
-const executeSchema = z.object({
-  action_type: z.enum(['pause_campaign', 'resume_campaign', 'update_budget', 'update_bid'], {
-    required_error: 'action_type is required',
-    invalid_type_error: 'action_type must be one of: pause_campaign, resume_campaign, update_budget, update_bid',
-  }),
-  target_id: z.string().min(1, 'target_id is required and cannot be empty'),
-  payload: z.record(z.any()).optional().default({}),
-});
 
 // MOCK_RADAR_ALERTS retained for test fixtures only — never sent to client.
 // On MCP failure, radarHandler now returns 503 + alerts:[] so the frontend
@@ -125,30 +120,6 @@ export async function analyzeHandler(req, res) {
       };
 
       logger.info({ rowCount: rows.length }, '[PaidController] CSV parsed successfully');
-    } else if (req.body && req.body.campaignId) {
-      // Fetch specific campaign from Meta MCP
-      source = 'api';
-      const campaignInsights = await metaMCP.getCampaignInsights({
-        adAccountId: req.body.adAccountId || process.env.META_AD_ACCOUNT_ID,
-        datePreset: req.body.datePreset || 'last_7d',
-      });
-
-      // Filter to specific campaign
-      const campaign = campaignInsights.find(
-        c => c.campaign_id === req.body.campaignId
-      );
-
-      if (!campaign) {
-        return res.status(404).json({
-          success: false,
-          error: 'Campaign not found',
-          campaignId: req.body.campaignId,
-        });
-      }
-
-      campaignData = {
-        campaigns: [campaign],
-      };
     } else {
       // Direct JSON payload
       campaignData = req.body;
@@ -179,95 +150,19 @@ export async function analyzeHandler(req, res) {
 }
 
 /**
- * POST /api/v1/paid/execute
- * Executes a Meta API action via MCP
- */
-export async function executeHandler(req, res) {
-  try {
-    // Validate input with Zod
-    const validation = executeSchema.safeParse(req.body);
-    if (!validation.success) {
-      const errors = validation.error.errors.map(err => ({
-        field: err.path.join('.'),
-        message: err.message,
-      }));
-
-      logger.warn({ errors }, '[PaidController] Execute validation failed');
-
-      return res.status(400).json({
-        success: false,
-        error: 'Validation failed',
-        details: errors,
-        classification: 'validation',
-      });
-    }
-
-    const { action_type, target_id, payload } = validation.data;
-
-    logger.info({ action_type, target_id }, '[PaidController] Execute request received');
-
-    // Map action_type to MCP tool name
-    const toolNameMap = {
-      pause_campaign: 'pause_campaign',
-      resume_campaign: 'resume_campaign',
-      update_budget: 'update_campaign_budget',
-      update_bid: 'update_campaign_bid',
-    };
-
-    const toolName = toolNameMap[action_type];
-
-    // Build MCP tool arguments
-    const args = {
-      campaign_id: target_id,
-      ...payload,
-    };
-
-    // Execute via MCP
-    const result = await metaMCP.executeAction(toolName, args);
-
-    return res.json({
-      success: true,
-      message: `Action ${action_type} executed successfully`,
-      action: {
-        type: action_type,
-        target_id,
-        timestamp: new Date().toISOString(),
-      },
-      result,
-    });
-  } catch (error) {
-    logger.error({ err: error.message }, '[PaidController] Execute handler failed');
-
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-      classification: 'execution',
-      fallbackAction: 'Verify MCP connection and Meta API credentials',
-    });
-  }
-}
-
-/**
  * GET /api/v1/paid/health
  * Health check for Paid Decision Engine
  */
 export async function healthHandler(req, res) {
   try {
-    // Check both MCP and Orchestrator
-    const [mcpHealth, orchestratorHealth] = await Promise.all([
-      metaMCP.healthCheck(),
-      healthCheck(),
-    ]);
-
-    const overallStatus =
-      mcpHealth.status === 'healthy' && orchestratorHealth.status === 'healthy'
-        ? 'healthy'
-        : 'degraded';
+    // Dual-agent orchestrator health. The Meta MCP probe was removed — metaMCP
+    // is being retired and Meta credentials are workspace-scoped, resolved
+    // outside this controller.
+    const orchestratorHealth = await healthCheck();
 
     return res.json({
-      status: overallStatus,
+      status: orchestratorHealth.status === 'healthy' ? 'healthy' : 'degraded',
       components: {
-        metaMCP: mcpHealth,
         orchestrator: orchestratorHealth,
       },
       timestamp: new Date().toISOString(),
