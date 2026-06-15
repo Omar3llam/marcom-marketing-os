@@ -26,6 +26,7 @@ import { readTest }    from '../test-readout/testReadoutEngine.js';
 import { CONFIDENCE_LABEL } from '../test-readout/testReadoutTypes.js';
 import { verdictToActionType } from '../verdict-engine/verdictTypes.js';
 import { validateActionTarget } from '../metaExecutionService.js';
+import { resolveCredential } from '../connectors/credentialStore.js';
 
 const GRAPH_BASE = `https://graph.facebook.com/${process.env.META_API_VERSION || 'v21.0'}`;
 const TEST_ROOT_PREFIX = 'test:';
@@ -107,9 +108,10 @@ export function parseVariantInsights(insight, currency) {
 
 /**
  * Best-effort: refresh each variant's counts from Meta Insights.
- * Resolves the workspace's META Integration token (the canonical
- * resolver) and pulls per-variant insights. Never throws to the caller
- * — a missing token or a per-variant API error is logged and skipped.
+ * Resolves the workspace's META credential via resolveCredential (the
+ * OAuth-authoritative marcom_credentials store) and pulls per-variant
+ * insights. Never throws to the caller — a missing token or a per-variant
+ * API error is logged and skipped.
  *
  * @returns {Promise<{refreshed:number, skipped:number, reason?:string}>}
  */
@@ -119,18 +121,16 @@ export async function refreshFromMeta(testId) {
   });
   if (!test) throw new Error(`refreshFromMeta: test ${testId} not found`);
 
-  let integration;
+  let cred;
   try {
-    integration = await prisma.integration.findUnique({
-      where: { workspaceId_platform: { workspaceId: test.workspaceId, platform: 'META' } },
-    });
-  } catch { integration = null; }
+    cred = await resolveCredential(test.workspaceId, 'META');
+  } catch { cred = null; }
 
-  if (!integration || !integration.isActive || !integration.accessToken) {
-    logger.debug({ testId }, '[TestTrackerService] no active META integration — using stored counts');
+  if (!cred || !cred.accessToken) {
+    logger.debug({ testId }, '[TestTrackerService] no active META credential — using stored counts');
     return { refreshed: 0, skipped: test.variants.length, reason: 'no_integration' };
   }
-  const token = integration.accessToken;
+  const token = cred.accessToken;
 
   const updates = [];
   let skipped = 0;

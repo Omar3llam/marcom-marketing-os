@@ -14,13 +14,13 @@ vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 vi.mock('axios', () => ({ default: { get: vi.fn() } }));
+vi.mock('../connectors/credentialStore.js', () => ({ resolveCredential: vi.fn() }));
 vi.mock('../../lib/prisma.js', () => {
   const prisma = {
     testExperiment:      { findUnique: vi.fn(), update: vi.fn() },
     testVariant:         { update: vi.fn() },
     decision:            { create: vi.fn() },
     decisionMemoryEntry: { create: vi.fn() },
-    integration:         { findUnique: vi.fn() },
     $transaction:        vi.fn(),
   };
   prisma.$transaction.mockImplementation(async (arg) =>
@@ -29,6 +29,7 @@ vi.mock('../../lib/prisma.js', () => {
 });
 
 import { prisma } from '../../lib/prisma.js';
+import { resolveCredential } from '../connectors/credentialStore.js';
 import { concludeTest, resolveVerdict, parseVariantInsights } from './TestTrackerService.js';
 import { verdictToActionType }  from '../verdict-engine/verdictTypes.js';
 import { validateActionTarget } from '../metaExecutionService.js';
@@ -45,7 +46,7 @@ const variant = (id, label, isControl, impressions, clicks) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  prisma.integration.findUnique.mockResolvedValue(null);       // no live Meta — use stored counts
+  resolveCredential.mockResolvedValue(null);                   // no live Meta — use stored counts
   prisma.decision.create.mockResolvedValue({ id: 'dec-1' });
   prisma.decisionMemoryEntry.create.mockResolvedValue({ id: 'mem-1' });
   prisma.testExperiment.update.mockResolvedValue({});
