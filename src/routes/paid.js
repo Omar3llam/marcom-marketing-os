@@ -46,19 +46,13 @@ const upload = multer({
 
 /**
  * GET /api/v1/paid/radar
- * Fetches proactive radar alerts (bleeding campaigns)
+ * Proactive radar alerts (bleeding campaigns) for the caller's workspace,
+ * sourced from the connector entity graph. No query params — the workspace is
+ * resolved from the auth context and its synced campaigns drive the analysis.
  *
- * Query Params (optional):
- * - adAccountId: Meta Ad Account ID (default: from env)
- * - datePreset: Date range (default: last_7d)
- *
- * Response:
- * {
- *   success: true,
- *   alerts: [...],
- *   source: 'live' | 'mock',
- *   timestamp: '2026-05-04T...'
- * }
+ * Response: { success: true, alerts: [...], source: 'live', timestamp }
+ *   503 { success:false, alerts:[], source:'unavailable', message } when no
+ *   channel has synced (UI shows "connect a channel") or analysis fails.
  */
 router.get('/radar', radarHandler);
 
