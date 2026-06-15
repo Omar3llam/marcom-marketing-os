@@ -5,7 +5,7 @@
 // OnboardingRoute — requires Firebase session, blocks if context already set.
 // ============================================================
 import { useEffect, useState } from 'react';
-import { Navigate }            from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth }             from '../context/AuthContext.jsx';
 import { api }                 from '../lib/api.js';
 import { Loader2 }             from 'lucide-react';
@@ -61,6 +61,14 @@ function setStoredOnboardingState(value) {
   } catch {
     // Ignore storage errors
   }
+}
+
+function safeAppPath(value) {
+  return typeof value === 'string' && value.startsWith('/app') ? value : null;
+}
+
+function currentDestination(location) {
+  return `${location.pathname}${location.search}${location.hash}`;
 }
 
 // Module-level cache so route flips between /app and /onboarding
@@ -213,6 +221,7 @@ export function clearContextCache() {
 export function ProtectedRoute({ children }) {
   const { currentUser, loading: authLoading, authReady } = useAuth();
   const { loading, hasContext }  = useUserContext();
+  const location = useLocation();
 
   // Wait for Firebase to complete initial auth check before redirecting.
   // Without this, OAuth callbacks briefly show currentUser=null and bounce to login.
@@ -225,11 +234,11 @@ export function ProtectedRoute({ children }) {
   }
 
   if (!currentUser) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to={`/login?next=${encodeURIComponent(currentDestination(location))}`} replace />;
   }
 
   if (!hasContext) {
-    return <Navigate to="/onboarding" replace />;
+    return <Navigate to={`/onboarding?next=${encodeURIComponent(currentDestination(location))}`} replace />;
   }
 
   return children;
@@ -238,6 +247,9 @@ export function ProtectedRoute({ children }) {
 export function OnboardingRoute({ children }) {
   const { currentUser, loading: authLoading, authReady } = useAuth();
   const { loading, hasContext }  = useUserContext();
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const nextPath = safeAppPath(params.get('next'));
 
   // Wait for Firebase to complete initial auth check before redirecting.
   if (!authReady) {
@@ -249,11 +261,12 @@ export function OnboardingRoute({ children }) {
   }
 
   if (!currentUser) {
-    return <Navigate to="/login" replace />;
+    const next = nextPath ? `?next=${encodeURIComponent(nextPath)}` : '';
+    return <Navigate to={`/login${next}`} replace />;
   }
 
   if (hasContext) {
-    return <Navigate to="/app" replace />;
+    return <Navigate to={nextPath || '/app'} replace />;
   }
 
   return children;

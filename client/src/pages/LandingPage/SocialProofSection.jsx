@@ -2,11 +2,11 @@ import { useReveal } from './useReveal.js';
 
 export function TrustedBy() {
   const partners = [
-    { name: 'Maison Salam', tag: 'Apparel · Cairo' },
-    { name: 'Layla & Co.', tag: 'Beauty · Riyadh' },
-    { name: 'Forge Studio', tag: 'SaaS · Dubai' },
-    { name: 'Karim Foods', tag: 'FMCG · Cairo' },
-    { name: 'Atlas Mobility', tag: 'Logistics · Amman' },
+    { name: 'Apparel teams', tag: 'Cairo' },
+    { name: 'Beauty operators', tag: 'Riyadh' },
+    { name: 'SaaS growth', tag: 'Dubai' },
+    { name: 'FMCG marketers', tag: 'Cairo' },
+    { name: 'Mobility teams', tag: 'Amman' },
   ];
   const [ref, shown] = useReveal();
 
@@ -14,7 +14,7 @@ export function TrustedBy() {
     <section className="px-4 sm:px-6 py-8 pb-2">
       <div ref={ref} className={`max-w-7xl mx-auto ${shown ? 'animate-fade-in' : 'opacity-0'}`}>
         <div className="font-mono text-[10px] tracking-[0.12em] uppercase text-dark-muted text-center mb-6">
-          Operators using Lumi every day
+          Built for MENA operators
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 opacity-85">
           {partners.map((p) => (

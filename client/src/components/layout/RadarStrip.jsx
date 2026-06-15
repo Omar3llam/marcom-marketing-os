@@ -13,7 +13,7 @@ import { Radar } from 'lucide-react';
 export default function RadarStrip({ hasHighAlerts }) {
   return (
     <div className="px-3 py-2 border-t border-lumi-border/50">
-      <div className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-lumi-elevated/60 border border-lumi-border/70">
+      <div className="flex items-center justify-between px-2.5 py-2 rounded-lg bg-lumi-surface/70 border border-lumi-border/50">
         <div className="flex items-center gap-2">
           <Radar className="w-3.5 h-3.5 text-lumi-accent" strokeWidth={1.5} />
           <span className="font-mono text-[10px] text-lumi-muted">

@@ -152,16 +152,15 @@ export default function CampaignsView() {
   }, [allRows]);
 
   // Real account health = mean of the per-campaign health_score from the feed
-  // (computeHealthScore, 0–1), scaled to 0–100. Never inferred from verdicts;
-  // 0 ("no score yet") when nothing has been scored.
+  // (computeHealthScore, 0-1), scaled to 0-100. Empty accounts stay neutral.
   const healthScore = useMemo(() => {
     const scores = campaigns.map((c) => c.health_score).filter((s) => Number.isFinite(s));
     return scores.length === 0
-      ? 0
+      ? null
       : Math.round((scores.reduce((sum, s) => sum + s, 0) / scores.length) * 100);
   }, [campaigns]);
-  const healthLabel = healthScore < 40 ? 'NEEDS ATTENTION' : healthScore < 70 ? 'IMPROVING' : 'HEALTHY';
-  const healthColor = healthScore < 40 ? 'text-trend-danger' : healthScore < 70 ? 'text-trend-warning' : 'text-trend-positive';
+  const healthLabel = healthScore == null ? 'Upload data to see health' : healthScore < 40 ? 'NEEDS ATTENTION' : healthScore < 70 ? 'IMPROVING' : 'HEALTHY';
+  const healthColor = healthScore == null ? 'text-lumi-muted' : healthScore < 40 ? 'text-trend-danger' : healthScore < 70 ? 'text-trend-warning' : 'text-trend-positive';
 
   const setSort = (key) => {
     if (!sortableCols.has(key)) return;
