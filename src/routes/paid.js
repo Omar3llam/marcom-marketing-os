@@ -5,9 +5,12 @@
 //
 // Endpoints:
 // - GET  /radar    — Proactive radar alerts
-// - POST /analyze  — CSV/manual campaign analysis
-// - POST /execute  — Execute Meta API actions
-// - GET  /health   — Health check
+// - POST /analyze  — CSV / direct-JSON campaign analysis
+// - GET  /health   — Dual-agent orchestrator health
+//
+// NOTE: /execute was removed — real Meta execution lives in execution.js
+// (metaExecutionService, workspace-scoped + 4-layer guards). The paid
+// /execute duplicated it via the now-retiring Meta MCP path.
 //
 // Mount in server.js as:
 // app.use('/api/v1/paid', paidRoutes);
@@ -17,7 +20,6 @@ import multer from 'multer';
 import {
   radarHandler,
   analyzeHandler,
-  executeHandler,
   healthHandler,
 } from '../controllers/paidController.js';
 
@@ -94,27 +96,6 @@ router.get('/radar', radarHandler);
  * }
  */
 router.post('/analyze', upload.single('file'), analyzeHandler);
-
-/**
- * POST /api/v1/paid/execute
- * Executes a Meta API action via MCP
- *
- * Body:
- * {
- *   action_type: 'pause_campaign' | 'resume_campaign' | 'update_budget',
- *   target_id: 'meta_campaign_id',
- *   payload: { budget: 500 } (optional)
- * }
- *
- * Response:
- * {
- *   success: true,
- *   message: 'Action executed successfully',
- *   action: { type, target_id, timestamp },
- *   result: { ... }
- * }
- */
-router.post('/execute', executeHandler);
 
 /**
  * GET /api/v1/paid/health
