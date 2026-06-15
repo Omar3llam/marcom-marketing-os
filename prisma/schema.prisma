@@ -353,7 +353,6 @@ model Workspace {
   actions                    Action[]
   campaignStates             CampaignState[]
   decisionMemory             DecisionMemory[]
-  integrations               Integration[]
   auditLogs                  AuditLog[]
   artifacts                  Artifact[]
   artifactApprovals          ArtifactApproval[]
@@ -445,27 +444,10 @@ model OAuthToken {
   @@map("oauth_tokens")
 }
 
-// ── Platform Integrations (encrypted tokens) ──────────────────
-
-model Integration {
-  id           String    @id @default(uuid()) @db.Uuid
-  workspaceId  String    @db.Uuid
-  platform     String // e.g., "META", "GOOGLE"
-  accessToken  String // Encrypted at rest
-  refreshToken String? // Encrypted at rest
-  expiresAt    DateTime?
-  lastSyncedAt DateTime?
-  isActive     Boolean   @default(true)
-  metadata     Json? // Platform-specific config (e.g., ad account IDs)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-
-  @@unique([workspaceId, platform])
-  @@index([workspaceId])
-  @@map("integrations")
-}
+// NOTE: The Integration model (table "integrations") was removed 2026-06-15.
+// It was write-dead — nothing populated it — and every Meta/Google credential
+// read now goes through credentialStore (marcom_credentials), the
+// OAuth-authoritative store. Dropped in migration 20260615000000_drop_integration_model.
 
 // ── Action Engine ────────────────────────────────────────────
 

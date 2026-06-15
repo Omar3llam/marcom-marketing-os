@@ -35,7 +35,6 @@ async function main() {
 
     console.log('Deleting campaign data...');
     await prisma.campaignState.deleteMany({});
-    await prisma.integration.deleteMany({});
     await prisma.reinforcementSnapshot.deleteMany({});
 
     console.log('Deleting auth data...');
