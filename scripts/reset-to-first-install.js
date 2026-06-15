@@ -208,7 +208,6 @@ async function clearDatabase() {
   beforeCounts.auditLog = await prisma.auditLog.count();
   beforeCounts.action = await prisma.action.count();
   beforeCounts.campaignState = await prisma.campaignState.count();
-  beforeCounts.integration = await prisma.integration.count();
   beforeCounts.oauthToken = await prisma.oAuthToken.count();
   beforeCounts.user = await prisma.user.count();
   beforeCounts.workspace = await prisma.workspace.count();
@@ -259,12 +258,10 @@ async function clearDatabase() {
     console.log(`  ✓ Deleted ${deletionResults.auditLog.count} AuditLog records`);
     console.log(`  ✓ Deleted ${deletionResults.action.count} Action records\n`);
 
-    console.log('Layer 7: Campaign data and integrations...');
+    console.log('Layer 7: Campaign data...');
     deletionResults.campaignState = await prisma.campaignState.deleteMany({});
-    deletionResults.integration = await prisma.integration.deleteMany({});
     deletionResults.reinforcementSnapshot = await prisma.reinforcementSnapshot.deleteMany({});
     console.log(`  ✓ Deleted ${deletionResults.campaignState.count} CampaignState records`);
-    console.log(`  ✓ Deleted ${deletionResults.integration.count} Integration records`);
     console.log(`  ✓ Deleted ${deletionResults.reinforcementSnapshot.count} ReinforcementSnapshot records\n`);
 
     console.log('Layer 8: OAuth tokens...');
@@ -304,7 +301,6 @@ async function clearDatabase() {
   afterCounts.auditLog = await prisma.auditLog.count();
   afterCounts.action = await prisma.action.count();
   afterCounts.campaignState = await prisma.campaignState.count();
-  afterCounts.integration = await prisma.integration.count();
   afterCounts.oauthToken = await prisma.oAuthToken.count();
   afterCounts.user = await prisma.user.count();
   afterCounts.workspace = await prisma.workspace.count();
@@ -459,7 +455,6 @@ async function verifyReset() {
     auditLog: await prisma.auditLog.count(),
     action: await prisma.action.count(),
     campaignState: await prisma.campaignState.count(),
-    integration: await prisma.integration.count(),
     oauthToken: await prisma.oAuthToken.count(),
     user: await prisma.user.count(),
     workspace: await prisma.workspace.count(),
