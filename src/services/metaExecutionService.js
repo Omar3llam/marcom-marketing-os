@@ -6,12 +6,17 @@
 // No global .env tokens — every call is scoped to workspace.
 //
 // API Layer: Meta Graph API v19.0+
-// Auth: Bearer token from Integration model
+// Auth: workspace-scoped token from credentialStore (marcom_credentials) — the
+//   OAuth-authoritative store. NOTE: the Integration Prisma model is write-dead
+//   (nothing populates it), so this service used to read it and NEVER find a
+//   token; re-pointed to resolveCredential, which also returns a DECRYPTED token
+//   (the old path used Integration.accessToken raw despite it being "encrypted
+//   at rest" — a latent second bug this fix also closes).
 // Execution: Pause, Resume, Scale, Optimize campaigns/adsets
 // ============================================================
 import axios from 'axios';
-import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
+import { resolveCredential } from './connectors/credentialStore.js';
 
 const META_API_VERSION = 'v19.0';
 const META_API_BASE = `https://graph.instagram.com/${META_API_VERSION}`;
@@ -52,25 +57,16 @@ export async function executeMetaAction(
   try {
     // ─────────────────────────────────────────────────────
     // Layer 1: Fetch tenant-specific Meta token
+    // resolveCredential reads the OAuth-authoritative marcom_credentials store
+    // (workspace-scoped, is_active = true only) and returns a DECRYPTED token.
     // ─────────────────────────────────────────────────────
-    const integration = await prisma.integration.findUnique({
-      where: {
-        workspaceId_platform: {
-          workspaceId,
-          platform: 'META',
-        },
-      },
-    });
+    const cred = await resolveCredential(workspaceId, 'META');
 
-    if (!integration) {
-      throw new Error(`Meta integration not found for workspace ${workspaceId}`);
+    if (!cred) {
+      throw new Error(`Meta credential not found for workspace ${workspaceId}`);
     }
 
-    if (!integration.isActive) {
-      throw new Error('Meta integration is disabled');
-    }
-
-    const token = integration.accessToken; // Encrypted at rest, decrypted by DB
+    const token = cred.accessToken;
     if (!token) {
       throw new Error('Meta access token not available');
     }
@@ -200,22 +196,16 @@ export function validateActionTarget(actionType, targetType) {
  */
 export async function checkIntegrationHealth(workspaceId) {
   try {
-    const integration = await prisma.integration.findUnique({
-      where: {
-        workspaceId_platform: {
-          workspaceId,
-          platform: 'META',
-        },
-      },
-    });
+    // resolveCredential already filters is_active = true → null means "no active
+    // Meta credential" (covers both not-found and disabled).
+    const cred = await resolveCredential(workspaceId, 'META');
 
-    if (!integration) return { healthy: false, reason: 'No integration found' };
-    if (!integration.isActive) return { healthy: false, reason: 'Integration disabled' };
-    if (integration.expiresAt && new Date() > integration.expiresAt) {
+    if (!cred || !cred.accessToken) return { healthy: false, reason: 'No active Meta credential found' };
+    if (cred.expiresAt && new Date() > new Date(cred.expiresAt)) {
       return { healthy: false, reason: 'Token expired' };
     }
 
-    return { healthy: true, lastSynced: integration.lastSyncedAt };
+    return { healthy: true };
   } catch (err) {
     logger.error('[MetaExecutionService] Health check failed', { workspaceId, error: err.message });
     return { healthy: false, reason: err.message };
