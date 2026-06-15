@@ -13,19 +13,19 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-surface-light text-dark-base">
-      <Navbar onCta={() => navigate('/signup')} menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
-      <Hero onPrimary={() => navigate('/signup')} />
+      <Navbar menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
+      <Hero />
       <TrustedBy />
       <CapabilitiesGrid />
       <HowItWorks />
-      <Pricing />
+      <Pricing onStartFree={() => navigate('/signup')} />
       <BottomCTA onCta={() => navigate('/signup')} />
       <Footer />
     </div>
   );
 }
 
-function Navbar({ onCta, menuOpen, setMenuOpen }) {
+function Navbar({ menuOpen, setMenuOpen }) {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -39,7 +39,7 @@ function Navbar({ onCta, menuOpen, setMenuOpen }) {
       className={`sticky top-0 z-50 transition-all duration-240 ${
         scrolled
           ? 'bg-surface-light/82 backdrop-blur-xl border-b border-surface-border'
-          : 'bg-transparent border-b border-transparent'
+          : 'bg-surface-light/70 backdrop-blur-sm border-b border-surface-border/40'
       }`}
     >
       <nav
@@ -69,16 +69,15 @@ function Navbar({ onCta, menuOpen, setMenuOpen }) {
           >
             Sign in
           </Link>
-          <button
-            type="button"
-            onClick={onCta}
+          <Link
+            to="/signup"
             className={`btn-gold inline-flex items-center gap-1.5 text-[13px] rounded-xl transition-all ${
               scrolled ? 'px-4 py-2' : 'px-4 py-2.5'
             }`}
           >
             Start free
             <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
-          </button>
+          </Link>
         </div>
 
         <button
@@ -111,16 +110,13 @@ function Navbar({ onCta, menuOpen, setMenuOpen }) {
             >
               Sign in
             </Link>
-            <button
-              type="button"
-              onClick={() => {
-                setMenuOpen(false);
-                onCta();
-              }}
+            <Link
+              to="/signup"
+              onClick={() => setMenuOpen(false)}
               className="mt-1 w-full btn-gold px-4 py-2 rounded-xl text-sm"
             >
               Start free →
-            </button>
+            </Link>
           </div>
         </div>
       )}

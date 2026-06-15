@@ -1,10 +1,10 @@
 // ============================================================
 // MARCOM Landing — Pricing Section
 // ============================================================
-import { Check, Zap, ArrowRight } from 'lucide-react';
+import { Check, Zap, ArrowRight, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 
-export function Pricing() {
+export function Pricing({ onStartFree }) {
   const tiers = [
     {
       name: 'Starter',
@@ -18,7 +18,8 @@ export function Pricing() {
         'Basic outcome attribution',
         'Email support',
       ],
-      cta: 'Start free trial',
+      cta: 'Start free',
+      href: '/signup',
       popular: false,
     },
     {
@@ -34,7 +35,8 @@ export function Pricing() {
         'Slack integration',
         'Priority support',
       ],
-      cta: 'Start free trial',
+      cta: 'Start free',
+      href: '/signup',
       popular: true,
     },
     {
@@ -51,6 +53,7 @@ export function Pricing() {
         'Advanced security & compliance',
       ],
       cta: 'Contact sales',
+      href: 'mailto:sales@marcom.ai',
       popular: false,
     },
   ];
@@ -68,8 +71,7 @@ export function Pricing() {
             Built for every stage.
           </h2>
           <p className="text-lumi-muted font-body text-lg max-w-2xl mx-auto leading-relaxed">
-            Start with a free 14-day trial. No credit card required.
-            Scale as you grow.
+            Start free during early access. Scale as you grow.
           </p>
         </div>
 
@@ -125,8 +127,14 @@ export function Pricing() {
                 ))}
               </ul>
 
-              <button
-                type="button"
+              <a
+                href={tier.href}
+                onClick={(event) => {
+                  if (tier.href === '/signup' && onStartFree) {
+                    event.preventDefault();
+                    onStartFree();
+                  }
+                }}
                 className={cn(
                   'w-full font-display font-semibold px-5 py-3 rounded-xl text-sm inline-flex items-center justify-center gap-2 transition-all',
                   tier.popular
@@ -135,10 +143,12 @@ export function Pricing() {
                 )}
               >
                 {tier.cta}
-                {tier.cta !== 'Contact sales' && (
+                {tier.cta === 'Contact sales' ? (
+                  <Mail className="w-4 h-4" strokeWidth={2} />
+                ) : (
                   <ArrowRight className="w-4 h-4" strokeWidth={2} />
                 )}
-              </button>
+              </a>
             </div>
           ))}
         </div>
@@ -146,7 +156,7 @@ export function Pricing() {
         {/* Trust banner */}
         <div className="mt-12 text-center">
           <p className="text-lumi-subtle font-mono text-xs">
-            Trusted by 240+ workspaces across MENA · UAE · Egypt · KSA
+            Built for MENA media buyers across UAE, Egypt, and KSA
           </p>
         </div>
       </div>

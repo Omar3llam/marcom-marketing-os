@@ -1,7 +1,6 @@
-import { Zap, ArrowRight, Skull, Pause, Rocket } from 'lucide-react';
-import { useReveal } from './useReveal.js';
+import { Zap, ArrowRight, Skull } from 'lucide-react';
 
-export function Hero({ onPrimary }) {
+export function Hero() {
   const kill = <strong className="text-verdict-kill-text font-bold">KILL</strong>;
   const hold = <strong className="text-verdict-hold-text font-bold">HOLD</strong>;
   const scale = <strong className="text-verdict-scale-text font-bold">SCALE</strong>;
@@ -47,15 +46,14 @@ export function Hero({ onPrimary }) {
           </p>
 
           <div className="mt-10 flex flex-wrap items-center gap-4">
-            <button
-              type="button"
-              onClick={onPrimary}
+            <a
+              href="/signup"
               className="btn-gold inline-flex items-center gap-2 px-7 py-3.5 text-[15px] rounded-xl shadow-gold-glow hover:shadow-card-hover transition-all"
             >
               <Zap className="w-4 h-4" strokeWidth={2} />
-              Launch the live demo
+              Start free
               <ArrowRight className="w-4 h-4" strokeWidth={2} />
-            </button>
+            </a>
             <a
               href="#how"
               className="btn-ghost inline-flex items-center gap-2 px-5 py-3 text-sm rounded-xl transition-all"
@@ -67,7 +65,7 @@ export function Hero({ onPrimary }) {
           <div className="mt-12 flex flex-wrap items-center gap-7">
             <MicroStat label="Median verdict" value="18s" />
             <DividerV />
-            <MicroStat label="Avg verdict ROAS" value="3.8x" />
+            <MicroStat label="Verdict types" value="KILL / HOLD / SCALE" />
             <DividerV />
             <MicroStat label="Currencies" value="EGP · SAR · AED · KWD" mono />
           </div>

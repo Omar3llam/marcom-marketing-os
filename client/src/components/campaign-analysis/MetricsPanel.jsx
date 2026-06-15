@@ -38,7 +38,7 @@ export function MetricsPanel({ totals, loading, healthScore, healthLabel, health
       />
       <KpiCard
         label="Account Health"
-        value={`${healthScore}/100`}
+        value={healthScore == null ? '—' : `${healthScore}/100`}
         valueClass={healthColor}
         delta={healthLabel}
         deltaClass={healthColor}

@@ -13,7 +13,7 @@
 //   settings   → Settings
 // ============================================================
 import { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import LandingPage      from './pages/LandingPage.jsx';
 import AuthPage         from './pages/AuthPage.jsx';
@@ -69,6 +69,24 @@ function AuthLoadingScreen() {
       <div className="flex items-center gap-2 text-dark-soft">
         <Loader2 className="h-4 w-4 animate-spin" />
         <span className="text-sm">Initializing authentication…</span>
+      </div>
+    </div>
+  );
+}
+
+function NotFound({ app = false }) {
+  return (
+    <div className={app ? 'flex min-h-full items-center justify-center p-6' : 'flex min-h-screen items-center justify-center bg-surface-light p-6'}>
+      <div className="max-w-md rounded-2xl border border-lumi-border bg-lumi-surface p-6 text-center shadow-card">
+        <p className="font-mono text-[11px] uppercase tracking-[0.12em] text-lumi-subtle">404</p>
+        <h1 className="mt-2 decision-title text-lumi-text">Page not found</h1>
+        <p className="mt-2 text-sm leading-6 text-lumi-muted">This page does not exist or has moved.</p>
+        <Link
+          to={app ? appRoutes.overview : '/'}
+          className="mt-5 inline-flex rounded-xl bg-lumi-accent px-4 py-2 font-display text-sm font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover"
+        >
+          {app ? 'Back to overview' : 'Back to home'}
+        </Link>
       </div>
     </div>
   );
@@ -234,10 +252,10 @@ export default function App() {
               </Suspense>
             </ErrorBoundary>
           } />
+          <Route path="*" element={<NotFound app />} />
         </Route>
 
-        {/* 404 → home (NOT app, so unauthed visitors don't bounce-loop) */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </ErrorBoundary>
   );

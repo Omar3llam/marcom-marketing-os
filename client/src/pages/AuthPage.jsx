@@ -8,10 +8,16 @@ import { isEmbeddedWebviewOrMobile } from '@/firebase.js';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton.jsx';
 import { LoginForm } from '@/components/auth/LoginForm.jsx';
 
+function safeAppPath(value) {
+  return typeof value === 'string' && value.startsWith('/app') ? value : null;
+}
+
 export default function AuthPage({ mode: defaultMode = 'login' }) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { signInWithGoogle, signInWithEmail, signUpWithEmail, currentUser, authReady } = useAuth();
+  const nextPath = safeAppPath(searchParams.get('next'));
+  const postAuthPath = nextPath || '/onboarding';
 
   const [mode, setMode] = useState(searchParams.get('mode') || defaultMode);
   const [email, setEmail] = useState('');
@@ -23,8 +29,8 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
   // Navigate once Firebase resolves an authenticated user. Guards both popup
   // and redirect flows where auth state arrives after this component mounts.
   useEffect(() => {
-    if (currentUser && authReady) navigate('/onboarding');
-  }, [currentUser, authReady, navigate]);
+    if (currentUser && authReady) navigate(postAuthPath, { replace: true });
+  }, [currentUser, authReady, navigate, postAuthPath]);
 
   const isLogin = mode === 'login';
   const inEmbeddedBrowser = isEmbeddedWebviewOrMobile();
@@ -47,7 +53,7 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
       clearTimeout(timeout);
       if (!inEmbeddedBrowser) {
         toast.success('Signed in with Google!');
-        navigate('/onboarding');
+        navigate(postAuthPath, { replace: true });
       }
     } catch (err) {
       clearTimeout(timeout);
@@ -83,7 +89,7 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
         await signUpWithEmail(email, password);
         toast.success('Account created! Welcome aboard.');
       }
-      navigate('/onboarding');
+      navigate(postAuthPath, { replace: true });
     } catch (err) {
       console.error('[AuthPage] Auth error:', err);
       let msg = 'Authentication failed';

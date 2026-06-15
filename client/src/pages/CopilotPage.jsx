@@ -1,5 +1,5 @@
-import { Bot, ClipboardCheck, Lock, Radar, Sparkles } from 'lucide-react';
-import { EvidencePanel, MetricTile, PageHeader } from '@/design-system/patterns';
+import { Bot, ClipboardCheck, Mail, Radar, Sparkles } from 'lucide-react';
+import { MetricTile, PageHeader } from '@/design-system/patterns';
 
 export default function CopilotPage() {
   return (
@@ -7,8 +7,8 @@ export default function CopilotPage() {
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
         <PageHeader
           eyebrow="AI Copilot"
-          title="Reserved for the Marketing OS copilot"
-          description="This route is intentionally reserved in the primary navigation so the assistant can grow across campaigns, intelligence, proof, decisions, and content without another sidebar restructure."
+          title="Lumi Copilot"
+          description="Your always-on marketing co-pilot for evidence-backed campaign answers, decision support, and next actions from one conversation."
         />
 
         <section className="rounded-xl border border-lumi-border bg-lumi-surface p-5 shadow-card">
@@ -19,16 +19,26 @@ export default function CopilotPage() {
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="font-display text-base font-semibold text-lumi-text">
-                  Copilot foundation
+                  Coming soon
                 </h2>
                 <span className="inline-flex items-center gap-1 rounded-full border border-lumi-border bg-lumi-elevated px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-lumi-muted">
-                  <Lock className="h-3 w-3" strokeWidth={1.5} />
-                  Reserved
+                  <Sparkles className="h-3 w-3" strokeWidth={1.5} />
+                  Early access
                 </span>
               </div>
               <p className="mt-2 text-sm leading-6 text-lumi-muted">
-                Full Copilot workflows should be implemented after Overview, Campaigns,
-                Intelligence, Decisions, Settings, and Content Lab have stable feature boundaries.
+                Ask questions about campaign performance, get answers grounded in your data,
+                and turn strong recommendations into decisions without switching surfaces.
+              </p>
+              <a
+                href="mailto:sales@marcom.ai?subject=Lumi%20Copilot%20waitlist"
+                className="mt-4 inline-flex items-center gap-2 rounded-lg border border-lumi-accent/30 bg-lumi-accent-soft px-3 py-2 text-sm font-display font-semibold text-lumi-accent transition-colors hover:border-lumi-accent"
+              >
+                <Mail className="h-4 w-4" strokeWidth={1.5} />
+                Join the waitlist
+              </a>
+              <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.08em] text-lumi-subtle">
+                Coming soon
               </p>
             </div>
           </div>
@@ -38,32 +48,23 @@ export default function CopilotPage() {
           <MetricTile
             label="Campaign context"
             value="Ready"
-            detail="Read portfolio state and active diagnoses."
+            detail="Use connected campaign context."
             icon={Radar}
             tone="intelligence"
           />
           <MetricTile
             label="Evidence memory"
-            value="Planned"
-            detail="Reason over insights, proof, and outcomes."
+            value="Soon"
+            detail="Ground answers in proof and outcomes."
             icon={Sparkles}
           />
           <MetricTile
             label="Decision support"
-            value="Reserved"
-            detail="Prepare recommendations and next actions."
+            value="Soon"
+            detail="Move from answer to action."
             icon={ClipboardCheck}
           />
         </div>
-
-        <EvidencePanel
-          title="Copilot dependencies"
-          evidence={[
-            { label: 'Campaigns', description: 'Portfolio context must be stable before Copilot can answer operational questions.', value: 'Core' },
-            { label: 'Intelligence', description: 'Blended Truth, Insights, and Proof provide the evidence layer.', value: 'Core' },
-            { label: 'Decisions', description: 'Approvals and execution history define what the assistant can recommend next.', value: 'Core' },
-          ]}
-        />
       </div>
     </div>
   );

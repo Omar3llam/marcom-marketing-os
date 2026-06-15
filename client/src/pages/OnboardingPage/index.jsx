@@ -1,5 +1,5 @@
 import { useState }    from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth }     from '@/context/AuthContext.jsx';
 import { toast }       from 'sonner';
 import { ArrowRight, ArrowLeft, Loader2, Sparkles } from 'lucide-react';
@@ -18,8 +18,14 @@ import { ReviewStep }          from './steps/ReviewStep.jsx';
 
 const STEPS = STEP_DEFINITIONS;
 
+function safeAppPath(value) {
+  return typeof value === 'string' && value.startsWith('/app') ? value : null;
+}
+
 export default function OnboardingPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const nextPath = safeAppPath(searchParams.get('next'));
   const { currentUser } = useAuth();
   const [step, setStep] = useState(0); // 0-indexed: 0 = welcome, 1 = identity, ..., 8 = review
   const [busy, setBusy] = useState(false);
@@ -75,7 +81,7 @@ export default function OnboardingPage() {
       toast.success('Context saved — welcome aboard.');
       await Promise.resolve();
       sessionStorage.setItem('marcom:firstActivation', '1');
-      navigate('/app', { replace: true });
+      navigate(nextPath || '/app', { replace: true });
     } catch (err) {
       const detail = err.response?.data;
       const msg = detail?.hint || detail?.detail || detail?.error || err.message || 'Could not save context';

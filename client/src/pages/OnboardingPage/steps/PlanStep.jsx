@@ -14,7 +14,7 @@ export function PlanStep({ form, set }) {
     <div>
       <BigHeader className="mb-3">Choose your plan</BigHeader>
       <Lede className="mb-8">
-        Start with a 7-day free trial. Cancel anytime. Prices in {form.currency}.
+        Free during early access. Prices in {form.currency} apply when paid plans launch.
       </Lede>
 
       <div className="flex justify-center gap-2 mb-6">
@@ -98,10 +98,10 @@ export function PlanStep({ form, set }) {
 
       <div className="mt-5 p-4 rounded-lg bg-surface-muted border border-surface-border">
         <div className="text-xs font-medium text-dark-secondary mb-1">
-          7-day free trial —
+          Free during early access —
         </div>
         <div className="text-xs text-dark-secondary leading-relaxed">
-          You won&apos;t be charged until the trial ends. You can cancel anytime from your workspace settings.
+          You won&apos;t be charged while Lumi is in early access. We&apos;ll let you know before any paid plan begins.
         </div>
       </div>
     </div>
