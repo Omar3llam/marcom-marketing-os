@@ -57,7 +57,6 @@ import { ensureUserContextSchema } from './models/userContext.js';
 import { ensureProjectSchema }     from './models/project.js';
 import { ensureCredentialSchema }  from './models/credential.js';
 import { config }           from './config.js';
-import metaMCP              from './services/metaMCP.js';
 
 const app = express();
 
@@ -485,17 +484,6 @@ const server = app.listen(config.port, '0.0.0.0', () => {
 
 async function shutdown(signal) {
   logger.info({ signal }, 'Graceful shutdown initiated');
-
-  // Disconnect MetaMCP child process FIRST — before closing the HTTP server.
-  // metaMCP.js no longer owns process signals (rogue handlers were removed);
-  // disconnecting here ensures the stdio transport is torn down cleanly
-  // without interfering with the event loop while the port is still open.
-  try {
-    await metaMCP.disconnect();
-    logger.info('MetaMCP disconnected');
-  } catch (err) {
-    logger.warn({ err: err.message }, 'MetaMCP disconnect failed (non-fatal)');
-  }
 
   server.close(async () => {
     logger.info('HTTP server closed');
