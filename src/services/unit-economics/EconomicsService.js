@@ -18,6 +18,11 @@ import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
 const DEFAULT_GROSS_MARGIN_PCT = Number(process.env.UNIT_ECON_DEFAULT_MARGIN || 0.5);
 const DEFAULT_AOV_MINOR        = Number(process.env.UNIT_ECON_DEFAULT_AOV_MINOR || 5_000);
 
+// Platform sources whose MetricSnapshot conversions are real acquisitions.
+// MUST match AttributionService's aggregation so "conversions" never diverges
+// between the two surfaces.
+const PLATFORM_SOURCES = new Set(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
+
 /**
  * Seed an AOV (minor units) from blended truth: portfolio blended revenue
  * is real; without a conversion count we fall back to the default AOV.
@@ -83,6 +88,80 @@ export async function setEconomics(workspaceId, data = {}) {
   });
   logger.info({ workspaceId }, '[EconomicsService] economics saved');
   return saved;
+}
+
+/**
+ * The account's CURRENT (realized) blended CAC — trailing actual spend ÷
+ * actual platform conversions, from the SAME sources attribution uses
+ * (blended-truth spend + MetricSnapshot platform conversions).
+ *
+ * DISTINCT FROM the plan's PROJECTED CAC (scenarioEngine: projected spend ÷
+ * projected volume, forward/hypothetical). These answer different questions —
+ * "what is this account's CAC right now" vs "what would CAC be under a proposed
+ * plan" — so they are named differently ON PURPOSE and must never be conflated.
+ * Null conversions → null CAC (honest: no realized CAC to compute against).
+ *
+ * @returns {Promise<{ currentBlendedCacMinor:(number|null), totalSpendMinor:number, totalConversions:number, currency:string }>}
+ */
+export async function getCurrentCac(workspaceId) {
+  if (!workspaceId) throw new Error('getCurrentCac: workspaceId required');
+  const { channels } = await getBlendedTruth(workspaceId);
+  if (!channels || channels.length === 0) {
+    return { currentBlendedCacMinor: null, totalSpendMinor: 0, totalConversions: 0, currency: 'USD' };
+  }
+
+  const totalSpendMinor = channels.reduce((sum, c) => sum + (c.spendMinor ?? 0), 0);
+  const currency = channels.find((c) => c.currency)?.currency ?? 'USD';
+
+  // Platform-reported conversions from MetricSnapshot — same filter + sum as
+  // AttributionService (kept consistent so the two never disagree on volume).
+  const snaps = await prisma.metricSnapshot.findMany({
+    where:  { workspaceId, entityId: { in: channels.map((c) => c.channelId) } },
+    select: { conversions: true, source: true },
+  }).catch(() => []);
+  let totalConversions = 0;
+  for (const s of snaps) {
+    if (!PLATFORM_SOURCES.has(s.source)) continue;
+    totalConversions += s.conversions ?? 0;
+  }
+
+  const currentBlendedCacMinor = totalConversions > 0 ? Math.round(totalSpendMinor / totalConversions) : null;
+  return { currentBlendedCacMinor, totalSpendMinor, totalConversions, currency };
+}
+
+/**
+ * The standalone unit-economics assessment for the Intelligence surface.
+ * GOVERNING LAW: a sustainability verdict is computed ONLY when the user has
+ * ASSERTED their economics (not the seeded defaults) AND a real current CAC
+ * exists. Otherwise `assessment` stays null and `reason` tells the surface to
+ * stay honest-empty — a default-based number is never dressed as a measurement.
+ *
+ * @returns {Promise<{ economics, isDefault, currentCac, assessment:(object|null), reason:(string|null) }>}
+ */
+export async function getEconomicsAssessment(workspaceId) {
+  if (!workspaceId) throw new Error('getEconomicsAssessment: workspaceId required');
+  const [{ economics, isDefault }, currentCac] = await Promise.all([
+    getEconomics(workspaceId),
+    getCurrentCac(workspaceId),
+  ]);
+
+  let assessment = null;
+  let reason = null;
+  if (isDefault) {
+    reason = 'NOT_CONFIGURED'; // economics never asserted — don't compute off defaults
+  } else if (currentCac.currentBlendedCacMinor == null) {
+    reason = 'NO_CONVERSIONS'; // no realized CAC to assess against
+  } else {
+    assessment = computeUnitEconomics({
+      aovMinor:             economics.aovMinor,
+      grossMarginPct:       economics.grossMarginPct,
+      repeatRate:           economics.repeatRate,
+      avgOrdersPerCustomer: economics.avgOrdersPerCustomer,
+      cacMinor:             currentCac.currentBlendedCacMinor,
+      config: { targetLtvToCac: economics.targetLtvToCac, currency: economics.currency },
+    });
+  }
+  return { economics, isDefault, currentCac, assessment, reason };
 }
 
 /**

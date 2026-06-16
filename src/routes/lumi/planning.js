@@ -1,7 +1,8 @@
 // ============================================================
 // MARCOM / Lumi — Planning OS (scenario · economics · goals · plans)
 // POST   /api/lumi/scenario           — what-if ranges + assumptions (no writes)
-// GET/PUT /api/lumi/economics         — read / upsert AccountEconomics
+// GET/PUT /api/lumi/economics         — read assessment (inputs + current CAC +
+//                                       computed sustainability) / upsert inputs
 // GET/POST /api/lumi/goals            — list / create a NorthStarGoal
 // GET/POST /api/lumi/plans            — list / build a Plan
 // GET    /api/lumi/plans/:id          — plan + live tracking
@@ -11,7 +12,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { runScenario } from '../../services/scenario-engine/ScenarioService.js';
-import { getEconomics, setEconomics } from '../../services/unit-economics/EconomicsService.js';
+import { getEconomicsAssessment, setEconomics } from '../../services/unit-economics/EconomicsService.js';
 import { buildPlan, listPlans, getPlan, promotePlanMix } from '../../services/planning/PlanService.js';
 
 export const planningRouter = Router();
@@ -55,10 +56,10 @@ planningRouter.post('/scenario', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 planningRouter.get('/economics', async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
-  if (!wsId) return res.json({ workspaceId: null, economics: null });
+  if (!wsId) return res.json({ workspaceId: null, economics: null, isDefault: true, currentCac: null, assessment: null, reason: 'NOT_CONFIGURED' });
   try {
-    const { economics, isDefault } = await getEconomics(wsId);
-    return res.json({ workspaceId: wsId, economics, isDefault });
+    const assessment = await getEconomicsAssessment(wsId);
+    return res.json({ workspaceId: wsId, ...assessment });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/planning] economics get failed');
     return res.status(500).json({ error: 'EconomicsUnavailable', message: 'Request failed' });
