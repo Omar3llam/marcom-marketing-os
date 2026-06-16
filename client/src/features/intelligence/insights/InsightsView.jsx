@@ -10,17 +10,23 @@ import { useMemo } from 'react';
 import { Target, Brain, Zap } from 'lucide-react';
 import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
 import { useAccountBriefing } from '@/hooks/useAccountBriefing.js';
+import { useEconomics, useSaveEconomics } from '@/hooks/useEconomics.js';
 import { cn } from '@/lib/utils.js';
 import { fmtRelative } from '@/lib/dateUtils.js';
 import { PriorityBadge, StageBadge } from '@/layouts';
+import RoleGate from '@/components/auth/RoleGate.jsx';
 import { FatigueForecast } from './FatigueForecast.jsx';
 import { AccountBriefing } from './AccountBriefing.jsx';
+import { UnitEconomicsPanel } from './UnitEconomicsPanel.jsx';
 
 const STAGES = ['DYING', 'FATIGUED', 'TESTING', 'SCALING', 'STABLE'];
 
 export default function GrowthStrategyBoard() {
   const { campaigns, summary, loading, fatiguePredictions } = useCampaignFeed();
   const { briefing, loading: briefingLoading, error: briefingError } = useAccountBriefing();
+  const { data: economics, loading: economicsLoading, error: economicsError, refetch: refetchEconomics } = useEconomics();
+  const { save: saveEconomics, saving: economicsSaving } = useSaveEconomics();
+  const onSaveEconomics = async (inputs) => { const ok = await saveEconomics(inputs); if (ok) await refetchEconomics(); };
 
   // Active bets = pending alerts, treated as hypotheses under test.
   const bets = useMemo(() => {
@@ -147,6 +153,17 @@ export default function GrowthStrategyBoard() {
 
       {/* ── WHAT LUMI KNOWS (account briefing) ───────────────── */}
       <AccountBriefing briefing={briefing} loading={briefingLoading} error={briefingError} />
+
+      {/* ── UNIT ECONOMICS (Phase 4-D · STRATEGIST only) ─────── */}
+      <RoleGate role={['STRATEGIST']}>
+        <UnitEconomicsPanel
+          data={economics}
+          loading={economicsLoading}
+          error={economicsError}
+          onSave={onSaveEconomics}
+          saving={economicsSaving}
+        />
+      </RoleGate>
     </div>
   );
 }

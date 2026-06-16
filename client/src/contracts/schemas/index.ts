@@ -293,9 +293,13 @@ export {
   SustainabilityBandRangeSchema,
   AccountEconomicsSchema,
   UnitEconomicsSchema,
+  CurrentCacSchema,
+  EconomicsAssessmentSchema,
   type SustainabilityBand,
   type AccountEconomics,
   type UnitEconomics,
+  type CurrentCac,
+  type EconomicsAssessment,
 } from './unitEconomics.schema';
 
 export {

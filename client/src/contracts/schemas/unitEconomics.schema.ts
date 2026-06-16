@@ -44,6 +44,29 @@ export const UnitEconomicsSchema = z.object({
   currency: z.string().default('USD'),
 });
 
+// The account's CURRENT (realized) blended CAC — trailing actual spend ÷ actual
+// platform conversions. DISTINCT from a plan's PROJECTED CAC; named so on purpose.
+export const CurrentCacSchema = z.object({
+  currentBlendedCacMinor: z.number().int().nullable(),
+  totalSpendMinor: z.number().int(),
+  totalConversions: z.number(),
+  currency: z.string().default('USD'),
+});
+
+// GET /api/lumi/economics — inputs + current CAC + computed assessment.
+// `assessment` is non-null ONLY when economics are asserted (not default) AND a
+// real CAC exists; otherwise `reason` says why it's honest-empty.
+export const EconomicsAssessmentSchema = z.object({
+  workspaceId: z.string().nullable(),
+  economics: AccountEconomicsSchema.nullable(), // null only on the no-workspace path
+  isDefault: z.boolean(),
+  currentCac: CurrentCacSchema.nullable(),
+  assessment: UnitEconomicsSchema.nullable(),
+  reason: z.enum(['NOT_CONFIGURED', 'NO_CONVERSIONS']).nullable(),
+});
+
 export type SustainabilityBand = z.infer<typeof SustainabilityBandSchema>;
 export type AccountEconomics = z.infer<typeof AccountEconomicsSchema>;
 export type UnitEconomics = z.infer<typeof UnitEconomicsSchema>;
+export type CurrentCac = z.infer<typeof CurrentCacSchema>;
+export type EconomicsAssessment = z.infer<typeof EconomicsAssessmentSchema>;
