@@ -164,9 +164,14 @@ export default function App() {
             </ErrorBoundary>
           } />
 
+          {/* ── Phase 4-B · Growth Strategy + Account Briefing (STRATEGIST/BUYER; CLIENT → Home) ──
+              The memory-moat war room. Gated to match its sibling blended-truth + the
+              Intelligence nav — closes a deep-link hole where a CLIENT could reach it by URL. */}
           <Route path="intelligence/insights" element={
             <ErrorBoundary boundaryId="growth">
-              <Suspense fallback={<PageFallback />}><GrowthStrategyBoard /></Suspense>
+              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<Navigate to={appRoutes.overview} replace />}>
+                <Suspense fallback={<PageFallback />}><GrowthStrategyBoard /></Suspense>
+              </RoleGate>
             </ErrorBoundary>
           } />
 
