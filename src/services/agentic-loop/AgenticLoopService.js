@@ -18,6 +18,7 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { planAgenda } from './agenticPlanner.js';
 import { sweepGuardrails } from '../guardrail-engine/GuardrailSweepService.js';
+import { sweepFatigue } from '../fatigue-forecaster/FatigueSweepService.js';
 import { getPortfolio } from '../portfolio/PortfolioService.js';
 import { getWeeklyAgenda } from '../test-generator/TestGeneratorService.js';
 import { trackPlan } from '../planning/PlanService.js';
@@ -120,9 +121,15 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
   }
 
   const startedAt = new Date(now);
-  // 1. detect→propose: the organs that WRITE proposals (guardrails today).
-  //    Never auto-executes — writes PROPOSED rows the human confirms.
-  await sweepGuardrails(workspaceId).catch((err) => logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] guardrail sweep skipped'));
+  // 1. detect→propose: the organs that WRITE forward signals. Each is
+  //    best-effort (a cold organ never fails the sweep) and runs BEFORE
+  //    buildLoopInputs so this sweep also surfaces what it just wrote. Neither
+  //    auto-executes: guardrails write PROPOSED Decisions the human confirms;
+  //    the forecaster writes read-side FatiguePrediction radar artifacts.
+  await Promise.all([
+    sweepGuardrails(workspaceId).catch((err) => logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] guardrail sweep skipped')),
+    sweepFatigue(workspaceId, { now }).catch((err) => logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] fatigue sweep skipped')),
+  ]);
 
   // 2. load the unified picture and plan the agenda.
   const inputs = await buildLoopInputs(workspaceId, { now });
