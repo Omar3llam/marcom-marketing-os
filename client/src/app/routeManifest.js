@@ -5,6 +5,7 @@ export const appRoutes = {
   blendedTruth: '/app/intelligence/blended-truth',
   insights: '/app/intelligence/insights',
   proof: '/app/intelligence/proof',
+  testing: '/app/testing',
   decisions: '/app/decisions',
   contentLab: '/app/content',
   copilot: '/app/copilot',

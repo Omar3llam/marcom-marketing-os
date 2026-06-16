@@ -46,6 +46,9 @@ const ApprovalQueue       = lazy(() => import('./pages/ApprovalQueue.jsx')); // 
 const BlendedTruth = lazy(() => import('./pages/BlendedTruth.jsx'));
 const Proof        = lazy(() => import('./pages/Proof.jsx'));
 
+// ── Phase 4-A · Testing OS readout (BUYER-primary, role-gated) ─
+const Testing      = lazy(() => import('./pages/Testing.jsx'));
+
 // ── v2 views (gradual migration via Strangler Pattern) ────────
 const DecisionViewV2 = lazy(() => import('./pages/v2/DecisionViewV2.tsx').then(m => ({ default: m.DecisionViewV2 })));
 
@@ -164,6 +167,15 @@ export default function App() {
           <Route path="intelligence/insights" element={
             <ErrorBoundary boundaryId="growth">
               <Suspense fallback={<PageFallback />}><GrowthStrategyBoard /></Suspense>
+            </ErrorBoundary>
+          } />
+
+          {/* ── Phase 4-A · Testing OS readout (BUYER/STRATEGIST; CLIENT → Home) ── */}
+          <Route path="testing" element={
+            <ErrorBoundary boundaryId="testing">
+              <RoleGate role={['BUYER', 'STRATEGIST']} fallback={<Navigate to={appRoutes.overview} replace />}>
+                <Suspense fallback={<PageFallback />}><Testing /></Suspense>
+              </RoleGate>
             </ErrorBoundary>
           } />
 
