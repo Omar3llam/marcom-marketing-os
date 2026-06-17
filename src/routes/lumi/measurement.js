@@ -12,7 +12,7 @@ import { logger } from '../../utils/logger.js';
 import { getAttribution } from '../../services/attribution-engine/AttributionService.js';
 import { ATTRIBUTION_MODEL } from '../../services/attribution-engine/attributionTypes.js';
 import { getReconciliation } from '../../services/reconciliation/ReconciliationService.js';
-import { designTest, listTests, getTest, concludeIncrementality } from '../../services/incrementality-engine/IncrementalityService.js';
+import { designTest, listTests, getTest, recordCounts, concludeIncrementality } from '../../services/incrementality-engine/IncrementalityService.js';
 
 export const measurementRouter = Router();
 
@@ -112,6 +112,30 @@ measurementRouter.post('/incrementality', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// POST /api/lumi/incrementality/:id/metrics — record OBSERVED counts
+// (the operator-entered holdout result; DESIGNED → RUNNING). The missing
+// write organ that makes a conclude meaningful — without it every readout
+// would be computed off empty arms.
+// ─────────────────────────────────────────────────────────────
+measurementRouter.post('/incrementality/:id/metrics', async (req, res) => {
+  const wsId = req.measurementWorkspaceId;
+  const b = req.body ?? {};
+  const fields = ['exposedUsers', 'exposedConversions', 'holdoutUsers', 'holdoutConversions'];
+  if (fields.some((f) => typeof b[f] !== 'number')) {
+    return res.status(400).json({ error: 'BadCounts', message: 'exposedUsers, exposedConversions, holdoutUsers, holdoutConversions (numbers) required.' });
+  }
+  try {
+    const test = await recordCounts(wsId, req.params.id, b);
+    return res.json({ workspaceId: wsId, test });
+  } catch (err) {
+    if (/not found/i.test(err.message)) return res.status(404).json({ error: 'HoldoutNotFound', message: err.message });
+    if (/must be|cannot exceed|immutable/i.test(err.message)) return res.status(400).json({ error: 'BadCounts', message: err.message });
+    logger.error({ err: err.message, wsId }, '[lumi/measurement] record counts failed');
+    return res.status(500).json({ error: 'RecordCountsFailed', message: 'Request failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
 // POST /api/lumi/incrementality/:id/conclude — read out lift+CI → memory
 // ─────────────────────────────────────────────────────────────
 measurementRouter.post('/incrementality/:id/conclude', async (req, res) => {
@@ -122,6 +146,7 @@ measurementRouter.post('/incrementality/:id/conclude', async (req, res) => {
     return res.status(201).json({ workspaceId: wsId, ...result });
   } catch (err) {
     if (/not found/i.test(err.message)) return res.status(404).json({ error: 'HoldoutNotFound', message: err.message });
+    if (/no observed counts/i.test(err.message)) return res.status(409).json({ error: 'NoObservedCounts', message: err.message });
     logger.error({ err: err.message, wsId }, '[lumi/measurement] conclude failed');
     return res.status(500).json({ error: 'ConcludeFailed', message: 'Request failed' });
   }

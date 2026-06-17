@@ -49,6 +49,9 @@ const Proof        = lazy(() => import('./pages/Proof.jsx'));
 // ── Phase 4-A · Testing OS readout (BUYER-primary, role-gated) ─
 const Testing      = lazy(() => import('./pages/Testing.jsx'));
 
+// ── Phase 4-E · Measurement OS (scenario + incrementality; tier-gated) ─
+const Measure      = lazy(() => import('./pages/Measure.jsx'));
+
 // ── v2 views (gradual migration via Strangler Pattern) ────────
 const DecisionViewV2 = lazy(() => import('./pages/v2/DecisionViewV2.tsx').then(m => ({ default: m.DecisionViewV2 })));
 
@@ -180,6 +183,17 @@ export default function App() {
             <ErrorBoundary boundaryId="testing">
               <RoleGate role={['BUYER', 'STRATEGIST']} fallback={<Navigate to={appRoutes.overview} replace />}>
                 <Suspense fallback={<PageFallback />}><Testing /></Suspense>
+              </RoleGate>
+            </ErrorBoundary>
+          } />
+
+          {/* ── Phase 4-E · Measurement OS (STRATEGIST/BUYER; CLIENT → Home).
+              Scenario is open to both roles; incrementality is further gated to
+              STRATEGIST inside the view AND tier-gated server-side. ── */}
+          <Route path="measure" element={
+            <ErrorBoundary boundaryId="measure">
+              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<Navigate to={appRoutes.overview} replace />}>
+                <Suspense fallback={<PageFallback />}><Measure /></Suspense>
               </RoleGate>
             </ErrorBoundary>
           } />
