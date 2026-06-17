@@ -7,7 +7,8 @@
 // ("was Lumi right?", null until outcomes are known → "—"), confidence.
 // Validated against BriefingSchema in useAccountBriefing; nothing inferred.
 // ============================================================
-import { Brain, AlertCircle } from 'lucide-react';
+import { useState } from 'react';
+import { Brain, AlertCircle, Network } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 
 const statusTone = {
@@ -17,7 +18,7 @@ const statusTone = {
   SUPERSEDED:  'text-lumi-subtle bg-lumi-elevated border-lumi-border',
 };
 
-export function AccountBriefing({ briefing, loading = false, error = null }) {
+export function AccountBriefing({ briefing, loading = false, error = null, onConsent, consentBusy = false, canManageConsent = false }) {
   const patterns = briefing?.patterns ?? [];
   const conflicts = briefing?.conflicts ?? [];
   const promotable = briefing?.promotableCount ?? 0;
@@ -70,6 +71,105 @@ export function AccountBriefing({ briefing, loading = false, error = null }) {
               );
             })}
           </ul>
+        </>
+      )}
+
+      <NetworkPanel
+        network={briefing?.network}
+        canManage={canManageConsent}
+        onConsent={onConsent}
+        busy={consentBusy}
+      />
+    </section>
+  );
+}
+
+// ── Network Intelligence (Phase 4-F · gated cross-account layer) ──────────
+// Renders the k-anonymity-gated cohort insights honestly: below the gate it
+// says so (N of K accounts), never a fabricated "across the market…" claim.
+// The opt-in CONTROL is STRATEGIST-only (canManage) — the consent write is
+// the cross-tenant boundary; the read is safe by construction.
+function NetworkPanel({ network, canManage = false, onConsent, busy = false }) {
+  const [cohort, setCohort] = useState('');
+  if (!network) return null;
+
+  const consented = network.status === 'OK';
+  const insights  = consented ? (network.insights ?? []) : [];
+  const ok        = insights.filter((i) => i.status === 'OK' && i.statement);
+  const pending   = insights.filter((i) => i.status === 'INSUFFICIENT_DATA');
+
+  return (
+    <section className="mt-8">
+      <div className="section-label flex items-center gap-1.5">
+        <Network className="w-3.5 h-3.5" strokeWidth={1.5} /> Network Intelligence
+      </div>
+      <p className="mt-1 text-lumi-muted text-sm mb-4">
+        Anonymized, k-anonymity-gated patterns across consenting accounts in your cohort — a pattern is shown only once enough distinct accounts share it, so none is ever identifiable.
+      </p>
+
+      {!consented ? (
+        <div className="rounded-2xl border border-dashed border-lumi-border bg-lumi-surface/40 p-6">
+          <p className="font-body text-sm text-lumi-text">This account isn’t contributing to the anonymized network.</p>
+          {canManage ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                aria-label="Cohort tag"
+                placeholder="cohort — e.g. EG-apparel"
+                value={cohort}
+                onChange={(e) => setCohort(e.target.value)}
+                className="font-mono text-xs bg-lumi-elevated border border-lumi-border rounded px-2 py-1 text-lumi-text placeholder:text-lumi-subtle"
+              />
+              <button
+                type="button"
+                disabled={busy || cohort.trim() === ''}
+                onClick={() => onConsent?.(true, cohort.trim())}
+                className="font-mono text-xs uppercase tracking-wide px-3 py-1 rounded border border-signal-scale/30 bg-signal-scale-bg text-signal-scale disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {busy ? 'Joining…' : 'Join network'}
+              </button>
+            </div>
+          ) : (
+            <p className="mt-1 text-lumi-subtle text-xs">Only a strategist can opt this workspace into the network.</p>
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <span className="font-mono text-xs text-lumi-subtle">
+              Sharing as <span className="text-lumi-text">{network.cohortTag || '—'}</span>
+            </span>
+            {canManage && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onConsent?.(false)}
+                className="font-mono text-xs uppercase tracking-wide px-3 py-1 rounded border border-lumi-border text-lumi-muted disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {busy ? 'Leaving…' : 'Leave network'}
+              </button>
+            )}
+          </div>
+
+          {ok.length === 0 && pending.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-lumi-border bg-lumi-surface/40 p-6 text-center text-sm text-lumi-subtle">
+              Network active — not enough of the cohort yet to surface a pattern.
+            </div>
+          ) : (
+            <ul className="grid gap-2">
+              {ok.map((i) => (
+                <li key={`ok-${i.kind}-${i.metric}`} className="bg-lumi-surface border border-lumi-border rounded-xl p-4">
+                  <p className="font-body text-sm text-lumi-text leading-relaxed">{i.statement}</p>
+                </li>
+              ))}
+              {pending.map((i) => (
+                <li key={`pend-${i.kind}-${i.metric}`} className="rounded-xl border border-dashed border-lumi-border p-3 font-mono text-xs text-lumi-subtle">
+                  {i.kind ? `${i.kind.replace(/_/g, ' ').toLowerCase()}: ` : ''}
+                  not enough of the network yet — {i.contributingWorkspaces ?? 0} of {i.needed ?? '?'} accounts.
+                </li>
+              ))}
+            </ul>
+          )}
         </>
       )}
     </section>
