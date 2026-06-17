@@ -23,6 +23,7 @@ const WINDOW_DAYS = Number(process.env.ENTITY_SNAPSHOT_WINDOW_DAYS || 90);
 
 const METRIC_SELECT = {
   entityId: true, date: true, spendMinor: true, roas: true, ctr: true, frequency: true, currency: true,
+  conversions: true, // needed for the account-level Blended CPA aggregate (Σspend / Σconversions)
 };
 
 // Latest snapshot per entity for a level, over a bounded recency window.

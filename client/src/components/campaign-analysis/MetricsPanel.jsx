@@ -13,28 +13,37 @@ function KpiCard({ label, value, valueClass, delta, deltaClass, footer }) {
   );
 }
 
-export function MetricsPanel({ totals, loading, healthScore, healthLabel, healthColor, currency = 'USD' }) {
+// Source-resolved KPI strip. Each card shows the value of whichever substrate
+// can actually back it (the live connector graph is preferred for spend/CPA;
+// Wasted Spend + Account Health exist only in the CSV-analysis pipeline), and
+// renders "—" when no source backs it — never a fabricated 0 or a stale
+// "CSV-derived" label asserting a source that isn't feeding the page.
+export function MetricsPanel({
+  spend, spendLabel, blendedCpa, wasted, wastedPct,
+  healthScore, healthLabel, healthColor, currency = 'USD', loading,
+}) {
+  const wastedKnown = wasted != null;
   return (
     <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
       <KpiCard
         label="Total Spend"
-        value={fmtCurrency(totals.spend, currency)}
-        delta={loading ? '—' : 'Live · CSV-derived'}
+        value={spend != null ? fmtCurrency(spend, currency) : '—'}
+        delta={loading ? '—' : spendLabel}
         deltaClass="text-lumi-subtle"
       />
       <KpiCard
         label="Blended CPA"
-        value={totals.blendedCpa != null ? fmtCurrency(totals.blendedCpa, currency) : '—'}
-        delta={totals.blendedCpa != null ? 'Per-campaign avg' : 'No CPA in dataset'}
+        value={blendedCpa != null ? fmtCurrency(blendedCpa, currency) : '—'}
+        delta={blendedCpa != null ? 'Per-campaign avg' : 'No CPA in dataset'}
         deltaClass="text-lumi-subtle"
       />
       <KpiCard
         label="Wasted Spend"
-        value={fmtCurrency(totals.kill, currency)}
-        valueClass="text-trend-danger"
-        delta={`${totals.wastedPct}% of total`}
-        deltaClass="text-trend-danger"
-        footer={<InlineBar value={totals.wastedPct} max={100} ariaLabel={`${totals.wastedPct}% wasted spend`} />}
+        value={wastedKnown ? fmtCurrency(wasted, currency) : '—'}
+        valueClass={wastedKnown ? 'text-trend-danger' : undefined}
+        delta={wastedKnown ? `${wastedPct}% of total` : 'Needs analysis'}
+        deltaClass={wastedKnown ? 'text-trend-danger' : 'text-lumi-subtle'}
+        footer={wastedKnown ? <InlineBar value={wastedPct} max={100} ariaLabel={`${wastedPct}% wasted spend`} /> : undefined}
       />
       <KpiCard
         label="Account Health"
