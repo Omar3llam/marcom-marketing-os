@@ -162,6 +162,36 @@ export default function CampaignsView() {
   const healthLabel = healthScore == null ? 'Upload data to see health' : healthScore < 40 ? 'NEEDS ATTENTION' : healthScore < 70 ? 'IMPROVING' : 'HEALTHY';
   const healthColor = healthScore == null ? 'text-lumi-muted' : healthScore < 40 ? 'text-trend-danger' : healthScore < 70 ? 'text-trend-warning' : 'text-trend-positive';
 
+  // Account-level aggregate from the LIVE connector graph (sums real
+  // MetricSnapshot rows; null-when-absent so an unsynced metric never reads 0).
+  const connectorAgg = useMemo(() => {
+    let spendMinor = 0, conversions = 0, sawSpend = false, sawConv = false, cur = null;
+    for (const c of connectorCampaigns) {
+      if (c.spendMinor != null) { spendMinor += c.spendMinor; sawSpend = true; }
+      if (c.conversions != null) { conversions += c.conversions; sawConv = true; }
+      if (!cur && c.currency) cur = c.currency;
+    }
+    return {
+      spend: sawSpend ? spendMinor / 100 : null,
+      blendedCpa: sawConv && conversions > 0 ? spendMinor / conversions / 100 : null,
+      currency: cur || 'USD',
+    };
+  }, [connectorCampaigns]);
+
+  // The KPI strip reads the live connector when a channel has synced, else the
+  // CSV feed — the same source feeding the panels below it, so the headline and
+  // the table can't disagree about whether data exists. Wasted Spend + Account
+  // Health are CSV-analysis outputs with no connector equivalent: shown only
+  // when CSV analysis backs them, "—" otherwise (never a fabricated 0).
+  const live = connectorCampaigns.length > 0;
+  const hasCsv = allRows.length > 0;
+  const kpiSpend = live ? connectorAgg.spend : (hasCsv ? totals.spend : null);
+  const kpiBlendedCpa = live ? connectorAgg.blendedCpa : totals.blendedCpa;
+  const kpiCurrency = live ? connectorAgg.currency : currency;
+  const kpiSpendLabel = live ? 'Live · connector' : (hasCsv ? 'CSV upload' : 'No data yet');
+  const kpiWasted = hasCsv ? totals.kill : null;
+  const kpiWastedPct = hasCsv ? totals.wastedPct : null;
+
   const setSort = (key) => {
     if (!sortableCols.has(key)) return;
     if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -208,12 +238,16 @@ export default function CampaignsView() {
       </header>
 
       <MetricsPanel
-        totals={totals}
-        loading={loading}
+        spend={kpiSpend}
+        spendLabel={kpiSpendLabel}
+        blendedCpa={kpiBlendedCpa}
+        wasted={kpiWasted}
+        wastedPct={kpiWastedPct}
+        loading={loading || connectorLoading}
         healthScore={healthScore}
         healthLabel={healthLabel}
         healthColor={healthColor}
-        currency={currency}
+        currency={kpiCurrency}
       />
 
       <PerformanceChart totals={totals} currency={currency} />

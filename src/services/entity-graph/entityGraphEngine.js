@@ -29,12 +29,13 @@ export function latestByEntity(snapshots = []) {
 // absent (distinct from a real 0), so the client shows "—" not "0".
 function metricsOf(snap) {
   return {
-    spendMinor: snap?.spendMinor ?? null,
-    roas:       snap?.roas ?? null,
-    ctr:        snap?.ctr ?? null,
-    frequency:  snap?.frequency ?? null,
-    currency:   snap?.currency ?? null,
-    lastDate:   snap?.date ?? null,
+    spendMinor:  snap?.spendMinor ?? null,
+    roas:        snap?.roas ?? null,
+    ctr:         snap?.ctr ?? null,
+    frequency:   snap?.frequency ?? null,
+    conversions: snap?.conversions ?? null, // null-when-absent (distinct from a real 0)
+    currency:    snap?.currency ?? null,
+    lastDate:    snap?.date ?? null,
   };
 }
 

@@ -8,7 +8,7 @@
 //
 // Returns: { campaigns, loading, error, refetch }
 //   campaigns[]: { entityId, channel, name, adSetCount, spendMinor, roas, ctr,
-//                  frequency, currency, lastDate }  — metrics are null-when-absent.
+//                  frequency, conversions, currency, lastDate }  — metrics null-when-absent.
 //
 // Honest states are the caller's job; this hook just exposes loading/error/data.
 // useEffect has a cleanup guard (no setState after unmount) per the ONE WAY rules.
