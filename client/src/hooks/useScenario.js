@@ -30,6 +30,7 @@ export function useScenario() {
   const run = useCallback(async (change) => {
     setLoading(true);
     setError(null);
+    setMessage(null); // a fresh run must not show a prior run's message
     try {
       const res = await api.post('/api/lumi/scenario', { change });
       if (!aliveRef.current) return null;

@@ -89,14 +89,20 @@ export async function recordCounts(workspaceId, testId, counts = {}) {
     throw new Error(`recordCounts: test is ${test.status} — observed counts are immutable`);
   }
 
-  const updated = await prisma.incrementalityTest.update({
-    where: { id: test.id },
+  // Atomic guard: filter the write on the non-terminal statuses so a conclude
+  // that flips the row to CONCLUDED between our read and write makes this a
+  // no-op (count 0) rather than silently overwriting a concluded result.
+  const res = await prisma.incrementalityTest.updateMany({
+    where: { id: test.id, status: { in: ['DESIGNED', 'RUNNING'] } },
     data: {
       exposedUsers, exposedConversions, holdoutUsers, holdoutConversions,
       status: 'RUNNING',
       startedAt: test.startedAt ?? new Date(),
     },
   });
+  if (res.count === 0) throw new Error('recordCounts: test is no longer editable — observed counts are immutable');
+
+  const updated = await prisma.incrementalityTest.findFirst({ where: { id: test.id } });
   logger.info({ workspaceId, testId }, '[IncrementalityService] observed counts recorded');
   return updated;
 }

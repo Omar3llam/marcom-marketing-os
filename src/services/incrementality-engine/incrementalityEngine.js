@@ -42,6 +42,9 @@ export function designHoldout({ baselineCvr, mde, dailyEligible, holdoutPct = 0.
   const zB = typeof power === 'number' ? power : Z_POWER;
   const p1 = baselineCvr;
   const p2 = baselineCvr * (1 + mde); // the lifted (exposed) rate we want to detect
+  // A lift that pushes the exposed rate to/past 100% is not a valid proportion —
+  // it breaks the variance term (p2(1−p2) < 0) and yields a garbage power calc.
+  if (p2 >= 1) throw new Error('designHoldout: baselineCvr × (1 + mde) must stay below 1 — the lift is too large for this baseline CVR');
   const diff = p2 - p1;
 
   // n per arm = (zα + zβ)² · [p1(1−p1) + p2(1−p2)] / diff²

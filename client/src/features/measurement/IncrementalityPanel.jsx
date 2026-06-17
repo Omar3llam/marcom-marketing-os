@@ -37,8 +37,9 @@ function DesignForm({ onDesign, busy }) {
   const [mde, setMde] = useState('');
   const [daily, setDaily] = useState('');
 
-  const cvrN = parseFloat(cvr), mdeN = parseFloat(mde), dailyN = parseInt(daily, 10);
-  const valid = channel.trim() && cvrN > 0 && cvrN < 100 && mdeN > 0 && dailyN > 0;
+  const cvrN = parseFloat(cvr), mdeN = parseFloat(mde);
+  const dailyN = /^\d+$/.test(daily.trim()) ? Number(daily) : NaN; // strict int — no silent truncation
+  const valid = channel.trim() && cvrN > 0 && cvrN < 100 && mdeN > 0 && mdeN <= 500 && dailyN > 0;
 
   const submit = (e) => {
     e.preventDefault();
@@ -78,7 +79,10 @@ function RecordForm({ test, onRecord, busy }) {
   const [hu, setHu] = useState(test.holdoutUsers != null ? String(test.holdoutUsers) : '');
   const [hc, setHc] = useState(test.holdoutConversions != null ? String(test.holdoutConversions) : '');
 
-  const ints = [eu, ec, hu, hc].map((v) => parseInt(v, 10));
+  // Strict integer parse — '1.9' / '12abc' must NOT be silently coerced into a
+  // count (a holdout result is a measurement, never a guess).
+  const parseStrictInt = (v) => (/^\d+$/.test(String(v).trim()) ? Number(v) : NaN);
+  const ints = [eu, ec, hu, hc].map(parseStrictInt);
   const valid = ints.every((n) => Number.isInteger(n) && n >= 0) && ints[1] <= ints[0] && ints[3] <= ints[2];
 
   const submit = (e) => {
@@ -136,7 +140,7 @@ function HoldoutRow({ test, readout, busy, onRecord, onConclude }) {
         <div className="mt-3">
           {conclusive ? (
             <p className="text-sm text-signal-scale">
-              +{test.liftPct}% incremental lift · {test.confidenceLabel} confidence
+              {Number(test.liftPct) > 0 ? '+' : ''}{test.liftPct}% incremental lift · {test.confidenceLabel} confidence
               {test.incrementalRevenueMinor != null && <span className="text-lumi-subtle"> · {money(test.incrementalRevenueMinor, ccy)} incremental revenue</span>}
             </p>
           ) : (
