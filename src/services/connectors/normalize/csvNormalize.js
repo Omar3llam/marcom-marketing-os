@@ -48,6 +48,7 @@ export function csvNormalize({ accountExternalId, accountName = null, currency =
     };
   });
 
+  // No rows → no rollup → land nothing, never a phantom account summed from zero.
   const account = accountRollup(campaigns, { accountExternalId, accountName, channel, source, date: d, currency });
-  return [account, ...campaigns];
+  return account ? [account, ...campaigns] : campaigns;
 }

@@ -12,13 +12,14 @@ import { logger } from '../../utils/logger.js';
 import { resolve, isSyncable } from './connectorRegistry.js';
 import { landSnapshots } from './snapshotSink.js';
 import { listActiveSyncable, recordSync } from './credentialStore.js';
+import { DEFAULT_MANUAL_SYNC_DATE_PRESET } from './connectorConfig.js';
 
 /**
  * Run the connector sync.
  * @param {string|null} workspaceId — a single workspace, or null for all
  * @param {{ datePreset?: string, now?: Date }} [opts]
  */
-export async function runConnectorSync(workspaceId = null, { datePreset = 'last_7d', now = new Date() } = {}) {
+export async function runConnectorSync(workspaceId = null, { datePreset = DEFAULT_MANUAL_SYNC_DATE_PRESET, now = new Date() } = {}) {
   const connections = await listActiveSyncable(workspaceId);
   const syncable = connections.filter((c) => isSyncable(c.channel));
 

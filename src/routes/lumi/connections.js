@@ -11,6 +11,7 @@ import { logger } from '../../utils/logger.js';
 import { isStale } from '../../services/connectors/connectorTypes.js';
 import { listConnections, updateCredentialAccount } from '../../services/connectors/credentialStore.js';
 import { runConnectorSync } from '../../services/connectors/ConnectorSyncService.js';
+import { DEFAULT_MANUAL_SYNC_DATE_PRESET } from '../../services/connectors/connectorConfig.js';
 
 export const connectionsRouter = Router();
 
@@ -63,7 +64,7 @@ connectionsRouter.post('/connections/sync', async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(400).json({ error: 'WorkspaceNotFound', message: 'No workspace for this user' });
   try {
-    const datePreset = typeof req.body?.datePreset === 'string' ? req.body.datePreset : 'last_30d';
+    const datePreset = typeof req.body?.datePreset === 'string' ? req.body.datePreset : DEFAULT_MANUAL_SYNC_DATE_PRESET;
     const result = await runConnectorSync(wsId, { datePreset });
     return res.json({ ok: true, workspaceId: wsId, ...result });
   } catch (err) {
@@ -103,7 +104,7 @@ connectionsRouter.patch('/connections/account', async (req, res) => {
     // staleness on the next connections read, never a silent corruption.
     let sync = null;
     try {
-      sync = await runConnectorSync(wsId, { datePreset: 'last_30d' });
+      sync = await runConnectorSync(wsId, { datePreset: DEFAULT_MANUAL_SYNC_DATE_PRESET });
     } catch (syncErr) {
       logger.warn({ err: syncErr.message, wsId, platform }, '[lumi/connections/account] re-sync after switch failed');
     }
