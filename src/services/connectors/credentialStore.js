@@ -15,9 +15,11 @@ import { logger } from '../../utils/logger.js';
 import { encrypt, decrypt } from '../../models/credential.js';
 import { nextHealth } from './connectorHealth.js';
 
-// Connector channel enum ↔ marcom_credentials.platform string.
-export const PLATFORM_DB = Object.freeze({ META: 'meta_ads', GOOGLE: 'google_ads' });
-const DB_CHANNEL = Object.freeze({ meta_ads: 'META', google_ads: 'GOOGLE' });
+// Connector channel/platform identity ↔ marcom_credentials.platform string.
+// GA4 is a credential identity, not a CHANNEL enum value: its connector lands
+// rows tagged with the matched ad channel (META/GOOGLE), not "GA4".
+export const PLATFORM_DB = Object.freeze({ META: 'meta_ads', GOOGLE: 'google_ads', GA4: 'ga4' });
+const DB_CHANNEL = Object.freeze({ meta_ads: 'META', google_ads: 'GOOGLE', ga4: 'GA4' });
 
 const dbPlatform = (channel) => PLATFORM_DB[String(channel || '').toUpperCase()] || null;
 const safeDecrypt = (enc) => { try { return enc ? decrypt(enc) : null; } catch { return null; } };

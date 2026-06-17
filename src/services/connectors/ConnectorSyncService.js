@@ -42,7 +42,11 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
       }
       const raw = await connector.fetchRaw(auth, { datePreset });
       const normalized = connector.normalize({ ...auth, date: now, rows: raw });
-      const landed = await landSnapshots(wsId, connector.channel, normalized);
+      // A connector may override landing (e.g. GA4 lands ACTUALS onto existing
+      // entities via actualsSink instead of minting through snapshotSink).
+      const landed = connector.land
+        ? await connector.land(wsId, normalized)
+        : await landSnapshots(wsId, connector.channel, normalized);
       await recordSync(wsId, channel, { ok: true, records: landed.snapshots, now });
       results.push({ workspaceId: wsId, platform: channel, status: 'success', ...landed });
     } catch (err) {
