@@ -12,6 +12,7 @@ import { ChannelConnector, assertNormalized } from './ChannelConnector.js';
 import { metaNormalize } from './normalize/metaNormalize.js';
 import { resolveCredential } from './credentialStore.js';
 import { CHANNEL } from './connectorTypes.js';
+import { DEFAULT_MANUAL_SYNC_DATE_PRESET } from './connectorConfig.js';
 
 export class MetaConnector extends ChannelConnector {
   channel = CHANNEL.META;
@@ -29,7 +30,7 @@ export class MetaConnector extends ChannelConnector {
     };
   }
 
-  async fetchRaw(auth, { datePreset = 'last_7d' } = {}) {
+  async fetchRaw(auth, { datePreset = DEFAULT_MANUAL_SYNC_DATE_PRESET } = {}) {
     const insights = await fetchCampaignInsights(auth.accessToken, auth.accountExternalId, datePreset);
     // Unwrap the service's per-row envelope to the raw Meta insight object.
     return (insights || []).map((row) => row._data || row);

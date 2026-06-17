@@ -16,8 +16,16 @@ export function pick(row, aliases) {
   return null;
 }
 
-/** Sum a NormalizedSnapshot[]'s base measures into one ACCOUNT-level rollup row. */
+/**
+ * Sum a NormalizedSnapshot[]'s base measures into one ACCOUNT-level rollup row.
+ * Returns null when there are no rows to summarize — rolling up zero campaigns
+ * would fabricate a phantom account snapshot (the "1 snapshot on an account with
+ * zero in-window delivery" symptom), which the governing rule forbids: a metric
+ * row must trace to real data, never be manufactured from nothing. Callers land
+ * the rollup only when it exists.
+ */
 export function accountRollup(rows, { accountExternalId, accountName, channel, source, date, currency }) {
+  if (!rows.length) return null;
   const acc = { spendMinor: 0, revenueMinor: 0, impressions: 0, clicks: 0, conversions: 0 };
   for (const r of rows) {
     acc.spendMinor += r.spendMinor;

@@ -6,6 +6,7 @@
 // ============================================================
 import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
+import { DEFAULT_MANUAL_SYNC_DATE_PRESET } from './connectors/connectorConfig.js';
 
 // CJS interop — the Meta SDK ships as CommonJS
 const require = createRequire(import.meta.url);
@@ -111,16 +112,18 @@ export async function verifyAndCreateTest(accessToken, adAccountId) {
 }
 
 /**
- * Pull campaign-level insights for the last 30 days (default).
+ * Pull campaign-level insights. The window defaults to the shared MANUAL preset
+ * (reach as far back as Meta serves) — every real caller passes an explicit
+ * datePreset today, so this default is the bare-call safety net, not policy.
  * Returns an array of insight objects — keys include:
  *   campaign_name, spend, impressions, reach, frequency,
  *   clicks, ctr, cpm, cpc, actions, cost_per_action_type
  *
  * @param {string}  accessToken
  * @param {string}  adAccountId   — with or without "act_" prefix
- * @param {string}  [datePreset]  — e.g. 'last_7d', 'last_30d', 'last_90d'
+ * @param {string}  [datePreset]  — e.g. 'last_7d', 'last_30d', 'last_90d', 'maximum'
  */
-export async function fetchCampaignInsights(accessToken, adAccountId, datePreset = 'last_30d') {
+export async function fetchCampaignInsights(accessToken, adAccountId, datePreset = DEFAULT_MANUAL_SYNC_DATE_PRESET) {
   initSdk(accessToken);
   const accountId = normalizeAccountId(adAccountId);
   const account   = new AdAccount(accountId);

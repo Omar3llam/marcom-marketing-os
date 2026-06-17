@@ -10,6 +10,7 @@ import { runMode5 }          from '../../modes/mode5-campaign.js';
 import { logger }            from '../../utils/logger.js';
 import { contextGuard }      from '../../middleware/contextGuard.js';
 import { analyzeCampaignData } from '../../agents/orchestrator.js';
+import { DEFAULT_CHAT_ANALYSIS_DATE_PRESET } from '../../services/connectors/connectorConfig.js';
 
 const MAX_CSV_CHARS = 40_000;
 const MAX_HISTORY   = 40;
@@ -73,7 +74,10 @@ export function mountFeedRoutes(router) {
 
   router.post('/fetch-meta', async (req, res) => {
     const userId = req.userId;
-    const { sessionId, projectId, datePreset = 'last_30d', mode } = req.body;
+    // Legacy chat path keeps its OWN (narrower) window on purpose: it has a
+    // MAX_CAMPAIGNS cap that 400s above the limit, so it must not inherit the
+    // connector's "maximum" window. Named constant, same value — not a unify.
+    const { sessionId, projectId, datePreset = DEFAULT_CHAT_ANALYSIS_DATE_PRESET, mode } = req.body;
 
     if (!projectId) return res.status(400).json({ status: 'error', message: 'projectId is required' });
 

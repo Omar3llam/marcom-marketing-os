@@ -45,8 +45,9 @@ export function googleNormalize({ accountExternalId, accountName = null, currenc
     };
   });
 
+  // No rows → no rollup → land nothing, never a phantom account summed from zero.
   const account = accountRollup(campaigns, {
     accountExternalId, accountName, channel: CHANNEL.GOOGLE, source: DATA_SOURCE.GOOGLE, date: d, currency,
   });
-  return [account, ...campaigns];
+  return account ? [account, ...campaigns] : campaigns;
 }

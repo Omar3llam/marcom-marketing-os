@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { metaNormalize } from './normalize/metaNormalize.js';
 import { csvNormalize } from './normalize/csvNormalize.js';
 import { googleNormalize, microsToMinor } from './normalize/googleNormalize.js';
+import { accountRollup } from './normalize/fieldUtils.js';
 import { toSnapshotRows, toEntityOps } from './snapshotSink.js';
 import { assertNormalized } from './ChannelConnector.js';
+import { DEFAULT_MANUAL_SYNC_DATE_PRESET, DEFAULT_CRON_SYNC_DATE_PRESET, DEFAULT_CHAT_ANALYSIS_DATE_PRESET } from './connectorConfig.js';
 import { nextHealth } from './connectorHealth.js';
 import { isStale, detId } from './connectorTypes.js';
 import { resolve } from './connectorRegistry.js';
@@ -94,6 +96,43 @@ describe('the payoff — a second channel lights up reconciliation (engine uncha
     const result = reconcile({ channels: buildChannelInputs(snapshots, labels) });
     expect(result.channels.length).toBe(2); // NOT the <2-channel honest state
     expect(result.portfolio.reconciledCount).toBeGreaterThanOrEqual(1); // the Meta channel reconciled vs GA4
+  });
+});
+
+describe('rollup-on-empty — zero rows must land zero snapshots (no phantom account)', () => {
+  const empty = { accountExternalId: 'act_1', currency: 'USD', date: DATE, rows: [] };
+
+  it('accountRollup returns null for zero rows (never a fabricated summary row)', () => {
+    expect(accountRollup([], { accountExternalId: 'act_1', channel: 'META', source: 'META', date: DATE, currency: 'USD' })).toBeNull();
+  });
+
+  it('metaNormalize on zero rows → [] (was the "1 snapshot" phantom)', () => {
+    const out = metaNormalize(empty);
+    expect(out).toEqual([]);
+    expect(assertNormalized(out)).toEqual([]);          // empty is structurally valid
+    expect(toSnapshotRows('ws1', 'META', out)).toEqual([]); // nothing lands
+    expect(toEntityOps('ws1', 'META', out)).toEqual([]);
+  });
+
+  it('csvNormalize and googleNormalize share the same honesty on zero rows', () => {
+    expect(csvNormalize(empty)).toEqual([]);
+    expect(googleNormalize(empty)).toEqual([]);
+  });
+
+  it('one real row still lands account + campaign (the guard only suppresses the empty case)', () => {
+    const out = metaNormalize({ accountExternalId: 'act_1', currency: 'USD', date: DATE, rows: [{ campaign_id: 'c1', campaign_name: 'X', spend: '1', impressions: '1', clicks: '1', actions: [], action_values: [] }] });
+    expect(out.map((r) => r.entityLevel)).toEqual(['ACCOUNT', 'CAMPAIGN']);
+  });
+});
+
+describe('connectorConfig — date-window defaults are tiered, not unified', () => {
+  it('manual reaches maximum; cron stays bounded; chat is held separate', () => {
+    expect(DEFAULT_MANUAL_SYNC_DATE_PRESET).toBe('maximum');
+    expect(DEFAULT_CRON_SYNC_DATE_PRESET).toBe('last_90d');
+    expect(DEFAULT_CHAT_ANALYSIS_DATE_PRESET).toBe('last_30d');
+    // The whole point of the fix: an unattended cron tick must NOT pull the
+    // manual "everything" window. If these ever collapse to one value, this trips.
+    expect(DEFAULT_CRON_SYNC_DATE_PRESET).not.toBe(DEFAULT_MANUAL_SYNC_DATE_PRESET);
   });
 });
 

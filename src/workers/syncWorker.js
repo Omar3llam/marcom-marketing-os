@@ -19,10 +19,13 @@ import { SYNC_QUEUE_NAME } from '../queues/index.js';
 import { logger } from '../utils/logger.js';
 import { runConnectorSync } from '../services/connectors/ConnectorSyncService.js';
 import { sweepGuardrails } from '../services/guardrail-engine/GuardrailSweepService.js';
+import { DEFAULT_CRON_SYNC_DATE_PRESET } from '../services/connectors/connectorConfig.js';
 
 // ── Worker Job Handler ────────────────────────────────────────
 async function processSyncJob(job) {
-  const { workspaceId = null, datePreset = 'last_7d' } = job.data || {};
+  // Cron tick: bounded window (catch NEW delivery), never an unattended
+  // re-pull of years of history. A caller may still override via job.data.
+  const { workspaceId = null, datePreset = DEFAULT_CRON_SYNC_DATE_PRESET } = job.data || {};
   logger.info({ jobId: job.id, workspaceId }, '[syncWorker] starting connector sync');
 
   // 1. Ingest fresh snapshots across connected channels (isolated per channel).

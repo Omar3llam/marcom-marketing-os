@@ -47,8 +47,10 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
     };
   });
 
+  // No campaigns → no rollup → land nothing (honest empty), never a phantom
+  // account row summed from zero rows. See accountRollup's null contract.
   const account = accountRollup(campaigns, {
     accountExternalId, accountName, channel: CHANNEL.META, source: DATA_SOURCE.META, date: d, currency,
   });
-  return [account, ...campaigns];
+  return account ? [account, ...campaigns] : campaigns;
 }
