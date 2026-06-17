@@ -125,6 +125,27 @@ describe('rollup-on-empty — zero rows must land zero snapshots (no phantom acc
   });
 });
 
+describe('snapshotSink ROAS honesty — no fabricated 0.00x from unmeasured revenue', () => {
+  const row = (over = {}) => ({
+    externalId: 'c1', entityLevel: 'CAMPAIGN', channel: 'META', source: 'META', name: 'C',
+    date: DATE, currency: 'USD', spendMinor: 10000, revenueMinor: 0,
+    impressions: 100, clicks: 10, conversions: 0, frequency: null, ...over,
+  });
+
+  it('spend > 0 but revenue 0 (unmeasured) → roas null, NOT a fabricated 0', () => {
+    const [r] = toSnapshotRows('ws1', 'META', [row()]);
+    expect(r.roas).toBeNull();
+  });
+  it('spend > 0 and revenue > 0 → real derived roas', () => {
+    const [r] = toSnapshotRows('ws1', 'META', [row({ revenueMinor: 30000 })]);
+    expect(r.roas).toBe(3); // 30000 / 10000
+  });
+  it('spend 0 → roas null (unchanged from before)', () => {
+    const [r] = toSnapshotRows('ws1', 'META', [row({ spendMinor: 0 })]);
+    expect(r.roas).toBeNull();
+  });
+});
+
 describe('connectorConfig — date-window defaults are tiered, not unified', () => {
   it('manual reaches maximum; cron stays bounded; chat is held separate', () => {
     expect(DEFAULT_MANUAL_SYNC_DATE_PRESET).toBe('maximum');
