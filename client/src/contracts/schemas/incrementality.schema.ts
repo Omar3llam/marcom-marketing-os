@@ -47,14 +47,36 @@ export const IncrementalityTestSchema = z.object({
   sampleSizePerArm: z.number().int(),
   durationDays: z.number().int(),
   status: IncrementalityStatusSchema,
+  // Observed counters — empty until results are recorded (the write seam).
+  exposedUsers: z.number().int().nullish(),
+  exposedConversions: z.number().int().nullish(),
+  holdoutUsers: z.number().int().nullish(),
+  holdoutConversions: z.number().int().nullish(),
   liftPct: z.number().nullish(),
   ciLow: z.number().nullish(),
   ciHigh: z.number().nullish(),
   confidenceLabel: ConfidenceLevelSchema.nullish(),
   incrementalRevenueMinor: z.number().int().nullish(),
+  startedAt: z.string().nullish(),
+  concludedAt: z.string().nullish(),
+});
+
+// ── API response envelopes (the route → hook contract seam) ──
+export const IncrementalityListResponseSchema = z.object({
+  workspaceId: z.string().nullable(),
+  tests: z.array(IncrementalityTestSchema),
+});
+
+export const ConcludeIncrementalityResponseSchema = z.object({
+  workspaceId: z.string(),
+  readout: IncrementalityReadoutSchema,
+  memoryId: z.string().nullish(),
+  decisionId: z.string().nullish(),
 });
 
 export type IncrementalityStatus = z.infer<typeof IncrementalityStatusSchema>;
 export type HoldoutDesign = z.infer<typeof HoldoutDesignSchema>;
 export type IncrementalityReadout = z.infer<typeof IncrementalityReadoutSchema>;
 export type IncrementalityTest = z.infer<typeof IncrementalityTestSchema>;
+export type IncrementalityListResponse = z.infer<typeof IncrementalityListResponseSchema>;
+export type ConcludeIncrementalityResponse = z.infer<typeof ConcludeIncrementalityResponseSchema>;

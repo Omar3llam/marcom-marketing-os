@@ -63,6 +63,44 @@ export async function listTests(workspaceId) {
   return prisma.incrementalityTest.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 50 });
 }
 
+/**
+ * Record a holdout's OBSERVED counts — the missing write organ. A holdout's
+ * exposed/holdout user+conversion counts come from an actually-run experiment;
+ * the operator records what they observed (user-owned measurements, real the
+ * way a guardrail rule or an asserted AOV is real). Moves DESIGNED → RUNNING
+ * and stamps startedAt. Counts are validated and immutable once CONCLUDED.
+ *
+ * @returns {Promise<object>} the updated IncrementalityTest row
+ */
+export async function recordCounts(workspaceId, testId, counts = {}) {
+  if (!workspaceId) throw new Error('recordCounts: workspaceId required');
+  if (!testId) throw new Error('recordCounts: testId required');
+
+  const { exposedUsers, exposedConversions, holdoutUsers, holdoutConversions } = counts;
+  for (const [k, v] of Object.entries({ exposedUsers, exposedConversions, holdoutUsers, holdoutConversions })) {
+    if (!Number.isInteger(v) || v < 0) throw new Error(`recordCounts: ${k} must be a non-negative integer`);
+  }
+  if (exposedConversions > exposedUsers) throw new Error('recordCounts: exposedConversions cannot exceed exposedUsers');
+  if (holdoutConversions > holdoutUsers) throw new Error('recordCounts: holdoutConversions cannot exceed holdoutUsers');
+
+  const test = await prisma.incrementalityTest.findFirst({ where: { id: testId, workspaceId } });
+  if (!test) throw new Error('recordCounts: test not found');
+  if (test.status === 'CONCLUDED' || test.status === 'ABANDONED') {
+    throw new Error(`recordCounts: test is ${test.status} — observed counts are immutable`);
+  }
+
+  const updated = await prisma.incrementalityTest.update({
+    where: { id: test.id },
+    data: {
+      exposedUsers, exposedConversions, holdoutUsers, holdoutConversions,
+      status: 'RUNNING',
+      startedAt: test.startedAt ?? new Date(),
+    },
+  });
+  logger.info({ workspaceId, testId }, '[IncrementalityService] observed counts recorded');
+  return updated;
+}
+
 export async function getTest(workspaceId, testId) {
   if (!workspaceId) throw new Error('getTest: workspaceId required');
   return prisma.incrementalityTest.findFirst({ where: { id: testId, workspaceId } });
@@ -77,6 +115,12 @@ export async function concludeIncrementality(workspaceId, testId) {
   if (!workspaceId) throw new Error('concludeIncrementality: workspaceId required');
   const test = await prisma.incrementalityTest.findFirst({ where: { id: testId, workspaceId } });
   if (!test) throw new Error('concludeIncrementality: test not found');
+  // Honest-empty guard: a holdout with no observed counts cannot be read out.
+  // Refuse cleanly here so the route returns a 409 — never a fabricated lift
+  // computed off zero/empty arms.
+  if (!(test.exposedUsers > 0) || !(test.holdoutUsers > 0)) {
+    throw new Error('concludeIncrementality: no observed counts recorded — record holdout results before concluding');
+  }
 
   const { economics } = await getEconomics(workspaceId);
   const readout = readIncrementality({

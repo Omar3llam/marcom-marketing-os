@@ -54,7 +54,17 @@ export const ScenarioSchema = z.object({
     .optional(),
 });
 
+// API response envelope: POST /api/lumi/scenario → { workspaceId, scenario|null }.
+// scenario is null (with a message) when there's no channel data to project.
+export const ScenarioResponseSchema = z.object({
+  workspaceId: z.string().nullable(),
+  generatedAt: z.string().nullish(),
+  scenario: ScenarioSchema.nullable(),
+  message: z.string().nullish(),
+});
+
 export type ScenarioType = z.infer<typeof ScenarioTypeSchema>;
 export type Range = z.infer<typeof RangeSchema>;
 export type ScenarioProjections = z.infer<typeof ScenarioProjectionsSchema>;
 export type Scenario = z.infer<typeof ScenarioSchema>;
+export type ScenarioResponse = z.infer<typeof ScenarioResponseSchema>;

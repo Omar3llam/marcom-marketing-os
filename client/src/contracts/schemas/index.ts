@@ -282,10 +282,12 @@ export {
   RangeSchema,
   ScenarioProjectionsSchema,
   ScenarioSchema,
+  ScenarioResponseSchema,
   type ScenarioType,
   type Range,
   type ScenarioProjections,
   type Scenario,
+  type ScenarioResponse,
 } from './scenario.schema';
 
 export {
@@ -347,10 +349,14 @@ export {
   HoldoutDesignSchema,
   IncrementalityReadoutSchema,
   IncrementalityTestSchema,
+  IncrementalityListResponseSchema,
+  ConcludeIncrementalityResponseSchema,
   type IncrementalityStatus,
   type HoldoutDesign,
   type IncrementalityReadout,
   type IncrementalityTest,
+  type IncrementalityListResponse,
+  type ConcludeIncrementalityResponse,
 } from './incrementality.schema';
 
 export {
