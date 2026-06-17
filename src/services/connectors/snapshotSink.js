@@ -57,12 +57,13 @@ export function toSnapshotRows(workspaceId, channel, normalized = []) {
       clicks,
       conversions: round(conversions),
       ctr: impressions > 0 ? clicks / impressions : null,
-      // ROAS only when there's a positive revenue signal. Revenue 0 against real
-      // spend is, in this system, overwhelmingly "revenue not measured" (the Meta
-      // connector does not yet request action_values) rather than a campaign that
-      // truly sold nothing — and the platform can't reliably tell those apart. So
-      // we land null (renders "—"), never a fabricated 0.00x. Once revenue is
-      // wired (action_values), a real positive value flows through here unchanged.
+      // ROAS only when there's a positive revenue signal. Meta now requests
+      // action_values (see CAMPAIGN_INSIGHT_FIELDS), so revenue flows through for
+      // accounts with purchase tracking. But revenue 0 against real spend stays
+      // ambiguous — "measured no purchases" vs "no purchase pixel configured" —
+      // and the platform can't tell those apart. So we still land null (renders
+      // "—"), never a fabricated 0.00x; a real positive value flows through here
+      // unchanged.
       roas: spendMinor > 0 && revenueMinor > 0 ? revenueMinor / spendMinor : null,
       frequency: n.frequency ?? null,
       currency: n.currency || 'USD',

@@ -111,13 +111,27 @@ export async function verifyAndCreateTest(accessToken, adAccountId) {
   return campaignId;
 }
 
+// The fields requested from the Graph API. `action_values` is load-bearing for
+// revenue honesty: metaNormalize reads the purchase action_value as the claimed
+// revenue, and the connector sink derives ROAS from it. Without this field Meta
+// omits revenue entirely → revenue lands 0 → ROAS reads null/unmeasured. Kept as
+// an exported constant so the field can't be silently dropped again (the exact
+// regression that made every connector campaign show "—" for ROAS).
+export const CAMPAIGN_INSIGHT_FIELDS = Object.freeze([
+  'campaign_name', 'campaign_id',
+  'spend', 'impressions', 'reach', 'frequency',
+  'clicks', 'ctr', 'cpm', 'cpc',
+  'actions', 'action_values', 'cost_per_action_type',
+  'date_start', 'date_stop',
+]);
+
 /**
  * Pull campaign-level insights. The window defaults to the shared MANUAL preset
  * (reach as far back as Meta serves) — every real caller passes an explicit
  * datePreset today, so this default is the bare-call safety net, not policy.
  * Returns an array of insight objects — keys include:
  *   campaign_name, spend, impressions, reach, frequency,
- *   clicks, ctr, cpm, cpc, actions, cost_per_action_type
+ *   clicks, ctr, cpm, cpc, actions, action_values, cost_per_action_type
  *
  * @param {string}  accessToken
  * @param {string}  adAccountId   — with or without "act_" prefix
@@ -129,13 +143,7 @@ export async function fetchCampaignInsights(accessToken, adAccountId, datePreset
   const account   = new AdAccount(accountId);
 
   const insights = await account.getInsights(
-    [
-      'campaign_name', 'campaign_id',
-      'spend', 'impressions', 'reach', 'frequency',
-      'clicks', 'ctr', 'cpm', 'cpc',
-      'actions', 'cost_per_action_type',
-      'date_start', 'date_stop',
-    ],
+    CAMPAIGN_INSIGHT_FIELDS,
     {
       level:        'campaign',
       date_preset:  datePreset,
