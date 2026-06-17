@@ -140,7 +140,20 @@ export async function fetchCampaignInsights(accessToken, adAccountId, datePreset
   );
 
   // The SDK returns a Cursor — convert to a plain array
-  return Array.isArray(insights) ? insights : await insights.fetchAll();
+  const rows = Array.isArray(insights) ? insights : await insights.fetchAll();
+
+  // Raw-count observability at the fetch boundary — logged before any
+  // normalize/storage step touches the data. This is the number that answers
+  // "did Meta return N rows, or did something downstream drop them?" The next
+  // visible count is post-normalize in snapshotSink ([snapshotSink] landed);
+  // a divergence (beyond the +1 account rollup normalize adds) is a real
+  // finding, not something to assume away.
+  logger.info(
+    { accountId, datePreset, rawCount: rows.length },
+    '[metaAdsService] fetchCampaignInsights raw response',
+  );
+
+  return rows;
 }
 
 /**
