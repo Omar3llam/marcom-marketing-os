@@ -11,6 +11,8 @@ import { logger } from '../../utils/logger.js';
 import { getBriefing }     from '../../services/pattern-engine/PatternService.js';
 import { promotePattern }  from '../../services/pattern-engine/PlaybookService.js';
 import { setConsent, getNetworkInsights } from '../../services/network-engine/NetworkService.js';
+import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
 
 export const memoryRouter = Router();
 
@@ -70,8 +72,15 @@ memoryRouter.post('/patterns/:id/promote', async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/lumi/network/consent — opt in/out + set cohort
+// STRATEGIST-only: consenting to contribute this workspace's learned
+// patterns into the shared cross-account pool is an outward-facing,
+// not-cleanly-reversible governance decision (once aggregated, peers
+// have already seen it) — it belongs to the account owner, not a CLIENT
+// or BUYER seat. Mirrors the STRATEGIST gate on narratives/approvals.
+// The k-anonymity-gated READ stays open to the war-room audience; it is
+// the consent WRITE that is the cross-tenant boundary, so only it is gated.
 // ─────────────────────────────────────────────────────────────
-memoryRouter.post('/network/consent', async (req, res) => {
+memoryRouter.post('/network/consent', requireCollabRole(WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
   try {

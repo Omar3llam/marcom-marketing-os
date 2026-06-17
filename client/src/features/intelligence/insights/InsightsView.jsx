@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils.js';
 import { fmtRelative } from '@/lib/dateUtils.js';
 import { PriorityBadge, StageBadge } from '@/layouts';
 import RoleGate from '@/components/auth/RoleGate.jsx';
+import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { FatigueForecast } from './FatigueForecast.jsx';
 import { AccountBriefing } from './AccountBriefing.jsx';
 import { UnitEconomicsPanel } from './UnitEconomicsPanel.jsx';
@@ -23,7 +24,9 @@ const STAGES = ['DYING', 'FATIGUED', 'TESTING', 'SCALING', 'STABLE'];
 
 export default function GrowthStrategyBoard() {
   const { campaigns, summary, loading, fatiguePredictions } = useCampaignFeed();
-  const { briefing, loading: briefingLoading, error: briefingError } = useAccountBriefing();
+  const { briefing, loading: briefingLoading, error: briefingError, setConsent, consentBusy } = useAccountBriefing();
+  const { role: collabRole } = useCollabRole();
+  const canManageConsent = collabRole === WORKSPACE_ROLE.STRATEGIST;
   const { data: economics, loading: economicsLoading, error: economicsError, refetch: refetchEconomics } = useEconomics();
   const { save: saveEconomics, saving: economicsSaving } = useSaveEconomics();
   const onSaveEconomics = async (inputs) => { const ok = await saveEconomics(inputs); if (ok) await refetchEconomics(); };
@@ -151,8 +154,15 @@ export default function GrowthStrategyBoard() {
         )}
       </section>
 
-      {/* ── WHAT LUMI KNOWS (account briefing) ───────────────── */}
-      <AccountBriefing briefing={briefing} loading={briefingLoading} error={briefingError} />
+      {/* ── WHAT LUMI KNOWS (account briefing + gated network) ─── */}
+      <AccountBriefing
+        briefing={briefing}
+        loading={briefingLoading}
+        error={briefingError}
+        onConsent={setConsent}
+        consentBusy={consentBusy}
+        canManageConsent={canManageConsent}
+      />
 
       {/* ── UNIT ECONOMICS (Phase 4-D · STRATEGIST only) ─────── */}
       <RoleGate role={['STRATEGIST']}>
