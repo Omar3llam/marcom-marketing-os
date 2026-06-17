@@ -16,7 +16,7 @@ vi.mock('../../utils/logger.js', () => ({
 vi.mock('../unit-economics/EconomicsService.js', () => ({ getEconomics: vi.fn() }));
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
-    incrementalityTest:  { findFirst: vi.fn(), update: vi.fn() },
+    incrementalityTest:  { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     $transaction:        vi.fn(),
   },
 }));
@@ -55,22 +55,31 @@ describe('incrementalityToMemory — closes the loop into Phase-5 memory', () =>
 });
 
 describe('recordCounts — the operator-entered observed result (DESIGNED → RUNNING)', () => {
-  it('persists the four counters and transitions to RUNNING', async () => {
-    prisma.incrementalityTest.findFirst.mockResolvedValue({ id: 't1', workspaceId: 'ws-1', status: 'DESIGNED', startedAt: null });
-    prisma.incrementalityTest.update.mockImplementation(({ data }) => Promise.resolve({ id: 't1', ...data }));
+  it('persists the four counters atomically and transitions to RUNNING', async () => {
+    prisma.incrementalityTest.findFirst
+      .mockResolvedValueOnce({ id: 't1', workspaceId: 'ws-1', status: 'DESIGNED', startedAt: null }) // pre-read
+      .mockResolvedValueOnce({ id: 't1', status: 'RUNNING', exposedConversions: 300 });               // final read
+    prisma.incrementalityTest.updateMany.mockResolvedValue({ count: 1 });
 
     const out = await recordCounts('ws-1', 't1', { exposedUsers: 5000, exposedConversions: 300, holdoutUsers: 5000, holdoutConversions: 250 });
     expect(out.status).toBe('RUNNING');
     expect(out.exposedConversions).toBe(300);
-    expect(out.startedAt).toBeInstanceOf(Date);
-    const arg = prisma.incrementalityTest.update.mock.calls[0][0];
-    expect(arg.where).toEqual({ id: 't1' });
+    const arg = prisma.incrementalityTest.updateMany.mock.calls[0][0];
+    expect(arg.where.status).toEqual({ in: ['DESIGNED', 'RUNNING'] }); // the atomic immutability guard
+    expect(arg.data.status).toBe('RUNNING');
+  });
+
+  it('refuses when a concurrent conclude flips the row mid-write (count 0)', async () => {
+    prisma.incrementalityTest.findFirst.mockResolvedValue({ id: 't1', workspaceId: 'ws-1', status: 'RUNNING', startedAt: new Date() });
+    prisma.incrementalityTest.updateMany.mockResolvedValue({ count: 0 }); // race: row already CONCLUDED
+    await expect(recordCounts('ws-1', 't1', { exposedUsers: 1, exposedConversions: 1, holdoutUsers: 1, holdoutConversions: 1 }))
+      .rejects.toThrow(/no longer editable|immutable/);
   });
 
   it('rejects conversions greater than users (impossible measurement)', async () => {
     await expect(recordCounts('ws-1', 't1', { exposedUsers: 100, exposedConversions: 101, holdoutUsers: 100, holdoutConversions: 10 }))
       .rejects.toThrow(/exposedConversions cannot exceed exposedUsers/);
-    expect(prisma.incrementalityTest.update).not.toHaveBeenCalled();
+    expect(prisma.incrementalityTest.updateMany).not.toHaveBeenCalled();
   });
 
   it('rejects negative / non-integer counts', async () => {
@@ -82,7 +91,7 @@ describe('recordCounts — the operator-entered observed result (DESIGNED → RU
     prisma.incrementalityTest.findFirst.mockResolvedValue({ id: 't1', workspaceId: 'ws-1', status: 'CONCLUDED' });
     await expect(recordCounts('ws-1', 't1', { exposedUsers: 1, exposedConversions: 1, holdoutUsers: 1, holdoutConversions: 1 }))
       .rejects.toThrow(/immutable/);
-    expect(prisma.incrementalityTest.update).not.toHaveBeenCalled();
+    expect(prisma.incrementalityTest.updateMany).not.toHaveBeenCalled();
   });
 });
 

@@ -26,6 +26,7 @@ export function useIncrementality() {
   const aliveRef = useRef(true);
 
   const load = useCallback(async () => {
+    if (!aliveRef.current) return;
     setLoading(true);
     setError(null);
     try {
@@ -39,7 +40,7 @@ export function useIncrementality() {
       if (!aliveRef.current) return;
       // 403 = tier-gated. An honest locked state, not a failure.
       if (err?.response?.status === 403) { setGated(true); setTests([]); setError(null); }
-      else { setError(err); setTests([]); }
+      else { setGated(false); setError(err); setTests([]); } // clear stale lock on a real failure
     } finally {
       if (aliveRef.current) setLoading(false);
     }
@@ -84,8 +85,9 @@ export function useIncrementality() {
     try {
       const res = await api.post(`/api/lumi/incrementality/${testId}/conclude`);
       const parsed = ConcludeIncrementalityResponseSchema.safeParse(res.data);
-      if (aliveRef.current && parsed.success) {
-        setReadouts((r) => ({ ...r, [testId]: parsed.data.readout }));
+      if (aliveRef.current) {
+        if (parsed.success) setReadouts((r) => ({ ...r, [testId]: parsed.data.readout }));
+        else setError(new Error('Conclude response failed contract validation')); // surface contract drift, don't hide it
       }
       await load();
       return parsed.success ? parsed.data.readout : null;
