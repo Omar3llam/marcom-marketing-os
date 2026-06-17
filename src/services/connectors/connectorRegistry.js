@@ -8,12 +8,19 @@
 import { metaConnector } from './MetaConnector.js';
 import { csvConnector } from './CsvConnector.js';
 import { googleAdsConnector } from './GoogleAdsConnector.js';
+import { ga4Connector } from './GA4Connector.js';
 import { CHANNEL } from './connectorTypes.js';
+
+// GA4 is a cross-channel ACTUALS source, not a CHANNEL: it lands actual revenue
+// onto existing Meta/Google entities (source GA4), so it is a registry/sync
+// identity here but never a row channel tag.
+const GA4 = 'GA4';
 
 // Platform string (Integration.platform / DataSource) → connector.
 const REGISTRY = Object.freeze({
   [CHANNEL.META]:   metaConnector,
   [CHANNEL.GOOGLE]: googleAdsConnector,
+  [GA4]:            ga4Connector,
   CSV:              csvConnector,
 });
 
@@ -25,7 +32,7 @@ export function resolve(platform) {
 }
 
 /** Platforms that participate in the scheduled sync loop (credentialed pulls). */
-export const SYNCABLE_PLATFORMS = Object.freeze([CHANNEL.META, CHANNEL.GOOGLE]);
+export const SYNCABLE_PLATFORMS = Object.freeze([CHANNEL.META, CHANNEL.GOOGLE, GA4]);
 
 export function isSyncable(platform) {
   return SYNCABLE_PLATFORMS.includes(String(platform || '').toUpperCase());

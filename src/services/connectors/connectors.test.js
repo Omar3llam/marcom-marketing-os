@@ -11,6 +11,9 @@ import { isStale, detId } from './connectorTypes.js';
 import { resolve } from './connectorRegistry.js';
 import { buildChannelInputs } from '../blended-truth/BlendedTruthService.js';
 import { reconcile } from '../blended-truth/blendedTruthEngine.js';
+import { ga4Normalize, channelFromSourceMedium } from './normalize/ga4Normalize.js';
+import { resolveAttachment, toActualSnapshotRow, assertActuals } from './actualsSink.js';
+import { buildRunReportBody, mapGa4Response, presetToDateRange } from './google/ga4Client.js';
 
 const DATE = new Date('2026-06-01T00:00:00.000Z');
 
@@ -192,6 +195,100 @@ describe('connectorRegistry', () => {
   it('resolves a connector by platform; throws on unknown', () => {
     expect(resolve('META').channel).toBe('META');
     expect(resolve('google').channel).toBe('GOOGLE');
+    expect(resolve('GA4').channel).toBe('GA4'); // credential/registry identity (not a row channel)
     expect(() => resolve('FOURSQUARE')).toThrow(/no connector registered/);
+  });
+});
+
+describe('ga4Normalize — paid-gated channel inference + per-campaign sum', () => {
+  it('channelFromSourceMedium: paid ad source → channel; organic/unknown → null', () => {
+    expect(channelFromSourceMedium('facebook', 'cpc')).toBe('META');
+    expect(channelFromSourceMedium('IG', 'paid_social')).toBe('META');
+    expect(channelFromSourceMedium('google', 'cpc')).toBe('GOOGLE');
+    expect(channelFromSourceMedium('google', 'organic')).toBeNull(); // not a paid CLAIM
+    expect(channelFromSourceMedium('newsletter', 'email')).toBeNull();
+    expect(channelFromSourceMedium('facebook', 'referral')).toBeNull(); // organic social
+  });
+
+  it('sums rows that collapse to one (channel, campaign); drops organic; revenue→minor', () => {
+    const out = ga4Normalize({
+      currency: 'USD', date: DATE,
+      rows: [
+        { source: 'facebook', medium: 'cpc', campaignName: 'Eid Sale', revenue: '300.00', conversions: 6 },
+        { source: 'instagram', medium: 'paid_social', campaignName: 'Eid Sale', revenue: '200.00', conversions: 4 }, // same META campaign
+        { source: 'google', medium: 'organic', campaignName: 'Eid Sale', revenue: '999.00', conversions: 9 },        // dropped (organic)
+      ],
+    });
+    expect(out).toHaveLength(1); // the two META rows summed, organic dropped
+    expect(out[0]).toMatchObject({ source: 'GA4', channel: 'META', campaignName: 'Eid Sale', revenueMinor: 50000, conversions: 10 });
+    expect(assertActuals(out)).toBe(out);
+  });
+});
+
+describe('actualsSink resolution — attach to existing entity, never mint', () => {
+  const metaCampaign = detId('ws1', 'META', 'CAMPAIGN', 'c1');
+  const metaAccount = detId('ws1', 'META', 'ACCOUNT', 'act_meta');
+  const graph = {
+    campaignByKey: new Map([[`META|eid sale`, metaCampaign]]),
+    accountByChannel: new Map([['META', metaAccount]]),
+  };
+
+  it('matches a campaign by channel+name (case-insensitive) → CAMPAIGN attachment', () => {
+    expect(resolveAttachment({ channel: 'META', campaignName: 'Eid Sale' }, graph)).toEqual({ entityId: metaCampaign, entityLevel: 'CAMPAIGN' });
+  });
+  it('no campaign match → falls back to the channel ACCOUNT (honest coarsening)', () => {
+    expect(resolveAttachment({ channel: 'META', campaignName: 'Unknown' }, graph)).toEqual({ entityId: metaAccount, entityLevel: 'ACCOUNT' });
+  });
+  it('no campaign and no account → null (DROP, never fabricate an entity)', () => {
+    expect(resolveAttachment({ channel: 'GOOGLE', campaignName: 'X' }, graph)).toBeNull();
+  });
+  it('toActualSnapshotRow carries no spend → roas/cpa/ctr null, source GA4', () => {
+    const row = toActualSnapshotRow('ws1', { entityId: metaCampaign, entityLevel: 'CAMPAIGN' }, { source: 'GA4', revenueMinor: 50000, conversions: 10, date: DATE, currency: 'USD' });
+    expect(row).toMatchObject({ entityId: metaCampaign, source: 'GA4', spendMinor: 0, revenueMinor: 50000, conversions: 10, roas: null, cpaMinor: null, ctr: null });
+  });
+  it('assertActuals rejects a non-actual source and non-integer revenue', () => {
+    expect(() => assertActuals([{ channel: 'META', source: 'META', revenueMinor: 1 }])).toThrow(/ACTUAL source/);
+    expect(() => assertActuals([{ channel: 'META', source: 'GA4', revenueMinor: 1.5 }])).toThrow(/integer/);
+  });
+});
+
+describe('the GA4 payoff — actual revenue reconciles at CAMPAIGN level', () => {
+  it('GA4 actual lands on the Meta campaign entityId → reconciliation, not platform-only', () => {
+    const metaCampaign = detId('ws1', 'META', 'CAMPAIGN', 'c1');
+    // The full pure chain: normalize → resolve → land-row.
+    const [descriptor] = ga4Normalize({
+      currency: 'USD', date: DATE,
+      rows: [{ source: 'facebook', medium: 'cpc', campaignName: 'Eid Sale', revenue: '210.00', conversions: 5 }],
+    });
+    const graph = { campaignByKey: new Map([[`META|eid sale`, metaCampaign]]), accountByChannel: new Map() };
+    const attachment = resolveAttachment(descriptor, graph);
+    const actualRow = toActualSnapshotRow('ws1', attachment, descriptor);
+
+    const snapshots = [
+      { entityId: metaCampaign, source: 'META', spendMinor: 100000, revenueMinor: 420000, currency: 'USD' }, // platform claim
+      { entityId: actualRow.entityId, source: actualRow.source, spendMinor: 0, revenueMinor: actualRow.revenueMinor, currency: 'USD' }, // GA4 actual, SAME entity
+    ];
+    const labels = new Map([[metaCampaign, { channel: 'META' }]]);
+    const result = reconcile({ channels: buildChannelInputs(snapshots, labels) });
+    expect(result.portfolio.reconciledCount).toBeGreaterThanOrEqual(1); // platform-vs-actual reconciled on one entity
+  });
+});
+
+describe('ga4Client pure helpers — request/response shaping (no network)', () => {
+  it('presetToDateRange maps shared presets to an explicit day-range', () => {
+    const now = new Date('2026-06-17T00:00:00.000Z');
+    expect(presetToDateRange('last_30d', now)).toEqual({ startDate: '2026-05-18', endDate: '2026-06-17' });
+    expect(presetToDateRange('maximum', now).endDate).toBe('2026-06-17');
+    expect(presetToDateRange('weird', now)).toEqual(presetToDateRange('last_90d', now)); // safe default
+  });
+  it('buildRunReportBody requests source/medium/campaign + purchase revenue', () => {
+    const body = buildRunReportBody({ startDate: '2026-01-01', endDate: '2026-01-31' });
+    expect(body.dimensions.map((d) => d.name)).toEqual(['sessionSource', 'sessionMedium', 'sessionCampaignName']);
+    expect(body.metrics.map((m) => m.name)).toContain('purchaseRevenue');
+    expect(body.dateRanges[0]).toEqual({ startDate: '2026-01-01', endDate: '2026-01-31' });
+  });
+  it('mapGa4Response reads parallel dimension/metric arrays by position', () => {
+    const mapped = mapGa4Response({ rows: [{ dimensionValues: [{ value: 'facebook' }, { value: 'cpc' }, { value: 'Eid Sale' }], metricValues: [{ value: '210.5' }, { value: '5' }] }] });
+    expect(mapped).toEqual([{ source: 'facebook', medium: 'cpc', campaignName: 'Eid Sale', revenue: 210.5, conversions: 5 }]);
   });
 });
