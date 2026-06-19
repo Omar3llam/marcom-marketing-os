@@ -9,6 +9,7 @@ import { primeContextCache }   from '@/router/ProtectedRoute.jsx';
 import { STEP_DEFINITIONS, DEFAULTS } from './constants.js';
 import { WelcomeStep }         from './steps/WelcomeStep.jsx';
 import { IdentityStep }        from './steps/IdentityStep.jsx';
+import { IndustryStep }        from './steps/IndustryStep.jsx';
 import { AudienceStep }        from './steps/AudienceStep.jsx';
 import { VoiceStep }           from './steps/VoiceStep.jsx';
 import { ChannelsStep }        from './steps/ChannelsStep.jsx';
@@ -46,6 +47,8 @@ export default function OnboardingPage() {
         return true; // No validation needed
       case 'identity':
         return form.name && form.market && form.city;
+      case 'industry':
+        return form.industry;
       case 'audience':
         return Object.values(form.ages).some(Boolean) && form.gender;
       case 'voice':
@@ -149,6 +152,7 @@ export default function OnboardingPage() {
           {/* Step content */}
           {currentStepKey === 'welcome' && <WelcomeStep />}
           {currentStepKey === 'identity' && <IdentityStep form={form} set={set} />}
+          {currentStepKey === 'industry' && <IndustryStep form={form} set={set} />}
           {currentStepKey === 'audience' && <AudienceStep form={form} set={set} />}
           {currentStepKey === 'voice' && <VoiceStep form={form} set={set} />}
           {currentStepKey === 'channels' && <ChannelsStep form={form} set={set} />}

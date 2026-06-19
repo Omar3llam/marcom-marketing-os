@@ -10,7 +10,7 @@ export function ObjectiveStep({ form, set }) {
     <div>
       <BigHeader className="mb-3">What does success look like?</BigHeader>
       <Lede className="mb-8">
-        This shapes how Lumi scores campaigns and what it optimizes for.
+        This is the goal Lumi frames its recommendations around.
       </Lede>
 
       <div className="space-y-3">
@@ -53,9 +53,8 @@ export function ObjectiveStep({ form, set }) {
           What this means —
         </div>
         <div className="text-xs text-dark-secondary leading-relaxed">
-          Lumi will factor your objective into every verdict. For example, if you prioritize ROAS,
-          it&apos;ll be more aggressive about killing low-performing creative. If you prioritize conversions,
-          it&apos;ll tolerate higher CPAs to drive volume.
+          Your objective becomes part of the context Lumi reasons with — it shapes how
+          recommendations are framed and prioritized for your account.
         </div>
       </div>
     </div>

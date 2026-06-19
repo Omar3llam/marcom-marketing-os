@@ -10,6 +10,8 @@ import { cn } from '@/lib/utils.js';
 import { useCampaignFeed, metricValue } from '@/hooks/useCampaignFeed.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
+import { useWorkspace } from '@/hooks/useWorkspace.js';
+import { INDUSTRIES } from '@/pages/OnboardingPage/constants.js';
 import CsvUploader from '@/components/upload/CsvUploader.jsx';
 import { useCampaignAnalysis } from '@/hooks/useCampaignAnalysis.js';
 import { MetricsPanel }    from '@/components/campaign-analysis/MetricsPanel.jsx';
@@ -17,6 +19,18 @@ import { PerformanceChart } from '@/components/campaign-analysis/PerformanceChar
 import { AnalysisSummary } from '@/components/campaign-analysis/AnalysisSummary.jsx';
 import { ConnectorCampaignsPanel } from '@/features/campaigns/ConnectorCampaignsPanel.jsx';
 import { generateCampaignReport, generateTextReport } from '@/lib/pdfExport.js';
+
+// Revenue-source → the guidance clause shown when connected campaigns can't be
+// scored. Keyed by the industry's `revenueSource` (from onboarding INDUSTRIES),
+// so e-commerce accounts are pointed at GA4/Shopify and services at a CRM. An
+// unset/unknown industry falls back to the generic clause — no regression for
+// accounts onboarded before the industry step existed.
+const REVENUE_GUIDANCE = {
+  GA4_SHOPIFY: 'connect GA4 or Shopify to see real ROAS',
+  CRM:         'connect your CRM or confirm leads and deals are tracked',
+  MANUAL:      'connect a revenue source or confirm purchase tracking',
+};
+const GENERIC_REVENUE_GUIDANCE = 'connect a revenue source or confirm purchase tracking';
 
 // Flatten campaigns → rows the table can sort + render.
 // Missing metrics stay null (not 0): the renderer shows "—" and the sort pushes
@@ -90,6 +104,14 @@ export default function CampaignsView() {
   const { syncing, handleAnalysisComplete, handleMetaSync } = useCampaignAnalysis({
     refetch, setCampaigns, setUploadOpen, refetchConnectors, refetchVerdicts,
   });
+
+  // Industry (from onboarding, surfaced on the workspace) tailors the
+  // "needs revenue data" guidance below to the source this business actually uses.
+  const { workspace } = useWorkspace();
+  const revenueGuidance = useMemo(() => {
+    const industry = INDUSTRIES.find((i) => i.id === workspace?.industry);
+    return REVENUE_GUIDANCE[industry?.revenueSource] ?? GENERIC_REVENUE_GUIDANCE;
+  }, [workspace?.industry]);
 
   const [downloading, setDownloading] = useState(false);
 
@@ -291,7 +313,7 @@ export default function CampaignsView() {
       {connectorGatedOut.length > 0 && (
         <p className="font-mono text-[11px] text-lumi-subtle mb-6 -mt-3">
           {connectorGatedOut.length} connected campaign{connectorGatedOut.length === 1 ? '' : 's'} need revenue data before
-          {connectorGatedOut.length === 1 ? ' it' : ' they'} can be scored — connect a revenue source or confirm purchase tracking.
+          {connectorGatedOut.length === 1 ? ' it' : ' they'} can be scored — {revenueGuidance}.
         </p>
       )}
 

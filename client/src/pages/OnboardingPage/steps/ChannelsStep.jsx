@@ -2,16 +2,13 @@
 // MARCOM / Lumi — Onboarding Step 4: Ad Channels
 // ============================================================
 
-import { Facebook, Camera, Search, Linkedin, Ghost } from 'lucide-react';
+import { Facebook, Search } from 'lucide-react';
 import { CHANNELS } from '../constants.js';
 import { BigHeader, Lede, CheckBox } from '../shared.jsx';
 
 const CHANNEL_ICONS = {
   meta: Facebook,
-  tiktok: Camera,
   google: Search,
-  linkedin: Linkedin,
-  snap: Ghost,
 };
 
 export function ChannelsStep({ form, set }) {

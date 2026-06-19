@@ -37,10 +37,12 @@ userRouter.get('/workspace', async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Look up user + their workspace via Prisma
+    // Look up user + their workspace via Prisma. `context` carries the onboarding
+    // profile (name, market, industry, …); we surface `industry` on the workspace
+    // response so the Campaigns page can tailor its revenue-source guidance.
     const user = await prisma.user.findFirst({
       where: { clerkId: uid },
-      select: { id: true, workspaceId: true, email: true },
+      select: { id: true, workspaceId: true, email: true, context: true },
     });
 
     if (!user) {
@@ -71,6 +73,7 @@ userRouter.get('/workspace', async (req, res) => {
         name:      workspace.name,
         ownerId:   uid,
         createdAt: workspace.createdAt,
+        industry:  user.context?.industry ?? null,  // from onboarding; null until set (no regression for older accounts)
       },
       hasWorkspace: true,
     });
