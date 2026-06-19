@@ -2,8 +2,8 @@
 // MARCOM / Lumi — Onboarding Step 7: Review
 // ============================================================
 
-import { Sparkles, Layout, Globe, Eye, Send, Wifi, BarChart, Target, TrendingUp, Layers, Brain } from 'lucide-react';
-import { MARKETS, AGE_BANDS, GENDERS, LANGUAGES, DIALECTS, TONES, CHANNELS, SPEND_TIERS, OBJECTIVES } from '../constants.js';
+import { Sparkles, Layout, Globe, Eye, Send, Wifi, BarChart, Target, TrendingUp, Layers, Brain, Building2 } from 'lucide-react';
+import { MARKETS, AGE_BANDS, GENDERS, LANGUAGES, DIALECTS, TONES, CHANNELS, SPEND_TIERS, OBJECTIVES, INDUSTRIES } from '../constants.js';
 import { Eyebrow, BigHeader, Lede } from '../shared.jsx';
 
 const OBJECTIVE_ICONS = {
@@ -21,6 +21,7 @@ export function ReviewStep({ form }) {
   const tone = TONES.find((t) => t.id === form.tone);
   const spendTier = SPEND_TIERS.find((t) => t.id === form.spendTier);
   const objective = OBJECTIVES.find((o) => o.id === form.objective);
+  const industry = INDUSTRIES.find((i) => i.id === form.industry);
 
   const ages = AGE_BANDS.filter((band) => form.ages[band.id]).map((b) => b.label);
   const interests = Object.keys(form.interests).filter((k) => form.interests[k]);
@@ -28,7 +29,7 @@ export function ReviewStep({ form }) {
 
   return (
     <div>
-      <Eyebrow>Step 8 · Review</Eyebrow>
+      <Eyebrow>Step 9 · Review</Eyebrow>
       <BigHeader>One last look.</BigHeader>
       <Lede>
         Confirm the setup. Lumi will bootstrap with this context and start watching the moment you launch.
@@ -36,6 +37,7 @@ export function ReviewStep({ form }) {
 
       <div className="mt-7 grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-3xl">
         <ReviewRow label="Brand" icon={Layout} value={form.name || '—'} />
+        <ReviewRow label="Industry" icon={Building2} value={industry?.label || '—'} />
         <ReviewRow label="Market" icon={Globe} value={`${market?.label || '—'} · ${form.city}`} />
         <ReviewRow
           label="Audience"
@@ -68,7 +70,7 @@ export function ReviewStep({ form }) {
             Lumi&apos;s first sweep starts on launch.
           </div>
           <div className="text-xs text-dark-soft mt-1 leading-relaxed">
-            We&apos;ll scan your last 14 days and stamp every verdict with cash impact. Lumi will be tuned to
+            We&apos;ll scan your last 30 days and stamp every verdict with cash impact. Lumi will be tuned to
             your audience, voice, and objective from day one.
           </div>
         </div>

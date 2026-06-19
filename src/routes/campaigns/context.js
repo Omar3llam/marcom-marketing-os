@@ -1,6 +1,31 @@
 import { prisma }  from '../../lib/prisma.js';
 import { logger }  from '../../utils/logger.js';
 
+// Onboarding market ids → full names. Mirrors MARKETS in
+// client/src/pages/OnboardingPage/constants.js (kept in sync by hand — six
+// fixed markets, not a hot path). Used only to populate `marketName` below.
+const MARKET_NAMES = {
+  eg: 'Egypt', sa: 'Saudi Arabia', ae: 'UAE', kw: 'Kuwait', jo: 'Jordan', ma: 'Morocco',
+};
+
+// The onboarding wizard stores its form verbatim (name, market id, industry, …).
+// Two downstream consumers — contextGuard and buildSystemPrompt — were written
+// against a different shape: companyName + industry + a full market name. Persist
+// BOTH. The onboarding-native fields are left untouched (isOnboarded, ReviewStep
+// and the dual-agent context blob keep reading them unchanged) and the
+// consumer-expected aliases are added on top, so those guards resolve to real
+// data instead of 400ing if their routes are ever wired into the live frontend.
+// Additive, never a rename. Exported for unit testing.
+export function withContextAliases(ctx) {
+  if (!ctx || typeof ctx !== 'object') return ctx;
+  return {
+    ...ctx,
+    companyName: ctx.companyName ?? ctx.name,            // contextGuard / promptBuilder / isOnboarded
+    marketName:  ctx.marketName ?? MARKET_NAMES[ctx.market] ?? ctx.market, // prompt-quality full name
+    // `industry` rides through ...ctx verbatim from the IndustryStep — no alias needed.
+  };
+}
+
 export function mountContextRoutes(router) {
   router.get('/me/context', async (req, res) => {
     const userId = req.userId;
@@ -26,6 +51,7 @@ export function mountContextRoutes(router) {
 
     const email         = req.user?.email || req.body?.email || `${userId}@unknown.local`;
     const workspaceName = req.body?.workspaceName || 'My Workspace';
+    const context       = withContextAliases(ctx);
 
     try {
       let existing = await prisma.user.findFirst({
@@ -35,7 +61,7 @@ export function mountContextRoutes(router) {
 
       if (!existing) {
         const created = await prisma.user.create({
-          data: { clerkId: userId, email, context: ctx, workspace: { create: { name: workspaceName } } },
+          data: { clerkId: userId, email, context, workspace: { create: { name: workspaceName } } },
           select: { id: true, workspaceId: true, context: true },
         });
         logger.info({ firebaseUid: userId, userRowId: created.id, workspaceId: created.workspaceId }, '[campaigns/me/context] created new user + workspace (Firebase)');
@@ -52,7 +78,7 @@ export function mountContextRoutes(router) {
 
       const updated = await prisma.user.update({
         where:  { id: existing.id },
-        data:   { context: ctx, clerkId: userId, email },
+        data:   { context, clerkId: userId, email },
         select: { id: true, workspaceId: true, context: true },
       });
       logger.info({ firebaseUid: userId, userRowId: updated.id, wasUidMissing: !existing.clerkId }, '[campaigns/me/context] updated existing user (Firebase)');

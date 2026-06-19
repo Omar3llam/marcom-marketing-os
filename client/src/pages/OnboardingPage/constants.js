@@ -59,12 +59,25 @@ export const TONES = [
   { id: 'warm',    label: 'Warm & familial',     sub: 'Personal, story-led, MENA-rooted' },
 ];
 
+// Only platforms with a real connector are offered — Meta and Google. TikTok,
+// Snap, and LinkedIn were removed: no connector exists for them anywhere in the
+// product, so presenting them was a promise the backend couldn't keep. Re-add
+// each one alongside its connector, not before it.
 export const CHANNELS = [
-  { id: 'meta',     label: 'Meta',     sub: 'Facebook + Instagram', primary: true },
-  { id: 'tiktok',   label: 'TikTok',   sub: 'TikTok Ads Manager' },
-  { id: 'google',   label: 'Google',   sub: 'Ads + PMax' },
-  { id: 'snap',     label: 'Snap',     sub: 'Snapchat Ads' },
-  { id: 'linkedin', label: 'LinkedIn', sub: 'B2B / Sponsored' },
+  { id: 'meta',   label: 'Meta',   sub: 'Facebook + Instagram', primary: true },
+  { id: 'google', label: 'Google', sub: 'Ads + PMax' },
+];
+
+// Business vertical, chosen at onboarding. Drives the revenue-source guidance
+// shown on the Campaigns page when connected campaigns lack revenue data —
+// `revenueSource` is read there (CampaignsView) to tailor the message, so it is
+// a real input, not decorative reference data.
+export const INDUSTRIES = [
+  { id: 'ecommerce',    label: 'E-commerce / Retail', sub: 'Online store · DTC · marketplace',  revenueSource: 'GA4_SHOPIFY' },
+  { id: 'real_estate',  label: 'Real Estate',         sub: 'Brokerage · developer · listings',  revenueSource: 'CRM' },
+  { id: 'services_b2b', label: 'Services / B2B',      sub: 'Agency · consulting · B2B services', revenueSource: 'CRM' },
+  { id: 'saas',         label: 'SaaS / Subscription', sub: 'Software · app · recurring revenue', revenueSource: 'CRM' },
+  { id: 'other',        label: 'Other',               sub: 'Something else',                     revenueSource: 'MANUAL' },
 ];
 
 export const SPEND_TIERS = [
@@ -145,6 +158,7 @@ export const PLANS = [
 export const STEP_DEFINITIONS = [
   { key: 'welcome',   label: 'Welcome' },
   { key: 'identity',  label: 'Workspace' },
+  { key: 'industry',  label: 'Industry' },
   { key: 'audience',  label: 'Audience' },
   { key: 'voice',     label: 'Brand voice' },
   { key: 'channels',  label: 'Ad channels' },
@@ -155,6 +169,7 @@ export const STEP_DEFINITIONS = [
 
 export const DEFAULTS = {
   name: '',
+  industry: '',
   market: 'eg',
   city: 'Cairo',
   tag: '',

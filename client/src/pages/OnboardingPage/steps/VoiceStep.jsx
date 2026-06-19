@@ -10,7 +10,7 @@ export function VoiceStep({ form, set }) {
     <div>
       <BigHeader className="mb-3">How does your brand speak?</BigHeader>
       <Lede className="mb-8">
-        Language, dialect, and tone shape how Lumi analyzes your creative and writes copy.
+        Language, dialect, and tone are part of the context Lumi uses when it writes and reviews copy for you.
       </Lede>
 
       <div className="space-y-6">
