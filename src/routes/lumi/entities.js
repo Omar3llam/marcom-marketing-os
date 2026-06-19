@@ -11,6 +11,7 @@
 // ============================================================
 import { Router } from 'express';
 import { getConnectorCampaigns, getCampaignAdSets } from '../../services/entity-graph/index.js';
+import { getConnectorVerdicts } from '../../services/verdict-engine/index.js';
 import { logger } from '../../utils/logger.js';
 
 export const entitiesRouter = Router();
@@ -22,6 +23,19 @@ entitiesRouter.get('/entities/campaigns', async (req, res) => {
   } catch (err) {
     logger.error({ err: err.message, workspaceId: req.workspaceId }, '[lumi/entities] campaigns failed');
     return res.status(500).json({ error: 'EntitiesUnavailable', message: 'Request failed' });
+  }
+});
+
+// Verdicts for the connector campaigns. Read-only — runs the pure verdict engine
+// over campaigns WITH measured revenue and reports the rest as gatedOut (never a
+// fabricated KILL from unmeasured revenue). Persists nothing.
+entitiesRouter.get('/entities/verdicts', async (req, res) => {
+  try {
+    const result = await getConnectorVerdicts(req.workspaceId);
+    return res.json({ workspaceId: req.workspaceId ?? null, generatedAt: new Date().toISOString(), ...result });
+  } catch (err) {
+    logger.error({ err: err.message, workspaceId: req.workspaceId }, '[lumi/entities] verdicts failed');
+    return res.status(500).json({ error: 'VerdictsUnavailable', message: 'Request failed' });
   }
 });
 

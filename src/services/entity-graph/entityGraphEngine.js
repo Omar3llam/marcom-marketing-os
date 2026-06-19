@@ -34,6 +34,11 @@ function metricsOf(snap) {
     ctr:         snap?.ctr ?? null,
     frequency:   snap?.frequency ?? null,
     conversions: snap?.conversions ?? null, // null-when-absent (distinct from a real 0)
+    // Raw verdict-engine inputs (re-derives roas/ctr from these). null-when-
+    // absent so the revenue gate can tell "no snapshot" from a measured 0.
+    revenueMinor: snap?.revenueMinor ?? null,
+    impressions:  snap?.impressions ?? null,
+    clicks:       snap?.clicks ?? null,
     currency:    snap?.currency ?? null,
     lastDate:    snap?.date ?? null,
   };
