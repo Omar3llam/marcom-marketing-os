@@ -3,7 +3,7 @@ import { api } from '@/lib/api.js';
 import { toast } from 'sonner';
 import { transformDecisionsToFeed } from '@/lib/feedTransform.js';
 
-export function useCampaignAnalysis({ refetch, setCampaigns, setUploadOpen, refetchConnectors }) {
+export function useCampaignAnalysis({ refetch, setCampaigns, setUploadOpen, refetchConnectors, refetchVerdicts }) {
   const [syncing, setSyncing] = useState(false);
 
   const handleAnalysisComplete = (uploadResult) => {
@@ -42,10 +42,10 @@ export function useCampaignAnalysis({ refetch, setCampaigns, setUploadOpen, refe
         toast.error('Sync couldn’t reach your channels. Reconnect in Settings → Integrations.');
       } else if (records === 0) {
         toast.info('Synced — no campaign data returned for the last 30 days.');
-        await refetchConnectors?.();
+        await Promise.all([refetchConnectors?.(), refetchVerdicts?.()]);
       } else {
         toast.success(`Synced ${synced} channel${synced === 1 ? '' : 's'} · ${records} record${records === 1 ? '' : 's'}.`);
-        await refetchConnectors?.();
+        await Promise.all([refetchConnectors?.(), refetchVerdicts?.()]);
       }
     } catch (err) {
       const status = err?.httpStatus ?? err?.response?.status;

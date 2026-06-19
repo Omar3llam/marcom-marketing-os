@@ -9,6 +9,7 @@ import { Upload, RefreshCw, Loader2, X, Download } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { useCampaignFeed, metricValue } from '@/hooks/useCampaignFeed.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
+import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import CsvUploader from '@/components/upload/CsvUploader.jsx';
 import { useCampaignAnalysis } from '@/hooks/useCampaignAnalysis.js';
 import { MetricsPanel }    from '@/components/campaign-analysis/MetricsPanel.jsx';
@@ -77,8 +78,17 @@ export default function CampaignsView() {
     refetch: refetchConnectors,
   } = useConnectorCampaigns();
 
+  // Verdict engine over the connector campaigns WITH measured revenue. `gatedOut`
+  // carries the campaigns that can't be honestly scored (no revenue) so they show
+  // an explicit "needs revenue data" note, never a fabricated KILL.
+  const {
+    verdicts: connectorVerdicts,
+    gatedOut: connectorGatedOut,
+    refetch: refetchVerdicts,
+  } = useConnectorVerdicts();
+
   const { syncing, handleAnalysisComplete, handleMetaSync } = useCampaignAnalysis({
-    refetch, setCampaigns, setUploadOpen, refetchConnectors,
+    refetch, setCampaigns, setUploadOpen, refetchConnectors, refetchVerdicts,
   });
 
   const [downloading, setDownloading] = useState(false);
@@ -161,6 +171,30 @@ export default function CampaignsView() {
   }, [campaigns]);
   const healthLabel = healthScore == null ? 'Upload data to see health' : healthScore < 40 ? 'NEEDS ATTENTION' : healthScore < 70 ? 'IMPROVING' : 'HEALTHY';
   const healthColor = healthScore == null ? 'text-lumi-muted' : healthScore < 40 ? 'text-trend-danger' : healthScore < 70 ? 'text-trend-warning' : 'text-trend-positive';
+
+  // Spend-weighted KILL/HOLD/SCALE buckets from the connector VERDICT engine —
+  // same shape PerformanceChart consumes from the CSV `totals`, so the chart needs
+  // no change. The engine's six verdicts coarsen into the chart's three lanes:
+  // KILL→kill, SCALE→scale, everything keep-running/adjust (HOLD/WATCH/REALLOCATE/
+  // REFRESH)→hold. Units are minor here — the chart only renders ratios. Only
+  // revenue-eligible campaigns are present (the rest are in connectorGatedOut), so
+  // a positive `spend` here means "we have honestly-scored connector spend."
+  const connectorTotals = useMemo(() => {
+    const t = { spend: 0, kill: 0, hold: 0, scale: 0 };
+    for (const v of connectorVerdicts) {
+      const spend = v.spendMinor ?? 0;
+      t.spend += spend;
+      if (v.verdict === 'KILL') t.kill += spend;
+      else if (v.verdict === 'SCALE') t.scale += spend;
+      else t.hold += spend;
+    }
+    return t;
+  }, [connectorVerdicts]);
+
+  // Live connector verdicts take the allocation chart when they exist (mirrors the
+  // KPI strip's live-XOR-csv rule below — the two substrates never blend), else
+  // the CSV-derived totals.
+  const chartTotals = connectorTotals.spend > 0 ? connectorTotals : totals;
 
   // Account-level aggregate from the LIVE connector graph (sums real
   // MetricSnapshot rows; null-when-absent so an unsynced metric never reads 0).
@@ -250,7 +284,16 @@ export default function CampaignsView() {
         currency={kpiCurrency}
       />
 
-      <PerformanceChart totals={totals} currency={currency} />
+      <PerformanceChart totals={chartTotals} currency={currency} />
+
+      {/* Connector campaigns that can't be scored yet — explicit, never dropped
+          silently (hiding them would be a quieter form of the same fabrication). */}
+      {connectorGatedOut.length > 0 && (
+        <p className="font-mono text-[11px] text-lumi-subtle mb-6 -mt-3">
+          {connectorGatedOut.length} connected campaign{connectorGatedOut.length === 1 ? '' : 's'} need revenue data before
+          {connectorGatedOut.length === 1 ? ' it' : ' they'} can be scored — connect a revenue source or confirm purchase tracking.
+        </p>
+      )}
 
       {/* Channel filter — rendered only when ≥2 real channels exist in the data,
           so it never shows an empty "Google" pill before Google data flows. */}

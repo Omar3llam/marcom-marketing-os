@@ -24,6 +24,11 @@ const WINDOW_DAYS = Number(process.env.ENTITY_SNAPSHOT_WINDOW_DAYS || 90);
 const METRIC_SELECT = {
   entityId: true, date: true, spendMinor: true, roas: true, ctr: true, frequency: true, currency: true,
   conversions: true, // needed for the account-level Blended CPA aggregate (Σspend / Σconversions)
+  // The verdict engine rolls up raw totals and re-derives roas/ctr itself, so it
+  // needs the un-ratio'd inputs the display projection never used: revenue, the
+  // ctr numerator/denominator. Surfaced here (they already exist on the row) so
+  // the connector→verdict adapter never has to zero-fill a missing field.
+  revenueMinor: true, impressions: true, clicks: true,
 };
 
 // Latest snapshot per entity for a level, over a bounded recency window.
