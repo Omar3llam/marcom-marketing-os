@@ -108,7 +108,9 @@ collaborationRouter.get('/approvals', async (req, res) => {
   }
 });
 
-collaborationRouter.post('/approvals', async (req, res) => {
+// Opening an approval gate is a buyer/strategist workflow action (a CLIENT seat
+// is read-only). The DECIDE step below stays STRATEGIST-only.
+collaborationRouter.post('/approvals', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
   const wsId = await need(req, res); if (!wsId) return;
   const b = req.body ?? {};
   if (!b.planId && !b.subjectId) return res.status(400).json({ error: 'BadApproval', message: 'planId or subjectId required.' });

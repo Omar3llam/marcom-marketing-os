@@ -26,8 +26,15 @@ import {
 } from '../services/artifact-approval/index.js';
 import { getArtifact } from '../services/artifact-storage/index.js';
 import { logger } from '../utils/logger.js';
+import { requireCollabRole } from '../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE } from '../services/collaboration/roleScope.js';
 
 const router = express.Router();
+
+// Approving / rejecting / requesting revision of an AI-generated artifact is an
+// approval action — STRATEGIST-only, mirroring canApprove and the plan-approval
+// gate. A read-only CLIENT or an execution-only BUYER seat cannot decide artifacts.
+const requireApprover = requireCollabRole(WORKSPACE_ROLE.STRATEGIST);
 
 // ============================================================
 // Helper: Verify workspace access
@@ -55,7 +62,7 @@ async function verifyWorkspaceAccess(artifactId, userWorkspaceId) {
  * POST /api/artifacts/:id/approve
  * Approve artifact
  */
-router.post('/:id/approve', async (req, res) => {
+router.post('/:id/approve', requireApprover, async (req, res) => {
   try {
     const { id: artifactId } = req.params;
     const { feedback } = req.body;
@@ -117,7 +124,7 @@ router.post('/:id/approve', async (req, res) => {
  * POST /api/artifacts/:id/reject
  * Reject artifact
  */
-router.post('/:id/reject', async (req, res) => {
+router.post('/:id/reject', requireApprover, async (req, res) => {
   try {
     const { id: artifactId } = req.params;
     const { reason } = req.body;
@@ -184,7 +191,7 @@ router.post('/:id/reject', async (req, res) => {
  * POST /api/artifacts/:id/request-revision
  * Request revision for artifact
  */
-router.post('/:id/request-revision', async (req, res) => {
+router.post('/:id/request-revision', requireApprover, async (req, res) => {
   try {
     const { id: artifactId } = req.params;
     const { feedback } = req.body;

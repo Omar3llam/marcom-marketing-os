@@ -13,7 +13,8 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { getHome } from '../../services/agentic-loop/AgentHomeService.js';
 import { runSweep, getLoopState } from '../../services/agentic-loop/AgenticLoopService.js';
-import { resolveCollabRole } from '../../middleware/requireCollabRole.js';
+import { resolveCollabRole, requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 
 export const agenticRouter = Router();
 
@@ -68,7 +69,9 @@ agenticRouter.get('/loop', async (req, res) => {
 // POST /loop/run — manual steer. Re-runs the sweep (re-proposes).
 // Human-in-the-loop trigger — NEVER executes anything.
 // ─────────────────────────────────────────────────────────────
-agenticRouter.post('/loop/run', async (req, res) => {
+// Manually steering the loop (re-propose sweep) is an operator action — a
+// CLIENT seat is read-only and must not trigger it.
+agenticRouter.post('/loop/run', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
   const wsId = await need(req, res); if (!wsId) return;
   try {
     const result = await runSweep(wsId, { trigger: 'MANUAL', force: true });

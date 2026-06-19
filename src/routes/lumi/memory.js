@@ -54,7 +54,7 @@ memoryRouter.get('/briefing', async (req, res) => {
 // existing Phase-2 sweep → confirm → execute governance. Rejects
 // unproven / conflicted patterns (never ships a contradictory rule).
 // ─────────────────────────────────────────────────────────────
-memoryRouter.post('/patterns/:id/promote', async (req, res) => {
+memoryRouter.post('/patterns/:id/promote', requireCollabRole(WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
   try {

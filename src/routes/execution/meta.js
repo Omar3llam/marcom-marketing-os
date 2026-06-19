@@ -22,6 +22,8 @@ import { logger }          from '../../utils/logger.js';
 import { lifecycleService } from '../../services/execution/ExecutionLifecycleService.js';
 import { executionQueue, enqueueExecution } from '../../queues/index.js';
 import { ExecutionStatus, TransitionActor } from '@marcom/runtime-contracts';
+import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE }    from '../../services/collaboration/roleScope.js';
 
 const MAX_QUEUE_DEPTH = Number(process.env.MAX_QUEUE_DEPTH || 500);
 
@@ -61,7 +63,9 @@ function validateRequest(actionType, targetId, targetType, idempotencyKey) {
 }
 
 export function registerMetaRoute(router) {
-  router.post('/meta', async (req, res) => {
+  // Executing a Meta action is a BUYER/STRATEGIST capability — a CLIENT
+  // (read-only leadership) seat must never queue a real ad-platform mutation.
+  router.post('/meta', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
     const { actionType, targetId, targetType, idempotencyKey, options } = req.body;
     const workspaceId = req.workspaceId;
     const userId      = req.userId;

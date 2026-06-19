@@ -26,6 +26,8 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { lifecycleService } from '../../services/execution/ExecutionLifecycleService.js';
 import { ExecutionStatus, TransitionActor } from '@marcom/runtime-contracts';
+import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE }    from '../../services/collaboration/roleScope.js';
 
 /**
  * Statuses eligible for retry. Only failure terminals — retrying a
@@ -35,7 +37,8 @@ import { ExecutionStatus, TransitionActor } from '@marcom/runtime-contracts';
 const RETRYABLE_STATUSES = ['EXECUTED_FAILED', 'TIMED_OUT'];
 
 export function registerRetryRoute(router) {
-  router.post('/:id/retry', async (req, res) => {
+  // Retry re-queues a real Meta mutation — same execution tier as POST /meta.
+  router.post('/:id/retry', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
     const { id: originalId } = req.params;
     const workspaceId = req.workspaceId;
     const userId      = req.userId;

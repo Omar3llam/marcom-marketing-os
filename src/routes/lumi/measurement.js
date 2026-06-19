@@ -13,6 +13,12 @@ import { getAttribution } from '../../services/attribution-engine/AttributionSer
 import { ATTRIBUTION_MODEL } from '../../services/attribution-engine/attributionTypes.js';
 import { getReconciliation } from '../../services/reconciliation/ReconciliationService.js';
 import { designTest, listTests, getTest, recordCounts, concludeIncrementality } from '../../services/incrementality-engine/IncrementalityService.js';
+import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
+
+// Measurement (MEASURE surface) is STRATEGIST-only. The tier gate below blocks
+// non-Agency workspaces; this blocks non-strategist SEATS within an enabled one.
+const requireStrategist = requireCollabRole(WORKSPACE_ROLE.STRATEGIST);
 
 export const measurementRouter = Router();
 
@@ -94,7 +100,7 @@ measurementRouter.get('/incrementality', async (req, res) => {
   }
 });
 
-measurementRouter.post('/incrementality', async (req, res) => {
+measurementRouter.post('/incrementality', requireStrategist, async (req, res) => {
   const wsId = req.measurementWorkspaceId;
   const b = req.body ?? {};
   if (!b.channel || typeof b.baselineCvr !== 'number' || typeof b.mde !== 'number' || typeof b.dailyEligible !== 'number') {
@@ -117,7 +123,7 @@ measurementRouter.post('/incrementality', async (req, res) => {
 // write organ that makes a conclude meaningful — without it every readout
 // would be computed off empty arms.
 // ─────────────────────────────────────────────────────────────
-measurementRouter.post('/incrementality/:id/metrics', async (req, res) => {
+measurementRouter.post('/incrementality/:id/metrics', requireStrategist, async (req, res) => {
   const wsId = req.measurementWorkspaceId;
   const b = req.body ?? {};
   const fields = ['exposedUsers', 'exposedConversions', 'holdoutUsers', 'holdoutConversions'];
@@ -138,7 +144,7 @@ measurementRouter.post('/incrementality/:id/metrics', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // POST /api/lumi/incrementality/:id/conclude — read out lift+CI → memory
 // ─────────────────────────────────────────────────────────────
-measurementRouter.post('/incrementality/:id/conclude', async (req, res) => {
+measurementRouter.post('/incrementality/:id/conclude', requireStrategist, async (req, res) => {
   const wsId = req.measurementWorkspaceId;
   try {
     const result = await concludeIncrementality(wsId, req.params.id);
