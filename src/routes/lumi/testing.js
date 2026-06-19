@@ -11,6 +11,11 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { getWeeklyAgenda, commitAgenda } from '../../services/test-generator/TestGeneratorService.js';
 import { startTest, recordVariantMetrics, concludeTest } from '../../services/test-tracker/TestTrackerService.js';
+import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
+
+// Testing is a BUYER/STRATEGIST surface (TESTING is not in a CLIENT's visibleStates).
+const requireOperator = requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST);
 
 export const testingRouter = Router();
 
@@ -57,7 +62,7 @@ testingRouter.get('/tests', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // POST /api/lumi/tests   — commit picked suggestions → PROPOSED tests
 // ─────────────────────────────────────────────────────────────
-testingRouter.post('/tests', async (req, res) => {
+testingRouter.post('/tests', requireOperator, async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
 
@@ -76,7 +81,7 @@ testingRouter.post('/tests', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // POST /api/lumi/tests/:id/start   — PROPOSED → RUNNING
 // ─────────────────────────────────────────────────────────────
-testingRouter.post('/tests/:id/start', async (req, res) => {
+testingRouter.post('/tests/:id/start', requireOperator, async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
   try {
@@ -91,7 +96,7 @@ testingRouter.post('/tests/:id/start', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // POST /api/lumi/tests/:id/metrics   — record variant counts
 // ─────────────────────────────────────────────────────────────
-testingRouter.post('/tests/:id/metrics', async (req, res) => {
+testingRouter.post('/tests/:id/metrics', requireOperator, async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
 
@@ -114,7 +119,7 @@ testingRouter.post('/tests/:id/metrics', async (req, res) => {
 // that the user confirms through the existing execute path. Never
 // auto-executes.
 // ─────────────────────────────────────────────────────────────
-testingRouter.post('/tests/:id/conclude', async (req, res) => {
+testingRouter.post('/tests/:id/conclude', requireOperator, async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
   try {

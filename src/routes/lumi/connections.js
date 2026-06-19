@@ -12,6 +12,8 @@ import { isStale } from '../../services/connectors/connectorTypes.js';
 import { listConnections, updateCredentialAccount } from '../../services/connectors/credentialStore.js';
 import { runConnectorSync } from '../../services/connectors/ConnectorSyncService.js';
 import { DEFAULT_MANUAL_SYNC_DATE_PRESET } from '../../services/connectors/connectorConfig.js';
+import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
 
 export const connectionsRouter = Router();
 
@@ -60,7 +62,7 @@ connectionsRouter.get('/connections', async (req, res) => {
 // marcom_credentials by workspace_id (the Phase 12c bridge), NOT the legacy
 // project-scoped meta_ads credential. Per-channel failures are isolated inside
 // the service and surface in `results`, so a single bad channel still returns 200.
-connectionsRouter.post('/connections/sync', async (req, res) => {
+connectionsRouter.post('/connections/sync', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(400).json({ error: 'WorkspaceNotFound', message: 'No workspace for this user' });
   try {
@@ -79,7 +81,9 @@ connectionsRouter.post('/connections/sync', async (req, res) => {
 // token grants more than one ad account. accountId is validated server-side
 // against the token's stored availableAccounts — a user can only switch between
 // accounts the token already proves access to, never inject an arbitrary id.
-connectionsRouter.patch('/connections/account', async (req, res) => {
+// Switching the active ad account changes the workspace's data source — a
+// configuration change that belongs to the STRATEGIST/owner, not a buyer seat.
+connectionsRouter.patch('/connections/account', requireCollabRole(WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(400).json({ error: 'WorkspaceNotFound', message: 'No workspace for this user' });
 

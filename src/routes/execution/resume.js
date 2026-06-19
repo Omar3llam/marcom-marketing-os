@@ -6,9 +6,12 @@
 // ============================================================
 import { logger } from '../../utils/logger.js';
 import { resumeWithDecisions, ResumeError } from '../../services/execution/ExecutionResumeService.js';
+import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE }    from '../../services/collaboration/roleScope.js';
 
 export function registerResumeRoute(router) {
-  router.post('/:id/resume', async (req, res) => {
+  // Resuming applies approval decisions + re-executes nodes — execution tier.
+  router.post('/:id/resume', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
     const { id: executionId } = req.params;
     const { workspaceId, user } = req;
     const { decisions } = req.body || {};

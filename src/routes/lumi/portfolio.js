@@ -11,6 +11,8 @@ import { getPortfolio }       from '../../services/portfolio/PortfolioService.js
 import { getBlendedTruth }    from '../../services/blended-truth/BlendedTruthService.js';
 import { previewAllocation, commitAllocation } from '../../services/allocation-engine/AllocationService.js';
 import { GOAL_TYPE }          from '../../services/allocation-engine/allocationEngine.js';
+import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
 
 export const portfolioRouter = Router();
 
@@ -110,7 +112,7 @@ portfolioRouter.post('/portfolio/allocate', async (req, res) => {
 // moves still require human confirm → they flow through the existing
 // /api/execute/meta REALLOCATE_BUDGET governance. Never auto-executes.
 // ─────────────────────────────────────────────────────────────
-portfolioRouter.post('/portfolio/allocate/commit', async (req, res) => {
+portfolioRouter.post('/portfolio/allocate/commit', requireCollabRole(WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
 

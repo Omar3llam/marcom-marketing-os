@@ -14,6 +14,11 @@ import { logger } from '../../utils/logger.js';
 import { runScenario } from '../../services/scenario-engine/ScenarioService.js';
 import { getEconomicsAssessment, setEconomics } from '../../services/unit-economics/EconomicsService.js';
 import { buildPlan, listPlans, getPlan, promotePlanMix } from '../../services/planning/PlanService.js';
+import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
+
+// Planning (PLAN surface) is STRATEGIST-only — not in a BUYER/CLIENT's visibleStates.
+const requireStrategist = requireCollabRole(WORKSPACE_ROLE.STRATEGIST);
 
 export const planningRouter = Router();
 
@@ -66,7 +71,7 @@ planningRouter.get('/economics', async (req, res) => {
   }
 });
 
-planningRouter.put('/economics', async (req, res) => {
+planningRouter.put('/economics', requireStrategist, async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
   try {
@@ -96,7 +101,7 @@ planningRouter.get('/goals', async (req, res) => {
   }
 });
 
-planningRouter.post('/goals', async (req, res) => {
+planningRouter.post('/goals', requireStrategist, async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
   const b = req.body ?? {};
@@ -137,7 +142,7 @@ planningRouter.get('/plans', async (req, res) => {
   }
 });
 
-planningRouter.post('/plans', async (req, res) => {
+planningRouter.post('/plans', requireStrategist, async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
   const b = req.body ?? {};
@@ -178,7 +183,7 @@ planningRouter.get('/plans/:id', async (req, res) => {
 // POST /api/lumi/plans/:id/promote — mix → PROPOSED REALLOCATE Decisions
 // Rides the existing Phase-3 confirm→execute governance. No new exec code.
 // ─────────────────────────────────────────────────────────────
-planningRouter.post('/plans/:id/promote', async (req, res) => {
+planningRouter.post('/plans/:id/promote', requireStrategist, async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
   try {

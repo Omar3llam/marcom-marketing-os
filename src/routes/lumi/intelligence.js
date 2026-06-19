@@ -8,11 +8,15 @@
 import { Router }  from 'express';
 import { prisma }  from '../../lib/prisma.js';
 import { logger }  from '../../utils/logger.js';
+import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
 
 export const intelligenceRouter = Router();
 
 // ─────────────────────────────────────────────────────────────
-intelligenceRouter.post('/orchestrate/:campaignId', async (req, res) => {
+// Orchestration runs the dual-agent and writes its output onto an Action row —
+// a state mutation a read-only CLIENT seat must not trigger.
+intelligenceRouter.post('/orchestrate/:campaignId', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
   const { campaignId } = req.params;
   let wsId = req.workspaceId;
   if (!wsId && req.userId) {
