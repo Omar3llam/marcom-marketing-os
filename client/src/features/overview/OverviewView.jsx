@@ -23,6 +23,7 @@ import QuickActionsPanel from './components/QuickActionsPanel.jsx';
 import ActivityFeed from './components/ActivityFeed.jsx';
 import ConnectionHealthStrip from './components/ConnectionHealthStrip.jsx';
 import PacingWidget from './components/PacingWidget.jsx';
+import CopilotTeaser from './components/CopilotTeaser.jsx';
 
 export default function OverviewView() {
   const navigate = useNavigate();
@@ -228,6 +229,12 @@ export default function OverviewView() {
           <ActivityFeed activity={recentActivity} loading={loading} />
         </>
       )}
+
+      {/* Lumi Copilot — demoted from the primary sidebar to a modest teaser here
+          until the feature is real. Renders in every data state. */}
+      <div className="mt-6">
+        <CopilotTeaser />
+      </div>
     </div>
   );
 }
