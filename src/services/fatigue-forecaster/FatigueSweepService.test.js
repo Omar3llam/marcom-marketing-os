@@ -19,7 +19,8 @@ vi.mock('../../utils/logger.js', () => ({
 vi.mock('../../lib/prisma.js', () => {
   const prisma = {
     metricSnapshot:    { findMany: vi.fn() },
-    fatiguePrediction: { deleteMany: vi.fn(), createMany: vi.fn() },
+    fatiguePrediction: { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+    decisionMemoryEntry: { create: vi.fn() }, // resolvePrediction writes the learning row here
     $transaction:      vi.fn(),
   };
   prisma.$transaction.mockImplementation(async (ops) => Promise.all(ops));
@@ -40,6 +41,7 @@ function dailyFreq(entityId, level, freqs, start = '2026-05-01T00:00:00Z', ctrs 
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prisma.fatiguePrediction.findMany.mockResolvedValue([]); // default: nothing to resolve
   prisma.fatiguePrediction.deleteMany.mockResolvedValue({ count: 0 });
   prisma.fatiguePrediction.createMany.mockResolvedValue({ count: 0 });
   prisma.$transaction.mockImplementation(async (ops) => Promise.all(ops));
@@ -143,5 +145,58 @@ describe('sweepFatigue — honesty + safety', () => {
 
   it('throws without a workspaceId', async () => {
     await expect(sweepFatigue()).rejects.toThrow('workspaceId required');
+  });
+});
+
+describe('sweepFatigue — resolving a now-breached prediction (the learning loop)', () => {
+  const ENT = 'b2c3d4e5-0000-0000-0000-000000000002';
+
+  it('resolves an unresolved prediction whose entity crossed the ceiling — scores accuracy + writes FATIGUE_FORECAST memory', async () => {
+    // Entity at/above ceiling 3.5 across 05-01..05-02 → actual breach 05-01.
+    prisma.metricSnapshot.findMany.mockResolvedValue(dailyFreq(ENT, 'ADSET', [3.5, 3.6]));
+    prisma.fatiguePrediction.findMany.mockResolvedValue([
+      { id: 'p1', entityId: ENT, entityLevel: 'ADSET', ceiling: 3.5, createdAt: new Date('2026-04-30T00:00:00Z') },
+    ]);
+    // resolvePrediction re-reads the row, then updates + writes the memory row.
+    prisma.fatiguePrediction.findUnique.mockResolvedValue({
+      id: 'p1', workspaceId: 'ws-1', entityId: ENT, entityLevel: 'ADSET',
+      metric: 'frequency', ceiling: 3.5, projectedBreachDate: new Date('2026-05-02T00:00:00Z'), resolvedAt: null,
+    });
+    prisma.fatiguePrediction.update.mockResolvedValue({ id: 'p1', resolvedAt: new Date() });
+    prisma.decisionMemoryEntry.create.mockResolvedValue({ id: 'm1' });
+
+    const res = await sweepFatigue('ws-1');
+
+    expect(res.resolved).toBe(1);
+    // a real resolution: resolvedAt + a numeric accuracy are written
+    expect(prisma.fatiguePrediction.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'p1' },
+      data: expect.objectContaining({ resolvedAt: expect.any(Date), accuracy: expect.any(Number) }),
+    }));
+    // the learning loop fires: a FATIGUE_FORECAST memory row keyed to the entity
+    expect(prisma.decisionMemoryEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ actionType: 'FATIGUE_FORECAST', entityId: ENT, workspaceId: 'ws-1' }),
+    }));
+  });
+
+  it('leaves an unbreached prediction unresolved — never a fabricated outcome', async () => {
+    prisma.metricSnapshot.findMany.mockResolvedValue(dailyFreq(ENT, 'ADSET', [2.0, 2.1])); // stays below 3.5
+    prisma.fatiguePrediction.findMany.mockResolvedValue([
+      { id: 'p2', entityId: ENT, entityLevel: 'ADSET', ceiling: 3.5, createdAt: new Date('2026-04-30T00:00:00Z') },
+    ]);
+    const res = await sweepFatigue('ws-1');
+    expect(res.resolved).toBe(0);
+    expect(prisma.fatiguePrediction.update).not.toHaveBeenCalled();
+    expect(prisma.decisionMemoryEntry.create).not.toHaveBeenCalled();
+  });
+
+  it('skips a prediction whose entity is no longer observable this window', async () => {
+    prisma.metricSnapshot.findMany.mockResolvedValue(dailyFreq('other', 'ADSET', [3.5, 3.6])); // different entity
+    prisma.fatiguePrediction.findMany.mockResolvedValue([
+      { id: 'p3', entityId: ENT, entityLevel: 'ADSET', ceiling: 3.5, createdAt: new Date('2026-04-30T00:00:00Z') },
+    ]);
+    const res = await sweepFatigue('ws-1');
+    expect(res.resolved).toBe(0);
+    expect(prisma.fatiguePrediction.update).not.toHaveBeenCalled();
   });
 });
