@@ -41,6 +41,7 @@ const CampaignAnalysis    = lazy(() => import('./pages/CampaignAnalysis.jsx'));
 const GrowthStrategyBoard = lazy(() => import('./pages/GrowthStrategyBoard.jsx'));
 const Operations          = lazy(() => import('./pages/demo/Operations/index.jsx'));
 const ApprovalQueue       = lazy(() => import('./pages/ApprovalQueue.jsx')); // PR #36
+const Publishing          = lazy(() => import('./pages/Publishing.jsx'));     // approved-creative surface
 
 // ── Phase 11A · surfacing the built brain (role-gated) ────────
 const BlendedTruth = lazy(() => import('./pages/BlendedTruth.jsx'));
@@ -203,6 +204,17 @@ export default function App() {
           <Route path="content"    element={
             <ErrorBoundary boundaryId="content">
               <ContentLab />
+            </ErrorBoundary>
+          } />
+
+          {/* ── Publishing · approved creative → record live Meta publishes
+              (BUYER/STRATEGIST; CLIENT → Home). Matches the publish-record
+              tier and gates the deep-link the same way Testing/Measure do. ── */}
+          <Route path="publishing" element={
+            <ErrorBoundary boundaryId="publishing">
+              <RoleGate role={['BUYER', 'STRATEGIST']} fallback={<Navigate to={appRoutes.overview} replace />}>
+                <Suspense fallback={<PageFallback />}><Publishing /></Suspense>
+              </RoleGate>
             </ErrorBoundary>
           } />
           <Route path="copilot"    element={

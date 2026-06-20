@@ -9,6 +9,7 @@ export const appRoutes = {
   measure: '/app/measure',
   decisions: '/app/decisions',
   contentLab: '/app/content',
+  publishing: '/app/publishing',
   copilot: '/app/copilot',
   settings: '/app/settings',
   settingsGeneral: '/app/settings/general',
