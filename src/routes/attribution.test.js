@@ -1,5 +1,5 @@
 // ============================================================
-// Attribution Routes Tests — PR #41
+// Attribution Routes Tests — PR #41 (+ manual-publish recording)
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import request from 'supertest';
@@ -10,6 +10,9 @@ import { prisma } from '../lib/prisma.js';
 // Mock Prisma
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
+    user: {
+      findUnique: vi.fn(),
+    },
     artifact: {
       findFirst: vi.fn(),
     },
@@ -24,11 +27,15 @@ vi.mock('../lib/prisma.js', () => ({
   },
 }));
 
-// Mock middleware
+// Mock auth: mirrors the real firebaseAuth contract — req.user is the Firebase
+// token (it carries .uid, NOT a Prisma row .id), and req.userId is that uid.
+// The collab-role gate is NOT mocked — it runs for real, resolving the role
+// from prisma.user.findUnique (since req.collabRole is unset here).
 vi.mock('../middleware/firebaseAuth.js', () => ({
   requireAuth: (req, res, next) => {
     req.workspaceId = 'test-workspace-123';
-    req.user = { id: 'test-user-123' };
+    req.userId = 'firebase-uid-1';
+    req.user = { uid: 'firebase-uid-1' };
     next();
   },
 }));
@@ -51,10 +58,13 @@ app.use('/api/attribution', attributionRouter);
 describe('Attribution Routes (PR #41)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default: a real STRATEGIST user row resolves for both the role gate and
+    // the publishedBy lookup. Individual tests override the role as needed.
+    prisma.user.findUnique.mockResolvedValue({ id: 'user-uuid-123', collabRole: 'STRATEGIST' });
   });
 
   describe('POST /api/attribution/publish', () => {
-    it('should track published creative', async () => {
+    it('records a published creative and stamps publishedBy with the resolved User UUID', async () => {
       prisma.artifact.findFirst.mockResolvedValue({
         id: 'artifact-123',
         workspaceId: 'test-workspace-123',
@@ -70,7 +80,7 @@ describe('Attribution Routes (PR #41)', () => {
         workspaceId: 'test-workspace-123',
         metaAdId: 'ad-123',
         metaCampaignId: 'campaign-123',
-        publishedBy: 'test-user-123',
+        publishedBy: 'user-uuid-123',
         publishedAt: new Date(),
       });
 
@@ -88,21 +98,30 @@ describe('Attribution Routes (PR #41)', () => {
       expect(response.body.publishedCreative).toBeDefined();
       expect(response.body.publishedCreative.metaAdId).toBe('ad-123');
 
+      // The publishing user's UUID is resolved from the Firebase uid (clerkId).
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: { clerkId: 'firebase-uid-1' },
+        select: { id: true },
+      });
+
       expect(prisma.artifact.findFirst).toHaveBeenCalledWith({
         where: { id: 'artifact-123', workspaceId: 'test-workspace-123' },
       });
 
+      // The regression that the old test masked: publishedBy MUST be the
+      // Prisma User UUID, never req.user.id (undefined on a Firebase token).
       expect(prisma.publishedCreative.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           artifactId: 'artifact-123',
           metaAdId: 'ad-123',
           metaCampaignId: 'campaign-123',
           adName: 'Test Ad',
+          publishedBy: 'user-uuid-123',
         }),
       });
     });
 
-    it('should return 400 if missing required fields', async () => {
+    it('returns 400 if missing required fields', async () => {
       const response = await request(app)
         .post('/api/attribution/publish')
         .send({
@@ -112,9 +131,26 @@ describe('Attribution Routes (PR #41)', () => {
 
       expect(response.status).toBe(400);
       expect(response.body.error).toContain('Missing required fields');
+      expect(prisma.publishedCreative.create).not.toHaveBeenCalled();
     });
 
-    it('should return 404 if artifact not found', async () => {
+    it('returns 404 if the publishing user row cannot be resolved', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+
+      const response = await request(app)
+        .post('/api/attribution/publish')
+        .send({
+          artifactId: 'artifact-123',
+          metaAdId: 'ad-123',
+          metaCampaignId: 'campaign-123',
+        });
+
+      expect(response.status).toBe(404);
+      expect(response.body.error).toBe('Publishing user not found');
+      expect(prisma.publishedCreative.create).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 if artifact not found', async () => {
       prisma.artifact.findFirst.mockResolvedValue(null);
 
       const response = await request(app)
@@ -127,9 +163,10 @@ describe('Attribution Routes (PR #41)', () => {
 
       expect(response.status).toBe(404);
       expect(response.body.error).toBe('Artifact not found');
+      expect(prisma.publishedCreative.create).not.toHaveBeenCalled();
     });
 
-    it('should return 409 if already published', async () => {
+    it('returns 409 if already published', async () => {
       prisma.artifact.findFirst.mockResolvedValue({
         id: 'artifact-123',
         workspaceId: 'test-workspace-123',
@@ -151,6 +188,51 @@ describe('Attribution Routes (PR #41)', () => {
 
       expect(response.status).toBe(409);
       expect(response.body.error).toContain('already published');
+      expect(response.body.publishedCreativeId).toBe('published-123');
+      expect(prisma.publishedCreative.create).not.toHaveBeenCalled();
+    });
+
+    // ── Role gate (execution tier: BUYER + STRATEGIST) ────────
+    it('forbids a CLIENT (read-only seat) from recording a publish', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-uuid-123', collabRole: 'CLIENT' });
+
+      const response = await request(app)
+        .post('/api/attribution/publish')
+        .send({
+          artifactId: 'artifact-123',
+          metaAdId: 'ad-123',
+          metaCampaignId: 'campaign-123',
+        });
+
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBe('RoleForbidden');
+      // The gate short-circuits before any write.
+      expect(prisma.publishedCreative.create).not.toHaveBeenCalled();
+      expect(prisma.artifact.findFirst).not.toHaveBeenCalled();
+    });
+
+    it('allows a BUYER to record a publish (the buyer who ran the ad)', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: 'user-uuid-123', collabRole: 'BUYER' });
+      prisma.artifact.findFirst.mockResolvedValue({ id: 'artifact-123', workspaceId: 'test-workspace-123' });
+      prisma.publishedCreative.findFirst.mockResolvedValue(null);
+      prisma.publishedCreative.create.mockResolvedValue({
+        id: 'published-123',
+        metaAdId: 'ad-123',
+        publishedBy: 'user-uuid-123',
+      });
+
+      const response = await request(app)
+        .post('/api/attribution/publish')
+        .send({
+          artifactId: 'artifact-123',
+          metaAdId: 'ad-123',
+          metaCampaignId: 'campaign-123',
+        });
+
+      expect(response.status).toBe(201);
+      expect(prisma.publishedCreative.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ publishedBy: 'user-uuid-123' }),
+      });
     });
   });
 

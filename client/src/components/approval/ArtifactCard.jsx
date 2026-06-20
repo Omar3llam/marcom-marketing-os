@@ -15,6 +15,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, FileText, Image, Code } from 'lucide-react';
 import { Text } from '../primitives/core/Text.jsx';
+import { RecordPublishForm } from '../publish/RecordPublishForm.jsx';
 import { cn } from '../../lib/utils';
 
 /**
@@ -208,6 +209,9 @@ export function ArtifactCard({ artifact, expanded: initialExpanded = false, onEx
             )}
           </div>
         )}
+
+        {/* Record a manual Meta publish — self-gates to APPROVED artifacts. */}
+        <RecordPublishForm artifact={artifact} />
       </div>
     </div>
   );
