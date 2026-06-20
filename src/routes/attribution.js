@@ -6,13 +6,25 @@
 import express from 'express';
 import { prisma } from '../lib/prisma.js';
 import { requireAuth } from '../middleware/firebaseAuth.js';
+import { requireCollabRole } from '../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE } from '../services/collaboration/roleScope.js';
 import { logger } from '../utils/logger.js';
 
 const router = express.Router();
 
 /**
  * POST /api/attribution/publish
- * Track when an artifact is published to Meta.
+ * Record that an artifact was published to Meta as a real ad.
+ *
+ * This records an EXTERNAL action that already happened — the human created
+ * the ad in Meta Ads Manager (using copy/briefs pulled from an approved
+ * artifact) and is now entering the real Meta IDs to close the attribution
+ * link. It does NOT call the Meta API or create anything in Meta.
+ *
+ * Role: BUYER or STRATEGIST. Recording a live publish is execution-domain
+ * bookkeeping (roleScope.canExecute) — the buyer who ran the ad records it.
+ * A CLIENT (read-only REPORT seat) cannot. This is the execution tier, not
+ * the STRATEGIST-only approval tier.
  *
  * Body:
  * {
@@ -24,9 +36,13 @@ const router = express.Router();
  *   adStatus?: string
  * }
  */
-router.post('/publish', requireAuth, async (req, res) => {
+router.post(
+  '/publish',
+  requireAuth,
+  requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST),
+  async (req, res) => {
   const { artifactId, metaAdId, metaCampaignId, metaAdsetId, adName, adStatus } = req.body;
-  const { workspaceId, user } = req;
+  const { workspaceId } = req;
 
   // Validation
   if (!artifactId || !metaAdId || !metaCampaignId) {
@@ -36,6 +52,20 @@ router.post('/publish', requireAuth, async (req, res) => {
   }
 
   try {
+    // Resolve the publishing user's Prisma UUID. publishedBy is String @db.Uuid
+    // (a User.id), but req.user is the Firebase token — it carries .uid (the
+    // Firebase id, stored in User.clerkId), NOT the row's UUID. Writing the raw
+    // token would set publishedBy to undefined (required field → Prisma throws)
+    // or a non-UUID string (column rejects it). Look up the row id by uid.
+    const publisher = await prisma.user.findUnique({
+      where: { clerkId: req.userId },
+      select: { id: true },
+    });
+
+    if (!publisher) {
+      return res.status(404).json({ error: 'Publishing user not found' });
+    }
+
     // Verify artifact exists and belongs to workspace
     const artifact = await prisma.artifact.findFirst({
       where: { id: artifactId, workspaceId },
@@ -67,7 +97,7 @@ router.post('/publish', requireAuth, async (req, res) => {
         metaAdsetId,
         adName,
         adStatus,
-        publishedBy: user.id,
+        publishedBy: publisher.id,
       },
     });
 
