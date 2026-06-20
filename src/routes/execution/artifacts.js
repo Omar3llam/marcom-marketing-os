@@ -32,6 +32,8 @@
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { getArtifact } from '../../services/artifact-storage/index.js';
+import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 import { logger } from '../../utils/logger.js';
 
 // ============================================================
@@ -178,6 +180,71 @@ export function registerArtifactsRoute(router) {
       res.status(500).json({ error: 'Failed to list pending approval artifacts' });
     }
   });
+
+  // ============================================================
+  // GET /api/execute/artifacts/approved
+  // ------------------------------------------------------------
+  // Workspace-wide list of artifacts that have cleared human approval
+  // (approval COMPLETED + decision APPROVED). Source for the Publishing
+  // view, where an operator records the manual Meta publish of approved
+  // creative. The per-execution list endpoints can't serve this — there is
+  // no executions browser to supply an executionId — so this workspace-wide
+  // listing is the surface that makes the publish action reachable.
+  //
+  // Gated to the execution tier (BUYER + STRATEGIST): a CLIENT (read-only)
+  // has no publish action to take here. Registered BEFORE /artifacts/:id so
+  // the literal 'approved' segment is not matched as an :id.
+  // ============================================================
+  router.get(
+    '/artifacts/approved',
+    requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST),
+    async (req, res) => {
+      const { workspaceId } = req;
+      try {
+        const limit = Math.min(parseInt(req.query.limit ?? '100', 10) || 100, 200);
+        const offset = parseInt(req.query.offset ?? '0', 10) || 0;
+
+        // Filter on the to-one approval relation — mirrors the pending list.
+        const where = {
+          workspaceId,
+          approval: { status: 'COMPLETED', decision: 'APPROVED' },
+        };
+
+        const [artifacts, total] = await Promise.all([
+          prisma.artifact.findMany({
+            where,
+            include: { approval: true },
+            orderBy: { createdAt: 'desc' },
+            take: limit,
+            skip: offset,
+          }),
+          prisma.artifact.count({ where }),
+        ]);
+
+        logger.debug(
+          { workspaceId, count: artifacts.length, total },
+          '[artifacts] listed approved artifacts'
+        );
+
+        res.json({
+          artifacts: artifacts.map(_formatArtifactResponse),
+          pagination: {
+            total,
+            limit,
+            offset,
+            hasMore: offset + artifacts.length < total,
+          },
+        });
+      } catch (error) {
+        logger.error(
+          { error: error.message, stack: error.stack, workspaceId },
+          '[artifacts] failed to list approved artifacts'
+        );
+
+        res.status(500).json({ error: 'Failed to list approved artifacts' });
+      }
+    }
+  );
 
   // ============================================================
   // GET /api/artifacts/:id

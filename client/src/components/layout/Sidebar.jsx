@@ -14,7 +14,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   Layout, BarChart3, Send,
   Settings, PanelLeftClose, Plus, Search, ChevronDown,
-  Brain, ClipboardCheck, Bot, FlaskConical, Microscope,
+  Brain, ClipboardCheck, Bot, FlaskConical, Microscope, Megaphone,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
@@ -39,6 +39,7 @@ const tools = [
   { key: 'measure',      label: 'Measurement',  sub: 'Scenarios + incrementality',  icon: Microscope,     path: appRoutes.measure,      roles: ['STRATEGIST', 'BUYER'] },
   { key: 'decisions',    label: 'Decisions',    sub: 'Recommendations + actions',   icon: ClipboardCheck, path: appRoutes.decisions },
   { key: 'content',      label: 'Content Lab',  sub: 'Context-aware creation',      icon: Send,           path: appRoutes.contentLab },
+  { key: 'publishing',   label: 'Publishing',   sub: 'Record live ad publishes',    icon: Megaphone,      path: appRoutes.publishing,   roles: ['STRATEGIST', 'BUYER'] },
   { key: 'copilot',      label: 'Copilot',      sub: 'Reserved AI assistant',       icon: Bot,            path: appRoutes.copilot },
 ];
 
