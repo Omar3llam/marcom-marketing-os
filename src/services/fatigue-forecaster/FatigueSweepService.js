@@ -19,9 +19,10 @@
 // entity — readers never see duplicate or stale breaches. RESOLVED predictions
 // (the accuracy/memory record) are never touched.
 // ============================================================
-import { prisma }           from '../../lib/prisma.js';
-import { logger }           from '../../utils/logger.js';
-import { forecastFatigue }  from './fatigueForecaster.js';
+import { prisma }            from '../../lib/prisma.js';
+import { logger }            from '../../utils/logger.js';
+import { forecastFatigue }   from './fatigueForecaster.js';
+import { resolvePrediction } from './FatiguePredictionService.js';
 
 const LOOKBACK_DAYS = Number(process.env.FATIGUE_LOOKBACK_DAYS || 30);
 const CEILING       = Number(process.env.FATIGUE_CEILING || 3.5);
@@ -63,8 +64,43 @@ export function buildEntitySeries(snapshots = []) {
 }
 
 /**
+ * Resolve any UNRESOLVED prediction whose entity has now ACTUALLY breached its
+ * ceiling in the observed series — scoring accuracy + writing a FATIGUE_FORECAST
+ * memory entry (via resolvePrediction). MUST run before the reconcile wipe:
+ * resolving sets resolvedAt, which exempts the row from the delete-then-create
+ * (which only deletes resolvedAt:null), so the accuracy record survives. A
+ * prediction whose entity we can no longer observe is left to the wipe — we
+ * never fabricate an outcome we can't see.
+ * @returns {Promise<number>} how many predictions were resolved this sweep
+ */
+async function resolveBreachedPredictions(workspaceId, entities) {
+  const seriesByEntity = new Map(entities.map((e) => [`${e.entityId}:${e.entityLevel}`, e.series]));
+  const unresolved = await prisma.fatiguePrediction.findMany({
+    where:  { workspaceId, resolvedAt: null },
+    select: { id: true, entityId: true, entityLevel: true, ceiling: true, createdAt: true },
+  });
+
+  let resolved = 0;
+  for (const p of unresolved) {
+    const series = seriesByEntity.get(`${p.entityId}:${p.entityLevel}`);
+    if (!series) continue; // entity not observable this window — leave to the wipe
+    // First observed day, at/after the forecast was made, where the metric
+    // reached the predicted ceiling. That day IS the actual breach.
+    const breach = series.find((pt) => pt.frequency >= p.ceiling && new Date(pt.date) >= new Date(p.createdAt));
+    if (!breach) continue; // no real breach yet — still a live projection
+    try {
+      await resolvePrediction({ predictionId: p.id, actualBreachDate: breach.date });
+      resolved += 1;
+    } catch (err) {
+      logger.warn({ workspaceId, predictionId: p.id, err: err.message }, '[FatigueSweep] resolve skipped');
+    }
+  }
+  return resolved;
+}
+
+/**
  * Run the fatigue forecast sweep for one workspace.
- * @returns {Promise<{ scanned:number, forecastable:number, breaching:number, written:number }>}
+ * @returns {Promise<{ scanned:number, forecastable:number, breaching:number, written:number, resolved:number }>}
  */
 export async function sweepFatigue(workspaceId, { now = new Date() } = {}) {
   if (!workspaceId) throw new Error('sweepFatigue: workspaceId required');
@@ -84,6 +120,10 @@ export async function sweepFatigue(workspaceId, { now = new Date() } = {}) {
   }
 
   const entities = buildEntitySeries(snapshots);
+
+  // Resolve predictions that have now actually breached (accuracy + memory),
+  // BEFORE the reconcile wipe below clears the still-unresolved projections.
+  const resolved = await resolveBreachedPredictions(workspaceId, entities);
 
   // Forecast each entity (pure, no DB). Collect only projected breaches; a flat /
   // declining entity yields willBreach:false → no row (never a fabricated breach).
@@ -118,8 +158,8 @@ export async function sweepFatigue(workspaceId, { now = new Date() } = {}) {
   ]);
 
   logger.info(
-    { workspaceId, scanned: snapshots.length, forecastable: entities.length, breaching: rows.length },
+    { workspaceId, scanned: snapshots.length, forecastable: entities.length, breaching: rows.length, resolved },
     '[FatigueSweep] complete',
   );
-  return { scanned: snapshots.length, forecastable: entities.length, breaching: rows.length, written: rows.length };
+  return { scanned: snapshots.length, forecastable: entities.length, breaching: rows.length, written: rows.length, resolved };
 }
