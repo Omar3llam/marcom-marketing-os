@@ -1,23 +1,82 @@
 // ============================================================
-// Publishing — navigable approved-creative surface
+// Publishing — the two stages of getting creative live
 // ============================================================
-// Lists artifacts that have cleared human approval, so an operator can record
-// the manual Meta publish of each (via RecordPublishForm, embedded in
-// ArtifactCard). This closes the reachability gap left by PR #104: the publish
-// form existed and was correctly gated, but nothing in the live navigation
-// rendered an approved artifact, so it was unreachable.
+// One workflow on the same Artifact rows: PENDING → APPROVED → publish-recorded.
+// Two always-visible zones, top to bottom:
+//   1. Awaiting approval  — workspace-wide PENDING artifacts (usePendingApprovals).
+//      Visibility is consolidated here; the decision itself is an execution-resume
+//      op owned by the per-execution Approval Queue, so each item links there
+//      (see PendingApprovalItem) rather than inlining an approve that would strand
+//      the paused execution.
+//   2. Approved — record publish — the PR #105 approved list, unchanged.
 //
-// Data source: GET /api/execute/artifacts/approved (workspace-wide, BUYER +
-// STRATEGIST gated server-side; the route itself is RoleGate'd to match).
+// Both zones are always rendered (the empty one says so plainly) because they are
+// the two stages of a single pipeline, not independent lists.
+//
+// Role: the page route is BUYER + STRATEGIST gated. Viewing pending is fine for
+// both; deciding is STRATEGIST-only (enforced server-side + in PendingApprovalItem).
 // ============================================================
-import { Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle2, Inbox } from 'lucide-react';
 import { Text } from '../components/primitives/core/Text.jsx';
 import { ArtifactCard } from '../components/approval/ArtifactCard.jsx';
+import { PendingApprovalItem } from '../components/publish/PendingApprovalItem.jsx';
 import { CardSkeleton } from '../components/ui/Skeleton.jsx';
 import { useApprovedArtifacts } from '../hooks/useApprovedArtifacts.js';
+import { usePendingApprovals } from '../hooks/usePendingApprovals.js';
+
+// A workflow zone: a header that's always present, with a body that switches
+// between loading / error / empty / items — so an empty stage stays visible and
+// honest rather than disappearing.
+function Zone({ title, count, loading, error, onRetry, EmptyIcon, emptyText, errorText, className = '', children }) {
+  const hasItems = count > 0;
+  return (
+    <section className={className} aria-label={title}>
+      <div className="flex items-center justify-between mb-4">
+        <Text variant="data" size="lg" intent="primary" className="font-semibold">
+          {title}
+        </Text>
+        {!loading && !error && hasItems && (
+          <Text variant="label" intent="muted">{count}</Text>
+        )}
+      </div>
+
+      {loading && (
+        <div className="space-y-4" aria-busy="true">
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      )}
+
+      {!loading && error && (
+        <div role="alert" className="flex flex-col items-center justify-center py-12 text-center">
+          <AlertCircle className="h-9 w-9 text-signal-danger mb-3" />
+          <Text variant="body" intent="danger" className="mb-1">{errorText}</Text>
+          <Text variant="body" intent="muted" className="mb-4">{error}</Text>
+          <button
+            onClick={onRetry}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-gold text-surface-dark rounded-lg font-medium hover:bg-brand-gold/90"
+          >
+            <Loader2 className="h-4 w-4" />
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!loading && !error && !hasItems && (
+        <div className="flex flex-col items-center justify-center py-12 text-center border border-dashed border-border-subtle rounded-lg">
+          <EmptyIcon className="h-9 w-9 text-signal-success mb-3" />
+          <Text variant="body" intent="muted">{emptyText}</Text>
+        </div>
+      )}
+
+      {!loading && !error && hasItems && children}
+    </section>
+  );
+}
 
 export default function Publishing() {
-  const { artifacts, loading, error, refetch } = useApprovedArtifacts();
+  const pending = usePendingApprovals();
+  const approved = useApprovedArtifacts();
 
   return (
     <div className="container max-w-5xl mx-auto px-4 py-8">
@@ -27,56 +86,43 @@ export default function Publishing() {
           Publishing
         </Text>
         <Text variant="body" intent="muted">
-          Approved creative, ready to record as live Meta ads. Publish the ad in Meta Ads Manager
-          using this artifact, then record its Meta IDs here to link real performance back to it.
+          The two stages of getting creative live: approve AI-generated artifacts, then record the
+          manual Meta publish so real performance links back to each one.
         </Text>
       </header>
 
-      {/* Loading — skeleton, never a blank page */}
-      {loading && (
-        <div className="space-y-4" aria-busy="true">
-          <CardSkeleton />
-          <CardSkeleton />
-        </div>
-      )}
-
-      {/* Error — mapped message + retry */}
-      {!loading && error && (
-        <div role="alert" className="flex flex-col items-center justify-center py-16 text-center">
-          <AlertCircle className="h-10 w-10 text-signal-danger mb-3" />
-          <Text variant="title" intent="danger" className="mb-1">
-            Couldn’t load approved creative
-          </Text>
-          <Text variant="body" intent="muted" className="mb-4">
-            {error}
-          </Text>
-          <button
-            onClick={() => refetch()}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-gold text-surface-dark rounded-lg font-medium hover:bg-brand-gold/90"
-          >
-            <Loader2 className="h-4 w-4" />
-            Retry
-          </button>
-        </div>
-      )}
-
-      {/* Empty — honest, not a blank page */}
-      {!loading && !error && artifacts.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <CheckCircle2 className="h-10 w-10 text-signal-success mb-3" />
-          <Text variant="title" intent="secondary" className="mb-1">
-            No approved creative yet
-          </Text>
-          <Text variant="body" intent="muted">
-            Once an artifact clears approval, it appears here so you can record its Meta publish.
-          </Text>
-        </div>
-      )}
-
-      {/* List — each card self-gates the Record Meta publish form */}
-      {!loading && !error && artifacts.length > 0 && (
+      {/* Zone 1 — Awaiting approval */}
+      <Zone
+        title="Awaiting approval"
+        count={pending.pending.length}
+        loading={pending.loading}
+        error={pending.error}
+        onRetry={() => pending.refetch()}
+        EmptyIcon={Inbox}
+        emptyText="Nothing awaiting approval right now."
+        errorText="Couldn’t load pending approvals"
+      >
         <div className="space-y-6">
-          {artifacts.map((artifact) => (
+          {pending.pending.map((artifact) => (
+            <PendingApprovalItem key={artifact.approval.id} artifact={artifact} />
+          ))}
+        </div>
+      </Zone>
+
+      {/* Zone 2 — Approved · record publish */}
+      <Zone
+        className="mt-10"
+        title="Approved — record publish"
+        count={approved.artifacts.length}
+        loading={approved.loading}
+        error={approved.error}
+        onRetry={() => approved.refetch()}
+        EmptyIcon={CheckCircle2}
+        emptyText="No approved creative yet. Once an artifact clears approval, it appears here so you can record its Meta publish."
+        errorText="Couldn’t load approved creative"
+      >
+        <div className="space-y-6">
+          {approved.artifacts.map((artifact) => (
             <div
               key={artifact.id}
               className="p-6 border border-border-subtle rounded-lg bg-surface-base"
@@ -85,7 +131,7 @@ export default function Publishing() {
             </div>
           ))}
         </div>
-      )}
+      </Zone>
     </div>
   );
 }
