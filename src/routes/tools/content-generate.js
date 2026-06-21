@@ -14,11 +14,18 @@ import { execute, CAPABILITY } from '../../services/ai-gateway/index.js';
 /**
  * POST /api/tools/content-generate
  * Body: {
- *   campaignContext: { name, adset, problem },
+ *   campaignContext: { name, adset, problem, ctr },  // ctr = picked campaign's real CTR (null if absent)
  *   options: { copy, headlines, cta, visual, video },
- *   tone: string,
- *   brandVoice: string (from user.context)
+ *   tone: string,           // selected register for this piece (default = onboarding tone)
+ *   brandVoice: string,     // onboarding voice profile (tone + language/dialect)
+ *   targetAudience: string, // onboarding audience profile (campaign feed carries none)
+ *   industry: string,       // onboarding industry
+ *   objective: string       // onboarding objective (or custom objective text)
  * }
+ * All of brandVoice / targetAudience / industry / objective are sourced from the
+ * workspace's onboarding context client-side — see ContentLabView. The hardcoded
+ * strings below are honest last-resorts for accounts with no onboarding data, not
+ * the normal path.
  * Returns: {
  *   copy: [{ tag, text }],
  *   headlines: [string],
@@ -30,7 +37,7 @@ import { execute, CAPABILITY } from '../../services/ai-gateway/index.js';
 export async function generateContent(req, res) {
   const userId = req.userId || req.user?.uid;
   const workspaceId = req.workspaceId;
-  const { campaignContext, options, tone, brandVoice } = req.body;
+  const { campaignContext, options, tone, brandVoice, targetAudience, industry, objective } = req.body;
 
   // Validation
   if (!options || typeof options !== 'object') {
@@ -43,13 +50,20 @@ export async function generateContent(req, res) {
   try {
     logger.info({ userId, workspaceId, options }, '[tools/content-generate] Starting generation via AI Gateway');
 
-    // Build base input for AI Gateway
+    // Build base input for AI Gateway. Each field traces to real data:
+    //   diagnosis      → picked campaign's root_cause (or omitted)
+    //   currentCTR     → picked campaign's real CTR metric (null if absent)
+    //   brandVoice/tone/targetAudience/industry/objective → onboarding context
+    // The `||` fallbacks fire only for accounts missing that signal — they are
+    // not the default path. currentCTR uses `??` so a real 0 is preserved.
     const baseInput = {
       diagnosis: campaignContext?.problem || 'CREATIVE_REFRESH',
       brandVoice: brandVoice || 'Brand-focused, clear, action-oriented',
-      targetAudience: campaignContext?.audience || 'General audience',
-      currentCTR: campaignContext?.ctr || null,
+      targetAudience: targetAudience || campaignContext?.audience || 'General audience',
+      currentCTR: campaignContext?.ctr ?? null,
       tone: tone || 'Professional',
+      industry: industry || 'General',
+      objective: objective || 'Drive performance',
     };
 
     // Generate content using AI Gateway (parallel calls for efficiency)

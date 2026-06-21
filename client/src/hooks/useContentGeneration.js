@@ -19,9 +19,15 @@ export function useContentGeneration() {
 
   /**
    * Generate content with options
-   * @param {object} params - { campaignContext, options, tone, brandVoice }
+   * @param {object} params - { campaignContext, options, tone, brandVoice,
+   *                            targetAudience, industry, objective }
+   *   tone/brandVoice/targetAudience/industry/objective are the real onboarding
+   *   signals (resolved client-side); campaignContext carries the picked
+   *   campaign's diagnosis + ctr.
    */
-  const generate = useCallback(async ({ campaignContext, options, tone, brandVoice }) => {
+  const generate = useCallback(async ({
+    campaignContext, options, tone, brandVoice, targetAudience, industry, objective,
+  }) => {
     setLoading(true);
     setError(null);
     setProgress(null);
@@ -33,6 +39,9 @@ export function useContentGeneration() {
         options,
         tone,
         brandVoice,
+        targetAudience,
+        industry,
+        objective,
       });
 
       setProgress(100);

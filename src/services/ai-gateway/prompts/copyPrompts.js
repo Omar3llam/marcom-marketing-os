@@ -4,7 +4,8 @@
 // Prompt templates for generating ad copy, hooks, and captions.
 //
 // INPUT VARIABLES:
-//   {diagnosis}, {brandVoice}, {targetAudience}, {performanceData}
+//   {diagnosis}, {brandVoice}, {targetAudience}, {currentCTR}
+//   GENERATE_COPY (v1.1) also: {industry}, {objective}, {tone}, {angle}
 //
 // VERSIONING:
 //   Never modify existing prompts — create new versions.
@@ -75,20 +76,35 @@ Return JSON array:
 ]`,
   },
 
+  // v1.1 — grounded in the workspace's onboarding profile (industry, objective,
+  // brand tone) and the picked campaign's real CTR, plus a per-variant {angle}
+  // so STORY/PROOF/URGENCY actually diverge. New placeholders resolve to 'N/A'
+  // for any caller that omits them (buildCopyPrompt default), so this stays
+  // backward-compatible. GENERATE_COPY is Content-Lab-exclusive — no other
+  // capability consumer is affected.
   GENERATE_COPY: {
-    version: 'v1.0',
+    version: 'v1.1',
     template: `Generate complete ad copy (hook + body) for Meta ads.
 
 CONTEXT:
 Diagnosis: {diagnosis}
+Industry: {industry}
+Campaign Objective: {objective}
 Brand Voice: {brandVoice}
+Tone for this piece: {tone}
 Target Audience: {targetAudience}
+Current CTR: {currentCTR}%
 Product/Service: {productName}
 Key Benefits: {benefits}
+
+ANGLE FOR THIS VARIANT:
+{angle}
 
 REQUIREMENTS:
 - Hook: 40-60 characters
 - Body: 125-150 characters
+- Lead with the angle above — each variant must take a distinct angle
+- Match the brand voice and the tone specified for this piece
 - Clear value proposition
 - Strong CTA
 - Mobile-optimized formatting
@@ -116,6 +132,12 @@ export function buildCopyPrompt(capability, variables, decisionContext = {}) {
   for (const [key, value] of Object.entries(variables)) {
     prompt = prompt.replace(new RegExp(`\\{${key}\\}`, 'g'), value || 'N/A');
   }
+
+  // Any placeholder the caller didn't supply resolves to N/A rather than leaking
+  // a raw {token} into the model prompt. Matches only bare {identifier} tokens —
+  // the JSON braces in OUTPUT FORMAT (which wrap quoted, multi-line content) are
+  // never bare identifiers, so they are untouched.
+  prompt = prompt.replace(/\{[a-zA-Z][a-zA-Z0-9_]*\}/g, 'N/A');
 
   // PR #34: Apply selective prompt mutation if structured feedback exists
   if (decisionContext.isReExecution && decisionContext.feedbackType && hasMutationRule(decisionContext.feedbackType)) {
