@@ -4,22 +4,24 @@
 // Two-panel layout: left = input/controls, right = generated output.
 // Generates on-brand copy, headlines, CTAs, visual briefs, video scripts.
 // ============================================================
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Send, X, ChevronDown, AlertTriangle, Sparkles, ArrowRight,
 } from 'lucide-react';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
-import { useAuth } from '@/context/AuthContext.jsx';
 import { useContentGeneration } from '@/hooks/useContentGeneration.js';
-import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
+import { useCampaignFeed, metricValue } from '@/hooks/useCampaignFeed.js';
+import { useOnboardingContext } from '@/hooks/useOnboardingContext.js';
+import { TONES } from '@/pages/OnboardingPage/constants.js';
+import { resolveBrandContext } from './brandContext.js';
 import { OutputEmpty, OutputGenerating, OutputDone, OutputError } from './OutputComponents.jsx';
 import { OptToggle } from './OptToggle.jsx';
 
 export default function ContentLabView() {
   const navigate = useNavigate();
   const { workspace } = useWorkspace();
-  const { currentUser } = useAuth();
+  const { context: onboarding } = useOnboardingContext();
   const { campaigns } = useCampaignFeed();
   const {
     generate: generateContent,
@@ -30,6 +32,11 @@ export default function ContentLabView() {
     reset: resetGeneration,
   } = useContentGeneration();
 
+  // Real brand signals from the onboarding profile (tone, industry, objective,
+  // audience). null fields mean "not onboarded yet" — we send nothing rather
+  // than a fabricated value, and the backend applies its own last resort.
+  const brand = useMemo(() => resolveBrandContext(onboarding), [onboarding]);
+
   const [opts, setOpts] = useState({
     copy: true,
     headlines: true,
@@ -37,29 +44,38 @@ export default function ContentLabView() {
     visual: true,
     video: false,
   });
-  const [tone, setTone] = useState('Warm & familial');
+  // Tone is the onboarding tone by default; the picker lets the user choose a
+  // different register for THIS piece (override) without touching brand voice.
+  const [toneOverride, setToneOverride] = useState(null);
   const [contextCampaign, setContextCampaign] = useState(null);
   const [campaignMenuOpen, setCampaignMenuOpen] = useState(false);
+  const [toneMenuOpen, setToneMenuOpen] = useState(false);
+
+  const tone = toneOverride ?? brand.toneLabel ?? 'Warm & familial';
+  const usingOnboardingTone = toneOverride == null && !!brand.toneLabel;
 
   // Derive phase from hook state
   const phase = loading ? 'generating' : apiError ? 'error' : content ? 'done' : 'idle';
   const progress = apiProgress;
 
   const generate = async () => {
-    // Extract brand voice from user context (from onboarding)
-    const brandVoice = currentUser?.context?.brandVoice || workspace?.brandVoice || 'Professional, clear, action-oriented';
-
     await generateContent({
       campaignContext: contextCampaign ? {
         name: contextCampaign.campaign,
         adset: contextCampaign.adset,
-        // Ground generation in the campaign's REAL diagnosis (or omit it) —
-        // never a hardcoded "CTR fell 36%" the campaign never produced.
+        // Ground generation in the campaign's REAL diagnosis + CTR (or omit
+        // them) — never a hardcoded "CTR fell 36%" the campaign never produced.
         problem: contextCampaign.diagnosis || undefined,
+        ctr: contextCampaign.ctr ?? undefined,
       } : null,
       options: opts,
       tone,
-      brandVoice,
+      // All four below trace to the workspace's onboarding profile, resolved to
+      // readable descriptors above. undefined when absent (no fabrication).
+      brandVoice: brand.brandVoice || undefined,
+      targetAudience: brand.audience || undefined,
+      industry: brand.industry || undefined,
+      objective: brand.objective || undefined,
     });
   };
 
@@ -156,14 +172,16 @@ export default function ContentLabView() {
                           <button
                             type="button"
                             onClick={() => {
-                              // Capture the campaign's REAL diagnosis (its first
-                              // alert's root cause), not a hardcoded problem string.
+                              // Capture the campaign's REAL diagnosis + CTR (its
+                              // first alert's root cause + signal row), not a
+                              // hardcoded problem string or invented metric.
                               const firstAlert = c.alerts?.[0];
                               setContextCampaign({
                                 campaign:  c.campaign_id,
                                 adset:     c.stage,
                                 diagnosis: firstAlert?.analysis?.root_cause || null,
                                 tag:       firstAlert?.analysis?.verdict || c.stage,
+                                ctr:       metricValue(firstAlert, 'CTR'),
                               });
                               setCampaignMenuOpen(false);
                             }}
@@ -238,12 +256,48 @@ export default function ContentLabView() {
 
           {/* Tone */}
           <div className="section-label mb-2.5">Voice & tone</div>
-          <button className="w-full flex items-center justify-between p-2.5 bg-surface-elevated border border-surface-border rounded-lg hover:bg-surface-card transition-colors mb-4.5">
-            <span className="font-display text-xs text-dark-base">
-              {tone} <span className="text-dark-muted">· from onboarding</span>
-            </span>
-            <ChevronDown className="w-3 h-3 text-dark-muted" strokeWidth={1.5} />
-          </button>
+          <div className="relative mb-4.5">
+            <button
+              type="button"
+              onClick={() => setToneMenuOpen((open) => !open)}
+              aria-haspopup="listbox"
+              aria-expanded={toneMenuOpen}
+              className="w-full flex items-center justify-between p-2.5 bg-surface-elevated border border-surface-border rounded-lg hover:bg-surface-card transition-colors"
+            >
+              <span className="font-display text-xs text-dark-base">
+                {tone}
+                {usingOnboardingTone && <span className="text-dark-muted"> · from onboarding</span>}
+              </span>
+              <ChevronDown
+                className={`w-3 h-3 text-dark-muted transition-transform ${toneMenuOpen ? 'rotate-180' : ''}`}
+                strokeWidth={1.5}
+              />
+            </button>
+
+            {toneMenuOpen && (
+              <>
+                {/* Click-away backdrop — closes without a global listener */}
+                <div className="fixed inset-0 z-10" onClick={() => setToneMenuOpen(false)} />
+                <ul
+                  role="listbox"
+                  className="absolute left-0 right-0 z-20 mt-1 max-h-64 overflow-y-auto bg-surface-card border border-surface-border rounded-lg shadow-card py-1"
+                >
+                  {TONES.map((t) => (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        onClick={() => { setToneOverride(t.label); setToneMenuOpen(false); }}
+                        className="w-full text-left px-3 py-2 hover:bg-surface-elevated transition-colors"
+                      >
+                        <div className="font-display text-[13px] text-dark-base">{t.label}</div>
+                        <div className="font-mono text-[10px] text-dark-muted">{t.sub}</div>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
 
           <button
             onClick={generate}
