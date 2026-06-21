@@ -102,3 +102,36 @@ describe('ContentLabView — generate sends real grounded data', () => {
     expect(args.targetAudience).toBeUndefined();
   });
 });
+
+describe('ContentLabView — visual format picker drives format + dimensions', () => {
+  it('shows the format picker (default Meta Feed · Square) when a visual brief is requested', () => {
+    renderView();
+    expect(screen.getByRole('button', { name: /meta feed · square/i })).toBeInTheDocument();
+    expect(screen.getByText(/1080×1080/)).toBeInTheDocument();
+  });
+
+  it('sends the picked format + its real dimensions to generate', () => {
+    renderView();
+    // Open the format picker and choose Story / Reel.
+    fireEvent.click(screen.getByRole('button', { name: /meta feed · square/i }));
+    fireEvent.click(screen.getByRole('button', { name: /story \/ reel/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: /generate content/i }));
+    const args = generateSpy.mock.calls[0][0];
+    expect(args.format).toBe('Story / Reel (9:16)');
+    expect(args.dimensions).toBe('1080×1920');
+  });
+
+  it('omits format/dimensions entirely when the visual brief is toggled off', () => {
+    renderView();
+    // Toggle the "Visual brief" option off.
+    fireEvent.click(screen.getByText('Visual brief'));
+    // The format picker is gone…
+    expect(screen.queryByRole('button', { name: /meta feed · square/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /generate content/i }));
+    const args = generateSpy.mock.calls[0][0];
+    expect(args.format).toBeUndefined();
+    expect(args.dimensions).toBeUndefined();
+  });
+});

@@ -105,3 +105,43 @@ describe('content-generate — grounded inputs reach the AI gateway', () => {
     expect(input.currentCTR).toBeNull();
   });
 });
+
+describe('content-generate — the visual brief is grounded too', () => {
+  const visualCall = () =>
+    execute.mock.calls.find((c) => c[0].capability === 'GENERATE_VISUAL_PROMPT')?.[0];
+
+  it('synthesizes visualBrief from real signals, reuses brand voice as brandStyle, passes the picked format/dimensions', async () => {
+    const req = makeReq({
+      campaignContext: { name: 'C1', adset: 'TESTING', problem: 'CTR decay from fatigue', ctr: 1.85 },
+      options: { copy: false, headlines: false, cta: false, visual: true, video: false },
+      format: 'Story / Reel (9:16)',
+      dimensions: '1080×1920',
+      ...REAL,
+    });
+    await generateContent(req, makeRes());
+
+    const { input } = visualCall();
+    // visualBrief carries the real campaign + onboarding signals (not a leaked {token}).
+    expect(input.visualBrief).toContain('CTR decay from fatigue');
+    expect(input.visualBrief).toContain('Maximize ROAS, minimize bleed');
+    expect(input.visualBrief).toContain('Female-leaning');
+    // brandStyle reuses the onboarding-derived brand voice.
+    expect(input.brandStyle).toBe(REAL.brandVoice);
+    // format + dimensions are the picker's real selection.
+    expect(input.format).toBe('Story / Reel (9:16)');
+    expect(input.dimensions).toBe('1080×1920');
+  });
+
+  it('leaves format/dimensions undefined (→ N/A downstream) when none picked — no fabrication', async () => {
+    const req = makeReq({
+      campaignContext: { name: 'C1', adset: 'TESTING', problem: 'CTR decay', ctr: 1 },
+      options: { copy: false, headlines: false, cta: false, visual: true, video: false },
+      ...REAL,
+    });
+    await generateContent(req, makeRes());
+
+    const { input } = visualCall();
+    expect(input.format).toBeUndefined();
+    expect(input.dimensions).toBeUndefined();
+  });
+});

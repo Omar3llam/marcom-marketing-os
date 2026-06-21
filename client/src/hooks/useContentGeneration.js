@@ -20,13 +20,15 @@ export function useContentGeneration() {
   /**
    * Generate content with options
    * @param {object} params - { campaignContext, options, tone, brandVoice,
-   *                            targetAudience, industry, objective }
+   *                            targetAudience, industry, objective, format,
+   *                            dimensions }
    *   tone/brandVoice/targetAudience/industry/objective are the real onboarding
    *   signals (resolved client-side); campaignContext carries the picked
-   *   campaign's diagnosis + ctr.
+   *   campaign's diagnosis + ctr; format/dimensions come from the visual-format
+   *   picker (drive the visual brief).
    */
   const generate = useCallback(async ({
-    campaignContext, options, tone, brandVoice, targetAudience, industry, objective,
+    campaignContext, options, tone, brandVoice, targetAudience, industry, objective, format, dimensions,
   }) => {
     setLoading(true);
     setError(null);
@@ -42,6 +44,8 @@ export function useContentGeneration() {
         targetAudience,
         industry,
         objective,
+        format,
+        dimensions,
       });
 
       setProgress(100);

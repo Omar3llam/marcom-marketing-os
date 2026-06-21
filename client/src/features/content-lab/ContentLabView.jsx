@@ -15,6 +15,7 @@ import { useCampaignFeed, metricValue } from '@/hooks/useCampaignFeed.js';
 import { useOnboardingContext } from '@/hooks/useOnboardingContext.js';
 import { TONES } from '@/pages/OnboardingPage/constants.js';
 import { resolveBrandContext } from './brandContext.js';
+import { VISUAL_FORMATS, DEFAULT_FORMAT_ID, formatById, formatToPromptFields } from './visualFormats.js';
 import { OutputEmpty, OutputGenerating, OutputDone, OutputError } from './OutputComponents.jsx';
 import { OptToggle } from './OptToggle.jsx';
 
@@ -50,9 +51,14 @@ export default function ContentLabView() {
   const [contextCampaign, setContextCampaign] = useState(null);
   const [campaignMenuOpen, setCampaignMenuOpen] = useState(false);
   const [toneMenuOpen, setToneMenuOpen] = useState(false);
+  const [formatMenuOpen, setFormatMenuOpen] = useState(false);
+  // Visual ad format — drives the brief's format + dimensions (one pick, both
+  // values). Default is the most common Meta placement; the user can change it.
+  const [formatId, setFormatId] = useState(DEFAULT_FORMAT_ID);
 
   const tone = toneOverride ?? brand.toneLabel ?? 'Warm & familial';
   const usingOnboardingTone = toneOverride == null && !!brand.toneLabel;
+  const selectedFormat = formatById(formatId);
 
   // Derive phase from hook state
   const phase = loading ? 'generating' : apiError ? 'error' : content ? 'done' : 'idle';
@@ -76,6 +82,8 @@ export default function ContentLabView() {
       targetAudience: brand.audience || undefined,
       industry: brand.industry || undefined,
       objective: brand.objective || undefined,
+      // Visual brief format + dimensions from the picker (one real selection).
+      ...(opts.visual ? formatToPromptFields(formatId) : {}),
     });
   };
 
@@ -253,6 +261,56 @@ export default function ContentLabView() {
               sub="Higgsfield"
             />
           </div>
+
+          {/* Visual format — only relevant when a visual brief is requested. One
+              pick sets both the brief's format and its pixel dimensions. */}
+          {opts.visual && (
+            <>
+              <div className="section-label mb-2.5">Visual format</div>
+              <div className="relative mb-4.5">
+                <button
+                  type="button"
+                  onClick={() => setFormatMenuOpen((open) => !open)}
+                  aria-haspopup="listbox"
+                  aria-expanded={formatMenuOpen}
+                  className="w-full flex items-center justify-between p-2.5 bg-surface-elevated border border-surface-border rounded-lg hover:bg-surface-card transition-colors"
+                >
+                  <span className="font-display text-xs text-dark-base">
+                    {selectedFormat.label}
+                    <span className="text-dark-muted"> · {selectedFormat.ratio} · {selectedFormat.dimensions}</span>
+                  </span>
+                  <ChevronDown
+                    className={`w-3 h-3 text-dark-muted transition-transform ${formatMenuOpen ? 'rotate-180' : ''}`}
+                    strokeWidth={1.5}
+                  />
+                </button>
+
+                {formatMenuOpen && (
+                  <>
+                    {/* Click-away backdrop — closes without a global listener */}
+                    <div className="fixed inset-0 z-10" onClick={() => setFormatMenuOpen(false)} />
+                    <ul
+                      role="listbox"
+                      className="absolute left-0 right-0 z-20 mt-1 max-h-64 overflow-y-auto bg-surface-card border border-surface-border rounded-lg shadow-card py-1"
+                    >
+                      {VISUAL_FORMATS.map((f) => (
+                        <li key={f.id}>
+                          <button
+                            type="button"
+                            onClick={() => { setFormatId(f.id); setFormatMenuOpen(false); }}
+                            className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-surface-elevated transition-colors"
+                          >
+                            <span className="font-display text-[13px] text-dark-base">{f.label}</span>
+                            <span className="font-mono text-[10px] text-dark-muted flex-shrink-0">{f.ratio} · {f.dimensions}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            </>
+          )}
 
           {/* Tone */}
           <div className="section-label mb-2.5">Voice & tone</div>

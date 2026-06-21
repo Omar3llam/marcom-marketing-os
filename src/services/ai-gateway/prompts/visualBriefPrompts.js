@@ -175,6 +175,13 @@ export function buildVisualBriefPrompt(capability, variables, decisionContext = 
     prompt = prompt.replace(new RegExp(`\\{${key}\\}`, 'g'), stringValue);
   }
 
+  // Any placeholder the caller didn't supply resolves to N/A rather than leaking
+  // a raw {token} into the model prompt — same class-level guard as
+  // buildCopyPrompt. Matches only bare {identifier} tokens; the JSON braces in
+  // OUTPUT FORMAT (which wrap quoted, multi-line content) are never bare
+  // identifiers, so they are untouched.
+  prompt = prompt.replace(/\{[a-zA-Z][a-zA-Z0-9_]*\}/g, 'N/A');
+
   // PR #34: Apply selective prompt mutation if structured feedback exists
   if (decisionContext.isReExecution && decisionContext.feedbackType && hasMutationRule(decisionContext.feedbackType)) {
     // Use mutation engine for surgical modifications
