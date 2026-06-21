@@ -105,6 +105,48 @@ describe('TestingView — honest empty state', () => {
   });
 });
 
+describe('TestingView — commit the proposed agenda', () => {
+  const AGENDA = [
+    { id: 'a1', entityId: 'e1', dimension: 'HOOK', hypothesis: 'Sharper hook' },
+    { id: 'a2', entityId: 'e2', dimension: 'OFFER', hypothesis: 'Stronger offer' },
+  ];
+
+  it('an operator sees Commit, the true count, and clicking fires onCommit with the full agenda', () => {
+    const onCommit = vi.fn();
+    renderView({ experiments: [], agenda: AGENDA, role: 'BUYER', onCommit });
+    expect(screen.getByText(/Creates 2 proposed experiments/i)).toBeInTheDocument();
+    const btn = screen.getByRole('button', { name: /commit agenda/i });
+    expect(btn).not.toBeDisabled();
+    fireEvent.click(btn);
+    expect(onCommit).toHaveBeenCalledWith(AGENDA);
+  });
+
+  it('a non-operator (CLIENT) sees the agenda but never the Commit control', () => {
+    renderView({ experiments: [], agenda: AGENDA, role: 'CLIENT', onCommit: vi.fn() });
+    expect(screen.getByText(/Sharper hook/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /commit agenda/i })).not.toBeInTheDocument();
+  });
+
+  it('reflects the in-flight commit (disabled + Committing…)', () => {
+    renderView({ experiments: [], agenda: AGENDA, role: 'BUYER', onCommit: vi.fn(), committing: true });
+    const btn = screen.getByRole('button', { name: /committing/i });
+    expect(btn).toBeDisabled();
+  });
+
+  it('surfaces the real commit error, not a generic message', () => {
+    renderView({
+      experiments: [], agenda: AGENDA, role: 'BUYER', onCommit: vi.fn(),
+      commitError: new Error('picks[] is required'),
+    });
+    expect(screen.getByText(/picks\[\] is required/i)).toBeInTheDocument();
+  });
+
+  it('shows no Commit control when there is no agenda to commit', () => {
+    renderView({ experiments: [], agenda: [], role: 'BUYER', onCommit: vi.fn() });
+    expect(screen.queryByRole('button', { name: /commit agenda/i })).not.toBeInTheDocument();
+  });
+});
+
 describe('contract seam — TestExperimentSchema safeParses a real row', () => {
   it('validates the concluded fixture', () => {
     expect(TestExperimentSchema.safeParse(CONCLUDED_WINNER).success).toBe(true);

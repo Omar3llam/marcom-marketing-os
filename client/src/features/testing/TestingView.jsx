@@ -22,6 +22,7 @@ import { Link } from 'react-router-dom';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useTests } from '@/hooks/useTests.js';
 import { useConcludeTest } from '@/hooks/useConcludeTest.js';
+import { useCommitAgenda } from '@/hooks/useCommitAgenda.js';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
 import { appRoutes } from '@/app/routeManifest.js';
@@ -185,7 +186,11 @@ function RunningBody({ exp, canOperate, onConclude, concludingId }) {
 }
 
 // ── Pure, prop-driven view (unit-tested directly) ───────────────
-export function TestingView({ experiments = [], agenda = [], role = WORKSPACE_ROLE.BUYER, onConclude, concludingId, concludeError }) {
+export function TestingView({
+  experiments = [], agenda = [], role = WORKSPACE_ROLE.BUYER,
+  onConclude, concludingId, concludeError,
+  onCommit, committing = false, commitError,
+}) {
   const canOperate = role === WORKSPACE_ROLE.BUYER || role === WORKSPACE_ROLE.STRATEGIST;
 
   if (experiments.length === 0) {
@@ -203,7 +208,34 @@ export function TestingView({ experiments = [], agenda = [], role = WORKSPACE_RO
                 .map((a) => (
                   <li key={a.key} className="text-xs text-lumi-muted">• {a.text}</li>
                 ))}
+              {agenda.length > 5 && (
+                <li className="text-xs text-lumi-subtle">+{agenda.length - 5} more</li>
+              )}
             </ul>
+
+            {/* Commit turns the read-only agenda into real PROPOSED experiments.
+                Operator-tier only (same gate the endpoint enforces); a commit
+                refetches so the new rows replace this agenda with their cards. */}
+            {canOperate && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  disabled={committing}
+                  onClick={() => onCommit?.(agenda)}
+                  className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {committing ? 'Committing…' : 'Commit agenda'}
+                </button>
+                <p className="mt-1.5 text-xs text-lumi-subtle">
+                  Creates {agenda.length} proposed experiment{agenda.length === 1 ? '' : 's'} you can start and track.
+                </p>
+                {commitError && (
+                  <p className="mt-1.5 text-xs text-signal-kill">
+                    {commitError.message || 'Couldn’t commit the agenda right now. Try again shortly.'}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -237,9 +269,15 @@ export default function Testing() {
   const { role } = useCollabRole();
   const { experiments, agenda, loading, error, refetch } = useTests();
   const { conclude, concludingId, error: concludeError } = useConcludeTest();
+  const { commit, committing, error: commitError } = useCommitAgenda();
 
   const onConclude = async (testId) => {
     const result = await conclude(testId);
+    if (result) await refetch();
+  };
+
+  const onCommit = async (picks) => {
+    const result = await commit(picks);
     if (result) await refetch();
   };
 
@@ -260,6 +298,9 @@ export default function Testing() {
           onConclude={onConclude}
           concludingId={concludingId}
           concludeError={concludeError}
+          onCommit={onCommit}
+          committing={committing}
+          commitError={commitError}
         />
       )}
     </div>
