@@ -13,6 +13,8 @@ import {
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
+import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
+import { useRunSweep } from '@/hooks/useRunSweep.js';
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
 import StatCard from '@/components/ui/StatCard.jsx';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
@@ -29,8 +31,17 @@ export default function OverviewView() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { workspace } = useWorkspace();
-  const { campaigns, summary, loading: intelligenceLoading } = useIntelligence();
+  const { campaigns, summary, loading: intelligenceLoading, refresh } = useIntelligence();
   const { surface: proofSurface } = useAccuracy(); // gated proof one-liner (best-effort)
+  const { role: collabRole } = useCollabRole();
+  const { runSweep, sweeping, error: sweepError } = useRunSweep();
+  // Running a sweep (re-scan + re-propose) is an operator action; a CLIENT seat
+  // is read-only. On success we refetch the feed so new proposals surface here.
+  const canRunSweep = collabRole === WORKSPACE_ROLE.BUYER || collabRole === WORKSPACE_ROLE.STRATEGIST;
+  const onRunSweep = async () => {
+    const result = await runSweep();
+    if (result) await refresh?.();
+  };
 
   // Greeting based on time of day
   const hour = new Date().getHours();
@@ -222,6 +233,10 @@ export default function OverviewView() {
         <QuickActionsPanel
           onUploadCSV={() => navigate('/app/campaigns')}
           onStartFlow={() => navigate('/app/campaigns')}
+          onRunSweep={onRunSweep}
+          sweepBusy={sweeping}
+          canRunSweep={canRunSweep}
+          sweepError={sweepError}
         />
       </div>
 

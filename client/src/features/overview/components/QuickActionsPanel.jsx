@@ -1,9 +1,12 @@
-import { Zap, Upload, Send, CalendarDays, Target, ArrowRight } from 'lucide-react';
+import { Zap, Upload, Send, CalendarDays, Target, ArrowRight, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Panel from '@/components/ui/Panel.jsx';
 import { appRoutes } from '@/app/routeManifest.js';
 
-export default function QuickActionsPanel({ onUploadCSV, onStartFlow }) {
+export default function QuickActionsPanel({
+  onUploadCSV, onStartFlow,
+  onRunSweep, sweepBusy = false, canRunSweep = false, sweepError = null,
+}) {
   const navigate = useNavigate();
 
   const actions = [
@@ -38,7 +41,34 @@ export default function QuickActionsPanel({ onUploadCSV, onStartFlow }) {
             <ArrowRight className="w-3 h-3 text-dark-subtle flex-shrink-0" strokeWidth={1.5} />
           </button>
         ))}
+
+        {/* Run sweep — the manual agentic-loop steer. Operator-tier only (a
+            CLIENT seat is read-only); re-scans + re-proposes, never executes.
+            On success the parent refetches the feed so new proposals surface. */}
+        {canRunSweep && (
+          <button
+            onClick={onRunSweep}
+            disabled={sweepBusy}
+            aria-busy={sweepBusy}
+            aria-label={sweepBusy ? 'Sweeping' : 'Run a sweep now'}
+            className="flex items-center gap-3 px-3 py-2.5 bg-surface-elevated border border-surface-border hover:border-lumi-accent/40 hover:bg-surface-card rounded-lg transition-all duration-150 text-left focus:outline-none focus:ring-2 focus:ring-lumi-accent focus:ring-offset-2 focus:ring-offset-surface-dark disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <div className="w-7 h-7 rounded-lg bg-lumi-accent/10 text-lumi-accent flex items-center justify-center flex-shrink-0">
+              <RefreshCw className={`w-3.5 h-3.5 ${sweepBusy ? 'animate-spin' : ''}`} strokeWidth={1.5} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-display font-semibold text-xs text-dark-base">{sweepBusy ? 'Sweeping…' : 'Run a sweep now'}</div>
+              <div className="font-mono text-[10px] text-dark-muted mt-0.5">Re-scan &amp; re-propose</div>
+            </div>
+          </button>
+        )}
       </div>
+
+      {sweepError && (
+        <p className="mt-2 font-mono text-[10px] text-signal-kill">
+          {sweepError.message || 'Couldn’t run a sweep right now. Try again shortly.'}
+        </p>
+      )}
     </Panel>
   );
 }
