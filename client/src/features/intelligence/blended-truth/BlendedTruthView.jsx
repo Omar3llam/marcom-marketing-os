@@ -16,6 +16,8 @@ import { Scale, AlertTriangle } from 'lucide-react';
 import { formatCurrency } from '@/lib/money';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useBlendedTruth } from '@/hooks/useBlendedTruth.js';
+import { useAllocation } from '@/hooks/useAllocation.js';
+import { AllocationPanel } from './AllocationPanel.jsx';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
 
@@ -125,6 +127,11 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST }) {
 export default function BlendedTruth() {
   const { role } = useCollabRole();
   const { data, loading, error } = useBlendedTruth();
+  const allocation = useAllocation();
+
+  const isStrategist = role === WORKSPACE_ROLE.STRATEGIST;
+  const channels = data?.channels ?? [];
+  const currency = channels[0]?.currency ?? 'USD';
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
@@ -136,6 +143,24 @@ export default function BlendedTruth() {
         <EmptyPanel Icon={AlertTriangle} text="Couldn't load blended truth right now. Try again shortly." />
       )}
       {!loading && !error && <BlendedTruthView data={data} role={role} />}
+
+      {/* Reallocate capital — acts on these very channels. STRATEGIST-only (the
+          commit gate), and only once there are channels to allocate across. */}
+      {!loading && !error && isStrategist && channels.length > 0 && (
+        <AllocationPanel
+          currency={currency}
+          onPreview={allocation.preview}
+          onCommit={allocation.commit}
+          plan={allocation.plan}
+          previewNote={allocation.previewNote}
+          previewing={allocation.previewing}
+          previewError={allocation.previewError}
+          committed={allocation.committed}
+          committing={allocation.committing}
+          commitError={allocation.commitError}
+          canCommit={isStrategist}
+        />
+      )}
     </div>
   );
 }
