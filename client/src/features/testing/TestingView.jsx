@@ -22,6 +22,7 @@ import { Link } from 'react-router-dom';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useTests } from '@/hooks/useTests.js';
 import { useConcludeTest } from '@/hooks/useConcludeTest.js';
+import { useStartTest } from '@/hooks/useStartTest.js';
 import { useCommitAgenda } from '@/hooks/useCommitAgenda.js';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
@@ -89,7 +90,7 @@ function ConfidenceBadge({ label }) {
 const ORDER = { RUNNING: 0, CONCLUDED: 1, PROPOSED: 2, ABANDONED: 3 };
 
 // ── One experiment card ─────────────────────────────────────────
-function ExperimentCard({ exp, canOperate, onConclude, concludingId }) {
+function ExperimentCard({ exp, canOperate, onConclude, concludingId, onStart, startingId }) {
   return (
     <div className="rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
       <div className="flex items-center justify-between gap-3">
@@ -132,11 +133,35 @@ function ExperimentCard({ exp, canOperate, onConclude, concludingId }) {
       )}
 
       {exp.status === 'PROPOSED' && (
-        <p className="mt-3 text-xs text-lumi-subtle">Proposed — not started yet.</p>
+        <ProposedBody exp={exp} canOperate={canOperate} onStart={onStart} startingId={startingId} />
       )}
       {exp.status === 'ABANDONED' && (
         <p className="mt-3 text-xs text-lumi-subtle">Abandoned.</p>
       )}
+    </div>
+  );
+}
+
+// ── PROPOSED body: the gated Start action (PROPOSED → RUNNING) ───
+// Completes the lifecycle PR #108 opened: commit mints PROPOSED; this starts it.
+function ProposedBody({ exp, canOperate, onStart, startingId }) {
+  const isStarting = startingId === exp.id;
+  if (!canOperate) {
+    return <p className="mt-3 text-xs text-lumi-subtle">Proposed — not started yet.</p>;
+  }
+  return (
+    <div className="mt-3">
+      <button
+        type="button"
+        disabled={isStarting}
+        onClick={() => onStart?.(exp.id)}
+        className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {isStarting ? 'Starting…' : 'Start test'}
+      </button>
+      <p className="mt-1.5 text-xs text-lumi-subtle">
+        Moves this experiment to RUNNING so Lumi can track the arms and call a winner.
+      </p>
     </div>
   );
 }
@@ -189,6 +214,7 @@ function RunningBody({ exp, canOperate, onConclude, concludingId }) {
 export function TestingView({
   experiments = [], agenda = [], role = WORKSPACE_ROLE.BUYER,
   onConclude, concludingId, concludeError,
+  onStart, startingId, startError,
   onCommit, committing = false, commitError,
 }) {
   const canOperate = role === WORKSPACE_ROLE.BUYER || role === WORKSPACE_ROLE.STRATEGIST;
@@ -251,6 +277,11 @@ export function TestingView({
       {concludeError && (
         <p className="text-xs text-signal-kill">Couldn’t conclude that test right now. Try again shortly.</p>
       )}
+      {startError && (
+        <p className="text-xs text-signal-kill">
+          {startError.message || 'Couldn’t start that test right now. Try again shortly.'}
+        </p>
+      )}
       {ordered.map((exp) => (
         <ExperimentCard
           key={exp.id}
@@ -258,6 +289,8 @@ export function TestingView({
           canOperate={canOperate}
           onConclude={onConclude}
           concludingId={concludingId}
+          onStart={onStart}
+          startingId={startingId}
         />
       ))}
     </div>
@@ -269,10 +302,16 @@ export default function Testing() {
   const { role } = useCollabRole();
   const { experiments, agenda, loading, error, refetch } = useTests();
   const { conclude, concludingId, error: concludeError } = useConcludeTest();
+  const { start, startingId, error: startError } = useStartTest();
   const { commit, committing, error: commitError } = useCommitAgenda();
 
   const onConclude = async (testId) => {
     const result = await conclude(testId);
+    if (result) await refetch();
+  };
+
+  const onStart = async (testId) => {
+    const result = await start(testId);
     if (result) await refetch();
   };
 
@@ -298,6 +337,9 @@ export default function Testing() {
           onConclude={onConclude}
           concludingId={concludingId}
           concludeError={concludeError}
+          onStart={onStart}
+          startingId={startingId}
+          startError={startError}
           onCommit={onCommit}
           committing={committing}
           commitError={commitError}

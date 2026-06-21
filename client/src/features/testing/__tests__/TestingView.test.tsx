@@ -105,6 +105,39 @@ describe('TestingView — honest empty state', () => {
   });
 });
 
+describe('TestingView — start a PROPOSED experiment (completes the #108 loop)', () => {
+  const PROPOSED = { ...base, id: 't-prop', status: 'PROPOSED', variants: [] };
+
+  it('an operator sees Start on a PROPOSED card; clicking fires onStart with the test id', () => {
+    const onStart = vi.fn();
+    renderView({ experiments: [PROPOSED], role: 'BUYER', onStart });
+    const btn = screen.getByRole('button', { name: /start test/i });
+    expect(btn).not.toBeDisabled();
+    fireEvent.click(btn);
+    expect(onStart).toHaveBeenCalledWith('t-prop');
+  });
+
+  it('a non-operator (CLIENT) sees the PROPOSED card but no Start control', () => {
+    renderView({ experiments: [PROPOSED], role: 'CLIENT', onStart: vi.fn() });
+    expect(screen.getByText(/not started yet/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /start test/i })).not.toBeInTheDocument();
+  });
+
+  it('reflects the in-flight start (disabled + Starting…)', () => {
+    renderView({ experiments: [PROPOSED], role: 'BUYER', onStart: vi.fn(), startingId: 't-prop' });
+    const btn = screen.getByRole('button', { name: /starting/i });
+    expect(btn).toBeDisabled();
+  });
+
+  it('surfaces the real start error, not a generic message', () => {
+    renderView({
+      experiments: [PROPOSED], role: 'BUYER', onStart: vi.fn(),
+      startError: new Error('No resolvable workspace.'),
+    });
+    expect(screen.getByText(/No resolvable workspace/i)).toBeInTheDocument();
+  });
+});
+
 describe('TestingView — commit the proposed agenda', () => {
   const AGENDA = [
     { id: 'a1', entityId: 'e1', dimension: 'HOOK', hypothesis: 'Sharper hook' },
