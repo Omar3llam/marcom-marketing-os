@@ -20,12 +20,14 @@ import { execute, CAPABILITY } from '../../services/ai-gateway/index.js';
  *   brandVoice: string,     // onboarding voice profile (tone + language/dialect)
  *   targetAudience: string, // onboarding audience profile (campaign feed carries none)
  *   industry: string,       // onboarding industry
- *   objective: string       // onboarding objective (or custom objective text)
+ *   objective: string,      // onboarding objective (or custom objective text)
+ *   format: string,         // visual brief: picked ad format label+ratio (ContentLabView picker)
+ *   dimensions: string      // visual brief: pixel dimensions implied by the picked format
  * }
  * All of brandVoice / targetAudience / industry / objective are sourced from the
- * workspace's onboarding context client-side — see ContentLabView. The hardcoded
- * strings below are honest last-resorts for accounts with no onboarding data, not
- * the normal path.
+ * workspace's onboarding context client-side — see ContentLabView. format /
+ * dimensions come from a real format picker. The hardcoded strings below are
+ * honest last-resorts for accounts with no onboarding data, not the normal path.
  * Returns: {
  *   copy: [{ tag, text }],
  *   headlines: [string],
@@ -37,7 +39,7 @@ import { execute, CAPABILITY } from '../../services/ai-gateway/index.js';
 export async function generateContent(req, res) {
   const userId = req.userId || req.user?.uid;
   const workspaceId = req.workspaceId;
-  const { campaignContext, options, tone, brandVoice, targetAudience, industry, objective } = req.body;
+  const { campaignContext, options, tone, brandVoice, targetAudience, industry, objective, format, dimensions } = req.body;
 
   // Validation
   if (!options || typeof options !== 'object') {
@@ -70,6 +72,7 @@ export async function generateContent(req, res) {
     const content = await generateContentViaGateway({
       options,
       baseInput,
+      visualSpec: { format, dimensions },
       workspaceId,
     });
 
@@ -106,7 +109,19 @@ export async function generateContent(req, res) {
  *   - visual → GENERATE_VISUAL_PROMPT
  *   - video → (not implemented yet, uses fallback)
  */
-async function generateContentViaGateway({ options, baseInput, workspaceId }) {
+// Synthesize a visual brief from the same real signals the copy path uses — the
+// creative challenge (diagnosis), the goal (objective), and who it's for
+// (audience/industry). No new input: these already live on baseInput, grounded.
+function buildVisualBrief(b) {
+  const parts = [];
+  if (b.diagnosis)      parts.push(`Creative challenge: ${b.diagnosis}`);
+  if (b.objective)      parts.push(`Campaign objective: ${b.objective}`);
+  if (b.targetAudience) parts.push(`Audience: ${b.targetAudience}`);
+  if (b.industry)       parts.push(`Industry: ${b.industry}`);
+  return parts.length ? parts.join('. ') : null;
+}
+
+async function generateContentViaGateway({ options, baseInput, visualSpec = {}, workspaceId }) {
   const results = {
     copy: [],
     headlines: [],
@@ -209,6 +224,15 @@ async function generateContentViaGateway({ options, baseInput, workspaceId }) {
             input: {
               ...baseInput,
               platform: 'meta-feed',
+              // The GENERATE_VISUAL_PROMPT template's four placeholders, each
+              // grounded: visualBrief synthesized from the same real signals the
+              // copy path uses; brandStyle reuses the onboarding-derived brand
+              // voice (onboarding has no separate visual-style field);
+              // format/dimensions come from the picker in ContentLabView.
+              visualBrief: buildVisualBrief(baseInput),
+              brandStyle: baseInput.brandVoice,
+              format: visualSpec.format,
+              dimensions: visualSpec.dimensions,
             },
             workspaceId,
           });
