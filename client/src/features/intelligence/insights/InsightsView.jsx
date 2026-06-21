@@ -10,6 +10,7 @@ import { useMemo } from 'react';
 import { Target, Brain, Zap } from 'lucide-react';
 import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
 import { useAccountBriefing } from '@/hooks/useAccountBriefing.js';
+import { usePromotePattern } from '@/hooks/usePromotePattern.js';
 import { useEconomics, useSaveEconomics } from '@/hooks/useEconomics.js';
 import { cn } from '@/lib/utils.js';
 import { fmtRelative } from '@/lib/dateUtils.js';
@@ -24,9 +25,16 @@ const STAGES = ['DYING', 'FATIGUED', 'TESTING', 'SCALING', 'STABLE'];
 
 export default function GrowthStrategyBoard() {
   const { campaigns, summary, loading, fatiguePredictions } = useCampaignFeed();
-  const { briefing, loading: briefingLoading, error: briefingError, setConsent, consentBusy } = useAccountBriefing();
+  const { briefing, loading: briefingLoading, error: briefingError, refetch: refetchBriefing, setConsent, consentBusy } = useAccountBriefing();
+  const { promote, promotingId, error: promoteError } = usePromotePattern();
   const { role: collabRole } = useCollabRole();
   const canManageConsent = collabRole === WORKSPACE_ROLE.STRATEGIST;
+  // Promoting a pattern to an account-wide rule is the same STRATEGIST-tier
+  // owner decision as the network-consent control beside it.
+  const onPromote = async (patternId) => {
+    const result = await promote(patternId);
+    if (result) await refetchBriefing(); // re-read so the promotable count + flags update
+  };
   const { data: economics, loading: economicsLoading, error: economicsError, refetch: refetchEconomics } = useEconomics();
   const { save: saveEconomics, saving: economicsSaving } = useSaveEconomics();
   const onSaveEconomics = async (inputs) => { const ok = await saveEconomics(inputs); if (ok) await refetchEconomics(); };
@@ -162,6 +170,10 @@ export default function GrowthStrategyBoard() {
         onConsent={setConsent}
         consentBusy={consentBusy}
         canManageConsent={canManageConsent}
+        onPromote={onPromote}
+        promotingId={promotingId}
+        promoteError={promoteError}
+        canPromote={canManageConsent}
       />
 
       {/* ── UNIT ECONOMICS (Phase 4-D · STRATEGIST only) ─────── */}

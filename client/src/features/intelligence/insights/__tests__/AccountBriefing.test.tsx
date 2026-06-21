@@ -58,6 +58,50 @@ describe('AccountBriefing — honest memory-moat readout', () => {
   });
 });
 
+describe('AccountBriefing — promote a pattern to a rule (STRATEGIST owner action)', () => {
+  const PROMOTABLE = {
+    workspaceId: 'ws-1',
+    patterns: [pattern({ id: 'pp', promotable: true, statement: 'Kill cold ad sets past 3.2 frequency.' })],
+    promotableCount: 1, conflicts: [], network: { status: 'NOT_CONSENTED' },
+  };
+
+  it('a strategist sees "Make it a rule" on a promotable pattern; clicking fires onPromote(id)', () => {
+    const onPromote = vi.fn();
+    render(<AccountBriefing briefing={PROMOTABLE} canPromote onPromote={onPromote} />);
+    const btn = screen.getByRole('button', { name: /make it a rule/i });
+    fireEvent.click(btn);
+    expect(onPromote).toHaveBeenCalledWith('pp');
+  });
+
+  it('a non-strategist (canPromote=false) never sees the promote control', () => {
+    render(<AccountBriefing briefing={PROMOTABLE} canPromote={false} onPromote={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /make it a rule/i })).not.toBeInTheDocument();
+  });
+
+  it('shows no promote control on a non-promotable pattern, even for a strategist', () => {
+    const notPromotable = { ...PROMOTABLE, patterns: [pattern({ id: 'np', promotable: false })], promotableCount: 0 };
+    render(<AccountBriefing briefing={notPromotable} canPromote onPromote={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /make it a rule/i })).not.toBeInTheDocument();
+  });
+
+  it('hides the control on an already-promoted pattern (promotedRuleId set)', () => {
+    const already = { ...PROMOTABLE, patterns: [pattern({ id: 'ap', promotable: true, promotedRuleId: 'rule-1' })] };
+    render(<AccountBriefing briefing={already} canPromote onPromote={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /make it a rule/i })).not.toBeInTheDocument();
+  });
+
+  it('reflects the in-flight promote (disabled + Promoting…)', () => {
+    render(<AccountBriefing briefing={PROMOTABLE} canPromote onPromote={vi.fn()} promotingId="pp" />);
+    const btn = screen.getByRole('button', { name: /promoting/i });
+    expect(btn).toBeDisabled();
+  });
+
+  it('surfaces the real promote error (the backend governance message), not a generic one', () => {
+    render(<AccountBriefing briefing={PROMOTABLE} canPromote onPromote={vi.fn()} promoteError={new Error('pattern is CONFLICTED — not promotable')} />);
+    expect(screen.getByText(/CONFLICTED — not promotable/i)).toBeInTheDocument();
+  });
+});
+
 describe('Account Briefing route gate (STRATEGIST/BUYER, CLIENT denied)', () => {
   it('the strategist war room is reachable by operators, not by a CLIENT', () => {
     const allow = ['STRATEGIST', 'BUYER'];

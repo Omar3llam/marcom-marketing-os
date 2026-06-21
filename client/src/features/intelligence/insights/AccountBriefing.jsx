@@ -18,7 +18,11 @@ const statusTone = {
   SUPERSEDED:  'text-lumi-subtle bg-lumi-elevated border-lumi-border',
 };
 
-export function AccountBriefing({ briefing, loading = false, error = null, onConsent, consentBusy = false, canManageConsent = false }) {
+export function AccountBriefing({
+  briefing, loading = false, error = null,
+  onConsent, consentBusy = false, canManageConsent = false,
+  onPromote, promotingId = null, promoteError = null, canPromote = false,
+}) {
   const patterns = briefing?.patterns ?? [];
   const conflicts = briefing?.conflicts ?? [];
   const promotable = briefing?.promotableCount ?? 0;
@@ -50,6 +54,11 @@ export function AccountBriefing({ briefing, loading = false, error = null, onCon
               {conflicts.length > 0 && <span className="px-2 py-0.5 rounded bg-signal-kill-bg text-signal-kill border border-signal-kill/25">{conflicts.length} need review</span>}
             </div>
           )}
+          {promoteError && (
+            <p className="mb-3 text-xs text-signal-kill">
+              {promoteError.message || 'Couldn’t promote that pattern to a rule right now. Try again shortly.'}
+            </p>
+          )}
           <ul className="grid gap-3">
             {patterns.map((p) => {
               const acc = Number.isFinite(p.accuracy) ? Math.round(p.accuracy * 100) : null;
@@ -67,6 +76,23 @@ export function AccountBriefing({ briefing, loading = false, error = null, onCon
                     <span>right {acc == null ? '—' : `${acc}%`}</span>
                     {conf != null && <span>confidence {conf}%</span>}
                   </div>
+
+                  {/* Promote → GuardrailRule. STRATEGIST-only, and only on a
+                      pattern the engine marks promotable that isn't already a
+                      rule. The new rule rides the existing confirm→execute
+                      governance (never auto-executes). */}
+                  {canPromote && p.promotable && !p.promotedRuleId && (
+                    <div className="mt-2.5">
+                      <button
+                        type="button"
+                        disabled={promotingId === p.id}
+                        onClick={() => onPromote?.(p.id)}
+                        className="font-mono text-xs uppercase tracking-wide px-3 py-1 rounded border border-signal-scale/30 bg-signal-scale-bg text-signal-scale disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {promotingId === p.id ? 'Promoting…' : 'Make it a rule'}
+                      </button>
+                    </div>
+                  )}
                 </li>
               );
             })}
