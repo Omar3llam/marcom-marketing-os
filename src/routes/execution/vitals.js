@@ -152,9 +152,9 @@ export function registerVitalsRoute(router) {
         windowMinutes: 60,
       });
     } catch (err) {
-      logger.error('[ExecutionRouter] Vitals fetch failed', {
+      logger.error({
         workspaceId, userId, error: err.message, stack: err.stack,
-      });
+      }, '[ExecutionRouter] Vitals fetch failed');
       return res.status(500).json({
         error: 'Failed to fetch runtime vitals',
         code:  'VITALS_ERROR',

@@ -22,6 +22,7 @@ import { parse } from 'csv-parse/sync';
 import { createHash } from 'crypto';
 import { resolveHeader, cleanMonetaryValue, COLUMN_ALIASES } from '../lib/csvColumnAliases.js';
 import { detectCurrencyFromHeaders } from '../lib/currencyDetector.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * Parse a Meta Ads Manager CSV export buffer.
@@ -57,11 +58,11 @@ export function parseMetaAdsCsv(fileBuffer) {
     const rawHeaders = Object.keys(records[0]);
     const headerMap = {};
 
-    console.log('[metaAdsParser] Raw CSV headers:', rawHeaders);
+    logger.debug({ rawHeaders }, '[metaAdsParser] Raw CSV headers');
 
     // ── 3a. Detect currency from CSV headers ─────────────────
     const currency = detectCurrencyFromHeaders(rawHeaders);
-    console.log('[metaAdsParser] Detected currency:', currency);
+    logger.debug({ currency }, '[metaAdsParser] Detected currency');
 
     for (const rawHeader of rawHeaders) {
       const field = resolveHeader(rawHeader, COLUMN_ALIASES);
@@ -73,13 +74,10 @@ export function parseMetaAdsCsv(fileBuffer) {
     // Warn about unmapped headers (catch regressions)
     const unmappedHeaders = rawHeaders.filter((h) => !headerMap[h]);
     if (unmappedHeaders.length > 0) {
-      console.warn(
-        '[metaAdsParser] Unmapped headers (not used in parsing):',
-        unmappedHeaders,
-      );
+      logger.warn({ unmappedHeaders }, '[metaAdsParser] Unmapped headers (not used in parsing)');
     }
 
-    console.log('[metaAdsParser] Header mapping:', headerMap);
+    logger.debug({ headerMap }, '[metaAdsParser] Header mapping');
 
     const campaigns = [];
     const errors    = [];
@@ -103,7 +101,7 @@ export function parseMetaAdsCsv(fileBuffer) {
 
         // ✅ Debug: Log first parsed campaign to verify header mapping
         if (campaigns.length === 1) {
-          console.log('[metaAdsParser] First parsed campaign:', {
+          logger.debug({
             campaignId: campaign.campaignId,
             campaignName: campaign.campaignName,
             spend: campaign.spend,
@@ -111,7 +109,7 @@ export function parseMetaAdsCsv(fileBuffer) {
             results: campaign.results,
             ctr: campaign.ctr,
             roas: campaign.roas,
-          });
+          }, '[metaAdsParser] First parsed campaign');
         }
       } else {
         errors.push(`Row ${idx + 2}: could not parse — skipped`);
@@ -122,25 +120,17 @@ export function parseMetaAdsCsv(fileBuffer) {
     const totalSpend = campaigns.reduce((sum, c) => sum + (c.spend || 0), 0);
 
     if (totalSpend === 0 && campaigns.length > 0) {
-      console.error(
-        '[metaAdsParser] CRITICAL: Parsed',
-        campaigns.length,
-        'campaigns but total spend is $0.00',
-        '\n  → Raw headers:', rawHeaders,
-        '\n  → Mapped fields:', Object.values(headerMap),
-        '\n  → This indicates column mapping failure!',
-      );
+      logger.error({
+        campaigns: campaigns.length,
+        rawHeaders,
+        mappedFields: Object.values(headerMap),
+      }, '[metaAdsParser] CRITICAL: parsed campaigns but total spend is $0.00 — column mapping failure');
       errors.push(
         'Warning: All campaigns have $0 spend. This may indicate a CSV format mismatch.',
       );
     }
 
-    console.log(
-      '[metaAdsParser] Parse complete:',
-      campaigns.length,
-      'campaigns, total spend:',
-      `$${totalSpend.toFixed(2)}`,
-    );
+    logger.info({ campaigns: campaigns.length, totalSpend }, '[metaAdsParser] Parse complete');
 
     return {
       campaigns,
@@ -262,7 +252,7 @@ function buildCampaign(record, headerMap, currency = 'USD') {
     };
 
   } catch (err) {
-    console.error('[metaAdsParser] buildCampaign error:', err.message);
+    logger.error({ err: err.message }, '[metaAdsParser] buildCampaign error');
     return null;
   }
 }

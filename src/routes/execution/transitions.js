@@ -56,13 +56,13 @@ export function registerTransitionsRoute(router) {
 
       return res.json({ execution, transitions });
     } catch (err) {
-      logger.error('[ExecutionRouter] Transitions fetch failed', {
+      logger.error({
         executionId,
         workspaceId,
         userId,
         error: err.message,
         stack: err.stack,
-      });
+      }, '[ExecutionRouter] Transitions fetch failed');
       return res.status(500).json({
         error: 'Failed to fetch transitions',
         code: 'TRANSITIONS_ERROR',

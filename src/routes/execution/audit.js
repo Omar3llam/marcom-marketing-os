@@ -32,12 +32,12 @@ export function registerAuditRoute(router) {
 
       const total = await prisma.auditLog.count({ where });
 
-      logger.info(`[ExecutionRouter] Audit query`, {
+      logger.info({
         workspaceId,
         userId,
         count: logs.length,
         total,
-      });
+      }, `[ExecutionRouter] Audit query`);
 
       return res.json({
         logs,
@@ -46,10 +46,10 @@ export function registerAuditRoute(router) {
         offset: parseInt(String(offset), 10),
       });
     } catch (err) {
-      logger.error('[ExecutionRouter] Audit query failed', {
+      logger.error({
         workspaceId,
         error: err.message,
-      });
+      }, '[ExecutionRouter] Audit query failed');
 
       return res.status(500).json({
         error: 'Failed to retrieve audit logs',

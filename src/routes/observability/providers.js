@@ -8,6 +8,7 @@
 // ============================================================
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
+import { logger } from '../../utils/logger.js';
 
 export const providersRouter = Router();
 
@@ -26,13 +27,12 @@ providersRouter.get('/providers', async (req, res) => {
       try {
         return await fn();
       } catch (err) {
-        console.error({
-          msg: `[observability/providers] query failed: ${name}`,
+        logger.error({
           workspaceId,
           errorCode: err.code,
           errorMessage: err.message,
           meta: err.meta,
-        });
+        }, `[observability/providers] query failed: ${name}`);
         throw err;
       }
     };
@@ -147,13 +147,12 @@ providersRouter.get('/providers', async (req, res) => {
       generated_at: now.toISOString(),
     });
   } catch (err) {
-    console.error({
-      msg: '[observability/providers] unhandled error',
+    logger.error({
       workspaceId,
       errorCode: err.code,
       errorMessage: err.message,
       meta: err.meta,
-    });
+    }, '[observability/providers] unhandled error');
     return res.status(500).json({ error: 'Failed to fetch provider metrics' });
   }
 });

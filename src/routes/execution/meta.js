@@ -76,9 +76,9 @@ export function registerMetaRoute(router) {
       // ═══════════════════════════════════════════════════════
       const validationError = validateRequest(actionType, targetId, targetType, idempotencyKey);
       if (validationError) {
-        logger.warn('[ExecutionRouter] Validation failed', {
+        logger.warn({
           workspaceId, userId, actionType, targetId, reason: validationError,
-        });
+        }, '[ExecutionRouter] Validation failed');
 
         await prisma.auditLog.create({
           data: {
@@ -106,11 +106,11 @@ export function registerMetaRoute(router) {
       });
 
       if (existingRequest) {
-        logger.info('[ExecutionRouter] Idempotent replay', {
+        logger.info({
           workspaceId, userId, actionType, targetId,
           executionId: existingRequest.id,
           status:      existingRequest.status,
-        });
+        }, '[ExecutionRouter] Idempotent replay');
 
         return res.status(200).json({
           success:         existingRequest.status === 'EXECUTED_SUCCESS',
@@ -127,7 +127,7 @@ export function registerMetaRoute(router) {
 
       // Guard: queue subsystem must be available. Invariant VI-1.
       if (!executionQueue) {
-        logger.warn('[ExecutionRouter] Queue unavailable', { workspaceId, userId });
+        logger.warn({ workspaceId, userId }, '[ExecutionRouter] Queue unavailable');
         return res.status(503).json({
           success: false,
           error:   'Execution queue unavailable. Please try again later.',
@@ -138,9 +138,9 @@ export function registerMetaRoute(router) {
       // Guard: backpressure. Invariant VI-4.
       const queueDepth = await executionQueue.count();
       if (queueDepth >= MAX_QUEUE_DEPTH) {
-        logger.warn('[ExecutionRouter] Queue full — rejecting', {
+        logger.warn({
           workspaceId, queueDepth, MAX_QUEUE_DEPTH,
-        });
+        }, '[ExecutionRouter] Queue full — rejecting');
         return res.status(429).json({
           success:     false,
           error:       'Execution queue is full. Please try again later.',
@@ -162,9 +162,9 @@ export function registerMetaRoute(router) {
         },
       });
 
-      logger.info('[ExecutionRouter] ExecutionRequest created', {
+      logger.info({
         executionId: executionRequest.id, idempotencyKey, workspaceId,
-      });
+      }, '[ExecutionRouter] ExecutionRequest created');
 
       // Transition PENDING → QUEUED via lifecycle service.
       // Invariant II-3: all state changes go through lifecycleService.
@@ -187,9 +187,9 @@ export function registerMetaRoute(router) {
         options: options ?? {},
       });
 
-      logger.info('[ExecutionRouter] Execution queued', {
+      logger.info({
         executionId: executionRequest.id, actionType, targetId, workspaceId,
-      });
+      }, '[ExecutionRouter] Execution queued');
 
       // ═══════════════════════════════════════════════════════
       // LAYER 4: AUDIT LOG
@@ -204,9 +204,9 @@ export function registerMetaRoute(router) {
         },
       }).catch((err) => {
         // Audit log failure must not fail the execution. Log and continue.
-        logger.error('[ExecutionRouter] Audit log write failed', {
+        logger.error({
           executionId: executionRequest.id, err: err.message,
-        });
+        }, '[ExecutionRouter] Audit log write failed');
       });
 
       // 202 Accepted: the execution is queued, not yet complete.
@@ -219,10 +219,10 @@ export function registerMetaRoute(router) {
       });
 
     } catch (err) {
-      logger.error('[ExecutionRouter] Unhandled error', {
+      logger.error({
         workspaceId, userId, actionType, targetId,
         error: err.message, stack: err.stack,
-      });
+      }, '[ExecutionRouter] Unhandled error');
 
       await prisma.auditLog.create({
         data: {

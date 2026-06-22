@@ -67,12 +67,12 @@ export function registerActiveRoute(router) {
 
       return res.json({ executions: payload, serverNow: new Date().toISOString() });
     } catch (err) {
-      logger.error('[ExecutionRouter] Active list failed', {
+      logger.error({
         workspaceId,
         userId,
         error: err.message,
         stack: err.stack,
-      });
+      }, '[ExecutionRouter] Active list failed');
       return res.status(500).json({
         error: 'Failed to list active executions',
         code: 'ACTIVE_LIST_ERROR',

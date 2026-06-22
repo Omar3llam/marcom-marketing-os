@@ -32,6 +32,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { logger } from '../utils/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DIALECT_DIR = path.resolve(__dirname, '../data/dialects');
@@ -195,7 +196,7 @@ function loadPack(dialectId) {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf-8'));
   } catch (err) {
-    console.error(`[dialectResolver] Failed to parse ${file}:`, err.message);
+    logger.error({ file, err: err.message }, '[dialectResolver] Failed to parse dialect pack');
     return null;
   }
 }
