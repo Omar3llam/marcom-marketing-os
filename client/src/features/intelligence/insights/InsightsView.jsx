@@ -19,12 +19,14 @@ import RoleGate from '@/components/auth/RoleGate.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useGoals } from '@/hooks/useGoals.js';
 import { usePlans } from '@/hooks/usePlans.js';
+import { useApprovals } from '@/hooks/useApprovals.js';
 import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
 import { FatigueForecast } from './FatigueForecast.jsx';
 import { AccountBriefing } from './AccountBriefing.jsx';
 import { UnitEconomicsPanel } from './UnitEconomicsPanel.jsx';
 import { GoalsPanel } from './GoalsPanel.jsx';
 import { PlansPanel } from './PlansPanel.jsx';
+import { ApprovalsPanel } from './ApprovalsPanel.jsx';
 
 const STAGES = ['DYING', 'FATIGUED', 'TESTING', 'SCALING', 'STABLE'];
 
@@ -52,7 +54,10 @@ export default function GrowthStrategyBoard() {
 
   // Forward-looking plans (Phase 6A). View all who reach this page; build +
   // promote are STRATEGIST-only.
-  const { plans, isLoading: plansLoading, error: plansError, createPlan, isCreating: planCreating, getPlan, promotePlan, promotingId: planPromotingId } = usePlans();
+  const { plans, isLoading: plansLoading, error: plansError, createPlan, isCreating: planCreating, getPlan, promotePlan, promotingId: planPromotingId, submitForApproval, submittingId: planSubmittingId } = usePlans();
+  // Submitting a plan for sign-off is a BUYER/STRATEGIST workflow action (matches
+  // the POST /approvals gate); a CLIENT seat is read-only.
+  const canSubmitPlan = collabRole === WORKSPACE_ROLE.STRATEGIST || collabRole === WORKSPACE_ROLE.BUYER;
 
   // Active bets = pending alerts, treated as hypotheses under test.
   const bets = useMemo(() => {
@@ -204,7 +209,9 @@ export default function GrowthStrategyBoard() {
         currency={goalsCurrency}
       />
 
-      {/* ── PLANS (Phase 6A · view all; build/promote STRATEGIST) ─── */}
+      {/* ── PLANS (Phase 6A · view all; build/promote STRATEGIST) ───
+          Phase 6B adds the approval gate: submit-for-approval (BUYER/STRATEGIST)
+          + reflected status + the reviewer's note on a revision. */}
       <PlansPanel
         plans={plans}
         loading={plansLoading}
@@ -216,7 +223,17 @@ export default function GrowthStrategyBoard() {
         getPlanDetail={getPlan}
         onPromote={promotePlan}
         promotingId={planPromotingId}
+        canSubmit={canSubmitPlan}
+        onSubmit={submitForApproval}
+        submittingId={planSubmittingId}
       />
+
+      {/* ── PLAN APPROVALS (Phase 6B · STRATEGIST decision queue) ───
+          Only mounted for a STRATEGIST so the fetch + queue stay scoped to the
+          one role that can decide; the server is the real arbiter. */}
+      <RoleGate role={['STRATEGIST']}>
+        <StrategistApprovals />
+      </RoleGate>
 
       {/* ── UNIT ECONOMICS (Phase 4-D · STRATEGIST only) ─────── */}
       <RoleGate role={['STRATEGIST']}>
@@ -229,6 +246,21 @@ export default function GrowthStrategyBoard() {
         />
       </RoleGate>
     </div>
+  );
+}
+
+// Thin wrapper so useApprovals only fetches when a STRATEGIST is actually
+// viewing (mounted behind the RoleGate above).
+function StrategistApprovals() {
+  const { pendingApprovals, isLoading, error, decide, decidingId } = useApprovals();
+  return (
+    <ApprovalsPanel
+      approvals={pendingApprovals}
+      loading={isLoading}
+      error={error}
+      onDecide={decide}
+      decidingId={decidingId}
+    />
   );
 }
 

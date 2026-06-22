@@ -66,6 +66,34 @@ describe('PlansPanel — list + expand', () => {
   });
 });
 
+describe('PlansPanel — approval gate (Phase 6B)', () => {
+  it('shows the reflected approval status badge on the row', () => {
+    const pending = [{ ...PLANS[0], approvalState: 'PENDING', requiresApproval: true }];
+    render(<PlansPanel plans={pending} />);
+    expect(screen.getByText(/awaiting approval/i)).toBeInTheDocument();
+  });
+
+  it('offers "Submit for approval" when no gate is open and the seat can submit', async () => {
+    const onSubmit = vi.fn().mockResolvedValue({ id: 'req1' });
+    const getPlanDetail = vi.fn().mockResolvedValue({ ...DETAIL, approvalState: null, requiresApproval: false, latestApproval: null });
+    render(<PlansPanel plans={PLANS} canSubmit onSubmit={onSubmit} getPlanDetail={getPlanDetail} />);
+    fireEvent.click(screen.getByRole('button', { name: /Q3 growth plan/i }));
+    const submit = await screen.findByRole('button', { name: /submit for approval/i });
+    fireEvent.click(submit);
+    expect(onSubmit).toHaveBeenCalledWith('p1');
+  });
+
+  it('blocks promote while the gate is open (requiresApproval, not APPROVED)', async () => {
+    const blocked = [{ ...PLANS[0], approvalState: 'PENDING', requiresApproval: true }];
+    const getPlanDetail = vi.fn().mockResolvedValue({ ...DETAIL, approvalState: 'PENDING', requiresApproval: true });
+    render(<PlansPanel plans={blocked} canManage getPlanDetail={getPlanDetail} onPromote={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: /Q3 growth plan/i }));
+    const promote = await screen.findByRole('button', { name: /promote mix/i });
+    expect(promote).toBeDisabled();
+    expect(screen.getByText(/blocked until approved/i)).toBeInTheDocument();
+  });
+});
+
 describe('PlansPanel — STRATEGIST gate', () => {
   it('hides the build form for a non-manager', () => {
     render(<PlansPanel plans={PLANS} canManage={false} />);
