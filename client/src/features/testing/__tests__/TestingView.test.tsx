@@ -97,6 +97,49 @@ describe('TestingView — Conclude action + thin-sample gate', () => {
   });
 });
 
+describe('TestingView — record observed metrics on a RUNNING test', () => {
+  it('an operator opens the form and Save fires onRecord with the exact handler fields (money → minor)', async () => {
+    const onRecord = vi.fn().mockResolvedValue({ updated: 2 });
+    renderView({ experiments: [RUNNING_READY], role: 'BUYER', onRecord });
+
+    fireEvent.click(screen.getByRole('button', { name: /record metrics/i }));
+    // Edit one arm: impressions + spend (entered in major USD → minor on submit).
+    fireEvent.change(screen.getByLabelText(/A Impressions/i), { target: { value: '6000' } });
+    fireEvent.change(screen.getByLabelText(/A Spend/i), { target: { value: '50' } });
+    fireEvent.click(screen.getByRole('button', { name: /save metrics/i }));
+
+    expect(onRecord).toHaveBeenCalledWith(
+      't-ready',
+      expect.arrayContaining([
+        expect.objectContaining({ variantId: 'v-a', impressions: 6000, spendMinor: 5000 }),
+      ]),
+    );
+    // honest confirmation, and the form collapses (no navigation away)
+    expect(await screen.findByText(/Recorded — updated 2 variants/i)).toBeInTheDocument();
+  });
+
+  it('reflects the in-flight record (disabled + Recording…)', () => {
+    renderView({ experiments: [RUNNING_READY], role: 'BUYER', onRecord: vi.fn(), recordingId: 't-ready' });
+    fireEvent.click(screen.getByRole('button', { name: /record metrics/i }));
+    const btn = screen.getByRole('button', { name: /recording/i });
+    expect(btn).toBeDisabled();
+  });
+
+  it('surfaces the real record error inline, not a generic message', () => {
+    renderView({
+      experiments: [RUNNING_READY], role: 'BUYER', onRecord: vi.fn(),
+      recordError: new Error('variants[] is required'),
+    });
+    fireEvent.click(screen.getByRole('button', { name: /record metrics/i }));
+    expect(screen.getByText(/variants\[\] is required/i)).toBeInTheDocument();
+  });
+
+  it('a non-operator (CLIENT) never sees the Record metrics control', () => {
+    renderView({ experiments: [RUNNING_READY], role: 'CLIENT', onRecord: vi.fn() });
+    expect(screen.queryByRole('button', { name: /record metrics/i })).not.toBeInTheDocument();
+  });
+});
+
 describe('TestingView — honest empty state', () => {
   it('shows the honest empty message and the proposed agenda', () => {
     renderView({ experiments: [], agenda: [{ id: 'a1', hypothesis: 'Try a softer hook' }], role: 'BUYER' });
