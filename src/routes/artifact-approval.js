@@ -266,9 +266,10 @@ router.get('/workspaces/:id/approvals/pending', async (req, res) => {
       return res.status(401).json({ error: 'Workspace required' });
     }
 
-    // Verify workspace access
+    // Verify workspace access. 404 (not 403) — never confirm the existence of
+    // another workspace's approvals to a caller who doesn't own them.
     if (workspaceId !== userWorkspaceId) {
-      return res.status(403).json({ error: 'Unauthorized: cannot access other workspace approvals' });
+      return res.status(404).json({ error: 'Not found' });
     }
 
     const approvals = await getPendingApprovals(workspaceId);

@@ -87,13 +87,10 @@ prisma/schema.prisma               — DB schema
 ## Deprecated / Dead Files (DO NOT IMPORT)
 
 ```
-src/services/orchestrator.js  → DEPRECATED. Use src/agents/orchestrator.js
-                                 Still used by: paidController, campaigns, syncWorker
 src/middleware/clerkAuth.js   → LEGACY. Still used by auth/meta.js
                                  Replace with firebaseAuth.js when refactoring OAuth
 src/models/userContext.js     → LEGACY. Still used by project.js
                                  Replace with campaigns/me/context route
-src/utils/airtable.js         → DEAD. Zero imports. Safe to delete.
 src/utils/scraper.js          → Check if still used before touching.
 ```
 
@@ -189,14 +186,12 @@ Every prompt must include:
 
 ## Dead Code Register
 **Maintained by: Architecture Check CI (scripts/arch-check.js)**  
-**Last audit: 2026-05-17**
+**Last audit: 2026-06-22** (pre-Phase-6 cleanup: deleted `services/orchestrator.js` + `utils/airtable.js` + the legacy `frontend/` vanilla shell)
 
 | File | Status | Reason | Imports | Safe to delete? |
 |---|---|---|---|---|
-| `src/services/orchestrator.js` | DEPRECATED | Replaced by agents/orchestrator.js | 2 (campaigns, syncWorker) | NO — refactor importers first |
 | `src/middleware/clerkAuth.js` | DEAD | Firebase replaced Clerk (auth/meta.js now uses firebaseAuth) | 0 | YES — verified zero imports |
 | `src/models/userContext.js` | LEGACY | Replaced by /api/campaigns/me/context | 1 (project.js) | NO — refactor project.js first |
-| `src/utils/airtable.js` | DEAD | PostgreSQL replaced Airtable | 0 | YES — verified zero imports |
 | `client/src/pages/AuthPage-Clerk-BACKUP.jsx` | DEAD | Backup from Clerk → Firebase migration | 0 | YES — backup file, not in routes |
 | `client/src/pages/PlaceholderPage.jsx` | STUB | Placeholder, not in App.jsx routes | 0 | YES — verify not in router first |
 
@@ -214,13 +209,6 @@ Delete verified dead files (0 imports, DEAD status) every 2-week architecture sp
 
 **Refactor target:**  
 Convert DEPRECATED/LEGACY files to new canonical equivalents, then delete.
-- `services/orchestrator.js` → `agents/orchestrator.js` (2 files remaining)
-  - ~~`paidController.js`~~ ✅ COMPLETED (uses adapter methods from agents/orchestrator)
-  - `campaigns.js` — needs migration (uses deprecated single-agent)
-  - `syncWorker.js` — needs migration (uses deprecated single-agent)
-  - **Adapter pattern:** agents/orchestrator now exports compatibility methods:
-    - `analyzeRadarData(campaigns)` → wraps ClaudeAgent
-    - `analyzeCampaignData(data, source)` → wraps ClaudeAgent
-    - `healthCheck()` → checks dual-agent health
+- ~~`services/orchestrator.js` → `agents/orchestrator.js`~~ ✅ COMPLETED & DELETED — all importers (paidController, campaigns, syncWorker) migrated to `agents/orchestrator.js`; the deprecated file was removed in the pre-Phase-6 cleanup. The compatibility methods (`analyzeRadarData`, `analyzeCampaignData`, `healthCheck`) now live on `agents/orchestrator.js`.
 - ~~`clerkAuth.js` → `firebaseAuth.js`~~ ✅ COMPLETED (auth/meta.js refactored)
 - `userContext.js` → API route (1 model file to refactor)
