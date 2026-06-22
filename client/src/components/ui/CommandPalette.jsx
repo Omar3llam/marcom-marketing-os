@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 import { useCommandPalette } from '@/hooks/useCommandPalette.js';
+import { useFocusTrap } from '@/hooks/useFocusTrap.js';
 import CommandPaletteItems from './CommandPaletteItems.jsx';
 
 export default function CommandPalette({
@@ -70,10 +71,16 @@ export default function CommandPalette({
   // Keep the highlight in range as the result set changes.
   useEffect(() => { setActiveIdx(0); }, [query, setActiveIdx]);
 
+  // Trap focus within the palette while open; restore it to the trigger on
+  // close. The search input still auto-focuses itself (effect above), so the
+  // trap won't override the initial focus. Esc is handled by useCommandPalette.
+  const trapRef = useFocusTrap(open);
+
   if (!open) return null;
 
   return (
     <div
+      ref={trapRef}
       className="fixed inset-0 z-[100] flex items-start justify-center px-4 pt-[12vh]"
       role="dialog"
       aria-modal="true"

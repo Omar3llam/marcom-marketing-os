@@ -1,11 +1,19 @@
 import { Key, AlertTriangle, Trash2, RefreshCw, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext.jsx';
+import { useFocusTrap } from '@/hooks/useFocusTrap.js';
 import { toast } from 'sonner';
 
 export function SecurityTab({ currentUser, handlePasswordReset, handleResetSetup, busy, showDeleteModal, setShowDeleteModal, deleteConfirmText, setDeleteConfirmText, handleDeleteAccount, formatDate }) {
   const { logout } = useAuth();
   const navigate = useNavigate();
+  // Focus trap for the destructive delete-account modal: traps Tab, focuses the
+  // confirm input on open, restores focus to the trigger on close, and closes
+  // on Escape (the modal had no keyboard close before).
+  const deleteModalRef = useFocusTrap(showDeleteModal, () => {
+    setShowDeleteModal(false);
+    setDeleteConfirmText('');
+  });
 
   const handleLogout = async () => {
     try {
@@ -112,7 +120,13 @@ export function SecurityTab({ currentUser, handlePasswordReset, handleResetSetup
 
       {showDeleteModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-surface-card rounded-xl shadow-2xl max-w-md w-full p-6">
+          <div
+            ref={deleteModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Delete account confirmation"
+            className="bg-surface-card rounded-xl shadow-2xl max-w-md w-full p-6"
+          >
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-signal-kill/10 flex items-center justify-center">
                 <AlertTriangle className="w-5 h-5 text-signal-kill" strokeWidth={2} />
