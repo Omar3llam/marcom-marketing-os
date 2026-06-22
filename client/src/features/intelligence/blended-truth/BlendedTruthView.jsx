@@ -18,6 +18,7 @@ import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useBlendedTruth } from '@/hooks/useBlendedTruth.js';
 import { useAllocation } from '@/hooks/useAllocation.js';
 import { AllocationPanel } from './AllocationPanel.jsx';
+import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
 
@@ -137,6 +138,8 @@ export default function BlendedTruth() {
     <div className="max-w-5xl mx-auto px-6 py-8">
       <h1 className="decision-title text-lumi-text mb-1">Blended Truth</h1>
       <p className="text-sm text-lumi-muted mb-6">What platforms claim, reconciled against store truth.</p>
+
+      <IntelligenceSubNav />
 
       {loading && <div className="space-y-3"><CardSkeleton /><CardSkeleton /></div>}
       {!loading && error && (

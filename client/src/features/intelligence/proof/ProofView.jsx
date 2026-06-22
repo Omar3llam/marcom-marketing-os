@@ -17,6 +17,7 @@
 import { Gauge } from 'lucide-react';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
+import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
 
@@ -118,6 +119,8 @@ export default function Proof() {
     <div className="max-w-5xl mx-auto px-6 py-8">
       <h1 className="decision-title text-lumi-text mb-1">Proof of Learning</h1>
       <p className="text-sm text-lumi-muted mb-6">Is Lumi getting more calibrated on this account over time?</p>
+
+      <IntelligenceSubNav />
 
       {loading && <div className="space-y-3"><CardSkeleton /><CardSkeleton /></div>}
       {!loading && error && (
