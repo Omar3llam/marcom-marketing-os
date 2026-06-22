@@ -191,6 +191,7 @@ planningRouter.post('/plans/:id/promote', requireStrategist, async (req, res) =>
     logger.info({ wsId, ...result }, '[lumi/planning] plan mix promoted');
     return res.status(201).json({ workspaceId: wsId, ...result });
   } catch (err) {
+    if (err.code === 'ApprovalRequired') return res.status(409).json({ error: 'ApprovalRequired', message: err.message, planId: req.params.id, approvalState: err.approvalState ?? null });
     if (/not found/i.test(err.message)) return res.status(404).json({ error: 'PlanNotFound', message: err.message });
     if (/no channels/i.test(err.message)) return res.status(409).json({ error: 'NothingToPromote', message: err.message });
     logger.error({ err: err.message, wsId }, '[lumi/planning] promote failed');

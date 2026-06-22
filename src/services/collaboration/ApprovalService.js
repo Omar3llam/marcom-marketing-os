@@ -126,8 +126,12 @@ export async function handoff(workspaceId, { subjectType = 'DECISION', subjectId
 
 export async function listApprovals(workspaceId, { state } = {}) {
   if (!workspaceId) throw new Error('listApprovals: workspaceId required');
+  // Include just enough plan context for the reviewer's queue to render a row
+  // (name/period/budget) without a second round-trip. The request itself stays
+  // the source of truth for state/reason/requestedById/timestamps.
   return prisma.approvalRequest.findMany({
     where: { workspaceId, ...(state ? { state } : {}) },
     orderBy: { createdAt: 'desc' }, take: 50,
+    include: { plan: { select: { id: true, name: true, periodStart: true, periodEnd: true, totalBudgetMinor: true, currency: true, status: true } } },
   });
 }

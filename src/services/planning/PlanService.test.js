@@ -1,7 +1,25 @@
 import { describe, it, expect } from 'vitest';
-import { planToAllocationInput } from './PlanService.js';
+import { planToAllocationInput, isPromotionApprovalBlocked } from './PlanService.js';
 import { buildScenarioInputs } from '../scenario-engine/ScenarioService.js';
 import { GOAL_TYPE } from '../allocation-engine/allocationEngine.js';
+
+describe('isPromotionApprovalBlocked — the role-agnostic plan-state gate', () => {
+  it('does NOT block a plan with no approval gate (the default)', () => {
+    expect(isPromotionApprovalBlocked({ requiresApproval: false, approvalState: null })).toBe(false);
+  });
+  it('blocks a plan whose gate is open and PENDING — for ANY role', () => {
+    expect(isPromotionApprovalBlocked({ requiresApproval: true, approvalState: 'PENDING' })).toBe(true);
+  });
+  it('blocks a REJECTED (revision-requested) plan', () => {
+    expect(isPromotionApprovalBlocked({ requiresApproval: true, approvalState: 'REJECTED' })).toBe(true);
+  });
+  it('unblocks once APPROVED', () => {
+    expect(isPromotionApprovalBlocked({ requiresApproval: true, approvalState: 'APPROVED' })).toBe(false);
+  });
+  it('treats a missing plan as not-blocked (the not-found path owns that error)', () => {
+    expect(isPromotionApprovalBlocked(null)).toBe(false);
+  });
+});
 
 describe('planToAllocationInput — promotion rides the Phase-3 loop', () => {
   it('derives a GROWTH_CEILING allocation input from a stored plan', () => {
