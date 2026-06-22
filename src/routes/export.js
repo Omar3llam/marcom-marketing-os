@@ -33,7 +33,7 @@ exportRouter.post('/export', validate(exportSchema), async (req, res) => {
         `;
         if (rows.length === 0) {
           logger.warn({ userId, session_id }, 'Export ownership check failed');
-          return res.status(403).json({ status: 'error', message: 'Forbidden: session does not belong to this user.' });
+          return res.status(404).json({ status: 'error', message: 'Session not found.' });
         }
       } catch (dbErr) {
         // DB not configured (Airtable dev mode) — skip ownership check

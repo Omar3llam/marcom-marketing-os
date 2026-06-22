@@ -5,7 +5,7 @@
 // The .env file is in the parent directory (project root).
 // ============================================================
 import { fileURLToPath } from 'url';
-import { dirname, join, resolve } from 'path';
+import { dirname, resolve } from 'path';
 import { config as dotenvConfig } from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -59,9 +59,6 @@ import { ensureCredentialSchema }  from './models/credential.js';
 import { config }           from './config.js';
 
 const app = express();
-
-// ── PATHS ────────────────────────────────────────────────────
-const FRONTEND_DIR = join(__dirname, '..', 'frontend');
 
 // ── TRUST PROXY (for accurate IP in rate-limit behind nginx/Heroku) ─
 app.set('trust proxy', 1);
@@ -144,15 +141,6 @@ app.use((req, res, next) => {
 
 // ── FIREBASE AUTH (global — populates req.user on every request) ─────
 app.use(firebaseAuthMiddleware);
-
-// ── STATIC FRONTEND (DEV / LEGACY VANILLA SHELL) ─────────────
-// In production the React client (client/dist) is served by the
-// catch-all block at the bottom of this file. In dev we keep the
-// legacy vanilla shell on /, served from frontend/, with the
-// Static file serving (no key injection needed with Firebase)
-if (config.nodeEnv !== 'production') {
-  app.use(express.static(FRONTEND_DIR));
-}
 
 // ── HEALTH CHECK — Render.com probe path ─────────────────────
 // Lightweight, no DB call. Required for render.yaml
