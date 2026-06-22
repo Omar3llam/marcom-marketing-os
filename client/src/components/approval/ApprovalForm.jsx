@@ -20,6 +20,7 @@
 // ============================================================
 import { useState } from 'react';
 import { Check, X, RotateCcw, Edit, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
 import { Text } from '../primitives/core/Text.jsx';
 import {
   DECISION,
@@ -100,7 +101,7 @@ export function ApprovalForm({ artifact, onSubmit, onCancel, initialDecision }) 
     e.preventDefault();
 
     if (!selectedDecision) {
-      alert('Please select a decision');
+      toast.error('Please select a decision');
       return;
     }
 
