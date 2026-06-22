@@ -6,6 +6,7 @@
 // ============================================================
 import { useMemo, useState } from 'react';
 import { Upload, RefreshCw, Loader2, X, Download } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils.js';
 import { useCampaignFeed, metricValue } from '@/hooks/useCampaignFeed.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
@@ -117,7 +118,7 @@ export default function CampaignsView() {
 
   const handleDownloadPdf = async () => {
     if (allRows.length === 0) {
-      alert('No campaign data to export');
+      toast.error('No campaign data to export');
       return;
     }
 

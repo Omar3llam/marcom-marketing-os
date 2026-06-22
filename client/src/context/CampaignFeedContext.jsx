@@ -5,7 +5,7 @@
 // Prevents duplicate fetches when multiple components need
 // the same /api/lumi/feed data in the same render tree.
 // ============================================================
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { api } from '@/lib/api.js';
 
@@ -55,8 +55,16 @@ export function CampaignFeedProvider({ children }) {
     return () => { cancelled = true; ctrl.abort(); };
   }, []);
 
+  // Memoized so the provider value is referentially stable across renders —
+  // a fresh object literal here would re-render every consumer on each render.
+  // setCampaigns is a stable useState setter; load is a stable useCallback.
+  const contextValue = useMemo(
+    () => ({ campaigns, loading, error, refetch: load, setCampaigns }),
+    [campaigns, loading, error, load],
+  );
+
   return (
-    <CampaignFeedCtx.Provider value={{ campaigns, loading, error, refetch: load, setCampaigns }}>
+    <CampaignFeedCtx.Provider value={contextValue}>
       {children}
     </CampaignFeedCtx.Provider>
   );

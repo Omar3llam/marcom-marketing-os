@@ -22,6 +22,7 @@
 // ============================================================
 import { useParams, useNavigate } from 'react-router-dom';
 import { Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
 import { Text } from '../components/primitives/core/Text.jsx';
 import { ArtifactCard } from '../components/approval/ArtifactCard.jsx';
 import { ApprovalForm } from '../components/approval/ApprovalForm.jsx';
@@ -51,11 +52,10 @@ export default function ApprovalQueue() {
   // ── Handle decision submission ────────────────────────────
   const handleSubmit = async () => {
     try {
-      await submitDecisions();
+      const result = await submitDecisions();
 
       // Show success message and redirect
-      // TODO: Replace alert with toast notification
-      alert(`Execution resumed successfully!\n\nStatus: ${result.status}\nRe-executed: ${result.reExecuted}`);
+      toast.success(`Execution resumed successfully — status: ${result.status}, re-executed: ${result.reExecuted}`);
 
       // Redirect to execution view or feed
       navigate(appRoutes.decisions);
