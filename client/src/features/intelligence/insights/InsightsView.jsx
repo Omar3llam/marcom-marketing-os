@@ -17,9 +17,11 @@ import { fmtRelative } from '@/lib/dateUtils.js';
 import { PriorityBadge, StageBadge } from '@/layouts';
 import RoleGate from '@/components/auth/RoleGate.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
+import { useGoals } from '@/hooks/useGoals.js';
 import { FatigueForecast } from './FatigueForecast.jsx';
 import { AccountBriefing } from './AccountBriefing.jsx';
 import { UnitEconomicsPanel } from './UnitEconomicsPanel.jsx';
+import { GoalsPanel } from './GoalsPanel.jsx';
 
 const STAGES = ['DYING', 'FATIGUED', 'TESTING', 'SCALING', 'STABLE'];
 
@@ -38,6 +40,12 @@ export default function GrowthStrategyBoard() {
   const { data: economics, loading: economicsLoading, error: economicsError, refetch: refetchEconomics } = useEconomics();
   const { save: saveEconomics, saving: economicsSaving } = useSaveEconomics();
   const onSaveEconomics = async (inputs) => { const ok = await saveEconomics(inputs); if (ok) await refetchEconomics(); };
+
+  // North-star goals (Phase 6A). Viewable by everyone who reaches this page
+  // (STRATEGIST/BUYER); creating one is STRATEGIST-only.
+  const { goals, isLoading: goalsLoading, error: goalsError, createGoal, isCreating: goalCreating } = useGoals();
+  const canSetGoals = collabRole === WORKSPACE_ROLE.STRATEGIST;
+  const goalsCurrency = economics?.economics?.currency || economics?.currentCac?.currency || 'USD';
 
   // Active bets = pending alerts, treated as hypotheses under test.
   const bets = useMemo(() => {
@@ -174,6 +182,17 @@ export default function GrowthStrategyBoard() {
         promotingId={promotingId}
         promoteError={promoteError}
         canPromote={canManageConsent}
+      />
+
+      {/* ── NORTH-STAR GOALS (Phase 6A · view all; create STRATEGIST) ─── */}
+      <GoalsPanel
+        goals={goals}
+        loading={goalsLoading}
+        error={goalsError}
+        onCreate={createGoal}
+        creating={goalCreating}
+        canCreate={canSetGoals}
+        currency={goalsCurrency}
       />
 
       {/* ── UNIT ECONOMICS (Phase 4-D · STRATEGIST only) ─────── */}
