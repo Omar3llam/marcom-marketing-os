@@ -11,7 +11,7 @@
  */
 
 import { z } from 'zod';
-import { RangeSchema, ScenarioSchema } from './scenario.schema';
+import { RangeSchema, ScenarioTypeSchema, ScenarioProjectionsSchema } from './scenario.schema';
 import { UnitEconomicsSchema } from './unitEconomics.schema';
 import { ComparatorSchema } from './guardrailRule.schema';
 
@@ -71,9 +71,22 @@ export const NorthStarGoalSchema = z.object({
   planId: z.string().nullish(),
 });
 
+// What PlanService.buildPlan PERSISTS on a plan — a SUBSET of the live
+// /scenario response. The persisted block omits `change`, `currency`, and
+// `memoryBasis` (those belong to the ephemeral scenario call), so validating it
+// against the full ScenarioSchema would wrongly DROP any real plan carrying a
+// scenario projection. Kept faithful to the handler to stay honest.
+export const PlanScenarioProjectionSchema = z.object({
+  scenarioType: ScenarioTypeSchema,
+  projections: ScenarioProjectionsSchema,
+  assumptions: z.array(z.string()),
+  confidence: z.number().min(0).max(1),
+  basis: z.string(),
+});
+
 // The assembled projections block stored on a Plan (all ranges).
 export const PlanProjectionsSchema = z.object({
-  scenario: ScenarioSchema.nullable(),
+  scenario: PlanScenarioProjectionSchema.nullable(),
   economics: UnitEconomicsSchema.partial().nullable(),
   goalLanding: GoalLandingSchema.nullable(),
 });
@@ -107,4 +120,5 @@ export type LeadingSignal = z.infer<typeof LeadingSignalSchema>;
 export type MemoryBasis = z.infer<typeof MemoryBasisSchema>;
 export type GoalLanding = z.infer<typeof GoalLandingSchema>;
 export type NorthStarGoal = z.infer<typeof NorthStarGoalSchema>;
+export type PlanScenarioProjection = z.infer<typeof PlanScenarioProjectionSchema>;
 export type Plan = z.infer<typeof PlanSchema>;
