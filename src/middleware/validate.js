@@ -11,8 +11,8 @@ export const chatSchema = z.object({
   image_base64:     z.string().max(5_242_880).optional(),  // ~4 MB base64
   image_media_type: z.enum(['image/jpeg', 'image/png', 'image/webp']).optional(),
   // Locked context from the onboarding wizard — used as a fallback when the
-  // session row was created before the wizard's /api/context/save round-trip
-  // landed. Capped at 16 KB.
+  // session row was created before the wizard's context round-trip
+  // (PUT /api/campaigns/me/context) landed. Capped at 16 KB.
   lumi_context:     z.string().max(16_000).optional(),
 });
 
