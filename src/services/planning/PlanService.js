@@ -26,6 +26,19 @@ const AGENDA_LIMIT     = Number(process.env.PLAN_AGENDA_LIMIT || 5);
 const ACTUALS_LOOKBACK = Number(process.env.PLAN_ACTUALS_LOOKBACK_DAYS || 60);
 
 /**
+ * Pure: is this plan's approval gate UNSATISFIED, so it must not be promoted?
+ * Role-agnostic ON PURPOSE (Phase 6B decision) — an OPEN approval gate blocks
+ * promotion for ANY role, including the strategist who opened it: "you asked
+ * for a sign-off, get it before the mix becomes budget moves." This is distinct
+ * from ApprovalService.isExecutionBlocked (which is role-aware and exempts a
+ * strategist); that answers "can this ROLE execute", this answers "is this
+ * PLAN's gate satisfied". Exported for unit testing without a DB.
+ */
+export function isPromotionApprovalBlocked(plan) {
+  return !!plan && plan.requiresApproval === true && plan.approvalState !== 'APPROVED';
+}
+
+/**
  * Pure: derive the Phase-3 allocation input from a stored plan, so promoting
  * a plan's mix rides the existing commit path. Exported for testing.
  */
@@ -184,9 +197,20 @@ export async function listPlans(workspaceId) {
 /** One plan + live actuals-vs-plan tracking. READ-ONLY. */
 export async function getPlan(workspaceId, planId, { now } = {}) {
   if (!workspaceId) throw new Error('getPlan: workspaceId required');
-  const plan = await prisma.plan.findFirst({ where: { id: planId, workspaceId }, include: { goals: true } });
+  const plan = await prisma.plan.findFirst({
+    where: { id: planId, workspaceId },
+    include: { goals: true, approvals: { orderBy: { createdAt: 'desc' }, take: 1 } },
+  });
   if (!plan) return null;
-  return { ...plan, tracking: await trackPlan(workspaceId, plan, { now }) };
+  const { approvals, ...rest } = plan;
+  // The plan row already carries the reflected requiresApproval/approvalState;
+  // surface the latest request so the owner can read WHY (the reviewer's note)
+  // when a revision was requested. Null when no gate was ever opened.
+  const a = approvals?.[0] ?? null;
+  const latestApproval = a
+    ? { id: a.id, state: a.state, reason: a.reason ?? null, decidedAt: a.decidedAt, createdAt: a.createdAt }
+    : null;
+  return { ...rest, latestApproval, tracking: await trackPlan(workspaceId, plan, { now }) };
 }
 
 /**
@@ -216,6 +240,14 @@ export async function promotePlanMix(workspaceId, planId) {
   if (!workspaceId) throw new Error('promotePlanMix: workspaceId required');
   const plan = await prisma.plan.findFirst({ where: { id: planId, workspaceId } });
   if (!plan) throw new Error('promotePlanMix: plan not found');
+  // Approval gate (Phase 6B): an unapproved plan with an open gate cannot become
+  // budget moves. Backend is the real arbiter — rejects regardless of caller.
+  if (isPromotionApprovalBlocked(plan)) {
+    const err = new Error('Plan requires STRATEGIST approval before execution');
+    err.code = 'ApprovalRequired';
+    err.approvalState = plan.approvalState ?? null;
+    throw err;
+  }
   if (plan.allocationPlanId) {
     return { planId: plan.id, allocationPlanId: plan.allocationPlanId, decisionsCreated: 0, alreadyPromoted: true };
   }
