@@ -10,6 +10,9 @@
 //                              (a RANGE {low,expected,high} — never a point).
 // POST /api/lumi/plans/:id/promote → 201 { planId, allocationPlanId, decisionsCreated }
 //                              — mix → PROPOSED REALLOCATE Decisions (STRATEGIST).
+//                              Blocked 409 ApprovalRequired if the plan's gate is open.
+// POST /api/lumi/approvals    → 201 { request } — open the approval gate on a plan
+//                              (Phase 6B; BUYER/STRATEGIST). Sets requiresApproval+PENDING.
 //
 // Every plan is validated against the existing PlanSchema; a row that fails the
 // contract is dropped rather than rendered as junk. Create + promote are
@@ -19,6 +22,7 @@
 //           promotePlan, promotingId }.
 // ============================================================
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { toast } from 'sonner';
 import { api } from '@/lib/api.js';
 import { PlanSchema } from '@/contracts/schemas/plan.schema';
 
@@ -28,6 +32,7 @@ export function usePlans() {
   const [error, setError] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [promotingId, setPromotingId] = useState(null);
+  const [submittingId, setSubmittingId] = useState(null);
   const aliveRef = useRef(true);
 
   const refetch = useCallback(async () => {
@@ -93,6 +98,28 @@ export function usePlans() {
     }
   }, []);
 
+  // Submit a plan for STRATEGIST sign-off (Phase 6B). Opens the approval gate
+  // (POST /approvals → Plan.requiresApproval=true, approvalState=PENDING). NO
+  // optimistic update — approval is a governance action; we wait for the API and
+  // refetch so the plan's reflected state is what the server actually wrote.
+  const submitForApproval = useCallback(async (planId) => {
+    if (!planId) return null;
+    setSubmittingId(planId);
+    setError(null);
+    try {
+      const res = await api.post('/api/lumi/approvals', { planId });
+      await refetch();
+      toast.success('Plan submitted for approval.');
+      return res.data?.request ?? null;
+    } catch (err) {
+      setError(err);
+      toast.error(err?.response?.data?.message || 'Couldn’t submit this plan for approval.');
+      return null;
+    } finally {
+      setSubmittingId(null);
+    }
+  }, [refetch]);
+
   const promotePlan = useCallback(async (planId) => {
     if (!planId) return null;
     setPromotingId(planId);
@@ -103,11 +130,18 @@ export function usePlans() {
       return res.data ?? null; // { planId, allocationPlanId, decisionsCreated }
     } catch (err) {
       setError(err);
+      // The backend gate (409 ApprovalRequired) is the real arbiter — surface it
+      // as a clear, actionable message, not a generic failure.
+      if (err?.response?.status === 409 && err.response.data?.error === 'ApprovalRequired') {
+        toast.error('This plan requires approval before it can be executed. Submit it for STRATEGIST review.');
+      } else {
+        toast.error(err?.response?.data?.message || 'Couldn’t promote this plan right now.');
+      }
       return null;
     } finally {
       setPromotingId(null);
     }
   }, [refetch]);
 
-  return { plans, isLoading, error, createPlan, isCreating, getPlan, promotePlan, promotingId };
+  return { plans, isLoading, error, createPlan, isCreating, getPlan, promotePlan, promotingId, submitForApproval, submittingId };
 }

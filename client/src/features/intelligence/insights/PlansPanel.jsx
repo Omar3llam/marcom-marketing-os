@@ -32,6 +32,12 @@ const goalTone = {
   OFF_TRACK: 'text-signal-kill bg-signal-kill-bg border-signal-kill/25',
   MISSED:    'text-signal-kill bg-signal-kill-bg border-signal-kill/25',
 };
+// Phase 6B — the approval gate's reflected state on a plan.
+const approvalMeta = {
+  PENDING:  { label: 'Awaiting approval',  tone: 'text-signal-hold bg-signal-hold-bg border-signal-hold/25' },
+  APPROVED: { label: 'Approved',           tone: 'text-signal-scale bg-signal-scale-bg border-signal-scale/25' },
+  REJECTED: { label: 'Revision requested', tone: 'text-signal-kill bg-signal-kill-bg border-signal-kill/25' },
+};
 
 const fmtDate = (d) => {
   const dt = d instanceof Date ? d : new Date(d);
@@ -94,12 +100,51 @@ function GoalLanding({ metric, landing }) {
   );
 }
 
+// ── Approval gate (Phase 6B) — submit / status / reviewer's note ─
+// State comes from the plan row (immediate); the reviewer's note (on REJECTED)
+// comes from the lazily-loaded detail. Backend is the real arbiter — these are
+// affordances, not the security boundary.
+function ApprovalControls({ plan, detail, canSubmit, onSubmit, submitting }) {
+  const state = plan?.approvalState ?? null;
+  const reason = detail?.latestApproval?.reason ?? null;
+
+  if (state === 'PENDING') {
+    return <p className="text-xs text-signal-hold">Awaiting STRATEGIST approval — promotion is blocked until it’s approved.</p>;
+  }
+  if (state === 'APPROVED') {
+    return <p className="text-xs text-signal-scale">Approved — this plan can be promoted.</p>;
+  }
+  if (state === 'REJECTED') {
+    return (
+      <div className="text-xs text-signal-kill">
+        <span>Revision requested{reason ? `: ${reason}` : '.'}</span>
+        {canSubmit && (
+          <button type="button" onClick={() => onSubmit?.(plan.id)} disabled={submitting}
+            className="ml-2 underline hover:no-underline disabled:opacity-40">
+            {submitting ? 'Resubmitting…' : 'Resubmit for approval'}
+          </button>
+        )}
+      </div>
+    );
+  }
+  if (canSubmit) {
+    return (
+      <button type="button" onClick={() => onSubmit?.(plan.id)} disabled={submitting}
+        className="rounded-lg border border-lumi-border px-3 py-1.5 text-xs font-semibold text-lumi-text hover:border-lumi-accent/50 disabled:opacity-40 disabled:cursor-not-allowed">
+        {submitting ? 'Submitting…' : 'Submit for approval'}
+      </button>
+    );
+  }
+  return null;
+}
+
 // ── Expanded plan detail (lazy-loaded live tracking) ────────────
-function PlanDetail({ detail, loading, canManage, onPromote, promoting, promoteResult }) {
+function PlanDetail({ plan, detail, loading, canManage, canSubmit, onSubmit, submitting, onPromote, promoting, promoteResult }) {
   if (loading) return <div className="px-4 py-3 text-xs text-lumi-subtle">Loading live tracking…</div>;
   if (!detail) return <div className="px-4 py-3 text-xs text-signal-kill">Couldn’t load this plan’s tracking right now.</div>;
 
   const tracked = detail.tracking?.goals ?? [];
+  const gateBlocks = plan?.requiresApproval === true && plan?.approvalState !== 'APPROVED';
   return (
     <div className="px-4 py-3 border-t border-lumi-border bg-lumi-elevated/40 space-y-2">
       {tracked.length === 0 ? (
@@ -108,16 +153,24 @@ function PlanDetail({ detail, loading, canManage, onPromote, promoting, promoteR
         tracked.map((g) => <GoalLanding key={g.goalId} metric={g.metric} landing={g.landing} />)
       )}
 
+      {/* Approval gate — governance precedes execution. */}
+      <div className="pt-1">
+        <ApprovalControls plan={plan} detail={detail} canSubmit={canSubmit} onSubmit={onSubmit} submitting={submitting} />
+      </div>
+
       {canManage && (
         <div className="pt-1">
           <button
             type="button"
-            disabled={promoting || !!detail.allocationPlanId}
+            disabled={promoting || !!detail.allocationPlanId || gateBlocks}
             onClick={() => onPromote?.(detail.id)}
             className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg hover:bg-lumi-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {detail.allocationPlanId ? 'Already promoted' : promoting ? 'Promoting…' : 'Promote mix → proposals'}
           </button>
+          {gateBlocks && (
+            <p className="mt-1 text-[11px] text-signal-hold">Blocked until approved — submit it for STRATEGIST review first.</p>
+          )}
           {promoteResult && (
             <p className="mt-1.5 text-xs text-signal-scale">
               Promoted — {promoteResult.decisionsCreated} proposed move{promoteResult.decisionsCreated === 1 ? '' : 's'}. Confirm {promoteResult.decisionsCreated === 1 ? 'it' : 'them'} in Decisions to execute.
@@ -187,6 +240,7 @@ export function PlansPanel({
   plans = [], loading = false, error = null,
   onCreate, creating = false, canManage = false, currency = 'USD',
   getPlanDetail, onPromote, promotingId = null,
+  canSubmit = false, onSubmit, submittingId = null,
 }) {
   const [expandedId, setExpandedId] = useState(null);
   const [details, setDetails] = useState({});       // id → plan-with-tracking
@@ -210,6 +264,13 @@ export function PlansPanel({
       setPromoteResults((prev) => ({ ...prev, [id]: result }));
       if (getPlanDetail) { const d = await getPlanDetail(id); setDetails((prev) => ({ ...prev, [id]: d })); }
     }
+  };
+
+  const submit = async (id) => {
+    const ok = await onSubmit?.(id);
+    // Refresh the cached detail so the reviewer's note + reflected state stay
+    // in sync with the row (which the hook already refetched).
+    if (ok && getPlanDetail) { const d = await getPlanDetail(id); setDetails((prev) => ({ ...prev, [id]: d })); }
   };
 
   if (loading) {
@@ -254,12 +315,21 @@ export function PlansPanel({
                   <span className={cn('font-mono text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border', planTone[p.status] || planTone.DRAFT)}>
                     {p.status}
                   </span>
+                  {p.approvalState && approvalMeta[p.approvalState] && (
+                    <span className={cn('font-mono text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border', approvalMeta[p.approvalState].tone)}>
+                      {approvalMeta[p.approvalState].label}
+                    </span>
+                  )}
                 </button>
                 {open && (
                   <PlanDetail
+                    plan={p}
                     detail={details[p.id]}
                     loading={detailLoadingId === p.id}
                     canManage={canManage}
+                    canSubmit={canSubmit}
+                    onSubmit={submit}
+                    submitting={submittingId === p.id}
                     onPromote={promote}
                     promoting={promotingId === p.id}
                     promoteResult={promoteResults[p.id]}

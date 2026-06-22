@@ -18,6 +18,39 @@ import { ComparatorSchema } from './guardrailRule.schema';
 export const PlanStatusSchema = z.enum(['DRAFT', 'ACTIVE', 'CLOSED']);
 export const GoalStatusSchema = z.enum(['ON_TRACK', 'AT_RISK', 'OFF_TRACK', 'ACHIEVED', 'MISSED']);
 
+// Phase 6B — the plan approval gate (collaboration ApprovalService). The DB
+// enum is exactly these three; "Request revision" in the UI is REJECTED + reason
+// (REQUEST_REVISION belongs to the SEPARATE artifact-approval system).
+export const ApprovalStateSchema = z.enum(['PENDING', 'APPROVED', 'REJECTED']);
+
+// One ApprovalRequest row, as listed for the reviewer queue (GET /approvals).
+// `plan` is the lightweight context the handler now includes so the queue
+// renders a row (name/period/budget) without a second round-trip.
+export const ApprovalRequestSchema = z.object({
+  id: z.string().min(1),
+  workspaceId: z.string().min(1),
+  planId: z.string().nullish(),
+  subjectType: z.string(),
+  subjectId: z.string(),
+  requestedById: z.string().nullish(),
+  state: ApprovalStateSchema,
+  reason: z.string().nullish(),
+  decidedById: z.string().nullish(),
+  decidedAt: z.coerce.date().nullish(),
+  createdAt: z.coerce.date(),
+  plan: z
+    .object({
+      id: z.string(),
+      name: z.string(),
+      periodStart: z.coerce.date(),
+      periodEnd: z.coerce.date(),
+      totalBudgetMinor: z.number().int(),
+      currency: z.string().default('USD'),
+      status: PlanStatusSchema,
+    })
+    .nullish(),
+});
+
 // A leading indicator (reused fatigue forecast) that can raise goal risk.
 export const LeadingSignalSchema = z.object({
   signal: z.string(),
@@ -105,6 +138,19 @@ export const PlanSchema = z.object({
   projections: PlanProjectionsSchema,
   memoryBasis: MemoryBasisSchema,
   allocationPlanId: z.string().nullish(),
+  // Phase 6B approval gate — present on every plan row (defaults), plus the
+  // latest request (getPlan only) so the owner can read the reviewer's note.
+  requiresApproval: z.boolean().optional().default(false),
+  approvalState: ApprovalStateSchema.nullish(),
+  latestApproval: z
+    .object({
+      id: z.string(),
+      state: ApprovalStateSchema,
+      reason: z.string().nullish(),
+      decidedAt: z.coerce.date().nullish(),
+      createdAt: z.coerce.date(),
+    })
+    .nullish(),
   goals: z.array(NorthStarGoalSchema).optional(),
   tracking: z
     .object({
@@ -122,3 +168,5 @@ export type GoalLanding = z.infer<typeof GoalLandingSchema>;
 export type NorthStarGoal = z.infer<typeof NorthStarGoalSchema>;
 export type PlanScenarioProjection = z.infer<typeof PlanScenarioProjectionSchema>;
 export type Plan = z.infer<typeof PlanSchema>;
+export type ApprovalState = z.infer<typeof ApprovalStateSchema>;
+export type ApprovalRequest = z.infer<typeof ApprovalRequestSchema>;
