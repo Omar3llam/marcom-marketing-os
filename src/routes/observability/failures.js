@@ -8,6 +8,7 @@
 // ============================================================
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
+import { logger } from '../../utils/logger.js';
 
 export const failuresRouter = Router();
 
@@ -26,13 +27,12 @@ failuresRouter.get('/failures', async (req, res) => {
       try {
         return await fn();
       } catch (err) {
-        console.error({
-          msg: `[observability/failures] query failed: ${name}`,
+        logger.error({
           workspaceId,
           errorCode: err.code,
           errorMessage: err.message,
           meta: err.meta,
-        });
+        }, `[observability/failures] query failed: ${name}`);
         throw err;
       }
     };
@@ -130,13 +130,12 @@ failuresRouter.get('/failures', async (req, res) => {
       generated_at: now.toISOString(),
     });
   } catch (err) {
-    console.error({
-      msg: '[observability/failures] unhandled error',
+    logger.error({
       workspaceId,
       errorCode: err.code,
       errorMessage: err.message,
       meta: err.meta,
-    });
+    }, '[observability/failures] unhandled error');
     return res.status(500).json({ error: 'Failed to fetch failure log' });
   }
 });

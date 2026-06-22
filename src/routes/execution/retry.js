@@ -129,13 +129,13 @@ export function registerRetryRoute(router) {
         // The record exists but couldn't be promoted. Log + surface a
         // 500 so the operator sees the failure rather than a silent
         // PENDING ghost.
-        logger.error('[ExecutionRouter] Retry transition failed', {
+        logger.error({
           originalId,
           newExecutionId: newRequest.id,
           workspaceId,
           userId,
           error: transitionErr.message,
-        });
+        }, '[ExecutionRouter] Retry transition failed');
         return res.status(500).json({
           error: 'Retry created but could not be queued',
           code: 'RETRY_TRANSITION_FAILED',
@@ -159,13 +159,13 @@ export function registerRetryRoute(router) {
         version: updated.version,
       });
     } catch (err) {
-      logger.error('[ExecutionRouter] Retry failed', {
+      logger.error({
         originalId,
         workspaceId,
         userId,
         error: err.message,
         stack: err.stack,
-      });
+      }, '[ExecutionRouter] Retry failed');
       return res.status(500).json({
         error: 'Failed to retry execution',
         code: 'RETRY_ERROR',

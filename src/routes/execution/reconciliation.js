@@ -79,13 +79,13 @@ export function registerReconciliationRoute(router) {
 
       return res.json(state);
     } catch (err) {
-      logger.error('[ExecutionRouter] Reconciliation failed', {
+      logger.error({
         executionId,
         workspaceId,
         userId,
         error: err.message,
         stack: err.stack,
-      });
+      }, '[ExecutionRouter] Reconciliation failed');
 
       return res.status(500).json({
         error: 'Failed to fetch execution state',

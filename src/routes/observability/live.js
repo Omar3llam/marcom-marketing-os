@@ -8,6 +8,7 @@
 // ============================================================
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
+import { logger } from '../../utils/logger.js';
 
 export const liveRouter = Router();
 
@@ -27,13 +28,12 @@ liveRouter.get('/live', async (req, res) => {
       try {
         return await fn();
       } catch (err) {
-        console.error({
-          msg: `[observability/live] query failed: ${name}`,
+        logger.error({
           workspaceId,
           errorCode: err.code,
           errorMessage: err.message,
           meta: err.meta,
-        });
+        }, `[observability/live] query failed: ${name}`);
         throw err;
       }
     };
@@ -139,13 +139,12 @@ liveRouter.get('/live', async (req, res) => {
       generated_at: now.toISOString(),
     });
   } catch (err) {
-    console.error({
-      msg: '[observability/live] Prisma query failed',
+    logger.error({
       workspaceId,
       errorCode: err.code,
       errorMessage: err.message,
       meta: err.meta,
-    });
+    }, '[observability/live] Prisma query failed');
     return res.status(500).json({ error: 'Failed to fetch live metrics' });
   }
 });

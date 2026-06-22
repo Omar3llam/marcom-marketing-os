@@ -79,11 +79,11 @@ userRouter.get('/workspace', async (req, res) => {
     });
 
   } catch (err) {
-    logger.error('[userRouter] GET /workspace error:', {
+    logger.error({
       uid: req.user?.uid,
       code: err.code,
       message: err.message,
-    });
+    }, '[userRouter] GET /workspace error');
     return res.status(500).json({
       error:  'Failed to fetch workspace',
       detail: process.env.NODE_ENV === 'development' ? err.message : undefined,
@@ -129,7 +129,7 @@ userRouter.patch('/profile', async (req, res) => {
 
     res.json({ success: true, displayName: trimmed });
   } catch (err) {
-    logger.error('[userRouter] PATCH /profile error:', err);
+    logger.error({ err: err.message }, '[userRouter] PATCH /profile error');
     res.status(500).json({ error: 'Failed to update profile' });
   }
 });
@@ -182,7 +182,7 @@ userRouter.patch('/workspace', async (req, res) => {
 
     res.json({ success: true, workspaceName: trimmed });
   } catch (err) {
-    logger.error('[userRouter] PATCH /workspace error:', err);
+    logger.error({ err: err.message }, '[userRouter] PATCH /workspace error');
     res.status(500).json({ error: 'Failed to update workspace' });
   }
 });
@@ -277,10 +277,10 @@ userRouter.delete('/account', async (req, res) => {
       } else {
         // Auth deletion failed but database already cleaned up
         // Log error but still return success (database is source of truth)
-        logger.error('[userRouter] Firebase Auth deletion failed (DB already clean):', {
+        logger.error({
           code: authErr.code,
           message: authErr.message,
-        });
+        }, '[userRouter] Firebase Auth deletion failed (DB already clean)');
       }
     }
 
@@ -293,12 +293,12 @@ userRouter.delete('/account', async (req, res) => {
     res.json({ success: true });
 
   } catch (err) {
-    logger.error('[userRouter] DELETE /account error:', {
+    logger.error({
       uid: req.user?.uid,
       code: err.code,
       message: err.message,
       stack: err.stack,
-    });
+    }, '[userRouter] DELETE /account error');
 
     // Check if this is a "record not found" error (user already deleted)
     if (err.code === 'P2025') {

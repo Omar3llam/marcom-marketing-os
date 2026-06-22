@@ -293,25 +293,7 @@ export async function processDbWriteUpload(file, workspaceId, userId) {
   const { campaigns: parsed, errors: parseErrors, stats } = parseMetaAdsCsv(file.buffer);
   logger.info({ stats, parseErrors, totalRows: parsed?.length || 0 }, '[CSV_PIPELINE] CSV_PARSED');
 
-  // ── Enhanced Debug Logging (PR #44) ───────────────────────
-  console.log('\n========== CSV UPLOAD DEBUG ==========');
-  console.log('📊 ROWS PARSED:', {
-    totalRows:      stats?.total_rows || 0,
-    validCampaigns: parsed?.length || 0,
-    parseErrors:    parseErrors?.length || 0,
-    workspaceId,
-  });
-
   if (parsed && parsed.length > 0) {
-    console.log('🔬 FIRST ROW NORMALIZED:', {
-      campaignId:   parsed[0].campaignId,
-      campaignName: parsed[0].campaignName,
-      spend:        parsed[0].spend,
-      impressions:  parsed[0].impressions,
-      ctr:          parsed[0].ctr,
-      roas:         parsed[0].roas,
-      frequency:    parsed[0].frequency,
-    });
     logger.info({
       sample: {
         campaignId:  parsed[0].campaignId,
@@ -418,18 +400,9 @@ export async function processDbWriteUpload(file, workspaceId, userId) {
 
     logger.info({ workspaceId, campaignsPersisted: processed, actionsPersisted: alertsCreated, totalSpend }, '[CSV_PIPELINE] CAMPAIGNS_PERSISTED');
 
-    // ── Enhanced Debug Logging (PR #44) ─────────────────────
-    console.log('💾 CAMPAIGNS CREATED:', {
-      campaignsPersisted: processed,
-      actionsPersisted:   alertsCreated,
-      totalSpend:         `$${totalSpend.toFixed(2)}`,
-      workspaceId,
-    });
   }
 
   logger.info({ workspaceId, processed, alertsCreated, errors: errors.length }, '[CSV_PIPELINE] PIPELINE_COMPLETE');
-  console.log('✅ PIPELINE COMPLETE:', { uploaded: stats.total_rows, processed, alertsCreated, errors: errors.length });
-  console.log('======================================\n');
 
   return {
     statusCode: 200,

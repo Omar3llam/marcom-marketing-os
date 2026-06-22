@@ -145,13 +145,13 @@ export function registerIncidentRoute(router) {
 
       return res.json({ execution, transitions, incident });
     } catch (err) {
-      logger.error('[ExecutionRouter] Incident fetch failed', {
+      logger.error({
         executionId,
         workspaceId,
         userId,
         error: err.message,
         stack: err.stack,
-      });
+      }, '[ExecutionRouter] Incident fetch failed');
       return res.status(500).json({
         error: 'Failed to fetch incident',
         code: 'INCIDENT_ERROR',

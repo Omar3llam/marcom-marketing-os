@@ -112,14 +112,14 @@ export async function executeMetaAction(
   } catch (err) {
     const errorMessage = err.response?.data?.error?.message || err.message;
 
-    logger.error(`[MetaExecutionService] Action failed`, {
+    logger.error({
       workspaceId,
       userId,
       actionType,
       targetId,
       error: errorMessage,
       statusCode: err.response?.status,
-    });
+    }, `[MetaExecutionService] Action failed`);
 
     return {
       success: false,
