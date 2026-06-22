@@ -19,6 +19,17 @@ export const appRoutes = {
   settingsSecurity: '/app/settings/security',
 };
 
+// The three Intelligence surfaces, rendered as a shared sub-nav strip on each
+// (mirrors `settingsSections`). `roles` gates a tab to those collabRoles — Proof
+// is ungated (all roles; the view itself narrows by role). The Sidebar's
+// "Intelligence" item only lands on Blended Truth; this strip is how Growth
+// Strategy + Proof become reachable without a deep-link.
+export const intelligenceSections = [
+  { key: 'blended-truth', label: 'Blended Truth',    path: appRoutes.blendedTruth, roles: ['STRATEGIST', 'BUYER'] },
+  { key: 'insights',      label: 'Growth Strategy',  path: appRoutes.insights,     roles: ['STRATEGIST', 'BUYER'] },
+  { key: 'proof',         label: 'Proof of Learning', path: appRoutes.proof },
+];
+
 export const settingsSections = [
   { key: 'general', label: 'General', path: appRoutes.settingsGeneral },
   { key: 'integrations', label: 'Integrations', path: appRoutes.settingsIntegrations },

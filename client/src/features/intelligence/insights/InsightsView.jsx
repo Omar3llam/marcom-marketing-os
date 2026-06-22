@@ -19,6 +19,7 @@ import RoleGate from '@/components/auth/RoleGate.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useGoals } from '@/hooks/useGoals.js';
 import { usePlans } from '@/hooks/usePlans.js';
+import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
 import { FatigueForecast } from './FatigueForecast.jsx';
 import { AccountBriefing } from './AccountBriefing.jsx';
 import { UnitEconomicsPanel } from './UnitEconomicsPanel.jsx';
@@ -110,6 +111,8 @@ export default function GrowthStrategyBoard() {
           Memory Layer: {learnings.length} learning{learnings.length === 1 ? '' : 's'}
         </div>
       </header>
+
+      <IntelligenceSubNav />
 
       {/* ── MACRO METRICS ───────────────────────────────────── */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-10">
