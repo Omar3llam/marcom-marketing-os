@@ -176,6 +176,45 @@
   --c-verdict-hold-text:  #D97706;
   --c-verdict-scale-text: #059669;
 
+  /* ── Runtime-layer Tokens (--c-* namespace) ──────────────── */
+  /*
+   * Promoted to :root from pages/demo/Operations/Operations.module.css
+   * so components that render OUTSIDE the `.operationsRoot` subtree
+   * resolve them. Without these, StatCard/Panel tone colors, the
+   * StatCard gauge gradient, Sidebar/RadarStrip/NotificationBell
+   * status glows, and Onboarding progress dots silently render with
+   * no color (the tokens were only defined inside the lazy Operations
+   * route). Values mirror the --color-* palette above; the
+   * `.operationsRoot` block keeps these as a local override.
+   */
+  --c-gold:        #F6C945;
+  --c-gold-deep:   #E0A800;
+  --c-gold-glow:   #FFD95A;   /* = --color-brand-glow; was undefined (Sidebar) */
+  --c-lumi-accent: #E0A800;   /* = --color-lumi-accent; was undefined (Onboarding) */
+
+  --c-surface-light:         #F8F6F2;
+  --c-surface-card:          #FFFFFF;
+  --c-surface-border:        #EDEAE4;
+  --c-surface-elevated:      #F1EEE8;
+  --c-surface-border-strong: #D4CFCA;
+
+  --c-text-base:   #2B2B2B;
+  --c-text-soft:   #3A3A3A;
+  --c-text-muted:  #6B6B6B;
+  --c-text-subtle: #9A9A9A;
+
+  --c-kill:       #EF4444;
+  --c-kill-bg:    rgba(239,68,68,0.10);
+  --c-kill-text:  #DC2626;
+  --c-hold:       #F59E0B;
+  --c-hold-bg:    rgba(245,158,11,0.10);
+  --c-hold-text:  #D97706;
+  --c-scale:      #10B981;
+  --c-scale-bg:   rgba(16,185,129,0.10);
+  --c-scale-text: #059669;
+
+  --c-lumi-elevated: #F1EEE8;
+
   /* ── Font Sizes ──────────────────────────────────────────── */
   --font-size-xs: 11px;
   --font-size-sm: 12px;
