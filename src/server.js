@@ -31,7 +31,6 @@ import { errorHandler }     from './middleware/errorHandler.js';
 import { masterRouter }     from './routes/master.js';
 import { exportRouter }     from './routes/export.js';
 import { historyRouter }    from './routes/history.js';
-import { contextRouter }    from './routes/context.js';
 import { projectsRouter }     from './routes/projects.js';
 import { credentialsRouter }  from './routes/credentials.js';
 import { authMetaRouter }     from './routes/auth/meta.js';
@@ -249,14 +248,6 @@ app.use('/api/history',
   requireAuth,
   apiLimiter,
   historyRouter
-);
-
-// Onboarding-wizard context endpoints (user-scoped)
-// DEPRECATED: superseded by /api/projects. Kept for backward-compat + migration.
-app.use('/api/context',
-  requireAuth,
-  apiLimiter,
-  contextRouter
 );
 
 // Project management endpoints (user-scoped)
