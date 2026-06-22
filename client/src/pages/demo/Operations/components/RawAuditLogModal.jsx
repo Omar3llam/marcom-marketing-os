@@ -1,10 +1,15 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
+import { useFocusTrap } from '@/hooks/useFocusTrap.js';
 
 // Raw JSON view of the transition chain — the forensic "show me everything"
 // surface. No additional fetch needed: the Incident Panel already loaded
 // the transitions when it mounted via GET /api/execute/:id/incident.
 export function RawAuditLogModal({ executionId, transitions, onClose }) {
+  // Trap focus inside the dialog and restore it to the trigger on close.
+  // (Escape is handled below; the modal is mounted only while open.)
+  const trapRef = useFocusTrap(true);
+
   // Close on Escape for keyboard ergonomics.
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -14,6 +19,7 @@ export function RawAuditLogModal({ executionId, transitions, onClose }) {
 
   return (
     <div
+      ref={trapRef}
       role="dialog"
       aria-modal="true"
       aria-label={`Raw audit log for execution ${executionId}`}
