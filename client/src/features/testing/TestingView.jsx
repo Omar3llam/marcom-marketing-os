@@ -17,13 +17,16 @@
 // the resulting verdict rides the existing confirm→execute path — Lumi
 // proposes, the human confirms, nothing auto-executes.
 // ============================================================
+import { useState } from 'react';
 import { FlaskConical } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useTests } from '@/hooks/useTests.js';
 import { useConcludeTest } from '@/hooks/useConcludeTest.js';
 import { useStartTest } from '@/hooks/useStartTest.js';
+import { useRecordMetrics } from '@/hooks/useRecordMetrics.js';
 import { useCommitAgenda } from '@/hooks/useCommitAgenda.js';
+import { toMinor, fromMinor } from '@/lib/money';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
 import { appRoutes } from '@/app/routeManifest.js';
@@ -90,7 +93,7 @@ function ConfidenceBadge({ label }) {
 const ORDER = { RUNNING: 0, CONCLUDED: 1, PROPOSED: 2, ABANDONED: 3 };
 
 // ── One experiment card ─────────────────────────────────────────
-function ExperimentCard({ exp, canOperate, onConclude, concludingId, onStart, startingId }) {
+function ExperimentCard({ exp, canOperate, onConclude, concludingId, onStart, startingId, onRecord, recordingId, recordError }) {
   return (
     <div className="rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
       <div className="flex items-center justify-between gap-3">
@@ -129,7 +132,15 @@ function ExperimentCard({ exp, canOperate, onConclude, concludingId, onStart, st
       )}
 
       {exp.status === 'RUNNING' && (
-        <RunningBody exp={exp} canOperate={canOperate} onConclude={onConclude} concludingId={concludingId} />
+        <RunningBody
+          exp={exp}
+          canOperate={canOperate}
+          onConclude={onConclude}
+          concludingId={concludingId}
+          onRecord={onRecord}
+          recordingId={recordingId}
+          recordError={recordError}
+        />
       )}
 
       {exp.status === 'PROPOSED' && (
@@ -166,8 +177,8 @@ function ProposedBody({ exp, canOperate, onStart, startingId }) {
   );
 }
 
-// ── RUNNING body: live counts + the gated Conclude action ───────
-function RunningBody({ exp, canOperate, onConclude, concludingId }) {
+// ── RUNNING body: live counts + record-metrics + the gated Conclude ─────
+function RunningBody({ exp, canOperate, onConclude, concludingId, onRecord, recordingId, recordError }) {
   const variants = Array.isArray(exp.variants) ? exp.variants : [];
   const gate = thinGate(exp);
   const isConcluding = concludingId === exp.id;
@@ -187,6 +198,13 @@ function RunningBody({ exp, canOperate, onConclude, concludingId }) {
           </div>
         ))}
       </div>
+
+      {/* Record observed counts — the manual entry that moves a thin/zeroed
+          test past the readout floor. Operator-tier; the same numbers the
+          (separate, already-wired) Meta refresh would otherwise supply. */}
+      {canOperate && (
+        <MetricsForm exp={exp} onRecord={onRecord} recordingId={recordingId} recordError={recordError} />
+      )}
 
       {canOperate && (
         <div>
@@ -210,11 +228,153 @@ function RunningBody({ exp, canOperate, onConclude, concludingId }) {
   );
 }
 
+// ── Record observed per-variant counts (manual entry) ───────────
+// Fields are EXACTLY what POST /tests/:id/metrics accepts — impressions,
+// clicks, conversions (raw ints) + spend/revenue (entered in major units,
+// converted to integer minor units on submit). No invented fields. A fresh
+// open re-seeds from the current counts so the operator edits, not retypes.
+const NUM_INPUT =
+  'font-mono text-xs bg-lumi-elevated border border-lumi-border rounded-md px-2 py-1 text-lumi-text w-full';
+
+function MetricsForm({ exp, onRecord, recordingId, recordError }) {
+  const currency = exp.currency || 'USD';
+  const variants = Array.isArray(exp.variants) ? exp.variants : [];
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState({});
+  const [saved, setSaved] = useState(null);
+  const isRecording = recordingId === exp.id;
+
+  // No arms yet → nothing to record against (don't offer a dead form).
+  if (variants.length === 0) return null;
+
+  const openForm = () => {
+    const next = {};
+    for (const v of variants) {
+      next[v.id] = {
+        impressions: String(v.impressions ?? 0),
+        clicks: String(v.clicks ?? 0),
+        conversions: String(v.conversions ?? 0),
+        spend: String(fromMinor(v.spendMinor ?? 0, currency)),
+        revenue: String(fromMinor(v.revenueMinor ?? 0, currency)),
+      };
+    }
+    setDraft(next);
+    setSaved(null);
+    setOpen(true);
+  };
+
+  const setField = (vid, field, value) =>
+    setDraft((d) => ({ ...d, [vid]: { ...(d[vid] || {}), [field]: value } }));
+
+  const toCount = (s) => { const n = parseInt(s, 10); return Number.isFinite(n) && n > 0 ? n : 0; };
+  const toAmount = (s) => { const n = Number(s); return Number.isFinite(n) && n > 0 ? n : 0; };
+
+  const submit = async () => {
+    const rows = variants.map((v) => {
+      const f = draft[v.id] || {};
+      return {
+        variantId: v.id,
+        impressions: toCount(f.impressions),
+        clicks: toCount(f.clicks),
+        conversions: toCount(f.conversions),
+        spendMinor: toMinor(toAmount(f.spend), currency),
+        revenueMinor: toMinor(toAmount(f.revenue), currency),
+      };
+    });
+    const result = await onRecord?.(exp.id, rows);
+    if (result) {
+      setSaved(result.updated ?? rows.length);
+      setOpen(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <div>
+        <button
+          type="button"
+          onClick={openForm}
+          className="rounded-lg border border-lumi-border bg-lumi-elevated px-3 py-1.5 text-xs font-semibold text-lumi-text transition-colors hover:bg-lumi-surface"
+        >
+          Record metrics
+        </button>
+        {saved != null && (
+          <p className="mt-1.5 text-xs text-signal-scale">
+            Recorded — updated {saved} variant{saved === 1 ? '' : 's'}. Counts and the conclude gate refreshed.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-xl border border-lumi-border bg-lumi-surface p-3 space-y-3">
+      <p className="text-xs text-lumi-subtle">
+        Enter the observed counts for each arm. Money in {currency}; leave a field at 0 if there’s nothing to record.
+      </p>
+      {variants.map((v) => {
+        const f = draft[v.id] || {};
+        return (
+          <div key={v.id} className="space-y-1.5">
+            <div className="text-xs text-lumi-muted">{v.label}{v.isControl ? ' (control)' : ''}</div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {[
+                ['impressions', 'Impressions'],
+                ['clicks', 'Clicks'],
+                ['conversions', 'Conversions'],
+                ['spend', `Spend (${currency})`],
+                ['revenue', `Revenue (${currency})`],
+              ].map(([field, label]) => (
+                <label key={field} className="block">
+                  <span className="block text-[10px] uppercase tracking-wide text-lumi-subtle mb-0.5">{label}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    inputMode="decimal"
+                    aria-label={`${v.label} ${label}`}
+                    value={f[field] ?? ''}
+                    onChange={(e) => setField(v.id, field, e.target.value)}
+                    className={NUM_INPUT}
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          disabled={isRecording}
+          onClick={submit}
+          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {isRecording ? 'Recording…' : 'Save metrics'}
+        </button>
+        <button
+          type="button"
+          disabled={isRecording}
+          onClick={() => setOpen(false)}
+          className="rounded-lg border border-lumi-border px-3 py-1.5 text-xs font-semibold text-lumi-muted transition-colors hover:bg-lumi-elevated disabled:opacity-40"
+        >
+          Cancel
+        </button>
+      </div>
+      {recordError && (
+        <p className="text-xs text-signal-kill">
+          {recordError.message || 'Couldn’t record metrics right now. Try again shortly.'}
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Pure, prop-driven view (unit-tested directly) ───────────────
 export function TestingView({
   experiments = [], agenda = [], role = WORKSPACE_ROLE.BUYER,
   onConclude, concludingId, concludeError,
   onStart, startingId, startError,
+  onRecord, recordingId, recordError,
   onCommit, committing = false, commitError,
 }) {
   const canOperate = role === WORKSPACE_ROLE.BUYER || role === WORKSPACE_ROLE.STRATEGIST;
@@ -291,6 +451,9 @@ export function TestingView({
           concludingId={concludingId}
           onStart={onStart}
           startingId={startingId}
+          onRecord={onRecord}
+          recordingId={recordingId}
+          recordError={recordError}
         />
       ))}
     </div>
@@ -303,6 +466,7 @@ export default function Testing() {
   const { experiments, agenda, loading, error, refetch } = useTests();
   const { conclude, concludingId, error: concludeError } = useConcludeTest();
   const { start, startingId, error: startError } = useStartTest();
+  const { record, recordingId, error: recordError } = useRecordMetrics();
   const { commit, committing, error: commitError } = useCommitAgenda();
 
   const onConclude = async (testId) => {
@@ -313,6 +477,12 @@ export default function Testing() {
   const onStart = async (testId) => {
     const result = await start(testId);
     if (result) await refetch();
+  };
+
+  const onRecord = async (testId, variants) => {
+    const result = await record(testId, variants);
+    if (result) await refetch();
+    return result; // the form shows its confirmation on a truthy result
   };
 
   const onCommit = async (picks) => {
@@ -340,6 +510,9 @@ export default function Testing() {
           onStart={onStart}
           startingId={startingId}
           startError={startError}
+          onRecord={onRecord}
+          recordingId={recordingId}
+          recordError={recordError}
           onCommit={onCommit}
           committing={committing}
           commitError={commitError}
