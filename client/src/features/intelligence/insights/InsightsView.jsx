@@ -18,10 +18,12 @@ import { PriorityBadge, StageBadge } from '@/layouts';
 import RoleGate from '@/components/auth/RoleGate.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useGoals } from '@/hooks/useGoals.js';
+import { usePlans } from '@/hooks/usePlans.js';
 import { FatigueForecast } from './FatigueForecast.jsx';
 import { AccountBriefing } from './AccountBriefing.jsx';
 import { UnitEconomicsPanel } from './UnitEconomicsPanel.jsx';
 import { GoalsPanel } from './GoalsPanel.jsx';
+import { PlansPanel } from './PlansPanel.jsx';
 
 const STAGES = ['DYING', 'FATIGUED', 'TESTING', 'SCALING', 'STABLE'];
 
@@ -46,6 +48,10 @@ export default function GrowthStrategyBoard() {
   const { goals, isLoading: goalsLoading, error: goalsError, createGoal, isCreating: goalCreating } = useGoals();
   const canSetGoals = collabRole === WORKSPACE_ROLE.STRATEGIST;
   const goalsCurrency = economics?.economics?.currency || economics?.currentCac?.currency || 'USD';
+
+  // Forward-looking plans (Phase 6A). View all who reach this page; build +
+  // promote are STRATEGIST-only.
+  const { plans, isLoading: plansLoading, error: plansError, createPlan, isCreating: planCreating, getPlan, promotePlan, promotingId: planPromotingId } = usePlans();
 
   // Active bets = pending alerts, treated as hypotheses under test.
   const bets = useMemo(() => {
@@ -193,6 +199,20 @@ export default function GrowthStrategyBoard() {
         creating={goalCreating}
         canCreate={canSetGoals}
         currency={goalsCurrency}
+      />
+
+      {/* ── PLANS (Phase 6A · view all; build/promote STRATEGIST) ─── */}
+      <PlansPanel
+        plans={plans}
+        loading={plansLoading}
+        error={plansError}
+        onCreate={createPlan}
+        creating={planCreating}
+        canManage={canSetGoals}
+        currency={goalsCurrency}
+        getPlanDetail={getPlan}
+        onPromote={promotePlan}
+        promotingId={planPromotingId}
       />
 
       {/* ── UNIT ECONOMICS (Phase 4-D · STRATEGIST only) ─────── */}
