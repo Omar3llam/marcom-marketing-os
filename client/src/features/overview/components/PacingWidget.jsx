@@ -9,7 +9,9 @@
 //   channels < 2       → "connect a second channel" — a single-channel burn
 //                        rate against a total budget understates spend, so we
 //                        refuse to show a misleading number.
-//   monthlyBudget null → "set a budget in Settings"
+//   monthlyBudget null → "set a budget via Reallocate Capital (Blended Truth)" —
+//                        the budget is the latest committed AllocationPlan's
+//                        total, NOT a Settings field (there is none).
 //   pacing null        → "not enough data to project pacing yet"
 //   else               → real pacing (projected vs budget · run rate · early)
 //
@@ -18,11 +20,13 @@
 // minor units; divide by 100 before formatting.
 // ============================================================
 import { Gauge } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { usePortfolio } from '@/hooks/usePortfolio.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
 import { roleAllowed } from '@/components/auth/RoleGate.jsx';
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
+import { appRoutes } from '@/app/routeManifest.js';
 
 function Shell({ children }) {
   return (
@@ -70,7 +74,15 @@ export default function PacingWidget() {
     return <Shell><Note>Connect a second channel to see pacing — a single-channel burn rate against a total budget understates spend.</Note></Shell>;
   }
   if (budgetMinor == null) {
-    return <Shell><Note>Set a monthly budget in Settings to see burn rate.</Note></Shell>;
+    return (
+      <Shell>
+        <Note>
+          Set a monthly budget in{' '}
+          <Link to={appRoutes.blendedTruth} className="text-lumi-accent hover:underline">Reallocate Capital</Link>
+          {' '}— committing an allocation there sets the budget burn rate is measured against.
+        </Note>
+      </Shell>
+    );
   }
   if (!pacing) {
     return <Shell><Note>Not enough data to project pacing yet.</Note></Shell>;
