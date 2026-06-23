@@ -22,7 +22,7 @@ import { roleAllowed } from '@/components/auth/RoleGate.jsx';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { cn } from '@/lib/utils.js';
 import NotificationBell from '@/components/ui/NotificationBell.jsx';
-import NotificationPopover from '@/components/ui/NotificationPopover.jsx';
+import InboxPanel from '@/features/inbox/InboxPanel.jsx';
 import RecentDecisions from '@/components/ui/RecentDecisions.jsx';
 import CommandPalette from '@/components/ui/CommandPalette.jsx';
 import RadarStrip from './RadarStrip.jsx';
@@ -243,13 +243,11 @@ export default function Sidebar({
               open={notifOpen}
               onToggle={() => setNotifOpen((p) => !p)}
             >
-              <NotificationPopover
-                alerts={highAlerts}
+              {/* The bell now opens the role-routed Inbox (radar verdicts +
+                  pending approvals + latest report), fetched live on open. */}
+              <InboxPanel
                 onClose={() => setNotifOpen(false)}
-                onSelectAlert={(alert) => {
-                  navigate(appRoutes.overview);
-                  onMobileMenuToggle?.(); // Close mobile menu on navigation
-                }}
+                onNavigate={(path) => { navigate(path); onMobileMenuToggle?.(); }}
               />
             </NotificationBell>
 
