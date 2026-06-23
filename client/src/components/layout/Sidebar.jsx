@@ -14,7 +14,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   Layout, BarChart3, Send,
   Settings, PanelLeftClose, Plus, Search, ChevronDown,
-  Brain, FlaskConical, Microscope, Megaphone,
+  Brain, FlaskConical, Microscope, Megaphone, FileText,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
@@ -31,13 +31,18 @@ import LumiStar from '@/components/brand/LumiStar.jsx';
 
 // Simplified navigation structure from Figma. `roles` (optional) gates an item
 // to the listed collabRoles; absent = visible to all (backwards-compatible).
+// CLIENT is a read-only stakeholder — its only operator-surface is Reports
+// (+ Settings in the footer). The operator items below carry a `roles`
+// constraint so a CLIENT's nav is the Reports surface, not a wall of locked
+// items. Reports itself is ungated: every role reads the reasoned narrative.
 const tools = [
-  { key: 'overview',     label: 'Overview',     sub: 'Marketing OS command',        icon: Layout,         path: appRoutes.overview },
-  { key: 'campaigns',    label: 'Campaigns',    sub: 'Portfolio + diagnosis',       icon: BarChart3,      path: appRoutes.campaigns },
+  { key: 'overview',     label: 'Overview',     sub: 'Marketing OS command',        icon: Layout,         path: appRoutes.overview,     roles: ['STRATEGIST', 'BUYER'] },
+  { key: 'campaigns',    label: 'Campaigns',    sub: 'Portfolio + diagnosis',       icon: BarChart3,      path: appRoutes.campaigns,    roles: ['STRATEGIST', 'BUYER'] },
   { key: 'intelligence', label: 'Intelligence', sub: 'Truth, insights, proof',      icon: Brain,          path: appRoutes.intelligence, roles: ['STRATEGIST', 'BUYER'] },
   { key: 'testing',      label: 'Testing OS',   sub: 'Experiment readouts',         icon: FlaskConical,   path: appRoutes.testing,      roles: ['STRATEGIST', 'BUYER'] },
   { key: 'measure',      label: 'Measurement',  sub: 'Scenarios + incrementality',  icon: Microscope,     path: appRoutes.measure,      roles: ['STRATEGIST', 'BUYER'] },
-  { key: 'content',      label: 'Content Lab',  sub: 'Context-aware creation',      icon: Send,           path: appRoutes.contentLab },
+  { key: 'leadership',   label: 'Reports',      sub: 'Weekly & monthly narratives', icon: FileText,       path: appRoutes.leadership },
+  { key: 'content',      label: 'Content Lab',  sub: 'Context-aware creation',      icon: Send,           path: appRoutes.contentLab,   roles: ['STRATEGIST', 'BUYER'] },
   { key: 'publishing',   label: 'Publishing',   sub: 'Record live ad publishes',    icon: Megaphone,      path: appRoutes.publishing,   roles: ['STRATEGIST', 'BUYER'] },
   // Copilot is demoted from the primary nav while it's a static placeholder — it
   // now lives as a teaser card in Overview. The /app/copilot route stays

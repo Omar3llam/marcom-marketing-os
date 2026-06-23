@@ -386,11 +386,15 @@ export {
   ConfidenceComponentSchema,
   ReportConfidenceSchema,
   StakeholderNarrativeSchema,
+  NarrativesListResponseSchema,
+  NarrativeResponseSchema,
   type NarrativePeriod,
   type NarrativeAudience,
   type ConfidenceComponent,
   type ReportConfidence,
   type StakeholderNarrative,
+  type NarrativesListResponse,
+  type NarrativeResponse,
 } from './narrative.schema';
 
 export {

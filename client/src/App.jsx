@@ -30,6 +30,7 @@ import Observability    from './pages/Observability.jsx';
 import { CardSkeleton } from './components/ui/Skeleton.jsx';
 import { ProtectedRoute, OnboardingRoute } from './router/ProtectedRoute.jsx';
 import RoleGate from './components/auth/RoleGate.jsx';
+import { useCollabRole, WORKSPACE_ROLE } from './hooks/useCollabRole.js';
 import { useAuth } from './context/AuthContext.jsx';
 import { IntelligenceProvider } from './context/IntelligenceContext.jsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
@@ -51,6 +52,9 @@ const Testing      = lazy(() => import('./pages/Testing.jsx'));
 
 // ── Phase 4-E · Measurement OS (scenario + incrementality; tier-gated) ─
 const Measure      = lazy(() => import('./pages/Measure.jsx'));
+
+// ── Phase 8 · Leadership/Reports (the reasoned narrative; CLIENT's home) ─
+const Leadership   = lazy(() => import('./pages/Leadership.jsx'));
 
 // ── v2 views (gradual migration via Strangler Pattern) ────────
 const DecisionViewV2 = lazy(() => import('./pages/v2/DecisionViewV2.tsx').then(m => ({ default: m.DecisionViewV2 })));
@@ -74,6 +78,28 @@ function AuthLoadingScreen() {
       </div>
     </div>
   );
+}
+
+// ── Phase 8 · CLIENT routing ──────────────────────────────────
+// A CLIENT seat is a read-only stakeholder: its home is the Reports surface, not
+// the operator Overview. These route by the RESOLVED role and err OPEN while it
+// loads (RoleContext defaults to STRATEGIST), so a transient role-miss never
+// bounces a real operator off a page they're entitled to.
+
+// CLIENT → Reports; everyone else → Overview. Used for the app index and as the
+// denied-fallback for the operator surfaces below.
+function RoleAwareRedirect() {
+  const { role } = useCollabRole();
+  return <Navigate to={role === WORKSPACE_ROLE.CLIENT ? appRoutes.leadership : appRoutes.overview} replace />;
+}
+
+// Keep a CLIENT out of an operator surface WITHOUT bouncing during the role-load
+// window — Overview must never flicker for a logged-in operator.
+function LockFromClient({ children }) {
+  const { role, loading } = useCollabRole();
+  if (loading) return children;
+  if (role === WORKSPACE_ROLE.CLIENT) return <Navigate to={appRoutes.leadership} replace />;
+  return children;
 }
 
 function NotFound({ app = false }) {
@@ -128,10 +154,19 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index             element={<Navigate to={appRoutes.overview} replace />} />
+          <Route index             element={<RoleAwareRedirect />} />
           <Route path="overview"   element={
             <ErrorBoundary boundaryId="home">
-              <HomePage />
+              <LockFromClient><HomePage /></LockFromClient>
+            </ErrorBoundary>
+          } />
+
+          {/* ── Phase 8 · Leadership/Reports — reasoned narratives. Ungated: all
+              roles may read (the view scopes a CLIENT to LEADERSHIP audience).
+              This is the CLIENT seat's home. ── */}
+          <Route path="leadership" element={
+            <ErrorBoundary boundaryId="leadership">
+              <Suspense fallback={<PageFallback />}><Leadership /></Suspense>
             </ErrorBoundary>
           } />
           {/* Legacy Command Center surface removed — the decision feed lives on
@@ -140,16 +175,18 @@ export default function App() {
           <Route path="decisions"  element={<Navigate to={appRoutes.overview} replace />} />
           <Route path="campaigns"  element={
             <ErrorBoundary boundaryId="campaigns">
-              <Suspense fallback={<PageFallback />}><CampaignAnalysis /></Suspense>
+              <LockFromClient>
+                <Suspense fallback={<PageFallback />}><CampaignAnalysis /></Suspense>
+              </LockFromClient>
             </ErrorBoundary>
           } />
 
           <Route path="intelligence" element={<Navigate to={appRoutes.blendedTruth} replace />} />
 
-          {/* ── Phase 11A · Blended Truth (STRATEGIST/BUYER; CLIENT → Home) ── */}
+          {/* ── Phase 11A · Blended Truth (STRATEGIST/BUYER; CLIENT → Reports) ── */}
           <Route path="intelligence/blended-truth" element={
             <ErrorBoundary boundaryId="truth">
-              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<Navigate to={appRoutes.overview} replace />}>
+              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<RoleAwareRedirect />}>
                 <Suspense fallback={<PageFallback />}><BlendedTruth /></Suspense>
               </RoleGate>
             </ErrorBoundary>
@@ -162,51 +199,51 @@ export default function App() {
             </ErrorBoundary>
           } />
 
-          {/* ── Phase 4-B · Growth Strategy + Account Briefing (STRATEGIST/BUYER; CLIENT → Home) ──
+          {/* ── Phase 4-B · Growth Strategy + Account Briefing (STRATEGIST/BUYER; CLIENT → Reports) ──
               The memory-moat war room. Gated to match its sibling blended-truth + the
               Intelligence nav — closes a deep-link hole where a CLIENT could reach it by URL. */}
           <Route path="intelligence/insights" element={
             <ErrorBoundary boundaryId="growth">
-              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<Navigate to={appRoutes.overview} replace />}>
+              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<RoleAwareRedirect />}>
                 <Suspense fallback={<PageFallback />}><GrowthStrategyBoard /></Suspense>
               </RoleGate>
             </ErrorBoundary>
           } />
 
-          {/* ── Phase 4-A · Testing OS readout (BUYER/STRATEGIST; CLIENT → Home) ── */}
+          {/* ── Phase 4-A · Testing OS readout (BUYER/STRATEGIST; CLIENT → Reports) ── */}
           <Route path="testing" element={
             <ErrorBoundary boundaryId="testing">
-              <RoleGate role={['BUYER', 'STRATEGIST']} fallback={<Navigate to={appRoutes.overview} replace />}>
+              <RoleGate role={['BUYER', 'STRATEGIST']} fallback={<RoleAwareRedirect />}>
                 <Suspense fallback={<PageFallback />}><Testing /></Suspense>
               </RoleGate>
             </ErrorBoundary>
           } />
 
-          {/* ── Phase 4-E · Measurement OS (STRATEGIST/BUYER; CLIENT → Home).
+          {/* ── Phase 4-E · Measurement OS (STRATEGIST/BUYER; CLIENT → Reports).
               Scenario is open to both roles; incrementality is further gated to
               STRATEGIST inside the view AND tier-gated server-side. ── */}
           <Route path="measure" element={
             <ErrorBoundary boundaryId="measure">
-              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<Navigate to={appRoutes.overview} replace />}>
+              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<RoleAwareRedirect />}>
                 <Suspense fallback={<PageFallback />}><Measure /></Suspense>
               </RoleGate>
             </ErrorBoundary>
           } />
 
-          {/* ── Phase 12 · Connected Channels (STRATEGIST/BUYER; CLIENT → Home) ── */}
+          {/* ── Phase 12 · Connected Channels (STRATEGIST/BUYER; CLIENT → Reports) ── */}
           <Route path="connections" element={<Navigate to={appRoutes.settingsIntegrations} replace />} />
           <Route path="content"    element={
             <ErrorBoundary boundaryId="content">
-              <ContentLab />
+              <LockFromClient><ContentLab /></LockFromClient>
             </ErrorBoundary>
           } />
 
           {/* ── Publishing · approved creative → record live Meta publishes
-              (BUYER/STRATEGIST; CLIENT → Home). Matches the publish-record
+              (BUYER/STRATEGIST; CLIENT → Reports). Matches the publish-record
               tier and gates the deep-link the same way Testing/Measure do. ── */}
           <Route path="publishing" element={
             <ErrorBoundary boundaryId="publishing">
-              <RoleGate role={['BUYER', 'STRATEGIST']} fallback={<Navigate to={appRoutes.overview} replace />}>
+              <RoleGate role={['BUYER', 'STRATEGIST']} fallback={<RoleAwareRedirect />}>
                 <Suspense fallback={<PageFallback />}><Publishing /></Suspense>
               </RoleGate>
             </ErrorBoundary>

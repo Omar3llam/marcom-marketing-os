@@ -7,6 +7,7 @@ export const appRoutes = {
   proof: '/app/intelligence/proof',
   testing: '/app/testing',
   measure: '/app/measure',
+  leadership: '/app/leadership',
   contentLab: '/app/content',
   publishing: '/app/publishing',
   copilot: '/app/copilot',
