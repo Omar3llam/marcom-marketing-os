@@ -42,6 +42,7 @@ const designed = { id: 't1', workspaceId: 'ws', name: 'META holdout', channel: '
 const running = { ...designed, id: 't2', status: 'RUNNING', exposedUsers: 5000, exposedConversions: 300, holdoutUsers: 5000, holdoutConversions: 250 };
 const concludedYes = { ...designed, id: 't3', status: 'CONCLUDED', liftPct: 20, ciLow: 0.001, ciHigh: 0.018, confidenceLabel: 'MEDIUM', incrementalRevenueMinor: 50000 };
 const concludedNo = { ...designed, id: 't4', status: 'CONCLUDED', liftPct: 4, ciLow: -0.01, ciHigh: 0.02, confidenceLabel: null, incrementalRevenueMinor: null };
+const concludedFromTest = { ...concludedYes, id: 't5', sourceTest: { id: 'src-1', dimension: 'HOOK', hypothesis: 'Hook B lifts CTR' } };
 
 // ── ScenarioPanel ───────────────────────────────────────────
 describe('ScenarioPanel — forward what-if as ranges, CAC labelled projected', () => {
@@ -110,6 +111,11 @@ describe('IncrementalityPanel — gated lock + honest holdout loop', () => {
     render(<IncrementalityPanel tests={[concludedNo]} onDesign={vi.fn()} onRecord={vi.fn()} onConclude={vi.fn()} />);
     expect(screen.getByText(/No causal lift called/i)).toBeInTheDocument();
   });
+
+  it('a holdout promoted from an A/B test shows its provenance (Phase 7C)', () => {
+    render(<IncrementalityPanel tests={[concludedFromTest]} onDesign={vi.fn()} onRecord={vi.fn()} onConclude={vi.fn()} />);
+    expect(screen.getByText(/From A\/B test · HOOK/i)).toBeInTheDocument();
+  });
 });
 
 describe('IncrementalityPanel — design + record write the real shapes', () => {
@@ -144,8 +150,11 @@ describe('contract seam — response envelopes safeParse', () => {
   it('ScenarioResponseSchema validates the null/no-data envelope', () => {
     expect(ScenarioResponseSchema.safeParse({ workspaceId: 'ws', scenario: null, message: 'No channel data to project yet.' }).success).toBe(true);
   });
-  it('IncrementalityListResponseSchema validates the holdout list', () => {
-    expect(IncrementalityListResponseSchema.safeParse({ workspaceId: 'ws', tests: [designed, running, concludedYes, concludedNo] }).success).toBe(true);
+  it('IncrementalityListResponseSchema validates the holdout list (incl. a promoted row with sourceTest)', () => {
+    const parsed = IncrementalityListResponseSchema.safeParse({ workspaceId: 'ws', tests: [designed, running, concludedYes, concludedNo, concludedFromTest] });
+    expect(parsed.success).toBe(true);
+    // sourceTest survives parsing (not stripped) so the panel can show provenance.
+    expect(parsed.success && parsed.data.tests[4].sourceTest?.dimension).toBe('HOOK');
   });
   it('ConcludeIncrementalityResponseSchema validates an attributed readout', () => {
     const res = {

@@ -26,6 +26,7 @@ import { useConcludeTest } from '@/hooks/useConcludeTest.js';
 import { useStartTest } from '@/hooks/useStartTest.js';
 import { useRecordMetrics } from '@/hooks/useRecordMetrics.js';
 import { useCommitAgenda } from '@/hooks/useCommitAgenda.js';
+import { usePromoteToHoldout } from '@/hooks/usePromoteToHoldout.js';
 import { toMinor, fromMinor } from '@/lib/money';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
@@ -93,7 +94,7 @@ function ConfidenceBadge({ label }) {
 const ORDER = { RUNNING: 0, CONCLUDED: 1, PROPOSED: 2, ABANDONED: 3 };
 
 // ── One experiment card ─────────────────────────────────────────
-function ExperimentCard({ exp, canOperate, onConclude, concludingId, onStart, startingId, onRecord, recordingId, recordError }) {
+function ExperimentCard({ exp, role, canOperate, onConclude, concludingId, onStart, startingId, onRecord, recordingId, recordError, onPromote, promotingId, promoteError }) {
   return (
     <div className="rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
       <div className="flex items-center justify-between gap-3">
@@ -127,6 +128,15 @@ function ExperimentCard({ exp, canOperate, onConclude, concludingId, onStart, st
             <Link to={appRoutes.overview} className="inline-block text-xs font-medium text-lumi-accent hover:underline">
               Lumi proposed an action — review on Overview →
             </Link>
+          )}
+          {canOperate && (
+            <PromoteControl
+              exp={exp}
+              role={role}
+              onPromote={onPromote}
+              promotingId={promotingId}
+              promoteError={promoteError}
+            />
           )}
         </div>
       )}
@@ -369,6 +379,109 @@ function MetricsForm({ exp, onRecord, recordingId, recordError }) {
   );
 }
 
+// ── CONCLUDED → promote into a holdout (the Phase-7C bridge) ─────
+// A correlational A/B winner can seed a CAUSAL holdout. The backend derives the
+// baseline conversion rate from the control arm and seeds the MDE from the
+// observed lift — the operator only supplies the daily-eligible volume the test
+// can't know. Designing a holdout is a STRATEGIST + Enterprise act: a BUYER sees
+// the affordance (awareness) but is told it needs a strategist; the Enterprise
+// tier-lock is surfaced honestly from the backend 403 (the client holds no tier
+// signal of its own). Mirrors MetricsForm: re-openable, inline success/error.
+function PromoteControl({ exp, role, onPromote, promotingId, promoteError }) {
+  const isStrategist = role === WORKSPACE_ROLE.STRATEGIST;
+  const [open, setOpen] = useState(false);
+  const [saved, setSaved] = useState(null);
+  const [daily, setDaily] = useState('');
+  const [mde, setMde] = useState('');
+  const [channel, setChannel] = useState('');
+  const isPromoting = promotingId === exp.id;
+
+  const dailyN = /^\d+$/.test(daily.trim()) ? Number(daily) : NaN;
+  const mdeN = mde.trim() === '' ? null : Number(mde);
+  const mdeOk = mdeN == null || (Number.isFinite(mdeN) && mdeN > 0 && mdeN < 100);
+  const valid = dailyN > 0 && mdeOk;
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!valid) return;
+    const payload = { dailyEligible: dailyN };
+    if (mdeN != null) payload.mde = mdeN / 100;        // % → fraction (backend wants 0–1)
+    if (channel.trim()) payload.channel = channel.trim().toUpperCase();
+    const result = await onPromote?.(exp.id, payload);
+    if (result) { setSaved(result); setOpen(false); }  // success: collapse + confirm
+  };
+
+  const SUB_BTN = 'rounded-lg border border-lumi-border bg-lumi-elevated px-3 py-1.5 text-xs font-semibold text-lumi-text transition-colors hover:bg-lumi-surface';
+
+  if (!open) {
+    return (
+      <div className="pt-1">
+        <button type="button" onClick={() => { setSaved(null); setOpen(true); }} className={SUB_BTN}>
+          Promote to holdout
+        </button>
+        {saved && (
+          <p className="mt-1.5 text-xs text-signal-scale">
+            Holdout designed —{' '}
+            <Link to={appRoutes.measure} className="font-medium underline hover:text-signal-scale">view in Measurement →</Link>
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  // BUYER: aware of the affordance, but not entitled to design a holdout.
+  if (!isStrategist) {
+    return (
+      <div className="pt-1">
+        <button type="button" onClick={() => setOpen(false)} className={SUB_BTN}>Promote to holdout</button>
+        <p className="mt-1.5 text-xs text-lumi-subtle">Holdout design requires STRATEGIST role.</p>
+      </div>
+    );
+  }
+
+  // STRATEGIST: the design form. baselineCvr is NOT asked — it's derived backend-side.
+  const LABEL = 'block text-[10px] uppercase tracking-wide text-lumi-subtle mb-0.5';
+  return (
+    <form onSubmit={submit} className="rounded-xl border border-lumi-border bg-lumi-surface p-3 space-y-2">
+      <p className="text-xs text-lumi-subtle">
+        Design a causal holdout from this test. The baseline conversion rate comes from the control arm; enter the audience volume.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <label className="block">
+          <span className={LABEL}>Daily eligible users</span>
+          <input type="number" min="1" inputMode="numeric" aria-label="Daily eligible users"
+            value={daily} onChange={(e) => setDaily(e.target.value)} className={NUM_INPUT} />
+        </label>
+        <label className="block">
+          <span className={LABEL}>Min. detectable lift %</span>
+          <input type="number" min="0" inputMode="decimal" aria-label="Minimum detectable lift percent"
+            placeholder="seeded from test lift" value={mde} onChange={(e) => setMde(e.target.value)} className={NUM_INPUT} />
+        </label>
+        <label className="block">
+          <span className={LABEL}>Channel</span>
+          <input type="text" aria-label="Channel" placeholder="META"
+            value={channel} onChange={(e) => setChannel(e.target.value)} className={NUM_INPUT} />
+        </label>
+      </div>
+      <div className="flex items-center gap-2">
+        <button type="submit" disabled={!valid || isPromoting}
+          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover disabled:cursor-not-allowed disabled:opacity-40">
+          {isPromoting ? 'Promoting…' : 'Design holdout'}
+        </button>
+        <button type="button" disabled={isPromoting} onClick={() => setOpen(false)}
+          className="rounded-lg border border-lumi-border px-3 py-1.5 text-xs font-semibold text-lumi-muted transition-colors hover:bg-lumi-elevated disabled:opacity-40">
+          Cancel
+        </button>
+      </div>
+      {promoteError && (
+        <p className="text-xs text-signal-kill">
+          {promoteError.message || 'Couldn’t promote this test to a holdout right now. Try again shortly.'}
+        </p>
+      )}
+    </form>
+  );
+}
+
 // ── Pure, prop-driven view (unit-tested directly) ───────────────
 export function TestingView({
   experiments = [], agenda = [], role = WORKSPACE_ROLE.BUYER,
@@ -376,6 +489,7 @@ export function TestingView({
   onStart, startingId, startError,
   onRecord, recordingId, recordError,
   onCommit, committing = false, commitError,
+  onPromote, promotingId, promoteError,
 }) {
   const canOperate = role === WORKSPACE_ROLE.BUYER || role === WORKSPACE_ROLE.STRATEGIST;
 
@@ -446,6 +560,7 @@ export function TestingView({
         <ExperimentCard
           key={exp.id}
           exp={exp}
+          role={role}
           canOperate={canOperate}
           onConclude={onConclude}
           concludingId={concludingId}
@@ -454,6 +569,9 @@ export function TestingView({
           onRecord={onRecord}
           recordingId={recordingId}
           recordError={recordError}
+          onPromote={onPromote}
+          promotingId={promotingId}
+          promoteError={promoteError}
         />
       ))}
     </div>
@@ -468,6 +586,7 @@ export default function Testing() {
   const { start, startingId, error: startError } = useStartTest();
   const { record, recordingId, error: recordError } = useRecordMetrics();
   const { commit, committing, error: commitError } = useCommitAgenda();
+  const { promote, promotingId, error: promoteError } = usePromoteToHoldout();
 
   const onConclude = async (testId) => {
     const result = await conclude(testId);
@@ -489,6 +608,11 @@ export default function Testing() {
     const result = await commit(picks);
     if (result) await refetch();
   };
+
+  // The bridge: a created holdout doesn't change THIS test's row, so no refetch
+  // is needed — the form shows its own success + link into Measurement. Returns
+  // the created holdout (truthy) so the form can collapse and confirm.
+  const onPromote = async (testId, payload) => promote(testId, payload);
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
@@ -516,6 +640,9 @@ export default function Testing() {
           onCommit={onCommit}
           committing={committing}
           commitError={commitError}
+          onPromote={onPromote}
+          promotingId={promotingId}
+          promoteError={promoteError}
         />
       )}
     </div>
