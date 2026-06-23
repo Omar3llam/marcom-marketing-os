@@ -104,6 +104,16 @@ export const CONFIDENCE_WEIGHTS = Object.freeze({
 const clamp01 = (n) => (typeof n === 'number' && !Number.isNaN(n) ? Math.max(0, Math.min(1, n)) : 0);
 
 /**
+ * The band label a CEO reads next to a 0–100 report-confidence score. The single
+ * source of the banding — reused by confidenceScore() and by NarrativeService's
+ * serializer (which rebuilds reportConfidence from a persisted row that stores
+ * only the score + components, never the derived label).
+ */
+export function confidenceLabel(score) {
+  return score >= CONFIDENCE_BANDS.HIGH ? 'HIGH' : score >= CONFIDENCE_BANDS.MODERATE ? 'MODERATE' : 'LOW';
+}
+
+/**
  * Report-level confidence — and it is ITSELF defensible: it returns the
  * component breakdown, never a bare "91%". Partial data → an honestly LOWER
  * score, never a falsely confident one. The direct extension of Phase 7's
@@ -120,6 +130,5 @@ export function confidenceScore(coverage = {}) {
     value: clamp01(coverage[key]),
   }));
   const score = Math.round(100 * components.reduce((s, c) => s + c.weight * c.value, 0));
-  const label = score >= CONFIDENCE_BANDS.HIGH ? 'HIGH' : score >= CONFIDENCE_BANDS.MODERATE ? 'MODERATE' : 'LOW';
-  return { score, label, components };
+  return { score, label: confidenceLabel(score), components };
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildNarrativeInputs } from './NarrativeService.js';
+import { buildNarrativeInputs, serializeNarrative } from './NarrativeService.js';
 
 const blended = {
   channels: [
@@ -63,5 +63,50 @@ describe('buildNarrativeInputs', () => {
     expect(empty.coverage.blendedConfidence).toBe(0);
     expect(empty.blended).toBe(null);
     expect(empty.allocationDeltas).toEqual([]);
+  });
+});
+
+describe('serializeNarrative — one wire shape for list/detail/generate', () => {
+  it('rebuilds reportConfidence + sections from a persisted DB row (band derived from score)', () => {
+    const row = {
+      id: 'n1', period: 'WEEKLY', audience: 'LEADERSHIP',
+      periodStart: new Date('2026-06-16'), periodEnd: new Date('2026-06-23'),
+      headline: '2 actions this period.',
+      body: { sections: [{ key: 'DID', title: 'What we did', claims: [] }] },
+      evidenceRefs: ['o1', 't1'],
+      confidenceScore: 82,
+      confidenceBasis: [{ key: 'memoryCoverage', weight: 0.3, value: 1 }],
+      createdAt: new Date('2026-06-23'),
+    };
+    const out = serializeNarrative(row);
+    expect(out.sections).toHaveLength(1);
+    expect(out.reportConfidence).toEqual({
+      score: 82, label: 'HIGH',
+      components: [{ key: 'memoryCoverage', weight: 0.3, value: 1 }],
+    });
+    expect(out.evidenceRefs).toEqual(['o1', 't1']);
+    // The raw-row keys are NOT leaked onto the contract shape.
+    expect(out.body).toBeUndefined();
+    expect(out.confidenceScore).toBeUndefined();
+  });
+
+  it('passes a freshly-composed result (sections + reportConfidence already present) through unchanged', () => {
+    const composed = {
+      id: 'n2', period: 'MONTHLY', audience: 'STRATEGIST',
+      periodStart: null, periodEnd: null, headline: 'No material changes this period.',
+      sections: [{ key: 'DID', title: 'What we did', claims: [] }],
+      reportConfidence: { score: 40, label: 'LOW', components: [{ key: 'x', weight: 1, value: 0.4 }] },
+      evidenceRefs: [],
+      // a generate() result also carries the raw row fields — they must be dropped
+      body: { sections: [] }, confidenceScore: 40, confidenceBasis: [],
+    };
+    const out = serializeNarrative(composed);
+    expect(out.reportConfidence.label).toBe('LOW');
+    expect(out.sections).toBe(composed.sections);
+    expect(out.body).toBeUndefined();
+  });
+
+  it('is null-safe (a missing narrative serialises to null, not a throw)', () => {
+    expect(serializeNarrative(null)).toBe(null);
   });
 });
