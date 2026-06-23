@@ -66,13 +66,13 @@ describe('TestingView — CONCLUDED readouts are honest', () => {
     expect(screen.getByText('Hook B')).toBeInTheDocument();
     expect(screen.getByText(/\+31% CTR/)).toBeInTheDocument();
     expect(screen.getByText(/HIGH confidence/i)).toBeInTheDocument();
-    expect(screen.getByText(/review in Decisions/i)).toBeInTheDocument();
+    expect(screen.getByText(/review on Overview/i)).toBeInTheDocument();
   });
   it('refuses to invent a winner when inconclusive — shows WHY, not a fake call', () => {
     renderView({ experiments: [CONCLUDED_INCONCLUSIVE], role: 'BUYER' });
     expect(screen.getByText(/No winner called/i)).toBeInTheDocument();
     expect(screen.getByText(/too thin to call/i)).toBeInTheDocument();
-    expect(screen.queryByText(/review in Decisions/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/review on Overview/i)).not.toBeInTheDocument();
   });
 });
 

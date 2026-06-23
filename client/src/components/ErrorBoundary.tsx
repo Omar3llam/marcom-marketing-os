@@ -187,7 +187,7 @@ function DefaultErrorFallback({ error, onReset }: { error: Error | null; onReset
             Try again
           </button>
           <button
-            onClick={() => (window.location.href = '/app/decisions')}
+            onClick={() => (window.location.href = '/app/overview')}
             style={{
               padding: 'var(--spacing-sm) var(--spacing-lg)',
               background: 'transparent',
@@ -198,7 +198,7 @@ function DefaultErrorFallback({ error, onReset }: { error: Error | null; onReset
               cursor: 'pointer',
             }}
           >
-            Go to feed
+            Go to overview
           </button>
         </div>
       </div>
