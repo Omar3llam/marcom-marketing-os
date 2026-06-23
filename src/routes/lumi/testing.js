@@ -10,12 +10,15 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { getWeeklyAgenda, commitAgenda } from '../../services/test-generator/TestGeneratorService.js';
-import { startTest, recordVariantMetrics, concludeTest } from '../../services/test-tracker/TestTrackerService.js';
+import { startTest, recordVariantMetrics, concludeTest, promoteTestToHoldout } from '../../services/test-tracker/TestTrackerService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { requireMeasurementTier } from '../../middleware/requireMeasurementTier.js';
 import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
 
 // Testing is a BUYER/STRATEGIST surface (TESTING is not in a CLIENT's visibleStates).
 const requireOperator = requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST);
+// Designing a holdout is a STRATEGIST act (mirrors lumi/measurement.js).
+const requireStrategist = requireCollabRole(WORKSPACE_ROLE.STRATEGIST);
 
 export const testingRouter = Router();
 
@@ -129,5 +132,46 @@ testingRouter.post('/tests/:id/conclude', requireOperator, async (req, res) => {
   } catch (err) {
     logger.error({ err: err.message, wsId, testId: req.params.id }, '[lumi/testing] conclude failed');
     return res.status(500).json({ error: 'TestConcludeFailed', message: 'Request failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// POST /api/lumi/tests/:id/promote-to-holdout   — Phase-7C bridge
+// Promote a CONCLUDED A/B test into a DESIGNED holdout (causal lift). Gates, in
+// order: operator (BUYER+STRATEGIST) → measurement tier → STRATEGIST → Enterprise.
+// A BUYER may SEE the affordance (awareness) but only a STRATEGIST on an
+// Enterprise workspace may design the holdout — this is the enforcement backstop
+// behind the same split the UI presents.
+// ─────────────────────────────────────────────────────────────
+testingRouter.post('/tests/:id/promote-to-holdout', requireOperator, requireMeasurementTier, requireStrategist, async (req, res) => {
+  const wsId = req.measurementWorkspaceId; // resolved by the tier gate
+  // Holdout promotion is an Enterprise capability — stricter than the base
+  // measurement gate (which clears AGENCY). One consistent tier-lock shape.
+  if (req.measurementTier !== 'ENTERPRISE') {
+    return res.status(403).json({ error: 'TierGated', message: 'Holdout testing requires Enterprise tier — upgrade in Settings.' });
+  }
+
+  const { dailyEligible, mde, channel } = req.body ?? {};
+  if (!Number.isInteger(dailyEligible) || dailyEligible <= 0) {
+    return res.status(422).json({ error: 'BadPromote', message: 'dailyEligible must be a positive integer.' });
+  }
+  if (mde != null && (typeof mde !== 'number' || mde <= 0 || mde >= 1)) {
+    return res.status(422).json({ error: 'BadPromote', message: 'mde, if supplied, must be between 0 and 1.' });
+  }
+  if (channel != null && (typeof channel !== 'string' || !channel.trim())) {
+    return res.status(422).json({ error: 'BadPromote', message: 'channel, if supplied, must be a non-empty string.' });
+  }
+
+  try {
+    const incrementalityTest = await promoteTestToHoldout(wsId, req.params.id, { dailyEligible, mde, channel });
+    logger.info({ wsId, testId: req.params.id, holdoutId: incrementalityTest.id }, '[lumi/testing] promoted to holdout');
+    return res.status(201).json({ workspaceId: wsId, incrementalityTest });
+  } catch (err) {
+    if (/not found/i.test(err.message)) return res.status(404).json({ error: 'TestNotFound', message: err.message });
+    if (/not CONCLUDED/i.test(err.message)) return res.status(409).json({ error: 'TestNotConcluded', message: err.message });
+    if (/control variant|zero clicks|baseline conversion/i.test(err.message)) return res.status(409).json({ error: 'NoBaseline', message: err.message });
+    if (/baselineCvr|mde|dailyEligible|required/i.test(err.message)) return res.status(422).json({ error: 'BadPromote', message: err.message });
+    logger.error({ err: err.message, wsId, testId: req.params.id }, '[lumi/testing] promote-to-holdout failed');
+    return res.status(500).json({ error: 'PromoteFailed', message: 'Request failed' });
   }
 });

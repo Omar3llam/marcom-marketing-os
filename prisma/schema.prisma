@@ -1305,6 +1305,9 @@ model TestExperiment {
   decision  Decision?     @relation(fields: [decisionId], references: [id], onDelete: SetNull)
   variants  TestVariant[]
 
+  // Holdouts promoted from this concluded test (the Phase-7C bridge).
+  incrementalityTests IncrementalityTest[]
+
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([status])
   @@index([entityId, entityLevel])
@@ -1521,6 +1524,12 @@ model IncrementalityTest {
   channel     String // e.g. "META" — the channel being held out
   entityId    String?      @db.Uuid
   entityLevel EntityLevel?
+
+  // Provenance: the concluded A/B test this holdout was promoted from (the
+  // Phase-7C bridge). Null for holdouts designed directly. SetNull on delete —
+  // losing the source test never invalidates a running causal experiment.
+  sourceTestId String?         @db.Uuid
+  sourceTest   TestExperiment? @relation(fields: [sourceTestId], references: [id], onDelete: SetNull)
 
   // Design (from the power calc).
   holdoutPct       Float

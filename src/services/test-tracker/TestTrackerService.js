@@ -27,9 +27,11 @@ import { CONFIDENCE_LABEL } from '../test-readout/testReadoutTypes.js';
 import { verdictToActionType } from '../verdict-engine/verdictTypes.js';
 import { validateActionTarget } from '../metaExecutionService.js';
 import { resolveCredential } from '../connectors/credentialStore.js';
+import { designTest } from '../incrementality-engine/IncrementalityService.js';
 
 const GRAPH_BASE = `https://graph.facebook.com/${process.env.META_API_VERSION || 'v21.0'}`;
 const TEST_ROOT_PREFIX = 'test:';
+const HOLDOUT_DEFAULT_CHANNEL = 'META'; // the only live-connected channel today
 
 // EntityLevel → the lowercase target type validateActionTarget expects.
 // ACCOUNT is treated as campaign (mirrors verdictToActionType).
@@ -284,4 +286,70 @@ export async function concludeTest(testId, { refresh = true } = {}) {
     verdict:    resolved.verdict,
     actionType: resolved.actionType,
   };
+}
+
+/**
+ * The Phase-7C bridge: promote a CONCLUDED A/B test into a DESIGNED holdout
+ * (incrementality test). An A/B test measures a *correlational* winner; a
+ * holdout measures *causal* incremental lift. The concluded test supplies what
+ * it actually knows — a measured baseline conversion rate (from its control
+ * arm) + the entity binding — while the operator supplies the power-calc input
+ * the A/B test can't (dailyEligible), with mde seeded from the observed lift.
+ *
+ * designTest() is the canonical creator and is called AS-IS — it has no source
+ * link, so we stamp sourceTestId in a follow-up update (the traceability FK)
+ * rather than touching the incrementality engine.
+ *
+ * @param {string} workspaceId
+ * @param {string} testId — a CONCLUDED TestExperiment in this workspace
+ * @param {{ dailyEligible:number, mde?:number, channel?:string }} opts
+ * @returns {Promise<object>} the created DESIGNED IncrementalityTest (with .design + .sourceTestId)
+ */
+export async function promoteTestToHoldout(workspaceId, testId, { dailyEligible, mde, channel } = {}) {
+  if (!workspaceId) throw new Error('promoteTestToHoldout: workspaceId required');
+  if (!testId) throw new Error('promoteTestToHoldout: testId required');
+
+  const test = await prisma.testExperiment.findFirst({
+    where:   { id: testId, workspaceId },
+    include: { variants: true },
+  });
+  if (!test) throw new Error('promoteTestToHoldout: test not found');
+  if (test.status !== 'CONCLUDED') {
+    throw new Error('promoteTestToHoldout: test is not CONCLUDED — only a concluded test can seed a holdout');
+  }
+
+  // baselineCvr is DERIVED from the control arm — never operator-entered. A
+  // holdout designed off a fabricated baseline would mis-size the experiment.
+  const control = test.variants.find((v) => v.isControl);
+  if (!control) throw new Error('promoteTestToHoldout: test has no control variant — cannot derive baseline conversion rate');
+  if (!(control.clicks > 0)) throw new Error('promoteTestToHoldout: control arm has zero clicks — cannot derive baseline conversion rate');
+  const baselineCvr = control.conversions / control.clicks;
+
+  // mde: operator value wins; else seed from the test's observed lift (stored as
+  // a PERCENT on the row, 0–100) → fraction, clamped to (0,1); else neutral 0.1.
+  // The route already range-validates an operator-supplied mde.
+  const seededMde   = test.lift > 0 ? Math.min(test.lift / 100, 0.99) : null;
+  const resolvedMde = (typeof mde === 'number' && mde > 0 && mde < 1) ? mde : (seededMde ?? 0.1);
+
+  // channel is NOT on a TestExperiment → default to the only live channel.
+  const resolvedChannel = (typeof channel === 'string' && channel.trim()) ? channel.trim() : HOLDOUT_DEFAULT_CHANNEL;
+
+  const holdout = await designTest(workspaceId, {
+    name:        `Holdout from ${test.dimension} test`,
+    channel:     resolvedChannel,
+    entityId:    test.entityId,
+    entityLevel: test.entityLevel,
+    baselineCvr,
+    mde:         resolvedMde,
+    dailyEligible,
+  });
+
+  // Stamp the provenance FK (designTest does not accept it).
+  const linked = await prisma.incrementalityTest.update({
+    where: { id: holdout.id },
+    data:  { sourceTestId: test.id },
+  });
+
+  logger.info({ workspaceId, testId, holdoutId: holdout.id }, '[TestTrackerService] test promoted to holdout — loop bridged');
+  return { ...linked, design: holdout.design };
 }
