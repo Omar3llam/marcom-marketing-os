@@ -19,6 +19,7 @@ export const OBSERVER_QUEUE_NAME   = 'observer';
 export const SYNC_QUEUE_NAME       = 'campaign-sync';
 export const EXECUTION_QUEUE_NAME  = 'executions';
 export const AGENTIC_QUEUE_NAME    = 'agentic';
+export const NARRATIVE_QUEUE_NAME  = 'narrative';
 
 const queueOpts = {
   connection: bullConnection,
@@ -38,6 +39,7 @@ export const observerQueue  = REDIS_DISABLED ? null : new Queue(OBSERVER_QUEUE_N
 export const syncQueue      = REDIS_DISABLED ? null : new Queue(SYNC_QUEUE_NAME,      queueOpts);
 export const executionQueue = REDIS_DISABLED ? null : new Queue(EXECUTION_QUEUE_NAME, queueOpts);
 export const agenticQueue   = REDIS_DISABLED ? null : new Queue(AGENTIC_QUEUE_NAME,   queueOpts);
+export const narrativeQueue = REDIS_DISABLED ? null : new Queue(NARRATIVE_QUEUE_NAME, queueOpts);
 
 // ── Helper: enqueue an ExecutionRequest ──────────────────────
 // Called by meta.js after PENDING → QUEUED transition.
@@ -102,6 +104,21 @@ export async function scheduleAgenticSweep() {
       repeat:  { pattern: cron },
     },
   );
+}
+
+// ── Helper: schedule the weekly + monthly narrative cadence (Phase 8) ────────
+// The reporting heartbeat: a LEADERSHIP stakeholder narrative is authored
+// automatically (Monday 08:00 weekly, 1st-of-month 08:00 monthly). The worker
+// skips workspaces with no real activity in the window — no empty-report spam.
+// Mirrors scheduleAgenticSweep; both jobs share one queue, distinguished by data.
+export async function scheduleNarratives() {
+  if (!narrativeQueue) {
+    throw new Error('Queue subsystem unavailable — set REDIS_URL to a real Redis instance');
+  }
+  const weekly  = process.env.NARRATIVE_WEEKLY_CRON  || '0 8 * * 1'; // Monday 08:00 UTC
+  const monthly = process.env.NARRATIVE_MONTHLY_CRON || '0 8 1 * *'; // 1st of month 08:00 UTC
+  await narrativeQueue.add('generate', { period: 'WEEKLY' },  { jobId: 'narrative-weekly-cron',  repeat: { pattern: weekly } });
+  await narrativeQueue.add('generate', { period: 'MONTHLY' }, { jobId: 'narrative-monthly-cron', repeat: { pattern: monthly } });
 }
 
 // ── Helper: schedule automatic campaign sync ──────────────────

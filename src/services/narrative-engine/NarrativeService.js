@@ -14,11 +14,41 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { composeNarrative } from './narrativeEngine.js';
-import { NARRATIVE_PERIOD, NARRATIVE_AUDIENCE } from './narrativeTypes.js';
+import { NARRATIVE_PERIOD, NARRATIVE_AUDIENCE, confidenceLabel } from './narrativeTypes.js';
 import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
 
 const PERIOD_DAYS = Object.freeze({ WEEKLY: 7, MONTHLY: 30 });
 const TIER_ATTR_CONFIDENCE = Object.freeze({ NONE: 0.3, AGENCY: 0.6, ENTERPRISE: 0.8 });
+
+/**
+ * Pure: map a persisted StakeholderNarrative row (or a freshly-composed result)
+ * to the ONE wire shape every endpoint returns — the contract the client's
+ * StakeholderNarrativeSchema validates. A persisted row stores `body.sections`
+ * + `confidenceScore` + `confidenceBasis` (no derived label); compose() carries
+ * `sections` + `reportConfidence` directly. This collapses both into the same
+ * `{ reportConfidence:{score,label,components}, sections, … }` so list/detail/
+ * generate never diverge (the latent shape schism this fixes). Exported for tests.
+ */
+export function serializeNarrative(row) {
+  if (!row) return null;
+  const sections = row.sections ?? row.body?.sections ?? [];
+  const reportConfidence = row.reportConfidence ?? {
+    score: row.confidenceScore ?? 0,
+    label: confidenceLabel(row.confidenceScore ?? 0),
+    components: Array.isArray(row.confidenceBasis) ? row.confidenceBasis : [],
+  };
+  return {
+    id: row.id,
+    period: row.period,
+    audience: row.audience,
+    periodStart: row.periodStart ?? null,
+    periodEnd: row.periodEnd ?? null,
+    headline: row.headline,
+    reportConfidence,
+    sections,
+    evidenceRefs: Array.isArray(row.evidenceRefs) ? row.evidenceRefs : [],
+  };
+}
 
 /**
  * Pure: fold the loaded rows into composeNarrative()'s inputs (incl. the four
@@ -177,18 +207,19 @@ export async function generateNarrative(workspaceId, { period = NARRATIVE_PERIOD
   });
 
   logger.info({ workspaceId, period, audience, confidence: narrative.reportConfidence.score, refs: narrative.evidenceRefs.length }, '[NarrativeService] narrative generated');
-  return { ...saved, reportConfidence: narrative.reportConfidence, sections: narrative.sections };
+  return serializeNarrative({ ...saved, reportConfidence: narrative.reportConfidence, sections: narrative.sections });
 }
 
 export async function listNarratives(workspaceId, { audience } = {}) {
   if (!workspaceId) throw new Error('listNarratives: workspaceId required');
-  return prisma.stakeholderNarrative.findMany({
+  const rows = await prisma.stakeholderNarrative.findMany({
     where: { workspaceId, ...(audience ? { audience } : {}) },
     orderBy: { createdAt: 'desc' }, take: 50,
   });
+  return rows.map(serializeNarrative);
 }
 
 export async function getNarrative(workspaceId, narrativeId) {
   if (!workspaceId) throw new Error('getNarrative: workspaceId required');
-  return prisma.stakeholderNarrative.findFirst({ where: { id: narrativeId, workspaceId } });
+  return serializeNarrative(await prisma.stakeholderNarrative.findFirst({ where: { id: narrativeId, workspaceId } }));
 }
