@@ -124,8 +124,8 @@ function ExperimentCard({ exp, canOperate, onConclude, concludingId, onStart, st
           )}
           {exp.sampleNote && <p className="text-xs font-mono text-lumi-subtle">{exp.sampleNote}</p>}
           {exp.decisionId && (
-            <Link to={appRoutes.decisions} className="inline-block text-xs font-medium text-lumi-accent hover:underline">
-              Lumi proposed an action — review in Decisions →
+            <Link to={appRoutes.overview} className="inline-block text-xs font-medium text-lumi-accent hover:underline">
+              Lumi proposed an action — review on Overview →
             </Link>
           )}
         </div>

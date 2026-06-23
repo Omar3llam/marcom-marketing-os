@@ -20,7 +20,6 @@ import AuthPage         from './pages/AuthPage.jsx';
 import OnboardingPage   from './pages/OnboardingPage.jsx';
 import MainLayout       from './components/layout/MainLayout.jsx';
 import HomePage         from './pages/Home.jsx';
-import DecisionFeed     from './pages/DecisionFeed.jsx';
 import ContentLab       from './pages/ContentLab/index.jsx';
 import CopilotPage      from './pages/CopilotPage.jsx';
 import MarketingTools   from './pages/tools/MarketingTools.jsx';
@@ -55,10 +54,6 @@ const Measure      = lazy(() => import('./pages/Measure.jsx'));
 
 // ── v2 views (gradual migration via Strangler Pattern) ────────
 const DecisionViewV2 = lazy(() => import('./pages/v2/DecisionViewV2.tsx').then(m => ({ default: m.DecisionViewV2 })));
-
-// ── Dev tools ──────────────────────────────────────────────────
-import { ComparisonRoute } from './components/dev/ComparisonHarness.tsx';
-
 
 function PageFallback() {
   return (
@@ -139,11 +134,10 @@ export default function App() {
               <HomePage />
             </ErrorBoundary>
           } />
-          <Route path="decisions"  element={
-            <ErrorBoundary boundaryId="feed">
-              <DecisionFeed />
-            </ErrorBoundary>
-          } />
+          {/* Legacy Command Center surface removed — the decision feed lives on
+              Overview now. Route kept as a redirect so existing deep-links and
+              bookmarks resolve instead of 404-ing. */}
+          <Route path="decisions"  element={<Navigate to={appRoutes.overview} replace />} />
           <Route path="campaigns"  element={
             <ErrorBoundary boundaryId="campaigns">
               <Suspense fallback={<PageFallback />}><CampaignAnalysis /></Suspense>
@@ -251,7 +245,7 @@ export default function App() {
           } />
 
           <Route path="home"  element={<Navigate to={appRoutes.overview} replace />} />
-          <Route path="feed"  element={<Navigate to={appRoutes.decisions} replace />} />
+          <Route path="feed"  element={<Navigate to={appRoutes.overview} replace />} />
           <Route path="truth" element={<Navigate to={appRoutes.blendedTruth} replace />} />
           <Route path="proof" element={<Navigate to={appRoutes.proof} replace />} />
 
@@ -283,18 +277,6 @@ export default function App() {
             </ErrorBoundary>
           } />
 
-          {/* ── Comparison routes (dev harness) ─────────────── */}
-          <Route path="compare/decision" element={
-            <ErrorBoundary boundaryId="compare-decision">
-              <Suspense fallback={<PageFallback />}>
-                <ComparisonRoute
-                  v1={<DecisionFeed />}
-                  v2={<DecisionViewV2 />}
-                  label="Decision View"
-                />
-              </Suspense>
-            </ErrorBoundary>
-          } />
           <Route path="*" element={<NotFound app />} />
         </Route>
 

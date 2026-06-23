@@ -7,7 +7,6 @@ export const appRoutes = {
   proof: '/app/intelligence/proof',
   testing: '/app/testing',
   measure: '/app/measure',
-  decisions: '/app/decisions',
   contentLab: '/app/content',
   publishing: '/app/publishing',
   copilot: '/app/copilot',
@@ -40,7 +39,7 @@ export const settingsSections = [
 
 export const legacyAppRedirects = [
   { from: 'home', to: appRoutes.overview },
-  { from: 'feed', to: appRoutes.decisions },
+  { from: 'feed', to: appRoutes.overview },
   { from: 'truth', to: appRoutes.blendedTruth },
   { from: 'proof', to: appRoutes.proof },
   { from: 'connections', to: appRoutes.settingsIntegrations },

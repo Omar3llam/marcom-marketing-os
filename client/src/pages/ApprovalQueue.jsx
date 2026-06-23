@@ -58,7 +58,7 @@ export default function ApprovalQueue() {
       toast.success(`Execution resumed successfully — status: ${result.status}, re-executed: ${result.reExecuted}`);
 
       // Redirect to execution view or feed
-      navigate(appRoutes.decisions);
+      navigate(appRoutes.overview);
     } catch (err) {
       console.error('[ApprovalQueue] Failed to submit decisions:', err);
       // Error already set in hook state
@@ -109,7 +109,7 @@ export default function ApprovalQueue() {
           All artifacts have been reviewed for this execution.
         </Text>
         <button
-          onClick={() => navigate(appRoutes.decisions)}
+          onClick={() => navigate(appRoutes.overview)}
           className="mt-4 px-4 py-2 bg-brand-gold text-surface-dark rounded-lg font-medium hover:bg-brand-gold/90"
         >
           Back to Feed
