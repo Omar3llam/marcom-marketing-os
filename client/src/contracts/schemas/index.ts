@@ -415,6 +415,17 @@ export {
   type Handoff,
 } from './approval.schema';
 
+export {
+  InboxAlertSchema,
+  InboxNarrativeSchema,
+  InboxApprovalSchema,
+  InboxResponseSchema,
+  type InboxAlert,
+  type InboxNarrative,
+  type InboxApproval,
+  type InboxResponse,
+} from './inbox.schema';
+
 // ──────────────────────────────────────────────────────────
 // Phase 9 — Agentic OS (unified home · agenda · loop status)
 // ──────────────────────────────────────────────────────────
