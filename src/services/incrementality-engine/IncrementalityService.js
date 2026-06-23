@@ -60,7 +60,12 @@ export async function designTest(workspaceId, { name, channel, entityId, entityL
 
 export async function listTests(workspaceId) {
   if (!workspaceId) throw new Error('listTests: workspaceId required');
-  return prisma.incrementalityTest.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 50 });
+  return prisma.incrementalityTest.findMany({
+    where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 50,
+    // Provenance (Phase 7C): surface the A/B test a holdout was promoted from
+    // so the panel can show "From A/B test". Null for directly-designed holdouts.
+    include: { sourceTest: { select: { id: true, dimension: true, hypothesis: true } } },
+  });
 }
 
 /**

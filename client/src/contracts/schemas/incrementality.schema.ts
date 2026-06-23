@@ -59,6 +59,11 @@ export const IncrementalityTestSchema = z.object({
   incrementalRevenueMinor: z.number().int().nullish(),
   startedAt: z.string().nullish(),
   concludedAt: z.string().nullish(),
+  // Provenance (Phase 7C): the concluded A/B test this holdout was promoted from.
+  // Null/absent for holdouts designed directly. Declared so it survives parsing.
+  sourceTest: z
+    .object({ id: z.string(), dimension: z.string(), hypothesis: z.string().nullish() })
+    .nullish(),
 });
 
 // ── API response envelopes (the route → hook contract seam) ──

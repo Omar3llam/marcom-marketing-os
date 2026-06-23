@@ -223,6 +223,54 @@ describe('TestingView — commit the proposed agenda', () => {
   });
 });
 
+describe('TestingView — promote a concluded test into a holdout (Phase 7C bridge)', () => {
+  it('a STRATEGIST opens the design form; submitting fires onPromote with the derived payload (% → fraction, channel upper)', () => {
+    const onPromote = vi.fn().mockResolvedValue({ id: 'inc-1' });
+    renderView({ experiments: [CONCLUDED_WINNER], role: 'STRATEGIST', onPromote });
+    fireEvent.click(screen.getByRole('button', { name: /promote to holdout/i }));
+    fireEvent.change(screen.getByLabelText(/daily eligible users/i), { target: { value: '4000' } });
+    fireEvent.change(screen.getByLabelText(/minimum detectable lift percent/i), { target: { value: '20' } });
+    fireEvent.change(screen.getByLabelText(/^channel$/i), { target: { value: 'meta' } });
+    fireEvent.click(screen.getByRole('button', { name: /design holdout/i }));
+    expect(onPromote).toHaveBeenCalledWith('t-win', { dailyEligible: 4000, mde: 0.2, channel: 'META' });
+  });
+
+  it('omits the optional fields when left blank (backend derives baseline + seeds mde)', () => {
+    const onPromote = vi.fn().mockResolvedValue({ id: 'inc-1' });
+    renderView({ experiments: [CONCLUDED_WINNER], role: 'STRATEGIST', onPromote });
+    fireEvent.click(screen.getByRole('button', { name: /promote to holdout/i }));
+    fireEvent.change(screen.getByLabelText(/daily eligible users/i), { target: { value: '4000' } });
+    fireEvent.click(screen.getByRole('button', { name: /design holdout/i }));
+    expect(onPromote).toHaveBeenCalledWith('t-win', { dailyEligible: 4000 });
+  });
+
+  it('a BUYER sees the affordance but is told it needs a strategist — promote never fires', () => {
+    const onPromote = vi.fn();
+    renderView({ experiments: [CONCLUDED_WINNER], role: 'BUYER', onPromote });
+    fireEvent.click(screen.getByRole('button', { name: /promote to holdout/i }));
+    expect(screen.getByText(/Holdout design requires STRATEGIST role/i)).toBeInTheDocument();
+    expect(onPromote).not.toHaveBeenCalled();
+  });
+
+  it('reflects the in-flight promote (disabled + Promoting…)', () => {
+    renderView({ experiments: [CONCLUDED_WINNER], role: 'STRATEGIST', onPromote: vi.fn(), promotingId: 't-win' });
+    fireEvent.click(screen.getByRole('button', { name: /promote to holdout/i }));
+    expect(screen.getByRole('button', { name: /promoting/i })).toBeDisabled();
+  });
+
+  it('surfaces the real promote error (e.g. tier lock) inline, not a generic message', () => {
+    const err = new Error('Holdout testing requires Enterprise tier — upgrade in Settings.');
+    renderView({ experiments: [CONCLUDED_WINNER], role: 'STRATEGIST', onPromote: vi.fn(), promoteError: err });
+    fireEvent.click(screen.getByRole('button', { name: /promote to holdout/i }));
+    expect(screen.getByText(/requires Enterprise tier/i)).toBeInTheDocument();
+  });
+
+  it('offers no promote control on a RUNNING test — only CONCLUDED', () => {
+    renderView({ experiments: [RUNNING_READY], role: 'STRATEGIST', onPromote: vi.fn() });
+    expect(screen.queryByRole('button', { name: /promote to holdout/i })).not.toBeInTheDocument();
+  });
+});
+
 describe('contract seam — TestExperimentSchema safeParses a real row', () => {
   it('validates the concluded fixture', () => {
     expect(TestExperimentSchema.safeParse(CONCLUDED_WINNER).success).toBe(true);

@@ -135,6 +135,13 @@ function HoldoutRow({ test, readout, busy, onRecord, onConclude }) {
         </span>
       </div>
 
+      {/* Provenance: a holdout promoted from a concluded A/B test (Phase 7C). */}
+      {test.sourceTest && (
+        <p className="mt-1 font-mono text-[10px] uppercase tracking-wide text-lumi-subtle">
+          From A/B test · {test.sourceTest.dimension}
+        </p>
+      )}
+
       {/* CONCLUDED → persisted readout (real backing row, never re-derived) */}
       {concluded && (
         <div className="mt-3">
