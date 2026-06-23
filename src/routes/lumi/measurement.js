@@ -7,13 +7,13 @@
 //   POST /api/lumi/incrementality/:id/conclude — read out lift+CI → memory
 // ============================================================
 import { Router } from 'express';
-import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { getAttribution } from '../../services/attribution-engine/AttributionService.js';
 import { ATTRIBUTION_MODEL } from '../../services/attribution-engine/attributionTypes.js';
 import { getReconciliation } from '../../services/reconciliation/ReconciliationService.js';
 import { designTest, listTests, getTest, recordCounts, concludeIncrementality } from '../../services/incrementality-engine/IncrementalityService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { requireMeasurementTier } from '../../middleware/requireMeasurementTier.js';
 import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
 
 // Measurement (MEASURE surface) is STRATEGIST-only. The tier gate below blocks
@@ -22,40 +22,8 @@ const requireStrategist = requireCollabRole(WORKSPACE_ROLE.STRATEGIST);
 
 export const measurementRouter = Router();
 
-// Resolve workspaceId — mirrors lumi/planning.js. Never fabricate a uuid.
-async function resolveWorkspaceId(req) {
-  if (req.workspaceId) return req.workspaceId;
-  if (!req.userId) return null;
-  try {
-    const u = await prisma.user.findUnique({ where: { clerkId: req.userId }, select: { workspaceId: true } });
-    return u?.workspaceId ?? null;
-  } catch (err) {
-    logger.error({ err: err.message, userId: req.userId }, '[lumi/measurement] workspaceId fallback failed');
-    return null;
-  }
-}
-
-// ── The tier gate (the honesty/product seam) ──────────────────
-// Measurement is Agency/Enterprise depth, OFF by default. NONE → 403.
-// Resolves the workspace once and stashes it on req for the handlers.
-async function requireMeasurementTier(req, res, next) {
-  const wsId = await resolveWorkspaceId(req);
-  if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
-
-  const override = process.env.MEASUREMENT_TIER_OVERRIDE; // dev/local escape hatch
-  let tier = override;
-  if (!tier) {
-    const ws = await prisma.workspace.findUnique({ where: { id: wsId }, select: { measurementTier: true } });
-    tier = ws?.measurementTier ?? 'NONE';
-  }
-  if (tier === 'NONE') {
-    return res.status(403).json({ error: 'MeasurementGated', tier: 'NONE', message: 'Measurement is an Agency/Enterprise capability — not enabled for this workspace.' });
-  }
-  req.measurementWorkspaceId = wsId;
-  req.measurementTier = tier;
-  next();
-}
-
+// The tier gate (the honesty/product seam) is the shared middleware so the
+// Phase-7C bridge in lumi/testing.js enforces the identical paywall.
 measurementRouter.use(['/attribution', '/reconciliation', '/incrementality'], (req, res, next) => requireMeasurementTier(req, res, next));
 
 // ─────────────────────────────────────────────────────────────
