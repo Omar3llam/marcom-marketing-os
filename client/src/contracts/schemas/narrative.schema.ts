@@ -40,8 +40,23 @@ export const StakeholderNarrativeSchema = z.object({
   evidenceRefs: z.array(z.string()),
 });
 
+// ── API response envelopes (the route → hook contract seam) ──
+// All three endpoints return the SAME serialized narrative shape (the backend's
+// serializeNarrative collapsed the list/detail/generate divergence into one).
+export const NarrativesListResponseSchema = z.object({
+  workspaceId: z.string().nullable(),
+  narratives: z.array(StakeholderNarrativeSchema),
+});
+
+export const NarrativeResponseSchema = z.object({
+  workspaceId: z.string().nullable(),
+  narrative: StakeholderNarrativeSchema,
+});
+
 export type NarrativePeriod = z.infer<typeof NarrativePeriodSchema>;
 export type NarrativeAudience = z.infer<typeof NarrativeAudienceSchema>;
 export type ConfidenceComponent = z.infer<typeof ConfidenceComponentSchema>;
 export type ReportConfidence = z.infer<typeof ReportConfidenceSchema>;
 export type StakeholderNarrative = z.infer<typeof StakeholderNarrativeSchema>;
+export type NarrativesListResponse = z.infer<typeof NarrativesListResponseSchema>;
+export type NarrativeResponse = z.infer<typeof NarrativeResponseSchema>;
