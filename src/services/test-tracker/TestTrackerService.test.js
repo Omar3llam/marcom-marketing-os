@@ -17,7 +17,7 @@ vi.mock('axios', () => ({ default: { get: vi.fn() } }));
 vi.mock('../connectors/credentialStore.js', () => ({ resolveCredential: vi.fn() }));
 vi.mock('../../lib/prisma.js', () => {
   const prisma = {
-    testExperiment:      { findUnique: vi.fn(), update: vi.fn() },
+    testExperiment:      { findUnique: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     testVariant:         { update: vi.fn() },
     decision:            { create: vi.fn() },
     decisionMemoryEntry: { create: vi.fn() },
@@ -30,7 +30,7 @@ vi.mock('../../lib/prisma.js', () => {
 
 import { prisma } from '../../lib/prisma.js';
 import { resolveCredential } from '../connectors/credentialStore.js';
-import { concludeTest, resolveVerdict, parseVariantInsights } from './TestTrackerService.js';
+import { concludeTest, startTest, recordVariantMetrics, resolveVerdict, parseVariantInsights } from './TestTrackerService.js';
 import { verdictToActionType }  from '../verdict-engine/verdictTypes.js';
 import { validateActionTarget } from '../metaExecutionService.js';
 
@@ -60,9 +60,9 @@ describe('concludeTest — confident winner closes the loop with a valid verdict
     const row = testRow({
       variants: [variant('v-a', 'Hook A', true, 50000, 800), variant('v-b', 'Hook B', false, 50000, 1050)],
     });
-    prisma.testExperiment.findUnique.mockResolvedValue(row);
+    prisma.testExperiment.findFirst.mockResolvedValue(row);
 
-    const out = await concludeTest('test-1');
+    const out = await concludeTest('ws-1', 'test-1');
 
     // Winner + verdict
     expect(out.readout.winnerLabel).toBe('Hook B');
@@ -90,9 +90,9 @@ describe('concludeTest — honesty: thin sample writes memory but NO verdict', (
     const row = testRow({
       variants: [variant('v-a', 'A', true, 180, 3), variant('v-b', 'B', false, 180, 4)],
     });
-    prisma.testExperiment.findUnique.mockResolvedValue(row);
+    prisma.testExperiment.findFirst.mockResolvedValue(row);
 
-    const out = await concludeTest('test-1');
+    const out = await concludeTest('ws-1', 'test-1');
 
     expect(out.readout.confidenceLabel).toBe('INCONCLUSIVE');
     expect(out.verdict).toBeNull();
@@ -117,6 +117,49 @@ describe('resolveVerdict — reconciles verdict to a governance-valid action per
   it('returns null when no valid action fits the level', () => {
     expect(resolveVerdict('SCALE', 'CREATIVE')).toEqual({ verdict: null, actionType: null });
     expect(resolveVerdict(null, 'ADSET')).toEqual({ verdict: null, actionType: null });
+  });
+});
+
+describe('workspace isolation — the mutation paths refuse a cross-workspace id', () => {
+  it('startTest authorizes by {id, workspaceId} then updates', async () => {
+    prisma.testExperiment.findFirst.mockResolvedValue({ id: 'test-1' });
+    await startTest('ws-1', 'test-1');
+    expect(prisma.testExperiment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'test-1', workspaceId: 'ws-1' } }),
+    );
+    expect(prisma.testExperiment.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'test-1' }, data: expect.objectContaining({ status: 'RUNNING' }) }),
+    );
+  });
+
+  it('startTest throws (→404) when the id belongs to another workspace', async () => {
+    prisma.testExperiment.findFirst.mockResolvedValue(null);
+    await expect(startTest('ws-1', 'foreign')).rejects.toThrow(/not found/i);
+    expect(prisma.testExperiment.update).not.toHaveBeenCalled();
+  });
+
+  it('recordVariantMetrics writes only variants owned by the in-workspace test (forged id dropped)', async () => {
+    prisma.testExperiment.findFirst.mockResolvedValue({ id: 'test-1', variants: [{ id: 'v-a' }, { id: 'v-b' }] });
+    const out = await recordVariantMetrics('ws-1', 'test-1', [
+      { variantId: 'v-a', clicks: 10 },
+      { variantId: 'foreign-variant', clicks: 999 }, // belongs to another workspace's test
+    ]);
+    expect(out.updated).toBe(1);
+    expect(prisma.testVariant.update).toHaveBeenCalledTimes(1);
+    expect(prisma.testVariant.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'v-a' } }));
+  });
+
+  it('recordVariantMetrics throws (→404) when the id belongs to another workspace', async () => {
+    prisma.testExperiment.findFirst.mockResolvedValue(null);
+    await expect(recordVariantMetrics('ws-1', 'foreign', [{ variantId: 'v-a', clicks: 1 }])).rejects.toThrow(/not found/i);
+    expect(prisma.testVariant.update).not.toHaveBeenCalled();
+  });
+
+  it('concludeTest throws (→404) when the id belongs to another workspace', async () => {
+    prisma.testExperiment.findFirst.mockResolvedValue(null);
+    await expect(concludeTest('ws-1', 'foreign', { refresh: false })).rejects.toThrow(/not found/i);
+    expect(prisma.decision.create).not.toHaveBeenCalled();
+    expect(prisma.decisionMemoryEntry.create).not.toHaveBeenCalled();
   });
 });
 

@@ -144,7 +144,7 @@ collaborationRouter.post('/approvals/:id/decide', requireCollabRole(WORKSPACE_RO
 // ─────────────────────────────────────────────────────────────
 // POST /handoff — strategist ⇄ buyer, audited
 // ─────────────────────────────────────────────────────────────
-collaborationRouter.post('/handoff', async (req, res) => {
+collaborationRouter.post('/handoff', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
   const wsId = await need(req, res); if (!wsId) return;
   const b = req.body ?? {};
   if (!b.subjectId) return res.status(400).json({ error: 'BadHandoff', message: 'subjectId required.' });

@@ -39,9 +39,15 @@ const LEVEL_TO_TARGET = Object.freeze({
   ACCOUNT: 'campaign', CAMPAIGN: 'campaign', ADSET: 'adset', AD: 'ad', CREATIVE: 'creative',
 });
 
-/** PROPOSED → RUNNING. */
-export async function startTest(testId) {
+/** PROPOSED → RUNNING. Workspace-scoped: a test outside `workspaceId` is invisible. */
+export async function startTest(workspaceId, testId) {
+  if (!workspaceId) throw new Error('startTest: workspaceId required');
   if (!testId) throw new Error('startTest: testId required');
+  // Authorize first — `update({where:{id}})` alone would mutate across workspaces.
+  const existing = await prisma.testExperiment.findFirst({
+    where: { id: testId, workspaceId }, select: { id: true },
+  });
+  if (!existing) throw new Error('startTest: test not found');
   return prisma.testExperiment.update({
     where: { id: testId },
     data:  { status: 'RUNNING', startedAt: new Date() },
@@ -53,13 +59,25 @@ export async function startTest(testId) {
  * $transaction over an array of updates — no `await` inside a loop,
  * so arch-check's no-N+1 rule is satisfied.
  *
+ * Workspace-scoped: the test must belong to `workspaceId`, and only variants
+ * that actually belong to that test are written — a forged variantId from
+ * another workspace is dropped, never updated.
+ *
+ * @param {string} workspaceId
  * @param {string} testId
  * @param {Array<{variantId, impressions?, clicks?, conversions?, spendMinor?, revenueMinor?}>} rows
  */
-export async function recordVariantMetrics(testId, rows = []) {
+export async function recordVariantMetrics(workspaceId, testId, rows = []) {
+  if (!workspaceId) throw new Error('recordVariantMetrics: workspaceId required');
   if (!testId) throw new Error('recordVariantMetrics: testId required');
+  const test = await prisma.testExperiment.findFirst({
+    where: { id: testId, workspaceId },
+    select: { id: true, variants: { select: { id: true } } },
+  });
+  if (!test) throw new Error('recordVariantMetrics: test not found');
+  const ownVariantIds = new Set(test.variants.map((v) => v.id));
   const ops = rows
-    .filter((r) => r && r.variantId)
+    .filter((r) => r && r.variantId && ownVariantIds.has(r.variantId))
     .map((r) => prisma.testVariant.update({
       where: { id: r.variantId },
       data: {
@@ -115,11 +133,15 @@ export function parseVariantInsights(insight, currency) {
  * insights. Never throws to the caller — a missing token or a per-variant
  * API error is logged and skipped.
  *
+ * @param {string} workspaceId
+ * @param {string} testId
  * @returns {Promise<{refreshed:number, skipped:number, reason?:string}>}
  */
-export async function refreshFromMeta(testId) {
-  const test = await prisma.testExperiment.findUnique({
-    where: { id: testId }, include: { variants: true },
+export async function refreshFromMeta(workspaceId, testId) {
+  if (!workspaceId) throw new Error('refreshFromMeta: workspaceId required');
+  if (!testId) throw new Error('refreshFromMeta: testId required');
+  const test = await prisma.testExperiment.findFirst({
+    where: { id: testId, workspaceId }, include: { variants: true },
   });
   if (!test) throw new Error(`refreshFromMeta: test ${testId} not found`);
 
@@ -151,7 +173,7 @@ export async function refreshFromMeta(testId) {
     }
   }
 
-  if (updates.length > 0) await recordVariantMetrics(testId, updates);
+  if (updates.length > 0) await recordVariantMetrics(workspaceId, testId, updates);
   logger.info({ testId, refreshed: updates.length, skipped }, '[TestTrackerService] refreshed from Meta');
   return { refreshed: updates.length, skipped };
 }
@@ -186,16 +208,17 @@ export function resolveVerdict(readoutVerdict, entityLevel) {
  *
  * @returns {Promise<{ readout, memoryId, decisionId, verdict, actionType }>}
  */
-export async function concludeTest(testId, { refresh = true } = {}) {
+export async function concludeTest(workspaceId, testId, { refresh = true } = {}) {
+  if (!workspaceId) throw new Error('concludeTest: workspaceId required');
   if (!testId) throw new Error('concludeTest: testId required');
 
   if (refresh) {
-    try { await refreshFromMeta(testId); }
+    try { await refreshFromMeta(workspaceId, testId); }
     catch (err) { logger.debug({ testId, err: err.message }, '[TestTrackerService] refresh skipped'); }
   }
 
-  const test = await prisma.testExperiment.findUnique({
-    where: { id: testId }, include: { variants: true },
+  const test = await prisma.testExperiment.findFirst({
+    where: { id: testId, workspaceId }, include: { variants: true },
   });
   if (!test) throw new Error(`concludeTest: test ${testId} not found`);
   if (test.variants.length < 2) throw new Error(`concludeTest: test ${testId} needs ≥2 variants`);

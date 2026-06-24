@@ -107,7 +107,7 @@ export async function recordCounts(workspaceId, testId, counts = {}) {
   });
   if (res.count === 0) throw new Error('recordCounts: test is no longer editable — observed counts are immutable');
 
-  const updated = await prisma.incrementalityTest.findFirst({ where: { id: test.id } });
+  const updated = await prisma.incrementalityTest.findFirst({ where: { id: test.id, workspaceId } });
   logger.info({ workspaceId, testId }, '[IncrementalityService] observed counts recorded');
   return updated;
 }

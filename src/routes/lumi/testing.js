@@ -88,9 +88,10 @@ testingRouter.post('/tests/:id/start', requireOperator, async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
   try {
-    const test = await startTest(req.params.id);
+    const test = await startTest(wsId, req.params.id);
     return res.json({ workspaceId: wsId, test });
   } catch (err) {
+    if (/not found/i.test(err.message)) return res.status(404).json({ error: 'TestNotFound', message: err.message });
     logger.error({ err: err.message, wsId, testId: req.params.id }, '[lumi/testing] start failed');
     return res.status(500).json({ error: 'TestStartFailed', message: 'Request failed' });
   }
@@ -107,9 +108,10 @@ testingRouter.post('/tests/:id/metrics', requireOperator, async (req, res) => {
   if (rows.length === 0) return res.status(400).json({ error: 'BadRequest', message: 'variants[] is required' });
 
   try {
-    const result = await recordVariantMetrics(req.params.id, rows);
+    const result = await recordVariantMetrics(wsId, req.params.id, rows);
     return res.json({ workspaceId: wsId, ...result });
   } catch (err) {
+    if (/not found/i.test(err.message)) return res.status(404).json({ error: 'TestNotFound', message: err.message });
     logger.error({ err: err.message, wsId, testId: req.params.id }, '[lumi/testing] metrics failed');
     return res.status(500).json({ error: 'TestMetricsFailed', message: 'Request failed' });
   }
@@ -126,10 +128,11 @@ testingRouter.post('/tests/:id/conclude', requireOperator, async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
   try {
-    const result = await concludeTest(req.params.id);
+    const result = await concludeTest(wsId, req.params.id);
     logger.info({ wsId, testId: req.params.id, verdict: result.verdict, decisionId: result.decisionId }, '[lumi/testing] concluded');
     return res.json({ workspaceId: wsId, ...result });
   } catch (err) {
+    if (/not found/i.test(err.message)) return res.status(404).json({ error: 'TestNotFound', message: err.message });
     logger.error({ err: err.message, wsId, testId: req.params.id }, '[lumi/testing] conclude failed');
     return res.status(500).json({ error: 'TestConcludeFailed', message: 'Request failed' });
   }
