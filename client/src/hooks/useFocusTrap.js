@@ -14,7 +14,7 @@
 //      Escape themselves, to avoid double-close.
 //
 // NOTE: This is for modal dialogs, NOT popovers/menus. A non-modal
-// popover (e.g. NotificationPopover) must NOT trap focus per ARIA APG.
+// popover (e.g. the InboxPanel bell dropdown) must NOT trap focus per ARIA APG.
 //
 // Usage:
 //   const trapRef = useFocusTrap(open);
