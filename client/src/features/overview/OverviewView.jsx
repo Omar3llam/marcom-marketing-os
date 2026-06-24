@@ -1,8 +1,10 @@
 // ============================================================
 // MARCOM — Home Page (Account Pulse)
 // ============================================================
-// Replaces/enhances Command Hub with operational dashboard.
-// Shows: account health stats, alerts, AI insights, quick actions
+// The operational home: account-health stats + the Phase-9 agentic shell (the
+// real two-band agenda from getHome, role-scoped). The old ad-hoc Alerts /
+// AI-Insight / Quick-Actions panels — which derived "alerts" from the campaign
+// feed — are gone; the agenda IS the prioritized, evidence-backed action list.
 // ============================================================
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -14,15 +16,11 @@ import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
-import { useRunSweep } from '@/hooks/useRunSweep.js';
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
 import StatCard from '@/components/ui/StatCard.jsx';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
 import { ProofSummary } from '@/features/intelligence/proof/ProofView.jsx';
-import AlertsPanel from './components/AlertsPanel.jsx';
-import AIInsightPanel from './components/AIInsightPanel.jsx';
-import QuickActionsPanel from './components/QuickActionsPanel.jsx';
-import ActivityFeed from './components/ActivityFeed.jsx';
+import AgenticShellView from './AgenticShellView.jsx';
 import ConnectionHealthStrip from './components/ConnectionHealthStrip.jsx';
 import PacingWidget from './components/PacingWidget.jsx';
 import CopilotTeaser from './components/CopilotTeaser.jsx';
@@ -31,17 +29,9 @@ export default function OverviewView() {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { workspace } = useWorkspace();
-  const { campaigns, summary, loading: intelligenceLoading, refresh } = useIntelligence();
+  const { campaigns, summary, loading: intelligenceLoading } = useIntelligence();
   const { surface: proofSurface } = useAccuracy(); // gated proof one-liner (best-effort)
   const { role: collabRole } = useCollabRole();
-  const { runSweep, sweeping, error: sweepError } = useRunSweep();
-  // Running a sweep (re-scan + re-propose) is an operator action; a CLIENT seat
-  // is read-only. On success we refetch the feed so new proposals surface here.
-  const canRunSweep = collabRole === WORKSPACE_ROLE.BUYER || collabRole === WORKSPACE_ROLE.STRATEGIST;
-  const onRunSweep = async () => {
-    const result = await runSweep();
-    if (result) await refresh?.();
-  };
 
   // Greeting based on time of day
   const hour = new Date().getHours();
@@ -76,61 +66,9 @@ export default function OverviewView() {
     [campaigns],
   );
 
-  // Extract high-priority alerts (KILL and HIGH-IMPACT HOLD verdicts)
-  const highAlerts = useMemo(() => {
-    const alerts = [];
-    for (const campaign of campaigns) {
-      for (const alert of campaign.alerts || []) {
-        const verdict = alert.analysis?.verdict;
-        const rootCause = alert.analysis?.root_cause || 'No diagnosis';
-        const metrics = alert.metrics || [];
-
-        // Extract key metrics for signal text
-        const spend = metrics.find(m => m.metric?.toLowerCase() === 'spend');
-        const roas = metrics.find(m => m.metric?.toLowerCase() === 'roas');
-        const ctr = metrics.find(m => m.metric?.toLowerCase() === 'ctr');
-
-        const signalParts = [];
-        if (roas?.trend) signalParts.push(`ROAS ${roas.trend} ${roas.value}`);
-        if (ctr?.trend) signalParts.push(`CTR ${ctr.trend} ${ctr.value}`);
-        const signal = signalParts.length > 0 ? signalParts.join(' · ') : rootCause;
-
-        if (verdict === 'KILL' || (verdict === 'HOLD' && alert.priority === 'HIGH')) {
-          alerts.push({
-            id: alert.action_id || `${campaign.campaign_id}-${alerts.length}`,
-            campaign: campaign.campaign_name || 'Unknown Campaign',
-            signal,
-            verdict: verdict || 'HOLD',
-            alertData: alert,
-          });
-        }
-      }
-    }
-    return alerts.slice(0, 3); // Top 3 alerts
-  }, [campaigns]);
-
-  // Extract recent activity (placeholder - will need decision/execution history API)
-  const recentActivity = useMemo(() => {
-    const activity = [];
-    // For now, create activity from campaign alerts
-    for (const campaign of campaigns.slice(0, 3)) {
-      const alert = campaign.alerts?.[0];
-      if (alert) {
-        activity.push({
-          id: alert.action_id || campaign.campaign_id,
-          type: alert.analysis?.verdict === 'KILL' ? 'EXECUTION' : 'VERDICT',
-          campaign: campaign.campaign_name || 'Unknown Campaign',
-          action: alert.analysis?.verdict === 'KILL' ? 'Recommended pause' : `Recommended ${alert.analysis?.verdict}`,
-          time: 'Recent', // TODO: Add timestamp from alert
-          verdict: alert.analysis?.verdict,
-        });
-      }
-    }
-    return activity;
-  }, [campaigns]);
-
   const loading = intelligenceLoading;
   const hasData = campaigns.length > 0;
+  const showCopilotTeaser = collabRole !== WORKSPACE_ROLE.CLIENT; // CLIENT home stays read-only & minimal
 
   return (
     <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
@@ -188,68 +126,50 @@ export default function OverviewView() {
 
           {/* 4 stat cards - responsive: 1 col mobile, 2 col tablet, 4 col desktop */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
-        <StatCard
-          label="Total spend"
-          value={stats.spend}
-          sub="last 30 days"
-          Icon={BarChart}
-          tone="neutral"
-        />
-        <StatCard
-          label="Blended CPA"
-          value={stats.cpa}
-          sub="across active campaigns"
-          Icon={Target}
-          tone="neutral"
-        />
-        <StatCard
-          label="Wasted spend"
-          value={stats.waste}
-          sub={killCount > 0 ? `${killCount} KILL-verdict ad set${killCount === 1 ? '' : 's'}` : 'flagged for review'}
-          Icon={AlertTriangle}
-          tone="danger"
-        />
-        <StatCard
-          label="Account health"
-          value={`${stats.health}/100`}
-          sub={healthLabel}
-          Icon={Activity}
-          tone={healthTone}
-          gauge={stats.health}
-        />
-      </div>
+            <StatCard
+              label="Total spend"
+              value={stats.spend}
+              sub="last 30 days"
+              Icon={BarChart}
+              tone="neutral"
+            />
+            <StatCard
+              label="Blended CPA"
+              value={stats.cpa}
+              sub="across active campaigns"
+              Icon={Target}
+              tone="neutral"
+            />
+            <StatCard
+              label="Wasted spend"
+              value={stats.waste}
+              sub={killCount > 0 ? `${killCount} KILL-verdict ad set${killCount === 1 ? '' : 's'}` : 'flagged for review'}
+              Icon={AlertTriangle}
+              tone="danger"
+            />
+            <StatCard
+              label="Account health"
+              value={`${stats.health}/100`}
+              sub={healthLabel}
+              Icon={Activity}
+              tone={healthTone}
+              gauge={stats.health}
+            />
+          </div>
 
-      {/* 3-column row - responsive: 1 col mobile, 2 col tablet, 3 col desktop */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 mb-6">
-        <AlertsPanel
-          alerts={highAlerts}
-          onReviewAlert={(alert) => navigate('/app/campaigns')}
-        />
-        <AIInsightPanel
-          workspace={workspace}
-          topAlert={highAlerts[0]}
-          onAct={() => navigate('/app/campaigns')}
-        />
-        <QuickActionsPanel
-          onUploadCSV={() => navigate('/app/campaigns')}
-          onStartFlow={() => navigate('/app/campaigns')}
-          onRunSweep={onRunSweep}
-          sweepBusy={sweeping}
-          canRunSweep={canRunSweep}
-          sweepError={sweepError}
-        />
-      </div>
-
-          {/* Recent activity */}
-          <ActivityFeed activity={recentActivity} loading={loading} />
+          {/* The agentic shell — the real, role-scoped two-band agenda + loop
+              status. Replaces the old ad-hoc alerts/insight/quick-action row. */}
+          <AgenticShellView />
         </>
       )}
 
-      {/* Lumi Copilot — demoted from the primary sidebar to a modest teaser here
-          until the feature is real. Renders in every data state. */}
-      <div className="mt-6">
-        <CopilotTeaser />
-      </div>
+      {/* Lumi Copilot — an honest "coming soon" teaser (not for the read-only
+          CLIENT seat). Renders in every data state for operators. */}
+      {showCopilotTeaser && (
+        <div className="mt-6">
+          <CopilotTeaser />
+        </div>
+      )}
     </div>
   );
 }

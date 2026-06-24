@@ -1,0 +1,184 @@
+// ============================================================
+// Phase 9 — Agentic OS Shell: the two-band home
+// ------------------------------------------------------------
+//   • agendaItemRoute() routes each item type to the surface that owns its full
+//     context (and never executes from home).
+//   • AgendaItem shows the backend's exact human verb + a "backed by {type}"
+//     chip only when a real row backs it.
+//   • AgendaBand shows an honest per-band empty state (never hides a band).
+//   • LoopStatusRing reflects health, gates the single sweep button to operators,
+//     and nudges on STALLED.
+//   • AgenticShellView is role-aware: BUYER (ring + buyer band), STRATEGIST
+//     (ring + both bands), CLIENT (strategist band only, no ring), plus honest
+//     loading/error states.
+//   • The contract seam safeParses a representative home envelope.
+// ============================================================
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+
+const navigateMock = vi.fn();
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>();
+  return { ...actual, useNavigate: () => navigateMock };
+});
+vi.mock('@/hooks/useHome.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useHome.js')>();
+  return { ...actual, useHome: vi.fn() };
+});
+vi.mock('@/hooks/useCollabRole.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useCollabRole.js')>();
+  return { ...actual, useCollabRole: vi.fn() };
+});
+vi.mock('@/hooks/useRunSweep.js', () => ({
+  useRunSweep: () => ({ runSweep: vi.fn().mockResolvedValue({}), sweeping: false, error: null }),
+}));
+
+import AgendaItem, { agendaItemRoute } from '../components/AgendaItem.jsx';
+import AgendaBand from '../components/AgendaBand.jsx';
+import LoopStatusRing from '../components/LoopStatusRing.jsx';
+import AgenticShellView from '../AgenticShellView.jsx';
+import { useHome } from '@/hooks/useHome.js';
+import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
+import { AgentHomeSchema } from '@/contracts/schemas';
+import { appRoutes } from '@/app/routeManifest.js';
+
+const item = (over = {}) => ({
+  id: 'verdict:d1', band: 'BUYER', type: 'VERDICT', title: 'KILL Cold #1',
+  rationale: 'Frequency over ceiling', severity: 'HIGH', evidenceRef: 'd1',
+  humanAction: 'confirm', entityId: 'as1', ...over,
+});
+const bandView = (items: unknown[] = []) => ({ title: 't', items, count: items.length, empty: items.length === 0 });
+
+const loop = {
+  stageStatus: [
+    { stage: 'PLAN', state: 'ACTIVE', lastAt: new Date().toISOString(), count: 1 },
+    { stage: 'EXECUTE', state: 'STALE', lastAt: null, count: 0 },
+  ],
+  closed: false, staleStages: ['EXECUTE'], loopHealth: 'HEALTHY',
+  lastRunAt: new Date().toISOString(), nextRunAt: null, intervalMs: 900000,
+};
+
+const home = {
+  role: 'STRATEGIST', summary: '1 to decide, 1 to steer.',
+  buyerBand: bandView([item()]),
+  strategistBand: bandView([item({ id: 'goal:g1', band: 'STRATEGIST', type: 'PLAN_ADJUSTMENT', title: 'Goal blendedCac off track', severity: 'HIGH', humanAction: 'adjust', evidenceRef: 'g1' })]),
+  loop,
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(useCollabRole).mockReturnValue({ role: WORKSPACE_ROLE.STRATEGIST } as never);
+  vi.mocked(useHome).mockReturnValue({ home, isStale: false, isLoading: false, error: null, refetch: vi.fn() } as never);
+});
+
+describe('agendaItemRoute — navigates to the owning surface (never executes)', () => {
+  it('routes each item type to its surface', () => {
+    expect(agendaItemRoute(item({ type: 'VERDICT' }))).toBe(appRoutes.campaigns);
+    expect(agendaItemRoute(item({ type: 'TEST' }))).toBe(appRoutes.testing);
+    expect(agendaItemRoute(item({ type: 'FATIGUE' }))).toBe(appRoutes.insights);
+    expect(agendaItemRoute(item({ type: 'PACING' }))).toBe(appRoutes.insights);
+  });
+  it('sends a goal adjustment to Insights but the blended gap to Blended Truth', () => {
+    expect(agendaItemRoute(item({ type: 'PLAN_ADJUSTMENT', id: 'goal:g1' }))).toBe(appRoutes.insights);
+    expect(agendaItemRoute(item({ type: 'PLAN_ADJUSTMENT', id: 'blended:gap' }))).toBe(appRoutes.blendedTruth);
+  });
+});
+
+describe('AgendaItem — verb + evidence honesty', () => {
+  it('shows the backend human verb and a backed-by chip when a row backs it', () => {
+    render(<AgendaItem item={item({ humanAction: 'confirm', type: 'VERDICT', evidenceRef: 'd1' })} />);
+    expect(screen.getByText('Confirm')).toBeInTheDocument();
+    expect(screen.getByText(/backed by guardrail/i)).toBeInTheDocument();
+    expect(screen.getByText('HIGH')).toBeInTheDocument();
+  });
+
+  it('omits the evidence chip when nothing backs the claim', () => {
+    render(<AgendaItem item={item({ evidenceRef: null })} />);
+    expect(screen.queryByText(/backed by/i)).not.toBeInTheDocument();
+  });
+
+  it('navigates to the owning surface on click (no execution)', () => {
+    render(<AgendaItem item={item({ type: 'VERDICT' })} />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(navigateMock).toHaveBeenCalledWith(appRoutes.campaigns);
+  });
+});
+
+describe('AgendaBand — honest, never-hidden empty states', () => {
+  it('renders the buyer empty copy when there are no items', () => {
+    render(<AgendaBand band="BUYER" data={bandView([])} />);
+    expect(screen.getByText(/No urgent decisions — radar monitoring active/i)).toBeInTheDocument();
+  });
+  it('renders the strategist empty copy when there are no items', () => {
+    render(<AgendaBand band="STRATEGIST" data={bandView([])} />);
+    expect(screen.getByText(/Portfolio on track — no adjustments needed/i)).toBeInTheDocument();
+  });
+  it('renders items with a count when present', () => {
+    render(<AgendaBand band="BUYER" data={bandView([item()])} />);
+    expect(screen.getByText('KILL Cold #1')).toBeInTheDocument();
+    expect(screen.getByText('1 item')).toBeInTheDocument();
+  });
+});
+
+describe('LoopStatusRing — health + the single sweep control', () => {
+  it('shows the health label and a six-stage strip in the full variant', () => {
+    render(<LoopStatusRing loop={loop} summary="all good" canRunSweep compact={false} />);
+    expect(screen.getByText('Loop healthy')).toBeInTheDocument();
+    expect(screen.getByText('PLAN')).toBeInTheDocument();
+    expect(screen.getByText('EXECUTE')).toBeInTheDocument();
+  });
+  it('hides the sweep button for a non-operator', () => {
+    render(<LoopStatusRing loop={loop} summary="" canRunSweep={false} />);
+    expect(screen.queryByRole('button', { name: /run a sweep now/i })).not.toBeInTheDocument();
+  });
+  it('nudges on STALLED for an operator', () => {
+    render(<LoopStatusRing loop={{ ...loop, loopHealth: 'STALLED' }} summary="" canRunSweep />);
+    expect(screen.getByText(/Loop stalled — run a manual sweep/i)).toBeInTheDocument();
+  });
+});
+
+describe('AgenticShellView — role-aware composition', () => {
+  it('STRATEGIST sees the ring + both bands', () => {
+    vi.mocked(useCollabRole).mockReturnValue({ role: WORKSPACE_ROLE.STRATEGIST } as never);
+    render(<AgenticShellView />);
+    expect(screen.getByText('Loop healthy')).toBeInTheDocument();
+    expect(screen.getByText("Today's decisions")).toBeInTheDocument();
+    expect(screen.getByText('Portfolio health')).toBeInTheDocument();
+  });
+
+  it('BUYER leads with the buyer band and no strategist band', () => {
+    vi.mocked(useCollabRole).mockReturnValue({ role: WORKSPACE_ROLE.BUYER } as never);
+    render(<AgenticShellView />);
+    expect(screen.getByText('Loop healthy')).toBeInTheDocument();
+    expect(screen.getByText("Today's decisions")).toBeInTheDocument();
+    expect(screen.queryByText('Portfolio health')).not.toBeInTheDocument();
+  });
+
+  it('CLIENT sees the strategist band only — no ring, no buyer band', () => {
+    vi.mocked(useCollabRole).mockReturnValue({ role: WORKSPACE_ROLE.CLIENT } as never);
+    vi.mocked(useHome).mockReturnValue({ home: { ...home, buyerBand: null }, isStale: false, isLoading: false, error: null, refetch: vi.fn() } as never);
+    render(<AgenticShellView />);
+    expect(screen.queryByText('Loop healthy')).not.toBeInTheDocument();
+    expect(screen.queryByText("Today's decisions")).not.toBeInTheDocument();
+    expect(screen.getByText('Portfolio health')).toBeInTheDocument();
+  });
+
+  it('shows a loading skeleton then an honest error', () => {
+    vi.mocked(useHome).mockReturnValue({ home: null, isStale: false, isLoading: true, error: null, refetch: vi.fn() } as never);
+    const { rerender } = render(<AgenticShellView />);
+    expect(document.querySelector('[aria-busy="true"]')).toBeTruthy();
+
+    vi.mocked(useHome).mockReturnValue({ home: null, isStale: false, isLoading: false, error: new Error('x'), refetch: vi.fn() } as never);
+    rerender(<AgenticShellView />);
+    expect(screen.getByText(/Couldn.t load your agenda/i)).toBeInTheDocument();
+  });
+});
+
+describe('contract seam — the home envelope safeParses', () => {
+  it('AgentHomeSchema validates a representative envelope', () => {
+    expect(AgentHomeSchema.safeParse(home).success).toBe(true);
+  });
+  it('accepts a CLIENT envelope with a null buyer band', () => {
+    expect(AgentHomeSchema.safeParse({ ...home, buyerBand: null }).success).toBe(true);
+  });
+});
