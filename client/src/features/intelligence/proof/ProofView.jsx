@@ -18,6 +18,7 @@ import { Gauge } from 'lucide-react';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
 import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
+import RecordOutcomePanel from './RecordOutcomePanel.jsx';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
 
@@ -113,7 +114,7 @@ export function ProofView({ data, surface, role = WORKSPACE_ROLE.STRATEGIST }) {
 // ── Page wrapper: fetch + three states ──────────────────────────
 export default function Proof() {
   const { role } = useCollabRole();
-  const { data, surface, loading, error } = useAccuracy();
+  const { data, surface, loading, error, refetch } = useAccuracy();
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
@@ -126,7 +127,13 @@ export default function Proof() {
       {!loading && error && (
         <EmptyPanel Icon={Gauge} text="Couldn't load the proof surface right now. Try again shortly." />
       )}
-      {!loading && !error && <ProofView data={data} surface={surface} role={role} />}
+      {!loading && !error && (
+        <div className="space-y-4">
+          <ProofView data={data} surface={surface} role={role} />
+          {/* Closing the loop by hand — recording a real outcome refreshes the surface. */}
+          <RecordOutcomePanel onRecorded={refetch} />
+        </div>
+      )}
     </div>
   );
 }

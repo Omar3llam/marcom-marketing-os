@@ -75,3 +75,120 @@ export async function getAccuracy(workspaceId, { now = new Date(), config } = {}
   );
   return result;
 }
+
+// ── Outcome recording: the Proof Engine's only real WRITE path ─────
+// The engine MEASURES; this is the one place an OutcomeSnapshot is written
+// outside the seed. It is HUMAN-ASSERTED — the operator records what actually
+// happened, the same "user-owned measurement" pattern as recordCounts /
+// recordVariantMetrics (real the way an asserted AOV is real). No auto-scoring
+// off connector deltas here: a raw before/after delta is correlational, not the
+// causal outcome a calibration engine should ingest (that's what holdouts are
+// for), and the realized-metrics fetch is still the Phase-3 stub. Honest entry
+// beats a fabricated one.
+
+const isInt = (v) => Number.isInteger(v);
+const isFiniteNum = (v) => typeof v === 'number' && Number.isFinite(v);
+
+/**
+ * Pure: validate a record-outcome request body. Returns an error string (→422)
+ * or null when valid. Exported so the 422 cases are unit-testable without an
+ * HTTP app. Negative spend/revenue deltas are VALID — a successful KILL reduces
+ * both — so we check integer-ness, never sign.
+ */
+export function validateOutcomeBody(body = {}) {
+  const { spendDeltaMinor, revenueDeltaMinor, roasDelta, windowStart, windowEnd, sustained } = body;
+  if (!isInt(spendDeltaMinor))   return 'spendDeltaMinor must be an integer in minor units (negative allowed)';
+  if (!isInt(revenueDeltaMinor)) return 'revenueDeltaMinor must be an integer in minor units (negative allowed)';
+  if (!isFiniteNum(roasDelta))   return 'roasDelta must be a finite number';
+  if (typeof sustained !== 'boolean') return 'sustained must be a boolean';
+  const startMs = Date.parse(windowStart);
+  const endMs = Date.parse(windowEnd);
+  if (Number.isNaN(startMs)) return 'windowStart must be a valid ISO date';
+  if (Number.isNaN(endMs))   return 'windowEnd must be a valid ISO date';
+  if (endMs <= startMs)      return 'windowEnd must be after windowStart';
+  return null;
+}
+
+/**
+ * Record the realized outcome of an EXECUTED decision (one per decision).
+ *
+ * IDOR discipline: authorize by { id, workspaceId } — a cross-workspace id is
+ * invisible (→404). Only an EXECUTED decision can carry an outcome (PROPOSED
+ * hasn't happened; DISMISSED was never acted on) → 409 otherwise.
+ *
+ * entityId/entityLevel are REQUIRED on OutcomeSnapshot and are INHERITED from
+ * the decision — never operator-entered (they aren't the operator's to set).
+ *
+ * UPSERT-BY-HAND: decisionId is not a unique column (the schema permits a
+ * history the read takes the latest of), so a real upsert({where:{decisionId}})
+ * is impossible. We update the newest snapshot in place, else create — one
+ * outcome per decision, no duplicate, idempotent on re-record.
+ *
+ * @param {string} workspaceId
+ * @param {string} decisionId
+ * @param {{spendDeltaMinor:number, revenueDeltaMinor:number, roasDelta:number,
+ *          windowStart:string|Date, windowEnd:string|Date, sustained:boolean}} input
+ * @returns {Promise<{ workspaceId, decisionId, outcome }>}
+ */
+export async function recordOutcome(workspaceId, decisionId, input = {}) {
+  if (!workspaceId) throw new Error('recordOutcome: workspaceId required');
+  if (!decisionId) throw new Error('recordOutcome: decisionId required');
+
+  const decision = await prisma.decision.findFirst({
+    where: { id: decisionId, workspaceId },
+    select: { id: true, status: true, entityId: true, entityLevel: true },
+  });
+  if (!decision) throw new Error('recordOutcome: decision not found');
+  if (decision.status !== 'EXECUTED') {
+    throw new Error(`recordOutcome: decision is not EXECUTED (status ${decision.status}) — cannot record an outcome`);
+  }
+
+  const { spendDeltaMinor, revenueDeltaMinor, roasDelta, windowStart, windowEnd, sustained } = input;
+  const data = {
+    spendDeltaMinor, revenueDeltaMinor, roasDelta,
+    windowStart: new Date(windowStart), windowEnd: new Date(windowEnd), sustained,
+  };
+
+  const existing = await prisma.outcomeSnapshot.findFirst({
+    where: { decisionId, workspaceId },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  });
+  const outcome = existing
+    ? await prisma.outcomeSnapshot.update({ where: { id: existing.id }, data })
+    : await prisma.outcomeSnapshot.create({
+      data: { workspaceId, decisionId, entityId: decision.entityId, entityLevel: decision.entityLevel, ...data },
+    });
+
+  logger.info(
+    { workspaceId, decisionId, outcomeId: outcome.id, updated: Boolean(existing) },
+    '[DecisionAccuracy] outcome recorded',
+  );
+  return { workspaceId, decisionId, outcome };
+}
+
+/**
+ * List EXECUTED decisions in this workspace that still have NO outcome — the
+ * manual-entry queue the Proof surface binds its "record what actually
+ * happened" form to. Workspace-scoped; no N+1 (one relational `none` filter +
+ * one currency read in parallel).
+ *
+ * @param {string} workspaceId
+ * @returns {Promise<{ decisions: Array, currency: string }>}
+ */
+export async function listPendingOutcomes(workspaceId) {
+  if (!workspaceId) throw new Error('listPendingOutcomes: workspaceId required');
+  const [decisions, ws] = await Promise.all([
+    prisma.decision.findMany({
+      where: { workspaceId, status: 'EXECUTED', outcomes: { none: {} } },
+      select: {
+        id: true, verdict: true, confidence: true, diagnosis: true,
+        entityId: true, entityLevel: true, createdAt: true,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    }),
+    prisma.workspace.findUnique({ where: { id: workspaceId }, select: { currency: true } }),
+  ]);
+  return { decisions, currency: ws?.currency ?? 'USD' };
+}

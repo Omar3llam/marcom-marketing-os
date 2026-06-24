@@ -477,6 +477,8 @@ export {
   AccuracyCoverageSchema,
   AccuracySurfaceSchema,
   DecisionAccuracySchema,
+  PendingOutcomeSchema,
+  PendingOutcomesResponseSchema,
   type CoverageVerdict,
   type LiftStatus,
   type CalibrationDirection,
@@ -488,6 +490,8 @@ export {
   type AccuracyCoverage,
   type AccuracySurface,
   type DecisionAccuracy,
+  type PendingOutcome,
+  type PendingOutcomesResponse,
 } from './accuracy.schema';
 
 // ──────────────────────────────────────────────────────────

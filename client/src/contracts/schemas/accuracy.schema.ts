@@ -91,6 +91,28 @@ export const DecisionAccuracySchema = z.object({
   coverage: AccuracyCoverageSchema,
 });
 
+// ── Outcome recording (the Proof Engine's human-asserted WRITE path) ──
+// GET /api/lumi/decisions/pending-outcomes → EXECUTED decisions still missing
+// an outcome, plus the workspace currency (so the form converts major→minor).
+export const PendingOutcomeSchema = z.object({
+  id: z.string(),
+  verdict: z.string(),
+  confidence: z.number(),
+  diagnosis: z.string(),
+  entityId: z.string(),
+  entityLevel: z.string(),
+  createdAt: z.string(),
+});
+
+export const PendingOutcomesResponseSchema = z.object({
+  workspaceId: z.string(),
+  decisions: z.array(PendingOutcomeSchema),
+  currency: z.string(),
+});
+
+export type PendingOutcome = z.infer<typeof PendingOutcomeSchema>;
+export type PendingOutcomesResponse = z.infer<typeof PendingOutcomesResponseSchema>;
+
 export type CoverageVerdict = z.infer<typeof CoverageVerdictSchema>;
 export type LiftStatus = z.infer<typeof LiftStatusSchema>;
 export type CalibrationDirection = z.infer<typeof CalibrationDirectionSchema>;
