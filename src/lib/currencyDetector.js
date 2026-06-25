@@ -85,10 +85,30 @@ export function detectCurrencyFromMetaAccount(accountData) {
 // validateCurrencyCode (USD-coercing) and isSupportedCurrency (boolean).
 export const SUPPORTED_CURRENCIES = new Set([
   'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'INR', 'CAD', 'AUD',
-  'EGP', 'SAR', 'AED', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD',
+  'EGP', 'SAR', 'AED', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD', 'MAD',
   'TRY', 'ZAR', 'BRL', 'MXN', 'RUB', 'CHF', 'SEK', 'NOK',
   'DKK', 'PLN', 'THB', 'MYR', 'SGD', 'HKD', 'NZD', 'KRW',
 ]);
+
+// Onboarding market id → default display currency. Mirrors the MARKETS list in
+// client/src/pages/OnboardingPage/constants.js (the id is stored lowercase on
+// user.context.market). This is only the STARTING default — the authoritative
+// currency is whatever Meta reports or a CSV header detects, which overrides it.
+const MARKET_CURRENCY = Object.freeze({
+  eg: 'EGP', sa: 'SAR', ae: 'AED', kw: 'KWD', jo: 'JOD', ma: 'MAD',
+});
+
+/**
+ * Map an onboarding market id (e.g. 'eg') to its default currency, or 'USD' when
+ * the market is missing/unknown. Never throws.
+ *
+ * @param {string} market - the market id stored on user.context.market
+ * @returns {string} ISO-4217 currency code
+ */
+export function currencyForMarket(market) {
+  if (!market || typeof market !== 'string') return 'USD';
+  return MARKET_CURRENCY[market.toLowerCase().trim()] ?? 'USD';
+}
 
 /**
  * Strict membership check — is `code` a supported ISO-4217 code? Unlike
