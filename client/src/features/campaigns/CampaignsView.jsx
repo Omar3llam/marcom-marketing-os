@@ -163,13 +163,14 @@ export default function CampaignsView() {
     return [...filtered].sort((a, b) => compareRows(a, b, sortKey, sortDir));
   }, [allRows, channel, sortKey, sortDir]);
 
-  // Detect primary currency from campaigns (first non-USD currency wins, or USD if all are USD)
+  // Detect primary currency from campaigns (first non-USD currency wins); fall
+  // back to the workspace currency, then USD — never a hardcoded assumption.
   const currency = useMemo(() => {
     for (const row of allRows) {
       if (row.currency && row.currency !== 'USD') return row.currency;
     }
-    return allRows[0]?.currency || 'USD';
-  }, [allRows]);
+    return allRows[0]?.currency || workspace?.currency || 'USD';
+  }, [allRows, workspace?.currency]);
 
   const totals = useMemo(() => {
     const r = { spend: 0, kill: 0, hold: 0, scale: 0, cpaSum: 0, cpaCount: 0 };
@@ -231,9 +232,9 @@ export default function CampaignsView() {
     return {
       spend: sawSpend ? spendMinor / 100 : null,
       blendedCpa: sawConv && conversions > 0 ? spendMinor / conversions / 100 : null,
-      currency: cur || 'USD',
+      currency: cur || workspace?.currency || 'USD',
     };
-  }, [connectorCampaigns]);
+  }, [connectorCampaigns, workspace?.currency]);
 
   // The KPI strip reads the live connector when a channel has synced, else the
   // CSV feed — the same source feeding the panels below it, so the headline and

@@ -17,10 +17,12 @@
 import { useState } from 'react';
 import { Calculator, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
+import { formatCurrency } from '@/lib/money';
 
-const money = (minor, ccy = 'USD') =>
-  new Intl.NumberFormat(undefined, { style: 'currency', currency: ccy || 'USD', maximumFractionDigits: 0 })
-    .format((Number(minor) || 0) / 100);
+// Currency-aware minor-unit formatter (was an inline /100 that truncated 3-dp
+// currencies like KWD and added cents to 0-dp JPY). ccy comes from the economics
+// data (assessment/economics/cac), never a hardcoded assumption.
+const money = (minor, ccy = 'USD') => formatCurrency(minor, ccy);
 
 const bandTone = {
   HEALTHY:    'text-signal-scale bg-signal-scale-bg border-signal-scale/25',

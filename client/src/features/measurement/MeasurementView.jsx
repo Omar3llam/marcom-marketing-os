@@ -12,6 +12,7 @@
 import { FlaskConical } from 'lucide-react';
 import { useScenario } from '@/hooks/useScenario.js';
 import { useIncrementality } from '@/hooks/useIncrementality.js';
+import { useWorkspace } from '@/hooks/useWorkspace.js';
 import RoleGate from '@/components/auth/RoleGate.jsx';
 import { ScenarioPanel } from './ScenarioPanel.jsx';
 import { IncrementalityPanel } from './IncrementalityPanel.jsx';
@@ -19,6 +20,10 @@ import { IncrementalityPanel } from './IncrementalityPanel.jsx';
 export function MeasurementView() {
   const { scenario, message, loading: scenarioLoading, error: scenarioError, run } = useScenario();
   const inc = useIncrementality();
+  // The page owns the workspace read; the pure panels stay prop-driven. This is
+  // the account currency money is displayed in (scenario data may override it).
+  const { workspace } = useWorkspace();
+  const currency = workspace?.currency ?? 'USD';
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-6 lg:p-8 animate-fade-in">
@@ -33,7 +38,7 @@ export function MeasurementView() {
         </div>
       </header>
 
-      <ScenarioPanel scenario={scenario} message={message} loading={scenarioLoading} error={scenarioError} onRun={run} />
+      <ScenarioPanel scenario={scenario} message={message} loading={scenarioLoading} error={scenarioError} onRun={run} currency={currency} />
 
       <RoleGate role={['STRATEGIST']}>
         <IncrementalityPanel
@@ -46,6 +51,7 @@ export function MeasurementView() {
           onDesign={inc.design}
           onRecord={inc.recordCounts}
           onConclude={inc.conclude}
+          currency={currency}
         />
       </RoleGate>
     </div>

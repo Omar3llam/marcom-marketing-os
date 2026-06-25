@@ -12,14 +12,16 @@
 import { useState, Fragment } from 'react';
 import { ChevronRight, ChevronDown, Loader2, Plug, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
-import { fmtCurrency, roasColor, freqColor } from '@/components/campaign-analysis/campaignFormatters.js';
+import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFormatters.js';
+import { formatCurrency } from '@/lib/money';
 import { useEntityDrillDown } from '@/hooks/useEntityDrillDown.js';
 
 // Missing metric → em-dash, never 0 (a true zero and "no data" must not look alike).
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
 
-const spendOf = (minor) => (minor == null ? null : minor / 100); // stored in minor units
-const Spend = ({ minor, currency }) => (spendOf(minor) == null ? <Dash /> : fmtCurrency(spendOf(minor), currency || 'USD'));
+// Spend is stored in minor units — format directly (formatCurrency applies the
+// currency's real exponent; the old minor/100 truncated 3-dp currencies like KWD).
+const Spend = ({ minor, currency }) => (minor == null ? <Dash /> : formatCurrency(minor, currency || 'USD'));
 const Roas  = ({ v }) => (v == null ? <Dash /> : <span className={roasColor(v)}>{v.toFixed(2)}x</span>);
 const Ctr   = ({ v }) => (v == null ? <Dash /> : `${(v * 100).toFixed(2)}%`); // ratio → percent
 const Freq  = ({ v }) => (v == null ? <Dash /> : <span className={freqColor(v)}>{v.toFixed(2)}</span>);

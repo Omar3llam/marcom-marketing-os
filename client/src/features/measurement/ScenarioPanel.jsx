@@ -13,11 +13,9 @@
 import { useState } from 'react';
 import { TrendingUp, AlertCircle, LineChart } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
+import { formatCurrency } from '@/lib/money';
 
-const money = (minor, ccy = 'USD') =>
-  minor == null ? '—'
-    : new Intl.NumberFormat(undefined, { style: 'currency', currency: ccy || 'USD', maximumFractionDigits: 0 })
-        .format((Number(minor) || 0) / 100);
+const money = (minor, ccy = 'USD') => (minor == null ? '—' : formatCurrency(minor, ccy));
 
 const num = (v, digits = 0) => (v == null ? '—' : Number(v).toLocaleString(undefined, { maximumFractionDigits: digits }));
 
@@ -77,8 +75,10 @@ function Controls({ onRun, loading }) {
   );
 }
 
-export function ScenarioPanel({ scenario, message = null, loading = false, error = null, onRun }) {
-  const ccy = scenario?.currency || 'USD';
+export function ScenarioPanel({ scenario, message = null, loading = false, error = null, onRun, currency }) {
+  // The scenario's own currency wins (most specific); else the workspace currency
+  // threaded from the page; else USD. Never a hardcoded assumption.
+  const ccy = scenario?.currency ?? currency ?? 'USD';
   const p = scenario?.projections;
 
   return (
