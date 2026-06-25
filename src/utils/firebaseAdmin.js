@@ -7,15 +7,24 @@
 // Set FIREBASE_SERVICE_ACCOUNT_JSON in Render environment with the
 // full JSON content of your Firebase service account file.
 // ============================================================
-import admin from 'firebase-admin';
+// firebase-admin v14 dropped the legacy namespaced default export
+// (`admin.apps` / `admin.credential` / `admin.auth()` are all gone). We use the
+// modular subpath API (`firebase-admin/app`, `firebase-admin/auth`) and expose a
+// small stable handle so the rest of the app keeps calling `admin.auth()` —
+// this file is the single seam over firebase-admin, so the break is absorbed here.
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { logger } from './logger.js';
 
 let _initialized = false;
 let _initAttempted = false;
 let _initError = null;
 
+// Stable handle with the legacy `.auth()` shape, backed by the modular getAuth().
+const admin = { auth: () => getAuth() };
+
 export function initializeFirebaseAdmin() {
-  if (_initialized || admin.apps.length > 0) {
+  if (_initialized || getApps().length > 0) {
     _initialized = true;
     _initError = null;
     return admin;
@@ -37,8 +46,8 @@ export function initializeFirebaseAdmin() {
 
     const serviceAccount = JSON.parse(serviceAccountJson);
 
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
+    initializeApp({
+      credential: cert(serviceAccount),
       projectId: serviceAccount.project_id,
     });
 
@@ -56,7 +65,7 @@ export function initializeFirebaseAdmin() {
 }
 
 export function getFirebaseAdminReadiness() {
-  if (!_initialized && admin.apps.length > 0) {
+  if (!_initialized && getApps().length > 0) {
     _initialized = true;
     _initError = null;
   }
