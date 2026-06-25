@@ -6,7 +6,9 @@
 // passthrough of the parsed rows it is handed; normalize maps them via the pure
 // csvNormalize. `ingestCsv` is the helper an upload route calls to land snapshots.
 // ============================================================
+import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
+import { resolveSyncCurrency } from '../../lib/currencyDetector.js';
 import { ChannelConnector, assertNormalized } from './ChannelConnector.js';
 import { csvNormalize } from './normalize/csvNormalize.js';
 import { landSnapshots } from './snapshotSink.js';
@@ -37,7 +39,15 @@ export const csvConnector = new CsvConnector();
  */
 export async function ingestCsv(workspaceId, parsedRows, { accountExternalId, accountName, currency, date } = {}) {
   const acct = accountExternalId || `csv:${workspaceId}`;
-  const normalized = csvConnector.normalize({ accountExternalId: acct, accountName, currency, date, rows: parsedRows });
+  // CSV carries no platform currency metadata. Honour an explicit currency (the
+  // caller may have detected it from headers via detectCurrencyFromHeaders),
+  // else the workspace's stored currency, else USD — never a hardcoded assumption.
+  let ccy = currency;
+  if (!ccy) {
+    const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { currency: true } });
+    ccy = resolveSyncCurrency(null, ws?.currency).currency;
+  }
+  const normalized = csvConnector.normalize({ accountExternalId: acct, accountName, currency: ccy, date, rows: parsedRows });
   const result = await landSnapshots(workspaceId, csvConnector.channel, normalized);
   logger.info({ workspaceId, ...result }, '[CsvConnector] ingested CSV');
   return result;

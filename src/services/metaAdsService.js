@@ -87,6 +87,35 @@ export async function listAdAccounts(accessToken) {
 }
 
 /**
+ * Read an ad account's ISO-4217 currency from the act_<id> node. Meta returns it
+ * on the `currency` field (e.g. 'EGP', 'SAR', 'AED'). Returns the raw string, or
+ * null on ANY failure — a currency lookup must NEVER break a sync, so this never
+ * throws (the connector falls back to the workspace currency / USD).
+ *
+ * @param {string} accessToken
+ * @param {string} adAccountId — with or without "act_" prefix
+ * @returns {Promise<string|null>}
+ */
+export async function fetchAccountCurrency(accessToken, adAccountId) {
+  try {
+    const accountId = normalizeAccountId(adAccountId);
+    const url = `${GRAPH_BASE}/${accountId}`
+      + `?fields=currency`
+      + `&access_token=${encodeURIComponent(accessToken)}`;
+    const res  = await fetch(url);
+    const body = await res.json();
+    if (body?.error) {
+      logger.warn({ adAccountId, err: body.error.message }, '[Meta] account currency fetch failed');
+      return null;
+    }
+    return typeof body?.currency === 'string' ? body.currency : null;
+  } catch (err) {
+    logger.warn({ adAccountId, err: err.message }, '[Meta] account currency fetch error');
+    return null;
+  }
+}
+
+/**
  * Create a PAUSED test campaign to verify the token + account are valid.
  * Returns the campaign_id string.
  * This is a write operation — delete the campaign manually or let it sit.
