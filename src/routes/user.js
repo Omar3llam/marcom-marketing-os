@@ -60,7 +60,7 @@ userRouter.get('/workspace', async (req, res) => {
 
     const workspace = await prisma.workspace.findUnique({
       where: { id: user.workspaceId },
-      select: { id: true, name: true, createdAt: true },
+      select: { id: true, name: true, currency: true, createdAt: true },
     });
 
     if (!workspace) {
@@ -73,6 +73,7 @@ userRouter.get('/workspace', async (req, res) => {
         name:      workspace.name,
         ownerId:   uid,
         createdAt: workspace.createdAt,
+        currency:  workspace.currency ?? 'USD',      // the account currency the FE formats money in (Meta sync corrects it)
         industry:  user.context?.industry ?? null,  // from onboarding; null until set (no regression for older accounts)
       },
       hasWorkspace: true,

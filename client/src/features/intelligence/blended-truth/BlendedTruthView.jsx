@@ -17,6 +17,7 @@ import { formatCurrency } from '@/lib/money';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useBlendedTruth } from '@/hooks/useBlendedTruth.js';
 import { useAllocation } from '@/hooks/useAllocation.js';
+import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { AllocationPanel } from './AllocationPanel.jsx';
 import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
@@ -25,7 +26,7 @@ import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
 const fx = (n) => `${(Number(n) || 0).toFixed(1)}×`;
 
 // ── Pure, prop-driven view (unit-tested directly) ───────────────
-export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST }) {
+export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST, currency: currencyProp }) {
   const channels = data?.channels ?? [];
   const portfolio = data?.portfolio ?? null;
 
@@ -39,7 +40,9 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST }) {
   }
 
   const single = channels.length < 2;
-  const currency = channels[0]?.currency ?? 'USD';
+  // A connected channel carries its own currency (real, per PR #144); the
+  // workspace currency threaded from the page is the fallback, then USD.
+  const currency = currencyProp ?? channels[0]?.currency ?? 'USD';
   const isStrategist = role === WORKSPACE_ROLE.STRATEGIST;
   const staleChannels = channels.filter((c) => c.stale);
 
@@ -129,10 +132,11 @@ export default function BlendedTruth() {
   const { role } = useCollabRole();
   const { data, loading, error } = useBlendedTruth();
   const allocation = useAllocation();
+  const { workspace } = useWorkspace();
 
   const isStrategist = role === WORKSPACE_ROLE.STRATEGIST;
   const channels = data?.channels ?? [];
-  const currency = channels[0]?.currency ?? 'USD';
+  const currency = channels[0]?.currency ?? workspace?.currency ?? 'USD';
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
@@ -145,7 +149,7 @@ export default function BlendedTruth() {
       {!loading && error && (
         <EmptyPanel Icon={AlertTriangle} text="Couldn't load blended truth right now. Try again shortly." />
       )}
-      {!loading && !error && <BlendedTruthView data={data} role={role} />}
+      {!loading && !error && <BlendedTruthView data={data} role={role} currency={currency} />}
 
       {/* Reallocate capital — acts on these very channels. STRATEGIST-only (the
           commit gate), and only once there are channels to allocate across. */}

@@ -16,10 +16,7 @@
 import { useState } from 'react';
 import { Lock, Microscope, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
-
-const money = (minor, ccy = 'USD') =>
-  minor == null ? '—'
-    : new Intl.NumberFormat(undefined, { style: 'currency', currency: ccy || 'USD', maximumFractionDigits: 0 }).format((Number(minor) || 0) / 100);
+import { formatCurrency } from '@/lib/money';
 
 const statusTone = {
   DESIGNED:  'text-stage-testing bg-stage-testing/10 border-stage-testing/25',
@@ -117,10 +114,9 @@ function RecordForm({ test, onRecord, busy }) {
 }
 
 // ── A single holdout row ────────────────────────────────────────
-function HoldoutRow({ test, readout, busy, onRecord, onConclude }) {
+function HoldoutRow({ test, readout, busy, onRecord, onConclude, ccy = 'USD' }) {
   const concluded = test.status === 'CONCLUDED';
   const conclusive = concluded && test.confidenceLabel != null;
-  const ccy = 'USD';
 
   return (
     <div className="rounded-2xl border border-lumi-border bg-lumi-surface p-4">
@@ -148,7 +144,7 @@ function HoldoutRow({ test, readout, busy, onRecord, onConclude }) {
           {conclusive ? (
             <p className="text-sm text-signal-scale">
               {Number(test.liftPct) > 0 ? '+' : ''}{test.liftPct}% incremental lift · {test.confidenceLabel} confidence
-              {test.incrementalRevenueMinor != null && <span className="text-lumi-subtle"> · {money(test.incrementalRevenueMinor, ccy)} incremental revenue</span>}
+              {test.incrementalRevenueMinor != null && <span className="text-lumi-subtle"> · {formatCurrency(test.incrementalRevenueMinor, ccy)} incremental revenue</span>}
             </p>
           ) : (
             <p className="text-sm text-lumi-muted">No causal lift called — INCONCLUSIVE.</p>
@@ -175,7 +171,8 @@ function HoldoutRow({ test, readout, busy, onRecord, onConclude }) {
   );
 }
 
-export function IncrementalityPanel({ tests = [], readouts = {}, gated = false, loading = false, error = null, busyId = null, onDesign, onRecord, onConclude }) {
+export function IncrementalityPanel({ tests = [], readouts = {}, gated = false, loading = false, error = null, busyId = null, onDesign, onRecord, onConclude, currency }) {
+  const ccy = currency ?? 'USD';
   return (
     <section className="mb-10">
       <div className="section-label">Incrementality (Holdout Testing)</div>
@@ -202,7 +199,7 @@ export function IncrementalityPanel({ tests = [], readouts = {}, gated = false, 
             <p className="text-sm text-lumi-subtle">No holdouts yet — design one above to measure a channel’s true causal lift.</p>
           ) : (
             tests.map((t) => (
-              <HoldoutRow key={t.id} test={t} readout={readouts[t.id]} busy={busyId === t.id} onRecord={onRecord} onConclude={onConclude} />
+              <HoldoutRow key={t.id} test={t} readout={readouts[t.id]} busy={busyId === t.id} onRecord={onRecord} onConclude={onConclude} ccy={ccy} />
             ))
           )}
         </div>
