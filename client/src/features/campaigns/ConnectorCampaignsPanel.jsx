@@ -105,9 +105,15 @@ export function ConnectorCampaignsPanel({ campaigns = [], loading = false, error
       ) : error ? (
         <div className="p-8 text-center text-trend-danger text-sm"><AlertTriangle className="inline w-4 h-4 mr-2" strokeWidth={2} />Couldn’t load connector campaigns. Try syncing again.</div>
       ) : (
-        <div className="overflow-auto">
+        <div
+          role="region"
+          aria-label="Connected channel campaigns"
+          tabIndex={0}
+          className="max-h-72 overflow-y-auto overflow-x-auto lg:max-h-80"
+          style={{ scrollbarGutter: 'stable' }}
+        >
           <table className="w-full">
-            <thead className="bg-lumi-elevated/60 border-b border-lumi-border">
+            <thead className="sticky top-0 z-10 bg-lumi-elevated border-b border-lumi-border">
               <tr>
                 <th scope="col" className="section-label px-4 py-2.5 text-left">Campaign</th>
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-28">Spend</th>
