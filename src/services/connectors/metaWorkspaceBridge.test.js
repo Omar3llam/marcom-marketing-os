@@ -54,10 +54,18 @@ const sqlMock = (strings, ...vals) => {
 sqlMock.json = (v) => v;
 vi.mock('../../utils/db.js', () => ({ getDb: () => sqlMock }));
 
+// authenticate() now reads Workspace.currency via prisma — mock it (the test
+// workspace ids are not UUIDs). 'USD' keeps the bridge focused on routing, not
+// currency. The whole prisma layer is otherwise unused here (sink is mocked).
+vi.mock('../../lib/prisma.js', () => ({
+  prisma: { workspace: { findUnique: vi.fn(async () => ({ currency: 'USD' })), update: vi.fn(async () => ({})) } },
+}));
+
 // Mock the sink (DB write) and BOTH live network calls — keep the pure seams real.
 vi.mock('./snapshotSink.js', () => ({ landSnapshots: vi.fn(async () => ({ entities: 2, snapshots: 2 })) }));
 vi.mock('../metaAdsService.js', async (importOriginal) => ({
   ...(await importOriginal()),
+  fetchAccountCurrency: vi.fn(async () => null), // no real network for the currency probe
   fetchCampaignInsights: vi.fn(async () => ([
     { _data: { campaign_id: 'c1', campaign_name: 'M Camp', spend: '100.00', impressions: '1000', clicks: '50', actions: [], action_values: [{ action_type: 'offsite_conversion.fb_pixel_purchase', value: '420.00' }] } },
   ])),

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { CAMPAIGN_INSIGHT_FIELDS } from './metaAdsService.js';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { CAMPAIGN_INSIGHT_FIELDS, fetchAccountCurrency } from './metaAdsService.js';
 import { metaNormalize } from './connectors/normalize/metaNormalize.js';
 import { toSnapshotRows } from './connectors/snapshotSink.js';
 
@@ -26,5 +26,33 @@ describe('CAMPAIGN_INSIGHT_FIELDS — revenue is actually requested', () => {
     const campaign = toSnapshotRows('ws1', 'META', normalized).find((r) => r.entityLevel === 'CAMPAIGN');
     expect(campaign.revenueMinor).toBe(40000);
     expect(campaign.roas).toBe(4); // 40000 / 10000 — a real derived number, not null
+  });
+});
+
+// fetchAccountCurrency reads the act_<id> node's `currency` field. It must be
+// failure-proof: a currency lookup can NEVER break a sync, so every error path
+// returns null (the connector then falls back to workspace currency / USD).
+describe('fetchAccountCurrency — the real account currency, never throwing', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('returns the ISO code Meta reports on the act_<id> node', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ json: async () => ({ id: 'act_123', currency: 'EGP' }) }));
+    await expect(fetchAccountCurrency('tok', '123')).resolves.toBe('EGP');
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('act_123?fields=currency'));
+  });
+
+  it('returns null on a Meta API error (never throws)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ json: async () => ({ error: { message: 'bad token' } }) }));
+    await expect(fetchAccountCurrency('tok', 'act_123')).resolves.toBeNull();
+  });
+
+  it('returns null when the currency field is absent', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ json: async () => ({ id: 'act_123' }) }));
+    await expect(fetchAccountCurrency('tok', 'act_123')).resolves.toBeNull();
+  });
+
+  it('returns null when the network call throws', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ENOTFOUND')));
+    await expect(fetchAccountCurrency('tok', 'act_123')).resolves.toBeNull();
   });
 });

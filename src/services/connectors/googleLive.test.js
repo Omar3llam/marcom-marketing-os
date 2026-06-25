@@ -55,6 +55,12 @@ const sqlMock = (...args) => Promise.resolve(dbQueue.length ? dbQueue.shift() : 
 sqlMock.json = (v) => v;
 vi.mock('../../utils/db.js', () => ({ getDb: () => sqlMock }));
 
+// authenticate() now reads Workspace.currency via prisma — mock it (the test
+// workspace id 'ws-1' is not a UUID, so a real query would throw).
+vi.mock('../../lib/prisma.js', () => ({
+  prisma: { workspace: { findUnique: vi.fn(async () => ({ currency: 'USD' })), update: vi.fn(async () => ({})) } },
+}));
+
 // Mock the sink (DB write) and the live Google network call.
 vi.mock('./snapshotSink.js', () => ({ landSnapshots: vi.fn(async () => ({ entities: 2, snapshots: 2 })) }));
 // Partial mock: keep the real pure seams, override ONLY the live network call.
