@@ -1,5 +1,6 @@
 import { prisma }  from '../../lib/prisma.js';
 import { logger }  from '../../utils/logger.js';
+import { currencyForMarket } from '../../lib/currencyDetector.js';
 
 // Onboarding market ids → full names. Mirrors MARKETS in
 // client/src/pages/OnboardingPage/constants.js (kept in sync by hand — six
@@ -52,6 +53,10 @@ export function mountContextRoutes(router) {
     const email         = req.user?.email || req.body?.email || `${userId}@unknown.local`;
     const workspaceName = req.body?.workspaceName || 'My Workspace';
     const context       = withContextAliases(ctx);
+    // The display currency new accounts START with, derived from the onboarding
+    // market (EG→EGP, SA→SAR, …). 'USD' when the market is missing/unknown. The
+    // authoritative currency (Meta account / CSV header) overrides this later.
+    const marketCurrency = currencyForMarket(context.market);
 
     try {
       let existing = await prisma.user.findFirst({
@@ -61,7 +66,7 @@ export function mountContextRoutes(router) {
 
       if (!existing) {
         const created = await prisma.user.create({
-          data: { clerkId: userId, email, context, workspace: { create: { name: workspaceName } } },
+          data: { clerkId: userId, email, context, workspace: { create: { name: workspaceName, currency: marketCurrency } } },
           select: { id: true, workspaceId: true, context: true },
         });
         logger.info({ firebaseUid: userId, userRowId: created.id, workspaceId: created.workspaceId }, '[campaigns/me/context] created new user + workspace (Firebase)');
@@ -70,7 +75,7 @@ export function mountContextRoutes(router) {
 
       let workspaceId = existing.workspaceId;
       if (!workspaceId) {
-        const ws = await prisma.workspace.create({ data: { name: workspaceName } });
+        const ws = await prisma.workspace.create({ data: { name: workspaceName, currency: marketCurrency } });
         workspaceId = ws.id;
         await prisma.user.update({ where: { id: existing.id }, data: { workspaceId } });
         logger.warn({ userId, repairedWorkspaceId: workspaceId }, '[campaigns/me/context] repaired orphaned user (no workspace)');
@@ -81,6 +86,19 @@ export function mountContextRoutes(router) {
         data:   { context, clerkId: userId, email },
         select: { id: true, workspaceId: true, context: true },
       });
+
+      // The common path: firebaseAuth auto-provisioned this workspace at first
+      // request (default USD) BEFORE onboarding ran. Seed its display currency
+      // from the market — but ONLY while it's still the default USD, so a real
+      // currency already detected from Meta/CSV is never clobbered. updateMany's
+      // WHERE makes this atomic + idempotent.
+      if (marketCurrency !== 'USD' && updated.workspaceId) {
+        await prisma.workspace.updateMany({
+          where: { id: updated.workspaceId, currency: 'USD' },
+          data:  { currency: marketCurrency },
+        });
+      }
+
       logger.info({ firebaseUid: userId, userRowId: updated.id, wasUidMissing: !existing.clerkId }, '[campaigns/me/context] updated existing user (Firebase)');
       return res.json({ ok: true, user: updated, created: false });
     } catch (err) {
