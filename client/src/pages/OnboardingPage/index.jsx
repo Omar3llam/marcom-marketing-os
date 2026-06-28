@@ -1,11 +1,12 @@
 import { useState }    from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth }     from '@/context/AuthContext.jsx';
 import { toast }       from 'sonner';
 import { ArrowRight, ArrowLeft, Loader2, Sparkles } from 'lucide-react';
 import { api }                 from '@/lib/api.js';
 import { cn }                  from '@/lib/utils.js';
 import { primeContextCache }   from '@/router/ProtectedRoute.jsx';
+import { appRoutes }           from '@/app/routeManifest.js';
 import { STEP_DEFINITIONS, DEFAULTS } from './constants.js';
 import { WelcomeStep }         from './steps/WelcomeStep.jsx';
 import { IdentityStep }        from './steps/IdentityStep.jsx';
@@ -19,14 +20,8 @@ import { ReviewStep }          from './steps/ReviewStep.jsx';
 
 const STEPS = STEP_DEFINITIONS;
 
-function safeAppPath(value) {
-  return typeof value === 'string' && value.startsWith('/app') ? value : null;
-}
-
 export default function OnboardingPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const nextPath = safeAppPath(searchParams.get('next'));
   const { currentUser } = useAuth();
   const [step, setStep] = useState(0); // 0-indexed: 0 = welcome, 1 = identity, ..., 8 = review
   const [busy, setBusy] = useState(false);
@@ -84,7 +79,11 @@ export default function OnboardingPage() {
       toast.success('Context saved — welcome aboard.');
       await Promise.resolve();
       sessionStorage.setItem('marcom:firstActivation', '1');
-      navigate(nextPath || '/app', { replace: true });
+      // First-time onboarding ALWAYS lands on Overview. The ?next= "return to
+      // where you were" param is for RETURNING users re-authenticating mid-session
+      // (honored at AuthPage), never for a brand-new user who has never seen the
+      // app — so we never drop them onto an arbitrary deep link (e.g. Security).
+      navigate(appRoutes.overview, { replace: true });
     } catch (err) {
       const detail = err.response?.data;
       const msg = detail?.hint || detail?.detail || detail?.error || err.message || 'Could not save context';
