@@ -44,10 +44,18 @@ describe('RoleGate', () => {
     expect(screen.queryByText('secret')).not.toBeInTheDocument();
     expect(screen.getByText('nope')).toBeInTheDocument();
   });
-  it('renders the fallback while loading (no flash of gated content)', () => {
-    render(<RoleGate role={['STRATEGIST']} fallback={<span>wait</span>}><span>secret</span></RoleGate>, { wrapper: withRole('STRATEGIST', true) });
-    expect(screen.queryByText('secret')).not.toBeInTheDocument();
-    expect(screen.getByText('wait')).toBeInTheDocument();
+  it('renders NOTHING while loading — never the fallback (a redirect fallback must not fire mid-load)', () => {
+    const { container } = render(
+      <RoleGate role={['STRATEGIST']} fallback={<span>nope</span>}><span>secret</span></RoleGate>,
+      { wrapper: withRole('STRATEGIST', true) },
+    );
+    expect(screen.queryByText('secret')).not.toBeInTheDocument(); // no flash of gated content
+    expect(screen.queryByText('nope')).not.toBeInTheDocument();   // and no premature fallback/redirect
+    expect(container).toBeEmptyDOMElement();
+  });
+  it('renders children once the role RESOLVES to an allowed role (post-load)', () => {
+    render(<RoleGate role={['STRATEGIST']} fallback={<span>nope</span>}><span>secret</span></RoleGate>, { wrapper: withRole('STRATEGIST', false) });
+    expect(screen.getByText('secret')).toBeInTheDocument();
   });
   it('roleAllowed: empty/absent constraint is visible to all', () => {
     expect(roleAllowed('CLIENT', undefined)).toBe(true);
