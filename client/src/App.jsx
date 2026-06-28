@@ -30,6 +30,7 @@ import Observability    from './pages/Observability.jsx';
 import { CardSkeleton } from './components/ui/Skeleton.jsx';
 import { ProtectedRoute, OnboardingRoute } from './router/ProtectedRoute.jsx';
 import RoleGate from './components/auth/RoleGate.jsx';
+import RequireUserRole from './components/auth/RequireUserRole.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from './hooks/useCollabRole.js';
 import { useAuth } from './context/AuthContext.jsx';
 import { IntelligenceProvider } from './context/IntelligenceContext.jsx';
@@ -46,6 +47,9 @@ const Publishing          = lazy(() => import('./pages/Publishing.jsx'));     //
 // ── Phase 11A · surfacing the built brain (role-gated) ────────
 const BlendedTruth = lazy(() => import('./pages/BlendedTruth.jsx'));
 const Proof        = lazy(() => import('./pages/Proof.jsx'));
+
+// ── Internal admin panel — standalone (no app shell), ADMIN-only ─
+const AdminPanel = lazy(() => import('./pages/AdminPanel.jsx'));
 
 // ── Phase 4-A · Testing OS readout (BUYER-primary, role-gated) ─
 const Testing      = lazy(() => import('./pages/Testing.jsx'));
@@ -141,6 +145,19 @@ export default function App() {
         <Route
           path="/onboarding"
           element={<OnboardingRoute><OnboardingPage /></OnboardingRoute>}
+        />
+
+        {/* ── Internal admin panel ─────────────────────────── */}
+        {/* Standalone, OUTSIDE the /app shell (no Sidebar/TopBar). Gated to
+            system ADMINs; errs CLOSED while the role resolves and bounces
+            everyone else to Overview. */}
+        <Route
+          path="/admin"
+          element={
+            <RequireUserRole role="ADMIN" fallback={<Navigate to={appRoutes.overview} replace />}>
+              <Suspense fallback={<PageFallback />}><AdminPanel /></Suspense>
+            </RequireUserRole>
+          }
         />
 
         {/* ── Authenticated app shell ──────────────────────── */}
