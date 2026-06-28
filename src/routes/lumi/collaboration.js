@@ -50,7 +50,10 @@ async function need(req, res) {
 // ─────────────────────────────────────────────────────────────
 collaborationRouter.get('/roles/me', async (req, res) => {
   const role = await resolveCollabRole(req);
-  return res.json({ role, visibleStates: visibleStates(role) });
+  // userRole is the SYSTEM axis (ADMIN | VIEWER), orthogonal to the collab role.
+  // The admin panel reads it to decide whether to surface the /admin link+route.
+  // firebaseAuth sets req.userRole; default VIEWER so the field is never null.
+  return res.json({ role, visibleStates: visibleStates(role), userRole: req.userRole ?? 'VIEWER' });
 });
 
 // ─────────────────────────────────────────────────────────────

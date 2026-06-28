@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { NavLink, useNavigate, useParams } from 'react-router-dom';
+import { NavLink, Link, useNavigate, useParams } from 'react-router-dom';
+import { ShieldCheck } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
+import { useUserRole } from '@/hooks/useUserRole.js';
 import { sendPasswordResetEmail, auth } from '@/firebase.js';
 import { toast } from 'sonner';
 import { clearContextCache } from '@/router/ProtectedRoute.jsx';
@@ -23,6 +25,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const { section } = useParams();
   const { currentUser, logout } = useAuth();
+  const { isAdmin } = useUserRole();
   const [busy, setBusy] = useState(false);
 
   const [displayName, setDisplayName] = useState('');
@@ -230,6 +233,17 @@ export default function Settings() {
                 {item.label}
               </NavLink>
             ))}
+
+            {/* Internal admin panel — only an ADMIN (ADMIN_EMAILS allowlist)
+                ever sees this link; the /admin route is independently gated. */}
+            {isAdmin && (
+              <Link
+                to="/admin"
+                className="mt-3 flex items-center gap-1.5 border-t border-lumi-border px-3 pt-3 text-sm text-lumi-muted transition-colors hover:text-lumi-accent"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" /> Admin
+              </Link>
+            )}
           </nav>
 
           <div>{renderSection()}</div>
