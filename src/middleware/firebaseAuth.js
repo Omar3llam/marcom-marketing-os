@@ -27,6 +27,23 @@ import { logger } from '../utils/logger.js';
 const WORKSPACE_CACHE_TTL_MS = Number(process.env.WORKSPACE_CACHE_TTL_MS || 60_000);
 const WORKSPACE_LOOKUP_ATTEMPTS = Number(process.env.WORKSPACE_LOOKUP_ATTEMPTS || 3);
 
+// ── ADMIN grant path (UserRole.ADMIN) ───────────────────────
+// ADMIN is never self-serve. The ONLY way a real user becomes ADMIN is by
+// having their email listed in ADMIN_EMAILS (comma-separated). This is applied
+// both at first auto-provision AND at every subsequent login — so an operator
+// added to the list after they signed up is upgraded on their next request,
+// not stuck as VIEWER. Removing an email from the list does NOT auto-downgrade
+// (that's a deliberate manual action), but it stops further upgrades.
+const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '')
+  .split(',')
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
+/** True when this email is on the ADMIN_EMAILS allowlist. */
+function isAdminEmail(email) {
+  return !!email && ADMIN_EMAILS.includes(email.toLowerCase());
+}
+
 const workspaceCache = new Map(); // uid -> { workspaceId, role, expiresAt }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -133,7 +150,10 @@ export async function firebaseAuthMiddleware(req, res, next) {
     const cached = cacheGetWorkspace(decodedToken.uid);
     if (cached) {
       req.workspaceId = cached.workspaceId;
-      req.userRole    = cached.role;
+      // In-memory override only — the durable DB upgrade happens on the next
+      // cache-miss read. This keeps the gate correct within a warm TTL window
+      // even if the cached role predates the ADMIN_EMAILS listing.
+      req.userRole    = isAdminEmail(decodedToken.email) ? 'ADMIN' : cached.role;
       req.collabRole  = cached.collabRole ?? null;
       req.authSource  = 'firebase-cache';
       return next();
@@ -144,11 +164,28 @@ export async function firebaseAuthMiddleware(req, res, next) {
       const user = await findUserByUidWithRetry(decodedToken.uid);
 
       if (user) {
+        let role = user.role;
+        // Durable ADMIN upgrade: an operator listed in ADMIN_EMAILS who was
+        // provisioned before the env var was set is promoted on this login.
+        if (isAdminEmail(decodedToken.email) && role !== 'ADMIN') {
+          try {
+            await prisma.user.update({ where: { id: user.id }, data: { role: 'ADMIN' } });
+            role = 'ADMIN';
+            logger.info(
+              { uid: decodedToken.uid, email: decodedToken.email },
+              '[firebase-auth] upgraded user to ADMIN via ADMIN_EMAILS',
+            );
+          } catch (upgradeErr) {
+            // Non-fatal: fall back to the in-memory override for this request.
+            role = 'ADMIN';
+            logger.error({ err: upgradeErr.message, uid: decodedToken.uid }, '[firebase-auth] ADMIN upgrade write failed');
+          }
+        }
         req.workspaceId = user.workspaceId;
-        req.userRole    = user.role;
+        req.userRole    = role;
         req.collabRole  = user.collabRole ?? null;
         req.authSource  = 'firebase';
-        cacheSetWorkspace(decodedToken.uid, user.workspaceId, user.role, user.collabRole);
+        cacheSetWorkspace(decodedToken.uid, user.workspaceId, role, user.collabRole);
       } else {
         // No Prisma row for this Firebase UID.
         // Auto-provision: create Workspace + User atomically so the
@@ -162,7 +199,9 @@ export async function firebaseAuthMiddleware(req, res, next) {
             data: {
               clerkId:  decodedToken.uid,
               email,
-              role:     'VIEWER',
+              // ADMIN only if the email is on the ADMIN_EMAILS allowlist —
+              // never self-serve. Everyone else provisions as VIEWER.
+              role:     isAdminEmail(email) ? 'ADMIN' : 'VIEWER',
               context:  null,           // null = not onboarded yet
               workspace: {
                 create: { name: `${displayName}'s Workspace` },
@@ -190,11 +229,12 @@ export async function firebaseAuthMiddleware(req, res, next) {
               select: { id: true, workspaceId: true, role: true, collabRole: true },
             });
             if (retried) {
+              const role = isAdminEmail(decodedToken.email) ? 'ADMIN' : retried.role;
               req.workspaceId = retried.workspaceId;
-              req.userRole    = retried.role;
+              req.userRole    = role;
               req.collabRole  = retried.collabRole ?? null;
               req.authSource  = 'firebase-retry';
-              cacheSetWorkspace(decodedToken.uid, retried.workspaceId, retried.role, retried.collabRole);
+              cacheSetWorkspace(decodedToken.uid, retried.workspaceId, role, retried.collabRole);
             } else {
               req.workspaceId = null;
               logger.error(

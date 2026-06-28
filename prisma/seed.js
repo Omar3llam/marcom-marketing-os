@@ -11,14 +11,17 @@
 // upserts in place. Run with:  npm run seed
 // ============================================================
 
-import { PrismaClient } from '@prisma/client';
 import { createHash } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
+import { prisma } from '../src/lib/prisma.js';
 import { toMinor } from '../src/lib/money.js';
 import { getBlendedTruth } from '../src/services/blended-truth/BlendedTruthService.js';
 import { buildNarrativeInputs } from '../src/services/narrative-engine/NarrativeService.js';
 import { composeNarrative } from '../src/services/narrative-engine/narrativeEngine.js';
 
-const prisma = new PrismaClient();
+// Re-use the shared Prisma singleton (NOT a fresh PrismaClient) so this file is
+// safely importable by the admin demo route without opening a second pool. The
+// `main()` block at the bottom only runs when executed directly.
 
 /** Deterministic UUID (v5-style) so seeds are idempotent. */
 function det(name) {
@@ -795,27 +798,53 @@ async function seedPhase9(ws) {
   await prisma.loopRun.upsert({ where: { id: runId }, create: { id: runId, ...row }, update: row });
 }
 
+// ── Reusable demo-workspace seeder ───────────────────────────
+// Builds ONE fully-populated demo workspace: the apparel "Maison Salam" graph
+// (entity tree + metric snapshots + the full Phase 2–9 fixtures). Two callers:
+//   • `npm run seed` (main, below) → default deterministic key 'apparel', so
+//     re-runs upsert in place and stay idempotent.
+//   • the admin "spin up a demo" route → a UNIQUE key (e.g. `demo-<ts>`) so
+//     every call mints a fresh, independent workspace, plus an explicit `name`
+//     beginning "Demo —" (the delete-safety sentinel the admin route enforces).
+// `client` is the shared Prisma singleton; the helper fns below reference that
+// same module instance, so passing it is explicit, not vestigial.
+export async function seedDemoWorkspace(client = prisma, options = {}) {
+  const base = WORKSPACES[0]; // apparel — the only fully-built graph
+  const key  = options.key  || base.key;
+  const name = options.name || `${base.name}${options.nameSuffix || ''}`;
+  const ws   = { ...base, key, name };
+
+  await seedWorkspace(ws);
+  await seedDecisionGraph(ws); // the Eid KILL verdict + outcome + memory
+  await seedPhase2(ws);        // guardrails + fatigue prediction
+  await seedPhase3(ws);        // portfolio + blended truth + allocation plan
+  await seedPhase4(ws);        // testing OS — agenda + closed loop
+  await seedPhase5(ws);        // memory moat — learnings + conflicts
+  await seedPhase6(ws);        // planning OS — plan + scenario + north-star + economics
+  await seedPhase7(ws);        // measurement OS — tier + concluded holdout (causal lift)
+  await seedPhase8(ws);        // collaboration OS — roles + leadership narrative + pending approval
+  await seedPhase9(ws);        // agentic OS — one recent CLOSED loop sweep
+
+  return { workspaceId: det(`ws:${ws.key}`), name: ws.name };
+}
+
 async function main() {
-  for (const ws of WORKSPACES) {
-    await seedWorkspace(ws);
-  }
-  await seedDecisionGraph(WORKSPACES[0]); // apparel
-  await seedPhase2(WORKSPACES[0]);        // apparel guardrails + fatigue prediction
-  await seedPhase3(WORKSPACES[0]);        // apparel portfolio + blended truth + allocation plan
-  await seedPhase4(WORKSPACES[0]);        // apparel testing OS — agenda + closed loop
-  await seedPhase5(WORKSPACES[0]);        // apparel memory moat — learnings + conflicts
-  await seedPhase6(WORKSPACES[0]);        // apparel planning OS — plan + scenario + north-star + economics
-  await seedPhase7(WORKSPACES[0]);        // apparel measurement OS — tier + concluded holdout (causal lift)
-  await seedPhase8(WORKSPACES[0]);        // apparel collaboration OS — roles + leadership narrative + pending approval
-  await seedPhase9(WORKSPACES[0]);        // apparel agentic OS — one recent CLOSED loop sweep
+  await seedDemoWorkspace(prisma);   // apparel "Maison Salam" — full 9-phase graph
+  await seedWorkspace(WORKSPACES[1]); // riyadh — Layla & Co.   (entity graph only)
+  await seedWorkspace(WORKSPACES[2]); // dubai  — Forge Studio  (entity graph only)
   console.log('✓ Seeded entity graph + metric snapshots + decision graph + guardrails + fatigue prediction + allocation + testing + memory + planning + measurement + collaboration + agentic loop.');
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+// Only auto-run when executed directly (`npm run seed`). When IMPORTED by the
+// admin demo route, main() must NOT fire — and must NOT $disconnect the shared
+// singleton out from under the running server.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main()
+    .catch((e) => {
+      console.error(e);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}
