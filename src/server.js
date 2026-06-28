@@ -48,6 +48,8 @@ import analyticsRouter        from './routes/analytics/index.js';
 import attributionRouter      from './routes/attribution.js';
 import { observabilityRouter } from './routes/observability/index.js';
 import { userRouter }         from './routes/user.js';
+import { adminRouter }        from './routes/admin/index.js';
+import { requireAdmin }       from './middleware/requireAdmin.js';
 import { logger }             from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
 import { getFirebaseAdminReadiness } from './utils/firebaseAdmin.js';
@@ -328,6 +330,17 @@ app.use('/api/tools',
   requireAuth,
   apiLimiter,
   toolsRouter
+);
+
+// Internal admin panel — system status, workspace/user inventory, demo
+// management. requireAdmin gates EVERY sub-route (UserRole.ADMIN, granted only
+// via the ADMIN_EMAILS allowlist). Mounted after requireAuth so unauthenticated
+// callers are 401'd before the role check.
+app.use('/api/admin',
+  requireAuth,
+  requireAdmin,
+  apiLimiter,
+  adminRouter
 );
 
 // Paid Decision Engine — Phase 1.2 (Meta MCP + Claude Orchestrator)
