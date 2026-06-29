@@ -12,6 +12,7 @@
 // Role: STRATEGIST sees the full per-channel table; BUYER sees the summary hero.
 // Assembly of existing primitives + tokens — no new primitive.
 // ============================================================
+import { Link } from 'react-router-dom';
 import { Scale, AlertTriangle } from 'lucide-react';
 import { formatCurrency } from '@/lib/money';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
@@ -22,6 +23,7 @@ import { AllocationPanel } from './AllocationPanel.jsx';
 import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
+import { appRoutes } from '@/app/routeManifest.js';
 
 const fx = (n) => `${(Number(n) || 0).toFixed(1)}×`;
 
@@ -147,7 +149,12 @@ export default function BlendedTruth() {
 
       {loading && <div className="space-y-3"><CardSkeleton /><CardSkeleton /></div>}
       {!loading && error && (
-        <EmptyPanel Icon={AlertTriangle} text="Couldn't load blended truth right now. Try again shortly." />
+        <div className="flex flex-col items-center gap-3">
+          <EmptyPanel Icon={AlertTriangle} text="We couldn't load Blended Truth right now. It reconciles platform-reported spend against your store's real revenue." />
+          <Link to={appRoutes.settingsIntegrations} className="inline-flex items-center gap-1 text-sm font-medium text-lumi-accent hover:underline">
+            Connect Meta →
+          </Link>
+        </div>
       )}
       {!loading && !error && <BlendedTruthView data={data} role={role} currency={currency} />}
 

@@ -13,8 +13,10 @@
 // a user-facing error.
 // ============================================================
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertCircle } from 'lucide-react';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
+import { appRoutes } from '@/app/routeManifest.js';
 import { useNarratives } from '@/hooks/useNarratives.js';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import { cn } from '@/lib/utils.js';
@@ -104,7 +106,12 @@ export function LeadershipView() {
         <div className="space-y-3"><CardSkeleton /><CardSkeleton /></div>
       ) : error ? (
         <div className="rounded-2xl border border-signal-kill/25 bg-signal-kill-bg p-6 text-center text-sm text-signal-kill">
-          <AlertCircle className="w-5 h-5 mx-auto mb-1.5" strokeWidth={1.5} /> Couldn’t load reports right now.
+          <AlertCircle className="w-5 h-5 mx-auto mb-1.5" strokeWidth={1.5} />
+          <p>We couldn’t load reports right now.</p>
+          <p className="mt-1 text-dark-soft">Reports summarize your live campaign performance for stakeholders.</p>
+          <Link to={appRoutes.settingsIntegrations} className="mt-3 inline-flex items-center gap-1 font-medium text-lumi-accent hover:underline">
+            Connect Meta →
+          </Link>
         </div>
       ) : visible.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-lumi-border p-10 text-center text-sm text-lumi-subtle">

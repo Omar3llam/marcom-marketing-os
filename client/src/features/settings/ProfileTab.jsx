@@ -38,7 +38,7 @@ export function ProfileTab({ displayName, setDisplayName, currentUser, profileCh
             disabled
             className="w-full rounded-lg border border-surface-border bg-surface-light px-3 py-2 text-sm text-dark-soft cursor-not-allowed"
           />
-          <p className="mt-1 text-xs text-lumi-muted">Email is managed by Firebase and cannot be changed here</p>
+          <p className="mt-1 text-xs text-lumi-muted">To update your email address, contact support.</p>
         </div>
 
         {profileChanged && (

@@ -14,9 +14,11 @@
 //     inconclusive result says "no causal lift called", never a hopeful number.
 // ============================================================
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Lock, Microscope, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatCurrency } from '@/lib/money';
+import { appRoutes } from '@/app/routeManifest.js';
 
 const statusTone = {
   DESIGNED:  'text-stage-testing bg-stage-testing/10 border-stage-testing/25',
@@ -190,7 +192,12 @@ export function IncrementalityPanel({ tests = [], readouts = {}, gated = false, 
         <div className="rounded-xl border border-dashed border-lumi-border p-6 text-center text-sm text-lumi-subtle">Loading holdouts…</div>
       ) : error ? (
         <div className="rounded-2xl border border-signal-kill/25 bg-signal-kill-bg p-6 text-center text-sm text-signal-kill">
-          <AlertCircle className="w-5 h-5 mx-auto mb-1.5" strokeWidth={1.5} /> Couldn’t load incrementality.
+          <AlertCircle className="w-5 h-5 mx-auto mb-1.5" strokeWidth={1.5} />
+          <p>We couldn’t load incrementality right now.</p>
+          <p className="mt-1 text-dark-soft">Holdout testing needs a connected channel with live campaigns.</p>
+          <Link to={appRoutes.settingsIntegrations} className="mt-3 inline-flex items-center gap-1 font-medium text-lumi-accent hover:underline">
+            Connect Meta →
+          </Link>
         </div>
       ) : (
         <div className="space-y-4">

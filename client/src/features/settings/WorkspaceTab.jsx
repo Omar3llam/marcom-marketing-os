@@ -37,7 +37,16 @@ export function WorkspaceTab({
 
         <div>
           <label className="block text-sm font-medium text-lumi-text mb-1.5">Current Plan</label>
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-lumi-gold/10 border border-lumi-gold/30 px-3 py-1 text-xs font-medium text-lumi-deep">✨ FREE</div>
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-lumi-gold/10 border border-lumi-gold/30 px-3 py-1 text-xs font-medium text-lumi-deep">✨ FREE</div>
+            {/* No in-app billing yet — point at the public pricing tiers (real anchor). */}
+            <a
+              href="/#pricing"
+              className="text-xs font-medium text-lumi-deep/70 hover:text-lumi-deep transition-colors"
+            >
+              See paid features →
+            </a>
+          </div>
         </div>
 
         {workspaceChanged && (
