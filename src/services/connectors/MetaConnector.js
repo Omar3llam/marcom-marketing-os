@@ -8,7 +8,7 @@
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { fetchCampaignInsights, fetchAccountCurrency } from '../metaAdsService.js';
+import { fetchCampaignInsights, fetchAccountCurrency, fetchAllCampaigns, mergeMetaCampaigns } from '../metaAdsService.js';
 import { resolveSyncCurrency } from '../../lib/currencyDetector.js';
 import { ChannelConnector, assertNormalized } from './ChannelConnector.js';
 import { metaNormalize } from './normalize/metaNormalize.js';
@@ -59,9 +59,25 @@ export class MetaConnector extends ChannelConnector {
   }
 
   async fetchRaw(auth, { datePreset = DEFAULT_MANUAL_SYNC_DATE_PRESET } = {}) {
-    const insights = await fetchCampaignInsights(auth.accessToken, auth.accountExternalId, datePreset);
-    // Unwrap the service's per-row envelope to the raw Meta insight object.
-    return (insights || []).map((row) => row._data || row);
+    // Two edges, two roles:
+    //   /insights  — campaigns that DELIVERED (real spend/revenue). PRIMARY: a
+    //                failure here IS a sync failure, so it throws.
+    //   /campaigns — the FULL roster incl. zero-spend. SECONDARY enrichment: a
+    //                failure must never break the sync, so it degrades to
+    //                "insights only" (mirrors how currency lookup never throws).
+    const [insights, campaigns] = await Promise.all([
+      fetchCampaignInsights(auth.accessToken, auth.accountExternalId, datePreset),
+      fetchAllCampaigns(auth.accessToken, auth.accountExternalId).catch((err) => {
+        logger.warn(
+          { err: err.message, accountId: auth.accountExternalId },
+          '[MetaConnector] fetchAllCampaigns failed — landing insights only (zero-spend campaigns omitted)',
+        );
+        return [];
+      }),
+    ]);
+    // Every campaign lands: delivered ones keep their data, zero-spend ones get
+    // honest zeros. mergeMetaCampaigns unwraps the SDK envelope on both inputs.
+    return mergeMetaCampaigns(insights, campaigns);
   }
 
   normalize({ accountExternalId, accountName, currency, date = new Date(), rows = [] }) {

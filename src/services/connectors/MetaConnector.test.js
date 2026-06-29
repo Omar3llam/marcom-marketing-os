@@ -20,14 +20,21 @@ vi.mock('../../utils/logger.js', () => ({
 vi.mock('../../lib/prisma.js', () => ({
   prisma: { workspace: { findUnique: vi.fn(), update: vi.fn() } },
 }));
-vi.mock('../metaAdsService.js', () => ({
-  fetchAccountCurrency: vi.fn(),
-  fetchCampaignInsights: vi.fn(),
-}));
+// Keep the REAL module (so the pure mergeMetaCampaigns drives fetchRaw) but stub
+// the three network-touching functions.
+vi.mock('../metaAdsService.js', async (importActual) => {
+  const actual = await importActual();
+  return {
+    ...actual,
+    fetchAccountCurrency: vi.fn(),
+    fetchCampaignInsights: vi.fn(),
+    fetchAllCampaigns: vi.fn(),
+  };
+});
 vi.mock('./credentialStore.js', () => ({ resolveCredential: vi.fn() }));
 
 import { prisma } from '../../lib/prisma.js';
-import { fetchAccountCurrency } from '../metaAdsService.js';
+import { fetchAccountCurrency, fetchCampaignInsights, fetchAllCampaigns } from '../metaAdsService.js';
 import { resolveCredential } from './credentialStore.js';
 import { MetaConnector } from './MetaConnector.js';
 import { resolveSyncCurrency } from '../../lib/currencyDetector.js';
@@ -128,5 +135,46 @@ describe('resolveSyncCurrency — pure precedence', () => {
   });
   it('normalises case + whitespace', () => {
     expect(resolveSyncCurrency(' egp ', null)).toEqual({ currency: 'EGP', source: 'reported' });
+  });
+});
+
+describe('MetaConnector.fetchRaw — every campaign lands, zero-spend included', () => {
+  const auth = { accessToken: 'tok', accountExternalId: 'act_123' };
+
+  it('merges the roster into insights: delivered keep data, zero-spend appended with 0', async () => {
+    fetchCampaignInsights.mockResolvedValue([
+      { campaign_id: 'c1', campaign_name: 'Delivered', spend: '100', impressions: '1000', clicks: '50' },
+    ]);
+    fetchAllCampaigns.mockResolvedValue([
+      { id: 'c1', name: 'Delivered' },   // already in insights → not duplicated
+      { id: 'c2', name: 'Never spent' }, // absent from insights → appended at 0
+    ]);
+
+    const rows = await connector.fetchRaw(auth);
+
+    expect(rows).toHaveLength(2);
+    expect(rows.filter((r) => r.campaign_id === 'c1')).toHaveLength(1); // no dup
+    expect(rows.find((r) => r.campaign_id === 'c1').spend).toBe('100'); // real data kept
+    expect(rows.find((r) => r.campaign_id === 'c2')).toMatchObject({
+      campaign_name: 'Never spent', spend: '0', impressions: '0', clicks: '0',
+    });
+    expect(fetchCampaignInsights).toHaveBeenCalledWith('tok', 'act_123', expect.any(String));
+    expect(fetchAllCampaigns).toHaveBeenCalledWith('tok', 'act_123');
+  });
+
+  it('a /campaigns failure degrades to insights-only — never breaks the sync', async () => {
+    fetchCampaignInsights.mockResolvedValue([{ campaign_id: 'c1', campaign_name: 'D', spend: '5' }]);
+    fetchAllCampaigns.mockRejectedValue(new Error('permissions'));
+
+    const rows = await connector.fetchRaw(auth);
+
+    expect(rows).toEqual([{ campaign_id: 'c1', campaign_name: 'D', spend: '5' }]);
+  });
+
+  it('an /insights failure DOES throw — the primary edge IS the sync', async () => {
+    fetchCampaignInsights.mockRejectedValue(new Error('token expired'));
+    fetchAllCampaigns.mockResolvedValue([]);
+
+    await expect(connector.fetchRaw(auth)).rejects.toThrow('token expired');
   });
 });
