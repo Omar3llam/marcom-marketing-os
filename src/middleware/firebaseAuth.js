@@ -187,39 +187,82 @@ export async function firebaseAuthMiddleware(req, res, next) {
         req.authSource  = 'firebase';
         cacheSetWorkspace(decodedToken.uid, user.workspaceId, role, user.collabRole);
       } else {
-        // No Prisma row for this Firebase UID.
-        // Auto-provision: create Workspace + User atomically so the
-        // session is immediately functional. context=null means the user
-        // is NOT onboarded — ProtectedRoute will redirect to /onboarding.
+        // No Prisma row for this Firebase UID — first sign-in.
+        //
+        // THE INVITE SEAM: if a PENDING, unexpired invitation exists for this
+        // email, the user JOINS that workspace (with the invited collabRole) and
+        // the invite is consumed — instead of getting a fresh island workspace.
+        // Without this branch every invited teammate would silently land in their
+        // own workspace and the whole invite flow would be a no-op.
+        // Otherwise: normal auto-provision (fresh Workspace + User). context=null
+        // means NOT onboarded — ProtectedRoute will redirect to /onboarding.
         try {
-          const email       = decodedToken.email || `${decodedToken.uid}@unknown.local`;
+          // Normalize to lowercase so the email match against invitation.email
+          // (also stored lowercase) is reliable — Postgres equality is exact.
+          const email       = (decodedToken.email || `${decodedToken.uid}@unknown.local`).toLowerCase();
           const displayName = decodedToken.name  || email.split('@')[0];
+          // ADMIN only if the email is on the ADMIN_EMAILS allowlist — never
+          // self-serve. Everyone else provisions as VIEWER.
+          const role        = isAdminEmail(email) ? 'ADMIN' : 'VIEWER';
 
-          const created = await prisma.user.create({
-            data: {
-              clerkId:  decodedToken.uid,
-              email,
-              // ADMIN only if the email is on the ADMIN_EMAILS allowlist —
-              // never self-serve. Everyone else provisions as VIEWER.
-              role:     isAdminEmail(email) ? 'ADMIN' : 'VIEWER',
-              context:  null,           // null = not onboarded yet
-              workspace: {
-                create: { name: `${displayName}'s Workspace` },
+          // Defensive: an invite-lookup failure must never block normal provision.
+          let pendingInvite = null;
+          try {
+            pendingInvite = await prisma.invitation.findFirst({
+              where:   { email, status: 'PENDING', expiresAt: { gt: new Date() } },
+              orderBy: { createdAt: 'desc' },
+              select:  { id: true, workspaceId: true, collabRole: true },
+            });
+          } catch (inviteErr) {
+            logger.warn({ err: inviteErr.message, uid: decodedToken.uid }, '[firebase-auth] invite lookup failed; falling back to fresh provision');
+          }
+
+          let created;
+          if (pendingInvite) {
+            // Join the inviting workspace; consume the invite (single-use).
+            created = await prisma.user.create({
+              data: {
+                clerkId:     decodedToken.uid,
+                email,
+                role,
+                collabRole:  pendingInvite.collabRole,
+                context:     null,
+                workspaceId: pendingInvite.workspaceId,
               },
-            },
-            select: { id: true, workspaceId: true, role: true, collabRole: true },
-          });
+              select: { id: true, workspaceId: true, role: true, collabRole: true },
+            });
+            await prisma.invitation.update({
+              where: { id: pendingInvite.id },
+              data:  { status: 'ACCEPTED' },
+            });
+            req.authSource = 'firebase-invite-join';
+            logger.info(
+              { uid: decodedToken.uid, workspaceId: created.workspaceId, inviteId: pendingInvite.id },
+              '[firebase-auth] invited user joined existing workspace',
+            );
+          } else {
+            // Fresh Workspace + User, created atomically.
+            created = await prisma.user.create({
+              data: {
+                clerkId: decodedToken.uid,
+                email,
+                role,
+                context: null,
+                workspace: { create: { name: `${displayName}'s Workspace` } },
+              },
+              select: { id: true, workspaceId: true, role: true, collabRole: true },
+            });
+            req.authSource = 'firebase-auto-provisioned';
+            logger.info(
+              { uid: decodedToken.uid, workspaceId: created.workspaceId },
+              '[firebase-auth] auto-provisioned User + Workspace for new Firebase user',
+            );
+          }
 
           req.workspaceId = created.workspaceId;
           req.userRole    = created.role;
           req.collabRole  = created.collabRole ?? null;
-          req.authSource  = 'firebase-auto-provisioned';
           cacheSetWorkspace(decodedToken.uid, created.workspaceId, created.role, created.collabRole);
-
-          logger.info(
-            { uid: decodedToken.uid, workspaceId: created.workspaceId },
-            '[firebase-auth] auto-provisioned User + Workspace for new Firebase user',
-          );
         } catch (provisionErr) {
           // Likely a unique-constraint race (two simultaneous requests).
           // Try a second read before giving up.

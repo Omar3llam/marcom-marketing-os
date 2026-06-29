@@ -50,6 +50,43 @@ export async function sendNotification({ subject, sessionId, contextSummary }) {
   });
 }
 
+// ── TEAM INVITE ───────────────────────────────────────────────
+// Sends the workspace invitation to the invitee. Returns { sent: boolean } so
+// callers can honestly report whether the mail actually went out — when Gmail
+// is not configured this no-ops gracefully (the invite still works: the join is
+// email-matched in the firebaseAuth seam, the email is just the delivery hint).
+export async function sendInviteEmail({ to, workspaceName, inviterName, role, acceptUrl, expiresInDays = 7 }) {
+  const transporter = getTransporter();
+  if (!transporter) {
+    logger.info({ to }, '[EMAIL] Not configured — skipping team invite email');
+    return { sent: false };
+  }
+
+  await transporter.sendMail({
+    from: `"MARCOM" <${process.env.GMAIL_USER}>`,
+    to,
+    subject: `You've been invited to ${escHtml(workspaceName)} on Lumi`,
+    html: `
+      <div style="font-family: monospace; background: #080808; color: #f2f0eb; padding: 32px; border-radius: 4px;">
+        <h2 style="color: #c9a84c; border-bottom: 1px solid #2a2a2a; padding-bottom: 12px;">
+          You've been invited to Lumi
+        </h2>
+        <p><strong>${escHtml(inviterName)}</strong> invited you to join
+           <strong>${escHtml(workspaceName)}</strong> as <strong>${escHtml(role)}</strong>.</p>
+        <p style="margin-top: 24px;">
+          <a href="${escHtml(acceptUrl)}" style="background: #c9a84c; color: #080808; padding: 12px 20px; border-radius: 4px; text-decoration: none; font-weight: bold;">
+            Accept invitation
+          </a>
+        </p>
+        <p style="color: #666; margin-top: 24px; font-size: 12px;">
+          This invitation expires in ${escHtml(expiresInDays)} days. If you weren't expecting it, you can ignore this email.
+        </p>
+      </div>
+    `,
+  });
+  return { sent: true };
+}
+
 // ── ERROR ALERT ───────────────────────────────────────────────
 export async function sendErrorAlert({ error, sessionId, mode }) {
   const transporter = getTransporter();

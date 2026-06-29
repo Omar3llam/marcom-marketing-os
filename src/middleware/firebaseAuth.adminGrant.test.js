@@ -19,7 +19,10 @@ vi.mock('../utils/firebaseAdmin.js', () => ({
 }));
 
 vi.mock('../lib/prisma.js', () => ({
-  prisma: { user: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() } },
+  prisma: {
+    user: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
+    invitation: { findFirst: vi.fn(), update: vi.fn() },
+  },
 }));
 
 vi.mock('../utils/logger.js', () => ({
@@ -75,5 +78,42 @@ describe('ADMIN_EMAILS grant path', () => {
     const req = await runMiddleware('uid-case', 'BOSS@MARCOM.AI');
 
     expect(req.userRole).toBe('ADMIN');
+  });
+});
+
+describe('THE INVITE SEAM — first sign-in with a pending invitation', () => {
+  it('joins the inviting workspace, applies the invited role, and consumes the invite', async () => {
+    prisma.user.findUnique.mockResolvedValue(null); // no row → provision branch
+    prisma.invitation.findFirst.mockResolvedValue({ id: 'inv-1', workspaceId: 'ws-host', collabRole: 'BUYER' });
+    prisma.user.create.mockResolvedValue({ id: 'u-join', workspaceId: 'ws-host', role: 'VIEWER', collabRole: 'BUYER' });
+    prisma.invitation.update.mockResolvedValue({});
+
+    const req = await runMiddleware('uid-invitee', 'invitee@brand.com');
+
+    // Joined the host workspace — did NOT mint a new one.
+    const createArg = prisma.user.create.mock.calls[0][0].data;
+    expect(createArg.workspaceId).toBe('ws-host');
+    expect(createArg.workspace).toBeUndefined(); // no nested workspace.create
+    expect(createArg.collabRole).toBe('BUYER');
+    // Invite consumed (single-use).
+    expect(prisma.invitation.update).toHaveBeenCalledWith({ where: { id: 'inv-1' }, data: { status: 'ACCEPTED' } });
+    // Session resolves to the host workspace + invited role.
+    expect(req.workspaceId).toBe('ws-host');
+    expect(req.collabRole).toBe('BUYER');
+    expect(req.authSource).toBe('firebase-invite-join');
+  });
+
+  it('falls back to a fresh workspace when there is no pending invite', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.invitation.findFirst.mockResolvedValue(null);
+    prisma.user.create.mockResolvedValue({ id: 'u-solo', workspaceId: 'ws-new', role: 'VIEWER', collabRole: null });
+
+    const req = await runMiddleware('uid-solo', 'solo@brand.com');
+
+    const createArg = prisma.user.create.mock.calls[0][0].data;
+    expect(createArg.workspace).toEqual({ create: { name: expect.any(String) } });
+    expect(prisma.invitation.update).not.toHaveBeenCalled();
+    expect(req.authSource).toBe('firebase-auto-provisioned');
+    expect(req.workspaceId).toBe('ws-new');
   });
 });

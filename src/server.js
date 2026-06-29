@@ -49,6 +49,7 @@ import attributionRouter      from './routes/attribution.js';
 import { observabilityRouter } from './routes/observability/index.js';
 import { userRouter }         from './routes/user.js';
 import { adminRouter }        from './routes/admin/index.js';
+import { teamRouter }         from './routes/team/index.js';
 import { requireAdmin }       from './middleware/requireAdmin.js';
 import { logger }             from './utils/logger.js';
 import { getDb, closeDb }   from './utils/db.js';
@@ -330,6 +331,15 @@ app.use('/api/tools',
   requireAuth,
   apiLimiter,
   toolsRouter
+);
+
+// Team & Roles — workspace roster, invitations, collab-role management.
+// requireAuth is applied INSIDE the router (after the public GET /invite/accept
+// link handler), so it is NOT set here. STRATEGIST-only mutations are gated
+// per-route with requireCollabRole.
+app.use('/api/team',
+  apiLimiter,
+  teamRouter
 );
 
 // Internal admin panel — system status, workspace/user inventory, demo

@@ -11,6 +11,7 @@ import { EmptyState, PageHeader } from '@/design-system/patterns';
 import Connections from '@/pages/Connections.jsx';
 import { ProfileTab } from './ProfileTab.jsx';
 import { WorkspaceTab } from './WorkspaceTab.jsx';
+import TeamTab from './TeamTab.jsx';
 import { NotificationsTab } from './NotificationsTab.jsx';
 import { SecurityTab } from './SecurityTab.jsx';
 import {
@@ -156,7 +157,7 @@ export default function Settings() {
         // surface (GET /api/lumi/connections), not a second Meta-only panel.
         return <Connections />;
       case 'team':
-        return <SettingsPlaceholder title="Team & Roles" copy="Invite teammates, assign roles, and review workspace access from this settings section." />;
+        return <TeamTab />;
       case 'billing':
         return <SettingsPlaceholder title="Billing" copy="Billing configuration is reserved here so plan and payment controls stay separate from marketing workflows." />;
       case 'workspace':
