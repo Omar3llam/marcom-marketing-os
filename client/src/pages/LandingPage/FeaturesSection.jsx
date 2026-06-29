@@ -7,7 +7,7 @@ export function CapabilitiesGrid() {
       Icon: Radar,
       title: 'Outcome attribution',
       body: 'Every verdict you publish is tracked back to the Meta ad. Real CTR, CPC, and ROAS feed into the next call — so routing chases revenue, not just approval rate.',
-      badge: 'New in v4.3',
+      wide: true,
     },
     {
       Icon: Cpu,
@@ -51,7 +51,7 @@ export function CapabilitiesGrid() {
 
         <div className="grid lg:grid-cols-2 gap-5">
           {features.map((f, i) => (
-            <FeatureCard key={f.title} feat={f} delay={i * 70} wide={!!f.badge} shown={shown} />
+            <FeatureCard key={f.title} feat={f} delay={i * 70} wide={!!f.wide} shown={shown} />
           ))}
         </div>
       </div>

@@ -4,8 +4,18 @@ import { ArrowRight, Menu, X } from 'lucide-react';
 import { Hero } from './HeroSection.jsx';
 import { TrustedBy } from './SocialProofSection.jsx';
 import { CapabilitiesGrid, HowItWorks } from './FeaturesSection.jsx';
+import { ScreenshotGallery } from './ScreenshotGallery.jsx';
 import { Pricing } from './PricingSection.jsx';
 import { BottomCTA } from './CTASection.jsx';
+
+// Nav anchors map to the real section ids (Hero=top, Features=features, How=how,
+// Pricing=pricing). Hardcoded — never auto-derived from the label — so the link
+// can't silently drift away from the section id.
+const NAV_LINKS = [
+  { label: 'How it works', href: '#how' },
+  { label: 'Inside Lumi', href: '#features' },
+  { label: 'Pricing', href: '#pricing' },
+];
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -17,6 +27,7 @@ export default function LandingPage() {
       <Hero />
       <TrustedBy />
       <CapabilitiesGrid />
+      <ScreenshotGallery />
       <HowItWorks />
       <Pricing onStartFree={() => navigate('/signup')} />
       <BottomCTA onCta={() => navigate('/signup')} />
@@ -50,10 +61,10 @@ function Navbar({ menuOpen, setMenuOpen }) {
         <BrandMark scrolled={scrolled} />
 
         <ul className="hidden md:flex items-center gap-8">
-          {['How it works', 'Inside Lumi', 'Pricing'].map((label) => (
+          {NAV_LINKS.map(({ label, href }) => (
             <li key={label}>
               <a
-                href={`#${label.toLowerCase().replace(/\s+/g, '-')}`}
+                href={href}
                 className="font-display text-[13px] font-medium text-dark-soft hover:text-dark-base transition-colors"
               >
                 {label}
@@ -75,7 +86,7 @@ function Navbar({ menuOpen, setMenuOpen }) {
               scrolled ? 'px-4 py-2' : 'px-4 py-2.5'
             }`}
           >
-            Start free
+            Get started
             <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
           </Link>
         </div>
@@ -93,10 +104,10 @@ function Navbar({ menuOpen, setMenuOpen }) {
       {menuOpen && (
         <div className="md:hidden border-t border-surface-border bg-surface-card animate-fade-in">
           <div className="flex flex-col gap-1 p-4">
-            {['How it works', 'Inside Lumi', 'Pricing'].map((label) => (
+            {NAV_LINKS.map(({ label, href }) => (
               <a
                 key={label}
-                href={`#${label.toLowerCase().replace(/\s+/g, '-')}`}
+                href={href}
                 onClick={() => setMenuOpen(false)}
                 className="px-3 py-2 text-sm font-display text-dark-muted hover:text-dark-base rounded-lg"
               >
@@ -115,7 +126,7 @@ function Navbar({ menuOpen, setMenuOpen }) {
               onClick={() => setMenuOpen(false)}
               className="mt-1 w-full btn-gold px-4 py-2 rounded-xl text-sm"
             >
-              Start free →
+              Get started →
             </Link>
           </div>
         </div>
@@ -156,6 +167,11 @@ function Footer() {
     <footer className="px-4 sm:px-6 py-8 border-t border-surface-border/50">
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-dark-subtle font-mono">
         <span>© {new Date().getFullYear()} MARCOM AI</span>
+        <div className="flex items-center gap-5">
+          <Link to="/privacy" className="hover:text-dark-base transition-colors">Privacy</Link>
+          <Link to="/terms" className="hover:text-dark-base transition-colors">Terms</Link>
+          <a href="mailto:hello@marcom.ai" className="hover:text-dark-base transition-colors">Contact</a>
+        </div>
         <span>Lumi · Decision OS</span>
       </div>
     </footer>

@@ -16,6 +16,8 @@ import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import LandingPage      from './pages/LandingPage.jsx';
+import PrivacyPage      from './pages/PrivacyPage.jsx';
+import TermsPage        from './pages/TermsPage.jsx';
 import AuthPage         from './pages/AuthPage.jsx';
 import OnboardingPage   from './pages/OnboardingPage.jsx';
 import MainLayout       from './components/layout/MainLayout.jsx';
@@ -138,6 +140,8 @@ export default function App() {
       <Routes>
         {/* ── Public ───────────────────────────────────────── */}
         <Route path="/"         element={<LandingPage />} />
+        <Route path="/privacy"  element={<PrivacyPage />} />
+        <Route path="/terms"    element={<TermsPage />} />
         <Route path="/login/*"  element={<AuthPage mode="login" />} />
         <Route path="/signup/*" element={<AuthPage mode="signup" />} />
 
