@@ -7,11 +7,12 @@
 // feed — are gone; the agenda IS the prioritized, evidence-backed action list.
 // ============================================================
 import { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import {
   BarChart, Target, AlertTriangle, Activity,
-  Upload, ArrowRight,
+  Upload, ArrowRight, Plug,
 } from 'lucide-react';
+import { appRoutes } from '@/app/routeManifest.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
@@ -99,21 +100,30 @@ export default function OverviewView() {
       {!loading && !hasData && (
         <div className="flex flex-col items-center justify-center min-h-[480px] p-10 bg-surface-card border border-dashed border-surface-border-strong rounded-xl text-center">
           <div className="w-16 h-16 rounded-xl bg-lumi-accent/10 text-lumi-accent flex items-center justify-center mb-4">
-            <Upload className="w-7 h-7" strokeWidth={1.5} />
+            <Plug className="w-7 h-7" strokeWidth={1.5} />
           </div>
           <div className="font-display font-bold text-lg text-dark-base mb-2">
             No campaign data yet
           </div>
           <p className="text-[14px] text-dark-soft max-w-[440px] leading-relaxed mb-6">
-            Upload your first Meta Ads Manager CSV to unlock account pulse, AI insights, and automated recommendations.
+            Connect your Meta Ads account to unlock account pulse, AI insights, and automated recommendations.
           </p>
-          <button
-            onClick={() => navigate('/app/campaigns')}
+          {/* Primary path for a new user: the OAuth connection flow. */}
+          <Link
+            to={appRoutes.settingsIntegrations}
             className="flex items-center gap-2 px-5 py-3 bg-lumi-accent hover:bg-lumi-accent/90 text-white rounded-lg transition-all font-display font-semibold text-sm shadow-accent-glow focus:outline-none focus:ring-2 focus:ring-lumi-accent focus:ring-offset-2 focus:ring-offset-surface-dark"
           >
-            <Upload className="w-4 h-4" strokeWidth={1.5} />
-            Upload campaign data
+            <Plug className="w-4 h-4" strokeWidth={1.5} />
+            Connect your Meta account
             <ArrowRight className="w-3.5 h-3.5" strokeWidth={1.5} />
+          </Link>
+          {/* Secondary, de-emphasized: a one-off CSV upload still works. */}
+          <button
+            onClick={() => navigate('/app/campaigns')}
+            className="mt-3 inline-flex items-center gap-1.5 text-sm text-dark-soft hover:text-lumi-accent transition-colors"
+          >
+            <Upload className="w-3.5 h-3.5" strokeWidth={1.5} />
+            Or upload a Meta Ads CSV
           </button>
         </div>
       )}

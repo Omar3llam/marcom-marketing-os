@@ -14,6 +14,7 @@
 // reliability table is the evidence (a table, not a chart — anti-Looker holds).
 // Role: STRATEGIST = full table + velocity; BUYER = summary; CLIENT = narrative.
 // ============================================================
+import { Link } from 'react-router-dom';
 import { Gauge } from 'lucide-react';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
@@ -21,6 +22,7 @@ import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
 import RecordOutcomePanel from './RecordOutcomePanel.jsx';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
+import { appRoutes } from '@/app/routeManifest.js';
 
 const pct = (n) => `${Math.round((Number(n) || 0) * 100)}%`;
 
@@ -125,7 +127,12 @@ export default function Proof() {
 
       {loading && <div className="space-y-3"><CardSkeleton /><CardSkeleton /></div>}
       {!loading && error && (
-        <EmptyPanel Icon={Gauge} text="Couldn't load the proof surface right now. Try again shortly." />
+        <div className="flex flex-col items-center gap-3">
+          <EmptyPanel Icon={Gauge} text="We couldn't load Proof of Learning right now. It tracks how calibrated Lumi gets on your account as decisions accumulate." />
+          <Link to={appRoutes.settingsIntegrations} className="inline-flex items-center gap-1 text-sm font-medium text-lumi-accent hover:underline">
+            Connect Meta →
+          </Link>
+        </div>
       )}
       {!loading && !error && (
         <div className="space-y-4">
