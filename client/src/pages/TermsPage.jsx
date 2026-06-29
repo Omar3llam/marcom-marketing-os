@@ -36,7 +36,7 @@ export default function TermsPage() {
             <p>You own your data. You can export or delete it at any time. We process it only to provide the service.</p>
           </Section>
           <Section title="3. Acceptable use">
-            <p>No automated scraping, no reselling the service, and no attempts to access another workspace's data or circumvent workspace isolation.</p>
+            <p>No automated scraping, no reselling the service, and no attempts to access another workspace&apos;s data or circumvent workspace isolation.</p>
           </Section>
           <Section title="4. Termination">
             <p>You can cancel at any time from Settings. We may suspend accounts that violate acceptable use.</p>

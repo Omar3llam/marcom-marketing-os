@@ -19,7 +19,7 @@ export function TrustedBy() {
         <div className="font-mono text-[10px] tracking-[0.12em] uppercase text-dark-muted mb-3">
           Early access
         </div>
-        <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-[-0.03em] text-dark-base leading-tight">
+        <h2 className="decision-title text-dark-base">
           Be the first growth team in Egypt to use Lumi.
         </h2>
         <p className="mt-3 text-sm sm:text-base text-dark-soft max-w-2xl mx-auto leading-relaxed">
