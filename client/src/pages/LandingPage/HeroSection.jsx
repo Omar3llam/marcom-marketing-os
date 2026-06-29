@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Zap, ArrowRight, Skull } from 'lucide-react';
 
 export function Hero() {
@@ -32,7 +33,7 @@ export function Hero() {
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-lumi-accent/10 border border-lumi-accent/28 mb-7">
             <span className="w-1.5 h-1.5 rounded-full bg-lumi-accent shadow-gold-glow animate-pulse" />
             <span className="font-mono text-[11px] tracking-[0.1em] uppercase text-lumi-accent font-semibold">
-              New · Lumi v4.3 · Outcome attribution
+              Early Access · Now open
             </span>
           </div>
 
@@ -46,14 +47,14 @@ export function Hero() {
           </p>
 
           <div className="mt-10 flex flex-wrap items-center gap-4">
-            <a
-              href="/signup"
+            <Link
+              to="/signup"
               className="btn-gold inline-flex items-center gap-2 px-7 py-3.5 text-[15px] rounded-xl shadow-gold-glow hover:shadow-card-hover transition-all"
             >
               <Zap className="w-4 h-4" strokeWidth={2} />
-              Start free
+              Get started
               <ArrowRight className="w-4 h-4" strokeWidth={2} />
-            </a>
+            </Link>
             <a
               href="#how"
               className="btn-ghost inline-flex items-center gap-2 px-5 py-3 text-sm rounded-xl transition-all"

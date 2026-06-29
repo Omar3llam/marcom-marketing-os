@@ -18,7 +18,7 @@ export function Pricing({ onStartFree }) {
         'Basic outcome attribution',
         'Email support',
       ],
-      cta: 'Start free',
+      cta: 'Get started',
       href: '/signup',
       popular: false,
     },
@@ -35,7 +35,7 @@ export function Pricing({ onStartFree }) {
         'Slack integration',
         'Priority support',
       ],
-      cta: 'Start free',
+      cta: 'Get started',
       href: '/signup',
       popular: true,
     },
@@ -71,7 +71,7 @@ export function Pricing({ onStartFree }) {
             Built for every stage.
           </h2>
           <p className="text-lumi-muted font-body text-lg max-w-2xl mx-auto leading-relaxed">
-            Start free during early access. Scale as you grow.
+            Get started during early access. Scale as you grow.
           </p>
         </div>
 
