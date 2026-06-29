@@ -62,8 +62,25 @@ services:
       - key: OPENAI_API_KEY
         sync: false
 
-      # Ad-platform credentials
-      - key: GOOGLE_ADS_TOKEN
+      # Ad-platform credentials — Google Ads (names must match what the code reads:
+      # googleAdsClient.js / ga4Client.js / routes/auth/google.js)
+      - key: GOOGLE_ADS_DEVELOPER_TOKEN
+        sync: false
+      - key: GOOGLE_ADS_CLIENT_ID
+        sync: false
+      - key: GOOGLE_ADS_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        sync: false
+      - key: APP_BASE_URL
+        value: https://marcom-marketing-os.onrender.com
+
+      # Ad-platform credentials — Meta OAuth (routes/auth/meta.js + metaAdsService.js)
+      - key: META_APP_ID
+        sync: false
+      - key: META_APP_SECRET
+        sync: false
+      - key: META_REDIRECT_URI
         sync: false
 
       # Notifications & link signing
@@ -107,7 +124,10 @@ services:
     env: node
     region: oregon
     plan: starter
-    buildCommand: npm install
+    # `npx prisma generate` is explicit here: bare `npm install` under
+    # NODE_ENV=production may omit the `prisma` devDep and skip the client
+    # generation postinstall, leaving the worker with a stale Prisma client.
+    buildCommand: npm install && npx prisma generate
     startCommand: npm run worker
     autoDeploy: true
     envVars:
