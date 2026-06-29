@@ -154,6 +154,40 @@ export const CAMPAIGN_INSIGHT_FIELDS = Object.freeze([
   'date_start', 'date_stop',
 ]);
 
+// Pagination safety bound. At Meta's 25/page insights default that's 1 250
+// campaigns; far past any real account. A runaway (paging.next that never
+// clears) stops here with a warning rather than looping forever.
+const MAX_PAGES = 50;
+
+/**
+ * Walk every page of a Meta SDK Cursor into one plain array.
+ *
+ * The SDK's Cursor EXTENDS Array and is mutated in place by `.next()` (it does
+ * NOT expose a `fetchAll()`). That made the old `Array.isArray(cursor) ? cursor`
+ * guard a silent page-1-only read: `Array.isArray` is true for an Array subclass,
+ * so only the first page (≤25 rows) was ever returned. We collect the current
+ * page, then follow `paging.next` until exhausted. Rows are unwrapped from the
+ * SDK's `_data` envelope to plain objects (every consumer already did this).
+ *
+ * @param {Array & { hasNext?: Function, next?: Function }} cursor
+ * @returns {Promise<{ rows: Array, pages: number }>}
+ */
+export async function collectCursorPages(cursor) {
+  const rows = [];
+  let pages = 0;
+  for (;;) {
+    pages += 1;
+    for (const row of cursor) rows.push(row?._data || row);
+    const more = typeof cursor?.hasNext === 'function' && cursor.hasNext();
+    if (!more || pages >= MAX_PAGES) break;
+    await cursor.next(); // replaces the cursor's contents with the next page
+  }
+  if (pages >= MAX_PAGES && typeof cursor?.hasNext === 'function' && cursor.hasNext()) {
+    logger.warn({ pages, collected: rows.length }, '[metaAdsService] pagination hit MAX_PAGES — result may be truncated');
+  }
+  return { rows, pages };
+}
+
 /**
  * Pull campaign-level insights. The window defaults to the shared MANUAL preset
  * (reach as far back as Meta serves) — every real caller passes an explicit
@@ -161,6 +195,12 @@ export const CAMPAIGN_INSIGHT_FIELDS = Object.freeze([
  * Returns an array of insight objects — keys include:
  *   campaign_name, spend, impressions, reach, frequency,
  *   clicks, ctr, cpm, cpc, actions, action_values, cost_per_action_type
+ *
+ * NOTE: /insights only returns campaigns that DELIVERED in the window — a
+ * zero-spend campaign never appears here, even with date_preset 'maximum'. The
+ * connector pairs this with fetchAllCampaigns + mergeMetaCampaigns to land the
+ * full roster. This function paginates (see collectCursorPages) so an account
+ * with more delivered campaigns than one page no longer truncates to page 1.
  *
  * @param {string}  accessToken
  * @param {string}  adAccountId   — with or without "act_" prefix
@@ -171,7 +211,7 @@ export async function fetchCampaignInsights(accessToken, adAccountId, datePreset
   const accountId = normalizeAccountId(adAccountId);
   const account   = new AdAccount(accountId);
 
-  const insights = await account.getInsights(
+  const cursor = await account.getInsights(
     CAMPAIGN_INSIGHT_FIELDS,
     {
       level:        'campaign',
@@ -179,8 +219,8 @@ export async function fetchCampaignInsights(accessToken, adAccountId, datePreset
     }
   );
 
-  // The SDK returns a Cursor — convert to a plain array
-  const rows = Array.isArray(insights) ? insights : await insights.fetchAll();
+  // Collect ALL pages — not just page 1 (the SDK Cursor has no fetchAll()).
+  const { rows, pages } = await collectCursorPages(cursor);
 
   // Raw-count observability at the fetch boundary — logged before any
   // normalize/storage step touches the data. This is the number that answers
@@ -189,11 +229,89 @@ export async function fetchCampaignInsights(accessToken, adAccountId, datePreset
   // a divergence (beyond the +1 account rollup normalize adds) is a real
   // finding, not something to assume away.
   logger.info(
-    { accountId, datePreset, rawCount: rows.length },
+    { accountId, datePreset, rawCount: rows.length, pages },
     '[metaAdsService] fetchCampaignInsights raw response',
   );
 
   return rows;
+}
+
+// Entity attributes fetched from the /campaigns edge — NOT metrics. These exist
+// so the sync can land EVERY campaign, including zero-spend ones the /insights
+// edge omits. `id`/`name` are the keys metaNormalize maps to campaign_id/
+// campaign_name; effective_status/status carry the real delivery state.
+export const CAMPAIGN_LIST_FIELDS = Object.freeze([
+  'id', 'name', 'status', 'effective_status',
+  'created_time', 'objective', 'daily_budget', 'lifetime_budget',
+]);
+
+// One page of /campaigns is small (default 25); ask for a larger page to cut
+// round-trips. Meta caps this server-side and returns up to its own max.
+const CAMPAIGN_PAGE_SIZE = 200;
+
+/**
+ * Fetch ALL campaigns for an account from the /campaigns edge — regardless of
+ * spend or delivery. Unlike /insights (which omits campaigns that didn't deliver
+ * in the window), this returns the full roster so the connector can land
+ * zero-spend campaigns too. Paginates via collectCursorPages.
+ *
+ * @param {string} accessToken
+ * @param {string} adAccountId — with or without "act_" prefix
+ * @returns {Promise<Array>} raw campaign objects ({ id, name, status, ... })
+ */
+export async function fetchAllCampaigns(accessToken, adAccountId) {
+  initSdk(accessToken);
+  const accountId = normalizeAccountId(adAccountId);
+  const account   = new AdAccount(accountId);
+
+  const cursor = await account.getCampaigns(CAMPAIGN_LIST_FIELDS, { limit: CAMPAIGN_PAGE_SIZE });
+  const { rows, pages } = await collectCursorPages(cursor);
+
+  logger.info(
+    { accountId, campaignCount: rows.length, pages },
+    '[metaAdsService] fetchAllCampaigns roster',
+  );
+
+  return rows;
+}
+
+/**
+ * PURE merge: fold the /campaigns roster into the /insights rows so EVERY
+ * campaign lands, not only those that delivered. Insight rows (which carry real
+ * spend/revenue/impressions) WIN and pass through untouched; any campaign absent
+ * from insights is appended as an insight-shaped row with explicit zeros.
+ *
+ * No actions/action_values on the synthesized rows → metaNormalize lands revenue
+ * 0 (PLATFORM_CLAIMED 0, never an estimate); spend 0 → snapshotSink lands roas
+ * null, never a fabricated 0.00x. So zero-spend campaigns appear honestly, with
+ * no invented numbers.
+ *
+ * @param {Array} insights  raw insight rows from fetchCampaignInsights
+ * @param {Array} campaigns raw campaign rows from fetchAllCampaigns
+ * @returns {Array} insight-shaped rows for metaNormalize
+ */
+export function mergeMetaCampaigns(insights = [], campaigns = []) {
+  const insightRows = (insights || []).map((row) => row?._data || row);
+  const withInsights = new Set();
+  for (const r of insightRows) {
+    if (r?.campaign_id != null) withInsights.add(String(r.campaign_id));
+  }
+
+  const zeroSpend = [];
+  for (const c of campaigns || []) {
+    const cd = c?._data || c;
+    const id = cd?.id != null ? String(cd.id) : null;
+    if (!id || withInsights.has(id)) continue; // unkeyable, or already has real data
+    zeroSpend.push({
+      campaign_id:   id,
+      campaign_name: cd.name || 'Unnamed Campaign',
+      spend:         '0',
+      impressions:   '0',
+      clicks:        '0',
+    });
+  }
+
+  return [...insightRows, ...zeroSpend];
 }
 
 /**
