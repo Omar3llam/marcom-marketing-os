@@ -271,6 +271,16 @@ enum WorkspaceRole {
   CLIENT
 }
 
+// Team & Roles — lifecycle of an emailed workspace invitation. The actual
+// JOIN happens in firebaseAuth auto-provision: a first-time signup whose email
+// has a PENDING, unexpired invite lands in the inviting workspace instead of a
+// fresh one (single-use → marked ACCEPTED on join).
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
+
 enum NarrativePeriod {
   WEEKLY
   MONTHLY
@@ -393,6 +403,7 @@ model Workspace {
   stakeholderNarratives StakeholderNarrative[]
   approvalRequests      ApprovalRequest[]
   collaborationEvents   CollaborationEvent[]
+  invitations           Invitation[]
 
   // ── Phase 9: Agentic OS ──────────────────────────────────────
   loopRuns LoopRun[]
@@ -427,6 +438,30 @@ model User {
 
   @@index([workspaceId])
   @@map("users")
+}
+
+// ── Team & Roles: workspace invitation ───────────────────────
+// One PENDING invite per (workspace, email). The token backs the email accept
+// link; the join itself is email-matched in the firebaseAuth seam, so the token
+// is opaque/single-use (status flips to ACCEPTED on first join). Cascade-deletes
+// with its workspace, so a deleted workspace never strands a live invite.
+model Invitation {
+  id          String           @id @default(cuid())
+  workspaceId String           @db.Uuid
+  email       String
+  collabRole  WorkspaceRole    @default(BUYER)
+  token       String           @unique @default(cuid())
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, email])
+  @@index([token])
+  @@index([workspaceId])
+  @@map("invitations")
 }
 
 model OAuthToken {
