@@ -54,6 +54,47 @@ describe('evaluateVerdict — single entity', () => {
   });
 });
 
+describe('evaluateVerdict — awareness track (revenueMeasured: false, roas null)', () => {
+  // Awareness/reach campaigns measure engagement, not revenue. The engine must
+  // judge them on frequency + CTR and NEVER emit a revenue verdict (KILL/SCALE).
+  const aware = (over) => ({ ctr: 1.5, cpc: 0, cpm: 5, frequency: 1.4, spend: 500, conversions: 0, roas: null, revenueMeasured: false, ...over });
+
+  it('high frequency + weak CTR → REFRESH (not a fabricated KILL)', () => {
+    const r = evaluateVerdict({ level: 'CAMPAIGN', metrics: aware({ frequency: 4.2, ctr: 0.8 }) });
+    expect(r.verdict).toBe(VERDICT.REFRESH);
+    expect(r.rationale).toMatch(/no revenue measured/i);
+  });
+
+  it('a saturated awareness campaign is NEVER KILL — roas null must not read as < breakeven', () => {
+    const r = evaluateVerdict({ level: 'CAMPAIGN', metrics: aware({ frequency: 5.0, ctr: 0.4 }) });
+    expect(r.verdict).not.toBe(VERDICT.KILL);
+    expect(r.verdict).toBe(VERDICT.REFRESH);
+  });
+
+  it('frequency rising but CTR still ok → WATCH (monitor, not act)', () => {
+    const r = evaluateVerdict({ level: 'CAMPAIGN', metrics: aware({ frequency: 3.2, ctr: 1.5 }) });
+    expect(r.verdict).toBe(VERDICT.WATCH);
+  });
+
+  it('weak CTR, no fatigue → HOLD', () => {
+    const r = evaluateVerdict({ level: 'CAMPAIGN', metrics: aware({ frequency: 1.2, ctr: 0.3 }) });
+    expect(r.verdict).toBe(VERDICT.HOLD);
+  });
+
+  it('healthy engagement → HOLD, with an engagement-only rationale and no SCALE', () => {
+    const r = evaluateVerdict({ level: 'CAMPAIGN', metrics: aware({ frequency: 1.4, ctr: 1.8 }) });
+    expect(r.verdict).toBe(VERDICT.HOLD);
+    expect(r.verdict).not.toBe(VERDICT.SCALE);
+    expect(r.rationale).toMatch(/engagement only/i);
+  });
+
+  it('revenueMeasured defaults TRUE when absent — legacy direct callers are unchanged', () => {
+    // No revenueMeasured key → measured path → the old KILL override still fires.
+    const r = evaluateVerdict({ level: 'ADSET', metrics: { ctr: 0.4, cpc: 2, cpm: 10, frequency: 4.2, spend: 1000, conversions: 2, roas: 0.6 } });
+    expect(r.verdict).toBe(VERDICT.KILL);
+  });
+});
+
 describe('rollupVerdicts — multi-level consistency', () => {
   // A campaign with TWO ad sets:
   //  - winner: huge revenue, healthy → SCALE
