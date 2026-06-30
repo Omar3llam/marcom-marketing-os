@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils.js';
 import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFormatters.js';
 import { formatCurrency } from '@/lib/money';
 import { useEntityDrillDown } from '@/hooks/useEntityDrillDown.js';
+import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 
 // Missing metric → em-dash, never 0 (a true zero and "no data" must not look alike).
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
@@ -41,21 +42,21 @@ function MetricCells({ m }) {
 function AdSetRows({ state }) {
   if (!state || state.loading) {
     return (
-      <tr><td colSpan={6} className="px-4 py-3 text-center text-xs text-lumi-subtle">
+      <tr><td colSpan={7} className="px-4 py-3 text-center text-xs text-lumi-subtle">
         <Loader2 className="inline w-3.5 h-3.5 animate-spin mr-1.5" strokeWidth={2} /> Loading ad sets…
       </td></tr>
     );
   }
   if (state.error) {
     return (
-      <tr><td colSpan={6} className="px-4 py-3 text-center text-xs text-trend-danger">
+      <tr><td colSpan={7} className="px-4 py-3 text-center text-xs text-trend-danger">
         <AlertTriangle className="inline w-3.5 h-3.5 mr-1.5" strokeWidth={2} /> Couldn’t load ad sets — collapse and try again.
       </td></tr>
     );
   }
   if (state.adSets.length === 0) {
     return (
-      <tr><td colSpan={6} className="px-4 py-3 text-center text-xs text-lumi-subtle">No ad sets synced for this campaign yet.</td></tr>
+      <tr><td colSpan={7} className="px-4 py-3 text-center text-xs text-lumi-subtle">No ad sets synced for this campaign yet.</td></tr>
     );
   }
   return state.adSets.map((a) => (
@@ -64,13 +65,14 @@ function AdSetRows({ state }) {
         <div className="font-display text-sm text-lumi-text">{a.name}</div>
         <div className="font-mono text-[11px] text-lumi-subtle">AD SET · {a.channel}</div>
       </td>
+      <td className="px-4 py-2.5" />{/* verdicts are campaign-level — ad-set cell stays empty */}
       <MetricCells m={a} />
       <td className="px-4 py-2.5" />
     </tr>
   ));
 }
 
-export function ConnectorCampaignsPanel({ campaigns = [], loading = false, error = null }) {
+export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, loading = false, error = null }) {
   const [open, setOpen] = useState(new Set());
   const { byId, load } = useEntityDrillDown();
 
@@ -116,6 +118,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], loading = false, error
             <thead className="sticky top-0 z-10 bg-lumi-elevated border-b border-lumi-border">
               <tr>
                 <th scope="col" className="section-label px-4 py-2.5 text-left">Campaign</th>
+                <th scope="col" className="section-label px-4 py-2.5 text-left w-28">Verdict</th>
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-28">Spend</th>
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-20">ROAS</th>
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-20">CTR</th>
@@ -127,6 +130,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], loading = false, error
               {campaigns.map((c) => {
                 const isOpen = open.has(c.entityId);
                 const count = c.adSetCount ?? 0;
+                const verdict = verdicts[c.entityId];
                 return (
                   <Fragment key={c.entityId}>
                     <tr className="border-b border-lumi-border/50 hover:bg-lumi-elevated/40 transition-colors duration-100">
@@ -150,6 +154,9 @@ export function ConnectorCampaignsPanel({ campaigns = [], loading = false, error
                           </span>
                         </button>
                       </td>
+                      {/* Campaign-level verdict (revenue track OR awareness track). A
+                          gatedOut/dataless campaign has none → honest "—", never a faked one. */}
+                      <td className="px-4 py-3">{verdict ? <VerdictPill verdict={verdict} size="sm" /> : <Dash />}</td>
                       <MetricCells m={c} />
                       <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-lumi-muted">{count > 0 ? count : <Dash />}</td>
                     </tr>
