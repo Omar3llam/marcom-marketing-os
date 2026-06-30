@@ -10,13 +10,19 @@ function LegendDot({ color, text, pct: pctVal, className }) {
   );
 }
 
-export function PerformanceChart({ totals }) {
+export function PerformanceChart({ totals, hasConnectorData = false }) {
   if (totals.spend === 0) {
+    // `totals` already prefers the live connector (chartTotals), so spend 0 here
+    // means no spend ANYWHERE. Stay consistent with the analysis table's empty
+    // state: if connector data exists it just has no spend to allocate yet; only
+    // when nothing is connected do we point at both paths in.
     return (
       <section className="mb-6">
         <div className="section-label mb-3">Budget Allocation Recommendation</div>
         <div className="rounded-xl border border-dashed border-lumi-border bg-lumi-surface/40 p-6 text-center text-sm text-lumi-muted">
-          Upload a CSV to see budget allocation.
+          {hasConnectorData
+            ? 'Connected campaigns have no spend to allocate yet.'
+            : 'No campaign data yet. Connect Meta or upload a CSV to see budget allocation.'}
         </div>
       </section>
     );
