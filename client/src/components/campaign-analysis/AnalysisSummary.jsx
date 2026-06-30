@@ -28,7 +28,7 @@ function Th({ children, k, current, dir, onSort, className }) {
 // look identical (governing-law honest-empty rule).
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
 
-function EmptyTable({ onUpload, loading, emptyChannel }) {
+function EmptyTable({ onUpload, loading, emptyChannel, hasConnectorData }) {
   if (loading) return <div className="p-12 text-center text-lumi-subtle">Loading…</div>;
   if (emptyChannel) {
     return (
@@ -39,11 +39,31 @@ function EmptyTable({ onUpload, loading, emptyChannel }) {
       </div>
     );
   }
+  // This table is the CSV-analysis substrate. When live connector data exists it
+  // is shown below (Connected channels) + in the budget chart — so DON'T claim the
+  // page is empty here; point to the live section and offer CSV for deeper detail.
+  if (hasConnectorData) {
+    return (
+      <div className="p-12 text-center">
+        <BarChart3 className="w-12 h-12 mx-auto text-lumi-subtle" strokeWidth={1.5} />
+        <p className="mt-3 font-display text-lumi-text">Live verdicts are shown below in Connected channels.</p>
+        <p className="mt-1 text-lumi-muted text-sm">Upload a CSV to add deeper per-campaign analysis here.</p>
+        <button
+          type="button"
+          onClick={onUpload}
+          className="mt-4 inline-flex items-center gap-1.5 bg-lumi-accent text-lumi-bg font-display font-semibold px-4 py-2 rounded-xl text-sm shadow-accent-glow hover:bg-lumi-accent-hover"
+        >
+          <Upload className="w-3.5 h-3.5" strokeWidth={2} /> Upload CSV
+        </button>
+      </div>
+    );
+  }
+  // Genuinely empty — neither substrate has data. Honest about BOTH paths in.
   return (
     <div className="p-12 text-center">
       <BarChart3 className="w-12 h-12 mx-auto text-lumi-subtle" strokeWidth={1.5} />
-      <p className="mt-3 font-display text-lumi-text">No campaigns analyzed yet.</p>
-      <p className="mt-1 text-lumi-muted text-sm">Upload a CSV to get SCALE / HOLD / KILL verdicts.</p>
+      <p className="mt-3 font-display text-lumi-text">No campaign data yet.</p>
+      <p className="mt-1 text-lumi-muted text-sm">Connect your Meta account or upload a CSV to get started.</p>
       <button
         type="button"
         onClick={onUpload}
@@ -55,11 +75,11 @@ function EmptyTable({ onUpload, loading, emptyChannel }) {
   );
 }
 
-export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expanded, setExpanded, onUpload, currency = 'USD', emptyChannel = null }) {
+export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expanded, setExpanded, onUpload, currency = 'USD', emptyChannel = null, hasConnectorData = false }) {
   return (
     <section className="bg-lumi-surface border border-lumi-border rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
       {rows.length === 0 ? (
-        <EmptyTable onUpload={onUpload} loading={loading} emptyChannel={emptyChannel} />
+        <EmptyTable onUpload={onUpload} loading={loading} emptyChannel={emptyChannel} hasConnectorData={hasConnectorData} />
       ) : (
         <div className="overflow-auto">
           <table className="w-full">
