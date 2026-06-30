@@ -64,16 +64,30 @@ describe('persistConnectorVerdicts', () => {
     }
   });
 
-  it('gates out a campaign with no measured revenue — never a fabricated verdict', async () => {
-    const NOREV = 'e2e2e2e2-0000-0000-0000-000000000011';
-    getConnectorCampaigns.mockResolvedValue([camp(), camp({ entityId: NOREV, name: 'No revenue', revenueMinor: 0 })]);
+  it('persists an AWARENESS verdict for an engaged zero-revenue campaign — never a fabricated KILL', async () => {
+    const AWARE = 'e2e2e2e2-0000-0000-0000-000000000011';
+    // spend + impressions but no revenue → awareness track (HOLD for healthy engagement).
+    getConnectorCampaigns.mockResolvedValue([camp({ entityId: AWARE, name: 'Awareness', revenueMinor: 0 })]);
     const res = await persistConnectorVerdicts(WS);
-    expect(res.gatedOut.map((g) => g.id)).toContain(NOREV);
-    expect(prisma.decision.create).toHaveBeenCalledTimes(1); // only the eligible one
+    expect(res.gatedOut).toHaveLength(0);
+    expect(prisma.decision.create).toHaveBeenCalledTimes(1);
+    const { data } = prisma.decision.create.mock.calls[0][0];
+    expect(data.entityId).toBe(AWARE);
+    expect(['HOLD', 'WATCH', 'REFRESH']).toContain(data.verdict); // an awareness verdict
+    expect(data.verdict).not.toBe('KILL');
+    expect(data.verdict).not.toBe('SCALE');
   });
 
-  it('no-ops honestly when no campaign has measured revenue', async () => {
-    getConnectorCampaigns.mockResolvedValue([camp({ revenueMinor: 0 })]);
+  it('gates out a DATALESS campaign (zero spend + zero impressions)', async () => {
+    const NODATA = 'e3e3e3e3-0000-0000-0000-000000000012';
+    getConnectorCampaigns.mockResolvedValue([camp(), camp({ entityId: NODATA, name: 'No data', revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
+    const res = await persistConnectorVerdicts(WS);
+    expect(res.gatedOut.map((g) => g.id)).toContain(NODATA);
+    expect(prisma.decision.create).toHaveBeenCalledTimes(1); // only the revenue-eligible one
+  });
+
+  it('no-ops honestly when no campaign has revenue OR engagement', async () => {
+    getConnectorCampaigns.mockResolvedValue([camp({ revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
     const res = await persistConnectorVerdicts(WS);
     expect(res.status).toBe('NO_ELIGIBLE_CAMPAIGNS');
     expect(prisma.decision.create).not.toHaveBeenCalled();

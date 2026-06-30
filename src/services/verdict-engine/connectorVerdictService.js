@@ -7,15 +7,21 @@
 // silently wrote PROPOSED Decision rows would surprise the caller and brush the
 // "Lumi initiates / human confirms" guard. Persistence stays in VerdictService.
 //
-// THE REVENUE GATE (load-bearing, governing law): verdictEngine reads roas < 1.0
-// as KILL. A campaign whose revenue was never measured lands revenueMinor 0 (see
-// snapshotSink — `n.revenueMinor || 0`, never null), so feeding it to the engine
-// would compute roas 0 → a fabricated KILL from data that doesn't exist — the
-// exact class PR #96 removed from the ROAS display, one layer up. So a campaign
-// is verdict-eligible ONLY with a positive MEASURED revenue signal against real
-// spend; everything else is reported as `gatedOut` ("needs revenue data"), never
-// scored. We gate on revenue+spend directly (not `roas != null`) because a stale
-// pre-PR-#96 row can still carry a literal roas:0 that would otherwise slip in.
+// TWO ELIGIBILITY TRACKS (load-bearing, governing law):
+//   A. MEASURED REVENUE — positive claimed revenue against real spend → the
+//      revenue verdicts (KILL/SCALE/HOLD). verdictEngine reads roas < 1.0 as KILL,
+//      so this must be a REAL signal: a row whose revenue was never measured lands
+//      revenueMinor 0 (snapshotSink `|| 0`), and forcing it through the roas
+//      thresholds would fabricate a KILL from data that doesn't exist (the class
+//      PR #96 removed from the ROAS display). We gate on revenue+spend directly
+//      (not `roas != null`) because a stale row can carry a literal roas:0.
+//   B. ENGAGEMENT, NO REVENUE — real spend + impressions but no measured revenue
+//      (awareness/reach campaigns). These ARE eligible, via the engine's AWARENESS
+//      track: judged on frequency + CTR only, roas stays null, NEVER a revenue
+//      verdict. The engine routes A vs B on the `revenueMeasured` flag toSignalInput
+//      derives — so both tracks share one code path; the gate only decides entry.
+// Everything else is genuinely dataless (no spend or no delivery — incl. PR #156
+// zero-spend roster rows) → `gatedOut`, never scored.
 // (Revenue here is platform-CLAIMED via Meta action_values — present, if not yet
 // independently verified — so it counts as measured for gating purposes.)
 // ============================================================
@@ -28,6 +34,18 @@ export function hasMeasuredRevenue(row) {
   const rev = row?.revenueMinor;
   const spend = row?.spendMinor;
   return Number.isFinite(rev) && rev > 0 && Number.isFinite(spend) && spend > 0;
+}
+
+/**
+ * PURE: did this campaign actually deliver — real spend AND impressions — even
+ * with no measured revenue? An awareness/reach campaign qualifies for the engine's
+ * engagement-only track. A PR #156 zero-spend roster row (spend 0, impressions 0)
+ * does NOT — it has no signal to judge, so it stays gatedOut.
+ */
+export function hasEngagement(row) {
+  const spend = row?.spendMinor;
+  const impressions = row?.impressions;
+  return Number.isFinite(spend) && spend > 0 && Number.isFinite(impressions) && impressions > 0;
 }
 
 /** PURE: a connector row → the engine's leaf metric shape (raw, un-ratio'd). */
@@ -44,14 +62,19 @@ function toLeafMetrics(row) {
 
 /**
  * PURE: split connector campaigns into a verdict tree (eligible) + a gatedOut
- * list (no measured revenue). Returns { tree, gatedOut }; tree is null when no
- * campaign is eligible (caller must NOT fabricate a verdict in that case).
+ * list. Eligible = measured revenue OR real engagement (the engine's awareness
+ * track handles the latter, roas null). gatedOut = genuinely dataless (no spend or
+ * no delivery). Returns { tree, gatedOut }; tree is null when nothing is eligible
+ * (caller must NOT fabricate a verdict in that case).
  */
 export function buildConnectorVerdictTree(workspaceId, campaigns = []) {
   const eligible = [];
   const gatedOut = [];
   for (const c of campaigns) {
-    if (hasMeasuredRevenue(c)) {
+    // Measured revenue OR engaged-but-no-revenue both reach the engine; the
+    // revenueMeasured flag (derived in toSignalInput) routes them to the revenue
+    // verdicts vs the awareness track. Only dataless rows are gated out.
+    if (hasMeasuredRevenue(c) || hasEngagement(c)) {
       eligible.push({
         id:      c.entityId,
         level:   'CAMPAIGN',
@@ -60,7 +83,7 @@ export function buildConnectorVerdictTree(workspaceId, campaigns = []) {
         metrics: toLeafMetrics(c),
       });
     } else {
-      gatedOut.push({ id: c.entityId, name: c.name, reason: 'no measured revenue' });
+      gatedOut.push({ id: c.entityId, name: c.name, reason: 'no measured revenue or engagement' });
     }
   }
   const tree = eligible.length

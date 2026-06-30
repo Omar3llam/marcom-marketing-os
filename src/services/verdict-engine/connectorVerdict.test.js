@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildConnectorVerdictTree, hasMeasuredRevenue } from './connectorVerdictService.js';
+import { buildConnectorVerdictTree, hasMeasuredRevenue, hasEngagement } from './connectorVerdictService.js';
 import { rollupVerdicts } from './verdictEngine.js';
 
 const WS = '7517d1b9-b967-44f3-a77f-60f5c577f867';
@@ -35,16 +35,32 @@ describe('hasMeasuredRevenue — the governing-law gate', () => {
   });
 });
 
+describe('hasEngagement — awareness eligibility (delivered but no revenue)', () => {
+  it('true with real spend + impressions, regardless of revenue', () => {
+    expect(hasEngagement(row({ revenueMinor: 0 }))).toBe(true);
+  });
+  it('false when spend is 0 (a PR #156 zero-spend roster row)', () => {
+    expect(hasEngagement(row({ spendMinor: 0, impressions: 0 }))).toBe(false);
+  });
+  it('false when impressions is 0 (no delivery)', () => {
+    expect(hasEngagement(row({ impressions: 0 }))).toBe(false);
+  });
+  it('false on null / undefined fields', () => {
+    expect(hasEngagement(row({ spendMinor: null }))).toBe(false);
+    expect(hasEngagement(row({ impressions: undefined }))).toBe(false);
+  });
+});
+
 describe('buildConnectorVerdictTree', () => {
-  it('puts only revenue-eligible campaigns in the tree, the rest in gatedOut', () => {
+  it('eligible = measured-revenue OR engaged-no-revenue; gatedOut = dataless only', () => {
     const { tree, gatedOut } = buildConnectorVerdictTree(WS, [
-      row({ entityId: 'a', name: 'Has revenue' }),
-      row({ entityId: 'b', name: 'No revenue', revenueMinor: 0 }),
-      row({ entityId: 'd', name: 'No snapshot', revenueMinor: null }),
+      row({ entityId: 'a', name: 'Has revenue' }),                                          // measured revenue
+      row({ entityId: 'b', name: 'Awareness', revenueMinor: 0 }),                           // no revenue, has engagement
+      row({ entityId: 'd', name: 'Dataless', revenueMinor: null, spendMinor: 0, impressions: 0 }), // no signal at all
     ]);
-    expect(tree.children.map((c) => c.id)).toEqual(['a']);
-    expect(gatedOut.map((g) => g.id).sort()).toEqual(['b', 'd']);
-    expect(gatedOut[0].reason).toBe('no measured revenue');
+    expect(tree.children.map((c) => c.id).sort()).toEqual(['a', 'b']);
+    expect(gatedOut.map((g) => g.id)).toEqual(['d']);
+    expect(gatedOut[0].reason).toBe('no measured revenue or engagement');
   });
 
   it('feeds the engine RAW metrics (revenue/impressions/clicks), never zero-filled', () => {
@@ -54,8 +70,8 @@ describe('buildConnectorVerdictTree', () => {
     });
   });
 
-  it('returns a null tree when no campaign is eligible (caller must not fabricate)', () => {
-    const { tree, gatedOut } = buildConnectorVerdictTree(WS, [row({ revenueMinor: 0 })]);
+  it('returns a null tree when NO campaign is eligible — dataless only (caller must not fabricate)', () => {
+    const { tree, gatedOut } = buildConnectorVerdictTree(WS, [row({ revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
     expect(tree).toBeNull();
     expect(gatedOut).toHaveLength(1);
   });
@@ -66,8 +82,9 @@ describe('buildConnectorVerdictTree', () => {
 });
 
 // The contrast that proves the wiring is honest: measured revenue yields a REAL
-// engine verdict (KILL when truly losing, SCALE when strong); unmeasured revenue
-// yields NO verdict at all — it never reaches the engine.
+// revenue verdict (KILL when truly losing, SCALE when strong); engaged-but-
+// unmeasured yields an AWARENESS verdict (roas null, never KILL/SCALE); dataless
+// yields NO verdict at all.
 describe('connector tree → rollupVerdicts (end to end)', () => {
   it('strong, healthy, profitable campaign → SCALE', () => {
     const { tree } = buildConnectorVerdictTree(WS, [row()]);
@@ -83,8 +100,20 @@ describe('connector tree → rollupVerdicts (end to end)', () => {
     expect(annotated.children[0].verdict).toBe('KILL');
   });
 
-  it('a zero-revenue campaign never produces a verdict (no fabricated KILL)', () => {
-    const { tree, gatedOut } = buildConnectorVerdictTree(WS, [row({ revenueMinor: 0 })]);
+  it('an engaged zero-revenue campaign → an AWARENESS verdict (roas null, never a fabricated KILL)', () => {
+    // spend + impressions but no revenue; saturated + weak CTR → REFRESH, not KILL.
+    const { tree, gatedOut } = buildConnectorVerdictTree(WS, [
+      row({ revenueMinor: 0, frequency: 5.0, clicks: 4, impressions: 1000 }), // ctr 0.4%
+    ]);
+    expect(gatedOut).toHaveLength(0);
+    const annotated = rollupVerdicts(tree);
+    expect(annotated.children[0].verdict).toBe('REFRESH');
+    expect(annotated.children[0].verdict).not.toBe('KILL');
+    expect(annotated.children[0].signalInput.roas).toBeNull(); // never a fabricated 0
+  });
+
+  it('a dataless campaign (zero spend + zero impressions) still produces no verdict', () => {
+    const { tree, gatedOut } = buildConnectorVerdictTree(WS, [row({ revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
     expect(tree).toBeNull();            // nothing reaches the engine
     expect(gatedOut[0].name).toBe('Eid Sale');
   });

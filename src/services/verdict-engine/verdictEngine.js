@@ -30,6 +30,12 @@ const V = Object.freeze({
   FATIGUE_FREQ:     3.5, // saturation ceiling
   SCALE_ROAS:       3.0, // strong enough to scale
   SCALE_CTR:        2.0, // % — healthy hook for scaling
+  // Awareness track — used ONLY when revenue was never measured (roas null). These
+  // judge reach/engagement campaigns on frequency + CTR alone; they NEVER emit a
+  // revenue verdict (KILL/SCALE) from data that doesn't exist.
+  AWARENESS_FATIGUE_CTR:     1.0, // % — CTR floor that, paired with FATIGUE_FREQ, = creative fatigue → REFRESH
+  AWARENESS_SATURATION_FREQ: 3.0, // × — frequency rising toward saturation → WATCH
+  AWARENESS_WEAK_CTR:        0.5, // % — CTR below benchmark → HOLD
 });
 
 /**
@@ -80,6 +86,12 @@ export function toSignalInput(agg, currency = 'USD') {
   const impressions = agg.impressions ?? 0;
   const clicks      = agg.clicks ?? 0;
   const conversions = agg.conversions ?? 0;
+  // revenueMeasured = a positive CLAIMED revenue against real spend. Otherwise roas
+  // is null ("not measured") — NOT 0. Forcing 0 would read as "terrible ROAS" and
+  // fabricate a KILL from data that doesn't exist (the awareness/reach case). The
+  // engine routes on this flag: revenue verdicts when true, the awareness track
+  // when false.
+  const revenueMeasured = agg.revenueMinor > 0 && agg.spendMinor > 0;
   return {
     ctr:         impressions > 0 ? (clicks / impressions) * 100 : 0, // percent
     cpc:         clicks > 0 ? spend / clicks : 0,
@@ -87,7 +99,8 @@ export function toSignalInput(agg, currency = 'USD') {
     frequency:   agg.frequency ?? 0,
     spend,
     conversions,
-    roas:        agg.spendMinor > 0 ? agg.revenueMinor / agg.spendMinor : 0,
+    roas:        revenueMeasured ? agg.revenueMinor / agg.spendMinor : null,
+    revenueMeasured,
   };
 }
 
@@ -106,14 +119,35 @@ export function evaluateVerdict({ level, metrics, diagnosis, guardrailHits = [] 
     throw new Error('evaluateVerdict: metrics is required');
   }
   const dx = diagnosis ?? diagnoseSignals(metrics);
-  const { roas = 0, frequency = 0, ctr = 0 } = metrics;
+  // revenueMeasured defaults TRUE: a direct caller passing a real roas keeps the
+  // pre-awareness behavior; rollupVerdicts always sets it explicitly (toSignalInput).
+  const { roas = 0, frequency = 0, ctr = 0, revenueMeasured = true } = metrics;
 
   let verdict;
   let confidence;
   let rationale;
 
-  // Critical decline: losing money AND saturated → KILL (overrides signal).
-  if (roas < V.BREAKEVEN_ROAS && frequency >= V.FATIGUE_FREQ) {
+  if (!revenueMeasured) {
+    // ── AWARENESS TRACK ────────────────────────────────────────────────────
+    // Revenue was never measured (roas null). Judge on ENGAGEMENT only and NEVER
+    // emit a revenue verdict (KILL/SCALE) — a roas threshold here would fabricate
+    // a verdict from data that doesn't exist. Every rationale names its basis (the
+    // honesty signal the governing law requires); roas stays null downstream.
+    if (frequency >= V.FATIGUE_FREQ && ctr < V.AWARENESS_FATIGUE_CTR) {
+      verdict = VERDICT.REFRESH; confidence = 0.7;
+      rationale = `Awareness campaign (no revenue measured): frequency ${frequency.toFixed(1)} past the ${V.FATIGUE_FREQ} ceiling with CTR ${ctr.toFixed(2)}% below ${V.AWARENESS_FATIGUE_CTR}% — refresh the creative. Based on engagement only.`;
+    } else if (frequency >= V.AWARENESS_SATURATION_FREQ) {
+      verdict = VERDICT.WATCH; confidence = 0.6;
+      rationale = `Awareness campaign (no revenue measured): audience frequency ${frequency.toFixed(1)} rising toward saturation — monitor. Based on engagement only.`;
+    } else if (ctr < V.AWARENESS_WEAK_CTR) {
+      verdict = VERDICT.HOLD; confidence = 0.5;
+      rationale = `Awareness campaign (no revenue measured): CTR ${ctr.toFixed(2)}% below the ${V.AWARENESS_WEAK_CTR}% benchmark — hold and monitor. Based on engagement only.`;
+    } else {
+      verdict = VERDICT.HOLD; confidence = 0.5;
+      rationale = 'Awareness campaign (no revenue measured): engagement healthy — hold. Based on engagement only.';
+    }
+  } else if (roas < V.BREAKEVEN_ROAS && frequency >= V.FATIGUE_FREQ) {
+    // Critical decline: losing money AND saturated → KILL (overrides signal).
     verdict = VERDICT.KILL;
     confidence = 0.9;
     rationale = `ROAS ${roas.toFixed(2)} below break-even with frequency ${frequency.toFixed(1)} past the ${V.FATIGUE_FREQ} ceiling.`;
