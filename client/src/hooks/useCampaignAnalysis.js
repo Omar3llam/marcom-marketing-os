@@ -24,11 +24,17 @@ export function useCampaignAnalysis({ refetch, setCampaigns, setUploadOpen, refe
   // the CSV feed, to show what actually landed. The button is workspace-scoped;
   // connectors read marcom_credentials by workspace_id (the Phase 12c bridge),
   // so there is no projectId to gate on.
+  //
+  // datePreset:'maximum' matches the backend's DEFAULT_MANUAL_SYNC_DATE_PRESET
+  // (and the cron / account-switch re-sync). The old 'last_30d' was the bug: an
+  // account with no delivery in the trailing 30 days returned zero insights, and
+  // the roster merge then backfilled every campaign as a zero row — overwriting
+  // real data. A manual sync must reach as far back as Meta serves.
   const handleMetaSync = async () => {
     if (syncing) return;
     setSyncing(true);
     try {
-      const res = await api.post('/api/lumi/connections/sync', { datePreset: 'last_30d' });
+      const res = await api.post('/api/lumi/connections/sync', { datePreset: 'maximum' });
       const { synced = 0, failed = 0, results = [] } = res.data || {};
       const skipped = results.filter((r) => r.status === 'skipped').length;
       const records = results
@@ -41,7 +47,7 @@ export function useCampaignAnalysis({ refetch, setCampaigns, setUploadOpen, refe
         // Every channel failed or was skipped (e.g. an expired token).
         toast.error('Sync couldn’t reach your channels. Reconnect in Settings → Integrations.');
       } else if (records === 0) {
-        toast.info('Synced — no campaign data returned for the last 30 days.');
+        toast.info('Synced — no campaign data returned from your channels yet.');
         await Promise.all([refetchConnectors?.(), refetchVerdicts?.()]);
       } else {
         toast.success(`Synced ${synced} channel${synced === 1 ? '' : 's'} · ${records} record${records === 1 ? '' : 's'}.`);

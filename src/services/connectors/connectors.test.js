@@ -3,7 +3,7 @@ import { metaNormalize } from './normalize/metaNormalize.js';
 import { csvNormalize } from './normalize/csvNormalize.js';
 import { googleNormalize, microsToMinor } from './normalize/googleNormalize.js';
 import { accountRollup } from './normalize/fieldUtils.js';
-import { toSnapshotRows, toEntityOps } from './snapshotSink.js';
+import { toSnapshotRows, toEntityOps, dropShadowingZeros, snapshotDayKey } from './snapshotSink.js';
 import { assertNormalized } from './ChannelConnector.js';
 import { DEFAULT_MANUAL_SYNC_DATE_PRESET, DEFAULT_CRON_SYNC_DATE_PRESET, DEFAULT_CHAT_ANALYSIS_DATE_PRESET } from './connectorConfig.js';
 import { nextHealth } from './connectorHealth.js';
@@ -146,6 +146,38 @@ describe('snapshotSink ROAS honesty — no fabricated 0.00x from unmeasured reve
   it('spend 0 → roas null (unchanged from before)', () => {
     const [r] = toSnapshotRows('ws1', 'META', [row({ spendMinor: 0 })]);
     expect(r.roas).toBeNull();
+  });
+});
+
+describe('snapshotSink zero-shadow guard (pure) — a zero never shadows a same-day positive', () => {
+  const today9 = new Date('2026-06-01T09:00:00.000Z');
+  const today14 = new Date('2026-06-01T14:00:00.000Z'); // same UTC day, later
+  const yesterday = new Date('2026-05-31T09:00:00.000Z');
+  const zeroRow = (over = {}) => ({ entityId: 'e1', date: today14, spendMinor: 0, ...over });
+
+  it('snapshotDayKey collapses to entity + UTC day (time-of-day ignored)', () => {
+    expect(snapshotDayKey({ entityId: 'e1', date: today9 })).toBe(snapshotDayKey({ entityId: 'e1', date: today14 }));
+    expect(snapshotDayKey({ entityId: 'e1', date: today9 })).not.toBe(snapshotDayKey({ entityId: 'e1', date: yesterday }));
+  });
+
+  it('drops a zero row when the same entity already has a same-day positive', () => {
+    const positives = new Set([snapshotDayKey({ entityId: 'e1', date: today9 })]);
+    expect(dropShadowingZeros([zeroRow()], positives)).toEqual([]);
+  });
+
+  it('keeps a genuinely-zero row when there is no same-day positive (does not break the zero case)', () => {
+    expect(dropShadowingZeros([zeroRow()], new Set())).toEqual([zeroRow()]);
+  });
+
+  it('never drops a positive row', () => {
+    const positives = new Set([snapshotDayKey({ entityId: 'e1', date: today14 })]);
+    const positive = zeroRow({ spendMinor: 500 });
+    expect(dropShadowingZeros([positive], positives)).toEqual([positive]);
+  });
+
+  it('a positive on a DIFFERENT day does not protect today (a legit new-day zero still lands)', () => {
+    const positives = new Set([snapshotDayKey({ entityId: 'e1', date: yesterday })]);
+    expect(dropShadowingZeros([zeroRow()], positives)).toEqual([zeroRow()]);
   });
 });
 

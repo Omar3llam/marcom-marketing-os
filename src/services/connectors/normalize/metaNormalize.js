@@ -44,6 +44,9 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
       clicks: Math.round(clicks),
       conversions: Math.round(conversions),
       frequency: r.frequency != null ? num(r.frequency) : null,
+      // Roster-only rows (no delivery data found, not a verified 0) carry the flag
+      // forward so the sink lands the entity but no fabricated zero snapshot.
+      rosterOnly: r._rosterOnly === true,
     };
   });
 
@@ -52,5 +55,9 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
   const account = accountRollup(campaigns, {
     accountExternalId, accountName, channel: CHANNEL.META, source: DATA_SOURCE.META, date: d, currency,
   });
+  // The rollup is roster-only ONLY when no real campaign delivered — i.e. it would
+  // be all zeros. With ≥1 real campaign the rollup reflects real spend (roster
+  // rows add 0), so it lands; an all-roster rollup is skipped like its campaigns.
+  if (account) account.rosterOnly = campaigns.every((c) => c.rosterOnly);
   return account ? [account, ...campaigns] : campaigns;
 }
