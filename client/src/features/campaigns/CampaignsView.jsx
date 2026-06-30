@@ -275,7 +275,7 @@ export default function CampaignsView() {
   };
 
   return (
-    <div className="flex flex-col h-full p-6 lg:p-8 animate-fade-in">
+    <div className="flex flex-col h-full overflow-y-auto p-6 lg:p-8 animate-fade-in">
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
         <div>
           <h1 className="decision-title text-lumi-text">Campaign Analysis</h1>
