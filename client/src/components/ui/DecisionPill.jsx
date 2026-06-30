@@ -7,13 +7,21 @@
 //   <StagePill    stage='DYING|FATIGUED|TESTING|STABLE|SCALING' />
 // ============================================================
 import { cn } from '@/lib/utils.js';
-import { XCircle, Pause, TrendingUp, FlaskConical } from 'lucide-react';
+import { XCircle, Pause, TrendingUp, FlaskConical, RefreshCw, Eye, Shuffle } from 'lucide-react';
 
+// The full engine verdict vocabulary (verdictTypes.js). KILL/HOLD/SCALE are the
+// originals; WATCH/REFRESH/REALLOCATE are first-class verdicts too — incl. the
+// awareness track (REFRESH/WATCH/HOLD on engagement-only campaigns). They map to
+// real semantic tokens so an awareness verdict is NOT a lesser/gray badge: it is
+// as real as any other, just derived from different signals.
 const verdictConfig = {
-  KILL:  { bg: 'bg-signal-kill-bg',   text: 'text-signal-kill',   border: 'border-signal-kill/25',   icon: XCircle },
-  HOLD:  { bg: 'bg-signal-hold-bg',   text: 'text-signal-hold',   border: 'border-signal-hold/25',   icon: Pause },
-  SCALE: { bg: 'bg-signal-scale-bg',  text: 'text-signal-scale',  border: 'border-signal-scale/25',  icon: TrendingUp },
-  TEST:  { bg: 'bg-stage-testing/10', text: 'text-stage-testing', border: 'border-stage-testing/25', icon: FlaskConical },
+  KILL:       { bg: 'bg-signal-kill-bg',   text: 'text-signal-kill',   border: 'border-signal-kill/25',   icon: XCircle },
+  HOLD:       { bg: 'bg-signal-hold-bg',   text: 'text-signal-hold',   border: 'border-signal-hold/25',   icon: Pause },
+  SCALE:      { bg: 'bg-signal-scale-bg',  text: 'text-signal-scale',  border: 'border-signal-scale/25',  icon: TrendingUp },
+  WATCH:      { bg: 'bg-signal-hold-bg',   text: 'text-signal-hold',   border: 'border-signal-hold/25',   icon: Eye },
+  REFRESH:    { bg: 'bg-stage-testing/10', text: 'text-stage-testing', border: 'border-stage-testing/25', icon: RefreshCw },
+  REALLOCATE: { bg: 'bg-stage-scaling/10', text: 'text-stage-scaling', border: 'border-stage-scaling/25', icon: Shuffle },
+  TEST:       { bg: 'bg-stage-testing/10', text: 'text-stage-testing', border: 'border-stage-testing/25', icon: FlaskConical },
 };
 
 const priorityConfig = {

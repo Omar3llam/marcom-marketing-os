@@ -220,6 +220,24 @@ export default function CampaignsView() {
   // the CSV-derived totals.
   const chartTotals = connectorTotals.spend > 0 ? connectorTotals : totals;
 
+  // Join the engine verdict onto each connector campaign row (by entityId) so the
+  // Connected-channels table can render a verdict badge — revenue track (KILL/
+  // SCALE/HOLD) AND awareness track (REFRESH/WATCH/HOLD) alike. gatedOut campaigns
+  // simply aren't in this map → the row shows "—", never a fabricated verdict.
+  const verdictByEntityId = useMemo(() => {
+    const m = {};
+    for (const v of connectorVerdicts) m[v.id] = v.verdict;
+    return m;
+  }, [connectorVerdicts]);
+
+  // Awareness campaigns = scored, but on engagement only (roas null — never a
+  // fabricated number). Counted from the verdict payload so the honest summary
+  // line below appears only when such campaigns actually exist.
+  const awarenessCount = useMemo(
+    () => connectorVerdicts.filter((v) => v.roas == null).length,
+    [connectorVerdicts],
+  );
+
   // Account-level aggregate from the LIVE connector graph (sums real
   // MetricSnapshot rows; null-when-absent so an unsynced metric never reads 0).
   const connectorAgg = useMemo(() => {
@@ -310,10 +328,20 @@ export default function CampaignsView() {
 
       <PerformanceChart totals={chartTotals} currency={currency} />
 
-      {/* Connector campaigns that can't be scored yet — explicit, never dropped
-          silently (hiding them would be a quieter form of the same fabrication). */}
+      {/* Awareness campaigns ARE scored — on engagement (frequency + CTR), with
+          ROAS honestly blank. Honest about the basis so the verdict isn't mistaken
+          for a revenue judgement. */}
+      {awarenessCount > 0 && (
+        <p className="font-mono text-[11px] text-lumi-subtle mb-2 -mt-3">
+          {awarenessCount} campaign{awarenessCount === 1 ? '' : 's'} scored on engagement (no revenue tracked) — ROAS stays “—” until a revenue source is connected.
+        </p>
+      )}
+
+      {/* Connector campaigns that can't be scored at all (no spend or no delivery)
+          — explicit, never dropped silently (hiding them would be a quieter form of
+          the same fabrication). */}
       {connectorGatedOut.length > 0 && (
-        <p className="font-mono text-[11px] text-lumi-subtle mb-6 -mt-3">
+        <p className={cn('font-mono text-[11px] text-lumi-subtle mb-6', awarenessCount > 0 ? '' : '-mt-3')}>
           {connectorGatedOut.length} connected campaign{connectorGatedOut.length === 1 ? '' : 's'} need revenue data before
           {connectorGatedOut.length === 1 ? ' it' : ' they'} can be scored — {revenueGuidance}.
         </p>
@@ -357,6 +385,7 @@ export default function CampaignsView() {
 
       <ConnectorCampaignsPanel
         campaigns={connectorCampaigns}
+        verdicts={verdictByEntityId}
         loading={connectorLoading}
         error={connectorError}
       />
