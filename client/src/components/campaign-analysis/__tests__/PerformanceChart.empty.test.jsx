@@ -4,7 +4,7 @@
 // `totals` already prefers the live connector (chartTotals), so spend 0 means no
 // spend anywhere. The empty message must NOT say "Upload a CSV" when connector
 // data exists (that contradicted the live verdicts elsewhere on the page); it
-// offers both paths only when nothing is connected. With real spend it renders
+// points to connecting Meta when nothing is connected. With real spend it renders
 // the allocation bar unchanged.
 // ============================================================
 import { describe, it, expect } from 'vitest';
@@ -18,9 +18,10 @@ describe('PerformanceChart — connector-aware empty state', () => {
     expect(screen.queryByText(/Upload a CSV/i)).not.toBeInTheDocument();
   });
 
-  it('no spend and nothing connected → honest dual-path message', () => {
+  it('no spend and nothing connected → connect-Meta message, no CSV', () => {
     render(<PerformanceChart totals={{ spend: 0, kill: 0, hold: 0, scale: 0 }} hasConnectorData={false} />);
-    expect(screen.getByText(/Connect Meta or upload a CSV/i)).toBeInTheDocument();
+    expect(screen.getByText(/Connect Meta to see budget allocation/i)).toBeInTheDocument();
+    expect(screen.queryByText(/upload a CSV/i)).not.toBeInTheDocument();
   });
 
   it('real spend → renders the allocation bar (no empty state)', () => {

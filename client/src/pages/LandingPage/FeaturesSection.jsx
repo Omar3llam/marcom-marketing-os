@@ -87,8 +87,8 @@ export function HowItWorks() {
   const steps = [
     {
       n: '01',
-      title: 'Upload CSV',
-      body: 'Drop last month\'s Meta export. Lumi pulls it apart — every ad set, every KPI, every line item.',
+      title: 'Connect Meta',
+      body: 'Link your Meta Ads account. Lumi pulls it in live — every ad set, every KPI, every line item.',
     },
     {
       n: '02',
@@ -110,7 +110,7 @@ export function HowItWorks() {
             How it works
           </div>
           <h2 className="font-display text-4xl sm:text-5xl font-bold tracking-[-0.035em] text-dark-base leading-tight max-w-2xl mx-auto">
-            CSV in. Verdicts out. Execute in one tap.
+            Connect. Verdicts out. Execute in one tap.
           </h2>
         </header>
 

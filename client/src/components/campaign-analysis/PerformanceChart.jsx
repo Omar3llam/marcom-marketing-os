@@ -15,14 +15,14 @@ export function PerformanceChart({ totals, hasConnectorData = false }) {
     // `totals` already prefers the live connector (chartTotals), so spend 0 here
     // means no spend ANYWHERE. Stay consistent with the analysis table's empty
     // state: if connector data exists it just has no spend to allocate yet; only
-    // when nothing is connected do we point at both paths in.
+    // when nothing is connected do we point at connecting Meta.
     return (
       <section className="mb-6">
         <div className="section-label mb-3">Budget Allocation Recommendation</div>
         <div className="rounded-xl border border-dashed border-lumi-border bg-lumi-surface/40 p-6 text-center text-sm text-lumi-muted">
           {hasConnectorData
             ? 'Connected campaigns have no spend to allocate yet.'
-            : 'No campaign data yet. Connect Meta or upload a CSV to see budget allocation.'}
+            : 'No campaign data yet. Connect Meta to see budget allocation.'}
         </div>
       </section>
     );

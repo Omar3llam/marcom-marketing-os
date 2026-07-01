@@ -204,11 +204,11 @@ If you see a type error that doesn't make sense, check for contract violations:
 
 ```typescript
 // ❌ Type error: Property 'decisions' does not exist on type 'UploadCSVResponse'
-const response = await api.post<UploadCSVResponse>('/api/campaigns/upload-csv', formData);
+const response = await api.post<UploadCSVResponse>('/api/campaigns/fetch-meta', body);
 console.log(response.data.decisions); // Error!
 
 // ✅ Correct: Backend returns { success, mode, decisions, errors, stats }
-const response = await api.post<UploadCSVResponse>('/api/campaigns/upload-csv?mode=analyze', formData);
+const response = await api.post<UploadCSVResponse>('/api/campaigns/fetch-meta?mode=analyze', body);
 console.log(response.data.decisions); // OK
 ```
 

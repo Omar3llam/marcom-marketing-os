@@ -64,7 +64,8 @@ export interface CampaignDecision {
 }
 
 /**
- * POST /api/campaigns/upload-csv?mode=analyze response.
+ * Campaign analyze-mode response shape. (The CSV upload endpoint was removed; the
+ * same shape is returned by POST /api/campaigns/fetch-meta?mode=analyze.)
  */
 export interface UploadCSVResponse {
   success: boolean;
@@ -79,7 +80,7 @@ export interface UploadCSVResponse {
 }
 
 /**
- * POST /api/campaigns/upload-csv?mode=analyze error (400).
+ * Campaign analyze-mode error (400).
  */
 export interface UploadCSVError extends APIError {
   success: false;

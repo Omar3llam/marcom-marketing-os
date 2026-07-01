@@ -10,7 +10,7 @@ export async function fetchContext(signal) {
 
 export async function runCampaignFlow(inputData, contextLock, signal) {
   const campaignId = inputData?.campaignId;
-  if (!campaignId) throw new Error('No campaign selected — upload a CSV and pick a campaign first.');
+  if (!campaignId) throw new Error('No campaign selected — connect your Meta account and pick a campaign first.');
 
   const makeRequest = async () => {
     const { data } = await api.post(

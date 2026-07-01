@@ -4,8 +4,8 @@
 // The CSV-analysis table used to shout "No campaigns analyzed yet — upload a CSV"
 // even when live connector verdicts were rendering below it (two contradictory
 // states at once). The empty state is now connector-aware: it never claims the
-// page is empty when connector data exists, and offers BOTH paths when it is
-// genuinely empty. The two substrates stay disjoint — connector rows are NOT
+// page is empty when connector data exists, and points to connecting Meta when it
+// is genuinely empty. The two substrates stay disjoint — connector rows are NOT
 // pulled into this table; only the messaging is made honest.
 // ============================================================
 import { describe, it, expect } from 'vitest';
@@ -14,7 +14,7 @@ import { AnalysisSummary } from '../AnalysisSummary.jsx';
 
 const base = {
   rows: [], loading: false, sortKey: 'spend', sortDir: 'desc',
-  setSort: () => {}, expanded: new Set(), setExpanded: () => {}, onUpload: () => {},
+  setSort: () => {}, expanded: new Set(), setExpanded: () => {},
 };
 
 describe('AnalysisSummary — empty state is connector-aware (no contradiction)', () => {
@@ -25,10 +25,11 @@ describe('AnalysisSummary — empty state is connector-aware (no contradiction)'
     expect(screen.queryByText(/No campaign data yet/i)).not.toBeInTheDocument();
   });
 
-  it('genuinely empty (no CSV, no connector) → honest dual-path message', () => {
+  it('genuinely empty (nothing connected) → connect-Meta message, no CSV', () => {
     render(<AnalysisSummary {...base} hasConnectorData={false} />);
     expect(screen.getByText(/No campaign data yet/i)).toBeInTheDocument();
-    expect(screen.getByText(/Connect your Meta account or upload a CSV/i)).toBeInTheDocument();
+    expect(screen.getByText(/Connect your Meta account to get started/i)).toBeInTheDocument();
+    expect(screen.queryByText(/upload a CSV/i)).not.toBeInTheDocument();
     // never the old CSV-exclusive contradiction
     expect(screen.queryByText(/No campaigns analyzed yet/i)).not.toBeInTheDocument();
   });

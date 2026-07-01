@@ -270,7 +270,7 @@ export default function CampaignsView() {
   const kpiSpend = live ? connectorAgg.spend : (hasCsv ? totals.spend : null);
   const kpiBlendedCpa = live ? connectorAgg.blendedCpa : totals.blendedCpa;
   const kpiCurrency = live ? connectorAgg.currency : currency;
-  const kpiSpendLabel = live ? 'Live · connector' : (hasCsv ? 'CSV upload' : 'No data yet');
+  const kpiSpendLabel = live ? 'Live · connector' : (hasCsv ? 'Campaign feed' : 'No data yet');
   const kpiWasted = hasCsv ? totals.kill : null;
   const kpiWastedPct = hasCsv ? totals.wastedPct : null;
 
