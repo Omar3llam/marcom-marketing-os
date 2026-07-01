@@ -14,8 +14,6 @@ export type {
   SourceMetrics,
   ActionPlan,
   CampaignDecision,
-  UploadCSVResponse,
-  UploadCSVError,
   FetchMetaRequest,
   FetchMetaResponse,
   FetchMetaErrorNoCredential,

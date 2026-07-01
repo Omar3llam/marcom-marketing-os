@@ -203,12 +203,12 @@ if (isConnected(status)) {
 If you see a type error that doesn't make sense, check for contract violations:
 
 ```typescript
-// ❌ Type error: Property 'decisions' does not exist on type 'UploadCSVResponse'
-const response = await api.post<UploadCSVResponse>('/api/campaigns/fetch-meta', body);
+// ❌ Type error: Property 'decisions' does not exist on type 'FetchMetaResponse'
+const response = await api.post<FetchMetaResponse>('/api/campaigns/fetch-meta', body);
 console.log(response.data.decisions); // Error!
 
 // ✅ Correct: Backend returns { success, mode, decisions, errors, stats }
-const response = await api.post<UploadCSVResponse>('/api/campaigns/fetch-meta?mode=analyze', body);
+const response = await api.post<FetchMetaResponse>('/api/campaigns/fetch-meta?mode=analyze', body);
 console.log(response.data.decisions); // OK
 ```
 
