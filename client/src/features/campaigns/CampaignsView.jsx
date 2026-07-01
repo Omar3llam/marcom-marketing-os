@@ -5,7 +5,7 @@
 // All metrics derived from the live /api/lumi/feed payload.
 // ============================================================
 import { useMemo, useState } from 'react';
-import { Upload, RefreshCw, Loader2, X, Download } from 'lucide-react';
+import { RefreshCw, Loader2, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils.js';
 import { useCampaignFeed, metricValue } from '@/hooks/useCampaignFeed.js';
@@ -13,7 +13,6 @@ import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { INDUSTRIES } from '@/pages/OnboardingPage/constants.js';
-import CsvUploader from '@/components/upload/CsvUploader.jsx';
 import { useCampaignAnalysis } from '@/hooks/useCampaignAnalysis.js';
 import { MetricsPanel }    from '@/components/campaign-analysis/MetricsPanel.jsx';
 import { PerformanceChart } from '@/components/campaign-analysis/PerformanceChart.jsx';
@@ -71,7 +70,7 @@ function compareRows(a, b, key, dir) {
 const sortableCols = new Set(['campaign', 'spend', 'ctr', 'roas', 'impact']);
 
 export default function CampaignsView() {
-  const { campaigns, loading, refetch, setCampaigns } = useCampaignFeed();
+  const { campaigns, loading } = useCampaignFeed();
   const [sortKey, setSortKey] = useState('spend');
   const [sortDir, setSortDir] = useState('desc');
   // `expanded` drives the per-row reasoning expand/collapse on the CSV-fed table.
@@ -80,7 +79,6 @@ export default function CampaignsView() {
   // the only substrate that carries ad-set detail. The CSV feed is
   // campaign-level only, so it has nothing to drill into.
   const [expanded, setExpanded] = useState(new Set());
-  const [uploadOpen, setUploadOpen] = useState(false);
   const [channel, setChannel] = useState('ALL');   // CAPABILITY 2 — channel filter
 
   // Connector entity graph — the substrate the Sync button writes (disjoint from
@@ -102,8 +100,8 @@ export default function CampaignsView() {
     refetch: refetchVerdicts,
   } = useConnectorVerdicts();
 
-  const { syncing, handleAnalysisComplete, handleMetaSync } = useCampaignAnalysis({
-    refetch, setCampaigns, setUploadOpen, refetchConnectors, refetchVerdicts,
+  const { syncing, handleMetaSync } = useCampaignAnalysis({
+    refetchConnectors, refetchVerdicts,
   });
 
   // Industry (from onboarding, surfaced on the workspace) tailors the
@@ -311,13 +309,6 @@ export default function CampaignsView() {
             {syncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" strokeWidth={2} />}
             {syncing ? 'Syncing…' : 'Sync Live Meta'}
           </button>
-          <button
-            type="button"
-            onClick={() => setUploadOpen(true)}
-            className="inline-flex items-center gap-1.5 bg-lumi-elevated border border-lumi-border rounded-xl px-4 py-2 text-sm font-display text-lumi-text hover:border-lumi-accent/40 transition-all"
-          >
-            <Upload className="w-3.5 h-3.5" strokeWidth={1.5} /> Upload CSV
-          </button>
         </div>
       </header>
 
@@ -386,7 +377,6 @@ export default function CampaignsView() {
         setSort={setSort}
         expanded={expanded}
         setExpanded={setExpanded}
-        onUpload={() => setUploadOpen(true)}
         currency={currency}
         hasConnectorData={hasConnectorData}
         emptyChannel={channel !== 'ALL' && tableRows.length === 0 ? channel : null}
@@ -398,24 +388,6 @@ export default function CampaignsView() {
         loading={connectorLoading}
         error={connectorError}
       />
-
-      {uploadOpen && (
-        <div
-          role="dialog" aria-modal="true" aria-labelledby="upload-dialog-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
-          onClick={(e) => { if (e.target === e.currentTarget) setUploadOpen(false); }}
-        >
-          <div className="w-full max-w-xl rounded-2xl border border-lumi-border-strong bg-lumi-surface p-6 shadow-modal animate-slide-up">
-            <div className="mb-4 flex items-center justify-between">
-              <h3 id="upload-dialog-title" className="font-display font-bold text-lg text-lumi-text">Upload campaign data</h3>
-              <button type="button" aria-label="Close" onClick={() => setUploadOpen(false)} className="rounded-md p-1 text-lumi-muted hover:bg-lumi-elevated hover:text-lumi-text">
-                <X className="w-4 h-4" strokeWidth={1.5} />
-              </button>
-            </div>
-            <CsvUploader mode="analyze" onSuccess={handleAnalysisComplete} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -41,20 +41,24 @@ function EmptyTable({ onUpload, loading, emptyChannel, hasConnectorData }) {
   }
   // This table is the CSV-analysis substrate. When live connector data exists it
   // is shown below (Connected channels) + in the budget chart — so DON'T claim the
-  // page is empty here; point to the live section and offer CSV for deeper detail.
+  // page is empty here; point to the live section. The upload affordance is gated
+  // on onUpload: the CSV upload path was removed (CampaignsView passes no onUpload),
+  // so the button self-hides while callers that still pass it keep it.
   if (hasConnectorData) {
     return (
       <div className="p-12 text-center">
         <BarChart3 className="w-12 h-12 mx-auto text-lumi-subtle" strokeWidth={1.5} />
         <p className="mt-3 font-display text-lumi-text">Live verdicts are shown below in Connected channels.</p>
         <p className="mt-1 text-lumi-muted text-sm">Upload a CSV to add deeper per-campaign analysis here.</p>
-        <button
-          type="button"
-          onClick={onUpload}
-          className="mt-4 inline-flex items-center gap-1.5 bg-lumi-accent text-lumi-bg font-display font-semibold px-4 py-2 rounded-xl text-sm shadow-accent-glow hover:bg-lumi-accent-hover"
-        >
-          <Upload className="w-3.5 h-3.5" strokeWidth={2} /> Upload CSV
-        </button>
+        {onUpload && (
+          <button
+            type="button"
+            onClick={onUpload}
+            className="mt-4 inline-flex items-center gap-1.5 bg-lumi-accent text-lumi-bg font-display font-semibold px-4 py-2 rounded-xl text-sm shadow-accent-glow hover:bg-lumi-accent-hover"
+          >
+            <Upload className="w-3.5 h-3.5" strokeWidth={2} /> Upload CSV
+          </button>
+        )}
       </div>
     );
   }
@@ -64,13 +68,15 @@ function EmptyTable({ onUpload, loading, emptyChannel, hasConnectorData }) {
       <BarChart3 className="w-12 h-12 mx-auto text-lumi-subtle" strokeWidth={1.5} />
       <p className="mt-3 font-display text-lumi-text">No campaign data yet.</p>
       <p className="mt-1 text-lumi-muted text-sm">Connect your Meta account or upload a CSV to get started.</p>
-      <button
-        type="button"
-        onClick={onUpload}
-        className="mt-4 inline-flex items-center gap-1.5 bg-lumi-accent text-lumi-bg font-display font-semibold px-4 py-2 rounded-xl text-sm shadow-accent-glow hover:bg-lumi-accent-hover"
-      >
-        <Upload className="w-3.5 h-3.5" strokeWidth={2} /> Upload CSV
-      </button>
+      {onUpload && (
+        <button
+          type="button"
+          onClick={onUpload}
+          className="mt-4 inline-flex items-center gap-1.5 bg-lumi-accent text-lumi-bg font-display font-semibold px-4 py-2 rounded-xl text-sm shadow-accent-glow hover:bg-lumi-accent-hover"
+        >
+          <Upload className="w-3.5 h-3.5" strokeWidth={2} /> Upload CSV
+        </button>
+      )}
     </div>
   );
 }
