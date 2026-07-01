@@ -202,8 +202,11 @@ export default function Sidebar({
       className={cn(
         'flex flex-col h-full bg-lumi-surface border-r border-lumi-border',
         'transition-all duration-200 ease-out',
-        // Desktop: normal sidebar behavior
-        'hidden lg:flex flex-shrink-0',
+        // Visibility: closed on mobile = hidden; open = flex so the transform
+        // below can actually slide the drawer in (display:none defeats translate).
+        // lg+ always shows — via lg:flex when closed, base flex when open.
+        mobileMenuOpen ? 'flex' : 'hidden lg:flex',
+        'flex-shrink-0',
         collapsed ? 'lg:w-[64px]' : 'lg:w-[268px]',
         // Mobile: drawer overlay
         'lg:relative fixed inset-y-0 left-0 z-50',

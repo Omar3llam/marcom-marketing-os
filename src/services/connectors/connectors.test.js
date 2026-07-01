@@ -1,9 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { metaNormalize } from './normalize/metaNormalize.js';
-import { csvNormalize } from './normalize/csvNormalize.js';
 import { googleNormalize, microsToMinor } from './normalize/googleNormalize.js';
 import { accountRollup } from './normalize/fieldUtils.js';
-import { toSnapshotRows, toEntityOps } from './snapshotSink.js';
+import { toSnapshotRows, toEntityOps, dropShadowingZeros, snapshotDayKey } from './snapshotSink.js';
 import { assertNormalized } from './ChannelConnector.js';
 import { DEFAULT_MANUAL_SYNC_DATE_PRESET, DEFAULT_CRON_SYNC_DATE_PRESET, DEFAULT_CHAT_ANALYSIS_DATE_PRESET } from './connectorConfig.js';
 import { nextHealth } from './connectorHealth.js';
@@ -34,17 +33,6 @@ describe('metaNormalize — real fields, never an estimate', () => {
     expect(campaign).toMatchObject({ externalId: 'c1', entityLevel: 'CAMPAIGN', spendMinor: 10000, revenueMinor: 50000, conversions: 10, impressions: 1000, clicks: 50 });
     expect(account.spendMinor).toBe(10000); // rollup
     expect(assertNormalized(out)).toBe(out);
-  });
-});
-
-describe('csvNormalize — tolerant column mapping', () => {
-  it('maps a Meta-export CSV row to the unified shape', () => {
-    const out = csvNormalize({
-      accountExternalId: 'csv_1', currency: 'USD', date: DATE,
-      rows: [{ rowData: { 'Campaign name': 'CSV Camp', 'Amount spent': '250.00', 'Purchases conversion value': '1000', Impressions: '5000', 'Link clicks': '120', Purchases: '8' } }],
-    });
-    expect(out[1]).toMatchObject({ name: 'CSV Camp', spendMinor: 25000, revenueMinor: 100000, conversions: 8, impressions: 5000, clicks: 120 });
-    assertNormalized(out);
   });
 });
 
@@ -117,8 +105,7 @@ describe('rollup-on-empty — zero rows must land zero snapshots (no phantom acc
     expect(toEntityOps('ws1', 'META', out)).toEqual([]);
   });
 
-  it('csvNormalize and googleNormalize share the same honesty on zero rows', () => {
-    expect(csvNormalize(empty)).toEqual([]);
+  it('googleNormalize shares the same honesty on zero rows', () => {
     expect(googleNormalize(empty)).toEqual([]);
   });
 
@@ -146,6 +133,38 @@ describe('snapshotSink ROAS honesty — no fabricated 0.00x from unmeasured reve
   it('spend 0 → roas null (unchanged from before)', () => {
     const [r] = toSnapshotRows('ws1', 'META', [row({ spendMinor: 0 })]);
     expect(r.roas).toBeNull();
+  });
+});
+
+describe('snapshotSink zero-shadow guard (pure) — a zero never shadows a same-day positive', () => {
+  const today9 = new Date('2026-06-01T09:00:00.000Z');
+  const today14 = new Date('2026-06-01T14:00:00.000Z'); // same UTC day, later
+  const yesterday = new Date('2026-05-31T09:00:00.000Z');
+  const zeroRow = (over = {}) => ({ entityId: 'e1', date: today14, spendMinor: 0, ...over });
+
+  it('snapshotDayKey collapses to entity + UTC day (time-of-day ignored)', () => {
+    expect(snapshotDayKey({ entityId: 'e1', date: today9 })).toBe(snapshotDayKey({ entityId: 'e1', date: today14 }));
+    expect(snapshotDayKey({ entityId: 'e1', date: today9 })).not.toBe(snapshotDayKey({ entityId: 'e1', date: yesterday }));
+  });
+
+  it('drops a zero row when the same entity already has a same-day positive', () => {
+    const positives = new Set([snapshotDayKey({ entityId: 'e1', date: today9 })]);
+    expect(dropShadowingZeros([zeroRow()], positives)).toEqual([]);
+  });
+
+  it('keeps a genuinely-zero row when there is no same-day positive (does not break the zero case)', () => {
+    expect(dropShadowingZeros([zeroRow()], new Set())).toEqual([zeroRow()]);
+  });
+
+  it('never drops a positive row', () => {
+    const positives = new Set([snapshotDayKey({ entityId: 'e1', date: today14 })]);
+    const positive = zeroRow({ spendMinor: 500 });
+    expect(dropShadowingZeros([positive], positives)).toEqual([positive]);
+  });
+
+  it('a positive on a DIFFERENT day does not protect today (a legit new-day zero still lands)', () => {
+    const positives = new Set([snapshotDayKey({ entityId: 'e1', date: yesterday })]);
+    expect(dropShadowingZeros([zeroRow()], positives)).toEqual([zeroRow()]);
   });
 });
 

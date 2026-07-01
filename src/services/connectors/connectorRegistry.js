@@ -6,7 +6,6 @@
 // nothing else changes.
 // ============================================================
 import { metaConnector } from './MetaConnector.js';
-import { csvConnector } from './CsvConnector.js';
 import { googleAdsConnector } from './GoogleAdsConnector.js';
 import { ga4Connector } from './GA4Connector.js';
 import { CHANNEL } from './connectorTypes.js';
@@ -21,7 +20,6 @@ const REGISTRY = Object.freeze({
   [CHANNEL.META]:   metaConnector,
   [CHANNEL.GOOGLE]: googleAdsConnector,
   [GA4]:            ga4Connector,
-  CSV:              csvConnector,
 });
 
 /** Resolve a connector by platform/channel. Throws on an unknown platform. */

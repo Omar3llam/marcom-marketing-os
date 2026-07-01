@@ -9,7 +9,7 @@
 import { describe, it, expect } from 'vitest';
 import { mergeMetaCampaigns, collectCursorPages, CAMPAIGN_LIST_FIELDS } from './metaAdsService.js';
 import { metaNormalize } from './connectors/normalize/metaNormalize.js';
-import { toSnapshotRows } from './connectors/snapshotSink.js';
+import { toSnapshotRows, toEntityOps } from './connectors/snapshotSink.js';
 import { assertNormalized } from './connectors/ChannelConnector.js';
 
 const DATE = new Date('2026-06-01T00:00:00.000Z');
@@ -75,11 +75,20 @@ describe('mergeMetaCampaigns — every campaign survives, zero-spend included', 
     expect(merged.map((r) => r.campaign_id).sort()).toEqual(['c1', 'c2']);
   });
 
-  it('empty roster → insights pass through; empty insights → all campaigns become zero-spend', () => {
+  it('empty roster → insights pass through; empty insights → all campaigns become roster-only', () => {
     expect(mergeMetaCampaigns([{ campaign_id: 'c1', spend: '5' }], [])).toEqual([{ campaign_id: 'c1', spend: '5' }]);
     expect(mergeMetaCampaigns([], [{ id: 'c9', name: 'Solo' }])).toEqual([
-      { campaign_id: 'c9', campaign_name: 'Solo', spend: '0', impressions: '0', clicks: '0' },
+      { campaign_id: 'c9', campaign_name: 'Solo', spend: '0', impressions: '0', clicks: '0', _rosterOnly: true },
     ]);
+  });
+
+  it('flags roster-only rows (no delivery data) but leaves real insight rows unflagged', () => {
+    const merged = mergeMetaCampaigns(
+      [{ campaign_id: 'c1', spend: '5' }],
+      [{ id: 'c1', name: 'Delivered' }, { id: 'c2', name: 'Dormant' }],
+    );
+    expect(merged.find((r) => r.campaign_id === 'c1')._rosterOnly).toBeUndefined(); // real → no flag
+    expect(merged.find((r) => r.campaign_id === 'c2')._rosterOnly).toBe(true);       // roster-only → flagged
   });
 
   it('skips roster rows without an id (cannot key them safely)', () => {
@@ -95,8 +104,8 @@ describe('mergeMetaCampaigns — every campaign survives, zero-spend included', 
   });
 });
 
-describe('zero-spend normalizes honestly (metaNormalize needs no change)', () => {
-  it('a merged zero-spend campaign lands as a real CAMPAIGN with 0s + roas null — not skipped, not fabricated', () => {
+describe('roster-only campaigns: entity lands, no fabricated zero snapshot', () => {
+  it('a roster-only (no-delivery) campaign lands the ENTITY but NOT a zero MetricSnapshot', () => {
     const merged = mergeMetaCampaigns(
       [{
         campaign_id: 'c1', campaign_name: 'Spent', spend: '100', impressions: '1000', clicks: '50',
@@ -108,15 +117,41 @@ describe('zero-spend normalizes honestly (metaNormalize needs no change)', () =>
     const normalized = metaNormalize({ accountExternalId: 'act_1', currency: 'USD', date: DATE, rows: merged });
     assertNormalized(normalized);
 
+    // metaNormalize still surfaces BOTH campaigns; the roster one is flagged.
     const campaigns = normalized.filter((r) => r.entityLevel === 'CAMPAIGN');
-    expect(campaigns).toHaveLength(2); // BOTH present — zero-spend NOT dropped
-    expect(campaigns.find((r) => r.externalId === 'c2')).toMatchObject({
-      spendMinor: 0, revenueMinor: 0, impressions: 0, clicks: 0, conversions: 0,
-    });
+    expect(campaigns).toHaveLength(2);
+    expect(campaigns.find((r) => r.externalId === 'c2').rosterOnly).toBe(true);
+    expect(campaigns.find((r) => r.externalId === 'c1').rosterOnly).toBe(false);
 
-    const zeroSnap = toSnapshotRows('ws1', 'META', normalized)
-      .find((r) => r.entityLevel === 'CAMPAIGN' && r.spendMinor === 0);
-    expect(zeroSnap.roas).toBeNull(); // spend 0 → roas null, never a fabricated 0.00x
+    // But only the DELIVERED campaign lands a snapshot — the roster-only one shows
+    // "—" (unknown), never a fabricated 0 that could overwrite real data.
+    const snaps = toSnapshotRows('ws1', 'META', normalized).filter((r) => r.entityLevel === 'CAMPAIGN');
+    expect(snaps).toHaveLength(1);
+    expect(snaps[0].roas).toBe(4); // c1: revenue 400 / spend 100
+
+    // The roster-only campaign IS still an entity, so it appears in the list.
+    expect(toEntityOps('ws1', 'META', normalized).filter((op) => op.level === 'CAMPAIGN')).toHaveLength(2);
+  });
+
+  it('the account rollup is roster-only only when NO real campaign delivered', () => {
+    // mix (one real + one roster) → rollup reflects real spend, lands normally
+    const mixed = metaNormalize({
+      accountExternalId: 'act_1', currency: 'USD', date: DATE,
+      rows: mergeMetaCampaigns(
+        [{ campaign_id: 'c1', campaign_name: 'R', spend: '100', impressions: '10', clicks: '1', actions: [], action_values: [] }],
+        [{ id: 'c1' }, { id: 'c2', name: 'Z' }],
+      ),
+    });
+    expect(mixed.find((r) => r.entityLevel === 'ACCOUNT').rosterOnly).toBe(false);
+    expect(toSnapshotRows('ws1', 'META', mixed).some((r) => r.entityLevel === 'ACCOUNT')).toBe(true);
+
+    // all-roster → rollup is roster-only too, so the phantom zero account is skipped
+    const allRoster = metaNormalize({
+      accountExternalId: 'act_1', currency: 'USD', date: DATE,
+      rows: mergeMetaCampaigns([], [{ id: 'c2', name: 'Z' }]),
+    });
+    expect(allRoster.find((r) => r.entityLevel === 'ACCOUNT').rosterOnly).toBe(true);
+    expect(toSnapshotRows('ws1', 'META', allRoster)).toHaveLength(0); // nothing lands — entity-only
   });
 
   it('zero-spend rows leave the account rollup unchanged (they add 0)', () => {

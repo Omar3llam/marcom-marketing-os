@@ -279,12 +279,14 @@ export async function fetchAllCampaigns(accessToken, adAccountId) {
  * PURE merge: fold the /campaigns roster into the /insights rows so EVERY
  * campaign lands, not only those that delivered. Insight rows (which carry real
  * spend/revenue/impressions) WIN and pass through untouched; any campaign absent
- * from insights is appended as an insight-shaped row with explicit zeros.
+ * from insights is appended as a roster-only row flagged `_rosterOnly: true`.
  *
- * No actions/action_values on the synthesized rows → metaNormalize lands revenue
- * 0 (PLATFORM_CLAIMED 0, never an estimate); spend 0 → snapshotSink lands roas
- * null, never a fabricated 0.00x. So zero-spend campaigns appear honestly, with
- * no invented numbers.
+ * `_rosterOnly` is the load-bearing distinction: a roster row means "no delivery
+ * data was found for this campaign in the window", NOT "verified zero". The sink
+ * (snapshotSink) lands the ENTITY for these (so the campaign still appears in the
+ * list) but writes NO MetricSnapshot — so the UI shows "—" (unknown), never a
+ * fabricated 0. This is what stops an empty/short-window fetch from overwriting
+ * real metrics with zeros (the manual-sync data-loss bug).
  *
  * @param {Array} insights  raw insight rows from fetchCampaignInsights
  * @param {Array} campaigns raw campaign rows from fetchAllCampaigns
@@ -297,21 +299,22 @@ export function mergeMetaCampaigns(insights = [], campaigns = []) {
     if (r?.campaign_id != null) withInsights.add(String(r.campaign_id));
   }
 
-  const zeroSpend = [];
+  const rosterOnly = [];
   for (const c of campaigns || []) {
     const cd = c?._data || c;
     const id = cd?.id != null ? String(cd.id) : null;
     if (!id || withInsights.has(id)) continue; // unkeyable, or already has real data
-    zeroSpend.push({
+    rosterOnly.push({
       campaign_id:   id,
       campaign_name: cd.name || 'Unnamed Campaign',
       spend:         '0',
       impressions:   '0',
       clicks:        '0',
+      _rosterOnly:   true, // no delivery data found — "unknown", never a verified 0
     });
   }
 
-  return [...insightRows, ...zeroSpend];
+  return [...insightRows, ...rosterOnly];
 }
 
 /**

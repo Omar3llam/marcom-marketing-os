@@ -259,6 +259,14 @@ export default function CampaignsView() {
   // when CSV analysis backs them, "—" otherwise (never a fabricated 0).
   const live = connectorCampaigns.length > 0;
   const hasCsv = allRows.length > 0;
+  // Single source of truth for "is there anything to show". The CSV analysis
+  // table and the budget-allocation chart both derive their empty/non-empty
+  // messaging from this, so no two sections can disagree (the analysis box saying
+  // "No campaigns analyzed — upload a CSV" while live connector verdicts render
+  // below it was exactly that contradiction). The substrates stay DISJOINT — we
+  // never conflate connector rows into the CSV table; the CSV table just stops
+  // claiming the page is empty when live connector data exists.
+  const hasConnectorData = live;
   const kpiSpend = live ? connectorAgg.spend : (hasCsv ? totals.spend : null);
   const kpiBlendedCpa = live ? connectorAgg.blendedCpa : totals.blendedCpa;
   const kpiCurrency = live ? connectorAgg.currency : currency;
@@ -317,7 +325,7 @@ export default function CampaignsView() {
         currency={kpiCurrency}
       />
 
-      <PerformanceChart totals={chartTotals} currency={currency} />
+      <PerformanceChart totals={chartTotals} currency={currency} hasConnectorData={hasConnectorData} />
 
       {/* Awareness campaigns ARE scored — on engagement (frequency + CTR), with
           ROAS honestly blank. Honest about the basis so the verdict isn't mistaken
@@ -370,6 +378,7 @@ export default function CampaignsView() {
         expanded={expanded}
         setExpanded={setExpanded}
         currency={currency}
+        hasConnectorData={hasConnectorData}
         emptyChannel={channel !== 'ALL' && tableRows.length === 0 ? channel : null}
       />
 

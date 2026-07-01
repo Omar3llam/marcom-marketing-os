@@ -34,9 +34,14 @@ const round = (n) => Math.round(n);
  * deterministic id of the entity (no DB lookup). The definitional ratios
  * (cpaMinor/ctr/roas) are derived HERE — one place — so connectors stay dumb.
  * Mirrors prisma/seed.js#snapshot().
+ *
+ * Roster-only rows (no delivery data found) are EXCLUDED here: they land as
+ * entities (toEntityOps keeps them, so the campaign still appears in the list)
+ * but never as a MetricSnapshot, so the UI shows "—" (unknown), never a
+ * fabricated 0 — and an empty fetch can't overwrite real metrics with zeros.
  */
 export function toSnapshotRows(workspaceId, channel, normalized = []) {
-  return normalized.map((n) => {
+  return normalized.filter((n) => !n.rosterOnly).map((n) => {
     const entityId = detId(workspaceId, channel, n.entityLevel, n.externalId);
     const spendMinor = round(n.spendMinor || 0);
     const revenueMinor = round(n.revenueMinor || 0);
@@ -93,9 +98,72 @@ export function toEntityOps(workspaceId, channel, normalized = []) {
   return ops;
 }
 
+const DAY_MS = 86_400_000;
+
+// A snapshot's identity for the same-day guard: one positive row per entity per
+// UTC calendar day is enough to protect that entity's day from a later zero.
+export function snapshotDayKey({ entityId, date }) {
+  const d = date instanceof Date ? date : new Date(date);
+  return `${entityId}|${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
+}
+
+/**
+ * PURE: drop any incoming zero-spend row that would shadow a same-day positive.
+ * `positiveDayKeys` is the set of snapshotDayKey()s that already have spend > 0.
+ * A genuinely-zero row with no same-day positive still lands; a positive row is
+ * never dropped. (Same-day only: a legitimately new-day zero must be free to land
+ * and become the latest — this guards against a bad/empty fetch, not real change.)
+ */
+export function dropShadowingZeros(rows, positiveDayKeys) {
+  if (!positiveDayKeys || positiveDayKeys.size === 0) return rows;
+  return rows.filter((r) => !(r.spendMinor === 0 && positiveDayKeys.has(snapshotDayKey(r))));
+}
+
+const startOfUtcDay = (ms) => {
+  const d = new Date(ms);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+};
+
+// Defensive net (any connector / any cause): a zero-spend snapshot must never
+// shadow a real positive one for the same entity on the same day. One batched
+// read (no N+1); a read failure degrades to the unguarded upsert (Fix 2 already
+// makes the roster case safe, so this is belt-and-suspenders, never load-bearing
+// for correctness of the common path).
+async function guardZeroShadows(workspaceId, rows) {
+  const zeros = rows.filter((r) => r.spendMinor === 0);
+  if (zeros.length === 0) return rows; // common path: nothing to guard, no query
+  try {
+    const times = zeros.map((r) => (r.date instanceof Date ? r.date : new Date(r.date)).getTime());
+    const dayStart = startOfUtcDay(Math.min(...times));
+    const dayEnd = new Date(startOfUtcDay(Math.max(...times)).getTime() + DAY_MS);
+    const existing = await prisma.metricSnapshot.findMany({
+      where: {
+        workspaceId,
+        entityId: { in: zeros.map((r) => r.entityId) },
+        date: { gte: dayStart, lt: dayEnd },
+        spendMinor: { gt: 0 },
+      },
+      select: { entityId: true, date: true },
+    });
+    const positiveDayKeys = new Set(existing.map(snapshotDayKey));
+    const guarded = dropShadowingZeros(rows, positiveDayKeys);
+    if (guarded.length < rows.length) {
+      logger.warn(
+        { workspaceId, dropped: rows.length - guarded.length },
+        '[snapshotSink] refused to shadow same-day positive spend with a zero snapshot',
+      );
+    }
+    return guarded;
+  } catch (err) {
+    logger.warn({ workspaceId, err: err.message }, '[snapshotSink] zero-shadow guard skipped (read failed)');
+    return rows;
+  }
+}
+
 /**
  * Land a normalized batch for one workspace+channel. Idempotent (re-sync upserts
- * in place). Returns counts.
+ * in place). Returns counts. Roster-only rows land as entities but not snapshots
+ * (see toSnapshotRows); a zero never shadows a same-day positive (guardZeroShadows).
  */
 export async function landSnapshots(workspaceId, channel, normalized = []) {
   if (!workspaceId) throw new Error('landSnapshots: workspaceId required');
@@ -112,7 +180,7 @@ export async function landSnapshots(workspaceId, channel, normalized = []) {
     ),
   );
 
-  const rows = toSnapshotRows(workspaceId, channel, normalized);
+  const rows = await guardZeroShadows(workspaceId, toSnapshotRows(workspaceId, channel, normalized));
   await prisma.$transaction(
     rows.map((r) =>
       prisma.metricSnapshot.upsert({
