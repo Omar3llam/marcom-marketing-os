@@ -1,21 +1,9 @@
 import { useState } from 'react';
 import { api } from '@/lib/api.js';
 import { toast } from 'sonner';
-import { transformDecisionsToFeed } from '@/lib/feedTransform.js';
 
-export function useCampaignAnalysis({ refetch, setCampaigns, setUploadOpen, refetchConnectors, refetchVerdicts }) {
+export function useCampaignAnalysis({ refetchConnectors, refetchVerdicts }) {
   const [syncing, setSyncing] = useState(false);
-
-  const handleAnalysisComplete = (uploadResult) => {
-    if (uploadResult.mode === 'analyze' && uploadResult.decisions) {
-      const transformed = transformDecisionsToFeed(uploadResult);
-      setCampaigns(transformed);
-      setUploadOpen(false);
-    } else {
-      refetch();
-      setUploadOpen(false);
-    }
-  };
 
   // Sync Live Meta → drives the CONNECTOR pipeline (workspace-scoped), the same
   // path as the cron: authenticate → fetchRaw → normalize → landSnapshots. It
@@ -57,5 +45,5 @@ export function useCampaignAnalysis({ refetch, setCampaigns, setUploadOpen, refe
     }
   };
 
-  return { syncing, handleAnalysisComplete, handleMetaSync };
+  return { syncing, handleMetaSync };
 }

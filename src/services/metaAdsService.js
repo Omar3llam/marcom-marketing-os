@@ -352,8 +352,7 @@ export function formatInsightsForPrompt(insights, adAccountId) {
 
 /**
  * Normalize Meta API insights into campaign objects for orchestrator analysis.
- * Output matches the shape produced by metaAdsParser so the same analysis
- * logic can be reused.
+ * Output matches the campaign shape the orchestrator analysis logic expects.
  *
  * @param {Array} insights - Raw Meta API insights from fetchCampaignInsights
  * @returns {Array} - Normalized campaign objects
@@ -377,7 +376,7 @@ export function normalizeInsightsForAnalysis(insights) {
     const cpc         = parseFloat(d.cpc || 0);
     const results     = parseInt(conversions, 10);
 
-    // Estimate ROAS from CTR + frequency (same heuristic as CSV parser)
+    // Estimate ROAS from CTR + frequency (Meta insights carry no ROAS column here)
     const roasEstimate = estimateRoas(ctr, frequency);
 
     // Cost per result (CPA)
@@ -408,7 +407,7 @@ export function normalizeInsightsForAnalysis(insights) {
   });
 }
 
-// ── Helpers (duplicated from metaAdsParser for independence) ────
+// ── Helpers (self-contained) ────
 
 function estimateRoas(ctr, frequency) {
   const base       = 1.5;

@@ -44,13 +44,15 @@ function EmptyTable({ onUpload, loading, emptyChannel }) {
       <BarChart3 className="w-12 h-12 mx-auto text-lumi-subtle" strokeWidth={1.5} />
       <p className="mt-3 font-display text-lumi-text">No campaigns analyzed yet.</p>
       <p className="mt-1 text-lumi-muted text-sm">Upload a CSV to get SCALE / HOLD / KILL verdicts.</p>
-      <button
-        type="button"
-        onClick={onUpload}
-        className="mt-4 inline-flex items-center gap-1.5 bg-lumi-accent text-lumi-bg font-display font-semibold px-4 py-2 rounded-xl text-sm shadow-accent-glow hover:bg-lumi-accent-hover"
-      >
-        <Upload className="w-3.5 h-3.5" strokeWidth={2} /> Upload CSV
-      </button>
+      {onUpload && (
+        <button
+          type="button"
+          onClick={onUpload}
+          className="mt-4 inline-flex items-center gap-1.5 bg-lumi-accent text-lumi-bg font-display font-semibold px-4 py-2 rounded-xl text-sm shadow-accent-glow hover:bg-lumi-accent-hover"
+        >
+          <Upload className="w-3.5 h-3.5" strokeWidth={2} /> Upload CSV
+        </button>
+      )}
     </div>
   );
 }
