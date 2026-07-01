@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { metaNormalize } from './normalize/metaNormalize.js';
-import { csvNormalize } from './normalize/csvNormalize.js';
 import { googleNormalize, microsToMinor } from './normalize/googleNormalize.js';
 import { accountRollup } from './normalize/fieldUtils.js';
 import { toSnapshotRows, toEntityOps, dropShadowingZeros, snapshotDayKey } from './snapshotSink.js';
@@ -34,17 +33,6 @@ describe('metaNormalize — real fields, never an estimate', () => {
     expect(campaign).toMatchObject({ externalId: 'c1', entityLevel: 'CAMPAIGN', spendMinor: 10000, revenueMinor: 50000, conversions: 10, impressions: 1000, clicks: 50 });
     expect(account.spendMinor).toBe(10000); // rollup
     expect(assertNormalized(out)).toBe(out);
-  });
-});
-
-describe('csvNormalize — tolerant column mapping', () => {
-  it('maps a Meta-export CSV row to the unified shape', () => {
-    const out = csvNormalize({
-      accountExternalId: 'csv_1', currency: 'USD', date: DATE,
-      rows: [{ rowData: { 'Campaign name': 'CSV Camp', 'Amount spent': '250.00', 'Purchases conversion value': '1000', Impressions: '5000', 'Link clicks': '120', Purchases: '8' } }],
-    });
-    expect(out[1]).toMatchObject({ name: 'CSV Camp', spendMinor: 25000, revenueMinor: 100000, conversions: 8, impressions: 5000, clicks: 120 });
-    assertNormalized(out);
   });
 });
 
@@ -117,8 +105,7 @@ describe('rollup-on-empty — zero rows must land zero snapshots (no phantom acc
     expect(toEntityOps('ws1', 'META', out)).toEqual([]);
   });
 
-  it('csvNormalize and googleNormalize share the same honesty on zero rows', () => {
-    expect(csvNormalize(empty)).toEqual([]);
+  it('googleNormalize shares the same honesty on zero rows', () => {
     expect(googleNormalize(empty)).toEqual([]);
   });
 
