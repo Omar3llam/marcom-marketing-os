@@ -336,7 +336,7 @@ export async function analyzeRadarData(campaigns) {
 
 /**
  * Analyzes a single campaign for a detailed verdict.
- * Adapter for paidController analyzeHandler.
+ * Single-campaign verdict adapter (dual-agent orchestrator).
  * @param {Object} data - Campaign object
  * @param {string} source - 'csv' | 'api' | 'radar-alert'
  * @returns {Promise<Object>} Single verdict object

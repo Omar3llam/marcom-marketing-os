@@ -8,11 +8,9 @@ import {
 } from '../../services/metaAdsService.js';
 import { runMode5 }          from '../../modes/mode5-campaign.js';
 import { logger }            from '../../utils/logger.js';
-import { contextGuard }      from '../../middleware/contextGuard.js';
 import { analyzeCampaignData } from '../../agents/orchestrator.js';
 import { DEFAULT_CHAT_ANALYSIS_DATE_PRESET } from '../../services/connectors/connectorConfig.js';
 
-const MAX_CSV_CHARS = 40_000;
 const MAX_HISTORY   = 40;
 
 async function runCampaignAnalysis(session, dataText, userContext) {
@@ -45,33 +43,6 @@ async function runCampaignAnalysis(session, dataText, userContext) {
 }
 
 export function mountFeedRoutes(router) {
-  router.post('/data-inject', contextGuard, async (req, res) => {
-    const userId = req.userId;
-    const userContext = req.context;
-    const { sessionId, projectId, csvData } = req.body;
-
-    if (!csvData || typeof csvData !== 'string' || !csvData.trim()) return res.status(400).json({ status: 'error', message: 'csvData is required' });
-    if (!projectId) return res.status(400).json({ status: 'error', message: 'projectId is required' });
-
-    try {
-      const project = await getProjectById(projectId, userId);
-      if (!project) return res.status(404).json({ status: 'error', message: 'Project not found' });
-
-      const session = await getOrCreateSession(sessionId || null, userId);
-      if (!session.context_summary && project.context) { session.context_summary = project.context; session.context_locked = true; }
-      session.user_id = userId;
-      session.project_id = projectId;
-
-      const truncated = csvData.trim().slice(0, MAX_CSV_CHARS);
-      const payload = await runCampaignAnalysis(session, `[CSV CAMPAIGN DATA]\n${truncated}`, userContext);
-      logger.info({ userId, projectId, sessionId: session.session_id }, '[campaigns] CSV inject complete');
-      return res.json(payload);
-    } catch (err) {
-      logger.error({ err: err.message, userId, projectId }, '[campaigns] data-inject error');
-      return res.status(500).json({ status: 'error', message: 'Campaign analysis failed' });
-    }
-  });
-
   router.post('/fetch-meta', async (req, res) => {
     const userId = req.userId;
     // Legacy chat path keeps its OWN (narrower) window on purpose: it has a
