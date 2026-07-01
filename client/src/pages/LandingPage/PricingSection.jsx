@@ -13,7 +13,7 @@ export function Pricing({ onStartFree }) {
       description: 'For solo operators and small teams testing Lumi.',
       features: [
         'Up to 100 campaigns analyzed',
-        'CSV upload + Meta integration',
+        'Live Meta Ads integration',
         'KILL/HOLD/SCALE verdicts',
         'Basic outcome attribution',
         'Email support',

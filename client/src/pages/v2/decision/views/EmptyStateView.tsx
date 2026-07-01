@@ -45,7 +45,7 @@ export function EmptyStateView() {
                 color: 'var(--color-text-secondary)',
               }}
             >
-              Upload a CSV or connect Meta Ads to get started.
+              Connect Meta Ads to get started.
             </p>
           </div>
         </Panel>

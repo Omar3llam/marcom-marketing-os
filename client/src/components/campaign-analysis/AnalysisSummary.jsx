@@ -1,4 +1,4 @@
-import { Upload, ChevronUp, ChevronDown, BarChart3 } from 'lucide-react';
+import { ChevronUp, ChevronDown, BarChart3 } from 'lucide-react';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import InlineBar       from '@/components/ui/InlineBar.jsx';
 import { cn }          from '@/lib/utils.js';
@@ -28,7 +28,7 @@ function Th({ children, k, current, dir, onSort, className }) {
 // look identical (governing-law honest-empty rule).
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
 
-function EmptyTable({ onUpload, loading, emptyChannel, hasConnectorData }) {
+function EmptyTable({ loading, emptyChannel, hasConnectorData }) {
   if (loading) return <div className="p-12 text-center text-lumi-subtle">Loading…</div>;
   if (emptyChannel) {
     return (
@@ -39,53 +39,35 @@ function EmptyTable({ onUpload, loading, emptyChannel, hasConnectorData }) {
       </div>
     );
   }
-  // This table is the CSV-analysis substrate. When live connector data exists it
-  // is shown below (Connected channels) + in the budget chart — so DON'T claim the
-  // page is empty here; point to the live section. The upload affordance is gated
-  // on onUpload: the CSV upload path was removed (CampaignsView passes no onUpload),
-  // so the button self-hides while callers that still pass it keep it.
+  // This table is the legacy campaign-analysis substrate. When live connector
+  // data exists it renders below (Connected channels) + in the budget chart — so
+  // DON'T claim the page is empty here; point to the live section instead. The CSV
+  // upload path was removed, so there is no upload affordance — connect Meta to
+  // populate campaigns.
   if (hasConnectorData) {
     return (
       <div className="p-12 text-center">
         <BarChart3 className="w-12 h-12 mx-auto text-lumi-subtle" strokeWidth={1.5} />
         <p className="mt-3 font-display text-lumi-text">Live verdicts are shown below in Connected channels.</p>
-        <p className="mt-1 text-lumi-muted text-sm">Upload a CSV to add deeper per-campaign analysis here.</p>
-        {onUpload && (
-          <button
-            type="button"
-            onClick={onUpload}
-            className="mt-4 inline-flex items-center gap-1.5 bg-lumi-accent text-lumi-bg font-display font-semibold px-4 py-2 rounded-xl text-sm shadow-accent-glow hover:bg-lumi-accent-hover"
-          >
-            <Upload className="w-3.5 h-3.5" strokeWidth={2} /> Upload CSV
-          </button>
-        )}
+        <p className="mt-1 text-lumi-muted text-sm">Per-campaign analysis appears here as your channels sync.</p>
       </div>
     );
   }
-  // Genuinely empty — neither substrate has data. Honest about BOTH paths in.
+  // Genuinely empty — nothing connected yet.
   return (
     <div className="p-12 text-center">
       <BarChart3 className="w-12 h-12 mx-auto text-lumi-subtle" strokeWidth={1.5} />
       <p className="mt-3 font-display text-lumi-text">No campaign data yet.</p>
-      <p className="mt-1 text-lumi-muted text-sm">Connect your Meta account or upload a CSV to get started.</p>
-      {onUpload && (
-        <button
-          type="button"
-          onClick={onUpload}
-          className="mt-4 inline-flex items-center gap-1.5 bg-lumi-accent text-lumi-bg font-display font-semibold px-4 py-2 rounded-xl text-sm shadow-accent-glow hover:bg-lumi-accent-hover"
-        >
-          <Upload className="w-3.5 h-3.5" strokeWidth={2} /> Upload CSV
-        </button>
-      )}
+      <p className="mt-1 text-lumi-muted text-sm">Connect your Meta account to get started.</p>
     </div>
   );
 }
 
-export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expanded, setExpanded, onUpload, currency = 'USD', emptyChannel = null, hasConnectorData = false }) {
+export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expanded, setExpanded, currency = 'USD', emptyChannel = null, hasConnectorData = false }) {
   return (
     <section className="bg-lumi-surface border border-lumi-border rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
       {rows.length === 0 ? (
-        <EmptyTable onUpload={onUpload} loading={loading} emptyChannel={emptyChannel} hasConnectorData={hasConnectorData} />
+        <EmptyTable loading={loading} emptyChannel={emptyChannel} hasConnectorData={hasConnectorData} />
       ) : (
         <div className="overflow-auto">
           <table className="w-full">

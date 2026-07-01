@@ -43,7 +43,7 @@ export function Hero() {
           </h1>
 
           <p className="mt-7 text-lg text-dark-soft max-w-[540px] leading-relaxed">
-            Marcom AI builds Lumi — the agent that turns your Meta exports into a sharp call. Drop a CSV, get {kill}, {hold}, or {scale} with the cash impact attached, then watch the real CTR and ROAS roll back in. Built for media buyers across MENA.
+            Marcom AI builds Lumi — the agent that turns your live Meta Ads into a sharp call. Connect your account, get {kill}, {hold}, or {scale} with the cash impact attached, then watch the real CTR and ROAS roll back in. Built for media buyers across MENA.
           </p>
 
           <div className="mt-10 flex flex-wrap items-center gap-4">

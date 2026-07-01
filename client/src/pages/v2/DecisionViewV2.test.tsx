@@ -100,7 +100,7 @@ describe('DecisionViewV2', () => {
         expect(screen.getByText(/no decisions pending/i)).toBeInTheDocument();
       });
 
-      expect(screen.getByText(/upload a csv or connect meta ads/i)).toBeInTheDocument();
+      expect(screen.getByText(/connect meta ads to get started/i)).toBeInTheDocument();
     });
   });
 

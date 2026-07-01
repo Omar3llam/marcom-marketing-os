@@ -8,7 +8,7 @@ import { StatePill } from './components/StatePill.jsx';
 import { STATE_CFG } from './utils/stateConfig.js';
 
 const NODES = [
-  { id: 'csv',      label: 'CSV ingest',      state: 'EXECUTED_SUCCESS', x: 80,   y: 60,  w: 130 },
+  { id: 'csv',      label: 'Sync ingest',     state: 'EXECUTED_SUCCESS', x: 80,   y: 60,  w: 130 },
   { id: 'validate', label: 'Validate',        state: 'EXECUTED_SUCCESS', x: 260,  y: 60,  w: 130 },
   { id: 'scan',     label: 'Scan 14 vectors', state: 'EXECUTING',        x: 440,  y: 60,  w: 150 },
   { id: 'memory',   label: 'Memory lookup',   state: 'EXECUTED_SUCCESS', x: 440,  y: 160, w: 150 },

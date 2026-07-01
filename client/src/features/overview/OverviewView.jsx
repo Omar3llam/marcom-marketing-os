@@ -7,10 +7,10 @@
 // feed — are gone; the agenda IS the prioritized, evidence-backed action list.
 // ============================================================
 import { useMemo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import {
   BarChart, Target, AlertTriangle, Activity,
-  Upload, ArrowRight, Plug,
+  ArrowRight, Plug,
 } from 'lucide-react';
 import { appRoutes } from '@/app/routeManifest.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
@@ -27,7 +27,6 @@ import PacingWidget from './components/PacingWidget.jsx';
 import CopilotTeaser from './components/CopilotTeaser.jsx';
 
 export default function OverviewView() {
-  const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { workspace } = useWorkspace();
   const { campaigns, summary, loading: intelligenceLoading } = useIntelligence();
@@ -117,14 +116,6 @@ export default function OverviewView() {
             Connect your Meta account
             <ArrowRight className="w-3.5 h-3.5" strokeWidth={1.5} />
           </Link>
-          {/* Secondary, de-emphasized: a one-off CSV upload still works. */}
-          <button
-            onClick={() => navigate('/app/campaigns')}
-            className="mt-3 inline-flex items-center gap-1.5 text-sm text-dark-soft hover:text-lumi-accent transition-colors"
-          >
-            <Upload className="w-3.5 h-3.5" strokeWidth={1.5} />
-            Or upload a Meta Ads CSV
-          </button>
         </div>
       )}
 
