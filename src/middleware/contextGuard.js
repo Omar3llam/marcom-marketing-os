@@ -16,7 +16,7 @@ import { logger } from '../utils/logger.js';
  * Populates req.context for use by AI functions.
  *
  * Usage in routes:
- *   router.post('/analyze', contextGuard, analyzeHandler);
+ *   router.use(contextGuard);   // e.g. src/routes/decision-memory/index.js
  */
 export function contextGuard(req, res, next) {
   // Check if req.user exists

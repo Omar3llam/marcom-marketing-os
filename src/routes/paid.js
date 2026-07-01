@@ -5,7 +5,6 @@
 //
 // Endpoints:
 // - GET  /radar    — Proactive radar alerts
-// - POST /analyze  — CSV / direct-JSON campaign analysis
 // - GET  /health   — Dual-agent orchestrator health
 //
 // NOTE: /execute was removed — real Meta execution lives in execution.js
@@ -16,31 +15,12 @@
 // app.use('/api/v1/paid', paidRoutes);
 // ============================================================
 import express from 'express';
-import multer from 'multer';
 import {
   radarHandler,
-  analyzeHandler,
   healthHandler,
 } from '../controllers/paidController.js';
 
 const router = express.Router();
-
-// ── MULTER CONFIGURATION ─────────────────────────────────────
-// Store CSV files in memory (not disk) for processing
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB max
-  },
-  fileFilter: (req, file, cb) => {
-    // Only accept CSV files
-    if (file.mimetype === 'text/csv' || file.originalname.endsWith('.csv')) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only CSV files are allowed'));
-    }
-  },
-});
 
 // ── ROUTES ───────────────────────────────────────────────────
 
@@ -57,41 +37,6 @@ const upload = multer({
 router.get('/radar', radarHandler);
 
 /**
- * POST /api/v1/paid/analyze
- * Analyzes campaign data from CSV upload or JSON body
- *
- * Body (CSV upload):
- * - Content-Type: multipart/form-data
- * - Field: file (CSV file)
- *
- * Body (JSON - specific campaign):
- * {
- *   campaignId: 'meta_campaign_id',
- *   adAccountId: 'act_123456' (optional),
- *   datePreset: 'last_7d' (optional)
- * }
- *
- * Body (JSON - direct data):
- * {
- *   campaigns: [{
- *     campaign_id: '...',
- *     campaign_name: '...',
- *     spend: 1000,
- *     ...
- *   }]
- * }
- *
- * Response:
- * {
- *   success: true,
- *   verdict: { ... },
- *   source: 'csv' | 'api' | 'json',
- *   timestamp: '2026-05-04T...'
- * }
- */
-router.post('/analyze', upload.single('file'), analyzeHandler);
-
-/**
  * GET /api/v1/paid/health
  * Health check for Paid Decision Engine
  *
@@ -105,34 +50,5 @@ router.post('/analyze', upload.single('file'), analyzeHandler);
  * }
  */
 router.get('/health', healthHandler);
-
-// ── ERROR HANDLER ────────────────────────────────────────────
-router.use((error, req, res, next) => {
-  if (error instanceof multer.MulterError) {
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({
-        success: false,
-        error: 'File too large (max 10MB)',
-        classification: 'validation',
-      });
-    }
-    return res.status(400).json({
-      success: false,
-      error: error.message,
-      classification: 'validation',
-    });
-  }
-
-  if (error.message === 'Only CSV files are allowed') {
-    return res.status(400).json({
-      success: false,
-      error: 'Invalid file type. Please upload a CSV file.',
-      classification: 'validation',
-    });
-  }
-
-  // Pass to global error handler
-  next(error);
-});
 
 export default router;

@@ -5,22 +5,19 @@
 //
 // Endpoints:
 // - GET  /radar   — Proactive radar alerts (workspace-scoped connector entity graph)
-// - POST /analyze — CSV / direct-JSON campaign analysis (dual-agent)
 // - GET  /health  — Dual-agent orchestrator health
 //
 // NOTE: radar now sources campaigns from the workspace-scoped connector entity
 // graph (EntityGraphService) — NOT a global META_ACCESS_TOKEN. metaMCP has been
 // removed entirely (PR C); no product path reads META_ACCESS_TOKEN.
-// (The /execute endpoint + /analyze "api" branch were pruned in PR A.)
+// (The /execute and /analyze endpoints were removed.)
 // ============================================================
 import {
   analyzeRadarData,
-  analyzeCampaignData,
   healthCheck,
 } from '../agents/orchestrator.js';
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
-import { parse } from 'csv-parse/sync';
 import { getConnectorCampaigns } from '../services/entity-graph/index.js';
 
 // resolveWorkspaceId — same pattern as the lumi routes: trust the auth
@@ -103,78 +100,6 @@ export async function radarHandler(req, res) {
       success: false, alerts: [], source: 'unavailable',
       message: 'Radar temporarily unavailable.',
       error: error.message,
-    });
-  }
-}
-
-/**
- * POST /api/v1/paid/analyze
- * Analyzes campaign data from CSV upload or JSON body
- */
-export async function analyzeHandler(req, res) {
-  try {
-    logger.info('[PaidController] Analyze request received');
-
-    let campaignData;
-    let source = 'json';
-
-    // Check if CSV file was uploaded
-    if (req.file) {
-      source = 'csv';
-      const csvText = req.file.buffer.toString('utf-8');
-
-      // Parse CSV
-      const rows = parse(csvText, {
-        columns: true,
-        skip_empty_lines: true,
-        trim: true,
-      });
-
-      // Transform CSV rows to campaign data
-      campaignData = {
-        campaigns: rows.map((row, index) => ({
-          campaign_id: row.campaign_id || row.id || `csv_${index}`,
-          campaign_name: row.campaign_name || row.name || `Campaign ${index + 1}`,
-          spend: parseFloat(row.spend || 0),
-          impressions: parseInt(row.impressions || 0),
-          clicks: parseInt(row.clicks || 0),
-          ctr: parseFloat(row.ctr || 0),
-          cpc: parseFloat(row.cpc || 0),
-          cpm: parseFloat(row.cpm || 0),
-          conversions: parseInt(row.conversions || row.actions || 0),
-          cpa: parseFloat(row.cpa || row.cost_per_action || 0),
-          roas: parseFloat(row.roas || 0),
-          frequency: parseFloat(row.frequency || 0),
-        })),
-        uploadedAt: new Date().toISOString(),
-      };
-
-      logger.info({ rowCount: rows.length }, '[PaidController] CSV parsed successfully');
-    } else {
-      // Direct JSON payload
-      campaignData = req.body;
-    }
-
-    // Analyze with Claude
-    // For simplicity, analyze the first campaign if multiple
-    const targetCampaign = campaignData.campaigns?.[0] || campaignData;
-
-    const verdict = await analyzeCampaignData(targetCampaign, source);
-
-    return res.json({
-      success: true,
-      verdict,
-      source,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    logger.error({ err: error.message }, '[PaidController] Analyze handler failed');
-
-    return res.status(500).json({
-      success: false,
-      error: error.message,
-      classification: error.message.includes('parse') ? 'parsing' : 'network',
-      fallbackAction: 'Try uploading CSV instead',
     });
   }
 }
