@@ -5,6 +5,5 @@ export { resolve, isSyncable, SYNCABLE_PLATFORMS } from './connectorRegistry.js'
 export { nextHealth } from './connectorHealth.js';
 export { resolveCredential, listConnections, listActiveSyncable, recordSync, upsertWorkspaceCredential, PLATFORM_DB } from './credentialStore.js';
 export { MetaConnector, metaConnector } from './MetaConnector.js';
-export { CsvConnector, csvConnector, ingestCsv } from './CsvConnector.js';
 export { GoogleAdsConnector, googleAdsConnector } from './GoogleAdsConnector.js';
 export { runConnectorSync } from './ConnectorSyncService.js';
