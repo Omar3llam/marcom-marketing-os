@@ -8,8 +8,6 @@
 // Do NOT modify without updating BACKEND-CONTRACTS.md first.
 // ============================================================
 
-import type { APIError } from './errors';
-
 // ──────────────────────────────────────────────────────────
 // 1. CAMPAIGNS (/api/campaigns)
 // ──────────────────────────────────────────────────────────
@@ -64,10 +62,17 @@ export interface CampaignDecision {
 }
 
 /**
- * Campaign analyze-mode response shape. (The CSV upload endpoint was removed; the
- * same shape is returned by POST /api/campaigns/fetch-meta?mode=analyze.)
+ * POST /api/campaigns/fetch-meta?mode=analyze request.
  */
-export interface UploadCSVResponse {
+export interface FetchMetaRequest {
+  projectId: string;
+  datePreset: 'last_7d' | 'last_14d' | 'last_30d';
+}
+
+/**
+ * POST /api/campaigns/fetch-meta?mode=analyze response.
+ */
+export interface FetchMetaResponse {
   success: boolean;
   mode: 'analyze';
   decisions: CampaignDecision[];
@@ -78,29 +83,6 @@ export interface UploadCSVResponse {
     failed: number;
   };
 }
-
-/**
- * Campaign analyze-mode error (400).
- */
-export interface UploadCSVError extends APIError {
-  success: false;
-  error: string;
-  hint?: string;
-}
-
-/**
- * POST /api/campaigns/fetch-meta?mode=analyze request.
- */
-export interface FetchMetaRequest {
-  projectId: string;
-  datePreset: 'last_7d' | 'last_14d' | 'last_30d';
-}
-
-/**
- * POST /api/campaigns/fetch-meta?mode=analyze response.
- * Same shape as UploadCSVResponse.
- */
-export type FetchMetaResponse = UploadCSVResponse;
 
 /**
  * POST /api/campaigns/fetch-meta error (404 — No credential).

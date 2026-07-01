@@ -20,7 +20,6 @@ import type {
   Campaign,
   Alert,
   CampaignDecision,
-  UploadCSVResponse,
   ExecuteMetaResponse,
   GetAuditLogsResponse,
   GetMemoryPatternsResponse,
@@ -151,18 +150,6 @@ export const mockCampaignDecision: CampaignDecision = {
     frequency: 8.6,
     reach: 5232,
     costPerResult: 39.06,
-  },
-};
-
-export const mockUploadCSVResponse: UploadCSVResponse = {
-  success: true,
-  mode: 'analyze',
-  decisions: [mockCampaignDecision],
-  errors: [],
-  stats: {
-    uploaded: 15,
-    analyzed: 14,
-    failed: 1,
   },
 };
 

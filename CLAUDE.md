@@ -212,3 +212,26 @@ Convert DEPRECATED/LEGACY files to new canonical equivalents, then delete.
 - ~~`services/orchestrator.js` → `agents/orchestrator.js`~~ ✅ COMPLETED & DELETED — all importers (paidController, campaigns, syncWorker) migrated to `agents/orchestrator.js`; the deprecated file was removed in the pre-Phase-6 cleanup. The compatibility methods (`analyzeRadarData`, `analyzeCampaignData`, `healthCheck`) now live on `agents/orchestrator.js`.
 - ~~`clerkAuth.js` → `firebaseAuth.js`~~ ✅ COMPLETED (auth/meta.js refactored)
 - `userContext.js` → API route (1 model file to refactor)
+
+---
+
+## CSV Removal — Option A (completed, phases 1–5)
+
+The system is now **connector-only** for all user-facing data ingestion. CSV upload is fully gone from every user-facing surface.
+
+- `CsvConnector`, `csvNormalize` — DELETED (Phase 1, PR #163)
+- `POST /api/campaigns/upload-csv` + upload modal/button — DELETED (Phase 2, PR #164)
+- `POST /api/campaigns/data-inject` + `POST /api/v1/paid/analyze` — DELETED (Phase 3, PR #165)
+- CSV copy / messaging across landing, empty states, CTAs — REMOVED (Phase 4, PR #166)
+- `UploadCSVResponse` / `UploadCSVError` types + `mockUploadCSVResponse` fixture — DELETED (Phase 5, this PR). `FetchMetaResponse` promoted from a CSV alias to a standalone live-contract interface.
+
+### Intentionally kept (Option A — NOT dead code, DO NOT delete)
+
+These are the **legacy `CampaignState` feed** substrate — internal infrastructure, invisible to users, deliberately preserved. Retiring them is a separate **Option B** migration project, out of scope for the CSV-removal program.
+
+- `client/src/hooks/useCampaignFeed.js` — legacy `CampaignState` reader.
+  Live non-CSV callers: `MainLayout` (sidebar alerts), `InsightsView`, `ContentLabView`, `CampaignsView`; exports `summarize`/`metricValue` feeding `IntelligenceContext` + `CampaignFeedContext`.
+- `CampaignState` model (`prisma/schema.prisma`) — written by `temporalObserver`; read by `orchestrator`, `contextBuilder`, `lumi/feed.js`, `EntityGraphService`.
+- `src/utils/csvParser.js`, `orchestrator.analyzeCampaignData(source='csv')` — backend CSV *parsing/analysis* logic still reachable by the legacy feed; not a user-facing ingestion path.
+
+**DO NOT DELETE any of the above without a dedicated Option B migration project.**
