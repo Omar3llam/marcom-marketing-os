@@ -21,10 +21,10 @@ export function ObjectiveStep({ form, set }) {
             onClick={() => set('objective', obj.id)}
             className={tileBtn(form.objective === obj.id)}
           >
-            <div className="text-sm font-semibold text-white/90">
+            <div className="text-sm font-semibold text-dark-base">
               {obj.label}
             </div>
-            <div className="text-xs text-white/50">
+            <div className="text-xs text-dark-soft">
               {obj.sub}
             </div>
           </button>
