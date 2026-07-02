@@ -25,6 +25,16 @@ import {
 
 const DAY_MS = 86_400_000;
 
+// Onboarding objective id → the lens the buyer reads the agenda through. Frames
+// the summary; never changes severity or humanAction (those stay data-driven).
+// Unknown/absent objective → no lens (backward-compatible summary).
+const OBJECTIVE_LENS = Object.freeze({
+  roas:        'return on ad spend',
+  conversions: 'new conversions',
+  ltv:         'lifetime value',
+  custom:      'your stated goal',
+});
+
 // A KILL is urgent and a WATCH is treated as urgent too (a flagged entity the
 // buyer must eyeball now); reallocate/refresh/scale are medium; a HOLD is low.
 // Keeps the buyer's eye on what bleeds — or is about to — first.
@@ -195,7 +205,7 @@ function loopStatus({ plans = [], allocationPlans = [], executedActions = [], op
 export function planAgenda({
   verdicts = [], fatiguePredictions = [], pacing = [], testAgenda = [], openTests = [],
   planTracking = null, blended = null, plans = [], allocationPlans = [], executedActions = [],
-  recentOutcomes = [], recentMemory = [], labelsById = new Map(), now = new Date(),
+  recentOutcomes = [], recentMemory = [], labelsById = new Map(), objective = null, now = new Date(),
 } = {}) {
   const buyerBand = buyerAgenda({ verdicts, fatiguePredictions, pacing, testAgenda, openTests, labelsById, now });
   const strategistBand = strategistAgenda({ planTracking, blended, pacing, now });
@@ -205,9 +215,12 @@ export function planAgenda({
     buyerCount: buyerBand.length, now,
   });
 
-  const summary = buyerBand.length === 0 && strategistBand.length === 0
+  const base = buyerBand.length === 0 && strategistBand.length === 0
     ? 'Nothing needs a decision right now — the loop is quiet.'
     : `${buyerBand.length} to decide, ${strategistBand.length} to steer.`;
+  // Frame the summary through the account's objective when one is set.
+  const lens = OBJECTIVE_LENS[objective] ?? null;
+  const summary = lens ? `Optimizing for ${lens} — ${base}` : base;
 
   logger.debug({ buyer: buyerBand.length, strategist: strategistBand.length, loopHealth: loop.loopHealth }, '[agenticPlanner] planned');
   return { buyerBand, strategistBand, ...loop, summary };

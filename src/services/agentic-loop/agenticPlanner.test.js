@@ -120,6 +120,16 @@ describe('agenticPlanner — honesty + determinism', () => {
     expect(JSON.stringify(planAgenda(base))).toBe(JSON.stringify(planAgenda(base)));
   });
 
+  it('frames the summary through the onboarding objective when set', () => {
+    expect(planAgenda({ ...base, objective: 'roas' }).summary).toMatch(/optimizing for return on ad spend/i);
+    expect(planAgenda({ ...base, objective: 'ltv' }).summary).toMatch(/optimizing for lifetime value/i);
+  });
+
+  it('leaves the summary unframed for an absent or unknown objective', () => {
+    expect(planAgenda(base).summary).not.toMatch(/optimizing for/i);            // no objective
+    expect(planAgenda({ ...base, objective: 'bogus' }).summary).not.toMatch(/optimizing for/i);
+  });
+
   it('on-track goals do not clutter the strategist band', () => {
     const out = planAgenda({ ...base, planTracking: { goals: [{ goalId: 'g1', metric: 'roas', landing: { status: 'ON_TRACK' } }] }, blended: null, pacing: [] });
     expect(out.strategistBand).toEqual([]);

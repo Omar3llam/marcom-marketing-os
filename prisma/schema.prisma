@@ -352,6 +352,13 @@ model Workspace {
   currency  String   @default("USD") // ISO 4217 currency code (EGP, USD, SAR, AED, etc.)
   createdAt DateTime @default(now())
 
+  // ── Onboarding preferences (promoted from User.context so workspace-scoped
+  // services can read them — see routes/campaigns/context.js). All nullable /
+  // empty-default: existing rows and skipped steps never break.
+  spendTier  String?  // onboarding tier id: 't1'..'t4' (no billing meaning)
+  objective  String?  // onboarding goal id: 'roas' | 'conversions' | 'ltv' | 'custom'
+  adChannels String[] // normalized Channel values the account runs, e.g. ['META','GOOGLE']
+
   // ── Phase 5: network memory (opt-in, anonymized) ─────────────
   // Sharing this account's anonymized patterns into the cross-account
   // network is OFF by default — a governance decision, never a default.
