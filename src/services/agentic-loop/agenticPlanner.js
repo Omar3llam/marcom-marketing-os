@@ -25,11 +25,12 @@ import {
 
 const DAY_MS = 86_400_000;
 
-// A KILL/OFF-track signal is urgent; a reallocate/at-risk is medium; a
-// watch/test is low. Keeps the buyer's eye on what bleeds first.
+// A KILL is urgent and a WATCH is treated as urgent too (a flagged entity the
+// buyer must eyeball now); reallocate/refresh/scale are medium; a HOLD is low.
+// Keeps the buyer's eye on what bleeds — or is about to — first.
 const VERDICT_SEVERITY = Object.freeze({
   KILL: SEVERITY.HIGH, REFRESH: SEVERITY.MEDIUM, REALLOCATE: SEVERITY.MEDIUM,
-  SCALE: SEVERITY.MEDIUM, WATCH: SEVERITY.LOW, HOLD: SEVERITY.LOW,
+  SCALE: SEVERITY.MEDIUM, WATCH: SEVERITY.HIGH, HOLD: SEVERITY.LOW,
 });
 
 function bySeverityDesc(a, b) {

@@ -53,10 +53,13 @@ describe('agenticPlanner — banding', () => {
     expect(v.title).toContain('Cold #1');
   });
 
-  it('orders buyer items by severity (KILL high before WATCH low)', () => {
-    const kill = out.buyerBand.findIndex((i) => i.evidenceRef === 'd1');
-    const watch = out.buyerBand.findIndex((i) => i.evidenceRef === 'd2');
-    expect(kill).toBeLessThan(watch);
+  it('treats WATCH as HIGH severity, ranking it above medium/low buyer items', () => {
+    const watch = out.buyerBand.find((i) => i.evidenceRef === 'd2');
+    expect(watch.severity).toBe('HIGH');
+    // HIGH tier sorts before the MEDIUM over-pacing item.
+    const watchIdx = out.buyerBand.findIndex((i) => i.evidenceRef === 'd2');
+    const pacingIdx = out.buyerBand.findIndex((i) => i.type === AGENDA_TYPE.PACING);
+    expect(watchIdx).toBeLessThan(pacingIdx);
   });
 
   // The Phase-9 fix: connector verdicts (revenue + awareness) feed the same band
