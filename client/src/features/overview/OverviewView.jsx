@@ -17,6 +17,7 @@ import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
+import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
 import StatCard from '@/components/ui/StatCard.jsx';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
@@ -30,6 +31,7 @@ export default function OverviewView() {
   const { currentUser } = useAuth();
   const { workspace } = useWorkspace();
   const { campaigns, summary, loading: intelligenceLoading } = useIntelligence();
+  const { campaigns: connectorCampaigns, loading: connectorLoading } = useConnectorCampaigns();
   const { surface: proofSurface } = useAccuracy(); // gated proof one-liner (best-effort)
   const { role: collabRole } = useCollabRole();
 
@@ -66,8 +68,15 @@ export default function OverviewView() {
     [campaigns],
   );
 
-  const loading = intelligenceLoading;
-  const hasData = campaigns.length > 0;
+  // Two DISJOINT substrates: the legacy CampaignState feed (drives the stat
+  // cards) and the connector entity graph (drives the agentic agenda — where a
+  // live Meta sync's verdicts live). The agentic shell must NOT be hidden just
+  // because the legacy feed is empty; a synced workspace has connector data and
+  // real PROPOSED verdicts even when CampaignState is empty.
+  const loading = intelligenceLoading || connectorLoading;
+  const hasData = campaigns.length > 0;                       // legacy CampaignState feed
+  const hasConnectorData = connectorCampaigns.length > 0;      // connector entity graph
+  const hasAnyData = hasData || hasConnectorData;
   const showCopilotTeaser = collabRole !== WORKSPACE_ROLE.CLIENT; // CLIENT home stays read-only & minimal
 
   return (
@@ -95,8 +104,9 @@ export default function OverviewView() {
           disconnected channel is often *why* there's no data. */}
       <ConnectionHealthStrip />
 
-      {/* Empty state: no campaigns uploaded yet */}
-      {!loading && !hasData && (
+      {/* Empty state: only when BOTH substrates are empty (no legacy feed AND no
+          connector data) — a genuinely un-synced account. */}
+      {!loading && !hasAnyData && (
         <div className="flex flex-col items-center justify-center min-h-[480px] p-10 bg-surface-card border border-dashed border-surface-border-strong rounded-xl text-center">
           <div className="w-16 h-16 rounded-xl bg-lumi-accent/10 text-lumi-accent flex items-center justify-center mb-4">
             <Plug className="w-7 h-7" strokeWidth={1.5} />
@@ -119,7 +129,9 @@ export default function OverviewView() {
         </div>
       )}
 
-      {/* Dashboard content: only show when data exists */}
+      {/* Legacy stat block — derived from the CampaignState summary. Stays bound
+          to the legacy feed; we never fabricate these figures from connector rows
+          (the substrates are deliberately disjoint). */}
       {hasData && (
         <>
           {/* Budget pacing — honest burn-rate (gated; refuses misleading single-channel pacing). */}
@@ -157,12 +169,14 @@ export default function OverviewView() {
               gauge={stats.health}
             />
           </div>
-
-          {/* The agentic shell — the real, role-scoped two-band agenda + loop
-              status. Replaces the old ad-hoc alerts/insight/quick-action row. */}
-          <AgenticShellView />
         </>
       )}
+
+      {/* The agentic shell — the real, role-scoped two-band agenda + loop status.
+          Renders on EITHER substrate so a live-synced workspace (connector
+          verdicts, empty legacy feed) still sees its agenda. Owns its own
+          loading/empty states, so it's safe to mount whenever data exists. */}
+      {hasAnyData && <AgenticShellView />}
 
       {/* Lumi Copilot — an honest "coming soon" teaser (not for the read-only
           CLIENT seat). Renders in every data state for operators. */}
