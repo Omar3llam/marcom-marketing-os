@@ -81,3 +81,23 @@ describe('GENERATE_COPY v1.1 — grounded fields render into the prompt', () => 
     expect(prompt).toContain('CPI under $2.50 (ROAS 3.20)');
   });
 });
+
+describe('GENERATE_HOOKS v1.2 — objective + tone now reach the headlines prompt', () => {
+  it('is versioned v1.2', () => {
+    expect(COPY_PROMPTS.GENERATE_HOOKS.version).toBe('v1.2');
+  });
+
+  it('renders objective + tone (brand context, not just campaign data)', () => {
+    const prompt = buildCopyPrompt('GENERATE_HOOKS', GROUNDED);
+    expect(prompt).toContain('Campaign Objective: Maximize ROAS, minimize bleed');
+    expect(prompt).toContain('Tone for this piece: Bold & rebellious');
+    expect(prompt).not.toContain('{objective}');
+    expect(prompt).not.toContain('{tone}');
+  });
+
+  it('omitted objective/tone resolve to N/A (same convention as GENERATE_COPY)', () => {
+    const prompt = buildCopyPrompt('GENERATE_HOOKS', { diagnosis: 'X' });
+    expect(prompt).toContain('Campaign Objective: N/A');
+    expect(prompt).toContain('Tone for this piece: N/A');
+  });
+});

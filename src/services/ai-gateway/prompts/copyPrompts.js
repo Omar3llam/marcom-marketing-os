@@ -6,7 +6,8 @@
 // INPUT VARIABLES:
 //   {diagnosis}, {brandVoice}, {targetAudience}, {currentCTR}
 //   GENERATE_COPY (v1.2) also: {industry}, {objective}, {tone}, {angle}
-//   GENERATE_COPY (v1.2) + GENERATE_HOOKS (v1.1): {campaignIntel} — an OPTIONAL
+//   GENERATE_HOOKS (v1.2) also: {objective}, {tone}
+//   GENERATE_COPY (v1.2) + GENERATE_HOOKS (v1.2): {campaignIntel} — an OPTIONAL
 //     freeform block of live campaign performance (Content Lab auto-injects it);
 //     absent → renders as nothing, never the 'N/A' placeholder.
 //
@@ -19,12 +20,14 @@ import { applyPromptMutation, hasMutationRule } from './promptMutationEngine.js'
 
 export const COPY_PROMPTS = Object.freeze({
   GENERATE_HOOKS: {
-    version: 'v1.1',
+    version: 'v1.2',
     template: `Generate 3 high-converting ad hooks for Meta ads.
 
 CONTEXT:
 Diagnosis: {diagnosis}
+Campaign Objective: {objective}
 Brand Voice: {brandVoice}
+Tone for this piece: {tone}
 Target Audience: {targetAudience}
 Current CTR: {currentCTR}%
 
