@@ -24,11 +24,21 @@ import { getPortfolio } from '../portfolio/PortfolioService.js';
 import { getWeeklyAgenda } from '../test-generator/TestGeneratorService.js';
 import { trackPlan } from '../planning/PlanService.js';
 import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
+import { SIGNAL_TYPE } from '../diagnosis-engine/index.js';
 
 const LOOKBACK_DAYS = Number(process.env.LOOP_LOOKBACK_DAYS || 30);
 // How recently a sweep must have run to be reused instead of re-swept.
 export const LOOP_MIN_INTERVAL_MS = Number(process.env.LOOP_MIN_INTERVAL_MS || 15 * 60 * 1000);
 const AGENTIC_CRON_MS = Number(process.env.LOOP_INTERVAL_MS || 15 * 60 * 1000);
+
+// The two Decision families that ARE a "verdict to confirm" for the buyer band:
+//   • guardrail hits      → rootCause `guardrail:<rule>`
+//   • connector verdicts  → rootCause = the diagnosis signalType (or null when
+//                           unset). persistConnectorVerdicts writes these every
+//                           sweep for both revenue AND awareness campaigns.
+// allocation:/incrementality:/test: decisions are ALSO PROPOSED but have their
+// own surfaces (plan review, tests) — deliberately NOT pulled into this band.
+const CONNECTOR_VERDICT_ROOT_CAUSES = Object.freeze(Object.values(SIGNAL_TYPE));
 
 /** Flatten portfolio pacing into the planner's pacing[] shape. */
 function pacingFromPortfolio(portfolio) {
@@ -65,10 +75,26 @@ export async function buildLoopInputs(workspaceId, { now = new Date() } = {}) {
   const safe = (p, fallback) => p.catch(() => fallback);
 
   const [
-    guardrailVerdicts, fatiguePredictions, openTests, plans, allocationPlans,
+    verdicts, fatiguePredictions, openTests, plans, allocationPlans,
     executedActions, recentOutcomes, recentMemory, labelsById,
   ] = await Promise.all([
-    safe(prisma.decision.findMany({ where: { workspaceId, status: 'PROPOSED', rootCause: { startsWith: 'guardrail:' } }, orderBy: { createdAt: 'desc' }, take: 100 }), []),
+    // Buyer-band verdicts = guardrail hits + connector verdicts (revenue +
+    // awareness). distinct keeps only the LATEST verdict per entity so a
+    // campaign that flips verdicts over time (or is re-swept) surfaces once,
+    // not once per historical row.
+    safe(prisma.decision.findMany({
+      where: {
+        workspaceId, status: 'PROPOSED',
+        OR: [
+          { rootCause: { startsWith: 'guardrail:' } },        // guardrail rule hits
+          { rootCause: { in: CONNECTOR_VERDICT_ROOT_CAUSES } }, // connector verdicts
+          { rootCause: null },                                 // connector writes `signalType ?? null`
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+      distinct: ['entityId', 'entityLevel'],
+      take: 100,
+    }), []),
     safe(prisma.fatiguePrediction.findMany({ where: { workspaceId, resolvedAt: null }, orderBy: { projectedBreachDate: 'asc' }, take: 100 }), []),
     safe(prisma.testExperiment.findMany({ where: { workspaceId, status: 'RUNNING' }, orderBy: { startedAt: 'desc' }, take: 20 }), []),
     safe(prisma.plan.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 10, include: { goals: true } }), []),
@@ -89,7 +115,7 @@ export async function buildLoopInputs(workspaceId, { now = new Date() } = {}) {
   const planTracking = activePlan ? await safe(trackPlan(workspaceId, activePlan, { now }), null) : null;
 
   return {
-    guardrailVerdicts, fatiguePredictions, pacing: pacingFromPortfolio(portfolio),
+    verdicts, fatiguePredictions, pacing: pacingFromPortfolio(portfolio),
     testAgenda, openTests, planTracking, blended,
     plans, allocationPlans, executedActions, recentOutcomes, recentMemory, labelsById, now,
   };
