@@ -20,8 +20,8 @@ const GROUNDED = {
 };
 
 describe('GENERATE_COPY v1.1 — grounded fields render into the prompt', () => {
-  it('is versioned v1.1 (signals the template changed from v1.0)', () => {
-    expect(COPY_PROMPTS.GENERATE_COPY.version).toBe('v1.1');
+  it('is versioned v1.2 (signals the template changed)', () => {
+    expect(COPY_PROMPTS.GENERATE_COPY.version).toBe('v1.2');
   });
 
   it('renders every real Content-Lab input verbatim (no field silently dropped)', () => {
@@ -56,5 +56,28 @@ describe('GENERATE_COPY v1.1 — grounded fields render into the prompt', () => 
     const prompt = buildCopyPrompt('GENERATE_COPY', { diagnosis: 'X' });
     expect(prompt).toContain('Industry: N/A');
     expect(prompt).toContain('Campaign Objective: N/A');
+  });
+
+  it('renders the {campaignIntel} block when provided', () => {
+    const intel = 'CURRENT CAMPAIGN PERFORMANCE (top campaigns by spend):\n- Eid Sale (META): KILL';
+    const prompt = buildCopyPrompt('GENERATE_COPY', { ...GROUNDED, angle: 'x', campaignIntel: intel });
+    expect(prompt).toContain('CURRENT CAMPAIGN PERFORMANCE');
+    expect(prompt).toContain('- Eid Sale (META): KILL');
+  });
+
+  it('omits {campaignIntel} entirely (blank, never "N/A") when absent — for content-lab AND other callers', () => {
+    const withEmpty = buildCopyPrompt('GENERATE_COPY', { ...GROUNDED, angle: 'x', campaignIntel: '' });
+    const omitted   = buildCopyPrompt('GENERATE_COPY', { ...GROUNDED, angle: 'x' }); // key not passed at all
+    for (const prompt of [withEmpty, omitted]) {
+      expect(prompt).not.toContain('{campaignIntel}');
+      expect(prompt).not.toContain('CURRENT CAMPAIGN PERFORMANCE');
+      expect(prompt).not.toMatch(/\n\s*N\/A\s*\n\s*ANGLE FOR THIS VARIANT/); // no stray N/A section
+    }
+  });
+
+  it('a "$" inside the block is not mangled as a regex replacement token', () => {
+    const intel = 'CURRENT CAMPAIGN PERFORMANCE:\n- App (META): SCALE — CPI under $2.50 (ROAS 3.20)';
+    const prompt = buildCopyPrompt('GENERATE_COPY', { ...GROUNDED, angle: 'x', campaignIntel: intel });
+    expect(prompt).toContain('CPI under $2.50 (ROAS 3.20)');
   });
 });
