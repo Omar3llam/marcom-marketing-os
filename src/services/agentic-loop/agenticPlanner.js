@@ -44,10 +44,10 @@ function ageDays(then, now) {
 }
 
 // ── Buyer band — "what needs a decision today" ──────────────────
-function buyerAgenda({ guardrailVerdicts = [], fatiguePredictions = [], pacing = [], testAgenda = [], openTests = [], labelsById = new Map(), now }) {
+function buyerAgenda({ verdicts = [], fatiguePredictions = [], pacing = [], testAgenda = [], openTests = [], labelsById = new Map(), now }) {
   const items = [];
 
-  for (const d of guardrailVerdicts) {
+  for (const d of verdicts) {
     if (d.status && d.status !== 'PROPOSED') continue;
     const label = labelsById.get(d.entityId) ?? d.entityId;
     items.push(agendaItem({
@@ -192,11 +192,11 @@ function loopStatus({ plans = [], allocationPlans = [], executedActions = [], op
  * @returns {{ buyerBand, strategistBand, stageStatus, staleStages, closed, loopHealth, summary }}
  */
 export function planAgenda({
-  guardrailVerdicts = [], fatiguePredictions = [], pacing = [], testAgenda = [], openTests = [],
+  verdicts = [], fatiguePredictions = [], pacing = [], testAgenda = [], openTests = [],
   planTracking = null, blended = null, plans = [], allocationPlans = [], executedActions = [],
   recentOutcomes = [], recentMemory = [], labelsById = new Map(), now = new Date(),
 } = {}) {
-  const buyerBand = buyerAgenda({ guardrailVerdicts, fatiguePredictions, pacing, testAgenda, openTests, labelsById, now });
+  const buyerBand = buyerAgenda({ verdicts, fatiguePredictions, pacing, testAgenda, openTests, labelsById, now });
   const strategistBand = strategistAgenda({ planTracking, blended, pacing, now });
 
   const loop = loopStatus({

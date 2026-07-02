@@ -5,7 +5,7 @@ import { AGENDA_BAND, AGENDA_TYPE, STAGE_STATE, LOOP_HEALTH, HUMAN_ACTION } from
 const now = new Date('2026-06-09T00:00:00.000Z');
 const daysAgo = (n) => new Date(now.getTime() - n * 86_400_000).toISOString();
 
-const guardrailVerdicts = [
+const verdicts = [
   { id: 'd1', entityId: 'as1', entityLevel: 'ADSET', verdict: 'KILL', rationale: 'Frequency 4.2 over ceiling', status: 'PROPOSED' },
   { id: 'd2', entityId: 'cmp1', entityLevel: 'CAMPAIGN', verdict: 'WATCH', rationale: 'ROAS softening', status: 'PROPOSED' },
 ];
@@ -29,7 +29,7 @@ const fullLoop = {
   recentMemory: [{ id: 'm1', createdAt: daysAgo(1) }],
 };
 
-const base = { guardrailVerdicts, fatiguePredictions, pacing, planTracking, blended, labelsById, now, ...fullLoop };
+const base = { verdicts, fatiguePredictions, pacing, planTracking, blended, labelsById, now, ...fullLoop };
 
 describe('agenticPlanner — banding', () => {
   const out = planAgenda(base);
@@ -57,6 +57,23 @@ describe('agenticPlanner — banding', () => {
     const kill = out.buyerBand.findIndex((i) => i.evidenceRef === 'd1');
     const watch = out.buyerBand.findIndex((i) => i.evidenceRef === 'd2');
     expect(kill).toBeLessThan(watch);
+  });
+
+  // The Phase-9 fix: connector verdicts (revenue + awareness) feed the same band
+  // the guardrail verdicts do — the planner is source-agnostic, so any PROPOSED
+  // Decision that buildLoopInputs now loads becomes a CONFIRM item.
+  it('renders connector + awareness verdicts as buyer CONFIRM items', () => {
+    const connector = [
+      { id: 'cv1', entityId: 'cmp2', entityLevel: 'CAMPAIGN', verdict: 'REFRESH', rationale: 'Creative fatigue detected', status: 'PROPOSED' },
+      { id: 'cv2', entityId: 'cmp3', entityLevel: 'CAMPAIGN', verdict: 'HOLD', rationale: 'Awareness campaign (no revenue measured): engagement healthy — hold.', status: 'PROPOSED' },
+    ];
+    const res = planAgenda({ verdicts: connector, now });
+    const refresh = res.buyerBand.find((i) => i.evidenceRef === 'cv1');
+    const awarenessHold = res.buyerBand.find((i) => i.evidenceRef === 'cv2');
+    expect(refresh).toMatchObject({ type: AGENDA_TYPE.VERDICT, humanAction: HUMAN_ACTION.CONFIRM, entityId: 'cmp2' });
+    // Awareness HOLD is included (not skipped) and rides at LOW severity.
+    expect(awarenessHold).toMatchObject({ type: AGENDA_TYPE.VERDICT, severity: 'LOW', entityId: 'cmp3' });
+    expect(refresh.rationale).toContain('fatigue');
   });
 });
 
