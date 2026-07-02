@@ -10,6 +10,7 @@
 // ============================================================
 import { logger } from '../../utils/logger.js';
 import { execute, CAPABILITY } from '../../services/ai-gateway/index.js';
+import { getCampaignIntelligence } from '../../services/content-intel/campaignIntel.js';
 
 /**
  * POST /api/tools/content-generate
@@ -58,6 +59,11 @@ export async function generateContent(req, res) {
     //   brandVoice/tone/targetAudience/industry/objective → onboarding context
     // The `||` fallbacks fire only for accounts missing that signal — they are
     // not the default path. currentCTR uses `??` so a real 0 is preserved.
+    // Auto-inject the workspace's top live campaigns (verdict + real metrics) so
+    // copy is grounded in current performance. Best-effort + honest: '' when no
+    // connector has synced, so the section is simply omitted from the prompt.
+    const campaignIntel = await getCampaignIntelligence(workspaceId);
+
     const baseInput = {
       diagnosis: campaignContext?.problem || 'CREATIVE_REFRESH',
       brandVoice: brandVoice || 'Brand-focused, clear, action-oriented',
@@ -66,6 +72,7 @@ export async function generateContent(req, res) {
       tone: tone || 'Professional',
       industry: industry || 'General',
       objective: objective || 'Drive performance',
+      campaignIntel,
     };
 
     // Generate content using AI Gateway (parallel calls for efficiency)

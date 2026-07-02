@@ -5,7 +5,10 @@
 //
 // INPUT VARIABLES:
 //   {diagnosis}, {brandVoice}, {targetAudience}, {currentCTR}
-//   GENERATE_COPY (v1.1) also: {industry}, {objective}, {tone}, {angle}
+//   GENERATE_COPY (v1.2) also: {industry}, {objective}, {tone}, {angle}
+//   GENERATE_COPY (v1.2) + GENERATE_HOOKS (v1.1): {campaignIntel} — an OPTIONAL
+//     freeform block of live campaign performance (Content Lab auto-injects it);
+//     absent → renders as nothing, never the 'N/A' placeholder.
 //
 // VERSIONING:
 //   Never modify existing prompts — create new versions.
@@ -16,7 +19,7 @@ import { applyPromptMutation, hasMutationRule } from './promptMutationEngine.js'
 
 export const COPY_PROMPTS = Object.freeze({
   GENERATE_HOOKS: {
-    version: 'v1.0',
+    version: 'v1.1',
     template: `Generate 3 high-converting ad hooks for Meta ads.
 
 CONTEXT:
@@ -24,6 +27,8 @@ Diagnosis: {diagnosis}
 Brand Voice: {brandVoice}
 Target Audience: {targetAudience}
 Current CTR: {currentCTR}%
+
+{campaignIntel}
 
 REQUIREMENTS:
 - 40-60 characters per hook
@@ -83,7 +88,7 @@ Return JSON array:
   // backward-compatible. GENERATE_COPY is Content-Lab-exclusive — no other
   // capability consumer is affected.
   GENERATE_COPY: {
-    version: 'v1.1',
+    version: 'v1.2',
     template: `Generate complete ad copy (hook + body) for Meta ads.
 
 CONTEXT:
@@ -96,6 +101,8 @@ Target Audience: {targetAudience}
 Current CTR: {currentCTR}%
 Product/Service: {productName}
 Key Benefits: {benefits}
+
+{campaignIntel}
 
 ANGLE FOR THIS VARIANT:
 {angle}
@@ -128,8 +135,16 @@ export function buildCopyPrompt(capability, variables, decisionContext = {}) {
 
   let prompt = promptTemplate.template;
 
+  // {campaignIntel} is an OPTIONAL freeform block (Content Lab auto-injects live
+  // campaign performance). Handled first + specially: absent → render NOTHING
+  // (never the 'N/A' the generic pass would emit for a whole omitted section),
+  // and a function replacement so a literal '$' in a campaign name / ROAS figure
+  // can't be read as a regex replacement token.
+  prompt = prompt.replace(/\{campaignIntel\}/g, () => variables.campaignIntel || '');
+
   // Replace variables
   for (const [key, value] of Object.entries(variables)) {
+    if (key === 'campaignIntel') continue; // already handled above
     prompt = prompt.replace(new RegExp(`\\{${key}\\}`, 'g'), value || 'N/A');
   }
 
