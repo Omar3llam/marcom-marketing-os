@@ -43,7 +43,7 @@ Your analysis is STRICTLY scoped to:
 - Company: ${context.companyName}
 - Industry: ${context.industry}
 - Market: ${market}
-${context.platform ? `- Primary Platform: ${context.platform}\n` : ''}
+${context.platform ? `- Primary Platform: ${context.platform}\n` : ''}${context.objective ? `- Objective: ${context.objective}\n` : ''}${context.spendTier ? `- Spend tier: ${context.spendTier}\n` : ''}
 
 === CRITICAL HARD LOCK RULES ===
 1. **Do NOT assume** any business context outside the provided scope above.

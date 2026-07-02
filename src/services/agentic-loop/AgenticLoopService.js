@@ -106,17 +106,20 @@ export async function buildLoopInputs(workspaceId, { now = new Date() } = {}) {
   ]);
 
   // Pacing + blended + plan tracking via the existing services (best-effort).
-  const [portfolio, blended, testAgenda] = await Promise.all([
+  // The onboarding objective is a workspace-scoped column (promoted from
+  // User.context) that frames the agenda; null when the step was skipped.
+  const [portfolio, blended, testAgenda, objective] = await Promise.all([
     safe(getPortfolio(workspaceId), null),
     safe(getBlendedTruth(workspaceId), null),
     safe(getWeeklyAgenda(workspaceId).then((a) => a.slice(0, 5)), []),
+    safe(prisma.workspace.findUnique({ where: { id: workspaceId }, select: { objective: true } }).then((w) => w?.objective ?? null), null),
   ]);
   const activePlan = plans.find((p) => p.status === 'ACTIVE') ?? plans[0] ?? null;
   const planTracking = activePlan ? await safe(trackPlan(workspaceId, activePlan, { now }), null) : null;
 
   return {
     verdicts, fatiguePredictions, pacing: pacingFromPortfolio(portfolio),
-    testAgenda, openTests, planTracking, blended,
+    testAgenda, openTests, planTracking, blended, objective,
     plans, allocationPlans, executedActions, recentOutcomes, recentMemory, labelsById, now,
   };
 }

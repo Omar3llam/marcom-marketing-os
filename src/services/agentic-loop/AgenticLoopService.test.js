@@ -24,6 +24,7 @@ vi.mock('../../lib/prisma.js', () => ({
     account:             { findMany: vi.fn() },
     campaign:            { findMany: vi.fn() },
     adSet:               { findMany: vi.fn() },
+    workspace:           { findUnique: vi.fn() },
   },
 }));
 vi.mock('../portfolio/PortfolioService.js',       () => ({ getPortfolio: vi.fn() }));
@@ -57,6 +58,7 @@ beforeEach(() => {
     prisma[model].findMany.mockResolvedValue([]);
   }
   prisma.decision.findMany.mockResolvedValue([]);
+  prisma.workspace.findUnique.mockResolvedValue({ objective: null }); // no onboarding objective by default
   getPortfolio.mockResolvedValue(null);
   getBlendedTruth.mockResolvedValue(null);
   getWeeklyAgenda.mockResolvedValue([]);
@@ -99,5 +101,32 @@ describe('buildLoopInputs — verdict query wiring', () => {
     expect(inputs.verdicts).toEqual([]);
     expect(planAgenda(inputs).buyerBand).toEqual([]);
     expect(planAgenda(inputs).summary).toMatch(/quiet/i);
+  });
+});
+
+describe('buildLoopInputs — onboarding objective wiring', () => {
+  it('loads the workspace objective (workspace-scoped) and threads it into the agenda', async () => {
+    prisma.workspace.findUnique.mockResolvedValue({ objective: 'roas' });
+    const inputs = await buildLoopInputs(WS, { now });
+
+    // workspace-scoped fetch
+    expect(prisma.workspace.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: WS }, select: { objective: true } }),
+    );
+    expect(inputs.objective).toBe('roas');
+    expect(planAgenda(inputs).summary).toMatch(/return on ad spend/i);
+  });
+
+  it('falls back gracefully when the objective is null (no crash, unframed summary)', async () => {
+    prisma.workspace.findUnique.mockResolvedValue({ objective: null });
+    const inputs = await buildLoopInputs(WS, { now });
+    expect(inputs.objective).toBeNull();
+    expect(planAgenda(inputs).summary).not.toMatch(/optimizing for/i);
+  });
+
+  it('never crashes when the workspace row is missing entirely', async () => {
+    prisma.workspace.findUnique.mockResolvedValue(null);
+    const inputs = await buildLoopInputs(WS, { now });
+    expect(inputs.objective).toBeNull();
   });
 });

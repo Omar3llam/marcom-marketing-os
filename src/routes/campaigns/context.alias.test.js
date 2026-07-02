@@ -5,7 +5,7 @@
 // these tests pin the additive aliases that let contextGuard / buildSystemPrompt
 // resolve to real data without a rename. See context.js for the why.
 import { describe, it, expect } from 'vitest';
-import { withContextAliases } from './context.js';
+import { withContextAliases, workspaceColumnsFromContext } from './context.js';
 
 describe('withContextAliases', () => {
   it('aliases companyName from name without dropping name', () => {
@@ -45,5 +45,30 @@ describe('withContextAliases', () => {
   it('is null-safe for non-object input', () => {
     expect(withContextAliases(null)).toBeNull();
     expect(withContextAliases(undefined)).toBeUndefined();
+  });
+});
+
+describe('workspaceColumnsFromContext', () => {
+  it('projects spendTier/objective verbatim and normalizes channels to uppercase Channel values', () => {
+    const out = workspaceColumnsFromContext({
+      spendTier: 't2', objective: 'roas', channels: { meta: true, google: true },
+    });
+    expect(out.spendTier).toBe('t2');
+    expect(out.objective).toBe('roas');
+    expect(out.adChannels.sort()).toEqual(['GOOGLE', 'META']);
+  });
+
+  it('drops unselected channels', () => {
+    const out = workspaceColumnsFromContext({ channels: { meta: true, google: false } });
+    expect(out.adChannels).toEqual(['META']);
+  });
+
+  it('falls back to null / empty when a step was skipped', () => {
+    const out = workspaceColumnsFromContext({ name: 'Acme' });
+    expect(out).toEqual({ spendTier: null, objective: null, adChannels: [] });
+  });
+
+  it('is null-safe for non-object input', () => {
+    expect(workspaceColumnsFromContext(null)).toEqual({ spendTier: null, objective: null, adChannels: [] });
   });
 });

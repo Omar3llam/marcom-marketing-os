@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { requireFirebaseAdminReady } from '../utils/firebaseAdmin.js';
 import { logger } from '../utils/logger.js';
 import { prisma } from '../lib/prisma.js';
+import { workspaceColumnsFromContext } from './campaigns/context.js';
 
 const getAuth = () => requireFirebaseAdminReady().auth();
 // NOTE: This project uses Prisma/PostgreSQL — do NOT add admin.firestore() here.
@@ -60,21 +61,28 @@ userRouter.get('/workspace', async (req, res) => {
 
     const workspace = await prisma.workspace.findUnique({
       where: { id: user.workspaceId },
-      select: { id: true, name: true, currency: true, createdAt: true },
+      select: { id: true, name: true, currency: true, createdAt: true, spendTier: true, objective: true, adChannels: true },
     });
 
     if (!workspace) {
       return res.json({ workspace: null, hasWorkspace: false });
     }
 
+    // Onboarding prefs now live on real columns; fall back to the context blob
+    // for accounts onboarded BEFORE the columns were populated (no regression).
+    const ctxPrefs = workspaceColumnsFromContext(user.context);
+
     return res.json({
       workspace: {
-        id:        workspace.id,
-        name:      workspace.name,
-        ownerId:   uid,
-        createdAt: workspace.createdAt,
-        currency:  workspace.currency ?? 'USD',      // the account currency the FE formats money in (Meta sync corrects it)
-        industry:  user.context?.industry ?? null,  // from onboarding; null until set (no regression for older accounts)
+        id:         workspace.id,
+        name:       workspace.name,
+        ownerId:    uid,
+        createdAt:  workspace.createdAt,
+        currency:   workspace.currency ?? 'USD',      // the account currency the FE formats money in (Meta sync corrects it)
+        industry:   user.context?.industry ?? null,   // from onboarding; null until set (no regression for older accounts)
+        spendTier:  workspace.spendTier ?? ctxPrefs.spendTier,
+        objective:  workspace.objective ?? ctxPrefs.objective,
+        adChannels: workspace.adChannels?.length ? workspace.adChannels : ctxPrefs.adChannels,
       },
       hasWorkspace: true,
     });

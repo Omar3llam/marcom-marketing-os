@@ -27,6 +27,27 @@ export function withContextAliases(ctx) {
   };
 }
 
+// Project the onboarding blob onto the real Workspace columns (schema:
+// spendTier/objective/adChannels). These are workspace-scoped so a
+// workspace-scoped service (AgenticLoop, /api/user/workspace) can read them
+// instead of digging into a per-user JSON blob. The wizard stores channels as
+// an { meta:true, google:false } map keyed by lowercase id; the column stores
+// the normalized uppercase Channel values (META/GOOGLE) so they line up with
+// Campaign.channel. Every field tolerates absence (skipped step → null / []).
+// Exported for unit testing.
+export function workspaceColumnsFromContext(ctx) {
+  if (!ctx || typeof ctx !== 'object') return { spendTier: null, objective: null, adChannels: [] };
+  const channelMap = ctx.channels && typeof ctx.channels === 'object' ? ctx.channels : {};
+  const adChannels = Object.keys(channelMap)
+    .filter((k) => channelMap[k])
+    .map((k) => String(k).toUpperCase());
+  return {
+    spendTier:  ctx.spendTier ?? null,
+    objective:  ctx.objective ?? null,
+    adChannels,
+  };
+}
+
 export function mountContextRoutes(router) {
   router.get('/me/context', async (req, res) => {
     const userId = req.userId;
@@ -53,6 +74,7 @@ export function mountContextRoutes(router) {
     const email         = req.user?.email || req.body?.email || `${userId}@unknown.local`;
     const workspaceName = req.body?.workspaceName || 'My Workspace';
     const context       = withContextAliases(ctx);
+    const wsPrefs       = workspaceColumnsFromContext(context);
     // The display currency new accounts START with, derived from the onboarding
     // market (EG→EGP, SA→SAR, …). 'USD' when the market is missing/unknown. The
     // authoritative currency (Meta account / CSV header) overrides this later.
@@ -66,7 +88,7 @@ export function mountContextRoutes(router) {
 
       if (!existing) {
         const created = await prisma.user.create({
-          data: { clerkId: userId, email, context, workspace: { create: { name: workspaceName, currency: marketCurrency } } },
+          data: { clerkId: userId, email, context, workspace: { create: { name: workspaceName, currency: marketCurrency, ...wsPrefs } } },
           select: { id: true, workspaceId: true, context: true },
         });
         logger.info({ firebaseUid: userId, userRowId: created.id, workspaceId: created.workspaceId }, '[campaigns/me/context] created new user + workspace (Firebase)');
@@ -75,7 +97,7 @@ export function mountContextRoutes(router) {
 
       let workspaceId = existing.workspaceId;
       if (!workspaceId) {
-        const ws = await prisma.workspace.create({ data: { name: workspaceName, currency: marketCurrency } });
+        const ws = await prisma.workspace.create({ data: { name: workspaceName, currency: marketCurrency, ...wsPrefs } });
         workspaceId = ws.id;
         await prisma.user.update({ where: { id: existing.id }, data: { workspaceId } });
         logger.warn({ userId, repairedWorkspaceId: workspaceId }, '[campaigns/me/context] repaired orphaned user (no workspace)');
@@ -86,6 +108,13 @@ export function mountContextRoutes(router) {
         data:   { context, clerkId: userId, email },
         select: { id: true, workspaceId: true, context: true },
       });
+
+      // Keep the workspace's onboarding-preference columns in sync with the
+      // latest context (re-onboarding updates them). Separate from the currency
+      // guard below because these always reflect the newest answers.
+      if (updated.workspaceId) {
+        await prisma.workspace.update({ where: { id: updated.workspaceId }, data: wsPrefs });
+      }
 
       // The common path: firebaseAuth auto-provisioned this workspace at first
       // request (default USD) BEFORE onboarding ran. Seed its display currency
