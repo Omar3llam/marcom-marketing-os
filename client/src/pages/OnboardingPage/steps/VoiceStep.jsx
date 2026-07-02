@@ -56,10 +56,10 @@ export function VoiceStep({ form, set }) {
                 onClick={() => set('tone', tone.id)}
                 className={tileBtn(form.tone === tone.id)}
               >
-                <div className="text-sm font-semibold text-white/90">
+                <div className="text-sm font-semibold text-dark-base">
                   {tone.label}
                 </div>
-                <div className="text-xs text-white/50">
+                <div className="text-xs text-dark-soft">
                   {tone.sub}
                 </div>
               </button>
