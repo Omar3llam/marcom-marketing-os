@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useContentGeneration } from '@/hooks/useContentGeneration.js';
-import { useCampaignFeed, metricValue } from '@/hooks/useCampaignFeed.js';
+import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { useOnboardingContext } from '@/hooks/useOnboardingContext.js';
 import { TONES } from '@/pages/OnboardingPage/constants.js';
 import { resolveBrandContext } from './brandContext.js';
@@ -23,7 +23,9 @@ export default function ContentLabView() {
   const navigate = useNavigate();
   const { workspace } = useWorkspace();
   const { context: onboarding } = useOnboardingContext();
-  const { campaigns } = useCampaignFeed();
+  // Live connector campaigns (MetricSnapshot-backed entity graph), NOT the
+  // legacy CampaignState feed — so "Sync Live Meta" campaigns are selectable.
+  const { campaigns, loading: campaignsLoading } = useConnectorCampaigns();
   const {
     generate: generateContent,
     content,
@@ -94,9 +96,9 @@ export default function ContentLabView() {
   const problem = contextCampaign
     ? {
         tag:  contextCampaign.tag || 'DIAGNOSIS',
-        body: contextCampaign.diagnosis || 'No diagnosis recorded for this campaign yet — generation will use brand voice only.',
+        body: contextCampaign.diagnosis || 'No per-campaign diagnosis — generation uses your brand voice plus the account’s live campaign performance.',
       }
-    : { tag: 'NO CONTEXT', body: 'Select a campaign to ground generation in real diagnosis.' };
+    : { tag: 'NO CONTEXT', body: 'Select a campaign to focus this piece on it — live performance is included either way.' };
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
@@ -162,7 +164,13 @@ export default function ContentLabView() {
                     role="listbox"
                     className="absolute left-0 right-0 z-20 mt-1 max-h-64 overflow-y-auto bg-surface-card border border-surface-border rounded-lg shadow-card py-1"
                   >
-                    {campaigns.length === 0 ? (
+                    {campaignsLoading ? (
+                      <li>
+                        <span className="block px-3 py-2.5 font-display text-[13px] text-dark-soft">
+                          Loading campaigns…
+                        </span>
+                      </li>
+                    ) : campaigns.length === 0 ? (
                       <li>
                         <button
                           type="button"
@@ -170,36 +178,37 @@ export default function ContentLabView() {
                           className="w-full text-left px-3 py-2.5 hover:bg-surface-elevated transition-colors"
                         >
                           <span className="font-display text-[13px] text-dark-soft">
-                            No campaigns yet — open Campaigns
+                            Sync your Meta account first to select a campaign
                           </span>
                         </button>
                       </li>
                     ) : (
                       campaigns.map((c) => (
-                        <li key={c.campaign_id}>
+                        <li key={c.entityId}>
                           <button
                             type="button"
                             onClick={() => {
-                              // Capture the campaign's REAL diagnosis + CTR (its
-                              // first alert's root cause + signal row), not a
-                              // hardcoded problem string or invented metric.
-                              const firstAlert = c.alerts?.[0];
+                              // Connector rows carry live metrics but no per-campaign
+                              // diagnosis (the workspace's top verdicts are auto-injected
+                              // into the prompt server-side). CTR is a fraction on the
+                              // snapshot → convert to the percentage the prompt expects;
+                              // null stays null (never a fabricated metric).
                               setContextCampaign({
-                                campaign:  c.campaign_id,
-                                adset:     c.stage,
-                                diagnosis: firstAlert?.analysis?.root_cause || null,
-                                tag:       firstAlert?.analysis?.verdict || c.stage,
-                                ctr:       metricValue(firstAlert, 'CTR'),
+                                campaign:  c.name,
+                                adset:     c.channel,
+                                diagnosis: null,
+                                tag:       null,
+                                ctr:       c.ctr != null ? +(c.ctr * 100).toFixed(2) : null,
                               });
                               setCampaignMenuOpen(false);
                             }}
                             className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-surface-elevated transition-colors"
                           >
                             <span className="font-display text-[13px] text-dark-base truncate">
-                              {c.campaign_id}
+                              {c.name}
                             </span>
                             <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-dark-muted flex-shrink-0">
-                              {c.stage}
+                              {c.channel}
                             </span>
                           </button>
                         </li>

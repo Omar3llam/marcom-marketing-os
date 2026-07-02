@@ -19,14 +19,11 @@ vi.mock('@/hooks/useContentGeneration.js', () => ({
     generate: generateSpy, content: null, loading: false, error: null, progress: null, reset: vi.fn(),
   }),
 }));
-vi.mock('@/hooks/useCampaignFeed.js', async (importActual) => {
-  const actual = await importActual();
-  return { ...actual, useCampaignFeed: vi.fn() };
-});
+vi.mock('@/hooks/useConnectorCampaigns.js', () => ({ useConnectorCampaigns: vi.fn() }));
 
 import ContentLabView from './ContentLabView.jsx';
 import { useOnboardingContext } from '@/hooks/useOnboardingContext.js';
-import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
+import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 
 const ONBOARDING = {
   name: 'Acme', industry: 'ecommerce',
@@ -35,12 +32,10 @@ const ONBOARDING = {
   objective: 'roas', customObjective: '',
 };
 
+// Connector shape (entity graph + MetricSnapshot): CTR is a FRACTION (0.0185).
 const CAMPAIGNS = [{
-  campaign_id: 'camp-1', stage: 'TESTING',
-  alerts: [{
-    analysis: { root_cause: 'CTR decay from fatigue', verdict: 'OPTIMIZE' },
-    metrics: [{ metric: 'CTR', raw: 1.85, value: '1.85%' }],
-  }],
+  entityId: 'c1', name: 'Eid Sale', channel: 'META',
+  ctr: 0.0185, frequency: 1.4, roas: 2.1, spendMinor: 50000,
 }];
 
 const renderView = () => render(<MemoryRouter><ContentLabView /></MemoryRouter>);
@@ -48,7 +43,7 @@ const renderView = () => render(<MemoryRouter><ContentLabView /></MemoryRouter>)
 beforeEach(() => {
   generateSpy.mockReset();
   useOnboardingContext.mockReturnValue({ context: ONBOARDING, loading: false, error: null });
-  useCampaignFeed.mockReturnValue({ campaigns: CAMPAIGNS, loading: false, error: null });
+  useConnectorCampaigns.mockReturnValue({ campaigns: CAMPAIGNS, loading: false, error: null, refetch: vi.fn() });
 });
 
 describe('ContentLabView — tone is grounded in onboarding and overridable', () => {
@@ -68,12 +63,12 @@ describe('ContentLabView — tone is grounded in onboarding and overridable', ()
 });
 
 describe('ContentLabView — generate sends real grounded data', () => {
-  it('hands generateContent the resolved brand fields + the campaign’s real CTR', () => {
+  it('hands generateContent the resolved brand fields + the connector campaign’s real CTR', () => {
     renderView();
 
-    // Pick the real campaign.
+    // Pick the real connector campaign (labelled by name).
     fireEvent.click(screen.getByRole('button', { name: /select a campaign/i }));
-    fireEvent.click(screen.getByRole('button', { name: /camp-1/i }));
+    fireEvent.click(screen.getByRole('button', { name: /eid sale/i }));
 
     // Generate.
     fireEvent.click(screen.getByRole('button', { name: /generate content/i }));
@@ -86,8 +81,16 @@ describe('ContentLabView — generate sends real grounded data', () => {
     expect(args.objective).toBe('Maximize ROAS, minimize bleed');
     expect(args.targetAudience).toContain('Fashion');
     expect(args.tone).toBe('Bold & rebellious');
-    expect(args.campaignContext.ctr).toBe(1.85);
-    expect(args.campaignContext.problem).toBe('CTR decay from fatigue');
+    expect(args.campaignContext.name).toBe('Eid Sale');
+    expect(args.campaignContext.ctr).toBe(1.85);        // 0.0185 fraction → 1.85%
+    expect(args.campaignContext.problem).toBeUndefined(); // connector rows carry no per-campaign diagnosis
+  });
+
+  it('shows the honest sync prompt when no connector campaign has synced', () => {
+    useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: false, error: null, refetch: vi.fn() });
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /select a campaign/i }));
+    expect(screen.getByText(/sync your meta account first/i)).toBeInTheDocument();
   });
 
   it('sends no fabricated brand fields when the user has not onboarded', () => {
