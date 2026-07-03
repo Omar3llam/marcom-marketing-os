@@ -3,10 +3,12 @@
 // ------------------------------------------------------------
 // The CSV-analysis table used to shout "No campaigns analyzed yet — upload a CSV"
 // even when live connector verdicts were rendering below it (two contradictory
-// states at once). The empty state is now connector-aware: it never claims the
-// page is empty when connector data exists, and points to connecting Meta when it
-// is genuinely empty. The two substrates stay disjoint — connector rows are NOT
-// pulled into this table; only the messaging is made honest.
+// states at once). The empty state is now connector-aware. When connector data
+// exists it renders NOTHING — a tall "verdicts are shown below" placeholder was
+// pure redundancy (the live Connected-channels table sits right underneath) and
+// only pushed the real table off-screen. When genuinely empty it points to
+// connecting Meta. Loading / channel-filter empties still surface. The two
+// substrates stay disjoint — connector rows are NOT pulled into this table.
 // ============================================================
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -18,11 +20,22 @@ const base = {
 };
 
 describe('AnalysisSummary — empty state is connector-aware (no contradiction)', () => {
-  it('connector data exists, no CSV → points to the live section, NOT "No campaigns analyzed yet"', () => {
-    render(<AnalysisSummary {...base} hasConnectorData />);
-    expect(screen.getByText(/Live verdicts are shown below/i)).toBeInTheDocument();
-    expect(screen.queryByText(/No campaigns analyzed yet/i)).not.toBeInTheDocument();
+  it('connector data exists, no CSV → renders NOTHING (the live table below is self-explanatory)', () => {
+    const { container } = render(<AnalysisSummary {...base} hasConnectorData />);
+    expect(container).toBeEmptyDOMElement();
+    // no redundant placeholder, and it never falsely claims the page is empty
+    expect(screen.queryByText(/Live verdicts are shown below/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/No campaign data yet/i)).not.toBeInTheDocument();
+  });
+
+  it('connector data + loading → still shows the loading state (not swallowed)', () => {
+    render(<AnalysisSummary {...base} hasConnectorData loading />);
+    expect(screen.getByText(/Loading/i)).toBeInTheDocument();
+  });
+
+  it('connector data + active channel filter with no rows → still shows the filter message', () => {
+    render(<AnalysisSummary {...base} hasConnectorData emptyChannel="Google" />);
+    expect(screen.getByText(/No Google campaigns/i)).toBeInTheDocument();
   });
 
   it('genuinely empty (nothing connected) → connect-Meta message, no CSV', () => {
