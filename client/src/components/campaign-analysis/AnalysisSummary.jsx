@@ -28,7 +28,7 @@ function Th({ children, k, current, dir, onSort, className }) {
 // look identical (governing-law honest-empty rule).
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
 
-function EmptyTable({ loading, emptyChannel, hasConnectorData }) {
+function EmptyTable({ loading, emptyChannel }) {
   if (loading) return <div className="p-12 text-center text-lumi-subtle">Loading…</div>;
   if (emptyChannel) {
     return (
@@ -39,21 +39,9 @@ function EmptyTable({ loading, emptyChannel, hasConnectorData }) {
       </div>
     );
   }
-  // This table is the legacy campaign-analysis substrate. When live connector
-  // data exists it renders below (Connected channels) + in the budget chart — so
-  // DON'T claim the page is empty here; point to the live section instead. The CSV
-  // upload path was removed, so there is no upload affordance — connect Meta to
-  // populate campaigns.
-  if (hasConnectorData) {
-    return (
-      <div className="p-12 text-center">
-        <BarChart3 className="w-12 h-12 mx-auto text-lumi-subtle" strokeWidth={1.5} />
-        <p className="mt-3 font-display text-lumi-text">Live verdicts are shown below in Connected channels.</p>
-        <p className="mt-1 text-lumi-muted text-sm">Per-campaign analysis appears here as your channels sync.</p>
-      </div>
-    );
-  }
-  // Genuinely empty — nothing connected yet.
+  // Genuinely empty — nothing connected yet. (The connector-only case is handled
+  // upstream in AnalysisSummary, which renders nothing so the live Connected-
+  // channels table below isn't pushed off-screen by a redundant placeholder.)
   return (
     <div className="p-12 text-center">
       <BarChart3 className="w-12 h-12 mx-auto text-lumi-subtle" strokeWidth={1.5} />
@@ -64,10 +52,26 @@ function EmptyTable({ loading, emptyChannel, hasConnectorData }) {
 }
 
 export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expanded, setExpanded, currency = 'USD', emptyChannel = null, hasConnectorData = false }) {
+  const isEmpty = rows.length === 0;
+
+  // Connector-only account: this legacy analysis table has no rows of its own and
+  // the live Connected-channels table directly below already shows every verdict.
+  // Render nothing rather than a tall, redundant "verdicts are shown below" box
+  // that would push the real table off-screen. Loading and channel-filter empties
+  // still surface — they're transient/actionable, not redundant.
+  if (isEmpty && hasConnectorData && !loading && !emptyChannel) return null;
+
   return (
-    <section className="bg-lumi-surface border border-lumi-border rounded-2xl overflow-hidden flex-1 min-h-0 flex flex-col">
-      {rows.length === 0 ? (
-        <EmptyTable loading={loading} emptyChannel={emptyChannel} hasConnectorData={hasConnectorData} />
+    <section
+      className={cn(
+        'bg-lumi-surface border border-lumi-border rounded-2xl overflow-hidden flex flex-col',
+        // Only stretch to fill height (and scroll internally) when there's a table
+        // to show; an empty state shouldn't balloon to full height.
+        !isEmpty && 'flex-1 min-h-0',
+      )}
+    >
+      {isEmpty ? (
+        <EmptyTable loading={loading} emptyChannel={emptyChannel} />
       ) : (
         <div className="overflow-auto">
           <table className="w-full">
