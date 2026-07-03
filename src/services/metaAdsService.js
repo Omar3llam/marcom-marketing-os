@@ -293,7 +293,25 @@ export async function fetchAllCampaigns(accessToken, adAccountId) {
  * @returns {Array} insight-shaped rows for metaNormalize
  */
 export function mergeMetaCampaigns(insights = [], campaigns = []) {
-  const insightRows = (insights || []).map((row) => row?._data || row);
+  // `objective` lives on the /campaigns roster edge (fetchAllCampaigns), NOT on
+  // /insights. Fold it onto BOTH delivered insight rows and roster-only rows so
+  // the verdict engine can tell a true awareness campaign from a conversion
+  // campaign with no measured revenue. Only stamped when KNOWN — an absent
+  // objective adds no key (keeps rows byte-identical when Meta omits it).
+  const objectiveById = new Map();
+  for (const c of campaigns || []) {
+    const cd = c?._data || c;
+    if (cd?.id != null && cd.objective != null) objectiveById.set(String(cd.id), cd.objective);
+  }
+  const withObjective = (row, id) => {
+    const objective = row.objective ?? objectiveById.get(String(id));
+    return objective != null ? { ...row, objective } : row;
+  };
+
+  const insightRows = (insights || []).map((row) => {
+    const r = row?._data || row;
+    return withObjective(r, r?.campaign_id);
+  });
   const withInsights = new Set();
   for (const r of insightRows) {
     if (r?.campaign_id != null) withInsights.add(String(r.campaign_id));
@@ -304,14 +322,15 @@ export function mergeMetaCampaigns(insights = [], campaigns = []) {
     const cd = c?._data || c;
     const id = cd?.id != null ? String(cd.id) : null;
     if (!id || withInsights.has(id)) continue; // unkeyable, or already has real data
-    rosterOnly.push({
+    const rrow = {
       campaign_id:   id,
       campaign_name: cd.name || 'Unnamed Campaign',
       spend:         '0',
       impressions:   '0',
       clicks:        '0',
       _rosterOnly:   true, // no delivery data found — "unknown", never a verified 0
-    });
+    };
+    rosterOnly.push(cd.objective != null ? { ...rrow, objective: cd.objective } : rrow);
   }
 
   return [...insightRows, ...rosterOnly];

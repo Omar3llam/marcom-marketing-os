@@ -87,6 +87,10 @@ export function toEntityOps(workspaceId, channel, normalized = []) {
     const id = detId(workspaceId, channel, n.entityLevel, n.externalId);
     const spec = LEVEL_MODEL[n.entityLevel];
     const data = { workspaceId, channel, name: n.name || n.externalId, externalId: String(n.externalId), status: 'ACTIVE' };
+    // objective is a CAMPAIGN-only attribute (the column lives on Campaign, not
+    // the other entity models) — only stamp it there, or the Account/AdSet upsert
+    // would throw on an unknown arg.
+    if (n.entityLevel === ENTITY_LEVEL.CAMPAIGN) data.objective = n.objective ?? null;
     if (spec.fk) {
       const parentLevel = PARENT_LEVEL[n.entityLevel];
       data[spec.fk] = detId(workspaceId, channel, parentLevel, n.parentExternalId);
@@ -175,7 +179,10 @@ export async function landSnapshots(workspaceId, channel, normalized = []) {
       prisma[op.model].upsert({
         where: { id: op.id },
         create: { id: op.id, ...op.data },
-        update: { name: op.data.name, status: op.data.status },
+        // Only overwrite objective when the new value is KNOWN (non-null) — a
+        // later roster/short-window sync that lacks it must never clobber a
+        // previously-resolved objective with null. Absent for non-campaign ops.
+        update: { name: op.data.name, status: op.data.status, ...(op.data.objective != null ? { objective: op.data.objective } : {}) },
       }),
     ),
   );

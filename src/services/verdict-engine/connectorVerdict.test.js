@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { buildConnectorVerdictTree, hasMeasuredRevenue, hasEngagement } from './connectorVerdictService.js';
+import {
+  buildConnectorVerdictTree, hasMeasuredRevenue, hasEngagement,
+  isAwarenessObjective, revenueExpectedFor,
+} from './connectorVerdictService.js';
 import { rollupVerdicts } from './verdictEngine.js';
 
 const WS = '7517d1b9-b967-44f3-a77f-60f5c577f867';
@@ -116,5 +119,63 @@ describe('connector tree → rollupVerdicts (end to end)', () => {
     const { tree, gatedOut } = buildConnectorVerdictTree(WS, [row({ revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
     expect(tree).toBeNull();            // nothing reaches the engine
     expect(gatedOut[0].name).toBe('Eid Sale');
+  });
+});
+
+// The objective is what lets us stop calling a leads campaign "awareness".
+describe('objective → awareness vs conversion classification', () => {
+  it('isAwarenessObjective: true only for genuine awareness/reach objectives', () => {
+    expect(isAwarenessObjective('OUTCOME_AWARENESS')).toBe(true);
+    expect(isAwarenessObjective('OUTCOME_TRAFFIC')).toBe(true);
+    expect(isAwarenessObjective('REACH')).toBe(true);          // legacy
+    expect(isAwarenessObjective('OUTCOME_LEADS')).toBe(false);
+    expect(isAwarenessObjective('OUTCOME_SALES')).toBe(false);
+    expect(isAwarenessObjective(null)).toBe(false);
+  });
+
+  it('revenueExpectedFor: conversion objectives expect revenue; awareness + unknown do not', () => {
+    expect(revenueExpectedFor('OUTCOME_LEADS')).toBe(true);
+    expect(revenueExpectedFor('OUTCOME_SALES')).toBe(true);
+    expect(revenueExpectedFor('OUTCOME_AWARENESS')).toBe(false);
+    expect(revenueExpectedFor(null)).toBe(false); // conservative: never fabricate a tracking-gap claim on an unknown objective
+  });
+
+  it('threads objective + revenueExpected onto the eligible leaf', () => {
+    const { tree } = buildConnectorVerdictTree(WS, [row({ revenueMinor: 0, objective: 'OUTCOME_LEADS' })]);
+    expect(tree.children[0].objective).toBe('OUTCOME_LEADS');
+    expect(tree.children[0].revenueExpected).toBe(true);
+  });
+});
+
+// End-to-end: the SAME no-revenue engaged campaign gets a different, honest story
+// depending on its objective — the exact bug ("everything is awareness") fixed.
+describe('objective-aware rationale end to end (no fabricated verdicts)', () => {
+  const engagedNoRevenue = (over) => row({ revenueMinor: 0, frequency: 4.2, clicks: 8, impressions: 1000, ...over }); // ctr 0.8%
+
+  it('OUTCOME_LEADS + no revenue → conversion-gap rationale, NOT "awareness"', () => {
+    const { tree } = buildConnectorVerdictTree(WS, [engagedNoRevenue({ objective: 'OUTCOME_LEADS' })]);
+    const annotated = rollupVerdicts(tree);
+    const c = annotated.children[0];
+    expect(c.verdict).toBe('REFRESH');           // verdict tier unchanged
+    expect(c.rationale).toMatch(/no conversion value measured/i);
+    expect(c.rationale).not.toMatch(/awareness campaign/i);
+    expect(c.signalInput.roas).toBeNull();       // still never a fabricated revenue verdict
+  });
+
+  it('OUTCOME_AWARENESS + no revenue → the awareness rationale (correct)', () => {
+    const { tree } = buildConnectorVerdictTree(WS, [engagedNoRevenue({ objective: 'OUTCOME_AWARENESS' })]);
+    const c = rollupVerdicts(tree).children[0];
+    expect(c.rationale).toMatch(/awareness campaign \(no revenue measured\)/i);
+    expect(c.rationale).not.toMatch(/conversion value/i);
+  });
+
+  it('null objective + no revenue → awareness wording (backward-compatible default)', () => {
+    const { tree } = buildConnectorVerdictTree(WS, [engagedNoRevenue()]); // no objective
+    expect(rollupVerdicts(tree).children[0].rationale).toMatch(/awareness campaign/i);
+  });
+
+  it('OUTCOME_SALES WITH measured revenue → a real revenue verdict, objective irrelevant', () => {
+    const { tree } = buildConnectorVerdictTree(WS, [row({ objective: 'OUTCOME_SALES' })]); // has revenue (roas 4)
+    expect(rollupVerdicts(tree).children[0].verdict).toBe('SCALE');
   });
 });

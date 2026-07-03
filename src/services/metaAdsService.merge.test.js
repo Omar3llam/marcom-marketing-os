@@ -97,10 +97,45 @@ describe('mergeMetaCampaigns — every campaign survives, zero-spend included', 
     expect(merged[0].campaign_id).toBe('c1');
   });
 
-  it('CAMPAIGN_LIST_FIELDS requests the keys metaNormalize maps + the real status', () => {
+  it('CAMPAIGN_LIST_FIELDS requests the keys metaNormalize maps + the real status + objective', () => {
     expect(CAMPAIGN_LIST_FIELDS).toContain('id');
     expect(CAMPAIGN_LIST_FIELDS).toContain('name');
     expect(CAMPAIGN_LIST_FIELDS).toContain('effective_status');
+    expect(CAMPAIGN_LIST_FIELDS).toContain('objective'); // the field that stops leads campaigns reading as awareness
+  });
+});
+
+describe('mergeMetaCampaigns — objective folds from the roster onto every row', () => {
+  it('stamps the roster objective onto a DELIVERED insight row (insights carry no objective)', () => {
+    const merged = mergeMetaCampaigns(
+      [{ campaign_id: 'c1', campaign_name: 'Leads', spend: '100' }],       // /insights: no objective
+      [{ id: 'c1', name: 'Leads', objective: 'OUTCOME_LEADS' }],           // /campaigns: has objective
+    );
+    expect(merged.find((r) => r.campaign_id === 'c1').objective).toBe('OUTCOME_LEADS');
+  });
+
+  it('stamps objective onto a roster-only (no-delivery) row', () => {
+    const merged = mergeMetaCampaigns([], [{ id: 'c2', name: 'Reach', objective: 'OUTCOME_AWARENESS' }]);
+    expect(merged[0]).toMatchObject({ campaign_id: 'c2', objective: 'OUTCOME_AWARENESS', _rosterOnly: true });
+  });
+
+  it('adds NO objective key when Meta reports none (rows stay byte-identical)', () => {
+    // exact-equality guard: a missing objective must not sneak an `objective: null` in
+    expect(mergeMetaCampaigns([{ campaign_id: 'c1', spend: '5' }], [{ id: 'c1' }]))
+      .toEqual([{ campaign_id: 'c1', spend: '5' }]);
+  });
+
+  it('carries objective all the way to the Campaign entity op (via normalize → toEntityOps)', () => {
+    const merged = mergeMetaCampaigns(
+      [{ campaign_id: 'c1', campaign_name: 'Leads', spend: '100', impressions: '1000', clicks: '50', actions: [], action_values: [] }],
+      [{ id: 'c1', name: 'Leads', objective: 'OUTCOME_LEADS' }],
+    );
+    const normalized = metaNormalize({ accountExternalId: 'act_1', currency: 'USD', date: DATE, rows: merged });
+    const campaignOp = toEntityOps('ws1', 'META', normalized).find((op) => op.level === 'CAMPAIGN');
+    expect(campaignOp.data.objective).toBe('OUTCOME_LEADS');
+    // objective is a campaign-only column — never stamped on the account op
+    const accountOp = toEntityOps('ws1', 'META', normalized).find((op) => op.level === 'ACCOUNT');
+    expect(accountOp.data.objective).toBeUndefined();
   });
 });
 
