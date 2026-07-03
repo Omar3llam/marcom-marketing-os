@@ -50,6 +50,7 @@ export function toCampaignRow(campaign, snap) {
     entityId:   campaign.id,
     channel:    campaign.channel,
     name:       campaign.name,
+    objective:  campaign.objective ?? null, // platform objective (awareness vs conversion); null when unknown
     adSetCount: campaign.adSetCount ?? 0,
     ...metricsOf(snap),
   };

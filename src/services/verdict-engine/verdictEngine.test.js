@@ -95,6 +95,30 @@ describe('evaluateVerdict — awareness track (revenueMeasured: false, roas null
   });
 });
 
+describe('evaluateVerdict — no-revenue framing splits awareness vs a conversion tracking gap', () => {
+  const noRev = (over) => ({ ctr: 0.8, cpc: 0, cpm: 5, frequency: 4.2, spend: 500, conversions: 0, roas: null, revenueMeasured: false, ...over });
+
+  it('revenueExpected=false keeps the exact awareness wording (backward-compatible)', () => {
+    const r = evaluateVerdict({ level: 'CAMPAIGN', metrics: noRev(), revenueExpected: false });
+    expect(r.verdict).toBe(VERDICT.REFRESH);
+    expect(r.rationale).toMatch(/awareness campaign \(no revenue measured\)/i);
+    expect(r.rationale).not.toMatch(/conversion value/i);
+  });
+
+  it('revenueExpected=true reframes the SAME verdict as a conversion tracking gap (never "awareness")', () => {
+    const r = evaluateVerdict({ level: 'CAMPAIGN', metrics: noRev(), revenueExpected: true });
+    expect(r.verdict).toBe(VERDICT.REFRESH); // verdict tier unchanged — only the framing differs
+    expect(r.rationale).toMatch(/no conversion value measured/i);
+    expect(r.rationale).toMatch(/verify conversion tracking/i);
+    expect(r.rationale).not.toMatch(/awareness campaign/i);
+  });
+
+  it('defaults to awareness wording when revenueExpected is omitted', () => {
+    const r = evaluateVerdict({ level: 'CAMPAIGN', metrics: noRev() });
+    expect(r.rationale).toMatch(/awareness campaign/i);
+  });
+});
+
 describe('rollupVerdicts — multi-level consistency', () => {
   // A campaign with TWO ad sets:
   //  - winner: huge revenue, healthy → SCALE

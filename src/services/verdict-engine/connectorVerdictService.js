@@ -29,6 +29,32 @@ import { getConnectorCampaigns } from '../entity-graph/index.js';
 import { rollupVerdicts }        from './verdictEngine.js';
 import { logger }                from '../../utils/logger.js';
 
+// Meta objectives that are GENUINELY awareness/reach — no purchase revenue is
+// expected, so "no revenue measured" is honest, not a tracking gap. Everything
+// else (OUTCOME_LEADS / OUTCOME_SALES / OUTCOME_APP_PROMOTION / legacy CONVERSIONS)
+// is a conversion objective: no measured revenue there is a MEASUREMENT GAP.
+export const AWARENESS_OBJECTIVES = new Set([
+  'OUTCOME_AWARENESS', 'OUTCOME_ENGAGEMENT', 'OUTCOME_TRAFFIC',
+  // legacy objective names Meta still returns on older campaigns:
+  'BRAND_AWARENESS', 'REACH', 'VIDEO_VIEWS', 'POST_ENGAGEMENT', 'PAGE_LIKES', 'LINK_CLICKS', 'EVENT_RESPONSES',
+]);
+
+/** PURE: is this objective a genuine awareness/reach objective (no revenue expected)? */
+export function isAwarenessObjective(objective) {
+  return objective != null && AWARENESS_OBJECTIVES.has(objective);
+}
+
+/**
+ * PURE: should revenue/conversion value be EXPECTED for this objective? A known
+ * conversion objective → true (no revenue = a tracking gap). A known awareness
+ * objective → false. Unknown/null → false: we never fabricate a "verify your
+ * tracking" claim on an objective we don't actually know — and a real conversion
+ * campaign carries a known OUTCOME_*, so it still gets the corrected message.
+ */
+export function revenueExpectedFor(objective) {
+  return objective != null && !AWARENESS_OBJECTIVES.has(objective);
+}
+
 /** PURE: does this connector row carry a positive measured revenue signal? */
 export function hasMeasuredRevenue(row) {
   const rev = row?.revenueMinor;
@@ -80,6 +106,11 @@ export function buildConnectorVerdictTree(workspaceId, campaigns = []) {
         level:   'CAMPAIGN',
         name:    c.name,
         currency: c.currency || 'USD',
+        // Carry the objective + the channel-agnostic revenueExpected flag so the
+        // engine's no-revenue branch can name the real story: true awareness vs a
+        // conversion campaign with no measured revenue (a tracking gap).
+        objective:       c.objective ?? null,
+        revenueExpected: revenueExpectedFor(c.objective),
         metrics: toLeafMetrics(c),
       });
     } else {

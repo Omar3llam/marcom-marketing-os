@@ -112,9 +112,13 @@ export function toSignalInput(agg, currency = 'USD') {
  * @param {object} args.metrics — signal-input shape (incl. roas)
  * @param {object} [args.diagnosis] — diagnoseSignals() result; computed if absent
  * @param {Array}  [args.guardrailHits] — guardrail verdicts already raised for this entity
+ * @param {boolean} [args.revenueExpected] — channel-agnostic flag (the connector
+ *   derives it from the campaign objective): when a campaign with no measured
+ *   revenue was SUPPOSED to convert, its no-revenue verdict is framed as a
+ *   tracking gap, not awareness. Defaults false (legacy/awareness wording).
  * @returns {{ verdict, confidence, rationale, signalType, recommendationTypes }}
  */
-export function evaluateVerdict({ level, metrics, diagnosis, guardrailHits = [] }) {
+export function evaluateVerdict({ level, metrics, diagnosis, guardrailHits = [], revenueExpected = false }) {
   if (!metrics || typeof metrics !== 'object') {
     throw new Error('evaluateVerdict: metrics is required');
   }
@@ -128,23 +132,29 @@ export function evaluateVerdict({ level, metrics, diagnosis, guardrailHits = [] 
   let rationale;
 
   if (!revenueMeasured) {
-    // ── AWARENESS TRACK ────────────────────────────────────────────────────
+    // ── NO-REVENUE TRACK ───────────────────────────────────────────────────
     // Revenue was never measured (roas null). Judge on ENGAGEMENT only and NEVER
     // emit a revenue verdict (KILL/SCALE) — a roas threshold here would fabricate
-    // a verdict from data that doesn't exist. Every rationale names its basis (the
-    // honesty signal the governing law requires); roas stays null downstream.
+    // a verdict from data that doesn't exist. The verdict TIERS below are
+    // unchanged; only the framing differs: a genuine awareness/reach campaign has
+    // no revenue by design, but a CONVERSION campaign (revenueExpected) with no
+    // measured revenue is a TRACKING GAP — name it honestly instead of calling it
+    // awareness. Every rationale still names its basis; roas stays null downstream.
+    const noun = revenueExpected
+      ? 'Conversion campaign — no conversion value measured (verify conversion tracking)'
+      : 'Awareness campaign (no revenue measured)';
     if (frequency >= V.FATIGUE_FREQ && ctr < V.AWARENESS_FATIGUE_CTR) {
       verdict = VERDICT.REFRESH; confidence = 0.7;
-      rationale = `Awareness campaign (no revenue measured): frequency ${frequency.toFixed(1)} past the ${V.FATIGUE_FREQ} ceiling with CTR ${ctr.toFixed(2)}% below ${V.AWARENESS_FATIGUE_CTR}% — refresh the creative. Based on engagement only.`;
+      rationale = `${noun}: frequency ${frequency.toFixed(1)} past the ${V.FATIGUE_FREQ} ceiling with CTR ${ctr.toFixed(2)}% below ${V.AWARENESS_FATIGUE_CTR}% — refresh the creative. Based on engagement only.`;
     } else if (frequency >= V.AWARENESS_SATURATION_FREQ) {
       verdict = VERDICT.WATCH; confidence = 0.6;
-      rationale = `Awareness campaign (no revenue measured): audience frequency ${frequency.toFixed(1)} rising toward saturation — monitor. Based on engagement only.`;
+      rationale = `${noun}: audience frequency ${frequency.toFixed(1)} rising toward saturation — monitor. Based on engagement only.`;
     } else if (ctr < V.AWARENESS_WEAK_CTR) {
       verdict = VERDICT.HOLD; confidence = 0.5;
-      rationale = `Awareness campaign (no revenue measured): CTR ${ctr.toFixed(2)}% below the ${V.AWARENESS_WEAK_CTR}% benchmark — hold and monitor. Based on engagement only.`;
+      rationale = `${noun}: CTR ${ctr.toFixed(2)}% below the ${V.AWARENESS_WEAK_CTR}% benchmark — hold and monitor. Based on engagement only.`;
     } else {
       verdict = VERDICT.HOLD; confidence = 0.5;
-      rationale = 'Awareness campaign (no revenue measured): engagement healthy — hold. Based on engagement only.';
+      rationale = `${noun}: engagement healthy — hold. Based on engagement only.`;
     }
   } else if (roas < V.BREAKEVEN_ROAS && frequency >= V.FATIGUE_FREQ) {
     // Critical decline: losing money AND saturated → KILL (overrides signal).
@@ -228,7 +238,9 @@ export function rollupVerdicts(node, opts = {}) {
   const agg = aggregateMetrics(node, children);
   const signalInput = toSignalInput(agg, currency);
   const guardrailHits = hitsByEntity?.get(node.id) ?? [];
-  const result = evaluateVerdict({ level: node.level, metrics: signalInput, guardrailHits });
+  // revenueExpected rides on the leaf (the connector derives it from the campaign
+  // objective); internal/rollup nodes leave it undefined → default false wording.
+  const result = evaluateVerdict({ level: node.level, metrics: signalInput, guardrailHits, revenueExpected: node.revenueExpected });
 
   logger.debug({ id: node.id, level: node.level, verdict: result.verdict }, '[VerdictEngine] node verdict');
 

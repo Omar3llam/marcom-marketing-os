@@ -36,6 +36,12 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
       channel: CHANNEL.META,
       source: DATA_SOURCE.META,
       name: r.campaign_name || 'Unnamed Campaign',
+      // The Meta campaign objective (OUTCOME_LEADS / OUTCOME_SALES /
+      // OUTCOME_AWARENESS / …) — carried through so the sink can store it on the
+      // Campaign entity and the verdict engine can distinguish a true awareness
+      // campaign from a conversion campaign with no measured revenue. null when
+      // Meta didn't report it (only /campaigns carries it, not /insights).
+      objective: r.objective ?? null,
       date: d,
       currency,
       spendMinor: toMinor(num(r.spend), currency),

@@ -1033,6 +1033,11 @@ model Campaign {
   status      EntityStatus @default(ACTIVE)
   name        String
   externalId  String?
+  // Platform campaign objective (Meta OUTCOME_LEADS / OUTCOME_SALES /
+  // OUTCOME_AWARENESS / …). Lets the verdict engine distinguish a true awareness
+  // campaign from a conversion campaign with no measured revenue. Nullable:
+  // pre-fix rows + non-Meta channels have none.
+  objective   String?
   createdAt   DateTime     @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

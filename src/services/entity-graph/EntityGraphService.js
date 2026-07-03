@@ -54,7 +54,7 @@ export async function getConnectorCampaigns(workspaceId) {
   if (!workspaceId) return [];
   const campaigns = await prisma.campaign.findMany({
     where:   { workspaceId },
-    select:  { id: true, name: true, channel: true, _count: { select: { adSets: true } } },
+    select:  { id: true, name: true, channel: true, objective: true, _count: { select: { adSets: true } } },
     orderBy: { createdAt: 'desc' },
     take:    200,
   }).catch((err) => {
@@ -65,7 +65,7 @@ export async function getConnectorCampaigns(workspaceId) {
 
   const metrics = await latestSnapshots(workspaceId, ENTITY_LEVEL.CAMPAIGN, campaigns.map((c) => c.id));
   return campaigns.map((c) =>
-    toCampaignRow({ id: c.id, name: c.name, channel: c.channel, adSetCount: c._count.adSets }, metrics.get(c.id)),
+    toCampaignRow({ id: c.id, name: c.name, channel: c.channel, objective: c.objective, adSetCount: c._count.adSets }, metrics.get(c.id)),
   );
 }
 
