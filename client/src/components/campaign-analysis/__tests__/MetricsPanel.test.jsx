@@ -16,7 +16,7 @@ describe('MetricsPanel — source-resolved, null-honest KPI strip', () => {
     render(
       <MetricsPanel
         spend={1234} spendLabel="Live · connector" blendedCpa={null}
-        wasted={null} wastedPct={null} healthScore={null} healthLabel="Upload data to see health"
+        wasted={null} wastedPct={null} healthScore={null} healthLabel="Sync Meta to see health"
         healthColor="text-lumi-muted" currency="USD"
       />,
     );
@@ -29,19 +29,19 @@ describe('MetricsPanel — source-resolved, null-honest KPI strip', () => {
     render(
       <MetricsPanel
         spend={500} spendLabel="Live · connector" blendedCpa={null}
-        wasted={null} wastedPct={null} healthScore={null} healthLabel="Upload data to see health"
+        wasted={null} wastedPct={null} healthScore={null} healthLabel="Sync Meta to see health"
         healthColor="text-lumi-muted" currency="USD"
       />,
     );
     expect(screen.getByText('Needs analysis')).toBeInTheDocument();
-    expect(screen.getByText('No CPA in dataset')).toBeInTheDocument(); // blendedCpa null → honest
+    expect(screen.getByText('No conversions tracked yet')).toBeInTheDocument(); // blendedCpa null → honest
   });
 
   it('no source at all: Total Spend shows "—" + "No data yet" (no fabricated 0)', () => {
     render(
       <MetricsPanel
         spend={null} spendLabel="No data yet" blendedCpa={null}
-        wasted={null} wastedPct={null} healthScore={null} healthLabel="Upload data to see health"
+        wasted={null} wastedPct={null} healthScore={null} healthLabel="Sync Meta to see health"
         healthColor="text-lumi-muted" currency="USD"
       />,
     );

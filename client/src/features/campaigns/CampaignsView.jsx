@@ -191,7 +191,7 @@ export default function CampaignsView() {
       ? null
       : Math.round((scores.reduce((sum, s) => sum + s, 0) / scores.length) * 100);
   }, [campaigns]);
-  const healthLabel = healthScore == null ? 'Upload data to see health' : healthScore < 40 ? 'NEEDS ATTENTION' : healthScore < 70 ? 'IMPROVING' : 'HEALTHY';
+  const healthLabel = healthScore == null ? 'Sync Meta to see health' : healthScore < 40 ? 'NEEDS ATTENTION' : healthScore < 70 ? 'IMPROVING' : 'HEALTHY';
   const healthColor = healthScore == null ? 'text-lumi-muted' : healthScore < 40 ? 'text-trend-danger' : healthScore < 70 ? 'text-trend-warning' : 'text-trend-positive';
 
   // Spend-weighted KILL/HOLD/SCALE buckets from the connector VERDICT engine —
@@ -286,7 +286,13 @@ export default function CampaignsView() {
         <div>
           <h1 className="decision-title text-lumi-text">Campaign Analysis</h1>
           <p className="font-mono text-xs text-lumi-subtle mt-1">
-            {allRows.length === 0 ? 'No data uploaded yet' : `${allRows.length} campaign${allRows.length === 1 ? '' : 's'} · live`}
+            {(() => {
+              // Count from whichever substrate has data — a connector-synced
+              // account has 0 CSV rows but N live campaigns, so keying this off
+              // the CSV feed alone falsely read "no data" with 34 campaigns synced.
+              const n = connectorCampaigns.length || allRows.length;
+              return n === 0 ? 'No campaigns synced yet' : `${n} campaign${n === 1 ? '' : 's'} · live`;
+            })()}
           </p>
         </div>
         <div className="flex items-center gap-2">
