@@ -118,6 +118,12 @@ services:
       - key: CREDENTIAL_ENCRYPTION_KEY
         sync: false
 
+      # Admin panel allowlist — comma-separated operator emails granted
+      # UserRole.ADMIN (gates /api/admin/*, requireAdmin). Web service only;
+      # the worker serves no admin routes. sync:false → set in the dashboard.
+      - key: ADMIN_EMAILS
+        sync: false
+
   # ── Background worker: BullMQ Action + Observer ───────────
   - type: worker
     name: lumi-worker
