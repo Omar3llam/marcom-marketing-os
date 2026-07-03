@@ -34,7 +34,7 @@ export function MetricsPanel({
       <KpiCard
         label="Blended CPA"
         value={blendedCpa != null ? fmtCurrency(blendedCpa, currency) : '—'}
-        delta={blendedCpa != null ? 'Per-campaign avg' : 'No CPA in dataset'}
+        delta={blendedCpa != null ? 'Per-campaign avg' : 'No conversions tracked yet'}
         deltaClass="text-lumi-subtle"
       />
       <KpiCard
