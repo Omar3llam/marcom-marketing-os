@@ -22,11 +22,12 @@ import './config.js';           // Validates env vars; exits on failure
 
 import express              from 'express';
 import cors                 from 'cors';
+import helmet               from 'helmet';
 import path from 'path';
 import { firebaseAuthMiddleware, requireAuth } from './middleware/firebaseAuth.js';
 import { validateWebhook, captureRawBody } from './middleware/validateWebhook.js';
 import { dedupeWebhookEvent } from './middleware/webhookDedup.js';
-import { apiLimiter, chatLimiter }          from './middleware/rateLimit.js';
+import { apiLimiter, chatLimiter, authLimiter, syncLimiter, adminSeedLimiter } from './middleware/rateLimit.js';
 import { errorHandler }     from './middleware/errorHandler.js';
 import { masterRouter }     from './routes/master.js';
 import { exportRouter }     from './routes/export.js';
@@ -64,6 +65,24 @@ const app = express();
 
 // ── TRUST PROXY (for accurate IP in rate-limit behind nginx/Heroku) ─
 app.set('trust proxy', 1);
+
+// ── SECURITY HEADERS (Helmet) ────────────────────────────────
+// Adds HSTS, X-Content-Type-Options: nosniff, X-Frame-Options, Referrer-Policy,
+// X-DNS-Prefetch-Control, etc. Three of Helmet's defaults are deliberately OFF:
+//   • contentSecurityPolicy — a hand-tuned, Firebase-Auth-aware CSP is set
+//     manually below; letting Helmet emit its own default CSP would shadow it.
+//   • crossOriginEmbedderPolicy — COEP can block the cross-origin Firebase Auth
+//     iframe (accounts.google.com / *.firebaseapp.com).
+//   • crossOriginOpenerPolicy — Helmet defaults COOP to `same-origin`, which
+//     severs the opener↔popup window reference that Firebase `signInWithPopup`
+//     (client/src/hooks/useFirebaseAuth.js) depends on — desktop Google login
+//     would silently break. Future hardening: revisit `same-origin-allow-popups`
+//     once popup auth is verified against it.
+app.use(helmet({
+  contentSecurityPolicy:     false,
+  crossOriginEmbedderPolicy: false,
+  crossOriginOpenerPolicy:   false,
+}));
 
 // ── CORS ────────────────────────────────────────────────────
 // RENDER_EXTERNAL_URL is injected automatically by Render (e.g. https://marcom.onrender.com).
@@ -213,6 +232,11 @@ app.post('/api/lumi/quick-action', apiLimiter, quickActionHandler);
 // Mount BEFORE /api/lumi so requireJwt doesn't reject it.
 app.get('/api/lumi/demo-feed', apiLimiter, demoFeedHandler);
 
+// Connector sync — stricter cap (5/min) than the blanket apiLimiter to guard
+// the Meta/Google fetch loop from abuse. Registered BEFORE the /api/lumi mount
+// so it runs ahead of requireAuth on this specific path.
+app.use('/api/lumi/connections/sync', syncLimiter);
+
 // ── LUMI CORE ROUTES (Firebase-protected) ─────────────────────────
 // Phases 5 + 6: rollback, feed, _health
 // BUGFIX (PR #44): Changed from requireJwt → requireAuth (Firebase migration)
@@ -221,6 +245,10 @@ app.use('/api/lumi',
   apiLimiter,
   lumiRouter
 );
+
+// OAuth endpoints — stricter brute-force cap (20/15min) across both providers.
+// Registered before the provider mounts so it applies to initiation + callback.
+app.use('/api/auth', authLimiter);
 
 // Meta OAuth flow — MUST be mounted BEFORE blanket /api + requireAuth
 // because /callback is NOT authenticated (Meta redirects browser without token).
@@ -341,6 +369,10 @@ app.use('/api/team',
   apiLimiter,
   teamRouter
 );
+
+// Demo seed — stricter spam cap (10/hour) on the workspace-minting endpoint.
+// Registered before the /api/admin mount so it runs ahead of requireAuth/requireAdmin.
+app.use('/api/admin/demo/seed', adminSeedLimiter);
 
 // Internal admin panel — system status, workspace/user inventory, demo
 // management. requireAdmin gates EVERY sub-route (UserRole.ADMIN, granted only
