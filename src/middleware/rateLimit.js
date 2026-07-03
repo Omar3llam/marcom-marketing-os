@@ -24,3 +24,33 @@ export const chatLimiter = rateLimit({
   legacyHeaders:    false,
   message:          { status: 'error', message: 'Chat rate limit reached. Please wait 60 seconds.' },
 });
+
+/** 20 requests / 15 min — OAuth initiation + callback (brute-force guard) */
+export const authLimiter = rateLimit({
+  windowMs:         15 * 60 * 1_000,
+  max:              20,
+  keyGenerator:     keyGen,
+  standardHeaders:  'draft-7',
+  legacyHeaders:    false,
+  message:          { status: 'error', message: 'Too many authentication attempts. Please try again later.' },
+});
+
+/** 5 requests / minute — connector sync (Meta/Google API abuse guard) */
+export const syncLimiter = rateLimit({
+  windowMs:         60 * 1_000,
+  max:              5,
+  keyGenerator:     keyGen,
+  standardHeaders:  'draft-7',
+  legacyHeaders:    false,
+  message:          { status: 'error', message: 'Sync rate limit exceeded. Please wait before syncing again.' },
+});
+
+/** 10 requests / hour — admin demo seed (spam guard) */
+export const adminSeedLimiter = rateLimit({
+  windowMs:         60 * 60 * 1_000,
+  max:              10,
+  keyGenerator:     keyGen,
+  standardHeaders:  'draft-7',
+  legacyHeaders:    false,
+  message:          { status: 'error', message: 'Demo seed rate limit exceeded. Please wait before seeding again.' },
+});
