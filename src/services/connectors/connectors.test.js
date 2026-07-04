@@ -71,6 +71,19 @@ describe('snapshotSink pure builders — deterministic + idempotent', () => {
     const ops = toEntityOps('ws1', 'META', normalized);
     expect(ops[0].level).toBe('ACCOUNT'); // account upserted before its campaign
   });
+  it('the CAMPAIGN entity id === its snapshot entityId — the getConnectorCampaigns join key', () => {
+    // getConnectorCampaigns matches Campaign.id against MetricSnapshot.entityId.
+    // Both are detId(workspaceId, channel, level, externalId) — the SAME UUID, NOT
+    // the raw Meta id. This pins that invariant: match on externalId ('c1') instead
+    // would find zero snapshots and blank every campaign's metrics.
+    const campOp   = toEntityOps('ws1', 'META', normalized).find((o) => o.level === 'CAMPAIGN');
+    const campSnap = toSnapshotRows('ws1', 'META', normalized).find((r) => r.entityLevel === 'CAMPAIGN');
+    expect(campSnap.entityId).toBe(campOp.id);                     // the join matches
+    expect(campOp.id).toBe(detId('ws1', 'META', 'CAMPAIGN', 'c1')); // …a detId UUID
+    expect(campOp.id).not.toBe('c1');                              // NOT the externalId
+    expect(campSnap.entityId).not.toBe('c1');
+    expect(campOp.data.externalId).toBe('c1');                     // externalId lives on the row, not the id
+  });
 });
 
 describe('the payoff — a second channel lights up reconciliation (engine unchanged)', () => {
