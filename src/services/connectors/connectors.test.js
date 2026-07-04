@@ -67,6 +67,21 @@ describe('snapshotSink pure builders — deterministic + idempotent', () => {
     expect(toSnapshotRows('ws1', 'META', normalized)).toEqual(toSnapshotRows('ws1', 'META', normalized));
     expect(toEntityOps('ws1', 'META', normalized)).toEqual(toEntityOps('ws1', 'META', normalized));
   });
+  it('namespaces ids by workspace — the SAME Meta campaign in two workspaces never collides', () => {
+    // The feared cross-workspace collision: one ad account connected to two
+    // workspaces, so campaign externalId 'c1' is identical in both. detId folds
+    // workspaceId into the id, so each workspace upserts a DISTINCT row — the
+    // upsert (where: { id }) can never update the other workspace's campaign.
+    const a = toEntityOps('wsA', 'META', normalized).find((o) => o.level === 'CAMPAIGN');
+    const b = toEntityOps('wsB', 'META', normalized).find((o) => o.level === 'CAMPAIGN');
+    expect(a.data.externalId).toBe('c1');
+    expect(b.data.externalId).toBe('c1');              // same Meta campaign id…
+    expect(a.id).not.toBe(b.id);                       // …but distinct row ids
+    expect(a.id).toBe(detId('wsA', 'META', 'CAMPAIGN', 'c1'));
+    expect(b.id).toBe(detId('wsB', 'META', 'CAMPAIGN', 'c1'));
+    expect(a.data.workspaceId).toBe('wsA');
+    expect(b.data.workspaceId).toBe('wsB');
+  });
   it('toEntityOps orders parents before children', () => {
     const ops = toEntityOps('ws1', 'META', normalized);
     expect(ops[0].level).toBe('ACCOUNT'); // account upserted before its campaign
