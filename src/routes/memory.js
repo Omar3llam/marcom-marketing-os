@@ -58,9 +58,11 @@ router.post('/record', async (req, res) => {
       });
     }
 
+    // workspaceId is pinned AFTER the body spread so a client-supplied
+    // workspaceId can never write into another workspace.
     const record = await decisionMemoryService.recordDecisionMemory({
-      workspaceId,
       ...req.body,
+      workspaceId,
     });
 
     logger.info({ id: record.id, workspaceId, userId }, '[memory] decision recorded');
