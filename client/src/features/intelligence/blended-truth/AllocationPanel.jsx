@@ -16,7 +16,9 @@ import { useState } from 'react';
 import { Scale } from 'lucide-react';
 import { formatCurrency, toMinor } from '@/lib/money';
 
-const fx = (n) => `${(Number(n) || 0).toFixed(1)}×`;
+// Null/non-finite ROAS → "—" (honest empty), never a fabricated 0.0× that reads
+// as a real (terrible) return. A genuine finite 0 still formats as 0.0×.
+const fx = (n) => (n == null || !Number.isFinite(Number(n))) ? '—' : `${Number(n).toFixed(1)}×`;
 
 export function AllocationPanel({
   currency = 'USD',

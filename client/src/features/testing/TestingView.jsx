@@ -260,12 +260,15 @@ function MetricsForm({ exp, onRecord, recordingId, recordError }) {
   const openForm = () => {
     const next = {};
     for (const v of variants) {
+      // Missing metric → EMPTY input, never a pre-filled "0". A pre-filled zero
+      // is a value the user could submit as if real; an empty field asks them to
+      // enter the actual number (honest-empty over fabricated-zero).
       next[v.id] = {
-        impressions: String(v.impressions ?? 0),
-        clicks: String(v.clicks ?? 0),
-        conversions: String(v.conversions ?? 0),
-        spend: String(fromMinor(v.spendMinor ?? 0, currency)),
-        revenue: String(fromMinor(v.revenueMinor ?? 0, currency)),
+        impressions: v.impressions == null ? '' : String(v.impressions),
+        clicks: v.clicks == null ? '' : String(v.clicks),
+        conversions: v.conversions == null ? '' : String(v.conversions),
+        spend: v.spendMinor == null ? '' : String(fromMinor(v.spendMinor, currency)),
+        revenue: v.revenueMinor == null ? '' : String(fromMinor(v.revenueMinor, currency)),
       };
     }
     setDraft(next);

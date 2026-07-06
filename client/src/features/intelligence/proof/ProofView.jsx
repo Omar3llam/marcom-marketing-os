@@ -64,7 +64,7 @@ export function ProofView({ data, surface, role = WORKSPACE_ROLE.STRATEGIST }) {
         <ProofSummary surface={surface} />
         <div className="mt-3 flex gap-6 text-xs font-mono text-lumi-subtle">
           <span>Calibration error (ECE): <strong className="text-lumi-text">{pct(cal.expectedCalibrationError)}</strong></span>
-          <span>Brier: <strong className="text-lumi-text">{(cal.brierScore ?? 0).toFixed(2)}</strong></span>
+          <span>Brier: <strong className="text-lumi-text">{cal.brierScore == null ? '—' : cal.brierScore.toFixed(2)}</strong></span>
           <span>Direction: <strong className="text-lumi-text">{cal.direction}</strong></span>
           <span>Accuracy (secondary): {pct(cal.accuracy)}</span>
         </div>
