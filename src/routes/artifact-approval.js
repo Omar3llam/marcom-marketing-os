@@ -308,7 +308,7 @@ router.get('/workspaces/:id/approvals/pending', async (req, res) => {
     }, '[artifact-approval] get pending approvals failed');
 
     res.status(500).json({
-      error: error.message,
+      error: 'Failed to load pending approvals',
     });
   }
 });

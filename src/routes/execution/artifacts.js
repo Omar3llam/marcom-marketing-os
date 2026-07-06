@@ -46,6 +46,9 @@ export function registerArtifactsRoute(router) {
       const { executionId } = req.params;
       const { workspaceId } = req;
       const { type, nodeId, limit = 100, offset = 0 } = req.query;
+      // Clamp pagination: NaN or negatives would make Prisma throw on take/skip.
+      const take = Math.min(Math.max(parseInt(String(limit), 10) || 100, 1), 200);
+      const skip = Math.max(parseInt(String(offset), 10) || 0, 0);
 
       // Verify execution belongs to workspace
       const execution = await prisma.executionRequest.findUnique({
@@ -76,8 +79,8 @@ export function registerArtifactsRoute(router) {
           approval: true,
         },
         orderBy: { createdAt: 'desc' },
-        take: parseInt(limit),
-        skip: parseInt(offset),
+        take,
+        skip,
       });
 
       // Get total count for pagination
@@ -98,9 +101,9 @@ export function registerArtifactsRoute(router) {
         artifacts: artifacts.map(_formatArtifactResponse),
         pagination: {
           total,
-          limit: parseInt(limit),
-          offset: parseInt(offset),
-          hasMore: parseInt(offset) + artifacts.length < total,
+          limit: take,
+          offset: skip,
+          hasMore: skip + artifacts.length < total,
         },
       });
     } catch (error) {
@@ -201,8 +204,10 @@ export function registerArtifactsRoute(router) {
     async (req, res) => {
       const { workspaceId } = req;
       try {
-        const limit = Math.min(parseInt(req.query.limit ?? '100', 10) || 100, 200);
-        const offset = parseInt(req.query.offset ?? '0', 10) || 0;
+        // Math.max guards: parseInt('-5') survives the || fallback and a
+        // negative take/skip makes Prisma throw a 500.
+        const limit = Math.min(Math.max(parseInt(req.query.limit ?? '100', 10) || 100, 1), 200);
+        const offset = Math.max(parseInt(req.query.offset ?? '0', 10) || 0, 0);
 
         // Filter on the to-one approval relation — mirrors the pending list.
         const where = {

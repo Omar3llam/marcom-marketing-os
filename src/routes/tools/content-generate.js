@@ -99,7 +99,7 @@ export async function generateContent(req, res) {
     logger.error({ err: err.message, userId, workspaceId }, '[tools/content-generate] Failed');
     return res.status(500).json({
       status: 'error',
-      message: err.message || 'Content generation failed',
+      message: 'Content generation failed',
     });
   }
 }

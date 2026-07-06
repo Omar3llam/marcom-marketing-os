@@ -9,6 +9,7 @@ import { Router }  from 'express';
 import { prisma }  from '../../lib/prisma.js';
 import { logger }  from '../../utils/logger.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { validate, strategyBriefSchema } from '../../middleware/validate.js';
 import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
 
 export const intelligenceRouter = Router();
@@ -131,7 +132,7 @@ intelligenceRouter.post('/analyze-content', async (req, res) => {
 // Body: { objective, audience, budget, timeline, contextLock? }
 // Returns: { title, financialImpact, keyPoints[], markdown }
 // ─────────────────────────────────────────────────────────────
-intelligenceRouter.post('/strategy-brief', async (req, res) => {
+intelligenceRouter.post('/strategy-brief', validate(strategyBriefSchema), async (req, res) => {
   const { objective, audience, budget, timeline, contextLock } = req.body || {};
   if (!objective || !audience) {
     return res.status(400).json({ error: 'objective and audience required' });

@@ -136,7 +136,9 @@ export function mountContextRoutes(router) {
       return res.status(500).json({
         error:  'Could not save context',
         code:   err?.code ?? null,
-        detail: err?.message ?? 'Unknown error',
+        // Raw err.message is an internal-detail leak in production; the full
+        // detail object is already in the logger.error line above.
+        detail: process.env.NODE_ENV === 'development' ? (err?.message ?? 'Unknown error') : undefined,
         hint:   err?.code === 'P2021' || /does not exist/i.test(err?.message || '') ? 'The User table or context column is missing. Run: npx prisma migrate deploy' : null,
       });
     }

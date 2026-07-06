@@ -9,17 +9,18 @@ import { getProjectById } from '../models/project.js';
 import { callClaude }    from '../utils/claude.js';
 import { logger }        from '../utils/logger.js';
 import { generateContent } from './tools/content-generate.js';
+import { validate, contentGenerateSchema, contentCalendarSchema, campaignBriefSchema } from '../middleware/validate.js';
 
 export const toolsRouter = Router();
 
 // ── POST /api/tools/content-generate ─────────────────────────
 // Content Lab: generate ad copy, headlines, CTAs, visuals, video
-toolsRouter.post('/content-generate', generateContent);
+toolsRouter.post('/content-generate', validate(contentGenerateSchema), generateContent);
 
 // ── POST /api/tools/content-calendar ─────────────────────────
 // Body: { projectId, targetMonth, targetSector, keyFocus }
 // Returns: { status, result }  — plain text / markdown from Claude
-toolsRouter.post('/content-calendar', async (req, res) => {
+toolsRouter.post('/content-calendar', validate(contentCalendarSchema), async (req, res) => {
   const userId = req.userId;
   const { projectId, targetMonth, targetSector, keyFocus } = req.body;
 
@@ -156,14 +157,14 @@ Your response must start with { and end with }. Any character outside the JSON w
 
   } catch (err) {
     logger.error({ err: err.message, userId, projectId }, '[tools/content-calendar] Claude error');
-    return res.status(500).json({ status: 'error', message: err.message || 'Calendar generation failed' });
+    return res.status(500).json({ status: 'error', message: 'Calendar generation failed' });
   }
 });
 
 // ── POST /api/tools/campaign-brief ───────────────────────────
 // Body: { projectId, objective, duration, budget, keyMessage, competitor }
 // Returns: { status, result } — strict JSON campaign brief
-toolsRouter.post('/campaign-brief', async (req, res) => {
+toolsRouter.post('/campaign-brief', validate(campaignBriefSchema), async (req, res) => {
   const userId = req.userId;
   const { projectId, objective, duration, budget, keyMessage, competitor } = req.body;
 
@@ -257,6 +258,6 @@ Rules: pct values across platformMix must sum to 100. No placeholder brackets in
     return res.json({ status: 'ok', result });
   } catch (err) {
     logger.error({ err: err.message, userId, projectId }, '[tools/campaign-brief] Claude error');
-    return res.status(500).json({ status: 'error', message: err.message || 'Brief generation failed' });
+    return res.status(500).json({ status: 'error', message: 'Brief generation failed' });
   }
 });
