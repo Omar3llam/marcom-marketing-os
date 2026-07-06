@@ -1,0 +1,124 @@
+// ============================================================
+// PATCH /api/user/workspace — STRATEGIST-only role gate
+// ------------------------------------------------------------
+// Audit 2026-07: the rename route was auth-only. Since Team & Roles the
+// workspace is SHARED, so an invited BUYER/CLIENT could rename it for
+// everyone. requireCollabRole('STRATEGIST') now gates it; PATCH /profile
+// (self-scoped) deliberately stays open to every role.
+// Effective role rule: null collabRole ⇒ STRATEGIST (pre-Phase-8 seats).
+// ============================================================
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import request from 'supertest';
+import express from 'express';
+
+const { updateUserMock } = vi.hoisted(() => ({ updateUserMock: vi.fn() }));
+
+vi.mock('../lib/prisma.js', () => ({
+  prisma: {
+    user: { findFirst: vi.fn(), findUnique: vi.fn() },
+    workspace: { update: vi.fn() },
+  },
+}));
+
+vi.mock('../utils/logger.js', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
+vi.mock('../utils/firebaseAdmin.js', () => ({
+  requireFirebaseAdminReady: () => ({
+    auth: () => ({ updateUser: updateUserMock, deleteUser: vi.fn() }),
+  }),
+}));
+
+vi.mock('./campaigns/context.js', () => ({
+  workspaceColumnsFromContext: () => ({}),
+}));
+
+import { prisma } from '../lib/prisma.js';
+import { userRouter } from './user.js';
+
+const UID = 'fb-uid-1';
+const WS  = 'ws-shared';
+
+/** collabRole === undefined ⇒ leave req.collabRole unset so the middleware
+ *  falls back to the DB lookup (the pre-Phase-8 null-role path). */
+function buildApp({ collabRole } = {}) {
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    req.user = { uid: UID };
+    req.userId = UID;
+    if (collabRole !== undefined) req.collabRole = collabRole;
+    next();
+  });
+  app.use('/api/user', userRouter);
+  return app;
+}
+
+describe('PATCH /api/user/workspace — STRATEGIST gate', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.COLLAB_ROLE_OVERRIDE; // the env override would bypass the gate
+    prisma.user.findFirst.mockResolvedValue({ workspaceId: WS });
+    prisma.user.findUnique.mockResolvedValue({ collabRole: null });
+    prisma.workspace.update.mockResolvedValue({ id: WS, name: 'Renamed' });
+  });
+
+  it('STRATEGIST → 200, workspace renamed', async () => {
+    const res = await request(buildApp({ collabRole: 'STRATEGIST' }))
+      .patch('/api/user/workspace')
+      .send({ workspaceName: '  Renamed  ' })
+      .expect(200);
+
+    expect(res.body).toEqual({ success: true, workspaceName: 'Renamed' });
+    expect(prisma.workspace.update).toHaveBeenCalledWith({
+      where: { id: WS },
+      data:  { name: 'Renamed' },
+    });
+  });
+
+  it('BUYER → 403 RoleForbidden, nothing written', async () => {
+    const res = await request(buildApp({ collabRole: 'BUYER' }))
+      .patch('/api/user/workspace')
+      .send({ workspaceName: 'Hijacked' })
+      .expect(403);
+
+    expect(res.body.error).toBe('RoleForbidden');
+    expect(res.body.role).toBe('BUYER');
+    expect(prisma.workspace.update).not.toHaveBeenCalled();
+  });
+
+  it('CLIENT → 403 RoleForbidden, nothing written', async () => {
+    const res = await request(buildApp({ collabRole: 'CLIENT' }))
+      .patch('/api/user/workspace')
+      .send({ workspaceName: 'Hijacked' })
+      .expect(403);
+
+    expect(res.body.error).toBe('RoleForbidden');
+    expect(prisma.workspace.update).not.toHaveBeenCalled();
+  });
+
+  it('null collabRole (pre-Phase-8 seat) → effective STRATEGIST → 200', async () => {
+    // req.collabRole unset → middleware falls back to the DB row, which has
+    // collabRole: null → normalizeRole(null) ⇒ STRATEGIST.
+    const res = await request(buildApp())
+      .patch('/api/user/workspace')
+      .send({ workspaceName: 'Renamed' })
+      .expect(200);
+
+    expect(res.body).toEqual({ success: true, workspaceName: 'Renamed' });
+    expect(prisma.workspace.update).toHaveBeenCalledTimes(1);
+  });
+
+  it('PATCH /profile stays open: BUYER can still rename THEMSELVES', async () => {
+    updateUserMock.mockResolvedValue(undefined);
+
+    const res = await request(buildApp({ collabRole: 'BUYER' }))
+      .patch('/api/user/profile')
+      .send({ displayName: 'Buyer Bob' })
+      .expect(200);
+
+    expect(res.body).toEqual({ success: true, displayName: 'Buyer Bob' });
+    expect(updateUserMock).toHaveBeenCalledWith(UID, { displayName: 'Buyer Bob' });
+  });
+});

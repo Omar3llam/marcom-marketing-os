@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { requireFirebaseAdminReady } from '../utils/firebaseAdmin.js';
 import { logger } from '../utils/logger.js';
 import { prisma } from '../lib/prisma.js';
+import { requireCollabRole } from '../middleware/requireCollabRole.js';
 import { workspaceColumnsFromContext } from './campaigns/context.js';
 
 const getAuth = () => requireFirebaseAdminReady().auth();
@@ -147,13 +148,17 @@ userRouter.patch('/profile', async (req, res) => {
 // PATCH /api/user/workspace — Update workspace name
 // ══════════════════════════════════════════════════════════════
 /**
- * Update Firestore workspace name.
+ * Update the workspace name.
  * Workspace slug is immutable (used in API tokens).
+ *
+ * STRATEGIST-only: the workspace is shared (Team & Roles), so BUYER/CLIENT
+ * members must not rename it for everyone. Null collabRole ⇒ STRATEGIST
+ * (seats predating Phase 8 are never locked out).
  *
  * Body: { workspaceName: string }
  * Response: { success: true, workspaceName: string }
  */
-userRouter.patch('/workspace', async (req, res) => {
+userRouter.patch('/workspace', requireCollabRole('STRATEGIST'), async (req, res) => {
   try {
     const { workspaceName } = req.body;
     const uid = req.user?.uid;
