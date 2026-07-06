@@ -69,6 +69,21 @@ function compareRows(a, b, key, dir) {
 
 const sortableCols = new Set(['campaign', 'spend', 'ctr', 'roas', 'impact']);
 
+// PURE: split no-revenue scored campaigns (roas null) by objective. A conversion
+// campaign that expects revenue but measures none is a fixable TRACKING GAP; an
+// awareness campaign has no revenue BY DESIGN. `revenueExpected` is derived
+// server-side from the Meta objective (connectorVerdictService.revenueExpectedFor).
+// Exported for the banner unit test.
+export function splitNoRevenueVerdicts(verdicts = []) {
+  let awarenessCount = 0, trackingGapCount = 0;
+  for (const v of verdicts) {
+    if (v?.roas != null) continue;                 // has real revenue — not this banner
+    if (v?.revenueExpected) trackingGapCount += 1; // conversion objective, no revenue = gap
+    else awarenessCount += 1;                       // awareness/unknown objective = by design
+  }
+  return { awarenessCount, trackingGapCount };
+}
+
 export default function CampaignsView() {
   const { campaigns, loading } = useCampaignFeed();
   const [sortKey, setSortKey] = useState('spend');
@@ -228,11 +243,11 @@ export default function CampaignsView() {
     return m;
   }, [connectorVerdicts]);
 
-  // Awareness campaigns = scored, but on engagement only (roas null — never a
-  // fabricated number). Counted from the verdict payload so the honest summary
-  // line below appears only when such campaigns actually exist.
-  const awarenessCount = useMemo(
-    () => connectorVerdicts.filter((v) => v.roas == null).length,
+  // No-revenue scored campaigns split by OBJECTIVE: awareness (no revenue by
+  // design) vs a conversion campaign with a tracking gap. Lumping them as one
+  // "awareness" count is the exact dishonesty the objective work removed.
+  const { awarenessCount, trackingGapCount } = useMemo(
+    () => splitNoRevenueVerdicts(connectorVerdicts),
     [connectorVerdicts],
   );
 
@@ -333,12 +348,17 @@ export default function CampaignsView() {
 
       <PerformanceChart totals={chartTotals} currency={currency} hasConnectorData={hasConnectorData} />
 
-      {/* Awareness campaigns ARE scored — on engagement (frequency + CTR), with
-          ROAS honestly blank. Honest about the basis so the verdict isn't mistaken
-          for a revenue judgement. */}
+      {/* No-revenue campaigns ARE scored — on engagement (frequency + CTR), with
+          ROAS honestly blank. Split by objective so a conversion campaign missing
+          revenue reads as a fixable tracking gap, not "awareness by design". */}
       {awarenessCount > 0 && (
         <p className="font-mono text-[11px] text-lumi-subtle mb-2 -mt-3">
-          {awarenessCount} campaign{awarenessCount === 1 ? '' : 's'} scored on engagement (no revenue tracked) — ROAS stays “—” until a revenue source is connected.
+          {awarenessCount} awareness campaign{awarenessCount === 1 ? '' : 's'} scored on engagement — ROAS stays “—” by design (no revenue expected).
+        </p>
+      )}
+      {trackingGapCount > 0 && (
+        <p className={cn('font-mono text-[11px] text-signal-warning', awarenessCount > 0 ? 'mb-2' : 'mb-2 -mt-3')}>
+          {trackingGapCount} conversion campaign{trackingGapCount === 1 ? '' : 's'} scored on engagement but tracking no revenue — verify the Meta Pixel or lead-form setup so ROAS can be measured.
         </p>
       )}
 

@@ -148,6 +148,11 @@ export async function getConnectorVerdicts(workspaceId) {
     rationale:  c.rationale,
     spendMinor: c.metrics.spendMinor,
     roas:       c.signalInput.roas,
+    // revenueExpected (derived from the campaign objective) rides through so a
+    // no-revenue campaign can be split honestly on-screen: a genuine awareness
+    // campaign vs a conversion campaign with a tracking gap — the rationale
+    // already distinguishes them per-row; this lets the aggregate banner too.
+    revenueExpected: c.revenueExpected ?? false,
   }));
 
   logger.info(
