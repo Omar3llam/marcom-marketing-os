@@ -186,7 +186,7 @@ Every prompt must include:
 
 ## Dead Code Register
 **Maintained by: Architecture Check CI (scripts/arch-check.js)**  
-**Last audit: 2026-06-22** (pre-Phase-6 cleanup: deleted `services/orchestrator.js` + `utils/airtable.js` + the legacy `frontend/` vanilla shell)
+**Last audit: 2026-07-06** (Wave 5 PR-11: deleted the `pages/v2` decision strangler + `types/fsm.ts`)
 
 | File | Status | Reason | Imports | Safe to delete? |
 |---|---|---|---|---|
@@ -194,6 +194,8 @@ Every prompt must include:
 | `src/models/userContext.js` | LEGACY | Replaced by /api/campaigns/me/context | 1 (project.js) | NO — refactor project.js first |
 | `client/src/pages/AuthPage-Clerk-BACKUP.jsx` | DEAD | Backup from Clerk → Firebase migration | 0 | YES — backup file, not in routes |
 | `client/src/pages/PlaceholderPage.jsx` | STUB | Placeholder, not in App.jsx routes | 0 | YES — verify not in router first |
+| ~~`client/src/pages/v2/` + `client/src/types/fsm.ts`~~ | ✅ DELETED (PR-11) | v2/decision strangler never activated (features.newDecisionView=false); route + dir + FSM types removed | 0 | DONE |
+| `client/src/config/routes.ts`, `config/features.ts`, `components/dev/ComparisonHarness.tsx` | DEAD (residual) | Remaining strangler infra: routes.ts/getActiveRoute have **zero importers**; features flags are all false; ComparisonHarness only mentions the deleted v2 view in comments | 0 | YES — next strangler-cleanup PR (left out of PR-11 to keep it scoped) |
 
 ### Deletion Protocol
 
