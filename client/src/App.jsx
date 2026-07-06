@@ -62,9 +62,6 @@ const Measure      = lazy(() => import('./pages/Measure.jsx'));
 // ── Phase 8 · Leadership/Reports (the reasoned narrative; CLIENT's home) ─
 const Leadership   = lazy(() => import('./pages/Leadership.jsx'));
 
-// ── v2 views (gradual migration via Strangler Pattern) ────────
-const DecisionViewV2 = lazy(() => import('./pages/v2/DecisionViewV2.tsx').then(m => ({ default: m.DecisionViewV2 })));
-
 function PageFallback() {
   return (
     <div className="p-8 space-y-3">
@@ -325,13 +322,6 @@ export default function App() {
           <Route path="demo/operations" element={
             <ErrorBoundary boundaryId="demo-operations">
               <Suspense fallback={<PageFallback />}><Operations /></Suspense>
-            </ErrorBoundary>
-          } />
-
-          {/* ── v2 routes (Strangler Pattern migration) ─────── */}
-          <Route path="v2/decision" element={
-            <ErrorBoundary boundaryId="v2-decision">
-              <Suspense fallback={<PageFallback />}><DecisionViewV2 /></Suspense>
             </ErrorBoundary>
           } />
 
