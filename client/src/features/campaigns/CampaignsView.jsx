@@ -56,9 +56,22 @@ function flatten(campaigns) {
   return rows;
 }
 
-// Null-last numeric/string comparator: an unknown metric is not a small number,
-// so it always sinks to the bottom regardless of sort direction.
-function compareRows(a, b, key, dir) {
+// Verdict sorts by action-urgency, NOT alphabetically: worst/most-actionable
+// first (KILL), good news last (SCALE). Covers all six engine verdicts
+// (verdict-engine/verdictTypes.js); an unknown verdict has no rank and sinks
+// like a null metric. Exported for the sort unit test.
+export const VERDICT_RANK = { KILL: 0, REFRESH: 1, REALLOCATE: 2, WATCH: 3, HOLD: 4, SCALE: 5 };
+
+// Null-last comparator: an unknown metric (or unranked verdict) is not a small
+// number, so it always sinks to the bottom regardless of sort direction.
+export function compareRows(a, b, key, dir) {
+  if (key === 'verdict') {
+    const ar = VERDICT_RANK[a.verdict], br = VERDICT_RANK[b.verdict];
+    if (ar == null && br == null) return 0;
+    if (ar == null) return 1;
+    if (br == null) return -1;
+    return dir === 'asc' ? ar - br : br - ar;
+  }
   const av = a[key], bv = b[key];
   if (av == null && bv == null) return 0;
   if (av == null) return 1;
@@ -67,7 +80,7 @@ function compareRows(a, b, key, dir) {
   return dir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
 }
 
-const sortableCols = new Set(['campaign', 'spend', 'ctr', 'roas', 'impact']);
+export const sortableCols = new Set(['campaign', 'spend', 'ctr', 'roas', 'verdict', 'impact']);
 
 export default function CampaignsView() {
   const { campaigns, loading } = useCampaignFeed();

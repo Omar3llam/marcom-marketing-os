@@ -82,7 +82,7 @@ export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expa
                 <Th k="ctr"      current={sortKey} dir={sortDir} onSort={setSort} className="text-right w-20">CTR</Th>
                 <Th k="roas"     current={sortKey} dir={sortDir} onSort={setSort} className="text-right w-20">ROAS</Th>
                 <Th className="text-right w-20">Freq</Th>
-                <Th className="text-center w-28">Decision</Th>
+                <Th k="verdict" current={sortKey} dir={sortDir} onSort={setSort} className="text-center w-28">Decision</Th>
                 <Th k="impact"   current={sortKey} dir={sortDir} onSort={setSort} className="text-left w-36">Impact</Th>
                 <Th className="text-left flex-1">Reasoning</Th>
               </tr>
