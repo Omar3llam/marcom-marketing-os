@@ -7,7 +7,7 @@
 // "needs revenue data" state instead of a fabricated KILL.
 //
 // Returns: { verdicts, gatedOut, account, status, loading, error, refetch }
-//   verdicts[]: { id, name, verdict, confidence, rationale, spendMinor, roas }
+//   verdicts[]: { id, name, verdict, confidence, rationale, spendMinor, roas, revenueExpected }
 //   gatedOut[]: { id, name, reason }
 //
 // Disjoint from the CSV feed (useCampaignFeed) and from useConnectorCampaigns —
