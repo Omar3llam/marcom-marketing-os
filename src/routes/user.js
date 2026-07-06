@@ -200,19 +200,21 @@ userRouter.patch('/workspace', async (req, res) => {
 // DELETE /api/user/account — Delete user account permanently
 // ══════════════════════════════════════════════════════════════
 /**
- * DANGER ZONE: Permanently delete user account, workspace, and all data.
+ * DANGER ZONE: Permanently delete the user account.
  *
- * Architecture:
- *   - Uses Prisma/PostgreSQL (NOT Firestore)
- *   - Deletes workspace → CASCADE deletes all related data:
- *     * Users, Actions, CampaignStates, DecisionMemory, Integrations, AuditLogs
- *   - Deletes Firebase Auth user to invalidate tokens
+ * Since Team & Roles, invited members JOIN the host workspace — so the old
+ * unconditional workspace cascade would let ANY member (even an invited
+ * CLIENT) destroy the shared workspace for everyone. Three paths now:
  *
- * Steps:
- *   1. Find user in Prisma by Firebase UID (stored in clerkId)
- *   2. Delete workspace (CASCADE handles all related data)
- *   3. Delete Firebase Auth user (invalidates all tokens)
- *   4. Client signs out and clears localStorage
+ *   1. SOLE member         → delete workspace (CASCADE removes all data)
+ *   2. Non-last member     → delete ONLY this User row (OAuthTokens cascade
+ *                            via the userId FK); workspace + teammates intact
+ *   3. Last strategist     → 409 LastStrategist — transfer the role first
+ *                            (effective role: null collabRole ⇒ STRATEGIST,
+ *                            mirroring countEffectiveStrategists in team/index.js)
+ *
+ * The Firebase Auth user is deleted afterwards in paths 1–2 (invalidates all
+ * tokens). AuditLog.userId is a bare column (no FK) — audit history survives.
  *
  * Response: { success: true }
  */
@@ -258,14 +260,44 @@ userRouter.delete('/account', async (req, res) => {
       email
     });
 
-    // ✅ Step 2: Delete workspace (CASCADE deletes all related data)
+    // ✅ Step 2: Delete workspace ONLY when the caller is its sole member.
     // Prisma schema has onDelete: Cascade for:
-    //   - users, actions, campaignStates, decisionMemory, integrations, auditLogs
+    //   - users, actions, campaignStates, decisionMemory, auditLogs
     if (workspaceId) {
-      await prisma.workspace.delete({
-        where: { id: workspaceId },
-      });
-      logger.info('[userRouter] Workspace deleted (with CASCADE):', { workspaceId });
+      const memberCount = await prisma.user.count({ where: { workspaceId } });
+
+      if (memberCount === 1) {
+        await prisma.workspace.delete({
+          where: { id: workspaceId },
+        });
+        logger.info('[userRouter] Workspace deleted (sole member, with CASCADE):', { workspaceId });
+      } else {
+        // Multi-member workspace: never cascade it away on a member's account
+        // deletion. Guard the roster first — the workspace must not be left
+        // without a strategist (null collabRole ⇒ STRATEGIST, same effective-
+        // role rule as countEffectiveStrategists in routes/team/index.js).
+        const otherStrategists = await prisma.user.count({
+          where: {
+            workspaceId,
+            id: { not: user.id },
+            OR: [{ collabRole: 'STRATEGIST' }, { collabRole: null }],
+          },
+        });
+
+        if (otherStrategists === 0) {
+          return res.status(409).json({
+            error: 'LastStrategist',
+            message: 'You are the last strategist in this workspace. Transfer the strategist role to another member before deleting your account.',
+          });
+        }
+
+        // Delete ONLY this member. OAuthToken rows cascade via the userId FK;
+        // the workspace and every other member's data stay intact.
+        await prisma.user.delete({ where: { id: user.id } });
+        logger.info('[userRouter] User deleted (multi-member workspace kept):', {
+          userId: user.id, workspaceId, memberCount,
+        });
+      }
     } else {
       // No workspace — delete user record directly
       await prisma.user.delete({
