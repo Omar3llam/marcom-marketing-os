@@ -271,14 +271,17 @@ describe('Analytics — Approval Decision Routes (PR #37)', () => {
   });
 
   describe('Error handling', () => {
-    it('should handle database errors gracefully', async () => {
+    it('should handle database errors gracefully WITHOUT echoing the internal message', async () => {
       mockFindMany.mockRejectedValueOnce(new Error('DB connection failed'));
 
       const response = await request(app)
         .get('/api/analytics/approvals/summary')
         .expect(500);
 
-      expect(response.body.error).toBe('DB connection failed');
+      // Audit 2026-07: raw error.message was an internal-detail leak; the
+      // caller gets the generic message, the real error goes to the logger.
+      expect(response.body.error).toBe('Failed to load approval summary');
+      expect(JSON.stringify(response.body)).not.toContain('DB connection failed');
     });
   });
 });

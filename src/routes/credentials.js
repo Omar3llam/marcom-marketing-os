@@ -15,6 +15,21 @@ import { logger } from '../utils/logger.js';
 
 export const credentialsRouter = Router();
 
+// Deliberate 4xx errors (err.statusCode set, e.g. the 404 ownership throw)
+// keep their message — it is user feedback. Unexpected 500s must NOT echo
+// err.message (internal detail leak); the caller gets the generic fallback,
+// the full error stays in the log line above each call site.
+function errBody(err, fallback) {
+  const statusCode = err.statusCode ?? 500;
+  return {
+    statusCode,
+    body: {
+      status: 'error',
+      message: statusCode < 500 ? (err.message || fallback) : fallback,
+    },
+  };
+}
+
 // ── STATUS  GET /api/credentials/status?projectId=&platform= ─
 // Quick connectivity check — returns { connected: true/false }.
 // Used by the frontend to decide which campaign UI state to show.
@@ -37,7 +52,8 @@ credentialsRouter.get('/status', async (req, res) => {
     });
   } catch (err) {
     logger.error({ err: err.message, userId, projectId }, '[credentials] status error');
-    return res.status(err.statusCode ?? 500).json({ status: 'error', message: err.message || 'Failed to check credential status' });
+    const { statusCode, body } = errBody(err, 'Failed to check credential status');
+    return res.status(statusCode).json(body);
   }
 });
 
@@ -52,7 +68,8 @@ credentialsRouter.get('/:projectId', async (req, res) => {
     return res.json({ status: 'ok', credentials: list });
   } catch (err) {
     logger.error({ err: err.message, userId, projectId }, '[credentials] list error');
-    return res.status(err.statusCode ?? 500).json({ status: 'error', message: err.message || 'Failed to list credentials' });
+    const { statusCode, body } = errBody(err, 'Failed to list credentials');
+    return res.status(statusCode).json(body);
   }
 });
 
@@ -88,7 +105,8 @@ credentialsRouter.post('/', async (req, res) => {
     if (err.message.includes('CREDENTIAL_ENCRYPTION_KEY')) {
       return res.status(503).json({ status: 'error', message: 'Credential encryption is not configured on this server.' });
     }
-    return res.status(err.statusCode ?? 500).json({ status: 'error', message: err.message || 'Failed to save credential' });
+    const { statusCode, body } = errBody(err, 'Failed to save credential');
+    return res.status(statusCode).json(body);
   }
 });
 
@@ -111,7 +129,8 @@ credentialsRouter.get('/:projectId/:platform', async (req, res) => {
     return res.json({ status: 'ok', credential: { ...safe, connected: true } });
   } catch (err) {
     logger.error({ err: err.message, userId, projectId, platform }, '[credentials] get error');
-    return res.status(err.statusCode ?? 500).json({ status: 'error', message: err.message || 'Failed to retrieve credential' });
+    const { statusCode, body } = errBody(err, 'Failed to retrieve credential');
+    return res.status(statusCode).json(body);
   }
 });
 
@@ -126,6 +145,7 @@ credentialsRouter.delete('/:projectId/:platform', async (req, res) => {
     return res.json({ status: 'ok' });
   } catch (err) {
     logger.error({ err: err.message, userId, projectId, platform }, '[credentials] delete error');
-    return res.status(err.statusCode ?? 500).json({ status: 'error', message: err.message || 'Failed to delete credential' });
+    const { statusCode, body } = errBody(err, 'Failed to delete credential');
+    return res.status(statusCode).json(body);
   }
 });

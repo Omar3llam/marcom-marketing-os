@@ -15,6 +15,10 @@ export function registerAuditRoute(router) {
     const workspaceId = req.workspaceId;
     const userId      = req.userId;
     const { limit = 50, offset = 0, status, actionType } = req.query;
+    // Clamp pagination: NaN ("?limit=abc") or negatives would make Prisma
+    // throw a 500 on take/skip. Defaults survive; ceiling caps the page size.
+    const take = Math.min(Math.max(parseInt(String(limit), 10) || 50, 1), 200);
+    const skip = Math.max(parseInt(String(offset), 10) || 0, 0);
 
     try {
       const where = {
@@ -26,8 +30,8 @@ export function registerAuditRoute(router) {
       const logs = await prisma.auditLog.findMany({
         where,
         orderBy: { performedAt: 'desc' },
-        skip: parseInt(String(offset), 10),
-        take: parseInt(String(limit), 10),
+        skip,
+        take,
       });
 
       const total = await prisma.auditLog.count({ where });
@@ -42,8 +46,8 @@ export function registerAuditRoute(router) {
       return res.json({
         logs,
         total,
-        limit: parseInt(String(limit), 10),
-        offset: parseInt(String(offset), 10),
+        limit: take,
+        offset: skip,
       });
     } catch (err) {
       logger.error({

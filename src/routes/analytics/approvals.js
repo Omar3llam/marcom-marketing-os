@@ -78,7 +78,7 @@ export function registerApprovalAnalyticsRoutes(router) {
         workspaceId: req.workspaceId,
       }, '[analytics/approvals] summary query failed');
 
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: 'Failed to load approval summary' });
     }
   });
 
@@ -137,7 +137,7 @@ export function registerApprovalAnalyticsRoutes(router) {
         workspaceId: req.workspaceId,
       }, '[analytics/approvals] by-provider query failed');
 
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: 'Failed to load approvals by provider' });
     }
   });
 
@@ -196,7 +196,7 @@ export function registerApprovalAnalyticsRoutes(router) {
         workspaceId: req.workspaceId,
       }, '[analytics/approvals] by-capability query failed');
 
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: 'Failed to load approvals by capability' });
     }
   });
 
@@ -271,7 +271,7 @@ export function registerApprovalAnalyticsRoutes(router) {
         workspaceId: req.workspaceId,
       }, '[analytics/approvals] feedback-patterns query failed');
 
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: 'Failed to load feedback patterns' });
     }
   });
 }

@@ -355,7 +355,6 @@ userRouter.delete('/account', async (req, res) => {
 
     res.status(500).json({
       error: 'Failed to delete account',
-      message: err.message,
       hint: 'Contact support if this persists',
     });
   }

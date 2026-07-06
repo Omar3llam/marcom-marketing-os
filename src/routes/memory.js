@@ -75,7 +75,7 @@ router.post('/record', async (req, res) => {
       return res.status(400).json({ error: err.message });
     }
     logger.error({ err: err.message }, '[memory] record failed');
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: 'Failed to record decision memory' });
   }
 });
 
@@ -131,7 +131,8 @@ router.get('/patterns', async (req, res) => {
     return res.json({ patterns, narratives, total: memories.length });
 
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    logger.error({ err: err.message }, '[memory] patterns failed');
+    return res.status(500).json({ error: 'Failed to load memory patterns' });
   }
 });
 

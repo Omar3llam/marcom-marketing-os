@@ -18,6 +18,7 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { requireAuth } from '../../middleware/firebaseAuth.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { validate, teamInviteSchema } from '../../middleware/validate.js';
 import { sendInviteEmail } from '../../utils/email.js';
 
 export const teamRouter = Router();
@@ -116,7 +117,7 @@ teamRouter.get('/members', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // POST /invite — STRATEGIST only.  body: { email, collabRole }
 // ─────────────────────────────────────────────────────────────
-teamRouter.post('/invite', requireCollabRole('STRATEGIST'), async (req, res) => {
+teamRouter.post('/invite', requireCollabRole('STRATEGIST'), validate(teamInviteSchema), async (req, res) => {
   const workspaceId = req.workspaceId;
   if (!workspaceId) return noWorkspace(res);
 

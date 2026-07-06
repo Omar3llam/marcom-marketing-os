@@ -124,7 +124,6 @@ router.post(
 
     res.status(500).json({
       error: 'Failed to track published creative',
-      message: error.message,
     });
   }
 });
@@ -183,7 +182,8 @@ router.get('/metrics', requireAuth, async (req, res) => {
         },
       },
       orderBy: { fetchedAt: 'desc' },
-      take: parseInt(limit, 10),
+      // Clamp: NaN or negative limit would make Prisma throw on take.
+      take: Math.min(Math.max(parseInt(limit, 10) || 100, 1), 500),
     });
 
     res.json({
@@ -200,7 +200,6 @@ router.get('/metrics', requireAuth, async (req, res) => {
 
     res.status(500).json({
       error: 'Failed to query performance metrics',
-      message: error.message,
     });
   }
 });
@@ -289,7 +288,6 @@ router.get('/summary', requireAuth, async (req, res) => {
 
     res.status(500).json({
       error: 'Failed to generate performance summary',
-      message: error.message,
     });
   }
 });
