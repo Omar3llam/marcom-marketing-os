@@ -4,6 +4,7 @@
 import { callClaude } from '../utils/claude.js';
 import { fetchUrlContent } from '../utils/scraper.js';
 import { extractDialectContext, MODE_PLATFORM_HINTS } from '../utils/dialectContext.js';
+import { logger } from '../utils/logger.js';
 
 // Hybrid services that require URL scraping
 const HYBRID_SERVICES = [5, 8];
@@ -41,7 +42,7 @@ export async function runMode2(session, userMessage, conversationHistory) {
           content: scrapedContent,
         });
       } catch (err) {
-        console.error('[SCRAPER ERROR]', err.message);
+        logger.error({ err: err.message, url: extractedUrl }, '[mode2] scraper fetch failed');
         hybridData = JSON.stringify({ url: extractedUrl, error: 'Fetch failed — user should paste content manually.' });
       }
     }

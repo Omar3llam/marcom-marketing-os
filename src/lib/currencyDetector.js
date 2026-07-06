@@ -4,6 +4,7 @@
 // Extracts currency codes from CSV headers and Meta account data.
 // Supports: EGP, USD, SAR, AED, EUR, GBP, and other ISO 4217 codes.
 // ============================================================
+import { logger } from '../utils/logger.js';
 
 /**
  * Extract currency code from CSV headers.
@@ -18,7 +19,7 @@
  */
 export function detectCurrencyFromHeaders(headers) {
   if (!Array.isArray(headers) || headers.length === 0) {
-    console.warn('[currencyDetector] No headers provided, using USD fallback');
+    logger.warn('[currencyDetector] no headers provided, using USD fallback');
     return 'USD';
   }
 
@@ -47,13 +48,13 @@ export function detectCurrencyFromHeaders(headers) {
       const match = header.match(currencyPattern);
       if (match) {
         const currency = match[1].toUpperCase();
-        console.log(`[currencyDetector] Detected currency: ${currency} from header: ${header}`);
+        logger.info({ currency, header }, '[currencyDetector] detected currency from header');
         return currency;
       }
     }
   }
 
-  console.warn('[currencyDetector] No currency found in headers, using USD fallback');
+  logger.warn('[currencyDetector] no currency found in headers, using USD fallback');
   return 'USD';
 }
 
@@ -66,18 +67,18 @@ export function detectCurrencyFromHeaders(headers) {
  */
 export function detectCurrencyFromMetaAccount(accountData) {
   if (!accountData) {
-    console.warn('[currencyDetector] No account data provided, using USD fallback');
+    logger.warn('[currencyDetector] no account data provided, using USD fallback');
     return 'USD';
   }
 
   const currency = accountData.currency || accountData.account_currency;
 
   if (currency && typeof currency === 'string' && currency.length === 3) {
-    console.log(`[currencyDetector] Detected currency from Meta account: ${currency}`);
+    logger.info({ currency }, '[currencyDetector] detected currency from Meta account');
     return currency.toUpperCase();
   }
 
-  console.warn('[currencyDetector] No valid currency in Meta account data, using USD fallback');
+  logger.warn('[currencyDetector] no valid currency in Meta account data, using USD fallback');
   return 'USD';
 }
 
@@ -138,7 +139,7 @@ export function validateCurrencyCode(code) {
     return normalized;
   }
 
-  console.warn(`[currencyDetector] Unknown currency code: ${code}, using USD fallback`);
+  logger.warn({ code }, '[currencyDetector] unknown currency code, using USD fallback');
   return 'USD';
 }
 
