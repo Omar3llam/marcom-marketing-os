@@ -10,6 +10,7 @@
 import { toMinor } from '../../../lib/money.js';
 import { num, accountRollup } from './fieldUtils.js';
 import { CHANNEL, DATA_SOURCE } from '../connectorTypes.js';
+import { logger } from '../../../utils/logger.js';
 
 const PURCHASE_ACTIONS = new Set(['offsite_conversion.fb_pixel_purchase', 'omni_purchase', 'purchase']);
 
@@ -25,12 +26,24 @@ function actionValue(arr, match) {
  */
 export function metaNormalize({ accountExternalId, accountName = null, currency = 'USD', date, rows = [] }) {
   const d = date instanceof Date ? date : new Date(date);
-  const campaigns = rows.map((r) => {
+  const campaigns = rows
+    // A row with NO campaign_id AND no campaign_name has no stable identity: the
+    // old `?? 'unknown'` fallback made every such row collide onto one 'unknown'
+    // entity id (detId), silently merging distinct campaigns. Drop them instead —
+    // an unidentifiable row is malformed Meta data, not a real campaign.
+    .filter((r) => {
+      if (r.campaign_id == null && r.campaign_name == null) {
+        logger.warn({ accountExternalId }, '[metaNormalize] dropped a row with no campaign_id or campaign_name');
+        return false;
+      }
+      return true;
+    })
+    .map((r) => {
     const conversions = actionValue(r.actions, PURCHASE_ACTIONS);
     const revenueMajor = actionValue(r.action_values, PURCHASE_ACTIONS); // real claimed value; 0 if none
     const clicks = num(r.clicks ?? r.inline_link_clicks);
     return {
-      externalId: String(r.campaign_id ?? r.campaign_name ?? 'unknown'),
+      externalId: String(r.campaign_id ?? r.campaign_name),
       entityLevel: 'CAMPAIGN',
       parentExternalId: accountExternalId,
       channel: CHANNEL.META,

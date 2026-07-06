@@ -25,7 +25,9 @@ import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
 import { appRoutes } from '@/app/routeManifest.js';
 
-const fx = (n) => `${(Number(n) || 0).toFixed(1)}×`;
+// Null/non-finite ROAS → "—" (honest empty), never a fabricated 0.0× that reads
+// as a real (terrible) return. A genuine finite 0 still formats as 0.0×.
+const fx = (n) => (n == null || !Number.isFinite(Number(n))) ? '—' : `${Number(n).toFixed(1)}×`;
 
 // ── Pure, prop-driven view (unit-tested directly) ───────────────
 export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST, currency: currencyProp }) {
