@@ -164,12 +164,12 @@ export async function runOrchestration({ campaignId, workspaceId, actionId, user
 
   // ── Agent 1: Claude (always) ────────────────────────────────
   // 🔍 VERIFICATION LOG — Track orchestrator usage
-  console.log('[ORCHESTRATOR]', {
+  logger.info({
     provider: 'CLAUDE',
     model: 'claude-sonnet-4.5',
     feature: 'strategic-analysis',
     campaignId,
-  });
+  }, '[orchestrator] dual-agent verification');
 
   let strategicAnalysis;
   try {
@@ -194,13 +194,13 @@ export async function runOrchestration({ campaignId, workspaceId, actionId, user
 
   if (needsCreative) {
     // 🔍 VERIFICATION LOG — Track orchestrator OpenAI usage
-    console.log('[ORCHESTRATOR]', {
+    logger.info({
       provider: 'OPENAI',
       model: 'gpt-4o-mini',
       feature: 'creative-generation',
       campaignId,
       trigger: strategicAnalysis?.rootCause,
-    });
+    }, '[orchestrator] dual-agent verification');
 
     try {
       creativeAssets = await generateCreativeAssets({
@@ -284,14 +284,13 @@ function safeParseJson(s) {
  */
 export async function analyzeRadarData(campaigns) {
   // 🔍 VERIFICATION LOG — Track analyzeRadarData usage (deprecated path)
-  console.log('[ORCHESTRATOR]', {
+  logger.info({
     provider: 'CLAUDE',
     model: 'claude-sonnet-4.5',
     feature: 'analyzeRadarData',
     campaignCount: campaigns.length,
     deprecated: true,
-    message: '⚠️  Routes should use AI Gateway instead of orchestrator',
-  });
+  }, '[orchestrator] deprecated path — routes should use AI Gateway');
 
   const userPrompt = [
     `Analyze these ${campaigns.length} campaigns and identify which need`,
@@ -343,14 +342,13 @@ export async function analyzeRadarData(campaigns) {
  */
 export async function analyzeCampaignData(data, source = 'csv') {
   // 🔍 VERIFICATION LOG — Track analyzeCampaignData usage (deprecated path)
-  console.log('[ORCHESTRATOR]', {
+  logger.info({
     provider: 'CLAUDE',
     model: 'claude-sonnet-4.5',
     feature: 'analyzeCampaignData',
     source,
     deprecated: true,
-    message: '⚠️  Routes should use AI Gateway instead of orchestrator',
-  });
+  }, '[orchestrator] deprecated path — routes should use AI Gateway');
 
   // ── Validation Checkpoint 1: Input Data ─────────────────────
   if (!data || typeof data !== 'object') {

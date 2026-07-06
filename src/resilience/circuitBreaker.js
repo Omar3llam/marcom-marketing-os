@@ -54,7 +54,7 @@ import { logger } from '../utils/logger.js';
  * });
  *
  * if (!result.success) {
- *   console.error('Circuit open:', result.error);
+ *   logger.error({ err: result.error }, 'Circuit open');
  * }
  * ```
  */
