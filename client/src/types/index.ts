@@ -4,7 +4,7 @@
 // Central export point for all TypeScript types.
 //
 // USAGE:
-//   import type { LumiFeedResponse, FSMState, APIError } from '@/types';
+//   import type { LumiFeedResponse, APIError } from '@/types';
 // ============================================================
 
 // API types
@@ -117,15 +117,6 @@ export type {
   RequestState,
   RetryConfig,
 } from './errors';
-
-// FSM types
-export type {
-  FSMView,
-  InputMode,
-  ExecutionStatus,
-  FSMState,
-  FSMAction,
-} from './fsm';
 
 // SSE types
 export type {
