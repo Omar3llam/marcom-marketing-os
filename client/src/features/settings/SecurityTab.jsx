@@ -89,7 +89,7 @@ export function SecurityTab({ currentUser, handlePasswordReset, handleResetSetup
           <div className="flex items-start justify-between gap-6 pb-4 border-b border-signal-kill/20">
             <div>
               <p className="font-display font-medium text-sm text-lumi-text">Re-run setup wizard</p>
-              <p className="mt-1 text-xs text-lumi-muted">If your uploads are failing or your workspace is in a broken state, re-running the setup wizard will re-create your workspace context.</p>
+              <p className="mt-1 text-xs text-lumi-muted">If your data sync is failing or your workspace is in a broken state, re-running the setup wizard will re-create your workspace context.</p>
             </div>
             <button
               type="button"
