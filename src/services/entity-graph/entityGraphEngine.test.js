@@ -2,7 +2,7 @@
 // EntityGraphEngine — pure shaping correctness
 // ============================================================
 import { describe, it, expect } from 'vitest';
-import { latestByEntity, toCampaignRow, toAdSetRow } from './entityGraphEngine.js';
+import { latestByEntity, effectiveByEntity, toCampaignRow, toAdSetRow } from './entityGraphEngine.js';
 
 describe('entityGraphEngine.latestByEntity', () => {
   it('keeps the latest snapshot per entity regardless of input order', () => {
@@ -26,6 +26,57 @@ describe('entityGraphEngine.latestByEntity', () => {
   it('returns an empty map for no snapshots', () => {
     expect(latestByEntity().size).toBe(0);
     expect(latestByEntity([]).size).toBe(0);
+  });
+});
+
+describe('entityGraphEngine.effectiveByEntity — overlay actual revenue onto the platform row', () => {
+  it('no actual rows → identical to latest-per-entity (zero behaviour change)', () => {
+    const snaps = [
+      { entityId: 'a', source: 'META', date: '2026-01-01', spendMinor: 100, revenueMinor: 0, roas: null },
+      { entityId: 'a', source: 'META', date: '2026-03-01', spendMinor: 300, revenueMinor: 0, roas: null },
+    ];
+    const eff = effectiveByEntity(snaps).get('a');
+    expect(eff.spendMinor).toBe(300); // latest platform row
+    expect(eff.revenueMinor).toBe(0);
+    expect(eff.roas).toBeNull();
+  });
+
+  it('a MANUAL actual overlays revenue onto the platform spend and re-derives roas', () => {
+    const snaps = [
+      { entityId: 'a', source: 'META', date: '2026-07-01', spendMinor: 10000, revenueMinor: 0, roas: null },
+      { entityId: 'a', source: 'MANUAL', date: '2026-07-01', spendMinor: 0, revenueMinor: 40000, roas: null },
+    ];
+    const eff = effectiveByEntity(snaps).get('a');
+    expect(eff.spendMinor).toBe(10000);   // platform spend survives (MANUAL spend:0 does NOT shadow)
+    expect(eff.revenueMinor).toBe(40000); // manual revenue overlays
+    expect(eff.roas).toBe(4);             // 40000 / 10000, re-derived from platform spend
+  });
+
+  it('overlay never lets a spend-0 actual row shadow platform spend even when it is newer', () => {
+    const snaps = [
+      { entityId: 'a', source: 'META', date: '2026-07-01', spendMinor: 5000, revenueMinor: 0 },
+      { entityId: 'a', source: 'GA4', date: '2026-07-05', spendMinor: 0, revenueMinor: 15000 }, // newer, spend 0
+    ];
+    const eff = effectiveByEntity(snaps).get('a');
+    expect(eff.spendMinor).toBe(5000); // platform base, not the newer GA4 spend-0 row
+    expect(eff.revenueMinor).toBe(15000);
+    expect(eff.roas).toBe(3);
+  });
+
+  it('an actual with no revenue does not overlay (keeps the platform row)', () => {
+    const snaps = [
+      { entityId: 'a', source: 'META', date: '2026-07-01', spendMinor: 5000, revenueMinor: 200, roas: 0.04 },
+      { entityId: 'a', source: 'MANUAL', date: '2026-07-02', spendMinor: 0, revenueMinor: 0 },
+    ];
+    const eff = effectiveByEntity(snaps).get('a');
+    expect(eff.revenueMinor).toBe(200);
+    expect(eff.roas).toBe(0.04);
+  });
+
+  it('actual-only entity (no platform row) returns the actual row as-is', () => {
+    const eff = effectiveByEntity([{ entityId: 'a', source: 'MANUAL', date: '2026-07-01', spendMinor: 0, revenueMinor: 9000 }]).get('a');
+    expect(eff.revenueMinor).toBe(9000);
+    expect(eff.spendMinor).toBe(0);
   });
 });
 

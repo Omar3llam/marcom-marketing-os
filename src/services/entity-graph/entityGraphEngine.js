@@ -25,6 +25,60 @@ export function latestByEntity(snapshots = []) {
   return byEntity;
 }
 
+// Snapshot `source` groupings — mirror BlendedTruthService (kept local so this
+// pure engine stays dependency-free). MANUAL = a manual revenue actual (CSV
+// upload); actual sources are the trusted revenue truth over platform claims.
+const PLATFORM_SOURCES = new Set(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
+const ACTUAL_SOURCES = new Set(['GA4', 'SHOPIFY', 'MANUAL']);
+
+function latestOf(list) {
+  let best = null;
+  for (const s of list) {
+    if (!best || new Date(s.date).getTime() > new Date(best.date).getTime()) best = s;
+  }
+  return best;
+}
+
+/**
+ * PURE: reduce snapshots to ONE effective row per entity, overlaying actual
+ * revenue onto the platform row. The latest PLATFORM row supplies spend +
+ * engagement; the latest ACTUAL-source revenue (GA4/Shopify/MANUAL) overrides
+ * `revenueMinor` and re-derives `roas` from the platform spend — so a manually
+ * uploaded revenue lights up ROAS without its spend:0 shadowing the real spend,
+ * and a live re-sync of the platform row can never clobber it (separate source).
+ *
+ * No actual rows → identical to latestByEntity (zero behaviour change for the
+ * common platform-only account). Order-independent. Returns Map<entityId, snap>.
+ */
+export function effectiveByEntity(snapshots = []) {
+  const groups = new Map();
+  for (const s of snapshots) {
+    if (!s || s.entityId == null) continue;
+    const arr = groups.get(s.entityId);
+    if (arr) arr.push(s); else groups.set(s.entityId, [s]);
+  }
+
+  const out = new Map();
+  for (const [entityId, snaps] of groups) {
+    const platform = latestOf(snaps.filter((s) => PLATFORM_SOURCES.has(s.source)));
+    const base = platform ?? latestOf(snaps); // fallback: latest overall (e.g. actual-only)
+    if (!base) continue;
+
+    const actual = latestOf(snaps.filter((s) => ACTUAL_SOURCES.has(s.source)));
+    if (actual && actual !== base && Number.isFinite(actual.revenueMinor) && actual.revenueMinor > 0) {
+      const spendMinor = base.spendMinor;
+      out.set(entityId, {
+        ...base,
+        revenueMinor: actual.revenueMinor,
+        roas: Number.isFinite(spendMinor) && spendMinor > 0 ? actual.revenueMinor / spendMinor : null,
+      });
+    } else {
+      out.set(entityId, base);
+    }
+  }
+  return out;
+}
+
 // Metric fields lifted verbatim from a snapshot — null when the snapshot is
 // absent (distinct from a real 0), so the client shows "—" not "0".
 function metricsOf(snap) {

@@ -12,6 +12,7 @@ import Connections from '@/pages/Connections.jsx';
 import { ProfileTab } from './ProfileTab.jsx';
 import { WorkspaceTab } from './WorkspaceTab.jsx';
 import TeamTab from './TeamTab.jsx';
+import RevenueCsvTab from './RevenueCsvTab.jsx';
 import { NotificationsTab } from './NotificationsTab.jsx';
 import { SecurityTab } from './SecurityTab.jsx';
 import {
@@ -158,6 +159,8 @@ export default function Settings() {
         return <Connections />;
       case 'team':
         return <TeamTab />;
+      case 'revenue':
+        return <RevenueCsvTab />;
       case 'billing':
         return <SettingsPlaceholder title="Billing" copy="Billing configuration is reserved here so plan and payment controls stay separate from marketing workflows." />;
       case 'workspace':

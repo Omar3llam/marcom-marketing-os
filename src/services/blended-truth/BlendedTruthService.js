@@ -17,7 +17,10 @@ import { isStale } from '../connectors/connectorTypes.js';
 import { listConnections } from '../connectors/credentialStore.js';
 
 export const PLATFORM_SOURCES = Object.freeze(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
-export const ACTUAL_SOURCES   = Object.freeze(['GA4', 'SHOPIFY']);
+// MANUAL = a manually-uploaded revenue actual (CSV). It reconciles as an ACTUAL
+// (measured truth), never a platform claim — so a non-pixel account's uploaded
+// revenue shows an honest platform-vs-actual gap, not a collapsed-to-zero one.
+export const ACTUAL_SOURCES   = Object.freeze(['GA4', 'SHOPIFY', 'MANUAL']);
 
 const LOOKBACK_DAYS = Number(process.env.BLENDED_TRUTH_LOOKBACK_DAYS || 30);
 

@@ -19,6 +19,7 @@ import { agenticRouter }             from './agentic.js';
 import { accuracyRouter }            from './accuracy.js';
 import { connectionsRouter }         from './connections.js';
 import { entitiesRouter }            from './entities.js';
+import { revenueRouter }             from './revenue.js';
 
 export const lumiRouter = Router();
 
@@ -40,3 +41,4 @@ lumiRouter.use('/', agenticRouter);
 lumiRouter.use('/', accuracyRouter);
 lumiRouter.use('/', connectionsRouter);
 lumiRouter.use('/', entitiesRouter);
+lumiRouter.use('/', revenueRouter);
