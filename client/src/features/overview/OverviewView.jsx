@@ -45,7 +45,8 @@ export default function OverviewView() {
 
   // Extract stats from intelligence summary
   const stats = {
-    spend: summary?.spend > 0 ? formatCurrencyWhole(summary.spend, currency) : workspace?.spendTier?.split(' ').slice(0, 2).join(' ') || '$0',
+    spend: summary?.spend > 0 ? formatCurrencyWhole(summary.spend, currency) : '—', // no real spend → honest dash, never the onboarding spendTier range
+
     cpa: summary?.blendedCpa ? formatCurrencyWhole(summary.blendedCpa, currency) : 'No data',
     waste: summary?.wasted > 0 ? `${formatCurrencyWhole(summary.wasted, currency)}/mo` : '$0/mo',
     health: summary?.health || 0,
