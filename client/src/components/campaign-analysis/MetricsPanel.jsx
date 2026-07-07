@@ -1,5 +1,7 @@
+import { Link } from 'react-router-dom';
 import InlineBar from '@/components/ui/InlineBar.jsx';
 import { cn }    from '@/lib/utils.js';
+import { appRoutes } from '@/app/routeManifest.js';
 import { fmtCurrency } from './campaignFormatters.js';
 
 function KpiCard({ label, value, valueClass, delta, deltaClass, footer }) {
@@ -36,6 +38,11 @@ export function MetricsPanel({
         value={blendedCpa != null ? fmtCurrency(blendedCpa, currency) : '—'}
         delta={blendedCpa != null ? 'Per-campaign avg' : 'No conversions tracked yet'}
         deltaClass="text-lumi-subtle"
+        footer={blendedCpa == null ? (
+          <Link to={appRoutes.settingsRevenue} className="text-xs font-medium text-lumi-accent hover:underline">
+            Add revenue data to unlock ROAS →
+          </Link>
+        ) : undefined}
       />
       <KpiCard
         label="Wasted Spend"

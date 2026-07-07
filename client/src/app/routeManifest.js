@@ -15,6 +15,7 @@ export const appRoutes = {
   settingsGeneral: '/app/settings/general',
   settingsIntegrations: '/app/settings/integrations',
   settingsTeam: '/app/settings/team',
+  settingsRevenue: '/app/settings/revenue',
   settingsWorkspace: '/app/settings/workspace',
   settingsSecurity: '/app/settings/security',
 };
@@ -34,6 +35,7 @@ export const settingsSections = [
   { key: 'general', label: 'General', path: appRoutes.settingsGeneral },
   { key: 'integrations', label: 'Channels', path: appRoutes.settingsIntegrations },
   { key: 'team', label: 'Team & Roles', path: appRoutes.settingsTeam },
+  { key: 'revenue', label: 'Revenue data', path: appRoutes.settingsRevenue },
   { key: 'workspace', label: 'Workspace', path: appRoutes.settingsWorkspace },
   { key: 'security', label: 'Security', path: appRoutes.settingsSecurity },
 ];

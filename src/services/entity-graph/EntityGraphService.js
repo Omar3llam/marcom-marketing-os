@@ -14,7 +14,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { ENTITY_LEVEL } from '../connectors/connectorTypes.js';
-import { latestByEntity, toCampaignRow, toAdSetRow } from './entityGraphEngine.js';
+import { effectiveByEntity, toCampaignRow, toAdSetRow } from './entityGraphEngine.js';
 
 // entityId columns are @db.Uuid — a non-UUID string makes Prisma throw on the
 // cast (the 500 the feed route documents). Guard before any id-keyed query.
@@ -22,12 +22,14 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const WINDOW_DAYS = Number(process.env.ENTITY_SNAPSHOT_WINDOW_DAYS || 90);
 
 const METRIC_SELECT = {
-  entityId: true, date: true, spendMinor: true, roas: true, ctr: true, frequency: true, currency: true,
+  entityId: true, date: true, source: true, spendMinor: true, roas: true, ctr: true, frequency: true, currency: true,
   conversions: true, // needed for the account-level Blended CPA aggregate (Σspend / Σconversions)
   // The verdict engine rolls up raw totals and re-derives roas/ctr itself, so it
   // needs the un-ratio'd inputs the display projection never used: revenue, the
   // ctr numerator/denominator. Surfaced here (they already exist on the row) so
   // the connector→verdict adapter never has to zero-fill a missing field.
+  // `source` lets effectiveByEntity overlay actual (GA4/Shopify/MANUAL) revenue
+  // onto the platform row.
   revenueMinor: true, impressions: true, clicks: true,
 };
 
@@ -42,7 +44,7 @@ async function latestSnapshots(workspaceId, entityLevel, entityIds) {
     logger.debug({ err: err.message, workspaceId, entityLevel }, '[EntityGraph] snapshot read failed');
     return [];
   });
-  return latestByEntity(snaps);
+  return effectiveByEntity(snaps);
 }
 
 /**
