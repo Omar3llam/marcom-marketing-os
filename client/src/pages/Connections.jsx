@@ -116,7 +116,7 @@ export default function Connections() {
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-8">
-      <h1 className="decision-title text-lumi-text mb-1">Connected Channels</h1>
+      <h1 className="decision-title text-lumi-text mb-1">Channels</h1>
       <p className="text-sm text-lumi-muted mb-6">Where Lumi pulls its data from. A second channel lights up cross-channel blended truth.</p>
 
       {loading && <div className="space-y-3"><CardSkeleton /></div>}

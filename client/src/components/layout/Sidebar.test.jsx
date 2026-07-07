@@ -24,6 +24,9 @@ vi.mock('@/hooks/useCollabRole.js', () => ({
 vi.mock('@/hooks/useWorkspace.js', () => ({
   useWorkspace: () => ({ workspace: { name: 'Acme', market: 'EG' }, hasWorkspace: true, loading: false }),
 }));
+vi.mock('@/hooks/useConnections.js', () => ({
+  useConnections: vi.fn(() => ({ data: null, loading: false, error: null })),
+}));
 vi.mock('@/components/ui/NotificationBell.jsx', () => ({ default: () => null }));
 vi.mock('@/features/inbox/InboxPanel.jsx', () => ({ default: () => null }));
 vi.mock('@/components/ui/RecentDecisions.jsx', () => ({ default: () => null }));
@@ -32,6 +35,7 @@ vi.mock('./RadarStrip.jsx', () => ({ default: () => null }));
 vi.mock('@/components/brand/LumiStar.jsx', () => ({ default: () => null }));
 
 import Sidebar from './Sidebar.jsx';
+import { useConnections } from '@/hooks/useConnections.js';
 
 function renderSidebar(props = {}) {
   return render(
@@ -72,5 +76,25 @@ describe('Sidebar — mobile drawer visibility', () => {
       expect(desktopVisible).toBe(true);
       unmount();
     }
+  });
+});
+
+describe('Sidebar — connect-a-channel shortcut (self-hiding)', () => {
+  it('no channel connected → shows the highlighted "Connect a channel" entry', () => {
+    useConnections.mockReturnValue({ data: { connections: [] }, loading: false, error: null });
+    const { getByText } = renderSidebar({ mobileMenuOpen: true });
+    expect(getByText('Connect a channel')).toBeTruthy();
+  });
+
+  it('a channel is connected → the shortcut disappears (existing users never see it)', () => {
+    useConnections.mockReturnValue({ data: { connections: [{ platform: 'META', connected: true }] }, loading: false, error: null });
+    const { queryByText } = renderSidebar({ mobileMenuOpen: true });
+    expect(queryByText('Connect a channel')).toBeNull();
+  });
+
+  it('while connections are still loading → no premature shortcut flash', () => {
+    useConnections.mockReturnValue({ data: null, loading: true, error: null });
+    const { queryByText } = renderSidebar({ mobileMenuOpen: true });
+    expect(queryByText('Connect a channel')).toBeNull();
   });
 });
