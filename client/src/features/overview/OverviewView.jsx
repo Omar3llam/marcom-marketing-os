@@ -6,7 +6,7 @@
 // AI-Insight / Quick-Actions panels — which derived "alerts" from the campaign
 // feed — are gone; the agenda IS the prioritized, evidence-backed action list.
 // ============================================================
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   BarChart, Target, AlertTriangle, Activity,
@@ -23,6 +23,7 @@ import StatCard from '@/components/ui/StatCard.jsx';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
 import { ProofSummary } from '@/features/intelligence/proof/ProofView.jsx';
 import AgenticShellView from './AgenticShellView.jsx';
+import FirstRunBanner from './components/FirstRunBanner.jsx';
 import ConnectionHealthStrip from './components/ConnectionHealthStrip.jsx';
 import PacingWidget from './components/PacingWidget.jsx';
 import CopilotTeaser from './components/CopilotTeaser.jsx';
@@ -80,6 +81,23 @@ export default function OverviewView() {
   const hasAnyData = hasData || hasConnectorData;
   const showCopilotTeaser = collabRole !== WORKSPACE_ROLE.CLIENT; // CLIENT home stays read-only & minimal
 
+  // First-run activation nudge. Onboarding sets sessionStorage 'marcom:firstActivation'
+  // on completion — a flag that was written but never read until now. Surface a
+  // one-time "connect a channel" hero while the account still has no data, then
+  // retire the flag the instant data lands, the user acts on the CTA, or dismisses
+  // it — so it never resurfaces on a later visit.
+  const [firstRun, setFirstRun] = useState(
+    () => typeof window !== 'undefined' && window.sessionStorage?.getItem('marcom:firstActivation') === '1',
+  );
+  const retireFirstRun = useCallback(() => {
+    if (typeof window !== 'undefined') window.sessionStorage?.removeItem('marcom:firstActivation');
+    setFirstRun(false);
+  }, []);
+  useEffect(() => {
+    if (firstRun && hasAnyData) retireFirstRun(); // data arrived → guided step is done
+  }, [firstRun, hasAnyData, retireFirstRun]);
+  const showFirstRun = firstRun && !loading && !hasAnyData;
+
   return (
     <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
       {/* Header */}
@@ -105,9 +123,25 @@ export default function OverviewView() {
           disconnected channel is often *why* there's no data. */}
       <ConnectionHealthStrip />
 
+      {/* First-run guided step — the one-time "connect a channel" hero for a
+          brand-new account (wires the onboarding firstActivation flag). Shown
+          INSTEAD of the generic empty state below, so there's a single, stepped
+          call-to-action rather than two competing "connect" heroes. */}
+      {showFirstRun && (
+        <FirstRunBanner
+          step={1}
+          title="Connect a channel to get started"
+          description="Lumi needs your live campaign data to generate verdicts and decisions. Connect Meta or Google and your account starts populating within minutes."
+          primaryAction={{ label: 'Connect a channel', href: appRoutes.settingsIntegrations }}
+          onCtaClick={retireFirstRun}
+          onDismiss={retireFirstRun}
+        />
+      )}
+
       {/* Empty state: only when BOTH substrates are empty (no legacy feed AND no
-          connector data) — a genuinely un-synced account. */}
-      {!loading && !hasAnyData && (
+          connector data) — a genuinely un-synced account. Suppressed during
+          first-run (the stepped banner above takes its place). */}
+      {!loading && !hasAnyData && !firstRun && (
         <div className="flex flex-col items-center justify-center min-h-[480px] p-10 bg-surface-card border border-dashed border-surface-border-strong rounded-xl text-center">
           <div className="w-16 h-16 rounded-xl bg-lumi-accent/10 text-lumi-accent flex items-center justify-center mb-4">
             <Plug className="w-7 h-7" strokeWidth={1.5} />
@@ -116,7 +150,7 @@ export default function OverviewView() {
             No campaign data yet
           </div>
           <p className="text-[14px] text-dark-soft max-w-[440px] leading-relaxed mb-6">
-            Connect your Meta Ads account to unlock account pulse, AI insights, and automated recommendations.
+            Connect Meta or Google to unlock account pulse, AI insights, and automated recommendations.
           </p>
           {/* Primary path for a new user: the OAuth connection flow. */}
           <Link
@@ -124,7 +158,7 @@ export default function OverviewView() {
             className="flex items-center gap-2 px-5 py-3 bg-lumi-accent hover:bg-lumi-accent/90 text-white rounded-lg transition-all font-display font-semibold text-sm shadow-accent-glow focus:outline-none focus:ring-2 focus:ring-lumi-accent focus:ring-offset-2 focus:ring-offset-surface-dark"
           >
             <Plug className="w-4 h-4" strokeWidth={1.5} />
-            Connect your Meta account
+            Connect a channel
             <ArrowRight className="w-3.5 h-3.5" strokeWidth={1.5} />
           </Link>
         </div>

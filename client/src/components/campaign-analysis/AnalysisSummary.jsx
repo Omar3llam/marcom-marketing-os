@@ -46,7 +46,7 @@ function EmptyTable({ loading, emptyChannel }) {
     <div className="p-12 text-center">
       <BarChart3 className="w-12 h-12 mx-auto text-lumi-subtle" strokeWidth={1.5} />
       <p className="mt-3 font-display text-lumi-text">No campaign data yet.</p>
-      <p className="mt-1 text-lumi-muted text-sm">Connect your Meta account to get started.</p>
+      <p className="mt-1 text-lumi-muted text-sm">Connect a channel to get started.</p>
     </div>
   );
 }

@@ -32,7 +32,7 @@ export const intelligenceSections = [
 
 export const settingsSections = [
   { key: 'general', label: 'General', path: appRoutes.settingsGeneral },
-  { key: 'integrations', label: 'Integrations', path: appRoutes.settingsIntegrations },
+  { key: 'integrations', label: 'Channels', path: appRoutes.settingsIntegrations },
   { key: 'team', label: 'Team & Roles', path: appRoutes.settingsTeam },
   { key: 'workspace', label: 'Workspace', path: appRoutes.settingsWorkspace },
   { key: 'security', label: 'Security', path: appRoutes.settingsSecurity },

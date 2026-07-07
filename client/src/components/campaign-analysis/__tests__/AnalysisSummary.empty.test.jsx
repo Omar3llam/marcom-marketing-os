@@ -41,7 +41,7 @@ describe('AnalysisSummary — empty state is connector-aware (no contradiction)'
   it('genuinely empty (nothing connected) → connect-Meta message, no CSV', () => {
     render(<AnalysisSummary {...base} hasConnectorData={false} />);
     expect(screen.getByText(/No campaign data yet/i)).toBeInTheDocument();
-    expect(screen.getByText(/Connect your Meta account to get started/i)).toBeInTheDocument();
+    expect(screen.getByText(/Connect a channel to get started/i)).toBeInTheDocument();
     expect(screen.queryByText(/upload a CSV/i)).not.toBeInTheDocument();
     // never the old CSV-exclusive contradiction
     expect(screen.queryByText(/No campaigns analyzed yet/i)).not.toBeInTheDocument();

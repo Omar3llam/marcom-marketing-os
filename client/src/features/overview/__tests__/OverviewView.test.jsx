@@ -27,6 +27,7 @@ vi.mock('@/hooks/useCollabRole.js', async (importOriginal) => {
 
 // Child components mocked to markers/null so we test OverviewView's gating only.
 vi.mock('../AgenticShellView.jsx', () => ({ default: () => <div data-testid="agentic-shell">shell</div> }));
+vi.mock('../components/FirstRunBanner.jsx', () => ({ default: () => <div data-testid="first-run">first-run</div> }));
 vi.mock('../components/ConnectionHealthStrip.jsx', () => ({ default: () => null }));
 vi.mock('../components/PacingWidget.jsx', () => ({ default: () => <div data-testid="pacing" /> }));
 vi.mock('../components/CopilotTeaser.jsx', () => ({ default: () => null }));
@@ -45,6 +46,7 @@ const renderView = () => render(<MemoryRouter><OverviewView /></MemoryRouter>);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sessionStorage.clear(); // firstActivation flag must not bleed across tests
   useCollabRole.mockReturnValue({ role: WORKSPACE_ROLE.STRATEGIST });
   // defaults; each test overrides the substrate under test
   useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: false });
@@ -89,5 +91,46 @@ describe('OverviewView — agentic shell is decoupled from the legacy CampaignSt
 
     expect(screen.queryByText(/No campaign data yet/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId('agentic-shell')).not.toBeInTheDocument();
+  });
+});
+
+describe('OverviewView — first-run activation banner (wires the onboarding flag)', () => {
+  it('firstActivation flag + no data → banner shows, and REPLACES the generic empty state', () => {
+    sessionStorage.setItem('marcom:firstActivation', '1');
+    useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: false });
+    useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: false, error: null, refetch: vi.fn() });
+    renderView();
+
+    expect(screen.getByTestId('first-run')).toBeInTheDocument();
+    // one call-to-action, not two: the generic empty-state hero is suppressed
+    expect(screen.queryByText(/No campaign data yet/i)).not.toBeInTheDocument();
+  });
+
+  it('no flag (returning user) + no data → generic empty state, never the banner', () => {
+    useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: false });
+    useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: false, error: null, refetch: vi.fn() });
+    renderView();
+
+    expect(screen.queryByTestId('first-run')).not.toBeInTheDocument();
+    expect(screen.getByText(/No campaign data yet/i)).toBeInTheDocument();
+  });
+
+  it('flag set but data exists → banner hidden AND the flag is retired (never resurfaces)', () => {
+    sessionStorage.setItem('marcom:firstActivation', '1');
+    useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: false });
+    useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
+    renderView();
+
+    expect(screen.queryByTestId('first-run')).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('marcom:firstActivation')).toBeNull();
+  });
+
+  it('flag set but still loading → banner not shown yet (waits for the data verdict)', () => {
+    sessionStorage.setItem('marcom:firstActivation', '1');
+    useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: true });
+    useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: true, error: null, refetch: vi.fn() });
+    renderView();
+
+    expect(screen.queryByTestId('first-run')).not.toBeInTheDocument();
   });
 });

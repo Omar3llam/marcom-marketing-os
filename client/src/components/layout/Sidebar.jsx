@@ -14,12 +14,13 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   Layout, BarChart3, Send,
   Settings, PanelLeftClose, Plus, Search, ChevronDown,
-  Brain, FlaskConical, Microscope, Megaphone, FileText,
+  Brain, FlaskConical, Microscope, Megaphone, FileText, Plug,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
 import { roleAllowed } from '@/components/auth/RoleGate.jsx';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
+import { useConnections } from '@/hooks/useConnections.js';
 import { cn } from '@/lib/utils.js';
 import NotificationBell from '@/components/ui/NotificationBell.jsx';
 import InboxPanel from '@/features/inbox/InboxPanel.jsx';
@@ -158,9 +159,17 @@ export default function Sidebar({
   const { currentUser } = useAuth();
   const { role: collabRole } = useCollabRole();
   const { workspace, hasWorkspace, loading: workspaceLoading } = useWorkspace();
+  const { data: connectionsData, loading: connectionsLoading } = useConnections();
 
   // Role-gated navigation — items with a `roles` constraint hide for other roles.
   const navItems = tools.filter((t) => roleAllowed(collabRole, t.roles));
+
+  // Discoverability: a highlighted "Connect a channel" entry, shown ONLY until the
+  // first channel connects (self-hiding — existing users never see it). Operators
+  // only; a read-only CLIENT can't connect. Reads the same real Integration rows
+  // the Channels page uses, so it disappears the moment a connection lands.
+  const hasConnector = (connectionsData?.connections ?? []).some((c) => c.connected);
+  const showConnectCTA = roleAllowed(collabRole, ['STRATEGIST', 'BUYER']) && !connectionsLoading && !hasConnector;
 
   // UI state
   const [notifOpen, setNotifOpen] = useState(false);
@@ -397,6 +406,29 @@ export default function Sidebar({
               </NavLink>
             );
           })}
+
+          {/* Connect-a-channel shortcut — solves the "no main-nav entry to
+              Integrations" gap for new users; self-hides after the first connect. */}
+          {showConnectCTA && (
+            <NavLink
+              to={appRoutes.settingsIntegrations}
+              title={collapsed ? 'Connect a channel' : undefined}
+              onClick={() => onMobileMenuToggle?.()}
+              className={cn(
+                'flex items-center gap-3 rounded-xl transition-all duration-150 mt-1 text-sm',
+                'border border-lumi-accent/40 bg-lumi-accent-soft/30 text-lumi-accent hover:bg-lumi-accent-soft/50',
+                collapsed ? 'justify-center p-3' : 'px-3 py-2.5',
+              )}
+            >
+              <Plug className={cn('flex-shrink-0', collapsed ? 'w-5 h-5' : 'w-4 h-4')} strokeWidth={1.5} />
+              {!collapsed && (
+                <div className="flex-1 min-w-0">
+                  <div className="font-display font-semibold text-sm leading-tight truncate">Connect a channel</div>
+                  <div className="text-xs text-lumi-accent/70 truncate mt-0.5">Start here</div>
+                </div>
+              )}
+            </NavLink>
+          )}
         </div>
 
         {/* Recent Decisions with sparkline (expanded only) */}

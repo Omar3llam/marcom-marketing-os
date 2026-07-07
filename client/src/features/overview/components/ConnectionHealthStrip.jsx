@@ -9,8 +9,10 @@
 // Honest states: skeleton while loading, honest line on error,
 // "not connected" / "stale" surfaced plainly.
 // ============================================================
+import { Link } from 'react-router-dom';
 import { CheckCircle2, AlertTriangle, Plug } from 'lucide-react';
 import { useConnections } from '@/hooks/useConnections.js';
+import { appRoutes } from '@/app/routeManifest.js';
 
 // The two live connectors (TikTok/LinkedIn are "coming soon" on the Channels page).
 const CHANNELS = [
@@ -41,7 +43,11 @@ export default function ConnectionHealthStrip() {
     );
   }
 
-  const byPlatform = new Map((data?.connections ?? []).map((c) => [c.platform, c]));
+  const connections = data?.connections ?? [];
+  const byPlatform = new Map(connections.map((c) => [c.platform, c]));
+  // No channel connected at all → the strip becomes actionable (its one job on
+  // Home is honest status; connecting still lives on the Channels page).
+  const hasConnector = connections.some((c) => c.connected);
 
   return (
     <div className="mb-6 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-lumi-border bg-lumi-elevated px-4 py-2.5">
@@ -67,6 +73,14 @@ export default function ConnectionHealthStrip() {
           </span>
         );
       })}
+      {!hasConnector && (
+        <Link
+          to={appRoutes.settingsIntegrations}
+          className="ml-auto inline-flex items-center gap-1 font-mono text-[11px] font-medium text-lumi-accent hover:underline"
+        >
+          Connect →
+        </Link>
+      )}
     </div>
   );
 }
