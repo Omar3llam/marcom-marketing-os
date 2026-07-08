@@ -18,6 +18,7 @@ vi.mock('@/hooks/useConnectorCampaigns.js', () => ({ useConnectorCampaigns: vi.f
 vi.mock('@/hooks/useConnectorVerdicts.js', () => ({ useConnectorVerdicts: vi.fn() }));
 vi.mock('@/hooks/useAccountHealth.js', () => ({ useAccountHealth: vi.fn() }));
 vi.mock('@/hooks/useWorkspace.js', () => ({ useWorkspace: () => ({ workspace: { currency: 'USD' } }) }));
+vi.mock('@/hooks/useOnboardingContext.js', () => ({ useOnboardingContext: () => ({ context: null, loading: false, error: null }) }));
 vi.mock('@/hooks/useCampaignAnalysis.js', () => ({ useCampaignAnalysis: () => ({ syncing: false, handleMetaSync: vi.fn() }) }));
 
 // Stub the heavy children — the KPI cards under test live in MetricsPanel (real).

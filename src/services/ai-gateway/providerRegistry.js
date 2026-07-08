@@ -51,6 +51,12 @@ export const PROVIDER_REGISTRY = Object.freeze({
     method: claudeProvider.validateContent,
   },
 
+  // Verdict reasoning → Claude (best at analysis; prose output, not JSON)
+  [CAPABILITY.EXPLAIN_VERDICT]: {
+    provider: PROVIDER.CLAUDE,
+    method: claudeProvider.explainVerdict,
+  },
+
   // Visual → Claude for brief, OpenAI for prompt
   [CAPABILITY.GENERATE_VISUAL_BRIEF]: {
     provider: PROVIDER.CLAUDE,
@@ -106,6 +112,7 @@ const PROVIDER_METHOD_MAP = Object.freeze({
     [CAPABILITY.GENERATE_AUDIENCE]: claudeProvider.generateAudienceHypotheses,
     [CAPABILITY.GENERATE_STRATEGY]: claudeProvider.generateAngleVariants,
     [CAPABILITY.ANALYZE_CREATIVE]: claudeProvider.validateContent,
+    [CAPABILITY.EXPLAIN_VERDICT]: claudeProvider.explainVerdict,
     [CAPABILITY.VALIDATE_CONTENT]: claudeProvider.validateContent,
     [CAPABILITY.RANK_VARIANTS]: claudeProvider.rankVariants,
     [CAPABILITY.GENERATE_VISUAL_BRIEF]: claudeProvider.generateVisualBrief,

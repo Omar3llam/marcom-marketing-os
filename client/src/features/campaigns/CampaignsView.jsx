@@ -13,6 +13,7 @@ import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useAccountHealth } from '@/hooks/useAccountHealth.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
+import { useOnboardingContext } from '@/hooks/useOnboardingContext.js';
 import { fromMinor } from '@/lib/money';
 import { INDUSTRIES } from '@/pages/OnboardingPage/constants.js';
 import { useCampaignAnalysis } from '@/hooks/useCampaignAnalysis.js';
@@ -138,6 +139,11 @@ export default function CampaignsView() {
   const { syncing, handleMetaSync } = useCampaignAnalysis({
     refetchConnectors, refetchVerdicts, refetchHealth,
   });
+
+  // Onboarding dialect (from user.context) → the language Lumi's on-demand
+  // campaign reasoning answers in. null when not onboarded → English server-side.
+  const { context: onboarding } = useOnboardingContext();
+  const dialect = onboarding?.dialect ?? null;
 
   // Industry (from onboarding, surfaced on the workspace) tailors the
   // "needs revenue data" guidance below to the source this business actually uses.
@@ -439,6 +445,7 @@ export default function CampaignsView() {
         campaigns={connectorCampaigns}
         verdicts={verdictByEntityId}
         impacts={impactByEntityId}
+        dialect={dialect}
         loading={connectorLoading}
         error={connectorError}
       />

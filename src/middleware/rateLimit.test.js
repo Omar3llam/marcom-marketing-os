@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { authLimiter, syncLimiter, adminSeedLimiter } from './rateLimit.js';
+import { authLimiter, syncLimiter, adminSeedLimiter, reasoningLimiter } from './rateLimit.js';
 
 function appWith(limiter) {
   const app = express();
@@ -51,5 +51,16 @@ describe('route-specific rate limiters cap at their configured max', () => {
     expect(res.slice(0, 20).every((r) => r.status === 200)).toBe(true);
     expect(res[20].status).toBe(429);
     expect(res[20].body.message).toMatch(/authentication attempts/i);
+  });
+
+  it('reasoningLimiter: 15 pass, the 16th is 429 (keyed per workspace)', async () => {
+    const app = express();
+    app.use((req, _res, next) => { req.workspaceId = 'ws-reasoning-limit'; next(); });
+    app.use(reasoningLimiter);
+    app.get('/', (_req, res) => res.status(200).json({ ok: true }));
+    const res = await fire(app, 16);
+    expect(res.slice(0, 15).every((r) => r.status === 200)).toBe(true);
+    expect(res[15].status).toBe(429);
+    expect(res[15].body).toEqual({ error: 'ReasoningRateLimit', message: expect.stringMatching(/reasoning requests/i) });
   });
 });
