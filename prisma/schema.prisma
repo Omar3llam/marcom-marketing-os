@@ -376,6 +376,7 @@ model Workspace {
   approvalDecisions          ApprovalDecision[]
   publishedCreatives         PublishedCreative[]
   providerPerformanceMetrics ProviderPerformanceMetrics[]
+  contentGenerations         ContentGeneration[]
   reinforcementSnapshots     ReinforcementSnapshot[]
 
   // ── Phase 1: Marketing OS substrate ──────────────────────────
@@ -440,11 +441,35 @@ model User {
   context     Json?
   createdAt   DateTime       @default(now())
 
-  workspace   Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  oauthTokens OAuthToken[]
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  oauthTokens        OAuthToken[]
+  contentGenerations ContentGeneration[]
 
   @@index([workspaceId])
   @@map("users")
+}
+
+// ── Content Lab: saved generations (history) ─────────────────
+// One row per successful Content Lab generation. Persisted best-effort AFTER
+// the AI call so a save failure never blocks the response. Workspace-scoped so
+// the team shares a history; `createdById` is the internal User.id (resolved
+// from the Firebase uid via clerkId — NEVER req.userId, which is the uid).
+// `content` = the returned { copy, headlines, ctas, visual, video }; `context`
+// = what it was generated for (campaign/tone/brand/audience/industry/objective/
+// format/options). Both JSON — the shape is owned by the route, not the schema.
+model ContentGeneration {
+  id          String   @id @default(cuid())
+  workspaceId String   @db.Uuid
+  createdById String   @db.Uuid
+  content     Json
+  context     Json
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@map("content_generations")
 }
 
 // ── Team & Roles: workspace invitation ───────────────────────

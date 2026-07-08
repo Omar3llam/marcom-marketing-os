@@ -8,7 +8,7 @@ import { Router }        from 'express';
 import { getProjectById } from '../models/project.js';
 import { callClaude }    from '../utils/claude.js';
 import { logger }        from '../utils/logger.js';
-import { generateContent } from './tools/content-generate.js';
+import { generateContent, listContentGenerations } from './tools/content-generate.js';
 import { validate, contentGenerateSchema, contentCalendarSchema, campaignBriefSchema } from '../middleware/validate.js';
 
 export const toolsRouter = Router();
@@ -16,6 +16,10 @@ export const toolsRouter = Router();
 // ── POST /api/tools/content-generate ─────────────────────────
 // Content Lab: generate ad copy, headlines, CTAs, visuals, video
 toolsRouter.post('/content-generate', validate(contentGenerateSchema), generateContent);
+
+// ── GET /api/tools/content-generations ───────────────────────
+// Content Lab history: workspace-scoped, newest first, last 50.
+toolsRouter.get('/content-generations', listContentGenerations);
 
 // ── POST /api/tools/content-calendar ─────────────────────────
 // Body: { projectId, targetMonth, targetSector, keyFocus }

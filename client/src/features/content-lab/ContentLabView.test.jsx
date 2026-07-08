@@ -20,10 +20,12 @@ vi.mock('@/hooks/useContentGeneration.js', () => ({
   }),
 }));
 vi.mock('@/hooks/useConnectorCampaigns.js', () => ({ useConnectorCampaigns: vi.fn() }));
+vi.mock('@/hooks/useContentHistory.js', () => ({ useContentHistory: vi.fn() }));
 
 import ContentLabView from './ContentLabView.jsx';
 import { useOnboardingContext } from '@/hooks/useOnboardingContext.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
+import { useContentHistory } from '@/hooks/useContentHistory.js';
 
 const ONBOARDING = {
   name: 'Acme', industry: 'ecommerce',
@@ -44,6 +46,7 @@ beforeEach(() => {
   generateSpy.mockReset();
   useOnboardingContext.mockReturnValue({ context: ONBOARDING, loading: false, error: null });
   useConnectorCampaigns.mockReturnValue({ campaigns: CAMPAIGNS, loading: false, error: null, refetch: vi.fn() });
+  useContentHistory.mockReturnValue({ generations: [], isLoading: false, error: null, refetch: vi.fn() });
 });
 
 describe('ContentLabView — tone is grounded in onboarding and overridable', () => {
@@ -136,5 +139,36 @@ describe('ContentLabView — visual format picker drives format + dimensions', (
     const args = generateSpy.mock.calls[0][0];
     expect(args.format).toBeUndefined();
     expect(args.dimensions).toBeUndefined();
+  });
+});
+
+describe('ContentLabView — history rail integration', () => {
+  const SAVED = [{
+    id: 'g1',
+    content: { copy: [{ tag: 'STORY', text: 'a saved story line' }] },
+    context: { campaignContext: { name: 'Folla Campaign' }, options: { copy: true }, tone: 'Warm & familial' },
+    createdAt: new Date().toISOString(),
+    createdBy: { email: 'me@ws.com' },
+  }];
+
+  it('empty history → the rail shows the honest empty state', () => {
+    renderView();
+    expect(screen.getByText(/Your generations will appear here/i)).toBeInTheDocument();
+  });
+
+  it('renders saved generations in the rail', () => {
+    useContentHistory.mockReturnValue({ generations: SAVED, isLoading: false, error: null, refetch: vi.fn() });
+    renderView();
+    expect(screen.getByRole('button', { name: /Folla Campaign/i })).toBeInTheDocument();
+  });
+
+  it('clicking a saved item populates the output panel with a HISTORICAL badge', () => {
+    useContentHistory.mockReturnValue({ generations: SAVED, isLoading: false, error: null, refetch: vi.fn() });
+    renderView();
+
+    fireEvent.click(screen.getByRole('button', { name: /Folla Campaign/i }));
+    expect(screen.getByText('HISTORICAL')).toBeInTheDocument();
+    expect(screen.getByText('a saved story line')).toBeInTheDocument(); // the saved content renders
+    expect(screen.getByRole('button', { name: /back to live/i })).toBeInTheDocument();
   });
 });
