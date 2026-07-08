@@ -42,3 +42,17 @@ describe('ConnectorCampaignsPanel — verdict column', () => {
     expect(screen.getByLabelText('Verdict: SCALE')).toBeInTheDocument();
   });
 });
+
+describe('ConnectorCampaignsPanel — impact column', () => {
+  it('renders the per-campaign impact score from the analysis engine', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} impacts={{ c1: 9 }} />);
+    expect(screen.getByTitle('Impact 9/10 — priority to act')).toHaveTextContent('9');
+  });
+
+  it('a campaign with no impact (unscored/sub-floor) shows "—", never a fabricated 0', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'HOLD' }} impacts={{}} />);
+    expect(screen.queryByTitle(/Impact \d+\/10/)).not.toBeInTheDocument();
+    // The impact cell falls back to the shared "No data" em-dash.
+    expect(screen.getAllByTitle('No data').length).toBeGreaterThan(0);
+  });
+});

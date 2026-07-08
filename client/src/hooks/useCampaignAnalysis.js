@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api } from '@/lib/api.js';
 import { toast } from 'sonner';
 
-export function useCampaignAnalysis({ refetchConnectors, refetchVerdicts }) {
+export function useCampaignAnalysis({ refetchConnectors, refetchVerdicts, refetchHealth }) {
   const [syncing, setSyncing] = useState(false);
 
   // Sync Live Meta → drives the CONNECTOR pipeline (workspace-scoped), the same
@@ -36,10 +36,10 @@ export function useCampaignAnalysis({ refetchConnectors, refetchVerdicts }) {
         toast.error('Sync couldn’t reach your channels. Reconnect in Settings → Integrations.');
       } else if (records === 0) {
         toast.info('Synced — no campaign data returned from your channels yet.');
-        await Promise.all([refetchConnectors?.(), refetchVerdicts?.()]);
+        await Promise.all([refetchConnectors?.(), refetchVerdicts?.(), refetchHealth?.()]);
       } else {
         toast.success(`Synced ${synced} channel${synced === 1 ? '' : 's'} · ${records} record${records === 1 ? '' : 's'}.`);
-        await Promise.all([refetchConnectors?.(), refetchVerdicts?.()]);
+        await Promise.all([refetchConnectors?.(), refetchVerdicts?.(), refetchHealth?.()]);
       }
     } catch (err) {
       const status = err?.httpStatus ?? err?.response?.status;
