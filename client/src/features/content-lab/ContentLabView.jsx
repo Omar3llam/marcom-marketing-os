@@ -11,12 +11,14 @@ import {
 } from 'lucide-react';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useContentGeneration } from '@/hooks/useContentGeneration.js';
+import { useContentHistory } from '@/hooks/useContentHistory.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { useOnboardingContext } from '@/hooks/useOnboardingContext.js';
 import { TONES } from '@/pages/OnboardingPage/constants.js';
 import { resolveBrandContext } from './brandContext.js';
 import { VISUAL_FORMATS, DEFAULT_FORMAT_ID, formatById, formatToPromptFields } from './visualFormats.js';
 import { OutputEmpty, OutputGenerating, OutputDone, OutputError } from './OutputComponents.jsx';
+import HistoryRail, { relTime } from './HistoryRail.jsx';
 import { OptToggle } from './OptToggle.jsx';
 
 export default function ContentLabView() {
@@ -34,6 +36,8 @@ export default function ContentLabView() {
     progress: apiProgress,
     reset: resetGeneration,
   } = useContentGeneration();
+  // Saved-generations history (workspace-scoped). Refetched after each generate.
+  const { generations, isLoading: historyLoading, error: historyError, refetch: refetchHistory } = useContentHistory();
 
   // Real brand signals from the onboarding profile (tone, industry, objective,
   // audience). null fields mean "not onboarded yet" — we send nothing rather
@@ -57,10 +61,16 @@ export default function ContentLabView() {
   // Visual ad format — drives the brief's format + dimensions (one pick, both
   // values). Default is the most common Meta placement; the user can change it.
   const [formatId, setFormatId] = useState(DEFAULT_FORMAT_ID);
+  // Which saved generation (if any) is being VIEWED read-only in the output panel.
+  const [viewingId, setViewingId] = useState(null);
 
   const tone = toneOverride ?? brand.toneLabel ?? 'Warm & familial';
   const usingOnboardingTone = toneOverride == null && !!brand.toneLabel;
   const selectedFormat = formatById(formatId);
+
+  const viewing = viewingId ? generations.find((g) => g.id === viewingId) : null;
+  // Show the "by <email>" line only when the workspace history has >1 author.
+  const multiUser = new Set(generations.map((g) => g.createdBy?.email).filter(Boolean)).size > 1;
 
   // Derive phase from hook state
   const phase = loading ? 'generating' : apiError ? 'error' : content ? 'done' : 'idle';
@@ -87,11 +97,37 @@ export default function ContentLabView() {
       // Visual brief format + dimensions from the picker (one real selection).
       ...(opts.visual ? formatToPromptFields(formatId) : {}),
     });
+    refetchHistory();   // surface the just-saved generation in the rail
+    setViewingId(null); // ensure the live result (not a history item) shows
   };
 
   const reset = () => {
     resetGeneration();
   };
+
+  // Regenerate from a saved item: pre-fill the form with its context, then drop
+  // back to the live flow so the user can tweak and re-generate.
+  const regenerateFromHistory = (gen) => {
+    const ctx = gen?.context ?? {};
+    if (ctx.options) setOpts({ copy: false, headlines: false, cta: false, visual: false, video: false, ...ctx.options });
+    if (ctx.tone) setToneOverride(ctx.tone);
+    if (ctx.campaignContext?.name) {
+      setContextCampaign({
+        campaign: ctx.campaignContext.name,
+        adset: ctx.campaignContext.adset ?? '',
+        diagnosis: ctx.campaignContext.problem ?? null,
+        ctr: ctx.campaignContext.ctr ?? null,
+      });
+    }
+    setViewingId(null);
+    resetGeneration();
+  };
+
+  // Historical view — reconstruct OutputDone's props from the saved context.
+  const vCtx = viewing?.context ?? {};
+  const vOpts = vCtx.options ?? { copy: true, headlines: true, cta: true, visual: true, video: false };
+  const vTone = vCtx.tone || 'your brand voice';
+  const vCampaign = vCtx.campaignContext ? { campaign: vCtx.campaignContext.name, adset: vCtx.campaignContext.adset } : null;
 
   const problem = contextCampaign
     ? {
@@ -113,8 +149,8 @@ export default function ContentLabView() {
         </h1>
       </header>
 
-      {/* Two-panel layout - responsive: stack on mobile, side-by-side on lg+ */}
-      <div className="grid grid-cols-1 lg:grid-cols-[420px_1fr] gap-4">
+      {/* Three-panel layout: input · history rail · output. Stacks on mobile. */}
+      <div className="grid grid-cols-1 lg:grid-cols-[360px_236px_1fr] gap-4">
         {/* LEFT: Input & Controls - sticky on desktop only */}
         <aside className="bg-surface-card border border-surface-border rounded-xl p-5 shadow-card self-start lg:sticky lg:top-6">
           <div className="section-label mb-3">Campaign context</div>
@@ -386,20 +422,64 @@ export default function ContentLabView() {
           )}
         </aside>
 
+        {/* MIDDLE: History rail */}
+        <HistoryRail
+          generations={generations}
+          isLoading={historyLoading}
+          error={historyError}
+          activeId={viewingId}
+          onSelect={(gen) => setViewingId(gen.id)}
+          multiUser={multiUser}
+        />
+
         {/* RIGHT: Output */}
         <main>
-          {phase === 'idle' && <OutputEmpty />}
-          {phase === 'generating' && <OutputGenerating progress={progress} />}
-          {phase === 'error' && <OutputError error={apiError} onRetry={reset} />}
-          {phase === 'done' && (
-            <OutputDone
-              content={content}
-              opts={opts}
-              tone={tone}
-              contextCampaign={contextCampaign}
-              workspace={workspace}
-              onRegenerate={reset}
-            />
+          {viewing ? (
+            <div className="flex flex-col gap-3">
+              {/* Historical badge + metadata — the user always knows this is saved,
+                  not the live generation. */}
+              <div className="flex items-center justify-between gap-2 p-2.5 bg-lumi-accent/6 border border-lumi-accent/25 rounded-lg">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="px-1.5 py-0.5 rounded bg-lumi-accent/15 text-lumi-accent font-mono text-[9px] font-semibold tracking-wider flex-shrink-0">
+                    HISTORICAL
+                  </span>
+                  <span className="font-mono text-[11px] text-dark-muted truncate">
+                    {viewing.context?.campaignContext?.name || 'General brief'} · {relTime(viewing.createdAt)}
+                    {multiUser && viewing.createdBy?.email ? ` · ${viewing.createdBy.email}` : ''}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setViewingId(null)}
+                  className="flex-shrink-0 font-mono text-[11px] text-lumi-accent hover:underline"
+                >
+                  Back to live
+                </button>
+              </div>
+              <OutputDone
+                content={viewing.content}
+                opts={vOpts}
+                tone={vTone}
+                contextCampaign={vCampaign}
+                workspace={workspace}
+                onRegenerate={() => regenerateFromHistory(viewing)}
+              />
+            </div>
+          ) : (
+            <>
+              {phase === 'idle' && <OutputEmpty />}
+              {phase === 'generating' && <OutputGenerating progress={progress} />}
+              {phase === 'error' && <OutputError error={apiError} onRetry={reset} />}
+              {phase === 'done' && (
+                <OutputDone
+                  content={content}
+                  opts={opts}
+                  tone={tone}
+                  contextCampaign={contextCampaign}
+                  workspace={workspace}
+                  onRegenerate={reset}
+                />
+              )}
+            </>
           )}
         </main>
       </div>

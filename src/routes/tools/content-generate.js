@@ -9,6 +9,7 @@
 // (95% cost reduction vs. orchestrator → Claude → OpenAI path)
 // ============================================================
 import { logger } from '../../utils/logger.js';
+import { prisma } from '../../lib/prisma.js';
 import { execute, CAPABILITY } from '../../services/ai-gateway/index.js';
 import { getCampaignIntelligence } from '../../services/content-intel/campaignIntel.js';
 
@@ -90,6 +91,36 @@ export async function generateContent(req, res) {
       provider: 'AI_GATEWAY',
     }, '[tools/content-generate] Complete');
 
+    // Best-effort history save — a save failure must NEVER fail the generation.
+    // createdById is the internal User.id (@db.Uuid), resolved from the Firebase
+    // uid (req.userId IS the uid, stored in User.clerkId) — never req.userId itself.
+    try {
+      const author = workspaceId && userId
+        ? await prisma.user.findUnique({ where: { clerkId: userId }, select: { id: true } })
+        : null;
+      if (author) {
+        await prisma.contentGeneration.create({
+          data: {
+            workspaceId,
+            createdById: author.id,
+            content,
+            context: {
+              campaignContext: campaignContext ?? null,
+              tone: tone ?? null,
+              brandVoice: brandVoice ?? null,
+              targetAudience: targetAudience ?? null,
+              industry: industry ?? null,
+              objective: objective ?? null,
+              format: format ?? null,
+              options: options ?? null,
+            },
+          },
+        });
+      }
+    } catch (saveErr) {
+      logger.warn({ err: saveErr.message, workspaceId }, '[content-generate] failed to save generation history');
+    }
+
     return res.json({
       status: 'ok',
       content,
@@ -101,6 +132,35 @@ export async function generateContent(req, res) {
       status: 'error',
       message: 'Content generation failed',
     });
+  }
+}
+
+/**
+ * GET /api/tools/content-generations
+ * Workspace-scoped generation history, newest first, capped at 50 (no
+ * pagination for MVP — the client shows "last 50" honestly). Shared across the
+ * team (workspace-scoped), each row carrying who created it.
+ */
+export async function listContentGenerations(req, res) {
+  const workspaceId = req.workspaceId;
+  if (!workspaceId) return res.json({ generations: [] });
+  try {
+    const generations = await prisma.contentGeneration.findMany({
+      where: { workspaceId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        content: true,
+        context: true,
+        createdAt: true,
+        createdBy: { select: { email: true } },
+      },
+    });
+    return res.json({ generations });
+  } catch (err) {
+    logger.error({ err: err.message, workspaceId }, '[content-generations] list failed');
+    return res.status(500).json({ error: 'HistoryUnavailable' });
   }
 }
 

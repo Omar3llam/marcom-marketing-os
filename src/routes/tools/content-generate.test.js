@@ -11,13 +11,21 @@ vi.mock('../../utils/logger.js', () => ({
   logger: { error: vi.fn(), info: vi.fn(), debug: vi.fn(), warn: vi.fn() },
 }));
 
+const { prismaMock } = vi.hoisted(() => ({
+  prismaMock: {
+    user: { findUnique: vi.fn() },
+    contentGeneration: { create: vi.fn(), findMany: vi.fn() },
+  },
+}));
+vi.mock('../../lib/prisma.js', () => ({ prisma: prismaMock }));
+
 const execute = vi.fn();
 vi.mock('../../services/ai-gateway/index.js', async (importActual) => {
   const actual = await importActual();
   return { ...actual, execute };
 });
 
-const { generateContent } = await import('./content-generate.js');
+const { generateContent, listContentGenerations } = await import('./content-generate.js');
 
 function makeRes() {
   return {
@@ -46,6 +54,9 @@ beforeEach(() => {
     success: true,
     output: { body: 'copy body', hook: 'a hook', cta: 'Get it now', hooks: ['h1', 'h2', 'h3'], prompt: 'a visual prompt' },
   });
+  prismaMock.user.findUnique.mockReset().mockResolvedValue({ id: 'user-uuid-1' });
+  prismaMock.contentGeneration.create.mockReset().mockResolvedValue({ id: 'gen-1' });
+  prismaMock.contentGeneration.findMany.mockReset().mockResolvedValue([]);
 });
 
 describe('content-generate — grounded inputs reach the AI gateway', () => {
@@ -143,5 +154,71 @@ describe('content-generate — the visual brief is grounded too', () => {
     const { input } = visualCall();
     expect(input.format).toBeUndefined();
     expect(input.dimensions).toBeUndefined();
+  });
+});
+
+describe('content-generate — best-effort history save', () => {
+  const body = {
+    campaignContext: { name: 'Folla', adset: 'TESTING', problem: 'CTR decay', ctr: 1.85 },
+    options: { copy: true, headlines: true, cta: false, visual: false, video: false },
+    ...REAL,
+  };
+
+  it('saves the generation, resolving createdById from clerkId (NOT req.userId)', async () => {
+    const res = makeRes();
+    await generateContent(makeReq(body), res);
+
+    expect(res.statusCode).toBe(200);
+    // resolves the internal User.id from the Firebase uid (req.userId = 'u1')
+    expect(prismaMock.user.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { clerkId: 'u1' } }),
+    );
+    expect(prismaMock.contentGeneration.create).toHaveBeenCalledTimes(1);
+    const data = prismaMock.contentGeneration.create.mock.calls[0][0].data;
+    expect(data.workspaceId).toBe('ws1');
+    expect(data.createdById).toBe('user-uuid-1'); // resolved id, never the raw uid 'u1'
+    expect(data.content).toEqual(res.body.content);
+    expect(data.context).toMatchObject({ tone: REAL.tone, industry: REAL.industry, campaignContext: body.campaignContext });
+  });
+
+  it('a save failure never fails the generation (best-effort)', async () => {
+    prismaMock.contentGeneration.create.mockRejectedValueOnce(new Error('db down'));
+    const res = makeRes();
+    await generateContent(makeReq(body), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.status).toBe('ok');
+    expect(res.body.content).toBeTruthy();
+  });
+
+  it('no matching user → no save attempted, generation still succeeds', async () => {
+    prismaMock.user.findUnique.mockResolvedValueOnce(null);
+    const res = makeRes();
+    await generateContent(makeReq(body), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(prismaMock.contentGeneration.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('listContentGenerations — workspace-scoped history', () => {
+  it('returns the workspace history, newest first, capped at 50', async () => {
+    const rows = [{ id: 'g1', content: {}, context: {}, createdAt: new Date(), createdBy: { email: 'a@b.com' } }];
+    prismaMock.contentGeneration.findMany.mockResolvedValueOnce(rows);
+    const res = makeRes();
+    await listContentGenerations({ workspaceId: 'ws1' }, res);
+
+    const args = prismaMock.contentGeneration.findMany.mock.calls[0][0];
+    expect(args.where).toEqual({ workspaceId: 'ws1' });
+    expect(args.orderBy).toEqual({ createdAt: 'desc' });
+    expect(args.take).toBe(50);
+    expect(res.body).toEqual({ generations: rows });
+  });
+
+  it('no workspace → empty list, no DB hit', async () => {
+    const res = makeRes();
+    await listContentGenerations({}, res);
+    expect(res.body).toEqual({ generations: [] });
+    expect(prismaMock.contentGeneration.findMany).not.toHaveBeenCalled();
   });
 });
