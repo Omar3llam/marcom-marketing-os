@@ -16,6 +16,7 @@ import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFor
 import { formatCurrency } from '@/lib/money';
 import { useEntityDrillDown } from '@/hooks/useEntityDrillDown.js';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
+import { CampaignDetailPanel } from '@/features/campaigns/CampaignDetailPanel.jsx';
 
 // Missing metric → em-dash, never 0 (a true zero and "no data" must not look alike).
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
@@ -49,21 +50,21 @@ function MetricCells({ m }) {
 function AdSetRows({ state }) {
   if (!state || state.loading) {
     return (
-      <tr><td colSpan={8} className="px-4 py-3 text-center text-xs text-lumi-subtle">
+      <tr><td colSpan={9} className="px-4 py-3 text-center text-xs text-lumi-subtle">
         <Loader2 className="inline w-3.5 h-3.5 animate-spin mr-1.5" strokeWidth={2} /> Loading ad sets…
       </td></tr>
     );
   }
   if (state.error) {
     return (
-      <tr><td colSpan={8} className="px-4 py-3 text-center text-xs text-trend-danger">
+      <tr><td colSpan={9} className="px-4 py-3 text-center text-xs text-trend-danger">
         <AlertTriangle className="inline w-3.5 h-3.5 mr-1.5" strokeWidth={2} /> Couldn’t load ad sets — collapse and try again.
       </td></tr>
     );
   }
   if (state.adSets.length === 0) {
     return (
-      <tr><td colSpan={8} className="px-4 py-3 text-center text-xs text-lumi-subtle">No ad sets synced for this campaign yet.</td></tr>
+      <tr><td colSpan={9} className="px-4 py-3 text-center text-xs text-lumi-subtle">No ad sets synced for this campaign yet.</td></tr>
     );
   }
   return state.adSets.map((a) => (
@@ -76,12 +77,14 @@ function AdSetRows({ state }) {
       <td className="px-4 py-2.5" />{/* impact is campaign-level too — empty on ad-set rows */}
       <MetricCells m={a} />
       <td className="px-4 py-2.5" />
+      <td className="px-4 py-2.5" />{/* detail toggle is campaign-level — empty on ad-set rows */}
     </tr>
   ));
 }
 
-export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts = {}, loading = false, error = null }) {
-  const [open, setOpen] = useState(new Set());
+export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts = {}, dialect = null, loading = false, error = null }) {
+  const [open, setOpen] = useState(new Set());          // ad-set drill-down
+  const [detailOpen, setDetailOpen] = useState(new Set()); // signals + reasoning panel
   const { byId, load } = useEntityDrillDown();
 
   // Stay quiet until there's something real to show. Connector data is a
@@ -94,6 +97,14 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts
       const next = new Set(s);
       if (next.has(id)) next.delete(id);
       else { next.add(id); load(id); }
+      return next;
+    });
+  };
+
+  const toggleDetail = (id) => {
+    setDetailOpen((s) => {
+      const next = new Set(s);
+      if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
   };
@@ -133,11 +144,13 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-20">CTR</th>
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-20">Freq</th>
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-24">Ad sets</th>
+                <th scope="col" className="section-label px-4 py-2.5 text-right w-12"><span className="sr-only">Details</span></th>
               </tr>
             </thead>
             <tbody>
               {campaigns.map((c) => {
                 const isOpen = open.has(c.entityId);
+                const isDetailOpen = detailOpen.has(c.entityId);
                 const count = c.adSetCount ?? 0;
                 const verdict = verdicts[c.entityId];
                 const impact = impacts[c.entityId] ?? null;
@@ -170,7 +183,28 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts
                       <td className="px-4 py-3 text-right font-mono text-sm tabular-nums"><Impact score={impact} /></td>
                       <MetricCells m={c} />
                       <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-lumi-muted">{count > 0 ? count : <Dash />}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => toggleDetail(c.entityId)}
+                          aria-expanded={isDetailOpen}
+                          aria-label={`Toggle details for ${c.name}`}
+                          className="inline-flex items-center justify-center rounded-md p-1 hover:bg-lumi-elevated transition-colors"
+                        >
+                          <ChevronDown
+                            className={cn('w-4 h-4 text-lumi-muted transition-transform', isDetailOpen && 'rotate-180 text-lumi-accent')}
+                            strokeWidth={2}
+                          />
+                        </button>
+                      </td>
                     </tr>
+                    {isDetailOpen && (
+                      <tr className="border-b border-lumi-border/50 bg-lumi-bg/20">
+                        <td colSpan={9} className="px-4 pb-3 pt-0">
+                          <CampaignDetailPanel campaign={c} verdict={verdict} impact={impact} dialect={dialect} />
+                        </td>
+                      </tr>
+                    )}
                     {isOpen && <AdSetRows state={byId[c.entityId]} />}
                   </Fragment>
                 );

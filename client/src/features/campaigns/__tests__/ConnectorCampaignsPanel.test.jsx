@@ -7,13 +7,16 @@
 // never a faked badge.
 // ============================================================
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ConnectorCampaignsPanel } from '../ConnectorCampaignsPanel.jsx';
 
 // Drill-down loads on toggle, not on mount — stub it so the table renders cleanly.
 vi.mock('@/hooks/useEntityDrillDown.js', () => ({
   useEntityDrillDown: () => ({ byId: {}, load: vi.fn() }),
 }));
+// The detail panel's reasoning hook talks to the API — stub the client so mounting
+// the expanded panel never touches the network.
+vi.mock('@/lib/api.js', () => ({ api: { post: vi.fn(), get: vi.fn() } }));
 
 const campaign = (over = {}) => ({
   entityId: 'c1', channel: 'META', name: 'Awareness Reach', adSetCount: 0,
@@ -54,5 +57,19 @@ describe('ConnectorCampaignsPanel — impact column', () => {
     expect(screen.queryByTitle(/Impact \d+\/10/)).not.toBeInTheDocument();
     // The impact cell falls back to the shared "No data" em-dash.
     expect(screen.getAllByTitle('No data').length).toBeGreaterThan(0);
+  });
+});
+
+describe('ConnectorCampaignsPanel — detail expand', () => {
+  it('toggling the details chevron reveals the signals + reasoning panel', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'REFRESH' }} impacts={{ c1: 7 }} />);
+    // Collapsed → no detail panel yet.
+    expect(screen.queryByText('Signals')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /toggle details for awareness reach/i }));
+
+    // Expanded → the detail panel + its on-demand reasoning affordance appear.
+    expect(screen.getByText('Signals')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /get lumi's read/i })).toBeInTheDocument();
   });
 });

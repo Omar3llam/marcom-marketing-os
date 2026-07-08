@@ -54,3 +54,16 @@ export const adminSeedLimiter = rateLimit({
   legacyHeaders:    false,
   message:          { status: 'error', message: 'Demo seed rate limit exceeded. Please wait before seeding again.' },
 });
+
+/** 15 requests / minute — on-demand LLM campaign reasoning (per workspace).
+ *  Keyed by workspaceId so the cap is shared across a team, not per-IP — an
+ *  expensive Claude call guarded against click-spam. Applied as route middleware
+ *  (inside /api/lumi, after auth) so req.workspaceId is resolved. */
+export const reasoningLimiter = rateLimit({
+  windowMs:         60 * 1_000,
+  max:              15,
+  keyGenerator:     (req) => req.workspaceId || req.auth?.userId || req.ip,
+  standardHeaders:  'draft-7',
+  legacyHeaders:    false,
+  message:          { error: 'ReasoningRateLimit', message: 'Too many reasoning requests. Please wait a moment.' },
+});

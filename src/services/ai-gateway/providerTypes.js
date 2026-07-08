@@ -18,6 +18,7 @@ export const CAPABILITY = Object.freeze({
   GENERATE_STRATEGY:       'GENERATE_STRATEGY',
   GENERATE_AUDIENCE:       'GENERATE_AUDIENCE',
   ANALYZE_CREATIVE:        'ANALYZE_CREATIVE',
+  EXPLAIN_VERDICT:         'EXPLAIN_VERDICT', // on-demand prose reasoning for a campaign verdict
 
   // Visual & multimedia
   GENERATE_VISUAL_BRIEF:   'GENERATE_VISUAL_BRIEF',

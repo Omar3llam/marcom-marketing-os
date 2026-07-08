@@ -19,6 +19,7 @@ import { getSystemPrompt } from '../prompts/systemPrompts.js';
 import { buildCopyPrompt } from '../prompts/copyPrompts.js';
 import { buildCaptionPrompt } from '../prompts/captionPrompts.js';
 import { buildVisualBriefPrompt } from '../prompts/visualBriefPrompts.js';
+import { buildReasoningPrompt } from '../prompts/reasoningPrompts.js';
 import { logger } from '../../../utils/logger.js';
 
 // Lazy client instantiation (allows tests to run without API key)
@@ -389,6 +390,37 @@ export async function rankVariants(input, decisionContext = {}) {
       rankings: parsed,
       count: parsed.length,
     },
+    artifacts: [],
+    metadata: result.metadata,
+  };
+}
+
+// EXPLAIN_VERDICT — on-demand prose reasoning for a single campaign verdict.
+// Unlike the copy/strategy capabilities this returns PROSE, not JSON: the output
+// is `reasoning` text, capped short (maxTokens 260 — enough for 2-3 sentences,
+// Arabic included). The caller resolves every signal from real rows; this method
+// never invents data (the prompt forbids it).
+export async function explainVerdict(input) {
+  const { system, user } = buildReasoningPrompt(input || {});
+
+  const result = await callClaude({ systemPrompt: system, userPrompt: user, maxTokens: 260 });
+
+  if (!result.success) {
+    return result;
+  }
+
+  const reasoning = (result.text || '').trim();
+  if (!reasoning) {
+    return {
+      success: false,
+      error: { type: ERROR_TYPE.INVALID_RESPONSE, message: 'Empty reasoning response' },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: { reasoning },
     artifacts: [],
     metadata: result.metadata,
   };

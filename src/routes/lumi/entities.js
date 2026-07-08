@@ -13,7 +13,9 @@ import { Router } from 'express';
 import { getConnectorCampaigns, getCampaignAdSets } from '../../services/entity-graph/index.js';
 import { getConnectorVerdicts } from '../../services/verdict-engine/index.js';
 import { computeAccountHealth } from '../../services/analysis/AccountHealthService.js';
+import { generateCampaignReasoning } from '../../services/analysis/CampaignReasoningService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { reasoningLimiter } from '../../middleware/rateLimit.js';
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 import { logger } from '../../utils/logger.js';
 
@@ -69,6 +71,37 @@ entitiesRouter.get('/entities/health', requireCollabRole(WORKSPACE_ROLE.BUYER, W
     return res.status(500).json({ error: 'HealthUnavailable', message: 'Request failed' });
   }
 });
+
+// On-demand LLM reasoning for a single campaign's verdict. Gated to the
+// operating roles + rate-limited (15/min per workspace — an expensive Claude
+// call). Ephemeral: nothing persisted. Signals are re-derived server-side from
+// real rows (CampaignReasoningService) — the body carries only an optional
+// `dialect` language hint; a campaign not in this workspace → 404 (isolation).
+entitiesRouter.post(
+  '/entities/:id/reasoning',
+  reasoningLimiter,
+  requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST),
+  async (req, res) => {
+    const entityId = req.params.id;
+    const dialect = typeof req.body?.dialect === 'string' ? req.body.dialect : undefined;
+    try {
+      const result = await generateCampaignReasoning({ workspaceId: req.workspaceId, entityId, dialect });
+      if (result.status === 'NO_WORKSPACE') {
+        return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
+      }
+      if (result.status === 'NOT_FOUND') {
+        return res.status(404).json({ error: 'CampaignNotFound', message: 'No such campaign in this workspace' });
+      }
+      if (result.status !== 'OK') {
+        return res.status(502).json({ error: 'ReasoningUnavailable', message: 'Could not generate reasoning right now — try again.' });
+      }
+      return res.json({ entityId, reasoning: result.reasoning });
+    } catch (err) {
+      logger.error({ err: err.message, workspaceId: req.workspaceId, entityId }, '[lumi/entities] reasoning failed');
+      return res.status(500).json({ error: 'ReasoningUnavailable', message: 'Request failed' });
+    }
+  },
+);
 
 entitiesRouter.get('/entities/:campaignId/adsets', async (req, res) => {
   try {
