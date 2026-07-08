@@ -14,14 +14,16 @@ import { Sparkles, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatCurrency } from '@/lib/money';
 import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFormatters.js';
+import { HelpTip } from '@/components/ui/HelpTip.jsx';
+import { HELP } from '@/lib/helpContent.js';
 import { useCampaignReasoning, getCachedReasoning } from '@/hooks/useCampaignReasoning.js';
 
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
 
-function Signal({ label, children }) {
+function Signal({ label, help, children }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1.5 border-b border-lumi-border/40 last:border-0">
-      <span className="section-label">{label}</span>
+      <span className="section-label flex items-center gap-1">{label}{help}</span>
       <span className="font-mono text-sm tabular-nums text-lumi-text">{children}</span>
     </div>
   );
@@ -44,19 +46,19 @@ export function CampaignDetailPanel({ campaign, verdict = null, impact = null, d
       {/* ── Signals ─────────────────────────────────────────── */}
       <div>
         <div className="section-label mb-2 text-lumi-muted">Signals</div>
-        <Signal label="Verdict">{verdict || <Dash />}</Signal>
-        <Signal label="Impact">{impact != null ? `${impact}/10` : <Dash />}</Signal>
-        <Signal label="CTR">{ctrPct || <Dash />}</Signal>
-        <Signal label="Frequency">
+        <Signal label="Verdict" help={<HelpTip content={HELP.VERDICT_COL} />}>{verdict || <Dash />}</Signal>
+        <Signal label="Impact" help={<HelpTip variant="popover" content={HELP.IMPACT_SCORE} />}>{impact != null ? `${impact}/10` : <Dash />}</Signal>
+        <Signal label="CTR" help={<HelpTip content={HELP.CTR} />}>{ctrPct || <Dash />}</Signal>
+        <Signal label="Frequency" help={<HelpTip content={HELP.FREQUENCY} />}>
           {campaign.frequency != null ? <span className={freqColor(campaign.frequency)}>{campaign.frequency.toFixed(2)}</span> : <Dash />}
         </Signal>
-        <Signal label="ROAS">
+        <Signal label="ROAS" help={<HelpTip content={HELP.ROAS} />}>
           {campaign.roas != null ? <span className={roasColor(campaign.roas)}>{campaign.roas.toFixed(2)}x</span> : <Dash />}
         </Signal>
         <Signal label="Spend">
           {campaign.spendMinor != null ? formatCurrency(campaign.spendMinor, campaign.currency || 'USD') : <Dash />}
         </Signal>
-        <Signal label="Objective">{campaign.objective || <Dash />}</Signal>
+        <Signal label="Objective" help={<HelpTip content={HELP.OBJECTIVE} />}>{campaign.objective || <Dash />}</Signal>
       </div>
 
       {/* ── Lumi's Read (on-demand reasoning) ───────────────── */}

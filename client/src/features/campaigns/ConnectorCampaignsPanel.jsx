@@ -16,6 +16,8 @@ import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFor
 import { formatCurrency } from '@/lib/money';
 import { useEntityDrillDown } from '@/hooks/useEntityDrillDown.js';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
+import { HelpTip } from '@/components/ui/HelpTip.jsx';
+import { HELP } from '@/lib/helpContent.js';
 import { CampaignDetailPanel } from '@/features/campaigns/CampaignDetailPanel.jsx';
 
 // Missing metric → em-dash, never 0 (a true zero and "no data" must not look alike).
@@ -137,12 +139,20 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts
             <thead className="sticky top-0 z-10 bg-lumi-elevated border-b border-lumi-border">
               <tr>
                 <th scope="col" className="section-label px-4 py-2.5 text-left">Campaign</th>
-                <th scope="col" className="section-label px-4 py-2.5 text-left w-28">Verdict</th>
-                <th scope="col" className="section-label px-4 py-2.5 text-right w-20">Impact</th>
+                <th scope="col" className="section-label px-4 py-2.5 text-left w-28">
+                  <span className="inline-flex items-center gap-1">Verdict <HelpTip content={HELP.VERDICT_COL} /></span>
+                </th>
+                <th scope="col" className="section-label px-4 py-2.5 text-right w-20">
+                  <span className="inline-flex items-center gap-1">Impact <HelpTip variant="popover" content={HELP.IMPACT_SCORE} /></span>
+                </th>
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-28">Spend</th>
-                <th scope="col" className="section-label px-4 py-2.5 text-right w-20">ROAS</th>
+                <th scope="col" className="section-label px-4 py-2.5 text-right w-20">
+                  <span className="inline-flex items-center gap-1">ROAS <HelpTip content={HELP.ROAS} /></span>
+                </th>
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-20">CTR</th>
-                <th scope="col" className="section-label px-4 py-2.5 text-right w-20">Freq</th>
+                <th scope="col" className="section-label px-4 py-2.5 text-right w-20">
+                  <span className="inline-flex items-center gap-1">Freq <HelpTip content={HELP.FREQUENCY} /></span>
+                </th>
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-24">Ad sets</th>
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-12"><span className="sr-only">Details</span></th>
               </tr>

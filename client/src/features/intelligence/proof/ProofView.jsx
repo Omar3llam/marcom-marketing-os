@@ -22,6 +22,8 @@ import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
 import RecordOutcomePanel from './RecordOutcomePanel.jsx';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
+import { HelpTip } from '@/components/ui/HelpTip.jsx';
+import { HELP } from '@/lib/helpContent.js';
 import { appRoutes } from '@/app/routeManifest.js';
 
 const pct = (n) => `${Math.round((Number(n) || 0) * 100)}%`;
@@ -63,7 +65,7 @@ export function ProofView({ data, surface, role = WORKSPACE_ROLE.STRATEGIST }) {
       <div className="rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
         <ProofSummary surface={surface} />
         <div className="mt-3 flex gap-6 text-xs font-mono text-lumi-subtle">
-          <span>Calibration error (ECE): <strong className="text-lumi-text">{pct(cal.expectedCalibrationError)}</strong></span>
+          <span className="inline-flex items-center gap-1">Calibration error (ECE) <HelpTip variant="popover" content={HELP.CALIBRATION} />: <strong className="text-lumi-text">{pct(cal.expectedCalibrationError)}</strong></span>
           <span>Brier: <strong className="text-lumi-text">{cal.brierScore == null ? '—' : cal.brierScore.toFixed(2)}</strong></span>
           <span>Direction: <strong className="text-lumi-text">{cal.direction}</strong></span>
           <span>Accuracy (secondary): {pct(cal.accuracy)}</span>
@@ -120,7 +122,7 @@ export default function Proof() {
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
-      <h1 className="decision-title text-lumi-text mb-1">Proof of Learning</h1>
+      <h1 className="decision-title text-lumi-text mb-1 inline-flex items-center gap-2">Proof of Learning <HelpTip variant="popover" content={HELP.PROOF_OF_LEARNING} size={14} /></h1>
       <p className="text-sm text-lumi-muted mb-6">Is Lumi getting more calibrated on this account over time?</p>
 
       <IntelligenceSubNav />

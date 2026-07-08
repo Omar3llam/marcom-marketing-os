@@ -2,12 +2,14 @@ import { Link } from 'react-router-dom';
 import InlineBar from '@/components/ui/InlineBar.jsx';
 import { cn }    from '@/lib/utils.js';
 import { appRoutes } from '@/app/routeManifest.js';
+import { HelpTip } from '@/components/ui/HelpTip.jsx';
+import { HELP } from '@/lib/helpContent.js';
 import { fmtCurrency } from './campaignFormatters.js';
 
-function KpiCard({ label, value, valueClass, delta, deltaClass, footer }) {
+function KpiCard({ label, help, value, valueClass, delta, deltaClass, footer }) {
   return (
     <article className="bg-lumi-surface border border-lumi-border rounded-xl p-5">
-      <div className="section-label">{label}</div>
+      <div className="section-label flex items-center gap-1">{label}{help}</div>
       <div className={cn('mt-2 metric-display text-lumi-text', valueClass)}>{value}</div>
       {delta && <div className={cn('mt-1 text-xs font-mono', deltaClass)}>{delta}</div>}
       {footer && <div className="mt-3">{footer}</div>}
@@ -29,12 +31,14 @@ export function MetricsPanel({
     <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
       <KpiCard
         label="Total Spend"
+        help={<HelpTip content={HELP.TOTAL_SPEND} />}
         value={spend != null ? fmtCurrency(spend, currency) : '—'}
         delta={loading ? '—' : spendLabel}
         deltaClass="text-lumi-subtle"
       />
       <KpiCard
         label="Blended CPA"
+        help={<HelpTip variant="popover" content={HELP.BLENDED_CPA} />}
         value={blendedCpa != null ? fmtCurrency(blendedCpa, currency) : '—'}
         delta={blendedCpa != null ? 'Per-campaign avg' : 'No conversions tracked yet'}
         deltaClass="text-lumi-subtle"
@@ -46,6 +50,7 @@ export function MetricsPanel({
       />
       <KpiCard
         label="Wasted Spend"
+        help={<HelpTip variant="popover" content={HELP.WASTED_SPEND} />}
         value={wastedKnown ? fmtCurrency(wasted, currency) : '—'}
         valueClass={wastedKnown ? 'text-trend-danger' : undefined}
         delta={wastedKnown ? `${wastedPct}% of total` : 'Needs analysis'}
@@ -54,6 +59,7 @@ export function MetricsPanel({
       />
       <KpiCard
         label="Account Health"
+        help={<HelpTip variant="popover" content={HELP.ACCOUNT_HEALTH} />}
         value={healthScore == null ? '—' : `${healthScore}/100`}
         valueClass={healthColor}
         delta={healthLabel}
