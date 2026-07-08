@@ -12,6 +12,9 @@
 import { Router } from 'express';
 import { getConnectorCampaigns, getCampaignAdSets } from '../../services/entity-graph/index.js';
 import { getConnectorVerdicts } from '../../services/verdict-engine/index.js';
+import { computeAccountHealth } from '../../services/analysis/AccountHealthService.js';
+import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 import { logger } from '../../utils/logger.js';
 
 export const entitiesRouter = Router();
@@ -36,6 +39,34 @@ entitiesRouter.get('/entities/verdicts', async (req, res) => {
   } catch (err) {
     logger.error({ err: err.message, workspaceId: req.workspaceId }, '[lumi/entities] verdicts failed');
     return res.status(500).json({ error: 'VerdictsUnavailable', message: 'Request failed' });
+  }
+});
+
+// Deterministic account analysis: Wasted Spend + Account Health + per-campaign
+// Impact scores. Composes the pure AccountHealthService over the same connector
+// substrate the verdicts route reads. Persists nothing. Gated to the operating
+// roles (BUYER/STRATEGIST) — a CLIENT never sees the efficiency critique.
+// No connector data → honest nulls (never a fabricated 0 or health score).
+entitiesRouter.get('/entities/health', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
+  try {
+    const [campaigns, { verdicts }] = await Promise.all([
+      getConnectorCampaigns(req.workspaceId),
+      getConnectorVerdicts(req.workspaceId),
+    ]);
+    const verdictMap = Object.fromEntries(verdicts.map((v) => [v.id, v]));
+    const health = computeAccountHealth(campaigns, verdictMap);
+
+    if (!health) {
+      return res.json({
+        workspaceId: req.workspaceId ?? null,
+        generatedAt: new Date().toISOString(),
+        score: null, label: null, wastedSpend: { minor: null, pct: null }, campaigns: [],
+      });
+    }
+    return res.json({ workspaceId: req.workspaceId ?? null, generatedAt: new Date().toISOString(), ...health });
+  } catch (err) {
+    logger.error({ err: err.message, workspaceId: req.workspaceId }, '[lumi/entities] health failed');
+    return res.status(500).json({ error: 'HealthUnavailable', message: 'Request failed' });
   }
 });
 

@@ -27,6 +27,13 @@ const Roas  = ({ v }) => (v == null ? <Dash /> : <span className={roasColor(v)}>
 const Ctr   = ({ v }) => (v == null ? <Dash /> : `${(v * 100).toFixed(2)}%`); // ratio → percent
 const Freq  = ({ v }) => (v == null ? <Dash /> : <span className={freqColor(v)}>{v.toFixed(2)}</span>);
 
+// Impact (1-10): deterministic priority-to-act from the analysis engine. Higher
+// = more urgent (KILL a big spender). Absent (unscored/sub-floor) → "—", never 0.
+const impactColor = (s) => (s >= 8 ? 'text-trend-danger' : s >= 5 ? 'text-trend-warning' : 'text-lumi-muted');
+const Impact = ({ score }) => (score == null
+  ? <Dash />
+  : <span className={cn('font-semibold', impactColor(score))} title={`Impact ${score}/10 — priority to act`}>{score}</span>);
+
 // The four metric cells shared by a campaign row and its ad-set rows.
 function MetricCells({ m }) {
   return (
@@ -42,21 +49,21 @@ function MetricCells({ m }) {
 function AdSetRows({ state }) {
   if (!state || state.loading) {
     return (
-      <tr><td colSpan={7} className="px-4 py-3 text-center text-xs text-lumi-subtle">
+      <tr><td colSpan={8} className="px-4 py-3 text-center text-xs text-lumi-subtle">
         <Loader2 className="inline w-3.5 h-3.5 animate-spin mr-1.5" strokeWidth={2} /> Loading ad sets…
       </td></tr>
     );
   }
   if (state.error) {
     return (
-      <tr><td colSpan={7} className="px-4 py-3 text-center text-xs text-trend-danger">
+      <tr><td colSpan={8} className="px-4 py-3 text-center text-xs text-trend-danger">
         <AlertTriangle className="inline w-3.5 h-3.5 mr-1.5" strokeWidth={2} /> Couldn’t load ad sets — collapse and try again.
       </td></tr>
     );
   }
   if (state.adSets.length === 0) {
     return (
-      <tr><td colSpan={7} className="px-4 py-3 text-center text-xs text-lumi-subtle">No ad sets synced for this campaign yet.</td></tr>
+      <tr><td colSpan={8} className="px-4 py-3 text-center text-xs text-lumi-subtle">No ad sets synced for this campaign yet.</td></tr>
     );
   }
   return state.adSets.map((a) => (
@@ -66,13 +73,14 @@ function AdSetRows({ state }) {
         <div className="font-mono text-[11px] text-lumi-subtle">AD SET · {a.channel}</div>
       </td>
       <td className="px-4 py-2.5" />{/* verdicts are campaign-level — ad-set cell stays empty */}
+      <td className="px-4 py-2.5" />{/* impact is campaign-level too — empty on ad-set rows */}
       <MetricCells m={a} />
       <td className="px-4 py-2.5" />
     </tr>
   ));
 }
 
-export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, loading = false, error = null }) {
+export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts = {}, loading = false, error = null }) {
   const [open, setOpen] = useState(new Set());
   const { byId, load } = useEntityDrillDown();
 
@@ -119,6 +127,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, loading
               <tr>
                 <th scope="col" className="section-label px-4 py-2.5 text-left">Campaign</th>
                 <th scope="col" className="section-label px-4 py-2.5 text-left w-28">Verdict</th>
+                <th scope="col" className="section-label px-4 py-2.5 text-right w-20">Impact</th>
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-28">Spend</th>
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-20">ROAS</th>
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-20">CTR</th>
@@ -131,6 +140,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, loading
                 const isOpen = open.has(c.entityId);
                 const count = c.adSetCount ?? 0;
                 const verdict = verdicts[c.entityId];
+                const impact = impacts[c.entityId] ?? null;
                 return (
                   <Fragment key={c.entityId}>
                     <tr className="border-b border-lumi-border/50 hover:bg-lumi-elevated/40 transition-colors duration-100">
@@ -157,6 +167,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, loading
                       {/* Campaign-level verdict (revenue track OR awareness track). A
                           gatedOut/dataless campaign has none → honest "—", never a faked one. */}
                       <td className="px-4 py-3">{verdict ? <VerdictPill verdict={verdict} size="sm" /> : <Dash />}</td>
+                      <td className="px-4 py-3 text-right font-mono text-sm tabular-nums"><Impact score={impact} /></td>
                       <MetricCells m={c} />
                       <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-lumi-muted">{count > 0 ? count : <Dash />}</td>
                     </tr>

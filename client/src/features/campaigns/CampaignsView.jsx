@@ -11,7 +11,9 @@ import { cn } from '@/lib/utils.js';
 import { useCampaignFeed, metricValue } from '@/hooks/useCampaignFeed.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
+import { useAccountHealth } from '@/hooks/useAccountHealth.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
+import { fromMinor } from '@/lib/money';
 import { INDUSTRIES } from '@/pages/OnboardingPage/constants.js';
 import { useCampaignAnalysis } from '@/hooks/useCampaignAnalysis.js';
 import { MetricsPanel }    from '@/components/campaign-analysis/MetricsPanel.jsx';
@@ -128,8 +130,13 @@ export default function CampaignsView() {
     refetch: refetchVerdicts,
   } = useConnectorVerdicts();
 
+  // Deterministic analysis over the live connector graph: Account Health +
+  // Wasted Spend + per-campaign Impact. Every number traces to a MetricSnapshot
+  // row via the verdict engine — null (→ "—") when nothing can be honestly scored.
+  const { health, refetch: refetchHealth } = useAccountHealth();
+
   const { syncing, handleMetaSync } = useCampaignAnalysis({
-    refetchConnectors, refetchVerdicts,
+    refetchConnectors, refetchVerdicts, refetchHealth,
   });
 
   // Industry (from onboarding, surfaced on the workspace) tailors the
@@ -211,16 +218,20 @@ export default function CampaignsView() {
     return { ...r, blendedCpa, wastedPct: r.spend > 0 ? Math.round((r.kill / r.spend) * 100) : 0 };
   }, [allRows]);
 
-  // Real account health = mean of the per-campaign health_score from the feed
-  // (computeHealthScore, 0-1), scaled to 0-100. Empty accounts stay neutral.
-  const healthScore = useMemo(() => {
-    const scores = campaigns.map((c) => c.health_score).filter((s) => Number.isFinite(s));
-    return scores.length === 0
-      ? null
-      : Math.round((scores.reduce((sum, s) => sum + s, 0) / scores.length) * 100);
-  }, [campaigns]);
-  const healthLabel = healthScore == null ? 'Sync Meta to see health' : healthScore < 40 ? 'NEEDS ATTENTION' : healthScore < 70 ? 'IMPROVING' : 'HEALTHY';
+  // Account Health now comes from the deterministic engine (spend-weighted
+  // roll-up of per-campaign verdicts over the live connector graph), NOT the
+  // removed CSV analysis pipeline that left this card permanently "—". Null →
+  // "—"; the label is the engine's (HEALTHY…CRITICAL), color keyed off the score.
+  const healthScore = health?.score ?? null;
+  const healthLabel = health?.label ?? 'Sync Meta to see health';
   const healthColor = healthScore == null ? 'text-lumi-muted' : healthScore < 40 ? 'text-trend-danger' : healthScore < 70 ? 'text-trend-warning' : 'text-trend-positive';
+
+  // Per-campaign Impact score (1-10), keyed by entityId for the connector table.
+  const impactByEntityId = useMemo(() => {
+    const m = {};
+    for (const c of health?.campaigns ?? []) m[c.entityId] = c.impactScore;
+    return m;
+  }, [health]);
 
   // Spend-weighted KILL/HOLD/SCALE buckets from the connector VERDICT engine —
   // same shape PerformanceChart consumes from the CSV `totals`, so the chart needs
@@ -283,8 +294,8 @@ export default function CampaignsView() {
   // The KPI strip reads the live connector when a channel has synced, else the
   // CSV feed — the same source feeding the panels below it, so the headline and
   // the table can't disagree about whether data exists. Wasted Spend + Account
-  // Health are CSV-analysis outputs with no connector equivalent: shown only
-  // when CSV analysis backs them, "—" otherwise (never a fabricated 0).
+  // Health are now backed by the deterministic analysis engine over the live
+  // connector graph (see `health` above), "—" when nothing scores (never a 0).
   const live = connectorCampaigns.length > 0;
   const hasCsv = allRows.length > 0;
   // Single source of truth for "is there anything to show". The CSV analysis
@@ -299,8 +310,11 @@ export default function CampaignsView() {
   const kpiBlendedCpa = live ? connectorAgg.blendedCpa : totals.blendedCpa;
   const kpiCurrency = live ? connectorAgg.currency : currency;
   const kpiSpendLabel = live ? 'Live · connector' : (hasCsv ? 'Campaign feed' : 'No data yet');
-  const kpiWasted = hasCsv ? totals.kill : null;
-  const kpiWastedPct = hasCsv ? totals.wastedPct : null;
+  // Wasted spend from the analysis engine (minor units → major for the panel's
+  // major-unit formatter, currency-correct so it stays on the same scale as the
+  // Total Spend card). Null → "—", never a fabricated 0.
+  const kpiWasted = health?.wastedSpend?.minor != null ? fromMinor(health.wastedSpend.minor, kpiCurrency) : null;
+  const kpiWastedPct = health?.wastedSpend?.pct ?? null;
 
   const setSort = (key) => {
     if (!sortableCols.has(key)) return;
@@ -424,6 +438,7 @@ export default function CampaignsView() {
       <ConnectorCampaignsPanel
         campaigns={connectorCampaigns}
         verdicts={verdictByEntityId}
+        impacts={impactByEntityId}
         loading={connectorLoading}
         error={connectorError}
       />
