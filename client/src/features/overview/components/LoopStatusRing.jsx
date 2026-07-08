@@ -13,6 +13,8 @@
 // ============================================================
 import { RefreshCw } from 'lucide-react';
 import { useRunSweep } from '@/hooks/useRunSweep.js';
+import { HelpTip } from '@/components/ui/HelpTip.jsx';
+import { HELP } from '@/lib/helpContent.js';
 
 const HEALTH = {
   HEALTHY:  { tone: 'scale', label: 'Loop healthy' },
@@ -53,6 +55,7 @@ export default function LoopStatusRing({ loop, summary, canRunSweep = false, com
             aria-hidden="true"
           />
           <span className="font-display font-bold text-sm text-dark-base">{health.label}</span>
+          <HelpTip variant="popover" content={HELP.LOOP_STALLED} iconClassName="text-dark-subtle hover:text-dark-base" />
           {summary && <span className="font-mono text-[11px] text-dark-muted truncate">· {summary}</span>}
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">

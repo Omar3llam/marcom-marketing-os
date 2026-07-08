@@ -18,6 +18,8 @@ import { Link } from 'react-router-dom';
 import { Lock, Microscope, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatCurrency } from '@/lib/money';
+import { HelpTip } from '@/components/ui/HelpTip.jsx';
+import { HELP } from '@/lib/helpContent.js';
 import { appRoutes } from '@/app/routeManifest.js';
 
 const statusTone = {
@@ -54,7 +56,7 @@ function DesignForm({ onDesign, busy }) {
       <label className="text-xs text-lumi-muted">Baseline CVR %
         <input className={field} inputMode="decimal" value={cvr} onChange={(e) => setCvr(e.target.value)} placeholder="2" aria-label="Baseline CVR percent" />
       </label>
-      <label className="text-xs text-lumi-muted">Min. detectable lift %
+      <label className="text-xs text-lumi-muted"><span className="inline-flex items-center gap-1">Min. detectable lift % <HelpTip variant="popover" content={HELP.MDE} /></span>
         <input className={field} inputMode="decimal" value={mde} onChange={(e) => setMde(e.target.value)} placeholder="10" aria-label="Minimum detectable lift percent" />
       </label>
       <label className="text-xs text-lumi-muted">Daily eligible users
@@ -177,7 +179,11 @@ export function IncrementalityPanel({ tests = [], readouts = {}, gated = false, 
   const ccy = currency ?? 'USD';
   return (
     <section className="mb-10">
-      <div className="section-label">Incrementality (Holdout Testing)</div>
+      <div className="section-label inline-flex items-center gap-1">
+        Incrementality (Holdout Testing)
+        <HelpTip variant="popover" content={HELP.INCREMENTALITY} />
+        <HelpTip variant="popover" content={HELP.HOLDOUT} label="Holdout" />
+      </div>
       <p className="mt-1 text-lumi-muted text-sm mb-4">
         The only causal signal — measure the lift a channel actually drives by holding it out from a randomized group.
       </p>

@@ -23,6 +23,8 @@ import { AllocationPanel } from './AllocationPanel.jsx';
 import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
+import { HelpTip } from '@/components/ui/HelpTip.jsx';
+import { HELP } from '@/lib/helpContent.js';
 import { appRoutes } from '@/app/routeManifest.js';
 
 // Null/non-finite ROAS → "—" (honest empty), never a fabricated 0.0× that reads
@@ -64,10 +66,14 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST, curre
       {/* Hero — the gap is the whole point. */}
       {!single && portfolio && (
         <div className="rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
-          <div className="section-label mb-2">Platform claims vs reality</div>
+          <div className="section-label mb-2 inline-flex items-center gap-1">
+            Platform claims vs reality
+            <HelpTip variant="popover" content={HELP.BLENDED_TRUTH} />
+          </div>
           <p className="decision-title text-lumi-text leading-snug">
             Platforms claim <span className="text-lumi-muted">{fx(portfolio.platformRoas)}</span>;
-            {' '}blended truth says <span className="text-signal-scale font-semibold">{fx(portfolio.blendedRoas)}</span>.
+            {' '}blended truth says <span className="text-signal-scale font-semibold">{fx(portfolio.blendedRoas)}</span>
+            <HelpTip variant="popover" content={HELP.BLENDED_ROAS} className="ml-1" />.
           </p>
           <p className="mt-2 text-sm text-signal-kill font-mono">
             Over-reported by {Math.round(portfolio.gapPct)}% · {formatCurrency(portfolio.gapMinor, currency)} of revenue you&apos;d have over-allocated against.
