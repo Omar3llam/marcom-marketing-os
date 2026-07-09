@@ -13,11 +13,12 @@ vi.mock('../../utils/logger.js', () => ({
 }));
 vi.mock('../entity-graph/index.js', () => ({ getConnectorCampaigns: vi.fn() }));
 vi.mock('../../lib/prisma.js', () => ({
-  prisma: { decision: { findFirst: vi.fn(), create: vi.fn() } },
+  prisma: { decision: { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn() } },
 }));
 
 import { prisma } from '../../lib/prisma.js';
 import { getConnectorCampaigns } from '../entity-graph/index.js';
+import { SIGNAL_TYPE } from '../diagnosis-engine/index.js';
 import { persistConnectorVerdicts } from './VerdictService.js';
 
 const WS       = '7517d1b9-b967-44f3-a77f-60f5c577f867';
@@ -34,6 +35,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   prisma.decision.findFirst.mockResolvedValue(null); // no prior verdict on file
   prisma.decision.create.mockResolvedValue({});
+  prisma.decision.updateMany.mockResolvedValue({ count: 0 }); // nothing stale by default
 });
 
 describe('persistConnectorVerdicts', () => {
@@ -103,5 +105,70 @@ describe('persistConnectorVerdicts', () => {
 
   it('requires a workspaceId', async () => {
     await expect(persistConnectorVerdicts()).rejects.toThrow('workspaceId required');
+  });
+});
+
+describe('persistConnectorVerdicts — stale-verdict prune (agenda de-inflation)', () => {
+  it('supersedes PROPOSED verdicts for campaigns no longer in the eligible set', async () => {
+    getConnectorCampaigns.mockResolvedValue([camp()]); // only CAMPAIGN is eligible now
+    prisma.decision.updateMany.mockResolvedValue({ count: 2 }); // two orphans dropped out
+
+    const res = await persistConnectorVerdicts(WS);
+
+    expect(res.superseded).toBe(2);
+    expect(prisma.decision.updateMany).toHaveBeenCalledTimes(1);
+    const { where, data } = prisma.decision.updateMany.mock.calls[0][0];
+    expect(data).toEqual({ status: 'SUPERSEDED' });
+    expect(where).toMatchObject({
+      workspaceId: WS, status: 'PROPOSED', entityLevel: 'CAMPAIGN',
+      entityId: { notIn: [CAMPAIGN] }, // the currently-eligible campaign is KEPT
+    });
+  });
+
+  it('scopes the prune to connector verdicts only (signalType rootCause OR null) — never guardrail/allocation rows', async () => {
+    getConnectorCampaigns.mockResolvedValue([camp()]);
+    await persistConnectorVerdicts(WS);
+    const { where } = prisma.decision.updateMany.mock.calls[0][0];
+    expect(where.OR).toHaveLength(2);
+    expect(where.OR[0].rootCause.in).toEqual(expect.arrayContaining(Object.values(SIGNAL_TYPE)));
+    expect(where.OR[1]).toEqual({ rootCause: null });
+    // A guardrail:/allocation: rootCause is neither in the signalType set nor null,
+    // so it can never match this filter.
+    expect(where.OR[0].rootCause.in).not.toContain('guardrail:BUDGET_CAP');
+  });
+
+  it('with NO eligible campaigns, supersedes every connector verdict (omits the entityId filter)', async () => {
+    // dataless campaign → gatedOut → tree null → eligibleIds []
+    getConnectorCampaigns.mockResolvedValue([camp({ revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
+    prisma.decision.updateMany.mockResolvedValue({ count: 3 });
+
+    const res = await persistConnectorVerdicts(WS);
+
+    expect(res.status).toBe('NO_ELIGIBLE_CAMPAIGNS');
+    expect(res.superseded).toBe(3);
+    const { where } = prisma.decision.updateMany.mock.calls[0][0];
+    expect(where.entityId).toBeUndefined(); // no filter ⇒ ALL connector verdicts are stale
+  });
+
+  it('the prune runs even when NO campaigns exist at all (honest empty account)', async () => {
+    getConnectorCampaigns.mockResolvedValue([]);
+    const res = await persistConnectorVerdicts(WS);
+    expect(res.status).toBe('NO_CAMPAIGNS');
+    expect(prisma.decision.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.decision.updateMany.mock.calls[0][0].where.entityId).toBeUndefined();
+  });
+
+  it('re-proposes a returning campaign: change-detection ignores SUPERSEDED rows', async () => {
+    getConnectorCampaigns.mockResolvedValue([camp()]);
+    // The only prior row for this entity was SUPERSEDED when it dropped out; the
+    // status:{not:'SUPERSEDED'} filter means findFirst returns null → a fresh
+    // PROPOSED is created even though the verdict text is unchanged.
+    prisma.decision.findFirst.mockResolvedValue(null);
+
+    const res = await persistConnectorVerdicts(WS);
+
+    const { where } = prisma.decision.findFirst.mock.calls[0][0];
+    expect(where.status).toEqual({ not: 'SUPERSEDED' });
+    expect(res.created).toHaveLength(1); // returns to the agenda with a fresh row
   });
 });
