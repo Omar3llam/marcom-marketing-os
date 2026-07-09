@@ -9,7 +9,7 @@
 // Governing law: every metric traces to a MetricSnapshot row. A missing metric
 // renders "—" (Dash), never a fabricated 0. Loading/error/empty are honest.
 // ============================================================
-import { useState, Fragment } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { ChevronRight, ChevronDown, Loader2, Plug, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFormatters.js';
@@ -84,10 +84,23 @@ function AdSetRows({ state }) {
   ));
 }
 
-export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts = {}, loading = false, error = null }) {
+export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts = {}, loading = false, error = null, deepLinkEntityId = null, onDeepLinkHandled }) {
   const [open, setOpen] = useState(new Set());          // ad-set drill-down
   const [detailOpen, setDetailOpen] = useState(new Set()); // signals + reasoning panel
   const { byId, load } = useEntityDrillDown();
+
+  // Deep-link from an Overview agenda item (?entity=<id>): once the target row
+  // exists, expand its detail (signals + Lumi's Read) and scroll it into view,
+  // then hand back so the parent can clear the URL param. An id not in this list
+  // (stale/invalid, or still loading) is a graceful no-op — no expand, no crash.
+  useEffect(() => {
+    if (!deepLinkEntityId) return;
+    if (!campaigns.some((c) => c.entityId === deepLinkEntityId)) return;
+    setDetailOpen((s) => (s.has(deepLinkEntityId) ? s : new Set(s).add(deepLinkEntityId)));
+    document.getElementById(`campaign-row-${deepLinkEntityId}`)
+      ?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    onDeepLinkHandled?.();
+  }, [deepLinkEntityId, campaigns, onDeepLinkHandled]);
 
   // Stay quiet until there's something real to show. Connector data is a
   // separate substrate from the CSV feed, so a CSV-only workspace gets no empty
@@ -166,7 +179,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts
                 const impact = impacts[c.entityId] ?? null;
                 return (
                   <Fragment key={c.entityId}>
-                    <tr className="border-b border-lumi-border/50 hover:bg-lumi-elevated/40 transition-colors duration-100">
+                    <tr id={`campaign-row-${c.entityId}`} className="border-b border-lumi-border/50 hover:bg-lumi-elevated/40 transition-colors duration-100">
                       <td className="px-4 py-3">
                         <button
                           type="button"

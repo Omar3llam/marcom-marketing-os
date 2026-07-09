@@ -4,7 +4,8 @@
 // Bloomberg-terminal-style analysis report.
 // All metrics derived from the live /api/lumi/feed payload.
 // ============================================================
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, Loader2, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils.js';
@@ -101,6 +102,12 @@ export function splitNoRevenueVerdicts(verdicts = []) {
 
 export default function CampaignsView() {
   const { campaigns, loading } = useCampaignFeed();
+  // Deep-link target from an Overview agenda item (?entity=<Campaign.id>). The
+  // connector panel scrolls-to + expands that row, then calls back so we drop the
+  // param (browser back/forward stays clean, a refresh won't re-trigger).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const deepLinkEntityId = searchParams.get('entity');
+  const clearDeepLink = useCallback(() => setSearchParams({}, { replace: true }), [setSearchParams]);
   const [sortKey, setSortKey] = useState('spend');
   const [sortDir, setSortDir] = useState('desc');
   // `expanded` drives the per-row reasoning expand/collapse on the CSV-fed table.
@@ -441,6 +448,8 @@ export default function CampaignsView() {
         impacts={impactByEntityId}
         loading={connectorLoading}
         error={connectorError}
+        deepLinkEntityId={deepLinkEntityId}
+        onDeepLinkHandled={clearDeepLink}
       />
     </div>
   );

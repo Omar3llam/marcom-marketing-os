@@ -29,10 +29,14 @@ const EVIDENCE_LABEL = {
 // Where the full context for an item lives. The agenda navigates — never acts.
 // (No `/app/decisions` route exists; the guardrail verdict's full alert lives on
 // the Campaigns decision feed, and the agenda has removed it from Overview.)
+// A VERDICT that carries its entityId deep-links to that campaign row (Campaigns
+// reads ?entity= to scroll-to + expand it); without one it falls back to the list.
 export function agendaItemRoute(item) {
   if (item.type === 'PLAN_ADJUSTMENT' && String(item.id).startsWith('blended')) return appRoutes.blendedTruth;
   switch (item.type) {
-    case 'VERDICT': return appRoutes.campaigns;
+    case 'VERDICT': return item.entityId
+      ? `${appRoutes.campaigns}?entity=${encodeURIComponent(item.entityId)}`
+      : appRoutes.campaigns;
     case 'TEST':    return appRoutes.testing;
     case 'FATIGUE':
     case 'PACING':

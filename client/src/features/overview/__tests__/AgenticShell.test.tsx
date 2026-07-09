@@ -73,7 +73,9 @@ beforeEach(() => {
 
 describe('agendaItemRoute — navigates to the owning surface (never executes)', () => {
   it('routes each item type to its surface', () => {
-    expect(agendaItemRoute(item({ type: 'VERDICT' }))).toBe(appRoutes.campaigns);
+    // A VERDICT deep-links to its campaign row (?entity=); other types keep their surface.
+    expect(agendaItemRoute(item({ type: 'VERDICT' }))).toBe(`${appRoutes.campaigns}?entity=as1`);
+    expect(agendaItemRoute(item({ type: 'VERDICT', entityId: null }))).toBe(appRoutes.campaigns);
     expect(agendaItemRoute(item({ type: 'TEST' }))).toBe(appRoutes.testing);
     expect(agendaItemRoute(item({ type: 'FATIGUE' }))).toBe(appRoutes.insights);
     expect(agendaItemRoute(item({ type: 'PACING' }))).toBe(appRoutes.insights);
@@ -100,7 +102,8 @@ describe('AgendaItem — verb + evidence honesty', () => {
   it('navigates to the owning surface on click (no execution)', () => {
     render(<AgendaItem item={item({ type: 'VERDICT' })} />);
     fireEvent.click(screen.getByRole('button'));
-    expect(navigateMock).toHaveBeenCalledWith(appRoutes.campaigns);
+    // Deep-links to the specific campaign row, not just the list.
+    expect(navigateMock).toHaveBeenCalledWith(`${appRoutes.campaigns}?entity=as1`);
   });
 });
 
