@@ -2,23 +2,35 @@
 // MARCOM / Lumi — CampaignDetailPanel  (Campaigns · expanded row)
 // ------------------------------------------------------------
 // The expanded drill-down for one connector campaign: a deterministic SIGNALS
-// breakdown (left) + on-demand LLM reasoning, "Lumi's Read" (right).
+// breakdown (left) + "Lumi's Read", the PRE-GENERATED verdict reasoning (right).
 //
 // Governing law: every signal traces to a MetricSnapshot row; a missing signal
-// renders "—" (Dash), never a fabricated 0. Reasoning is generated ONLY on click
-// (never pre-fetched), cached per campaign for the session, and any cached read
-// shows instantly on re-expand. Language follows the onboarding dialect hint.
+// renders "—" (Dash), never a fabricated 0. Reasoning is written by the agentic
+// sweep (top campaigns by impact), so it shows INSTANTLY on expand — no button,
+// no LLM round-trip. Not yet generated → an honest "after the next sweep"; an
+// aged row is flagged "may be stale". Cached per campaign for the session.
 // ============================================================
 import { useEffect } from 'react';
-import { Sparkles, Loader2, RefreshCw, AlertTriangle } from 'lucide-react';
-import { cn } from '@/lib/utils.js';
+import { Sparkles, Loader2, AlertTriangle } from 'lucide-react';
 import { formatCurrency } from '@/lib/money';
 import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFormatters.js';
 import { HelpTip } from '@/components/ui/HelpTip.jsx';
 import { HELP } from '@/lib/helpContent.js';
-import { useCampaignReasoning, getCachedReasoning } from '@/hooks/useCampaignReasoning.js';
+import { useCampaignReasoning } from '@/hooks/useCampaignReasoning.js';
 
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
+
+/** Compact relative time for the "Updated …" line. */
+function timeAgo(iso) {
+  const then = new Date(iso).getTime();
+  if (!Number.isFinite(then)) return '';
+  const mins = Math.round((Date.now() - then) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.round(hrs / 24)}d ago`;
+}
 
 function Signal({ label, help, children }) {
   return (
@@ -29,15 +41,15 @@ function Signal({ label, help, children }) {
   );
 }
 
-export function CampaignDetailPanel({ campaign, verdict = null, impact = null, dialect = null }) {
-  const { getReasoning, regenerate, reasoning, isGenerating, error } = useCampaignReasoning();
+export function CampaignDetailPanel({ campaign, verdict = null, impact = null }) {
+  const { load, reasoning, stale, generatedAt, isLoading, error } = useCampaignReasoning();
   const entityId = campaign.entityId;
 
-  // Show a cached read instantly on expand (no spinner, no API call). Never
-  // auto-generate a fresh one — that stays an explicit click.
+  // Load the pre-generated read on expand. load() serves the session cache
+  // instantly (no request) when the campaign was already opened this session.
   useEffect(() => {
-    if (getCachedReasoning(entityId)) getReasoning(entityId, { dialect });
-  }, [entityId, dialect, getReasoning]);
+    load(entityId);
+  }, [entityId, load]);
 
   const ctrPct = campaign.ctr != null ? `${(campaign.ctr * 100).toFixed(2)}%` : null;
 
@@ -61,53 +73,35 @@ export function CampaignDetailPanel({ campaign, verdict = null, impact = null, d
         <Signal label="Objective" help={<HelpTip content={HELP.OBJECTIVE} />}>{campaign.objective || <Dash />}</Signal>
       </div>
 
-      {/* ── Lumi's Read (on-demand reasoning) ───────────────── */}
+      {/* ── Lumi's Read (pre-generated during the sweep) ─────── */}
       <div className="md:border-l md:border-lumi-border/60 md:pl-4">
         <div className="section-label mb-2 flex items-center gap-1.5 text-lumi-muted">
           <Sparkles className="w-3 h-3 text-lumi-accent" strokeWidth={1.5} />
           Lumi&apos;s Read
         </div>
 
-        {isGenerating ? (
+        {isLoading ? (
           <div className="flex items-center gap-2 text-sm text-lumi-subtle py-2">
-            <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={2} /> Analyzing…
+            <Loader2 className="w-3.5 h-3.5 animate-spin" strokeWidth={2} /> Loading…
           </div>
         ) : error ? (
-          <div className="text-sm text-trend-danger">
-            <span className="flex items-center gap-1.5">
-              <AlertTriangle className="w-3.5 h-3.5" strokeWidth={2} /> Couldn&apos;t generate reasoning — try again.
-            </span>
-            <button
-              type="button"
-              onClick={() => getReasoning(entityId, { dialect })}
-              className="mt-2 text-xs font-medium text-lumi-accent hover:underline"
-            >
-              Retry
-            </button>
-          </div>
+          <p className="flex items-center gap-1.5 text-sm text-trend-danger">
+            <AlertTriangle className="w-3.5 h-3.5" strokeWidth={2} /> Couldn&apos;t load reasoning.
+          </p>
         ) : reasoning ? (
           <div>
             <p className="text-sm text-lumi-text leading-relaxed">{reasoning}</p>
-            <button
-              type="button"
-              onClick={() => regenerate(entityId, { dialect })}
-              className="mt-2 inline-flex items-center gap-1 text-xs text-lumi-subtle hover:text-lumi-accent transition-colors"
-            >
-              <RefreshCw className="w-3 h-3" strokeWidth={2} /> Regenerate
-            </button>
+            {generatedAt && (
+              <p className="mt-2 text-xs text-lumi-subtle">
+                Updated {timeAgo(generatedAt)}
+                {stale && <span className="text-signal-hold"> · may be stale</span>}
+              </p>
+            )}
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => getReasoning(entityId, { dialect })}
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium',
-              'bg-lumi-elevated border border-lumi-border text-lumi-text hover:border-lumi-accent/40 transition-colors',
-            )}
-          >
-            <Sparkles className="w-3.5 h-3.5 text-lumi-accent" strokeWidth={1.5} />
-            Get Lumi&apos;s read →
-          </button>
+          <p className="text-sm text-lumi-subtle leading-relaxed">
+            Reasoning will appear after the next sweep.
+          </p>
         )}
       </div>
     </div>

@@ -1,10 +1,12 @@
 // ============================================================
-// CampaignReasoningService — server-side signal rebuild + gateway call
+// CampaignReasoningService — server-side signal rebuild + gateway call + sweep
 // ------------------------------------------------------------
-// Asserts: unknown campaign → NOT_FOUND (workspace isolation); the gateway input
-// is re-derived from SERVER data (verdict/rationale/ctr%/spend-share/impact), not
-// trusted from the caller; AI failure → AI_FAILED; success → reasoning. Uses the
-// REAL computeAccountHealth; mocks the DB-backed readers + the gateway.
+// Asserts: the gateway input is re-derived from SERVER data (verdict/rationale/
+// ctr%/spend-share/impact), not trusted from the caller; unknown campaign →
+// NOT_FOUND (isolation); AI failure → AI_FAILED. And the sweep pre-generation:
+// top-N by impact, per-campaign failures never stop the batch, fresh unchanged
+// rows are skipped, topN=0 is a kill switch. Uses the REAL computeAccountHealth;
+// mocks the DB-backed readers + the gateway.
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -16,11 +18,15 @@ vi.mock('../entity-graph/index.js', () => ({ getConnectorCampaigns }));
 vi.mock('../verdict-engine/index.js', () => ({ getConnectorVerdicts }));
 vi.mock('../ai-gateway/index.js', () => ({ execute, CAPABILITY: { EXPLAIN_VERDICT: 'EXPLAIN_VERDICT' } }));
 vi.mock('../../lib/prisma.js', () => ({
-  prisma: { workspace: { findUnique: vi.fn().mockResolvedValue({ objective: 'roas' }) } },
+  prisma: {
+    workspace: { findUnique: vi.fn().mockResolvedValue({ objective: 'roas' }) },
+    campaignReasoning: { findMany: vi.fn(), upsert: vi.fn() },
+  },
 }));
 vi.mock('../../utils/logger.js', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-import { generateCampaignReasoning } from './CampaignReasoningService.js';
+import { prisma } from '../../lib/prisma.js';
+import { generateCampaignReasoning, generateReasoningForSweep, buildReasoningInput } from './CampaignReasoningService.js';
 
 const CAMPAIGNS = [
   { entityId: 'c1', name: 'Eid Sale', channel: 'META', objective: 'OUTCOME_SALES', spendMinor: 80000, ctr: 0.0042, frequency: 4.1, roas: 0.6, currency: 'EGP' },
@@ -39,9 +45,11 @@ beforeEach(() => {
   getConnectorCampaigns.mockResolvedValue(CAMPAIGNS);
   getConnectorVerdicts.mockResolvedValue(VERDICTS);
   execute.mockResolvedValue({ success: true, output: { reasoning: 'Frequency is too high; refresh the creative.' } });
+  prisma.campaignReasoning.findMany.mockResolvedValue([]);
+  prisma.campaignReasoning.upsert.mockResolvedValue({});
 });
 
-describe('generateCampaignReasoning', () => {
+describe('generateCampaignReasoning (on-demand)', () => {
   it('NO_WORKSPACE when workspaceId is missing', async () => {
     expect(await generateCampaignReasoning({ entityId: 'c1' })).toEqual({ status: 'NO_WORKSPACE' });
     expect(execute).not.toHaveBeenCalled();
@@ -83,5 +91,108 @@ describe('generateCampaignReasoning', () => {
   it('OK returns the reasoning text on success', async () => {
     const out = await generateCampaignReasoning({ workspaceId: 'ws1', entityId: 'c1' });
     expect(out).toEqual({ status: 'OK', reasoning: 'Frequency is too high; refresh the creative.' });
+  });
+});
+
+describe('buildReasoningInput (pure)', () => {
+  it('maps server data → prompt input (ctr fraction→%, spend share, verdict, dialect)', () => {
+    const input = buildReasoningInput({
+      campaign: CAMPAIGNS[0],
+      verdictMap: { c1: { verdict: 'KILL', rationale: 'freq' } },
+      health: { campaigns: [{ entityId: 'c1', impactScore: 9, verdict: 'KILL' }] },
+      accountSpendMinor: 100000,
+      accountObjective: 'roas',
+      dialect: 'gulf',
+    });
+    expect(input.verdict).toBe('KILL');
+    expect(input.ctrPct).toBeCloseTo(0.42, 5);
+    expect(input.spendSharePct).toBeCloseTo(80, 5);
+    expect(input.impactScore).toBe(9);
+    expect(input.accountObjective).toBe('roas');
+    expect(input.dialect).toBe('gulf');
+  });
+
+  it('renders missing signals as null (never a fabricated 0), dialect defaults null', () => {
+    const input = buildReasoningInput({
+      campaign: { entityId: 'x', name: 'X', channel: 'META', ctr: null, frequency: null, roas: null, spendMinor: null },
+      verdictMap: {}, health: null, accountSpendMinor: 0,
+    });
+    expect(input.verdict).toBeNull();
+    expect(input.ctrPct).toBeNull();
+    expect(input.spendSharePct).toBeNull();
+    expect(input.impactScore).toBeNull();
+    expect(input.dialect).toBeNull();
+  });
+});
+
+describe('generateReasoningForSweep (pre-generate + persist)', () => {
+  it('generates + upserts reasoning for the top campaigns by impact (highest first)', async () => {
+    const out = await generateReasoningForSweep({ workspaceId: 'ws1', loopRunId: 'run-1' });
+    expect(out).toEqual({ attempted: 2, generated: 2, skipped: 0 });
+    expect(prisma.campaignReasoning.upsert).toHaveBeenCalledTimes(2);
+
+    const first = prisma.campaignReasoning.upsert.mock.calls[0][0];
+    expect(first.where.workspaceId_entityId).toEqual({ workspaceId: 'ws1', entityId: 'c1' }); // impact 10
+    expect(first.create.verdict).toBe('KILL');
+    expect(first.create.sweepId).toBe('run-1');
+    expect(first.create.reasoning).toBeTruthy();
+  });
+
+  it('English only — the sweep never sends a dialect', async () => {
+    await generateReasoningForSweep({ workspaceId: 'ws1' });
+    for (const call of execute.mock.calls) expect(call[0].input.dialect).toBeNull();
+  });
+
+  it('a per-campaign gateway failure never stops the batch', async () => {
+    execute
+      .mockResolvedValueOnce({ success: true, output: { reasoning: 'ok' } })       // c1
+      .mockResolvedValueOnce({ success: false, error: { type: 'PROVIDER_ERROR' } }); // c2
+    const out = await generateReasoningForSweep({ workspaceId: 'ws1' });
+    expect(out).toEqual({ attempted: 2, generated: 1, skipped: 0 });
+    expect(prisma.campaignReasoning.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips a fresh row on the same verdict (no re-billing an LLM call)', async () => {
+    const now = Date.now();
+    prisma.campaignReasoning.findMany.mockResolvedValue([
+      { entityId: 'c1', verdict: 'KILL', generatedAt: new Date(now) },
+    ]);
+    const out = await generateReasoningForSweep({ workspaceId: 'ws1', now });
+    expect(out).toEqual({ attempted: 2, generated: 1, skipped: 1 });
+    expect(execute).toHaveBeenCalledTimes(1); // only the un-skipped campaign
+    expect(prisma.campaignReasoning.upsert.mock.calls[0][0].where.workspaceId_entityId.entityId).toBe('c2');
+  });
+
+  it('regenerates when the stored verdict no longer matches (freshness ≠ correctness)', async () => {
+    const now = Date.now();
+    prisma.campaignReasoning.findMany.mockResolvedValue([
+      { entityId: 'c1', verdict: 'WATCH', generatedAt: new Date(now) }, // was WATCH, now KILL
+    ]);
+    const out = await generateReasoningForSweep({ workspaceId: 'ws1', now });
+    expect(out).toEqual({ attempted: 2, generated: 2, skipped: 0 });
+  });
+
+  it('caps at topN campaigns', async () => {
+    const out = await generateReasoningForSweep({ workspaceId: 'ws1', topN: 1 });
+    expect(out).toEqual({ attempted: 1, generated: 1, skipped: 0 });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('topN <= 0 is a kill switch (no reads, no calls)', async () => {
+    const out = await generateReasoningForSweep({ workspaceId: 'ws1', topN: 0 });
+    expect(out).toEqual({ attempted: 0, generated: 0, skipped: 0 });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('no connector data → no work (honest zero, never fabricated rows)', async () => {
+    getConnectorCampaigns.mockResolvedValue([]);
+    const out = await generateReasoningForSweep({ workspaceId: 'ws1' });
+    expect(out).toEqual({ attempted: 0, generated: 0, skipped: 0 });
+    expect(prisma.campaignReasoning.upsert).not.toHaveBeenCalled();
+  });
+
+  it('missing workspaceId → no work', async () => {
+    expect(await generateReasoningForSweep({})).toEqual({ attempted: 0, generated: 0, skipped: 0 });
+    expect(execute).not.toHaveBeenCalled();
   });
 });
