@@ -72,8 +72,10 @@ export const STAGE_STALE_DAYS  = Number(process.env.LOOP_STAGE_STALE_DAYS || 30)
 
 /**
  * One agenda item. Every item is a PROPOSAL — it carries the human verb and a
- * reference to the real row behind it, never an auto-action.
+ * reference to the real row behind it, never an auto-action. `impactScore` (1-10,
+ * or null when unscored) is the SAME deterministic priority-to-act the Campaigns
+ * page shows, so the agenda can rank by the identical lever within a severity tier.
  */
-export function agendaItem({ id, band, type, title, rationale, severity = SEVERITY.MEDIUM, evidenceRef = null, humanAction = HUMAN_ACTION.REVIEW, entityId = null }) {
-  return { id, band, type, title, rationale, severity, evidenceRef, humanAction, entityId };
+export function agendaItem({ id, band, type, title, rationale, severity = SEVERITY.MEDIUM, evidenceRef = null, humanAction = HUMAN_ACTION.REVIEW, entityId = null, impactScore = null }) {
+  return { id, band, type, title, rationale, severity, evidenceRef, humanAction, entityId, impactScore };
 }

@@ -20,6 +20,9 @@ import { planAgenda } from './agenticPlanner.js';
 import { sweepGuardrails } from '../guardrail-engine/GuardrailSweepService.js';
 import { sweepFatigue } from '../fatigue-forecaster/FatigueSweepService.js';
 import { persistConnectorVerdicts } from '../verdict-engine/VerdictService.js';
+import { getConnectorVerdicts } from '../verdict-engine/index.js';
+import { getConnectorCampaigns } from '../entity-graph/index.js';
+import { computeAccountHealth } from '../analysis/AccountHealthService.js';
 import { getPortfolio } from '../portfolio/PortfolioService.js';
 import { getWeeklyAgenda } from '../test-generator/TestGeneratorService.js';
 import { trackPlan } from '../planning/PlanService.js';
@@ -62,6 +65,23 @@ async function loadLabels(workspaceId) {
     prisma.adSet.findMany({ where: { workspaceId }, select: { id: true, name: true } }),
   ]);
   return new Map([...accounts, ...campaigns, ...adSets].map((r) => [r.id, r.name]));
+}
+
+/**
+ * entityId → Impact (1-10): the SAME deterministic priority-to-act the Campaigns
+ * page shows. Mirrors the /entities/account-health route EXACTLY — live connector
+ * campaigns + their verdicts → computeAccountHealth → per-campaign impact — so a
+ * verdict's agenda rank matches its Campaigns-page score. Best-effort by the
+ * caller: a cold connector yields an empty map (items fall back to severity order).
+ */
+async function loadImpactById(workspaceId) {
+  const [campaigns, cv] = await Promise.all([
+    getConnectorCampaigns(workspaceId),
+    getConnectorVerdicts(workspaceId),
+  ]);
+  const verdictMap = Object.fromEntries((cv?.verdicts ?? []).map((v) => [v.id, v]));
+  const health = computeAccountHealth(campaigns, verdictMap);
+  return new Map((health?.campaigns ?? []).map((c) => [c.entityId, c.impactScore]));
 }
 
 /**
@@ -108,11 +128,12 @@ export async function buildLoopInputs(workspaceId, { now = new Date() } = {}) {
   // Pacing + blended + plan tracking via the existing services (best-effort).
   // The onboarding objective is a workspace-scoped column (promoted from
   // User.context) that frames the agenda; null when the step was skipped.
-  const [portfolio, blended, testAgenda, objective] = await Promise.all([
+  const [portfolio, blended, testAgenda, objective, impactById] = await Promise.all([
     safe(getPortfolio(workspaceId), null),
     safe(getBlendedTruth(workspaceId), null),
     safe(getWeeklyAgenda(workspaceId).then((a) => a.slice(0, 5)), []),
     safe(prisma.workspace.findUnique({ where: { id: workspaceId }, select: { objective: true } }).then((w) => w?.objective ?? null), null),
+    safe(loadImpactById(workspaceId), new Map()),
   ]);
   const activePlan = plans.find((p) => p.status === 'ACTIVE') ?? plans[0] ?? null;
   const planTracking = activePlan ? await safe(trackPlan(workspaceId, activePlan, { now }), null) : null;
@@ -120,7 +141,7 @@ export async function buildLoopInputs(workspaceId, { now = new Date() } = {}) {
   return {
     verdicts, fatiguePredictions, pacing: pacingFromPortfolio(portfolio),
     testAgenda, openTests, planTracking, blended, objective,
-    plans, allocationPlans, executedActions, recentOutcomes, recentMemory, labelsById, now,
+    plans, allocationPlans, executedActions, recentOutcomes, recentMemory, labelsById, impactById, now,
   };
 }
 
