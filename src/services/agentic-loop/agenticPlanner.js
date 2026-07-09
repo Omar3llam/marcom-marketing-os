@@ -45,7 +45,12 @@ const VERDICT_SEVERITY = Object.freeze({
 
 function bySeverityDesc(a, b) {
   const d = SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
-  return d !== 0 ? d : String(a.id).localeCompare(String(b.id)); // stable tiebreak
+  if (d !== 0) return d;
+  // Within a severity tier, the higher-impact lever first (the same 1-10 the
+  // Campaigns page shows). An unscored item (null) sinks below any real score.
+  const im = (b.impactScore ?? -1) - (a.impactScore ?? -1);
+  if (im !== 0) return im;
+  return String(a.id).localeCompare(String(b.id)); // stable tiebreak
 }
 
 /** Days between two instants (positive if `then` is in the past). */
@@ -55,7 +60,7 @@ function ageDays(then, now) {
 }
 
 // ── Buyer band — "what needs a decision today" ──────────────────
-function buyerAgenda({ verdicts = [], fatiguePredictions = [], pacing = [], testAgenda = [], openTests = [], labelsById = new Map(), now }) {
+function buyerAgenda({ verdicts = [], fatiguePredictions = [], pacing = [], testAgenda = [], openTests = [], labelsById = new Map(), impactById = new Map(), now }) {
   const items = [];
 
   for (const d of verdicts) {
@@ -66,6 +71,7 @@ function buyerAgenda({ verdicts = [], fatiguePredictions = [], pacing = [], test
       title: `${d.verdict} ${label}`, rationale: d.rationale ?? d.diagnosis ?? '',
       severity: VERDICT_SEVERITY[d.verdict] ?? SEVERITY.MEDIUM,
       evidenceRef: d.id, humanAction: HUMAN_ACTION.CONFIRM, entityId: d.entityId,
+      impactScore: impactById.get(d.entityId) ?? null,
     }));
   }
 
@@ -205,9 +211,9 @@ function loopStatus({ plans = [], allocationPlans = [], executedActions = [], op
 export function planAgenda({
   verdicts = [], fatiguePredictions = [], pacing = [], testAgenda = [], openTests = [],
   planTracking = null, blended = null, plans = [], allocationPlans = [], executedActions = [],
-  recentOutcomes = [], recentMemory = [], labelsById = new Map(), objective = null, now = new Date(),
+  recentOutcomes = [], recentMemory = [], labelsById = new Map(), impactById = new Map(), objective = null, now = new Date(),
 } = {}) {
-  const buyerBand = buyerAgenda({ verdicts, fatiguePredictions, pacing, testAgenda, openTests, labelsById, now });
+  const buyerBand = buyerAgenda({ verdicts, fatiguePredictions, pacing, testAgenda, openTests, labelsById, impactById, now });
   const strategistBand = strategistAgenda({ planTracking, blended, pacing, now });
 
   const loop = loopStatus({

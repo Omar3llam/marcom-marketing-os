@@ -102,6 +102,12 @@ describe('buildLoopInputs — verdict query wiring', () => {
     expect(planAgenda(inputs).buyerBand).toEqual([]);
     expect(planAgenda(inputs).summary).toMatch(/quiet/i);
   });
+
+  it('returns an impactById map in the inputs (empty when no connector data)', async () => {
+    const inputs = await buildLoopInputs(WS, { now });
+    expect(inputs.impactById).toBeInstanceOf(Map);
+    expect(inputs.impactById.size).toBe(0); // no connector campaigns mocked → no scores
+  });
 });
 
 describe('buildLoopInputs — onboarding objective wiring', () => {

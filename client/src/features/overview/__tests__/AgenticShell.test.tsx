@@ -45,7 +45,7 @@ import { appRoutes } from '@/app/routeManifest.js';
 const item = (over = {}) => ({
   id: 'verdict:d1', band: 'BUYER', type: 'VERDICT', title: 'KILL Cold #1',
   rationale: 'Frequency over ceiling', severity: 'HIGH', evidenceRef: 'd1',
-  humanAction: 'confirm', entityId: 'as1', ...over,
+  humanAction: 'confirm', entityId: 'as1', impactScore: 9, ...over,
 });
 const bandView = (items: unknown[] = []) => ({ title: 't', items, count: items.length, empty: items.length === 0 });
 
@@ -104,6 +104,16 @@ describe('AgendaItem — verb + evidence honesty', () => {
     fireEvent.click(screen.getByRole('button'));
     // Deep-links to the specific campaign row, not just the list.
     expect(navigateMock).toHaveBeenCalledWith(`${appRoutes.campaigns}?entity=as1`);
+  });
+
+  it('shows the Impact chip when the item carries a score (the Campaigns-page lever)', () => {
+    render(<AgendaItem item={item({ impactScore: 9 })} />);
+    expect(screen.getByText(/impact 9\/10/i)).toBeInTheDocument();
+  });
+
+  it('omits the Impact chip when impactScore is null (never a fabricated 0)', () => {
+    render(<AgendaItem item={item({ impactScore: null })} />);
+    expect(screen.queryByText(/impact \d+\/10/i)).not.toBeInTheDocument();
   });
 });
 

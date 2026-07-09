@@ -69,6 +69,14 @@ export default function AgendaItem({ item }) {
           >
             {item.severity}
           </span>
+          {item.impactScore != null && (
+            <span
+              className="font-mono text-[9px] uppercase tracking-wider text-dark-subtle flex-shrink-0"
+              title={`Impact ${item.impactScore}/10 — priority to act`}
+            >
+              Impact {item.impactScore}/10
+            </span>
+          )}
           <span className="font-display font-semibold text-xs text-dark-base truncate">{item.title}</span>
         </div>
         {item.rationale && (
