@@ -9,6 +9,10 @@
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+
+// CampaignsView reads ?entity= via useSearchParams → needs a Router context.
+const renderView = () => render(<CampaignsView />, { wrapper: MemoryRouter });
 
 vi.mock('@/hooks/useCampaignFeed.js', () => ({
   useCampaignFeed: () => ({ campaigns: [], loading: false }),
@@ -47,7 +51,7 @@ describe('CampaignsView — Account Health + Wasted Spend from the engine', () =
       health: { score: 70, label: 'GOOD', wastedSpend: { minor: 20000, pct: 20 }, campaigns: [] },
       refetch: vi.fn(),
     });
-    render(<CampaignsView />);
+    renderView();
 
     expect(screen.getByText('70/100')).toBeInTheDocument();
     expect(screen.getByText('GOOD')).toBeInTheDocument();
@@ -58,7 +62,7 @@ describe('CampaignsView — Account Health + Wasted Spend from the engine', () =
 
   it('null health → honest "—" for both cards, never a fabricated 0', () => {
     useAccountHealth.mockReturnValue({ health: null, refetch: vi.fn() });
-    render(<CampaignsView />);
+    renderView();
 
     expect(screen.queryByText('70/100')).not.toBeInTheDocument();
     expect(screen.queryByText(/% of total/)).not.toBeInTheDocument();

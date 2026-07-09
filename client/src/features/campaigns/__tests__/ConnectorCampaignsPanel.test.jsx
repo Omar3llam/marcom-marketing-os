@@ -6,7 +6,7 @@
 // campaign with no verdict (gatedOut/dataless) shows "—" in the verdict cell,
 // never a faked badge.
 // ============================================================
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ConnectorCampaignsPanel } from '../ConnectorCampaignsPanel.jsx';
 
@@ -71,5 +71,52 @@ describe('ConnectorCampaignsPanel — detail expand', () => {
     // Expanded → the detail panel + its pre-generated "Lumi's Read" section appear.
     expect(screen.getByText('Signals')).toBeInTheDocument();
     expect(screen.getByText(/lumi.s read/i)).toBeInTheDocument();
+  });
+});
+
+describe('ConnectorCampaignsPanel — deep-link (?entity=)', () => {
+  beforeEach(() => {
+    // jsdom doesn't implement scrollIntoView — stub it so we can assert the scroll.
+    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+  });
+
+  it('every campaign row carries a stable scroll-target id', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign({ entityId: 'c1' })]} verdicts={{ c1: 'REFRESH' }} />);
+    expect(document.getElementById('campaign-row-c1')).toBeInTheDocument();
+  });
+
+  it('a matching deep-link auto-expands the detail, scrolls to the row, and hands back (URL cleanup)', async () => {
+    const onHandled = vi.fn();
+    render(
+      <ConnectorCampaignsPanel
+        campaigns={[campaign({ entityId: 'c1', name: 'Awareness Reach' })]}
+        verdicts={{ c1: 'REFRESH' }}
+        deepLinkEntityId="c1"
+        onDeepLinkHandled={onHandled}
+      />,
+    );
+    // The signals + reasoning panel appears with NO click — driven by the deep-link.
+    expect(await screen.findByText('Signals')).toBeInTheDocument();
+    expect(window.HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
+    expect(onHandled).toHaveBeenCalledTimes(1); // parent clears ?entity=
+  });
+
+  it('an unknown/stale entity id is a graceful no-op — no expand, no callback', () => {
+    const onHandled = vi.fn();
+    render(
+      <ConnectorCampaignsPanel
+        campaigns={[campaign({ entityId: 'c1' })]}
+        verdicts={{ c1: 'REFRESH' }}
+        deepLinkEntityId="not-a-real-campaign"
+        onDeepLinkHandled={onHandled}
+      />,
+    );
+    expect(screen.queryByText('Signals')).not.toBeInTheDocument();
+    expect(onHandled).not.toHaveBeenCalled();
+  });
+
+  it('no deep-link → normal behavior, nothing auto-expands', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign({ entityId: 'c1' })]} verdicts={{ c1: 'REFRESH' }} />);
+    expect(screen.queryByText('Signals')).not.toBeInTheDocument();
   });
 });
