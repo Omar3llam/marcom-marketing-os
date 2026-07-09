@@ -48,8 +48,11 @@ export const ERROR_TYPE = Object.freeze({
 });
 
 export const MODEL = Object.freeze({
-  // Claude
-  CLAUDE_SONNET_4:  'claude-sonnet-4.5-20250514',
+  // Claude — IDs use dashes, never dots. The prior value 'claude-sonnet-4.5-20250514'
+  // was invalid two ways (a dot in '4.5', and a Sonnet-4 date pinned to a "4.5"
+  // name) so the Anthropic API 404'd it — silently breaking EVERY Claude gateway
+  // capability (strategy, audience, validation, visual brief, verdict reasoning).
+  CLAUDE_SONNET_4:  'claude-sonnet-4-5',
   CLAUDE_OPUS_4:    'claude-opus-4-20250514',
 
   // OpenAI

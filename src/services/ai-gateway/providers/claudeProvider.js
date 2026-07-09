@@ -36,7 +36,9 @@ function getClient() {
   return anthropic;
 }
 
-const DEFAULT_MODEL = MODEL.CLAUDE_SONNET_4;
+// Env-driven so the gateway shares ONE model source with utils/claude.js +
+// render.yaml (ANTHROPIC_MODEL). The constant is only the fallback for local dev.
+const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL || MODEL.CLAUDE_SONNET_4;
 const DEFAULT_MAX_TOKENS = 2048;
 const DEFAULT_TIMEOUT = 30000; // 30s
 
