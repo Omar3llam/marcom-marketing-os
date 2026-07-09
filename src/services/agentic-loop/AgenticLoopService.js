@@ -181,6 +181,17 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
   });
 
   logger.info({ workspaceId, trigger, loopHealth: agenda.loopHealth, buyer: agenda.buyerBand.length, strategist: agenda.strategistBand.length }, '[AgenticLoop] sweep complete');
+
+  // 4. Pre-generate "Lumi's Read" for the top campaigns so the drill-down is
+  //    instant (no on-demand LLM round-trip). Best-effort + dynamically imported:
+  //    an AI failure, cold gateway, or missing key never touches the sweep audit.
+  try {
+    const { generateReasoningForSweep } = await import('../analysis/CampaignReasoningService.js');
+    await generateReasoningForSweep({ workspaceId, loopRunId: loopRun.id });
+  } catch (err) {
+    logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] reasoning pre-generation skipped');
+  }
+
   return { loopRun, agenda };
 }
 

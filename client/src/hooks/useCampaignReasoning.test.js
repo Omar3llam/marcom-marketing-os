@@ -1,62 +1,56 @@
 // ============================================================
-// useCampaignReasoning — on-demand generation + session cache
+// useCampaignReasoning — read pre-generated reasoning + session cache
 // ------------------------------------------------------------
-// Asserts: getReasoning POSTs and exposes the text; a SECOND request for the same
-// campaign returns from the module cache with NO new API call; regenerate bypasses
-// the cache; an API failure surfaces as error (never a fabricated reasoning).
+// Asserts: load() GETs the pre-generated read and exposes text + stale; a SECOND
+// load for the same campaign serves the module cache with NO new API call; a
+// null row surfaces as reasoning:null (honest "not yet"); an API failure surfaces
+// as error (never a fabricated reasoning).
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useCampaignReasoning } from './useCampaignReasoning.js';
 import { api } from '@/lib/api.js';
 
-vi.mock('@/lib/api.js', () => ({ api: { post: vi.fn() } }));
+vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn() } }));
 
 beforeEach(() => {
   vi.clearAllMocks();
-  api.post.mockResolvedValue({ data: { reasoning: 'Frequency is high — refresh the creative.' } });
+  api.get.mockResolvedValue({ data: { reasoning: 'Frequency is high — refresh the creative.', stale: false, generatedAt: '2026-07-09T00:00:00.000Z' } });
 });
 
 describe('useCampaignReasoning', () => {
-  it('POSTs to the reasoning endpoint and exposes the text', async () => {
+  it('GETs the pre-generated read and exposes the text + freshness', async () => {
     const { result } = renderHook(() => useCampaignReasoning());
-    await act(async () => { await result.current.getReasoning('cache-a', { dialect: 'egy' }); });
+    await act(async () => { await result.current.load('read-a'); });
 
-    expect(api.post).toHaveBeenCalledWith('/api/lumi/entities/cache-a/reasoning', { dialect: 'egy' });
+    expect(api.get).toHaveBeenCalledWith('/api/lumi/entities/read-a/reasoning');
     expect(result.current.reasoning).toMatch(/refresh the creative/i);
+    expect(result.current.stale).toBe(false);
     expect(result.current.error).toBeNull();
   });
 
-  it('serves a second request for the same campaign from cache — no new API call', async () => {
+  it('serves a second load for the same campaign from cache — no new API call', async () => {
     const { result } = renderHook(() => useCampaignReasoning());
-    await act(async () => { await result.current.getReasoning('cache-b'); });
-    expect(api.post).toHaveBeenCalledTimes(1);
+    await act(async () => { await result.current.load('read-b'); });
+    expect(api.get).toHaveBeenCalledTimes(1);
 
-    // Second call for the SAME entityId → cached, no additional POST.
-    await act(async () => { await result.current.getReasoning('cache-b'); });
-    expect(api.post).toHaveBeenCalledTimes(1);
+    await act(async () => { await result.current.load('read-b'); });
+    expect(api.get).toHaveBeenCalledTimes(1); // cached
     expect(result.current.reasoning).toMatch(/refresh the creative/i);
   });
 
-  it('regenerate bypasses the cache and re-requests', async () => {
+  it('exposes reasoning:null when nothing is generated yet (honest, never fabricated)', async () => {
+    api.get.mockResolvedValue({ data: { reasoning: null, stale: false, generatedAt: null } });
     const { result } = renderHook(() => useCampaignReasoning());
-    await act(async () => { await result.current.getReasoning('cache-c'); });
-    expect(api.post).toHaveBeenCalledTimes(1);
-
-    await act(async () => { await result.current.regenerate('cache-c'); });
-    expect(api.post).toHaveBeenCalledTimes(2);
-  });
-
-  it('omits the body when no dialect is given', async () => {
-    const { result } = renderHook(() => useCampaignReasoning());
-    await act(async () => { await result.current.getReasoning('cache-d'); });
-    expect(api.post).toHaveBeenCalledWith('/api/lumi/entities/cache-d/reasoning', {});
+    await act(async () => { await result.current.load('read-c'); });
+    expect(result.current.reasoning).toBeNull();
+    expect(result.current.error).toBeNull();
   });
 
   it('surfaces an API failure as error, never a fabricated reasoning', async () => {
-    api.post.mockRejectedValue(new Error('502'));
+    api.get.mockRejectedValue(new Error('500'));
     const { result } = renderHook(() => useCampaignReasoning());
-    await act(async () => { await result.current.getReasoning('cache-e'); });
+    await act(async () => { await result.current.load('read-e'); });
 
     await waitFor(() => expect(result.current.error).toBeTruthy());
     expect(result.current.reasoning).toBeNull();

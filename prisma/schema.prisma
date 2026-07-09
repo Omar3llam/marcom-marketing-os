@@ -414,7 +414,8 @@ model Workspace {
   invitations           Invitation[]
 
   // ── Phase 9: Agentic OS ──────────────────────────────────────
-  loopRuns LoopRun[]
+  loopRuns           LoopRun[]
+  campaignReasonings CampaignReasoning[]
 
   @@map("workspaces")
 }
@@ -470,6 +471,31 @@ model ContentGeneration {
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@map("content_generations")
+}
+
+// ── Campaign verdict reasoning: pre-generated "Lumi's Read" ──────
+// One row per campaign (upsert). Written best-effort during the agentic sweep
+// (top-N by impact score) so the campaign drill-down shows an INSTANT, plain-
+// language read of the verdict instead of an on-demand LLM round-trip.
+// `reasoning` is prose from the AI gateway; `verdict`/`impactScore` are the
+// signals AT generation time (lets the UI show "stale" when they drift or the
+// row ages out). `sweepId` = the LoopRun that produced it. Non-authoritative —
+// safe to wipe and regenerate on any sweep. Workspace-scoped so the team shares.
+model CampaignReasoning {
+  id          String   @id @default(cuid())
+  workspaceId String   @db.Uuid
+  entityId    String   // connector campaign entityId (deterministic; not a DB uuid)
+  reasoning   String
+  verdict     String
+  impactScore Int?
+  sweepId     String?  // LoopRun.id that generated this (null when ad-hoc)
+  generatedAt DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, entityId])
+  @@index([workspaceId, generatedAt(sort: Desc)])
+  @@map("campaign_reasonings")
 }
 
 // ── Team & Roles: workspace invitation ───────────────────────

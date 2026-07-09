@@ -14,9 +14,9 @@ import { ConnectorCampaignsPanel } from '../ConnectorCampaignsPanel.jsx';
 vi.mock('@/hooks/useEntityDrillDown.js', () => ({
   useEntityDrillDown: () => ({ byId: {}, load: vi.fn() }),
 }));
-// The detail panel's reasoning hook talks to the API — stub the client so mounting
-// the expanded panel never touches the network.
-vi.mock('@/lib/api.js', () => ({ api: { post: vi.fn(), get: vi.fn() } }));
+// The detail panel reads pre-generated reasoning on mount — stub the client so
+// expanding never touches the network (null row → the "after next sweep" state).
+vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn(() => Promise.resolve({ data: { reasoning: null, stale: false } })) } }));
 
 const campaign = (over = {}) => ({
   entityId: 'c1', channel: 'META', name: 'Awareness Reach', adSetCount: 0,
@@ -68,8 +68,8 @@ describe('ConnectorCampaignsPanel — detail expand', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /toggle details for awareness reach/i }));
 
-    // Expanded → the detail panel + its on-demand reasoning affordance appear.
+    // Expanded → the detail panel + its pre-generated "Lumi's Read" section appear.
     expect(screen.getByText('Signals')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /get lumi's read/i })).toBeInTheDocument();
+    expect(screen.getByText(/lumi.s read/i)).toBeInTheDocument();
   });
 });

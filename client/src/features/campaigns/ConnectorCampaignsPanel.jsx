@@ -84,7 +84,7 @@ function AdSetRows({ state }) {
   ));
 }
 
-export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts = {}, dialect = null, loading = false, error = null }) {
+export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts = {}, loading = false, error = null }) {
   const [open, setOpen] = useState(new Set());          // ad-set drill-down
   const [detailOpen, setDetailOpen] = useState(new Set()); // signals + reasoning panel
   const { byId, load } = useEntityDrillDown();
@@ -211,7 +211,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts
                     {isDetailOpen && (
                       <tr className="border-b border-lumi-border/50 bg-lumi-bg/20">
                         <td colSpan={9} className="px-4 pb-3 pt-0">
-                          <CampaignDetailPanel campaign={c} verdict={verdict} impact={impact} dialect={dialect} />
+                          <CampaignDetailPanel campaign={c} verdict={verdict} impact={impact} />
                         </td>
                       </tr>
                     )}
