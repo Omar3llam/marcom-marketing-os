@@ -18,6 +18,8 @@ import { useAuth } from '@/context/AuthContext.jsx';
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
+import { useAccountHealth } from '@/hooks/useAccountHealth.js';
+import { useHome } from '@/hooks/useHome.js';
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
 import StatCard from '@/components/ui/StatCard.jsx';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
@@ -27,12 +29,17 @@ import FirstRunBanner from './components/FirstRunBanner.jsx';
 import ConnectionHealthStrip from './components/ConnectionHealthStrip.jsx';
 import PacingWidget from './components/PacingWidget.jsx';
 import CopilotTeaser from './components/CopilotTeaser.jsx';
+import AlertsPanel from './components/AlertsPanel.jsx';
+import AIInsightCard from './components/AIInsightCard.jsx';
+import QuickActionsPanel from './components/QuickActionsPanel.jsx';
 
 export default function OverviewView() {
   const { currentUser } = useAuth();
   const { workspace } = useWorkspace();
   const { campaigns, summary, loading: intelligenceLoading } = useIntelligence();
   const { campaigns: connectorCampaigns, loading: connectorLoading } = useConnectorCampaigns();
+  const { health } = useAccountHealth(); // connector campaign health + wasted spend + impact scores
+  const { home } = useHome(); // agentic loop home (includes aiInsight)
   const { surface: proofSurface } = useAccuracy(); // gated proof one-liner (best-effort)
   const { role: collabRole } = useCollabRole();
 
@@ -212,6 +219,25 @@ export default function OverviewView() {
           verdicts, empty legacy feed) still sees its agenda. Owns its own
           loading/empty states, so it's safe to mount whenever data exists. */}
       {hasAnyData && <AgenticShellView />}
+
+      {/* AI Insight layer — 3-column: Alerts + AI Insight + Quick Actions.
+          Shown when hasAnyData (connector or legacy feed). Uses useAccountHealth
+          for campaign alerts + health score. Uses home.aiInsight for briefing.
+          QuickActions are contextual (Upload Revenue / Connect Channel conditional). */}
+      {hasAnyData && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+          <AlertsPanel campaigns={health?.campaigns ?? []} />
+          <AIInsightCard
+            insight={home?.aiInsight ?? null}
+            healthScore={health?.score ?? null}
+            healthLabel={health?.label ?? null}
+          />
+          <QuickActionsPanel
+            hasRevenue={health?.campaigns?.some((c) => c.roas != null) ?? false}
+            hasConnector={connectorCampaigns.length > 0}
+          />
+        </div>
+      )}
 
       {/* Lumi Copilot — an honest "coming soon" teaser (not for the read-only
           CLIENT seat). Renders in every data state for operators. */}

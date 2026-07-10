@@ -428,6 +428,30 @@ export async function explainVerdict(input) {
   };
 }
 
+export async function generateBriefing({ system, user }) {
+  const result = await callClaude({ systemPrompt: system, userPrompt: user, maxTokens: 120 });
+
+  if (!result.success) {
+    return result;
+  }
+
+  const briefing = (result.text || '').trim();
+  if (!briefing) {
+    return {
+      success: false,
+      error: { type: ERROR_TYPE.INVALID_RESPONSE, message: 'Empty briefing response' },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: { briefing },
+    artifacts: [],
+    metadata: result.metadata,
+  };
+}
+
 export async function generateVisualBrief(input, decisionContext = {}) {
   const systemPrompt = getSystemPrompt('VISUAL_STRATEGIST');
   const userPrompt = buildVisualBriefPrompt('GENERATE_VISUAL_BRIEF', input, decisionContext);

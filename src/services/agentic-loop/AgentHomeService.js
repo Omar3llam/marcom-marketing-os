@@ -14,6 +14,7 @@
 // stale-sweep keeps the loop proactive when no cron is running (dev/no-Redis).
 // ============================================================
 import { logger } from '../../utils/logger.js';
+import { prisma } from '../../models/index.js';
 import { planAgenda } from './agenticPlanner.js';
 import { buildLoopInputs, runSweep, getLoopState, LOOP_MIN_INTERVAL_MS } from './AgenticLoopService.js';
 import { normalizeRole, WORKSPACE_ROLE } from '../collaboration/roleScope.js';
@@ -110,6 +111,20 @@ export async function getHome(workspaceId, role) {
     logger.warn({ err: err.message, workspaceId }, '[AgentHome] accuracy headline skipped');
   }
 
+  // AI Insight — pre-generated briefing from the latest LoopRun. Null when no
+  // sweep has generated one yet (honest empty state on Overview).
+  let aiInsight = null;
+  try {
+    const latestRun = await prisma.loopRun.findFirst({
+      where: { workspaceId },
+      orderBy: { createdAt: 'desc' },
+      select: { aiInsight: true },
+    });
+    aiInsight = latestRun?.aiInsight ?? null;
+  } catch (err) {
+    logger.warn({ err: err.message, workspaceId }, '[AgentHome] aiInsight read skipped');
+  }
+
   logger.info({ workspaceId, role: r, loopHealth: loop.loopHealth }, '[AgentHome] composed');
-  return { role: r, summary: agenda.summary, buyerBand, strategistBand, loop, proof };
+  return { role: r, summary: agenda.summary, buyerBand, strategistBand, loop, proof, aiInsight };
 }

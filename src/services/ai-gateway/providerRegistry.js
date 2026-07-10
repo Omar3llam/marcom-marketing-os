@@ -57,6 +57,12 @@ export const PROVIDER_REGISTRY = Object.freeze({
     method: claudeProvider.explainVerdict,
   },
 
+  // Portfolio briefing → Claude (1-2 sentence summary)
+  [CAPABILITY.GENERATE_BRIEFING]: {
+    provider: PROVIDER.CLAUDE,
+    method: claudeProvider.generateBriefing,
+  },
+
   // Visual → Claude for brief, OpenAI for prompt
   [CAPABILITY.GENERATE_VISUAL_BRIEF]: {
     provider: PROVIDER.CLAUDE,

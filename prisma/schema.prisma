@@ -1780,6 +1780,7 @@ model LoopRun {
   proposalsByType Json // { VERDICT, REALLOCATION, TEST, PLAN_ADJUSTMENT, ... } counts
   stageStatus     Json // full per-stage detail [{ stage, state, lastAt, count }]
   summary         String
+  aiInsight       String? // pre-generated portfolio briefing paragraph (1-2 sentences)
 
   // Queryable monitoring (lifted out of stageStatus JSON).
   closed      Boolean
