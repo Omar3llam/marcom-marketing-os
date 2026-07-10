@@ -39,7 +39,9 @@
     "hold":       "#F59E0B",
     "hold-bg":    "rgba(245,158,11,0.10)",
     "scale":      "#10B981",
-    "scale-bg":   "rgba(16,185,129,0.10)"
+    "scale-bg":   "rgba(16,185,129,0.10)",
+    "watch":      "#3B82F6",
+    "watch-bg":   "rgba(59,130,246,0.10)"
   },
 
   "stage": {

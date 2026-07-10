@@ -18,7 +18,7 @@ const verdictConfig = {
   KILL:       { bg: 'bg-signal-kill-bg',   text: 'text-signal-kill',   border: 'border-signal-kill/25',   icon: XCircle },
   HOLD:       { bg: 'bg-signal-hold-bg',   text: 'text-signal-hold',   border: 'border-signal-hold/25',   icon: Pause },
   SCALE:      { bg: 'bg-signal-scale-bg',  text: 'text-signal-scale',  border: 'border-signal-scale/25',  icon: TrendingUp },
-  WATCH:      { bg: 'bg-signal-hold-bg',   text: 'text-signal-hold',   border: 'border-signal-hold/25',   icon: Eye },
+  WATCH:      { bg: 'bg-signal-watch-bg',  text: 'text-signal-watch',  border: 'border-signal-watch/25',  icon: Eye },
   REFRESH:    { bg: 'bg-stage-testing/10', text: 'text-stage-testing', border: 'border-stage-testing/25', icon: RefreshCw },
   REALLOCATE: { bg: 'bg-stage-scaling/10', text: 'text-stage-scaling', border: 'border-stage-scaling/25', icon: Shuffle },
   TEST:       { bg: 'bg-stage-testing/10', text: 'text-stage-testing', border: 'border-stage-testing/25', icon: FlaskConical },
