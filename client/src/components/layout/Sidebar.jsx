@@ -357,18 +357,12 @@ export default function Sidebar({
                   'flex items-center gap-3 rounded-xl transition-all duration-150 mb-0.5 text-sm group relative',
                   collapsed ? 'justify-center p-3' : 'px-3 py-2.5',
                   isActive
-                    ? 'bg-lumi-elevated border border-lumi-border text-lumi-text shadow-card'
-                    : 'text-lumi-muted hover:text-lumi-text hover:bg-lumi-elevated/60',
+                    ? 'border-l-2 border-lumi-accent bg-lumi-accent/5 text-lumi-accent font-medium'
+                    : 'border-l-2 border-transparent text-lumi-muted hover:text-lumi-text hover:bg-lumi-elevated/60',
                 )}
               >
                 {({ isActive }) => (
                   <>
-                    {isActive && !collapsed && (
-                      <div
-                        className="absolute left-0 top-0 bottom-0 w-0.5 rounded-r-full bg-lumi-accent"
-                        style={{ boxShadow: '0 0 8px rgba(246,201,69,0.6)' }}
-                      />
-                    )}
                     <tool.icon
                       className={cn(
                         'flex-shrink-0',
@@ -459,10 +453,11 @@ export default function Sidebar({
           aria-label="Settings"
           onClick={() => onMobileMenuToggle?.()} // Close mobile menu on navigation
           className={({ isActive }) => cn(
-            'flex items-center gap-2.5 rounded-xl text-lumi-muted',
-            'hover:text-lumi-text hover:bg-lumi-elevated transition-all duration-150',
+            'flex items-center gap-2.5 rounded-xl transition-all duration-150',
             collapsed ? 'p-2.5' : 'w-full px-3 py-2 text-sm',
-            isActive && 'text-lumi-text bg-lumi-elevated',
+            isActive
+              ? 'border-l-2 border-lumi-accent bg-lumi-accent/5 text-lumi-accent font-medium'
+              : 'border-l-2 border-transparent text-lumi-muted hover:text-lumi-text hover:bg-lumi-elevated/60',
           )}
         >
           <Settings className="w-4 h-4 flex-shrink-0" strokeWidth={1.5} />

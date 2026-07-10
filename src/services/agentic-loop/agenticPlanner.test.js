@@ -80,6 +80,40 @@ describe('agenticPlanner — banding', () => {
   });
 });
 
+describe('agenticPlanner — impact ranking', () => {
+  const impactById = new Map([['as1', 3], ['cmp1', 9]]);
+
+  it('attaches the per-entity impactScore to VERDICT items (null when unscored)', () => {
+    const out = planAgenda({ ...base, impactById });
+    const kill = out.buyerBand.find((i) => i.evidenceRef === 'd1');  // entity as1 → 3
+    const watch = out.buyerBand.find((i) => i.evidenceRef === 'd2'); // entity cmp1 → 9
+    expect(kill.impactScore).toBe(3);
+    expect(watch.impactScore).toBe(9);
+    // A pacing item is not a scored campaign → impactScore stays null (no fabrication).
+    const pacingItem = out.buyerBand.find((i) => i.type === AGENDA_TYPE.PACING);
+    expect(pacingItem.impactScore).toBeNull();
+  });
+
+  it('within a severity tier, ranks the higher-impact lever first', () => {
+    // d1 (KILL, as1) and d2 (WATCH, cmp1) are BOTH HIGH severity → impact breaks the tie.
+    const out = planAgenda({ ...base, impactById });
+    const killIdx = out.buyerBand.findIndex((i) => i.evidenceRef === 'd1');  // impact 3
+    const watchIdx = out.buyerBand.findIndex((i) => i.evidenceRef === 'd2'); // impact 9
+    expect(watchIdx).toBeLessThan(killIdx); // 9 sorts before 3 within the HIGH tier
+  });
+
+  it('falls back to severity-only order (null impact) when no impact map is supplied', () => {
+    const out = planAgenda(base); // no impactById
+    for (const i of out.buyerBand) {
+      if (i.type === AGENDA_TYPE.VERDICT) expect(i.impactScore).toBeNull();
+    }
+    // Deterministic: same-tier ties fall to the stable id tiebreak (d1 before d2).
+    const killIdx = out.buyerBand.findIndex((i) => i.evidenceRef === 'd1');
+    const watchIdx = out.buyerBand.findIndex((i) => i.evidenceRef === 'd2');
+    expect(killIdx).toBeLessThan(watchIdx);
+  });
+});
+
 describe('agenticPlanner — loop status', () => {
   it('reports CLOSED + HEALTHY when every stage has a recent row', () => {
     const out = planAgenda(base);

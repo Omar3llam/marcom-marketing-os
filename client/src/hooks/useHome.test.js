@@ -18,7 +18,7 @@ const validHome = {
   role: 'STRATEGIST',
   summary: '1 to decide, 0 to steer.',
   buyerBand: band([
-    { id: 'verdict:d1', band: 'BUYER', type: 'VERDICT', title: 'KILL Cold #1', rationale: 'Freq over ceiling', severity: 'HIGH', evidenceRef: 'd1', humanAction: 'confirm', entityId: 'as1' },
+    { id: 'verdict:d1', band: 'BUYER', type: 'VERDICT', title: 'KILL Cold #1', rationale: 'Freq over ceiling', severity: 'HIGH', evidenceRef: 'd1', humanAction: 'confirm', entityId: 'as1', impactScore: 9 },
   ]),
   strategistBand: band([]),
   loop: {

@@ -27,6 +27,9 @@ export const AgendaItemSchema = z.object({
   evidenceRef: z.string().nullable(),
   humanAction: HumanActionSchema,
   entityId: z.string().nullable(),
+  // Priority-to-act (1-10) — the same score the Campaigns page shows; null when
+  // the item isn't a scored campaign (fatigue/pacing/test, or an unscored verdict).
+  impactScore: z.number().nullable(),
 });
 
 export type AgendaBand = z.infer<typeof AgendaBandSchema>;

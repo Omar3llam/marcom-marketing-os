@@ -43,6 +43,8 @@ export default {
         'signal-hold-bg':     colors.signal['hold-bg'],
         'signal-scale':       colors.signal.scale,
         'signal-scale-bg':    colors.signal['scale-bg'],
+        'signal-watch':       colors.signal.watch,
+        'signal-watch-bg':    colors.signal['watch-bg'],
 
         // Stage tokens
         'stage-dying':        colors.stage.dying,

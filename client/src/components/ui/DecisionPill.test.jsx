@@ -15,7 +15,7 @@ describe('VerdictPill — every verdict gets a real semantic color, never the gr
     ['KILL',       'text-signal-kill'],
     ['HOLD',       'text-signal-hold'],
     ['SCALE',      'text-signal-scale'],
-    ['WATCH',      'text-signal-hold'],
+    ['WATCH',      'text-signal-watch'],
     ['REFRESH',    'text-stage-testing'],
     ['REALLOCATE', 'text-stage-scaling'],
   ])('%s → %s (not the lumi-muted fallback)', (verdict, token) => {
