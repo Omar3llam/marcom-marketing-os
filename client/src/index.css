@@ -514,6 +514,25 @@
     backdrop-filter: blur(var(--glass-blur));
   }
 
+  /* ── Card Elevation System ───────────────────────────────── */
+  /*
+   * USAGE: Standardized card elevations across the app
+   * - .card-flat: Table containers, list items (no shadow)
+   * - .card-raised: Metric tiles, content cards (subtle shadow)
+   * - .card-floating: Modals, popovers (prominent shadow)
+   */
+  .card-flat {
+    @apply border border-lumi-border bg-lumi-surface;
+  }
+
+  .card-raised {
+    @apply border border-lumi-border bg-lumi-surface shadow-sm;
+  }
+
+  .card-floating {
+    @apply border border-lumi-border bg-lumi-surface shadow-lg;
+  }
+
   /* ── Grid Background ─────────────────────────────────────── */
   /*
    * USAGE: Landing page, empty states
