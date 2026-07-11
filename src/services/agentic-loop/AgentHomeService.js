@@ -14,7 +14,7 @@
 // stale-sweep keeps the loop proactive when no cron is running (dev/no-Redis).
 // ============================================================
 import { logger } from '../../utils/logger.js';
-import { prisma } from '../../models/index.js';
+import { prisma } from '../../lib/prisma.js';
 import { planAgenda } from './agenticPlanner.js';
 import { buildLoopInputs, runSweep, getLoopState, LOOP_MIN_INTERVAL_MS } from './AgenticLoopService.js';
 import { normalizeRole, WORKSPACE_ROLE } from '../collaboration/roleScope.js';
