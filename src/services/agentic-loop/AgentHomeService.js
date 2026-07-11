@@ -69,8 +69,12 @@ export async function getHome(workspaceId, role) {
   const r = normalizeRole(role);
   const now = new Date();
 
-  const loopState = await getLoopState(workspaceId);
-  const lastRun = loopState.lastRun;
+  // Guarded: a getLoopState failure (e.g. a not-yet-migrated column) must degrade
+  // to a stale picture, never blank the whole agenda. lastRun=null is already a
+  // valid, handled state below (stale ⇒ on-read sweep / planAgenda fallback).
+  const loopState = await getLoopState(workspaceId).catch(() => null);
+  const lastRun = loopState?.lastRun ?? null;
+  const intervalMs = loopState?.intervalMs ?? LOOP_MIN_INTERVAL_MS;
   const stale = !lastRun || (now.getTime() - new Date(lastRun.createdAt).getTime() > LOOP_MIN_INTERVAL_MS);
 
   // On-read stale-sweep: keeps the loop proactive without a cron. Best-effort —
@@ -93,8 +97,8 @@ export async function getHome(workspaceId, role) {
 
   const loop = buildLoopStatus(agenda, {
     lastRunAt: runAt ? new Date(runAt).toISOString() : null,
-    nextRunAt: runAt ? new Date(new Date(runAt).getTime() + loopState.intervalMs).toISOString() : null,
-    intervalMs: loopState.intervalMs,
+    nextRunAt: runAt ? new Date(new Date(runAt).getTime() + intervalMs).toISOString() : null,
+    intervalMs,
   });
 
   // Role scoping: a client sees only the strategist altitude.

@@ -295,7 +295,28 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
 /** Latest LoopRun + the estimated next scheduled run. */
 export async function getLoopState(workspaceId) {
   if (!workspaceId) throw new Error('getLoopState: workspaceId required');
-  const last = await prisma.loopRun.findFirst({ where: { workspaceId }, orderBy: { createdAt: 'desc' } });
+  // Explicit projection (deliberately excludes aiInsight — unused here and not
+  // part of loop state): pins the columns this read pulls, so a newly-added,
+  // not-yet-migrated column can never make getLoopState — and therefore getHome —
+  // crash the whole agenda. Missing-column staleness degrades to a stale picture.
+  const last = await prisma.loopRun.findFirst({
+    where: { workspaceId },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      workspaceId: true,
+      trigger: true,
+      startedAt: true,
+      finishedAt: true,
+      proposalsByType: true,
+      stageStatus: true,
+      summary: true,
+      closed: true,
+      loopHealth: true,
+      staleStages: true,
+      createdAt: true,
+    },
+  });
   const nextRunAt = last ? new Date(new Date(last.createdAt).getTime() + AGENTIC_CRON_MS).toISOString() : null;
   return { lastRun: last, nextRunAt, intervalMs: AGENTIC_CRON_MS };
 }
