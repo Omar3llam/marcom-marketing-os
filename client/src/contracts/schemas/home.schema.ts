@@ -26,6 +26,7 @@ export const AgentHomeSchema = z.object({
   buyerBand: AgendaBandViewSchema.nullable(), // null for a CLIENT
   strategistBand: AgendaBandViewSchema,
   loop: LoopStatusSchema,
+  aiInsight: z.string().nullable().optional(), // pre-generated briefing paragraph
 });
 
 export type AgendaBandView = z.infer<typeof AgendaBandViewSchema>;
