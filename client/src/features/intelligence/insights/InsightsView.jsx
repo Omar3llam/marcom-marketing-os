@@ -20,8 +20,9 @@ import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useGoals } from '@/hooks/useGoals.js';
 import { usePlans } from '@/hooks/usePlans.js';
 import { useApprovals } from '@/hooks/useApprovals.js';
+import { useFatigueForecast } from '@/hooks/useFatigueForecast.js';
 import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
-import { FatigueForecast } from './FatigueForecast.jsx';
+import { FatigueForecastPanel } from './FatigueForecastPanel.jsx';
 import { AccountBriefing } from './AccountBriefing.jsx';
 import { UnitEconomicsPanel } from './UnitEconomicsPanel.jsx';
 import { GoalsPanel } from './GoalsPanel.jsx';
@@ -31,7 +32,8 @@ import { ApprovalsPanel } from './ApprovalsPanel.jsx';
 const STAGES = ['DYING', 'FATIGUED', 'TESTING', 'SCALING', 'STABLE'];
 
 export default function GrowthStrategyBoard() {
-  const { campaigns, summary, loading, fatiguePredictions } = useCampaignFeed();
+  const { campaigns, summary, loading } = useCampaignFeed();
+  const { forecast: fatigueForecast, isLoading: fatigueLoading } = useFatigueForecast();
   const { briefing, loading: briefingLoading, error: briefingError, refetch: refetchBriefing, setConsent, consentBusy } = useAccountBriefing();
   const { promote, promotingId, error: promoteError } = usePromotePattern();
   const { role: collabRole } = useCollabRole();
@@ -164,8 +166,8 @@ export default function GrowthStrategyBoard() {
         )}
       </section>
 
-      {/* ── FATIGUE FORECAST (forward signal) ───────────────── */}
-      <FatigueForecast predictions={fatiguePredictions} loading={loading} />
+      {/* ── FATIGUE FORECAST (forward signal · per-campaign, named) ─── */}
+      <FatigueForecastPanel forecast={fatigueForecast} loading={fatigueLoading} />
 
       {/* ── MEMORY LAYER TIMELINE ───────────────────────────── */}
       <section className="mb-10">
