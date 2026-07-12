@@ -452,6 +452,35 @@ export async function generateBriefing({ system, user }) {
   };
 }
 
+/**
+ * Copilot Q&A — account-aware prose answer. The route assembles the account
+ * context into `system` and the conversation transcript + question into `user`
+ * (callClaude is single-turn, so multi-turn history is rendered into the prompt).
+ */
+export async function answerQuestion({ system, user }) {
+  const result = await callClaude({ systemPrompt: system, userPrompt: user, maxTokens: 400 });
+
+  if (!result.success) {
+    return result;
+  }
+
+  const answer = (result.text || '').trim();
+  if (!answer) {
+    return {
+      success: false,
+      error: { type: ERROR_TYPE.INVALID_RESPONSE, message: 'Empty answer response' },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: { answer },
+    artifacts: [],
+    metadata: result.metadata,
+  };
+}
+
 export async function generateVisualBrief(input, decisionContext = {}) {
   const systemPrompt = getSystemPrompt('VISUAL_STRATEGIST');
   const userPrompt = buildVisualBriefPrompt('GENERATE_VISUAL_BRIEF', input, decisionContext);

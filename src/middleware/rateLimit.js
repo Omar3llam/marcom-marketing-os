@@ -67,3 +67,16 @@ export const reasoningLimiter = rateLimit({
   legacyHeaders:    false,
   message:          { error: 'ReasoningRateLimit', message: 'Too many reasoning requests. Please wait a moment.' },
 });
+
+/** 30 questions / minute — the Copilot Q&A endpoint (per workspace, not per-IP,
+ *  so a team shares the cap). Each question is an account-context Claude call;
+ *  this guards against click-spam / runaway loops. Applied inside /api/lumi
+ *  (after auth) so req.workspaceId is resolved. */
+export const copilotLimiter = rateLimit({
+  windowMs:         60 * 1_000,
+  max:              30,
+  keyGenerator:     (req) => req.workspaceId || req.auth?.userId || req.ip,
+  standardHeaders:  'draft-7',
+  legacyHeaders:    false,
+  message:          { error: 'CopilotRateLimit', message: 'Too many questions. Please wait a moment.' },
+});

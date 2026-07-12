@@ -63,6 +63,12 @@ export const PROVIDER_REGISTRY = Object.freeze({
     method: claudeProvider.generateBriefing,
   },
 
+  // Copilot Q&A → Claude (account-aware prose answer)
+  [CAPABILITY.ANSWER_QUESTION]: {
+    provider: PROVIDER.CLAUDE,
+    method: claudeProvider.answerQuestion,
+  },
+
   // Visual → Claude for brief, OpenAI for prompt
   [CAPABILITY.GENERATE_VISUAL_BRIEF]: {
     provider: PROVIDER.CLAUDE,

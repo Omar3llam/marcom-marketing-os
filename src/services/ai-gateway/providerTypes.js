@@ -20,6 +20,7 @@ export const CAPABILITY = Object.freeze({
   ANALYZE_CREATIVE:        'ANALYZE_CREATIVE',
   EXPLAIN_VERDICT:         'EXPLAIN_VERDICT', // on-demand prose reasoning for a campaign verdict
   GENERATE_BRIEFING:       'GENERATE_BRIEFING', // 1-2 sentence portfolio state summary
+  ANSWER_QUESTION:         'ANSWER_QUESTION', // account-aware Q&A for the Copilot chat
 
   // Visual & multimedia
   GENERATE_VISUAL_BRIEF:   'GENERATE_VISUAL_BRIEF',
