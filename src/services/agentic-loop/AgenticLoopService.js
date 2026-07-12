@@ -216,7 +216,7 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
   // 5. Pre-generate portfolio briefing (1-2 sentences) for the Overview AI Insight
   //    card. Best-effort — never fails the sweep.
   try {
-    const { ProviderGateway } = await import('../ai-gateway/ProviderGateway.js');
+    const { execute: runGateway } = await import('../ai-gateway/ProviderGateway.js');
     const { CAPABILITY } = await import('../ai-gateway/providerTypes.js');
     const { buildPortfolioBriefingPrompt } = await import('../ai-gateway/prompts/portfolioBriefingPrompt.js');
     const { computeAccountHealth } = await import('../analysis/AccountHealthService.js');
@@ -270,8 +270,7 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
       };
 
       const { system, user } = buildPortfolioBriefingPrompt(stats, workspace);
-      const gateway = new ProviderGateway();
-      const result = await gateway.execute({
+      const result = await runGateway({
         capability: CAPABILITY.GENERATE_BRIEFING,
         input: { system, user },
         workspaceId,

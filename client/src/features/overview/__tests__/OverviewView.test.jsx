@@ -30,7 +30,7 @@ vi.mock('../AgenticShellView.jsx', () => ({ default: () => <div data-testid="age
 vi.mock('../components/FirstRunBanner.jsx', () => ({ default: () => <div data-testid="first-run">first-run</div> }));
 vi.mock('../components/ConnectionHealthStrip.jsx', () => ({ default: () => null }));
 vi.mock('../components/PacingWidget.jsx', () => ({ default: () => <div data-testid="pacing" /> }));
-vi.mock('../components/CopilotTeaser.jsx', () => ({ default: () => null }));
+vi.mock('../components/CopilotPanel.jsx', () => ({ default: () => null }));
 vi.mock('@/features/intelligence/proof/ProofView.jsx', () => ({ ProofSummary: () => null }));
 vi.mock('@/components/ui/StatCard.jsx', () => ({ default: ({ label }) => <div data-testid="stat-card">{label}</div> }));
 

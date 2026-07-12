@@ -55,6 +55,7 @@ vi.mock('./providers/claudeProvider.js', () => ({
   generateVisualBrief: vi.fn(),
   explainVerdict: vi.fn(),
   generateBriefing: vi.fn(),
+  answerQuestion: vi.fn(),
 }));
 
 vi.mock('./providers/openaiProvider.js', () => ({
