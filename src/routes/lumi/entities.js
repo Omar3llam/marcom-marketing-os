@@ -13,6 +13,7 @@ import { Router } from 'express';
 import { getConnectorCampaigns, getCampaignAdSets } from '../../services/entity-graph/index.js';
 import { getConnectorVerdicts } from '../../services/verdict-engine/index.js';
 import { computeAccountHealth } from '../../services/analysis/AccountHealthService.js';
+import { computeFatigueForecast } from '../../services/analysis/FatigueForecastService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 import { prisma } from '../../lib/prisma.js';
@@ -109,6 +110,24 @@ entitiesRouter.get(
     }
   },
 );
+
+// Per-campaign fatigue forecast: when each campaign's audience is projected to
+// saturate (frequency → ceiling), NAMED. Reuses the least-squares forecaster over
+// the connector substrate; persists nothing. Gated to the operating roles
+// (mirrors /entities/health) — a CLIENT never sees the efficiency layer, and the
+// Growth Strategy page that renders this is itself STRATEGIST/BUYER-only. No
+// connector data / no rising frequency → honest empty array (never a fabricated
+// breach).
+entitiesRouter.get('/entities/fatigue', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
+  try {
+    const campaigns = await getConnectorCampaigns(req.workspaceId);
+    const forecast = await computeFatigueForecast(req.workspaceId, campaigns);
+    return res.json({ workspaceId: req.workspaceId ?? null, generatedAt: new Date().toISOString(), forecast });
+  } catch (err) {
+    logger.error({ err: err.message, workspaceId: req.workspaceId }, '[lumi/entities] fatigue failed');
+    return res.status(500).json({ error: 'FatigueUnavailable', message: 'Request failed' });
+  }
+});
 
 entitiesRouter.get('/entities/:campaignId/adsets', async (req, res) => {
   try {

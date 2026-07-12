@@ -1,0 +1,97 @@
+// ============================================================
+// MARCOM / Lumi — FatigueForecastPanel  (Growth Strategy · forward signal)
+// ------------------------------------------------------------
+// Per-campaign, NAMED fatigue forecast from /api/lumi/entities/fatigue. Every
+// field traces to a real row (name/channel/currentFrequency from the connector
+// graph; velocity + daysUntilSaturation from the least-squares forecaster).
+// Honest: hidden entirely when there's nothing to forecast (not an empty state),
+// velocity omitted when frequency isn't rising, days shown as "~N" (a projection).
+// ============================================================
+import { AlertTriangle } from 'lucide-react';
+import { cn } from '@/lib/utils.js';
+import { HelpTip } from '@/components/ui/HelpTip.jsx';
+import { HELP } from '@/lib/helpContent.js';
+
+const STATUS = {
+  SATURATED: { text: 'text-signal-kill',  bg: 'bg-signal-kill-bg'  },
+  AT_RISK:   { text: 'text-signal-watch', bg: 'bg-signal-watch-bg' },
+  MONITOR:   { text: 'text-signal-hold',  bg: 'bg-signal-hold-bg'  },
+  HEALTHY:   { text: 'text-signal-scale', bg: 'bg-signal-scale-bg' },
+  STABLE:    { text: 'text-lumi-muted',   bg: 'bg-lumi-elevated'   },
+};
+
+function breachLabel(item) {
+  const d = item.daysUntilSaturation;
+  switch (item.status) {
+    case 'SATURATED': return 'saturated now';
+    case 'AT_RISK':   return `~${d} day${d === 1 ? '' : 's'}`;
+    case 'MONITOR': {
+      const w = Math.max(1, Math.ceil(d / 7));
+      return `~${w} week${w === 1 ? '' : 's'}`;
+    }
+    case 'HEALTHY':   return '3+ weeks';
+    case 'STABLE':    return 'stable';
+    default:          return '—';
+  }
+}
+
+export function FatigueForecastPanel({ forecast = [], loading = false }) {
+  if (loading) {
+    return (
+      <section className="mb-10">
+        <div className="section-label">Fatigue Forecast</div>
+        <div className="mt-3 rounded-xl border border-dashed border-lumi-border p-6 text-center text-sm text-lumi-subtle">
+          Loading…
+        </div>
+      </section>
+    );
+  }
+
+  // Nothing to forecast → hide the section entirely (not an empty-state card).
+  if (!forecast?.length) return null;
+
+  return (
+    <section className="mb-10">
+      <div className="section-label flex items-center gap-2">
+        Fatigue Forecast
+        <HelpTip variant="popover" content={HELP.FATIGUE_FORECAST} />
+      </div>
+      <p className="mt-1 text-lumi-muted text-sm mb-4">
+        When each campaign’s audience is projected to saturate — from how fast frequency is rising, re-scored each sync.
+      </p>
+
+      <ul className="grid gap-3 sm:grid-cols-2">
+        {forecast.map((item) => {
+          const cfg = STATUS[item.status] ?? STATUS.STABLE;
+          return (
+            <li
+              key={item.entityId}
+              className="flex items-center justify-between gap-3 bg-lumi-surface border border-lumi-border rounded-xl p-4"
+            >
+              <div className="min-w-0">
+                <p className="font-display text-sm text-lumi-text truncate">{item.name || 'Unnamed campaign'}</p>
+                <p className="mt-0.5 font-mono text-[10px] text-lumi-subtle truncate">
+                  {item.channel || 'channel'} · freq {item.currentFrequency}
+                  {item.velocity != null && ` · +${item.velocity}/day`}
+                </p>
+              </div>
+              <span
+                className={cn(
+                  'shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-xs whitespace-nowrap',
+                  cfg.text, cfg.bg,
+                )}
+              >
+                {item.status === 'SATURATED' && <AlertTriangle className="w-3 h-3" strokeWidth={2} />}
+                {breachLabel(item)}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+
+      <p className="mt-3 font-mono text-[10px] text-lumi-subtle">
+        Saturation threshold: frequency ≥ 3.5 · re-scored each sync
+      </p>
+    </section>
+  );
+}
