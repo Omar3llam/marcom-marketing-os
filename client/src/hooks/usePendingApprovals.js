@@ -37,7 +37,11 @@ function toArtifactShape(approval) {
   };
 }
 
-export function usePendingApprovals() {
+// `enabled` (default true) lets a caller skip the fetch entirely — the Sidebar
+// passes false for a CLIENT (who has no Publishing surface), so we never fire a
+// workspace-scoped request that would only 403. The Publishing page calls with
+// no args and keeps the original always-on behaviour.
+export function usePendingApprovals({ enabled = true } = {}) {
   const { workspace, loading: wsLoading } = useWorkspace();
   const workspaceId = workspace?.id ?? null;
 
@@ -46,7 +50,7 @@ export function usePendingApprovals() {
   const [error, setError] = useState(null);
 
   const fetchPending = useCallback(async (signal) => {
-    if (!workspaceId) return; // the effect handles the no-workspace case
+    if (!enabled || !workspaceId) return; // the effect handles the disabled / no-workspace cases
     setLoading(true);
     setError(null);
     try {
@@ -61,20 +65,20 @@ export function usePendingApprovals() {
       setError(err.message || 'Failed to load pending approvals');
       setLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, enabled]);
 
   useEffect(() => {
     const controller = new AbortController();
-    if (workspaceId) {
+    if (enabled && workspaceId) {
       fetchPending(controller.signal);
-    } else if (!wsLoading) {
-      // Workspace resolved with no id → nothing to fetch; settle honestly.
+    } else if (!enabled || !wsLoading) {
+      // Disabled, or workspace resolved with no id → nothing to fetch; settle honestly.
       setPending([]);
       setLoading(false);
     }
     // else: workspace still resolving → keep loading=true (no flash of "empty").
     return () => controller.abort();
-  }, [workspaceId, wsLoading, fetchPending]);
+  }, [enabled, workspaceId, wsLoading, fetchPending]);
 
   return { pending, loading, error, refetch: fetchPending };
 }

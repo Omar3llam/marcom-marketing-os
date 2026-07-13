@@ -2,11 +2,27 @@ import { Key, AlertTriangle, Trash2, RefreshCw, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useFocusTrap } from '@/hooks/useFocusTrap.js';
+import { useTeam } from '@/hooks/useTeam.js';
 import { toast } from 'sonner';
 
 export function SecurityTab({ currentUser, handlePasswordReset, handleResetSetup, busy, showDeleteModal, setShowDeleteModal, deleteConfirmText, setDeleteConfirmText, handleDeleteAccount, formatDate }) {
   const { logout } = useAuth();
   const navigate = useNavigate();
+
+  // Contextual delete warning — mirror the backend guard (routes/user.js) so the
+  // UI is honest about what deletion actually does BEFORE the user commits:
+  //   sole member        → the whole workspace + all data is destroyed
+  //   last strategist     → deletion is blocked; transfer the role first (409)
+  //   otherwise           → only this membership is removed; the team is untouched
+  // Effective role: null collabRole ⇒ STRATEGIST (same rule as the backend).
+  const { members } = useTeam();
+  const teamLoaded = Array.isArray(members) && members.length > 0;
+  const isSoleMember = teamLoaded && members.length === 1;
+  const myEffectiveRole = teamLoaded ? (members.find((m) => m.isSelf)?.collabRole ?? 'STRATEGIST') : null;
+  const otherStrategists = teamLoaded
+    ? members.filter((m) => !m.isSelf && (m.collabRole === 'STRATEGIST' || m.collabRole == null)).length
+    : 0;
+  const isLastStrategist = teamLoaded && !isSoleMember && myEffectiveRole === 'STRATEGIST' && otherStrategists === 0;
   // Focus trap for the destructive delete-account modal: traps Tab, focuses the
   // confirm input on open, restores focus to the trigger on close, and closes
   // on Escape (the modal had no keyboard close before).
@@ -104,7 +120,21 @@ export function SecurityTab({ currentUser, handlePasswordReset, handleResetSetup
           <div className="flex items-start justify-between gap-6">
             <div>
               <p className="font-display font-medium text-sm text-lumi-text">Delete account</p>
-              <p className="mt-1 text-xs text-lumi-muted">Permanently delete your workspace, all campaigns, and AI memory. This action cannot be undone.</p>
+              {isSoleMember ? (
+                <p className="mt-1 text-xs text-signal-kill">
+                  You are the only member — deleting your account permanently deletes this entire workspace, all campaigns, and AI memory. This cannot be undone.
+                </p>
+              ) : isLastStrategist ? (
+                <p className="mt-1 text-xs text-signal-hold">
+                  You are the last Strategist. Transfer the Strategist role to another member before deleting your account.
+                </p>
+              ) : teamLoaded ? (
+                <p className="mt-1 text-xs text-lumi-muted">
+                  Your account will be removed from this workspace. The workspace and other members are not affected.
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-lumi-muted">Permanently delete your account. This action cannot be undone.</p>
+              )}
             </div>
             <button
               type="button"
@@ -134,7 +164,13 @@ export function SecurityTab({ currentUser, handlePasswordReset, handleResetSetup
               <h3 className="font-display font-bold text-lg text-lumi-text">Delete Account</h3>
             </div>
             <p className="text-sm text-lumi-muted mb-4">
-              This will permanently delete your workspace, all campaigns, AI memory, and account data. <strong>This action cannot be undone.</strong>
+              {isSoleMember ? (
+                <>This will permanently delete your workspace, all campaigns, AI memory, and account data. <strong>This action cannot be undone.</strong></>
+              ) : isLastStrategist ? (
+                <>You are the last Strategist — this deletion is blocked until you transfer the Strategist role to another member. <strong>Transfer the role first.</strong></>
+              ) : (
+                <>This removes your account from the workspace. The workspace and other members are not affected. <strong>This action cannot be undone.</strong></>
+              )}
             </p>
             <div className="mb-6">
               <label className="block text-sm font-medium text-lumi-text mb-2">

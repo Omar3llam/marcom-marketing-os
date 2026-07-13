@@ -11,7 +11,7 @@
 // Heavy/side-effectful children + the auth/workspace hooks are stubbed so the test
 // only exercises the <aside> class resolution (cn = twMerge → last display wins).
 // ============================================================
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -19,13 +19,16 @@ vi.mock('@/context/AuthContext.jsx', () => ({
   useAuth: () => ({ currentUser: { email: 'op@ws.com', displayName: 'Op' } }),
 }));
 vi.mock('@/hooks/useCollabRole.js', () => ({
-  useCollabRole: () => ({ role: 'STRATEGIST' }),
+  useCollabRole: vi.fn(() => ({ role: 'STRATEGIST' })),
 }));
 vi.mock('@/hooks/useWorkspace.js', () => ({
   useWorkspace: () => ({ workspace: { name: 'Acme', market: 'EG' }, hasWorkspace: true, loading: false }),
 }));
 vi.mock('@/hooks/useConnections.js', () => ({
   useConnections: vi.fn(() => ({ data: null, loading: false, error: null })),
+}));
+vi.mock('@/hooks/usePendingApprovals.js', () => ({
+  usePendingApprovals: vi.fn(() => ({ pending: [], loading: false, error: null, refetch: vi.fn() })),
 }));
 vi.mock('@/components/ui/NotificationBell.jsx', () => ({ default: () => null }));
 vi.mock('@/features/inbox/InboxPanel.jsx', () => ({ default: () => null }));
@@ -36,14 +39,24 @@ vi.mock('@/components/brand/LumiStar.jsx', () => ({ default: () => null }));
 
 import Sidebar from './Sidebar.jsx';
 import { useConnections } from '@/hooks/useConnections.js';
+import { useCollabRole } from '@/hooks/useCollabRole.js';
+import { usePendingApprovals } from '@/hooks/usePendingApprovals.js';
 
-function renderSidebar(props = {}) {
+function renderSidebar(props = {}, { path = '/' } = {}) {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[path]}>
       <Sidebar collapsed={false} onToggle={() => {}} onMobileMenuToggle={() => {}} {...props} />
     </MemoryRouter>,
   );
 }
+
+// Reset the overridable mocks to their defaults after each test (this file mutates
+// per-test return values, so leaking state would make later tests order-dependent).
+afterEach(() => {
+  useCollabRole.mockReturnValue({ role: 'STRATEGIST' });
+  useConnections.mockReturnValue({ data: null, loading: false, error: null });
+  usePendingApprovals.mockReturnValue({ pending: [], loading: false, error: null, refetch: vi.fn() });
+});
 
 describe('Sidebar — mobile drawer visibility', () => {
   it('closed (mobileMenuOpen=false) → aside is hidden on mobile, never standalone flex', () => {
@@ -96,5 +109,47 @@ describe('Sidebar — connect-a-channel shortcut (self-hiding)', () => {
     useConnections.mockReturnValue({ data: null, loading: true, error: null });
     const { queryByText } = renderSidebar({ mobileMenuOpen: true });
     expect(queryByText('Connect a channel')).toBeNull();
+  });
+});
+
+describe('Sidebar — Publishing approval badge', () => {
+  it('shows the pending-approval count on the Publishing nav item (operator seat)', () => {
+    usePendingApprovals.mockReturnValue({ pending: [{}, {}, {}], loading: false, error: null, refetch: vi.fn() });
+    const { getByText } = renderSidebar({ mobileMenuOpen: true });
+    const publishingLink = getByText('Publishing').closest('a');
+    expect(publishingLink.textContent).toContain('3');
+    // and the count came from the artifact-approvals feed with the fetch enabled
+    expect(usePendingApprovals).toHaveBeenCalledWith({ enabled: true });
+  });
+
+  it('caps the badge at "9+" when more than 9 are pending', () => {
+    usePendingApprovals.mockReturnValue({ pending: Array.from({ length: 12 }), loading: false, error: null, refetch: vi.fn() });
+    const { getByText } = renderSidebar({ mobileMenuOpen: true });
+    const publishingLink = getByText('Publishing').closest('a');
+    expect(publishingLink.textContent).toContain('9+');
+    expect(publishingLink.textContent).not.toContain('12');
+  });
+
+  it('hides the badge when nothing is pending (no empty badge)', () => {
+    usePendingApprovals.mockReturnValue({ pending: [], loading: false, error: null, refetch: vi.fn() });
+    const { getByText } = renderSidebar({ mobileMenuOpen: true });
+    const publishingLink = getByText('Publishing').closest('a');
+    // only the label + sub text — no numeric badge
+    expect(publishingLink.textContent).toBe('PublishingRecord live ad publishes');
+  });
+
+  it('suppresses the badge while already on the Publishing page (no stale double-count)', () => {
+    usePendingApprovals.mockReturnValue({ pending: [{}, {}, {}], loading: false, error: null, refetch: vi.fn() });
+    const { getByText } = renderSidebar({ mobileMenuOpen: true }, { path: '/app/publishing' });
+    const publishingLink = getByText('Publishing').closest('a');
+    expect(publishingLink.textContent).not.toContain('3');
+  });
+
+  it('a CLIENT has no Publishing surface → no item, and the fetch is disabled', () => {
+    useCollabRole.mockReturnValue({ role: 'CLIENT' });
+    usePendingApprovals.mockReturnValue({ pending: [{}, {}], loading: false, error: null, refetch: vi.fn() });
+    const { queryByText } = renderSidebar({ mobileMenuOpen: true });
+    expect(queryByText('Publishing')).toBeNull();
+    expect(usePendingApprovals).toHaveBeenCalledWith({ enabled: false });
   });
 });
