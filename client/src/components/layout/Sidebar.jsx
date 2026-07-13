@@ -10,7 +10,7 @@
 // All icons stroke-width 1.5.
 // ============================================================
 import { useState, useEffect } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layout, BarChart3, Send,
   Settings, PanelLeftClose, Plus, Search, ChevronDown,
@@ -21,6 +21,7 @@ import { useCollabRole } from '@/hooks/useCollabRole.js';
 import { roleAllowed } from '@/components/auth/RoleGate.jsx';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useConnections } from '@/hooks/useConnections.js';
+import { usePendingApprovals } from '@/hooks/usePendingApprovals.js';
 import { cn } from '@/lib/utils.js';
 import NotificationBell from '@/components/ui/NotificationBell.jsx';
 import InboxPanel from '@/features/inbox/InboxPanel.jsx';
@@ -156,6 +157,7 @@ export default function Sidebar({
   onMobileMenuToggle,
 }) {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { currentUser } = useAuth();
   const { role: collabRole } = useCollabRole();
   const { workspace, hasWorkspace, loading: workspaceLoading } = useWorkspace();
@@ -163,6 +165,16 @@ export default function Sidebar({
 
   // Role-gated navigation — items with a `roles` constraint hide for other roles.
   const navItems = tools.filter((t) => roleAllowed(collabRole, t.roles));
+
+  // Publishing approval badge: count of artifacts awaiting approval (the same
+  // usePendingApprovals feed the Publishing page uses — NOT plan approvals). Only
+  // an operator seat has a Publishing surface, so a CLIENT never fetches. Suppress
+  // the badge while already on Publishing (the page shows its own live count, and
+  // this sidebar count doesn't refetch after they clear the queue).
+  const canPublish = roleAllowed(collabRole, ['STRATEGIST', 'BUYER']);
+  const { pending: pendingApprovals } = usePendingApprovals({ enabled: canPublish });
+  const onPublishing = pathname.startsWith(appRoutes.publishing);
+  const pendingApprovalCount = onPublishing ? 0 : pendingApprovals.length;
 
   // Discoverability: a highlighted "Connect a channel" entry, shown ONLY until the
   // first channel connects (self-hiding — existing users never see it). Operators
@@ -195,7 +207,7 @@ export default function Sidebar({
   const alertCount = highAlerts.length;
 
   // Alert counts per nav item
-  const alertsByKey = { overview: alertCount };
+  const alertsByKey = { overview: alertCount, publishing: pendingApprovalCount };
 
   const initial = (currentUser?.displayName?.[0] || currentUser?.email?.[0] || 'L').toUpperCase();
   const userLabel = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
@@ -384,7 +396,7 @@ export default function Sidebar({
                         </div>
                         {badge > 0 && (
                           <span className="ml-2 px-1.5 py-0.5 rounded-full bg-signal-kill text-white text-[10px] font-mono font-semibold">
-                            {badge}
+                            {badge > 9 ? '9+' : badge}
                           </span>
                         )}
                       </div>

@@ -38,11 +38,14 @@ import { appRoutes } from '@/app/routeManifest.js';
 export const SAMPLE_FLOOR = Object.freeze({ CTR: 1000, CVR: 100, ROAS: 25, CPA: 25 });
 const FLOOR_UNIT = Object.freeze({ CTR: 'impressions', CVR: 'clicks', ROAS: 'conversions', CPA: 'conversions' });
 
-/** The watched-metric sample count for a variant (impressions / clicks / conversions). */
+/** The watched-metric sample count for a variant (impressions / clicks / conversions).
+ *  Returns null when the count is unrecorded — the display renders "—", never a
+ *  fabricated 0 that reads as a real (zero) sample. Calculation callers (thinGate)
+ *  coalesce null → 0 explicitly, where 0 correctly means "below the floor". */
 function variantSample(v, metric) {
-  if (metric === 'CTR') return v.impressions ?? 0;
-  if (metric === 'CVR') return v.clicks ?? 0;
-  return v.conversions ?? 0; // ROAS / CPA
+  if (metric === 'CTR') return v.impressions ?? null;
+  if (metric === 'CVR') return v.clicks ?? null;
+  return v.conversions ?? null; // ROAS / CPA
 }
 
 /**
@@ -56,7 +59,9 @@ export function thinGate(exp) {
   const variants = Array.isArray(exp?.variants) ? exp.variants : [];
   if (!floor) return { ready: true, floor: null, minSample: null, unit };
   if (variants.length < 2) return { ready: false, floor, minSample: 0, unit };
-  const minSample = Math.min(...variants.map((v) => variantSample(v, exp.metric)));
+  // An unrecorded arm (variantSample null) counts as 0 here — genuinely below the
+  // floor, so the gate stays closed. This 0 is calculation identity, not display.
+  const minSample = Math.min(...variants.map((v) => variantSample(v, exp.metric) ?? 0));
   return { ready: minSample >= floor, floor, minSample, unit };
 }
 
@@ -197,16 +202,21 @@ function RunningBody({ exp, canOperate, onConclude, concludingId, onRecord, reco
   return (
     <div className="mt-3 space-y-3">
       <div className="space-y-1">
-        {variants.map((v) => (
-          <div key={v.id} className="flex items-center justify-between text-xs">
-            <span className="text-lumi-muted">
-              {v.label}{v.isControl ? ' (control)' : ''}
-            </span>
-            <span className="font-mono text-lumi-subtle">
-              {variantSample(v, exp.metric).toLocaleString('en-US')} {unit}
-            </span>
-          </div>
-        ))}
+        {variants.map((v) => {
+          // Unrecorded count (null) → "—", never a fabricated 0 that reads as a
+          // real zero-sample arm. A genuine recorded 0 still shows "0".
+          const s = variantSample(v, exp.metric);
+          return (
+            <div key={v.id} className="flex items-center justify-between text-xs">
+              <span className="text-lumi-muted">
+                {v.label}{v.isControl ? ' (control)' : ''}
+              </span>
+              <span className="font-mono text-lumi-subtle">
+                {s == null ? '—' : s.toLocaleString('en-US')} {unit}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       {/* Record observed counts — the manual entry that moves a thin/zeroed
