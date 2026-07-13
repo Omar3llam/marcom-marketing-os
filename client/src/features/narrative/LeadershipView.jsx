@@ -114,8 +114,21 @@ export function LeadershipView() {
           </Link>
         </div>
       ) : visible.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-lumi-border p-10 text-center text-sm text-lumi-subtle">
-          {EMPTY_COPY[role] ?? EMPTY_COPY.CLIENT}
+        <div className="rounded-2xl border border-dashed border-lumi-border p-10 text-center">
+          <p className="text-sm text-lumi-subtle">{EMPTY_COPY[role] ?? EMPTY_COPY.CLIENT}</p>
+          {role === WORKSPACE_ROLE.STRATEGIST && (
+            <>
+              <p className="mt-2 text-xs text-lumi-subtle">Lumi also composes a leadership report automatically every Monday.</p>
+              <button
+                type="button"
+                disabled={isGenerating}
+                onClick={() => onGenerate({ period: 'WEEKLY', audience: 'LEADERSHIP' })}
+                className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-lumi-accent hover:underline disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isGenerating ? 'Generating…' : 'Generate this week’s report →'}
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <div className="space-y-3">

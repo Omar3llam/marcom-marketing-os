@@ -35,6 +35,10 @@ export const HELP = {
     title: 'Wasted Spend',
     description: 'Spend on campaigns Lumi verdicts as KILL or REFRESH — money that isn’t working and could be reallocated. Shown as an amount and a share of total spend.',
   },
+  PUBLISHING_WORKFLOW: {
+    title: 'Publishing workflow',
+    description: 'Creative moves from pending approval to approved. Once a strategist approves an artifact, use its copy and brief to create the ad in Meta Ads Manager, then record the Meta IDs to link performance back — Lumi does not publish the ad for you. Direct API publishing is on the roadmap.',
+  },
   FATIGUE_FORECAST: {
     title: 'Fatigue Forecast',
     description: 'Projects when each campaign’s audience will saturate — frequency reaching ~3.5 — by fitting how fast frequency is rising across recent daily syncs. Re-scored on every sync; a campaign with flat or falling frequency reads as stable, and one already past the ceiling as saturated now.',

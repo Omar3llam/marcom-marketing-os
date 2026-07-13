@@ -17,7 +17,7 @@ import { useRecordPublish } from '../../hooks/useRecordPublish.js';
 import { cn } from '../../lib/utils';
 
 /** True only when the artifact has cleared human approval. */
-function isApproved(artifact) {
+export function isApproved(artifact) {
   return (
     artifact?.approval?.status === 'COMPLETED' &&
     artifact?.approval?.decision === 'APPROVED'

@@ -4,6 +4,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ArtifactCard } from './ArtifactCard.jsx';
+import { HELP } from '@/lib/helpContent.js';
 
 describe('ArtifactCard Component — PR #36', () => {
   const mockArtifact = {
@@ -117,5 +118,22 @@ describe('ArtifactCard Component — PR #36', () => {
     render(<ArtifactCard artifact={noContent} />);
 
     expect(screen.getByText(/No content available/i)).toBeInTheDocument();
+  });
+
+  // ── Fix 5: post-approve next-step banner ──────────────────────
+  it('APPROVED artifact → shows the honest "ready to publish" next step', () => {
+    render(<ArtifactCard artifact={{ ...mockArtifact, approval: { id: 'a1', status: 'COMPLETED', decision: 'APPROVED' } }} />);
+    expect(screen.getByText('Approved — ready to publish')).toBeInTheDocument();
+    expect(screen.getByText(/Lumi does not publish it for you/i)).toBeInTheDocument();
+  });
+
+  it('PENDING artifact → no publish banner (nothing to publish yet)', () => {
+    render(<ArtifactCard artifact={mockArtifact} />);
+    expect(screen.queryByText('Approved — ready to publish')).toBeNull();
+  });
+
+  it('the publishing-workflow help entry is defined and honest about manual publish', () => {
+    expect(HELP.PUBLISHING_WORKFLOW.title).toBe('Publishing workflow');
+    expect(HELP.PUBLISHING_WORKFLOW.description).toMatch(/does not publish the ad for you/i);
   });
 });
