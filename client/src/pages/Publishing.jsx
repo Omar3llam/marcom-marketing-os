@@ -21,6 +21,8 @@ import { Text } from '../components/primitives/core/Text.jsx';
 import { ArtifactCard } from '../components/approval/ArtifactCard.jsx';
 import { PendingApprovalItem } from '../components/publish/PendingApprovalItem.jsx';
 import { CardSkeleton } from '../components/ui/Skeleton.jsx';
+import { HelpTip } from '../components/ui/HelpTip.jsx';
+import { HELP } from '../lib/helpContent.js';
 import { useApprovedArtifacts } from '../hooks/useApprovedArtifacts.js';
 import { usePendingApprovals } from '../hooks/usePendingApprovals.js';
 
@@ -82,9 +84,12 @@ export default function Publishing() {
     <div className="container max-w-5xl mx-auto px-4 py-8">
       {/* Header */}
       <header className="mb-8">
-        <Text variant="title" intent="primary" className="mb-2">
-          Publishing
-        </Text>
+        <div className="flex items-center gap-2 mb-2">
+          <Text variant="title" intent="primary">
+            Publishing
+          </Text>
+          <HelpTip variant="popover" content={HELP.PUBLISHING_WORKFLOW} />
+        </div>
         <Text variant="body" intent="muted">
           The two stages of getting creative live: approve AI-generated artifacts, then record the
           manual Meta publish so real performance links back to each one.

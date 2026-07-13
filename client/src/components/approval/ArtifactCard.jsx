@@ -15,7 +15,7 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, FileText, Image, Code } from 'lucide-react';
 import { Text } from '../primitives/core/Text.jsx';
-import { RecordPublishForm } from '../publish/RecordPublishForm.jsx';
+import { RecordPublishForm, isApproved } from '../publish/RecordPublishForm.jsx';
 import { cn } from '../../lib/utils';
 
 /**
@@ -207,6 +207,20 @@ export function ArtifactCard({ artifact, expanded: initialExpanded = false, onEx
                 {artifact.approval.feedback}
               </Text>
             )}
+          </div>
+        )}
+
+        {/* Approved → tell the operator the honest next step (there is no
+            one-click API publish; they create the ad in Meta, then record it). */}
+        {isApproved(artifact) && (
+          <div className="mt-4 p-3 rounded-lg bg-signal-success/10 border border-signal-success/20">
+            <Text variant="data" intent="success" className="font-semibold">
+              Approved — ready to publish
+            </Text>
+            <Text variant="body" intent="muted" size="sm" className="mt-0.5">
+              Copy this content into Meta Ads Manager to create the ad — Lumi does not publish it for you.
+              Then record the Meta IDs below to link performance back to this artifact.
+            </Text>
           </div>
         )}
 

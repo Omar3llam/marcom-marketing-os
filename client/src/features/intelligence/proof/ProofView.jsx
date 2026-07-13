@@ -28,6 +28,37 @@ import { appRoutes } from '@/app/routeManifest.js';
 
 const pct = (n) => `${Math.round((Number(n) || 0) * 100)}%`;
 
+// Backend velocity trend (LIFT_STATUS) → a labelled, colour-coded badge.
+const TREND_META = {
+  IMPROVING:         { label: 'IMPROVING', cls: 'text-signal-scale' },
+  DEGRADING:         { label: 'DEGRADING', cls: 'text-signal-hold' },
+  FLAT:              { label: 'STEADY',     cls: 'text-lumi-muted' },
+  INSUFFICIENT_DATA: { label: 'STILL LEARNING', cls: 'text-lumi-subtle' },
+};
+
+// Compact sparkline of per-period calibration error (lower = better, so a line
+// that trends DOWN is improving). Hand-rolled SVG — the codebase's own idiom
+// (no charting dependency), and the number row below stays the evidence, so the
+// anti-Looker rule holds. Renders nothing below 2 periods (never a fake trend).
+function VelocitySparkline({ periods, colorClass }) {
+  if (!Array.isArray(periods) || periods.length < 2) return null;
+  const values = periods.map((p) => p.calibrationError);
+  const min = Math.min(...values), max = Math.max(...values);
+  const range = max - min || 1;
+  const W = 120, H = 28;
+  const coords = values.map((v, i) => [
+    (i / (values.length - 1)) * W,
+    H - ((v - min) / range) * H,
+  ]);
+  const line = coords.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className={colorClass} role="img" aria-label="Learning velocity trend">
+      <polyline fill="none" stroke="currentColor" strokeWidth="1.5" points={line} />
+      {coords.map(([x, y], i) => <circle key={i} cx={x} cy={y} r="1.75" fill="currentColor" />)}
+    </svg>
+  );
+}
+
 // ── The gated one-liner (reused on Home too) ────────────────────
 export function ProofSummary({ surface }) {
   if (!surface) return null;
@@ -59,6 +90,7 @@ export function ProofView({ data, surface, role = WORKSPACE_ROLE.STRATEGIST }) {
 
   const cal = data.calibration;
   const vel = data.velocity;
+  const trendMeta = TREND_META[vel?.trend] ?? TREND_META.INSUFFICIENT_DATA;
 
   return (
     <div className="space-y-4">
@@ -72,16 +104,23 @@ export function ProofView({ data, surface, role = WORKSPACE_ROLE.STRATEGIST }) {
         </div>
       </div>
 
-      {/* Learning-velocity periods — the flagship curve, as a row of numbers. */}
+      {/* Learning-velocity periods — the flagship curve as a compact sparkline
+          PLUS the row of numbers (the numbers stay the evidence; anti-Looker holds). */}
       {isStrategist && vel?.periods?.length > 0 && (
         <div className="rounded-2xl border border-lumi-border bg-lumi-surface p-4">
-          <div className="section-label mb-2">Learning velocity ({vel.trend})</div>
-          <div className="flex gap-5 font-mono text-sm">
-            {vel.periods.map((p) => (
-              <span key={p.label} className="text-lumi-muted">
-                {p.label}: <strong className="text-lumi-text">{pct(p.calibrationError)}</strong> err
-              </span>
-            ))}
+          <div className="section-label mb-2 flex items-center gap-2">
+            Learning velocity
+            <span className={`font-mono text-[10px] uppercase tracking-wide ${trendMeta.cls}`}>{trendMeta.label}</span>
+          </div>
+          <div className="flex items-center gap-4 flex-wrap">
+            <VelocitySparkline periods={vel.periods} colorClass={trendMeta.cls} />
+            <div className="flex flex-wrap gap-x-5 gap-y-1 font-mono text-sm">
+              {vel.periods.map((p) => (
+                <span key={p.label} className="text-lumi-muted">
+                  {p.label}: <strong className="text-lumi-text">{pct(p.calibrationError)}</strong> err
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       )}
