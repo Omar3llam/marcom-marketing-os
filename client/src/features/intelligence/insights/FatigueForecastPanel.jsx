@@ -7,10 +7,12 @@
 // Honest: hidden entirely when there's nothing to forecast (not an empty state),
 // velocity omitted when frequency isn't rising, days shown as "~N" (a projection).
 // ============================================================
+import { Link } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { HelpTip } from '@/components/ui/HelpTip.jsx';
 import { HELP } from '@/lib/helpContent.js';
+import { appRoutes } from '@/app/routeManifest.js';
 
 const STATUS = {
   SATURATED: { text: 'text-signal-kill',  bg: 'bg-signal-kill-bg'  },
@@ -79,32 +81,37 @@ export function FatigueForecastPanel({ forecast = [], loading = false }) {
         {forecast.map((item) => {
           const cfg = STATUS[item.status] ?? STATUS.STABLE;
           return (
-            <li
-              key={item.entityId}
-              className="flex items-center justify-between gap-3 bg-lumi-surface border border-lumi-border rounded-xl p-4"
-            >
-              <div className="min-w-0">
-                <p className="font-display text-sm text-lumi-text truncate">{item.name || 'Unnamed campaign'}</p>
-                <p className="mt-0.5 font-mono text-[10px] text-lumi-subtle truncate">
-                  {item.channel || 'channel'} · freq {item.currentFrequency}
-                  {item.velocity != null && ` · +${item.velocity}/day`}
-                  {item.reach != null && ` · reach ${compact(item.reach)}`}
-                  {item.exhaustionPct != null && (
-                    <span className={cn('ml-1', exhaustionColor(item.exhaustionPct))}>
-                      · {item.exhaustionPct}% of ceiling
-                    </span>
-                  )}
-                </p>
-              </div>
-              <span
-                className={cn(
-                  'shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-xs whitespace-nowrap',
-                  cfg.text, cfg.bg,
-                )}
+            <li key={item.entityId}>
+              {/* Deep-link to the campaign row on the Campaigns page (reads
+                  ?entity= to scroll-to + expand it) — entityId is the connector
+                  Campaign.id, so this resolves to the same row the agenda uses. */}
+              <Link
+                to={`${appRoutes.campaigns}?entity=${encodeURIComponent(item.entityId)}`}
+                className="flex items-center justify-between gap-3 bg-lumi-surface border border-lumi-border rounded-xl p-4 hover:border-lumi-accent/40 transition-colors focus:outline-none focus:ring-2 focus:ring-lumi-accent focus:ring-offset-2 focus:ring-offset-lumi-bg"
               >
-                {item.status === 'SATURATED' && <AlertTriangle className="w-3 h-3" strokeWidth={2} />}
-                {breachLabel(item)}
-              </span>
+                <div className="min-w-0">
+                  <p className="font-display text-sm text-lumi-text truncate">{item.name || 'Unnamed campaign'}</p>
+                  <p className="mt-0.5 font-mono text-[10px] text-lumi-subtle truncate">
+                    {item.channel || 'channel'} · freq {item.currentFrequency}
+                    {item.velocity != null && ` · +${item.velocity}/day`}
+                    {item.reach != null && ` · reach ${compact(item.reach)}`}
+                    {item.exhaustionPct != null && (
+                      <span className={cn('ml-1', exhaustionColor(item.exhaustionPct))}>
+                        · {item.exhaustionPct}% of ceiling
+                      </span>
+                    )}
+                  </p>
+                </div>
+                <span
+                  className={cn(
+                    'shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-xs whitespace-nowrap',
+                    cfg.text, cfg.bg,
+                  )}
+                >
+                  {item.status === 'SATURATED' && <AlertTriangle className="w-3 h-3" strokeWidth={2} />}
+                  {breachLabel(item)}
+                </span>
+              </Link>
             </li>
           );
         })}

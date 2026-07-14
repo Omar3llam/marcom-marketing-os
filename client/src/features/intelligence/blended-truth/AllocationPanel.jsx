@@ -26,6 +26,10 @@ export function AllocationPanel({
   plan = null, previewNote = null, previewing = false, previewError = null,
   committed = null, committing = false, commitError = null,
   canCommit = false,
+  // Allocation reconciles budget against BLENDED truth, so it needs a blended
+  // revenue signal. Default true (ungated) preserves the standalone panel; the
+  // Blended Truth page passes false when there's no blended ROAS yet.
+  canAllocate = true,
 }) {
   const [budget, setBudget] = useState('');
   const budgetMajor = Number(budget);
@@ -61,13 +65,21 @@ export function AllocationPanel({
         </div>
         <button
           type="button"
-          disabled={!validBudget || previewing}
+          disabled={!validBudget || previewing || !canAllocate}
+          title={!canAllocate ? 'Reconcile revenue across your channels to enable allocation' : undefined}
           onClick={() => onPreview?.({ totalBudgetMinor })}
           className="rounded-lg border border-lumi-border bg-lumi-elevated px-3 py-2 text-xs font-semibold text-lumi-text transition-colors hover:bg-lumi-surface disabled:cursor-not-allowed disabled:opacity-40"
         >
           {previewing ? 'Previewing…' : 'Preview allocation'}
         </button>
       </div>
+
+      {/* Honest reason the control is inert — no blended revenue to allocate against. */}
+      {!canAllocate && (
+        <p className="text-xs text-lumi-subtle mb-2">
+          Allocation needs blended revenue across your channels. Connect a revenue source (and a second channel) to enable it.
+        </p>
+      )}
 
       {previewError && (
         <p className="text-xs text-signal-kill">

@@ -8,8 +8,9 @@
 // verdicts — still showed "No campaign data yet" and the agenda was never mounted.
 //
 // These tests pin the fix: the shell renders on EITHER substrate, the empty state
-// shows only when BOTH are empty, and the legacy stat block stays bound to the
-// legacy feed (no fabricated figures from connector rows).
+// shows only when BOTH are empty, and (post-H1) the KPI stat block is
+// CONNECTOR-FIRST — it renders real connector figures on a connector-only
+// account, null→"—" for any absent metric (never fabricated).
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -54,15 +55,16 @@ beforeEach(() => {
 });
 
 describe('OverviewView — agentic shell is decoupled from the legacy CampaignState feed', () => {
-  it('renders the agenda (and NOT the empty state) when only connector data exists', () => {
+  it('renders the agenda AND connector-first KPI cards when only connector data exists', () => {
     useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: false }); // legacy feed empty
     useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
     renderView();
 
     expect(screen.getByTestId('agentic-shell')).toBeInTheDocument();
     expect(screen.queryByText(/No campaign data yet/i)).not.toBeInTheDocument();
-    // Legacy stat block stays bound to the (empty) legacy feed — no fabricated figures.
-    expect(screen.queryByTestId('stat-card')).not.toBeInTheDocument();
+    // H1: the KPI block is now connector-first — it renders on a connector-only
+    // account (real connector figures / "—"), no longer gated on the legacy feed.
+    expect(screen.getAllByTestId('stat-card').length).toBe(4);
   });
 
   it('shows the empty state (and no agenda) only when BOTH substrates are empty', () => {

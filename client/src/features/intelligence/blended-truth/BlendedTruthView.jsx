@@ -118,7 +118,15 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST, curre
             <tbody>
               {channels.map((c) => (
                 <tr key={c.channelId} className="border-b border-lumi-border/60">
-                  <td className="px-4 py-2.5 text-lumi-text font-mono">{c.channel ?? c.channelId}</td>
+                  <td className="px-4 py-2.5 font-mono">
+                    {/* Cross-link into the Campaigns page filtered to this channel. */}
+                    <Link
+                      to={`${appRoutes.campaigns}?channel=${encodeURIComponent(c.channel ?? c.channelId)}`}
+                      className="text-lumi-text hover:text-lumi-accent hover:underline transition-colors"
+                    >
+                      {c.channel ?? c.channelId}
+                    </Link>
+                  </td>
                   <td className="px-4 py-2.5 text-lumi-muted font-mono">{fx(c.platformRoas)}</td>
                   <td className="px-4 py-2.5 text-lumi-text font-mono">{fx(c.blendedRoas)}</td>
                   <td className="px-4 py-2.5 font-mono text-signal-kill">{Math.round(c.gapPct)}%</td>
@@ -171,6 +179,7 @@ export default function BlendedTruth() {
       {!loading && !error && isStrategist && channels.length > 0 && (
         <AllocationPanel
           currency={currency}
+          canAllocate={data?.portfolio?.blendedRoas != null}
           onPreview={allocation.preview}
           onCommit={allocation.commit}
           plan={allocation.plan}
