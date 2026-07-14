@@ -87,6 +87,7 @@ function metricsOf(snap) {
     roas:        snap?.roas ?? null,
     ctr:         snap?.ctr ?? null,
     frequency:   snap?.frequency ?? null,
+    reach:       snap?.reach ?? null, // unique people reached; null when unreported (distinct from a real 0)
     conversions: snap?.conversions ?? null, // null-when-absent (distinct from a real 0)
     // Raw verdict-engine inputs (re-derives roas/ctr from these). null-when-
     // absent so the revenue gate can tell "no snapshot" from a measured 0.

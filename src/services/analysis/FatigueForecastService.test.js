@@ -83,3 +83,30 @@ describe('computeFatigueForecast', () => {
     expect(prisma.metricSnapshot.findMany).not.toHaveBeenCalled();
   });
 });
+
+// A campaign row carrying reach (as getConnectorCampaigns now supplies it).
+const campaignR = (entityId, name, frequency, reach) => ({ entityId, name, channel: 'meta', frequency, reach });
+
+describe('computeFatigueForecast — reach + exhaustionPct (honest, additive)', () => {
+  it('surfaces reach and % of ceiling when reach is present', async () => {
+    prisma.metricSnapshot.findMany.mockResolvedValue(snaps('c2', [3.0, 3.2]));
+    const [row] = await computeFatigueForecast('ws1', [campaignR('c2', 'Reels', 3.2, 5000)]);
+    expect(row.reach).toBe(5000);
+    expect(row.exhaustionPct).toBe(91); // round(3.2 / 3.5 * 100), status untouched
+    expect(row.status).toBe('AT_RISK'); // forward-looking status NOT overridden by the %
+  });
+
+  it('leaves exhaustionPct + reach null when the campaign has no reach', async () => {
+    prisma.metricSnapshot.findMany.mockResolvedValue(snaps('c2', [3.0, 3.2]));
+    const [row] = await computeFatigueForecast('ws1', [campaign('c2', 'Reels', 3.2)]);
+    expect(row.reach).toBeNull();
+    expect(row.exhaustionPct).toBeNull(); // never fabricated without real reach
+  });
+
+  it('caps exhaustionPct at 100 for an already-saturated single-point campaign', async () => {
+    prisma.metricSnapshot.findMany.mockResolvedValue(snaps('c5', [4.0]));
+    const [row] = await computeFatigueForecast('ws1', [campaignR('c5', 'Overexposed', 4.0, 8000)]);
+    expect(row.status).toBe('SATURATED');
+    expect(row.exhaustionPct).toBe(100); // 4.0/3.5 → 114, clamped to 100
+  });
+});

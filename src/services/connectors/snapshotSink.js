@@ -71,6 +71,7 @@ export function toSnapshotRows(workspaceId, channel, normalized = []) {
       // unchanged.
       roas: spendMinor > 0 && revenueMinor > 0 ? revenueMinor / spendMinor : null,
       frequency: n.frequency ?? null,
+      reach: n.reach ?? null, // null-when-absent (Google / unreported), never a fabricated 0
       currency: n.currency || 'USD',
     };
   });

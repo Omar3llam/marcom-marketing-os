@@ -28,6 +28,18 @@ const STATUS_ORDER = { SATURATED: 0, AT_RISK: 1, MONITOR: 2, HEALTHY: 3, STABLE:
 const round2 = (n) => Math.round(n * 100) / 100;
 const round3 = (n) => Math.round(n * 1000) / 1000;
 
+// How far current frequency has climbed toward the saturation ceiling, 0–100.
+// This is an honest restatement of the (real, Meta-derived) frequency — NOT a
+// pool-saturation ratio (that needs the ad set's targetable audience_size, which
+// campaign insights don't carry). Gated on real reach so it's only shown where
+// the frequency is a genuine reach-derived Meta delivery number (frequency =
+// impressions ÷ reach): null for pre-column rows and channels without reach
+// (Google), never a fabricated 0. Additive only — it does not alter status.
+function exhaustionPctOf(frequency, reach) {
+  if (reach == null || !(reach > 0) || !Number.isFinite(frequency)) return null;
+  return Math.min(100, Math.round((frequency / CEILING) * 100));
+}
+
 function statusFor(currentValue, willBreach, daysToBreach) {
   if (currentValue >= CEILING) return 'SATURATED';
   if (!willBreach || daysToBreach == null) return 'STABLE'; // flat / declining frequency
@@ -43,8 +55,10 @@ function statusFor(currentValue, willBreach, daysToBreach) {
  *   (entityId, name, channel, frequency, …)
  * @returns {Promise<Array<{
  *   entityId, name, channel, currentFrequency, velocity,
- *   daysUntilSaturation, status, confidence
+ *   daysUntilSaturation, status, confidence, reach, exhaustionPct
  * }>>}
+ *   reach = unique people reached (null when unreported); exhaustionPct = how far
+ *   frequency has climbed toward the ceiling, 0–100 (null without real reach).
  */
 export async function computeFatigueForecast(workspaceId, campaigns = []) {
   if (!workspaceId || !Array.isArray(campaigns) || campaigns.length === 0) return [];
@@ -86,6 +100,8 @@ export async function computeFatigueForecast(workspaceId, campaigns = []) {
           entityId: c.entityId, name: c.name, channel: c.channel,
           currentFrequency: round2(Number(c.frequency)), velocity: null,
           daysUntilSaturation: 0, status: 'SATURATED', confidence: null,
+          reach: c.reach ?? null,
+          exhaustionPct: exhaustionPctOf(Number(c.frequency), c.reach),
         });
       }
       continue;
@@ -111,6 +127,8 @@ export async function computeFatigueForecast(workspaceId, campaigns = []) {
         : Math.max(1, Math.ceil(f.daysToBreach)),
       status,
       confidence: Number.isFinite(f.confidence) ? f.confidence : null,
+      reach: c.reach ?? null,
+      exhaustionPct: exhaustionPctOf(f.currentValue, c.reach),
     });
   }
 

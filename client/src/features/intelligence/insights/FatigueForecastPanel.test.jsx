@@ -38,4 +38,16 @@ describe('FatigueForecastPanel', () => {
     expect(screen.getByText('stable')).toBeInTheDocument();
     expect(screen.queryByText(/\/day/)).not.toBeInTheDocument();
   });
+
+  it('shows compact reach and "% of ceiling" when present', () => {
+    render(<FatigueForecastPanel forecast={[row({ reach: 45200, exhaustionPct: 91 })]} />);
+    expect(screen.getByText(/reach 45\.2k/)).toBeInTheDocument();
+    expect(screen.getByText(/91% of ceiling/)).toBeInTheDocument();
+  });
+
+  it('omits reach and exhaustion when absent (honest, no fabrication)', () => {
+    render(<FatigueForecastPanel forecast={[row({ reach: null, exhaustionPct: null })]} />);
+    expect(screen.queryByText(/reach/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/of ceiling/)).not.toBeInTheDocument();
+  });
 });

@@ -92,12 +92,20 @@ describe('entityGraphEngine shapers — null-where-absent (honest "—", never a
     });
   });
 
+  it('toCampaignRow lifts reach verbatim and nulls it when unreported', () => {
+    expect(toCampaignRow({ id: 'c1', name: 'A', channel: 'META', adSetCount: 0 },
+      { reach: 12000, frequency: 2.1, date: '2026-06-01' }).reach).toBe(12000);
+    expect(toCampaignRow({ id: 'c2', name: 'B', channel: 'META', adSetCount: 0 },
+      { frequency: 2.1, date: '2026-06-01' }).reach).toBeNull(); // snapshot without reach
+  });
+
   it('toCampaignRow nulls every metric when the snapshot is missing', () => {
     const row = toCampaignRow({ id: 'c2', name: 'Cold', channel: 'GOOGLE', adSetCount: 0 }, undefined);
     expect(row.spendMinor).toBeNull();
     expect(row.roas).toBeNull();
     expect(row.ctr).toBeNull();
     expect(row.frequency).toBeNull();
+    expect(row.reach).toBeNull();
     expect(row.currency).toBeNull();
     expect(row.lastDate).toBeNull();
     expect(row.adSetCount).toBe(0);   // structural field still real
