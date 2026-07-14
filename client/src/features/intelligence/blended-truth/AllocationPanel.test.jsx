@@ -34,6 +34,13 @@ describe('AllocationPanel — preview', () => {
     expect(screen.getByRole('button', { name: /preview allocation/i })).toBeDisabled();
   });
 
+  it('keeps Preview disabled when allocation is not enabled, even with a valid budget', () => {
+    render(<AllocationPanel currency="USD" onPreview={vi.fn()} canAllocate={false} />);
+    fireEvent.change(screen.getByLabelText(/total budget/i), { target: { value: '50000' } });
+    expect(screen.getByRole('button', { name: /preview allocation/i })).toBeDisabled();
+    expect(screen.getByText(/Allocation needs blended revenue/i)).toBeInTheDocument();
+  });
+
   it('shows the honest no-channels note (not a fabricated split)', () => {
     render(<AllocationPanel currency="USD" previewNote="No connected channels to allocate." />);
     expect(screen.getByText(/No connected channels to allocate/i)).toBeInTheDocument();

@@ -7,14 +7,19 @@
 // ============================================================
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { RoleContext } from '@/context/RoleContext.jsx';
 import { BlendedTruthView } from '@/pages/BlendedTruth.jsx';
 import { ConnectionsView } from '@/pages/Connections.jsx';
 import { ConnectionsResponseSchema, BlendedTruthSchema } from '@/contracts/schemas';
 
 function withRole(role: string) {
+  // MemoryRouter so deep-linking components (BlendedTruthView channel links) have
+  // a Router context.
   return ({ children }: { children: React.ReactNode }) => (
-    <RoleContext.Provider value={{ role, visibleStates: null, loading: false, error: null }}>{children}</RoleContext.Provider>
+    <MemoryRouter>
+      <RoleContext.Provider value={{ role, visibleStates: null, loading: false, error: null }}>{children}</RoleContext.Provider>
+    </MemoryRouter>
   );
 }
 

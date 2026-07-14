@@ -8,6 +8,7 @@
 // ============================================================
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { RoleContext } from '@/context/RoleContext.jsx';
 import RoleGate, { roleAllowed } from '@/components/auth/RoleGate.jsx';
 import { ProofView } from '@/pages/Proof.jsx';
@@ -15,10 +16,14 @@ import { BlendedTruthView } from '@/pages/BlendedTruth.jsx';
 import { DecisionAccuracySchema, AccuracySurfaceSchema, BlendedTruthSchema } from '@/contracts/schemas';
 
 function withRole(role: string, loading = false) {
+  // MemoryRouter so components that deep-link (BlendedTruthView's channel links)
+  // have a Router context.
   return ({ children }: { children: React.ReactNode }) => (
-    <RoleContext.Provider value={{ role, visibleStates: null, loading, error: null }}>
-      {children}
-    </RoleContext.Provider>
+    <MemoryRouter>
+      <RoleContext.Provider value={{ role, visibleStates: null, loading, error: null }}>
+        {children}
+      </RoleContext.Provider>
+    </MemoryRouter>
   );
 }
 

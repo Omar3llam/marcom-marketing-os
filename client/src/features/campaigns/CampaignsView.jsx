@@ -4,7 +4,7 @@
 // Bloomberg-terminal-style analysis report.
 // All metrics derived from the live /api/lumi/feed payload.
 // ============================================================
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, Loader2, Download } from 'lucide-react';
 import { toast } from 'sonner';
@@ -196,6 +196,17 @@ export default function CampaignsView() {
     () => [...new Set(allRows.map((r) => r.platform).filter(Boolean))].sort(),
     [allRows],
   );
+
+  // Deep-link filter from Blended Truth (?channel=<CHANNEL>). Applied ONLY when
+  // that channel is a real platform in the data — so an absent/unknown channel
+  // (e.g. a connector-only account whose legacy table is empty) degrades to plain
+  // navigation instead of stranding the user on an empty-filtered table.
+  const urlChannel = searchParams.get('channel');
+  useEffect(() => {
+    if (urlChannel && platforms.includes(urlChannel.toUpperCase())) {
+      setChannel(urlChannel.toUpperCase());
+    }
+  }, [urlChannel, platforms]);
 
   // Table rows: channel-filtered, then sorted (null metrics last).
   const tableRows = useMemo(() => {

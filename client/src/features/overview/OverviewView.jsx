@@ -21,6 +21,7 @@ import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { useAccountHealth } from '@/hooks/useAccountHealth.js';
 import { useHome } from '@/hooks/useHome.js';
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
+import { fromMinor } from '@/lib/money';
 import StatCard from '@/components/ui/StatCard.jsx';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
 import { ProofSummary } from '@/features/intelligence/proof/ProofView.jsx';
@@ -32,6 +33,34 @@ import CopilotPanel from './components/CopilotPanel.jsx';
 import AlertsPanel from './components/AlertsPanel.jsx';
 import AIInsightCard from './components/AIInsightCard.jsx';
 import QuickActionsPanel from './components/QuickActionsPanel.jsx';
+
+// PURE: the four Overview KPI values, CONNECTOR-FIRST (mirrors CampaignsView's
+// live-XOR-legacy rule) so a synced workspace's headline matches the Campaigns
+// page instead of the disjoint legacy CampaignState feed. Every figure is
+// null-when-absent → the card renders "—", never a fabricated 0. Spend/CPA come
+// from the live connector aggregate; Wasted/Health from the deterministic engine
+// (health). The legacy summary is used ONLY when no channel has synced.
+// Exported for unit testing.
+export function overviewKpis({ connectorCampaigns = [], summary = null, health = null, currency = 'USD' }) {
+  let spendMinor = 0, conversions = 0, sawSpend = false, sawConv = false, cur = null;
+  for (const c of connectorCampaigns) {
+    if (c.spendMinor != null) { spendMinor += c.spendMinor; sawSpend = true; }
+    if (c.conversions != null) { conversions += c.conversions; sawConv = true; }
+    if (!cur && c.currency) cur = c.currency;
+  }
+  const live = connectorCampaigns.length > 0;
+  const kpiCurrency = cur || currency;
+  return {
+    live,
+    currency: kpiCurrency,
+    spend: live ? (sawSpend ? spendMinor / 100 : null) : (summary?.spend > 0 ? summary.spend : null),
+    cpa:   live ? (sawConv && conversions > 0 ? spendMinor / conversions / 100 : null) : (summary?.blendedCpa ?? null),
+    wasted: health?.wastedSpend?.minor != null
+      ? fromMinor(health.wastedSpend.minor, kpiCurrency)
+      : (live ? null : (summary?.wasted > 0 ? summary.wasted : null)),
+    health: health?.score ?? (live ? null : (summary?.health ?? null)),
+  };
+}
 
 export default function OverviewView() {
   const { currentUser } = useAuth();
@@ -51,30 +80,29 @@ export default function OverviewView() {
   // Currency detection from workspace (defaults to USD)
   const currency = workspace?.currency || 'USD';
 
-  // Extract stats from intelligence summary
-  const stats = {
-    spend: summary?.spend > 0 ? formatCurrencyWhole(summary.spend, currency) : '—', // no real spend → honest dash, never the onboarding spendTier range
-
-    cpa: summary?.blendedCpa ? formatCurrencyWhole(summary.blendedCpa, currency) : 'No data',
-    waste: summary?.wasted > 0 ? `${formatCurrencyWhole(summary.wasted, currency)}/mo` : '$0/mo',
-    health: summary?.health || 0,
-  };
+  // KPI strip — CONNECTOR-FIRST (same substrate as the Campaigns page), so the
+  // Home headline reflects a live sync instead of the disjoint legacy feed. Every
+  // value is null-when-absent → the card shows "—", never a fabricated 0.
+  const kpis = useMemo(
+    () => overviewKpis({ connectorCampaigns, summary, health, currency }),
+    [connectorCampaigns, summary, health, currency],
+  );
 
   // Account-health label + tone derived from the real score (no hardcoded verdict).
-  const healthTone  = stats.health >= 75 ? 'positive'
-                    : stats.health >= 50 ? 'warn'
-                    : stats.health > 0   ? 'danger' : 'neutral';
-  const healthLabel = stats.health >= 75 ? 'Healthy'
-                    : stats.health >= 50 ? 'Fair — review soon'
-                    : stats.health > 0   ? 'Needs attention' : 'No score yet';
+  const healthTone  = kpis.health == null ? 'neutral'
+                    : kpis.health >= 75 ? 'positive'
+                    : kpis.health >= 50 ? 'warn' : 'danger';
+  const healthLabel = kpis.health == null ? 'No score yet'
+                    : kpis.health >= 75 ? 'Healthy'
+                    : kpis.health >= 50 ? 'Fair — review soon' : 'Needs attention';
 
-  // Real count of KILL-verdict ad sets (traces to campaign alerts — no fabricated count).
+  // Real count of KILL-verdict campaigns — from the connector health engine when
+  // synced, else the legacy feed's alerts. No fabricated count.
   const killCount = useMemo(
-    () => campaigns.reduce(
-      (n, c) => n + (c.alerts || []).filter((a) => a.analysis?.verdict === 'KILL').length,
-      0,
-    ),
-    [campaigns],
+    () => (kpis.live
+      ? (health?.campaigns ?? []).filter((c) => c.verdict === 'KILL').length
+      : campaigns.reduce((n, c) => n + (c.alerts || []).filter((a) => a.analysis?.verdict === 'KILL').length, 0)),
+    [kpis.live, health, campaigns],
   );
 
   // Two DISJOINT substrates: the legacy CampaignState feed (drives the stat
@@ -172,10 +200,10 @@ export default function OverviewView() {
         </div>
       )}
 
-      {/* Legacy stat block — derived from the CampaignState summary. Stays bound
-          to the legacy feed; we never fabricate these figures from connector rows
-          (the substrates are deliberately disjoint). */}
-      {hasData && (
+      {/* KPI stat block — connector-first (live sync), legacy feed only as fallback.
+          Shown on EITHER substrate so a synced workspace sees real headline
+          numbers; each value is "—" when absent, never a fabricated 0. */}
+      {hasAnyData && (
         <>
           {/* Budget pacing — honest burn-rate (gated; refuses misleading single-channel pacing). */}
           <PacingWidget />
@@ -184,32 +212,32 @@ export default function OverviewView() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
             <StatCard
               label="Total spend"
-              value={stats.spend}
+              value={kpis.spend != null ? formatCurrencyWhole(kpis.spend, kpis.currency) : '—'}
               sub="last 30 days"
               Icon={BarChart}
               tone="neutral"
             />
             <StatCard
               label="Blended CPA"
-              value={stats.cpa}
+              value={kpis.cpa != null ? formatCurrencyWhole(kpis.cpa, kpis.currency) : '—'}
               sub="across active campaigns"
               Icon={Target}
               tone="neutral"
             />
             <StatCard
               label="Wasted spend"
-              value={stats.waste}
-              sub={killCount > 0 ? `${killCount} KILL-verdict ad set${killCount === 1 ? '' : 's'}` : 'flagged for review'}
+              value={kpis.wasted != null ? `${formatCurrencyWhole(kpis.wasted, kpis.currency)}/mo` : '—'}
+              sub={killCount > 0 ? `${killCount} KILL-verdict campaign${killCount === 1 ? '' : 's'}` : 'flagged for review'}
               Icon={AlertTriangle}
               tone="danger"
             />
             <StatCard
               label="Account health"
-              value={`${stats.health}/100`}
+              value={kpis.health != null ? `${kpis.health}/100` : '—'}
               sub={healthLabel}
               Icon={Activity}
               tone={healthTone}
-              gauge={stats.health}
+              gauge={kpis.health ?? undefined}
             />
           </div>
         </>
