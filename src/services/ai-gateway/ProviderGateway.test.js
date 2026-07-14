@@ -15,6 +15,11 @@
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Zero the retry backoff before ProviderGateway evaluates its const (hoisted
+// above the imports) — keeps the suite instant now that a failing primary also
+// runs a full fallback retry cycle. Prod default stays 1000ms.
+vi.hoisted(() => { process.env.AI_GATEWAY_RETRY_DELAY_MS = '0'; });
+
 // Mock logger BEFORE imports
 vi.mock('../../utils/logger.js', () => ({
   logger: {
@@ -64,6 +69,13 @@ vi.mock('./providers/openaiProvider.js', () => ({
   generateCaptions: vi.fn(),
   generateVisualPrompt: vi.fn(),
   summarizeCreative: vi.fn(),
+  // Fallback methods (Claude-primary capabilities backed by OpenAI)
+  generateAngleVariants: vi.fn(),
+  generateAudienceHypotheses: vi.fn(),
+  validateContent: vi.fn(),
+  explainVerdict: vi.fn(),
+  generateBriefing: vi.fn(),
+  answerQuestion: vi.fn(),
 }));
 
 vi.mock('./providers/higgsfieldProvider.js', () => ({
@@ -434,5 +446,91 @@ describe('ProviderGateway — determinism', () => {
     });
 
     expect(result1.metadata.requestId).not.toBe(result2.metadata.requestId);
+  });
+});
+
+// ============================================================
+// Cross-provider Fallback
+// ============================================================
+// AUTH_ERROR is non-retryable → the primary fails in ONE attempt (no backoff
+// sleeps), keeping these tests instant while still exercising the fallback path.
+describe('ProviderGateway — cross-provider fallback', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const verdictOk = (provider) => ({
+    success: true,
+    output: { reasoning: 'Spend is bleeding; kill it.' },
+    artifacts: [],
+    metadata: { provider, model: 'test', tokens: 10, latency: 5 },
+  });
+  const copyOk = (provider) => ({
+    success: true,
+    output: { hook: 'h', body: 'b', cta: 'c' },
+    artifacts: [],
+    metadata: { provider, model: 'test', tokens: 10, latency: 5 },
+  });
+
+  it('primary success → fallback provider is NEVER called', async () => {
+    claudeProvider.explainVerdict.mockResolvedValue(verdictOk('CLAUDE'));
+
+    const result = await execute({ capability: CAPABILITY.EXPLAIN_VERDICT, input: { verdict: 'KILL' } });
+
+    expect(result.success).toBe(true);
+    expect(result.metadata.fallbackUsed).toBeUndefined();
+    expect(claudeProvider.explainVerdict).toHaveBeenCalledTimes(1);
+    expect(openaiProvider.explainVerdict).not.toHaveBeenCalled();
+  });
+
+  it('Claude-primary fails → OpenAI fallback runs and succeeds (transparent)', async () => {
+    claudeProvider.explainVerdict.mockResolvedValue(MOCK_RESPONSES.AUTH_ERROR);
+    openaiProvider.explainVerdict.mockResolvedValue(verdictOk('OPENAI'));
+
+    const result = await execute({ capability: CAPABILITY.EXPLAIN_VERDICT, input: { verdict: 'KILL' } });
+
+    expect(result.success).toBe(true);
+    expect(result.output).toHaveProperty('reasoning'); // identical shape from either provider
+    expect(result.metadata.fallbackUsed).toBe(true);
+    expect(result.metadata.primaryProvider).toBe('CLAUDE');
+    expect(claudeProvider.explainVerdict).toHaveBeenCalledTimes(1);
+    expect(openaiProvider.explainVerdict).toHaveBeenCalledTimes(1);
+  });
+
+  it('both providers fail → honest primary error, fallback marked attempted (no fabrication)', async () => {
+    // Both non-retryable → each provider is tried exactly once.
+    claudeProvider.explainVerdict.mockResolvedValue(MOCK_RESPONSES.AUTH_ERROR);
+    openaiProvider.explainVerdict.mockResolvedValue(MOCK_RESPONSES.INVALID_RESPONSE_ERROR);
+
+    const result = await execute({ capability: CAPABILITY.EXPLAIN_VERDICT, input: { verdict: 'KILL' } });
+
+    expect(result.success).toBe(false);
+    expect(result.error.type).toBe(ERROR_TYPE.AUTH_ERROR); // primary error preserved
+    expect(result.metadata.fallbackAttempted).toBe(true);
+    expect(result.metadata.fallbackErrorType).toBe(ERROR_TYPE.INVALID_RESPONSE);
+    expect(openaiProvider.explainVerdict).toHaveBeenCalledTimes(1);
+  });
+
+  it('capability with NO fallback configured → no fallback attempt after primary fails', async () => {
+    claudeProvider.rankVariants.mockResolvedValue(MOCK_RESPONSES.AUTH_ERROR);
+
+    const result = await execute({ capability: CAPABILITY.RANK_VARIANTS, input: { variants: [] } });
+
+    expect(result.success).toBe(false);
+    expect(result.metadata.fallbackAttempted).toBeUndefined();
+    expect(claudeProvider.rankVariants).toHaveBeenCalledTimes(1);
+  });
+
+  it('OpenAI-primary capability falls back to Claude', async () => {
+    openaiProvider.generateCopy.mockResolvedValue(MOCK_RESPONSES.AUTH_ERROR);
+    claudeProvider.generateCopy.mockResolvedValue(copyOk('CLAUDE'));
+
+    const result = await execute({ capability: CAPABILITY.GENERATE_COPY, input: { diagnosis: 'X' } });
+
+    expect(result.success).toBe(true);
+    expect(result.metadata.fallbackUsed).toBe(true);
+    expect(result.metadata.primaryProvider).toBe('OPENAI');
+    expect(openaiProvider.generateCopy).toHaveBeenCalledTimes(1);
+    expect(claudeProvider.generateCopy).toHaveBeenCalledTimes(1);
   });
 });

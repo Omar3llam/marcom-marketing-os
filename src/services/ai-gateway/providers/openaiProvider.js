@@ -17,7 +17,9 @@ import OpenAI from 'openai';
 import { ERROR_TYPE, MODEL } from '../providerTypes.js';
 import { getSystemPrompt } from '../prompts/systemPrompts.js';
 import { buildCopyPrompt } from '../prompts/copyPrompts.js';
+import { buildCaptionPrompt } from '../prompts/captionPrompts.js';
 import { buildVisualBriefPrompt } from '../prompts/visualBriefPrompts.js';
+import { buildReasoningPrompt } from '../prompts/reasoningPrompts.js';
 import { logger } from '../../../utils/logger.js';
 
 // Lazy client instantiation (allows tests to run without API key)
@@ -65,6 +67,10 @@ async function callOpenAI({
   temperature = UTILITY_TEMPERATURE,
   maxTokens = DEFAULT_MAX_TOKENS,
   timeout = DEFAULT_TIMEOUT,
+  // json_object mode forces valid JSON but REQUIRES the word "json" in the prompt
+  // and returns an object — wrong for the prose fallbacks (verdict/briefing/answer),
+  // whose Claude prompts ask for plain text. Those pass jsonMode:false.
+  jsonMode = true,
 }) {
   const startTime = Date.now();
 
@@ -81,7 +87,7 @@ async function callOpenAI({
         { role: 'user', content: userPrompt },
       ],
       temperature,
-      response_format: { type: 'json_object' },
+      ...(jsonMode ? { response_format: { type: 'json_object' } } : {}),
     }, {
       signal: controller.signal,
     });
@@ -144,7 +150,15 @@ function classifyError(error) {
 
 function parseJSON(text) {
   try {
-    return JSON.parse(text.trim());
+    // Strip markdown fences: json_object mode never adds them, but the prose-mode
+    // fallbacks (jsonMode:false) can, so tolerate both — mirrors claudeProvider.
+    let cleaned = text.trim();
+    if (cleaned.startsWith('```json')) {
+      cleaned = cleaned.replace(/^```json\s*/i, '').replace(/\s*```\s*$/, '');
+    } else if (cleaned.startsWith('```')) {
+      cleaned = cleaned.replace(/^```\s*/, '').replace(/\s*```\s*$/, '');
+    }
+    return JSON.parse(cleaned);
   } catch (_error) {
     logger.warn({ text }, '[OpenAIProvider] JSON parse failed');
     return null;
@@ -355,4 +369,157 @@ Return JSON: { "summary": "text here" }`;
     artifacts: [],
     metadata: result.metadata,
   };
+}
+
+// ============================================================
+// Fallback capabilities — Claude-primary, OpenAI backup
+// ============================================================
+// Each mirrors the matching claudeProvider method EXACTLY (same prompt builder,
+// same output shape) so the gateway fallback is contract-transparent to callers.
+// The only difference is the API endpoint. Prose capabilities pass jsonMode:false.
+
+// GENERATE_STRATEGY (mirrors claudeProvider.generateAngleVariants)
+export async function generateAngleVariants(input, decisionContext = {}) {
+  const systemPrompt = getSystemPrompt('MARKETING_STRATEGIST');
+  const userPrompt = buildCaptionPrompt('GENERATE_ANGLE_VARIANTS', input, decisionContext);
+
+  const result = await callOpenAI({
+    systemPrompt, userPrompt, model: CONTENT_MODEL, temperature: CONTENT_TEMPERATURE,
+    maxTokens: 1024, jsonMode: false,
+  });
+  if (!result.success) return result;
+
+  const parsed = parseJSON(result.text);
+  if (!parsed || !Array.isArray(parsed)) {
+    return {
+      success: false,
+      error: { type: ERROR_TYPE.INVALID_RESPONSE, message: 'Failed to parse angle variants response' },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: { angles: parsed, count: parsed.length },
+    artifacts: parsed.map((a, index) => ({ type: 'angle', id: `angle_${index}`, content: a.angle })),
+    metadata: result.metadata,
+  };
+}
+
+// GENERATE_AUDIENCE (mirrors claudeProvider.generateAudienceHypotheses)
+export async function generateAudienceHypotheses(input, decisionContext = {}) {
+  const systemPrompt = getSystemPrompt('MARKETING_STRATEGIST');
+  const userPrompt = buildCaptionPrompt('GENERATE_AUDIENCE_HYPOTHESES', input, decisionContext);
+
+  const result = await callOpenAI({
+    systemPrompt, userPrompt, model: CONTENT_MODEL, temperature: CONTENT_TEMPERATURE,
+    maxTokens: 1024, jsonMode: false,
+  });
+  if (!result.success) return result;
+
+  const parsed = parseJSON(result.text);
+  if (!parsed || !Array.isArray(parsed)) {
+    return {
+      success: false,
+      error: { type: ERROR_TYPE.INVALID_RESPONSE, message: 'Failed to parse audience hypotheses response' },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: { hypotheses: parsed, count: parsed.length },
+    artifacts: parsed.map((h, index) => ({ type: 'audience_hypothesis', id: `hypothesis_${index}`, content: h.hypothesis })),
+    metadata: result.metadata,
+  };
+}
+
+// VALIDATE_CONTENT (mirrors claudeProvider.validateContent)
+export async function validateContent(input, decisionContext = {}) {
+  const systemPrompt = getSystemPrompt('MARKETING_STRATEGIST');
+  const userPrompt = buildVisualBriefPrompt('VALIDATE_CONTENT', input, decisionContext);
+
+  const result = await callOpenAI({ systemPrompt, userPrompt, maxTokens: 1024, jsonMode: false });
+  if (!result.success) return result;
+
+  const parsed = parseJSON(result.text);
+  if (!parsed || typeof parsed.isValid !== 'boolean') {
+    return {
+      success: false,
+      error: { type: ERROR_TYPE.INVALID_RESPONSE, message: 'Failed to parse validation response' },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: {
+      isValid: parsed.isValid,
+      score: parsed.score,
+      issues: parsed.issues || [],
+      suggestions: parsed.suggestions || [],
+      approved: parsed.approved,
+    },
+    artifacts: [],
+    metadata: result.metadata,
+  };
+}
+
+// EXPLAIN_VERDICT — prose (mirrors claudeProvider.explainVerdict)
+export async function explainVerdict(input) {
+  const { system, user } = buildReasoningPrompt(input || {});
+
+  const result = await callOpenAI({
+    systemPrompt: system, userPrompt: user, model: CONTENT_MODEL, maxTokens: 260, jsonMode: false,
+  });
+  if (!result.success) return result;
+
+  const reasoning = (result.text || '').trim();
+  if (!reasoning) {
+    return {
+      success: false,
+      error: { type: ERROR_TYPE.INVALID_RESPONSE, message: 'Empty reasoning response' },
+      metadata: result.metadata,
+    };
+  }
+
+  return { success: true, output: { reasoning }, artifacts: [], metadata: result.metadata };
+}
+
+// GENERATE_BRIEFING — prose; caller pre-builds { system, user } (mirrors claudeProvider.generateBriefing)
+export async function generateBriefing({ system, user }) {
+  const result = await callOpenAI({
+    systemPrompt: system, userPrompt: user, model: CONTENT_MODEL, maxTokens: 120, jsonMode: false,
+  });
+  if (!result.success) return result;
+
+  const briefing = (result.text || '').trim();
+  if (!briefing) {
+    return {
+      success: false,
+      error: { type: ERROR_TYPE.INVALID_RESPONSE, message: 'Empty briefing response' },
+      metadata: result.metadata,
+    };
+  }
+
+  return { success: true, output: { briefing }, artifacts: [], metadata: result.metadata };
+}
+
+// ANSWER_QUESTION — prose; caller pre-builds { system, user } (mirrors claudeProvider.answerQuestion)
+export async function answerQuestion({ system, user }) {
+  const result = await callOpenAI({
+    systemPrompt: system, userPrompt: user, model: CONTENT_MODEL, maxTokens: 400, jsonMode: false,
+  });
+  if (!result.success) return result;
+
+  const answer = (result.text || '').trim();
+  if (!answer) {
+    return {
+      success: false,
+      error: { type: ERROR_TYPE.INVALID_RESPONSE, message: 'Empty answer response' },
+      metadata: result.metadata,
+    };
+  }
+
+  return { success: true, output: { answer }, artifacts: [], metadata: result.metadata };
 }

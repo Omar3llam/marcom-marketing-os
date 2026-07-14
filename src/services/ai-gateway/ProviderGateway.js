@@ -43,15 +43,19 @@
 //     error?: { type, message }
 //   }
 // ============================================================
-import { getProviderForCapability } from './providerRegistry.js';
+import { getProviderForCapability, getMethodForProvider } from './providerRegistry.js';
 import { routeCapability } from './intelligentRouter.js'; // PR #38
-import { ERROR_TYPE } from './providerTypes.js';
+import { ERROR_TYPE, CAPABILITY_FALLBACK } from './providerTypes.js';
 import { validateStructuredFeedback } from '../../types/feedbackTypes.js';
 import { logger } from '../../utils/logger.js';
 import crypto from 'crypto';
 
 const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 1000; // 1s base delay
+// Base backoff, env-driven so a deploy can tune rate-limit sensitivity (and tests
+// can run instantly with 0). Default 1s preserves the original behaviour. With
+// per-capability fallback, a request can now traverse TWO retry cycles (primary
+// then fallback), so a tunable base matters more than before.
+const RETRY_DELAY_MS = Number(process.env.AI_GATEWAY_RETRY_DELAY_MS ?? 1000);
 const RETRYABLE_ERRORS = new Set([
   ERROR_TYPE.RATE_LIMIT,
   ERROR_TYPE.TIMEOUT,
@@ -81,6 +85,97 @@ function shouldRetry(error, attempt) {
 
 function calculateBackoff(attempt) {
   return RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+}
+
+/**
+ * Run ONE provider method through the bounded retry loop and return the same
+ * structured result the gateway always has (never throws). Extracted verbatim
+ * from the original execute() loop so the primary path is byte-for-byte
+ * unchanged; the gateway now calls it once for the primary provider and, on
+ * failure, once more for a fallback provider.
+ *
+ * @returns {Promise<{ success, output?, artifacts?, error?, metadata }>}
+ */
+async function runWithRetries({ method, input, decisionCtx, provider, requestId, capability, routingDecision }) {
+  let attempt = 0;
+  let lastError = null;
+
+  while (attempt < MAX_RETRIES) {
+    attempt++;
+
+    logger.debug({
+      requestId, capability, provider, attempt,
+      isReExecution: decisionCtx.isReExecution || false,
+      hasFeedback: !!decisionCtx.feedback,
+    }, '[ProviderGateway] calling provider');
+
+    try {
+      const result = await method(input, decisionCtx);
+
+      if (result.success) {
+        logger.info({
+          requestId, capability, provider, attempt,
+          tokens: result.metadata.tokens,
+          latency: result.metadata.latency,
+          routingStrategy: routingDecision?.strategy,
+        }, '[ProviderGateway] capability executed successfully');
+
+        return {
+          ...result,
+          metadata: { ...result.metadata, provider, requestId, attempt, routingDecision },
+        };
+      }
+
+      // Provider returned failure
+      lastError = result.error;
+
+      if (shouldRetry(lastError, attempt)) {
+        const backoff = calculateBackoff(attempt);
+        logger.warn({
+          requestId, capability, provider, attempt, errorType: lastError.type, backoff,
+        }, '[ProviderGateway] retrying after error');
+        await sleep(backoff);
+        continue;
+      }
+
+      logger.error({
+        requestId, capability, provider, attempt,
+        errorType: lastError.type, errorMessage: lastError.message,
+      }, '[ProviderGateway] capability execution failed');
+
+      return {
+        success: false,
+        error: lastError,
+        metadata: { ...result.metadata, provider, requestId, attempt, routingDecision },
+      };
+    } catch (error) {
+      // Unexpected error (should not happen if providers are implemented correctly)
+      logger.error({
+        requestId, capability, provider, attempt, error: error.message,
+      }, '[ProviderGateway] unexpected error');
+
+      lastError = { type: ERROR_TYPE.PROVIDER_ERROR, message: error.message };
+
+      if (attempt < MAX_RETRIES) {
+        const backoff = calculateBackoff(attempt);
+        await sleep(backoff);
+        continue;
+      }
+
+      return {
+        success: false,
+        error: lastError,
+        metadata: { provider, model: 'UNKNOWN', tokens: 0, latency: 0, requestId, attempt, routingDecision },
+      };
+    }
+  }
+
+  // Max retries exceeded
+  return {
+    success: false,
+    error: lastError || { type: ERROR_TYPE.PROVIDER_ERROR, message: 'Max retries exceeded' },
+    metadata: { provider, model: 'UNKNOWN', tokens: 0, latency: 0, requestId, attempt: MAX_RETRIES, routingDecision },
+  };
 }
 
 /**
@@ -214,149 +309,74 @@ export async function execute(request) {
     routingStrategy: routingDecision?.strategy || 'static',
   }, '[AI-GATEWAY] provider selected');
 
-  // Execute with retries
-  let attempt = 0;
-  let lastError = null;
+  // PR #32/#33: decision context passed to every provider call (primary + fallback).
+  const decisionCtx = {
+    feedback, revisionInstructions, regenerationHint, isReExecution,
+    feedbackType, severity, preserveAspects,
+  };
 
-  while (attempt < MAX_RETRIES) {
-    attempt++;
+  // ── Primary provider (with bounded retries) ──
+  const primaryResult = await runWithRetries({
+    method, input, decisionCtx, provider, requestId, capability, routingDecision,
+  });
+  if (primaryResult.success) return primaryResult;
 
-    logger.debug({
-      requestId,
-      capability,
-      provider,
-      attempt,
-      isReExecution: isReExecution || false,
-      hasFeedback: !!feedback,
-    }, '[ProviderGateway] calling provider');
+  // ── Cross-provider fallback ──
+  // When the primary exhausts its retries, try the capability's configured
+  // alternate provider — but ONLY if it's a DIFFERENT provider that actually
+  // implements the capability. Capabilities with no fallback (or whose fallback
+  // is the same provider / unimplemented) return the primary error unchanged.
+  // Never throws, never fabricates: both-fail returns the honest primary error.
+  const fallbackProvider = CAPABILITY_FALLBACK[capability];
+  if (fallbackProvider && fallbackProvider !== provider) {
+    const fb = getMethodForProvider(fallbackProvider, capability);
+    if (fb && typeof fb.method === 'function') {
+      logger.warn({
+        requestId, capability, primaryProvider: provider, fallbackProvider,
+        primaryErrorType: primaryResult.error?.type,
+      }, '[ProviderGateway] primary failed — attempting fallback provider');
 
-    try {
-      // PR #32: Pass decision context to provider
-      const result = await method(input, {
-        feedback,
-        revisionInstructions,
-        regenerationHint,
-        isReExecution,
-        // PR #33: Pass structured feedback
-        feedbackType,
-        severity,
-        preserveAspects,
+      const fbResult = await runWithRetries({
+        method: fb.method, input, decisionCtx, provider: fallbackProvider, requestId, capability,
+        routingDecision: {
+          strategy: 'fallback',
+          reason: `Primary ${provider} failed (${primaryResult.error?.type || 'unknown'}); fell back to ${fallbackProvider}`,
+          fallback: true,
+          primaryProvider: provider,
+        },
       });
 
-      if (result.success) {
+      if (fbResult.success) {
         logger.info({
-          requestId,
-          capability,
-          provider,
-          attempt,
-          tokens: result.metadata.tokens,
-          latency: result.metadata.latency,
-          routingStrategy: routingDecision?.strategy, // PR #38
-        }, '[ProviderGateway] capability executed successfully');
-
+          requestId, capability, primaryProvider: provider, fallbackProvider,
+        }, '[ProviderGateway] fallback provider succeeded');
         return {
-          ...result,
+          ...fbResult,
           metadata: {
-            ...result.metadata,
-            provider,
-            requestId,
-            attempt,
-            routingDecision, // PR #38: include routing decision in metadata
+            ...fbResult.metadata,
+            fallbackUsed: true,
+            primaryProvider: provider,
+            primaryErrorType: primaryResult.error?.type,
           },
         };
       }
 
-      // Provider returned failure
-      lastError = result.error;
-
-      if (shouldRetry(lastError, attempt)) {
-        const backoff = calculateBackoff(attempt);
-        logger.warn({
-          requestId,
-          capability,
-          provider,
-          attempt,
-          errorType: lastError.type,
-          backoff,
-        }, '[ProviderGateway] retrying after error');
-
-        await sleep(backoff);
-        continue;
-      }
-
-      // Non-retryable error or max retries reached
       logger.error({
-        requestId,
-        capability,
-        provider,
-        attempt,
-        errorType: lastError.type,
-        errorMessage: lastError.message,
-      }, '[ProviderGateway] capability execution failed');
-
+        requestId, capability, primaryProvider: provider, fallbackProvider,
+        primaryErrorType: primaryResult.error?.type,
+        fallbackErrorType: fbResult.error?.type,
+      }, '[ProviderGateway] both providers failed');
       return {
-        success: false,
-        error: lastError,
+        ...primaryResult,
         metadata: {
-          ...result.metadata,
-          provider,
-          requestId,
-          attempt,
-          routingDecision, // PR #38
-        },
-      };
-    } catch (error) {
-      // Unexpected error (should not happen if providers are implemented correctly)
-      logger.error({
-        requestId,
-        capability,
-        provider,
-        attempt,
-        error: error.message,
-      }, '[ProviderGateway] unexpected error');
-
-      lastError = {
-        type: ERROR_TYPE.PROVIDER_ERROR,
-        message: error.message,
-      };
-
-      if (attempt < MAX_RETRIES) {
-        const backoff = calculateBackoff(attempt);
-        await sleep(backoff);
-        continue;
-      }
-
-      return {
-        success: false,
-        error: lastError,
-        metadata: {
-          provider,
-          model: 'UNKNOWN',
-          tokens: 0,
-          latency: 0,
-          requestId,
-          attempt,
-          routingDecision, // PR #38
+          ...primaryResult.metadata,
+          fallbackAttempted: true,
+          fallbackProvider,
+          fallbackErrorType: fbResult.error?.type,
         },
       };
     }
   }
 
-  // Max retries exceeded
-  return {
-    success: false,
-    error: lastError || {
-      type: ERROR_TYPE.PROVIDER_ERROR,
-      message: 'Max retries exceeded',
-    },
-    metadata: {
-      provider,
-      model: 'UNKNOWN',
-      tokens: 0,
-      latency: 0,
-      requestId,
-      attempt: MAX_RETRIES,
-      routingDecision, // PR #38
-    },
-  };
+  return primaryResult;
 }

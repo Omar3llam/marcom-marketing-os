@@ -125,6 +125,8 @@ const PROVIDER_METHOD_MAP = Object.freeze({
     [CAPABILITY.GENERATE_STRATEGY]: claudeProvider.generateAngleVariants,
     [CAPABILITY.ANALYZE_CREATIVE]: claudeProvider.validateContent,
     [CAPABILITY.EXPLAIN_VERDICT]: claudeProvider.explainVerdict,
+    [CAPABILITY.GENERATE_BRIEFING]: claudeProvider.generateBriefing,
+    [CAPABILITY.ANSWER_QUESTION]: claudeProvider.answerQuestion,
     [CAPABILITY.VALIDATE_CONTENT]: claudeProvider.validateContent,
     [CAPABILITY.RANK_VARIANTS]: claudeProvider.rankVariants,
     [CAPABILITY.GENERATE_VISUAL_BRIEF]: claudeProvider.generateVisualBrief,
@@ -134,6 +136,13 @@ const PROVIDER_METHOD_MAP = Object.freeze({
     [CAPABILITY.GENERATE_COPY]: openaiProvider.generateCopy,
     [CAPABILITY.GENERATE_CAPTIONS]: openaiProvider.generateCaptions,
     [CAPABILITY.GENERATE_VISUAL_PROMPT]: openaiProvider.generateVisualPrompt,
+    // Fallback targets for Claude-primary capabilities (PR: gateway fallback).
+    [CAPABILITY.GENERATE_STRATEGY]: openaiProvider.generateAngleVariants,
+    [CAPABILITY.GENERATE_AUDIENCE]: openaiProvider.generateAudienceHypotheses,
+    [CAPABILITY.VALIDATE_CONTENT]: openaiProvider.validateContent,
+    [CAPABILITY.EXPLAIN_VERDICT]: openaiProvider.explainVerdict,
+    [CAPABILITY.GENERATE_BRIEFING]: openaiProvider.generateBriefing,
+    [CAPABILITY.ANSWER_QUESTION]: openaiProvider.answerQuestion,
   },
   [PROVIDER.HIGGSFIELD]: {
     [CAPABILITY.GENERATE_VIDEO_PROMPT]: higgsfieldProvider.generateVideoPrompt,
