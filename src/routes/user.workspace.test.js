@@ -133,7 +133,7 @@ describe('PATCH /api/user/workspace — STRATEGIST gate', () => {
 describe('GET /api/user/workspace — market + industry from context', () => {
   const baseWorkspace = {
     id: WS, name: 'Acme', currency: 'SAR', createdAt: new Date('2026-01-01'),
-    spendTier: 't2', objective: 'roas', adChannels: ['META'],
+    spendTier: 't2', objective: 'roas', adChannels: ['META'], plan: 'GROWTH',
   };
 
   beforeEach(() => {
@@ -164,5 +164,30 @@ describe('GET /api/user/workspace — market + industry from context', () => {
       .expect(200);
 
     expect(res.body.workspace.market).toBeNull();
+  });
+
+  it('surfaces the feature-gating plan entitlement (drives usePlan/PlanGate)', async () => {
+    prisma.user.findFirst.mockResolvedValue({
+      id: 'u1', workspaceId: WS, email: 'a@b.co', context: {},
+    });
+
+    const res = await request(buildApp({ collabRole: 'STRATEGIST' }))
+      .get('/api/user/workspace')
+      .expect(200);
+
+    expect(res.body.workspace.plan).toBe('GROWTH');
+  });
+
+  it('defaults plan to FREE when the column is null (never fabricated as unlocked)', async () => {
+    prisma.workspace.findUnique.mockResolvedValue({ ...baseWorkspace, plan: null });
+    prisma.user.findFirst.mockResolvedValue({
+      id: 'u1', workspaceId: WS, email: 'a@b.co', context: {},
+    });
+
+    const res = await request(buildApp({ collabRole: 'STRATEGIST' }))
+      .get('/api/user/workspace')
+      .expect(200);
+
+    expect(res.body.workspace.plan).toBe('FREE');
   });
 });

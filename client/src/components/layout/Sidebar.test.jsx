@@ -24,6 +24,12 @@ vi.mock('@/hooks/useCollabRole.js', () => ({
 vi.mock('@/hooks/useWorkspace.js', () => ({
   useWorkspace: () => ({ workspace: { name: 'Acme', market: 'EG' }, hasWorkspace: true, loading: false }),
 }));
+// Default the workspace to PRO so every role-visible item is unlocked (a link) —
+// the existing badge/label assertions below expect interactive nav items. The
+// plan-gating suite at the bottom overrides this per-test.
+vi.mock('@/hooks/usePlan.js', () => ({
+  usePlan: vi.fn(() => ({ canAccess: () => true, loading: false })),
+}));
 vi.mock('@/hooks/useConnections.js', () => ({
   useConnections: vi.fn(() => ({ data: null, loading: false, error: null })),
 }));
@@ -41,6 +47,14 @@ import Sidebar from './Sidebar.jsx';
 import { useConnections } from '@/hooks/useConnections.js';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
 import { usePendingApprovals } from '@/hooks/usePendingApprovals.js';
+import { usePlan } from '@/hooks/usePlan.js';
+
+// Mirror the real hierarchy so a mocked plan locks exactly what usePlan would.
+const PLAN_RANK = { FREE: 0, GROWTH: 1, PRO: 2 };
+const setPlan = (tier) => usePlan.mockReturnValue({
+  canAccess: (req) => req == null || (PLAN_RANK[tier] ?? 0) >= (PLAN_RANK[req] ?? 0),
+  loading: false,
+});
 
 function renderSidebar(props = {}, { path = '/' } = {}) {
   return render(
@@ -56,6 +70,7 @@ afterEach(() => {
   useCollabRole.mockReturnValue({ role: 'STRATEGIST' });
   useConnections.mockReturnValue({ data: null, loading: false, error: null });
   usePendingApprovals.mockReturnValue({ pending: [], loading: false, error: null, refetch: vi.fn() });
+  usePlan.mockReturnValue({ canAccess: () => true, loading: false }); // back to PRO/unlocked
 });
 
 describe('Sidebar — mobile drawer visibility', () => {
@@ -135,7 +150,7 @@ describe('Sidebar — Publishing approval badge', () => {
     const { getByText } = renderSidebar({ mobileMenuOpen: true });
     const publishingLink = getByText('Publishing').closest('a');
     // only the label + sub text — no numeric badge
-    expect(publishingLink.textContent).toBe('PublishingRecord live ad publishes');
+    expect(publishingLink.textContent).toBe('PublishingContent approvals');
   });
 
   it('suppresses the badge while already on the Publishing page (no stale double-count)', () => {
@@ -151,5 +166,61 @@ describe('Sidebar — Publishing approval badge', () => {
     const { queryByText } = renderSidebar({ mobileMenuOpen: true });
     expect(queryByText('Publishing')).toBeNull();
     expect(usePendingApprovals).toHaveBeenCalledWith({ enabled: false });
+  });
+});
+
+describe('Sidebar — plan-based feature gating (locked nav items)', () => {
+  // A locked item renders its label but as a NON-interactive div (never a link),
+  // so `.closest('a')` is null. An unlocked item is a NavLink (an <a>).
+  const isLink = (getByText, label) => getByText(label).closest('a') != null;
+
+  it('PRO: every role-visible item is an interactive link (nothing locked)', () => {
+    setPlan('PRO');
+    const { getByText } = renderSidebar({ mobileMenuOpen: true });
+    for (const label of ['Home', 'Campaigns', 'Create', 'Reports', 'Intelligence', 'Publishing', 'Testing', 'Measurement']) {
+      expect(isLink(getByText, label)).toBe(true);
+    }
+  });
+
+  it('FREE: the 4 FREE items link; Intelligence/Publishing (GROWTH) + Testing/Measurement (PRO) render locked', () => {
+    setPlan('FREE');
+    const { getByText } = renderSidebar({ mobileMenuOpen: true });
+    // FREE tier — always unlocked
+    for (const label of ['Home', 'Campaigns', 'Create', 'Reports']) {
+      expect(isLink(getByText, label)).toBe(true);
+    }
+    // Above the plan — present but locked (visible upsell, not hidden)
+    for (const label of ['Intelligence', 'Publishing', 'Testing', 'Measurement']) {
+      expect(getByText(label)).toBeTruthy();          // still shown
+      expect(isLink(getByText, label)).toBe(false);   // but not navigable
+    }
+  });
+
+  it('GROWTH: Intelligence/Publishing unlock; only Testing/Measurement (PRO) stay locked', () => {
+    setPlan('GROWTH');
+    const { getByText } = renderSidebar({ mobileMenuOpen: true });
+    expect(isLink(getByText, 'Intelligence')).toBe(true);
+    expect(isLink(getByText, 'Publishing')).toBe(true);
+    expect(isLink(getByText, 'Testing')).toBe(false);
+    expect(isLink(getByText, 'Measurement')).toBe(false);
+  });
+
+  it('every locked item exposes an upgrade path (View plans → /#pricing)', () => {
+    setPlan('FREE');
+    const { getAllByText } = renderSidebar({ mobileMenuOpen: true });
+    // one tooltip link per locked item (Intelligence, Publishing, Testing, Measurement)
+    const tips = getAllByText(/view plans/i);
+    expect(tips).toHaveLength(4);
+    for (const tip of tips) {
+      expect(tip.closest('a')).toHaveAttribute('href', '/#pricing');
+    }
+  });
+
+  it('while the plan is still loading, items are NOT locked (no flash for a paying operator)', () => {
+    usePlan.mockReturnValue({ canAccess: () => false, loading: true });
+    const { getByText } = renderSidebar({ mobileMenuOpen: true });
+    // loading guard wins → everything renders as a link despite canAccess=false
+    expect(isLink(getByText, 'Testing')).toBe(true);
+    expect(isLink(getByText, 'Intelligence')).toBe(true);
   });
 });

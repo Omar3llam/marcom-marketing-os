@@ -28,6 +28,7 @@ workspacesRouter.get('/', async (_req, res) => {
         id: true,
         name: true,
         currency: true,
+        plan: true,
         createdAt: true,
         _count: { select: { users: true, decisions: true } },
       },
@@ -37,6 +38,7 @@ workspacesRouter.get('/', async (_req, res) => {
       id: w.id,
       name: w.name,
       currency: w.currency,
+      plan: w.plan ?? 'FREE',
       createdAt: w.createdAt,
       userCount: w._count.users,
       decisionCount: w._count.decisions,
@@ -47,5 +49,37 @@ workspacesRouter.get('/', async (_req, res) => {
   } catch (err) {
     logger.error({ err: err.message }, '[admin/workspaces] list failed');
     res.status(500).json({ error: 'Failed to list workspaces' });
+  }
+});
+
+// The feature-gating entitlements an admin can assign. There is no billing —
+// this is the manual upgrade path (mirrors the measurementTier axis).
+const VALID_PLANS = ['FREE', 'GROWTH', 'PRO'];
+
+// PATCH /api/admin/workspaces/:id/plan — set a workspace's entitlement.
+// ADMIN-only via the mount (no per-route re-check). Validates the enum before
+// touching the row; a missing workspace surfaces as 404, never a silent no-op.
+workspacesRouter.patch('/:id/plan', async (req, res) => {
+  const { id } = req.params;
+  const plan = req.body?.plan;
+
+  if (!VALID_PLANS.includes(plan)) {
+    return res.status(400).json({ error: `Invalid plan. Expected one of: ${VALID_PLANS.join(', ')}` });
+  }
+
+  try {
+    const workspace = await prisma.workspace.update({
+      where: { id },
+      data: { plan },
+      select: { id: true, name: true, plan: true },
+    });
+    return res.json(workspace);
+  } catch (err) {
+    // Prisma P2025 = record to update not found.
+    if (err.code === 'P2025') {
+      return res.status(404).json({ error: 'Workspace not found' });
+    }
+    logger.error({ err: err.message, id }, '[admin/workspaces] plan update failed');
+    return res.status(500).json({ error: 'Failed to update plan' });
   }
 });

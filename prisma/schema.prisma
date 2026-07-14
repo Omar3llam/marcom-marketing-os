@@ -359,6 +359,15 @@ model Workspace {
   objective  String?  // onboarding goal id: 'roas' | 'conversions' | 'ltv' | 'custom'
   adChannels String[] // normalized Channel values the account runs, e.g. ['META','GOOGLE']
 
+  // ── Feature-gating entitlement (FREE | GROWTH | PRO) ─────────
+  // The plan the workspace is ENTITLED to — drives which surfaces unlock in the
+  // UI (usePlan/PlanGate). Admin-controlled only (there is no billing): default
+  // FREE for every workspace, raised via the admin panel. Deliberately NOT the
+  // same axis as onboarding's aspirational plan pick (starter/pro/agency, free
+  // during early access, never persisted) — wiring those would be a self-serve
+  // upgrade bypass. Also independent of `measurementTier` (attribution paywall).
+  plan       String   @default("FREE")
+
   // ── Phase 5: network memory (opt-in, anonymized) ─────────────
   // Sharing this account's anonymized patterns into the cross-account
   // network is OFF by default — a governance decision, never a default.

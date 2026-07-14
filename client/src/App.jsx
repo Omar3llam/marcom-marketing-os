@@ -32,6 +32,8 @@ import Observability    from './pages/Observability.jsx';
 import { CardSkeleton } from './components/ui/Skeleton.jsx';
 import { ProtectedRoute, OnboardingRoute } from './router/ProtectedRoute.jsx';
 import RoleGate from './components/auth/RoleGate.jsx';
+import PlanGate from './components/auth/PlanGate.jsx';
+import UpgradePrompt from './components/plan/UpgradePrompt.jsx';
 import RequireUserRole from './components/auth/RequireUserRole.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from './hooks/useCollabRole.js';
 import { useAuth } from './context/AuthContext.jsx';
@@ -201,19 +203,24 @@ export default function App() {
 
           <Route path="intelligence" element={<Navigate to={appRoutes.blendedTruth} replace />} />
 
-          {/* ── Phase 11A · Blended Truth (STRATEGIST/BUYER; CLIENT → Reports) ── */}
+          {/* ── Phase 11A · Blended Truth (STRATEGIST/BUYER; CLIENT → Reports;
+              Intelligence is a GROWTH feature → FREE sees the upgrade prompt) ── */}
           <Route path="intelligence/blended-truth" element={
             <ErrorBoundary boundaryId="truth">
               <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<RoleAwareRedirect />}>
-                <Suspense fallback={<PageFallback />}><BlendedTruth /></Suspense>
+                <PlanGate required="GROWTH" fallback={<UpgradePrompt feature="Intelligence" requiredPlan="GROWTH" />}>
+                  <Suspense fallback={<PageFallback />}><BlendedTruth /></Suspense>
+                </PlanGate>
               </RoleGate>
             </ErrorBoundary>
           } />
 
-          {/* ── Phase 11A · Proof of Learning (all roles; view narrows by role) ── */}
+          {/* ── Phase 11A · Proof of Learning (all roles; view narrows by role; GROWTH) ── */}
           <Route path="intelligence/proof" element={
             <ErrorBoundary boundaryId="proof">
-              <Suspense fallback={<PageFallback />}><Proof /></Suspense>
+              <PlanGate required="GROWTH" fallback={<UpgradePrompt feature="Intelligence" requiredPlan="GROWTH" />}>
+                <Suspense fallback={<PageFallback />}><Proof /></Suspense>
+              </PlanGate>
             </ErrorBoundary>
           } />
 
@@ -223,27 +230,33 @@ export default function App() {
           <Route path="intelligence/insights" element={
             <ErrorBoundary boundaryId="growth">
               <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<RoleAwareRedirect />}>
-                <Suspense fallback={<PageFallback />}><GrowthStrategyBoard /></Suspense>
+                <PlanGate required="GROWTH" fallback={<UpgradePrompt feature="Intelligence" requiredPlan="GROWTH" />}>
+                  <Suspense fallback={<PageFallback />}><GrowthStrategyBoard /></Suspense>
+                </PlanGate>
               </RoleGate>
             </ErrorBoundary>
           } />
 
-          {/* ── Phase 4-A · Testing OS readout (BUYER/STRATEGIST; CLIENT → Reports) ── */}
+          {/* ── Phase 4-A · Testing OS readout (BUYER/STRATEGIST; CLIENT → Reports; PRO) ── */}
           <Route path="testing" element={
             <ErrorBoundary boundaryId="testing">
               <RoleGate role={['BUYER', 'STRATEGIST']} fallback={<RoleAwareRedirect />}>
-                <Suspense fallback={<PageFallback />}><Testing /></Suspense>
+                <PlanGate required="PRO" fallback={<UpgradePrompt feature="Testing" requiredPlan="PRO" />}>
+                  <Suspense fallback={<PageFallback />}><Testing /></Suspense>
+                </PlanGate>
               </RoleGate>
             </ErrorBoundary>
           } />
 
-          {/* ── Phase 4-E · Measurement OS (STRATEGIST/BUYER; CLIENT → Reports).
+          {/* ── Phase 4-E · Measurement OS (STRATEGIST/BUYER; CLIENT → Reports; PRO).
               Scenario is open to both roles; incrementality is further gated to
               STRATEGIST inside the view AND tier-gated server-side. ── */}
           <Route path="measure" element={
             <ErrorBoundary boundaryId="measure">
               <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<RoleAwareRedirect />}>
-                <Suspense fallback={<PageFallback />}><Measure /></Suspense>
+                <PlanGate required="PRO" fallback={<UpgradePrompt feature="Measurement" requiredPlan="PRO" />}>
+                  <Suspense fallback={<PageFallback />}><Measure /></Suspense>
+                </PlanGate>
               </RoleGate>
             </ErrorBoundary>
           } />
@@ -262,7 +275,9 @@ export default function App() {
           <Route path="publishing" element={
             <ErrorBoundary boundaryId="publishing">
               <RoleGate role={['BUYER', 'STRATEGIST']} fallback={<RoleAwareRedirect />}>
-                <Suspense fallback={<PageFallback />}><Publishing /></Suspense>
+                <PlanGate required="GROWTH" fallback={<UpgradePrompt feature="Publishing" requiredPlan="GROWTH" />}>
+                  <Suspense fallback={<PageFallback />}><Publishing /></Suspense>
+                </PlanGate>
               </RoleGate>
             </ErrorBoundary>
           } />

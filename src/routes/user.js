@@ -63,7 +63,7 @@ userRouter.get('/workspace', async (req, res) => {
 
     const workspace = await prisma.workspace.findUnique({
       where: { id: user.workspaceId },
-      select: { id: true, name: true, currency: true, createdAt: true, spendTier: true, objective: true, adChannels: true },
+      select: { id: true, name: true, currency: true, createdAt: true, spendTier: true, objective: true, adChannels: true, plan: true },
     });
 
     if (!workspace) {
@@ -81,6 +81,7 @@ userRouter.get('/workspace', async (req, res) => {
         ownerId:    uid,
         createdAt:  workspace.createdAt,
         currency:   workspace.currency ?? 'USD',      // the account currency the FE formats money in (Meta sync corrects it)
+        plan:       workspace.plan ?? 'FREE',          // feature-gating entitlement (FREE|GROWTH|PRO); drives usePlan/PlanGate in the client
         industry:   user.context?.industry ?? null,   // from onboarding; null until set (no regression for older accounts)
         market:     user.context?.market ?? null,     // onboarding market id (eg/sa/…); context-only, no Workspace column — the Sidebar reads it (else falls back to 'EG')
         spendTier:  workspace.spendTier ?? ctxPrefs.spendTier,
