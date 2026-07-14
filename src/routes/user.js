@@ -40,8 +40,9 @@ userRouter.get('/workspace', async (req, res) => {
     }
 
     // Look up user + their workspace via Prisma. `context` carries the onboarding
-    // profile (name, market, industry, …); we surface `industry` on the workspace
-    // response so the Campaigns page can tailor its revenue-source guidance.
+    // profile (name, market, industry, …); we surface `industry` + `market` on the
+    // workspace response (Campaigns tailors revenue guidance by industry; the
+    // Sidebar shows the market — neither has its own Workspace column).
     const user = await prisma.user.findFirst({
       where: { clerkId: uid },
       select: { id: true, workspaceId: true, email: true, context: true },
@@ -81,6 +82,7 @@ userRouter.get('/workspace', async (req, res) => {
         createdAt:  workspace.createdAt,
         currency:   workspace.currency ?? 'USD',      // the account currency the FE formats money in (Meta sync corrects it)
         industry:   user.context?.industry ?? null,   // from onboarding; null until set (no regression for older accounts)
+        market:     user.context?.market ?? null,     // onboarding market id (eg/sa/…); context-only, no Workspace column — the Sidebar reads it (else falls back to 'EG')
         spendTier:  workspace.spendTier ?? ctxPrefs.spendTier,
         objective:  workspace.objective ?? ctxPrefs.objective,
         adChannels: workspace.adChannels?.length ? workspace.adChannels : ctxPrefs.adChannels,
