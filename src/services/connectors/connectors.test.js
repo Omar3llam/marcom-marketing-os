@@ -34,6 +34,20 @@ describe('metaNormalize — real fields, never an estimate', () => {
     expect(account.spendMinor).toBe(10000); // rollup
     expect(assertNormalized(out)).toBe(out);
   });
+
+  it('carries reach when Meta reports it, null when absent (never a fabricated 0)', () => {
+    const [, withReach] = metaNormalize({
+      accountExternalId: 'act_1', currency: 'USD', date: DATE,
+      rows: [{ campaign_id: 'c1', campaign_name: 'Eid', spend: '1', impressions: '1000', reach: '250', frequency: '4', clicks: '5', actions: [], action_values: [] }],
+    });
+    expect(withReach.reach).toBe(250);
+
+    const [, noReach] = metaNormalize({
+      accountExternalId: 'act_1', currency: 'USD', date: DATE,
+      rows: [{ campaign_id: 'c2', campaign_name: 'NoReach', spend: '1', impressions: '1000', clicks: '5', actions: [], action_values: [] }],
+    });
+    expect(noReach.reach).toBeNull();
+  });
 });
 
 describe('googleNormalize — the careful mapper', () => {
@@ -161,6 +175,10 @@ describe('snapshotSink ROAS honesty — no fabricated 0.00x from unmeasured reve
   it('spend 0 → roas null (unchanged from before)', () => {
     const [r] = toSnapshotRows('ws1', 'META', [row({ spendMinor: 0 })]);
     expect(r.roas).toBeNull();
+  });
+  it('persists reach when present and null when the normalized row has none', () => {
+    expect(toSnapshotRows('ws1', 'META', [row({ reach: 250 })])[0].reach).toBe(250);
+    expect(toSnapshotRows('ws1', 'META', [row()])[0].reach).toBeNull(); // row() has no reach
   });
 });
 

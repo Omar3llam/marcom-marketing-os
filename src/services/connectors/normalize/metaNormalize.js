@@ -63,6 +63,9 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
       clicks: Math.round(clicks),
       conversions: Math.round(conversions),
       frequency: r.frequency != null ? num(r.frequency) : null,
+      // Unique people reached (already on the wire — CAMPAIGN_INSIGHT_FIELDS
+      // requests it). null when Meta didn't report it, never a fabricated 0.
+      reach: r.reach != null ? Math.round(num(r.reach)) : null,
       // Roster-only rows (no delivery data found, not a verified 0) carry the flag
       // forward so the sink lands the entity but no fabricated zero snapshot.
       rosterOnly: r._rosterOnly === true,

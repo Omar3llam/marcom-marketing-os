@@ -1181,6 +1181,10 @@ model MetricSnapshot {
   impressions Int @default(0)
   clicks      Int @default(0)
   conversions Int @default(0)
+  // Unique people who saw the ad (Meta /insights `reach`; frequency = impressions
+  // ÷ reach). Nullable: pre-column rows and channels that don't report it (Google)
+  // have none — stays null, never a fabricated 0.
+  reach       Int?
 
   // Ratios (not money) — plain floats
   ctr       Float?

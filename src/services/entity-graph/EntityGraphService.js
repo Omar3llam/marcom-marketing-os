@@ -23,6 +23,7 @@ const WINDOW_DAYS = Number(process.env.ENTITY_SNAPSHOT_WINDOW_DAYS || 90);
 
 const METRIC_SELECT = {
   entityId: true, date: true, source: true, spendMinor: true, roas: true, ctr: true, frequency: true, currency: true,
+  reach: true, // unique people reached — feeds the fatigue exhaustion readout (null when unreported)
   conversions: true, // needed for the account-level Blended CPA aggregate (Σspend / Σconversions)
   // The verdict engine rolls up raw totals and re-derives roas/ctr itself, so it
   // needs the un-ratio'd inputs the display projection never used: revenue, the

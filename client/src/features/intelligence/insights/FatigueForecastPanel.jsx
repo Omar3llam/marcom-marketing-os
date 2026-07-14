@@ -20,6 +20,21 @@ const STATUS = {
   STABLE:    { text: 'text-lumi-muted',   bg: 'bg-lumi-elevated'   },
 };
 
+// Compact human number for the mono line (45 200 → "45.2k"). Reach only.
+function compact(n) {
+  if (n == null || !Number.isFinite(n)) return null;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}m`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+// Colour the "% of ceiling" readout by how close frequency is to saturation.
+function exhaustionColor(pct) {
+  if (pct >= 85) return 'text-signal-kill';
+  if (pct >= 60) return 'text-signal-watch';
+  return 'text-signal-scale';
+}
+
 function breachLabel(item) {
   const d = item.daysUntilSaturation;
   switch (item.status) {
@@ -73,6 +88,12 @@ export function FatigueForecastPanel({ forecast = [], loading = false }) {
                 <p className="mt-0.5 font-mono text-[10px] text-lumi-subtle truncate">
                   {item.channel || 'channel'} · freq {item.currentFrequency}
                   {item.velocity != null && ` · +${item.velocity}/day`}
+                  {item.reach != null && ` · reach ${compact(item.reach)}`}
+                  {item.exhaustionPct != null && (
+                    <span className={cn('ml-1', exhaustionColor(item.exhaustionPct))}>
+                      · {item.exhaustionPct}% of ceiling
+                    </span>
+                  )}
                 </p>
               </div>
               <span
