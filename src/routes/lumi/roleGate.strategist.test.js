@@ -57,9 +57,11 @@ const ROUTES = [
 ];
 
 describe('Lumi STRATEGIST-only mutation routes — collab-role gate', () => {
-  // Lift the measurement workspace-tier gate so the ROLE gate is what we test.
-  beforeAll(() => { process.env.MEASUREMENT_TIER_OVERRIDE = 'AGENCY'; });
-  afterAll(() => { delete process.env.MEASUREMENT_TIER_OVERRIDE; });
+  // Lift the workspace-level gates (measurement tier + plan paywall) so the
+  // ROLE gate is specifically what these tests exercise. PLAN_OVERRIDE=PRO
+  // clears requirePlan on economics/goals/plans (GROWTH) + incrementality (PRO).
+  beforeAll(() => { process.env.MEASUREMENT_TIER_OVERRIDE = 'AGENCY'; process.env.PLAN_OVERRIDE = 'PRO'; });
+  afterAll(() => { delete process.env.MEASUREMENT_TIER_OVERRIDE; delete process.env.PLAN_OVERRIDE; });
   beforeEach(() => vi.clearAllMocks());
 
   for (const r of ROUTES) {

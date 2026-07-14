@@ -12,9 +12,19 @@ import { getBlendedTruth }    from '../../services/blended-truth/BlendedTruthSer
 import { previewAllocation, commitAllocation } from '../../services/allocation-engine/AllocationService.js';
 import { GOAL_TYPE }          from '../../services/allocation-engine/allocationEngine.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { requirePlan }        from '../../middleware/requirePlan.js';
 import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
 
 export const portfolioRouter = Router();
+
+// ── Plan gates (GROWTH) ──────────────────────────────────────
+// Blended Truth + capital allocation are the Intelligence (GROWTH) surface.
+// NOTE the deliberate asymmetry: GET /portfolio stays FREE — it feeds the
+// Overview budget-pacing widget, a FREE surface. Only /blended (Blended Truth
+// read) and the /portfolio/allocate* writes are gated. The '/portfolio/allocate'
+// prefix matches both allocate + allocate/commit, and NOT the bare /portfolio.
+portfolioRouter.use('/blended', requirePlan('GROWTH'));
+portfolioRouter.use('/portfolio/allocate', requirePlan('GROWTH'));
 
 // Resolve workspaceId — mirrors lumi/feed.js. firebaseAuthMiddleware normally
 // sets req.workspaceId, but a transient lookup miss can leave it null. Fall
