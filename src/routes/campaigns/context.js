@@ -34,6 +34,11 @@ export function withContextAliases(ctx) {
 // an { meta:true, google:false } map keyed by lowercase id; the column stores
 // the normalized uppercase Channel values (META/GOOGLE) so they line up with
 // Campaign.channel. Every field tolerates absence (skipped step → null / []).
+//
+// NOTE on adChannels: this is a STORED PREFERENCE only — no service or client
+// reads it (audit 2026-07). The real channel scope is driven by OAuth/Integration
+// rows (a connected account), never this list. Promoted for completeness; do not
+// add a consumer that FILTERS campaigns by it (that would hide real campaigns).
 // Exported for unit testing.
 export function workspaceColumnsFromContext(ctx) {
   if (!ctx || typeof ctx !== 'object') return { spendTier: null, objective: null, adChannels: [] };
@@ -55,6 +60,13 @@ export function workspaceColumnsFromContext(ctx) {
   };
 }
 
+// Fields collected in onboarding but NOT consumed downstream (audit 2026-07).
+// The full form is persisted verbatim in User.context; these two ride along but
+// have no reader — kept for data completeness, not wired to anything:
+//   - city: shown in the onboarding ReviewStep only. The dialect system derives
+//           city from the message TEXT (dialectContext.js), never from this field.
+//   - tag:  legacy field. No onboarding step sets it; nothing reads it.
+// Do not add consumers for these without a clear, deliberate use case.
 export function mountContextRoutes(router) {
   router.get('/me/context', async (req, res) => {
     const userId = req.userId;

@@ -171,7 +171,7 @@ export default function CampaignsView() {
         healthLabel,
       });
     } catch (error) {
-      console.error('PDF generation failed:', error);
+      console.error('[Campaigns] PDF generation failed:', error);
       // Fallback to text export
       generateTextReport({
         campaigns: allRows,
