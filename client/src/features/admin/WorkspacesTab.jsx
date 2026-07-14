@@ -6,12 +6,47 @@
 // ============================================================
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { fetchWorkspaces, seedDemo, deleteDemo } from './api.js';
+import { fetchWorkspaces, seedDemo, deleteDemo, updateWorkspacePlan } from './api.js';
 import { useAsync, AsyncBlock } from './parts.jsx';
+
+const PLAN_OPTIONS = ['FREE', 'GROWTH', 'PRO'];
 
 function fmtDate(iso) {
   if (!iso) return '—';
   try { return new Date(iso).toLocaleString('en-US', { dateStyle: 'medium' }); } catch { return '—'; }
+}
+
+// Feature-gating entitlement selector. Manual upgrade path (no billing) — an
+// admin picks the tier; the change persists on select and reloads the row set.
+function PlanCell({ id, plan }) {
+  const [busy, setBusy] = useState(false);
+  const [value, setValue] = useState(plan ?? 'FREE');
+
+  const onChange = async (e) => {
+    const next = e.target.value;
+    const prev = value;
+    setValue(next);       // optimistic
+    setBusy(true);
+    try {
+      await updateWorkspacePlan(id, next);
+      toast.success(`Plan → ${next}`);
+    } catch (err) {
+      setValue(prev);     // revert on failure — never show a plan we didn't set
+      toast.error(err?.response?.data?.error || 'Plan update failed');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <select
+      value={value}
+      onChange={onChange}
+      disabled={busy}
+      aria-label="Workspace plan"
+      className="rounded-md border border-lumi-border bg-lumi-surface px-2 py-1 font-mono text-xs text-lumi-text disabled:opacity-50"
+    >
+      {PLAN_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
+    </select>
+  );
 }
 
 function DeleteCell({ id, onDeleted }) {
@@ -83,6 +118,7 @@ export function WorkspacesTab() {
             <thead className="border-b border-lumi-border bg-lumi-surface font-mono text-[11px] uppercase tracking-[0.1em] text-lumi-subtle">
               <tr>
                 <th className="px-3 py-2">Name</th>
+                <th className="px-3 py-2">Plan</th>
                 <th className="px-3 py-2">Currency</th>
                 <th className="px-3 py-2 text-right">Users</th>
                 <th className="px-3 py-2 text-right">Decisions</th>
@@ -99,6 +135,7 @@ export function WorkspacesTab() {
                       <span className="ml-2 rounded bg-lumi-elevated px-1.5 py-0.5 font-mono text-[10px] uppercase text-lumi-accent">demo</span>
                     )}
                   </td>
+                  <td className="px-3 py-2"><PlanCell id={w.id} plan={w.plan} /></td>
                   <td className="px-3 py-2 font-mono text-lumi-muted">{w.currency}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-lumi-muted">{w.userCount}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-lumi-muted">{w.decisionCount}</td>

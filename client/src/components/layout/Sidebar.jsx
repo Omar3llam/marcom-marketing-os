@@ -14,11 +14,12 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layout, BarChart3, Send,
   Settings, PanelLeftClose, Plus, Search, ChevronDown,
-  Brain, FlaskConical, Microscope, Megaphone, FileText, Plug,
+  Brain, FlaskConical, Microscope, Megaphone, FileText, Plug, Lock,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
 import { roleAllowed } from '@/components/auth/RoleGate.jsx';
+import { usePlan } from '@/hooks/usePlan.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useConnections } from '@/hooks/useConnections.js';
 import { usePendingApprovals } from '@/hooks/usePendingApprovals.js';
@@ -31,21 +32,28 @@ import RadarStrip from './RadarStrip.jsx';
 import { appRoutes } from '@/app/routeManifest.js';
 import LumiStar from '@/components/brand/LumiStar.jsx';
 
-// Simplified navigation structure from Figma. `roles` (optional) gates an item
-// to the listed collabRoles; absent = visible to all (backwards-compatible).
-// CLIENT is a read-only stakeholder — its only operator-surface is Reports
-// (+ Settings in the footer). The operator items below carry a `roles`
-// constraint so a CLIENT's nav is the Reports surface, not a wall of locked
-// items. Reports itself is ungated: every role reads the reasoned narrative.
+// Simplified navigation structure from Figma. Two orthogonal gates:
+//   • `roles` (optional) gates an item to the listed collabRoles; absent =
+//     visible to all. CLIENT is a read-only stakeholder — its only operator
+//     surface is Reports (+ Settings), so the operator items carry a `roles`
+//     constraint and never render for a CLIENT (no wall of locked items).
+//   • `plan` gates an item to a workspace entitlement (FREE | GROWTH | PRO). A
+//     role-visible item BELOW the workspace's plan renders LOCKED (dimmed +
+//     upgrade tooltip) rather than hidden — that's the deliberate upsell.
+// Ordered FREE → GROWTH → PRO. Reports is ungated on both axes (every role +
+// every plan reads the reasoned narrative; it's the CLIENT seat's home).
 const tools = [
-  { key: 'overview',     label: 'Overview',     sub: 'Marketing OS command',        icon: Layout,         path: appRoutes.overview,     roles: ['STRATEGIST', 'BUYER'] },
-  { key: 'campaigns',    label: 'Campaigns',    sub: 'Portfolio + diagnosis',       icon: BarChart3,      path: appRoutes.campaigns,    roles: ['STRATEGIST', 'BUYER'] },
-  { key: 'intelligence', label: 'Intelligence', sub: 'Truth, insights, proof',      icon: Brain,          path: appRoutes.intelligence, roles: ['STRATEGIST', 'BUYER'] },
-  { key: 'testing',      label: 'Testing OS',   sub: 'Experiment readouts',         icon: FlaskConical,   path: appRoutes.testing,      roles: ['STRATEGIST', 'BUYER'] },
-  { key: 'measure',      label: 'Measurement',  sub: 'Scenarios + incrementality',  icon: Microscope,     path: appRoutes.measure,      roles: ['STRATEGIST', 'BUYER'] },
-  { key: 'leadership',   label: 'Reports',      sub: 'Weekly & monthly narratives', icon: FileText,       path: appRoutes.leadership },
-  { key: 'content',      label: 'Content Lab',  sub: 'Context-aware creation',      icon: Send,           path: appRoutes.contentLab,   roles: ['STRATEGIST', 'BUYER'] },
-  { key: 'publishing',   label: 'Publishing',   sub: 'Record live ad publishes',    icon: Megaphone,      path: appRoutes.publishing,   roles: ['STRATEGIST', 'BUYER'] },
+  // ── FREE — always unlocked ──────────────────────────────────
+  { key: 'overview',     label: 'Home',         sub: 'Your daily pulse',       icon: Layout,       path: appRoutes.overview,     roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
+  { key: 'campaigns',    label: 'Campaigns',    sub: 'Verdicts + diagnosis',   icon: BarChart3,    path: appRoutes.campaigns,    roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
+  { key: 'content',      label: 'Create',       sub: 'AI-powered content',     icon: Send,         path: appRoutes.contentLab,   roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
+  { key: 'leadership',   label: 'Reports',      sub: 'Weekly narratives',      icon: FileText,     path: appRoutes.leadership,   plan: 'FREE' },
+  // ── GROWTH — locked on FREE ─────────────────────────────────
+  { key: 'intelligence', label: 'Intelligence', sub: 'Truth, insights, proof', icon: Brain,        path: appRoutes.intelligence, roles: ['STRATEGIST', 'BUYER'], plan: 'GROWTH' },
+  { key: 'publishing',   label: 'Publishing',   sub: 'Content approvals',      icon: Megaphone,    path: appRoutes.publishing,   roles: ['STRATEGIST', 'BUYER'], plan: 'GROWTH' },
+  // ── PRO — locked on FREE / GROWTH ───────────────────────────
+  { key: 'testing',      label: 'Testing',      sub: 'A/B experiments',        icon: FlaskConical, path: appRoutes.testing,      roles: ['STRATEGIST', 'BUYER'], plan: 'PRO' },
+  { key: 'measure',      label: 'Measurement',  sub: 'Scenarios + holdouts',   icon: Microscope,   path: appRoutes.measure,      roles: ['STRATEGIST', 'BUYER'], plan: 'PRO' },
   // Copilot is demoted from the primary nav while it's a static placeholder — it
   // now lives as a teaser card in Overview. The /app/copilot route stays
   // reachable by direct URL (see App.jsx); restore this line to re-promote it.
@@ -148,6 +156,53 @@ function WorkspaceHQ({ workspace, onNewProject }) {
   );
 }
 
+// A role-visible nav item the workspace's plan doesn't unlock yet. Rendered as a
+// non-interactive, dimmed row (NEVER a link — a locked click must go nowhere)
+// with a hover tooltip that names the tier + links to pricing. The tooltip opens
+// DOWNWARD/inset, not `left-full`, because the nav's scroll container is
+// overflow-x-hidden and would clip anything escaping the sidebar width.
+function LockedNavItem({ tool, collapsed }) {
+  if (collapsed) {
+    return (
+      <div
+        title={`${tool.label} — ${tool.plan} plan`}
+        aria-disabled="true"
+        className="relative mb-0.5 flex cursor-not-allowed items-center justify-center rounded-xl p-3 opacity-40"
+      >
+        <tool.icon className="h-5 w-5 flex-shrink-0" strokeWidth={1.5} />
+        <Lock className="absolute right-1 top-1 h-2.5 w-2.5 text-lumi-subtle" strokeWidth={2} />
+      </div>
+    );
+  }
+  return (
+    <div
+      title={`${tool.label} — ${tool.plan} plan`}
+      aria-disabled="true"
+      className="group relative mb-0.5 flex cursor-not-allowed items-center gap-3 rounded-xl border-l-2 border-transparent px-3 py-2.5 opacity-60"
+    >
+      <tool.icon className="h-4 w-4 flex-shrink-0 text-lumi-muted" strokeWidth={1.5} />
+      <div className="min-w-0 flex-1">
+        <div className="truncate font-display text-sm font-medium leading-tight text-lumi-muted">{tool.label}</div>
+        <div className="mt-0.5 truncate text-xs text-lumi-subtle">{tool.sub}</div>
+      </div>
+      <Lock className="h-3 w-3 flex-shrink-0 text-lumi-subtle" strokeWidth={1.5} />
+
+      {/* Upgrade tooltip (hover) — opens below/inset so it isn't clipped. */}
+      <div className="absolute left-2 right-2 top-full z-50 mt-1 hidden group-hover:block">
+        <div className="card-floating rounded-lg p-3">
+          <p className="font-display text-xs font-semibold text-lumi-text">{tool.plan} feature</p>
+          <p className="mb-2 mt-1 text-[11px] leading-snug text-lumi-muted">
+            Upgrade to unlock {tool.label.toLowerCase()}.
+          </p>
+          <a href="/#pricing" className="text-[11px] font-medium text-lumi-accent hover:underline">
+            View plans →
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Sidebar({
   collapsed,
   onToggle,
@@ -160,10 +215,13 @@ export default function Sidebar({
   const { pathname } = useLocation();
   const { currentUser } = useAuth();
   const { role: collabRole } = useCollabRole();
+  const { canAccess, loading: planLoading } = usePlan();
   const { workspace, hasWorkspace, loading: workspaceLoading } = useWorkspace();
   const { data: connectionsData, loading: connectionsLoading } = useConnections();
 
   // Role-gated navigation — items with a `roles` constraint hide for other roles.
+  // Plan-gating is applied per-item at render (locked vs link), NOT by filtering:
+  // an under-plan item stays visible (dimmed + upgrade tooltip) as the upsell.
   const navItems = tools.filter((t) => roleAllowed(collabRole, t.roles));
 
   // Publishing approval badge: count of artifacts awaiting approval (the same
@@ -359,6 +417,12 @@ export default function Sidebar({
 
           {navItems.map((tool) => {
             const badge = alertsByKey[tool.key];
+            // Locked = role-visible but the workspace's plan doesn't reach it.
+            // Wait for the plan to load before locking so a paying operator never
+            // sees a flash of locks mid-load (err "unlocked" while planLoading).
+            if (!planLoading && !canAccess(tool.plan)) {
+              return <LockedNavItem key={tool.path} tool={tool} collapsed={collapsed} />;
+            }
             return (
               <NavLink
                 key={tool.path}

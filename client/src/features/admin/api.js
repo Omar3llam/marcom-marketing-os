@@ -11,3 +11,8 @@ export const fetchWorkspaces = ()   => api.get('/api/admin/workspaces').then((r)
 export const fetchUsers      = ()   => api.get('/api/admin/users').then((r) => r.data);
 export const seedDemo        = ()   => api.post('/api/admin/demo/seed').then((r) => r.data);
 export const deleteDemo      = (id) => api.delete(`/api/admin/demo/${id}`).then((r) => r.data);
+
+// Set a workspace's feature-gating entitlement (FREE | GROWTH | PRO). The manual
+// upgrade path — there is no billing.
+export const updateWorkspacePlan = (id, plan) =>
+  api.patch(`/api/admin/workspaces/${id}/plan`, { plan }).then((r) => r.data);

@@ -664,7 +664,10 @@ async function seedPhase7(ws) {
   const workspaceId = det(`ws:${ws.key}`);
   const minor = (major) => Math.round(major * 100); // EGP
 
-  await prisma.workspace.update({ where: { id: workspaceId }, data: { measurementTier: 'ENTERPRISE' } });
+  // measurementTier unlocks the attribution surface; plan PRO unlocks the
+  // feature-gated nav (Intelligence/Testing/Measurement) so the demo shows the
+  // whole product, not a wall of locked items.
+  await prisma.workspace.update({ where: { id: workspaceId }, data: { measurementTier: 'ENTERPRISE', plan: 'PRO' } });
 
   const testId = det(`p7inc:${ws.key}:META`);
   const row = {
