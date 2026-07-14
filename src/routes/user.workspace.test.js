@@ -16,7 +16,7 @@ const { updateUserMock } = vi.hoisted(() => ({ updateUserMock: vi.fn() }));
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
     user: { findFirst: vi.fn(), findUnique: vi.fn() },
-    workspace: { update: vi.fn() },
+    workspace: { update: vi.fn(), findUnique: vi.fn() },
   },
 }));
 
@@ -120,5 +120,49 @@ describe('PATCH /api/user/workspace — STRATEGIST gate', () => {
 
     expect(res.body).toEqual({ success: true, displayName: 'Buyer Bob' });
     expect(updateUserMock).toHaveBeenCalledWith(UID, { displayName: 'Buyer Bob' });
+  });
+});
+
+// ============================================================
+// GET /api/user/workspace — surfaces onboarding market + industry
+// ------------------------------------------------------------
+// market has no Workspace column (currency is derived from it at write time);
+// like industry, it rides on User.context. The Sidebar reads workspace.market
+// (else falls back to a hardcoded 'EG'), so the API must return it.
+// ============================================================
+describe('GET /api/user/workspace — market + industry from context', () => {
+  const baseWorkspace = {
+    id: WS, name: 'Acme', currency: 'SAR', createdAt: new Date('2026-01-01'),
+    spendTier: 't2', objective: 'roas', adChannels: ['META'],
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma.workspace.findUnique.mockResolvedValue(baseWorkspace);
+  });
+
+  it('returns the onboarding market (id) alongside industry', async () => {
+    prisma.user.findFirst.mockResolvedValue({
+      id: 'u1', workspaceId: WS, email: 'a@b.co', context: { market: 'sa', industry: 'saas' },
+    });
+
+    const res = await request(buildApp({ collabRole: 'STRATEGIST' }))
+      .get('/api/user/workspace')
+      .expect(200);
+
+    expect(res.body.workspace.market).toBe('sa');
+    expect(res.body.workspace.industry).toBe('saas');
+  });
+
+  it('market is null (not fabricated) when onboarding never set it', async () => {
+    prisma.user.findFirst.mockResolvedValue({
+      id: 'u1', workspaceId: WS, email: 'a@b.co', context: { industry: 'saas' },
+    });
+
+    const res = await request(buildApp({ collabRole: 'STRATEGIST' }))
+      .get('/api/user/workspace')
+      .expect(200);
+
+    expect(res.body.workspace.market).toBeNull();
   });
 });

@@ -41,9 +41,16 @@ export function workspaceColumnsFromContext(ctx) {
   const adChannels = Object.keys(channelMap)
     .filter((k) => channelMap[k])
     .map((k) => String(k).toUpperCase());
+  // When the goal is 'custom', promote the user's own words into the column so
+  // prompt consumers (copilot, portfolio briefing, reasoning) read the real
+  // objective instead of the opaque literal 'custom'. Empty / whitespace-only
+  // custom text falls back to 'custom' — never store an empty string.
+  const objective = ctx.objective === 'custom'
+    ? (ctx.customObjective?.trim() || 'custom')
+    : (ctx.objective ?? null);
   return {
     spendTier:  ctx.spendTier ?? null,
-    objective:  ctx.objective ?? null,
+    objective,
     adChannels,
   };
 }

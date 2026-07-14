@@ -68,6 +68,21 @@ describe('workspaceColumnsFromContext', () => {
     expect(out).toEqual({ spendTier: null, objective: null, adChannels: [] });
   });
 
+  it('promotes a custom objective’s free text into the column (not the literal "custom")', () => {
+    const out = workspaceColumnsFromContext({ objective: 'custom', customObjective: 'Grow B2B pipeline in KSA' });
+    expect(out.objective).toBe('Grow B2B pipeline in KSA');
+  });
+
+  it('falls back to the literal "custom" when the custom text is empty / whitespace', () => {
+    expect(workspaceColumnsFromContext({ objective: 'custom', customObjective: '   ' }).objective).toBe('custom');
+    expect(workspaceColumnsFromContext({ objective: 'custom' }).objective).toBe('custom');
+  });
+
+  it('leaves a preset objective untouched (customObjective is ignored)', () => {
+    const out = workspaceColumnsFromContext({ objective: 'roas', customObjective: 'ignored' });
+    expect(out.objective).toBe('roas');
+  });
+
   it('is null-safe for non-object input', () => {
     expect(workspaceColumnsFromContext(null)).toEqual({ spendTier: null, objective: null, adChannels: [] });
   });
