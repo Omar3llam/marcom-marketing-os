@@ -171,8 +171,8 @@ export const DEFAULTS = {
   name: '',
   industry: '',
   market: 'eg',
-  city: 'Cairo',
-  tag: '',
+  city: 'Cairo', // collected + shown in ReviewStep, but no downstream consumer (dialect derives city from message text)
+  tag: '', // deprecated — no step sets it, nothing reads it
   ages: { '25-34': true, '35-44': true },
   gender: 'all',
   interests: { Fashion: true },

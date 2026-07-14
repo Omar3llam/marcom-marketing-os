@@ -85,6 +85,9 @@ userRouter.get('/workspace', async (req, res) => {
         market:     user.context?.market ?? null,     // onboarding market id (eg/sa/…); context-only, no Workspace column — the Sidebar reads it (else falls back to 'EG')
         spendTier:  workspace.spendTier ?? ctxPrefs.spendTier,
         objective:  workspace.objective ?? ctxPrefs.objective,
+        // Stored onboarding preference only — NOT used for service routing. The
+        // real channel scope is driven by OAuth/Integration rows (a connected
+        // account), not this list. No service or client reads it (audit 2026-07).
         adChannels: workspace.adChannels?.length ? workspace.adChannels : ctxPrefs.adChannels,
       },
       hasWorkspace: true,
