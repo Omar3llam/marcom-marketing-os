@@ -7,52 +7,51 @@ import { cn } from '@/lib/utils.js';
 export function Pricing({ onStartFree }) {
   const tiers = [
     {
-      name: 'Starter',
-      price: '$99',
-      period: '/month',
-      description: 'For solo operators and small teams testing Lumi.',
+      name: 'Free',
+      price: '$0',
+      period: 'forever',
+      description: 'For solo marketers getting started.',
       features: [
-        'Up to 100 campaigns analyzed',
-        'Live Meta Ads integration',
-        'KILL/HOLD/SCALE verdicts',
-        'Basic outcome attribution',
-        'Email support',
+        'Meta + Google connectors',
+        'Campaign verdicts (Kill / Hold / Watch / Scale)',
+        'Ask Lumi — account-aware Copilot',
+        'AI-powered content creation',
+        'Weekly narrative reports',
       ],
-      cta: 'Get started',
+      cta: 'Start free',
       href: '/signup',
       popular: false,
     },
     {
       name: 'Growth',
-      price: '$299',
+      price: '$49',
       period: '/month',
-      description: 'For growing teams running multi-channel campaigns.',
+      description: 'For growing teams that need more signal.',
       features: [
-        'Up to 500 campaigns analyzed',
-        'Multi-workspace support',
-        'Advanced attribution engine',
-        'Custom brand voice + dialect',
-        'Slack integration',
-        'Priority support',
+        'Everything in Free',
+        'Blended Truth reconciliation',
+        'Intelligence: insights, unit economics & proof',
+        'Portfolio allocation & planning',
+        'Publishing + content approvals',
+        'Weekly AI briefing',
       ],
       cta: 'Get started',
       href: '/signup',
       popular: true,
     },
     {
-      name: 'Enterprise',
-      price: 'Custom',
-      period: '',
-      description: 'For agencies and large teams with complex needs.',
+      name: 'Pro',
+      price: '$149',
+      period: '/month',
+      description: 'For agencies and performance teams.',
       features: [
-        'Unlimited campaigns',
-        'White-label options',
-        'Dedicated success manager',
-        'Custom integrations',
-        'SLA + uptime guarantee',
-        'Advanced security & compliance',
+        'Everything in Growth',
+        'A/B Testing OS',
+        'Incrementality + holdout testing',
+        'Scenario planner',
+        'Priority support + custom onboarding',
       ],
-      cta: 'Contact sales',
+      cta: 'Contact us',
       href: 'mailto:sales@marcom.ai',
       popular: false,
     },
@@ -143,7 +142,7 @@ export function Pricing({ onStartFree }) {
                 )}
               >
                 {tier.cta}
-                {tier.cta === 'Contact sales' ? (
+                {tier.href.startsWith('mailto:') ? (
                   <Mail className="w-4 h-4" strokeWidth={2} />
                 ) : (
                   <ArrowRight className="w-4 h-4" strokeWidth={2} />

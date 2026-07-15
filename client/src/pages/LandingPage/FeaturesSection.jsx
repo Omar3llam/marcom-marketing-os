@@ -1,33 +1,42 @@
-import { Radar, Cpu, Database, Lock, Globe, Upload, ScanSearch, ArrowRight } from 'lucide-react';
+import { MessageSquare, Zap, Brain, Activity, BarChart2, FlaskConical } from 'lucide-react';
 import { useReveal } from './useReveal.js';
 
 export function CapabilitiesGrid() {
   const features = [
     {
-      Icon: Radar,
-      title: 'Outcome attribution',
-      body: 'Every verdict you publish is tracked back to the Meta ad. Real CTR, CPC, and ROAS feed into the next call — so routing chases revenue, not just approval rate.',
+      Icon: MessageSquare,
+      title: 'Ask Lumi anything',
+      body: 'Connected to your live campaign data. Ask why CPA jumped, which campaign to pause, where budget is bleeding — get real answers in seconds, not a dashboard to decode.',
+      badge: 'NEW',
       wide: true,
     },
     {
-      Icon: Cpu,
-      title: 'Dual-agent reasoning',
-      body: 'Claude handles the analysis; GPT pressure-tests the call. Both must agree before a verdict ships above 85% confidence.',
+      Icon: Zap,
+      title: 'Campaign verdicts',
+      body: 'Kill, Hold, Watch, or Scale — decided by real signals, not gut feel. CTR, frequency, ROAS, and audience fatigue, scored every sync.',
     },
     {
-      Icon: Database,
-      title: '90-day memory layer',
-      body: 'Verdicts, overrides, and outcomes are logged together. Lumi grounds each new call in your last quarter of decisions — no cold starts.',
+      Icon: Brain,
+      title: "Lumi's read",
+      body: "Open any campaign for Lumi's reasoning in plain language. Why it's on HOLD, what signal triggered the call, and what to do next.",
+      badge: 'NEW',
     },
     {
-      Icon: Lock,
-      title: '4-layer execution guard',
-      body: 'Auth → ownership → idempotency lock → Meta Graph. Every action is audit-logged. Override the verdict in one tap, with full rollback.',
+      Icon: Activity,
+      title: 'Fatigue forecast',
+      body: 'See which audiences are close to saturation before they get there. Frequency velocity projects the days until your ads stop working.',
+      badge: 'NEW',
     },
     {
-      Icon: Globe,
-      title: 'Tuned for MENA',
-      body: 'Aware of Ramadan windows, Friday/Saturday cycles, regional fatigue ceilings, and four local currencies — out of the box.',
+      Icon: BarChart2,
+      title: 'Blended truth',
+      body: 'Ad platforms over-report by 20–40%. Lumi reconciles their numbers against your actual business outcomes so you allocate against reality, not claims.',
+    },
+    {
+      Icon: FlaskConical,
+      title: 'Testing OS',
+      body: "Run A/B tests with honest confidence intervals. Lumi tells you when a result is statistically significant — and when it isn't.",
+      wide: true,
     },
   ];
   const [ref, shown] = useReveal();
@@ -87,13 +96,13 @@ export function HowItWorks() {
   const steps = [
     {
       n: '01',
-      title: 'Connect Meta',
-      body: 'Link your Meta Ads account. Lumi pulls it in live — every ad set, every KPI, every line item.',
+      title: 'Connect Meta or Google',
+      body: 'Link your Meta or Google Ads account. Lumi pulls it in live — every campaign, every KPI, every line item.',
     },
     {
       n: '02',
-      title: 'Lumi analyzes',
-      body: 'Dual-agent reasoning: Claude analyzes, GPT pressure-tests. Both must agree before a verdict ships above 85% confidence.',
+      title: 'Ask Lumi anything',
+      body: 'Ask about your campaigns and get verdicts, reasoning, and fatigue forecasts — all grounded in your live data, not generic advice.',
     },
     {
       n: '03',
@@ -110,7 +119,7 @@ export function HowItWorks() {
             How it works
           </div>
           <h2 className="font-display text-4xl sm:text-5xl font-bold tracking-[-0.035em] text-dark-base leading-tight max-w-2xl mx-auto">
-            Connect. Verdicts out. Execute in one tap.
+            Connect. Ask. Execute in one tap.
           </h2>
         </header>
 

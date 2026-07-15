@@ -86,7 +86,7 @@ function Navbar({ menuOpen, setMenuOpen }) {
               scrolled ? 'px-4 py-2' : 'px-4 py-2.5'
             }`}
           >
-            Get started
+            Ask Lumi free
             <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
           </Link>
         </div>
@@ -126,7 +126,7 @@ function Navbar({ menuOpen, setMenuOpen }) {
               onClick={() => setMenuOpen(false)}
               className="mt-1 w-full btn-gold px-4 py-2 rounded-xl text-sm"
             >
-              Get started →
+              Ask Lumi free →
             </Link>
           </div>
         </div>
