@@ -169,12 +169,12 @@ describe('Sidebar — Publishing approval badge', () => {
   });
 });
 
-describe('Sidebar — plan-based feature gating (locked nav items)', () => {
-  // A locked item renders its label but as a NON-interactive div (never a link),
-  // so `.closest('a')` is null. An unlocked item is a NavLink (an <a>).
+describe('Sidebar — plan-based feature gating (locked items hidden)', () => {
+  // Locked items are hidden COMPLETELY (not shown with a lock). A visible item is
+  // a NavLink (an <a>); an item above the plan is absent from the DOM entirely.
   const isLink = (getByText, label) => getByText(label).closest('a') != null;
 
-  it('PRO: every role-visible item is an interactive link (nothing locked)', () => {
+  it('PRO: every role-visible item is shown as an interactive link', () => {
     setPlan('PRO');
     const { getByText } = renderSidebar({ mobileMenuOpen: true });
     for (const label of ['Home', 'Campaigns', 'Create', 'Reports', 'Intelligence', 'Publishing', 'Testing', 'Measurement']) {
@@ -182,44 +182,34 @@ describe('Sidebar — plan-based feature gating (locked nav items)', () => {
     }
   });
 
-  it('FREE: the 4 FREE items link; Intelligence/Publishing (GROWTH) + Testing/Measurement (PRO) render locked', () => {
+  it('FREE: the 4 FREE items show; Intelligence/Publishing (GROWTH) + Testing/Measurement (PRO) are hidden', () => {
     setPlan('FREE');
-    const { getByText } = renderSidebar({ mobileMenuOpen: true });
-    // FREE tier — always unlocked
+    const { getByText, queryByText } = renderSidebar({ mobileMenuOpen: true });
+    // FREE tier — shown as links
     for (const label of ['Home', 'Campaigns', 'Create', 'Reports']) {
       expect(isLink(getByText, label)).toBe(true);
     }
-    // Above the plan — present but locked (visible upsell, not hidden)
+    // Above the plan — hidden completely (no label, no lock, no tooltip)
     for (const label of ['Intelligence', 'Publishing', 'Testing', 'Measurement']) {
-      expect(getByText(label)).toBeTruthy();          // still shown
-      expect(isLink(getByText, label)).toBe(false);   // but not navigable
+      expect(queryByText(label)).toBeNull();
     }
+    // and no upgrade tooltip is rendered at all
+    expect(queryByText(/view plans/i)).toBeNull();
   });
 
-  it('GROWTH: Intelligence/Publishing unlock; only Testing/Measurement (PRO) stay locked', () => {
+  it('GROWTH: Intelligence/Publishing show; Testing/Measurement (PRO) are hidden', () => {
     setPlan('GROWTH');
-    const { getByText } = renderSidebar({ mobileMenuOpen: true });
+    const { getByText, queryByText } = renderSidebar({ mobileMenuOpen: true });
     expect(isLink(getByText, 'Intelligence')).toBe(true);
     expect(isLink(getByText, 'Publishing')).toBe(true);
-    expect(isLink(getByText, 'Testing')).toBe(false);
-    expect(isLink(getByText, 'Measurement')).toBe(false);
+    expect(queryByText('Testing')).toBeNull();
+    expect(queryByText('Measurement')).toBeNull();
   });
 
-  it('every locked item exposes an upgrade path (View plans → /#pricing)', () => {
-    setPlan('FREE');
-    const { getAllByText } = renderSidebar({ mobileMenuOpen: true });
-    // one tooltip link per locked item (Intelligence, Publishing, Testing, Measurement)
-    const tips = getAllByText(/view plans/i);
-    expect(tips).toHaveLength(4);
-    for (const tip of tips) {
-      expect(tip.closest('a')).toHaveAttribute('href', '/#pricing');
-    }
-  });
-
-  it('while the plan is still loading, items are NOT locked (no flash for a paying operator)', () => {
+  it('while the plan is still loading, NOTHING is hidden (no flash for a paying operator)', () => {
     usePlan.mockReturnValue({ canAccess: () => false, loading: true });
     const { getByText } = renderSidebar({ mobileMenuOpen: true });
-    // loading guard wins → everything renders as a link despite canAccess=false
+    // loading guard wins → every role-visible item still renders as a link
     expect(isLink(getByText, 'Testing')).toBe(true);
     expect(isLink(getByText, 'Intelligence')).toBe(true);
   });
