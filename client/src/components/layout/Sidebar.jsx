@@ -14,7 +14,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layout, BarChart3, Send,
   Settings, PanelLeftClose, Plus, Search, ChevronDown,
-  Brain, FlaskConical, Microscope, Megaphone, FileText, Plug, Lock,
+  Brain, FlaskConical, Microscope, Megaphone, FileText, Plug,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
@@ -156,53 +156,6 @@ function WorkspaceHQ({ workspace, onNewProject }) {
   );
 }
 
-// A role-visible nav item the workspace's plan doesn't unlock yet. Rendered as a
-// non-interactive, dimmed row (NEVER a link — a locked click must go nowhere)
-// with a hover tooltip that names the tier + links to pricing. The tooltip opens
-// DOWNWARD/inset, not `left-full`, because the nav's scroll container is
-// overflow-x-hidden and would clip anything escaping the sidebar width.
-function LockedNavItem({ tool, collapsed }) {
-  if (collapsed) {
-    return (
-      <div
-        title={`${tool.label} — ${tool.plan} plan`}
-        aria-disabled="true"
-        className="relative mb-0.5 flex cursor-not-allowed items-center justify-center rounded-xl p-3 opacity-40"
-      >
-        <tool.icon className="h-5 w-5 flex-shrink-0" strokeWidth={1.5} />
-        <Lock className="absolute right-1 top-1 h-2.5 w-2.5 text-lumi-subtle" strokeWidth={2} />
-      </div>
-    );
-  }
-  return (
-    <div
-      title={`${tool.label} — ${tool.plan} plan`}
-      aria-disabled="true"
-      className="group relative mb-0.5 flex cursor-not-allowed items-center gap-3 rounded-xl border-l-2 border-transparent px-3 py-2.5 opacity-60"
-    >
-      <tool.icon className="h-4 w-4 flex-shrink-0 text-lumi-muted" strokeWidth={1.5} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate font-display text-sm font-medium leading-tight text-lumi-muted">{tool.label}</div>
-        <div className="mt-0.5 truncate text-xs text-lumi-subtle">{tool.sub}</div>
-      </div>
-      <Lock className="h-3 w-3 flex-shrink-0 text-lumi-subtle" strokeWidth={1.5} />
-
-      {/* Upgrade tooltip (hover) — opens below/inset so it isn't clipped. */}
-      <div className="absolute left-2 right-2 top-full z-50 mt-1 hidden group-hover:block">
-        <div className="card-floating rounded-lg p-3">
-          <p className="font-display text-xs font-semibold text-lumi-text">{tool.plan} feature</p>
-          <p className="mb-2 mt-1 text-[11px] leading-snug text-lumi-muted">
-            Upgrade to unlock {tool.label.toLowerCase()}.
-          </p>
-          <a href="/#pricing" className="text-[11px] font-medium text-lumi-accent hover:underline">
-            View plans →
-          </a>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function Sidebar({
   collapsed,
   onToggle,
@@ -219,10 +172,15 @@ export default function Sidebar({
   const { workspace, hasWorkspace, loading: workspaceLoading } = useWorkspace();
   const { data: connectionsData, loading: connectionsLoading } = useConnections();
 
-  // Role-gated navigation — items with a `roles` constraint hide for other roles.
-  // Plan-gating is applied per-item at render (locked vs link), NOT by filtering:
-  // an under-plan item stays visible (dimmed + upgrade tooltip) as the upsell.
-  const navItems = tools.filter((t) => roleAllowed(collabRole, t.roles));
+  // Role- AND plan-gated navigation. An item hides if the seat's role can't see
+  // it OR the workspace's plan doesn't reach it — locked items are hidden
+  // completely, never shown with a lock. Plan is only enforced once loaded
+  // (planLoading ⇒ show), so a paying operator never sees items flash away
+  // mid-load. Filtering here also keeps locked items out of the ⌘K palette,
+  // which reads navItems.
+  const navItems = tools.filter(
+    (t) => roleAllowed(collabRole, t.roles) && (planLoading || canAccess(t.plan)),
+  );
 
   // Publishing approval badge: count of artifacts awaiting approval (the same
   // usePendingApprovals feed the Publishing page uses — NOT plan approvals). Only
@@ -417,12 +375,6 @@ export default function Sidebar({
 
           {navItems.map((tool) => {
             const badge = alertsByKey[tool.key];
-            // Locked = role-visible but the workspace's plan doesn't reach it.
-            // Wait for the plan to load before locking so a paying operator never
-            // sees a flash of locks mid-load (err "unlocked" while planLoading).
-            if (!planLoading && !canAccess(tool.plan)) {
-              return <LockedNavItem key={tool.path} tool={tool} collapsed={collapsed} />;
-            }
             return (
               <NavLink
                 key={tool.path}
