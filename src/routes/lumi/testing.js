@@ -24,10 +24,14 @@ const requireStrategist = requireCollabRole(WORKSPACE_ROLE.STRATEGIST);
 export const testingRouter = Router();
 
 // ── Plan gate (PRO) ──────────────────────────────────────────
-// The whole Testing OS surface is PRO. Every route here is /tests* and
-// PRO-exclusive (nothing on a FREE/GROWTH surface reads it), so a router-wide
-// gate is correct. Runs before the per-route role gates below.
-testingRouter.use(requirePlan('PRO'));
+// The whole Testing OS surface is PRO — but SCOPE the gate to '/tests', never a
+// path-less router-wide use(). Every lumi sub-router is flat-mounted at '/' on
+// lumiRouter, so a request for a LATER sibling (connections, copilot, entities,
+// revenue, …) still passes through this router's stack first. A path-less
+// use(requirePlan('PRO')) would therefore 403 those FREE/GROWTH surfaces before
+// they ever reach their handler. Path-scoping confines the gate to this
+// router's own /tests* routes. Runs before the per-route role gates below.
+testingRouter.use('/tests', requirePlan('PRO'));
 
 // Resolve workspaceId — mirrors lumi/feed.js + portfolio.js. Never
 // fabricate a synthetic id (workspaceId columns are @db.Uuid).

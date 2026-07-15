@@ -146,4 +146,22 @@ describe('requirePlan — route wiring', () => {
     const res = await request(routerApp()).get('/tests');
     expect(res.status).not.toBe(403);
   });
+
+  // The bug this scoping fixes: every lumi sub-router is flat-mounted at '/', and
+  // connections/copilot/entities/… are mounted AFTER testing — so a request for
+  // one of them passes THROUGH testingRouter's stack first. A path-less
+  // testingRouter.use(requirePlan('PRO')) used to 403 those FREE surfaces before
+  // they reached their handler. Mount testing before a FREE sibling and prove the
+  // sibling is reached (would be a plan 403 if the gate leaked router-wide).
+  it('REGRESSION: the testing PRO gate does NOT leak onto a later FREE sibling route', async () => {
+    h.plan = 'FREE';
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => { req.userId = 'u1'; req.workspaceId = 'ws1'; next(); });
+    app.use('/', testingRouter);                                    // mounted first, like production
+    app.get('/connections', (_req, res) => res.json({ ok: true })); // a FREE sibling mounted AFTER
+    const res = await request(app).get('/connections');
+    expect(res.status).not.toBe(403);
+    expect(res.body).toEqual({ ok: true });
+  });
 });
