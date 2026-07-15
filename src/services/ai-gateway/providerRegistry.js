@@ -63,6 +63,12 @@ export const PROVIDER_REGISTRY = Object.freeze({
     method: claudeProvider.generateBriefing,
   },
 
+  // Portfolio ADVISORY → Claude (best at analysis; prose, never a verdict)
+  [CAPABILITY.ANALYZE_PORTFOLIO]: {
+    provider: PROVIDER.CLAUDE,
+    method: claudeProvider.analyzePortfolio,
+  },
+
   // Copilot Q&A → Claude (account-aware prose answer)
   [CAPABILITY.ANSWER_QUESTION]: {
     provider: PROVIDER.CLAUDE,
@@ -126,6 +132,7 @@ const PROVIDER_METHOD_MAP = Object.freeze({
     [CAPABILITY.ANALYZE_CREATIVE]: claudeProvider.validateContent,
     [CAPABILITY.EXPLAIN_VERDICT]: claudeProvider.explainVerdict,
     [CAPABILITY.GENERATE_BRIEFING]: claudeProvider.generateBriefing,
+    [CAPABILITY.ANALYZE_PORTFOLIO]: claudeProvider.analyzePortfolio,
     [CAPABILITY.ANSWER_QUESTION]: claudeProvider.answerQuestion,
     [CAPABILITY.VALIDATE_CONTENT]: claudeProvider.validateContent,
     [CAPABILITY.RANK_VARIANTS]: claudeProvider.rankVariants,
@@ -142,6 +149,7 @@ const PROVIDER_METHOD_MAP = Object.freeze({
     [CAPABILITY.VALIDATE_CONTENT]: openaiProvider.validateContent,
     [CAPABILITY.EXPLAIN_VERDICT]: openaiProvider.explainVerdict,
     [CAPABILITY.GENERATE_BRIEFING]: openaiProvider.generateBriefing,
+    [CAPABILITY.ANALYZE_PORTFOLIO]: openaiProvider.analyzePortfolio,
     [CAPABILITY.ANSWER_QUESTION]: openaiProvider.answerQuestion,
   },
   [PROVIDER.HIGGSFIELD]: {

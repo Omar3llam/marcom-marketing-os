@@ -7,6 +7,10 @@
 //      health recording). This is the first real ingestion sink.
 //   2. sweepGuardrails — after fresh metrics land, enforce guardrail rules →
 //      PROPOSED Decisions the human confirms (never auto-executed).
+//   3. runSweep — re-score the freshly-landed data NOW (deterministic connector
+//      verdicts + fatigue + the portfolio advisory) instead of leaving it for the
+//      next agentic tick. Without this, ingestion and analysis were separate crons
+//      and a sync's data sat unanalysed until the loop happened to fire.
 //
 // NOTE: the prior worker read `prisma.credential` (a model that does NOT exist
 // in the schema) and analyzed via Claude into Action rows — that path threw at
@@ -19,6 +23,7 @@ import { SYNC_QUEUE_NAME } from '../queues/index.js';
 import { logger } from '../utils/logger.js';
 import { runConnectorSync } from '../services/connectors/ConnectorSyncService.js';
 import { sweepGuardrails } from '../services/guardrail-engine/GuardrailSweepService.js';
+import { runSweep } from '../services/agentic-loop/AgenticLoopService.js';
 import { DEFAULT_CRON_SYNC_DATE_PRESET } from '../services/connectors/connectorConfig.js';
 
 // ── Worker Job Handler ────────────────────────────────────────
@@ -36,6 +41,7 @@ async function processSyncJob(job) {
     ? [workspaceId]
     : [...new Set(ingest.results.map((r) => r.workspaceId))];
   let guardrailHits = 0;
+  let swept = 0;
   for (const wsId of workspaceIds) {
     try {
       const g = await sweepGuardrails(wsId);
@@ -43,10 +49,22 @@ async function processSyncJob(job) {
     } catch (err) {
       logger.warn({ wsId, err: err.message }, '[syncWorker] guardrail sweep failed — continuing');
     }
+
+    // 3. Analyse the data we just landed. force:true because this job IS the
+    //    reason to re-score — the sweep's 15-minute idempotency window would
+    //    otherwise reuse a pre-sync agenda and the fresh data would go unread.
+    //    Per-workspace isolation: a sweep failure never blocks the next workspace
+    //    and never fails the ingest that already succeeded.
+    try {
+      await runSweep(wsId, { trigger: 'SCHEDULED', force: true });
+      swept += 1;
+    } catch (err) {
+      logger.warn({ wsId, err: err.message }, '[syncWorker] post-sync sweep failed — continuing');
+    }
   }
 
-  logger.info({ jobId: job.id, synced: ingest.synced, failed: ingest.failed, guardrailHits }, '[syncWorker] complete');
-  return { status: 'complete', ...ingest, guardrailHits };
+  logger.info({ jobId: job.id, synced: ingest.synced, failed: ingest.failed, guardrailHits, swept }, '[syncWorker] complete');
+  return { status: 'complete', ...ingest, guardrailHits, swept };
 }
 
 // ── Worker Bootstrap ──────────────────────────────────────────
