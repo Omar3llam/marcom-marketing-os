@@ -8,7 +8,7 @@
 // ============================================================
 import express from 'express';
 import request from 'supertest';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Proxy prisma: any prisma.<model>.<method>() resolves to undefined, so the
 // allowed-role smoke lands in a handler that fails closed (4xx/5xx), never 403.
@@ -56,6 +56,11 @@ const ROUTES = [
 ];
 
 describe('Lumi BUYER/STRATEGIST mutation routes — collab-role gate', () => {
+  // Lift the plan paywall so the ROLE gate is what we test: /tests* (PRO) and
+  // /approvals (GROWTH) now sit behind requirePlan, which would otherwise 403
+  // first (mocked prisma ⇒ plan defaults to FREE).
+  beforeAll(() => { process.env.PLAN_OVERRIDE = 'PRO'; });
+  afterAll(() => { delete process.env.PLAN_OVERRIDE; });
   beforeEach(() => vi.clearAllMocks());
 
   for (const r of ROUTES) {

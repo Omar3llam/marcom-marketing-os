@@ -75,7 +75,7 @@ api.interceptors.request.use(
  * @param {Error} error - Axios error
  * @returns {AppError} Domain error
  */
-function mapTransportError(error) {
+export function mapTransportError(error) {
   const status = error.response?.status;
   const endpoint = error.config?.url || 'unknown';
   const message = error.response?.data?.message || error.message;
@@ -101,6 +101,25 @@ function mapTransportError(error) {
     const serverError = error.response?.data?.error;
     const serverHint  = error.response?.data?.hint;
     const serverCode  = error.response?.data?.code;
+
+    // Plan paywall (requirePlan) — a distinct, actionable 403: the workspace
+    // isn't entitled to this feature. Tag it so callers can offer an upgrade
+    // path instead of the generic "contact admin". NO global redirect here —
+    // route-level PlanGate already handles the upgrade UX for navigation, and a
+    // hard redirect on any plan-403 could yank a user off a shared/FREE surface.
+    if (serverError === 'PLAN_REQUIRED') {
+      const { required, current } = error.response?.data ?? {};
+      return new AuthError({
+        message: error.response?.data?.message || `This feature requires the ${required} plan.`,
+        code: 'PLAN_REQUIRED',
+        httpStatus: 403,
+        fallbackAction: 'Upgrade your plan to unlock this feature',
+        requestId,
+        sessionId,
+        context: { endpoint, requiredPlan: required, currentPlan: current },
+      });
+    }
+
     return new AuthError({
       message: serverError || 'Access denied',
       code: serverCode || 'AUTH_ACCESS_DENIED',

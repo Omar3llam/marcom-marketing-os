@@ -14,6 +14,7 @@ import { getReconciliation } from '../../services/reconciliation/ReconciliationS
 import { designTest, listTests, getTest, recordCounts, concludeIncrementality } from '../../services/incrementality-engine/IncrementalityService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { requireMeasurementTier } from '../../middleware/requireMeasurementTier.js';
+import { requirePlan }        from '../../middleware/requirePlan.js';
 import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
 
 // Measurement (MEASURE surface) is STRATEGIST-only. The tier gate below blocks
@@ -22,9 +23,16 @@ const requireStrategist = requireCollabRole(WORKSPACE_ROLE.STRATEGIST);
 
 export const measurementRouter = Router();
 
-// The tier gate (the honesty/product seam) is the shared middleware so the
-// Phase-7C bridge in lumi/testing.js enforces the identical paywall.
-measurementRouter.use(['/attribution', '/reconciliation', '/incrementality'], (req, res, next) => requireMeasurementTier(req, res, next));
+const MEASURE_PATHS = ['/attribution', '/reconciliation', '/incrementality'];
+
+// TWO stacked gates, plan first so the actionable message is "upgrade to PRO"
+// before "measurement not enabled". They are DELIBERATELY distinct axes:
+//   requirePlan('PRO')     — the workspace's billing entitlement (this paywall)
+//   requireMeasurementTier — attribution depth (Agency/Enterprise), independent
+// A PRO workspace with measurementTier=NONE still 403s the second gate — that's
+// intended (measurement is deeper than the base PRO plan), not a bug.
+measurementRouter.use(MEASURE_PATHS, requirePlan('PRO'));
+measurementRouter.use(MEASURE_PATHS, (req, res, next) => requireMeasurementTier(req, res, next));
 
 // ─────────────────────────────────────────────────────────────
 // GET /api/lumi/attribution?model= — Attributed credit per channel

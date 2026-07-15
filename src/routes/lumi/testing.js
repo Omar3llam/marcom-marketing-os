@@ -13,6 +13,7 @@ import { getWeeklyAgenda, commitAgenda } from '../../services/test-generator/Tes
 import { startTest, recordVariantMetrics, concludeTest, promoteTestToHoldout } from '../../services/test-tracker/TestTrackerService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { requireMeasurementTier } from '../../middleware/requireMeasurementTier.js';
+import { requirePlan }        from '../../middleware/requirePlan.js';
 import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
 
 // Testing is a BUYER/STRATEGIST surface (TESTING is not in a CLIENT's visibleStates).
@@ -21,6 +22,12 @@ const requireOperator = requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.S
 const requireStrategist = requireCollabRole(WORKSPACE_ROLE.STRATEGIST);
 
 export const testingRouter = Router();
+
+// ── Plan gate (PRO) ──────────────────────────────────────────
+// The whole Testing OS surface is PRO. Every route here is /tests* and
+// PRO-exclusive (nothing on a FREE/GROWTH surface reads it), so a router-wide
+// gate is correct. Runs before the per-route role gates below.
+testingRouter.use(requirePlan('PRO'));
 
 // Resolve workspaceId — mirrors lumi/feed.js + portfolio.js. Never
 // fabricate a synthetic id (workspaceId columns are @db.Uuid).

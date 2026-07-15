@@ -17,6 +17,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { requireCollabRole, resolveCollabRole } from '../../middleware/requireCollabRole.js';
+import { requirePlan } from '../../middleware/requirePlan.js';
 import { WORKSPACE_ROLE, visibleStates, normalizeRole } from '../../services/collaboration/roleScope.js';
 import { generateNarrative, listNarratives, getNarrative } from '../../services/narrative-engine/NarrativeService.js';
 import { NARRATIVE_PERIOD, NARRATIVE_AUDIENCE } from '../../services/narrative-engine/narrativeTypes.js';
@@ -25,6 +26,13 @@ import { inboxFor } from '../../services/collaboration/InboxService.js';
 import { ALERT_KIND } from '../../services/collaboration/notificationRouter.js';
 
 export const collaborationRouter = Router();
+
+// ── Plan gate (GROWTH) ───────────────────────────────────────
+// Approvals render on the Intelligence → Growth Strategy surface (GROWTH). The
+// '/approvals' prefix covers list + open + /:id/decide. Narratives (read AND
+// generate), inbox, roles/me, and handoff stay ungated — Reports/Leadership is
+// a FREE surface end to end (every role + every plan reads the narrative).
+collaborationRouter.use('/approvals', requirePlan('GROWTH'));
 
 // Resolve workspaceId — mirrors lumi/measurement.js. Never fabricate a uuid.
 async function resolveWorkspaceId(req) {

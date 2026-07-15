@@ -15,12 +15,20 @@ import { runScenario } from '../../services/scenario-engine/ScenarioService.js';
 import { getEconomicsAssessment, setEconomics } from '../../services/unit-economics/EconomicsService.js';
 import { buildPlan, listPlans, getPlan, promotePlanMix } from '../../services/planning/PlanService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { requirePlan }        from '../../middleware/requirePlan.js';
 import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
 
 // Planning (PLAN surface) is STRATEGIST-only — not in a BUYER/CLIENT's visibleStates.
 const requireStrategist = requireCollabRole(WORKSPACE_ROLE.STRATEGIST);
 
 export const planningRouter = Router();
+
+// ── Plan gates ───────────────────────────────────────────────
+// economics · goals · plans render on the Intelligence → Growth Strategy
+// surface (GROWTH). /scenario is the what-if planner on the Measurement surface
+// (PRO). Mixed tiers within one router → targeted path gates, not a blanket use.
+planningRouter.use(['/economics', '/goals', '/plans'], requirePlan('GROWTH'));
+planningRouter.use('/scenario', requirePlan('PRO'));
 
 // Resolve workspaceId — mirrors lumi/memory.js. Never fabricate a synthetic
 // id (workspaceId columns are @db.Uuid).

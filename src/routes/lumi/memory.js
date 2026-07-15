@@ -12,9 +12,16 @@ import { getBriefing }     from '../../services/pattern-engine/PatternService.js
 import { promotePattern }  from '../../services/pattern-engine/PlaybookService.js';
 import { setConsent, getNetworkInsights } from '../../services/network-engine/NetworkService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { requirePlan }        from '../../middleware/requirePlan.js';
 import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
 
 export const memoryRouter = Router();
+
+// ── Plan gate (GROWTH) ───────────────────────────────────────
+// The account briefing (Memory Moat) renders on the Intelligence → Growth
+// Strategy surface (GROWTH). The /patterns + /network routes stay ungated
+// (strategist-only network governance, not a plan surface).
+memoryRouter.use('/briefing', requirePlan('GROWTH'));
 
 // Resolve workspaceId — mirrors lumi/feed.js + portfolio.js. Never
 // fabricate a synthetic id (workspaceId columns are @db.Uuid).
