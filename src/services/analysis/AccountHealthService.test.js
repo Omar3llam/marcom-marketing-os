@@ -140,14 +140,34 @@ describe('healthLabel — boundaries', () => {
 });
 
 describe('computeAccountHealth — per-campaign impact surfaced for the table', () => {
-  it('returns { entityId, impactScore, verdict } for each scored campaign', () => {
+  it('returns { entityId, name, impactScore, verdict } for each scored campaign', () => {
     const out = computeAccountHealth(
-      [row({ entityId: 'a', spendMinor: 100000 })],
+      [row({ entityId: 'a', name: 'Ramadan Cold', spendMinor: 100000 })],
       { a: { verdict: 'KILL', roas: 0.5 } },
     );
     expect(out.campaigns).toHaveLength(1);
-    expect(out.campaigns[0]).toMatchObject({ entityId: 'a', verdict: 'KILL' });
+    expect(out.campaigns[0]).toMatchObject({ entityId: 'a', name: 'Ramadan Cold', verdict: 'KILL' });
     expect(out.campaigns[0].impactScore).toBeGreaterThanOrEqual(1);
     expect(out.campaigns[0].impactScore).toBeLessThanOrEqual(10);
+  });
+
+  // The Overview renders these rows straight from /entities/health with no other
+  // name join, so dropping `name` here renders every alert as "Unnamed campaign".
+  it('carries the real campaign name through — never drops it', () => {
+    const out = computeAccountHealth(
+      [row({ entityId: 'a', name: 'Eid Sale', spendMinor: 80000 }),
+        row({ entityId: 'b', name: 'PMax Warm', spendMinor: 20000 })],
+      { a: { verdict: 'KILL', roas: 0.5 }, b: { verdict: 'SCALE', roas: 4 } },
+    );
+    expect(Object.fromEntries(out.campaigns.map((c) => [c.entityId, c.name])))
+      .toEqual({ a: 'Eid Sale', b: 'PMax Warm' });
+  });
+
+  it('a nameless row yields null, never a fabricated name', () => {
+    const out = computeAccountHealth(
+      [row({ entityId: 'a', name: undefined, spendMinor: 100000 })],
+      { a: { verdict: 'HOLD', roas: 2 } },
+    );
+    expect(out.campaigns[0].name).toBeNull();
   });
 });

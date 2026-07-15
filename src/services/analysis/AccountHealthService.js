@@ -101,8 +101,11 @@ export function healthLabel(score) {
  * @returns {null | {
  *   score: number, label: string,
  *   wastedSpend: { minor: number, pct: number },
- *   campaigns: Array<{ entityId, impactScore, verdict }>
+ *   campaigns: Array<{ entityId, name, impactScore, verdict }>
  * }}  — null (never 0) when there is nothing honest to score.
+ *
+ * `name` is inert passthrough (never scored) so a health row is identifiable on
+ * its own — the Overview renders these rows directly and has no other name join.
  */
 export function computeAccountHealth(campaigns, verdictMap = {}) {
   if (!Array.isArray(campaigns) || campaigns.length === 0) return null;
@@ -127,6 +130,7 @@ export function computeAccountHealth(campaigns, verdictMap = {}) {
 
     scored.push({
       entityId: c.entityId,
+      name: c.name ?? null,
       spendMinor: spend,
       verdict,
       healthScore: verdictToHealthScore(verdict, ctrPct, frequency),
@@ -155,6 +159,8 @@ export function computeAccountHealth(campaigns, verdictMap = {}) {
       minor: wastedSpendMinor,
       pct: Math.round((wastedSpendMinor / accountSpendMinor) * 100),
     },
-    campaigns: scored.map((c) => ({ entityId: c.entityId, impactScore: c.impactScore, verdict: c.verdict })),
+    campaigns: scored.map((c) => ({
+      entityId: c.entityId, name: c.name, impactScore: c.impactScore, verdict: c.verdict,
+    })),
   };
 }
