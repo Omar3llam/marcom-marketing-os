@@ -1,11 +1,7 @@
 import { Link } from 'react-router-dom';
-import { Zap, ArrowRight, Skull } from 'lucide-react';
+import { Sparkles, Send, ArrowRight, Zap } from 'lucide-react';
 
 export function Hero() {
-  const kill = <strong className="text-verdict-kill-text font-bold">KILL</strong>;
-  const hold = <strong className="text-verdict-hold-text font-bold">HOLD</strong>;
-  const scale = <strong className="text-verdict-scale-text font-bold">SCALE</strong>;
-
   return (
     <section id="top" className="relative pt-20 pb-24 px-4 sm:px-6">
       {/* Faint dot grid background */}
@@ -38,12 +34,16 @@ export function Hero() {
           </div>
 
           <h1 className="font-display font-extrabold tracking-[-0.045em] leading-[0.94] text-lumi-text text-balance text-5xl sm:text-6xl lg:text-7xl xl:text-8xl">
-            Verdicts,<br />
-            not dashboards.
+            Just ask.<br />
+            Lumi knows<br />
+            your campaigns.
           </h1>
 
           <p className="mt-7 text-lg text-dark-soft max-w-[540px] leading-relaxed">
-            Marcom AI builds Lumi — the agent that turns your live Meta Ads into a sharp call. Connect your account, get {kill}, {hold}, or {scale} with the cash impact attached, then watch the real CTR and ROAS roll back in. Built for media buyers across MENA.
+            Connect your Meta or Google account and ask Lumi anything — why a
+            campaign is bleeding, which one to pause first, where your budget is
+            going. Real answers from your live data, not generic advice. Built for
+            media buyers across MENA.
           </p>
 
           <div className="mt-10 flex flex-wrap items-center gap-4">
@@ -52,7 +52,7 @@ export function Hero() {
               className="btn-gold inline-flex items-center gap-2 px-7 py-3.5 text-[15px] rounded-xl shadow-gold-glow hover:shadow-card-hover transition-all"
             >
               <Zap className="w-4 h-4" strokeWidth={2} />
-              Get started
+              Ask Lumi free
               <ArrowRight className="w-4 h-4" strokeWidth={2} />
             </Link>
             <a
@@ -64,16 +64,16 @@ export function Hero() {
           </div>
 
           <div className="mt-12 flex flex-wrap items-center gap-7">
-            <MicroStat label="Median verdict" value="18s" />
+            <MicroStat label="Grounded in" value="Your live data" />
             <DividerV />
-            <MicroStat label="Verdict types" value="KILL / HOLD / SCALE" />
+            <MicroStat label="Verdicts" value="KILL / HOLD / SCALE" />
             <DividerV />
             <MicroStat label="Currencies" value="EGP · SAR · AED · KWD" mono />
           </div>
         </div>
 
-        {/* RIGHT — Hero composition with verdict cards */}
-        <HeroComposition />
+        {/* RIGHT — Copilot conversation preview */}
+        <ChatDemo />
       </div>
     </section>
   );
@@ -96,114 +96,90 @@ function MicroStat({ label, value, mono }) {
   );
 }
 
-// ── Hero composition: 3 floating verdict cards ──
-function HeroComposition() {
+// ── Hero composition: a Lumi Copilot conversation ──
+// An illustrative preview of the real account-aware Copilot (Overview → Ask Lumi).
+// The suggested questions mirror the live panel's prompts; numbers are an example.
+const DEMO_QUESTION = 'Why did my CPA jump on the Ramadan campaign?';
+const DEMO_SUGGESTIONS = [
+  'Which campaign should I pause first?',
+  'Where is my budget being wasted?',
+  "What's causing audience fatigue?",
+];
+
+function ChatDemo() {
   return (
     <div className="relative h-[540px] hidden lg:block">
-      {/* BACK: Small context card */}
+      {/* Main chat card */}
       <div
-        className="absolute top-0 right-0 w-64 bg-surface-card border border-surface-border rounded-2xl p-4 shadow-card"
+        className="absolute inset-x-0 top-6 mx-auto w-[420px] bg-surface-card border border-surface-border rounded-2xl shadow-panel overflow-hidden"
         style={{
-          transform: 'rotate(4deg)',
           animation: 'float-y 8s ease-in-out infinite',
+          boxShadow: '0 28px 56px rgba(0,0,0,0.10), 0 0 40px rgba(246,201,69,0.06)',
         }}
       >
-        <div className="font-mono text-[9px] tracking-[0.08em] uppercase text-dark-muted mb-3">
-          Context snapshot
-        </div>
-        {[
-          { tag: 'CPM', txt: '$14.80 avg', bad: false },
-          { tag: 'CTR', txt: '1.2% TOFU drop', bad: true },
-          { tag: 'GEO', txt: 'Cairo dominant', bad: false },
-        ].map((r) => (
-          <div key={r.tag} className="flex items-center gap-2 py-1 border-t border-dashed border-surface-border">
-            <span className="font-mono text-[9px] font-semibold tracking-[0.08em] px-1.5 py-0.5 rounded bg-lumi-accent/10 text-lumi-accent min-w-[38px] text-center">
-              {r.tag}
+        {/* Header */}
+        <div className="flex items-center gap-2 px-5 py-3.5 border-b border-surface-border">
+          <Sparkles className="w-4 h-4 text-lumi-accent" strokeWidth={1.5} />
+          <span className="font-display text-sm font-semibold text-dark-base">Ask Lumi</span>
+          <span className="text-xs text-dark-muted">about this account</span>
+          <span className="ml-auto flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-signal-scale shadow-scale-glow animate-pulse" />
+            <span className="font-mono text-[10px] tracking-[0.08em] uppercase text-signal-scale font-semibold">
+              Live
             </span>
-            <span className={`text-[11px] ${r.bad ? 'text-verdict-kill-text' : 'text-dark-soft'}`}>
-              {r.txt}
-            </span>
-          </div>
-        ))}
-      </div>
+          </span>
+        </div>
 
-      {/* MIDDLE: Big verdict KILL card */}
-      <div
-        className="absolute top-24 left-0 w-96 bg-surface-card border border-signal-kill/20 rounded-2xl p-6 shadow-panel"
-        style={{
-          transform: 'rotate(-1.5deg)',
-          animation: 'float-y 6s ease-in-out infinite 0.6s',
-          boxShadow: '0 28px 56px rgba(0,0,0,0.10), 0 0 40px rgba(239,68,68,0.08)',
-        }}
-      >
-        <div className="flex justify-between items-center mb-3.5">
-          <span className="font-mono text-[10px] tracking-[0.12em] uppercase text-lumi-accent font-semibold">
-            Verdict locked · 92%
-          </span>
-          <StagePill stage="DYING" />
-        </div>
-        <div className="flex items-baseline gap-3.5 mb-2.5">
-          <Skull className="w-9 h-9 text-verdict-kill-text" strokeWidth={1.5} />
-          <span className="font-display text-7xl font-extrabold tracking-[-0.05em] leading-none text-verdict-kill-text">
-            KILL
-          </span>
-        </div>
-        <div className="font-display text-base font-semibold text-dark-base mb-4 leading-snug">
-          Stop the bleed.<br />Reallocate to PMax warm.
-        </div>
-        <div className="p-3.5 bg-verdict-kill-bg rounded-lg">
-          <div className="font-mono text-[10px] text-dark-muted tracking-[0.08em] uppercase">
-            Financial impact
+        {/* Conversation */}
+        <div className="p-5 space-y-4">
+          {/* User question */}
+          <div className="flex justify-end">
+            <div className="max-w-[85%] rounded-xl rounded-br-sm bg-lumi-accent px-3.5 py-2.5 text-sm text-lumi-bg font-medium">
+              {DEMO_QUESTION}
+            </div>
           </div>
-          <div className="metric-display text-dark-base mt-0.5">
-            $1,180 / wk
-          </div>
-          <div className="font-mono text-[11px] text-verdict-kill-text font-semibold mt-0.5">
-            saved by killing now
-          </div>
-        </div>
-      </div>
 
-      {/* FRONT: Radar tick card */}
-      <div
-        className="absolute bottom-8 right-10 w-58 bg-surface-card border border-surface-border rounded-xl p-4.5 shadow-card"
-        style={{ transform: 'rotate(2deg)' }}
-      >
-        <div className="flex items-center gap-2 mb-3">
-          <span className="w-1.5 h-1.5 rounded-full bg-signal-scale shadow-scale-glow animate-pulse" />
-          <span className="font-mono text-[10px] tracking-[0.08em] uppercase text-signal-scale font-semibold">
-            Watching · 14 ad sets
-          </span>
+          {/* Lumi answer */}
+          <div className="flex justify-start">
+            <div className="max-w-[90%] rounded-xl rounded-bl-sm bg-surface-light border border-surface-border px-3.5 py-3">
+              <span className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.08em] uppercase text-lumi-accent font-semibold mb-2">
+                <Sparkles className="w-3 h-3" strokeWidth={2} />
+                Lumi
+              </span>
+              <p className="text-sm text-dark-soft leading-relaxed">
+                Ramadan Wave · Cold ME is bleeding{' '}
+                <strong className="text-verdict-kill-text font-semibold">EGP 14,160/week</strong>.
+                Frequency hit 4.2 — the audience has seen this ad too many times.
+                Verdict: <strong className="text-verdict-kill-text font-bold">KILL</strong>.
+                Recover the budget and move it to PMax Retargeting Warm
+                (<span className="text-verdict-scale-text font-semibold">ROAS 4.8×</span>).
+              </p>
+            </div>
+          </div>
         </div>
-        <div className="flex gap-1 items-end h-9">
-          {[12, 18, 10, 22, 28, 16, 30, 24, 18, 32, 26, 36, 20].map((h, i) => (
+
+        {/* Suggested questions */}
+        <div className="px-5 pb-5 space-y-2">
+          {DEMO_SUGGESTIONS.map((q) => (
             <div
-              key={i}
-              className={`flex-1 rounded-sm ${i === 12 ? 'bg-lumi-accent' : 'bg-surface-border-strong'}`}
-              style={{ height: `${h}px` }}
-            />
+              key={q}
+              className="w-full rounded-lg bg-lumi-elevated border border-surface-border px-3 py-2 text-left text-xs text-dark-soft"
+            >
+              {q}
+            </div>
           ))}
         </div>
-        <div className="flex justify-between mt-2.5 text-[10px] text-dark-muted font-mono">
-          <span>Mon</span>
-          <span>Sun</span>
+
+        {/* Input affordance */}
+        <div className="px-5 pb-5">
+          <div className="flex items-center gap-2 rounded-lg border border-surface-border bg-surface-light px-3 py-2">
+            <span className="flex-1 text-xs text-dark-muted">Ask about your campaigns…</span>
+            <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-lumi-accent">
+              <Send className="w-3.5 h-3.5 text-lumi-bg" strokeWidth={2} />
+            </span>
+          </div>
         </div>
       </div>
     </div>
-  );
-}
-
-function StagePill({ stage }) {
-  const colors = {
-    DYING: 'bg-stage-dying/10 text-stage-dying border-stage-dying/30',
-    FATIGUED: 'bg-stage-fatigued/10 text-stage-fatigued border-stage-fatigued/30',
-    TESTING: 'bg-stage-testing/10 text-stage-testing border-stage-testing/30',
-    STABLE: 'bg-stage-stable/10 text-stage-stable border-stage-stable/30',
-    SCALING: 'bg-stage-scaling/10 text-stage-scaling border-stage-scaling/30',
-  };
-  return (
-    <span className={`font-mono text-[9px] tracking-[0.08em] uppercase font-semibold px-2 py-1 rounded border ${colors[stage]}`}>
-      {stage}
-    </span>
   );
 }
