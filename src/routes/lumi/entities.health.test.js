@@ -89,6 +89,14 @@ describe('GET /entities/health', () => {
     expect(byId).toEqual({ a: 'SCALE', b: 'KILL' });
   });
 
+  // The Overview alert list renders c.name straight off this payload — without it
+  // every alert reads "Unnamed campaign".
+  it('carries the campaign name onto the health rows', async () => {
+    const res = await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(200);
+    expect(Object.fromEntries(res.body.campaigns.map((c) => [c.entityId, c.name])))
+      .toEqual({ a: 'A', b: 'B' });
+  });
+
   // The Overview "Revenue data needed" list reads these rows, so the flag has to
   // survive the health composition — and only for a real tracking gap.
   it('decorates needsRevenue: a spending CONVERSION campaign with no measured revenue', async () => {
