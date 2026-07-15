@@ -17,7 +17,13 @@ vi.mock('../../services/entity-graph/index.js', () => ({
   getConnectorCampaigns,
   getCampaignAdSets: vi.fn(),
 }));
-vi.mock('../../services/verdict-engine/index.js', () => ({ getConnectorVerdicts }));
+// getConnectorVerdicts is mocked (the scoring math is covered elsewhere), but
+// needsRevenueData is the REAL deterministic helper — the route's needsRevenue
+// decoration must be exercised, not stubbed into always-false.
+vi.mock('../../services/verdict-engine/index.js', async () => {
+  const real = await vi.importActual('../../services/verdict-engine/connectorVerdictService.js');
+  return { getConnectorVerdicts, needsRevenueData: real.needsRevenueData };
+});
 vi.mock('../../lib/prisma.js', () => ({
   prisma: { user: { findUnique: vi.fn().mockResolvedValue({ collabRole: null }) } },
 }));
@@ -81,6 +87,19 @@ describe('GET /entities/health', () => {
     const res = await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(200);
     const byId = Object.fromEntries(res.body.campaigns.map((c) => [c.entityId, c.verdict]));
     expect(byId).toEqual({ a: 'SCALE', b: 'KILL' });
+  });
+
+  // The Overview "Revenue data needed" list reads these rows, so the flag has to
+  // survive the health composition — and only for a real tracking gap.
+  it('decorates needsRevenue: a spending CONVERSION campaign with no measured revenue', async () => {
+    getConnectorCampaigns.mockResolvedValue([
+      { entityId: 'a', name: 'Sales No Rev', objective: 'OUTCOME_SALES', spendMinor: 80000, revenueMinor: 0, ctr: 0.015, frequency: 1, roas: null },
+      { entityId: 'b', name: 'Brand Reach', objective: 'OUTCOME_AWARENESS', spendMinor: 20000, revenueMinor: 0, ctr: 0.015, frequency: 1, roas: null },
+    ]);
+    const res = await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(200);
+    const byId = Object.fromEntries(res.body.campaigns.map((c) => [c.entityId, c.needsRevenue]));
+    expect(byId.a).toBe(true);  // conversion + no revenue → a closable tracking gap
+    expect(byId.b).toBe(false); // awareness → no revenue is EXPECTED, never flagged
   });
 
   it('no connector data → honest nulls, never a fabricated 0', async () => {

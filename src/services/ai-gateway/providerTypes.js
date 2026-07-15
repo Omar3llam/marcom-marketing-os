@@ -20,6 +20,7 @@ export const CAPABILITY = Object.freeze({
   ANALYZE_CREATIVE:        'ANALYZE_CREATIVE',
   EXPLAIN_VERDICT:         'EXPLAIN_VERDICT', // on-demand prose reasoning for a campaign verdict
   GENERATE_BRIEFING:       'GENERATE_BRIEFING', // 1-2 sentence portfolio state summary
+  ANALYZE_PORTFOLIO:       'ANALYZE_PORTFOLIO', // ADVISORY account-level narration (never assigns verdicts)
   ANSWER_QUESTION:         'ANSWER_QUESTION', // account-aware Q&A for the Copilot chat
 
   // Visual & multimedia
@@ -66,9 +67,10 @@ export const CAPABILITY_FALLBACK = Object.freeze({
   [CAPABILITY.GENERATE_CAPTIONS]: PROVIDER.CLAUDE,
   // Claude-primary reasoning → OpenAI fallback (OpenAI methods added alongside
   // this map; each mirrors the Claude method's prompt + output shape exactly).
-  [CAPABILITY.EXPLAIN_VERDICT]:   PROVIDER.OPENAI,
-  [CAPABILITY.GENERATE_BRIEFING]: PROVIDER.OPENAI,
-  [CAPABILITY.ANSWER_QUESTION]:   PROVIDER.OPENAI,
+  [CAPABILITY.EXPLAIN_VERDICT]:    PROVIDER.OPENAI,
+  [CAPABILITY.GENERATE_BRIEFING]:  PROVIDER.OPENAI,
+  [CAPABILITY.ANALYZE_PORTFOLIO]:  PROVIDER.OPENAI,
+  [CAPABILITY.ANSWER_QUESTION]:    PROVIDER.OPENAI,
   [CAPABILITY.GENERATE_STRATEGY]: PROVIDER.OPENAI,
   [CAPABILITY.GENERATE_AUDIENCE]: PROVIDER.OPENAI,
   [CAPABILITY.VALIDATE_CONTENT]:  PROVIDER.OPENAI,

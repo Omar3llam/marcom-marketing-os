@@ -6,7 +6,7 @@
 // Empty state shown honestly when no alerts.
 // ============================================================
 import { Link } from 'react-router-dom';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, CircleDollarSign } from 'lucide-react';
 import { appRoutes } from '@/app/routeManifest.js';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 
@@ -16,6 +16,11 @@ export default function AlertsPanel({ campaigns = [] }) {
     .filter((c) => c.verdict === 'KILL' || (c.verdict === 'WATCH' && c.impactScore >= 7))
     .sort((a, b) => b.impactScore - a.impactScore)
     .slice(0, 3);
+
+  // Conversion campaigns whose ROAS can't be scored for want of revenue DATA —
+  // a tracking gap the operator can close, NOT a performance problem. Server-
+  // computed (needsRevenue) so this never disagrees with the Campaigns table.
+  const needsRevenue = campaigns.filter((c) => c.needsRevenue);
 
   return (
     <div className="card-raised p-4">
@@ -50,6 +55,33 @@ export default function AlertsPanel({ campaigns = [] }) {
               </p>
             </Link>
           ))}
+        </div>
+      )}
+
+      {needsRevenue.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-lumi-border">
+          <p className="text-xs font-medium text-lumi-text mb-2 flex items-center gap-1.5">
+            <CircleDollarSign size={12} className="text-signal-watch" />
+            Revenue data needed
+          </p>
+          <div className="space-y-1">
+            {needsRevenue.slice(0, 3).map((c) => (
+              <p key={c.entityId} className="text-xs text-lumi-muted truncate">
+                · {c.name || 'Unnamed campaign'}
+              </p>
+            ))}
+          </div>
+          {needsRevenue.length > 3 && (
+            <p className="text-xs text-lumi-subtle mt-1">
+              +{needsRevenue.length - 3} more
+            </p>
+          )}
+          <Link
+            to={appRoutes.settingsRevenue}
+            className="mt-2 block text-xs text-lumi-accent hover:underline"
+          >
+            Upload revenue data to unlock ROAS →
+          </Link>
         </div>
       )}
     </div>

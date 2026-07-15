@@ -453,6 +453,39 @@ export async function generateBriefing({ system, user }) {
 }
 
 /**
+ * ANALYZE_PORTFOLIO — an ADVISORY account-level narration.
+ *
+ * Returns PROSE (`insight`), deliberately NOT JSON: this capability advises
+ * ALONGSIDE the deterministic verdict engine and must never emit a verdict
+ * structure that could be mistaken for — or written over — a real Decision.
+ * The caller resolves every number and verdict from real rows before building
+ * the prompt; this method never invents data (the prompt forbids it).
+ */
+export async function analyzePortfolio({ system, user }) {
+  const result = await callClaude({ systemPrompt: system, userPrompt: user, maxTokens: 220 });
+
+  if (!result.success) {
+    return result;
+  }
+
+  const insight = (result.text || '').trim();
+  if (!insight) {
+    return {
+      success: false,
+      error: { type: ERROR_TYPE.INVALID_RESPONSE, message: 'Empty portfolio analysis response' },
+      metadata: result.metadata,
+    };
+  }
+
+  return {
+    success: true,
+    output: { insight },
+    artifacts: [],
+    metadata: result.metadata,
+  };
+}
+
+/**
  * Copilot Q&A — account-aware prose answer. The route assembles the account
  * context into `system` and the conversation transcript + question into `user`
  * (callClaude is single-turn, so multi-turn history is rendered into the prompt).

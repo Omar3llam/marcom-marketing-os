@@ -196,7 +196,15 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts
                             : <span className="w-3.5 h-3.5 inline-block" />}
                           <span>
                             <span className="block font-display font-medium text-sm text-lumi-text">{c.name}</span>
-                            <span className="block font-mono text-[11px] text-lumi-subtle">{c.channel}</span>
+                            <span className="block font-mono text-[11px] text-lumi-subtle">
+                              {c.channel}
+                              {/* A conversion campaign that spent but measured no revenue: its
+                                  ROAS cell reads "—" because the DATA is missing, not because
+                                  it performed badly. Say so next to the name. */}
+                              {c.needsRevenue && (
+                                <span className="ml-1.5 text-signal-watch">· needs revenue</span>
+                              )}
+                            </span>
                           </span>
                         </button>
                       </td>

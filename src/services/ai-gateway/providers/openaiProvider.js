@@ -505,6 +505,26 @@ export async function generateBriefing({ system, user }) {
   return { success: true, output: { briefing }, artifacts: [], metadata: result.metadata };
 }
 
+// ANALYZE_PORTFOLIO — prose advisory; caller pre-builds { system, user }
+// (mirrors claudeProvider.analyzePortfolio — same prompt, same output shape).
+export async function analyzePortfolio({ system, user }) {
+  const result = await callOpenAI({
+    systemPrompt: system, userPrompt: user, model: CONTENT_MODEL, maxTokens: 220, jsonMode: false,
+  });
+  if (!result.success) return result;
+
+  const insight = (result.text || '').trim();
+  if (!insight) {
+    return {
+      success: false,
+      error: { type: ERROR_TYPE.INVALID_RESPONSE, message: 'Empty portfolio analysis response' },
+      metadata: result.metadata,
+    };
+  }
+
+  return { success: true, output: { insight }, artifacts: [], metadata: result.metadata };
+}
+
 // ANSWER_QUESTION — prose; caller pre-builds { system, user } (mirrors claudeProvider.answerQuestion)
 export async function answerQuestion({ system, user }) {
   const result = await callOpenAI({

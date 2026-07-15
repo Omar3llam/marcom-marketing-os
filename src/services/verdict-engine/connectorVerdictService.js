@@ -63,6 +63,27 @@ export function hasMeasuredRevenue(row) {
 }
 
 /**
+ * PURE: is this campaign's ROAS unscoreable for want of revenue DATA (not for
+ * want of performance)? True only for a CONVERSION-objective campaign that spent
+ * real money and measured no revenue — i.e. a tracking gap the user can close by
+ * uploading revenue (Settings → Revenue data) or wiring a purchase pixel.
+ *
+ * Deliberately NOT true for:
+ *   • a genuine awareness/reach campaign (no revenue is EXPECTED — scoring it on
+ *     ROAS would be the fabrication the awareness track exists to prevent),
+ *   • an unknown objective (we never claim a tracking gap we can't prove),
+ *   • a campaign with no spend (nothing to attribute revenue to yet).
+ *
+ * This is the deterministic signal behind the "needs revenue" UI — it is derived
+ * from real rows, never from an LLM.
+ */
+export function needsRevenueData(row) {
+  const spend = row?.spendMinor;
+  if (!Number.isFinite(spend) || spend <= 0) return false;
+  return revenueExpectedFor(row?.objective) && !hasMeasuredRevenue(row);
+}
+
+/**
  * PURE: did this campaign actually deliver — real spend AND impressions — even
  * with no measured revenue? An awareness/reach campaign qualifies for the engine's
  * engagement-only track. A PR #156 zero-spend roster row (spend 0, impressions 0)

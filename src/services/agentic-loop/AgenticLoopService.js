@@ -213,79 +213,23 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
     logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] reasoning pre-generation skipped');
   }
 
-  // 5. Pre-generate portfolio briefing (1-2 sentences) for the Overview AI Insight
-  //    card. Best-effort — never fails the sweep.
+  // 5. Portfolio advisory (ANALYZE_PORTFOLIO) → LoopRun.aiInsight for the Overview
+  //    AI Insight card. It NARRATES the deterministic verdicts persisted in step 1
+  //    — it never assigns or overrides one (PortfolioAnalysisService writes no
+  //    Decision rows). Best-effort + dynamically imported: an AI failure, cold
+  //    gateway, or missing key never touches the sweep audit.
+  //
+  //    NOTE: this replaces an inline GENERATE_BRIEFING block that selected
+  //    entityId/spendMinor/ctr/roas/isAwareness/revenueMinor from prisma.campaign —
+  //    none of which are Campaign columns (they live on MetricSnapshot). Prisma
+  //    threw on every run and the block's own catch swallowed it, so aiInsight was
+  //    NEVER generated. The service reads getConnectorCampaigns (the projection
+  //    that really carries those metrics) instead.
   try {
-    const { execute: runGateway } = await import('../ai-gateway/ProviderGateway.js');
-    const { CAPABILITY } = await import('../ai-gateway/providerTypes.js');
-    const { buildPortfolioBriefingPrompt } = await import('../ai-gateway/prompts/portfolioBriefingPrompt.js');
-    const { computeAccountHealth } = await import('../analysis/AccountHealthService.js');
-
-    // Build verdictMap from the verdicts in inputs (reduce avoids for-loop N+1 heuristic)
-    const verdictMap = (inputs.verdicts ?? []).reduce((map, v) => {
-      if (v.entityId) map[v.entityId] = { verdict: v.verdict, rationale: v.rationale };
-      return map;
-    }, {});
-
-    // Load campaigns (connector entity graph) to compute health
-    const campaigns = await prisma.campaign.findMany({
-      where: { workspaceId },
-      select: {
-        entityId: true, name: true, spendMinor: true, ctr: true, frequency: true,
-        roas: true, objective: true, isAwareness: true, revenueMinor: true,
-      },
-    });
-
-    const health = computeAccountHealth(campaigns, verdictMap);
-    if (health && campaigns.length > 0) {
-      // Load workspace to get objective
-      const workspace = await prisma.workspace.findUnique({
-        where: { id: workspaceId },
-        select: { objective: true },
-      });
-
-      // Count campaigns by verdict
-      const verdictCounts = { kill: 0, refresh: 0, watch: 0, hold: 0, scale: 0 };
-      for (const c of campaigns) {
-        const verdict = verdictMap[c.entityId]?.verdict?.toLowerCase();
-        if (verdict && verdictCounts[verdict] !== undefined) verdictCounts[verdict]++;
-      }
-
-      // Count awareness campaigns and conversion campaigns without revenue
-      const awarenessCount = campaigns.filter((c) => c.isAwareness === true).length;
-      const conversionNoRevenueCount = campaigns.filter((c) => !c.isAwareness && (!c.revenueMinor || c.revenueMinor === 0)).length;
-
-      const stats = {
-        total: campaigns.length,
-        kill: verdictCounts.kill,
-        refresh: verdictCounts.refresh,
-        watch: verdictCounts.watch,
-        hold: verdictCounts.hold,
-        scale: verdictCounts.scale,
-        healthScore: health.score,
-        healthLabel: health.label,
-        wastedPct: health.wastedSpend.pct,
-        awarenessCount,
-        conversionNoRevenueCount,
-      };
-
-      const { system, user } = buildPortfolioBriefingPrompt(stats, workspace);
-      const result = await runGateway({
-        capability: CAPABILITY.GENERATE_BRIEFING,
-        input: { system, user },
-        workspaceId,
-      });
-
-      if (result.success && result.output?.briefing) {
-        // Store in the current LoopRun
-        await prisma.loopRun.update({
-          where: { id: loopRun.id },
-          data: { aiInsight: result.output.briefing },
-        });
-      }
-    }
+    const { runPortfolioAnalysis } = await import('../analysis/PortfolioAnalysisService.js');
+    await runPortfolioAnalysis(workspaceId, { loopRunId: loopRun.id });
   } catch (err) {
-    logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] briefing generation skipped');
+    logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] portfolio analysis skipped');
   }
 
   return { loopRun, agenda };

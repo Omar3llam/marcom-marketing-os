@@ -11,7 +11,7 @@
 // ============================================================
 import { Router } from 'express';
 import { getConnectorCampaigns, getCampaignAdSets } from '../../services/entity-graph/index.js';
-import { getConnectorVerdicts } from '../../services/verdict-engine/index.js';
+import { getConnectorVerdicts, needsRevenueData } from '../../services/verdict-engine/index.js';
 import { computeAccountHealth } from '../../services/analysis/AccountHealthService.js';
 import { computeFatigueForecast } from '../../services/analysis/FatigueForecastService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
@@ -25,9 +25,15 @@ export const entitiesRouter = Router();
 // drifted since it was generated). Env-tunable; matches the sweep refresh window.
 const REASONING_STALE_MS = Number(process.env.REASONING_STALE_MS ?? 24 * 60 * 60 * 1000);
 
+// `needsRevenue` is decorated here (not in the pure entityGraphEngine projection,
+// which stays dependency-free): a CONVERSION campaign that spent real money and
+// measured no revenue — its ROAS can't be scored until revenue data lands. Fully
+// deterministic (real rows, no LLM), so the UI can invite an upload honestly
+// instead of showing a fabricated 0.00x.
 entitiesRouter.get('/entities/campaigns', async (req, res) => {
   try {
-    const campaigns = await getConnectorCampaigns(req.workspaceId);
+    const rows = await getConnectorCampaigns(req.workspaceId);
+    const campaigns = rows.map((c) => ({ ...c, needsRevenue: needsRevenueData(c) }));
     return res.json({ workspaceId: req.workspaceId ?? null, generatedAt: new Date().toISOString(), campaigns });
   } catch (err) {
     logger.error({ err: err.message, workspaceId: req.workspaceId }, '[lumi/entities] campaigns failed');
@@ -69,7 +75,19 @@ entitiesRouter.get('/entities/health', requireCollabRole(WORKSPACE_ROLE.BUYER, W
         score: null, label: null, wastedSpend: { minor: null, pct: null }, campaigns: [],
       });
     }
-    return res.json({ workspaceId: req.workspaceId ?? null, generatedAt: new Date().toISOString(), ...health });
+
+    // Carry the same deterministic needsRevenue flag onto the health rows the
+    // Overview renders, so "needs revenue" reads identically on both surfaces
+    // (one source of truth — computed from the raw rows, never the health score).
+    const needsRevenueIds = new Set(campaigns.filter(needsRevenueData).map((c) => c.entityId));
+    const decorated = (health.campaigns ?? []).map((c) => ({ ...c, needsRevenue: needsRevenueIds.has(c.entityId) }));
+
+    return res.json({
+      workspaceId: req.workspaceId ?? null,
+      generatedAt: new Date().toISOString(),
+      ...health,
+      campaigns: decorated,
+    });
   } catch (err) {
     logger.error({ err: err.message, workspaceId: req.workspaceId }, '[lumi/entities] health failed');
     return res.status(500).json({ error: 'HealthUnavailable', message: 'Request failed' });

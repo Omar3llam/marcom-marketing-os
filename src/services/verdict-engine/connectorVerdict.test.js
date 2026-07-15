@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildConnectorVerdictTree, hasMeasuredRevenue, hasEngagement,
-  isAwarenessObjective, revenueExpectedFor,
+  isAwarenessObjective, revenueExpectedFor, needsRevenueData,
 } from './connectorVerdictService.js';
 import { rollupVerdicts } from './verdictEngine.js';
 
@@ -177,5 +177,35 @@ describe('objective-aware rationale end to end (no fabricated verdicts)', () => 
   it('OUTCOME_SALES WITH measured revenue → a real revenue verdict, objective irrelevant', () => {
     const { tree } = buildConnectorVerdictTree(WS, [row({ objective: 'OUTCOME_SALES' })]); // has revenue (roas 4)
     expect(rollupVerdicts(tree).children[0].verdict).toBe('SCALE');
+  });
+});
+
+// needsRevenueData backs the "needs revenue" UI. It must name a MEASUREMENT gap
+// (fixable by uploading revenue) and never smear a campaign that is doing fine.
+describe('needsRevenueData — the "upload revenue" signal', () => {
+  it('a CONVERSION campaign that spent but measured no revenue → true (a tracking gap)', () => {
+    expect(needsRevenueData(row({ objective: 'OUTCOME_SALES', revenueMinor: 0, roas: null }))).toBe(true);
+  });
+
+  it('a genuine AWARENESS campaign is never asked for revenue (none is expected)', () => {
+    expect(needsRevenueData(row({ objective: 'OUTCOME_AWARENESS', revenueMinor: 0, roas: null }))).toBe(false);
+    expect(needsRevenueData(row({ objective: 'REACH', revenueMinor: 0, roas: null }))).toBe(false);
+  });
+
+  it('a conversion campaign WITH measured revenue is already scoreable → false', () => {
+    expect(needsRevenueData(row({ objective: 'OUTCOME_SALES' }))).toBe(false); // roas 4
+  });
+
+  it('an UNKNOWN objective never claims a tracking gap we cannot prove', () => {
+    expect(needsRevenueData(row({ objective: null, revenueMinor: 0, roas: null }))).toBe(false);
+  });
+
+  it('a zero-spend roster row has nothing to attribute revenue to → false', () => {
+    expect(needsRevenueData(row({ objective: 'OUTCOME_SALES', spendMinor: 0, revenueMinor: 0, roas: null }))).toBe(false);
+  });
+
+  it('tolerates a malformed/empty row without throwing', () => {
+    expect(needsRevenueData(undefined)).toBe(false);
+    expect(needsRevenueData({})).toBe(false);
   });
 });
