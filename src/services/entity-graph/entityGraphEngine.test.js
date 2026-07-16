@@ -80,6 +80,70 @@ describe('entityGraphEngine.effectiveByEntity — overlay actual revenue onto th
   });
 });
 
+// A connector row is a rolling-window aggregate re-stamped on every sync, so a
+// once-uploaded revenue drifts away from the spend it gets divided by. Past the
+// bound we stop scoring it rather than publish a confidently wrong ROAS. The lag
+// is measured BETWEEN THE ROWS, never against the wall clock, so this stays pure.
+describe('entityGraphEngine.effectiveByEntity — revenue staleness bound', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const platformAt = (iso, over = {}) => ({ entityId: 'a', source: 'META', date: iso, spendMinor: 10000, revenueMinor: 0, roas: null, ...over });
+  const manualAt = (iso, revenueMinor = 40000) => ({ entityId: 'a', source: 'MANUAL', date: iso, spendMinor: 0, revenueMinor });
+
+  it('revenue within the bound still overlays and is marked fresh', () => {
+    // platform 29 days ahead of the upload → inside a 30-day bound
+    const eff = effectiveByEntity([platformAt('2026-07-30'), manualAt('2026-07-01')], { maxRevenueAgeMs: 30 * DAY }).get('a');
+    expect(eff.revenueMinor).toBe(40000);
+    expect(eff.roas).toBe(4);
+    expect(eff.revenueStale).toBe(false);
+  });
+
+  it('revenue lagging the platform row past the bound does NOT overlay — no scored ROAS', () => {
+    // platform 31 days ahead of the upload → the spend has moved on
+    const eff = effectiveByEntity([platformAt('2026-08-01'), manualAt('2026-07-01')], { maxRevenueAgeMs: 30 * DAY }).get('a');
+    expect(eff.revenueMinor).toBe(0);      // platform's own figure, untouched
+    expect(eff.roas).toBeNull();           // never a stale-revenue ROAS
+    expect(eff.revenueStale).toBe(true);   // "revenue data outdated", not "never uploaded"
+  });
+
+  it('a stale manual upload never blanks a fresh platform pixel revenue', () => {
+    // The regression the honest-null instinct would cause: nulling revenueMinor
+    // on stale would discard the platform's OWN current revenue.
+    const eff = effectiveByEntity(
+      [platformAt('2026-08-01', { revenueMinor: 25000, roas: 2.5 }), manualAt('2026-07-01')],
+      { maxRevenueAgeMs: 30 * DAY },
+    ).get('a');
+    expect(eff.revenueMinor).toBe(25000);  // pixel revenue stands on its own
+    expect(eff.roas).toBe(2.5);
+    expect(eff.revenueStale).toBe(true);
+  });
+
+  it('an actual NEWER than the platform row is fresh, never stale (negative lag)', () => {
+    const eff = effectiveByEntity([platformAt('2026-07-01'), manualAt('2026-07-20')], { maxRevenueAgeMs: 30 * DAY }).get('a');
+    expect(eff.revenueMinor).toBe(40000);
+    expect(eff.revenueStale).toBe(false);
+  });
+
+  it('exactly at the bound still overlays (only PAST it goes stale)', () => {
+    const eff = effectiveByEntity([platformAt('2026-07-31'), manualAt('2026-07-01')], { maxRevenueAgeMs: 30 * DAY }).get('a');
+    expect(eff.revenueStale).toBe(false);
+    expect(eff.revenueMinor).toBe(40000);
+  });
+
+  it('a never-synced-again account is NOT stale — its revenue and spend are contemporaries', () => {
+    // Both rows old in wall-clock terms, but aligned with each other. A wall-clock
+    // Date.now() bound would wrongly flag this; connectorHealth owns staleness here.
+    const eff = effectiveByEntity([platformAt('2020-01-02'), manualAt('2020-01-01')], { maxRevenueAgeMs: 30 * DAY }).get('a');
+    expect(eff.revenueStale).toBe(false);
+    expect(eff.roas).toBe(4);
+  });
+
+  it('the bound is order-independent and defaults without an options arg', () => {
+    const rows = [manualAt('2026-07-01'), platformAt('2026-07-02')];
+    expect(effectiveByEntity(rows).get('a').revenueMinor).toBe(40000); // default 30d
+    expect(effectiveByEntity([...rows].reverse()).get('a').revenueMinor).toBe(40000);
+  });
+});
+
 describe('entityGraphEngine shapers — null-where-absent (honest "—", never a fabricated 0)', () => {
   it('toCampaignRow lifts real metrics verbatim', () => {
     const row = toCampaignRow(
@@ -90,6 +154,17 @@ describe('entityGraphEngine shapers — null-where-absent (honest "—", never a
       entityId: 'c1', name: 'Summer Promo', channel: 'META', adSetCount: 3,
       spendMinor: 4200, roas: 2.1, ctr: 0.03, frequency: 1.4, currency: 'EGP',
     });
+  });
+
+  // revenueStale has to survive the projection or the reader can never tell
+  // "revenue outdated" from "never uploaded" — two different things to say.
+  it('toCampaignRow carries revenueStale through, defaulting false', () => {
+    const stale = toCampaignRow({ id: 'c1', name: 'A', channel: 'META' },
+      { spendMinor: 100, revenueStale: true, date: '2026-06-01' });
+    expect(stale.revenueStale).toBe(true);
+    const fresh = toCampaignRow({ id: 'c2', name: 'B', channel: 'META' },
+      { spendMinor: 100, date: '2026-06-01' }); // no actual row at all
+    expect(fresh.revenueStale).toBe(false);
   });
 
   it('toCampaignRow lifts reach verbatim and nulls it when unreported', () => {

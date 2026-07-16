@@ -39,6 +39,16 @@ function latestOf(list) {
   return best;
 }
 
+// How far an actual-revenue row may lag the platform row it decorates before it
+// stops being evidence about that spend. Measured BETWEEN THE TWO ROWS' dates
+// (not against the wall clock) so this engine stays pure: a connector row is a
+// rolling-window aggregate re-stamped every sync, so as the platform row marches
+// forward a once-uploaded revenue drifts further from the spend it is divided by.
+// Past this bound we stop scoring it rather than publish a confidently wrong ROAS.
+// An account whose syncing stopped entirely is NOT stale by this measure — its
+// revenue and spend are still contemporaries (connectorHealth owns that story).
+export const REVENUE_MAX_AGE_MS = Number(process.env.REVENUE_MAX_AGE_DAYS || 30) * 24 * 60 * 60 * 1000;
+
 /**
  * PURE: reduce snapshots to ONE effective row per entity, overlaying actual
  * revenue onto the platform row. The latest PLATFORM row supplies spend +
@@ -47,10 +57,16 @@ function latestOf(list) {
  * uploaded revenue lights up ROAS without its spend:0 shadowing the real spend,
  * and a live re-sync of the platform row can never clobber it (separate source).
  *
+ * An actual lagging the platform row by more than `maxRevenueAgeMs` is NOT
+ * overlaid: the row keeps its own platform figures and carries `revenueStale`
+ * so the reader can say "revenue data outdated" instead of scoring a ROAS that
+ * pairs old revenue with newer spend. A fresh platform pixel revenue therefore
+ * still stands on its own — a stale manual upload never blanks it.
+ *
  * No actual rows → identical to latestByEntity (zero behaviour change for the
  * common platform-only account). Order-independent. Returns Map<entityId, snap>.
  */
-export function effectiveByEntity(snapshots = []) {
+export function effectiveByEntity(snapshots = [], { maxRevenueAgeMs = REVENUE_MAX_AGE_MS } = {}) {
   const groups = new Map();
   for (const s of snapshots) {
     if (!s || s.entityId == null) continue;
@@ -65,16 +81,30 @@ export function effectiveByEntity(snapshots = []) {
     if (!base) continue;
 
     const actual = latestOf(snaps.filter((s) => ACTUAL_SOURCES.has(s.source)));
-    if (actual && actual !== base && Number.isFinite(actual.revenueMinor) && actual.revenueMinor > 0) {
-      const spendMinor = base.spendMinor;
-      out.set(entityId, {
-        ...base,
-        revenueMinor: actual.revenueMinor,
-        roas: Number.isFinite(spendMinor) && spendMinor > 0 ? actual.revenueMinor / spendMinor : null,
-      });
-    } else {
+    const hasRevenue = actual && actual !== base
+      && Number.isFinite(actual.revenueMinor) && actual.revenueMinor > 0;
+
+    if (!hasRevenue) {
       out.set(entityId, base);
+      continue;
     }
+
+    // Negative lag (an actual NEWER than the platform row) is fresh, never stale.
+    const lagMs = new Date(base.date).getTime() - new Date(actual.date).getTime();
+    if (lagMs > maxRevenueAgeMs) {
+      // Keep the platform row untouched — including its own pixel revenue, which
+      // is current even when a manual upload has gone stale.
+      out.set(entityId, { ...base, revenueStale: true });
+      continue;
+    }
+
+    const spendMinor = base.spendMinor;
+    out.set(entityId, {
+      ...base,
+      revenueMinor: actual.revenueMinor,
+      roas: Number.isFinite(spendMinor) && spendMinor > 0 ? actual.revenueMinor / spendMinor : null,
+      revenueStale: false,
+    });
   }
   return out;
 }
@@ -96,6 +126,10 @@ function metricsOf(snap) {
     clicks:       snap?.clicks ?? null,
     currency:    snap?.currency ?? null,
     lastDate:    snap?.date ?? null,
+    // true only when a real actual-revenue row exists but lags the platform row
+    // past the bound — i.e. "revenue data outdated", distinct from never having
+    // uploaded any (false), which the needs-revenue surface already covers.
+    revenueStale: snap?.revenueStale === true,
   };
 }
 

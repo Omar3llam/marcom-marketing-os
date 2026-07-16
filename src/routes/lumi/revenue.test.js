@@ -10,10 +10,12 @@ import request from 'supertest';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { processRevenueCsv } = vi.hoisted(() => ({ processRevenueCsv: vi.fn() }));
+const { runSweep } = vi.hoisted(() => ({ runSweep: vi.fn() }));
 vi.mock('../../services/revenue/RevenueCsvService.js', () => ({
   processRevenueCsv,
   MAX_REVENUE_CSV_ROWS: 500,
 }));
+vi.mock('../../services/agentic-loop/AgenticLoopService.js', () => ({ runSweep }));
 vi.mock('../../lib/prisma.js', () => ({
   prisma: { user: { findUnique: vi.fn().mockResolvedValue({ workspaceId: 'ws1' }) } },
 }));
@@ -39,6 +41,7 @@ const ROW = { campaignIdentifier: 'Folla', revenueAmount: '100', currency: 'EGP'
 beforeEach(() => {
   vi.clearAllMocks();
   processRevenueCsv.mockResolvedValue({ matched: 1, updated: 1, unmatched: [], errors: [] });
+  runSweep.mockResolvedValue({});
 });
 
 describe('POST /revenue/csv', () => {
@@ -79,5 +82,36 @@ describe('POST /revenue/csv', () => {
       .then((r) => expect(r.body.error).toBe('EmptyUpload'));
     await request(makeApp({ collabRole: 'STRATEGIST' })).post('/revenue/csv').send({ rows: 'nope' }).expect(400)
       .then((r) => expect(r.body.error).toBe('InvalidBody'));
+  });
+});
+
+// The upload lands revenue the verdict engine has not scored yet, so the sweep
+// is fired here rather than left to the operator. It is deliberately NOT awaited
+// (runSweep fans out to LLM calls); these pin that it is fired, forced, and can
+// never take the response down with it.
+describe('POST /revenue/csv — post-upload sweep', () => {
+  it('fires a forced sweep for the workspace after a successful upload', async () => {
+    await request(makeApp({ collabRole: 'STRATEGIST' })).post('/revenue/csv').send({ rows: [ROW] }).expect(200);
+    expect(runSweep).toHaveBeenCalledWith('ws1', { trigger: 'MANUAL', force: true });
+  });
+
+  it('does not block the response on the sweep (still pending when the upload returns)', async () => {
+    let release;
+    runSweep.mockReturnValue(new Promise((r) => { release = r; })); // never settles during the request
+    const res = await request(makeApp({ collabRole: 'STRATEGIST' })).post('/revenue/csv').send({ rows: [ROW] }).expect(200);
+    expect(res.body).toMatchObject({ matched: 1, updated: 1 }); // returned while the sweep is in flight
+    release({});
+  });
+
+  it('a thrown sweep never fails the upload — the revenue already landed', async () => {
+    runSweep.mockRejectedValue(new Error('gateway down'));
+    const res = await request(makeApp({ collabRole: 'STRATEGIST' })).post('/revenue/csv').send({ rows: [ROW] }).expect(200);
+    expect(res.body).toMatchObject({ matched: 1, updated: 1 });
+  });
+
+  it('no sweep when nothing landed (all rows unmatched — nothing new to score)', async () => {
+    processRevenueCsv.mockResolvedValue({ matched: 0, updated: 0, unmatched: [{ identifier: 'x' }], errors: [] });
+    await request(makeApp({ collabRole: 'STRATEGIST' })).post('/revenue/csv').send({ rows: [ROW] }).expect(200);
+    expect(runSweep).not.toHaveBeenCalled();
   });
 });
