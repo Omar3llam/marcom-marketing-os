@@ -65,6 +65,10 @@ export function MappingState({ columns, preview, mapping, setMapping, currency, 
       <div className="mt-4 space-y-3">
         <ColSelect field="identifier" label="Campaign identifier" />
         <ColSelect field="revenue" label="Revenue amount" />
+        {/* Optional — deliberately NOT in the `ready` gate. Mapping it unlocks
+            Blended CPA for an account with no purchase pixel; leaving it unmapped
+            behaves exactly as before (conversions land 0). */}
+        <ColSelect field="conversions" label="Conversions (optional)" />
         <label className="flex items-center justify-between gap-3 text-sm">
           <span className="text-lumi-muted">Currency</span>
           <select
@@ -164,7 +168,7 @@ export default function RevenueCsvTab() {
   const { runSweep, sweeping } = useRunSweep();
 
   const [parsed, setParsed] = useState(null);
-  const [mapping, setMapping] = useState({ identifier: '', revenue: '' });
+  const [mapping, setMapping] = useState({ identifier: '', revenue: '', conversions: '' });
   const [currency, setCurrency] = useState(workspace?.currency || 'USD');
 
   // STRATEGIST-only: revenue is a portfolio-truth input (the endpoint enforces it too).
@@ -182,7 +186,7 @@ export default function RevenueCsvTab() {
       const p = await parse(file);
       if (!p.columns.length) { toast.error('Could not read any columns from that file.'); return; }
       setParsed(p);
-      setMapping({ identifier: '', revenue: '' });
+      setMapping({ identifier: '', revenue: '', conversions: '' });
     } catch {
       toast.error('Could not parse that CSV file.');
     }
@@ -190,7 +194,14 @@ export default function RevenueCsvTab() {
 
   const onConfirm = async () => {
     const rows = parsed.rows
-      .map((r) => ({ campaignIdentifier: r[mapping.identifier], revenueAmount: r[mapping.revenue], currency }))
+      .map((r) => ({
+        campaignIdentifier: r[mapping.identifier],
+        revenueAmount: r[mapping.revenue],
+        // Omitted entirely when the optional column is unmapped — the backend
+        // then lands 0, exactly as it did before this column existed.
+        ...(mapping.conversions ? { conversions: r[mapping.conversions] } : {}),
+        currency,
+      }))
       .filter((r) => String(r.campaignIdentifier ?? '').trim() !== '');
     if (!rows.length) { toast.error('No rows with a campaign identifier to upload.'); return; }
     try {
@@ -206,7 +217,7 @@ export default function RevenueCsvTab() {
     if (ok) toast.success('Sweep started — verdicts will update shortly.');
   };
 
-  const restart = () => { setParsed(null); setMapping({ identifier: '', revenue: '' }); reset(); };
+  const restart = () => { setParsed(null); setMapping({ identifier: '', revenue: '', conversions: '' }); reset(); };
 
   return (
     <div className="space-y-4">

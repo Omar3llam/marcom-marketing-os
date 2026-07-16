@@ -110,6 +110,21 @@ describe('GET /entities/health', () => {
     expect(byId.b).toBe(false); // awareness → no revenue is EXPECTED, never flagged
   });
 
+  // The Overview "Revenue data outdated" list reads these rows. The engine already
+  // decided staleness — the route only carries the flag, so the two surfaces can
+  // never disagree about whose revenue went stale.
+  it('carries revenueStale onto the health rows, distinct from needsRevenue', async () => {
+    getConnectorCampaigns.mockResolvedValue([
+      { entityId: 'a', name: 'Went Stale', spendMinor: 80000, ctr: 0.015, frequency: 1, roas: 2, revenueStale: true },
+      { entityId: 'b', name: 'Fresh', spendMinor: 20000, ctr: 0.015, frequency: 1, roas: 0.5 },
+    ]);
+    const res = await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(200);
+    const byId = Object.fromEntries(res.body.campaigns.map((c) => [c.entityId, c]));
+    expect(byId.a.revenueStale).toBe(true);
+    expect(byId.b.revenueStale).toBe(false); // absent flag → false, never undefined
+    expect(byId.a.needsRevenue).toBe(false); // stale ≠ never uploaded
+  });
+
   it('no connector data → honest nulls, never a fabricated 0', async () => {
     getConnectorCampaigns.mockResolvedValue([]);
     getConnectorVerdicts.mockResolvedValue({ verdicts: [], gatedOut: [], account: null, status: 'NO_CAMPAIGNS' });

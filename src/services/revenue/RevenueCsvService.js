@@ -66,9 +66,22 @@ export function parseAmount(raw) {
 }
 
 /**
+ * PURE: a conversion-count cell → a non-negative integer, or null when absent /
+ * unparseable. Reuses parseAmount's cleaning (a CSV export writes "1,204", which
+ * Number() alone reads as NaN) and rounds — a count is whole. Null (not 0) so the
+ * caller can tell "no conversions column mapped" from a measured zero.
+ */
+export function parseCount(raw) {
+  const n = parseAmount(raw);
+  return n == null ? null : Math.round(n);
+}
+
+/**
  * Match rows → campaigns, land the revenue as MANUAL-source snapshots.
  * @param {string} workspaceId
- * @param {Array<{campaignIdentifier:string, revenueAmount:(string|number), currency?:string}>} rows
+ * @param {Array<{campaignIdentifier:string, revenueAmount:(string|number), conversions?:(string|number), currency?:string}>} rows
+ *   `conversions` is OPTIONAL — absent (the pre-existing 2-column upload) lands 0,
+ *   exactly as before.
  * @returns {Promise<{ matched:number, updated:number, unmatched:Array, errors:Array }>}
  */
 export async function processRevenueCsv(workspaceId, rows) {
@@ -96,7 +109,9 @@ export async function processRevenueCsv(workspaceId, rows) {
       continue;
     }
     results.matched += 1;
-    matched.push({ campaign, amount, currency: row?.currency });
+    // An unparseable conversions cell degrades to null → lands 0, the same as an
+    // unmapped column. It never fails the row: revenue is the required truth here.
+    matched.push({ campaign, amount, conversions: parseCount(row?.conversions), currency: row?.currency });
   }
 
   // 2. One query for the latest snapshot per matched entity (no N+1 in the loop):
@@ -131,10 +146,18 @@ export async function processRevenueCsv(workspaceId, rows) {
       granularity: 'DAILY',
       spendMinor: 0, // an actual carries no spend — the platform row supplies it
       revenueMinor: toMinor(m.amount, currency),
+      // CPA is SPEND ÷ conversions (snapshotSink), and this row's spend is 0 by
+      // contract — so CPA is NOT derivable here and stays null (mirrors
+      // actualsSink). The account CPA is derived downstream from the PLATFORM
+      // row's spend ÷ these conversions. Writing revenue ÷ conversions here would
+      // store average order value under the name `cpaMinor` — a mislabelled
+      // number the guardrail sweep reads as cost.
       cpaMinor: null,
       impressions: 0,
       clicks: 0,
-      conversions: 0,
+      // The conversion COUNT the platform pixel never saw (optional column).
+      // Absent → 0, preserving the pre-conversions upload behaviour exactly.
+      conversions: m.conversions ?? 0,
       ctr: null,
       roas: null, // ratios stay null; the projection re-derives roas from platform spend
       frequency: null,
