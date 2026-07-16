@@ -26,7 +26,7 @@ vi.mock('../prompts/visualBriefPrompts.js', () => ({ buildVisualBriefPrompt: () 
 vi.mock('../prompts/reasoningPrompts.js', () => ({ buildReasoningPrompt: () => ({ system: 'S', user: 'U' }) }));
 
 import {
-  explainVerdict, generateBriefing, answerQuestion,
+  explainVerdict, answerQuestion,
   generateAngleVariants, generateAudienceHypotheses, validateContent,
 } from './openaiProvider.js';
 
@@ -45,13 +45,6 @@ describe('openaiProvider prose fallbacks — shape parity with Claude', () => {
     expect(res.output).toEqual({ reasoning: 'Spend is bleeding; kill it.' });
     // prose prompt → response_format must be absent (json_object would 400 / distort)
     expect(createMock.mock.calls[0][0].response_format).toBeUndefined();
-  });
-
-  it('generateBriefing returns { briefing } from pre-built { system, user }', async () => {
-    createMock.mockResolvedValue(reply('Portfolio steady; one campaign fatiguing.'));
-    const res = await generateBriefing({ system: 'S', user: 'U' });
-    expect(res.success).toBe(true);
-    expect(res.output).toEqual({ briefing: 'Portfolio steady; one campaign fatiguing.' });
   });
 
   it('answerQuestion returns { answer }', async () => {

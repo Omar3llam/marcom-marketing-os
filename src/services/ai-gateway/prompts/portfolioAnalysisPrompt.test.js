@@ -51,7 +51,7 @@ describe('buildPortfolioAnalysisPrompt — grounding', () => {
     expect(user).toContain('"Ramadan Cold" (META)');
     expect(user).toContain('verdict (deterministic): KILL');
     expect(user).toContain('4.80x');          // real roas
-    expect(user).toContain('14,160 EGP');     // minor units → display, workspace currency
+    expect(user).toMatch(/EGP\s14,160\.00/);  // minor units → display, workspace currency (Intl NBSP)
     expect(user).toContain('2.00%');          // ctr
   });
 
@@ -59,6 +59,37 @@ describe('buildPortfolioAnalysisPrompt — grounding', () => {
     const { user } = buildPortfolioAnalysisPrompt(stats, campaigns, workspace);
     expect(user).toContain('no revenue measured (tracking gap)');
     expect(user).not.toContain('0.00x');
+  });
+
+  // A Gulf dinar is 1000 fils, not 100. A hardcoded /100 told the model a KWD
+  // account spent 10x what it did — a fabricated number reaching the user as
+  // prose. The exponent must come from the currency (lib/money).
+  it('renders a 3-decimal currency at its true value, never 10x (KWD = 1000 fils)', () => {
+    const { user } = buildPortfolioAnalysisPrompt(
+      { total: 1, needsRevenueCount: 0 },
+      [{ name: 'Gulf Push', channel: 'META', spendMinor: 1_416_000, needsRevenue: false }],
+      { name: 'Acme', currency: 'KWD' },
+    );
+    expect(user).toMatch(/KWD\s1,416\.000/); // 1_416_000 fils = 1,416 KWD (Intl NBSP)
+    expect(user).not.toContain('14,160');    // the /100 answer
+  });
+
+  it('a 2-decimal currency is unaffected by the exponent fix (no regression)', () => {
+    const { user } = buildPortfolioAnalysisPrompt(
+      { total: 1, needsRevenueCount: 0 },
+      [{ name: 'Cairo', channel: 'META', spendMinor: 1_416_000, needsRevenue: false }],
+      { name: 'Acme', currency: 'EGP' },
+    );
+    expect(user).toMatch(/EGP\s14,160\.00/);
+  });
+
+  it('renders Latin digits for an Arabic-locale currency (a prompt the model must read)', () => {
+    const { user } = buildPortfolioAnalysisPrompt(
+      { total: 1, needsRevenueCount: 0 },
+      [{ name: 'Cairo', channel: 'META', spendMinor: 1_416_000, needsRevenue: false }],
+      { name: 'Acme', currency: 'EGP' },
+    );
+    expect(user).not.toMatch(/[٠-٩]/); // formatCurrency defaults to ar-EG; we pin en-US
   });
 
   it('absent metrics render "unknown" — never a fabricated zero', () => {
