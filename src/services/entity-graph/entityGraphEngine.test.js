@@ -78,6 +78,39 @@ describe('entityGraphEngine.effectiveByEntity — overlay actual revenue onto th
     expect(eff.revenueMinor).toBe(9000);
     expect(eff.spendMinor).toBe(0);
   });
+
+  // A manual upload may carry the conversion COUNT a pixel-less account has no
+  // other way to report. Without this overlay it would sit on the spend-0 MANUAL
+  // row, shadowed by the platform row, and never reach the Blended CPA aggregate
+  // — the feature would silently no-op.
+  it('a MANUAL actual overlays its conversion count onto the platform row', () => {
+    const snaps = [
+      { entityId: 'a', source: 'META', date: '2026-07-01', spendMinor: 10000, revenueMinor: 0, conversions: 0 },
+      { entityId: 'a', source: 'MANUAL', date: '2026-07-01', spendMinor: 0, revenueMinor: 40000, conversions: 8 },
+    ];
+    const eff = effectiveByEntity(snaps).get('a');
+    expect(eff.conversions).toBe(8);
+    expect(eff.spendMinor).toBe(10000); // CPA is derivable downstream: 10000 / 8
+  });
+
+  it('an actual with no conversions column leaves a counting pixel standing (never erases it)', () => {
+    const snaps = [
+      { entityId: 'a', source: 'META', date: '2026-07-01', spendMinor: 10000, revenueMinor: 0, conversions: 12 },
+      { entityId: 'a', source: 'MANUAL', date: '2026-07-01', spendMinor: 0, revenueMinor: 40000, conversions: 0 },
+    ];
+    expect(effectiveByEntity(snaps).get('a').conversions).toBe(12);
+  });
+
+  it('stale revenue withholds the conversion count too — old counts do not pair with newer spend', () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const snaps = [
+      { entityId: 'a', source: 'META', date: '2026-08-01', spendMinor: 10000, revenueMinor: 0, conversions: 0 },
+      { entityId: 'a', source: 'MANUAL', date: '2026-07-01', spendMinor: 0, revenueMinor: 40000, conversions: 8 },
+    ];
+    const eff = effectiveByEntity(snaps, { maxRevenueAgeMs: 30 * DAY }).get('a');
+    expect(eff.conversions).toBe(0);      // platform's own count, untouched
+    expect(eff.revenueStale).toBe(true);
+  });
 });
 
 // A connector row is a rolling-window aggregate re-stamped on every sync, so a

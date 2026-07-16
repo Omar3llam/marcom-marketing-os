@@ -302,10 +302,15 @@ export default function CampaignsView() {
       if (c.conversions != null) { conversions += c.conversions; sawConv = true; }
       if (!cur && c.currency) cur = c.currency;
     }
+    // Minor → major via the CURRENCY's real exponent, not a hardcoded /100: a
+    // Gulf dinar is 1000 fils, so /100 overstated both cards 10x. The panel's
+    // formatter takes major units (kpiWasted below already does this).
+    const currency = cur || workspace?.currency || 'USD';
+    const spendMajor = fromMinor(spendMinor, currency);
     return {
-      spend: sawSpend ? spendMinor / 100 : null,
-      blendedCpa: sawConv && conversions > 0 ? spendMinor / conversions / 100 : null,
-      currency: cur || workspace?.currency || 'USD',
+      spend: sawSpend ? spendMajor : null,
+      blendedCpa: sawConv && conversions > 0 ? spendMajor / conversions : null,
+      currency,
     };
   }, [connectorCampaigns, workspace?.currency]);
 

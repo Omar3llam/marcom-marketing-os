@@ -69,3 +69,31 @@ describe('CampaignsView — Account Health + Wasted Spend from the engine', () =
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 });
+
+// Total Spend and Blended CPA summed minor units then divided by a hardcoded 100
+// — the same exponent bug fixed in the prompt builders. A Gulf dinar is 1000
+// fils, so both cards overstated a KWD account 10x.
+describe('CampaignsView — KPI strip uses the currency exponent, never /100', () => {
+  beforeEach(() => useAccountHealth.mockReturnValue({ health: null, refetch: vi.fn() }));
+
+  it('a 2-decimal currency is unaffected (no regression)', () => {
+    useConnectorCampaigns.mockReturnValue({ campaigns: CONN, loading: false, error: null, refetch: vi.fn() });
+    renderView();
+    expect(screen.getByText('$1,000.00')).toBeInTheDocument();  // 100000 minor / 100
+    expect(screen.getByText('$100.00')).toBeInTheDocument();    // CPA: 1000 / 10 conversions
+  });
+
+  // The KPI strip formats through lib/currencyFormatter (ar-KW → Arabic-Indic
+  // digits), so we assert on the DIGITS that render, not Latin ones. What this
+  // pins is the MAGNITUDE: 1_416_000 fils is 1,416 KWD, not 14,160.
+  it('a 3-decimal currency renders its true value, never 10x (KWD = 1000 fils)', () => {
+    useConnectorCampaigns.mockReturnValue({
+      campaigns: [{ ...CONN[0], spendMinor: 1_416_000, conversions: 8, currency: 'KWD' }],
+      loading: false, error: null, refetch: vi.fn(),
+    });
+    renderView();
+    expect(screen.getByText(/١٬٤١٦/)).toBeInTheDocument();          // 1,416 KWD — true spend
+    expect(screen.getByText(/١٧٧/)).toBeInTheDocument();            // CPA: 1416 / 8 conversions
+    expect(screen.queryByText(/١٤٬١٦٠/)).not.toBeInTheDocument();   // the /100 answer, 10x over
+  });
+});

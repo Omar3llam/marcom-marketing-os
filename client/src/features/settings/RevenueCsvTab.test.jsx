@@ -53,6 +53,19 @@ describe('MappingState', () => {
     expect(screen.getByText('Folla')).toBeInTheDocument();
     expect(screen.getByText('12500')).toBeInTheDocument();
   });
+
+  // Conversions unlocks Blended CPA for a pixel-less account, but an operator who
+  // only has revenue must never be blocked by a column they don't have.
+  it('offers an optional conversions column that does NOT gate Confirm', () => {
+    render(<MappingState {...base} mapping={{ identifier: 'Campaign', revenue: 'Revenue', conversions: '' }} />);
+    expect(screen.getByText(/Conversions \(optional\)/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Confirm/i })).toBeEnabled();
+  });
+
+  it('mapping conversions keeps Confirm enabled', () => {
+    render(<MappingState {...base} mapping={{ identifier: 'Campaign', revenue: 'Revenue', conversions: 'Notes' }} />);
+    expect(screen.getByRole('button', { name: /Confirm/i })).toBeEnabled();
+  });
 });
 
 describe('ResultsState', () => {

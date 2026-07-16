@@ -10,7 +10,9 @@
 // renders "—" (Dash), never a fabricated 0. Loading/error/empty are honest.
 // ============================================================
 import { useState, useEffect, Fragment } from 'react';
+import { Link } from 'react-router-dom';
 import { ChevronRight, ChevronDown, Loader2, Plug, AlertTriangle } from 'lucide-react';
+import { appRoutes } from '@/app/routeManifest.js';
 import { cn } from '@/lib/utils.js';
 import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFormatters.js';
 import { formatCurrency } from '@/lib/money';
@@ -204,16 +206,23 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts
                               {c.needsRevenue && (
                                 <span className="ml-1.5 text-signal-watch">· needs revenue</span>
                               )}
-                              {/* Revenue WAS uploaded, but it now lags the spend it would be
-                                  divided by, so the engine stopped scoring it rather than show
-                                  a drifted ROAS. A different story from "needs revenue" (none
-                                  was ever given) — hence a separate, quieter note. */}
-                              {c.revenueStale && (
-                                <span className="ml-1.5 text-lumi-muted">· revenue outdated</span>
-                              )}
                             </span>
                           </span>
                         </button>
+                        {/* Revenue WAS uploaded, but it now lags the spend it would be
+                            divided by, so the engine stopped scoring it rather than show
+                            a drifted ROAS. A different story from "needs revenue" (none
+                            was ever given) — and unlike that gap, this one has an action:
+                            re-upload. Rendered OUTSIDE the row-toggle button — an anchor
+                            inside a button is invalid nesting and steals the click. */}
+                        {c.revenueStale && (
+                          <Link
+                            to={appRoutes.settingsRevenue}
+                            className="ml-5 block font-mono text-[11px] text-signal-watch hover:underline"
+                          >
+                            · revenue outdated — re-upload →
+                          </Link>
+                        )}
                       </td>
                       {/* Campaign-level verdict (revenue track OR awareness track). A
                           gatedOut/dataless campaign has none → honest "—", never a faked one. */}
