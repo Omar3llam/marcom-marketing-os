@@ -219,12 +219,13 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
   //    Decision rows). Best-effort + dynamically imported: an AI failure, cold
   //    gateway, or missing key never touches the sweep audit.
   //
-  //    NOTE: this replaces an inline GENERATE_BRIEFING block that selected
+  //    NOTE: this replaces an inline briefing block that selected
   //    entityId/spendMinor/ctr/roas/isAwareness/revenueMinor from prisma.campaign —
   //    none of which are Campaign columns (they live on MetricSnapshot). Prisma
   //    threw on every run and the block's own catch swallowed it, so aiInsight was
   //    NEVER generated. The service reads getConnectorCampaigns (the projection
-  //    that really carries those metrics) instead.
+  //    that really carries those metrics) instead. That block's capability and
+  //    provider methods were left behind unused and have since been deleted.
   try {
     const { runPortfolioAnalysis } = await import('../analysis/PortfolioAnalysisService.js');
     await runPortfolioAnalysis(workspaceId, { loopRunId: loopRun.id });

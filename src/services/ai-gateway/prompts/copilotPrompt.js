@@ -13,12 +13,21 @@
 //   - The prompt forbids inventing numbers and demands an honest "I don't have
 //     that data" when the answer isn't backed by the context.
 // ============================================================
+import { formatCurrency } from '../../../lib/money.js';
 
-/** Format a minor-unit amount as "<CUR> <major>" (whole units); null-safe. */
+/**
+ * Format a minor-unit amount as "<CUR> <major>"; null-safe.
+ *
+ * Delegates the minor→major conversion to lib/money so the exponent comes from
+ * the currency, not a hardcoded /100: a Gulf dinar is 1000 fils, so dividing by
+ * 100 told the model a KWD account spent 10x what it did. en-US is pinned
+ * deliberately — formatCurrency defaults to the market locale (ar-EG, ar-KW),
+ * which would put Arabic-Indic digits in a prompt the model has to reason over.
+ */
 function money(minor, currency, fallbackCurrency) {
   if (minor == null) return null;
   const cur = currency || fallbackCurrency || 'USD';
-  return `${cur} ${(minor / 100).toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+  return formatCurrency(minor, cur, 'en-US');
 }
 
 /** Format a 0–1 fraction as a percentage; null-safe. */

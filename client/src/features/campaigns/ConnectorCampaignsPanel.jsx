@@ -204,6 +204,13 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts
                               {c.needsRevenue && (
                                 <span className="ml-1.5 text-signal-watch">· needs revenue</span>
                               )}
+                              {/* Revenue WAS uploaded, but it now lags the spend it would be
+                                  divided by, so the engine stopped scoring it rather than show
+                                  a drifted ROAS. A different story from "needs revenue" (none
+                                  was ever given) — hence a separate, quieter note. */}
+                              {c.revenueStale && (
+                                <span className="ml-1.5 text-lumi-muted">· revenue outdated</span>
+                              )}
                             </span>
                           </span>
                         </button>

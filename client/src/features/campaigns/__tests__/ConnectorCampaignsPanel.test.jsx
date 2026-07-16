@@ -120,3 +120,25 @@ describe('ConnectorCampaignsPanel — deep-link (?entity=)', () => {
     expect(screen.queryByText('Signals')).not.toBeInTheDocument();
   });
 });
+
+// Two different stories that must not be confused:
+//   needsRevenue  — no revenue was EVER uploaded (a gap the operator can close)
+//   revenueStale  — revenue WAS uploaded but now lags the spend it would be
+//                   divided by, so the engine stopped scoring it (PR #229)
+describe('ConnectorCampaignsPanel — revenue data notes', () => {
+  it('renders "revenue outdated" for a stale-revenue campaign', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign({ revenueStale: true })]} verdicts={{}} />);
+    expect(screen.getByText('· revenue outdated')).toBeInTheDocument();
+  });
+
+  it('says nothing when revenue is fresh', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign({ revenueStale: false })]} verdicts={{}} />);
+    expect(screen.queryByText('· revenue outdated')).not.toBeInTheDocument();
+  });
+
+  it('distinguishes "needs revenue" (never uploaded) from "revenue outdated" (went stale)', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign({ needsRevenue: true })]} verdicts={{}} />);
+    expect(screen.getByText('· needs revenue')).toBeInTheDocument();
+    expect(screen.queryByText('· revenue outdated')).not.toBeInTheDocument();
+  });
+});

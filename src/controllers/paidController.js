@@ -19,6 +19,7 @@ import {
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
 import { getConnectorCampaigns } from '../services/entity-graph/index.js';
+import { fromMinor } from '../lib/money.js';
 
 // resolveWorkspaceId — same pattern as the lumi routes: trust the auth
 // middleware's req.workspaceId, fall back to a user lookup by Firebase uid.
@@ -79,7 +80,9 @@ export async function radarHandler(req, res) {
       campaign_id:   r.entityId,
       campaign_name: r.name,
       channel:       r.channel,
-      spend:         r.spendMinor != null ? r.spendMinor / 100 : null,
+      // fromMinor, not /100: the exponent is per-currency (a Gulf dinar is 1000
+      // fils), so /100 reported a KWD account's spend at 10x.
+      spend:         r.spendMinor != null ? fromMinor(r.spendMinor, r.currency) : null,
       roas:          r.roas ?? null,
       ctr:           r.ctr != null ? r.ctr * 100 : null,
       frequency:     r.frequency ?? null,

@@ -17,6 +17,7 @@
 //     finding, and "you should kill something" is NOT to be forced
 //   • an unmeasured conversion campaign is a MEASUREMENT GAP, not a bad campaign
 // ============================================================
+import { formatCurrency } from '../../../lib/money.js';
 
 // Prompt budget: the largest accounts run to hundreds of campaigns, so the
 // narration is grounded in the top slice by spend (the caller sorts). The count
@@ -24,10 +25,19 @@
 // portfolio is smaller than it is.
 export const CAMPAIGN_LIMIT = 12;
 
-/** PURE: minor units → a display amount, or "unknown" (never a fabricated 0). */
+/**
+ * PURE: minor units → a display amount, or "unknown" (never a fabricated 0).
+ *
+ * The exponent comes from the currency via lib/money, not a hardcoded /100 — a
+ * Gulf dinar is 1000 fils, so /100 narrated a KWD account at 10x its real spend.
+ * en-US is pinned deliberately: formatCurrency defaults to the market locale
+ * (ar-EG, ar-KW), which would put Arabic-Indic digits in front of the model.
+ * The "unknown" guard stays ours — formatCurrency's "—" reads as a real dash to
+ * a model, where "unknown" is unambiguous.
+ */
 function money(minor, currency) {
   if (!Number.isFinite(minor)) return 'unknown';
-  return `${Math.round(minor / 100).toLocaleString('en-US')} ${currency || ''}`.trim();
+  return formatCurrency(minor, currency, 'en-US');
 }
 
 const pct = (n) => (Number.isFinite(n) ? `${(n * 100).toFixed(2)}%` : 'unknown');

@@ -22,6 +22,23 @@ describe('buildCopilotSystemPrompt', () => {
     expect(s).toContain('ACCOUNT BRIEFING:');
   });
 
+  // Same class as portfolioAnalysisPrompt: a hardcoded /100 overstated every
+  // Gulf-dinar figure 10x, and the Copilot answers questions ABOUT these numbers.
+  it('renders a 3-decimal currency at its true value, never 10x (KWD = 1000 fils)', () => {
+    const s = buildCopilotSystemPrompt(
+      { ...workspace, currency: 'KWD' },
+      [{ ...campaigns[0], spendMinor: 1_416_000, currency: 'KWD' }],
+      null,
+    );
+    expect(s).toMatch(/KWD\s1,416\.000/); // 1_416_000 fils = 1,416 KWD (Intl NBSP)
+    expect(s).not.toContain('14,160');    // the /100 answer
+  });
+
+  it('renders Latin digits for an Arabic-locale currency', () => {
+    const s = buildCopilotSystemPrompt(workspace, campaigns, null);
+    expect(s).not.toMatch(/[٠-٩]/); // formatCurrency defaults to ar-EG; we pin en-US
+  });
+
   it('forbids fabrication + demands honesty in the rules', () => {
     const s = buildCopilotSystemPrompt(workspace, campaigns, null);
     expect(s).toMatch(/[Nn]ever fabricate/);

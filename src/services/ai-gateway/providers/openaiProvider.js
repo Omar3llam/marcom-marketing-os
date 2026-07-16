@@ -486,25 +486,6 @@ export async function explainVerdict(input) {
   return { success: true, output: { reasoning }, artifacts: [], metadata: result.metadata };
 }
 
-// GENERATE_BRIEFING — prose; caller pre-builds { system, user } (mirrors claudeProvider.generateBriefing)
-export async function generateBriefing({ system, user }) {
-  const result = await callOpenAI({
-    systemPrompt: system, userPrompt: user, model: CONTENT_MODEL, maxTokens: 120, jsonMode: false,
-  });
-  if (!result.success) return result;
-
-  const briefing = (result.text || '').trim();
-  if (!briefing) {
-    return {
-      success: false,
-      error: { type: ERROR_TYPE.INVALID_RESPONSE, message: 'Empty briefing response' },
-      metadata: result.metadata,
-    };
-  }
-
-  return { success: true, output: { briefing }, artifacts: [], metadata: result.metadata };
-}
-
 // ANALYZE_PORTFOLIO — prose advisory; caller pre-builds { system, user }
 // (mirrors claudeProvider.analyzePortfolio — same prompt, same output shape).
 export async function analyzePortfolio({ system, user }) {
