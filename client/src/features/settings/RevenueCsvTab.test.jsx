@@ -9,7 +9,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { UploadState, MappingState, ResultsState } from './RevenueCsvTab.jsx';
+import { UploadState, MappingState, ResultsState, downloadTemplate } from './RevenueCsvTab.jsx';
 
 // ResultsState links to the Campaigns route, so it needs a Router in scope.
 const renderResults = (ui) => render(<MemoryRouter>{ui}</MemoryRouter>);
@@ -22,6 +22,35 @@ describe('UploadState', () => {
     const file = new File(['Campaign,Revenue\nX,1'], 'rev.csv', { type: 'text/csv' });
     fireEvent.change(input, { target: { files: [file] } });
     expect(onFile).toHaveBeenCalledWith(file);
+  });
+
+  it('offers a "Download template CSV" button', () => {
+    render(<UploadState onFile={vi.fn()} />);
+    expect(screen.getByRole('button', { name: /Download template CSV/i })).toBeInTheDocument();
+  });
+});
+
+// The template gives operators without a report a correctly-shaped starter file:
+// the three mapping columns and a named download, built with no real campaigns.
+describe('downloadTemplate', () => {
+  it('builds a text/csv blob and triggers a named download', () => {
+    const createObjectURL = vi.fn(() => 'blob:mock');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
+    const click = vi.fn();
+    const created = { set href(v) { this._href = v; }, get href() { return this._href; }, click };
+    const createElement = vi.spyOn(document, 'createElement').mockReturnValue(created);
+
+    downloadTemplate();
+
+    const blob = createObjectURL.mock.calls[0][0];
+    expect(blob.type).toBe('text/csv');
+    expect(created.download).toBe('lumi-revenue-template.csv');
+    expect(click).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock');
+
+    createElement.mockRestore();
+    vi.unstubAllGlobals();
   });
 });
 
