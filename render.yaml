@@ -124,6 +124,13 @@ services:
       - key: ADMIN_EMAILS
         sync: false
 
+      # Scoring-engine tuning — how far an actual-revenue upload (GA4/Shopify/
+      # MANUAL) may lag the platform row before it stops overlaying ROAS and is
+      # marked revenueStale (entityGraphEngine.REVENUE_MAX_AGE_MS). Code default
+      # is 90; set here so it is tunable without a deploy.
+      - key: REVENUE_MAX_AGE_DAYS
+        value: "90"
+
   # ── Background worker: BullMQ Action + Observer ───────────
   - type: worker
     name: lumi-worker
