@@ -2,7 +2,7 @@
 // EntityGraphEngine — pure shaping correctness
 // ============================================================
 import { describe, it, expect } from 'vitest';
-import { latestByEntity, effectiveByEntity, toCampaignRow, toAdSetRow } from './entityGraphEngine.js';
+import { latestByEntity, effectiveByEntity, toCampaignRow, toAdSetRow, REVENUE_MAX_AGE_MS } from './entityGraphEngine.js';
 
 describe('entityGraphEngine.latestByEntity', () => {
   it('keeps the latest snapshot per entity regardless of input order', () => {
@@ -172,8 +172,46 @@ describe('entityGraphEngine.effectiveByEntity — revenue staleness bound', () =
 
   it('the bound is order-independent and defaults without an options arg', () => {
     const rows = [manualAt('2026-07-01'), platformAt('2026-07-02')];
-    expect(effectiveByEntity(rows).get('a').revenueMinor).toBe(40000); // default 30d
+    expect(effectiveByEntity(rows).get('a').revenueMinor).toBe(40000); // default 90d
     expect(effectiveByEntity([...rows].reverse()).get('a').revenueMinor).toBe(40000);
+  });
+});
+
+// The default bound was widened 30 → 90 days: a manual revenue upload stays
+// evidence about its spend for a full quarter before we stop scoring it. These
+// lock the DEFAULT (options-less) behaviour — the value the REVENUE_MAX_AGE_DAYS
+// env var populates at module load — at the 90-day boundary.
+describe('entityGraphEngine.effectiveByEntity — 90-day default staleness bound', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const platformAt = (iso, over = {}) => ({ entityId: 'a', source: 'META', date: iso, spendMinor: 10000, revenueMinor: 0, roas: null, ...over });
+  const manualAt = (iso, revenueMinor = 40000) => ({ entityId: 'a', source: 'MANUAL', date: iso, spendMinor: 0, revenueMinor });
+
+  it('the default bound is 90 days', () => {
+    expect(REVENUE_MAX_AGE_MS).toBe(90 * DAY);
+  });
+
+  it('revenue 89 days behind the platform row still overlays and is fresh (default bound)', () => {
+    // No options arg → uses REVENUE_MAX_AGE_MS. 89-day lag is inside 90.
+    const eff = effectiveByEntity([platformAt('2026-09-28'), manualAt('2026-07-01')]).get('a');
+    expect(eff.revenueMinor).toBe(40000);
+    expect(eff.roas).toBe(4);
+    expect(eff.revenueStale).toBe(false);
+  });
+
+  it('revenue 91 days behind the platform row goes stale — no scored ROAS (default bound)', () => {
+    // 91-day lag is past 90: the upload no longer pairs with this spend.
+    const eff = effectiveByEntity([platformAt('2026-09-30'), manualAt('2026-07-01')]).get('a');
+    expect(eff.revenueMinor).toBe(0);      // platform figure untouched
+    expect(eff.roas).toBeNull();
+    expect(eff.revenueStale).toBe(true);
+  });
+
+  it('the bound is overridable per call — the seam REVENUE_MAX_AGE_DAYS feeds at load', () => {
+    // A 60-day lag is fresh under the 90-day default but stale under a tighter
+    // injected bound: proves the value is a knob, not a constant baked into logic.
+    const rows = [platformAt('2026-08-30'), manualAt('2026-07-01')]; // 60-day lag
+    expect(effectiveByEntity(rows).get('a').revenueStale).toBe(false);              // default 90d
+    expect(effectiveByEntity(rows, { maxRevenueAgeMs: 30 * DAY }).get('a').revenueStale).toBe(true); // override
   });
 });
 

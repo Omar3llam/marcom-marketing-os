@@ -47,7 +47,7 @@ function latestOf(list) {
 // Past this bound we stop scoring it rather than publish a confidently wrong ROAS.
 // An account whose syncing stopped entirely is NOT stale by this measure — its
 // revenue and spend are still contemporaries (connectorHealth owns that story).
-export const REVENUE_MAX_AGE_MS = Number(process.env.REVENUE_MAX_AGE_DAYS || 30) * 24 * 60 * 60 * 1000;
+export const REVENUE_MAX_AGE_MS = Number(process.env.REVENUE_MAX_AGE_DAYS || 90) * 24 * 60 * 60 * 1000;
 
 /**
  * PURE: reduce snapshots to ONE effective row per entity, overlaying actual
