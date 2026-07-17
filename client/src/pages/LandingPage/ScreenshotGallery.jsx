@@ -7,7 +7,7 @@ import { useReveal } from './useReveal.js';
 // upgrades to real screenshots the moment the PNGs land, with no code change.
 const SHOTS = [
   { tab: "Today's agenda", src: '/screenshots/overview.png',     caption: 'See exactly what needs your attention — no noise, no dashboards.' },
-  { tab: 'Blended truth',  src: '/screenshots/intelligence.png', caption: 'Platform numbers vs what actually happened. The gap is your real cost.' },
+  { tab: 'Blended truth',  src: '/screenshots/intelligence.png', caption: 'What Meta and Google report vs what actually happened. The gap is your real cost.' },
   { tab: 'A/B Testing OS', src: '/screenshots/testing.png',      caption: 'Design, run, and read holdout tests — without a data scientist.' },
 ];
 

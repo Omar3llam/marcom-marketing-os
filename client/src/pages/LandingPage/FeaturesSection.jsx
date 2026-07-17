@@ -1,41 +1,40 @@
-import { MessageSquare, Zap, Brain, Activity, BarChart2, FlaskConical } from 'lucide-react';
+import { Eye, Zap, MessageSquare, Activity, BarChart2, FileText } from 'lucide-react';
 import { useReveal } from './useReveal.js';
 
 export function CapabilitiesGrid() {
   const features = [
     {
-      Icon: MessageSquare,
-      title: 'Ask Lumi anything',
-      body: 'Connected to your live campaign data. Ask why CPA jumped, which campaign to pause, where budget is bleeding — get real answers in seconds, not a dashboard to decode.',
-      badge: 'NEW',
+      Icon: Eye,
+      title: 'Always watching',
+      body: 'Lumi syncs with your Meta and Google accounts continuously. Every campaign is scored on CTR, frequency, spend efficiency, and audience fatigue — every single sync.',
       wide: true,
     },
     {
       Icon: Zap,
-      title: 'Campaign verdicts',
-      body: 'Kill, Hold, Watch, or Scale — decided by real signals, not gut feel. CTR, frequency, ROAS, and audience fatigue, scored every sync.',
+      title: 'Clear verdicts',
+      body: 'Kill, Hold, Watch, or Scale — with a reason. Not a dashboard to decode. A decision to act on.',
     },
     {
-      Icon: Brain,
-      title: "Lumi's read",
-      body: "Open any campaign for Lumi's reasoning in plain language. Why it's on HOLD, what signal triggered the call, and what to do next.",
+      Icon: MessageSquare,
+      title: 'Ask anything',
+      body: "Talk to your campaigns in plain language. 'Which campaign is bleeding budget?' 'What should I pause first?' Real answers from live data — in seconds.",
       badge: 'NEW',
     },
     {
       Icon: Activity,
-      title: 'Fatigue forecast',
-      body: 'See which audiences are close to saturation before they get there. Frequency velocity projects the days until your ads stop working.',
+      title: 'Audience fatigue forecast',
+      body: 'See which audiences are close to burning out before they get there. Frequency rising too fast? Lumi flags it before your CTR collapses.',
       badge: 'NEW',
     },
     {
       Icon: BarChart2,
-      title: 'Blended truth',
-      body: 'Ad platforms over-report by 20–40%. Lumi reconciles their numbers against your actual business outcomes so you allocate against reality, not claims.',
+      title: 'Revenue-based scoring',
+      body: 'Upload your revenue data once. Lumi calculates real ROAS per campaign — not what Meta claims, what actually happened in your business.',
     },
     {
-      Icon: FlaskConical,
-      title: 'Testing OS',
-      body: "Run A/B tests with honest confidence intervals. Lumi tells you when a result is statistically significant — and when it isn't.",
+      Icon: FileText,
+      title: 'Weekly narratives',
+      body: 'Every Monday, a plain-language summary of what happened, what changed, and what needs attention — ready to send to a client.',
       wide: true,
     },
   ];
@@ -47,14 +46,14 @@ export function CapabilitiesGrid() {
         <header className="mb-16 grid lg:grid-cols-2 gap-16 items-end">
           <div>
             <div className="font-mono text-[10px] tracking-[0.12em] uppercase text-dark-muted mb-3.5">
-              Inside Lumi
+              How Lumi works
             </div>
             <h2 className="font-display text-4xl sm:text-5xl font-bold tracking-[-0.035em] text-dark-base leading-tight">
-              Built like a trading desk, not a BI tool.
+              Your campaigns, scored every sync.
             </h2>
           </div>
           <p className="text-base text-dark-soft leading-relaxed">
-            Marketing is capital allocation. Marcom AI treats it that way — audit trails, idempotent execution, memory, and confidence bands on every call.
+            Lumi watches your account around the clock. When something needs action, you&apos;ll know — before you waste another day.
           </p>
         </header>
 
@@ -96,18 +95,18 @@ export function HowItWorks() {
   const steps = [
     {
       n: '01',
-      title: 'Connect Meta or Google',
-      body: 'Link your Meta or Google Ads account. Lumi pulls it in live — every campaign, every KPI, every line item.',
+      title: 'Connect in 2 minutes',
+      body: 'OAuth connect your Meta or Google account. Lumi starts watching immediately.',
     },
     {
       n: '02',
-      title: 'Ask Lumi anything',
-      body: 'Ask about your campaigns and get verdicts, reasoning, and fatigue forecasts — all grounded in your live data, not generic advice.',
+      title: 'Get your first verdict',
+      body: 'Every campaign is scored. You see exactly what to stop, what to hold, and what to scale — with a reason.',
     },
     {
       n: '03',
-      title: 'Execute verdict',
-      body: 'KILL/HOLD/SCALE with financial impact. One-tap execute with 4-layer guards, full audit log, and rollback.',
+      title: 'Act with confidence',
+      body: 'Confirm a verdict, act on it. Lumi tracks the outcome and gets sharper over time.',
     },
   ];
 
@@ -116,10 +115,10 @@ export function HowItWorks() {
       <div className="max-w-7xl mx-auto">
         <header className="text-center mb-16">
           <div className="font-mono text-[10px] tracking-[0.12em] uppercase text-dark-muted mb-3.5">
-            How it works
+            Get started
           </div>
           <h2 className="font-display text-4xl sm:text-5xl font-bold tracking-[-0.035em] text-dark-base leading-tight max-w-2xl mx-auto">
-            Connect. Ask. Execute in one tap.
+            From connect to first verdict — in minutes.
           </h2>
         </header>
 
