@@ -27,6 +27,7 @@
 // ============================================================
 import { getConnectorCampaigns } from '../entity-graph/index.js';
 import { rollupVerdicts }        from './verdictEngine.js';
+import { applyRelativeRanking }  from './relativeRanking.js';
 import { logger }                from '../../utils/logger.js';
 
 // Meta objectives that are GENUINELY awareness/reach — no purchase revenue is
@@ -160,7 +161,11 @@ export async function getConnectorVerdicts(workspaceId) {
     return { verdicts: [], gatedOut, account: null, status };
   }
 
-  const annotated = rollupVerdicts(tree);
+  // Absolute verdicts first, then the portfolio-relative post-pass over the SAME
+  // annotated tree (same code the write twin runs) — bottom-of-cohort HOLD/WATCH
+  // engagement campaigns become KILL, top-of-cohort become SCALE, with the
+  // rationale rewritten to cite the real group average. Pure + deterministic.
+  const annotated = applyRelativeRanking(rollupVerdicts(tree));
   const verdicts = annotated.children.map((c) => ({
     id:         c.id,
     name:       c.name,
@@ -174,6 +179,9 @@ export async function getConnectorVerdicts(workspaceId) {
     // campaign vs a conversion campaign with a tracking gap — the rationale
     // already distinguishes them per-row; this lets the aggregate banner too.
     revenueExpected: c.revenueExpected ?? false,
+    // Set when this verdict was decided by the relative post-pass ('TOP' | 'BOTTOM')
+    // — null otherwise. Lets the UI badge "relative to portfolio" honestly.
+    relativeRank: c.relativeRank ?? null,
   }));
 
   logger.info(

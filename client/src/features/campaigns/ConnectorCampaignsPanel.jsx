@@ -86,7 +86,7 @@ function AdSetRows({ state }) {
   ));
 }
 
-export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts = {}, loading = false, error = null, deepLinkEntityId = null, onDeepLinkHandled }) {
+export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativeRanks = {}, impacts = {}, loading = false, error = null, deepLinkEntityId = null, onDeepLinkHandled }) {
   const [open, setOpen] = useState(new Set());          // ad-set drill-down
   const [detailOpen, setDetailOpen] = useState(new Set()); // signals + reasoning panel
   const { byId, load } = useEntityDrillDown();
@@ -178,6 +178,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts
                 const isDetailOpen = detailOpen.has(c.entityId);
                 const count = c.adSetCount ?? 0;
                 const verdict = verdicts[c.entityId];
+                const relativeRank = relativeRanks[c.entityId] ?? null;
                 const impact = impacts[c.entityId] ?? null;
                 return (
                   <Fragment key={c.entityId}>
@@ -225,8 +226,21 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts
                         )}
                       </td>
                       {/* Campaign-level verdict (revenue track OR awareness track). A
-                          gatedOut/dataless campaign has none → honest "—", never a faked one. */}
-                      <td className="px-4 py-3">{verdict ? <VerdictPill verdict={verdict} size="sm" /> : <Dash />}</td>
+                          gatedOut/dataless campaign has none → honest "—", never a faked one.
+                          A verdict decided by the portfolio-relative post-pass is badged
+                          so a revenue-free KILL/SCALE reads as an engagement-relative call. */}
+                      <td className="px-4 py-3">
+                        {verdict ? (
+                          <span className="inline-flex flex-col items-start gap-0.5">
+                            <VerdictPill verdict={verdict} size="sm" />
+                            {relativeRank && (
+                              <span className="font-mono text-[10px] text-lumi-subtle" title="Verdict ranked against this campaign's cohort — engagement signals only">
+                                relative to portfolio
+                              </span>
+                            )}
+                          </span>
+                        ) : <Dash />}
+                      </td>
                       <td className="px-4 py-3 text-right font-mono text-sm tabular-nums"><Impact score={impact} /></td>
                       <MetricCells m={c} />
                       <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-lumi-muted">{count > 0 ? count : <Dash />}</td>
@@ -248,7 +262,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, impacts
                     {isDetailOpen && (
                       <tr className="border-b border-lumi-border/50 bg-lumi-bg/20">
                         <td colSpan={9} className="px-4 pb-3 pt-0">
-                          <CampaignDetailPanel campaign={c} verdict={verdict} impact={impact} />
+                          <CampaignDetailPanel campaign={c} verdict={verdict} impact={impact} relativeRank={relativeRank} />
                         </td>
                       </tr>
                     )}

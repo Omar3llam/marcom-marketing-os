@@ -70,6 +70,34 @@ describe('CampaignsView — Account Health + Wasted Spend from the engine', () =
   });
 });
 
+describe('CampaignsView — relative-ranking note', () => {
+  beforeEach(() => {
+    useAccountHealth.mockReturnValue({ health: null, refetch: vi.fn() });
+  });
+
+  it('shows the "relative to your portfolio" note + revenue CTA when a verdict was ranked relative', () => {
+    useConnectorVerdicts.mockReturnValue({
+      verdicts: [{ id: 'a', verdict: 'KILL', roas: null, revenueExpected: false, relativeRank: 'BOTTOM' }],
+      gatedOut: [], refetch: vi.fn(),
+    });
+    renderView();
+
+    expect(screen.getByText(/ranked relative to your portfolio/i)).toBeInTheDocument();
+    const cta = screen.getByRole('link', { name: /add revenue data for roas-based scoring/i });
+    expect(cta).toHaveAttribute('href', '/app/settings/revenue');
+  });
+
+  it('says nothing when no verdict carries a relative rank', () => {
+    useConnectorVerdicts.mockReturnValue({
+      verdicts: [{ id: 'a', verdict: 'HOLD', roas: null, revenueExpected: false, relativeRank: null }],
+      gatedOut: [], refetch: vi.fn(),
+    });
+    renderView();
+
+    expect(screen.queryByText(/ranked relative to your portfolio/i)).not.toBeInTheDocument();
+  });
+});
+
 // Total Spend and Blended CPA summed minor units then divided by a hardcoded 100
 // — the same exponent bug fixed in the prompt builders. A Gulf dinar is 1000
 // fils, so both cards overstated a KWD account 10x.

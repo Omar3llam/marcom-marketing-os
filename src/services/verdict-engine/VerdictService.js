@@ -10,6 +10,7 @@
 import { prisma }                  from '../../lib/prisma.js';
 import { logger }                  from '../../utils/logger.js';
 import { rollupVerdicts }          from './verdictEngine.js';
+import { applyRelativeRanking }     from './relativeRanking.js';
 import { getConnectorCampaigns }   from '../entity-graph/index.js';
 import { buildConnectorVerdictTree } from './connectorVerdictService.js';
 import { SIGNAL_TYPE }             from '../diagnosis-engine/index.js';
@@ -61,7 +62,13 @@ async function persistNode(workspaceId, node, created) {
  */
 export async function persistLevelVerdicts(workspaceId, entityTree, opts = {}) {
   if (!workspaceId) throw new Error('persistLevelVerdicts: workspaceId required');
-  const annotated = rollupVerdicts(entityTree, opts);
+  const rolled = rollupVerdicts(entityTree, opts);
+  // Connector sweeps opt into the portfolio-relative post-pass (bottom/top of a
+  // cohort upgrades an undecided HOLD/WATCH to KILL/SCALE). Pure + deterministic;
+  // default OFF so any other caller keeps pure absolute-threshold verdicts. The
+  // upgraded verdict rides the EXISTING persistNode path — one row per entity,
+  // same rootCause tagging, no separate relative-verdict table.
+  const annotated = opts.relativeRanking ? applyRelativeRanking(rolled) : rolled;
   const created = [];
   await persistNode(workspaceId, annotated, created);
   logger.info({ workspaceId, decisions: created.length }, '[VerdictService] level verdicts persisted');
@@ -139,7 +146,7 @@ export async function persistConnectorVerdicts(workspaceId) {
   if (!tree) {
     return { created: [], gatedOut, superseded, status: gatedOut.length ? 'NO_ELIGIBLE_CAMPAIGNS' : 'NO_CAMPAIGNS' };
   }
-  const { created } = await persistLevelVerdicts(workspaceId, { level: 'ACCOUNT', children: tree.children });
+  const { created } = await persistLevelVerdicts(workspaceId, { level: 'ACCOUNT', children: tree.children }, { relativeRanking: true });
   logger.info({ workspaceId, created: created.length, gatedOut: gatedOut.length, superseded }, '[VerdictService] connector verdicts persisted');
   return { created, gatedOut, superseded, status: 'OK' };
 }
