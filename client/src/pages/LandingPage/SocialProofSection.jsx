@@ -20,7 +20,7 @@ export function TrustedBy() {
           Early access
         </div>
         <h2 className="decision-title text-dark-base">
-          Be the first growth team in Egypt to use Lumi.
+          Used by performance marketers who are tired of staring at dashboards.
         </h2>
         <p className="mt-3 text-sm sm:text-base text-dark-soft max-w-2xl mx-auto leading-relaxed">
           Lumi is in early access across Egypt, Saudi Arabia, and UAE. Join the first cohort of

@@ -29,21 +29,19 @@ export function Hero() {
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-lumi-accent/10 border border-lumi-accent/28 mb-7">
             <span className="w-1.5 h-1.5 rounded-full bg-lumi-accent shadow-gold-glow animate-pulse" />
             <span className="font-mono text-[11px] tracking-[0.1em] uppercase text-lumi-accent font-semibold">
-              Early Access · Now open
+              Built for MENA performance marketers
             </span>
           </div>
 
           <h1 className="font-display font-extrabold tracking-[-0.045em] leading-[0.94] text-lumi-text text-balance text-5xl sm:text-6xl lg:text-7xl xl:text-8xl">
-            Just ask.<br />
-            Lumi knows<br />
-            your campaigns.
+            The media buyer<br />
+            that never sleeps.
           </h1>
 
           <p className="mt-7 text-lg text-dark-soft max-w-[540px] leading-relaxed">
-            Connect your Meta or Google account and ask Lumi anything — why a
-            campaign is bleeding, which one to pause first, where your budget is
-            going. Real answers from your live data, not generic advice. Built for
-            media buyers across MENA.
+            Lumi watches your Meta and Google campaigns 24/7, scores every ad
+            against real signals, and tells you exactly what to stop, what to
+            scale, and why — before you waste another budget cycle.
           </p>
 
           <div className="mt-10 flex flex-wrap items-center gap-4">
@@ -52,14 +50,14 @@ export function Hero() {
               className="btn-gold inline-flex items-center gap-2 px-7 py-3.5 text-[15px] rounded-xl shadow-gold-glow hover:shadow-card-hover transition-all"
             >
               <Zap className="w-4 h-4" strokeWidth={2} />
-              Ask Lumi free
+              Connect your campaigns — free
               <ArrowRight className="w-4 h-4" strokeWidth={2} />
             </Link>
             <a
               href="#how"
               className="btn-ghost inline-flex items-center gap-2 px-5 py-3 text-sm rounded-xl transition-all"
             >
-              See how it works
+              See how it works ↓
             </a>
           </div>
 
@@ -99,11 +97,11 @@ function MicroStat({ label, value, mono }) {
 // ── Hero composition: a Lumi Copilot conversation ──
 // An illustrative preview of the real account-aware Copilot (Overview → Ask Lumi).
 // The suggested questions mirror the live panel's prompts; numbers are an example.
-const DEMO_QUESTION = 'Why did my CPA jump on the Ramadan campaign?';
+const DEMO_QUESTION = 'Which campaign should I stop spending on?';
 const DEMO_SUGGESTIONS = [
-  'Which campaign should I pause first?',
   'Where is my budget being wasted?',
-  "What's causing audience fatigue?",
+  'Which campaigns should I scale?',
+  "What's causing low performance?",
 ];
 
 function ChatDemo() {
@@ -146,13 +144,15 @@ function ChatDemo() {
                 <Sparkles className="w-3 h-3" strokeWidth={2} />
                 Lumi
               </span>
-              <p className="text-sm text-dark-soft leading-relaxed">
-                Ramadan Wave · Cold ME is bleeding{' '}
-                <strong className="text-verdict-kill-text font-semibold">EGP 14,160/week</strong>.
-                Frequency hit 4.2 — the audience has seen this ad too many times.
-                Verdict: <strong className="text-verdict-kill-text font-bold">KILL</strong>.
-                Recover the budget and move it to PMax Retargeting Warm
-                (<span className="text-verdict-scale-text font-semibold">ROAS 4.8×</span>).
+              <p className="text-sm text-dark-soft leading-relaxed" dir="auto">
+                <bdi>حملة الاسكندرية</bdi> is burning{' '}
+                <strong className="text-verdict-kill-text font-semibold">EGP 2,400/day</strong>{' '}
+                with a <strong className="text-verdict-kill-text font-semibold">0.49% CTR</strong> —
+                well below your portfolio average. Frequency hit 3.8; the audience has
+                seen this ad too many times. Verdict:{' '}
+                <strong className="text-verdict-kill-text font-bold">pause it</strong> and
+                reallocate to Folla Instagram Engagement
+                (<span className="text-verdict-scale-text font-semibold">CTR 8.49%, freq 1.08</span>).
               </p>
             </div>
           </div>
