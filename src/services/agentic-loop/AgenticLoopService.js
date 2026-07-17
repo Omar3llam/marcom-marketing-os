@@ -189,6 +189,13 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
   const agenda = planAgenda(inputs);
 
   // 3. audit the sweep.
+  //    Explicit projection — mirrors getLoopState's select and deliberately
+  //    OMITS aiInsight (populated later by PortfolioAnalysisService, step 5).
+  //    Without it, the default create-projection would RETURNING every scalar
+  //    column, so a not-yet-migrated ai_insight makes the WRITE throw ("column
+  //    loop_runs.ai_insight does not exist") — which is exactly what the manual
+  //    "Run sweep" button surfaces as "Request failed". The reads (getLoopState,
+  //    getHome) were already hardened this way; this closes the write path too.
   const loopRun = await prisma.loopRun.create({
     data: {
       workspaceId, trigger, startedAt, finishedAt: new Date(),
@@ -198,6 +205,20 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
       closed: agenda.closed,
       loopHealth: agenda.loopHealth,
       staleStages: agenda.staleStages,
+    },
+    select: {
+      id: true,
+      workspaceId: true,
+      trigger: true,
+      startedAt: true,
+      finishedAt: true,
+      proposalsByType: true,
+      stageStatus: true,
+      summary: true,
+      closed: true,
+      loopHealth: true,
+      staleStages: true,
+      createdAt: true,
     },
   });
 
