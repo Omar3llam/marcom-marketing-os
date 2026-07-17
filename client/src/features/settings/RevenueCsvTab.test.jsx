@@ -8,7 +8,11 @@
 // ============================================================
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { UploadState, MappingState, ResultsState } from './RevenueCsvTab.jsx';
+
+// ResultsState links to the Campaigns route, so it needs a Router in scope.
+const renderResults = (ui) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
 describe('UploadState', () => {
   it('hands the chosen file to onFile', () => {
@@ -76,7 +80,7 @@ describe('ResultsState', () => {
   };
 
   it('shows the matched count and surfaces unmatched rows honestly', () => {
-    render(<ResultsState result={result} onRunSweep={() => {}} sweeping={false} onDone={() => {}} />);
+    renderResults(<ResultsState result={result} onRunSweep={() => {}} sweeping={false} onDone={() => {}} />);
     expect(screen.getByText(/10 campaigns matched and updated/i)).toBeInTheDocument();
     expect(screen.getByText(/Folla Insta/)).toBeInTheDocument();
     expect(screen.getByText(/no matching campaign/)).toBeInTheDocument();
@@ -84,13 +88,18 @@ describe('ResultsState', () => {
 
   it('the Run sweep button fires onRunSweep', () => {
     const onRunSweep = vi.fn();
-    render(<ResultsState result={result} onRunSweep={onRunSweep} sweeping={false} onDone={() => {}} />);
+    renderResults(<ResultsState result={result} onRunSweep={onRunSweep} sweeping={false} onDone={() => {}} />);
     fireEvent.click(screen.getByRole('button', { name: /Run sweep/i }));
     expect(onRunSweep).toHaveBeenCalledTimes(1);
   });
 
+  it('offers a direct "View updated verdicts" link to the Campaigns page', () => {
+    renderResults(<ResultsState result={result} onRunSweep={() => {}} sweeping={false} onDone={() => {}} />);
+    expect(screen.getByRole('link', { name: /View updated verdicts/i })).toHaveAttribute('href', '/app/campaigns');
+  });
+
   it('no unmatched/errors → clean success, no "not applied" block', () => {
-    render(<ResultsState result={{ matched: 3, updated: 3, unmatched: [], errors: [] }} onRunSweep={() => {}} sweeping={false} onDone={() => {}} />);
+    renderResults(<ResultsState result={{ matched: 3, updated: 3, unmatched: [], errors: [] }} onRunSweep={() => {}} sweeping={false} onDone={() => {}} />);
     expect(screen.getByText(/3 campaigns matched and updated/i)).toBeInTheDocument();
     expect(screen.queryByText(/not applied/i)).not.toBeInTheDocument();
   });

@@ -9,8 +9,10 @@
 // The state-branch views are exported prop-driven for direct unit testing.
 // ============================================================
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { UploadCloud, FileText, CheckCircle2, AlertTriangle, RefreshCw, ArrowLeft } from 'lucide-react';
+import { appRoutes } from '@/app/routeManifest.js';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useRevenueCsv } from '@/hooks/useRevenueCsv.js';
@@ -144,8 +146,8 @@ export function ResultsState({ result, onRunSweep, sweeping, onDone }) {
         </div>
       )}
 
-      <p className="mt-4 text-sm text-lumi-muted">ROAS verdicts update on the next sweep.</p>
-      <div className="mt-4 flex items-center gap-2">
+      <p className="mt-4 text-sm text-lumi-muted">ROAS verdicts update on the next sweep — then your campaigns are scored on revenue, not just engagement.</p>
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         <button
           onClick={onRunSweep}
           disabled={sweeping}
@@ -154,6 +156,9 @@ export function ResultsState({ result, onRunSweep, sweeping, onDone }) {
           <RefreshCw className={`w-3.5 h-3.5 ${sweeping ? 'animate-spin' : ''}`} strokeWidth={1.5} />
           {sweeping ? 'Sweeping…' : 'Run sweep now'}
         </button>
+        <Link to={appRoutes.campaigns} className="px-3 py-2 rounded-lg text-sm font-medium text-lumi-gold hover:underline">
+          View updated verdicts →
+        </Link>
         <button onClick={onDone} className="px-3 py-2 rounded-lg border border-lumi-border text-sm text-lumi-muted hover:text-lumi-text">Done</button>
       </div>
     </div>
