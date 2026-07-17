@@ -5,8 +5,9 @@
 // All metrics derived from the live /api/lumi/feed payload.
 // ============================================================
 import { useMemo, useState, useCallback, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { RefreshCw, Loader2, Download } from 'lucide-react';
+import { appRoutes } from '@/app/routeManifest.js';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils.js';
 import { useCampaignFeed, metricValue } from '@/hooks/useCampaignFeed.js';
@@ -285,6 +286,17 @@ export default function CampaignsView() {
     return m;
   }, [connectorVerdicts]);
 
+  // Which campaigns had their verdict decided by the portfolio-relative post-pass
+  // ('TOP' | 'BOTTOM'), keyed by entityId. Drives the "relative to portfolio" badge
+  // so a KILL/SCALE reached WITHOUT revenue is honestly labelled as an
+  // engagement-relative call, not an absolute ROAS verdict.
+  const relativeRankByEntityId = useMemo(() => {
+    const m = {};
+    for (const v of connectorVerdicts) if (v.relativeRank) m[v.id] = v.relativeRank;
+    return m;
+  }, [connectorVerdicts]);
+  const hasRelativeRanking = Object.keys(relativeRankByEntityId).length > 0;
+
   // No-revenue scored campaigns split by OBJECTIVE: awareness (no revenue by
   // design) vs a conversion campaign with a tracking gap. Lumping them as one
   // "awareness" count is the exact dishonesty the objective work removed.
@@ -407,6 +419,17 @@ export default function CampaignsView() {
         </p>
       )}
 
+      {/* Some engagement campaigns were verdicted RELATIVE to their portfolio (no
+          revenue to score on ROAS). Say so once, and point at the fix. */}
+      {hasRelativeRanking && (
+        <p className="font-mono text-[11px] text-lumi-subtle mb-2 -mt-1">
+          Some verdicts are ranked relative to your portfolio (engagement signals only).{' '}
+          <Link to={appRoutes.settingsRevenue} className="text-lumi-gold hover:underline">
+            Add revenue data for ROAS-based scoring →
+          </Link>
+        </p>
+      )}
+
       {/* Connector campaigns that can't be scored at all (no spend or no delivery)
           — explicit, never dropped silently (hiding them would be a quieter form of
           the same fabrication). */}
@@ -456,6 +479,7 @@ export default function CampaignsView() {
       <ConnectorCampaignsPanel
         campaigns={connectorCampaigns}
         verdicts={verdictByEntityId}
+        relativeRanks={relativeRankByEntityId}
         impacts={impactByEntityId}
         loading={connectorLoading}
         error={connectorError}

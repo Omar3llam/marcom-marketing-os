@@ -46,6 +46,37 @@ describe('ConnectorCampaignsPanel — verdict column', () => {
   });
 });
 
+describe('ConnectorCampaignsPanel — relative-ranking badge', () => {
+  it('badges "relative to portfolio" when the verdict came from the relative post-pass', () => {
+    render(
+      <ConnectorCampaignsPanel
+        campaigns={[campaign()]}
+        verdicts={{ c1: 'KILL' }}
+        relativeRanks={{ c1: 'BOTTOM' }}
+      />,
+    );
+    expect(screen.getByLabelText('Verdict: KILL')).toBeInTheDocument();
+    expect(screen.getByText('relative to portfolio')).toBeInTheDocument();
+  });
+
+  it('shows no badge for an absolute (non-relative) verdict', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} relativeRanks={{}} />);
+    expect(screen.queryByText('relative to portfolio')).not.toBeInTheDocument();
+  });
+
+  it('surfaces the engagement-only basis in the expanded detail for a relative verdict', () => {
+    render(
+      <ConnectorCampaignsPanel
+        campaigns={[campaign()]}
+        verdicts={{ c1: 'SCALE' }}
+        relativeRanks={{ c1: 'TOP' }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /toggle details for awareness reach/i }));
+    expect(screen.getByText(/ranked relative to this campaign.s cohort/i)).toBeInTheDocument();
+  });
+});
+
 describe('ConnectorCampaignsPanel — impact column', () => {
   it('renders the per-campaign impact score from the analysis engine', () => {
     render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} impacts={{ c1: 9 }} />);

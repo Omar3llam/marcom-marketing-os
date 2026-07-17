@@ -41,7 +41,7 @@ function Signal({ label, help, children }) {
   );
 }
 
-export function CampaignDetailPanel({ campaign, verdict = null, impact = null }) {
+export function CampaignDetailPanel({ campaign, verdict = null, impact = null, relativeRank = null }) {
   const { load, reasoning, stale, generatedAt, isLoading, error } = useCampaignReasoning();
   const entityId = campaign.entityId;
 
@@ -71,6 +71,13 @@ export function CampaignDetailPanel({ campaign, verdict = null, impact = null })
           {campaign.spendMinor != null ? formatCurrency(campaign.spendMinor, campaign.currency || 'USD') : <Dash />}
         </Signal>
         <Signal label="Objective" help={<HelpTip content={HELP.OBJECTIVE} />}>{campaign.objective || <Dash />}</Signal>
+        {/* This verdict came from the portfolio-relative post-pass (no revenue to
+            score on ROAS) — name the basis so the KILL/SCALE isn't mistaken for one. */}
+        {relativeRank && (
+          <p className="mt-2 text-xs text-lumi-subtle italic leading-relaxed">
+            Ranked relative to this campaign&apos;s cohort — engagement signals only. Add revenue data for ROAS-based scoring.
+          </p>
+        )}
       </div>
 
       {/* ── Lumi's Read (pre-generated during the sweep) ─────── */}
