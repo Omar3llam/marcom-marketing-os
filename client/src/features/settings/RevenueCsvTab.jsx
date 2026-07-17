@@ -11,7 +11,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { UploadCloud, FileText, CheckCircle2, AlertTriangle, RefreshCw, ArrowLeft } from 'lucide-react';
+import { UploadCloud, FileText, CheckCircle2, AlertTriangle, RefreshCw, ArrowLeft, Download } from 'lucide-react';
 import { appRoutes } from '@/app/routeManifest.js';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
@@ -20,12 +20,41 @@ import { useRunSweep } from '@/hooks/useRunSweep.js';
 
 const CURRENCIES = ['EGP', 'SAR', 'AED', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD', 'USD', 'EUR', 'GBP'];
 
+// A starter file for operators who don't have a report to export — the three
+// columns the mapping step expects (identifier, revenue, optional conversions),
+// with placeholder rows they overwrite. Generic names, not real campaigns.
+const TEMPLATE_ROWS = [
+  ['Campaign Name', 'Revenue Amount', 'Conversions (optional)'],
+  ['Your Campaign Name Here', '5000', '10'],
+  ['Another Campaign', '3500', '7'],
+];
+
+export function downloadTemplate() {
+  const csv = TEMPLATE_ROWS.map((r) => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'lumi-revenue-template.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── State 1 — upload ────────────────────────────────────────────
 export function UploadState({ onFile }) {
   const onInput = (e) => { const f = e.target.files?.[0]; if (f) onFile(f); };
   return (
     <div className="rounded-2xl border border-lumi-border bg-lumi-surface p-6">
-      <h3 className="font-display font-semibold text-lumi-text">Upload revenue data</h3>
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="font-display font-semibold text-lumi-text">Upload revenue data</h3>
+        <button
+          onClick={downloadTemplate}
+          className="shrink-0 text-xs text-lumi-gold hover:underline flex items-center gap-1"
+        >
+          <Download size={12} strokeWidth={1.5} />
+          Download template CSV
+        </button>
+      </div>
       <ol className="mt-3 space-y-1 text-sm text-lumi-muted list-decimal list-inside">
         <li>Export your campaign report from any platform</li>
         <li>Map the campaign and revenue columns</li>
