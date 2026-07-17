@@ -20,6 +20,7 @@ vi.mock('@/context/AuthContext.jsx', () => ({ useAuth: () => ({ currentUser: { d
 vi.mock('@/hooks/useWorkspace.js', () => ({ useWorkspace: () => ({ workspace: { name: 'Acme', currency: 'USD' } }) }));
 vi.mock('@/context/IntelligenceContext.jsx', () => ({ useIntelligence: vi.fn() }));
 vi.mock('@/hooks/useConnectorCampaigns.js', () => ({ useConnectorCampaigns: vi.fn() }));
+vi.mock('@/hooks/useConnections.js', () => ({ useConnections: vi.fn() }));
 vi.mock('@/hooks/useAccuracy.js', () => ({ useAccuracy: () => ({ surface: null }) }));
 vi.mock('@/hooks/useCollabRole.js', async (importOriginal) => {
   const actual = await importOriginal();
@@ -29,6 +30,7 @@ vi.mock('@/hooks/useCollabRole.js', async (importOriginal) => {
 // Child components mocked to markers/null so we test OverviewView's gating only.
 vi.mock('../AgenticShellView.jsx', () => ({ default: () => <div data-testid="agentic-shell">shell</div> }));
 vi.mock('../components/FirstRunBanner.jsx', () => ({ default: () => <div data-testid="first-run">first-run</div> }));
+vi.mock('../components/RevenueOnboardingBanner.jsx', () => ({ default: () => <div data-testid="revenue-onboarding">revenue-onboarding</div> }));
 vi.mock('../components/ConnectionHealthStrip.jsx', () => ({ default: () => null }));
 vi.mock('../components/PacingWidget.jsx', () => ({ default: () => <div data-testid="pacing" /> }));
 vi.mock('../components/CopilotPanel.jsx', () => ({ default: () => null }));
@@ -38,6 +40,7 @@ vi.mock('@/components/ui/StatCard.jsx', () => ({ default: ({ label }) => <div da
 import OverviewView from '../OverviewView.jsx';
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
+import { useConnections } from '@/hooks/useConnections.js';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 
 const CONNECTOR_ROW = { entityId: 'c1', name: 'Eid Sale', channel: 'META', spendMinor: 50000, ctr: 0.0185 };
@@ -52,6 +55,9 @@ beforeEach(() => {
   // defaults; each test overrides the substrate under test
   useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: false });
   useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: false, error: null, refetch: vi.fn() });
+  // Default: no channel has ever synced → the revenue-onboarding banner stays hidden
+  // and every pre-existing test is unaffected. Revenue-banner tests override this.
+  useConnections.mockReturnValue({ data: null, loading: false, error: null, refetch: vi.fn() });
 });
 
 describe('OverviewView — agentic shell is decoupled from the legacy CampaignState feed', () => {
@@ -134,5 +140,62 @@ describe('OverviewView — first-run activation banner (wires the onboarding fla
     renderView();
 
     expect(screen.queryByTestId('first-run')).not.toBeInTheDocument();
+  });
+});
+
+describe('OverviewView — post-first-sync revenue onboarding banner', () => {
+  const SYNCED = {
+    data: { connections: [{ platform: 'META', lastSyncedAt: '2026-07-16T00:00:00Z' }] },
+    loading: false, error: null, refetch: vi.fn(),
+  };
+  const NEVER_SYNCED = {
+    data: { connections: [{ platform: 'META', lastSyncedAt: null }] },
+    loading: false, error: null, refetch: vi.fn(),
+  };
+  const withCampaigns = (rows) => ({ campaigns: rows, loading: false, error: null, refetch: vi.fn() });
+
+  it('synced + campaigns scored + no revenue + STRATEGIST → banner shows', () => {
+    useConnections.mockReturnValue(SYNCED);
+    useConnectorCampaigns.mockReturnValue(withCampaigns([CONNECTOR_ROW]));
+    renderView();
+    expect(screen.getByTestId('revenue-onboarding')).toBeInTheDocument();
+  });
+
+  it('no channel has ever synced → banner hidden (nothing to capture revenue against)', () => {
+    useConnections.mockReturnValue(NEVER_SYNCED);
+    useConnectorCampaigns.mockReturnValue(withCampaigns([CONNECTOR_ROW]));
+    renderView();
+    expect(screen.queryByTestId('revenue-onboarding')).not.toBeInTheDocument();
+  });
+
+  it('revenue data already present → banner auto-hidden', () => {
+    useConnections.mockReturnValue(SYNCED);
+    useConnectorCampaigns.mockReturnValue(withCampaigns([{ ...CONNECTOR_ROW, revenueMinor: 250000 }]));
+    renderView();
+    expect(screen.queryByTestId('revenue-onboarding')).not.toBeInTheDocument();
+  });
+
+  it('dismissed this session (sessionStorage) → banner hidden', () => {
+    sessionStorage.setItem('lumi:revenue-prompt-dismissed', '1');
+    useConnections.mockReturnValue(SYNCED);
+    useConnectorCampaigns.mockReturnValue(withCampaigns([CONNECTOR_ROW]));
+    renderView();
+    expect(screen.queryByTestId('revenue-onboarding')).not.toBeInTheDocument();
+  });
+
+  it('CLIENT role → banner hidden (only a strategist can upload revenue)', () => {
+    useCollabRole.mockReturnValue({ role: WORKSPACE_ROLE.CLIENT });
+    useConnections.mockReturnValue(SYNCED);
+    useConnectorCampaigns.mockReturnValue(withCampaigns([CONNECTOR_ROW]));
+    renderView();
+    expect(screen.queryByTestId('revenue-onboarding')).not.toBeInTheDocument();
+  });
+
+  it('pre-sync first-run state (no campaigns yet) → revenue banner defers', () => {
+    sessionStorage.setItem('marcom:firstActivation', '1');
+    useConnections.mockReturnValue(SYNCED);
+    useConnectorCampaigns.mockReturnValue(withCampaigns([])); // no campaigns → FirstRunBanner territory
+    renderView();
+    expect(screen.queryByTestId('revenue-onboarding')).not.toBeInTheDocument();
   });
 });

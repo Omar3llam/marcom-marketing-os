@@ -18,6 +18,7 @@ import { useAuth } from '@/context/AuthContext.jsx';
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
+import { useConnections } from '@/hooks/useConnections.js';
 import { useAccountHealth } from '@/hooks/useAccountHealth.js';
 import { useHome } from '@/hooks/useHome.js';
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
@@ -27,6 +28,7 @@ import { useAccuracy } from '@/hooks/useAccuracy.js';
 import { ProofSummary } from '@/features/intelligence/proof/ProofView.jsx';
 import AgenticShellView from './AgenticShellView.jsx';
 import FirstRunBanner from './components/FirstRunBanner.jsx';
+import RevenueOnboardingBanner from './components/RevenueOnboardingBanner.jsx';
 import ConnectionHealthStrip from './components/ConnectionHealthStrip.jsx';
 import PacingWidget from './components/PacingWidget.jsx';
 import CopilotPanel from './components/CopilotPanel.jsx';
@@ -67,6 +69,7 @@ export default function OverviewView() {
   const { workspace } = useWorkspace();
   const { campaigns, summary, loading: intelligenceLoading } = useIntelligence();
   const { campaigns: connectorCampaigns, loading: connectorLoading } = useConnectorCampaigns();
+  const { data: connectionsData } = useConnections(); // channel sync status (lastSyncedAt)
   const { health } = useAccountHealth(); // connector campaign health + wasted spend + impact scores
   const { home } = useHome(); // agentic loop home (includes aiInsight)
   const { surface: proofSurface } = useAccuracy(); // gated proof one-liner (best-effort)
@@ -134,6 +137,31 @@ export default function OverviewView() {
   }, [firstRun, hasAnyData, retireFirstRun]);
   const showFirstRun = firstRun && !loading && !hasAnyData;
 
+  // Post-first-sync revenue capture — the highest-leverage moment to ask for
+  // revenue data. A workspace has synced (real campaigns scored on engagement
+  // signals) but tracks NO revenue yet, so ROAS verdicts stay locked. Shown once
+  // per session and retired the instant revenue lands or the user dismisses it.
+  // STRATEGIST-only: the revenue upload endpoint (and RevenueCsvTab) enforce that
+  // role, so no other seat could complete the CTA — showing it would dead-end.
+  // Deferred while FirstRunBanner (the PRE-sync "connect a channel" step) is up.
+  const hasEverSynced = connectionsData?.connections?.some((c) => c.lastSyncedAt != null) ?? false;
+  const hasRevenueData = connectorCampaigns.some((c) => (c.revenueMinor ?? 0) > 0);
+  const [revenueDismissed, setRevenueDismissed] = useState(
+    () => typeof window !== 'undefined' && window.sessionStorage?.getItem('lumi:revenue-prompt-dismissed') === '1',
+  );
+  const dismissRevenue = useCallback(() => {
+    if (typeof window !== 'undefined') window.sessionStorage?.setItem('lumi:revenue-prompt-dismissed', '1');
+    setRevenueDismissed(true);
+  }, []);
+  const showRevenueOnboarding =
+    collabRole === WORKSPACE_ROLE.STRATEGIST &&
+    hasEverSynced &&
+    hasConnectorData &&   // real campaigns to score → the "scored N campaigns" line stays honest
+    !hasRevenueData &&
+    !revenueDismissed &&
+    !loading &&
+    !firstRun;            // the pre-sync FirstRunBanner takes priority
+
   return (
     <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
       {/* Header */}
@@ -158,6 +186,16 @@ export default function OverviewView() {
           connections contract. Shown regardless of campaign data, since a
           disconnected channel is often *why* there's no data. */}
       <ConnectionHealthStrip />
+
+      {/* Post-first-sync revenue capture — once per session, STRATEGIST-only,
+          auto-retired when revenue lands. Sits below channel health (the "is
+          data flowing?" signal) so the ask reads as the natural next step. */}
+      {showRevenueOnboarding && (
+        <RevenueOnboardingBanner
+          campaignCount={connectorCampaigns.length}
+          onDismiss={dismissRevenue}
+        />
+      )}
 
       {/* First-run guided step — the one-time "connect a channel" hero for a
           brand-new account (wires the onboarding firstActivation flag). Shown

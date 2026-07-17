@@ -48,12 +48,12 @@ describe('MetricsPanel — source-resolved, null-honest KPI strip', () => {
     expect(screen.queryByText('$0.00')).not.toBeInTheDocument();
   });
 
-  it('offers the "Add revenue data" CTA only when Blended CPA is unknown', () => {
+  it('offers the "Upload revenue CSV" CTA only when Blended CPA is unknown', () => {
     const { unmount } = renderPanel({
       spend: 500, spendLabel: 'Live · connector', blendedCpa: null,
       wasted: null, wastedPct: null, healthScore: null, healthLabel: '—', healthColor: '', currency: 'USD',
     });
-    const cta = screen.getByRole('link', { name: /Add revenue data to unlock ROAS/i });
+    const cta = screen.getByRole('link', { name: /Upload revenue CSV to unlock ROAS/i });
     expect(cta).toHaveAttribute('href', '/app/settings/revenue');
     unmount();
 
@@ -62,6 +62,6 @@ describe('MetricsPanel — source-resolved, null-honest KPI strip', () => {
       spend: 500, spendLabel: 'Live · connector', blendedCpa: 4200,
       wasted: null, wastedPct: null, healthScore: null, healthLabel: '—', healthColor: '', currency: 'USD',
     });
-    expect(screen.queryByRole('link', { name: /Add revenue data/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Upload revenue CSV/i })).not.toBeInTheDocument();
   });
 });
