@@ -35,18 +35,31 @@ const Freq  = ({ v }) => (v == null ? <Dash /> : <span className={freqColor(v)}>
 // Impact (1-10): deterministic priority-to-act from the analysis engine. Higher
 // = more urgent (KILL a big spender). Absent (unscored/sub-floor) → "—", never 0.
 const impactColor = (s) => (s >= 8 ? 'text-trend-danger' : s >= 5 ? 'text-trend-warning' : 'text-lumi-muted');
-const Impact = ({ score }) => (score == null
-  ? <Dash />
-  : <span className={cn('font-semibold', impactColor(score))} title={`Impact ${score}/10 — priority to act`}>{score}</span>);
+// A revenue-free campaign has no impact score, but the relative post-pass DID
+// place it in its cohort — surface that standing (↑ top / ↓ bottom) rather than a
+// bare "—". It is explicitly a relative rank, not a fabricated impact number, so
+// the title says so. No verdict / no rank at all still honestly falls to "—".
+const Impact = ({ score, relativeRank }) => {
+  if (score != null) {
+    return <span className={cn('font-semibold', impactColor(score))} title={`Impact ${score}/10 — priority to act`}>{score}</span>;
+  }
+  if (relativeRank === 'TOP') {
+    return <span className="text-signal-scale" title="Top of its engagement cohort — no revenue to score impact">↑</span>;
+  }
+  if (relativeRank === 'BOTTOM') {
+    return <span className="text-signal-kill" title="Bottom of its engagement cohort — no revenue to score impact">↓</span>;
+  }
+  return <Dash />;
+};
 
 // The four metric cells shared by a campaign row and its ad-set rows.
 function MetricCells({ m }) {
   return (
     <>
-      <td className="px-4 py-2.5 text-right font-mono text-sm tabular-nums text-lumi-text"><Spend minor={m.spendMinor} currency={m.currency} /></td>
-      <td className="px-4 py-2.5 text-right font-mono text-sm tabular-nums"><Roas v={m.roas} /></td>
-      <td className="px-4 py-2.5 text-right font-mono text-sm tabular-nums text-lumi-text"><Ctr v={m.ctr} /></td>
-      <td className="px-4 py-2.5 text-right font-mono text-sm tabular-nums"><Freq v={m.frequency} /></td>
+      <td className="px-4 py-2 text-right font-mono text-sm tabular-nums text-lumi-text"><Spend minor={m.spendMinor} currency={m.currency} /></td>
+      <td className="px-4 py-2 text-right font-mono text-sm tabular-nums"><Roas v={m.roas} /></td>
+      <td className="px-4 py-2 text-right font-mono text-sm tabular-nums text-lumi-text"><Ctr v={m.ctr} /></td>
+      <td className="px-4 py-2 text-right font-mono text-sm tabular-nums"><Freq v={m.frequency} /></td>
     </>
   );
 }
@@ -147,10 +160,14 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
           role="region"
           aria-label="Connected channel campaigns"
           tabIndex={0}
-          className="max-h-72 overflow-y-auto overflow-x-auto lg:max-h-80"
-          style={{ scrollbarGutter: 'stable' }}
+          className="overflow-x-auto"
         >
-          <table className="w-full">
+          {/* Horizontal scroll only. The panel deliberately does NOT cap its own
+              height — the page (<CampaignsView> root, overflow-y-auto) owns the
+              vertical scroll, so a nested max-h here just produced a cramped
+              scroll-within-a-scroll. min-w keeps the columns from crushing on
+              narrow viewports; the sticky header rides the page scroll. */}
+          <table className="w-full min-w-[720px]">
             <thead className="sticky top-0 z-10 bg-lumi-elevated border-b border-lumi-border">
               <tr>
                 <th scope="col" className="section-label px-4 py-2.5 text-left">Campaign</th>
@@ -183,7 +200,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                 return (
                   <Fragment key={c.entityId}>
                     <tr id={`campaign-row-${c.entityId}`} className="border-b border-lumi-border/50 hover:bg-lumi-elevated/40 transition-colors duration-100">
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2">
                         <button
                           type="button"
                           onClick={() => count > 0 && toggle(c.entityId)}
@@ -198,14 +215,17 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                               : <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-lumi-muted" strokeWidth={2} />)
                             : <span className="w-3.5 h-3.5 inline-block" />}
                           <span>
-                            <span className="block font-display font-medium text-sm text-lumi-text">{c.name}</span>
+                            <span className="block font-display font-medium text-xs text-lumi-text">{c.name}</span>
                             <span className="block font-mono text-[11px] text-lumi-subtle">
                               {c.channel}
                               {/* A conversion campaign that spent but measured no revenue: its
                                   ROAS cell reads "—" because the DATA is missing, not because
                                   it performed badly. Say so next to the name. */}
+                              {/* Subtle, not alarming: a missing revenue source is a
+                                  setup gap, not a live problem — muted so it reads as a
+                                  quiet hint next to the channel, not a warning. */}
                               {c.needsRevenue && (
-                                <span className="ml-1.5 text-signal-watch">· needs revenue</span>
+                                <span className="ml-1.5 text-lumi-subtle">· needs revenue</span>
                               )}
                             </span>
                           </span>
@@ -229,22 +249,22 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                           gatedOut/dataless campaign has none → honest "—", never a faked one.
                           A verdict decided by the portfolio-relative post-pass is badged
                           so a revenue-free KILL/SCALE reads as an engagement-relative call. */}
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2">
                         {verdict ? (
-                          <span className="inline-flex flex-col items-start gap-0.5">
+                          <span className="inline-flex items-center gap-1.5 flex-wrap">
                             <VerdictPill verdict={verdict} size="sm" />
                             {relativeRank && (
-                              <span className="font-mono text-[10px] text-lumi-subtle" title="Verdict ranked against this campaign's cohort — engagement signals only">
+                              <span className="font-mono text-[10px] text-lumi-subtle whitespace-nowrap" title="Verdict ranked against this campaign's cohort — engagement signals only">
                                 relative to portfolio
                               </span>
                             )}
                           </span>
                         ) : <Dash />}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono text-sm tabular-nums"><Impact score={impact} /></td>
+                      <td className="px-4 py-2 text-right font-mono text-sm tabular-nums"><Impact score={impact} relativeRank={relativeRank} /></td>
                       <MetricCells m={c} />
-                      <td className="px-4 py-3 text-right font-mono text-sm tabular-nums text-lumi-muted">{count > 0 ? count : <Dash />}</td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-4 py-2 text-right font-mono text-sm tabular-nums text-lumi-muted">{count > 0 ? count : <Dash />}</td>
+                      <td className="px-4 py-2 text-right">
                         <button
                           type="button"
                           onClick={() => toggleDetail(c.entityId)}

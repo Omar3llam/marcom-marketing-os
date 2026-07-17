@@ -93,6 +93,25 @@ describe('ConnectorCampaignsPanel — impact column', () => {
     // The impact cell falls back to the shared "No data" em-dash.
     expect(screen.getAllByTitle('No data').length).toBeGreaterThan(0);
   });
+
+  // A revenue-free campaign can't be impact-scored, but the relative post-pass
+  // placed it in its cohort — surface that standing instead of a bare "—".
+  it('an unscored TOP-ranked campaign shows the ↑ relative-rank glyph, not "—"', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'SCALE' }} relativeRanks={{ c1: 'TOP' }} impacts={{}} />);
+    expect(screen.getByTitle(/Top of its engagement cohort/i)).toHaveTextContent('↑');
+  });
+
+  it('an unscored BOTTOM-ranked campaign shows the ↓ relative-rank glyph', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} relativeRanks={{ c1: 'BOTTOM' }} impacts={{}} />);
+    expect(screen.getByTitle(/Bottom of its engagement cohort/i)).toHaveTextContent('↓');
+  });
+
+  // A real impact score always wins over the relative-rank fallback.
+  it('a scored campaign shows its impact number even when also relatively ranked', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} relativeRanks={{ c1: 'BOTTOM' }} impacts={{ c1: 8 }} />);
+    expect(screen.getByTitle('Impact 8/10 — priority to act')).toHaveTextContent('8');
+    expect(screen.queryByTitle(/engagement cohort/i)).not.toBeInTheDocument();
+  });
 });
 
 describe('ConnectorCampaignsPanel — detail expand', () => {
