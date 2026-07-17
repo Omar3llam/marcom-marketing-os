@@ -6,7 +6,7 @@
 // Empty state shown honestly when no alerts.
 // ============================================================
 import { Link } from 'react-router-dom';
-import { AlertTriangle, CircleDollarSign } from 'lucide-react';
+import { AlertTriangle, CircleDollarSign, Clock } from 'lucide-react';
 import { appRoutes } from '@/app/routeManifest.js';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 
@@ -21,6 +21,12 @@ export default function AlertsPanel({ campaigns = [] }) {
   // a tracking gap the operator can close, NOT a performance problem. Server-
   // computed (needsRevenue) so this never disagrees with the Campaigns table.
   const needsRevenue = campaigns.filter((c) => c.needsRevenue);
+
+  // A DIFFERENT story from needsRevenue: revenue WAS uploaded, but it now lags
+  // the spend it would be divided by, so the engine stopped scoring it rather
+  // than publish a drifted ROAS. Same server-computed flag the Campaigns table
+  // reads, so the two surfaces can't disagree about whose revenue went stale.
+  const staleRevenue = campaigns.filter((c) => c.revenueStale);
 
   return (
     <div className="card-raised p-4">
@@ -81,6 +87,33 @@ export default function AlertsPanel({ campaigns = [] }) {
             className="mt-2 block text-xs text-lumi-accent hover:underline"
           >
             Upload revenue data to unlock ROAS →
+          </Link>
+        </div>
+      )}
+
+      {staleRevenue.length > 0 && (
+        <div className="mt-3 pt-3 border-t border-lumi-border">
+          <p className="text-xs font-medium text-lumi-text mb-2 flex items-center gap-1.5">
+            <Clock size={12} className="text-signal-watch" />
+            Revenue data outdated
+          </p>
+          <div className="space-y-1">
+            {staleRevenue.slice(0, 3).map((c) => (
+              <p key={c.entityId} className="text-xs text-lumi-muted truncate">
+                · {c.name || 'Unnamed campaign'}
+              </p>
+            ))}
+          </div>
+          {staleRevenue.length > 3 && (
+            <p className="text-xs text-lumi-subtle mt-1">
+              +{staleRevenue.length - 3} more
+            </p>
+          )}
+          <Link
+            to={appRoutes.settingsRevenue}
+            className="mt-2 block text-xs text-lumi-accent hover:underline"
+          >
+            Re-upload revenue to refresh ROAS →
           </Link>
         </div>
       )}

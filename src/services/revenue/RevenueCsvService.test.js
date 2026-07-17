@@ -18,7 +18,7 @@ const { prismaMock } = vi.hoisted(() => ({
 vi.mock('../../lib/prisma.js', () => ({ prisma: prismaMock }));
 vi.mock('../../utils/logger.js', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
-import { processRevenueCsv, findBestMatch, parseAmount, MAX_REVENUE_CSV_ROWS } from './RevenueCsvService.js';
+import { processRevenueCsv, findBestMatch, parseAmount, parseCount, MAX_REVENUE_CSV_ROWS } from './RevenueCsvService.js';
 
 const CAMPAIGNS = [
   { id: 'u1', name: 'Folla Facebook', externalId: '111' },
@@ -58,6 +58,19 @@ describe('parseAmount — strips symbols + thousands separators', () => {
     expect(parseAmount('abc')).toBeNull();
     expect(parseAmount('')).toBeNull();
     expect(parseAmount(null)).toBeNull();
+  });
+});
+
+describe('parseCount — a whole, non-negative count or null', () => {
+  it('strips separators a CSV export writes ("1,204" → 1204, where Number() gives NaN)', () => {
+    expect(parseCount('1,204')).toBe(1204);
+    expect(parseCount(12)).toBe(12);
+  });
+  it('rounds a fractional cell — a count is whole', () => expect(parseCount('3.6')).toBe(4));
+  it('absent / junk / negative → null (never a fabricated 0)', () => {
+    expect(parseCount(undefined)).toBeNull();
+    expect(parseCount('n/a')).toBeNull();
+    expect(parseCount('-4')).toBeNull();
   });
 });
 
@@ -130,4 +143,35 @@ describe('processRevenueCsv — lands MANUAL actuals, never overwrites platform'
   });
 
   it('exposes a 500-row cap constant', () => expect(MAX_REVENUE_CSV_ROWS).toBe(500));
+});
+
+// The optional conversions column: unlocks Blended CPA for a pixel-less account.
+// It must never regress the 2-column upload that shipped before it existed.
+describe('processRevenueCsv — the optional conversions column', () => {
+  const create = () => prismaMock.metricSnapshot.upsert.mock.calls[0][0].create;
+
+  it('lands a mapped conversion count on the MANUAL snapshot', async () => {
+    await processRevenueCsv('ws1', [{ campaignIdentifier: 'Folla Facebook', revenueAmount: '12,500', conversions: '42', currency: 'EGP' }]);
+    expect(create()).toMatchObject({ entityId: 'u1', source: 'MANUAL', revenueMinor: 1250000, conversions: 42 });
+  });
+
+  it('an omitted conversions column still lands 0 — the pre-existing upload is unchanged', async () => {
+    await processRevenueCsv('ws1', [{ campaignIdentifier: 'Folla Facebook', revenueAmount: '12,500', currency: 'EGP' }]);
+    expect(create().conversions).toBe(0);
+  });
+
+  it('an unparseable conversions cell degrades to 0 — it never fails the revenue row', async () => {
+    const res = await processRevenueCsv('ws1', [{ campaignIdentifier: 'Folla Facebook', revenueAmount: '12,500', conversions: 'n/a', currency: 'EGP' }]);
+    expect(res).toMatchObject({ matched: 1, updated: 1, errors: [] });
+    expect(create().conversions).toBe(0);
+  });
+
+  // CPA is SPEND ÷ conversions (snapshotSink) and this row's spend is 0 BY
+  // CONTRACT — so CPA is not derivable here. revenue ÷ conversions would be
+  // average order value wearing the name `cpaMinor`, which GuardrailSweepService
+  // reads as a cost. It must stay null however many conversions land.
+  it('never derives cpaMinor from revenue — the MANUAL row carries no spend', async () => {
+    await processRevenueCsv('ws1', [{ campaignIdentifier: 'Folla Facebook', revenueAmount: '12,500', conversions: '42', currency: 'EGP' }]);
+    expect(create()).toMatchObject({ spendMinor: 0, cpaMinor: null });
+  });
 });

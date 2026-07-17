@@ -103,6 +103,15 @@ export function effectiveByEntity(snapshots = [], { maxRevenueAgeMs = REVENUE_MA
       ...base,
       revenueMinor: actual.revenueMinor,
       roas: Number.isFinite(spendMinor) && spendMinor > 0 ? actual.revenueMinor / spendMinor : null,
+      // The same actual may carry the conversion COUNT the platform pixel never
+      // saw (a manual upload's optional column). Overlay it on the revenue's
+      // terms — a real count only — so account CPA can be derived from the
+      // platform row's spend ÷ measured conversions. A zero/absent count leaves
+      // the platform's own conversions standing: an actual without a conversions
+      // column must never erase a pixel that IS counting.
+      conversions: Number.isFinite(actual.conversions) && actual.conversions > 0
+        ? actual.conversions
+        : base.conversions,
       revenueStale: false,
     });
   }

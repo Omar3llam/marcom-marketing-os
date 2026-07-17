@@ -79,8 +79,16 @@ entitiesRouter.get('/entities/health', requireCollabRole(WORKSPACE_ROLE.BUYER, W
     // Carry the same deterministic needsRevenue flag onto the health rows the
     // Overview renders, so "needs revenue" reads identically on both surfaces
     // (one source of truth — computed from the raw rows, never the health score).
+    // revenueStale rides along on the same terms: the engine already decided it
+    // (entityGraphEngine's age bound), so the Overview and the Campaigns table
+    // can never disagree about whose revenue went stale.
     const needsRevenueIds = new Set(campaigns.filter(needsRevenueData).map((c) => c.entityId));
-    const decorated = (health.campaigns ?? []).map((c) => ({ ...c, needsRevenue: needsRevenueIds.has(c.entityId) }));
+    const staleRevenueIds = new Set(campaigns.filter((c) => c.revenueStale).map((c) => c.entityId));
+    const decorated = (health.campaigns ?? []).map((c) => ({
+      ...c,
+      needsRevenue: needsRevenueIds.has(c.entityId),
+      revenueStale: staleRevenueIds.has(c.entityId),
+    }));
 
     return res.json({
       workspaceId: req.workspaceId ?? null,

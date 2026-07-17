@@ -12,7 +12,7 @@ import { BottomCTA } from './CTASection.jsx';
 // Pricing=pricing). Hardcoded — never auto-derived from the label — so the link
 // can't silently drift away from the section id.
 const NAV_LINKS = [
-  { label: 'How it works', href: '#how' },
+  { label: 'Get started', href: '#how' },
   { label: 'Inside Lumi', href: '#features' },
   { label: 'Pricing', href: '#pricing' },
 ];
@@ -86,7 +86,7 @@ function Navbar({ menuOpen, setMenuOpen }) {
               scrolled ? 'px-4 py-2' : 'px-4 py-2.5'
             }`}
           >
-            Ask Lumi free
+            Start free
             <ArrowRight className="w-3.5 h-3.5" strokeWidth={2} />
           </Link>
         </div>
@@ -126,7 +126,7 @@ function Navbar({ menuOpen, setMenuOpen }) {
               onClick={() => setMenuOpen(false)}
               className="mt-1 w-full btn-gold px-4 py-2 rounded-xl text-sm"
             >
-              Ask Lumi free →
+              Start free →
             </Link>
           </div>
         </div>
@@ -156,7 +156,7 @@ function BrandMark({ scrolled }) {
         className="font-display font-bold tracking-tight text-dark-base"
         style={{ fontSize: fs, letterSpacing: '-0.02em' }}
       >
-        Marcom<span className="text-lumi-accent">AI</span>
+        Lumi
       </span>
     </Link>
   );
@@ -166,13 +166,13 @@ function Footer() {
   return (
     <footer className="px-4 sm:px-6 py-8 border-t border-surface-border/50">
       <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-dark-subtle font-mono">
-        <span>© {new Date().getFullYear()} MARCOM AI</span>
+        <span>© {new Date().getFullYear()} Lumi</span>
         <div className="flex items-center gap-5">
           <Link to="/privacy" className="hover:text-dark-base transition-colors">Privacy</Link>
           <Link to="/terms" className="hover:text-dark-base transition-colors">Terms</Link>
           <a href="mailto:hello@marcom.ai" className="hover:text-dark-base transition-colors">Contact</a>
         </div>
-        <span>Lumi · Decision OS</span>
+        <span>Built for MENA performance marketers who want decisions, not dashboards.</span>
       </div>
     </footer>
   );

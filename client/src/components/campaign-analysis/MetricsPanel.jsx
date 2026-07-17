@@ -44,7 +44,7 @@ export function MetricsPanel({
         deltaClass="text-lumi-subtle"
         footer={blendedCpa == null ? (
           <Link to={appRoutes.settingsRevenue} className="text-xs font-medium text-lumi-accent hover:underline">
-            Add revenue data to unlock ROAS →
+            Upload revenue CSV to unlock ROAS →
           </Link>
         ) : undefined}
       />
