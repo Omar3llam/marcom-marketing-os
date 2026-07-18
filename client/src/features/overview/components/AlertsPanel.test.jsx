@@ -48,7 +48,7 @@ describe('AlertsPanel — revenue data sections', () => {
     expect(screen.getByText('· Went Stale')).toBeInTheDocument();
     // …and the two CTAs say different things — an operator who already uploaded
     // must not be told to upload.
-    expect(screen.getByRole('link', { name: /Upload revenue data to unlock ROAS/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Connect sales data to unlock profit-based recommendations/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Re-upload revenue to refresh ROAS/i })).toBeInTheDocument();
   });
 

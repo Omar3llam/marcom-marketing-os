@@ -21,6 +21,7 @@ import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { HelpTip } from '@/components/ui/HelpTip.jsx';
 import { HELP } from '@/lib/helpContent.js';
 import { CampaignDetailPanel } from '@/features/campaigns/CampaignDetailPanel.jsx';
+import { NO_REVENUE_DISCLAIMER, evidenceClause, shortEvidence } from '@/features/campaigns/verdictEvidence.js';
 
 // Missing metric → em-dash, never 0 (a true zero and "no data" must not look alike).
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
@@ -44,10 +45,10 @@ const Impact = ({ score, relativeRank }) => {
     return <span className={cn('font-semibold', impactColor(score))} title={`Impact ${score}/10 — priority to act`}>{score}</span>;
   }
   if (relativeRank === 'TOP') {
-    return <span className="text-signal-scale" title="Top of its engagement cohort — no revenue to score impact">↑</span>;
+    return <span className="text-signal-scale" title="Strongest engagement in its group — no revenue data to score impact">↑</span>;
   }
   if (relativeRank === 'BOTTOM') {
-    return <span className="text-signal-kill" title="Bottom of its engagement cohort — no revenue to score impact">↓</span>;
+    return <span className="text-signal-kill" title="Weakest engagement in its group — no revenue data to score impact">↓</span>;
   }
   return <Dash />;
 };
@@ -99,7 +100,7 @@ function AdSetRows({ state }) {
   ));
 }
 
-export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativeRanks = {}, impacts = {}, loading = false, error = null, deepLinkEntityId = null, onDeepLinkHandled }) {
+export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativeRanks = {}, impacts = {}, verdictInfo = {}, loading = false, error = null, deepLinkEntityId = null, onDeepLinkHandled }) {
   const [open, setOpen] = useState(new Set());          // ad-set drill-down
   const [detailOpen, setDetailOpen] = useState(new Set()); // signals + reasoning panel
   const { byId, load } = useEntityDrillDown();
@@ -197,6 +198,13 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                 const verdict = verdicts[c.entityId];
                 const relativeRank = relativeRanks[c.entityId] ?? null;
                 const impact = impacts[c.entityId] ?? null;
+                const info = verdictInfo[c.entityId] ?? {};
+                // The engine's own evidence words ("Lowest CTR in its group"),
+                // never the internal "relative to portfolio" label. Fallback
+                // states the TOP/BOTTOM field plainly when no rationale arrived.
+                const badgeText = shortEvidence(info.rationale)
+                  ?? (relativeRank === 'BOTTOM' ? 'weakest engagement in its group' : 'strongest engagement in its group');
+                const badgeTitle = `${evidenceClause(info.rationale) ?? badgeText} — ${NO_REVENUE_DISCLAIMER}`;
                 return (
                   <Fragment key={c.entityId}>
                     <tr id={`campaign-row-${c.entityId}`} className="border-b border-lumi-border/50 hover:bg-lumi-elevated/40 transition-colors duration-100">
@@ -254,8 +262,8 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                           <span className="inline-flex items-center gap-1.5 flex-wrap">
                             <VerdictPill verdict={verdict} size="sm" />
                             {relativeRank && (
-                              <span className="font-mono text-[10px] text-lumi-subtle whitespace-nowrap" title="Verdict ranked against this campaign's cohort — engagement signals only">
-                                relative to portfolio
+                              <span className="font-mono text-[10px] text-lumi-subtle whitespace-nowrap" title={badgeTitle}>
+                                {badgeText}
                               </span>
                             )}
                           </span>
@@ -282,7 +290,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                     {isDetailOpen && (
                       <tr className="border-b border-lumi-border/50 bg-lumi-bg/20">
                         <td colSpan={9} className="px-4 pb-3 pt-0">
-                          <CampaignDetailPanel campaign={c} verdict={verdict} impact={impact} relativeRank={relativeRank} />
+                          <CampaignDetailPanel campaign={c} verdict={verdict} impact={impact} rationale={info.rationale ?? null} confidence={info.confidence ?? null} />
                         </td>
                       </tr>
                     )}

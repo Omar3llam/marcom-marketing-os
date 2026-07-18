@@ -75,15 +75,15 @@ describe('CampaignsView — relative-ranking note', () => {
     useAccountHealth.mockReturnValue({ health: null, refetch: vi.fn() });
   });
 
-  it('shows the "relative to your portfolio" note + revenue CTA when a verdict was ranked relative', () => {
+  it('shows the plain-language no-revenue note + sales-data CTA when a verdict was ranked relative', () => {
     useConnectorVerdicts.mockReturnValue({
       verdicts: [{ id: 'a', verdict: 'KILL', roas: null, revenueExpected: false, relativeRank: 'BOTTOM' }],
       gatedOut: [], refetch: vi.fn(),
     });
     renderView();
 
-    expect(screen.getByText(/ranked relative to your portfolio/i)).toBeInTheDocument();
-    const cta = screen.getByRole('link', { name: /add revenue data for roas-based scoring/i });
+    expect(screen.getByText(/recommendations are based on CTR, Frequency and Spend only/i)).toBeInTheDocument();
+    const cta = screen.getByRole('link', { name: /connect sales data to unlock profit-based recommendations/i });
     expect(cta).toHaveAttribute('href', '/app/settings/revenue');
   });
 
@@ -94,7 +94,7 @@ describe('CampaignsView — relative-ranking note', () => {
     });
     renderView();
 
-    expect(screen.queryByText(/ranked relative to your portfolio/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/recommendations are based on CTR, Frequency and Spend only/i)).not.toBeInTheDocument();
   });
 });
 

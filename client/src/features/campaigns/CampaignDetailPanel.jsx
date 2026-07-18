@@ -1,8 +1,10 @@
 // ============================================================
 // MARCOM / Lumi — CampaignDetailPanel  (Campaigns · expanded row)
 // ------------------------------------------------------------
-// The expanded drill-down for one connector campaign: a deterministic SIGNALS
-// breakdown (left) + "Lumi's Read", the PRE-GENERATED verdict reasoning (right).
+// The expanded drill-down for one connector campaign: a structured "Why?"
+// evidence block for KILL/SCALE (engine rationale + confidence + next step +
+// cost of ignoring), then a deterministic SIGNALS breakdown (left) + "Lumi's
+// Read", the PRE-GENERATED verdict reasoning (right).
 //
 // Governing law: every signal traces to a MetricSnapshot row; a missing signal
 // renders "—" (Dash), never a fabricated 0. Reasoning is written by the agentic
@@ -17,6 +19,9 @@ import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFor
 import { HelpTip } from '@/components/ui/HelpTip.jsx';
 import { HELP } from '@/lib/helpContent.js';
 import { useCampaignReasoning } from '@/hooks/useCampaignReasoning.js';
+import {
+  NO_REVENUE_DISCLAIMER, confidenceLabel, evidenceClause, nextActionFor, ignoreCostFor,
+} from '@/features/campaigns/verdictEvidence.js';
 
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
 
@@ -41,7 +46,7 @@ function Signal({ label, help, children }) {
   );
 }
 
-export function CampaignDetailPanel({ campaign, verdict = null, impact = null, relativeRank = null }) {
+export function CampaignDetailPanel({ campaign, verdict = null, impact = null, rationale = null, confidence = null }) {
   const { load, reasoning, stale, generatedAt, isLoading, error } = useCampaignReasoning();
   const entityId = campaign.entityId;
 
@@ -53,8 +58,41 @@ export function CampaignDetailPanel({ campaign, verdict = null, impact = null, r
 
   const ctrPct = campaign.ctr != null ? `${(campaign.ctr * 100).toFixed(2)}%` : null;
 
+  // The structured "Why?" breakdown for the two action verdicts. Everything here
+  // is surfaced, not computed: the evidence line is the engine's own rationale
+  // clause, confidence is the engine's score, the cost line quotes real spend/
+  // ROAS. A missing piece renders nothing — never an invented reason.
+  const isActionVerdict = verdict === 'KILL' || verdict === 'SCALE';
+  const evidence = evidenceClause(rationale);
+  const confLabel = confidenceLabel(confidence);
+  const nextAction = nextActionFor(verdict);
+  const ignoreCost = ignoreCostFor({
+    verdict, roas: campaign.roas, spendMinor: campaign.spendMinor, currency: campaign.currency || 'USD',
+  });
+
   return (
     <div className="grid gap-4 md:grid-cols-2 bg-lumi-bg/40 rounded-xl p-4 my-1">
+      {/* ── Why KILL / SCALE? ───────────────────────────────── */}
+      {isActionVerdict && (
+        <div className="md:col-span-2 rounded-xl border border-lumi-border/60 bg-lumi-surface/60 p-3">
+          <div className="section-label mb-1.5 text-lumi-muted">Why {verdict.toLowerCase()}?</div>
+          {evidence && (
+            <p className="text-sm text-lumi-text leading-relaxed">
+              {evidence}
+              {confLabel && <span className="font-mono text-[11px] text-lumi-subtle"> · {confLabel} confidence</span>}
+            </p>
+          )}
+          {nextAction && (
+            <p className="mt-1.5 text-sm text-lumi-text">
+              <span className="font-semibold">Next step:</span> {nextAction}
+            </p>
+          )}
+          {ignoreCost && <p className="mt-1.5 text-xs text-lumi-muted leading-relaxed">{ignoreCost}</p>}
+          {campaign.roas == null && (
+            <p className="mt-1.5 text-xs text-lumi-subtle leading-relaxed">{NO_REVENUE_DISCLAIMER}</p>
+          )}
+        </div>
+      )}
       {/* ── Signals ─────────────────────────────────────────── */}
       <div>
         <div className="section-label mb-2 text-lumi-muted">Signals</div>
@@ -71,13 +109,6 @@ export function CampaignDetailPanel({ campaign, verdict = null, impact = null, r
           {campaign.spendMinor != null ? formatCurrency(campaign.spendMinor, campaign.currency || 'USD') : <Dash />}
         </Signal>
         <Signal label="Objective" help={<HelpTip content={HELP.OBJECTIVE} />}>{campaign.objective || <Dash />}</Signal>
-        {/* This verdict came from the portfolio-relative post-pass (no revenue to
-            score on ROAS) — name the basis so the KILL/SCALE isn't mistaken for one. */}
-        {relativeRank && (
-          <p className="mt-2 text-xs text-lumi-subtle italic leading-relaxed">
-            Ranked relative to this campaign&apos;s cohort — engagement signals only. Add revenue data for ROAS-based scoring.
-          </p>
-        )}
       </div>
 
       {/* ── Lumi's Read (pre-generated during the sweep) ─────── */}
