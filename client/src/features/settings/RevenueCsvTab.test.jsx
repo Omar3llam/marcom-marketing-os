@@ -9,11 +9,13 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { UploadState, MappingState, ResultsState, downloadTemplate } from './RevenueCsvTab.jsx';
+import { UploadState, MappingState, ResultsState } from './RevenueCsvTab.jsx';
 
 // ResultsState links to the Campaigns route, so it needs a Router in scope.
 const renderResults = (ui) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
+// Template building/downloading itself is covered in revenueTemplate.test.js —
+// here we test the UploadState wiring: labels, ordering, and the file input.
 describe('UploadState', () => {
   it('hands the chosen file to onFile', () => {
     const onFile = vi.fn();
@@ -28,29 +30,25 @@ describe('UploadState', () => {
     render(<UploadState onFile={vi.fn()} />);
     expect(screen.getByRole('button', { name: /Download template CSV/i })).toBeInTheDocument();
   });
-});
 
-// The template gives operators without a report a correctly-shaped starter file:
-// the three mapping columns and a named download, built with no real campaigns.
-describe('downloadTemplate', () => {
-  it('builds a text/csv blob and triggers a named download', () => {
-    const createObjectURL = vi.fn(() => 'blob:mock');
-    const revokeObjectURL = vi.fn();
-    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL });
-    const click = vi.fn();
-    const created = { set href(v) { this._href = v; }, get href() { return this._href; }, click };
-    const createElement = vi.spyOn(document, 'createElement').mockReturnValue(created);
+  it('labels the template with the pre-filled needs-revenue campaign count', () => {
+    const two = [{ name: 'A', needsRevenue: true }, { name: 'B', needsRevenue: true }];
+    render(<UploadState onFile={vi.fn()} templateCampaigns={two} />);
+    expect(screen.getByText('Pre-filled with 2 campaigns that need revenue data')).toBeInTheDocument();
+  });
 
-    downloadTemplate();
+  it('no campaigns loaded → an honest "blank template" label, never a fake count', () => {
+    render(<UploadState onFile={vi.fn()} />);
+    expect(screen.getByText('Download a blank template')).toBeInTheDocument();
+    expect(screen.queryByText(/Pre-filled with/)).not.toBeInTheDocument();
+  });
 
-    const blob = createObjectURL.mock.calls[0][0];
-    expect(blob.type).toBe('text/csv');
-    expect(created.download).toBe('lumi-revenue-template.csv');
-    expect(click).toHaveBeenCalledTimes(1);
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock');
-
-    createElement.mockRestore();
-    vi.unstubAllGlobals();
+  // Step 1 of the flow is the template — it must sit BEFORE the upload area.
+  it('renders the download step before the upload drop area', () => {
+    const { container } = render(<UploadState onFile={vi.fn()} />);
+    const download = screen.getByRole('button', { name: /Download template CSV/i });
+    const upload = container.querySelector('input[type="file"]').closest('label');
+    expect(download.compareDocumentPosition(upload) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 

@@ -8,7 +8,7 @@
 //
 // The state-branch views are exported prop-driven for direct unit testing.
 // ============================================================
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { UploadCloud, FileText, CheckCircle2, AlertTriangle, RefreshCw, ArrowLeft, Download } from 'lucide-react';
@@ -17,50 +17,41 @@ import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useRevenueCsv } from '@/hooks/useRevenueCsv.js';
 import { useRunSweep } from '@/hooks/useRunSweep.js';
+import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
+import { downloadTemplate, templateCampaignsFor } from './revenueTemplate.js';
 
 const CURRENCIES = ['EGP', 'SAR', 'AED', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD', 'USD', 'EUR', 'GBP'];
 
-// A starter file for operators who don't have a report to export — the three
-// columns the mapping step expects (identifier, revenue, optional conversions),
-// with placeholder rows they overwrite. Generic names, not real campaigns.
-const TEMPLATE_ROWS = [
-  ['Campaign Name', 'Revenue Amount', 'Conversions (optional)'],
-  ['Your Campaign Name Here', '5000', '10'],
-  ['Another Campaign', '3500', '7'],
-];
-
-export function downloadTemplate() {
-  const csv = TEMPLATE_ROWS.map((r) => r.join(',')).join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'lumi-revenue-template.csv';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 // ── State 1 — upload ────────────────────────────────────────────
-export function UploadState({ onFile }) {
+// The template download is step 1, BEFORE the upload area: pre-filled with the
+// user's real campaigns that still need revenue (highest spend first), so the
+// flow reads download → fill in revenue → upload. Built in the browser only.
+export function UploadState({ onFile, templateCampaigns = [] }) {
   const onInput = (e) => { const f = e.target.files?.[0]; if (f) onFile(f); };
+  const n = templateCampaigns.length;
   return (
     <div className="rounded-2xl border border-lumi-border bg-lumi-surface p-6">
-      <div className="flex items-start justify-between gap-3">
-        <h3 className="font-display font-semibold text-lumi-text">Upload revenue data</h3>
+      <h3 className="font-display font-semibold text-lumi-text">Upload revenue data</h3>
+      <ol className="mt-3 space-y-1 text-sm text-lumi-muted list-decimal list-inside">
+        <li>Download the template — or export a campaign report from any platform</li>
+        <li>Fill in the revenue for each campaign and upload it back</li>
+        <li>Lumi matches your campaigns and unlocks profit-based recommendations</li>
+      </ol>
+      <div className="mt-5 flex items-center justify-between gap-3 rounded-xl border border-lumi-border bg-lumi-elevated/40 px-4 py-3">
+        <p className="text-xs text-lumi-muted">
+          {n > 0
+            ? `Pre-filled with ${n} campaign${n === 1 ? '' : 's'} that need revenue data`
+            : 'Download a blank template'}
+        </p>
         <button
-          onClick={downloadTemplate}
+          onClick={() => downloadTemplate(templateCampaigns)}
           className="shrink-0 text-xs text-lumi-gold hover:underline flex items-center gap-1"
         >
           <Download size={12} strokeWidth={1.5} />
           Download template CSV
         </button>
       </div>
-      <ol className="mt-3 space-y-1 text-sm text-lumi-muted list-decimal list-inside">
-        <li>Export your campaign report from any platform</li>
-        <li>Map the campaign and revenue columns</li>
-        <li>Lumi matches your campaigns and unlocks ROAS</li>
-      </ol>
-      <label className="mt-5 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-lumi-border bg-lumi-elevated/40 px-4 py-8 cursor-pointer hover:border-lumi-accent/50 transition-colors">
+      <label className="mt-4 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-lumi-border bg-lumi-elevated/40 px-4 py-8 cursor-pointer hover:border-lumi-accent/50 transition-colors">
         <UploadCloud className="w-6 h-6 text-lumi-accent" strokeWidth={1.5} />
         <span className="text-sm font-medium text-lumi-text">Drop a CSV file here or click to browse</span>
         <span className="text-xs text-lumi-subtle">Required columns: campaign name or ID, and revenue amount</span>
@@ -200,6 +191,11 @@ export default function RevenueCsvTab() {
   const { workspace } = useWorkspace();
   const { parse, upload, isUploading, result, error, reset } = useRevenueCsv();
   const { runSweep, sweeping } = useRunSweep();
+  // Existing connector hook (existing endpoint) — the only source of the user's
+  // real campaign names for the pre-filled template. Loading/empty degrade to a
+  // blank template; the CSV itself is always built client-side.
+  const { campaigns: connectorCampaigns } = useConnectorCampaigns();
+  const templateCampaigns = useMemo(() => templateCampaignsFor(connectorCampaigns), [connectorCampaigns]);
 
   const [parsed, setParsed] = useState(null);
   const [mapping, setMapping] = useState({ identifier: '', revenue: '', conversions: '' });
@@ -257,7 +253,7 @@ export default function RevenueCsvTab() {
     <div className="space-y-4">
       <div>
         <h2 className="decision-title text-lumi-text">Revenue data</h2>
-        <p className="text-sm text-lumi-muted">Upload campaign revenue to unlock ROAS for accounts without a purchase pixel.</p>
+        <p className="text-sm text-lumi-muted">Add campaign revenue so recommendations are based on profit, not just engagement — no purchase pixel needed.</p>
       </div>
 
       {result
@@ -269,7 +265,7 @@ export default function RevenueCsvTab() {
               currency={currency} setCurrency={setCurrency}
               onConfirm={onConfirm} onBack={restart} isUploading={isUploading}
             />
-          : <UploadState onFile={onFile} />}
+          : <UploadState onFile={onFile} templateCampaigns={templateCampaigns} />}
     </div>
   );
 }

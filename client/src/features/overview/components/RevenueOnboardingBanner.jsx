@@ -28,7 +28,7 @@ export default function RevenueOnboardingBanner({ campaignCount = 0, onDismiss }
               Lumi scored {campaignCount} campaign{campaignCount === 1 ? '' : 's'} on engagement signals.
             </p>
             <p className="text-xs text-lumi-muted leading-relaxed mb-3 max-w-[560px]">
-              Add revenue data to unlock ROAS-based verdicts and see exactly which campaigns to scale and which are wasting budget.
+              Connect sales data to unlock profit-based recommendations — see exactly which campaigns to scale and which are wasting budget.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <Link

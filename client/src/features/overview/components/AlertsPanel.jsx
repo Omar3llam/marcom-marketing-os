@@ -86,7 +86,7 @@ export default function AlertsPanel({ campaigns = [] }) {
             to={appRoutes.settingsRevenue}
             className="mt-2 block text-xs text-lumi-accent hover:underline"
           >
-            Upload revenue data to unlock ROAS →
+            Connect sales data to unlock profit-based recommendations →
           </Link>
         </div>
       )}

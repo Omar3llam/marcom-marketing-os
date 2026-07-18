@@ -50,34 +50,93 @@ describe('ConnectorCampaignsPanel — verdict column', () => {
   });
 });
 
-describe('ConnectorCampaignsPanel — relative-ranking badge', () => {
-  it('badges "relative to portfolio" when the verdict came from the relative post-pass', () => {
+// The badge surfaces the ENGINE'S OWN evidence words (from the rationale the
+// verdict already carries), not the internal "relative to portfolio" label.
+const KILL_RATIONALE =
+  'Lowest CTR in the conversion group (0.85% vs 1.42% group average) — weakest engagement in your portfolio. Based on engagement signals only; add revenue data for ROAS-based scoring.';
+
+describe('ConnectorCampaignsPanel — relative-ranking evidence badge', () => {
+  it('badges the rationale evidence in marketer language when the verdict came from the relative post-pass', () => {
     render(
       <ConnectorCampaignsPanel
         campaigns={[campaign()]}
         verdicts={{ c1: 'KILL' }}
         relativeRanks={{ c1: 'BOTTOM' }}
+        verdictInfo={{ c1: { rationale: KILL_RATIONALE, confidence: 0.6 } }}
       />,
     );
     expect(screen.getByLabelText('Verdict: KILL')).toBeInTheDocument();
-    expect(screen.getByText('relative to portfolio')).toBeInTheDocument();
+    expect(screen.getByText('Lowest CTR in its group')).toBeInTheDocument();
+    expect(screen.queryByText('relative to portfolio')).not.toBeInTheDocument();
+  });
+
+  it('no rationale arrived → a plain-language TOP/BOTTOM fallback, still no internal label', () => {
+    render(
+      <ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} relativeRanks={{ c1: 'BOTTOM' }} />,
+    );
+    expect(screen.getByText('weakest engagement in its group')).toBeInTheDocument();
   });
 
   it('shows no badge for an absolute (non-relative) verdict', () => {
     render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} relativeRanks={{}} />);
-    expect(screen.queryByText('relative to portfolio')).not.toBeInTheDocument();
+    expect(screen.queryByText(/in its group/)).not.toBeInTheDocument();
+  });
+});
+
+describe('ConnectorCampaignsPanel — "Why?" evidence in the expanded detail', () => {
+  const expand = () => fireEvent.click(screen.getByRole('button', { name: /toggle details for awareness reach/i }));
+
+  it('a KILL shows the evidence, confidence, next step, and the no-revenue disclaimer', () => {
+    render(
+      <ConnectorCampaignsPanel
+        campaigns={[campaign()]}
+        verdicts={{ c1: 'KILL' }}
+        relativeRanks={{ c1: 'BOTTOM' }}
+        verdictInfo={{ c1: { rationale: KILL_RATIONALE, confidence: 0.6 } }}
+      />,
+    );
+    expand();
+    // Evidence = the rationale's own measurable clause, numbers verbatim.
+    expect(screen.getByText(/Lowest CTR in the conversion group \(0\.85% vs 1\.42% group average\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Medium confidence/)).toBeInTheDocument();
+    expect(screen.getByText('Pause and reallocate budget')).toBeInTheDocument();
+    // roas is null → the honest basis disclaimer, in marketer language.
+    expect(screen.getByText(/No revenue data found — recommendation based on CTR, Frequency and Spend only\./)).toBeInTheDocument();
   });
 
-  it('surfaces the engagement-only basis in the expanded detail for a relative verdict', () => {
+  it('a SCALE names the next step and the cost of not acting', () => {
     render(
       <ConnectorCampaignsPanel
         campaigns={[campaign()]}
         verdicts={{ c1: 'SCALE' }}
         relativeRanks={{ c1: 'TOP' }}
+        verdictInfo={{ c1: { rationale: 'Highest CTR in the awareness group (2.10% vs 1.20% group average) — strongest engagement in your portfolio.', confidence: 0.6 } }}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /toggle details for awareness reach/i }));
-    expect(screen.getByText(/ranked relative to this campaign.s cohort/i)).toBeInTheDocument();
+    expand();
+    expect(screen.getByText('Increase budget or expand audience')).toBeInTheDocument();
+    expect(screen.getByText(/Not scaling misses the strongest-engagement campaign/)).toBeInTheDocument();
+  });
+
+  it('a non-action verdict (HOLD/REFRESH) gets no "Why?" block', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'REFRESH' }} />);
+    expand();
+    expect(screen.queryByText(/^Why /)).not.toBeInTheDocument();
+    expect(screen.queryByText('Pause and reallocate budget')).not.toBeInTheDocument();
+  });
+
+  it('a revenue-track KILL shows no revenue disclaimer (revenue IS measured)', () => {
+    render(
+      <ConnectorCampaignsPanel
+        campaigns={[campaign({ roas: 0.42 })]}
+        verdicts={{ c1: 'KILL' }}
+        verdictInfo={{ c1: { rationale: 'ROAS 0.42 below break-even with frequency 5.2 past the 3.5 ceiling.', confidence: 0.9 } }}
+      />,
+    );
+    expand();
+    expect(screen.getByText(/ROAS 0\.42 below break-even/)).toBeInTheDocument();
+    expect(screen.getByText(/High confidence/)).toBeInTheDocument();
+    expect(screen.queryByText(/No revenue data found/)).not.toBeInTheDocument();
   });
 });
 
@@ -98,19 +157,19 @@ describe('ConnectorCampaignsPanel — impact column', () => {
   // placed it in its cohort — surface that standing instead of a bare "—".
   it('an unscored TOP-ranked campaign shows the ↑ relative-rank glyph, not "—"', () => {
     render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'SCALE' }} relativeRanks={{ c1: 'TOP' }} impacts={{}} />);
-    expect(screen.getByTitle(/Top of its engagement cohort/i)).toHaveTextContent('↑');
+    expect(screen.getByTitle('Strongest engagement in its group — no revenue data to score impact')).toHaveTextContent('↑');
   });
 
   it('an unscored BOTTOM-ranked campaign shows the ↓ relative-rank glyph', () => {
     render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} relativeRanks={{ c1: 'BOTTOM' }} impacts={{}} />);
-    expect(screen.getByTitle(/Bottom of its engagement cohort/i)).toHaveTextContent('↓');
+    expect(screen.getByTitle('Weakest engagement in its group — no revenue data to score impact')).toHaveTextContent('↓');
   });
 
   // A real impact score always wins over the relative-rank fallback.
   it('a scored campaign shows its impact number even when also relatively ranked', () => {
     render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} relativeRanks={{ c1: 'BOTTOM' }} impacts={{ c1: 8 }} />);
     expect(screen.getByTitle('Impact 8/10 — priority to act')).toHaveTextContent('8');
-    expect(screen.queryByTitle(/engagement cohort/i)).not.toBeInTheDocument();
+    expect(screen.queryByTitle(/no revenue data to score impact/i)).not.toBeInTheDocument();
   });
 });
 
