@@ -10,9 +10,7 @@
 // renders "—" (Dash), never a fabricated 0. Loading/error/empty are honest.
 // ============================================================
 import { useState, useEffect, Fragment } from 'react';
-import { Link } from 'react-router-dom';
 import { ChevronRight, ChevronDown, Loader2, Plug, AlertTriangle } from 'lucide-react';
-import { appRoutes } from '@/app/routeManifest.js';
 import { cn } from '@/lib/utils.js';
 import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFormatters.js';
 import { formatCurrency } from '@/lib/money';
@@ -164,12 +162,15 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
           className="overflow-x-auto"
         >
           {/* Horizontal scroll only. The panel deliberately does NOT cap its own
-              height — the page (<CampaignsView> root, overflow-y-auto) owns the
-              vertical scroll, so a nested max-h here just produced a cramped
-              scroll-within-a-scroll. min-w keeps the columns from crushing on
-              narrow viewports; the sticky header rides the page scroll. */}
+              height — the layout's <main> owns the vertical scroll, so a nested
+              max-h here just produced a cramped scroll-within-a-scroll. min-w
+              keeps the columns from crushing on narrow viewports. NOT sticky:
+              this overflow-x-auto wrapper is the thead's nearest scroll
+              container (overflow-x forces overflow-y to auto too), so a sticky
+              header could only stick to a box that never scrolls vertically —
+              it silently never worked. */}
           <table className="w-full min-w-[720px]">
-            <thead className="sticky top-0 z-10 bg-lumi-elevated border-b border-lumi-border">
+            <thead className="bg-lumi-elevated border-b border-lumi-border">
               <tr>
                 <th scope="col" className="section-label px-4 py-2.5 text-left">Campaign</th>
                 <th scope="col" className="section-label px-4 py-2.5 text-left w-28">
@@ -241,16 +242,14 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                         {/* Revenue WAS uploaded, but it now lags the spend it would be
                             divided by, so the engine stopped scoring it rather than show
                             a drifted ROAS. A different story from "needs revenue" (none
-                            was ever given) — and unlike that gap, this one has an action:
-                            re-upload. Rendered OUTSIDE the row-toggle button — an anchor
-                            inside a button is invalid nesting and steals the click. */}
+                            was ever given). Indicator ONLY — the re-upload CTA lives once
+                            (AlertsPanel/MetricsPanel), not repeated per row: a blue
+                            signal-watch link under every stale campaign read as N
+                            hyperlinks of noise. */}
                         {c.revenueStale && (
-                          <Link
-                            to={appRoutes.settingsRevenue}
-                            className="ml-5 block font-mono text-[11px] text-signal-watch hover:underline"
-                          >
-                            · revenue outdated — re-upload →
-                          </Link>
+                          <span className="ml-5 block font-mono text-[11px] text-lumi-muted">
+                            · revenue outdated
+                          </span>
                         )}
                       </td>
                       {/* Campaign-level verdict (revenue track OR awareness track). A
