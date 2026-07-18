@@ -11,7 +11,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ConnectorCampaignsPanel } from '../ConnectorCampaignsPanel.jsx';
 
-// The stale-revenue CTA is a react-router <Link> — those rows need a router.
+// Kept for rows that once carried router Links; harmless for plain rows.
 const renderPanel = (ui) => render(ui, { wrapper: MemoryRouter });
 
 // Drill-down loads on toggle, not on mount — stub it so the table renders cleanly.
@@ -238,13 +238,15 @@ describe('ConnectorCampaignsPanel — deep-link (?entity=)', () => {
 //   needsRevenue  — no revenue was EVER uploaded (a gap the operator can close)
 //   revenueStale  — revenue WAS uploaded but now lags the spend it would be
 //                   divided by, so the engine stopped scoring it (PR #229)
+// Per-row it is an INDICATOR only: the re-upload CTA lives once (AlertsPanel /
+// MetricsPanel) — a blue link repeated under every stale campaign was noise.
 describe('ConnectorCampaignsPanel — revenue data notes', () => {
   const staleNote = /revenue outdated/;
 
-  it('offers an actionable re-upload link for a stale-revenue campaign (not passive text)', () => {
+  it('marks a stale-revenue campaign with a muted indicator — NOT a per-row link', () => {
     renderPanel(<ConnectorCampaignsPanel campaigns={[campaign({ revenueStale: true })]} verdicts={{}} />);
-    const cta = screen.getByRole('link', { name: staleNote });
-    expect(cta).toHaveAttribute('href', '/app/settings/revenue');
+    expect(screen.getByText(staleNote)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: staleNote })).not.toBeInTheDocument();
   });
 
   it('says nothing when revenue is fresh', () => {
@@ -256,12 +258,5 @@ describe('ConnectorCampaignsPanel — revenue data notes', () => {
     renderPanel(<ConnectorCampaignsPanel campaigns={[campaign({ needsRevenue: true })]} verdicts={{}} />);
     expect(screen.getByText('· needs revenue')).toBeInTheDocument();
     expect(screen.queryByText(staleNote)).not.toBeInTheDocument();
-  });
-
-  // An <a> inside the row-toggle <button> is invalid nesting AND would steal the
-  // click that expands ad sets. The CTA must be a sibling of the toggle.
-  it('renders the CTA outside the row-toggle button', () => {
-    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign({ revenueStale: true, adSetCount: 2 })]} verdicts={{}} />);
-    expect(screen.getByRole('link', { name: staleNote }).closest('button')).toBeNull();
   });
 });

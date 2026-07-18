@@ -367,7 +367,12 @@ export default function CampaignsView() {
   };
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto p-6 lg:p-8 animate-fade-in">
+    // NOT a scroller: MainLayout's <main> (overflow-y-auto) is the single
+    // vertical scroll owner. An h-full + overflow-y-auto here nested a second
+    // scroll container inside it — double scrollbars, wheel trapped in the
+    // inner one. min-h-0 only lets flex children shrink if a flex parent
+    // ever wraps this.
+    <div className="flex flex-col min-h-0 p-6 lg:p-8 animate-fade-in">
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
         <div>
           <h1 className="decision-title text-lumi-text">Campaign Analysis</h1>

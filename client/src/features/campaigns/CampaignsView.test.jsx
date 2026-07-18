@@ -70,6 +70,18 @@ describe('CampaignsView — Account Health + Wasted Spend from the engine', () =
   });
 });
 
+// MainLayout's <main> (overflow-y-auto) is the ONE vertical scroll owner. The
+// view root nesting its own h-full + overflow-y-auto produced a scroller inside
+// a scroller: double scrollbars, wheel trapped in the inner one. Pinned here so
+// a styling pass can't quietly reintroduce it.
+describe('CampaignsView — single scroll owner', () => {
+  it('the view creates no vertical scroll container of its own', () => {
+    useAccountHealth.mockReturnValue({ health: null, refetch: vi.fn() });
+    const { container } = renderView();
+    expect(container.querySelector('.overflow-y-auto')).toBeNull();
+  });
+});
+
 describe('CampaignsView — relative-ranking note', () => {
   beforeEach(() => {
     useAccountHealth.mockReturnValue({ health: null, refetch: vi.fn() });
