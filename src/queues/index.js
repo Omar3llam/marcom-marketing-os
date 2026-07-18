@@ -106,6 +106,24 @@ export async function scheduleAgenticSweep() {
   );
 }
 
+// ── Helper: remove the agentic sweep repeat (AGENTIC_CRON_ENABLED=false) ─────
+// BullMQ repeatables PERSIST in Redis: merely not re-adding 'agentic-cron' on
+// boot would leave a previously-registered repeat firing forever. Removal is by
+// key lookup (not a pattern-matched removeRepeatable) so a repeat registered
+// under an OLD AGENTIC_CRON value is still found and stopped.
+export async function unscheduleAgenticSweep() {
+  if (!agenticQueue) return 0; // Redis off → nothing was ever scheduled
+  const jobs = await agenticQueue.getRepeatableJobs();
+  let removed = 0;
+  for (const j of jobs) {
+    if (j.id === 'agentic-cron') {
+      await agenticQueue.removeRepeatableByKey(j.key);
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
 // ── Helper: schedule the weekly + monthly narrative cadence (Phase 8) ────────
 // The reporting heartbeat: a LEADERSHIP stakeholder narrative is authored
 // automatically (Monday 08:00 weekly, 1st-of-month 08:00 monthly). The worker

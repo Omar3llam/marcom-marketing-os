@@ -14,7 +14,7 @@
 // ============================================================
 import { Worker } from 'bullmq';
 import { bullConnection, QUEUE_PREFIX } from '../queues/connection.js';
-import { AGENTIC_QUEUE_NAME, scheduleAgenticSweep } from '../queues/index.js';
+import { AGENTIC_QUEUE_NAME, scheduleAgenticSweep, unscheduleAgenticSweep } from '../queues/index.js';
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
 import { runSweep } from '../services/agentic-loop/AgenticLoopService.js';
@@ -50,9 +50,24 @@ export function startAgenticWorker() {
   worker.on('failed', (job, err) => {
     logger.error({ jobId: job?.id, err: err.message }, '[agentic] sweep job failed');
   });
-  scheduleAgenticSweep().catch((err) =>
-    logger.warn({ err: err.message }, '[agentic] schedule deferred — Redis unreachable?'),
-  );
+  // Kill-switch: AGENTIC_CRON_ENABLED=false stops the scheduled heartbeat —
+  // manual (runSweep via routes) and post-sync sweeps are untouched. Read
+  // lazily (not a module-level const) so tests can flip it per call. Disabling
+  // must actively REMOVE the repeat: BullMQ repeatables persist in Redis, so
+  // skipping the re-add alone would leave an old registration firing forever.
+  if (process.env.AGENTIC_CRON_ENABLED !== 'false') {
+    scheduleAgenticSweep().catch((err) =>
+      logger.warn({ err: err.message }, '[agentic] schedule deferred — Redis unreachable?'),
+    );
+  } else {
+    unscheduleAgenticSweep()
+      .then((removed) =>
+        logger.info({ removed }, '[agentic] cron disabled (AGENTIC_CRON_ENABLED=false) — manual sweep only'),
+      )
+      .catch((err) =>
+        logger.warn({ err: err.message }, '[agentic] cron-disable cleanup deferred — Redis unreachable?'),
+      );
+  }
   logger.info('[agentic] worker started');
   return worker;
 }
