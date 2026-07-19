@@ -47,6 +47,8 @@ vi.mock('../analysis/CampaignReasoningService.js', () => ({ generateReasoningFor
 vi.mock('../analysis/PortfolioAnalysisService.js', () => ({ runPortfolioAnalysis: vi.fn().mockResolvedValue() }));
 
 import { prisma } from '../../lib/prisma.js';
+import { generateReasoningForSweep } from '../analysis/CampaignReasoningService.js';
+import { runPortfolioAnalysis } from '../analysis/PortfolioAnalysisService.js';
 import { runSweep } from './AgenticLoopService.js';
 
 const WS = '7517d1b9-b967-44f3-a77f-60f5c577f867';
@@ -85,5 +87,34 @@ describe('runSweep — LoopRun audit projection', () => {
     expect(data.trigger).toBe('MANUAL');
     expect(data).toHaveProperty('loopHealth');
     expect(data).toHaveProperty('proposalsByType');
+  });
+});
+
+// The 24/7 token-burn fix: an ON_READ sweep (a plain home/agenda GET, throttled
+// only by the 15-min window) must stay DETERMINISTIC — never fan out to the AI
+// gateway. User-initiated + opt-in-cron sweeps still narrate.
+describe('runSweep — ON_READ skips LLM narration (no automatic token spend)', () => {
+  it('does NOT call the reasoning / portfolio-analysis LLM steps on ON_READ', async () => {
+    const res = await runSweep(WS, { trigger: 'ON_READ', force: true });
+
+    expect(generateReasoningForSweep).not.toHaveBeenCalled();
+    expect(runPortfolioAnalysis).not.toHaveBeenCalled();
+    // The deterministic agenda + audit are still produced (the read isn't blanked).
+    expect(prisma.loopRun.create).toHaveBeenCalledTimes(1);
+    expect(res.agenda).toBeDefined();
+  });
+
+  it('DOES call the LLM steps on a user-initiated MANUAL sweep (deliberate spend)', async () => {
+    await runSweep(WS, { trigger: 'MANUAL', force: true });
+
+    expect(generateReasoningForSweep).toHaveBeenCalledTimes(1);
+    expect(runPortfolioAnalysis).toHaveBeenCalledTimes(1);
+  });
+
+  it('DOES narrate on a SCHEDULED sweep (opt-in cron — enabling it accepts the spend)', async () => {
+    await runSweep(WS, { trigger: 'SCHEDULED', force: true });
+
+    expect(generateReasoningForSweep).toHaveBeenCalledTimes(1);
+    expect(runPortfolioAnalysis).toHaveBeenCalledTimes(1);
   });
 });

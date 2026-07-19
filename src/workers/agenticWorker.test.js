@@ -1,12 +1,14 @@
 // ============================================================
-// agenticWorker — cron kill-switch (AGENTIC_CRON_ENABLED)
+// agenticWorker — cron opt-in switch (AGENTIC_CRON_ENABLED)
 // ------------------------------------------------------------
+// The scheduled sweep is OPT-IN: it runs ONLY when AGENTIC_CRON_ENABLED=true.
 // The BullMQ Worker is mocked; the tests pin the scheduling decision:
-//   1. Default (unset) → the repeat is scheduled.
-//   2. "false" → the repeat is NOT scheduled AND the previously-registered
-//      Redis repeat is actively removed (repeatables persist across boots —
-//      skipping the re-add alone would leave an old registration firing).
-//   3. Any other value ("true") → scheduled (only the literal "false" disables).
+//   1. Default (unset) → NOT scheduled, AND any previously-registered Redis
+//      repeat is actively removed (repeatables persist across boots — skipping
+//      the re-add alone would leave an old registration firing 24/7).
+//   2. "true" → the repeat is scheduled.
+//   3. Any other value ("false"/garbage) → NOT scheduled + repeat removed
+//      (only the literal "true" enables).
 // Env is read lazily inside startAgenticWorker, so each test flips it per call
 // (no vi.resetModules — it segfaults the forks pool).
 // ============================================================
@@ -54,24 +56,24 @@ afterEach(() => {
   else process.env.AGENTIC_CRON_ENABLED = ORIGINAL;
 });
 
-describe('startAgenticWorker — cron kill-switch', () => {
-  it('schedules the sweep repeat by default (env unset)', () => {
-    startAgenticWorker();
-    expect(scheduleAgenticSweep).toHaveBeenCalledTimes(1);
-    expect(unscheduleAgenticSweep).not.toHaveBeenCalled();
-  });
-
-  it('AGENTIC_CRON_ENABLED=false → no schedule, and the persisted repeat is removed', () => {
-    process.env.AGENTIC_CRON_ENABLED = 'false';
+describe('startAgenticWorker — cron opt-in switch', () => {
+  it('does NOT schedule by default (env unset) and removes any persisted repeat', () => {
     startAgenticWorker();
     expect(scheduleAgenticSweep).not.toHaveBeenCalled();
     expect(unscheduleAgenticSweep).toHaveBeenCalledTimes(1);
   });
 
-  it('only the literal "false" disables — "true" (or anything else) schedules', () => {
+  it('AGENTIC_CRON_ENABLED=true → schedules the sweep repeat', () => {
     process.env.AGENTIC_CRON_ENABLED = 'true';
     startAgenticWorker();
     expect(scheduleAgenticSweep).toHaveBeenCalledTimes(1);
     expect(unscheduleAgenticSweep).not.toHaveBeenCalled();
+  });
+
+  it('only the literal "true" enables — "false" (or anything else) stays off + removes the repeat', () => {
+    process.env.AGENTIC_CRON_ENABLED = 'false';
+    startAgenticWorker();
+    expect(scheduleAgenticSweep).not.toHaveBeenCalled();
+    expect(unscheduleAgenticSweep).toHaveBeenCalledTimes(1);
   });
 });
