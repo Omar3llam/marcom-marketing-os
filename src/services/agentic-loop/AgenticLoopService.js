@@ -224,6 +224,20 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
 
   logger.info({ workspaceId, trigger, loopHealth: agenda.loopHealth, buyer: agenda.buyerBand.length, strategist: agenda.strategistBand.length }, '[AgenticLoop] sweep complete');
 
+  // Steps 4 + 5 below are the ONLY LLM spend in a sweep (per-campaign reasoning +
+  // portfolio narration). ON_READ sweeps fire on a plain home/agenda GET and are
+  // throttled ONLY by LOOP_MIN_INTERVAL_MS — a background poller (frontend or an
+  // uptime monitor) hitting that endpoint 24/7 would otherwise fan out to the AI
+  // gateway every ~15 min forever, silently burning tokens with nobody watching.
+  // A read must be cheap: the agenda above is already fully deterministic, so an
+  // ON_READ sweep returns here and skips the narration. The opt-in scheduled cron
+  // (AGENTIC_CRON_ENABLED=true) and user-initiated MANUAL sweeps (the "Run sweep"
+  // button, a revenue upload) still pre-generate it — that spend is deliberate.
+  if (trigger === 'ON_READ') {
+    logger.debug({ workspaceId, trigger }, '[AgenticLoop] on-read sweep — LLM narration skipped (deterministic agenda only)');
+    return { loopRun, agenda };
+  }
+
   // 4. Pre-generate "Lumi's Read" for the top campaigns so the drill-down is
   //    instant (no on-demand LLM round-trip). Best-effort + dynamically imported:
   //    an AI failure, cold gateway, or missing key never touches the sweep audit.

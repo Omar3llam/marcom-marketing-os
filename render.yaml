@@ -165,9 +165,12 @@ services:
         value: "*/15 * * * *"
       - key: OBSERVER_IMPACT_WINDOW_HRS
         value: 24
-      # Kill-switch for the 15-min agentic sweep heartbeat (and its AI spend:
-      # ANALYZE_PORTFOLIO every tick per workspace). "false" = the worker removes
-      # the scheduled repeat on boot; manual + post-sync sweeps still run.
+      # The 15-min agentic sweep heartbeat is OPT-IN (and it costs AI spend:
+      # per-campaign reasoning + ANALYZE_PORTFOLIO every tick per workspace).
+      # It runs ONLY when this is exactly "true"; any other value (or unset) =
+      # OFF and the worker removes any persisted repeat on boot. Manual +
+      # post-sync sweeps still run. Left explicit at "false" to document intent.
+      # (Separately: on-read home sweeps never fan out to the AI gateway.)
       - key: AGENTIC_CRON_ENABLED
         value: "false"
       - key: CREDENTIAL_ENCRYPTION_KEY

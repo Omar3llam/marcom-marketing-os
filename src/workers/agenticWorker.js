@@ -50,19 +50,25 @@ export function startAgenticWorker() {
   worker.on('failed', (job, err) => {
     logger.error({ jobId: job?.id, err: err.message }, '[agentic] sweep job failed');
   });
-  // Kill-switch: AGENTIC_CRON_ENABLED=false stops the scheduled heartbeat —
-  // manual (runSweep via routes) and post-sync sweeps are untouched. Read
-  // lazily (not a module-level const) so tests can flip it per call. Disabling
-  // must actively REMOVE the repeat: BullMQ repeatables persist in Redis, so
-  // skipping the re-add alone would leave an old registration firing forever.
-  if (process.env.AGENTIC_CRON_ENABLED !== 'false') {
+  // The scheduled sweep is OPT-IN: it runs ONLY when AGENTIC_CRON_ENABLED=true.
+  // Default (unset/anything else) → OFF, so a fresh deploy never auto-sweeps and
+  // burns tokens (every tick fans out to per-campaign reasoning + portfolio-
+  // analysis LLM calls). Manual (runSweep via routes), post-sync, and on-read
+  // sweeps are untouched. Read lazily (not a module-level const) so tests can
+  // flip it per call.
+  //
+  // Disabling must actively REMOVE the repeat: BullMQ repeatables persist in
+  // Redis, so simply not re-adding it would leave a previously-registered
+  // 'agentic-cron' firing forever. The default (off) branch therefore always
+  // calls unscheduleAgenticSweep() to tear down any lingering registration.
+  if (process.env.AGENTIC_CRON_ENABLED === 'true') {
     scheduleAgenticSweep().catch((err) =>
       logger.warn({ err: err.message }, '[agentic] schedule deferred — Redis unreachable?'),
     );
   } else {
     unscheduleAgenticSweep()
       .then((removed) =>
-        logger.info({ removed }, '[agentic] cron disabled (AGENTIC_CRON_ENABLED=false) — manual sweep only'),
+        logger.info({ removed }, '[agentic] scheduled sweep disabled (set AGENTIC_CRON_ENABLED=true to enable) — manual sweep only'),
       )
       .catch((err) =>
         logger.warn({ err: err.message }, '[agentic] cron-disable cleanup deferred — Redis unreachable?'),
