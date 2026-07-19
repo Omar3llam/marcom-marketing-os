@@ -11,9 +11,11 @@
 // conflated. Nothing is shown until the user runs a projection.
 // ============================================================
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { TrendingUp, AlertCircle, LineChart } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatCurrency } from '@/lib/money';
+import { appRoutes } from '@/app/routeManifest.js';
 
 const money = (minor, ccy = 'USD') => (minor == null ? '—' : formatCurrency(minor, ccy));
 
@@ -80,6 +82,10 @@ export function ScenarioPanel({ scenario, message = null, loading = false, error
   // threaded from the page; else USD. Never a hardcoded assumption.
   const ccy = scenario?.currency ?? currency ?? 'USD';
   const p = scenario?.projections;
+  // When the workspace hasn't asserted its unit economics, the server blanks the
+  // AOV/margin-derived projections (volume, CAC, gross profit) to null ranges (→ "—")
+  // rather than compute them off a default AOV. Surface the fix, don't hide it.
+  const economicsNotConfigured = scenario?.economicsStatus === 'NOT_CONFIGURED';
 
   return (
     <section className="mb-10">
@@ -121,6 +127,14 @@ export function ScenarioPanel({ scenario, message = null, loading = false, error
               <p className="mt-2 text-[11px] text-lumi-subtle">
                 Projected CAC is a forward hypothetical — not the account’s realized current CAC.
               </p>
+              {economicsNotConfigured && (
+                <p className="mt-2 text-[11px] text-lumi-muted">
+                  <Link to={appRoutes.insights} className="text-lumi-accent hover:underline">
+                    Configure Unit Economics →
+                  </Link>{' '}
+                  to unlock Volume, CAC and Gross Profit projections.
+                </p>
+              )}
             </div>
 
             <div>

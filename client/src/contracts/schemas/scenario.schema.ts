@@ -41,6 +41,11 @@ export const ScenarioSchema = z.object({
   assumptions: z.array(z.string()).min(1),
   confidence: z.number().min(0).max(1),
   basis: z.string(),
+  // Whether the workspace has ASSERTED its unit economics. When 'NOT_CONFIGURED'
+  // the AOV/margin-dependent projections (volume, blendedCacMinor, grossProfitMinor)
+  // are honestly blanked to null ranges — never computed off the seeded default AOV.
+  // Optional so older/cached payloads still parse; a missing value reads as CONFIGURED.
+  economicsStatus: z.enum(['CONFIGURED', 'NOT_CONFIGURED']).optional(),
   // ScenarioService decorates the engine output with the patterns leaned on.
   memoryBasis: z
     .array(
