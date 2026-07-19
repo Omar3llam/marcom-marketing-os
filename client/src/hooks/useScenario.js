@@ -10,6 +10,11 @@
 //
 // Its blendedCacMinor is a PROJECTED range — distinct from the realized current
 // CAC on the unit-economics surface; the UI labels it as projected.
+//
+// THE PRODUCT SEAM: /scenario is requirePlan('PRO') server-side. A 403 is NOT an
+// error — it's an honest LOCKED state (`gated`), so the view renders an upgrade
+// prompt rather than a failure. Detection mirrors useIncrementality exactly
+// (err?.response?.status === 403 → gated=true, error=null — never both set).
 // ============================================================
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api.js';
@@ -18,6 +23,7 @@ import { ScenarioResponseSchema } from '@/contracts/schemas';
 export function useScenario() {
   const [scenario, setScenario] = useState(null);
   const [message, setMessage] = useState(null);
+  const [gated, setGated] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const aliveRef = useRef(true);
@@ -35,6 +41,7 @@ export function useScenario() {
       const res = await api.post('/api/lumi/scenario', { change });
       if (!aliveRef.current) return null;
       const parsed = ScenarioResponseSchema.safeParse(res.data);
+      setGated(false);
       if (!parsed.success) {
         setScenario(null);
         setError(new Error('Scenario response failed contract validation'));
@@ -45,12 +52,14 @@ export function useScenario() {
       return parsed.data.scenario;
     } catch (err) {
       if (!aliveRef.current) return null;
-      setError(err);
+      // 403 = tier-gated. An honest locked state, not a failure.
+      if (err?.response?.status === 403) { setGated(true); setScenario(null); setError(null); }
+      else { setGated(false); setError(err); } // clear stale lock on a real failure
       return null;
     } finally {
       if (aliveRef.current) setLoading(false);
     }
   }, []);
 
-  return { scenario, message, loading, error, run };
+  return { scenario, message, gated, loading, error, run };
 }

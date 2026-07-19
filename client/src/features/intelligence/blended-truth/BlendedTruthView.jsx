@@ -26,6 +26,7 @@ import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
 import { HelpTip } from '@/components/ui/HelpTip.jsx';
 import { HELP } from '@/lib/helpContent.js';
 import { appRoutes } from '@/app/routeManifest.js';
+import UpgradePrompt from '@/components/plan/UpgradePrompt.jsx';
 
 // Null/non-finite ROAS → "—" (honest empty), never a fabricated 0.0× that reads
 // as a real (terrible) return. A genuine finite 0 still formats as 0.0×.
@@ -150,7 +151,7 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST, curre
 // ── Page wrapper: fetch + three states ──────────────────────────
 export default function BlendedTruth() {
   const { role } = useCollabRole();
-  const { data, loading, error } = useBlendedTruth();
+  const { data, loading, error, gated } = useBlendedTruth();
   const allocation = useAllocation();
   const { workspace } = useWorkspace();
 
@@ -165,8 +166,13 @@ export default function BlendedTruth() {
 
       <IntelligenceSubNav />
 
-      {loading && <div className="space-y-3"><CardSkeleton /><CardSkeleton /></div>}
-      {!loading && error && (
+      {/* Tier gate wins over every other state (mirrors IncrementalityPanel): a 403
+          from requirePlan('GROWTH') is an honest LOCKED state, not a failure —
+          checked first so a gated workspace never sees an error flash. */}
+      {gated && <UpgradePrompt feature="Blended Truth" requiredPlan="GROWTH" />}
+
+      {!gated && loading && <div className="space-y-3"><CardSkeleton /><CardSkeleton /></div>}
+      {!gated && !loading && error && (
         <div className="flex flex-col items-center gap-3">
           <EmptyPanel Icon={AlertTriangle} text="We couldn't load Blended Truth right now. It reconciles platform-reported spend against your store's real revenue." />
           <Link to={appRoutes.settingsIntegrations} className="inline-flex items-center gap-1 text-sm font-medium text-lumi-accent hover:underline">
@@ -174,11 +180,11 @@ export default function BlendedTruth() {
           </Link>
         </div>
       )}
-      {!loading && !error && <BlendedTruthView data={data} role={role} currency={currency} />}
+      {!gated && !loading && !error && <BlendedTruthView data={data} role={role} currency={currency} />}
 
       {/* Reallocate capital — acts on these very channels. STRATEGIST-only (the
           commit gate), and only once there are channels to allocate across. */}
-      {!loading && !error && isStrategist && channels.length > 0 && (
+      {!gated && !loading && !error && isStrategist && channels.length > 0 && (
         <AllocationPanel
           currency={currency}
           canAllocate={data?.portfolio?.blendedRoas != null}
