@@ -94,7 +94,7 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST, curre
                 Blended truth reconciles across ≥2 channels.
               </p>
               <p className="mt-1 text-sm text-lumi-muted">
-                Currently validating {channels[0]?.channel ?? channels[0]?.channelId} against store truth only —
+                Currently validating {channels[0]?.name ?? channels[0]?.channel ?? channels[0]?.channelId} against store truth only —
                 connect a second channel to reconcile the portfolio. We won&apos;t fabricate a multi-channel blend.
               </p>
             </div>
@@ -124,7 +124,9 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST, curre
                       to={`${appRoutes.campaigns}?channel=${encodeURIComponent(c.channel ?? c.channelId)}`}
                       className="text-lumi-text hover:text-lumi-accent hover:underline transition-colors"
                     >
-                      {c.channel ?? c.channelId}
+                      {/* name → channel enum → UUID (last resort). The href filters by
+                          channel (platform), so it stays channel-based regardless. */}
+                      {c.name ?? c.channel ?? c.channelId}
                     </Link>
                   </td>
                   <td className="px-4 py-2.5 text-lumi-muted font-mono">{fx(c.platformRoas)}</td>
