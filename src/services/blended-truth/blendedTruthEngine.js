@@ -55,7 +55,7 @@ function roas(revenueMinor, spendMinor) {
  *     spendMinor, currency? }
  *   `actualRevenueMinor` present (a finite number) ⇒ reconciled; absent/null ⇒ unverified.
  * @returns {{
- *   channels: Array<{ channelId, channel, currency, spendMinor,
+ *   channels: Array<{ channelId, channel, name, currency, spendMinor,
  *     platformRevenueMinor, actualRevenueMinor, blendedRevenueMinor,
  *     gapMinor, gapPct, platformRoas, blendedRoas, coverage, confidence }>,
  *   portfolio: { spendMinor, platformRevenueMinor, blendedRevenueMinor,
@@ -79,7 +79,8 @@ export function reconcile({ channels } = {}) {
 
     return {
       channelId:           c.channelId,
-      channel:             c.channel ?? null,
+      channel:             c.channel ?? null,   // platform enum — grouping/staleness/styling
+      name:                c.name ?? null,      // display identity (campaign name); null → view falls back
       currency:            c.currency ?? 'USD',
       spendMinor:          c.spendMinor,
       platformRevenueMinor,

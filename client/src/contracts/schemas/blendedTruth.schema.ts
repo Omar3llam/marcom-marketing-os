@@ -17,6 +17,9 @@ export const ConfidenceSchema = z.enum(['HIGH', 'LOW']);
 export const BlendedChannelSchema = z.object({
   channelId: z.string().min(1),
   channel: z.string().nullish(),
+  // Display identity (campaign name). Nullish: pre-fix rows + any snapshot whose
+  // entityId has no matching Campaign fall back to channel → channelId in the view.
+  name: z.string().nullish(),
   currency: z.string().default('USD'),
   spendMinor: z.number().int(),
   platformRevenueMinor: z.number().int(),

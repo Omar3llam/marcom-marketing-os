@@ -80,4 +80,33 @@ describe('blendedTruthEngine.reconcile', () => {
     expect(() => reconcile({ channels: [{ channelId: 'x', platformRevenueMinor: NaN, spendMinor: 10 }] }))
       .toThrow(/platformRevenueMinor/);
   });
+
+  // ── Display identity (P1.2): the engine forwards `name` so the view can show a
+  // real campaign name instead of the raw detId UUID — WITHOUT touching numerics.
+  describe('name forwarding (display identity)', () => {
+    it('forwards the input name onto the reconciled row', () => {
+      const { channels } = reconcile({
+        channels: [{ channelId: 'B-uuid', channel: 'META', name: 'Summer Promo', platformRevenueMinor: 100, spendMinor: 50 }],
+      });
+      expect(channels[0].name).toBe('Summer Promo');
+      expect(channels[0].channel).toBe('META'); // channel preserved alongside name
+    });
+
+    it('is null-safe when no name is supplied (graceful fallback in the view)', () => {
+      const { channels } = reconcile({
+        channels: [{ channelId: 'B-uuid', platformRevenueMinor: 100, spendMinor: 50 }],
+      });
+      expect(channels[0].name).toBeNull();
+    });
+
+    it('does not change any numeric output (identity correction only)', () => {
+      const input = { channelId: 'meta', channel: 'META', platformRevenueMinor: 8420000, actualRevenueMinor: 6315000, spendMinor: 2000000 };
+      const withName    = reconcile({ channels: [{ ...input, name: 'Named' }] }).channels[0];
+      const withoutName = reconcile({ channels: [input] }).channels[0];
+      // Compare every field EXCEPT name — the numerics must be byte-identical.
+      const numsWith = { ...withName };       delete numsWith.name;
+      const numsWithout = { ...withoutName }; delete numsWithout.name;
+      expect(numsWith).toEqual(numsWithout);
+    });
+  });
 });

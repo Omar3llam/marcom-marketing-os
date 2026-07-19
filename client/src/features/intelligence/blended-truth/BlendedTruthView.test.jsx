@@ -29,3 +29,36 @@ describe('BlendedTruthView — channel cross-link', () => {
     expect(link).toHaveAttribute('href', expect.stringContaining('channel=META'));
   });
 });
+
+// ── Identity fallback (P1.2): name → channel enum → channelId (UUID last resort).
+// The href always filters by channel (platform), regardless of the visible label.
+describe('BlendedTruthView — channel identity fallback', () => {
+  const row = (over) => ({
+    channelId: '4e7f8d9b-uuid', channel: 'META', platformRoas: 3.1, blendedRoas: 2.2,
+    gapPct: 29, coverage: 'RECONCILED', confidence: 'HIGH', currency: 'USD', ...over,
+  });
+  const renderRow = (over) =>
+    render(
+      <MemoryRouter>
+        <BlendedTruthView data={{ channels: [row(over)], portfolio: null }} role="STRATEGIST" currency="USD" />
+      </MemoryRouter>,
+    );
+
+  it('renders the campaign name when present, still linking by channel', () => {
+    renderRow({ name: 'Summer Promo' });
+    const link = screen.getByRole('link', { name: 'Summer Promo' });
+    expect(link).toHaveAttribute('href', expect.stringContaining('channel=META'));
+    expect(screen.queryByText('4e7f8d9b-uuid')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the channel enum when name is null', () => {
+    renderRow({ name: null });
+    expect(screen.getByRole('link', { name: 'META' })).toBeInTheDocument();
+    expect(screen.queryByText('4e7f8d9b-uuid')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the channelId (UUID) only when both name and channel are null', () => {
+    renderRow({ name: null, channel: null });
+    expect(screen.getByRole('link', { name: '4e7f8d9b-uuid' })).toBeInTheDocument();
+  });
+});

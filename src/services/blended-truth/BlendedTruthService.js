@@ -67,13 +67,18 @@ export async function getBlendedTruth(workspaceId, { lookbackDays = LOOKBACK_DAY
   if (!workspaceId) throw new Error('getBlendedTruth: workspaceId required');
 
   const since = new Date(Date.now() - lookbackDays * 86_400_000);
-  const [snapshots, accounts] = await Promise.all([
+  const [snapshots, campaigns] = await Promise.all([
     prisma.metricSnapshot.findMany({ where: { workspaceId, date: { gte: since } } }),
-    prisma.account.findMany({ where: { workspaceId }, select: { id: true, name: true, channel: true } }),
+    // Snapshots are CAMPAIGN-grain: MetricSnapshot.entityId == Campaign.id (both are
+    // detId(ws, channel, CAMPAIGN, externalId) — see snapshotSink). Key the label map
+    // off Campaign.id so the row shows a real name, not the raw detId UUID. The
+    // Account-keyed map missed on every campaign-grain row (channel/name → null).
+    prisma.campaign.findMany({ where: { workspaceId }, select: { id: true, name: true, channel: true } }),
   ]);
 
   const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { currency: true } });
-  const labelsById = new Map(accounts.map((a) => [a.id, { name: a.name, channel: a.channel, currency: ws?.currency }]));
+  // currency still comes from the workspace (unchanged) — this fix touches labels only.
+  const labelsById = new Map(campaigns.map((c) => [c.id, { name: c.name, channel: c.channel, currency: ws?.currency }]));
 
   const channels = buildChannelInputs(snapshots, labelsById);
   if (channels.length === 0) {
