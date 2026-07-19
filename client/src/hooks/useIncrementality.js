@@ -38,8 +38,11 @@ export function useIncrementality() {
       if (!parsed.success) setError(new Error('Incrementality response failed contract validation'));
     } catch (err) {
       if (!aliveRef.current) return;
-      // 403 = tier-gated. An honest locked state, not a failure.
-      if (err?.response?.status === 403) { setGated(true); setTests([]); setError(null); }
+      // 403 = tier-gated. An honest locked state, not a failure. The live api
+      // client rejects with a mapped AppError (.httpStatus); fall back to the raw
+      // axios shape (.response.status) for any un-mapped path (request-interceptor).
+      const status = err?.httpStatus ?? err?.response?.status;
+      if (status === 403) { setGated(true); setTests([]); setError(null); }
       else { setGated(false); setError(err); setTests([]); } // clear stale lock on a real failure
     } finally {
       if (aliveRef.current) setLoading(false);

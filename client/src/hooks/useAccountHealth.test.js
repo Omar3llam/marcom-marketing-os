@@ -32,7 +32,18 @@ describe('useAccountHealth', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('treats a 403 (CLIENT role) as "no health to show" — null, never an error', async () => {
+  // The live api client rejects with a mapped AppError carrying .httpStatus.
+  it('treats an AppError httpStatus 403 (CLIENT role) as "no health to show" — null, never an error', async () => {
+    api.get.mockRejectedValue({ httpStatus: 403 });
+    const { result } = renderHook(() => useAccountHealth());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.health).toBeNull();
+    expect(result.current.error).toBeNull();
+  });
+
+  // Backward compat: a raw axios error (un-mapped request-interceptor path) still gates.
+  it('also treats a raw response.status 403 as "no health to show" (fallback path)', async () => {
     api.get.mockRejectedValue({ response: { status: 403 } });
     const { result } = renderHook(() => useAccountHealth());
 
@@ -42,7 +53,7 @@ describe('useAccountHealth', () => {
   });
 
   it('surfaces a non-403 error honestly', async () => {
-    api.get.mockRejectedValue({ response: { status: 500 } });
+    api.get.mockRejectedValue({ httpStatus: 500 });
     const { result } = renderHook(() => useAccountHealth());
 
     await waitFor(() => expect(result.current.loading).toBe(false));

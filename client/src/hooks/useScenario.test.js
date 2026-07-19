@@ -2,8 +2,10 @@
 // useScenario Hook Tests — the tier-gate seam (P1.4)
 // ------------------------------------------------------------
 // /scenario is requirePlan('PRO') server-side. A 403 is an honest LOCKED state
-// (`gated`), NOT a failure — detection mirrors useIncrementality exactly
-// (err?.response?.status === 403 → gated=true, error=null, never both set).
+// (`gated`), NOT a failure — detection mirrors useIncrementality exactly:
+// status = err?.httpStatus ?? err?.response?.status → 403 → gated=true, error=null.
+// The live api client rejects with a mapped AppError (.httpStatus); the raw axios
+// shape (.response.status) is the backward-compat fallback (both covered below).
 // The 403-after-500 case is the invariant: a fresh lock must clear the prior
 // error so the view never shows an error flash under the upgrade prompt.
 // ============================================================
@@ -31,8 +33,8 @@ describe('useScenario', () => {
     expect(result.current.message).toBe('No channel data yet.');
   });
 
-  it('treats a 403 (PRO tier gate) as gated — not an error', async () => {
-    api.post.mockRejectedValueOnce({ response: { status: 403 } });
+  it('treats an AppError httpStatus 403 (PRO tier gate) as gated — not an error', async () => {
+    api.post.mockRejectedValueOnce({ httpStatus: 403 });
     const { result } = renderHook(() => useScenario());
 
     await act(async () => { await result.current.run(CHANGE); });
@@ -42,8 +44,18 @@ describe('useScenario', () => {
     expect(result.current.scenario).toBeNull();
   });
 
+  it('also gates on a raw response.status 403 (backward-compat fallback path)', async () => {
+    api.post.mockRejectedValueOnce({ response: { status: 403 } });
+    const { result } = renderHook(() => useScenario());
+
+    await act(async () => { await result.current.run(CHANGE); });
+
+    expect(result.current.gated).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
   it('surfaces a non-403 error honestly (and stays ungated)', async () => {
-    api.post.mockRejectedValueOnce({ response: { status: 500 } });
+    api.post.mockRejectedValueOnce({ httpStatus: 500 });
     const { result } = renderHook(() => useScenario());
 
     await act(async () => { await result.current.run(CHANGE); });
@@ -55,12 +67,12 @@ describe('useScenario', () => {
   it('a 403 AFTER a previous 500 clears the stale error → gated=true, error=null', async () => {
     const { result } = renderHook(() => useScenario());
 
-    api.post.mockRejectedValueOnce({ response: { status: 500 } });
+    api.post.mockRejectedValueOnce({ httpStatus: 500 });
     await act(async () => { await result.current.run(CHANGE); });
     expect(result.current.error).toBeTruthy();
     expect(result.current.gated).toBe(false);
 
-    api.post.mockRejectedValueOnce({ response: { status: 403 } });
+    api.post.mockRejectedValueOnce({ httpStatus: 403 });
     await act(async () => { await result.current.run(CHANGE); });
     expect(result.current.gated).toBe(true);
     expect(result.current.error).toBeNull(); // the prior 500 must not linger
