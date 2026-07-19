@@ -2,8 +2,10 @@
 // useBlendedTruth Hook Tests — the tier-gate seam (P1.4)
 // ------------------------------------------------------------
 // /blended is requirePlan('GROWTH') server-side. A 403 is an honest LOCKED state
-// (`gated`), NOT a failure — detection mirrors useIncrementality exactly
-// (err?.response?.status === 403 → gated=true, error=null, never both set).
+// (`gated`), NOT a failure — detection mirrors useIncrementality exactly:
+// status = err?.httpStatus ?? err?.response?.status → 403 → gated=true, error=null.
+// The live api client rejects with a mapped AppError (.httpStatus); the raw axios
+// shape (.response.status) is the backward-compat fallback (both covered below).
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
@@ -41,8 +43,8 @@ describe('useBlendedTruth', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('treats a 403 (GROWTH tier gate) as gated — not an error', async () => {
-    api.get.mockRejectedValue({ response: { status: 403 } });
+  it('treats an AppError httpStatus 403 (GROWTH tier gate) as gated — not an error', async () => {
+    api.get.mockRejectedValue({ httpStatus: 403 });
     const { result } = renderHook(() => useBlendedTruth());
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -51,8 +53,17 @@ describe('useBlendedTruth', () => {
     expect(result.current.data).toBeNull();
   });
 
+  it('also gates on a raw response.status 403 (backward-compat fallback path)', async () => {
+    api.get.mockRejectedValue({ response: { status: 403 } });
+    const { result } = renderHook(() => useBlendedTruth());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.gated).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
   it('surfaces a non-403 error honestly (and stays ungated)', async () => {
-    api.get.mockRejectedValue({ response: { status: 500 } });
+    api.get.mockRejectedValue({ httpStatus: 500 });
     const { result } = renderHook(() => useBlendedTruth());
 
     await waitFor(() => expect(result.current.loading).toBe(false));

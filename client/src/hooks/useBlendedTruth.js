@@ -8,7 +8,9 @@
 // THE PRODUCT SEAM: /blended is requirePlan('GROWTH') server-side. A 403 is NOT
 // an error — it's an honest LOCKED state (`gated`), so the view renders an
 // upgrade prompt rather than a failure. Detection mirrors useIncrementality
-// exactly (err?.response?.status === 403 → gated=true, error=null — never both).
+// exactly: status = err?.httpStatus ?? err?.response?.status (the live client
+// rejects with a mapped AppError.httpStatus; raw .response.status is the
+// fallback) → 403 sets gated=true, error=null — never both.
 // ============================================================
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api.js';
@@ -34,8 +36,10 @@ export function useBlendedTruth() {
         setState({ data: parsed.data, loading: false, error: null, gated: false });
       } catch (err) {
         if (cancelled) return;
-        // 403 = tier-gated. An honest locked state, not a failure.
-        if (err?.response?.status === 403) { setState({ data: null, loading: false, error: null, gated: true }); return; }
+        // 403 = tier-gated. An honest locked state, not a failure. AppError carries
+        // .httpStatus; fall back to raw .response.status for any un-mapped path.
+        const status = err?.httpStatus ?? err?.response?.status;
+        if (status === 403) { setState({ data: null, loading: false, error: null, gated: true }); return; }
         setState({ data: null, loading: false, error: err, gated: false }); // clear stale lock on a real failure
       }
     })();

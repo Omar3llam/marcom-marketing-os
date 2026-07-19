@@ -13,8 +13,10 @@
 //
 // THE PRODUCT SEAM: /scenario is requirePlan('PRO') server-side. A 403 is NOT an
 // error — it's an honest LOCKED state (`gated`), so the view renders an upgrade
-// prompt rather than a failure. Detection mirrors useIncrementality exactly
-// (err?.response?.status === 403 → gated=true, error=null — never both set).
+// prompt rather than a failure. Detection mirrors useIncrementality exactly:
+// status = err?.httpStatus ?? err?.response?.status (the live client rejects with
+// a mapped AppError.httpStatus; raw .response.status is the fallback) → 403 sets
+// gated=true, error=null — never both set.
 // ============================================================
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api.js';
@@ -52,8 +54,11 @@ export function useScenario() {
       return parsed.data.scenario;
     } catch (err) {
       if (!aliveRef.current) return null;
-      // 403 = tier-gated. An honest locked state, not a failure.
-      if (err?.response?.status === 403) { setGated(true); setScenario(null); setError(null); }
+      // 403 = tier-gated. An honest locked state, not a failure. The live api
+      // client rejects with a mapped AppError (.httpStatus); fall back to the raw
+      // axios shape (.response.status) for any un-mapped path (request-interceptor).
+      const status = err?.httpStatus ?? err?.response?.status;
+      if (status === 403) { setGated(true); setScenario(null); setError(null); }
       else { setGated(false); setError(err); } // clear stale lock on a real failure
       return null;
     } finally {

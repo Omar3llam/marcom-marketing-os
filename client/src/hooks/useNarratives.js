@@ -75,7 +75,9 @@ export function useNarratives({ audience } = {}) {
       return parsed.success ? parsed.data.narrative : null;
     } catch (err) {
       if (aliveRef.current) {
-        if (err?.response?.status === 403) setIsRestricted(true);
+        // AppError carries .httpStatus; fall back to raw .response.status (un-mapped path).
+        const status = err?.httpStatus ?? err?.response?.status;
+        if (status === 403) setIsRestricted(true);
         else setError(err);
       }
       return null;
