@@ -33,7 +33,9 @@ export function useAccountHealth() {
     } catch (err) {
       if (!aliveRef.current) return;
       // 403 = this role can't see the efficiency critique → show "—", not an error.
-      if (err?.response?.status === 403) { setHealth(null); return; }
+      // AppError carries .httpStatus; fall back to raw .response.status (un-mapped path).
+      const status = err?.httpStatus ?? err?.response?.status;
+      if (status === 403) { setHealth(null); return; }
       setError(err);
     } finally {
       if (aliveRef.current) setLoading(false);
