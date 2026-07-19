@@ -9,6 +9,7 @@
 import { useMemo } from 'react';
 import { Target, Brain, Zap } from 'lucide-react';
 import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
+import { useGrowthStrategySummary } from '@/hooks/useGrowthStrategySummary.js';
 import { useAccountBriefing } from '@/hooks/useAccountBriefing.js';
 import { usePromotePattern } from '@/hooks/usePromotePattern.js';
 import { useEconomics, useSaveEconomics } from '@/hooks/useEconomics.js';
@@ -32,7 +33,12 @@ import { ApprovalsPanel } from './ApprovalsPanel.jsx';
 const STAGES = ['DYING', 'FATIGUED', 'TESTING', 'SCALING', 'STABLE'];
 
 export default function GrowthStrategyBoard() {
+  // Legacy CampaignState feed — still the source for Strategic Bets + Memory
+  // Layer (they read Action/DecisionMemory rows the connector doesn't produce).
   const { campaigns, summary, loading } = useCampaignFeed();
+  // Active Campaigns tile ONLY — repointed to the connector substrate so its
+  // count matches CampaignsView instead of "campaigns with a pending Action".
+  const { summary: growth, loading: growthLoading } = useGrowthStrategySummary();
   const { forecast: fatigueForecast, isLoading: fatigueLoading } = useFatigueForecast();
   const { briefing, loading: briefingLoading, error: briefingError, refetch: refetchBriefing, setConsent, consentBusy } = useAccountBriefing();
   const { promote, promotingId, error: promoteError } = usePromotePattern();
@@ -143,8 +149,8 @@ export default function GrowthStrategyBoard() {
         />
         <MetricCard
           label="Active Campaigns"
-          primary={summary.total}
-          secondary={`${summary.byVerdict.SCALE || 0} Scaling · ${summary.byVerdict.HOLD || 0} Holding · ${summary.byVerdict.KILL || 0} Killing`}
+          primary={growthLoading ? '…' : growth.total}
+          secondary={growthLoading ? 'Loading…' : <ActiveCampaignsBreakdown g={growth} />}
         />
       </section>
 
@@ -267,6 +273,33 @@ function StrategistApprovals() {
 }
 
 // ── Sub-components ─────────────────────────────────────────
+
+// Connector-sourced verdict breakdown for the Active Campaigns tile. Zero
+// buckets are omitted; revenue-gated campaigns are surfaced honestly as
+// "N need revenue data" (never folded into a verdict count).
+function ActiveCampaignsBreakdown({ g }) {
+  const parts = [
+    g.scaling  > 0 && `${g.scaling} Scaling`,
+    g.holding  > 0 && `${g.holding} Holding`,
+    g.watching > 0 && `${g.watching} Watching`,
+    g.killing  > 0 && `${g.killing} Killing`,
+  ].filter(Boolean);
+
+  if (parts.length === 0 && g.needsRevenue === 0) {
+    return <>{g.total > 0 ? 'Awaiting verdicts' : 'No connected campaigns yet'}</>;
+  }
+
+  return (
+    <>
+      {parts.join(' · ')}
+      {g.needsRevenue > 0 && (
+        <span className="text-lumi-subtle">
+          {parts.length > 0 ? ' · ' : ''}{g.needsRevenue} need revenue data
+        </span>
+      )}
+    </>
+  );
+}
 
 function MetricCard({ label, primary, secondary, footer }) {
   return (
