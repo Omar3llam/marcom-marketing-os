@@ -16,6 +16,7 @@ import { TrendingUp, AlertCircle, LineChart } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatCurrency } from '@/lib/money';
 import { appRoutes } from '@/app/routeManifest.js';
+import UpgradePrompt from '@/components/plan/UpgradePrompt.jsx';
 
 const money = (minor, ccy = 'USD') => (minor == null ? '—' : formatCurrency(minor, ccy));
 
@@ -77,7 +78,12 @@ function Controls({ onRun, loading }) {
   );
 }
 
-export function ScenarioPanel({ scenario, message = null, loading = false, error = null, onRun, currency }) {
+export function ScenarioPanel({ scenario, message = null, gated = false, loading = false, error = null, onRun, currency }) {
+  // Tier gate wins over every other state (mirrors IncrementalityPanel): a 403
+  // from requirePlan('PRO') is an honest LOCKED state, not a failure. Checked
+  // first so a gated workspace never sees the controls or an error flash.
+  if (gated) return <UpgradePrompt feature="Scenario projection" requiredPlan="PRO" />;
+
   // The scenario's own currency wins (most specific); else the workspace currency
   // threaded from the page; else USD. Never a hardcoded assumption.
   const ccy = scenario?.currency ?? currency ?? 'USD';

@@ -84,3 +84,33 @@ describe('ScenarioPanel — economics configured', () => {
     expect(screen.queryByRole('link', { name: /configure unit economics/i })).not.toBeInTheDocument();
   });
 });
+
+// ── Tier gate (P1.4): a 403 from requirePlan('PRO') is an honest LOCKED state.
+// `gated` wins over every other state (mirrors IncrementalityPanel) — the panel
+// renders the UpgradePrompt, never the controls or an error flash.
+describe('ScenarioPanel — tier gate (gated)', () => {
+  const renderGate = (props) =>
+    render(
+      <MemoryRouter>
+        <ScenarioPanel onRun={vi.fn()} currency="USD" {...props} />
+      </MemoryRouter>,
+    );
+
+  it('renders the upgrade prompt (PRO) when gated — no Project controls', () => {
+    renderGate({ gated: true });
+    expect(screen.getByText(/Scenario projection is a Pro feature/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /project/i })).not.toBeInTheDocument();
+  });
+
+  it('gated wins over a stale error — never shows both', () => {
+    renderGate({ gated: true, error: new Error('boom') });
+    expect(screen.getByText(/Scenario projection is a Pro feature/i)).toBeInTheDocument();
+    expect(screen.queryByText(/couldn’t project/i)).not.toBeInTheDocument();
+  });
+
+  it('renders the projection controls when ungated', () => {
+    renderGate({ gated: false });
+    expect(screen.getByRole('button', { name: /project/i })).toBeInTheDocument();
+    expect(screen.queryByText(/is a Pro feature/i)).not.toBeInTheDocument();
+  });
+});

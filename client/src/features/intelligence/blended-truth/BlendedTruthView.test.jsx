@@ -5,10 +5,22 @@
 // the Campaigns page filtered by channel (?channel=). Asserts the link exists +
 // carries the right target for a STRATEGIST viewer.
 // ============================================================
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { BlendedTruthView } from './BlendedTruthView.jsx';
+import BlendedTruth, { BlendedTruthView } from './BlendedTruthView.jsx';
+import { useBlendedTruth } from '@/hooks/useBlendedTruth.js';
+
+// The pure `BlendedTruthView` tests below need no hooks; the default `BlendedTruth`
+// wrapper does — mock its data + context sources so the gate can be exercised.
+vi.mock('@/hooks/useBlendedTruth.js', () => ({ useBlendedTruth: vi.fn() }));
+vi.mock('@/hooks/useCollabRole.js', () => ({
+  useCollabRole: () => ({ role: 'STRATEGIST' }),
+  WORKSPACE_ROLE: { STRATEGIST: 'STRATEGIST', BUYER: 'BUYER', CLIENT: 'CLIENT' },
+}));
+vi.mock('@/hooks/useAllocation.js', () => ({ useAllocation: () => ({ preview: vi.fn(), commit: vi.fn(), plan: null }) }));
+vi.mock('@/hooks/useWorkspace.js', () => ({ useWorkspace: () => ({ workspace: { currency: 'USD' } }) }));
+vi.mock('../IntelligenceSubNav.jsx', () => ({ default: () => null }));
 
 const data = {
   channels: [
@@ -60,5 +72,33 @@ describe('BlendedTruthView — channel identity fallback', () => {
   it('falls back to the channelId (UUID) only when both name and channel are null', () => {
     renderRow({ name: null, channel: null });
     expect(screen.getByRole('link', { name: '4e7f8d9b-uuid' })).toBeInTheDocument();
+  });
+});
+
+// ── Tier gate (P1.4): the wrapper renders the UpgradePrompt on a 403 (gated),
+// before loading/error/data. A GROWTH paywall is an honest LOCKED state, not a
+// failure — mirrors IncrementalityPanel / useIncrementality.
+describe('BlendedTruth (wrapper) — tier gate', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const renderWrapper = () =>
+    render(
+      <MemoryRouter>
+        <BlendedTruth />
+      </MemoryRouter>,
+    );
+
+  it('renders the upgrade prompt (GROWTH) when gated — never the error state', () => {
+    useBlendedTruth.mockReturnValue({ data: null, loading: false, error: null, gated: true });
+    renderWrapper();
+    expect(screen.getByText(/Blended Truth is a Growth feature/i)).toBeInTheDocument();
+    expect(screen.queryByText(/couldn't load Blended Truth/i)).not.toBeInTheDocument();
+  });
+
+  it('renders the honest error state (not the gate) on a non-403 failure', () => {
+    useBlendedTruth.mockReturnValue({ data: null, loading: false, error: new Error('boom'), gated: false });
+    renderWrapper();
+    expect(screen.getByText(/couldn't load Blended Truth/i)).toBeInTheDocument();
+    expect(screen.queryByText(/is a Growth feature/i)).not.toBeInTheDocument();
   });
 });
