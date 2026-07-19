@@ -49,6 +49,39 @@ export function buildScenarioInputs(channels, economics, patterns = []) {
   };
 }
 
+// The projection fields that are DERIVED from unit economics (AOV / gross margin)
+// rather than from spend × real blendedRoas. When economics is unconfigured these
+// rest on the seeded default AOV, so they must be blanked — never dressed as a
+// measurement (mirrors getEconomicsAssessment's NOT_CONFIGURED refusal).
+const ECONOMICS_DERIVED_PROJECTIONS = Object.freeze(['volume', 'blendedCacMinor', 'grossProfitMinor']);
+const BLANK_RANGE = Object.freeze({ low: null, expected: null, high: null });
+const NOT_CONFIGURED_ASSUMPTION =
+  'Volume, CAC and Gross Profit require configured Unit Economics. ' +
+  'Default AOV was intentionally not used — configure Economics to unlock these projections.';
+
+/**
+ * Pure: stamp `economicsStatus` and, when the workspace has NOT asserted its
+ * unit economics (`isDefault`), blank the AOV/margin-derived projections to honest
+ * null ranges (→ "—") plus an explicit assumption. Spend/ROAS-based projections
+ * (revenueMinor, merAfter) are economics-independent and always preserved.
+ * Exported for unit testing without a DB.
+ *
+ * @param {object} scenario — projectScenario() output
+ * @param {boolean} isDefault — true when economics is the seeded default (unconfigured)
+ * @returns {object} scenario decorated with economicsStatus (+ blanked projections)
+ */
+export function withEconomicsStatus(scenario, isDefault) {
+  if (!isDefault) return { ...scenario, economicsStatus: 'CONFIGURED' };
+  const projections = { ...scenario.projections };
+  for (const key of ECONOMICS_DERIVED_PROJECTIONS) projections[key] = { ...BLANK_RANGE };
+  return {
+    ...scenario,
+    economicsStatus: 'NOT_CONFIGURED',
+    projections,
+    assumptions: [...scenario.assumptions, NOT_CONFIGURED_ASSUMPTION],
+  };
+}
+
 /**
  * Run a what-if scenario for a workspace.
  * @returns {Promise<(object|null)>} the scenario + memoryBasis, or null if no channels
@@ -56,7 +89,7 @@ export function buildScenarioInputs(channels, economics, patterns = []) {
 export async function runScenario(workspaceId, { change, now } = {}) {
   if (!workspaceId) throw new Error('runScenario: workspaceId required');
 
-  const [{ channels }, { economics }] = await Promise.all([
+  const [{ channels }, { economics, isDefault }] = await Promise.all([
     getBlendedTruth(workspaceId),
     getEconomics(workspaceId),
   ]);
@@ -73,9 +106,12 @@ export async function runScenario(workspaceId, { change, now } = {}) {
 
   const { baseline, economics: econ, memory, memoryBasis } = buildScenarioInputs(channels, economics, enriched);
   const scenario = projectScenario({ baseline, change, economics: econ, memory, now });
+  // GOVERNING LAW: never dress a default-AOV number as a measurement. When economics
+  // is unconfigured, blank the volume-derived projections to honest "—" (null ranges).
+  const withStatus = withEconomicsStatus(scenario, isDefault);
 
-  logger.info({ workspaceId, type: change?.type, patterns: memoryBasis.length }, '[ScenarioService] projected');
-  return { ...scenario, memoryBasis };
+  logger.info({ workspaceId, type: change?.type, patterns: memoryBasis.length, economicsStatus: withStatus.economicsStatus }, '[ScenarioService] projected');
+  return { ...withStatus, memoryBasis };
 }
 
 /**
