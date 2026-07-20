@@ -13,7 +13,7 @@
 //   - Request ID generation (deterministic)
 //   - Metadata propagation
 // ============================================================
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Zero the retry backoff before ProviderGateway evaluates its const (hoisted
 // above the imports) — keeps the suite instant now that a failing primary also
@@ -82,10 +82,18 @@ vi.mock('./providers/higgsfieldProvider.js', () => ({
   generateVideoPrompt: vi.fn(),
 }));
 
+// Plan-aware routing may read the workspace plan by id (best-effort). Mocked so
+// the FREE-via-DB path is deterministic; existing tests pass no workspaceId, so
+// the read never fires for them.
+vi.mock('../../lib/prisma.js', () => ({
+  prisma: { workspace: { findUnique: vi.fn() } },
+}));
+
 import { execute }                   from './ProviderGateway.js';
 import { CAPABILITY, ERROR_TYPE }    from './providerTypes.js';
 import { MOCK_RESPONSES }            from './fixtures/providerResponses.js';
 import { claudeProvider, openaiProvider } from './providers/index.js';
+import { prisma }                    from '../../lib/prisma.js';
 
 // ============================================================
 // Input Validation
@@ -532,5 +540,153 @@ describe('ProviderGateway — cross-provider fallback', () => {
     expect(result.metadata.primaryProvider).toBe('OPENAI');
     expect(openaiProvider.generateCopy).toHaveBeenCalledTimes(1);
     expect(claudeProvider.generateCopy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ============================================================
+// Plan-aware routing (opt-in): FREE → OpenAI, cost control
+// ------------------------------------------------------------
+// FREE is served by OpenAI and NEVER billed to Claude. Off by default
+// (PLAN_AWARE_ROUTING_ENABLED), downgrade only on an affirmative 'FREE', only
+// where OpenAI implements the capability, and with the Claude fallback suppressed.
+// AUTH_ERROR is non-retryable → provider failures resolve in one attempt.
+// ============================================================
+describe('ProviderGateway — plan-aware routing (FREE → OpenAI)', () => {
+  const verdictOk = (provider) => ({
+    success: true,
+    output: { reasoning: 'x' },
+    artifacts: [],
+    metadata: { provider, model: 'test', tokens: 10, latency: 5 },
+  });
+  const rankOk = (provider) => ({
+    success: true,
+    output: { ranked: [] },
+    artifacts: [],
+    metadata: { provider, model: 'test', tokens: 10, latency: 5 },
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.PLAN_AWARE_ROUTING_ENABLED;
+  });
+  afterEach(() => {
+    delete process.env.PLAN_AWARE_ROUTING_ENABLED;
+  });
+
+  // ── Flag off (default): no behaviour change ──
+  it('flag OFF: a FREE plan is ignored — Claude-primary stays Claude', async () => {
+    claudeProvider.explainVerdict.mockResolvedValue(verdictOk('CLAUDE'));
+
+    const result = await execute({ capability: CAPABILITY.EXPLAIN_VERDICT, input: { verdict: 'KILL' }, plan: 'FREE' });
+
+    expect(result.success).toBe(true);
+    expect(claudeProvider.explainVerdict).toHaveBeenCalledTimes(1);
+    expect(openaiProvider.explainVerdict).not.toHaveBeenCalled();
+  });
+
+  // ── Flag on ──
+  it('FREE + Claude-primary reasoning → routes to OpenAI; Claude NEVER called', async () => {
+    process.env.PLAN_AWARE_ROUTING_ENABLED = 'true';
+    openaiProvider.explainVerdict.mockResolvedValue(verdictOk('OPENAI'));
+
+    const result = await execute({ capability: CAPABILITY.EXPLAIN_VERDICT, input: { verdict: 'KILL' }, plan: 'FREE' });
+
+    expect(result.success).toBe(true);
+    expect(result.metadata.provider).toBe('OPENAI');
+    expect(result.metadata.routingDecision.strategy).toBe('plan-free-downgrade');
+    expect(result.metadata.routingDecision.planDowngrade).toBe(true);
+    expect(openaiProvider.explainVerdict).toHaveBeenCalledTimes(1);
+    expect(claudeProvider.explainVerdict).not.toHaveBeenCalled();
+  });
+
+  it('FREE + Claude-ONLY capability (no OpenAI method) → honestly stays Claude', async () => {
+    process.env.PLAN_AWARE_ROUTING_ENABLED = 'true';
+    claudeProvider.rankVariants.mockResolvedValue(rankOk('CLAUDE'));
+
+    // RANK_VARIANTS has no OpenAI implementation — we cannot fabricate one.
+    const result = await execute({ capability: CAPABILITY.RANK_VARIANTS, input: { variants: [] }, plan: 'FREE' });
+
+    expect(result.success).toBe(true);
+    expect(result.metadata.provider).toBe('CLAUDE');
+    expect(claudeProvider.rankVariants).toHaveBeenCalledTimes(1);
+  });
+
+  it('FREE suppresses fallback: an OpenAI-primary failure does NOT spill to Claude', async () => {
+    process.env.PLAN_AWARE_ROUTING_ENABLED = 'true';
+    openaiProvider.generateCopy.mockResolvedValue(MOCK_RESPONSES.AUTH_ERROR);
+
+    const result = await execute({ capability: CAPABILITY.GENERATE_COPY, input: { diagnosis: 'X' }, plan: 'FREE' });
+
+    expect(result.success).toBe(false);
+    expect(result.metadata.fallbackAttempted).toBeUndefined();
+    expect(claudeProvider.generateCopy).not.toHaveBeenCalled();
+  });
+
+  it('FREE suppresses fallback: a downgraded reasoning failure never reaches Claude', async () => {
+    process.env.PLAN_AWARE_ROUTING_ENABLED = 'true';
+    openaiProvider.explainVerdict.mockResolvedValue(MOCK_RESPONSES.AUTH_ERROR);
+
+    const result = await execute({ capability: CAPABILITY.EXPLAIN_VERDICT, input: { verdict: 'KILL' }, plan: 'FREE' });
+
+    expect(result.success).toBe(false);
+    expect(openaiProvider.explainVerdict).toHaveBeenCalledTimes(1);
+    expect(claudeProvider.explainVerdict).not.toHaveBeenCalled();
+  });
+
+  it('GROWTH plan → existing behaviour (Claude-primary stays Claude)', async () => {
+    process.env.PLAN_AWARE_ROUTING_ENABLED = 'true';
+    claudeProvider.explainVerdict.mockResolvedValue(verdictOk('CLAUDE'));
+
+    const result = await execute({ capability: CAPABILITY.EXPLAIN_VERDICT, input: { verdict: 'KILL' }, plan: 'GROWTH' });
+
+    expect(result.success).toBe(true);
+    expect(claudeProvider.explainVerdict).toHaveBeenCalledTimes(1);
+    expect(openaiProvider.explainVerdict).not.toHaveBeenCalled();
+  });
+
+  it('unknown plan + no workspaceId → safe default: existing routing (Claude)', async () => {
+    process.env.PLAN_AWARE_ROUTING_ENABLED = 'true';
+    claudeProvider.explainVerdict.mockResolvedValue(verdictOk('CLAUDE'));
+
+    const result = await execute({ capability: CAPABILITY.EXPLAIN_VERDICT, input: { verdict: 'KILL' } });
+
+    expect(result.success).toBe(true);
+    expect(claudeProvider.explainVerdict).toHaveBeenCalledTimes(1);
+    expect(openaiProvider.explainVerdict).not.toHaveBeenCalled();
+  });
+
+  // ── Plan resolved from the DB by workspaceId (Option B, no explicit plan) ──
+  it('resolves FREE from the DB by workspaceId → routes to OpenAI', async () => {
+    process.env.PLAN_AWARE_ROUTING_ENABLED = 'true';
+    prisma.workspace.findUnique.mockResolvedValue({ plan: 'FREE' });
+    openaiProvider.explainVerdict.mockResolvedValue(verdictOk('OPENAI'));
+
+    const result = await execute({ capability: CAPABILITY.EXPLAIN_VERDICT, input: { verdict: 'KILL' }, workspaceId: 'ws-free' });
+
+    expect(prisma.workspace.findUnique).toHaveBeenCalledWith({ where: { id: 'ws-free' }, select: { plan: true } });
+    expect(result.metadata.provider).toBe('OPENAI');
+    expect(claudeProvider.explainVerdict).not.toHaveBeenCalled();
+  });
+
+  it('resolves PRO from the DB → existing routing (Claude)', async () => {
+    process.env.PLAN_AWARE_ROUTING_ENABLED = 'true';
+    prisma.workspace.findUnique.mockResolvedValue({ plan: 'PRO' });
+    claudeProvider.explainVerdict.mockResolvedValue(verdictOk('CLAUDE'));
+
+    const result = await execute({ capability: CAPABILITY.EXPLAIN_VERDICT, input: { verdict: 'KILL' }, workspaceId: 'ws-pro' });
+
+    expect(result.metadata.provider).toBe('CLAUDE');
+    expect(claudeProvider.explainVerdict).toHaveBeenCalledTimes(1);
+  });
+
+  it('a DB read failure degrades to existing routing (never blocks the call)', async () => {
+    process.env.PLAN_AWARE_ROUTING_ENABLED = 'true';
+    prisma.workspace.findUnique.mockRejectedValue(new Error('db down'));
+    claudeProvider.explainVerdict.mockResolvedValue(verdictOk('CLAUDE'));
+
+    const result = await execute({ capability: CAPABILITY.EXPLAIN_VERDICT, input: { verdict: 'KILL' }, workspaceId: 'ws-x' });
+
+    expect(result.success).toBe(true);
+    expect(result.metadata.provider).toBe('CLAUDE');
   });
 });

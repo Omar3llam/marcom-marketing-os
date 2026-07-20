@@ -26,6 +26,7 @@
 //     severity?: string,               // PR #33: feedback severity (LOW/MEDIUM/HIGH)
 //     preserveAspects?: string[],      // PR #33: aspects to preserve during regen
 //     workspaceId?: string,            // PR #38: for workspace-scoped provider routing
+//     plan?: string,                   // plan-aware routing override (else resolved by workspaceId)
 //   }
 //
 // OUTPUT:
@@ -45,7 +46,7 @@
 // ============================================================
 import { getProviderForCapability, getMethodForProvider } from './providerRegistry.js';
 import { routeCapability } from './intelligentRouter.js'; // PR #38
-import { ERROR_TYPE, CAPABILITY_FALLBACK } from './providerTypes.js';
+import { ERROR_TYPE, CAPABILITY_FALLBACK, PROVIDER } from './providerTypes.js';
 import { validateStructuredFeedback } from '../../types/feedbackTypes.js';
 import { logger } from '../../utils/logger.js';
 import crypto from 'crypto';
@@ -85,6 +86,92 @@ function shouldRetry(error, attempt) {
 
 function calculateBackoff(attempt) {
   return RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+}
+
+// ============================================================
+// Plan-aware provider routing (opt-in via PLAN_AWARE_ROUTING_ENABLED)
+// ------------------------------------------------------------
+// Cost control: a FREE workspace is served by OpenAI (cheaper) and never billed
+// to Claude. This is a THIN override on the resolved registration — it does NOT
+// decide which capabilities a plan may use (that stays with requirePlan
+// middleware); it only picks the cheaper provider for FREE. Off by default so a
+// deploy opts in deliberately (mirrors the intelligentRouter feature flags).
+//
+// SAFETY — three corrections over a naive "FREE → OpenAI, else Claude":
+//   1. Downgrade ONLY on an affirmative 'FREE'. Unknown/missing plan (and every
+//      call while the flag is off) keeps the EXISTING per-capability routing —
+//      the static registry is already OpenAI-primary for copy and Claude-primary
+//      for reasoning, so we must never blanket-downgrade internal Claude calls.
+//   2. Claude→OpenAI ONLY where OpenAI implements the capability. ANALYZE_CREATIVE,
+//      RANK_VARIANTS, GENERATE_VISUAL_BRIEF and GENERATE_VIDEO_PROMPT have no
+//      OpenAI method — they honestly keep their static provider (we cannot
+//      fabricate one). Blocking them instead would be capability gating (not ours).
+//   3. FREE suppresses the cross-provider fallback, so a FREE call can never spill
+//      over to Claude (CAPABILITY_FALLBACK for copy points AT Claude).
+// ============================================================
+const PLAN_FREE = 'FREE';
+const planAwareRoutingEnabled = () => process.env.PLAN_AWARE_ROUTING_ENABLED === 'true';
+
+/**
+ * Resolve the workspace plan for routing. An explicit `plan` wins (testable, and
+ * lets a caller that already knows the plan skip the read); otherwise a
+ * best-effort read by workspaceId. Never throws — a plan read must never block or
+ * fail an AI call; an unknown plan simply means "no override".
+ * @returns {Promise<string|null>} the plan, or null when unknown
+ */
+async function resolvePlan({ plan, workspaceId }) {
+  if (plan) return plan;
+  if (!workspaceId) return null;
+  try {
+    // Lazy import: keeps merely importing the gateway free of a DB coupling —
+    // lib/prisma.js $connect()s at module load, so importing it eagerly would drag
+    // that side effect into every module (and test) that touches the gateway.
+    const { prisma } = await import('../../lib/prisma.js');
+    const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { plan: true } });
+    return ws?.plan ?? null;
+  } catch {
+    return null; // best-effort — unknown plan degrades to the existing routing
+  }
+}
+
+/**
+ * Apply the FREE-plan override to a resolved registration. A no-op for any plan
+ * other than FREE (returns the registration untouched, fallback enabled).
+ * @returns {{ provider: string, method: function, routingDecision: object, suppressFallback: boolean }}
+ */
+export function applyFreePlanRouting({ plan, capability, provider, method, routingDecision }) {
+  if (plan !== PLAN_FREE) return { provider, method, routingDecision, suppressFallback: false };
+
+  // FREE + Claude-primary: switch to OpenAI when it implements the capability.
+  if (provider === PROVIDER.CLAUDE) {
+    const oa = getMethodForProvider(PROVIDER.OPENAI, capability);
+    if (oa) {
+      return {
+        provider: oa.provider,
+        method: oa.method,
+        routingDecision: {
+          strategy: 'plan-free-downgrade',
+          reason: `FREE plan → ${oa.provider} (static was ${provider})`,
+          planDowngrade: true,
+          staticProvider: provider,
+        },
+        suppressFallback: true, // FREE must never reach Claude via fallback
+      };
+    }
+    // OpenAI can't serve this capability (ANALYZE_CREATIVE / RANK_VARIANTS /
+    // GENERATE_VISUAL_BRIEF / GENERATE_VIDEO_PROMPT) — keep the static provider
+    // honestly rather than fail. This is the documented "special routing override".
+    return {
+      provider,
+      method,
+      routingDecision: { ...routingDecision, planNote: `FREE plan but no OpenAI implementation for ${capability}; kept ${provider}` },
+      suppressFallback: true,
+    };
+  }
+
+  // FREE + already-OpenAI (copy) or Higgsfield (video): keep the provider, but
+  // still suppress the fallback so a failed FREE call can't spill over to Claude.
+  return { provider, method, routingDecision, suppressFallback: true };
 }
 
 /**
@@ -181,7 +268,7 @@ async function runWithRetries({ method, input, decisionCtx, provider, requestId,
 /**
  * Execute an AI capability through the appropriate provider.
  *
- * @param {{ capability: string, input: object, feedback?: string, revisionInstructions?: string, regenerationHint?: string, isReExecution?: boolean, feedbackType?: string, severity?: string, preserveAspects?: string[], workspaceId?: string }} request
+ * @param {{ capability: string, input: object, feedback?: string, revisionInstructions?: string, regenerationHint?: string, isReExecution?: boolean, feedbackType?: string, severity?: string, preserveAspects?: string[], workspaceId?: string, plan?: string }} request
  * @returns {Promise<{ success: boolean, output?: object, artifacts?: array, metadata: object, error?: object }>}
  */
 export async function execute(request) {
@@ -198,6 +285,8 @@ export async function execute(request) {
     preserveAspects,
     // PR #38: Intelligent routing
     workspaceId,
+    // Plan-aware routing: explicit plan override (else resolved by workspaceId).
+    plan,
   } = request;
 
   if (!capability) {
@@ -299,7 +388,20 @@ export async function execute(request) {
     }
   }
 
-  const { provider, method, routingDecision } = registration;
+  // Plan-aware routing (opt-in). Off by default → effectivePlan stays null and
+  // the registration is used exactly as resolved (zero behaviour change). When
+  // enabled, a FREE workspace is served by OpenAI where possible, with the
+  // cross-provider fallback suppressed so it can never reach Claude.
+  const effectivePlan = planAwareRoutingEnabled()
+    ? await resolvePlan({ plan, workspaceId })
+    : null;
+  const { provider, method, routingDecision, suppressFallback } = applyFreePlanRouting({
+    plan: effectivePlan,
+    capability,
+    provider: registration.provider,
+    method: registration.method,
+    routingDecision: registration.routingDecision,
+  });
 
   // 🔍 VERIFICATION LOG — Track which provider is actually being used
   logger.debug({
@@ -307,6 +409,7 @@ export async function execute(request) {
     model: registration.model || 'UNKNOWN',
     capability,
     routingStrategy: routingDecision?.strategy || 'static',
+    plan: effectivePlan || undefined,
   }, '[AI-GATEWAY] provider selected');
 
   // PR #32/#33: decision context passed to every provider call (primary + fallback).
@@ -327,8 +430,9 @@ export async function execute(request) {
   // implements the capability. Capabilities with no fallback (or whose fallback
   // is the same provider / unimplemented) return the primary error unchanged.
   // Never throws, never fabricates: both-fail returns the honest primary error.
+  // FREE plan suppresses the cross-provider fallback (it must never reach Claude).
   const fallbackProvider = CAPABILITY_FALLBACK[capability];
-  if (fallbackProvider && fallbackProvider !== provider) {
+  if (!suppressFallback && fallbackProvider && fallbackProvider !== provider) {
     const fb = getMethodForProvider(fallbackProvider, capability);
     if (fb && typeof fb.method === 'function') {
       logger.warn({
