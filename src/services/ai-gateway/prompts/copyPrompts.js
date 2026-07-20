@@ -86,12 +86,13 @@ Return JSON array:
 
   // v1.1 — grounded in the workspace's onboarding profile (industry, objective,
   // brand tone) and the picked campaign's real CTR, plus a per-variant {angle}
-  // so STORY/PROOF/URGENCY actually diverge. New placeholders resolve to 'N/A'
-  // for any caller that omits them (buildCopyPrompt default), so this stays
-  // backward-compatible. GENERATE_COPY is Content-Lab-exclusive — no other
-  // capability consumer is affected.
+  // so STORY/PROOF/URGENCY actually diverge. Onboarding placeholders resolve to
+  // 'N/A' when omitted (buildCopyPrompt default), so this stays backward-compatible.
+  // v1.3 — the operator's product brief: {productName}/{offer}/{benefits} are
+  // OPTIONAL and drop their whole line when absent (never "Product/Service: N/A").
+  // GENERATE_COPY is Content-Lab-exclusive — no other capability consumer.
   GENERATE_COPY: {
-    version: 'v1.2',
+    version: 'v1.3',
     template: `Generate complete ad copy (hook + body) for Meta ads.
 
 CONTEXT:
@@ -103,7 +104,8 @@ Tone for this piece: {tone}
 Target Audience: {targetAudience}
 Current CTR: {currentCTR}%
 Product/Service: {productName}
-Key Benefits: {benefits}
+Offer: {offer}
+Key facts: {benefits}
 
 {campaignIntel}
 
@@ -144,6 +146,17 @@ export function buildCopyPrompt(capability, variables, decisionContext = {}) {
   // and a function replacement so a literal '$' in a campaign name / ROAS figure
   // can't be read as a regex replacement token.
   prompt = prompt.replace(/\{campaignIntel\}/g, () => variables.campaignIntel || '');
+
+  // Optional product-context lines (product / offer / key facts). When supplied
+  // they render normally; when absent, drop the WHOLE line rather than emitting
+  // 'N/A' — a brief without a product shows no product line, not a fake "N/A".
+  // Function replacement so a literal '$' in the value isn't read as a regex token.
+  for (const key of ['productName', 'offer', 'benefits']) {
+    const value = variables[key];
+    prompt = value
+      ? prompt.replace(new RegExp(`\\{${key}\\}`, 'g'), () => String(value))
+      : prompt.replace(new RegExp(`^.*\\{${key}\\}.*\\r?\\n?`, 'gm'), '');
+  }
 
   // Replace variables
   for (const [key, value] of Object.entries(variables)) {
