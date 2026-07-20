@@ -7,13 +7,16 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Send, X, ChevronDown, AlertTriangle, Sparkles, ArrowRight,
+  Send, X, ChevronDown, Check, Sparkles, ArrowRight,
 } from 'lucide-react';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useContentGeneration } from '@/hooks/useContentGeneration.js';
 import { useContentHistory } from '@/hooks/useContentHistory.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
+import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useOnboardingContext } from '@/hooks/useOnboardingContext.js';
+import { VerdictBadge } from '@/components/primitives';
+import { getContentRecommendations } from '@/lib/contentRecommendations.js';
 import { TONES } from '@/pages/OnboardingPage/constants.js';
 import { resolveBrandContext } from './brandContext.js';
 import { VISUAL_FORMATS, DEFAULT_FORMAT_ID, formatById, formatToPromptFields } from './visualFormats.js';
@@ -28,6 +31,14 @@ export default function ContentLabView() {
   // Live connector campaigns (MetricSnapshot-backed entity graph), NOT the
   // legacy CampaignState feed — so "Sync Live Meta" campaigns are selectable.
   const { campaigns, loading: campaignsLoading } = useConnectorCampaigns();
+  // Engine verdicts over the same connector graph, keyed by entityId — the
+  // DECISION that drives the diagnosis + recommendations below. rationale here is
+  // the always-present verdict rationale (not the top-N-only prose "Read").
+  const { verdicts } = useConnectorVerdicts();
+  const verdictMap = useMemo(
+    () => Object.fromEntries((verdicts ?? []).map((v) => [v.id, v])),
+    [verdicts],
+  );
   const {
     generate: generateContent,
     content,
@@ -129,12 +140,15 @@ export default function ContentLabView() {
   const vTone = vCtx.tone || 'your brand voice';
   const vCampaign = vCtx.campaignContext ? { campaign: vCtx.campaignContext.name, adset: vCtx.campaignContext.adset } : null;
 
-  const problem = contextCampaign
-    ? {
-        tag:  contextCampaign.tag || 'DIAGNOSIS',
-        body: contextCampaign.diagnosis || 'No per-campaign diagnosis — generation uses your brand voice plus the account’s live campaign performance.',
-      }
-    : { tag: 'NO CONTEXT', body: 'Select a campaign to focus this piece on it — live performance is included either way.' };
+  // The engine verdict for the picked campaign (by entityId) — null when nothing
+  // is picked, or the campaign isn't scored yet (gated / needs revenue). Its
+  // rationale + signalType drive the deterministic recommendations (no AI).
+  const decision = contextCampaign?.entityId ? verdictMap[contextCampaign.entityId] ?? null : null;
+  const recommendations = getContentRecommendations(decision?.verdict, decision?.signalType);
+  const confidenceLabel = decision?.confidence == null ? null
+    : decision.confidence >= 0.8 ? 'High'
+    : decision.confidence >= 0.6 ? 'Medium'
+    : 'Low';
 
   return (
     <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
@@ -230,6 +244,7 @@ export default function ContentLabView() {
                               // snapshot → convert to the percentage the prompt expects;
                               // null stays null (never a fabricated metric).
                               setContextCampaign({
+                                entityId:  c.entityId,  // keys the engine verdict lookup (diagnosis + recs)
                                 campaign:  c.name,
                                 adset:     c.channel,
                                 diagnosis: null,
@@ -256,21 +271,53 @@ export default function ContentLabView() {
             </div>
           )}
 
-          {/* Problem detected */}
-          <div className="flex gap-2.5 p-3 bg-surface-elevated rounded-lg mb-4.5">
-            <AlertTriangle
-              className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${contextCampaign ? 'text-signal-kill' : 'text-dark-subtle'}`}
-              strokeWidth={1.5}
-            />
-            <div className="flex-1 min-w-0">
-              <div className={`font-mono text-[10px] font-semibold tracking-[0.08em] uppercase ${contextCampaign ? 'text-signal-kill' : 'text-dark-muted'}`}>
-                Problem · {problem.tag}
-              </div>
-              <div className="text-[11px] text-dark-soft mt-1 leading-relaxed">
-                {problem.body}
-              </div>
+          {/* Diagnosis — the engine's verdict + rationale for the picked campaign.
+              Decision-first: the real verdict drives the piece, replacing the old
+              generic "Problem detected" placeholder. */}
+          {contextCampaign && (
+            <div className="p-3.5 bg-surface-elevated border border-surface-border rounded-lg mb-3.5">
+              <div className="section-label mb-2">Diagnosis</div>
+              {decision?.verdict ? (
+                <>
+                  <div className="flex items-center gap-2 mb-2">
+                    <VerdictBadge verdict={decision.verdict} className="text-[11px] px-2.5 py-1 rounded-lg gap-1.5" />
+                    {confidenceLabel && (
+                      <span className="font-mono text-[10px] text-dark-muted">{confidenceLabel} confidence</span>
+                    )}
+                  </div>
+                  {decision.rationale && (
+                    <p className="text-[11px] text-dark-soft leading-relaxed">{decision.rationale}</p>
+                  )}
+                  {decision.relativeRank === 'BOTTOM' && (
+                    <p className="mt-1 text-[10px] font-medium text-signal-kill">Lowest performer in your portfolio</p>
+                  )}
+                  {decision.relativeRank === 'TOP' && (
+                    <p className="mt-1 text-[10px] font-medium text-signal-scale">Top performer in your portfolio</p>
+                  )}
+                </>
+              ) : (
+                <p className="text-[11px] text-dark-soft leading-relaxed">
+                  No verdict yet — this campaign needs revenue data or a fresh sync to be scored. Generation still uses your brand voice and the account&apos;s live performance.
+                </p>
+              )}
             </div>
-          </div>
+          )}
+
+          {/* Lumi recommends — deterministic content actions derived from the
+              verdict + signalType (no AI call, no fabrication). */}
+          {recommendations.length > 0 && (
+            <div className="p-3.5 bg-surface-elevated border border-surface-border rounded-lg mb-4.5">
+              <div className="section-label mb-2">Lumi recommends</div>
+              <ul className="space-y-1.5">
+                {recommendations.map((r, i) => (
+                  <li key={i} className="flex items-start gap-1.5">
+                    <Check className="w-3 h-3 mt-0.5 text-lumi-accent flex-shrink-0" strokeWidth={2.5} />
+                    <span className="text-[11px] text-dark-soft leading-relaxed">{r}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Generate options */}
           <div className="section-label mb-2.5">Generate</div>
