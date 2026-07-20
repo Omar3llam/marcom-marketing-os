@@ -301,9 +301,10 @@ export default function ContentLabView() {
             />
             <OptToggle
               on={opts.video}
-              onToggle={() => setOpts({ ...opts, video: !opts.video })}
+              onToggle={() => {}}
+              disabled
               label="Video script"
-              sub="Higgsfield"
+              sub="Coming soon"
             />
           </div>
 
@@ -482,6 +483,25 @@ export default function ContentLabView() {
             </>
           )}
         </main>
+      </div>
+
+      {/* Learning History — placeholder for the forthcoming creative-learning loop.
+          No data source yet; an honest "coming soon", never a fabricated list. */}
+      <div className="mt-4">
+        <div className="bg-surface-card border border-surface-border rounded-xl p-4 shadow-card">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="font-display font-bold text-[13px] text-dark-base">
+              Creative learning history
+            </span>
+            <span className="px-1.5 py-0.5 rounded bg-surface-elevated text-dark-muted font-mono text-[9px] font-semibold tracking-wider">
+              Coming soon
+            </span>
+          </div>
+          <p className="text-[13px] text-dark-soft leading-relaxed">
+            Lumi will learn from your creative decisions — which hooks landed, which CTAs
+            underperformed, and what patterns predict success on your account.
+          </p>
+        </div>
       </div>
     </div>
   );

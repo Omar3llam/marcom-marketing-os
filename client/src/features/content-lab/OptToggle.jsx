@@ -1,10 +1,13 @@
 import { Check } from 'lucide-react';
 
-export function OptToggle({ on, onToggle, label, sub }) {
+export function OptToggle({ on, onToggle, label, sub, disabled = false }) {
   return (
     <button
       onClick={onToggle}
+      disabled={disabled}
       className={`w-full flex items-center gap-2.5 p-2 rounded-lg transition-all text-left ${
+        disabled ? 'opacity-50 cursor-not-allowed' : ''
+      } ${
         on
           ? 'bg-lumi-accent/4 border border-lumi-accent/30'
           : 'border border-transparent hover:bg-surface-elevated'

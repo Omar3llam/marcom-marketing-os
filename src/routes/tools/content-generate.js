@@ -31,12 +31,14 @@ import { getCampaignIntelligence } from '../../services/content-intel/campaignIn
  * dimensions come from a real format picker. The hardcoded strings below are
  * honest last-resorts for accounts with no onboarding data, not the normal path.
  * Returns: {
- *   copy: [{ tag, text }],
- *   headlines: [string],
- *   ctas: [string],
- *   visual: string,
+ *   copy: [{ tag, text }] | null,   // null = requested but generation produced nothing
+ *   headlines: [string]  | null,
+ *   ctas: [string]       | null,    // harvested from the copy variants (no separate call)
+ *   visual: string       | null,
  *   video: string
  * }
+ * A requested section that fails is returned as null (honest "couldn't generate"),
+ * never another brand's canned copy — the UI renders a per-section empty state.
  */
 export async function generateContent(req, res) {
   const userId = req.userId || req.user?.uid;
@@ -223,6 +225,9 @@ async function generateContentViaGateway({ options, baseInput, visualSpec = {}, 
             results.copy.push({
               tag,
               text: result.output.body,
+              // Carry each variant's own CTA so the CTA section can be harvested
+              // from these real generations — no extra model call, no word-swaps.
+              cta: result.output.cta ?? null,
             });
           }
         } catch (err) {
@@ -255,31 +260,8 @@ async function generateContentViaGateway({ options, baseInput, visualSpec = {}, 
     );
   }
 
-  // Generate CTAs (extract from copy generation)
-  if (options.cta) {
-    tasks.push(
-      (async () => {
-        try {
-          const result = await execute({
-            capability: CAPABILITY.GENERATE_COPY,
-            input: baseInput,
-            workspaceId,
-          });
-
-          if (result.success && result.output.cta) {
-            // Generate 3 CTA variations
-            results.ctas = [
-              result.output.cta,
-              result.output.cta.replace(/\b(Get|Start|Try)\b/i, 'Claim'),
-              result.output.cta.replace(/\b(now|today)\b/i, 'free'),
-            ].filter(Boolean).slice(0, 3);
-          }
-        } catch (err) {
-          logger.warn({ err: err.message }, '[content-generate] CTAs failed');
-        }
-      })()
-    );
-  }
+  // CTAs are harvested AFTER generation from the copy variants above (each carries
+  // its own real CTA) — see the post-Promise.all block. No separate model call.
 
   // Generate visual brief
   if (options.visual) {
@@ -323,26 +305,21 @@ async function generateContentViaGateway({ options, baseInput, visualSpec = {}, 
   // Execute all tasks in parallel
   await Promise.all(tasks);
 
-  // Apply fallbacks if any generation failed
-  if (options.copy && results.copy.length === 0) {
-    results.copy = [
-      { tag: 'STORY', text: 'Built for operators who can\'t afford to "let it run." Verdicts in 18s, with the cash impact pinned.' },
-      { tag: 'PROOF', text: '240 MENA workspaces trust us to make the call. Join them — first verdict free.' },
-      { tag: 'URGENCY', text: 'Stop bleeding ad sets today. The first scan takes 18 seconds.' },
-    ];
+  // Harvest CTAs from the copy variants we already generated — each variant carries
+  // its own real CTA. De-duplicated, capped at 3, each tied to a real variant. No
+  // extra model call, no regex word-swaps. (If copy wasn't requested, there are none.)
+  if (options.cta) {
+    results.ctas = [...new Set(results.copy.map((c) => c.cta).filter(Boolean))].slice(0, 3);
   }
+  // Persist/return copy as { tag, text } only — `cta` was an internal carrier field.
+  results.copy = results.copy.map(({ tag, text }) => ({ tag, text }));
 
-  if (options.headlines && results.headlines.length === 0) {
-    results.headlines = ['Built for operators.', 'Verdicts in 18 seconds.', 'Stop the bleed today.'];
-  }
-
-  if (options.cta && results.ctas.length === 0) {
-    results.ctas = ['Get your first verdict', 'Scan my campaigns', 'Stop the bleed'];
-  }
-
-  if (options.visual && !results.visual) {
-    results.visual = 'Square crop. Warm desert palette — terracotta, sand, deep gold. Hands cradling folded fabric in soft natural light. Hand-stitched detail visible. Editorial feel, not stock.';
-  }
+  // Honest empties: a requested section that produced nothing becomes null — never
+  // another brand's canned copy. The UI renders a per-section "couldn't generate".
+  if (options.copy && results.copy.length === 0) results.copy = null;
+  if (options.headlines && results.headlines.length === 0) results.headlines = null;
+  if (options.cta && results.ctas.length === 0) results.ctas = null;
+  if (options.visual && !results.visual) results.visual = null;
 
   return results;
 }
