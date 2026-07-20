@@ -23,6 +23,12 @@ import { PerformanceChart } from '@/components/campaign-analysis/PerformanceChar
 import { AnalysisSummary } from '@/components/campaign-analysis/AnalysisSummary.jsx';
 import { ConnectorCampaignsPanel } from '@/features/campaigns/ConnectorCampaignsPanel.jsx';
 import { generateCampaignReport, generateTextReport } from '@/lib/pdfExport.js';
+import { buildPdfCampaigns } from '@/features/campaigns/pdfData.js';
+
+// The PDF is sourced from the LIVE connector substrate, so export is available
+// exactly when there are synced connector campaigns (never the retired CSV feed).
+// Exported (pure) so the button-gate can be unit-tested without booting the page.
+export const canExportPdf = (connectorCampaigns = []) => connectorCampaigns.length > 0;
 
 // Revenue-source → the guidance clause shown when connected campaigns can't be
 // scored. Keyed by the industry's `revenueSource` (from onboarding INDUSTRIES),
@@ -158,28 +164,35 @@ export default function CampaignsView() {
   const [downloading, setDownloading] = useState(false);
 
   const handleDownloadPdf = async () => {
-    if (allRows.length === 0) {
+    if (!canExportPdf(connectorCampaigns)) {
       toast.error('No campaign data to export');
       return;
     }
 
     setDownloading(true);
+    // Build PDF rows from the connector graph, joining the engine verdict +
+    // rationale + impact by entityId. Gated (no-revenue) campaigns are marked
+    // honestly — never given a fabricated verdict.
+    const reportArgs = {
+      campaigns: buildPdfCampaigns({
+        connectorCampaigns,
+        verdictByEntityId,
+        verdictInfoByEntityId,
+        impactByEntityId,
+        gatedOutIds: new Set((connectorGatedOut ?? []).map((g) => g.id)),
+      }),
+      healthScore,                       // health?.score ?? null (live engine)
+      healthLabel: health?.label ?? null, // null (not the on-screen fallback) → honest PDF state
+      wastedSpend: kpiWasted,            // major units, currency-correct, null when unscored
+      wastedPct: kpiWastedPct,
+      generatedAt: new Date().toISOString(),
+      workspaceName: workspace?.name ?? null,
+    };
     try {
-      await generateCampaignReport({
-        campaigns: allRows,
-        totals,
-        healthScore,
-        healthLabel,
-      });
+      await generateCampaignReport(reportArgs);
     } catch (error) {
       console.error('[Campaigns] PDF generation failed:', error);
-      // Fallback to text export
-      generateTextReport({
-        campaigns: allRows,
-        totals,
-        healthScore,
-        healthLabel,
-      });
+      generateTextReport(reportArgs); // text fallback, same connector data
     } finally {
       setDownloading(false);
     }
@@ -390,9 +403,9 @@ export default function CampaignsView() {
           <button
             type="button"
             onClick={handleDownloadPdf}
-            disabled={downloading || allRows.length === 0}
+            disabled={downloading || !canExportPdf(connectorCampaigns)}
             className="inline-flex items-center gap-1.5 bg-lumi-elevated border border-lumi-border rounded-xl px-4 py-2 text-sm font-display text-lumi-text hover:border-lumi-accent/40 disabled:opacity-60 transition-all"
-            title={allRows.length === 0 ? 'No data to export' : 'Download PDF Report'}
+            title={!canExportPdf(connectorCampaigns) ? 'Sync your Meta account to export' : 'Download PDF Report'}
           >
             {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" strokeWidth={1.5} />}
             {downloading ? 'Generating…' : 'PDF Report'}
