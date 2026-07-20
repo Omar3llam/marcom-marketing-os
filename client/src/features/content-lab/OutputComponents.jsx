@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import {
   Sparkles, Check, RotateCcw, FileText, Zap, Layers, Play,
-  Database, ArrowUpRight, AlertTriangle,
+  AlertTriangle,
 } from 'lucide-react';
 import LumiLoader from '@/components/ui/LumiLoader.jsx';
 
@@ -80,21 +80,14 @@ export function OutputError({ error, onRetry }) {
 }
 
 // ── Output done ──────────────────────────────────────────────
-export function OutputDone({ content, opts, tone, contextCampaign, onRegenerate }) {
-  // Use real content from API, fallback to mock data for demo
-  const COPY_VARIANTS = content?.copy || [
-    { tag: 'STORY', text: 'Built for operators who can\'t afford to "let it run." Verdicts in 18s, with the cash impact pinned.' },
-    { tag: 'PROOF', text: '240 MENA workspaces trust Lumi to make the call. Join them — first verdict free.' },
-    { tag: 'URGENCY', text: 'Stop bleeding ad sets today. The first scan takes 18 seconds.' },
-  ];
-  const HEADLINES = content?.headlines || ['Built for operators.', 'Verdicts in 18 seconds.', 'Stop the bleed today.'];
-  const CTAS = content?.ctas || ['Get your first verdict', 'Scan my campaigns', 'Stop the bleed'];
-  const VISUAL_BRIEF = content?.visual || 'Square crop. Warm desert palette — terracotta, sand, deep gold. A pair of hands cradling folded fabric in soft natural light, golden hour. Hand-stitched detail visible. Background subtle, out of focus. Editorial feel, not stock. No model face — focus on craft.';
-  const VIDEO_SCRIPT = content?.video || `HOOK (0-3s): Slow pull-focus on hands stitching. Sound of needle through fabric.
-PROBLEM (3-7s): Cut to dusty street, fast fashion bag dropping in mud.
-PROMISE (7-11s): Cut back to Maison Salam atelier. Soft gold light.
-PROOF (11-15s): Quick montage — 3,400 women, Cairo to Madinah.
-CTA (15-18s): "Final 200 pieces · Eid only" — gold text on warm background.`;
+export function OutputDone({ content, opts, tone, onRegenerate }) {
+  // Honest sourcing: a section is null when the request was made but generation
+  // produced nothing. We render a per-section "couldn't generate" — NEVER another
+  // brand's canned copy. Generations are auto-saved to history on the server.
+  const COPY_VARIANTS = content?.copy ?? null;
+  const HEADLINES = content?.headlines ?? null;
+  const CTAS = content?.ctas ?? null;
+  const VISUAL_BRIEF = content?.visual ?? null;
 
   return (
     <div className="flex flex-col gap-3.5">
@@ -117,96 +110,127 @@ CTA (15-18s): "Final 200 pieces · Eid only" — gold text on warm background.`;
 
       {/* Output cards */}
       {opts.copy && (
-        <OutputCard title="Copy variants" Icon={FileText} count={`${COPY_VARIANTS.length} options`}>
-          <div className="space-y-2">
-            {COPY_VARIANTS.map((c, i) => (
-              <CopyRow key={i} tag={c.tag} text={c.text} />
-            ))}
-          </div>
+        <OutputCard title="Copy variants" Icon={FileText} count={COPY_VARIANTS?.length ? `${COPY_VARIANTS.length} options` : '—'}>
+          {COPY_VARIANTS?.length ? (
+            <div className="space-y-2">
+              {COPY_VARIANTS.map((c, i) => (
+                <CopyRow key={i} tag={c.tag} text={c.text} />
+              ))}
+            </div>
+          ) : (
+            <SectionEmpty label="copy" />
+          )}
         </OutputCard>
       )}
 
       {opts.headlines && (
-        <OutputCard title="Headlines" Icon={Zap} count="3 options">
-          <div className="space-y-1.5">
-            {HEADLINES.map((h, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between gap-3 p-2.5 bg-surface-elevated border border-surface-border rounded-lg"
-              >
-                <span className="font-display font-semibold text-[15px] tracking-tight text-dark-base">
-                  {h}
-                </span>
-                <button className="px-2.5 py-1 text-dark-soft hover:text-dark-base hover:bg-surface-card rounded transition-colors text-[11px] font-display font-medium">
-                  Copy
-                </button>
-              </div>
-            ))}
-          </div>
+        <OutputCard title="Headlines" Icon={Zap} count={HEADLINES?.length ? `${HEADLINES.length} options` : '—'}>
+          {HEADLINES?.length ? (
+            <div className="space-y-1.5">
+              {HEADLINES.map((h, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between gap-3 p-2.5 bg-surface-elevated border border-surface-border rounded-lg"
+                >
+                  <span className="font-display font-semibold text-[15px] tracking-tight text-dark-base">
+                    {h}
+                  </span>
+                  <CopyButton
+                    text={h}
+                    className="px-2.5 py-1 text-dark-soft hover:text-dark-base hover:bg-surface-card rounded transition-colors text-[11px] font-display font-medium flex-shrink-0"
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <SectionEmpty label="headlines" />
+          )}
         </OutputCard>
       )}
 
       {opts.cta && (
-        <OutputCard title="CTAs" Icon={Play} count="3 variants">
-          <div className="flex flex-wrap gap-2">
-            {CTAS.map((cta, i) => (
-              <span
-                key={i}
-                className="px-3.5 py-2 bg-lumi-accent text-white rounded-lg font-display font-bold text-[13px] shadow-accent-glow"
-              >
-                {cta}
-              </span>
-            ))}
-          </div>
+        <OutputCard title="CTAs" Icon={Play} count={CTAS?.length ? `${CTAS.length} variants` : '—'}>
+          {CTAS?.length ? (
+            <div className="flex flex-wrap gap-2">
+              {CTAS.map((cta, i) => (
+                <span
+                  key={i}
+                  className="px-3.5 py-2 bg-lumi-accent text-white rounded-lg font-display font-bold text-[13px] shadow-accent-glow"
+                >
+                  {cta}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <SectionEmpty label="CTAs" />
+          )}
         </OutputCard>
       )}
 
       {opts.visual && (
-        <OutputCard title="Visual brief" Icon={Layers} count="DALL·E ready">
-          <p className="text-[13px] text-dark-soft leading-relaxed mb-3">
-            {VISUAL_BRIEF}
-          </p>
-          <div className="flex gap-2">
-            <button className="flex items-center gap-2 px-4 py-2.5 bg-lumi-accent hover:bg-lumi-accent/90 text-white rounded-lg transition-all font-display font-semibold text-[13px] shadow-accent-glow">
-              <Sparkles className="w-3.5 h-3.5" strokeWidth={1.5} />
-              Generate image · DALL·E
-            </button>
-            <button className="px-3.5 py-2.5 text-dark-soft hover:text-dark-base hover:bg-surface-elevated rounded-lg transition-colors text-[13px] font-display font-medium">
-              Copy prompt
-            </button>
-          </div>
+        <OutputCard title="Visual brief" Icon={Layers} count={VISUAL_BRIEF ? 'brief' : '—'}>
+          {VISUAL_BRIEF ? (
+            <>
+              <p className="text-[13px] text-dark-soft leading-relaxed mb-3">
+                {VISUAL_BRIEF}
+              </p>
+              <div className="flex gap-2">
+                <CopyButton
+                  text={VISUAL_BRIEF}
+                  label="Copy prompt"
+                  className="px-3.5 py-2.5 text-dark-soft hover:text-dark-base hover:bg-surface-elevated rounded-lg transition-colors text-[13px] font-display font-medium"
+                />
+              </div>
+            </>
+          ) : (
+            <SectionEmpty label="a visual brief" />
+          )}
         </OutputCard>
       )}
 
       {opts.video && (
-        <OutputCard title="Video brief" Icon={Play} count="Higgsfield">
-          <pre className="p-3.5 bg-surface-elevated border border-surface-border rounded-lg text-xs text-dark-soft whitespace-pre-wrap font-mono leading-relaxed">
-{VIDEO_SCRIPT}
-          </pre>
-          <div className="mt-2.5 flex gap-2">
-            <button className="flex items-center gap-2 px-4 py-2.5 bg-lumi-accent hover:bg-lumi-accent/90 text-white rounded-lg transition-all font-display font-semibold text-[13px] shadow-accent-glow">
-              <ArrowUpRight className="w-3.5 h-3.5" strokeWidth={1.5} />
-              Open in Higgsfield
-            </button>
-            <button className="px-3.5 py-2.5 text-dark-soft hover:text-dark-base hover:bg-surface-elevated rounded-lg transition-colors text-[13px] font-display font-medium">
-              Copy prompt
-            </button>
-          </div>
+        <OutputCard title="Video brief" Icon={Play} count="Coming soon">
+          <p className="text-[13px] text-dark-soft leading-relaxed">
+            Video generation is coming soon.
+          </p>
         </OutputCard>
       )}
-
-      {/* Bottom actions */}
-      <div className="flex gap-2.5 p-3.5 bg-surface-card border border-surface-border rounded-xl shadow-card sticky bottom-6 mt-1">
-        <button className="flex-1 flex items-center justify-center gap-2 px-3.5 py-3 bg-lumi-accent hover:bg-lumi-accent/90 text-white rounded-lg transition-all font-display font-semibold text-sm shadow-accent-glow">
-          <Database className="w-3.5 h-3.5" strokeWidth={1.5} />
-          Save to {contextCampaign?.campaign || 'campaign'}
-        </button>
-        <button className="flex items-center gap-2 px-4 py-2.5 text-dark-soft hover:text-dark-base hover:bg-surface-elevated rounded-lg transition-colors text-[13px] font-display font-medium">
-          <FileText className="w-3.5 h-3.5" strokeWidth={1.5} />
-          Export
-        </button>
-      </div>
     </div>
+  );
+}
+
+// Honest per-section empty — shown when a requested section produced nothing.
+// Never a cross-brand fallback: the user sees the truth and can regenerate.
+function SectionEmpty({ label }) {
+  return (
+    <p className="text-[13px] text-dark-soft leading-relaxed">
+      Lumi couldn&apos;t generate {label} for this request. Try adjusting your brief or generate again.
+    </p>
+  );
+}
+
+// Copy-to-clipboard button with a brief "Copied" confirmation. Reused by the
+// headline rows and the visual-brief prompt.
+function CopyButton({ text, label = 'Copy', className }) {
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = () => {
+    navigator.clipboard?.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1400);
+  };
+
+  return (
+    <button onClick={onCopy} className={className}>
+      {copied ? (
+        <>
+          <Check className="inline w-2.5 h-2.5 mr-1" strokeWidth={2} />
+          Copied
+        </>
+      ) : (
+        label
+      )}
+    </button>
   );
 }
 

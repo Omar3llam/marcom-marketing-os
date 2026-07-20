@@ -117,6 +117,69 @@ describe('content-generate — grounded inputs reach the AI gateway', () => {
   });
 });
 
+describe('content-generate — CTAs are harvested from the copy variants', () => {
+  it('makes NO separate CTA call and NO regex word-swaps — CTAs come from the copy', async () => {
+    const req = makeReq({
+      campaignContext: { name: 'C1', adset: 'TESTING', problem: 'CTR decay', ctr: 1.85 },
+      options: { copy: true, headlines: false, cta: true, visual: false, video: false },
+      ...REAL,
+    });
+    const res = makeRes();
+    await generateContent(req, res);
+
+    // Exactly the 3 angle calls — NOT a 4th GENERATE_COPY for CTAs.
+    const copyCalls = execute.mock.calls.filter((c) => c[0].capability === 'GENERATE_COPY');
+    expect(copyCalls.length).toBe(3);
+    expect(copyCalls.every((c) => Boolean(c[0].input.angle))).toBe(true);
+
+    // CTA is the copy variant's real CTA — no 'Claim'/'free' regex substitutions.
+    const { ctas } = res.body.content;
+    expect(ctas).toContain('Get it now');
+    expect(ctas.every((c) => c === 'Get it now')).toBe(true);
+    expect(JSON.stringify(ctas)).not.toContain('Claim');
+    expect(JSON.stringify(ctas)).not.toContain('free');
+  });
+
+  it('copy items are persisted as { tag, text } only (cta was an internal carrier)', async () => {
+    const req = makeReq({
+      options: { copy: true, headlines: false, cta: true, visual: false, video: false },
+      ...REAL,
+    });
+    const res = makeRes();
+    await generateContent(req, res);
+
+    for (const item of res.body.content.copy) {
+      expect(Object.keys(item).sort()).toEqual(['tag', 'text']);
+    }
+  });
+});
+
+describe('content-generate — honest empties, never another brand\'s copy', () => {
+  it('returns null sections (not canned fallback copy) when generation produces nothing', async () => {
+    execute.mockReset().mockResolvedValue({ success: false, output: {} });
+    const req = makeReq({
+      campaignContext: { name: 'C1', adset: 'TESTING', problem: 'CTR decay', ctr: 1 },
+      options: { copy: true, headlines: true, cta: true, visual: true, video: false },
+      ...REAL,
+    });
+    const res = makeRes();
+    await generateContent(req, res);
+
+    expect(res.statusCode).toBe(200);
+    const { content } = res.body;
+    expect(content.copy).toBeNull();
+    expect(content.headlines).toBeNull();
+    expect(content.ctas).toBeNull();
+    expect(content.visual).toBeNull();
+
+    // The old cross-brand fallbacks must be gone entirely.
+    const blob = JSON.stringify(content);
+    expect(blob).not.toContain('Built for operators');
+    expect(blob).not.toContain('MENA workspaces');
+    expect(blob).not.toContain('Maison Salam');
+  });
+});
+
 describe('content-generate — the visual brief is grounded too', () => {
   const visualCall = () =>
     execute.mock.calls.find((c) => c[0].capability === 'GENERATE_VISUAL_PROMPT')?.[0];
