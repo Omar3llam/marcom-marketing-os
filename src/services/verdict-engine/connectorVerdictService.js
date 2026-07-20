@@ -182,6 +182,13 @@ export async function getConnectorVerdicts(workspaceId) {
     // Set when this verdict was decided by the relative post-pass ('TOP' | 'BOTTOM')
     // — null otherwise. Lets the UI badge "relative to portfolio" honestly.
     relativeRank: c.relativeRank ?? null,
+    // The deterministic diagnosis + execution vocabulary the engine already
+    // computed (judgeMetrics → diagnoseSignals). Forwarded so a decision-first UI
+    // can map verdict + signalType → a specific content recommendation without an
+    // LLM call. signalType is the absolute-pass signal (a relative upgrade keeps
+    // it as a hint; the recommendation mapping falls back to verdict-level).
+    signalType: c.signalType ?? null,
+    recommendationTypes: c.recommendationTypes ?? [],
   }));
 
   logger.info(

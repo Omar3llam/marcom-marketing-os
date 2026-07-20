@@ -58,3 +58,25 @@ describe('getConnectorVerdicts payload — revenueExpected', () => {
     expect(verdicts.every((v) => typeof v.revenueExpected === 'boolean')).toBe(true);
   });
 });
+
+describe('getConnectorVerdicts payload — signalType + recommendationTypes (decision-first)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('forwards the deterministic diagnosis signalType (a real SIGNAL_TYPE, not undefined)', async () => {
+    getConnectorCampaigns.mockResolvedValue([engaged({ objective: 'OUTCOME_AWARENESS' })]);
+    const { verdicts } = await getConnectorVerdicts('ws-1');
+    expect(verdicts).toHaveLength(1);
+    // signalType is always computed by judgeMetrics → diagnoseSignals (never dropped).
+    expect(typeof verdicts[0].signalType).toBe('string');
+    expect(verdicts[0].signalType.length).toBeGreaterThan(0);
+  });
+
+  it('forwards recommendationTypes as an array on every verdict', async () => {
+    getConnectorCampaigns.mockResolvedValue([
+      engaged({ entityId: 'a', objective: 'OUTCOME_SALES' }),
+      engaged({ entityId: 'b', objective: 'OUTCOME_AWARENESS' }),
+    ]);
+    const { verdicts } = await getConnectorVerdicts('ws-1');
+    expect(verdicts.every((v) => Array.isArray(v.recommendationTypes))).toBe(true);
+  });
+});

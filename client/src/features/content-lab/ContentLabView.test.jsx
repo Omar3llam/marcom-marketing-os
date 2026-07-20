@@ -20,11 +20,13 @@ vi.mock('@/hooks/useContentGeneration.js', () => ({
   }),
 }));
 vi.mock('@/hooks/useConnectorCampaigns.js', () => ({ useConnectorCampaigns: vi.fn() }));
+vi.mock('@/hooks/useConnectorVerdicts.js', () => ({ useConnectorVerdicts: vi.fn() }));
 vi.mock('@/hooks/useContentHistory.js', () => ({ useContentHistory: vi.fn() }));
 
 import ContentLabView from './ContentLabView.jsx';
 import { useOnboardingContext } from '@/hooks/useOnboardingContext.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
+import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useContentHistory } from '@/hooks/useContentHistory.js';
 
 const ONBOARDING = {
@@ -46,6 +48,7 @@ beforeEach(() => {
   generateSpy.mockReset();
   useOnboardingContext.mockReturnValue({ context: ONBOARDING, loading: false, error: null });
   useConnectorCampaigns.mockReturnValue({ campaigns: CAMPAIGNS, loading: false, error: null, refetch: vi.fn() });
+  useConnectorVerdicts.mockReturnValue({ verdicts: [], gatedOut: [], loading: false, error: null, refetch: vi.fn() });
   useContentHistory.mockReturnValue({ generations: [], isLoading: false, error: null, refetch: vi.fn() });
 });
 
@@ -139,6 +142,46 @@ describe('ContentLabView — visual format picker drives format + dimensions', (
     const args = generateSpy.mock.calls[0][0];
     expect(args.format).toBeUndefined();
     expect(args.dimensions).toBeUndefined();
+  });
+});
+
+describe('ContentLabView — decision-first diagnosis + recommendations', () => {
+  // The engine verdict for the connector campaign 'c1' (Eid Sale).
+  const KILL_VERDICT = {
+    id: 'c1', name: 'Eid Sale', verdict: 'KILL', confidence: 0.9,
+    rationale: 'ROAS 0.40 below break-even with frequency 4.2 past the 3 ceiling.',
+    signalType: 'CREATIVE_FATIGUE', relativeRank: null,
+  };
+
+  it('renders the engine verdict + rationale + deterministic recs when a scored campaign is picked', () => {
+    useConnectorVerdicts.mockReturnValue({ verdicts: [KILL_VERDICT], gatedOut: [], loading: false, error: null, refetch: vi.fn() });
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /select a campaign/i }));
+    fireEvent.click(screen.getByRole('button', { name: /eid sale/i }));
+
+    // Verdict badge + confidence + the verdict's own rationale (NOT prose reasoning).
+    expect(screen.getByText('KILL')).toBeInTheDocument();
+    expect(screen.getByText(/high confidence/i)).toBeInTheDocument();
+    expect(screen.getByText(/below break-even/i)).toBeInTheDocument();
+    // Deterministic recommendation for KILL + CREATIVE_FATIGUE.
+    expect(screen.getByText(/rotate the creative/i)).toBeInTheDocument();
+  });
+
+  it('hides the diagnosis section entirely when no campaign is selected', () => {
+    renderView();
+    expect(screen.queryByText('Diagnosis')).not.toBeInTheDocument();
+    expect(screen.queryByText('Lumi recommends')).not.toBeInTheDocument();
+  });
+
+  it('a picked-but-unscored campaign shows an honest "no verdict yet", no fabricated recs', () => {
+    // verdicts is empty → the picked campaign has no engine verdict.
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /select a campaign/i }));
+    fireEvent.click(screen.getByRole('button', { name: /eid sale/i }));
+
+    expect(screen.getByText('Diagnosis')).toBeInTheDocument();
+    expect(screen.getByText(/no verdict yet/i)).toBeInTheDocument();
+    expect(screen.queryByText('Lumi recommends')).not.toBeInTheDocument();
   });
 });
 

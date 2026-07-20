@@ -37,6 +37,31 @@ export const SIGNALS = {
     glow:    'shadow-kill-glow',
   },
 
+  // Phase-2 verdicts. Without these three, getSignalTokens fell back to HOLD
+  // (with a console.warn) — a decision-first UI would render WATCH/REALLOCATE/
+  // REFRESH as HOLD. WATCH/REFRESH read as "attention/action" (watch blue);
+  // REALLOCATE reuses the hold amber (a budget move, not a creative one).
+  WATCH: {
+    surface: 'bg-signal-watch-bg',
+    text:    'text-signal-watch',
+    border:  'border-signal-watch/30',
+    glow:    'shadow-hold-glow',
+  },
+
+  REALLOCATE: {
+    surface: 'bg-signal-hold-bg',
+    text:    'text-signal-hold',
+    border:  'border-signal-hold/30',
+    glow:    'shadow-hold-glow',
+  },
+
+  REFRESH: {
+    surface: 'bg-signal-watch-bg',
+    text:    'text-signal-watch',
+    border:  'border-signal-watch/30',
+    glow:    'shadow-hold-glow',
+  },
+
   OPTIMIZE: {
     surface: 'bg-stage-testing/10',
     text:    'text-stage-testing',
