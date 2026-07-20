@@ -180,6 +180,45 @@ describe('content-generate — honest empties, never another brand\'s copy', () 
   });
 });
 
+describe('content-generate — product brief (PR #254) reaches the gateway + snapshot', () => {
+  it('threads product / offer / key facts from campaignContext into the gateway input', async () => {
+    const req = makeReq({
+      campaignContext: { name: 'C1', adset: 'TESTING', product: 'Golf villa', offer: '5% down', keyFacts: 'Ready to move', ctr: 1.5 },
+      options: { copy: true, headlines: false, cta: false, visual: false, video: false },
+      ...REAL,
+    });
+    await generateContent(req, makeRes());
+    const copyCall = execute.mock.calls.find((c) => c[0].capability === 'GENERATE_COPY');
+    expect(copyCall[0].input.productName).toBe('Golf villa');
+    expect(copyCall[0].input.offer).toBe('5% down');
+    expect(copyCall[0].input.benefits).toBe('Ready to move');
+  });
+
+  it('falls back productName to the campaign name when no product given (never N/A)', async () => {
+    const req = makeReq({
+      campaignContext: { name: 'Eid Sale', adset: 'TESTING', ctr: 1.5 },
+      options: { copy: true, headlines: false, cta: false, visual: false, video: false },
+      ...REAL,
+    });
+    await generateContent(req, makeRes());
+    const copyCall = execute.mock.calls.find((c) => c[0].capability === 'GENERATE_COPY');
+    expect(copyCall[0].input.productName).toBe('Eid Sale');
+    expect(copyCall[0].input.offer).toBeUndefined();   // omitted → prompt line drops out
+    expect(copyCall[0].input.benefits).toBeUndefined();
+  });
+
+  it('saves the product brief into the history snapshot (freeform context Json)', async () => {
+    const req = makeReq({
+      campaignContext: { name: 'C1', adset: 'TESTING', product: 'Villa', offer: 'Half off', keyFacts: 'Move now', ctr: 1 },
+      options: { copy: true, headlines: false, cta: false, visual: false, video: false },
+      ...REAL,
+    });
+    await generateContent(req, makeRes());
+    const data = prismaMock.contentGeneration.create.mock.calls[0][0].data;
+    expect(data.context.campaignContext).toMatchObject({ product: 'Villa', offer: 'Half off', keyFacts: 'Move now' });
+  });
+});
+
 describe('content-generate — the visual brief is grounded too', () => {
   const visualCall = () =>
     execute.mock.calls.find((c) => c[0].capability === 'GENERATE_VISUAL_PROMPT')?.[0];

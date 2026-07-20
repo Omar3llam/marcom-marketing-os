@@ -20,8 +20,8 @@ const GROUNDED = {
 };
 
 describe('GENERATE_COPY v1.1 — grounded fields render into the prompt', () => {
-  it('is versioned v1.2 (signals the template changed)', () => {
-    expect(COPY_PROMPTS.GENERATE_COPY.version).toBe('v1.2');
+  it('is versioned v1.3 (signals the template changed)', () => {
+    expect(COPY_PROMPTS.GENERATE_COPY.version).toBe('v1.3');
   });
 
   it('renders every real Content-Lab input verbatim (no field silently dropped)', () => {
@@ -79,6 +79,34 @@ describe('GENERATE_COPY v1.1 — grounded fields render into the prompt', () => 
     const intel = 'CURRENT CAMPAIGN PERFORMANCE:\n- App (META): SCALE — CPI under $2.50 (ROAS 3.20)';
     const prompt = buildCopyPrompt('GENERATE_COPY', { ...GROUNDED, angle: 'x', campaignIntel: intel });
     expect(prompt).toContain('CPI under $2.50 (ROAS 3.20)');
+  });
+});
+
+describe('GENERATE_COPY v1.3 — optional product brief (render, or omit — never "N/A")', () => {
+  it('renders product / offer / key facts when the operator supplies them', () => {
+    const prompt = buildCopyPrompt('GENERATE_COPY', {
+      ...GROUNDED, angle: 'x',
+      productName: 'Golf villa in New Cairo', offer: '5% down · 8-year installments', benefits: 'Ready to move',
+    });
+    expect(prompt).toContain('Product/Service: Golf villa in New Cairo');
+    expect(prompt).toContain('Offer: 5% down · 8-year installments');
+    expect(prompt).toContain('Key facts: Ready to move');
+  });
+
+  it('omits each product line entirely when absent — never "Product/Service: N/A"', () => {
+    const prompt = buildCopyPrompt('GENERATE_COPY', { ...GROUNDED, angle: 'x' });
+    expect(prompt).not.toContain('Product/Service:');
+    expect(prompt).not.toContain('Offer:');
+    expect(prompt).not.toContain('Key facts:');
+    // The generic N/A convention still holds for the onboarding fields (regression guard).
+    const bare = buildCopyPrompt('GENERATE_COPY', { diagnosis: 'X' });
+    expect(bare).toContain('Industry: N/A');
+    expect(bare).not.toContain('Product/Service: N/A');
+  });
+
+  it('a "$" in an offer value is not mangled as a regex replacement token', () => {
+    const prompt = buildCopyPrompt('GENERATE_COPY', { ...GROUNDED, angle: 'x', offer: '$500 off — today only' });
+    expect(prompt).toContain('Offer: $500 off — today only');
   });
 });
 

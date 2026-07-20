@@ -185,6 +185,75 @@ describe('ContentLabView — decision-first diagnosis + recommendations', () => 
   });
 });
 
+describe('ContentLabView — product brief (PR #254)', () => {
+  it('clears the product field when a campaign is selected (stale product guard)', () => {
+    renderView();
+    const productInput = screen.getByPlaceholderText(/golf villa/i);
+    fireEvent.change(productInput, { target: { value: 'Typed Product' } });
+    expect(productInput.value).toBe('Typed Product');
+
+    fireEvent.click(screen.getByRole('button', { name: /select a campaign/i }));
+    fireEvent.click(screen.getByRole('button', { name: /eid sale/i }));
+    expect(screen.getByPlaceholderText(/golf villa/i).value).toBe('');
+  });
+
+  it('does NOT gate Generate on the product field; shows a soft hint that disappears once filled', () => {
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /select a campaign/i }));
+    fireEvent.click(screen.getByRole('button', { name: /eid sale/i }));
+
+    // Empty product + a campaign → hint shown, button still enabled.
+    expect(screen.getByText(/add a product or service/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /generate content/i })).not.toBeDisabled();
+
+    // Typing a product hides the hint.
+    fireEvent.change(screen.getByPlaceholderText(/golf villa/i), { target: { value: 'Villa' } });
+    expect(screen.queryByText(/add a product or service/i)).not.toBeInTheDocument();
+  });
+
+  it('sends the product brief to generate; product name is the campaign name when left blank', () => {
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /select a campaign/i }));
+    fireEvent.click(screen.getByRole('button', { name: /eid sale/i }));
+    fireEvent.change(screen.getByPlaceholderText(/5% down/i), { target: { value: 'Half price' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /generate content/i }));
+    const args = generateSpy.mock.calls[0][0];
+    expect(args.campaignContext.offer).toBe('Half price');
+    expect(args.campaignContext.product).toBeUndefined(); // left blank → backend falls back to name
+    expect(args.campaignContext.name).toBe('Eid Sale');
+  });
+
+  it('regenerating from history restores the saved product brief', () => {
+    const saved = [{
+      id: 'g1',
+      content: { copy: [{ tag: 'STORY', text: 'x' }] },
+      context: {
+        campaignContext: { name: 'Folla', product: 'Saved Villa', offer: 'Half price', keyFacts: 'Move now' },
+        options: { copy: true }, tone: 'Warm & familial',
+      },
+      createdAt: new Date().toISOString(),
+      createdBy: { email: 'me@ws.com' },
+    }];
+    useContentHistory.mockReturnValue({ generations: saved, isLoading: false, error: null, refetch: vi.fn() });
+    renderView();
+    fireEvent.click(screen.getByRole('button', { name: /Folla/i }));       // view it
+    fireEvent.click(screen.getByRole('button', { name: /regenerate/i }));  // restore into the form
+    expect(screen.getByPlaceholderText(/golf villa/i).value).toBe('Saved Villa');
+    expect(screen.getByPlaceholderText(/5% down/i).value).toBe('Half price');
+    expect(screen.getByPlaceholderText(/ready to move/i).value).toBe('Move now');
+  });
+
+  it('shows the "coming soon" landing-page auto-fill affordance (not wired)', () => {
+    renderView();
+    const autofill = screen.getByText(/auto-fill from landing page/i);
+    expect(autofill).toBeInTheDocument();
+    // Its sibling badge (same row) reads "Coming soon" — scoped, since the page
+    // has other "Coming soon" labels (video toggle, learning-history band).
+    expect(autofill.parentElement).toHaveTextContent(/coming soon/i);
+  });
+});
+
 describe('ContentLabView — history rail integration', () => {
   const SAVED = [{
     id: 'g1',

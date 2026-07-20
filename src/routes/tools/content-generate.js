@@ -76,6 +76,12 @@ export async function generateContent(req, res) {
       industry: industry || 'General',
       objective: objective || 'Drive performance',
       campaignIntel,
+      // Operator's product brief (PR #254). Product name falls back to the campaign
+      // name — real data, honestly labelled — never an 'N/A' placeholder. offer /
+      // benefits are undefined when absent, so their prompt line simply drops out.
+      productName: campaignContext?.product || campaignContext?.name || undefined,
+      offer: campaignContext?.offer || undefined,
+      benefits: campaignContext?.keyFacts || undefined,
     };
 
     // Generate content using AI Gateway (parallel calls for efficiency)
