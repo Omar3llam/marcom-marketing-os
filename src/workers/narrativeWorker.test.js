@@ -7,7 +7,14 @@
 //   2. SKIPS a workspace with no activity (no empty-report spam).
 //   3. A per-workspace failure is contained — the sweep finishes the rest.
 // ============================================================
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+vi.mock('bullmq', () => ({
+  Worker: vi.fn(function MockWorker() {
+    this.on = vi.fn();
+    this.close = vi.fn();
+  }),
+}));
 
 vi.mock('../queues/connection.js', () => ({
   bullConnection: null,
@@ -18,7 +25,8 @@ vi.mock('../queues/connection.js', () => ({
 vi.mock('../queues/index.js', () => ({
   NARRATIVE_QUEUE_NAME: 'narrative',
   narrativeQueue:       null,
-  scheduleNarratives:   vi.fn(),
+  scheduleNarratives:   vi.fn(() => Promise.resolve()),
+  unscheduleNarratives: vi.fn(() => Promise.resolve(2)),
 }));
 
 vi.mock('../lib/prisma.js', () => ({
@@ -38,10 +46,19 @@ vi.mock('../utils/logger.js', () => ({
 
 import { prisma } from '../lib/prisma.js';
 import { generateNarrative } from '../services/narrative-engine/NarrativeService.js';
-import { runNarrativeSweepAll } from './narrativeWorker.js';
+import { scheduleNarratives, unscheduleNarratives } from '../queues/index.js';
+import { runNarrativeSweepAll, startNarrativeWorker } from './narrativeWorker.js';
+
+const ORIGINAL_AI = process.env.AI_AUTOMATIC_ENABLED;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  delete process.env.AI_AUTOMATIC_ENABLED; // default: automatic AI OFF (manual-only)
+});
+
+afterEach(() => {
+  if (ORIGINAL_AI === undefined) delete process.env.AI_AUTOMATIC_ENABLED;
+  else process.env.AI_AUTOMATIC_ENABLED = ORIGINAL_AI;
 });
 
 describe('runNarrativeSweepAll', () => {
@@ -84,5 +101,30 @@ describe('runNarrativeSweepAll', () => {
 
     expect(out).toEqual({ workspaces: 2, generated: 1, skipped: 0 });
     expect(generateNarrative).toHaveBeenCalledTimes(2);
+  });
+});
+
+// The weekly/monthly cadence is automatic AI spend → OPT-IN behind
+// AI_AUTOMATIC_ENABLED (mirrors startAgenticWorker). Manual authoring via
+// POST /narratives/generate is unaffected. The BullMQ Worker is mocked.
+describe('startNarrativeWorker — cadence opt-in switch (AI_AUTOMATIC_ENABLED)', () => {
+  it('default (unset) → NOT scheduled, and removes any persisted repeat', () => {
+    startNarrativeWorker();
+    expect(scheduleNarratives).not.toHaveBeenCalled();
+    expect(unscheduleNarratives).toHaveBeenCalledTimes(1);
+  });
+
+  it('AI_AUTOMATIC_ENABLED=true → schedules the weekly/monthly cadence', () => {
+    process.env.AI_AUTOMATIC_ENABLED = 'true';
+    startNarrativeWorker();
+    expect(scheduleNarratives).toHaveBeenCalledTimes(1);
+    expect(unscheduleNarratives).not.toHaveBeenCalled();
+  });
+
+  it('only the literal "true" enables — "false" stays off + removes the repeat', () => {
+    process.env.AI_AUTOMATIC_ENABLED = 'false';
+    startNarrativeWorker();
+    expect(scheduleNarratives).not.toHaveBeenCalled();
+    expect(unscheduleNarratives).toHaveBeenCalledTimes(1);
   });
 });
