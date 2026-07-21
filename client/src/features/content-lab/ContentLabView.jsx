@@ -180,11 +180,14 @@ export default function ContentLabView() {
       <header className="mb-5">
         <div className="font-mono text-[11px] tracking-[0.08em] uppercase text-dark-muted mb-2 flex items-center gap-2">
           <Send className="w-3.5 h-3.5 text-lumi-accent" strokeWidth={1.5} />
-          Content Lab · Module 03
+          Creative Optimizer · Module 03
         </div>
         <h1 className="font-display font-bold text-[30px] tracking-tight text-dark-base">
           Fix the bleed. Generate on-brand copy + visuals.
         </h1>
+        <p className="mt-2 text-[14px] text-dark-soft leading-relaxed max-w-[560px]">
+          Improve creative performance using campaign diagnosis.
+        </p>
       </header>
 
       {/* Three-panel layout: input · history rail · output. Stacks on mobile. */}
