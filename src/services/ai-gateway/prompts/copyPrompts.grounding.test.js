@@ -20,8 +20,8 @@ const GROUNDED = {
 };
 
 describe('GENERATE_COPY v1.1 — grounded fields render into the prompt', () => {
-  it('is versioned v1.3 (signals the template changed)', () => {
-    expect(COPY_PROMPTS.GENERATE_COPY.version).toBe('v1.3');
+  it('is versioned v1.4 (signals the template changed)', () => {
+    expect(COPY_PROMPTS.GENERATE_COPY.version).toBe('v1.4');
   });
 
   it('renders every real Content-Lab input verbatim (no field silently dropped)', () => {
@@ -107,6 +107,38 @@ describe('GENERATE_COPY v1.3 — optional product brief (render, or omit — nev
   it('a "$" in an offer value is not mangled as a regex replacement token', () => {
     const prompt = buildCopyPrompt('GENERATE_COPY', { ...GROUNDED, angle: 'x', offer: '$500 off — today only' });
     expect(prompt).toContain('Offer: $500 off — today only');
+  });
+});
+
+describe('GENERATE_COPY v1.4 — creative-strategy directive is variant-gated', () => {
+  it('the FIRST variant is asked to populate the strategy object', () => {
+    const prompt = buildCopyPrompt('GENERATE_COPY', { ...GROUNDED, angle: 'x', isFirstVariant: true });
+    expect(prompt).toContain('This is the FIRST variant.');
+    expect(prompt).toContain('Populate the "strategy" object');
+    // The output schema always advertises the object (and uses core_message, not message).
+    expect(prompt).toContain('"core_message"');
+    expect(prompt).not.toContain('"message":');
+    // The directive placeholder must be fully resolved (never leaked, never N/A'd).
+    expect(prompt).not.toContain('{strategyDirective}');
+    expect(prompt).not.toContain('CREATIVE STRATEGY:\nN/A');
+  });
+
+  it('a follow-up variant is told to return strategy: null', () => {
+    const prompt = buildCopyPrompt('GENERATE_COPY', { ...GROUNDED, angle: 'x', isFirstVariant: false });
+    expect(prompt).toContain('This is a follow-up variant.');
+    expect(prompt).toContain('Return "strategy": null');
+    expect(prompt).not.toContain('{strategyDirective}');
+  });
+
+  it('defaults to the follow-up directive when isFirstVariant is omitted (no leak, no crash)', () => {
+    const prompt = buildCopyPrompt('GENERATE_COPY', { ...GROUNDED, angle: 'x' });
+    expect(prompt).toContain('Return "strategy": null');
+    expect(prompt).not.toContain('{strategyDirective}');
+  });
+
+  it('the strategy JSON schema braces are not mangled by the placeholder cleanup', () => {
+    const prompt = buildCopyPrompt('GENERATE_COPY', { ...GROUNDED, angle: 'x', isFirstVariant: true });
+    expect(prompt).toContain('"strategy": { "objective": "...", "core_message": "...", "hook": "...", "visual": "...", "cta_direction": "..." }');
   });
 });
 

@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import {
   Sparkles, Check, RotateCcw, FileText, Zap, Layers, Play,
-  AlertTriangle,
+  AlertTriangle, Target,
 } from 'lucide-react';
 import LumiLoader from '@/components/ui/LumiLoader.jsx';
 
@@ -107,6 +107,36 @@ export function OutputDone({ content, opts, tone, onRegenerate }) {
           Regenerate
         </button>
       </div>
+
+      {/* Creative strategy — one frame for the whole set, from the first copy
+          variant. Rendered only when present (older generations won't have it). */}
+      {content?.strategy && (
+        <div className="bg-surface-card border border-surface-border rounded-xl p-4 shadow-card">
+          <div className="flex items-center gap-2 mb-1">
+            <Target className="w-3.5 h-3.5 text-lumi-accent" strokeWidth={1.5} />
+            <span className="font-display font-bold text-[13px] text-dark-base">Creative strategy</span>
+          </div>
+          <p className="text-[11px] text-dark-subtle leading-relaxed mb-3">
+            Generated from the campaign diagnosis and your brief.
+          </p>
+          <div className="space-y-2">
+            {[
+              { label: 'Objective', value: content.strategy.objective },
+              { label: 'Core message', value: content.strategy.core_message },
+              { label: 'Hook', value: content.strategy.hook },
+              { label: 'Visual', value: content.strategy.visual },
+              { label: 'CTA', value: content.strategy.cta_direction },
+            ].filter((row) => row.value).map(({ label, value }) => (
+              <div key={label} className="flex gap-3">
+                <span className="w-24 shrink-0 pt-0.5 font-mono text-[10px] uppercase tracking-wider text-dark-subtle">
+                  {label}
+                </span>
+                <span className="flex-1 text-[13px] text-dark-soft leading-relaxed">{value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Output cards */}
       {opts.copy && (

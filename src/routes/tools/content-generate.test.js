@@ -259,6 +259,91 @@ describe('content-generate — the visual brief is grounded too', () => {
   });
 });
 
+describe('content-generate — creative strategy from the first variant', () => {
+  // A GENERATE_COPY mock that returns a strategy ONLY for the first variant
+  // (the one flagged isFirstVariant) — exactly how the prompt gates it.
+  const STRATEGY = { objective: 'Obj', core_message: 'Msg', hook: 'Hk', visual: 'Vis', cta_direction: 'Dir' };
+  function mockCopyWithStrategy() {
+    execute.mockReset().mockImplementation(async ({ capability, input }) => {
+      if (capability === 'GENERATE_COPY') {
+        const output = { body: `body ${input.angle}`, hook: 'h', cta: 'Get it now' };
+        if (input.isFirstVariant) output.strategy = STRATEGY;
+        return { success: true, output };
+      }
+      return { success: true, output: { hooks: ['h1', 'h2', 'h3'] } };
+    });
+  }
+
+  it('passes isFirstVariant to exactly one of the three copy calls (index 0)', async () => {
+    mockCopyWithStrategy();
+    const req = makeReq({
+      campaignContext: { name: 'C1', adset: 'TESTING', problem: 'CTR decay', ctr: 1.85 },
+      options: { copy: true, headlines: false, cta: false, visual: false, video: false },
+      ...REAL,
+    });
+    await generateContent(req, makeRes());
+
+    const copyCalls = execute.mock.calls.filter((c) => c[0].capability === 'GENERATE_COPY');
+    expect(copyCalls.length).toBe(3);
+    expect(copyCalls.filter((c) => c[0].input.isFirstVariant === true).length).toBe(1);
+    expect(copyCalls.filter((c) => c[0].input.isFirstVariant === false).length).toBe(2);
+  });
+
+  it('extracts content.strategy from the variant that returns one (not by angle name)', async () => {
+    mockCopyWithStrategy();
+    const req = makeReq({
+      campaignContext: { name: 'C1', adset: 'TESTING', problem: 'CTR decay', ctr: 1.85 },
+      options: { copy: true, headlines: false, cta: false, visual: false, video: false },
+      ...REAL,
+    });
+    const res = makeRes();
+    await generateContent(req, res);
+
+    expect(res.body.content.strategy).toEqual(STRATEGY);
+  });
+
+  it('content.strategy is null when no variant returns one', async () => {
+    execute.mockReset().mockResolvedValue({ success: true, output: { body: 'b', hook: 'h', cta: 'c' } });
+    const req = makeReq({
+      campaignContext: { name: 'C1', adset: 'TESTING', problem: 'CTR decay', ctr: 1 },
+      options: { copy: true, headlines: false, cta: false, visual: false, video: false },
+      ...REAL,
+    });
+    const res = makeRes();
+    await generateContent(req, res);
+
+    expect(res.body.content.strategy).toBeNull();
+  });
+
+  it('content.strategy is null when copy was not requested (no copy calls at all)', async () => {
+    mockCopyWithStrategy();
+    const req = makeReq({
+      campaignContext: { name: 'C1', adset: 'TESTING', problem: 'CTR decay', ctr: 1 },
+      options: { copy: false, headlines: true, cta: false, visual: false, video: false },
+      ...REAL,
+    });
+    const res = makeRes();
+    await generateContent(req, res);
+
+    expect(res.body.content.strategy).toBeNull();
+    expect(execute.mock.calls.every((c) => c[0].capability !== 'GENERATE_COPY')).toBe(true);
+  });
+
+  it('persists the strategy into the saved generation content (history restore)', async () => {
+    mockCopyWithStrategy();
+    const req = makeReq({
+      campaignContext: { name: 'C1', adset: 'TESTING', problem: 'CTR decay', ctr: 1.85 },
+      options: { copy: true, headlines: false, cta: false, visual: false, video: false },
+      ...REAL,
+    });
+    const res = makeRes();
+    await generateContent(req, res);
+
+    const data = prismaMock.contentGeneration.create.mock.calls[0][0].data;
+    expect(data.content.strategy).toEqual(STRATEGY);
+  });
+});
+
 describe('content-generate — best-effort history save', () => {
   const body = {
     campaignContext: { name: 'Folla', adset: 'TESTING', problem: 'CTR decay', ctr: 1.85 },
