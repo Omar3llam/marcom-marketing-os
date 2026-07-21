@@ -31,6 +31,7 @@ import { getCampaignIntelligence } from '../../services/content-intel/campaignIn
  * dimensions come from a real format picker. The hardcoded strings below are
  * honest last-resorts for accounts with no onboarding data, not the normal path.
  * Returns: {
+ *   strategy: { objective, core_message, hook, visual, cta_direction } | null,  // from the first copy variant
  *   copy: [{ tag, text }] | null,   // null = requested but generation produced nothing
  *   headlines: [string]  | null,
  *   ctas: [string]       | null,    // harvested from the copy variants (no separate call)
@@ -203,6 +204,9 @@ async function generateContentViaGateway({ options, baseInput, visualSpec = {}, 
     ctas: [],
     visual: '',
     video: '',
+    // One creative strategy for the whole set — captured from the first copy
+    // variant that returns one (only index 0 is asked to). PR #256.
+    strategy: null,
   };
 
   const tasks = [];
@@ -216,13 +220,16 @@ async function generateContentViaGateway({ options, baseInput, visualSpec = {}, 
     ];
 
     tasks.push(
-      ...angles.map(async ({ tag, hint }) => {
+      ...angles.map(async ({ tag, hint }, index) => {
         try {
           const result = await execute({
             capability: CAPABILITY.GENERATE_COPY,
             input: {
               ...baseInput,
               angle: hint,
+              // Only the first variant is asked to produce the creative strategy
+              // (one strategy per generation, not one per angle). PR #256.
+              isFirstVariant: index === 0,
             },
             workspaceId,
           });
@@ -235,6 +242,13 @@ async function generateContentViaGateway({ options, baseInput, visualSpec = {}, 
               // from these real generations — no extra model call, no word-swaps.
               cta: result.output.cta ?? null,
             });
+            // Capture the creative strategy from whichever variant returns one.
+            // Extraction is by PRESENCE, not angle name, so it survives any
+            // completion ordering; first non-null wins (single-threaded callback,
+            // and only index 0 is instructed to produce one).
+            if (result.output.strategy && !results.strategy) {
+              results.strategy = result.output.strategy;
+            }
           }
         } catch (err) {
           logger.warn({ tag, err: err.message }, '[content-generate] Copy variant failed');
