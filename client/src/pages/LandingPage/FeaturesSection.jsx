@@ -1,5 +1,36 @@
-import { Eye, Zap, MessageSquare, Activity, BarChart2, FileText } from 'lucide-react';
+import { Fragment } from 'react';
+import { Eye, Zap, MessageSquare, Activity, BarChart2, FileText, Plug, Sparkles, Brain, ArrowRight } from 'lucide-react';
 import { useReveal } from './useReveal.js';
+
+// The path a campaign travels through Lumi — Connect → Analyze → Verdict →
+// Optimize → Remember. "Remember" is the Decision Memory moat: every call you
+// confirm is scored later, so the loop gets sharper over time.
+const WORKFLOW = [
+  { Icon: Plug,      label: 'Connect',  desc: 'OAuth your Meta or Google account' },
+  { Icon: BarChart2, label: 'Analyze',  desc: 'Lumi scores CTR, frequency, spend, and ROAS' },
+  { Icon: Zap,       label: 'Verdict',  desc: 'KILL · SCALE · HOLD · WATCH — with a reason' },
+  { Icon: Sparkles,  label: 'Optimize', desc: 'Creative strategy built from the diagnosis' },
+  { Icon: Brain,     label: 'Remember', desc: 'Decision Memory learns from every call you make' },
+];
+
+function VerdictWorkflow() {
+  return (
+    <div className="mb-16 flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-1">
+      {WORKFLOW.map((step, i) => (
+        <Fragment key={step.label}>
+          <div className="flex-1 bg-surface-light border border-surface-border rounded-xl p-5 text-center hover:border-lumi-accent/40 transition-colors">
+            <step.Icon className="w-7 h-7 text-lumi-accent mx-auto mb-3" strokeWidth={1.5} />
+            <div className="font-display text-sm font-bold text-dark-base mb-1">{step.label}</div>
+            <p className="text-xs text-dark-muted leading-relaxed">{step.desc}</p>
+          </div>
+          {i < WORKFLOW.length - 1 && (
+            <ArrowRight className="hidden lg:block w-5 h-5 text-lumi-accent/40 shrink-0" strokeWidth={2} aria-hidden="true" />
+          )}
+        </Fragment>
+      ))}
+    </div>
+  );
+}
 
 export function CapabilitiesGrid() {
   const features = [
@@ -49,13 +80,15 @@ export function CapabilitiesGrid() {
               How Lumi works
             </div>
             <h2 className="font-display text-4xl sm:text-5xl font-bold tracking-[-0.035em] text-dark-base leading-tight">
-              Your campaigns, scored every sync.
+              Every campaign gets a verdict.<br />Not another metric.
             </h2>
           </div>
           <p className="text-base text-dark-soft leading-relaxed">
             Lumi watches your account around the clock. When something needs action, you&apos;ll know — before you waste another day.
           </p>
         </header>
+
+        <VerdictWorkflow />
 
         <div className="grid lg:grid-cols-2 gap-5">
           {features.map((f, i) => (

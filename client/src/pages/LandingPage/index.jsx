@@ -4,6 +4,7 @@ import { ArrowRight, Menu, X } from 'lucide-react';
 import { Hero } from './HeroSection.jsx';
 import { TrustedBy } from './SocialProofSection.jsx';
 import { CapabilitiesGrid, HowItWorks } from './FeaturesSection.jsx';
+import { WhyLumiDecides } from './WhyKillSection.jsx';
 import { ScreenshotGallery } from './ScreenshotGallery.jsx';
 import { Pricing } from './PricingSection.jsx';
 import { BottomCTA } from './CTASection.jsx';
@@ -27,6 +28,7 @@ export default function LandingPage() {
       <Hero />
       <TrustedBy />
       <CapabilitiesGrid />
+      <WhyLumiDecides />
       <ScreenshotGallery />
       <HowItWorks />
       <Pricing onStartFree={() => navigate('/signup')} />
