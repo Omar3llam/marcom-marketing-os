@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Sparkles, Send, ArrowRight, Zap } from 'lucide-react';
+import { ArrowRight, Zap } from 'lucide-react';
 
 export function Hero() {
   return (
@@ -23,7 +23,7 @@ export function Hero() {
         }}
       />
 
-      <div className="max-w-7xl mx-auto grid lg:grid-cols-[1.05fr_0.95fr] gap-20 items-center relative">
+      <div className="max-w-7xl mx-auto grid lg:grid-cols-[1.05fr_0.95fr] gap-16 lg:gap-20 items-center relative">
         {/* LEFT */}
         <div>
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-lumi-accent/10 border border-lumi-accent/28 mb-7">
@@ -34,149 +34,117 @@ export function Hero() {
           </div>
 
           <h1 className="font-display font-extrabold tracking-[-0.045em] leading-[0.94] text-lumi-text text-balance text-5xl sm:text-6xl lg:text-7xl xl:text-8xl">
-            The media buyer<br />
-            that never sleeps.
+            Know what to<br />
+            do next.<br />
+            Every sync.
           </h1>
 
           <p className="mt-7 text-lg text-dark-soft max-w-[540px] leading-relaxed">
-            Lumi watches your Meta and Google campaigns 24/7, scores every ad
-            against real signals, and tells you exactly what to stop, what to
-            scale, and why — before you waste another budget cycle.
+            Connect your ad accounts. Lumi scores every campaign and tells you
+            exactly what to scale, kill, refresh, or watch. No dashboards. No
+            guessing.
           </p>
 
-          <div className="mt-10 flex flex-wrap items-center gap-4">
+          {/* Trust strip — below subheadline, before the CTAs */}
+          <p className="mt-6 text-sm text-dark-muted leading-relaxed max-w-[520px]">
+            No dashboards.
+            <span className="text-surface-border-strong px-1.5">·</span>
+            No fluff.
+            <span className="text-surface-border-strong px-1.5">·</span>
+            Just decisions backed by your campaign data.
+          </p>
+
+          <div className="mt-9 flex flex-wrap items-center gap-4">
             <Link
               to="/signup"
               className="btn-gold inline-flex items-center gap-2 px-7 py-3.5 text-[15px] rounded-xl shadow-gold-glow hover:shadow-card-hover transition-all"
             >
               <Zap className="w-4 h-4" strokeWidth={2} />
-              Connect your campaigns — free
+              Get my first verdict
               <ArrowRight className="w-4 h-4" strokeWidth={2} />
             </Link>
             <a
-              href="#how"
+              href="#why"
               className="btn-ghost inline-flex items-center gap-2 px-5 py-3 text-sm rounded-xl transition-all"
             >
-              See how it works ↓
+              See how Lumi decides
             </a>
-          </div>
-
-          <div className="mt-12 flex flex-wrap items-center gap-7">
-            <MicroStat label="Grounded in" value="Your live data" />
-            <DividerV />
-            <MicroStat label="Verdicts" value="KILL / HOLD / SCALE" />
-            <DividerV />
-            <MicroStat label="Currencies" value="EGP · SAR · AED · KWD" mono />
           </div>
         </div>
 
-        {/* RIGHT — Copilot conversation preview */}
-        <ChatDemo />
+        {/* RIGHT — a live verdict (what the product actually delivers) */}
+        <VerdictDemo />
       </div>
     </section>
   );
 }
 
-function DividerV() {
-  return <span className="w-px h-8 bg-surface-border-strong" />;
-}
-
-function MicroStat({ label, value, mono }) {
-  return (
-    <div>
-      <div className={`${mono ? 'system-mono tabular-nums' : 'metric-display'} font-bold text-dark-base`}>
-        {value}
-      </div>
-      <div className="font-mono text-[10px] text-dark-muted tracking-[0.1em] uppercase mt-1">
-        {label}
-      </div>
-    </div>
-  );
-}
-
-// ── Hero composition: a Lumi Copilot conversation ──
-// An illustrative preview of the real account-aware Copilot (Overview → Ask Lumi).
-// The suggested questions mirror the live panel's prompts; numbers are an example.
-const DEMO_QUESTION = 'Which campaign should I stop spending on?';
-const DEMO_SUGGESTIONS = [
-  'Where is my budget being wasted?',
-  'Which campaigns should I scale?',
-  "What's causing low performance?",
+// ── Hero composition: a single campaign verdict ──
+// An illustrative preview of a real Lumi verdict (Campaigns → drill-down). The
+// signals + recommendation mirror the live verdict card; numbers are an example.
+const WHY_SIGNALS = [
+  { label: 'CTR', value: '0.48%' },
+  { label: 'Frequency', value: '7.1' },
+  { label: 'CPA change', value: '+31%' },
 ];
 
-function ChatDemo() {
+function VerdictDemo() {
   return (
-    <div className="relative h-[540px] hidden lg:block">
-      {/* Main chat card */}
+    <div className="relative flex justify-center lg:h-[520px] lg:items-center">
       <div
-        className="absolute inset-x-0 top-6 mx-auto w-[420px] bg-surface-card border border-surface-border rounded-2xl shadow-panel overflow-hidden"
+        className="w-full max-w-[400px] bg-lumi-bg border border-lumi-border rounded-2xl overflow-hidden"
         style={{
           animation: 'float-y 8s ease-in-out infinite',
-          boxShadow: '0 28px 56px rgba(0,0,0,0.10), 0 0 40px rgba(246,201,69,0.06)',
+          boxShadow: '0 28px 56px rgba(0,0,0,0.14), 0 0 40px rgba(246,201,69,0.08)',
         }}
       >
-        {/* Header */}
-        <div className="flex items-center gap-2 px-5 py-3.5 border-b border-surface-border">
-          <Sparkles className="w-4 h-4 text-lumi-accent" strokeWidth={1.5} />
-          <span className="font-display text-sm font-semibold text-dark-base">Ask Lumi</span>
-          <span className="text-xs text-dark-muted">about this account</span>
-          <span className="ml-auto flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-signal-scale shadow-scale-glow animate-pulse" />
-            <span className="font-mono text-[10px] tracking-[0.08em] uppercase text-signal-scale font-semibold">
-              Live
+        <div className="p-5">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-3">
+            <span className="font-display text-sm font-semibold text-lumi-text">Alexandria Leads</span>
+            <span className="text-xs text-lumi-muted">
+              Account Health <strong className="text-lumi-text font-semibold">44/100</strong>
             </span>
-          </span>
-        </div>
-
-        {/* Conversation */}
-        <div className="p-5 space-y-4">
-          {/* User question */}
-          <div className="flex justify-end">
-            <div className="max-w-[85%] rounded-xl rounded-br-sm bg-lumi-accent px-3.5 py-2.5 text-sm text-lumi-bg font-medium">
-              {DEMO_QUESTION}
-            </div>
           </div>
 
-          {/* Lumi answer */}
-          <div className="flex justify-start">
-            <div className="max-w-[90%] rounded-xl rounded-bl-sm bg-surface-light border border-surface-border px-3.5 py-3">
-              <span className="inline-flex items-center gap-1 font-mono text-[10px] tracking-[0.08em] uppercase text-lumi-accent font-semibold mb-2">
-                <Sparkles className="w-3 h-3" strokeWidth={2} />
-                Lumi
-              </span>
-              <p className="text-sm text-dark-soft leading-relaxed" dir="auto">
-                <bdi>حملة الاسكندرية</bdi> is burning{' '}
-                <strong className="text-verdict-kill-text font-semibold">EGP 2,400/day</strong>{' '}
-                with a <strong className="text-verdict-kill-text font-semibold">0.49% CTR</strong> —
-                well below your portfolio average. Frequency hit 3.8; the audience has
-                seen this ad too many times. Verdict:{' '}
-                <strong className="text-verdict-kill-text font-bold">pause it</strong> and
-                reallocate to Folla Instagram Engagement
-                (<span className="text-verdict-scale-text font-semibold">CTR 8.49%, freq 1.08</span>).
-              </p>
-            </div>
-          </div>
-        </div>
+          <div className="h-px bg-lumi-border" />
 
-        {/* Suggested questions */}
-        <div className="px-5 pb-5 space-y-2">
-          {DEMO_SUGGESTIONS.map((q) => (
-            <div
-              key={q}
-              className="w-full rounded-lg bg-lumi-elevated border border-surface-border px-3 py-2 text-left text-xs text-dark-soft"
-            >
-              {q}
-            </div>
-          ))}
-        </div>
-
-        {/* Input affordance */}
-        <div className="px-5 pb-5">
-          <div className="flex items-center gap-2 rounded-lg border border-surface-border bg-surface-light px-3 py-2">
-            <span className="flex-1 text-xs text-dark-muted">Ask about your campaigns…</span>
-            <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-lumi-accent">
-              <Send className="w-3.5 h-3.5 text-lumi-bg" strokeWidth={2} />
+          {/* Verdict */}
+          <div className="my-5 text-center">
+            <span className="inline-flex items-center px-4 py-1.5 rounded-lg bg-signal-kill/15 border border-signal-kill/30 font-mono text-sm font-bold tracking-[0.14em] text-signal-kill">
+              KILL
             </span>
+            <p className="font-mono text-[10px] tracking-[0.08em] text-lumi-muted mt-2">CONFIDENCE 94%</p>
+          </div>
+
+          {/* Why */}
+          <p className="font-mono text-[10px] font-semibold text-lumi-muted uppercase tracking-[0.08em] mb-2">
+            Why?
+          </p>
+          <div className="space-y-1.5 mb-5">
+            {WHY_SIGNALS.map(({ label, value }) => (
+              <div key={label} className="flex justify-between text-xs">
+                <span className="text-lumi-muted">{label}</span>
+                <span className="text-signal-kill font-semibold tabular-nums">{value}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="h-px bg-lumi-border" />
+
+          {/* Recommended action */}
+          <div className="mt-4">
+            <p className="font-mono text-[10px] font-semibold text-lumi-muted uppercase tracking-[0.08em] mb-1.5">
+              Recommended action
+            </p>
+            <p className="text-sm text-lumi-text font-medium">Pause today.</p>
+            <p className="text-sm text-lumi-muted">Reallocate 20% budget to North Coast Leads.</p>
+          </div>
+
+          {/* Next sync */}
+          <div className="mt-4 pt-3 border-t border-lumi-border flex justify-between items-center">
+            <span className="font-mono text-[10px] text-lumi-muted uppercase tracking-[0.08em]">Next sync</span>
+            <span className="font-mono text-[10px] text-lumi-accent">14 minutes</span>
           </div>
         </div>
       </div>
