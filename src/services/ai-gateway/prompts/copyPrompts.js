@@ -86,12 +86,16 @@ Return JSON array:
 
   // v1.1 — grounded in the workspace's onboarding profile (industry, objective,
   // brand tone) and the picked campaign's real CTR, plus a per-variant {angle}
-  // so STORY/PROOF/URGENCY actually diverge. New placeholders resolve to 'N/A'
-  // for any caller that omits them (buildCopyPrompt default), so this stays
-  // backward-compatible. GENERATE_COPY is Content-Lab-exclusive — no other
-  // capability consumer is affected.
+  // so STORY/PROOF/URGENCY actually diverge. Onboarding placeholders resolve to
+  // 'N/A' when omitted (buildCopyPrompt default), so this stays backward-compatible.
+  // v1.3 — the operator's product brief: {productName}/{offer}/{benefits} are
+  // OPTIONAL and drop their whole line when absent (never "Product/Service: N/A").
+  // v1.4 — emits a {strategyDirective}-gated "strategy" object (objective /
+  // core_message / hook / visual / cta_direction). Only the FIRST variant in a
+  // series produces it (one strategy per generation); follow-ups return null.
+  // GENERATE_COPY is Content-Lab-exclusive — no other capability consumer.
   GENERATE_COPY: {
-    version: 'v1.2',
+    version: 'v1.4',
     template: `Generate complete ad copy (hook + body) for Meta ads.
 
 CONTEXT:
@@ -103,7 +107,8 @@ Tone for this piece: {tone}
 Target Audience: {targetAudience}
 Current CTR: {currentCTR}%
 Product/Service: {productName}
-Key Benefits: {benefits}
+Offer: {offer}
+Key facts: {benefits}
 
 {campaignIntel}
 
@@ -119,9 +124,13 @@ REQUIREMENTS:
 - Strong CTA
 - Mobile-optimized formatting
 
+CREATIVE STRATEGY:
+{strategyDirective}
+
 OUTPUT FORMAT:
 Return JSON object:
 {
+  "strategy": { "objective": "...", "core_message": "...", "hook": "...", "visual": "...", "cta_direction": "..." },
   "hook": "text here",
   "body": "text here",
   "cta": "text here",
@@ -144,6 +153,26 @@ export function buildCopyPrompt(capability, variables, decisionContext = {}) {
   // and a function replacement so a literal '$' in a campaign name / ROAS figure
   // can't be read as a regex replacement token.
   prompt = prompt.replace(/\{campaignIntel\}/g, () => variables.campaignIntel || '');
+
+  // {strategyDirective} — the creative-strategy instruction. Only the FIRST variant
+  // in a series is asked to PRODUCE the strategy object (one strategy per generation,
+  // not one per angle); follow-up variants are told to return null. Special-cased
+  // (like campaignIntel) so it renders real multi-line guidance and is never N/A'd.
+  const strategyDirective = variables.isFirstVariant
+    ? 'This is the FIRST variant. Populate the "strategy" object — a single creative frame for the whole set: objective (what this ad achieves), core_message (the one idea it communicates), hook (the opening approach), visual (what the visual should show), cta_direction (tone + action for the CTA).'
+    : 'This is a follow-up variant. Return "strategy": null — the strategy was already set by the first variant.';
+  prompt = prompt.replace(/\{strategyDirective\}/g, () => strategyDirective);
+
+  // Optional product-context lines (product / offer / key facts). When supplied
+  // they render normally; when absent, drop the WHOLE line rather than emitting
+  // 'N/A' — a brief without a product shows no product line, not a fake "N/A".
+  // Function replacement so a literal '$' in the value isn't read as a regex token.
+  for (const key of ['productName', 'offer', 'benefits']) {
+    const value = variables[key];
+    prompt = value
+      ? prompt.replace(new RegExp(`\\{${key}\\}`, 'g'), () => String(value))
+      : prompt.replace(new RegExp(`^.*\\{${key}\\}.*\\r?\\n?`, 'gm'), '');
+  }
 
   // Replace variables
   for (const [key, value] of Object.entries(variables)) {

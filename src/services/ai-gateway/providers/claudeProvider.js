@@ -169,6 +169,9 @@ export async function generateCopy(input, decisionContext = {}) {
       body: parsed.body,
       cta: parsed.cta,
       rationale: parsed.rationale,
+      // Forward the optional creative strategy (only the first variant produces
+      // one; null otherwise) instead of silently dropping it. PR #256.
+      strategy: parsed.strategy ?? null,
     },
     artifacts: [
       { type: 'copy', id: 'hook', content: parsed.hook },

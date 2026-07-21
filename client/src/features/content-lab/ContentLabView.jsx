@@ -74,6 +74,12 @@ export default function ContentLabView() {
   const [formatId, setFormatId] = useState(DEFAULT_FORMAT_ID);
   // Which saved generation (if any) is being VIEWED read-only in the output panel.
   const [viewingId, setViewingId] = useState(null);
+  // Operator's product brief (PR #254) — grounds the copy in what's being sold.
+  // All optional. Cleared whenever the campaign changes (see the picker + clear
+  // handlers) so a stale product never leaks into a different campaign's copy.
+  const [product, setProduct] = useState('');
+  const [offer, setOffer] = useState('');
+  const [keyFacts, setKeyFacts] = useState('');
 
   const tone = toneOverride ?? brand.toneLabel ?? 'Warm & familial';
   const usingOnboardingTone = toneOverride == null && !!brand.toneLabel;
@@ -88,15 +94,28 @@ export default function ContentLabView() {
   const progress = apiProgress;
 
   const generate = async () => {
+    const p = product.trim(), o = offer.trim(), k = keyFacts.trim();
+    const hasProductBrief = p || o || k;
+    // Build the context once: campaign signals + (PR #253) the decision that drives
+    // the piece (recorded in the saved snapshot, not fed to the prompt) + (PR #254)
+    // the operator's product brief. Non-null when there's a campaign OR a product.
+    const campaignContext = (contextCampaign || hasProductBrief) ? {
+      name: contextCampaign?.campaign ?? undefined,
+      adset: contextCampaign?.adset ?? undefined,
+      // Ground generation in the campaign's REAL diagnosis + CTR (or omit them) —
+      // never a hardcoded "CTR fell 36%" the campaign never produced.
+      problem: contextCampaign?.diagnosis || undefined,
+      ctr: contextCampaign?.ctr ?? undefined,
+      verdict: decision?.verdict ?? undefined,
+      rationale: decision?.rationale ?? undefined,
+      signalType: decision?.signalType ?? undefined,
+      product: p || undefined,
+      offer: o || undefined,
+      keyFacts: k || undefined,
+    } : null;
+
     await generateContent({
-      campaignContext: contextCampaign ? {
-        name: contextCampaign.campaign,
-        adset: contextCampaign.adset,
-        // Ground generation in the campaign's REAL diagnosis + CTR (or omit
-        // them) — never a hardcoded "CTR fell 36%" the campaign never produced.
-        problem: contextCampaign.diagnosis || undefined,
-        ctr: contextCampaign.ctr ?? undefined,
-      } : null,
+      campaignContext,
       options: opts,
       tone,
       // All four below trace to the workspace's onboarding profile, resolved to
@@ -130,6 +149,11 @@ export default function ContentLabView() {
         ctr: ctx.campaignContext.ctr ?? null,
       });
     }
+    // Restore the saved product brief (PR #254). Runs after the campaign restore
+    // above; nothing resets it (resets only fire on an explicit picker/clear).
+    setProduct(ctx.campaignContext?.product ?? '');
+    setOffer(ctx.campaignContext?.offer ?? '');
+    setKeyFacts(ctx.campaignContext?.keyFacts ?? '');
     setViewingId(null);
     resetGeneration();
   };
@@ -172,7 +196,7 @@ export default function ContentLabView() {
           {contextCampaign ? (
             <div className="relative p-3.5 bg-lumi-accent/6 border border-lumi-accent/30 rounded-lg mb-3.5">
               <button
-                onClick={() => setContextCampaign(null)}
+                onClick={() => { setContextCampaign(null); setProduct(''); setOffer(''); setKeyFacts(''); }}
                 className="absolute top-2 right-2 p-0.5 text-dark-muted hover:text-dark-base transition-colors"
               >
                 <X className="w-3 h-3" strokeWidth={1.5} />
@@ -251,6 +275,9 @@ export default function ContentLabView() {
                                 tag:       null,
                                 ctr:       c.ctr != null ? +(c.ctr * 100).toFixed(2) : null,
                               });
+                              // Fresh campaign → clear the product brief so a stale
+                              // product never grounds the new campaign's copy.
+                              setProduct(''); setOffer(''); setKeyFacts('');
                               setCampaignMenuOpen(false);
                             }}
                             className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-surface-elevated transition-colors"
@@ -318,6 +345,52 @@ export default function ContentLabView() {
               </ul>
             </div>
           )}
+
+          {/* Product context (PR #254) — grounds the copy in what's actually being
+              sold. All optional; the product name falls back to the campaign name
+              server-side. Cleared when the campaign changes (stale product = bad copy). */}
+          <div className="p-3.5 bg-surface-elevated border border-surface-border rounded-lg mb-4.5">
+            <div className="section-label mb-2.5">Product context</div>
+
+            <label className="block mb-2.5">
+              <span className="font-mono text-[10px] text-dark-muted block mb-1">Product / Service</span>
+              <input
+                type="text"
+                value={product}
+                onChange={(e) => setProduct(e.target.value)}
+                placeholder="e.g. Golf villa in New Cairo"
+                className="w-full bg-surface-card border border-surface-border rounded-lg px-3 py-2 font-display text-xs text-dark-base placeholder:text-dark-subtle focus:border-lumi-accent focus:outline-none transition-colors"
+              />
+            </label>
+
+            <label className="block mb-2.5">
+              <span className="font-mono text-[10px] text-dark-muted block mb-1">Offer <span className="text-dark-subtle">· optional</span></span>
+              <input
+                type="text"
+                value={offer}
+                onChange={(e) => setOffer(e.target.value)}
+                placeholder="e.g. 5% down · 8-year installments"
+                className="w-full bg-surface-card border border-surface-border rounded-lg px-3 py-2 font-display text-xs text-dark-base placeholder:text-dark-subtle focus:border-lumi-accent focus:outline-none transition-colors"
+              />
+            </label>
+
+            <label className="block mb-3">
+              <span className="font-mono text-[10px] text-dark-muted block mb-1">Key facts <span className="text-dark-subtle">· optional</span></span>
+              <input
+                type="text"
+                value={keyFacts}
+                onChange={(e) => setKeyFacts(e.target.value)}
+                placeholder="e.g. Ready to move · Delivery 2027 · Free clubhouse"
+                className="w-full bg-surface-card border border-surface-border rounded-lg px-3 py-2 font-display text-xs text-dark-base placeholder:text-dark-subtle focus:border-lumi-accent focus:outline-none transition-colors"
+              />
+            </label>
+
+            {/* Landing-page auto-fill — honest "coming soon" (URL fetch not wired). */}
+            <div className="flex items-center gap-2 pt-2 border-t border-surface-border">
+              <span className="font-mono text-[10px] text-dark-muted">Auto-fill from landing page</span>
+              <span className="font-mono text-[9px] px-1.5 py-0.5 rounded bg-surface-card text-dark-subtle tracking-wider">Coming soon</span>
+            </div>
+          </div>
 
           {/* Generate options */}
           <div className="section-label mb-2.5">Generate</div>
@@ -449,6 +522,13 @@ export default function ContentLabView() {
               </>
             )}
           </div>
+
+          {/* Soft hint — never a hard gate: generation works without a product. */}
+          {!product.trim() && contextCampaign && (
+            <p className="font-mono text-[10px] text-dark-muted text-center mb-2">
+              Tip: add a product or service for more specific copy.
+            </p>
+          )}
 
           <button
             onClick={generate}
