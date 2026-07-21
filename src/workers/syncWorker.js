@@ -42,6 +42,15 @@ async function processSyncJob(job) {
     : [...new Set(ingest.results.map((r) => r.workspaceId))];
   let guardrailHits = 0;
   let swept = 0;
+  // The post-sync sweep re-scores freshly-landed data, but it fans out to the AI
+  // gateway (per-campaign reasoning + ANALYZE_PORTFOLIO per workspace) — so it
+  // costs AI spend on every sync. Gate it behind SYNC_TRIGGERS_SWEEP: ON unless
+  // explicitly "false" (backward-compatible default). When off, manual + on-read
+  // sweeps still re-score; the sync just doesn't auto-trigger one.
+  const syncTriggersSweep = process.env.SYNC_TRIGGERS_SWEEP !== 'false';
+  if (!syncTriggersSweep) {
+    logger.info({ jobId: job.id }, '[syncWorker] post-sync sweep disabled (SYNC_TRIGGERS_SWEEP=false)');
+  }
   for (const wsId of workspaceIds) {
     try {
       const g = await sweepGuardrails(wsId);
@@ -53,13 +62,16 @@ async function processSyncJob(job) {
     // 3. Analyse the data we just landed. force:true because this job IS the
     //    reason to re-score — the sweep's 15-minute idempotency window would
     //    otherwise reuse a pre-sync agenda and the fresh data would go unread.
-    //    Per-workspace isolation: a sweep failure never blocks the next workspace
-    //    and never fails the ingest that already succeeded.
-    try {
-      await runSweep(wsId, { trigger: 'SCHEDULED', force: true });
-      swept += 1;
-    } catch (err) {
-      logger.warn({ wsId, err: err.message }, '[syncWorker] post-sync sweep failed — continuing');
+    //    Gated by SYNC_TRIGGERS_SWEEP (see above). Per-workspace isolation: a
+    //    sweep failure never blocks the next workspace and never fails the ingest
+    //    that already succeeded.
+    if (syncTriggersSweep) {
+      try {
+        await runSweep(wsId, { trigger: 'SCHEDULED', force: true });
+        swept += 1;
+      } catch (err) {
+        logger.warn({ wsId, err: err.message }, '[syncWorker] post-sync sweep failed — continuing');
+      }
     }
   }
 

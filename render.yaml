@@ -173,6 +173,13 @@ services:
       # (Separately: on-read home sweeps never fan out to the AI gateway.)
       - key: AGENTIC_CRON_ENABLED
         value: "false"
+      # Gates the post-sync sweep (syncWorker step 3). Each sync would otherwise
+      # fan out to the AI gateway (per-campaign reasoning + ANALYZE_PORTFOLIO per
+      # workspace) = AI spend on every ingest. Set to "false" to disable; the
+      # worker still runs guardrail sweeps, and manual + on-read sweeps still
+      # re-score. Any value other than "false" (or unset) leaves it ON.
+      - key: SYNC_TRIGGERS_SWEEP
+        value: "false"
       - key: CREDENTIAL_ENCRYPTION_KEY
         sync: false
 
