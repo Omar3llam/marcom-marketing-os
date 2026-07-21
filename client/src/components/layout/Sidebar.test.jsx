@@ -177,7 +177,7 @@ describe('Sidebar — plan-based feature gating (locked items hidden)', () => {
   it('PRO: every role-visible item is shown as an interactive link', () => {
     setPlan('PRO');
     const { getByText } = renderSidebar({ mobileMenuOpen: true });
-    for (const label of ['Home', 'Campaigns', 'Create', 'Reports', 'Intelligence', 'Publishing', 'Testing', 'Measurement']) {
+    for (const label of ['Home', 'Campaigns', 'Creative Optimizer', 'Reports', 'Intelligence', 'Publishing', 'Testing', 'Measurement']) {
       expect(isLink(getByText, label)).toBe(true);
     }
   });
@@ -186,7 +186,7 @@ describe('Sidebar — plan-based feature gating (locked items hidden)', () => {
     setPlan('FREE');
     const { getByText, queryByText } = renderSidebar({ mobileMenuOpen: true });
     // FREE tier — shown as links
-    for (const label of ['Home', 'Campaigns', 'Create', 'Reports']) {
+    for (const label of ['Home', 'Campaigns', 'Creative Optimizer', 'Reports']) {
       expect(isLink(getByText, label)).toBe(true);
     }
     // Above the plan — hidden completely (no label, no lock, no tooltip)
