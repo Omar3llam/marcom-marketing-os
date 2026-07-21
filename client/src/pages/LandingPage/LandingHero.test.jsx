@@ -1,5 +1,5 @@
 // ============================================================
-// Landing — verdict-first hero rewrite
+// Landing — verdict-first (v1.0 decision-first)
 // ------------------------------------------------------------
 // useReveal is mocked (no IntersectionObserver in jsdom) so the reveal-gated
 // sections render shown. Hero uses <Link>, so it renders under a MemoryRouter.
@@ -22,32 +22,34 @@ describe('Landing Hero — verdict-first rewrite', () => {
     const h1 = screen.getByRole('heading', { level: 1 });
     expect(h1).toHaveTextContent(/Know what to/i);
     expect(h1).toHaveTextContent(/Every sync/i);
-    expect(screen.getByText(/tells you exactly what to scale, kill, refresh, or watch/i)).toBeInTheDocument();
+    expect(screen.getByText(/Know exactly what to\s+scale, pause, refresh, or watch/i)).toBeInTheDocument();
     expect(screen.queryByText(/never sleeps/i)).not.toBeInTheDocument();
   });
 
   it('shows the trust strip below the subheadline', () => {
     renderHero();
-    expect(screen.getByText(/Just decisions backed by your campaign data/i)).toBeInTheDocument();
+    expect(screen.getByText(/Just decisions backed by your data/i)).toBeInTheDocument();
   });
 
-  it('primary CTA "Get my first verdict" → /signup; secondary "See how Lumi decides" → #why', () => {
+  it('primary CTA "Connect Meta → Get my first verdict" → /signup; secondary "See how Lumi decides" → #why', () => {
     renderHero();
     expect(screen.getByRole('link', { name: /Get my first verdict/i })).toHaveAttribute('href', '/signup');
     expect(screen.getByRole('link', { name: /See how Lumi decides/i })).toHaveAttribute('href', '#why');
   });
 
-  it('renders a Verdict card (the Copilot chat is gone)', () => {
+  it('renders the Verdict card as a product window (the Copilot chat is gone)', () => {
     renderHero();
+    expect(screen.getByText(/Lumi — Campaign Analysis/i)).toBeInTheDocument();
+    expect(screen.getByText('Alexandria Villas — July')).toBeInTheDocument();
     expect(screen.getByText('KILL')).toBeInTheDocument();
-    expect(screen.getByText('Alexandria Leads')).toBeInTheDocument();
-    expect(screen.getByText(/Account Health/i)).toBeInTheDocument();
-    expect(screen.getByText('44/100')).toBeInTheDocument();
-    expect(screen.getByText(/CONFIDENCE 94%/i)).toBeInTheDocument();
+    expect(screen.getByText('94%')).toBeInTheDocument();
     expect(screen.getByText('Pause today.')).toBeInTheDocument();
+    expect(screen.getByText('Launch fresh creative.')).toBeInTheDocument();
     // the old chat affordances must be gone
     expect(screen.queryByText(/Ask Lumi/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Ask about your campaigns/i)).not.toBeInTheDocument();
+    // and the old health-score framing is gone
+    expect(screen.queryByText(/Account Health/i)).not.toBeInTheDocument();
   });
 
   it('never positions Lumi as "AI-powered" or a "platform"', () => {
@@ -58,29 +60,31 @@ describe('Landing Hero — verdict-first rewrite', () => {
 });
 
 describe('Landing — "Every campaign gets a verdict" workflow', () => {
-  it('replaces the old headline and renders the 5-step workflow', () => {
+  it('replaces the old headline and renders the 6-step workflow', () => {
     render(<CapabilitiesGrid />);
     expect(screen.getByText(/Every campaign gets a verdict/i)).toBeInTheDocument();
     expect(screen.queryByText(/scored every sync/i)).not.toBeInTheDocument();
-    for (const step of ['Connect', 'Analyze', 'Verdict', 'Optimize', 'Remember']) {
+    for (const step of ['Connect', 'Collect Signals', 'Score', 'Verdict', 'Recommended Actions', 'Decision Memory']) {
       expect(screen.getByText(step)).toBeInTheDocument();
     }
   });
 
-  it('the "Remember" step names the Decision Memory moat', () => {
+  it('the final step names the Decision Memory moat', () => {
     render(<CapabilitiesGrid />);
-    expect(screen.getByText(/Decision Memory learns from every call/i)).toBeInTheDocument();
+    expect(screen.getByText('Decision Memory')).toBeInTheDocument();
+    expect(screen.getByText(/learns from every verdict/i)).toBeInTheDocument();
   });
 });
 
-describe('Landing — "Why Lumi said KILL"', () => {
-  it('is the #why scroll target with evidence + a KILL verdict', () => {
+describe('Landing — "Why Lumi said KILL" timeline', () => {
+  it('is the #why scroll target with a paper-trail timeline + a KILL verdict', () => {
     const { container } = render(<WhyLumiDecides />);
     expect(container.querySelector('#why')).not.toBeNull();
     expect(screen.getByRole('heading', { name: /Why Lumi said KILL/i })).toBeInTheDocument();
-    expect(screen.getByText(/Every verdict comes with evidence/i)).toBeInTheDocument();
-    expect(screen.getByText('CTR fell 42%')).toBeInTheDocument();
-    expect(screen.getByText(/No recovery in 12 days/i)).toBeInTheDocument();
+    expect(screen.getByText(/Every verdict has a paper trail/i)).toBeInTheDocument();
+    // timeline narrative: healthy start → confirmed decline
+    expect(screen.getByText('CTR at 1.8%')).toBeInTheDocument();
+    expect(screen.getByText(/12 days of decline/i)).toBeInTheDocument();
     expect(screen.getByText('KILL')).toBeInTheDocument();
   });
 });

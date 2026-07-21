@@ -10,7 +10,7 @@ export function Pricing({ onStartFree }) {
       name: 'Free',
       price: '$0',
       period: 'forever',
-      description: 'For solo marketers getting started.',
+      persona: 'For freelancers and solo media buyers',
       features: [
         'Meta + Google connectors',
         'Campaign verdicts (Kill / Hold / Watch / Scale)',
@@ -26,7 +26,7 @@ export function Pricing({ onStartFree }) {
       name: 'Growth',
       price: '$49',
       period: '/month',
-      description: 'For growing teams that need more signal.',
+      persona: 'For performance agencies',
       features: [
         'Everything in Free',
         'Blended Truth reconciliation',
@@ -43,7 +43,7 @@ export function Pricing({ onStartFree }) {
       name: 'Pro',
       price: '$149',
       period: '/month',
-      description: 'For agencies and performance teams.',
+      persona: 'For in-house marketing teams',
       features: [
         'Everything in Growth',
         'A/B Testing OS',
@@ -93,10 +93,13 @@ export function Pricing({ onStartFree }) {
               )}
 
               <div className="mb-6">
-                <h3 className="font-display font-bold text-[1.5rem] text-lumi-text mb-2">
+                <h3 className="font-display font-bold text-[1.5rem] text-lumi-text mb-1">
                   {tier.name}
                 </h3>
-                <div className="flex items-baseline gap-1 mb-3">
+                <p className="text-lumi-muted font-body text-sm leading-relaxed mb-4">
+                  {tier.persona}
+                </p>
+                <div className="flex items-baseline gap-1">
                   <span className="font-display font-bold text-4xl text-lumi-text">
                     {tier.price}
                   </span>
@@ -104,9 +107,6 @@ export function Pricing({ onStartFree }) {
                     {tier.period}
                   </span>
                 </div>
-                <p className="text-lumi-muted font-body text-sm leading-relaxed">
-                  {tier.description}
-                </p>
               </div>
 
               <ul className="space-y-3 mb-8 flex-1">
