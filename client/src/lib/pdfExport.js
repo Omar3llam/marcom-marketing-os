@@ -12,11 +12,19 @@
 //   • gated (no-revenue) campaigns show "Add revenue data…", never a fake verdict
 //   • spend is major-unit already (caller converts via fromMinor) → currency-safe
 //
-// Dark executive theme (app brand tokens). jsPDF is dynamically imported inside
-// generateCampaignReport so merely importing the pure helpers (tested below)
-// never pulls the PDF engine into the bundle/test.
+// Arabic: jsPDF ships no Unicode font, so we embed Noto Naskh Arabic (lazily, only
+// on export) and let jsPDF's built-in processArabic (shaping) + BidiEngine (RTL)
+// render real Arabic campaign names — no more "[Arabic]" marker.
+//
+// Currency: currencyFormatter.js is locale-aware (ar-EG → Arabic-Indic digits +
+// Arabic symbol) which the PDF's Latin fonts CAN'T render. We use a PDF-only
+// en-US formatter (formatCurrencyPdf) so money is always legible in the report.
+// currencyFormatter.js is deliberately untouched (the UI stays ar-EG).
+//
+// Dark executive theme (app brand tokens). jsPDF + the Arabic font are dynamically
+// imported inside generateCampaignReport so merely importing the pure helpers
+// (tested below) never pulls the PDF engine or the font into the bundle/test.
 // ============================================================
-import { formatCurrency } from './currencyFormatter.js';
 
 // App design tokens (dark theme). Kept as hex; converted to rgb at draw time so
 // we never depend on a particular jsPDF hex-parsing behavior.
@@ -48,21 +56,44 @@ function rgb(hex) {
 }
 
 /** True when the string contains Arabic (U+0600–U+06FF). */
-function hasArabicText(text) {
+export function hasArabicText(text) {
   return /[؀-ۿ]/.test(text || '');
 }
 
 /**
- * jsPDF has no embedded Arabic font, so Arabic/RTL text can't be rendered.
- * Replace it with a marker (the report footer notes this) — we never silently
- * drop or garble a campaign name.
+ * Clean text for the report WITHOUT stripping Arabic — Arabic now renders via the
+ * embedded Noto Naskh font. Removes control characters, collapses whitespace, and
+ * returns "—" for empty input. Optional maxLen truncates with an ellipsis (default:
+ * no truncation, for the header + text report).
  */
-function sanitizeText(text) {
-  if (!text) return '';
-  if (hasArabicText(text)) {
-    return text.replace(/[؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]+/g, '[Arabic]').trim();
+export function sanitizeText(text, maxLen = Infinity) {
+  if (text == null) return '—';
+  // Strip control chars (\p{Cc} — never Arabic) + collapse whitespace.
+  const clean = String(text).replace(/\p{Cc}/gu, ' ').replace(/\s+/g, ' ').trim();
+  if (!clean) return '—';
+  return clean.length > maxLen ? `${clean.slice(0, maxLen - 1)}…` : clean;
+}
+
+/**
+ * PDF-only currency formatter. Forces en-US (Western digits, Latin symbol) so
+ * amounts are legible in the Latin-font PDF — currencyFormatter.js's locale output
+ * (e.g. ar-EG "٤٬٢٤٢٫٠٧ ج.م.") would render as tofu. Whole numbers (executive
+ * report). Spend is already major-unit; null/non-finite → "—".
+ */
+export function formatCurrencyPdf(amount, currency) {
+  if (amount == null || !Number.isFinite(amount)) return '—';
+  try {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency || 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+      // Intl separates the code with a non-breaking space; normalize to ASCII so
+      // the Latin PDF font renders it cleanly (and the output is stable to test).
+    }).format(amount).replace(/\s/g, ' ');
+  } catch {
+    return `${currency || ''} ${Math.round(amount).toLocaleString('en-US')}`.trim();
   }
-  return text;
 }
 
 // ── PURE HELPERS (exported for unit tests) ───────────────────
@@ -143,8 +174,39 @@ export async function generateCampaignReport({
   const pageHeight = doc.internal.pageSize.getHeight();
   const M = 16;
 
+  // Lazy-load the embedded Arabic font ONLY here so it code-splits with jsPDF and
+  // never enters the main bundle. jsPDF's built-in processArabic (auto preProcessText
+  // hook) shapes; its BidiEngine reorders via the RTL options in drawText/table.
+  // If the module ever fails to load, Arabic degrades gracefully (Latin font, likely
+  // blank glyphs) rather than crashing the export.
+  let arabicReady = false;
+  try {
+    const { notoNaskhArabicBase64 } = await import('../assets/fonts/notoNaskhArabic.js');
+    doc.addFileToVFS('NotoNaskhArabic-Regular.ttf', notoNaskhArabicBase64);
+    doc.addFont('NotoNaskhArabic-Regular.ttf', 'NotoNaskh', 'normal');
+    arabicReady = true;
+  } catch {
+    // keep going Latin-only — never fail the export over a font
+  }
+
+  const setLatin = (style = 'normal') => doc.setFont('helvetica', style);
+  const setArabic = () => doc.setFont('NotoNaskh', 'normal');
+  // Draw a (possibly Arabic) left-positioned string with the right font. Arabic uses
+  // the embedded Noto Naskh with RTL bidi; everything else keeps the current Latin
+  // font. Sanitizes + optionally truncates. Restores the Latin normal font after.
+  const drawText = (text, x, y, { maxLen = Infinity, ...opts } = {}) => {
+    const s = sanitizeText(text, maxLen);
+    if (arabicReady && hasArabicText(s)) {
+      setArabic();
+      doc.text(s, x, y, { isInputRtl: true, isOutputVisual: true, ...opts });
+      setLatin();
+    } else {
+      doc.text(s, x, y, opts);
+    }
+    return s;
+  };
+
   const currency = campaigns.find((c) => c.currency)?.currency || 'USD';
-  const anyArabic = campaigns.some((c) => hasArabicText(c.campaign));
 
   const paintBg = () => { doc.setFillColor(...rgb(COLORS.bg)); doc.rect(0, 0, pageWidth, pageHeight, 'F'); };
   const addPage = () => { doc.addPage(); paintBg(); return 20; };
@@ -179,7 +241,15 @@ export async function generateCampaignReport({
     `${campaigns.length} campaign${campaigns.length === 1 ? '' : 's'}`,
     currency,
   ].filter(Boolean).join('   ·   ');
-  doc.text(sub, M, y);
+  // Draw inline (not via drawText) to preserve the wide "   ·   " separators, but
+  // still route through the Arabic font if the workspace name is Arabic.
+  if (arabicReady && hasArabicText(sub)) {
+    setArabic();
+    doc.text(sub, M, y, { isInputRtl: true, isOutputVisual: true });
+    setLatin();
+  } else {
+    doc.text(sub, M, y);
+  }
 
   y += 6;
   doc.setDrawColor(...rgb(COLORS.gold));
@@ -215,12 +285,12 @@ export async function generateCampaignReport({
   const totalSpend = campaigns.reduce((s, c) => s + (c.spend ?? 0), 0);
   const scaleSpend = campaigns.filter((c) => c.verdict === 'SCALE').reduce((s, c) => s + (c.spend ?? 0), 0);
   const wastedText = wastedSpend != null
-    ? `${formatCurrency(wastedSpend, currency)}${wastedPct != null ? `  (${wastedPct}%)` : ''}`
+    ? `${formatCurrencyPdf(wastedSpend, currency)}${wastedPct != null ? `  (${wastedPct}%)` : ''}`
     : '—';
   const metrics = [
-    { label: 'TOTAL SPEND', value: formatCurrency(totalSpend, currency), color: COLORS.text },
+    { label: 'TOTAL SPEND', value: formatCurrencyPdf(totalSpend, currency), color: COLORS.text },
     { label: 'WASTED BUDGET', value: wastedText, color: COLORS.kill },
-    { label: 'SCALE OPPORTUNITY', value: formatCurrency(scaleSpend, currency), color: COLORS.scale },
+    { label: 'SCALE OPPORTUNITY', value: formatCurrencyPdf(scaleSpend, currency), color: COLORS.scale },
   ];
   const gap = 4;
   const cardW = (pageWidth - 2 * M - 2 * gap) / 3;
@@ -282,16 +352,19 @@ export async function generateCampaignReport({
     y += 6;
     list.forEach((c) => {
       if (y > pageHeight - 20) y = addPage();
-      doc.setFont('helvetica', 'bold');
+      // Bullet + name: bullet stays Latin, the name renders in its own script.
+      setLatin('bold');
       doc.setFontSize(8);
       doc.setTextColor(...rgb(COLORS.text));
-      doc.text(`• ${sanitizeText(c.campaign).substring(0, 46)}`, M + 2, y);
+      doc.text('•', M + 2, y);
+      drawText(c.campaign, M + 6, y, { maxLen: 44 });
+      doc.setFont('helvetica', 'bold');
       doc.setTextColor(...rgb(color));
       doc.text(c.verdict ?? '—', pageWidth - M, y, { align: 'right' });
       y += 4.5;
       doc.setFont('helvetica', 'normal');
       doc.setTextColor(...rgb(COLORS.muted));
-      doc.text(`   ${sanitizeText(c.rationale || '—').substring(0, 92)}`, M + 2, y);
+      drawText(c.rationale, M + 6, y, { maxLen: 90 });
       y += 7;
     });
     y += 2;
@@ -332,13 +405,22 @@ export async function generateCampaignReport({
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     doc.setTextColor(...rgb(COLORS.text));
-    doc.text(sanitizeText(c.campaign).substring(0, 36), cols.name, y);
+    // Name cell: Latin left-aligned; Arabic right-aligned to the column edge so it
+    // reads correctly RTL (jsPDF shapes + reorders via the bidi options).
+    const nm = sanitizeText(c.campaign, 36);
+    if (arabicReady && hasArabicText(nm)) {
+      setArabic();
+      doc.text(nm, cols.verdict - 4, y, { isInputRtl: true, isOutputVisual: true, align: 'right' });
+      setLatin();
+    } else {
+      doc.text(nm, cols.name, y);
+    }
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(...rgb(verdictColor(c.verdict)));
     doc.text(c.verdict ?? '—', cols.verdict, y);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(...rgb(COLORS.text));
-    doc.text(formatCurrency(c.spend, c.currency || currency), cols.spend, y);
+    doc.text(formatCurrencyPdf(c.spend, c.currency || currency), cols.spend, y);
     doc.text(c.roas == null ? '—' : `${c.roas.toFixed(2)}x`, cols.roas, y);
     doc.text(c.ctr == null ? '—' : `${c.ctr.toFixed(2)}%`, cols.ctr, y);
     y += 5.5;
@@ -352,9 +434,6 @@ export async function generateCampaignReport({
     doc.setFontSize(7);
     doc.setTextColor(...rgb(COLORS.muted));
     doc.text(`Generated by LUMI AI  ·  Page ${i} of ${pageCount}`, M, pageHeight - 8);
-    if (anyArabic) {
-      doc.text('Arabic names show in the app; PDF uses Latin encoding.', pageWidth - M, pageHeight - 8, { align: 'right' });
-    }
   }
 
   const stamp = now.toISOString().split('T')[0];
@@ -363,6 +442,7 @@ export async function generateCampaignReport({
 
 /**
  * Text fallback if jsPDF throws. Same connector-sourced data, same honesty rules.
+ * Plain UTF-8 .txt renders Arabic natively, so names are preserved as-is.
  */
 export function generateTextReport({
   campaigns = [],
@@ -385,9 +465,9 @@ export function generateTextReport({
     'SUMMARY',
     '-'.repeat(60),
     `Campaigns: ${campaigns.length}`,
-    `Total Spend: ${formatCurrency(totalSpend, currency)}`,
+    `Total Spend: ${formatCurrencyPdf(totalSpend, currency)}`,
     `Health: ${hd.scoreText} (${hd.labelText})`,
-    `Wasted: ${wastedSpend != null ? formatCurrency(wastedSpend, currency) : '—'}${wastedPct != null ? ` (${wastedPct}%)` : ''}`,
+    `Wasted: ${wastedSpend != null ? formatCurrencyPdf(wastedSpend, currency) : '—'}${wastedPct != null ? ` (${wastedPct}%)` : ''}`,
     '',
     'VERDICT DISTRIBUTION',
     ...buildVerdictLanes(campaigns).map((l) => `  ${l.label}: ${l.count} (${l.pct}%)`),
@@ -401,8 +481,8 @@ export function generateTextReport({
     const cur = c.currency || currency;
     lines.push(
       `Campaign: ${sanitizeText(c.campaign)}`,
-      `  Verdict: ${c.verdict ?? '—'} | Spend: ${formatCurrency(c.spend, cur)} | ROAS: ${c.roas == null ? '—' : `${c.roas.toFixed(2)}x`} | CTR: ${c.ctr == null ? '—' : `${c.ctr.toFixed(2)}%`}`,
-      `  Reason: ${sanitizeText(c.rationale || '—')}`,
+      `  Verdict: ${c.verdict ?? '—'} | Spend: ${formatCurrencyPdf(c.spend, cur)} | ROAS: ${c.roas == null ? '—' : `${c.roas.toFixed(2)}x`} | CTR: ${c.ctr == null ? '—' : `${c.ctr.toFixed(2)}%`}`,
+      `  Reason: ${sanitizeText(c.rationale)}`,
       '',
     );
   });
