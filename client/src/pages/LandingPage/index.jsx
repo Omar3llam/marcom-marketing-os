@@ -5,7 +5,6 @@ import { Hero } from './HeroSection.jsx';
 import { TrustedBy } from './SocialProofSection.jsx';
 import { CapabilitiesGrid, HowItWorks } from './FeaturesSection.jsx';
 import { WhyLumiDecides } from './WhyKillSection.jsx';
-import { ScreenshotGallery } from './ScreenshotGallery.jsx';
 import { Pricing } from './PricingSection.jsx';
 import { BottomCTA } from './CTASection.jsx';
 
@@ -29,7 +28,6 @@ export default function LandingPage() {
       <TrustedBy />
       <CapabilitiesGrid />
       <WhyLumiDecides />
-      <ScreenshotGallery />
       <HowItWorks />
       <Pricing onStartFree={() => navigate('/signup')} />
       <BottomCTA onCta={() => navigate('/signup')} />
@@ -164,17 +162,88 @@ function BrandMark({ scrolled }) {
   );
 }
 
+// Footer columns. Only links with a real destination ship — internal routes
+// (/privacy, /terms, /login, /signup), the contact mailto, and the on-page
+// section anchors. No dead links: a footer full of hrefs that go nowhere reads
+// as unfinished, which the page's honesty bar forbids.
+const FOOTER_COLUMNS = [
+  {
+    heading: 'Product',
+    links: [
+      { label: 'Pricing', href: '#pricing' },
+      { label: 'How it works', href: '#how' },
+      { label: 'Inside Lumi', href: '#features' },
+    ],
+  },
+  {
+    heading: 'Company',
+    links: [
+      { label: 'Privacy', to: '/privacy' },
+      { label: 'Terms', to: '/terms' },
+    ],
+  },
+  {
+    heading: 'Connect',
+    links: [
+      { label: 'Sign in', to: '/login' },
+      { label: 'Start free', to: '/signup' },
+      { label: 'Contact', href: 'mailto:hello@marcom.ai' },
+    ],
+  },
+];
+
 function Footer() {
   return (
-    <footer className="px-4 sm:px-6 py-8 border-t border-surface-border/50">
-      <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-dark-subtle font-mono">
-        <span>© {new Date().getFullYear()} Lumi</span>
-        <div className="flex items-center gap-5">
-          <Link to="/privacy" className="hover:text-dark-base transition-colors">Privacy</Link>
-          <Link to="/terms" className="hover:text-dark-base transition-colors">Terms</Link>
-          <a href="mailto:hello@marcom.ai" className="hover:text-dark-base transition-colors">Contact</a>
+    <footer className="px-4 sm:px-6 pt-16 pb-10 border-t border-surface-border/60 bg-surface-card">
+      <div className="max-w-7xl mx-auto">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 sm:gap-12">
+          {/* Brand */}
+          <div className="col-span-2 sm:col-span-1">
+            <div className="inline-flex items-center gap-2.5">
+              <span className="relative flex-shrink-0" style={{ width: 20, height: 20 }}>
+                <span className="absolute inset-0 rounded-full border-lumi-accent" style={{ borderWidth: '1.5px' }} />
+                <span
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-lumi-accent shadow-gold-glow"
+                  style={{ width: 6, height: 6 }}
+                />
+              </span>
+              <span className="font-display font-bold tracking-tight text-dark-base text-base">Lumi</span>
+            </div>
+            <p className="mt-3 text-xs text-dark-muted leading-relaxed max-w-[220px]">
+              Decisions, not dashboards. A verdict on every campaign, every sync.
+            </p>
+          </div>
+
+          {/* Link columns */}
+          {FOOTER_COLUMNS.map((col) => (
+            <div key={col.heading}>
+              <div className="font-mono text-[10px] tracking-[0.12em] uppercase text-dark-muted mb-3.5">
+                {col.heading}
+              </div>
+              <ul className="space-y-2.5">
+                {col.links.map((link) => (
+                  <li key={link.label}>
+                    {link.to ? (
+                      <Link to={link.to} className="text-sm text-dark-soft hover:text-dark-base transition-colors">
+                        {link.label}
+                      </Link>
+                    ) : (
+                      <a href={link.href} className="text-sm text-dark-soft hover:text-dark-base transition-colors">
+                        {link.label}
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
-        <span>Built for MENA performance marketers who want decisions, not dashboards.</span>
+
+        {/* Bottom bar */}
+        <div className="mt-12 pt-6 border-t border-surface-border/60 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-dark-subtle font-mono">
+          <span>© {new Date().getFullYear()} Lumi · Built for MENA performance marketers</span>
+          <span>EGP · SAR · AED native</span>
+        </div>
       </div>
     </footer>
   );

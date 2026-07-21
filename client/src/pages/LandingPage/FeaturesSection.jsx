@@ -1,32 +1,34 @@
-import { Fragment } from 'react';
-import { Eye, Zap, MessageSquare, Activity, BarChart2, FileText, Plug, Sparkles, Brain, ArrowRight } from 'lucide-react';
+import { Eye, Zap, MessageSquare, Activity, BarChart2, FileText, Plug, Sparkles, Brain } from 'lucide-react';
 import { useReveal } from './useReveal.js';
 
-// The path a campaign travels through Lumi — Connect → Analyze → Verdict →
-// Optimize → Remember. "Remember" is the Decision Memory moat: every call you
-// confirm is scored later, so the loop gets sharper over time.
+// The path a campaign travels through Lumi — Connect → Collect Signals → Score →
+// Verdict → Recommended Actions → Decision Memory. The last step is the moat:
+// every call you confirm is scored later, so the loop gets sharper over time.
+// Numbered 01–06 to read as a sequence in the 3×2 grid.
 const WORKFLOW = [
-  { Icon: Plug,      label: 'Connect',  desc: 'OAuth your Meta or Google account' },
-  { Icon: BarChart2, label: 'Analyze',  desc: 'Lumi scores CTR, frequency, spend, and ROAS' },
-  { Icon: Zap,       label: 'Verdict',  desc: 'KILL · SCALE · HOLD · WATCH — with a reason' },
-  { Icon: Sparkles,  label: 'Optimize', desc: 'Creative strategy built from the diagnosis' },
-  { Icon: Brain,     label: 'Remember', desc: 'Decision Memory learns from every call you make' },
+  { n: '01', Icon: Plug,      label: 'Connect',             desc: 'OAuth your Meta or Google account in 2 minutes.' },
+  { n: '02', Icon: Activity,  label: 'Collect Signals',     desc: 'CTR, frequency, spend, ROAS — captured every sync.' },
+  { n: '03', Icon: BarChart2, label: 'Score',               desc: 'Every campaign benchmarked against your portfolio.' },
+  { n: '04', Icon: Zap,       label: 'Verdict',             desc: 'KILL · SCALE · HOLD · WATCH — with a reason.' },
+  { n: '05', Icon: Sparkles,  label: 'Recommended Actions', desc: 'Pause, reallocate, refresh, or scale. Specific steps.' },
+  { n: '06', Icon: Brain,     label: 'Decision Memory',     desc: 'Lumi learns from every verdict. Gets sharper over time.' },
 ];
 
 function VerdictWorkflow() {
   return (
-    <div className="mb-16 flex flex-col lg:flex-row lg:items-center gap-3 lg:gap-1">
-      {WORKFLOW.map((step, i) => (
-        <Fragment key={step.label}>
-          <div className="flex-1 bg-surface-light border border-surface-border rounded-xl p-5 text-center hover:border-lumi-accent/40 transition-colors">
-            <step.Icon className="w-7 h-7 text-lumi-accent mx-auto mb-3" strokeWidth={1.5} />
-            <div className="font-display text-sm font-bold text-dark-base mb-1">{step.label}</div>
-            <p className="text-xs text-dark-muted leading-relaxed">{step.desc}</p>
-          </div>
-          {i < WORKFLOW.length - 1 && (
-            <ArrowRight className="hidden lg:block w-5 h-5 text-lumi-accent/40 shrink-0" strokeWidth={2} aria-hidden="true" />
-          )}
-        </Fragment>
+    <div className="mb-16 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {WORKFLOW.map((step) => (
+        <div
+          key={step.label}
+          className="relative bg-surface-light border border-surface-border rounded-xl p-6 hover:border-lumi-accent/40 transition-colors"
+        >
+          <span className="absolute top-4 right-5 font-mono text-xs font-semibold text-lumi-accent/50 tabular-nums">
+            {step.n}
+          </span>
+          <step.Icon className="w-7 h-7 text-lumi-accent mb-3" strokeWidth={1.5} />
+          <div className="font-display text-base font-bold text-dark-base mb-1">{step.label}</div>
+          <p className="text-sm text-dark-muted leading-relaxed">{step.desc}</p>
+        </div>
       ))}
     </div>
   );

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, Zap } from 'lucide-react';
+import { Zap } from 'lucide-react';
 
 export function Hero() {
   return (
@@ -40,9 +40,8 @@ export function Hero() {
           </h1>
 
           <p className="mt-7 text-lg text-dark-soft max-w-[540px] leading-relaxed">
-            Connect your ad accounts. Lumi scores every campaign and tells you
-            exactly what to scale, kill, refresh, or watch. No dashboards. No
-            guessing.
+            Lumi turns campaign signals into clear verdicts. Know exactly what to
+            scale, pause, refresh, or watch after every campaign sync.
           </p>
 
           {/* Trust strip — below subheadline, before the CTAs */}
@@ -51,7 +50,7 @@ export function Hero() {
             <span className="text-surface-border-strong px-1.5">·</span>
             No fluff.
             <span className="text-surface-border-strong px-1.5">·</span>
-            Just decisions backed by your campaign data.
+            Just decisions backed by your data.
           </p>
 
           <div className="mt-9 flex flex-wrap items-center gap-4">
@@ -60,8 +59,7 @@ export function Hero() {
               className="btn-gold inline-flex items-center gap-2 px-7 py-3.5 text-[15px] rounded-xl shadow-gold-glow hover:shadow-card-hover transition-all"
             >
               <Zap className="w-4 h-4" strokeWidth={2} />
-              Get my first verdict
-              <ArrowRight className="w-4 h-4" strokeWidth={2} />
+              Connect Meta → Get my first verdict
             </Link>
             <a
               href="#why"
@@ -80,71 +78,79 @@ export function Hero() {
 }
 
 // ── Hero composition: a single campaign verdict ──
-// An illustrative preview of a real Lumi verdict (Campaigns → drill-down). The
-// signals + recommendation mirror the live verdict card; numbers are an example.
+// An illustrative preview of a real Lumi verdict (Campaigns → drill-down), framed
+// as a product window. The signals + recommendation mirror the live verdict card;
+// the numbers are an example.
 const WHY_SIGNALS = [
-  { label: 'CTR', value: '0.48%' },
-  { label: 'Frequency', value: '7.1' },
-  { label: 'CPA change', value: '+31%' },
+  { label: 'CTR',       value: '0.48%', sub: '42% below average' },
+  { label: 'Frequency', value: '7.1',   sub: 'Audience exhausted' },
+  { label: 'CPA',       value: '+31%',  sub: 'Rising with no return' },
 ];
 
 function VerdictDemo() {
   return (
-    <div className="relative flex justify-center lg:h-[520px] lg:items-center">
+    <div className="relative flex justify-center lg:h-[560px] lg:items-center">
       <div
-        className="w-full max-w-[400px] bg-lumi-bg border border-lumi-border rounded-2xl overflow-hidden"
+        className="w-full max-w-[380px] rounded-2xl bg-lumi-bg border border-lumi-border overflow-hidden"
         style={{
           animation: 'float-y 8s ease-in-out infinite',
           boxShadow: '0 28px 56px rgba(0,0,0,0.14), 0 0 40px rgba(246,201,69,0.08)',
         }}
       >
+        {/* Window chrome */}
+        <div className="flex items-center gap-1.5 px-3.5 py-2.5 bg-lumi-surface border-b border-lumi-border">
+          <span className="w-2.5 h-2.5 rounded-full bg-signal-kill/60" />
+          <span className="w-2.5 h-2.5 rounded-full bg-lumi-accent/60" />
+          <span className="w-2.5 h-2.5 rounded-full bg-signal-scale/60" />
+          <span className="ml-2 font-mono text-[10px] text-lumi-muted">Lumi — Campaign Analysis</span>
+        </div>
+
         <div className="p-5">
-          {/* Header */}
-          <div className="flex justify-between items-center mb-3">
-            <span className="font-display text-sm font-semibold text-lumi-text">Alexandria Leads</span>
-            <span className="text-xs text-lumi-muted">
-              Account Health <strong className="text-lumi-text font-semibold">44/100</strong>
+          {/* Campaign */}
+          <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-lumi-muted mb-1">Campaign</p>
+          <p className="font-display text-sm font-semibold text-lumi-text mb-4">Alexandria Villas — July</p>
+
+          <div className="h-px bg-lumi-border" />
+
+          {/* Verdict */}
+          <div className="my-4 flex items-center justify-between">
+            <span className="font-mono text-lg font-bold tracking-[0.12em] text-signal-kill">KILL</span>
+            <span className="font-mono text-[10px] text-lumi-muted">
+              Confidence <strong className="text-lumi-text font-semibold">94%</strong>
             </span>
           </div>
 
           <div className="h-px bg-lumi-border" />
 
-          {/* Verdict */}
-          <div className="my-5 text-center">
-            <span className="inline-flex items-center px-4 py-1.5 rounded-lg bg-signal-kill/15 border border-signal-kill/30 font-mono text-sm font-bold tracking-[0.14em] text-signal-kill">
-              KILL
-            </span>
-            <p className="font-mono text-[10px] tracking-[0.08em] text-lumi-muted mt-2">CONFIDENCE 94%</p>
-          </div>
-
           {/* Why */}
-          <p className="font-mono text-[10px] font-semibold text-lumi-muted uppercase tracking-[0.08em] mb-2">
-            Why?
-          </p>
-          <div className="space-y-1.5 mb-5">
-            {WHY_SIGNALS.map(({ label, value }) => (
-              <div key={label} className="flex justify-between text-xs">
-                <span className="text-lumi-muted">{label}</span>
-                <span className="text-signal-kill font-semibold tabular-nums">{value}</span>
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-lumi-muted mt-4 mb-2.5">Why</p>
+          <div className="space-y-2.5 mb-4">
+            {WHY_SIGNALS.map(({ label, value, sub }) => (
+              <div key={label} className="flex items-start justify-between">
+                <div>
+                  <p className="text-xs text-lumi-text">{label}</p>
+                  <p className="text-[10px] text-lumi-muted">{sub}</p>
+                </div>
+                <span className="text-sm font-semibold tabular-nums text-signal-kill">{value}</span>
               </div>
             ))}
           </div>
 
           <div className="h-px bg-lumi-border" />
 
-          {/* Recommended action */}
-          <div className="mt-4">
-            <p className="font-mono text-[10px] font-semibold text-lumi-muted uppercase tracking-[0.08em] mb-1.5">
-              Recommended action
-            </p>
-            <p className="text-sm text-lumi-text font-medium">Pause today.</p>
-            <p className="text-sm text-lumi-muted">Reallocate 20% budget to North Coast Leads.</p>
-          </div>
+          {/* Recommendation */}
+          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-lumi-muted mt-4 mb-1.5">Recommendation</p>
+          <p className="text-sm text-lumi-text font-medium">Pause today.</p>
+          <p className="text-sm text-lumi-muted">Launch fresh creative.</p>
+          <p className="text-sm text-lumi-muted">Retest in 7 days.</p>
 
           {/* Next sync */}
-          <div className="mt-4 pt-3 border-t border-lumi-border flex justify-between items-center">
-            <span className="font-mono text-[10px] text-lumi-muted uppercase tracking-[0.08em]">Next sync</span>
-            <span className="font-mono text-[10px] text-lumi-accent">14 minutes</span>
+          <div className="mt-4 pt-3 border-t border-lumi-border flex items-center justify-between">
+            <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-lumi-muted">Next sync</span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-signal-scale animate-pulse" />
+              <span className="font-mono text-[10px] text-lumi-accent">14 minutes</span>
+            </span>
           </div>
         </div>
       </div>
