@@ -225,16 +225,22 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
   logger.info({ workspaceId, trigger, loopHealth: agenda.loopHealth, buyer: agenda.buyerBand.length, strategist: agenda.strategistBand.length }, '[AgenticLoop] sweep complete');
 
   // Steps 4 + 5 below are the ONLY LLM spend in a sweep (per-campaign reasoning +
-  // portfolio narration). ON_READ sweeps fire on a plain home/agenda GET and are
-  // throttled ONLY by LOOP_MIN_INTERVAL_MS — a background poller (frontend or an
-  // uptime monitor) hitting that endpoint 24/7 would otherwise fan out to the AI
-  // gateway every ~15 min forever, silently burning tokens with nobody watching.
-  // A read must be cheap: the agenda above is already fully deterministic, so an
-  // ON_READ sweep returns here and skips the narration. The opt-in scheduled cron
-  // (AGENTIC_CRON_ENABLED=true) and user-initiated MANUAL sweeps (the "Run sweep"
-  // button, a revenue upload) still pre-generate it — that spend is deliberate.
-  if (trigger === 'ON_READ') {
-    logger.debug({ workspaceId, trigger }, '[AgenticLoop] on-read sweep — LLM narration skipped (deterministic agenda only)');
+  // portfolio narration). By default this fan-out runs ONLY for a user-initiated
+  // MANUAL sweep (the "Run sweep" button, a revenue upload) — so every AI request
+  // is manual and no background path silently burns tokens. Automatic triggers:
+  //   • ON_READ    — a plain home/agenda GET; a frontend poll or uptime monitor
+  //                  hitting it 24/7 must ALWAYS stay free (never narrates, even
+  //                  when automatic AI is enabled).
+  //   • SCHEDULED  — the agentic cron + the post-sync sweep; opt back in with
+  //                  AI_AUTOMATIC_ENABLED=true (deliberate, documented spend).
+  // The agenda above is already fully deterministic, so skipping the narration
+  // never blanks the read. This is the single choke point that keeps AI spend
+  // MANUAL regardless of how a sweep got triggered; the finer AGENTIC_CRON_ENABLED
+  // / SYNC_TRIGGERS_SWEEP flags still control whether those sweeps fire at all.
+  const automaticAiEnabled = process.env.AI_AUTOMATIC_ENABLED === 'true';
+  const shouldNarrate = trigger === 'MANUAL' || (trigger === 'SCHEDULED' && automaticAiEnabled);
+  if (!shouldNarrate) {
+    logger.debug({ workspaceId, trigger, automaticAiEnabled }, '[AgenticLoop] LLM narration skipped — manual-only (set AI_AUTOMATIC_ENABLED=true to narrate scheduled sweeps)');
     return { loopRun, agenda };
   }
 

@@ -180,6 +180,17 @@ services:
       # re-score. Any value other than "false" (or unset) leaves it ON.
       - key: SYNC_TRIGGERS_SWEEP
         value: "false"
+      # MASTER SWITCH for all automatic (non-user-initiated) AI spend — the
+      # backstop that keeps every AI request MANUAL. Default OFF: the sweep's
+      # LLM narration (per-campaign reasoning + ANALYZE_PORTFOLIO) runs ONLY for a
+      # user-initiated MANUAL sweep ("Run sweep", revenue upload); ON_READ home
+      # sweeps and SCHEDULED sweeps (agentic cron, post-sync) never narrate, and
+      # the weekly/monthly narrative cron is not scheduled (any persisted repeat is
+      # removed on boot). Copilot + Content Lab (both user-initiated) are unaffected.
+      # Set to "true" to re-enable background AI. This gates the fan-out even if the
+      # finer AGENTIC_CRON_ENABLED / SYNC_TRIGGERS_SWEEP flags are misconfigured.
+      - key: AI_AUTOMATIC_ENABLED
+        value: "false"
       - key: CREDENTIAL_ENCRYPTION_KEY
         sync: false
 

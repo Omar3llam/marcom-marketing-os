@@ -15,7 +15,7 @@
 // ============================================================
 import { Worker } from 'bullmq';
 import { bullConnection, QUEUE_PREFIX } from '../queues/connection.js';
-import { NARRATIVE_QUEUE_NAME, scheduleNarratives } from '../queues/index.js';
+import { NARRATIVE_QUEUE_NAME, scheduleNarratives, unscheduleNarratives } from '../queues/index.js';
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
 import { generateNarrative } from '../services/narrative-engine/NarrativeService.js';
@@ -78,9 +78,26 @@ export function startNarrativeWorker() {
   worker.on('failed', (job, err) => {
     logger.error({ jobId: job?.id, err: err.message }, '[narrative] sweep job failed');
   });
-  scheduleNarratives().catch((err) =>
-    logger.warn({ err: err.message }, '[narrative] schedule deferred — Redis unreachable?'),
-  );
+  // The weekly/monthly narrative cadence authors LEADERSHIP reports via the AI
+  // gateway — automatic AI spend. It is OPT-IN behind AI_AUTOMATIC_ENABLED: the
+  // default (unset/anything else) is OFF so every AI request stays manual, and any
+  // previously-registered repeat is actively REMOVED (BullMQ repeatables persist in
+  // Redis, so skipping the re-add alone would leave an old cron firing forever). A
+  // strategist can still author on demand via POST /narratives/generate. Read
+  // lazily (not a module const) so tests can flip it per call.
+  if (process.env.AI_AUTOMATIC_ENABLED === 'true') {
+    scheduleNarratives().catch((err) =>
+      logger.warn({ err: err.message }, '[narrative] schedule deferred — Redis unreachable?'),
+    );
+  } else {
+    unscheduleNarratives()
+      .then((removed) =>
+        logger.info({ removed }, '[narrative] scheduled reports disabled (set AI_AUTOMATIC_ENABLED=true to enable) — manual authoring only'),
+      )
+      .catch((err) =>
+        logger.warn({ err: err.message }, '[narrative] cron-disable cleanup deferred — Redis unreachable?'),
+      );
+  }
   logger.info('[narrative] worker started');
   return worker;
 }

@@ -139,6 +139,25 @@ export async function scheduleNarratives() {
   await narrativeQueue.add('generate', { period: 'MONTHLY' }, { jobId: 'narrative-monthly-cron', repeat: { pattern: monthly } });
 }
 
+// ── Helper: remove the narrative repeats (AI_AUTOMATIC_ENABLED != true) ───────
+// Mirrors unscheduleAgenticSweep. The weekly/monthly narratives author reports via
+// the AI gateway (automatic spend). BullMQ repeatables PERSIST in Redis, so a
+// previously-registered narrative cron would keep firing (and spending) forever
+// unless actively torn down on boot when automatic AI is disabled. Removal is by
+// key lookup so a repeat registered under an OLD cron value is still found.
+export async function unscheduleNarratives() {
+  if (!narrativeQueue) return 0; // Redis off → nothing was ever scheduled
+  const jobs = await narrativeQueue.getRepeatableJobs();
+  let removed = 0;
+  for (const j of jobs) {
+    if (j.id === 'narrative-weekly-cron' || j.id === 'narrative-monthly-cron') {
+      await narrativeQueue.removeRepeatableByKey(j.key);
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
 // ── Helper: schedule automatic campaign sync ──────────────────
 export async function scheduleCampaignSync() {
   if (!syncQueue) {

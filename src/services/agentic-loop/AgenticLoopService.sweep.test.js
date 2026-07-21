@@ -10,7 +10,7 @@
 // select on the create that OMITS aiInsight. This test locks in that the audit
 // write never projects ai_insight, so a not-yet-migrated column can't crash it.
 // ============================================================
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -52,15 +52,22 @@ import { runPortfolioAnalysis } from '../analysis/PortfolioAnalysisService.js';
 import { runSweep } from './AgenticLoopService.js';
 
 const WS = '7517d1b9-b967-44f3-a77f-60f5c577f867';
+const ORIGINAL_AI = process.env.AI_AUTOMATIC_ENABLED;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  delete process.env.AI_AUTOMATIC_ENABLED; // default: automatic AI OFF (manual-only)
   for (const model of ['decision', 'fatiguePrediction', 'testExperiment', 'plan', 'allocationPlan',
     'action', 'outcomeSnapshot', 'decisionMemoryEntry', 'account', 'campaign', 'adSet']) {
     prisma[model].findMany.mockResolvedValue([]);
   }
   prisma.workspace.findUnique.mockResolvedValue({ objective: null });
   prisma.loopRun.create.mockResolvedValue({ id: 'lr1' });
+});
+
+afterEach(() => {
+  if (ORIGINAL_AI === undefined) delete process.env.AI_AUTOMATIC_ENABLED;
+  else process.env.AI_AUTOMATIC_ENABLED = ORIGINAL_AI;
 });
 
 describe('runSweep — LoopRun audit projection', () => {
@@ -90,31 +97,50 @@ describe('runSweep — LoopRun audit projection', () => {
   });
 });
 
-// The 24/7 token-burn fix: an ON_READ sweep (a plain home/agenda GET, throttled
-// only by the 15-min window) must stay DETERMINISTIC — never fan out to the AI
-// gateway. User-initiated + opt-in-cron sweeps still narrate.
-describe('runSweep — ON_READ skips LLM narration (no automatic token spend)', () => {
-  it('does NOT call the reasoning / portfolio-analysis LLM steps on ON_READ', async () => {
-    const res = await runSweep(WS, { trigger: 'ON_READ', force: true });
+// Manual-only AI: the sweep's LLM narration (per-campaign reasoning + portfolio
+// analysis) is the ONLY token spend, and by default it runs ONLY for a
+// user-initiated MANUAL sweep. Every AUTOMATIC trigger skips it unless
+// AI_AUTOMATIC_ENABLED=true — and an ON_READ home GET NEVER narrates, even then
+// (a frontend poll / uptime monitor hitting it 24/7 must always stay free).
+describe('runSweep — LLM narration is manual-only (no automatic token spend)', () => {
+  const expectNarrated = (n) => {
+    expect(generateReasoningForSweep).toHaveBeenCalledTimes(n);
+    expect(runPortfolioAnalysis).toHaveBeenCalledTimes(n);
+  };
 
-    expect(generateReasoningForSweep).not.toHaveBeenCalled();
-    expect(runPortfolioAnalysis).not.toHaveBeenCalled();
-    // The deterministic agenda + audit are still produced (the read isn't blanked).
-    expect(prisma.loopRun.create).toHaveBeenCalledTimes(1);
+  it('MANUAL (user-initiated) → narrates', async () => {
+    await runSweep(WS, { trigger: 'MANUAL', force: true });
+    expectNarrated(1);
+  });
+
+  it('ON_READ (home GET) → never narrates; the deterministic agenda still lands', async () => {
+    const res = await runSweep(WS, { trigger: 'ON_READ', force: true });
+    expectNarrated(0);
+    expect(prisma.loopRun.create).toHaveBeenCalledTimes(1); // audit still written
     expect(res.agenda).toBeDefined();
   });
 
-  it('DOES call the LLM steps on a user-initiated MANUAL sweep (deliberate spend)', async () => {
-    await runSweep(WS, { trigger: 'MANUAL', force: true });
-
-    expect(generateReasoningForSweep).toHaveBeenCalledTimes(1);
-    expect(runPortfolioAnalysis).toHaveBeenCalledTimes(1);
+  it('SCHEDULED (agentic cron / post-sync) → does NOT narrate by default', async () => {
+    await runSweep(WS, { trigger: 'SCHEDULED', force: true });
+    expectNarrated(0);
+    expect(prisma.loopRun.create).toHaveBeenCalledTimes(1); // deterministic sweep still ran
   });
 
-  it('DOES narrate on a SCHEDULED sweep (opt-in cron — enabling it accepts the spend)', async () => {
+  it('SCHEDULED + AI_AUTOMATIC_ENABLED=true → narrates (opt-in background spend)', async () => {
+    process.env.AI_AUTOMATIC_ENABLED = 'true';
     await runSweep(WS, { trigger: 'SCHEDULED', force: true });
+    expectNarrated(1);
+  });
 
-    expect(generateReasoningForSweep).toHaveBeenCalledTimes(1);
-    expect(runPortfolioAnalysis).toHaveBeenCalledTimes(1);
+  it('ON_READ stays free even when AI_AUTOMATIC_ENABLED=true (a poll must never narrate)', async () => {
+    process.env.AI_AUTOMATIC_ENABLED = 'true';
+    await runSweep(WS, { trigger: 'ON_READ', force: true });
+    expectNarrated(0);
+  });
+
+  it('only the literal "true" enables — "false" keeps SCHEDULED silent', async () => {
+    process.env.AI_AUTOMATIC_ENABLED = 'false';
+    await runSweep(WS, { trigger: 'SCHEDULED', force: true });
+    expectNarrated(0);
   });
 });
