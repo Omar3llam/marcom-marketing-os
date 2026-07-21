@@ -46,7 +46,7 @@ const tools = [
   // ── FREE — always unlocked ──────────────────────────────────
   { key: 'overview',     label: 'Home',         sub: 'Your daily pulse',       icon: Layout,       path: appRoutes.overview,     roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
   { key: 'campaigns',    label: 'Campaigns',    sub: 'Verdicts + diagnosis',   icon: BarChart3,    path: appRoutes.campaigns,    roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
-  { key: 'content',      label: 'Create',       sub: 'AI-powered content',     icon: Send,         path: appRoutes.contentLab,   roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
+  { key: 'content',      label: 'Creative Optimizer', sub: 'Improve creative performance', icon: Send,   path: appRoutes.contentLab,   roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
   { key: 'leadership',   label: 'Reports',      sub: 'Weekly narratives',      icon: FileText,     path: appRoutes.leadership,   plan: 'FREE' },
   // ── GROWTH — locked on FREE ─────────────────────────────────
   { key: 'intelligence', label: 'Intelligence', sub: 'Truth, insights, proof', icon: Brain,        path: appRoutes.intelligence, roles: ['STRATEGIST', 'BUYER'], plan: 'GROWTH' },
