@@ -25,26 +25,36 @@
  * @returns {string} System prompt with hard-lock context rules
  */
 export function buildSystemPrompt(context) {
-  if (!context || !context.companyName || !context.industry || !context.market) {
-    throw new Error(
-      'buildSystemPrompt: context must include companyName, industry, and market'
-    );
-  }
+  // Graceful degradation (connect-first onboarding): a workspace needs only an
+  // identity to get a useful, honest prompt. Missing brand fields are OMITTED,
+  // never fabricated — a placeholder like "Industry: unknown" would invite the
+  // model to invent one, the exact hallucination this builder exists to prevent.
+  const ctx = context ?? {};
 
+  // Onboarding persists the brand name as `name`; older/aliased contexts use
+  // `companyName`. Accept either; null when neither is set.
+  const companyName = ctx.companyName ?? ctx.name ?? null;
+  const industry    = ctx.industry ?? null;
+  const objective   = ctx.objective ?? null;
+
+  // Market always resolves: an un-set workspace is still MENA-scoped by default
+  // (this is an emerging-markets engine), so the market hard-lock lines hold.
   // Onboarding persists `market` as an id (e.g. "eg") plus a human-readable
-  // `marketName` ("Egypt"). Prefer the full name for prompt quality; fall back
-  // to the id so older contexts (no marketName) still work.
-  const market = context.marketName || context.market;
+  // `marketName` ("Egypt"); prefer the full name for prompt quality.
+  const market = ctx.marketName || ctx.market || 'MENA';
+
+  // Role-line phrasing that degrades as identity fields drop away — no dangling
+  // possessives or "undefined's business".
+  const businessPhrase = companyName
+    ? (industry ? `${companyName}'s ${industry} business in ${market}` : `${companyName} in ${market}`)
+    : (industry ? `this ${industry} business in ${market}` : `this business in the ${market} market`);
 
   return `You are Lumi, a specialized AI decision engine for marketing operations in emerging markets.
 
 === TENANT CONTEXT (HARD LOCK) ===
 Your analysis is STRICTLY scoped to:
-- Company: ${context.companyName}
-- Industry: ${context.industry}
-- Market: ${market}
-${context.platform ? `- Primary Platform: ${context.platform}\n` : ''}${context.objective ? `- Objective: ${context.objective}\n` : ''}${context.spendTier ? `- Spend tier: ${context.spendTier}\n` : ''}
-
+${companyName ? `- Business: ${companyName}\n` : ''}${industry ? `- Industry: ${industry}\n` : ''}- Market: ${market}
+${ctx.platform ? `- Primary Platform: ${ctx.platform}\n` : ''}${objective ? `- Objective: ${objective}\n` : ''}${ctx.spendTier ? `- Spend tier: ${ctx.spendTier}\n` : ''}
 === CRITICAL HARD LOCK RULES ===
 1. **Do NOT assume** any business context outside the provided scope above.
 2. **Do NOT mix** data or recommendations between different tenants or contexts.
@@ -56,7 +66,7 @@ ${context.platform ? `- Primary Platform: ${context.platform}\n` : ''}${context.
    - Operate outside the ${market} market scope
 
 === YOUR ROLE ===
-Analyze marketing campaign performance, provide verdicts (SCALE, HOLD, KILL), and surface actionable decisions specific to ${context.companyName}'s ${context.industry} business in ${market}.
+Analyze marketing campaign performance, provide verdicts (SCALE, HOLD, KILL), and surface actionable decisions specific to ${businessPhrase}.
 
 All outputs must be precise, data-driven, and grounded in the specific context provided.
 `;

@@ -29,24 +29,24 @@ export function contextGuard(req, res, next) {
   if (!context || typeof context !== 'object') {
     logger.warn({ userId: req.userId }, '[contextGuard] missing or invalid context object');
     return res.status(400).json({
-      error: 'Context not initialized',
-      hint: 'User must complete onboarding to set company, industry, and market context',
+      error: 'INCOMPLETE_CONTEXT',
+      message: 'Set a workspace name to continue.',
+      hint: 'User must complete onboarding to set a workspace name.',
     });
   }
 
-  // Validate required context fields
-  const required = ['companyName', 'industry', 'market'];
-  const missing = required.filter((field) => !context[field] || context[field].toString().trim() === '');
-
-  if (missing.length > 0) {
-    logger.warn(
-      { userId: req.userId, missing },
-      '[contextGuard] incomplete context — missing required fields'
-    );
+  // Backward-compatible identity check. A workspace only needs an IDENTITY to be
+  // usable — a name (new onboarding) or companyName (legacy/aliased). industry
+  // and market are NO LONGER required here: every downstream prompt builder now
+  // degrades gracefully when they're absent (buildSystemPrompt omits the line;
+  // copilot renders "MENA"/"unknown"), so gating on them only blocked name-only,
+  // connect-first users for no benefit. Mirrors withContextAliases + isOnboarded.
+  const identity = (context.companyName ?? context.name ?? '').toString().trim();
+  if (identity.length === 0) {
+    logger.warn({ userId: req.userId }, '[contextGuard] no workspace identity (name/companyName)');
     return res.status(400).json({
-      error: 'Context not initialized or incomplete',
-      missing,
-      hint: `Context must include: ${required.join(', ')}`,
+      error: 'INCOMPLETE_CONTEXT',
+      message: 'Set a workspace name to continue.',
     });
   }
 
@@ -54,7 +54,7 @@ export function contextGuard(req, res, next) {
   req.context = context;
 
   logger.debug(
-    { userId: req.userId, company: context.companyName, industry: context.industry, market: context.market },
+    { userId: req.userId, company: identity },
     '[contextGuard] context validated'
   );
 
