@@ -1,76 +1,97 @@
 // ============================================================
-// Onboarding completion ALWAYS lands on Overview (Bug 2 fix)
-// ============================================================
-// A brand-new user finishing onboarding must land on Overview — never on an
-// arbitrary ?next= deep link (e.g. /app/settings/security). The ?next= "return
-// where you were" param is for RETURNING users re-authenticating (honored at
-// AuthPage), not first-time onboarding. We stub the step bodies (this exercises
-// the wizard's completion → navigation, not each step's form UI); DEFAULTS with
-// name+industry seeded satisfies validate() at every step.
+// OnboardingPage — connect-first orchestrator (PR#266)
+// ------------------------------------------------------------
+// Step lives in the URL (survives the OAuth redirect). Context is written to the
+// backend only after connect+sync — never in NameStep — so OnboardingRoute can't
+// bounce the user to /app mid-flow. Step bodies are stubbed; this exercises the
+// orchestration (routing + the deferred context write + final navigation).
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
 
 const navigateSpy = vi.hoisted(() => vi.fn());
+const putMock = vi.hoisted(() => vi.fn().mockResolvedValue({}));
 
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, useNavigate: () => navigateSpy };
 });
-vi.mock('@/context/AuthContext.jsx', () => ({
-  useAuth: () => ({ currentUser: { displayName: 'Acme', email: 'a@b.co' } }),
-}));
-vi.mock('@/lib/api.js', () => ({
-  api: { put: vi.fn().mockResolvedValue({ data: { user: { context: { name: 'Acme' } } } }) },
-}));
-vi.mock('@/router/ProtectedRoute.jsx', () => ({ primeContextCache: vi.fn() }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/context/AuthContext.jsx', () => ({ useAuth: () => ({ currentUser: { email: 'a@b.co' } }) }));
+vi.mock('@/lib/api.js', () => ({ api: { put: putMock } }));
 
-// Step bodies are irrelevant to this test — stub them so navigation is decoupled
-// from each step's form internals.
-vi.mock('./steps/WelcomeStep.jsx', () => ({ WelcomeStep: () => <div>welcome</div> }));
-vi.mock('./steps/IdentityStep.jsx', () => ({ IdentityStep: () => <div>identity</div> }));
-vi.mock('./steps/IndustryStep.jsx', () => ({ IndustryStep: () => <div>industry</div> }));
-vi.mock('./steps/AudienceStep.jsx', () => ({ AudienceStep: () => <div>audience</div> }));
-vi.mock('./steps/VoiceStep.jsx', () => ({ VoiceStep: () => <div>voice</div> }));
-vi.mock('./steps/ChannelsStep.jsx', () => ({ ChannelsStep: () => <div>channels</div> }));
-vi.mock('./steps/SpendStep.jsx', () => ({ SpendStep: () => <div>spend</div> }));
-vi.mock('./steps/ObjectiveStep.jsx', () => ({ ObjectiveStep: () => <div>objective</div> }));
-vi.mock('./steps/ReviewStep.jsx', () => ({ ReviewStep: () => <div>review</div> }));
-// Seed industry (DEFAULTS leaves it empty) so the industry step validates; name
-// comes from the mocked currentUser.displayName.
-vi.mock('./constants.js', async (importOriginal) => {
-  const actual = await importOriginal();
-  return { ...actual, DEFAULTS: { ...actual.DEFAULTS, industry: 'ecommerce' } };
-});
+vi.mock('./steps/NameStep.jsx', () => ({
+  // Mirror the real step: the name flows via localStorage (survives OAuth), not props.
+  NameStep: ({ onNext }) => (
+    <button onClick={() => { localStorage.setItem('marcom:onboarding:name', 'Acme'); onNext('Acme'); }}>
+      go-connect
+    </button>
+  ),
+}));
+vi.mock('./steps/ConnectStep.jsx', () => ({
+  ConnectStep: ({ onConnected, onSkip }) => (
+    <div>
+      <button onClick={onConnected}>go-sync</button>
+      <button onClick={onSkip}>skip</button>
+    </div>
+  ),
+}));
+vi.mock('./steps/SyncStep.jsx', () => ({
+  SyncStep: ({ onComplete }) => <button onClick={onComplete}>go-ready</button>,
+}));
+vi.mock('./steps/ReadyStep.jsx', () => ({
+  ReadyStep: ({ onEnterApp }) => <button onClick={onEnterApp}>enter-app</button>,
+}));
 
 import OnboardingPage from './index.jsx';
 
-async function completeOnboarding(initialUrl) {
-  render(
-    <MemoryRouter initialEntries={[initialUrl]}>
-      <OnboardingPage />
-    </MemoryRouter>,
-  );
-  // Welcome → … → Objective (8 "Continue" clicks), then the final "Launch Lumi".
-  for (let i = 0; i < 8; i++) {
-    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
-  }
-  fireEvent.click(screen.getByRole('button', { name: /launch lumi/i }));
-  await waitFor(() => expect(navigateSpy).toHaveBeenCalled());
+function mountAt(search) {
+  window.history.replaceState({}, '', `/onboarding${search}`);
+  return render(<OnboardingPage />);
 }
 
-describe('OnboardingPage — completion always lands on Overview (Bug 2)', () => {
-  beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  putMock.mockResolvedValue({});
+  localStorage.clear();
+});
 
-  it('navigates to /app/overview after onboarding (no ?next=)', async () => {
-    await completeOnboarding('/onboarding');
-    expect(navigateSpy).toHaveBeenCalledWith('/app/overview', { replace: true });
+describe('OnboardingPage — connect-first flow', () => {
+  it('defaults to the name step when no ?step is present', () => {
+    mountAt('');
+    expect(screen.getByText('go-connect')).toBeInTheDocument();
   });
 
-  it('IGNORES ?next= and still lands on /app/overview — never the deep link', async () => {
-    await completeOnboarding('/onboarding?next=/app/settings/security');
+  it('reads the step from the URL (survives the OAuth redirect)', () => {
+    mountAt('?step=sync');
+    expect(screen.getByText('go-ready')).toBeInTheDocument();
+  });
+
+  it('advances name → connect → sync → ready and never writes context before sync', async () => {
+    mountAt('');
+    fireEvent.click(screen.getByText('go-connect'));       // name → connect
+    expect(putMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('go-sync'));           // connect → sync
+    expect(putMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText('go-ready'));          // sync done → writes context, → ready
+    await waitFor(() => expect(putMock).toHaveBeenCalledTimes(1));
+    expect(putMock).toHaveBeenCalledWith('/api/campaigns/me/context', expect.objectContaining({
+      context: { name: 'Acme' },
+      workspaceName: 'Acme',
+    }));
+    await waitFor(() => expect(screen.getByText('enter-app')).toBeInTheDocument());
+  });
+
+  it('final CTA navigates to /app/campaigns', async () => {
+    localStorage.setItem('marcom:onboarding:name', 'Acme');
+    mountAt('?step=ready');
+    fireEvent.click(screen.getByText('enter-app'));
+    expect(navigateSpy).toHaveBeenCalledWith('/app/campaigns', { replace: true });
+  });
+
+  it('skip writes context and lands on /app/overview', async () => {
+    localStorage.setItem('marcom:onboarding:name', 'Acme');
+    mountAt('?step=connect');
+    fireEvent.click(screen.getByText('skip'));
+    await waitFor(() => expect(putMock).toHaveBeenCalled());
     expect(navigateSpy).toHaveBeenCalledWith('/app/overview', { replace: true });
-    expect(navigateSpy).not.toHaveBeenCalledWith('/app/settings/security', expect.anything());
   });
 });

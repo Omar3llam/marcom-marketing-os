@@ -40,16 +40,19 @@ function hmacKey() {
 }
 
 // ── STATE HELPERS ────────────────────────────────────────────
-// State format:  <userId>:<projectId>:<timestamp_ms>
-// MAC is computed over that string and appended as :<mac>
-
-function buildState(userId, projectId) {
-  const payload = `${userId}:${projectId}:${Date.now()}`;
+// State format (new):  <userId>:<projectId>:<returnTo_base64url>:<timestamp_ms>
+// State format (legacy): <userId>:<projectId>:<timestamp_ms>
+// MAC is computed over that string and appended as :<mac>. returnTo is base64url
+// so its slashes/query chars never collide with the ':' delimiter, and parse
+// stays backward compatible with in-flight legacy states (3 payload parts).
+export function buildState(userId, projectId, returnTo) {
+  const rt      = Buffer.from(returnTo || '').toString('base64url');
+  const payload = `${userId}:${projectId}:${rt}:${Date.now()}`;
   const mac     = createHmac('sha256', hmacKey()).update(payload).digest('hex');
   return Buffer.from(`${payload}:${mac}`).toString('base64url');
 }
 
-function parseState(stateB64) {
+export function parseState(stateB64) {
   try {
     const decoded = Buffer.from(stateB64, 'base64url').toString('utf8');
     const parts   = decoded.split(':');
@@ -61,14 +64,42 @@ function parseState(stateB64) {
     const a = Buffer.from(mac,      'hex');
     const b = Buffer.from(expected, 'hex');
     if (a.length !== b.length || !timingSafeEqual(a, b)) throw new Error('State HMAC mismatch');
-    const [userId, projectId, tsStr] = parts;
+
+    // New format carries returnTo at index 2 (ts at 3); legacy has ts at index 2.
+    let userId, projectId, returnTo = null, tsStr;
+    if (parts.length >= 4) {
+      [userId, projectId, , tsStr] = parts;
+      returnTo = parts[2] ? Buffer.from(parts[2], 'base64url').toString('utf8') : null;
+    } else {
+      [userId, projectId, tsStr] = parts;
+    }
     const age = Date.now() - parseInt(tsStr, 10);
     if (age > 10 * 60 * 1000) throw new Error('State expired (>10 min)');
-    return { userId, projectId };
+    return { userId, projectId, returnTo };
   } catch (err) {
     logger.warn({ err: err.message }, '[meta-auth] Invalid OAuth state');
     return null;
   }
+}
+
+// Only same-origin app paths may be an OAuth return target — never an external
+// URL (open-redirect) or an arbitrary path. Defaults to the historical Settings.
+const ALLOWED_RETURN_PREFIXES = ['/app/', '/onboarding'];
+export function safeReturnTo(returnTo) {
+  if (typeof returnTo === 'string' && ALLOWED_RETURN_PREFIXES.some((p) => returnTo.startsWith(p))) {
+    return returnTo;
+  }
+  return '/app/settings';
+}
+
+// Append query params to a path that may already carry a query string.
+function withParams(base, params) {
+  const qs = Object.entries(params)
+    .filter(([, v]) => v != null && v !== '')
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+    .join('&');
+  if (!qs) return base;
+  return `${base}${base.includes('?') ? '&' : '?'}${qs}`;
 }
 
 // ── CONNECT  GET /api/auth/meta/connect?projectId=xxx ────────
@@ -89,7 +120,7 @@ authMetaRouter.get('/connect', requireAuth, (req, res, next) => {
       return res.status(503).json({ error: 'META_APP_ID is not configured on this server.' });
     }
 
-    const state = buildState(userId, projectId);
+    const state = buildState(userId, projectId, req.query.returnTo);
     const oauthUrl = `https://www.facebook.com/${API_VERSION}/dialog/oauth`
       + `?client_id=${encodeURIComponent(APP_ID())}`
       + `&redirect_uri=${encodeURIComponent(REDIRECT_URI())}`
@@ -116,14 +147,18 @@ authMetaRouter.get('/connect', requireAuth, (req, res, next) => {
 authMetaRouter.get('/callback', async (req, res) => {
   const { code, state: stateParam, error: oauthError, error_description } = req.query;
 
+  // Parse state first so every redirect (incl. denial) can return the user to
+  // wherever they started the connect from (onboarding vs Settings).
+  const stateData = parseState(stateParam || '');
+  const returnTo  = safeReturnTo(stateData?.returnTo);
+
   // ── User denied the OAuth permission dialog
   if (oauthError) {
     logger.warn({ oauthError, error_description }, '[meta-auth] User denied Meta OAuth');
-    return res.redirect('/app/settings?meta_error=denied');
+    return res.redirect(withParams(returnTo, { meta_error: 'denied' }));
   }
 
-  // ── Validate state HMAC
-  const stateData = parseState(stateParam || '');
+  // ── Validate state HMAC (invalid → can't trust returnTo, use the default)
   if (!stateData) {
     return res.redirect('/app/settings?meta_error=invalid_state');
   }
@@ -133,7 +168,7 @@ authMetaRouter.get('/callback', async (req, res) => {
   const project = await getProject(userId, projectId).catch(() => null);
   if (!project) {
     logger.warn({ userId, projectId }, '[meta-auth] Project not found in callback');
-    return res.redirect('/app/settings?meta_error=project_not_found');
+    return res.redirect(withParams(returnTo, { meta_error: 'project_not_found' }));
   }
 
   try {
@@ -202,13 +237,14 @@ authMetaRouter.get('/callback', async (req, res) => {
       logger.warn({ err: stampErr.message, userId }, '[meta-auth] workspace stamp failed (non-fatal — feed unaffected)');
     }
 
-    // ── Redirect back to app with success flag
-    return res.redirect(
-      `/app/settings?meta_connected=1&projectId=${encodeURIComponent(projectId)}`
-      + (adAccountId ? `&adAccountId=${encodeURIComponent(adAccountId)}` : '')
-    );
+    // ── Redirect back to wherever the connect started (Settings, or onboarding)
+    return res.redirect(withParams(returnTo, {
+      meta_connected: '1',
+      projectId,
+      adAccountId: adAccountId || undefined,
+    }));
   } catch (err) {
     logger.error({ err: err.message, userId, projectId }, '[meta-auth] Callback error');
-    return res.redirect(`/app/settings?meta_error=server_error`);
+    return res.redirect(withParams(returnTo, { meta_error: 'server_error' }));
   }
 });
