@@ -52,20 +52,39 @@ export function WhyLumiDecides() {
           ))}
         </ol>
 
-        {/* Verdict result */}
-        <div className="mt-10 p-5 rounded-xl bg-signal-kill/10 border border-signal-kill/20">
-          <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-dark-muted mb-2">
-            Lumi&apos;s verdict
-          </p>
-          <div className="flex items-center gap-3 mb-1">
+        {/* Verdict result — a full verdict card, the payoff of the timeline */}
+        <div className="mt-10 p-6 rounded-2xl bg-signal-kill/10 border border-signal-kill/25">
+          <div className="flex items-center justify-between mb-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-dark-muted">
+              Lumi&apos;s verdict
+            </p>
+            <span className="font-mono text-xs text-dark-muted">
+              Confidence <strong className="text-dark-base font-semibold">94%</strong>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2.5 mb-6">
+            <span className="w-2.5 h-2.5 rounded-full bg-signal-kill" aria-hidden="true" />
             <span className="inline-flex items-center px-3.5 py-1.5 rounded-lg bg-signal-kill/15 border border-signal-kill/30 font-mono text-sm font-bold tracking-[0.14em] text-signal-kill">
               KILL
             </span>
-            <span className="font-mono text-xs text-dark-muted">Confidence 94%</span>
           </div>
-          <p className="text-sm text-dark-soft mt-3">
-            Pause immediately. Audience exhausted. Budget better spent on a fresh creative.
-          </p>
+
+          <div className="grid sm:grid-cols-2 gap-6">
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-dark-muted mb-2.5">Reason</p>
+              <ul className="space-y-1.5 text-sm text-dark-soft">
+                <li>CTR dropped 42%</li>
+                <li>Frequency reached 7.1</li>
+                <li>CPA increased 31%</li>
+              </ul>
+            </div>
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-dark-muted mb-2.5">Recommendation</p>
+              <p className="text-sm text-dark-base font-medium">Pause today.</p>
+              <p className="text-sm text-dark-soft">Launch a fresh creative.</p>
+            </div>
+          </div>
         </div>
       </div>
     </section>

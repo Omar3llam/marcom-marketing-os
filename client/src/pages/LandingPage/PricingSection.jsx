@@ -10,7 +10,7 @@ export function Pricing({ onStartFree }) {
       name: 'Free',
       price: '$0',
       period: 'forever',
-      persona: 'For freelancers and solo media buyers',
+      persona: 'Learn how Lumi scores campaigns.',
       features: [
         'Meta + Google connectors',
         'Campaign verdicts (Kill / Hold / Watch / Scale)',
@@ -26,7 +26,7 @@ export function Pricing({ onStartFree }) {
       name: 'Growth',
       price: '$49',
       period: '/month',
-      persona: 'For performance agencies',
+      persona: 'For freelancers and small teams.',
       features: [
         'Everything in Free',
         'Blended Truth reconciliation',
@@ -43,7 +43,7 @@ export function Pricing({ onStartFree }) {
       name: 'Pro',
       price: '$149',
       period: '/month',
-      persona: 'For in-house marketing teams',
+      persona: 'For agencies and in-house marketing teams.',
       features: [
         'Everything in Growth',
         'A/B Testing OS',

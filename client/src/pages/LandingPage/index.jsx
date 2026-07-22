@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, Menu, X } from 'lucide-react';
 import { Hero } from './HeroSection.jsx';
+import { SignalToAction } from './SignalToActionSection.jsx';
 import { TrustedBy } from './SocialProofSection.jsx';
 import { CapabilitiesGrid, HowItWorks } from './FeaturesSection.jsx';
 import { WhyLumiDecides } from './WhyKillSection.jsx';
@@ -25,6 +26,7 @@ export default function LandingPage() {
     <div className="min-h-screen bg-surface-light text-dark-base">
       <Navbar menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
       <Hero />
+      <SignalToAction />
       <TrustedBy />
       <CapabilitiesGrid />
       <WhyLumiDecides />

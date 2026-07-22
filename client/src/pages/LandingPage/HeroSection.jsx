@@ -36,12 +36,12 @@ export function Hero() {
           <h1 className="font-display font-extrabold tracking-[-0.045em] leading-[0.94] text-lumi-text text-balance text-5xl sm:text-6xl lg:text-7xl xl:text-8xl">
             Know what to<br />
             do next.<br />
-            Every sync.
+            After every sync.
           </h1>
 
-          <p className="mt-7 text-lg text-dark-soft max-w-[540px] leading-relaxed">
-            Lumi turns campaign signals into clear verdicts. Know exactly what to
-            scale, pause, refresh, or watch after every campaign sync.
+          <p className="mt-7 text-lg text-dark-soft max-w-[560px] leading-relaxed">
+            Lumi analyzes every Meta and Google campaign, scores performance, and
+            tells you exactly what to kill, scale, refresh, or watch.
           </p>
 
           {/* Trust strip — below subheadline, before the CTAs */}
@@ -79,13 +79,20 @@ export function Hero() {
 
 // ── Hero composition: a single campaign verdict ──
 // An illustrative preview of a real Lumi verdict (Campaigns → drill-down), framed
-// as a product window. The signals + recommendation mirror the live verdict card;
-// the numbers are an example.
-const WHY_SIGNALS = [
-  { label: 'CTR',       value: '0.48%', sub: '42% below average' },
-  { label: 'Frequency', value: '7.1',   sub: 'Audience exhausted' },
-  { label: 'CPA',       value: '+31%',  sub: 'Rising with no return' },
-];
+// as a product window. Each block is labelled so the card reads as a *decision* —
+// verdict, confidence, the primary reason, the recommendation — not a metric dump.
+// The numbers are an example.
+function Label({ children }) {
+  return (
+    <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-lumi-muted mb-1.5">
+      {children}
+    </p>
+  );
+}
+
+function Rule() {
+  return <div className="h-px bg-lumi-border" />;
+}
 
 function VerdictDemo() {
   return (
@@ -105,49 +112,55 @@ function VerdictDemo() {
           <span className="ml-2 font-mono text-[10px] text-lumi-muted">Lumi — Campaign Analysis</span>
         </div>
 
-        <div className="p-5">
+        <div className="p-5 space-y-4">
           {/* Campaign */}
-          <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-lumi-muted mb-1">Campaign</p>
-          <p className="font-display text-sm font-semibold text-lumi-text mb-4">Alexandria Villas — July</p>
-
-          <div className="h-px bg-lumi-border" />
-
-          {/* Verdict */}
-          <div className="my-4 flex items-center justify-between">
-            <span className="font-mono text-lg font-bold tracking-[0.12em] text-signal-kill">KILL</span>
-            <span className="font-mono text-[10px] text-lumi-muted">
-              Confidence <strong className="text-lumi-text font-semibold">94%</strong>
-            </span>
+          <div>
+            <Label>Campaign</Label>
+            <p className="font-display text-sm font-semibold text-lumi-text">Alexandria Villas — July</p>
           </div>
 
-          <div className="h-px bg-lumi-border" />
+          <Rule />
 
-          {/* Why */}
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-lumi-muted mt-4 mb-2.5">Why</p>
-          <div className="space-y-2.5 mb-4">
-            {WHY_SIGNALS.map(({ label, value, sub }) => (
-              <div key={label} className="flex items-start justify-between">
-                <div>
-                  <p className="text-xs text-lumi-text">{label}</p>
-                  <p className="text-[10px] text-lumi-muted">{sub}</p>
-                </div>
-                <span className="text-sm font-semibold tabular-nums text-signal-kill">{value}</span>
-              </div>
-            ))}
+          {/* Verdict + confidence */}
+          <div className="flex items-end justify-between">
+            <div>
+              <Label>Verdict</Label>
+              <span className="inline-flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-signal-kill" />
+                <span className="font-mono text-lg font-bold tracking-[0.12em] text-signal-kill">KILL</span>
+              </span>
+            </div>
+            <div className="text-right">
+              <Label>Confidence</Label>
+              <span className="font-display text-sm font-semibold text-lumi-text tabular-nums">94%</span>
+            </div>
           </div>
 
-          <div className="h-px bg-lumi-border" />
+          <Rule />
+
+          {/* Primary reason */}
+          <div>
+            <Label>Primary reason</Label>
+            <p className="text-sm text-lumi-text">
+              CTR <span className="text-signal-kill font-semibold">↓ 42%</span> below average
+            </p>
+          </div>
+
+          <Rule />
 
           {/* Recommendation */}
-          <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-lumi-muted mt-4 mb-1.5">Recommendation</p>
-          <p className="text-sm text-lumi-text font-medium">Pause today.</p>
-          <p className="text-sm text-lumi-muted">Launch fresh creative.</p>
-          <p className="text-sm text-lumi-muted">Retest in 7 days.</p>
+          <div>
+            <Label>Recommendation</Label>
+            <p className="text-sm text-lumi-text font-medium">Pause today.</p>
+            <p className="text-sm text-lumi-muted">Launch a new creative angle.</p>
+          </div>
+
+          <Rule />
 
           {/* Next sync */}
-          <div className="mt-4 pt-3 border-t border-lumi-border flex items-center justify-between">
+          <div className="flex items-center justify-between">
             <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-lumi-muted">Next sync</span>
-            <span className="flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-signal-scale animate-pulse" />
               <span className="font-mono text-[10px] text-lumi-accent">14 minutes</span>
             </span>
