@@ -20,11 +20,16 @@ import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
 // without ?projectId); Google connect is WORKSPACE-scoped (no projectId). The
 // old Settings flow passed projectId — without it the connect silently no-ops.
 const CONNECT_PATH = { GOOGLE: '/api/auth/google/connect', META: '/api/auth/meta/connect' };
-export async function startConnect(platform, projectId) {
+// `returnTo` (optional) is the app path the OAuth callback should send the browser
+// back to — Meta threads it through the signed state. Onboarding passes its own
+// step so the full-page redirect lands back in the flow, not in Settings.
+export async function startConnect(platform, projectId, returnTo) {
   const path = CONNECT_PATH[platform];
   if (!path) return;
-  const config = platform === 'META' && projectId ? { params: { projectId } } : undefined;
-  const res = await api.get(path, config);
+  const params = {};
+  if (platform === 'META' && projectId) params.projectId = projectId;
+  if (returnTo) params.returnTo = returnTo;
+  const res = await api.get(path, Object.keys(params).length ? { params } : undefined);
   if (res.data?.oauthUrl) window.location.href = res.data.oauthUrl;
 }
 

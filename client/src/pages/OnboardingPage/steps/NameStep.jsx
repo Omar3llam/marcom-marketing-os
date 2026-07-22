@@ -1,0 +1,38 @@
+import { useState } from 'react';
+import { ArrowRight } from 'lucide-react';
+import { PRIMARY_BTN, DARK_INPUT, ONBOARDING_NAME_KEY } from './onboardingStyles.js';
+
+// Step 1 — the only field on the first-verdict critical path. Persists to
+// localStorage (survives the OAuth redirect); the backend context is written
+// later, after connect + sync.
+export function NameStep({ onNext }) {
+  const [name, setName] = useState(() => {
+    try { return localStorage.getItem(ONBOARDING_NAME_KEY) ?? ''; } catch { return ''; }
+  });
+
+  const advance = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    try { localStorage.setItem(ONBOARDING_NAME_KEY, trimmed); } catch { /* ignore */ }
+    onNext(trimmed);
+  };
+
+  return (
+    <div>
+      <h1 className="decision-title text-lumi-text mb-2">What&apos;s your workspace called?</h1>
+      <p className="text-sm text-lumi-muted mb-6">This is how Lumi identifies your account.</p>
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') advance(); }}
+        placeholder="e.g. Acme Marketing"
+        aria-label="Workspace name"
+        autoFocus
+        className={`${DARK_INPUT} mb-4`}
+      />
+      <button type="button" onClick={advance} disabled={!name.trim()} className={PRIMARY_BTN}>
+        Continue <ArrowRight className="w-4 h-4" strokeWidth={2} />
+      </button>
+    </div>
+  );
+}
