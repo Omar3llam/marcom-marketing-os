@@ -1,4 +1,4 @@
-import { Eye, Zap, MessageSquare, Activity, BarChart2, FileText, Plug, Sparkles, Brain } from 'lucide-react';
+import { Eye, Gauge, MessageSquare, Flame, TrendingUp, BookOpen, Activity, BarChart2, Zap, Plug, Sparkles, Brain } from 'lucide-react';
 import { useReveal } from './useReveal.js';
 
 // The path a campaign travels through Lumi — Connect → Collect Signals → Score →
@@ -9,7 +9,7 @@ const WORKFLOW = [
   { n: '01', Icon: Plug,      label: 'Connect',             desc: 'OAuth your Meta or Google account in 2 minutes.' },
   { n: '02', Icon: Activity,  label: 'Collect Signals',     desc: 'CTR, frequency, spend, ROAS — captured every sync.' },
   { n: '03', Icon: BarChart2, label: 'Score',               desc: 'Every campaign benchmarked against your portfolio.' },
-  { n: '04', Icon: Zap,       label: 'Verdict',             desc: 'KILL · SCALE · HOLD · WATCH — with a reason.' },
+  { n: '04', Icon: Zap,       label: 'Verdict',             desc: 'KILL · SCALE · HOLD · WATCH — each with a reason and a confidence score.' },
   { n: '05', Icon: Sparkles,  label: 'Recommended Actions', desc: 'Pause, reallocate, refresh, or scale. Specific steps.' },
   { n: '06', Icon: Brain,     label: 'Decision Memory',     desc: 'Lumi learns from every verdict. Gets sharper over time.' },
 ];
@@ -43,9 +43,9 @@ export function CapabilitiesGrid() {
       wide: true,
     },
     {
-      Icon: Zap,
+      Icon: Gauge,
       title: 'Clear verdicts',
-      body: 'Kill, Hold, Watch, or Scale — with a reason. Not a dashboard to decode. A decision to act on.',
+      body: 'Kill, Hold, Watch, or Scale — with a reason and a confidence score. Not a dashboard to decode. A decision to act on.',
     },
     {
       Icon: MessageSquare,
@@ -54,18 +54,18 @@ export function CapabilitiesGrid() {
       badge: 'NEW',
     },
     {
-      Icon: Activity,
+      Icon: Flame,
       title: 'Audience fatigue forecast',
       body: 'See which audiences are close to burning out before they get there. Frequency rising too fast? Lumi flags it before your CTR collapses.',
       badge: 'NEW',
     },
     {
-      Icon: BarChart2,
+      Icon: TrendingUp,
       title: 'Revenue-based scoring',
       body: 'Upload your revenue data once. Lumi calculates real ROAS per campaign — not what Meta claims, what actually happened in your business.',
     },
     {
-      Icon: FileText,
+      Icon: BookOpen,
       title: 'Weekly narratives',
       body: 'Every Monday, a plain-language summary of what happened, what changed, and what needs attention — ready to send to a client.',
       wide: true,

@@ -6,10 +6,11 @@ export function BottomCTA({ onCta }) {
       <div className="max-w-4xl mx-auto bg-lumi-elevated border border-lumi-border-strong rounded-3xl p-8 sm:p-12 shadow-modal text-center">
         <div className="section-label">Get started</div>
         <h2 className="mt-2 decision-title sm:text-4xl text-lumi-text">
-          Your campaigns are running right now. Do you know which ones are bleeding?
+          Get your first verdict in under 2 minutes.
         </h2>
         <p className="mt-4 max-w-lg mx-auto text-lumi-muted text-sm sm:text-base">
-          Connect Meta in 2 minutes. Get your first verdict before your next sync.
+          Connect Meta, and Lumi scores every campaign before your next sync — with a
+          confidence score on every call.
         </p>
         <button
           type="button"
