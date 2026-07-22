@@ -34,7 +34,7 @@ describe('SyncStep', () => {
   it('renders the progress phases', () => {
     api.post.mockResolvedValue({ data: { synced: 0 } });
     render(<SyncStep onComplete={vi.fn()} />);
-    expect(screen.getByText(/analyzing your campaigns/i)).toBeInTheDocument();
+    expect(screen.getByText(/analyzing your account/i)).toBeInTheDocument();
     expect(screen.getByText(/building verdicts/i)).toBeInTheDocument();
   });
 });

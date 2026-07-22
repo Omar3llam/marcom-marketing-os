@@ -38,7 +38,12 @@
     "verdict-enter":   "verdict-enter 520ms cubic-bezier(0.16,1,0.3,1) both",
     "intel-pulse":     "intel-pulse 1.6s ease-in-out infinite",
     "scan-line":       "scan-line 1.8s ease-in-out infinite",
-    "confidence-fill": "confidence-fill 600ms cubic-bezier(0.16,1,0.3,1) both"
+    "confidence-fill": "confidence-fill 600ms cubic-bezier(0.16,1,0.3,1) both",
+
+    "step-in":         "step-in 280ms ease-out both",
+    "fade-up":         "fade-up 300ms ease-out both",
+    "fade-up-delay":   "fade-up 300ms 180ms ease-out both",
+    "fade-up-late":    "fade-up 300ms 320ms ease-out both"
   },
 
   "keyframes": {
@@ -96,6 +101,14 @@
     "confidence-fill": {
       "from": { "transform": "scaleX(0)", "transformOrigin": "left" },
       "to":   { "transform": "scaleX(1)", "transformOrigin": "left" }
+    },
+    "step-in": {
+      "from": { "opacity": "0", "transform": "translateY(10px)" },
+      "to":   { "opacity": "1", "transform": "translateY(0)" }
+    },
+    "fade-up": {
+      "from": { "opacity": "0", "transform": "translateY(8px)" },
+      "to":   { "opacity": "1", "transform": "translateY(0)" }
     }
   }
 }

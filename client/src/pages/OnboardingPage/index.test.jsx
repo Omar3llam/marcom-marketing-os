@@ -65,6 +65,15 @@ describe('OnboardingPage — connect-first flow', () => {
     expect(screen.getByText('go-ready')).toBeInTheDocument();
   });
 
+  it('labels every progress bar and highlights the current step', () => {
+    mountAt('?step=sync');
+    ['Workspace', 'Connect', 'Analyze', 'Verdict'].forEach((label) => {
+      expect(screen.getByText(label)).toBeInTheDocument();
+    });
+    expect(screen.getByText('Analyze').className).toMatch(/text-lumi-gold/);
+    expect(screen.getByText('Verdict').className).not.toMatch(/text-lumi-gold/);
+  });
+
   it('advances name → connect → sync → ready and never writes context before sync', async () => {
     mountAt('');
     fireEvent.click(screen.getByText('go-connect'));       // name → connect
