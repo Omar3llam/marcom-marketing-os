@@ -36,25 +36,38 @@ export function SyncStep({ onComplete }) {
     return () => timers.forEach(clearTimeout);
   }, [onComplete]);
 
+  // The timeline IS the progress indicator — no separate spinner above it.
   return (
-    <div className="text-center">
-      <Loader2 className="w-8 h-8 text-lumi-gold animate-spin mx-auto mb-3" strokeWidth={1.5} />
-      <h1 className="decision-title text-lumi-text">Analyzing your campaigns</h1>
+    <div>
+      <h1 className="decision-title text-lumi-text mb-2">Analyzing your account</h1>
       <p className="text-sm text-lumi-muted mb-8">This usually takes under a minute.</p>
 
-      <div className="space-y-3 text-left">
-        {PHASES.map((label, i) => (
-          <div key={label} className="flex items-center gap-3">
-            {i < phaseIdx
-              ? <CheckCircle2 className="w-4 h-4 text-signal-scale flex-shrink-0" strokeWidth={2} />
-              : i === phaseIdx
-                ? <Loader2 className="w-4 h-4 text-lumi-gold animate-spin flex-shrink-0" strokeWidth={2} />
-                : <span className="w-4 h-4 rounded-full border border-lumi-border flex-shrink-0" />}
-            <span className={`text-sm ${i < phaseIdx ? 'text-lumi-text' : i === phaseIdx ? 'text-lumi-gold' : 'text-lumi-muted'}`}>
-              {label}
-            </span>
-          </div>
-        ))}
+      <div className="space-y-4">
+        {PHASES.map((label, i) => {
+          const done = i < phaseIdx;
+          const active = i === phaseIdx;
+          return (
+            <div
+              key={label}
+              className={`flex items-center gap-3 transition-opacity duration-300 ${
+                done || active ? 'opacity-100' : 'opacity-30'
+              }`}
+            >
+              {done
+                ? <CheckCircle2 className="w-[18px] h-[18px] text-signal-scale flex-shrink-0" strokeWidth={2} />
+                : active
+                  ? <Loader2 className="w-[18px] h-[18px] text-lumi-gold animate-spin flex-shrink-0" strokeWidth={2} />
+                  : <span className="w-[18px] h-[18px] rounded-full border border-lumi-border flex-shrink-0" />}
+              <span
+                className={`text-sm font-medium ${
+                  done ? 'text-lumi-text' : active ? 'text-lumi-gold' : 'text-lumi-muted'
+                }`}
+              >
+                {label}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

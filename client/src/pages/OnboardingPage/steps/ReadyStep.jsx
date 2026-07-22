@@ -1,26 +1,33 @@
 import { CheckCircle2, ArrowRight } from 'lucide-react';
-import { VerdictBadge } from '@/components/primitives/signals/VerdictBadge.jsx';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { PRIMARY_BTN } from './onboardingStyles.js';
 
-// The payoff of the whole flow: lead with the verdict, not a status checklist.
-// The next-action line is derived from the verdict itself — deterministic, never
-// from the AI — and only KILL/SCALE reach it (topVerdict is filtered to those).
+// The payoff of the whole flow: the verdict IS the page. The status counts are
+// demoted to chips under the CTA.
+//
+// The verdict projection carries `signalType` + `recommendationTypes` but no
+// prose `recommendation` field (yet). Prefer a backend-authored one the moment it
+// exists; until then fall back to the verdict-level deterministic line — which is
+// exactly the fallback the engine's own projection comment describes. Never the
+// AI, never fabricated.
 const RECOMMENDATION = {
   KILL:  'Pause this campaign today and move its budget to a stronger performer.',
   SCALE: 'Raise the budget or widen the audience — this campaign has room to grow.',
 };
 
-function Row({ ok, children }) {
+function Chip({ done, children }) {
   return (
-    <div className="flex items-center gap-2.5">
-      <CheckCircle2
-        className={`w-4 h-4 flex-shrink-0 ${ok ? 'text-signal-scale' : 'text-lumi-muted'}`}
-        strokeWidth={2}
-      />
-      <span className="text-sm text-lumi-muted">{children}</span>
-    </div>
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${
+        done
+          ? 'border-signal-scale/30 text-signal-scale bg-signal-scale/5'
+          : 'border-lumi-border text-lumi-muted'
+      }`}
+    >
+      {done && <CheckCircle2 className="w-3 h-3" strokeWidth={2.5} />}
+      {children}
+    </span>
   );
 }
 
@@ -29,9 +36,8 @@ function Row({ ok, children }) {
 function Skeleton() {
   return (
     <div>
-      <div className="h-3 w-24 rounded bg-lumi-border/40 animate-pulse mb-3" />
-      <div className="h-7 w-56 rounded bg-lumi-border/40 animate-pulse mb-6" />
-      <div className="h-40 w-full rounded-xl bg-lumi-border/20 animate-pulse mb-6" />
+      <div className="h-3 w-24 rounded bg-lumi-border/40 animate-pulse mb-4" />
+      <div className="h-44 w-full rounded-2xl bg-lumi-border/20 animate-pulse mb-5" />
       <div className="h-11 w-full rounded-xl bg-lumi-border/20 animate-pulse" />
     </div>
   );
@@ -54,96 +60,76 @@ export function ReadyStep({ onEnterApp }) {
       .filter((v) => v.verdict === 'KILL' || v.verdict === 'SCALE')
       .sort((a, b) => (b.spendMinor ?? 0) - (a.spendMinor ?? 0))[0] ?? null;
 
-  // ---- Verdict-first outcome ------------------------------------------------
-  if (topVerdict) {
-    const isKill = topVerdict.verdict === 'KILL';
-    return (
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-lumi-gold mb-2">
-          Verdict ready
-        </p>
-        <h1 className="decision-title text-lumi-text mb-6">Your first verdict is ready.</h1>
+  const isKill = topVerdict?.verdict === 'KILL';
 
+  return (
+    <div>
+      <p className="text-[11px] font-semibold text-lumi-gold uppercase tracking-widest mb-4">
+        {topVerdict ? 'Your first verdict' : 'Analysis complete'}
+      </p>
+
+      {topVerdict ? (
         <div
-          className={`rounded-xl border p-4 mb-6 ${
-            isKill
-              ? 'border-signal-kill/30 bg-signal-kill/10'
-              : 'border-signal-scale/30 bg-signal-scale/10'
+          className={`rounded-2xl p-5 mb-5 border animate-verdict-enter ${
+            isKill ? 'bg-signal-kill/10 border-signal-kill/30' : 'bg-signal-scale/10 border-signal-scale/30'
           }`}
         >
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <VerdictBadge verdict={topVerdict.verdict} />
-            {topVerdict.confidence != null && (
-              <span className="text-sm font-semibold text-lumi-text whitespace-nowrap">
-                {Math.round(topVerdict.confidence * 100)}% confidence
-              </span>
-            )}
-          </div>
+          <p
+            className={`text-4xl font-black tracking-tight mb-1 ${
+              isKill ? 'text-signal-kill' : 'text-signal-scale'
+            }`}
+          >
+            {topVerdict.verdict}
+          </p>
+          {topVerdict.confidence != null && (
+            <p className="text-xs text-lumi-muted mb-4">
+              {Math.round(topVerdict.confidence * 100)}% confidence
+            </p>
+          )}
 
-          <p className="text-sm font-semibold text-lumi-text mb-1">{topVerdict.name}</p>
+          <p className="text-base font-bold text-lumi-text mb-2">{topVerdict.name}</p>
           {topVerdict.rationale && (
-            <p className="text-sm text-lumi-muted leading-relaxed mb-3">{topVerdict.rationale}</p>
+            <p className="text-sm text-lumi-muted leading-relaxed mb-4">{topVerdict.rationale}</p>
           )}
 
           <div className="border-t border-lumi-border pt-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-lumi-muted mb-1">
+            <p className="text-[10px] font-bold text-lumi-muted uppercase tracking-widest mb-1">
               Recommendation
             </p>
-            <p className="text-sm text-lumi-text">{RECOMMENDATION[topVerdict.verdict]}</p>
+            <p className="text-sm font-medium text-lumi-text">
+              {topVerdict.recommendation ?? RECOMMENDATION[topVerdict.verdict]}
+            </p>
           </div>
         </div>
-
-        {/* Secondary: what the sync actually looked at */}
-        <div className="border-t border-lumi-border pt-4 mb-8">
-          <p className="text-xs font-semibold uppercase tracking-wide text-lumi-muted mb-3">
-            What Lumi analyzed
+      ) : (
+        <div className="mb-6">
+          <h1 className="decision-title text-lumi-text mb-2">
+            {total > 0 ? 'No verdicts requiring immediate action.' : 'No campaigns found yet.'}
+          </h1>
+          <p className="text-sm text-lumi-muted">
+            {total === 0
+              ? 'Verdicts appear after your first sync.'
+              : scored > 0
+                ? `Lumi scored ${scored} campaign${scored === 1 ? '' : 's'} — none returned a kill or scale call.`
+                : 'Verdicts appear once your campaigns have revenue data.'}
           </p>
-          <div className="space-y-2.5">
-            <Row ok>Meta connected</Row>
-            <Row ok={total > 0}>{`${total} campaign${total === 1 ? '' : 's'} analyzed`}</Row>
-            <Row ok>{`${scored} verdict${scored === 1 ? '' : 's'} generated`}</Row>
-          </div>
         </div>
+      )}
 
-        <button type="button" onClick={onEnterApp} className={PRIMARY_BTN}>
-          See all verdicts <ArrowRight className="w-4 h-4" strokeWidth={2} />
-        </button>
-      </div>
-    );
-  }
-
-  // ---- No actionable verdict: honest, distinct layout -----------------------
-  const heading = total > 0 ? 'No campaigns need action yet.' : 'No campaigns found yet.';
-  return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-wide text-lumi-gold mb-2">
-        Analysis complete
-      </p>
-      <h1 className="decision-title text-lumi-text mb-2">{heading}</h1>
-      <p className="text-sm text-lumi-muted mb-8">
-        {total > 0
-          ? 'Every campaign is holding steady — nothing to kill or scale right now.'
-          : 'Once campaigns sync, Lumi scores each one and tells you what to do next.'}
-      </p>
-
-      <div className="space-y-3 mb-8">
-        <Row ok>Meta connected</Row>
-        <Row ok={total > 0}>
-          {total > 0
-            ? `${total} campaign${total === 1 ? '' : 's'} analyzed`
-            : 'No campaigns found yet'}
-        </Row>
-        <Row ok={scored > 0}>
-          {scored > 0
-            ? `${scored} verdict${scored === 1 ? '' : 's'} generated`
-            : 'Verdicts appear once campaigns have revenue data'}
-        </Row>
-      </div>
-
-      <button type="button" onClick={onEnterApp} className={PRIMARY_BTN}>
-        {scored > 0 ? 'See all verdicts' : 'Open Campaigns'}{' '}
+      <button
+        type="button"
+        onClick={onEnterApp}
+        className={`${PRIMARY_BTN} mb-5 animate-fade-up-delay`}
+      >
+        {scored > 0 ? 'See all verdicts' : 'Open Campaigns'}
         <ArrowRight className="w-4 h-4" strokeWidth={2} />
       </button>
+
+      <div className="flex items-center justify-center gap-2 flex-wrap animate-fade-up-late">
+        <Chip done>Meta</Chip>
+        <Chip done={total > 0}>{`${total} Campaign${total === 1 ? '' : 's'}`}</Chip>
+        <Chip done={scored > 0}>{`${scored} Verdict${scored === 1 ? '' : 's'}`}</Chip>
+      </div>
     </div>
   );
 }

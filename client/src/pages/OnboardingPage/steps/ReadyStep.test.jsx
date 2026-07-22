@@ -18,16 +18,16 @@ beforeEach(() => {
 });
 
 describe('ReadyStep — verdict-first', () => {
-  it('while loading, renders a skeleton (not a spinner or the real heading)', () => {
+  it('while loading, renders a skeleton (not a spinner or the real content)', () => {
     verdictsMock.mockReturnValue({ verdicts: [], loading: true });
     campaignsMock.mockReturnValue({ campaigns: [], loading: true });
     const { container } = render(<ReadyStep onEnterApp={vi.fn()} />);
     expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThan(0);
-    expect(screen.queryByText(/your first verdict is ready/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/your first verdict/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('leads with the verdict card, above the "What Lumi analyzed" checklist', () => {
+  it('leads with the verdict: eyebrow → verdict → CTA → status chips', () => {
     campaignsMock.mockReturnValue({
       campaigns: [{ entityId: 'a' }, { entityId: 'b' }, { entityId: 'c' }],
       loading: false,
@@ -36,14 +36,34 @@ describe('ReadyStep — verdict-first', () => {
       verdicts: [{ verdict: 'KILL', name: 'Alexandria Villas', confidence: 0.9, rationale: 'ROAS below break-even.', spendMinor: 500000 }],
       loading: false,
     });
-    const { container } = render(<ReadyStep onEnterApp={vi.fn()} />);
+    render(<ReadyStep onEnterApp={vi.fn()} />);
 
-    const verdictName = screen.getByText('Alexandria Villas');
-    const checklistLabel = screen.getByText(/what lumi analyzed/i);
-    // Verdict content precedes the checklist label in document order.
-    expect(verdictName.compareDocumentPosition(checklistLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText(/your first verdict/i)).toBeInTheDocument();
+    const verdictHero = screen.getByText('KILL');
+    const chip = screen.getByText('3 Campaigns');
+    // The verdict precedes the status chips in document order.
+    expect(verdictHero.compareDocumentPosition(chip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByText('Alexandria Villas')).toBeInTheDocument();
+    expect(screen.getByText(/ROAS below break-even/i)).toBeInTheDocument();
+  });
+
+  it('falls back to the deterministic per-verdict recommendation', () => {
+    verdictsMock.mockReturnValue({
+      verdicts: [{ verdict: 'KILL', name: 'X', confidence: 0.9, spendMinor: 100 }],
+      loading: false,
+    });
+    render(<ReadyStep onEnterApp={vi.fn()} />);
     expect(screen.getByText(/pause this campaign today/i)).toBeInTheDocument();
-    expect(container.querySelectorAll('.animate-pulse').length).toBe(0);
+  });
+
+  it('prefers a backend-authored recommendation when one exists', () => {
+    verdictsMock.mockReturnValue({
+      verdicts: [{ verdict: 'KILL', name: 'X', confidence: 0.9, spendMinor: 100, recommendation: 'Shift budget to Ad Set B.' }],
+      loading: false,
+    });
+    render(<ReadyStep onEnterApp={vi.fn()} />);
+    expect(screen.getByText('Shift budget to Ad Set B.')).toBeInTheDocument();
+    expect(screen.queryByText(/pause this campaign today/i)).not.toBeInTheDocument();
   });
 
   it('ranks the highest-spend KILL/SCALE verdict first', () => {
@@ -69,18 +89,25 @@ describe('ReadyStep — verdict-first', () => {
     expect(screen.queryByText(/\bHigh\b/)).not.toBeInTheDocument();
   });
 
-  it('with no KILL/SCALE verdict, drops the card for an honest empty state', () => {
+  it('no KILL/SCALE → honest copy, no claim that campaigns are healthy', () => {
     campaignsMock.mockReturnValue({ campaigns: [{ entityId: 'a' }], loading: false });
-    verdictsMock.mockReturnValue({ verdicts: [], loading: false });
+    verdictsMock.mockReturnValue({ verdicts: [{ verdict: 'HOLD', name: 'a' }], loading: false });
     render(<ReadyStep onEnterApp={vi.fn()} />);
     expect(screen.queryByText(/recommendation/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/no campaigns need action yet/i)).toBeInTheDocument();
-    expect(screen.getByText(/1 campaign analyzed/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /no verdicts requiring immediate action/i })).toBeInTheDocument();
+    expect(screen.queryByText(/healthy parameters/i)).not.toBeInTheDocument();
+  });
+
+  it('campaigns but 0 verdicts → says verdicts need revenue data', () => {
+    campaignsMock.mockReturnValue({ campaigns: [{ entityId: 'a' }], loading: false });
+    render(<ReadyStep onEnterApp={vi.fn()} />);
+    expect(screen.getByText(/verdicts appear once your campaigns have revenue data/i)).toBeInTheDocument();
   });
 
   it('0 campaigns → honest "No campaigns found yet" (never an error)', () => {
     render(<ReadyStep onEnterApp={vi.fn()} />);
     expect(screen.getByRole('heading', { name: /no campaigns found yet/i })).toBeInTheDocument();
+    expect(screen.getByText('0 Campaigns')).toBeInTheDocument();
   });
 
   it('CTA says "See all verdicts" when there are verdicts', () => {

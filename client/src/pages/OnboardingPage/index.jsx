@@ -16,6 +16,10 @@ import { ONBOARDING_NAME_KEY } from './steps/onboardingStyles.js';
 // OnboardingRoute bounces the user to /app mid-flow.
 const STEPS = ['name', 'connect', 'sync', 'ready'];
 
+// The label under each progress bar — names what the user is doing, so the flow
+// reads as a route to a verdict rather than an anonymous 4-bar wizard.
+const STEP_LABELS = ['Workspace', 'Connect', 'Analyze', 'Verdict'];
+
 function readName() {
   try { return (localStorage.getItem(ONBOARDING_NAME_KEY) || '').trim(); } catch { return ''; }
 }
@@ -69,20 +73,41 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-dark-base px-6">
-      <div className="w-full max-w-md">
-        <div className="flex gap-1.5 mb-10" aria-hidden="true">
-          {STEPS.map((s, i) => (
-            <div
-              key={s}
-              className={`h-1 flex-1 rounded-full transition-colors ${i <= idx ? 'bg-lumi-gold' : 'bg-lumi-border'}`}
-            />
-          ))}
+      <div className="w-full max-w-[580px] px-8">
+        <div className="mb-10">
+          <div className="flex gap-1.5 mb-2" aria-hidden="true">
+            {STEPS.map((s, i) => (
+              <div
+                key={s}
+                className={`h-1 flex-1 rounded-full transition-all duration-500 ease-out ${
+                  i <= idx ? 'bg-lumi-gold' : 'bg-lumi-border'
+                }`}
+              />
+            ))}
+          </div>
+          <div className="flex gap-1.5">
+            {STEP_LABELS.map((label, i) => (
+              <span
+                key={label}
+                className={`flex-1 text-[10px] font-medium transition-colors duration-300 ${
+                  i === idx ? 'text-lumi-gold' : i < idx ? 'text-lumi-text/50' : 'text-lumi-muted/40'
+                }`}
+              >
+                {label}
+              </span>
+            ))}
+          </div>
         </div>
 
-        {step === 'name' && <NameStep onNext={() => goTo('connect')} />}
-        {step === 'connect' && <ConnectStep onConnected={() => goTo('sync')} onSkip={handleSkip} />}
-        {step === 'sync' && <SyncStep onComplete={handleSyncDone} />}
-        {step === 'ready' && <ReadyStep onEnterApp={handleEnterApp} />}
+        {/* key={step} remounts the wrapper so the entrance animation replays on
+            every step change. Safe here: the steps are already conditionally
+            mounted, so this changes nothing but the animation. */}
+        <div key={step} className="animate-step-in">
+          {step === 'name' && <NameStep onNext={() => goTo('connect')} />}
+          {step === 'connect' && <ConnectStep onConnected={() => goTo('sync')} onSkip={handleSkip} />}
+          {step === 'sync' && <SyncStep onComplete={handleSyncDone} />}
+          {step === 'ready' && <ReadyStep onEnterApp={handleEnterApp} />}
+        </div>
       </div>
     </div>
   );
