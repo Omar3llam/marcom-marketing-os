@@ -260,3 +260,99 @@ describe('ConnectorCampaignsPanel — revenue data notes', () => {
     expect(screen.queryByText(staleNote)).not.toBeInTheDocument();
   });
 });
+
+// ── Decision-queue banding ───────────────────────────────────
+// Rows are ordered by what needs acting on, not by sync order. The bands are
+// header rows INSIDE the one table, so the column grid and row anchors survive.
+describe('ConnectorCampaignsPanel — decision queue grouping', () => {
+  const four = [
+    campaign({ entityId: 'k', name: 'Kill Me' }),
+    campaign({ entityId: 'w', name: 'Watch Me' }),
+    campaign({ entityId: 'h', name: 'Healthy One' }),
+    campaign({ entityId: 'u', name: 'Unscored One' }),
+  ];
+  const verdicts = { k: 'KILL', w: 'WATCH', h: 'SCALE' }; // 'u' absent → gated out
+
+  it('orders the bands Needs Action → Watching → Healthy → Needs Data', () => {
+    const { container } = renderPanel(<ConnectorCampaignsPanel campaigns={four} verdicts={verdicts} />);
+    const labels = [...container.querySelectorAll('td[colspan="9"] span')]
+      .map((el) => el.textContent)
+      .filter((t) => ['Needs Action', 'Watching', 'Healthy', 'Needs Data'].includes(t));
+    expect(labels).toEqual(['Needs Action', 'Watching', 'Healthy', 'Needs Data']);
+  });
+
+  it('places each campaign under its band, in band order', () => {
+    const { container } = renderPanel(<ConnectorCampaignsPanel campaigns={four} verdicts={verdicts} />);
+    const names = [...container.querySelectorAll('tr[id^="campaign-row-"]')]
+      .map((tr) => tr.querySelector('.font-display')?.textContent);
+    expect(names).toEqual(['Kill Me', 'Watch Me', 'Healthy One', 'Unscored One']);
+  });
+
+  it('renders ONE table, not one per band', () => {
+    const { container } = renderPanel(<ConnectorCampaignsPanel campaigns={four} verdicts={verdicts} />);
+    expect(container.querySelectorAll('table')).toHaveLength(1);
+    expect(container.querySelectorAll('thead')).toHaveLength(1);
+  });
+
+  it('renders no header for an empty band', () => {
+    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign({ entityId: 'k' })]} verdicts={{ k: 'KILL' }} />);
+    expect(screen.getByText('Needs Action')).toBeInTheDocument();
+    expect(screen.queryByText('Watching')).not.toBeInTheDocument();
+    expect(screen.queryByText('Healthy')).not.toBeInTheDocument();
+    expect(screen.queryByText('Needs Data')).not.toBeInTheDocument();
+  });
+
+  it('shows the count of campaigns in each band', () => {
+    const campaigns = [
+      campaign({ entityId: 'k1', name: 'K1' }),
+      campaign({ entityId: 'k2', name: 'K2' }),
+      campaign({ entityId: 'h1', name: 'H1' }),
+    ];
+    const { container } = renderPanel(
+      <ConnectorCampaignsPanel campaigns={campaigns} verdicts={{ k1: 'KILL', k2: 'KILL', h1: 'HOLD' }} />,
+    );
+    const bandRow = (label) => [...container.querySelectorAll('td[colspan="9"]')]
+      .find((td) => td.textContent.includes(label));
+    expect(bandRow('Needs Action').textContent).toContain('2');
+    expect(bandRow('Healthy').textContent).toContain('1');
+  });
+
+  it('sorts by impact within a band (highest priority to act first)', () => {
+    const campaigns = [
+      campaign({ entityId: 'low', name: 'Low Impact' }),
+      campaign({ entityId: 'high', name: 'High Impact' }),
+    ];
+    const { container } = renderPanel(
+      <ConnectorCampaignsPanel
+        campaigns={campaigns}
+        verdicts={{ low: 'KILL', high: 'KILL' }}
+        impacts={{ low: 2, high: 9 }}
+      />,
+    );
+    const names = [...container.querySelectorAll('tr[id^="campaign-row-"]')]
+      .map((tr) => tr.querySelector('.font-display')?.textContent);
+    expect(names).toEqual(['High Impact', 'Low Impact']);
+  });
+
+  it('keeps a gated-out campaign under Needs Data — never under Healthy', () => {
+    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign({ entityId: 'u' })]} verdicts={{}} />);
+    expect(screen.getByText('Needs Data')).toBeInTheDocument();
+    expect(screen.queryByText('Healthy')).not.toBeInTheDocument();
+  });
+
+  it('keeps the deep-link row anchor findable after grouping', () => {
+    const { container } = renderPanel(
+      <ConnectorCampaignsPanel campaigns={four} verdicts={verdicts} deepLinkEntityId="h" onDeepLinkHandled={vi.fn()} />,
+    );
+    expect(container.querySelector('#campaign-row-h')).toBeInTheDocument();
+  });
+
+  it('expands the deep-linked row even when it sits in a later band', () => {
+    const onDeepLinkHandled = vi.fn();
+    renderPanel(
+      <ConnectorCampaignsPanel campaigns={four} verdicts={verdicts} deepLinkEntityId="h" onDeepLinkHandled={onDeepLinkHandled} />,
+    );
+    expect(onDeepLinkHandled).toHaveBeenCalled();
+    expect(screen.getByLabelText('Toggle details for Healthy One')).toHaveAttribute('aria-expanded', 'true');
+  });
+});
