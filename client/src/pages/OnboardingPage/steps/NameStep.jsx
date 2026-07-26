@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ArrowRight } from 'lucide-react';
-import { PRIMARY_BTN, DARK_INPUT, ONBOARDING_NAME_KEY } from './onboardingStyles.js';
+import { PRIMARY_BTN, INPUT, ONBOARDING_NAME_KEY } from './onboardingStyles.js';
 
 // Step 1 — the only field on the first-verdict critical path. Persists to
 // localStorage (survives the OAuth redirect); the backend context is written
@@ -28,7 +28,7 @@ export function NameStep({ onNext }) {
         placeholder="e.g. Acme Marketing"
         aria-label="Workspace name"
         autoFocus
-        className={`${DARK_INPUT} mb-4`}
+        className={`${INPUT} mb-4`}
       />
       <button type="button" onClick={advance} disabled={!name.trim()} className={PRIMARY_BTN}>
         Continue <ArrowRight className="w-4 h-4" strokeWidth={2} />

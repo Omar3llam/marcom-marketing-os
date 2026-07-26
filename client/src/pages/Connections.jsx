@@ -23,14 +23,20 @@ const CONNECT_PATH = { GOOGLE: '/api/auth/google/connect', META: '/api/auth/meta
 // `returnTo` (optional) is the app path the OAuth callback should send the browser
 // back to — Meta threads it through the signed state. Onboarding passes its own
 // step so the full-page redirect lands back in the flow, not in Settings.
+// Returns TRUE only when a redirect was actually initiated. An unknown platform
+// or a response without an oauthUrl used to be a silent no-op — the caller had
+// no way to tell "navigating away" from "nothing happened", and onboarding sat
+// on "Redirecting to Meta…" forever. Throws on transport/HTTP failure as before.
 export async function startConnect(platform, projectId, returnTo) {
   const path = CONNECT_PATH[platform];
-  if (!path) return;
+  if (!path) return false;
   const params = {};
   if (platform === 'META' && projectId) params.projectId = projectId;
   if (returnTo) params.returnTo = returnTo;
   const res = await api.get(path, Object.keys(params).length ? { params } : undefined);
-  if (res.data?.oauthUrl) window.location.href = res.data.oauthUrl;
+  if (!res.data?.oauthUrl) return false;
+  window.location.href = res.data.oauthUrl;
+  return true;
 }
 
 const KNOWN = ['META', 'GOOGLE', 'TIKTOK', 'LINKEDIN', 'SNAP'];

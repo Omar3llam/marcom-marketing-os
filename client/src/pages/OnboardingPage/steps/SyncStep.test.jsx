@@ -38,3 +38,41 @@ describe('SyncStep', () => {
     expect(screen.getByText(/building verdicts/i)).toBeInTheDocument();
   });
 });
+
+// A 'maximum' pull on a large account can outlast the phase list, and the api
+// client gives up at 60s. Both lines are about expectations, not progress.
+describe('SyncStep — long-sync messaging', () => {
+  const hang = () => { api.post.mockReturnValue(new Promise(() => {})); };
+
+  it('says nothing while the sync is still quick', async () => {
+    hang();
+    render(<SyncStep onComplete={vi.fn()} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
+    expect(screen.queryByText(/large accounts/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/safely leave/i)).not.toBeInTheDocument();
+  });
+
+  it('after 30s, explains that large accounts take longer', async () => {
+    hang();
+    render(<SyncStep onComplete={vi.fn()} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
+    expect(screen.getByText(/large accounts can take a few minutes/i)).toBeInTheDocument();
+  });
+
+  it('after 60s, tells the user they can leave the page open', async () => {
+    hang();
+    render(<SyncStep onComplete={vi.fn()} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(screen.getByText(/safely leave this page open/i)).toBeInTheDocument();
+    expect(screen.queryByText(/large accounts/i)).not.toBeInTheDocument();
+  });
+
+  // A sync that finished must not later claim to be slow.
+  it('a completed sync never shows the long-sync hints', async () => {
+    api.post.mockResolvedValue({ data: { synced: 1 } });
+    render(<SyncStep onComplete={vi.fn()} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(90_000); });
+    expect(screen.queryByText(/large accounts/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/safely leave/i)).not.toBeInTheDocument();
+  });
+});
