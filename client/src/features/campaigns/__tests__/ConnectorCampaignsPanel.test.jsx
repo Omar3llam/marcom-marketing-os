@@ -484,3 +484,29 @@ describe('ConnectorCampaignsPanel — row actions', () => {
     expect(screen.queryByText('Signals')).not.toBeInTheDocument();
   });
 });
+
+// The band is the table's primary organising idea; at text-[10px] it was the
+// smallest type on the page, losing to every metric it was meant to group.
+describe('ConnectorCampaignsPanel — band header weight', () => {
+  it('renders the band label at text-sm, not the old 10px', () => {
+    const { container } = renderPanel(
+      <ConnectorCampaignsPanel campaigns={[campaign({ entityId: 'k' })]} verdicts={{ k: 'KILL' }} />,
+    );
+    const label = [...container.querySelectorAll('td[colspan="5"] span')]
+      .find((el) => el.textContent === 'Needs Action');
+    expect(label).toHaveClass('text-sm');
+    expect(label.className).not.toMatch(/text-\[10px\]/);
+  });
+
+  it('keeps the band count visible alongside the label', () => {
+    const { container } = renderPanel(
+      <ConnectorCampaignsPanel
+        campaigns={[campaign({ entityId: 'k1' }), campaign({ entityId: 'k2' })]}
+        verdicts={{ k1: 'KILL', k2: 'KILL' }}
+      />,
+    );
+    const bandRow = [...container.querySelectorAll('td[colspan="5"]')]
+      .find((td) => td.textContent.includes('Needs Action'));
+    expect(bandRow.textContent).toContain('2');
+  });
+});

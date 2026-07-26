@@ -33,7 +33,7 @@ export const HELP = {
 
   // ── Complex popovers (click, { title, description }) ────────
   WASTED_SPEND: {
-    title: 'Wasted Spend',
+    title: 'Budget at Risk',
     description: 'Spend on campaigns Lumi verdicts as KILL or REFRESH — money that isn’t working and could be reallocated. Shown as an amount and a share of total spend.',
   },
   PUBLISHING_WORKFLOW: {

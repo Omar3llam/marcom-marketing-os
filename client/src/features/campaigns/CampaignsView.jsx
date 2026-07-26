@@ -22,6 +22,8 @@ import { MetricsPanel }    from '@/components/campaign-analysis/MetricsPanel.jsx
 import { PerformanceChart } from '@/components/campaign-analysis/PerformanceChart.jsx';
 import { AnalysisSummary } from '@/components/campaign-analysis/AnalysisSummary.jsx';
 import { ConnectorCampaignsPanel } from '@/features/campaigns/ConnectorCampaignsPanel.jsx';
+import { groupCampaigns, GROUPS } from '@/features/campaigns/campaignGrouping.js';
+import { fmtCurrency } from '@/components/campaign-analysis/campaignFormatters.js';
 import { generateCampaignReport, generateTextReport } from '@/lib/pdfExport.js';
 import { buildPdfCampaigns } from '@/features/campaigns/pdfData.js';
 
@@ -299,6 +301,17 @@ export default function CampaignsView() {
     return m;
   }, [connectorVerdicts]);
 
+  // How many campaigns are in the Needs Action band (KILL / REALLOCATE) — the
+  // headline fact of the page. Reuses the SAME pure helper the table bands with,
+  // so the count in the header can never disagree with the band below it.
+  // NOTE: this is a different population from Budget at Risk, which the analysis
+  // engine defines as KILL + REFRESH. The two are stated on separate lines and
+  // never merged into one clause.
+  const actionCount = useMemo(
+    () => groupCampaigns(connectorCampaigns, verdictByEntityId)[GROUPS.ACTION].length,
+    [connectorCampaigns, verdictByEntityId],
+  );
+
   // Which campaigns had their verdict decided by the portfolio-relative post-pass
   // ('TOP' | 'BOTTOM'), keyed by entityId. Drives the evidence badge so a KILL/
   // SCALE reached WITHOUT revenue is honestly labelled with the engine's own
@@ -388,14 +401,28 @@ export default function CampaignsView() {
     <div className="flex flex-col min-h-0 p-6 lg:p-8 animate-fade-in">
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
         <div>
-          <h1 className="decision-title text-lumi-text">Campaign Analysis</h1>
-          <p className="font-mono text-xs text-lumi-subtle mt-1">
+          {/* The page is a queue of decisions, not a report. It says so, and
+              then leads with the count that decides whether you read on. */}
+          <h1 className="page-title text-lumi-text">Decision Queue</h1>
+          {actionCount > 0 && (
+            <p className="font-mono text-xs text-signal-kill mt-1">
+              {actionCount} campaign{actionCount === 1 ? '' : 's'} need{actionCount === 1 ? 's' : ''} action
+            </p>
+          )}
+          <p className="font-mono text-xs text-lumi-subtle mt-0.5">
             {(() => {
               // Count from whichever substrate has data — a connector-synced
               // account has 0 CSV rows but N live campaigns, so keying this off
               // the CSV feed alone falsely read "no data" with 34 campaigns synced.
               const n = connectorCampaigns.length || allRows.length;
-              return n === 0 ? 'No campaigns synced yet' : `${n} campaign${n === 1 ? '' : 's'} · live`;
+              if (n === 0) return 'No campaigns synced yet';
+              const scanned = `${n} campaign${n === 1 ? '' : 's'} · live`;
+              // Budget at Risk is the analysis engine's figure (KILL + REFRESH),
+              // shown here in the SAME formatter as the KPI card so the header
+              // and the card can never quote different numbers.
+              return kpiWasted != null && kpiWasted > 0
+                ? `${fmtCurrency(kpiWasted, kpiCurrency)} budget at risk · ${scanned}`
+                : scanned;
             })()}
           </p>
         </div>
@@ -435,8 +462,6 @@ export default function CampaignsView() {
         currency={kpiCurrency}
       />
 
-      <PerformanceChart totals={chartTotals} currency={currency} hasConnectorData={hasConnectorData} />
-
       {/* No-revenue campaigns ARE scored — on engagement (frequency + CTR), with
           ROAS honestly blank. Split by objective so a conversion campaign missing
           revenue reads as a fixable tracking gap, not "awareness by design". */}
@@ -472,8 +497,30 @@ export default function CampaignsView() {
         </p>
       )}
 
+      {/* The decision queue — the reason the page exists, so it comes before
+          the account-level chart and the legacy feed table rather than after
+          both. Everything below this line is context for it. */}
+      <ConnectorCampaignsPanel
+        campaigns={connectorCampaigns}
+        verdicts={verdictByEntityId}
+        relativeRanks={relativeRankByEntityId}
+        impacts={impactByEntityId}
+        verdictInfo={verdictInfoByEntityId}
+        loading={connectorLoading}
+        error={connectorError}
+        deepLinkEntityId={deepLinkEntityId}
+        onDeepLinkHandled={clearDeepLink}
+      />
+
+      {/* Where the money currently sits, as context BELOW the decisions rather
+          than the second thing on the page. */}
+      <div className="mt-6">
+        <PerformanceChart totals={chartTotals} currency={currency} hasConnectorData={hasConnectorData} />
+      </div>
+
       {/* Channel filter — rendered only when ≥2 real channels exist in the data,
-          so it never shows an empty "Google" pill before Google data flows. */}
+          so it never shows an empty "Google" pill before Google data flows.
+          Filters the legacy feed table only, so it travels with it. */}
       {platforms.length >= 2 && (
         <div className="flex items-center gap-1.5 mb-3" role="group" aria-label="Filter by channel">
           {['ALL', ...platforms].map((p) => (
@@ -506,18 +553,6 @@ export default function CampaignsView() {
         currency={currency}
         hasConnectorData={hasConnectorData}
         emptyChannel={channel !== 'ALL' && tableRows.length === 0 ? channel : null}
-      />
-
-      <ConnectorCampaignsPanel
-        campaigns={connectorCampaigns}
-        verdicts={verdictByEntityId}
-        relativeRanks={relativeRankByEntityId}
-        impacts={impactByEntityId}
-        verdictInfo={verdictInfoByEntityId}
-        loading={connectorLoading}
-        error={connectorError}
-        deepLinkEntityId={deepLinkEntityId}
-        onDeepLinkHandled={clearDeepLink}
       />
     </div>
   );
