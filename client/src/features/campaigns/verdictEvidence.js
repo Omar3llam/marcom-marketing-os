@@ -47,6 +47,36 @@ export function shortEvidence(rationale) {
     .replace(/\bthe (awareness|conversion) group\b/, 'its group');
 }
 
+// The engine's own saturation ceiling (verdictEngine.js V.FATIGUE_FREQ). Mirrored
+// here so the row highlights Frequency on exactly the campaigns the engine treats
+// as fatigued — a lower client-side threshold would call Freq "decisive" on a
+// campaign the engine considers fine, which is a judgment the client can't make.
+export const FATIGUE_FREQ = 3.5;
+
+/**
+ * The ONE metric that carries this campaign's verdict, chosen from the data
+ * itself. The UI never reads signalType, so a new backend signal type never
+ * requires a frontend release:
+ *
+ *   revenue measured          → ROAS  (the verdict was scored on return)
+ *   no revenue, freq ≥ 3.5    → Freq  (past the engine's fatigue ceiling)
+ *   no revenue                → CTR   (the engagement track's scoring input)
+ *
+ * Returns null when none of the three was reported — the caller renders "—"
+ * rather than picking a metric it doesn't have.
+ */
+export function decisiveMetric({ roas = null, ctr = null, frequency = null, revenueMinor = null } = {}) {
+  // Revenue track: a measured revenue figure is what makes ROAS meaningful. A
+  // real 0 revenue is NOT revenue data (nothing was measured), matching the
+  // engine's own `revenueMinor > 0` gate.
+  if (revenueMinor > 0 && roas != null) return { label: 'ROAS', value: roas, format: 'roas' };
+  // Engagement track: fatigue outranks click-through — a saturated audience is
+  // the reason the CTR fell, so it's the more decisive of the two.
+  if (frequency != null && frequency >= FATIGUE_FREQ) return { label: 'Freq', value: frequency, format: 'freq' };
+  if (ctr != null) return { label: 'CTR', value: ctr, format: 'ctr' };
+  return null;
+}
+
 /** The next step a KILL/SCALE asks for. Null for every other verdict. */
 export function nextActionFor(verdict) {
   if (verdict === 'KILL') return 'Pause and reallocate budget';

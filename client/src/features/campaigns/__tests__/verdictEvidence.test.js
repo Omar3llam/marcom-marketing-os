@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { formatCurrency } from '@/lib/money';
 import {
   NO_REVENUE_DISCLAIMER, confidenceLabel, evidenceClause, shortEvidence,
-  nextActionFor, ignoreCostFor,
+  nextActionFor, ignoreCostFor, decisiveMetric, FATIGUE_FREQ,
 } from '../verdictEvidence.js';
 
 // Verbatim shapes from relativeRanking.js and verdictEngine.js.
@@ -122,5 +122,52 @@ describe('NO_REVENUE_DISCLAIMER', () => {
     expect(NO_REVENUE_DISCLAIMER).toBe(
       'No revenue data found — recommendation based on CTR, Frequency and Spend only.',
     );
+  });
+});
+
+// ── decisiveMetric ───────────────────────────────────────────
+// The row shows ONE metric, chosen from the row's own data. The UI never reads
+// signalType, so a new backend signal type never needs a frontend release.
+describe('decisiveMetric', () => {
+  it('measured revenue → ROAS (the verdict was scored on return)', () => {
+    expect(decisiveMetric({ roas: 2.4, revenueMinor: 120000, ctr: 0.01, frequency: 1.2 }))
+      .toEqual({ label: 'ROAS', value: 2.4, format: 'roas' });
+  });
+
+  it('no revenue but past the fatigue ceiling → Freq', () => {
+    expect(decisiveMetric({ roas: null, revenueMinor: null, ctr: 0.01, frequency: 4.2 }))
+      .toEqual({ label: 'Freq', value: 4.2, format: 'freq' });
+  });
+
+  it('no revenue, frequency below the ceiling → CTR', () => {
+    expect(decisiveMetric({ roas: null, revenueMinor: null, ctr: 0.012, frequency: 2.4 }))
+      .toEqual({ label: 'CTR', value: 0.012, format: 'ctr' });
+  });
+
+  // The ceiling is the ENGINE's (3.5). A lower client-side threshold would call
+  // Freq "decisive" on a campaign the engine treats as perfectly healthy.
+  it('uses the engine fatigue ceiling, inclusive', () => {
+    expect(FATIGUE_FREQ).toBe(3.5);
+    expect(decisiveMetric({ ctr: 0.01, frequency: FATIGUE_FREQ }).label).toBe('Freq');
+    expect(decisiveMetric({ ctr: 0.01, frequency: 3.4 }).label).toBe('CTR');
+  });
+
+  // A measured 0 is not revenue data — matching the engine's own revenue gate.
+  it('a real 0 revenue does not unlock ROAS', () => {
+    expect(decisiveMetric({ roas: 0, revenueMinor: 0, ctr: 0.009, frequency: 1 }).label).toBe('CTR');
+  });
+
+  it('nothing reported → null, never a picked-at-random metric', () => {
+    expect(decisiveMetric({ roas: null, ctr: null, frequency: null, revenueMinor: null })).toBeNull();
+    expect(decisiveMetric({})).toBeNull();
+    expect(decisiveMetric()).toBeNull();
+  });
+
+  // Future-proofing: the choice is made from the DATA, so a backend signal type
+  // the client has never heard of cannot change (or break) what it renders.
+  it('ignores signalType entirely — a new backend signal needs no frontend release', () => {
+    const data = { roas: 3, revenueMinor: 90000, ctr: 0.02, frequency: 1.5 };
+    expect(decisiveMetric({ ...data, signalType: 'SOME_UNRELEASED_SIGNAL' }))
+      .toEqual(decisiveMetric(data));
   });
 });
