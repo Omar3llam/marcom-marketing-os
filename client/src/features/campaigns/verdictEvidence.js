@@ -47,6 +47,61 @@ export function shortEvidence(rationale) {
     .replace(/\bthe (awareness|conversion) group\b/, 'its group');
 }
 
+/**
+ * The decision as shareable plain text (Slack / email / a ticket). Assembled
+ * from the SAME strings the panel renders — every line is the engine's own
+ * output or a real snapshot metric, so what the marketer pastes is exactly what
+ * Lumi showed. A missing field drops its line rather than printing "unknown".
+ */
+export function buildRecommendationText({
+  verdict, name, rationale = null, nextAction = null,
+  confidence = null, spendMinor = null, currency = 'USD',
+} = {}) {
+  const lines = ['Recommendation', '', `Campaign: ${name}`, `Verdict: ${verdict}`];
+
+  if (nextAction) lines.push('', `Recommended action:\n${nextAction}`);
+
+  const evidence = evidenceClause(rationale);
+  if (evidence) lines.push('', `Evidence:\n${evidence}.`);
+
+  const conf = confidenceLabel(confidence);
+  if (conf) lines.push('', `Confidence: ${conf}`);
+
+  // The synced-window total, quoted as-is — the window varies per sync, so it is
+  // never presented as a rate (see ignoreCostFor).
+  if (spendMinor != null) lines.push('', `Spend analyzed: ${formatCurrency(spendMinor, currency || 'USD')}`);
+
+  return lines.join('\n');
+}
+
+// Deep links back to the ad platform, keyed by the campaign's platform-native
+// externalId. Only channels whose documented parameter genuinely identifies a
+// CAMPAIGN are listed:
+//   • TIKTOK is deliberately absent — its `aadvid` parameter is the ADVERTISER
+//     id, so passing a campaign id builds a link that resolves to nothing. A
+//     button that lands the marketer on an error page is worse than no button.
+//   • SNAP / LINKEDIN have no verified campaign deep-link format here.
+// Both simply return null, so the UI renders nothing for them.
+const PLATFORM_URLS = {
+  META:   (externalId) => `https://adsmanager.facebook.com/adsmanager/manage/campaigns?selected_campaign_ids=${encodeURIComponent(externalId)}`,
+  GOOGLE: (externalId) => `https://ads.google.com/aw/campaigns?campaignId=${encodeURIComponent(externalId)}`,
+};
+
+/** Channels this build can deep-link into (uppercase Channel enum values). */
+export const LINKABLE_CHANNELS = Object.freeze(Object.keys(PLATFORM_URLS));
+
+/**
+ * The campaign-specific platform URL, or null when it can't be built honestly —
+ * unknown channel, or no externalId (a row that predates the connector). NEVER
+ * falls back to a generic account URL: "open this campaign" that opens something
+ * else is a broken promise, and a dead link is worse than an absent one.
+ */
+export function platformUrl(channel, externalId) {
+  if (!channel || !externalId) return null;
+  const builder = PLATFORM_URLS[String(channel).toUpperCase()];
+  return builder ? builder(externalId) : null;
+}
+
 // The engine's own saturation ceiling (verdictEngine.js V.FATIGUE_FREQ). Mirrored
 // here so the row highlights Frequency on exactly the campaigns the engine treats
 // as fatigued — a lower client-side threshold would call Freq "decisive" on a

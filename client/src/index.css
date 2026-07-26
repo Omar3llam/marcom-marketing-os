@@ -396,6 +396,19 @@
   /* Implements design-system/tokens/typography.json roles.      */
   /* Use these instead of raw Tailwind text-xl / text-2xl etc.  */
 
+  /* Page-level hero title. The system had no size between .decision-title
+     (20px) and .metric-display (24px), so a page heading was SMALLER than the
+     KPI numbers under it — the headline lost the hierarchy contest on every
+     page that pairs the two. Additive: .decision-title is unchanged, so the
+     28 existing usages (incl. the landing page) are untouched. */
+  .page-title {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 34px;
+    letter-spacing: -0.02em;
+  }
+
   .decision-title {
     font-family: var(--font-display);
     font-size: 20px;

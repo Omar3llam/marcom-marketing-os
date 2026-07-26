@@ -27,8 +27,35 @@ export function MetricsPanel({
   healthScore, healthLabel, healthColor, currency = 'USD', loading,
 }) {
   const wastedKnown = wasted != null;
+  // Ordered by how close each card sits to a decision: money burning now, then
+  // the summary score, then context. Blended CPA is last because it is null for
+  // every workspace without revenue data — it held first position while showing
+  // "—" and a setup link.
   return (
     <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <KpiCard
+        label="Budget at Risk"
+        help={<HelpTip variant="popover" content={HELP.WASTED_SPEND} />}
+        value={wastedKnown ? fmtCurrency(wasted, currency) : '—'}
+        valueClass={wastedKnown ? 'text-trend-danger' : undefined}
+        delta={wastedKnown ? `${wastedPct}% of total` : 'Needs analysis'}
+        deltaClass={wastedKnown ? 'text-trend-danger' : 'text-lumi-subtle'}
+        // The bar shows the budget that IS working — InlineBar's scale is
+        // higher-is-better, and wasted spend runs the other way. Passing the
+        // raw pct painted 12% waste RED and 80% waste GREEN. The label names
+        // what the bar actually represents so the two can't drift.
+        footer={wastedKnown
+          ? <InlineBar value={100 - wastedPct} max={100} ariaLabel={`${100 - wastedPct}% of spend working`} />
+          : undefined}
+      />
+      <KpiCard
+        label="Account Health"
+        help={<HelpTip variant="popover" content={HELP.ACCOUNT_HEALTH} />}
+        value={healthScore == null ? '—' : `${healthScore}/100`}
+        valueClass={healthColor}
+        delta={healthLabel}
+        deltaClass={healthColor}
+      />
       <KpiCard
         label="Total Spend"
         help={<HelpTip content={HELP.TOTAL_SPEND} />}
@@ -47,23 +74,6 @@ export function MetricsPanel({
             Connect sales data to unlock profit-based recommendations →
           </Link>
         ) : undefined}
-      />
-      <KpiCard
-        label="Wasted Spend"
-        help={<HelpTip variant="popover" content={HELP.WASTED_SPEND} />}
-        value={wastedKnown ? fmtCurrency(wasted, currency) : '—'}
-        valueClass={wastedKnown ? 'text-trend-danger' : undefined}
-        delta={wastedKnown ? `${wastedPct}% of total` : 'Needs analysis'}
-        deltaClass={wastedKnown ? 'text-trend-danger' : 'text-lumi-subtle'}
-        footer={wastedKnown ? <InlineBar value={wastedPct} max={100} ariaLabel={`${wastedPct}% wasted spend`} /> : undefined}
-      />
-      <KpiCard
-        label="Account Health"
-        help={<HelpTip variant="popover" content={HELP.ACCOUNT_HEALTH} />}
-        value={healthScore == null ? '—' : `${healthScore}/100`}
-        valueClass={healthColor}
-        delta={healthLabel}
-        deltaClass={healthColor}
       />
     </section>
   );

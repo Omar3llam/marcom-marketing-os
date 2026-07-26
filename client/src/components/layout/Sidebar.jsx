@@ -42,10 +42,12 @@ import LumiStar from '@/components/brand/LumiStar.jsx';
 //     upgrade tooltip) rather than hidden — that's the deliberate upsell.
 // Ordered FREE → GROWTH → PRO. Reports is ungated on both axes (every role +
 // every plan reads the reasoned narrative; it's the CLIENT seat's home).
-const tools = [
+// Exported so the nav copy can be asserted without booting the whole shell
+// (Sidebar itself needs auth + plan + router context to render).
+export const tools = [
   // ── FREE — always unlocked ──────────────────────────────────
   { key: 'overview',     label: 'Home',         sub: 'Your daily pulse',       icon: Layout,       path: appRoutes.overview,     roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
-  { key: 'campaigns',    label: 'Campaigns',    sub: 'Verdicts + diagnosis',   icon: BarChart3,    path: appRoutes.campaigns,    roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
+  { key: 'campaigns',    label: 'Campaigns',    sub: 'Decision queue',        icon: BarChart3,    path: appRoutes.campaigns,    roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
   { key: 'content',      label: 'Creative Optimizer', sub: 'Improve creative performance', icon: Send,   path: appRoutes.contentLab,   roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
   { key: 'leadership',   label: 'Reports',      sub: 'Weekly narratives',      icon: FileText,     path: appRoutes.leadership,   plan: 'FREE' },
   // ── GROWTH — locked on FREE ─────────────────────────────────

@@ -18,7 +18,7 @@ export function PerformanceChart({ totals, hasConnectorData = false }) {
     // when nothing is connected do we point at connecting Meta.
     return (
       <section className="mb-6">
-        <div className="section-label mb-3">Budget Allocation Recommendation</div>
+        <div className="section-label mb-3">Current Budget Distribution</div>
         <div className="rounded-xl border border-dashed border-lumi-border bg-lumi-surface/40 p-6 text-center text-sm text-lumi-muted">
           {hasConnectorData
             ? 'Connected campaigns have no spend to allocate yet.'
