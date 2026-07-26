@@ -363,12 +363,16 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                     {/* Band separator. Same colSpan as the ad-set/detail rows so
                         the single table's column grid stays intact. */}
                     <tr className="bg-lumi-bg/30">
-                      <td colSpan={COLS} className="px-4 pt-5 pb-1">
-                        <div className="flex items-center gap-2">
-                          <span className={cn('text-[10px] font-bold uppercase tracking-widest', config.color)}>
+                      <td colSpan={COLS} className="px-4 pt-5 pb-2 border-b border-lumi-border/50">
+                        {/* The band is the table's primary organising idea; at
+                            10px it was the smallest type on the page. */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={cn('font-display text-sm font-semibold', config.color)}>
                             {config.label}
                           </span>
-                          <span className="font-mono text-[10px] text-lumi-muted">{items.length}</span>
+                          <span className={cn('font-mono text-xs font-medium opacity-70', config.color)}>
+                            {items.length}
+                          </span>
                         </div>
                       </td>
                     </tr>
