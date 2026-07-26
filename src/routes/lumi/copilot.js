@@ -15,6 +15,7 @@ import { execute } from '../../services/ai-gateway/ProviderGateway.js';
 import { CAPABILITY } from '../../services/ai-gateway/providerTypes.js';
 import { getConnectorCampaigns } from '../../services/entity-graph/index.js';
 import { getConnectorVerdicts } from '../../services/verdict-engine/index.js';
+import { computeAccountHealth, WASTED_VERDICTS } from '../../services/analysis/AccountHealthService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 import { copilotLimiter } from '../../middleware/rateLimit.js';
@@ -69,8 +70,37 @@ copilotRouter.post(
       ]);
 
       const verdictMap = Object.fromEntries((verdictResult?.verdicts ?? []).map((v) => [v.id, v]));
+      const allCampaigns = campaigns ?? [];
+      const verdictOf = (c) => verdictMap[c.entityId]?.verdict ?? null;
 
-      const topCampaigns = (campaigns ?? [])
+      // Account health is PURE (no I/O) and BOTH its inputs are already in hand,
+      // so grounding the answer in the same score the Overview shows costs nothing.
+      // Computed over EVERY campaign — not the top-N slice — so wasted spend is
+      // the account's real total, exactly as AccountHealthService intends.
+      const accountHealth = computeAccountHealth(allCampaigns, verdictMap);
+
+      // Account-level facts the campaign slice can't carry. `totalCampaigns` is
+      // the UNFILTERED count so the model can answer "how many campaigns do I
+      // have?" without mistaking the top-N slice for the whole account.
+      const portfolioContext = {
+        totalCampaigns: allCampaigns.length,
+        currency: workspace?.currency ?? 'USD',
+        health: accountHealth
+          ? {
+            score: accountHealth.score,
+            label: accountHealth.label,
+            // wastedSpend is { minor, pct } — the minor units, not the object.
+            wastedSpendMinor: accountHealth.wastedSpend?.minor ?? null,
+            // Counted over every campaign (health.campaigns holds only the rows
+            // above the 1%-of-spend scoring floor, which would undercount).
+            criticalCampaigns: allCampaigns.filter((c) => WASTED_VERDICTS.has(verdictOf(c))).length,
+            healthyCampaigns: allCampaigns.filter((c) => verdictOf(c) === 'SCALE').length,
+          }
+          : null,
+        totals: null, // reserved — blended CPA/ROAS/spend land here without an API change
+      };
+
+      const campaignContext = allCampaigns
         .filter((c) => (c.spendMinor ?? 0) > 0)
         .sort((a, b) => (b.spendMinor ?? 0) - (a.spendMinor ?? 0))
         .slice(0, TOP_CAMPAIGNS)
@@ -85,13 +115,28 @@ copilotRouter.post(
           frequency: c.frequency,
           spendMinor: c.spendMinor,
           currency: c.currency,
+          // Already on every connector row (entityGraphEngine.metricsOf) and
+          // previously dropped right here — which is why no CPA question could
+          // be answered: without conversions, CPA isn't even derivable.
+          conversions: c.conversions ?? null,
+          revenueMinor: c.revenueMinor ?? null,
+          impressions: c.impressions ?? null,
+          clicks: c.clicks ?? null,
+          // lastDate is DELIBERATELY excluded: a connector row is a rolling
+          // aggregate re-stamped every sync, so its date would imply a time
+          // window the data cannot support.
         }));
 
       const latestRun = await prisma.loopRun
         .findFirst({ where: { workspaceId: wsId }, orderBy: { createdAt: 'desc' }, select: { aiInsight: true } })
         .catch(() => null);
 
-      const system = buildCopilotSystemPrompt(workspace ?? {}, topCampaigns, latestRun?.aiInsight ?? null);
+      const system = buildCopilotSystemPrompt({
+        workspace: workspace ?? {},
+        portfolio: portfolioContext,
+        campaigns: campaignContext,
+        briefing: latestRun?.aiInsight ?? null,
+      });
       const user = buildCopilotUserPrompt(history.slice(-HISTORY_CONTEXT), question.trim());
 
       const result = await execute({ capability: CAPABILITY.ANSWER_QUESTION, input: { system, user }, workspaceId: wsId });

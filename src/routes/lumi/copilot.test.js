@@ -108,6 +108,70 @@ describe('POST /copilot — Q&A route', () => {
     expect(input.user).toBe('What should I do?');
   });
 
+  // ── PR: portfolio context ────────────────────────────────────
+  describe('portfolio context', () => {
+    // Two campaigns clear the 1%-of-spend scoring floor; one is a KILL.
+    const richCampaigns = [
+      { entityId: 'c1', name: 'Ramadan Wave', channel: 'meta', objective: 'conversions', roas: 0.8, ctr: 0.012, frequency: 4.2, spendMinor: 500000, currency: 'EGP', conversions: 12, revenueMinor: 400000, impressions: 90000, clicks: 1080, lastDate: new Date('2026-07-20') },
+      { entityId: 'c2', name: 'Eid Push', channel: 'meta', objective: 'conversions', roas: 4, ctr: 0.03, frequency: 1.2, spendMinor: 300000, currency: 'EGP', conversions: 40, revenueMinor: 1200000, impressions: 50000, clicks: 1500 },
+      { entityId: 'c3', name: 'Zero Spender', channel: 'meta', roas: null, spendMinor: 0, currency: 'EGP' },
+    ];
+    const richVerdicts = { verdicts: [
+      { id: 'c1', verdict: 'KILL', rationale: 'ROAS below breakeven' },
+      { id: 'c2', verdict: 'SCALE', rationale: 'Strong ROAS' },
+    ] };
+
+    const systemFor = async () => {
+      getConnectorCampaigns.mockResolvedValue(richCampaigns);
+      getConnectorVerdicts.mockResolvedValue(richVerdicts);
+      await request(makeApp()).post('/copilot').send({ question: 'How many campaigns?' }).expect(200);
+      return execute.mock.calls[0][0].input.system;
+    };
+
+    it('reports totalCampaigns UNFILTERED — the zero-spend row still counts', async () => {
+      const s = await systemFor();
+      expect(s).toContain('of 3 by spend');   // 3 total…
+      expect(s).toContain('top 2 of 3');      // …but only 2 have spend > 0
+      expect(s).toContain('3 campaigns');     // the how-many answer
+    });
+
+    it('grounds the answer in the deterministic account health (computed, not fetched)', async () => {
+      const s = await systemFor();
+      expect(s).toContain('ACCOUNT HEALTH');
+      expect(s).toMatch(/Score: \d+\/100/);
+      expect(s).toContain('Wasted spend');
+      expect(s).toContain('Campaigns to act on (KILL or REFRESH): 1');
+      expect(s).toContain('Campaigns scaling well (SCALE): 1');
+    });
+
+    it('carries the widened metrics that make CPA derivable', async () => {
+      const s = await systemFor();
+      expect(s).toContain('Conversions: 12');
+      expect(s).toContain('Conversions: 40');
+      expect(s).toMatch(/Revenue: EGP/);
+    });
+
+    it('excludes lastDate — no date may imply a time window', async () => {
+      const s = await systemFor();
+      expect(s).not.toContain('2026-07-20');
+      expect(s).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    });
+
+    it('keeps zero-spend campaigns out of the campaign list (existing behaviour)', async () => {
+      const s = await systemFor();
+      expect(s).not.toContain('Zero Spender');
+    });
+
+    it('degrades honestly when health cannot be computed (no spend anywhere)', async () => {
+      getConnectorCampaigns.mockResolvedValue([{ entityId: 'c9', name: 'Nothing', channel: 'meta', spendMinor: 0, currency: 'EGP' }]);
+      getConnectorVerdicts.mockResolvedValue({ verdicts: [] });
+      await request(makeApp()).post('/copilot').send({ question: 'Status?' }).expect(200);
+      const { input } = execute.mock.calls[0][0];
+      expect(input.system).toContain('ACCOUNT HEALTH: unavailable');
+      expect(input.system).toContain('No campaigns synced yet.');
+    });
+  });
+
   it('folds prior turns into the user prompt (multi-turn context)', async () => {
     await request(makeApp())
       .post('/copilot')
