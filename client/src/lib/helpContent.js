@@ -21,6 +21,7 @@ export const HELP = {
   CONVERSIONS:  'Number of desired actions completed (purchases, leads, sign-ups).',
   OBJECTIVE:    'The campaign goal set on the platform (e.g. sales, leads, awareness).',
   VERDICT_COL:  'Lumi’s recommendation for each campaign: SCALE, HOLD, WATCH, REALLOCATE, REFRESH, or KILL.',
+  KEY_SIGNAL:   'The one metric behind this verdict: ROAS when revenue is measured, Frequency when the audience is saturated, otherwise CTR.',
 
   // Per-verdict one-liners (match the verdict engine vocabulary).
   SCALE_VERDICT:      'Strong performance — increase budget or expand the audience.',

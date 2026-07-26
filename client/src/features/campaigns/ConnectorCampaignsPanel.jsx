@@ -12,11 +12,17 @@
 // header <tr>s, so the column grid, keyboard order, deep-link anchors and the
 // expand-state Sets all keep working untouched.
 //
+// The row leads with the DECISION, not the dashboard: Verdict → Campaign +
+// evidence + impact → the ONE metric that carries the verdict → Spend →
+// actions. The old four-metric grid (Spend/ROAS/CTR/Freq on every row) showed
+// four numbers to justify one call; the full set still lives one click away in
+// the detail panel, where there is room to read it.
+//
 // Governing law: every metric traces to a MetricSnapshot row. A missing metric
 // renders "—" (Dash), never a fabricated 0. Loading/error/empty are honest.
 // ============================================================
 import { useState, useEffect, useMemo, Fragment } from 'react';
-import { ChevronRight, ChevronDown, Loader2, Plug, AlertTriangle } from 'lucide-react';
+import { ChevronRight, Loader2, Plug, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFormatters.js';
 import { formatCurrency } from '@/lib/money';
@@ -25,8 +31,12 @@ import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { HelpTip } from '@/components/ui/HelpTip.jsx';
 import { HELP } from '@/lib/helpContent.js';
 import { CampaignDetailPanel } from '@/features/campaigns/CampaignDetailPanel.jsx';
-import { NO_REVENUE_DISCLAIMER, evidenceClause, shortEvidence } from '@/features/campaigns/verdictEvidence.js';
+import { NO_REVENUE_DISCLAIMER, evidenceClause, shortEvidence, decisiveMetric } from '@/features/campaigns/verdictEvidence.js';
 import { groupCampaigns, GROUP_CONFIG, GROUP_ORDER } from '@/features/campaigns/campaignGrouping.js';
+
+// Every band header / detail / ad-set row spans the full grid. One constant so
+// the five call sites can never drift out of step with the <thead>.
+const COLS = 5;
 
 // Missing metric → em-dash, never 0 (a true zero and "no data" must not look alike).
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
@@ -58,49 +68,80 @@ const Impact = ({ score, relativeRank }) => {
   return <Dash />;
 };
 
-// The four metric cells shared by a campaign row and its ad-set rows.
-function MetricCells({ m }) {
+// The ONE metric carrying the verdict, picked from the row's own data by
+// decisiveMetric() — the label changes per row, so it is rendered IN the cell
+// rather than in the column header. Each variant keeps the formatter (and the
+// threshold colouring) it had as its own column.
+function DecisiveCell({ m }) {
+  const dm = decisiveMetric(m);
+  if (!dm) {
+    return <td className="px-4 py-2 text-right font-mono text-sm tabular-nums"><Dash /></td>;
+  }
   return (
-    <>
-      <td className="px-4 py-2 text-right font-mono text-sm tabular-nums text-lumi-text"><Spend minor={m.spendMinor} currency={m.currency} /></td>
-      <td className="px-4 py-2 text-right font-mono text-sm tabular-nums"><Roas v={m.roas} /></td>
-      <td className="px-4 py-2 text-right font-mono text-sm tabular-nums text-lumi-text"><Ctr v={m.ctr} /></td>
-      <td className="px-4 py-2 text-right font-mono text-sm tabular-nums"><Freq v={m.frequency} /></td>
-    </>
+    <td className="px-4 py-2 text-right">
+      <div className="font-mono text-[10px] uppercase tracking-wide text-lumi-subtle">{dm.label}</div>
+      <div className="font-mono text-sm tabular-nums text-lumi-text">
+        {dm.format === 'roas' ? <Roas v={dm.value} />
+          : dm.format === 'freq' ? <Freq v={dm.value} />
+            : <Ctr v={dm.value} />}
+      </div>
+    </td>
+  );
+}
+
+const SpendCell = ({ m }) => (
+  <td className="px-4 py-2 text-right font-mono text-sm tabular-nums text-lumi-text">
+    <Spend minor={m.spendMinor} currency={m.currency} />
+  </td>
+);
+
+// Both row toggles share one affordance: a chevron that ROTATES (the label never
+// changes to "Close" — the button names what it opens, not what it does next).
+function RowToggle({ expanded, onClick, label, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={expanded}
+      aria-label={label}
+      className="inline-flex items-center gap-1 rounded border border-lumi-border px-2 py-1 font-mono text-[11px] text-lumi-muted transition-colors hover:bg-lumi-elevated hover:text-lumi-text"
+    >
+      <ChevronRight className={cn('w-3 h-3 transition-transform duration-200', expanded && 'rotate-90 text-lumi-accent')} strokeWidth={2} />
+      {children}
+    </button>
   );
 }
 
 function AdSetRows({ state }) {
   if (!state || state.loading) {
     return (
-      <tr><td colSpan={9} className="px-4 py-3 text-center text-xs text-lumi-subtle">
+      <tr><td colSpan={COLS} className="px-4 py-3 text-center text-xs text-lumi-subtle">
         <Loader2 className="inline w-3.5 h-3.5 animate-spin mr-1.5" strokeWidth={2} /> Loading ad sets…
       </td></tr>
     );
   }
   if (state.error) {
     return (
-      <tr><td colSpan={9} className="px-4 py-3 text-center text-xs text-trend-danger">
+      <tr><td colSpan={COLS} className="px-4 py-3 text-center text-xs text-trend-danger">
         <AlertTriangle className="inline w-3.5 h-3.5 mr-1.5" strokeWidth={2} /> Couldn’t load ad sets — collapse and try again.
       </td></tr>
     );
   }
   if (state.adSets.length === 0) {
     return (
-      <tr><td colSpan={9} className="px-4 py-3 text-center text-xs text-lumi-subtle">No ad sets synced for this campaign yet.</td></tr>
+      <tr><td colSpan={COLS} className="px-4 py-3 text-center text-xs text-lumi-subtle">No ad sets synced for this campaign yet.</td></tr>
     );
   }
   return state.adSets.map((a) => (
     <tr key={a.entityId} className="bg-lumi-bg/40 border-b border-lumi-border/40">
+      <td className="px-4 py-2.5" />{/* verdicts are campaign-level — ad-set cell stays empty */}
       <td className="px-4 py-2.5 pl-10">
         <div className="font-display text-sm text-lumi-text">{a.name}</div>
         <div className="font-mono text-[11px] text-lumi-subtle">AD SET · {a.channel}</div>
       </td>
-      <td className="px-4 py-2.5" />{/* verdicts are campaign-level — ad-set cell stays empty */}
-      <td className="px-4 py-2.5" />{/* impact is campaign-level too — empty on ad-set rows */}
-      <MetricCells m={a} />
-      <td className="px-4 py-2.5" />
-      <td className="px-4 py-2.5" />{/* detail toggle is campaign-level — empty on ad-set rows */}
+      <DecisiveCell m={a} />
+      <SpendCell m={a} />
+      <td className="px-4 py-2.5" />{/* the toggles are campaign-level — empty on ad-set rows */}
     </tr>
   ));
 }
@@ -154,8 +195,8 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
   };
 
   // One campaign row (+ its detail and ad-set children). Lifted out of the map
-  // so the grouped <tbody> stays readable; the markup is unchanged, and keeping
-  // it a closure means no state has to be prop-drilled.
+  // so the grouped <tbody> stays readable; keeping it a closure means no state
+  // has to be prop-drilled.
   const renderCampaignRow = (c) => {
     const isOpen = open.has(c.entityId);
     const isDetailOpen = detailOpen.has(c.entityId);
@@ -164,95 +205,98 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
     const relativeRank = relativeRanks[c.entityId] ?? null;
     const impact = impacts[c.entityId] ?? null;
     const info = verdictInfo[c.entityId] ?? {};
-    // The engine's own evidence words ("Lowest CTR in its group"),
-    // never the internal "relative to portfolio" label. Fallback
-    // states the TOP/BOTTOM field plainly when no rationale arrived.
-    const badgeText = shortEvidence(info.rationale)
-      ?? (relativeRank === 'BOTTOM' ? 'weakest engagement in its group' : 'strongest engagement in its group');
-    const badgeTitle = `${evidenceClause(info.rationale) ?? badgeText} — ${NO_REVENUE_DISCLAIMER}`;
+    // The engine's own evidence words ("Lowest CTR in its group"), never the
+    // internal "relative to portfolio" label — now on the row itself rather than
+    // buried in a tooltip, because it is the reason for the verdict beside it.
+    // Fallback states the TOP/BOTTOM field plainly when no rationale arrived;
+    // with neither, the row says nothing rather than inventing a reason.
+    const evidence = shortEvidence(info.rationale)
+      ?? (relativeRank ? (relativeRank === 'BOTTOM' ? 'weakest engagement in its group' : 'strongest engagement in its group') : null);
+    // The no-revenue disclaimer belongs ONLY to a verdict the relative post-pass
+    // decided — appending it to a revenue-track verdict would be false.
+    const evidenceTitle = relativeRank
+      ? `${evidenceClause(info.rationale) ?? evidence} — ${NO_REVENUE_DISCLAIMER}`
+      : (evidenceClause(info.rationale) ?? undefined);
     return (
       <Fragment key={c.entityId}>
         <tr id={`campaign-row-${c.entityId}`} className="border-b border-lumi-border/50 hover:bg-lumi-elevated/40 transition-colors duration-100">
-          <td className="px-4 py-2">
-            <button
-              type="button"
-              onClick={() => count > 0 && toggle(c.entityId)}
-              disabled={count === 0}
-              aria-expanded={count > 0 ? isOpen : undefined}
-              aria-label={count > 0 ? `Toggle ad sets for ${c.name}` : undefined}
-              className={cn('inline-flex items-start gap-1.5 text-left', count > 0 ? 'cursor-pointer' : 'cursor-default')}
-            >
-              {count > 0
-                ? (isOpen
-                  ? <ChevronDown className="w-3.5 h-3.5 mt-0.5 text-lumi-accent" strokeWidth={2} />
-                  : <ChevronRight className="w-3.5 h-3.5 mt-0.5 text-lumi-muted" strokeWidth={2} />)
-                : <span className="w-3.5 h-3.5 inline-block" />}
-              <span>
-                <span className="block font-display font-medium text-xs text-lumi-text">{c.name}</span>
+          {/* 1. VERDICT — the decision leads the row. A gatedOut/dataless
+              campaign has none → honest "—", never a fabricated one. */}
+          <td className="px-4 py-3 align-top">
+            {verdict ? <VerdictPill verdict={verdict} size="md" /> : <Dash />}
+          </td>
+
+          {/* 2. What it is, why, and how much it matters. */}
+          <td className="px-4 py-3 align-top">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <span className="block font-display font-semibold text-sm text-lumi-text">{c.name}</span>
                 <span className="block font-mono text-[11px] text-lumi-subtle">
                   {c.channel}
+                  {c.objective ? ` · ${c.objective}` : ''}
                   {/* A conversion campaign that spent but measured no revenue: its
-                      ROAS cell reads "—" because the DATA is missing, not because
-                      it performed badly. Say so next to the name. */}
-                  {/* Subtle, not alarming: a missing revenue source is a
-                      setup gap, not a live problem — muted so it reads as a
-                      quiet hint next to the channel, not a warning. */}
+                      ROAS reads "—" because the DATA is missing, not because it
+                      performed badly. Say so next to the name. Subtle, not
+                      alarming: a missing revenue source is a setup gap. */}
                   {c.needsRevenue && (
                     <span className="ml-1.5 text-lumi-subtle">· needs revenue</span>
                   )}
                 </span>
-              </span>
-            </button>
-            {/* Revenue WAS uploaded, but it now lags the spend it would be
-                divided by, so the engine stopped scoring it rather than show
-                a drifted ROAS. A different story from "needs revenue" (none
-                was ever given). Indicator ONLY — the re-upload CTA lives once
-                (AlertsPanel/MetricsPanel), not repeated per row: a blue
-                signal-watch link under every stale campaign read as N
-                hyperlinks of noise. */}
-            {c.revenueStale && (
-              <span className="ml-5 block font-mono text-[11px] text-lumi-muted">
-                · revenue outdated
-              </span>
-            )}
-          </td>
-          {/* Campaign-level verdict (revenue track OR awareness track). A
-              gatedOut/dataless campaign has none → honest "—", never a faked one.
-              A verdict decided by the portfolio-relative post-pass is badged
-              so a revenue-free KILL/SCALE reads as an engagement-relative call. */}
-          <td className="px-4 py-2">
-            {verdict ? (
-              <span className="inline-flex items-center gap-1.5 flex-wrap">
-                <VerdictPill verdict={verdict} size="sm" />
-                {relativeRank && (
-                  <span className="font-mono text-[10px] text-lumi-subtle whitespace-nowrap" title={badgeTitle}>
-                    {badgeText}
+                {evidence && (
+                  <span className="mt-1 block font-mono text-[11px] text-lumi-muted" title={evidenceTitle}>
+                    {evidence}
                   </span>
                 )}
+                {/* Revenue WAS uploaded, but it now lags the spend it would be
+                    divided by, so the engine stopped scoring it rather than show
+                    a drifted ROAS. A different story from "needs revenue" (none
+                    was ever given). Indicator ONLY — the re-upload CTA lives once
+                    (AlertsPanel/MetricsPanel), not repeated per row. */}
+                {c.revenueStale && (
+                  <span className="mt-1 block font-mono text-[11px] text-lumi-muted">
+                    · revenue outdated
+                  </span>
+                )}
+              </div>
+              {/* Impact rides WITH the campaign it ranks rather than standing as
+                  its own column — it is a property of this decision, not a
+                  metric to scan down. */}
+              <span className="inline-flex flex-shrink-0 items-center gap-1 whitespace-nowrap rounded bg-lumi-elevated px-1.5 py-0.5 font-mono text-[10px] text-lumi-muted">
+                Impact <Impact score={impact} relativeRank={relativeRank} />
               </span>
-            ) : <Dash />}
+            </div>
           </td>
-          <td className="px-4 py-2 text-right font-mono text-sm tabular-nums"><Impact score={impact} relativeRank={relativeRank} /></td>
-          <MetricCells m={c} />
-          <td className="px-4 py-2 text-right font-mono text-sm tabular-nums text-lumi-muted">{count > 0 ? count : <Dash />}</td>
-          <td className="px-4 py-2 text-right">
-            <button
-              type="button"
-              onClick={() => toggleDetail(c.entityId)}
-              aria-expanded={isDetailOpen}
-              aria-label={`Toggle details for ${c.name}`}
-              className="inline-flex items-center justify-center rounded-md p-1 hover:bg-lumi-elevated transition-colors"
-            >
-              <ChevronDown
-                className={cn('w-4 h-4 text-lumi-muted transition-transform', isDetailOpen && 'rotate-180 text-lumi-accent')}
-                strokeWidth={2}
-              />
-            </button>
+
+          {/* 3. The one metric that carries the verdict. 4. What it costs. */}
+          <DecisiveCell m={c} />
+          <SpendCell m={c} />
+
+          {/* 5. The two ways in. "View ad sets" is absent (not disabled) when
+              there are none — an unusable control is noise. */}
+          <td className="px-4 py-3 pr-4 align-top">
+            <div className="flex flex-col items-end gap-1.5">
+              <RowToggle
+                expanded={isDetailOpen}
+                onClick={() => toggleDetail(c.entityId)}
+                label={`Toggle details for ${c.name}`}
+              >
+                Explain decision
+              </RowToggle>
+              {count > 0 && (
+                <RowToggle
+                  expanded={isOpen}
+                  onClick={() => toggle(c.entityId)}
+                  label={`Toggle ad sets for ${c.name}`}
+                >
+                  View ad sets ({count})
+                </RowToggle>
+              )}
+            </div>
           </td>
         </tr>
         {isDetailOpen && (
           <tr className="border-b border-lumi-border/50 bg-lumi-bg/20">
-            <td colSpan={9} className="px-4 pb-3 pt-0">
+            <td colSpan={COLS} className="px-4 pb-3 pt-0">
               <CampaignDetailPanel campaign={c} verdict={verdict} impact={impact} rationale={info.rationale ?? null} confidence={info.confidence ?? null} />
             </td>
           </tr>
@@ -296,23 +340,17 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
           <table className="w-full min-w-[720px]">
             <thead className="bg-lumi-elevated border-b border-lumi-border">
               <tr>
-                <th scope="col" className="section-label px-4 py-2.5 text-left">Campaign</th>
-                <th scope="col" className="section-label px-4 py-2.5 text-left w-28">
+                <th scope="col" className="section-label px-4 py-2.5 text-left w-32">
                   <span className="inline-flex items-center gap-1">Verdict <HelpTip content={HELP.VERDICT_COL} /></span>
                 </th>
-                <th scope="col" className="section-label px-4 py-2.5 text-right w-20">
-                  <span className="inline-flex items-center gap-1">Impact <HelpTip variant="popover" content={HELP.IMPACT_SCORE} /></span>
+                <th scope="col" className="section-label px-4 py-2.5 text-left">Campaign</th>
+                {/* The metric NAME lives in each cell (it differs per row), so the
+                    header names the role the column plays instead. */}
+                <th scope="col" className="section-label px-4 py-2.5 text-right w-32">
+                  <span className="inline-flex items-center gap-1">Key signal <HelpTip content={HELP.KEY_SIGNAL} /></span>
                 </th>
                 <th scope="col" className="section-label px-4 py-2.5 text-right w-28">Spend</th>
-                <th scope="col" className="section-label px-4 py-2.5 text-right w-20">
-                  <span className="inline-flex items-center gap-1">ROAS <HelpTip content={HELP.ROAS} /></span>
-                </th>
-                <th scope="col" className="section-label px-4 py-2.5 text-right w-20">CTR</th>
-                <th scope="col" className="section-label px-4 py-2.5 text-right w-20">
-                  <span className="inline-flex items-center gap-1">Freq <HelpTip content={HELP.FREQUENCY} /></span>
-                </th>
-                <th scope="col" className="section-label px-4 py-2.5 text-right w-24">Ad sets</th>
-                <th scope="col" className="section-label px-4 py-2.5 text-right w-12"><span className="sr-only">Details</span></th>
+                <th scope="col" className="section-label px-4 py-2.5 text-right w-44"><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -325,7 +363,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                     {/* Band separator. Same colSpan as the ad-set/detail rows so
                         the single table's column grid stays intact. */}
                     <tr className="bg-lumi-bg/30">
-                      <td colSpan={9} className="px-4 pt-5 pb-1">
+                      <td colSpan={COLS} className="px-4 pt-5 pb-1">
                         <div className="flex items-center gap-2">
                           <span className={cn('text-[10px] font-bold uppercase tracking-widest', config.color)}>
                             {config.label}

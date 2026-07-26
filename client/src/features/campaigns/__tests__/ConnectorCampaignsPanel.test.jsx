@@ -7,7 +7,7 @@
 // never a faked badge.
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ConnectorCampaignsPanel } from '../ConnectorCampaignsPanel.jsx';
 
@@ -31,10 +31,11 @@ describe('ConnectorCampaignsPanel — verdict column', () => {
   it('renders an awareness verdict badge while ROAS stays "—" (engagement scored, revenue not fabricated)', () => {
     render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'REFRESH' }} />);
     expect(screen.getByLabelText('Verdict: REFRESH')).toBeInTheDocument();
-    // CTR + Freq populate from the entity-graph snapshot…
+    // No revenue and frequency below the fatigue ceiling → CTR is the key signal.
+    expect(screen.getByText('CTR')).toBeInTheDocument();
     expect(screen.getByText('1.20%')).toBeInTheDocument(); // ctr 0.012 → 1.20%
-    expect(screen.getByText('2.40')).toBeInTheDocument();  // frequency
-    // …ROAS stays the honest no-data em-dash for an awareness campaign.
+    // …and no ROAS figure is invented for an awareness campaign.
+    expect(screen.queryByText(/x$/)).not.toBeInTheDocument();
     expect(screen.getAllByTitle('No data').length).toBeGreaterThan(0);
   });
 
@@ -134,7 +135,9 @@ describe('ConnectorCampaignsPanel — "Why?" evidence in the expanded detail', (
       />,
     );
     expand();
-    expect(screen.getByText(/ROAS 0\.42 below break-even/)).toBeInTheDocument();
+    // The row now leads with this evidence too, so scope to the detail panel.
+    const detail = screen.getByText('Signals').closest('td');
+    expect(within(detail).getByText(/ROAS 0\.42 below break-even/)).toBeInTheDocument();
     expect(screen.getByText(/High confidence/)).toBeInTheDocument();
     expect(screen.queryByText(/No revenue data found/)).not.toBeInTheDocument();
   });
@@ -275,7 +278,7 @@ describe('ConnectorCampaignsPanel — decision queue grouping', () => {
 
   it('orders the bands Needs Action → Watching → Healthy → Needs Data', () => {
     const { container } = renderPanel(<ConnectorCampaignsPanel campaigns={four} verdicts={verdicts} />);
-    const labels = [...container.querySelectorAll('td[colspan="9"] span')]
+    const labels = [...container.querySelectorAll('td[colspan="5"] span')]
       .map((el) => el.textContent)
       .filter((t) => ['Needs Action', 'Watching', 'Healthy', 'Needs Data'].includes(t));
     expect(labels).toEqual(['Needs Action', 'Watching', 'Healthy', 'Needs Data']);
@@ -284,7 +287,8 @@ describe('ConnectorCampaignsPanel — decision queue grouping', () => {
   it('places each campaign under its band, in band order', () => {
     const { container } = renderPanel(<ConnectorCampaignsPanel campaigns={four} verdicts={verdicts} />);
     const names = [...container.querySelectorAll('tr[id^="campaign-row-"]')]
-      .map((tr) => tr.querySelector('.font-display')?.textContent);
+      // Column 2 — the verdict pill in column 1 is also .font-display.
+      .map((tr) => tr.querySelector('td:nth-child(2) .font-display')?.textContent);
     expect(names).toEqual(['Kill Me', 'Watch Me', 'Healthy One', 'Unscored One']);
   });
 
@@ -311,7 +315,7 @@ describe('ConnectorCampaignsPanel — decision queue grouping', () => {
     const { container } = renderPanel(
       <ConnectorCampaignsPanel campaigns={campaigns} verdicts={{ k1: 'KILL', k2: 'KILL', h1: 'HOLD' }} />,
     );
-    const bandRow = (label) => [...container.querySelectorAll('td[colspan="9"]')]
+    const bandRow = (label) => [...container.querySelectorAll('td[colspan="5"]')]
       .find((td) => td.textContent.includes(label));
     expect(bandRow('Needs Action').textContent).toContain('2');
     expect(bandRow('Healthy').textContent).toContain('1');
@@ -330,7 +334,8 @@ describe('ConnectorCampaignsPanel — decision queue grouping', () => {
       />,
     );
     const names = [...container.querySelectorAll('tr[id^="campaign-row-"]')]
-      .map((tr) => tr.querySelector('.font-display')?.textContent);
+      // Column 2 — the verdict pill in column 1 is also .font-display.
+      .map((tr) => tr.querySelector('td:nth-child(2) .font-display')?.textContent);
     expect(names).toEqual(['High Impact', 'Low Impact']);
   });
 
@@ -354,5 +359,128 @@ describe('ConnectorCampaignsPanel — decision queue grouping', () => {
     );
     expect(onDeepLinkHandled).toHaveBeenCalled();
     expect(screen.getByLabelText('Toggle details for Healthy One')).toHaveAttribute('aria-expanded', 'true');
+  });
+});
+
+// ── Decision-first row hierarchy ─────────────────────────────
+// The row leads with the DECISION (verdict → campaign + why + impact → the one
+// metric that carries it → spend → actions), instead of a four-metric grid that
+// showed four numbers to justify one call. The full metric set still lives one
+// click away in the detail panel.
+describe('ConnectorCampaignsPanel — decision-first row hierarchy', () => {
+  const withRevenue = (over = {}) => campaign({ roas: 2.4, revenueMinor: 120000, ...over });
+
+  it('leads the row with the verdict at the larger size', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
+    const pill = screen.getByLabelText('Verdict: KILL');
+    expect(pill).toHaveClass('text-xs');   // size="md", not the old "sm" (text-[10px])
+    // …and it sits in the FIRST column.
+    expect(pill.closest('td')).toBe(pill.closest('tr').querySelector('td'));
+  });
+
+  it('surfaces the evidence on the row for a revenue-track verdict too (was tooltip-only)', () => {
+    render(
+      <ConnectorCampaignsPanel
+        campaigns={[withRevenue()]}
+        verdicts={{ c1: 'KILL' }}
+        verdictInfo={{ c1: { rationale: 'ROAS 0.42 below break-even with frequency 5.2 past the 3.5 ceiling.', confidence: 0.9 } }}
+      />,
+    );
+    expect(screen.getByText('ROAS 0.42 below break-even with frequency 5.2 past the 3.5 ceiling')).toBeInTheDocument();
+  });
+
+  it('keeps impact with the campaign it ranks — no standalone Impact column', () => {
+    const { container } = render(
+      <ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} impacts={{ c1: 9 }} />,
+    );
+    const campaignCell = container.querySelector('tr[id^="campaign-row-"] td:nth-child(2)');
+    expect(campaignCell.textContent).toContain('Impact');
+    expect(campaignCell.querySelector('[title="Impact 9/10 — priority to act"]')).toBeInTheDocument();
+    // The old dedicated column is gone.
+    const headers = [...container.querySelectorAll('thead th')].map((th) => th.textContent.trim());
+    expect(headers).not.toContain('Impact');
+  });
+
+  it('renders the five decision columns, not the nine-column metric grid', () => {
+    const { container } = render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
+    expect(container.querySelectorAll('thead th')).toHaveLength(5);
+  });
+
+  it('the detail row spans the full five-column grid', () => {
+    const { container } = render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
+    fireEvent.click(screen.getByLabelText('Toggle details for Awareness Reach'));
+    const detailCell = [...container.querySelectorAll('td[colspan]')].find((td) => td.textContent.includes('Signals'));
+    expect(detailCell).toHaveAttribute('colspan', '5');
+  });
+});
+
+describe('ConnectorCampaignsPanel — key signal column', () => {
+  it('shows ROAS when revenue was measured', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign({ roas: 2.4, revenueMinor: 120000 })]} verdicts={{ c1: 'SCALE' }} />);
+    expect(screen.getByText('ROAS')).toBeInTheDocument();
+    expect(screen.getByText('2.40x')).toBeInTheDocument();
+  });
+
+  it('shows Frequency when the audience is past the fatigue ceiling', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign({ frequency: 4.2 })]} verdicts={{ c1: 'REFRESH' }} />);
+    expect(screen.getByText('Freq')).toBeInTheDocument();
+    expect(screen.getByText('4.20')).toBeInTheDocument();
+  });
+
+  it('a campaign with no metric at all shows "—", never a picked-at-random figure', () => {
+    render(
+      <ConnectorCampaignsPanel
+        campaigns={[campaign({ roas: null, ctr: null, frequency: null, revenueMinor: null })]}
+        verdicts={{ c1: 'HOLD' }}
+      />,
+    );
+    expect(screen.queryByText('CTR')).not.toBeInTheDocument();
+    expect(screen.queryByText('ROAS')).not.toBeInTheDocument();
+    expect(screen.getAllByTitle('No data').length).toBeGreaterThan(0);
+  });
+});
+
+// Both toggles are real controls now, side by side, instead of two chevrons at
+// opposite ends of the row that never said what they opened.
+describe('ConnectorCampaignsPanel — row actions', () => {
+  it('names the detail toggle "Explain decision"', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
+    expect(screen.getByText('Explain decision')).toBeInTheDocument();
+  });
+
+  it('hides "View ad sets" entirely when there are none (an unusable control is noise)', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign({ adSetCount: 0 })]} verdicts={{ c1: 'KILL' }} />);
+    expect(screen.queryByText(/view ad sets/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/toggle ad sets/i)).not.toBeInTheDocument();
+  });
+
+  it('shows "View ad sets" with its count when the campaign has them', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign({ adSetCount: 3 })]} verdicts={{ c1: 'KILL' }} />);
+    expect(screen.getByText('View ad sets (3)')).toBeInTheDocument();
+  });
+
+  it('rotates the detail chevron on expand — the label never becomes "Close"', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
+    const btn = screen.getByLabelText('Toggle details for Awareness Reach');
+    expect(btn.querySelector('svg')).not.toHaveClass('rotate-90');
+
+    fireEvent.click(btn);
+
+    expect(btn.querySelector('svg')).toHaveClass('rotate-90');
+    expect(btn).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Explain decision')).toBeInTheDocument(); // label unchanged
+    expect(screen.queryByText(/^close$/i)).not.toBeInTheDocument();
+  });
+
+  it('rotates the ad-sets chevron on expand, independently of the detail panel', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign({ adSetCount: 2 })]} verdicts={{ c1: 'KILL' }} />);
+    const adSets = screen.getByLabelText('Toggle ad sets for Awareness Reach');
+
+    fireEvent.click(adSets);
+
+    expect(adSets.querySelector('svg')).toHaveClass('rotate-90');
+    // The detail panel is a separate state — it stays shut.
+    expect(screen.getByLabelText('Toggle details for Awareness Reach')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Signals')).not.toBeInTheDocument();
   });
 });
