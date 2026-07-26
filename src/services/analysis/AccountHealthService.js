@@ -36,7 +36,7 @@ const THRESHOLDS = Object.freeze({
 // Verdicts whose spend counts as WASTED. KILL = stop entirely; REFRESH = the
 // creative is fatigued and the money is increasingly burning. REALLOCATE is
 // productive-but-misplaced budget (moved, not wasted) → deliberately excluded.
-const WASTED_VERDICTS = Object.freeze(new Set(['KILL', 'REFRESH']));
+export const WASTED_VERDICTS = Object.freeze(new Set(['KILL', 'REFRESH']));
 
 // Per-campaign health base by verdict (0-100). Exhaustive over the VERDICT enum
 // (verdict-engine/verdictTypes.js): KILL/HOLD/SCALE/WATCH/REALLOCATE/REFRESH.

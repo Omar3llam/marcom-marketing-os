@@ -2,16 +2,22 @@
 // AI Gateway — Copilot Q&A prompts (ANSWER_QUESTION)
 // ============================================================
 // Builds the {system, user} prompt for account-aware Q&A. The system prompt
-// carries the live account context (workspace + top campaigns by spend + the
-// pre-generated portfolio briefing); the user prompt renders the conversation
-// transcript + the current question (callClaude is single-turn, so multi-turn
-// history is folded into the prompt text rather than native message roles).
+// carries the live account context (workspace + deterministic account health +
+// top campaigns by spend + the pre-generated portfolio briefing); the user
+// prompt renders the conversation transcript + the current question (callClaude
+// is single-turn, so multi-turn history is folded into the prompt text rather
+// than native message roles).
 //
 // HONESTY RULES (baked into the system prompt):
 //   - Every campaign figure is a REAL connector metric via the entity graph +
 //     verdict engine — never fabricated.
-//   - The prompt forbids inventing numbers and demands an honest "I don't have
-//     that data" when the answer isn't backed by the context.
+//   - The prompt forbids inventing numbers and demands the model NAME the
+//     missing metric instead of a vague "I don't have that data".
+//   - The campaign list DISCLOSES that it is a top-N slice, and the rules carry
+//     the true total — otherwise the model answers "how many campaigns?" with
+//     the size of the slice, truthfully reading a context that hid the rest.
+//   - No date is injected: a connector row is a rolling aggregate re-stamped
+//     every sync, so any date would imply a time window the data can't support.
 // ============================================================
 import { formatCurrency } from '../../../lib/money.js';
 
@@ -36,25 +42,64 @@ function pct(frac) {
 }
 
 /**
- * @param {object} workspace — { name, currency, objective, industry, market }
- * @param {Array<object>} campaigns — top campaigns:
- *   { name, channel, objective, verdict, rationale, roas, ctr, frequency, spendMinor, currency }
- * @param {string|null} briefing — pre-generated LoopRun.aiInsight (may be null)
+ * Every metric renders as a LABELLED field — an absent one prints "unavailable"
+ * rather than vanishing. That distinction is load-bearing: the model can only
+ * name which metric is missing if it can see that the field exists at all.
+ * @param {number|null} value
+ * @param {string} rendered — the formatted value when present
+ */
+function field(value, rendered) {
+  return value == null ? 'unavailable' : rendered;
+}
+
+/**
+ * @param {object} args
+ * @param {object} args.workspace — { name, currency, objective, industry, market }
+ * @param {object} args.portfolio — account-level facts the slice can't carry:
+ *   { totalCampaigns, currency, health: {score,label,wastedSpendMinor,criticalCampaigns,healthyCampaigns}|null, totals }
+ * @param {Array<object>} args.campaigns — the top-N slice:
+ *   { name, channel, objective, verdict, rationale, roas, ctr, frequency,
+ *     spendMinor, currency, conversions, revenueMinor, impressions, clicks }
+ * @param {string|null} args.briefing — pre-generated LoopRun.aiInsight (may be null)
  * @returns {string} system prompt
  */
-export function buildCopilotSystemPrompt(workspace = {}, campaigns = [], briefing = null) {
-  const wsCurrency = workspace.currency || 'USD';
+export function buildCopilotSystemPrompt({ workspace = {}, portfolio = {}, campaigns = [], briefing = null } = {}) {
+  const wsCurrency = workspace.currency || portfolio.currency || 'USD';
+  const shown = (campaigns ?? []).length;
+  const total = portfolio.totalCampaigns ?? shown;
+
+  const health = portfolio.health;
+  const healthBlock = health
+    ? [
+      'ACCOUNT HEALTH',
+      `Score: ${health.score}/100 (${health.label})`,
+      `Wasted spend: ${field(health.wastedSpendMinor, money(health.wastedSpendMinor, wsCurrency))}`,
+      // Named by verdict so "critical" can never be misread as the CRITICAL
+      // health label (a different axis entirely).
+      health.criticalCampaigns != null ? `Campaigns to act on (KILL or REFRESH): ${health.criticalCampaigns}` : null,
+      health.healthyCampaigns != null ? `Campaigns scaling well (SCALE): ${health.healthyCampaigns}` : null,
+    ].filter(Boolean).join('\n')
+    : 'ACCOUNT HEALTH: unavailable';
 
   const campaignLines = (campaigns ?? []).map((c) => {
-    const parts = [`${c.name}${c.channel ? ` (${c.channel})` : ''}`];
-    if (c.verdict) parts.push(`→ ${c.verdict}`);
-    if (c.roas != null) parts.push(`ROAS ${Number(c.roas).toFixed(2)}x`);
-    if (c.ctr != null) parts.push(`CTR ${pct(c.ctr)}`);
-    if (c.frequency != null) parts.push(`Freq ${Number(c.frequency).toFixed(1)}`);
-    if (c.spendMinor != null) parts.push(`Spend ${money(c.spendMinor, c.currency, wsCurrency)}`);
-    if (c.rationale) parts.push(`(${c.rationale})`);
-    return `- ${parts.join(' · ')}`;
+    const lines = [
+      `- ${c.name}${c.channel ? ` (${c.channel})` : ''} → ${c.verdict ?? 'unscored'}`,
+      `  ROAS: ${field(c.roas, `${Number(c.roas).toFixed(2)}x`)}`,
+      `  CTR: ${field(c.ctr, pct(c.ctr))}`,
+      `  Freq: ${field(c.frequency, Number(c.frequency).toFixed(1))}`,
+      `  Spend: ${field(c.spendMinor, money(c.spendMinor, c.currency, wsCurrency))}`,
+      `  Conversions: ${field(c.conversions, String(c.conversions))}`,
+      `  Revenue: ${field(c.revenueMinor, money(c.revenueMinor, c.currency, wsCurrency))}`,
+    ];
+    if (c.rationale) lines.push(`  (${c.rationale})`);
+    return lines.join('\n');
   }).join('\n');
+
+  const campaignHeader = shown === 0
+    ? 'CAMPAIGNS:\nNo campaigns synced yet.'
+    : `CAMPAIGNS (showing top ${shown} of ${total} by spend)${
+      total > shown ? `\n${total - shown} additional campaigns are not shown in this summary.` : ''
+    }\n${campaignLines}`;
 
   return `You are Lumi, a MENA performance-marketing intelligence system embedded in the marketer's workspace. You have live access to this account's campaign data and verdicts.
 
@@ -64,13 +109,18 @@ CURRENCY: ${wsCurrency}
 OBJECTIVE: ${workspace.objective ?? 'performance marketing'}
 INDUSTRY: ${workspace.industry ?? 'unknown'}
 
-CURRENT PORTFOLIO (top campaigns by spend):
-${campaignLines || 'No campaigns synced yet.'}
+${healthBlock}
+
+${campaignHeader}
 ${briefing ? `\nACCOUNT BRIEFING:\n${briefing}\n` : ''}
 RULES:
 - Answer in 2-4 sentences unless real detail is genuinely needed.
 - Cite specific campaign names, numbers, and verdicts from the data above.
-- Never fabricate numbers that are not in the data. If you lack the data to answer, say so plainly.
+- Never fabricate numbers that are not in the data.
+- When a figure is missing or marked "unavailable", say so plainly AND name the exact metric that is absent — never claim you lack access to this account.
+- Campaign metrics are the latest available snapshot, not a historical trend. If asked about a time period ("this week", "last month"), say the figures are a current snapshot and no period-over-period comparison is available.
+- If a campaign's conversions are unavailable or zero, CPA cannot be derived for it — say that explicitly rather than estimating one.
+- If asked how many campaigns exist, the answer is ${total} campaigns — not the number listed above.
 - Be direct — no "great question!" or filler.
 - Respond in the same language the user writes in.
 - You may reference earlier messages in this conversation.`;
