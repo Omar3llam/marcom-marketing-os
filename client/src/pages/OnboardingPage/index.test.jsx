@@ -70,8 +70,11 @@ describe('OnboardingPage — connect-first flow', () => {
     ['Workspace', 'Connect', 'Analyze', 'Verdict'].forEach((label) => {
       expect(screen.getByText(label)).toBeInTheDocument();
     });
-    expect(screen.getByText('Analyze').className).toMatch(/text-lumi-gold/);
-    expect(screen.getByText('Verdict').className).not.toMatch(/text-lumi-gold/);
+    // Emphasis is weight + the darkest text token, not lumi-gold — gold is
+    // 1.34:1 on the light surface, i.e. no highlight at all.
+    expect(screen.getByText('Analyze').className).toMatch(/text-lumi-text/);
+    expect(screen.getByText('Analyze').className).toMatch(/font-semibold/);
+    expect(screen.getByText('Verdict').className).not.toMatch(/text-lumi-text\b/);
   });
 
   it('advances name → connect → sync → ready and never writes context before sync', async () => {
@@ -102,5 +105,26 @@ describe('OnboardingPage — connect-first flow', () => {
     fireEvent.click(screen.getByText('skip'));
     await waitFor(() => expect(putMock).toHaveBeenCalled());
     expect(navigateSpy).toHaveBeenCalledWith('/app/overview', { replace: true });
+  });
+});
+
+// The flow rendered on bg-dark-base — which is colors.text.base (#2B2B2B), a
+// TEXT token — while styling its copy with lumi-*, whose text token is also
+// #2B2B2B. Every heading was #2B2B2B on #2B2B2B: a 1:1 ratio, i.e. invisible.
+// Unit tests can't see colour, so this pins the SURFACE the tokens assume.
+describe('OnboardingPage — renders on the app surface', () => {
+  it('uses the light page background, never the text token', () => {
+    const { container } = mountAt('');
+    const page = container.firstChild;
+    expect(page.className).toMatch(/bg-lumi-bg/);
+    expect(page.className).not.toMatch(/bg-dark-base/);
+  });
+
+  it('drops the fixed px-8 gutter on small screens', () => {
+    const { container } = mountAt('');
+    const column = container.firstChild.firstChild; // the 580px content column
+    expect(column.className).toMatch(/max-w-\[580px\]/);
+    expect(column.className).toMatch(/sm:px-8/);
+    expect(column.className).not.toMatch(/(^|\s)px-8/);
   });
 });

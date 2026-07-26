@@ -64,7 +64,9 @@ export function ReadyStep({ onEnterApp }) {
 
   return (
     <div>
-      <p className="text-[11px] font-semibold text-lumi-gold uppercase tracking-widest mb-4">
+      {/* lumi-gold is 1.34:1 on the light surface — the eyebrow reads as an
+          eyebrow through size and tracking, not colour. */}
+      <p className="text-[11px] font-semibold text-lumi-muted uppercase tracking-widest mb-4">
         {topVerdict ? 'Your first verdict' : 'Analysis complete'}
       </p>
 
