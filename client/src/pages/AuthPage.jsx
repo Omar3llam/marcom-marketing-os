@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { toast } from 'sonner';
-import { Sparkles, AlertCircle, ExternalLink } from 'lucide-react';
+import { Sparkles, AlertCircle, ExternalLink, ArrowLeft } from 'lucide-react';
 import { MetricValue, DecisionTitle } from '@/components/primitives';
 import { isEmbeddedWebviewOrMobile } from '@/firebase.js';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton.jsx';
@@ -109,6 +109,18 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
   return (
     <div className="min-h-screen bg-surface-light flex items-center justify-center p-4">
       <div className="w-full max-w-md">
+        {/* The auth page is a dead end otherwise — there is no nav chrome here,
+            so a visitor who lands on it by mistake has only the browser Back
+            button. A router Link, not an <a>: this is same-app navigation and a
+            full reload would drop the ?next= param the post-auth redirect uses. */}
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 mb-6 text-sm text-dark-soft hover:text-dark-base transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" strokeWidth={2} />
+          Back to home
+        </Link>
+
         <div className="text-center mb-8">
           <div className="inline-flex items-center gap-2 text-dark-base mb-3">
             <Sparkles className="h-6 w-6 text-lumi-gold" />
