@@ -227,6 +227,16 @@ describe('entityGraphEngine shapers — null-where-absent (honest "—", never a
     });
   });
 
+  // The platform-native id has to survive the projection: it is the only thing
+  // that lets the client deep-link back to the campaign in the ad platform.
+  // Dropping it turns the "Open in platform" action into permanently dead code.
+  it('toCampaignRow carries externalId through, null when the row has none', () => {
+    const linked = toCampaignRow({ id: 'c1', name: 'A', channel: 'META', externalId: '120210987654321' }, null);
+    expect(linked.externalId).toBe('120210987654321');
+    // Pre-connector rows have no platform id — null, never a guessed value.
+    expect(toCampaignRow({ id: 'c2', name: 'B', channel: 'META' }, null).externalId).toBeNull();
+  });
+
   // revenueStale has to survive the projection or the reader can never tell
   // "revenue outdated" from "never uploaded" — two different things to say.
   it('toCampaignRow carries revenueStale through, defaulting false', () => {

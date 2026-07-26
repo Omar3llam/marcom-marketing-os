@@ -7,7 +7,7 @@
 // and serves a cached read with no second request on re-expand.
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { CampaignDetailPanel } from './CampaignDetailPanel.jsx';
 
 // Mock the shared client via a hoisted handle — feature code (and its tests) must
@@ -80,5 +80,112 @@ describe("CampaignDetailPanel — Lumi's Read (pre-generated)", () => {
     render(<CampaignDetailPanel campaign={c} verdict="HOLD" impact={4} />);
     await waitFor(() => expect(screen.getByText(READING)).toBeInTheDocument());
     expect(get).toHaveBeenCalledTimes(1); // served from the session cache
+  });
+});
+
+// ── Actions on a decision ────────────────────────────────────
+// Lumi initiates, the human acts. Neither control touches the ad platform: Copy
+// hands over the decision verbatim, the link opens the platform's own UI.
+// NOTE: fireEvent, not userEvent — userEvent.setup() installs its OWN
+// navigator.clipboard stub, which silently replaces the mock these tests assert.
+describe('CampaignDetailPanel — ActionBar', () => {
+  const writeText = vi.fn(() => Promise.resolve());
+
+  beforeEach(() => {
+    writeText.mockClear();
+    writeText.mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true, writable: true });
+  });
+
+  it('offers actions on a KILL', () => {
+    render(<CampaignDetailPanel campaign={campaign()} verdict="KILL" rationale="ROAS 0.42 below break-even." confidence={0.9} />);
+    expect(screen.getByText('Copy decision')).toBeInTheDocument();
+  });
+
+  it('offers actions on a SCALE', () => {
+    render(<CampaignDetailPanel campaign={campaign()} verdict="SCALE" />);
+    expect(screen.getByText('Copy decision')).toBeInTheDocument();
+  });
+
+  // Nothing to act on → no bar. An action button under a "keep running" verdict
+  // would invent an ask the engine never made.
+  it.each(['HOLD', 'WATCH', 'REFRESH', 'REALLOCATE', null])('renders no action bar for %s', (verdict) => {
+    render(<CampaignDetailPanel campaign={campaign()} verdict={verdict} />);
+    expect(screen.queryByText('Copy decision')).not.toBeInTheDocument();
+    expect(screen.queryByText(/open in/i)).not.toBeInTheDocument();
+  });
+
+  it('copies the decision as the same text the panel shows', async () => {
+    render(
+      <CampaignDetailPanel
+        campaign={campaign()}
+        verdict="KILL"
+        rationale="Lowest CTR in the conversion group (0.85% vs 1.42% group average) — weakest engagement."
+        confidence={0.6}
+      />,
+    );
+
+    await act(async () => { fireEvent.click(screen.getByText('Copy decision')); });
+
+    const text = writeText.mock.calls[0][0];
+    expect(text).toContain('Campaign: Eid Sale');
+    expect(text).toContain('Verdict: KILL');
+    expect(text).toContain('Pause and reallocate budget');
+    expect(text).toContain('Lowest CTR in the conversion group (0.85% vs 1.42% group average)');
+    expect(text).toContain('Confidence: Medium');
+    expect(await screen.findByText('Copied')).toBeInTheDocument();
+  });
+
+  // The one outcome worse than no copy button: reporting success when nothing
+  // reached the clipboard, so the marketer pastes stale content.
+  it('says so when the copy FAILS — never a silent or false "Copied"', async () => {
+    writeText.mockRejectedValue(new Error('Permission denied'));
+    render(<CampaignDetailPanel campaign={campaign()} verdict="KILL" />);
+
+    fireEvent.click(screen.getByText('Copy decision'));
+
+    expect(await screen.findByText(/couldn.t copy/i)).toBeInTheDocument();
+    expect(screen.queryByText('Copied')).not.toBeInTheDocument();
+  });
+
+  it('returns to rest after the feedback window', async () => {
+    vi.useFakeTimers();
+    render(<CampaignDetailPanel campaign={campaign()} verdict="KILL" />);
+
+    await act(async () => { fireEvent.click(screen.getByText('Copy decision')); });
+    expect(screen.getByText('Copied')).toBeInTheDocument();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+
+    expect(screen.queryByText('Copied')).not.toBeInTheDocument();
+    expect(screen.getByText('Copy decision')).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it('links to the campaign in the platform when it carries a platform id', () => {
+    render(<CampaignDetailPanel campaign={campaign({ externalId: '120210987654321' })} verdict="KILL" />);
+    const link = screen.getByRole('link', { name: /open in META/i });
+    expect(link).toHaveAttribute('href', expect.stringContaining('selected_campaign_ids=120210987654321'));
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it('renders NO link when the row carries no platform id (never a generic account URL)', () => {
+    render(<CampaignDetailPanel campaign={campaign({ externalId: null })} verdict="KILL" />);
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.getByText('Copy decision')).toBeInTheDocument(); // copy still works
+  });
+
+  it('renders no link for a channel with no verified campaign deep-link', () => {
+    render(<CampaignDetailPanel campaign={campaign({ channel: 'TIKTOK', externalId: '12345' })} verdict="KILL" />);
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('sits below the "Next step" line, inside the Why block', () => {
+    const { container } = render(<CampaignDetailPanel campaign={campaign()} verdict="KILL" rationale="ROAS 0.42 below break-even." />);
+    const whyBlock = screen.getByText(/Why kill\?/i).closest('.rounded-xl');
+    expect(whyBlock).toContainElement(screen.getByText('Copy decision'));
+    // Ordering: the recommendation is stated before it can be acted on.
+    const html = container.innerHTML;
+    expect(html.indexOf('Next step:')).toBeLessThan(html.indexOf('Copy decision'));
   });
 });
