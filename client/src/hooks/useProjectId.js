@@ -10,7 +10,7 @@
 // Returns:
 //   { projectId: string|null, loading: boolean, error: string|null }
 // ============================================================
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api }                 from '@/lib/api.js';
 import { useAuth }             from '@/context/AuthContext.jsx';
 
@@ -19,6 +19,10 @@ export function useProjectId() {
   const [projectId, setProjectId]    = useState(null);
   const [loading,   setLoading]      = useState(true);
   const [error,     setError]        = useState(null);
+  // Bumped by refetch() to re-run the effect (mirrors useConnections). Without
+  // it, a failed /api/projects/mine left every caller permanently unable to
+  // recover except by a full page reload.
+  const [reloadKey, setReloadKey]    = useState(0);
 
   useEffect(() => {
     if (!currentUser) {
@@ -42,7 +46,9 @@ export function useProjectId() {
       .finally(() => setLoading(false));
 
     return () => ctrl.abort();
-  }, [currentUser]);  // re-fetch if user changes
+  }, [currentUser, reloadKey]);  // re-fetch if the user changes, or on refetch()
 
-  return { projectId, loading, error };
+  const refetch = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  return { projectId, loading, error, refetch };
 }

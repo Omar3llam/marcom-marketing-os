@@ -7,7 +7,7 @@ import { NameStep } from './steps/NameStep.jsx';
 import { ConnectStep } from './steps/ConnectStep.jsx';
 import { SyncStep } from './steps/SyncStep.jsx';
 import { ReadyStep } from './steps/ReadyStep.jsx';
-import { ONBOARDING_NAME_KEY } from './steps/onboardingStyles.js';
+import { ONBOARDING_NAME_KEY, PAGE } from './steps/onboardingStyles.js';
 
 // Connect → Verdict → Enrich. Gate on a workspace name only; the rest is
 // deferred (progressive profiling, separate PR). The step lives in the URL so it
@@ -72,15 +72,21 @@ export default function OnboardingPage() {
   const idx = STEPS.indexOf(step);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-dark-base px-6">
-      <div className="w-full max-w-[580px] px-8">
+    <div className={`min-h-screen flex items-center justify-center px-4 sm:px-6 ${PAGE}`}>
+      {/* px-8 applied at every width, so a 375px phone lost 64px of an already
+          narrow column for nothing. */}
+      <div className="w-full max-w-[580px] px-0 sm:px-8">
         <div className="mb-10">
           <div className="flex gap-1.5 mb-2" aria-hidden="true">
             {STEPS.map((s, i) => (
               <div
                 key={s}
+                // On the light surface the track needs border-strong: plain
+                // lumi-border (#EDEAE4) against bg-lumi-bg (#F8F6F2) is a ghost.
+                // The fill is lumi-accent, not lumi-gold — #F6C945 on a
+                // near-white page is 1.34:1 and effectively disappears.
                 className={`h-1 flex-1 rounded-full transition-all duration-500 ease-out ${
-                  i <= idx ? 'bg-lumi-gold' : 'bg-lumi-border'
+                  i <= idx ? 'bg-lumi-accent' : 'bg-lumi-border-strong'
                 }`}
               />
             ))}
@@ -89,8 +95,11 @@ export default function OnboardingPage() {
             {STEP_LABELS.map((label, i) => (
               <span
                 key={label}
+                // Opacity-dimmed variants (text-lumi-text/50, text-lumi-muted/40)
+                // fall under the AA floor on either surface — the de-emphasis is
+                // carried by the token itself instead.
                 className={`flex-1 text-[10px] font-medium transition-colors duration-300 ${
-                  i === idx ? 'text-lumi-gold' : i < idx ? 'text-lumi-text/50' : 'text-lumi-muted/40'
+                  i === idx ? 'text-lumi-text font-semibold' : i < idx ? 'text-lumi-muted' : 'text-lumi-subtle'
                 }`}
               >
                 {label}

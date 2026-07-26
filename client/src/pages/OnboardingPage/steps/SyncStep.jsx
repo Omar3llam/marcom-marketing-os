@@ -14,8 +14,18 @@ const PHASES = [
   'Preparing results…',
 ];
 
+// A 'maximum' date-preset pull on a large account can outlast the phase list —
+// and the api client gives up at 60s. Rather than leave the user watching a
+// stalled timeline, say what is happening. Nothing here claims progress it
+// can't see; both lines are about expectations, not state.
+const HINTS = {
+  soon: 'Large accounts can take a few minutes. Still working.',
+  long: 'You can safely leave this page open — the sync continues.',
+};
+
 export function SyncStep({ onComplete }) {
   const [phaseIdx, setPhaseIdx] = useState(0);
+  const [hint, setHint] = useState(null); // null | 'soon' | 'long'
   const doneRef = useRef(false);
 
   useEffect(() => {
@@ -23,6 +33,8 @@ export function SyncStep({ onComplete }) {
       setTimeout(() => setPhaseIdx((i) => Math.max(i, 1)), 600),
       setTimeout(() => setPhaseIdx((i) => Math.max(i, 2)), 2000),
       setTimeout(() => setPhaseIdx((i) => Math.max(i, 3)), 4500),
+      setTimeout(() => { if (!doneRef.current) setHint('soon'); }, 30_000),
+      setTimeout(() => { if (!doneRef.current) setHint('long'); }, 60_000),
     ];
     const finish = () => {
       if (doneRef.current) return;
@@ -56,11 +68,13 @@ export function SyncStep({ onComplete }) {
               {done
                 ? <CheckCircle2 className="w-[18px] h-[18px] text-signal-scale flex-shrink-0" strokeWidth={2} />
                 : active
-                  ? <Loader2 className="w-[18px] h-[18px] text-lumi-gold animate-spin flex-shrink-0" strokeWidth={2} />
+                  ? <Loader2 className="w-[18px] h-[18px] text-lumi-accent animate-spin flex-shrink-0" strokeWidth={2} />
                   : <span className="w-[18px] h-[18px] rounded-full border border-lumi-border flex-shrink-0" />}
               <span
                 className={`text-sm font-medium ${
-                  done ? 'text-lumi-text' : active ? 'text-lumi-gold' : 'text-lumi-muted'
+                  // The active row was text-lumi-gold: 1.34:1 on the light
+                  // surface. Weight carries the emphasis instead.
+                  done ? 'text-lumi-muted' : active ? 'text-lumi-text font-semibold' : 'text-lumi-subtle'
                 }`}
               >
                 {label}
@@ -69,6 +83,10 @@ export function SyncStep({ onComplete }) {
           );
         })}
       </div>
+
+      {hint && (
+        <p className="text-xs text-lumi-muted text-center mt-6">{HINTS[hint]}</p>
+      )}
     </div>
   );
 }
