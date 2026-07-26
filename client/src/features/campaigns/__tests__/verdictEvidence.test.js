@@ -12,6 +12,7 @@ import { formatCurrency } from '@/lib/money';
 import {
   NO_REVENUE_DISCLAIMER, confidenceLabel, evidenceClause, shortEvidence,
   nextActionFor, ignoreCostFor, decisiveMetric, FATIGUE_FREQ,
+  buildRecommendationText, platformUrl, LINKABLE_CHANNELS,
 } from '../verdictEvidence.js';
 
 // Verbatim shapes from relativeRanking.js and verdictEngine.js.
@@ -169,5 +170,102 @@ describe('decisiveMetric', () => {
     const data = { roas: 3, revenueMinor: 90000, ctr: 0.02, frequency: 1.5 };
     expect(decisiveMetric({ ...data, signalType: 'SOME_UNRELEASED_SIGNAL' }))
       .toEqual(decisiveMetric(data));
+  });
+});
+
+// ── buildRecommendationText ──────────────────────────────────
+// What the marketer pastes must be exactly what the panel showed: the engine's
+// own strings, with a missing field DROPPING its line rather than printing an
+// "unknown" the reader could mistake for a finding.
+describe('buildRecommendationText', () => {
+  const full = () => buildRecommendationText({
+    verdict: 'KILL',
+    name: 'Ramadan Wave',
+    rationale: RELATIVE_KILL,
+    nextAction: nextActionFor('KILL'),
+    confidence: 0.6,
+    spendMinor: 500000,
+    currency: 'EGP',
+  });
+
+  it('leads with the campaign and the verdict', () => {
+    expect(full().startsWith('Recommendation\n\nCampaign: Ramadan Wave\nVerdict: KILL')).toBe(true);
+  });
+
+  it('carries the action, the evidence, the confidence and the spend', () => {
+    const text = full();
+    expect(text).toContain('Recommended action:\nPause and reallocate budget');
+    // The evidence is the engine's clause, numbers verbatim.
+    expect(text).toContain('Evidence:\nLowest CTR in the conversion group (0.85% vs 1.42% group average).');
+    expect(text).toContain('Confidence: Medium');
+    expect(text).toContain(`Spend analyzed: ${formatCurrency(500000, 'EGP')}`);
+  });
+
+  it('omits every line whose field is missing — no "unknown" placeholders', () => {
+    const text = buildRecommendationText({ verdict: 'SCALE', name: 'Eid Push' });
+    expect(text).toBe('Recommendation\n\nCampaign: Eid Push\nVerdict: SCALE');
+    expect(text).not.toMatch(/Evidence:|Confidence:|Spend analyzed:|Recommended action:/);
+    expect(text).not.toMatch(/unknown|n\/a|null/i);
+  });
+
+  it('drops the evidence line alone when only the rationale is missing', () => {
+    const text = buildRecommendationText({ verdict: 'KILL', name: 'X', confidence: 0.9, spendMinor: 100 });
+    expect(text).not.toContain('Evidence:');
+    expect(text).toContain('Confidence: High');
+  });
+
+  it('a SCALE carries its own next action', () => {
+    const text = buildRecommendationText({ verdict: 'SCALE', name: 'X', nextAction: nextActionFor('SCALE') });
+    expect(text).toContain('Increase budget or expand audience');
+  });
+
+  // Same rule as ignoreCostFor: the sync window is unknown client-side.
+  it('never turns spend into a rate', () => {
+    expect(full()).not.toMatch(/month|\/mo|per day/i);
+  });
+});
+
+// ── platformUrl ──────────────────────────────────────────────
+// A link that opens the wrong thing is worse than no link, so every path that
+// cannot be built honestly returns null and the UI renders nothing.
+describe('platformUrl', () => {
+  it('builds a campaign-specific Meta link from the platform id', () => {
+    const url = platformUrl('META', '120210987654321');
+    expect(url).toContain('adsmanager.facebook.com');
+    expect(url).toContain('selected_campaign_ids=120210987654321');
+  });
+
+  it('builds a campaign-specific Google link', () => {
+    expect(platformUrl('GOOGLE', '99887766')).toContain('campaignId=99887766');
+  });
+
+  it('is case-insensitive about the channel', () => {
+    expect(platformUrl('meta', '123')).toBe(platformUrl('META', '123'));
+  });
+
+  it('no platform id → null (a row that predates the connector gets no link)', () => {
+    expect(platformUrl('META', null)).toBeNull();
+    expect(platformUrl('META', undefined)).toBeNull();
+    expect(platformUrl('META', '')).toBeNull();
+  });
+
+  it('no channel → null', () => {
+    expect(platformUrl(null, '123')).toBeNull();
+    expect(platformUrl('', '123')).toBeNull();
+  });
+
+  // TIKTOK's documented parameter (aadvid) is the ADVERTISER id — feeding it a
+  // campaign id builds a link that resolves to nothing. Landing the marketer on
+  // an error page is worse than showing no button, so it stays unmapped until
+  // the real campaign deep-link format is verified against a live account.
+  it('returns null for channels with no verified campaign deep-link', () => {
+    for (const channel of ['TIKTOK', 'SNAP', 'LINKEDIN', 'SNAPCHAT']) {
+      expect(platformUrl(channel, '12345')).toBeNull();
+    }
+    expect(LINKABLE_CHANNELS).toEqual(['META', 'GOOGLE']);
+  });
+
+  it('escapes the id rather than interpolating it raw', () => {
+    expect(platformUrl('META', 'a b&c')).toContain('a%20b%26c');
   });
 });

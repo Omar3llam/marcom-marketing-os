@@ -149,6 +149,10 @@ export function toCampaignRow(campaign, snap) {
     channel:    campaign.channel,
     name:       campaign.name,
     objective:  campaign.objective ?? null, // platform objective (awareness vs conversion); null when unknown
+    // Platform-native campaign id (snapshotSink writes it on every synced
+    // entity). null for rows that predate the connector — the client renders no
+    // platform link rather than a guessed one.
+    externalId: campaign.externalId ?? null,
     adSetCount: campaign.adSetCount ?? 0,
     ...metricsOf(snap),
   };
