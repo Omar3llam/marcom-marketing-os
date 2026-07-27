@@ -10,6 +10,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { recordAdminAction } from '../../lib/adminAudit.js';
+import { listConnections } from '../../services/connectors/credentialStore.js';
 
 export const workspacesRouter = Router();
 
@@ -50,6 +51,102 @@ workspacesRouter.get('/', async (_req, res) => {
   } catch (err) {
     logger.error({ err: err.message }, '[admin/workspaces] list failed');
     res.status(500).json({ error: 'Failed to list workspaces' });
+  }
+});
+
+// How many members / sweeps the drill-down shows. Both are capped and both
+// report the real total alongside, so a busy workspace is never misread as small.
+const MAX_DETAIL_USERS = 50;
+const MAX_DETAIL_LOOP_RUNS = 5;
+
+// GET /api/admin/workspaces/:id — the operator drill-down.
+//
+// Three reads, deliberately not one: the workspace row + its members + counts
+// come from Prisma; loop runs are a second indexed query; connector state lives
+// in marcom_credentials, a RAW-SQL table kept out of the Prisma schema on
+// purpose (the Integration model that shadowed it was write-dead and dropped).
+//
+// This is a DETAIL endpoint, never extra columns on the list: the credential
+// read is one round trip per workspace, so folding it into GET / would be an
+// N+1 across every row.
+workspacesRouter.get('/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const workspace = await prisma.workspace.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        plan: true,
+        currency: true,
+        createdAt: true,
+        // Captured at onboarding and never surfaced anywhere until now.
+        spendTier: true,
+        objective: true,
+        adChannels: true,
+        measurementTier: true,
+        networkConsent: true,
+        users: {
+          select: { id: true, email: true, role: true, collabRole: true, createdAt: true },
+          take: MAX_DETAIL_USERS,
+          orderBy: { createdAt: 'desc' },
+        },
+        // `users` is capped, so the honest member total has to come from _count.
+        _count: {
+          select: { users: true, campaignEntities: true, decisions: true, accounts: true, metricSnapshots: true },
+        },
+      },
+    });
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+
+    const loopRuns = await prisma.loopRun.findMany({
+      where: { workspaceId: id },
+      orderBy: { startedAt: 'desc' },
+      take: MAX_DETAIL_LOOP_RUNS,
+      // LoopRun has no `status` column — a sweep's outcome is `closed` plus the
+      // queryable `loopHealth` (HEALTHY | DEGRADED | STALLED).
+      select: {
+        id: true, trigger: true, startedAt: true, finishedAt: true,
+        closed: true, loopHealth: true, staleStages: true, summary: true,
+      },
+    });
+
+    // Connector state degrades on its own. getDb() returns null when
+    // DATABASE_URL is absent, and this read crosses into raw SQL — neither may
+    // take down a response whose other two thirds are already in hand.
+    let connectors;
+    try {
+      const connections = await listConnections(id);
+      connectors = {
+        ok: true,
+        connections: connections.map((c) => ({
+          platform: c.platform,
+          isActive: c.isActive,
+          accountId: c.accountId,
+          // Staleness keys off the last SUCCESS, never last_synced_at alone —
+          // nextHealth preserves the prior success across a failed attempt so a
+          // broken connector cannot read as fresh.
+          lastSyncedAt: c.lastSyncedAt,
+          lastSuccessfulSync: c.health?.lastSuccessfulSync ?? null,
+          lastAttemptedSync: c.health?.lastAttemptedSync ?? null,
+          lastError: c.health?.lastError ?? null,
+          recordsImported: c.health?.recordsImported ?? null,
+        })),
+      };
+    } catch (err) {
+      logger.error({ err: err.message, id }, '[admin/workspaces] connector read failed');
+      connectors = { ok: false, error: 'Connector status unavailable' };
+    }
+
+    return res.json({
+      workspace: { ...workspace, isDemo: workspace.name.startsWith(DEMO_NAME_PREFIX) },
+      loopRuns,
+      connectors,
+    });
+  } catch (err) {
+    logger.error({ err: err.message, id }, '[admin/workspaces] detail failed');
+    return res.status(500).json({ error: 'Failed to load workspace' });
   }
 });
 

@@ -8,6 +8,12 @@ import { api } from '@/api/client';
 
 export const fetchStatus     = ()   => api.get('/api/admin/status').then((r) => r.data);
 export const fetchWorkspaces = ()   => api.get('/api/admin/workspaces').then((r) => r.data);
+
+// The operator drill-down: members, counts, connector health and recent sweeps
+// for ONE workspace. Deliberately separate from the list — the connector half
+// is a raw-SQL round trip, so folding it into the list would be an N+1.
+export const fetchWorkspaceDetail = (id) =>
+  api.get(`/api/admin/workspaces/${id}`).then((r) => r.data);
 export const fetchUsers      = ()   => api.get('/api/admin/users').then((r) => r.data);
 export const seedDemo        = ()   => api.post('/api/admin/demo/seed').then((r) => r.data);
 export const deleteDemo      = (id) => api.delete(`/api/admin/demo/${id}`).then((r) => r.data);
