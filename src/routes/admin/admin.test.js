@@ -12,8 +12,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
     $queryRaw: vi.fn(),
-    workspace: { findMany: vi.fn(), findUnique: vi.fn(), delete: vi.fn() },
-    user: { findMany: vi.fn() },
+    // `count` backs the honest total on both lists — an unmocked one would
+    // reject inside Promise.all and turn every list assertion into a 500.
+    workspace: { findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn(), delete: vi.fn() },
+    user: { findMany: vi.fn(), count: vi.fn() },
     // The demo routes now record an admin-audit row. recordAdminAction
     // swallows everything, so an unmocked client would leave these tests green
     // while the write silently no-op'd — mock it so the call is real.
@@ -70,6 +72,8 @@ beforeEach(() => {
   }
   bullConnection.ping.mockResolvedValue('PONG');
   prisma.$queryRaw.mockResolvedValue([{ '?column?': 1 }]);
+  prisma.workspace.count.mockResolvedValue(0);
+  prisma.user.count.mockResolvedValue(0);
 });
 
 describe('requireAdmin gate', () => {
@@ -120,9 +124,11 @@ describe('GET /api/admin/workspaces', () => {
       { id: 'w1', name: 'Maison Salam', currency: 'EGP', createdAt: new Date(), _count: { users: 3, decisions: 12 } },
       { id: 'w2', name: 'Demo — Maison Salam · 2026', currency: 'EGP', createdAt: new Date(), _count: { users: 1, decisions: 5 } },
     ]);
+    // `total` is the count, NOT the page — it may legitimately exceed the rows.
+    prisma.workspace.count.mockResolvedValue(312);
 
     const res = await request(makeApp()).get('/api/admin/workspaces').expect(200);
-    expect(res.body.total).toBe(2);
+    expect(res.body.total).toBe(312);
     expect(res.body.workspaces[0]).toMatchObject({ name: 'Maison Salam', userCount: 3, decisionCount: 12, isDemo: false });
     expect(res.body.workspaces[1]).toMatchObject({ isDemo: true });
   });
@@ -133,9 +139,10 @@ describe('GET /api/admin/users', () => {
     prisma.user.findMany.mockResolvedValue([
       { id: 'u1', email: 'a@b.co', role: 'ADMIN', collabRole: 'STRATEGIST', createdAt: new Date(), workspace: { id: 'w1', name: 'MARCOM' } },
     ]);
+    prisma.user.count.mockResolvedValue(847);
 
     const res = await request(makeApp()).get('/api/admin/users').expect(200);
-    expect(res.body.total).toBe(1);
+    expect(res.body.total).toBe(847);
     expect(res.body.users[0]).toMatchObject({ email: 'a@b.co', role: 'ADMIN', workspaceId: 'w1', workspaceName: 'MARCOM' });
   });
 });

@@ -10,9 +10,15 @@ import { ChevronRight, Loader2 } from 'lucide-react';
 import { fetchWorkspaces, fetchWorkspaceDetail, seedDemo, deleteDemo, updateWorkspacePlan } from './api.js';
 import { useAsync, AsyncBlock } from './parts.jsx';
 import { WorkspaceDetail } from './WorkspaceDetail.jsx';
+import { useDebounce } from '@/hooks/useDebounce';
+import { Pagination } from '@/components/ui/Pagination.jsx';
 
 const PLAN_OPTIONS = ['FREE', 'GROWTH', 'PRO'];
 const COLS = 7; // keep in sync with the <thead> below
+const PAGE_SIZE = 25;
+
+const CONTROL =
+  'rounded-md border border-lumi-border bg-lumi-surface px-2 py-1.5 text-xs text-lumi-text focus:border-lumi-accent focus:outline-none';
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -166,8 +172,28 @@ function WorkspaceRow({ w, onDeleted }) {
 }
 
 export function WorkspacesTab() {
-  const { data, loading, error, reload } = useAsync(fetchWorkspaces);
+  const [q, setQ] = useState('');
+  const [plan, setPlan] = useState('');
+  const [demo, setDemo] = useState('');
+  const [offset, setOffset] = useState(0);
   const [seeding, setSeeding] = useState(false);
+
+  const debouncedQ = useDebounce(q, 300);
+
+  // useAsync re-runs whenever the fetcher's identity changes, so memoizing on
+  // the query params IS the refetch trigger. Its cleanup cancels the in-flight
+  // request, which is what keeps a slow early keystroke from landing on top of
+  // a later one.
+  const fetcher = useCallback(
+    () => fetchWorkspaces({ q: debouncedQ, plan, demo, limit: PAGE_SIZE, offset }),
+    [debouncedQ, plan, demo, offset],
+  );
+  const { data, loading, error, reload } = useAsync(fetcher);
+
+  // Any filter change invalidates the current page number — page 4 of the old
+  // result set is not page 4 of the new one.
+  const filtered = Boolean(debouncedQ || plan || demo);
+  const onFilter = (setter) => (value) => { setter(value); setOffset(0); };
 
   const onSeed = useCallback(async () => {
     setSeeding(true);
@@ -181,18 +207,50 @@ export function WorkspacesTab() {
   }, [reload]);
 
   const rows = data?.workspaces ?? [];
+  const total = data?.total ?? 0;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-lumi-muted">{data ? `${data.total} workspaces` : ''}</p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-1 items-center gap-2">
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => onFilter(setQ)(e.target.value)}
+            placeholder="Search workspaces…"
+            aria-label="Search workspaces"
+            className={`${CONTROL} max-w-xs flex-1 placeholder:text-lumi-subtle`}
+          />
+          <select value={plan} onChange={(e) => onFilter(setPlan)(e.target.value)}
+            aria-label="Filter by plan" className={CONTROL}>
+            <option value="">All plans</option>
+            {PLAN_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <select value={demo} onChange={(e) => onFilter(setDemo)(e.target.value)}
+            aria-label="Filter by demo" className={CONTROL}>
+            <option value="">All</option>
+            <option value="false">Real</option>
+            <option value="true">Demo</option>
+          </select>
+        </div>
         <button type="button" onClick={onSeed} disabled={seeding}
-          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover disabled:opacity-50">
+          className="flex-shrink-0 rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover disabled:opacity-50">
           {seeding ? 'Seeding…' : 'Seed demo workspace'}
         </button>
       </div>
 
-      <AsyncBlock loading={loading} error={error} empty={rows.length === 0} emptyLabel="No workspaces.">
+      {/* The server's count under the active filters — not the length of the
+          page, which used to report 100 for an install with 250 workspaces. */}
+      <p className="text-sm text-lumi-muted">
+        {data ? `${total} workspace${total === 1 ? '' : 's'}${filtered ? ' matching filters' : ' total'}` : ''}
+      </p>
+
+      <AsyncBlock
+        loading={loading}
+        error={error}
+        empty={rows.length === 0}
+        emptyLabel={filtered ? 'No workspaces match these filters.' : 'No workspaces.'}
+      >
         <div className="overflow-x-auto rounded-xl border border-lumi-border">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-lumi-border bg-lumi-surface font-mono text-[11px] uppercase tracking-[0.1em] text-lumi-subtle">
@@ -214,6 +272,8 @@ export function WorkspacesTab() {
           </table>
         </div>
       </AsyncBlock>
+
+      <Pagination total={total} limit={PAGE_SIZE} offset={offset} onPageChange={setOffset} />
     </div>
   );
 }

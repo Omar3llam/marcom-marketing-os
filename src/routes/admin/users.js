@@ -1,35 +1,63 @@
 // ============================================================
 // MARCOM / Admin — Users
-//   GET   /api/admin/users           — every user with system role, collab role, workspace.
+//   GET   /api/admin/users?q=&role=&limit=&offset=
+//         — a searchable, paginated page of users with system role,
+//           collab role and workspace.
 //   PATCH /api/admin/users/:id/role  — set a user's collabRole.
 //
-// ADMIN-only (gated at the mount). Cross-workspace by design. Capped at 200
-// rows (newest first). Errors return { error: message } only — never a trace.
+// ADMIN-only (gated at the mount). Cross-workspace by design. Errors return
+// { error: message } only — never a trace.
 // ============================================================
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { WORKSPACE_ROLES, canDowngradeStrategist } from '../../lib/workspaceGuards.js';
 import { recordAdminAction } from '../../lib/adminAudit.js';
+import { parseLimit, parseOffset, parseSearch, parseEnum } from './pagination.js';
 
 export const usersRouter = Router();
 
 const MAX_USERS = Number(process.env.ADMIN_MAX_USERS || 200);
+const DEFAULT_LIMIT = 25;
 
-usersRouter.get('/', async (_req, res) => {
+// The system-role axis (UserRole), NOT collabRole — this mirrors the filter the
+// panel already offered. A Prisma enum, so an unrecognised value would throw a
+// validation error rather than match nothing; parseEnum drops it instead.
+const SYSTEM_ROLES = ['ADMIN', 'VIEWER'];
+
+usersRouter.get('/', async (req, res) => {
+  const limit = parseLimit(req.query.limit, { def: DEFAULT_LIMIT, max: MAX_USERS });
+  const offset = parseOffset(req.query.offset);
+  const q = parseSearch(req.query.q);
+  const role = parseEnum(req.query.role, SYSTEM_ROLES);
+
+  const where = {
+    ...(q ? { email: { contains: q, mode: 'insensitive' } } : {}),
+    ...(role ? { role } : {}),
+  };
+
   try {
-    const rows = await prisma.user.findMany({
-      take: MAX_USERS,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        email: true,
-        role: true,
-        collabRole: true,
-        createdAt: true,
-        workspace: { select: { id: true, name: true } },
-      },
-    });
+    // A real count under the same where clause. The role filter used to run in
+    // the browser over the loaded page, so filtering to ADMIN when the only
+    // admin sat past the cap produced "No users match" — a false negative
+    // stated as a fact. Server-side, the count and the page agree.
+    const [total, rows] = await Promise.all([
+      prisma.user.count({ where }),
+      prisma.user.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          collabRole: true,
+          createdAt: true,
+          workspace: { select: { id: true, name: true } },
+        },
+      }),
+    ]);
 
     const users = rows.map((u) => ({
       id: u.id,
@@ -41,7 +69,7 @@ usersRouter.get('/', async (_req, res) => {
       createdAt: u.createdAt,
     }));
 
-    res.json({ users, total: users.length });
+    res.json({ users, total, limit, offset });
   } catch (err) {
     logger.error({ err: err.message }, '[admin/users] list failed');
     res.status(500).json({ error: 'Failed to list users' });

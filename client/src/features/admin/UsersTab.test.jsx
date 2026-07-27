@@ -136,3 +136,106 @@ describe('UsersTab — other failures', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 });
+
+// ── Search + pagination ─────────────────────────────────────
+describe('UsersTab — the role filter is server-side', () => {
+  it('queries page one with no filters on mount', async () => {
+    await renderTab();
+    expect(fetchUsers).toHaveBeenCalledWith({ q: '', role: '', limit: 25, offset: 0 });
+  });
+
+  // The defect: filtering the loaded page in the browser meant selecting ADMIN
+  // when the only admin sat past the cap said "No users match" — a false
+  // negative. The filter has to reach the server for the answer to be true.
+  it('sends the role to the server instead of filtering the loaded page', async () => {
+    await renderTab();
+    fetchUsers.mockResolvedValue({ users: [{ ...USER, role: 'ADMIN' }], total: 1 });
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'ADMIN' })); });
+
+    expect(fetchUsers).toHaveBeenLastCalledWith(expect.objectContaining({ role: 'ADMIN' }));
+  });
+
+  it('ALL clears the role rather than sending role=ALL', async () => {
+    await renderTab();
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'ADMIN' })); });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'ALL' })); });
+
+    expect(fetchUsers).toHaveBeenLastCalledWith(expect.objectContaining({ role: '' }));
+  });
+
+  it('debounces the email search', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<UsersTab />);
+      await act(async () => { await Promise.resolve(); });
+      fetchUsers.mockClear();
+
+      const box = screen.getByLabelText('Search users by email');
+      for (const value of ['m', 'me', 'mem']) {
+        fireEvent.change(box, { target: { value } });
+        act(() => { vi.advanceTimersByTime(50); });
+      }
+      expect(fetchUsers).not.toHaveBeenCalled();
+
+      await act(async () => { vi.advanceTimersByTime(300); });
+      expect(fetchUsers).toHaveBeenCalledTimes(1);
+      expect(fetchUsers).toHaveBeenCalledWith(expect.objectContaining({ q: 'mem' }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('UsersTab — the total is the server count', () => {
+  it('states a total larger than the page it is showing', async () => {
+    fetchUsers.mockResolvedValue({ users: [USER], total: 847 });
+    render(<UsersTab />);
+    expect(await screen.findByText('847 users total')).toBeInTheDocument();
+  });
+
+  it('says "matching filters" once a filter is on', async () => {
+    await renderTab();
+    fetchUsers.mockResolvedValue({ users: [USER], total: 2 });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'ADMIN' })); });
+    expect(await screen.findByText('2 users matching filters')).toBeInTheDocument();
+  });
+
+  it('distinguishes an empty filter result from an empty install', async () => {
+    fetchUsers.mockResolvedValue({ users: [], total: 0 });
+    render(<UsersTab />);
+    expect(await screen.findByText('No users.')).toBeInTheDocument();
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'ADMIN' })); });
+    expect(await screen.findByText('No users match these filters.')).toBeInTheDocument();
+  });
+});
+
+describe('UsersTab — pagination', () => {
+  it('is hidden when everything fits on one page', async () => {
+    await renderTab();
+    expect(screen.queryByRole('button', { name: 'Next page' })).not.toBeInTheDocument();
+  });
+
+  it('pages forward by asking the server for the next offset', async () => {
+    fetchUsers.mockResolvedValue({ users: [USER], total: 847 });
+    render(<UsersTab />);
+    // findBy MUST be resolved outside act — act batches the flush it waits on.
+    const next = await screen.findByRole('button', { name: 'Next page' });
+    await act(async () => { fireEvent.click(next); });
+
+    expect(fetchUsers).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 25 }));
+  });
+
+  it('returns to page one when the role filter changes', async () => {
+    fetchUsers.mockResolvedValue({ users: [USER], total: 847 });
+    render(<UsersTab />);
+    const next = await screen.findByRole('button', { name: 'Next page' });
+    await act(async () => { fireEvent.click(next); });
+    expect(fetchUsers).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 25 }));
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'ADMIN' })); });
+
+    expect(fetchUsers).toHaveBeenLastCalledWith(expect.objectContaining({ role: 'ADMIN', offset: 0 }));
+  });
+});
