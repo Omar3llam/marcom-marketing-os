@@ -16,3 +16,9 @@ export const deleteDemo      = (id) => api.delete(`/api/admin/demo/${id}`).then(
 // upgrade path — there is no billing.
 export const updateWorkspacePlan = (id, plan) =>
   api.patch(`/api/admin/workspaces/${id}/plan`, { plan }).then((r) => r.data);
+
+// Set a user's workspace role. `force` overrides the last-strategist guard and
+// travels in the BODY — a destructive override belongs with the payload, not in
+// a URL that gets logged, copied and retried.
+export const updateUserRole = (id, collabRole, force = false) =>
+  api.patch(`/api/admin/users/${id}/role`, { collabRole, force }).then((r) => r.data);
