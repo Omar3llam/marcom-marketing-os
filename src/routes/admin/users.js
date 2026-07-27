@@ -10,6 +10,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { WORKSPACE_ROLES, canDowngradeStrategist } from '../../lib/workspaceGuards.js';
+import { recordAdminAction } from '../../lib/adminAudit.js';
 
 export const usersRouter = Router();
 
@@ -93,6 +94,21 @@ usersRouter.patch('/:id/role', async (req, res) => {
       select: { id: true, email: true, collabRole: true },
     });
     logger.info({ id, collabRole, force, by: req.userId }, '[admin/users] collabRole changed');
+
+    // `forced` rides in the payload deliberately: a forced downgrade is the one
+    // change here that can leave a workspace with nobody able to manage it, and
+    // an audit row that didn't distinguish it would miss the reason it exists.
+    await recordAdminAction({
+      actorUid: req.userId,
+      actorEmail: req.user?.email,
+      type: 'CHANGE_ROLE',
+      targetType: 'USER',
+      targetId: user.id,
+      workspaceId: user.workspaceId,
+      before: { collabRole: user.collabRole ?? null },
+      after: { collabRole: collabRole ?? null, forced: Boolean(force) },
+    });
+
     return res.json({ user: updated });
   } catch (err) {
     if (err.code === 'P2025') return res.status(404).json({ error: 'User not found' });

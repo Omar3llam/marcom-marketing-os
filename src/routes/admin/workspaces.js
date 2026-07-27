@@ -9,6 +9,7 @@
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
+import { recordAdminAction } from '../../lib/adminAudit.js';
 
 export const workspacesRouter = Router();
 
@@ -68,11 +69,31 @@ workspacesRouter.patch('/:id/plan', async (req, res) => {
   }
 
   try {
+    // Read the current plan first — the update's return value is already the
+    // NEW state, so an audit row built from it would record before === after.
+    const current = await prisma.workspace.findUnique({
+      where: { id },
+      select: { plan: true },
+    });
+    if (!current) return res.status(404).json({ error: 'Workspace not found' });
+
     const workspace = await prisma.workspace.update({
       where: { id },
       data: { plan },
       select: { id: true, name: true, plan: true },
     });
+
+    await recordAdminAction({
+      actorUid: req.userId,
+      actorEmail: req.user?.email,
+      type: 'CHANGE_PLAN',
+      targetType: 'WORKSPACE',
+      targetId: workspace.id,
+      workspaceId: workspace.id,
+      before: { plan: current.plan ?? 'FREE' },
+      after: { plan: workspace.plan },
+    });
+
     return res.json(workspace);
   } catch (err) {
     // Prisma P2025 = record to update not found.

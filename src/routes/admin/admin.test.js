@@ -14,6 +14,10 @@ vi.mock('../../lib/prisma.js', () => ({
     $queryRaw: vi.fn(),
     workspace: { findMany: vi.fn(), findUnique: vi.fn(), delete: vi.fn() },
     user: { findMany: vi.fn() },
+    // The demo routes now record an admin-audit row. recordAdminAction
+    // swallows everything, so an unmocked client would leave these tests green
+    // while the write silently no-op'd — mock it so the call is real.
+    adminAuditLog: { create: vi.fn(), findMany: vi.fn() },
   },
 }));
 

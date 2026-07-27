@@ -14,12 +14,14 @@ import { StatusTab } from '@/features/admin/StatusTab.jsx';
 import { WorkspacesTab } from '@/features/admin/WorkspacesTab.jsx';
 import { UsersTab } from '@/features/admin/UsersTab.jsx';
 import { DemoTab } from '@/features/admin/DemoTab.jsx';
+import { AuditTab } from '@/features/admin/AuditTab.jsx';
 
 const TABS = [
   { key: 'status',     label: 'System Status', Body: StatusTab },
   { key: 'workspaces', label: 'Workspaces',    Body: WorkspacesTab },
   { key: 'users',      label: 'Users',         Body: UsersTab },
   { key: 'demo',       label: 'Demo',          Body: DemoTab },
+  { key: 'audit',      label: 'Audit Log',     Body: AuditTab },
 ];
 
 export default function AdminPanel() {
