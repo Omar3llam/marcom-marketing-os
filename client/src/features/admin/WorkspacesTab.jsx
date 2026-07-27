@@ -6,10 +6,13 @@
 // ============================================================
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { fetchWorkspaces, seedDemo, deleteDemo, updateWorkspacePlan } from './api.js';
+import { ChevronRight, Loader2 } from 'lucide-react';
+import { fetchWorkspaces, fetchWorkspaceDetail, seedDemo, deleteDemo, updateWorkspacePlan } from './api.js';
 import { useAsync, AsyncBlock } from './parts.jsx';
+import { WorkspaceDetail } from './WorkspaceDetail.jsx';
 
 const PLAN_OPTIONS = ['FREE', 'GROWTH', 'PRO'];
+const COLS = 7; // keep in sync with the <thead> below
 
 function fmtDate(iso) {
   if (!iso) return '—';
@@ -85,6 +88,83 @@ function DeleteCell({ id, onDeleted }) {
   );
 }
 
+// One workspace row plus its lazily-fetched drill-down.
+//
+// The toggle is a BUTTON in the name cell, not a click handler on the <tr>: the
+// row already contains a plan <select> and the delete confirm, whose clicks
+// would bubble into a row handler and expand the panel every time an operator
+// changed a plan. A button is also reachable by keyboard, which a clickable
+// table row is not.
+function WorkspaceRow({ w, onDeleted }) {
+  const [open, setOpen] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(null);
+
+  const toggle = async () => {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    if (detail) return; // cached — one fetch per workspace per mount
+
+    setLoading(true);
+    setFailed(null);
+    try {
+      setDetail(await fetchWorkspaceDetail(w.id));
+    } catch (err) {
+      setFailed(err?.message ?? 'Failed to load workspace details');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <tr className="border-b border-lumi-border/50 last:border-0">
+        <td className="px-3 py-2 text-lumi-text">
+          <button
+            type="button"
+            onClick={toggle}
+            aria-expanded={open}
+            aria-label={`Details for ${w.name}`}
+            className="inline-flex items-center gap-1.5 text-left transition-colors hover:text-lumi-accent"
+          >
+            <ChevronRight
+              className={`h-3 w-3 flex-shrink-0 text-lumi-muted transition-transform duration-200 ${open ? 'rotate-90 text-lumi-accent' : ''}`}
+              strokeWidth={2}
+            />
+            {w.name}
+          </button>
+          {w.isDemo && (
+            <span className="ml-2 rounded bg-lumi-elevated px-1.5 py-0.5 font-mono text-[10px] uppercase text-lumi-accent">demo</span>
+          )}
+        </td>
+        <td className="px-3 py-2"><PlanCell id={w.id} plan={w.plan} /></td>
+        <td className="px-3 py-2 font-mono text-lumi-muted">{w.currency}</td>
+        <td className="px-3 py-2 text-right tabular-nums text-lumi-muted">{w.userCount}</td>
+        <td className="px-3 py-2 text-right tabular-nums text-lumi-muted">{w.decisionCount}</td>
+        <td className="px-3 py-2 text-lumi-muted">{fmtDate(w.createdAt)}</td>
+        <td className="px-3 py-2 text-right">
+          {w.isDemo ? <DeleteCell id={w.id} onDeleted={onDeleted} /> : <span className="text-lumi-subtle">—</span>}
+        </td>
+      </tr>
+
+      {open && (
+        <tr className="border-b border-lumi-border/50">
+          <td colSpan={COLS} className="bg-lumi-elevated/50 px-6 py-4">
+            {loading && (
+              <p className="flex items-center gap-1.5 text-xs text-lumi-muted">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> Loading details…
+              </p>
+            )}
+            {failed && <p className="text-xs text-signal-kill">{failed}</p>}
+            {!loading && !failed && detail && <WorkspaceDetail detail={detail} />}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 export function WorkspacesTab() {
   const { data, loading, error, reload } = useAsync(fetchWorkspaces);
   const [seeding, setSeeding] = useState(false);
@@ -128,22 +208,7 @@ export function WorkspacesTab() {
             </thead>
             <tbody>
               {rows.map((w) => (
-                <tr key={w.id} className="border-b border-lumi-border/50 last:border-0">
-                  <td className="px-3 py-2 text-lumi-text">
-                    {w.name}
-                    {w.isDemo && (
-                      <span className="ml-2 rounded bg-lumi-elevated px-1.5 py-0.5 font-mono text-[10px] uppercase text-lumi-accent">demo</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2"><PlanCell id={w.id} plan={w.plan} /></td>
-                  <td className="px-3 py-2 font-mono text-lumi-muted">{w.currency}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-lumi-muted">{w.userCount}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-lumi-muted">{w.decisionCount}</td>
-                  <td className="px-3 py-2 text-lumi-muted">{fmtDate(w.createdAt)}</td>
-                  <td className="px-3 py-2 text-right">
-                    {w.isDemo ? <DeleteCell id={w.id} onDeleted={reload} /> : <span className="text-lumi-subtle">—</span>}
-                  </td>
-                </tr>
+                <WorkspaceRow key={w.id} w={w} onDeleted={reload} />
               ))}
             </tbody>
           </table>
