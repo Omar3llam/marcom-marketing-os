@@ -67,6 +67,10 @@ export async function executeCaptionGeneration(nodeId, nodeType, context) {
       currentAudience: context.currentAudience || 'general',
       performanceMetrics: context.performanceMetrics || {},
     },
+    // See copyExecutor: the orchestrator has workspaceId on `context`, this
+    // executor just never forwarded it. Optional — undefined means "no
+    // workspace", never a fabricated one.
+    workspaceId: context.workspaceId,
     // PR #32: Pass decision context to AI gateway
     feedback,
     revisionInstructions,

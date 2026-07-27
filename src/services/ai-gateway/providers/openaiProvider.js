@@ -97,12 +97,27 @@ async function callOpenAI({
     const text = response.choices[0]?.message?.content || '';
     const latency = Date.now() - startTime;
 
+    // Parity with claudeProvider: input and output are priced ~4x apart on
+    // gpt-4o ($2.50 vs $10 per 1M), so `total_tokens` alone cannot be costed.
+    // `tokens` keeps reporting total_tokens verbatim — it is the number the
+    // gateway log and providerPerformance already read.
+    //
+    // Read defensively: `response.usage.total_tokens` on a response with no
+    // usage block throws INSIDE the try, turning a successful generation into a
+    // PROVIDER_ERROR and discarding the text.
+    const usage = response.usage ?? {};
+    const inputTokens = usage.prompt_tokens ?? null;
+    const outputTokens = usage.completion_tokens ?? null;
+
     return {
       success: true,
       text,
       metadata: {
-        model: response.model,
-        tokens: response.usage.total_tokens,
+        model: response.model ?? null,
+        tokens: usage.total_tokens ?? 0,
+        // null, never 0, when the provider did not report them.
+        inputTokens,
+        outputTokens,
         latency,
       },
     };
@@ -123,6 +138,9 @@ async function callOpenAI({
       metadata: {
         model: model || UTILITY_MODEL,  // Use actual model or fallback to utility
         tokens: 0,
+        // A failed call did not measure zero tokens — it measured nothing.
+        inputTokens: null,
+        outputTokens: null,
         latency,
       },
     };
