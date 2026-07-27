@@ -68,12 +68,29 @@ async function callClaude({ systemPrompt, userPrompt, maxTokens = DEFAULT_MAX_TO
     const text = response.content[0]?.text || '';
     const latency = Date.now() - startTime;
 
+    // Input and output tokens are priced ~5x apart ($3 vs $15 per 1M on Sonnet),
+    // so the collapsed sum this used to return could not be costed — 3,000
+    // tokens is anywhere from $0.009 to $0.045 depending on a split that had
+    // already been thrown away. `tokens` stays exactly as it was (the gateway
+    // log and providerPerformance read it); the split rides alongside.
+    //
+    // `usage` is read defensively: `response.usage.input_tokens` on a response
+    // without a usage block throws INSIDE the try, which would classify a
+    // successful generation as a PROVIDER_ERROR and discard the text.
+    const usage = response.usage ?? {};
+    const inputTokens = usage.input_tokens ?? null;
+    const outputTokens = usage.output_tokens ?? null;
+
     return {
       success: true,
       text,
       metadata: {
-        model: response.model,
-        tokens: response.usage.input_tokens + response.usage.output_tokens,
+        model: response.model ?? null,
+        tokens: (inputTokens ?? 0) + (outputTokens ?? 0),
+        // null, never 0, when the provider did not report them — "not measured"
+        // and "measured as zero" must stay distinguishable downstream.
+        inputTokens,
+        outputTokens,
         latency,
       },
     };
@@ -94,6 +111,9 @@ async function callClaude({ systemPrompt, userPrompt, maxTokens = DEFAULT_MAX_TO
       metadata: {
         model: DEFAULT_MODEL,
         tokens: 0,
+        // A failed call did not measure zero tokens — it measured nothing.
+        inputTokens: null,
+        outputTokens: null,
         latency,
       },
     };

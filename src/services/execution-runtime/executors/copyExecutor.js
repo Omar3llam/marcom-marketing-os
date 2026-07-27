@@ -67,6 +67,11 @@ export async function executeCopyGeneration(nodeId, nodeType, context) {
       targetAudience: context.targetAudience || 'general',
       currentCTR: context.currentCTR || 0,
     },
+    // The orchestrator already carries workspaceId on `context` (it gates
+    // artifact storage); this executor simply never forwarded it, so every
+    // execution-runtime AI call reached the gateway unattributed. Optional by
+    // contract — undefined means "no workspace", never a fabricated one.
+    workspaceId: context.workspaceId,
     // PR #32: Pass decision context to AI gateway
     feedback,
     revisionInstructions,

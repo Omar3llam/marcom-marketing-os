@@ -68,6 +68,10 @@ export async function executeVisualBrief(nodeId, nodeType, context) {
       brandGuidelines: context.brandGuidelines || {},
       content: context.content || [],
     },
+    // See copyExecutor: the orchestrator has workspaceId on `context`, this
+    // executor just never forwarded it. Optional — undefined means "no
+    // workspace", never a fabricated one.
+    workspaceId: context.workspaceId,
     // PR #32: Pass decision context to AI gateway
     feedback,
     revisionInstructions,
