@@ -20,22 +20,18 @@ import { requireAuth } from '../../middleware/firebaseAuth.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { validate, teamInviteSchema } from '../../middleware/validate.js';
 import { sendInviteEmail } from '../../utils/email.js';
+// The last-strategist rule now lives in ONE place — the admin panel enforces the
+// same rule, and two copies of a guard is how the two copies drift apart.
+import { WORKSPACE_ROLES, countEffectiveStrategists } from '../../lib/workspaceGuards.js';
 
 export const teamRouter = Router();
 
-const VALID_ROLES = ['STRATEGIST', 'BUYER', 'CLIENT'];
+const VALID_ROLES = WORKSPACE_ROLES;
 const INVITE_TTL_DAYS = 7;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function appBaseUrl() {
   return (process.env.APP_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
-}
-
-/** Count members whose EFFECTIVE role is STRATEGIST (collabRole null ⇒ STRATEGIST). */
-function countEffectiveStrategists(workspaceId, where = {}) {
-  return prisma.user.count({
-    where: { workspaceId, OR: [{ collabRole: 'STRATEGIST' }, { collabRole: null }], ...where },
-  });
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -214,7 +210,7 @@ teamRouter.put('/:userId/role', requireCollabRole('STRATEGIST'), async (req, res
     // Don't strand the workspace: refuse to demote the last effective STRATEGIST.
     const targetIsStrategist = (target.collabRole ?? 'STRATEGIST') === 'STRATEGIST';
     if (targetIsStrategist && collabRole !== 'STRATEGIST') {
-      const remaining = await countEffectiveStrategists(workspaceId, { id: { not: userId } });
+      const remaining = await countEffectiveStrategists(workspaceId, userId);
       if (remaining === 0) {
         return res.status(400).json({ error: 'LastStrategist', message: 'Cannot demote the last Strategist in the workspace.' });
       }
@@ -266,7 +262,7 @@ teamRouter.delete('/:userId', requireCollabRole('STRATEGIST'), async (req, res) 
 
     const targetIsStrategist = (target.collabRole ?? 'STRATEGIST') === 'STRATEGIST';
     if (targetIsStrategist) {
-      const remaining = await countEffectiveStrategists(workspaceId, { id: { not: userId } });
+      const remaining = await countEffectiveStrategists(workspaceId, userId);
       if (remaining === 0) {
         return res.status(400).json({ error: 'LastStrategist', message: 'Cannot remove the last Strategist in the workspace.' });
       }
