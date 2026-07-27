@@ -4,12 +4,20 @@
 // The collab role is editable here: this is the only cross-workspace surface,
 // so it is the only place an admin can repair a workspace that locked itself out.
 // ============================================================
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { fetchUsers, updateUserRole } from './api.js';
 import { useAsync, AsyncBlock } from './parts.jsx';
 import { ConfirmModal } from '@/components/ui/ConfirmModal.jsx';
+import { useDebounce } from '@/hooks/useDebounce';
+import { Pagination } from '@/components/ui/Pagination.jsx';
 
-const FILTERS = ['ALL', 'ADMIN', 'VIEWER'];
+// '' is the "no filter" value, sent as an absent param rather than role=ALL.
+const FILTERS = [
+  { value: '', label: 'ALL' },
+  { value: 'ADMIN', label: 'ADMIN' },
+  { value: 'VIEWER', label: 'VIEWER' },
+];
+const PAGE_SIZE = 25;
 // Mirrors the Prisma WorkspaceRole enum (and src/lib/workspaceGuards.js).
 const WORKSPACE_ROLES = ['STRATEGIST', 'BUYER', 'CLIENT'];
 const titleCase = (r) => r.charAt(0) + r.slice(1).toLowerCase();
@@ -70,29 +78,59 @@ function RoleSelect({ user, onChanged }) {
 }
 
 export function UsersTab() {
-  const { data, loading, error, reload } = useAsync(fetchUsers);
-  const [filter, setFilter] = useState('ALL');
+  const [q, setQ] = useState('');
+  const [role, setRole] = useState('');
+  const [offset, setOffset] = useState(0);
 
-  const all = data?.users ?? [];
-  const rows = filter === 'ALL' ? all : all.filter((u) => u.role === filter);
+  const debouncedQ = useDebounce(q, 300);
+
+  // The role filter runs on the SERVER now. Filtering the loaded page in the
+  // browser meant that with more users than the cap, selecting ADMIN could say
+  // "No users match this filter" while an admin existed just past the cap.
+  const fetcher = useCallback(
+    () => fetchUsers({ q: debouncedQ, role, limit: PAGE_SIZE, offset }),
+    [debouncedQ, role, offset],
+  );
+  const { data, loading, error, reload } = useAsync(fetcher);
+
+  const rows = data?.users ?? [];
+  const total = data?.total ?? 0;
+  const filtered = Boolean(debouncedQ || role);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-lumi-muted">{data ? `${data.total} users` : ''}</p>
-        <div className="inline-flex gap-1 rounded-lg border border-lumi-border p-0.5">
+      <div className="flex items-center justify-between gap-3">
+        <input
+          type="search"
+          value={q}
+          onChange={(e) => { setQ(e.target.value); setOffset(0); }}
+          placeholder="Search by email…"
+          aria-label="Search users by email"
+          className="max-w-xs flex-1 rounded-md border border-lumi-border bg-lumi-surface px-2 py-1.5 text-xs text-lumi-text placeholder:text-lumi-subtle focus:border-lumi-accent focus:outline-none"
+        />
+        <div className="inline-flex flex-shrink-0 gap-1 rounded-lg border border-lumi-border p-0.5">
           {FILTERS.map((f) => (
-            <button key={f} type="button" onClick={() => setFilter(f)}
+            <button key={f.label} type="button" onClick={() => { setRole(f.value); setOffset(0); }}
               className={`rounded-md px-2.5 py-1 font-mono text-[11px] uppercase transition-colors ${
-                filter === f ? 'bg-lumi-elevated text-lumi-text' : 'text-lumi-muted hover:text-lumi-text'
+                role === f.value ? 'bg-lumi-elevated text-lumi-text' : 'text-lumi-muted hover:text-lumi-text'
               }`}>
-              {f}
+              {f.label}
             </button>
           ))}
         </div>
       </div>
 
-      <AsyncBlock loading={loading} error={error} empty={rows.length === 0} emptyLabel="No users match this filter.">
+      {/* The server's count under the active filters, not the page length. */}
+      <p className="text-sm text-lumi-muted">
+        {data ? `${total} user${total === 1 ? '' : 's'}${filtered ? ' matching filters' : ' total'}` : ''}
+      </p>
+
+      <AsyncBlock
+        loading={loading}
+        error={error}
+        empty={rows.length === 0}
+        emptyLabel={filtered ? 'No users match these filters.' : 'No users.'}
+      >
         <div className="overflow-x-auto rounded-xl border border-lumi-border">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-lumi-border bg-lumi-surface font-mono text-[11px] uppercase tracking-[0.1em] text-lumi-subtle">
@@ -122,6 +160,8 @@ export function UsersTab() {
           </table>
         </div>
       </AsyncBlock>
+
+      <Pagination total={total} limit={PAGE_SIZE} offset={offset} onPageChange={setOffset} />
     </div>
   );
 }

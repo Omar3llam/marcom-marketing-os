@@ -1,40 +1,76 @@
 // ============================================================
 // MARCOM / Admin — Workspaces
-//   GET /api/admin/workspaces — every workspace with user + decision counts.
+//   GET /api/admin/workspaces?q=&plan=&demo=&limit=&offset=
+//     — a searchable, paginated page of workspaces with user + decision counts.
 //
 // ADMIN-only (gated at the mount). Cross-workspace by design — this is the ONE
 // place the workspace-isolation rule is intentionally lifted, for the operator.
-// Capped at 100 rows (newest first). Errors return { error: message } only.
+// Errors return { error: message } only.
 // ============================================================
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { recordAdminAction } from '../../lib/adminAudit.js';
 import { listConnections } from '../../services/connectors/credentialStore.js';
+import { parseLimit, parseOffset, parseSearch, parseEnum } from './pagination.js';
 
 export const workspacesRouter = Router();
 
 const MAX_WORKSPACES = Number(process.env.ADMIN_MAX_WORKSPACES || 100);
+const DEFAULT_LIMIT = 25;
 
 // A workspace is a throwaway demo iff its name carries the "Demo —" sentinel
 // that seedDemoWorkspace stamps (and the delete route enforces). Keep this in
 // sync with src/routes/admin/demo.js DEMO_NAME_PREFIX.
 const DEMO_NAME_PREFIX = 'Demo —';
 
-workspacesRouter.get('/', async (_req, res) => {
+// The feature-gating entitlements an admin can assign. There is no billing —
+// this is the manual upgrade path (mirrors the measurementTier axis). Declared
+// here because the list route filters on the same set the PATCH route writes.
+const VALID_PLANS = ['FREE', 'GROWTH', 'PRO'];
+
+// Both `q` and `demo` constrain `name`, so they compose through AND rather than
+// object spread: `{ ...{name:{contains}}, ...{name:{startsWith}} }` keeps only
+// the last key, which would silently discard the operator's search term.
+function buildWorkspaceWhere({ q, plan, demo }) {
+  const and = [];
+  if (q) and.push({ name: { contains: q, mode: 'insensitive' } });
+  if (plan) and.push({ plan });
+  if (demo === 'true') and.push({ name: { startsWith: DEMO_NAME_PREFIX } });
+  if (demo === 'false') and.push({ NOT: { name: { startsWith: DEMO_NAME_PREFIX } } });
+  return and.length ? { AND: and } : {};
+}
+
+workspacesRouter.get('/', async (req, res) => {
+  const limit = parseLimit(req.query.limit, { def: DEFAULT_LIMIT, max: MAX_WORKSPACES });
+  const offset = parseOffset(req.query.offset);
+  const q = parseSearch(req.query.q);
+  const plan = parseEnum(req.query.plan, VALID_PLANS);
+  const demo = req.query.demo;
+
+  const where = buildWorkspaceWhere({ q, plan, demo });
+
   try {
-    const rows = await prisma.workspace.findMany({
-      take: MAX_WORKSPACES,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        name: true,
-        currency: true,
-        plan: true,
-        createdAt: true,
-        _count: { select: { users: true, decisions: true } },
-      },
-    });
+    // `total` is a real count under the SAME where clause, not rows.length.
+    // The page is capped, so reporting its length as the total told an operator
+    // with 250 workspaces that they had 100 — a confident, wrong number.
+    const [total, rows] = await Promise.all([
+      prisma.workspace.count({ where }),
+      prisma.workspace.findMany({
+        where,
+        take: limit,
+        skip: offset,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          name: true,
+          currency: true,
+          plan: true,
+          createdAt: true,
+          _count: { select: { users: true, decisions: true } },
+        },
+      }),
+    ]);
 
     const workspaces = rows.map((w) => ({
       id: w.id,
@@ -47,7 +83,7 @@ workspacesRouter.get('/', async (_req, res) => {
       isDemo: w.name.startsWith(DEMO_NAME_PREFIX),
     }));
 
-    res.json({ workspaces, total: workspaces.length });
+    res.json({ workspaces, total, limit, offset });
   } catch (err) {
     logger.error({ err: err.message }, '[admin/workspaces] list failed');
     res.status(500).json({ error: 'Failed to list workspaces' });
@@ -149,10 +185,6 @@ workspacesRouter.get('/:id', async (req, res) => {
     return res.status(500).json({ error: 'Failed to load workspace' });
   }
 });
-
-// The feature-gating entitlements an admin can assign. There is no billing —
-// this is the manual upgrade path (mirrors the measurementTier axis).
-const VALID_PLANS = ['FREE', 'GROWTH', 'PRO'];
 
 // PATCH /api/admin/workspaces/:id/plan — set a workspace's entitlement.
 // ADMIN-only via the mount (no per-route re-check). Validates the enum before

@@ -147,7 +147,7 @@ describe('WorkspacesTab — the expand does not hijack the row', () => {
 describe('WorkspacesTab — the list itself still works', () => {
   it('renders the row', async () => {
     await renderTab();
-    expect(screen.getByText('1 workspaces')).toBeInTheDocument();
+    expect(screen.getByText('1 workspace total')).toBeInTheDocument();
     expect(screen.getByText('EGP')).toBeInTheDocument();
   });
 
@@ -160,5 +160,119 @@ describe('WorkspacesTab — the list itself still works', () => {
   it('only demo workspaces offer Delete', async () => {
     await renderTab();
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  });
+});
+
+// ── Search + pagination ─────────────────────────────────────
+// `total` is the server's count under the active filters, so it can and does
+// exceed the rows on screen. Presenting the page length as the total told an
+// operator with 250 workspaces that they had 100.
+describe('WorkspacesTab — the total is the server count', () => {
+  it('states a total larger than the page it is showing', async () => {
+    fetchWorkspaces.mockResolvedValue({ workspaces: [WS], total: 312 });
+    render(<WorkspacesTab />);
+    expect(await screen.findByText('312 workspaces total')).toBeInTheDocument();
+  });
+
+  it('says "matching filters" once a filter is on', async () => {
+    await renderTab();
+    fetchWorkspaces.mockResolvedValue({ workspaces: [WS], total: 4 });
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Filter by plan'), { target: { value: 'PRO' } });
+    });
+
+    expect(await screen.findByText('4 workspaces matching filters')).toBeInTheDocument();
+  });
+
+  // "No workspaces." under an active search would read as "you have none".
+  it('distinguishes an empty search from an empty install', async () => {
+    fetchWorkspaces.mockResolvedValue({ workspaces: [], total: 0 });
+    render(<WorkspacesTab />);
+    expect(await screen.findByText('No workspaces.')).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Filter by plan'), { target: { value: 'PRO' } });
+    });
+    expect(await screen.findByText('No workspaces match these filters.')).toBeInTheDocument();
+  });
+});
+
+describe('WorkspacesTab — server-side filters', () => {
+  it('queries page one with no filters on mount', async () => {
+    await renderTab();
+    expect(fetchWorkspaces).toHaveBeenCalledWith({ q: '', plan: '', demo: '', limit: 25, offset: 0 });
+  });
+
+  it('sends the plan filter to the server', async () => {
+    await renderTab();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Filter by plan'), { target: { value: 'PRO' } });
+    });
+    expect(fetchWorkspaces).toHaveBeenLastCalledWith(expect.objectContaining({ plan: 'PRO' }));
+  });
+
+  it('sends the demo filter to the server', async () => {
+    await renderTab();
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Filter by demo'), { target: { value: 'true' } });
+    });
+    expect(fetchWorkspaces).toHaveBeenLastCalledWith(expect.objectContaining({ demo: 'true' }));
+  });
+
+  // Typing must not fire a request per keystroke — the debounce is the point.
+  it('debounces the search box', async () => {
+    vi.useFakeTimers();
+    try {
+      render(<WorkspacesTab />);
+      await act(async () => { await Promise.resolve(); });
+      fetchWorkspaces.mockClear();
+
+      const box = screen.getByLabelText('Search workspaces');
+      for (const value of ['a', 'ac', 'acm', 'acme']) {
+        fireEvent.change(box, { target: { value } });
+        act(() => { vi.advanceTimersByTime(50); });
+      }
+      expect(fetchWorkspaces).not.toHaveBeenCalled();
+
+      await act(async () => { vi.advanceTimersByTime(300); });
+      expect(fetchWorkspaces).toHaveBeenCalledTimes(1);
+      expect(fetchWorkspaces).toHaveBeenCalledWith(expect.objectContaining({ q: 'acme' }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('WorkspacesTab — pagination', () => {
+  it('is hidden when everything fits on one page', async () => {
+    await renderTab();
+    expect(screen.queryByRole('button', { name: 'Next page' })).not.toBeInTheDocument();
+  });
+
+  it('pages forward by asking the server for the next offset', async () => {
+    fetchWorkspaces.mockResolvedValue({ workspaces: [WS], total: 312 });
+    render(<WorkspacesTab />);
+    const next = await screen.findByRole('button', { name: 'Next page' });
+
+    await act(async () => { fireEvent.click(next); });
+
+    expect(fetchWorkspaces).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 25 }));
+  });
+
+  // Page 4 of the old result set is not page 4 of the new one.
+  it('returns to page one when a filter changes', async () => {
+    fetchWorkspaces.mockResolvedValue({ workspaces: [WS], total: 312 });
+    render(<WorkspacesTab />);
+    // findBy MUST be resolved outside act — act batches the flush it waits on.
+    const next = await screen.findByRole('button', { name: 'Next page' });
+    await act(async () => { fireEvent.click(next); });
+    expect(fetchWorkspaces).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 25 }));
+
+    await act(async () => {
+      fireEvent.change(screen.getByLabelText('Filter by plan'), { target: { value: 'PRO' } });
+    });
+
+    expect(fetchWorkspaces).toHaveBeenLastCalledWith(expect.objectContaining({ plan: 'PRO', offset: 0 }));
   });
 });
