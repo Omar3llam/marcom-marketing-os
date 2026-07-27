@@ -1808,3 +1808,48 @@ model LoopRun {
   @@index([workspaceId, loopHealth])
   @@map("loop_runs")
 }
+
+// ════════════════════════════════════════════════════════════
+// ADMIN AUDIT — who did what from the operator panel
+// ════════════════════════════════════════════════════════════
+
+// The admin-panel action types. A THIRD audit taxonomy alongside the
+// execution-typed AuditLog (ActionType/Meta) and CollaborationEvent — admin
+// actions are neither platform executions nor in-workspace collaboration, and
+// overloading either enum would pollute the switches that read them.
+enum AdminAuditType {
+  CHANGE_ROLE
+  CHANGE_PLAN
+  SEED_DEMO
+  DELETE_DEMO
+}
+
+// One row per admin-panel mutation.
+//
+// Deliberately UNLIKE its two sibling logs in three ways:
+//   1. NO workspace relation. Both AuditLog and CollaborationEvent declare
+//      `onDelete: Cascade`, which would delete the DELETE_DEMO row along with
+//      the workspace it records — erasing the single most important event.
+//      `workspaceId` is a plain nullable column here, and outlives its target.
+//   2. The actor is a Firebase uid + email, not a User uuid. firebaseAuth puts
+//      only `decodedToken.uid` on the request; resolving it to User.id would
+//      cost a lookup per write, and the email is what an operator reads anyway.
+//   3. No `workspaceId` scoping on reads. This log is cross-workspace by
+//      definition, like the panel that writes it.
+model AdminAuditLog {
+  id          String         @id @default(uuid())
+  actorUid    String // Firebase uid (req.userId)
+  actorEmail  String // req.user.email — the human-readable actor
+  type        AdminAuditType
+  targetType  String // 'USER' | 'WORKSPACE'
+  targetId    String
+  workspaceId String? // plain column, NO @relation — survives a workspace delete
+  before      Json? // state before the change (null for creations)
+  after       Json? // state after the change (null for deletions)
+  createdAt   DateTime       @default(now())
+
+  @@index([actorUid])
+  @@index([workspaceId])
+  @@index([createdAt(sort: Desc)])
+  @@map("admin_audit_logs")
+}

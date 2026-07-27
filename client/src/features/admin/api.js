@@ -22,3 +22,9 @@ export const updateWorkspacePlan = (id, plan) =>
 // a URL that gets logged, copied and retried.
 export const updateUserRole = (id, collabRole, force = false) =>
   api.patch(`/api/admin/users/${id}/role`, { collabRole, force }).then((r) => r.data);
+
+// The admin action log. Cursor-paginated on createdAt (`before`), not an
+// offset — rows only ever arrive at the head, so an offset would re-serve or
+// skip entries as the log grows underneath the reader.
+export const fetchAuditLog = (before = null) =>
+  api.get('/api/admin/audit', { params: before ? { before } : undefined }).then((r) => r.data);

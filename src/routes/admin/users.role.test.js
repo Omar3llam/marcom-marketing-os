@@ -15,6 +15,7 @@ vi.mock('../../lib/prisma.js', () => ({
     $queryRaw: vi.fn(),
     workspace: { findMany: vi.fn(), findUnique: vi.fn(), delete: vi.fn() },
     user: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn(), count: vi.fn() },
+    adminAuditLog: { create: vi.fn(), findMany: vi.fn() },
   },
 }));
 vi.mock('../../queues/index.js', () => ({

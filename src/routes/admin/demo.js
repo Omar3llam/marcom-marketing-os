@@ -13,6 +13,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { seedDemoWorkspace } from '../../../prisma/seed.js';
+import { recordAdminAction } from '../../lib/adminAudit.js';
 
 export const demoRouter = Router();
 
@@ -21,7 +22,7 @@ export const demoRouter = Router();
 const DEMO_NAME_PREFIX = 'Demo —';
 
 // ── POST /seed — create a fresh, independent demo workspace ──
-demoRouter.post('/seed', async (_req, res) => {
+demoRouter.post('/seed', async (req, res) => {
   // Unique key → seedDemoWorkspace mints a brand-new graph (not an upsert over
   // the canonical apparel seed). Date.now()+random survives same-ms double-fire.
   const stamp = new Date();
@@ -31,6 +32,19 @@ demoRouter.post('/seed', async (_req, res) => {
   try {
     const { workspaceId } = await seedDemoWorkspace(prisma, { key, name });
     logger.info({ workspaceId, name }, '[admin/demo] seeded demo workspace');
+
+    // Logged after the seed: the target id does not exist until then, and a row
+    // naming a workspace that was never created would be a false record.
+    await recordAdminAction({
+      actorUid: req.userId,
+      actorEmail: req.user?.email,
+      type: 'SEED_DEMO',
+      targetType: 'WORKSPACE',
+      targetId: workspaceId,
+      workspaceId,
+      after: { name },
+    });
+
     return res.status(201).json({ workspaceId, name, message: 'Demo workspace created' });
   } catch (err) {
     logger.error({ err: err.message, key }, '[admin/demo] seed failed');
@@ -61,6 +75,24 @@ demoRouter.delete('/:workspaceId', async (req, res) => {
     // carries onDelete: Cascade).
     await prisma.workspace.delete({ where: { id: workspaceId } });
     logger.info({ workspaceId, name: ws.name }, '[admin/demo] deleted demo workspace');
+
+    // Recorded AFTER the delete, not before it. The audit row survives either
+    // way — that is what the missing foreign key buys — so ordering is purely a
+    // question of truthfulness, and a row written first would permanently
+    // assert a deletion that a failed DELETE never performed. The cascade is a
+    // single atomic statement, so there is no partial-deletion state that a
+    // write-ahead row would be needed to catch. `before` is read from the
+    // sentinel guard above, so nothing is lost by waiting.
+    await recordAdminAction({
+      actorUid: req.userId,
+      actorEmail: req.user?.email,
+      type: 'DELETE_DEMO',
+      targetType: 'WORKSPACE',
+      targetId: workspaceId,
+      workspaceId,
+      before: { name: ws.name },
+    });
+
     return res.json({ deleted: true, workspaceId });
   } catch (err) {
     logger.error({ err: err.message, workspaceId }, '[admin/demo] delete failed');

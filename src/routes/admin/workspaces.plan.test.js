@@ -11,7 +11,10 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../lib/prisma.js', () => ({
-  prisma: { workspace: { findMany: vi.fn(), update: vi.fn() } },
+  prisma: {
+    workspace: { findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+    adminAuditLog: { create: vi.fn() },
+  },
 }));
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -31,7 +34,13 @@ function makeApp({ role = 'ADMIN' } = {}) {
   return app;
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // The route pre-reads the current plan so the audit row can record a real
+  // `before` — without this the update is never reached.
+  prisma.workspace.findUnique.mockResolvedValue({ plan: 'FREE' });
+  prisma.adminAuditLog.create.mockResolvedValue({ id: 'log-1' });
+});
 
 describe('PATCH /api/admin/workspaces/:id/plan', () => {
   it('sets a valid plan and returns the updated row', async () => {
