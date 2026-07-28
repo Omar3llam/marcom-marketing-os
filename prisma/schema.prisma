@@ -1853,3 +1853,49 @@ model AdminAuditLog {
   @@index([createdAt(sort: Desc)])
   @@map("admin_audit_logs")
 }
+
+// ── AI usage metering ────────────────────────────────────────
+// One row per provider ATTEMPT-SEQUENCE through the AI gateway — not per
+// capability call. A request that exhausts its retries on the primary and then
+// succeeds on the cross-provider fallback writes TWO rows, because two
+// providers were billed for one piece of work. `attempts` records how many
+// times each sequence hit the API.
+//
+// Like AdminAuditLog and for the same reason, `workspaceId` carries NO
+// @relation: spend is a fact about money, and deleting a workspace must not
+// erase the record that it cost something. Nullable because attribution is
+// genuinely best-effort — the gateway's `workspaceId` is optional, so NULL
+// means "unattributed", never a placeholder.
+//
+// Every token column is nullable ON PURPOSE. NULL is "the provider did not
+// report this"; 0 is "it reported zero". Collapsing the two would let a cost
+// view render an unmeasured call as $0.00 — a fabricated measurement, and the
+// exact failure this whole track exists to avoid.
+//
+// Cost is NOT stored. It is derived from tokens × a pricing table that changes
+// under us (providerCosts.js is dated and versioned); persisting a dollar
+// figure would freeze a stale rate into a row that looks authoritative forever.
+model AiUsageLog {
+  id           String  @id @default(uuid())
+  workspaceId  String? // plain column, NO @relation — survives a workspace delete
+  capability   String // CAPABILITY enum value, e.g. 'GENERATE_COPY'
+  provider     String // 'CLAUDE' | 'OPENAI' | 'HIGGSFIELD'
+  model        String? // what the API resolved on success; what was requested on failure
+  inputTokens  Int? // null = unreported by the provider (NEVER 0-as-unknown)
+  outputTokens Int? // null = unreported
+  tokens       Int? // provider's own total (Claude: sum; OpenAI: total_tokens)
+  latencyMs    Int?
+  attempts     Int? // API calls in this sequence — a retry costs money too
+  success      Boolean @default(true)
+  // TRUE only for a cross-provider fallback (routingDecision.strategy ===
+  // 'fallback'), never for a retry against the same provider. Conflating the
+  // two would make "we paid two providers for one request" unreadable.
+  isFallback   Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@index([provider])
+  @@map("ai_usage_logs")
+}

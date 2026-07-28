@@ -30,6 +30,15 @@ vi.mock('../../utils/logger.js', () => ({
   },
 }));
 
+// The gateway meters every attempt-sequence into ai_usage_logs. Unmocked, the
+// real recorder loads lib/prisma.js and writes to whatever DATABASE_URL points
+// at — a live side effect from a unit test. Metering behaviour itself is
+// covered in gatewayMetering.test.js.
+vi.mock('../../lib/aiUsage.js', () => ({
+  recordAiUsage: vi.fn().mockResolvedValue(true),
+  cleanAiUsageLogs: vi.fn(),
+}));
+
 // PR #38: Mock intelligent router to use static routing in tests
 vi.mock('./intelligentRouter.js', async () => {
   const actual = await vi.importActual('./providerRegistry.js');
