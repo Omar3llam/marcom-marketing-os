@@ -11,7 +11,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import {
   actionQueue, observerQueue, syncQueue,
-  executionQueue, agenticQueue, narrativeQueue,
+  executionQueue, agenticQueue, narrativeQueue, maintenanceQueue,
 } from '../../queues/index.js';
 import { REDIS_DISABLED, bullConnection } from '../../queues/connection.js';
 
@@ -25,6 +25,7 @@ const QUEUES = {
   'executions':    executionQueue,
   'agentic':       agenticQueue,
   'narrative':     narrativeQueue,
+  'maintenance':   maintenanceQueue,
 };
 
 async function dbStatus() {
@@ -84,6 +85,14 @@ statusRouter.get('/', async (_req, res) => {
       'campaign-sync': { cron: process.env.CAMPAIGN_SYNC_CRON || '0 9 * * *' },
       'narrative-weekly':  { cron: process.env.NARRATIVE_WEEKLY_CRON  || '0 8 * * 1' },
       'narrative-monthly': { cron: process.env.NARRATIVE_MONTHLY_CRON || '0 8 1 * *' },
+      // Retention. `retentionDays` rides along because the schedule alone does
+      // not tell an operator what the sweep will delete.
+      'ai-usage-cleanup': {
+        cron: process.env.AIUSAGE_CLEANUP_CRON || '0 3 * * *',
+        retentionDays: Number(process.env.AIUSAGE_MAX_AGE_DAYS) > 0
+          ? Number(process.env.AIUSAGE_MAX_AGE_DAYS)
+          : 90,
+      },
     },
     generatedAt: new Date().toISOString(),
   });

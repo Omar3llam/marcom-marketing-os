@@ -15,6 +15,7 @@ import { startObserverWorker }  from '../services/temporalObserver.js';
 import { startSyncWorker }      from './syncWorker.js';
 import { startAgenticWorker }   from './agenticWorker.js';
 import { startNarrativeWorker } from './narrativeWorker.js';
+import { startMaintenanceWorker } from './maintenanceWorker.js';
 import { scheduleCampaignSync } from '../queues/index.js';
 import { logger }               from '../utils/logger.js';
 
@@ -24,6 +25,9 @@ const observerWorker  = startObserverWorker();
 const syncWorker      = startSyncWorker();
 const agenticWorker   = startAgenticWorker();   // Phase 9 — proactive loop sweep
 const narrativeWorker = startNarrativeWorker(); // Phase 8 — weekly/monthly report cadence
+// Retention housekeeping. Always on — it deletes, it does not spend, and it
+// registers its own daily repeat.
+const maintenanceWorker = startMaintenanceWorker();
 
 // Schedule automatic campaign sync cron job (daily by default)
 scheduleCampaignSync()
@@ -39,6 +43,7 @@ async function shutdown(signal) {
     syncWorker.close(),
     agenticWorker.close(),
     narrativeWorker.close(),
+    maintenanceWorker.close(),
   ]);
   process.exit(0);
 }

@@ -20,6 +20,12 @@ export const SYNC_QUEUE_NAME       = 'campaign-sync';
 export const EXECUTION_QUEUE_NAME  = 'executions';
 export const AGENTIC_QUEUE_NAME    = 'agentic';
 export const NARRATIVE_QUEUE_NAME  = 'narrative';
+// Housekeeping that keeps unbounded tables bounded. Generic on purpose — the
+// next retention sweep should share this queue rather than mint another.
+export const MAINTENANCE_QUEUE_NAME = 'maintenance';
+// The job NAME is also its jobId, so the worker can branch on job.name and the
+// scheduler can find its own repeatable by id.
+export const AI_USAGE_CLEANUP_JOB = 'ai-usage-cleanup';
 
 const queueOpts = {
   connection: bullConnection,
@@ -40,6 +46,7 @@ export const syncQueue      = REDIS_DISABLED ? null : new Queue(SYNC_QUEUE_NAME,
 export const executionQueue = REDIS_DISABLED ? null : new Queue(EXECUTION_QUEUE_NAME, queueOpts);
 export const agenticQueue   = REDIS_DISABLED ? null : new Queue(AGENTIC_QUEUE_NAME,   queueOpts);
 export const narrativeQueue = REDIS_DISABLED ? null : new Queue(NARRATIVE_QUEUE_NAME, queueOpts);
+export const maintenanceQueue = REDIS_DISABLED ? null : new Queue(MAINTENANCE_QUEUE_NAME, queueOpts);
 
 // ── Helper: enqueue an ExecutionRequest ──────────────────────
 // Called by meta.js after PENDING → QUEUED transition.
@@ -156,6 +163,45 @@ export async function unscheduleNarratives() {
     }
   }
   return removed;
+}
+
+// ── Helper: schedule the ai_usage_logs retention sweep ────────
+// ALWAYS ON, and deliberately so. Every other cron here is opt-in because it
+// SPENDS (agentic sweeps and narratives both fan out to the AI gateway); this
+// one only deletes, and defaulting it off would recreate the exact problem it
+// exists to solve — ai_usage_logs takes a row per AI call and is the
+// highest-volume writer in the system.
+//
+// Nothing younger than AIUSAGE_MAX_AGE_DAYS is ever touched, and cleanAiUsageLogs
+// clamps a junk or non-positive value back to 90 days, so a misconfigured env
+// cannot move the cutoff forward and empty the table.
+//
+// Removes any existing registration before adding. BullMQ repeatables persist in
+// Redis keyed by their pattern, so changing AIUSAGE_CLEANUP_CRON would otherwise
+// leave the OLD schedule firing alongside the new one — the same hazard
+// unscheduleAgenticSweep exists to handle, met here by re-registering rather
+// than by a disable flag.
+export async function scheduleAiUsageCleanup() {
+  if (!maintenanceQueue) {
+    throw new Error('Queue subsystem unavailable — set REDIS_URL to a real Redis instance');
+  }
+  const cron = process.env.AIUSAGE_CLEANUP_CRON || '0 3 * * *'; // 03:00 UTC daily
+
+  const existing = await maintenanceQueue.getRepeatableJobs();
+  for (const j of existing) {
+    if (j.id === AI_USAGE_CLEANUP_JOB) {
+      await maintenanceQueue.removeRepeatableByKey(j.key);
+    }
+  }
+
+  await maintenanceQueue.add(
+    AI_USAGE_CLEANUP_JOB,
+    {},
+    {
+      jobId:  AI_USAGE_CLEANUP_JOB,
+      repeat: { pattern: cron },
+    },
+  );
 }
 
 // ── Helper: schedule automatic campaign sync ──────────────────

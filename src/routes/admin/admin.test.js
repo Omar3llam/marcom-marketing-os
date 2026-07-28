@@ -30,6 +30,7 @@ vi.mock('../../queues/index.js', () => ({
   executionQueue: { getJobCounts: vi.fn() },
   agenticQueue:   { getJobCounts: vi.fn() },
   narrativeQueue: { getJobCounts: vi.fn() },
+  maintenanceQueue: { getJobCounts: vi.fn() },
 }));
 
 vi.mock('../../queues/connection.js', () => ({
@@ -46,7 +47,7 @@ vi.mock('../../utils/logger.js', () => ({
 }));
 
 import { prisma } from '../../lib/prisma.js';
-import { actionQueue, observerQueue, executionQueue, agenticQueue, narrativeQueue } from '../../queues/index.js';
+import { actionQueue, observerQueue, executionQueue, agenticQueue, narrativeQueue, maintenanceQueue } from '../../queues/index.js';
 import { bullConnection } from '../../queues/connection.js';
 import { seedDemoWorkspace } from '../../../prisma/seed.js';
 import { adminRouter } from './index.js';
@@ -67,7 +68,7 @@ function makeApp({ role = 'ADMIN' } = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  for (const q of [actionQueue, observerQueue, executionQueue, agenticQueue, narrativeQueue]) {
+  for (const q of [actionQueue, observerQueue, executionQueue, agenticQueue, narrativeQueue, maintenanceQueue]) {
     q.getJobCounts.mockResolvedValue({ waiting: 0, active: 1, completed: 5, failed: 2, delayed: 0 });
   }
   bullConnection.ping.mockResolvedValue('PONG');
@@ -108,6 +109,41 @@ describe('GET /api/admin/status', () => {
     expect(res.body.queues['campaign-sync']).toEqual({ disabled: true });
     expect(res.body.workers.agentic.cron).toBeTruthy();
     expect(res.body.generatedAt).toEqual(expect.any(String));
+  });
+
+  // The retention sweep is the one cron with no enable flag, so the status tab
+  // is where an operator confirms it exists and learns what it will delete —
+  // the schedule alone does not say how much data survives it.
+  it('reports the ai-usage retention cron and its retention window', async () => {
+    const res = await request(makeApp()).get('/api/admin/status').expect(200);
+
+    expect(res.body.workers['ai-usage-cleanup']).toEqual({
+      cron: '0 3 * * *',
+      retentionDays: 90,
+    });
+    expect(res.body.queues).toHaveProperty('maintenance');
+  });
+
+  it('reflects an AIUSAGE_MAX_AGE_DAYS override in the reported window', async () => {
+    process.env.AIUSAGE_MAX_AGE_DAYS = '30';
+    try {
+      const res = await request(makeApp()).get('/api/admin/status').expect(200);
+      expect(res.body.workers['ai-usage-cleanup'].retentionDays).toBe(30);
+    } finally {
+      delete process.env.AIUSAGE_MAX_AGE_DAYS;
+    }
+  });
+
+  // A junk value must not be echoed back as the truth — cleanAiUsageLogs
+  // clamps it to 90, and the status tab has to agree with what will happen.
+  it('reports 90 days when the override is junk, matching the sweep’s own clamp', async () => {
+    process.env.AIUSAGE_MAX_AGE_DAYS = 'abc';
+    try {
+      const res = await request(makeApp()).get('/api/admin/status').expect(200);
+      expect(res.body.workers['ai-usage-cleanup'].retentionDays).toBe(90);
+    } finally {
+      delete process.env.AIUSAGE_MAX_AGE_DAYS;
+    }
   });
 
   it('degrades the db section to { ok:false, error } instead of throwing', async () => {
