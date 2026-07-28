@@ -68,7 +68,8 @@ describe('ExecutionContext — the pick', () => {
   // this ad set explains the campaign's verdict — an inference from two ratios.
   it('frames the pick as where to look, not what is wrong', () => {
     setup();
-    expect(screen.getByText('Focus here first')).toBeInTheDocument();
+    expect(screen.getByText('Start here')).toBeInTheDocument();
+    expect(screen.queryByText('Focus here first')).not.toBeInTheDocument();
     expect(screen.queryByText(/root cause/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/problem|culprit|blame/i)).not.toBeInTheDocument();
   });
@@ -126,6 +127,47 @@ describe('ExecutionContext — the evidence', () => {
     setup({ adSets: adSets.map((a) => ({ ...a, currency: 'GBP' })) });
     expect(screen.getByText('£3,255.00')).toBeInTheDocument();
     expect(screen.queryByText('$3,255.00')).not.toBeInTheDocument();
+  });
+});
+
+// The base fixture carries no impressions, so buildHypothesis short-circuits at
+// H0 — these tests opt in by giving the worst ad set real delivery.
+describe('ExecutionContext — the working hypothesis', () => {
+  const withDelivery = (over) => adSets.map((a) => (
+    a.entityId === 'as-2' ? { ...a, impressions: 500_000, ...over } : a
+  ));
+
+  it('is absent when the data cannot support one', () => {
+    setup(); // no impressions on any row
+    expect(screen.queryByText('Working hypothesis')).not.toBeInTheDocument();
+  });
+
+  it('separates what was observed from what it might mean', () => {
+    setup({ adSets: withDelivery({ frequency: 4.2 }) });
+    expect(screen.getByText('Working hypothesis')).toBeInTheDocument();
+    expect(screen.getByText('Observed')).toBeInTheDocument();
+    expect(screen.getByText('Interpretation')).toBeInTheDocument();
+  });
+
+  it('names creative fatigue when frequency is past the ceiling and CTR is low', () => {
+    setup({ adSets: withDelivery({ frequency: 4.2 }) });
+    expect(screen.getByText('Creative fatigue')).toBeInTheDocument();
+    expect(screen.getByText(/Frequency is 4\.2, above Lumi's fatigue threshold \(3\.5\)/)).toBeInTheDocument();
+    expect(screen.getByText('Refresh the creative before pausing the ad set.')).toBeInTheDocument();
+  });
+
+  it('falls back to audience or creative when there is no fatigue signal', () => {
+    setup({ adSets: withDelivery({ frequency: 1.8 }) });
+    expect(screen.getByText('No fatigue signal detected')).toBeInTheDocument();
+    expect(screen.getByText(/more commonly associated with audience fit/)).toBeInTheDocument();
+    expect(screen.getByText('Review the creative and audience targeting before pausing.')).toBeInTheDocument();
+  });
+
+  it('says the delivery is too thin rather than diagnosing it', () => {
+    setup({ adSets: withDelivery({ frequency: 4.2, spendMinor: 4_999 }) });
+    expect(screen.getByText('Insufficient data')).toBeInTheDocument();
+    expect(screen.queryByText('Creative fatigue')).not.toBeInTheDocument();
+    expect(screen.getByText('Wait for more delivery before acting.')).toBeInTheDocument();
   });
 });
 
