@@ -22,6 +22,8 @@ vi.mock('@/context/IntelligenceContext.jsx', () => ({ useIntelligence: vi.fn() }
 vi.mock('@/hooks/useConnectorCampaigns.js', () => ({ useConnectorCampaigns: vi.fn() }));
 vi.mock('@/hooks/useConnections.js', () => ({ useConnections: vi.fn() }));
 vi.mock('@/hooks/useAccuracy.js', () => ({ useAccuracy: () => ({ surface: null }) }));
+vi.mock('@/hooks/useAccountHealth.js', () => ({ useAccountHealth: vi.fn() }));
+vi.mock('@/hooks/useConnectorVerdicts.js', () => ({ useConnectorVerdicts: vi.fn() }));
 vi.mock('@/hooks/useCollabRole.js', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, useCollabRole: vi.fn() };
@@ -42,6 +44,8 @@ import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { useConnections } from '@/hooks/useConnections.js';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
+import { useAccountHealth } from '@/hooks/useAccountHealth.js';
+import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 
 const CONNECTOR_ROW = { entityId: 'c1', name: 'Eid Sale', channel: 'META', spendMinor: 50000, ctr: 0.0185 };
 const LEGACY_ROW = { campaign_id: 'x', alerts: [] };
@@ -58,6 +62,9 @@ beforeEach(() => {
   // Default: no channel has ever synced → the revenue-onboarding banner stays hidden
   // and every pre-existing test is unaffected. Revenue-banner tests override this.
   useConnections.mockReturnValue({ data: null, loading: false, error: null, refetch: vi.fn() });
+  // Default: nothing scored → the decision feed renders its honest empty line.
+  useAccountHealth.mockReturnValue({ health: null, loading: false, error: null, refetch: vi.fn() });
+  useConnectorVerdicts.mockReturnValue({ verdicts: [], gatedOut: [], loading: false, error: null, refetch: vi.fn() });
 });
 
 describe('OverviewView — agentic shell is decoupled from the legacy CampaignState feed', () => {
@@ -99,6 +106,79 @@ describe('OverviewView — agentic shell is decoupled from the legacy CampaignSt
 
     expect(screen.queryByText(/No campaign data yet/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId('agentic-shell')).not.toBeInTheDocument();
+  });
+});
+
+// The page led with a greeting and buried the decisions in a 3-column panel row.
+// It now leads with the decisions themselves: AlertsPanel and QuickActionsPanel
+// are gone (the first duplicated the agenda's job, the second was navigation),
+// and the two revenue-data stories survive as their own notices.
+describe('OverviewView — the decision feed replaces the panel row', () => {
+  const withConnector = () => useConnectorCampaigns.mockReturnValue({
+    campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn(),
+  });
+
+  it('leads with the decisions, keeping the greeting as a subtitle', () => {
+    withConnector();
+    renderView();
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Today's Decisions");
+    expect(screen.getByText(/Omar\. Here's what needs a call\./)).toBeInTheDocument();
+  });
+
+  it('no longer renders the Quick Actions shortcuts', () => {
+    withConnector();
+    renderView();
+    expect(screen.queryByText('Quick Actions')).not.toBeInTheDocument();
+    expect(screen.queryByText('Generate Content')).not.toBeInTheDocument();
+  });
+
+  it('keeps the agenda — the feed sits alongside it, never replaces it', () => {
+    withConnector();
+    renderView();
+    expect(screen.getByTestId('agentic-shell')).toBeInTheDocument();
+  });
+
+  it('renders a decision card per actionable campaign, most urgent first', () => {
+    withConnector();
+    useAccountHealth.mockReturnValue({ health: { campaigns: [
+      { entityId: 'c1', name: 'Eid Sale', verdict: 'KILL', impactScore: 6 },
+      { entityId: 'c2', name: 'Retarget', verdict: 'WATCH', impactScore: 9 },
+      { entityId: 'c3', name: 'Steady', verdict: 'HOLD', impactScore: 9 },
+    ] }, loading: false, error: null, refetch: vi.fn() });
+    renderView();
+
+    expect(screen.getByText('2 decisions')).toBeInTheDocument();
+    expect(screen.getByText('Retarget')).toBeInTheDocument();
+    expect(screen.getByText('Eid Sale')).toBeInTheDocument();
+    expect(screen.queryByText('Steady')).not.toBeInTheDocument();
+  });
+
+  it('says the feed is clear rather than hiding it', () => {
+    withConnector();
+    renderView();
+    expect(screen.getByText('No critical campaigns right now.')).toBeInTheDocument();
+  });
+
+  // These two are NOT decisions — the campaign is not performing badly, its
+  // revenue is unmeasurable — so they must not be folded into the feed.
+  it('surfaces the two revenue stories separately from the decisions', () => {
+    withConnector();
+    useAccountHealth.mockReturnValue({ health: { campaigns: [
+      { entityId: 'g1', name: 'Never Uploaded', verdict: 'HOLD', impactScore: 3, needsRevenue: true },
+      { entityId: 's1', name: 'Went Stale', verdict: 'HOLD', impactScore: 3, revenueStale: true },
+    ] }, loading: false, error: null, refetch: vi.fn() });
+    renderView();
+
+    expect(screen.getByText('Revenue data needed')).toBeInTheDocument();
+    expect(screen.getByText('Revenue data outdated')).toBeInTheDocument();
+    expect(screen.getByText('No critical campaigns right now.')).toBeInTheDocument();
+  });
+
+  it('renders neither notice when every campaign has fresh revenue', () => {
+    withConnector();
+    renderView();
+    expect(screen.queryByText('Revenue data needed')).not.toBeInTheDocument();
+    expect(screen.queryByText('Revenue data outdated')).not.toBeInTheDocument();
   });
 });
 

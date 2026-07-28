@@ -8,7 +8,7 @@
 // Deliberately framed as WHERE TO LOOK, not WHAT IS WRONG. A low CTR is a
 // symptom with many causes — a learning phase, a deliberate broad test, a
 // seasonal audience — and none of them are visible in a MetricSnapshot. So the
-// header says "Where to execute", the pick says "Focus here first", and the
+// header says "Where to execute", the pick says "Execute here", and the
 // action says "inspect", with pausing offered as a conditional the marketer
 // resolves. Naming a root cause from two ratios would be a guess wearing a
 // verdict's clothes.
@@ -51,7 +51,7 @@ export function ExecutionContext({ campaign, adSets, verdict }) {
 
       {/* The pick. "Focus here first" — a place to start looking, not a culprit. */}
       <div className="mb-3">
-        <Label>Start here</Label>
+        <Label>Execute here</Label>
         <p className="font-display text-sm font-semibold text-lumi-text">{worst.name}</p>
         <p className="mt-0.5 font-mono text-[11px] text-lumi-subtle">AD SET · {worst.channel}</p>
       </div>
