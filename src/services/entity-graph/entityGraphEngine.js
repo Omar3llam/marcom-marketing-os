@@ -164,6 +164,12 @@ export function toAdSetRow(adSet, snap) {
     entityId: adSet.id,
     channel:  adSet.channel,
     name:     adSet.name,
+    // Delivery status (ACTIVE | PAUSED | ARCHIVED). Derived from Meta's
+    // effective_status, so CAMPAIGN_PAUSED lands as PAUSED — an ad set is not
+    // running just because its own switch is on. NOTE: the column is NOT NULL
+    // and defaults to ACTIVE, so ACTIVE means "running, OR never told"; only
+    // PAUSED/ARCHIVED are positive knowledge. Readers must act on those two.
+    status:   adSet.status ?? null,
     ...metricsOf(snap),
   };
 }

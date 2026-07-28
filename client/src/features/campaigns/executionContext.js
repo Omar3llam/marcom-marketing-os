@@ -159,10 +159,18 @@ export function buildEvidenceBullets(worst, campaignCtr, campaignSpendMinor) {
 export function buildHypothesis(worst) {
   if (!worst) return null;
 
-  // H0 — nothing was delivered, so there is nothing to explain. Currently a
-  // proxy: Meta's /adsets edge already returns `status`/`effective_status` but
-  // nothing downstream lands them, so zero impressions is the only signal here
-  // that an ad set is not running. A real status field would say so outright.
+  // H0 — the ad set is not running, so there is nothing to explain. A stopped
+  // ad set with a low CTR and a high frequency is not a tired creative; it is a
+  // stopped ad set, and diagnosing it would be the most confident wrong answer
+  // this engine could give.
+  //
+  // Only PAUSED/ARCHIVED are acted on. The status column is NOT NULL and
+  // defaults to ACTIVE, so ACTIVE means "running, OR the connector was never
+  // told" — it is not positive evidence of delivery, and the impressions proxy
+  // below still has to catch the rest.
+  if (worst.status === 'PAUSED' || worst.status === 'ARCHIVED') return null;
+
+  // Fallback proxy for everything status cannot answer: nothing delivered.
   if (!worst.impressions) return null;
 
   // H3 — too little delivery to tell signal from noise. FIRST, so a thin ad set

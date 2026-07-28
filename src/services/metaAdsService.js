@@ -297,6 +297,47 @@ export async function fetchAllCampaigns(accessToken, adAccountId) {
  * @param {Array} campaigns raw campaign rows from fetchAllCampaigns
  * @returns {Array} insight-shaped rows for metaNormalize
  */
+// ── Delivery status ─────────────────────────────────────────────────────────
+// `status` / `effective_status` live ONLY on the roster edges (/campaigns,
+// /adsets). Meta's /insights never returns them, so a DELIVERING entity — the
+// common case — has no status of its own and must inherit the roster's. Folding
+// it on here is the only place both halves are in hand.
+//
+// Without this the status column reads `undefined` on every delivering row and
+// falls back to the schema's ACTIVE default: a paused ad set that spent money
+// last week would still assert it is running.
+
+/** PURE: the status keys from a roster row, omitted entirely when unknown. */
+function pickStatus(rosterRow) {
+  const out = {};
+  if (rosterRow?.status != null) out.status = rosterRow.status;
+  if (rosterRow?.effective_status != null) out.effective_status = rosterRow.effective_status;
+  return out;
+}
+
+/** PURE: index a roster by id → its status keys. */
+function statusIndex(rosterRows = []) {
+  const m = new Map();
+  for (const row of rosterRows) {
+    const r = row?._data || row;
+    if (r?.id == null) continue;
+    const s = pickStatus(r);
+    if (Object.keys(s).length) m.set(String(r.id), s);
+  }
+  return m;
+}
+
+/**
+ * PURE: fold the roster's status onto an insight row. A row that somehow carries
+ * its own status keeps it; an unknown status adds NO key, so rows stay
+ * byte-identical when Meta omits it (same contract as `objective`).
+ */
+function withStatus(row, index, id) {
+  if (row?.status != null || id == null) return row;
+  const s = index.get(String(id));
+  return s ? { ...row, ...s } : row;
+}
+
 export function mergeMetaCampaigns(insights = [], campaigns = []) {
   // `objective` lives on the /campaigns roster edge (fetchAllCampaigns), NOT on
   // /insights. Fold it onto BOTH delivered insight rows and roster-only rows so
@@ -313,9 +354,10 @@ export function mergeMetaCampaigns(insights = [], campaigns = []) {
     return objective != null ? { ...row, objective } : row;
   };
 
+  const statusById = statusIndex(campaigns);
   const insightRows = (insights || []).map((row) => {
     const r = row?._data || row;
-    return withObjective(r, r?.campaign_id);
+    return withStatus(withObjective(r, r?.campaign_id), statusById, r?.campaign_id);
   });
   const withInsights = new Set();
   for (const r of insightRows) {
@@ -334,6 +376,7 @@ export function mergeMetaCampaigns(insights = [], campaigns = []) {
       impressions:   '0',
       clicks:        '0',
       _rosterOnly:   true, // no delivery data found — "unknown", never a verified 0
+      ...pickStatus(cd),
     };
     rosterOnly.push(cd.objective != null ? { ...rrow, objective: cd.objective } : rrow);
   }
@@ -451,6 +494,7 @@ export async function fetchAllAdSets(accessToken, adAccountId) {
  * @returns {Array} insight-shaped ad-set rows for metaNormalize
  */
 export function mergeMetaAdSets(insights = [], adSets = []) {
+  const statusById = statusIndex(adSets);
   const insightRows = [];
   const withInsights = new Set();
 
@@ -478,10 +522,11 @@ export function mergeMetaAdSets(insights = [], adSets = []) {
       impressions: '0',
       clicks:      '0',
       _rosterOnly: true, // no delivery data found — "unknown", never a verified 0
+      ...pickStatus(ad),
     });
   }
 
-  return [...insightRows, ...rosterOnly];
+  return [...insightRows.map((r) => withStatus(r, statusById, r?.adset_id)), ...rosterOnly];
 }
 
 /**
