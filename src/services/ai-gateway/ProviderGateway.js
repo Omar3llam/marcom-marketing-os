@@ -63,6 +63,19 @@ const RETRYABLE_ERRORS = new Set([
   ERROR_TYPE.PROVIDER_ERROR,
 ]);
 
+// Metering helper, loaded lazily and ONCE.
+//
+// Lazy for the same reason resolvePlan lazily imports prisma: lib/prisma.js
+// calls $connect() at module load, so importing this eagerly would put a DB
+// connection behind every module — and every test — that merely touches the
+// gateway. Memoized so the resolution happens once per process rather than once
+// per AI call, and so concurrent callers observe the same module instance.
+let usageModule = null;
+function loadUsageRecorder() {
+  usageModule ??= import('../../lib/aiUsage.js');
+  return usageModule;
+}
+
 function generateRequestId(capability, input) {
   const payload = JSON.stringify({ capability, input });
   return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 16);
@@ -181,11 +194,47 @@ export function applyFreePlanRouting({ plan, capability, provider, method, routi
  * unchanged; the gateway now calls it once for the primary provider and, on
  * failure, once more for a fallback provider.
  *
+ * Also meters the sequence: ONE AiUsageLog row per call to this function, so a
+ * request that exhausts the primary and then succeeds on the fallback writes
+ * two rows — two providers were billed for one piece of work.
+ *
  * @returns {Promise<{ success, output?, artifacts?, error?, metadata }>}
  */
-async function runWithRetries({ method, input, decisionCtx, provider, requestId, capability, routingDecision }) {
+async function runWithRetries({ method, input, decisionCtx, provider, requestId, capability, routingDecision, workspaceId }) {
   let attempt = 0;
   let lastError = null;
+
+  // isFallback is TRUE only for a genuine cross-provider fallback. A retry
+  // against the SAME provider is not a fallback, and `attempt > 1` would
+  // conflate the two — making "we paid two providers for one request"
+  // indistinguishable from "the first call timed out and the second worked".
+  // The static-registry rescue path also sets routingDecision.fallback = true,
+  // so the strategy name is the precise signal, not that flag.
+  const isFallback = routingDecision?.strategy === 'fallback';
+
+  // Fire-and-forget: metering must never add latency to, or fail, an AI call.
+  // recordAiUsage already swallows everything; the .catch is for a mock or a
+  // future caller that rejects, which would otherwise be an unhandled rejection.
+  //
+  const meter = (success, metadata) => {
+    loadUsageRecorder()
+      .then(({ recordAiUsage }) => recordAiUsage({
+        workspaceId: workspaceId ?? null,
+        capability,
+        provider,
+        model: metadata?.model ?? null,
+        // null, not 0 — a failed call measured nothing, and providers may omit
+        // usage entirely. The cost view must not render either as $0.00.
+        inputTokens: metadata?.inputTokens ?? null,
+        outputTokens: metadata?.outputTokens ?? null,
+        tokens: metadata?.tokens ?? null,
+        latencyMs: metadata?.latency ?? null,
+        attempts: attempt,
+        success,
+        isFallback,
+      }))
+      .catch(() => {});
+  };
 
   while (attempt < MAX_RETRIES) {
     attempt++;
@@ -206,6 +255,8 @@ async function runWithRetries({ method, input, decisionCtx, provider, requestId,
           latency: result.metadata.latency,
           routingStrategy: routingDecision?.strategy,
         }, '[ProviderGateway] capability executed successfully');
+
+        meter(true, result.metadata);
 
         return {
           ...result,
@@ -230,6 +281,10 @@ async function runWithRetries({ method, input, decisionCtx, provider, requestId,
         errorType: lastError.type, errorMessage: lastError.message,
       }, '[ProviderGateway] capability execution failed');
 
+      // The provider's own metadata survives a failure — latency is real and
+      // `model` is what the call targeted. Tokens are null by PR-A's contract.
+      meter(false, result.metadata);
+
       return {
         success: false,
         error: lastError,
@@ -249,6 +304,11 @@ async function runWithRetries({ method, input, decisionCtx, provider, requestId,
         continue;
       }
 
+      // An unexpected throw left no provider metadata at all — record the
+      // attempt with everything unknown rather than inventing a model or a
+      // zero latency the caller never observed.
+      meter(false, null);
+
       return {
         success: false,
         error: lastError,
@@ -258,6 +318,8 @@ async function runWithRetries({ method, input, decisionCtx, provider, requestId,
   }
 
   // Max retries exceeded
+  meter(false, null);
+
   return {
     success: false,
     error: lastError || { type: ERROR_TYPE.PROVIDER_ERROR, message: 'Max retries exceeded' },
@@ -420,7 +482,7 @@ export async function execute(request) {
 
   // ── Primary provider (with bounded retries) ──
   const primaryResult = await runWithRetries({
-    method, input, decisionCtx, provider, requestId, capability, routingDecision,
+    method, input, decisionCtx, provider, requestId, capability, routingDecision, workspaceId,
   });
   if (primaryResult.success) return primaryResult;
 
@@ -441,7 +503,7 @@ export async function execute(request) {
       }, '[ProviderGateway] primary failed — attempting fallback provider');
 
       const fbResult = await runWithRetries({
-        method: fb.method, input, decisionCtx, provider: fallbackProvider, requestId, capability,
+        method: fb.method, input, decisionCtx, provider: fallbackProvider, requestId, capability, workspaceId,
         routingDecision: {
           strategy: 'fallback',
           reason: `Primary ${provider} failed (${primaryResult.error?.type || 'unknown'}); fell back to ${fallbackProvider}`,
