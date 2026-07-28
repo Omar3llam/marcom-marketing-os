@@ -87,7 +87,13 @@ export function toEntityOps(workspaceId, channel, normalized = []) {
     seen.add(key);
     const id = detId(workspaceId, channel, n.entityLevel, n.externalId);
     const spec = LEVEL_MODEL[n.entityLevel];
-    const data = { workspaceId, channel, name: n.name || n.externalId, externalId: String(n.externalId), status: 'ACTIVE' };
+    const data = { workspaceId, channel, name: n.name || n.externalId, externalId: String(n.externalId) };
+    // Delivery status is stamped ONLY when the connector actually resolved one.
+    // It used to be hardcoded 'ACTIVE' here and re-written on every update, so a
+    // paused campaign asserted it was running and the diagnosis engine had no
+    // way to know otherwise. Absent → the create falls to the schema default and
+    // the update leaves the stored value alone (same rule as `objective`).
+    if (n.status != null) data.status = n.status;
     // objective is a CAMPAIGN-only attribute (the column lives on Campaign, not
     // the other entity models) — only stamp it there, or the Account/AdSet upsert
     // would throw on an unknown arg.
@@ -180,10 +186,16 @@ export async function landSnapshots(workspaceId, channel, normalized = []) {
       prisma[op.model].upsert({
         where: { id: op.id },
         create: { id: op.id, ...op.data },
-        // Only overwrite objective when the new value is KNOWN (non-null) — a
-        // later roster/short-window sync that lacks it must never clobber a
-        // previously-resolved objective with null. Absent for non-campaign ops.
-        update: { name: op.data.name, status: op.data.status, ...(op.data.objective != null ? { objective: op.data.objective } : {}) },
+        // Only overwrite objective/status when the new value is KNOWN — a later
+        // roster/short-window sync that lacks one must never clobber a
+        // previously-resolved value. `status` was unconditionally overwritten
+        // with the hardcoded 'ACTIVE', so a paused entity was re-activated on
+        // every single sync. Objective is absent for non-campaign ops.
+        update: {
+          name: op.data.name,
+          ...(op.data.status != null ? { status: op.data.status } : {}),
+          ...(op.data.objective != null ? { objective: op.data.objective } : {}),
+        },
       }),
     ),
   );

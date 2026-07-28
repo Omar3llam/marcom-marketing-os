@@ -44,6 +44,34 @@ function baseMeasures(r, currency, d) {
 }
 
 /**
+ * PURE: Meta's delivery status → the `EntityStatus` enum the schema accepts
+ * (ACTIVE | PAUSED | ARCHIVED), or null when Meta said nothing usable.
+ *
+ * `effective_status` is preferred because it is the TRUE delivery state: an ad
+ * set whose own `status` is ACTIVE but whose campaign is paused comes back as
+ * CAMPAIGN_PAUSED, and it is not running. Reading `status` alone would call it
+ * active and hand the diagnosis engine a delivering ad set that is stopped.
+ *
+ * Meta's effective_status vocabulary is much wider than our three values —
+ * PENDING_REVIEW, DISAPPROVED, IN_PROCESS, WITH_ISSUES, PREAPPROVED,
+ * PENDING_BILLING_INFO. Those are neither running nor paused, so they map to
+ * null: "we do not know" is the honest answer, and passing one through raw
+ * would throw on the Prisma enum column.
+ *
+ * @returns {'ACTIVE'|'PAUSED'|'ARCHIVED'|null}
+ */
+export function toEntityStatus(status, effectiveStatus) {
+  const raw = effectiveStatus ?? status;
+  if (typeof raw !== 'string' || !raw) return null;
+  const v = raw.toUpperCase();
+  // CAMPAIGN_PAUSED / ADSET_PAUSED both mean "not delivering, by a pause".
+  if (v.endsWith('PAUSED')) return 'PAUSED';
+  if (v === 'ARCHIVED' || v === 'DELETED') return 'ARCHIVED';
+  if (v === 'ACTIVE') return 'ACTIVE';
+  return null; // in review / disapproved / with issues — unknown, never guessed
+}
+
+/**
  * Ad-set rows → ADSET NormalizedSnapshots.
  *
  * parentExternalId is the CAMPAIGN id, not the account: snapshotSink chains the
@@ -69,6 +97,9 @@ function normalizeAdSets(rows, currency, d, accountExternalId) {
       entityLevel: 'ADSET',
       parentExternalId: String(r.campaign_id),
       name: r.adset_name || 'Unnamed Ad Set',
+      // null when Meta said nothing usable — the sink then leaves the stored
+      // status alone rather than asserting a state we were never told.
+      status: toEntityStatus(r.status, r.effective_status),
       ...baseMeasures(r, currency, d),
     });
   }
@@ -116,6 +147,9 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
       // campaign from a conversion campaign with no measured revenue. null when
       // Meta didn't report it (only /campaigns carries it, not /insights).
       objective: r.objective ?? null,
+      // Same drop, same level up: campaigns were stamped ACTIVE on every sync
+      // too. Fixed at both levels at once — the sink is level-agnostic.
+      status: toEntityStatus(r.status, r.effective_status),
       ...baseMeasures(r, currency, d),
     }));
 

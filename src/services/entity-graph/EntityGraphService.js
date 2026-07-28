@@ -92,7 +92,7 @@ export async function getCampaignAdSets(workspaceId, campaignEntityId) {
 
   const adSets = await prisma.adSet.findMany({
     where:   { campaignId: campaignEntityId, workspaceId },
-    select:  { id: true, name: true, channel: true },
+    select:  { id: true, name: true, channel: true, status: true },
     orderBy: { createdAt: 'asc' },
     take:    500,
   }).catch((err) => {

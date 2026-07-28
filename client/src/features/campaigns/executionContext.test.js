@@ -220,6 +220,30 @@ describe('buildHypothesis — nothing to explain', () => {
     expect(buildHypothesis({ ...delivering, impressions })).toBeNull();
   });
 
+  // THE ONE THIS GATE EXISTS FOR. A stopped ad set with a saturated frequency
+  // and a dead CTR is not a tired creative — it is a stopped ad set. Before the
+  // status passthrough every entity was written as ACTIVE on every sync, so this
+  // shape confidently returned "Creative fatigue" on an ad set nobody was
+  // running. It has real impressions, so the proxy below would NOT catch it.
+  it.each([['PAUSED'], ['ARCHIVED']])('a %s ad set is not diagnosed, however bad its numbers', (status) => {
+    expect(buildHypothesis({ ...delivering, status })).toBeNull();
+  });
+
+  it('ACTIVE with real delivery is still diagnosed', () => {
+    expect(buildHypothesis({ ...delivering, status: 'ACTIVE' })?.label).toBe('Creative fatigue');
+  });
+
+  // The column is NOT NULL and defaults to ACTIVE, so ACTIVE is not positive
+  // evidence of delivery — an unknown status must behave exactly like today.
+  it.each([[null], [undefined]])('an unknown status (%s) falls through to the impressions proxy', (status) => {
+    expect(buildHypothesis({ ...delivering, status })?.label).toBe('Creative fatigue');
+    expect(buildHypothesis({ ...delivering, status, impressions: 0 })).toBeNull();
+  });
+
+  it('a paused ad set is refused BEFORE the insufficient-data gate', () => {
+    expect(buildHypothesis({ ...delivering, status: 'PAUSED', spendMinor: 10 })).toBeNull();
+  });
+
   it.each([
     ['no CTR', { ctr: null }],
     ['no frequency', { frequency: null }],
