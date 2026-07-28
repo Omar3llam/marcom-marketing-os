@@ -33,6 +33,8 @@ import { HELP } from '@/lib/helpContent.js';
 import { CampaignDetailPanel } from '@/features/campaigns/CampaignDetailPanel.jsx';
 import { NO_REVENUE_DISCLAIMER, evidenceClause, shortEvidence, decisiveMetric } from '@/features/campaigns/verdictEvidence.js';
 import { groupCampaigns, GROUP_CONFIG, GROUP_ORDER } from '@/features/campaigns/campaignGrouping.js';
+import { ExecutionContext } from '@/features/campaigns/ExecutionContext.jsx';
+import { hasExecutionContext } from '@/features/campaigns/executionContext.js';
 
 // Every band header / detail / ad-set row spans the full grid. One constant so
 // the five call sites can never drift out of step with the <thead>.
@@ -302,6 +304,18 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
           </tr>
         )}
         {isOpen && <AdSetRows state={byId[c.entityId]} />}
+        {/* Where to act, under the ad sets it points at. Renders itself away
+            unless the verdict is actionable AND one ad set is measurably
+            dragging — so most expansions show nothing extra. It lives in its
+            own <tr> for the same reason the detail panel does: a bare <div>
+            inside a <tbody> gets reparented out of the table by the browser. */}
+        {isOpen && hasExecutionContext(c, byId[c.entityId]?.adSets, verdict) && (
+          <tr className="border-b border-lumi-border/50 bg-lumi-bg/20">
+            <td colSpan={COLS} className="px-4 pb-3 pt-0">
+              <ExecutionContext campaign={c} adSets={byId[c.entityId].adSets} verdict={verdict} />
+            </td>
+          </tr>
+        )}
       </Fragment>
     );
   };
