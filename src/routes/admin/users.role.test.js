@@ -22,6 +22,7 @@ vi.mock('../../queues/index.js', () => ({
   actionQueue: { getJobCounts: vi.fn() }, observerQueue: { getJobCounts: vi.fn() },
   syncQueue: null, executionQueue: { getJobCounts: vi.fn() },
   agenticQueue: { getJobCounts: vi.fn() }, narrativeQueue: { getJobCounts: vi.fn() },
+  maintenanceQueue: { getJobCounts: vi.fn() },
 }));
 vi.mock('../../queues/connection.js', () => ({ REDIS_DISABLED: false, bullConnection: { ping: vi.fn() } }));
 vi.mock('../../../prisma/seed.js', () => ({ seedDemoWorkspace: vi.fn() }));
