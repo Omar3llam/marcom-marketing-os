@@ -45,5 +45,11 @@ export const updateUserRole = (id, collabRole, force = false) =>
 // The admin action log. Cursor-paginated on createdAt (`before`), not an
 // offset — rows only ever arrive at the head, so an offset would re-serve or
 // skip entries as the log grows underneath the reader.
+// AI usage + ESTIMATED cost over a window. Everything money-shaped in the
+// response is derived from our own token counts against a dated pricing table —
+// the tab labels it as such rather than presenting it as a bill.
+export const fetchAiUsage = (days = 30) =>
+  api.get('/api/admin/ai-usage', { params: { days } }).then((r) => r.data);
+
 export const fetchAuditLog = (before = null) =>
   api.get('/api/admin/audit', { params: before ? { before } : undefined }).then((r) => r.data);
