@@ -167,6 +167,9 @@ workspacesRouter.get('/:id', async (req, res) => {
           lastSuccessfulSync: c.health?.lastSuccessfulSync ?? null,
           lastAttemptedSync: c.health?.lastAttemptedSync ?? null,
           lastError: c.health?.lastError ?? null,
+          // A successful-but-incomplete sync (e.g. an account with more ad-sets
+          // than the pagination ceiling). Distinct from lastError: data DID land.
+          lastWarning: c.health?.lastWarning ?? null,
           recordsImported: c.health?.recordsImported ?? null,
         })),
       };

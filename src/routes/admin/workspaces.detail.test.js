@@ -180,7 +180,25 @@ describe('GET /workspaces/:id — connectors', () => {
       lastSyncedAt: '2026-07-27T09:00:00.000Z',
       lastSuccessfulSync: '2026-07-27T09:00:00.000Z',
       lastAttemptedSync: '2026-07-27T10:00:00.000Z',
-      lastError: null, recordsImported: 42,
+      lastError: null,
+      // A successful-but-incomplete sync. Distinct from lastError: data landed.
+      lastWarning: null,
+      recordsImported: 42,
+    });
+  });
+
+  it('surfaces a partial-sync warning alongside the health record', async () => {
+    listConnections.mockResolvedValue([connection({
+      health: {
+        lastSuccessfulSync: '2026-07-27T09:00:00.000Z', lastAttemptedSync: '2026-07-27T09:00:00.000Z',
+        lastError: null, lastWarning: 'Large account: some ad sets were not read this sync.', recordsImported: 900,
+      },
+    })]);
+
+    const res = await get().expect(200);
+    expect(res.body.connectors.connections[0]).toMatchObject({
+      lastError: null,
+      lastWarning: 'Large account: some ad sets were not read this sync.',
     });
   });
 

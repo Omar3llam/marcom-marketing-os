@@ -19,14 +19,81 @@ function actionValue(arr, match) {
   return num(arr.find((a) => match.has(a.action_type))?.value);
 }
 
+/** The measures every level shares. Extracted so CAMPAIGN and ADSET can't drift. */
+function baseMeasures(r, currency, d) {
+  const conversions = actionValue(r.actions, PURCHASE_ACTIONS);
+  const revenueMajor = actionValue(r.action_values, PURCHASE_ACTIONS); // real claimed value; 0 if none
+  const clicks = num(r.clicks ?? r.inline_link_clicks);
+  return {
+    channel: CHANNEL.META,
+    source: DATA_SOURCE.META,
+    date: d,
+    currency,
+    spendMinor: toMinor(num(r.spend), currency),
+    revenueMinor: toMinor(revenueMajor, currency),
+    impressions: Math.round(num(r.impressions)),
+    clicks: Math.round(clicks),
+    conversions: Math.round(conversions),
+    frequency: r.frequency != null ? num(r.frequency) : null,
+    // Unique people reached. null when Meta didn't report it, never a fabricated 0.
+    reach: r.reach != null ? Math.round(num(r.reach)) : null,
+    // Roster-only rows (no delivery data found, not a verified 0) carry the flag
+    // forward so the sink lands the entity but no fabricated zero snapshot.
+    rosterOnly: r._rosterOnly === true,
+  };
+}
+
+/**
+ * Ad-set rows → ADSET NormalizedSnapshots.
+ *
+ * parentExternalId is the CAMPAIGN id, not the account: snapshotSink chains the
+ * FK through PARENT_LEVEL (ADSET → CAMPAIGN → ACCOUNT), so pointing it at the
+ * account would compute a campaign id that does not exist and orphan the ad-set.
+ *
+ * A row with no adset_id has no stable identity, and one with no campaign_id has
+ * no resolvable parent — both are dropped rather than merged onto a garbage id.
+ */
+function normalizeAdSets(rows, currency, d, accountExternalId) {
+  const out = [];
+  for (const r of rows) {
+    if (r.adset_id == null) {
+      logger.warn({ accountExternalId }, '[metaNormalize] dropped an ad-set row with no adset_id');
+      continue;
+    }
+    if (r.campaign_id == null) {
+      logger.warn({ accountExternalId, adSetId: r.adset_id }, '[metaNormalize] dropped an ad-set row with no campaign_id (no resolvable parent)');
+      continue;
+    }
+    out.push({
+      externalId: String(r.adset_id),
+      entityLevel: 'ADSET',
+      parentExternalId: String(r.campaign_id),
+      name: r.adset_name || 'Unnamed Ad Set',
+      ...baseMeasures(r, currency, d),
+    });
+  }
+  return out;
+}
+
 /**
  * @param {{ accountExternalId, accountName?, currency, date, rows }} input
- *   rows = raw Meta insight objects (campaign-level)
- * @returns {NormalizedSnapshot[]} one ACCOUNT rollup + one CAMPAIGN row each
+ *   rows = raw Meta insight objects, CAMPAIGN-level and/or ADSET-level mixed.
+ *   An ad-set row is identified by carrying `adset_id`; MetaConnector.fetchRaw
+ *   concatenates both levels into one array because the ChannelConnector
+ *   contract is `fetchRaw -> RawRow[]`.
+ * @returns {NormalizedSnapshot[]} one ACCOUNT rollup + CAMPAIGN rows + ADSET rows
  */
 export function metaNormalize({ accountExternalId, accountName = null, currency = 'USD', date, rows = [] }) {
   const d = date instanceof Date ? date : new Date(date);
-  const campaigns = rows
+
+  // Partition by shape before anything else. The two levels look alike but must
+  // NOT be summed together — see the rollup note below.
+  const adSetRows = rows.filter((r) => r.adset_id != null);
+  const campaignRows = rows.filter((r) => r.adset_id == null);
+
+  const adSets = normalizeAdSets(adSetRows, currency, d, accountExternalId);
+
+  const campaigns = campaignRows
     // A row with NO campaign_id AND no campaign_name has no stable identity: the
     // old `?? 'unknown'` fallback made every such row collide onto one 'unknown'
     // entity id (detId), silently merging distinct campaigns. Drop them instead —
@@ -38,16 +105,10 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
       }
       return true;
     })
-    .map((r) => {
-    const conversions = actionValue(r.actions, PURCHASE_ACTIONS);
-    const revenueMajor = actionValue(r.action_values, PURCHASE_ACTIONS); // real claimed value; 0 if none
-    const clicks = num(r.clicks ?? r.inline_link_clicks);
-    return {
+    .map((r) => ({
       externalId: String(r.campaign_id ?? r.campaign_name),
       entityLevel: 'CAMPAIGN',
       parentExternalId: accountExternalId,
-      channel: CHANNEL.META,
-      source: DATA_SOURCE.META,
       name: r.campaign_name || 'Unnamed Campaign',
       // The Meta campaign objective (OUTCOME_LEADS / OUTCOME_SALES /
       // OUTCOME_AWARENESS / …) — carried through so the sink can store it on the
@@ -55,23 +116,13 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
       // campaign from a conversion campaign with no measured revenue. null when
       // Meta didn't report it (only /campaigns carries it, not /insights).
       objective: r.objective ?? null,
-      date: d,
-      currency,
-      spendMinor: toMinor(num(r.spend), currency),
-      revenueMinor: toMinor(revenueMajor, currency),
-      impressions: Math.round(num(r.impressions)),
-      clicks: Math.round(clicks),
-      conversions: Math.round(conversions),
-      frequency: r.frequency != null ? num(r.frequency) : null,
-      // Unique people reached (already on the wire — CAMPAIGN_INSIGHT_FIELDS
-      // requests it). null when Meta didn't report it, never a fabricated 0.
-      reach: r.reach != null ? Math.round(num(r.reach)) : null,
-      // Roster-only rows (no delivery data found, not a verified 0) carry the flag
-      // forward so the sink lands the entity but no fabricated zero snapshot.
-      rosterOnly: r._rosterOnly === true,
-    };
-  });
+      ...baseMeasures(r, currency, d),
+    }));
 
+  // The rollup sums CAMPAIGNS ONLY. Ad-set spend is a SUBSET of its campaign's,
+  // so including both levels would roughly double every account-level figure —
+  // a fabricated number of exactly the kind the account rollup exists to avoid.
+  //
   // No campaigns → no rollup → land nothing (honest empty), never a phantom
   // account row summed from zero rows. See accountRollup's null contract.
   const account = accountRollup(campaigns, {
@@ -81,5 +132,5 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
   // be all zeros. With ≥1 real campaign the rollup reflects real spend (roster
   // rows add 0), so it lands; an all-roster rollup is skipped like its campaigns.
   if (account) account.rosterOnly = campaigns.every((c) => c.rosterOnly);
-  return account ? [account, ...campaigns] : campaigns;
+  return account ? [account, ...campaigns, ...adSets] : [...campaigns, ...adSets];
 }
