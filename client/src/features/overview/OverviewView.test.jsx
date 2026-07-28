@@ -1,12 +1,73 @@
 // ============================================================
-// overviewKpis — connector-first KPI derivation (pure)
+// overviewKpis + decisionFeed — Home's two pure derivations
 // ------------------------------------------------------------
 // The Home KPI strip must read the SAME connector substrate as the Campaigns
 // page (not the disjoint legacy CampaignState feed) and must never fabricate a 0
-// for an absent metric. These assert both.
+// for an absent metric. decisionFeed joins the three sources behind the decision
+// cards — health (verdict + the only impactScore), the connector row (the
+// metrics the drill-down needs) and the verdict row (the engine's rationale) —
+// and must leave a field null when no source carries it.
 // ============================================================
 import { describe, it, expect } from 'vitest';
-import { overviewKpis } from './OverviewView.jsx';
+import { overviewKpis, decisionFeed } from './OverviewView.jsx';
+
+describe('decisionFeed', () => {
+  const health = (over = {}) => ({ entityId: 'c1', name: 'Ramadan Cold', verdict: 'KILL', impactScore: 9, ...over });
+  const connector = (over = {}) => ({ entityId: 'c1', name: 'Ramadan Cold', ctr: 0.0164, spendMinor: 655_300, currency: 'EGP', ...over });
+
+  it('joins the three sources on entityId', () => {
+    const [d] = decisionFeed({
+      healthCampaigns: [health()],
+      connectorCampaigns: [connector()],
+      verdicts: [{ id: 'c1', rationale: 'Lowest CTR in its group' }],
+    });
+    expect(d).toMatchObject({
+      entityId: 'c1', name: 'Ramadan Cold', verdict: 'KILL', impactScore: 9,
+      rationale: 'Lowest CTR in its group', ctr: 0.0164, spendMinor: 655_300, currency: 'EGP',
+    });
+  });
+
+  // Same population rule the old AlertsPanel used — the presentation changed,
+  // not which campaigns the page surfaces.
+  it('keeps KILL and high-impact WATCH, drops the rest', () => {
+    const feed = decisionFeed({ healthCampaigns: [
+      health({ entityId: 'k', verdict: 'KILL', impactScore: 2 }),
+      health({ entityId: 'w-hi', verdict: 'WATCH', impactScore: 8 }),
+      health({ entityId: 'w-lo', verdict: 'WATCH', impactScore: 4 }),
+      health({ entityId: 'h', verdict: 'HOLD', impactScore: 9 }),
+    ] });
+    expect(feed.map((d) => d.entityId)).toEqual(['w-hi', 'k']);
+  });
+
+  it('orders by impact, most urgent first', () => {
+    const feed = decisionFeed({ healthCampaigns: [
+      health({ entityId: 'a', impactScore: 5 }),
+      health({ entityId: 'b', impactScore: 9 }),
+      health({ entityId: 'c', impactScore: 7 }),
+    ] });
+    expect(feed.map((d) => d.entityId)).toEqual(['b', 'c', 'a']);
+  });
+
+  // A campaign with no connector row still deserves its verdict shown; the
+  // metrics simply stay null and the drill-down renders nothing.
+  it('a health row with no connector match keeps null metrics, never zeros', () => {
+    const [d] = decisionFeed({ healthCampaigns: [health()], connectorCampaigns: [] });
+    expect(d).toMatchObject({ ctr: null, spendMinor: null, currency: null, rationale: null });
+  });
+
+  it('carries the engine next-step for KILL and nothing for WATCH', () => {
+    const feed = decisionFeed({ healthCampaigns: [
+      health({ entityId: 'k', verdict: 'KILL', impactScore: 9 }),
+      health({ entityId: 'w', verdict: 'WATCH', impactScore: 8 }),
+    ] });
+    expect(feed.find((d) => d.entityId === 'k').humanAction).toBe('Pause and reallocate budget');
+    expect(feed.find((d) => d.entityId === 'w').humanAction).toBeNull();
+  });
+
+  it('no health data is an empty feed, not a throw', () => {
+    expect(decisionFeed({})).toEqual([]);
+  });
+});
 
 describe('overviewKpis', () => {
   it('uses the live connector aggregate when a channel has synced (legacy ignored)', () => {

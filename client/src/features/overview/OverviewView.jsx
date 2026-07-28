@@ -32,9 +32,46 @@ import RevenueOnboardingBanner from './components/RevenueOnboardingBanner.jsx';
 import ConnectionHealthStrip from './components/ConnectionHealthStrip.jsx';
 import PacingWidget from './components/PacingWidget.jsx';
 import CopilotPanel from './components/CopilotPanel.jsx';
-import AlertsPanel from './components/AlertsPanel.jsx';
 import AIInsightCard from './components/AIInsightCard.jsx';
-import QuickActionsPanel from './components/QuickActionsPanel.jsx';
+import DecisionCard from './components/DecisionCard.jsx';
+import RevenueNotice from './components/RevenueNotice.jsx';
+import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
+import { nextActionFor } from '@/features/campaigns/verdictEvidence.js';
+
+// The severity rule the old AlertsPanel used, kept verbatim so the page surfaces
+// the same population it always has — only the presentation changed.
+const isActionable = (c) => c.verdict === 'KILL' || (c.verdict === 'WATCH' && c.impactScore >= 7);
+
+// PURE: the decision feed — health rows (verdict + impact + name, the ONLY
+// source of impactScore) joined to their connector row for the metrics
+// ExecutionContext needs, and to the verdict row for the engine's own rationale.
+// Three sources because no single one carries all of it; the join key is
+// entityId throughout. A field absent everywhere stays null → the card omits
+// that line rather than inventing it. Exported for unit testing.
+export function decisionFeed({ healthCampaigns = [], connectorCampaigns = [], verdicts = [] }) {
+  const metricsById = new Map(connectorCampaigns.map((c) => [c.entityId, c]));
+  const rationaleById = new Map(verdicts.map((v) => [v.id, v.rationale ?? null]));
+
+  return healthCampaigns
+    .filter(isActionable)
+    .sort((a, b) => (b.impactScore ?? 0) - (a.impactScore ?? 0))
+    .map((c) => {
+      const m = metricsById.get(c.entityId) ?? {};
+      return {
+        entityId: c.entityId,
+        name: c.name ?? m.name ?? null,
+        verdict: c.verdict,
+        impactScore: c.impactScore ?? null,
+        rationale: rationaleById.get(c.entityId) ?? null,
+        // The next step a KILL/SCALE asks for — the engine-adjacent helper the
+        // Campaigns detail panel already uses, never an invented instruction.
+        humanAction: nextActionFor(c.verdict),
+        ctr: m.ctr ?? null,
+        spendMinor: m.spendMinor ?? null,
+        currency: m.currency ?? null,
+      };
+    });
+}
 
 // PURE: the four Overview KPI values, CONNECTOR-FIRST (mirrors CampaignsView's
 // live-XOR-legacy rule) so a synced workspace's headline matches the Campaigns
@@ -72,6 +109,7 @@ export default function OverviewView() {
   const { data: connectionsData } = useConnections(); // channel sync status (lastSyncedAt)
   const { health } = useAccountHealth(); // connector campaign health + wasted spend + impact scores
   const { home } = useHome(); // agentic loop home (includes aiInsight)
+  const { verdicts } = useConnectorVerdicts(); // the engine's own rationale per campaign
   const { surface: proofSurface } = useAccuracy(); // gated proof one-liner (best-effort)
   const { role: collabRole } = useCollabRole();
 
@@ -98,6 +136,27 @@ export default function OverviewView() {
   const healthLabel = kpis.health == null ? 'No score yet'
                     : kpis.health >= 75 ? 'Healthy'
                     : kpis.health >= 50 ? 'Fair — review soon' : 'Needs attention';
+
+  // The decision feed + the two revenue-data stories, all keyed off the health
+  // rows. The revenue stories are NOT decisions — a campaign there is not
+  // performing badly, its revenue is unmeasurable — so they sit apart from the
+  // feed rather than inside it.
+  const decisions = useMemo(
+    () => decisionFeed({
+      healthCampaigns: health?.campaigns ?? [],
+      connectorCampaigns,
+      verdicts,
+    }),
+    [health, connectorCampaigns, verdicts],
+  );
+  const needsRevenue = useMemo(
+    () => (health?.campaigns ?? []).filter((c) => c.needsRevenue),
+    [health],
+  );
+  const staleRevenue = useMemo(
+    () => (health?.campaigns ?? []).filter((c) => c.revenueStale),
+    [health],
+  );
 
   // Real count of KILL-verdict campaigns — from the connector health engine when
   // synced, else the legacy feed's alerts. No fabricated count.
@@ -171,8 +230,11 @@ export default function OverviewView() {
           Account Pulse · {workspace?.name || 'Workspace'}
         </div>
         <h1 className="font-display font-bold text-4xl tracking-tight text-dark-base">
-          {greeting}, {userName}. Here&apos;s your account pulse.
+          Today&apos;s Decisions
         </h1>
+        <p className="mt-1 text-sm text-dark-soft">
+          {greeting}, {userName}. Here&apos;s what needs a call.
+        </p>
       </header>
 
       {/* Proof of learning — the gated one-liner (RELIABLE only, else "still learning"). */}
@@ -287,21 +349,46 @@ export default function OverviewView() {
           loading/empty states, so it's safe to mount whenever data exists. */}
       {hasAnyData && <AgenticShellView />}
 
-      {/* AI Insight layer — 3-column: Alerts + AI Insight + Quick Actions.
-          Shown when hasAnyData (connector or legacy feed). Uses useAccountHealth
-          for campaign alerts + health score. Uses home.aiInsight for briefing.
-          QuickActions are contextual (Upload Revenue / Connect Channel conditional). */}
+      {/* The decision feed — the campaigns the engine says need a call, each with
+          its evidence and (for KILL/REALLOCATE) the ad set to open first. Every
+          row traces to a health row; an empty feed says so rather than hiding. */}
       {hasAnyData && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
-          <AlertsPanel campaigns={health?.campaigns ?? []} />
+        <section className="mb-6">
+          <div className="mb-3 flex items-center gap-2">
+            <h2 className="section-label">Needs your call</h2>
+            <span className="font-mono text-[11px] text-lumi-subtle">
+              {decisions.length === 0 ? 'clear' : `${decisions.length} decision${decisions.length === 1 ? '' : 's'}`}
+            </span>
+          </div>
+          {decisions.length === 0 ? (
+            <p className="rounded-xl border border-lumi-border bg-lumi-surface px-4 py-3 text-xs text-lumi-muted">
+              No critical campaigns right now.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {decisions.map((d) => <DecisionCard key={d.entityId} {...d} />)}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* The two revenue-data stories. Kept OUT of the feed above: a campaign here
+          is not performing badly, its revenue is unmeasurable — and "never
+          uploaded" must never be conflated with "uploaded but now stale". */}
+      {hasAnyData && (needsRevenue.length > 0 || staleRevenue.length > 0) && (
+        <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <RevenueNotice type="needs" campaigns={needsRevenue} />
+          <RevenueNotice type="stale" campaigns={staleRevenue} />
+        </div>
+      )}
+
+      {/* Lumi's briefing over the account. */}
+      {hasAnyData && (
+        <div className="mb-6">
           <AIInsightCard
             insight={home?.aiInsight ?? null}
             healthScore={health?.score ?? null}
             healthLabel={health?.label ?? null}
-          />
-          <QuickActionsPanel
-            hasRevenue={health?.campaigns?.some((c) => c.roas != null) ?? false}
-            hasConnector={connectorCampaigns.length > 0}
           />
         </div>
       )}

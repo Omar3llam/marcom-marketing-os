@@ -46,7 +46,9 @@ import LumiStar from '@/components/brand/LumiStar.jsx';
 // (Sidebar itself needs auth + plan + router context to render).
 export const tools = [
   // ── FREE — always unlocked ──────────────────────────────────
-  { key: 'overview',     label: 'Home',         sub: 'Your daily pulse',       icon: Layout,       path: appRoutes.overview,     roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
+  // "Today's decisions" — NOT "Decision queue", which is Campaigns' sub-label.
+  // Two nav rows carrying the same phrase would read as the same destination.
+  { key: 'overview',     label: 'Decisions',    sub: "Today's decisions",      icon: Layout,       path: appRoutes.overview,     roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
   { key: 'campaigns',    label: 'Campaigns',    sub: 'Decision queue',        icon: BarChart3,    path: appRoutes.campaigns,    roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
   { key: 'content',      label: 'Creative Optimizer', sub: 'Improve creative performance', icon: Send,   path: appRoutes.contentLab,   roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
   { key: 'leadership',   label: 'Reports',      sub: 'Weekly narratives',      icon: FileText,     path: appRoutes.leadership,   plan: 'FREE' },

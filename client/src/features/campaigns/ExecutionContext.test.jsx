@@ -68,7 +68,8 @@ describe('ExecutionContext — the pick', () => {
   // this ad set explains the campaign's verdict — an inference from two ratios.
   it('frames the pick as where to look, not what is wrong', () => {
     setup();
-    expect(screen.getByText('Start here')).toBeInTheDocument();
+    expect(screen.getByText('Execute here')).toBeInTheDocument();
+    expect(screen.queryByText('Start here')).not.toBeInTheDocument();
     expect(screen.queryByText('Focus here first')).not.toBeInTheDocument();
     expect(screen.queryByText(/root cause/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/problem|culprit|blame/i)).not.toBeInTheDocument();
