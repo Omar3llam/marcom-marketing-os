@@ -18,10 +18,29 @@
 // comparison is sound.
 // ============================================================
 
+import { FATIGUE_FREQ } from './verdictEvidence.js';
+import { formatCurrency } from '@/lib/money';
+
 // Below this, the gap is not worth pointing a marketer at. A 12% spread across
 // ad sets is ordinary variance, and naming a "worst" one implies a problem the
 // data does not support.
 export const MIN_MEANINGFUL_GAP = -0.20;
+
+// ── Units ────────────────────────────────────────────────────────────────────
+// A MetricSnapshot `ctr` is a RATIO (snapshotSink.js: clicks / impressions), so
+// 1.64% arrives as 0.0164. The verdict ENGINE's own ctr is a PERCENT (it
+// multiplies by 100 first), which is why its AWARENESS_FATIGUE_CTR reads 1.0.
+// Lifting that 1.0 onto a snapshot row would mean "CTR below 100%" — true of
+// every row ever measured, so every ad set would read as fatigued. The name
+// says THRESHOLD, and the value is written in the units this module receives.
+const LOW_CTR_THRESHOLD = 0.01; // ratio — 1.00%
+
+// Below this the ad set has not bought enough delivery to diagnose. Deliberately
+// its own constant rather than borrowing relativeRanking's MIN_SPEND_MINOR
+// (1000), whose comment scopes it to "skip roster-only / trivial rows" — a
+// ranking guard, not a diagnostic floor. At ~10 currency units that one would
+// let through ad sets that plainly are too early to read.
+export const MIN_SPEND_FOR_DIAGNOSIS = 5_000; // ~50 currency units
 
 // The verdicts that ask for an intervention. HOLD/SCALE/WATCH/REFRESH do not —
 // pointing at a "worst" ad set under a healthy campaign invents an alarm.
@@ -117,6 +136,79 @@ export function buildEvidenceBullets(worst, campaignCtr, campaignSpendMinor) {
   }
 
   return bullets;
+}
+
+/**
+ * PURE: a working hypothesis for WHY this ad set is underperforming, or null
+ * when the data cannot support one.
+ *
+ * A hypothesis is not a verdict. The three fields are kept apart on purpose and
+ * the UI renders them under separate headings:
+ *
+ *   observed       — figures from the row. Checkable, no interpretation.
+ *   interpretation — what the pattern is COMMONLY associated with. Hedged,
+ *                    because a MetricSnapshot cannot see a learning phase, a
+ *                    deliberate broad test, or a seasonal audience.
+ *   caveat         — what to do before acting on it.
+ *
+ * Evaluated H0 → H3 → H1 → H2. The ordering is load-bearing: "creative fatigue"
+ * on an ad set that spent 12 currency units would be a confident diagnosis of
+ * noise, so the insufficient-data gate has to run BEFORE the pattern gates, not
+ * alongside them.
+ */
+export function buildHypothesis(worst) {
+  if (!worst) return null;
+
+  // H0 — nothing was delivered, so there is nothing to explain. Currently a
+  // proxy: Meta's /adsets edge already returns `status`/`effective_status` but
+  // nothing downstream lands them, so zero impressions is the only signal here
+  // that an ad set is not running. A real status field would say so outright.
+  if (!worst.impressions) return null;
+
+  // H3 — too little delivery to tell signal from noise. FIRST, so a thin ad set
+  // can never collect a confident pattern label.
+  if (worst.spendMinor != null && worst.spendMinor < MIN_SPEND_FOR_DIAGNOSIS) {
+    return {
+      label: 'Insufficient data',
+      observed: `This ad set has spent ${formatCurrency(worst.spendMinor, worst.currency)}.`,
+      interpretation: 'Too little delivery to distinguish signal from noise.',
+      caveat: 'Wait for more delivery before acting.',
+    };
+  }
+
+  const hasPair = worst.ctr != null && worst.frequency != null;
+  if (!hasPair) return null;
+
+  const lowCtr = worst.ctr < LOW_CTR_THRESHOLD;
+  const fatigued = worst.frequency >= FATIGUE_FREQ;
+  const ctrPct = `${(worst.ctr * 100).toFixed(2)}%`;
+  const freq = worst.frequency.toFixed(1);
+
+  // H1 — the engine's own fatigue signal: BOTH a saturated frequency and a low
+  // click-through. Either alone is not fatigue.
+  if (lowCtr && fatigued) {
+    return {
+      label: 'Creative fatigue',
+      observed: `Frequency is ${freq}, above Lumi's fatigue threshold (${FATIGUE_FREQ}), while CTR is ${ctrPct}.`,
+      interpretation: 'This combination is most commonly associated with an audience that has seen the creative too many times and stopped responding to it.',
+      caveat: 'Refresh the creative before pausing the ad set.',
+    };
+  }
+
+  // H2 — the fatigue signal was not met. The frequency clause states where the
+  // figure ACTUALLY sits: a high frequency with a healthy CTR still fails the
+  // pair, and saying "below the threshold" about a 4.0 would be a plain false
+  // statement sitting under a heading that promises observed fact.
+  const freqClause = fatigued
+    ? `frequency is ${freq} (above the ${FATIGUE_FREQ} fatigue threshold), but CTR is not low enough to read as fatigue`
+    : `frequency is ${freq} (below the ${FATIGUE_FREQ} fatigue threshold)`;
+
+  return {
+    label: 'No fatigue signal detected',
+    observed: `CTR is ${ctrPct} and ${freqClause}.`,
+    interpretation: 'This pattern is more commonly associated with audience fit, creative quality, or offer relevance.',
+    caveat: 'Review the creative and audience targeting before pausing.',
+  };
 }
 
 /**

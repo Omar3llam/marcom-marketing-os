@@ -23,6 +23,7 @@ import {
   formatGap,
   gapMagnitude,
   buildEvidenceBullets,
+  buildHypothesis,
 } from './executionContext.js';
 import { formatCurrency } from '@/lib/money';
 
@@ -40,6 +41,7 @@ export function ExecutionContext({ campaign, adSets, verdict }) {
   const magnitude = gapMagnitude(worst.ctr, campaign.ctr);
   const share = spendConcentration(worst.spendMinor, campaign.spendMinor);
   const bullets = buildEvidenceBullets(worst, campaign.ctr, campaign.spendMinor);
+  const hypothesis = buildHypothesis(worst);
 
   return (
     <div className="mt-2 rounded-lg border border-lumi-border bg-lumi-surface p-4">
@@ -49,7 +51,7 @@ export function ExecutionContext({ campaign, adSets, verdict }) {
 
       {/* The pick. "Focus here first" — a place to start looking, not a culprit. */}
       <div className="mb-3">
-        <Label>Focus here first</Label>
+        <Label>Start here</Label>
         <p className="font-display text-sm font-semibold text-lumi-text">{worst.name}</p>
         <p className="mt-0.5 font-mono text-[11px] text-lumi-subtle">AD SET · {worst.channel}</p>
       </div>
@@ -92,6 +94,27 @@ export function ExecutionContext({ campaign, adSets, verdict }) {
           )}
         </div>
       </div>
+
+      {/* A hypothesis, kept visibly apart from the evidence above it. "Observed"
+          is checkable arithmetic; "Interpretation" is hedged on purpose, because
+          the same two ratios are produced by a learning phase, a deliberate
+          broad test and a genuinely tired creative alike. Collapsing the two
+          into one confident sentence is the failure this split exists to
+          prevent. Absent entirely when the data cannot support one. */}
+      {hypothesis && (
+        <div className="mb-3 border-t border-lumi-border pt-3">
+          <Label>Working hypothesis</Label>
+          <p className="mb-2 text-xs font-semibold text-lumi-text">{hypothesis.label}</p>
+
+          <Label>Observed</Label>
+          <p className="mb-2 text-xs leading-relaxed text-lumi-text">{hypothesis.observed}</p>
+
+          <Label>Interpretation</Label>
+          <p className="mb-2 text-xs leading-relaxed text-lumi-muted">{hypothesis.interpretation}</p>
+
+          <p className="text-[11px] italic leading-relaxed text-lumi-muted">{hypothesis.caveat}</p>
+        </div>
+      )}
 
       {/* The ask. Inspect is something the marketer can always safely do; pause
           is offered as a conditional they resolve, because the data cannot see

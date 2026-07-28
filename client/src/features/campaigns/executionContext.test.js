@@ -10,13 +10,16 @@ import { describe, it, expect } from 'vitest';
 import {
   ACTIONABLE_VERDICTS,
   MIN_MEANINGFUL_GAP,
+  MIN_SPEND_FOR_DIAGNOSIS,
   findWorstAdSet,
   spendConcentration,
   formatGap,
   gapMagnitude,
   buildEvidenceBullets,
+  buildHypothesis,
   hasExecutionContext,
 } from './executionContext.js';
+import { FATIGUE_FREQ } from './verdictEvidence.js';
 
 // 0.0164 = the campaign rate used throughout; 0.0032 sits 80% below it.
 const CAMPAIGN_CTR = 0.0164;
@@ -199,6 +202,139 @@ describe('buildEvidenceBullets', () => {
 
   it('no ad set at all is an empty list, not a throw', () => {
     expect(buildEvidenceBullets(null, 0.0164, 6553)).toEqual([]);
+  });
+});
+
+// ── buildHypothesis ──────────────────────────────────────────────────────────
+// The riskiest function in this feature: it is the only one that says what a
+// number MEANS rather than what it IS. So the tests weigh heavily toward the
+// refusals — the orderings and units that keep it from labelling noise.
+describe('buildHypothesis — nothing to explain', () => {
+  const delivering = { impressions: 500_000, spendMinor: 325_500, currency: 'USD', ctr: 0.005, frequency: 4.2 };
+
+  it('no ad set at all', () => {
+    expect(buildHypothesis(null)).toBeNull();
+  });
+
+  it.each([[0], [null], [undefined]])('impressions %s — nothing was delivered', (impressions) => {
+    expect(buildHypothesis({ ...delivering, impressions })).toBeNull();
+  });
+
+  it.each([
+    ['no CTR', { ctr: null }],
+    ['no frequency', { frequency: null }],
+  ])('%s — the pattern gates need both figures', (_label, over) => {
+    expect(buildHypothesis({ ...delivering, ...over })).toBeNull();
+  });
+});
+
+describe('buildHypothesis — H3 runs before the pattern gates', () => {
+  const thin = { impressions: 500_000, spendMinor: 4_999, currency: 'USD' };
+
+  // The whole point of the ordering: a thin ad set must never collect a
+  // confident pattern label. Both of these would otherwise be H1 and H2.
+  it('a fatigue-shaped ad set under the floor is Insufficient data, not H1', () => {
+    const h = buildHypothesis({ ...thin, ctr: 0.005, frequency: 5.0 });
+    expect(h.label).toBe('Insufficient data');
+  });
+
+  it('a low-CTR ad set under the floor is Insufficient data, not H2', () => {
+    const h = buildHypothesis({ ...thin, ctr: 0.005, frequency: 1.2 });
+    expect(h.label).toBe('Insufficient data');
+  });
+
+  it('at the floor exactly, the pattern gates take over', () => {
+    const h = buildHypothesis({ ...thin, spendMinor: MIN_SPEND_FOR_DIAGNOSIS, ctr: 0.005, frequency: 5.0 });
+    expect(h.label).toBe('Creative fatigue');
+    expect(MIN_SPEND_FOR_DIAGNOSIS).toBe(5_000);
+  });
+
+  it('quotes the spend as money, never as raw minor units', () => {
+    const h = buildHypothesis({ ...thin, ctr: 0.005, frequency: 1.2 });
+    expect(h.observed).toBe('This ad set has spent $49.99.');
+    expect(h.observed).not.toMatch(/4999|minor units/);
+  });
+
+  it('offers waiting, not acting', () => {
+    const h = buildHypothesis({ ...thin, ctr: 0.005, frequency: 1.2 });
+    expect(h.caveat).toBe('Wait for more delivery before acting.');
+  });
+
+  // An unreported spend is not evidence of thin delivery — impressions and
+  // frequency still stand on their own.
+  it('an unreported spend does not trigger the floor', () => {
+    const h = buildHypothesis({ impressions: 500_000, spendMinor: null, ctr: 0.005, frequency: 5.0 });
+    expect(h.label).toBe('Creative fatigue');
+  });
+});
+
+describe('buildHypothesis — H1 creative fatigue', () => {
+  const base = { impressions: 500_000, spendMinor: 325_500, currency: 'USD' };
+
+  it('fires when frequency is past the ceiling AND CTR is low', () => {
+    expect(buildHypothesis({ ...base, ctr: 0.005, frequency: 3.6 }).label).toBe('Creative fatigue');
+  });
+
+  // THE UNIT TRAP. The verdict engine's own ctr is a PERCENT, so its fatigue
+  // rule reads `ctr < 1.0`. Lifted onto a snapshot row — where 1.64% arrives as
+  // 0.0164 — that rule would mean "CTR below 100%" and every ad set on the
+  // platform would read as fatigued. A row carrying 1.64 must NOT be low.
+  it('a CTR in PERCENT units is not mistaken for a low ratio', () => {
+    const h = buildHypothesis({ ...base, ctr: 1.64, frequency: 3.6 });
+    expect(h.label).not.toBe('Creative fatigue');
+  });
+
+  it('frequency below the ceiling is not fatigue, however low the CTR', () => {
+    expect(buildHypothesis({ ...base, ctr: 0.001, frequency: 3.4 }).label).toBe('No fatigue signal detected');
+  });
+
+  it('a healthy CTR is not fatigue, however high the frequency', () => {
+    expect(buildHypothesis({ ...base, ctr: 0.015, frequency: 4.0 }).label).toBe('No fatigue signal detected');
+  });
+
+  it('observed quotes the frequency, the threshold, and the CTR as a percent', () => {
+    const h = buildHypothesis({ ...base, ctr: 0.005, frequency: 4.2 });
+    expect(h.observed).toBe("Frequency is 4.2, above Lumi's fatigue threshold (3.5), while CTR is 0.50%.");
+    expect(h.observed).not.toMatch(/0\.005/); // never the raw ratio
+  });
+
+  it('hedges the interpretation rather than asserting the cause', () => {
+    const h = buildHypothesis({ ...base, ctr: 0.005, frequency: 4.2 });
+    expect(h.interpretation).toMatch(/most commonly associated with/);
+    expect(h.caveat).toBe('Refresh the creative before pausing the ad set.');
+  });
+
+  it('uses the shared FATIGUE_FREQ rather than a second copy of 3.5', () => {
+    expect(FATIGUE_FREQ).toBe(3.5);
+    expect(buildHypothesis({ ...base, ctr: 0.005, frequency: FATIGUE_FREQ }).label).toBe('Creative fatigue');
+  });
+});
+
+describe('buildHypothesis — H2 no fatigue signal', () => {
+  const base = { impressions: 500_000, spendMinor: 325_500, currency: 'USD' };
+
+  it('names two candidate causes because the data cannot separate them', () => {
+    const h = buildHypothesis({ ...base, ctr: 0.005, frequency: 1.8 });
+    expect(h.label).toBe('No fatigue signal detected');
+    expect(h.interpretation).toBe(
+      'This pattern is more commonly associated with audience fit, creative quality, or offer relevance.',
+    );
+    expect(h.caveat).toBe('Review the creative and audience targeting before pausing.');
+  });
+
+  it('says the frequency is below the threshold when it is', () => {
+    const h = buildHypothesis({ ...base, ctr: 0.005, frequency: 1.8 });
+    expect(h.observed).toBe('CTR is 0.50% and frequency is 1.8 (below the 3.5 fatigue threshold).');
+  });
+
+  // The false-statement trap: H2 also catches a HIGH frequency paired with a
+  // healthy CTR. Printing "(below the 3.5 fatigue threshold)" about a 4.0 would
+  // be a plain falsehood under a heading that promises observed fact.
+  it('never calls a frequency ABOVE the threshold "below" it', () => {
+    const h = buildHypothesis({ ...base, ctr: 0.015, frequency: 4.0 });
+    expect(h.observed).toMatch(/frequency is 4\.0 \(above the 3\.5 fatigue threshold\)/);
+    expect(h.observed).not.toMatch(/below the 3\.5/);
+    expect(h.observed).toMatch(/not low enough to read as fatigue/);
   });
 });
 
