@@ -15,9 +15,21 @@ import { NODE_TYPE } from '../../execution-planner/index.js';
 import { logger } from '../../../utils/logger.js';
 
 // Map nodeType → capability
+//
+// GENERATE_ANGLE_VARIANTS resolves to GENERATE_STRATEGY, not a capability of
+// its own: the registry already implements GENERATE_STRATEGY *as* angle
+// generation — claudeProvider.generateAngleVariants is its method, with
+// openaiProvider.generateAngleVariants as the configured fallback. Adding a
+// GENERATE_ANGLE enum value would mint a second capability pointing at the same
+// method and require duplicate entries in the registry, CAPABILITY_FALLBACK and
+// the pricing table.
+//
+// It previously named CAPABILITY.GENERATE_ANGLE, which is not in the enum and
+// so evaluated to undefined — every angle node failed the `if (!capability)`
+// guard below with "Unknown nodeType" before reaching the gateway.
 const NODE_TO_CAPABILITY = {
   [NODE_TYPE.GENERATE_AUDIENCE_HYPOTHESES]: CAPABILITY.GENERATE_AUDIENCE,
-  [NODE_TYPE.GENERATE_ANGLE_VARIANTS]:      CAPABILITY.GENERATE_ANGLE,
+  [NODE_TYPE.GENERATE_ANGLE_VARIANTS]:      CAPABILITY.GENERATE_STRATEGY,
 };
 
 export async function executeCaptionGeneration(nodeId, nodeType, context) {
