@@ -18,14 +18,24 @@
  * lastSuccessfulSync + recordsImported and CLEARS lastError; failure advances
  * lastAttemptedSync + lastError but PRESERVES the prior lastSuccessfulSync (so
  * staleness stays honest — a failed attempt is not "fresh").
+ *
+ * `lastWarning` is a THIRD state between success and failure: the sync worked,
+ * but the data it landed is knowingly incomplete (e.g. an account with more
+ * ad-sets than the pagination ceiling). It is cleared on any clean sync, so it
+ * never outlives the condition that caused it. A partial sync that reported
+ * plain success would be the "looks complete, isn't" failure this codebase
+ * keeps correcting.
  */
-export function nextHealth(prev = {}, { platform, ok, error = null, records = 0, now = new Date() } = {}) {
+export function nextHealth(prev = {}, { platform, ok, error = null, warning = null, records = 0, now = new Date() } = {}) {
   const iso = (now instanceof Date ? now : new Date(now)).toISOString();
   return {
     platform: platform ?? prev.platform ?? null,
     lastAttemptedSync: iso,
     lastSuccessfulSync: ok ? iso : (prev.lastSuccessfulSync ?? null),
     lastError: ok ? null : (error ? String(error) : 'unknown error'),
+    // Only a SUCCESSFUL sync can assert "complete but partial"; on failure the
+    // prior warning is preserved rather than invented or cleared.
+    lastWarning: ok ? (warning ? String(warning) : null) : (prev.lastWarning ?? null),
     recordsImported: ok ? records : (prev.recordsImported ?? 0),
   };
 }

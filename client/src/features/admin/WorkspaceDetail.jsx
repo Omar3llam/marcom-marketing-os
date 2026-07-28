@@ -96,6 +96,10 @@ function Connectors({ connectors }) {
           <Row label="Last attempt" value={fmt(c.lastAttemptedSync)} />
           <Row label="Records" value={c.recordsImported ?? '—'} />
           {c.lastError && <p className="mt-1 break-words text-signal-kill">{c.lastError}</p>}
+          {/* Amber, not red: the sync WORKED, it just did not read everything.
+              Rendering it as an error would misstate the state; hiding it would
+              present partial figures as complete. */}
+          {c.lastWarning && <p className="mt-1 break-words text-signal-hold">{c.lastWarning}</p>}
         </div>
       ))}
     </Column>

@@ -47,8 +47,22 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
       const landed = connector.land
         ? await connector.land(wsId, normalized)
         : await landSnapshots(wsId, connector.channel, normalized);
-      await recordSync(wsId, channel, { ok: true, records: landed.snapshots, now });
-      results.push({ workspaceId: wsId, platform: channel, status: 'success', ...landed });
+
+      // A connector MAY hang non-enumerable fetch metadata off the raw array
+      // (MetaConnector does, for ad-set pagination). A sync that knowingly read
+      // only part of an account is not a plain success: it lands real data, but
+      // presenting it as complete is the "looks whole, isn't" failure. Recorded
+      // as a health WARNING so it is visible in the admin drill-down rather than
+      // living only in a log line.
+      const warning = raw?.fetchMeta?.truncated
+        ? 'Large account: some ad sets were not read this sync (pagination limit). Figures may be incomplete.'
+        : null;
+      if (warning) {
+        logger.warn({ workspaceId: wsId, platform: channel, fetchMeta: raw.fetchMeta }, '[connectorSync] partial fetch');
+      }
+
+      await recordSync(wsId, channel, { ok: true, records: landed.snapshots, warning, now });
+      results.push({ workspaceId: wsId, platform: channel, status: 'success', ...landed, ...(warning ? { warning } : {}) });
     } catch (err) {
       await recordSync(wsId, channel, { ok: false, error: err.message, now })
         .catch((recordErr) => logger.warn({

@@ -182,10 +182,15 @@ export async function collectCursorPages(cursor) {
     if (!more || pages >= MAX_PAGES) break;
     await cursor.next(); // replaces the cursor's contents with the next page
   }
-  if (pages >= MAX_PAGES && typeof cursor?.hasNext === 'function' && cursor.hasNext()) {
+  // Truncation is RETURNED, not only logged. A partial fetch that looks complete
+  // is the failure this codebase keeps correcting; callers need to be able to
+  // say "incomplete" out loud rather than land a subset as if it were the whole
+  // account. Matters most at ad-set level, where row counts are 3–10x campaigns.
+  const truncated = pages >= MAX_PAGES && typeof cursor?.hasNext === 'function' && cursor.hasNext();
+  if (truncated) {
     logger.warn({ pages, collected: rows.length }, '[metaAdsService] pagination hit MAX_PAGES — result may be truncated');
   }
-  return { rows, pages };
+  return { rows, pages, truncated };
 }
 
 /**
@@ -331,6 +336,149 @@ export function mergeMetaCampaigns(insights = [], campaigns = []) {
       _rosterOnly:   true, // no delivery data found — "unknown", never a verified 0
     };
     rosterOnly.push(cd.objective != null ? { ...rrow, objective: cd.objective } : rrow);
+  }
+
+  return [...insightRows, ...rosterOnly];
+}
+
+// ============================================================
+// Ad-set level — the same two-edge pattern, one level down
+// ============================================================
+
+// A SEPARATE constant, never a mutation of CAMPAIGN_INSIGHT_FIELDS: that one
+// carries a comment explaining that dropping `action_values` once made every
+// campaign render "—" for ROAS. Sharing a mutable list between two levels is how
+// that regression comes back.
+//
+// Every metric here is identical to the campaign list (Meta serves the same
+// measures at every level). The additions are the ids: `adset_id` is the
+// entity's own identity, and `campaign_id` is its PARENT — the field
+// metaNormalize maps to parentExternalId so snapshotSink can chain the FK.
+export const ADSET_INSIGHT_FIELDS = Object.freeze([
+  'adset_name', 'adset_id',
+  'campaign_name', 'campaign_id',
+  'spend', 'impressions', 'reach', 'frequency',
+  'clicks', 'ctr', 'cpm', 'cpc',
+  'actions', 'action_values', 'cost_per_action_type',
+  'date_start', 'date_stop',
+]);
+
+// Entity attributes from the /adsets edge — NOT metrics. Mirrors
+// CAMPAIGN_LIST_FIELDS; `campaign_id` is the parent link.
+export const ADSET_LIST_FIELDS = Object.freeze([
+  'id', 'name', 'campaign_id', 'status', 'effective_status',
+]);
+
+// Ad-sets outnumber campaigns several times over, so the default 25/page would
+// hit MAX_PAGES (50) at ~1 250 rows. An explicit 200 raises the ceiling to
+// ~10 000 — and collectCursorPages now REPORTS truncation rather than silently
+// returning a subset, so passing the cap is visible either way.
+const ADSET_PAGE_SIZE = 200;
+
+/**
+ * Pull ad-set-level insights for an account. ONE account-scoped call with
+ * `level: 'adset'` — Meta fans out server-side, so this is O(1) requests, not
+ * one per campaign.
+ *
+ * Like /insights at campaign level, this returns ONLY ad-sets that DELIVERED in
+ * the window. Pair with fetchAllAdSets + mergeMetaAdSets for the full roster.
+ *
+ * @returns {Promise<{ rows: Array, truncated: boolean }>}
+ */
+export async function fetchAdSetInsights(accessToken, adAccountId, datePreset = DEFAULT_MANUAL_SYNC_DATE_PRESET) {
+  initSdk(accessToken);
+  const accountId = normalizeAccountId(adAccountId);
+  const account   = new AdAccount(accountId);
+
+  const cursor = await account.getInsights(
+    ADSET_INSIGHT_FIELDS,
+    {
+      level:       'adset',
+      date_preset: datePreset,
+      limit:       ADSET_PAGE_SIZE,
+    },
+  );
+
+  const { rows, pages, truncated } = await collectCursorPages(cursor);
+
+  logger.info(
+    { accountId, datePreset, rawCount: rows.length, pages, truncated },
+    '[metaAdsService] fetchAdSetInsights raw response',
+  );
+
+  return { rows, truncated };
+}
+
+/**
+ * Fetch ALL ad-sets for an account from the /adsets edge, regardless of
+ * delivery. Mirrors fetchAllCampaigns.
+ *
+ * @returns {Promise<{ rows: Array, truncated: boolean }>}
+ */
+export async function fetchAllAdSets(accessToken, adAccountId) {
+  initSdk(accessToken);
+  const accountId = normalizeAccountId(adAccountId);
+  const account   = new AdAccount(accountId);
+
+  const cursor = await account.getAdSets(ADSET_LIST_FIELDS, { limit: ADSET_PAGE_SIZE });
+  const { rows, pages, truncated } = await collectCursorPages(cursor);
+
+  logger.info(
+    { accountId, adSetCount: rows.length, pages, truncated },
+    '[metaAdsService] fetchAllAdSets roster',
+  );
+
+  return { rows, truncated };
+}
+
+/**
+ * PURE merge: fold the /adsets roster into the ad-set insight rows. Exact mirror
+ * of mergeMetaCampaigns, including the `_rosterOnly` contract.
+ *
+ * A roster-only ad-set means "no delivery data found in this window", NOT
+ * "verified zero". snapshotSink lands the ENTITY (so the ad-set appears in the
+ * drill-down) but writes NO MetricSnapshot, so the UI reads "—" rather than a
+ * fabricated 0 — and a short-window fetch cannot overwrite real metrics with
+ * zeros. This is the PR #160 correction, applied one level down before it can
+ * recur.
+ *
+ * An ad-set with no parent campaign_id is DROPPED: snapshotSink derives its FK
+ * from parentExternalId, so a parentless row would compute a garbage campaign id
+ * and either orphan the ad-set or attach it to the wrong campaign.
+ *
+ * @param {Array} insights raw rows from fetchAdSetInsights
+ * @param {Array} adSets   raw rows from fetchAllAdSets
+ * @returns {Array} insight-shaped ad-set rows for metaNormalize
+ */
+export function mergeMetaAdSets(insights = [], adSets = []) {
+  const insightRows = [];
+  const withInsights = new Set();
+
+  for (const row of insights || []) {
+    const r = row?._data || row;
+    if (r?.adset_id == null) continue; // unkeyable — no stable identity
+    insightRows.push(r);
+    withInsights.add(String(r.adset_id));
+  }
+
+  const rosterOnly = [];
+  for (const a of adSets || []) {
+    const ad = a?._data || a;
+    const id = ad?.id != null ? String(ad.id) : null;
+    if (!id || withInsights.has(id)) continue; // unkeyable, or already has real data
+    if (ad.campaign_id == null) {
+      logger.warn({ adSetId: id }, '[metaAdsService] ad-set roster row has no campaign_id — dropped');
+      continue;
+    }
+    rosterOnly.push({
+      adset_id:    id,
+      adset_name:  ad.name || 'Unnamed Ad Set',
+      campaign_id: String(ad.campaign_id),
+      spend:       '0',
+      impressions: '0',
+      clicks:      '0',
+      _rosterOnly: true, // no delivery data found — "unknown", never a verified 0
+    });
   }
 
   return [...insightRows, ...rosterOnly];

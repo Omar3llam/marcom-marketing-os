@@ -108,6 +108,23 @@ describe('WorkspaceDetail — connectors', () => {
     expect(screen.getByText(/token expired/)).toBeInTheDocument();
   });
 
+  // A partial sync is a third state: data DID land, so it is not an error —
+  // but the figures are knowingly incomplete and must say so.
+  it('shows a partial-sync warning distinctly from an error', () => {
+    render(<WorkspaceDetail detail={detail({ connectors: { ok: true, connections: [
+      connection({ lastWarning: 'Large account: some ad sets were not read this sync.' }),
+    ] } })} />);
+
+    const warning = screen.getByText(/some ad sets were not read/i);
+    expect(warning).toBeInTheDocument();
+    expect(warning).toHaveClass('text-signal-hold'); // amber, not the kill red
+  });
+
+  it('a clean sync shows no warning line', () => {
+    render(<WorkspaceDetail detail={detail({ connectors: { ok: true, connections: [connection()] } })} />);
+    expect(screen.queryByText(/were not read/i)).not.toBeInTheDocument();
+  });
+
   it('a healthy connector shows no error line', () => {
     render(<WorkspaceDetail detail={detail({ connectors: { ok: true, connections: [connection()] } })} />);
     expect(screen.queryByText(/OAuthException/)).not.toBeInTheDocument();

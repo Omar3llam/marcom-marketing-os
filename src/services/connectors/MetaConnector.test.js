@@ -29,12 +29,20 @@ vi.mock('../metaAdsService.js', async (importActual) => {
     fetchAccountCurrency: vi.fn(),
     fetchCampaignInsights: vi.fn(),
     fetchAllCampaigns: vi.fn(),
+    // The ad-set edges MUST be stubbed too. Left real they call initSdk and hit
+    // the network — fetchRaw's soft-fail would swallow the rejection, so the
+    // suite would still pass while making live HTTP calls on every run.
+    fetchAdSetInsights: vi.fn(),
+    fetchAllAdSets: vi.fn(),
   };
 });
 vi.mock('./credentialStore.js', () => ({ resolveCredential: vi.fn() }));
 
 import { prisma } from '../../lib/prisma.js';
-import { fetchAccountCurrency, fetchCampaignInsights, fetchAllCampaigns } from '../metaAdsService.js';
+import {
+  fetchAccountCurrency, fetchCampaignInsights, fetchAllCampaigns,
+  fetchAdSetInsights, fetchAllAdSets,
+} from '../metaAdsService.js';
 import { resolveCredential } from './credentialStore.js';
 import { MetaConnector } from './MetaConnector.js';
 import { resolveSyncCurrency } from '../../lib/currencyDetector.js';
@@ -46,6 +54,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   resolveCredential.mockResolvedValue(CRED);
   prisma.workspace.update.mockResolvedValue({});
+  // Ad-sets default to "none" so the pre-existing campaign assertions keep
+  // describing campaign behaviour alone.
+  fetchAdSetInsights.mockResolvedValue({ rows: [], truncated: false });
+  fetchAllAdSets.mockResolvedValue({ rows: [], truncated: false });
 });
 
 describe('MetaConnector.authenticate — currency resolution', () => {
@@ -176,5 +188,95 @@ describe('MetaConnector.fetchRaw — every campaign lands, zero-spend included',
     fetchAllCampaigns.mockResolvedValue([]);
 
     await expect(connector.fetchRaw(auth)).rejects.toThrow('token expired');
+  });
+});
+
+describe('MetaConnector.fetchRaw — ad-sets ride in the same flat array', () => {
+  const auth = { accessToken: 'tok', accountExternalId: 'act_123' };
+  const adSetInsight = { adset_id: 'as1', adset_name: 'LAL 1%', campaign_id: 'c1', spend: '60' };
+
+  beforeEach(() => {
+    fetchCampaignInsights.mockResolvedValue([{ campaign_id: 'c1', campaign_name: 'Spring', spend: '100' }]);
+    fetchAllCampaigns.mockResolvedValue([]);
+  });
+
+  // The ChannelConnector contract is `fetchRaw -> RawRow[]`, and
+  // ConnectorSyncService feeds the return straight into normalize({ rows }).
+  // A { campaigns, adSets } wrapper would break Meta AND diverge from Google.
+  it('returns ONE flat array, campaigns and ad-sets together', async () => {
+    fetchAdSetInsights.mockResolvedValue({ rows: [adSetInsight], truncated: false });
+
+    const rows = await connector.fetchRaw(auth);
+
+    expect(Array.isArray(rows)).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows.filter((r) => r.adset_id != null)).toHaveLength(1);
+    expect(rows.filter((r) => r.adset_id == null)).toHaveLength(1);
+  });
+
+  it('asks Meta for ad-sets at the account level, once', async () => {
+    fetchAdSetInsights.mockResolvedValue({ rows: [], truncated: false });
+    await connector.fetchRaw(auth);
+
+    expect(fetchAdSetInsights).toHaveBeenCalledTimes(1);
+    expect(fetchAdSetInsights).toHaveBeenCalledWith('tok', 'act_123', expect.any(String));
+    expect(fetchAllAdSets).toHaveBeenCalledWith('tok', 'act_123');
+  });
+
+  it('merges the ad-set roster so non-delivering ad-sets still land', async () => {
+    fetchAdSetInsights.mockResolvedValue({ rows: [adSetInsight], truncated: false });
+    fetchAllAdSets.mockResolvedValue({ rows: [{ id: 'as2', name: 'Broad', campaign_id: 'c1' }], truncated: false });
+
+    const rows = await connector.fetchRaw(auth);
+
+    expect(rows.find((r) => r.adset_id === 'as2')).toMatchObject({ _rosterOnly: true });
+    expect(rows.find((r) => r.adset_id === 'as1')._rosterOnly).toBeUndefined();
+  });
+
+  // Campaign data is the substrate every engine already reads. Losing ad-sets
+  // must never cost it.
+  it.each([
+    ['ad-set insights', () => fetchAdSetInsights.mockRejectedValue(new Error('rate limited'))],
+    ['the ad-set roster', () => fetchAllAdSets.mockRejectedValue(new Error('permissions'))],
+  ])('a %s failure degrades to campaigns-only — never breaks the sync', async (_label, fail) => {
+    fail();
+
+    const rows = await connector.fetchRaw(auth);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].campaign_id).toBe('c1');
+  });
+
+  it('reports truncation without disturbing the rows', async () => {
+    fetchAdSetInsights.mockResolvedValue({ rows: [adSetInsight], truncated: true });
+
+    const rows = await connector.fetchRaw(auth);
+
+    expect(rows.fetchMeta).toMatchObject({ truncated: true, adSetsFetched: 1, campaigns: 1 });
+  });
+
+  it('reports truncated: false on a complete fetch', async () => {
+    fetchAdSetInsights.mockResolvedValue({ rows: [adSetInsight], truncated: false });
+    const rows = await connector.fetchRaw(auth);
+    expect(rows.fetchMeta.truncated).toBe(false);
+  });
+
+  it('a truncated ROSTER counts too, not just insights', async () => {
+    fetchAllAdSets.mockResolvedValue({ rows: [], truncated: true });
+    const rows = await connector.fetchRaw(auth);
+    expect(rows.fetchMeta.truncated).toBe(true);
+  });
+
+  // fetchMeta is non-enumerable so the array stays deep-equal to a plain array —
+  // otherwise every existing toEqual assertion on fetchRaw breaks, and
+  // JSON.stringify would start emitting it.
+  it('the metadata is invisible to iteration and serialization', async () => {
+    fetchAdSetInsights.mockResolvedValue({ rows: [], truncated: true });
+
+    const rows = await connector.fetchRaw(auth);
+
+    expect(Object.keys(rows)).not.toContain('fetchMeta');
+    expect(JSON.parse(JSON.stringify(rows))).toEqual([{ campaign_id: 'c1', campaign_name: 'Spring', spend: '100' }]);
+    expect(rows.fetchMeta.truncated).toBe(true); // still readable by a caller that knows
   });
 });
