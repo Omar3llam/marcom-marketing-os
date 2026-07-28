@@ -87,6 +87,77 @@ export const DEFAULT_PROVIDER_MODELS = Object.freeze({
   [PROVIDER.HIGGSFIELD]: MODEL.HIGGSFIELD_V1,
 });
 
+// The date PROVIDER_PRICING was last verified. Surfaced to the operator so an
+// estimate is never mistaken for a bill — rates change and this table does not
+// update itself.
+export const PRICING_AS_OF = '2026-05';
+
+/**
+ * Per-million-token rates for a provider/model pair, for METERED usage.
+ *
+ * Deliberately NOT getProviderCost(): that function gates on the capability
+ * appearing in `avgTokensPerRequest`, which covers only 9 of the 13
+ * capabilities — so EXPLAIN_VERDICT, ANALYZE_PORTFOLIO and ANSWER_QUESTION
+ * would return null even when real token counts are in hand. The averages are
+ * for FORECASTING an unmade call; they have nothing to do with pricing one that
+ * already happened.
+ *
+ * Model ids are matched by longest prefix because providers return DATED ids
+ * ('gpt-4o-2024-08-06', 'claude-sonnet-4-5-20250929') that no table can
+ * enumerate. Longest-first is load-bearing: 'gpt-4o' is a prefix of
+ * 'gpt-4o-mini', and matching it first would price mini calls at 16x their
+ * real rate.
+ *
+ * Unlike getProviderCost, an ABSENT model does NOT fall back to the provider
+ * default. Defaulting is right for forecasting a call that has not happened; it
+ * is wrong for pricing one that has. CLAUDE defaults to Sonnet, so a real Opus
+ * call whose model went unreported would be costed at a fifth of its true rate
+ * — a wrong number, indistinguishable from a right one.
+ *
+ * @param {string} provider
+ * @param {string|null} model - the id the API returned
+ * @returns {{ inputCostPer1M: number, outputCostPer1M: number, matchedModel: string } | null}
+ *          null when the provider, the model, or the pricing is unknown — an
+ *          unknown model must cost NOTHING rather than a plausible default.
+ */
+export function getModelRates(provider, model) {
+  const providerData = PROVIDER_PRICING[provider];
+  if (!providerData || !model) return null;
+
+  const candidates = Object.keys(providerData).sort((a, b) => b.length - a.length);
+  const key = candidates.find((m) => model === m || model.startsWith(m));
+
+  const modelData = key ? providerData[key] : null;
+  if (!modelData) return null;
+
+  return {
+    inputCostPer1M: modelData.inputCostPer1M,
+    outputCostPer1M: modelData.outputCostPer1M,
+    matchedModel: key,
+  };
+}
+
+/**
+ * Cost in USD for a metered call, from REAL token counts.
+ *
+ * Returns null — never 0 — when either side is unreported or the model is
+ * unpriced. A dashboard that renders an unmeasured call as $0.00 is stating a
+ * falsehood, which is the failure this whole track exists to avoid.
+ *
+ * @returns {number|null}
+ */
+export function costFromTokens(provider, model, inputTokens, outputTokens) {
+  if (inputTokens == null || outputTokens == null) return null;
+
+  const rates = getModelRates(provider, model);
+  if (!rates) return null;
+
+  return (
+    (inputTokens / 1_000_000) * rates.inputCostPer1M +
+    (outputTokens / 1_000_000) * rates.outputCostPer1M
+  );
+}
+
 /**
  * Get cost data for a provider/capability pair.
  *

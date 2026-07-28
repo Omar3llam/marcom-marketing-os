@@ -11,6 +11,7 @@ import { workspacesRouter } from './workspaces.js';
 import { usersRouter }      from './users.js';
 import { demoRouter }       from './demo.js';
 import { auditRouter }      from './audit.js';
+import { aiUsageRouter }    from './aiUsage.js';
 
 export const adminRouter = Router();
 
@@ -19,3 +20,4 @@ adminRouter.use('/workspaces', workspacesRouter);
 adminRouter.use('/users',      usersRouter);
 adminRouter.use('/demo',       demoRouter);
 adminRouter.use('/audit',      auditRouter);
+adminRouter.use('/ai-usage',   aiUsageRouter);

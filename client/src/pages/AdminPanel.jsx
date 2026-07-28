@@ -15,6 +15,7 @@ import { WorkspacesTab } from '@/features/admin/WorkspacesTab.jsx';
 import { UsersTab } from '@/features/admin/UsersTab.jsx';
 import { DemoTab } from '@/features/admin/DemoTab.jsx';
 import { AuditTab } from '@/features/admin/AuditTab.jsx';
+import { CostTab } from '@/features/admin/CostTab.jsx';
 
 const TABS = [
   { key: 'status',     label: 'System Status', Body: StatusTab },
@@ -22,6 +23,7 @@ const TABS = [
   { key: 'users',      label: 'Users',         Body: UsersTab },
   { key: 'demo',       label: 'Demo',          Body: DemoTab },
   { key: 'audit',      label: 'Audit Log',     Body: AuditTab },
+  { key: 'cost',       label: 'AI Usage',      Body: CostTab },
 ];
 
 export default function AdminPanel() {
