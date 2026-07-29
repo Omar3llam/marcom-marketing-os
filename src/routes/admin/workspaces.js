@@ -11,7 +11,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { recordAdminAction } from '../../lib/adminAudit.js';
-import { listConnections } from '../../services/connectors/credentialStore.js';
+import { listConnections, deleteWorkspaceCredentials } from '../../services/connectors/credentialStore.js';
 import { parseLimit, parseOffset, parseSearch, parseEnum } from './pagination.js';
 
 export const workspacesRouter = Router();
@@ -234,5 +234,113 @@ workspacesRouter.patch('/:id/plan', async (req, res) => {
     }
     logger.error({ err: err.message, id }, '[admin/workspaces] plan update failed');
     return res.status(500).json({ error: 'Failed to update plan' });
+  }
+});
+
+// The counts an operator is shown before confirming, and the `before` snapshot
+// the audit row keeps afterwards. Read in ONE query with the name, because after
+// the delete none of it is recoverable — the audit row is the only surviving
+// record of how much was destroyed.
+const DELETE_COUNTS = {
+  users: true, decisions: true, accounts: true, campaignEntities: true,
+  adSets: true, ads: true, metricSnapshots: true, actions: true,
+};
+
+// DELETE /api/admin/workspaces/:id — destroy a workspace and everything in it.
+//
+// This is the most destructive route in the product and it is IRREVERSIBLE:
+// 59 models cascade from workspaces, so one statement removes every campaign,
+// snapshot, decision, outcome and membership. There is no undo and no soft
+// delete. Four guards stand in front of it:
+//
+//   1. TYPED CONFIRMATION — the body must carry `confirmName` matching the
+//      workspace's name EXACTLY. A misclicked row cannot be deleted, because
+//      confirming requires reading the name of the thing you are destroying.
+//      (The demo route's two-click confirm is fine for a throwaway seed; it is
+//      not enough for a customer account.)
+//   2. SELF-PROTECTION — an admin may not delete the workspace they are
+//      operating from. It would revoke their own session's workspace mid-flight
+//      and leave the panel talking about a row that no longer exists.
+//   3. LAST-ADMIN — refuses while another ADMIN still belongs to the workspace,
+//      unless `force` is set. Mirrors the users route's last-STRATEGIST guard.
+//   4. AUDIT — DELETE_WORKSPACE, with the full counts, written after the fact.
+//      admin_audit_logs has no FK to workspaces precisely so this row survives.
+//
+// Credentials are purged FIRST and separately: marcom_credentials is raw SQL
+// with no foreign key, so it does not cascade (see deleteWorkspaceCredentials).
+workspacesRouter.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+  const confirmName = typeof req.body?.confirmName === 'string' ? req.body.confirmName : null;
+  const force = req.body?.force === true;
+
+  try {
+    const ws = await prisma.workspace.findUnique({
+      where: { id },
+      select: {
+        id: true, name: true, plan: true, createdAt: true,
+        users: { where: { role: 'ADMIN' }, select: { id: true, email: true } },
+        _count: { select: DELETE_COUNTS },
+      },
+    });
+    if (!ws) return res.status(404).json({ error: 'Workspace not found' });
+
+    // GUARD 2 — before the name check, so an operator who typed their own
+    // workspace's name correctly still gets the real reason for the refusal.
+    if (req.workspaceId && req.workspaceId === id) {
+      return res.status(409).json({
+        error: 'Refusing to delete the workspace you are signed in to. Switch workspaces first.',
+      });
+    }
+
+    // GUARD 1 — exact match, no trimming or case-folding. A near-miss is a
+    // near-miss; silently accepting one would defeat the point of typing it.
+    if (confirmName !== ws.name) {
+      return res.status(400).json({
+        error: 'Confirmation does not match. Send confirmName exactly equal to the workspace name.',
+        expectedName: ws.name,
+      });
+    }
+
+    // GUARD 3 — another operator's account. Overridable, never silent.
+    const otherAdmins = ws.users.filter((u) => u.id !== req.userId);
+    if (otherAdmins.length > 0 && !force) {
+      return res.status(409).json({
+        error: `This workspace has ${otherAdmins.length} other ADMIN member${otherAdmins.length === 1 ? '' : 's'}. Re-send with force: true to delete anyway.`,
+        admins: otherAdmins.map((u) => u.email),
+      });
+    }
+
+    // Counts are captured BEFORE anything is destroyed — after the cascade
+    // there is nothing left to count, and an audit row that could not say what
+    // it removed would be a record of nothing.
+    const before = { name: ws.name, plan: ws.plan ?? 'FREE', createdAt: ws.createdAt, counts: { ...ws._count } };
+
+    // Credentials first. They do NOT cascade (no FK — raw-SQL table), and if
+    // this throws we abort with the workspace still intact, rather than leaving
+    // live OAuth tokens orphaned behind a deleted account.
+    const credentialsDeleted = await deleteWorkspaceCredentials(id);
+
+    await prisma.workspace.delete({ where: { id } });
+    logger.warn({ workspaceId: id, name: ws.name, credentialsDeleted, counts: before.counts, actorUid: req.userId },
+      '[admin/workspaces] DELETED workspace');
+
+    // After the delete, for the same reason the demo route does it: a row
+    // written first would permanently assert a deletion that a failed statement
+    // never performed. `after` is null — there is no after.
+    await recordAdminAction({
+      actorUid: req.userId,
+      actorEmail: req.user?.email,
+      type: 'DELETE_WORKSPACE',
+      targetType: 'WORKSPACE',
+      targetId: id,
+      workspaceId: id,
+      before: { ...before, credentialsDeleted, forced: force },
+    });
+
+    return res.json({ deleted: true, workspaceId: id, name: ws.name, counts: before.counts, credentialsDeleted });
+  } catch (err) {
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Workspace not found' });
+    logger.error({ err: err.message, id }, '[admin/workspaces] delete failed');
+    return res.status(500).json({ error: 'Failed to delete workspace' });
   }
 });

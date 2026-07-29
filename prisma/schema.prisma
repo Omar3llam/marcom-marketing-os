@@ -1822,6 +1822,10 @@ enum AdminAuditType {
   CHANGE_PLAN
   SEED_DEMO
   DELETE_DEMO
+  // Deletion of a REAL (non-demo) workspace. Deliberately distinct from
+  // DELETE_DEMO: the log's whole purpose is to answer "was a customer account
+  // ever destroyed, by whom", and one type for both could not.
+  DELETE_WORKSPACE
 }
 
 // One row per admin-panel mutation.

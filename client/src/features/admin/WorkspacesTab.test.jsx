@@ -9,11 +9,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
-const { fetchWorkspaces, fetchWorkspaceDetail, seedDemo, deleteDemo, updateWorkspacePlan } = vi.hoisted(() => ({
+const { fetchWorkspaces, fetchWorkspaceDetail, seedDemo, deleteDemo, deleteWorkspace, updateWorkspacePlan } = vi.hoisted(() => ({
   fetchWorkspaces: vi.fn(), fetchWorkspaceDetail: vi.fn(),
-  seedDemo: vi.fn(), deleteDemo: vi.fn(), updateWorkspacePlan: vi.fn(),
+  seedDemo: vi.fn(), deleteDemo: vi.fn(), deleteWorkspace: vi.fn(), updateWorkspacePlan: vi.fn(),
 }));
-vi.mock('./api.js', () => ({ fetchWorkspaces, fetchWorkspaceDetail, seedDemo, deleteDemo, updateWorkspacePlan }));
+vi.mock('./api.js', () => ({ fetchWorkspaces, fetchWorkspaceDetail, seedDemo, deleteDemo, deleteWorkspace, updateWorkspacePlan }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { WorkspacesTab } from './WorkspacesTab.jsx';
@@ -157,9 +157,27 @@ describe('WorkspacesTab — the list itself still works', () => {
     expect(await screen.findByText('No workspaces.')).toBeInTheDocument();
   });
 
-  it('only demo workspaces offer Delete', async () => {
+  // Both kinds are deletable now, but NOT by the same control: a demo is a
+  // throwaway seed (two clicks), a real workspace is a customer account and
+  // opens the typed-confirmation dialog.
+  it('a real workspace offers the guarded delete, not the two-click one', async () => {
     await renderTab();
+    expect(screen.getByRole('button', { name: 'Delete Acme' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  });
+
+  it('a demo workspace keeps the cheap two-click delete', async () => {
+    fetchWorkspaces.mockResolvedValue({ workspaces: [{ ...WS, isDemo: true }], total: 1 });
+    await renderTab();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Delete Acme' })).not.toBeInTheDocument();
+  });
+
+  it('opens the typed-confirmation dialog for a real workspace', async () => {
+    await renderTab();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Acme' }));
+    expect(await screen.findByRole('alertdialog', { name: 'Delete Acme' })).toBeInTheDocument();
+    expect(deleteWorkspace).not.toHaveBeenCalled(); // opening is not deleting
   });
 });
 

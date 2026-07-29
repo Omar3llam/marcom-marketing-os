@@ -10,6 +10,7 @@ import { ChevronRight, Loader2 } from 'lucide-react';
 import { fetchWorkspaces, fetchWorkspaceDetail, seedDemo, deleteDemo, updateWorkspacePlan } from './api.js';
 import { useAsync, AsyncBlock } from './parts.jsx';
 import { WorkspaceDetail } from './WorkspaceDetail.jsx';
+import { DeleteWorkspaceDialog } from './DeleteWorkspaceDialog.jsx';
 import { useDebounce } from '@/hooks/useDebounce';
 import { Pagination } from '@/components/ui/Pagination.jsx';
 
@@ -58,7 +59,14 @@ function PlanCell({ id, plan }) {
   );
 }
 
-function DeleteCell({ id, onDeleted }) {
+// Two delete paths, deliberately not one control.
+//
+// A demo workspace is a throwaway seed: two clicks, no typing, and the server
+// refuses anything without the "Demo —" sentinel anyway. A REAL workspace is a
+// customer account — it opens the typed-confirmation dialog instead. Sharing one
+// control would either make demo teardown tedious or make destroying a customer
+// account as cheap as deleting a seed.
+function DemoDeleteCell({ id, onDeleted }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -101,7 +109,10 @@ function DeleteCell({ id, onDeleted }) {
 // would bubble into a row handler and expand the panel every time an operator
 // changed a plan. A button is also reachable by keyboard, which a clickable
 // table row is not.
-function WorkspaceRow({ w, onDeleted }) {
+// `onRequestDelete` rather than a dialog owned per row: the dialog is a <div>,
+// and a <div> rendered between <tr>s inside a <tbody> is invalid HTML that the
+// parser lifts out of the table. It lives above the table in WorkspacesTab.
+function WorkspaceRow({ w, onDeleted, onRequestDelete }) {
   const [open, setOpen] = useState(false);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -150,7 +161,18 @@ function WorkspaceRow({ w, onDeleted }) {
         <td className="px-3 py-2 text-right tabular-nums text-lumi-muted">{w.decisionCount}</td>
         <td className="px-3 py-2 text-lumi-muted">{fmtDate(w.createdAt)}</td>
         <td className="px-3 py-2 text-right">
-          {w.isDemo ? <DeleteCell id={w.id} onDeleted={onDeleted} /> : <span className="text-lumi-subtle">—</span>}
+          {w.isDemo ? (
+            <DemoDeleteCell id={w.id} onDeleted={onDeleted} />
+          ) : (
+            <button
+              type="button"
+              onClick={() => onRequestDelete(w)}
+              aria-label={`Delete ${w.name}`}
+              className="rounded-md border border-trend-danger px-2 py-1 text-xs text-trend-danger transition-colors hover:bg-trend-danger hover:text-lumi-bg"
+            >
+              Delete
+            </button>
+          )}
         </td>
       </tr>
 
@@ -177,6 +199,9 @@ export function WorkspacesTab() {
   const [demo, setDemo] = useState('');
   const [offset, setOffset] = useState(0);
   const [seeding, setSeeding] = useState(false);
+  // The workspace awaiting typed confirmation, or null. One dialog for the whole
+  // table — it must sit outside <table> to be valid HTML.
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const debouncedQ = useDebounce(q, 300);
 
@@ -266,7 +291,7 @@ export function WorkspacesTab() {
             </thead>
             <tbody>
               {rows.map((w) => (
-                <WorkspaceRow key={w.id} w={w} onDeleted={reload} />
+                <WorkspaceRow key={w.id} w={w} onDeleted={reload} onRequestDelete={setDeleteTarget} />
               ))}
             </tbody>
           </table>
@@ -274,6 +299,14 @@ export function WorkspacesTab() {
       </AsyncBlock>
 
       <Pagination total={total} limit={PAGE_SIZE} offset={offset} onPageChange={setOffset} />
+
+      {deleteTarget && (
+        <DeleteWorkspaceDialog
+          workspace={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={reload}
+        />
+      )}
     </div>
   );
 }
