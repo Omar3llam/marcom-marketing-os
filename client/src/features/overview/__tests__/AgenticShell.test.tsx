@@ -151,30 +151,39 @@ describe('LoopStatusRing — health + the single sweep control', () => {
 });
 
 describe('AgenticShellView — role-aware composition', () => {
-  it('STRATEGIST sees the ring + both bands', () => {
+  it('STRATEGIST sees the ring + the portfolio band', () => {
     vi.mocked(useCollabRole).mockReturnValue({ role: WORKSPACE_ROLE.STRATEGIST } as never);
     render(<AgenticShellView />);
     expect(screen.getByText('Loop healthy')).toBeInTheDocument();
-    expect(screen.getByText("Today's decisions")).toBeInTheDocument();
     expect(screen.getByText('Portfolio health')).toBeInTheDocument();
   });
 
-  it('BUYER leads with the buyer band and no strategist band', () => {
+  it('BUYER sees the ring alone — no strategist band', () => {
     vi.mocked(useCollabRole).mockReturnValue({ role: WORKSPACE_ROLE.BUYER } as never);
     render(<AgenticShellView />);
     expect(screen.getByText('Loop healthy')).toBeInTheDocument();
-    expect(screen.getByText("Today's decisions")).toBeInTheDocument();
     expect(screen.queryByText('Portfolio health')).not.toBeInTheDocument();
   });
 
-  it('CLIENT sees the strategist band only — no ring, no buyer band', () => {
+  it('CLIENT sees the portfolio band only — no ring', () => {
     vi.mocked(useCollabRole).mockReturnValue({ role: WORKSPACE_ROLE.CLIENT } as never);
     vi.mocked(useHome).mockReturnValue({ home: { ...home, buyerBand: null }, isStale: false, isLoading: false, error: null, refetch: vi.fn() } as never);
     render(<AgenticShellView />);
     expect(screen.queryByText('Loop healthy')).not.toBeInTheDocument();
-    expect(screen.queryByText("Today's decisions")).not.toBeInTheDocument();
     expect(screen.getByText('Portfolio health')).toBeInTheDocument();
   });
+
+  // The shell used to render the buyer band too. Home's own Act now / Keep
+  // watching / Doing well bands cover the same verdicts, ranked and capped —
+  // rendering both asked for the same decision twice, and the uncapped copy
+  // (48 unranked items) buried the ranked one.
+  it.each([WORKSPACE_ROLE.STRATEGIST, WORKSPACE_ROLE.BUYER])(
+    'never renders the buyer band, whatever the role (%s)', (role) => {
+      vi.mocked(useCollabRole).mockReturnValue({ role } as never);
+      render(<AgenticShellView />);
+      expect(screen.queryByText("Today's decisions")).not.toBeInTheDocument();
+      expect(screen.queryByText('KILL Cold #1')).not.toBeInTheDocument();
+    });
 
   it('shows a loading skeleton then an honest error', () => {
     vi.mocked(useHome).mockReturnValue({ home: null, isStale: false, isLoading: true, error: null, refetch: vi.fn() } as never);
