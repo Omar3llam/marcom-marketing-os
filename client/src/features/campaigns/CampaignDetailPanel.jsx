@@ -20,6 +20,7 @@ import { HelpTip } from '@/components/ui/HelpTip.jsx';
 import { HELP } from '@/lib/helpContent.js';
 import { useCampaignReasoning } from '@/hooks/useCampaignReasoning.js';
 import { copyToClipboard } from '@/lib/clipboard.js';
+import { recordIntent } from './decisionSignals.js';
 import {
   NO_REVENUE_DISCLAIMER, confidenceLabel, evidenceClause, nextActionFor, ignoreCostFor,
   buildRecommendationText, platformUrl,
@@ -35,7 +36,7 @@ const COPY_FEEDBACK_MS = 2000;
 // hands the marketer the decision verbatim; the link opens the platform's own UI
 // where THEY make the change. Only the two action verdicts get a bar: there is
 // nothing to act on for HOLD/WATCH/REFRESH.
-function ActionBar({ verdict, name, rationale, confidence, spendMinor, currency, channel, externalId }) {
+function ActionBar({ entityId, verdict, name, rationale, confidence, spendMinor, currency, channel, externalId }) {
   const [copyState, setCopyState] = useState('idle'); // idle | copied | failed
   const timerRef = useRef(null);
 
@@ -50,6 +51,10 @@ function ActionBar({ verdict, name, rationale, confidence, spendMinor, currency,
     const { ok } = await copyToClipboard(buildRecommendationText({
       verdict, name, rationale, nextAction, confidence, spendMinor, currency,
     }));
+    // Intent is recorded only on a SUCCESSFUL copy. A failed copy means the
+    // recommendation never left the app, so treating it as "the operator acted
+    // on this" would put a decision nobody could act on into the learning set.
+    if (ok) recordIntent(entityId);
     // An unreported failure is the one outcome worse than no copy button at all:
     // the marketer pastes stale clipboard content believing it is the decision.
     setCopyState(ok ? 'copied' : 'failed');
@@ -79,6 +84,9 @@ function ActionBar({ verdict, name, rationale, confidence, spendMinor, currency,
           href={url}
           target="_blank"
           rel="noopener noreferrer"
+          // Fire-and-forget: the navigation is not awaited on it, and the new
+          // tab opens whether or not this lands.
+          onClick={() => recordIntent(entityId)}
           className="inline-flex items-center gap-1.5 rounded border border-lumi-border px-3 py-1.5 text-[11px] font-medium text-lumi-muted transition-colors hover:bg-lumi-elevated hover:text-lumi-text"
         >
           <ExternalLink className="w-3 h-3" strokeWidth={2} />
@@ -156,6 +164,7 @@ export function CampaignDetailPanel({ campaign, verdict = null, impact = null, r
             <p className="mt-1.5 text-xs text-lumi-subtle leading-relaxed">{NO_REVENUE_DISCLAIMER}</p>
           )}
           <ActionBar
+            entityId={entityId}
             verdict={verdict}
             name={campaign.name}
             rationale={rationale}

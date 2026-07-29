@@ -21,6 +21,10 @@ vi.mock('@/hooks/useEntityDrillDown.js', () => ({
 // The detail panel reads pre-generated reasoning on mount — stub the client so
 // expanding never touches the network (null row → the "after next sweep" state).
 vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn(() => Promise.resolve({ data: { reasoning: null, stale: false } })) } }));
+// Expanding the reasoning records a lifecycle signal. Mocked so the table never
+// reaches the network, and so the wiring can be asserted directly.
+const { recordExplain } = vi.hoisted(() => ({ recordExplain: vi.fn() }));
+vi.mock('../decisionSignals.js', () => ({ recordExplain, recordIntent: vi.fn() }));
 
 const campaign = (over = {}) => ({
   entityId: 'c1', channel: 'META', name: 'Awareness Reach', adSetCount: 0,
@@ -443,9 +447,31 @@ describe('ConnectorCampaignsPanel — key signal column', () => {
 // Both toggles are real controls now, side by side, instead of two chevrons at
 // opposite ends of the row that never said what they opened.
 describe('ConnectorCampaignsPanel — row actions', () => {
+  // The file's only other beforeEach is scoped to a different describe, so the
+  // signal mock otherwise accumulates every expand in every earlier test.
+  beforeEach(() => recordExplain.mockClear());
+
   it('names the detail toggle "Explain decision"', () => {
     render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
     expect(screen.getByText('Explain decision')).toBeInTheDocument();
+  });
+
+  // The lifecycle signal: a human opened the reasoning. Reading is not acting,
+  // so this records `explain`, never `intent`.
+  it('records an explain signal when the reasoning is opened', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
+    fireEvent.click(screen.getByText('Explain decision'));
+    expect(recordExplain).toHaveBeenCalledWith('c1');
+  });
+
+  // Collapsing is not a second engagement, and the server only stamps the first
+  // open anyway — firing on both would double the requests for nothing.
+  it('records nothing on collapse', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
+    const toggle = screen.getByText('Explain decision');
+    fireEvent.click(toggle);   // open
+    fireEvent.click(toggle);   // collapse
+    expect(recordExplain).toHaveBeenCalledTimes(1);
   });
 
   it('hides "View ad sets" entirely when there are none (an unusable control is noise)', () => {

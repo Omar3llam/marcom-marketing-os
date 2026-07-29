@@ -1215,17 +1215,60 @@ model MetricSnapshot {
 // dashboard. Phase 1 scaffolds the schema + contracts; feature
 // logic lands in later phases.
 
+// The four states a Decision can hold. EXECUTED and DISMISSED have no writer
+// today, but DecisionAccuracyService QUERIES both — an enum without them makes
+// Prisma throw on those reads, no matching row required.
+enum DecisionStatus {
+  PROPOSED
+  EXECUTED
+  DISMISSED
+  SUPERSEDED
+}
+
+// How the entity behaved between a verdict being issued and being replaced.
+// UNKNOWN is a real answer, not a gap-filler: it is what a decision with no
+// metrics on either end honestly resolves to.
+enum DecisionResolution {
+  IMPROVED
+  UNCHANGED
+  WORSENED
+  UNKNOWN
+}
+
 model Decision {
-  id          String      @id @default(uuid()) @db.Uuid
-  workspaceId String      @db.Uuid
-  entityId    String      @db.Uuid
+  id          String         @id @default(uuid()) @db.Uuid
+  workspaceId String         @db.Uuid
+  entityId    String         @db.Uuid
   entityLevel EntityLevel
   verdict     Verdict
   confidence  Float // 0.0 – 1.0
   diagnosis   String
   rootCause   String?
-  status      String      @default("PROPOSED") // PROPOSED | EXECUTED | DISMISSED
-  createdAt   DateTime    @default(now())
+  status      DecisionStatus @default(PROPOSED)
+
+  // ── Lifecycle ──────────────────────────────────────────────
+  // Three moments, each set ONCE and never overwritten: a second click is not a
+  // second engagement, and re-stamping would turn "when did they first look at
+  // this" into "when did they last click", which answers a different question.
+  explainedAt DateTime? // first time a human opened the reasoning
+  intentAt    DateTime? // first time they copied it or opened the ad platform
+  resolvedAt  DateTime? // when a new verdict replaced this one
+
+  resolution      DecisionResolution? // null until resolved
+  confidenceDelta Float? // CTR delta (percentage POINTS) between issue and resolution
+
+  // Metrics as they stood WHEN THE VERDICT WAS ISSUED. Stamped here because a
+  // MetricSnapshot is a rolling per-sync aggregate re-stamped every sweep — it
+  // cannot be read backwards to reconstruct a past state. Without these there is
+  // no "before" to compare against, and resolution is not computable at all.
+  //
+  // ctrAtDecision is a PERCENT (1.64 = 1.64%), matching verdictEngine's
+  // signalInput.ctr — NOT the 0..1 ratio MetricSnapshot.ctr carries.
+  ctrAtDecision  Float?
+  roasAtDecision Float? // null when revenue was never measured (never a fabricated 0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   workspace Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   outcomes  OutcomeSnapshot[]
@@ -1234,6 +1277,10 @@ model Decision {
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([entityId, entityLevel])
+  // Partial index (resolution IS NOT NULL) — see the migration. Prisma cannot
+  // express the WHERE clause, so it is declared here as a plain composite and
+  // created partially in SQL; `migrate diff` treats them as equivalent.
+  @@index([verdict, resolution])
   @@map("decisions")
 }
 
