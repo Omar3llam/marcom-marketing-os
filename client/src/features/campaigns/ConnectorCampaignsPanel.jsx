@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils.js';
 import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFormatters.js';
 import { formatCurrency } from '@/lib/money';
 import { useEntityDrillDown } from '@/hooks/useEntityDrillDown.js';
+import { recordExplain } from './decisionSignals.js';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { HelpTip } from '@/components/ui/HelpTip.jsx';
 import { HELP } from '@/lib/helpContent.js';
@@ -189,6 +190,16 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
   };
 
   const toggleDetail = (id) => {
+    // The signal fires OUTSIDE the state updater. A setState updater must be
+    // pure: React may invoke it more than once per call (StrictMode
+    // double-invocation, re-renders), so a request inside it gets sent an
+    // unpredictable number of times — it fired 8 times for one click.
+    //
+    // Only on OPEN. Collapsing is not a second engagement, and the server
+    // stamps the first open once anyway. Fire-and-forget: never blocks the
+    // expand, never surfaces an error.
+    if (!detailOpen.has(id)) recordExplain(id);
+
     setDetailOpen((s) => {
       const next = new Set(s);
       if (next.has(id)) next.delete(id); else next.add(id);
