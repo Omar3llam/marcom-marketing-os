@@ -22,7 +22,7 @@ import { useConnections } from '@/hooks/useConnections.js';
 import { useAccountHealth } from '@/hooks/useAccountHealth.js';
 import { useHome } from '@/hooks/useHome.js';
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
-import { fromMinor } from '@/lib/money';
+import { formatCurrency, fromMinor } from '@/lib/money';
 import StatCard from '@/components/ui/StatCard.jsx';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
 import { ProofSummary } from '@/features/intelligence/proof/ProofView.jsx';
@@ -35,26 +35,26 @@ import CopilotPanel from './components/CopilotPanel.jsx';
 import AIInsightCard from './components/AIInsightCard.jsx';
 import DecisionCard from './components/DecisionCard.jsx';
 import RevenueNotice from './components/RevenueNotice.jsx';
+import WatchSection from './components/WatchSection.jsx';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { nextActionFor } from '@/features/campaigns/verdictEvidence.js';
-
-// The severity rule the old AlertsPanel used, kept verbatim so the page surfaces
-// the same population it always has — only the presentation changed.
-const isActionable = (c) => c.verdict === 'KILL' || (c.verdict === 'WATCH' && c.impactScore >= 7);
 
 // PURE: the decision feed — health rows (verdict + impact + name, the ONLY
 // source of impactScore) joined to their connector row for the metrics
 // ExecutionContext needs, and to the verdict row for the engine's own rationale.
 // Three sources because no single one carries all of it; the join key is
 // entityId throughout. A field absent everywhere stays null → the card omits
-// that line rather than inventing it. Exported for unit testing.
+// that line rather than inventing it.
+//
+// The join carries EVERY scored campaign; partitionDecisions below owns which
+// ones surface where. (It used to pre-filter to KILL + high-impact WATCH — that
+// would have starved the calm sections of the only rows they can ever show.)
+// Exported for unit testing.
 export function decisionFeed({ healthCampaigns = [], connectorCampaigns = [], verdicts = [] }) {
   const metricsById = new Map(connectorCampaigns.map((c) => [c.entityId, c]));
   const rationaleById = new Map(verdicts.map((v) => [v.id, v.rationale ?? null]));
 
   return healthCampaigns
-    .filter(isActionable)
-    .sort((a, b) => (b.impactScore ?? 0) - (a.impactScore ?? 0))
     .map((c) => {
       const m = metricsById.get(c.entityId) ?? {};
       return {
@@ -71,6 +71,60 @@ export function decisionFeed({ healthCampaigns = [], connectorCampaigns = [], ve
         currency: m.currency ?? null,
       };
     });
+}
+
+// The three bands, exhaustive over the VERDICT enum
+// (verdict-engine/verdictTypes.js): KILL/REALLOCATE ask for an intervention now,
+// WATCH/REFRESH are worth monitoring, HOLD/SCALE are working. A campaign the
+// engine returned no verdict for belongs to none of them and is not counted —
+// "unscored" is not "healthy".
+const ACT_NOW_VERDICTS  = ['KILL', 'REALLOCATE'];
+const WATCH_VERDICTS    = ['WATCH', 'REFRESH'];
+const HEALTHY_VERDICTS  = ['HOLD', 'SCALE'];
+
+// How many cards a band shows before deferring to the Campaigns page. The home
+// is a triage surface, not a list — the TOTAL is always reported alongside, so
+// capping never hides how much is really there.
+export const SECTION_CAP = 3;
+
+// Impact first; spend breaks the tie. Without the tie-break, equal-impact rows
+// keep whatever order the health route happened to return, so the same account
+// can re-order between renders — and "highest impact first" stops being a claim
+// the page can back up.
+const byImpactThenSpend = (a, b) =>
+  (b.impactScore ?? 0) - (a.impactScore ?? 0) || (b.spendMinor ?? 0) - (a.spendMinor ?? 0);
+
+/**
+ * PURE: split the feed into the three bands, sorted and capped.
+ * Returns the capped rows AND the true total per band, so the "view all N" link
+ * quotes the real count rather than the number of cards on screen.
+ * Exported for unit testing.
+ */
+export function partitionDecisions(feed = []) {
+  const band = (verdicts) => feed.filter((d) => verdicts.includes(d.verdict)).sort(byImpactThenSpend);
+  const actionable = band(ACT_NOW_VERDICTS);
+  const watching   = band(WATCH_VERDICTS);
+  const healthy    = feed.filter((d) => HEALTHY_VERDICTS.includes(d.verdict));
+
+  // Protected spend stays NULL when not one healthy campaign reported a spend —
+  // "nothing measured" is not "zero protected". A row missing its own spend just
+  // contributes nothing to the sum.
+  let healthySpend = null;
+  let healthyCurrency = null;
+  for (const d of healthy) {
+    if (d.spendMinor != null) healthySpend = (healthySpend ?? 0) + d.spendMinor;
+    if (!healthyCurrency && d.currency) healthyCurrency = d.currency;
+  }
+
+  return {
+    actNow:      actionable.slice(0, SECTION_CAP),
+    actNowTotal: actionable.length,
+    watchNow:    watching.slice(0, SECTION_CAP),
+    watchTotal:  watching.length,
+    healthyCount: healthy.length,
+    healthySpend,
+    healthyCurrency,
+  };
 }
 
 // PURE: the four Overview KPI values, CONNECTOR-FIRST (mirrors CampaignsView's
@@ -149,6 +203,7 @@ export default function OverviewView() {
     }),
     [health, connectorCampaigns, verdicts],
   );
+  const bands = useMemo(() => partitionDecisions(decisions), [decisions]);
   const needsRevenue = useMemo(
     () => (health?.campaigns ?? []).filter((c) => c.needsRevenue),
     [health],
@@ -349,27 +404,66 @@ export default function OverviewView() {
           loading/empty states, so it's safe to mount whenever data exists. */}
       {hasAnyData && <AgenticShellView />}
 
-      {/* The decision feed — the campaigns the engine says need a call, each with
-          its evidence and (for KILL/REALLOCATE) the ad set to open first. Every
-          row traces to a health row; an empty feed says so rather than hiding. */}
+      {/* The decision feed, in three descending bands of urgency: act now, keep
+          watching, doing well. Each band quotes its TRUE total and shows at most
+          SECTION_CAP cards — the home triages, the Campaigns page lists. */}
       {hasAnyData && (
-        <section className="mb-6">
-          <div className="mb-3 flex items-center gap-2">
-            <h2 className="section-label">Needs your call</h2>
-            <span className="font-mono text-[11px] text-lumi-subtle">
-              {decisions.length === 0 ? 'clear' : `${decisions.length} decision${decisions.length === 1 ? '' : 's'}`}
-            </span>
-          </div>
-          {decisions.length === 0 ? (
-            <p className="rounded-xl border border-lumi-border bg-lumi-surface px-4 py-3 text-xs text-lumi-muted">
-              No critical campaigns right now.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {decisions.map((d) => <DecisionCard key={d.entityId} {...d} />)}
-            </div>
+        <>
+          {/* ── ACT NOW ── */}
+          {bands.actNow.length > 0 && (
+            <section className="mb-6">
+              <div className="flex items-center gap-2">
+                <h2 className="section-label text-signal-kill">Act now</h2>
+                <span className="font-mono text-[11px] text-lumi-subtle">
+                  {bands.actNowTotal} decision{bands.actNowTotal === 1 ? '' : 's'}
+                </span>
+              </div>
+              {/* The ordering claim, made only where there is an order to claim. */}
+              <p className="mb-3 mt-1 font-mono text-[10px] text-lumi-subtle">Highest impact first</p>
+
+              <div className="space-y-3">
+                {bands.actNow.map((d) => <DecisionCard key={d.entityId} {...d} />)}
+              </div>
+
+              {bands.actNowTotal > bands.actNow.length && (
+                <Link
+                  to={appRoutes.campaigns}
+                  className="mt-3 inline-block font-mono text-[11px] text-lumi-muted underline transition-colors hover:text-lumi-text"
+                >
+                  View all {bands.actNowTotal} decisions →
+                </Link>
+              )}
+            </section>
           )}
-        </section>
+
+          {/* ── KEEP WATCHING ── */}
+          {bands.watchNow.length > 0 && (
+            <WatchSection items={bands.watchNow} total={bands.watchTotal} />
+          )}
+
+          {/* ── DOING WELL ── a count and the spend it protects, no cards: there
+              is nothing to decide, and the point is that these need no attention. */}
+          {bands.healthyCount > 0 && (
+            <section className="mb-6 border-t border-lumi-border pt-4">
+              <p className="font-display text-sm font-semibold text-signal-scale">Doing well</p>
+              <p className="mt-1 text-xs text-lumi-muted">
+                {bands.healthyCount} campaign{bands.healthyCount === 1 ? '' : 's'} performing well
+              </p>
+              {bands.healthySpend != null && (
+                <p className="text-xs text-lumi-muted">
+                  Protected spend: {formatCurrency(bands.healthySpend, bands.healthyCurrency || currency)}
+                </p>
+              )}
+            </section>
+          )}
+
+          {/* All three bands empty — say so rather than rendering a silent gap. */}
+          {bands.actNow.length === 0 && bands.watchNow.length === 0 && bands.healthyCount === 0 && (
+            <p className="mb-6 rounded-xl border border-lumi-border bg-lumi-surface px-4 py-3 text-xs text-lumi-muted">
+              No scored campaigns right now.
+            </p>
+          )}
+        </>
       )}
 
       {/* The two revenue-data stories. Kept OUT of the feed above: a campaign here

@@ -9,7 +9,7 @@
 // and must leave a field null when no source carries it.
 // ============================================================
 import { describe, it, expect } from 'vitest';
-import { overviewKpis, decisionFeed } from './OverviewView.jsx';
+import { overviewKpis, decisionFeed, partitionDecisions, SECTION_CAP } from './OverviewView.jsx';
 
 describe('decisionFeed', () => {
   const health = (over = {}) => ({ entityId: 'c1', name: 'Ramadan Cold', verdict: 'KILL', impactScore: 9, ...over });
@@ -27,25 +27,17 @@ describe('decisionFeed', () => {
     });
   });
 
-  // Same population rule the old AlertsPanel used — the presentation changed,
-  // not which campaigns the page surfaces.
-  it('keeps KILL and high-impact WATCH, drops the rest', () => {
+  // The join is now exhaustive: the calm bands can only show HOLD/SCALE rows, so
+  // a feed that filtered them out would leave "Doing well" permanently empty.
+  // partitionDecisions owns which band a verdict lands in.
+  it('carries every scored verdict through — the bands do the filtering', () => {
     const feed = decisionFeed({ healthCampaigns: [
       health({ entityId: 'k', verdict: 'KILL', impactScore: 2 }),
-      health({ entityId: 'w-hi', verdict: 'WATCH', impactScore: 8 }),
-      health({ entityId: 'w-lo', verdict: 'WATCH', impactScore: 4 }),
+      health({ entityId: 'w', verdict: 'WATCH', impactScore: 4 }),
       health({ entityId: 'h', verdict: 'HOLD', impactScore: 9 }),
+      health({ entityId: 's', verdict: 'SCALE', impactScore: 3 }),
     ] });
-    expect(feed.map((d) => d.entityId)).toEqual(['w-hi', 'k']);
-  });
-
-  it('orders by impact, most urgent first', () => {
-    const feed = decisionFeed({ healthCampaigns: [
-      health({ entityId: 'a', impactScore: 5 }),
-      health({ entityId: 'b', impactScore: 9 }),
-      health({ entityId: 'c', impactScore: 7 }),
-    ] });
-    expect(feed.map((d) => d.entityId)).toEqual(['b', 'c', 'a']);
+    expect(feed.map((d) => d.entityId).sort()).toEqual(['h', 'k', 's', 'w']);
   });
 
   // A campaign with no connector row still deserves its verdict shown; the
@@ -66,6 +58,97 @@ describe('decisionFeed', () => {
 
   it('no health data is an empty feed, not a throw', () => {
     expect(decisionFeed({})).toEqual([]);
+  });
+});
+
+describe('partitionDecisions', () => {
+  const d = (over = {}) => ({ entityId: 'c1', verdict: 'KILL', impactScore: 5, spendMinor: 1000, currency: 'USD', ...over });
+
+  it('sorts each band by impact, most urgent first', () => {
+    const { actNow } = partitionDecisions([
+      d({ entityId: 'a', impactScore: 5 }),
+      d({ entityId: 'b', impactScore: 9 }),
+      d({ entityId: 'c', impactScore: 7 }),
+    ]);
+    expect(actNow.map((x) => x.entityId)).toEqual(['b', 'c', 'a']);
+  });
+
+  // Without this, equal-impact rows keep whatever order the health route
+  // happened to return — so "highest impact first" would re-order between
+  // renders on the same data.
+  it('breaks an impact tie by spend, descending and deterministically', () => {
+    const rows = [
+      d({ entityId: 'small', impactScore: 8, spendMinor: 10_000 }),
+      d({ entityId: 'big',   impactScore: 8, spendMinor: 90_000 }),
+      d({ entityId: 'mid',   impactScore: 8, spendMinor: 50_000 }),
+    ];
+    const order = () => partitionDecisions(rows).actNow.map((x) => x.entityId);
+    expect(order()).toEqual(['big', 'mid', 'small']);
+    expect(order()).toEqual(['big', 'mid', 'small']); // stable across calls
+  });
+
+  it('a row missing both impact and spend sorts last, never throws', () => {
+    const { actNow } = partitionDecisions([
+      d({ entityId: 'blank', impactScore: null, spendMinor: null }),
+      d({ entityId: 'real', impactScore: 6 }),
+    ]);
+    expect(actNow.map((x) => x.entityId)).toEqual(['real', 'blank']);
+  });
+
+  it('caps a band at SECTION_CAP but reports the TRUE total', () => {
+    const rows = Array.from({ length: 14 }, (_, i) => d({ entityId: `c${i}`, impactScore: 10 - i }));
+    const { actNow, actNowTotal } = partitionDecisions(rows);
+    expect(actNow).toHaveLength(SECTION_CAP);
+    expect(SECTION_CAP).toBe(3);
+    expect(actNowTotal).toBe(14); // the "view all N" number, not the card count
+  });
+
+  it('routes each verdict to its band, exhaustively over the enum', () => {
+    const { actNow, watchNow, healthyCount } = partitionDecisions([
+      d({ entityId: 'kill', verdict: 'KILL' }),
+      d({ entityId: 'realloc', verdict: 'REALLOCATE' }),
+      d({ entityId: 'watch', verdict: 'WATCH' }),
+      d({ entityId: 'refresh', verdict: 'REFRESH' }),
+      d({ entityId: 'hold', verdict: 'HOLD' }),
+      d({ entityId: 'scale', verdict: 'SCALE' }),
+    ]);
+    expect(actNow.map((x) => x.entityId).sort()).toEqual(['kill', 'realloc']);
+    expect(watchNow.map((x) => x.entityId).sort()).toEqual(['refresh', 'watch']);
+    expect(healthyCount).toBe(2);
+  });
+
+  // "Unscored" is not "healthy" — a campaign the engine returned no verdict for
+  // must not be counted as performing well.
+  it('a campaign with no verdict lands in no band at all', () => {
+    const b = partitionDecisions([d({ verdict: null }), d({ entityId: 'x', verdict: undefined })]);
+    expect(b).toMatchObject({ actNowTotal: 0, watchTotal: 0, healthyCount: 0, healthySpend: null });
+  });
+
+  it('sums protected spend across the healthy band, skipping unreported rows', () => {
+    const { healthySpend, healthyCurrency } = partitionDecisions([
+      d({ entityId: 'a', verdict: 'HOLD', spendMinor: 120_000, currency: 'EGP' }),
+      d({ entityId: 'b', verdict: 'SCALE', spendMinor: 80_000, currency: 'EGP' }),
+      d({ entityId: 'c', verdict: 'HOLD', spendMinor: null, currency: 'EGP' }),
+      d({ entityId: 'k', verdict: 'KILL', spendMinor: 999_999 }), // other band — excluded
+    ]);
+    expect(healthySpend).toBe(200_000);
+    expect(healthyCurrency).toBe('EGP');
+  });
+
+  // Nothing measured is not zero protected.
+  it('protected spend is null when no healthy campaign reported one', () => {
+    const { healthyCount, healthySpend } = partitionDecisions([
+      d({ verdict: 'HOLD', spendMinor: null }),
+      d({ entityId: 'b', verdict: 'SCALE', spendMinor: null }),
+    ]);
+    expect(healthyCount).toBe(2);
+    expect(healthySpend).toBeNull();
+  });
+
+  it('an empty feed is three empty bands, not a throw', () => {
+    expect(partitionDecisions()).toMatchObject({
+      actNow: [], actNowTotal: 0, watchNow: [], watchTotal: 0, healthyCount: 0, healthySpend: null,
+    });
   });
 });
 

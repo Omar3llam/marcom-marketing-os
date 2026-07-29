@@ -138,25 +138,55 @@ describe('OverviewView — the decision feed replaces the panel row', () => {
     expect(screen.getByTestId('agentic-shell')).toBeInTheDocument();
   });
 
-  it('renders a decision card per actionable campaign, most urgent first', () => {
+  // The three bands, from one mixed set of verdicts: KILL/REALLOCATE demand a
+  // call, WATCH/REFRESH are monitored quietly, HOLD/SCALE are just counted.
+  const mixedHealth = () => useAccountHealth.mockReturnValue({ health: { campaigns: [
+    { entityId: 'c1', name: 'Eid Sale', verdict: 'KILL', impactScore: 6 },
+    { entityId: 'c2', name: 'Retarget', verdict: 'WATCH', impactScore: 9 },
+    { entityId: 'c3', name: 'Steady', verdict: 'HOLD', impactScore: 9 },
+  ] }, loading: false, error: null, refetch: vi.fn() });
+
+  it('puts each verdict in its own band', () => {
     withConnector();
-    useAccountHealth.mockReturnValue({ health: { campaigns: [
-      { entityId: 'c1', name: 'Eid Sale', verdict: 'KILL', impactScore: 6 },
-      { entityId: 'c2', name: 'Retarget', verdict: 'WATCH', impactScore: 9 },
-      { entityId: 'c3', name: 'Steady', verdict: 'HOLD', impactScore: 9 },
-    ] }, loading: false, error: null, refetch: vi.fn() });
+    mixedHealth();
     renderView();
 
-    expect(screen.getByText('2 decisions')).toBeInTheDocument();
-    expect(screen.getByText('Retarget')).toBeInTheDocument();
-    expect(screen.getByText('Eid Sale')).toBeInTheDocument();
-    expect(screen.queryByText('Steady')).not.toBeInTheDocument();
+    expect(screen.getByText('1 decision')).toBeInTheDocument();
+    expect(screen.getByText('Eid Sale')).toBeInTheDocument();          // act now — open
+    expect(screen.getByText('1 campaign')).toBeInTheDocument();        // keep watching — counted
+    expect(screen.queryByText('Retarget')).not.toBeInTheDocument();    // …but collapsed
+    expect(screen.getByText('1 campaign performing well')).toBeInTheDocument();
+    expect(screen.queryByText('Steady')).not.toBeInTheDocument();      // healthy = a count, no card
+  });
+
+  it('claims an order only where cards are ordered', () => {
+    withConnector();
+    mixedHealth();
+    renderView();
+    expect(screen.getByText('Highest impact first')).toBeInTheDocument();
+  });
+
+  it('drops the ordering claim when nothing needs a call', () => {
+    withConnector();
+    renderView();
+    expect(screen.queryByText('Highest impact first')).not.toBeInTheDocument();
+  });
+
+  it('renders the bands in descending urgency', () => {
+    withConnector();
+    mixedHealth();
+    const { container } = renderView();
+    const order = ['Act now', 'Keep watching', 'Doing well']
+      .map((t) => container.textContent.indexOf(t));
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(order.every((i) => i > -1)).toBe(true);
   });
 
   it('says the feed is clear rather than hiding it', () => {
     withConnector();
     renderView();
-    expect(screen.getByText('No critical campaigns right now.')).toBeInTheDocument();
+    expect(screen.getByText('No scored campaigns right now.')).toBeInTheDocument();
+    expect(screen.queryByText('Act now')).not.toBeInTheDocument();
   });
 
   // These two are NOT decisions — the campaign is not performing badly, its
@@ -171,7 +201,9 @@ describe('OverviewView — the decision feed replaces the panel row', () => {
 
     expect(screen.getByText('Revenue data needed')).toBeInTheDocument();
     expect(screen.getByText('Revenue data outdated')).toBeInTheDocument();
-    expect(screen.getByText('No critical campaigns right now.')).toBeInTheDocument();
+    // Both are HOLD, so they are scored and doing well — not "no scored campaigns".
+    expect(screen.getByText('2 campaigns performing well')).toBeInTheDocument();
+    expect(screen.queryByText('No scored campaigns right now.')).not.toBeInTheDocument();
   });
 
   it('renders neither notice when every campaign has fresh revenue', () => {
