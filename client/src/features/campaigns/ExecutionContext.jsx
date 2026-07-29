@@ -26,12 +26,19 @@ import {
   buildHypothesis,
 } from './executionContext.js';
 import { formatCurrency } from '@/lib/money';
+import { useDecisionLearning } from '@/hooks/useDecisionLearning.js';
+import { LearningInsight } from './LearningInsight.jsx';
 
 const Label = ({ children }) => (
   <p className="mb-1 font-mono text-[10px] uppercase tracking-widest text-lumi-muted">{children}</p>
 );
 
 export function ExecutionContext({ campaign, adSets, verdict }) {
+  // Above the early returns — hooks cannot sit after a conditional return. The
+  // hook no-ops on a null entityId, so a row that renders nothing fetches
+  // nothing either.
+  const learning = useDecisionLearning(campaign?.entityId ?? null);
+
   if (!campaign || !ACTIONABLE_VERDICTS.includes(verdict)) return null;
 
   const worst = findWorstAdSet(adSets, campaign.ctr);
@@ -128,6 +135,10 @@ export function ExecutionContext({ campaign, adSets, verdict }) {
         <p className="mt-1.5 text-[11px] leading-relaxed text-lumi-muted">
           If no test or learning phase explains the gap, consider pausing it.
         </p>
+
+        {/* The workspace's own track record for decisions like this one. Absent
+            entirely below a defensible sample — silence, never "0 of 2". */}
+        <LearningInsight learning={learning} />
       </div>
     </div>
   );

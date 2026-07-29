@@ -25,6 +25,7 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
+import { getSimilarOutcomes } from '../../services/analysis/decisionLearning.js';
 
 export const decisionsRouter = Router();
 
@@ -84,3 +85,36 @@ decisionsRouter.patch(`${BASE}/explain`, requireCollabRole(...OPERATORS), (req, 
 // separates a verdict someone acted on from one that merely sat in a list.
 decisionsRouter.patch(`${BASE}/intent`, requireCollabRole(...OPERATORS), (req, res) =>
   stampOnce(req, res, 'intentAt'));
+
+// The track record behind this entity's live verdict: how comparable decisions
+// turned out after someone acted on them.
+//
+// `learning: null` is the NORMAL response and never an error — no live verdict,
+// too small a sample, or nothing that improved all return it, and the UI renders
+// nothing. A 404 here would make "we have no track record yet" look like a
+// failure, and a young workspace has no track record for almost everything.
+decisionsRouter.get(`${BASE}/learning`, requireCollabRole(...OPERATORS), async (req, res) => {
+  const { entityId } = req.params;
+  if (!req.workspaceId) return res.json({ learning: null });
+
+  try {
+    // The similarity key comes from the decision being ASKED about, not from
+    // the caller — a client that could name its own key could ask for the
+    // flattering comparison rather than the true one.
+    const decision = await prisma.decision.findFirst({
+      where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED' },
+      orderBy: { createdAt: 'desc' },
+      select:  { verdict: true, rootCause: true, entityLevel: true, objective: true, channel: true },
+    });
+    if (!decision) return res.json({ learning: null });
+
+    const learning = await getSimilarOutcomes({ workspaceId: req.workspaceId, ...decision });
+    return res.json({ learning });
+  } catch (err) {
+    logger.error({ err: err.message, entityId }, '[lumi/decisions] learning read failed');
+    // Still `learning: null`, still 200: this is decoration on a decision the
+    // user is already looking at. Failing the panel over a missing track record
+    // would cost more than the line is worth.
+    return res.json({ learning: null });
+  }
+});

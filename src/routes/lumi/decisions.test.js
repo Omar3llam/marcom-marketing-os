@@ -14,6 +14,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../../lib/prisma.js', () => ({
   prisma: { decision: { findFirst: vi.fn(), update: vi.fn() } },
 }));
+const { getSimilarOutcomes } = vi.hoisted(() => ({ getSimilarOutcomes: vi.fn() }));
+vi.mock('../../services/analysis/decisionLearning.js', () => ({ getSimilarOutcomes }));
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -132,6 +134,67 @@ describe('the two signals are independent', () => {
     prisma.decision.findFirst.mockResolvedValue({ id: D_ID, intentAt: null });
     const res = await patch('intent');
     expect(res.body.recorded).toBe(true);
+  });
+});
+
+// The track record behind a live verdict. `learning: null` is the NORMAL
+// answer — a young workspace has no track record for almost anything — so it
+// must never read as a failure.
+describe('GET …/learning', () => {
+  const TALLY = { total: 12, improved: 9, unchanged: 2, worsened: 1, unscored: 0, confidence: 0.75 };
+  const LIVE = { verdict: 'KILL', rootCause: 'LOW_CTR', entityLevel: 'CAMPAIGN', objective: 'OUTCOME_SALES', channel: 'META' };
+  const get = (opts) => request(makeApp(opts)).get(`/api/lumi/decisions/by-entity/${ENTITY}/learning`);
+
+  beforeEach(() => {
+    prisma.decision.findFirst.mockResolvedValue(LIVE);
+    getSimilarOutcomes.mockResolvedValue(TALLY);
+  });
+
+  it('returns the tally for the live verdict', async () => {
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect(res.body.learning).toMatchObject({ total: 12, improved: 9 });
+  });
+
+  // The client must not be able to name its own similarity key — it could then
+  // ask for the flattering comparison instead of the true one.
+  it('derives the similarity key from the stored decision, not the request', async () => {
+    await get();
+    expect(getSimilarOutcomes).toHaveBeenCalledWith({ workspaceId: WS, ...LIVE });
+  });
+
+  it.each([
+    ['no live decision', () => prisma.decision.findFirst.mockResolvedValue(null)],
+    ['too small a sample', () => getSimilarOutcomes.mockResolvedValue(null)],
+  ])('%s → 200 with learning: null, never an error', async (_label, arrange) => {
+    arrange();
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ learning: null });
+  });
+
+  // This is decoration on a decision the user is already reading. Failing the
+  // panel over a missing track record would cost more than the line is worth.
+  it('a failed read degrades to learning: null, still 200', async () => {
+    prisma.decision.findFirst.mockRejectedValue(new Error('db down'));
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ learning: null });
+  });
+
+  it('no workspace → learning: null, without querying', async () => {
+    const res = await get({ workspaceId: null });
+    expect(res.body).toEqual({ learning: null });
+    expect(prisma.decision.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('403s a CLIENT', async () => {
+    const res = await get({ collabRole: 'CLIENT' });
+    expect(res.status).toBe(403);
+  });
+
+  it.each([['BUYER'], ['STRATEGIST']])('allows %s', async (role) => {
+    expect((await get({ collabRole: role })).status).toBe(200);
   });
 });
 

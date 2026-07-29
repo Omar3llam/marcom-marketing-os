@@ -133,6 +133,11 @@ export function buildConnectorVerdictTree(workspaceId, campaigns = []) {
         // conversion campaign with no measured revenue (a tracking gap).
         objective:       c.objective ?? null,
         revenueExpected: revenueExpectedFor(c.objective),
+        // The channel was on the connector row all along and got dropped here.
+        // persistNode stamps it onto the Decision so the learning query can ask
+        // "how did KILLs go on META" — without it, `node.channel` is undefined
+        // and every stored channel would be null.
+        channel:         c.channel ?? null,
         metrics: toLeafMetrics(c),
       });
     } else {
