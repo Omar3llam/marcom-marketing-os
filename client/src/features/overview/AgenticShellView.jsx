@@ -7,10 +7,15 @@
 // ring re-proposes, never executes).
 //
 // Role-aware (mirrors the backend's own scoping in AgentHomeService):
-//   BUYER      → loop ring (compact) + buyer band ("Today's decisions")
-//   STRATEGIST → loop ring (full)    + buyer band + strategist band ("Portfolio health")
+//   BUYER      → loop ring (compact)
+//   STRATEGIST → loop ring (full) + strategist band ("Portfolio health")
 //   CLIENT     → strategist band only — no loop ring (a CLIENT seat is read-only,
-//                so the sweep is irrelevant), no buyer band (the API returns null)
+//                so the sweep is irrelevant)
+//
+// The buyer band ("Today's decisions") is deliberately NOT rendered: Home's own
+// three verdict bands now own that job, ranked and capped. The band component
+// and its BUYER copy stay — the backend still returns the band, and nothing else
+// about the contract changed.
 //
 // Honest states: loading skeleton, user-facing error, and per-band empty states
 // (an empty band is shown, never hidden). A stale picture still renders with a
@@ -66,8 +71,11 @@ export default function AgenticShellView() {
         />
       )}
 
-      {!isClient && home.buyerBand && <AgendaBand band="BUYER" data={home.buyerBand} />}
-
+      {/* The buyer band ("Today's decisions") is NOT rendered here. Home's own
+          Act now / Keep watching / Doing well bands cover the same verdicts,
+          curated: top-3 by impact with a spend tie-break and the evidence to act
+          on. The agenda band listed all 48 unranked, so the page asked for a
+          decision twice and the uncapped copy buried the ranked one. */}
       {showStrategistBand && <AgendaBand band="STRATEGIST" data={home.strategistBand} />}
     </div>
   );
