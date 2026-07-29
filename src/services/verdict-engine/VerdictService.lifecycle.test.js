@@ -31,7 +31,7 @@ const ID = 'c1c1c1c1-0000-4000-8000-000000000001';
 // (the awareness track), which the engine scores HOLD.
 const DERIVED_VERDICT = 'HOLD';
 
-const tree = (metrics = {}) => ({
+const tree = (metrics = {}, node = {}) => ({
   id: null, level: null, name: 'acct',
   children: [{
     id: ID, level: 'CAMPAIGN', name: 'Eid', children: [],
@@ -39,6 +39,7 @@ const tree = (metrics = {}) => ({
       spendMinor: 100_000, impressions: 10_000, clicks: 164,
       conversions: 0, revenueMinor: 0, frequency: 2.1, ...metrics,
     },
+    ...node,
   }],
 });
 
@@ -87,6 +88,28 @@ describe('stamping the metrics at decision time', () => {
   it('no delivery stamps the engine derived 0, which later resolves UNKNOWN', async () => {
     await persistLevelVerdicts(WS, tree({ impressions: 0, clicks: 0 }));
     expect(created().ctrAtDecision).toBe(0);
+  });
+});
+
+// verdict + rootCause + entityLevel were already stored; these two complete it.
+// Both ride on the node from buildConnectorVerdictTree.
+describe('stamping the similarity key', () => {
+  it('records objective and channel from the node', async () => {
+    await persistLevelVerdicts(WS, tree({}, { objective: 'OUTCOME_SALES', channel: 'META' }));
+    expect(created()).toMatchObject({ objective: 'OUTCOME_SALES', channel: 'META' });
+  });
+
+  // A non-connector caller supplies neither. Null is the honest record of "we
+  // were never told" — and the learning query widens rather than matching null.
+  it('a node carrying neither stores null, not a guess', async () => {
+    await persistLevelVerdicts(WS, tree());
+    expect(created()).toMatchObject({ objective: null, channel: null });
+  });
+
+  it('keeps the rest of the key that was already stored', async () => {
+    await persistLevelVerdicts(WS, tree({}, { channel: 'META' }));
+    expect(created()).toMatchObject({ verdict: DERIVED_VERDICT, entityLevel: 'CAMPAIGN' });
+    expect(created()).toHaveProperty('rootCause');
   });
 });
 

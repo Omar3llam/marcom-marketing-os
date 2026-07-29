@@ -21,6 +21,8 @@ import { HELP } from '@/lib/helpContent.js';
 import { useCampaignReasoning } from '@/hooks/useCampaignReasoning.js';
 import { copyToClipboard } from '@/lib/clipboard.js';
 import { recordIntent } from './decisionSignals.js';
+import { useDecisionLearning } from '@/hooks/useDecisionLearning.js';
+import { LearningInsight } from './LearningInsight.jsx';
 import {
   NO_REVENUE_DISCLAIMER, confidenceLabel, evidenceClause, nextActionFor, ignoreCostFor,
   buildRecommendationText, platformUrl,
@@ -121,6 +123,7 @@ function Signal({ label, help, children }) {
 export function CampaignDetailPanel({ campaign, verdict = null, impact = null, rationale = null, confidence = null }) {
   const { load, reasoning, stale, generatedAt, isLoading, error } = useCampaignReasoning();
   const entityId = campaign.entityId;
+  const learning = useDecisionLearning(entityId);
 
   // Load the pre-generated read on expand. load() serves the session cache
   // instantly (no request) when the campaign was already opened this session.
@@ -174,6 +177,9 @@ export function CampaignDetailPanel({ campaign, verdict = null, impact = null, r
             channel={campaign.channel}
             externalId={campaign.externalId}
           />
+          {/* How decisions like this one have gone in this workspace. Silent
+              below a defensible sample. */}
+          <LearningInsight learning={learning} />
         </div>
       )}
       {/* ── Signals ─────────────────────────────────────────── */}

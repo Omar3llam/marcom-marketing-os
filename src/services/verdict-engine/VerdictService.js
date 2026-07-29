@@ -90,6 +90,11 @@ async function persistNode(workspaceId, node, created) {
           status:      'PROPOSED',
           ctrAtDecision:  now.ctr,
           roasAtDecision: now.roas,
+          // The similarity key. Both ride on the node from
+          // buildConnectorVerdictTree; a non-connector caller supplies neither,
+          // and null is the honest record of "we were never told".
+          objective:   node.objective ?? null,
+          channel:     node.channel ?? null,
         },
       });
       created.push({ entityId: node.id, level: node.level, verdict: node.verdict });

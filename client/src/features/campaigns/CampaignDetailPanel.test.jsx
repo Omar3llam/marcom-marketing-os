@@ -68,18 +68,22 @@ describe("CampaignDetailPanel — Lumi's Read (pre-generated)", () => {
     await waitFor(() => expect(screen.getByText(/couldn.t load reasoning/i)).toBeInTheDocument());
   });
 
+  // Counts the REASONING requests specifically. The panel also fetches its
+  // learning track record on mount, and that one is deliberately not cached —
+  // a total-call count would conflate the two.
   it('serves a cached read on re-expand — no second request', async () => {
     get.mockResolvedValue({ data: { reasoning: READING, stale: false, generatedAt: new Date().toISOString() } });
     const c = campaign({ entityId: 'cache1' });
+    const reasoningCalls = () => get.mock.calls.filter(([url]) => !String(url).includes('/learning')).length;
 
     const { unmount } = render(<CampaignDetailPanel campaign={c} verdict="HOLD" impact={4} />);
     await waitFor(() => expect(screen.getByText(READING)).toBeInTheDocument());
-    expect(get).toHaveBeenCalledTimes(1);
+    expect(reasoningCalls()).toBe(1);
     unmount();
 
     render(<CampaignDetailPanel campaign={c} verdict="HOLD" impact={4} />);
     await waitFor(() => expect(screen.getByText(READING)).toBeInTheDocument());
-    expect(get).toHaveBeenCalledTimes(1); // served from the session cache
+    expect(reasoningCalls()).toBe(1); // served from the session cache
   });
 });
 

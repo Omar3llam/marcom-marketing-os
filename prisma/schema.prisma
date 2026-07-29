@@ -1267,6 +1267,16 @@ model Decision {
   ctrAtDecision  Float?
   roasAtDecision Float? // null when revenue was never measured (never a fabricated 0)
 
+  // ── Similarity key ─────────────────────────────────────────
+  // What makes two decisions comparable, alongside verdict + rootCause +
+  // entityLevel (already above). Both are String?, not enums: a Decision is a
+  // historical record, and pinning it to a live enum would let a future enum
+  // change rewrite what a past decision claims about itself. Null on every row
+  // written before these existed — never backfilled from the entity's CURRENT
+  // channel, which would assert something about the past nobody recorded.
+  objective String?
+  channel   String? // the Channel enum's own string, so a join to Campaign lines up
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1281,6 +1291,9 @@ model Decision {
   // express the WHERE clause, so it is declared here as a plain composite and
   // created partially in SQL; `migrate diff` treats them as equivalent.
   @@index([verdict, resolution])
+  // Partial in SQL (resolution + intentAt both non-null) — see the migration.
+  // Prisma cannot express the WHERE, so it is declared plain here.
+  @@index([workspaceId, verdict, rootCause, channel])
   @@map("decisions")
 }
 
