@@ -31,6 +31,16 @@ export const fetchUsers = (params = {}) =>
 export const seedDemo        = ()   => api.post('/api/admin/demo/seed').then((r) => r.data);
 export const deleteDemo      = (id) => api.delete(`/api/admin/demo/${id}`).then((r) => r.data);
 
+// Destroy a REAL workspace and everything that cascades from it. Irreversible.
+//
+// `confirmName` must equal the workspace name exactly — the server re-checks it
+// and 400s on a mismatch, so this is not client-side theatre. `force` overrides
+// the other-admins guard. Both travel in the BODY (axios needs `data` for a
+// DELETE payload): a destructive override does not belong in a URL that gets
+// logged, copied and retried.
+export const deleteWorkspace = (id, confirmName, force = false) =>
+  api.delete(`/api/admin/workspaces/${id}`, { data: { confirmName, force } }).then((r) => r.data);
+
 // Set a workspace's feature-gating entitlement (FREE | GROWTH | PRO). The manual
 // upgrade path — there is no billing.
 export const updateWorkspacePlan = (id, plan) =>

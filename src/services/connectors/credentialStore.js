@@ -185,3 +185,34 @@ export async function upsertWorkspaceCredential(workspaceId, channel, { userId, 
   `;
   logger.info({ workspaceId, channel }, '[credentialStore] upserted workspace credential');
 }
+
+/**
+ * Purge every credential belonging to a workspace. Used by the admin workspace
+ * delete, which is the ONLY caller — nothing else destroys a whole account.
+ *
+ * This exists because marcom_credentials is a RAW-SQL table deliberately kept
+ * out of the Prisma schema, so it has NO foreign key to workspaces and does NOT
+ * cascade. Deleting the workspace row alone would leave its encrypted OAuth
+ * access + refresh tokens sitting in this table forever, unreachable by the UI
+ * and belonging to an account that no longer exists. A destroyed account must
+ * not leave live platform credentials behind.
+ *
+ * Matches on BOTH keys. Phase-12c stamped one row with two identities
+ * (project_id from the v1 OAuth path, workspace_id from the workspace-aware
+ * one), and a pre-bridge row can still carry a NULL workspace_id while its
+ * project_id holds the id — matching only one column would miss those.
+ *
+ * @returns {Promise<number>} rows deleted (0 when the workspace never connected)
+ */
+export async function deleteWorkspaceCredentials(workspaceId) {
+  if (!workspaceId) return 0;
+  const sql = getDb();
+  const rows = await sql`
+    DELETE FROM marcom_credentials
+    WHERE workspace_id = ${workspaceId} OR project_id = ${workspaceId}
+    RETURNING id
+  `;
+  const count = rows.length;
+  if (count) logger.info({ workspaceId, count }, '[credentialStore] purged workspace credentials');
+  return count;
+}
