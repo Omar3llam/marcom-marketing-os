@@ -18,6 +18,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, Loader2, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
+import { formatCurrency } from '@/lib/money';
 import { appRoutes } from '@/app/routeManifest.js';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { useEntityDrillDown } from '@/hooks/useEntityDrillDown.js';
@@ -50,11 +51,12 @@ export default function DecisionCard({
 
   return (
     <div className="rounded-xl border border-lumi-border bg-lumi-surface p-4">
-      <div className="mb-2 flex items-start justify-between gap-3">
+      {/* Verdict + impact */}
+      <div className="mb-3 flex items-start justify-between gap-3">
         <VerdictPill verdict={verdict} size="md" />
         {impactScore != null && (
           <span
-            className="flex-shrink-0 font-mono text-[10px] text-lumi-muted"
+            className="section-label flex-shrink-0 text-lumi-muted"
             title={`Impact ${impactScore}/10 — priority to act`}
           >
             Impact {impactScore}/10
@@ -62,15 +64,29 @@ export default function DecisionCard({
         )}
       </div>
 
-      <p className="font-display text-sm font-semibold text-lumi-text">{name || 'Unnamed campaign'}</p>
+      {/* Campaign + what it has cost. The spend was already being passed in for
+          ExecutionContext but never shown, so the card asked for a decision
+          without saying how much was riding on it. spendMinor is MINOR units —
+          formatCurrency (money.ts) is the matching formatter; the hero's
+          formatCurrencyWhole takes MAJOR and would be 100x wrong here. */}
+      <div className="mb-2">
+        <p className="font-display text-sm font-semibold text-lumi-text">{name || 'Unnamed campaign'}</p>
+        {spendMinor != null && (
+          <p className="section-label mt-0.5 text-lumi-muted">
+            {formatCurrency(spendMinor, currency || 'USD')} spent
+          </p>
+        )}
+      </div>
 
-      {rationale && <p className="mt-0.5 text-xs leading-relaxed text-lumi-muted">{rationale}</p>}
+      {/* Why */}
+      {rationale && <p className="mb-3 text-xs leading-relaxed text-lumi-muted">{rationale}</p>}
 
+      {/* What to do about it */}
       {humanAction && (
-        <p className="mt-3 text-xs text-lumi-muted">
-          <span className="font-medium text-lumi-text">Next step: </span>
-          {humanAction}
-        </p>
+        <div className="mb-3">
+          <p className="section-label mb-0.5 text-lumi-muted">Do this</p>
+          <p className="text-xs text-lumi-text">{humanAction}</p>
+        </div>
       )}
 
       {canDrill && (
@@ -109,7 +125,7 @@ export default function DecisionCard({
 
       <Link
         to={`${appRoutes.campaigns}?entity=${encodeURIComponent(entityId)}`}
-        className="mt-3 inline-block font-mono text-[11px] text-lumi-muted underline transition-colors hover:text-lumi-text"
+        className="section-label mt-3 inline-block text-lumi-muted underline transition-colors hover:text-lumi-text"
       >
         View in Decision Queue →
       </Link>

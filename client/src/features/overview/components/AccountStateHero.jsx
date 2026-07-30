@@ -40,16 +40,30 @@ export default function AccountStateHero({
   const [headline, ...rest] = narrative;
 
   return (
-    <header className="mb-6">
-      <p className={`mb-1 font-mono text-[10px] font-bold uppercase tracking-[0.12em] ${config.color}`}>
-        {config.label}
-      </p>
+    <header className={`mb-6 rounded-2xl border p-6 ${config.heroBg}`}>
+      <p className={`section-label mb-2 ${config.color}`}>{config.label}</p>
 
-      {headline && <h1 className="page-title mb-1 text-dark-base">{headline}</h1>}
+      {/* The COUNT is the headline; the money is supporting. A figure reads as
+          the point of the page when it is the biggest thing on it, and the
+          decision — not the number — is what the user has to act on. */}
+      {headline && <h1 className="page-title mb-2 text-dark-base">{headline}</h1>}
 
       {rest.map((line) => (
-        <p key={line} className="text-sm text-lumi-muted">{line}</p>
+        <p key={line} className="mb-4 text-sm text-lumi-muted">{line}</p>
       ))}
+
+      {/* One primary action, only where there is something to act on. The
+          target is ActNowSection's own anchor, which mounts whenever this
+          state does (ACTION_REQUIRED ⇒ actNowTotal > 0 ⇒ the band renders), so
+          this can never be a dead link. */}
+      {state === ACCOUNT_STATE.ACTION_REQUIRED && (
+        <a
+          href="#act-now"
+          className="inline-flex items-center gap-2 rounded-xl border border-lumi-border px-4 py-2 text-sm font-semibold text-lumi-text transition-colors hover:bg-lumi-elevated focus:outline-none focus:ring-2 focus:ring-lumi-accent focus:ring-offset-2 focus:ring-offset-lumi-bg"
+        >
+          Review decisions →
+        </a>
+      )}
 
       {/* Provenance. The currency is the one the FIGURES above are in — sourced
           from the connector, the same value the KPI cards use, so the hero and
@@ -57,7 +71,7 @@ export default function AccountStateHero({
           entirely when there is neither a workspace nor a currency, rather than
           rendering an empty line. */}
       {(workspace?.name || currency) && (
-        <p className="mt-2 font-mono text-[10px] text-lumi-muted">
+        <p className="section-label mt-4 text-lumi-muted">
           {workspace?.name}
           {workspace?.name && currency ? ' · ' : ''}
           {currency}

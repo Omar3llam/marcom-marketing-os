@@ -51,7 +51,7 @@ describe('DecisionCard — the decision itself', () => {
 
   it('renders the next step when one exists', () => {
     setup();
-    expect(screen.getByText('Next step:')).toBeInTheDocument();
+    expect(screen.getByText('Do this')).toBeInTheDocument(); // was "Next step:" pre-#302
     expect(screen.getByText(/Pause and reallocate budget/)).toBeInTheDocument();
   });
 
@@ -165,5 +165,57 @@ describe('DecisionCard — the execution drill-down', () => {
     setup({ ctr: null });
     fireEvent.click(screen.getByRole('button', { name: /Show execution context/ }));
     expect(screen.queryByText('Where to execute')).not.toBeInTheDocument();
+  });
+});
+
+// ── PR#302: money on the card face ──────────────────────────
+// spendMinor was already being passed in for ExecutionContext but never shown,
+// so the card asked for a decision without saying how much was riding on it.
+describe('spend', () => {
+  it('renders the spend on the card face', () => {
+    setup({ spendMinor: 500_000, currency: 'USD' });
+    expect(screen.getByText('$5,000.00 spent')).toBeInTheDocument();
+  });
+
+  // spendMinor is MINOR units; money.ts formatCurrency is the matching
+  // formatter. formatCurrencyWhole (the hero's) takes MAJOR and would be 100x.
+  it('treats spendMinor as MINOR units', () => {
+    setup({ spendMinor: 100, currency: 'USD' });
+    expect(screen.getByText('$1.00 spent')).toBeInTheDocument();
+  });
+
+  it('omits the line when spend was never reported — never a fabricated zero', () => {
+    setup({ spendMinor: null });
+    expect(screen.queryByText(/spent/)).not.toBeInTheDocument();
+  });
+
+  it('a measured zero IS shown — zero spend is a fact', () => {
+    setup({ spendMinor: 0, currency: 'USD' });
+    expect(screen.getByText('$0.00 spent')).toBeInTheDocument();
+  });
+
+  it('falls back to USD rather than printing a bare number', () => {
+    setup({ spendMinor: 1_000, currency: null });
+    expect(screen.getByText('$10.00 spent')).toBeInTheDocument();
+  });
+});
+
+describe('vertical order: verdict then name+spend then why then action then link', () => {
+  it('reads top to bottom in decision order', () => {
+    const { container } = setup({ spendMinor: 500_000, currency: 'USD' });
+    const all = [...container.querySelectorAll('*')];
+    // Anchored on the elements testing-library itself resolves, so a wrapper
+    // with children (the VerdictPill) cannot shadow its own label.
+    const at = (el) => all.indexOf(el);
+    const order = [
+      at(screen.getByText('KILL')),
+      at(screen.getByText('Ramadan Cold')),
+      at(screen.getByText('$5,000.00 spent')),
+      at(screen.getByText(/^Lowest CTR/)),
+      at(screen.getByText('Do this')),
+      at(screen.getByRole('link', { name: /View in Decision Queue/ })),
+    ];
+    expect(order.every((i) => i > -1)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 });

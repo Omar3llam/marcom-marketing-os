@@ -17,7 +17,10 @@ import DecisionCard from './DecisionCard.jsx';
 
 export default function ActNowSection({ items = [], total = 0 }) {
   return (
-    <section className="mb-6">
+    // id is the target of the hero's "Review decisions →" CTA. That link only
+    // renders in ACTION_REQUIRED, which implies actNowTotal > 0, which is
+    // exactly when this section mounts — so the anchor is never dangling.
+    <section id="act-now" className="mb-6 scroll-mt-6">
       <div className="flex items-center gap-2">
         <h2 className="section-label text-signal-kill">Act now</h2>
         <span className="font-mono text-[11px] text-lumi-subtle">

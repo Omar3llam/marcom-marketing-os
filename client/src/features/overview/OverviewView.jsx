@@ -50,6 +50,7 @@ import ActNowSection from './components/ActNowSection.jsx';
 import PerformingWellSection from './components/PerformingWellSection.jsx';
 import AccountStateHero from './components/AccountStateHero.jsx';
 import CalibrationSection from './components/CalibrationSection.jsx';
+import LoopStatusCompact from './components/LoopStatusCompact.jsx';
 import { getAccountState, ACCOUNT_STATE } from './overviewState.js';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { nextActionFor } from '@/features/campaigns/verdictEvidence.js';
@@ -298,6 +299,14 @@ export default function OverviewView() {
 
   return (
     <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
+      {/* Two columns from lg up: decisions on the left, status on the right.
+          Below lg it collapses to one column and the rail STACKS UNDER the main
+          content — deliberately not `hidden lg:block`. Channel health and
+          calibration are the two things that explain why the decisions look the
+          way they do; hiding them on a laptop-narrow window would drop content,
+          not just re-lay it out. */}
+      <div className="lg:grid lg:grid-cols-[1fr_280px] lg:items-start lg:gap-6">
+      <div className="min-w-0">
       {/* 1. The hero — the page's only h1, and the one-line answer to "what does
              this account need right now?". Renders nothing while loading. */}
       <AccountStateHero
@@ -416,16 +425,6 @@ export default function OverviewView() {
         </>
       )}
 
-      {/* 5. Decision Calibration — the Proof Engine's gated one-liner. BELOW the
-             decisions on purpose: it describes how well-calibrated past calls
-             were, which is context for the decisions above, not a headline. */}
-      <CalibrationSection surface={proofSurface} />
-
-      {/* 6. Channel health — honest "is data flowing?" signal from the real
-             connections contract. Shown regardless of campaign data, since a
-             disconnected channel is often *why* there's no data. */}
-      <ConnectionHealthStrip />
-
       {/* ── Below the fold: the supporting detail, unchanged ── */}
 
       {/* The two revenue-data stories. Kept OUT of the feed above: a campaign here
@@ -520,6 +519,20 @@ export default function OverviewView() {
           <CopilotPanel isOpen={copilotOpen} onClose={() => setCopilotOpen(false)} />
         </div>
       )}
+      </div>
+
+      {/* ── RIGHT RAIL — status, not metrics ──────────────────
+          Three short read-only strips that answer "why does the page say what
+          it says": is data flowing, how well-calibrated are past calls, and is
+          the loop still sweeping. Sticky from lg up so they stay visible while
+          the decisions scroll. Nothing here mutates — the sweep trigger stays
+          with the full ring below the fold, so there is only ever one. */}
+      <aside className="mt-6 space-y-4 lg:mt-0 lg:sticky lg:top-6">
+        <ConnectionHealthStrip compact />
+        <CalibrationSection surface={proofSurface} compact />
+        {hasAnyData && <LoopStatusCompact loop={home?.loop} />}
+      </aside>
+      </div>
     </div>
   );
 }
