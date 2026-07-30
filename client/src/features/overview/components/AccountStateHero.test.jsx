@@ -58,14 +58,66 @@ describe('honest absence', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('no workspace name → the subtitle is omitted, never rendered blank', () => {
-    setup({ state: ACCOUNT_STATE.PERFORMING_WELL, workspace: null });
+  it('no workspace and no currency → the provenance line is omitted, never blank', () => {
+    const { container } = render(
+      <AccountStateHero state={ACCOUNT_STATE.PERFORMING_WELL} workspace={null} currency={null} />,
+    );
     expect(screen.getByRole('heading', { level: 1 })).toBeInTheDocument();
-    expect(screen.queryByText('Acme Co')).not.toBeInTheDocument();
+    expect([...container.querySelectorAll('p')].some((p) => p.textContent.trim() === '')).toBe(false);
   });
 
   it('renders the workspace name when there is one', () => {
     setup({ state: ACCOUNT_STATE.PERFORMING_WELL, workspace: { name: 'Acme Co' } });
     expect(screen.getByText('Acme Co')).toBeInTheDocument();
+  });
+
+  it('renders the currency alongside the workspace, so the unit has a source', () => {
+    setup({ state: ACCOUNT_STATE.PERFORMING_WELL, workspace: { name: 'Acme Co' }, currency: 'EGP' });
+    expect(screen.getByText('Acme Co · EGP')).toBeInTheDocument();
+  });
+
+  it('a currency with no workspace renders without a stray separator', () => {
+    setup({ state: ACCOUNT_STATE.PERFORMING_WELL, workspace: null, currency: 'EGP' });
+    expect(screen.getByText('EGP')).toBeInTheDocument();
+    expect(screen.queryByText(/·/)).not.toBeInTheDocument();
+  });
+});
+
+// ── PR#300: the money line ──────────────────────────────────
+describe('money at risk', () => {
+  const actionable = (over = {}) => setup({
+    state: ACCOUNT_STATE.ACTION_REQUIRED, actNowTotal: 3, currency: 'USD', ...over,
+  });
+
+  it('renders below the headline when there is a real figure', () => {
+    actionable({ wastedAmount: 84310 });
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('3 decisions need your attention.');
+    expect(screen.getByText('$84,310 at risk.')).toBeInTheDocument();
+  });
+
+  it('is absent when wasted spend was never measured — never "$null"', () => {
+    const { container } = render(
+      <AccountStateHero state={ACCOUNT_STATE.ACTION_REQUIRED} actNowTotal={3} wastedAmount={null} currency="USD" />,
+    );
+    expect(screen.queryByText(/at risk/)).not.toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/null|undefined|NaN|—/);
+    // the headline still stands on its own
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('3 decisions need your attention.');
+  });
+
+  it('uses the currency it is handed, not a hardcoded one', () => {
+    actionable({ wastedAmount: 84310, currency: 'EGP' });
+    expect(screen.queryByText(/\$84,310/)).not.toBeInTheDocument();
+  });
+
+  it('the healthy count is threaded through to the narrative', () => {
+    setup({ state: ACCOUNT_STATE.PERFORMING_WELL, healthyCount: 21 });
+    expect(screen.getByText('21 campaigns performing well.')).toBeInTheDocument();
+  });
+
+  it('hasAnyData picks the right LEARNING advice', () => {
+    setup({ state: ACCOUNT_STATE.LEARNING, hasAnyData: true });
+    expect(screen.getByText('No campaigns have enough data to score yet.')).toBeInTheDocument();
+    expect(screen.queryByText(/Connect a channel/)).not.toBeInTheDocument();
   });
 });

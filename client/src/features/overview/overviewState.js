@@ -16,6 +16,8 @@
 // would be true about the majority and wrong about the money.
 // ============================================================
 
+import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
+
 export const ACCOUNT_STATE = Object.freeze({
   ACTION_REQUIRED: 'ACTION_REQUIRED',
   WATCH_CLOSELY:   'WATCH_CLOSELY',
@@ -61,6 +63,90 @@ export function getAccountState({
   // missing the signals a verdict needs. "Learning" is the honest word: it is
   // NOT a healthy account, and it is NOT an empty one.
   return ACCOUNT_STATE.LEARNING;
+}
+
+// ── Narrative ────────────────────────────────────────────────
+// PURE. Returns an ARRAY of lines: [0] is the headline, the rest are subordinate.
+// A line that cannot be backed by data is OMITTED, never rendered as a blank or
+// a zero — so the caller must tolerate a 1-line array.
+//
+// What this deliberately never emits: a rate ("/wk", "/mo"), a saving ("saved",
+// "recovered"), a delta, or a percentage. Wasted spend is a per-sync AGGREGATE
+// over an unknown window ([[snapshot_spend_no_window]]), so dividing it into a
+// weekly rate or calling it "saved" would invent a measurement nobody took.
+// "at risk" is the strongest honest claim: the money is exposed, not recovered.
+
+const isRealAmount = (n) => typeof n === 'number' && Number.isFinite(n) && n > 0;
+
+/**
+ * @param {object}  input
+ * @param {string}  input.state          an ACCOUNT_STATE value
+ * @param {number}  input.wastedAmount   MAJOR units (fromMinor applied upstream)
+ *                                       — null when unmeasured
+ * @param {string}  input.currency       kpis.currency (connector-derived), so the
+ *                                       hero agrees with the KPI card below it
+ * @param {boolean} input.hasAnyData     distinguishes "never synced" from
+ *                                       "synced but nothing scorable"
+ * @returns {string[]} 0-2 lines, headline first
+ */
+export function buildHeroNarrative({
+  state,
+  actNowTotal = 0,
+  watchTotal = 0,
+  healthyCount = 0,
+  wastedAmount = null,
+  currency = null,
+  workspaceName = null,
+  hasAnyData = false,
+} = {}) {
+  switch (state) {
+    case ACCOUNT_STATE.ACTION_REQUIRED: {
+      const decision = actNowTotal === 1
+        ? '1 decision needs your attention.'
+        : `${actNowTotal} decisions need your attention.`;
+
+      // The money half arrives from a DIFFERENT hook than the counts
+      // (useAccountHealth vs the band inputs), so it can be absent while the
+      // headline is confident. It degrades on its own rather than blocking or
+      // printing a placeholder.
+      const money = isRealAmount(wastedAmount)
+        ? `${formatCurrencyWhole(wastedAmount, currency || 'USD')} at risk.`
+        : null;
+
+      return [decision, money].filter(Boolean);
+    }
+
+    case ACCOUNT_STATE.WATCH_CLOSELY:
+      return [
+        watchTotal === 1
+          ? '1 campaign needs monitoring.'
+          : `${watchTotal} campaigns need monitoring.`,
+        'No urgent actions today.',
+      ];
+
+    case ACCOUNT_STATE.PERFORMING_WELL:
+      return [
+        'Everything is running smoothly today.',
+        healthyCount > 0
+          ? `${healthyCount} campaign${healthyCount === 1 ? '' : 's'} performing well.`
+          : null,
+      ].filter(Boolean);
+
+    case ACCOUNT_STATE.LEARNING:
+      return [
+        `Building confidence in ${workspaceName || 'this workspace'}.`,
+        // LEARNING covers TWO different situations and they need opposite advice.
+        // Telling someone who has already synced Meta to "connect a channel"
+        // sends them to re-do a step they finished; their real blocker is that
+        // nothing has enough signal to score yet.
+        hasAnyData
+          ? 'No campaigns have enough data to score yet.'
+          : 'Connect a channel to get your first verdict.',
+      ];
+
+    default:
+      return [];
+  }
 }
 
 // Presentation only — the label and its signal colour. Kept beside the state so
