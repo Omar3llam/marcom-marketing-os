@@ -304,7 +304,14 @@ export default function OverviewView() {
         state={accountState}
         actNowTotal={bands.actNowTotal}
         watchTotal={bands.watchTotal}
+        healthyCount={bands.healthyCount}
+        /* MAJOR units already — overviewKpis applied fromMinor at :167 */
+        wastedAmount={kpis.wasted}
+        /* connector-derived, so the hero and the Wasted-spend card share a unit */
+        currency={kpis.currency}
         workspace={workspace}
+        /* LEARNING must tell "never synced" from "synced, nothing scorable" */
+        hasAnyData={hasAnyData}
       />
 
       {/* The no-data story, folded INTO the hero's LEARNING state. Both branches

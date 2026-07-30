@@ -133,7 +133,8 @@ describe('OverviewView — the decision feed replaces the panel row', () => {
     renderView();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('1 decision needs your attention.');
     expect(screen.getByText('Needs your call')).toBeInTheDocument();
-    expect(screen.getByText('Acme')).toBeInTheDocument(); // workspace, demoted
+    // workspace demoted to the provenance line, now carrying the figures' currency
+    expect(screen.getByText('Acme · USD')).toBeInTheDocument();
     expect(screen.queryByText("Today's Decisions")).not.toBeInTheDocument();
   });
 
