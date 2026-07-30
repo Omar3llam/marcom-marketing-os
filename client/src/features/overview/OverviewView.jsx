@@ -1,10 +1,23 @@
 // ============================================================
 // MARCOM — Home Page (Account Pulse)
 // ============================================================
-// The operational home: account-health stats + the Phase-9 agentic shell (the
-// real two-band agenda from getHome, role-scoped). The old ad-hoc Alerts /
-// AI-Insight / Quick-Actions panels — which derived "alerts" from the campaign
-// feed — are gone; the agenda IS the prioritized, evidence-backed action list.
+// The operational home, ordered by what the user has to DO:
+//
+//   1. AccountStateHero      — the one-line answer ("what needs my call?")
+//   2. Act now               — KILL / REALLOCATE, ranked, capped
+//   3. Keep watching         — WATCH / REFRESH, collapsed
+//   4. Doing well            — HOLD / SCALE, a count and the spend it protects
+//   5. Decision Calibration  — how well-calibrated past calls were (gated)
+//   6. Channels              — is data still flowing?
+//   ── below the fold: revenue notices, KPI strip, agentic shell, briefing,
+//      copilot. Unchanged, just no longer between the question and its answer.
+//
+// The re-order is the whole point: the decisions used to sit behind seven other
+// blocks, so the page asked "what needs a call?" at the top and answered it
+// off-screen. Nothing was deleted — the supporting detail moved down.
+//
+// The hero is a PURE function of counts already computed here (overviewState.js),
+// never a second fetch, so the headline cannot disagree with the sections below.
 // ============================================================
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -14,7 +27,6 @@ import {
 } from 'lucide-react';
 import { appRoutes } from '@/app/routeManifest.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
-import { useAuth } from '@/context/AuthContext.jsx';
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
@@ -22,10 +34,9 @@ import { useConnections } from '@/hooks/useConnections.js';
 import { useAccountHealth } from '@/hooks/useAccountHealth.js';
 import { useHome } from '@/hooks/useHome.js';
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
-import { formatCurrency, fromMinor } from '@/lib/money';
+import { fromMinor } from '@/lib/money';
 import StatCard from '@/components/ui/StatCard.jsx';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
-import { ProofSummary } from '@/features/intelligence/proof/ProofView.jsx';
 import AgenticShellView from './AgenticShellView.jsx';
 import FirstRunBanner from './components/FirstRunBanner.jsx';
 import RevenueOnboardingBanner from './components/RevenueOnboardingBanner.jsx';
@@ -33,9 +44,13 @@ import ConnectionHealthStrip from './components/ConnectionHealthStrip.jsx';
 import PacingWidget from './components/PacingWidget.jsx';
 import CopilotPanel from './components/CopilotPanel.jsx';
 import AIInsightCard from './components/AIInsightCard.jsx';
-import DecisionCard from './components/DecisionCard.jsx';
 import RevenueNotice from './components/RevenueNotice.jsx';
 import WatchSection from './components/WatchSection.jsx';
+import ActNowSection from './components/ActNowSection.jsx';
+import PerformingWellSection from './components/PerformingWellSection.jsx';
+import AccountStateHero from './components/AccountStateHero.jsx';
+import CalibrationSection from './components/CalibrationSection.jsx';
+import { getAccountState, ACCOUNT_STATE } from './overviewState.js';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { nextActionFor } from '@/features/campaigns/verdictEvidence.js';
 
@@ -156,7 +171,6 @@ export function overviewKpis({ connectorCampaigns = [], summary = null, health =
 }
 
 export default function OverviewView() {
-  const { currentUser } = useAuth();
   const { workspace } = useWorkspace();
   const { campaigns, summary, loading: intelligenceLoading } = useIntelligence();
   const { campaigns: connectorCampaigns, loading: connectorLoading } = useConnectorCampaigns();
@@ -166,11 +180,6 @@ export default function OverviewView() {
   const { verdicts } = useConnectorVerdicts(); // the engine's own rationale per campaign
   const { surface: proofSurface } = useAccuracy(); // gated proof one-liner (best-effort)
   const { role: collabRole } = useCollabRole();
-
-  // Greeting based on time of day
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
-  const userName = currentUser?.displayName?.split(' ')[0] || 'there';
 
   // Currency detection from workspace (defaults to USD)
   const currency = workspace?.currency || 'USD';
@@ -234,6 +243,17 @@ export default function OverviewView() {
   const showCopilot = collabRole !== WORKSPACE_ROLE.CLIENT; // CLIENT home stays read-only & minimal
   const [copilotOpen, setCopilotOpen] = useState(false);
 
+  // The one question the hero answers, derived from the bands already computed
+  // above — never from a second fetch, so the headline cannot disagree with the
+  // sections under it. null while loading (no flashed claim).
+  const accountState = getAccountState({
+    actNowTotal:  bands.actNowTotal,
+    watchTotal:   bands.watchTotal,
+    healthyCount: bands.healthyCount,
+    hasAnyData,
+    loading,
+  });
+
   // First-run activation nudge. Onboarding sets sessionStorage 'marcom:firstActivation'
   // on completion — a flag that was written but never read until now. Surface a
   // one-time "connect a channel" hero while the account still has no data, then
@@ -278,54 +298,52 @@ export default function OverviewView() {
 
   return (
     <div className="max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-      {/* Header */}
-      <header className="mb-6">
-        <div className="font-mono text-[11px] tracking-[0.08em] uppercase text-dark-muted mb-2 flex items-center gap-2">
-          <Activity className="w-3.5 h-3.5 text-lumi-accent" strokeWidth={1.5} />
-          Account Pulse · {workspace?.name || 'Workspace'}
-        </div>
-        <h1 className="font-display font-bold text-4xl tracking-tight text-dark-base">
-          Today&apos;s Decisions
-        </h1>
-        <p className="mt-1 text-sm text-dark-soft">
-          {greeting}, {userName}. Here&apos;s what needs a call.
-        </p>
-      </header>
+      {/* 1. The hero — the page's only h1, and the one-line answer to "what does
+             this account need right now?". Renders nothing while loading. */}
+      <AccountStateHero
+        state={accountState}
+        actNowTotal={bands.actNowTotal}
+        watchTotal={bands.watchTotal}
+        workspace={workspace}
+      />
 
-      {/* Proof of learning — the gated one-liner (RELIABLE only, else "still learning"). */}
-      {proofSurface && (
-        <div className="mb-6 rounded-xl border border-lumi-border bg-lumi-elevated px-4 py-3">
-          <ProofSummary surface={proofSurface} />
-        </div>
+      {/* The no-data story, folded INTO the hero's LEARNING state. Both branches
+          below are already `!hasAnyData` conditions, so the gate is a tautology
+          for them — it groups them with the hero rather than changing when they
+          appear. (The revenue banner is deliberately NOT here: it fires AFTER a
+          sync, when the account is no longer LEARNING. See below.) */}
+      {accountState === ACCOUNT_STATE.LEARNING && (
+        <>
+          {/* First-run guided step — the one-time "connect a channel" hero for a
+              brand-new account (wires the onboarding firstActivation flag). Shown
+              INSTEAD of the generic empty state below, so there's a single, stepped
+              call-to-action rather than two competing "connect" heroes. */}
+          {showFirstRun && (
+            <FirstRunBanner
+              step={1}
+              title="Connect a channel to get started"
+              description="Lumi needs your live campaign data to generate verdicts and decisions. Connect Meta or Google and your account starts populating within minutes."
+              primaryAction={{ label: 'Connect a channel', href: appRoutes.settingsIntegrations }}
+              onCtaClick={retireFirstRun}
+              onDismiss={retireFirstRun}
+            />
+          )}
+        </>
       )}
 
-      {/* Channel health — honest "is data flowing?" signal from the real
-          connections contract. Shown regardless of campaign data, since a
-          disconnected channel is often *why* there's no data. */}
-      <ConnectionHealthStrip />
-
       {/* Post-first-sync revenue capture — once per session, STRATEGIST-only,
-          auto-retired when revenue lands. Sits below channel health (the "is
-          data flowing?" signal) so the ask reads as the natural next step. */}
+          auto-retired when revenue lands.
+
+          NOT gated on the LEARNING state: showRevenueOnboarding REQUIRES
+          hasConnectorData, and an account with connector campaigns that scored
+          is ACTION_REQUIRED / WATCH_CLOSELY / PERFORMING_WELL — never LEARNING.
+          Gating it would hide this banner in exactly the case it was built for
+          (synced, scored, no revenue yet). It keeps its own condition and simply
+          sits in the hero region. */}
       {showRevenueOnboarding && (
         <RevenueOnboardingBanner
           campaignCount={connectorCampaigns.length}
           onDismiss={dismissRevenue}
-        />
-      )}
-
-      {/* First-run guided step — the one-time "connect a channel" hero for a
-          brand-new account (wires the onboarding firstActivation flag). Shown
-          INSTEAD of the generic empty state below, so there's a single, stepped
-          call-to-action rather than two competing "connect" heroes. */}
-      {showFirstRun && (
-        <FirstRunBanner
-          step={1}
-          title="Connect a channel to get started"
-          description="Lumi needs your live campaign data to generate verdicts and decisions. Connect Meta or Google and your account starts populating within minutes."
-          primaryAction={{ label: 'Connect a channel', href: appRoutes.settingsIntegrations }}
-          onCtaClick={retireFirstRun}
-          onDismiss={retireFirstRun}
         />
       )}
 
@@ -352,6 +370,64 @@ export default function OverviewView() {
             Connect a channel
             <ArrowRight className="w-3.5 h-3.5" strokeWidth={1.5} />
           </Link>
+        </div>
+      )}
+
+      {/* 2–4. The decision feed, in three descending bands of urgency. Each band
+             quotes its TRUE total and shows at most SECTION_CAP cards — the home
+             triages, the Campaigns page lists. These now sit DIRECTLY under the
+             hero: the KPI strip and the agentic shell used to push them below
+             seven other blocks, so the page asked a question at the top and
+             answered it off-screen. */}
+      {hasAnyData && (
+        <>
+          {/* ── 2. ACT NOW ── */}
+          {bands.actNow.length > 0 && (
+            <ActNowSection items={bands.actNow} total={bands.actNowTotal} />
+          )}
+
+          {/* ── 3. KEEP WATCHING (collapsed) ── */}
+          {bands.watchNow.length > 0 && (
+            <WatchSection items={bands.watchNow} total={bands.watchTotal} />
+          )}
+
+          {/* ── 4. DOING WELL ── */}
+          {bands.healthyCount > 0 && (
+            <PerformingWellSection
+              count={bands.healthyCount}
+              spend={bands.healthySpend}
+              currency={bands.healthyCurrency || currency}
+            />
+          )}
+
+          {/* All three bands empty — say so rather than rendering a silent gap. */}
+          {bands.actNow.length === 0 && bands.watchNow.length === 0 && bands.healthyCount === 0 && (
+            <p className="mb-6 rounded-xl border border-lumi-border bg-lumi-surface px-4 py-3 text-xs text-lumi-muted">
+              No scored campaigns right now.
+            </p>
+          )}
+        </>
+      )}
+
+      {/* 5. Decision Calibration — the Proof Engine's gated one-liner. BELOW the
+             decisions on purpose: it describes how well-calibrated past calls
+             were, which is context for the decisions above, not a headline. */}
+      <CalibrationSection surface={proofSurface} />
+
+      {/* 6. Channel health — honest "is data flowing?" signal from the real
+             connections contract. Shown regardless of campaign data, since a
+             disconnected channel is often *why* there's no data. */}
+      <ConnectionHealthStrip />
+
+      {/* ── Below the fold: the supporting detail, unchanged ── */}
+
+      {/* The two revenue-data stories. Kept OUT of the feed above: a campaign here
+          is not performing badly, its revenue is unmeasurable — and "never
+          uploaded" must never be conflated with "uploaded but now stale". */}
+      {hasAnyData && (needsRevenue.length > 0 || staleRevenue.length > 0) && (
+        <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <RevenueNotice type="needs" campaigns={needsRevenue} />
+          <RevenueNotice type="stale" campaigns={staleRevenue} />
         </div>
       )}
 
@@ -403,78 +479,6 @@ export default function OverviewView() {
           verdicts, empty legacy feed) still sees its agenda. Owns its own
           loading/empty states, so it's safe to mount whenever data exists. */}
       {hasAnyData && <AgenticShellView />}
-
-      {/* The decision feed, in three descending bands of urgency: act now, keep
-          watching, doing well. Each band quotes its TRUE total and shows at most
-          SECTION_CAP cards — the home triages, the Campaigns page lists. */}
-      {hasAnyData && (
-        <>
-          {/* ── ACT NOW ── */}
-          {bands.actNow.length > 0 && (
-            <section className="mb-6">
-              <div className="flex items-center gap-2">
-                <h2 className="section-label text-signal-kill">Act now</h2>
-                <span className="font-mono text-[11px] text-lumi-subtle">
-                  {bands.actNowTotal} decision{bands.actNowTotal === 1 ? '' : 's'}
-                </span>
-              </div>
-              {/* The ordering claim, made only where there is an order to claim. */}
-              <p className="mb-3 mt-1 font-mono text-[10px] text-lumi-subtle">Highest impact first</p>
-
-              <div className="space-y-3">
-                {bands.actNow.map((d) => <DecisionCard key={d.entityId} {...d} />)}
-              </div>
-
-              {bands.actNowTotal > bands.actNow.length && (
-                <Link
-                  to={appRoutes.campaigns}
-                  className="mt-3 inline-block font-mono text-[11px] text-lumi-muted underline transition-colors hover:text-lumi-text"
-                >
-                  View all {bands.actNowTotal} decisions →
-                </Link>
-              )}
-            </section>
-          )}
-
-          {/* ── KEEP WATCHING ── */}
-          {bands.watchNow.length > 0 && (
-            <WatchSection items={bands.watchNow} total={bands.watchTotal} />
-          )}
-
-          {/* ── DOING WELL ── a count and the spend it protects, no cards: there
-              is nothing to decide, and the point is that these need no attention. */}
-          {bands.healthyCount > 0 && (
-            <section className="mb-6 border-t border-lumi-border pt-4">
-              <p className="font-display text-sm font-semibold text-signal-scale">Doing well</p>
-              <p className="mt-1 text-xs text-lumi-muted">
-                {bands.healthyCount} campaign{bands.healthyCount === 1 ? '' : 's'} performing well
-              </p>
-              {bands.healthySpend != null && (
-                <p className="text-xs text-lumi-muted">
-                  Protected spend: {formatCurrency(bands.healthySpend, bands.healthyCurrency || currency)}
-                </p>
-              )}
-            </section>
-          )}
-
-          {/* All three bands empty — say so rather than rendering a silent gap. */}
-          {bands.actNow.length === 0 && bands.watchNow.length === 0 && bands.healthyCount === 0 && (
-            <p className="mb-6 rounded-xl border border-lumi-border bg-lumi-surface px-4 py-3 text-xs text-lumi-muted">
-              No scored campaigns right now.
-            </p>
-          )}
-        </>
-      )}
-
-      {/* The two revenue-data stories. Kept OUT of the feed above: a campaign here
-          is not performing badly, its revenue is unmeasurable — and "never
-          uploaded" must never be conflated with "uploaded but now stale". */}
-      {hasAnyData && (needsRevenue.length > 0 || staleRevenue.length > 0) && (
-        <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <RevenueNotice type="needs" campaigns={needsRevenue} />
-          <RevenueNotice type="stale" campaigns={staleRevenue} />
-        </div>
-      )}
 
       {/* Lumi's briefing over the account. */}
       {hasAnyData && (

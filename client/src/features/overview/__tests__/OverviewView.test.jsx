@@ -21,7 +21,7 @@ vi.mock('@/hooks/useWorkspace.js', () => ({ useWorkspace: () => ({ workspace: { 
 vi.mock('@/context/IntelligenceContext.jsx', () => ({ useIntelligence: vi.fn() }));
 vi.mock('@/hooks/useConnectorCampaigns.js', () => ({ useConnectorCampaigns: vi.fn() }));
 vi.mock('@/hooks/useConnections.js', () => ({ useConnections: vi.fn() }));
-vi.mock('@/hooks/useAccuracy.js', () => ({ useAccuracy: () => ({ surface: null }) }));
+vi.mock('@/hooks/useAccuracy.js', () => ({ useAccuracy: vi.fn() }));
 vi.mock('@/hooks/useAccountHealth.js', () => ({ useAccountHealth: vi.fn() }));
 vi.mock('@/hooks/useConnectorVerdicts.js', () => ({ useConnectorVerdicts: vi.fn() }));
 vi.mock('@/hooks/useCollabRole.js', async (importOriginal) => {
@@ -36,8 +36,9 @@ vi.mock('../components/RevenueOnboardingBanner.jsx', () => ({ default: () => <di
 vi.mock('../components/ConnectionHealthStrip.jsx', () => ({ default: () => null }));
 vi.mock('../components/PacingWidget.jsx', () => ({ default: () => <div data-testid="pacing" /> }));
 vi.mock('../components/CopilotPanel.jsx', () => ({ default: () => null }));
-vi.mock('@/features/intelligence/proof/ProofView.jsx', () => ({ ProofSummary: () => null }));
 vi.mock('@/components/ui/StatCard.jsx', () => ({ default: ({ label }) => <div data-testid="stat-card">{label}</div> }));
+// AccountStateHero + CalibrationSection are NOT mocked: the information
+// architecture is what these tests are about, so both render for real.
 
 import OverviewView from '../OverviewView.jsx';
 import { useIntelligence } from '@/context/IntelligenceContext.jsx';
@@ -46,6 +47,7 @@ import { useConnections } from '@/hooks/useConnections.js';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useAccountHealth } from '@/hooks/useAccountHealth.js';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
+import { useAccuracy } from '@/hooks/useAccuracy.js';
 
 const CONNECTOR_ROW = { entityId: 'c1', name: 'Eid Sale', channel: 'META', spendMinor: 50000, ctr: 0.0185 };
 const LEGACY_ROW = { campaign_id: 'x', alerts: [] };
@@ -65,6 +67,9 @@ beforeEach(() => {
   // Default: nothing scored → the decision feed renders its honest empty line.
   useAccountHealth.mockReturnValue({ health: null, loading: false, error: null, refetch: vi.fn() });
   useConnectorVerdicts.mockReturnValue({ verdicts: [], gatedOut: [], loading: false, error: null, refetch: vi.fn() });
+  // Default: no proof surface → the calibration block renders nothing, so every
+  // pre-existing test is unaffected. The IA tests override this.
+  useAccuracy.mockReturnValue({ surface: null });
 });
 
 describe('OverviewView — agentic shell is decoupled from the legacy CampaignState feed', () => {
@@ -118,11 +123,49 @@ describe('OverviewView — the decision feed replaces the panel row', () => {
     campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn(),
   });
 
-  it('leads with the decisions, keeping the greeting as a subtitle', () => {
+  // REWRITTEN for PR#299. Was: the h1 read the static "Today's Decisions" and a
+  // time-of-day greeting sat under it. That header said the same thing on a
+  // bleeding account and a healthy one, so it is now the state machine's
+  // headline, with the workspace name demoted to the subtitle.
+  it('leads with the account state, not a static title', () => {
     withConnector();
+    mixedHealth();
     renderView();
-    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent("Today's Decisions");
-    expect(screen.getByText(/Omar\. Here's what needs a call\./)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('1 decision needs your attention.');
+    expect(screen.getByText('Needs your call')).toBeInTheDocument();
+    expect(screen.getByText('Acme')).toBeInTheDocument(); // workspace, demoted
+    expect(screen.queryByText("Today's Decisions")).not.toBeInTheDocument();
+  });
+
+  it('the headline quotes the TRUE total, not the number of cards on screen', () => {
+    withConnector();
+    // 5 actionable, capped at SECTION_CAP=3 → the hero must still say 5.
+    useAccountHealth.mockReturnValue({
+      health: {
+        campaigns: Array.from({ length: 5 }, (_, i) => ({
+          entityId: `k${i}`, name: `Kill ${i}`, verdict: 'KILL', impactScore: 9 - i,
+        })),
+      },
+      loading: false, error: null, refetch: vi.fn(),
+    });
+    renderView();
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('5 decisions need your attention.');
+  });
+
+  it('a healthy-only account leads with "running smoothly"', () => {
+    withConnector();
+    useAccountHealth.mockReturnValue({
+      health: { campaigns: [{ entityId: 'h1', name: 'Good', verdict: 'HOLD', impactScore: 2 }] },
+      loading: false, error: null, refetch: vi.fn(),
+    });
+    renderView();
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Everything is running smoothly today.');
+  });
+
+  it('renders no hero headline while the data is still loading', () => {
+    useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: true, error: null, refetch: vi.fn() });
+    renderView();
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
   });
 
   it('no longer renders the Quick Actions shortcuts', () => {
@@ -172,14 +215,20 @@ describe('OverviewView — the decision feed replaces the panel row', () => {
     expect(screen.queryByText('Highest impact first')).not.toBeInTheDocument();
   });
 
+  // Re-anchored for PR#299 on DOM position rather than string position. The old
+  // indexOf(container.textContent) form would silently pass for the wrong reason
+  // the moment the hero's own copy contained one of these three labels.
   it('renders the bands in descending urgency', () => {
     withConnector();
     mixedHealth();
     const { container } = renderView();
-    const order = ['Act now', 'Keep watching', 'Doing well']
-      .map((t) => container.textContent.indexOf(t));
+    const pos = (text) => {
+      const el = [...container.querySelectorAll('section, h2, p')].find((n) => n.textContent.trim().startsWith(text));
+      expect(el, `"${text}" not found`).toBeTruthy();
+      return [...container.querySelectorAll('*')].indexOf(el);
+    };
+    const order = [pos('Act now'), pos('Keep watching'), pos('Doing well')];
     expect(order).toEqual([...order].sort((a, b) => a - b));
-    expect(order.every((i) => i > -1)).toBe(true);
   });
 
   it('says the feed is clear rather than hiding it', () => {
@@ -211,6 +260,88 @@ describe('OverviewView — the decision feed replaces the panel row', () => {
     renderView();
     expect(screen.queryByText('Revenue data needed')).not.toBeInTheDocument();
     expect(screen.queryByText('Revenue data outdated')).not.toBeInTheDocument();
+  });
+});
+
+// ── PR#299: the information architecture ────────────────────────
+// The decisions used to sit behind seven other blocks, so the page asked "what
+// needs a call?" at the top and answered it off-screen. These pin the order.
+describe('OverviewView — information architecture', () => {
+  const withConnector = () => useConnectorCampaigns.mockReturnValue({
+    campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn(),
+  });
+  const mixedHealth = () => useAccountHealth.mockReturnValue({ health: { campaigns: [
+    { entityId: 'c1', name: 'Eid Sale', verdict: 'KILL', impactScore: 6 },
+    { entityId: 'c2', name: 'Retarget', verdict: 'WATCH', impactScore: 9 },
+    { entityId: 'c3', name: 'Steady', verdict: 'HOLD', impactScore: 9 },
+  ] }, loading: false, error: null, refetch: vi.fn() });
+
+  // Position of the first element whose trimmed text STARTS WITH `text`, in
+  // document order. Anchored on elements, not on a flat string, so a label
+  // appearing inside the hero cannot masquerade as the section itself.
+  const orderOf = (container, texts) => texts.map((t) => {
+    const all = [...container.querySelectorAll('*')];
+    const i = all.findIndex((n) => n.children.length === 0 && n.textContent.trim().startsWith(t));
+    expect(i, `"${t}" not found`).toBeGreaterThan(-1);
+    return i;
+  });
+  const isAscending = (xs) => xs.every((v, i) => i === 0 || v > xs[i - 1]);
+
+  it('the hero comes before every decision band', () => {
+    withConnector();
+    mixedHealth();
+    const { container } = renderView();
+    expect(isAscending(orderOf(container, ['Needs your call', 'Act now', 'Keep watching', 'Doing well']))).toBe(true);
+  });
+
+  it('calibration sits BELOW the decisions, not above them', () => {
+    withConnector();
+    mixedHealth();
+    useAccuracy.mockReturnValue({ surface: { gated: true, headline: 'x', scored: 0, needed: 30 } });
+    const { container } = renderView();
+    expect(isAscending(orderOf(container, ['Act now', 'Doing well', 'Decision Calibration']))).toBe(true);
+  });
+
+  it('the KPI strip and the agentic shell sit below the decisions', () => {
+    withConnector();
+    mixedHealth();
+    const { container } = renderView();
+    const decisions = orderOf(container, ['Act now'])[0];
+    const shell = [...container.querySelectorAll('*')].indexOf(screen.getByTestId('agentic-shell'));
+    const stat = [...container.querySelectorAll('*')].indexOf(screen.getAllByTestId('stat-card')[0]);
+    expect(shell).toBeGreaterThan(decisions);
+    expect(stat).toBeGreaterThan(decisions);
+  });
+
+  it('nothing was deleted in the re-order — every below-fold block still renders', () => {
+    withConnector();
+    mixedHealth();
+    renderView();
+    expect(screen.getByTestId('agentic-shell')).toBeInTheDocument();
+    expect(screen.getByTestId('pacing')).toBeInTheDocument();
+    expect(screen.getAllByTestId('stat-card')).toHaveLength(4);
+    expect(screen.getByText('Ask Lumi anything')).toBeInTheDocument();
+  });
+
+  it('the copilot survives an empty account (it is not gated on data)', () => {
+    renderView();
+    expect(screen.getByText('Ask Lumi anything')).toBeInTheDocument();
+  });
+
+  // Calibration and #298's workspace track record count DIFFERENT things on
+  // DIFFERENT substrates. Naming both "learning" would read as a contradiction.
+  it('the calibration block is named distinctly from the workspace track record', () => {
+    withConnector();
+    useAccuracy.mockReturnValue({ surface: { gated: true, headline: 'x', scored: 0, needed: 30 } });
+    renderView();
+    expect(screen.getByText('Decision Calibration')).toBeInTheDocument();
+    expect(screen.getByText(/Collecting verified outcomes — 0 of 30 decisions recorded\./)).toBeInTheDocument();
+  });
+
+  it('renders no calibration block at all when the surface is absent', () => {
+    withConnector();
+    renderView(); // default useAccuracy → surface: null
+    expect(screen.queryByText('Decision Calibration')).not.toBeInTheDocument();
   });
 });
 
@@ -252,6 +383,20 @@ describe('OverviewView — first-run activation banner (wires the onboarding fla
     renderView();
 
     expect(screen.queryByTestId('first-run')).not.toBeInTheDocument();
+  });
+
+  // PR#299: the no-data story now sits inside the hero's LEARNING state. The
+  // gate is a tautology for this banner (it already requires !hasAnyData), so
+  // this pins that grouping without changing when it appears.
+  it('is grouped under the LEARNING hero, never beside a scored account', () => {
+    sessionStorage.setItem('marcom:firstActivation', '1');
+    useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: false, error: null, refetch: vi.fn() });
+    const { container } = renderView();
+
+    expect(screen.getByText('Building confidence')).toBeInTheDocument();
+    const all = [...container.querySelectorAll('*')];
+    const hero = all.findIndex((n) => n.children.length === 0 && n.textContent.trim() === 'Building confidence');
+    expect(all.indexOf(screen.getByTestId('first-run'))).toBeGreaterThan(hero);
   });
 });
 
@@ -309,5 +454,25 @@ describe('OverviewView — post-first-sync revenue onboarding banner', () => {
     useConnectorCampaigns.mockReturnValue(withCampaigns([])); // no campaigns → FirstRunBanner territory
     renderView();
     expect(screen.queryByTestId('revenue-onboarding')).not.toBeInTheDocument();
+  });
+
+  // PR#299 premise correction. This banner requires hasConnectorData, and an
+  // account with scored connector campaigns is ACTION_REQUIRED / WATCH_CLOSELY /
+  // PERFORMING_WELL — never LEARNING. Gating it on the LEARNING state (as the
+  // other two onboarding blocks are) would hide it in exactly the case it was
+  // built for: synced, scored, no revenue yet.
+  it('still shows on a SCORED account — it is not gated on the LEARNING state', () => {
+    useConnections.mockReturnValue(SYNCED);
+    useConnectorCampaigns.mockReturnValue(withCampaigns([CONNECTOR_ROW]));
+    useAccountHealth.mockReturnValue({ health: { campaigns: [
+      { entityId: 'c1', name: 'Eid Sale', verdict: 'KILL', impactScore: 8 },
+    ] }, loading: false, error: null, refetch: vi.fn() });
+    renderView();
+
+    // The hero is decidedly NOT learning…
+    expect(screen.getByText('Needs your call')).toBeInTheDocument();
+    expect(screen.queryByText('Building confidence')).not.toBeInTheDocument();
+    // …and the revenue ask survives it.
+    expect(screen.getByTestId('revenue-onboarding')).toBeInTheDocument();
   });
 });
