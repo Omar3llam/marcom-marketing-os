@@ -149,11 +149,30 @@ export function buildHeroNarrative({
   }
 }
 
-// Presentation only — the label and its signal colour. Kept beside the state so
-// a new state cannot be added without deciding how it reads.
+// Presentation only — the label, its signal colour, and the hero's border tint.
+// Kept beside the state so a new state cannot be added without deciding how it
+// reads. `heroBg` keeps the SAME surface for every state and varies only the
+// border: a red-filled hero would shout on a routine day, and the eyebrow plus
+// the headline already carry the urgency.
 export const STATE_CONFIG = Object.freeze({
-  [ACCOUNT_STATE.ACTION_REQUIRED]: { label: 'Needs your call',     color: 'text-signal-kill'  },
-  [ACCOUNT_STATE.WATCH_CLOSELY]:   { label: 'Keep watching',       color: 'text-signal-watch' },
-  [ACCOUNT_STATE.PERFORMING_WELL]: { label: 'Running smoothly',    color: 'text-signal-scale' },
-  [ACCOUNT_STATE.LEARNING]:        { label: 'Building confidence', color: 'text-lumi-muted'   },
+  [ACCOUNT_STATE.ACTION_REQUIRED]: {
+    label: 'Needs your call',
+    color: 'text-signal-kill',
+    heroBg: 'bg-lumi-surface border-signal-kill/20',
+  },
+  [ACCOUNT_STATE.WATCH_CLOSELY]: {
+    label: 'Keep watching',
+    color: 'text-signal-watch',
+    heroBg: 'bg-lumi-surface border-signal-watch/20',
+  },
+  [ACCOUNT_STATE.PERFORMING_WELL]: {
+    label: 'Running smoothly',
+    color: 'text-signal-scale',
+    heroBg: 'bg-lumi-surface border-signal-scale/20',
+  },
+  [ACCOUNT_STATE.LEARNING]: {
+    label: 'Building confidence',
+    color: 'text-lumi-muted',
+    heroBg: 'bg-lumi-surface border-lumi-border',
+  },
 });

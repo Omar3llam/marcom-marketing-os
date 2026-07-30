@@ -121,3 +121,56 @@ describe('money at risk', () => {
     expect(screen.queryByText(/Connect a channel/)).not.toBeInTheDocument();
   });
 });
+
+// ── PR#302: visual weight ───────────────────────────────────
+describe('mission-control framing', () => {
+  it('tints the hero border per state, keeping one surface', () => {
+    const { container: kill } = render(<AccountStateHero state={ACCOUNT_STATE.ACTION_REQUIRED} actNowTotal={2} />);
+    const { container: well } = render(<AccountStateHero state={ACCOUNT_STATE.PERFORMING_WELL} />);
+    expect(kill.querySelector('header').className).toContain('border-signal-kill/20');
+    expect(well.querySelector('header').className).toContain('border-signal-scale/20');
+    // same surface — a red-filled hero would shout on a routine day
+    expect(kill.querySelector('header').className).toContain('bg-lumi-surface');
+    expect(well.querySelector('header').className).toContain('bg-lumi-surface');
+  });
+
+  // marcom-ds/no-generic-tailwind rejects text-xl/2xl/3xl; the role class is
+  // also what keeps the headline bigger than .metric-display.
+  it('the h1 uses the .page-title role class, not a raw size utility', () => {
+    setup({ state: ACCOUNT_STATE.PERFORMING_WELL });
+    const h1 = screen.getByRole('heading', { level: 1 });
+    expect(h1.className).toContain('page-title');
+    expect(h1.className).not.toMatch(/text-(xl|2xl|3xl)/);
+  });
+
+  it('the money is supporting copy, not the headline', () => {
+    setup({ state: ACCOUNT_STATE.ACTION_REQUIRED, actNowTotal: 3, wastedAmount: 84310, currency: 'USD' });
+    const h1 = screen.getByRole('heading', { level: 1 });
+    expect(h1).toHaveTextContent('3 decisions need your attention.');
+    expect(h1).not.toHaveTextContent('84,310');           // the figure is NOT the h1
+    expect(screen.getByText('$84,310 at risk.').tagName).toBe('P');
+  });
+});
+
+describe('the primary action', () => {
+  it('appears only for ACTION_REQUIRED', () => {
+    setup({ state: ACCOUNT_STATE.ACTION_REQUIRED, actNowTotal: 2 });
+    expect(screen.getByRole('link', { name: /Review decisions/ })).toBeInTheDocument();
+  });
+
+  it.each([
+    [ACCOUNT_STATE.WATCH_CLOSELY],
+    [ACCOUNT_STATE.PERFORMING_WELL],
+    [ACCOUNT_STATE.LEARNING],
+  ])('is absent for %s — nothing to review', (state) => {
+    setup({ state });
+    expect(screen.queryByRole('link', { name: /Review decisions/ })).not.toBeInTheDocument();
+  });
+
+  // ACTION_REQUIRED implies actNowTotal > 0, which is exactly when
+  // ActNowSection (id="act-now") mounts — so this can never dangle.
+  it('targets the Act-now anchor', () => {
+    setup({ state: ACCOUNT_STATE.ACTION_REQUIRED, actNowTotal: 2 });
+    expect(screen.getByRole('link', { name: /Review decisions/ })).toHaveAttribute('href', '#act-now');
+  });
+});

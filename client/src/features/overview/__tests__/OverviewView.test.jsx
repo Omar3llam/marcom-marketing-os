@@ -33,7 +33,11 @@ vi.mock('@/hooks/useCollabRole.js', async (importOriginal) => {
 vi.mock('../AgenticShellView.jsx', () => ({ default: () => <div data-testid="agentic-shell">shell</div> }));
 vi.mock('../components/FirstRunBanner.jsx', () => ({ default: () => <div data-testid="first-run">first-run</div> }));
 vi.mock('../components/RevenueOnboardingBanner.jsx', () => ({ default: () => <div data-testid="revenue-onboarding">revenue-onboarding</div> }));
-vi.mock('../components/ConnectionHealthStrip.jsx', () => ({ default: () => null }));
+// Renders its variant so the layout tests can tell the rail's compact strip from
+// the full-width one; the real component's states are covered in its own file.
+vi.mock('../components/ConnectionHealthStrip.jsx', () => ({
+  default: ({ compact }) => (compact ? <div>Channels</div> : null),
+}));
 vi.mock('../components/PacingWidget.jsx', () => ({ default: () => <div data-testid="pacing" /> }));
 vi.mock('../components/CopilotPanel.jsx', () => ({ default: () => null }));
 vi.mock('@/components/ui/StatCard.jsx', () => ({ default: ({ label }) => <div data-testid="stat-card">{label}</div> }));
@@ -336,7 +340,8 @@ describe('OverviewView — information architecture', () => {
     useAccuracy.mockReturnValue({ surface: { gated: true, headline: 'x', scored: 0, needed: 30 } });
     renderView();
     expect(screen.getByText('Decision Calibration')).toBeInTheDocument();
-    expect(screen.getByText(/Collecting verified outcomes — 0 of 30 decisions recorded\./)).toBeInTheDocument();
+    // The rail variant (#302) shortens the line for 280px; the claim is identical.
+    expect(screen.getByText('Collecting outcomes — 0 of 30')).toBeInTheDocument();
   });
 
   it('renders no calibration block at all when the surface is absent', () => {
@@ -475,5 +480,70 @@ describe('OverviewView — post-first-sync revenue onboarding banner', () => {
     expect(screen.queryByText('Building confidence')).not.toBeInTheDocument();
     // …and the revenue ask survives it.
     expect(screen.getByTestId('revenue-onboarding')).toBeInTheDocument();
+  });
+});
+
+// ── PR#302: mission-control layout ──────────────────────────
+// Two columns from lg up. The rail is NOT `hidden lg:block`: channel health and
+// calibration explain WHY the decisions read the way they do, so on a narrow
+// window they stack under the main column rather than disappearing.
+describe('OverviewView — two-column layout', () => {
+  const withConnector = () => useConnectorCampaigns.mockReturnValue({
+    campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn(),
+  });
+  const mixedHealth = () => useAccountHealth.mockReturnValue({ health: { campaigns: [
+    { entityId: 'c1', name: 'Eid Sale', verdict: 'KILL', impactScore: 6 },
+    { entityId: 'c2', name: 'Retarget', verdict: 'WATCH', impactScore: 9 },
+  ] }, loading: false, error: null, refetch: vi.fn() });
+
+  it('renders a single aside for the rail', () => {
+    withConnector();
+    const { container } = renderView();
+    expect(container.querySelectorAll('aside')).toHaveLength(1);
+  });
+
+  it('the grid goes two-column only at lg', () => {
+    withConnector();
+    const { container } = renderView();
+    const grid = container.querySelector(String.raw`[class*="lg:grid-cols-[1fr_280px]"]`);
+    expect(grid).toBeTruthy();
+    expect(grid.className).toContain("lg:grid");
+    // no unprefixed grid-cols → mobile stays one column
+    expect(grid.className).not.toMatch(/(^|\s)grid-cols-/);
+  });
+
+  it('the rail is never hidden — it stacks on narrow screens', () => {
+    withConnector();
+    const { container } = renderView();
+    expect(container.querySelector('aside').className).not.toContain('hidden');
+  });
+
+  it('the rail carries channels and calibration, not the decisions', () => {
+    withConnector();
+    mixedHealth();
+    useAccuracy.mockReturnValue({ surface: { gated: true, headline: 'x', scored: 0, needed: 30 } });
+    const { container } = renderView();
+    const aside = container.querySelector('aside');
+    expect(aside.textContent).toContain('Channels');
+    expect(aside.textContent).toContain('Decision Calibration');
+    expect(aside.textContent).not.toContain('Act now');
+  });
+
+  it('the hero and every band stay in the main column', () => {
+    withConnector();
+    mixedHealth();
+    const { container } = renderView();
+    const aside = container.querySelector('aside');
+    expect(aside.contains(screen.getByRole('heading', { level: 1 }))).toBe(false);
+    expect(aside.textContent).not.toContain('Eid Sale');
+  });
+
+  // The hero's "Review decisions →" needs a live target.
+  it('the Act-now section carries the anchor the hero CTA points at', () => {
+    withConnector();
+    mixedHealth();
+    const { container } = renderView();
+    expect(container.querySelector('#act-now')).toBeTruthy();
+    expect(screen.getByRole('link', { name: /Review decisions/ })).toHaveAttribute('href', '#act-now');
   });
 });

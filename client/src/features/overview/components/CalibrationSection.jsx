@@ -24,22 +24,31 @@
 // gate allows, nothing more.
 // ============================================================
 
-export default function CalibrationSection({ surface }) {
+export default function CalibrationSection({ surface, compact = false }) {
   if (!surface) return null;
+
+  // Below RELIABLE coverage: state the progress, never a calibration number.
+  // `scored`/`needed` are the backend's own counts. The rail drops the word
+  // "verified" and the trailing noun purely for width — the claim is identical.
+  const body = surface.gated
+    ? (compact
+      ? `Collecting outcomes — ${surface.scored} of ${surface.needed}`
+      : `Collecting verified outcomes — ${surface.scored} of ${surface.needed} decisions recorded.`)
+    : surface.headline;
+
+  if (compact) {
+    return (
+      <div className="space-y-1">
+        <p className="section-label text-lumi-muted">Decision Calibration</p>
+        <p className="text-xs text-lumi-muted">{body}</p>
+      </div>
+    );
+  }
 
   return (
     <section className="mb-6 border-t border-lumi-border pt-4">
       <p className="section-label mb-1">Decision Calibration</p>
-
-      {surface.gated ? (
-        // Below RELIABLE coverage: state the progress, never a calibration
-        // number. `scored`/`needed` are the backend's own counts.
-        <p className="text-xs text-lumi-muted">
-          Collecting verified outcomes — {surface.scored} of {surface.needed} decisions recorded.
-        </p>
-      ) : (
-        <p className="text-xs text-lumi-text">{surface.headline}</p>
-      )}
+      <p className={`text-xs ${surface.gated ? 'text-lumi-muted' : 'text-lumi-text'}`}>{body}</p>
     </section>
   );
 }
