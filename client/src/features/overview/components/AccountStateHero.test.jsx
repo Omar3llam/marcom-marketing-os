@@ -115,10 +115,18 @@ describe('money at risk', () => {
     expect(screen.getByText('21 campaigns performing well.')).toBeInTheDocument();
   });
 
-  it('hasAnyData picks the right LEARNING advice', () => {
-    setup({ state: ACCOUNT_STATE.LEARNING, hasAnyData: true });
-    expect(screen.getByText('No campaigns have enough data to score yet.')).toBeInTheDocument();
+  // The advice branches on hasScorableData (the CONNECTOR graph), not on
+  // hasAnyData — the scoring engine reads nothing else, so legacy-only rows are
+  // "connect a channel", not "wait for signal".
+  it('a scorable substrate picks the wait-for-signal advice', () => {
+    setup({ state: ACCOUNT_STATE.LEARNING, hasAnyData: true, hasScorableData: true });
+    expect(screen.getByText(/Verdicts appear once enough signal has accumulated/)).toBeInTheDocument();
     expect(screen.queryByText(/Connect a channel/)).not.toBeInTheDocument();
+  });
+
+  it('legacy rows with no connector channel are told to connect', () => {
+    setup({ state: ACCOUNT_STATE.LEARNING, hasAnyData: true, hasScorableData: false });
+    expect(screen.getByText('Connect a channel to get your first verdict.')).toBeInTheDocument();
   });
 });
 

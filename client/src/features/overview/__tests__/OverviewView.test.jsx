@@ -240,10 +240,13 @@ describe('OverviewView — the decision feed replaces the panel row', () => {
     expect(order).toEqual([...order].sort((a, b) => a - b));
   });
 
-  it('says the feed is clear rather than hiding it', () => {
+  // The line now names WHY it is empty. A connector-synced account that scored
+  // nothing is still accumulating signal — which is a different fact from "this
+  // seat can't see the scores" and from "no channel is connected".
+  it('says why the feed is empty rather than hiding it', () => {
     withConnector();
     renderView();
-    expect(screen.getByText('No scored campaigns right now.')).toBeInTheDocument();
+    expect(screen.getByText(/Verdicts appear once enough signal has accumulated/)).toBeInTheDocument();
     expect(screen.queryByText('Act now')).not.toBeInTheDocument();
   });
 
@@ -405,7 +408,8 @@ describe('OverviewView — health readiness gate (no claim before its substrate 
   it('does not claim the feed is clear while the bands have no substrate yet', () => {
     healthInFlight();
     renderView();
-    expect(screen.queryByText('No scored campaigns right now.')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Verdicts appear once enough signal/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No connected channel/)).not.toBeInTheDocument();
   });
 
   it('does not claim "No score yet" before the score could have arrived', () => {
@@ -439,7 +443,7 @@ describe('OverviewView — health readiness gate (no claim before its substrate 
     useAccountHealth.mockReturnValue({ health: { campaigns: [] }, loading: false, error: null, refetch: vi.fn() });
     renderView();
 
-    expect(screen.getByText('No scored campaigns right now.')).toBeInTheDocument();
+    expect(screen.getByText(/Verdicts appear once enough signal has accumulated/)).toBeInTheDocument();
     expect(screen.getAllByTestId('stat-card').some((n) => n.textContent.includes('No score yet'))).toBe(true);
     expect(screen.getByText('Building confidence')).toBeInTheDocument();
   });
@@ -452,6 +456,53 @@ describe('OverviewView — health readiness gate (no claim before its substrate 
 
     expect(screen.getByText('Building confidence')).toBeInTheDocument();
     expect(screen.getByText(/Connect a channel to get your first verdict/)).toBeInTheDocument();
+  });
+});
+
+// ── The CLIENT dead zone ─────────────────────────────────────
+// GET /entities/health is gated BUYER|STRATEGIST; GET /entities/campaigns is
+// not. So a CLIENT on a fully-synced, fully-scored account sees campaigns,
+// receives health: null, lands on zero bands — and the page told it
+// "Building confidence… No campaigns have enough data to score yet" about an
+// account that was scored. An absence caused by AUTHORIZATION, reported as one
+// caused by DATA.
+describe('OverviewView — a CLIENT is told what it actually cannot see', () => {
+  const asClient = () => {
+    useCollabRole.mockReturnValue({ role: WORKSPACE_ROLE.CLIENT });
+    useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
+    // exactly what the 403 branch of useAccountHealth produces
+    useAccountHealth.mockReturnValue({ health: null, loading: false, error: null, refetch: vi.fn() });
+  };
+
+  it('does not claim the account has nothing worth scoring', () => {
+    asClient();
+    renderView();
+    expect(screen.queryByText('Building confidence')).not.toBeInTheDocument();
+    expect(screen.queryByText(/enough data to score yet/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Verdicts appear once enough signal/)).not.toBeInTheDocument();
+  });
+
+  it('says the limit is the access level', () => {
+    asClient();
+    renderView();
+    expect(screen.getByText('Portfolio view')).toBeInTheDocument();
+    expect(screen.getByText(/verdicts aren’t shown for your access level/i)).toBeInTheDocument();
+  });
+
+  // It must not overcorrect into a reassurance it cannot back either.
+  it('does not claim everything is fine', () => {
+    asClient();
+    renderView();
+    expect(screen.queryByText(/running smoothly/i)).not.toBeInTheDocument();
+  });
+
+  // A STRATEGIST on the same empty-band data is a DIFFERENT fact: the engine
+  // really did score nothing.
+  it('a STRATEGIST on the same data still gets the signal-accumulating line', () => {
+    useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
+    renderView(); // default role is STRATEGIST
+    expect(screen.getByText(/Verdicts appear once enough signal has accumulated/)).toBeInTheDocument();
+    expect(screen.queryByText(/access level/i)).not.toBeInTheDocument();
   });
 });
 

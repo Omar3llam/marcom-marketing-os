@@ -23,6 +23,13 @@ export const ACCOUNT_STATE = Object.freeze({
   WATCH_CLOSELY:   'WATCH_CLOSELY',
   PERFORMING_WELL: 'PERFORMING_WELL',
   LEARNING:        'LEARNING',
+  // The scoring substrate exists and is scored — this SEAT just may not read it.
+  // GET /entities/health is gated to BUYER|STRATEGIST while /entities/campaigns
+  // is ungated, so a CLIENT sees campaigns, receives health: null, and lands on
+  // zero bands. Folding that into LEARNING told a CLIENT "no campaigns have
+  // enough data to score yet" about an account that was fully scored — an
+  // absence produced by AUTHORIZATION, reported as one produced by DATA.
+  SCORING_HIDDEN:  'SCORING_HIDDEN',
 });
 
 /**
@@ -51,6 +58,7 @@ export function getAccountState({
   healthyCount = 0,
   hasAnyData = false,
   loading = false,
+  scoringHidden = false,
 } = {}) {
   if (loading) return null;                        // don't flash a state
   if (!hasAnyData) return ACCOUNT_STATE.LEARNING;  // nothing to score yet
@@ -58,6 +66,12 @@ export function getAccountState({
   if (actNowTotal > 0)  return ACCOUNT_STATE.ACTION_REQUIRED;
   if (watchTotal > 0)   return ACCOUNT_STATE.WATCH_CLOSELY;
   if (healthyCount > 0) return ACCOUNT_STATE.PERFORMING_WELL;
+
+  // Zero bands, but this seat is not permitted to read the scoring substrate at
+  // all. Checked AFTER the counts deliberately: it is not a claim about the
+  // account, only about what this reader can see, so any real verdict that DID
+  // come through still outranks it.
+  if (scoringHidden) return ACCOUNT_STATE.SCORING_HIDDEN;
 
   // Data exists but the engine scored none of it — below the scoring floor, or
   // missing the signals a verdict needs. "Learning" is the honest word: it is
@@ -85,8 +99,9 @@ const isRealAmount = (n) => typeof n === 'number' && Number.isFinite(n) && n > 0
  *                                       — null when unmeasured
  * @param {string}  input.currency       kpis.currency (connector-derived), so the
  *                                       hero agrees with the KPI card below it
- * @param {boolean} input.hasAnyData     distinguishes "never synced" from
- *                                       "synced but nothing scorable"
+ * @param {boolean} input.hasAnyData     either substrate carries campaigns
+ * @param {boolean} input.hasScorableData  the CONNECTOR substrate specifically —
+ *                                       the only one the scoring engine reads
  * @returns {string[]} 0-2 lines, headline first
  */
 export function buildHeroNarrative({
@@ -98,6 +113,7 @@ export function buildHeroNarrative({
   currency = null,
   workspaceName = null,
   hasAnyData = false,
+  hasScorableData = false,
 } = {}) {
   switch (state) {
     case ACCOUNT_STATE.ACTION_REQUIRED: {
@@ -139,9 +155,25 @@ export function buildHeroNarrative({
         // Telling someone who has already synced Meta to "connect a channel"
         // sends them to re-do a step they finished; their real blocker is that
         // nothing has enough signal to score yet.
-        hasAnyData
-          ? 'No campaigns have enough data to score yet.'
+        //
+        // The branch is on hasScorableData, NOT hasAnyData — a premise fix. The
+        // scoring engine reads the CONNECTOR graph only (/entities/health runs
+        // over getConnectorCampaigns), so a workspace holding legacy
+        // CampaignState rows and no connector campaigns will never be scored no
+        // matter how long it waits. Branching on "either substrate" told that
+        // workspace to sit tight for a verdict that cannot arrive; its real
+        // blocker is the same one an empty account has.
+        hasScorableData
+          ? 'Your campaigns are syncing. Verdicts appear once enough signal has accumulated.'
           : 'Connect a channel to get your first verdict.',
+      ];
+
+    case ACCOUNT_STATE.SCORING_HIDDEN:
+      return [
+        `${workspaceName || 'This workspace'} is running.`,
+        // NOT "nothing to score" and NOT "nothing needs attention" — neither is
+        // known from here. The only true statement is about the seat.
+        'Campaign-level verdicts aren’t shown for your access level.',
       ];
 
     default:
@@ -175,4 +207,21 @@ export const STATE_CONFIG = Object.freeze({
     color: 'text-lumi-muted',
     heroBg: 'bg-lumi-surface border-lumi-border',
   },
+  [ACCOUNT_STATE.SCORING_HIDDEN]: {
+    label: 'Portfolio view',
+    color: 'text-lumi-muted',
+    heroBg: 'bg-lumi-surface border-lumi-border',
+  },
 });
+
+// ── Why the feed is empty lives in the HERO, not beside it ───
+// All three bands are empty if and only if the state is LEARNING or
+// SCORING_HIDDEN, and each of those narratives already names its own cause:
+//
+//   · this seat cannot read the scoring substrate  → SCORING_HIDDEN
+//   · no connector channel exists to score         → LEARNING, !hasScorableData
+//   · connector data exists, the engine scored none → LEARNING, hasScorableData
+//
+// The page used to print one sentence — "No scored campaigns right now." — for
+// all three, which was true of only the last. A second notice under the hero
+// would now repeat the line directly above it, so there isn't one.
