@@ -19,6 +19,17 @@ export const VERDICT = Object.freeze({
   REFRESH:    'REFRESH',
 });
 
+// Why a verdict was reached, as a stable machine-readable key. `rationale` is
+// prose for a human; this is what the learning query groups on, so it must not
+// be a sentence. Data-quality causes are first-class here: "we did not judge
+// this yet, and here is exactly what is missing" is a real answer, and the one
+// the engine used to be unable to give — it scored a 12-impression campaign with
+// the same machinery as a 12-million-impression one.
+export const ROOT_CAUSE = Object.freeze({
+  INSUFFICIENT_DATA: 'INSUFFICIENT_DATA', // below the minimum sample to read a rate
+  TOO_EARLY:         'TOO_EARLY',         // real sample, but not enough days to have settled
+});
+
 // Verdict → the recommendation types its execution path is built from.
 // KILL/HOLD/WATCH have no generative recommendations (KILL is a direct
 // Meta pause; HOLD/WATCH are monitor-only).

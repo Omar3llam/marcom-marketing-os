@@ -72,6 +72,12 @@ export function toSnapshotRows(workspaceId, channel, normalized = []) {
       roas: spendMinor > 0 && revenueMinor > 0 ? revenueMinor / spendMinor : null,
       frequency: n.frequency ?? null,
       reach: n.reach ?? null, // null-when-absent (Google / unreported), never a fabricated 0
+      // The funnel bag (lpv/atc/checkout/lead/…). null-when-absent, NEVER {}:
+      // a reader must be able to tell "this channel reports no funnel" from
+      // "every stage measured zero". Google/GA4 normalizers don't set it, so
+      // their rows stay null and the funnel rules honestly decline to fire.
+      actionMetrics: n.actionMetrics ?? null,
+      dailyBudgetMinor: n.dailyBudgetMinor ?? null,
       currency: n.currency || 'USD',
     };
   });
@@ -97,7 +103,12 @@ export function toEntityOps(workspaceId, channel, normalized = []) {
     // objective is a CAMPAIGN-only attribute (the column lives on Campaign, not
     // the other entity models) — only stamp it there, or the Account/AdSet upsert
     // would throw on an unknown arg.
-    if (n.entityLevel === ENTITY_LEVEL.CAMPAIGN) data.objective = n.objective ?? null;
+    if (n.entityLevel === ENTITY_LEVEL.CAMPAIGN) {
+      data.objective = n.objective ?? null;
+      // Same CAMPAIGN-only rule as objective: the column lives on Campaign, so
+      // stamping it on an Account/AdSet upsert would throw on an unknown arg.
+      data.platformCreatedTime = n.platformCreatedTime ?? null;
+    }
     if (spec.fk) {
       const parentLevel = PARENT_LEVEL[n.entityLevel];
       data[spec.fk] = detId(workspaceId, channel, parentLevel, n.parentExternalId);
@@ -195,6 +206,10 @@ export async function landSnapshots(workspaceId, channel, normalized = []) {
           name: op.data.name,
           ...(op.data.status != null ? { status: op.data.status } : {}),
           ...(op.data.objective != null ? { objective: op.data.objective } : {}),
+          // Same known-only rule: a short-window or insights-only sync that never
+          // saw the /campaigns edge must not blank a creation time we already
+          // resolved. It is immutable anyway — first known value wins forever.
+          ...(op.data.platformCreatedTime != null ? { platformCreatedTime: op.data.platformCreatedTime } : {}),
         },
       }),
     ),

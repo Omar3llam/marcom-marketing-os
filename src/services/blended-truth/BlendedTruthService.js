@@ -68,7 +68,13 @@ export async function getBlendedTruth(workspaceId, { lookbackDays = LOOKBACK_DAY
 
   const since = new Date(Date.now() - lookbackDays * 86_400_000);
   const [snapshots, campaigns] = await Promise.all([
-    prisma.metricSnapshot.findMany({ where: { workspaceId, date: { gte: since } } }),
+    // Explicit select, not `SELECT *` — a new MetricSnapshot column would
+    // otherwise widen this untouched query and break it during migration lag.
+    // buildChannelInputs reads exactly these five fields.
+    prisma.metricSnapshot.findMany({
+      where:  { workspaceId, date: { gte: since } },
+      select: { entityId: true, source: true, revenueMinor: true, spendMinor: true, currency: true },
+    }),
     // Snapshots are CAMPAIGN-grain: MetricSnapshot.entityId == Campaign.id (both are
     // detId(ws, channel, CAMPAIGN, externalId) — see snapshotSink). Key the label map
     // off Campaign.id so the row shows a real name, not the raw detId UUID. The

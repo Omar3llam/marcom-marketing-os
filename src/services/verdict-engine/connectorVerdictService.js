@@ -28,6 +28,7 @@
 import { getConnectorCampaigns } from '../entity-graph/index.js';
 import { rollupVerdicts }        from './verdictEngine.js';
 import { applyRelativeRanking }  from './relativeRanking.js';
+import { daysSince }             from './confidenceEngine.js';
 import { logger }                from '../../utils/logger.js';
 
 // Meta objectives that are GENUINELY awareness/reach — no purchase revenue is
@@ -115,7 +116,7 @@ function toLeafMetrics(row) {
  * no delivery). Returns { tree, gatedOut }; tree is null when nothing is eligible
  * (caller must NOT fabricate a verdict in that case).
  */
-export function buildConnectorVerdictTree(workspaceId, campaigns = []) {
+export function buildConnectorVerdictTree(workspaceId, campaigns = [], { now = Date.now() } = {}) {
   const eligible = [];
   const gatedOut = [];
   for (const c of campaigns) {
@@ -138,6 +139,15 @@ export function buildConnectorVerdictTree(workspaceId, campaigns = []) {
         // "how did KILLs go on META" — without it, `node.channel` is undefined
         // and every stored channel would be null.
         channel:         c.channel ?? null,
+        // The funnel bag the engine's stage rules diagnose over. null when the
+        // channel reported none — the rules then decline to fire rather than
+        // reading an unmeasured stage as a 100% drop-off.
+        actionMetrics:   c.actionMetrics ?? null,
+        // Platform-side age. Time is resolved HERE, at the service boundary,
+        // because the engine's determinism contract forbids it from reading the
+        // clock: a stored verdict must stay reproducible from its inputs.
+        platformCreatedTime: c.platformCreatedTime ?? null,
+        daysRunning:     daysSince(c.platformCreatedTime, now),
         metrics: toLeafMetrics(c),
       });
     } else {
@@ -194,6 +204,20 @@ export async function getConnectorVerdicts(workspaceId) {
     // it as a hint; the recommendation mapping falls back to verdict-level).
     signalType: c.signalType ?? null,
     recommendationTypes: c.recommendationTypes ?? [],
+    // ── Signal provenance ────────────────────────────────────────────────────
+    // Machine-readable WHY, alongside the prose rationale. rootCause separates a
+    // WATCH that means "the landing page is broken" from one that means "we do
+    // not have enough data yet" — same verdict, opposite implications, and the
+    // UI could not previously tell them apart.
+    rootCause: c.rootCause ?? null,
+    // The two halves of the confidence number, so a reader can tell a weak
+    // signal from thin data instead of guessing which one a single figure meant.
+    dataConfidence: c.dataConfidence ?? null,
+    // { signal, stage, evidence[], counterfactual, action } when a funnel stage
+    // was diagnosed; null when the funnel was never measured or is healthy.
+    // evidence[] carries the real value AND the benchmark it was judged against,
+    // so nothing downstream has to restate — or re-derive — the arithmetic.
+    funnel: c.funnel ?? null,
   }));
 
   logger.info(

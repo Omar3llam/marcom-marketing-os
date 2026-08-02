@@ -133,6 +133,11 @@ function metricsOf(snap) {
     revenueMinor: snap?.revenueMinor ?? null,
     impressions:  snap?.impressions ?? null,
     clicks:       snap?.clicks ?? null,
+    // The funnel bag { lpv, atc, checkout, lead, … }. null-when-absent, never
+    // {} — the funnel rules treat null as "blind" and decline to diagnose,
+    // rather than reading a missing stage as a measured zero drop-off.
+    actionMetrics: snap?.actionMetrics ?? null,
+    dailyBudgetMinor: snap?.dailyBudgetMinor ?? null,
     currency:    snap?.currency ?? null,
     lastDate:    snap?.date ?? null,
     // true only when a real actual-revenue row exists but lags the platform row
@@ -153,6 +158,10 @@ export function toCampaignRow(campaign, snap) {
     // entity). null for rows that predate the connector — the client renders no
     // platform link rather than a guessed one.
     externalId: campaign.externalId ?? null,
+    // Platform-side creation time — the basis for days-running. null for
+    // pre-connector rows and channels that don't report it, which makes the
+    // too-early gate honestly skip rather than assume a campaign is new.
+    platformCreatedTime: campaign.platformCreatedTime ?? null,
     adSetCount: campaign.adSetCount ?? 0,
     ...metricsOf(snap),
   };
