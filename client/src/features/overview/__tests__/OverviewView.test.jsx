@@ -40,7 +40,11 @@ vi.mock('../components/ConnectionHealthStrip.jsx', () => ({
 }));
 vi.mock('../components/PacingWidget.jsx', () => ({ default: () => <div data-testid="pacing" /> }));
 vi.mock('../components/CopilotPanel.jsx', () => ({ default: () => null }));
-vi.mock('@/components/ui/StatCard.jsx', () => ({ default: ({ label }) => <div data-testid="stat-card">{label}</div> }));
+// `sub` is rendered too — the health card's caption is one of the three claims
+// the readiness-gate tests below assert on.
+vi.mock('@/components/ui/StatCard.jsx', () => ({
+  default: ({ label, sub }) => <div data-testid="stat-card"><span>{label}</span><span>{sub}</span></div>,
+}));
 // AccountStateHero + CalibrationSection are NOT mocked: the information
 // architecture is what these tests are about, so both render for real.
 
@@ -348,6 +352,106 @@ describe('OverviewView — information architecture', () => {
     withConnector();
     renderView(); // default useAccuracy → surface: null
     expect(screen.queryByText('Decision Calibration')).not.toBeInTheDocument();
+  });
+});
+
+// ── PR#303 (F1): the readiness gate covers the health substrate ──────────
+// The page fetched useAccountHealth but DROPPED its `loading` flag, while
+// health.campaigns is the sole source of the three verdict bands. On a synced
+// account whose connector resolved first, the page therefore asserted three
+// absences it had not established — and retracted all three when health landed:
+//
+//   hero  "Building confidence… No campaigns have enough data to score yet."
+//         → "3 decisions need your attention."
+//   feed  "No scored campaigns right now."   → three KILL cards
+//   card  "No score yet"                     → 71/100
+//
+// These pin the whole class, not just the hero: the fix is one gate, so a fourth
+// health-derived claim cannot regress without failing here.
+describe('OverviewView — health readiness gate (no claim before its substrate lands)', () => {
+  // The exact race: connector RESOLVED with campaigns, health STILL IN FLIGHT.
+  const healthInFlight = () => {
+    useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
+    useAccountHealth.mockReturnValue({ health: null, loading: true, error: null, refetch: vi.fn() });
+  };
+  const healthLanded = () => {
+    useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
+    useAccountHealth.mockReturnValue({
+      health: {
+        score: 71,
+        wastedSpend: { minor: 420000 },
+        campaigns: [
+          { entityId: 'c1', name: 'Eid Sale', verdict: 'KILL', impactScore: 8 },
+          { entityId: 'c2', name: 'Ramadan', verdict: 'KILL', impactScore: 6 },
+          { entityId: 'c3', name: 'Retarget', verdict: 'REALLOCATE', impactScore: 4 },
+        ],
+      },
+      loading: false, error: null, refetch: vi.fn(),
+    });
+  };
+
+  it('renders NO hero state while useAccountHealth is still in flight', () => {
+    healthInFlight();
+    renderView();
+
+    // Not the false LEARNING flash…
+    expect(screen.queryByText('Building confidence')).not.toBeInTheDocument();
+    expect(screen.queryByText(/No campaigns have enough data to score yet/)).not.toBeInTheDocument();
+    // …and not a premature confident state either. Silence is the honest render.
+    expect(screen.queryByText('Needs your call')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
+  });
+
+  it('does not claim the feed is clear while the bands have no substrate yet', () => {
+    healthInFlight();
+    renderView();
+    expect(screen.queryByText('No scored campaigns right now.')).not.toBeInTheDocument();
+  });
+
+  it('does not claim "No score yet" before the score could have arrived', () => {
+    healthInFlight();
+    renderView();
+    const cards = screen.getAllByTestId('stat-card').map((n) => n.textContent);
+    expect(cards.some((t) => t.includes('No score yet'))).toBe(false);
+    expect(cards.some((t) => t.includes('Scoring'))).toBe(true);
+  });
+
+  // The sequence, end to end: nothing is asserted, then the real state appears.
+  // No claim on the first render is contradicted by the second.
+  it('states the real account condition once health lands — with nothing retracted', () => {
+    healthInFlight();
+    const { rerender } = renderView();
+    expect(screen.queryByRole('heading', { level: 1 })).not.toBeInTheDocument();
+
+    healthLanded();
+    rerender(<MemoryRouter><OverviewView /></MemoryRouter>);
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('3 decisions need your attention.');
+    expect(screen.getByText('Needs your call')).toBeInTheDocument();
+    expect(screen.queryByText('No scored campaigns right now.')).not.toBeInTheDocument();
+  });
+
+  // "No score yet" and "No scored campaigns" are still the RIGHT words once the
+  // fetch has resolved and genuinely scored nothing — the gate must not swallow
+  // a real empty answer.
+  it('still says so when health has RESOLVED and scored nothing', () => {
+    useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
+    useAccountHealth.mockReturnValue({ health: { campaigns: [] }, loading: false, error: null, refetch: vi.fn() });
+    renderView();
+
+    expect(screen.getByText('No scored campaigns right now.')).toBeInTheDocument();
+    expect(screen.getAllByTestId('stat-card').some((n) => n.textContent.includes('No score yet'))).toBe(true);
+    expect(screen.getByText('Building confidence')).toBeInTheDocument();
+  });
+
+  // The gate must not become a reason to hide an un-synced account's own answer.
+  it('an un-synced account still reaches its LEARNING hero once health resolves', () => {
+    useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: false, error: null, refetch: vi.fn() });
+    useAccountHealth.mockReturnValue({ health: null, loading: false, error: null, refetch: vi.fn() });
+    renderView();
+
+    expect(screen.getByText('Building confidence')).toBeInTheDocument();
+    expect(screen.getByText(/Connect a channel to get your first verdict/)).toBeInTheDocument();
   });
 });
 
