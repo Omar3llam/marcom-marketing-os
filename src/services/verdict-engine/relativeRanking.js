@@ -30,6 +30,7 @@
 //     real cohort average — both derived from the annotated tree.
 // ============================================================
 import { VERDICT, VERDICT_TO_REC_TYPES } from './verdictTypes.js';
+import { composeConfidence }             from './confidenceEngine.js';
 
 // Only these verdicts are open to a relative upgrade (see governing law above).
 const UPGRADABLE = new Set([VERDICT.HOLD, VERDICT.WATCH]);
@@ -133,7 +134,17 @@ export function applyRelativeRanking(node) {
       return {
         ...c,
         verdict: up.verdict,
-        verdictConfidence: up.confidence,
+        // RR.CONFIDENCE is this RULE's strength (softer than an absolute
+        // threshold), not the verdict's confidence. Composing it against the
+        // node's own data-quality score keeps the "confidence is a function of
+        // the evidence, never a frozen literal" contract intact through this
+        // pass — stamping the bare 0.6 here would have re-frozen every relative
+        // verdict, regardless of whether it was ranked off 2k or 2M impressions.
+        // dataConfidence is null only for a caller that never supplied a sample
+        // size, in which case the rule's own strength stands alone.
+        verdictConfidence: c.dataConfidence == null
+          ? up.confidence
+          : composeConfidence(up.confidence, c.dataConfidence),
         rationale: up.rationale,
         recommendationTypes: [...VERDICT_TO_REC_TYPES[up.verdict]],
         relativeRank: up.rank,

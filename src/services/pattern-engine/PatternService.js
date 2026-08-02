@@ -61,7 +61,15 @@ export async function getBriefing(workspaceId, { now = new Date(), lookbackDays 
 
   const [decisions, snapshots, tests] = await Promise.all([
     prisma.decision.findMany({ where: { workspaceId, createdAt: { gte: since } } }),
-    prisma.metricSnapshot.findMany({ where: { workspaceId, date: { gte: since } } }),
+    // Explicit select, not `SELECT *`. Adding a column to MetricSnapshot widens
+    // every select-less read on it, so a deploy that lands before its migration
+    // makes an untouched query throw "column does not exist" (the class that
+    // took getLoopState down in #209). buildPatternInputs projects exactly these
+    // six fields — asking for more was never useful, only fragile.
+    prisma.metricSnapshot.findMany({
+      where:  { workspaceId, date: { gte: since } },
+      select: { entityId: true, date: true, frequency: true, roas: true, ctr: true, spendMinor: true },
+    }),
     prisma.testExperiment.findMany({ where: { workspaceId } }),
   ]);
   const outcomes = decisions.length

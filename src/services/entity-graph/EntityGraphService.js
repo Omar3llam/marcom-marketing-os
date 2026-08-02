@@ -32,6 +32,11 @@ const METRIC_SELECT = {
   // `source` lets effectiveByEntity overlay actual (GA4/Shopify/MANUAL) revenue
   // onto the platform row.
   revenueMinor: true, impressions: true, clicks: true,
+  // The funnel bag — what the verdict engine's funnel rules diagnose over
+  // (lpv/atc/checkout rates). null when the channel reported none, in which case
+  // the rules decline to fire rather than guessing a stage.
+  actionMetrics: true,
+  dailyBudgetMinor: true,
 };
 
 // Latest snapshot per entity for a level, over a bounded recency window.
@@ -60,7 +65,11 @@ export async function getConnectorCampaigns(workspaceId) {
     // externalId = the platform-native campaign id snapshotSink stamps on every
     // synced entity. Carried so the client can deep-link back to the ad platform;
     // nullable for pre-connector rows, which honestly get no link.
-    select:  { id: true, name: true, channel: true, objective: true, externalId: true, _count: { select: { adSets: true } } },
+    // platformCreatedTime = when the campaign was created ON THE PLATFORM, which
+    // is what days-running (and so the too-early gate) must be measured from.
+    // `createdAt` is our own row's write time and would report a months-old
+    // campaign as brand new on the first sync.
+    select:  { id: true, name: true, channel: true, objective: true, externalId: true, platformCreatedTime: true, _count: { select: { adSets: true } } },
     orderBy: { createdAt: 'desc' },
     take:    200,
   }).catch((err) => {
@@ -71,7 +80,10 @@ export async function getConnectorCampaigns(workspaceId) {
 
   const metrics = await latestSnapshots(workspaceId, ENTITY_LEVEL.CAMPAIGN, campaigns.map((c) => c.id));
   return campaigns.map((c) =>
-    toCampaignRow({ id: c.id, name: c.name, channel: c.channel, objective: c.objective, externalId: c.externalId, adSetCount: c._count.adSets }, metrics.get(c.id)),
+    toCampaignRow({
+      id: c.id, name: c.name, channel: c.channel, objective: c.objective, externalId: c.externalId,
+      platformCreatedTime: c.platformCreatedTime, adSetCount: c._count.adSets,
+    }, metrics.get(c.id)),
   );
 }
 

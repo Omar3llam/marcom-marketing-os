@@ -1098,6 +1098,14 @@ model Campaign {
   // campaign from a conversion campaign with no measured revenue. Nullable:
   // pre-fix rows + non-Meta channels have none.
   objective   String?
+  // When the campaign was created ON THE PLATFORM (Meta /campaigns
+  // `created_time`) — NOT `createdAt`, which is when OUR row was written and is
+  // usually the first sync, days or months later. This is the only honest basis
+  // for "how long has this been running", which gates the too-early verdict rule.
+  // An ENTITY attribute, deliberately not a snapshot column: it never changes, so
+  // one row holds it, and a GA4/manual actuals snapshot can never shadow it with
+  // a null. Nullable: pre-fix rows and non-Meta channels have none.
+  platformCreatedTime DateTime?
   createdAt   DateTime     @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
@@ -1199,6 +1207,21 @@ model MetricSnapshot {
   ctr       Float?
   roas      Float?
   frequency Float?
+
+  // The FULL funnel, as one generic bag rather than N columns. Meta returns
+  // `actions`/`action_values` as an open-ended array of {action_type, value};
+  // pinning each stage to its own column means a schema migration every time a
+  // platform adds an event. Shape: { purchase, lpv, atc, checkout, lead,
+  // videoView, …, purchaseValue, … } — counts plus `${key}Value` for the money
+  // side. null (not {}) when the platform reported no recognised action, so a
+  // reader can tell "no funnel data" from "a measured zero".
+  actionMetrics Json?
+
+  // The entity's configured daily budget at sync time, minor units. Lives on the
+  // SNAPSHOT (not the entity) because it changes over time and the series is the
+  // point: a >20% step is a Meta learning-phase reset trigger. null when the
+  // platform didn't report one (lifetime-budget campaigns, non-Meta channels).
+  dailyBudgetMinor Int?
 
   currency String // ISO 4217 (EGP, SAR, AED, KWD, USD, …)
 

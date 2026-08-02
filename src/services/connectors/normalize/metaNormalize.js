@@ -12,11 +12,106 @@ import { num, accountRollup } from './fieldUtils.js';
 import { CHANNEL, DATA_SOURCE } from '../connectorTypes.js';
 import { logger } from '../../../utils/logger.js';
 
-const PURCHASE_ACTIONS = new Set(['offsite_conversion.fb_pixel_purchase', 'omni_purchase', 'purchase']);
+// ── The funnel, extracted rather than discarded ──────────────────────────────
+// Meta returns `actions`/`action_values` as an open-ended array of
+// {action_type, value}. We used to read ONE type out of it (purchase) and drop
+// the array — so landing_page_view, add_to_cart and initiate_checkout arrived in
+// every response, already paid for, and were thrown away. Layer 4 of the domain
+// model (funnel diagnosis) is unimplementable without them: "CTR high + LPV low
+// = landing page problem, NOT creative" cannot be said if LPV never lands.
+//
+// The map is the ONLY thing that changes when a platform adds an event — the
+// storage is a JSONB bag, so no migration follows.
+const ACTION_MAP = Object.freeze({
+  // purchases — Meta reports the same event under several names depending on
+  // pixel vs CAPI vs omni; they are the SAME purchase, so they sum into one key.
+  'offsite_conversion.fb_pixel_purchase': 'purchase',
+  'omni_purchase':                        'purchase',
+  'purchase':                             'purchase',
+  // funnel
+  'landing_page_view':                    'lpv',
+  'add_to_cart':                          'atc',
+  'omni_add_to_cart':                     'atc',
+  'offsite_conversion.fb_pixel_add_to_cart': 'atc',
+  'initiate_checkout':                    'checkout',
+  'omni_initiated_checkout':              'checkout',
+  'offsite_conversion.fb_pixel_initiate_checkout': 'checkout',
+  // leads
+  'lead':                                 'lead',
+  'omni_lead':                            'lead',
+  // video (future-ready — no reader yet; landing them now means the history
+  // exists when the creative layer lands, rather than starting from zero then)
+  'video_view':                           'videoView',
+  'video_p25_watched_actions':            'video25',
+  'video_p50_watched_actions':            'video50',
+  'video_p95_watched_actions':            'video95',
+});
 
+// The action types that mean "a purchase happened". Derived from ACTION_MAP so
+// the two can never drift — this Set used to be maintained by hand alongside it.
+const PURCHASE_ACTIONS = new Set(
+  Object.entries(ACTION_MAP).filter(([, key]) => key === 'purchase').map(([type]) => type),
+);
+
+/**
+ * PURE: collapse a Meta action array into { canonicalKey: value }.
+ *
+ * ── Why MAX across aliases and not SUM ──────────────────────────────────────
+ * The aliases mapping to one canonical key are NOT a disjoint partition of the
+ * event — they are overlapping measures of it. `omni_purchase` is Meta's
+ * cross-surface aggregate and already CONTAINS the pixel purchases reported as
+ * `offsite_conversion.fb_pixel_purchase`. Summing them double-counts, which
+ * would silently inflate conversions and ROAS — the exact defect Layer 5.3 of
+ * the domain model names ("2× purchases in Meta = CAPI without dedup").
+ *
+ * Max takes the most inclusive single measure: it never double-counts, never
+ * under-reports, and — unlike the `.find()` it replaces — does not depend on the
+ * order Meta happened to serialise the array in. Unknown action types are
+ * ignored, never thrown on: Meta's vocabulary is open-ended and a new event must
+ * not break a sync.
+ */
+export function collapseActions(arr, map = ACTION_MAP, suffix = '') {
+  if (!Array.isArray(arr)) return {};
+  const out = {};
+  for (const a of arr) {
+    const key = map[a?.action_type];
+    if (!key) continue;
+    const k = `${key}${suffix}`;
+    const v = num(a.value);
+    out[k] = out[k] == null ? v : Math.max(out[k], v);
+  }
+  return out;
+}
+
+/**
+ * PURE: the whole funnel for one row → the `actionMetrics` JSONB bag.
+ * Counts from `actions`, money from `action_values` under a `Value` suffix.
+ *
+ * Returns null — NOT {} — when nothing recognised was reported, so a reader can
+ * tell "this platform sent no funnel data" from "every stage measured zero".
+ */
+export function extractActionMetrics(actions = [], actionValues = []) {
+  const merged = { ...collapseActions(actions), ...collapseActions(actionValues, ACTION_MAP, 'Value') };
+  return Object.keys(merged).length > 0 ? merged : null;
+}
+
+/**
+ * PURE: the value of one canonical event out of an action array (0 when absent).
+ * Same max-across-aliases rule as collapseActions — see the note there for why
+ * this must not sum.
+ */
 function actionValue(arr, match) {
   if (!Array.isArray(arr)) return 0;
-  return num(arr.find((a) => match.has(a.action_type))?.value);
+  let best = 0;
+  for (const a of arr) if (match.has(a?.action_type)) best = Math.max(best, num(a.value));
+  return best;
+}
+
+/** PURE: a Meta timestamp → Date, or null. Never an Invalid Date. */
+function toDate(v) {
+  if (v == null) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 /** The measures every level shares. Extracted so CAMPAIGN and ADSET can't drift. */
@@ -37,6 +132,18 @@ function baseMeasures(r, currency, d) {
     frequency: r.frequency != null ? num(r.frequency) : null,
     // Unique people reached. null when Meta didn't report it, never a fabricated 0.
     reach: r.reach != null ? Math.round(num(r.reach)) : null,
+    // The full funnel bag (lpv/atc/checkout/lead/video + their *Value money
+    // twins). null when the platform reported no recognised action — distinct
+    // from a measured zero, and the reason downstream can say "funnel blind"
+    // honestly instead of diagnosing a drop-off it never observed.
+    actionMetrics: extractActionMetrics(r.actions, r.action_values),
+    // Configured daily budget, minor units — passed through, NOT converted.
+    // Meta already serves budgets in the account currency's smallest unit
+    // ("1000" = 10.00 EGP), unlike `spend`, which is major units and does go
+    // through toMinor above. Multiplying here would store every budget 100× too
+    // large. (mergeMetaCampaigns folds this onto delivering rows; it lives on the
+    // /campaigns edge only.)
+    dailyBudgetMinor: r.daily_budget != null ? Math.round(num(r.daily_budget)) : null,
     // Roster-only rows (no delivery data found, not a verified 0) carry the flag
     // forward so the sink lands the entity but no fabricated zero snapshot.
     rosterOnly: r._rosterOnly === true,
@@ -147,6 +254,11 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
       // campaign from a conversion campaign with no measured revenue. null when
       // Meta didn't report it (only /campaigns carries it, not /insights).
       objective: r.objective ?? null,
+      // Platform-side creation time — a CAMPAIGN-only entity attribute, like
+      // objective. It is the only honest basis for days-running, which gates the
+      // too-early verdict rule. Lives on /campaigns only, so mergeMetaCampaigns
+      // folds it onto delivering rows; null when Meta didn't report it.
+      platformCreatedTime: toDate(r.created_time),
       // Same drop, same level up: campaigns were stamped ACTIVE on every sync
       // too. Fixed at both levels at once — the sink is level-agnostic.
       status: toEntityStatus(r.status, r.effective_status),

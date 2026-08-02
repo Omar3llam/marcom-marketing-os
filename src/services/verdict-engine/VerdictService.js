@@ -14,13 +14,23 @@ import { applyRelativeRanking }     from './relativeRanking.js';
 import { getConnectorCampaigns }   from '../entity-graph/index.js';
 import { buildConnectorVerdictTree } from './connectorVerdictService.js';
 import { SIGNAL_TYPE }             from '../diagnosis-engine/index.js';
+import { ROOT_CAUSE }              from './verdictTypes.js';
+import { FUNNEL_SIGNAL }           from './funnelDiagnosis.js';
 import { computeResolution, ctrDelta } from './decisionLifecycle.js';
 
-// The rootCauses persistConnectorVerdicts writes: a diagnosis signalType, or
-// null when the engine set none (persistNode: `node.signalType ?? null`).
+// The rootCauses persistConnectorVerdicts writes: a diagnosis signalType, a
+// funnel-stage or data-quality cause, or null when the engine set none.
 // Guardrail / allocation / test / incrementality decisions all use their own
 // non-null prefixes, so this set + null identifies connector verdicts exactly.
-const CONNECTOR_ROOT_CAUSES = Object.freeze(Object.values(SIGNAL_TYPE));
+//
+// LOAD-BEARING: supersedeDroppedConnectorVerdicts scopes on this set. Any cause
+// the engine can emit MUST be listed, or verdicts carrying it become
+// un-supersedable and pile up as permanently-open PROPOSED rows.
+const CONNECTOR_ROOT_CAUSES = Object.freeze([
+  ...Object.values(SIGNAL_TYPE),
+  ...Object.values(ROOT_CAUSE),
+  ...Object.values(FUNNEL_SIGNAL),
+]);
 
 const finite = (n) => (typeof n === 'number' && Number.isFinite(n) ? n : null);
 
@@ -86,7 +96,11 @@ async function persistNode(workspaceId, node, created) {
           verdict:     node.verdict,
           confidence:  node.verdictConfidence ?? 0.5,
           diagnosis:   node.rationale ?? '',
-          rootCause:   node.signalType ?? null,
+          // The engine's explicit cause wins over the raw diagnosis signal: a
+          // WATCH from a broken landing page and a WATCH from a thin sample are
+          // different decisions, and grouping both under a signalType (or null)
+          // makes the learning query average two unrelated populations.
+          rootCause:   node.rootCause ?? node.signalType ?? null,
           status:      'PROPOSED',
           ctrAtDecision:  now.ctr,
           roasAtDecision: now.roas,

@@ -41,8 +41,15 @@ export async function sweepGuardrails(workspaceId) {
   if (rules.length === 0) return { rules: 0, hits: 0, decisionsCreated: 0 };
 
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000);
+  // Explicit select, not `SELECT *` — a new MetricSnapshot column would
+  // otherwise widen this untouched query and break the sweep during migration
+  // lag. valuesFromSnapshot reads exactly these six, plus the two grouping keys.
   const snapshots = await prisma.metricSnapshot.findMany({
     where:   { workspaceId, date: { gte: since } },
+    select:  {
+      entityId: true, entityLevel: true, date: true,
+      frequency: true, roas: true, ctr: true, cpaMinor: true, spendMinor: true, currency: true,
+    },
     orderBy: { date: 'asc' },
   });
 

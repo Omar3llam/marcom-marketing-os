@@ -338,6 +338,40 @@ function withStatus(row, index, id) {
   return s ? { ...row, ...s } : row;
 }
 
+// ── Roster-only entity attributes ───────────────────────────────────────────
+// `created_time` and `daily_budget` are requested in CAMPAIGN_LIST_FIELDS but,
+// like `objective` and `status`, they live ONLY on the /campaigns edge —
+// /insights never returns them. Without this fold they were present on
+// roster-only rows and `undefined` on every campaign that actually DELIVERED,
+// i.e. missing from 100% of the rows the verdict engine scores. That is the same
+// class of silent gap the `withStatus` note above documents.
+//
+// Stamped only when KNOWN, so rows stay byte-identical when Meta omits them.
+const ROSTER_ATTRS = Object.freeze(['created_time', 'daily_budget', 'lifetime_budget']);
+
+/** PURE: index a roster by id → the entity attributes /insights never carries. */
+function attrIndex(rosterRows = []) {
+  const m = new Map();
+  for (const row of rosterRows || []) {
+    const r = row?._data || row;
+    if (r?.id == null) continue;
+    const attrs = {};
+    for (const k of ROSTER_ATTRS) if (r[k] != null) attrs[k] = r[k];
+    if (Object.keys(attrs).length) m.set(String(r.id), attrs);
+  }
+  return m;
+}
+
+/** PURE: fold roster attributes onto a row; the row's own values always win. */
+function withRosterAttrs(row, index, id) {
+  if (id == null) return row;
+  const attrs = index.get(String(id));
+  if (!attrs) return row;
+  const missing = {};
+  for (const [k, v] of Object.entries(attrs)) if (row?.[k] == null) missing[k] = v;
+  return Object.keys(missing).length ? { ...row, ...missing } : row;
+}
+
 export function mergeMetaCampaigns(insights = [], campaigns = []) {
   // `objective` lives on the /campaigns roster edge (fetchAllCampaigns), NOT on
   // /insights. Fold it onto BOTH delivered insight rows and roster-only rows so
@@ -355,9 +389,11 @@ export function mergeMetaCampaigns(insights = [], campaigns = []) {
   };
 
   const statusById = statusIndex(campaigns);
+  const attrsById  = attrIndex(campaigns);
   const insightRows = (insights || []).map((row) => {
     const r = row?._data || row;
-    return withStatus(withObjective(r, r?.campaign_id), statusById, r?.campaign_id);
+    const id = r?.campaign_id;
+    return withRosterAttrs(withStatus(withObjective(r, id), statusById, id), attrsById, id);
   });
   const withInsights = new Set();
   for (const r of insightRows) {
@@ -377,6 +413,10 @@ export function mergeMetaCampaigns(insights = [], campaigns = []) {
       clicks:        '0',
       _rosterOnly:   true, // no delivery data found — "unknown", never a verified 0
       ...pickStatus(cd),
+      // Entity attributes exist on a roster row even with no delivery: a campaign
+      // created 2 days ago that hasn't spent is exactly the case the too-early
+      // rule needs to recognise.
+      ...(attrsById.get(id) ?? {}),
     };
     rosterOnly.push(cd.objective != null ? { ...rrow, objective: cd.objective } : rrow);
   }
