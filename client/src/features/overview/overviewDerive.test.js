@@ -9,7 +9,7 @@
 // and must leave a field null when no source carries it.
 // ============================================================
 import { describe, it, expect } from 'vitest';
-import { overviewKpis, decisionFeed, partitionDecisions, SECTION_CAP } from './OverviewView.jsx';
+import { overviewKpis, decisionFeed, partitionDecisions, SECTION_CAP } from './overviewDerive.js';
 
 describe('decisionFeed', () => {
   const health = (over = {}) => ({ entityId: 'c1', name: 'Ramadan Cold', verdict: 'KILL', impactScore: 9, ...over });

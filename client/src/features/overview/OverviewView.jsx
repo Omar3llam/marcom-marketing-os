@@ -16,33 +16,24 @@
 // blocks, so the page asked "what needs a call?" at the top and answered it
 // off-screen. Nothing was deleted — the supporting detail moved down.
 //
-// The hero is a PURE function of counts already computed here (overviewState.js),
-// never a second fetch, so the headline cannot disagree with the sections below.
+// This file RENDERS. It does not fetch and it does not derive:
+//   · useOverviewModel.js  — every substrate, composed into one view model,
+//                            including the readiness gate that decides when a
+//                            claim may be made at all
+//   · overviewDerive.js    — the pure derivations (feed, bands, KPIs, health
+//                            caption, kill count)
+//   · overviewState.js     — the account state machine + the hero's sentences
 //
-// Every claim derived from the health substrate passes through ONE readiness
-// gate (`loading`, defined below) — see the comment there for why dropping
-// useAccountHealth's own loading flag made the page assert three absences it had
-// not yet established.
+// What remains here besides markup is the two onboarding interrupts, which are
+// UI sequencing (sessionStorage + dismissal + precedence) rather than data.
 // ============================================================
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  BarChart, Target, AlertTriangle, Activity,
-  ArrowRight, Plug, Sparkles, ChevronRight,
-} from 'lucide-react';
+import { ArrowRight, Plug, Sparkles, ChevronRight } from 'lucide-react';
 import { appRoutes } from '@/app/routeManifest.js';
-import { useWorkspace } from '@/hooks/useWorkspace.js';
-import { useIntelligence } from '@/context/IntelligenceContext.jsx';
-import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
-import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
-import { useConnections } from '@/hooks/useConnections.js';
-import { useAccountHealth } from '@/hooks/useAccountHealth.js';
-import { useHome } from '@/hooks/useHome.js';
-import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
-import { fromMinor } from '@/lib/money';
-import StatCard from '@/components/ui/StatCard.jsx';
-import { useAccuracy } from '@/hooks/useAccuracy.js';
+import { WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import AgenticShellView from './AgenticShellView.jsx';
+import KpiStrip from './components/KpiStrip.jsx';
 import FirstRunBanner from './components/FirstRunBanner.jsx';
 import RevenueOnboardingBanner from './components/RevenueOnboardingBanner.jsx';
 import ConnectionHealthStrip from './components/ConnectionHealthStrip.jsx';
@@ -56,232 +47,19 @@ import PerformingWellSection from './components/PerformingWellSection.jsx';
 import AccountStateHero from './components/AccountStateHero.jsx';
 import CalibrationSection from './components/CalibrationSection.jsx';
 import LoopStatusCompact from './components/LoopStatusCompact.jsx';
-import { getAccountState, ACCOUNT_STATE } from './overviewState.js';
-import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
-import { nextActionFor } from '@/features/campaigns/verdictEvidence.js';
-
-// PURE: the decision feed — health rows (verdict + impact + name, the ONLY
-// source of impactScore) joined to their connector row for the metrics
-// ExecutionContext needs, and to the verdict row for the engine's own rationale.
-// Three sources because no single one carries all of it; the join key is
-// entityId throughout. A field absent everywhere stays null → the card omits
-// that line rather than inventing it.
-//
-// The join carries EVERY scored campaign; partitionDecisions below owns which
-// ones surface where. (It used to pre-filter to KILL + high-impact WATCH — that
-// would have starved the calm sections of the only rows they can ever show.)
-// Exported for unit testing.
-export function decisionFeed({ healthCampaigns = [], connectorCampaigns = [], verdicts = [] }) {
-  const metricsById = new Map(connectorCampaigns.map((c) => [c.entityId, c]));
-  const rationaleById = new Map(verdicts.map((v) => [v.id, v.rationale ?? null]));
-
-  return healthCampaigns
-    .map((c) => {
-      const m = metricsById.get(c.entityId) ?? {};
-      return {
-        entityId: c.entityId,
-        name: c.name ?? m.name ?? null,
-        verdict: c.verdict,
-        impactScore: c.impactScore ?? null,
-        rationale: rationaleById.get(c.entityId) ?? null,
-        // The next step a KILL/SCALE asks for — the engine-adjacent helper the
-        // Campaigns detail panel already uses, never an invented instruction.
-        humanAction: nextActionFor(c.verdict),
-        ctr: m.ctr ?? null,
-        spendMinor: m.spendMinor ?? null,
-        currency: m.currency ?? null,
-      };
-    });
-}
-
-// The three bands, exhaustive over the VERDICT enum
-// (verdict-engine/verdictTypes.js): KILL/REALLOCATE ask for an intervention now,
-// WATCH/REFRESH are worth monitoring, HOLD/SCALE are working. A campaign the
-// engine returned no verdict for belongs to none of them and is not counted —
-// "unscored" is not "healthy".
-const ACT_NOW_VERDICTS  = ['KILL', 'REALLOCATE'];
-const WATCH_VERDICTS    = ['WATCH', 'REFRESH'];
-const HEALTHY_VERDICTS  = ['HOLD', 'SCALE'];
-
-// How many cards a band shows before deferring to the Campaigns page. The home
-// is a triage surface, not a list — the TOTAL is always reported alongside, so
-// capping never hides how much is really there.
-export const SECTION_CAP = 3;
-
-// Impact first; spend breaks the tie. Without the tie-break, equal-impact rows
-// keep whatever order the health route happened to return, so the same account
-// can re-order between renders — and "highest impact first" stops being a claim
-// the page can back up.
-const byImpactThenSpend = (a, b) =>
-  (b.impactScore ?? 0) - (a.impactScore ?? 0) || (b.spendMinor ?? 0) - (a.spendMinor ?? 0);
-
-/**
- * PURE: split the feed into the three bands, sorted and capped.
- * Returns the capped rows AND the true total per band, so the "view all N" link
- * quotes the real count rather than the number of cards on screen.
- * Exported for unit testing.
- */
-export function partitionDecisions(feed = []) {
-  const band = (verdicts) => feed.filter((d) => verdicts.includes(d.verdict)).sort(byImpactThenSpend);
-  const actionable = band(ACT_NOW_VERDICTS);
-  const watching   = band(WATCH_VERDICTS);
-  const healthy    = feed.filter((d) => HEALTHY_VERDICTS.includes(d.verdict));
-
-  // Protected spend stays NULL when not one healthy campaign reported a spend —
-  // "nothing measured" is not "zero protected". A row missing its own spend just
-  // contributes nothing to the sum.
-  let healthySpend = null;
-  let healthyCurrency = null;
-  for (const d of healthy) {
-    if (d.spendMinor != null) healthySpend = (healthySpend ?? 0) + d.spendMinor;
-    if (!healthyCurrency && d.currency) healthyCurrency = d.currency;
-  }
-
-  return {
-    actNow:      actionable.slice(0, SECTION_CAP),
-    actNowTotal: actionable.length,
-    watchNow:    watching.slice(0, SECTION_CAP),
-    watchTotal:  watching.length,
-    healthyCount: healthy.length,
-    healthySpend,
-    healthyCurrency,
-  };
-}
-
-// PURE: the four Overview KPI values, CONNECTOR-FIRST (mirrors CampaignsView's
-// live-XOR-legacy rule) so a synced workspace's headline matches the Campaigns
-// page instead of the disjoint legacy CampaignState feed. Every figure is
-// null-when-absent → the card renders "—", never a fabricated 0. Spend/CPA come
-// from the live connector aggregate; Wasted/Health from the deterministic engine
-// (health). The legacy summary is used ONLY when no channel has synced.
-// Exported for unit testing.
-export function overviewKpis({ connectorCampaigns = [], summary = null, health = null, currency = 'USD' }) {
-  let spendMinor = 0, conversions = 0, sawSpend = false, sawConv = false, cur = null;
-  for (const c of connectorCampaigns) {
-    if (c.spendMinor != null) { spendMinor += c.spendMinor; sawSpend = true; }
-    if (c.conversions != null) { conversions += c.conversions; sawConv = true; }
-    if (!cur && c.currency) cur = c.currency;
-  }
-  const live = connectorCampaigns.length > 0;
-  const kpiCurrency = cur || currency;
-  return {
-    live,
-    currency: kpiCurrency,
-    spend: live ? (sawSpend ? spendMinor / 100 : null) : (summary?.spend > 0 ? summary.spend : null),
-    cpa:   live ? (sawConv && conversions > 0 ? spendMinor / conversions / 100 : null) : (summary?.blendedCpa ?? null),
-    wasted: health?.wastedSpend?.minor != null
-      ? fromMinor(health.wastedSpend.minor, kpiCurrency)
-      : (live ? null : (summary?.wasted > 0 ? summary.wasted : null)),
-    health: health?.score ?? (live ? null : (summary?.health ?? null)),
-  };
-}
+import { ACCOUNT_STATE } from './overviewState.js';
+import { useOverviewModel } from './useOverviewModel.js';
 
 export default function OverviewView() {
-  const { workspace } = useWorkspace();
-  const { campaigns, summary, loading: intelligenceLoading } = useIntelligence();
-  const { campaigns: connectorCampaigns, loading: connectorLoading } = useConnectorCampaigns();
-  const { data: connectionsData } = useConnections(); // channel sync status (lastSyncedAt)
-  // `loading` is destructured DELIBERATELY — see the readiness gate at :240.
-  const { health, loading: healthLoading } = useAccountHealth(); // connector campaign health + wasted spend + impact scores
-  const { home } = useHome(); // agentic loop home (includes aiInsight)
-  const { verdicts } = useConnectorVerdicts(); // the engine's own rationale per campaign
-  const { surface: proofSurface } = useAccuracy(); // gated proof one-liner (best-effort)
-  const { role: collabRole } = useCollabRole();
+  const {
+    workspace, currency, collabRole, showCopilot,
+    loading, hasAnyData, hasConnectorData,
+    accountState, bands, kpis, healthTone, healthLabel, killCount,
+    needsRevenue, staleRevenue,
+    health, home, proofSurface, connectorCampaigns, connectionsData,
+  } = useOverviewModel();
 
-  // Currency detection from workspace (defaults to USD)
-  const currency = workspace?.currency || 'USD';
-
-  // KPI strip — CONNECTOR-FIRST (same substrate as the Campaigns page), so the
-  // Home headline reflects a live sync instead of the disjoint legacy feed. Every
-  // value is null-when-absent → the card shows "—", never a fabricated 0.
-  const kpis = useMemo(
-    () => overviewKpis({ connectorCampaigns, summary, health, currency }),
-    [connectorCampaigns, summary, health, currency],
-  );
-
-  // Account-health label + tone derived from the real score (no hardcoded verdict).
-  // A null score has TWO causes and they are different claims: the health fetch
-  // has not landed yet, or it landed and scored nothing. "No score yet" asserts
-  // the second; saying it during the first is the same false-absence bug as the
-  // hero's (see the readiness gate below), on a quieter surface.
-  const healthTone  = kpis.health == null ? 'neutral'
-                    : kpis.health >= 75 ? 'positive'
-                    : kpis.health >= 50 ? 'warn' : 'danger';
-  const healthLabel = kpis.health != null
-                    ? (kpis.health >= 75 ? 'Healthy'
-                      : kpis.health >= 50 ? 'Fair — review soon' : 'Needs attention')
-                    : (healthLoading ? 'Scoring…' : 'No score yet');
-
-  // The decision feed + the two revenue-data stories, all keyed off the health
-  // rows. The revenue stories are NOT decisions — a campaign there is not
-  // performing badly, its revenue is unmeasurable — so they sit apart from the
-  // feed rather than inside it.
-  const decisions = useMemo(
-    () => decisionFeed({
-      healthCampaigns: health?.campaigns ?? [],
-      connectorCampaigns,
-      verdicts,
-    }),
-    [health, connectorCampaigns, verdicts],
-  );
-  const bands = useMemo(() => partitionDecisions(decisions), [decisions]);
-  const needsRevenue = useMemo(
-    () => (health?.campaigns ?? []).filter((c) => c.needsRevenue),
-    [health],
-  );
-  const staleRevenue = useMemo(
-    () => (health?.campaigns ?? []).filter((c) => c.revenueStale),
-    [health],
-  );
-
-  // Real count of KILL-verdict campaigns — from the connector health engine when
-  // synced, else the legacy feed's alerts. No fabricated count.
-  const killCount = useMemo(
-    () => (kpis.live
-      ? (health?.campaigns ?? []).filter((c) => c.verdict === 'KILL').length
-      : campaigns.reduce((n, c) => n + (c.alerts || []).filter((a) => a.analysis?.verdict === 'KILL').length, 0)),
-    [kpis.live, health, campaigns],
-  );
-
-  // Two DISJOINT substrates: the legacy CampaignState feed (drives the stat
-  // cards) and the connector entity graph (drives the agentic agenda — where a
-  // live Meta sync's verdicts live). The agentic shell must NOT be hidden just
-  // because the legacy feed is empty; a synced workspace has connector data and
-  // real PROPOSED verdicts even when CampaignState is empty.
-  //
-  // THE READINESS GATE. It must name EVERY substrate a rendered claim reads, not
-  // just the ones that decide whether data exists. `useAccountHealth` was fetched
-  // but its `loading` was dropped, while `health.campaigns` is the sole source of
-  // the bands — so on a synced account whose connector resolved first, the page
-  // rendered three claims about a substrate still in flight:
-  //
-  //   · the hero        → all bands 0 → LEARNING → "No campaigns have enough
-  //                       data to score yet", then flipping to "3 decisions need
-  //                       your attention" once health landed
-  //   · the feed        → "No scored campaigns right now."
-  //   · Account health  → "No score yet"
-  //
-  // All three assert an ABSENCE the page had not yet established, and all three
-  // get retracted a moment later. Adding healthLoading here fixes the class; the
-  // three sites below are gated on this one value so a fourth health-derived
-  // claim cannot be added without passing through it.
-  const loading = intelligenceLoading || connectorLoading || healthLoading;
-  const hasData = campaigns.length > 0;                       // legacy CampaignState feed
-  const hasConnectorData = connectorCampaigns.length > 0;      // connector entity graph
-  const hasAnyData = hasData || hasConnectorData;
-  const showCopilot = collabRole !== WORKSPACE_ROLE.CLIENT; // CLIENT home stays read-only & minimal
   const [copilotOpen, setCopilotOpen] = useState(false);
-
-  // The one question the hero answers, derived from the bands already computed
-  // above — never from a second fetch, so the headline cannot disagree with the
-  // sections under it. null while loading (no flashed claim).
-  const accountState = getAccountState({
-    actNowTotal:  bands.actNowTotal,
-    watchTotal:   bands.watchTotal,
-    healthyCount: bands.healthyCount,
-    hasAnyData,
-    loading,
-  });
 
   // First-run activation nudge. Onboarding sets sessionStorage 'marcom:firstActivation'
   // on completion — a flag that was written but never read until now. Surface a
@@ -342,7 +120,7 @@ export default function OverviewView() {
         actNowTotal={bands.actNowTotal}
         watchTotal={bands.watchTotal}
         healthyCount={bands.healthyCount}
-        /* MAJOR units already — overviewKpis applied fromMinor at :167 */
+        /* MAJOR units already — overviewKpis (overviewDerive.js) applied fromMinor */
         wastedAmount={kpis.wasted}
         /* connector-derived, so the hero and the Wasted-spend card share a unit */
         currency={kpis.currency}
@@ -445,10 +223,10 @@ export default function OverviewView() {
           )}
 
           {/* All three bands empty — say so rather than rendering a silent gap.
-              Gated on !loading (which now includes the health fetch): the bands
-              are derived from health.campaigns, so before it lands they are
-              empty for want of an answer, not because there isn't one. A brief
-              silent gap is honest; "No scored campaigns" is not. */}
+              Gated on !loading (which includes the health fetch): the bands are
+              derived from health.campaigns, so before it lands they are empty
+              for want of an answer, not because there isn't one. A brief silent
+              gap is honest; "No scored campaigns" is not. */}
           {!loading && bands.actNow.length === 0 && bands.watchNow.length === 0 && bands.healthyCount === 0 && (
             <p className="mb-6 rounded-xl border border-lumi-border bg-lumi-surface px-4 py-3 text-xs text-lumi-muted">
               No scored campaigns right now.
@@ -477,38 +255,12 @@ export default function OverviewView() {
           {/* Budget pacing — honest burn-rate (gated; refuses misleading single-channel pacing). */}
           <PacingWidget />
 
-          {/* 4 stat cards - responsive: 1 col mobile, 2 col tablet, 4 col desktop */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
-            <StatCard
-              label="Total spend"
-              value={kpis.spend != null ? formatCurrencyWhole(kpis.spend, kpis.currency) : '—'}
-              sub="last 30 days"
-              Icon={BarChart}
-              tone="neutral"
-            />
-            <StatCard
-              label="Blended CPA"
-              value={kpis.cpa != null ? formatCurrencyWhole(kpis.cpa, kpis.currency) : '—'}
-              sub="across active campaigns"
-              Icon={Target}
-              tone="neutral"
-            />
-            <StatCard
-              label="Wasted spend"
-              value={kpis.wasted != null ? `${formatCurrencyWhole(kpis.wasted, kpis.currency)}/mo` : '—'}
-              sub={killCount > 0 ? `${killCount} KILL-verdict campaign${killCount === 1 ? '' : 's'}` : 'flagged for review'}
-              Icon={AlertTriangle}
-              tone="danger"
-            />
-            <StatCard
-              label="Account health"
-              value={kpis.health != null ? `${kpis.health}/100` : '—'}
-              sub={healthLabel}
-              Icon={Activity}
-              tone={healthTone}
-              gauge={kpis.health ?? undefined}
-            />
-          </div>
+          <KpiStrip
+            kpis={kpis}
+            killCount={killCount}
+            healthLabel={healthLabel}
+            healthTone={healthTone}
+          />
         </>
       )}
 
