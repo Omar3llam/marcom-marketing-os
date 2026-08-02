@@ -104,7 +104,13 @@ export function diagnoseFunnel({ ctr, actionMetrics = null, clicks, objective = 
         ev('LPV_RATE', lpvRate, b.lpvRate,   'weak'),
       ],
       diagnosis:      'Traffic is not reaching the landing page',
-      counterfactual: `Not a creative problem — CTR ${ctrPct.toFixed(2)}% is above the ${b.ctr.weak}% bar for this objective, so the ad is earning the click. The loss is after it.`,
+      // NOTE: no ' — ' inside these strings. The Campaigns UI derives its
+      // evidence line by splitting the assembled rationale on the first em-dash
+      // (verdictEvidence.evidenceClause), so an em-dash mid-sentence truncates
+      // the counterfactual to its setup and drops the substance — worse than no
+      // counterfactual at all. The em-dash is the SEPARATOR, used once, by the
+      // engine that assembles the rationale.
+      counterfactual: `Not a creative problem: CTR ${ctrPct.toFixed(2)}% is above the ${b.ctr.weak}% bar for this objective, so the ad is earning the click. The loss is after it.`,
       action:         'Check pixel installation, page redirects, and mobile page speed',
     };
   }
@@ -120,7 +126,7 @@ export function diagnoseFunnel({ ctr, actionMetrics = null, clicks, objective = 
         ev('ATC_RATE', atcRate, b.atcRate,     'weak'),
       ],
       diagnosis:      'Visitors are reaching the page but not adding to cart',
-      counterfactual: `Not an audience problem — ${(lpvRate * 100).toFixed(0)}% of clicks reach the page, so the right people are arriving. The offer is what they are declining.`,
+      counterfactual: `Not an audience problem: ${(lpvRate * 100).toFixed(0)}% of clicks reach the page, so the right people are arriving. The offer is what they are declining.`,
       action:         'Review price, product images, description, and trust signals',
     };
   }
@@ -136,7 +142,7 @@ export function diagnoseFunnel({ ctr, actionMetrics = null, clicks, objective = 
         ev('CO_RATE',  coRate,  F.CO_FLOOR, 'weak'),
       ],
       diagnosis:      'Carts are being filled but checkout is not completing',
-      counterfactual: 'Not a creative or audience problem — purchase intent is already proven by the add-to-cart. The friction is in the checkout itself.',
+      counterfactual: 'Not a creative or audience problem: purchase intent is already proven by the add-to-cart. The friction is in the checkout itself.',
       action:         'Check payment methods, shipping cost visibility, and checkout length',
     };
   }
