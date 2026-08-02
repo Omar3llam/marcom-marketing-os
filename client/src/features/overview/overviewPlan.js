@@ -31,7 +31,6 @@ export const SLOT = Object.freeze({
   PACING:          'pacing',
   KPIS:            'kpis',
   AGENDA:          'agenda',
-  BRIEFING:        'briefing',
   COPILOT:         'copilot',
   // rail
   CHANNELS:        'channels',
@@ -63,7 +62,7 @@ const MAIN_BY_STATE = Object.freeze({
 // Everything that is not in `main` for a state, in a fixed order. Deferred means
 // "below the decisions", not "gone".
 const DEFERRABLE = Object.freeze([
-  SLOT.REVENUE_NOTICES, SLOT.PACING, SLOT.KPIS, SLOT.AGENDA, SLOT.BRIEFING, SLOT.COPILOT,
+  SLOT.REVENUE_NOTICES, SLOT.PACING, SLOT.KPIS, SLOT.AGENDA, SLOT.COPILOT,
 ]);
 
 // NOTE — there is deliberately no per-state omission list.
@@ -112,7 +111,7 @@ export function buildSurfacePlan({
     .filter((s) => !main.includes(s))
     .filter((s) => (s === SLOT.COPILOT ? showCopilot : true))
     // The agenda and briefing need a substrate to describe.
-    .filter((s) => (s === SLOT.AGENDA || s === SLOT.BRIEFING ? hasAnyData : true));
+    .filter((s) => (s === SLOT.AGENDA ? hasAnyData : true));
 
   return { interrupt, main, rail: RAIL, deferred };
 }

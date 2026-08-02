@@ -14,6 +14,7 @@
 // wording is unit-testable without a DOM, and so a line that has no data behind
 // it can be dropped from the array rather than rendered blank.
 // ============================================================
+import { Sparkles } from 'lucide-react';
 import { ACCOUNT_STATE, STATE_CONFIG, buildHeroNarrative } from '../overviewState.js';
 
 export default function AccountStateHero({
@@ -26,6 +27,7 @@ export default function AccountStateHero({
   workspace = null,
   hasAnyData = false,
   hasScorableData = false,
+  insight = null,   // LLM prose; the caller owns the freshness + role gating
 }) {
   // null === still loading. Rendering a state here would flash a claim the data
   // has not supported yet; the sections below own their own skeletons.
@@ -64,6 +66,25 @@ export default function AccountStateHero({
         >
           Review decisions →
         </a>
+      )}
+
+      {/* Lumi's briefing over the same account — subordinate to the counts
+          above, and ATTRIBUTED, because everything else in this hero is
+          deterministic and this sentence is not. It used to be a standalone
+          card further down the page: a second, independently-fetched narrative
+          about the same account, with nothing reconciling the two.
+
+          The caller passes null unless the sweep behind it is fresh — a stale
+          second opinion beside a live headline is the disagreement, not a
+          caveat that fixes it. */}
+      {insight && (
+        <div className="mt-4 border-t border-lumi-border pt-3">
+          <p className="section-label mb-1 flex items-center gap-1.5 text-lumi-accent">
+            <Sparkles className="h-3 w-3" strokeWidth={2} aria-hidden="true" />
+            Lumi’s read
+          </p>
+          <p className="text-xs leading-relaxed text-lumi-muted">{insight}</p>
+        </div>
       )}
 
       {/* Provenance. The currency is the one the FIGURES above are in — sourced

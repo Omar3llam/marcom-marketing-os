@@ -130,6 +130,34 @@ describe('money at risk', () => {
   });
 });
 
+// ── PR#306: the briefing folds into the hero ────────────────
+// It used to be a standalone card below the fold — a second, independently
+// fetched narrative about the same account with nothing reconciling the two.
+// Here it is subordinate and attributed; the caller owns the freshness gate.
+describe("Lumi's read", () => {
+  const withInsight = (over = {}) => render(
+    <AccountStateHero state={ACCOUNT_STATE.ACTION_REQUIRED} actNowTotal={2} {...over} />,
+  );
+
+  it('renders the briefing under the deterministic lines, attributed', () => {
+    withInsight({ insight: 'Two retargeting sets carry most of the waste.' });
+    expect(screen.getByText('Two retargeting sets carry most of the waste.')).toBeInTheDocument();
+    expect(screen.getByText(/Lumi’s read/)).toBeInTheDocument();
+  });
+
+  // Attribution is the point: everything else in this hero is deterministic.
+  it('the headline stays the counts, never the prose', () => {
+    withInsight({ insight: 'Some prose.' });
+    expect(screen.getByRole('heading', { level: 1 }))
+      .toHaveTextContent('2 decisions need your attention.');
+  });
+
+  it.each([[null], [undefined], ['']])('renders nothing at all for %s', (insight) => {
+    withInsight({ insight });
+    expect(screen.queryByText(/Lumi’s read/)).not.toBeInTheDocument();
+  });
+});
+
 // ── PR#302: visual weight ───────────────────────────────────
 describe('mission-control framing', () => {
   it('tints the hero border per state, keeping one surface', () => {

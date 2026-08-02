@@ -47,7 +47,13 @@ const item = (over = {}) => ({
   rationale: 'Frequency over ceiling', severity: 'HIGH', evidenceRef: 'd1',
   humanAction: 'confirm', entityId: 'as1', impactScore: 9, ...over,
 });
-const bandView = (items: unknown[] = []) => ({ title: 't', items, count: items.length, empty: items.length === 0 });
+// The backend NAMES its own bands and the contract carries the string
+// (AgendaBandViewSchema.title). The fixture used a placeholder because the view
+// discarded it; it now uses the server's label, so the fixture carries the real
+// one — AgentHomeService.buildStrategistBand.
+const STRATEGIST_TITLE = 'How the portfolio is tracking to goal';
+const bandView = (items: unknown[] = [], title = STRATEGIST_TITLE) =>
+  ({ title, items, count: items.length, empty: items.length === 0 });
 
 const loop = {
   stageStatus: [
@@ -131,6 +137,25 @@ describe('AgendaBand — honest, never-hidden empty states', () => {
     expect(screen.getByText('KILL Cold #1')).toBeInTheDocument();
     expect(screen.getByText('1 item')).toBeInTheDocument();
   });
+
+  // The band used to hardcode "Portfolio health", discarding the title the
+  // backend sends. That name sits one word away from the "Account health" KPI
+  // card, which is a different number on a different substrate — the
+  // deterministic health score, not the sweep's portfolio agenda.
+  it('uses the title the server sent, not a hardcoded one', () => {
+    render(<AgendaBand band="STRATEGIST" data={bandView([], 'Tracking to a Q3 CAC goal')} />);
+    expect(screen.getByText('Tracking to a Q3 CAC goal')).toBeInTheDocument();
+  });
+
+  it('falls back to its own label when the server sends none', () => {
+    render(<AgendaBand band="STRATEGIST" data={{ items: [], count: 0, empty: true }} />);
+    expect(screen.getByText(STRATEGIST_TITLE)).toBeInTheDocument();
+  });
+
+  it('never reads as the Account health KPI card', () => {
+    render(<AgendaBand band="STRATEGIST" data={bandView([])} />);
+    expect(screen.queryByText('Portfolio health')).not.toBeInTheDocument();
+  });
 });
 
 describe('LoopStatusRing — health + the single sweep control', () => {
@@ -155,14 +180,14 @@ describe('AgenticShellView — role-aware composition', () => {
     vi.mocked(useCollabRole).mockReturnValue({ role: WORKSPACE_ROLE.STRATEGIST } as never);
     render(<AgenticShellView />);
     expect(screen.getByText('Loop healthy')).toBeInTheDocument();
-    expect(screen.getByText('Portfolio health')).toBeInTheDocument();
+    expect(screen.getByText(STRATEGIST_TITLE)).toBeInTheDocument();
   });
 
   it('BUYER sees the ring alone — no strategist band', () => {
     vi.mocked(useCollabRole).mockReturnValue({ role: WORKSPACE_ROLE.BUYER } as never);
     render(<AgenticShellView />);
     expect(screen.getByText('Loop healthy')).toBeInTheDocument();
-    expect(screen.queryByText('Portfolio health')).not.toBeInTheDocument();
+    expect(screen.queryByText(STRATEGIST_TITLE)).not.toBeInTheDocument();
   });
 
   it('CLIENT sees the portfolio band only — no ring', () => {
@@ -170,7 +195,7 @@ describe('AgenticShellView — role-aware composition', () => {
     vi.mocked(useHome).mockReturnValue({ home: { ...home, buyerBand: null }, isStale: false, isLoading: false, error: null, refetch: vi.fn() } as never);
     render(<AgenticShellView />);
     expect(screen.queryByText('Loop healthy')).not.toBeInTheDocument();
-    expect(screen.getByText('Portfolio health')).toBeInTheDocument();
+    expect(screen.getByText(STRATEGIST_TITLE)).toBeInTheDocument();
   });
 
   // The shell used to render the buyer band too. Home's own Act now / Keep
