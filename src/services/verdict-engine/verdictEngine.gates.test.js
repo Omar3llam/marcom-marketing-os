@@ -185,6 +185,68 @@ describe('funnel track — the ads worked, something after them did not', () => 
   });
 });
 
+describe('rationale is parser-safe for the Campaigns UI', () => {
+  // The Campaigns surface renders its evidence line as the clause BEFORE the
+  // first ' — ' (client verdictEvidence.evidenceClause). That makes the em-dash
+  // a load-bearing separator, not decoration: an em-dash used mid-sentence
+  // truncates the line to a fragment. This block is the contract, kept on the
+  // engine side because the engine is what writes the string.
+  //
+  // A copy of the client parser — deliberately duplicated rather than imported,
+  // so a change to EITHER side surfaces here as a failure.
+  const evidenceClause = (r) => (typeof r !== 'string' ? null : r.split(' — ')[0].trim().replace(/\.$/, '') || null);
+
+  const rationales = () => [
+    evaluateVerdict({ level: 'CAMPAIGN', metrics: killable({ impressions: 120 }) }),
+    evaluateVerdict({ level: 'CAMPAIGN', metrics: killable(), daysRunning: 1 }),
+    evaluateVerdict({ level: 'CAMPAIGN', metrics: killable(), daysRunning: 30 }),
+    evaluateVerdict({
+      level: 'CAMPAIGN', daysRunning: 30, objective: 'OUTCOME_SALES',
+      metrics: { ctr: 2.5, cpc: 0.5, cpm: 5, frequency: 1.4, spend: 500, conversions: 8, roas: 1.6, impressions: 100_000, clicks: 2_500 },
+      actionMetrics: { lpv: 800, atc: 40, checkout: 20, purchase: 8 },
+    }),
+    evaluateVerdict({
+      level: 'CAMPAIGN', daysRunning: 30,
+      metrics: { ctr: 0.8, cpc: 0, cpm: 5, frequency: 4.2, spend: 500, conversions: 0, roas: null, revenueMeasured: false, impressions: 80_000, clicks: 640 },
+    }),
+  ].map((r) => r.rationale);
+
+  it('every rationale uses at most ONE em-dash separator', () => {
+    for (const r of rationales()) {
+      expect(r.split(' — ').length, `too many separators in: ${r}`).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it('the evidence clause is a complete thought, never a dangling negation', () => {
+    for (const r of rationales()) {
+      const clause = evidenceClause(r);
+      expect(clause).toBeTruthy();
+      expect(clause.length).toBeGreaterThan(12);
+      // "…Not a creative problem" was the real regression: the counterfactual's
+      // setup with none of its substance, which reads as the opposite claim.
+      expect(clause, `dangling negation in: ${clause}`).not.toMatch(/\bNot an? [a-z ]*problem$/i);
+    }
+  });
+
+  it('the funnel evidence line names the stage and survives the split intact', () => {
+    const funnelRationale = rationales()[3];
+    expect(evidenceClause(funnelRationale)).toBe('Traffic is not reaching the landing page (LPV)');
+  });
+
+  it('a gate evidence line keeps the numbers that make it actionable', () => {
+    // "Insufficient data" alone tells the user nothing about how far off they are.
+    expect(evidenceClause(rationales()[0])).toBe('Insufficient data: 120 of 1,000 impressions needed');
+    expect(evidenceClause(rationales()[1])).toBe('Too early to score: day 1 of 3 minimum');
+  });
+
+  it('the counterfactual and action still survive in the full rationale', () => {
+    // Parser-safety must not have been bought by deleting the substance.
+    const r = rationales()[3];
+    expect(r).toMatch(/not a creative problem/i);
+    expect(r).toMatch(/pixel|redirect|speed/i);
+  });
+});
+
 describe('rollupVerdicts — the gates apply on the connector path', () => {
   it('a thin campaign inside a healthy account is WATCHed, not scored', () => {
     const tree = {

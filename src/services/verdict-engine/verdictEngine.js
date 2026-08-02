@@ -188,7 +188,10 @@ export function evaluateVerdict({
   if (sampleKnown && impressions < MIN_IMPRESSIONS) {
     return finalise(
       VERDICT.WATCH, 1.0,
-      `Insufficient data — ${impressions.toLocaleString('en-US')} of ${MIN_IMPRESSIONS.toLocaleString('en-US')} impressions needed before this can be judged.`,
+      // The COUNTS are the point, so they sit before the separator: an evidence
+      // line reading only "Insufficient data" tells the user nothing they can
+      // act on, while "120 of 1,000 impressions" tells them how far off they are.
+      `Insufficient data: ${impressions.toLocaleString('en-US')} of ${MIN_IMPRESSIONS.toLocaleString('en-US')} impressions needed — too thin to judge yet.`,
       { rootCause: ROOT_CAUSE.INSUFFICIENT_DATA },
     );
   }
@@ -200,7 +203,7 @@ export function evaluateVerdict({
   if (daysRunning != null && daysRunning < V.MIN_DAYS) {
     return finalise(
       VERDICT.WATCH, 1.0,
-      `Too early to score — day ${daysRunning} of ${V.MIN_DAYS} minimum. Early numbers move while delivery is still settling.`,
+      `Too early to score: day ${daysRunning} of ${V.MIN_DAYS} minimum — early numbers move while delivery is still settling.`,
       { rootCause: ROOT_CAUSE.TOO_EARLY },
     );
   }
@@ -263,7 +266,11 @@ export function evaluateVerdict({
     // platform. Saying so plainly, with the stage named, is the useful answer.
     verdict = VERDICT.WATCH;
     confidence = funnel.confidence;
-    rationale = `${funnel.diagnosis} (${funnel.stage}). ${funnel.counterfactual} ${funnel.action}.`;
+    // ONE em-dash, and it is the separator. The Campaigns UI shows the clause
+    // before the first ' — ' as its evidence line, so everything that must
+    // survive on its own goes first. See the parser-safety block in
+    // verdictEngine.gates.test.js, which pins this contract.
+    rationale = `${funnel.diagnosis} (${funnel.stage}) — ${funnel.counterfactual} ${funnel.action}.`;
   } else {
     switch (dx.signalType) {
       case SIGNAL_TYPE.CREATIVE_FATIGUE:

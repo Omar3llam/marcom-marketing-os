@@ -33,6 +33,103 @@ export function evidenceClause(rationale) {
   return clause || null;
 }
 
+// ============================================================
+// Structured provenance (PR #309)
+// ------------------------------------------------------------
+// The verdict engine emits `funnel` = { signal, stage, evidence[], diagnosis,
+// counterfactual, action } and a machine-readable `rootCause`. Everything below
+// reads those FIELDS. The string surgery above (evidenceClause/shortEvidence)
+// remains only for verdicts that carry no funnel — a KILL or SCALE still has
+// prose and nothing else, so deleting the parser outright would blank them.
+//
+// Why this matters beyond tidiness: the parser could only ever recover the
+// leading clause. The counterfactual (what the problem is NOT) and the action
+// were in the string and unreachable — so the panel showed "Traffic is not
+// reaching the landing page" and no way to know the creative was fine.
+// ============================================================
+
+// How to render each evidence metric the engine can emit. CTR arrives ALREADY
+// in percent (clicks/impressions × 100); the funnel rates arrive as ratios.
+// Formatting the wrong one shows 0.40% where 40% was meant, so this map is the
+// unit contract — an unknown metric renders its raw number rather than guessing.
+const EVIDENCE_UNITS = {
+  CTR:      { kind: 'percent', label: 'CTR' },
+  LPV_RATE: { kind: 'ratio',   label: 'Landing page views / clicks' },
+  ATC_RATE: { kind: 'ratio',   label: 'Add to cart / page views' },
+  CO_RATE:  { kind: 'ratio',   label: 'Checkouts / add to cart' },
+};
+
+/** PURE: an evidence number → display string, using the metric's known unit. */
+export function formatEvidenceValue(metric, value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  const unit = EVIDENCE_UNITS[metric];
+  if (!unit) return String(value); // unknown metric: show the raw number, never a guessed unit
+  return unit.kind === 'percent' ? `${value.toFixed(2)}%` : `${(value * 100).toFixed(1)}%`;
+}
+
+/** PURE: the metric's marketer-facing name, or the raw key when unrecognised. */
+export function evidenceLabel(metric) {
+  return EVIDENCE_UNITS[metric]?.label ?? metric;
+}
+
+/**
+ * PURE: the engine's evidence[] → rows ready to render.
+ * Each row keeps the engine's own value AND the benchmark it was judged
+ * against, so the screen shows the comparison rather than asserting a verdict.
+ * A row whose value will not format is dropped, never rendered as "unknown".
+ */
+export function evidenceRows(funnel) {
+  const items = Array.isArray(funnel?.evidence) ? funnel.evidence : [];
+  return items
+    .map((e) => ({
+      metric:    e?.metric ?? null,
+      label:     evidenceLabel(e?.metric),
+      value:     formatEvidenceValue(e?.metric, e?.value),
+      benchmark: formatEvidenceValue(e?.metric, e?.benchmark),
+      status:    e?.status === 'healthy' || e?.status === 'weak' ? e.status : null,
+    }))
+    .filter((r) => r.metric && r.value);
+}
+
+// Data-quality causes the engine can report. These are NOT diagnoses — they say
+// the campaign was not judged, and why. Rendering them as a normal verdict
+// reason would tell a marketer their campaign is broken when the truth is that
+// we have not seen enough of it yet.
+const DATA_QUALITY_CAUSES = new Set(['INSUFFICIENT_DATA', 'TOO_EARLY']);
+
+/** PURE: is this verdict a "we did not judge this yet" state? */
+export function isDataQualityCause(rootCause) {
+  return typeof rootCause === 'string' && DATA_QUALITY_CAUSES.has(rootCause);
+}
+
+/**
+ * PURE: should the "Why?" block render at all, and under what heading?
+ *
+ * Previously this was `verdict === 'KILL' || verdict === 'SCALE'`. Every funnel
+ * diagnosis is a WATCH — so the entire funnel layer would have rendered
+ * NOTHING, which is why this predicate had to move out of the component.
+ *
+ * @returns {{ show: boolean, heading: string|null }}
+ */
+export function whyBlock({ verdict, funnel = null, rootCause = null } = {}) {
+  if (verdict === 'KILL' || verdict === 'SCALE') return { show: true, heading: `Why ${verdict.toLowerCase()}?` };
+  if (funnel) return { show: true, heading: 'Where the money is going' };
+  if (isDataQualityCause(rootCause)) return { show: true, heading: 'Not judged yet' };
+  return { show: false, heading: null };
+}
+
+/**
+ * PURE: the engine's two confidence halves → a label plus the reason it is not
+ * higher. `dataConfidence` is the input-quality score; when it is what is
+ * holding the number down, saying so is more useful than a bare "Low".
+ */
+export function confidenceDetail({ confidence = null, dataConfidence = null } = {}) {
+  const label = confidenceLabel(confidence);
+  if (!label) return null;
+  const thin = typeof dataConfidence === 'number' && Number.isFinite(dataConfidence) && dataConfidence < 0.6;
+  return { label, limitedByData: thin };
+}
+
 /**
  * Compact form for the table badge: the evidence clause without its
  * parenthetical numbers, with the engine's cohort label shortened

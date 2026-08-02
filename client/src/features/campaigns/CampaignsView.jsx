@@ -328,7 +328,19 @@ export default function CampaignsView() {
   // fields already arrive on every verdict; this just keys them for the rows.
   const verdictInfoByEntityId = useMemo(() => {
     const m = {};
-    for (const v of connectorVerdicts) m[v.id] = { rationale: v.rationale, confidence: v.confidence };
+    // funnel / rootCause / dataConfidence are the engine's STRUCTURED
+    // provenance. They arrived on every verdict row and were dropped here, so
+    // the panel could only recover the leading clause of the prose — the
+    // counterfactual and the recommended action were unreachable.
+    for (const v of connectorVerdicts) {
+      m[v.id] = {
+        rationale: v.rationale,
+        confidence: v.confidence,
+        funnel: v.funnel ?? null,
+        rootCause: v.rootCause ?? null,
+        dataConfidence: v.dataConfidence ?? null,
+      };
+    }
     return m;
   }, [connectorVerdicts]);
 

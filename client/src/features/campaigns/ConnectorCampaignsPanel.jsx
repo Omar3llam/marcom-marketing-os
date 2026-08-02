@@ -310,7 +310,16 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
         {isDetailOpen && (
           <tr className="border-b border-lumi-border/50 bg-lumi-bg/20">
             <td colSpan={COLS} className="px-4 pb-3 pt-0">
-              <CampaignDetailPanel campaign={c} verdict={verdict} impact={impact} rationale={info.rationale ?? null} confidence={info.confidence ?? null} />
+              <CampaignDetailPanel
+                campaign={c}
+                verdict={verdict}
+                impact={impact}
+                rationale={info.rationale ?? null}
+                confidence={info.confidence ?? null}
+                funnel={info.funnel ?? null}
+                rootCause={info.rootCause ?? null}
+                dataConfidence={info.dataConfidence ?? null}
+              />
             </td>
           </tr>
         )}
