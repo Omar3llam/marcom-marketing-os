@@ -12,13 +12,23 @@ import Panel from '@/components/ui/Panel.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
 import AgendaItem from './AgendaItem.jsx';
 
+// The backend names its own bands (AgentHomeService.buildStrategistBand →
+// "How the portfolio is tracking to goal") and the contract carries the string
+// (AgendaBandViewSchema.title). These are the FALLBACKS only.
+//
+// The hardcoded strategist title used to win, and it read "Portfolio health" —
+// a hair away from the "Account health" KPI card, which is a different number on
+// a different substrate (the deterministic health score, not the sweep's
+// portfolio agenda). Two near-identical names for two unrelated things is how a
+// page contradicts itself quietly. The server's longer label says which question
+// it answers, so it is used when present.
 const BAND = {
   BUYER: {
     title: "Today's decisions", icon: ListChecks, tone: 'kill',
     empty: 'No urgent decisions — radar monitoring active.',
   },
   STRATEGIST: {
-    title: 'Portfolio health', icon: LineChart, tone: 'gold',
+    title: 'How the portfolio is tracking to goal', icon: LineChart, tone: 'gold',
     empty: 'Portfolio on track — no adjustments needed.',
   },
 };
@@ -29,7 +39,7 @@ export default function AgendaBand({ band, data }) {
   const meta = items.length > 0 ? `${items.length} item${items.length === 1 ? '' : 's'}` : 'clear';
 
   return (
-    <Panel title={cfg.title} Icon={cfg.icon} iconTone={cfg.tone} meta={meta}>
+    <Panel title={data?.title || cfg.title} Icon={cfg.icon} iconTone={cfg.tone} meta={meta}>
       {items.length === 0 ? (
         <EmptyPanel text={cfg.empty} Icon={cfg.icon} />
       ) : (

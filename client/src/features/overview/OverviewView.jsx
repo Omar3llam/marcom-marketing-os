@@ -31,7 +31,6 @@ import RevenueOnboardingBanner from './components/RevenueOnboardingBanner.jsx';
 import ConnectionHealthStrip from './components/ConnectionHealthStrip.jsx';
 import PacingWidget from './components/PacingWidget.jsx';
 import CopilotPanel from './components/CopilotPanel.jsx';
-import AIInsightCard from './components/AIInsightCard.jsx';
 import RevenueNotice from './components/RevenueNotice.jsx';
 import WatchSection from './components/WatchSection.jsx';
 import ActNowSection from './components/ActNowSection.jsx';
@@ -46,9 +45,9 @@ export default function OverviewView() {
   const {
     workspace, currency, plan, dismiss,
     hasAnyData, hasScorableData,
-    accountState, bands, kpis, healthTone, healthLabel, killCount,
+    accountState, insight, bands, kpis, healthTone, healthLabel, killCount,
     needsRevenue, staleRevenue,
-    health, home, proofSurface, connectorCampaigns,
+    proofSurface, connectorCampaigns,
   } = useOverviewModel();
 
   const [copilotOpen, setCopilotOpen] = useState(false);
@@ -117,6 +116,8 @@ export default function OverviewView() {
         hasAnyData={hasAnyData}
         /* …and BOTH of those from "has legacy rows the engine cannot read" */
         hasScorableData={hasScorableData}
+        /* Lumi's briefing — folded in from the deleted standalone card */
+        insight={insight}
       />
     ),
 
@@ -163,18 +164,6 @@ export default function OverviewView() {
     // its stage strip and the single sweep trigger). Owns its own loading and
     // empty states.
     [SLOT.AGENDA]: hasAnyData ? <AgenticShellView /> : null,
-
-    [SLOT.BRIEFING]: hasAnyData
-      ? (
-        <div className="mb-6">
-          <AIInsightCard
-            insight={home?.aiInsight ?? null}
-            healthScore={health?.score ?? null}
-            healthLabel={health?.label ?? null}
-          />
-        </div>
-      )
-      : null,
 
     // Account-aware Q&A. Cmd/Ctrl+K is intentionally NOT bound here — it is
     // already the global CommandPalette.

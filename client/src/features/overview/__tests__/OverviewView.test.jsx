@@ -24,6 +24,7 @@ vi.mock('@/hooks/useConnections.js', () => ({ useConnections: vi.fn() }));
 vi.mock('@/hooks/useAccuracy.js', () => ({ useAccuracy: vi.fn() }));
 vi.mock('@/hooks/useAccountHealth.js', () => ({ useAccountHealth: vi.fn() }));
 vi.mock('@/hooks/useConnectorVerdicts.js', () => ({ useConnectorVerdicts: vi.fn() }));
+vi.mock('@/hooks/useHome.js', () => ({ useHome: vi.fn() }));
 vi.mock('@/hooks/useCollabRole.js', async (importOriginal) => {
   const actual = await importOriginal();
   return { ...actual, useCollabRole: vi.fn() };
@@ -56,6 +57,7 @@ import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useAccountHealth } from '@/hooks/useAccountHealth.js';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
+import { useHome } from '@/hooks/useHome.js';
 
 const CONNECTOR_ROW = { entityId: 'c1', name: 'Eid Sale', channel: 'META', spendMinor: 50000, ctr: 0.0185 };
 const LEGACY_ROW = { campaign_id: 'x', alerts: [] };
@@ -78,6 +80,8 @@ beforeEach(() => {
   // Default: no proof surface → the calibration block renders nothing, so every
   // pre-existing test is unaffected. The IA tests override this.
   useAccuracy.mockReturnValue({ surface: null });
+  // Default: a fresh sweep that generated no briefing → the hero shows none.
+  useHome.mockReturnValue({ home: null, isStale: false, isLoading: false, error: null, refetch: vi.fn() });
 });
 
 describe('OverviewView — agentic shell is decoupled from the legacy CampaignState feed', () => {
@@ -456,6 +460,64 @@ describe('OverviewView — health readiness gate (no claim before its substrate 
 
     expect(screen.getByText('Building confidence')).toBeInTheDocument();
     expect(screen.getByText(/Connect a channel to get your first verdict/)).toBeInTheDocument();
+  });
+});
+
+// ── PR#306: one narrative, not two ───────────────────────────
+// The briefing used to be a standalone card below the fold: a second,
+// independently-fetched story about the same account, with nothing reconciling
+// the two. It now sits inside the hero — and the gating is the point, because
+// the prose is a SNAPSHOT of the last sweep while the hero is live.
+describe('OverviewView — the briefing folds into the hero', () => {
+  const INSIGHT = 'Two retargeting sets carry most of the waste.';
+  const withHome = (over = {}) => useHome.mockReturnValue({
+    home: { aiInsight: INSIGHT }, isStale: false, isLoading: false, error: null, refetch: vi.fn(), ...over,
+  });
+  const scored = () => {
+    useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
+    useAccountHealth.mockReturnValue({ health: { campaigns: [
+      { entityId: 'c1', name: 'Eid Sale', verdict: 'KILL', impactScore: 8 },
+    ] }, loading: false, error: null, refetch: vi.fn() });
+  };
+
+  it('shows a FRESH briefing once, inside the hero', () => {
+    scored(); withHome();
+    const { container } = renderView();
+
+    expect(screen.getByText(INSIGHT)).toBeInTheDocument();
+    // Inside the hero element, not a separate card further down.
+    expect(container.querySelector('header').textContent).toContain(INSIGHT);
+    // And exactly once — the whole point of deleting the standalone card.
+    expect(screen.getAllByText(INSIGHT)).toHaveLength(1);
+  });
+
+  // A stale second opinion beside a live headline IS the disagreement; a caveat
+  // would not fix it, so the line is dropped.
+  it('drops a stale briefing rather than caveating it', () => {
+    scored(); withHome({ isStale: true });
+    renderView();
+    expect(screen.queryByText(INSIGHT)).not.toBeInTheDocument();
+    // …and the deterministic headline is untouched by its absence.
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('1 decision needs your attention.');
+  });
+
+  // The prose narrates verdicts. SCORING_HIDDEN is the page saying those
+  // verdicts are not shown to this seat — printing the narration under that
+  // sentence would contradict it.
+  it('withholds it from the seat that cannot see verdicts', () => {
+    useCollabRole.mockReturnValue({ role: WORKSPACE_ROLE.CLIENT });
+    useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
+    withHome();
+    renderView();
+
+    expect(screen.getByText('Portfolio view')).toBeInTheDocument();
+    expect(screen.queryByText(INSIGHT)).not.toBeInTheDocument();
+  });
+
+  it('says nothing at all when no sweep has generated one', () => {
+    scored(); // default useHome → home: null
+    renderView();
+    expect(screen.queryByText(/Lumi’s read/)).not.toBeInTheDocument();
   });
 });
 

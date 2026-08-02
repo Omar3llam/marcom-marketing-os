@@ -34,7 +34,7 @@ describe('nothing is deleted by state', () => {
   // promoted into main or present in deferred. A state can rank a block lower;
   // it cannot make it unreachable.
   const DEFERRABLE = [
-    SLOT.REVENUE_NOTICES, SLOT.PACING, SLOT.KPIS, SLOT.AGENDA, SLOT.BRIEFING, SLOT.COPILOT,
+    SLOT.REVENUE_NOTICES, SLOT.PACING, SLOT.KPIS, SLOT.AGENDA, SLOT.COPILOT,
   ];
 
   it.each(ALL_STATES)('%s loses no slot', (accountState) => {
@@ -83,10 +83,9 @@ describe('urgency decides what is above the fold', () => {
 });
 
 describe('slots that need something to describe', () => {
-  it('drops the agenda and briefing when no substrate carries campaigns', () => {
+  it('drops the agenda when no substrate carries campaigns', () => {
     const p = plan({ accountState: ACCOUNT_STATE.LEARNING, hasAnyData: false });
     expect(p.deferred).not.toContain(SLOT.AGENDA);
-    expect(p.deferred).not.toContain(SLOT.BRIEFING);
   });
 
   it('drops the copilot for the read-only seat', () => {
