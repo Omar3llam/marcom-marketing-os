@@ -18,6 +18,11 @@
 //
 // The hero is a PURE function of counts already computed here (overviewState.js),
 // never a second fetch, so the headline cannot disagree with the sections below.
+//
+// Every claim derived from the health substrate passes through ONE readiness
+// gate (`loading`, defined below) — see the comment there for why dropping
+// useAccountHealth's own loading flag made the page assert three absences it had
+// not yet established.
 // ============================================================
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -176,7 +181,8 @@ export default function OverviewView() {
   const { campaigns, summary, loading: intelligenceLoading } = useIntelligence();
   const { campaigns: connectorCampaigns, loading: connectorLoading } = useConnectorCampaigns();
   const { data: connectionsData } = useConnections(); // channel sync status (lastSyncedAt)
-  const { health } = useAccountHealth(); // connector campaign health + wasted spend + impact scores
+  // `loading` is destructured DELIBERATELY — see the readiness gate at :240.
+  const { health, loading: healthLoading } = useAccountHealth(); // connector campaign health + wasted spend + impact scores
   const { home } = useHome(); // agentic loop home (includes aiInsight)
   const { verdicts } = useConnectorVerdicts(); // the engine's own rationale per campaign
   const { surface: proofSurface } = useAccuracy(); // gated proof one-liner (best-effort)
@@ -194,12 +200,17 @@ export default function OverviewView() {
   );
 
   // Account-health label + tone derived from the real score (no hardcoded verdict).
+  // A null score has TWO causes and they are different claims: the health fetch
+  // has not landed yet, or it landed and scored nothing. "No score yet" asserts
+  // the second; saying it during the first is the same false-absence bug as the
+  // hero's (see the readiness gate below), on a quieter surface.
   const healthTone  = kpis.health == null ? 'neutral'
                     : kpis.health >= 75 ? 'positive'
                     : kpis.health >= 50 ? 'warn' : 'danger';
-  const healthLabel = kpis.health == null ? 'No score yet'
-                    : kpis.health >= 75 ? 'Healthy'
-                    : kpis.health >= 50 ? 'Fair — review soon' : 'Needs attention';
+  const healthLabel = kpis.health != null
+                    ? (kpis.health >= 75 ? 'Healthy'
+                      : kpis.health >= 50 ? 'Fair — review soon' : 'Needs attention')
+                    : (healthLoading ? 'Scoring…' : 'No score yet');
 
   // The decision feed + the two revenue-data stories, all keyed off the health
   // rows. The revenue stories are NOT decisions — a campaign there is not
@@ -237,7 +248,24 @@ export default function OverviewView() {
   // live Meta sync's verdicts live). The agentic shell must NOT be hidden just
   // because the legacy feed is empty; a synced workspace has connector data and
   // real PROPOSED verdicts even when CampaignState is empty.
-  const loading = intelligenceLoading || connectorLoading;
+  //
+  // THE READINESS GATE. It must name EVERY substrate a rendered claim reads, not
+  // just the ones that decide whether data exists. `useAccountHealth` was fetched
+  // but its `loading` was dropped, while `health.campaigns` is the sole source of
+  // the bands — so on a synced account whose connector resolved first, the page
+  // rendered three claims about a substrate still in flight:
+  //
+  //   · the hero        → all bands 0 → LEARNING → "No campaigns have enough
+  //                       data to score yet", then flipping to "3 decisions need
+  //                       your attention" once health landed
+  //   · the feed        → "No scored campaigns right now."
+  //   · Account health  → "No score yet"
+  //
+  // All three assert an ABSENCE the page had not yet established, and all three
+  // get retracted a moment later. Adding healthLoading here fixes the class; the
+  // three sites below are gated on this one value so a fourth health-derived
+  // claim cannot be added without passing through it.
+  const loading = intelligenceLoading || connectorLoading || healthLoading;
   const hasData = campaigns.length > 0;                       // legacy CampaignState feed
   const hasConnectorData = connectorCampaigns.length > 0;      // connector entity graph
   const hasAnyData = hasData || hasConnectorData;
@@ -416,8 +444,12 @@ export default function OverviewView() {
             />
           )}
 
-          {/* All three bands empty — say so rather than rendering a silent gap. */}
-          {bands.actNow.length === 0 && bands.watchNow.length === 0 && bands.healthyCount === 0 && (
+          {/* All three bands empty — say so rather than rendering a silent gap.
+              Gated on !loading (which now includes the health fetch): the bands
+              are derived from health.campaigns, so before it lands they are
+              empty for want of an answer, not because there isn't one. A brief
+              silent gap is honest; "No scored campaigns" is not. */}
+          {!loading && bands.actNow.length === 0 && bands.watchNow.length === 0 && bands.healthyCount === 0 && (
             <p className="mb-6 rounded-xl border border-lumi-border bg-lumi-surface px-4 py-3 text-xs text-lumi-muted">
               No scored campaigns right now.
             </p>
