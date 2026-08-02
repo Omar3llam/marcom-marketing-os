@@ -30,6 +30,9 @@ import { useHome } from '@/hooks/useHome.js';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
 import { getAccountState } from './overviewState.js';
+import { buildSurfacePlan } from './overviewPlan.js';
+import { pickInterrupt } from './overviewInterrupts.js';
+import { useDismissals } from './useDismissals.js';
 import {
   decisionFeed,
   partitionDecisions,
@@ -120,6 +123,19 @@ export function useOverviewModel() {
   const hasConnectorData = connectorCampaigns.length > 0;      // connector entity graph
   const hasAnyData = hasData || hasConnectorData;
 
+  // The scoring engine reads the CONNECTOR graph and nothing else
+  // (/entities/health runs over getConnectorCampaigns), so "has data" and "can
+  // be scored" are NOT the same fact. A workspace holding only legacy
+  // CampaignState rows will never receive a verdict, however long it waits.
+  const hasScorableData = hasConnectorData;
+
+  // /entities/health is gated to BUYER|STRATEGIST while /entities/campaigns is
+  // ungated, so a CLIENT sees campaigns and receives health: null — zero bands
+  // from AUTHORIZATION, not from absent data. Derived from the role rather than
+  // sniffed from a 403 so it is true before the request resolves, and so it
+  // cannot be confused with a genuine fetch failure.
+  const scoringHidden = collabRole === WORKSPACE_ROLE.CLIENT && hasAnyData;
+
   // Account-health card tone + caption (pure; see overviewDerive).
   const { tone: healthTone, label: healthLabel } = healthPresentation({
     score: kpis.health,
@@ -135,19 +151,45 @@ export function useOverviewModel() {
     healthyCount: bands.healthyCount,
     hasAnyData,
     loading,
+    scoringHidden,
   });
+
+  // ── The one interrupt, and the plan that orders everything ──
+  const hasEverSynced = connectionsData?.connections?.some((c) => c.lastSyncedAt != null) ?? false;
+  const hasRevenueData = connectorCampaigns.some((c) => (c.revenueMinor ?? 0) > 0);
+  const { firstRunFlag, dismissed, dismiss } = useDismissals({ hasAnyData });
+
+  const interrupt = pickInterrupt({
+    loading,
+    firstRunFlag,
+    hasAnyData,
+    hasConnectorData,
+    hasEverSynced,
+    hasRevenueData,
+    isStrategist: collabRole === WORKSPACE_ROLE.STRATEGIST,
+    dismissed,
+  });
+
+  const showCopilot = collabRole !== WORKSPACE_ROLE.CLIENT; // CLIENT home stays read-only & minimal
+  const plan = buildSurfacePlan({ accountState, hasAnyData, showCopilot, interrupt });
 
   return {
     // identity + units
     workspace,
     currency,
     collabRole,
-    showCopilot: collabRole !== WORKSPACE_ROLE.CLIENT, // CLIENT home stays read-only & minimal
+    showCopilot,
 
     // readiness + substrate presence
     loading,
     hasAnyData,
     hasConnectorData,
+    hasScorableData,
+    scoringHidden,
+
+    // what shows, in what order (+ the single interrupt)
+    plan,
+    dismiss,
 
     // the account's answer
     accountState,

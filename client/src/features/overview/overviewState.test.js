@@ -188,9 +188,89 @@ describe('buildHeroNarrative — LEARNING covers two different situations', () =
   // scored. Telling that user to "connect a channel" sends them to redo a step
   // they already finished.
   it('synced but nothing scorable → does NOT tell them to connect again', () => {
-    const [, second] = buildHeroNarrative({ state: ACCOUNT_STATE.LEARNING, hasAnyData: true });
-    expect(second).toBe('No campaigns have enough data to score yet.');
+    const [, second] = buildHeroNarrative({
+      state: ACCOUNT_STATE.LEARNING, hasAnyData: true, hasScorableData: true,
+    });
+    expect(second).toBe('Your campaigns are syncing. Verdicts appear once enough signal has accumulated.');
     expect(second).not.toMatch(/connect/i);
+  });
+
+  // PREMISE CORRECTION. The branch used to be on hasAnyData, but the scoring
+  // engine reads the CONNECTOR graph only (/entities/health runs over
+  // getConnectorCampaigns). A workspace holding legacy CampaignState rows and no
+  // connector campaigns has data and can NEVER be scored — telling it to wait
+  // for accumulating signal points it at a verdict that cannot arrive.
+  it('legacy rows but no connector channel → says connect, not wait', () => {
+    const [, second] = buildHeroNarrative({
+      state: ACCOUNT_STATE.LEARNING, hasAnyData: true, hasScorableData: false,
+    });
+    expect(second).toBe('Connect a channel to get your first verdict.');
+    expect(second).not.toMatch(/syncing|accumulat/i);
+  });
+});
+
+// ── The seat that cannot read the scoring substrate ──────────
+// GET /entities/health is gated BUYER|STRATEGIST; /entities/campaigns is not.
+// A CLIENT therefore sees campaigns, gets health: null, and lands on zero bands
+// — an absence produced by AUTHORIZATION being reported as one produced by DATA.
+describe('SCORING_HIDDEN — zero bands because this seat cannot see them', () => {
+  it('is its own state, not LEARNING', () => {
+    expect(getAccountState({ hasAnyData: true, scoringHidden: true }))
+      .toBe(ACCOUNT_STATE.SCORING_HIDDEN);
+  });
+
+  it('never outranks a verdict that DID come through', () => {
+    expect(getAccountState({ hasAnyData: true, scoringHidden: true, actNowTotal: 1 }))
+      .toBe(ACCOUNT_STATE.ACTION_REQUIRED);
+    expect(getAccountState({ hasAnyData: true, scoringHidden: true, healthyCount: 3 }))
+      .toBe(ACCOUNT_STATE.PERFORMING_WELL);
+  });
+
+  it('an un-synced account is still LEARNING, not hidden', () => {
+    expect(getAccountState({ hasAnyData: false, scoringHidden: true }))
+      .toBe(ACCOUNT_STATE.LEARNING);
+  });
+
+  it('says nothing about the account — only about the seat', () => {
+    const lines = buildHeroNarrative({ state: ACCOUNT_STATE.SCORING_HIDDEN, workspaceName: 'Acme' });
+    expect(lines[1]).toMatch(/access level/i);
+    // The two claims it must never make: that nothing scored, or that all is well.
+    expect(lines.join(' ')).not.toMatch(/enough data|score yet|running smoothly|no campaigns/i);
+  });
+});
+
+// ── Why is the feed empty? Three causes, three sentences, ONE place ──
+// The page used to print a separate "No scored campaigns right now." notice
+// under the hero for all three causes — true of only the last. The hero now
+// names the cause itself, so these assert there is exactly one sentence and it
+// is the right one.
+describe('the empty-feed explanation lives in the hero', () => {
+  const line = (over) => buildHeroNarrative({ state: ACCOUNT_STATE.LEARNING, ...over })[1];
+
+  it('a CLIENT is told it is their access level, not an empty account', () => {
+    const lines = buildHeroNarrative({ state: ACCOUNT_STATE.SCORING_HIDDEN });
+    expect(lines[1]).toMatch(/access level/i);
+    expect(lines.join(' ')).not.toMatch(/no scored campaigns/i);
+  });
+
+  it('no connector channel → says connect, never "syncing"', () => {
+    const l = line({ hasAnyData: true, hasScorableData: false });
+    expect(l).toMatch(/connect a channel/i);
+    expect(l).not.toMatch(/syncing|accumulat/i);
+  });
+
+  it('connector data present but nothing scored → signal is still accumulating', () => {
+    expect(line({ hasAnyData: true, hasScorableData: true }))
+      .toBe('Your campaigns are syncing. Verdicts appear once enough signal has accumulated.');
+  });
+
+  it('no state claims "no scored campaigns" any more', () => {
+    for (const state of Object.values(ACCOUNT_STATE)) {
+      for (const hasScorableData of [true, false]) {
+        expect(buildHeroNarrative({ state, hasAnyData: true, hasScorableData }).join(' '))
+          .not.toMatch(/no scored campaigns/i);
+      }
+    }
   });
 });
 

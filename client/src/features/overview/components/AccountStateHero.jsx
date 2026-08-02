@@ -25,6 +25,7 @@ export default function AccountStateHero({
   currency = null,      // kpis.currency, NOT workspace.currency (see below)
   workspace = null,
   hasAnyData = false,
+  hasScorableData = false,
 }) {
   // null === still loading. Rendering a state here would flash a claim the data
   // has not supported yet; the sections below own their own skeletons.
@@ -33,7 +34,7 @@ export default function AccountStateHero({
   const config = STATE_CONFIG[state] ?? STATE_CONFIG[ACCOUNT_STATE.LEARNING];
   const narrative = buildHeroNarrative({
     state, actNowTotal, watchTotal, healthyCount,
-    wastedAmount, currency, hasAnyData,
+    wastedAmount, currency, hasAnyData, hasScorableData,
     workspaceName: workspace?.name ?? null,
   });
 

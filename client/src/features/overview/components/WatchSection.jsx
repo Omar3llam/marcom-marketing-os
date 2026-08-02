@@ -14,8 +14,11 @@ import { cn } from '@/lib/utils.js';
 import { appRoutes } from '@/app/routeManifest.js';
 import DecisionCard from './DecisionCard.jsx';
 
-export default function WatchSection({ items = [], total = 0 }) {
-  const [open, setOpen] = useState(false);
+// `defaultOpen` is set by the surface plan for WATCH_CLOSELY — the one state
+// where this band is the ENTIRE answer the page has. Collapsed is the right
+// default under a KILL; it is the wrong default when there is nothing above it.
+export default function WatchSection({ items = [], total = 0, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
   const plural = total === 1 ? '' : 's';
 
   return (
