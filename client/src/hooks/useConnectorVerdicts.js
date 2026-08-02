@@ -7,8 +7,23 @@
 // "needs revenue data" state instead of a fabricated KILL.
 //
 // Returns: { verdicts, gatedOut, account, status, loading, error, refetch }
-//   verdicts[]: { id, name, verdict, confidence, rationale, spendMinor, roas, revenueExpected }
+//   verdicts[]: { id, name, verdict, confidence, rationale, spendMinor, roas,
+//                 revenueExpected, relativeRank, signalType, recommendationTypes,
+//                 rootCause, dataConfidence, funnel }
+//     rootCause      — machine-readable WHY (a funnel stage, INSUFFICIENT_DATA,
+//                      TOO_EARLY, or a diagnosis signal). Distinguishes a WATCH
+//                      that means "the landing page is broken" from one that
+//                      means "not enough data yet" — same verdict, opposite
+//                      implications.
+//     dataConfidence — the input-quality half of `confidence` (the other half is
+//                      the rule's own strength). Lets the UI say WHY confidence
+//                      is low instead of just that it is.
+//     funnel         — { signal, stage, evidence[], diagnosis, counterfactual,
+//                      action } when a funnel stage was diagnosed, else null.
 //   gatedOut[]: { id, name, reason }
+//
+// Rows pass through WHOLE — this hook never projects a subset, so a new engine
+// field reaches consumers without a change here.
 //
 // Disjoint from the CSV feed (useCampaignFeed) and from useConnectorCampaigns —
 // this hook adds the engine verdict on top of the same connector substrate.

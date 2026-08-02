@@ -12,7 +12,7 @@
 // no LLM round-trip. Not yet generated → an honest "after the next sweep"; an
 // aged row is flagged "may be stale". Cached per campaign for the session.
 // ============================================================
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Sparkles, Loader2, AlertTriangle, Copy, Check, AlertCircle, ExternalLink } from 'lucide-react';
 import { formatCurrency } from '@/lib/money';
 import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFormatters.js';
@@ -26,6 +26,7 @@ import { LearningInsight } from './LearningInsight.jsx';
 import {
   NO_REVENUE_DISCLAIMER, confidenceLabel, evidenceClause, nextActionFor, ignoreCostFor,
   buildRecommendationText, platformUrl,
+  evidenceRows, whyBlock, confidenceDetail, isDataQualityCause,
 } from '@/features/campaigns/verdictEvidence.js';
 
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
@@ -120,7 +121,32 @@ function Signal({ label, help, children }) {
   );
 }
 
-export function CampaignDetailPanel({ campaign, verdict = null, impact = null, rationale = null, confidence = null }) {
+/**
+ * The engine's evidence[] as a comparison table: its value beside the benchmark
+ * it was judged against. Rendered, not restated — the panel adds no arithmetic
+ * of its own, so a reader can check the call rather than take it on trust.
+ */
+function EvidenceTable({ rows }) {
+  if (!rows.length) return null;
+  return (
+    <dl className="mt-2 grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-1 text-sm">
+      {rows.map((r) => (
+        <Fragment key={r.metric}>
+          <dt className="text-lumi-muted truncate">{r.label}</dt>
+          <dd className={`font-mono text-right ${r.status === 'weak' ? 'text-lumi-danger' : 'text-lumi-text'}`}>{r.value}</dd>
+          <dd className="font-mono text-right text-lumi-subtle">
+            {r.benchmark ? `vs ${r.benchmark}` : <Dash />}
+          </dd>
+        </Fragment>
+      ))}
+    </dl>
+  );
+}
+
+export function CampaignDetailPanel({
+  campaign, verdict = null, impact = null, rationale = null, confidence = null,
+  funnel = null, rootCause = null, dataConfidence = null,
+}) {
   const { load, reasoning, stale, generatedAt, isLoading, error } = useCampaignReasoning();
   const entityId = campaign.entityId;
   const learning = useDecisionLearning(entityId);
@@ -137,10 +163,20 @@ export function CampaignDetailPanel({ campaign, verdict = null, impact = null, r
   // is surfaced, not computed: the evidence line is the engine's own rationale
   // clause, confidence is the engine's score, the cost line quotes real spend/
   // ROAS. A missing piece renders nothing — never an invented reason.
-  const isActionVerdict = verdict === 'KILL' || verdict === 'SCALE';
-  const evidence = evidenceClause(rationale);
+  // Which reasons get a block, and under what heading. This used to be an
+  // inline `verdict === 'KILL' || verdict === 'SCALE'` — but every funnel
+  // diagnosis is a WATCH, so the whole funnel layer rendered nothing.
+  const { show: showWhy, heading } = whyBlock({ verdict, funnel, rootCause });
+  // Structured first, prose only as the fallback for verdicts that have no
+  // funnel (a KILL/SCALE still carries nothing but a sentence).
+  const rows = evidenceRows(funnel);
+  const evidence = funnel ? null : evidenceClause(rationale);
+  const dataOnly = isDataQualityCause(rootCause);
+  const conf = confidenceDetail({ confidence, dataConfidence });
   const confLabel = confidenceLabel(confidence);
-  const nextAction = nextActionFor(verdict);
+  // A data-quality state has no action to take on the platform — the honest
+  // next step is to wait, which nextActionFor (keyed on verdict) cannot know.
+  const nextAction = funnel?.action ?? (dataOnly ? null : nextActionFor(verdict));
   const ignoreCost = ignoreCostFor({
     verdict, roas: campaign.roas, spendMinor: campaign.spendMinor, currency: campaign.currency || 'USD',
   });
@@ -148,38 +184,78 @@ export function CampaignDetailPanel({ campaign, verdict = null, impact = null, r
   return (
     <div className="grid gap-4 md:grid-cols-2 bg-lumi-bg/40 rounded-xl p-4 my-1">
       {/* ── Why KILL / SCALE? ───────────────────────────────── */}
-      {isActionVerdict && (
+      {showWhy && (
         <div className="md:col-span-2 rounded-xl border border-lumi-border/60 bg-lumi-surface/60 p-3">
-          <div className="section-label mb-1.5 text-lumi-muted">Why {verdict.toLowerCase()}?</div>
+          <div className="section-label mb-1.5 text-lumi-muted">{heading}</div>
+
+          {/* The engine's own diagnosis + the stage it located, when it found
+              one. Structured — no sentence is being parsed to get here. */}
+          {funnel && (
+            <>
+              <p className="text-sm text-lumi-text leading-relaxed">
+                {funnel.diagnosis}
+                {funnel.stage && (
+                  <span className="ml-1.5 font-mono text-[11px] text-lumi-subtle">{funnel.stage}</span>
+                )}
+              </p>
+              <EvidenceTable rows={rows} />
+              {/* What this is NOT. The single most valuable line here: it is
+                  what stops a marketer changing the creative when the creative
+                  was the part that worked. */}
+              {funnel.counterfactual && (
+                <p className="mt-2 text-sm text-lumi-muted leading-relaxed">{funnel.counterfactual}</p>
+              )}
+            </>
+          )}
+
+          {/* Prose fallback: verdicts with no funnel still carry only a
+              rationale, so the leading-clause parser stays for them. */}
           {evidence && (
             <p className="text-sm text-lumi-text leading-relaxed">
               {evidence}
               {confLabel && <span className="font-mono text-[11px] text-lumi-subtle"> · {confLabel} confidence</span>}
             </p>
           )}
+
           {nextAction && (
             <p className="mt-1.5 text-sm text-lumi-text">
               <span className="font-semibold">Next step:</span> {nextAction}
             </p>
           )}
-          {ignoreCost && <p className="mt-1.5 text-xs text-lumi-muted leading-relaxed">{ignoreCost}</p>}
-          {campaign.roas == null && (
+
+          {/* Why the confidence is not higher, when thin inputs are the reason.
+              "Low" on its own reads as "the engine is unsure about your
+              campaign"; the truth is it is unsure about its own evidence. */}
+          {funnel && conf && (
+            <p className="mt-1.5 font-mono text-[11px] text-lumi-subtle">
+              {conf.label} confidence{conf.limitedByData ? ' · limited by available data' : ''}
+            </p>
+          )}
+
+          {ignoreCost && !dataOnly && <p className="mt-1.5 text-xs text-lumi-muted leading-relaxed">{ignoreCost}</p>}
+          {campaign.roas == null && !dataOnly && (
             <p className="mt-1.5 text-xs text-lumi-subtle leading-relaxed">{NO_REVENUE_DISCLAIMER}</p>
           )}
-          <ActionBar
-            entityId={entityId}
-            verdict={verdict}
-            name={campaign.name}
-            rationale={rationale}
-            confidence={confidence}
-            spendMinor={campaign.spendMinor}
-            currency={campaign.currency || 'USD'}
-            channel={campaign.channel}
-            externalId={campaign.externalId}
-          />
+          {/* The action bar builds a "Recommendation" to share and records an
+              intent. Neither is meaningful for a state that says we have not
+              judged the campaign yet, so a data-quality block omits it rather
+              than offering a recommendation there is no evidence for. */}
+          {!dataOnly && (
+            <ActionBar
+              entityId={entityId}
+              verdict={verdict}
+              name={campaign.name}
+              rationale={rationale}
+              confidence={confidence}
+              spendMinor={campaign.spendMinor}
+              currency={campaign.currency || 'USD'}
+              channel={campaign.channel}
+              externalId={campaign.externalId}
+            />
+          )}
           {/* How decisions like this one have gone in this workspace. Silent
               below a defensible sample. */}
-          <LearningInsight learning={learning} />
+          {!dataOnly && <LearningInsight learning={learning} />}
         </div>
       )}
       {/* ── Signals ─────────────────────────────────────────── */}
