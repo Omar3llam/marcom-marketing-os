@@ -22,7 +22,13 @@
 import { diagnoseSignals, SIGNAL_TYPE } from '../diagnosis-engine/index.js';
 import { fromMinor }                     from '../../lib/money.js';
 import { VERDICT, VERDICT_TO_REC_TYPES, ROOT_CAUSE } from './verdictTypes.js';
-import { getBenchmarks, FATIGUE_FREQ }   from './benchmarkProvider.js';
+// ALIASED ON PURPOSE — do not "tidy" this back to a plain FATIGUE_FREQ import.
+// This module also EXPORTS a binding of that name for readers outside the
+// verdict engine, and an import plus a same-named const in one module is a
+// load-time SyntaxError ("Identifier 'FATIGUE_FREQ' has already been declared").
+// The two land in different regions of the file, so git merges them without a
+// conflict and nothing catches it until the server fails to boot.
+import { getBenchmarks, FATIGUE_FREQ as SATURATION_CEILING } from './benchmarkProvider.js';
 import { diagnoseFunnel }                from './funnelDiagnosis.js';
 import { computeConfidence, composeConfidence, MIN_IMPRESSIONS } from './confidenceEngine.js';
 import { logger }                        from '../../utils/logger.js';
@@ -40,7 +46,7 @@ const V = Object.freeze({
   // Saturation ceiling — the SINGLE source now lives in benchmarkProvider, so
   // the diagnosis engine grades frequency by the same number this one judges it
   // by. Kept on V so every existing V.FATIGUE_FREQ reader is unchanged.
-  FATIGUE_FREQ,
+  FATIGUE_FREQ: SATURATION_CEILING,
   SCALE_ROAS:       3.0, // strong enough to scale
   // Awareness track — used ONLY when revenue was never measured (roas null). These
   // judge reach/engagement campaigns on frequency + CTR alone; they NEVER emit a
