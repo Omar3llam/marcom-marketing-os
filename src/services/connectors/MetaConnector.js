@@ -11,6 +11,7 @@ import { logger } from '../../utils/logger.js';
 import {
   fetchCampaignInsights, fetchAccountCurrency, fetchAllCampaigns, mergeMetaCampaigns,
   fetchAdSetInsights, fetchAllAdSets, mergeMetaAdSets,
+  fetchAdInsights, fetchAllAds, mergeMetaAds,
 } from '../metaAdsService.js';
 import { resolveSyncCurrency } from '../../lib/currencyDetector.js';
 import { ChannelConnector, assertNormalized } from './ChannelConnector.js';
@@ -62,25 +63,28 @@ export class MetaConnector extends ChannelConnector {
   }
 
   async fetchRaw(auth, { datePreset = DEFAULT_MANUAL_SYNC_DATE_PRESET } = {}) {
-    // FOUR account-scoped edges, two levels, two roles each:
+    // SIX account-scoped edges, three levels, two roles each:
     //   /insights level=campaign — campaigns that DELIVERED. PRIMARY: a failure
     //                              here IS a sync failure, so it throws.
     //   /campaigns               — the FULL roster incl. zero-spend. SECONDARY.
     //   /insights level=adset    — ad-sets that DELIVERED. SECONDARY.
     //   /adsets                  — the FULL ad-set roster. SECONDARY.
+    //   /insights level=ad       — ads that DELIVERED. SECONDARY.
+    //   /ads                     — the FULL ad roster. SECONDARY.
     //
-    // Every SECONDARY edge degrades to [] on failure rather than breaking the
-    // sync (mirrors how the currency lookup never throws). Campaign data is the
-    // substrate every engine already reads; losing ad-sets must not cost it.
+    // Every SECONDARY edge degrades to an empty result on failure rather than
+    // breaking the sync (mirrors how the currency lookup never throws). Campaign
+    // data is the substrate every engine already reads; losing ad-sets or ads
+    // must not cost it.
     //
-    // All four are account-scoped with a `level` param — Meta fans out
-    // server-side, so this is O(1) requests, NOT one per campaign.
+    // All six are account-scoped with a `level` param — Meta fans out
+    // server-side, so this is O(1) requests, NOT one per campaign or ad-set.
     const softFail = (label, fallback) => (err) => {
       logger.warn({ err: err.message, accountId: auth.accountExternalId }, `[MetaConnector] ${label}`);
       return fallback;
     };
 
-    const [insights, campaigns, adSetInsights, adSetRoster] = await Promise.all([
+    const [insights, campaigns, adSetInsights, adSetRoster, adInsights, adRoster] = await Promise.all([
       fetchCampaignInsights(auth.accessToken, auth.accountExternalId, datePreset),
       fetchAllCampaigns(auth.accessToken, auth.accountExternalId).catch(
         softFail('fetchAllCampaigns failed — landing insights only (zero-spend campaigns omitted)', []),
@@ -91,6 +95,14 @@ export class MetaConnector extends ChannelConnector {
       fetchAllAdSets(auth.accessToken, auth.accountExternalId).catch(
         softFail('fetchAllAdSets failed — ad-set roster omitted (non-delivering ad-sets will not appear)', { rows: [], truncated: false }),
       ),
+      // Ad level — SECONDARY like the two above. Losing ad detail must never cost
+      // the campaign substrate every engine already reads.
+      fetchAdInsights(auth.accessToken, auth.accountExternalId, datePreset).catch(
+        softFail('fetchAdInsights failed — ad-level metrics omitted this sync', { rows: [], truncated: false }),
+      ),
+      fetchAllAds(auth.accessToken, auth.accountExternalId).catch(
+        softFail('fetchAllAds failed — ad roster omitted (non-delivering ads will not appear)', { rows: [], truncated: false }),
+      ),
     ]);
 
     // Every campaign and ad-set lands: delivered ones keep their data,
@@ -98,7 +110,8 @@ export class MetaConnector extends ChannelConnector {
     // fabricated zero snapshot. Both merges unwrap the SDK envelope.
     const campaignRows = mergeMetaCampaigns(insights, campaigns);
     const adSetRows = mergeMetaAdSets(adSetInsights.rows, adSetRoster.rows);
-    const rows = [...campaignRows, ...adSetRows];
+    const adRows = mergeMetaAds(adInsights.rows, adRoster.rows);
+    const rows = [...campaignRows, ...adSetRows, ...adRows];
 
     // Truncation rides as a property ON the returned array, not as a wrapper
     // object: ConnectorSyncService feeds fetchRaw's return straight into
@@ -117,7 +130,14 @@ export class MetaConnector extends ChannelConnector {
         campaigns: campaignRows.length,
         adSetsFetched: adSetInsights.rows.length,
         adSetsMerged: adSetRows.length,
-        truncated: Boolean(adSetInsights.truncated || adSetRoster.truncated),
+        adsFetched: adInsights.rows.length,
+        adsMerged: adRows.length,
+        // Ads are the level most likely to pass the page cap (they outnumber ad-sets
+        // several-fold), so their truncation MUST reach the sync loop — otherwise a
+        // partial read is recorded as a complete one.
+        truncated: Boolean(
+          adSetInsights.truncated || adSetRoster.truncated || adInsights.truncated || adRoster.truncated,
+        ),
       }),
       enumerable: false,
     });
