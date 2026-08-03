@@ -50,6 +50,10 @@ const V = Object.freeze({
 
 export { MIN_IMPRESSIONS };
 export const MIN_DAYS = V.MIN_DAYS;
+// The saturation ceiling, exported so evidenceProvider grades frequency against
+// the SAME number this engine judges it by. A re-typed 3.5 there would drift the
+// first time this one is tuned.
+export const FATIGUE_FREQ = V.FATIGUE_FREQ;
 
 /**
  * Aggregate raw metrics for a node from its annotated children, or

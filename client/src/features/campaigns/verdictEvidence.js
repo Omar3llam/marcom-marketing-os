@@ -52,11 +52,27 @@ export function evidenceClause(rationale) {
 // in percent (clicks/impressions × 100); the funnel rates arrive as ratios.
 // Formatting the wrong one shows 0.40% where 40% was meant, so this map is the
 // unit contract — an unknown metric renders its raw number rather than guessing.
+// NOTE: this `kind` is the UNIT of the number ('percent' | 'ratio' | 'multiple' |
+// 'count'). The evidence ITEM the engine emits also carries a `kind`, and that
+// one means something else entirely ('benchmark' | 'context' — whether the figure
+// was scored at all). They sit on different objects and never meet, but do not
+// read one for the other.
 const EVIDENCE_UNITS = {
   CTR:      { kind: 'percent', label: 'CTR' },
   LPV_RATE: { kind: 'ratio',   label: 'Landing page views / clicks' },
   ATC_RATE: { kind: 'ratio',   label: 'Add to cart / page views' },
   CO_RATE:  { kind: 'ratio',   label: 'Checkouts / add to cart' },
+  // Ad-level evidence (evidenceProvider). SPEND_SHARE is a fraction of the
+  // parent's spend, so it renders like the funnel rates. FREQUENCY is neither a
+  // percent nor a ratio — it is "times seen per person", and running it through
+  // the ratio branch would print a 3.5 frequency as "350.0%".
+  SPEND_SHARE: { kind: 'ratio',    label: 'Share of parent spend' },
+  FREQUENCY:   { kind: 'multiple', label: 'Frequency' },
+  // Video quartile COUNTS from the ad-level actionMetrics bag — whole views, not
+  // rates. No emitter ranks on these yet; the entries exist so that when one
+  // does, the number arrives with its unit instead of falling through to raw.
+  VIDEO_25: { kind: 'count', label: 'Video 25% views' },
+  VIDEO_50: { kind: 'count', label: 'Video 50% views' },
 };
 
 /** PURE: an evidence number → display string, using the metric's known unit. */
@@ -64,7 +80,10 @@ export function formatEvidenceValue(metric, value) {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   const unit = EVIDENCE_UNITS[metric];
   if (!unit) return String(value); // unknown metric: show the raw number, never a guessed unit
-  return unit.kind === 'percent' ? `${value.toFixed(2)}%` : `${(value * 100).toFixed(1)}%`;
+  if (unit.kind === 'percent')  return `${value.toFixed(2)}%`;
+  if (unit.kind === 'multiple') return `${value.toFixed(1)}×`;
+  if (unit.kind === 'count')    return `${Math.round(value)} views`;
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 /** PURE: the metric's marketer-facing name, or the raw key when unrecognised. */
