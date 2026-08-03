@@ -2,6 +2,7 @@
 // MARCOM / Lumi — Entity-graph surface (connector campaigns + ad-set drill-down)
 // GET /api/lumi/entities/campaigns          → connector-synced campaigns
 // GET /api/lumi/entities/:campaignId/adsets → that campaign's ad-sets
+// GET /api/lumi/entities/:adSetId/ads       → that ad-set's ads (creative level)
 // ------------------------------------------------------------
 // The Campaigns table renders the legacy CampaignState feed; this sibling
 // surface exposes the DISJOINT connector entity graph (the only substrate that
@@ -10,7 +11,7 @@
 // req.workspaceId is resolved by the auth middleware; null → honest empty.
 // ============================================================
 import { Router } from 'express';
-import { getConnectorCampaigns, getCampaignAdSets } from '../../services/entity-graph/index.js';
+import { getConnectorCampaigns, getCampaignAdSets, getAdSetAds } from '../../services/entity-graph/index.js';
 import { getConnectorVerdicts, needsRevenueData } from '../../services/verdict-engine/index.js';
 import { computeAccountHealth } from '../../services/analysis/AccountHealthService.js';
 import { computeFatigueForecast } from '../../services/analysis/FatigueForecastService.js';
@@ -168,3 +169,31 @@ entitiesRouter.get('/entities/:campaignId/adsets', async (req, res) => {
     return res.status(500).json({ error: 'AdSetsUnavailable', message: 'Request failed' });
   }
 });
+
+// One level below the ad-sets route: the ads of an ad-set, with their latest AD
+// snapshots and creative age. Gated to the operating roles like /health and
+// /fatigue — ad-level detail IS the efficiency critique, and a CLIENT never sees
+// it. Generic `{ entity, children }` envelope: this route says nothing about
+// WHICH level it returned, so the next level down (creatives) can reuse the
+// shape without minting a third response contract.
+entitiesRouter.get(
+  '/entities/:adSetId/ads',
+  requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST),
+  async (req, res) => {
+    try {
+      const ads = await getAdSetAds(req.workspaceId, req.params.adSetId);
+      // null = ad-set not in this workspace → honest 404 (not a fake empty drill-down).
+      if (ads === null) {
+        return res.status(404).json({ error: 'AdSetNotFound', message: 'No such ad set in this workspace' });
+      }
+      return res.json({
+        entity: { id: req.params.adSetId },
+        generatedAt: new Date().toISOString(),
+        children: ads,
+      });
+    } catch (err) {
+      logger.error({ err: err.message, workspaceId: req.workspaceId, adSetId: req.params.adSetId }, '[lumi/entities] ads failed');
+      return res.status(500).json({ error: 'AdsUnavailable', message: 'Request failed' });
+    }
+  },
+);

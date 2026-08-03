@@ -16,6 +16,7 @@ const { getConnectorVerdicts } = vi.hoisted(() => ({ getConnectorVerdicts: vi.fn
 vi.mock('../../services/entity-graph/index.js', () => ({
   getConnectorCampaigns,
   getCampaignAdSets: vi.fn(),
+  getAdSetAds: vi.fn(),
 }));
 // getConnectorVerdicts is mocked (the scoring math is covered elsewhere), but
 // needsRevenueData is the REAL deterministic helper — the route's needsRevenue

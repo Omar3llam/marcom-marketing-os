@@ -2,7 +2,7 @@
 // EntityGraphEngine — pure shaping correctness
 // ============================================================
 import { describe, it, expect } from 'vitest';
-import { latestByEntity, effectiveByEntity, toCampaignRow, toAdSetRow, REVENUE_MAX_AGE_MS } from './entityGraphEngine.js';
+import { latestByEntity, effectiveByEntity, toCampaignRow, toAdSetRow, toAdRow, REVENUE_MAX_AGE_MS } from './entityGraphEngine.js';
 
 describe('entityGraphEngine.latestByEntity', () => {
   it('keeps the latest snapshot per entity regardless of input order', () => {
@@ -279,5 +279,58 @@ describe('entityGraphEngine shapers — null-where-absent (honest "—", never a
     const empty = toAdSetRow({ id: 'as2', name: 'Broad', channel: 'META' }, undefined);
     expect(empty.spendMinor).toBeNull();
     expect(empty.ctr).toBeNull();
+  });
+
+  // adCount is what tells the client a row is drillable. A phantom chevron on a
+  // childless ad-set is the same class of lie as a fabricated 0 metric.
+  it('toAdSetRow carries a real adCount', () => {
+    expect(toAdSetRow({ id: 'as1', name: 'Broad', channel: 'META', adCount: 3 }, undefined).adCount).toBe(3);
+    expect(toAdSetRow({ id: 'as2', name: 'Broad', channel: 'META', adCount: 0 }, undefined).adCount).toBe(0);
+  });
+
+  it('toAdSetRow defaults a missing adCount to 0 — an uncounted ad-set is never drillable', () => {
+    expect(toAdSetRow({ id: 'as3', name: 'Broad', channel: 'META' }, undefined).adCount).toBe(0);
+  });
+});
+
+describe('entityGraphEngine.toAdRow', () => {
+  const ad = { id: 'ad1', name: 'Carousel #4', channel: 'META', status: 'ACTIVE', platformCreatedTime: '2026-05-01T00:00:00.000Z' };
+
+  it('projects the entity fields and lifts snapshot metrics verbatim', () => {
+    expect(toAdRow(ad, { spendMinor: 10000, roas: 2.4, ctr: 0.03, impressions: 10000, clicks: 250, currency: 'EGP', date: '2026-06-02' }))
+      .toMatchObject({ entityId: 'ad1', name: 'Carousel #4', channel: 'META', status: 'ACTIVE', spendMinor: 10000, roas: 2.4, impressions: 10000 });
+  });
+
+  // The field that justifies the level existing: creative age, not campaign age.
+  it('carries platformCreatedTime — creative age, absent at ad-set level', () => {
+    expect(toAdRow(ad, undefined).platformCreatedTime).toBe('2026-05-01T00:00:00.000Z');
+    expect(toAdSetRow({ id: 'as1', name: 'Broad', channel: 'META' }, undefined).platformCreatedTime).toBeUndefined();
+  });
+
+  it('nulls platformCreatedTime when the platform never reported it — unknown age reads as unknown', () => {
+    expect(toAdRow({ id: 'ad2', name: 'Roster only', channel: 'META' }, undefined).platformCreatedTime).toBeNull();
+  });
+
+  it('nulls every metric when the snapshot is missing — never a fabricated 0', () => {
+    const row = toAdRow(ad, undefined);
+    expect(row.spendMinor).toBeNull();
+    expect(row.roas).toBeNull();
+    expect(row.ctr).toBeNull();
+    expect(row.impressions).toBeNull();
+    expect(row.clicks).toBeNull();
+    expect(row.actionMetrics).toBeNull();
+    expect(row.currency).toBeNull();
+    expect(row.lastDate).toBeNull();
+  });
+
+  it('nulls status when absent (only PAUSED/ARCHIVED are positive knowledge)', () => {
+    expect(toAdRow({ id: 'ad3', name: 'X', channel: 'META' }, undefined).status).toBeNull();
+  });
+
+  // The video quartiles only exist meaningfully at ad level — they ride the same
+  // actionMetrics bag metricsOf already spreads, so no extra plumbing.
+  it('passes the actionMetrics bag through, video quartiles included', () => {
+    const row = toAdRow(ad, { actionMetrics: { videoView: 5000, video25: 3000, video50: 1200, video95: 300, lpv: 400 }, date: '2026-06-02' });
+    expect(row.actionMetrics).toEqual({ videoView: 5000, video25: 3000, video50: 1200, video95: 300, lpv: 400 });
   });
 });
