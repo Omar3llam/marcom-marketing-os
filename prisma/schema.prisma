@@ -1144,6 +1144,12 @@ model Ad {
   status      EntityStatus @default(ACTIVE)
   name        String
   externalId  String?
+  // When the ad was created ON THE PLATFORM (Meta /ads `created_time`). At this
+  // level it is CREATIVE AGE — the natural input to a fatigue trend, which is
+  // about how long an audience has been seeing this specific ad, not how long
+  // its campaign has existed. Same rule as Campaign.platformCreatedTime:
+  // `createdAt` is our own row's write time and is not a substitute.
+  platformCreatedTime DateTime?
   createdAt   DateTime     @default(now())
 
   workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)

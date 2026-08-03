@@ -214,22 +214,80 @@ function normalizeAdSets(rows, currency, d, accountExternalId) {
 }
 
 /**
+ * Ad rows → AD NormalizedSnapshots.
+ *
+ * parentExternalId is the AD-SET id: snapshotSink chains the FK through
+ * PARENT_LEVEL (AD → ADSET → CAMPAIGN → ACCOUNT), so pointing it at the campaign
+ * would compute an ad-set id that does not exist and orphan the ad.
+ *
+ * A row with no ad_id has no stable identity, and one with no adset_id has no
+ * resolvable parent — both are dropped rather than merged onto a garbage id.
+ * (Same two guards as normalizeAdSets, one level down.)
+ */
+function normalizeAds(rows, currency, d, accountExternalId) {
+  const out = [];
+  for (const r of rows) {
+    if (r.ad_id == null) {
+      logger.warn({ accountExternalId }, '[metaNormalize] dropped an ad row with no ad_id');
+      continue;
+    }
+    if (r.adset_id == null) {
+      logger.warn({ accountExternalId, adId: r.ad_id }, '[metaNormalize] dropped an ad row with no adset_id (no resolvable parent)');
+      continue;
+    }
+    out.push({
+      externalId: String(r.ad_id),
+      entityLevel: 'AD',
+      parentExternalId: String(r.adset_id),
+      name: r.ad_name || 'Unnamed Ad',
+      // toEntityStatus, NOT the raw Meta string: `status` feeds a Prisma
+      // EntityStatus enum column, and Meta's vocabulary is far wider
+      // (PENDING_REVIEW, DISAPPROVED, WITH_ISSUES…). Passing one through raw
+      // would throw on the upsert; null means "we were not told", and the sink
+      // then leaves the stored value alone.
+      status: toEntityStatus(r.status, r.effective_status),
+      // Creative age. mergeMetaAds folds `created_time` from the /ads roster onto
+      // delivering rows, so this is populated for real ads, not only dormant ones.
+      platformCreatedTime: toDate(r.created_time),
+      // actionMetrics rides along inside baseMeasures — including the video
+      // quartiles, which only exist at this level in any useful form.
+      ...baseMeasures(r, currency, d),
+    });
+  }
+  return out;
+}
+
+/**
  * @param {{ accountExternalId, accountName?, currency, date, rows }} input
- *   rows = raw Meta insight objects, CAMPAIGN-level and/or ADSET-level mixed.
- *   An ad-set row is identified by carrying `adset_id`; MetaConnector.fetchRaw
- *   concatenates both levels into one array because the ChannelConnector
- *   contract is `fetchRaw -> RawRow[]`.
- * @returns {NormalizedSnapshot[]} one ACCOUNT rollup + CAMPAIGN rows + ADSET rows
+ *   rows = raw Meta insight objects, CAMPAIGN / ADSET / AD level mixed.
+ *   Levels are identified by their id keys — an AD row carries `ad_id`, an
+ *   ad-set row `adset_id` and no `ad_id`. MetaConnector.fetchRaw concatenates
+ *   all three into one array because the ChannelConnector contract is
+ *   `fetchRaw -> RawRow[]`.
+ * @returns {NormalizedSnapshot[]} one ACCOUNT rollup + CAMPAIGN + ADSET + AD rows
  */
 export function metaNormalize({ accountExternalId, accountName = null, currency = 'USD', date, rows = [] }) {
   const d = date instanceof Date ? date : new Date(date);
 
-  // Partition by shape before anything else. The two levels look alike but must
-  // NOT be summed together — see the rollup note below.
-  const adSetRows = rows.filter((r) => r.adset_id != null);
-  const campaignRows = rows.filter((r) => r.adset_id == null);
+  // ── THREE-WAY PARTITION (architectural invariant) ─────────────────────────
+  // Partition by shape before anything else. The three levels look alike but
+  // must NOT be summed together — see the rollup note below.
+  //
+  // ORDER IS LOAD-BEARING: most-specific key FIRST. An AD-level insight row
+  // carries `adset_id` too — that is its PARENT link, requested in
+  // AD_INSIGHT_FIELDS precisely so the FK can be chained. A two-way partition
+  // keyed on `adset_id` would therefore swallow every ad row into adSetRows and
+  // normalize it as an ad-set, where `externalId` becomes the AD's id, detId
+  // hashes it to a DIFFERENT entity id than the real ad-set… and the ad lands as
+  // a phantom ad-set sibling of its own parent, inflating ad-set counts and
+  // double-counting nothing visibly. Checking `ad_id` first is the only thing
+  // that prevents it. Never reorder these three lines.
+  const adRows       = rows.filter((r) => r.ad_id != null);
+  const adSetRows    = rows.filter((r) => r.ad_id == null && r.adset_id != null);
+  const campaignRows = rows.filter((r) => r.ad_id == null && r.adset_id == null);
 
   const adSets = normalizeAdSets(adSetRows, currency, d, accountExternalId);
+  const ads    = normalizeAds(adRows, currency, d, accountExternalId);
 
   const campaigns = campaignRows
     // A row with NO campaign_id AND no campaign_name has no stable identity: the
@@ -278,5 +336,10 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
   // be all zeros. With ≥1 real campaign the rollup reflects real spend (roster
   // rows add 0), so it lands; an all-roster rollup is skipped like its campaigns.
   if (account) account.rosterOnly = campaigns.every((c) => c.rosterOnly);
-  return account ? [account, ...campaigns, ...adSets] : [...campaigns, ...adSets];
+  // Ads append AFTER ad-sets. Order is not load-bearing for correctness — the
+  // sink sorts ops by LEVEL_ORDER so parents always upsert first — but keeping
+  // the array in hierarchy order makes a raw dump readable.
+  return account
+    ? [account, ...campaigns, ...adSets, ...ads]
+    : [...campaigns, ...adSets, ...ads];
 }

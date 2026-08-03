@@ -27,6 +27,12 @@ const LEVEL_MODEL = Object.freeze({
   CREATIVE: { model: 'creative', fk: 'adId' },
 });
 
+// The entity levels whose model actually HAS a platformCreatedTime column.
+// Campaign got it for days-running; Ad for creative age. Account, AdSet and
+// Creative do not have it — Prisma throws on an unknown arg, so this cannot be
+// widened without the matching migration.
+const LEVELS_WITH_PLATFORM_CREATED_TIME = new Set([ENTITY_LEVEL.CAMPAIGN, ENTITY_LEVEL.AD]);
+
 const round = (n) => Math.round(n);
 
 /**
@@ -103,21 +109,116 @@ export function toEntityOps(workspaceId, channel, normalized = []) {
     // objective is a CAMPAIGN-only attribute (the column lives on Campaign, not
     // the other entity models) — only stamp it there, or the Account/AdSet upsert
     // would throw on an unknown arg.
-    if (n.entityLevel === ENTITY_LEVEL.CAMPAIGN) {
-      data.objective = n.objective ?? null;
-      // Same CAMPAIGN-only rule as objective: the column lives on Campaign, so
-      // stamping it on an Account/AdSet upsert would throw on an unknown arg.
+    // objective is a CAMPAIGN-only attribute (the column lives on Campaign, not
+    // the other entity models) — only stamp it there, or the Account/AdSet upsert
+    // would throw on an unknown arg.
+    if (n.entityLevel === ENTITY_LEVEL.CAMPAIGN) data.objective = n.objective ?? null;
+    // platformCreatedTime exists on Campaign AND Ad — and ONLY those two. At
+    // campaign level it is age; at ad level it is CREATIVE age. Account/AdSet/
+    // Creative have no such column, so stamping it there would throw on an
+    // unknown arg. This is a SET, not a level check, because the next level to
+    // gain the column must be added here or its migration lands a dead column
+    // that nothing ever writes.
+    if (LEVELS_WITH_PLATFORM_CREATED_TIME.has(n.entityLevel)) {
       data.platformCreatedTime = n.platformCreatedTime ?? null;
     }
+    // Remembered so the orphan sweep below can check the parent is actually in
+    // this batch. detId is a pure hash — it happily produces an id for a parent
+    // that was never fetched.
+    let parentId = null;
     if (spec.fk) {
       const parentLevel = PARENT_LEVEL[n.entityLevel];
-      data[spec.fk] = detId(workspaceId, channel, parentLevel, n.parentExternalId);
+      parentId = detId(workspaceId, channel, parentLevel, n.parentExternalId);
+      data[spec.fk] = parentId;
     }
-    ops.push({ level: n.entityLevel, model: spec.model, id, data });
+    ops.push({ level: n.entityLevel, model: spec.model, id, data, parentId });
   }
   // Parents first so FKs resolve.
   ops.sort((a, b) => LEVEL_ORDER.indexOf(a.level) - LEVEL_ORDER.indexOf(b.level));
   return ops;
+}
+
+/**
+ * PURE: drop any op whose parent exists neither in this batch NOR in the DB.
+ *
+ * `detId` is a hash, not a lookup — it returns an id for a parent that was never
+ * fetched, so an orphan produces a syntactically valid FK pointing at a row that
+ * does not exist. landSnapshots upserts every op in ONE `$transaction`, so a
+ * single such row raises a foreign-key violation that rolls back the WHOLE
+ * batch: one unparented ad would cost the sync its campaigns too.
+ *
+ * That is exactly the failure the connector's softFail design exists to prevent,
+ * reintroduced through the database. It became reachable the moment ad ingestion
+ * landed (ads are fetched on their own edge, which can fail or truncate
+ * independently of the ad-sets they belong to), but it was ALWAYS possible one
+ * level up: an ad-set whose campaign never delivered and whose roster fetch
+ * softFailed has the same shape.
+ *
+ * `knownParentIds` is what makes this correct rather than merely safe: FK
+ * validity is a property of the DATABASE, not of the batch. A parent landed by
+ * an earlier sync satisfies the constraint perfectly well, so a batch-only check
+ * would drop rows that would have succeeded — trading a rare crash for routine
+ * silent data loss. landSnapshots resolves that set with one query per level.
+ *
+ * Dropping is the honest outcome for a true orphan: an entity whose parent we
+ * have never seen cannot be placed in the hierarchy, and inventing the parent
+ * would fabricate an entity that does not exist on the platform. Children of a
+ * dropped op are dropped with it, so a missing subtree disappears cleanly rather
+ * than half-landing.
+ */
+export function dropOrphans(ops, knownParentIds = new Set()) {
+  const present = new Set(ops.map((o) => o.id));
+  const kept = [];
+  const dropped = [];
+  for (const op of ops) {
+    // Ops arrive sorted parents-first, so a parent's fate is always decided
+    // before its children are examined — which is what makes the cascade work.
+    if (op.parentId != null && !present.has(op.parentId) && !knownParentIds.has(op.parentId)) {
+      present.delete(op.id); // cascade: this op's own children must go too
+      dropped.push(op);
+      continue;
+    }
+    kept.push(op);
+  }
+  if (dropped.length) {
+    logger.warn(
+      { dropped: dropped.length, levels: [...new Set(dropped.map((o) => o.level))] },
+      '[snapshotSink] dropped entities whose parent exists in neither this batch nor the DB (would have failed the FK and rolled back the whole sync)',
+    );
+  }
+  return kept;
+}
+
+/**
+ * The subset of referenced parent ids that already exist in the DB. One query
+ * per parent LEVEL (not per row) — no N+1. A read failure returns an empty set,
+ * which degrades to the batch-only check: stricter, never wrong in the unsafe
+ * direction.
+ */
+async function resolveKnownParents(ops) {
+  const inBatch = new Set(ops.map((o) => o.id));
+  // Group the missing parents by the model that would hold them.
+  const byModel = new Map();
+  for (const op of ops) {
+    if (op.parentId == null || inBatch.has(op.parentId)) continue;
+    const parentLevel = PARENT_LEVEL[op.level];
+    const model = LEVEL_MODEL[parentLevel]?.model;
+    if (!model) continue;
+    if (!byModel.has(model)) byModel.set(model, new Set());
+    byModel.get(model).add(op.parentId);
+  }
+  if (byModel.size === 0) return new Set(); // common path: nothing missing, no query
+
+  const known = new Set();
+  await Promise.all([...byModel].map(async ([model, ids]) => {
+    try {
+      const found = await prisma[model].findMany({ where: { id: { in: [...ids] } }, select: { id: true } });
+      for (const row of found) known.add(row.id);
+    } catch (err) {
+      logger.warn({ model, err: err.message }, '[snapshotSink] parent-existence check failed — falling back to batch-only');
+    }
+  }));
+  return known;
 }
 
 const DAY_MS = 86_400_000;
@@ -191,7 +292,11 @@ export async function landSnapshots(workspaceId, channel, normalized = []) {
   if (!workspaceId) throw new Error('landSnapshots: workspaceId required');
   if (!normalized.length) return { entities: 0, snapshots: 0 };
 
-  const entityOps = toEntityOps(workspaceId, channel, normalized);
+  const allOps = toEntityOps(workspaceId, channel, normalized);
+  // A row whose parent is in neither the batch nor the DB would raise an FK
+  // violation, and every op shares ONE transaction — so one orphan ad would cost
+  // this sync its campaigns too.
+  const entityOps = dropOrphans(allOps, await resolveKnownParents(allOps));
   await prisma.$transaction(
     entityOps.map((op) =>
       prisma[op.model].upsert({
@@ -215,7 +320,17 @@ export async function landSnapshots(workspaceId, channel, normalized = []) {
     ),
   );
 
-  const rows = await guardZeroShadows(workspaceId, toSnapshotRows(workspaceId, channel, normalized));
+  // Snapshots only for entities that actually landed. `metric_snapshots.entityId`
+  // carries no FK, so an orphan's snapshot would NOT fail — it would silently
+  // persist and be swept by every reader that queries snapshots by workspace
+  // without joining the entity graph (GuardrailSweepService, PatternService,
+  // BlendedTruthService all do). That produces findings about an entity the
+  // graph does not contain, which is worse than the dropped row itself.
+  const landedIds = new Set(entityOps.map((op) => op.id));
+  const rows = await guardZeroShadows(
+    workspaceId,
+    toSnapshotRows(workspaceId, channel, normalized).filter((r) => landedIds.has(r.entityId)),
+  );
   await prisma.$transaction(
     rows.map((r) =>
       prisma.metricSnapshot.upsert({

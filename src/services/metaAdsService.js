@@ -569,6 +569,175 @@ export function mergeMetaAdSets(insights = [], adSets = []) {
   return [...insightRows.map((r) => withStatus(r, statusById, r?.adset_id)), ...rosterOnly];
 }
 
+// ============================================================
+// Ad level — the same two-edge pattern, one level further down
+// ============================================================
+
+// A SEPARATE frozen constant, never a reference to or mutation of
+// ADSET_INSIGHT_FIELDS. The comment on that one explains why: sharing a mutable
+// field list between levels is how the dropped-`action_values` regression came
+// back. The measures are identical (Meta serves the same ones at every level);
+// what differs is the identity pair — `ad_id` is this entity, `adset_id` is its
+// PARENT, and metaNormalize maps that to parentExternalId so snapshotSink can
+// chain the FK. `campaign_id` rides along for debugging only; the partition keys
+// on `ad_id` first, so its presence changes nothing.
+export const AD_INSIGHT_FIELDS = Object.freeze([
+  'ad_name', 'ad_id',
+  'adset_id', 'campaign_id',
+  'spend', 'impressions', 'reach', 'frequency',
+  'clicks', 'ctr', 'cpm', 'cpc',
+  'actions', 'action_values', 'cost_per_action_type',
+  'date_start', 'date_stop',
+]);
+
+// Entity attributes from the /ads edge — NOT metrics. `adset_id` is the parent
+// link. `created_time` is the ad's platform creation time (creative age); like
+// `objective` on campaigns it lives ONLY on the roster edge, so mergeMetaAds
+// folds it onto delivering rows — see AD_ROSTER_ATTRS.
+export const AD_LIST_FIELDS = Object.freeze([
+  'id', 'name', 'adset_id', 'status', 'effective_status', 'created_time',
+]);
+
+// Ads outnumber ad-sets several-fold, which outnumber campaigns several-fold.
+// At 200/page the MAX_PAGES (50) ceiling lands at ~10 000 rows — reachable on a
+// real account. 500 raises it to ~25 000, and collectCursorPages REPORTS
+// truncation rather than silently returning a subset, so passing the cap stays
+// visible either way (fetchMeta.truncated carries it to the sync loop).
+const AD_PAGE_SIZE = 500;
+
+/**
+ * Ad-level insights for an account. ONE account-scoped call with `level: 'ad'` —
+ * Meta fans out server-side, so this is O(1) requests, not one per ad-set.
+ *
+ * Like every /insights level, this returns ONLY ads that DELIVERED in the
+ * window. Pair with fetchAllAds + mergeMetaAds for the full roster.
+ *
+ * @returns {Promise<{ rows: Array, truncated: boolean }>}
+ */
+export async function fetchAdInsights(accessToken, adAccountId, datePreset = DEFAULT_MANUAL_SYNC_DATE_PRESET) {
+  initSdk(accessToken);
+  const accountId = normalizeAccountId(adAccountId);
+  const account   = new AdAccount(accountId);
+
+  const cursor = await account.getInsights(
+    AD_INSIGHT_FIELDS,
+    {
+      level:       'ad',
+      date_preset: datePreset,
+      limit:       AD_PAGE_SIZE,
+    },
+  );
+
+  const { rows, pages, truncated } = await collectCursorPages(cursor);
+
+  logger.info(
+    { accountId, datePreset, rawCount: rows.length, pages, truncated },
+    '[metaAdsService] fetchAdInsights raw response',
+  );
+
+  return { rows, truncated };
+}
+
+/**
+ * Fetch ALL ads for an account from the /ads edge, regardless of delivery.
+ * Mirrors fetchAllAdSets.
+ *
+ * @returns {Promise<{ rows: Array, truncated: boolean }>}
+ */
+export async function fetchAllAds(accessToken, adAccountId) {
+  initSdk(accessToken);
+  const accountId = normalizeAccountId(adAccountId);
+  const account   = new AdAccount(accountId);
+
+  const cursor = await account.getAds(AD_LIST_FIELDS, { limit: AD_PAGE_SIZE });
+  const { rows, pages, truncated } = await collectCursorPages(cursor);
+
+  logger.info(
+    { accountId, adCount: rows.length, pages, truncated },
+    '[metaAdsService] fetchAllAds roster',
+  );
+
+  return { rows, truncated };
+}
+
+// The ad-level roster attributes /insights never returns. Same fold as
+// ROSTER_ATTRS at campaign level, and it exists for the same reason: without it
+// `created_time` would be present on roster-only ads and `undefined` on every ad
+// that actually DELIVERED — i.e. missing from exactly the rows worth judging,
+// which would silently null out creative age for the whole account.
+const AD_ROSTER_ATTRS = Object.freeze(['created_time']);
+
+/** PURE: index an ad roster by id → the attributes /insights never carries. */
+function adAttrIndex(rosterRows = []) {
+  const m = new Map();
+  for (const row of rosterRows || []) {
+    const r = row?._data || row;
+    if (r?.id == null) continue;
+    const attrs = {};
+    for (const k of AD_ROSTER_ATTRS) if (r[k] != null) attrs[k] = r[k];
+    if (Object.keys(attrs).length) m.set(String(r.id), attrs);
+  }
+  return m;
+}
+
+/**
+ * PURE merge: fold the /ads roster into the ad insight rows. Exact mirror of
+ * mergeMetaAdSets, including the `_rosterOnly` contract.
+ *
+ * A roster-only ad means "no delivery data found in this window", NOT "verified
+ * zero": snapshotSink lands the ENTITY but writes NO MetricSnapshot, so the ad
+ * appears with "—" rather than a fabricated 0.
+ *
+ * An ad with no parent `adset_id` is DROPPED. snapshotSink derives its FK from
+ * parentExternalId, so a parentless row would compute a garbage ad-set id and
+ * either orphan the ad or attach it to the wrong ad-set.
+ *
+ * @param {Array} insights raw rows from fetchAdInsights
+ * @param {Array} ads      raw rows from fetchAllAds
+ * @returns {Array} insight-shaped ad rows for metaNormalize
+ */
+export function mergeMetaAds(insights = [], ads = []) {
+  const statusById = statusIndex(ads);
+  const attrsById  = adAttrIndex(ads);
+  const insightRows = [];
+  const withInsights = new Set();
+
+  for (const row of insights || []) {
+    const r = row?._data || row;
+    if (r?.ad_id == null) continue; // unkeyable — no stable identity
+    insightRows.push(r);
+    withInsights.add(String(r.ad_id));
+  }
+
+  const rosterOnly = [];
+  for (const a of ads || []) {
+    const ad = a?._data || a;
+    const id = ad?.id != null ? String(ad.id) : null;
+    if (!id || withInsights.has(id)) continue; // unkeyable, or already has real data
+    if (ad.adset_id == null) {
+      logger.warn({ adId: id }, '[metaAdsService] ad roster row has no adset_id — dropped');
+      continue;
+    }
+    rosterOnly.push({
+      ad_id:       id,
+      ad_name:     ad.name || 'Unnamed Ad',
+      adset_id:    String(ad.adset_id),
+      spend:       '0',
+      impressions: '0',
+      clicks:      '0',
+      _rosterOnly: true, // no delivery data found — "unknown", never a verified 0
+      ...pickStatus(ad),
+      // A creative made 2 days ago that has not delivered still has an age.
+      ...(attrsById.get(id) ?? {}),
+    });
+  }
+
+  return [
+    ...insightRows.map((r) => withRosterAttrs(withStatus(r, statusById, r?.ad_id), attrsById, r?.ad_id)),
+    ...rosterOnly,
+  ];
+}
+
 /**
  * Format raw Meta insights into a human-readable string that Mode 5
  * can analyse directly (avoids huge JSON blobs in the prompt).
