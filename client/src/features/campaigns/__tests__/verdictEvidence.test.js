@@ -13,6 +13,7 @@ import {
   NO_REVENUE_DISCLAIMER, confidenceLabel, evidenceClause, shortEvidence,
   nextActionFor, ignoreCostFor, decisiveMetric, FATIGUE_FREQ,
   buildRecommendationText, platformUrl, LINKABLE_CHANNELS,
+  formatEvidenceValue, evidenceLabel, evidenceRows,
 } from '../verdictEvidence.js';
 
 // Verbatim shapes from relativeRanking.js and verdictEngine.js.
@@ -267,5 +268,57 @@ describe('platformUrl', () => {
 
   it('escapes the id rather than interpolating it raw', () => {
     expect(platformUrl('META', 'a b&c')).toContain('a%20b%26c');
+  });
+});
+
+// The unit contract for the ad-level evidence evidenceProvider emits. Each new
+// metric renders in the unit its number is actually in — the failure mode is
+// silent (a 3.5 frequency printing as "350.0%"), so each one is pinned.
+describe('formatEvidenceValue — ad-level evidence units', () => {
+  it('SPEND_SHARE is a fraction of the parent, rendered as a percentage', () => {
+    expect(formatEvidenceValue('SPEND_SHARE', 0.4)).toBe('40.0%');
+  });
+
+  it('FREQUENCY is times-seen-per-person, NOT a percentage', () => {
+    expect(formatEvidenceValue('FREQUENCY', 3.5)).toBe('3.5×');
+    expect(formatEvidenceValue('FREQUENCY', 3.5)).not.toContain('%');
+  });
+
+  it('video quartiles are whole view counts', () => {
+    expect(formatEvidenceValue('VIDEO_25', 3000.4)).toBe('3000 views');
+    expect(formatEvidenceValue('VIDEO_50', 1200)).toBe('1200 views');
+  });
+
+  it('the existing CTR and funnel-rate units are unchanged', () => {
+    expect(formatEvidenceValue('CTR', 1.64)).toBe('1.64%');       // already percent
+    expect(formatEvidenceValue('LPV_RATE', 0.42)).toBe('42.0%');  // ratio
+  });
+
+  it('an unregistered metric still shows its raw number rather than a guessed unit', () => {
+    expect(formatEvidenceValue('SOME_FUTURE_METRIC', 7)).toBe('7');
+  });
+
+  it('every new metric has a marketer-facing label', () => {
+    expect(evidenceLabel('SPEND_SHARE')).toBe('Share of parent spend');
+    expect(evidenceLabel('FREQUENCY')).toBe('Frequency');
+    expect(evidenceLabel('VIDEO_25')).toBe('Video 25% views');
+  });
+});
+
+// evidenceProvider's CONTEXT items carry status null on purpose. The row must
+// still render — dropping it would hide the spend behind the finding.
+describe('evidenceRows — evidenceProvider items', () => {
+  it('renders a CONTEXT row with a null status and no benchmark', () => {
+    const [row] = evidenceRows({
+      evidence: [{ metric: 'SPEND_SHARE', value: 0.4, benchmark: null, status: null, kind: 'context' }],
+    });
+    expect(row).toMatchObject({ metric: 'SPEND_SHARE', value: '40.0%', benchmark: null, status: null });
+  });
+
+  it('renders a graded FREQUENCY row against its ceiling', () => {
+    const [row] = evidenceRows({
+      evidence: [{ metric: 'FREQUENCY', value: 6, benchmark: 3.5, status: 'weak', severity: 'critical' }],
+    });
+    expect(row).toMatchObject({ value: '6.0×', benchmark: '3.5×', status: 'weak' });
   });
 });
