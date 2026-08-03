@@ -86,5 +86,23 @@ export function getBenchmarks(objective) {
   return BENCHMARKS.DEFAULT;
 }
 
+/**
+ * The audience-saturation ceiling: past this many impressions per person, the
+ * audience has seen the creative too often for the click-through to be read as
+ * creative quality.
+ *
+ * It lives HERE rather than in verdictEngine because the verdict engine and the
+ * diagnosis engine must judge frequency by the same number, and the diagnosis
+ * engine cannot import verdictEngine — verdictEngine imports diagnoseSignals, so
+ * that edge would close a cycle. benchmarkProvider imports nothing, which is
+ * exactly what makes it a safe shared home. Two ceilings previously existed
+ * (3.0 in signalRules, 3.5 in verdictEngine) and the two engines disagreed about
+ * the same ad.
+ *
+ * Not objective-varying today. If it ever becomes so it belongs in BENCHMARKS
+ * alongside the CTR bars, and every reader already goes through this module.
+ */
+export const FATIGUE_FREQ = 3.5;
+
 /** The raw table, exported for tests and audit. Frozen — never mutate. */
 export { BENCHMARKS };

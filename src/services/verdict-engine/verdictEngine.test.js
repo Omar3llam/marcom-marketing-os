@@ -24,11 +24,36 @@ describe('evaluateVerdict — single entity', () => {
   });
 
   it('returns REFRESH on creative fatigue (high freq, low ctr, but still profitable)', () => {
-    // frequency>3 & ctr<1 → CREATIVE_FATIGUE, roas healthy so not KILL
-    const metrics = { ctr: 0.8, cpc: 1, cpm: 8, frequency: 3.2, spend: 500, conversions: 30, roas: 2.5 };
+    // frequency past the saturation ceiling & ctr under the objective bar →
+    // CREATIVE_FATIGUE, roas healthy so not KILL.
+    const metrics = { ctr: 0.8, cpc: 1, cpm: 8, frequency: 3.6, spend: 500, conversions: 30, roas: 2.5 };
     const r = evaluateVerdict({ level: 'ADSET', metrics });
     expect(r.verdict).toBe(VERDICT.REFRESH);
     expect(r.recommendationTypes).toContain('REFRESH_CREATIVE');
+  });
+
+  // This entity used to reach REFRESH only WITH revenue: the revenue track went
+  // through diagnoseSignals (ceiling 3.0) while the awareness track used
+  // V.FATIGUE_FREQ (3.5), so one engine held two ceilings and a 3.2-frequency
+  // ad set was fatigued or healthy depending on whether it had a ROAS.
+  const bothTracks = (frequency) => {
+    const base = { ctr: 0.8, cpc: 1, cpm: 8, frequency, spend: 500, conversions: 30 };
+    return [
+      evaluateVerdict({ level: 'ADSET', metrics: { ...base, roas: 2.5 } }).verdict,
+      // revenueMeasured must be explicit — it defaults TRUE, so a bare roas:null
+      // still takes the revenue track rather than the awareness one.
+      evaluateVerdict({ level: 'ADSET', metrics: { ...base, roas: null, revenueMeasured: false } }).verdict,
+    ];
+  };
+
+  it('both fatigue paths now share one ceiling — 3.2 is fatigue on neither track', () => {
+    const [revenue, awareness] = bothTracks(3.2);
+    expect(revenue).not.toBe(VERDICT.REFRESH);
+    expect(awareness).not.toBe(VERDICT.REFRESH);
+  });
+
+  it('…and both reach REFRESH together once the real ceiling is crossed', () => {
+    expect(bothTracks(3.6)).toEqual([VERDICT.REFRESH, VERDICT.REFRESH]);
   });
 
   it('returns SCALE on a strong healthy performer', () => {

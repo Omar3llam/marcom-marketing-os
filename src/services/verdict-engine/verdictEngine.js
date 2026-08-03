@@ -22,7 +22,7 @@
 import { diagnoseSignals, SIGNAL_TYPE } from '../diagnosis-engine/index.js';
 import { fromMinor }                     from '../../lib/money.js';
 import { VERDICT, VERDICT_TO_REC_TYPES, ROOT_CAUSE } from './verdictTypes.js';
-import { getBenchmarks }                 from './benchmarkProvider.js';
+import { getBenchmarks, FATIGUE_FREQ }   from './benchmarkProvider.js';
 import { diagnoseFunnel }                from './funnelDiagnosis.js';
 import { computeConfidence, composeConfidence, MIN_IMPRESSIONS } from './confidenceEngine.js';
 import { logger }                        from '../../utils/logger.js';
@@ -37,7 +37,10 @@ import { logger }                        from '../../utils/logger.js';
 // genuinely objective-independent.
 const V = Object.freeze({
   BREAKEVEN_ROAS:   1.0, // ROAS below this is losing money
-  FATIGUE_FREQ:     3.5, // saturation ceiling
+  // Saturation ceiling — the SINGLE source now lives in benchmarkProvider, so
+  // the diagnosis engine grades frequency by the same number this one judges it
+  // by. Kept on V so every existing V.FATIGUE_FREQ reader is unchanged.
+  FATIGUE_FREQ,
   SCALE_ROAS:       3.0, // strong enough to scale
   // Awareness track — used ONLY when revenue was never measured (roas null). These
   // judge reach/engagement campaigns on frequency + CTR alone; they NEVER emit a
@@ -116,6 +119,16 @@ export function toSignalInput(agg, currency = 'USD') {
     frequency:   agg.frequency ?? 0,
     spend,
     conversions,
+    // Minor units + the account's real currency, for the diagnosis rules. The
+    // major-unit `spend`/`cpc` above stay for the verdict thresholds that already
+    // read them — these are ADDITIVE, not a replacement. Money thresholds belong
+    // in minor units like the rest of the system; comparing a major-unit float
+    // against a constant is how the diagnosis engine ended up calling 50 EGP
+    // "$50". null (never 0) when the denominator was never measured, so a rule
+    // that needs a real CPC declines rather than reading 0 as "free clicks".
+    spendMinor:  agg.spendMinor ?? null,
+    cpcMinor:    clicks > 0 && agg.spendMinor != null ? agg.spendMinor / clicks : null,
+    currency,
     roas:        revenueMeasured ? agg.revenueMinor / agg.spendMinor : null,
     revenueMeasured,
     // Raw counts carried alongside the ratios. The minimum-sample gate needs the
@@ -212,7 +225,10 @@ export function evaluateVerdict({
     );
   }
 
-  const dx = diagnosis ?? diagnoseSignals(metrics);
+  // objective threads through so the rules judge CTR against THIS campaign's bar
+  // rather than one global 0.5% floor — the same correction benchmarkProvider
+  // already made for the verdict thresholds.
+  const dx = diagnosis ?? diagnoseSignals(metrics, { objective });
 
   // Where in the funnel the money is going, when the funnel was measured at all.
   // Computed once and always attached, even when it does not decide the verdict —
