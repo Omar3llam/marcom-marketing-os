@@ -14,7 +14,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { ENTITY_LEVEL } from '../connectors/connectorTypes.js';
-import { effectiveByEntity, toCampaignRow, toAdSetRow } from './entityGraphEngine.js';
+import { effectiveByEntity, toCampaignRow, toAdSetRow, toAdRow } from './entityGraphEngine.js';
 
 // entityId columns are @db.Uuid — a non-UUID string makes Prisma throw on the
 // cast (the 500 the feed route documents). Guard before any id-keyed query.
@@ -104,7 +104,11 @@ export async function getCampaignAdSets(workspaceId, campaignEntityId) {
 
   const adSets = await prisma.adSet.findMany({
     where:   { campaignId: campaignEntityId, workspaceId },
-    select:  { id: true, name: true, channel: true, status: true },
+    // _count lives INSIDE the select — Prisma rejects `select` and `include`
+    // together. Mirrors how getConnectorCampaigns counts adSets. Without it the
+    // client cannot tell a drillable ad-set from a leaf and would render an
+    // expand chevron that opens onto nothing.
+    select:  { id: true, name: true, channel: true, status: true, _count: { select: { ads: true } } },
     orderBy: { createdAt: 'asc' },
     take:    500,
   }).catch((err) => {
@@ -114,5 +118,49 @@ export async function getCampaignAdSets(workspaceId, campaignEntityId) {
   if (!adSets.length) return [];
 
   const metrics = await latestSnapshots(workspaceId, ENTITY_LEVEL.ADSET, adSets.map((a) => a.id));
-  return adSets.map((a) => toAdSetRow(a, metrics.get(a.id)));
+  return adSets.map((a) => toAdSetRow({ ...a, adCount: a._count?.ads ?? 0 }, metrics.get(a.id)));
+}
+
+// Deliberate cap, not a copy of the ad-set level's 500: ads outnumber ad-sets
+// several-fold, but a SINGLE ad-set rarely carries more than 20–30. Named so the
+// reasoning survives the next reader who wonders why the two levels differ.
+export const MAX_ADS_PER_ADSET = 100;
+
+/**
+ * Ads of one ad-set (workspace-scoped) with latest metrics.
+ * Same contract as getCampaignAdSets one level down:
+ * @returns {Promise<Array|null>} rows[] when the ad-set exists in this workspace
+ * ([] when it has no ads), or null when it isn't found (→ honest 404, never a
+ * fabricated empty drill-down).
+ */
+export async function getAdSetAds(workspaceId, adSetEntityId) {
+  if (!workspaceId || !UUID_RE.test(String(adSetEntityId || ''))) return null;
+
+  const adSet = await prisma.adSet.findFirst({
+    where:  { id: adSetEntityId, workspaceId },
+    select: { id: true },
+  }).catch(() => null);
+  if (!adSet) return null;
+
+  const ads = await prisma.ad.findMany({
+    where:  { adSetId: adSetEntityId, workspaceId },
+    select: { id: true, name: true, channel: true, status: true, platformCreatedTime: true },
+    // Ordered by CREATIVE AGE (platform creation), oldest first — the order the
+    // fatigue question is asked in. `createdAt` is our own write time and would
+    // order by when we happened to sync, so it serves only as a stable tie-break.
+    // Nulls last: a roster-only ad whose creation time Meta never reported must
+    // not sort ahead of ads with a real, known age.
+    orderBy: [
+      { platformCreatedTime: { sort: 'asc', nulls: 'last' } },
+      { createdAt: 'asc' },
+    ],
+    take: MAX_ADS_PER_ADSET,
+  }).catch((err) => {
+    logger.debug({ err: err.message, workspaceId, adSetEntityId }, '[EntityGraph] ads read failed');
+    return [];
+  });
+  if (!ads.length) return [];
+
+  const metrics = await latestSnapshots(workspaceId, ENTITY_LEVEL.AD, ads.map((a) => a.id));
+  return ads.map((a) => toAdRow(a, metrics.get(a.id)));
 }

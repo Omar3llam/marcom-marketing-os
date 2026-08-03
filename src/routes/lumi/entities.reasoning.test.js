@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { findUnique } = vi.hoisted(() => ({ findUnique: vi.fn() }));
 
-vi.mock('../../services/entity-graph/index.js', () => ({ getConnectorCampaigns: vi.fn(), getCampaignAdSets: vi.fn() }));
+vi.mock('../../services/entity-graph/index.js', () => ({ getConnectorCampaigns: vi.fn(), getCampaignAdSets: vi.fn(), getAdSetAds: vi.fn() }));
 vi.mock('../../services/verdict-engine/index.js', () => ({ getConnectorVerdicts: vi.fn() }));
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {

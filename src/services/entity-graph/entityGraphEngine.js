@@ -179,6 +179,37 @@ export function toAdSetRow(adSet, snap) {
     // and defaults to ACTIVE, so ACTIVE means "running, OR never told"; only
     // PAUSED/ARCHIVED are positive knowledge. Readers must act on those two.
     status:   adSet.status ?? null,
+    // How many ads hang off this ad-set — the client's only honest basis for
+    // showing a drill chevron. Same shape as toCampaignRow's adSetCount (carried
+    // ON the entity object, not a positional arg), so a caller that never counted
+    // reports 0 rather than a phantom expandable row.
+    adCount:  adSet.adCount ?? 0,
+    ...metricsOf(snap),
+  };
+}
+
+/**
+ * PURE: project an Ad entity + its latest AD snapshot into a row.
+ * Mirrors toAdSetRow one level down, plus platformCreatedTime — at AD level that
+ * field is CREATIVE AGE, the input a fatigue trend is actually about (how long
+ * this audience has been seeing THIS ad, not how long its campaign has run).
+ * Absent by design at ad-set level, which has no creative of its own.
+ *
+ * metricsOf spreads `actionMetrics`, so the video quartiles PR #310's ACTION_MAP
+ * lands (videoView / video25 / video50 / video95) arrive here for free — they
+ * only exist meaningfully at this level.
+ */
+export function toAdRow(ad, snap) {
+  return {
+    entityId: ad.id,
+    channel:  ad.channel,
+    name:     ad.name,
+    // Same NOT NULL / default-ACTIVE caveat as toAdSetRow: only PAUSED and
+    // ARCHIVED are positive knowledge.
+    status:   ad.status ?? null,
+    // null for pre-connector rows and channels that don't report it — creative
+    // age is then unknown, which must read as unknown, never as "brand new".
+    platformCreatedTime: ad.platformCreatedTime ?? null,
     ...metricsOf(snap),
   };
 }
