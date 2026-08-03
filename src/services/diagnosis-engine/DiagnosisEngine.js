@@ -29,7 +29,10 @@ import { SIGNAL_RULES, HEALTHY_RESULT, UNDIAGNOSABLE_RESULT, ruleIsEvaluable } f
 import { getBenchmarks }                from '../verdict-engine/benchmarkProvider.js';
 import { logger }                       from '../../utils/logger.js';
 
-const freeze = (r) => ({
+// Copy a frozen terminal result into a fresh, mutable object — including its
+// reasons array, so a caller that appends to it cannot reach the shared
+// constant. Named for what it does: it un-freezes, it does not freeze.
+const materialise = (r) => ({
   signalType: r.signalType,
   diagnosis:  r.diagnosis,
   confidence: r.confidence,
@@ -82,9 +85,9 @@ export function diagnoseSignals(input, { objective = null } = {}) {
   // Nothing could be looked at ≠ nothing is wrong.
   if (!evaluatedAny) {
     logger.debug({ objective }, '[DiagnosisEngine] undiagnosable — no rule had its inputs');
-    return freeze(UNDIAGNOSABLE_RESULT);
+    return materialise(UNDIAGNOSABLE_RESULT);
   }
 
   logger.debug({ signalType: HEALTHY_RESULT.signalType, objective }, '[DiagnosisEngine] healthy');
-  return freeze(HEALTHY_RESULT);
+  return materialise(HEALTHY_RESULT);
 }
