@@ -29,6 +29,7 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "check": "node scripts/check.js",
+    "boot-check": "node scripts/boot-check.js",
     "arch-check": "node scripts/arch-check.js",
     "arch-check:ci": "node scripts/arch-check.js 2>&1 | tee arch-check.log; exit ${PIPESTATUS[0]}",
     "security-check": "node scripts/security-check.js",
