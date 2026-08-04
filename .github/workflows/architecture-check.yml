@@ -43,6 +43,14 @@ jobs:
         run: npm run lint:ci --workspace client
         # Fails if any no-generic-tailwind violations exist
 
+      - name: Boot check (does the server's module graph load?)
+        run: node scripts/boot-check.js
+        # The gate that was missing when PRs #312 and #313 merged cleanly into a
+        # master that could not parse. Both were green; neither was wrong alone.
+        # Parses every backend file, then proves server.js's whole static import
+        # graph resolves. Runs BEFORE the slower audits so a non-booting tree
+        # fails in seconds.
+
       - name: Run architecture audit
         run: node scripts/arch-check.js
         # Fails on: size violations, forbidden imports, raw hex, N+1, duplicates
