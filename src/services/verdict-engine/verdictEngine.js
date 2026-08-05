@@ -200,6 +200,10 @@ export function evaluateVerdict({
     rootCause: extra.rootCause ?? null,
     signalType: extra.signalType ?? null,
     funnel: extra.funnel ?? null,
+    // Rules that ran and declined, with their passing measurements — what a
+    // counterfactual is built from. Empty on the early gates, which return
+    // before any rule is evaluated.
+    declined: extra.declined ?? [],
     recommendationTypes: [...VERDICT_TO_REC_TYPES[v]],
   });
 
@@ -234,7 +238,19 @@ export function evaluateVerdict({
   // objective threads through so the rules judge CTR against THIS campaign's bar
   // rather than one global 0.5% floor — the same correction benchmarkProvider
   // already made for the verdict thresholds.
-  const dx = diagnosis ?? diagnoseSignals(metrics, { objective });
+  //
+  // diagnoseSignals now returns { signals[], declined[] }. `signals[0]` is the
+  // highest-confidence fired rule — which reproduces the old first-match-wins
+  // exactly, because the rule table is ordered by descending confidence. The
+  // `diagnosis` override is still accepted in EITHER shape: a caller holding a
+  // pre-picked singular signal keeps working.
+  const dxResult = diagnosis ?? diagnoseSignals(metrics, { objective });
+  const dx = Array.isArray(dxResult?.signals) ? dxResult.signals[0] : dxResult;
+  // The counterfactual material — every rule that RAN and declined, carrying the
+  // measurements that rule it out. Computed once by the diagnosis engine and
+  // carried onto the verdict rather than discarded here: re-deriving it later
+  // would mean re-running the rules against numbers that may have moved.
+  const declined = Array.isArray(dxResult?.declined) ? dxResult.declined : [];
 
   // Where in the funnel the money is going, when the funnel was measured at all.
   // Computed once and always attached, even when it does not decide the verdict —
@@ -315,6 +331,16 @@ export function evaluateVerdict({
         verdict = VERDICT.REALLOCATE; confidence = dx.confidence;
         rationale = 'Targeting mismatch — reallocate budget toward a better audience.';
         break;
+      // No rule could be evaluated — the fields they read were never reported.
+      // WATCH, not HOLD: falling through to the healthy branch would have this
+      // entity report "within healthy parameters", a claim about numbers we
+      // never saw. Confidence is low on purpose — this is an admission, not a
+      // finding. (Unreachable while toSignalInput zero-fills ctr/frequency;
+      // wired now so it does not become live silently when that stops.)
+      case SIGNAL_TYPE.UNDIAGNOSABLE:
+        verdict = VERDICT.WATCH; confidence = 0.3;
+        rationale = 'Not enough reported signal to diagnose this entity — monitoring without a diagnosis.';
+        break;
       case SIGNAL_TYPE.HEALTHY:
       default:
         if (roas >= V.SCALE_ROAS && ctr >= b.ctr.strong) {
@@ -342,6 +368,7 @@ export function evaluateVerdict({
     rootCause: funnel?.signal ?? null,
     signalType: dx.signalType,
     funnel,
+    declined,
   });
 }
 

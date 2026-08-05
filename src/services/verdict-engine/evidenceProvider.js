@@ -30,9 +30,15 @@
 //   client's EVIDENCE_UNITS.CTR are PERCENT (1.64). Every CTR crossing that
 //   boundary goes through toPct(), once, here. See the named test.
 // ============================================================
-import { getBenchmarks }              from './benchmarkProvider.js';
+// FATIGUE_FREQ comes from benchmarkProvider, NOT verdictEngine. Both re-export
+// the same constant, but verdictEngine imports diagnoseSignals — so a
+// verdictEngine edge here would close the cycle
+//   diagnosis-engine → evidenceProvider → verdictEngine → diagnosis-engine
+// and make computeSeverity unimportable from the diagnosis rules. Every module
+// this file now touches (benchmarkProvider, confidenceEngine) imports nothing,
+// so this leaf stays a leaf.
+import { getBenchmarks, FATIGUE_FREQ } from './benchmarkProvider.js';
 import { computeConfidence, daysSince } from './confidenceEngine.js';
-import { FATIGUE_FREQ }               from './verdictEngine.js';
 
 /** PURE: stored CTR ratio → the percent every benchmark and consumer speaks. */
 export const toPct = (ratio) => (ratio ?? 0) * 100;
