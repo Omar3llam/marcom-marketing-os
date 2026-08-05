@@ -32,6 +32,7 @@ import { getBenchmarks, FATIGUE_FREQ as SATURATION_CEILING } from './benchmarkPr
 import { diagnoseFunnel }                from './funnelDiagnosis.js';
 import { computeConfidence, composeConfidence, MIN_IMPRESSIONS } from './confidenceEngine.js';
 import { projectHypotheses }             from './signalProjector.js';
+import { buildCounterfactuals }          from './counterfactualEngine.js';
 import { logger }                        from '../../utils/logger.js';
 
 // Verdict thresholds (frozen for auditability).
@@ -168,9 +169,10 @@ export function toSignalInput(agg, currency = 'USD') {
  * @param {number|null} [args.daysRunning] — days since PLATFORM creation. null
  *   means unknown, which SKIPS the too-early gate rather than assuming day 0.
  * @returns {{ verdict, confidence, signalConfidence, dataConfidence, rationale,
- *   rootCause, signalType, funnel, declined, hypotheses, recommendationTypes }}
- *   `declined` and `hypotheses` are read-time reasoning artifacts — computed
- *   here, carried on the verdict, persisted nowhere.
+ *   rootCause, signalType, funnel, declined, hypotheses, counterfactuals,
+ *   recommendationTypes }}
+ *   `declined`, `hypotheses` and `counterfactuals` are read-time reasoning
+ *   artifacts — computed here, carried on the verdict, persisted nowhere.
  */
 export function evaluateVerdict({
   level, metrics, diagnosis, guardrailHits = [], revenueExpected = false,
@@ -215,6 +217,9 @@ export function evaluateVerdict({
     // re-derived from the same signals on every evaluation. Empty on the early
     // gates for the same reason `declined` is — no rule has run yet.
     hypotheses: extra.hypotheses ?? [],
+    // Why each alternative hypothesis was set aside. Empty whenever there is
+    // fewer than one alternative to argue against.
+    counterfactuals: extra.counterfactuals ?? [],
     recommendationTypes: [...VERDICT_TO_REC_TYPES[v]],
   });
 
@@ -269,6 +274,12 @@ export function evaluateVerdict({
   // rule's literal with dataConfidence. Swapping the derived number in moves
   // every stored confidence in the system and belongs in its own change.
   const hypotheses = projectHypotheses(dxResult, dataConfidence);
+
+  // Why the mechanisms below the primary were set aside. Built from the
+  // hypotheses alone — every contradiction was already resolved against
+  // MECHANISM_SUPPORT in the projector, and re-deriving it from `declined` here
+  // would put a second copy of that predicate in the codebase.
+  const counterfactuals = buildCounterfactuals(hypotheses);
 
   // Where in the funnel the money is going, when the funnel was measured at all.
   // Computed once and always attached, even when it does not decide the verdict —
@@ -388,6 +399,7 @@ export function evaluateVerdict({
     funnel,
     declined,
     hypotheses,
+    counterfactuals,
   });
 }
 
@@ -459,5 +471,23 @@ export function rollupVerdicts(node, opts = {}) {
     signalType: result.signalType,
     funnel: result.funnel,
     recommendationTypes: result.recommendationTypes,
+    // ── The reasoning artifacts ──────────────────────────────────────────────
+    // This return is a hand-picked allowlist over `result` (everything on the
+    // INPUT node rides through `...node` above, but nothing on `result` does).
+    // A field omitted here can never reach connectorVerdictService, which reads
+    // these off the NODE — which is why `declined` and `hypotheses` existed on
+    // the verdict for two PRs and were visible to nothing.
+    //
+    // These survive applyRelativeRanking untouched: that pass spreads `...c` and
+    // overwrites only verdict / verdictConfidence / rationale /
+    // recommendationTypes / relativeRank. So a campaign upgraded to a relative
+    // KILL still carries the hypotheses the ABSOLUTE pass computed — exactly as
+    // it already carries that pass's rootCause and signalType. Pre-existing
+    // behaviour, and the reason PR#319 adds a `source` tag: a consumer cannot
+    // currently tell reasoning that decided a verdict from reasoning that merely
+    // accompanied it.
+    declined:        result.declined        ?? [],
+    hypotheses:      result.hypotheses      ?? [],
+    counterfactuals: result.counterfactuals ?? [],
   };
 }
