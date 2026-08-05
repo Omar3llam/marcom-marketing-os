@@ -30,6 +30,21 @@
 import { MECHANISM_SUPPORT } from '../diagnosis-engine/diagnosisTypes.js';
 
 /**
+ * PURE: does this counterfactual actually say anything?
+ *
+ * Both halves empty means an alternative was set aside while naming no reason.
+ * That is a TRUE description of what the engine found, so it is built and kept
+ * on the node — but publishing it as an argument would state a conclusion
+ * nothing supports, so the payload projection filters on this.
+ *
+ * Lives here rather than in the projection because it is a statement about what
+ * a counterfactual IS, and a second copy of that judgement elsewhere would drift
+ * from this one.
+ */
+export const isSubstantive = (cf) =>
+  (cf?.rejectedBy?.length ?? 0) > 0 || (cf?.preferredBecause?.length ?? 0) > 0;
+
+/**
  * PURE: explain each alternative hypothesis against the primary one.
  *
  * ── ON "PRIMARY" ────────────────────────────────────────────────────────────

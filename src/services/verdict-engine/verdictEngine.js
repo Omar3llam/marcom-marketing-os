@@ -202,6 +202,9 @@ export function evaluateVerdict({
     // literal on the connector path — that was the defect. See confidenceEngine.
     confidence: dataConfidence == null ? signalConfidence : composeConfidence(signalConfidence, dataConfidence),
     // Both halves stay visible so a reader can tell "weak signal" from "thin data".
+    // On the mechanism track `signalConfidence` is now the DERIVED reasoning
+    // confidence (see the switch); on every other branch it is that branch's own
+    // number, and on the gates below it is a literal 1.0.
     signalConfidence,
     dataConfidence,
     rationale: why,
@@ -216,6 +219,13 @@ export function evaluateVerdict({
     // reasoning confidence. A READ-TIME artifact: nothing persists it, and it is
     // re-derived from the same signals on every evaluation. Empty on the early
     // gates for the same reason `declined` is — no rule has run yet.
+    //
+    // Read from `extra`, NEVER from the enclosing scope. `hypotheses` and
+    // `counterfactuals` are declared BELOW the two gate returns, so a closure
+    // reference here would throw "Cannot access before initialization" on every
+    // campaign under 1 000 impressions or under 3 days — at runtime only, on the
+    // paths a happy-path test never reaches. `dataConfidence` above is safe
+    // because it is declared before this function.
     hypotheses: extra.hypotheses ?? [],
     // Why each alternative hypothesis was set aside. Empty whenever there is
     // fewer than one alternative to argue against.
@@ -269,11 +279,17 @@ export function evaluateVerdict({
   const declined = Array.isArray(dxResult?.declined) ? dxResult.declined : [];
 
   // Stage 3: the fired mechanisms as candidate explanations, each scored on how
-  // its own evidence converges rather than on the rule's frozen literal. This
-  // does NOT feed the verdict's confidence — `finalise` still composes the
-  // rule's literal with dataConfidence. Swapping the derived number in moves
-  // every stored confidence in the system and belongs in its own change.
-  const hypotheses = projectHypotheses(dxResult, dataConfidence);
+  // its own evidence converges rather than on the rule's frozen literal. The
+  // switch below now takes its signal strength from here (see the four mechanism
+  // cases) instead of from `dx.confidence`.
+  //
+  // `source` records WHICH PASS produced this reasoning. Everything built here is
+  // the ABSOLUTE pass: one entity judged against its own thresholds. A later
+  // relative upgrade re-decides the verdict from cohort rank and leaves these
+  // untouched, so without the tag a consumer cannot tell reasoning that DECIDED a
+  // verdict from reasoning that merely accompanied it.
+  const hypotheses = projectHypotheses(dxResult, dataConfidence)
+    .map((h) => ({ ...h, source: 'absolute' }));
 
   // Why the mechanisms below the primary were set aside. Built from the
   // hypotheses alone — every contradiction was already resolved against
@@ -343,21 +359,39 @@ export function evaluateVerdict({
     // verdictEngine.gates.test.js, which pins this contract.
     rationale = `${funnel.diagnosis} (${funnel.stage}) — ${funnel.counterfactual} ${funnel.action}.`;
   } else {
+    // ── THE MECHANISM TRACK ────────────────────────────────────────────────
+    // The four cases below are the ONLY place the rule's frozen literal
+    // (0.85 / 0.80 / 0.75 / 0.70) was ever the verdict's signal strength, and
+    // therefore the only place the derived reasoning confidence replaces it.
+    //
+    // `mechanismConfidence` is hypotheses[0]'s — which IS the projection of `dx`:
+    // dx is signals[0], and projectHypotheses drops only terminal states, so
+    // whenever the switch lands on one of these four, signals[0] is non-terminal
+    // and hypotheses[0] is its hypothesis. On HEALTHY / UNDIAGNOSABLE the list is
+    // empty and the fallback stands.
+    //
+    // Every OTHER branch keeps its own number, deliberately. The awareness tiers
+    // (0.7 / 0.6 / 0.5), the KILL at 0.9, and the funnel's own confidence are not
+    // rule literals — they are that branch's measure of its own evidence, and the
+    // funnel one is about a stage-to-stage drop-off the diagnosis rules never saw.
+    // Overwriting them with a mechanism's score would attach a number derived from
+    // CTR and frequency to a verdict decided by a broken checkout.
+    const mechanismConfidence = hypotheses[0]?.confidence?.reasoning ?? dx.confidence;
     switch (dx.signalType) {
       case SIGNAL_TYPE.CREATIVE_FATIGUE:
-        verdict = VERDICT.REFRESH; confidence = dx.confidence;
+        verdict = VERDICT.REFRESH; confidence = mechanismConfidence;
         rationale = 'Creative fatigue detected — refresh the creative to reset engagement.';
         break;
       case SIGNAL_TYPE.LOW_CTR:
-        verdict = VERDICT.REFRESH; confidence = dx.confidence;
+        verdict = VERDICT.REFRESH; confidence = mechanismConfidence;
         rationale = 'Weak hook — refresh creative to lift CTR.';
         break;
       case SIGNAL_TYPE.INEFFICIENT_SCALING:
-        verdict = VERDICT.REALLOCATE; confidence = dx.confidence;
+        verdict = VERDICT.REALLOCATE; confidence = mechanismConfidence;
         rationale = 'Budget is not converting efficiently — reallocate to a stronger entity.';
         break;
       case SIGNAL_TYPE.AUDIENCE_MISMATCH:
-        verdict = VERDICT.REALLOCATE; confidence = dx.confidence;
+        verdict = VERDICT.REALLOCATE; confidence = mechanismConfidence;
         rationale = 'Targeting mismatch — reallocate budget toward a better audience.';
         break;
       // No rule could be evaluated — the fields they read were never reported.
@@ -466,6 +500,11 @@ export function rollupVerdicts(node, opts = {}) {
     // can compose its own signal strength against the same inputs instead of
     // stamping a frozen literal over a computed number.
     dataConfidence: result.dataConfidence,
+    // The signal half. It had been computed on every verdict since the engine
+    // existed and named in NEITHER allowlist, so the payload published a product
+    // and one of its two factors — leaving a reader unable to tell a weak signal
+    // from thin data, which is the exact distinction the two halves exist for.
+    signalConfidence: result.signalConfidence,
     rationale: result.rationale,
     rootCause: result.rootCause,
     signalType: result.signalType,
@@ -482,10 +521,14 @@ export function rollupVerdicts(node, opts = {}) {
     // overwrites only verdict / verdictConfidence / rationale /
     // recommendationTypes / relativeRank. So a campaign upgraded to a relative
     // KILL still carries the hypotheses the ABSOLUTE pass computed — exactly as
-    // it already carries that pass's rootCause and signalType. Pre-existing
-    // behaviour, and the reason PR#319 adds a `source` tag: a consumer cannot
-    // currently tell reasoning that decided a verdict from reasoning that merely
-    // accompanied it.
+    // it already carries that pass's rootCause and signalType. Each hypothesis
+    // now says so itself (`source: 'absolute'`).
+    //
+    // TODO PR#321: have the upgrade path stamp `source: 'relative'`, and decide
+    // what `signalConfidence` should read on an upgraded row — it currently keeps
+    // the absolute pass's number while `verdictConfidence` is recomposed from
+    // RR.CONFIDENCE, so the published triple does not multiply out. See the
+    // scoped golden test in decisionEngine.test.js.
     declined:        result.declined        ?? [],
     hypotheses:      result.hypotheses      ?? [],
     counterfactuals: result.counterfactuals ?? [],
