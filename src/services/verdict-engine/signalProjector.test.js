@@ -315,12 +315,12 @@ describe('evaluateVerdict — hypotheses ride on the verdict', () => {
     expect(v.hypotheses[0].confidence.data).toBe(v.dataConfidence);
   });
 
-  it('does not let the derived reasoning number touch the verdict confidence', () => {
+  it('supplies the verdict\'s signal half on the mechanism track', () => {
     const v = evaluateVerdict({ level: 'CAMPAIGN', metrics });
-    // The rule's frozen literal is still the signal half. Wiring the derived
-    // number in moves every stored confidence in the system — its own change.
-    expect(v.signalConfidence).toBe(0.85);
+    // Was the rule's frozen 0.85 until the derived number was wired in; the
+    // branch-by-branch scope of that wiring lives in decisionEngine.test.js.
     expect(v.hypotheses[0].confidence.reasoning).toBe(0.95);
+    expect(v.signalConfidence).toBe(v.hypotheses[0].confidence.reasoning);
   });
 
   it('returns [] from the early gates, where no rule has run', () => {

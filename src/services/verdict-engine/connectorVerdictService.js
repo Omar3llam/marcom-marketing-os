@@ -29,6 +29,7 @@ import { getConnectorCampaigns } from '../entity-graph/index.js';
 import { rollupVerdicts }        from './verdictEngine.js';
 import { applyRelativeRanking }  from './relativeRanking.js';
 import { daysSince }             from './confidenceEngine.js';
+import { isSubstantive }         from './counterfactualEngine.js';
 import { logger }                from '../../utils/logger.js';
 
 // Meta objectives that are GENUINELY awareness/reach — no purchase revenue is
@@ -212,6 +213,15 @@ export async function getConnectorVerdicts(workspaceId) {
     rootCause: c.rootCause ?? null,
     // The two halves of the confidence number, so a reader can tell a weak
     // signal from thin data instead of guessing which one a single figure meant.
+    // Until now only ONE half was published — `confidence` and `dataConfidence`,
+    // with the signal half dropped by both allowlists, so "is this a weak signal
+    // or thin data?" was unanswerable from the payload.
+    //
+    // CAVEAT, and it is why PR#321 exists: on a row upgraded by relativeRanking,
+    // `confidence` is recomposed from that pass's own 0.6 while this field still
+    // reads the ABSOLUTE pass's number, so the three do not multiply out. Check
+    // `relativeRank` before treating them as a triple.
+    signalConfidence: c.signalConfidence ?? null,
     dataConfidence: c.dataConfidence ?? null,
     // { signal, stage, evidence[], counterfactual, action } when a funnel stage
     // was diagnosed; null when the funnel was never measured or is healthy.
@@ -231,7 +241,16 @@ export async function getConnectorVerdicts(workspaceId) {
     // rather than `undefined`, which a consumer would spread or map over.
     declined:        c.declined        ?? [],
     hypotheses:      c.hypotheses      ?? [],
-    counterfactuals: c.counterfactuals ?? [],
+    // Only counterfactuals that actually SAY something. A counterfactual with
+    // neither a contradiction nor distinguishing evidence sets an alternative
+    // aside while naming no reason — and a UI rendering "Why not X?" over an
+    // empty pair states a conclusion it cannot support.
+    //
+    // Filtered HERE, not in buildCounterfactuals: the empty pair is a true
+    // description of what the engine found, and the engine should go on saying so.
+    // What must not happen is publishing it as an argument. So the node keeps the
+    // full list and the payload carries the ones that carry weight.
+    counterfactuals: (c.counterfactuals ?? []).filter(isSubstantive),
   }));
 
   logger.info(
