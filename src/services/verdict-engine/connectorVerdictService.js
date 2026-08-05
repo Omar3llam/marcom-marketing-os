@@ -217,10 +217,10 @@ export async function getConnectorVerdicts(workspaceId) {
     // with the signal half dropped by both allowlists, so "is this a weak signal
     // or thin data?" was unanswerable from the payload.
     //
-    // CAVEAT, and it is why PR#321 exists: on a row upgraded by relativeRanking,
-    // `confidence` is recomposed from that pass's own 0.6 while this field still
-    // reads the ABSOLUTE pass's number, so the three do not multiply out. Check
-    // `relativeRank` before treating them as a triple.
+    // The three multiply out on EVERY row, including relative upgrades: that
+    // pass re-stamps this field with its own ranking strength when it recomposes
+    // `confidence`, so the pair always describes the verdict actually published.
+    // Pinned by the golden test in decisionEngine.test.js.
     signalConfidence: c.signalConfidence ?? null,
     dataConfidence: c.dataConfidence ?? null,
     // { signal, stage, evidence[], counterfactual, action } when a funnel stage

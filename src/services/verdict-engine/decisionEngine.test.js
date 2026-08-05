@@ -171,8 +171,9 @@ describe('signalConfidence — the half that was never published', () => {
     expect(Number.isFinite(node.signalConfidence)).toBe(true);
   });
 
-  it('survives applyRelativeRanking by reference', () => {
-    // Three awareness siblings, all HOLD, so the cohort ranks and two upgrade.
+  // Three awareness siblings, all HOLD on the absolute pass, so the cohort ranks:
+  // highest CTR → SCALE, lowest → KILL, the middle one untouched.
+  const rankedTree = () => {
     const sib = (id, clicks) => ({
       id, level: 'CAMPAIGN', currency: 'USD',
       metrics: { spendMinor: 100_000, revenueMinor: 0, impressions: 50_000, clicks, conversions: 0, frequency: 2.0 },
@@ -180,15 +181,50 @@ describe('signalConfidence — the half that was never published', () => {
     const before = rollupVerdicts({
       id: 'a', level: 'ACCOUNT', children: [sib('lo', 250), sib('mid', 300), sib('hi', 350)],
     });
-    const after = applyRelativeRanking(before);
+    return { before, after: applyRelativeRanking(before) };
+  };
+  const childOf = (node, id) => node.children.find((c) => c.id === id);
 
-    for (const b of before.children) {
-      const a = after.children.find((c) => c.id === b.id);
-      expect(a.signalConfidence).toBe(b.signalConfidence);
-    }
-    expect(after.children.find((c) => c.id === 'lo').verdict).toBe(VERDICT.KILL);
-    // The reasoning that came with it is still the absolute pass's, and says so.
-    expect(after.children.find((c) => c.id === 'lo').hypotheses.every((h) => h.source === 'absolute')).toBe(true);
+  it('is re-stamped with the ranking\'s own strength on an upgraded row', () => {
+    const { before, after } = rankedTree();
+    const lo = childOf(after, 'lo');
+
+    expect(lo.verdict).toBe(VERDICT.KILL);
+    expect(lo.relativeRank).toBe('BOTTOM');
+    // RR.CONFIDENCE — module-local in relativeRanking.js, mirrored here.
+    expect(lo.signalConfidence).toBe(0.6);
+    expect(lo.signalConfidence).not.toBe(childOf(before, 'lo').signalConfidence);
+    // …and the published number still decomposes into its two halves.
+    expect(lo.verdictConfidence).toBe(composeConfidence(0.6, lo.dataConfidence));
+  });
+
+  it('is left by reference on a row the cohort did not move', () => {
+    const { before, after } = rankedTree();
+    const mid = childOf(after, 'mid');
+    expect(mid.relativeRank).toBeUndefined();
+    expect(mid.signalConfidence).toBe(childOf(before, 'mid').signalConfidence);
+  });
+
+  // The upgrade changes the VERDICT and the numbers that describe it. The
+  // diagnostic artifacts are observations about the entity — they stay true
+  // regardless of which pass decided, and must survive byte-for-byte.
+  it('leaves the diagnostic artifacts untouched', () => {
+    const { before, after } = rankedTree();
+    const b = childOf(before, 'lo');
+    const a = childOf(after, 'lo');
+
+    expect(a.hypotheses).toEqual(b.hypotheses);
+    expect(a.counterfactuals).toEqual(b.counterfactuals);
+    expect(a.declined).toEqual(b.declined);
+    expect(a.rootCause).toBe(b.rootCause);
+    expect(a.signalType).toBe(b.signalType);
+  });
+
+  it('keeps every hypothesis tagged as the absolute pass\'s', () => {
+    const { after } = rankedTree();
+    const lo = childOf(after, 'lo');
+    expect(lo.hypotheses.length).toBeGreaterThan(0);
+    expect(lo.hypotheses.every((h) => h.source === 'absolute')).toBe(true);
   });
 });
 
@@ -211,24 +247,66 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // GOLDEN: the three numbers must multiply out, so a reader can decompose a
   // confidence instead of guessing which half was weak.
   //
-  // SCOPED TO ABSOLUTE VERDICTS ON PURPOSE. relativeRanking recomposes
-  // `confidence` from its own 0.6 while leaving `signalConfidence` as the
-  // absolute pass's, so an upgraded row does NOT satisfy this. That is the
-  // inconsistency PR#321 has to resolve; pinning the invariant here means the
-  // day it is fixed, widening this test is the proof.
-  it('confidence === signal × data, for every absolute verdict', async () => {
+  // NO BRANCH ON relativeRank. It was scoped to absolute rows while an upgrade
+  // recomposed `confidence` from its own 0.6 but left `signalConfidence` as the
+  // absolute pass's. The upgrade now re-stamps both, so the invariant holds
+  // everywhere — and the absence of the filter is the proof.
+  //
+  // The invariant's precondition is a KNOWN sample size: `finalise` and the
+  // upgrade both short-circuit to the bare signal half when dataConfidence is
+  // null, and composeConfidence(x, null) is 0, so the two would disagree. The
+  // connector path always supplies impressions; the assertion below states that
+  // rather than leaving it to be rediscovered.
+  it('confidence === signal × data, on every row', async () => {
     getConnectorCampaigns.mockResolvedValue([
-      row({ entityId: 'a' }),
-      row({ entityId: 'b', frequency: 2.0, clicks: 1_500 }),
-      row({ entityId: 'c', revenueMinor: 0, objective: 'OUTCOME_AWARENESS' }),
+      // A revenue campaign — absolute, never a ranking candidate.
+      row({ entityId: 'rev' }),
+      // Three no-revenue siblings: one cohort, so the extremes get upgraded.
+      row({ entityId: 'lo',  revenueMinor: 0, frequency: 2.0, clicks: 250 }),
+      row({ entityId: 'mid', revenueMinor: 0, frequency: 2.0, clicks: 300 }),
+      row({ entityId: 'hi',  revenueMinor: 0, frequency: 2.0, clicks: 350 }),
     ]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
-    const absolute = verdicts.filter((v) => v.relativeRank == null);
 
-    expect(absolute.length).toBeGreaterThan(0);
-    for (const v of absolute) {
+    // Both populations must be present, or "widened" proves nothing.
+    expect(verdicts.filter((v) => v.relativeRank != null).length).toBeGreaterThan(0);
+    expect(verdicts.filter((v) => v.relativeRank == null).length).toBeGreaterThan(0);
+
+    for (const v of verdicts) {
+      expect(v.dataConfidence).not.toBeNull();
       expect(v.confidence).toBe(composeConfidence(v.signalConfidence, v.dataConfidence));
     }
+  });
+
+  it('publishes a real signal half on every row, upgraded or not', async () => {
+    getConnectorCampaigns.mockResolvedValue([
+      row({ entityId: 'lo',  revenueMinor: 0, frequency: 2.0, clicks: 250 }),
+      row({ entityId: 'mid', revenueMinor: 0, frequency: 2.0, clicks: 300 }),
+      row({ entityId: 'hi',  revenueMinor: 0, frequency: 2.0, clicks: 350 }),
+    ]);
+    const { verdicts } = await getConnectorVerdicts('ws-1');
+    for (const v of verdicts) {
+      expect(v.signalConfidence).toBeTypeOf('number');
+      expect(v.signalConfidence).not.toBeNull();
+    }
+  });
+
+  // A node that never passes through applyRelativeRanking has no `relativeRank`
+  // property at all — the projection is what turns that into null. Anything
+  // branching on it at the NODE level must use `== null`, not `=== null`.
+  it('normalises an absent relativeRank to null in the payload', async () => {
+    getConnectorCampaigns.mockResolvedValue([row()]);
+    const { verdicts } = await getConnectorVerdicts('ws-1');
+    expect(verdicts[0].relativeRank).toBeNull();
+
+    const [node] = rollupVerdicts({
+      id: 'a', level: 'ACCOUNT',
+      children: [{ id: 'c1', level: 'CAMPAIGN', currency: 'USD', metrics: {
+        spendMinor: 100_000, revenueMinor: 200_000, impressions: 50_000,
+        clicks: 350, conversions: 0, frequency: 4.0,
+      } }],
+    }).children;
+    expect(node.relativeRank).toBeUndefined();
   });
 
   it('publishes only counterfactuals that say something', async () => {
