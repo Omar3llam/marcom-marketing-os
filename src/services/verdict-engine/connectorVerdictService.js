@@ -218,6 +218,20 @@ export async function getConnectorVerdicts(workspaceId) {
     // evidence[] carries the real value AND the benchmark it was judged against,
     // so nothing downstream has to restate — or re-derive — the arithmetic.
     funnel: c.funnel ?? null,
+    // ── Stage 3 reasoning, read-time only ────────────────────────────────────
+    // `declined` is the raw material (rules that ran and passed, with their
+    // measurements); `hypotheses` the candidate explanations built from it; and
+    // `counterfactuals` why each alternative was set aside. Nothing here is
+    // persisted — no Decision column holds them, and they are re-derived from
+    // the same signals on every read.
+    //
+    // The `?? []` matters: this projection is the SECOND hand-picked list these
+    // fields must appear in (the first is rollupVerdicts' node return), and a
+    // legacy or hand-built node that predates them must project an empty list
+    // rather than `undefined`, which a consumer would spread or map over.
+    declined:        c.declined        ?? [],
+    hypotheses:      c.hypotheses      ?? [],
+    counterfactuals: c.counterfactuals ?? [],
   }));
 
   logger.info(
