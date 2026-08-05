@@ -31,6 +31,7 @@ import { VERDICT, VERDICT_TO_REC_TYPES, ROOT_CAUSE } from './verdictTypes.js';
 import { getBenchmarks, FATIGUE_FREQ as SATURATION_CEILING } from './benchmarkProvider.js';
 import { diagnoseFunnel }                from './funnelDiagnosis.js';
 import { computeConfidence, composeConfidence, MIN_IMPRESSIONS } from './confidenceEngine.js';
+import { projectHypotheses }             from './signalProjector.js';
 import { logger }                        from '../../utils/logger.js';
 
 // Verdict thresholds (frozen for auditability).
@@ -59,9 +60,12 @@ const V = Object.freeze({
 
 export { MIN_IMPRESSIONS };
 export const MIN_DAYS = V.MIN_DAYS;
-// The saturation ceiling, exported so evidenceProvider grades frequency against
-// the SAME number this engine judges it by. A re-typed 3.5 there would drift the
-// first time this one is tuned.
+// The saturation ceiling. The CANONICAL source is benchmarkProvider, and every
+// current reader goes there directly — the diagnosis engine and evidenceProvider
+// both must, since neither can import this module without closing a cycle. This
+// binding is a convenience re-export for a reader already holding verdictEngine;
+// it has no importers today. It is also the reason the import above is aliased,
+// and why removing that alias breaks the boot.
 export const FATIGUE_FREQ = V.FATIGUE_FREQ;
 
 /**
@@ -164,7 +168,9 @@ export function toSignalInput(agg, currency = 'USD') {
  * @param {number|null} [args.daysRunning] — days since PLATFORM creation. null
  *   means unknown, which SKIPS the too-early gate rather than assuming day 0.
  * @returns {{ verdict, confidence, signalConfidence, dataConfidence, rationale,
- *   rootCause, signalType, funnel, recommendationTypes }}
+ *   rootCause, signalType, funnel, declined, hypotheses, recommendationTypes }}
+ *   `declined` and `hypotheses` are read-time reasoning artifacts — computed
+ *   here, carried on the verdict, persisted nowhere.
  */
 export function evaluateVerdict({
   level, metrics, diagnosis, guardrailHits = [], revenueExpected = false,
@@ -204,6 +210,11 @@ export function evaluateVerdict({
     // counterfactual is built from. Empty on the early gates, which return
     // before any rule is evaluated.
     declined: extra.declined ?? [],
+    // Candidate explanations, one per fired mechanism, each with its own
+    // reasoning confidence. A READ-TIME artifact: nothing persists it, and it is
+    // re-derived from the same signals on every evaluation. Empty on the early
+    // gates for the same reason `declined` is — no rule has run yet.
+    hypotheses: extra.hypotheses ?? [],
     recommendationTypes: [...VERDICT_TO_REC_TYPES[v]],
   });
 
@@ -251,6 +262,13 @@ export function evaluateVerdict({
   // carried onto the verdict rather than discarded here: re-deriving it later
   // would mean re-running the rules against numbers that may have moved.
   const declined = Array.isArray(dxResult?.declined) ? dxResult.declined : [];
+
+  // Stage 3: the fired mechanisms as candidate explanations, each scored on how
+  // its own evidence converges rather than on the rule's frozen literal. This
+  // does NOT feed the verdict's confidence — `finalise` still composes the
+  // rule's literal with dataConfidence. Swapping the derived number in moves
+  // every stored confidence in the system and belongs in its own change.
+  const hypotheses = projectHypotheses(dxResult, dataConfidence);
 
   // Where in the funnel the money is going, when the funnel was measured at all.
   // Computed once and always attached, even when it does not decide the verdict —
@@ -369,6 +387,7 @@ export function evaluateVerdict({
     signalType: dx.signalType,
     funnel,
     declined,
+    hypotheses,
   });
 }
 
