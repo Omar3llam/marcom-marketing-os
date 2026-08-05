@@ -30,6 +30,11 @@
 // ============================================================
 import { SIGNAL_TYPE, DIAGNOSIS } from './diagnosisTypes.js';
 import { FATIGUE_FREQ } from '../verdict-engine/benchmarkProvider.js';
+// NOTE the explicit path: there are three exported `SEVERITY` enums in this
+// codebase (agentic-loop/agenticTypes, collaboration/notificationRouter, and
+// this one) with different members AND different casing. This is the
+// critical/high/medium/low/healthy ladder, not the LOW/MEDIUM/HIGH one.
+import { computeSeverity, SEVERITY, METRIC_DIRECTION } from '../verdict-engine/evidenceProvider.js';
 
 // Objective-independent thresholds only. Anything that varies by what the
 // campaign is TRYING to do belongs in benchmarkProvider, not here.
@@ -46,6 +51,26 @@ export { T as THRESHOLDS };
 const has = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0;
 
 /**
+ * Which way is good, per evidence metric.
+ *
+ * Without this an observation cannot be graded on a rule that DECLINED, and
+ * grading declined rules is the entire point: a frequency of 1.2 against a 3.5
+ * ceiling is healthy, but a direction-blind comparison calls it weak — the same
+ * inversion METRIC_DIRECTION exists to prevent one layer up.
+ *
+ * Costs (CPC, CPL) and the saturation ceiling are LOWER_IS_BETTER. Rates (CTR,
+ * conversion rate) are HIGHER_IS_BETTER. SPEND has no bar at all and is absent
+ * here by design — it is context, and computeSeverity returns null for it.
+ */
+const DIRECTION_BY_METRIC = Object.freeze({
+  CTR:       METRIC_DIRECTION.HIGHER_IS_BETTER,
+  CONV_RATE: METRIC_DIRECTION.HIGHER_IS_BETTER,
+  FREQUENCY: METRIC_DIRECTION.LOWER_IS_BETTER,
+  CPC:       METRIC_DIRECTION.LOWER_IS_BETTER,
+  CPL:       METRIC_DIRECTION.LOWER_IS_BETTER,
+});
+
+/**
  * PURE: one structured observation.
  *
  * Deliberately the SAME shape funnelDiagnosis's ev() and evidenceProvider's
@@ -53,16 +78,36 @@ const has = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0;
  * of the reasoning stack speaks one vocabulary and the client's EVIDENCE_UNITS
  * map (keyed on these UPPERCASE names) can render any of them.
  *
- * This replaces the pre-assembled English sentences `reasons()` used to return.
- * Those could not be translated (word order is baked in), could not survive an
- * RTL render (Latin digits and "%" need bidi isolation), and had to be parsed
- * to be reused — the failure that truncated the funnel counterfactual.
+ * `status` is DERIVED, never passed in. It used to be a hardcoded 'weak' at
+ * every call site, which was true only because reasons() ran exclusively on the
+ * rule that had already fired. The moment a DECLINED rule's observations are
+ * collected — which is what makes counterfactuals possible — a hardcoded 'weak'
+ * becomes a statement contradicting its own number, and a counterfactual that
+ * argues against itself is worse than none.
  *
- * `currency` rides only on money-valued rows, so a renderer never has to guess
- * whether a number is a count, a rate, or an amount.
+ * Derived FROM severity rather than computed beside it, exactly as
+ * evidenceItem does: two independent comparisons could disagree, and a row
+ * reading status 'healthy' next to severity 'critical' is worse than either.
+ *
+ * `severity` rides along too (additive). It is free here — computeSeverity has
+ * already run — and it closes the last gap between this shape and
+ * evidenceProvider's, so a consumer can read one vocabulary across both.
  */
-const obs = (metric, value, benchmark, status, currency = null) =>
-  (currency ? { metric, value, benchmark, status, currency } : { metric, value, benchmark, status });
+const obs = (metric, value, benchmark, currency = null) => {
+  const severity = computeSeverity(
+    value, benchmark, DIRECTION_BY_METRIC[metric] ?? METRIC_DIRECTION.HIGHER_IS_BETTER,
+  );
+  return {
+    metric,
+    value,
+    benchmark,
+    // null when there is no bar to judge against — an ungraded figure, never a
+    // passing one. The client whitelists exactly 'healthy'|'weak'.
+    status: severity == null ? null : (severity === SEVERITY.HEALTHY ? 'healthy' : 'weak'),
+    severity,
+    currency,
+  };
+};
 
 // ---------------------------------------------------------------------------
 // Rule definitions
@@ -90,8 +135,8 @@ export const SIGNAL_RULES = [
     },
     reasons({ frequency, ctr }, b) {
       return [
-        obs('FREQUENCY', frequency, FATIGUE_FREQ, 'weak'),
-        obs('CTR',       ctr,       b.ctr.strong, 'weak'),
+        obs('FREQUENCY', frequency, FATIGUE_FREQ),
+        obs('CTR',       ctr,       b.ctr.strong),
       ];
     },
   },
@@ -112,8 +157,8 @@ export const SIGNAL_RULES = [
       const clicks = cpcMinor > 0 ? spendMinor / cpcMinor : 0;
       const convRate = clicks > 0 ? conversions / clicks : 0;
       return [
-        obs('CPC',       cpcMinor, T.CPC_HIGH_MINOR, 'weak', currency),
-        obs('CONV_RATE', convRate, T.CONV_RATE_LOW,  'weak'),
+        obs('CPC',       cpcMinor, T.CPC_HIGH_MINOR, currency),
+        obs('CONV_RATE', convRate, T.CONV_RATE_LOW),
       ];
     },
   },
@@ -130,8 +175,9 @@ export const SIGNAL_RULES = [
     },
     reasons({ spendMinor, conversions, currency = null }) {
       return [
-        obs('CPL',   spendMinor / conversions, T.CPL_HIGH_MINOR, 'weak', currency),
-        obs('SPEND', spendMinor,               null,             null,   currency),
+        obs('CPL',   spendMinor / conversions, T.CPL_HIGH_MINOR, currency),
+        // No bar — context, not a judgement. severity/status come back null.
+        obs('SPEND', spendMinor,               null,             currency),
       ];
     },
   },
@@ -146,7 +192,7 @@ export const SIGNAL_RULES = [
       return ctr < b.ctr.weak;
     },
     reasons({ ctr }, b) {
-      return [obs('CTR', ctr, b.ctr.weak, 'weak')];
+      return [obs('CTR', ctr, b.ctr.weak)];
     },
   },
 ];
@@ -156,7 +202,9 @@ export function ruleIsEvaluable(rule, input) {
   return rule.requires.every((f) => has(input[f]));
 }
 
-// Returned when rules ran and none fired — a real all-clear.
+// Returned when rules ran and none fired — a real all-clear. Carries no
+// observations of its own: the evidence for "healthy" is the DECLINED list,
+// where every rule that ran and passed left its measurements.
 export const HEALTHY_RESULT = Object.freeze({
   signalType: SIGNAL_TYPE.HEALTHY,
   diagnosis:  DIAGNOSIS.HEALTHY,
@@ -165,14 +213,13 @@ export const HEALTHY_RESULT = Object.freeze({
   // from here, so certainty is never honest. Two scales that could not be
   // composed; now one.
   confidence: 0.97,
-  reasons:    Object.freeze([]),
 });
 
 // Returned when NO rule could be evaluated. Not an all-clear — a statement that
-// we could not look. reasons is empty because there is nothing observed to report.
+// we could not look. There is nothing observed to report, and confidence 0 says
+// so rather than implying a weak finding.
 export const UNDIAGNOSABLE_RESULT = Object.freeze({
   signalType: SIGNAL_TYPE.UNDIAGNOSABLE,
   diagnosis:  DIAGNOSIS.UNDIAGNOSABLE,
   confidence: 0,
-  reasons:    Object.freeze([]),
 });
