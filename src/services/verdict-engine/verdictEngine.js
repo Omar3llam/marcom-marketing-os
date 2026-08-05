@@ -524,11 +524,13 @@ export function rollupVerdicts(node, opts = {}) {
     // it already carries that pass's rootCause and signalType. Each hypothesis
     // now says so itself (`source: 'absolute'`).
     //
-    // TODO PR#321: have the upgrade path stamp `source: 'relative'`, and decide
-    // what `signalConfidence` should read on an upgraded row — it currently keeps
-    // the absolute pass's number while `verdictConfidence` is recomposed from
-    // RR.CONFIDENCE, so the published triple does not multiply out. See the
-    // scoped golden test in decisionEngine.test.js.
+    // `signalConfidence` is the one field the upgrade DOES re-stamp, with the
+    // cohort ranking's own strength — so the published triple multiplies out on
+    // every row. See the golden test in decisionEngine.test.js.
+    //
+    // TODO: have the upgrade path stamp `source: 'relative'` on hypotheses it
+    // did not derive, so a consumer can tell at the hypothesis level which pass
+    // is speaking.
     declined:        result.declined        ?? [],
     hypotheses:      result.hypotheses      ?? [],
     counterfactuals: result.counterfactuals ?? [],

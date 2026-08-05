@@ -145,6 +145,25 @@ export function applyRelativeRanking(node) {
         verdictConfidence: c.dataConfidence == null
           ? up.confidence
           : composeConfidence(up.confidence, c.dataConfidence),
+        // The signal half must name the source that produced the CURRENT
+        // verdict, not the one that produced the verdict this replaced.
+        //
+        //   absolute verdict — the mechanism's derived reasoning confidence
+        //   relative upgrade — the cohort ranking's own strength (RR.CONFIDENCE)
+        //
+        // Leaving the absolute pass's number here published a triple that did
+        // not multiply out: `verdictConfidence` was recomposed from 0.6 while
+        // `signalConfidence` still read the diagnosis engine's assessment of a
+        // verdict that no longer exists. A reader decomposing the confidence
+        // would attribute a cohort-rank KILL to a creative-fatigue score.
+        //
+        // The DIAGNOSTIC artifacts are deliberately NOT touched: hypotheses,
+        // counterfactuals, declined, rootCause and signalType all still describe
+        // what the absolute pass found, and each hypothesis says so
+        // (`source: 'absolute'`). Those are observations about the entity and
+        // remain true; `signalConfidence` is a property of the verdict, and the
+        // verdict changed.
+        signalConfidence: up.confidence,
         rationale: up.rationale,
         recommendationTypes: [...VERDICT_TO_REC_TYPES[up.verdict]],
         relativeRank: up.rank,
