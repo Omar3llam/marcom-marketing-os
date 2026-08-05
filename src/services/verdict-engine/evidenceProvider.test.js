@@ -14,7 +14,10 @@ import {
   SEVERITY, EVIDENCE_KIND, EVIDENCE_METRIC, METRIC_DIRECTION,
   METRIC_THRESHOLDS, DEFAULT_THRESHOLD, MIN_IMPRESSIONS_FOR_RANKING,
 } from './evidenceProvider.js';
-import { FATIGUE_FREQ } from './verdictEngine.js';
+// From benchmarkProvider — the CANONICAL source. verdictEngine re-exports the
+// same value, but asserting against the re-export tested the copy rather than
+// the original, and would have gone on passing if the two ever drifted.
+import { FATIGUE_FREQ } from './benchmarkProvider.js';
 
 const NOW = Date.parse('2026-08-01T00:00:00.000Z');
 
