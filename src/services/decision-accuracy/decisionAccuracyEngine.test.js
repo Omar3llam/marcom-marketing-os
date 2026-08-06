@@ -105,6 +105,65 @@ describe('decisionAccuracyEngine — maturity (§2.2)', () => {
   });
 });
 
+// The outcome window opens when the operator ACTED, not when the engine issued
+// the call. Measuring from issuance charges the result for however long a verdict
+// sat unread in a queue — a call acted on three weeks late would read as mature
+// while its intervention is three days old.
+describe('decisionAccuracyEngine — the outcome window opens at execution', () => {
+  // Issued 30 days ago (long past the 7-day deadline), acted on 3 days ago.
+  const lateAction = (over = {}) => ({
+    id: 'late', verdict: 'KILL', confidence: 0.9, status: 'EXECUTED',
+    createdAt: new Date(NOW.getTime() - day(30)).toISOString(),
+    executedAt: new Date(NOW.getTime() - day(3)).toISOString(),
+    outcome: null, ...over,
+  });
+
+  it('a decision acted on 3 days ago is PENDING, not UNSCORABLE, however old the verdict is', () => {
+    const r = calculateDecisionAccuracy({ now: NOW, decisions: [lateAction()] });
+    expect(r.coverage.pendingMaturation).toBe(1);
+    // Measured from createdAt this is 30 days old and would be written off as a
+    // data-quality gap — for a window that has barely opened.
+    expect(r.coverage.unscorable).toBe(0);
+  });
+
+  it('the same row without executedAt IS unscorable — the fallback is the legacy path', () => {
+    const legacy = lateAction();
+    delete legacy.executedAt; // a row written before the human-signal routes existed
+    const r = calculateDecisionAccuracy({ now: NOW, decisions: [legacy] });
+    expect(r.coverage.unscorable).toBe(1);
+    expect(r.coverage.pendingMaturation).toBe(0);
+  });
+
+  it('an executedAt past the deadline still matures', () => {
+    const r = calculateDecisionAccuracy({
+      now: NOW,
+      decisions: [lateAction({ executedAt: new Date(NOW.getTime() - day(10)).toISOString() })],
+    });
+    expect(r.coverage.unscorable).toBe(1);
+  });
+
+  it('a null executedAt falls back rather than throwing on new Date(null)', () => {
+    // new Date(null) is the epoch, not Invalid Date — it would silently mature
+    // every row instead of failing loudly. `?? createdAt` has to catch null too.
+    const r = calculateDecisionAccuracy({ now: NOW, decisions: [lateAction({ executedAt: null })] });
+    expect(r.coverage.unscorable).toBe(1);
+  });
+
+  // The velocity curve bins by createdAt ON PURPOSE: that axis is "when did the
+  // engine make calls", and re-anchoring it to execution would reorder the
+  // learning curve by how fast the operator happened to respond.
+  it('does NOT re-anchor the velocity curve to executedAt', () => {
+    const janIssued = Array.from({ length: 60 }, (_, i) => ({
+      ...scored(`j${i}`, { confidence: 0.9, success: false, at: new Date('2026-01-10T00:00:00Z').getTime() + i * 1000 }),
+      // Acted on in February — a month after issuance.
+      executedAt: new Date('2026-02-20T00:00:00Z').toISOString(),
+    }));
+    const r = calculateDecisionAccuracy({ now: NOW, decisions: janIssued });
+    // One period, and it is the ISSUANCE month.
+    expect(r.velocity.periods.map((p) => p.label)).toEqual(['2026-01']);
+  });
+});
+
 describe('decisionAccuracyEngine — calibration is the headline, gated', () => {
   it('reports ECE + Brier; lift returns INSUFFICIENT_DATA below minSample', () => {
     const decisions = Array.from({ length: 10 }, (_, i) => scored(`x${i}`, { confidence: 0.7, success: i % 2 === 0, at: new Date('2026-02-10T00:00:00Z').getTime() + i * 1000 }))

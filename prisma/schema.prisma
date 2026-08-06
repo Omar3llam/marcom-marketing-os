@@ -1281,7 +1281,14 @@ model Decision {
   // this" into "when did they last click", which answers a different question.
   explainedAt DateTime? // first time a human opened the reasoning
   intentAt    DateTime? // first time they copied it or opened the ad platform
-  resolvedAt  DateTime? // when a new verdict replaced this one
+  // The two HUMAN signals, mutually exclusive: an operator said they acted on
+  // this call, or that they rejected it. Distinct from intentAt, which only
+  // means "took it somewhere they could act" and is what decisionLearning leans
+  // on for that weaker claim. Deliberately timestamps rather than a `status`
+  // move: see the migration for the four readers that gate on PROPOSED.
+  executedAt  DateTime?
+  dismissedAt DateTime?
+  resolvedAt  DateTime? // SYSTEM signal: when a new verdict replaced this one
 
   resolution      DecisionResolution? // null until resolved
   confidenceDelta Float? // CTR delta (percentage POINTS) between issue and resolution

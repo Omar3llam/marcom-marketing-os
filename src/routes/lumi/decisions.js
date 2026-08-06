@@ -2,6 +2,8 @@
 // MARCOM / Lumi — Decision lifecycle signals
 //   PATCH /api/lumi/decisions/by-entity/:entityId/explain
 //   PATCH /api/lumi/decisions/by-entity/:entityId/intent
+//   PATCH /api/lumi/decisions/:id/execute
+//   PATCH /api/lumi/decisions/:id/dismiss
 // ------------------------------------------------------------
 // Two moments the product could not previously observe: a human OPENED the
 // reasoning behind a verdict, and a human went and ACTED on it (copied the
@@ -85,6 +87,100 @@ decisionsRouter.patch(`${BASE}/explain`, requireCollabRole(...OPERATORS), (req, 
 // separates a verdict someone acted on from one that merely sat in a list.
 decisionsRouter.patch(`${BASE}/intent`, requireCollabRole(...OPERATORS), (req, res) =>
   stampOnce(req, res, 'intentAt'));
+
+// ------------------------------------------------------------
+// The two HUMAN signals: "I acted on this" / "I rejected this".
+// ------------------------------------------------------------
+// Keyed by DECISION ID, not by entity, unlike the two stamps above. Those record
+// engagement with whatever verdict happened to be live at the moment of a click,
+// which is the right attribution for a click. This records a claim ABOUT a
+// specific call, and it is the row the accuracy surface will later score — so it
+// has to name which one, not "whichever was live".
+//
+// They do NOT move `status`. Four readers gate on status = 'PROPOSED' (the feed,
+// the agentic planner, the collaboration queue, and stampOnce right above), so
+// flipping it would drop the decision out of three queues and make /explain and
+// /intent 404 on it — an operator who executes first and reads the reasoning
+// second would lose their explainedAt entirely. Whether status should follow is
+// a separate change with a separate blast radius.
+//
+// Mutually exclusive by construction: executing and dismissing the same call are
+// contradictory claims, and letting both land would leave a row that reports
+// itself as acted-on AND rejected. Whichever arrived first wins, and the second
+// gets a 409 naming it.
+const SIGNALS = Object.freeze({
+  executedAt:  { opposite: 'dismissedAt', oppositeError: 'AlreadyDismissed' },
+  dismissedAt: { opposite: 'executedAt',  oppositeError: 'AlreadyExecuted' },
+});
+
+/**
+ * Record a human signal against ONE decision, once.
+ * `field` is a fixed literal from the two call sites below — never user input.
+ */
+async function recordSignal(req, res, field) {
+  const { id } = req.params;
+  if (!req.workspaceId) return res.status(400).json({ error: 'NoWorkspace', message: 'No workspace resolved' });
+
+  const { opposite, oppositeError } = SIGNALS[field];
+
+  try {
+    // Found by id + workspace, with NO status filter: a decision that has moved
+    // on is a 409 that says what it moved to, not a 404 that implies it never
+    // existed. The two are different facts and the caller can act on only one.
+    const decision = await prisma.decision.findFirst({
+      where:  { id, workspaceId: req.workspaceId },
+      select: { id: true, status: true, executedAt: true, dismissedAt: true },
+    });
+
+    if (!decision) return res.status(404).json({ error: 'DecisionNotFound', message: 'No such decision in this workspace' });
+
+    // Already stamped — report the ORIGINAL timestamp. Idempotent, and checked
+    // BEFORE the status gate: a decision executed while live and superseded by
+    // the next sweep must still report its own signal rather than 409 on a
+    // claim that was already true when it was made.
+    if (decision[field]) {
+      return res.json({ ok: true, recorded: false, [field]: decision[field] });
+    }
+
+    if (decision[opposite]) {
+      return res.status(409).json({
+        error: oppositeError,
+        message: `This decision was already recorded as ${opposite === 'executedAt' ? 'executed' : 'dismissed'}`,
+        [opposite]: decision[opposite],
+      });
+    }
+
+    // Only a live call can be acted on. A SUPERSEDED verdict has been replaced;
+    // recording an intervention against it would attribute the operator's action
+    // to a call the engine no longer stands behind.
+    if (decision.status !== 'PROPOSED') {
+      return res.status(409).json({
+        error: 'DecisionNotActionable',
+        message: `Decision is ${decision.status}; only a live (PROPOSED) decision can be acted on`,
+        status: decision.status,
+      });
+    }
+
+    const at = new Date();
+    await prisma.decision.update({ where: { id: decision.id }, data: { [field]: at } });
+    return res.json({ ok: true, recorded: true, [field]: at });
+  } catch (err) {
+    logger.error({ err: err.message, id, field }, '[lumi/decisions] signal failed');
+    return res.status(500).json({ error: 'DecisionUnavailable', message: 'Request failed' });
+  }
+}
+
+// A human says they acted on this call. The strongest signal the product has,
+// and the one the accuracy surface will score against.
+decisionsRouter.patch('/decisions/:id/execute', requireCollabRole(...OPERATORS), (req, res) =>
+  recordSignal(req, res, 'executedAt'));
+
+// A human says they looked at this call and chose not to act. NOT the absence of
+// a signal: an explicit rejection is survivorship data the accuracy surface
+// counts in coverage, and it is the only way a wrong call can be recorded as
+// wrong by the person who saw it.
+decisionsRouter.patch('/decisions/:id/dismiss', requireCollabRole(...OPERATORS), (req, res) =>
+  recordSignal(req, res, 'dismissedAt'));
 
 // The track record behind this entity's live verdict: how comparable decisions
 // turned out after someone acted on them.

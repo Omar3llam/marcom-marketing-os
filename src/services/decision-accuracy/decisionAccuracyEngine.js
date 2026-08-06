@@ -39,7 +39,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * @param {object}   args
- * @param {Array}    args.decisions — [{ id, verdict, confidence, status, createdAt, outcome? }]
+ * @param {Array}    args.decisions — [{ id, verdict, confidence, status, createdAt, executedAt?, outcome? }]
  * @param {Array}   [args.outcomes] — optional [{ decisionId, ... }] joined by id if `outcome` absent
  * @param {Date}     args.now       — injected; the engine never reads the clock
  * @param {object}  [args.config]
@@ -124,8 +124,28 @@ export function calculateDecisionAccuracy({ decisions = [], outcomes = null, now
 }
 
 // ── Maturity classification (§2.2) ────────────────────────────────
+/**
+ * The instant the outcome window opens.
+ *
+ * `executedAt` when a human told us they acted, `createdAt` otherwise. The
+ * distinction is causal, not cosmetic: measuring from issuance charges the
+ * result for however long the verdict sat unread in a queue, so a call acted on
+ * three weeks late reads as mature when its intervention is three days old.
+ *
+ * The fallback is for LEGACY rows only — every decision written before the
+ * human-signal routes existed has no executedAt and never will. It measures a
+ * window that includes unread time and is the less causally honest of the two;
+ * it is here because the alternative is dropping those rows entirely, and their
+ * issuance date is a real fact even if it answers a slightly different question.
+ *
+ * Deliberately NOT applied to the velocity curve, which bins by `createdAt` on
+ * purpose: that axis is "when did the engine make calls", and re-anchoring it to
+ * execution would reorder the learning curve by how fast the operator responded.
+ */
+const windowStart = (decision) => decision.executedAt ?? decision.createdAt;
+
 function classifyMaturity(decision, outcome, nowMs, cfg) {
-  const ageMs = nowMs - new Date(decision.createdAt).getTime();
+  const ageMs = nowMs - new Date(windowStart(decision)).getTime();
   const matured = ageMs >= cfg.maturationDays * DAY_MS;
 
   if (!outcome) {
