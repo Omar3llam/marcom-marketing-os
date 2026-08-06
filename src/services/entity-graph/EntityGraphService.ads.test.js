@@ -34,25 +34,37 @@ const ad = (id, over = {}) => ({
   platformCreatedTime: new Date('2026-05-01T00:00:00.000Z'), ...over,
 });
 
+// getAdSetAds now reads snapshots at TWO levels (the ad-set baseline and the ad
+// cohort) from the same mocked table, so the mock has to answer per level. A
+// single mockResolvedValue would hand the AD rows back as the parent's baseline.
+const snapsByLevel = { ADSET: [], AD: [] };
+
 beforeEach(() => {
   vi.clearAllMocks();
-  h.prisma.adSet.findFirst.mockResolvedValue({ id: AS });
+  snapsByLevel.ADSET = [];
+  snapsByLevel.AD    = [];
+  h.prisma.adSet.findFirst.mockResolvedValue({ id: AS, name: 'Broad', channel: 'META', status: 'ACTIVE', _count: { ads: 0 } });
   h.prisma.ad.findMany.mockResolvedValue([]);
-  h.prisma.metricSnapshot.findMany.mockResolvedValue([]);
+  h.prisma.metricSnapshot.findMany.mockImplementation(({ where }) =>
+    Promise.resolve(snapsByLevel[where.entityLevel] ?? []));
 });
 
-describe('getAdSetAds — null vs []', () => {
+describe('getAdSetAds — null vs empty children', () => {
   it('returns null when the ad-set is not in this workspace', async () => {
     h.prisma.adSet.findFirst.mockResolvedValue(null);
     expect(await getAdSetAds(WS, AS)).toBeNull();
     expect(h.prisma.ad.findMany).not.toHaveBeenCalled(); // never reads children of a foreign parent
   });
 
-  it('returns [] when the ad-set exists but has no ads', async () => {
-    expect(await getAdSetAds(WS, AS)).toEqual([]);
+  it('returns a real entity with empty children when the ad-set exists but has no ads', async () => {
+    const out = await getAdSetAds(WS, AS);
+    expect(out.children).toEqual([]);
+    // The envelope is NOT null: the ad-set is real, it simply has nothing under
+    // it. Collapsing this into null would 404 an ad-set the operator can see.
+    expect(out.entity.entityId).toBe(AS);
   });
 
-  it('returns null (not []) for a non-UUID id — the @db.Uuid cast would otherwise throw a 500', async () => {
+  it('returns null (not an envelope) for a non-UUID id — the @db.Uuid cast would otherwise throw a 500', async () => {
     expect(await getAdSetAds(WS, 'not-a-uuid')).toBeNull();
     expect(h.prisma.adSet.findFirst).not.toHaveBeenCalled();
   });
@@ -61,9 +73,84 @@ describe('getAdSetAds — null vs []', () => {
     expect(await getAdSetAds(null, AS)).toBeNull();
   });
 
-  it('degrades to [] when the ad read itself fails — a broken child query is not a missing parent', async () => {
+  it('degrades to empty children when the ad read itself fails — a broken child query is not a missing parent', async () => {
     h.prisma.ad.findMany.mockRejectedValue(new Error('db down'));
-    expect(await getAdSetAds(WS, AS)).toEqual([]);
+    const out = await getAdSetAds(WS, AS);
+    expect(out.children).toEqual([]);
+    expect(out.entity).not.toBeNull();
+  });
+});
+
+describe('getAdSetAds — the ad-set baseline', () => {
+  it('returns the ad-set as a real row, not an id stub — it is what the ads get ranked against', async () => {
+    snapsByLevel.ADSET = [{ entityId: AS, source: 'META', date: '2026-06-05', ctr: 0.012, spendMinor: 90_000, impressions: 40_000 }];
+    const { entity } = await getAdSetAds(WS, AS);
+    expect(entity).toMatchObject({ entityId: AS, name: 'Broad', ctr: 0.012, spendMinor: 90_000 });
+  });
+
+  it('reads the baseline at ADSET level, scoped to the workspace, for this ad-set alone', async () => {
+    await getAdSetAds(WS, AS);
+    const levels = h.prisma.metricSnapshot.findMany.mock.calls.map((c) => c[0].where.entityLevel);
+    expect(levels).toContain('ADSET');
+    const adsetCall = h.prisma.metricSnapshot.findMany.mock.calls.find((c) => c[0].where.entityLevel === 'ADSET');
+    expect(adsetCall[0].where).toMatchObject({ workspaceId: WS, entityId: { in: [AS] } });
+  });
+
+  it('keeps null metrics on an ad-set that has never been snapshotted — "—", never a fabricated 0', async () => {
+    const { entity } = await getAdSetAds(WS, AS);
+    expect(entity.ctr).toBeNull();
+    expect(entity.spendMinor).toBeNull();
+  });
+
+  it('reports adCount from _count, not from the capped children array', async () => {
+    h.prisma.adSet.findFirst.mockResolvedValue({ id: AS, name: 'Broad', channel: 'META', status: 'ACTIVE', _count: { ads: 140 } });
+    h.prisma.ad.findMany.mockResolvedValue([ad('ad1'), ad('ad2')]);
+    const { entity, children } = await getAdSetAds(WS, AS);
+    // The cap truncates what we RETURN; it must not truncate what we REPORT.
+    expect(entity.adCount).toBe(140);
+    expect(children).toHaveLength(2);
+  });
+
+  it('defaults adCount to 0 when _count is absent rather than rendering a phantom chevron', async () => {
+    h.prisma.adSet.findFirst.mockResolvedValue({ id: AS, name: 'Broad', channel: 'META', status: 'ACTIVE' });
+    expect((await getAdSetAds(WS, AS)).entity.adCount).toBe(0);
+  });
+
+  it('counts ads inside the select — Prisma rejects select and include together', async () => {
+    await getAdSetAds(WS, AS);
+    const arg = h.prisma.adSet.findFirst.mock.calls[0][0];
+    expect(arg.select).toMatchObject({ _count: { select: { ads: true } } });
+    expect(arg.include).toBeUndefined();
+  });
+});
+
+describe('getAdSetAds — objective', () => {
+  it('threads the campaign objective through the relation — AdSet has no objective column of its own', async () => {
+    h.prisma.adSet.findFirst.mockResolvedValue({
+      id: AS, name: 'Broad', channel: 'META', status: 'ACTIVE',
+      _count: { ads: 0 }, campaign: { objective: 'OUTCOME_SALES' },
+    });
+    expect((await getAdSetAds(WS, AS)).objective).toBe('OUTCOME_SALES');
+  });
+
+  it('selects the objective off the campaign relation instead of firing a second query', async () => {
+    await getAdSetAds(WS, AS);
+    expect(h.prisma.adSet.findFirst.mock.calls[0][0].select).toMatchObject({
+      campaign: { select: { objective: true } },
+    });
+    expect(h.prisma.campaign.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('reports null (never a guessed objective) when the campaign has none', async () => {
+    h.prisma.adSet.findFirst.mockResolvedValue({
+      id: AS, name: 'Broad', channel: 'META', status: 'ACTIVE',
+      _count: { ads: 0 }, campaign: { objective: null },
+    });
+    expect((await getAdSetAds(WS, AS)).objective).toBeNull();
+  });
+
+  it('reports null when the campaign relation is missing entirely — no throw', async () => {
+    expect((await getAdSetAds(WS, AS)).objective).toBeNull();
   });
 });
 
@@ -99,35 +186,48 @@ describe('getAdSetAds — query shape', () => {
 });
 
 describe('getAdSetAds — hydration', () => {
-  it('hydrates each ad with its latest AD snapshot in ONE query (no N+1)', async () => {
+  it('hydrates every ad from ONE ad-level query (no N+1), whatever the child count', async () => {
     h.prisma.ad.findMany.mockResolvedValue([ad('ad1'), ad('ad2')]);
-    h.prisma.metricSnapshot.findMany.mockResolvedValue([
+    snapsByLevel.AD = [
       { entityId: 'ad1', source: 'META', date: '2026-06-01', spendMinor: 100, roas: 1 },
       { entityId: 'ad1', source: 'META', date: '2026-06-05', spendMinor: 500, roas: 2.5 },
       { entityId: 'ad2', source: 'META', date: '2026-06-05', spendMinor: 300, roas: 0.4 },
-    ]);
+    ];
 
-    const rows = await getAdSetAds(WS, AS);
-    expect(h.prisma.metricSnapshot.findMany).toHaveBeenCalledTimes(1);
-    expect(h.prisma.metricSnapshot.findMany.mock.calls[0][0].where).toMatchObject({
+    const { children } = await getAdSetAds(WS, AS);
+    const adCalls = h.prisma.metricSnapshot.findMany.mock.calls.filter((c) => c[0].where.entityLevel === 'AD');
+    expect(adCalls).toHaveLength(1);
+    expect(adCalls[0][0].where).toMatchObject({
       workspaceId: WS, entityLevel: 'AD', entityId: { in: ['ad1', 'ad2'] },
     });
-    expect(rows.map((r) => r.roas)).toEqual([2.5, 0.4]); // latest per entity wins
+    expect(children.map((r) => r.roas)).toEqual([2.5, 0.4]); // latest per entity wins
   });
 
   it('an ad with no snapshot keeps null metrics beside a sibling that has them', async () => {
     h.prisma.ad.findMany.mockResolvedValue([ad('ad1'), ad('ad2')]);
-    h.prisma.metricSnapshot.findMany.mockResolvedValue([
-      { entityId: 'ad1', source: 'META', date: '2026-06-05', spendMinor: 500, roas: 2.5 },
-    ]);
-    const rows = await getAdSetAds(WS, AS);
-    expect(rows[0].spendMinor).toBe(500);
-    expect(rows[1].spendMinor).toBeNull(); // "—", never 0
+    snapsByLevel.AD = [{ entityId: 'ad1', source: 'META', date: '2026-06-05', spendMinor: 500, roas: 2.5 }];
+    const { children } = await getAdSetAds(WS, AS);
+    expect(children[0].spendMinor).toBe(500);
+    expect(children[1].spendMinor).toBeNull(); // "—", never 0
   });
 
   it('preserves the DB order — the service never re-sorts what the query ordered', async () => {
     h.prisma.ad.findMany.mockResolvedValue([ad('old'), ad('new'), ad('unknown', { platformCreatedTime: null })]);
-    expect((await getAdSetAds(WS, AS)).map((r) => r.entityId)).toEqual(['old', 'new', 'unknown']);
+    expect((await getAdSetAds(WS, AS)).children.map((r) => r.entityId)).toEqual(['old', 'new', 'unknown']);
+  });
+
+  it('skips the ad-level snapshot query entirely when the ad-set has no ads', async () => {
+    await getAdSetAds(WS, AS);
+    const adCalls = h.prisma.metricSnapshot.findMany.mock.calls.filter((c) => c[0].where.entityLevel === 'AD');
+    expect(adCalls).toHaveLength(0);
+  });
+
+  it('carries the fields analyzeEvidence ranks on — impressions and creative age', async () => {
+    h.prisma.ad.findMany.mockResolvedValue([ad('ad1')]);
+    snapsByLevel.AD = [{ entityId: 'ad1', source: 'META', date: '2026-06-05', ctr: 0.004, impressions: 12_000 }];
+    const { children } = await getAdSetAds(WS, AS);
+    expect(children[0]).toMatchObject({ ctr: 0.004, impressions: 12_000 });
+    expect(children[0].platformCreatedTime).toEqual(new Date('2026-05-01T00:00:00.000Z'));
   });
 });
 

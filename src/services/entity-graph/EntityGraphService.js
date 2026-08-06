@@ -127,40 +127,72 @@ export async function getCampaignAdSets(workspaceId, campaignEntityId) {
 export const MAX_ADS_PER_ADSET = 100;
 
 /**
- * Ads of one ad-set (workspace-scoped) with latest metrics.
- * Same contract as getCampaignAdSets one level down:
- * @returns {Promise<Array|null>} rows[] when the ad-set exists in this workspace
- * ([] when it has no ads), or null when it isn't found (→ honest 404, never a
- * fabricated empty drill-down).
+ * Ads of one ad-set (workspace-scoped) with latest metrics, PLUS the two things
+ * a ranking of those ads cannot be honest without:
+ *
+ *   entity    — the ad-set's OWN measured row. This is the BASELINE children are
+ *               ranked against. Deliberately not a mean of the children: an
+ *               unweighted average of ratios is a number no snapshot contains,
+ *               and it weighs a 100-impression ad equally with a 100,000 one.
+ *   objective — the campaign's objective, which selects the CTR bar. Read off the
+ *               `campaign` RELATION, not a column: AdSet carries campaignId but
+ *               no objective of its own, so this is a nested select on the
+ *               ownership query rather than a second round-trip.
+ *
+ * Same null-vs-empty contract as getCampaignAdSets one level down:
+ * @returns {Promise<{entity, objective, children}|null>} the envelope when the
+ * ad-set exists in this workspace (`children: []` when it has no ads), or null
+ * when it isn't found (→ honest 404, never a fabricated empty drill-down).
  */
 export async function getAdSetAds(workspaceId, adSetEntityId) {
   if (!workspaceId || !UUID_RE.test(String(adSetEntityId || ''))) return null;
 
   const adSet = await prisma.adSet.findFirst({
     where:  { id: adSetEntityId, workspaceId },
-    select: { id: true },
+    // _count lives INSIDE the select — Prisma rejects `select` and `include`
+    // together. Same shape as the ad-set level above.
+    select: {
+      id: true, name: true, channel: true, status: true,
+      _count:   { select: { ads: true } },
+      campaign: { select: { objective: true } },
+    },
   }).catch(() => null);
   if (!adSet) return null;
 
-  const ads = await prisma.ad.findMany({
-    where:  { adSetId: adSetEntityId, workspaceId },
-    select: { id: true, name: true, channel: true, status: true, platformCreatedTime: true },
-    // Ordered by CREATIVE AGE (platform creation), oldest first — the order the
-    // fatigue question is asked in. `createdAt` is our own write time and would
-    // order by when we happened to sync, so it serves only as a stable tie-break.
-    // Nulls last: a roster-only ad whose creation time Meta never reported must
-    // not sort ahead of ads with a real, known age.
-    orderBy: [
-      { platformCreatedTime: { sort: 'asc', nulls: 'last' } },
-      { createdAt: 'asc' },
-    ],
-    take: MAX_ADS_PER_ADSET,
-  }).catch((err) => {
-    logger.debug({ err: err.message, workspaceId, adSetEntityId }, '[EntityGraph] ads read failed');
-    return [];
-  });
-  if (!ads.length) return [];
+  // Independent reads — the ad-set's own snapshot does not depend on the child
+  // list, so it does not wait behind it.
+  const [adSetSnaps, ads] = await Promise.all([
+    latestSnapshots(workspaceId, ENTITY_LEVEL.ADSET, [adSetEntityId]),
+    prisma.ad.findMany({
+      where:  { adSetId: adSetEntityId, workspaceId },
+      select: { id: true, name: true, channel: true, status: true, platformCreatedTime: true },
+      // Ordered by CREATIVE AGE (platform creation), oldest first — the order the
+      // fatigue question is asked in. `createdAt` is our own write time and would
+      // order by when we happened to sync, so it serves only as a stable tie-break.
+      // Nulls last: a roster-only ad whose creation time Meta never reported must
+      // not sort ahead of ads with a real, known age.
+      orderBy: [
+        { platformCreatedTime: { sort: 'asc', nulls: 'last' } },
+        { createdAt: 'asc' },
+      ],
+      take: MAX_ADS_PER_ADSET,
+    }).catch((err) => {
+      logger.debug({ err: err.message, workspaceId, adSetEntityId }, '[EntityGraph] ads read failed');
+      return [];
+    }),
+  ]);
 
+  // latestSnapshots short-circuits on an empty id list, so a childless ad-set
+  // still costs no query here — and still returns a real `entity`.
   const metrics = await latestSnapshots(workspaceId, ENTITY_LEVEL.AD, ads.map((a) => a.id));
-  return ads.map((a) => toAdRow(a, metrics.get(a.id)));
+
+  return {
+    // adCount rides ON the entity object — toAdSetRow takes (adSet, snap) and
+    // would silently report 0 for a third positional argument. It comes from
+    // _count, the TRUE total: counting the returned array instead would tell a
+    // 140-ad ad-set it has MAX_ADS_PER_ADSET.
+    entity:    toAdSetRow({ ...adSet, adCount: adSet._count?.ads ?? 0 }, adSetSnaps.get(adSetEntityId)),
+    objective: adSet.campaign?.objective ?? null,
+    children:  ads.map((a) => toAdRow(a, metrics.get(a.id))),
+  };
 }
