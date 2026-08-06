@@ -33,6 +33,12 @@ export function buildAccuracyInputs(decisions = []) {
     confidence: d.confidence,
     status: d.status,
     createdAt: d.createdAt,
+    // The instant the operator said they acted. The engine opens its outcome
+    // window here and falls back to createdAt — so this MUST also be added to
+    // the findMany select below: an absent field is undefined, the fallback
+    // fires silently, and the window quietly reverts to issuance with nothing
+    // to show that it did.
+    executedAt: d.executedAt ?? null,
     outcome: (d.outcomes && d.outcomes[0]) || null,
   }));
 }
@@ -51,6 +57,7 @@ export async function getAccuracy(workspaceId, { now = new Date(), config } = {}
     where: { workspaceId, status: { in: ACCURACY_STATUSES } },
     select: {
       id: true, verdict: true, confidence: true, status: true, createdAt: true,
+      executedAt: true,
       outcomes: {
         orderBy: { createdAt: 'desc' },
         take: 1,
