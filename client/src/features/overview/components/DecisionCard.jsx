@@ -21,43 +21,45 @@ import { cn } from '@/lib/utils.js';
 import { formatCurrency } from '@/lib/money';
 import { appRoutes } from '@/app/routeManifest.js';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
-import { useEntityDrillDown } from '@/hooks/useEntityDrillDown.js';
 import { useEvidence, evidenceKey } from '@/hooks/useEvidence.js';
 import { ExecutionContext } from '@/features/campaigns/ExecutionContext.jsx';
 import { EvidenceState } from '@/features/campaigns/EvidenceState.jsx';
 import { ACTIONABLE_VERDICTS } from '@/features/campaigns/executionContext.js';
+import { useDecisionAction } from '@/features/campaigns/useDecisionAction.js';
 
 export default function DecisionCard({
   entityId, name, verdict,
   rationale = null, impactScore = null, humanAction = null,
   ctr = null, spendMinor = null, currency = null,
 }) {
-  const { byId, load } = useEntityDrillDown();
+  // ONE fetch behind the expansion. useEntityDrillDown used to run beside this
+  // one to feed ExecutionContext's ad-set rows; now that the ranking is the
+  // server's, its result was displayed nowhere — and its "Loading ad sets…" and
+  // "Couldn't load ad sets" messages narrated a request that no longer decides
+  // anything on this card. A spinner for work the user never sees, and a failure
+  // banner over a panel that rendered fine.
   const {
     byId: evidenceById, loading: evidenceLoading, errors: evidenceErrors, load: loadEvidence,
   } = useEvidence();
+  const { states: actionStates, execute, dismiss } = useDecisionAction();
   const [expanded, setExpanded] = useState(false);
 
   // The same verdicts ExecutionContext itself acts on — imported rather than
   // re-listed, so the button and the panel can never disagree about which
   // decisions have somewhere to drill into.
   const canDrill = ACTIONABLE_VERDICTS.includes(verdict);
-  const state = byId[entityId];
 
-  // The server's answer to "is one ad set measurably dragging". Separate from
-  // `state` on purpose: a drill-down failure and an engine refusal are different
-  // events, and one slot for both would render "couldn't load" over a campaign
-  // whose ad sets are simply all performing alike.
+  // The server's answer to "is one ad set measurably dragging" — and, since it
+  // carries the ranking itself, the panel's only substrate. A request failure
+  // and an engine refusal stay in separate slots: one is retryable and ours,
+  // the other is a real answer about a campaign whose ad sets perform alike.
   const evKey = evidenceKey(entityId);
   const ev = evidenceById[evKey];
   const evLoading = evidenceLoading[evKey];
   const evError = evidenceErrors[evKey];
 
   const toggle = () => {
-    if (!expanded) {
-      load(entityId);        // idempotent + cached inside the hook
-      loadEvidence(entityId);
-    }
+    if (!expanded) loadEvidence(entityId); // idempotent + cached inside the hook
     setExpanded((e) => !e);
   };
 
@@ -124,20 +126,14 @@ export default function DecisionCard({
           {/* Honest intermediate states: the panel itself renders nothing when
               the data cannot support a pick, which is indistinguishable from
               "still loading" unless we say so. */}
-          {expanded && state?.loading && (
+          {expanded && evLoading && (
             <p className="mt-2 flex items-center gap-1.5 font-mono text-[11px] text-lumi-subtle">
-              <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} /> Loading ad sets…
+              <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} /> Loading execution context…
             </p>
           )}
-          {expanded && state?.error && (
-            <p className="mt-2 flex items-center gap-1.5 font-mono text-[11px] text-trend-danger">
-              <AlertTriangle className="h-3 w-3" strokeWidth={2} /> Couldn&apos;t load ad sets — collapse and try again.
-            </p>
-          )}
-          {/* The fourth state, and the one this card was missing: the request
-              SUCCEEDED and the engine declined to rank. Its own treatment — not
-              the danger red of a failure, since "no ad set is measurably behind
-              the others" is a healthy answer about a real campaign. */}
+          {/* The request failed (red, retryable) vs the engine declined to rank
+              (subtle, and a real answer) — EvidenceState keeps those apart, and
+              renders nothing at all once a ranking came back. */}
           {expanded && !evLoading && (
             <EvidenceState
               loading={false}
@@ -146,8 +142,15 @@ export default function DecisionCard({
               className="mt-2"
             />
           )}
-          {expanded && state?.adSets && ev?.evidence && (
-            <ExecutionContext campaign={campaign} adSets={state.adSets} verdict={verdict} />
+          {expanded && ev?.evidence && (
+            <ExecutionContext
+              campaign={campaign}
+              evidence={ev.evidence}
+              verdict={verdict}
+              onExecute={() => execute(entityId)}
+              onDismiss={() => dismiss(entityId)}
+              executionState={actionStates[entityId] ?? null}
+            />
           )}
         </div>
       )}

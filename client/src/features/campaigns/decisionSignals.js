@@ -37,3 +37,30 @@ export const recordExplain = (entityId) => send(entityId, 'explain');
 
 /** A human copied the recommendation or opened the ad platform. */
 export const recordIntent = (entityId) => send(entityId, 'intent');
+
+// ============================================================
+// Execute / dismiss — NOT telemetry. Deliberately not `send`.
+// ============================================================
+// The two above observe a click. These two record a CLAIM ABOUT THE WORLD: the
+// operator asserting they acted, or chose not to. That claim is the entire
+// population the Proof Engine scores, so it is the one write in this file that
+// must not fail quietly.
+//
+// `send` swallows everything by design, which is right for telemetry and exactly
+// wrong here: a swallowed failure leaves the operator believing it landed while
+// the accuracy surface stays empty — the same silent under-reporting Track B
+// spent three PRs climbing out of. So these throw, and callers MUST await and
+// render the outcome.
+//
+// Arity is entityId, matching the two above — TEMPORARY. The server resolves it
+// to the live decision (see the adapter note in routes/lumi/decisions.js).
+// TODO: switch to `/api/lumi/decisions/${decisionId}/execute` when a Decision id
+//       reaches the verdict surfaces.
+
+/** A human says they acted on this call. Rejects on failure — never swallow. */
+export const recordExecute = (entityId) =>
+  api.patch(`/api/lumi/decisions/by-entity/${encodeURIComponent(entityId)}/execute`);
+
+/** A human says they saw this call and chose not to act. Rejects on failure. */
+export const recordDismiss = (entityId) =>
+  api.patch(`/api/lumi/decisions/by-entity/${encodeURIComponent(entityId)}/dismiss`);

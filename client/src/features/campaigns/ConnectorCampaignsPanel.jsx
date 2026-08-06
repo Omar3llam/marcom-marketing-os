@@ -38,6 +38,7 @@ import { ExecutionContext } from '@/features/campaigns/ExecutionContext.jsx';
 import { shouldRequestEvidence } from '@/features/campaigns/executionContext.js';
 import { EvidenceState } from '@/features/campaigns/EvidenceState.jsx';
 import { useEvidence, evidenceKey } from '@/hooks/useEvidence.js';
+import { useDecisionAction } from '@/features/campaigns/useDecisionAction.js';
 
 // Every band header / detail / ad-set row spans the full grid. One constant so
 // the five call sites can never drift out of step with the <thead>.
@@ -156,6 +157,9 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
   const [detailOpen, setDetailOpen] = useState(new Set()); // signals + reasoning panel
   const { byId, load } = useEntityDrillDown();
   const { byId: evidenceById, loading: evidenceLoading, errors: evidenceErrors, load: loadEvidence } = useEvidence();
+  // One instance for the whole table — the hook keys its state by entityId, so
+  // every row reads its own answer rather than the last one clicked.
+  const { states: actionStates, execute: executeDecision, dismiss: dismissDecision } = useDecisionAction();
 
   // Decision-queue order. `verdicts`/`impacts` arrive FLAT from CampaignsView
   // (entityId → 'KILL' / entityId → 7), which is the shape groupCampaigns reads.
@@ -371,7 +375,14 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                     branch cannot produce the empty row the old pre-commit gate
                     existed to prevent. */}
                 {ev?.evidence && (
-                  <ExecutionContext campaign={c} adSets={byId[c.entityId]?.adSets} verdict={verdict} />
+                  <ExecutionContext
+                    campaign={c}
+                    evidence={ev.evidence}
+                    verdict={verdict}
+                    onExecute={() => executeDecision(c.entityId)}
+                    onDismiss={() => dismissDecision(c.entityId)}
+                    executionState={actionStates[c.entityId] ?? null}
+                  />
                 )}
               </td>
             </tr>

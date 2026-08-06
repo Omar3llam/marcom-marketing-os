@@ -16,9 +16,9 @@
 // Presentational: every figure comes from executionContext.js arithmetic over
 // real snapshot fields. Silent (null) whenever the data cannot support a pick.
 // ============================================================
+import { Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import {
   ACTIONABLE_VERDICTS,
-  findWorstAdSet,
   spendConcentration,
   formatGap,
   gapMagnitude,
@@ -33,7 +33,22 @@ const Label = ({ children }) => (
   <p className="mb-1 font-mono text-[10px] uppercase tracking-widest text-lumi-muted">{children}</p>
 );
 
-export function ExecutionContext({ campaign, adSets, verdict }) {
+/**
+ * @param {object}   props
+ * @param {object}   props.campaign  — the campaign row (ctr/spendMinor baseline)
+ * @param {object}   props.evidence  — analyzeEvidence's result from useEvidence.
+ *   THE ranking. `summary.bottom` is the ad set to inspect: a toAdSetRow carrying
+ *   the same fields, in the same units, that the local ranker used to produce.
+ * @param {string}   props.verdict
+ * @param {Function} [props.onExecute]
+ * @param {Function} [props.onDismiss]
+ * @param {?string}  [props.executionState] — null | 'executing' | 'executed'
+ *   | 'dismissing' | 'dismissed' | 'stale' | 'error'
+ */
+export function ExecutionContext({
+  campaign, evidence, verdict,
+  onExecute = null, onDismiss = null, executionState = null,
+}) {
   // Above the early returns — hooks cannot sit after a conditional return. The
   // hook no-ops on a null entityId, so a row that renders nothing fetches
   // nothing either.
@@ -41,14 +56,30 @@ export function ExecutionContext({ campaign, adSets, verdict }) {
 
   if (!campaign || !ACTIONABLE_VERDICTS.includes(verdict)) return null;
 
-  const worst = findWorstAdSet(adSets, campaign.ctr);
+  // The SERVER's pick, not a second opinion. This component used to run
+  // findWorstAdSet over the drill-down rows while both its callers gated the
+  // mount on the server's ranking — two rankers that agreed only because they
+  // happened to share a threshold. They would have parted the moment the server
+  // changed its impression floor or grew objective-awareness, and the panel
+  // would have shown one ad set while the engine scored another.
+  const worst = evidence?.summary?.bottom ?? null;
   if (!worst) return null;
 
   const gap = formatGap(worst.ctr, campaign.ctr);
   const magnitude = gapMagnitude(worst.ctr, campaign.ctr);
   const share = spendConcentration(worst.spendMinor, campaign.spendMinor);
-  const bullets = buildEvidenceBullets(worst, campaign.ctr, campaign.spendMinor);
   const hypothesis = buildHypothesis(worst);
+
+  // "Compared against N" — how strong the pick is, from the set the SERVER
+  // actually ranked. `ranked` is the cohort after its rankability filter, so N
+  // is smaller than the old local count (which took any non-null CTR) and the
+  // claim errs downward: every row in it does report a CTR, and some rows too
+  // thin to compare are no longer counted as though they had been.
+  const bullets = buildEvidenceBullets(
+    { ...worst, comparedCount: evidence.ranked?.length ?? 0 },
+    campaign.ctr,
+    campaign.spendMinor,
+  );
 
   return (
     <div className="mt-2 rounded-lg border border-lumi-border bg-lumi-surface p-4">
@@ -140,6 +171,79 @@ export function ExecutionContext({ campaign, adSets, verdict }) {
             entirely below a defensible sample — silence, never "0 of 2". */}
         <LearningInsight learning={learning} />
       </div>
+
+      {/* ── What the operator did about it ────────────────────────────────
+          The only way a verdict ever becomes a scored prediction. Everything
+          above this line is the product talking; this is the product listening.
+
+          ONE-WAY. Every terminal state replaces the buttons rather than
+          disabling them: a clickable-looking control that has already been
+          answered invites a second click, and a second click on a recorded
+          claim is not a second claim. `stale` and the two error branches are
+          terminal for the same reason — none of them get better by retrying
+          the same request. */}
+      {onExecute && onDismiss && (
+        <div className="mt-3 border-t border-lumi-border pt-3">
+          {executionState === null && (
+            <>
+              <Label>Did you act on this?</Label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={onExecute}
+                  className="rounded-lg bg-signal-kill px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                >
+                  I executed this
+                </button>
+                <button
+                  type="button"
+                  onClick={onDismiss}
+                  className="rounded-lg border border-lumi-border px-3 py-1.5 text-xs text-lumi-subtle transition-colors hover:text-lumi-text"
+                >
+                  Not applicable
+                </button>
+              </div>
+              {/* Says what the answer is FOR. Without it the pair reads as a
+                  satisfaction survey, and "Not applicable" looks like a way to
+                  hide the row rather than a recorded judgement. */}
+              <p className="mt-2 text-[11px] leading-relaxed text-lumi-muted">
+                Either answer is recorded — it is how Lumi learns whether its calls were right.
+              </p>
+            </>
+          )}
+
+          {(executionState === 'executing' || executionState === 'dismissing') && (
+            <p className="flex items-center gap-1.5 font-mono text-[11px] text-lumi-subtle">
+              <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} /> Recording…
+            </p>
+          )}
+
+          {executionState === 'executed' && (
+            <p className="flex items-center gap-1.5 font-mono text-[11px] text-signal-scale">
+              <CheckCircle2 className="h-3 w-3" strokeWidth={2} /> Recorded as executed
+            </p>
+          )}
+
+          {executionState === 'dismissed' && (
+            <p className="font-mono text-[11px] text-lumi-subtle">Recorded as not applicable</p>
+          )}
+
+          {/* The verdict was replaced between render and click. Not a failure and
+              not retryable — the call they answered no longer exists, and saying
+              "try again" would send them at a request that 404s forever. */}
+          {executionState === 'stale' && (
+            <p className="flex items-center gap-1.5 font-mono text-[11px] text-lumi-subtle">
+              <AlertTriangle className="h-3 w-3" strokeWidth={2} /> This verdict was replaced — refresh to see the current one
+            </p>
+          )}
+
+          {executionState === 'error' && (
+            <p className="flex items-center gap-1.5 font-mono text-[11px] text-trend-danger">
+              <AlertTriangle className="h-3 w-3" strokeWidth={2} /> Couldn&apos;t record — refresh and try again
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

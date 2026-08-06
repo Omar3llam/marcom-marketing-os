@@ -32,6 +32,13 @@ const adSets = [
   { entityId: 'a1', name: 'Broad', channel: 'META', ctr: 0.004, spendMinor: 300_000, impressions: 90_000, frequency: 2.0, status: 'ACTIVE' },
   { entityId: 'a2', name: 'Lookalike', channel: 'META', ctr: 0.025, spendMinor: 200_000, impressions: 80_000, frequency: 1.8, status: 'ACTIVE' },
 ];
+// The ranking as the SERVER hands it over (useEvidence → analyzeEvidence). The
+// panel no longer ranks these rows itself.
+const evidence = {
+  dimension: 'ADSET', metric: 'ctr', ranked: adSets,
+  summary: { bottom: adSets[0], top: adSets[1], outliers: [adSets[0]] },
+  dataConfidence: 0.8,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -40,7 +47,7 @@ beforeEach(() => {
 });
 
 describe('ExecutionContext', () => {
-  const setup = () => render(<ExecutionContext campaign={campaign()} adSets={adSets} verdict="KILL" />);
+  const setup = () => render(<ExecutionContext campaign={campaign()} evidence={evidence} verdict="KILL" />);
 
   it('asks for the record with the campaign entity id', () => {
     setup();
