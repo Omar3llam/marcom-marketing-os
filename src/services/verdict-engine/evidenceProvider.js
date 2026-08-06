@@ -208,6 +208,18 @@ export const isRankable = (entity, metric = 'ctr') =>
  * @param {string} [opts.metric='ctr'] — the entity ROW FIELD to rank on
  * @param {number} [opts.now=Date.now()] — injected for determinism; the only
  *   default that reads a clock, and it is the caller's to override.
+ * @param {Date|string|null} [opts.createdTime] — creative age of the row being
+ *   scored, when the CALLER knows it and the rows do not carry it. Three states,
+ *   deliberately distinguished:
+ *     omitted — dig it out of the bottom row (what an AD-dimension caller wants)
+ *     a date  — use this instead
+ *     null    — "this level has no creative age", e.g. an AD SET, which is not a
+ *               creative. NOT the same as a row that should have reported one and
+ *               didn't: the absent field stops being charged as incompleteness,
+ *               while the unknown learning window is still charged by
+ *               temporalQuality. Without this, an ADSET analysis is marked down
+ *               twice for the shape of the entity graph, on a scale a consumer
+ *               believes it shares with the AD-dimension number.
  * @returns {{dimension,metric,ranked,summary,evidence,dataConfidence}|null}
  *   null when the data cannot support a ranking — fewer than two comparable
  *   entities, no baseline to divide by, or no gap past the metric's floor.
@@ -220,6 +232,9 @@ export function analyzeEvidence({
   objective = null,
   metric = 'ctr',
   now = Date.now(),
+  // Deliberately NO default. `undefined` and `null` mean different things here
+  // (omitted vs declared absent), and any default would collapse the two.
+  createdTime,
 } = {}) {
   if (!Array.isArray(entities) || !entities.length || !baseline) return null;
 
@@ -281,14 +296,23 @@ export function analyzeEvidence({
   const bottom = sorted[0];
   const top    = sorted[sorted.length - 1];
 
+  // Creative age: the caller's word when it gave one, the row's otherwise. A
+  // DECLARED null is the caller saying the level has no creative age at all,
+  // which is not the same claim as a row that failed to report one.
+  const ageDeclared = createdTime !== undefined;
+  const effectiveCreatedTime = ageDeclared ? createdTime : (bottom.platformCreatedTime ?? null);
+
   // Input quality for the row this analysis is ABOUT. Not the final confidence:
   // Stage 3's reasoning strength multiplies into it via composeConfidence.
   const dataConfidence = computeConfidence({
     impressions:   bottom.impressions,
-    daysRunning:   daysSince(bottom.platformCreatedTime, now),
+    daysRunning:   daysSince(effectiveCreatedTime, now),
     actionMetrics: bottom.actionMetrics,
     objective,
-    createdTime:   bottom.platformCreatedTime,
+    createdTime:   effectiveCreatedTime,
+    // Only a DECLARED null switches this off. An omitted createdTime on a row
+    // that simply has none is still a real gap in our ingestion, and is charged.
+    createdTimeApplicable: !(ageDeclared && createdTime === null),
   });
 
   return {

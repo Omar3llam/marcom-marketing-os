@@ -148,9 +148,26 @@ describe('a real ranking', () => {
     expect(body.evidence.dataConfidence).toBeGreaterThan(0);
   });
 
-  it('names the dimension it ranked', async () => {
+  it('names the dimension it ranked, on the envelope AND inside the evidence', async () => {
     const { body } = await get('/entities/as1/evidence').expect(200);
+    expect(body.dimension).toBe('AD');
     expect(body.evidence.dimension).toBe('AD');
+  });
+
+  it('reads real creative age off the rows — createdTime is NOT declared at this level', async () => {
+    // The ad rows carry platformCreatedTime, so the engine must use it. Declaring
+    // null here (as the ADSET route does) would throw away a known age and score
+    // every ad-level analysis at the unknown-window 0.7.
+    getAdSetAds.mockResolvedValue({
+      ...WORKING,
+      children: [
+        adRow('a', { ctr: 0.030, actionMetrics: { lpv: 500, atc: 100 } }),
+        adRow('b', { ctr: 0.008, actionMetrics: { lpv: 500, atc: 100 } }),
+      ],
+    });
+    const { body } = await get('/entities/as1/evidence').expect(200);
+    // 2026-05-01 is months before now → mature: 1.0 temporal, 1.0 completeness.
+    expect(body.evidence.dataConfidence).toBe(0.97);
   });
 
   it('carries the ad-set row and objective alongside the evidence', async () => {

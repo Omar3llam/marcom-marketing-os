@@ -70,12 +70,29 @@ export function sampleQuality(impressions = 0) {
  * PURE: how much of the diagnostic input we actually have, COMPLETENESS_FLOOR–1.
  * Each missing field is a specific thing the diagnosis cannot see, not a generic
  * penalty — the comments in PENALTY name what each one costs.
+ *
+ * NOT APPLICABLE ≠ MISSING. `createdTimeApplicable: false` says the entity being
+ * scored has no creative age to report — an AD SET is not a creative, so there
+ * is no platform creation time it failed to give us. Charging NO_CREATED_TIME
+ * there would mark a level down for the shape of the entity graph rather than
+ * for anything about the data, and would do it invisibly: the score would simply
+ * read lower on a scale the caller believes it shares with ad-level analyses.
+ * The genuine uncertainty about the learning window is still charged, once, by
+ * temporalQuality's 0.7 for an unknown age.
+ *
+ * Defaults to true, so every existing caller is unaffected: a missing
+ * createdTime on a level that HAS one is still a real gap in our ingestion.
  */
-export function dataCompleteness({ actionMetrics = null, objective = null, createdTime = null } = {}) {
+export function dataCompleteness({
+  actionMetrics = null,
+  objective = null,
+  createdTime = null,
+  createdTimeApplicable = true,
+} = {}) {
   let score = 1.0;
   if (!actionMetrics?.lpv) score -= PENALTY.NO_LPV;
   if (!actionMetrics?.atc) score -= PENALTY.NO_ATC;
-  if (!createdTime)        score -= PENALTY.NO_CREATED_TIME;
+  if (createdTimeApplicable && !createdTime) score -= PENALTY.NO_CREATED_TIME;
   if (!objective)          score -= PENALTY.NO_OBJECTIVE;
   return Math.max(score, COMPLETENESS_FLOOR);
 }
@@ -89,6 +106,11 @@ export function dataCompleteness({ actionMetrics = null, objective = null, creat
  * day-1 campaigns. 0.7 says "probably fine, but we cannot confirm" — and the
  * missing createdTime is separately charged in dataCompleteness, so the gap is
  * counted once as uncertainty and once as incompleteness, never ignored.
+ *
+ * That double-charge is correct when the age is MISSING. It is not when the
+ * level has no creative age to miss — see dataCompleteness's
+ * createdTimeApplicable, which drops the incompleteness half in that case and
+ * leaves this 0.7 as the single, honest charge.
  */
 export function temporalQuality(daysRunning = null) {
   if (daysRunning == null || !Number.isFinite(daysRunning)) return 0.7;
@@ -111,6 +133,9 @@ export function temporalQuality(daysRunning = null) {
  * @param {object|null} [args.actionMetrics=null] — the funnel bag
  * @param {string|null} [args.objective=null]
  * @param {Date|string|null} [args.createdTime=null]
+ * @param {boolean} [args.createdTimeApplicable=true] — false when the entity
+ *   being scored has no creative age at all (see dataCompleteness). Affects only
+ *   completeness; the temporal half still scores the unknown window honestly.
  * @returns {number} 0–MAX_CONFIDENCE, 2dp
  */
 export function computeConfidence({
@@ -119,9 +144,10 @@ export function computeConfidence({
   actionMetrics = null,
   objective = null,
   createdTime = null,
+  createdTimeApplicable = true,
 } = {}) {
   const raw = sampleQuality(impressions)
-    * dataCompleteness({ actionMetrics, objective, createdTime })
+    * dataCompleteness({ actionMetrics, objective, createdTime, createdTimeApplicable })
     * temporalQuality(daysRunning);
   return Math.min(Math.round(raw * 100) / 100, MAX_CONFIDENCE);
 }

@@ -88,37 +88,60 @@ export async function getConnectorCampaigns(workspaceId) {
 }
 
 /**
- * Ad-sets of one campaign (workspace-scoped) with latest metrics.
- * @returns {Promise<Array|null>} rows[] when the campaign exists in this
- * workspace ([] when it has no ad-sets), or null when the campaign isn't found
- * (→ honest 404, never a fabricated empty drill-down).
+ * Ad-sets of one campaign (workspace-scoped) with latest metrics, plus the
+ * campaign row they hang off. Mirrors getAdSetAds one level up, for the same
+ * reason: ranking children needs the PARENT's own measured row as a baseline,
+ * and the objective that selects the bar. Unlike at ad-set level, `objective` is
+ * a real Campaign column — no relation select needed.
+ *
+ * @returns {Promise<{entity, objective, adSets}|null>} the envelope when the
+ * campaign exists in this workspace (`adSets: []` when it has none), or null
+ * when it isn't found (→ honest 404, never a fabricated empty drill-down).
  */
 export async function getCampaignAdSets(workspaceId, campaignEntityId) {
   if (!workspaceId || !UUID_RE.test(String(campaignEntityId || ''))) return null;
 
   const campaign = await prisma.campaign.findFirst({
     where:  { id: campaignEntityId, workspaceId },
-    select: { id: true },
+    // The same field set getConnectorCampaigns selects, so one campaign has ONE
+    // row shape wherever it is read from. externalId and platformCreatedTime are
+    // not optional decoration: dropping them here would make the same campaign
+    // lose its platform deep-link and its age depending on which route fetched it.
+    select: {
+      id: true, name: true, channel: true, objective: true,
+      externalId: true, platformCreatedTime: true,
+      _count: { select: { adSets: true } },
+    },
   }).catch(() => null);
   if (!campaign) return null;
 
-  const adSets = await prisma.adSet.findMany({
-    where:   { campaignId: campaignEntityId, workspaceId },
-    // _count lives INSIDE the select — Prisma rejects `select` and `include`
-    // together. Mirrors how getConnectorCampaigns counts adSets. Without it the
-    // client cannot tell a drillable ad-set from a leaf and would render an
-    // expand chevron that opens onto nothing.
-    select:  { id: true, name: true, channel: true, status: true, _count: { select: { ads: true } } },
-    orderBy: { createdAt: 'asc' },
-    take:    500,
-  }).catch((err) => {
-    logger.debug({ err: err.message, workspaceId, campaignEntityId }, '[EntityGraph] adsets read failed');
-    return [];
-  });
-  if (!adSets.length) return [];
+  // Independent reads — the campaign's own snapshot does not depend on the
+  // ad-set list, so it does not wait behind it.
+  const [campaignSnaps, adSets] = await Promise.all([
+    latestSnapshots(workspaceId, ENTITY_LEVEL.CAMPAIGN, [campaignEntityId]),
+    prisma.adSet.findMany({
+      where:   { campaignId: campaignEntityId, workspaceId },
+      // _count lives INSIDE the select — Prisma rejects `select` and `include`
+      // together. Mirrors how getConnectorCampaigns counts adSets. Without it the
+      // client cannot tell a drillable ad-set from a leaf and would render an
+      // expand chevron that opens onto nothing.
+      select:  { id: true, name: true, channel: true, status: true, _count: { select: { ads: true } } },
+      orderBy: { createdAt: 'asc' },
+      take:    500,
+    }).catch((err) => {
+      logger.debug({ err: err.message, workspaceId, campaignEntityId }, '[EntityGraph] adsets read failed');
+      return [];
+    }),
+  ]);
 
   const metrics = await latestSnapshots(workspaceId, ENTITY_LEVEL.ADSET, adSets.map((a) => a.id));
-  return adSets.map((a) => toAdSetRow({ ...a, adCount: a._count?.ads ?? 0 }, metrics.get(a.id)));
+
+  return {
+    // adSetCount rides ON the entity object — toCampaignRow takes (campaign, snap).
+    entity: toCampaignRow({ ...campaign, adSetCount: campaign._count?.adSets ?? 0 }, campaignSnaps.get(campaignEntityId)),
+    objective: campaign.objective ?? null,
+    adSets: adSets.map((a) => toAdSetRow({ ...a, adCount: a._count?.ads ?? 0 }, metrics.get(a.id))),
+  };
 }
 
 // Deliberate cap, not a copy of the ad-set level's 500: ads outnumber ad-sets
