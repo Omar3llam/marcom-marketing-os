@@ -21,6 +21,10 @@ vi.mock('../../services/entity-graph/index.js', () => ({
 }));
 vi.mock('../../services/verdict-engine/index.js', () => ({
   getConnectorVerdicts: vi.fn(), needsRevenueData: vi.fn(),
+  // The evidence route's imports. Stubbed so this file's mock matches the real
+  // barrel's surface; the /evidence contract itself runs against the REAL engine
+  // in entities.evidence.test.js, which is the only honest place to test it.
+  analyzeEvidence: vi.fn(), isRankable: vi.fn(),
 }));
 vi.mock('../../lib/prisma.js', () => ({
   prisma: { user: { findUnique: vi.fn().mockResolvedValue({ collabRole: null }) } },
@@ -49,15 +53,26 @@ const AD_ROW = {
   actionMetrics: { videoView: 5000, video25: 3000, video95: 300 },
 };
 
+const ADSET_ROW = {
+  entityId: 'as1', channel: 'META', name: 'Broad 25-44', status: 'ACTIVE',
+  adCount: 4, spendMinor: 90000, roas: 1.9, ctr: 0.021, impressions: 400000,
+};
+
+const envelope = (over = {}) => ({
+  entity: ADSET_ROW, objective: 'OUTCOME_SALES', children: [AD_ROW], ...over,
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
-  getAdSetAds.mockResolvedValue([AD_ROW]);
+  getAdSetAds.mockResolvedValue(envelope());
 });
 
 describe('GET /entities/:adSetId/ads', () => {
-  it('returns the { entity, children } envelope', async () => {
+  it('returns the { entity, objective, children } envelope', async () => {
     const res = await request(makeApp({ collabRole: 'BUYER' })).get('/entities/as1/ads').expect(200);
-    expect(res.body.entity).toEqual({ id: 'as1' });
+    // The ad-set's REAL row, not the { id } stub this route used to echo back.
+    expect(res.body.entity).toMatchObject({ entityId: 'as1', name: 'Broad 25-44', ctr: 0.021 });
+    expect(res.body.objective).toBe('OUTCOME_SALES');
     expect(res.body.children).toHaveLength(1);
     expect(res.body.generatedAt).toEqual(expect.any(String));
     expect(getAdSetAds).toHaveBeenCalledWith('ws1', 'as1');
@@ -70,9 +85,16 @@ describe('GET /entities/:adSetId/ads', () => {
   });
 
   it('200s with an empty children array when the ad-set has no ads', async () => {
-    getAdSetAds.mockResolvedValue([]);
+    getAdSetAds.mockResolvedValue(envelope({ children: [] }));
     const res = await request(makeApp({ collabRole: 'BUYER' })).get('/entities/as1/ads').expect(200);
     expect(res.body.children).toEqual([]);
+    expect(res.body.entity).not.toBeNull(); // the ad-set is still real
+  });
+
+  it('passes a null objective through rather than omitting the key', async () => {
+    getAdSetAds.mockResolvedValue(envelope({ objective: null }));
+    const res = await request(makeApp({ collabRole: 'BUYER' })).get('/entities/as1/ads').expect(200);
+    expect(res.body).toHaveProperty('objective', null);
   });
 
   it('404s when the service reports null — a foreign ad-set is not an empty one', async () => {

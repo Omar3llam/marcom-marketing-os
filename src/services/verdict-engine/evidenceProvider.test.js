@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import {
   analyzeEvidence, evidenceItem, computeSeverity, toPct,
   SEVERITY, EVIDENCE_KIND, EVIDENCE_METRIC, METRIC_DIRECTION,
-  METRIC_THRESHOLDS, DEFAULT_THRESHOLD, MIN_IMPRESSIONS_FOR_RANKING,
+  METRIC_THRESHOLDS, DEFAULT_THRESHOLD, MIN_IMPRESSIONS_FOR_RANKING, isRankable,
 } from './evidenceProvider.js';
 // From benchmarkProvider — the CANONICAL source. verdictEngine re-exports the
 // same value, but asserting against the re-export tested the copy rather than
@@ -167,6 +167,58 @@ describe('METRIC_THRESHOLDS', () => {
 
   it('the ranking floor is its own constant, well below the verdict gate of 1000', () => {
     expect(MIN_IMPRESSIONS_FOR_RANKING).toBe(100);
+  });
+});
+
+// ── isRankable: the eligibility test, shared with whoever explains the null ──
+describe('isRankable', () => {
+  it('admits a row that reported the metric and delivered enough to compare', () => {
+    expect(isRankable(ad('a'), 'ctr')).toBe(true);
+  });
+
+  it('excludes an unreported figure — null is not a zero, and ranking it would invent one', () => {
+    expect(isRankable(ad('a', { ctr: null }), 'ctr')).toBe(false);
+    // A measured 0 IS a finding and stays in.
+    expect(isRankable(ad('a', { ctr: 0 }), 'ctr')).toBe(true);
+  });
+
+  it('excludes a row below the delivery floor, and admits one exactly on it', () => {
+    expect(isRankable(ad('a', { impressions: MIN_IMPRESSIONS_FOR_RANKING - 1 }), 'ctr')).toBe(false);
+    expect(isRankable(ad('a', { impressions: MIN_IMPRESSIONS_FOR_RANKING }), 'ctr')).toBe(true);
+  });
+
+  it('treats missing impressions as no delivery rather than assuming enough', () => {
+    expect(isRankable(ad('a', { impressions: null }), 'ctr')).toBe(false);
+  });
+
+  it('reads the metric it is asked about, not always ctr', () => {
+    const row = ad('a', { ctr: 0.02, roas: null });
+    expect(isRankable(row, 'ctr')).toBe(true);
+    expect(isRankable(row, 'roas')).toBe(false);
+  });
+
+  it('survives a null row — a caller filtering a sparse list must not have to pre-check', () => {
+    expect(isRankable(null, 'ctr')).toBe(false);
+    expect(isRankable(undefined, 'ctr')).toBe(false);
+  });
+
+  // The whole reason it is exported: analyzeEvidence answers "can I rank this?"
+  // with a bare null, so a caller that must EXPLAIN the null has to apply the
+  // identical test. If these two ever disagree, a surface will blame the parent
+  // baseline for what was really a thin set of children.
+  it('agrees with the filter analyzeEvidence actually applies', () => {
+    const entities = [
+      ad('ok1'),
+      ad('ok2'),
+      ad('thin',       { impressions: 10 }),
+      ad('unreported', { ctr: null }),
+    ];
+    const out = analyzeEvidence({
+      dimension: 'AD', objective: 'OUTCOME_SALES', now: NOW, metric: 'ctr',
+      baseline: { ...baseline, ctr: 0.05 }, entities,
+    });
+    expect(out.ranked.map((r) => r.entityId).sort())
+      .toEqual(entities.filter((e) => isRankable(e, 'ctr')).map((e) => e.entityId).sort());
   });
 });
 

@@ -180,6 +180,22 @@ export const DEFAULT_THRESHOLD = Object.freeze({
 export const MIN_IMPRESSIONS_FOR_RANKING = 100;
 
 /**
+ * PURE: may this row take part in a ranking on `metric`? It must have reported
+ * the figure at all (null ≠ 0 — an unreported CTR is not a zero one) and have
+ * delivered enough to be worth placing beside its siblings.
+ *
+ * Exported because analyzeEvidence answers "can I rank this?" with a bare null,
+ * and a caller that has to EXPLAIN that null must apply the identical test. A
+ * second, hand-copied `impressions >= 100` in a route would drift from this one,
+ * and the drift would surface as a surface blaming the parent's baseline for
+ * what was really a thin set of children.
+ */
+export const isRankable = (entity, metric = 'ctr') =>
+  !!entity
+  && entity[metric] != null
+  && (entity.impressions ?? 0) >= MIN_IMPRESSIONS_FOR_RANKING;
+
+/**
  * PURE: rank entities against a measured parent baseline and grade the gaps.
  *
  * @param {object} opts
@@ -214,7 +230,7 @@ export function analyzeEvidence({
   if (!(baseValue > 0)) return null; // null / 0 / NaN all fail — nothing to divide by
 
   const scored = entities
-    .filter((e) => e && e[metric] != null && (e.impressions ?? 0) >= MIN_IMPRESSIONS_FOR_RANKING)
+    .filter((e) => isRankable(e, metric))
     .map((e) => ({
       ...e,
       // Ratio of two figures in the SAME unit, so no conversion is needed here —

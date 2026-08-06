@@ -3,6 +3,7 @@
 // GET /api/lumi/entities/campaigns          → connector-synced campaigns
 // GET /api/lumi/entities/:campaignId/adsets → that campaign's ad-sets
 // GET /api/lumi/entities/:adSetId/ads       → that ad-set's ads (creative level)
+// GET /api/lumi/entities/:adSetId/evidence  → those ads ranked against the ad-set
 // ------------------------------------------------------------
 // The Campaigns table renders the legacy CampaignState feed; this sibling
 // surface exposes the DISJOINT connector entity graph (the only substrate that
@@ -12,7 +13,8 @@
 // ============================================================
 import { Router } from 'express';
 import { getConnectorCampaigns, getCampaignAdSets, getAdSetAds } from '../../services/entity-graph/index.js';
-import { getConnectorVerdicts, needsRevenueData } from '../../services/verdict-engine/index.js';
+import { getConnectorVerdicts, needsRevenueData, analyzeEvidence, isRankable } from '../../services/verdict-engine/index.js';
+import { ENTITY_LEVEL } from '../../services/connectors/connectorTypes.js';
 import { computeAccountHealth } from '../../services/analysis/AccountHealthService.js';
 import { computeFatigueForecast } from '../../services/analysis/FatigueForecastService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
@@ -176,24 +178,127 @@ entitiesRouter.get('/entities/:campaignId/adsets', async (req, res) => {
 // it. Generic `{ entity, children }` envelope: this route says nothing about
 // WHICH level it returned, so the next level down (creatives) can reuse the
 // shape without minting a third response contract.
+//
+// `entity` is the ad-set's REAL row (it was an `{ id }` stub until the service
+// started reading the parent). `objective` rides alongside because it belongs to
+// the campaign, not to either row in the envelope.
 entitiesRouter.get(
   '/entities/:adSetId/ads',
   requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST),
   async (req, res) => {
     try {
-      const ads = await getAdSetAds(req.workspaceId, req.params.adSetId);
+      const result = await getAdSetAds(req.workspaceId, req.params.adSetId);
       // null = ad-set not in this workspace → honest 404 (not a fake empty drill-down).
-      if (ads === null) {
+      if (result === null) {
         return res.status(404).json({ error: 'AdSetNotFound', message: 'No such ad set in this workspace' });
       }
       return res.json({
-        entity: { id: req.params.adSetId },
+        entity: result.entity,
+        objective: result.objective,
         generatedAt: new Date().toISOString(),
-        children: ads,
+        children: result.children,
       });
     } catch (err) {
       logger.error({ err: err.message, workspaceId: req.workspaceId, adSetId: req.params.adSetId }, '[lumi/entities] ads failed');
       return res.status(500).json({ error: 'AdsUnavailable', message: 'Request failed' });
+    }
+  },
+);
+
+// ------------------------------------------------------------
+// Ad-level evidence — analyzeEvidence()'s first production caller.
+// ------------------------------------------------------------
+// The engine ranks the ads of one ad-set against the AD-SET's own measured row
+// and grades each gap. Everything it needs now comes off a single service read:
+// baseline (entity), cohort (children), and the bar-selecting objective.
+//
+// WHY THERE IS NO FALLBACK: analyzeEvidence returns null when the data cannot
+// support a ranking, and that null is a real answer. Quietly substituting a
+// looser heuristic would put a "worst ad" on screen for an ad-set that has not
+// earned one. So a null becomes an explicit reasonKey the client can render as a
+// sentence — visibly less coverage than a guess, and true.
+
+// Ranking metrics we expose. A deliberate whitelist rather than
+// Object.keys(METRIC_THRESHOLDS): adding a threshold to the engine should not
+// silently widen a public API surface. An unlisted metric would fall through to
+// DEFAULT_THRESHOLD inside the engine and be ranked with a CTR-shaped floor.
+export const VALID_EVIDENCE_METRICS = Object.freeze(['ctr', 'roas', 'frequency']);
+
+// Reason keys, not prose: the client owns the wording (and its localisation).
+// Each names WHICH input was missing, because "not enough data" pointed at the
+// wrong half of the problem is worse than silence — an operator told their ads
+// are too thin will go add ads when the real gap was an unsynced parent.
+const EVIDENCE_REASON = Object.freeze({
+  INVALID_METRIC:             'INVALID_METRIC',
+  BASELINE_UNAVAILABLE:       'BASELINE_UNAVAILABLE',
+  INSUFFICIENT_REPORTING_ADS: 'INSUFFICIENT_REPORTING_ADS',
+  NO_MEANINGFUL_GAP:          'NO_MEANINGFUL_GAP',
+});
+
+entitiesRouter.get(
+  '/entities/:adSetId/evidence',
+  requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST),
+  async (req, res) => {
+    try {
+      // A repeated query param arrives as an array, which fails the whitelist —
+      // so `?metric=ctr&metric=roas` is rejected rather than coerced.
+      const metric = req.query.metric ?? 'ctr';
+      if (!VALID_EVIDENCE_METRICS.includes(metric)) {
+        // 4xx shape, not the insufficient-data shape: the request was wrong, and
+        // flagging `insufficientData` here would blame the account for a typo.
+        return res.status(400).json({
+          error: 'InvalidMetric',
+          message: 'Unsupported ranking metric',
+          reasonKey: EVIDENCE_REASON.INVALID_METRIC,
+          allowed: VALID_EVIDENCE_METRICS,
+        });
+      }
+
+      const result = await getAdSetAds(req.workspaceId, req.params.adSetId);
+      if (result === null) {
+        return res.status(404).json({ error: 'AdSetNotFound', message: 'No such ad set in this workspace' });
+      }
+
+      const { entity, objective, children } = result;
+      const base = { entity, objective, metric, generatedAt: new Date().toISOString() };
+      const refuse = (reasonKey) => res.json({ ...base, evidence: null, insufficientData: true, reasonKey });
+
+      // The engine's three null causes, distinguished HERE because it cannot
+      // report which one it hit. Order matters: a missing baseline is checked
+      // first, since with nothing to divide by the children were never the issue.
+
+      // 1. No parent figure to rank against. Reads the SAME metric being ranked
+      //    — hard-coding `entity.ctr` would let a roas request fall through and
+      //    be reported as thin children.
+      if (!(entity?.[metric] > 0)) return refuse(EVIDENCE_REASON.BASELINE_UNAVAILABLE);
+
+      // 2. Fewer than two ads delivering enough to compare. isRankable is the
+      //    engine's own predicate, imported rather than re-typed.
+      if (children.filter((c) => isRankable(c, metric)).length < 2) {
+        return refuse(EVIDENCE_REASON.INSUFFICIENT_REPORTING_ADS);
+      }
+
+      const evidence = analyzeEvidence({
+        dimension: ENTITY_LEVEL.AD,
+        entities:  children,
+        baseline:  entity,
+        // null → getBenchmarks(null) → the DEFAULT band. Documented degradation,
+        // not a failure: an unknown objective gets the general bar, never silence.
+        objective,
+        metric,
+        // The engine takes `now` so it stays clock-free; a route is where a real
+        // clock belongs. Milliseconds, matching its Date.now() default.
+        now: Date.now(),
+      });
+
+      // Only one cause is left once 1 and 2 are excluded: every gap fell inside
+      // the metric's floor. Ordinary variance between creatives is not a finding.
+      if (evidence === null) return refuse(EVIDENCE_REASON.NO_MEANINGFUL_GAP);
+
+      return res.json({ ...base, evidence, insufficientData: false, reasonKey: null });
+    } catch (err) {
+      logger.error({ err: err.message, workspaceId: req.workspaceId, adSetId: req.params.adSetId }, '[lumi/entities] evidence failed');
+      return res.status(500).json({ error: 'EvidenceUnavailable', message: 'Request failed' });
     }
   },
 );
