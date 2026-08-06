@@ -55,9 +55,16 @@ describe('validateOutcomeBody — the 422 surface (pure, no HTTP)', () => {
   });
 });
 
+// A decision a human said they acted on. `status` stays PROPOSED because the
+// human-signal routes deliberately do not move it — the timestamp is the fact.
+const executed = (over = {}) => ({
+  id: 'dec-1', status: 'PROPOSED', entityId: 'ent-1', entityLevel: 'ADSET',
+  executedAt: new Date('2026-08-01T10:00:00.000Z'), dismissedAt: null, ...over,
+});
+
 describe('recordOutcome — write path', () => {
-  it('EXECUTED + valid → writes a snapshot, inheriting entityId/entityLevel from the decision', async () => {
-    prisma.decision.findFirst.mockResolvedValue({ id: 'dec-1', status: 'EXECUTED', entityId: 'ent-1', entityLevel: 'ADSET' });
+  it('executed + valid → writes a snapshot, inheriting entityId/entityLevel from the decision', async () => {
+    prisma.decision.findFirst.mockResolvedValue(executed());
     prisma.outcomeSnapshot.findFirst.mockResolvedValue(null);
 
     const out = await recordOutcome('ws-1', 'dec-1', VALID);
@@ -84,17 +91,44 @@ describe('recordOutcome — write path', () => {
     expect(prisma.outcomeSnapshot.update).not.toHaveBeenCalled();
   });
 
-  it('throws (→409) when the decision is not EXECUTED', async () => {
-    for (const status of ['PROPOSED', 'DISMISSED']) {
-      vi.clearAllMocks();
-      prisma.decision.findFirst.mockResolvedValue({ id: 'dec-1', status, entityId: 'ent-1', entityLevel: 'ADSET' });
-      await expect(recordOutcome('ws-1', 'dec-1', VALID)).rejects.toThrow(/not EXECUTED/i);
-      expect(prisma.outcomeSnapshot.create).not.toHaveBeenCalled();
-    }
+  it('throws (→409) when nobody ever said they acted', async () => {
+    prisma.decision.findFirst.mockResolvedValue(executed({ executedAt: null }));
+    await expect(recordOutcome('ws-1', 'dec-1', VALID)).rejects.toThrow(/has not been executed/i);
+    expect(prisma.outcomeSnapshot.create).not.toHaveBeenCalled();
+  });
+
+  it('throws (→409) on a DISMISSED decision, and says which state it is in', async () => {
+    // Not the same refusal. A dismissal has no outcome by construction — nothing
+    // was done, so nothing followed. Collapsing the two messages would send an
+    // operator looking for a missing execution record that will never exist.
+    prisma.decision.findFirst.mockResolvedValue(
+      executed({ executedAt: null, dismissedAt: new Date('2026-08-01T10:00:00.000Z') }),
+    );
+    await expect(recordOutcome('ws-1', 'dec-1', VALID)).rejects.toThrow(/was dismissed, not executed/i);
+    expect(prisma.outcomeSnapshot.create).not.toHaveBeenCalled();
+  });
+
+  // The guard reads executedAt, so the select MUST ask for it. Testing a field
+  // that was never selected is how this check would silently invert: undefined
+  // fails the guard for every decision, and the write path dies for all of them.
+  it('selects the timestamps its own guard reads', async () => {
+    prisma.decision.findFirst.mockResolvedValue(executed());
+    prisma.outcomeSnapshot.findFirst.mockResolvedValue(null);
+    await recordOutcome('ws-1', 'dec-1', VALID);
+    expect(prisma.decision.findFirst.mock.calls[0][0].select)
+      .toMatchObject({ executedAt: true, dismissedAt: true });
+  });
+
+  // status is no longer consulted at all: the routes leave it PROPOSED, and a
+  // decision superseded after being acted on must still accept its outcome.
+  it.each([['PROPOSED'], ['SUPERSEDED']])('accepts an executed decision whose status is %s', async (status) => {
+    prisma.decision.findFirst.mockResolvedValue(executed({ status }));
+    prisma.outcomeSnapshot.findFirst.mockResolvedValue(null);
+    await expect(recordOutcome('ws-1', 'dec-1', VALID)).resolves.toBeTruthy();
   });
 
   it('UPSERTS in place on re-record — updates the newest snapshot, never duplicates', async () => {
-    prisma.decision.findFirst.mockResolvedValue({ id: 'dec-1', status: 'EXECUTED', entityId: 'ent-1', entityLevel: 'ADSET' });
+    prisma.decision.findFirst.mockResolvedValue(executed());
     prisma.outcomeSnapshot.findFirst.mockResolvedValue({ id: 'out-existing' });
 
     await recordOutcome('ws-1', 'dec-1', { ...VALID, sustained: false });
@@ -107,17 +141,48 @@ describe('recordOutcome — write path', () => {
 });
 
 describe('listPendingOutcomes — the manual-entry queue', () => {
-  it('scopes to EXECUTED decisions with NO outcome and returns the workspace currency', async () => {
+  it('scopes to executed-but-unrecorded decisions and returns the workspace currency', async () => {
     prisma.decision.findMany.mockResolvedValue([{ id: 'dec-1', verdict: 'KILL' }]);
     prisma.workspace.findUnique.mockResolvedValue({ currency: 'EGP' });
 
     const out = await listPendingOutcomes('ws-1');
 
     expect(prisma.decision.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { workspaceId: 'ws-1', status: 'EXECUTED', outcomes: { none: {} } } }),
+      expect.objectContaining({
+        where: {
+          workspaceId: 'ws-1',
+          executedAt: { not: null },
+          dismissedAt: null,
+          outcomes: { none: {} },
+        },
+      }),
     );
     expect(out.decisions).toHaveLength(1);
     expect(out.currency).toBe('EGP');
+  });
+
+  it('excludes dismissals — nothing was done, so nothing followed from it', async () => {
+    prisma.decision.findMany.mockResolvedValue([]);
+    prisma.workspace.findUnique.mockResolvedValue({ currency: 'USD' });
+    await listPendingOutcomes('ws-1');
+    expect(prisma.decision.findMany.mock.calls[0][0].where.dismissedAt).toBeNull();
+  });
+
+  it('does NOT scope on status — a decision superseded after being acted on still owes an outcome', async () => {
+    prisma.decision.findMany.mockResolvedValue([]);
+    prisma.workspace.findUnique.mockResolvedValue({ currency: 'USD' });
+    await listPendingOutcomes('ws-1');
+    expect(prisma.decision.findMany.mock.calls[0][0].where.status).toBeUndefined();
+  });
+
+  // A work queue, ordered by the debt it represents. Oldest EXECUTION first, not
+  // oldest issuance: once operators act out of order the two disagree, and
+  // `createdAt: desc` actively buried the most overdue rows past the take:100.
+  it('orders by oldest execution first', async () => {
+    prisma.decision.findMany.mockResolvedValue([]);
+    prisma.workspace.findUnique.mockResolvedValue({ currency: 'USD' });
+    await listPendingOutcomes('ws-1');
+    expect(prisma.decision.findMany.mock.calls[0][0].orderBy).toEqual({ executedAt: 'asc' });
   });
 
   it('defaults currency to USD when the workspace row is missing', async () => {
