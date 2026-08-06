@@ -8,7 +8,7 @@
 // fake-empty expansion.
 //
 // Returns: { byId, load }
-//   byId[entityId]: { loading, error, adSets|null }
+//   byId[entityId]: { loading, error, adSets|null, entity|null, objective|null }
 //   load(entityId): kicks off the fetch (idempotent; retries allowed on error)
 //
 // The `seen` ref makes load() load-once + StrictMode-safe (no double fetch).
@@ -28,7 +28,16 @@ export function useEntityDrillDown() {
       const res = await api.get(`/api/lumi/entities/${entityId}/adsets`);
       setById((s) => ({
         ...s,
-        [entityId]: { loading: false, error: null, adSets: Array.isArray(res.data?.adSets) ? res.data.adSets : [] },
+        [entityId]: {
+          loading: false,
+          error: null,
+          adSets: Array.isArray(res.data?.adSets) ? res.data.adSets : [],
+          // The campaign's own measured row and objective. The route carries
+          // both; they were being dropped on the floor here, so a consumer had
+          // no baseline to state an ad-set's gap against without re-deriving it.
+          entity: res.data?.entity ?? null,
+          objective: res.data?.objective ?? null,
+        },
       }));
     } catch (err) {
       seen.current.delete(entityId); // allow a retry on the next expand

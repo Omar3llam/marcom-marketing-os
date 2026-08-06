@@ -220,12 +220,41 @@ export function buildHypothesis(worst) {
 }
 
 /**
- * PURE: would ExecutionContext render anything for this campaign? The component
- * answers this itself, but the table needs the same answer BEFORE it commits a
- * <tr> — an empty bordered row under every expansion is worse than no row.
- * One predicate so the two can never disagree.
+ * PURE: is it worth ASKING the server whether this campaign has execution
+ * context? Verdict only — the cheap half of the old `hasExecutionContext`.
+ *
+ * That predicate answered two questions at once: "does this verdict have
+ * somewhere to drill into" (free, local) and "is one ad set measurably dragging"
+ * (a ranking, now the server's). Only the first can stay synchronous, and
+ * keeping it matters: it bounds evidence requests to actionable rows, so an
+ * expanded HOLD costs nothing.
+ *
+ * The second question moves to GET /entities/:campaignId/adsets/evidence, whose
+ * answer distinguishes "no meaningful gap" from "not enough reporting ad sets"
+ * from "no campaign baseline yet" — three states this predicate collapsed into
+ * one silent `false`.
  */
-export function hasExecutionContext(campaign, adSets, verdict) {
-  if (!campaign || !ACTIONABLE_VERDICTS.includes(verdict)) return false;
-  return findWorstAdSet(adSets, campaign.ctr) != null;
+export function shouldRequestEvidence(campaign, verdict) {
+  return Boolean(campaign) && ACTIONABLE_VERDICTS.includes(verdict);
 }
+
+/**
+ * The four refusals the evidence endpoint can return, as sentences. Keys are the
+ * server's `reasonKey`s verbatim — the API deliberately carries no prose so the
+ * wording (and its translation) lives here.
+ *
+ * Each names the missing INPUT, not a generic shortfall: an operator told their
+ * ad sets are too thin will go split their audience, when the real gap may be a
+ * campaign that has not synced a snapshot yet.
+ */
+export const EVIDENCE_REFUSAL_LABELS = Object.freeze({
+  INSUFFICIENT_REPORTING_ADSETS: 'Not enough reporting ad sets to compare',
+  INSUFFICIENT_REPORTING_ADS:    'Not enough reporting ads to compare',
+  BASELINE_UNAVAILABLE:          'No campaign performance data to compare against yet',
+  NO_MEANINGFUL_GAP:             'No ad set is measurably behind the others',
+  INVALID_METRIC:                'That ranking metric is not supported',
+});
+
+/** PURE: a refusal sentence, with a general fallback for a key we do not know. */
+export const refusalLabel = (reasonKey) =>
+  EVIDENCE_REFUSAL_LABELS[reasonKey] ?? 'Not enough data to compare ad sets';

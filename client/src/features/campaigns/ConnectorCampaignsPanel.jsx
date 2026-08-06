@@ -35,7 +35,9 @@ import { CampaignDetailPanel } from '@/features/campaigns/CampaignDetailPanel.js
 import { NO_REVENUE_DISCLAIMER, evidenceClause, shortEvidence, decisiveMetric } from '@/features/campaigns/verdictEvidence.js';
 import { groupCampaigns, GROUP_CONFIG, GROUP_ORDER } from '@/features/campaigns/campaignGrouping.js';
 import { ExecutionContext } from '@/features/campaigns/ExecutionContext.jsx';
-import { hasExecutionContext } from '@/features/campaigns/executionContext.js';
+import { shouldRequestEvidence } from '@/features/campaigns/executionContext.js';
+import { EvidenceState } from '@/features/campaigns/EvidenceState.jsx';
+import { useEvidence, evidenceKey } from '@/hooks/useEvidence.js';
 
 // Every band header / detail / ad-set row spans the full grid. One constant so
 // the five call sites can never drift out of step with the <thead>.
@@ -153,6 +155,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
   const [open, setOpen] = useState(new Set());          // ad-set drill-down
   const [detailOpen, setDetailOpen] = useState(new Set()); // signals + reasoning panel
   const { byId, load } = useEntityDrillDown();
+  const { byId: evidenceById, loading: evidenceLoading, errors: evidenceErrors, load: loadEvidence } = useEvidence();
 
   // Decision-queue order. `verdicts`/`impacts` arrive FLAT from CampaignsView
   // (entityId → 'KILL' / entityId → 7), which is the shape groupCampaigns reads.
@@ -181,10 +184,19 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
   if (!loading && !error && campaigns.length === 0) return null;
 
   const toggle = (id) => {
+    // The fetches fire OUTSIDE the state updater, for the reason toggleDetail
+    // documents below: a setState updater must be pure, and React may invoke it
+    // more than once per call. Both loaders are idempotent behind a `seen` ref,
+    // so this was benign — but only by accident, and the evidence request is a
+    // second one to get wrong the same way.
+    if (!open.has(id)) {
+      load(id);
+      loadEvidence(id);
+    }
     setOpen((s) => {
       const next = new Set(s);
       if (next.has(id)) next.delete(id);
-      else { next.add(id); load(id); }
+      else next.add(id);
       return next;
     });
   };
@@ -324,18 +336,47 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
           </tr>
         )}
         {isOpen && <AdSetRows state={byId[c.entityId]} />}
-        {/* Where to act, under the ad sets it points at. Renders itself away
-            unless the verdict is actionable AND one ad set is measurably
-            dragging — so most expansions show nothing extra. It lives in its
+        {/* Where to act, under the ad sets it points at. The verdict gate is
+            still local and free, so an expanded HOLD costs no request; whether
+            one ad set is measurably dragging is now the SERVER's answer, and it
+            can decline in three distinguishable ways. Committing the <tr> and
+            resolving inside it is the DecisionCard pattern: an expansion that
+            silently showed nothing was indistinguishable from one still loading
+            and from one where every ad set is performing fine. It lives in its
             own <tr> for the same reason the detail panel does: a bare <div>
             inside a <tbody> gets reparented out of the table by the browser. */}
-        {isOpen && hasExecutionContext(c, byId[c.entityId]?.adSets, verdict) && (
-          <tr className="border-b border-lumi-border/50 bg-lumi-bg/20">
-            <td colSpan={COLS} className="px-4 pb-3 pt-0">
-              <ExecutionContext campaign={c} adSets={byId[c.entityId].adSets} verdict={verdict} />
-            </td>
-          </tr>
-        )}
+        {isOpen && shouldRequestEvidence(c, verdict) && (() => {
+          const key = evidenceKey(c.entityId);
+          const ev = evidenceById[key];
+          const evLoading = evidenceLoading[key];
+          const evError = evidenceErrors[key];
+          // Nothing in flight and nothing back yet — say nothing, rather than
+          // commit an empty bordered row.
+          if (!evLoading && !evError && !ev) return null;
+          return (
+            <tr className="border-b border-lumi-border/50 bg-lumi-bg/20">
+              <td colSpan={COLS} className="px-4 pb-3 pt-0">
+                {/* Renders null once the answer is a real ranking. */}
+                <EvidenceState
+                  loading={evLoading}
+                  error={evError}
+                  reasonKey={ev?.insufficientData ? ev.reasonKey : null}
+                  className="py-2"
+                />
+                {/* The server having found a ranking guarantees ExecutionContext
+                    finds one too: both rank the same rows on the same -20% gap
+                    with the same two-reporter minimum, and the server ALSO drops
+                    rows under 100 impressions — a strictly smaller set, so a gap
+                    it found is still there in the fuller one. That is why this
+                    branch cannot produce the empty row the old pre-commit gate
+                    existed to prevent. */}
+                {ev?.evidence && (
+                  <ExecutionContext campaign={c} adSets={byId[c.entityId]?.adSets} verdict={verdict} />
+                )}
+              </td>
+            </tr>
+          );
+        })()}
       </Fragment>
     );
   };

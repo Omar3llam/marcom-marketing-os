@@ -13,7 +13,9 @@
 // collide in the same map. Two hooks, two maps, zero shared state.
 //
 // Returns: { byId, loading, errors, load }
-//   byId[adSetId]: { entity, children }   — children[] is never null on success
+//   byId[adSetId]: { entity, objective, children }
+//     entity     — the ad-set's own measured row (null when the body omits it)
+//     children[] — never null on success
 //   load(adSetId): kicks off the fetch (idempotent; retries allowed on error)
 //
 // The `seen` ref makes load() load-once + StrictMode-safe (no double fetch).
@@ -39,7 +41,13 @@ export function useAdsDrillDown() {
       setById((s) => ({
         ...s,
         [adSetId]: {
-          entity: res.data?.entity ?? { id: adSetId },
+          // The route returns the ad-set's REAL row. The old `{ id: adSetId }`
+          // fallback dates from when it echoed back an id stub; keeping it would
+          // now substitute a metric-less object for one that has metrics, and a
+          // consumer reading entity.ctr would see undefined rather than a number.
+          entity: res.data?.entity ?? null,
+          // The campaign objective the ad-set hangs off — null when unknown.
+          objective: res.data?.objective ?? null,
           // A malformed body degrades to an empty drill-down, not to null —
           // the error path is reserved for a request that actually failed.
           children: Array.isArray(res.data?.children) ? res.data.children : [],
