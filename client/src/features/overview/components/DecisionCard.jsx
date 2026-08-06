@@ -22,7 +22,9 @@ import { formatCurrency } from '@/lib/money';
 import { appRoutes } from '@/app/routeManifest.js';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { useEntityDrillDown } from '@/hooks/useEntityDrillDown.js';
+import { useEvidence, evidenceKey } from '@/hooks/useEvidence.js';
 import { ExecutionContext } from '@/features/campaigns/ExecutionContext.jsx';
+import { EvidenceState } from '@/features/campaigns/EvidenceState.jsx';
 import { ACTIONABLE_VERDICTS } from '@/features/campaigns/executionContext.js';
 
 export default function DecisionCard({
@@ -31,6 +33,9 @@ export default function DecisionCard({
   ctr = null, spendMinor = null, currency = null,
 }) {
   const { byId, load } = useEntityDrillDown();
+  const {
+    byId: evidenceById, loading: evidenceLoading, errors: evidenceErrors, load: loadEvidence,
+  } = useEvidence();
   const [expanded, setExpanded] = useState(false);
 
   // The same verdicts ExecutionContext itself acts on — imported rather than
@@ -39,8 +44,20 @@ export default function DecisionCard({
   const canDrill = ACTIONABLE_VERDICTS.includes(verdict);
   const state = byId[entityId];
 
+  // The server's answer to "is one ad set measurably dragging". Separate from
+  // `state` on purpose: a drill-down failure and an engine refusal are different
+  // events, and one slot for both would render "couldn't load" over a campaign
+  // whose ad sets are simply all performing alike.
+  const evKey = evidenceKey(entityId);
+  const ev = evidenceById[evKey];
+  const evLoading = evidenceLoading[evKey];
+  const evError = evidenceErrors[evKey];
+
   const toggle = () => {
-    if (!expanded) load(entityId); // idempotent + cached inside the hook
+    if (!expanded) {
+      load(entityId);        // idempotent + cached inside the hook
+      loadEvidence(entityId);
+    }
     setExpanded((e) => !e);
   };
 
@@ -117,7 +134,19 @@ export default function DecisionCard({
               <AlertTriangle className="h-3 w-3" strokeWidth={2} /> Couldn&apos;t load ad sets — collapse and try again.
             </p>
           )}
-          {expanded && state?.adSets && (
+          {/* The fourth state, and the one this card was missing: the request
+              SUCCEEDED and the engine declined to rank. Its own treatment — not
+              the danger red of a failure, since "no ad set is measurably behind
+              the others" is a healthy answer about a real campaign. */}
+          {expanded && !evLoading && (
+            <EvidenceState
+              loading={false}
+              error={evError}
+              reasonKey={ev?.insufficientData ? ev.reasonKey : null}
+              className="mt-2"
+            />
+          )}
+          {expanded && state?.adSets && ev?.evidence && (
             <ExecutionContext campaign={campaign} adSets={state.adSets} verdict={verdict} />
           )}
         </div>

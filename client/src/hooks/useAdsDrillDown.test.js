@@ -85,7 +85,25 @@ describe('useAdsDrillDown', () => {
     const { result } = renderHook(() => useAdsDrillDown());
     await act(async () => { await result.current.load('as1'); });
     expect(result.current.byId.as1.children).toEqual([]);
-    expect(result.current.byId.as1.entity).toEqual({ id: 'as1' }); // falls back to the requested id
+    // null, NOT a synthesised { id } row. The route returns the ad-set's real
+    // measured row; substituting a metric-less object for a missing one would
+    // let a consumer read entity.ctr as undefined and render it as a figure.
+    expect(result.current.byId.as1.entity).toBeNull();
+    expect(result.current.byId.as1.objective).toBeNull();
+  });
+
+  it('carries the ad-set row and objective the route now returns', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        entity: { entityId: 'as1', name: 'Broad', ctr: 0.021, spendMinor: 90000 },
+        objective: 'OUTCOME_SALES',
+        children: [],
+      },
+    });
+    const { result } = renderHook(() => useAdsDrillDown());
+    await act(async () => { await result.current.load('as1'); });
+    expect(result.current.byId.as1.entity).toMatchObject({ entityId: 'as1', ctr: 0.021 });
+    expect(result.current.byId.as1.objective).toBe('OUTCOME_SALES');
   });
 
   // Sibling isolation: this hook must never write the ad-set-level payload key.
@@ -93,6 +111,6 @@ describe('useAdsDrillDown', () => {
     const { result } = renderHook(() => useAdsDrillDown());
     await act(async () => { await result.current.load('as1'); });
     expect(result.current.byId.as1.adSets).toBeUndefined();
-    expect(Object.keys(result.current.byId.as1).sort()).toEqual(['children', 'entity']);
+    expect(Object.keys(result.current.byId.as1).sort()).toEqual(['children', 'entity', 'objective']);
   });
 });

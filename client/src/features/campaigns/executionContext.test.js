@@ -17,7 +17,9 @@ import {
   gapMagnitude,
   buildEvidenceBullets,
   buildHypothesis,
-  hasExecutionContext,
+  shouldRequestEvidence,
+  EVIDENCE_REFUSAL_LABELS,
+  refusalLabel,
 } from './executionContext.js';
 import { FATIGUE_FREQ } from './verdictEvidence.js';
 
@@ -362,29 +364,64 @@ describe('buildHypothesis — H2 no fatigue signal', () => {
   });
 });
 
-describe('hasExecutionContext — the table row guard', () => {
+// Replaces `hasExecutionContext`, which answered two questions at once. The
+// ranking half is the server's now; only the verdict half stays local.
+describe('shouldRequestEvidence — the local half of the old guard', () => {
   const campaign = { ctr: CAMPAIGN_CTR, spendMinor: 6553 };
-  const rows = [adSet({ ctr: 0.0032 }), adSet({ entityId: 'as-2', ctr: 0.0180 })];
 
-  it.each(ACTIONABLE_VERDICTS)('%s with a real gap → true', (verdict) => {
-    expect(hasExecutionContext(campaign, rows, verdict)).toBe(true);
+  it.each(ACTIONABLE_VERDICTS)('%s is worth asking about → true', (verdict) => {
+    expect(shouldRequestEvidence(campaign, verdict)).toBe(true);
   });
 
   it.each([['HOLD'], ['SCALE'], ['WATCH'], ['REFRESH'], [null], [undefined]])(
     '%s is not actionable → false', (verdict) => {
-      expect(hasExecutionContext(campaign, rows, verdict)).toBe(false);
+      expect(shouldRequestEvidence(campaign, verdict)).toBe(false);
     });
 
-  it('an actionable verdict with no meaningful gap → false', () => {
-    const flat = [adSet({ ctr: 0.0164 }), adSet({ entityId: 'as-2', ctr: 0.0160 })];
-    expect(hasExecutionContext(campaign, flat, 'KILL')).toBe(false);
-  });
-
-  it('ad sets not loaded yet → false, never a throw', () => {
-    expect(hasExecutionContext(campaign, undefined, 'KILL')).toBe(false);
-  });
-
   it('no campaign → false', () => {
-    expect(hasExecutionContext(null, rows, 'KILL')).toBe(false);
+    expect(shouldRequestEvidence(null, 'KILL')).toBe(false);
+  });
+
+  // The point of keeping this predicate at all: it bounds request volume. An
+  // expanded HOLD must cost nothing.
+  it('gates the request, so a non-actionable verdict never reaches the network', () => {
+    expect(shouldRequestEvidence(campaign, 'HOLD')).toBe(false);
+    expect(shouldRequestEvidence(campaign, 'KILL')).toBe(true);
+  });
+
+  // It deliberately does NOT look at ad sets. The old predicate returned false
+  // for a campaign with a flat spread; that answer now comes back from the
+  // server as NO_MEANINGFUL_GAP, with a sentence, instead of a silent absence.
+  it('is not a function of the ad-set data — that question moved to the server', () => {
+    expect(shouldRequestEvidence.length).toBe(2);
+    expect(shouldRequestEvidence({ ctr: null }, 'KILL')).toBe(true);
+  });
+});
+
+describe('EVIDENCE_REFUSAL_LABELS — the server speaks keys, the client speaks sentences', () => {
+  it('covers every reasonKey the endpoint can emit', () => {
+    for (const key of [
+      'INSUFFICIENT_REPORTING_ADSETS', 'INSUFFICIENT_REPORTING_ADS',
+      'BASELINE_UNAVAILABLE', 'NO_MEANINGFUL_GAP', 'INVALID_METRIC',
+    ]) {
+      expect(EVIDENCE_REFUSAL_LABELS[key]).toEqual(expect.any(String));
+    }
+  });
+
+  it('names the missing INPUT, distinctly per key', () => {
+    const sentences = Object.values(EVIDENCE_REFUSAL_LABELS);
+    expect(new Set(sentences).size).toBe(sentences.length);
+  });
+
+  it('falls back to a general sentence for a key it has never seen', () => {
+    // A server that gains a reason key must not render an empty line here.
+    expect(refusalLabel('SOMETHING_NEW')).toBe('Not enough data to compare ad sets');
+    expect(refusalLabel(null)).toBe('Not enough data to compare ad sets');
+  });
+
+  it('a healthy spread does not read as a failure', () => {
+    // NO_MEANINGFUL_GAP is good news about a real campaign. The sentence must
+    // not be phrased as a shortfall on the account's part.
+    expect(EVIDENCE_REFUSAL_LABELS.NO_MEANINGFUL_GAP).toBe('No ad set is measurably behind the others');
   });
 });
