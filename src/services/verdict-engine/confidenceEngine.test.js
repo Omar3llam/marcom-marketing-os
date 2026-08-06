@@ -110,6 +110,60 @@ describe('the three dimensions, separately', () => {
   });
 });
 
+// NOT APPLICABLE ≠ MISSING. An ad set has no creative age to report, so charging
+// it for the absence marks a level down for the shape of the entity graph rather
+// than for anything about the data — and does it on a scale a consumer believes
+// it shares with ad-level scores.
+describe('createdTimeApplicable — the difference between absent and inapplicable', () => {
+  it('defaults to applicable, so every existing caller is unchanged', () => {
+    expect(dataCompleteness({ actionMetrics: FULL, objective: 'OUTCOME_SALES' }))
+      .toBe(dataCompleteness({ actionMetrics: FULL, objective: 'OUTCOME_SALES', createdTimeApplicable: true }));
+  });
+
+  it('still charges a MISSING createdTime on a level that has one', () => {
+    const withAge    = dataCompleteness({ actionMetrics: FULL, objective: 'OUTCOME_SALES', createdTime: new Date() });
+    const missingAge = dataCompleteness({ actionMetrics: FULL, objective: 'OUTCOME_SALES', createdTime: null });
+    expect(withAge - missingAge).toBeCloseTo(0.10, 10);
+  });
+
+  it('does NOT charge an INAPPLICABLE createdTime', () => {
+    const notApplicable = dataCompleteness({
+      actionMetrics: FULL, objective: 'OUTCOME_SALES', createdTime: null, createdTimeApplicable: false,
+    });
+    expect(notApplicable).toBe(1);
+  });
+
+  it('a real createdTime is not double-counted when applicability is off', () => {
+    // Belt and braces: passing both is contradictory input, and the completeness
+    // half must not swing on which one the caller happened to set.
+    expect(dataCompleteness({
+      actionMetrics: FULL, objective: 'OUTCOME_SALES', createdTime: new Date(), createdTimeApplicable: false,
+    })).toBe(1);
+  });
+
+  it('computeConfidence threads it, and the gap is exactly the NO_CREATED_TIME penalty', () => {
+    const args = { impressions: GOOD_IMPRESSIONS, daysRunning: null, actionMetrics: FULL, objective: 'OUTCOME_SALES', createdTime: null };
+    const charged = computeConfidence(args);
+    const notApplicable = computeConfidence({ ...args, createdTimeApplicable: false });
+    // 1.0 sample × completeness × 0.7 temporal, with completeness 0.90 vs 1.00.
+    expect(charged).toBeCloseTo(0.63, 10);
+    expect(notApplicable).toBeCloseTo(0.7, 10);
+  });
+
+  it('the temporal half is UNTOUCHED — the unknown learning window is still charged once', () => {
+    // The point is not to make an ad-set look better. It is to charge the gap
+    // once. temporalQuality's 0.7 for an unknown age is the honest charge and it
+    // must survive: an inapplicable createdTime does not make the window known.
+    expect(computeConfidence({
+      impressions: GOOD_IMPRESSIONS, daysRunning: null, actionMetrics: FULL,
+      objective: 'OUTCOME_SALES', createdTime: null, createdTimeApplicable: false,
+    })).toBeLessThan(computeConfidence({
+      impressions: GOOD_IMPRESSIONS, daysRunning: 30, actionMetrics: FULL,
+      objective: 'OUTCOME_SALES', createdTime: new Date(),
+    }));
+  });
+});
+
 describe('composeConfidence — signal strength × input quality', () => {
   it('multiplies the two halves', () => {
     expect(composeConfidence(0.9, 0.5)).toBe(0.45);

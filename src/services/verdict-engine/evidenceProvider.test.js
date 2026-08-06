@@ -222,6 +222,59 @@ describe('isRankable', () => {
   });
 });
 
+// ── createdTime: omitted vs declared-null vs a value ────────────────────────
+describe('analyzeEvidence — createdTime is three-state', () => {
+  const AGE = '2026-06-01T00:00:00.000Z'; // 61 days before NOW → mature
+  // A cohort whose bottom row carries real creative age, so the omitted case has
+  // something to find. Full funnel + objective so completeness is 1.0 and the
+  // only moving part is the creative-age treatment.
+  const cohort = [
+    ad('good', { ctr: 0.05, impressions: 10_000, platformCreatedTime: AGE, actionMetrics: { lpv: 100, atc: 20 } }),
+    ad('bad',  { ctr: 0.01, impressions: 10_000, platformCreatedTime: AGE, actionMetrics: { lpv: 100, atc: 20 } }),
+  ];
+  const call = (over = {}) => analyzeEvidence({
+    dimension: 'AD', objective: 'OUTCOME_SALES', now: NOW, metric: 'ctr',
+    baseline: { ...baseline, ctr: 0.05 }, entities: cohort, ...over,
+  });
+
+  it('omitted → digs the age out of the bottom row (the AD path, unchanged)', () => {
+    // 61 days → temporalQuality 1.0, completeness 1.0 → 1.0, capped at 0.97.
+    expect(call().dataConfidence).toBe(0.97);
+  });
+
+  it('a value → overrides what the rows carry', () => {
+    // Two days old → temporalQuality 0.4.
+    expect(call({ createdTime: '2026-07-30T00:00:00.000Z' }).dataConfidence).toBeCloseTo(0.4, 10);
+  });
+
+  it('declared null → the honest unknown window, charged ONCE', () => {
+    // temporalQuality 0.7 (unknown), completeness NOT docked the missing-field
+    // 0.10 — the level has no creative age to be missing.
+    expect(call({ createdTime: null }).dataConfidence).toBeCloseTo(0.7, 10);
+  });
+
+  it('a row that simply LACKS an age is still charged twice — that gap is real', () => {
+    // The distinction the parameter exists for: an AD with no platformCreatedTime
+    // is an ingestion gap (0.7 × 0.90 = 0.63), an AD SET has nothing to report
+    // (0.7 × 1.00 = 0.70). Same 0.7 temporal half, different completeness.
+    const noAge = call({ entities: cohort.map((e) => ({ ...e, platformCreatedTime: null })) });
+    expect(noAge.dataConfidence).toBeCloseTo(0.63, 10);
+    expect(call({ createdTime: null }).dataConfidence).toBeGreaterThan(noAge.dataConfidence);
+  });
+
+  it('an explicit undefined reads as omitted, not as declared-absent', () => {
+    expect(call({ createdTime: undefined }).dataConfidence).toBe(call().dataConfidence);
+  });
+
+  it('changes nothing but dataConfidence — the ranking is not a function of age', () => {
+    const a = call();
+    const b = call({ createdTime: null });
+    expect(b.ranked.map((r) => r.entityId)).toEqual(a.ranked.map((r) => r.entityId));
+    expect(b.summary.bottom.entityId).toBe(a.summary.bottom.entityId);
+    expect(b.evidence).toEqual(a.evidence);
+  });
+});
+
 // ── analyzeEvidence: null contract ──────────────────────────────────────────
 describe('analyzeEvidence — when it declines to answer', () => {
   const call = (over) => analyzeEvidence({ dimension: 'AD', objective: 'OUTCOME_SALES', now: NOW, baseline, entities: [], ...over });

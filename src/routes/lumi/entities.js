@@ -4,6 +4,8 @@
 // GET /api/lumi/entities/:campaignId/adsets → that campaign's ad-sets
 // GET /api/lumi/entities/:adSetId/ads       → that ad-set's ads (creative level)
 // GET /api/lumi/entities/:adSetId/evidence  → those ads ranked against the ad-set
+// GET /api/lumi/entities/:campaignId/adsets/evidence
+//                                           → those ad-sets ranked against the campaign
 // ------------------------------------------------------------
 // The Campaigns table renders the legacy CampaignState feed; this sibling
 // surface exposes the DISJOINT connector entity graph (the only substrate that
@@ -158,14 +160,23 @@ entitiesRouter.get('/entities/fatigue', requireCollabRole(WORKSPACE_ROLE.BUYER, 
   }
 });
 
+// `entity` and `objective` are additive here — the campaign row the service now
+// reads for the ranking baseline. `adSets` and `campaignId` keep their names and
+// shapes so existing readers are untouched.
 entitiesRouter.get('/entities/:campaignId/adsets', async (req, res) => {
   try {
-    const adSets = await getCampaignAdSets(req.workspaceId, req.params.campaignId);
+    const result = await getCampaignAdSets(req.workspaceId, req.params.campaignId);
     // null = campaign not in this workspace → honest 404 (not a fake empty drill-down).
-    if (adSets === null) {
+    if (result === null) {
       return res.status(404).json({ error: 'CampaignNotFound', message: 'No such campaign in this workspace' });
     }
-    return res.json({ campaignId: req.params.campaignId, generatedAt: new Date().toISOString(), adSets });
+    return res.json({
+      campaignId: req.params.campaignId,
+      entity: result.entity,
+      objective: result.objective,
+      generatedAt: new Date().toISOString(),
+      adSets: result.adSets,
+    });
   } catch (err) {
     logger.error({ err: err.message, workspaceId: req.workspaceId, campaignId: req.params.campaignId }, '[lumi/entities] adsets failed');
     return res.status(500).json({ error: 'AdSetsUnavailable', message: 'Request failed' });
@@ -228,17 +239,38 @@ export const VALID_EVIDENCE_METRICS = Object.freeze(['ctr', 'roas', 'frequency']
 // Each names WHICH input was missing, because "not enough data" pointed at the
 // wrong half of the problem is worse than silence — an operator told their ads
 // are too thin will go add ads when the real gap was an unsynced parent.
-const EVIDENCE_REASON = Object.freeze({
-  INVALID_METRIC:             'INVALID_METRIC',
-  BASELINE_UNAVAILABLE:       'BASELINE_UNAVAILABLE',
-  INSUFFICIENT_REPORTING_ADS: 'INSUFFICIENT_REPORTING_ADS',
-  NO_MEANINGFUL_GAP:          'NO_MEANINGFUL_GAP',
+//
+// ONE map, not one per dimension: three of the four keys are identical at every
+// level, and two parallel enums would drift the moment either gained a member.
+// Only the cohort noun differs, so only that key is per-dimension.
+export const EVIDENCE_REASON = Object.freeze({
+  INVALID_METRIC:                'INVALID_METRIC',
+  BASELINE_UNAVAILABLE:          'BASELINE_UNAVAILABLE',
+  NO_MEANINGFUL_GAP:             'NO_MEANINGFUL_GAP',
+  INSUFFICIENT_REPORTING_ADS:    'INSUFFICIENT_REPORTING_ADS',
+  INSUFFICIENT_REPORTING_ADSETS: 'INSUFFICIENT_REPORTING_ADSETS',
 });
 
-entitiesRouter.get(
-  '/entities/:adSetId/evidence',
-  requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST),
-  async (req, res) => {
+/**
+ * The evidence contract, shared by both dimensions. Factored rather than copied:
+ * the value of this endpoint is that its three refusals are distinguishable, and
+ * a hand-duplicated second copy would drift exactly where it matters — one level
+ * would start reporting a stale parent as a thin cohort while the other did not.
+ *
+ * @param {object} opts
+ * @param {string} opts.dimension — ENTITY_LEVEL the cohort sits at
+ * @param {Function} opts.load — (workspaceId, id) → { entity, objective, cohort } | null
+ * @param {string} opts.thinKey — the reason key for "cohort too thin at this level"
+ * @param {string} opts.notFound — the 404 error code. Per-dimension, not a shared
+ *   'ParentNotFound': these codes are already published, and generalising one
+ *   would silently break any reader keyed on it.
+ * @param {Date|string|null|undefined} [opts.createdTime] — passed straight to the
+ *   engine. Omitted at AD level (the rows carry creative age); an explicit null
+ *   at ADSET level, which has none — see analyzeEvidence's parameter docs.
+ */
+function evidenceHandler({ dimension, load, thinKey, notFound, createdTime }) {
+  return async (req, res) => {
+    const entityId = req.params.adSetId ?? req.params.campaignId;
     try {
       // A repeated query param arrives as an array, which fails the whitelist —
       // so `?metric=ctr&metric=roas` is rejected rather than coerced.
@@ -254,34 +286,32 @@ entitiesRouter.get(
         });
       }
 
-      const result = await getAdSetAds(req.workspaceId, req.params.adSetId);
+      const result = await load(req.workspaceId, entityId);
       if (result === null) {
-        return res.status(404).json({ error: 'AdSetNotFound', message: 'No such ad set in this workspace' });
+        return res.status(404).json({ error: notFound, message: 'No such entity in this workspace' });
       }
 
-      const { entity, objective, children } = result;
-      const base = { entity, objective, metric, generatedAt: new Date().toISOString() };
+      const { entity, objective, cohort } = result;
+      const base = { entity, objective, metric, dimension, generatedAt: new Date().toISOString() };
       const refuse = (reasonKey) => res.json({ ...base, evidence: null, insufficientData: true, reasonKey });
 
       // The engine's three null causes, distinguished HERE because it cannot
       // report which one it hit. Order matters: a missing baseline is checked
-      // first, since with nothing to divide by the children were never the issue.
+      // first, since with nothing to divide by the cohort was never the issue.
 
       // 1. No parent figure to rank against. Reads the SAME metric being ranked
       //    — hard-coding `entity.ctr` would let a roas request fall through and
-      //    be reported as thin children.
+      //    be reported as a thin cohort.
       if (!(entity?.[metric] > 0)) return refuse(EVIDENCE_REASON.BASELINE_UNAVAILABLE);
 
-      // 2. Fewer than two ads delivering enough to compare. isRankable is the
-      //    engine's own predicate, imported rather than re-typed.
-      if (children.filter((c) => isRankable(c, metric)).length < 2) {
-        return refuse(EVIDENCE_REASON.INSUFFICIENT_REPORTING_ADS);
-      }
+      // 2. Fewer than two children delivering enough to compare. isRankable is
+      //    the engine's own predicate, imported rather than re-typed.
+      if (cohort.filter((c) => isRankable(c, metric)).length < 2) return refuse(thinKey);
 
       const evidence = analyzeEvidence({
-        dimension: ENTITY_LEVEL.AD,
-        entities:  children,
-        baseline:  entity,
+        dimension,
+        entities: cohort,
+        baseline: entity,
         // null → getBenchmarks(null) → the DEFAULT band. Documented degradation,
         // not a failure: an unknown objective gets the general bar, never silence.
         objective,
@@ -289,16 +319,59 @@ entitiesRouter.get(
         // The engine takes `now` so it stays clock-free; a route is where a real
         // clock belongs. Milliseconds, matching its Date.now() default.
         now: Date.now(),
+        ...(createdTime !== undefined ? { createdTime } : {}),
       });
 
       // Only one cause is left once 1 and 2 are excluded: every gap fell inside
-      // the metric's floor. Ordinary variance between creatives is not a finding.
+      // the metric's floor. Ordinary variance between siblings is not a finding.
       if (evidence === null) return refuse(EVIDENCE_REASON.NO_MEANINGFUL_GAP);
 
       return res.json({ ...base, evidence, insufficientData: false, reasonKey: null });
     } catch (err) {
-      logger.error({ err: err.message, workspaceId: req.workspaceId, adSetId: req.params.adSetId }, '[lumi/entities] evidence failed');
+      logger.error({ err: err.message, workspaceId: req.workspaceId, dimension, entityId }, '[lumi/entities] evidence failed');
       return res.status(500).json({ error: 'EvidenceUnavailable', message: 'Request failed' });
     }
-  },
+  };
+}
+
+// AD dimension: the ads of one ad-set, ranked against the ad-set.
+entitiesRouter.get(
+  '/entities/:adSetId/evidence',
+  requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST),
+  evidenceHandler({
+    dimension: ENTITY_LEVEL.AD,
+    thinKey:   EVIDENCE_REASON.INSUFFICIENT_REPORTING_ADS,
+    notFound:  'AdSetNotFound',
+    load: async (workspaceId, adSetId) => {
+      const r = await getAdSetAds(workspaceId, adSetId);
+      return r && { entity: r.entity, objective: r.objective, cohort: r.children };
+    },
+    // createdTime deliberately OMITTED: toAdRow carries platformCreatedTime, so
+    // the engine reads real creative age off the bottom row.
+  }),
+);
+
+// ADSET dimension: the ad-sets of one campaign, ranked against the campaign.
+// The path is four segments so it cannot collide with '/entities/:adSetId/evidence'
+// — those two would otherwise be the SAME express pattern, and the param name is
+// a label, not a discriminator. Nor with '/entities/:campaignId/adsets', which is
+// a different, shorter path.
+entitiesRouter.get(
+  '/entities/:campaignId/adsets/evidence',
+  requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST),
+  evidenceHandler({
+    dimension: ENTITY_LEVEL.ADSET,
+    thinKey:   EVIDENCE_REASON.INSUFFICIENT_REPORTING_ADSETS,
+    // Matches the sibling '/entities/:campaignId/adsets' route's existing code.
+    notFound:  'CampaignNotFound',
+    load: async (workspaceId, campaignId) => {
+      const r = await getCampaignAdSets(workspaceId, campaignId);
+      return r && { entity: r.entity, objective: r.objective, cohort: r.adSets };
+    },
+    // EXPLICIT null: an ad set is not a creative and has no platform creation
+    // time to report. Declaring it stops the engine charging the absence twice —
+    // once as an unknown learning window (honest) and again as an incomplete
+    // field (not honest, since nothing is missing). See analyzeEvidence's docs.
+    createdTime: null,
+  }),
 );
