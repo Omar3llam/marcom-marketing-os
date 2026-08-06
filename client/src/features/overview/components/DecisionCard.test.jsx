@@ -11,14 +11,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-const { load, byId } = vi.hoisted(() => ({ load: vi.fn(), byId: { current: {} } }));
-vi.mock('@/hooks/useEntityDrillDown.js', () => ({
-  useEntityDrillDown: () => ({ load, byId: byId.current }),
-}));
-
-// The server's answer to "is one ad set measurably dragging". Kept separate from
-// the drill-down mock on purpose: a refusal and a fetch failure are different
-// events, and the card must be able to be in one state without the other.
+// ONE fetch behind the expansion. useEntityDrillDown used to run beside this to
+// feed ExecutionContext's ad-set rows; now that the ranking is the server's, the
+// panel reads the evidence payload alone and the card no longer narrates a
+// second request whose result it never shows.
 const ev = vi.hoisted(() => ({
   load: vi.fn(), byId: { current: {} }, loading: { current: {} }, errors: { current: {} },
 }));
@@ -29,11 +25,28 @@ vi.mock('@/hooks/useEvidence.js', () => ({
   }),
 }));
 
+const action = vi.hoisted(() => ({ execute: vi.fn(), dismiss: vi.fn(), states: { current: {} } }));
+vi.mock('@/features/campaigns/useDecisionAction.js', () => ({
+  useDecisionAction: () => ({
+    execute: action.execute, dismiss: action.dismiss, states: action.states.current,
+  }),
+}));
+
+const BOTTOM = {
+  entityId: 'a2', name: 'Broad 25-45', channel: 'META',
+  ctr: 0.0032, spendMinor: 325_500, currency: 'USD',
+};
+
 /** A ranking the engine actually produced — the only state that renders the panel. */
 const withEvidence = (over = {}) => ({
   'c-1:ctr': {
     entity: { entityId: 'c-1', ctr: 0.0164 }, objective: 'OUTCOME_SALES',
-    evidence: { dimension: 'ADSET', metric: 'ctr', ranked: [], summary: {}, dataConfidence: 0.7 },
+    evidence: {
+      dimension: 'ADSET', metric: 'ctr',
+      ranked: [BOTTOM, { ...BOTTOM, entityId: 'a1', name: 'Lookalike 1%', ctr: 0.0180 }],
+      summary: { bottom: BOTTOM, top: { ...BOTTOM, entityId: 'a1' }, outliers: [BOTTOM] },
+      dataConfidence: 0.7,
+    },
     insufficientData: false, reasonKey: null, ...over,
   },
 });
@@ -51,10 +64,10 @@ const setup = (over) => render(<DecisionCard {...props(over)} />, { wrapper: Mem
 
 beforeEach(() => {
   vi.clearAllMocks();
-  byId.current = {};
   ev.byId.current = {};
   ev.loading.current = {};
   ev.errors.current = {};
+  action.states.current = {};
 });
 
 describe('DecisionCard — the decision itself', () => {
@@ -121,17 +134,16 @@ describe('DecisionCard — the execution drill-down', () => {
     expect(screen.queryByRole('button', { name: /execution context/ })).not.toBeInTheDocument();
   });
 
-  it('fetches the ad sets only on the first expand', () => {
+  it('fetches the ranking only on the first expand', () => {
     setup();
     const btn = screen.getByRole('button', { name: /Show execution context/ });
-    expect(load).not.toHaveBeenCalled();
+    expect(ev.load).not.toHaveBeenCalled();
 
     fireEvent.click(btn);
-    expect(load).toHaveBeenCalledWith('c-1');
+    expect(ev.load).toHaveBeenCalledWith('c-1');
   });
 
   it('collapsing hides the panel without re-fetching', () => {
-    byId.current = { 'c-1': { loading: false, error: null, adSets: [] } };
     setup();
     const btn = screen.getByRole('button', { name: /Show execution context/ });
 
@@ -140,19 +152,10 @@ describe('DecisionCard — the execution drill-down', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Hide execution context/ }));
     expect(screen.getByRole('button', { name: /Show execution context/ })).toBeInTheDocument();
-    expect(load).toHaveBeenCalledTimes(1);
+    expect(ev.load).toHaveBeenCalledTimes(1);
   });
 
-  it('renders the execution context once the ad sets arrive', async () => {
-    byId.current = {
-      'c-1': {
-        loading: false, error: null,
-        adSets: [
-          { entityId: 'a1', name: 'Lookalike 1%', channel: 'META', ctr: 0.0180, spendMinor: 200_00, currency: 'USD' },
-          { entityId: 'a2', name: 'Broad 25-45', channel: 'META', ctr: 0.0032, spendMinor: 325_500, currency: 'USD' },
-        ],
-      },
-    };
+  it('renders the execution context once the ranking arrives', async () => {
     ev.byId.current = withEvidence();
     setup();
     fireEvent.click(screen.getByRole('button', { name: /Show execution context/ }));
@@ -162,12 +165,21 @@ describe('DecisionCard — the execution drill-down', () => {
     expect(screen.getAllByText('Broad 25-45').length).toBeGreaterThan(0);
   });
 
+  // The card used to hold a second hook whose ad-set rows fed the panel. Nothing
+  // reads them now, and a request the user waits on for output they never see is
+  // a spinner charged to nobody — worse, its failure banner appeared over a panel
+  // that had rendered perfectly well from the evidence call.
+  it('makes exactly one request per expand', () => {
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: /Show execution context/ }));
+    expect(ev.load).toHaveBeenCalledTimes(1);
+  });
+
   // The fourth state this card was missing. Previously the panel simply rendered
   // nothing, which looked exactly like a pending fetch and exactly like a broken
   // one.
   describe('the engine declines to rank', () => {
     const openWith = (reasonKey) => {
-      byId.current = { 'c-1': { loading: false, error: null, adSets: [] } };
       ev.byId.current = { 'c-1:ctr': { entity: {}, objective: null, evidence: null, insufficientData: true, reasonKey } };
       setup();
       fireEvent.click(screen.getByRole('button', { name: /Show execution context/ }));
@@ -191,34 +203,18 @@ describe('DecisionCard — the execution drill-down', () => {
       expect(screen.getByText(/Not enough data to compare ad sets/)).toBeInTheDocument();
     });
 
-    it('never renders the panel on a refusal, even with ad sets loaded', () => {
-      byId.current = {
-        'c-1': {
-          loading: false, error: null,
-          adSets: [
-            { entityId: 'a1', name: 'Lookalike 1%', channel: 'META', ctr: 0.0180, spendMinor: 200_00, currency: 'USD' },
-            { entityId: 'a2', name: 'Broad 25-45', channel: 'META', ctr: 0.0032, spendMinor: 325_500, currency: 'USD' },
-          ],
-        },
-      };
+    it('never renders the panel on a refusal', () => {
       ev.byId.current = { 'c-1:ctr': { entity: {}, objective: null, evidence: null, insufficientData: true, reasonKey: 'NO_MEANINGFUL_GAP' } };
       setup();
       fireEvent.click(screen.getByRole('button', { name: /Show execution context/ }));
-      // The client CAN find a worst ad set in these rows. The server said not to
-      // claim one, and the server wins — that is the whole point of the change.
+      // The server declined to name a worst ad set, and there is no longer a
+      // second ranker on this side that could name one anyway — which is the
+      // whole point of the change.
       expect(screen.queryByText('Where to execute')).not.toBeInTheDocument();
     });
   });
 
-  it('requests evidence on the first expand, alongside the ad sets', () => {
-    setup();
-    fireEvent.click(screen.getByRole('button', { name: /Show execution context/ }));
-    expect(ev.load).toHaveBeenCalledWith('c-1');
-    expect(load).toHaveBeenCalledWith('c-1');
-  });
-
   it('reports an evidence request that failed as an error, not as a refusal', () => {
-    byId.current = { 'c-1': { loading: false, error: null, adSets: [] } };
     ev.errors.current = { 'c-1:ctr': 'Network Error' };
     setup();
     fireEvent.click(screen.getByRole('button', { name: /Show execution context/ }));
@@ -228,32 +224,61 @@ describe('DecisionCard — the execution drill-down', () => {
   // An empty panel and a pending fetch look identical; saying which is the
   // difference between "nothing to show" and "not loaded yet".
   it('says it is loading rather than showing an empty panel', () => {
-    byId.current = { 'c-1': { loading: true, error: null, adSets: null } };
+    ev.loading.current = { 'c-1:ctr': true };
     setup();
     fireEvent.click(screen.getByRole('button', { name: /Show execution context/ }));
-    expect(screen.getByText(/Loading ad sets/)).toBeInTheDocument();
-  });
-
-  it('surfaces a failed ad-set read instead of rendering nothing', () => {
-    byId.current = { 'c-1': { loading: false, error: new Error('boom'), adSets: null } };
-    setup();
-    fireEvent.click(screen.getByRole('button', { name: /Show execution context/ }));
-    expect(screen.getByText(/Couldn't load ad sets/)).toBeInTheDocument();
-    expect(screen.queryByText('Where to execute')).not.toBeInTheDocument();
+    expect(screen.getByText(/Loading execution context/)).toBeInTheDocument();
   });
 
   // The campaign CTR is the baseline ExecutionContext divides by; without it
   // there is no gap to compute, so the panel correctly renders nothing.
   it('a campaign with no CTR expands to nothing, not to a fabricated pick', () => {
-    byId.current = {
-      'c-1': { loading: false, error: null, adSets: [
-        { entityId: 'a1', name: 'A', channel: 'META', ctr: 0.0180 },
-        { entityId: 'a2', name: 'B', channel: 'META', ctr: 0.0032 },
-      ] },
-    };
+    ev.byId.current = withEvidence();
     setup({ ctr: null });
     fireEvent.click(screen.getByRole('button', { name: /Show execution context/ }));
-    expect(screen.queryByText('Where to execute')).not.toBeInTheDocument();
+    expect(screen.queryByText('-Infinity%')).not.toBeInTheDocument();
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+  });
+});
+
+// ── The answer, wired ────────────────────────────────────────
+// Home is the surface most people will ever answer a verdict on. If the buttons
+// are not here, Track B stays empty no matter what the backend can now record.
+describe('DecisionCard — recording the operator answer', () => {
+  const open = (states = {}) => {
+    ev.byId.current = withEvidence();
+    action.states.current = states;
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: /Show execution context/ }));
+  };
+
+  it('offers both answers under the ranking', () => {
+    open();
+    expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Not applicable' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['I executed this', () => action.execute],
+    ['Not applicable',  () => action.dismiss],
+  ])('%s records against this card entity', (label, handler) => {
+    open();
+    fireEvent.click(screen.getByRole('button', { name: label }));
+    expect(handler()).toHaveBeenCalledWith('c-1');
+  });
+
+  // The hook keys its state by entityId; the card must read its OWN row or every
+  // card on the agenda would echo whichever one was clicked last.
+  it('reads only its own entity state', () => {
+    open({ 'c-2': 'executed' });
+    expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
+    expect(screen.queryByText('Recorded as executed')).not.toBeInTheDocument();
+  });
+
+  it('shows the terminal state once recorded', () => {
+    open({ 'c-1': 'executed' });
+    expect(screen.getByText('Recorded as executed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'I executed this' })).not.toBeInTheDocument();
   });
 });
 

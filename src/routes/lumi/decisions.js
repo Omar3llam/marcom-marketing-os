@@ -4,6 +4,8 @@
 //   PATCH /api/lumi/decisions/by-entity/:entityId/intent
 //   PATCH /api/lumi/decisions/:id/execute
 //   PATCH /api/lumi/decisions/:id/dismiss
+//   PATCH /api/lumi/decisions/by-entity/:entityId/execute   (temporary adapter)
+//   PATCH /api/lumi/decisions/by-entity/:entityId/dismiss   (temporary adapter)
 // ------------------------------------------------------------
 // Two moments the product could not previously observe: a human OPENED the
 // reasoning behind a verdict, and a human went and ACTED on it (copied the
@@ -114,14 +116,50 @@ const SIGNALS = Object.freeze({
 });
 
 /**
+ * Apply `field` to an ALREADY-RESOLVED decision, once. Shared by both keyings so
+ * idempotency and mutual exclusion cannot drift between them — those two rules
+ * decide what the accuracy surface counts, and two copies would eventually
+ * disagree about the same click.
+ *
+ * `guard` runs AFTER both checks and returns a 409 body to refuse with, or null.
+ * It exists because only the by-id path needs a status gate: the by-entity
+ * lookup encodes `status: 'PROPOSED'` in its WHERE, so a superseded row is never
+ * resolved in the first place.
+ */
+async function stampSignal(res, decision, field, guard = null) {
+  const { opposite, oppositeError } = SIGNALS[field];
+
+  // Already stamped — report the ORIGINAL timestamp. Idempotent, and checked
+  // BEFORE the guard: a decision executed while live and superseded by the next
+  // sweep must still report its own signal rather than 409 on a claim that was
+  // already true when it was made.
+  if (decision[field]) {
+    return res.json({ ok: true, recorded: false, [field]: decision[field] });
+  }
+
+  if (decision[opposite]) {
+    return res.status(409).json({
+      error: oppositeError,
+      message: `This decision was already recorded as ${opposite === 'executedAt' ? 'executed' : 'dismissed'}`,
+      [opposite]: decision[opposite],
+    });
+  }
+
+  const refusal = guard?.(decision) ?? null;
+  if (refusal) return res.status(409).json(refusal);
+
+  const at = new Date();
+  await prisma.decision.update({ where: { id: decision.id }, data: { [field]: at } });
+  return res.json({ ok: true, recorded: true, [field]: at });
+}
+
+/**
  * Record a human signal against ONE decision, once.
  * `field` is a fixed literal from the two call sites below — never user input.
  */
 async function recordSignal(req, res, field) {
   const { id } = req.params;
   if (!req.workspaceId) return res.status(400).json({ error: 'NoWorkspace', message: 'No workspace resolved' });
-
-  const { opposite, oppositeError } = SIGNALS[field];
 
   try {
     // Found by id + workspace, with NO status filter: a decision that has moved
@@ -134,38 +172,67 @@ async function recordSignal(req, res, field) {
 
     if (!decision) return res.status(404).json({ error: 'DecisionNotFound', message: 'No such decision in this workspace' });
 
-    // Already stamped — report the ORIGINAL timestamp. Idempotent, and checked
-    // BEFORE the status gate: a decision executed while live and superseded by
-    // the next sweep must still report its own signal rather than 409 on a
-    // claim that was already true when it was made.
-    if (decision[field]) {
-      return res.json({ ok: true, recorded: false, [field]: decision[field] });
-    }
-
-    if (decision[opposite]) {
-      return res.status(409).json({
-        error: oppositeError,
-        message: `This decision was already recorded as ${opposite === 'executedAt' ? 'executed' : 'dismissed'}`,
-        [opposite]: decision[opposite],
-      });
-    }
-
     // Only a live call can be acted on. A SUPERSEDED verdict has been replaced;
     // recording an intervention against it would attribute the operator's action
     // to a call the engine no longer stands behind.
-    if (decision.status !== 'PROPOSED') {
-      return res.status(409).json({
-        error: 'DecisionNotActionable',
-        message: `Decision is ${decision.status}; only a live (PROPOSED) decision can be acted on`,
-        status: decision.status,
-      });
-    }
-
-    const at = new Date();
-    await prisma.decision.update({ where: { id: decision.id }, data: { [field]: at } });
-    return res.json({ ok: true, recorded: true, [field]: at });
+    return await stampSignal(res, decision, field, (d) => (d.status === 'PROPOSED' ? null : {
+      error:   'DecisionNotActionable',
+      message: `Decision is ${d.status}; only a live (PROPOSED) decision can be acted on`,
+      status:  d.status,
+    }));
   } catch (err) {
     logger.error({ err: err.message, id, field }, '[lumi/decisions] signal failed');
+    return res.status(500).json({ error: 'DecisionUnavailable', message: 'Request failed' });
+  }
+}
+
+// ------------------------------------------------------------
+// The same two signals, keyed by ENTITY — a temporary adapter.
+// ------------------------------------------------------------
+// TODO: remove when a Decision id reaches the verdict surfaces, and repoint
+//       callers at PATCH /decisions/:id/{execute,dismiss} above (PR #326).
+//
+// WHY THIS EXISTS. No verdict surface has a Decision id to send. Both mounts of
+// ExecutionContext (Campaigns' ConnectorCampaignsPanel, Home's DecisionCard) are
+// fed by getConnectorVerdicts, which recomputes verdicts in memory and returns
+// `id = entityId` — it never reads the Decision table. The persisted rows come
+// from persistConnectorVerdicts on a sweep. So the id the by-id routes want is
+// not merely un-projected; it does not exist on the read path at all.
+//
+// WHAT IT COSTS. #326 keyed on decision id so a signal could name WHICH call was
+// acted on rather than "whichever was live". Resolving here gives that up in one
+// specific case: two verdicts issued for the same entity in quick succession,
+// where a slow click lands on the second. In exchange it removes a worse failure
+// — a client-held id captured at render and clicked minutes later names a call
+// that is no longer live, while resolving at write time always names the one the
+// operator was actually looking at. Narrower exposure, and the direction of the
+// error is the honest one.
+//
+// If the signal vocabulary grows past these four, consolidate explain / intent /
+// execute / dismiss into a single POST /decision-events rather than a fifth pair.
+async function recordEntitySignal(req, res, field) {
+  const { entityId } = req.params;
+  // Without this the WHERE below loses its workspace predicate entirely and
+  // findFirst matches across accounts — stamping another workspace's decision.
+  if (!req.workspaceId) return res.status(400).json({ error: 'NoWorkspace', message: 'No workspace resolved' });
+
+  try {
+    // The live verdict for this entity, newest first — the same resolution
+    // stampOnce uses for explain/intent, so all four signals agree on what
+    // "this entity's decision" means.
+    const decision = await prisma.decision.findFirst({
+      where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED' },
+      orderBy: { createdAt: 'desc' },
+      select:  { id: true, executedAt: true, dismissedAt: true },
+    });
+
+    // No live verdict. Honest 404 rather than a cheerful ok:true — a signal we
+    // could not record must not be indistinguishable from one we did.
+    if (!decision) return res.status(404).json({ error: 'NoLiveDecision', message: 'No live decision for this entity' });
+
+    return await stampSignal(res, decision, field);
+  } catch (err) {
+    logger.error({ err: err.message, entityId, field }, '[lumi/decisions] entity signal failed');
     return res.status(500).json({ error: 'DecisionUnavailable', message: 'Request failed' });
   }
 }
@@ -181,6 +248,15 @@ decisionsRouter.patch('/decisions/:id/execute', requireCollabRole(...OPERATORS),
 // wrong by the person who saw it.
 decisionsRouter.patch('/decisions/:id/dismiss', requireCollabRole(...OPERATORS), (req, res) =>
   recordSignal(req, res, 'dismissedAt'));
+
+// The entity-keyed pair the UI actually calls. Paths carry their own '/decisions'
+// prefix for the same reason every route in this file does — see the flat-mount
+// note at the top.
+decisionsRouter.patch(`${BASE}/execute`, requireCollabRole(...OPERATORS), (req, res) =>
+  recordEntitySignal(req, res, 'executedAt'));
+
+decisionsRouter.patch(`${BASE}/dismiss`, requireCollabRole(...OPERATORS), (req, res) =>
+  recordEntitySignal(req, res, 'dismissedAt'));
 
 // The track record behind this entity's live verdict: how comparable decisions
 // turned out after someone acted on them.
