@@ -37,12 +37,13 @@ const ad = (id, over = {}) => ({
 // getAdSetAds now reads snapshots at TWO levels (the ad-set baseline and the ad
 // cohort) from the same mocked table, so the mock has to answer per level. A
 // single mockResolvedValue would hand the AD rows back as the parent's baseline.
-const snapsByLevel = { ADSET: [], AD: [] };
+const snapsByLevel = { CAMPAIGN: [], ADSET: [], AD: [] };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  snapsByLevel.ADSET = [];
-  snapsByLevel.AD    = [];
+  snapsByLevel.CAMPAIGN = [];
+  snapsByLevel.ADSET    = [];
+  snapsByLevel.AD       = [];
   h.prisma.adSet.findFirst.mockResolvedValue({ id: AS, name: 'Broad', channel: 'META', status: 'ACTIVE', _count: { ads: 0 } });
   h.prisma.ad.findMany.mockResolvedValue([]);
   h.prisma.metricSnapshot.findMany.mockImplementation(({ where }) =>
@@ -235,7 +236,7 @@ describe('getCampaignAdSets — adCount', () => {
   const CAMP = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 
   beforeEach(() => {
-    h.prisma.campaign.findFirst.mockResolvedValue({ id: CAMP });
+    h.prisma.campaign.findFirst.mockResolvedValue({ id: CAMP, name: 'Q3 Sales', channel: 'META', objective: 'OUTCOME_SALES', _count: { adSets: 2 } });
   });
 
   it('reports the real ad count per ad-set', async () => {
@@ -243,8 +244,8 @@ describe('getCampaignAdSets — adCount', () => {
       { id: 'as1', name: 'Broad', channel: 'META', status: 'ACTIVE', _count: { ads: 3 } },
       { id: 'as2', name: 'LAL', channel: 'META', status: 'PAUSED', _count: { ads: 0 } },
     ]);
-    const rows = await getCampaignAdSets(WS, CAMP);
-    expect(rows.map((r) => r.adCount)).toEqual([3, 0]);
+    const { adSets } = await getCampaignAdSets(WS, CAMP);
+    expect(adSets.map((r) => r.adCount)).toEqual([3, 0]);
   });
 
   it('counts ads inside the select — Prisma rejects select and include together', async () => {
@@ -257,6 +258,85 @@ describe('getCampaignAdSets — adCount', () => {
 
   it('defaults to 0 when _count is absent rather than rendering a phantom chevron', async () => {
     h.prisma.adSet.findMany.mockResolvedValue([{ id: 'as1', name: 'Broad', channel: 'META', status: 'ACTIVE' }]);
-    expect((await getCampaignAdSets(WS, CAMP))[0].adCount).toBe(0);
+    expect((await getCampaignAdSets(WS, CAMP)).adSets[0].adCount).toBe(0);
+  });
+
+  it('caps the ad-set read and keeps the workspace scope on BOTH queries', async () => {
+    h.prisma.adSet.findMany.mockResolvedValue([]);
+    await getCampaignAdSets(WS, CAMP);
+    expect(h.prisma.campaign.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: CAMP, workspaceId: WS } }),
+    );
+    const arg = h.prisma.adSet.findMany.mock.calls[0][0];
+    expect(arg.where).toEqual({ campaignId: CAMP, workspaceId: WS });
+    expect(arg.take).toBe(500);
+  });
+});
+
+describe('getCampaignAdSets — the campaign baseline', () => {
+  const CAMP = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+
+  beforeEach(() => {
+    h.prisma.campaign.findFirst.mockResolvedValue({
+      id: CAMP, name: 'Q3 Sales', channel: 'META', objective: 'OUTCOME_SALES',
+      externalId: '23851', platformCreatedTime: new Date('2026-04-01T00:00:00.000Z'),
+      _count: { adSets: 2 },
+    });
+    h.prisma.adSet.findMany.mockResolvedValue([]);
+  });
+
+  it('returns { entity, objective, adSets } — the campaign is what ad-sets get ranked against', async () => {
+    snapsByLevel.CAMPAIGN = [{ entityId: CAMP, source: 'META', date: '2026-06-05', ctr: 0.019, spendMinor: 400_000, impressions: 900_000 }];
+    const out = await getCampaignAdSets(WS, CAMP);
+    expect(out.entity).toMatchObject({ entityId: CAMP, name: 'Q3 Sales', ctr: 0.019, spendMinor: 400_000 });
+    expect(out.objective).toBe('OUTCOME_SALES');
+    expect(out.adSets).toEqual([]);
+  });
+
+  it('reads objective straight off the Campaign column — no relation select, no second query', async () => {
+    await getCampaignAdSets(WS, CAMP);
+    expect(h.prisma.campaign.findFirst.mock.calls[0][0].select).toMatchObject({ objective: true });
+    expect(h.prisma.campaign.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps externalId and platformCreatedTime — the same campaign must not lose its deep-link or its age depending on the route', async () => {
+    const { entity } = await getCampaignAdSets(WS, CAMP);
+    expect(entity.externalId).toBe('23851');
+    expect(entity.platformCreatedTime).toEqual(new Date('2026-04-01T00:00:00.000Z'));
+  });
+
+  it('carries adSetCount from _count', async () => {
+    expect((await getCampaignAdSets(WS, CAMP)).entity.adSetCount).toBe(2);
+  });
+
+  it('reads the baseline at CAMPAIGN level for this campaign alone', async () => {
+    await getCampaignAdSets(WS, CAMP);
+    const call = h.prisma.metricSnapshot.findMany.mock.calls.find((c) => c[0].where.entityLevel === 'CAMPAIGN');
+    expect(call[0].where).toMatchObject({ workspaceId: WS, entityId: { in: [CAMP] } });
+  });
+
+  it('keeps null metrics on a campaign that has never been snapshotted', async () => {
+    const { entity } = await getCampaignAdSets(WS, CAMP);
+    expect(entity.ctr).toBeNull();
+    expect(entity.spendMinor).toBeNull();
+  });
+
+  it('returns null (not an envelope) when the campaign is not in this workspace', async () => {
+    h.prisma.campaign.findFirst.mockResolvedValue(null);
+    expect(await getCampaignAdSets(WS, CAMP)).toBeNull();
+    expect(h.prisma.adSet.findMany).not.toHaveBeenCalled();
+  });
+
+  it('returns a real entity with empty adSets when the campaign has none', async () => {
+    const out = await getCampaignAdSets(WS, CAMP);
+    expect(out.adSets).toEqual([]);
+    expect(out.entity.entityId).toBe(CAMP);
+  });
+
+  it('degrades to empty adSets when the child read fails — a broken query is not a missing campaign', async () => {
+    h.prisma.adSet.findMany.mockRejectedValue(new Error('db down'));
+    const out = await getCampaignAdSets(WS, CAMP);
+    expect(out.adSets).toEqual([]);
+    expect(out.entity).not.toBeNull();
   });
 });
