@@ -2,8 +2,14 @@
 // DecisionAccuracyService — persistence wrapper for the Proof Engine
 // ============================================================
 // Owns DB I/O (the deterministic decisionAccuracyEngine never touches it).
-//   getAccuracy(): load this workspace's EXECUTED|DISMISSED Decisions + their
+//   getAccuracy(): load this workspace's ACTIONED Decisions + their
 //     OutcomeSnapshots → calculateDecisionAccuracy() → the §1 contract.
+//
+// "Actioned" means a human signal landed — executedAt or dismissedAt — NOT a
+// DecisionStatus. The enum carries EXECUTED and DISMISSED and nothing writes
+// them, so this surface used to query an empty set and report, quite honestly,
+// on nothing at all. decisionAccuracyHelpers owns that definition; the engine
+// still speaks the status vocabulary and is handed a derived one at the seam.
 //
 // READ-ONLY. The Proof Engine MEASURES; it never mutates a Decision or Outcome.
 //
@@ -16,10 +22,20 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { calculateDecisionAccuracy } from './decisionAccuracyEngine.js';
+import { isExecuted, deriveAccuracyStatus } from './decisionAccuracyHelpers.js';
 
-// Statuses that represent a realized prediction (EXECUTED) or a survivorship
-// signal counted in coverage but never scored (DISMISSED). PROPOSED is excluded.
-const ACCURACY_STATUSES = Object.freeze(['EXECUTED', 'DISMISSED']);
+// The population this surface reports on: decisions a human made a call about.
+// Timestamps, not `status` — the DecisionStatus enum carries EXECUTED and
+// DISMISSED but nothing ever writes them, so `status: { in: [...] }` matched an
+// empty set and the whole surface reported honestly on zero rows.
+//
+// This DELIBERATELY includes SUPERSEDED rows. A decision executed while live and
+// replaced by the next sweep is the common case, not an edge one — and the
+// action still happened. Scoping on status would have excluded almost every
+// decision anyone ever acted on.
+const ACTIONED = Object.freeze({
+  OR: [{ executedAt: { not: null } }, { dismissedAt: { not: null } }],
+});
 
 /**
  * Pure: fold loaded Decision rows (each with its outcomes) into the engine's
@@ -31,7 +47,13 @@ export function buildAccuracyInputs(decisions = []) {
     id: d.id,
     verdict: d.verdict,
     confidence: d.confidence,
-    status: d.status,
+    // Derived from the timestamps, not copied. This is the seam that keeps the
+    // pure engine — its two status reads, the survivorship counter, the coverage
+    // note and every one of its fixtures — working untouched while the source of
+    // truth moves underneath it. Explicit field list, NOT a spread of `d`: the
+    // engine's input shape is a contract, and spreading would leak the raw
+    // `outcomes` array and both timestamps into it.
+    status: deriveAccuracyStatus(d),
     createdAt: d.createdAt,
     // The instant the operator said they acted. The engine opens its outcome
     // window here and falls back to createdAt — so this MUST also be added to
@@ -54,10 +76,14 @@ export async function getAccuracy(workspaceId, { now = new Date(), config } = {}
 
   // One scoped findMany (no N+1) — newest outcome first per decision.
   const decisions = await prisma.decision.findMany({
-    where: { workspaceId, status: { in: ACCURACY_STATUSES } },
+    where: { workspaceId, ...ACTIONED },
     select: {
       id: true, verdict: true, confidence: true, status: true, createdAt: true,
-      executedAt: true,
+      // Both timestamps, because deriveAccuracyStatus reads both. Omitting
+      // dismissedAt would make every dismissal read as its raw status
+      // (PROPOSED), fall through the engine's "not a realized prediction"
+      // branch, and vanish from the survivorship count it exists to feed.
+      executedAt: true, dismissedAt: true,
       outcomes: {
         orderBy: { createdAt: 'desc' },
         take: 1,
@@ -143,11 +169,23 @@ export async function recordOutcome(workspaceId, decisionId, input = {}) {
 
   const decision = await prisma.decision.findFirst({
     where: { id: decisionId, workspaceId },
-    select: { id: true, status: true, entityId: true, entityLevel: true },
+    // executedAt is what the guard below reads. Selecting `status` and testing a
+    // field that was never selected is how this check silently inverted before:
+    // an unselected column is undefined, and every decision would fail the guard.
+    // dismissedAt rides along so the refusal can say WHICH call was made.
+    select: {
+      id: true, status: true, entityId: true, entityLevel: true,
+      executedAt: true, dismissedAt: true,
+    },
   });
   if (!decision) throw new Error('recordOutcome: decision not found');
-  if (decision.status !== 'EXECUTED') {
-    throw new Error(`recordOutcome: decision is not EXECUTED (status ${decision.status}) — cannot record an outcome`);
+  if (!isExecuted(decision)) {
+    // A dismissed decision has no outcome by construction — nothing was done, so
+    // there is nothing that happened afterwards to attribute. Named separately
+    // from "never actioned" because they are different states and the caller can
+    // only fix one of them.
+    const why = decision.dismissedAt ? 'was dismissed, not executed' : 'has not been executed';
+    throw new Error(`recordOutcome: decision ${decisionId} ${why} — cannot record an outcome`);
   }
 
   const { spendDeltaMinor, revenueDeltaMinor, roasDelta, windowStart, windowEnd, sustained } = input;
@@ -187,12 +225,23 @@ export async function listPendingOutcomes(workspaceId) {
   if (!workspaceId) throw new Error('listPendingOutcomes: workspaceId required');
   const [decisions, ws] = await Promise.all([
     prisma.decision.findMany({
-      where: { workspaceId, status: 'EXECUTED', outcomes: { none: {} } },
+      where: {
+        workspaceId,
+        executedAt: { not: null },  // an action was taken…
+        dismissedAt: null,          // …and not un-taken. A dismissal has no outcome
+        //                             to record: nothing was done, so nothing
+        //                             followed from it.
+        outcomes: { none: {} },     // and nobody has said what happened yet
+      },
       select: {
         id: true, verdict: true, confidence: true, diagnosis: true,
-        entityId: true, entityLevel: true, createdAt: true,
+        entityId: true, entityLevel: true, createdAt: true, executedAt: true,
       },
-      orderBy: { createdAt: 'desc' },
+      // Oldest EXECUTION first, not newest issuance. This is a work queue, and
+      // the decision most overdue for an outcome is the one acted on longest ago
+      // — which is not the one issued longest ago once operators act out of
+      // order. `desc` on createdAt also buried the oldest debt past the take:100.
+      orderBy: { executedAt: 'asc' },
       take: 100,
     }),
     prisma.workspace.findUnique({ where: { id: workspaceId }, select: { currency: true } }),

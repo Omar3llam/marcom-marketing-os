@@ -37,12 +37,108 @@ describe('the select', () => {
     await getAccuracy('ws-1');
     expect(prisma.decision.findMany.mock.calls[0][0].select).toMatchObject({ createdAt: true });
   });
+
+  // deriveAccuracyStatus reads BOTH timestamps. Omitting dismissedAt would make
+  // every dismissal report its raw status (PROPOSED), fall through the engine's
+  // "not a realized prediction" branch, and vanish from the survivorship count
+  // it exists to feed — a coverage note that silently under-reports.
+  it('asks for dismissedAt — the derivation needs it to see a dismissal at all', async () => {
+    await getAccuracy('ws-1');
+    expect(prisma.decision.findMany.mock.calls[0][0].select).toMatchObject({ dismissedAt: true });
+  });
+});
+
+// The population. This is the fix that makes the surface non-empty.
+describe('the where clause', () => {
+  it('selects on the human SIGNALS, not on DecisionStatus', async () => {
+    await getAccuracy('ws-1');
+    const { where } = prisma.decision.findMany.mock.calls[0][0];
+    expect(where).toEqual({
+      workspaceId: 'ws-1',
+      OR: [{ executedAt: { not: null } }, { dismissedAt: { not: null } }],
+    });
+    // The old gate. Nothing ever wrote either status, so this matched an empty
+    // set and the whole surface reported on zero rows without erroring.
+    expect(where.status).toBeUndefined();
+  });
+
+  it('stays workspace-scoped — this surface is per-account by construction', async () => {
+    await getAccuracy('ws-9');
+    expect(prisma.decision.findMany.mock.calls[0][0].where.workspaceId).toBe('ws-9');
+  });
+});
+
+// The whole chain, unmocked past prisma: a real row with a real timestamp has to
+// come out the other end as a counted decision. Every piece above can be right
+// while the surface still reports on nothing, which is exactly the state this PR
+// found it in.
+describe('end to end — the surface finally sees a row', () => {
+  const NOW = new Date('2026-08-06T00:00:00.000Z');
+  const days = (n) => new Date(NOW.getTime() - n * 86_400_000).toISOString();
+
+  it('counts a decision executed while live and superseded afterwards', async () => {
+    prisma.decision.findMany.mockResolvedValue([{
+      id: 'd1', verdict: 'KILL', confidence: 0.8,
+      // Superseded by the next sweep — the common case, and the one a
+      // status-scoped query would have thrown away.
+      status: 'SUPERSEDED',
+      createdAt: days(30), executedAt: days(20), dismissedAt: null,
+      outcomes: [{
+        spendDeltaMinor: -5000, revenueDeltaMinor: -2000, roasDelta: -0.1,
+        windowEnd: days(1), sustained: true,
+      }],
+    }]);
+
+    const r = await getAccuracy('ws-1', { now: NOW });
+    expect(r.coverage.totalDecisions).toBe(1);
+    expect(r.coverage.scored).toBe(1);
+  });
+
+  it('counts a dismissal in coverage without scoring it', async () => {
+    prisma.decision.findMany.mockResolvedValue([{
+      id: 'd2', verdict: 'KILL', confidence: 0.8, status: 'PROPOSED',
+      createdAt: days(30), executedAt: null, dismissedAt: days(20), outcomes: [],
+    }]);
+
+    const r = await getAccuracy('ws-1', { now: NOW });
+    expect(r.coverage.dismissed).toBe(1);
+    expect(r.coverage.scored).toBe(0);
+    // The survivorship note only appears when a dismissal was actually seen —
+    // which it never could be before, because nothing wrote DISMISSED.
+    expect(r.coverage.note).toMatch(/1 dismissed calls are not represented/);
+  });
 });
 
 describe('buildAccuracyInputs', () => {
   const row = (over = {}) => ({
-    id: 'd1', verdict: 'KILL', confidence: 0.8, status: 'EXECUTED',
+    id: 'd1', verdict: 'KILL', confidence: 0.8, status: 'PROPOSED',
     createdAt: '2026-07-01T00:00:00.000Z', outcomes: [], ...over,
+  });
+
+  // The seam. The pure engine still reads d.status, so the timestamps are
+  // translated here rather than rewriting the layer with the densest tests.
+  it('derives EXECUTED from executedAt, whatever the row status says', () => {
+    expect(buildAccuracyInputs([row({ executedAt: '2026-07-20T00:00:00.000Z' })])[0].status).toBe('EXECUTED');
+    expect(buildAccuracyInputs([row({ status: 'SUPERSEDED', executedAt: '2026-07-20T00:00:00.000Z' })])[0].status).toBe('EXECUTED');
+  });
+
+  it('derives DISMISSED from dismissedAt', () => {
+    expect(buildAccuracyInputs([row({ dismissedAt: '2026-07-20T00:00:00.000Z' })])[0].status).toBe('DISMISSED');
+  });
+
+  it('passes the raw status through when neither signal landed', () => {
+    expect(buildAccuracyInputs([row()])[0].status).toBe('PROPOSED');
+  });
+
+  // The engine input is a CONTRACT, not "whatever the row had". A spread would
+  // leak the raw outcomes array and both timestamps into it.
+  it('emits the engine input shape and nothing else', () => {
+    const out = buildAccuracyInputs([row({ executedAt: '2026-07-20T00:00:00.000Z', dismissedAt: null })])[0];
+    expect(Object.keys(out).sort()).toEqual(
+      ['confidence', 'createdAt', 'executedAt', 'id', 'outcome', 'status', 'verdict'],
+    );
+    expect(out.outcomes).toBeUndefined();
+    expect(out.dismissedAt).toBeUndefined();
   });
 
   it('carries executedAt through to the engine', () => {
