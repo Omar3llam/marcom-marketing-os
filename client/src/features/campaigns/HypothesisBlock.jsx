@@ -1,0 +1,50 @@
+// ============================================================
+// MARCOM / Lumi — HypothesisBlock  (Campaigns · "Why we believe this")
+// ------------------------------------------------------------
+// The mechanism the verdict rests on, and the readings it rests on. The other
+// half of CounterfactualsBlock: this one names what we think IS happening, that
+// one names what we checked and found was fine.
+//
+// Until now the only answer to "why" on a KILL was a clause pulled out of the
+// rationale with a regex — the structured object had been on the wire the whole
+// time and nothing read it.
+//
+// PURE RENDERER. Takes a view model, emits JSX, owns no vocabulary. Same
+// contract as CounterfactualsBlock, so both can move to a feed or a narrative
+// without dragging the label maps with them.
+// ============================================================
+
+/**
+ * @param {{ viewModel: {label: string, observed: Array<{key, label}>}|null }} props
+ *   Null renders nothing — which is also how the honesty gate expresses itself
+ *   (see hypothesisViewModel): a verdict decided by cohort rank has no absolute
+ *   mechanism to show, and an empty box would imply one went missing.
+ */
+export function HypothesisBlock({ viewModel }) {
+  if (!viewModel) return null;
+
+  return (
+    <div className="mt-3 space-y-1.5">
+      <p className="section-label text-lumi-muted">Why we believe this</p>
+
+      <div className="space-y-1.5 rounded-lg border border-lumi-border bg-lumi-surface p-3">
+        <p className="text-sm font-medium text-lumi-text">{viewModel.label}</p>
+
+        {viewModel.observed?.length > 0 && (
+          <div className="space-y-0.5">
+            {/* "Supporting indicators", never "Evidence". Evidence is a domain
+                object in Lumi with a narrower, load-bearing meaning — the
+                engine's evidence[] rows carry a value AND the benchmark they
+                were judged against. These are readings named in prose, and
+                borrowing the word would imply a rigour this list does not
+                claim. */}
+            <p className="text-[11px] text-lumi-muted">Supporting indicators:</p>
+            {viewModel.observed.map((o) => (
+              <p key={o.key} className="pl-2 text-xs leading-relaxed text-lumi-subtle">· {o.label}</p>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

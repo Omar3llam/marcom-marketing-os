@@ -133,3 +133,85 @@ describe('nothing to rule out', () => {
     expect(screen.getByText(/Lowest CTR in the conversion group/)).toBeInTheDocument();
   });
 });
+
+// ── The primary mechanism, and the gate on it ────────────────
+const HYPOTHESES = [{
+  id: 'CREATIVE_FATIGUE',
+  labelKey: 'diagnosis.creativeFatigue',
+  source: 'absolute',
+  observed: [{ metric: 'FREQUENCY', value: 4.2, benchmark: 3.5, severity: 'CRITICAL' }],
+  supports: ['FREQUENCY'],
+  contradicts: [],
+  confidence: { reasoning: 0.8, data: 0.6 },
+}, {
+  id: 'AUDIENCE_MISMATCH', labelKey: 'diagnosis.audienceMismatch', source: 'absolute',
+  observed: [], supports: [], contradicts: [], confidence: { reasoning: 0.4, data: 0.6 },
+}];
+
+describe('why we believe this', () => {
+  it('names the mechanism the verdict rests on', () => {
+    panel({ hypotheses: HYPOTHESES });
+    expect(screen.getByText('Why we believe this')).toBeInTheDocument();
+    expect(screen.getByText('Creative fatigue')).toBeInTheDocument();
+    expect(screen.getByText(/Frequency is above the ceiling/)).toBeInTheDocument();
+  });
+
+  it('groups both halves under one Reasoning heading', () => {
+    panel({ hypotheses: HYPOTHESES });
+    expect(screen.getByText('Reasoning')).toBeInTheDocument();
+    expect(screen.getByText('Why we believe this')).toBeInTheDocument();
+    expect(screen.getByText('What we ruled out')).toBeInTheDocument();
+  });
+
+  it('reads why → ruled out → next step', () => {
+    const { container } = panel({ hypotheses: HYPOTHESES });
+    const t = container.textContent;
+    expect(t.indexOf('Why we believe this')).toBeLessThan(t.indexOf('What we ruled out'));
+    expect(t.indexOf('What we ruled out')).toBeLessThan(t.indexOf('Next step:'));
+  });
+
+  // hypotheses[1..n] ARE the counterfactuals. Rendering the array would print
+  // Audience mismatch as a live candidate AND as ruled out, in adjacent blocks.
+  it('shows only the primary — the rest are already the counterfactuals', () => {
+    panel({ hypotheses: HYPOTHESES });
+    expect(screen.getAllByText('Audience mismatch')).toHaveLength(1);
+  });
+});
+
+describe('the honesty gate, end to end', () => {
+  // The failure it prevents: a bottom-of-cohort HOLD upgraded to KILL by the
+  // relative pass. The absolute hypotheses still describe the campaign and did
+  // NOT decide the verdict — showing them would send a marketer to rewrite a
+  // creative the engine never blamed.
+  it.each([['TOP'], ['BOTTOM']])('hides the mechanism when the cohort pass (%s) decided it', (rank) => {
+    panel({ hypotheses: HYPOTHESES, relativeRank: rank });
+    expect(screen.queryByText('Why we believe this')).not.toBeInTheDocument();
+    expect(screen.queryByText('Creative fatigue')).not.toBeInTheDocument();
+  });
+
+  // Suppressing the mechanism must not suppress the rejections: what was ruled
+  // out stays true regardless of which pass reached the verdict.
+  it('keeps the counterfactuals, and the Reasoning section, either way', () => {
+    panel({ hypotheses: HYPOTHESES, relativeRank: 'BOTTOM' });
+    expect(screen.getByText('Reasoning')).toBeInTheDocument();
+    expect(screen.getByText('What we ruled out')).toBeInTheDocument();
+  });
+
+  it('and the prose rationale still explains the call', () => {
+    panel({ hypotheses: HYPOTHESES, relativeRank: 'BOTTOM' });
+    expect(screen.getByText(/Lowest CTR in the conversion group/)).toBeInTheDocument();
+  });
+});
+
+describe('no reasoning to show', () => {
+  it('renders no Reasoning section at all when neither half has anything', () => {
+    panel({ hypotheses: null, counterfactuals: null });
+    expect(screen.queryByText('Reasoning')).not.toBeInTheDocument();
+  });
+
+  it('a WATCH keeps its funnel prose and gets no Reasoning section', () => {
+    panel({ verdict: 'WATCH', funnel, hypotheses: HYPOTHESES });
+    expect(screen.queryByText('Reasoning')).not.toBeInTheDocument();
+    expect(screen.getByText(/Not a creative problem/)).toBeInTheDocument();
+  });
+});
