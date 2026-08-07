@@ -346,6 +346,16 @@ export default function CampaignsView() {
         // returns an empty list when there was no second candidate to argue
         // against, which is a real answer and not a missing one.
         counterfactuals: v.counterfactuals ?? [],
+        // The ranked candidate mechanisms. Only [0] is rendered — [1..n] are
+        // the alternatives, and buildCounterfactuals is literally
+        // `hypotheses.slice(1)`, so they already appear as "what we ruled out".
+        // Projected whole anyway: the list is what the engine produced, and a
+        // consumer that wants the rest should not have to re-fetch.
+        hypotheses: v.hypotheses ?? [],
+        // NOTE relativeRank is deliberately NOT here. It is already resolved
+        // per-row in ConnectorCampaignsPanel from the `relativeRanks` map that
+        // feeds the Impact badge; carrying a second copy would give the badge
+        // and the reasoning block two sources for one fact.
       };
     }
     return m;

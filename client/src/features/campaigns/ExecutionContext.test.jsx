@@ -161,17 +161,22 @@ describe('ExecutionContext — the evidence', () => {
 
 // The base fixture carries no impressions, so buildHypothesis short-circuits at
 // H0 — these tests opt in by giving the bottom row real delivery.
-describe('ExecutionContext — the working hypothesis', () => {
+//
+// Labelled "Ad set signal" on screen, not "Working hypothesis": the engine
+// renders its OWN hypotheses on the campaign detail panel one click away, and
+// the two share no field and answer different questions — this reads a single
+// ad-set row, that names the mechanism a verdict rests on.
+describe('ExecutionContext — the ad set signal', () => {
   const withDelivery = (over) => evidenceFor({ ...worst, impressions: 500_000, ...over });
 
   it('is absent when the data cannot support one', () => {
     setup(); // no impressions on the ranked row
-    expect(screen.queryByText('Working hypothesis')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ad set signal')).not.toBeInTheDocument();
   });
 
   it('separates what was observed from what it might mean', () => {
     setup({ evidence: withDelivery({ frequency: 4.2 }) });
-    expect(screen.getByText('Working hypothesis')).toBeInTheDocument();
+    expect(screen.getByText('Ad set signal')).toBeInTheDocument();
     expect(screen.getByText('Observed')).toBeInTheDocument();
     expect(screen.getByText('Interpretation')).toBeInTheDocument();
   });

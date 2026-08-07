@@ -336,6 +336,11 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                 rootCause={info.rootCause ?? null}
                 dataConfidence={info.dataConfidence ?? null}
                 counterfactuals={info.counterfactuals ?? null}
+                hypotheses={info.hypotheses ?? null}
+                // The row's own rank, already resolved above for the Impact
+                // badge. The panel needs it to know whether the reasoning it is
+                // about to show actually DECIDED this verdict.
+                relativeRank={relativeRank}
               />
             </td>
           </tr>

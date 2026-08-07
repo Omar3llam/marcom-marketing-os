@@ -42,8 +42,17 @@ describe('CampaignsView → verdictInfo', () => {
     ['rootCause'],
     ['dataConfidence'],
     ['counterfactuals'],
+    ['hypotheses'],
   ])('carries %s through to the panel', (field) => {
     expect(projectionBody()).toMatch(new RegExp(`\\b${field}:`));
+  });
+
+  // relativeRank is deliberately NOT in this projection. It is resolved
+  // per-row in ConnectorCampaignsPanel from the `relativeRanks` map that feeds
+  // the Impact badge, and a second copy here would give the badge and the
+  // reasoning block two sources for one fact.
+  it('does not duplicate relativeRank, which travels its own route', () => {
+    expect(projectionBody()).not.toMatch(/\brelativeRank:/);
   });
 });
 
@@ -62,6 +71,8 @@ describe('ConnectorCampaignsPanel → CampaignDetailPanel', () => {
     ['rootCause'],
     ['dataConfidence'],
     ['counterfactuals'],
+    ['hypotheses'],
+    ['relativeRank'],
   ])('forwards %s', (field) => {
     expect(callSite()).toMatch(new RegExp(`${field}=\\{`));
   });
@@ -70,9 +81,9 @@ describe('ConnectorCampaignsPanel → CampaignDetailPanel', () => {
 describe('CampaignDetailPanel accepts it', () => {
   // Hop three. A prop passed to a component that does not destructure it is
   // dropped as silently as one omitted from a projection.
-  it('destructures counterfactuals', () => {
+  it.each([['counterfactuals'], ['hypotheses'], ['relativeRank']])('destructures %s', (field) => {
     const src = read('CampaignDetailPanel.jsx');
     const sig = src.slice(src.indexOf('export function CampaignDetailPanel'));
-    expect(sig.slice(0, sig.indexOf('}'))).toMatch(/counterfactuals/);
+    expect(sig.slice(0, sig.indexOf('}'))).toMatch(new RegExp(field));
   });
 });

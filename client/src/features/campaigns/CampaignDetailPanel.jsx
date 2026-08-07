@@ -30,6 +30,8 @@ import {
 } from '@/features/campaigns/verdictEvidence.js';
 import { buildCounterfactualViewModel } from '@/features/campaigns/counterfactualViewModel.js';
 import { CounterfactualsBlock } from '@/features/campaigns/CounterfactualsBlock.jsx';
+import { buildPrimaryHypothesisViewModel } from '@/features/campaigns/hypothesisViewModel.js';
+import { HypothesisBlock } from '@/features/campaigns/HypothesisBlock.jsx';
 
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
 
@@ -148,6 +150,7 @@ function EvidenceTable({ rows }) {
 export function CampaignDetailPanel({
   campaign, verdict = null, impact = null, rationale = null, confidence = null,
   funnel = null, rootCause = null, dataConfidence = null, counterfactuals = null,
+  hypotheses = null, relativeRank = null,
 }) {
   const { load, reasoning, stale, generatedAt, isLoading, error } = useCampaignReasoning();
   const entityId = campaign.entityId;
@@ -181,6 +184,16 @@ export function CampaignDetailPanel({
   // can never appear together or compete for the same slot.
   const counterfactualVM = buildCounterfactualViewModel(counterfactuals);
   const showCounterfactuals = !funnel && counterfactualVM.length > 0;
+
+  // The mechanism the verdict rests on — hypotheses[0] only, since [1..n] are
+  // already on screen above as the alternatives. Null when the cohort pass
+  // decided the call and the absolute reasoning did not (see hypothesisViewModel).
+  const hypothesisVM = funnel ? null : buildPrimaryHypothesisViewModel(hypotheses, relativeRank);
+
+  // One section for both halves. They are a single argument — "here is what we
+  // think, here is what we checked and ruled out" — and reading them as two
+  // unrelated boxes loses that the second only means anything given the first.
+  const showReasoning = Boolean(hypothesisVM) || showCounterfactuals;
 
   // UNCHANGED, deliberately. The obvious move is to suppress the prose clause
   // once the structured block renders — but they answer different questions.
@@ -236,12 +249,16 @@ export function CampaignDetailPanel({
             </p>
           )}
 
-          {/* verdict → why → what we ruled out → action. Placed after the
-              reason and before the ask, because a rejection only means anything
-              once you know what it was rejected in favour of.
-              TODO (PR#333): hypotheses[] renders BETWEEN the reason and this,
-              so the sequence reads "why this" → "why not that" → act. */}
-          {showCounterfactuals && <CounterfactualsBlock viewModel={counterfactualVM} />}
+          {/* verdict → why → what we ruled out → action. One section, because
+              the two blocks are a single argument: a rejection only means
+              something once you know what it was rejected in favour of. */}
+          {showReasoning && (
+            <div className="mt-4">
+              <p className="section-label mb-1 text-lumi-muted">Reasoning</p>
+              <HypothesisBlock viewModel={hypothesisVM} />
+              {showCounterfactuals && <CounterfactualsBlock viewModel={counterfactualVM} />}
+            </div>
+          )}
 
           {nextAction && (
             <p className="mt-1.5 text-sm text-lumi-text">

@@ -140,7 +140,13 @@ export function ExecutionContext({
           prevent. Absent entirely when the data cannot support one. */}
       {hypothesis && (
         <div className="mb-3 border-t border-lumi-border pt-3">
-          <Label>Working hypothesis</Label>
+          {/* "Ad set signal", not "Working hypothesis". The engine now renders
+              its OWN hypotheses on the campaign detail panel one click away,
+              and the two share no field and answer different questions — this
+              one reads a single ad-set row, that one names a mechanism the
+              verdict rests on. Two panels both called "hypothesis", disagreeing
+              about the same campaign, is a confusion worth one rename. */}
+          <Label>Ad set signal</Label>
           <p className="mb-2 text-xs font-semibold text-lumi-text">{hypothesis.label}</p>
 
           <Label>Observed</Label>
