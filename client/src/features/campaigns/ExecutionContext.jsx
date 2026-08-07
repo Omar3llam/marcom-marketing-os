@@ -56,12 +56,11 @@ export function ExecutionContext({
 
   if (!campaign || !ACTIONABLE_VERDICTS.includes(verdict)) return null;
 
-  // The SERVER's pick, not a second opinion. This component used to run
-  // findWorstAdSet over the drill-down rows while both its callers gated the
-  // mount on the server's ranking — two rankers that agreed only because they
-  // happened to share a threshold. They would have parted the moment the server
-  // changed its impression floor or grew objective-awareness, and the panel
-  // would have shown one ad set while the engine scored another.
+  // The server's ranking is the only ranking. This component renders the row it
+  // was handed and never derives its own — a second ranker here could name a
+  // different ad set than the engine scored, and the two would part the moment
+  // either side's thresholds moved. The gate that mounts this panel and the pick
+  // inside it come from the same answer.
   const worst = evidence?.summary?.bottom ?? null;
   if (!worst) return null;
 

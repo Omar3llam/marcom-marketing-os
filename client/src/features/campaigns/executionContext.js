@@ -1,9 +1,14 @@
 // ============================================================
 // MARCOM / Lumi — executionContext (pure)
 // ------------------------------------------------------------
-// A campaign verdict says WHETHER to act. This says WHERE to look first: the
-// ad set inside a KILL/REALLOCATE campaign whose click-through is dragging
-// hardest on the campaign's own measured rate.
+// A campaign verdict says WHETHER to act. The server says WHICH ad set to look
+// at first. This module DESCRIBES that pick: the gap, the spend share, the
+// evidence bullets and the working hypothesis, all computed from the row the
+// ranking named.
+//
+// It does not choose the row. Ranking lives on the server — one ranker, so the
+// panel can never point at an ad set the engine did not pick, and so the
+// thresholds that decide "measurably behind" move in one place.
 //
 // Governing law, same as verdictEvidence.js: every figure here is arithmetic on
 // two real MetricSnapshot fields (the ad set's ctr/spendMinor and the
@@ -20,11 +25,6 @@
 
 import { FATIGUE_FREQ } from './verdictEvidence.js';
 import { formatCurrency } from '@/lib/money';
-
-// Below this, the gap is not worth pointing a marketer at. A 12% spread across
-// ad sets is ordinary variance, and naming a "worst" one implies a problem the
-// data does not support.
-export const MIN_MEANINGFUL_GAP = -0.20;
 
 // ── Units ────────────────────────────────────────────────────────────────────
 // A MetricSnapshot `ctr` is a RATIO (snapshotSink.js: clicks / impressions), so
@@ -45,41 +45,6 @@ export const MIN_SPEND_FOR_DIAGNOSIS = 5_000; // ~50 currency units
 // The verdicts that ask for an intervention. HOLD/SCALE/WATCH/REFRESH do not —
 // pointing at a "worst" ad set under a healthy campaign invents an alarm.
 export const ACTIONABLE_VERDICTS = Object.freeze(['KILL', 'REALLOCATE']);
-
-/**
- * PURE: the ad set most worth inspecting first, or null when the data cannot
- * support naming one. Never throws, never mutates the input.
- *
- * Returns null when:
- *   • fewer than 2 ad sets exist            — nothing to compare
- *   • fewer than 2 report a CTR             — "lowest" needs a comparison; the
- *                                             sole reporter is trivially both
- *                                             the min AND the max
- *   • the campaign has no measured CTR (null / 0) — no baseline to divide by
- *   • the widest gap is shallower than 20%  — ordinary variance, not a finding
- *
- * The returned row is a COPY carrying two derived fields:
- *   gap           — signed fraction vs the campaign rate (-0.80 = 80% below)
- *   comparedCount — how many ad sets actually had a CTR to compare, so the UI
- *                   can state the strength of its own evidence
- */
-export function findWorstAdSet(adSets, campaignCtr) {
-  if (!Array.isArray(adSets) || adSets.length < 2) return null;
-  if (!(campaignCtr > 0)) return null; // null / 0 / NaN all fail this
-
-  const scored = adSets
-    .filter((a) => a && a.ctr != null)
-    .map((a) => ({ ...a, gap: (a.ctr - campaignCtr) / campaignCtr }));
-
-  // One reporting ad set is not a comparison. Calling it "the lowest" would be
-  // true only in the sense that it is also the highest.
-  if (scored.length < 2) return null;
-
-  const worst = scored.reduce((a, b) => (a.gap < b.gap ? a : b));
-  if (worst.gap > MIN_MEANINGFUL_GAP) return null;
-
-  return { ...worst, comparedCount: scored.length };
-}
 
 /**
  * PURE: the ad set's share of the campaign's spend, as a fraction. The
