@@ -76,11 +76,11 @@ feedRouter.get('/feed', async (req, res) => {
         orderBy: { projectedBreachDate: 'asc' },
         take:    100,
       }).catch(() => []),
-      // Phase 2: guardrail-sourced radar verdicts awaiting human confirm.
+      // Phase 2: guardrail radar verdicts. `select` = exactly what the map below reads.
       prisma.decision.findMany({
         where:   { workspaceId: wsId, status: 'PROPOSED', rootCause: { startsWith: 'guardrail:' } },
-        orderBy: { createdAt: 'desc' },
-        take:    100,
+        orderBy: { createdAt: 'desc' }, take: 100,
+        select: { entityId: true, entityLevel: true, verdict: true, diagnosis: true, rootCause: true, status: true },
       }).catch(() => []),
       // Phase 3: open (proposed) capital-allocation plans awaiting human confirm.
       prisma.allocationPlan.findMany({

@@ -162,9 +162,21 @@ export async function generateNarrative(workspaceId, { period = NARRATIVE_PERIOD
 
   const [workspace, decisions, allocationPlans, blended, concludedTests, goals, patterns, labelsById] = await Promise.all([
     prisma.workspace.findUnique({ where: { id: workspaceId }, select: { currency: true, measurementTier: true } }),
+    // `select` rather than `include`: an include is SELECT * plus the relation,
+    // and this read runs in the NARRATIVE WORKER — the one service whose Render
+    // build does `prisma generate` without `migrate deploy` (render.yaml). A
+    // worker booting on a client that knows a column the database has not got
+    // yet is precisely how #209 took getLoopState down. buildNarrativeInputs
+    // reads exactly these four fields plus the newest outcome.
     prisma.decision.findMany({
-      where: { workspaceId, createdAt: { gte: periodStart } },
-      include: { outcomes: { orderBy: { createdAt: 'desc' }, take: 1 } },
+      where:  { workspaceId, createdAt: { gte: periodStart } },
+      select: {
+        id: true, verdict: true, entityId: true, rootCause: true,
+        outcomes: {
+          orderBy: { createdAt: 'desc' }, take: 1,
+          select: { id: true, spendDeltaMinor: true, revenueDeltaMinor: true },
+        },
+      },
       orderBy: { createdAt: 'desc' }, take: 100,
     }),
     prisma.allocationPlan.findMany({ where: { workspaceId, createdAt: { gte: periodStart } }, select: { id: true } }),

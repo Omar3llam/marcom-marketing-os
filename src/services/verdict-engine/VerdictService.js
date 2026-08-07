@@ -13,6 +13,7 @@ import { rollupVerdicts }          from './verdictEngine.js';
 import { applyRelativeRanking }     from './relativeRanking.js';
 import { getConnectorCampaigns }   from '../entity-graph/index.js';
 import { buildConnectorVerdictTree } from './connectorVerdictService.js';
+import { toReasoningArtifact, toCounterfactualArtifact } from './reasoningArtifact.js';
 import { SIGNAL_TYPE }             from '../diagnosis-engine/index.js';
 import { ROOT_CAUSE }              from './verdictTypes.js';
 import { FUNNEL_SIGNAL }           from './funnelDiagnosis.js';
@@ -48,6 +49,14 @@ function nodeMetrics(node) {
  * Close out the verdict that a new one replaces: mark it SUPERSEDED and record
  * how the entity behaved in between. Best-effort — a failure here must never
  * cost the sweep the new verdict it just wrote, which is the load-bearing row.
+ *
+ * WRITES OUTCOME, NEVER REASONING. The four fields below are all facts about
+ * what happened AFTER the call. `hypotheses` and `counterfactuals` are what the
+ * engine believed when it MADE the call, and the new verdict's reasoning belongs
+ * to the new row — persistNode has already created it. Copying fresh reasoning
+ * onto a closed-out row would make it claim it had foreseen its own replacement,
+ * and the resulting history would show every superseded decision reasoning
+ * perfectly about an outcome it never predicted.
  */
 async function resolvePrevious(previous, now) {
   const at = { ctr: previous.ctrAtDecision ?? null, roas: previous.roasAtDecision ?? null };
@@ -76,6 +85,11 @@ async function persistNode(workspaceId, node, created) {
       // verdict — otherwise it would silently vanish from the agenda.
       where:   { workspaceId, entityId: node.id, entityLevel: node.level, status: { not: 'SUPERSEDED' } },
       orderBy: { createdAt: 'desc' },
+      // The four fields this row is used for: `verdict` decides whether anything
+      // changed, and resolvePrevious reads the other three. Named rather than
+      // SELECT *, which would now pull the previous decision's whole reasoning
+      // snapshot — once per entity, on every sweep — only to compare one enum.
+      select:  { id: true, verdict: true, ctrAtDecision: true, roasAtDecision: true },
     });
     if (!latest || latest.verdict !== node.verdict) {
       // The metrics AS THEY STAND NOW, stamped onto the row. This is the only
@@ -109,6 +123,17 @@ async function persistNode(workspaceId, node, created) {
           // and null is the honest record of "we were never told".
           objective:   node.objective ?? null,
           channel:     node.channel ?? null,
+          // What the engine BELIEVED, frozen at the moment of the call. Both
+          // already ride on the node (verdictEngine attaches them beside the
+          // verdict) — they were simply never written, so every decision the
+          // product has ever made kept its conclusion and discarded its
+          // reasoning. Projected rather than spread: see reasoningArtifact.js.
+          //
+          // null when a caller supplied nothing (guardrail and allocation
+          // writers do not reason this way); [] when the engine ran and found
+          // no mechanism, which an early-gate campaign genuinely produces.
+          hypotheses:      toReasoningArtifact(node.hypotheses),
+          counterfactuals: toCounterfactualArtifact(node.counterfactuals),
         },
       });
       created.push({ entityId: node.id, level: node.level, verdict: node.verdict });
