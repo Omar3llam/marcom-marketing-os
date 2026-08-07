@@ -228,12 +228,22 @@ export async function getConnectorVerdicts(workspaceId) {
     // evidence[] carries the real value AND the benchmark it was judged against,
     // so nothing downstream has to restate — or re-derive — the arithmetic.
     funnel: c.funnel ?? null,
-    // ── Stage 3 reasoning, read-time only ────────────────────────────────────
+    // ── Stage 3 reasoning ────────────────────────────────────────────────────
     // `declined` is the raw material (rules that ran and passed, with their
     // measurements); `hypotheses` the candidate explanations built from it; and
-    // `counterfactuals` why each alternative was set aside. Nothing here is
-    // persisted — no Decision column holds them, and they are re-derived from
-    // the same signals on every read.
+    // `counterfactuals` why each alternative was set aside.
+    //
+    // THIS path persists nothing — getConnectorVerdicts is read-only by
+    // contract, and re-derives all three from the same signals on every read.
+    // Its WRITE twin does: persistConnectorVerdicts runs the same engine over
+    // the same tree and persistNode freezes `hypotheses` and `counterfactuals`
+    // onto the Decision row. So the reasoning a client sees here is recomputed,
+    // while the reasoning attached to a stored decision is the snapshot taken
+    // when that call was made. The two can differ, and that is the point: this
+    // one describes the campaign now, that one records what we believed then.
+    //
+    // `declined` is the exception — it is raw material, not a conclusion, and
+    // no column holds it.
     //
     // The `?? []` matters: this projection is the SECOND hand-picked list these
     // fields must appear in (the first is rollupVerdicts' node return), and a
