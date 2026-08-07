@@ -367,13 +367,11 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                   reasonKey={ev?.insufficientData ? ev.reasonKey : null}
                   className="py-2"
                 />
-                {/* The server having found a ranking guarantees ExecutionContext
-                    finds one too: both rank the same rows on the same -20% gap
-                    with the same two-reporter minimum, and the server ALSO drops
-                    rows under 100 impressions — a strictly smaller set, so a gap
-                    it found is still there in the fuller one. That is why this
-                    branch cannot produce the empty row the old pre-commit gate
-                    existed to prevent. */}
+                {/* A ranking here means the panel has one: ExecutionContext
+                    renders the row this payload names rather than deriving its
+                    own, so the gate and the pick cannot disagree. That is why
+                    this branch cannot produce the empty row the old pre-commit
+                    gate existed to prevent. */}
                 {ev?.evidence && (
                   <ExecutionContext
                     campaign={c}

@@ -2,16 +2,17 @@
 // executionContext — the arithmetic behind "where to execute"
 // ------------------------------------------------------------
 // Pure, so every test is the same two questions: does it compute the real
-// number, and does it stay SILENT (null / []) rather than name a worst ad set
-// the data cannot support? The silences are the load-bearing half — a confident
-// pick built on one reporting ad set is worse than no pick at all.
+// number, and does it stay SILENT (null / []) rather than describe a gap the
+// data cannot support? The silences are the load-bearing half — a confident
+// sentence built on one reporting ad set is worse than no sentence at all.
+//
+// Choosing WHICH ad set is no longer here. The server ranks; this module
+// describes the row it named.
 // ============================================================
 import { describe, it, expect } from 'vitest';
 import {
   ACTIONABLE_VERDICTS,
-  MIN_MEANINGFUL_GAP,
   MIN_SPEND_FOR_DIAGNOSIS,
-  findWorstAdSet,
   spendConcentration,
   formatGap,
   gapMagnitude,
@@ -29,99 +30,6 @@ const CAMPAIGN_CTR = 0.0164;
 const adSet = (over = {}) => ({
   entityId: 'as-1', name: 'Broad 25-45', channel: 'META',
   ctr: 0.0164, spendMinor: 100_00, currency: 'USD', ...over,
-});
-
-describe('findWorstAdSet — when it stays silent', () => {
-  it('a single ad set is not a comparison', () => {
-    expect(findWorstAdSet([adSet({ ctr: 0.0032 })], CAMPAIGN_CTR)).toBeNull();
-  });
-
-  it('no ad sets at all', () => {
-    expect(findWorstAdSet([], CAMPAIGN_CTR)).toBeNull();
-  });
-
-  it.each([[null], [undefined], ['nope']])('a non-array (%s) is null, not a throw', (input) => {
-    expect(findWorstAdSet(input, CAMPAIGN_CTR)).toBeNull();
-  });
-
-  // No baseline means no gap — every campaign figure here would be a division
-  // by something that was never measured.
-  it.each([[null], [undefined], [0], [Number.NaN]])('a campaign CTR of %s gives no baseline', (ctr) => {
-    expect(findWorstAdSet([adSet({ ctr: 0.0032 }), adSet({ entityId: 'as-2' })], ctr)).toBeNull();
-  });
-
-  it('ad sets that all report no CTR', () => {
-    const rows = [adSet({ ctr: null }), adSet({ entityId: 'as-2', ctr: null })];
-    expect(findWorstAdSet(rows, CAMPAIGN_CTR)).toBeNull();
-  });
-
-  // The trap: 5 ad sets, ONE reporting. It is trivially the lowest — and also
-  // the highest. Calling it "lowest in campaign" would be true and meaningless.
-  it('only ONE ad set reports a CTR — trivially the min AND the max', () => {
-    const rows = [adSet({ ctr: 0.0032 }), adSet({ entityId: 'as-2', ctr: null }), adSet({ entityId: 'as-3', ctr: null })];
-    expect(findWorstAdSet(rows, CAMPAIGN_CTR)).toBeNull();
-  });
-
-  // 12% under the campaign rate is ordinary spread between ad sets.
-  it('a gap shallower than 20% is variance, not a finding', () => {
-    const rows = [adSet({ ctr: 0.0144 }), adSet({ entityId: 'as-2', ctr: 0.0180 })];
-    expect(findWorstAdSet(rows, CAMPAIGN_CTR)).toBeNull();
-  });
-
-  // Brackets the threshold rather than sitting ON it: `CAMPAIGN_CTR * 0.8`
-  // lands at -0.19999999999999998 in float, so an exact-boundary assertion
-  // would be testing IEEE 754, not the rule.
-  it('brackets the threshold — 20.1% below fires, 19.9% below does not', () => {
-    const other = adSet({ entityId: 'as-2', ctr: 0.0180 });
-    expect(findWorstAdSet([adSet({ ctr: 0.01310 }), other], CAMPAIGN_CTR)?.entityId).toBe('as-1');
-    expect(findWorstAdSet([adSet({ ctr: 0.01313 }), other], CAMPAIGN_CTR)).toBeNull();
-    expect(MIN_MEANINGFUL_GAP).toBe(-0.20);
-  });
-});
-
-describe('findWorstAdSet — when it names one', () => {
-  const rows = [
-    adSet({ entityId: 'as-1', name: 'Lookalike 1%', ctr: 0.0180 }),
-    adSet({ entityId: 'as-2', name: 'Broad 25-45', ctr: 0.0032 }),
-    adSet({ entityId: 'as-3', name: 'Retarget 30d', ctr: 0.0150 }),
-  ];
-
-  it('returns the lowest CTR, not the first row', () => {
-    expect(findWorstAdSet(rows, CAMPAIGN_CTR).name).toBe('Broad 25-45');
-  });
-
-  it('carries the signed gap as a fraction', () => {
-    expect(findWorstAdSet(rows, CAMPAIGN_CTR).gap).toBeCloseTo(-0.8049, 4);
-  });
-
-  it('reports how many ad sets it actually compared', () => {
-    const withBlank = [...rows, adSet({ entityId: 'as-4', ctr: null })];
-    expect(findWorstAdSet(withBlank, CAMPAIGN_CTR).comparedCount).toBe(3); // not 4
-  });
-
-  it('keeps the row fields the UI renders', () => {
-    const worst = findWorstAdSet(rows, CAMPAIGN_CTR);
-    expect(worst).toMatchObject({ entityId: 'as-2', channel: 'META', currency: 'USD', ctr: 0.0032 });
-  });
-
-  it('does not mutate the input rows', () => {
-    const input = rows.map((r) => ({ ...r }));
-    findWorstAdSet(input, CAMPAIGN_CTR);
-    expect(input.every((r) => !('gap' in r) && !('comparedCount' in r))).toBe(true);
-  });
-
-  it('is order-independent', () => {
-    const reversed = [...rows].reverse();
-    expect(findWorstAdSet(reversed, CAMPAIGN_CTR).entityId)
-      .toBe(findWorstAdSet(rows, CAMPAIGN_CTR).entityId);
-  });
-
-  // A measured 0% CTR is real data — an ad set that ran and got no clicks is
-  // exactly the one worth looking at first.
-  it('a measured 0 CTR is a valid worst, not a missing value', () => {
-    const withZero = [adSet({ entityId: 'as-z', ctr: 0 }), adSet({ entityId: 'as-2', ctr: 0.0164 })];
-    expect(findWorstAdSet(withZero, CAMPAIGN_CTR).entityId).toBe('as-z');
-  });
 });
 
 describe('spendConcentration', () => {
