@@ -216,9 +216,12 @@ export function evaluateVerdict({
     // before any rule is evaluated.
     declined: extra.declined ?? [],
     // Candidate explanations, one per fired mechanism, each with its own
-    // reasoning confidence. A READ-TIME artifact: nothing persists it, and it is
-    // re-derived from the same signals on every evaluation. Empty on the early
-    // gates for the same reason `declined` is — no rule has run yet.
+    // reasoning confidence. Re-derived from the same signals on every
+    // evaluation, and — on the sweep that persists a verdict — frozen onto
+    // Decision.hypotheses as the record of what was believed at that moment.
+    // Empty on the early gates for the same reason `declined` is: no rule has
+    // run yet, which is a real state and NOT the same as the null a row written
+    // before that column existed carries.
     //
     // Read from `extra`, NEVER from the enclosing scope. `hypotheses` and
     // `counterfactuals` are declared BELOW the two gate returns, so a closure

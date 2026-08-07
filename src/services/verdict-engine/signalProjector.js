@@ -26,8 +26,14 @@
 //   absent one. confidenceEngine.composeConfidence is the only place two
 //   confidences ever become one, and it is not called from here.
 //
-//   Nothing is persisted. Hypotheses are a READ-TIME artifact, re-derived from
-//   the same signals every time. There is no Decision column for them.
+//   Nothing is persisted FROM HERE. This file derives hypotheses and hands them
+//   back; whether they are stored is the caller's business. persistNode writes
+//   them onto Decision.hypotheses as an immutable snapshot of what was believed
+//   when the call was made, and getConnectorVerdicts re-derives them on every
+//   read without storing anything. The projector is pure either way — but a
+//   stored row means the SHAPE returned here is a contract with a reader who
+//   does not exist yet, not just a response body. Changing a field name is a
+//   migration concern now, not a refactor.
 // ============================================================
 import { SIGNAL_TYPE, MECHANISM_SUPPORT } from '../diagnosis-engine/diagnosisTypes.js';
 // The severity ladder — imported, not re-typed. NOTE there are three exported
