@@ -20,6 +20,20 @@
 //                      is low instead of just that it is.
 //     funnel         — { signal, stage, evidence[], diagnosis, counterfactual,
 //                      action } when a funnel stage was diagnosed, else null.
+//                      NOTE its singular `counterfactual` is a PROSE sentence
+//                      and a different thing from the array below.
+//     hypotheses     — ranked candidate mechanisms, enum-keyed and never prose:
+//                      { id, labelKey, source, supports[], contradicts[],
+//                      observed[], confidence }. Nothing renders these yet.
+//     counterfactuals— the alternatives set aside, one per rejected hypothesis:
+//                      { mechanism, labelKey, rejectedBy[], preferredBecause[],
+//                      confidence }. `[]` when there was no second candidate to
+//                      argue against — a real answer, not a missing one.
+//                      As of the reasoning snapshot both of these are also
+//                      FROZEN onto the Decision row when a sweep persists a
+//                      verdict, so what a client sees here (recomputed from
+//                      today's signals) and what a stored decision carries
+//                      (what we believed then) can legitimately differ.
 //   gatedOut[]: { id, name, reason }
 //
 // Rows pass through WHOLE — this hook never projects a subset, so a new engine

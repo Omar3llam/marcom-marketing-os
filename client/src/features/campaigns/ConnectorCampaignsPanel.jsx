@@ -335,6 +335,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                 funnel={info.funnel ?? null}
                 rootCause={info.rootCause ?? null}
                 dataConfidence={info.dataConfidence ?? null}
+                counterfactuals={info.counterfactuals ?? null}
               />
             </td>
           </tr>

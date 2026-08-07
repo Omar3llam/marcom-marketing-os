@@ -28,6 +28,8 @@ import {
   buildRecommendationText, platformUrl,
   evidenceRows, whyBlock, confidenceDetail, isDataQualityCause,
 } from '@/features/campaigns/verdictEvidence.js';
+import { buildCounterfactualViewModel } from '@/features/campaigns/counterfactualViewModel.js';
+import { CounterfactualsBlock } from '@/features/campaigns/CounterfactualsBlock.jsx';
 
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
 
@@ -145,7 +147,7 @@ function EvidenceTable({ rows }) {
 
 export function CampaignDetailPanel({
   campaign, verdict = null, impact = null, rationale = null, confidence = null,
-  funnel = null, rootCause = null, dataConfidence = null,
+  funnel = null, rootCause = null, dataConfidence = null, counterfactuals = null,
 }) {
   const { load, reasoning, stale, generatedAt, isLoading, error } = useCampaignReasoning();
   const entityId = campaign.entityId;
@@ -170,6 +172,23 @@ export function CampaignDetailPanel({
   // Structured first, prose only as the fallback for verdicts that have no
   // funnel (a KILL/SCALE still carries nothing but a sentence).
   const rows = evidenceRows(funnel);
+
+  // The alternatives the engine set aside, for the verdicts that have no funnel
+  // — which is exactly the KILL/SCALE pair that costs money. `funnel` only
+  // exists when a funnel STAGE was diagnosed and every funnel diagnosis is a
+  // WATCH, so the two paths are disjoint by construction: funnel.counterfactual
+  // renders below for a WATCH, this block renders for a KILL/SCALE, and they
+  // can never appear together or compete for the same slot.
+  const counterfactualVM = buildCounterfactualViewModel(counterfactuals);
+  const showCounterfactuals = !funnel && counterfactualVM.length > 0;
+
+  // UNCHANGED, deliberately. The obvious move is to suppress the prose clause
+  // once the structured block renders — but they answer different questions.
+  // evidenceClause names what we think IS wrong; a counterfactual names what we
+  // checked and found was fine. Drop the first and a KILL sits under a "Why?"
+  // heading listing only rejections, with nothing anywhere saying what was ruled
+  // IN. The block below even refers to "the primary explanation" — this line is
+  // the only thing on screen that says what that explanation is.
   const evidence = funnel ? null : evidenceClause(rationale);
   const dataOnly = isDataQualityCause(rootCause);
   const conf = confidenceDetail({ confidence, dataConfidence });
@@ -216,6 +235,13 @@ export function CampaignDetailPanel({
               {confLabel && <span className="font-mono text-[11px] text-lumi-subtle"> · {confLabel} confidence</span>}
             </p>
           )}
+
+          {/* verdict → why → what we ruled out → action. Placed after the
+              reason and before the ask, because a rejection only means anything
+              once you know what it was rejected in favour of.
+              TODO (PR#333): hypotheses[] renders BETWEEN the reason and this,
+              so the sequence reads "why this" → "why not that" → act. */}
+          {showCounterfactuals && <CounterfactualsBlock viewModel={counterfactualVM} />}
 
           {nextAction && (
             <p className="mt-1.5 text-sm text-lumi-text">

@@ -13,6 +13,69 @@ import { formatCurrency } from '@/lib/money';
 export const NO_REVENUE_DISCLAIMER =
   'No revenue data found — recommendation based on CTR, Frequency and Spend only.';
 
+// ── Reasoning vocabulary ─────────────────────────────────────
+// The engine speaks ENUM KEYS and never prose — diagnosisTypes' taxonomy rule
+// ("do not add dynamic labels") holds at every boundary it crosses, including
+// the database as of the reasoning snapshot. This map is where a key becomes a
+// sentence, and it is the ONLY such place on the client.
+//
+// THE TRAP THESE KEYS SIT ON. Observations carry the UPPERCASE display
+// vocabulary ('CTR', 'CPC', 'CONV_RATE', 'CPL', 'SPEND', 'FREQUENCY') — NOT the
+// lowercase signal-INPUT field names ('ctr', 'cpcMinor'). diagnosisTypes carries
+// the same warning over MECHANISM_SUPPORT, because a lowercase key there matches
+// no observation ever emitted and every lookup silently returns nothing. Here
+// the failure is softer but the same shape: a mistyped key falls through to the
+// raw metric name and the user reads "CONV_RATE" instead of a sentence.
+//
+// `mechanisms` and `metrics` are nested rather than two exports so the next
+// vocabulary the engine grows (signal types, confidence bands) slots in as a
+// third key instead of a third top-level map to keep in sync.
+export const REASONING_LABELS = Object.freeze({
+  // SIGNAL_TYPE, minus HEALTHY and UNDIAGNOSABLE — those are terminal states,
+  // and projectHypotheses filters them out before a hypothesis is ever built.
+  mechanisms: Object.freeze({
+    CREATIVE_FATIGUE:    'Creative fatigue',
+    AUDIENCE_MISMATCH:   'Audience mismatch',
+    INEFFICIENT_SCALING: 'Inefficient scaling',
+    LOW_CTR:             'Low click-through rate',
+  }),
+  // Two readings of the same metric. `rejected` is a HEALTHY measurement that
+  // argued against an alternative; `preferred` is a WEAK one the primary rests
+  // on. Same metric, opposite roles — one sentence for both would have to be so
+  // vague it said nothing.
+  metrics: Object.freeze({
+    CTR: Object.freeze({
+      rejected:  'Click-through rate was healthy',
+      preferred: 'CTR is below benchmark',
+    }),
+    FREQUENCY: Object.freeze({
+      rejected:  'Frequency was within normal range',
+      preferred: 'Frequency is above the ceiling',
+    }),
+    CPC: Object.freeze({
+      rejected:  'Cost per click was acceptable',
+      preferred: 'CPC is above threshold',
+    }),
+    CONV_RATE: Object.freeze({
+      rejected:  'Conversion rate was normal',
+      preferred: 'Conversion rate is dropping',
+    }),
+    CPL: Object.freeze({
+      rejected:  'Cost per lead was acceptable',
+      preferred: 'Cost per lead is rising',
+    }),
+    // SPEND is ungraded by construction — signalRules emits it with a null
+    // benchmark, so it never reaches a HEALTHY or WEAK status and cannot appear
+    // in either list today. Kept because this map is a statement about the
+    // domain's vocabulary, not about which comparisons currently get scored —
+    // the same reasoning MECHANISM_SUPPORT gives for listing it.
+    SPEND: Object.freeze({
+      rejected:  'Spend distribution was balanced',
+      preferred: 'Spend is concentrated on a weak performer',
+    }),
+  }),
+});
+
 /** The engine's numeric confidence (0–1) → a marketer label. Null-safe. */
 export function confidenceLabel(confidence) {
   if (typeof confidence !== 'number' || !Number.isFinite(confidence)) return null;

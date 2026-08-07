@@ -339,6 +339,13 @@ export default function CampaignsView() {
         funnel: v.funnel ?? null,
         rootCause: v.rootCause ?? null,
         dataConfidence: v.dataConfidence ?? null,
+        // The alternatives the engine set aside. Dropped here for the same
+        // reason funnel/rootCause were until PR #309: this projection is an
+        // explicit list, and a field that arrives on every verdict row still
+        // has to be named to survive it. `[]` rather than null — the engine
+        // returns an empty list when there was no second candidate to argue
+        // against, which is a real answer and not a missing one.
+        counterfactuals: v.counterfactuals ?? [],
       };
     }
     return m;
