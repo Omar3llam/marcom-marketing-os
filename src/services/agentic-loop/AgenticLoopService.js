@@ -114,6 +114,15 @@ export async function buildLoopInputs(workspaceId, { now = new Date() } = {}) {
       orderBy: { createdAt: 'desc' },
       distinct: ['entityId', 'entityLevel'],
       take: 100,
+      // What agenticPlanner's buyer band actually reads. `rationale` is NOT a
+      // Decision column — the planner writes `d.rationale ?? d.diagnosis ?? ''`
+      // and it is `diagnosis` that exists, so naming the fields also documents
+      // which of that pair is real. rootCause rides along because the OR above
+      // filters on it and callers group by it.
+      select: {
+        id: true, entityId: true, entityLevel: true, verdict: true,
+        diagnosis: true, rootCause: true, status: true, createdAt: true,
+      },
     }), []),
     safe(prisma.fatiguePrediction.findMany({ where: { workspaceId, resolvedAt: null }, orderBy: { projectedBreachDate: 'asc' }, take: 100 }), []),
     safe(prisma.testExperiment.findMany({ where: { workspaceId, status: 'RUNNING' }, orderBy: { startedAt: 'desc' }, take: 20 }), []),

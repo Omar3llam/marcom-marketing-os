@@ -109,7 +109,15 @@ export async function getWeeklyAgenda(workspaceId, { lookbackDays = LOOKBACK_DAY
   const [snapshots, accounts, decisions, memory] = await Promise.all([
     prisma.metricSnapshot.findMany({ where: { workspaceId, date: { gte: since } } }),
     prisma.account.findMany({ where: { workspaceId }, select: { id: true, name: true, channel: true } }),
-    prisma.decision.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' } }),
+    // Two fields, named: the loop below reads entityId and verdict only. This
+    // read is UNBOUNDED (no take, no window), so a select-less version pulls
+    // every reasoning blob the workspace has ever written to build a map of
+    // latest-verdict-per-entity.
+    prisma.decision.findMany({
+      where:   { workspaceId },
+      orderBy: { createdAt: 'desc' },
+      select:  { entityId: true, verdict: true },
+    }),
     prisma.decisionMemoryEntry.findMany({
       where:   { workspaceId, actionType: { startsWith: TEST_MEMORY_PREFIX } },
       orderBy: { createdAt: 'desc' },

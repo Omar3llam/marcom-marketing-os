@@ -60,7 +60,17 @@ export async function getBriefing(workspaceId, { now = new Date(), lookbackDays 
   const since = new Date(now.getTime() - lookbackDays * 86_400_000);
 
   const [decisions, snapshots, tests] = await Promise.all([
-    prisma.decision.findMany({ where: { workspaceId, createdAt: { gte: since } } }),
+    // Explicit select, for the reason the MetricSnapshot read below already
+    // documents — this one was the exception beside it. buildPatternInputs uses
+    // exactly these five fields, and the two reasoning JSONB columns on Decision
+    // would otherwise ride along on an unbounded lookback window that never
+    // reads them.
+    prisma.decision.findMany({
+      where:  { workspaceId, createdAt: { gte: since } },
+      select: {
+        id: true, verdict: true, entityId: true, entityLevel: true, createdAt: true,
+      },
+    }),
     // Explicit select, not `SELECT *`. Adding a column to MetricSnapshot widens
     // every select-less read on it, so a deploy that lands before its migration
     // makes an untouched query throw "column does not exist" (the class that

@@ -1313,6 +1313,24 @@ model Decision {
   objective String?
   channel   String? // the Channel enum's own string, so a join to Campaign lines up
 
+  // ── Reasoning snapshot ─────────────────────────────────────
+  // What the engine BELIEVED when it made this call, captured once at creation
+  // and never touched again — resolvePrevious closes a row out without going
+  // near these. A verdict that was right for a reason we no longer have on file
+  // teaches nothing, and `rootCause` alone only names the winner.
+  //
+  // JSONB = STORAGE, NOT SEARCH. Nothing queries into these and nothing should:
+  // the shape is the engine's own reasoning taxonomy, and normalising it would
+  // freeze that taxonomy against a schema unable to follow it. A future learning
+  // query that needs to filter by mechanism gets an extracted, indexed column
+  // derived from this — the snapshot stays the immutable record.
+  //
+  // NULL vs []: null is "never captured" (every row before this migration); []
+  // is "the engine ran and produced none", which an early-gate decision under
+  // 1 000 impressions genuinely does. Different facts, kept apart.
+  hypotheses      Json? // [{ id, labelKey, source, supports[], contradicts[], observed[], confidence }]
+  counterfactuals Json? // [{ mechanism, labelKey, rejectedBy[], preferredBecause[], confidence }]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

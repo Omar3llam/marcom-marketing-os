@@ -53,10 +53,13 @@ async function buildChannels(workspaceId) {
   const { channels } = await getBlendedTruth(workspaceId);
   if (channels.length === 0) return [];
 
-  // Latest verdict per channel entity (gates appetite).
+  // Latest verdict per channel entity (gates appetite). Two fields, named: the
+  // loop below reads entityId and verdict and nothing else, and a select-less
+  // read here would pull both reasoning JSONB columns per row to discard them.
   const decisions = await prisma.decision.findMany({
     where:   { workspaceId, entityId: { in: channels.map((c) => c.channelId) } },
     orderBy: { createdAt: 'desc' },
+    select:  { entityId: true, verdict: true },
   });
   const verdictByEntity = new Map();
   for (const d of decisions) if (!verdictByEntity.has(d.entityId)) verdictByEntity.set(d.entityId, d.verdict);
@@ -87,6 +90,7 @@ async function buildIncrementalChannels(workspaceId) {
   const decisions = await prisma.decision.findMany({
     where:   { workspaceId, entityId: { in: channels.map((c) => c.channelId) } },
     orderBy: { createdAt: 'desc' },
+    select:  { entityId: true, verdict: true },
   });
   const verdictByEntity = new Map();
   for (const d of decisions) if (!verdictByEntity.has(d.entityId)) verdictByEntity.set(d.entityId, d.verdict);
