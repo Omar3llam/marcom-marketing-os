@@ -28,14 +28,9 @@ describe('what it renders', () => {
     expect(screen.getByText('Ranked against 8 campaigns in the conversion group')).toBeInTheDocument();
   });
 
-  it('the comparison it was decided on', () => {
-    render(<CohortBlock viewModel={vm()} />);
-    expect(screen.getByText(/CTR 0.7% vs 1.5% group average/)).toBeInTheDocument();
-  });
-
-  it.each([['BOTTOM', 'bottom quartile'], ['TOP', 'top quartile']])('names the %s slice', (rank, text) => {
+  it.each([['BOTTOM', 'Bottom quartile'], ['TOP', 'Top quartile']])('names the %s slice', (rank, text) => {
     render(<CohortBlock viewModel={vm({ rank })} />);
-    expect(screen.getByText(new RegExp(text))).toBeInTheDocument();
+    expect(screen.getByText(text)).toBeInTheDocument();
   });
 
   it('renders the awareness cohort in the engine’s own word', () => {
@@ -46,6 +41,36 @@ describe('what it renders', () => {
   it('says campaign, not campaigns, for a cohort of one', () => {
     render(<CohortBlock viewModel={vm({ cohortSize: 1 })} />);
     expect(screen.getByText('Ranked against 1 campaign in the conversion group')).toBeInTheDocument();
+  });
+});
+
+// It names the decision source; it does not restate the evidence. The CTR
+// comparison is already in the rationale clause above this block, in the
+// engine's own words — printing it again two lines down made one comparison
+// look like two, and neither copy could be checked against the other.
+describe('it does not repeat the evidence above it', () => {
+  it('carries no CTR figures, and no percentages at all', () => {
+    const { container } = render(<CohortBlock viewModel={vm()} />);
+    expect(container.textContent).not.toMatch(/CTR/);
+    expect(container.textContent).not.toMatch(/%/);
+    expect(container.textContent).not.toMatch(/group average/);
+  });
+
+  // Not dropped from the model, only from this block. They are what the rank was
+  // decided on, and a surface with no prose rationale beside it — a feed card, a
+  // narrative — will need them.
+  it('still accepts them on the view model without rendering them', () => {
+    const { container } = render(<CohortBlock viewModel={vm({ ctrPct: 99.9, avgCtrPct: 88.8 })} />);
+    expect(container.textContent).not.toMatch(/99|88/);
+    expect(screen.getByText(/Ranked against 8 campaigns/)).toBeInTheDocument();
+  });
+
+  // The cohort facts are the whole point of the block; losing them to a missing
+  // figure nobody prints would be the wrong trade.
+  it('renders in full when those figures are absent entirely', () => {
+    render(<CohortBlock viewModel={{ rank: 'TOP', group: 'awareness', cohortSize: 5 }} />);
+    expect(screen.getByText('Ranked against 5 campaigns in the awareness group')).toBeInTheDocument();
+    expect(screen.getByText('Top quartile')).toBeInTheDocument();
   });
 });
 
@@ -63,10 +88,10 @@ describe('what it refuses to render', () => {
     expect(container.textContent).not.toMatch(/in the\s+group/);
   });
 
-  it('drops the quartile clause rather than printing a bare separator', () => {
+  it('drops the quartile line rather than printing an empty one', () => {
     const { container } = render(<CohortBlock viewModel={vm({ rank: null })} />);
     expect(container.textContent).not.toMatch(/quartile/);
-    expect(container.textContent).not.toMatch(/·\s*$/);
+    expect(screen.getByText(/Ranked against 8 campaigns/)).toBeInTheDocument();
   });
 });
 

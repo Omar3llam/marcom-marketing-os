@@ -10,6 +10,11 @@
 // verdict in the product explained by a single sentence, with the cohort figures
 // existing ONLY inside that sentence's prose.
 //
+// It names the DECISION SOURCE and does not restate the evidence: the CTR
+// comparison lives in the rationale clause above it, in the engine's own words.
+// What it adds is what that sentence never carried — how many campaigns this was
+// ranked against, and where in them it landed.
+//
 // PURE RENDERER, same contract as HypothesisBlock and CounterfactualsBlock:
 // takes a view model, emits JSX, owns no vocabulary. `group` arrives as the
 // engine's own display-safe cohort word ('awareness' | 'conversion') — the same
@@ -25,7 +30,7 @@
 export function CohortBlock({ viewModel }) {
   if (!viewModel) return null;
 
-  const { rank, group, cohortSize, ctrPct, avgCtrPct } = viewModel;
+  const { rank, group, cohortSize } = viewModel;
 
   return (
     <div className="mt-3 space-y-1.5">
@@ -41,10 +46,20 @@ export function CohortBlock({ viewModel }) {
           {group ? ` in the ${group} group` : ''}
         </p>
 
-        <p className="text-xs leading-relaxed text-lumi-subtle">
-          CTR {ctrPct}% vs {avgCtrPct}% group average
-          {rank && ` · ${rank === 'BOTTOM' ? 'bottom' : 'top'} quartile`}
-        </p>
+        {/* Where in that cohort — and nothing else. The CTR comparison this
+            once repeated is already in the rationale clause above, in the
+            engine's own words; printing it again two lines down made one
+            comparison look like two.
+
+            The figures stay on the view model. They are what the rank was
+            decided on, and a surface without a prose rationale beside it (a
+            feed card, a narrative) will need them — this block simply is not
+            the place they belong. */}
+        {rank && (
+          <p className="text-xs leading-relaxed text-lumi-subtle">
+            {rank === 'BOTTOM' ? 'Bottom' : 'Top'} quartile
+          </p>
+        )}
       </div>
     </div>
   );
