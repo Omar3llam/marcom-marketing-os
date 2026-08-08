@@ -198,6 +198,16 @@ export async function getConnectorVerdicts(workspaceId) {
     // Set when this verdict was decided by the relative post-pass ('TOP' | 'BOTTOM')
     // — null otherwise. Lets the UI badge "relative to portfolio" honestly.
     relativeRank: c.relativeRank ?? null,
+    // The cohort the rank was decided in: { rank, group, cohortSize, ctrPct,
+    // avgCtrPct }, null on every absolutely-decided verdict. Minted by
+    // applyRelativeRanking, which runs AFTER rollupVerdicts and spreads `...c` —
+    // so unlike the reasoning artifacts it never passes through that allowlist
+    // and cannot be dropped by it.
+    //
+    // PUBLISH-ONLY. persistNode freezes hypotheses and counterfactuals; neither
+    // relativeRank nor this has a column, so a stored Decision still cannot say
+    // it was cohort-decided. That is a migration, and a separate decision.
+    relativeContext: c.relativeContext ?? null,
     // The deterministic diagnosis + execution vocabulary the engine already
     // computed (judgeMetrics → diagnoseSignals). Forwarded so a decision-first UI
     // can map verdict + signalType → a specific content recommendation without an

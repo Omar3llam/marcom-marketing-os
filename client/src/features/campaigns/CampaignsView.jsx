@@ -357,6 +357,10 @@ export default function CampaignsView() {
         // Projected whole anyway: the list is what the engine produced, and a
         // consumer that wants the rest should not have to re-fetch.
         hypotheses: v.hypotheses ?? [],
+        // The cohort a relative verdict was decided in. Unlike relativeRank
+        // below this has no second route to the panel — the `relativeRanks` map
+        // carries only the tag.
+        relativeContext: v.relativeContext ?? null,
         // NOTE relativeRank is deliberately NOT here. It is already resolved
         // per-row in ConnectorCampaignsPanel from the `relativeRanks` map that
         // feeds the Impact badge; carrying a second copy would give the badge

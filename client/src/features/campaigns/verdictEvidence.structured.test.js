@@ -179,6 +179,28 @@ describe('confidenceDetail — the signal half', () => {
       .toBe(true);
   });
 
+  // ── The band stays at 0.6, and the gap it leaves is deliberate ────────────
+  // A relative upgrade stamps signalConfidence at exactly 0.6 and composes it
+  // against healthy data: 0.6 × 0.8 = 0.48, a product that bands as "Low" while
+  // NEITHER half is below the band. Both flags therefore read false, and the
+  // label stands alone with no reason attached.
+  //
+  // The tempting fix is to raise this threshold to 0.7 so the signal half trips.
+  // It was considered and REJECTED: the engine has no bands at all — HIGH/MEDIUM
+  // live in this file and nowhere else, and MAX_CONFIDENCE is the only constant
+  // the engine defines about the scale. Any threshold for what makes a HALF
+  // "limiting" would be a number this UI invented and then presented as the
+  // engine's finding, which is the one thing the whole confidence surface exists
+  // to avoid. Under-claiming is honest; a fabricated cause is not.
+  //
+  // The rows this leaves unexplained are cohort verdicts, and PR#335 answers
+  // them properly with the cohort itself — see CohortBlock — rather than with a
+  // band. This test pins the silence so it stays a decision and not a bug.
+  it('0.6 × 0.8: says Low and blames neither half, because it cannot tell', () => {
+    expect(confidenceDetail({ confidence: 0.48, dataConfidence: 0.8, signalConfidence: 0.6 }))
+      .toEqual({ label: 'Low', limitedByData: false, limitedBySignal: false });
+  });
+
   // The panel called this with two arguments for its whole life, and one caller
   // (the funnel line) still passes rows that carry no signal half at all.
   it('two-argument callers keep the answer they always got', () => {

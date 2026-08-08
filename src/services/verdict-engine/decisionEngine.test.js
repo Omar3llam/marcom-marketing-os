@@ -278,6 +278,37 @@ describe('getConnectorVerdicts — the published numbers', () => {
     }
   });
 
+  // The cohort figures reach the payload, or the block that renders them has
+  // nothing to render. Same three-seam walk `signalConfidence` needed: minted in
+  // rankCohort, spread onto the node by applyRelativeRanking, and NAMED here.
+  //
+  // It skips rollupVerdicts' allowlist entirely — that pass runs first, and the
+  // upgrade spreads `...c` over its output — which is why a field that allowlist
+  // never mentions still arrives intact.
+  it('publishes the cohort a relative verdict was decided in', async () => {
+    getConnectorCampaigns.mockResolvedValue([
+      row({ entityId: 'lo',  revenueMinor: 0, frequency: 2.0, clicks: 250 }),
+      row({ entityId: 'mid', revenueMinor: 0, frequency: 2.0, clicks: 300 }),
+      row({ entityId: 'hi',  revenueMinor: 0, frequency: 2.0, clicks: 350 }),
+    ]);
+    const { verdicts } = await getConnectorVerdicts('ws-1');
+    const lo = verdicts.find((v) => v.id === 'lo');
+
+    expect(lo.relativeRank).toBe('BOTTOM');
+    expect(lo.relativeContext).toMatchObject({ rank: 'BOTTOM', group: 'awareness', cohortSize: 3 });
+    expect(lo.relativeContext.ctrPct).toBeTypeOf('number');
+    expect(lo.relativeContext.avgCtrPct).toBeTypeOf('number');
+  });
+
+  // null, never undefined: the projection is an explicit allowlist, and an
+  // absent key is how a field silently stops existing two hops later.
+  it('is null on a verdict no cohort decided', async () => {
+    getConnectorCampaigns.mockResolvedValue([row()]);
+    const { verdicts } = await getConnectorVerdicts('ws-1');
+    expect(verdicts[0].relativeRank).toBeNull();
+    expect(verdicts[0].relativeContext).toBeNull();
+  });
+
   it('publishes a real signal half on every row, upgraded or not', async () => {
     getConnectorCampaigns.mockResolvedValue([
       row({ entityId: 'lo',  revenueMinor: 0, frequency: 2.0, clicks: 250 }),

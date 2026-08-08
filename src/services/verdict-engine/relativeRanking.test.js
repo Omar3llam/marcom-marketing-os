@@ -142,3 +142,76 @@ describe('applyRelativeRanking — governing law', () => {
     expect(byId.cv3.verdict).toBe(VERDICT.SCALE);
   });
 });
+
+// ── The cohort, as data ──────────────────────────────────────
+// Every figure here already existed — inside the rationale STRING, and nowhere
+// else. A UI that wanted "ranked against 4 campaigns, CTR 0.60% vs 2.65%" had a
+// choice between regex-parsing prose and going without, and it went without: a
+// relative KILL is the one verdict class whose reasoning the honesty gate hides
+// (those hypotheses belong to the absolute pass), so it showed one sentence.
+describe('relativeContext — the cohort published structurally', () => {
+  const base = () => account([
+    campaign('c1', { clicks: 60 }),   // 0.60% — worst
+    campaign('c2', { clicks: 200 }),  // 2.00%
+    campaign('c3', { clicks: 300 }),  // 3.00%
+    campaign('c4', { clicks: 500 }),  // 5.00% — best
+  ]);
+
+  it('rides through to the node beside relativeRank', () => {
+    const r = rank(base());
+    expect(r.c1.relativeContext).toEqual({
+      rank: 'BOTTOM', group: 'awareness', cohortSize: 4, ctrPct: 0.6, avgCtrPct: 2.65,
+    });
+  });
+
+  it('the top of the cohort gets its own', () => {
+    expect(rank(base()).c4.relativeContext)
+      .toMatchObject({ rank: 'TOP', ctrPct: 5, avgCtrPct: 2.65 });
+  });
+
+  // UNITS. signalInput.ctr is ALREADY a percent (clicks/impressions × 100), so
+  // these are rounded and never converted. The ratio convention (0.006) belongs
+  // to the client's campaign row — a different field with the same name — and
+  // converting here would publish a 0.60% CTR as 60%.
+  it('publishes percent, not a ratio scaled a second time', () => {
+    const { c1 } = rank(base());
+    expect(c1.relativeContext.ctrPct).toBe(0.6);
+    expect(c1.relativeContext.ctrPct).toBeLessThan(1);
+  });
+
+  // It has to match the sentence beside it to the digit — two renderings of one
+  // comparison that disagree is worse than either alone.
+  it('agrees with the rationale it was lifted out of', () => {
+    const { c1 } = rank(base());
+    expect(c1.rationale).toContain(`(${c1.relativeContext.ctrPct.toFixed(2)}%`);
+    expect(c1.rationale).toContain(`vs ${c1.relativeContext.avgCtrPct.toFixed(2)}% group average`);
+  });
+
+  // The one fact the prose never carried. "Lowest CTR in the awareness group"
+  // reads identically for a group of three and a group of thirty.
+  it('counts the cohort it was actually ranked against', () => {
+    const r = rank(account([
+      campaign('a', { clicks: 60 }), campaign('b', { clicks: 200 }), campaign('c', { clicks: 300 }),
+    ]));
+    expect(r.a.relativeContext.cohortSize).toBe(3);
+  });
+
+  // Display-safe by construction: the engine's own cohort word, the same one the
+  // rationale uses. Never the OUTCOME_* objective enum, which has no display map
+  // anywhere in the repo.
+  it('names the group in words a screen can show', () => {
+    const conv = rank(account([
+      campaign('d1', { clicks: 60,  revenueExpected: true, objective: 'OUTCOME_SALES' }),
+      campaign('d2', { clicks: 200, revenueExpected: true, objective: 'OUTCOME_SALES' }),
+      campaign('d3', { clicks: 300, revenueExpected: true, objective: 'OUTCOME_SALES' }),
+    ]));
+    expect(conv.d1.relativeContext.group).toBe('conversion');
+    expect(conv.d1.relativeContext.group).not.toMatch(/OUTCOME_|_/);
+  });
+
+  it('is absent on a verdict no cohort decided', () => {
+    const r = rank(account([campaign('solo', { clicks: 60 })])); // cohort of 1 → no ranking
+    expect(r.solo.relativeContext).toBeUndefined();
+    expect(r.solo.relativeRank).toBeUndefined();
+  });
+});

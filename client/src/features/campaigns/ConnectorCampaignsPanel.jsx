@@ -342,6 +342,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                 // badge. The panel needs it to know whether the reasoning it is
                 // about to show actually DECIDED this verdict.
                 relativeRank={relativeRank}
+                relativeContext={info.relativeContext ?? null}
               />
             </td>
           </tr>

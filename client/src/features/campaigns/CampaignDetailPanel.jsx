@@ -32,6 +32,7 @@ import { buildCounterfactualViewModel } from '@/features/campaigns/counterfactua
 import { CounterfactualsBlock } from '@/features/campaigns/CounterfactualsBlock.jsx';
 import { buildPrimaryHypothesisViewModel } from '@/features/campaigns/hypothesisViewModel.js';
 import { HypothesisBlock } from '@/features/campaigns/HypothesisBlock.jsx';
+import { CohortBlock } from '@/features/campaigns/CohortBlock.jsx';
 
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
 
@@ -151,6 +152,7 @@ export function CampaignDetailPanel({
   campaign, verdict = null, impact = null, rationale = null, confidence = null,
   funnel = null, rootCause = null, dataConfidence = null, signalConfidence = null,
   counterfactuals = null, hypotheses = null, relativeRank = null,
+  relativeContext = null,
 }) {
   const { load, reasoning, stale, generatedAt, isLoading, error } = useCampaignReasoning();
   const entityId = campaign.entityId;
@@ -190,10 +192,27 @@ export function CampaignDetailPanel({
   // decided the call and the absolute reasoning did not (see hypothesisViewModel).
   const hypothesisVM = funnel ? null : buildPrimaryHypothesisViewModel(hypotheses, relativeRank);
 
-  // One section for both halves. They are a single argument — "here is what we
-  // think, here is what we checked and ruled out" — and reading them as two
-  // unrelated boxes loses that the second only means anything given the first.
-  const showReasoning = Boolean(hypothesisVM) || showCounterfactuals;
+  // What decided a cohort verdict, when one did. Mutually exclusive with the
+  // hypothesis block by construction — relativeContext exists only where
+  // relativeRank does, which is exactly where the honesty gate returns null — so
+  // the two never argue over the same verdict.
+  //
+  // NOT gated on `funnel`, unlike the two blocks above. They step aside for a
+  // funnel because the funnel diagnosis IS the explanation there; a relative
+  // upgrade is decided by cohort rank whatever the funnel found, so on those
+  // rows this is the only thing on screen that names the actual basis.
+  //
+  // Every figure required, not merely present: a card reading "Ranked against
+  // campaigns · CTR % vs %" is worse than no card.
+  const cohortVM = relativeContext
+    && [relativeContext.cohortSize, relativeContext.ctrPct, relativeContext.avgCtrPct].every(Number.isFinite)
+    ? relativeContext
+    : null;
+
+  // One section for all of it. They are a single argument — "here is what we
+  // think, here is what we checked and ruled out" — and reading them as
+  // unrelated boxes loses that each only means anything given the others.
+  const showReasoning = Boolean(hypothesisVM) || showCounterfactuals || Boolean(cohortVM);
 
   // UNCHANGED, deliberately. The obvious move is to suppress the prose clause
   // once the structured block renders — but they answer different questions.
@@ -256,6 +275,7 @@ export function CampaignDetailPanel({
             <div className="mt-4">
               <p className="section-label mb-1 text-lumi-muted">Reasoning</p>
               <HypothesisBlock viewModel={hypothesisVM} />
+              <CohortBlock viewModel={cohortVM} />
               {showCounterfactuals && <CounterfactualsBlock viewModel={counterfactualVM} />}
             </div>
           )}
@@ -278,8 +298,17 @@ export function CampaignDetailPanel({
               this gate would put a second confidence line on a KILL, sourced
               from `signalConfidence` where the block's comes from the
               hypothesis, and a relative upgrade re-stamps the first without
-              touching the second. */}
-          {funnel && conf && (
+              touching the second.
+
+              SUPPRESSED ON COHORT ROWS. A relative upgrade stamps
+              signalConfidence at exactly RR.CONFIDENCE (0.6), which composes
+              against healthy data to a product BELOW the Medium band while
+              neither half is itself below it — so the line reads "Low
+              confidence" and names no reason, because by its own test there
+              isn't one. The cohort block above explains the verdict properly;
+              leaving this underneath it prints an unexplained doubt over a
+              complete explanation. */}
+          {funnel && conf && !relativeRank && (
             <p className="mt-1.5 font-mono text-[11px] text-lumi-subtle">
               {conf.label} confidence
               {conf.limitedByData && ' · limited by available data'}

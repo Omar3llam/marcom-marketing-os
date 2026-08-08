@@ -270,6 +270,73 @@ describe('signal quality, on a mechanism row', () => {
   });
 });
 
+// ── The cohort verdict, finally explaining itself ────────────
+// A relative KILL is decided by cohort rank, so its hypotheses belong to the
+// absolute pass and the honesty gate hides them — taking the counterfactuals
+// with them. That left the loudest verdict in the product explained by one
+// sentence, with the cohort figures existing only inside that sentence.
+const COHORT = { rank: 'BOTTOM', group: 'conversion', cohortSize: 8, ctrPct: 0.7, avgCtrPct: 1.5 };
+
+describe('a cohort KILL says what cohort', () => {
+  it('renders the block, inside Reasoning', () => {
+    panel({ relativeRank: 'BOTTOM', relativeContext: COHORT, hypotheses: HYPOTHESES });
+    expect(screen.getByText('Reasoning')).toBeInTheDocument();
+    expect(screen.getByText('Cohort ranking')).toBeInTheDocument();
+    expect(screen.getByText(/Ranked against 8 campaigns/)).toBeInTheDocument();
+  });
+
+  // Mutually exclusive BY CONSTRUCTION: relativeContext exists only where
+  // relativeRank does, which is exactly where the honesty gate returns null. The
+  // two can never argue over one verdict.
+  it('never shares a panel with the mechanism block', () => {
+    panel({ relativeRank: 'BOTTOM', relativeContext: COHORT, hypotheses: HYPOTHESES });
+    expect(screen.queryByText('Why we believe this')).not.toBeInTheDocument();
+  });
+
+  it('an absolutely-decided verdict gets no cohort block', () => {
+    panel({ hypotheses: HYPOTHESES });
+    expect(screen.queryByText('Cohort ranking')).not.toBeInTheDocument();
+    expect(screen.getByText('Why we believe this')).toBeInTheDocument();
+  });
+
+  // NOT gated on funnel, unlike the two blocks beside it. A relative upgrade
+  // requires revenueMeasured === false, and `funnel` is attached whenever a
+  // stage was diagnosable — so the two co-occur, and on those rows this is the
+  // only thing on screen naming what actually decided the verdict.
+  it('still explains a cohort KILL that also carries funnel data', () => {
+    panel({ verdict: 'KILL', funnel, relativeRank: 'BOTTOM', relativeContext: COHORT });
+    expect(screen.getByText('Cohort ranking')).toBeInTheDocument();
+  });
+
+  it.each([[null], [undefined], [{}], [{ cohortSize: 8 }]])(
+    'renders no card for %s rather than one with blanks in it', (relativeContext) => {
+      panel({ relativeRank: 'BOTTOM', relativeContext });
+      expect(screen.queryByText('Cohort ranking')).not.toBeInTheDocument();
+    },
+  );
+});
+
+describe('the confidence line steps aside for it', () => {
+  // WHY: a relative upgrade stamps signalConfidence at exactly RR.CONFIDENCE
+  // (0.6), which composes against healthy data to a product below the Medium
+  // band while NEITHER half is itself below it. So the line reads "Low
+  // confidence" and names no reason — because by its own test there isn't one —
+  // directly beneath a block that explains the verdict completely.
+  it('is hidden on a cohort row', () => {
+    panel({
+      verdict: 'KILL', funnel, relativeRank: 'BOTTOM', relativeContext: COHORT,
+      confidence: 0.48, dataConfidence: 0.8, signalConfidence: 0.6,
+    });
+    expect(screen.queryByText(/confidence/i)).not.toBeInTheDocument();
+    expect(screen.getByText('Cohort ranking')).toBeInTheDocument();
+  });
+
+  it('is untouched on every other row', () => {
+    panel({ verdict: 'WATCH', funnel, confidence: 0.45, dataConfidence: 0.3, signalConfidence: 0.9 });
+    expect(screen.getByText(/Low confidence · limited by available data/)).toBeInTheDocument();
+  });
+});
+
 describe('no reasoning to show', () => {
   it('renders no Reasoning section at all when neither half has anything', () => {
     panel({ hypotheses: null, counterfactuals: null });
