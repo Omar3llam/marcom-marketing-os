@@ -73,7 +73,10 @@ export function buildPrimaryHypothesisViewModel(hypotheses, relativeRank) {
     // already reports from its own prop, so nothing renders this — it is the
     // material PR#335's breakdown is built from, kept whole so that PR does not
     // have to re-reach for the hypothesis.
-    // TODO (PR#335): `supports` joins it there, for the playbook/memory display.
+    // `supports` is NOT coming, and the TODO that promised it is gone: it is the
+    // metric NAMES of the figures already in `observed`, so rendering both would
+    // print the same signals twice in two shapes — the duplication removed from
+    // CohortBlock, re-introduced one block over.
     confidence: primary.confidence ?? null,
 
     // How well the evidence converges on THIS mechanism, as a band rather than
