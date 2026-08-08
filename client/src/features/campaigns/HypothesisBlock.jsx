@@ -32,13 +32,13 @@ export function HypothesisBlock({ viewModel }) {
 
         {viewModel.observed?.length > 0 && (
           <div className="space-y-0.5">
-            {/* "Supporting indicators", never "Evidence". Evidence is a domain
-                object in Lumi with a narrower, load-bearing meaning — the
+            {/* "Key signals" — and still never "Evidence". Evidence is a domain
+                object in Lumi with a narrower, load-bearing meaning: the
                 engine's evidence[] rows carry a value AND the benchmark they
                 were judged against. These are readings named in prose, and
-                borrowing the word would imply a rigour this list does not
-                claim. */}
-            <p className="text-[11px] text-lumi-muted">Supporting indicators:</p>
+                borrowing that word would claim a rigour this list does not have.
+                "Signals" is the engine's own word for what these are. */}
+            <p className="text-[11px] text-lumi-muted">Key signals:</p>
             {viewModel.observed.map((o) => (
               <p key={o.key} className="pl-2 text-xs leading-relaxed text-lumi-subtle">· {o.label}</p>
             ))}

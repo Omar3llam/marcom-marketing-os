@@ -41,9 +41,10 @@ describe('what it renders', () => {
   // value AND the benchmark they were judged against, and the word is doing work
   // elsewhere in this panel. Borrowing it here would imply a rigour this list
   // does not claim.
-  it('calls them supporting indicators, not evidence', () => {
+  it('calls them key signals, and still not evidence', () => {
     render(<HypothesisBlock viewModel={vm()} />);
-    expect(screen.getByText('Supporting indicators:')).toBeInTheDocument();
+    expect(screen.getByText('Key signals:')).toBeInTheDocument();
+    expect(screen.queryByText(/Supporting indicators/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^Evidence:?$/)).not.toBeInTheDocument();
   });
 

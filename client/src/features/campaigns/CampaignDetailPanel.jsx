@@ -13,7 +13,8 @@
 // aged row is flagged "may be stale". Cached per campaign for the session.
 // ============================================================
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { Sparkles, Loader2, AlertTriangle, Copy, Check, AlertCircle, ExternalLink } from 'lucide-react';
+import { Sparkles, Loader2, AlertTriangle, Copy, Check, AlertCircle, ExternalLink, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils.js';
 import { formatCurrency } from '@/lib/money';
 import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFormatters.js';
 import { HelpTip } from '@/components/ui/HelpTip.jsx';
@@ -154,6 +155,10 @@ export function CampaignDetailPanel({
   counterfactuals = null, hypotheses = null, relativeRank = null,
   relativeContext = null,
 }) {
+  // Closed on open, and reset per campaign by the panel's own remount — the
+  // expanded row unmounts on collapse, so no stale open state follows a reader
+  // to the next campaign.
+  const [reasoningOpen, setReasoningOpen] = useState(false);
   const { load, reasoning, stale, generatedAt, isLoading, error } = useCampaignReasoning();
   const entityId = campaign.entityId;
   const learning = useDecisionLearning(entityId);
@@ -211,10 +216,16 @@ export function CampaignDetailPanel({
     ? relativeContext
     : null;
 
-  // One section for all of it. They are a single argument — "here is what we
-  // think, here is what we checked and ruled out" — and reading them as
-  // unrelated boxes loses that each only means anything given the others.
-  const showReasoning = Boolean(hypothesisVM) || showCounterfactuals || Boolean(cohortVM);
+  // What goes BEHIND the disclosure. The cohort block is deliberately not in
+  // here: it stays visible, so this is the mechanism and the rejections only —
+  // a single argument ("here is what we think, here is what we ruled out"),
+  // which is why they share one control rather than collapsing separately.
+  //
+  // cohortVM was a term here while the block lived inside the section. Leaving
+  // it would give a cohort-decided verdict — hypothesis suppressed by the
+  // honesty gate, counterfactuals suppressed with it — a "Reasoning" toggle
+  // that opens onto nothing.
+  const showReasoning = Boolean(hypothesisVM) || showCounterfactuals;
 
   // UNCHANGED, deliberately. The obvious move is to suppress the prose clause
   // once the structured block renders — but they answer different questions.
@@ -270,15 +281,49 @@ export function CampaignDetailPanel({
             </p>
           )}
 
-          {/* verdict → why → what we ruled out → action. One section, because
-              the two blocks are a single argument: a rejection only means
-              something once you know what it was rejected in favour of. */}
+          {/* ALWAYS VISIBLE, and outside the disclosure below. On a cohort
+              verdict this is not supporting detail — it is the entire basis for
+              the call, and the only thing on screen naming it. Putting it behind
+              a closed toggle would hide the reason a campaign is being killed
+              behind a click. */}
+          <CohortBlock viewModel={cohortVM} />
+
+          {/* verdict → why → what we ruled out → action. ONE control for both
+              blocks, because they are a single argument: a rejection only means
+              something once you know what it was rejected in favour of, and
+              collapsing them separately would let a reader open the second
+              without the first.
+
+              Closed by default. The verdict, its reason and the ask are all
+              above it already; this is the audit trail for a reader who wants to
+              challenge the call, and it is long enough to bury the ask when it
+              is not. Panel-level state deliberately — the blocks stay pure
+              renderers that take a view model and emit JSX, which is what lets
+              them move to a feed or a narrative later. */}
           {showReasoning && (
             <div className="mt-4">
-              <p className="section-label mb-1 text-lumi-muted">Reasoning</p>
-              <HypothesisBlock viewModel={hypothesisVM} />
-              <CohortBlock viewModel={cohortVM} />
-              {showCounterfactuals && <CounterfactualsBlock viewModel={counterfactualVM} />}
+              <button
+                type="button"
+                onClick={() => setReasoningOpen((o) => !o)}
+                aria-expanded={reasoningOpen}
+                className="flex w-full items-center gap-1 text-left section-label text-lumi-muted transition-colors hover:text-lumi-text"
+              >
+                {/* The chevron ROTATES and the label never changes — the same
+                    affordance the campaign rows use, so one gesture means one
+                    thing across the page. */}
+                <ChevronRight
+                  className={cn('w-3 h-3 transition-transform duration-200', reasoningOpen && 'rotate-90 text-lumi-accent')}
+                  strokeWidth={2}
+                />
+                Reasoning
+              </button>
+
+              {reasoningOpen && (
+                <div className="mt-1">
+                  <HypothesisBlock viewModel={hypothesisVM} />
+                  {showCounterfactuals && <CounterfactualsBlock viewModel={counterfactualVM} />}
+                </div>
+              )}
             </div>
           )}
 
