@@ -339,6 +339,11 @@ export default function CampaignsView() {
         funnel: v.funnel ?? null,
         rootCause: v.rootCause ?? null,
         dataConfidence: v.dataConfidence ?? null,
+        // The OTHER half of the same product. It has been published on every
+        // verdict row since the engine started splitting the two, and no client
+        // file read it — so "Low confidence" could say the data was thin but
+        // never that the evidence simply did not converge.
+        signalConfidence: v.signalConfidence ?? null,
         // The alternatives the engine set aside. Dropped here for the same
         // reason funnel/rootCause were until PR #309: this projection is an
         // explicit list, and a field that arrives on every verdict row still

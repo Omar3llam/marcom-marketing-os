@@ -203,6 +203,73 @@ describe('the honesty gate, end to end', () => {
   });
 });
 
+// ── Which half of confidence is holding the number down ──────
+// The panel has always shown a bare band. "Low" reads as "the engine is unsure
+// about your campaign"; usually it is unsure about its own evidence, and the two
+// halves have opposite implications — thin data is something an operator fixes
+// by waiting, a weak signal is not.
+describe('the limiting factor, on a funnel row', () => {
+  const watch = (over = {}) => panel({ verdict: 'WATCH', funnel, rootCause: 'FUNNEL_DROP_POST_CLICK', ...over });
+
+  it('says nothing extra when both halves are healthy', () => {
+    watch({ confidence: 0.85, dataConfidence: 0.9, signalConfidence: 0.9 });
+    expect(screen.getByText(/High confidence/)).toBeInTheDocument();
+    expect(screen.queryByText(/limited/)).not.toBeInTheDocument();
+  });
+
+  it('blames thin data when that is what is holding it down', () => {
+    watch({ confidence: 0.45, dataConfidence: 0.3, signalConfidence: 0.9 });
+    expect(screen.getByText(/Low confidence · limited by available data/)).toBeInTheDocument();
+  });
+
+  it('blames the signal when the data behind it was fine', () => {
+    watch({ confidence: 0.45, dataConfidence: 0.9, signalConfidence: 0.4 });
+    expect(screen.getByText(/Low confidence · limited supporting signal quality/)).toBeInTheDocument();
+  });
+
+  it('names one factor, not both, when both are thin', () => {
+    watch({ confidence: 0.2, dataConfidence: 0.3, signalConfidence: 0.3 });
+    expect(screen.getByText(/limited by available data/)).toBeInTheDocument();
+    expect(screen.queryByText(/limited supporting signal quality/)).not.toBeInTheDocument();
+  });
+
+  // Every row rendered before this field was threaded through the three hops
+  // between the engine and here.
+  it('a row with no signal half reads exactly as it did before', () => {
+    watch({ confidence: 0.45, dataConfidence: 0.3, signalConfidence: null });
+    expect(screen.getByText(/Low confidence · limited by available data/)).toBeInTheDocument();
+    expect(screen.queryByText(/signal quality/)).not.toBeInTheDocument();
+  });
+});
+
+// The KILL/SCALE half of the same question. The funnel line above and this one
+// are disjoint by construction — funnel rows get no hypothesis block, non-funnel
+// rows get no funnel line — so a row is told which half is weak exactly once.
+describe('signal quality, on a mechanism row', () => {
+  it('bands the primary hypothesis reasoning inside the block', () => {
+    panel({ hypotheses: HYPOTHESES });
+    expect(screen.getByText('Signal quality: High')).toBeInTheDocument();
+  });
+
+  it('reads the hypothesis, not the verdict-level signalConfidence', () => {
+    // A relative upgrade re-stamps signalConfidence and leaves the hypothesis
+    // untouched. Sourcing the block from the verdict field would print the
+    // ranking's strength under a mechanism it says nothing about.
+    panel({ hypotheses: HYPOTHESES, signalConfidence: 0.1 });
+    expect(screen.getByText('Signal quality: High')).toBeInTheDocument();
+  });
+
+  it('shows no second confidence line beside it', () => {
+    panel({ hypotheses: HYPOTHESES, confidence: 0.4, dataConfidence: 0.2 });
+    expect(screen.queryByText(/limited by available data/)).not.toBeInTheDocument();
+  });
+
+  it('goes with the block when the honesty gate fires', () => {
+    panel({ hypotheses: HYPOTHESES, relativeRank: 'BOTTOM' });
+    expect(screen.queryByText(/Signal quality/)).not.toBeInTheDocument();
+  });
+});
+
 describe('no reasoning to show', () => {
   it('renders no Reasoning section at all when neither half has anything', () => {
     panel({ hypotheses: null, counterfactuals: null });

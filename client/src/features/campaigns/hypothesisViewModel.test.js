@@ -15,6 +15,7 @@
 //     the verdict. Wrong attribution is worse than none.
 import { describe, it, expect } from 'vitest';
 import { buildPrimaryHypothesisViewModel } from './hypothesisViewModel.js';
+import { confidenceLabel } from './verdictEvidence.js';
 
 const obs = (metric, over = {}) => ({
   metric, value: 0.7, benchmark: 1.5, severity: 'CRITICAL', ...over,
@@ -106,7 +107,7 @@ describe('what the model deliberately omits', () => {
   // `supports` is metric NAMES for a hypothesis whose figures are already in
   // `observed`. Nothing renders it, and a projected-but-unrendered field reads
   // as a rendering bug to whoever finds it next.
-  // TODO (PR#334): joins the model with the confidence breakdown.
+  // TODO (PR#335): joins the model with the playbook/memory display.
   it('does not project supports', () => {
     expect(buildPrimaryHypothesisViewModel([h()], null)).not.toHaveProperty('supports');
   });
@@ -115,14 +116,55 @@ describe('what the model deliberately omits', () => {
     expect(buildPrimaryHypothesisViewModel([h()], null)).not.toHaveProperty('contradicts');
   });
 
-  it('carries confidence through even though nothing shows it yet', () => {
+  it('carries confidence through whole, for the breakdown to build on', () => {
     expect(buildPrimaryHypothesisViewModel([h()], null).confidence)
       .toEqual({ reasoning: 0.8, data: 0.6 });
   });
 
-  it('emits exactly four keys', () => {
+  it('emits exactly five keys', () => {
     expect(Object.keys(buildPrimaryHypothesisViewModel([h()], null)).sort())
-      .toEqual(['confidence', 'id', 'label', 'observed']);
+      .toEqual(['confidence', 'id', 'label', 'observed', 'signalQuality']);
+  });
+});
+
+// ── Signal quality ───────────────────────────────────────────
+// Banded HERE and not in the block, because HypothesisBlock is contractually
+// vocabulary-free — its own test fails on a verdictEvidence import. A raw number
+// sent there would make it carry a second copy of the band table, and two copies
+// is how the header says "High" while the card below says "Medium" about the
+// same scale.
+describe('signal quality', () => {
+  it.each([[0.95, 'High'], [0.8, 'High'], [0.7, 'Medium'], [0.6, 'Medium'], [0.3, 'Low'], [0.1, 'Low']])(
+    'bands reasoning %s as %s', (reasoning, expected) => {
+      const vm = buildPrimaryHypothesisViewModel([h({ confidence: { reasoning, data: 0.9 } })], null);
+      expect(vm.signalQuality).toBe(expected);
+    },
+  );
+
+  // Same function as the panel header's verdict-confidence label, so the two can
+  // never drift into contradicting each other on one screen.
+  it('uses the same bands the rest of the panel labels confidence with', () => {
+    expect(buildPrimaryHypothesisViewModel([h({ confidence: { reasoning: 0.8, data: 0.9 } })], null).signalQuality)
+      .toBe(confidenceLabel(0.8));
+  });
+
+  it('bands the REASONING half, never the data half', () => {
+    // data would band as Low; reasoning as High. Only one of them is a
+    // statement about this mechanism.
+    const vm = buildPrimaryHypothesisViewModel([h({ confidence: { reasoning: 0.85, data: 0.2 } })], null);
+    expect(vm.signalQuality).toBe('High');
+  });
+
+  it.each([[null], [undefined], [{ data: 0.6 }], [{ reasoning: null, data: 0.6 }]])(
+    'is null, not a band, when %s gives it nothing to read', (confidence) => {
+      expect(buildPrimaryHypothesisViewModel([h({ confidence })], null).signalQuality).toBeNull();
+    },
+  );
+
+  // A number, never prose: the honest failure is showing nothing.
+  it('does not invent a middle band for an unreadable value', () => {
+    expect(buildPrimaryHypothesisViewModel([h({ confidence: { reasoning: 'high' } })], null).signalQuality)
+      .toBeNull();
   });
 });
 
@@ -147,7 +189,7 @@ describe('nothing usable in, null out', () => {
   it('survives a malformed row', () => {
     expect(() => buildPrimaryHypothesisViewModel([{}], null)).not.toThrow();
     expect(buildPrimaryHypothesisViewModel([{}], null)).toEqual({
-      id: null, label: 'Unknown mechanism', observed: [], confidence: null,
+      id: null, label: 'Unknown mechanism', observed: [], confidence: null, signalQuality: null,
     });
   });
 });

@@ -83,10 +83,17 @@ const declinedObservations = (declined) =>
  *                 MECHANISM_SUPPORT says belong to THIS mechanism
  *   severity    — how far past its bar each supporting reading is
  *
- * Not wired into the verdict's confidence yet. `evaluateVerdict` still composes
- * the rule's literal with dataConfidence; swapping in this number changes every
- * stored confidence in the system and belongs in its own change, with its own
- * before/after. See PR#317's report.
+ * Wired into verdictEngine's four mechanism cases (PR#319) — they take their
+ * signal strength from here now, not from the rule's frozen literal. Two fields
+ * carry it onward and they are the SAME number only on that track:
+ *   verdict.signalConfidence          — this, on a mechanism verdict; the
+ *     branch's own measure elsewhere (funnel.confidence, the awareness tiers,
+ *     1.0 on the gates) and RE-STAMPED by a relative upgrade with the ranking's
+ *     strength, which is why it can disagree with the field below.
+ *   hypothesis.confidence.reasoning   — this, per hypothesis, always. A relative
+ *     upgrade leaves it untouched, so it describes the absolute pass even when
+ *     that pass did not decide the verdict. The UI's honesty gate hides the
+ *     whole block in exactly that case (see hypothesisViewModel).
  *
  * @returns {number} 0.10–0.95. Never 0 (a rule DID fire) and never 1.0 (the
  *   same reason confidenceEngine caps at MAX_CONFIDENCE: platform-reported
