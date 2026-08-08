@@ -155,10 +155,14 @@ export function CampaignDetailPanel({
   counterfactuals = null, hypotheses = null, relativeRank = null,
   relativeContext = null,
 }) {
-  // Closed on open, and reset per campaign by the panel's own remount — the
-  // expanded row unmounts on collapse, so no stale open state follows a reader
-  // to the next campaign.
-  const [reasoningOpen, setReasoningOpen] = useState(false);
+  // OPEN on mount. The disclosure exists to let a reader put the audit trail
+  // away, not to hide it: a verdict whose reasoning takes a click reads as
+  // opaque, and the mechanism and the rejections are the case FOR the call.
+  // Reset per campaign by the panel's own remount — the expanded row unmounts on
+  // collapse, so a reader who closed this on one campaign meets an open one on
+  // the next.
+  // Revisit when memory and outcomes land in this panel (density review).
+  const [reasoningOpen, setReasoningOpen] = useState(true);
   const { load, reasoning, stale, generatedAt, isLoading, error } = useCampaignReasoning();
   const entityId = campaign.entityId;
   const learning = useDecisionLearning(entityId);

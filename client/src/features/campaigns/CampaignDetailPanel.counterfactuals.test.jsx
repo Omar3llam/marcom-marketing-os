@@ -55,37 +55,34 @@ beforeEach(() => {
 });
 
 /**
- * The Reasoning section is a disclosure, closed on open. Everything behind it
- * is the audit trail for a reader challenging the call — the verdict, its
- * reason and the ask all sit above it, unclicked.
+ * The Reasoning section is a disclosure that starts OPEN. It exists so a reader
+ * can put the audit trail away, not so they have to ask for it — a verdict whose
+ * reasoning takes a click reads as opaque, and these blocks are the case FOR the
+ * call. So the assertions below read it without touching anything, and
+ * `toggleReasoning` is only for the tests that exercise the control itself.
  */
 const reasoningToggle = () => screen.queryByRole('button', { name: /Reasoning/ });
-const openReasoning = () => fireEvent.click(reasoningToggle());
-const panelOpen = (over = {}) => {
-  const r = panel(over);
-  openReasoning();
-  return r;
-};
+const toggleReasoning = () => fireEvent.click(reasoningToggle());
 
 describe('a KILL finally says what it ruled out', () => {
   it('renders the block', () => {
-    panelOpen();
+    panel();
     expect(screen.getByText('What we ruled out')).toBeInTheDocument();
     expect(screen.getByText('Audience mismatch')).toBeInTheDocument();
   });
 
   it('shows what argued against the alternative', () => {
-    panelOpen();
+    panel();
     expect(screen.getByText(/Cost per click was acceptable/)).toBeInTheDocument();
   });
 
   it('shows what the primary explanation covers instead', () => {
-    panelOpen();
+    panel();
     expect(screen.getByText(/CTR is below benchmark/)).toBeInTheDocument();
   });
 
   it('does the same for a SCALE', () => {
-    panelOpen({ verdict: 'SCALE' });
+    panel({ verdict: 'SCALE' });
     expect(screen.getByText('What we ruled out')).toBeInTheDocument();
   });
 });
@@ -97,19 +94,19 @@ describe('a KILL finally says what it ruled out', () => {
 // screen that says what that explanation is.
 describe('the reason survives alongside the rejections', () => {
   it('still names the primary reason', () => {
-    panelOpen();
+    panel();
     expect(screen.getByText(/Lowest CTR in the conversion group/)).toBeInTheDocument();
   });
 
   it('reads why → what we ruled out, in that order', () => {
-    const { container } = panelOpen();
+    const { container } = panel();
     const text = container.textContent;
     expect(text.indexOf('Lowest CTR in the conversion group'))
       .toBeLessThan(text.indexOf('What we ruled out'));
   });
 
   it('and the ask comes last', () => {
-    const { container } = panelOpen();
+    const { container } = panel();
     const text = container.textContent;
     expect(text.indexOf('What we ruled out')).toBeLessThan(text.indexOf('Next step:'));
   });
@@ -163,21 +160,21 @@ const HYPOTHESES = [{
 
 describe('why we believe this', () => {
   it('names the mechanism the verdict rests on', () => {
-    panelOpen({ hypotheses: HYPOTHESES });
+    panel({ hypotheses: HYPOTHESES });
     expect(screen.getByText('Why we believe this')).toBeInTheDocument();
     expect(screen.getByText('Creative fatigue')).toBeInTheDocument();
     expect(screen.getByText(/Frequency is above the ceiling/)).toBeInTheDocument();
   });
 
   it('groups both halves under one Reasoning heading', () => {
-    panelOpen({ hypotheses: HYPOTHESES });
+    panel({ hypotheses: HYPOTHESES });
     expect(screen.getByText('Reasoning')).toBeInTheDocument();
     expect(screen.getByText('Why we believe this')).toBeInTheDocument();
     expect(screen.getByText('What we ruled out')).toBeInTheDocument();
   });
 
   it('reads why → ruled out → next step', () => {
-    const { container } = panelOpen({ hypotheses: HYPOTHESES });
+    const { container } = panel({ hypotheses: HYPOTHESES });
     const t = container.textContent;
     expect(t.indexOf('Why we believe this')).toBeLessThan(t.indexOf('What we ruled out'));
     expect(t.indexOf('What we ruled out')).toBeLessThan(t.indexOf('Next step:'));
@@ -186,7 +183,7 @@ describe('why we believe this', () => {
   // hypotheses[1..n] ARE the counterfactuals. Rendering the array would print
   // Audience mismatch as a live candidate AND as ruled out, in adjacent blocks.
   it('shows only the primary — the rest are already the counterfactuals', () => {
-    panelOpen({ hypotheses: HYPOTHESES });
+    panel({ hypotheses: HYPOTHESES });
     expect(screen.getAllByText('Audience mismatch')).toHaveLength(1);
   });
 });
@@ -205,7 +202,7 @@ describe('the honesty gate, end to end', () => {
   // Suppressing the mechanism must not suppress the rejections: what was ruled
   // out stays true regardless of which pass reached the verdict.
   it('keeps the counterfactuals, and the Reasoning section, either way', () => {
-    panelOpen({ hypotheses: HYPOTHESES, relativeRank: 'BOTTOM' });
+    panel({ hypotheses: HYPOTHESES, relativeRank: 'BOTTOM' });
     expect(screen.getByText('Reasoning')).toBeInTheDocument();
     expect(screen.getByText('What we ruled out')).toBeInTheDocument();
   });
@@ -260,7 +257,7 @@ describe('the limiting factor, on a funnel row', () => {
 // rows get no funnel line — so a row is told which half is weak exactly once.
 describe('signal quality, on a mechanism row', () => {
   it('bands the primary hypothesis reasoning inside the block', () => {
-    panelOpen({ hypotheses: HYPOTHESES });
+    panel({ hypotheses: HYPOTHESES });
     expect(screen.getByText('Signal quality: High')).toBeInTheDocument();
   });
 
@@ -268,7 +265,7 @@ describe('signal quality, on a mechanism row', () => {
     // A relative upgrade re-stamps signalConfidence and leaves the hypothesis
     // untouched. Sourcing the block from the verdict field would print the
     // ranking's strength under a mechanism it says nothing about.
-    panelOpen({ hypotheses: HYPOTHESES, signalConfidence: 0.1 });
+    panel({ hypotheses: HYPOTHESES, signalConfidence: 0.1 });
     expect(screen.getByText('Signal quality: High')).toBeInTheDocument();
   });
 
@@ -278,7 +275,7 @@ describe('signal quality, on a mechanism row', () => {
   });
 
   it('goes with the block when the honesty gate fires', () => {
-    panelOpen({ hypotheses: HYPOTHESES, relativeRank: 'BOTTOM' });
+    panel({ hypotheses: HYPOTHESES, relativeRank: 'BOTTOM' });
     expect(screen.queryByText(/Signal quality/)).not.toBeInTheDocument();
   });
 });
@@ -303,14 +300,11 @@ describe('a cohort KILL says what cohort', () => {
     expect(t.indexOf('Cohort ranking')).toBeLessThan(t.indexOf('Reasoning'));
   });
 
-  // The disclosure beside it stays shut: the cohort card does not drag it open.
-  // What is behind it here is the REJECTIONS ONLY — the honesty gate suppresses
-  // the mechanism on a cohort verdict but never the counterfactuals, which stay
-  // true whichever pass reached the call.
-  it('does not open the disclosure, which holds only the rejections', () => {
+  // The disclosure beside it holds the REJECTIONS ONLY — the honesty gate
+  // suppresses the mechanism on a cohort verdict but never the counterfactuals,
+  // which stay true whichever pass reached the call.
+  it('sits beside a disclosure holding only the rejections', () => {
     panel({ relativeRank: 'BOTTOM', relativeContext: COHORT, hypotheses: HYPOTHESES });
-    expect(reasoningToggle()).toHaveAttribute('aria-expanded', 'false');
-    openReasoning();
     expect(screen.getByText('What we ruled out')).toBeInTheDocument();
     expect(screen.queryByText('Why we believe this')).not.toBeInTheDocument();
   });
@@ -326,12 +320,12 @@ describe('a cohort KILL says what cohort', () => {
   // relativeRank does, which is exactly where the honesty gate returns null. The
   // two can never argue over one verdict.
   it('never shares a panel with the mechanism block', () => {
-    panelOpen({ relativeRank: 'BOTTOM', relativeContext: COHORT, hypotheses: HYPOTHESES });
+    panel({ relativeRank: 'BOTTOM', relativeContext: COHORT, hypotheses: HYPOTHESES });
     expect(screen.queryByText('Why we believe this')).not.toBeInTheDocument();
   });
 
   it('an absolutely-decided verdict gets no cohort block', () => {
-    panelOpen({ hypotheses: HYPOTHESES });
+    panel({ hypotheses: HYPOTHESES });
     expect(screen.queryByText('Cohort ranking')).not.toBeInTheDocument();
     expect(screen.getByText('Why we believe this')).toBeInTheDocument();
   });
@@ -368,34 +362,39 @@ describe('a cohort KILL says what cohort', () => {
 // the audit trail for a reader who wants to challenge the call — worth having,
 // long enough to bury the ask when nobody asked for it.
 describe('Reasoning is a disclosure', () => {
-  it('starts closed, and says so to a screen reader', () => {
+  // OPEN ON ARRIVAL. The reasoning is the case for the verdict, and a verdict
+  // whose case takes a click reads as opaque — the disclosure is here so a
+  // reader can put it away, not so they have to ask for it.
+  it('shows both blocks without a click, and says so to a screen reader', () => {
     panel({ hypotheses: HYPOTHESES });
-    expect(reasoningToggle()).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText('Why we believe this')).not.toBeInTheDocument();
-    expect(screen.queryByText('What we ruled out')).not.toBeInTheDocument();
-  });
-
-  it('opens both blocks with one click — they are one argument', () => {
-    panelOpen({ hypotheses: HYPOTHESES });
     expect(reasoningToggle()).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('Why we believe this')).toBeInTheDocument();
     expect(screen.getByText('What we ruled out')).toBeInTheDocument();
   });
 
-  it('closes again', () => {
-    panelOpen({ hypotheses: HYPOTHESES });
-    openReasoning();
+  it('closes both with one click — they are one argument', () => {
+    panel({ hypotheses: HYPOTHESES });
+    toggleReasoning();
     expect(reasoningToggle()).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByText('Why we believe this')).not.toBeInTheDocument();
+    expect(screen.queryByText('What we ruled out')).not.toBeInTheDocument();
+  });
+
+  it('and opens again', () => {
+    panel({ hypotheses: HYPOTHESES });
+    toggleReasoning();
+    toggleReasoning();
+    expect(reasoningToggle()).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Why we believe this')).toBeInTheDocument();
   });
 
   // The chevron rotates and the label never changes — the button names what it
   // opens, not what it does next. Same affordance as the campaign rows.
   it('rotates the chevron rather than renaming the button', () => {
     const { container } = panel({ hypotheses: HYPOTHESES });
-    expect(container.querySelector('.rotate-90')).toBeNull();
-    openReasoning();
     expect(container.querySelector('.rotate-90')).not.toBeNull();
+    toggleReasoning();
+    expect(container.querySelector('.rotate-90')).toBeNull();
     expect(reasoningToggle()).toHaveTextContent('Reasoning');
   });
 
