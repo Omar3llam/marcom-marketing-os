@@ -308,12 +308,22 @@ describe('a cohort KILL says what cohort', () => {
     expect(screen.getByText('Cohort ranking')).toBeInTheDocument();
   });
 
-  it.each([[null], [undefined], [{}], [{ cohortSize: 8 }]])(
+  // The guard tracks what is RENDERED, which is the cohort size. A payload
+  // missing it would print "Ranked against  campaigns".
+  it.each([[null], [undefined], [{}], [{ rank: 'BOTTOM', ctrPct: 0.7 }]])(
     'renders no card for %s rather than one with blanks in it', (relativeContext) => {
       panel({ relativeRank: 'BOTTOM', relativeContext });
       expect(screen.queryByText('Cohort ranking')).not.toBeInTheDocument();
     },
   );
+
+  // And it does NOT insist on the figures this block stopped printing — they
+  // ride along for other surfaces, so demanding them here would suppress a
+  // perfectly renderable card over two fields nobody reads.
+  it('renders on cohort size alone, without the figures it no longer shows', () => {
+    panel({ relativeRank: 'BOTTOM', relativeContext: { rank: 'BOTTOM', group: 'conversion', cohortSize: 8 } });
+    expect(screen.getByText(/Ranked against 8 campaigns/)).toBeInTheDocument();
+  });
 });
 
 describe('the confidence line steps aside for it', () => {

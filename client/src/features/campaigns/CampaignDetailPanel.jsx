@@ -202,10 +202,12 @@ export function CampaignDetailPanel({
   // upgrade is decided by cohort rank whatever the funnel found, so on those
   // rows this is the only thing on screen that names the actual basis.
   //
-  // Every figure required, not merely present: a card reading "Ranked against
-  // campaigns · CTR % vs %" is worse than no card.
-  const cohortVM = relativeContext
-    && [relativeContext.cohortSize, relativeContext.ctrPct, relativeContext.avgCtrPct].every(Number.isFinite)
+  // Guards what is RENDERED, which is now the cohort size alone — a card reading
+  // "Ranked against  campaigns" is worse than no card. It deliberately no longer
+  // requires ctrPct/avgCtrPct: those ride along for other surfaces, and since
+  // this block stopped printing them, demanding them would suppress a perfectly
+  // renderable card over two fields nobody reads.
+  const cohortVM = relativeContext && Number.isFinite(relativeContext.cohortSize)
     ? relativeContext
     : null;
 
