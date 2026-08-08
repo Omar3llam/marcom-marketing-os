@@ -47,6 +47,9 @@ describe('CampaignsView → verdictInfo', () => {
     ['signalConfidence'],
     ['counterfactuals'],
     ['hypotheses'],
+    // Unlike relativeRank below, this has no second route — the `relativeRanks`
+    // map carries only the tag, so the projection is the ONLY way it arrives.
+    ['relativeContext'],
   ])('carries %s through to the panel', (field) => {
     expect(projectionBody()).toMatch(new RegExp(`\\b${field}:`));
   });
@@ -78,6 +81,7 @@ describe('ConnectorCampaignsPanel → CampaignDetailPanel', () => {
     ['counterfactuals'],
     ['hypotheses'],
     ['relativeRank'],
+    ['relativeContext'],
   ])('forwards %s', (field) => {
     expect(callSite()).toMatch(new RegExp(`${field}=\\{`));
   });
@@ -86,7 +90,9 @@ describe('ConnectorCampaignsPanel → CampaignDetailPanel', () => {
 describe('CampaignDetailPanel accepts it', () => {
   // Hop three. A prop passed to a component that does not destructure it is
   // dropped as silently as one omitted from a projection.
-  it.each([['counterfactuals'], ['hypotheses'], ['relativeRank'], ['signalConfidence']])('destructures %s', (field) => {
+  it.each([
+    ['counterfactuals'], ['hypotheses'], ['relativeRank'], ['signalConfidence'], ['relativeContext'],
+  ])('destructures %s', (field) => {
     const src = read('CampaignDetailPanel.jsx');
     const sig = src.slice(src.indexOf('export function CampaignDetailPanel'));
     expect(sig.slice(0, sig.indexOf('}'))).toMatch(new RegExp(field));

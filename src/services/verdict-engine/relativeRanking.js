@@ -73,8 +73,30 @@ function rankCohort(label, group, upgrades) {
     return d !== 0 ? d : String(a.id).localeCompare(String(b.id));
   });
 
-  const avgStr = mean(sorted.map((c) => c.signalInput.ctr ?? 0)).toFixed(2);
+  // Kept as a NUMBER as well as the display string. The rationale below has
+  // always been the only place the cohort figures existed, which left a UI that
+  // wanted them with a choice between parsing prose and going without.
+  const avgCtr = mean(sorted.map((c) => c.signalInput.ctr ?? 0));
+  const avgStr = avgCtr.toFixed(2);
   const n = Math.max(1, Math.floor(sorted.length * RR.QUARTILE));
+
+  /**
+   * The cohort comparison, as data rather than a sentence. Every figure here is
+   * already in the rationale one line below — this publishes them structurally
+   * so nothing downstream has to regex them back out.
+   *
+   * UNITS: `signalInput.ctr` is ALREADY a percent (clicks/impressions × 100 —
+   * see verdictEngine's signalInput), so these are rounded, never converted. The
+   * ratio convention (0.007) belongs to the client's campaign row, a different
+   * field with the same name; multiplying here would publish a 0.70% CTR as 70%.
+   */
+  const contextFor = (c, rank) => ({
+    rank,
+    group: label,
+    cohortSize: sorted.length,
+    ctrPct:    Math.round((c.signalInput.ctr ?? 0) * 100) / 100,
+    avgCtrPct: Math.round(avgCtr * 100) / 100,
+  });
 
   // Top n → SCALE.
   for (const c of sorted.slice(0, n)) {
@@ -82,6 +104,7 @@ function rankCohort(label, group, upgrades) {
       verdict: VERDICT.SCALE,
       confidence: RR.CONFIDENCE,
       rank: 'TOP',
+      relativeContext: contextFor(c, 'TOP'),
       rationale: `Highest CTR in the ${label} group (${(c.signalInput.ctr ?? 0).toFixed(2)}% vs ${avgStr}% group average) — strongest engagement in your portfolio. Based on engagement signals only; add revenue data for ROAS-based scoring.`,
     });
   }
@@ -93,6 +116,7 @@ function rankCohort(label, group, upgrades) {
       verdict: VERDICT.KILL,
       confidence: RR.CONFIDENCE,
       rank: 'BOTTOM',
+      relativeContext: contextFor(c, 'BOTTOM'),
       rationale: `Lowest CTR in the ${label} group (${(c.signalInput.ctr ?? 0).toFixed(2)}% vs ${avgStr}% group average) — weakest engagement in your portfolio. Based on engagement signals only; add revenue data for ROAS-based scoring.`,
     });
   }
@@ -167,6 +191,12 @@ export function applyRelativeRanking(node) {
         rationale: up.rationale,
         recommendationTypes: [...VERDICT_TO_REC_TYPES[up.verdict]],
         relativeRank: up.rank,
+        // The same ranking, as the figures it was decided on. `relativeRank`
+        // alone says a cohort decided this and nothing about the cohort — so the
+        // one verdict class that CANNOT show a mechanism (its reasoning belongs
+        // to the absolute pass, and the honesty gate hides it) also had nothing
+        // structured to show instead.
+        relativeContext: up.relativeContext,
       };
     }),
   };
