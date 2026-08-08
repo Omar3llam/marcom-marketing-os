@@ -20,6 +20,7 @@ const vm = (over = {}) => ({
     { key: 'FREQUENCY-1', label: 'Frequency is above the ceiling' },
   ],
   confidence: { reasoning: 0.8, data: 0.6 },
+  signalQuality: 'High',
   ...over,
 });
 
@@ -46,10 +47,21 @@ describe('what it renders', () => {
     expect(screen.queryByText(/^Evidence:?$/)).not.toBeInTheDocument();
   });
 
-  // Carried by the model, shown by nothing — until PR#334.
-  it('shows no confidence number yet', () => {
+  // A BAND, never the raw 0.10–0.95. The number is an internal convergence
+  // score with no units a marketer could calibrate against, and printing "0.8"
+  // beside a percentage-heavy panel invites reading it as one.
+  it('shows the band and never the number behind it', () => {
     const { container } = render(<HypothesisBlock viewModel={vm()} />);
+    expect(screen.getByText('Signal quality: High')).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/0\.8|80%/);
+  });
+
+  // "Signal strength" and "weak signal" both read as a verdict on the campaign.
+  // This is a statement about the evidence FOR the verdict.
+  it('calls it signal quality, not strength and not weakness', () => {
+    const { container } = render(<HypothesisBlock viewModel={vm({ signalQuality: 'Low' })} />);
+    expect(screen.getByText('Signal quality: Low')).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/[Ss]ignal strength|[Ww]eak signal/);
   });
 });
 
@@ -71,6 +83,14 @@ describe('what it refuses to render', () => {
   it('survives a model with no observed list at all', () => {
     expect(() => render(<HypothesisBlock viewModel={vm({ observed: undefined })} />)).not.toThrow();
   });
+
+  // The model returns null when the hypothesis carried no readable reasoning
+  // score. An empty "Signal quality:" would claim we measured something.
+  it.each([[null], [undefined]])('drops the signal-quality line for %s', (signalQuality) => {
+    render(<HypothesisBlock viewModel={vm({ signalQuality })} />);
+    expect(screen.getByText('Creative fatigue')).toBeInTheDocument();
+    expect(screen.queryByText(/Signal quality/)).not.toBeInTheDocument();
+  });
 });
 
 describe('it holds no vocabulary of its own', () => {
@@ -81,6 +101,14 @@ describe('it holds no vocabulary of its own', () => {
     })} />);
     expect(screen.getByText('ZZ_NOT_A_REAL_MECHANISM')).toBeInTheDocument();
     expect(screen.getByText(/ZZ_NOT_A_REAL_METRIC/)).toBeInTheDocument();
+  });
+
+  // Including the band. If this component ever grew its own thresholds, a made-up
+  // band would be normalised away instead of printed — and the panel header and
+  // this card would start disagreeing about the same scale.
+  it('prints whatever band the model banded, holding no thresholds of its own', () => {
+    render(<HypothesisBlock viewModel={vm({ signalQuality: 'ZZ_NOT_A_REAL_BAND' })} />);
+    expect(screen.getByText('Signal quality: ZZ_NOT_A_REAL_BAND')).toBeInTheDocument();
   });
 
   // The runtime test above passes for a component that imports the map and

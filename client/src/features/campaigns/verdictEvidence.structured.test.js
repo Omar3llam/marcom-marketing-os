@@ -117,12 +117,12 @@ describe('whyBlock — a funnel verdict must not be invisible', () => {
 describe('confidenceDetail — say WHY confidence is low', () => {
   it('flags when thin inputs are what is holding the number down', () => {
     expect(confidenceDetail({ confidence: 0.35, dataConfidence: 0.39 }))
-      .toEqual({ label: 'Low', limitedByData: true });
+      .toEqual({ label: 'Low', limitedByData: true, limitedBySignal: false });
   });
 
   it('does not blame the data when the data is fine', () => {
     expect(confidenceDetail({ confidence: 0.85, dataConfidence: 0.94 }))
-      .toEqual({ label: 'High', limitedByData: false });
+      .toEqual({ label: 'High', limitedByData: false, limitedBySignal: false });
   });
 
   it('null confidence renders nothing rather than a default label', () => {
@@ -132,5 +132,58 @@ describe('confidenceDetail — say WHY confidence is low', () => {
 
   it('a missing dataConfidence is not read as thin data', () => {
     expect(confidenceDetail({ confidence: 0.7, dataConfidence: null }).limitedByData).toBe(false);
+  });
+});
+
+// The second half of the same product. It ships on every verdict row and no
+// client file read it, so "Low" could say the inputs were thin but never that
+// the evidence simply did not converge — two different problems with two
+// different answers, collapsed into one word.
+describe('confidenceDetail — the signal half', () => {
+  it('names a weak signal when the data behind it was fine', () => {
+    expect(confidenceDetail({ confidence: 0.45, dataConfidence: 0.9, signalConfidence: 0.5 }))
+      .toEqual({ label: 'Low', limitedByData: false, limitedBySignal: true });
+  });
+
+  it('stays quiet when both halves are healthy', () => {
+    expect(confidenceDetail({ confidence: 0.82, dataConfidence: 0.9, signalConfidence: 0.91 }))
+      .toEqual({ label: 'High', limitedByData: false, limitedBySignal: false });
+  });
+
+  // A PRIORITY RULE, not min(). The signal here (0.4) is worse than the data
+  // (0.5) and still loses: data availability is the half an operator can act on
+  // — run it longer, connect the missing source — and leading with the
+  // actionable one is the useful order. min() would surface the signal and hand
+  // the reader a structural finding with no next step attached.
+  it('data availability takes priority over signal quality', () => {
+    expect(confidenceDetail({ confidence: 0.2, dataConfidence: 0.5, signalConfidence: 0.4 }))
+      .toEqual({ label: 'Low', limitedByData: true, limitedBySignal: false });
+  });
+
+  it('surfaces exactly one limiting factor, never both', () => {
+    const conf = confidenceDetail({ confidence: 0.2, dataConfidence: 0.3, signalConfidence: 0.3 });
+    expect([conf.limitedByData, conf.limitedBySignal].filter(Boolean)).toHaveLength(1);
+  });
+
+  it.each([[null], [undefined], [NaN], ['0.4']])('%s is not read as a weak signal', (signalConfidence) => {
+    expect(confidenceDetail({ confidence: 0.7, dataConfidence: 0.9, signalConfidence }).limitedBySignal)
+      .toBe(false);
+  });
+
+  // Both halves share confidenceLabel's bands, so the boundary is the same one
+  // the label itself turns on — 0.6 is Medium, and Medium is not "limited".
+  it('is not limited AT the band edge, only below it', () => {
+    expect(confidenceDetail({ confidence: 0.6, dataConfidence: 0.9, signalConfidence: 0.6 }).limitedBySignal)
+      .toBe(false);
+    expect(confidenceDetail({ confidence: 0.6, dataConfidence: 0.9, signalConfidence: 0.59 }).limitedBySignal)
+      .toBe(true);
+  });
+
+  // The panel called this with two arguments for its whole life, and one caller
+  // (the funnel line) still passes rows that carry no signal half at all.
+  it('two-argument callers keep the answer they always got', () => {
+    expect(confidenceDetail({ confidence: 0.35, dataConfidence: 0.39 }))
+      .toMatchObject({ label: 'Low', limitedByData: true });
+    expect(confidenceDetail({ confidence: 0.9, dataConfidence: 0.9 }).limitedBySignal).toBe(false);
   });
 });

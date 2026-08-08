@@ -149,8 +149,8 @@ function EvidenceTable({ rows }) {
 
 export function CampaignDetailPanel({
   campaign, verdict = null, impact = null, rationale = null, confidence = null,
-  funnel = null, rootCause = null, dataConfidence = null, counterfactuals = null,
-  hypotheses = null, relativeRank = null,
+  funnel = null, rootCause = null, dataConfidence = null, signalConfidence = null,
+  counterfactuals = null, hypotheses = null, relativeRank = null,
 }) {
   const { load, reasoning, stale, generatedAt, isLoading, error } = useCampaignReasoning();
   const entityId = campaign.entityId;
@@ -204,7 +204,7 @@ export function CampaignDetailPanel({
   // the only thing on screen that says what that explanation is.
   const evidence = funnel ? null : evidenceClause(rationale);
   const dataOnly = isDataQualityCause(rootCause);
-  const conf = confidenceDetail({ confidence, dataConfidence });
+  const conf = confidenceDetail({ confidence, dataConfidence, signalConfidence });
   const confLabel = confidenceLabel(confidence);
   // A data-quality state has no action to take on the platform — the honest
   // next step is to wait, which nextActionFor (keyed on verdict) cannot know.
@@ -266,12 +266,26 @@ export function CampaignDetailPanel({
             </p>
           )}
 
-          {/* Why the confidence is not higher, when thin inputs are the reason.
-              "Low" on its own reads as "the engine is unsure about your
-              campaign"; the truth is it is unsure about its own evidence. */}
+          {/* Why the confidence is not higher. "Low" on its own reads as "the
+              engine is unsure about your campaign"; the truth is it is unsure
+              about its own evidence, and this says which half.
+
+              STILL FUNNEL-ONLY, deliberately. On a KILL/SCALE the same question
+              is answered inside HypothesisBlock's "Signal quality" line, which
+              renders only when there is no funnel — so the two are disjoint by
+              the same construction that keeps the counterfactual blocks apart,
+              and every row gets exactly one answer rather than two. Widening
+              this gate would put a second confidence line on a KILL, sourced
+              from `signalConfidence` where the block's comes from the
+              hypothesis, and a relative upgrade re-stamps the first without
+              touching the second. */}
           {funnel && conf && (
             <p className="mt-1.5 font-mono text-[11px] text-lumi-subtle">
-              {conf.label} confidence{conf.limitedByData ? ' · limited by available data' : ''}
+              {conf.label} confidence
+              {conf.limitedByData && ' · limited by available data'}
+              {/* "limited supporting signal quality", not "weak signal": the
+                  claim is about our evidence, not about the campaign. */}
+              {conf.limitedBySignal && ' · limited supporting signal quality'}
             </p>
           )}
 

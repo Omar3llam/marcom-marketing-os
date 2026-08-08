@@ -41,6 +41,10 @@ describe('CampaignsView → verdictInfo', () => {
     ['funnel'],
     ['rootCause'],
     ['dataConfidence'],
+    // Published on every verdict row since the engine split the two halves, and
+    // read by no client file until the confidence breakdown — the same silent
+    // drop as counterfactuals, one field later.
+    ['signalConfidence'],
     ['counterfactuals'],
     ['hypotheses'],
   ])('carries %s through to the panel', (field) => {
@@ -70,6 +74,7 @@ describe('ConnectorCampaignsPanel → CampaignDetailPanel', () => {
     ['funnel'],
     ['rootCause'],
     ['dataConfidence'],
+    ['signalConfidence'],
     ['counterfactuals'],
     ['hypotheses'],
     ['relativeRank'],
@@ -81,7 +86,7 @@ describe('ConnectorCampaignsPanel → CampaignDetailPanel', () => {
 describe('CampaignDetailPanel accepts it', () => {
   // Hop three. A prop passed to a component that does not destructure it is
   // dropped as silently as one omitted from a projection.
-  it.each([['counterfactuals'], ['hypotheses'], ['relativeRank']])('destructures %s', (field) => {
+  it.each([['counterfactuals'], ['hypotheses'], ['relativeRank'], ['signalConfidence']])('destructures %s', (field) => {
     const src = read('CampaignDetailPanel.jsx');
     const sig = src.slice(src.indexOf('export function CampaignDetailPanel'));
     expect(sig.slice(0, sig.indexOf('}'))).toMatch(new RegExp(field));

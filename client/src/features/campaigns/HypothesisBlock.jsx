@@ -15,7 +15,7 @@
 // ============================================================
 
 /**
- * @param {{ viewModel: {label: string, observed: Array<{key, label}>}|null }} props
+ * @param {{ viewModel: {label, observed: Array<{key, label}>, signalQuality}|null }} props
  *   Null renders nothing — which is also how the honesty gate expresses itself
  *   (see hypothesisViewModel): a verdict decided by cohort rank has no absolute
  *   mechanism to show, and an empty box would imply one went missing.
@@ -43,6 +43,18 @@ export function HypothesisBlock({ viewModel }) {
               <p key={o.key} className="pl-2 text-xs leading-relaxed text-lumi-subtle">· {o.label}</p>
             ))}
           </div>
+        )}
+
+        {/* "Signal quality" — how well the readings above converge on THIS
+            mechanism. Not "signal strength" and never "weak signal": both read
+            as a judgement on the campaign, and this is a statement about our
+            evidence for the judgement.
+            Deliberately inside the card, not beside the header's verdict
+            confidence: that number is the composed product this is one half of,
+            and the two sitting adjacent would read as a contradiction whenever
+            they landed in different bands. */}
+        {viewModel.signalQuality && (
+          <p className="text-[11px] text-lumi-subtle">Signal quality: {viewModel.signalQuality}</p>
         )}
       </div>
     </div>

@@ -12,6 +12,7 @@
 //   4. a `composed` key appearing before Stage 4 defines what it composes
 // ============================================================
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import {
   projectHypotheses, deriveReasoningConfidence, isContradiction,
 } from './signalProjector.js';
@@ -328,5 +329,37 @@ describe('evaluateVerdict — hypotheses ride on the verdict', () => {
     expect(thin.hypotheses).toEqual([]);
     const early = evaluateVerdict({ level: 'CAMPAIGN', metrics, daysRunning: 1 });
     expect(early.hypotheses).toEqual([]);
+  });
+});
+
+// ── The doc block, as a test ─────────────────────────────────
+// Fourth occurrence of one defect: a PR inverts a property and leaves the
+// comment that described the old one. Here the comment said this number was
+// "not wired into the verdict's confidence yet" for the whole life of PR#319,
+// which wired it — so the file's own documentation argued against reading the
+// field two hops of UI were about to be built on.
+//
+// A comment is not usually worth a test. This one is: it is load-bearing (it
+// tells a reader whether signalConfidence means anything), it is invisible to
+// every other gate in the repo, and it has now been wrong once.
+describe('the reasoning-confidence doc block tells the truth', () => {
+  const src = readFileSync(
+    new URL('./signalProjector.js', import.meta.url), 'utf8',
+  );
+
+  it('no longer claims the number is unwired', () => {
+    expect(src).not.toMatch(/Not wired into the verdict/i);
+  });
+
+  it('says where it IS wired', () => {
+    expect(src).toMatch(/Wired into verdictEngine/);
+  });
+
+  // The two fields it produces are the same number on one track only, and the
+  // difference is the whole reason the UI needs an honesty gate.
+  it('names both fields that carry it, and that they can disagree', () => {
+    expect(src).toMatch(/verdict\.signalConfidence/);
+    expect(src).toMatch(/hypothesis\.confidence\.reasoning/);
+    expect(src).toMatch(/RE-STAMPED by a relative upgrade/);
   });
 });

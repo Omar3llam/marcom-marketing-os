@@ -77,10 +77,12 @@ export const REASONING_LABELS = Object.freeze({
 });
 
 /** The engine's numeric confidence (0–1) → a marketer label. Null-safe. */
+export const BAND = Object.freeze({ HIGH: 0.8, MEDIUM: 0.6 });
+
 export function confidenceLabel(confidence) {
   if (typeof confidence !== 'number' || !Number.isFinite(confidence)) return null;
-  if (confidence >= 0.8) return 'High';
-  if (confidence >= 0.6) return 'Medium';
+  if (confidence >= BAND.HIGH) return 'High';
+  if (confidence >= BAND.MEDIUM) return 'Medium';
   return 'Low';
 }
 
@@ -200,16 +202,55 @@ export function whyBlock({ verdict, funnel = null, rootCause = null } = {}) {
   return { show: false, heading: null };
 }
 
+/** PURE: is this half of the confidence product what is holding it down? */
+const below = (n) => typeof n === 'number' && Number.isFinite(n) && n < BAND.MEDIUM;
+
 /**
- * PURE: the engine's two confidence halves → a label plus the reason it is not
- * higher. `dataConfidence` is the input-quality score; when it is what is
- * holding the number down, saying so is more useful than a bare "Low".
+ * PURE: the engine's confidence dimensions → a label plus the reason it is not
+ * higher. `confidence` is the PRODUCT of the two halves below, so a middling
+ * label never says which one cost it — "Low" reads as "the engine is unsure
+ * about your campaign" when the truth is usually that it is unsure about its
+ * own evidence.
+ *
+ * ── ONE LIMITING FACTOR, BY PRIORITY — NOT THE WORSE ONE ────────────────────
+ * When both halves are thin the answer is `limitedByData`, even if the signal
+ * scored lower. This is a priority rule and not `min()`, because the two are not
+ * comparable advice: data availability is something the operator can FIX — run
+ * it longer, spend more, connect the missing source — while signal quality is a
+ * structural finding about how well the evidence converges, with no action
+ * attached. Leading with the actionable one is the useful order, and surfacing
+ * both at once turns one clear next step into a paragraph of hedging.
+ *
+ * Consequence worth knowing: a row limited by BOTH reports only data, so the
+ * signal half stays hidden until the data half is fixed. That is intended — it
+ * is also the order the operator would have to work in anyway.
+ *
+ * TODO: return a reasonCode enum ('DATA_LIMITED' | 'SIGNAL_WEAK' | 'NONE')
+ * rather than booleans once this needs localising. The UI owns the wording
+ * today, which is why the flags are shaped as facts and not as sentences.
+ *
+ * @param {number|null} confidence       — the composed number the caller acts on
+ * @param {number|null} dataConfidence   — input quality: sample × completeness × recency
+ * @param {number|null} signalConfidence — how well the evidence converges
+ * @returns {{label, limitedByData, limitedBySignal}|null} null when there is no
+ *   confidence to describe — never a fabricated band.
  */
-export function confidenceDetail({ confidence = null, dataConfidence = null } = {}) {
+export function confidenceDetail({
+  confidence = null,
+  dataConfidence = null,
+  signalConfidence = null,
+} = {}) {
   const label = confidenceLabel(confidence);
   if (!label) return null;
-  const thin = typeof dataConfidence === 'number' && Number.isFinite(dataConfidence) && dataConfidence < 0.6;
-  return { label, limitedByData: thin };
+
+  const limitedByData = below(dataConfidence);
+  return {
+    label,
+    limitedByData,
+    // Named for the CAUSE, not the symptom: `weakSignal` reads as a claim about
+    // the campaign, and this is a claim about our evidence for it.
+    limitedBySignal: !limitedByData && below(signalConfidence),
+  };
 }
 
 /**

@@ -11,7 +11,7 @@
 // `preferredBecause`. A shared model would spend most of itself reconciling
 // that. Merge them when the overlap is real, not because the names rhyme.
 // ============================================================
-import { REASONING_LABELS } from './verdictEvidence.js';
+import { REASONING_LABELS, confidenceLabel } from './verdictEvidence.js';
 
 /**
  * PURE: hypotheses[0] → the "why we believe this" view model, or null.
@@ -43,7 +43,7 @@ import { REASONING_LABELS } from './verdictEvidence.js';
  * @param {Array<object>|null|undefined} hypotheses — verdict.hypotheses, ranked.
  * @param {string|null} relativeRank — 'TOP' | 'BOTTOM' when the cohort pass
  *   decided this verdict, null when the absolute pass did.
- * @returns {{id, label, observed: Array, confidence}|null}
+ * @returns {{id, label, observed: Array, confidence, signalQuality}|null}
  */
 export function buildPrimaryHypothesisViewModel(hypotheses, relativeRank) {
   if (!Array.isArray(hypotheses) || hypotheses.length === 0) return null;
@@ -69,10 +69,21 @@ export function buildPrimaryHypothesisViewModel(hypotheses, relativeRank) {
       label: REASONING_LABELS.metrics[o?.metric]?.preferred ?? o?.metric ?? 'Unknown signal',
     })),
 
-    // Carried, not rendered — the block shows no number yet.
-    // TODO (PR#334): `supports` joins this model when the confidence breakdown
-    // lands. Omitted now rather than projected-and-unused: an unrendered field
-    // in a view model reads as a rendering bug to whoever finds it next.
+    // Both halves, raw. `.data` is the same input-quality score the panel header
+    // already reports from its own prop, so nothing renders this — it is the
+    // material PR#335's breakdown is built from, kept whole so that PR does not
+    // have to re-reach for the hypothesis.
+    // TODO (PR#335): `supports` joins it there, for the playbook/memory display.
     confidence: primary.confidence ?? null,
+
+    // How well the evidence converges on THIS mechanism, as a band rather than
+    // the raw 0.10–0.95.
+    //
+    // Labelled here and not in the block, because the block is contractually
+    // vocabulary-free (its own test fails on a verdictEvidence import) — so a
+    // number sent there would force it to carry a second copy of the band table.
+    // Two copies is how the panel header ends up saying "High" while the block
+    // beneath it says "Medium" about the same scale, one threshold edit later.
+    signalQuality: confidenceLabel(primary.confidence?.reasoning ?? null),
   };
 }

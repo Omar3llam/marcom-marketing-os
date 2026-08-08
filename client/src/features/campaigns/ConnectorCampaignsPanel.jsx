@@ -335,6 +335,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                 funnel={info.funnel ?? null}
                 rootCause={info.rootCause ?? null}
                 dataConfidence={info.dataConfidence ?? null}
+                signalConfidence={info.signalConfidence ?? null}
                 counterfactuals={info.counterfactuals ?? null}
                 hypotheses={info.hypotheses ?? null}
                 // The row's own rank, already resolved above for the Impact
