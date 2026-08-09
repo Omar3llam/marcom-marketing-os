@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planAgenda } from './agenticPlanner.js';
+import { planAgenda, NON_BUYER_VERDICTS } from './agenticPlanner.js';
 import { AGENDA_BAND, AGENDA_TYPE, STAGE_STATE, LOOP_HEALTH, HUMAN_ACTION } from './agenticTypes.js';
 
 const now = new Date('2026-06-09T00:00:00.000Z');
@@ -63,20 +63,80 @@ describe('agenticPlanner — banding', () => {
   });
 
   // The Phase-9 fix: connector verdicts (revenue + awareness) feed the same band
-  // the guardrail verdicts do — the planner is source-agnostic, so any PROPOSED
-  // Decision that buildLoopInputs now loads becomes a CONFIRM item.
+  // the guardrail verdicts do — the planner is source-agnostic about WHERE a
+  // Decision came from.
+  //
+  // The awareness row is a WATCH rather than the HOLD it used to be. The point
+  // being defended is that an awareness-track Decision is not silently dropped
+  // for originating on that track, and WATCH proves that just as well — whereas
+  // HOLD now tests two things at once (source AND actionability) and would
+  // wrongly read as "HOLD belongs in the band". The verdict-level boundary has
+  // its own tests below.
   it('renders connector + awareness verdicts as buyer CONFIRM items', () => {
     const connector = [
       { id: 'cv1', entityId: 'cmp2', entityLevel: 'CAMPAIGN', verdict: 'REFRESH', rationale: 'Creative fatigue detected', status: 'PROPOSED' },
-      { id: 'cv2', entityId: 'cmp3', entityLevel: 'CAMPAIGN', verdict: 'HOLD', rationale: 'Awareness campaign (no revenue measured): engagement healthy — hold.', status: 'PROPOSED' },
+      { id: 'cv2', entityId: 'cmp3', entityLevel: 'CAMPAIGN', verdict: 'WATCH', rationale: 'Awareness campaign (no revenue measured): frequency rising toward saturation — monitor.', status: 'PROPOSED' },
     ];
     const res = planAgenda({ verdicts: connector, now });
     const refresh = res.buyerBand.find((i) => i.evidenceRef === 'cv1');
-    const awarenessHold = res.buyerBand.find((i) => i.evidenceRef === 'cv2');
+    const awareness = res.buyerBand.find((i) => i.evidenceRef === 'cv2');
     expect(refresh).toMatchObject({ type: AGENDA_TYPE.VERDICT, humanAction: HUMAN_ACTION.CONFIRM, entityId: 'cmp2' });
-    // Awareness HOLD is included (not skipped) and rides at LOW severity.
-    expect(awarenessHold).toMatchObject({ type: AGENDA_TYPE.VERDICT, severity: 'LOW', entityId: 'cmp3' });
+    // The awareness-track row is included (not skipped) and carries its own severity.
+    expect(awareness).toMatchObject({ type: AGENDA_TYPE.VERDICT, severity: 'HIGH', entityId: 'cmp3' });
     expect(refresh.rationale).toContain('fatigue');
+  });
+});
+
+// ── The verdict-level boundary ──────────────────────────────────
+// "What needs a decision today" is a filtered surface, not a mirror of the
+// persisted PROPOSED rows. HOLD is a real Decision — persisted, superseded,
+// carried in Decision Memory — that asks the buyer for nothing.
+describe('agenticPlanner — HOLD is not a buyer decision', () => {
+  const hold = {
+    id: 'h1', entityId: 'cmp9', entityLevel: 'CAMPAIGN', verdict: 'HOLD',
+    rationale: 'Within healthy parameters — hold and keep monitoring.', status: 'PROPOSED',
+  };
+
+  it('drops a PROPOSED HOLD from the buyer band', () => {
+    const res = planAgenda({ verdicts: [hold], now });
+    expect(res.buyerBand.find((i) => i.evidenceRef === 'h1')).toBeUndefined();
+    expect(res.buyerBand).toEqual([]);
+  });
+
+  // The count is the user-visible claim: a page that says "1 to decide" over a
+  // campaign the rest of the product files under "Doing well" is the defect.
+  it('does not count toward "N to decide" — an account of HOLDs reads as quiet', () => {
+    const res = planAgenda({ verdicts: [hold, { ...hold, id: 'h2', entityId: 'cmp10' }], now });
+    expect(res.buyerBand).toHaveLength(0);
+    expect(res.summary).toMatch(/quiet/i);
+  });
+
+  it('drops only the HOLD when it sits beside a real decision', () => {
+    const res = planAgenda({ verdicts: [hold, verdicts[0]], now });
+    expect(res.buyerBand.map((i) => i.evidenceRef)).toEqual(['d1']);
+  });
+});
+
+describe('agenticPlanner — every attention verdict stays admitted', () => {
+  // Executability is the WRONG test: WATCH has no Meta action either, and is
+  // deliberately kept — it means "something is off, look at it", which is what a
+  // guardrail hit upgrades a HOLD into. The test is attention, not a button.
+  it.each([
+    ['KILL', 'HIGH'], ['WATCH', 'HIGH'], ['REALLOCATE', 'MEDIUM'],
+    ['REFRESH', 'MEDIUM'], ['SCALE', 'MEDIUM'],
+  ])('%s reaches the buyer band as a CONFIRM item at %s severity', (verdict, severity) => {
+    const res = planAgenda({
+      verdicts: [{ id: 'v1', entityId: 'cmp1', entityLevel: 'CAMPAIGN', verdict, rationale: 'r', status: 'PROPOSED' }],
+      now,
+    });
+    expect(res.buyerBand).toHaveLength(1);
+    expect(res.buyerBand[0]).toMatchObject({
+      type: AGENDA_TYPE.VERDICT, severity, humanAction: HUMAN_ACTION.CONFIRM, entityId: 'cmp1',
+    });
+  });
+
+  it('excludes HOLD and nothing else', () => {
+    expect(NON_BUYER_VERDICTS).toEqual(['HOLD']);
   });
 });
 

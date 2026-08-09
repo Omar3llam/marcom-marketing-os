@@ -43,6 +43,38 @@ const VERDICT_SEVERITY = Object.freeze({
   SCALE: SEVERITY.MEDIUM, WATCH: SEVERITY.HIGH, HOLD: SEVERITY.LOW,
 });
 
+/**
+ * Verdicts that are real Decisions but ask the buyer for NOTHING, and so do not
+ * belong in a band titled "what needs a decision today".
+ *
+ * The buyer band is NOT a mirror of the persisted PROPOSED rows. Two separate
+ * questions, deliberately answered in two places:
+ *
+ *   BUYER_ACTIONABLE_ROOT_CAUSES (decisionIdentity.js) → which persisted
+ *     connector Decisions are even CANDIDATES? (authorship / cause)
+ *   NON_BUYER_VERDICTS (here)                          → of those candidates,
+ *     which actually need a buyer? (verdict actionability)
+ *
+ * HOLD means "the engine looked and there is nothing to do". Every other surface
+ * already says so: verdictToActionType('HOLD') is null, nextActionFor('HOLD') is
+ * null, it draws no ActionBar and no decision lifecycle, and Overview files it
+ * under "Doing well" in a section whose own header calls it "the band with
+ * nothing to do". Only this band disagreed — and it did so with humanAction
+ * CONFIRM, which agenticTypes defines as "→ execution motion", something HOLD
+ * structurally cannot have.
+ *
+ * WATCH is NOT here, deliberately. It also has no Meta action, so executability
+ * is the wrong test; ATTENTION is the right one. WATCH means "something is off,
+ * a human should look" (it is what a guardrail hit UPGRADES a HOLD into), and it
+ * rides at HIGH severity. HOLD means "nothing is off". Same lack of a button,
+ * opposite meaning.
+ *
+ * HOLD is untouched everywhere else: still persisted PROPOSED, still superseded,
+ * still in Decision Memory and history, still shown by Campaigns and Overview.
+ * It stays institutional memory — it just stops being asked about.
+ */
+export const NON_BUYER_VERDICTS = Object.freeze(['HOLD']);
+
 function bySeverityDesc(a, b) {
   const d = SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity];
   if (d !== 0) return d;
@@ -65,6 +97,12 @@ function buyerAgenda({ verdicts = [], fatiguePredictions = [], pacing = [], test
 
   for (const d of verdicts) {
     if (d.status && d.status !== 'PROPOSED') continue;
+    // A real Decision that asks the buyer for nothing. Dropped HERE rather than
+    // in the loader's query: the query answers "which persisted Decisions are
+    // candidates", this answers "which candidates need a buyer". Keeping the row
+    // loaded means Decision Memory, history and every other reader see it exactly
+    // as before — only this band stops counting it.
+    if (NON_BUYER_VERDICTS.includes(d.verdict)) continue;
     const label = labelsById.get(d.entityId) ?? d.entityId;
     items.push(agendaItem({
       id: `verdict:${d.id}`, band: AGENDA_BAND.BUYER, type: AGENDA_TYPE.VERDICT,
