@@ -307,17 +307,20 @@ describe('shouldRequestEvidence — the local half of the old guard', () => {
 });
 
 describe('EVIDENCE_REFUSAL_LABELS — the server speaks keys, the client speaks sentences', () => {
+  const ALL_KEYS = [
+    'INSUFFICIENT_REPORTING_ADSETS', 'INSUFFICIENT_REPORTING_ADS',
+    'BASELINE_UNAVAILABLE', 'NO_MEANINGFUL_GAP', 'INVALID_METRIC',
+  ];
+
   it('covers every reasonKey the endpoint can emit', () => {
-    for (const key of [
-      'INSUFFICIENT_REPORTING_ADSETS', 'INSUFFICIENT_REPORTING_ADS',
-      'BASELINE_UNAVAILABLE', 'NO_MEANINGFUL_GAP', 'INVALID_METRIC',
-    ]) {
-      expect(EVIDENCE_REFUSAL_LABELS[key]).toEqual(expect.any(String));
+    for (const key of ALL_KEYS) {
+      expect(EVIDENCE_REFUSAL_LABELS[key]).toEqual(expect.any(Function));
+      expect(refusalLabel(key)).toEqual(expect.any(String));
     }
   });
 
   it('names the missing INPUT, distinctly per key', () => {
-    const sentences = Object.values(EVIDENCE_REFUSAL_LABELS);
+    const sentences = ALL_KEYS.map((k) => refusalLabel(k));
     expect(new Set(sentences).size).toBe(sentences.length);
   });
 
@@ -330,6 +333,42 @@ describe('EVIDENCE_REFUSAL_LABELS — the server speaks keys, the client speaks 
   it('a healthy spread does not read as a failure', () => {
     // NO_MEANINGFUL_GAP is good news about a real campaign. The sentence must
     // not be phrased as a shortfall on the account's part.
-    expect(EVIDENCE_REFUSAL_LABELS.NO_MEANINGFUL_GAP).toBe('No ad set is measurably behind the others');
+    expect(refusalLabel('NO_MEANINGFUL_GAP')).toBe('No ad set is measurably behind the others');
+  });
+});
+
+// ── The same key, one level down ────────────────────────────
+// The server publishes ONE reason enum for both dimensions, so the ad-level
+// surface reuses these exact keys. Two of the sentences name the entities
+// involved, and rendering the ad-set nouns under a list of ADS would be a true
+// refusal about the wrong entity — "no ad set is measurably behind the others"
+// printed where the reader is looking at four ads.
+describe('refusalLabel — the noun follows the level', () => {
+  it.each([
+    ['NO_MEANINGFUL_GAP',   'No ad is measurably behind the others'],
+    ['BASELINE_UNAVAILABLE', 'No ad set performance data to compare against yet'],
+  ])('%s speaks about ads at the ad level', (key, sentence) => {
+    expect(refusalLabel(key, 'ad')).toBe(sentence);
+  });
+
+  it('leaves the level-independent sentences alone', () => {
+    // These two already name their own level in the KEY, so there is nothing to
+    // swap — and swapping anyway would produce "not enough reporting ads ads".
+    expect(refusalLabel('INSUFFICIENT_REPORTING_ADS', 'ad')).toBe('Not enough reporting ads to compare');
+    expect(refusalLabel('INVALID_METRIC', 'ad')).toBe('That ranking metric is not supported');
+  });
+
+  it('falls back in the reader’s own vocabulary', () => {
+    expect(refusalLabel('SOMETHING_NEW', 'ad')).toBe('Not enough data to compare ads');
+  });
+
+  it('defaults to the ad-set wording, so every existing caller is unchanged', () => {
+    expect(refusalLabel('NO_MEANINGFUL_GAP')).toBe(refusalLabel('NO_MEANINGFUL_GAP', 'adset'));
+  });
+
+  // A dimension the server never sends must not produce a sentence built out of
+  // `undefined`. It degrades to the default level rather than to a broken string.
+  it('degrades an unknown dimension to the ad-set wording', () => {
+    expect(refusalLabel('NO_MEANINGFUL_GAP', 'placement')).toBe('No ad set is measurably behind the others');
   });
 });

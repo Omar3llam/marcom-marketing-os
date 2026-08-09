@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils.js';
 import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFormatters.js';
 import { formatCurrency } from '@/lib/money';
 import { useEntityDrillDown } from '@/hooks/useEntityDrillDown.js';
+import { useAdsDrillDown } from '@/hooks/useAdsDrillDown.js';
 import { recordExplain } from './decisionSignals.js';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { HelpTip } from '@/components/ui/HelpTip.jsx';
@@ -37,6 +38,7 @@ import { groupCampaigns, GROUP_CONFIG, GROUP_ORDER } from '@/features/campaigns/
 import { ExecutionContext } from '@/features/campaigns/ExecutionContext.jsx';
 import { shouldRequestEvidence } from '@/features/campaigns/executionContext.js';
 import { EvidenceState } from '@/features/campaigns/EvidenceState.jsx';
+import { AdRows } from '@/features/campaigns/AdRows.jsx';
 import { useEvidence, evidenceKey } from '@/hooks/useEvidence.js';
 import { useDecisionAction } from '@/features/campaigns/useDecisionAction.js';
 
@@ -118,7 +120,16 @@ function RowToggle({ expanded, onClick, label, children }) {
   );
 }
 
-function AdSetRows({ state }) {
+/**
+ * The ad sets of one campaign, each drilling one level further into its ads.
+ *
+ * `ads` is the whole ad-level bundle, passed as ONE object rather than seven
+ * props: the state it carries (which ad sets are open, their rows, their
+ * evidence) belongs to the panel — three hooks' worth of maps, keyed by ad-set
+ * id — and threading each map separately would put the panel's internals in
+ * this signature.
+ */
+function AdSetRows({ state, ads }) {
   if (!state || state.loading) {
     return (
       <tr><td colSpan={COLS} className="px-4 py-3 text-center text-xs text-lumi-subtle">
@@ -138,25 +149,70 @@ function AdSetRows({ state }) {
       <tr><td colSpan={COLS} className="px-4 py-3 text-center text-xs text-lumi-subtle">No ad sets synced for this campaign yet.</td></tr>
     );
   }
-  return state.adSets.map((a) => (
-    <tr key={a.entityId} className="bg-lumi-bg/40 border-b border-lumi-border/40">
-      <td className="px-4 py-2.5" />{/* verdicts are campaign-level — ad-set cell stays empty */}
-      <td className="px-4 py-2.5 pl-10">
-        <div className="font-display text-sm text-lumi-text">{a.name}</div>
-        <div className="font-mono text-[11px] text-lumi-subtle">AD SET · {a.channel}</div>
-      </td>
-      <DecisiveCell m={a} />
-      <SpendCell m={a} />
-      <td className="px-4 py-2.5" />{/* the toggles are campaign-level — empty on ad-set rows */}
-    </tr>
-  ));
+  return state.adSets.map((a) => {
+    // The TRUE total from _count, not children.length: MAX_ADS_PER_ADSET caps
+    // the returned list, so counting the array would tell a 140-ad ad set it has
+    // 100. Same honesty rule the campaign level already applies to adSetCount.
+    const adCount = a.adCount ?? 0;
+    const adsAreOpen = ads.open.has(a.entityId);
+    const evKey = evidenceKey(a.entityId);
+    return (
+      <Fragment key={a.entityId}>
+        <tr className="bg-lumi-bg/40 border-b border-lumi-border/40">
+          <td className="px-4 py-2.5" />{/* verdicts are campaign-level — ad-set cell stays empty */}
+          <td className="px-4 py-2.5 pl-10">
+            <div className="font-display text-sm text-lumi-text">{a.name}</div>
+            <div className="font-mono text-[11px] text-lumi-subtle">AD SET · {a.channel}</div>
+          </td>
+          <DecisiveCell m={a} />
+          <SpendCell m={a} />
+          {/* The one control that IS ad-set-level. Absent (not disabled) when the
+              ad set has no ads — an unusable chevron opening onto nothing is the
+              same noise the campaign level already refuses to render. */}
+          <td className="px-4 py-2.5 pr-4 align-top">
+            {adCount > 0 && (
+              <div className="flex justify-end">
+                <RowToggle
+                  expanded={adsAreOpen}
+                  onClick={() => ads.toggle(a.entityId)}
+                  label={`Toggle ads for ${a.name}`}
+                >
+                  View ads ({adCount})
+                </RowToggle>
+              </div>
+            )}
+          </td>
+        </tr>
+        {adsAreOpen && (
+          <AdRows
+            cols={COLS}
+            state={ads.byId[a.entityId] ?? null}
+            loading={Boolean(ads.loading[a.entityId])}
+            error={ads.errors[a.entityId] ?? null}
+            evidence={ads.evidenceById[evKey] ?? null}
+            evidenceLoading={Boolean(ads.evidenceLoading[evKey])}
+            evidenceError={ads.evidenceErrors[evKey] ?? null}
+          />
+        )}
+      </Fragment>
+    );
+  });
 }
 
 export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativeRanks = {}, impacts = {}, verdictInfo = {}, loading = false, error = null, deepLinkEntityId = null, onDeepLinkHandled }) {
   const [open, setOpen] = useState(new Set());          // ad-set drill-down
+  const [adsOpen, setAdsOpen] = useState(new Set());    // ad drill-down, keyed by AD-SET id
   const [detailOpen, setDetailOpen] = useState(new Set()); // signals + reasoning panel
   const { byId, load } = useEntityDrillDown();
   const { byId: evidenceById, loading: evidenceLoading, errors: evidenceErrors, load: loadEvidence } = useEvidence();
+  const { byId: adsById, loading: adsLoading, errors: adsErrors, load: loadAds } = useAdsDrillDown();
+  // A SECOND instance of the same hook, fixed to the AD dimension. Its own byId
+  // and `seen` maps, so an ad-set id ranking its ads can never collide with a
+  // campaign id ranking its ad sets in one cache — see useEvidence's header.
+  const {
+    byId: adEvidenceById, loading: adEvidenceLoading,
+    errors: adEvidenceErrors, load: loadAdEvidence,
+  } = useEvidence({ dimension: 'ad' });
   // One instance for the whole table — the hook keys its state by entityId, so
   // every row reads its own answer rather than the last one clicked.
   const { states: actionStates, execute: executeDecision, dismiss: dismissDecision } = useDecisionAction();
@@ -203,6 +259,34 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
       else next.add(id);
       return next;
     });
+  };
+
+  // One level down, same discipline: both fetches fire OUTSIDE the state
+  // updater (a setState updater must be pure), both are idempotent behind their
+  // hooks' `seen` refs, and neither runs on collapse.
+  const toggleAds = (adSetId) => {
+    if (!adsOpen.has(adSetId)) {
+      loadAds(adSetId);
+      loadAdEvidence(adSetId);
+    }
+    setAdsOpen((s) => {
+      const next = new Set(s);
+      if (next.has(adSetId)) next.delete(adSetId);
+      else next.add(adSetId);
+      return next;
+    });
+  };
+
+  // The ad level's whole state, in one object — see AdSetRows' signature note.
+  const adsBundle = {
+    open: adsOpen,
+    toggle: toggleAds,
+    byId: adsById,
+    loading: adsLoading,
+    errors: adsErrors,
+    evidenceById: adEvidenceById,
+    evidenceLoading: adEvidenceLoading,
+    evidenceErrors: adEvidenceErrors,
   };
 
   const toggleDetail = (id) => {
@@ -348,7 +432,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
             </td>
           </tr>
         )}
-        {isOpen && <AdSetRows state={byId[c.entityId]} />}
+        {isOpen && <AdSetRows state={byId[c.entityId]} ads={adsBundle} />}
         {/* Where to act, under the ad sets it points at. The verdict gate is
             still local and free, so an expanded HOLD costs no request; whether
             one ad set is measurably dragging is now the SERVER's answer, and it

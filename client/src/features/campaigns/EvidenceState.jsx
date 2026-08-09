@@ -16,17 +16,27 @@
 //              spinner either — nothing is still coming.
 //
 // Renders null when there is nothing to say, so a caller can drop it inline.
+//
+// `dimension` selects the level's nouns ONLY — the three treatments above are
+// identical at every level, which is why this is one component and not two.
 // ============================================================
 import { Loader2, AlertTriangle, Info } from 'lucide-react';
 import { refusalLabel } from './executionContext.js';
 
 const ROW = 'flex items-center gap-1.5 font-mono text-[11px]';
 
-export function EvidenceState({ loading = false, error = null, reasonKey = null, className = '' }) {
+// What is being checked, per level. The refusal sentence gets its nouns from
+// refusalLabel; this is the one string this component owns.
+const CHECKING = Object.freeze({
+  adset: 'Checking ad set performance…',
+  ad:    'Checking creative performance…',
+});
+
+export function EvidenceState({ loading = false, error = null, reasonKey = null, dimension = 'adset', className = '' }) {
   if (loading) {
     return (
       <p className={`${ROW} text-lumi-subtle ${className}`}>
-        <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} /> Checking ad set performance…
+        <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} /> {CHECKING[dimension] ?? CHECKING.adset}
       </p>
     );
   }
@@ -42,7 +52,7 @@ export function EvidenceState({ loading = false, error = null, reasonKey = null,
   if (reasonKey) {
     return (
       <p className={`${ROW} text-lumi-subtle ${className}`}>
-        <Info className="h-3 w-3" strokeWidth={2} /> {refusalLabel(reasonKey)}
+        <Info className="h-3 w-3" strokeWidth={2} /> {refusalLabel(reasonKey, dimension)}
       </p>
     );
   }
