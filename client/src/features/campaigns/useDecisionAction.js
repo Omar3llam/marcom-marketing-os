@@ -60,7 +60,11 @@ export function terminalStateFor(err) {
 export function useDecisionAction() {
   const [states, setStates] = useState({});
 
-  const run = useCallback(async (entityId, kind) => {
+  // `decisionId` is optional and stays optional: a campaign no sweep has written
+  // a Decision for has none to send, and the by-entity fallback is the correct
+  // route for it — not a degraded one. State is keyed by entityId either way,
+  // since that is what the caller has a button for.
+  const run = useCallback(async (entityId, kind, decisionId = null) => {
     if (!entityId) return;
     const isExecute = kind === 'execute';
 
@@ -70,15 +74,15 @@ export function useDecisionAction() {
       // differently: the operator's claim is on record, which is the only thing
       // they asked about. Whether this particular click was the one that wrote
       // it is our bookkeeping, not theirs.
-      await (isExecute ? recordExecute(entityId) : recordDismiss(entityId));
+      await (isExecute ? recordExecute(entityId, decisionId) : recordDismiss(entityId, decisionId));
       setStates((s) => ({ ...s, [entityId]: isExecute ? 'executed' : 'dismissed' }));
     } catch (err) {
       setStates((s) => ({ ...s, [entityId]: terminalStateFor(err) }));
     }
   }, []);
 
-  const execute = useCallback((entityId) => run(entityId, 'execute'), [run]);
-  const dismiss = useCallback((entityId) => run(entityId, 'dismiss'), [run]);
+  const execute = useCallback((entityId, decisionId) => run(entityId, 'execute', decisionId), [run]);
+  const dismiss = useCallback((entityId, decisionId) => run(entityId, 'dismiss', decisionId), [run]);
 
   return { states, execute, dismiss };
 }

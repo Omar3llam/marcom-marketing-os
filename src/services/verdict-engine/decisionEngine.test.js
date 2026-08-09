@@ -16,8 +16,13 @@
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { getConnectorCampaigns } = vi.hoisted(() => ({ getConnectorCampaigns: vi.fn() }));
+const { getConnectorCampaigns, findMany } = vi.hoisted(() => ({
+  getConnectorCampaigns: vi.fn(), findMany: vi.fn(),
+}));
 vi.mock('../entity-graph/index.js', () => ({ getConnectorCampaigns }));
+// The verdict feed now reads the Decision table for identity. Default: no stored
+// decisions, which is the state every existing assertion below was written in.
+vi.mock('../../lib/prisma.js', () => ({ prisma: { decision: { findMany } } }));
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -230,7 +235,10 @@ describe('signalConfidence — the half that was never published', () => {
 
 // ── The payload ─────────────────────────────────────────────────────────────
 describe('getConnectorVerdicts — the published numbers', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    findMany.mockResolvedValue([]); // no stored decisions unless a test says so
+  });
 
   const row = (over = {}) => ({
     entityId: 'c1', name: 'Campaign', channel: 'META', objective: null,
@@ -276,6 +284,123 @@ describe('getConnectorVerdicts — the published numbers', () => {
       expect(v.dataConfidence).not.toBeNull();
       expect(v.confidence).toBe(composeConfidence(v.signalConfidence, v.dataConfidence));
     }
+  });
+
+  // ── Decision identity ──────────────────────────────────────────────────────
+  // The verdict beside this is recomputed on every read and persists nothing;
+  // the Decision is what Lumi committed to at an earlier moment. Projecting the
+  // id lets a click land on ONE ROW instead of on a query the server re-resolves
+  // — and projecting the stored verdict lets a client see the call has moved on
+  // without a second fetch. Neither is reconciled with the live verdict here.
+  const decisionRow = (over = {}) => ({
+    id: 'dec-1', entityId: 'c1', verdict: 'HOLD', createdAt: new Date('2026-08-01'), ...over,
+  });
+
+  it('projects the id of the stored decision for an entity', async () => {
+    getConnectorCampaigns.mockResolvedValue([row()]);
+    findMany.mockResolvedValue([decisionRow()]);
+    const { verdicts } = await getConnectorVerdicts('ws-1');
+    expect(verdicts[0].decisionId).toBe('dec-1');
+  });
+
+  // null, never undefined — the client branches on it to pick a route, and an
+  // absent key would read as "no id" only by accident.
+  it('projects null, not undefined, when no sweep has written one', async () => {
+    getConnectorCampaigns.mockResolvedValue([row()]);
+    findMany.mockResolvedValue([]);
+    const { verdicts } = await getConnectorVerdicts('ws-1');
+    expect(verdicts[0]).toHaveProperty('decisionId', null);
+    expect(verdicts[0]).toHaveProperty('decisionVerdict', null);
+  });
+
+  // NAMED: live verdict and decisionId are independent — no reconciliation.
+  // The engine says KILL now; the stored row says HOLD. Both are true of
+  // different moments, and the payload must carry both without one editing the
+  // other — a service that "corrected" either would publish a third opinion no
+  // pass ever computed.
+  it('live verdict and decisionId are independent — no reconciliation', async () => {
+    getConnectorCampaigns.mockResolvedValue([
+      row({ entityId: 'c1', revenueMinor: 10, frequency: 4.0, clicks: 350 }),
+    ]);
+    findMany.mockResolvedValue([decisionRow({ verdict: 'HOLD' })]);
+    const { verdicts } = await getConnectorVerdicts('ws-1');
+
+    expect(verdicts[0].decisionId).toBe('dec-1');
+    expect(verdicts[0].decisionVerdict).toBe('HOLD');
+    expect(verdicts[0].verdict).not.toBe('HOLD');   // the live call moved on
+    expect(verdicts[0].verdict).toBeTruthy();       // and was not suppressed
+  });
+
+  // NAMED: an ADSET-level Decision does not pollute the CAMPAIGN projection.
+  // persistNode writes one Decision per NODE into one table keyed by entityId.
+  // The filter is in the WHERE clause, so the guard is that we ask the database
+  // for it — an ad-set row arriving here would win the first-hit-wins race and
+  // hand a campaign an id that executes against a different entity.
+  it('ADSET-level Decision does not pollute CAMPAIGN projection', async () => {
+    getConnectorCampaigns.mockResolvedValue([row()]);
+    findMany.mockResolvedValue([decisionRow()]);
+    await getConnectorVerdicts('ws-1');
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ entityLevel: 'CAMPAIGN', status: 'PROPOSED' }),
+    }));
+  });
+
+  it('scopes the read to the workspace, and selects rather than taking the row whole', async () => {
+    getConnectorCampaigns.mockResolvedValue([row()]);
+    await getConnectorVerdicts('ws-1');
+    const arg = findMany.mock.calls[0][0];
+    expect(arg.where.workspaceId).toBe('ws-1');
+    expect(arg.select).toEqual({ id: true, entityId: true, verdict: true, createdAt: true });
+    expect(arg).not.toHaveProperty('include');
+  });
+
+  // Most recent wins. `orderBy` desc plus first-hit-wins is the whole mechanism,
+  // so a test that only seeds one row would pass with no ordering at all.
+  it('takes the most recent when an entity has several', async () => {
+    getConnectorCampaigns.mockResolvedValue([row()]);
+    findMany.mockResolvedValue([
+      decisionRow({ id: 'newest', createdAt: new Date('2026-08-05') }),
+      decisionRow({ id: 'older',  createdAt: new Date('2026-07-01') }),
+    ]);
+    const { verdicts } = await getConnectorVerdicts('ws-1');
+    expect(verdicts[0].decisionId).toBe('newest');
+    expect(findMany.mock.calls[0][0].orderBy).toEqual({ createdAt: 'desc' });
+  });
+
+  it('leaves a campaign with no decision of its own untouched', async () => {
+    getConnectorCampaigns.mockResolvedValue([row({ entityId: 'c1' }), row({ entityId: 'c2' })]);
+    findMany.mockResolvedValue([decisionRow({ entityId: 'c1' })]);
+    const { verdicts } = await getConnectorVerdicts('ws-1');
+    expect(verdicts.find((v) => v.id === 'c1').decisionId).toBe('dec-1');
+    expect(verdicts.find((v) => v.id === 'c2').decisionId).toBeNull();
+  });
+
+  // PARALLEL, not sequential. The decision read is keyed by workspace and needs
+  // nothing from the campaigns, so it must not wait behind them. Proof: with no
+  // campaigns at all the function returns early — and the query has still been
+  // issued, which can only happen if both were started together.
+  it('issues both reads together rather than one behind the other', async () => {
+    getConnectorCampaigns.mockResolvedValue([]);
+    const { verdicts, status } = await getConnectorVerdicts('ws-1');
+    expect(status).toBe('NO_CAMPAIGNS');
+    expect(verdicts).toEqual([]);
+    expect(findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks the database once for the whole feed, not once per campaign', async () => {
+    getConnectorCampaigns.mockResolvedValue([row({ entityId: 'c1' }), row({ entityId: 'c2' }), row({ entityId: 'c3' })]);
+    await getConnectorVerdicts('ws-1');
+    expect(findMany).toHaveBeenCalledTimes(1);
+  });
+
+  // Identity is an ENHANCEMENT. Losing it costs the precise route; losing the
+  // verdict feed costs the whole screen.
+  it('still publishes verdicts when the decision read fails', async () => {
+    getConnectorCampaigns.mockResolvedValue([row()]);
+    findMany.mockRejectedValue(new Error('column does not exist'));
+    const { verdicts } = await getConnectorVerdicts('ws-1');
+    expect(verdicts).toHaveLength(1);
+    expect(verdicts[0].decisionId).toBeNull();
   });
 
   // The cohort figures reach the payload, or the block that renders them has

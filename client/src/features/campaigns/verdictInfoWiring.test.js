@@ -50,6 +50,10 @@ describe('CampaignsView → verdictInfo', () => {
     // Unlike relativeRank below, this has no second route — the `relativeRanks`
     // map carries only the tag, so the projection is the ONLY way it arrives.
     ['relativeContext'],
+    // Decision IDENTITY — what Lumi decided THEN, beside the verdict it thinks
+    // NOW. decisionId routes execute/dismiss at one row instead of at a query.
+    ['decisionId'],
+    ['decisionVerdict'],
   ])('carries %s through to the panel', (field) => {
     expect(projectionBody()).toMatch(new RegExp(`\\b${field}:`));
   });

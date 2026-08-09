@@ -4,20 +4,23 @@
 //   PATCH /api/lumi/decisions/by-entity/:entityId/intent
 //   PATCH /api/lumi/decisions/:id/execute
 //   PATCH /api/lumi/decisions/:id/dismiss
-//   PATCH /api/lumi/decisions/by-entity/:entityId/execute   (temporary adapter)
-//   PATCH /api/lumi/decisions/by-entity/:entityId/dismiss   (temporary adapter)
+//   PATCH /api/lumi/decisions/by-entity/:entityId/execute   (fallback)
+//   PATCH /api/lumi/decisions/by-entity/:entityId/dismiss   (fallback)
 // ------------------------------------------------------------
 // Two moments the product could not previously observe: a human OPENED the
 // reasoning behind a verdict, and a human went and ACTED on it (copied the
 // recommendation, or opened the ad platform). Neither executes anything.
 //
-// ── Why by-entity and not by decision id ─────────────────────────────────────
-// The Campaigns and Home surfaces never receive a Decision id. getConnectorVerdicts
-// recomputes verdicts in memory from the entity graph and returns `id = entityId`;
-// it does not read the Decision table at all. Keying on entityId means the
-// clickable surfaces work as they are, and the server resolves the click to
-// whichever verdict was actually live at that moment — which is the correct
-// attribution anyway.
+// ── Why both a by-id and a by-entity path ────────────────────────────────────
+// getConnectorVerdicts now projects `decisionId`, so the surfaces prefer the
+// by-id routes: an id names ONE ROW, where by-entity names a query ("newest
+// PROPOSED for this entity") that the server re-resolves at write time — so a
+// sweep landing between render and click moves the target.
+//
+// by-entity remains the correct route when there is no id to send. The verdict
+// feed recomputes from the entity graph on every read and persists nothing; the
+// Decision rows come only from a sweep. A campaign can therefore have a live
+// verdict and no stored decision, and for it entityId is the only key there is.
 //
 // ── Written ONCE ─────────────────────────────────────────────────────────────
 // A second click is not a second engagement. Re-stamping would silently change
@@ -187,17 +190,22 @@ async function recordSignal(req, res, field) {
 }
 
 // ------------------------------------------------------------
-// The same two signals, keyed by ENTITY — a temporary adapter.
+// The same two signals, keyed by ENTITY — the FALLBACK path.
 // ------------------------------------------------------------
-// TODO: remove when a Decision id reaches the verdict surfaces, and repoint
-//       callers at PATCH /decisions/:id/{execute,dismiss} above (PR #326).
+// NOT temporary any more, and not to be deleted. getConnectorVerdicts now
+// projects `decisionId` beside every verdict, so a client that has one sends it
+// to the by-id routes above — which name ONE ROW, where this names a query the
+// server re-resolves at write time.
 //
-// WHY THIS EXISTS. No verdict surface has a Decision id to send. Both mounts of
-// ExecutionContext (Campaigns' ConnectorCampaignsPanel, Home's DecisionCard) are
-// fed by getConnectorVerdicts, which recomputes verdicts in memory and returns
-// `id = entityId` — it never reads the Decision table. The persisted rows come
-// from persistConnectorVerdicts on a sweep. So the id the by-id routes want is
-// not merely un-projected; it does not exist on the read path at all.
+// This path stays because `decisionId` is legitimately null for any campaign no
+// sweep has written a Decision for. That is a normal state, not a missing one:
+// the verdict feed recomputes from the entity graph on every read, while the
+// persisted rows come only from persistConnectorVerdicts on a sweep. A fresh
+// connection has verdicts to act on before it has decisions to act on, and
+// deleting this route would make those campaigns' buttons 404.
+//
+// The two paths answer to the same 409/404 contract, which is what lets one
+// client-side error mapper serve both.
 //
 // WHAT IT COSTS. #326 keyed on decision id so a signal could name WHICH call was
 // acted on rather than "whichever was live". Resolving here gives that up in one

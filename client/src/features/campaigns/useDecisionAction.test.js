@@ -69,7 +69,7 @@ describe('the happy paths', () => {
 
     await act(async () => { await result.current.execute('ent-1'); });
 
-    expect(recordExecute).toHaveBeenCalledWith('ent-1');
+    expect(recordExecute).toHaveBeenCalledWith('ent-1', null);
     expect(result.current.states['ent-1']).toBe('executed');
   });
 
@@ -77,8 +77,26 @@ describe('the happy paths', () => {
     const { result } = renderHook(() => useDecisionAction());
     await act(async () => { await result.current.dismiss('ent-1'); });
 
-    expect(recordDismiss).toHaveBeenCalledWith('ent-1');
+    expect(recordDismiss).toHaveBeenCalledWith('ent-1', null);
     expect(result.current.states['ent-1']).toBe('dismissed');
+  });
+
+  // The stored decision's id when the verdict feed carried one, so the write
+  // lands on THAT row rather than on whatever the server re-resolves as newest.
+  it.each([['execute', recordExecute], ['dismiss', recordDismiss]])(
+    '%s forwards a decision id when it has one', async (kind, fn) => {
+      const { result } = renderHook(() => useDecisionAction());
+      await act(async () => { await result.current[kind]('ent-1', 'dec-7'); });
+      expect(fn).toHaveBeenCalledWith('ent-1', 'dec-7');
+    },
+  );
+
+  // State stays keyed by ENTITY regardless — that is what the button has.
+  it('keys the outcome by entity even when routing by decision id', async () => {
+    const { result } = renderHook(() => useDecisionAction());
+    await act(async () => { await result.current.execute('ent-1', 'dec-7'); });
+    expect(result.current.states['ent-1']).toBe('executed');
+    expect(result.current.states['dec-7']).toBeUndefined();
   });
 
   it('shows a pending state while the request is in flight', async () => {
