@@ -22,6 +22,12 @@ import {
   AGENDA_BAND, AGENDA_TYPE, LOOP_STAGE, LOOP_STAGE_ORDER, STAGE_STATE, LOOP_HEALTH,
   SEVERITY, SEVERITY_RANK, HUMAN_ACTION, STAGE_ACTIVE_DAYS, STAGE_STALE_DAYS, agendaItem,
 } from './agenticTypes.js';
+// The canonical answer to "does this verdict have a platform execution motion?".
+// Imported rather than restated — a second list of executable verdicts is exactly
+// the drift that BUYER_ACTIONABLE_ROOT_CAUSES was rebuilt to stop. verdictTypes is
+// a pure leaf (no DB, no clock, no agentic-loop import), so this neither closes an
+// import cycle nor touches the determinism contract at the top of this file.
+import { verdictToActionType } from '../verdict-engine/verdictTypes.js';
 
 const DAY_MS = 86_400_000;
 
@@ -64,10 +70,26 @@ const VERDICT_SEVERITY = Object.freeze({
  * structurally cannot have.
  *
  * WATCH is NOT here, deliberately. It also has no Meta action, so executability
- * is the wrong test; ATTENTION is the right one. WATCH means "something is off,
- * a human should look" (it is what a guardrail hit UPGRADES a HOLD into), and it
- * rides at HIGH severity. HOLD means "nothing is off". Same lack of a button,
- * opposite meaning.
+ * is the wrong test for ADMISSION; ATTENTION is the right one. WATCH means
+ * "something is off, a human should look", and it rides at HIGH severity. HOLD
+ * means "nothing is off". Same lack of a button, opposite meaning.
+ *
+ * Executability IS the right test for the VERB, which is a third question and is
+ * answered at the humanAction line below. Admitted-but-not-executable earns
+ * REVIEW, not CONFIRM.
+ *
+ * Where a guardrail WATCH actually comes from, since the obvious answer is wrong:
+ * NOT the HOLD → WATCH upgrade in verdictEngine. That branch reads
+ * `guardrailHits`, which rollupVerdicts sources from `opts.guardrailHitsByEntity`
+ * — and no production caller supplies it (persistLevelVerdicts passes only
+ * `{ relativeRanking: true }`; connectorVerdictService passes no opts at all). It
+ * is wired and unfed, the same latent-defect shape as SIGNAL_TYPE.UNDIAGNOSABLE.
+ * The live path is GuardrailSweepService writing its own Decision with
+ * `rootCause: 'guardrail:<rule>'` and `verdict: rule.emitVerdict ?? 'WATCH'`,
+ * which AgenticLoopService admits on the `startsWith: 'guardrail:'` clause. Since
+ * GuardrailRule.emitVerdict defaults to WATCH, that is the DEFAULT verdict of any
+ * rule the operator configured without naming one — which is why WATCH cannot
+ * leave this band without silently muting configured policy.
  *
  * HOLD is untouched everywhere else: still persisted PROPOSED, still superseded,
  * still in Decision Memory and history, still shown by Campaigns and Overview.
@@ -108,7 +130,25 @@ function buyerAgenda({ verdicts = [], fatiguePredictions = [], pacing = [], test
       id: `verdict:${d.id}`, band: AGENDA_BAND.BUYER, type: AGENDA_TYPE.VERDICT,
       title: `${d.verdict} ${label}`, rationale: d.rationale ?? d.diagnosis ?? '',
       severity: VERDICT_SEVERITY[d.verdict] ?? SEVERITY.MEDIUM,
-      evidenceRef: d.id, humanAction: HUMAN_ACTION.CONFIRM, entityId: d.entityId,
+      // THE THIRD QUESTION. Admission (above) asks whether the buyer is asked at
+      // all; this asks what they are asked to DO. agenticTypes defines CONFIRM as
+      // "confirm a proposed verdict/reallocation → execution motion" — so a verdict
+      // with no execution motion cannot honestly carry it. WATCH is that verdict:
+      // verdictToActionType is null, nextActionFor is null, the Campaigns panel
+      // draws no ActionBar and therefore no decision lifecycle. It was labelled
+      // Confirm anyway, and the button navigated to a campaign row with nothing on
+      // it to confirm. REVIEW is what the FATIGUE items already use for the same
+      // shape — forward-looking, attention-requiring, nothing to execute.
+      //
+      // DERIVED, not listed. The level argument only selects WHICH action
+      // (PAUSE_CAMPAIGN vs PAUSE_ADSET) and never changes null-ness, so it cannot
+      // flip the verb — it is passed because guessing a level would be a fact we
+      // were not given.
+      evidenceRef: d.id,
+      humanAction: verdictToActionType(d.verdict, d.entityLevel)
+        ? HUMAN_ACTION.CONFIRM
+        : HUMAN_ACTION.REVIEW,
+      entityId: d.entityId,
       impactScore: impactById.get(d.entityId) ?? null,
     }));
   }
