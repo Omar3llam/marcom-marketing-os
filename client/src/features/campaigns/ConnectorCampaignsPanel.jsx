@@ -343,6 +343,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                 // about to show actually DECIDED this verdict.
                 relativeRank={relativeRank}
                 relativeContext={info.relativeContext ?? null}
+                memory={info.memory ?? null}
               />
             </td>
           </tr>

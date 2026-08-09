@@ -143,6 +143,7 @@ export default function CampaignsView() {
   const {
     verdicts: connectorVerdicts,
     gatedOut: connectorGatedOut,
+    memory: connectorMemory,
     refetch: refetchVerdicts,
   } = useConnectorVerdicts();
 
@@ -368,6 +369,11 @@ export default function CampaignsView() {
         // below this has no second route to the panel — the `relativeRanks` map
         // carries only the tag.
         relativeContext: v.relativeContext ?? null,
+        // What Lumi said about this campaign BEFORE, from a separate map on the
+        // same response — never a field on the verdict, so history and the
+        // current call cannot edit each other. null the first time we judge a
+        // campaign, which the panel renders as no Memory section at all.
+        memory: connectorMemory?.[v.id] ?? null,
         // NOTE relativeRank is deliberately NOT here. It is already resolved
         // per-row in ConnectorCampaignsPanel from the `relativeRanks` map that
         // feeds the Impact badge; carrying a second copy would give the badge
@@ -375,7 +381,7 @@ export default function CampaignsView() {
       };
     }
     return m;
-  }, [connectorVerdicts]);
+  }, [connectorVerdicts, connectorMemory]);
 
   // No-revenue scored campaigns split by OBJECTIVE: awareness (no revenue by
   // design) vs a conversion campaign with a tracking gap. Lumping them as one

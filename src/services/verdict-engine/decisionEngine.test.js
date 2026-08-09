@@ -16,13 +16,16 @@
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { getConnectorCampaigns, findMany } = vi.hoisted(() => ({
-  getConnectorCampaigns: vi.fn(), findMany: vi.fn(),
+const { getConnectorCampaigns, findMany, groupBy } = vi.hoisted(() => ({
+  getConnectorCampaigns: vi.fn(), findMany: vi.fn(), groupBy: vi.fn(),
 }));
 vi.mock('../entity-graph/index.js', () => ({ getConnectorCampaigns }));
-// The verdict feed now reads the Decision table for identity. Default: no stored
-// decisions, which is the state every existing assertion below was written in.
-vi.mock('../../lib/prisma.js', () => ({ prisma: { decision: { findMany } } }));
+// The verdict feed reads the Decision table twice now — once for identity
+// (getLatestDecisions) and once for history (getDecisionHistory). Default: no
+// stored decisions, the state every existing assertion below was written in.
+// `groupBy` must be present or the history read throws into its own catch and
+// the memory projection would be silently untested.
+vi.mock('../../lib/prisma.js', () => ({ prisma: { decision: { findMany, groupBy } } }));
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -239,6 +242,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     findMany.mockResolvedValue([]); // no stored decisions unless a test says so
+    groupBy.mockResolvedValue([]);
   });
 
   const row = (over = {}) => ({
@@ -453,10 +457,15 @@ describe('getConnectorVerdicts — the published numbers', () => {
     expect(findMany).toHaveBeenCalledTimes(1);
   });
 
-  it('asks the database once for the whole feed, not once per campaign', async () => {
-    getConnectorCampaigns.mockResolvedValue([row({ entityId: 'c1' }), row({ entityId: 'c2' }), row({ entityId: 'c3' })]);
+  // The N+1 guard. Two reads TOTAL — identity and history — however many
+  // campaigns the feed carries, so the count must not move with the row count.
+  it.each([[1], [3], [12]])('asks the database twice for a feed of %i campaigns', async (n) => {
+    getConnectorCampaigns.mockResolvedValue(
+      Array.from({ length: n }, (_, i) => row({ entityId: `c${i}` })),
+    );
     await getConnectorVerdicts('ws-1');
-    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(groupBy).toHaveBeenCalledTimes(1);
   });
 
   // Identity is an ENHANCEMENT. Losing it costs the precise route; losing the
@@ -467,6 +476,34 @@ describe('getConnectorVerdicts — the published numbers', () => {
     const { verdicts } = await getConnectorVerdicts('ws-1');
     expect(verdicts).toHaveLength(1);
     expect(verdicts[0].decisionId).toBeNull();
+  });
+
+  // ── Memory rides BESIDE the verdicts, never inside them ────────────────────
+  // A verdict is what Lumi thinks now, computed from live signals. History is
+  // what it said before. Folding the second into the first would put an older
+  // opinion inside the object the engine owns.
+  it('publishes history as a separate map, keyed by entity', async () => {
+    getConnectorCampaigns.mockResolvedValue([row({ entityId: 'c1' })]);
+    groupBy.mockResolvedValue([{ entityId: 'c1', _count: { _all: 3 } }]);
+    findMany.mockImplementation(async ({ select }) => (
+      // The history read selects `status`; the identity read does not.
+      select?.status
+        ? [{ id: 'h1', entityId: 'c1', verdict: 'KILL', status: 'SUPERSEDED', createdAt: new Date('2026-08-01'), executedAt: null, dismissedAt: null, resolution: 'IMPROVED', confidenceDelta: 0.2 }]
+        : []
+    ));
+
+    const res = await getConnectorVerdicts('ws-1');
+    expect(res.memoryByEntityId.c1.count).toBe(3);
+    expect(res.memoryByEntityId.c1.items[0].verdict).toBe('KILL');
+    // And the verdict object itself is untouched by any of it.
+    expect(res.verdicts[0]).not.toHaveProperty('memory');
+    expect(res.verdicts[0]).not.toHaveProperty('history');
+  });
+
+  it('publishes an empty map rather than omitting it when there is no history', async () => {
+    getConnectorCampaigns.mockResolvedValue([row()]);
+    const res = await getConnectorVerdicts('ws-1');
+    expect(res.memoryByEntityId).toEqual({});
   });
 
   // The cohort figures reach the payload, or the block that renders them has

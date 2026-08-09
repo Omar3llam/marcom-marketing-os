@@ -32,6 +32,7 @@ import { applyRelativeRanking }  from './relativeRanking.js';
 import { daysSince }             from './confidenceEngine.js';
 import { isSubstantive }         from './counterfactualEngine.js';
 import { connectorDecisionScope } from './decisionIdentity.js';
+import { getDecisionHistory }    from '../decision-memory/decisionHistory.js';
 import { logger }                from '../../utils/logger.js';
 
 // Meta objectives that are GENUINELY awareness/reach — no purchase revenue is
@@ -364,10 +365,25 @@ export async function getConnectorVerdicts(workspaceId) {
     { workspaceId, scored: verdicts.length, gatedOut: gatedOut.length },
     '[connectorVerdicts] verdicts computed',
   );
+  // Past decisions for the campaigns actually on screen, as a SEPARATE map
+  // rather than a field on each verdict. A verdict is what Lumi thinks NOW,
+  // computed from live signals and nothing else; folding history into it would
+  // put an older opinion inside the object the engine owns, and the rule this
+  // whole surface keeps is that the two never edit each other.
+  //
+  // Sequenced after the feed rather than parallel to it: it needs the entity ids
+  // the feed produced, so there is nothing to overlap with.
+  const memoryByEntityId = Object.fromEntries(
+    await getDecisionHistory(workspaceId, verdicts.map((v) => v.id)),
+  );
+
   return {
     verdicts,
     gatedOut,
     account: { verdict: annotated.verdict, confidence: annotated.verdictConfidence },
+    // Keyed by entityId, and ABSENT for campaigns with no history — never
+    // present with a zero, which would be indistinguishable from a real one.
+    memoryByEntityId,
     status: 'OK',
   };
 }
