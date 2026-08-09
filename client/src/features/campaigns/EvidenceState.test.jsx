@@ -68,3 +68,44 @@ describe('EvidenceState', () => {
     expect(screen.queryByText(/No ad set is measurably behind/)).not.toBeInTheDocument();
   });
 });
+
+// ── The same three treatments, one level down ───────────────
+// The server publishes ONE reason enum for both dimensions, so this component
+// serves both. Only the NOUNS move: a refusal about ad sets, printed under a
+// list of ads, is a true sentence about the wrong entity.
+describe('EvidenceState — the ad dimension', () => {
+  it('says what it is checking at this level', () => {
+    render(<EvidenceState loading dimension="ad" />);
+    expect(screen.getByText(/Checking creative performance/)).toBeInTheDocument();
+  });
+
+  it('refuses in the reader’s own vocabulary', () => {
+    render(<EvidenceState reasonKey="NO_MEANINGFUL_GAP" dimension="ad" />);
+    expect(screen.getByText('No ad is measurably behind the others')).toBeInTheDocument();
+  });
+
+  it('names the ad set as the baseline, not the campaign', () => {
+    render(<EvidenceState reasonKey="BASELINE_UNAVAILABLE" dimension="ad" />);
+    expect(screen.getByText('No ad set performance data to compare against yet')).toBeInTheDocument();
+  });
+
+  it('treats a refusal as a refusal here too — not the danger colour', () => {
+    const { container } = render(<EvidenceState reasonKey="INSUFFICIENT_REPORTING_ADS" dimension="ad" />);
+    expect(container.querySelector('.text-trend-danger')).toBeNull();
+  });
+
+  it('reports a real failure identically at both levels', () => {
+    const { container } = render(<EvidenceState error="Network Error" dimension="ad" />);
+    expect(container.querySelector('.text-trend-danger')).not.toBeNull();
+  });
+
+  it('defaults to the ad-set wording, so every existing caller is unchanged', () => {
+    render(<EvidenceState loading />);
+    expect(screen.getByText(/Checking ad set performance/)).toBeInTheDocument();
+  });
+
+  it('degrades an unknown dimension rather than rendering a blank', () => {
+    render(<EvidenceState loading dimension="placement" />);
+    expect(screen.getByText(/Checking ad set performance/)).toBeInTheDocument();
+  });
+});

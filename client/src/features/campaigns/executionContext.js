@@ -204,22 +204,42 @@ export function shouldRequestEvidence(campaign, verdict) {
 }
 
 /**
- * The four refusals the evidence endpoint can return, as sentences. Keys are the
+ * The refusals the evidence endpoint can return, as sentences. Keys are the
  * server's `reasonKey`s verbatim — the API deliberately carries no prose so the
  * wording (and its translation) lives here.
  *
  * Each names the missing INPUT, not a generic shortfall: an operator told their
  * ad sets are too thin will go split their audience, when the real gap may be a
  * campaign that has not synced a snapshot yet.
+ *
+ * ONE map, not one per level — the same discipline EVIDENCE_REASON keeps on the
+ * server, which has exactly one enum for both dimensions. Two of these sentences
+ * name the entities involved, and those NOUNS differ by level: the same
+ * NO_MEANINGFUL_GAP under a list of ads means "no ad", and the baseline an ad is
+ * compared against is its ad set, not the campaign. Rendering the ad-set wording
+ * under an ad list would be a true refusal about the wrong entity, so the
+ * level-dependent sentences are functions of the dimension while the key set
+ * stays single.
  */
+const AD_SET_NOUNS  = Object.freeze({ cohort: 'ad set', baseline: 'campaign' });
+const AD_NOUNS      = Object.freeze({ cohort: 'ad',     baseline: 'ad set' });
+const nounsFor = (dimension) => (dimension === 'ad' ? AD_NOUNS : AD_SET_NOUNS);
+
 export const EVIDENCE_REFUSAL_LABELS = Object.freeze({
-  INSUFFICIENT_REPORTING_ADSETS: 'Not enough reporting ad sets to compare',
-  INSUFFICIENT_REPORTING_ADS:    'Not enough reporting ads to compare',
-  BASELINE_UNAVAILABLE:          'No campaign performance data to compare against yet',
-  NO_MEANINGFUL_GAP:             'No ad set is measurably behind the others',
-  INVALID_METRIC:                'That ranking metric is not supported',
+  INSUFFICIENT_REPORTING_ADSETS: () => 'Not enough reporting ad sets to compare',
+  INSUFFICIENT_REPORTING_ADS:    () => 'Not enough reporting ads to compare',
+  BASELINE_UNAVAILABLE:          (n) => `No ${n.baseline} performance data to compare against yet`,
+  NO_MEANINGFUL_GAP:             (n) => `No ${n.cohort} is measurably behind the others`,
+  INVALID_METRIC:                () => 'That ranking metric is not supported',
 });
 
-/** PURE: a refusal sentence, with a general fallback for a key we do not know. */
-export const refusalLabel = (reasonKey) =>
-  EVIDENCE_REFUSAL_LABELS[reasonKey] ?? 'Not enough data to compare ad sets';
+/**
+ * PURE: a refusal sentence, with a general fallback for a key we do not know.
+ * @param {string|null} reasonKey — the server's key, verbatim
+ * @param {'adset'|'ad'} [dimension='adset'] — which level asked
+ */
+export const refusalLabel = (reasonKey, dimension = 'adset') => {
+  const nouns = nounsFor(dimension);
+  const build = EVIDENCE_REFUSAL_LABELS[reasonKey];
+  return build ? build(nouns) : `Not enough data to compare ${nouns.cohort}s`;
+};
