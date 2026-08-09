@@ -1,21 +1,29 @@
 // ============================================================
 // ConnectorCampaignsPanel — recording the operator's answer
 // ------------------------------------------------------------
-// The second of the two ExecutionContext mounts, and the harder one: this panel
-// renders MANY rows from a single hook instance, so the property worth pinning
-// is that each row reads and writes its own entity. A scalar action state here
-// would have every campaign on screen claiming the answer given to one of them.
+// The answer belongs to the DECISION, and this suite pins where it now lives.
 //
-// Its own file rather than a block in ConnectorCampaignsPanel.test.jsx: these
-// need useEvidence and useDecisionAction mocked, and adding module-level mocks
-// to that suite would change what its thirty-odd existing tests exercise.
+// It used to live under the ad-set evidence: "Explain decision" → "View ad
+// sets" → wait for a server ranking → answer. That made an evidence RANKING the
+// precondition for recording a claim about a verdict — so an ad set the engine
+// declined to rank (a perfectly healthy answer) removed the question entirely,
+// from a KILL that was fully answerable. The tests below are the inverse of the
+// ones they replace: the buttons must be there WITHOUT any of that.
+//
+// The other property worth pinning is unchanged: this panel renders MANY rows
+// from a single hook instance, so each row must read and write its own entity.
+// A scalar state here would have every campaign on screen claiming the answer
+// given to one of them.
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('@/hooks/useEntityDrillDown.js', () => ({
   useEntityDrillDown: () => ({ byId: {}, load: vi.fn() }),
+}));
+vi.mock('@/hooks/useAdsDrillDown.js', () => ({
+  useAdsDrillDown: () => ({ byId: {}, loading: {}, errors: {}, load: vi.fn() }),
 }));
 vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn(() => Promise.resolve({ data: {} })) } }));
 vi.mock('../decisionSignals.js', () => ({ recordExplain: vi.fn(), recordIntent: vi.fn() }));
@@ -51,14 +59,16 @@ const ranking = (id) => ({
   insufficientData: false, reasonKey: null,
 });
 
-// adSetCount > 0 so the row offers its "View ad sets" toggle — the expansion the
-// evidence row hangs off.
 const campaign = (over = {}) => ({
   entityId: 'c1', channel: 'META', name: 'Ramadan Cold', adSetCount: 3,
   spendMinor: 655_300, roas: null, ctr: 0.0164, frequency: 2.4, currency: 'USD', ...over,
 });
 
 const renderPanel = (ui) => render(ui, { wrapper: MemoryRouter });
+
+// The ONLY expansion these tests need. Note what is missing: no "View ad sets".
+const explain = (name) =>
+  fireEvent.click(screen.getByLabelText(`Toggle details for ${name}`));
 
 const openAdSets = (name) =>
   fireEvent.click(screen.getByLabelText(`Toggle ad sets for ${name}`));
@@ -69,80 +79,169 @@ beforeEach(() => {
   action.states.current = {};
 });
 
-describe('the answer is offered under an actionable verdict', () => {
-  it('both buttons appear once the server returns a ranking', () => {
-    ev.byId.current = { 'c1:ctr': ranking('c1') };
+describe('the answer is offered on the decision itself', () => {
+  it('both buttons appear on opening the decision — no ad sets, no evidence', () => {
     renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
-    openAdSets('Ramadan Cold');
+    explain('Ramadan Cold');
 
     expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Not applicable' })).toBeInTheDocument();
+    // The evidence request is the ad-set expansion's, and it never happened.
+    expect(ev.load).not.toHaveBeenCalled();
+  });
+
+  it('says what the answer is for', () => {
+    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
+    explain('Ramadan Cold');
+    expect(screen.getByText(/Either answer is recorded/)).toBeInTheDocument();
+  });
+
+  // The regression this PR exists to prevent. A ranking refusal is a healthy
+  // answer about the AD SETS; it says nothing about whether the campaign-level
+  // KILL can be answered, and it used to remove the question entirely.
+  it('survives an evidence refusal — the ranking is not the gate', () => {
+    ev.byId.current = {
+      'c1:ctr': { entity: {}, objective: null, evidence: null, insufficientData: true, reasonKey: 'NO_MEANINGFUL_GAP' },
+    };
+    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
+    explain('Ramadan Cold');
+    openAdSets('Ramadan Cold');
+
+    expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
+  });
+
+  it('is offered for SCALE, which the ad-set surface never asked about', () => {
+    // ACTIONABLE_VERDICTS (the ExecutionContext gate) is KILL/REALLOCATE, so a
+    // SCALE could not be recorded from the Campaigns page at all. The decision
+    // surface gates on nextActionFor, which SCALE satisfies.
+    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'SCALE' }} />);
+    explain('Ramadan Cold');
+    expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
+  });
+
+  it.each([['HOLD'], ['WATCH'], ['REFRESH']])(
+    'is not offered under %s, which asks for no intervention', (verdict) => {
+      renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: verdict }} />);
+      explain('Ramadan Cold');
+      expect(screen.queryByRole('button', { name: 'I executed this' })).not.toBeInTheDocument();
+    },
+  );
+});
+
+describe('where the write is routed', () => {
+  it.each([
+    ['I executed this', () => action.execute],
+    ['Not applicable',  () => action.dismiss],
+  ])('%s falls back to the entity when no sweep wrote a Decision', (label, handler) => {
+    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
+    explain('Ramadan Cold');
+
+    fireEvent.click(screen.getByRole('button', { name: label }));
+    // null, never undefined: a campaign with no Decision routes by entity, which
+    // is the CORRECT route for it rather than a degraded one, and the two cases
+    // must not become indistinguishable downstream.
+    expect(handler()).toHaveBeenCalledWith('c1', null);
+    expect(handler()).toHaveBeenCalledTimes(1);
   });
 
   it.each([
     ['I executed this', () => action.execute],
     ['Not applicable',  () => action.dismiss],
-  ])('%s records against the row entity', (label, handler) => {
-    ev.byId.current = { 'c1:ctr': ranking('c1') };
-    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
-    openAdSets('Ramadan Cold');
+  ])('%s targets the stored decision row when the feed carried one', (label, handler) => {
+    renderPanel(
+      <ConnectorCampaignsPanel
+        campaigns={[campaign()]}
+        verdicts={{ c1: 'KILL' }}
+        verdictInfo={{ c1: { decisionId: 'dec-7', decisionVerdict: 'KILL' } }}
+      />,
+    );
+    explain('Ramadan Cold');
 
     fireEvent.click(screen.getByRole('button', { name: label }));
-    // Second argument is the STORED decision's id, and null here: this fixture
-    // carries no verdictInfo, which is the same state as a campaign no sweep has
-    // written a Decision for. The write then routes by entity, which is correct
-    // for it — null, never undefined, so the two cases cannot be told apart by
-    // accident downstream.
-    expect(handler()).toHaveBeenCalledWith('c1', null);
+    // The id names ONE ROW; the by-entity path names a query the server
+    // re-resolves at write time. A sweep landing between render and click moves
+    // that target, which is the whole reason the id wins when there is one.
+    expect(handler()).toHaveBeenCalledWith('c1', 'dec-7');
+  });
+});
+
+describe('the six answers', () => {
+  const withState = (state) => {
+    action.states.current = { c1: state };
+    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
+    explain('Ramadan Cold');
+  };
+
+  it.each([
+    ['executing',  'Recording…'],
+    ['dismissing', 'Recording…'],
+    ['executed',   'Recorded as executed'],
+    ['dismissed',  'Recorded as not applicable'],
+    ['stale',      'This verdict was replaced — refresh to see the current one'],
+    ['error',      "Couldn't record — refresh and try again"],
+  ])('%s reads "%s"', (state, sentence) => {
+    withState(state);
+    expect(screen.getByText(sentence)).toBeInTheDocument();
   });
 
-  // No ranking, no panel, and therefore nothing to answer. A verdict with no
-  // evidence behind it must not collect a claim the Proof Engine would then
-  // score against reasoning it never showed.
-  it('offers no answer when the engine declined to rank', () => {
-    ev.byId.current = {
-      'c1:ctr': { entity: {}, objective: null, evidence: null, insufficientData: true, reasonKey: 'NO_MEANINGFUL_GAP' },
-    };
+  // ONE-WAY. A terminal state REPLACES the buttons rather than disabling them —
+  // a control that looks clickable after being answered invites a second click,
+  // and a second click on a recorded claim is not a second claim.
+  it.each([['executing'], ['executed'], ['dismissed'], ['stale'], ['error']])(
+    '%s leaves no button to click again', (state) => {
+      withState(state);
+      expect(screen.queryByRole('button', { name: 'I executed this' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Not applicable' })).not.toBeInTheDocument();
+    },
+  );
+});
+
+describe('one decision, one place to answer it', () => {
+  // The failure Fix 4 prevents: the lifecycle rendered on BOTH surfaces would
+  // put two identical button pairs on screen for one campaign, backed by one
+  // state — answering either would silently settle the other.
+  it('expanding the ad sets under an answerable KILL adds no second pair', () => {
+    ev.byId.current = { 'c1:ctr': ranking('c1') };
+    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
+    explain('Ramadan Cold');
+    openAdSets('Ramadan Cold');
+
+    expect(screen.getAllByRole('button', { name: 'I executed this' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Not applicable' })).toHaveLength(1);
+  });
+
+  it('the ad-set surface still renders — it just stopped asking', () => {
+    ev.byId.current = { 'c1:ctr': ranking('c1') };
     renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
     openAdSets('Ramadan Cold');
 
+    expect(screen.getByText('Where to execute')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'I executed this' })).not.toBeInTheDocument();
-  });
-
-  it('offers no answer under a verdict that asks for no intervention', () => {
-    ev.byId.current = { 'c1:ctr': ranking('c1') };
-    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'HOLD' }} />);
-    openAdSets('Ramadan Cold');
-
-    expect(screen.queryByRole('button', { name: 'I executed this' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Either answer is recorded/)).not.toBeInTheDocument();
   });
 });
 
 describe('state is per row', () => {
   const twoRows = () => {
-    ev.byId.current = { 'c1:ctr': ranking('c1'), 'c2:ctr': ranking('c2') };
     renderPanel(
       <ConnectorCampaignsPanel
         campaigns={[campaign(), campaign({ entityId: 'c2', name: 'Eid Prospecting' })]}
         verdicts={{ c1: 'KILL', c2: 'KILL' }}
       />,
     );
-    openAdSets('Ramadan Cold');
-    openAdSets('Eid Prospecting');
+    explain('Ramadan Cold');
+    explain('Eid Prospecting');
   };
 
-  // The failure this prevents: one hook instance serves the whole table, so a
-  // scalar state would make an answer given on one campaign appear on every
-  // other expanded row — a recorded claim shown against decisions nobody
-  // answered.
+  // One hook instance serves the whole table, so a scalar state would make an
+  // answer given on one campaign appear on every other expanded row — a
+  // recorded claim shown against decisions nobody answered.
   it('an answered row does not settle its neighbours', () => {
     action.states.current = { c1: 'executed' };
     twoRows();
 
     expect(screen.getByText('Recorded as executed')).toBeInTheDocument();
-    // The second row still has both of its buttons.
-    expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Not applicable' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'I executed this' })).toHaveLength(1);
   });
 
   // Order-independent on purpose: the panel groups rows into bands, so DOM
@@ -156,6 +255,22 @@ describe('state is per row', () => {
     buttons.forEach((b) => fireEvent.click(b));
     const sent = action.execute.mock.calls.map(([id]) => id).sort();
     expect(sent).toEqual(['c1', 'c2']);
+  });
+
+  it('each row sends its OWN decision id, not its neighbour’s', () => {
+    renderPanel(
+      <ConnectorCampaignsPanel
+        campaigns={[campaign(), campaign({ entityId: 'c2', name: 'Eid Prospecting' })]}
+        verdicts={{ c1: 'KILL', c2: 'KILL' }}
+        verdictInfo={{ c1: { decisionId: 'dec-1' }, c2: { decisionId: 'dec-2' } }}
+      />,
+    );
+    explain('Ramadan Cold');
+    explain('Eid Prospecting');
+
+    screen.getAllByRole('button', { name: 'I executed this' }).forEach((b) => fireEvent.click(b));
+    const pairs = action.execute.mock.calls.map(([id, dec]) => `${id}:${dec}`).sort();
+    expect(pairs).toEqual(['c1:dec-1', 'c2:dec-2']);
   });
 });
 
@@ -171,7 +286,6 @@ describe('the ranking comes from the server, not from a second ranker here', () 
     renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'KILL' }} />);
     openAdSets('Ramadan Cold');
 
-    const panel = screen.getByText('Where to execute').closest('div');
-    expect(within(panel).getAllByText('Lookalike 1%').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Lookalike 1%').length).toBeGreaterThan(0);
   });
 });

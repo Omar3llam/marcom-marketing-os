@@ -36,6 +36,7 @@ import { HypothesisBlock } from '@/features/campaigns/HypothesisBlock.jsx';
 import { CohortBlock } from '@/features/campaigns/CohortBlock.jsx';
 import { MemoryTimeline } from '@/features/campaigns/MemoryTimeline.jsx';
 import { buildMemoryTimelineViewModel } from '@/features/campaigns/memoryTimelineViewModel.js';
+import { DecisionLifecycle } from '@/features/campaigns/DecisionLifecycle.jsx';
 
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
 
@@ -47,7 +48,21 @@ const COPY_FEEDBACK_MS = 2000;
 // hands the marketer the decision verbatim; the link opens the platform's own UI
 // where THEY make the change. Only the two action verdicts get a bar: there is
 // nothing to act on for HOLD/WATCH/REFRESH.
-function ActionBar({ entityId, verdict, name, rationale, confidence, spendMinor, currency, channel, externalId }) {
+//
+// It also asks whether they acted, because that answer belongs to the DECISION,
+// not to the ad-set evidence underneath it. It used to live only in
+// ExecutionContext, which meant recording a KILL took "Explain decision" →
+// "View ad sets" → wait for a ranking → answer — and an ad set the engine
+// declined to rank removed the question entirely, from a verdict that was
+// perfectly answerable. Evidence explains WHERE to look; it was never the
+// precondition for saying what you did.
+//
+// SAME GATE as the utility actions above it (nextActionFor), deliberately
+// unbroadened: a verdict with nothing to act on has nothing to have acted on.
+function ActionBar({
+  entityId, verdict, name, rationale, confidence, spendMinor, currency, channel, externalId,
+  onExecute = null, onDismiss = null, executionState = null,
+}) {
   const [copyState, setCopyState] = useState('idle'); // idle | copied | failed
   const timerRef = useRef(null);
 
@@ -78,33 +93,48 @@ function ActionBar({ entityId, verdict, name, rationale, confidence, spendMinor,
   const url = platformUrl(channel, externalId);
 
   return (
-    <div className="mt-3 flex flex-wrap gap-2 border-t border-lumi-border/60 pt-3">
-      <button
-        type="button"
-        onClick={handleCopy}
-        aria-label={`Copy the ${verdict} recommendation for ${name}`}
-        className="inline-flex items-center gap-1.5 rounded border border-lumi-border px-3 py-1.5 text-[11px] font-medium text-lumi-text transition-colors hover:bg-lumi-elevated"
-      >
-        {copyState === 'copied' ? <><Check className="w-3 h-3 text-signal-scale" strokeWidth={2} /> Copied</>
-          : copyState === 'failed' ? <><AlertCircle className="w-3 h-3 text-signal-kill" strokeWidth={2} /> Couldn&apos;t copy</>
-            : <><Copy className="w-3 h-3" strokeWidth={2} /> Copy decision</>}
-      </button>
-
-      {url && (
-        <a
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          // Fire-and-forget: the navigation is not awaited on it, and the new
-          // tab opens whether or not this lands.
-          onClick={() => recordIntent(entityId)}
-          className="inline-flex items-center gap-1.5 rounded border border-lumi-border px-3 py-1.5 text-[11px] font-medium text-lumi-muted transition-colors hover:bg-lumi-elevated hover:text-lumi-text"
+    <>
+      <div className="mt-3 flex flex-wrap gap-2 border-t border-lumi-border/60 pt-3">
+        <button
+          type="button"
+          onClick={handleCopy}
+          aria-label={`Copy the ${verdict} recommendation for ${name}`}
+          className="inline-flex items-center gap-1.5 rounded border border-lumi-border px-3 py-1.5 text-[11px] font-medium text-lumi-text transition-colors hover:bg-lumi-elevated"
         >
-          <ExternalLink className="w-3 h-3" strokeWidth={2} />
-          Open in {channel}
-        </a>
-      )}
-    </div>
+          {copyState === 'copied' ? <><Check className="w-3 h-3 text-signal-scale" strokeWidth={2} /> Copied</>
+            : copyState === 'failed' ? <><AlertCircle className="w-3 h-3 text-signal-kill" strokeWidth={2} /> Couldn&apos;t copy</>
+              : <><Copy className="w-3 h-3" strokeWidth={2} /> Copy decision</>}
+        </button>
+
+        {url && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            // Fire-and-forget: the navigation is not awaited on it, and the new
+            // tab opens whether or not this lands.
+            onClick={() => recordIntent(entityId)}
+            className="inline-flex items-center gap-1.5 rounded border border-lumi-border px-3 py-1.5 text-[11px] font-medium text-lumi-muted transition-colors hover:bg-lumi-elevated hover:text-lumi-text"
+          >
+            <ExternalLink className="w-3 h-3" strokeWidth={2} />
+            Open in {channel}
+          </a>
+        )}
+      </div>
+
+      {/* BELOW the utility actions, and last in the panel. The reader should
+          understand the decision — why, cohort, reasoning, memory, next step —
+          before being asked whether they acted on it; a claim collected above
+          its own evidence is a claim about something the operator has not read
+          yet. Renders nothing at all when the host passes no callbacks, which
+          is how every other consumer of this panel stays unchanged. */}
+      <DecisionLifecycle
+        onExecute={onExecute}
+        onDismiss={onDismiss}
+        executionState={executionState}
+        className="mt-3 border-t border-lumi-border/60 pt-3"
+      />
+    </>
   );
 }
 
@@ -156,6 +186,11 @@ export function CampaignDetailPanel({
   funnel = null, rootCause = null, dataConfidence = null, signalConfidence = null,
   counterfactuals = null, hypotheses = null, relativeRank = null,
   relativeContext = null, memory = null,
+  // The decision lifecycle, owned by the PARENT. No hook here on purpose: the
+  // campaigns table renders one of these per row from a single useDecisionAction
+  // instance, and state has to stay keyed by entityId — a hook inside the panel
+  // would give every expanded row its own map and lose the answer on collapse.
+  onExecute = null, onDismiss = null, executionState = null,
 }) {
   // OPEN on mount. The disclosure exists to let a reader put the audit trail
   // away, not to hide it: a verdict whose reasoning takes a click reads as
@@ -404,6 +439,9 @@ export function CampaignDetailPanel({
               currency={campaign.currency || 'USD'}
               channel={campaign.channel}
               externalId={campaign.externalId}
+              onExecute={onExecute}
+              onDismiss={onDismiss}
+              executionState={executionState}
             />
           )}
           {/* How decisions like this one have gone in this workspace. Silent

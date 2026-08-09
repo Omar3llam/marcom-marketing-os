@@ -193,3 +193,127 @@ describe('CampaignDetailPanel — ActionBar', () => {
     expect(html.indexOf('Next step:')).toBeLessThan(html.indexOf('Copy decision'));
   });
 });
+
+// ── Did you act on this? ─────────────────────────────────────
+// The one write in the product whose entire purpose is to be believed, and it
+// now sits on the DECISION rather than under the ad-set evidence. What these
+// pin is that the evidence is not a precondition: a KILL is answerable the
+// moment it is explained, with no ranking, no ad sets and no second request.
+describe('CampaignDetailPanel — decision lifecycle', () => {
+  const onExecute = vi.fn();
+  const onDismiss = vi.fn();
+  const withActions = (props = {}) => render(
+    <CampaignDetailPanel
+      campaign={campaign()} verdict="KILL"
+      onExecute={onExecute} onDismiss={onDismiss}
+      {...props}
+    />,
+  );
+
+  beforeEach(() => { onExecute.mockClear(); onDismiss.mockClear(); });
+
+  it('asks the question on an actionable verdict', () => {
+    withActions();
+    expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Not applicable' })).toBeInTheDocument();
+    expect(screen.getByText(/Either answer is recorded/)).toBeInTheDocument();
+  });
+
+  // The whole point of the move. This panel receives no evidence prop, has no
+  // ranking behind it, and never asks for one.
+  it('needs no evidence, no ranking and no ad sets to ask it', () => {
+    const { container } = withActions();
+    expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/Where to execute/);
+  });
+
+  it('asks it on a SCALE too', () => {
+    withActions({ verdict: 'SCALE' });
+    expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
+  });
+
+  // Same gate as the utility actions beside it — deliberately not broadened. A
+  // verdict with nothing to act on has nothing to have acted on.
+  it.each(['HOLD', 'WATCH', 'REFRESH', null])('does not ask under %s', (verdict) => {
+    withActions({ verdict });
+    expect(screen.queryByRole('button', { name: 'I executed this' })).not.toBeInTheDocument();
+  });
+
+  // KNOWN GAP, pinned deliberately rather than left to be discovered. This panel
+  // gates on nextActionFor (KILL/SCALE); the ad-set surface that used to carry
+  // the lifecycle gated on ACTIONABLE_VERDICTS (KILL/REALLOCATE). A REALLOCATE
+  // therefore has no lifecycle surface on the Campaigns page at all now.
+  // Closing it means widening one of the two gates, which is a product decision
+  // this PR was told not to make. If either gate changes, this test fails and
+  // the next reader learns why it was here.
+  it('does not ask under REALLOCATE — the two gates do not agree', () => {
+    withActions({ verdict: 'REALLOCATE' });
+    expect(screen.queryByRole('button', { name: 'I executed this' })).not.toBeInTheDocument();
+  });
+
+  it('stays silent when the host passes no callbacks', () => {
+    render(<CampaignDetailPanel campaign={campaign()} verdict="KILL" />);
+    expect(screen.queryByRole('button', { name: 'I executed this' })).not.toBeInTheDocument();
+    // …while the utility actions, which need no host, are still there.
+    expect(screen.getByText('Copy decision')).toBeInTheDocument();
+  });
+
+  it.each([
+    [{ onExecute }, 'only an execute handler'],
+    [{ onDismiss }, 'only a dismiss handler'],
+  ])('asks nothing given %s — half a question is not a question', (props) => {
+    render(<CampaignDetailPanel campaign={campaign()} verdict="KILL" {...props} />);
+    expect(screen.queryByRole('button', { name: 'I executed this' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Not applicable' })).not.toBeInTheDocument();
+  });
+
+  it('calls execute exactly once, with no arguments of its own', () => {
+    withActions();
+    fireEvent.click(screen.getByRole('button', { name: 'I executed this' }));
+    expect(onExecute).toHaveBeenCalledTimes(1);
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
+  it('calls dismiss exactly once', () => {
+    withActions();
+    fireEvent.click(screen.getByRole('button', { name: 'Not applicable' }));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(onExecute).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['executing',  'Recording…'],
+    ['dismissing', 'Recording…'],
+    ['executed',   'Recorded as executed'],
+    ['dismissed',  'Recorded as not applicable'],
+    ['stale',      'This verdict was replaced — refresh to see the current one'],
+    ['error',      "Couldn't record — refresh and try again"],
+  ])('%s reads "%s"', (executionState, sentence) => {
+    withActions({ executionState });
+    expect(screen.getByText(sentence)).toBeInTheDocument();
+  });
+
+  // A data-quality state says we have not judged this campaign yet. Collecting
+  // "I executed this" against a call nobody made would seed the learning loop
+  // with an answer to a question never asked.
+  it('asks nothing when the verdict is a data-quality state', () => {
+    withActions({ verdict: 'WATCH', rootCause: 'INSUFFICIENT_DATA' });
+    expect(screen.queryByRole('button', { name: 'I executed this' })).not.toBeInTheDocument();
+  });
+
+  it('sits last — after Next step and after the utility actions', () => {
+    const { container } = withActions({ rationale: 'ROAS 0.42 below break-even.' });
+    const html = container.innerHTML;
+    // The reader should understand the decision before being asked whether they
+    // acted on it: a claim collected above its own evidence is a claim about
+    // something the operator has not read yet.
+    expect(html.indexOf('Next step:')).toBeLessThan(html.indexOf('Copy decision'));
+    expect(html.indexOf('Copy decision')).toBeLessThan(html.indexOf('Did you act on this?'));
+  });
+
+  it('stays inside the Why block, with the rest of the decision', () => {
+    withActions({ rationale: 'ROAS 0.42 below break-even.' });
+    const whyBlock = screen.getByText(/Why kill\?/i).closest('.rounded-xl');
+    expect(whyBlock).toContainElement(screen.getByRole('button', { name: 'I executed this' }));
+  });
+});

@@ -428,6 +428,15 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                 relativeRank={relativeRank}
                 relativeContext={info.relativeContext ?? null}
                 memory={info.memory ?? null}
+                // The decision lifecycle, on the decision surface. `info.decisionId`
+                // is the STORED decision's id when a sweep wrote one, so the write
+                // lands on THAT row rather than on whatever the server re-resolves
+                // as newest at click time; null for a campaign with no Decision,
+                // where the by-entity route is correct rather than degraded. Same
+                // routing as before — only the surface moved.
+                onExecute={() => executeDecision(c.entityId, info.decisionId ?? null)}
+                onDismiss={() => dismissDecision(c.entityId, info.decisionId ?? null)}
+                executionState={actionStates[c.entityId] ?? null}
               />
             </td>
           </tr>
@@ -465,19 +474,22 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                     own, so the gate and the pick cannot disagree. That is why
                     this branch cannot produce the empty row the old pre-commit
                     gate existed to prevent. */}
-                {/* `info.decisionId` is the STORED decision's id when a sweep
-                    wrote one, so the write lands on THAT row rather than on
-                    whatever the server re-resolves as newest at click time.
-                    null for a campaign with no Decision — the hook falls back
-                    to the by-entity route, which is correct for it. */}
+                {/* NO onExecute / onDismiss / executionState here any more, and
+                    that omission is load-bearing. The lifecycle moved up to
+                    CampaignDetailPanel, where the decision lives; passing it
+                    here too would give ONE campaign TWO places to answer the
+                    same question — under "Explain decision" and again under
+                    "View ad sets" — with one state behind both. Two surfaces
+                    for one claim is worse than the walk they replace.
+
+                    ExecutionContext KEEPS the capability: Overview's
+                    DecisionCard is a different surface with no detail panel
+                    behind it, and still passes all three. */}
                 {ev?.evidence && (
                   <ExecutionContext
                     campaign={c}
                     evidence={ev.evidence}
                     verdict={verdict}
-                    onExecute={() => executeDecision(c.entityId, info.decisionId ?? null)}
-                    onDismiss={() => dismissDecision(c.entityId, info.decisionId ?? null)}
-                    executionState={actionStates[c.entityId] ?? null}
                   />
                 )}
               </td>
