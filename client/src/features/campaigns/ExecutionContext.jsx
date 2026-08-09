@@ -16,7 +16,6 @@
 // Presentational: every figure comes from executionContext.js arithmetic over
 // real snapshot fields. Silent (null) whenever the data cannot support a pick.
 // ============================================================
-import { Loader2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import {
   ACTIONABLE_VERDICTS,
   spendConcentration,
@@ -28,6 +27,7 @@ import {
 import { formatCurrency } from '@/lib/money';
 import { useDecisionLearning } from '@/hooks/useDecisionLearning.js';
 import { LearningInsight } from './LearningInsight.jsx';
+import { DecisionLifecycle } from './DecisionLifecycle.jsx';
 
 const Label = ({ children }) => (
   <p className="mb-1 font-mono text-[10px] uppercase tracking-widest text-lumi-muted">{children}</p>
@@ -178,77 +178,20 @@ export function ExecutionContext({
       </div>
 
       {/* ── What the operator did about it ────────────────────────────────
-          The only way a verdict ever becomes a scored prediction. Everything
-          above this line is the product talking; this is the product listening.
+          Lifted into DecisionLifecycle, because the campaign DECISION surface
+          now asks the same question and two copies of six states would drift.
+          This mount is unchanged in behaviour: it renders when a caller passes
+          both callbacks, and renders nothing when it does not.
 
-          ONE-WAY. Every terminal state replaces the buttons rather than
-          disabling them: a clickable-looking control that has already been
-          answered invites a second click, and a second click on a recorded
-          claim is not a second claim. `stale` and the two error branches are
-          terminal for the same reason — none of them get better by retrying
-          the same request. */}
-      {onExecute && onDismiss && (
-        <div className="mt-3 border-t border-lumi-border pt-3">
-          {executionState === null && (
-            <>
-              <Label>Did you act on this?</Label>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={onExecute}
-                  className="rounded-lg bg-signal-kill px-3 py-1.5 text-xs font-semibold text-white transition-opacity hover:opacity-90"
-                >
-                  I executed this
-                </button>
-                <button
-                  type="button"
-                  onClick={onDismiss}
-                  className="rounded-lg border border-lumi-border px-3 py-1.5 text-xs text-lumi-subtle transition-colors hover:text-lumi-text"
-                >
-                  Not applicable
-                </button>
-              </div>
-              {/* Says what the answer is FOR. Without it the pair reads as a
-                  satisfaction survey, and "Not applicable" looks like a way to
-                  hide the row rather than a recorded judgement. */}
-              <p className="mt-2 text-[11px] leading-relaxed text-lumi-muted">
-                Either answer is recorded — it is how Lumi learns whether its calls were right.
-              </p>
-            </>
-          )}
-
-          {(executionState === 'executing' || executionState === 'dismissing') && (
-            <p className="flex items-center gap-1.5 font-mono text-[11px] text-lumi-subtle">
-              <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} /> Recording…
-            </p>
-          )}
-
-          {executionState === 'executed' && (
-            <p className="flex items-center gap-1.5 font-mono text-[11px] text-signal-scale">
-              <CheckCircle2 className="h-3 w-3" strokeWidth={2} /> Recorded as executed
-            </p>
-          )}
-
-          {executionState === 'dismissed' && (
-            <p className="font-mono text-[11px] text-lumi-subtle">Recorded as not applicable</p>
-          )}
-
-          {/* The verdict was replaced between render and click. Not a failure and
-              not retryable — the call they answered no longer exists, and saying
-              "try again" would send them at a request that 404s forever. */}
-          {executionState === 'stale' && (
-            <p className="flex items-center gap-1.5 font-mono text-[11px] text-lumi-subtle">
-              <AlertTriangle className="h-3 w-3" strokeWidth={2} /> This verdict was replaced — refresh to see the current one
-            </p>
-          )}
-
-          {executionState === 'error' && (
-            <p className="flex items-center gap-1.5 font-mono text-[11px] text-trend-danger">
-              <AlertTriangle className="h-3 w-3" strokeWidth={2} /> Couldn&apos;t record — refresh and try again
-            </p>
-          )}
-        </div>
-      )}
+          The Campaigns page no longer passes them — CampaignDetailPanel is the
+          canonical action surface there, and one decision must not have two
+          places to answer it. Overview's DecisionCard still does, which is why
+          the capability stays here rather than being deleted. */}
+      <DecisionLifecycle
+        onExecute={onExecute}
+        onDismiss={onDismiss}
+        executionState={executionState}
+      />
     </div>
   );
 }

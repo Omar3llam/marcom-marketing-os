@@ -91,8 +91,49 @@ describe('ConnectorCampaignsPanel → CampaignDetailPanel', () => {
     ['relativeRank'],
     ['relativeContext'],
     ['memory'],
+    // The decision lifecycle. Not data — the two callbacks and the state that
+    // let the operator answer the verdict on the surface that shows it.
+    ['onExecute'],
+    ['onDismiss'],
+    ['executionState'],
   ])('forwards %s', (field) => {
     expect(callSite()).toMatch(new RegExp(`${field}=\\{`));
+  });
+
+  // The routing #339 established, unchanged by the surface move: the STORED
+  // decision's id names ONE ROW, and null falls back to the by-entity query,
+  // which is the correct route for a campaign no sweep has written a Decision
+  // for. `?? null` rather than a bare read, so "no decision" cannot arrive as
+  // undefined and become indistinguishable from a dropped field.
+  it.each([['executeDecision'], ['dismissDecision']])('%s is routed by info.decisionId ?? null', (fn) => {
+    expect(callSite()).toMatch(new RegExp(`${fn}\\(c\\.entityId, info\\.decisionId \\?\\? null\\)`));
+  });
+});
+
+// ── One decision, one place to answer it ────────────────────
+// The lifecycle moved UP to the decision surface. If it were restored here too,
+// one campaign would have two identical button pairs backed by one state —
+// under "Explain decision" and again under "View ad sets" — and answering
+// either would silently settle the other. That is worse than the walk it
+// replaced, and it would come back as a one-line "restore the props" edit.
+describe('the Campaigns-page ExecutionContext no longer asks', () => {
+  const mount = () => {
+    const src = read('ConnectorCampaignsPanel.jsx');
+    const start = src.indexOf('<ExecutionContext');
+    expect(start, 'the ExecutionContext mount was renamed or removed').toBeGreaterThan(-1);
+    return src.slice(start, src.indexOf('/>', start));
+  };
+
+  it.each([['onExecute'], ['onDismiss'], ['executionState']])('passes no %s', (prop) => {
+    expect(mount()).not.toMatch(new RegExp(`${prop}=`));
+  });
+
+  // The capability is NOT deleted — Overview's DecisionCard is a different
+  // surface with no detail panel behind it and still passes all three.
+  it('leaves the capability in place for the surface that still needs it', () => {
+    const card = read('../overview/components/DecisionCard.jsx');
+    expect(card).toMatch(/onExecute=\{/);
+    expect(card).toMatch(/executionState=\{/);
   });
 });
 
