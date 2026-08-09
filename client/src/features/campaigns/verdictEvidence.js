@@ -193,10 +193,17 @@ export function isDataQualityCause(rootCause) {
  * diagnosis is a WATCH — so the entire funnel layer would have rendered
  * NOTHING, which is why this predicate had to move out of the component.
  *
+ * The verdict branch now DERIVES from nextActionFor rather than restating it.
+ * It was a second hand-written copy of the same list, and it drifted the same
+ * way: a verdict that asks for an intervention but has no block to render it in
+ * is invisible on this panel — no reason, no next step, and (since the decision
+ * lifecycle lives inside this block) no way to record that anyone acted. One
+ * list, one place, so the next verdict added asks its question everywhere.
+ *
  * @returns {{ show: boolean, heading: string|null }}
  */
 export function whyBlock({ verdict, funnel = null, rootCause = null } = {}) {
-  if (verdict === 'KILL' || verdict === 'SCALE') return { show: true, heading: `Why ${verdict.toLowerCase()}?` };
+  if (nextActionFor(verdict)) return { show: true, heading: `Why ${verdict.toLowerCase()}?` };
   if (funnel) return { show: true, heading: 'Where the money is going' };
   if (isDataQualityCause(rootCause)) return { show: true, heading: 'Not judged yet' };
   return { show: false, heading: null };
@@ -352,10 +359,33 @@ export function decisiveMetric({ roas = null, ctr = null, frequency = null, reve
   return null;
 }
 
-/** The next step a KILL/SCALE asks for. Null for every other verdict. */
+/**
+ * The next step an actionable verdict asks for. Null for every other verdict —
+ * a campaign that is fine to keep running has no step, and inventing one would
+ * manufacture an ask the engine never made.
+ *
+ * THIS IS ALSO THE LIFECYCLE GATE. Since the decision action moved onto the
+ * campaign detail panel, a verdict with no next action gets no "Did you act on
+ * this?" either — which is correct (nothing to have acted on) and is why the
+ * three entries here are exactly the three verdicts that ask for an
+ * intervention. REALLOCATE was missing, so the one verdict whose whole content
+ * is "move the money" had no way to record that anyone did.
+ *
+ * REALLOCATE IS NOT SCALE, and the wording keeps them apart on purpose:
+ *   SCALE      — this is winning; put MORE behind it.
+ *   REALLOCATE — this is not converting; move what it has ELSEWHERE.
+ * Nor is it KILL, whose step pauses the campaign first. A REALLOCATE campaign
+ * keeps running on a smaller share. Collapsing any two of these into one
+ * sentence would lose a distinction the verdict itself is made of.
+ *
+ * The REALLOCATE sentence is the imperative of this product's own one-liner for
+ * the verdict (helpContent.REALLOCATE_VERDICT, "Budget is better spent
+ * elsewhere — move spend to stronger campaigns"), not new copy.
+ */
 export function nextActionFor(verdict) {
   if (verdict === 'KILL') return 'Pause and reallocate budget';
   if (verdict === 'SCALE') return 'Increase budget or expand audience';
+  if (verdict === 'REALLOCATE') return 'Move spend to stronger campaigns';
   return null;
 }
 

@@ -22,7 +22,7 @@ import {
   EVIDENCE_REFUSAL_LABELS,
   refusalLabel,
 } from './executionContext.js';
-import { FATIGUE_FREQ } from './verdictEvidence.js';
+import { FATIGUE_FREQ, nextActionFor } from './verdictEvidence.js';
 
 // 0.0164 = the campaign rate used throughout; 0.0032 sits 80% below it.
 const CAMPAIGN_CTR = 0.0164;
@@ -370,5 +370,58 @@ describe('refusalLabel — the noun follows the level', () => {
   // `undefined`. It degrades to the default level rather than to a broken string.
   it('degrades an unknown dimension to the ad-set wording', () => {
     expect(refusalLabel('NO_MEANINGFUL_GAP', 'placement')).toBe('No ad set is measurably behind the others');
+  });
+});
+
+// ============================================================
+// The contract between the two gates
+// ============================================================
+// Two lists in two modules decide what a marketer can do about a verdict:
+//
+//   ACTIONABLE_VERDICTS (here)          — which verdicts get the ad-set
+//                                         "where to execute" panel, and which
+//                                         trigger an evidence request at all.
+//   nextActionFor       (verdictEvidence) — the step a verdict asks for, and,
+//                                         since the decision action moved onto
+//                                         the campaign panel, the gate on
+//                                         "Did you act on this?".
+//
+// They drifted, silently, and it cost REALLOCATE its ability to be recorded:
+// the verdict was in ACTIONABLE_VERDICTS, so the ad-set panel rendered under it
+// and carried the lifecycle buttons — and when those moved to the decision
+// surface, which gates on nextActionFor, REALLOCATE had no entry there and lost
+// the surface entirely. Nothing failed. The buttons were simply gone from the
+// one verdict whose entire content is "move the money".
+//
+// ONE-DIRECTIONAL, deliberately. Every ACTIONABLE_VERDICT must have a next
+// action, because a panel that renders under it needs a step to name. The
+// converse is NOT asserted: SCALE has a next action and is deliberately not in
+// ACTIONABLE_VERDICTS, because that list also decides who gets an evidence
+// request and a "consider pausing it" panel — sentences written for a campaign
+// that is losing money, and wrong under a winner.
+describe('ACTIONABLE_VERDICTS ↔ nextActionFor', () => {
+  it('every actionable verdict has a next action', () => {
+    for (const verdict of ACTIONABLE_VERDICTS) {
+      expect(nextActionFor(verdict), `${verdict} is actionable but asks for nothing`).toBeTruthy();
+    }
+  });
+
+  it('names REALLOCATE, the member that regressed', () => {
+    // Asserted separately from the loop: a future edit that empties or narrows
+    // ACTIONABLE_VERDICTS would leave the loop vacuously passing.
+    expect(ACTIONABLE_VERDICTS).toContain('REALLOCATE');
+    expect(nextActionFor('REALLOCATE')).toBeTruthy();
+  });
+
+  it('still lists exactly the two verdicts the evidence panel is written for', () => {
+    // Widening this is a product change, not a fix: it would send an evidence
+    // request for more campaigns and render "its CTR is X% below the campaign
+    // rate — consider pausing it" under verdicts that copy was never for.
+    expect([...ACTIONABLE_VERDICTS]).toEqual(['KILL', 'REALLOCATE']);
+  });
+
+  it.each([['HOLD'], ['WATCH'], ['REFRESH']])('%s asks for nothing and is not actionable', (verdict) => {
+    expect(nextActionFor(verdict)).toBeNull();
+    expect(ACTIONABLE_VERDICTS).not.toContain(verdict);
   });
 });

@@ -110,6 +110,20 @@ describe('the answer is offered on the decision itself', () => {
     expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
   });
 
+  // REALLOCATE reached this surface through the ad-set panel before the move
+  // (ACTIONABLE_VERDICTS carries it) and then lost it, because the decision
+  // surface gates on nextActionFor and that had no entry for it. The verdict is
+  // emitted by verdictEngine's INEFFICIENT_SCALING and AUDIENCE_MISMATCH
+  // branches and by AllocationService, so this was a live hole.
+  it('is offered for REALLOCATE, which lost it in the move', () => {
+    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'REALLOCATE' }} />);
+    explain('Ramadan Cold');
+    expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Not applicable' })).toBeInTheDocument();
+    // Same invariant as KILL's: no ad sets opened, no evidence requested.
+    expect(ev.load).not.toHaveBeenCalled();
+  });
+
   it('is offered for SCALE, which the ad-set surface never asked about', () => {
     // ACTIONABLE_VERDICTS (the ExecutionContext gate) is KILL/REALLOCATE, so a
     // SCALE could not be recorded from the Campaigns page at all. The decision
@@ -162,6 +176,52 @@ describe('where the write is routed', () => {
     // re-resolves at write time. A sweep landing between render and click moves
     // that target, which is the whole reason the id wins when there is one.
     expect(handler()).toHaveBeenCalledWith('c1', 'dec-7');
+  });
+});
+
+// The routing is the verdict's business in no way at all — but a verdict that
+// only just regained its surface is exactly the one worth proving it on, rather
+// than assuming it inherited the wiring.
+describe('REALLOCATE routes like every other actionable verdict', () => {
+  it.each([
+    ['I executed this', () => action.execute],
+    ['Not applicable',  () => action.dismiss],
+  ])('%s targets the stored decision row', (label, handler) => {
+    renderPanel(
+      <ConnectorCampaignsPanel
+        campaigns={[campaign()]}
+        verdicts={{ c1: 'REALLOCATE' }}
+        verdictInfo={{ c1: { decisionId: 'dec-7', decisionVerdict: 'REALLOCATE' } }}
+      />,
+    );
+    explain('Ramadan Cold');
+
+    fireEvent.click(screen.getByRole('button', { name: label }));
+    expect(handler()).toHaveBeenCalledTimes(1);
+    expect(handler()).toHaveBeenCalledWith('c1', 'dec-7');
+  });
+
+  it.each([
+    ['I executed this', () => action.execute],
+    ['Not applicable',  () => action.dismiss],
+  ])('%s falls back to the entity when no sweep wrote a Decision', (label, handler) => {
+    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'REALLOCATE' }} />);
+    explain('Ramadan Cold');
+
+    fireEvent.click(screen.getByRole('button', { name: label }));
+    expect(handler()).toHaveBeenCalledTimes(1);
+    expect(handler()).toHaveBeenCalledWith('c1', null);
+    // null, not undefined: the by-entity route is the CORRECT one for a
+    // campaign with no Decision, and the two cases must stay distinguishable.
+    expect(handler().mock.calls[0][1]).not.toBeUndefined();
+  });
+
+  it('reports the same six answers', () => {
+    action.states.current = { c1: 'executed' };
+    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'REALLOCATE' }} />);
+    explain('Ramadan Cold');
+    expect(screen.getByText('Recorded as executed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'I executed this' })).not.toBeInTheDocument();
   });
 });
 

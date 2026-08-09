@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   evidenceRows, formatEvidenceValue, evidenceLabel,
-  whyBlock, confidenceDetail, isDataQualityCause,
+  whyBlock, confidenceDetail, isDataQualityCause, nextActionFor,
 } from './verdictEvidence.js';
 
 const funnel = {
@@ -84,6 +84,20 @@ describe('whyBlock — a funnel verdict must not be invisible', () => {
   it('shows for KILL and SCALE, as before', () => {
     expect(whyBlock({ verdict: 'KILL' })).toEqual({ show: true, heading: 'Why kill?' });
     expect(whyBlock({ verdict: 'SCALE' })).toEqual({ show: true, heading: 'Why scale?' });
+  });
+
+  // The SECOND copy of the actionable-verdict list, and it drifted the same way
+  // the first one did. A REALLOCATE asks for an intervention but had no block to
+  // render it in — so on this panel it had no reason, no next step, and (since
+  // the decision lifecycle lives inside this block) no way to record that
+  // anyone acted. The branch now derives from nextActionFor rather than
+  // restating it, which is why this can no longer drift on its own.
+  it('shows for REALLOCATE, which asks for an intervention too', () => {
+    expect(whyBlock({ verdict: 'REALLOCATE' })).toEqual({ show: true, heading: 'Why reallocate?' });
+  });
+
+  it.each([['KILL'], ['SCALE'], ['REALLOCATE']])('%s gets a block wherever it asks for a step', (verdict) => {
+    expect(whyBlock({ verdict }).show).toBe(nextActionFor(verdict) !== null);
   });
 
   it('shows for a WATCH that carries a funnel — the whole regression this fixes', () => {
