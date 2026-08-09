@@ -54,6 +54,10 @@ describe('CampaignsView → verdictInfo', () => {
     // NOW. decisionId routes execute/dismiss at one row instead of at a query.
     ['decisionId'],
     ['decisionVerdict'],
+    // Past decisions. It arrives on a SEPARATE map on the same response, not on
+    // the verdict object — so this projection is the only thing joining the two,
+    // and the only place it can be silently dropped.
+    ['memory'],
   ])('carries %s through to the panel', (field) => {
     expect(projectionBody()).toMatch(new RegExp(`\\b${field}:`));
   });
@@ -86,6 +90,7 @@ describe('ConnectorCampaignsPanel → CampaignDetailPanel', () => {
     ['hypotheses'],
     ['relativeRank'],
     ['relativeContext'],
+    ['memory'],
   ])('forwards %s', (field) => {
     expect(callSite()).toMatch(new RegExp(`${field}=\\{`));
   });
@@ -96,6 +101,7 @@ describe('CampaignDetailPanel accepts it', () => {
   // dropped as silently as one omitted from a projection.
   it.each([
     ['counterfactuals'], ['hypotheses'], ['relativeRank'], ['signalConfidence'], ['relativeContext'],
+    ['memory'],
   ])('destructures %s', (field) => {
     const src = read('CampaignDetailPanel.jsx');
     const sig = src.slice(src.indexOf('export function CampaignDetailPanel'));

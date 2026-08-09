@@ -455,6 +455,80 @@ describe('the confidence line steps aside for it', () => {
   });
 });
 
+// ── Memory: its own layer, outside the disclosure ────────────
+// History is context for the decision a reader is about to make, not part of
+// the argument for it. A past KILL is not evidence for today's verdict, and
+// filing it under Reasoning would invite exactly that reading — as well as
+// letting the toggle hide it.
+const MEMORY = {
+  count: 3,
+  items: [
+    { id: 'm1', verdict: 'KILL', status: 'SUPERSEDED', createdAt: '2026-08-01T00:00:00.000Z',
+      executedAt: '2026-08-02T00:00:00.000Z', dismissedAt: null, resolution: 'IMPROVED', confidenceDelta: 0.3 },
+  ],
+};
+
+describe('memory sits after reasoning, and outside it', () => {
+  it('renders as its own section', () => {
+    panel({ hypotheses: HYPOTHESES, memory: MEMORY });
+    expect(screen.getByText('Memory')).toBeInTheDocument();
+    expect(screen.getByText('Seen 3 times')).toBeInTheDocument();
+  });
+
+  it('reads reasoning → memory → next step', () => {
+    const { container } = panel({ hypotheses: HYPOTHESES, memory: MEMORY });
+    const t = container.textContent;
+    expect(t.indexOf('Reasoning')).toBeLessThan(t.indexOf('Memory'));
+    expect(t.indexOf('Memory')).toBeLessThan(t.indexOf('Next step:'));
+  });
+
+  // The load-bearing one: closing Reasoning must not take history with it.
+  it('survives the Reasoning disclosure being closed', () => {
+    panel({ hypotheses: HYPOTHESES, memory: MEMORY });
+    toggleReasoning();
+    expect(screen.queryByText('Why we believe this')).not.toBeInTheDocument();
+    expect(screen.getByText('Memory')).toBeInTheDocument();
+    expect(screen.getByText('Seen 3 times')).toBeInTheDocument();
+  });
+
+  it('appears on a verdict with no reasoning section at all', () => {
+    panel({ hypotheses: null, counterfactuals: null, memory: MEMORY });
+    expect(reasoningToggle()).toBeNull();
+    expect(screen.getByText('Memory')).toBeInTheDocument();
+  });
+
+  it('sits after the cohort block on a relative verdict', () => {
+    const { container } = panel({ relativeRank: 'BOTTOM', relativeContext: COHORT, memory: MEMORY });
+    const t = container.textContent;
+    expect(t.indexOf('Cohort ranking')).toBeLessThan(t.indexOf('Memory'));
+  });
+});
+
+describe('memory never edits the current call', () => {
+  // A past KILL that IMPROVED is not an argument for today's verdict, and the
+  // live call must read identically with and without any history behind it.
+  it('leaves the verdict, its reason and the ask untouched', () => {
+    const withOut = panel({ hypotheses: HYPOTHESES });
+    const before = withOut.container.textContent;
+    withOut.unmount();
+
+    const withMem = panel({ hypotheses: HYPOTHESES, memory: MEMORY });
+    const after = withMem.container.textContent.replace(/Memory.*?(?=Next step:)/s, '');
+    expect(after).toBe(before);
+  });
+
+  it('renders no Memory section when there is no history', () => {
+    panel({ hypotheses: HYPOTHESES, memory: null });
+    expect(screen.queryByText('Memory')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Seen 0/)).not.toBeInTheDocument();
+  });
+
+  it.each([[{ count: 0, items: [] }], [{}], ['nope']])('and none for %s', (memory) => {
+    panel({ hypotheses: HYPOTHESES, memory });
+    expect(screen.queryByText('Memory')).not.toBeInTheDocument();
+  });
+});
+
 describe('no reasoning to show', () => {
   it('renders no Reasoning section at all when neither half has anything', () => {
     panel({ hypotheses: null, counterfactuals: null });

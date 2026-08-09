@@ -50,6 +50,10 @@ export function useConnectorVerdicts() {
   const [verdicts, setVerdicts] = useState([]);
   const [gatedOut, setGatedOut] = useState([]);
   const [account, setAccount] = useState(null);
+  // Past decisions per campaign, keyed by entityId. A SEPARATE map, never a
+  // field on a verdict: the verdict is what Lumi thinks now and this is what it
+  // said before, and merging them would let history edit the current call.
+  const [memory, setMemory] = useState({});
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -64,6 +68,7 @@ export function useConnectorVerdicts() {
       setVerdicts(Array.isArray(res.data?.verdicts) ? res.data.verdicts : []);
       setGatedOut(Array.isArray(res.data?.gatedOut) ? res.data.gatedOut : []);
       setAccount(res.data?.account ?? null);
+      setMemory(res.data?.memoryByEntityId ?? {});
       setStatus(res.data?.status ?? null);
     } catch (err) {
       if (!aliveRef.current) return;
@@ -79,5 +84,5 @@ export function useConnectorVerdicts() {
     return () => { aliveRef.current = false; };
   }, [refetch]);
 
-  return { verdicts, gatedOut, account, status, loading, error, refetch };
+  return { verdicts, gatedOut, account, memory, status, loading, error, refetch };
 }

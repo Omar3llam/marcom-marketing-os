@@ -34,6 +34,8 @@ import { CounterfactualsBlock } from '@/features/campaigns/CounterfactualsBlock.
 import { buildPrimaryHypothesisViewModel } from '@/features/campaigns/hypothesisViewModel.js';
 import { HypothesisBlock } from '@/features/campaigns/HypothesisBlock.jsx';
 import { CohortBlock } from '@/features/campaigns/CohortBlock.jsx';
+import { MemoryTimeline } from '@/features/campaigns/MemoryTimeline.jsx';
+import { buildMemoryTimelineViewModel } from '@/features/campaigns/memoryTimelineViewModel.js';
 
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
 
@@ -153,7 +155,7 @@ export function CampaignDetailPanel({
   campaign, verdict = null, impact = null, rationale = null, confidence = null,
   funnel = null, rootCause = null, dataConfidence = null, signalConfidence = null,
   counterfactuals = null, hypotheses = null, relativeRank = null,
-  relativeContext = null,
+  relativeContext = null, memory = null,
 }) {
   // OPEN on mount. The disclosure exists to let a reader put the audit trail
   // away, not to hide it: a verdict whose reasoning takes a click reads as
@@ -230,6 +232,13 @@ export function CampaignDetailPanel({
   // honesty gate, counterfactuals suppressed with it — a "Reasoning" toggle
   // that opens onto nothing.
   const showReasoning = Boolean(hypothesisVM) || showCounterfactuals;
+
+  // What we said about this campaign BEFORE. Deliberately NOT part of
+  // showReasoning and not inside the disclosure below: those blocks are the case
+  // for TODAY'S verdict, and a past KILL is not evidence for the current one.
+  // Filing history under "Reasoning" would invite exactly that reading, and it
+  // would also let the toggle hide it.
+  const memoryVM = buildMemoryTimelineViewModel(memory);
 
   // UNCHANGED, deliberately. The obvious move is to suppress the prose clause
   // once the structured block renders — but they answer different questions.
@@ -330,6 +339,13 @@ export function CampaignDetailPanel({
               )}
             </div>
           )}
+
+          {/* AFTER Reasoning, OUTSIDE its disclosure, and before the ask:
+              verdict → why → reasoning → memory → action. History is context for
+              the decision a reader is about to make, not part of the argument
+              for it, so it gets its own layer and is never hidden by the
+              Reasoning toggle. */}
+          <MemoryTimeline viewModel={memoryVM} />
 
           {nextAction && (
             <p className="mt-1.5 text-sm text-lumi-text">
