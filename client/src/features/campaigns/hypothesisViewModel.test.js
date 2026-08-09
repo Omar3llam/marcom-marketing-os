@@ -107,7 +107,6 @@ describe('what the model deliberately omits', () => {
   // `supports` is metric NAMES for a hypothesis whose figures are already in
   // `observed`. Nothing renders it, and a projected-but-unrendered field reads
   // as a rendering bug to whoever finds it next.
-  // TODO (PR#335): joins the model with the playbook/memory display.
   it('does not project supports', () => {
     expect(buildPrimaryHypothesisViewModel([h()], null)).not.toHaveProperty('supports');
   });
