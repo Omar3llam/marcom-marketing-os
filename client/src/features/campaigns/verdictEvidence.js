@@ -367,25 +367,40 @@ export function decisiveMetric({ roas = null, ctr = null, frequency = null, reve
  * THIS IS ALSO THE LIFECYCLE GATE. Since the decision action moved onto the
  * campaign detail panel, a verdict with no next action gets no "Did you act on
  * this?" either — which is correct (nothing to have acted on) and is why the
- * three entries here are exactly the three verdicts that ask for an
- * intervention. REALLOCATE was missing, so the one verdict whose whole content
- * is "move the money" had no way to record that anyone did.
+ * entries here are exactly the verdicts that ask for an intervention. REALLOCATE
+ * was missing, so the one verdict whose whole content is "move the money" had no
+ * way to record that anyone did.
  *
- * REALLOCATE IS NOT SCALE, and the wording keeps them apart on purpose:
+ * REFRESH was missing for the same reason, and it was the more expensive gap:
+ * the rest of the system already treats it as an intervention. It has a real
+ * execution capability (REFRESH_CREATIVE, wired through to Meta), its spend
+ * counts as wasted next to a KILL (AccountHealthService.WASTED_VERDICTS), and
+ * decisionLifecycle scores it on engagement recovery alongside KILL and
+ * REALLOCATE. But `intentAt` is stamped only from inside this ActionBar, so
+ * while REFRESH returned null no REFRESH decision could ever be recorded as
+ * acted on — and decisionLearning filters on `intentAt: { not: null }`. The
+ * engine's most common creative verdict could not reach the learning population
+ * at all. That is a missing bridge, not a missing capability.
+ *
+ * Each sentence names a DIFFERENT motion, and the wording keeps them apart:
  *   SCALE      — this is winning; put MORE behind it.
  *   REALLOCATE — this is not converting; move what it has ELSEWHERE.
- * Nor is it KILL, whose step pauses the campaign first. A REALLOCATE campaign
- * keeps running on a smaller share. Collapsing any two of these into one
- * sentence would lose a distinction the verdict itself is made of.
+ *   REFRESH    — the money and the audience are fine; the AD is worn out.
+ * Nor is any of them KILL, whose step pauses the campaign first. A REALLOCATE
+ * campaign keeps running on a smaller share; a REFRESH campaign keeps its budget
+ * and changes what it shows. Collapsing any two of these into one sentence would
+ * lose a distinction the verdict itself is made of.
  *
- * The REALLOCATE sentence is the imperative of this product's own one-liner for
- * the verdict (helpContent.REALLOCATE_VERDICT, "Budget is better spent
- * elsewhere — move spend to stronger campaigns"), not new copy.
+ * Each sentence is the imperative of this product's own one-liner for the verdict
+ * (helpContent.REALLOCATE_VERDICT, helpContent.REFRESH_VERDICT — "Creative
+ * fatigue — the audience has seen this ad too often. Refresh the creative."),
+ * never new copy invented here.
  */
 export function nextActionFor(verdict) {
   if (verdict === 'KILL') return 'Pause and reallocate budget';
   if (verdict === 'SCALE') return 'Increase budget or expand audience';
   if (verdict === 'REALLOCATE') return 'Move spend to stronger campaigns';
+  if (verdict === 'REFRESH') return 'Refresh the creative';
   return null;
 }
 
