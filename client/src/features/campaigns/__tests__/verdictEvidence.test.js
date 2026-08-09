@@ -69,12 +69,53 @@ describe('shortEvidence', () => {
 });
 
 describe('nextActionFor', () => {
-  it('KILL → pause, SCALE → grow, everything else → null', () => {
+  it('KILL → pause, SCALE → grow, REALLOCATE → move, everything else → null', () => {
     expect(nextActionFor('KILL')).toBe('Pause and reallocate budget');
     expect(nextActionFor('SCALE')).toBe('Increase budget or expand audience');
+    expect(nextActionFor('REALLOCATE')).toBe('Move spend to stronger campaigns');
     expect(nextActionFor('HOLD')).toBeNull();
+    expect(nextActionFor('WATCH')).toBeNull();
     expect(nextActionFor('REFRESH')).toBeNull();
     expect(nextActionFor(null)).toBeNull();
+    expect(nextActionFor('NOT_A_VERDICT')).toBeNull();
+  });
+
+  // The three verdicts that ask for an intervention, and nothing else. Since
+  // the decision action moved onto the campaign panel, this list is also the
+  // lifecycle gate — a verdict added here gains a "Did you act on this?", which
+  // is why it is worth stating as a set rather than three separate cases.
+  it('REALLOCATE has an actionable next step', () => {
+    expect(nextActionFor('REALLOCATE')).toBeTruthy();
+  });
+
+  // ── The distinction the verdict itself is made of ──────────
+  // SCALE and REALLOCATE share the lifecycle mechanism and nothing else. One
+  // says put MORE behind a winner; the other says move what this has ELSEWHERE.
+  // A shared sentence would erase the difference between "your campaign is
+  // working" and "your campaign is not converting", on the line the operator
+  // reads to decide what to do.
+  it('does not tell a REALLOCATE to scale', () => {
+    expect(nextActionFor('REALLOCATE')).not.toBe(nextActionFor('SCALE'));
+    expect(nextActionFor('REALLOCATE')).not.toMatch(/increase|expand|more budget/i);
+  });
+
+  // Nor is it a KILL, whose step pauses the campaign first. A REALLOCATE keeps
+  // running on a smaller share.
+  it('does not tell a REALLOCATE to pause', () => {
+    expect(nextActionFor('REALLOCATE')).not.toBe(nextActionFor('KILL'));
+    expect(nextActionFor('REALLOCATE')).not.toMatch(/pause|stop/i);
+  });
+
+  it('speaks the allocation vocabulary the rest of the product uses', () => {
+    expect(nextActionFor('REALLOCATE')).toMatch(/move|reallocat|elsewhere|stronger/i);
+  });
+
+  // Three imperative phrases in one register, no trailing punctuation — they
+  // are rendered inline after "Next step:" and inside the copied recommendation.
+  it.each([['KILL'], ['SCALE'], ['REALLOCATE']])('%s reads as an instruction', (verdict) => {
+    const action = nextActionFor(verdict);
+    expect(action).toMatch(/^[A-Z]/);
+    expect(action).not.toMatch(/[.!]$/);
   });
 });
 

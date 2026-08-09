@@ -8,6 +8,9 @@
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { CampaignDetailPanel } from './CampaignDetailPanel.jsx';
 
 // Mock the shared client via a hoisted handle — feature code (and its tests) must
@@ -111,9 +114,18 @@ describe('CampaignDetailPanel — ActionBar', () => {
     expect(screen.getByText('Copy decision')).toBeInTheDocument();
   });
 
+  // REALLOCATE is a real emitted verdict (verdictEngine's INEFFICIENT_SCALING
+  // and AUDIENCE_MISMATCH branches, plus AllocationService) and it asks for an
+  // intervention. It sat in this "no bar" list only because nextActionFor had
+  // no entry for it — which also cost it its decision lifecycle, below.
+  it('offers actions on a REALLOCATE', () => {
+    render(<CampaignDetailPanel campaign={campaign()} verdict="REALLOCATE" />);
+    expect(screen.getByText('Copy decision')).toBeInTheDocument();
+  });
+
   // Nothing to act on → no bar. An action button under a "keep running" verdict
   // would invent an ask the engine never made.
-  it.each(['HOLD', 'WATCH', 'REFRESH', 'REALLOCATE', null])('renders no action bar for %s', (verdict) => {
+  it.each(['HOLD', 'WATCH', 'REFRESH', null])('renders no action bar for %s', (verdict) => {
     render(<CampaignDetailPanel campaign={campaign()} verdict={verdict} />);
     expect(screen.queryByText('Copy decision')).not.toBeInTheDocument();
     expect(screen.queryByText(/open in/i)).not.toBeInTheDocument();
@@ -239,16 +251,52 @@ describe('CampaignDetailPanel — decision lifecycle', () => {
     expect(screen.queryByRole('button', { name: 'I executed this' })).not.toBeInTheDocument();
   });
 
-  // KNOWN GAP, pinned deliberately rather than left to be discovered. This panel
-  // gates on nextActionFor (KILL/SCALE); the ad-set surface that used to carry
-  // the lifecycle gated on ACTIONABLE_VERDICTS (KILL/REALLOCATE). A REALLOCATE
-  // therefore has no lifecycle surface on the Campaigns page at all now.
-  // Closing it means widening one of the two gates, which is a product decision
-  // this PR was told not to make. If either gate changes, this test fails and
-  // the next reader learns why it was here.
-  it('does not ask under REALLOCATE — the two gates do not agree', () => {
+  // THE GAP THIS CLOSES, now inverted. When the lifecycle moved onto this panel
+  // it started gating on nextActionFor, which had no REALLOCATE entry — so the
+  // one verdict whose entire content is "move the money" lost every way to
+  // record that anyone did. Nothing failed; the buttons were simply absent.
+  it('REALLOCATE exposes decision lifecycle actions', () => {
     withActions({ verdict: 'REALLOCATE' });
-    expect(screen.queryByRole('button', { name: 'I executed this' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Not applicable' })).toBeInTheDocument();
+  });
+
+  // The same invariant as KILL's, restated for the verdict that regressed: this
+  // render passes no evidence, no ranking and no ad sets.
+  it('REALLOCATE needs no evidence to be answerable', () => {
+    const { container } = withActions({ verdict: 'REALLOCATE' });
+    expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/Where to execute/);
+  });
+
+  it('tells a REALLOCATE to move spend, not to scale or to pause', () => {
+    withActions({ verdict: 'REALLOCATE' });
+    // Shared lifecycle mechanism, distinct next step: SCALE puts MORE behind a
+    // winner, REALLOCATE moves what this has ELSEWHERE, KILL pauses first.
+    expect(screen.getByText(/Move spend to stronger campaigns/)).toBeInTheDocument();
+    expect(screen.queryByText(/Increase budget or expand audience/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pause and reallocate budget/)).not.toBeInTheDocument();
+  });
+
+  // The complete lifecycle action contract, in one place.
+  it.each([
+    ['KILL', true], ['SCALE', true], ['REALLOCATE', true],
+    ['HOLD', false], ['WATCH', false], ['REFRESH', false],
+  ])('%s → action surface: %s', (verdict, expected) => {
+    withActions({ verdict });
+    const asked = screen.queryByRole('button', { name: 'I executed this' }) !== null;
+    expect(asked).toBe(expected);
+  });
+
+  // The fix belongs in the actionability layer. A verdict name in the renderer
+  // would mean the next verdict that needs a lifecycle gets fixed in two places
+  // — and the second one gets forgotten, which is how this regression happened.
+  it('carries no REALLOCATE branch of its own', () => {
+    const src = readFileSync(
+      path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'CampaignDetailPanel.jsx'),
+      'utf8',
+    );
+    expect(src).not.toMatch(/REALLOCATE/);
   });
 
   it('stays silent when the host passes no callbacks', () => {
