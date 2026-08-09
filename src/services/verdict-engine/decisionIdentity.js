@@ -50,6 +50,36 @@ export const CONNECTOR_ROOT_CAUSES = Object.freeze([
 ]);
 
 /**
+ * Which connector-authored findings belong in the Agentic Loop's buyer band.
+ *
+ * THIS IS AN ACTIONABILITY SCOPE, NOT AN IDENTITY ONE. The two answer different
+ * questions and must not be swapped:
+ *
+ *   CONNECTOR_ROOT_CAUSES        → who AUTHORED this Decision?
+ *   BUYER_ACTIONABLE_ROOT_CAUSES → may that authored finding enter the buyer
+ *                                  confirmation band?
+ *
+ * Data-quality causes are deliberately excluded. INSUFFICIENT_DATA and TOO_EARLY
+ * mean "not judged yet", which is not a decision anyone can confirm — and both
+ * are emitted as WATCH, which agenticPlanner ranks HIGH, so admitting them would
+ * put the engine's own blind spots at the TOP of the buyer's agenda.
+ *
+ * Derived by SUBTRACTION rather than by re-listing the two wanted families. The
+ * bug this replaced was a local `Object.values(SIGNAL_TYPE)` that silently went
+ * stale when FUNNEL_SIGNAL joined the taxonomy: an additive list excludes any
+ * future family by default and says nothing. Subtracting the one family that is
+ * knowably NOT a decision keeps new causes visible, and the exact-membership
+ * test pins the result so a fourth family cannot slip in unexamined either way.
+ *
+ * Keep aligned with isDataQualityCause() in client/src/features/campaigns/verdictEvidence.js.
+ */
+const DATA_QUALITY_ROOT_CAUSES = new Set(Object.values(ROOT_CAUSE));
+
+export const BUYER_ACTIONABLE_ROOT_CAUSES = Object.freeze(
+  CONNECTOR_ROOT_CAUSES.filter((cause) => !DATA_QUALITY_ROOT_CAUSES.has(cause)),
+);
+
+/**
  * The Prisma `where` fragment selecting connector-authored decisions.
  *
  * `rootCause: null` is IN the set, not an oversight: the engine leaves it null

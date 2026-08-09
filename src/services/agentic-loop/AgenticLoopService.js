@@ -27,7 +27,7 @@ import { getPortfolio } from '../portfolio/PortfolioService.js';
 import { getWeeklyAgenda } from '../test-generator/TestGeneratorService.js';
 import { trackPlan } from '../planning/PlanService.js';
 import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
-import { SIGNAL_TYPE } from '../diagnosis-engine/index.js';
+import { BUYER_ACTIONABLE_ROOT_CAUSES } from '../verdict-engine/decisionIdentity.js';
 
 const LOOKBACK_DAYS = Number(process.env.LOOP_LOOKBACK_DAYS || 30);
 // How recently a sweep must have run to be reused instead of re-swept.
@@ -36,12 +36,18 @@ const AGENTIC_CRON_MS = Number(process.env.LOOP_INTERVAL_MS || 15 * 60 * 1000);
 
 // The two Decision families that ARE a "verdict to confirm" for the buyer band:
 //   • guardrail hits      → rootCause `guardrail:<rule>`
-//   • connector verdicts  → rootCause = the diagnosis signalType (or null when
-//                           unset). persistConnectorVerdicts writes these every
-//                           sweep for both revenue AND awareness campaigns.
+//   • connector verdicts  → rootCause = a BUYER_ACTIONABLE_ROOT_CAUSES member
+//                           (or null when unset). persistConnectorVerdicts
+//                           writes these every sweep for both revenue AND
+//                           awareness campaigns.
 // allocation:/incrementality:/test: decisions are ALSO PROPOSED but have their
 // own surfaces (plan review, tests) — deliberately NOT pulled into this band.
-const CONNECTOR_VERDICT_ROOT_CAUSES = Object.freeze(Object.values(SIGNAL_TYPE));
+//
+// The scope is IMPORTED, never restated here. It used to be a local
+// `Object.values(SIGNAL_TYPE)`, which was correct on the day it was written and
+// silently wrong the day funnel diagnosis shipped: FUNNEL_DROP_* verdicts were
+// persisted, counted as connector-authored everywhere else, and invisible here.
+// A second copy of a taxonomy cannot be kept in step by discipline alone.
 
 /** Flatten portfolio pacing into the planner's pacing[] shape. */
 function pacingFromPortfolio(portfolio) {
@@ -107,7 +113,7 @@ export async function buildLoopInputs(workspaceId, { now = new Date() } = {}) {
         workspaceId, status: 'PROPOSED',
         OR: [
           { rootCause: { startsWith: 'guardrail:' } },        // guardrail rule hits
-          { rootCause: { in: CONNECTOR_VERDICT_ROOT_CAUSES } }, // connector verdicts
+          { rootCause: { in: BUYER_ACTIONABLE_ROOT_CAUSES } },  // connector verdicts
           { rootCause: null },                                 // connector writes `signalType ?? null`
         ],
       },

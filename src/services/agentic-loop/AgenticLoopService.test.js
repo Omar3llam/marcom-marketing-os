@@ -37,6 +37,9 @@ import { getPortfolio } from '../portfolio/PortfolioService.js';
 import { getWeeklyAgenda } from '../test-generator/TestGeneratorService.js';
 import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
 import { SIGNAL_TYPE } from '../diagnosis-engine/index.js';
+import { ROOT_CAUSE } from '../verdict-engine/verdictTypes.js';
+import { FUNNEL_SIGNAL } from '../verdict-engine/funnelDiagnosis.js';
+import { BUYER_ACTIONABLE_ROOT_CAUSES, CONNECTOR_ROOT_CAUSES } from '../verdict-engine/decisionIdentity.js';
 import { buildLoopInputs } from './AgenticLoopService.js';
 import { planAgenda } from './agenticPlanner.js';
 
@@ -49,6 +52,33 @@ const connectorVerdict = {
   id: 'cv1', entityId: 'c1d2e3f4-0000-0000-0000-000000000010', entityLevel: 'CAMPAIGN',
   verdict: 'REFRESH', rationale: 'Creative fatigue detected', rootCause: SIGNAL_TYPE.CREATIVE_FATIGUE, status: 'PROPOSED',
 };
+
+/**
+ * Would a Decision carrying this rootCause be SELECTED by the query the service
+ * actually issued?
+ *
+ * Evaluating the `where` clause is the only way to test the boundary here:
+ * prisma is mocked, so `findMany.mockResolvedValue([row])` hands the row back
+ * whatever the filter says. A test that seeds an INSUFFICIENT_DATA row and
+ * watches it appear in the agenda would pass identically against a query with
+ * NO scope at all — it would prove the planner's behaviour and nothing about
+ * the exclusion. So: read the clauses the service passed, and interpret them.
+ */
+function scopeAdmits(orClauses, rootCause) {
+  return orClauses.some((clause) => {
+    const rc = clause.rootCause;
+    if (rc === null) return rootCause === null;
+    if (Array.isArray(rc?.in)) return rc.in.includes(rootCause);
+    if (typeof rc?.startsWith === 'string') return typeof rootCause === 'string' && rootCause.startsWith(rc.startsWith);
+    return false;
+  });
+}
+
+/** The OR clauses buildLoopInputs passed to the Decision query. */
+async function verdictScope() {
+  await buildLoopInputs(WS, { now });
+  return prisma.decision.findMany.mock.calls[0][0].where.OR;
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -107,6 +137,92 @@ describe('buildLoopInputs — verdict query wiring', () => {
     const inputs = await buildLoopInputs(WS, { now });
     expect(inputs.impactById).toBeInstanceOf(Map);
     expect(inputs.impactById.size).toBe(0); // no connector campaigns mocked → no scores
+  });
+});
+
+// ── The buyer-band boundary ─────────────────────────────────────────────────
+// The regression these pin: the loop's scope was a SECOND copy of the connector
+// taxonomy (`Object.values(SIGNAL_TYPE)`), so when funnel diagnosis shipped its
+// FUNNEL_DROP_* causes, those verdicts were persisted and then silently dropped
+// on the way to the agenda. The old assertion — every SIGNAL_TYPE is present —
+// could not catch that: it proved "at least the old values", never "this is the
+// intended boundary".
+describe('buildLoopInputs — buyer-actionable scope', () => {
+  it('admits funnel verdicts — the family the old SIGNAL_TYPE-only scope dropped', async () => {
+    const or = await verdictScope();
+    for (const signal of Object.values(FUNNEL_SIGNAL)) {
+      expect(scopeAdmits(or, signal), `${signal} must reach the buyer band`).toBe(true);
+    }
+  });
+
+  it('a persisted funnel verdict flows through the planner into a buyer CONFIRM item', async () => {
+    // The query half is asserted above; this is the downstream half — nothing
+    // between the row and the agenda rejects a funnel rootCause either.
+    const funnelVerdict = {
+      ...connectorVerdict, id: 'fv1', verdict: 'REALLOCATE',
+      rootCause: FUNNEL_SIGNAL.POST_CLICK,
+      diagnosis: 'Clicks arrive, conversions do not — the drop is after the click',
+    };
+    prisma.decision.findMany.mockResolvedValue([funnelVerdict]);
+    const inputs = await buildLoopInputs(WS, { now });
+
+    const item = planAgenda(inputs).buyerBand.find((i) => i.evidenceRef === 'fv1');
+    expect(item).toBeTruthy();
+    expect(item.type).toBe('VERDICT');
+    expect(item.entityId).toBe(funnelVerdict.entityId);
+  });
+
+  it('excludes data-quality states — "not judged yet" is not a decision to confirm', async () => {
+    const or = await verdictScope();
+    // Both are emitted as WATCH, which agenticPlanner ranks HIGH. Admitting them
+    // would sort the engine's own blind spots to the top of the buyer's agenda.
+    expect(scopeAdmits(or, ROOT_CAUSE.INSUFFICIENT_DATA)).toBe(false);
+    expect(scopeAdmits(or, ROOT_CAUSE.TOO_EARLY)).toBe(false);
+  });
+
+  it('keeps the clauses that were already correct: guardrail hits and a null cause', async () => {
+    const or = await verdictScope();
+    expect(scopeAdmits(or, 'guardrail:spend_spike')).toBe(true);
+    expect(scopeAdmits(or, null)).toBe(true);
+    // The other PROPOSED writers have their own surfaces and stay out.
+    expect(scopeAdmits(or, 'allocation:plan-1')).toBe(false);
+    expect(scopeAdmits(or, 'incrementality:test-1')).toBe(false);
+    expect(scopeAdmits(or, 'test:variant-a')).toBe(false);
+  });
+
+  it('issues exactly the exported scope — no local copy of the taxonomy', async () => {
+    const or = await verdictScope();
+    const listed = or.find((c) => Array.isArray(c.rootCause?.in));
+    expect(listed.rootCause.in).toEqual(BUYER_ACTIONABLE_ROOT_CAUSES);
+  });
+});
+
+describe('BUYER_ACTIONABLE_ROOT_CAUSES — the exact contract', () => {
+  // Exact membership, derived from the taxonomies rather than retyped. A fourth
+  // cause family added to CONNECTOR_ROOT_CAUSES breaks THIS test, forcing a
+  // deliberate answer to "is it a decision or a data-quality state?" — which is
+  // the question that went unasked when FUNNEL_SIGNAL landed.
+  it('is exactly every SIGNAL_TYPE plus every FUNNEL_SIGNAL', () => {
+    expect(new Set(BUYER_ACTIONABLE_ROOT_CAUSES)).toEqual(
+      new Set([...Object.values(SIGNAL_TYPE), ...Object.values(FUNNEL_SIGNAL)]),
+    );
+    // Set equality would forgive a duplicate; the query's `in` should not carry one.
+    expect(BUYER_ACTIONABLE_ROOT_CAUSES.length).toBe(new Set(BUYER_ACTIONABLE_ROOT_CAUSES).size);
+  });
+
+  it('excludes every data-quality cause', () => {
+    for (const cause of Object.values(ROOT_CAUSE)) {
+      expect(BUYER_ACTIONABLE_ROOT_CAUSES, `${cause} is not a decision`).not.toContain(cause);
+    }
+    expect(BUYER_ACTIONABLE_ROOT_CAUSES).not.toContain(ROOT_CAUSE.INSUFFICIENT_DATA);
+    expect(BUYER_ACTIONABLE_ROOT_CAUSES).not.toContain(ROOT_CAUSE.TOO_EARLY);
+  });
+
+  it('is a strict subset of connector identity — actionability narrows authorship, never widens it', () => {
+    for (const cause of BUYER_ACTIONABLE_ROOT_CAUSES) {
+      expect(CONNECTOR_ROOT_CAUSES).toContain(cause);
+    }
+    expect(BUYER_ACTIONABLE_ROOT_CAUSES.length).toBeLessThan(CONNECTOR_ROOT_CAUSES.length);
   });
 });
 
