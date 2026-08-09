@@ -3,6 +3,22 @@
 // ============================================================
 // Single public API: buildExecutionPlan(input)
 //
+// ── STATUS: FUTURE-STAGE, NOT PRODUCTION-WIRED ──────────────────────────────
+// Nothing in a request path calls buildExecutionPlan today. Its only caller
+// outside this directory is execution-runtime/testNewAngle.integration.test.js,
+// which exercises the planner → runtime handoff end to end.
+//
+// That is deliberate, and it is NOT an argument for deleting this. The module
+// is the declarative half of execution planning — recommendations in, a node/
+// edge graph out — and the runtime that consumes such a graph already exists.
+// What has not been built is the production path that produces the input.
+//
+// So: a grep showing "no production callers" is expected here and is not
+// evidence of dead code. Retained intentionally for the execution-planning
+// work it was built ahead of, along with planTypes.js, recommendationMappings.js
+// and the fixtures. Delete only as part of a decision to abandon that work,
+// never as part of a cleanup sweep.
+//
 // DETERMINISM CONTRACT:
 //   Given the same input, always produces the same output.
 //   No randomness. No timestamps. No UUIDs.
