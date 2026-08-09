@@ -281,7 +281,8 @@ export function analyzeEvidence({
     }));
 
   // One reporting entity is not a comparison — it is trivially both the best and
-  // the worst. Same gate as findWorstAdSet, for the same reason.
+  // the worst, so "this one is behind the others" is a claim with no others in
+  // it. Comparison evidence is not produced from a cohort of one.
   if (scored.length < 2) return null;
 
   // Index 0 is always the WORST, whichever way the metric runs.

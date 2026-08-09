@@ -32,7 +32,7 @@ import { applyRelativeRanking }  from './relativeRanking.js';
 import { daysSince }             from './confidenceEngine.js';
 import { isSubstantive }         from './counterfactualEngine.js';
 import { connectorDecisionScope } from './decisionIdentity.js';
-import { getDecisionHistory }    from '../decision-memory/decisionHistory.js';
+import { getDecisionHistory }    from '../decision-memory/index.js';
 import { logger }                from '../../utils/logger.js';
 
 // Meta objectives that are GENUINELY awareness/reach — no purchase revenue is

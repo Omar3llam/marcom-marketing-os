@@ -207,9 +207,10 @@ describe('confidenceDetail — the signal half', () => {
   // engine's finding, which is the one thing the whole confidence surface exists
   // to avoid. Under-claiming is honest; a fabricated cause is not.
   //
-  // The rows this leaves unexplained are cohort verdicts, and PR#335 answers
-  // them properly with the cohort itself — see CohortBlock — rather than with a
-  // band. This test pins the silence so it stays a decision and not a bug.
+  // The rows this leaves unexplained are cohort verdicts, and those are now
+  // answered properly with the cohort itself — CohortBlock names the group and
+  // the standing — rather than with a band. This test pins the silence so it
+  // stays a decision and not a bug.
   it('0.6 × 0.8: says Low and blames neither half, because it cannot tell', () => {
     expect(confidenceDetail({ confidence: 0.48, dataConfidence: 0.8, signalConfidence: 0.6 }))
       .toEqual({ label: 'Low', limitedByData: false, limitedBySignal: false });
