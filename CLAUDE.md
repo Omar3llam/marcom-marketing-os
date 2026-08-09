@@ -58,6 +58,47 @@ prisma/schema.prisma       → Database schema (source of truth for models)
 
 ---
 
+## PR Base Rule (operational requirement, not advice)
+
+> **Every PR must be based on `master` unless explicitly approved otherwise.**
+> **After reporting a PR as merged, verify that its changes are present on `origin/master`.**
+> **A GitHub "merged" status alone is not sufficient evidence.**
+
+**Stacking is forbidden by default.** A PR based on another PR's branch merges
+safely only if the CHILD merges FIRST — and merges here happen in review order,
+not dependency order. If a stack is genuinely unavoidable, say so **explicitly in
+the PR body** and state that the child must merge first.
+
+Avoiding a merge conflict is **not** an approved reason to stack. Resolving one
+conflict later is cheaper than a silently orphaned merge.
+
+### Verify, every time
+
+```bash
+npm run check-orphans            # all recently merged PRs → is their code on master?
+```
+
+Or for one PR, read the file off the trunk — never trust the badge:
+
+```bash
+git fetch origin
+git show origin/master:<a-file-the-PR-changed> | grep -q "<a-string-it-added>" \
+  && echo ON-MASTER || echo ORPHANED
+```
+
+**Do NOT verify with commit ancestry.** `git merge-base --is-ancestor <mergeCommit> master`
+gives false positives — a stacked child's content can reach master through its
+parent's merge, and a squash merge rewrites the SHA entirely. SHA identity
+answers "did this commit travel"; the question is "is this CODE on master".
+
+**Why this is a rule:** PR #344 merged into `fix/reallocate-actionability` 21
+minutes after that branch had itself merged into master. Both PRs showed
+"Merged"; master received one of them. Render deploys master, so the other never
+shipped and nothing said so — found only because a human asked why a deploy had
+not happened. See `scripts/check-orphaned-prs.js`.
+
+---
+
 ## Critical Files
 
 ### Frontend
