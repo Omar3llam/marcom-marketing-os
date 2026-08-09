@@ -88,7 +88,12 @@ describe('the answer is offered under an actionable verdict', () => {
     openAdSets('Ramadan Cold');
 
     fireEvent.click(screen.getByRole('button', { name: label }));
-    expect(handler()).toHaveBeenCalledWith('c1');
+    // Second argument is the STORED decision's id, and null here: this fixture
+    // carries no verdictInfo, which is the same state as a campaign no sweep has
+    // written a Decision for. The write then routes by entity, which is correct
+    // for it — null, never undefined, so the two cases cannot be told apart by
+    // accident downstream.
+    expect(handler()).toHaveBeenCalledWith('c1', null);
   });
 
   // No ranking, no panel, and therefore nothing to answer. A verdict with no

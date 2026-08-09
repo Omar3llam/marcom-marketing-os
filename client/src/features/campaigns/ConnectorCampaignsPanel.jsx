@@ -380,13 +380,18 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                     own, so the gate and the pick cannot disagree. That is why
                     this branch cannot produce the empty row the old pre-commit
                     gate existed to prevent. */}
+                {/* `info.decisionId` is the STORED decision's id when a sweep
+                    wrote one, so the write lands on THAT row rather than on
+                    whatever the server re-resolves as newest at click time.
+                    null for a campaign with no Decision — the hook falls back
+                    to the by-entity route, which is correct for it. */}
                 {ev?.evidence && (
                   <ExecutionContext
                     campaign={c}
                     evidence={ev.evidence}
                     verdict={verdict}
-                    onExecute={() => executeDecision(c.entityId)}
-                    onDismiss={() => dismissDecision(c.entityId)}
+                    onExecute={() => executeDecision(c.entityId, info.decisionId ?? null)}
+                    onDismiss={() => dismissDecision(c.entityId, info.decisionId ?? null)}
                     executionState={actionStates[c.entityId] ?? null}
                   />
                 )}

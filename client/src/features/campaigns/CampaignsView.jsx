@@ -357,6 +357,13 @@ export default function CampaignsView() {
         // Projected whole anyway: the list is what the engine produced, and a
         // consumer that wants the rest should not have to re-fetch.
         hypotheses: v.hypotheses ?? [],
+        // The STORED decision for this entity, when a sweep has written one.
+        // Identity only: `decisionId` routes execute/dismiss at one row instead
+        // of at a query the server re-resolves, and `decisionVerdict` is what
+        // Lumi committed to THEN — beside the live verdict above, never
+        // reconciled with it. Both null when no sweep has run this campaign.
+        decisionId: v.decisionId ?? null,
+        decisionVerdict: v.decisionVerdict ?? null,
         // The cohort a relative verdict was decided in. Unlike relativeRank
         // below this has no second route to the panel — the `relativeRanks` map
         // carries only the tag.

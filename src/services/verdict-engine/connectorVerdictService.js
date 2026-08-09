@@ -25,11 +25,13 @@
 // (Revenue here is platform-CLAIMED via Meta action_values — present, if not yet
 // independently verified — so it counts as measured for gating purposes.)
 // ============================================================
+import { prisma }                from '../../lib/prisma.js';
 import { getConnectorCampaigns } from '../entity-graph/index.js';
 import { rollupVerdicts }        from './verdictEngine.js';
 import { applyRelativeRanking }  from './relativeRanking.js';
 import { daysSince }             from './confidenceEngine.js';
 import { isSubstantive }         from './counterfactualEngine.js';
+import { connectorDecisionScope } from './decisionIdentity.js';
 import { logger }                from '../../utils/logger.js';
 
 // Meta objectives that are GENUINELY awareness/reach — no purchase revenue is
@@ -165,10 +167,81 @@ export function buildConnectorVerdictTree(workspaceId, campaigns = [], { now = D
  * Read connector campaigns for a workspace and return their verdicts.
  * @returns {Promise<{ verdicts:Array, gatedOut:Array, account:object|null, status:string }>}
  */
+/**
+ * The latest PROPOSED Decision per CAMPAIGN entity, as Map<entityId, row>.
+ *
+ * IDENTITY ONLY. This says "a stored decision exists for this entity, and here
+ * is its id" — nothing about whether it agrees with the verdict computed beside
+ * it. The two answer different questions (what Lumi thinks NOW vs what it
+ * decided THEN) and reconciling them here would put a third opinion, computed
+ * by neither pass, on the wire.
+ *
+ * ── TWO filters, and the second is the one that matters ─────────────────────
+ * `entityLevel: 'CAMPAIGN'` keeps out the OTHER LEVELS this engine writes:
+ * persistNode emits one Decision per node — account, campaign and ad set alike
+ * — all into this table keyed by entityId.
+ *
+ * `connectorDecisionScope()` keeps out the OTHER AUTHORS, and level alone does
+ * not. Four services besides this engine write CAMPAIGN-level PROPOSED rows,
+ * three of them against a real campaign entityId: a guardrail hit, an
+ * incrementality readout, an allocation move. All are proposals about the same
+ * campaign; none is the verdict on screen.
+ *
+ * Without it the first-hit-wins race below is decided by `createdAt` across ALL
+ * of them — so a guardrail row written after the sweep silently becomes the id
+ * behind a KILL button, and the operator's claim lands on a decision they were
+ * never shown. That is not stale data, it is the wrong row, and it breaks the
+ * one rule this projection exists to keep: a decisionId names the row the
+ * reader was actually looking at.
+ *
+ * The scope is the SAME definition supersedeDroppedConnectorVerdicts uses.
+ * Shared rather than copied, because two answers to "which rows are ours" is
+ * how a row becomes un-supersedable in one place and invisible in the other.
+ *
+ * `status: 'PROPOSED'` excludes SUPERSEDED rows, which a later sweep has already
+ * replaced. It does NOT exclude decisions a human has acted on: execute and
+ * dismiss are recorded as TIMESTAMPS and deliberately leave `status` alone (see
+ * the schema), so an executed row is still PROPOSED here. That is correct for
+ * routing — the by-id route carries its own idempotency and mutual-exclusion
+ * gate, and re-reaching a decision you already executed must 409, not 404.
+ *
+ * NO `take`. The read is naturally bounded — a new verdict supersedes the one
+ * before it, so this is roughly one row per live campaign — and a cap would
+ * silently hand the campaigns past it `decisionId: null`, quietly routing them
+ * down the fallback. An unbounded read of a bounded set beats a truncation that
+ * looks like an absence.
+ */
+export async function getLatestDecisions(workspaceId) {
+  if (!workspaceId) return new Map();
+
+  const rows = await prisma.decision.findMany({
+    where:   { workspaceId, entityLevel: 'CAMPAIGN', status: 'PROPOSED', ...connectorDecisionScope() },
+    select:  { id: true, entityId: true, verdict: true, createdAt: true },
+    orderBy: { createdAt: 'desc' },
+  }).catch((err) => {
+    // Identity is an ENHANCEMENT: without it every row falls back to the
+    // by-entity path, which still works. Taking the whole verdict feed down
+    // because this one query failed would trade a degraded surface for none.
+    logger.debug({ err: err.message, workspaceId }, '[connectorVerdicts] decision identity read failed');
+    return [];
+  });
+
+  // First hit wins, and `orderBy` desc makes that the most recent.
+  const map = new Map();
+  for (const d of rows) if (!map.has(d.entityId)) map.set(d.entityId, d);
+  return map;
+}
+
 export async function getConnectorVerdicts(workspaceId) {
   if (!workspaceId) return { verdicts: [], gatedOut: [], account: null, status: 'NO_WORKSPACE' };
 
-  const campaigns = await getConnectorCampaigns(workspaceId);
+  // Parallel: neither read feeds the other. The decision lookup is keyed by
+  // workspace, not by the campaigns that come back, so sequencing them would
+  // add a round trip for nothing.
+  const [campaigns, decisionMap] = await Promise.all([
+    getConnectorCampaigns(workspaceId),
+    getLatestDecisions(workspaceId),
+  ]);
   const { tree, gatedOut } = buildConnectorVerdictTree(workspaceId, campaigns);
 
   if (!tree) {
@@ -198,6 +271,20 @@ export async function getConnectorVerdicts(workspaceId) {
     // Set when this verdict was decided by the relative post-pass ('TOP' | 'BOTTOM')
     // — null otherwise. Lets the UI badge "relative to portfolio" honestly.
     relativeRank: c.relativeRank ?? null,
+    // ── Decision identity ────────────────────────────────────────────────────
+    // The STORED decision for this entity, if a sweep ever wrote one. Not the
+    // verdict beside it: this row is recomputed on every read and persists
+    // nothing, while the Decision is what Lumi committed to at some earlier
+    // moment. Two different questions, deliberately not reconciled here.
+    //
+    // null when no sweep has run for this campaign — a real answer, and the
+    // signal the client uses to route execute/dismiss down the by-entity
+    // fallback instead of the precise by-id path.
+    decisionId: decisionMap.get(c.id)?.id ?? null,
+    // The verdict as STORED, so a client can see that the live call has moved on
+    // without a second fetch. Published beside the live one, never instead of
+    // it, and never used to suppress or "correct" it.
+    decisionVerdict: decisionMap.get(c.id)?.verdict ?? null,
     // The cohort the rank was decided in: { rank, group, cohortSize, ctrPct,
     // avgCtrPct }, null on every absolutely-decided verdict. Minted by
     // applyRelativeRanking, which runs AFTER rollupVerdicts and spreads `...c` —

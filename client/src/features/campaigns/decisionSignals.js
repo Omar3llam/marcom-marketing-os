@@ -52,15 +52,28 @@ export const recordIntent = (entityId) => send(entityId, 'intent');
 // spent three PRs climbing out of. So these throw, and callers MUST await and
 // render the outcome.
 //
-// Arity is entityId, matching the two above — TEMPORARY. The server resolves it
-// to the live decision (see the adapter note in routes/lumi/decisions.js).
-// TODO: switch to `/api/lumi/decisions/${decisionId}/execute` when a Decision id
-//       reaches the verdict surfaces.
+// ── Which path, and why there are two ───────────────────────────────────────
+// A decisionId names ONE ROW. The by-entity path names a query — "the newest
+// PROPOSED decision for this entity" — which the server re-resolves at write
+// time, so a sweep landing between render and click moves the target.
+//
+// So the id wins whenever the verdict feed carried one. The by-entity route is
+// NOT a workaround any more and is not going away: a campaign no sweep has
+// written a Decision for has no id to send, and that is a normal state, not a
+// missing one. Its `decisionId` is null and the fallback is the correct route.
+//
+// Both paths share the same 409/404 contract, which is what lets the caller
+// (see useDecisionAction) map either one onto the same terminal states.
+const route = (decisionId, entityId, signal) => (
+  decisionId
+    ? `/api/lumi/decisions/${encodeURIComponent(decisionId)}/${signal}`
+    : `/api/lumi/decisions/by-entity/${encodeURIComponent(entityId)}/${signal}`
+);
 
 /** A human says they acted on this call. Rejects on failure — never swallow. */
-export const recordExecute = (entityId) =>
-  api.patch(`/api/lumi/decisions/by-entity/${encodeURIComponent(entityId)}/execute`);
+export const recordExecute = (entityId, decisionId = null) =>
+  api.patch(route(decisionId, entityId, 'execute'));
 
 /** A human says they saw this call and chose not to act. Rejects on failure. */
-export const recordDismiss = (entityId) =>
-  api.patch(`/api/lumi/decisions/by-entity/${encodeURIComponent(entityId)}/dismiss`);
+export const recordDismiss = (entityId, decisionId = null) =>
+  api.patch(route(decisionId, entityId, 'dismiss'));

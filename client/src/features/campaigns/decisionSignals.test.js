@@ -94,6 +94,39 @@ describe('execute / dismiss reach their own endpoints', () => {
   });
 });
 
+// ── Which route, and why it matters ─────────────────────────────────────────
+// A decisionId names ONE ROW. by-entity names a QUERY — "the newest PROPOSED
+// decision for this entity" — that the server re-resolves at write time, so a
+// sweep landing between render and click moves the target. The id wins whenever
+// the verdict feed carried one.
+describe('the id wins when there is one', () => {
+  it.each([['execute', recordExecute], ['dismiss', recordDismiss]])(
+    '%s goes to the by-id route', async (signal, fn) => {
+      await fn(ENTITY, 'dec-7');
+      expect(patch).toHaveBeenCalledWith(`/api/lumi/decisions/dec-7/${signal}`);
+    },
+  );
+
+  // NOT a workaround, and not going away: a campaign no sweep has written a
+  // Decision for has no id to send, and its `decisionId` is legitimately null.
+  it.each([[null], [undefined], ['']])('falls back to by-entity for %s', async (decisionId) => {
+    await recordExecute(ENTITY, decisionId);
+    expect(patch).toHaveBeenCalledWith(`/api/lumi/decisions/by-entity/${ENTITY}/execute`);
+  });
+
+  it('encodes the decision id too', async () => {
+    await recordExecute(ENTITY, 'a/b?c');
+    expect(patch).toHaveBeenCalledWith('/api/lumi/decisions/a%2Fb%3Fc/execute');
+  });
+
+  // The old arity still works — every existing caller passes one argument, and
+  // this is what lets the two routes coexist rather than fork the callers.
+  it('keeps its one-argument form', async () => {
+    await recordDismiss(ENTITY);
+    expect(patch).toHaveBeenCalledWith(`/api/lumi/decisions/by-entity/${ENTITY}/dismiss`);
+  });
+});
+
 describe('execute / dismiss REJECT — the caller has to see it', () => {
   it.each([
     ['a 404 — the verdict was replaced', { response: { status: 404 } }],
