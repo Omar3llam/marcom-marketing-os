@@ -108,10 +108,14 @@ describe('buildLoopInputs — verdict query wiring', () => {
     expect(args.where.status).toBe('PROPOSED');
     expect(args.distinct).toEqual(['entityId', 'entityLevel']);
 
-    // The OR must cover BOTH families — guardrail prefix AND the connector signalTypes.
+    // The OR must cover BOTH families — guardrail prefix AND the connector scope.
+    // Checked against the EXPORTED scope, not a restated `Object.values(SIGNAL_TYPE)`:
+    // that was a third copy of the taxonomy, and it asserted only "at least the
+    // old values are present" — which is why it never noticed FUNNEL_SIGNAL going
+    // missing, and why it broke the moment a SIGNAL_TYPE was deliberately excluded.
     const hasGuardrail = args.where.OR.some((c) => c.rootCause?.startsWith === 'guardrail:');
     const hasConnector = args.where.OR.some((c) => Array.isArray(c.rootCause?.in)
-      && Object.values(SIGNAL_TYPE).every((t) => c.rootCause.in.includes(t)));
+      && BUYER_ACTIONABLE_ROOT_CAUSES.every((t) => c.rootCause.in.includes(t)));
     expect(hasGuardrail).toBe(true);
     expect(hasConnector).toBe(true);
   });
@@ -180,6 +184,17 @@ describe('buildLoopInputs — buyer-actionable scope', () => {
     expect(scopeAdmits(or, ROOT_CAUSE.TOO_EARLY)).toBe(false);
   });
 
+  // Asserted on the QUERY, not on a seeded row: the prisma mock returns whatever
+  // it is given regardless of the filter, so `mockResolvedValue([undiagnosable])`
+  // would prove nothing about the database boundary.
+  it('excludes UNDIAGNOSABLE while still admitting HEALTHY', async () => {
+    const or = await verdictScope();
+    expect(scopeAdmits(or, SIGNAL_TYPE.UNDIAGNOSABLE)).toBe(false);
+    // The pair matters: both are terminal diagnosis states, and only one of them
+    // can never be a decision. HEALTHY rides on cohort-ranked KILLs and SCALEs.
+    expect(scopeAdmits(or, SIGNAL_TYPE.HEALTHY)).toBe(true);
+  });
+
   it('keeps the clauses that were already correct: guardrail hits and a null cause', async () => {
     const or = await verdictScope();
     expect(scopeAdmits(or, 'guardrail:spend_spike')).toBe(true);
@@ -198,16 +213,30 @@ describe('buildLoopInputs — buyer-actionable scope', () => {
 });
 
 describe('BUYER_ACTIONABLE_ROOT_CAUSES — the exact contract', () => {
-  // Exact membership, derived from the taxonomies rather than retyped. A fourth
-  // cause family added to CONNECTOR_ROOT_CAUSES breaks THIS test, forcing a
-  // deliberate answer to "is it a decision or a data-quality state?" — which is
-  // the question that went unasked when FUNNEL_SIGNAL landed.
-  it('is exactly every SIGNAL_TYPE plus every FUNNEL_SIGNAL', () => {
-    expect(new Set(BUYER_ACTIONABLE_ROOT_CAUSES)).toEqual(
-      new Set([...Object.values(SIGNAL_TYPE), ...Object.values(FUNNEL_SIGNAL)]),
-    );
+  // Exact membership, derived from the canonical sources rather than retyped. A
+  // fifth cause added to CONNECTOR_ROOT_CAUSES breaks THIS test, forcing a
+  // deliberate answer to "is this a decision, or a state the engine reached
+  // without judging?" — the question that went unasked when FUNNEL_SIGNAL landed.
+  it('is exactly connector identity minus the states that are not judgements', () => {
+    const expected = CONNECTOR_ROOT_CAUSES
+      .filter((c) => !Object.values(ROOT_CAUSE).includes(c))
+      .filter((c) => c !== SIGNAL_TYPE.UNDIAGNOSABLE);
+    expect(new Set(BUYER_ACTIONABLE_ROOT_CAUSES)).toEqual(new Set(expected));
     // Set equality would forgive a duplicate; the query's `in` should not carry one.
     expect(BUYER_ACTIONABLE_ROOT_CAUSES.length).toBe(new Set(BUYER_ACTIONABLE_ROOT_CAUSES).size);
+  });
+
+  // Named members, so the set cannot be quietly emptied and still satisfy the
+  // derivation above (which would pass against any two identical expressions).
+  it('admits every diagnosable mechanism and every funnel stage', () => {
+    for (const cause of [
+      SIGNAL_TYPE.LOW_CTR, SIGNAL_TYPE.CREATIVE_FATIGUE,
+      SIGNAL_TYPE.AUDIENCE_MISMATCH, SIGNAL_TYPE.INEFFICIENT_SCALING,
+      SIGNAL_TYPE.HEALTHY,
+      ...Object.values(FUNNEL_SIGNAL),
+    ]) {
+      expect(BUYER_ACTIONABLE_ROOT_CAUSES, `${cause} must stay admitted`).toContain(cause);
+    }
   });
 
   it('excludes every data-quality cause', () => {
@@ -216,6 +245,29 @@ describe('BUYER_ACTIONABLE_ROOT_CAUSES — the exact contract', () => {
     }
     expect(BUYER_ACTIONABLE_ROOT_CAUSES).not.toContain(ROOT_CAUSE.INSUFFICIENT_DATA);
     expect(BUYER_ACTIONABLE_ROOT_CAUSES).not.toContain(ROOT_CAUSE.TOO_EARLY);
+  });
+
+  // "No rule could be EVALUATED" — not a thin sample, but absent fields. It
+  // carries confidence 0 and no observations, and enters as WATCH, which the
+  // planner ranks HIGH. Unreachable from the production path today (toSignalInput
+  // zero-fills ctr/frequency, so some rule always runs); excluded so it cannot
+  // arrive at the top of the agenda unannounced if that ever changes.
+  it('excludes UNDIAGNOSABLE — the engine could not look, which is not a finding', () => {
+    expect(BUYER_ACTIONABLE_ROOT_CAUSES).not.toContain(SIGNAL_TYPE.UNDIAGNOSABLE);
+  });
+
+  // The counterpart, and the more consequential half: rootCause and verdict are
+  // decoupled. applyRelativeRanking rewrites the verdict but leaves the absolute
+  // pass's rootCause, so a cohort-ranked KILL persists with rootCause HEALTHY.
+  // Dropping HEALTHY would take real KILL and SCALE decisions with it.
+  it('still admits HEALTHY — a cohort-ranked KILL persists with rootCause HEALTHY', () => {
+    expect(BUYER_ACTIONABLE_ROOT_CAUSES).toContain(SIGNAL_TYPE.HEALTHY);
+  });
+
+  it('leaves connector identity untouched — UNDIAGNOSABLE is still connector-authored', () => {
+    expect(CONNECTOR_ROOT_CAUSES).toContain(SIGNAL_TYPE.UNDIAGNOSABLE);
+    expect(CONNECTOR_ROOT_CAUSES).toContain(ROOT_CAUSE.INSUFFICIENT_DATA);
+    expect(CONNECTOR_ROOT_CAUSES).toContain(ROOT_CAUSE.TOO_EARLY);
   });
 
   it('is a strict subset of connector identity — actionability narrows authorship, never widens it', () => {
