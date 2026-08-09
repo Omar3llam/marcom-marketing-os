@@ -133,7 +133,17 @@ describe('the answer is offered on the decision itself', () => {
     expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
   });
 
-  it.each([['HOLD'], ['WATCH'], ['REFRESH']])(
+  // Same reasoning as SCALE above, and the gap this closed: REFRESH is gated out
+  // of ACTIONABLE_VERDICTS (an ad-set evidence question) but satisfies
+  // nextActionFor — so it can now be recorded from the Campaigns page. Until it
+  // could, `intentAt` was unreachable for every REFRESH ever issued.
+  it('is offered for REFRESH, whose creative change is a real intervention', () => {
+    renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'REFRESH' }} />);
+    explain('Ramadan Cold');
+    expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
+  });
+
+  it.each([['HOLD'], ['WATCH']])(
     'is not offered under %s, which asks for no intervention', (verdict) => {
       renderPanel(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: verdict }} />);
       explain('Ramadan Cold');

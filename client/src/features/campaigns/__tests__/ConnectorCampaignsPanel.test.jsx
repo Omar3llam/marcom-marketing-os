@@ -123,10 +123,20 @@ describe('ConnectorCampaignsPanel — "Why?" evidence in the expanded detail', (
     expect(screen.getByText(/Not scaling misses the strongest-engagement campaign/)).toBeInTheDocument();
   });
 
-  it('a non-action verdict (HOLD/REFRESH) gets no "Why?" block', () => {
-    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'REFRESH' }} />);
+  it('a non-action verdict (HOLD) gets no "Why?" block', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'HOLD' }} />);
     expand();
     expect(screen.queryByText(/^Why /)).not.toBeInTheDocument();
+    expect(screen.queryByText('Pause and reallocate budget')).not.toBeInTheDocument();
+  });
+
+  // REFRESH moved out of that list: it asks for a creative change, so it earns
+  // the same "Why?" block every other intervention verdict gets.
+  it('a REFRESH gets its own "Why?" block and its own next step', () => {
+    render(<ConnectorCampaignsPanel campaigns={[campaign()]} verdicts={{ c1: 'REFRESH' }} />);
+    expand();
+    expect(screen.getByText(/^Why refresh/i)).toBeInTheDocument();
+    expect(screen.getByText('Refresh the creative')).toBeInTheDocument();
     expect(screen.queryByText('Pause and reallocate budget')).not.toBeInTheDocument();
   });
 

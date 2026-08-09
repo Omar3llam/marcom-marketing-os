@@ -420,8 +420,27 @@ describe('ACTIONABLE_VERDICTS ↔ nextActionFor', () => {
     expect([...ACTIONABLE_VERDICTS]).toEqual(['KILL', 'REALLOCATE']);
   });
 
-  it.each([['HOLD'], ['WATCH'], ['REFRESH']])('%s asks for nothing and is not actionable', (verdict) => {
+  it.each([['HOLD'], ['WATCH']])('%s asks for nothing and is not actionable', (verdict) => {
     expect(nextActionFor(verdict)).toBeNull();
     expect(ACTIONABLE_VERDICTS).not.toContain(verdict);
+  });
+
+  // REFRESH sits on OPPOSITE sides of the two gates, and that is deliberate —
+  // they answer different questions and this is the case that proves it:
+  //
+  //   nextActionFor        → "does this verdict ask the buyer to do something?"
+  //                          REFRESH: yes — swap the creative.
+  //   ACTIONABLE_VERDICTS  → "should we fetch ad-set evidence for it?"
+  //                          REFRESH: no — creative fatigue is a campaign-level
+  //                          finding, and the evidence copy ("its CTR is X%
+  //                          below the campaign rate — consider pausing it") is
+  //                          written for a KILL, not for a worn-out ad.
+  //
+  // A future edit that "tidies" these into one list would either silence the
+  // REFRESH action bar again or point a pause-flavoured alarm at a healthy
+  // campaign. The disagreement is the contract.
+  it('REFRESH asks for an action but is still not an evidence verdict', () => {
+    expect(nextActionFor('REFRESH')).toBeTruthy();
+    expect(ACTIONABLE_VERDICTS).not.toContain('REFRESH');
   });
 });

@@ -9,6 +9,7 @@
 // ============================================================
 import { describe, it, expect } from 'vitest';
 import { formatCurrency } from '@/lib/money';
+import { HELP } from '@/lib/helpContent';
 import {
   NO_REVENUE_DISCLAIMER, confidenceLabel, evidenceClause, shortEvidence,
   nextActionFor, ignoreCostFor, decisiveMetric, FATIGUE_FREQ,
@@ -69,15 +70,42 @@ describe('shortEvidence', () => {
 });
 
 describe('nextActionFor', () => {
-  it('KILL → pause, SCALE → grow, REALLOCATE → move, everything else → null', () => {
+  it('KILL → pause, SCALE → grow, REALLOCATE → move, REFRESH → new creative', () => {
     expect(nextActionFor('KILL')).toBe('Pause and reallocate budget');
     expect(nextActionFor('SCALE')).toBe('Increase budget or expand audience');
     expect(nextActionFor('REALLOCATE')).toBe('Move spend to stronger campaigns');
+    expect(nextActionFor('REFRESH')).toBe('Refresh the creative');
+  });
+
+  it('leaves the no-intervention verdicts alone', () => {
     expect(nextActionFor('HOLD')).toBeNull();
     expect(nextActionFor('WATCH')).toBeNull();
-    expect(nextActionFor('REFRESH')).toBeNull();
     expect(nextActionFor(null)).toBeNull();
     expect(nextActionFor('NOT_A_VERDICT')).toBeNull();
+  });
+
+  // REFRESH is the reason this exists: it has a real execution capability
+  // (REFRESH_CREATIVE) and its spend counts as wasted beside a KILL, but it
+  // returned null — and `intentAt` is stamped only from the ActionBar this gates.
+  // So no REFRESH decision could ever be recorded as acted on, and
+  // decisionLearning filters on intentAt. The verdict could not reach learning.
+  it('REFRESH asks for a creative change — the motion no other verdict names', () => {
+    const refresh = nextActionFor('REFRESH');
+    expect(refresh).not.toBeNull();
+    expect(refresh).toMatch(/creative/i);
+    // Its own motion, not a restatement of another verdict's. Budget stays put;
+    // the ad changes — which is exactly what distinguishes it from the other three.
+    for (const other of ['KILL', 'SCALE', 'REALLOCATE']) {
+      expect(refresh).not.toBe(nextActionFor(other));
+    }
+    expect(refresh).not.toMatch(/budget|spend|audience/i);
+  });
+
+  // The copy is the imperative of the product's own one-liner for the verdict,
+  // never a second string invented at the call site.
+  it('reuses the helpContent wording rather than inventing copy', () => {
+    expect(HELP.REFRESH_VERDICT).toMatch(/refresh the creative/i);
+    expect(HELP.REFRESH_VERDICT.toLowerCase()).toContain(nextActionFor('REFRESH').toLowerCase());
   });
 
   // The three verdicts that ask for an intervention, and nothing else. Since
@@ -110,9 +138,9 @@ describe('nextActionFor', () => {
     expect(nextActionFor('REALLOCATE')).toMatch(/move|reallocat|elsewhere|stronger/i);
   });
 
-  // Three imperative phrases in one register, no trailing punctuation — they
-  // are rendered inline after "Next step:" and inside the copied recommendation.
-  it.each([['KILL'], ['SCALE'], ['REALLOCATE']])('%s reads as an instruction', (verdict) => {
+  // Imperative phrases in one register, no trailing punctuation — they are
+  // rendered inline after "Next step:" and inside the copied recommendation.
+  it.each([['KILL'], ['SCALE'], ['REALLOCATE'], ['REFRESH']])('%s reads as an instruction', (verdict) => {
     const action = nextActionFor(verdict);
     expect(action).toMatch(/^[A-Z]/);
     expect(action).not.toMatch(/[.!]$/);

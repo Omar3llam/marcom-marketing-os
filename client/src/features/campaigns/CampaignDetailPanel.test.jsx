@@ -123,9 +123,27 @@ describe('CampaignDetailPanel — ActionBar', () => {
     expect(screen.getByText('Copy decision')).toBeInTheDocument();
   });
 
+  // REFRESH is the engine's most common creative verdict (both fatigue branches
+  // plus LOW_CTR) and it has a real execution capability behind it —
+  // REFRESH_CREATIVE, wired through to Meta. It sat in the "no bar" list for the
+  // same reason REALLOCATE did: nextActionFor had no entry for it.
+  it('offers actions on a REFRESH', () => {
+    render(<CampaignDetailPanel campaign={campaign()} verdict="REFRESH" />);
+    expect(screen.getByText('Copy decision')).toBeInTheDocument();
+  });
+
+  it('tells a REFRESH to change the ad, not to move or add budget', () => {
+    render(<CampaignDetailPanel campaign={campaign()} verdict="REFRESH" />);
+    expect(screen.getByText(/Refresh the creative/)).toBeInTheDocument();
+    // The money is not the problem on a REFRESH — the ad is worn out.
+    expect(screen.queryByText(/Move spend to stronger campaigns/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Increase budget or expand audience/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pause and reallocate budget/)).not.toBeInTheDocument();
+  });
+
   // Nothing to act on → no bar. An action button under a "keep running" verdict
   // would invent an ask the engine never made.
-  it.each(['HOLD', 'WATCH', 'REFRESH', null])('renders no action bar for %s', (verdict) => {
+  it.each(['HOLD', 'WATCH', null])('renders no action bar for %s', (verdict) => {
     render(<CampaignDetailPanel campaign={campaign()} verdict={verdict} />);
     expect(screen.queryByText('Copy decision')).not.toBeInTheDocument();
     expect(screen.queryByText(/open in/i)).not.toBeInTheDocument();
@@ -246,7 +264,7 @@ describe('CampaignDetailPanel — decision lifecycle', () => {
 
   // Same gate as the utility actions beside it — deliberately not broadened. A
   // verdict with nothing to act on has nothing to have acted on.
-  it.each(['HOLD', 'WATCH', 'REFRESH', null])('does not ask under %s', (verdict) => {
+  it.each(['HOLD', 'WATCH', null])('does not ask under %s', (verdict) => {
     withActions({ verdict });
     expect(screen.queryByRole('button', { name: 'I executed this' })).not.toBeInTheDocument();
   });
@@ -259,6 +277,23 @@ describe('CampaignDetailPanel — decision lifecycle', () => {
     withActions({ verdict: 'REALLOCATE' });
     expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Not applicable' })).toBeInTheDocument();
+  });
+
+  // The gap this PR closes. `intentAt` is stamped ONLY from inside this
+  // ActionBar, and decisionLearning filters on `intentAt: { not: null }` — so
+  // while REFRESH had no next action, no REFRESH decision could ever be recorded
+  // as acted on, and the verdict could not reach the learning population at all.
+  // The capability existed the whole time; the bridge did not.
+  it('REFRESH exposes decision lifecycle actions', () => {
+    withActions({ verdict: 'REFRESH' });
+    expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Not applicable' })).toBeInTheDocument();
+  });
+
+  it('REFRESH needs no evidence to be answerable', () => {
+    const { container } = withActions({ verdict: 'REFRESH' });
+    expect(screen.getByRole('button', { name: 'I executed this' })).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/Where to execute/);
   });
 
   // The same invariant as KILL's, restated for the verdict that regressed: this
@@ -280,8 +315,8 @@ describe('CampaignDetailPanel — decision lifecycle', () => {
 
   // The complete lifecycle action contract, in one place.
   it.each([
-    ['KILL', true], ['SCALE', true], ['REALLOCATE', true],
-    ['HOLD', false], ['WATCH', false], ['REFRESH', false],
+    ['KILL', true], ['SCALE', true], ['REALLOCATE', true], ['REFRESH', true],
+    ['HOLD', false], ['WATCH', false],
   ])('%s → action surface: %s', (verdict, expected) => {
     withActions({ verdict });
     const asked = screen.queryByRole('button', { name: 'I executed this' }) !== null;
