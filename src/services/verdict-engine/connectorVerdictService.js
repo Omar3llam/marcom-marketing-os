@@ -31,6 +31,7 @@ import { rollupVerdicts }        from './verdictEngine.js';
 import { applyRelativeRanking }  from './relativeRanking.js';
 import { daysSince }             from './confidenceEngine.js';
 import { isSubstantive }         from './counterfactualEngine.js';
+import { connectorDecisionScope } from './decisionIdentity.js';
 import { logger }                from '../../utils/logger.js';
 
 // Meta objectives that are GENUINELY awareness/reach — no purchase revenue is
@@ -175,11 +176,27 @@ export function buildConnectorVerdictTree(workspaceId, campaigns = [], { now = D
  * decided THEN) and reconciling them here would put a third opinion, computed
  * by neither pass, on the wire.
  *
- * `entityLevel: 'CAMPAIGN'` is load-bearing, not defensive. persistNode writes
- * one Decision per NODE — account, campaign and ad set alike — all into the same
- * table keyed by entityId. Without the filter an ad-set decision could win the
- * first-hit-wins race below and hand a campaign row an id that executes against
- * a different entity.
+ * ── TWO filters, and the second is the one that matters ─────────────────────
+ * `entityLevel: 'CAMPAIGN'` keeps out the OTHER LEVELS this engine writes:
+ * persistNode emits one Decision per node — account, campaign and ad set alike
+ * — all into this table keyed by entityId.
+ *
+ * `connectorDecisionScope()` keeps out the OTHER AUTHORS, and level alone does
+ * not. Four services besides this engine write CAMPAIGN-level PROPOSED rows,
+ * three of them against a real campaign entityId: a guardrail hit, an
+ * incrementality readout, an allocation move. All are proposals about the same
+ * campaign; none is the verdict on screen.
+ *
+ * Without it the first-hit-wins race below is decided by `createdAt` across ALL
+ * of them — so a guardrail row written after the sweep silently becomes the id
+ * behind a KILL button, and the operator's claim lands on a decision they were
+ * never shown. That is not stale data, it is the wrong row, and it breaks the
+ * one rule this projection exists to keep: a decisionId names the row the
+ * reader was actually looking at.
+ *
+ * The scope is the SAME definition supersedeDroppedConnectorVerdicts uses.
+ * Shared rather than copied, because two answers to "which rows are ours" is
+ * how a row becomes un-supersedable in one place and invisible in the other.
  *
  * `status: 'PROPOSED'` excludes SUPERSEDED rows, which a later sweep has already
  * replaced. It does NOT exclude decisions a human has acted on: execute and
@@ -198,7 +215,7 @@ export async function getLatestDecisions(workspaceId) {
   if (!workspaceId) return new Map();
 
   const rows = await prisma.decision.findMany({
-    where:   { workspaceId, entityLevel: 'CAMPAIGN', status: 'PROPOSED' },
+    where:   { workspaceId, entityLevel: 'CAMPAIGN', status: 'PROPOSED', ...connectorDecisionScope() },
     select:  { id: true, entityId: true, verdict: true, createdAt: true },
     orderBy: { createdAt: 'desc' },
   }).catch((err) => {

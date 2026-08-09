@@ -33,6 +33,7 @@ import { getConnectorVerdicts } from './connectorVerdictService.js';
 import { isSubstantive } from './counterfactualEngine.js';
 import { diagnoseFunnel } from './funnelDiagnosis.js';
 import { composeConfidence } from './confidenceEngine.js';
+import { connectorDecisionScope } from './decisionIdentity.js';
 import { SIGNAL_TYPE } from '../diagnosis-engine/diagnosisTypes.js';
 import { VERDICT } from './verdictTypes.js';
 
@@ -343,6 +344,71 @@ describe('getConnectorVerdicts — the published numbers', () => {
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ entityLevel: 'CAMPAIGN', status: 'PROPOSED' }),
     }));
+  });
+
+  // NAMED: campaign decision identity excludes guardrail and allocation decisions.
+  //
+  // Level is NOT enough. Four services besides the verdict engine write
+  // CAMPAIGN-level PROPOSED rows, three of them against a real campaign
+  // entityId — a guardrail hit, an incrementality readout, an allocation move.
+  // Every one is a proposal about the same campaign; none is the verdict on
+  // screen. Without the author filter the first-hit-wins race is decided by
+  // createdAt across all of them, and the id behind a KILL button becomes
+  // whichever service wrote last.
+  //
+  // The filter is a WHERE clause, so this asserts the QUERY excludes them —
+  // asserting on a hand-fed row set would only prove the loop, which is not
+  // where the bug was.
+  it('campaign decision identity excludes guardrail and allocation decisions', async () => {
+    getConnectorCampaigns.mockResolvedValue([row()]);
+    await getConnectorVerdicts('ws-1');
+
+    const { where } = findMany.mock.calls[0][0];
+    expect(where.OR).toBeDefined();
+
+    // Connector causes are named explicitly; null is IN the set, because the
+    // engine leaves it null on verdicts reached without a diagnosis.
+    const named = where.OR.find((c) => c.rootCause?.in)?.rootCause.in ?? [];
+    expect(where.OR).toContainEqual({ rootCause: null });
+    expect(named).toContain(SIGNAL_TYPE.CREATIVE_FATIGUE);
+
+    // And every foreign author's prefix is absent from the allowed set.
+    for (const foreign of ['guardrail:', 'allocation:', 'incrementality:', 'test:']) {
+      expect(named.some((c) => String(c).startsWith(foreign))).toBe(false);
+    }
+  });
+
+  // The half that a naive fix would still get wrong. Ordering is `createdAt`
+  // desc + first-hit-wins, so a foreign row written AFTER the sweep is exactly
+  // the one positioned to win — and the database, not the loop, is what has to
+  // refuse it.
+  it('a newer allocation decision cannot steal a campaign identity', async () => {
+    getConnectorCampaigns.mockResolvedValue([row({ entityId: 'c1' })]);
+    // What the scoped query returns: the foreign rows never come back at all.
+    findMany.mockImplementation(async ({ where }) => {
+      const all = [
+        { id: 'alloc-2',  entityId: 'c1', verdict: 'REALLOCATE', rootCause: 'allocation:plan-1', createdAt: new Date('2026-08-05') },
+        { id: 'guard-1',  entityId: 'c1', verdict: 'KILL',       rootCause: 'guardrail:frequency', createdAt: new Date('2026-08-04') },
+        { id: 'conn-1',   entityId: 'c1', verdict: 'KILL',       rootCause: SIGNAL_TYPE.CREATIVE_FATIGUE, createdAt: new Date('2026-08-01') },
+      ];
+      const allowed = where.OR.find((c) => c.rootCause?.in)?.rootCause.in ?? [];
+      return all.filter((d) => d.rootCause === null || allowed.includes(d.rootCause));
+    });
+
+    const { verdicts } = await getConnectorVerdicts('ws-1');
+    // The OLDEST row wins, because it is the only one that is ours.
+    expect(verdicts[0].decisionId).toBe('conn-1');
+    expect(verdicts[0].decisionVerdict).toBe('KILL');
+    expect(verdicts[0].decisionId).not.toBe('alloc-2');
+  });
+
+  // The same scope the write twin supersedes on. Two answers to "which rows are
+  // ours" is how a row becomes un-supersedable in one place and invisible in
+  // the other.
+  it('scopes identity with the same definition the write path supersedes with', async () => {
+    getConnectorCampaigns.mockResolvedValue([row()]);
+    await getConnectorVerdicts('ws-1');
+    expect(findMany.mock.calls[0][0].where.OR).toEqual(connectorDecisionScope().OR);
   });
 
   it('scopes the read to the workspace, and selects rather than taking the row whole', async () => {

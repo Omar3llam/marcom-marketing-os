@@ -14,9 +14,7 @@ import { applyRelativeRanking }     from './relativeRanking.js';
 import { getConnectorCampaigns }   from '../entity-graph/index.js';
 import { buildConnectorVerdictTree } from './connectorVerdictService.js';
 import { toReasoningArtifact, toCounterfactualArtifact } from './reasoningArtifact.js';
-import { SIGNAL_TYPE }             from '../diagnosis-engine/index.js';
-import { ROOT_CAUSE }              from './verdictTypes.js';
-import { FUNNEL_SIGNAL }           from './funnelDiagnosis.js';
+import { connectorDecisionScope }  from './decisionIdentity.js';
 import { computeResolution, ctrDelta } from './decisionLifecycle.js';
 
 // The rootCauses persistConnectorVerdicts writes: a diagnosis signalType, a
@@ -27,11 +25,8 @@ import { computeResolution, ctrDelta } from './decisionLifecycle.js';
 // LOAD-BEARING: supersedeDroppedConnectorVerdicts scopes on this set. Any cause
 // the engine can emit MUST be listed, or verdicts carrying it become
 // un-supersedable and pile up as permanently-open PROPOSED rows.
-const CONNECTOR_ROOT_CAUSES = Object.freeze([
-  ...Object.values(SIGNAL_TYPE),
-  ...Object.values(ROOT_CAUSE),
-  ...Object.values(FUNNEL_SIGNAL),
-]);
+// Moved to decisionIdentity.js — the read path needs the SAME definition, and a
+// second copy is how the two drift into disagreeing about which rows are ours.
 
 const finite = (n) => (typeof n === 'number' && Number.isFinite(n) ? n : null);
 
@@ -198,7 +193,7 @@ async function supersedeDroppedConnectorVerdicts(workspaceId, eligibleIds) {
     workspaceId,
     status:      'PROPOSED',
     entityLevel: 'CAMPAIGN',
-    OR: [{ rootCause: { in: CONNECTOR_ROOT_CAUSES } }, { rootCause: null }],
+    ...connectorDecisionScope(),
   };
   // Empty eligible set ⇒ nothing is current (whole account went dataless) ⇒
   // supersede EVERY connector verdict. Omit the entityId filter entirely —
