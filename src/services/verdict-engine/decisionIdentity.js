@@ -59,24 +59,57 @@ export const CONNECTOR_ROOT_CAUSES = Object.freeze([
  *   BUYER_ACTIONABLE_ROOT_CAUSES → may that authored finding enter the buyer
  *                                  confirmation band?
  *
- * Data-quality causes are deliberately excluded. INSUFFICIENT_DATA and TOO_EARLY
- * mean "not judged yet", which is not a decision anyone can confirm — and both
- * are emitted as WATCH, which agenticPlanner ranks HIGH, so admitting them would
- * put the engine's own blind spots at the TOP of the buyer's agenda.
+ * Two kinds of cause are deliberately excluded, for the same underlying reason:
+ * the engine did not reach a judgement, so there is nothing for a human to
+ * confirm. Both are emitted as WATCH, which agenticPlanner ranks HIGH — so
+ * admitting either would put the engine's own blind spots at the TOP of the
+ * buyer's agenda.
  *
- * Derived by SUBTRACTION rather than by re-listing the two wanted families. The
- * bug this replaced was a local `Object.values(SIGNAL_TYPE)` that silently went
+ *   ROOT_CAUSE.INSUFFICIENT_DATA / TOO_EARLY
+ *     "not judged yet". The fields WERE reported; the sample is too thin, or
+ *     too young, to read.
+ *
+ *   SIGNAL_TYPE.UNDIAGNOSABLE
+ *     "we could not look". No rule was EVALUABLE — the inputs they read were
+ *     never reported at all (DiagnosisEngine: `!fired.length && !declined.length`).
+ *     Distinct from HEALTHY, which is a real all-clear reached by rules that ran
+ *     and declined, and distinct from INSUFFICIENT_DATA, which is about volume
+ *     rather than absent fields — diagnosisTypes.js draws both lines already.
+ *     It carries confidence 0 and no observations; verdictEngine calls it "an
+ *     admission, not a finding". It is the one SIGNAL_TYPE that can never be a
+ *     decision.
+ *
+ * UNDIAGNOSABLE is currently UNREACHABLE from the production path: rollupVerdicts
+ * feeds evaluateVerdict through toSignalInput, which zero-fills `ctr` and
+ * `frequency`, and two rules require only those — so some rule is always
+ * evaluable. It is excluded here anyway, because the alternative is that the day
+ * that zero-fill changes, blind rows begin arriving at the top of the agenda and
+ * nothing says so. Same reason verdictEngine wired its case ahead of time.
+ *
+ * HEALTHY is deliberately NOT excluded, and the name is a trap. `rootCause` and
+ * `verdict` are decoupled: applyRelativeRanking rewrites the verdict but leaves
+ * the absolute pass's rootCause in place, so a cohort-ranked KILL — or a SCALE —
+ * persists with rootCause HEALTHY. Excluding it would silently drop real KILL
+ * and SCALE decisions from the band.
+ *
+ * Derived by SUBTRACTION rather than by re-listing the wanted families. The bug
+ * that preceded this was a local `Object.values(SIGNAL_TYPE)` that silently went
  * stale when FUNNEL_SIGNAL joined the taxonomy: an additive list excludes any
- * future family by default and says nothing. Subtracting the one family that is
- * knowably NOT a decision keeps new causes visible, and the exact-membership
- * test pins the result so a fourth family cannot slip in unexamined either way.
+ * future family by default and says nothing. Subtracting only what is knowably
+ * NOT a decision keeps new causes visible, and the exact-membership test pins
+ * the result so a fourth family cannot slip in unexamined either way.
  *
- * Keep aligned with isDataQualityCause() in client/src/features/campaigns/verdictEvidence.js.
+ * Related: isDataQualityCause() in client/src/features/campaigns/verdictEvidence.js
+ * covers the two ROOT_CAUSE values but NOT UNDIAGNOSABLE. That is a separate
+ * client-rendering question, deliberately left alone here.
  */
-const DATA_QUALITY_ROOT_CAUSES = new Set(Object.values(ROOT_CAUSE));
+const NOT_A_CONFIRMABLE_DECISION = new Set([
+  ...Object.values(ROOT_CAUSE),
+  SIGNAL_TYPE.UNDIAGNOSABLE,
+]);
 
 export const BUYER_ACTIONABLE_ROOT_CAUSES = Object.freeze(
-  CONNECTOR_ROOT_CAUSES.filter((cause) => !DATA_QUALITY_ROOT_CAUSES.has(cause)),
+  CONNECTOR_ROOT_CAUSES.filter((cause) => !NOT_A_CONFIRMABLE_DECISION.has(cause)),
 );
 
 /**
