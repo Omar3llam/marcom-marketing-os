@@ -47,9 +47,9 @@ describe('agenticPlanner — banding', () => {
     expect(out.strategistBand.some((i) => i.type === AGENDA_TYPE.PLAN_ADJUSTMENT)).toBe(true);
   });
 
-  it('a guardrail verdict becomes a CONFIRM item citing the decision id', () => {
+  it('a guardrail verdict becomes a REVIEW item citing the decision id', () => {
     const v = out.buyerBand.find((i) => i.evidenceRef === 'd1');
-    expect(v.humanAction).toBe(HUMAN_ACTION.CONFIRM);
+    expect(v.humanAction).toBe(HUMAN_ACTION.REVIEW);
     expect(v.title).toContain('Cold #1');
   });
 
@@ -80,7 +80,7 @@ describe('agenticPlanner — banding', () => {
     const res = planAgenda({ verdicts: connector, now });
     const refresh = res.buyerBand.find((i) => i.evidenceRef === 'cv1');
     const awareness = res.buyerBand.find((i) => i.evidenceRef === 'cv2');
-    expect(refresh).toMatchObject({ type: AGENDA_TYPE.VERDICT, humanAction: HUMAN_ACTION.CONFIRM, entityId: 'cmp2' });
+    expect(refresh).toMatchObject({ type: AGENDA_TYPE.VERDICT, humanAction: HUMAN_ACTION.REVIEW, entityId: 'cmp2' });
     // The awareness-track row is included (not skipped) and carries its own severity.
     expect(awareness).toMatchObject({ type: AGENDA_TYPE.VERDICT, severity: 'HIGH', entityId: 'cmp3' });
     expect(refresh.rationale).toContain('fatigue');
@@ -122,16 +122,17 @@ describe('agenticPlanner — every attention verdict stays admitted', () => {
   // either, and is deliberately kept — it means "something is off, look at it".
   // The admission test is attention, not a button.
   //
-  // It IS the right test for the VERB, which is why humanAction is per-row rather
-  // than a constant of the table. It used to be shared, so WATCH's CONFIRM was
-  // never a choice anyone made about WATCH — it was a column that happened to be
-  // the same for five verdicts, and it stayed the same when it stopped being true.
+  // It is not the right test for the VERB either (#354). The column below is back
+  // to being shared — but this time because every row genuinely answers the same,
+  // not because nobody checked: the destination is Campaigns, and Campaigns cannot
+  // execute. SEVERITY is what still differs per verdict, and that is the column
+  // this table exists to pin.
   it.each([
-    ['KILL',       'HIGH',   HUMAN_ACTION.CONFIRM],
+    ['KILL',       'HIGH',   HUMAN_ACTION.REVIEW],
     ['WATCH',      'HIGH',   HUMAN_ACTION.REVIEW],
-    ['REALLOCATE', 'MEDIUM', HUMAN_ACTION.CONFIRM],
-    ['REFRESH',    'MEDIUM', HUMAN_ACTION.CONFIRM],
-    ['SCALE',      'MEDIUM', HUMAN_ACTION.CONFIRM],
+    ['REALLOCATE', 'MEDIUM', HUMAN_ACTION.REVIEW],
+    ['REFRESH',    'MEDIUM', HUMAN_ACTION.REVIEW],
+    ['SCALE',      'MEDIUM', HUMAN_ACTION.REVIEW],
   ])('%s reaches the buyer band at %s severity asking the human to %s', (verdict, severity, humanAction) => {
     const res = planAgenda({
       verdicts: [{ id: 'v1', entityId: 'cmp1', entityLevel: 'CAMPAIGN', verdict, rationale: 'r', status: 'PROPOSED' }],
@@ -195,11 +196,12 @@ describe('agenticPlanner — WATCH asks to be reviewed, not confirmed', () => {
     });
   });
 
-  // The verb is derived from verdictToActionType, which returns a DIFFERENT action
-  // per level (PAUSE_CAMPAIGN vs PAUSE_ADSET) but never a different null-ness. So
-  // an ADSET-level row must answer exactly as its CAMPAIGN-level twin does —
-  // otherwise the same finding would ask for two different things depending on how
-  // deep in the tree it landed.
+  // The verb no longer varies by verdict OR by level (#354). Kept as a guard
+  // anyway: entityLevel is exactly where a future execution wiring would start
+  // branching, and AD level is where the Meta action matrix actually breaks
+  // (verdictToActionType returns PAUSE_ADSET for an AD, which the execute route
+  // rejects). If the verb ever becomes level-dependent, it should be a decision
+  // someone made, not a silent fallback.
   it.each([['CAMPAIGN'], ['ADSET'], ['AD']])('answers the same at %s level', (entityLevel) => {
     const res = planAgenda({
       verdicts: [
@@ -210,7 +212,64 @@ describe('agenticPlanner — WATCH asks to be reviewed, not confirmed', () => {
     });
     const byRef = Object.fromEntries(res.buyerBand.map((i) => [i.evidenceRef, i.humanAction]));
     expect(byRef.w1).toBe(HUMAN_ACTION.REVIEW);
-    expect(byRef.k1).toBe(HUMAN_ACTION.CONFIRM);
+    expect(byRef.k1).toBe(HUMAN_ACTION.REVIEW);
+  });
+});
+
+// ── The destination boundary (#354) ─────────────────────────────
+// agenticTypes defines CONFIRM as "confirm a proposed verdict/reallocation →
+// execution motion". A VERDICT item navigates to Campaigns, and Campaigns cannot
+// execute: ActionBar offers "Copy decision" and "Open in {channel}", and
+// DecisionLifecycle asks "Did you act on this?". The marketer acts in Meta, by
+// hand. The execution half of the system (POST /api/execute/meta →
+// ExecutionRequest → executionQueue → executionWorker → Meta Graph API) is built
+// and mounted but has zero production client callers, and nothing routes a
+// verdict into it.
+//
+// So the guard is on the DESTINATION, not on any verdict list: whatever the engine
+// starts emitting, a VERDICT item may not say "confirm" while its click only
+// navigates. Written over the whole band rather than per verdict so a NEW verdict
+// added later is covered the day it ships.
+describe('agenticPlanner — no verdict claims an execution motion the destination lacks', () => {
+  const now = new Date('2026-08-10T00:00:00Z');
+  const ALL_VERDICTS = ['KILL', 'SCALE', 'WATCH', 'REALLOCATE', 'REFRESH', 'HOLD'];
+
+  const bandFor = (verdicts) => planAgenda({ verdicts, now }).buyerBand;
+
+  it('every VERDICT item in the buyer band asks to REVIEW, never to CONFIRM', () => {
+    const band = bandFor(ALL_VERDICTS.map((verdict, i) => ({
+      id: `v${i}`, entityId: `cmp${i}`, entityLevel: 'CAMPAIGN', verdict,
+      rationale: 'r', status: 'PROPOSED',
+    })));
+    const verdictItems = band.filter((i) => i.type === AGENDA_TYPE.VERDICT);
+
+    // HOLD is excluded upstream (#349); the other five are all present.
+    expect(verdictItems).toHaveLength(ALL_VERDICTS.length - 1);
+    expect(verdictItems.map((i) => i.humanAction)).not.toContain(HUMAN_ACTION.CONFIRM);
+    expect(new Set(verdictItems.map((i) => i.humanAction))).toEqual(new Set([HUMAN_ACTION.REVIEW]));
+  });
+
+  it('holds at every entity level — a deeper row cannot promise more', () => {
+    for (const entityLevel of ['ACCOUNT', 'CAMPAIGN', 'ADSET', 'AD', 'CREATIVE']) {
+      const band = bandFor(ALL_VERDICTS.map((verdict, i) => ({
+        id: `v${i}`, entityId: `e${i}`, entityLevel, verdict, rationale: 'r', status: 'PROPOSED',
+      })));
+      const verbs = band.filter((i) => i.type === AGENDA_TYPE.VERDICT).map((i) => i.humanAction);
+      expect(verbs, `${entityLevel} promised an execution motion`).not.toContain(HUMAN_ACTION.CONFIRM);
+    }
+  });
+
+  // The severities are the thing that genuinely differs, and they must survive a
+  // change that was only ever about the verb.
+  it('severity is untouched — this changed what we ask for, not how loud it is', () => {
+    const band = bandFor(ALL_VERDICTS.map((verdict, i) => ({
+      id: `v${i}`, entityId: `cmp${i}`, entityLevel: 'CAMPAIGN', verdict,
+      rationale: 'r', status: 'PROPOSED',
+    })));
+    const sevByRef = Object.fromEntries(band.map((i) => [i.title.split(' ')[0], i.severity]));
+    expect(sevByRef).toMatchObject({
+      KILL: 'HIGH', WATCH: 'HIGH', REALLOCATE: 'MEDIUM', REFRESH: 'MEDIUM', SCALE: 'MEDIUM',
+    });
   });
 });
 
