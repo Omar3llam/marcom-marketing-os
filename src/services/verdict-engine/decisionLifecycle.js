@@ -13,6 +13,34 @@
 //
 // UNKNOWN is a real answer here, not a fallback. A decision with no metric on
 // either end cannot be scored, and saying so is the whole point.
+//
+// ── UNKNOWN MEANS TWO DIFFERENT THINGS, AND THE DIFFERENCE MATTERS ──────────
+// One enum value, two reasons, and a reader who conflates them will draw the
+// wrong conclusion from the same word:
+//
+//   Actionable verdict (KILL / REALLOCATE / REFRESH / SCALE):
+//     UNKNOWN = INSUFFICIENT EVIDENCE. There was an intervention whose effect we
+//     would happily measure; we are missing a reading on one end (or the
+//     baseline is zero, making the ratio undefined). More data would resolve it.
+//
+//   HOLD / WATCH:
+//     UNKNOWN = THERE IS NO INTERVENTION TO MEASURE. Not a data gap. These
+//     verdicts asked for no action, so no action's effect exists. This branch
+//     fires on the VERDICT, before any metric is consulted — a HOLD with perfect
+//     data on both ends is still UNKNOWN, and must be. More data would NOT
+//     resolve it, because nothing is being asked.
+//
+// That second case is not "we could not score HOLD". HOLD is a falsifiable
+// claim — it predicts stability — and that claim IS scored, elsewhere:
+// decision-accuracy/accuracyTypes.js carries SCORABLE_VERDICT.HOLD = true and a
+// tolerance predicate over OutcomeSnapshot.roasDelta. The two systems answer
+// different questions from different tables, which is why they give HOLD
+// different answers and why making them agree would break both:
+//
+//   this module          → did ACTING on the verdict help?   (intervention effect)
+//   decision-accuracy    → was the PREDICTION right?         (prediction correctness)
+//
+// See accuracyTypes.js for the other half of this boundary.
 // ============================================================
 
 /** Verdicts asking for an intervention — scored on engagement recovery. */

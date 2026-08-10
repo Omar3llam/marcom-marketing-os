@@ -84,6 +84,58 @@ describe('refusing to score', () => {
     expect(computeResolution(verdict, at(1.0), at(5.0))).toBe('UNKNOWN');
   });
 
+  // ── The HOLD boundary, pinned against data rather than absence ─────────────
+  // The test above proves HOLD is UNKNOWN. This proves it is UNKNOWN for the
+  // RIGHT REASON — not because the data was thin, but because there is no
+  // intervention to measure. Every row below carries complete, valid metrics on
+  // both ends, and the KILL column shows what the SAME input yields when a
+  // verdict does ask for an action. If a future change made HOLD depend on the
+  // numbers, these rows would start disagreeing with each other.
+  //
+  // This is one half of a boundary. The other half lives in decision-accuracy:
+  // HOLD IS scored there, as a prediction, from OutcomeSnapshot.roasDelta. The
+  // two are not in conflict — this module asks "did acting help", that one asks
+  // "was the call right", and HOLD has an answer only to the second.
+  describe('HOLD is UNKNOWN because there is no intervention, not because data is missing', () => {
+    it.each([
+      ['stable ROAS',      at(1.0, 2.0), at(1.0, 2.0), 'UNCHANGED'],
+      ['degraded ROAS',    at(1.0, 2.0), at(1.0, 1.0), 'UNCHANGED'],
+      ['improved ROAS',    at(1.0, 2.0), at(1.0, 4.0), 'UNCHANGED'],
+      ['CTR improvement',  at(1.0, 2.0), at(1.5, 2.0), 'IMPROVED'],
+      ['CTR collapse',     at(1.0, 2.0), at(0.4, 2.0), 'WORSENED'],
+    ])('%s, complete on both ends → HOLD UNKNOWN (a KILL on the same input → %s)',
+      (_label, before, after, killResult) => {
+        expect(computeResolution('HOLD', before, after)).toBe('UNKNOWN');
+        // The contrast is the point: the inputs ARE scorable, for a verdict that
+        // asked for something.
+        expect(computeResolution('KILL', before, after)).toBe(killResult);
+      });
+
+    // Missing data reaches the same answer by the OTHER route. Both are UNKNOWN
+    // and the word cannot tell them apart — which is why the module documents
+    // the two meanings rather than relying on the enum to carry them.
+    it.each([
+      ['missing before', {},           at(1.0, 2.0)],
+      ['missing after',  at(1.0, 2.0), {}],
+      ['missing both',   {},           {}],
+    ])('%s → UNKNOWN too, by the insufficient-evidence route', (_label, before, after) => {
+      expect(computeResolution('HOLD', before, after)).toBe('UNKNOWN');
+      expect(computeResolution('KILL', before, after)).toBe('UNKNOWN');
+    });
+
+    // The learning boundary (decisionLearning.js) gates on `resolution != null`
+    // AND counts only IMPROVED/UNCHANGED/WORSENED toward its denominator. HOLD
+    // returning the STRING 'UNKNOWN' — not null — is what makes it pass the
+    // first gate and still contribute nothing to the tally. A null here would
+    // change which gate excludes it, so the type is load-bearing.
+    it('returns the string UNKNOWN, never null — the learning tally depends on it', () => {
+      const r = computeResolution('HOLD', at(1.0, 2.0), at(1.0, 2.0));
+      expect(r).toBe('UNKNOWN');
+      expect(r).not.toBeNull();
+      expect(['IMPROVED', 'UNCHANGED', 'WORSENED']).not.toContain(r);
+    });
+  });
+
   it.each([[null], [undefined], ['NONSENSE']])('an unrecognised verdict (%s) is UNKNOWN', (verdict) => {
     expect(computeResolution(verdict, at(1.0), at(5.0))).toBe('UNKNOWN');
   });

@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { calculateDecisionAccuracy } from './decisionAccuracyEngine.js';
 import {
   accuracySurface, COVERAGE_VERDICT, LIFT_STATUS, CALIBRATION_DIRECTION, DEFAULT_CONFIG,
+  SCORABLE_VERDICT, SUCCESS_PREDICATES,
 } from './accuracyTypes.js';
 
 const NOW = new Date('2026-03-01T00:00:00.000Z');
@@ -79,6 +80,116 @@ describe('decisionAccuracyEngine — per-verdict success predicates (§2.1)', ()
     });
     expect(r.coverage.scored).toBe(0);
     expect(r.coverage.notAPrediction).toBe(1);
+  });
+});
+
+// ── The HOLD prediction contract ────────────────────────────────────────────
+// HOLD asks for no intervention but DOES make a falsifiable claim — "this is
+// stable, leave it" — so it is scored here while decisionLifecycle answers
+// UNKNOWN for it. Two systems, two questions: was the CALL right (here) vs did
+// ACTING help (there). HOLD has an answer only to the first.
+//
+// The predicate had no test of any kind before this. It could have been deleted,
+// inverted, or had holdTolerance set to 100 and nothing would have gone red —
+// which matters more than usual because no HOLD can currently reach this
+// population at all (the UI gives HOLD no way to obtain executedAt), so a break
+// would be invisible in production too.
+//
+// The tolerance is read from DEFAULT_CONFIG rather than written as 0.1: a test
+// that restates the constant proves only that two literals agree today.
+describe('decisionAccuracyEngine — HOLD is a prediction of stability (§2.1)', () => {
+  const TOL = DEFAULT_CONFIG.holdTolerance;
+  const holdWith = (roasDelta) => ({
+    id: 'h',
+    verdict: 'HOLD',
+    confidence: 0.8,
+    status: 'EXECUTED',
+    createdAt: new Date(NOW.getTime() - day(20)).toISOString(),
+    outcome: {
+      windowEnd: new Date(NOW.getTime() - day(1)).toISOString(),
+      sustained: true,
+      ...(roasDelta === undefined ? {} : { roasDelta }),
+    },
+  });
+  const run = (roasDelta) => calculateDecisionAccuracy({ now: NOW, decisions: [holdWith(roasDelta)] });
+
+  // Scored on MAGNITUDE, not direction. A big move either way means "leave it
+  // alone" was the wrong call — an upside surprise is a missed SCALE, not a win.
+  it.each([
+    [+0.05, true],
+    [-0.05, true],
+    [+0.50, false],
+    [-0.50, false],
+  ])('roasDelta %s → %s (inside/outside the tolerance band)', (roasDelta, shouldSucceed) => {
+    expect(Math.abs(roasDelta) <= TOL).toBe(shouldSucceed); // the band, restated as the premise
+    const r = run(roasDelta);
+    expect(r.coverage.scored).toBe(1);
+    expect(r.coverage.unscorable).toBe(0);
+    expect(r.calibration.accuracy).toBe(shouldSucceed ? 1 : 0);
+  });
+
+  // The honesty line. A missing roasDelta is NOT a failed HOLD — it is a decision
+  // we cannot score, and scoring it as wrong would manufacture failures out of a
+  // data gap. UNSCORABLE keeps it out of BOTH the numerator and the denominator.
+  it.each([
+    ['null',      null],
+    ['absent',    undefined],
+  ])('a %s roasDelta is UNSCORABLE, never a failure', (_label, roasDelta) => {
+    const r = run(roasDelta);
+    expect(r.coverage.scored).toBe(0);
+    expect(r.coverage.unscorable).toBe(1);
+    expect(r.coverage.notAPrediction).toBe(0); // it IS a prediction — just unmeasured
+  });
+
+  // The exact edge, derived from the configured band so it tracks a change to it.
+  it('the boundary is inclusive — a move of exactly the tolerance still holds', () => {
+    expect(run(TOL).calibration.accuracy).toBe(1);
+    expect(run(TOL * 1.001).calibration.accuracy).toBe(0);
+  });
+});
+
+// ── HOLD vs WATCH: the distinction is deliberate ────────────────────────────
+// Both are non-executable, and the temptation is to treat them alike. They
+// differ on whether a claim was made at all, which is the only axis that
+// decides scorability. This is written as a contract test rather than a comment
+// because "make these two consistent" is a plausible-sounding future change that
+// would silently delete a real measurement.
+describe('SCORABLE_VERDICT — HOLD predicts, WATCH declines to', () => {
+  it('HOLD is scorable and WATCH is not', () => {
+    expect(SCORABLE_VERDICT.HOLD).toBe(true);
+    expect(SCORABLE_VERDICT.WATCH).toBe(false);
+  });
+
+  it('WATCH has no success predicate — it returns null for any outcome', () => {
+    expect(SUCCESS_PREDICATES.WATCH({ roasDelta: 0 }, DEFAULT_CONFIG)).toBeNull();
+    expect(SUCCESS_PREDICATES.WATCH({ roasDelta: 5 }, DEFAULT_CONFIG)).toBeNull();
+  });
+
+  // The same outcome, the same maturity, the same everything except the verdict
+  // — and the two land in DIFFERENT coverage buckets. That is the distinction,
+  // stated as behaviour rather than as an enum lookup.
+  it('identical outcomes land in different buckets: HOLD scored, WATCH not-a-prediction', () => {
+    const base = {
+      confidence: 0.8,
+      status: 'EXECUTED',
+      createdAt: new Date(NOW.getTime() - day(20)).toISOString(),
+      outcome: { windowEnd: new Date(NOW.getTime() - day(1)).toISOString(), sustained: true, roasDelta: 0.01 },
+    };
+    const r = calculateDecisionAccuracy({
+      now: NOW,
+      decisions: [{ id: 'h', verdict: 'HOLD', ...base }, { id: 'w', verdict: 'WATCH', ...base }],
+    });
+    expect(r.coverage.scored).toBe(1);          // the HOLD
+    expect(r.coverage.notAPrediction).toBe(1);  // the WATCH
+  });
+
+  it('every verdict the engine emits has an explicit entry — no silent default', () => {
+    expect(Object.keys(SCORABLE_VERDICT).sort()).toEqual(
+      ['HOLD', 'KILL', 'REALLOCATE', 'REFRESH', 'SCALE', 'WATCH'],
+    );
+    for (const v of Object.keys(SCORABLE_VERDICT)) {
+      expect(SUCCESS_PREDICATES[v], `${v} has no success predicate`).toBeTypeOf('function');
+    }
   });
 });
 

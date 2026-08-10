@@ -82,6 +82,32 @@ export const SUCCESS_PREDICATES = Object.freeze({
   SCALE: (o) => (isNum(o.roasDelta) ? (o.roasDelta >= 0 && o.sustained === true) : null),
 
   // No material adverse move — stayed inside the tolerance band.
+  //
+  // HOLD IS A PREDICTION, WHICH IS WHY IT HAS A PREDICATE AT ALL. It asks for no
+  // intervention, but it does make a falsifiable claim: "this is stable, leave
+  // it." Reality can contradict that, so it is scorable. Contrast WATCH below,
+  // which claims nothing ("I am not deciding yet") and is therefore a category
+  // error to score. Executability is NOT the axis here — neither verdict has a
+  // Meta action. The axis is whether the engine asserted something checkable.
+  //
+  // Scored on |roasDelta| rather than direction: a HOLD is not "right" because
+  // things got better, only because nothing materially bad happened. A big move
+  // in EITHER direction means the call to leave it alone was wrong — an upside
+  // surprise is a missed SCALE.
+  //
+  // CURRENTLY UNREACHABLE, DELIBERATELY KEPT. No HOLD can enter this population
+  // today. The population is decisions carrying executedAt or dismissedAt
+  // (DecisionAccuracyService.ACTIONED), those timestamps come only from
+  // DecisionLifecycle's buttons, that component mounts only inside ActionBar,
+  // and ActionBar returns null when nextActionFor(verdict) is null — which it is
+  // for HOLD. The Overview mount is gated on ACTIONABLE_VERDICTS
+  // (KILL/REALLOCATE), so it does not reach HOLD either.
+  //
+  // So this predicate is correct and never runs. It is not dead code to delete:
+  // deleting it would assert that HOLD is not a prediction, which is false, and
+  // would have to be rebuilt the day intentional non-action becomes recordable.
+  // Whether a marketer should be able to say "I let this ride" is an open
+  // PRODUCT question (#355 discovery), not a code cleanup.
   HOLD: (o, cfg) => (isNum(o.roasDelta) ? Math.abs(o.roasDelta) <= cfg.holdTolerance : null),
 
   // Portfolio-level: the freed budget's new home outperformed its old one.
@@ -98,6 +124,13 @@ export const SUCCESS_PREDICATES = Object.freeze({
 });
 
 // Verdicts that are predictions at all (WATCH is not).
+//
+// HOLD true / WATCH false is the one line here that looks like an oversight and
+// is not. Both are non-executable; they differ on whether a claim was made.
+// HOLD predicts stability and can be wrong; WATCH says "I am not deciding yet"
+// and cannot be. MATURITY.NOT_A_PREDICTION exists for exactly the second case.
+// See SUCCESS_PREDICATES.HOLD above for why HOLD's entry is currently unreachable
+// and kept anyway.
 export const SCORABLE_VERDICT = Object.freeze({
   KILL: true, SCALE: true, HOLD: true, REALLOCATE: true, REFRESH: true, WATCH: false,
 });
