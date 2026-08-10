@@ -33,6 +33,11 @@ const CREATIVE_TRIGGERS = new Set([
  * Adapter — wraps runClaudeAgent and forces a strict JSON output
  * shape the orchestrator can consume programmatically.
  */
+// What goes into the prompt when the decision-memory read did not return a
+// list. Matches the '(none)' convention the other grounding slots already use,
+// and is deliberately NOT an empty array — see the RECENT DECISION MEMORY line.
+export const MEMORY_UNAVAILABLE = '(unavailable — decision memory could not be read)';
+
 async function analyzeWithClaude({ campaignState, decisionMemory, contextLock, grounding = {} }) {
   const role =
     'You are an Elite Performance Marketing Strategist. ' +
@@ -67,7 +72,13 @@ async function analyzeWithClaude({ campaignState, decisionMemory, contextLock, g
     'DETERMINISTIC LEVEL VERDICTS:',   JSON.stringify(levelVerdicts ?? '(none — derive from state)', null, 2),
     'DETERMINISTIC FATIGUE FORECAST:', JSON.stringify(fatigueForecast ?? '(none)', null, 2),
     'GUARDRAIL HITS:',                 JSON.stringify(guardrailHits ?? '(none)', null, 2),
-    'RECENT DECISION MEMORY:',         JSON.stringify(decisionMemory ?? [], null, 2),
+    // `?? []` was the bug: it turned "we could not read the memory source" into
+    // "there is no memory", and the role prompt above tells the model it
+    // diagnoses partly FROM recent decision memory — so an empty array reads as
+    // a fact about this account rather than a gap in ours. null now gets the
+    // same honest-sentinel treatment its three siblings already use. A real
+    // empty array still renders "[]", byte-identical to before.
+    'RECENT DECISION MEMORY:',         JSON.stringify(decisionMemory ?? MEMORY_UNAVAILABLE, null, 2),
     'BRAND CONTEXT LOCK:',             JSON.stringify(contextLock ?? {}, null, 2),
   ].join('\n');
 
@@ -153,9 +164,21 @@ export async function runOrchestration({ campaignId, workspaceId, actionId, user
       where:   { workspaceId },
       orderBy: { createdAt: 'desc' },
       take:    3,
+      // Decoration, not a precondition. Decision memory colours the diagnosis;
+      // it is not what is being diagnosed. A legacy-table read that fails must
+      // not take down the orchestration around it — before this, a rejection
+      // here failed the whole Promise.all and the Claude call never happened.
+      // null (not []) so the prompt can tell "no memory" from "no memory READ";
+      // see MEMORY_UNAVAILABLE above.
+    }).catch((err) => {
+      logger.warn({ err: err.message, workspaceId }, '[orchestrator] decision memory unavailable — continuing without it');
+      return null;
     }),
   ]);
 
+  // CampaignState is a different matter and still throws: it is the SUBJECT of
+  // the analysis, not context for it. There is nothing to diagnose without it,
+  // and inventing one would fabricate the campaign itself.
   if (!campaign) {
     throw new Error(`orchestrator: campaignState ${campaignId} not found`);
   }
