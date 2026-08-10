@@ -22,12 +22,11 @@ import {
   AGENDA_BAND, AGENDA_TYPE, LOOP_STAGE, LOOP_STAGE_ORDER, STAGE_STATE, LOOP_HEALTH,
   SEVERITY, SEVERITY_RANK, HUMAN_ACTION, STAGE_ACTIVE_DAYS, STAGE_STALE_DAYS, agendaItem,
 } from './agenticTypes.js';
-// The canonical answer to "does this verdict have a platform execution motion?".
-// Imported rather than restated — a second list of executable verdicts is exactly
-// the drift that BUYER_ACTIONABLE_ROOT_CAUSES was rebuilt to stop. verdictTypes is
-// a pure leaf (no DB, no clock, no agentic-loop import), so this neither closes an
-// import cycle nor touches the determinism contract at the top of this file.
-import { verdictToActionType } from '../verdict-engine/verdictTypes.js';
+// NOTE: verdictToActionType is deliberately NOT imported here any more. It answers
+// "does this verdict have a Meta ActionType?", which #351 used to pick the human
+// verb. That question turned out not to bear on the verb at all — see the
+// humanAction line in buyerAgenda. It remains canonical for the execution layer
+// that consumes it; it is simply not what decides what the buyer is asked to do.
 
 const DAY_MS = 86_400_000;
 
@@ -74,9 +73,11 @@ const VERDICT_SEVERITY = Object.freeze({
  * "something is off, a human should look", and it rides at HIGH severity. HOLD
  * means "nothing is off". Same lack of a button, opposite meaning.
  *
- * Executability IS the right test for the VERB, which is a third question and is
- * answered at the humanAction line below. Admitted-but-not-executable earns
- * REVIEW, not CONFIRM.
+ * The VERB is a third question, answered at the humanAction line below — and its
+ * answer turns out not to depend on executability either. #351 read this comment
+ * as "executable ⇒ CONFIRM"; #354 found that no agenda item's destination can
+ * execute anything, so every verdict earns REVIEW. Executability decides neither
+ * admission nor the verb. See the humanAction line for the full reasoning.
  *
  * Where a guardrail WATCH actually comes from, since the obvious answer is wrong:
  * NOT the HOLD → WATCH upgrade in verdictEngine. That branch reads
@@ -131,23 +132,34 @@ function buyerAgenda({ verdicts = [], fatiguePredictions = [], pacing = [], test
       title: `${d.verdict} ${label}`, rationale: d.rationale ?? d.diagnosis ?? '',
       severity: VERDICT_SEVERITY[d.verdict] ?? SEVERITY.MEDIUM,
       // THE THIRD QUESTION. Admission (above) asks whether the buyer is asked at
-      // all; this asks what they are asked to DO. agenticTypes defines CONFIRM as
-      // "confirm a proposed verdict/reallocation → execution motion" — so a verdict
-      // with no execution motion cannot honestly carry it. WATCH is that verdict:
-      // verdictToActionType is null, nextActionFor is null, the Campaigns panel
-      // draws no ActionBar and therefore no decision lifecycle. It was labelled
-      // Confirm anyway, and the button navigated to a campaign row with nothing on
-      // it to confirm. REVIEW is what the FATIGUE items already use for the same
-      // shape — forward-looking, attention-requiring, nothing to execute.
+      // all; this asks what they are asked to DO. And the honest answer for EVERY
+      // verdict is REVIEW, because of where the click actually goes.
       //
-      // DERIVED, not listed. The level argument only selects WHICH action
-      // (PAUSE_CAMPAIGN vs PAUSE_ADSET) and never changes null-ness, so it cannot
-      // flip the verb — it is passed because guessing a level would be a fact we
-      // were not given.
+      // agenticTypes defines CONFIRM as "confirm a proposed verdict/reallocation
+      // → execution motion". This item navigates to Campaigns (agendaItemRoute:
+      // `${campaigns}?entity=…`) and Campaigns cannot execute. What is there is
+      // ActionBar's "Copy decision" and "Open in {channel}", plus DecisionLifecycle's
+      // "I executed this" — a clipboard write, a link to Meta Ads Manager, and a
+      // self-report. The marketer executes IN META, by hand. Lumi never mutates.
+      //
+      // The execution half of the system is real but orphaned: POST /api/execute/meta
+      // → ExecutionRequest → executionQueue → executionWorker → Meta Graph API is
+      // mounted, guarded and worker-backed, and has ZERO production client callers.
+      // Nothing routes from a verdict to it. So a verdict's Meta ActionType is a
+      // fact about a path nobody walks, which makes it the wrong basis for a verb
+      // the human reads.
+      //
+      // That is why this is a CONSTANT rather than derived from verdictToActionType.
+      // #351 derived it, which was right for the question it asked then ("does this
+      // verdict have an action type?") and wrong for the one that matters ("can the
+      // destination act?"). A KILL and a WATCH ask the same thing of the human here:
+      // go look, then act in Meta yourself. Deriving the verb from executability
+      // encoded a capability the product does not have.
+      //
+      // If Lumi ever executes on confirm, this becomes derived again — but from the
+      // DESTINATION's capability, not from an enum's non-nullness.
       evidenceRef: d.id,
-      humanAction: verdictToActionType(d.verdict, d.entityLevel)
-        ? HUMAN_ACTION.CONFIRM
-        : HUMAN_ACTION.REVIEW,
+      humanAction: HUMAN_ACTION.REVIEW,
       entityId: d.entityId,
       impactScore: impactById.get(d.entityId) ?? null,
     }));
