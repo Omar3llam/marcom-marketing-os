@@ -1,6 +1,20 @@
+// ============================================================
+// AnalysisSummary — the legacy (CampaignState-fed) analysis table
+// ------------------------------------------------------------
+// SEVEN columns. There is no Impact column, and adding one back is a mistake:
+// this table's rows carry no measured impact. The number that used to sit here
+// was the row's verdict re-encoded (KILL→9, HOLD→6, SCALE→4, else 5) and printed
+// as "6/10" beside a progress bar — the presentation of a measurement, with
+// nothing behind it. The canonical impact score lives on the connector substrate
+// (AccountHealthService.computeImpactScore: verdict base × spend share + ROAS
+// adjustment, backed by MetricSnapshot) and renders in ConnectorCampaignsPanel
+// on this same page. The two used the same word, the same "/10", and disagreed
+// on five of six verdicts.
+//
+// The InlineBar import went with the column — it is still live in MetricsPanel.
+// ============================================================
 import { ChevronUp, ChevronDown, BarChart3 } from 'lucide-react';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
-import InlineBar       from '@/components/ui/InlineBar.jsx';
 import { cn }          from '@/lib/utils.js';
 import { fmtCurrency, roasColor, freqColor } from './campaignFormatters.js';
 
@@ -83,7 +97,6 @@ export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expa
                 <Th k="roas"     current={sortKey} dir={sortDir} onSort={setSort} className="text-right w-20">ROAS</Th>
                 <Th className="text-right w-20">Freq</Th>
                 <Th k="verdict" current={sortKey} dir={sortDir} onSort={setSort} className="text-center w-28">Decision</Th>
-                <Th k="impact"   current={sortKey} dir={sortDir} onSort={setSort} className="text-left w-36">Impact</Th>
                 <Th className="text-left flex-1">Reasoning</Th>
               </tr>
             </thead>
@@ -101,10 +114,6 @@ export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expa
                     <td className={cn('px-4 py-3 text-right font-mono text-sm tabular-nums', r.roas == null ? 'text-lumi-subtle' : roasColor(r.roas))}>{r.roas == null ? <Dash /> : `${r.roas.toFixed(2)}x`}</td>
                     <td className={cn('px-4 py-3 text-right font-mono text-sm tabular-nums', r.freq == null ? 'text-lumi-subtle' : freqColor(r.freq))}>{r.freq == null ? <Dash /> : r.freq.toFixed(2)}</td>
                     <td className="px-4 py-3 text-center"><VerdictPill verdict={r.verdict} /></td>
-                    <td className="px-4 py-3">
-                      <div className="font-mono text-xs text-lumi-text">{r.impact}/10</div>
-                      <div className="mt-1.5"><InlineBar value={r.impact} max={10} ariaLabel={`Impact ${r.impact} of 10`} /></div>
-                    </td>
                     <td className="px-4 py-3 text-xs text-lumi-muted leading-relaxed">
                       <div className={cn(!isOpen && 'line-clamp-2')}>{r.reasoning}</div>
                       {(r.reasoning?.length ?? 0) > 110 && (

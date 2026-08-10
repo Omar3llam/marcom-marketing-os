@@ -48,6 +48,19 @@ const GENERIC_REVENUE_GUIDANCE = 'connect a revenue source or confirm purchase t
 // Flatten campaigns → rows the table can sort + render.
 // Missing metrics stay null (not 0): the renderer shows "—" and the sort pushes
 // them last, so an absent metric never masquerades as a real zero.
+//
+// NO `impact` HERE, DELIBERATELY. This row used to carry
+// `KILL ? 9 : HOLD ? 6 : SCALE ? 4 : 5` and the table printed it as "6/10" beside
+// a progress bar — a number that traced to no row at all, only to the verdict it
+// was standing next to. The canonical impact (AccountHealthService.
+// computeImpactScore) is verdict base × spend share + a ROAS adjustment, backed
+// by MetricSnapshot; the two disagreed on five of six verdicts and ranked HOLD
+// second-most-urgent instead of fifth.
+//
+// They were never reconcilable: the legacy row is keyed by a CSV campaignId and
+// the canonical score by connector entityId, so no join exists to spend-weight
+// this row even if the base maps matched. A legacy row has no measured impact —
+// so it shows none, rather than a plausible-looking substitute.
 function flatten(campaigns) {
   const rows = [];
   for (const c of campaigns) {
@@ -61,9 +74,8 @@ function flatten(campaigns) {
       // Real channel from the feed's backing field; fall back only for the
       // static demo path (which carries no platform).
       const platform = (a.platform || a.action_plan?.kind || a.action_plan?.platform || 'META').toUpperCase();
-      const impact = verdict === 'KILL' ? 9 : verdict === 'HOLD' ? 6 : verdict === 'SCALE' ? 4 : 5;
       const currency = a.currency || a._rawDecision?.currency || 'USD';  // Extract currency from alert
-      rows.push({ id: a.action_id, campaign: c.campaign_id, platform, spend, ctr, roas, freq, verdict, impact, reasoning: reason, currency });
+      rows.push({ id: a.action_id, campaign: c.campaign_id, platform, spend, ctr, roas, freq, verdict, reasoning: reason, currency });
     }
   }
   return rows;
@@ -93,7 +105,7 @@ export function compareRows(a, b, key, dir) {
   return dir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
 }
 
-export const sortableCols = new Set(['campaign', 'spend', 'ctr', 'roas', 'verdict', 'impact']);
+export const sortableCols = new Set(['campaign', 'spend', 'ctr', 'roas', 'verdict']);
 
 // PURE: split no-revenue scored campaigns (roas null) by objective. A conversion
 // campaign that expects revenue but measures none is a fixable TRACKING GAP; an
