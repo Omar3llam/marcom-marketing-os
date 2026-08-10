@@ -25,6 +25,7 @@ import { ConnectorCampaignsPanel } from '@/features/campaigns/ConnectorCampaigns
 import { groupCampaigns, GROUPS } from '@/features/campaigns/campaignGrouping.js';
 import { fmtCurrency } from '@/components/campaign-analysis/campaignFormatters.js';
 import { generateCampaignReport, generateTextReport } from '@/lib/pdfExport.js';
+import { VERDICT_RANK } from '@/lib/verdictRank.js';
 import { buildPdfCampaigns } from '@/features/campaigns/pdfData.js';
 
 // The PDF is sourced from the LIVE connector substrate, so export is available
@@ -69,10 +70,10 @@ function flatten(campaigns) {
 }
 
 // Verdict sorts by action-urgency, NOT alphabetically: worst/most-actionable
-// first (KILL), good news last (SCALE). Covers all six engine verdicts
-// (verdict-engine/verdictTypes.js); an unknown verdict has no rank and sinks
-// like a null metric. Exported for the sort unit test.
-export const VERDICT_RANK = { KILL: 0, REFRESH: 1, REALLOCATE: 2, WATCH: 3, HOLD: 4, SCALE: 5 };
+// first (KILL), good news last (SCALE). The ranking itself now lives in
+// lib/verdictRank.js — the PDF export sorts by the same urgency and used to keep
+// its own drifted copy. An unknown verdict has no rank and sinks like a null
+// metric.
 
 // Null-last comparator: an unknown metric (or unranked verdict) is not a small
 // number, so it always sinks to the bottom regardless of sort direction.
