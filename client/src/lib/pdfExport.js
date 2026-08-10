@@ -25,6 +25,7 @@
 // imported inside generateCampaignReport so merely importing the pure helpers
 // (tested below) never pulls the PDF engine or the font into the bundle/test.
 // ============================================================
+import { VERDICT_RANK } from './verdictRank.js';
 
 // App design tokens (dark theme). Kept as hex; converted to rgb at draw time so
 // we never depend on a particular jsPDF hex-parsing behavior.
@@ -45,9 +46,12 @@ const COLORS = {
 
 const TONE_COLOR = { neutral: COLORS.muted, danger: COLORS.kill, warning: COLORS.amber, success: COLORS.scale };
 
-// Urgency rank mirrors CampaignsView.VERDICT_RANK; a gated/unknown verdict sinks.
-const VERDICT_RANK = { KILL: 0, REALLOCATE: 1, REFRESH: 2, WATCH: 3, HOLD: 4, SCALE: 5 };
-const byUrgency = (a, b) => (VERDICT_RANK[a.verdict] ?? 99) - (VERDICT_RANK[b.verdict] ?? 99);
+// Urgency rank IS CampaignsView's — imported, not mirrored. It used to be a
+// local copy under a comment claiming it mirrored the table, and the two had
+// drifted (REFRESH and REALLOCATE swapped), so the exported report ordered the
+// same rows differently from the screen they were exported from.
+// A gated/unknown verdict has no rank and sinks. Exported for the sort unit test.
+export const byUrgency = (a, b) => (VERDICT_RANK[a.verdict] ?? 99) - (VERDICT_RANK[b.verdict] ?? 99);
 
 // Hex → [r,g,b] so jsPDF setColor calls are unambiguous across versions.
 function rgb(hex) {

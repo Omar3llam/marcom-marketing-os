@@ -8,7 +8,11 @@
 // whole page (which needs the campaign-feed context + hooks).
 // ============================================================
 import { describe, it, expect } from 'vitest';
-import { compareRows, VERDICT_RANK, sortableCols } from './CampaignsView.jsx';
+import { compareRows, sortableCols } from './CampaignsView.jsx';
+// The ranking moved to a shared leaf so the PDF export can consume the SAME one
+// instead of its own drifted copy. Imported from there, not re-exported through
+// the view — a second import path is how the second copy started.
+import { VERDICT_RANK } from '@/lib/verdictRank.js';
 
 const rowsWith = (...verdicts) => verdicts.map((verdict, i) => ({ id: `r${i}`, verdict }));
 
