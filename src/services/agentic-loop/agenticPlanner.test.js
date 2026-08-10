@@ -72,7 +72,7 @@ describe('agenticPlanner — banding', () => {
   // HOLD now tests two things at once (source AND actionability) and would
   // wrongly read as "HOLD belongs in the band". The verdict-level boundary has
   // its own tests below.
-  it('renders connector + awareness verdicts as buyer CONFIRM items', () => {
+  it('renders connector + awareness verdicts as buyer items', () => {
     const connector = [
       { id: 'cv1', entityId: 'cmp2', entityLevel: 'CAMPAIGN', verdict: 'REFRESH', rationale: 'Creative fatigue detected', status: 'PROPOSED' },
       { id: 'cv2', entityId: 'cmp3', entityLevel: 'CAMPAIGN', verdict: 'WATCH', rationale: 'Awareness campaign (no revenue measured): frequency rising toward saturation — monitor.', status: 'PROPOSED' },
@@ -118,25 +118,99 @@ describe('agenticPlanner — HOLD is not a buyer decision', () => {
 });
 
 describe('agenticPlanner — every attention verdict stays admitted', () => {
-  // Executability is the WRONG test: WATCH has no Meta action either, and is
-  // deliberately kept — it means "something is off, look at it", which is what a
-  // guardrail hit upgrades a HOLD into. The test is attention, not a button.
+  // Executability is the WRONG test for ADMISSION: WATCH has no Meta action
+  // either, and is deliberately kept — it means "something is off, look at it".
+  // The admission test is attention, not a button.
+  //
+  // It IS the right test for the VERB, which is why humanAction is per-row rather
+  // than a constant of the table. It used to be shared, so WATCH's CONFIRM was
+  // never a choice anyone made about WATCH — it was a column that happened to be
+  // the same for five verdicts, and it stayed the same when it stopped being true.
   it.each([
-    ['KILL', 'HIGH'], ['WATCH', 'HIGH'], ['REALLOCATE', 'MEDIUM'],
-    ['REFRESH', 'MEDIUM'], ['SCALE', 'MEDIUM'],
-  ])('%s reaches the buyer band as a CONFIRM item at %s severity', (verdict, severity) => {
+    ['KILL',       'HIGH',   HUMAN_ACTION.CONFIRM],
+    ['WATCH',      'HIGH',   HUMAN_ACTION.REVIEW],
+    ['REALLOCATE', 'MEDIUM', HUMAN_ACTION.CONFIRM],
+    ['REFRESH',    'MEDIUM', HUMAN_ACTION.CONFIRM],
+    ['SCALE',      'MEDIUM', HUMAN_ACTION.CONFIRM],
+  ])('%s reaches the buyer band at %s severity asking the human to %s', (verdict, severity, humanAction) => {
     const res = planAgenda({
       verdicts: [{ id: 'v1', entityId: 'cmp1', entityLevel: 'CAMPAIGN', verdict, rationale: 'r', status: 'PROPOSED' }],
       now,
     });
     expect(res.buyerBand).toHaveLength(1);
     expect(res.buyerBand[0]).toMatchObject({
-      type: AGENDA_TYPE.VERDICT, severity, humanAction: HUMAN_ACTION.CONFIRM, entityId: 'cmp1',
+      type: AGENDA_TYPE.VERDICT, severity, humanAction, entityId: 'cmp1',
     });
   });
 
   it('excludes HOLD and nothing else', () => {
     expect(NON_BUYER_VERDICTS).toEqual(['HOLD']);
+  });
+});
+
+// ── The verb-level boundary ─────────────────────────────────────
+// Admission and the verb are different questions. HOLD fails the first (#349);
+// WATCH passes it and fails the second. Conflating them is how WATCH ended up
+// labelled "Confirm" over a campaign row that draws no ActionBar — the buyer was
+// told to confirm something with nothing on it to confirm.
+describe('agenticPlanner — WATCH asks to be reviewed, not confirmed', () => {
+  const watch = {
+    id: 'w1', entityId: 'cmp7', entityLevel: 'CAMPAIGN', verdict: 'WATCH',
+    rationale: 'Traffic is not reaching the landing page (POST_CLICK)', status: 'PROPOSED',
+  };
+
+  // Three assertions in one, because the failure mode this guards against is
+  // "fixed the verb by removing the row". The verb must change and the presence
+  // must not.
+  it('stays in the band, at HIGH severity, carrying REVIEW', () => {
+    const res = planAgenda({ verdicts: [watch], now });
+    expect(res.buyerBand).toHaveLength(1);
+    expect(res.buyerBand[0]).toMatchObject({
+      evidenceRef: 'w1', severity: 'HIGH', humanAction: HUMAN_ACTION.REVIEW,
+    });
+  });
+
+  it('still counts toward "N to decide" — attention is a decision to look', () => {
+    const res = planAgenda({ verdicts: [watch], now });
+    expect(res.summary).toMatch(/1 to decide/);
+  });
+
+  // A guardrail rule the operator configured without naming a verdict emits WATCH
+  // (GuardrailRule.emitVerdict defaults to WATCH), and reaches this band through
+  // the `guardrail:` rootCause clause rather than the connector one. It must be
+  // admitted for the same reason every other WATCH is, and asked for with the same
+  // verb: a policy hit is something to look at, not something to execute.
+  it('admits a guardrail-authored WATCH with the same verb', () => {
+    const res = planAgenda({
+      verdicts: [{
+        id: 'g1', entityId: 'as5', entityLevel: 'ADSET', verdict: 'WATCH',
+        rootCause: 'guardrail:ROAS floor', rationale: 'ROAS floor: roas < 1 for 1 day(s)',
+        status: 'PROPOSED',
+      }],
+      now,
+    });
+    expect(res.buyerBand).toHaveLength(1);
+    expect(res.buyerBand[0]).toMatchObject({
+      evidenceRef: 'g1', severity: 'HIGH', humanAction: HUMAN_ACTION.REVIEW, entityId: 'as5',
+    });
+  });
+
+  // The verb is derived from verdictToActionType, which returns a DIFFERENT action
+  // per level (PAUSE_CAMPAIGN vs PAUSE_ADSET) but never a different null-ness. So
+  // an ADSET-level row must answer exactly as its CAMPAIGN-level twin does —
+  // otherwise the same finding would ask for two different things depending on how
+  // deep in the tree it landed.
+  it.each([['CAMPAIGN'], ['ADSET'], ['AD']])('answers the same at %s level', (entityLevel) => {
+    const res = planAgenda({
+      verdicts: [
+        { ...watch, entityLevel },
+        { id: 'k1', entityId: 'cmp8', entityLevel, verdict: 'KILL', rationale: 'r', status: 'PROPOSED' },
+      ],
+      now,
+    });
+    const byRef = Object.fromEntries(res.buyerBand.map((i) => [i.evidenceRef, i.humanAction]));
+    expect(byRef.w1).toBe(HUMAN_ACTION.REVIEW);
+    expect(byRef.k1).toBe(HUMAN_ACTION.CONFIRM);
   });
 });
 
