@@ -10,7 +10,7 @@
 // ============================================================
 import { toMinor } from '../../../lib/money.js';
 import { num, accountRollup } from './fieldUtils.js';
-import { CHANNEL, DATA_SOURCE } from '../connectorTypes.js';
+import { CHANNEL, DATA_SOURCE, MEASUREMENT_WINDOW } from '../connectorTypes.js';
 
 /** Google cost micros → integer minor units, via the currency's minor digits. */
 export function microsToMinor(micros, currency) {
@@ -35,6 +35,17 @@ export function googleNormalize({ accountExternalId, accountName = null, currenc
       source: DATA_SOURCE.GOOGLE,
       name: campaign.name || 'Unnamed Campaign',
       date: d,
+      // Window provenance (Phase C). The Google client resolves a date_preset to
+      // a range and asks GAQL for the whole span at once, so like Meta this is a
+      // trailing-window aggregate, not a daily observation.
+      //
+      // windowStart/windowEnd stay null: the GAQL response rows carry no
+      // date range of their own (unlike Meta's date_start/date_stop), and
+      // reconstructing one from the requested preset here would be OUR claim
+      // about the period rather than the platform's. Null is unreported.
+      measurementWindow: MEASUREMENT_WINDOW.ROLLING_WINDOW,
+      windowStart: null,
+      windowEnd: null,
       currency,
       spendMinor: microsToMinor(m.cost_micros, currency),
       revenueMinor: toMinor(num(m.conversions_value), currency), // claimed value, as-is
@@ -48,6 +59,7 @@ export function googleNormalize({ accountExternalId, accountName = null, currenc
   // No rows → no rollup → land nothing, never a phantom account summed from zero.
   const account = accountRollup(campaigns, {
     accountExternalId, accountName, channel: CHANNEL.GOOGLE, source: DATA_SOURCE.GOOGLE, date: d, currency,
+    measurementWindow: MEASUREMENT_WINDOW.ROLLING_WINDOW,
   });
   return account ? [account, ...campaigns] : campaigns;
 }

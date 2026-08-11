@@ -44,12 +44,14 @@ const batch = (campaignOver = {}) => [
     entityLevel: 'ACCOUNT', externalId: 'act_9', name: 'Acme', source: 'META',
     date: DATE, spendMinor: 5000, revenueMinor: 0, impressions: 100, clicks: 5,
     conversions: 0, frequency: 1.2, currency: 'USD',
+    measurementWindow: 'ROLLING_WINDOW', // Phase C: every row states its period
   },
   {
     entityLevel: 'CAMPAIGN', externalId: 'c1', parentExternalId: 'act_9', name: 'Leads Q3',
     objective: 'OUTCOME_LEADS', source: 'META',
     date: DATE, spendMinor: 10000, revenueMinor: 0, impressions: 1000, clicks: 50,
     conversions: 8, frequency: 1.5, currency: 'USD',
+    measurementWindow: 'ROLLING_WINDOW',
     ...campaignOver,
   },
 ];

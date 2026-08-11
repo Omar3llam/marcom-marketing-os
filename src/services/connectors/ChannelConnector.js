@@ -20,7 +20,12 @@
 // @property {string}  channel           CHANNEL enum
 // @property {string}  source            DATA_SOURCE enum (platform-claimed or actual)
 // @property {string}  name              human label for the entity
-// @property {Date}    date              the snapshot date (day grain)
+// @property {Date}    date              when this row was SYNCED (not what it measures)
+// @property {string}  measurementWindow MEASUREMENT_WINDOW — the period the metrics
+//                                       cover. REQUIRED: only the connector knows,
+//                                       and nothing downstream can recover it.
+// @property {Date?}   windowStart       the period the platform itself reported,
+// @property {Date?}   windowEnd         null when it reported none (never inferred)
 // @property {string}  currency          ISO 4217
 // @property {number}  spendMinor        integer minor units
 // @property {number}  revenueMinor      integer minor units (platform-claimed, as-is)
@@ -29,7 +34,7 @@
 // @property {number}  conversions       land as-is (Google's can be fractional); never "corrected"
 // @property {number?} frequency         null where the platform has no equivalent
 // ============================================================
-import { CHANNEL, DATA_SOURCE } from './connectorTypes.js';
+import { CHANNEL, DATA_SOURCE, MEASUREMENT_WINDOW } from './connectorTypes.js';
 
 export class ChannelConnector {
   /** @type {string} */ channel = null;
@@ -69,6 +74,18 @@ export function assertNormalized(rows) {
     }
     for (const k of FORBIDDEN) {
       if (k in r) throw new Error(`connector emitted a forbidden derived field "${k}" — connectors land rows, engines reason`);
+    }
+    // Window provenance (Phase C). Checked HERE as well as in snapshotSink so a
+    // connector that forgets it fails at its own boundary with its own name in
+    // the message, rather than several layers later inside the sink. The two
+    // guards are deliberate duplication: this one is about authoring a
+    // connector, that one is about nothing reaching the table without a period.
+    // (Actual sources take the other path — assertActuals → actualsSink — and
+    // are stamped LEGACY_UNKNOWN explicitly there.)
+    if (!Object.values(MEASUREMENT_WINDOW).includes(r.measurementWindow)) {
+      throw new Error(
+        `NormalizedSnapshot.measurementWindow must be one of ${Object.values(MEASUREMENT_WINDOW).join('/')}: ${r.measurementWindow}`,
+      );
     }
   }
   return rows;

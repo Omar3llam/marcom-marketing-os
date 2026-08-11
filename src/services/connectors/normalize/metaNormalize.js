@@ -9,7 +9,7 @@
 // ============================================================
 import { toMinor } from '../../../lib/money.js';
 import { num, accountRollup } from './fieldUtils.js';
-import { CHANNEL, DATA_SOURCE } from '../connectorTypes.js';
+import { CHANNEL, DATA_SOURCE, MEASUREMENT_WINDOW } from '../connectorTypes.js';
 import { logger } from '../../../utils/logger.js';
 
 // ── The funnel, extracted rather than discarded ──────────────────────────────
@@ -123,6 +123,23 @@ function baseMeasures(r, currency, d) {
     channel: CHANNEL.META,
     source: DATA_SOURCE.META,
     date: d,
+    // ── Window provenance (Phase C) ──────────────────────────────────────────
+    // Meta serves ONE aggregate row per entity for the requested `date_preset`
+    // (no time_increment), so this is a trailing-window aggregate — never the
+    // daily observation `granularity: 'DAILY'` has always claimed.
+    //
+    // The period is Meta's OWN statement of what it measured, not our preset:
+    // date_start/date_stop have been in CAMPAIGN_INSIGHT_FIELDS all along and
+    // were dropped here until now. Landing them keeps `last_90d` and `maximum`
+    // rows distinguishable without an enum value per preset — and covers the
+    // arbitrary presets the sync route still accepts from a client.
+    //
+    // null when Meta omitted them (a merged roster-only row) — unreported, never
+    // a range reconstructed from `d`, which is the SYNC time and would silently
+    // describe a 90-day row as one day long.
+    measurementWindow: MEASUREMENT_WINDOW.ROLLING_WINDOW,
+    windowStart: toDate(r.date_start),
+    windowEnd: toDate(r.date_stop),
     currency,
     spendMinor: toMinor(num(r.spend), currency),
     revenueMinor: toMinor(revenueMajor, currency),
@@ -331,6 +348,7 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
   // account row summed from zero rows. See accountRollup's null contract.
   const account = accountRollup(campaigns, {
     accountExternalId, accountName, channel: CHANNEL.META, source: DATA_SOURCE.META, date: d, currency,
+    measurementWindow: MEASUREMENT_WINDOW.ROLLING_WINDOW,
   });
   // The rollup is roster-only ONLY when no real campaign delivered — i.e. it would
   // be all zeros. With ≥1 real campaign the rollup reflects real spend (roster

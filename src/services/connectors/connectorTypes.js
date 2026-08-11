@@ -24,6 +24,24 @@ export const ENTITY_LEVEL = Object.freeze({ ACCOUNT: 'ACCOUNT', CAMPAIGN: 'CAMPA
 // Parent level for each level — drives the entity-graph upsert order in the sink.
 export const PARENT_LEVEL = Object.freeze({ CAMPAIGN: 'ACCOUNT', ADSET: 'CAMPAIGN', AD: 'ADSET', CREATIVE: 'AD' });
 
+// What period a snapshot's metrics cover (Prisma enum MeasurementWindow).
+//
+// Distinct from GRANULARITY, which every writer hardcodes to DAILY and which
+// therefore proves nothing — including on rows holding 90 days or Meta's full
+// retention. A normalizer DECLARES this per row and snapshotSink REFUSES a row
+// without it, so no snapshot can inherit a window nobody established.
+//
+// ROLLING_WINDOW is what every live sync produces today. CUMULATIVE_30D is the
+// canonical verdict window (verdict-engine/metricWindow.js) and arrives in
+// Phase F; DAILY arrives in Phase E. A ROLLING_WINDOW row is never promoted to
+// either because its dates happen to look right.
+export const MEASUREMENT_WINDOW = Object.freeze({
+  LEGACY_UNKNOWN: 'LEGACY_UNKNOWN',
+  ROLLING_WINDOW: 'ROLLING_WINDOW',
+  DAILY:          'DAILY',
+  CUMULATIVE_30D: 'CUMULATIVE_30D',
+});
+
 export const CONNECTOR_STALE_HOURS = Number(process.env.CONNECTOR_STALE_HOURS || 24);
 
 /**

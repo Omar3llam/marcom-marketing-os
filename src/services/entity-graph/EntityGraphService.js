@@ -21,7 +21,11 @@ import { effectiveByEntity, toCampaignRow, toAdSetRow, toAdRow } from './entityG
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WINDOW_DAYS = Number(process.env.ENTITY_SNAPSHOT_WINDOW_DAYS || 90);
 
-const METRIC_SELECT = {
+// Exported for the Phase-C provenance test, which asserts that this reader does
+// NOT yet select `measurementWindow` — resolution by window is Phase D, and the
+// test is what makes the boundary between the two phases visible rather than
+// implied. Export only; the object and its use are unchanged.
+export const METRIC_SELECT = {
   entityId: true, date: true, source: true, spendMinor: true, roas: true, ctr: true, frequency: true, currency: true,
   reach: true, // unique people reached — feeds the fatigue exhaustion readout (null when unreported)
   conversions: true, // needed for the account-level Blended CPA aggregate (Σspend / Σconversions)

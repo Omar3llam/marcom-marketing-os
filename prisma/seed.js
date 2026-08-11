@@ -118,6 +118,11 @@ async function snapshot({ workspaceId, entityId, entityLevel, currency, channel,
     date: DATE,
     source: channel === 'SNAP' ? 'SNAP' : channel === 'LINKEDIN' ? 'LINKEDIN' : 'META',
     granularity: 'DAILY',
+    // Seed rows are invented demo data with no real measurement period, so they
+    // say so. Not ROLLING_WINDOW: that would claim these numbers were measured
+    // over some span, and Phase D must never resolve a canonical window out of
+    // fixtures.
+    measurementWindow: 'LEGACY_UNKNOWN',
     spendMinor,
     revenueMinor,
     cpaMinor,

@@ -24,8 +24,18 @@ export function pick(row, aliases) {
  * row must trace to real data, never be manufactured from nothing. Callers land
  * the rollup only when it exists.
  */
-export function accountRollup(rows, { accountExternalId, accountName, channel, source, date, currency }) {
+export function accountRollup(rows, { accountExternalId, accountName, channel, source, date, currency, measurementWindow = null }) {
   if (!rows.length) return null;
+  // The rollup covers exactly the period its children cover — they all came
+  // from one request. Inherited rather than re-derived, and REQUIRED: an account
+  // row that could not say what it measures has no business being written, and
+  // snapshotSink will reject it downstream anyway.
+  if (!measurementWindow) {
+    throw new Error('accountRollup: measurementWindow is required — an account row must state the period it covers');
+  }
+  // Children of one request share a window; take the first that reported one.
+  // Never widened to min/max: that would describe a range no row measured.
+  const withWindow = rows.find((r) => r.windowStart != null || r.windowEnd != null) || {};
   const acc = { spendMinor: 0, revenueMinor: 0, impressions: 0, clicks: 0, conversions: 0 };
   for (const r of rows) {
     acc.spendMinor += r.spendMinor;
@@ -43,6 +53,9 @@ export function accountRollup(rows, { accountExternalId, accountName, channel, s
     name: accountName || accountExternalId,
     date,
     currency,
+    measurementWindow,
+    windowStart: withWindow.windowStart ?? null,
+    windowEnd: withWindow.windowEnd ?? null,
     frequency: null,
     ...acc,
   };

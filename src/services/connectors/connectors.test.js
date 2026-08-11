@@ -161,7 +161,10 @@ describe('snapshotSink ROAS honesty — no fabricated 0.00x from unmeasured reve
   const row = (over = {}) => ({
     externalId: 'c1', entityLevel: 'CAMPAIGN', channel: 'META', source: 'META', name: 'C',
     date: DATE, currency: 'USD', spendMinor: 10000, revenueMinor: 0,
-    impressions: 100, clicks: 10, conversions: 0, frequency: null, ...over,
+    impressions: 100, clicks: 10, conversions: 0, frequency: null,
+    // Phase C: a normalized row must state the period it measures. ROLLING_WINDOW
+    // is what a live Meta sync produces, so it is what these fixtures represent.
+    measurementWindow: 'ROLLING_WINDOW', ...over,
   });
 
   it('spend > 0 but revenue 0 (unmeasured) → roas null, NOT a fabricated 0', () => {
