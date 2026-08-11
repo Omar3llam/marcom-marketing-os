@@ -13,6 +13,7 @@
 // never with a fabricated velocity.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { forecastFatigue } from '../fatigue-forecaster/fatigueForecaster.js';
 import { buildEntitySeries } from '../fatigue-forecaster/FatigueSweepService.js';
 
@@ -76,6 +77,11 @@ export async function computeFatigueForecast(workspaceId, campaigns = []) {
       workspaceId,
       entityId:    { in: entityIds },
       granularity: 'DAILY',
+      // OPERATIONAL ONLY (Phase G). `granularity` is hardcoded 'DAILY' by every
+      // writer and so proves nothing about the period — a canonical 30-day row
+      // carries it too, and would enter this series as an extra observation at an
+      // existing date with a window-level frequency.
+      measurementWindow: OPERATIONAL_WINDOW_FILTER,
       date:        { gte: since },
       frequency:   { not: null },
       impressions: { gt: 0 },

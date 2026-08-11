@@ -13,6 +13,7 @@
 // AND the patterns leaned on are returned as `memoryBasis` for traceability.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger } from '../../utils/logger.js';
 import { projectScenario } from './scenarioEngine.js';
 import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
@@ -124,7 +125,12 @@ export async function gatherLeadingSignals(workspaceId, { entityIds = [], now } 
 
   const since = new Date((now ? new Date(now).getTime() : Date.now()) - FATIGUE_LOOKBACK_DAYS * 86_400_000);
   const snapshots = await prisma.metricSnapshot.findMany({
-    where:   { workspaceId, entityId: { in: entityIds }, date: { gte: since } },
+    // OPERATIONAL ONLY (Phase G). This series needs ≥2 points to fit a fatigue
+    // velocity. Phase F guaranteed a second point at the SAME instant with a
+    // different frequency, so entities that were correctly skipped for having one
+    // observation began producing breach forecasts from a slope between two
+    // readings of different periods.
+    where:   { workspaceId, entityId: { in: entityIds }, date: { gte: since }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
     orderBy: { date: 'asc' },
     select:  { entityId: true, date: true, frequency: true, ctr: true },
   }).catch(() => []);

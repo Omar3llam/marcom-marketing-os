@@ -9,6 +9,7 @@
 //                          → computeUnitEconomics (LTV / payback / band).
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger } from '../../utils/logger.js';
 import { computeUnitEconomics } from './unitEconomicsEngine.js';
 import { getBlendedTruth, latestPerStream } from '../blended-truth/BlendedTruthService.js';
@@ -120,7 +121,9 @@ export async function getCurrentCac(workspaceId) {
   // entityId + date are selected so the reduction can identify a stream and its
   // newest row; the sum below then runs once per entity, not once per sync.
   const snaps = await prisma.metricSnapshot.findMany({
-    where:  { workspaceId, entityId: { in: channels.map((c) => c.channelId) } },
+    // OPERATIONAL ONLY (Phase G) — same reason as AttributionService, whose
+    // aggregation this must keep matching.
+    where:  { workspaceId, entityId: { in: channels.map((c) => c.channelId) }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
     select: { entityId: true, date: true, conversions: true, source: true },
   }).catch(() => []);
   let totalConversions = 0;

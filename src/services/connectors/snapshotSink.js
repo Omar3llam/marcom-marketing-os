@@ -248,10 +248,24 @@ async function resolveKnownParents(ops) {
 const DAY_MS = 86_400_000;
 
 // A snapshot's identity for the same-day guard: one positive row per entity per
-// UTC calendar day is enough to protect that entity's day from a later zero.
-export function snapshotDayKey({ entityId, date }) {
+// UTC calendar day PER MEASUREMENT WINDOW.
+//
+// The window belongs in this key (Phase G). The guard exists to stop a bad or
+// empty FETCH from overwriting real data for the same measurement — and two rows
+// in different windows are not the same measurement, they are two answers to two
+// different questions that a single sync run asks at the same instant.
+//
+// Without it, the commonest possible account shape loses its canonical row: a
+// campaign that spent nothing in the last 30 days but has lifetime spend lands a
+// CUMULATIVE_30D row with spend 0 beside an operational row with spend > 0, and
+// the guard would read the operational positive as proof that the canonical zero
+// is a bad fetch. It isn't — a real 0 over the canonical window is the measured
+// truth, and discarding it is the "looks whole, isn't" failure with the sign
+// flipped: the resolver would report NO_CANONICAL_WINDOW for exactly the
+// campaigns most likely to deserve a KILL.
+export function snapshotDayKey({ entityId, date, measurementWindow }) {
   const d = date instanceof Date ? date : new Date(date);
-  return `${entityId}|${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
+  return `${entityId}|${measurementWindow}|${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
 }
 
 /**
@@ -289,8 +303,13 @@ async function guardZeroShadows(workspaceId, rows) {
         entityId: { in: zeros.map((r) => r.entityId) },
         date: { gte: dayStart, lt: dayEnd },
         spendMinor: { gt: 0 },
+        // Only the windows the incoming zeros actually belong to. A positive row
+        // in a DIFFERENT window is not evidence about this one (see
+        // snapshotDayKey), and pulling it would put a key in the set that can
+        // never legitimately match anyway.
+        measurementWindow: { in: [...new Set(zeros.map((r) => r.measurementWindow))] },
       },
-      select: { entityId: true, date: true },
+      select: { entityId: true, date: true, measurementWindow: true },
     });
     const positiveDayKeys = new Set(existing.map(snapshotDayKey));
     const guarded = dropShadowingZeros(rows, positiveDayKeys);

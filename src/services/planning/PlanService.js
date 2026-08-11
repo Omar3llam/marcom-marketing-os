@@ -14,6 +14,7 @@
 // is a range + assumptions; `memoryBasis` records what the plan leaned on.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger } from '../../utils/logger.js';
 import { previewAllocation, commitAllocation } from '../allocation-engine/AllocationService.js';
 import { GOAL_TYPE } from '../allocation-engine/allocationEngine.js';
@@ -56,7 +57,11 @@ export function planToAllocationInput(plan) {
 async function buildActualsSeries(workspaceId, metric, sinceDays = ACTUALS_LOOKBACK) {
   const since = new Date(Date.now() - sinceDays * 86_400_000);
   const rows = await prisma.metricSnapshot.findMany({
-    where:   { workspaceId, date: { gte: since } },
+    // OPERATIONAL ONLY (Phase G). This SUMS platform rows into a per-day bucket,
+    // and Phase F's canonical row falls in the same bucket as the operational one
+    // — so goal actuals double-counted spend and revenue on every sync date. Same
+    // class as the over-count PR #357 removed, reached by a different route.
+    where:   { workspaceId, date: { gte: since }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
     select:  { date: true, spendMinor: true, revenueMinor: true, conversions: true, source: true },
     orderBy: { date: 'asc' },
   }).catch(() => []);
@@ -92,7 +97,10 @@ async function projectGoalLanding(workspaceId, goal, { now } = {}) {
 
   // Leading signals across the entities that carry spend.
   const entityRows = await prisma.metricSnapshot.findMany({
-    where:   { workspaceId },
+    // OPERATIONAL ONLY (Phase G). This one picks entity IDS, so a canonical row
+    // changes no value today — but `take: 50` is applied after `distinct`, and a
+    // reader stating its population is the contract here, not the arithmetic.
+    where:   { workspaceId, measurementWindow: OPERATIONAL_WINDOW_FILTER },
     select:  { entityId: true },
     distinct: ['entityId'],
     take:    50,

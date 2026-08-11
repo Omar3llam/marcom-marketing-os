@@ -12,6 +12,7 @@
 // ============================================================
 import { randomUUID } from 'crypto';
 import { prisma }      from '../../lib/prisma.js';
+import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger }      from '../../utils/logger.js';
 import { extractPatterns } from './patternEngine.js';
 import { PATTERN_STATUS }   from './patternTypes.js';
@@ -77,7 +78,9 @@ export async function getBriefing(workspaceId, { now = new Date(), lookbackDays 
     // took getLoopState down in #209). buildPatternInputs projects exactly these
     // six fields — asking for more was never useful, only fragile.
     prisma.metricSnapshot.findMany({
-      where:  { workspaceId, date: { gte: since } },
+      // OPERATIONAL ONLY (Phase G): pattern extraction reads these as a sequence
+      // of observations per entity, so a canonical row is an extra observation.
+      where:  { workspaceId, date: { gte: since }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
       select: { entityId: true, date: true, frequency: true, roas: true, ctr: true, spendMinor: true },
     }),
     prisma.testExperiment.findMany({ where: { workspaceId } }),
