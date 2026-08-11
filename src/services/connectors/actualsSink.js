@@ -14,7 +14,7 @@
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { CHANNEL, DATA_SOURCE, ENTITY_LEVEL } from './connectorTypes.js';
+import { CHANNEL, DATA_SOURCE, ENTITY_LEVEL, MEASUREMENT_WINDOW } from './connectorTypes.js';
 
 const round = (n) => Math.round(n);
 const lc = (v) => String(v ?? '').toLowerCase().trim();
@@ -72,6 +72,17 @@ export function toActualSnapshotRow(workspaceId, attachment, descriptor) {
     date: descriptor.date instanceof Date ? descriptor.date : new Date(descriptor.date),
     source: descriptor.source,
     granularity: 'DAILY',
+    // LEGACY_UNKNOWN, and not because this row is old — because an actual has no
+    // measurement period we can establish. A GA4 pull is bounded by the request
+    // range the connector chose, and that range is not carried on the descriptor
+    // and is not persisted anywhere. Claiming ROLLING_WINDOW would assert a
+    // period; claiming CUMULATIVE_30D would assert the canonical one. Both would
+    // be inventions, and this row is the numerator of a ROAS — the number
+    // metricWindow.sameWindow() exists to stop being divided by a mismatched
+    // denominator. Phase F is where an actual gains a real window.
+    measurementWindow: MEASUREMENT_WINDOW.LEGACY_UNKNOWN,
+    windowStart: null,
+    windowEnd: null,
     spendMinor: 0,
     revenueMinor: round(descriptor.revenueMinor || 0),
     cpaMinor: null,

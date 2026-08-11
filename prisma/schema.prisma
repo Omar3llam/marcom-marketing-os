@@ -115,11 +115,58 @@ enum DataSource {
 }
 
 // Time grain of a MetricSnapshot row.
+//
+// WARNING — this enum does NOT describe what a row measures. Every writer
+// (snapshotSink, actualsSink, RevenueCsvService, seed) hardcodes DAILY, and has
+// done so on rows that are 90-day and lifetime aggregates. Reading DAILY here as
+// proof of a daily observation is the exact mistake `measurementWindow` exists
+// to make impossible. See MeasurementWindow below.
 enum Granularity {
   HOURLY
   DAILY
   WEEKLY
   MONTHLY
+}
+
+// What period a MetricSnapshot row's metrics actually cover.
+//
+// `granularity` above could not answer this and never could: it is hardcoded
+// DAILY by every writer. `date` cannot answer it either — it is the SYNC
+// timestamp, not a measurement date — so a row synced on 2026-08-02 might hold
+// 90 days of delivery, or Meta's full ~37-month retention, depending only on
+// whether a cron tick or a human's Sync click wrote it last.
+//
+// Recording, never inferring. A row says what it is because its producer knew;
+// nothing here is derived from `date`, `granularity`, or sync cadence.
+enum MeasurementWindow {
+  // Provenance not established. Two distinct cases, deliberately one value —
+  // both mean "unusable for canonical-window resolution", which is all any
+  // reader needs to know:
+  //   • rows written before this column existed, whose request preset was never
+  //     persisted and cannot be recovered;
+  //   • rows from a source that carries no measurement period at all (a revenue
+  //     CSV upload, a GA4 actual) — see actualsSink / RevenueCsvService.
+  LEGACY_UNKNOWN
+
+  // A trailing-window aggregate over some arbitrary period — what every live
+  // Meta and Google sync produces today (`last_90d` from cron, `maximum` from
+  // the Sync button, or any preset a client passes). windowStart/windowEnd carry
+  // the period Meta itself reported, so 90 days and 37 months stay distinct
+  // without an enum value per preset.
+  //
+  // NOT interchangeable with CUMULATIVE_30D. A ROLLING_WINDOW row must never be
+  // promoted to canonical because its dates happen to span ~30 days.
+  ROLLING_WINDOW
+
+  // Exactly one day of delivery — a true daily observation (Phase E,
+  // time_increment=1). Additive across days: Σ is exact.
+  DAILY
+
+  // The canonical verdict window (Phase F). Cumulative over the trailing
+  // CANONICAL_VERDICT_WINDOW_DAYS defined in verdict-engine/metricWindow.js,
+  // which stays the single source of what "canonical" means — this enum records
+  // only that a row claims to be it.
+  CUMULATIVE_30D
 }
 
 // Marketing decision verdict (the Lumi call on an entity).
@@ -1191,9 +1238,26 @@ model MetricSnapshot {
   workspaceId String      @db.Uuid
   entityId    String      @db.Uuid
   entityLevel EntityLevel
+  // The SYNC timestamp — when we wrote this row, NOT the period it measures.
+  // Phase C deliberately does not change that meaning; measurementWindow is how
+  // a reader learns what the metrics below actually cover.
   date        DateTime
   source      DataSource
   granularity Granularity @default(DAILY)
+
+  // ── Window provenance (Phase C) ────────────────────────────────────────────
+  // Required, and deliberately WITHOUT a Prisma default: a writer that forgets
+  // it must fail loudly rather than inherit a window it never established.
+  // Existing rows were set to LEGACY_UNKNOWN once, by the migration, and are
+  // never guessed at again.
+  measurementWindow MeasurementWindow
+  // The period the row's producer reported, when it reported one. For Meta this
+  // is `date_start`/`date_stop` — already requested in CAMPAIGN_INSIGHT_FIELDS
+  // and, until now, dropped at normalize. Nullable because a source may state a
+  // grain without a period (and every pre-Phase-C row has none): null means
+  // "unreported", never a fabricated range.
+  windowStart DateTime?
+  windowEnd   DateTime?
 
   // Money — integer minor units (e.g. piastres, halalas, fils, cents).
   spendMinor   Int  @default(0)

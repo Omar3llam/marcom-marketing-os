@@ -20,7 +20,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { toMinor } from '../../lib/money.js';
-import { DATA_SOURCE, ENTITY_LEVEL } from '../connectors/connectorTypes.js';
+import { DATA_SOURCE, ENTITY_LEVEL, MEASUREMENT_WINDOW } from '../connectors/connectorTypes.js';
 
 export const MAX_REVENUE_CSV_ROWS = 500;
 
@@ -144,6 +144,13 @@ export async function processRevenueCsv(workspaceId, rows) {
       date: latest.date,
       source: DATA_SOURCE.MANUAL,
       granularity: 'DAILY',
+      // A human uploaded a revenue figure. Nothing in the file says what period
+      // it covers — the upload has no date range, and `latest.date` borrowed
+      // below is the platform row's SYNC time, not a measurement span. So the
+      // period is genuinely unknown, and saying so is the only honest option.
+      measurementWindow: MEASUREMENT_WINDOW.LEGACY_UNKNOWN,
+      windowStart: null,
+      windowEnd: null,
       spendMinor: 0, // an actual carries no spend — the platform row supplies it
       revenueMinor: toMinor(m.amount, currency),
       // CPA is SPEND ÷ conversions (snapshotSink), and this row's spend is 0 by

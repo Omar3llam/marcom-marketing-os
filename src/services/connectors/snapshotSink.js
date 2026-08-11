@@ -45,9 +45,24 @@ const round = (n) => Math.round(n);
  * entities (toEntityOps keeps them, so the campaign still appears in the list)
  * but never as a MetricSnapshot, so the UI shows "—" (unknown), never a
  * fabricated 0 — and an empty fetch can't overwrite real metrics with zeros.
+ *
+ * WINDOW PROVENANCE (Phase C): every row MUST arrive carrying the period its
+ * producer measured. This function THROWS rather than defaulting — see the
+ * guard below for why a default is the one thing it must not do.
  */
 export function toSnapshotRows(workspaceId, channel, normalized = []) {
   return normalized.filter((n) => !n.rosterOnly).map((n) => {
+    // The normalizer knows what it fetched; nothing downstream can recover it.
+    // A default here would be indistinguishable from a real declaration and
+    // would quietly re-create the defect this column exists to close: a row
+    // asserting a window nobody established. `granularity: 'DAILY'` below is
+    // exactly what that looks like after two years — hardcoded, believed, wrong.
+    if (!n.measurementWindow) {
+      throw new Error(
+        `toSnapshotRows: measurementWindow is required (${channel} ${n.entityLevel} ${n.externalId}) — `
+        + 'the normalizer must declare what period this row measures; it cannot be inferred here',
+      );
+    }
     const entityId = detId(workspaceId, channel, n.entityLevel, n.externalId);
     const spendMinor = round(n.spendMinor || 0);
     const revenueMinor = round(n.revenueMinor || 0);
@@ -60,7 +75,16 @@ export function toSnapshotRows(workspaceId, channel, normalized = []) {
       entityLevel: n.entityLevel,
       date: n.date instanceof Date ? n.date : new Date(n.date),
       source: n.source,
+      // NOT a statement about what this row measures — see the Granularity enum
+      // comment in schema.prisma. Left hardcoded on purpose: changing it would
+      // rewrite the meaning of every historical row. measurementWindow is the
+      // field that actually answers the question.
       granularity: 'DAILY',
+      measurementWindow: n.measurementWindow,
+      // The producer's own statement of the period, when it made one. null =
+      // unreported; never reconstructed from `date`, which is the sync time.
+      windowStart: n.windowStart ?? null,
+      windowEnd: n.windowEnd ?? null,
       spendMinor,
       revenueMinor,
       cpaMinor: conversions > 0 ? round(spendMinor / conversions) : null,

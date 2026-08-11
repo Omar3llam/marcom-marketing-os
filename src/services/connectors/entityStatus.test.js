@@ -156,9 +156,11 @@ describe('toEntityOps — the hardcode is gone', () => {
 });
 
 describe('landSnapshots — a re-sync never re-activates a paused entity', () => {
+  // Phase C: measurementWindow is required on every normalized row reaching the
+  // sink — ROLLING_WINDOW is what a live Meta sync produces.
   const land = (status) => landSnapshots(WS, 'META', [
-    { externalId: 'act_1', entityLevel: 'ACCOUNT', name: 'Acct', date: DATE, currency: 'USD', spendMinor: 100 },
-    { externalId: 'c1', entityLevel: 'CAMPAIGN', parentExternalId: 'act_1', name: 'Eid', date: DATE, currency: 'USD', spendMinor: 100, status },
+    { externalId: 'act_1', entityLevel: 'ACCOUNT', name: 'Acct', date: DATE, currency: 'USD', spendMinor: 100, measurementWindow: 'ROLLING_WINDOW' },
+    { externalId: 'c1', entityLevel: 'CAMPAIGN', parentExternalId: 'act_1', name: 'Eid', date: DATE, currency: 'USD', spendMinor: 100, status, measurementWindow: 'ROLLING_WINDOW' },
   ]);
   const campaignUpsert = () => prisma.campaign.upsert.mock.calls[0][0];
 
