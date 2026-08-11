@@ -81,10 +81,14 @@ describe('Test 2 — cross-window ROAS is rejected', () => {
     expect(sameWindow({ start: actualPeriod.start, end: actualPeriod.end }, canonical)).toBe(false);
   });
 
-  it('the gate refuses the actual outright, with a reason that names the cause', () => {
+  it('the contract refuses the actual outright, with a reason that names the cause', () => {
+    // Phase H sharpened this reason. It was ACTUAL_SOURCE_WINDOW_UNDEFINED — the
+    // global activation flag being off, which was all we knew in #362. GA4 is now
+    // refused for a fact about GA4: its source contract is BLOCKED, and it would
+    // stay refused on the day the flag flips.
     const verdict = actualRevenueEligibleForCanonicalRoas(actualRow('GA4'));
     expect(verdict.ok).toBe(false);
-    expect(verdict.reason).toBe('ACTUAL_SOURCE_WINDOW_UNDEFINED');
+    expect(verdict.reason).toBe('SOURCE_NOT_CANONICAL');
   });
 
   it('refuses even when the actual carries a real, positive revenue figure', () => {
