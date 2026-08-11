@@ -25,6 +25,18 @@
 
 // Currency-relative thresholds — ratios/percentages, never USD absolutes, so
 // they hold identically for an EGP or KWD account as for USD.
+//
+// WINDOW (canonical contract, see verdict-engine/metricWindow.js): every metric
+// these judge — spend share, ctr %, frequency — is measured over the CANONICAL
+// VERDICT WINDOW, 30 days. CALIBRATION: UNKNOWN, same status as the verdict
+// engine's own thresholds.
+//
+// FREQ_HIGH/FREQ_ELEVATED are COPIES of the verdict engine's numbers, not
+// imports — "matches the verdict engine's fatigue floor" is maintained by hand.
+// Two homes for one uncalibrated pair means a future recalibration has to find
+// both. Left as-is here because unifying them changes an import graph, and this
+// contract PR changes no behaviour; it is a real item for the recalibration
+// work, not a nit.
 const THRESHOLDS = Object.freeze({
   SPEND_FLOOR_PCT: 0.01, // a campaign must be ≥ 1% of account spend to be scored
   FREQ_HIGH:       3.5,  // heavy saturation (matches the verdict engine's fatigue floor)

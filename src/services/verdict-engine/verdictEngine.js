@@ -37,6 +37,24 @@ import { logger }                        from '../../utils/logger.js';
 
 // Verdict thresholds (frozen for auditability).
 //
+// ── WINDOW (canonical contract, see metricWindow.js) ────────────────────────
+// Every threshold below judges a metric measured over the CANONICAL VERDICT
+// WINDOW — 30 days (CANONICAL_VERDICT_WINDOW_DAYS). Not the sync preset, not
+// the newest row's period.
+//
+// CALIBRATION: UNKNOWN. None of these values was derived from a study against a
+// 30-day population — or against any population. They predate the window
+// contract and are recorded here as-is on purpose: adopting a canonical window
+// must not silently become a threshold change (see metricWindow.js Phase G,
+// where the regression suite forces every changed verdict to be explained).
+// So these numbers are NOT evidence for what the window should be, and the
+// window is not evidence that they are right. Both are open questions; only the
+// first has now been answered.
+//
+// The window is documented here rather than imported because these constants
+// need no runtime value from it — an import for a comment's sake would add a
+// module edge that buys nothing.
+//
 // NOTE on CTR: the CTR bars used to live here as global constants, so a lead-gen
 // campaign and a reach campaign were judged against the same 0.5% floor — and a
 // 0.9% CTR was called a "weak hook" on a campaign whose objective makes 0.9%
@@ -56,6 +74,11 @@ const V = Object.freeze({
   AWARENESS_SATURATION_FREQ: 3.0, // × — frequency rising toward saturation → WATCH
   // Minimum days on the platform before a verdict is worth emitting. Layer 7:
   // "< 3 days = too early (even with good numbers)".
+  //
+  // The ONE threshold on this object that is NOT window-dependent: it measures
+  // campaign AGE from platformCreatedTime, not a metric over a period. It means
+  // the same thing whatever the canonical window is, and a window change must
+  // not touch it.
   MIN_DAYS: 3,
 });
 

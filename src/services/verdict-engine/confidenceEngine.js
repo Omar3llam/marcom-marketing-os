@@ -32,6 +32,15 @@
 // Below this, a rate computed off the sample is noise — the domain model's
 // "< 1000 impressions = no verdict possible". Exported because the min-sample
 // gate in the verdict engine enforces the same number and the two must not drift.
+//
+// WINDOW (canonical contract, see metricWindow.js): 1,000 impressions
+// ACCUMULATED OVER THE CANONICAL VERDICT WINDOW — 30 days — not per day and not
+// over whatever period the last sync requested. The distinction is load-bearing
+// at this threshold more than any other: a campaign delivering 500 impressions
+// a day clears the bar comfortably in 30 days and would fail it every single day
+// if the gate were ever applied to daily rows, pinning it in permanent
+// INSUFFICIENT_DATA. CALIBRATION: UNKNOWN — cited to a domain model that has no
+// file in this repository.
 export const MIN_IMPRESSIONS = 1000;
 
 // The point at which more traffic stops meaningfully improving confidence in a

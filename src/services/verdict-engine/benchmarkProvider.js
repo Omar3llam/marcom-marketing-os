@@ -29,6 +29,12 @@
 //   null before comparing.
 // ============================================================
 
+// WINDOW (canonical contract, see metricWindow.js): every bar below judges a
+// CTR measured over the CANONICAL VERDICT WINDOW — 30 days — computed as
+// Σclicks ÷ Σimpressions × 100 over that period, never as a mean of daily CTRs.
+// CALIBRATION: UNKNOWN. These bands vary by OBJECTIVE, which is what they were
+// designed to fix; none was derived against a specific measurement period.
+//
 // ctr    — percent, matching the engine's signal-input units (clicks/impr × 100)
 // atcRate — add-to-cart ÷ landing-page-view, ratio
 // lpvRate — landing-page-view ÷ clicks, ratio. The gap between a click and a
@@ -101,6 +107,21 @@ export function getBenchmarks(objective) {
  *
  * Not objective-varying today. If it ever becomes so it belongs in BENCHMARKS
  * alongside the CTR bars, and every reader already goes through this module.
+ *
+ * ── WINDOW + CALIBRATION (canonical contract, see metricWindow.js) ──────────
+ * Judges frequency over the CANONICAL VERDICT WINDOW — 30 days. Frequency is
+ * window impressions ÷ window UNIQUE reach, so it rises monotonically as the
+ * window widens: the SAME campaign measures ≈1.3 daily, ≈3.7 over 7 days, ≈5.0
+ * over 30 and ≈9.8 over 90. A ceiling of 3.5 is therefore a completely
+ * different rule at each of those, and until the window contract existed the
+ * effective one was "whatever the last sync asked for".
+ *
+ * CALIBRATION: UNKNOWN. 3.5 was not measured against a 30-day population. It
+ * was chosen to RECONCILE TWO CONFLICTING LITERALS — 3.0 in signalRules and 3.5
+ * here — as the comment above records. That makes it the most-documented
+ * threshold in the system and still not evidence of anything about the window.
+ * Whether 3.5 is the right 30-day ceiling is an open product question; adopting
+ * the window deliberately does not answer it, and must not silently change it.
  */
 export const FATIGUE_FREQ = 3.5;
 
