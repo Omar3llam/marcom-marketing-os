@@ -45,13 +45,23 @@
 //   Phase C ✅      window provenance on MetricSnapshot   (measurementWindow)
 //   Phase D ◐       the canonical resolver — BUILT BELOW, deliberately NOT wired
 //   Phase E         daily additive ingestion (time_increment=1)
-//   Phase F         cumulative 30d ingestion — the first CUMULATIVE_30D producer
+//   Phase F ✅      cumulative 30d ingestion — the first CUMULATIVE_30D producer
 //   Phase G         verdict regression — every changed verdict explained
 //
-// Phase D is half-done ON PURPOSE, and the missing half is not code: no producer
-// emits a CUMULATIVE_30D row yet, so wiring the resolver in would resolve
-// NO_CANONICAL_WINDOW everywhere and take the verdict surface dark. Phase F is
-// the unblocker. See the resolution section at the bottom of this file.
+// Phase D is half-done ON PURPOSE. The reason has CHANGED, and the new reason is
+// the one that matters:
+//
+//   WAS (pre-Phase-F): no producer emitted a CUMULATIVE_30D row, so wiring the
+//   resolver in would have resolved NO_CANONICAL_WINDOW everywhere and taken the
+//   verdict surface dark.
+//
+//   NOW: Phase F produces canonical Meta rows, so that blocker is gone — and a
+//   second one is visible underneath it. Meta's PLATFORM revenue can be
+//   canonical; the ACTUAL revenue that overrides it (GA4 / MANUAL CSV) cannot,
+//   because nothing in this system records what period an actual measures. See
+//   ACTUAL_SOURCE_WINDOW_CONTRACT below.
+//
+// See the resolution section at the bottom of this file.
 // ============================================================
 import { MEASUREMENT_WINDOW } from '../connectors/connectorTypes.js';
 
@@ -238,6 +248,135 @@ export function sameWindow(a, b) {
   const [as, ae, bs, be] = [t(a.start), t(a.end), t(b.start), t(b.end)];
   if ([as, ae, bs, be].some((n) => !Number.isFinite(n))) return false;
   return as === bs && ae === be;
+}
+
+// ── THE PHASE D ACTIVATION GATE ─────────────────────────────────────────────
+//
+// Phase D activation is BLOCKED until actual-source canonical 30-day semantics
+// are defined. This is a PRODUCT SEQUENCING decision, so it is a constant here —
+// deliberately not an env var, not a feature flag, and not settable at deploy.
+// Turning it on is a code change, a review, and this file's test suite.
+//
+// WHY IT IS BLOCKED
+//
+// Activating the resolver makes Meta spend a canonical 30-day measurement. The
+// revenue divided BY that spend often does not come from Meta at all:
+// effectiveByEntity overlays the latest GA4 / Shopify / MANUAL revenue onto the
+// platform row and re-derives ROAS. Those actual rows are LEGACY_UNKNOWN, and
+// not because they are old — because NOTHING IN THIS SYSTEM RECORDS WHAT PERIOD
+// AN ACTUAL MEASURES. Dividing one by the other is the cross-window ROAS
+// sameWindow() exists to forbid: a ratio whose numerator covers one period and
+// whose denominator covers another is not a measurement of anything.
+//
+// The alternative — dropping the overlay — is not a neutral default either. It
+// is a product capability change: every account whose ROAS comes from a revenue
+// upload or GA4 loses ROAS at the moment of activation.
+//
+// Neither branch may be chosen by an implementer. Both are Omar's call.
+//
+// WHAT WOULD UNBLOCK IT — the exact facts that are missing, per source. Recorded
+// as DATA rather than prose so a future phase cannot quietly satisfy the gate by
+// re-reading an ambiguous comment charitably.
+export const WINDOW_FACT = Object.freeze({
+  KNOWN: 'KNOWN',
+  UNKNOWN: 'UNKNOWN',
+  NOT_APPLICABLE: 'NOT_APPLICABLE',
+});
+
+/**
+ * Can each revenue source state the period it measured? Every UNKNOWN below was
+ * established by reading the ingestion path, not inferred from naming.
+ *
+ * META — canonical since Phase F. fetchCanonicalCampaignInsights sends an
+ *   explicit time_range and metaNormalize lands Meta's own date_start/date_stop,
+ *   so the row carries a real, corroborated period. Attribution is not a separate
+ *   axis here: the platform reports conversions already attributed under the ad
+ *   account's own setting, inside the window it was asked for.
+ *
+ * GA4 — the request range is `presetToDateRange(datePreset)` (ga4Client.js), so
+ *   the period is decided by WHICHEVER SYNC TRIGGER FIRED: 540 days for a manual
+ *   sync, 90 for the cron, and an unrecognised preset silently defaults to 90.
+ *   That range is passed to fetchRaw and then DROPPED — GA4Connector.normalize
+ *   takes { currency, date, rows } and never receives it, so it is not persisted
+ *   and cannot be recovered. Attribution is worse than unrecorded: the report is
+ *   built on sessionSource / sessionMedium / sessionCampaignName, which are
+ *   resolved by the GA4 PROPERTY's own attribution model and lookback window —
+ *   configuration that lives in Google's UI, is not read by this codebase, and
+ *   can be changed without Lumi observing it. Two GA4 rows pulled under different
+ *   lookbacks are byte-identical here.
+ *
+ * MANUAL (revenue CSV) — the upload carries no period at all. The row shape is
+ *   { campaignIdentifier, revenueAmount, conversions?, currency? }; the `date`
+ *   stored is BORROWED from the latest platform snapshot's sync timestamp
+ *   (RevenueCsvService), which is not a measurement date and was never claimed to
+ *   be one. Whether the figure is incremental or cumulative is not asked and not
+ *   inferable.
+ */
+export const ACTUAL_SOURCE_WINDOW_FACTS = Object.freeze({
+  META: Object.freeze({
+    measurementStart: WINDOW_FACT.KNOWN,
+    measurementEnd: WINDOW_FACT.KNOWN,
+    attributionLookback: WINDOW_FACT.NOT_APPLICABLE,
+    persisted: WINDOW_FACT.KNOWN,
+    canBeCanonical: true,
+  }),
+  GA4: Object.freeze({
+    measurementStart: WINDOW_FACT.UNKNOWN,
+    measurementEnd: WINDOW_FACT.UNKNOWN,
+    attributionLookback: WINDOW_FACT.UNKNOWN,
+    persisted: WINDOW_FACT.UNKNOWN,
+    canBeCanonical: false,
+  }),
+  MANUAL: Object.freeze({
+    measurementStart: WINDOW_FACT.UNKNOWN,
+    measurementEnd: WINDOW_FACT.UNKNOWN,
+    attributionLookback: WINDOW_FACT.UNKNOWN,
+    persisted: WINDOW_FACT.UNKNOWN,
+    canBeCanonical: false,
+  }),
+  SHOPIFY: Object.freeze({
+    // No producer exists. actualsSink accepts the source; nothing writes it.
+    measurementStart: WINDOW_FACT.UNKNOWN,
+    measurementEnd: WINDOW_FACT.UNKNOWN,
+    attributionLookback: WINDOW_FACT.UNKNOWN,
+    persisted: WINDOW_FACT.UNKNOWN,
+    canBeCanonical: false,
+  }),
+});
+
+/**
+ * THE GATE. False until every ACTUAL revenue source can state the period it
+ * measured — which today means GA4's measurement window AND its attribution
+ * lookback, and the revenue CSV's measurement period, are defined as product
+ * semantics and persisted on the row.
+ *
+ * Flipping this to true is not sufficient to activate Phase D; it only removes
+ * the block. It must be flipped in the same change that makes the facts above
+ * KNOWN, never ahead of it.
+ */
+export const ACTUAL_SOURCE_WINDOW_CONTRACT_RESOLVED = false;
+
+/**
+ * May an ACTUAL-source revenue row be used as the numerator of a verdict ROAS
+ * whose denominator is canonical spend?
+ *
+ * This is the single predicate the gate protects. It is deliberately stricter
+ * than sameWindow(): an actual row has no window to compare, so there is nothing
+ * for sameWindow to match on and a caller reaching for it would get `false` for
+ * the right reason but by accident. This says WHY.
+ *
+ * @returns {{ ok: boolean, reason: string|null }}
+ */
+export function actualRevenueEligibleForCanonicalRoas(actualRow) {
+  if (!ACTUAL_SOURCE_WINDOW_CONTRACT_RESOLVED) {
+    return { ok: false, reason: 'ACTUAL_SOURCE_WINDOW_UNDEFINED' };
+  }
+  // Unreachable while the gate is closed, and written out rather than left as a
+  // TODO so that opening the gate does not also require inventing this rule
+  // under time pressure: even once semantics exist, the ROW must still declare
+  // and corroborate the canonical window like any other.
+  const verdict = canonicalEligibility(actualRow);
+  return verdict.ok ? { ok: true, reason: null } : { ok: false, reason: verdict.reason };
 }
 
 // ════════════════════════════════════════════════════════════
