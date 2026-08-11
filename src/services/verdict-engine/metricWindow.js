@@ -46,20 +46,22 @@
 //   Phase D ◐       the canonical resolver — BUILT BELOW, deliberately NOT wired
 //   Phase E         daily additive ingestion (time_increment=1)
 //   Phase F ✅      cumulative 30d ingestion — the first CUMULATIVE_30D producer
-//   Phase G         verdict regression — every changed verdict explained
+//   Phase G ✅      isolate the pre-existing readers from the canonical population
+//   Phase H ✅      resolve what an ACTUAL-source measurement means
+//   Phase I         verdict regression — every changed verdict explained
 //
-// Phase D is half-done ON PURPOSE. The reason has CHANGED, and the new reason is
-// the one that matters:
+// Phase D is half-done ON PURPOSE, and the reason has changed twice:
 //
 //   WAS (pre-Phase-F): no producer emitted a CUMULATIVE_30D row, so wiring the
 //   resolver in would have resolved NO_CANONICAL_WINDOW everywhere and taken the
 //   verdict surface dark.
 //
-//   NOW: Phase F produces canonical Meta rows, so that blocker is gone — and a
-//   second one is visible underneath it. Meta's PLATFORM revenue can be
-//   canonical; the ACTUAL revenue that overrides it (GA4 / MANUAL CSV) cannot,
-//   because nothing in this system records what period an actual measures. See
-//   ACTUAL_SOURCE_WINDOW_CONTRACT below.
+//   NOW: Phase F produces canonical Meta rows and Phase H has established what
+//   every revenue source can and cannot prove about itself. Meta's PLATFORM
+//   revenue is canonical; the ACTUAL revenue that overrides it (GA4 / MANUAL) is
+//   not, and cannot become so without configuration Lumi does not hold and a
+//   product decision nobody has made. See ACTUAL_SOURCE_CONTRACT below — the
+//   remaining blocker is now stated per source, with the exact missing facts.
 //
 // See the resolution section at the bottom of this file.
 // ============================================================
@@ -368,15 +370,163 @@ export const ACTUAL_SOURCE_WINDOW_CONTRACT_RESOLVED = false;
  * @returns {{ ok: boolean, reason: string|null }}
  */
 export function actualRevenueEligibleForCanonicalRoas(actualRow) {
-  if (!ACTUAL_SOURCE_WINDOW_CONTRACT_RESOLVED) {
-    return { ok: false, reason: 'ACTUAL_SOURCE_WINDOW_UNDEFINED' };
+  // The SOURCE must be allowed to be canonical at all (Phase H) before the ROW
+  // is examined. Checked first and separately: a GA4 row could one day carry a
+  // perfectly well-formed 30-day period and still not be canonical, because the
+  // period is not what is missing — the attribution semantics behind the number
+  // are. Collapsing these two checks is how "it spans 30 days" quietly becomes
+  // "it measures the canonical window".
+  //
+  // NOTE the deliberate omission: this does NOT consult
+  // ACTUAL_SOURCE_WINDOW_CONTRACT_RESOLVED. That flag gates ACTIVATION, and
+  // routing this predicate through it would make every rule below unreachable —
+  // the contract would be a thing that exists, is guarded, and is evaluated by
+  // nobody, which is the failure class this repository keeps rediscovering. The
+  // predicate answers "is this row canonical revenue"; the flag answers "may
+  // Phase D switch on". Two questions, two answers.
+  const contract = sourceContract(actualRow?.source);
+  if (contract.verdict !== SOURCE_CONTRACT.CANONICAL) {
+    return { ok: false, reason: 'SOURCE_NOT_CANONICAL', source: actualRow?.source ?? null, detail: contract };
   }
-  // Unreachable while the gate is closed, and written out rather than left as a
-  // TODO so that opening the gate does not also require inventing this rule
-  // under time pressure: even once semantics exist, the ROW must still declare
-  // and corroborate the canonical window like any other.
   const verdict = canonicalEligibility(actualRow);
   return verdict.ok ? { ok: true, reason: null } : { ok: false, reason: verdict.reason };
+}
+
+// ── PHASE H: THE ACTUAL-SOURCE CONTRACT ─────────────────────────────────────
+//
+// Phase H asked one question of each revenue source:
+//
+//     can this number prove it measures the SAME 30 days the canonical Meta
+//     spend measures, under semantics we can state?
+//
+// The answers below are derived from the ingestion code, not from naming, not
+// from what a source could in principle report, and not from what would be
+// convenient. Where the answer is no, what is MISSING is recorded — because the
+// useful output of this phase is not "unavailable", it is "unavailable, and here
+// is precisely what would change that".
+
+export const SOURCE_CONTRACT = Object.freeze({
+  // Enough persisted evidence to establish a 30-day measurement AND compatible
+  // semantics. May participate in canonical ROAS.
+  CANONICAL: 'CANONICAL',
+  // Lacks the evidence and has no path to it as things stand. May continue to
+  // serve non-canonical surfaces; may not produce canonical ROAS.
+  NON_CANONICAL: 'NON_CANONICAL',
+  // Could become canonical, but only via a product decision or configuration
+  // that Lumi does not currently control or persist.
+  BLOCKED: 'BLOCKED',
+});
+
+/**
+ * Per-source verdicts, with the evidence each conclusion rests on.
+ *
+ * `missing` is the exact list of facts that would have to become persisted and
+ * true. `historicalRecoverable: false` everywhere non-canonical is not caution —
+ * it is Phase C's principle: provenance that was never recorded cannot be
+ * reconstructed later from a row date, an upload time, or the preset that
+ * happened to be configured when the sync ran.
+ */
+export const ACTUAL_SOURCE_CONTRACT = Object.freeze({
+  META: Object.freeze({
+    verdict: SOURCE_CONTRACT.CANONICAL,
+    evidence: 'fetchCanonicalCampaignInsights sends an explicit time_range built from '
+            + 'canonicalWindowBounds, and metaNormalize lands Meta\'s own date_start/date_stop — so the row '
+            + 'carries a real period that canonicalEligibility corroborates against the declaration. '
+            + 'Attribution is not a separate axis: the platform reports conversions already attributed '
+            + 'under the ad account\'s setting, inside the window it was asked for.',
+    missing: Object.freeze([]),
+    historicalRecoverable: false, // pre-Phase-F rows stay LEGACY_UNKNOWN / ROLLING_WINDOW
+  }),
+
+  GA4: Object.freeze({
+    verdict: SOURCE_CONTRACT.BLOCKED,
+    evidence: 'THREE independent failures, any one of which is disqualifying. '
+            + '(1) PERIOD: ga4Client.presetToDateRange maps the sync trigger\'s preset to a range '
+            + '(maximum→540d, last_90d→90, last_30d→30, last_7d→7, unrecognised→90 silently), so the period '
+            + 'is decided by which trigger fired; and GA4Connector.normalize({currency,date,rows}) never '
+            + 'receives that range, so it is not persisted and cannot be recovered. '
+            + '(2) ATTRIBUTION: buildRunReportBody requests sessionSource/sessionMedium/sessionCampaignName '
+            + 'with purchaseRevenue/transactions and specifies NO attribution model and NO lookback — those '
+            + 'are resolved by the GA4 PROPERTY\'s own settings, which live in Google\'s UI, are never read '
+            + 'here, and can change without Lumi observing it. marcom_credentials persists platform, '
+            + 'account_id, tokens, scopes and health; no attribution configuration of any kind. '
+            + '(3) TIMEZONE: a date range only means something in a timezone, and GA4 returns the property\'s '
+            + 'in runReport\'s response metadata — which mapGa4Response discards, reading only body.rows.',
+    missing: Object.freeze([
+      'the requested measurement period, threaded through normalize and persisted on the row',
+      'the property attribution model in force when the number was produced',
+      'the acquisition/conversion lookback window in force when the number was produced',
+      'the property timezone the date range is expressed in',
+      'a product decision that GA4-attributed revenue is comparable to Meta-attributed spend at all',
+    ]),
+    historicalRecoverable: false,
+  }),
+
+  MANUAL: Object.freeze({
+    verdict: SOURCE_CONTRACT.BLOCKED,
+    evidence: 'The upload carries no period, and there is nowhere for one to enter. RevenueCsvTab maps '
+            + 'exactly three columns — identifier, revenue, conversions — plus a currency selector; '
+            + 'POST /api/lumi/revenue/csv accepts { rows } and validates only length; and '
+            + 'RevenueCsvService stores `date: latest.date`, BORROWED from the newest platform snapshot\'s '
+            + 'SYNC timestamp. A period column in the user\'s file is never mapped, never sent, never stored. '
+            + 'Whether the figure is incremental or cumulative is not asked, and whether any attribution was '
+            + 'applied before the human typed it is unknowable by construction.',
+    missing: Object.freeze([
+      'a measurement period on the upload — UI mapping, request payload, and a persisted column',
+      'a declaration of whether the revenue is incremental or cumulative over that period',
+      'a product decision on what a hand-supplied revenue figure attributes to',
+    ]),
+    historicalRecoverable: false,
+  }),
+
+  SHOPIFY: Object.freeze({
+    verdict: SOURCE_CONTRACT.NON_CANONICAL,
+    evidence: 'No producer exists. actualsSink.assertActuals accepts the tag and BlendedTruthService lists '
+            + 'it among ACTUAL_SOURCES, but no connector, normalizer or route writes a SHOPIFY row — so there '
+            + 'is no ingestion path whose semantics could be established. Recorded rather than omitted so a '
+            + 'future Shopify connector inherits the question instead of the tag.',
+    missing: Object.freeze(['a producer']),
+    historicalRecoverable: false,
+  }),
+});
+
+/** The contract for a source. An unrecognised source is NON_CANONICAL, never assumed. */
+export function sourceContract(source) {
+  return ACTUAL_SOURCE_CONTRACT[source] ?? Object.freeze({
+    verdict: SOURCE_CONTRACT.NON_CANONICAL,
+    evidence: 'unrecognised source — this contract does not vouch for it',
+    missing: Object.freeze(['a contract entry']),
+    historicalRecoverable: false,
+  });
+}
+
+/**
+ * THE CROSS-SOURCE RULE. May these two rows form a canonical verdict ROAS?
+ *
+ * Both must be canonical in their own right AND measure the same period. The
+ * same-period check is not redundant with the eligibility checks: two rows can
+ * each be a valid canonical 30-day measurement of DIFFERENT 30 days — one synced
+ * today and one a week ago — and dividing those is exactly the cross-window
+ * ratio this whole track exists to prevent.
+ *
+ * @returns {{ ok: boolean, reason: string|null }}
+ */
+export function canonicalRoasPair(revenueRow, spendRow) {
+  if (!revenueRow || !spendRow) return { ok: false, reason: 'MISSING_ROW' };
+
+  const revenue = actualRevenueEligibleForCanonicalRoas(revenueRow);
+  if (!revenue.ok) return { ok: false, reason: revenue.reason };
+
+  const spend = canonicalEligibility(spendRow);
+  if (!spend.ok) return { ok: false, reason: spend.reason };
+
+  if (!sameWindow(
+    { start: revenueRow.windowStart, end: revenueRow.windowEnd },
+    { start: spendRow.windowStart, end: spendRow.windowEnd },
+  )) {
+    return { ok: false, reason: 'CROSS_WINDOW' };
+  }
+  return { ok: true, reason: null };
 }
 
 // ════════════════════════════════════════════════════════════
