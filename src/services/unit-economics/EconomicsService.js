@@ -11,7 +11,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { computeUnitEconomics } from './unitEconomicsEngine.js';
-import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
+import { getBlendedTruth, latestPerStream } from '../blended-truth/BlendedTruthService.js';
 
 // Conservative defaults for a workspace that hasn't configured economics
 // yet — enough to compute, honestly flagged as defaults by the caller.
@@ -113,14 +113,18 @@ export async function getCurrentCac(workspaceId) {
   const totalSpendMinor = channels.reduce((sum, c) => sum + (c.spendMinor ?? 0), 0);
   const currency = channels.find((c) => c.currency)?.currency ?? 'USD';
 
-  // Platform-reported conversions from MetricSnapshot — same filter + sum as
-  // AttributionService (kept consistent so the two never disagree on volume).
+  // Platform-reported conversions from MetricSnapshot — same rows, same stream
+  // reduction and same filter as AttributionService (kept consistent so the two
+  // never disagree on volume; latestPerStream is now literally the same function
+  // rather than a copy that has to be kept in step by hand).
+  // entityId + date are selected so the reduction can identify a stream and its
+  // newest row; the sum below then runs once per entity, not once per sync.
   const snaps = await prisma.metricSnapshot.findMany({
     where:  { workspaceId, entityId: { in: channels.map((c) => c.channelId) } },
-    select: { conversions: true, source: true },
+    select: { entityId: true, date: true, conversions: true, source: true },
   }).catch(() => []);
   let totalConversions = 0;
-  for (const s of snaps) {
+  for (const s of latestPerStream(snaps)) {
     if (!PLATFORM_SOURCES.has(s.source)) continue;
     totalConversions += s.conversions ?? 0;
   }
