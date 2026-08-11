@@ -1297,7 +1297,19 @@ model MetricSnapshot {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  @@unique([entityId, entityLevel, date, granularity, source])
+  // measurementWindow is part of the IDENTITY, not decoration (Phase F).
+  //
+  // Without it, a canonical 30-day row and the operational rolling row from the
+  // SAME sync collide: ConnectorSyncService stamps one `date` on the whole run,
+  // so both rows share (entityId, entityLevel, date, granularity, source). And
+  // because the sinks UPSERT, the collision is silent — the second write
+  // overwrites the first, and which one survives depends on ordering. A canonical
+  // row losing a race to a 90-day row is precisely the defect this track exists
+  // to remove, so the two must be separately addressable.
+  //
+  // Widening a unique key can only ever ADMIT rows that were previously
+  // rejected — it cannot invalidate existing data, whatever the table holds.
+  @@unique([entityId, entityLevel, date, granularity, source, measurementWindow])
   @@index([workspaceId, entityId, entityLevel, date])
   @@index([entityId, date])
   @@map("metric_snapshots")

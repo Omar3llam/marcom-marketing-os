@@ -359,8 +359,13 @@ export async function landSnapshots(workspaceId, channel, normalized = []) {
     rows.map((r) =>
       prisma.metricSnapshot.upsert({
         where: {
-          entityId_entityLevel_date_granularity_source: {
+          entityId_entityLevel_date_granularity_source_measurementWindow: {
             entityId: r.entityId, entityLevel: r.entityLevel, date: r.date, granularity: r.granularity, source: r.source,
+            // Part of the identity since Phase F. One sync run stamps ONE `date`,
+            // so a canonical 30-day row and the operational rolling row beside it
+            // match on every other column — and this is an UPSERT, so without
+            // this line the second silently overwrites the first.
+            measurementWindow: r.measurementWindow,
           },
         },
         create: r,

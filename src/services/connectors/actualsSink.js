@@ -126,8 +126,9 @@ export async function landActuals(workspaceId, descriptors = []) {
       rows.map((r) =>
         prisma.metricSnapshot.upsert({
           where: {
-            entityId_entityLevel_date_granularity_source: {
+            entityId_entityLevel_date_granularity_source_measurementWindow: {
               entityId: r.entityId, entityLevel: r.entityLevel, date: r.date, granularity: r.granularity, source: r.source,
+              measurementWindow: r.measurementWindow, // identity since Phase F
             },
           },
           create: r,
