@@ -7,6 +7,9 @@
 import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
 import { DEFAULT_MANUAL_SYNC_DATE_PRESET } from './connectors/connectorConfig.js';
+// The canonical verdict window is a product decision and lives in ONE place.
+// This module translates it into a Meta request; it never restates the number.
+import { canonicalWindowBounds } from './verdict-engine/metricWindow.js';
 
 // CJS interop — the Meta SDK ships as CommonJS
 const require = createRequire(import.meta.url);
@@ -239,6 +242,78 @@ export async function fetchCampaignInsights(accessToken, adAccountId, datePreset
   );
 
   return rows;
+}
+
+/** A Date → Meta's `YYYY-MM-DD`, in UTC. Matches metaPerformanceSync's format. */
+export function toMetaDay(d) {
+  return new Date(d).toISOString().slice(0, 10);
+}
+
+/**
+ * PURE: the exact params the canonical 30-day insights request sends.
+ *
+ * Extracted so the request itself is assertable — that `time_increment` is
+ * ABSENT is a load-bearing property of this phase (it is what makes the row
+ * cumulative, and therefore what makes reach/frequency usable), and a property
+ * that important should be pinned against the real object rather than a proxy
+ * for it.
+ *
+ * The 30 is never written here: canonicalWindowBounds owns it.
+ */
+export function canonicalInsightsParams(now = new Date()) {
+  const { start, end } = canonicalWindowBounds(now);
+  return {
+    level: 'campaign',
+    // Inclusive both ends, exactly like canonicalWindowBounds — so the period we
+    // ask Meta for and the period the contract defines are the same 30 days.
+    time_range: { since: toMetaDay(start), until: toMetaDay(end) },
+    // NO time_increment. Its absence is the difference between one cumulative
+    // row per campaign and one row per day.
+  };
+}
+
+/**
+ * The CANONICAL 30-day verdict fetch (Phase F) — the first producer of
+ * CUMULATIVE_30D rows.
+ *
+ * ── Why `time_range` and not `date_preset: 'last_30d'` ──────────────────────
+ * A preset is Meta's definition of "30 days", and Meta is free to mean "the 30
+ * days ending yesterday", or to shift on the account's timezone. The canonical
+ * verdict window is a PRODUCT decision owned by metricWindow.js, so we state the
+ * exact period and let Meta echo it back in date_start/date_stop rather than
+ * asking a question whose answer we would then have to trust and validate.
+ *
+ * This is also why Phase F is not "change DEFAULT_CRON_SYNC_DATE_PRESET to
+ * last_30d": that would leave the verdict window a property of a sync preset,
+ * which is the coupling this whole track exists to break. Sync request window
+ * and verdict measurement window are now different concepts with different
+ * owners.
+ *
+ * ── NOT daily ───────────────────────────────────────────────────────────────
+ * NO `time_increment`. This deliberately returns ONE cumulative row per campaign
+ * for the whole period — which is what makes `reach` and `frequency` usable:
+ * both are window-level quantities that cannot be rebuilt from daily rows (they
+ * need unique-person de-duplication that daily rows do not carry).
+ *
+ * @param {string} accessToken
+ * @param {string} adAccountId
+ * @param {{ now?: Date }} [opts]
+ * @returns {Promise<{ rows: Array, windowStart: Date, windowEnd: Date }>}
+ */
+export async function fetchCanonicalCampaignInsights(accessToken, adAccountId, { now = new Date() } = {}) {
+  initSdk(accessToken);
+  const accountId = normalizeAccountId(adAccountId);
+  const account = new AdAccount(accountId);
+  const { start, end } = canonicalWindowBounds(now);
+
+  const cursor = await account.getInsights(CAMPAIGN_INSIGHT_FIELDS, canonicalInsightsParams(now));
+
+  const { rows, pages } = await collectCursorPages(cursor);
+  logger.info(
+    { accountId, since: toMetaDay(start), until: toMetaDay(end), rawCount: rows.length, pages },
+    '[metaAdsService] fetchCanonicalCampaignInsights (30d cumulative) raw response',
+  );
+  return { rows, windowStart: start, windowEnd: end };
 }
 
 // Entity attributes fetched from the /campaigns edge — NOT metrics. These exist

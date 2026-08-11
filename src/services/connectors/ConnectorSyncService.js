@@ -48,6 +48,41 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
         ? await connector.land(wsId, normalized)
         : await landSnapshots(wsId, connector.channel, normalized);
 
+      // ── CANONICAL VERDICT REFRESH (Phase F) ────────────────────────────────
+      // A SECOND, separate fetch for exactly the canonical 30-day window, run on
+      // EVERY sync regardless of which trigger fired or what preset it asked for.
+      // That is the whole point: the operational sync above may request
+      // `maximum`, `last_90d`, or anything a client puts in the request body, and
+      // none of it can change what a verdict measures any more.
+      //
+      // Two fetches rather than one because the two answer different questions —
+      // "refresh the account" vs "measure the decision period" — and folding them
+      // together would put the verdict window back under a sync parameter.
+      //
+      // BEST-EFFORT by construction: a canonical failure degrades to no canonical
+      // row for this run, which the resolver reports as NO_CANONICAL_WINDOW. It
+      // must never take down the operational sync that every other surface reads.
+      let canonical = null;
+      if (connector.fetchCanonicalRaw && connector.normalizeCanonical) {
+        try {
+          const raw30 = await connector.fetchCanonicalRaw(auth, { now });
+          const rows30 = connector.normalizeCanonical({
+            ...auth, date: now, rows: raw30.rows,
+            windowStart: raw30.windowStart, windowEnd: raw30.windowEnd,
+          });
+          canonical = await landSnapshots(wsId, connector.channel, rows30);
+          logger.info(
+            { workspaceId: wsId, platform: channel, snapshots: canonical.snapshots },
+            '[connectorSync] canonical 30d refresh landed',
+          );
+        } catch (err) {
+          logger.warn(
+            { workspaceId: wsId, platform: channel, err: err.message },
+            '[connectorSync] canonical 30d refresh failed — verdict rows not refreshed this run',
+          );
+        }
+      }
+
       // A connector MAY hang non-enumerable fetch metadata off the raw array
       // (MetaConnector does, for ad-set pagination). A sync that knowingly read
       // only part of an account is not a plain success: it lands real data, but
@@ -62,7 +97,14 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
       }
 
       await recordSync(wsId, channel, { ok: true, records: landed.snapshots, warning, now });
-      results.push({ workspaceId: wsId, platform: channel, status: 'success', ...landed, ...(warning ? { warning } : {}) });
+      results.push({
+        workspaceId: wsId, platform: channel, status: 'success', ...landed,
+        // Reported separately from `snapshots` so a caller can tell an
+        // operational refresh from a verdict refresh. null = this connector has
+        // no canonical path, or its canonical fetch failed this run.
+        canonicalSnapshots: canonical?.snapshots ?? null,
+        ...(warning ? { warning } : {}),
+      });
     } catch (err) {
       await recordSync(wsId, channel, { ok: false, error: err.message, now })
         .catch((recordErr) => logger.warn({

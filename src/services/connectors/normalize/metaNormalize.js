@@ -115,7 +115,7 @@ function toDate(v) {
 }
 
 /** The measures every level shares. Extracted so CAMPAIGN and ADSET can't drift. */
-function baseMeasures(r, currency, d) {
+function baseMeasures(r, currency, d, win) {
   const conversions = actionValue(r.actions, PURCHASE_ACTIONS);
   const revenueMajor = actionValue(r.action_values, PURCHASE_ACTIONS); // real claimed value; 0 if none
   const clicks = num(r.clicks ?? r.inline_link_clicks);
@@ -137,9 +137,13 @@ function baseMeasures(r, currency, d) {
     // null when Meta omitted them (a merged roster-only row) — unreported, never
     // a range reconstructed from `d`, which is the SYNC time and would silently
     // describe a 90-day row as one day long.
-    measurementWindow: MEASUREMENT_WINDOW.ROLLING_WINDOW,
-    windowStart: toDate(r.date_start),
-    windowEnd: toDate(r.date_stop),
+    measurementWindow: win.measurementWindow,
+    // Meta's own dates take precedence over the range we requested: the platform
+    // is authoritative about what it actually measured, and a row whose dates
+    // disagree with the request MUST reach the resolver as a mismatch rather
+    // than be quietly overwritten with the period we hoped for.
+    windowStart: toDate(r.date_start) ?? win.requestedWindowStart,
+    windowEnd: toDate(r.date_stop) ?? win.requestedWindowEnd,
     currency,
     spendMinor: toMinor(num(r.spend), currency),
     revenueMinor: toMinor(revenueMajor, currency),
@@ -205,7 +209,7 @@ export function toEntityStatus(status, effectiveStatus) {
  * A row with no adset_id has no stable identity, and one with no campaign_id has
  * no resolvable parent — both are dropped rather than merged onto a garbage id.
  */
-function normalizeAdSets(rows, currency, d, accountExternalId) {
+function normalizeAdSets(rows, currency, d, accountExternalId, win) {
   const out = [];
   for (const r of rows) {
     if (r.adset_id == null) {
@@ -224,7 +228,7 @@ function normalizeAdSets(rows, currency, d, accountExternalId) {
       // null when Meta said nothing usable — the sink then leaves the stored
       // status alone rather than asserting a state we were never told.
       status: toEntityStatus(r.status, r.effective_status),
-      ...baseMeasures(r, currency, d),
+      ...baseMeasures(r, currency, d, win),
     });
   }
   return out;
@@ -241,7 +245,7 @@ function normalizeAdSets(rows, currency, d, accountExternalId) {
  * resolvable parent — both are dropped rather than merged onto a garbage id.
  * (Same two guards as normalizeAdSets, one level down.)
  */
-function normalizeAds(rows, currency, d, accountExternalId) {
+function normalizeAds(rows, currency, d, accountExternalId, win) {
   const out = [];
   for (const r of rows) {
     if (r.ad_id == null) {
@@ -268,7 +272,7 @@ function normalizeAds(rows, currency, d, accountExternalId) {
       platformCreatedTime: toDate(r.created_time),
       // actionMetrics rides along inside baseMeasures — including the video
       // quartiles, which only exist at this level in any useful form.
-      ...baseMeasures(r, currency, d),
+      ...baseMeasures(r, currency, d, win),
     });
   }
   return out;
@@ -283,7 +287,18 @@ function normalizeAds(rows, currency, d, accountExternalId) {
  *   `fetchRaw -> RawRow[]`.
  * @returns {NormalizedSnapshot[]} one ACCOUNT rollup + CAMPAIGN + ADSET + AD rows
  */
-export function metaNormalize({ accountExternalId, accountName = null, currency = 'USD', date, rows = [] }) {
+export function metaNormalize({
+  accountExternalId, accountName = null, currency = 'USD', date, rows = [],
+  // ── Phase F: the canonical 30-day path ────────────────────────────────────
+  // Defaults reproduce the operational path exactly, so every existing caller is
+  // untouched. The canonical fetch passes CUMULATIVE_30D plus the period it
+  // ASKED Meta for, which is then used only as a fallback when a row carries no
+  // date_start/date_stop of its own — Meta's own dates always win, because they
+  // are the platform's statement of what it measured rather than ours.
+  measurementWindow = MEASUREMENT_WINDOW.ROLLING_WINDOW,
+  requestedWindowStart = null,
+  requestedWindowEnd = null,
+} = {}) {
   const d = date instanceof Date ? date : new Date(date);
 
   // ── THREE-WAY PARTITION (architectural invariant) ─────────────────────────
@@ -303,8 +318,12 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
   const adSetRows    = rows.filter((r) => r.ad_id == null && r.adset_id != null);
   const campaignRows = rows.filter((r) => r.ad_id == null && r.adset_id == null);
 
-  const adSets = normalizeAdSets(adSetRows, currency, d, accountExternalId);
-  const ads    = normalizeAds(adRows, currency, d, accountExternalId);
+  // The window declaration, threaded to every level so one request can never
+  // produce rows disagreeing about what period they cover.
+  const win = { measurementWindow, requestedWindowStart, requestedWindowEnd };
+
+  const adSets = normalizeAdSets(adSetRows, currency, d, accountExternalId, win);
+  const ads    = normalizeAds(adRows, currency, d, accountExternalId, win);
 
   const campaigns = campaignRows
     // A row with NO campaign_id AND no campaign_name has no stable identity: the
@@ -337,7 +356,7 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
       // Same drop, same level up: campaigns were stamped ACTIVE on every sync
       // too. Fixed at both levels at once — the sink is level-agnostic.
       status: toEntityStatus(r.status, r.effective_status),
-      ...baseMeasures(r, currency, d),
+      ...baseMeasures(r, currency, d, win),
     }));
 
   // The rollup sums CAMPAIGNS ONLY. Ad-set spend is a SUBSET of its campaign's,
@@ -348,7 +367,7 @@ export function metaNormalize({ accountExternalId, accountName = null, currency 
   // account row summed from zero rows. See accountRollup's null contract.
   const account = accountRollup(campaigns, {
     accountExternalId, accountName, channel: CHANNEL.META, source: DATA_SOURCE.META, date: d, currency,
-    measurementWindow: MEASUREMENT_WINDOW.ROLLING_WINDOW,
+    measurementWindow,
   });
   // The rollup is roster-only ONLY when no real campaign delivered — i.e. it would
   // be all zeros. With ≥1 real campaign the rollup reflects real spend (roster

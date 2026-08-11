@@ -11,13 +11,13 @@ import { logger } from '../../utils/logger.js';
 import {
   fetchCampaignInsights, fetchAccountCurrency, fetchAllCampaigns, mergeMetaCampaigns,
   fetchAdSetInsights, fetchAllAdSets, mergeMetaAdSets,
-  fetchAdInsights, fetchAllAds, mergeMetaAds,
+  fetchAdInsights, fetchAllAds, mergeMetaAds, fetchCanonicalCampaignInsights,
 } from '../metaAdsService.js';
 import { resolveSyncCurrency } from '../../lib/currencyDetector.js';
 import { ChannelConnector, assertNormalized } from './ChannelConnector.js';
 import { metaNormalize } from './normalize/metaNormalize.js';
 import { resolveCredential } from './credentialStore.js';
-import { CHANNEL } from './connectorTypes.js';
+import { CHANNEL, MEASUREMENT_WINDOW } from './connectorTypes.js';
 import { DEFAULT_MANUAL_SYNC_DATE_PRESET } from './connectorConfig.js';
 
 export class MetaConnector extends ChannelConnector {
@@ -146,6 +146,44 @@ export class MetaConnector extends ChannelConnector {
 
   normalize({ accountExternalId, accountName, currency, date = new Date(), rows = [] }) {
     const out = metaNormalize({ accountExternalId, accountName, currency, date, rows });
+    return assertNormalized(out);
+  }
+
+  /**
+   * The CANONICAL 30-day verdict fetch (Phase F) — campaign level only.
+   *
+   * Deliberately separate from fetchRaw rather than folded into it. fetchRaw
+   * serves the OPERATIONAL sync: whatever window the trigger asked for, across
+   * six edges, feeding the entity graph and every non-verdict surface. This
+   * serves the DECISION: exactly one period, campaign grain, whatever the
+   * trigger was. Merging them would put the verdict window back under the
+   * control of a sync preset, which is the coupling this track exists to break.
+   *
+   * Campaign level only because that is the grain the verdict path reads
+   * (getConnectorCampaigns → connectorVerdictService). Ad-set and ad rows stay
+   * operational until something judges them on a canonical window.
+   */
+  async fetchCanonicalRaw(auth, { now = new Date() } = {}) {
+    return fetchCanonicalCampaignInsights(auth.accessToken, auth.accountExternalId, { now });
+  }
+
+  /**
+   * Normalize a canonical fetch. The window is DECLARED here — the rows carry
+   * Meta's own date_start/date_stop and the requested period is only a fallback
+   * for a row that reports none.
+   *
+   * The declaration is not a promise the row keeps: if Meta returns a period
+   * that is not exactly the canonical window, the row still lands with its REAL
+   * dates and the Phase D resolver rejects it as PROVENANCE_MISMATCH. That is
+   * the intended outcome — an honest unusable row beats a corrected one.
+   */
+  normalizeCanonical({ accountExternalId, accountName, currency, date = new Date(), rows = [], windowStart, windowEnd }) {
+    const out = metaNormalize({
+      accountExternalId, accountName, currency, date, rows,
+      measurementWindow: MEASUREMENT_WINDOW.CUMULATIVE_30D,
+      requestedWindowStart: windowStart ?? null,
+      requestedWindowEnd: windowEnd ?? null,
+    });
     return assertNormalized(out);
   }
 }
