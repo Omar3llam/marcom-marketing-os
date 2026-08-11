@@ -20,7 +20,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { toMinor } from '../../lib/money.js';
-import { DATA_SOURCE, ENTITY_LEVEL, MEASUREMENT_WINDOW } from '../connectors/connectorTypes.js';
+import { DATA_SOURCE, ENTITY_LEVEL, MEASUREMENT_WINDOW, OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 
 export const MAX_REVENUE_CSV_ROWS = 500;
 
@@ -119,7 +119,11 @@ export async function processRevenueCsv(workspaceId, rows) {
   const ids = [...new Set(matched.map((m) => m.campaign.id))];
   const snaps = ids.length
     ? await prisma.metricSnapshot.findMany({
-        where: { workspaceId, entityLevel: ENTITY_LEVEL.CAMPAIGN, entityId: { in: ids } },
+        // OPERATIONAL ONLY (Phase G). The uploaded revenue is attached to THIS
+        // row's `date` and currency, and the MANUAL row it produces is read back
+        // by the operational overlay — so it has to align with an operational
+        // row, not a canonical one that no operational reader will see it beside.
+        where: { workspaceId, entityLevel: ENTITY_LEVEL.CAMPAIGN, entityId: { in: ids }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
         select: { entityId: true, date: true, currency: true },
         orderBy: { date: 'desc' },
       })

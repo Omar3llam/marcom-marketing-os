@@ -13,7 +13,7 @@
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { ENTITY_LEVEL } from '../connectors/connectorTypes.js';
+import { ENTITY_LEVEL, OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { effectiveByEntity, toCampaignRow, toAdSetRow, toAdRow } from './entityGraphEngine.js';
 
 // entityId columns are @db.Uuid — a non-UUID string makes Prisma throw on the
@@ -48,7 +48,13 @@ async function latestSnapshots(workspaceId, entityLevel, entityIds) {
   if (!entityIds.length) return new Map();
   const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
   const snaps = await prisma.metricSnapshot.findMany({
-    where:  { workspaceId, entityLevel, entityId: { in: entityIds }, date: { gte: since } },
+    // OPERATIONAL ONLY. effectiveByEntity picks the latest row per entity on
+    // `date`, and Phase F lands a canonical row at the SAME `date` as the
+    // operational one — so without this filter the spend, ROAS and frequency
+    // this surface shows (and every verdict derived from it) would be decided by
+    // Postgres row order. Phase D is what teaches this reader to consume
+    // canonical rows; until then they are not its population.
+    where:  { workspaceId, entityLevel, entityId: { in: entityIds }, date: { gte: since }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
     select: METRIC_SELECT,
   }).catch((err) => {
     logger.debug({ err: err.message, workspaceId, entityLevel }, '[EntityGraph] snapshot read failed');

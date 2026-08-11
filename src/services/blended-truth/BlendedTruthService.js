@@ -13,7 +13,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { reconcile } from './blendedTruthEngine.js';
-import { isStale } from '../connectors/connectorTypes.js';
+import { isStale, OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { listConnections } from '../connectors/credentialStore.js';
 
 export const PLATFORM_SOURCES = Object.freeze(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
@@ -127,7 +127,12 @@ export async function getBlendedTruth(workspaceId, { lookbackDays = LOOKBACK_DAY
     // buildChannelInputs reads exactly these six fields; `date` is what lets it
     // pick the newest row per stream instead of summing overlapping windows.
     prisma.metricSnapshot.findMany({
-      where:  { workspaceId, date: { gte: since } },
+      // OPERATIONAL ONLY (Phase G). PR #357 made this read latest-per-stream
+      // rather than SUM, which fixed overlapping ROLLING_WINDOW rows; it does not
+      // help when two rows share entityId, source AND `date`, which is exactly
+      // what Phase F produces. The window filter is what separates them — the
+      // latest-per-stream reduction stays as #357 left it.
+      where:  { workspaceId, date: { gte: since }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
       select: { entityId: true, date: true, source: true, revenueMinor: true, spendMinor: true, currency: true },
     }),
     // Snapshots are CAMPAIGN-grain: MetricSnapshot.entityId == Campaign.id (both are

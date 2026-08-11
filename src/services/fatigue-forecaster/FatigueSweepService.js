@@ -20,6 +20,7 @@
 // (the accuracy/memory record) are never touched.
 // ============================================================
 import { prisma }            from '../../lib/prisma.js';
+import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger }            from '../../utils/logger.js';
 import { forecastFatigue }   from './fatigueForecaster.js';
 import { resolvePrediction } from './FatiguePredictionService.js';
@@ -107,7 +108,10 @@ export async function sweepFatigue(workspaceId, { now = new Date() } = {}) {
 
   const since = new Date(now.getTime() - LOOKBACK_DAYS * 86_400_000);
   const snapshots = await prisma.metricSnapshot.findMany({
-    where:  { workspaceId, granularity: 'DAILY', date: { gte: since } },
+    // OPERATIONAL ONLY (Phase G): `granularity` is hardcoded 'DAILY' by every
+    // writer, so it does not exclude the canonical 30-day row Phase F lands at
+    // the same sync timestamp. Only the window does.
+    where:  { workspaceId, granularity: 'DAILY', measurementWindow: OPERATIONAL_WINDOW_FILTER, date: { gte: since } },
     select: { entityId: true, entityLevel: true, date: true, frequency: true, ctr: true },
     orderBy: { date: 'asc' },
   });

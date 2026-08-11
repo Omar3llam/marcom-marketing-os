@@ -9,6 +9,7 @@
 // through the existing /api/execute/meta governance.
 // ============================================================
 import { prisma }              from '../../lib/prisma.js';
+import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger }              from '../../utils/logger.js';
 import { evaluateGuardrails }  from './guardrailEngine.js';
 import { fromMinor }           from '../../lib/money.js';
@@ -45,7 +46,12 @@ export async function sweepGuardrails(workspaceId) {
   // otherwise widen this untouched query and break the sweep during migration
   // lag. valuesFromSnapshot reads exactly these six, plus the two grouping keys.
   const snapshots = await prisma.metricSnapshot.findMany({
-    where:   { workspaceId, date: { gte: since } },
+    // OPERATIONAL ONLY (Phase G). This builds a per-entity TIME SERIES with no
+    // per-day collapse, so a canonical row lands as a second point at a date that
+    // already has one — a step change between two readings of different periods
+    // that never happened, which is precisely what a guardrail rule fires on. The
+    // hits become PROPOSED Decisions, so the cost is a fabricated verdict.
+    where:   { workspaceId, date: { gte: since }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
     select:  {
       entityId: true, entityLevel: true, date: true,
       frequency: true, roas: true, ctr: true, cpaMinor: true, spendMinor: true, currency: true,

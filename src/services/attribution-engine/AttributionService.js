@@ -12,6 +12,7 @@
 // holdout lift, never invented journey credit.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger } from '../../utils/logger.js';
 import { attributeCredit } from './attributionEngine.js';
 import { ATTRIBUTION_MODEL } from './attributionTypes.js';
@@ -71,7 +72,10 @@ export async function getAttribution(workspaceId, { model = ATTRIBUTION_MODEL.IN
   // channel's conversion count — adding the older rows re-counts the same
   // conversions once per sync. `date` is selected only to identify that row.
   const snaps = await prisma.metricSnapshot.findMany({
-    where:  { workspaceId, entityId: { in: channels.map((c) => c.channelId) } },
+    // OPERATIONAL ONLY (Phase G). latestPerStream keys on entityId|source and
+    // breaks ties on `date` — and Phase F's canonical row shares BOTH with the
+    // operational row, so which one won was decided by row order.
+    where:  { workspaceId, entityId: { in: channels.map((c) => c.channelId) }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
     select: { entityId: true, date: true, conversions: true, source: true },
   }).catch(() => []);
   const conversionsByChannel = new Map();

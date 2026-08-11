@@ -42,6 +42,59 @@ export const MEASUREMENT_WINDOW = Object.freeze({
   CUMULATIVE_30D: 'CUMULATIVE_30D',
 });
 
+// ── THE OPERATIONAL READ POPULATION (Phase G) ───────────────────────────────
+//
+// Every reader that existed before Phase F was written against ONE population:
+// the rows a live sync produces, one per entity per sync. Phase F added a second
+// population to the same table — a canonical 30-day row landed by the same run,
+// carrying the same entityId, the same source and the SAME `date`, because
+// ConnectorSyncService stamps one `now` across the whole run. Those readers were
+// never told, and could not tell the rows apart: not one of them selected
+// `measurementWindow`. So a reader picking "the latest row" was choosing between
+// a 30-day measurement and a ~37-month one on Postgres heap order, and a reader
+// summing by day was adding them together.
+//
+// THIS IS AN ALLOW-LIST, DELIBERATELY, AND NOT `not: CUMULATIVE_30D`.
+//
+// Exclusion protects against the population that already burned us. An
+// allow-list protects against the next one — DAILY (Phase E) is already named in
+// the enum above with no producer yet, and would silently become a second
+// observation for every series builder the day one appears. A reader must state
+// which population it consumes; anything it has not been designed for is not its
+// business by default. That is the actual lesson of the Phase F regression, and
+// exclusion would have taught the wrong half of it.
+//
+// DAILY is therefore NOT here, even though no row carries it today. Adding it is
+// Phase E's job, made deliberately, one reader at a time.
+//
+// LEGACY_UNKNOWN is here and must stay: it covers every pre-Phase-C row AND every
+// ACTUAL-revenue row (GA4 / MANUAL), which the blended-truth and overlay paths
+// legitimately read. Dropping it would blank actual revenue everywhere — a far
+// larger behaviour change than the one this exists to prevent.
+export const OPERATIONAL_MEASUREMENT_WINDOWS = Object.freeze([
+  MEASUREMENT_WINDOW.LEGACY_UNKNOWN,
+  MEASUREMENT_WINDOW.ROLLING_WINDOW,
+]);
+
+/**
+ * PURE: may an operational reader consume a row from this window?
+ * Unknown / future / unset values are refused — that is the point of the list.
+ */
+export function isOperationalWindow(measurementWindow) {
+  return OPERATIONAL_MEASUREMENT_WINDOWS.includes(measurementWindow);
+}
+
+/**
+ * The Prisma `where` fragment for an operational metric read. Spread as
+ * `` so every such query says out
+ * loud which population it is asking for.
+ *
+ * NOT for: row-cardinality reads (an admin count of the table must count every
+ * row that exists), the write path's own upserts, or Phase D's canonical
+ * resolver, which consumes exactly the population this one excludes.
+ */
+export const OPERATIONAL_WINDOW_FILTER = Object.freeze({ in: OPERATIONAL_MEASUREMENT_WINDOWS });
+
 export const CONNECTOR_STALE_HOURS = Number(process.env.CONNECTOR_STALE_HOURS || 24);
 
 /**

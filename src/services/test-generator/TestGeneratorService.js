@@ -15,6 +15,7 @@
 // ============================================================
 import { randomUUID } from 'crypto';
 import { prisma }     from '../../lib/prisma.js';
+import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger }     from '../../utils/logger.js';
 import { fromMinor }  from '../../lib/money.js';
 import { generateAgenda } from './testGeneratorEngine.js';
@@ -107,7 +108,10 @@ export async function getWeeklyAgenda(workspaceId, { lookbackDays = LOOKBACK_DAY
   const since = new Date(Date.now() - lookbackDays * 86_400_000);
 
   const [snapshots, accounts, decisions, memory] = await Promise.all([
-    prisma.metricSnapshot.findMany({ where: { workspaceId, date: { gte: since } } }),
+    // OPERATIONAL ONLY (Phase G) — this read is select-less and unbounded, so it
+    // would otherwise pull the canonical population wholesale into the weekly
+    // agenda's inputs.
+    prisma.metricSnapshot.findMany({ where: { workspaceId, date: { gte: since }, measurementWindow: OPERATIONAL_WINDOW_FILTER } }),
     prisma.account.findMany({ where: { workspaceId }, select: { id: true, name: true, channel: true } }),
     // Two fields, named: the loop below reads entityId and verdict only. This
     // read is UNBOUNDED (no take, no window), so a select-less version pulls
