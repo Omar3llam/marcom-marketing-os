@@ -7,13 +7,21 @@
 //           ratios computed after aggregation, and the flat refusal to
 //           reconstruct reach/frequency from daily rows.
 //
-//   PART 2  KNOWN GAPS. Three of the eight required contract tests cannot pass
-//           yet, because they need the window provenance column (Phase C) and
-//           the window-aware resolver (Phase D) that this PR deliberately does
-//           not build. Rather than omit them and let the gap go quiet, they are
-//           written INVERTED — asserting the defect that exists right now — so
-//           that landing Phase C/D BREAKS them and forces the update.
-//           Each carries a MUST INVERT marker naming the phase that owns it.
+//   PART 2  KNOWN GAPS, written INVERTED — they assert the defect that exists
+//           right now, so that fixing it BREAKS them and forces the update.
+//
+//           MARKERS CORRECTED IN PHASE D. They originally named Phase C and
+//           Phase D as the events that would invert them. That was wrong, and
+//           the way it was wrong is worth keeping: Phase C DID land the
+//           `measurementWindow` column, and none of these tests moved — because
+//           they exercise the READER, and the reader still does not select the
+//           column. A row can carry perfect provenance that nothing reads.
+//
+//           All three now invert on the same event: PHASE D ACTIVATION —
+//           EntityGraphService resolving by window instead of by newest row.
+//           The resolver itself is built and tested (canonicalResolver.test.js);
+//           activation is blocked on Phase F, which is the first thing that will
+//           produce a CUMULATIVE_30D row for it to select.
 // ============================================================
 import { describe, it, expect, vi } from 'vitest';
 
@@ -297,11 +305,13 @@ const snap = (o) => ({
   frequency: null, reach: null, ctr: null, roas: null, actionMetrics: null, ...o,
 });
 
-describe('REQUIRED TEST 1 — window identity ⟶ MUST INVERT IN PHASE C', () => {
-  // Phase C adds window provenance to MetricSnapshot. When it lands, the
-  // surviving row WILL carry a window field and this test must flip to
-  // asserting that two rows from different windows stay distinguishable.
-  it('KNOWN GAP: a row carries nothing that names the period it measures', () => {
+describe('REQUIRED TEST 1 — window identity ⟶ MUST INVERT ON PHASE D ACTIVATION', () => {
+  // Phase C shipped `measurementWindow` on the TABLE — and this test did not
+  // move, because EntityGraphService's METRIC_SELECT still does not read it.
+  // That gap is the honest state: provenance exists, resolution does not. On
+  // Phase D activation the surviving row WILL carry a window field and this
+  // flips to asserting that two rows from different windows stay distinguishable.
+  it('KNOWN GAP: the row a READER sees carries nothing that names its period', () => {
     const cron = snap({ date: new Date('2026-08-01'), spendMinor: 900_00, frequency: 4.2 });   // last_90d
     const manual = snap({ date: new Date('2026-08-02'), spendMinor: 9000_00, frequency: 9.8 }); // maximum
     const eff = effectiveByEntity([cron, manual]).get('E1');
@@ -322,7 +332,7 @@ describe('REQUIRED TEST 1 — window identity ⟶ MUST INVERT IN PHASE C', () =>
   });
 });
 
-describe('REQUIRED TEST 2 — sync independence ⟶ MUST INVERT IN PHASE D', () => {
+describe('REQUIRED TEST 2 — sync independence ⟶ MUST INVERT ON PHASE D ACTIVATION', () => {
   // Phase D resolves metrics BY WINDOW instead of by newest row. When it lands,
   // the manual row must stop winning merely for being newer.
   it('KNOWN GAP: the newest row wins on date alone, so Manual Sync re-bases every verdict', () => {
@@ -340,7 +350,7 @@ describe('REQUIRED TEST 2 — sync independence ⟶ MUST INVERT IN PHASE D', () 
   });
 });
 
-describe('REQUIRED TEST 8 — verdict invariance ⟶ MUST INVERT IN PHASE D', () => {
+describe('REQUIRED TEST 8 — verdict invariance ⟶ MUST INVERT ON PHASE D ACTIVATION', () => {
   // The same campaign, the same money, the same engagement. ONLY the window the
   // frequency was measured over differs. After Phase D every row here must
   // produce the SAME verdict; today they do not.

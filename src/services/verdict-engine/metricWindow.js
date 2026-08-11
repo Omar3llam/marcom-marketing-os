@@ -41,13 +41,19 @@
 // here so this does not become one more thing that exists, is guarded, and is
 // reachable by nobody — the failure class this codebase keeps finding.
 //
-//   Phase B (this)  contract + algebra + tests            ← no behaviour change
-//   Phase C         window provenance on MetricSnapshot
-//   Phase D         EntityGraph resolves BY WINDOW, not by newest row
+//   Phase B ✅      contract + algebra + tests            ← no behaviour change
+//   Phase C ✅      window provenance on MetricSnapshot   (measurementWindow)
+//   Phase D ◐       the canonical resolver — BUILT BELOW, deliberately NOT wired
 //   Phase E         daily additive ingestion (time_increment=1)
-//   Phase F         separate cumulative query for reach/frequency
+//   Phase F         cumulative 30d ingestion — the first CUMULATIVE_30D producer
 //   Phase G         verdict regression — every changed verdict explained
+//
+// Phase D is half-done ON PURPOSE, and the missing half is not code: no producer
+// emits a CUMULATIVE_30D row yet, so wiring the resolver in would resolve
+// NO_CANONICAL_WINDOW everywhere and take the verdict surface dark. Phase F is
+// the unblocker. See the resolution section at the bottom of this file.
 // ============================================================
+import { MEASUREMENT_WINDOW } from '../connectors/connectorTypes.js';
 
 /**
  * THE canonical verdict window, in days. Product decision, 2026-08-11.
@@ -232,4 +238,149 @@ export function sameWindow(a, b) {
   const [as, ae, bs, be] = [t(a.start), t(a.end), t(b.start), t(b.end)];
   if ([as, ae, bs, be].some((n) => !Number.isFinite(n))) return false;
   return as === bs && ae === be;
+}
+
+// ════════════════════════════════════════════════════════════
+// CANONICAL WINDOW RESOLUTION (Phase D)
+// ------------------------------------------------------------
+// The selection rule that makes "30-day verdict" real rather than a label.
+//
+// What it replaces: EntityGraphService → effectiveByEntity → latestOf(), which
+// picks on max(`date`) — the SYNC timestamp. Under that rule a `maximum` row
+// beats a `last_90d` row for no reason other than a human having clicked Sync
+// more recently, and the verdict silently re-bases.
+//
+// THE ONE RULE THIS EXISTS TO ENFORCE: there is no fallback. A 90-day aggregate
+// cannot be reduced to a 30-day one — the information is not in the row — so
+// when no canonical snapshot exists the answer is NO_CANONICAL_WINDOW, never the
+// nearest available row. `canonical ?? latest90d` would recreate the entire
+// defect in one line.
+//
+// STATUS: NOT WIRED INTO THE VERDICT PATH. Nothing produces CUMULATIVE_30D rows
+// yet (Phase F is the cumulative ingestion), so activating this today would
+// resolve NO_CANONICAL_WINDOW for every entity in every workspace and take the
+// whole verdict surface dark. Implemented, tested, and left cold on purpose.
+// ════════════════════════════════════════════════════════════
+
+/** Outcome of a resolution attempt for one stream. */
+export const RESOLUTION = Object.freeze({
+  OK: 'OK',
+  NO_CANONICAL_WINDOW: 'NO_CANONICAL_WINDOW',
+});
+
+/**
+ * Why a candidate row was refused. Reported, never repaired — a resolver that
+ * "fixes" a malformed period is guessing, and the guess is invisible afterwards.
+ */
+export const REJECTION = Object.freeze({
+  NOT_CANONICAL:       'NOT_CANONICAL',       // DAILY / ROLLING_WINDOW / LEGACY_UNKNOWN
+  MISSING_PERIOD:      'MISSING_PERIOD',      // declared canonical, reported no dates
+  MALFORMED_PERIOD:    'MALFORMED_PERIOD',    // start after end
+  FUTURE_PERIOD:       'FUTURE_PERIOD',       // ends after now
+  PROVENANCE_MISMATCH: 'PROVENANCE_MISMATCH', // declared canonical, dates say otherwise
+});
+
+const DAY_MS = 86_400_000;
+const ms = (d) => {
+  const t = d == null ? NaN : (d instanceof Date ? d.getTime() : new Date(d).getTime());
+  return Number.isFinite(t) ? t : null;
+};
+
+/** Inclusive day count of a period: [Aug 1, Aug 30] is 30 days, not 29. */
+export function inclusiveDays(start, end) {
+  const [s, e] = [ms(start), ms(end)];
+  if (s == null || e == null) return null;
+  return Math.round((e - s) / DAY_MS) + 1;
+}
+
+/**
+ * Is this row a valid canonical-window measurement?
+ *
+ * BOTH halves must hold, and neither substitutes for the other:
+ *   • the row DECLARES CUMULATIVE_30D — dates that happen to span 30 days are
+ *     not enough, because a rolling row can land on any span by coincidence;
+ *   • the dates CORROBORATE the declaration — a declaration alone is not enough,
+ *     because a producer bug would otherwise be laundered into a canonical row.
+ *
+ * @returns {{ ok: true } | { ok: false, reason: string }}
+ */
+export function canonicalEligibility(row, { now = new Date() } = {}) {
+  if (!row || row.measurementWindow !== MEASUREMENT_WINDOW.CUMULATIVE_30D) {
+    return { ok: false, reason: REJECTION.NOT_CANONICAL };
+  }
+  const [start, end] = [ms(row.windowStart), ms(row.windowEnd)];
+  if (start == null || end == null) return { ok: false, reason: REJECTION.MISSING_PERIOD };
+  if (start > end) return { ok: false, reason: REJECTION.MALFORMED_PERIOD };
+
+  const nowMs = ms(now);
+  // A period that has not finished cannot be a completed 30-day measurement.
+  // Not clamped to `now` — clamping would silently turn a producer bug into a
+  // shorter window that then fails the span check for the wrong reason.
+  if (nowMs != null && end > nowMs) return { ok: false, reason: REJECTION.FUTURE_PERIOD };
+
+  // The declaration and the dates must agree. Day-granularity comparison so an
+  // hours-level or DST wobble in a platform's range does not reject a genuine
+  // row; a window that is off by a whole day is a different window.
+  if (inclusiveDays(start, end) !== CANONICAL_VERDICT_WINDOW_DAYS) {
+    return { ok: false, reason: REJECTION.PROVENANCE_MISMATCH };
+  }
+  return { ok: true };
+}
+
+/**
+ * Resolve ONE stream — rows already narrowed to a single (entityId, source) —
+ * to its canonical snapshot.
+ *
+ * Ordering is by `windowEnd` DESC: the most recently MEASURED canonical period
+ * wins, not the most recently synced row. `date` (sync time) breaks an exact tie
+ * and does nothing else, which is the whole point — it is a fact about us, not
+ * about the campaign.
+ *
+ * Returns ONE row. Overlapping canonical periods are never summed: three
+ * 30-day windows a day apart share 29 days of delivery, so adding them counts
+ * that delivery three times (the defect PR #359 removed one layer down).
+ *
+ * @returns {{ status: string, snapshot: object|null, rejected: Array<{row, reason}> }}
+ */
+export function resolveCanonicalSnapshot(rows = [], { now = new Date() } = {}) {
+  const eligible = [];
+  const rejected = [];
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const verdict = canonicalEligibility(row, { now });
+    if (verdict.ok) eligible.push(row);
+    else rejected.push({ row, reason: verdict.reason });
+  }
+
+  if (eligible.length === 0) {
+    // NO FALLBACK. The rejected rows are reported so a caller can explain the
+    // absence — they are never promoted into the answer.
+    return { status: RESOLUTION.NO_CANONICAL_WINDOW, snapshot: null, rejected };
+  }
+
+  eligible.sort((a, b) => (ms(b.windowEnd) - ms(a.windowEnd)) || ((ms(b.date) ?? 0) - (ms(a.date) ?? 0)));
+  return { status: RESOLUTION.OK, snapshot: eligible[0], rejected };
+}
+
+/**
+ * Resolve a flat list of rows spanning many entities and sources.
+ *
+ * Keyed on `entityId|source` — the SAME stream identity latestPerStream uses in
+ * BlendedTruthService. A META row and a GA4 row on one campaign are independent
+ * measurements of different things; merging them here would let an actual
+ * revenue figure satisfy a platform resolution, which is how a cross-window
+ * ROAS gets built (see sameWindow above).
+ *
+ * @returns {Map<string, {status, snapshot, rejected}>} keyed `entityId|source`
+ */
+export function resolveCanonicalByStream(rows = [], { now = new Date() } = {}) {
+  const byStream = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (!row || row.entityId == null) continue;
+    const key = `${row.entityId}|${row.source}`;
+    const arr = byStream.get(key);
+    if (arr) arr.push(row); else byStream.set(key, [row]);
+  }
+  const out = new Map();
+  for (const [key, streamRows] of byStream) out.set(key, resolveCanonicalSnapshot(streamRows, { now }));
+  return out;
 }
