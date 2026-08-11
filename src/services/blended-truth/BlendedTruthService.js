@@ -24,9 +24,63 @@ export const ACTUAL_SOURCES   = Object.freeze(['GA4', 'SHOPIFY', 'MANUAL']);
 
 const LOOKBACK_DAYS = Number(process.env.BLENDED_TRUTH_LOOKBACK_DAYS || 30);
 
+/** A missing/unparseable date sorts oldest — it must never win a comparison. */
+function stamp(d) {
+  const t = d == null ? NaN : new Date(d).getTime();
+  return Number.isFinite(t) ? t : -Infinity;
+}
+
+/**
+ * Collapse MetricSnapshot rows to the newest row per measurement stream.
+ *
+ * A snapshot row is a TRAILING-WINDOW AGGREGATE stamped with its sync date, not
+ * a daily observation: MetaConnector calls normalize({ date = new Date() }) and
+ * asks Meta for `date_preset: last_90d | maximum` with NO `time_increment`. So
+ * two rows for one entity a day apart both contain the same historical spend,
+ * and ADDING THEM COUNTS IT TWICE — over a 30-day lookback, ~30 times.
+ *
+ * A "stream" is one measurement source for one entity: (entityId, source).
+ *   - WITHIN a stream, the newest row supersedes every older one. Same window,
+ *     re-measured; only the last reading is current.
+ *   - ACROSS streams (a META row and a GA4 row on the same campaign) the rows
+ *     are independent measurements of different things. This function leaves
+ *     them alone; how to combine them stays the caller's decision.
+ *
+ * entityLevel is not part of the key because it is already inside entityId —
+ * detId(workspaceId, channel, entityLevel, externalId) — so one entityId can
+ * only ever carry one level.
+ *
+ * Order-independent on purpose, so no caller has to remember an `orderBy`.
+ * A tie on `date` inside one stream is unreachable: the natural key is
+ * (entityId, entityLevel, date, granularity, source) and all three writers —
+ * snapshotSink, actualsSink, RevenueCsvService — hardcode granularity DAILY.
+ * The first-wins tie-break below therefore cannot fire in production; it exists
+ * so a malformed fixture degrades instead of throwing.
+ *
+ * NOTE: this repairs the arithmetic under the CURRENT snapshot semantics. It
+ * does not make the rows daily and must not be read as if it had.
+ *
+ * @param {Array<object>} snapshots — MetricSnapshot rows
+ * @returns {Array<object>} one row per (entityId, source), the newest
+ */
+export function latestPerStream(snapshots = []) {
+  const newest = new Map();
+  for (const s of snapshots) {
+    const key = `${s.entityId}|${s.source}`;
+    const prev = newest.get(key);
+    if (prev === undefined || stamp(s.date) > stamp(prev.date)) newest.set(key, s);
+  }
+  return [...newest.values()];
+}
+
 /**
  * Pure: fold raw MetricSnapshot rows into per-channel engine inputs.
  * Exported for unit testing without a DB.
+ *
+ * Rows are reduced to the newest per stream FIRST (see latestPerStream) — the
+ * accumulation below then runs at most once per source per entity, so what it
+ * really does is combine an entity's distinct sources, never re-add the same
+ * window twice.
  *
  * @param {Array<object>} snapshots — MetricSnapshot rows
  * @param {Map<string,{name,channel,currency}>} [labelsById] — entity metadata
@@ -34,7 +88,7 @@ const LOOKBACK_DAYS = Number(process.env.BLENDED_TRUTH_LOOKBACK_DAYS || 30);
  */
 export function buildChannelInputs(snapshots, labelsById = new Map()) {
   const byChannel = new Map();
-  for (const s of snapshots) {
+  for (const s of latestPerStream(snapshots)) {
     const key = s.entityId;
     if (!byChannel.has(key)) {
       const meta = labelsById.get(key) || {};
@@ -70,10 +124,11 @@ export async function getBlendedTruth(workspaceId, { lookbackDays = LOOKBACK_DAY
   const [snapshots, campaigns] = await Promise.all([
     // Explicit select, not `SELECT *` — a new MetricSnapshot column would
     // otherwise widen this untouched query and break it during migration lag.
-    // buildChannelInputs reads exactly these five fields.
+    // buildChannelInputs reads exactly these six fields; `date` is what lets it
+    // pick the newest row per stream instead of summing overlapping windows.
     prisma.metricSnapshot.findMany({
       where:  { workspaceId, date: { gte: since } },
-      select: { entityId: true, source: true, revenueMinor: true, spendMinor: true, currency: true },
+      select: { entityId: true, date: true, source: true, revenueMinor: true, spendMinor: true, currency: true },
     }),
     // Snapshots are CAMPAIGN-grain: MetricSnapshot.entityId == Campaign.id (both are
     // detId(ws, channel, CAMPAIGN, externalId) — see snapshotSink). Key the label map

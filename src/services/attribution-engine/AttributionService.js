@@ -15,7 +15,7 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { attributeCredit } from './attributionEngine.js';
 import { ATTRIBUTION_MODEL } from './attributionTypes.js';
-import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
+import { getBlendedTruth, latestPerStream } from '../blended-truth/BlendedTruthService.js';
 import { getEconomics } from '../unit-economics/EconomicsService.js';
 
 const PLATFORM_SOURCES = new Set(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
@@ -67,12 +67,15 @@ export async function getAttribution(workspaceId, { model = ATTRIBUTION_MODEL.IN
   if (channels.length === 0) return { model, status: 'INSUFFICIENT_DATA', reason: 'no channel data yet' };
 
   // Per-channel platform-reported conversions (last-click) from MetricSnapshot.
+  // Each row is a trailing-window aggregate, so the newest row per stream IS the
+  // channel's conversion count — adding the older rows re-counts the same
+  // conversions once per sync. `date` is selected only to identify that row.
   const snaps = await prisma.metricSnapshot.findMany({
     where:  { workspaceId, entityId: { in: channels.map((c) => c.channelId) } },
-    select: { entityId: true, conversions: true, source: true },
+    select: { entityId: true, date: true, conversions: true, source: true },
   }).catch(() => []);
   const conversionsByChannel = new Map();
-  for (const s of snaps) {
+  for (const s of latestPerStream(snaps)) {
     if (!PLATFORM_SOURCES.has(s.source)) continue;
     conversionsByChannel.set(s.entityId, (conversionsByChannel.get(s.entityId) ?? 0) + (s.conversions ?? 0));
   }
