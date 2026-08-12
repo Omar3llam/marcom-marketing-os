@@ -16,10 +16,15 @@
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { getConnectorCampaigns, findMany, groupBy } = vi.hoisted(() => ({
-  getConnectorCampaigns: vi.fn(), findMany: vi.fn(), groupBy: vi.fn(),
+const { getCanonicalVerdictCampaigns, findMany, groupBy } = vi.hoisted(() => ({
+  getCanonicalVerdictCampaigns: vi.fn(), findMany: vi.fn(), groupBy: vi.fn(),
 }));
-vi.mock('../entity-graph/index.js', () => ({ getConnectorCampaigns }));
+vi.mock('../entity-graph/index.js', () => ({ getCanonicalVerdictCampaigns }));
+// Phase D.4: the verdict path reads CANONICAL evidence and is handed an
+// envelope — the campaigns that have a canonical row, plus the identities that
+// have none. These tests are about the campaigns, so noCanonicalWindow is empty;
+// the absence path has its own tests in canonicalVerdictEvidence.test.js.
+const mockCampaigns = (rows) => getCanonicalVerdictCampaigns.mockResolvedValue({ campaigns: rows, noCanonicalWindow: [] });
 // The verdict feed reads the Decision table twice now — once for identity
 // (getLatestDecisions) and once for history (getDecisionHistory). Default: no
 // stored decisions, the state every existing assertion below was written in.
@@ -252,7 +257,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   });
 
   it('carries signalConfidence — null, never undefined, when absent', async () => {
-    getConnectorCampaigns.mockResolvedValue([row()]);
+    mockCampaigns([row()]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
     expect(verdicts[0].signalConfidence).toBeTypeOf('number');
   });
@@ -271,7 +276,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // connector path always supplies impressions; the assertion below states that
   // rather than leaving it to be rediscovered.
   it('confidence === signal × data, on every row', async () => {
-    getConnectorCampaigns.mockResolvedValue([
+    mockCampaigns([
       // A revenue campaign — absolute, never a ranking candidate.
       row({ entityId: 'rev' }),
       // Three no-revenue siblings: one cohort, so the extremes get upgraded.
@@ -302,7 +307,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   });
 
   it('projects the id of the stored decision for an entity', async () => {
-    getConnectorCampaigns.mockResolvedValue([row()]);
+    mockCampaigns([row()]);
     findMany.mockResolvedValue([decisionRow()]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
     expect(verdicts[0].decisionId).toBe('dec-1');
@@ -311,7 +316,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // null, never undefined — the client branches on it to pick a route, and an
   // absent key would read as "no id" only by accident.
   it('projects null, not undefined, when no sweep has written one', async () => {
-    getConnectorCampaigns.mockResolvedValue([row()]);
+    mockCampaigns([row()]);
     findMany.mockResolvedValue([]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
     expect(verdicts[0]).toHaveProperty('decisionId', null);
@@ -324,7 +329,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // other — a service that "corrected" either would publish a third opinion no
   // pass ever computed.
   it('live verdict and decisionId are independent — no reconciliation', async () => {
-    getConnectorCampaigns.mockResolvedValue([
+    mockCampaigns([
       row({ entityId: 'c1', revenueMinor: 10, frequency: 4.0, clicks: 350 }),
     ]);
     findMany.mockResolvedValue([decisionRow({ verdict: 'HOLD' })]);
@@ -342,7 +347,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // for it — an ad-set row arriving here would win the first-hit-wins race and
   // hand a campaign an id that executes against a different entity.
   it('ADSET-level Decision does not pollute CAMPAIGN projection', async () => {
-    getConnectorCampaigns.mockResolvedValue([row()]);
+    mockCampaigns([row()]);
     findMany.mockResolvedValue([decisionRow()]);
     await getConnectorVerdicts('ws-1');
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -364,7 +369,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // asserting on a hand-fed row set would only prove the loop, which is not
   // where the bug was.
   it('campaign decision identity excludes guardrail and allocation decisions', async () => {
-    getConnectorCampaigns.mockResolvedValue([row()]);
+    mockCampaigns([row()]);
     await getConnectorVerdicts('ws-1');
 
     const { where } = findMany.mock.calls[0][0];
@@ -387,7 +392,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // the one positioned to win — and the database, not the loop, is what has to
   // refuse it.
   it('a newer allocation decision cannot steal a campaign identity', async () => {
-    getConnectorCampaigns.mockResolvedValue([row({ entityId: 'c1' })]);
+    mockCampaigns([row({ entityId: 'c1' })]);
     // What the scoped query returns: the foreign rows never come back at all.
     findMany.mockImplementation(async ({ where }) => {
       const all = [
@@ -410,13 +415,13 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // ours" is how a row becomes un-supersedable in one place and invisible in
   // the other.
   it('scopes identity with the same definition the write path supersedes with', async () => {
-    getConnectorCampaigns.mockResolvedValue([row()]);
+    mockCampaigns([row()]);
     await getConnectorVerdicts('ws-1');
     expect(findMany.mock.calls[0][0].where.OR).toEqual(connectorDecisionScope().OR);
   });
 
   it('scopes the read to the workspace, and selects rather than taking the row whole', async () => {
-    getConnectorCampaigns.mockResolvedValue([row()]);
+    mockCampaigns([row()]);
     await getConnectorVerdicts('ws-1');
     const arg = findMany.mock.calls[0][0];
     expect(arg.where.workspaceId).toBe('ws-1');
@@ -427,7 +432,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // Most recent wins. `orderBy` desc plus first-hit-wins is the whole mechanism,
   // so a test that only seeds one row would pass with no ordering at all.
   it('takes the most recent when an entity has several', async () => {
-    getConnectorCampaigns.mockResolvedValue([row()]);
+    mockCampaigns([row()]);
     findMany.mockResolvedValue([
       decisionRow({ id: 'newest', createdAt: new Date('2026-08-05') }),
       decisionRow({ id: 'older',  createdAt: new Date('2026-07-01') }),
@@ -438,7 +443,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   });
 
   it('leaves a campaign with no decision of its own untouched', async () => {
-    getConnectorCampaigns.mockResolvedValue([row({ entityId: 'c1' }), row({ entityId: 'c2' })]);
+    mockCampaigns([row({ entityId: 'c1' }), row({ entityId: 'c2' })]);
     findMany.mockResolvedValue([decisionRow({ entityId: 'c1' })]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
     expect(verdicts.find((v) => v.id === 'c1').decisionId).toBe('dec-1');
@@ -450,7 +455,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // campaigns at all the function returns early — and the query has still been
   // issued, which can only happen if both were started together.
   it('issues both reads together rather than one behind the other', async () => {
-    getConnectorCampaigns.mockResolvedValue([]);
+    mockCampaigns([]);
     const { verdicts, status } = await getConnectorVerdicts('ws-1');
     expect(status).toBe('NO_CAMPAIGNS');
     expect(verdicts).toEqual([]);
@@ -460,7 +465,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // The N+1 guard. Two reads TOTAL — identity and history — however many
   // campaigns the feed carries, so the count must not move with the row count.
   it.each([[1], [3], [12]])('asks the database twice for a feed of %i campaigns', async (n) => {
-    getConnectorCampaigns.mockResolvedValue(
+    mockCampaigns(
       Array.from({ length: n }, (_, i) => row({ entityId: `c${i}` })),
     );
     await getConnectorVerdicts('ws-1');
@@ -471,7 +476,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // Identity is an ENHANCEMENT. Losing it costs the precise route; losing the
   // verdict feed costs the whole screen.
   it('still publishes verdicts when the decision read fails', async () => {
-    getConnectorCampaigns.mockResolvedValue([row()]);
+    mockCampaigns([row()]);
     findMany.mockRejectedValue(new Error('column does not exist'));
     const { verdicts } = await getConnectorVerdicts('ws-1');
     expect(verdicts).toHaveLength(1);
@@ -483,7 +488,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // what it said before. Folding the second into the first would put an older
   // opinion inside the object the engine owns.
   it('publishes history as a separate map, keyed by entity', async () => {
-    getConnectorCampaigns.mockResolvedValue([row({ entityId: 'c1' })]);
+    mockCampaigns([row({ entityId: 'c1' })]);
     groupBy.mockResolvedValue([{ entityId: 'c1', _count: { _all: 3 } }]);
     findMany.mockImplementation(async ({ select }) => (
       // The history read selects `status`; the identity read does not.
@@ -501,7 +506,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   });
 
   it('publishes an empty map rather than omitting it when there is no history', async () => {
-    getConnectorCampaigns.mockResolvedValue([row()]);
+    mockCampaigns([row()]);
     const res = await getConnectorVerdicts('ws-1');
     expect(res.memoryByEntityId).toEqual({});
   });
@@ -514,7 +519,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // upgrade spreads `...c` over its output — which is why a field that allowlist
   // never mentions still arrives intact.
   it('publishes the cohort a relative verdict was decided in', async () => {
-    getConnectorCampaigns.mockResolvedValue([
+    mockCampaigns([
       row({ entityId: 'lo',  revenueMinor: 0, frequency: 2.0, clicks: 250 }),
       row({ entityId: 'mid', revenueMinor: 0, frequency: 2.0, clicks: 300 }),
       row({ entityId: 'hi',  revenueMinor: 0, frequency: 2.0, clicks: 350 }),
@@ -531,14 +536,14 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // null, never undefined: the projection is an explicit allowlist, and an
   // absent key is how a field silently stops existing two hops later.
   it('is null on a verdict no cohort decided', async () => {
-    getConnectorCampaigns.mockResolvedValue([row()]);
+    mockCampaigns([row()]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
     expect(verdicts[0].relativeRank).toBeNull();
     expect(verdicts[0].relativeContext).toBeNull();
   });
 
   it('publishes a real signal half on every row, upgraded or not', async () => {
-    getConnectorCampaigns.mockResolvedValue([
+    mockCampaigns([
       row({ entityId: 'lo',  revenueMinor: 0, frequency: 2.0, clicks: 250 }),
       row({ entityId: 'mid', revenueMinor: 0, frequency: 2.0, clicks: 300 }),
       row({ entityId: 'hi',  revenueMinor: 0, frequency: 2.0, clicks: 350 }),
@@ -554,7 +559,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // property at all — the projection is what turns that into null. Anything
   // branching on it at the NODE level must use `== null`, not `=== null`.
   it('normalises an absent relativeRank to null in the payload', async () => {
-    getConnectorCampaigns.mockResolvedValue([row()]);
+    mockCampaigns([row()]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
     expect(verdicts[0].relativeRank).toBeNull();
 
@@ -569,7 +574,7 @@ describe('getConnectorVerdicts — the published numbers', () => {
   });
 
   it('publishes only counterfactuals that say something', async () => {
-    getConnectorCampaigns.mockResolvedValue([row()]);
+    mockCampaigns([row()]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
     expect(verdicts[0].counterfactuals.length).toBeGreaterThan(0);
     expect(verdicts[0].counterfactuals.every(isSubstantive)).toBe(true);

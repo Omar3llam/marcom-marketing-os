@@ -11,7 +11,7 @@ import { prisma }                  from '../../lib/prisma.js';
 import { logger }                  from '../../utils/logger.js';
 import { rollupVerdicts }          from './verdictEngine.js';
 import { applyRelativeRanking }     from './relativeRanking.js';
-import { getConnectorCampaigns }   from '../entity-graph/index.js';
+import { getCanonicalVerdictCampaigns } from '../entity-graph/index.js';
 import { buildConnectorVerdictTree } from './connectorVerdictService.js';
 import { toReasoningArtifact, toCounterfactualArtifact } from './reasoningArtifact.js';
 import { connectorDecisionScope }  from './decisionIdentity.js';
@@ -230,8 +230,13 @@ async function supersedeDroppedConnectorVerdicts(workspaceId, eligibleIds) {
  */
 export async function persistConnectorVerdicts(workspaceId) {
   if (!workspaceId) throw new Error('persistConnectorVerdicts: workspaceId required');
-  const campaigns = await getConnectorCampaigns(workspaceId);
-  const { tree, gatedOut } = buildConnectorVerdictTree(workspaceId, campaigns);
+  // Canonical evidence, exactly as the read twin uses (Phase D.4). The two must
+  // never diverge: a stored Decision built from a different population than the
+  // one on screen is the "wrong row behind the button" class this service
+  // already guards against elsewhere.
+  const { campaigns, noCanonicalWindow } = await getCanonicalVerdictCampaigns(workspaceId);
+  const { tree, gatedOut: dataless } = buildConnectorVerdictTree(workspaceId, campaigns);
+  const gatedOut = [...dataless, ...noCanonicalWindow];
   const eligibleIds = tree ? tree.children.map((c) => c.id) : [];
 
   // Prune stale verdicts BEFORE (and regardless of) this sweep's writes — a

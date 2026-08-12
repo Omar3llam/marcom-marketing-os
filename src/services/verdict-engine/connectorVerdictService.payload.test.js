@@ -9,9 +9,14 @@
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { getConnectorCampaigns } = vi.hoisted(() => ({ getConnectorCampaigns: vi.fn() }));
+const { getCanonicalVerdictCampaigns } = vi.hoisted(() => ({ getCanonicalVerdictCampaigns: vi.fn() }));
 
-vi.mock('../entity-graph/index.js', () => ({ getConnectorCampaigns }));
+vi.mock('../entity-graph/index.js', () => ({ getCanonicalVerdictCampaigns }));
+// Phase D.4: the verdict path reads CANONICAL evidence and is handed an
+// envelope — the campaigns that have a canonical row, plus the identities that
+// have none. These tests are about the campaigns, so noCanonicalWindow is empty;
+// the absence path has its own tests in canonicalVerdictEvidence.test.js.
+const mockCampaigns = (rows) => getCanonicalVerdictCampaigns.mockResolvedValue({ campaigns: rows, noCanonicalWindow: [] });
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -30,7 +35,7 @@ describe('getConnectorVerdicts payload — revenueExpected', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('a conversion objective (OUTCOME_LEADS) with no revenue → revenueExpected true', async () => {
-    getConnectorCampaigns.mockResolvedValue([engaged({ objective: 'OUTCOME_LEADS' })]);
+    mockCampaigns([engaged({ objective: 'OUTCOME_LEADS' })]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
     expect(verdicts).toHaveLength(1);
     expect(verdicts[0].revenueExpected).toBe(true);
@@ -38,19 +43,19 @@ describe('getConnectorVerdicts payload — revenueExpected', () => {
   });
 
   it('an awareness objective (OUTCOME_AWARENESS) → revenueExpected false', async () => {
-    getConnectorCampaigns.mockResolvedValue([engaged({ objective: 'OUTCOME_AWARENESS' })]);
+    mockCampaigns([engaged({ objective: 'OUTCOME_AWARENESS' })]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
     expect(verdicts[0].revenueExpected).toBe(false);
   });
 
   it('a null/unknown objective → revenueExpected false (never fabricate a tracking-gap claim)', async () => {
-    getConnectorCampaigns.mockResolvedValue([engaged({ objective: null })]);
+    mockCampaigns([engaged({ objective: null })]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
     expect(verdicts[0].revenueExpected).toBe(false);
   });
 
   it('every payload verdict carries the field (never undefined)', async () => {
-    getConnectorCampaigns.mockResolvedValue([
+    mockCampaigns([
       engaged({ entityId: 'a', objective: 'OUTCOME_SALES' }),
       engaged({ entityId: 'b', objective: 'OUTCOME_TRAFFIC' }),
     ]);
@@ -63,7 +68,7 @@ describe('getConnectorVerdicts payload — signalType + recommendationTypes (dec
   beforeEach(() => vi.clearAllMocks());
 
   it('forwards the deterministic diagnosis signalType (a real SIGNAL_TYPE, not undefined)', async () => {
-    getConnectorCampaigns.mockResolvedValue([engaged({ objective: 'OUTCOME_AWARENESS' })]);
+    mockCampaigns([engaged({ objective: 'OUTCOME_AWARENESS' })]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
     expect(verdicts).toHaveLength(1);
     // signalType is always computed by judgeMetrics → diagnoseSignals (never dropped).
@@ -72,7 +77,7 @@ describe('getConnectorVerdicts payload — signalType + recommendationTypes (dec
   });
 
   it('forwards recommendationTypes as an array on every verdict', async () => {
-    getConnectorCampaigns.mockResolvedValue([
+    mockCampaigns([
       engaged({ entityId: 'a', objective: 'OUTCOME_SALES' }),
       engaged({ entityId: 'b', objective: 'OUTCOME_AWARENESS' }),
     ]);

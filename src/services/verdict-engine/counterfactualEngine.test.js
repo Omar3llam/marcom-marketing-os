@@ -16,8 +16,13 @@
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { getConnectorCampaigns } = vi.hoisted(() => ({ getConnectorCampaigns: vi.fn() }));
-vi.mock('../entity-graph/index.js', () => ({ getConnectorCampaigns }));
+const { getCanonicalVerdictCampaigns } = vi.hoisted(() => ({ getCanonicalVerdictCampaigns: vi.fn() }));
+vi.mock('../entity-graph/index.js', () => ({ getCanonicalVerdictCampaigns }));
+// Phase D.4: the verdict path reads CANONICAL evidence and is handed an
+// envelope — the campaigns that have a canonical row, plus the identities that
+// have none. These tests are about the campaigns, so noCanonicalWindow is empty;
+// the absence path has its own tests in canonicalVerdictEvidence.test.js.
+const mockCampaigns = (rows) => getCanonicalVerdictCampaigns.mockResolvedValue({ campaigns: rows, noCanonicalWindow: [] });
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -267,7 +272,7 @@ describe('getConnectorVerdicts — the artifacts reach the payload', () => {
   });
 
   it('projects hypotheses and counterfactuals onto every verdict', async () => {
-    getConnectorCampaigns.mockResolvedValue([row()]);
+    mockCampaigns([row()]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
 
     expect(verdicts).toHaveLength(1);
@@ -280,7 +285,7 @@ describe('getConnectorVerdicts — the artifacts reach the payload', () => {
   it('projects [] — never undefined — when there was nothing to reason about', async () => {
     // One fired mechanism: hypotheses is non-empty, but there is no alternative
     // to argue against.
-    getConnectorCampaigns.mockResolvedValue([row({ frequency: 2.0, clicks: 20, impressions: 1_000 })]);
+    mockCampaigns([row({ frequency: 2.0, clicks: 20, impressions: 1_000 })]);
     const { verdicts } = await getConnectorVerdicts('ws-1');
 
     expect(verdicts[0].counterfactuals).toEqual([]);

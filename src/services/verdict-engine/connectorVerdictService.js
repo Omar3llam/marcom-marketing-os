@@ -26,7 +26,7 @@
 // independently verified — so it counts as measured for gating purposes.)
 // ============================================================
 import { prisma }                from '../../lib/prisma.js';
-import { getConnectorCampaigns } from '../entity-graph/index.js';
+import { getCanonicalVerdictCampaigns } from '../entity-graph/index.js';
 import { rollupVerdicts }        from './verdictEngine.js';
 import { applyRelativeRanking }  from './relativeRanking.js';
 import { daysSince }             from './confidenceEngine.js';
@@ -239,15 +239,25 @@ export async function getConnectorVerdicts(workspaceId) {
   // Parallel: neither read feeds the other. The decision lookup is keyed by
   // workspace, not by the campaigns that come back, so sequencing them would
   // add a round trip for nothing.
-  const [campaigns, decisionMap] = await Promise.all([
-    getConnectorCampaigns(workspaceId),
+  const [{ campaigns, noCanonicalWindow }, decisionMap] = await Promise.all([
+    getCanonicalVerdictCampaigns(workspaceId),
     getLatestDecisions(workspaceId),
   ]);
-  const { tree, gatedOut } = buildConnectorVerdictTree(workspaceId, campaigns);
+  const { tree, gatedOut: dataless } = buildConnectorVerdictTree(workspaceId, campaigns);
+
+  // TWO KINDS OF ABSENCE, kept apart (Phase D.4). `dataless` means we measured
+  // the campaign over the verdict window and it delivered nothing to judge.
+  // NO_CANONICAL_WINDOW means we never measured it over that window at all.
+  // Same empty cell on screen, opposite fixes — one waits for spend, the other
+  // waits for a sync — so collapsing them would tell the operator the wrong story.
+  const gatedOut = [...dataless, ...noCanonicalWindow];
 
   if (!tree) {
     const status = gatedOut.length ? 'NO_ELIGIBLE_CAMPAIGNS' : 'NO_CAMPAIGNS';
-    logger.info({ workspaceId, gatedOut: gatedOut.length, status }, '[connectorVerdicts] no eligible campaigns');
+    logger.info(
+      { workspaceId, dataless: dataless.length, noCanonicalWindow: noCanonicalWindow.length, status },
+      '[connectorVerdicts] no eligible campaigns',
+    );
     return { verdicts: [], gatedOut, account: null, status };
   }
 

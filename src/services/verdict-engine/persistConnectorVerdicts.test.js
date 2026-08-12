@@ -2,7 +2,7 @@
 // persistConnectorVerdicts — the write twin of getConnectorVerdicts
 // ------------------------------------------------------------
 // Proves the wiring actually PERSISTS rows: the REAL verdict engine +
-// buildConnectorVerdictTree run; only the connector read (getConnectorCampaigns)
+// buildConnectorVerdictTree run; only the connector read (getCanonicalVerdictCampaigns)
 // and the DB are mocked. Asserts the row that lands, the revenue gate, the
 // synthetic-root skip, PROPOSED status, and idempotency.
 // ============================================================
@@ -11,13 +11,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock('../entity-graph/index.js', () => ({ getConnectorCampaigns: vi.fn() }));
+vi.mock('../entity-graph/index.js', () => ({ getCanonicalVerdictCampaigns: vi.fn() }));
 vi.mock('../../lib/prisma.js', () => ({
   prisma: { decision: { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn() } },
 }));
 
 import { prisma } from '../../lib/prisma.js';
-import { getConnectorCampaigns } from '../entity-graph/index.js';
+import { getCanonicalVerdictCampaigns } from '../entity-graph/index.js';
+// Phase D.4: the verdict path reads CANONICAL evidence and is handed an
+// envelope — the campaigns that have a canonical row, plus the identities that
+// have none. These tests are about the campaigns, so noCanonicalWindow is empty;
+// the absence path has its own tests in canonicalVerdictEvidence.test.js.
+const mockCampaigns = (rows) => getCanonicalVerdictCampaigns.mockResolvedValue({ campaigns: rows, noCanonicalWindow: [] });
 import { SIGNAL_TYPE } from '../diagnosis-engine/index.js';
 import { persistConnectorVerdicts } from './VerdictService.js';
 
@@ -40,7 +45,7 @@ beforeEach(() => {
 
 describe('persistConnectorVerdicts', () => {
   it('persists a PROPOSED campaign Decision for a revenue-eligible campaign', async () => {
-    getConnectorCampaigns.mockResolvedValue([camp()]);
+    mockCampaigns([camp()]);
 
     const res = await persistConnectorVerdicts(WS);
 
@@ -58,7 +63,7 @@ describe('persistConnectorVerdicts', () => {
   });
 
   it('never writes the synthetic ACCOUNT root (keyed by workspaceId)', async () => {
-    getConnectorCampaigns.mockResolvedValue([camp()]);
+    mockCampaigns([camp()]);
     await persistConnectorVerdicts(WS);
     for (const call of prisma.decision.create.mock.calls) {
       expect(call[0].data.entityId).not.toBe(WS);
@@ -69,7 +74,7 @@ describe('persistConnectorVerdicts', () => {
   it('persists an AWARENESS verdict for an engaged zero-revenue campaign — never a fabricated KILL', async () => {
     const AWARE = 'e2e2e2e2-0000-0000-0000-000000000011';
     // spend + impressions but no revenue → awareness track (HOLD for healthy engagement).
-    getConnectorCampaigns.mockResolvedValue([camp({ entityId: AWARE, name: 'Awareness', revenueMinor: 0 })]);
+    mockCampaigns([camp({ entityId: AWARE, name: 'Awareness', revenueMinor: 0 })]);
     const res = await persistConnectorVerdicts(WS);
     expect(res.gatedOut).toHaveLength(0);
     expect(prisma.decision.create).toHaveBeenCalledTimes(1);
@@ -82,21 +87,21 @@ describe('persistConnectorVerdicts', () => {
 
   it('gates out a DATALESS campaign (zero spend + zero impressions)', async () => {
     const NODATA = 'e3e3e3e3-0000-0000-0000-000000000012';
-    getConnectorCampaigns.mockResolvedValue([camp(), camp({ entityId: NODATA, name: 'No data', revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
+    mockCampaigns([camp(), camp({ entityId: NODATA, name: 'No data', revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
     const res = await persistConnectorVerdicts(WS);
     expect(res.gatedOut.map((g) => g.id)).toContain(NODATA);
     expect(prisma.decision.create).toHaveBeenCalledTimes(1); // only the revenue-eligible one
   });
 
   it('no-ops honestly when no campaign has revenue OR engagement', async () => {
-    getConnectorCampaigns.mockResolvedValue([camp({ revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
+    mockCampaigns([camp({ revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
     const res = await persistConnectorVerdicts(WS);
     expect(res.status).toBe('NO_ELIGIBLE_CAMPAIGNS');
     expect(prisma.decision.create).not.toHaveBeenCalled();
   });
 
   it('is idempotent: writes no new row when the latest verdict is unchanged', async () => {
-    getConnectorCampaigns.mockResolvedValue([camp()]);
+    mockCampaigns([camp()]);
     prisma.decision.findFirst.mockResolvedValue({ verdict: 'SCALE' });
     const res = await persistConnectorVerdicts(WS);
     expect(prisma.decision.create).not.toHaveBeenCalled();
@@ -110,7 +115,7 @@ describe('persistConnectorVerdicts', () => {
 
 describe('persistConnectorVerdicts — stale-verdict prune (agenda de-inflation)', () => {
   it('supersedes PROPOSED verdicts for campaigns no longer in the eligible set', async () => {
-    getConnectorCampaigns.mockResolvedValue([camp()]); // only CAMPAIGN is eligible now
+    mockCampaigns([camp()]); // only CAMPAIGN is eligible now
     prisma.decision.updateMany.mockResolvedValue({ count: 2 }); // two orphans dropped out
 
     const res = await persistConnectorVerdicts(WS);
@@ -126,7 +131,7 @@ describe('persistConnectorVerdicts — stale-verdict prune (agenda de-inflation)
   });
 
   it('scopes the prune to connector verdicts only (signalType rootCause OR null) — never guardrail/allocation rows', async () => {
-    getConnectorCampaigns.mockResolvedValue([camp()]);
+    mockCampaigns([camp()]);
     await persistConnectorVerdicts(WS);
     const { where } = prisma.decision.updateMany.mock.calls[0][0];
     expect(where.OR).toHaveLength(2);
@@ -139,7 +144,7 @@ describe('persistConnectorVerdicts — stale-verdict prune (agenda de-inflation)
 
   it('with NO eligible campaigns, supersedes every connector verdict (omits the entityId filter)', async () => {
     // dataless campaign → gatedOut → tree null → eligibleIds []
-    getConnectorCampaigns.mockResolvedValue([camp({ revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
+    mockCampaigns([camp({ revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
     prisma.decision.updateMany.mockResolvedValue({ count: 3 });
 
     const res = await persistConnectorVerdicts(WS);
@@ -151,7 +156,7 @@ describe('persistConnectorVerdicts — stale-verdict prune (agenda de-inflation)
   });
 
   it('the prune runs even when NO campaigns exist at all (honest empty account)', async () => {
-    getConnectorCampaigns.mockResolvedValue([]);
+    mockCampaigns([]);
     const res = await persistConnectorVerdicts(WS);
     expect(res.status).toBe('NO_CAMPAIGNS');
     expect(prisma.decision.updateMany).toHaveBeenCalledTimes(1);
@@ -159,7 +164,7 @@ describe('persistConnectorVerdicts — stale-verdict prune (agenda de-inflation)
   });
 
   it('re-proposes a returning campaign: change-detection ignores SUPERSEDED rows', async () => {
-    getConnectorCampaigns.mockResolvedValue([camp()]);
+    mockCampaigns([camp()]);
     // The only prior row for this entity was SUPERSEDED when it dropped out; the
     // status:{not:'SUPERSEDED'} filter means findFirst returns null → a fresh
     // PROPOSED is created even though the verdict text is unchanged.
