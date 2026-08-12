@@ -281,12 +281,25 @@ describe('I · EntityGraphService.latestSnapshots stays operational', () => {
     expect(src(ENTITY_GRAPH)).toMatch(/OPERATIONAL_WINDOW_FILTER/);
   });
 
-  // If this reader ever gained the canonical selector, ROAS, CTR, spend and
-  // revenue would silently change period along with frequency — the exact
-  // blast radius Phase K routed around.
+  // If latestSnapshots itself ever gained a canonical selector, ROAS, CTR,
+  // spend and revenue would silently change period along with frequency — the
+  // exact blast radius Phase K routed around.
+  //
+  // Scoped to the FUNCTION, not the file: Phase D.4 added a separate
+  // getCanonicalVerdictCampaigns to this module, which is canonical on purpose
+  // and reads the VERDICT selector. A file-wide check would have to be deleted
+  // to let that land, taking the guard with it — so it is narrowed to what it
+  // actually meant instead.
   it('does not consume the canonical fatigue selector', () => {
     expect(src(ENTITY_GRAPH)).not.toMatch(/canonicalFatigueEvidence/);
-    expect(src(ENTITY_GRAPH)).not.toMatch(/CUMULATIVE_30D/);
+  });
+
+  it('latestSnapshots itself still reads the operational population', () => {
+    const text = src(ENTITY_GRAPH);
+    const fn = text.slice(text.indexOf('async function latestSnapshots'));
+    const body = fn.slice(0, fn.indexOf('\n}'));
+    expect(body).toMatch(/measurementWindow: OPERATIONAL_WINDOW_FILTER/);
+    expect(body).not.toMatch(/CUMULATIVE_30D/);
   });
 });
 

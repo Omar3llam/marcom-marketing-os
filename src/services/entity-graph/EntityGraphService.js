@@ -15,6 +15,9 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { ENTITY_LEVEL, OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { effectiveByEntity, toCampaignRow, toAdSetRow, toAdRow } from './entityGraphEngine.js';
+import {
+  selectCanonicalVerdictSnapshots, latestCanonicalByEntity, partitionByCanonicalEvidence,
+} from '../verdict-engine/canonicalVerdictEvidence.js';
 
 // entityId columns are @db.Uuid — a non-UUID string makes Prisma throw on the
 // cast (the 500 the feed route documents). Guard before any id-keyed query.
@@ -61,6 +64,73 @@ async function latestSnapshots(workspaceId, entityLevel, entityIds) {
     return [];
   });
   return effectiveByEntity(snaps);
+}
+
+/**
+ * The CAMPAIGN identities a verdict could be about — names, channels and the
+ * platform facts the engine needs, with NO metrics attached.
+ *
+ * Deliberately separate from getConnectorCampaigns: that one joins OPERATIONAL
+ * metrics for the Campaigns surface and must go on doing exactly that. This one
+ * exists so the verdict path can take identity from the entity graph and
+ * evidence from somewhere else entirely.
+ */
+async function verdictCampaignIdentities(workspaceId) {
+  return prisma.campaign.findMany({
+    where:   { workspaceId },
+    select:  { id: true, name: true, channel: true, objective: true, externalId: true, platformCreatedTime: true, _count: { select: { adSets: true } } },
+    orderBy: { createdAt: 'desc' },
+    take:    200,
+  }).catch((err) => {
+    logger.debug({ err: err.message, workspaceId }, '[EntityGraph] verdict identities read failed');
+    return [];
+  });
+}
+
+/**
+ * Campaign rows for the VERDICT path, built from canonical CUMULATIVE_30D
+ * evidence (Phase D.4).
+ *
+ * Two things make this different from getConnectorCampaigns, and both are the
+ * point of the phase:
+ *
+ *   1. The metrics come from the canonical selector, not latestSnapshots. That
+ *      reader stays exactly as it was — it feeds ROAS, CTR, spend and revenue to
+ *      the Campaigns surface, and converting it would have moved four unrelated
+ *      metrics to a different measurement period as a side effect.
+ *
+ *   2. effectiveByEntity is NOT applied. That is what overlays GA4 / Shopify /
+ *      MANUAL revenue onto a platform row and re-derives ROAS from it — actual
+ *      revenue of unknown period over canonical spend. Bypassed here only; the
+ *      overlay still runs for every other consumer.
+ *
+ * A campaign with no canonical row is returned in `noCanonicalWindow` rather
+ * than as a row with null metrics — the caller must be able to tell "not
+ * measured over this window" from "measured, and it was zero".
+ *
+ * @returns {Promise<{campaigns: Array, noCanonicalWindow: Array}>}
+ */
+export async function getCanonicalVerdictCampaigns(workspaceId) {
+  if (!workspaceId) return { campaigns: [], noCanonicalWindow: [] };
+
+  const identities = await verdictCampaignIdentities(workspaceId);
+  if (!identities.length) return { campaigns: [], noCanonicalWindow: [] };
+
+  // Filter BEFORE latest: the query narrows to canonical/platform/campaign, and
+  // only then is the newest of those chosen.
+  const rows = await selectCanonicalVerdictSnapshots(workspaceId, identities.map((c) => c.id));
+  const { withEvidence, absent } = partitionByCanonicalEvidence(identities, latestCanonicalByEntity(rows));
+
+  return {
+    campaigns: withEvidence.map(({ identity, snapshot }) =>
+      toCampaignRow({
+        id: identity.id, name: identity.name, channel: identity.channel, objective: identity.objective,
+        externalId: identity.externalId, platformCreatedTime: identity.platformCreatedTime,
+        adSetCount: identity._count.adSets,
+      }, snapshot),
+    ),
+    noCanonicalWindow: absent,
+  };
 }
 
 /**
