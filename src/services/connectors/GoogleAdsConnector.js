@@ -15,7 +15,7 @@ import { resolveSyncCurrency } from '../../lib/currencyDetector.js';
 import { ChannelConnector, assertNormalized } from './ChannelConnector.js';
 import { googleNormalize } from './normalize/googleNormalize.js';
 import { resolveCredential } from './credentialStore.js';
-import { CHANNEL } from './connectorTypes.js';
+import { CHANNEL, MEASUREMENT_WINDOW } from './connectorTypes.js';
 
 export class GoogleAdsConnector extends ChannelConnector {
   channel = CHANNEL.GOOGLE;
@@ -57,6 +57,46 @@ export class GoogleAdsConnector extends ChannelConnector {
 
   normalize({ accountExternalId, accountName, currency, date = new Date(), rows = [] }) {
     const out = googleNormalize({ accountExternalId, accountName, currency, date, rows });
+    return assertNormalized(out);
+  }
+
+  /**
+   * The CANONICAL 30-day verdict fetch (Phase D.3) — campaign level.
+   *
+   * Separate from fetchRaw for the same reason Meta's is: fetchRaw serves the
+   * OPERATIONAL sync over whatever range the trigger asked for, and folding the
+   * two together would put the verdict window back under a sync parameter.
+   *
+   * Google gets there by a different road than Meta. Meta asks for one range and
+   * is handed rows that state their own period; Google is asked for DAILY rows
+   * across an explicit range and those rows are summed here, because Google's
+   * canonical metrics are all additive and it reports no reach or frequency —
+   * the two metrics that genuinely cannot be rebuilt from daily observations.
+   * That is what makes this aggregation legitimate for Google specifically, and
+   * it establishes no general daily→cumulative rule.
+   *
+   * Campaign level only: that is the grain the verdict path reads, and Google
+   * has no fatigue metrics for the lower levels to carry.
+   */
+  async fetchCanonicalRaw(auth, { now = new Date() } = {}) {
+    const { fetchGoogleCanonicalMetrics } = await import('./google/googleAdsClient.js');
+    return fetchGoogleCanonicalMetrics(auth, { now });
+  }
+
+  /**
+   * Normalize a canonical fetch. Unlike Meta — whose rows carry date_start /
+   * date_stop and so overrule anything we requested — the window DECLARED here
+   * is the requested one, corroborated by the client against every returned
+   * `segments.date` before aggregation. If that corroboration failed, no rows
+   * reached this point at all.
+   */
+  normalizeCanonical({ accountExternalId, accountName, currency, date = new Date(), rows = [], windowStart, windowEnd }) {
+    const out = googleNormalize({
+      accountExternalId, accountName, currency, date, rows,
+      measurementWindow: MEASUREMENT_WINDOW.CUMULATIVE_30D,
+      windowStart: windowStart ?? null,
+      windowEnd: windowEnd ?? null,
+    });
     return assertNormalized(out);
   }
 }
