@@ -11,7 +11,7 @@ import { logger } from '../../utils/logger.js';
 import {
   fetchCampaignInsights, fetchAccountCurrency, fetchAllCampaigns, mergeMetaCampaigns,
   fetchAdSetInsights, fetchAllAdSets, mergeMetaAdSets,
-  fetchAdInsights, fetchAllAds, mergeMetaAds, fetchCanonicalCampaignInsights,
+  fetchAdInsights, fetchAllAds, mergeMetaAds, fetchCanonicalAllLevels,
 } from '../metaAdsService.js';
 import { resolveSyncCurrency } from '../../lib/currencyDetector.js';
 import { ChannelConnector, assertNormalized } from './ChannelConnector.js';
@@ -164,7 +164,11 @@ export class MetaConnector extends ChannelConnector {
    * operational until something judges them on a canonical window.
    */
   async fetchCanonicalRaw(auth, { now = new Date() } = {}) {
-    return fetchCanonicalCampaignInsights(auth.accessToken, auth.accountExternalId, { now });
+    // ALL THREE canonical levels, one shared 30-day period (Phase L). Campaign
+    // alone was Phase F; the fatigue paths observe `frequency` at ad-set and ad
+    // level too, and a shared evidence contract cannot hold while two of the
+    // three consumers have no canonical population to read.
+    return fetchCanonicalAllLevels(auth.accessToken, auth.accountExternalId, { now });
   }
 
   /**
