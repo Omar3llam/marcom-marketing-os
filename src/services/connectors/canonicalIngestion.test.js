@@ -20,7 +20,7 @@ vi.mock('../../utils/logger.js', () => ({
 }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: {} }));
 
-import { canonicalInsightsParams, toMetaDay } from '../metaAdsService.js';
+import { canonicalInsightsParams, toMetaDay, CANONICAL_LEVEL_NAMES } from '../metaAdsService.js';
 import { metaNormalize } from './normalize/metaNormalize.js';
 import { toSnapshotRows } from './snapshotSink.js';
 import { MEASUREMENT_WINDOW, CHANNEL } from './connectorTypes.js';
@@ -65,7 +65,7 @@ const campaignOf = (rows) => rows.find((r) => r.entityLevel === 'CAMPAIGN');
 // ── TESTS 1 + 2: the request itself ─────────────────────────────────────────
 describe('TESTS 1–2 — the canonical request asks for 30 cumulative days', () => {
   it('1 · requests exactly the canonical window, inclusive both ends', () => {
-    const p = canonicalInsightsParams(NOW);
+    const p = canonicalInsightsParams('campaign', NOW);
     expect(p.level).toBe('campaign');
     expect(p.time_range).toEqual({ since: '2026-07-13', until: '2026-08-11' });
     expect(inclusiveDays(p.time_range.since, p.time_range.until)).toBe(CANONICAL_VERDICT_WINDOW_DAYS);
@@ -75,13 +75,13 @@ describe('TESTS 1–2 — the canonical request asks for 30 cumulative days', ()
   // absence is what makes the row cumulative — and therefore what makes reach
   // and frequency usable at all.
   it('2 · sends NO time_increment', () => {
-    const p = canonicalInsightsParams(NOW);
+    const p = canonicalInsightsParams('campaign', NOW);
     expect(p).not.toHaveProperty('time_increment');
     expect(Object.keys(p).sort()).toEqual(['level', 'time_range']);
   });
 
   it('the window slides with `now` and never restates the 30', () => {
-    expect(canonicalInsightsParams(new Date('2026-09-01T00:00:00Z')).time_range)
+    expect(canonicalInsightsParams('campaign', new Date('2026-09-01T00:00:00Z')).time_range)
       .toEqual({ since: '2026-08-03', until: '2026-09-01' });
     expect(toMetaDay(new Date('2026-08-11T23:59:00Z'))).toBe('2026-08-11');
   });
@@ -89,7 +89,7 @@ describe('TESTS 1–2 — the canonical request asks for 30 cumulative days', ()
   // Not a preset. Phase F is explicitly NOT "set the cron to last_30d", because
   // that would leave the verdict window a property of a sync parameter.
   it('carries no date_preset at all', () => {
-    expect(canonicalInsightsParams(NOW)).not.toHaveProperty('date_preset');
+    expect(canonicalInsightsParams('campaign', NOW)).not.toHaveProperty('date_preset');
   });
 });
 
@@ -292,5 +292,176 @@ describe('TEST 13 — the verdict input does not move when you press Sync', () =
     expect(maximum.roas).toBeLessThan(2.0);
     expect(canonical30d.roas).toBeGreaterThan(1.0);
     expect(ninetyDay.frequency).toBeGreaterThan(canonical30d.frequency);
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// PHASE L — canonical ingestion at AD-SET and AD
+// ------------------------------------------------------------
+// Phase F produced canonical rows at CAMPAIGN only. Phase K then proved that is
+// not enough: the fatigue paths observe `frequency` at ad-set and ad level, and
+// a shared evidence contract cannot hold while two of three consumers have no
+// canonical population to read.
+//
+// The property under test throughout is that all three levels describe the SAME
+// 30 days with the SAME shape — not merely that three fetches happen.
+// ════════════════════════════════════════════════════════════
+
+/** A raw ad-set insights row. metaNormalize keys the level off the id fields. */
+const adSetRow = (over = {}) => ({
+  campaign_id: 'c1', campaign_name: 'Always On',
+  adset_id: 'as1', adset_name: 'Cold · Broad',
+  spend: '400.00', impressions: '90000', clicks: '1100',
+  reach: '20000', frequency: '4.5',
+  date_start: '2026-07-13', date_stop: '2026-08-11',
+  ...over,
+});
+
+/** A raw ad insights row — carries ad_id AND adset_id (its parent link). */
+const adRow = (over = {}) => ({
+  campaign_id: 'c1', campaign_name: 'Always On',
+  adset_id: 'as1', adset_name: 'Cold · Broad',
+  ad_id: 'ad1', ad_name: 'Carousel #4',
+  spend: '150.00', impressions: '30000', clicks: '420',
+  reach: '9000', frequency: '3.3',
+  date_start: '2026-07-13', date_stop: '2026-08-11',
+  ...over,
+});
+
+const levelOf = (rows, level) => rows.filter((r) => r.entityLevel === level);
+
+describe('PHASE L — canonical rows at every level the fatigue paths read', () => {
+  // One canonical sync now returns campaign + ad-set + ad rows concatenated,
+  // exactly as the operational fetch already does.
+  const allLevels = () => canonicalRows([metaRow(), adSetRow(), adRow()]);
+
+  it('1 · a campaign canonical row exists, unchanged from Phase F', () => {
+    const c = levelOf(allLevels(), 'CAMPAIGN');
+    expect(c).toHaveLength(1);
+    expect(c[0].measurementWindow).toBe(MEASUREMENT_WINDOW.CUMULATIVE_30D);
+  });
+
+  it('2 · an AD-SET canonical row exists', () => {
+    const a = levelOf(allLevels(), 'ADSET');
+    expect(a).toHaveLength(1);
+    expect(a[0].measurementWindow).toBe(MEASUREMENT_WINDOW.CUMULATIVE_30D);
+  });
+
+  it('3 · an AD canonical row exists', () => {
+    const a = levelOf(allLevels(), 'AD');
+    expect(a).toHaveLength(1);
+    expect(a[0].measurementWindow).toBe(MEASUREMENT_WINDOW.CUMULATIVE_30D);
+  });
+
+  it('4 · all three levels carry the IDENTICAL canonical window', () => {
+    // The property that makes them one measurement rather than three. A window
+    // computed per level would let a sync straddling midnight land two different
+    // 30-day periods as if they described the same thing.
+    const rows = allLevels().filter((r) => r.measurementWindow === MEASUREMENT_WINDOW.CUMULATIVE_30D);
+    const starts = new Set(rows.map((r) => r.windowStart.getTime()));
+    const ends = new Set(rows.map((r) => r.windowEnd.getTime()));
+    expect(starts.size).toBe(1);
+    expect(ends.size).toBe(1);
+  });
+
+  it('5 · every canonical level request sends time_range and NO time_increment', () => {
+    for (const level of CANONICAL_LEVEL_NAMES) {
+      const p = canonicalInsightsParams(level, NOW);
+      expect(p.level).toBe(level);
+      expect(p.time_range).toEqual({ since: '2026-07-13', until: '2026-08-11' });
+      expect(p).not.toHaveProperty('time_increment');
+    }
+  });
+
+  it('6 · every canonical level request states the period explicitly, never a preset', () => {
+    for (const level of CANONICAL_LEVEL_NAMES) {
+      const p = canonicalInsightsParams(level, NOW);
+      expect(p).not.toHaveProperty('date_preset');
+      expect(inclusiveDays(p.time_range.since, p.time_range.until)).toBe(CANONICAL_VERDICT_WINDOW_DAYS);
+    }
+  });
+
+  it('covers exactly campaign, adset and ad — ACCOUNT is not a fetch level', () => {
+    // The account row is DERIVED by summing campaigns. Asking Meta for it would
+    // produce a second, differently-derived account figure with nothing to say
+    // which one is right.
+    expect([...CANONICAL_LEVEL_NAMES]).toEqual(['campaign', 'adset', 'ad']);
+    expect(() => canonicalInsightsParams('account', NOW)).toThrow(/not a canonical level/);
+  });
+
+  it('8 · canonical provenance corroborates the requested period at every level', () => {
+    const { start, end } = canonicalWindowBounds(NOW);
+    for (const r of allLevels()) {
+      expect(r.measurementWindow).toBe(MEASUREMENT_WINDOW.CUMULATIVE_30D);
+      expect(inclusiveDays(r.windowStart, r.windowEnd)).toBe(CANONICAL_VERDICT_WINDOW_DAYS);
+      // Compared as DAYS, not timestamps: Phase F's rule is that META's dates
+      // win, so the row carries Meta's midnight date_start/date_stop rather than
+      // our request's wall-clock bounds. Asserting equal instants would pin the
+      // opposite rule — that we overwrite what the platform reported.
+      expect(toMetaDay(r.windowStart)).toBe(toMetaDay(start));
+      expect(toMetaDay(r.windowEnd)).toBe(toMetaDay(end));
+    }
+  });
+
+  it('9 · canonical and operational rows coexist at ad-set and ad level', () => {
+    // Same entity, same sync moment, different measurement. Phase F widened the
+    // key for campaigns; this proves the widening covers the new levels too.
+    const canonical = allLevels();
+    const operational = operationalRows([metaRow(), adSetRow(), adRow()]);
+    for (const level of ['CAMPAIGN', 'ADSET', 'AD']) {
+      const c = levelOf(canonical, level)[0];
+      const o = levelOf(operational, level)[0];
+      expect(c.entityId).toBe(o.entityId);              // same entity
+      expect(c.date.getTime()).toBe(o.date.getTime());  // same sync stamp
+      expect(c.measurementWindow).not.toBe(o.measurementWindow); // different key
+    }
+  });
+
+  it('10 · a repeated canonical observation is the same row, not a second one', () => {
+    // Idempotency comes from the natural key, not from de-duplication logic.
+    const first = allLevels();
+    const second = allLevels();
+    const key = (r) => [r.entityId, r.entityLevel, r.date.getTime(), r.granularity, r.source, r.measurementWindow].join('|');
+    expect(first.map(key).sort()).toEqual(second.map(key).sort());
+    expect(new Set(first.map(key)).size).toBe(first.length); // no internal collisions
+  });
+
+  it('12 · an empty canonical response lands NOTHING — never a zero row', () => {
+    // The dormant-entity case. A campaign that did not deliver in the canonical
+    // window must have NO canonical row, not one asserting it spent nothing.
+    expect(canonicalRows([])).toHaveLength(0);
+  });
+
+  it('13 · frequency is the cumulative value Meta returned, carried verbatim', () => {
+    const rows = allLevels();
+    expect(levelOf(rows, 'CAMPAIGN')[0].frequency).toBe(5.0);
+    expect(levelOf(rows, 'ADSET')[0].frequency).toBe(4.5);
+    expect(levelOf(rows, 'AD')[0].frequency).toBe(3.3);
+    // Never derived: the ad-set value is NOT the mean of its ads, and the
+    // campaign value is NOT the sum of its ad-sets.
+    expect(levelOf(rows, 'ADSET')[0].frequency).not.toBe(levelOf(rows, 'AD')[0].frequency);
+  });
+
+  it('14 · reach is the cumulative unique-person count, carried verbatim', () => {
+    const rows = allLevels();
+    expect(levelOf(rows, 'CAMPAIGN')[0].reach).toBe(50000);
+    expect(levelOf(rows, 'ADSET')[0].reach).toBe(20000);
+    expect(levelOf(rows, 'AD')[0].reach).toBe(9000);
+    // Emphatically not additive: the child levels do not sum to the parent.
+    const childSum = levelOf(rows, 'ADSET')[0].reach + levelOf(rows, 'AD')[0].reach;
+    expect(levelOf(rows, 'CAMPAIGN')[0].reach).not.toBe(childSum);
+  });
+
+  it('15 · ONE canonical sync produces all three levels together', () => {
+    const rows = allLevels();
+    const levels = new Set(rows.map((r) => r.entityLevel));
+    expect(levels.has('CAMPAIGN')).toBe(true);
+    expect(levels.has('ADSET')).toBe(true);
+    expect(levels.has('AD')).toBe(true);
+    // Plus the ACCOUNT rollup, which Phase F already produced — summed from
+    // CAMPAIGNS ONLY, so the new levels cannot double-count into it.
+    const account = levelOf(rows, 'ACCOUNT');
+    expect(account).toHaveLength(1);
+    expect(account[0].spendMinor).toBe(levelOf(rows, 'CAMPAIGN')[0].spendMinor);
   });
 });

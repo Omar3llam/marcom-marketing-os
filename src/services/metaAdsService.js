@@ -260,15 +260,28 @@ export function toMetaDay(d) {
  *
  * The 30 is never written here: canonicalWindowBounds owns it.
  */
-export function canonicalInsightsParams(now = new Date()) {
+export function canonicalInsightsParams(level, now = new Date(), { limit: limitOverride } = {}) {
+  const spec = CANONICAL_LEVELS.find((l) => l.level === level);
+  if (!spec) {
+    // Levels are enumerated, not free text. ACCOUNT in particular is NOT a
+    // canonical fetch level: metaNormalize derives the account row by summing
+    // CAMPAIGNS, and asking Meta for it separately would produce a second,
+    // differently-derived account figure with no way to tell which is right.
+    throw new Error(`canonicalInsightsParams: "${level}" is not a canonical level`);
+  }
   const { start, end } = canonicalWindowBounds(now);
   return {
-    level: 'campaign',
+    level,
     // Inclusive both ends, exactly like canonicalWindowBounds — so the period we
     // ask Meta for and the period the contract defines are the same 30 days.
     time_range: { since: toMetaDay(start), until: toMetaDay(end) },
     // NO time_increment. Its absence is the difference between one cumulative
-    // row per campaign and one row per day.
+    // row per entity and one row per day.
+    //
+    // The page size is the LEVEL's, not the caller's, so this function fully
+    // describes the request for a level rather than describing most of it and
+    // leaving the rest to whoever calls it.
+    ...((limitOverride ?? spec.limit) ? { limit: limitOverride ?? spec.limit } : {}),
   };
 }
 
@@ -300,20 +313,28 @@ export function canonicalInsightsParams(now = new Date()) {
  * @param {{ now?: Date }} [opts]
  * @returns {Promise<{ rows: Array, windowStart: Date, windowEnd: Date }>}
  */
-export async function fetchCanonicalCampaignInsights(accessToken, adAccountId, { now = new Date() } = {}) {
+export async function fetchCanonicalInsights(accessToken, adAccountId, { now = new Date(), level = 'campaign' } = {}) {
+  const spec = CANONICAL_LEVELS.find((l) => l.level === level);
+  if (!spec) throw new Error(`fetchCanonicalInsights: "${level}" is not a canonical level`);
+
   initSdk(accessToken);
   const accountId = normalizeAccountId(adAccountId);
   const account = new AdAccount(accountId);
   const { start, end } = canonicalWindowBounds(now);
 
-  const cursor = await account.getInsights(CAMPAIGN_INSIGHT_FIELDS, canonicalInsightsParams(now));
+  const cursor = await account.getInsights(spec.fields, canonicalInsightsParams(level, now));
 
-  const { rows, pages } = await collectCursorPages(cursor);
+  // Same pagination as the operational path — deliberately reused, not
+  // reimplemented. `truncated` matters MORE here than at campaign level: ad-set
+  // and ad rows outnumber campaigns several-fold, so a canonical fetch is the
+  // likelier one to hit MAX_PAGES, and a partial canonical population that looks
+  // complete is exactly the failure this track keeps correcting.
+  const { rows, pages, truncated } = await collectCursorPages(cursor);
   logger.info(
-    { accountId, since: toMetaDay(start), until: toMetaDay(end), rawCount: rows.length, pages },
-    '[metaAdsService] fetchCanonicalCampaignInsights (30d cumulative) raw response',
+    { accountId, level, since: toMetaDay(start), until: toMetaDay(end), rawCount: rows.length, pages, truncated },
+    '[metaAdsService] fetchCanonicalInsights (30d cumulative) raw response',
   );
-  return { rows, windowStart: start, windowEnd: end };
+  return { rows, windowStart: start, windowEnd: end, truncated };
 }
 
 // Entity attributes fetched from the /campaigns edge — NOT metrics. These exist
@@ -917,4 +938,110 @@ function estimateRoas(ctr, frequency) {
 
 function round2(n) {
   return Math.round(n * 100) / 100;
+}
+
+// ════════════════════════════════════════════════════════════
+// CANONICAL 30-DAY INGESTION — the levels (Phase L)
+// ------------------------------------------------------------
+// Phase F produced canonical rows at CAMPAIGN only. Phase K then proved that is
+// not enough: the fatigue paths observe `frequency` at ad-set and ad level too,
+// and a shared evidence contract cannot hold when two of three consumers have no
+// canonical population to read.
+//
+// Declared as a table rather than three near-identical functions so the property
+// that matters — every level asks for the SAME period with the SAME shape — is
+// structural instead of a thing three copies have to keep agreeing about.
+//
+// ACCOUNT is deliberately absent. metaNormalize derives the account row by
+// summing CAMPAIGNS; asking Meta for an account-level insight would produce a
+// second, differently-derived account figure with nothing to say which is right.
+//
+// The page limits mirror the operational fetches exactly (ADSET/AD raise the
+// per-page ceiling because their row counts are 3–10x campaigns) — same
+// pagination, same MAX_PAGES, same truncation reporting.
+const CANONICAL_LEVELS = Object.freeze([
+  Object.freeze({ level: 'campaign', fields: CAMPAIGN_INSIGHT_FIELDS }),
+  Object.freeze({ level: 'adset',    fields: ADSET_INSIGHT_FIELDS, limit: ADSET_PAGE_SIZE }),
+  Object.freeze({ level: 'ad',       fields: AD_INSIGHT_FIELDS,    limit: AD_PAGE_SIZE }),
+]);
+
+/** The canonical levels, for callers and tests that need to enumerate them. */
+export const CANONICAL_LEVEL_NAMES = Object.freeze(CANONICAL_LEVELS.map((l) => l.level));
+
+/**
+ * Every canonical level for one account, over ONE canonical period.
+ *
+ * The window is computed ONCE and shared by all three requests. Computing it per
+ * level would let a sync that straddles midnight ask for two different 30-day
+ * periods and land them as if they described the same measurement — the exact
+ * class of mismatch canonicalEligibility exists to catch, arriving from our own
+ * producer instead of from Meta.
+ *
+ * PER-LEVEL FAILURE ISOLATION. A level that throws contributes no rows and is
+ * reported in `failed`; the levels that succeeded still land. There is no
+ * fabricated empty result standing in for a failed request — a level that could
+ * not be read has NO canonical rows, which is what the resolver reads as
+ * NO_CANONICAL_WINDOW, and that is the honest state. Nothing here can break the
+ * operational sync: ConnectorSyncService already runs the whole canonical
+ * refresh best-effort.
+ *
+ * Rows from all levels are returned CONCATENATED, which is what metaNormalize
+ * already expects — it identifies a row's level from its own id keys (`ad_id` →
+ * AD, `adset_id` without `ad_id` → ADSET, neither → CAMPAIGN), exactly as it does
+ * for the operational fetch. So no normalizer change is needed for this phase.
+ *
+ * @returns {Promise<{ rows, windowStart, windowEnd, truncated, failed, byLevel }>}
+ */
+export async function fetchCanonicalAllLevels(
+  accessToken,
+  adAccountId,
+  // `fetchLevel` is an injection seam, and it exists for a specific reason: this
+  // module loads the Meta SDK through createRequire (the SDK is CommonJS), and
+  // vi.mock cannot intercept a createRequire call — a test that mocks
+  // 'facebook-nodejs-business-sdk' here silently makes REAL network requests.
+  // Per-level failure isolation is the property most worth testing and the one
+  // least reachable through the real SDK, so the seam is the honest way to reach
+  // it. Production never passes it.
+  { now = new Date(), fetchLevel = fetchCanonicalInsights } = {},
+) {
+  const { start, end } = canonicalWindowBounds(now);
+  const rows = [];
+  const byLevel = {};
+  const failed = [];
+  let truncated = false;
+
+  for (const { level } of CANONICAL_LEVELS) {
+    try {
+      const res = await fetchLevel(accessToken, adAccountId, { now, level });
+      rows.push(...res.rows);
+      byLevel[level] = res.rows.length;
+      if (res.truncated) truncated = true;
+    } catch (err) {
+      // Isolated on purpose: one level failing must not cost the others their
+      // canonical evidence. Recorded so the caller can say which level is
+      // missing rather than reporting a uniformly empty canonical refresh.
+      failed.push({ level, error: err.message });
+      logger.warn(
+        { adAccountId, level, err: err.message },
+        '[metaAdsService] canonical fetch failed for one level — other levels unaffected',
+      );
+    }
+  }
+
+  // EVERY level failed → this is not "the account had nothing", it is "we could
+  // not read the account", and the two must not arrive at the caller looking the
+  // same. Returning an empty success here would report canonicalSnapshots: 0 —
+  // indistinguishable from a genuinely dormant account — so the whole refresh
+  // fails and ConnectorSyncService records it as a canonical failure (which it
+  // already handles best-effort, without touching the operational sync).
+  // A PARTIAL failure still returns: the levels that answered keep their rows.
+  if (failed.length === CANONICAL_LEVELS.length) {
+    throw new Error(`canonical refresh failed at every level: ${failed.map((f) => `${f.level} (${f.error})`).join('; ')}`);
+  }
+
+  logger.info(
+    { adAccountId, since: toMetaDay(start), until: toMetaDay(end), byLevel, failed: failed.length, truncated },
+    '[metaAdsService] fetchCanonicalAllLevels complete',
+  );
+  return { rows, windowStart: start, windowEnd: end, truncated, failed, byLevel };
 }
