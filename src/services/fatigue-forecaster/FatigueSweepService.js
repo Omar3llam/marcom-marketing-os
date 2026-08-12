@@ -20,10 +20,10 @@
 // (the accuracy/memory record) are never touched.
 // ============================================================
 import { prisma }            from '../../lib/prisma.js';
-import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger }            from '../../utils/logger.js';
 import { forecastFatigue }   from './fatigueForecaster.js';
 import { resolvePrediction } from './FatiguePredictionService.js';
+import { selectCanonicalFatigueSnapshots } from './canonicalFatigueEvidence.js';
 
 const LOOKBACK_DAYS = Number(process.env.FATIGUE_LOOKBACK_DAYS || 30);
 const CEILING       = Number(process.env.FATIGUE_CEILING || 3.5);
@@ -107,19 +107,21 @@ export async function sweepFatigue(workspaceId, { now = new Date() } = {}) {
   if (!workspaceId) throw new Error('sweepFatigue: workspaceId required');
 
   const since = new Date(now.getTime() - LOOKBACK_DAYS * 86_400_000);
-  const snapshots = await prisma.metricSnapshot.findMany({
-    // OPERATIONAL ONLY (Phase G): `granularity` is hardcoded 'DAILY' by every
-    // writer, so it does not exclude the canonical 30-day row Phase F lands at
-    // the same sync timestamp. Only the window does.
-    where:  { workspaceId, granularity: 'DAILY', measurementWindow: OPERATIONAL_WINDOW_FILTER, date: { gte: since } },
-    select: { entityId: true, entityLevel: true, date: true, frequency: true, ctr: true },
-    orderBy: { date: 'asc' },
-  });
+  // CANONICAL 30-DAY EVIDENCE (Phase K), at every level the producer lands:
+  // campaign, ad-set and ad. No entityLevel restriction — a sweep judges each
+  // entity on its OWN canonical observation, and levels are never rolled up
+  // (an ad-set's frequency is not the mean of its ads').
+  const snapshots = await selectCanonicalFatigueSnapshots(workspaceId, { since });
 
-  // Cold read (no data at all): leave existing predictions untouched rather than
-  // wipe them on a possibly-transient empty window.
+  // Cold read (no canonical evidence at all): leave existing predictions
+  // untouched rather than wipe them on a possibly-transient empty window. This
+  // guard predates Phase K and is deliberately kept — it is also what stops the
+  // FIRST sweep after activation, before any canonical row has landed, from
+  // clearing every prediction in the workspace. Once canonical evidence exists,
+  // an entity missing from it loses its prediction to the reconcile below, which
+  // is the honest outcome: no evidence, no projection (never an operational one).
   if (snapshots.length === 0) {
-    logger.debug({ workspaceId }, '[FatigueSweep] no snapshots in window — skipped');
+    logger.debug({ workspaceId }, '[FatigueSweep] no canonical 30d snapshots in window — skipped');
     return { scanned: 0, forecastable: 0, breaching: 0, written: 0 };
   }
 

@@ -13,12 +13,13 @@
 // AND the patterns leaned on are returned as `memoryBasis` for traceability.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
-import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger } from '../../utils/logger.js';
 import { projectScenario } from './scenarioEngine.js';
 import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
 import { getEconomics } from '../unit-economics/EconomicsService.js';
 import { forecastFatigue } from '../fatigue-forecaster/fatigueForecaster.js';
+import { selectCanonicalFatigueSnapshots } from '../fatigue-forecaster/canonicalFatigueEvidence.js';
+import { buildEntitySeries } from '../fatigue-forecaster/FatigueSweepService.js';
 
 const FATIGUE_LOOKBACK_DAYS = Number(process.env.SCENARIO_FATIGUE_LOOKBACK_DAYS || 30);
 
@@ -124,28 +125,20 @@ export async function gatherLeadingSignals(workspaceId, { entityIds = [], now } 
   if (entityIds.length === 0) return [];
 
   const since = new Date((now ? new Date(now).getTime() : Date.now()) - FATIGUE_LOOKBACK_DAYS * 86_400_000);
-  const snapshots = await prisma.metricSnapshot.findMany({
-    // OPERATIONAL ONLY (Phase G). This series needs ≥2 points to fit a fatigue
-    // velocity. Phase F guaranteed a second point at the SAME instant with a
-    // different frequency, so entities that were correctly skipped for having one
-    // observation began producing breach forecasts from a slope between two
-    // readings of different periods.
-    where:   { workspaceId, entityId: { in: entityIds }, date: { gte: since }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
-    orderBy: { date: 'asc' },
-    select:  { entityId: true, date: true, frequency: true, ctr: true },
-  }).catch(() => []);
+  // The SAME canonical 30-day evidence the two fatigue services read (Phase K).
+  // One selector, not a third inline window predicate — a leading signal and a
+  // persisted prediction that disagreed about the period would be two different
+  // claims about the same campaign wearing one name.
+  const snapshots = await selectCanonicalFatigueSnapshots(workspaceId, { entityIds, since });
 
-  // Group into a per-entity series, then forecast.
-  const byEntity = new Map();
-  for (const s of snapshots) {
-    if (s.frequency == null) continue;
-    if (!byEntity.has(s.entityId)) byEntity.set(s.entityId, []);
-    byEntity.get(s.entityId).push({ date: s.date, frequency: s.frequency, ctr: s.ctr ?? undefined });
-  }
-
+  // Day-collapsed by the sweep's own builder rather than by a private grouping.
+  // This is a REQUIREMENT of canonical evidence, not tidying: `date` is the sync
+  // timestamp, so two syncs on one day land two canonical rows hours apart. The
+  // old `series.length < 2` check counted those as a trend and fitted a velocity
+  // across minutes; buildEntitySeries keeps one point per UTC day and demands two
+  // distinct days, which is the only spacing over which a 30-day level can move.
   const signals = [];
-  for (const [entityId, series] of byEntity) {
-    if (series.length < 2) continue;
+  for (const { entityId, series } of buildEntitySeries(snapshots)) {
     try {
       const f = forecastFatigue({ series });
       if (f.willBreach && f.projectedBreachDate) {

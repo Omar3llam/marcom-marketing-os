@@ -246,22 +246,31 @@ describe('Test 6 — a canonical zero is not shadowed by an operational positive
 // ── Structural sweep ────────────────────────────────────────────────────────
 
 describe('every operational MetricSnapshot reader declares its population', () => {
-  // The 13 read sites Phase G audited. A 14th added without a window filter is
-  // the exact regression Phase F shipped, so this fails on the file rather than
-  // waiting for a surface to go wrong.
+  // The read sites Phase G audited, minus the three fatigue consumers Phase K
+  // moved to canonical evidence (see CANONICAL_READERS below — they are still
+  // covered, just by the other contract). A NEW reader added without any window
+  // filter is the exact regression Phase F shipped, so this fails on the file
+  // rather than waiting for a surface to go wrong.
   const READERS = [
-    'analysis/FatigueForecastService.js',
     'attribution-engine/AttributionService.js',
     'blended-truth/BlendedTruthService.js',
     'entity-graph/EntityGraphService.js',
-    'fatigue-forecaster/FatigueSweepService.js',
     'guardrail-engine/GuardrailSweepService.js',
     'pattern-engine/PatternService.js',
     'planning/PlanService.js',
     'revenue/RevenueCsvService.js',
-    'scenario-engine/ScenarioService.js',
     'test-generator/TestGeneratorService.js',
     'unit-economics/EconomicsService.js',
+  ];
+
+  // Phase K: these read CUMULATIVE_30D through the shared fatigue selector and
+  // must therefore NOT carry the operational filter. Listed here rather than
+  // deleted so the two populations stay jointly exhaustive — a reader that
+  // belongs to neither list is the thing this whole sweep exists to catch.
+  const CANONICAL_READERS = [
+    'analysis/FatigueForecastService.js',
+    'fatigue-forecaster/FatigueSweepService.js',
+    'scenario-engine/ScenarioService.js',
   ];
 
   const read = async (rel) => {
@@ -285,5 +294,16 @@ describe('every operational MetricSnapshot reader declares its population', () =
     // makes the population one decision instead of thirteen.
     expect(src).not.toMatch(/measurementWindow:\s*\{\s*not:/);
     expect(src).toMatch(/import .*OPERATIONAL_WINDOW_FILTER.* from .*connectorTypes\.js/);
+  });
+
+  // The Phase K half of the same invariant: a fatigue consumer must go through
+  // the shared selector and must NOT hold an operational filter of its own. A
+  // file carrying both would be reading two populations into one judgement,
+  // which is precisely the split Phase K removed.
+  it.each(CANONICAL_READERS)('%s reads canonical evidence, and only that', async (rel) => {
+    const src = await read(rel);
+    expect(src).toMatch(/selectCanonicalFatigueSnapshots/);
+    expect(src).not.toMatch(/OPERATIONAL_WINDOW_FILTER/);
+    expect(src).not.toMatch(/metricSnapshot\.findMany/);
   });
 });
