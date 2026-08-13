@@ -92,16 +92,22 @@ const rowOf = (over) => ({
 // test reads rather than merely the arguments it inspects.
 const TABLE = [
   // 5 Aug, the later bucket, placed first
-  rowOf({ date: new Date('2026-08-05T09:00:00Z'), spendMinor: 20_000, revenueMinor: 40_000,
+  rowOf({ date: new Date('2026-08-05T09:00:00Z'), spendMinor: 20_000, revenueMinor: 60_000,
     conversions: 8, measurementWindow: 'LEGACY_UNKNOWN' }),
   // a non-platform source: FETCHED by the seam, skipped by Plan in memory
   rowOf({ date: new Date('2026-08-05T10:00:00Z'), source: 'GA4', spendMinor: 999_000,
     revenueMinor: 999_000, conversions: 999, measurementWindow: 'LEGACY_UNKNOWN' }),
   // 1 Aug, two syncs on ONE calendar date — they SUM into one bucket (the
-  // sync-date bucketing this PR preserves rather than repairs)
+  // sync-date bucketing this PR preserves rather than repairs).
+  //
+  // Their RATIOS differ on purpose. An earlier draft gave both rows the same
+  // ROAS and the same CAC, which made "summed" and "first row wins" produce
+  // identical values — so a `distinct: ['date']` mutation at the seam passed
+  // every output assertion and was caught only in the query arguments. Two rows
+  // that agree prove nothing about how they were combined.
   rowOf({ date: new Date('2026-08-01T09:00:00Z'), spendMinor: 10_000, revenueMinor: 30_000, conversions: 10 }),
-  rowOf({ date: new Date('2026-08-01T15:00:00Z'), source: 'GOOGLE', spendMinor: 5_000,
-    revenueMinor: 15_000, conversions: 5 }),
+  rowOf({ date: new Date('2026-08-01T15:00:00Z'), source: 'GOOGLE', spendMinor: 10_000,
+    revenueMinor: 10_000, conversions: 30 }),
   // canonical: same window-day as a real bucket, excluded by the population
   rowOf({ date: new Date('2026-08-03T09:00:00Z'), measurementWindow: 'CUMULATIVE_30D',
     spendMinor: 777_000, revenueMinor: 777_000, conversions: 777 }),
@@ -112,13 +118,14 @@ const TABLE = [
     spendMinor: 666_000, revenueMinor: 666_000, conversions: 666 }),
 ];
 
-// 1 Aug bucket: spend 15 000, revenue 45 000, conv 15  → ROAS 3, CAC 1 000
-// 5 Aug bucket: spend 20 000, revenue 40 000, conv  8  → ROAS 2, CAC 2 500
+// 1 Aug bucket: spend 20 000, revenue 40 000, conv 40  → ROAS 2, CAC   500
+//   (first row alone would read ROAS 3, CAC 1 000 — the values a reduction gives)
+// 5 Aug bucket: spend 20 000, revenue 60 000, conv  8  → ROAS 3, CAC 2 500
 // 2/3/4 Aug: no point at all — a calendar day without a sync is absent, which is
 // the defect being preserved, not a gap in the fixture.
 const EXPECTED_ROAS_SERIES = [
-  { date: '2026-08-01', value: 3 },
-  { date: '2026-08-05', value: 2 },
+  { date: '2026-08-01', value: 2 },
+  { date: '2026-08-05', value: 3 },
 ];
 
 const fakeFindMany = (table) => (args = {}) => {
@@ -296,16 +303,19 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
       await trackPlan(WS, planWith('blendedRoas'));
       expect(actualsArgs().where.source).toBeUndefined();
       // GA4's 999 000 would have swamped the 5 Aug bucket.
-      expect(seriesOf().find((p) => p.date === '2026-08-05').value).toBe(2);
+      expect(seriesOf().find((p) => p.date === '2026-08-05').value).toBe(3);
     });
 
     it('two syncs on one calendar date SUM into one point (defect preserved)', async () => {
-      // NOT a repair target for R3.6. 10 000 + 5 000 spend and 30 000 + 15 000
-      // revenue land in a single 1 Aug bucket because `date` is the sync stamp.
+      // NOT a repair target for R3.6. Both 1 Aug rows land in a single bucket
+      // because `date` is the sync stamp, and they are ADDED — 20 000 spend and
+      // 40 000 revenue. Reading 3 here instead of 2 would mean only the first
+      // row survived, which is what any reduction at the seam would produce.
       await trackPlan(WS, planWith('blendedRoas'));
       const aug1 = seriesOf().filter((p) => p.date === '2026-08-01');
       expect(aug1).toHaveLength(1);
-      expect(aug1[0].value).toBe(3); // 45 000 / 15 000
+      expect(aug1[0].value).toBe(2);     // 40 000 / 20 000, both rows
+      expect(aug1[0].value).not.toBe(3); // 30 000 / 10 000, the first row alone
     });
 
     it('a calendar day without a sync gets no point (defect preserved)', async () => {
@@ -323,7 +333,7 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
     it('spend and conversions still produce the same blendedCac series', async () => {
       await trackPlan(WS, planWith('blendedCac'));
       expect(seriesOf()).toEqual([
-        { date: '2026-08-01', value: 1_000 }, // 15 000 / 15
+        { date: '2026-08-01', value: 500 },   // 20 000 / 40, both rows summed
         { date: '2026-08-05', value: 2_500 }, // 20 000 / 8
       ]);
     });
