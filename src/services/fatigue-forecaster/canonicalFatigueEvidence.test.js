@@ -339,6 +339,11 @@ describe('K · Phase K moves fatigue metrics only', () => {
   it('the guardrail sweep is not converted', () => {
     const guard = src('../guardrail-engine/GuardrailSweepService.js');
     expect(guard).not.toMatch(/canonicalFatigueEvidence/);
-    expect(guard).toMatch(/OPERATIONAL_WINDOW_FILTER/);
+    // R3 moved the guardrail query into the Evidence layer, so the file no
+    // longer names OPERATIONAL_WINDOW_FILTER — the population it reads is
+    // unchanged, and the seam it reads it through is what now says so. The
+    // claim this test makes ("still operational, still not fatigue evidence")
+    // is identical; only the place the claim is written down has moved.
+    expect(guard).toMatch(/selectOperationalSnapshots/);
   });
 });

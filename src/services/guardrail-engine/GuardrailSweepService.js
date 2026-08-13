@@ -9,11 +9,11 @@
 // through the existing /api/execute/meta governance.
 // ============================================================
 import { prisma }              from '../../lib/prisma.js';
-import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger }              from '../../utils/logger.js';
 import { evaluateGuardrails }  from './guardrailEngine.js';
 import { fromMinor }           from '../../lib/money.js';
 import { TEMPORAL }            from '../../config/temporal.js';
+import { selectOperationalSnapshots } from '../evidence/index.js';
 
 // Bounds MetricSnapshot.date — the SYNC timestamp. This sweep writes PROPOSED
 // Decisions, so the distinction is load-bearing: "rows synced in the last 14
@@ -47,21 +47,27 @@ export async function sweepGuardrails(workspaceId) {
   if (rules.length === 0) return { rules: 0, hits: 0, decisionsCreated: 0 };
 
   const since = new Date(Date.now() - SYNC_RECENCY_DAYS * 86_400_000);
-  // Explicit select, not `SELECT *` — a new MetricSnapshot column would
-  // otherwise widen this untouched query and break the sweep during migration
-  // lag. valuesFromSnapshot reads exactly these six, plus the two grouping keys.
-  const snapshots = await prisma.metricSnapshot.findMany({
-    // OPERATIONAL ONLY (Phase G). This builds a per-entity TIME SERIES with no
-    // per-day collapse, so a canonical row lands as a second point at a date that
-    // already has one — a step change between two readings of different periods
-    // that never happened, which is precisely what a guardrail rule fires on. The
-    // hits become PROPOSED Decisions, so the cost is a fabricated verdict.
-    where:   { workspaceId, date: { gte: since }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
-    select:  {
+  // R3: this service no longer knows how to find its evidence — it asks for it.
+  // The operational population (workspace scope, the LEGACY_UNKNOWN/ROLLING_WINDOW
+  // allow-list, and the sync-recency bound) is now stated once, in the Evidence
+  // layer, instead of inline here.
+  //
+  // WHY OPERATIONAL AND NOT CANONICAL, still true and still the reason this
+  // filter exists at all (Phase G): the loop below builds a per-entity TIME
+  // SERIES with no per-day collapse, so a canonical row would land as a second
+  // point at a date that already has one — a step change between two readings of
+  // different periods that never happened, which is precisely what a guardrail
+  // rule fires on. The hits become PROPOSED Decisions, so the cost is a
+  // fabricated verdict.
+  //
+  // The projection stays HERE, named by the consumer that reads it:
+  // valuesFromSnapshot uses exactly these six, plus the two grouping keys.
+  const snapshots = await selectOperationalSnapshots(workspaceId, {
+    since,
+    select: {
       entityId: true, entityLevel: true, date: true,
       frequency: true, roas: true, ctr: true, cpaMinor: true, spendMinor: true, currency: true,
     },
-    orderBy: { date: 'asc' },
   });
 
   // Group snapshots into per-entity time-series windows.
