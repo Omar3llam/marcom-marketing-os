@@ -20,7 +20,8 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { toMinor } from '../../lib/money.js';
-import { DATA_SOURCE, ENTITY_LEVEL, MEASUREMENT_WINDOW, OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
+import { DATA_SOURCE, ENTITY_LEVEL, MEASUREMENT_WINDOW } from '../connectors/connectorTypes.js';
+import { selectOperationalSnapshots } from '../evidence/index.js';
 
 export const MAX_REVENUE_CSV_ROWS = 500;
 
@@ -118,14 +119,37 @@ export async function processRevenueCsv(workspaceId, rows) {
   //    gives the date + currency the MANUAL actual aligns to.
   const ids = [...new Set(matched.map((m) => m.campaign.id))];
   const snaps = ids.length
-    ? await prisma.metricSnapshot.findMany({
-        // OPERATIONAL ONLY (Phase G). The uploaded revenue is attached to THIS
-        // row's `date` and currency, and the MANUAL row it produces is read back
-        // by the operational overlay — so it has to align with an operational
-        // row, not a canonical one that no operational reader will see it beside.
-        where: { workspaceId, entityLevel: ENTITY_LEVEL.CAMPAIGN, entityId: { in: ids }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
-        select: { entityId: true, date: true, currency: true },
-        orderBy: { date: 'desc' },
+    ? await selectOperationalSnapshots(workspaceId, {
+        // R3.8. This file no longer states WHERE its evidence lives. The
+        // operational population — workspace scope and the Phase-G window
+        // allow-list — is declared once in the Evidence layer and asked for here.
+        // The reason it had to be operational has not changed: the uploaded
+        // revenue is attached to THIS row's `date` and currency, and the MANUAL
+        // row it produces is read back by the operational overlay, so it has to
+        // align with an operational row rather than a canonical one no
+        // operational reader will ever see it beside.
+        //
+        // `entityLevel` is the seam's second narrowing and this is its first
+        // caller. It is a NARROWER QUESTION, not a narrower population: campaign
+        // rows are what a manual campaign-revenue upload can attach to, and an
+        // ad-set row carrying the same entityId would hand back the wrong date.
+        //
+        // Descending, EXPLICITLY. The seam's default is oldest-first; the reducer
+        // below takes the first row per entity and calls it the latest, so the
+        // ordering is load-bearing rather than incidental. Inheriting the default
+        // here would silently make "latest" mean "oldest".
+        //
+        // NO `since` (this read has never had one — an upload must be able to
+        // attach to a campaign whose last sync is old), NO source filter (the
+        // post-query logic owns none either), NO reduction, and NO catch: a
+        // failed read propagates to the route, which reports the upload failed.
+        // Turning it into `[]` here would report every matched campaign as
+        // "no synced data yet — sync this channel first" about a database we
+        // could not reach.
+        entityIds:   ids,
+        entityLevel: ENTITY_LEVEL.CAMPAIGN,
+        select:      { entityId: true, date: true, currency: true },
+        orderBy:     { date: 'desc' },
       })
     : [];
   const latestByEntity = new Map();
