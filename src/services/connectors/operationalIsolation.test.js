@@ -322,6 +322,20 @@ describe('every operational MetricSnapshot reader declares its population', () =
     expect(src).not.toMatch(/measurementWindow/);
   });
 
+  // R3.6 left PlanService HALF migrated, and deliberately: its actuals read went
+  // to the seam, its distinct/take:50 entity scan did not. That is a state the
+  // two lists above cannot express — it belongs to both — so it is pinned here
+  // instead of being left to inference. When the second read migrates, this test
+  // fails and forces the file to move lists, which is exactly the prompt a
+  // half-finished migration should produce.
+  it('planning/PlanService.js is mid-migration: one seam read, one direct read', async () => {
+    const src = await read('planning/PlanService.js');
+    expect(src).toMatch(/selectOperationalSnapshots/);
+    expect((src.match(/metricSnapshot\.findMany/g) || []).length).toBe(1);
+    // The one that remains still states its own population, per READERS above.
+    expect((src.match(/measurementWindow: OPERATIONAL_WINDOW_FILTER/g) || []).length).toBe(1);
+  });
+
   // …and the population it delegated to is still declared, one level down. The
   // filter did not disappear when it moved; if this fails, every migrated
   // consumer above silently lost its window filter at once.

@@ -23,12 +23,16 @@ import { runScenario, gatherLeadingSignals } from '../scenario-engine/ScenarioSe
 import { assessSustainability } from '../unit-economics/EconomicsService.js';
 import { estimateLanding } from '../goal-tracker/goalTrackerEngine.js';
 import { TEMPORAL } from '../../config/temporal.js';
+import { selectOperationalSnapshots } from '../evidence/index.js';
 
 const AGENDA_LIMIT = Number(process.env.PLAN_AGENDA_LIMIT || 5);
 // Bounds MetricSnapshot.date — the SYNC timestamp. buildActualsSeries then
 // buckets by that date and calls the result a DAILY series: those are sync days,
-// not delivery days. Naming it honestly here; repairing it is a behaviour change
-// and belongs to R3. Value unchanged (60).
+// not delivery days. Naming it honestly here. R3.6 moved the READ behind the
+// Evidence layer and deliberately did NOT repair this: two syncs on one calendar
+// date still collapse into one bucket, and a date without a sync still gets no
+// point. R3 migrates semantics; repairing them is a behaviour change and needs
+// its own PR. Value unchanged (60).
 const ACTUALS_SYNC_RECENCY_DAYS = TEMPORAL.planActualsSyncRecencyDays;
 
 /**
@@ -61,14 +65,37 @@ export function planToAllocationInput(plan) {
  */
 async function buildActualsSeries(workspaceId, metric, sinceDays = ACTUALS_SYNC_RECENCY_DAYS) {
   const since = new Date(Date.now() - sinceDays * 86_400_000);
-  const rows = await prisma.metricSnapshot.findMany({
-    // OPERATIONAL ONLY (Phase G). This SUMS platform rows into a per-day bucket,
-    // and Phase F's canonical row falls in the same bucket as the operational one
-    // — so goal actuals double-counted spend and revenue on every sync date. Same
-    // class as the over-count PR #357 removed, reached by a different route.
-    where:   { workspaceId, date: { gte: since }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
-    select:  { date: true, spendMinor: true, revenueMinor: true, conversions: true, source: true },
-    orderBy: { date: 'asc' },
+  // R3: this read no longer states where its evidence lives. The operational
+  // population — workspace scope and the window allow-list Phase G introduced —
+  // is declared once, in the Evidence layer, and asked for here.
+  //
+  // WHY THE POPULATION MATTERS HERE SPECIFICALLY: this SUMS platform rows into a
+  // per-day bucket, and Phase F's canonical row falls in the SAME bucket as the
+  // operational one — so goal actuals double-counted spend and revenue on every
+  // sync date. Same class as the over-count PR #357 removed, reached by a
+  // different route. The seam is now what keeps the two apart.
+  //
+  // NO orderBy PASSED, and that is the faithful reproduction rather than a
+  // shortcut: this query asked for `{ date: 'asc' }`, which is exactly what the
+  // Evidence layer publishes as OPERATIONAL_ORDER_BY and applies by default.
+  // Every consumer migrated before this one passed `orderBy: null` because it
+  // had no ORDER BY to reproduce; this is the first that wanted the default, so
+  // it takes it. The Prisma arguments are identical either way, and the test
+  // asserts `{ date: 'asc' }` against a hand-written literal, so a change to the
+  // shared constant still fails here.
+  //
+  // THE SOURCE FILTER STAYS BELOW, in memory, where it has always been. The
+  // Evidence layer owns operational eligibility; which sources count as a
+  // PLATFORM contribution to a goal is Plan's own semantics, and moving it into
+  // the seam would apply it to consumers that read GA4 and MANUAL rows on
+  // purpose.
+  //
+  // THE CATCH STAYS HERE. A failed read has always produced an empty series,
+  // and therefore a null landing rather than a fabricated one; the seam must
+  // keep propagating so an outage never reads as "no actuals" for everyone.
+  const rows = await selectOperationalSnapshots(workspaceId, {
+    since,
+    select: { date: true, spendMinor: true, revenueMinor: true, conversions: true, source: true },
   }).catch(() => []);
 
   const PLATFORM = new Set(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
