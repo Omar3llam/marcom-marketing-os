@@ -30,6 +30,16 @@
 //     caller's, applied to rows this function has ALREADY made eligible, which
 //     is what keeps filter-before-latest true by construction (I3).
 //
+// SCOPE VS POPULATION (R3.4)
+// --------------------------
+// `entityIds` narrows WHICH ROWS a caller asked about; it does not redefine what
+// counts as operational. Economics and Attribution both ask about exactly the
+// entities blended truth returned, and that predicate has always lived in their
+// queries. It is optional and absent by default, so no migrated consumer's query
+// changes by its existence — which is the only reason the seam may grow at all
+// during a behaviour-preserving migration. A narrowing that a caller does NOT
+// pass must be indistinguishable from a narrowing that does not exist.
+//
 // WHY `select` IS REQUIRED
 // -------------------------
 // Prisma projects every column when `select` is absent, so a new MetricSnapshot
@@ -58,11 +68,22 @@ export const OPERATIONAL_ORDER_BY = Object.freeze({ date: 'asc' });
  * canonical selectors DO catch, because their callers are read paths that
  * degrade to an honest "no evidence" — a different contract, deliberately.
  *
+ * A caller that ALREADY swallowed its own read errors before migrating keeps
+ * doing so at its own call site (Economics does). That is its decision to own,
+ * and it stays visible in its own file rather than being absorbed here where it
+ * would silently apply to every other consumer.
+ *
  * @param {string} workspaceId — from trusted context, NEVER a request field (I2)
  * @param {object}   opts
  * @param {Date}     opts.since  — sync-recency bound on `date`, the SYNC timestamp.
  *   NOT a delivery period: rows are rolling aggregates covering whatever window
  *   their sync requested (see config/temporal.js). Omit for no bound.
+ * @param {string[]|null} [opts.entityIds] — restrict to these entities. OMITTED
+ *   BY DEFAULT, so no existing consumer changes. `[]` is NOT the same as absent:
+ *   an empty list means "these zero entities" and matches nothing, which is what
+ *   `entityId: { in: [] }` has always meant; treating it as absent would widen a
+ *   scoped read to the whole workspace, and that is the failure mode a seam is
+ *   supposed to make impossible rather than convenient.
  * @param {object}   opts.select — REQUIRED Prisma projection; see above.
  * @param {object|null} [opts.orderBy] — defaults to OPERATIONAL_ORDER_BY. Pass
  *   `null` for NO ordering at all, which is not the same thing as ordering by
@@ -74,7 +95,7 @@ export const OPERATIONAL_ORDER_BY = Object.freeze({ date: 'asc' });
  */
 export async function selectOperationalSnapshots(
   workspaceId,
-  { since = null, select, orderBy = OPERATIONAL_ORDER_BY } = {},
+  { since = null, entityIds = null, select, orderBy = OPERATIONAL_ORDER_BY } = {},
 ) {
   // Both are programming errors rather than runtime states, and both are
   // unreachable from a correct caller — but a missing workspaceId would query
@@ -87,6 +108,8 @@ export async function selectOperationalSnapshots(
     where: {
       workspaceId,
       ...(since ? { date: { gte: since } } : {}),
+      // `== null` on purpose, not truthiness: `[]` must survive as `{ in: [] }`.
+      ...(entityIds == null ? {} : { entityId: { in: entityIds } }),
       measurementWindow: OPERATIONAL_WINDOW_FILTER,
     },
     select,
