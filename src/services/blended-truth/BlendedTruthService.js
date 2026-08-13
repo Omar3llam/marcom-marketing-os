@@ -13,9 +13,10 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { reconcile } from './blendedTruthEngine.js';
-import { isStale, OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
+import { isStale } from '../connectors/connectorTypes.js';
 import { listConnections } from '../connectors/credentialStore.js';
 import { TEMPORAL } from '../../config/temporal.js';
+import { selectOperationalSnapshots } from '../evidence/index.js';
 
 export const PLATFORM_SOURCES = Object.freeze(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
 // MANUAL = a manually-uploaded revenue actual (CSV). It reconciles as an ACTUAL
@@ -125,18 +126,36 @@ export async function getBlendedTruth(workspaceId, { lookbackDays = SYNC_RECENCY
 
   const since = new Date(Date.now() - lookbackDays * 86_400_000);
   const [snapshots, campaigns] = await Promise.all([
-    // Explicit select, not `SELECT *` — a new MetricSnapshot column would
-    // otherwise widen this untouched query and break it during migration lag.
-    // buildChannelInputs reads exactly these six fields; `date` is what lets it
-    // pick the newest row per stream instead of summing overlapping windows.
-    prisma.metricSnapshot.findMany({
-      // OPERATIONAL ONLY (Phase G). PR #357 made this read latest-per-stream
-      // rather than SUM, which fixed overlapping ROLLING_WINDOW rows; it does not
-      // help when two rows share entityId, source AND `date`, which is exactly
-      // what Phase F produces. The window filter is what separates them — the
-      // latest-per-stream reduction stays as #357 left it.
-      where:  { workspaceId, date: { gte: since }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
+    // R3: this service no longer knows how to find its evidence — it asks. The
+    // operational population (workspace scope, the LEGACY_UNKNOWN/ROLLING_WINDOW
+    // allow-list, and the sync-recency bound) is stated once, in the Evidence
+    // layer, rather than inline here.
+    //
+    // WHY OPERATIONAL, unchanged (Phase G). PR #357 made this read
+    // latest-per-stream rather than SUM, which fixed overlapping ROLLING_WINDOW
+    // rows; it does not help when two rows share entityId, source AND `date`,
+    // which is exactly what Phase F produces. The window filter is what
+    // separates them — and latestPerStream stays exactly where #357 put it,
+    // below, in this service. The Evidence layer reduces nothing.
+    //
+    // NO SOURCE FILTER, and this consumer is the reason the shared selector must
+    // never acquire one: reconciliation is ONLY meaningful because GA4, SHOPIFY
+    // and MANUAL rows arrive beside the platform rows. A canonical-style
+    // allow-list here would not narrow the population — it would delete the
+    // actual half of platform-vs-actual and silently reconcile platform truth
+    // against itself, reporting a zero gap for every account.
+    //
+    // `since` derives from the CALLER's lookbackDays; the config supplies only
+    // the default. orderBy: null — this query never had one, and latestPerStream
+    // is documented as order-independent precisely so no caller needs it.
+    //
+    // Projection stays here, named by the consumer: buildChannelInputs reads
+    // exactly these six, and `date` is what lets it pick the newest row per
+    // stream instead of summing overlapping windows.
+    selectOperationalSnapshots(workspaceId, {
+      since,
       select: { entityId: true, date: true, source: true, revenueMinor: true, spendMinor: true, currency: true },
+      orderBy: null,
     }),
     // Snapshots are CAMPAIGN-grain: MetricSnapshot.entityId == Campaign.id (both are
     // detId(ws, channel, CAMPAIGN, externalId) — see snapshotSink). Key the label map
