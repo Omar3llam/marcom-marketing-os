@@ -253,7 +253,6 @@ describe('every operational MetricSnapshot reader declares its population', () =
   // rather than waiting for a surface to go wrong.
   const READERS = [
     'attribution-engine/AttributionService.js',
-    'blended-truth/BlendedTruthService.js',
     'entity-graph/EntityGraphService.js',
     'planning/PlanService.js',
     'revenue/RevenueCsvService.js',
@@ -275,6 +274,7 @@ describe('every operational MetricSnapshot reader declares its population', () =
   const EVIDENCE_SEAM_READERS = [
     'guardrail-engine/GuardrailSweepService.js',
     'pattern-engine/PatternService.js',
+    'blended-truth/BlendedTruthService.js',
   ];
 
   // Phase K: these read CUMULATIVE_30D through the shared fatigue selector and
