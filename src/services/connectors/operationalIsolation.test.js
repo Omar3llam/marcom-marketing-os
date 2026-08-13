@@ -255,7 +255,6 @@ describe('every operational MetricSnapshot reader declares its population', () =
     'entity-graph/EntityGraphService.js',
     'planning/PlanService.js',
     'revenue/RevenueCsvService.js',
-    'test-generator/TestGeneratorService.js',
   ];
 
   // R3: consumers that have handed the query to the Evidence layer. They still
@@ -275,6 +274,7 @@ describe('every operational MetricSnapshot reader declares its population', () =
     'blended-truth/BlendedTruthService.js',
     'unit-economics/EconomicsService.js',
     'attribution-engine/AttributionService.js',
+    'test-generator/TestGeneratorService.js',
   ];
 
   // Phase K: these read CUMULATIVE_30D through the shared fatigue selector and

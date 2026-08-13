@@ -15,8 +15,8 @@
 // ============================================================
 import { randomUUID } from 'crypto';
 import { prisma }     from '../../lib/prisma.js';
-import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger }     from '../../utils/logger.js';
+import { selectOperationalSnapshots } from '../evidence/index.js';
 import { fromMinor }  from '../../lib/money.js';
 import { generateAgenda } from './testGeneratorEngine.js';
 import { TEMPORAL }       from '../../config/temporal.js';
@@ -111,10 +111,53 @@ export async function getWeeklyAgenda(workspaceId, { lookbackDays = SYNC_RECENCY
   const since = new Date(Date.now() - lookbackDays * 86_400_000);
 
   const [snapshots, accounts, decisions, memory] = await Promise.all([
-    // OPERATIONAL ONLY (Phase G) — this read is select-less and unbounded, so it
-    // would otherwise pull the canonical population wholesale into the weekly
-    // agenda's inputs.
-    prisma.metricSnapshot.findMany({ where: { workspaceId, date: { gte: since }, measurementWindow: OPERATIONAL_WINDOW_FILTER } }),
+    // R3: this service no longer states where its evidence lives. The
+    // operational population — workspace scope and the window allow-list Phase G
+    // introduced — is declared once, in the Evidence layer, and asked for here.
+    //
+    // THE PROJECTION IS THE ONE INTENTIONAL CHANGE IN THIS MIGRATION. This read
+    // was select-less, so Prisma returned every column of every row inside the
+    // recency window — including `actionMetrics`, a JSON funnel blob nobody here
+    // opens. The seam refuses an unprojected read by contract, because a shared
+    // entry point is the worst place to leave that door open: the next column
+    // added to MetricSnapshot would widen this query silently, which is exactly
+    // how getLoopState went down when `aiInsight` landed.
+    //
+    // These ELEVEN fields are what buildEntityInputs actually reads, and no
+    // snapshot row escapes it — the function emits a new shape. Each one has a
+    // consumer below:
+    //
+    //   source                      the PLATFORM_SOURCES gate
+    //   entityId                    grouping key and output field
+    //   entityLevel, currency       the metadata FALLBACKS, and they are live:
+    //                               labelsById is keyed off Account.id while
+    //                               these rows are campaign-grain, so the lookup
+    //                               misses on ordinary rows and the fallback is
+    //                               what supplies both values
+    //   spendMinor, revenueMinor    summed → roas, cpa, metrics.spendMinor
+    //   impressions, clicks         summed → ctr
+    //   conversions                 summed → cpa, metrics.conversions
+    //   frequency                   latest-wins (per-audience, not additive)
+    //   date                        the comparator that decides "latest"
+    //
+    // `ctr` and `roas` are DELIBERATELY ABSENT although the columns exist:
+    // buildEntityInputs recomputes both from the summed counts, because a stored
+    // per-row ratio is meaningless once rows are added together. Projecting them
+    // would look thorough and change nothing.
+    //
+    // NO catch, NO orderBy, NO reduction — none of which this query ever had. A
+    // read failure propagates, as it always has; turning it into an empty
+    // evidence set would let the agenda report "nothing worth testing" about a
+    // database it could not reach.
+    selectOperationalSnapshots(workspaceId, {
+      since,
+      orderBy: null,
+      select: {
+        source: true, entityId: true, entityLevel: true, currency: true,
+        spendMinor: true, revenueMinor: true, impressions: true, clicks: true,
+        conversions: true, frequency: true, date: true,
+      },
+    }),
     prisma.account.findMany({ where: { workspaceId }, select: { id: true, name: true, channel: true } }),
     // Two fields, named: the loop below reads entityId and verdict only. This
     // read is UNBOUNDED (no take, no window), so a select-less version pulls
