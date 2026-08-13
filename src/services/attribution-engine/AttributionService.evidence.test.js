@@ -192,7 +192,12 @@ describe('R3.5 — AttributionService on the Evidence seam', () => {
     });
 
     it('keeps its OWN error swallow at its OWN call site', () => {
-      expect(SRC).toMatch(/selectOperationalSnapshots\([\s\S]*?\}\)\.catch\(\(\) => \[\]\)/);
+      // Anchored on `orderBy: null`, which appears exactly once in the file, so
+      // the match cannot drift forward to the `.catch(() => [])` on the
+      // IncrementalityTest read below. A structural assertion that can be
+      // satisfied by a different statement is not a structural assertion — the
+      // first draft of this test was, and passed with the catch deleted.
+      expect(SRC).toMatch(/orderBy:\s*null,\s*\}\)\.catch\(\(\) => \[\]\)/);
     });
 
     it('keeps the reduction and the source filter in the service', () => {
@@ -289,12 +294,19 @@ describe('R3.5 — AttributionService on the Evidence seam', () => {
       expect(conversionsOf(await lastTouch(), 'meta')).not.toBe(777);
     });
 
-    it('an entity blended truth did not return is credited to nobody', async () => {
+    it('the credited set is exactly the channel set — an orphan row reaches no output', async () => {
+      // Stated precisely, because this is NOT what guards the entity narrowing.
+      // Attribution's output map is keyed off the CHANNEL LIST, so a row for an
+      // entity blended truth never returned has nowhere to land even if the
+      // query fetched it. Dropping `entityIds` is therefore output-neutral HERE
+      // and is caught by the query assertions and by the cross-service query
+      // equality below — not by these figures. Economics is where that same
+      // mutation moves a number, which is why R3.4 was the right place to
+      // introduce the option.
       const result = await lastTouch();
       expect(result.channels.map((c) => c.channelId).sort()).toEqual(['google', 'meta', 'tiktok']);
-      const total = result.channels.reduce((n, c) => n + (c.creditedConversions?.value ?? 0), 0);
-      expect(total).toBe(EXPECTED_TOTAL);
-      expect(total).not.toBe(EXPECTED_TOTAL + 500);
+      expect(result.channels.reduce((n, c) => n + (c.creditedConversions?.value ?? 0), 0))
+        .toBe(EXPECTED_TOTAL);
     });
 
     it('a MANUAL reading is a stream of its own and is still not an acquisition', async () => {
