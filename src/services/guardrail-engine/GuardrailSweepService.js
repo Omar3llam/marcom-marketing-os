@@ -13,8 +13,13 @@ import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger }              from '../../utils/logger.js';
 import { evaluateGuardrails }  from './guardrailEngine.js';
 import { fromMinor }           from '../../lib/money.js';
+import { TEMPORAL }            from '../../config/temporal.js';
 
-const LOOKBACK_DAYS = Number(process.env.GUARDRAIL_LOOKBACK_DAYS || 14);
+// Bounds MetricSnapshot.date — the SYNC timestamp. This sweep writes PROPOSED
+// Decisions, so the distinction is load-bearing: "rows synced in the last 14
+// days" is not "14 days of delivery", and each row's real period is whatever its
+// sync requested. Value unchanged (14).
+const SYNC_RECENCY_DAYS = TEMPORAL.guardrailSyncRecencyDays;
 
 /**
  * Derive the metric values a rule can reference from a snapshot.
@@ -41,7 +46,7 @@ export async function sweepGuardrails(workspaceId) {
   const rules = await prisma.guardrailRule.findMany({ where: { workspaceId, enabled: true } });
   if (rules.length === 0) return { rules: 0, hits: 0, decisionsCreated: 0 };
 
-  const since = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000);
+  const since = new Date(Date.now() - SYNC_RECENCY_DAYS * 86_400_000);
   // Explicit select, not `SELECT *` — a new MetricSnapshot column would
   // otherwise widen this untouched query and break the sweep during migration
   // lag. valuesFromSnapshot reads exactly these six, plus the two grouping keys.

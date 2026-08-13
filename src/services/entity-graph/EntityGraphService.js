@@ -18,11 +18,15 @@ import { effectiveByEntity, toCampaignRow, toAdSetRow, toAdRow } from './entityG
 import {
   selectCanonicalVerdictSnapshots, latestCanonicalByEntity, partitionByCanonicalEvidence,
 } from '../verdict-engine/canonicalVerdictEvidence.js';
+import { TEMPORAL } from '../../config/temporal.js';
 
 // entityId columns are @db.Uuid — a non-UUID string makes Prisma throw on the
 // cast (the 500 the feed route documents). Guard before any id-keyed query.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const WINDOW_DAYS = Number(process.env.ENTITY_SNAPSHOT_WINDOW_DAYS || 90);
+// Bounds MetricSnapshot.date — the SYNC timestamp. Not how much delivery the
+// rows describe: each is a ROLLING_WINDOW aggregate of whatever period its sync
+// requested. Value unchanged (90); see config/temporal.js.
+const SYNC_RECENCY_DAYS = TEMPORAL.entitySnapshotSyncRecencyDays;
 
 // Exported for the Phase-C provenance test, which asserts that this reader does
 // NOT yet select `measurementWindow` — resolution by window is Phase D, and the
@@ -49,7 +53,7 @@ export const METRIC_SELECT = {
 // Latest snapshot per entity for a level, over a bounded recency window.
 async function latestSnapshots(workspaceId, entityLevel, entityIds) {
   if (!entityIds.length) return new Map();
-  const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const since = new Date(Date.now() - SYNC_RECENCY_DAYS * 24 * 60 * 60 * 1000);
   const snaps = await prisma.metricSnapshot.findMany({
     // OPERATIONAL ONLY. effectiveByEntity picks the latest row per entity on
     // `date`, and Phase F lands a canonical row at the SAME `date` as the

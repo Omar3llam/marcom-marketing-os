@@ -20,8 +20,13 @@ import { getEconomics } from '../unit-economics/EconomicsService.js';
 import { forecastFatigue } from '../fatigue-forecaster/fatigueForecaster.js';
 import { selectCanonicalFatigueSnapshots } from '../fatigue-forecaster/canonicalFatigueEvidence.js';
 import { buildEntitySeries } from '../fatigue-forecaster/FatigueSweepService.js';
+import { TEMPORAL } from '../../config/temporal.js';
 
-const FATIGUE_LOOKBACK_DAYS = Number(process.env.SCENARIO_FATIGUE_LOOKBACK_DAYS || 30);
+// Bounds MetricSnapshot.date — the SYNC timestamp — on canonical CUMULATIVE_30D
+// rows. Deliberately its own setting rather than sharing the fatigue one: a
+// scenario projection and a persisted fatigue prediction are different products
+// and may want different depths of history. Value unchanged (30).
+const FATIGUE_SYNC_RECENCY_DAYS = TEMPORAL.scenarioFatigueSyncRecencyDays;
 
 /**
  * Pure: fold blended-truth channels + economics + learned patterns into
@@ -124,7 +129,7 @@ export async function gatherLeadingSignals(workspaceId, { entityIds = [], now } 
   if (!workspaceId) throw new Error('gatherLeadingSignals: workspaceId required');
   if (entityIds.length === 0) return [];
 
-  const since = new Date((now ? new Date(now).getTime() : Date.now()) - FATIGUE_LOOKBACK_DAYS * 86_400_000);
+  const since = new Date((now ? new Date(now).getTime() : Date.now()) - FATIGUE_SYNC_RECENCY_DAYS * 86_400_000);
   // The SAME canonical 30-day evidence the two fatigue services read (Phase K).
   // One selector, not a third inline window predicate — a leading signal and a
   // persisted prediction that disagreed about the period would be two different

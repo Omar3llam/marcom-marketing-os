@@ -19,8 +19,11 @@ import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger }     from '../../utils/logger.js';
 import { fromMinor }  from '../../lib/money.js';
 import { generateAgenda } from './testGeneratorEngine.js';
+import { TEMPORAL }       from '../../config/temporal.js';
 
-const LOOKBACK_DAYS    = Number(process.env.TEST_GENERATOR_LOOKBACK_DAYS || 14);
+// Bounds MetricSnapshot.date — the SYNC timestamp, not a delivery horizon.
+// Value unchanged (14).
+const SYNC_RECENCY_DAYS = TEMPORAL.testGeneratorSyncRecencyDays;
 const PLATFORM_SOURCES = new Set(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
 const TEST_MEMORY_PREFIX = 'test:';
 
@@ -103,7 +106,7 @@ export function buildMemoryInputs(entries) {
  * Build the ranked weekly testing agenda for a workspace. NO writes.
  * @returns {Promise<Array<object>>}
  */
-export async function getWeeklyAgenda(workspaceId, { lookbackDays = LOOKBACK_DAYS } = {}) {
+export async function getWeeklyAgenda(workspaceId, { lookbackDays = SYNC_RECENCY_DAYS } = {}) {
   if (!workspaceId) throw new Error('getWeeklyAgenda: workspaceId required');
   const since = new Date(Date.now() - lookbackDays * 86_400_000);
 

@@ -28,8 +28,14 @@ import { getWeeklyAgenda } from '../test-generator/TestGeneratorService.js';
 import { trackPlan } from '../planning/PlanService.js';
 import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
 import { BUYER_ACTIONABLE_ROOT_CAUSES } from '../verdict-engine/decisionIdentity.js';
+import { TEMPORAL } from '../../config/temporal.js';
 
-const LOOKBACK_DAYS = Number(process.env.LOOP_LOOKBACK_DAYS || 30);
+// ACTIVITY recency, NOT sync recency — this one never touches MetricSnapshot.
+// It bounds Action.executedAt, OutcomeSnapshot.createdAt and
+// DecisionMemoryEntry.createdAt: times when something actually happened. Calling
+// it a sync bound would have been a fresh inaccuracy in a change about removing
+// one. Value unchanged (30).
+const ACTIVITY_RECENCY_DAYS = TEMPORAL.loopActivityRecencyDays;
 // How recently a sweep must have run to be reused instead of re-swept.
 export const LOOP_MIN_INTERVAL_MS = Number(process.env.LOOP_MIN_INTERVAL_MS || 15 * 60 * 1000);
 const AGENTIC_CRON_MS = Number(process.env.LOOP_INTERVAL_MS || 15 * 60 * 1000);
@@ -97,7 +103,7 @@ async function loadImpactById(workspaceId) {
  */
 export async function buildLoopInputs(workspaceId, { now = new Date() } = {}) {
   if (!workspaceId) throw new Error('buildLoopInputs: workspaceId required');
-  const since = new Date(now.getTime() - LOOKBACK_DAYS * 86_400_000);
+  const since = new Date(now.getTime() - ACTIVITY_RECENCY_DAYS * 86_400_000);
   const safe = (p, fallback) => p.catch(() => fallback);
 
   const [

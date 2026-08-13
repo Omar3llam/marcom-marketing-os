@@ -22,9 +22,14 @@ import { getWeeklyAgenda } from '../test-generator/TestGeneratorService.js';
 import { runScenario, gatherLeadingSignals } from '../scenario-engine/ScenarioService.js';
 import { assessSustainability } from '../unit-economics/EconomicsService.js';
 import { estimateLanding } from '../goal-tracker/goalTrackerEngine.js';
+import { TEMPORAL } from '../../config/temporal.js';
 
-const AGENDA_LIMIT     = Number(process.env.PLAN_AGENDA_LIMIT || 5);
-const ACTUALS_LOOKBACK = Number(process.env.PLAN_ACTUALS_LOOKBACK_DAYS || 60);
+const AGENDA_LIMIT = Number(process.env.PLAN_AGENDA_LIMIT || 5);
+// Bounds MetricSnapshot.date — the SYNC timestamp. buildActualsSeries then
+// buckets by that date and calls the result a DAILY series: those are sync days,
+// not delivery days. Naming it honestly here; repairing it is a behaviour change
+// and belongs to R3. Value unchanged (60).
+const ACTUALS_SYNC_RECENCY_DAYS = TEMPORAL.planActualsSyncRecencyDays;
 
 /**
  * Pure: is this plan's approval gate UNSATISFIED, so it must not be promoted?
@@ -54,7 +59,7 @@ export function planToAllocationInput(plan) {
  * Aggregate platform MetricSnapshots into a daily actuals series for a metric.
  * Used to feed the goal-tracker's trend estimate. READ-ONLY.
  */
-async function buildActualsSeries(workspaceId, metric, sinceDays = ACTUALS_LOOKBACK) {
+async function buildActualsSeries(workspaceId, metric, sinceDays = ACTUALS_SYNC_RECENCY_DAYS) {
   const since = new Date(Date.now() - sinceDays * 86_400_000);
   const rows = await prisma.metricSnapshot.findMany({
     // OPERATIONAL ONLY (Phase G). This SUMS platform rows into a per-day bucket,
