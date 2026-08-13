@@ -130,6 +130,70 @@ describe('R3 — operational evidence', () => {
     });
   });
 
+  // ── entityLevel (R3.8) ────────────────────────────────────────────────────
+  //
+  // The second narrowing, added on the same terms as the first: RevenueCsv has
+  // always asked for CAMPAIGN rows only, and EntityGraph reads one level at a
+  // time. Neither is a claim about which rows are operational — the population
+  // spans every level and still does — so the tests below are mostly about the
+  // ABSENCE of the key, which is what every consumer migrated before R3.8 needs.
+  describe('the optional entity-level narrowing', () => {
+    it('omits the predicate ENTIRELY when no entityLevel is given', async () => {
+      // Guardrail, Pattern, BlendedTruth, Economics, Attribution, Plan and
+      // TestGenerator were all migrated before this option existed. If it ever
+      // acquires a default, their queries change underneath them and this is
+      // where that shows up.
+      await selectOperationalSnapshots(WS, { since: new Date(0), select: SELECT });
+      expect(argsOf().where.entityLevel).toBeUndefined();
+      expect(Object.keys(argsOf().where).sort()).toEqual(['date', 'measurementWindow', 'workspaceId']);
+    });
+
+    it('the key is ABSENT, not present-and-null', async () => {
+      // Prisma reads `entityLevel: null` as "level IS NULL" and would match
+      // nothing. `hasOwnProperty` is the assertion, because `undefined` and
+      // absent are indistinguishable to the dot-access above.
+      await selectOperationalSnapshots(WS, { select: SELECT });
+      expect(Object.prototype.hasOwnProperty.call(argsOf().where, 'entityLevel')).toBe(false);
+      await selectOperationalSnapshots(WS, { select: SELECT, entityLevel: null });
+      const second = prisma.metricSnapshot.findMany.mock.calls[1][0];
+      expect(Object.prototype.hasOwnProperty.call(second.where, 'entityLevel')).toBe(false);
+    });
+
+    it('narrows to the given level', async () => {
+      await selectOperationalSnapshots(WS, { select: SELECT, entityLevel: 'CAMPAIGN' });
+      expect(argsOf().where.entityLevel).toBe('CAMPAIGN');
+      expect(Object.keys(argsOf().where).sort()).toEqual(['entityLevel', 'measurementWindow', 'workspaceId']);
+    });
+
+    it('narrowing never relaxes the population or the workspace scope', async () => {
+      await selectOperationalSnapshots(WS, { select: SELECT, entityLevel: 'ADSET' });
+      expect(argsOf().where.workspaceId).toBe(WS);
+      expect(argsOf().where.measurementWindow).toBe(OPERATIONAL_WINDOW_FILTER);
+    });
+
+    it('composes with entityIds and `since` rather than replacing either', async () => {
+      const since = new Date('2026-08-01T00:00:00Z');
+      await selectOperationalSnapshots(WS, {
+        since, select: SELECT, entityIds: ['e1'], entityLevel: 'CAMPAIGN',
+      });
+      expect(argsOf().where).toEqual({
+        workspaceId: WS,
+        date: { gte: since },
+        entityId: { in: ['e1'] },
+        entityLevel: 'CAMPAIGN',
+        measurementWindow: OPERATIONAL_WINDOW_FILTER,
+      });
+    });
+
+    it('is never inferred from entityIds', async () => {
+      // An id list is single-level today by accident of who calls it, not by
+      // contract. Deriving the level from it would turn a caller's silence into
+      // a filter it never wrote.
+      await selectOperationalSnapshots(WS, { select: SELECT, entityIds: ['e1', 'e2'] });
+      expect(argsOf().where.entityLevel).toBeUndefined();
+    });
+  });
+
   describe('what it deliberately does NOT do', () => {
     it('applies no source filter — actual-revenue rows stay in the population', async () => {
       // GA4/SHOPIFY/MANUAL are eligible operational rows today. Importing the
@@ -138,7 +202,10 @@ describe('R3 — operational evidence', () => {
       expect(argsOf().where.source).toBeUndefined();
     });
 
-    it('applies no entityLevel filter — every level stays eligible', async () => {
+    it('applies no entityLevel filter OF ITS OWN — every level stays eligible', async () => {
+      // R3.8 made this a caller's option; it did not make it a policy. The seam
+      // narrows by level only when asked, and the default population is still
+      // every level in the workspace.
       await selectOperationalSnapshots(WS, { since: new Date(0), select: SELECT });
       expect(argsOf().where.entityLevel).toBeUndefined();
     });

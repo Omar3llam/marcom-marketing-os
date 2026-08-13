@@ -254,7 +254,6 @@ describe('every operational MetricSnapshot reader declares its population', () =
   const READERS = [
     'entity-graph/EntityGraphService.js',
     'planning/PlanService.js',
-    'revenue/RevenueCsvService.js',
   ];
 
   // R3: consumers that have handed the query to the Evidence layer. They still
@@ -276,6 +275,16 @@ describe('every operational MetricSnapshot reader declares its population', () =
     'attribution-engine/AttributionService.js',
     'test-generator/TestGeneratorService.js',
   ];
+
+  // R3.8: RevenueCsv reads through the seam like the list above, but it is also
+  // a WRITER — it lands MANUAL actual rows — so it must keep saying
+  // `measurementWindow` in the row it constructs and in the upsert's natural key.
+  // The blanket "states no population of its own" assertion cannot be applied to
+  // it without either failing for the wrong reason or being weakened for
+  // everyone, so it gets its own entry: same read contract, write vocabulary
+  // intact, and an explicit assertion that what remains is a write rather than a
+  // filter that survived the migration.
+  const EVIDENCE_SEAM_READER_WRITERS = ['revenue/RevenueCsvService.js'];
 
   // Phase K: these read CUMULATIVE_30D through the shared fatigue selector and
   // must therefore NOT carry the operational filter. Listed here rather than
@@ -320,6 +329,25 @@ describe('every operational MetricSnapshot reader declares its population', () =
     expect(src).not.toMatch(/metricSnapshot\.findMany/);
     expect(src).not.toMatch(/OPERATIONAL_WINDOW_FILTER/);
     expect(src).not.toMatch(/measurementWindow/);
+  });
+
+  it.each(EVIDENCE_SEAM_READER_WRITERS)('%s reads through the Evidence seam and keeps only its WRITE population', async (rel) => {
+    const src = await read(rel);
+    expect(src).toMatch(/selectOperationalSnapshots/);
+    expect(src).not.toMatch(/metricSnapshot\.findMany/);
+    // The read-side population is gone: no allow-list import, and no predicate
+    // shape. `measurementWindow: { ... }` is what a filter looks like; the write
+    // sites are `measurementWindow: MEASUREMENT_WINDOW.X` and
+    // `measurementWindow: r.measurementWindow`, which are values, not predicates.
+    expect(src).not.toMatch(/OPERATIONAL_WINDOW_FILTER/);
+    // `\b` matters: the upsert's compound-key name ENDS in `_measurementWindow`
+    // and is followed by `{`, so an unanchored pattern flags the write it is
+    // supposed to permit.
+    expect(src).not.toMatch(/\bmeasurementWindow:\s*\{/);
+    // …and it really is still a writer, so the exemption above is not a hole
+    // somebody could quietly widen by deleting the write.
+    expect(src).toMatch(/metricSnapshot\.upsert/);
+    expect(src).toMatch(/measurementWindow: MEASUREMENT_WINDOW\./);
   });
 
   // R3.6 left PlanService HALF migrated, and deliberately: its actuals read went

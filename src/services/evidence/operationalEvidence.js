@@ -30,8 +30,8 @@
 //     caller's, applied to rows this function has ALREADY made eligible, which
 //     is what keeps filter-before-latest true by construction (I3).
 //
-// SCOPE VS POPULATION (R3.4)
-// --------------------------
+// SCOPE VS POPULATION (R3.4, R3.8)
+// --------------------------------
 // `entityIds` narrows WHICH ROWS a caller asked about; it does not redefine what
 // counts as operational. Economics and Attribution both ask about exactly the
 // entities blended truth returned, and that predicate has always lived in their
@@ -39,6 +39,21 @@
 // changes by its existence — which is the only reason the seam may grow at all
 // during a behaviour-preserving migration. A narrowing that a caller does NOT
 // pass must be indistinguishable from a narrowing that does not exist.
+//
+// `entityLevel` (R3.8) is the second narrowing, and it exists on the same terms.
+// It is NOT a population rule: the operational population spans every level, and
+// a consumer that asks about campaigns is asking a narrower QUESTION of the same
+// population rather than declaring that ad-sets are not operational. Two
+// consumers need it — RevenueCsv, which attaches a manual actual to the latest
+// CAMPAIGN row, and EntityGraph, which reads one level at a time — so it is
+// added once, for both, rather than twice with a rename in between.
+//
+// THE SEAM IS NOT A QUERY BUILDER. These two options are here because they are
+// concrete, repeated population narrowings that already existed in the consumers'
+// own queries. There is deliberately no `where` passthrough, no predicate bag and
+// no generic option object: the moment a caller can hand this function arbitrary
+// SQL, the operational policy stops being a decision made once and becomes a
+// default that callers are free to talk out of.
 //
 // WHY `select` IS REQUIRED
 // -------------------------
@@ -84,6 +99,13 @@ export const OPERATIONAL_ORDER_BY = Object.freeze({ date: 'asc' });
  *   `entityId: { in: [] }` has always meant; treating it as absent would widen a
  *   scoped read to the whole workspace, and that is the failure mode a seam is
  *   supposed to make impossible rather than convenient.
+ * @param {string|null} [opts.entityLevel] — restrict to one level, e.g.
+ *   ENTITY_LEVEL.CAMPAIGN. OMITTED BY DEFAULT, and omission is the whole
+ *   contract: every consumer migrated before R3.8 reads all levels, so the key
+ *   must be ABSENT from `where` — not present-and-null, which Prisma reads as
+ *   "level IS NULL" and would match nothing. Never defaulted and never inferred
+ *   from `entityIds`: an id list happens to be single-level today, and guessing
+ *   the level from it would turn a caller's silence into a filter it never wrote.
  * @param {object}   opts.select — REQUIRED Prisma projection; see above.
  * @param {object|null} [opts.orderBy] — defaults to OPERATIONAL_ORDER_BY. Pass
  *   `null` for NO ordering at all, which is not the same thing as ordering by
@@ -95,7 +117,7 @@ export const OPERATIONAL_ORDER_BY = Object.freeze({ date: 'asc' });
  */
 export async function selectOperationalSnapshots(
   workspaceId,
-  { since = null, entityIds = null, select, orderBy = OPERATIONAL_ORDER_BY } = {},
+  { since = null, entityIds = null, entityLevel = null, select, orderBy = OPERATIONAL_ORDER_BY } = {},
 ) {
   // Both are programming errors rather than runtime states, and both are
   // unreachable from a correct caller — but a missing workspaceId would query
@@ -110,6 +132,10 @@ export async function selectOperationalSnapshots(
       ...(since ? { date: { gte: since } } : {}),
       // `== null` on purpose, not truthiness: `[]` must survive as `{ in: [] }`.
       ...(entityIds == null ? {} : { entityId: { in: entityIds } }),
+      // Spread rather than assigned, for the same reason: `entityLevel: null` is
+      // a predicate Prisma honours, so an unpassed narrowing has to leave the key
+      // out of the object entirely rather than set it to nothing.
+      ...(entityLevel == null ? {} : { entityLevel }),
       measurementWindow: OPERATIONAL_WINDOW_FILTER,
     },
     select,
