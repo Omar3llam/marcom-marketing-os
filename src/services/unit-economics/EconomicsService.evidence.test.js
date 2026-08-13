@@ -21,8 +21,13 @@
 //   • a CUMULATIVE_30D row sharing entityId, source AND `date` (Phase G)
 //   • a MANUAL row that is the newest reading overall          (in-memory source skip)
 //   • three overlapping trailing-window totals for one stream  (#359)
+//   • a channel whose ONLY reading is months old               (no temporal bound)
 //
-// Each one changes the CAC if the corresponding predicate is lost.
+// Each one changes the CAC if the corresponding predicate is lost. The last is
+// there so that "this query has no lookback" is provable by the FIGURES and not
+// only by the absence of a key: any `since` a future edit might add — 30 days,
+// 60, 90 — drops that channel out of the denominator, and a channel missing from
+// the denominator makes acquisition look cheaper than it is.
 //
 // The canonical row deliberately shares its `date` with the operational row, as
 // it does in production — one sync run stamps one `now`. That makes the tie
@@ -102,16 +107,24 @@ const TABLE = [
   rowOf({ entityId: 'orphan', date: d(4), conversions: 500 }),
   // another tenant's row for the same entity id, newer than anything above
   rowOf({ entityId: 'meta',   date: d(9), conversions: 777, workspaceId: 'ws-other' }),
+  // a paused channel, last synced in January: real spend, real conversions, and
+  // outside any lookback anyone would be tempted to add.
+  rowOf({ entityId: 'tiktok', date: new Date('2026-01-05T09:00:00Z'), conversions: 20,
+    source: 'TIKTOK' }),
 ];
 
-/** conversions Economics must arrive at: meta's newest 50 + google's 30. */
-const EXPECTED_CONVERSIONS = 80;
-const SPEND_MINOR = 100_000;                                  // 60 000 + 40 000
-const EXPECTED_CAC = Math.round(SPEND_MINOR / EXPECTED_CONVERSIONS); // 1 250
+/** conversions Economics must arrive at: meta's newest 50 + google's 30 + tiktok's 20. */
+const EXPECTED_CONVERSIONS = 100;
+const SPEND_MINOR = 100_000;                                  // 60 000 + 40 000 + 0
+const EXPECTED_CAC = Math.round(SPEND_MINOR / EXPECTED_CONVERSIONS); // 1 000
 
 const CHANNELS = [
   { channelId: 'meta',   spendMinor: 60_000, currency: 'USD' },
   { channelId: 'google', spendMinor: 40_000, currency: 'USD' },
+  // Paused: blended truth still returns it, and its historical conversions still
+  // belong in a realized CAC. Zero spend keeps the numerator unchanged so the
+  // temporal assertions below move only the denominator.
+  { channelId: 'tiktok', spendMinor: 0,      currency: 'USD' },
 ];
 
 /**
@@ -194,7 +207,7 @@ describe('R3.4 — EconomicsService on the Evidence seam', () => {
       const args = argsOf();
 
       expect(args.where.workspaceId).toBe(WS);
-      expect(args.where.entityId).toEqual({ in: ['meta', 'google'] });
+      expect(args.where.entityId).toEqual({ in: ['meta', 'google', 'tiktok'] });
       expect(args.where.measurementWindow).toEqual(PRE_MIGRATION_WINDOWS);
       expect(args.select).toEqual(PRE_MIGRATION_SELECT);
 
@@ -212,6 +225,17 @@ describe('R3.4 — EconomicsService on the Evidence seam', () => {
       expect(argsOf().where.date).toBeUndefined();
       expect(argsOf().where.windowStart).toBeUndefined();
       expect(argsOf().where.windowEnd).toBeUndefined();
+    });
+
+    it('and proves it by the FIGURES: a channel last synced in January still counts', async () => {
+      // The absence of a key is a weak claim on its own — it says nothing about
+      // what the query returns. tiktok's only reading is months old, so any
+      // lookback drops it and the CAC rises from 1 000 to 1 250. The number is
+      // the assertion.
+      const cac = await getCurrentCac(WS);
+      expect(cac.totalConversions).toBe(EXPECTED_CONVERSIONS);
+      expect(cac.currentBlendedCacMinor).toBe(EXPECTED_CAC);
+      expect(cac.currentBlendedCacMinor).not.toBe(1_250); // what a 30-day bound would report
     });
 
     it('carries NO orderBy — the key must be absent', async () => {
@@ -268,21 +292,21 @@ describe('R3.4 — EconomicsService on the Evidence seam', () => {
 
     it('overlapping trailing windows supersede rather than sum (#359 preserved)', async () => {
       const cac = await getCurrentCac(WS);
-      expect(cac.totalConversions).not.toBe(40 + 46 + 50 + 30); // 166, the defect
-      expect(cac.currentBlendedCacMinor).not.toBe(602);
+      expect(cac.totalConversions).not.toBe(40 + 46 + 50 + 30 + 20); // 186, the defect
+      expect(cac.currentBlendedCacMinor).not.toBe(538);
     });
 
     it('another tenant\'s newer row cannot enter the denominator', async () => {
       // ws-other's row is the newest 'meta' reading in the table. If workspace
-      // scope were lost it would win the stream and CAC would collapse to 124.
+      // scope were lost it would win the stream and CAC would collapse to 121.
       const cac = await getCurrentCac(WS);
       expect(cac.totalConversions).toBe(EXPECTED_CONVERSIONS);
-      expect(cac.totalConversions).not.toBe(777 + 30);
+      expect(cac.totalConversions).not.toBe(777 + 30 + 20);
     });
 
     it('an entity blended truth did not return contributes nothing', async () => {
       // 'orphan' is a real operational row in this workspace. Only the entity
-      // narrowing keeps it out, and without it CAC reads 172 instead of 1 250.
+      // narrowing keeps it out, and without it CAC reads 167 instead of 1 000.
       const cac = await getCurrentCac(WS);
       expect(cac.totalConversions).not.toBe(EXPECTED_CONVERSIONS + 500);
       expect(cac.currentBlendedCacMinor).toBe(EXPECTED_CAC);
@@ -290,7 +314,7 @@ describe('R3.4 — EconomicsService on the Evidence seam', () => {
 
     it('a MANUAL reading is a stream of its own and is still not an acquisition', async () => {
       const cac = await getCurrentCac(WS);
-      expect(cac.totalConversions).not.toBe(999 + 30);
+      expect(cac.totalConversions).not.toBe(999 + 30 + 20);
     });
 
     it('zero conversions yields a NULL CAC, never a number', async () => {
