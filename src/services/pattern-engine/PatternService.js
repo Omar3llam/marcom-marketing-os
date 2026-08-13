@@ -12,8 +12,8 @@
 // ============================================================
 import { randomUUID } from 'crypto';
 import { prisma }      from '../../lib/prisma.js';
-import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger }      from '../../utils/logger.js';
+import { selectOperationalSnapshots } from '../evidence/index.js';
 import { extractPatterns } from './patternEngine.js';
 import { PATTERN_STATUS }   from './patternTypes.js';
 import { TEMPORAL }         from '../../config/temporal.js';
@@ -75,16 +75,33 @@ export async function getBriefing(workspaceId, { now = new Date(), lookbackDays 
         id: true, verdict: true, entityId: true, entityLevel: true, createdAt: true,
       },
     }),
-    // Explicit select, not `SELECT *`. Adding a column to MetricSnapshot widens
-    // every select-less read on it, so a deploy that lands before its migration
-    // makes an untouched query throw "column does not exist" (the class that
-    // took getLoopState down in #209). buildPatternInputs projects exactly these
-    // six fields — asking for more was never useful, only fragile.
-    prisma.metricSnapshot.findMany({
-      // OPERATIONAL ONLY (Phase G): pattern extraction reads these as a sequence
-      // of observations per entity, so a canonical row is an extra observation.
-      where:  { workspaceId, date: { gte: since }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
+    // R3: this service no longer knows how to find its evidence — it asks. The
+    // operational population (workspace scope, the LEGACY_UNKNOWN/ROLLING_WINDOW
+    // allow-list, and the sync-recency bound) is now stated once, in the Evidence
+    // layer, rather than inline here.
+    //
+    // WHY OPERATIONAL, unchanged (Phase G): pattern extraction reads these as a
+    // sequence of observations per entity, so a canonical row is an extra
+    // observation of a period nobody asked about.
+    //
+    // `since` is derived from the CALLER's lookbackDays, not from the config
+    // default — getBriefing's parameter stays authoritative and the Evidence
+    // layer receives whatever it resolved to.
+    //
+    // orderBy: null — this query never had one, and it must not acquire one.
+    // patternEngine.indexSnapshots sorts each entity's series itself, so the
+    // database was never asked to; adding ORDER BY to the widest lookback in the
+    // system (365 days) changes the plan without changing a single output.
+    //
+    // The projection stays HERE, named by the consumer that reads it:
+    // buildPatternInputs projects exactly these six fields. Explicit, not
+    // `SELECT *` — a new MetricSnapshot column would otherwise widen this read
+    // and throw during migration lag (the class that took getLoopState down
+    // in #209).
+    selectOperationalSnapshots(workspaceId, {
+      since,
       select: { entityId: true, date: true, frequency: true, roas: true, ctr: true, spendMinor: true },
+      orderBy: null,
     }),
     prisma.testExperiment.findMany({ where: { workspaceId } }),
   ]);

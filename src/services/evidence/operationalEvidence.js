@@ -64,9 +64,18 @@ export const OPERATIONAL_ORDER_BY = Object.freeze({ date: 'asc' });
  *   NOT a delivery period: rows are rolling aggregates covering whatever window
  *   their sync requested (see config/temporal.js). Omit for no bound.
  * @param {object}   opts.select — REQUIRED Prisma projection; see above.
- * @returns {Promise<Array>} eligible rows, date-ascending.
+ * @param {object|null} [opts.orderBy] — defaults to OPERATIONAL_ORDER_BY. Pass
+ *   `null` for NO ordering at all, which is not the same thing as ordering by
+ *   something else: a consumer whose engine sorts what it needs never asked the
+ *   database to sort, and making it start would add an ORDER BY to a query that
+ *   has run without one. On the 365-day population that is a plan change, not a
+ *   tidy-up, and R3 moves ownership without touching the query.
+ * @returns {Promise<Array>} eligible rows, date-ascending unless `orderBy: null`.
  */
-export async function selectOperationalSnapshots(workspaceId, { since = null, select } = {}) {
+export async function selectOperationalSnapshots(
+  workspaceId,
+  { since = null, select, orderBy = OPERATIONAL_ORDER_BY } = {},
+) {
   // Both are programming errors rather than runtime states, and both are
   // unreachable from a correct caller — but a missing workspaceId would query
   // across every workspace, and a missing select would widen silently. Neither
@@ -81,6 +90,9 @@ export async function selectOperationalSnapshots(workspaceId, { since = null, se
       measurementWindow: OPERATIONAL_WINDOW_FILTER,
     },
     select,
-    orderBy: OPERATIONAL_ORDER_BY,
+    // Omitted ENTIRELY when null, rather than passed as null — the absence of
+    // the key is what reproduces an unordered query; `orderBy: null` is a
+    // different thing to hand Prisma.
+    ...(orderBy ? { orderBy } : {}),
   });
 }
