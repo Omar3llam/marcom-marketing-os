@@ -108,13 +108,18 @@ const rowOf = (over) => ({
 });
 
 const TABLE = [
-  // camp-1 — the later row first, so nothing depends on table order
-  rowOf({ entityId: 'camp-1', date: daysAgo(2),
-    impressions: 3_000, clicks: 90, spendMinor: 30_000, revenueMinor: 120_000,
-    conversions: 16, frequency: 5.0, ctr: 3.0, roas: 4.0 }),
+  // camp-1 — the OLDER row first, deliberately. latest-wins is order-independent
+  // so the answer is still 5.0, but "whichever row arrived first" now gives 2.0.
+  // That difference is what makes `date` a load-bearing projected field: without
+  // it the comparator degrades to undefined > undefined and the FIRST row keeps
+  // the frequency. An earlier draft listed these the other way round, and
+  // dropping `date` was invisible because the newest row happened to be first.
   rowOf({ entityId: 'camp-1', date: daysAgo(5),
     impressions: 1_000, clicks: 10, spendMinor: 10_000, revenueMinor: 20_000,
     conversions: 4, frequency: 2.0, ctr: 1.0, roas: 2.0 }),
+  rowOf({ entityId: 'camp-1', date: daysAgo(2),
+    impressions: 3_000, clicks: 90, spendMinor: 30_000, revenueMinor: 120_000,
+    conversions: 16, frequency: 5.0, ctr: 3.0, roas: 4.0 }),
   // acct-1 — the ONE entity whose metadata lookup resolves
   rowOf({ entityId: 'acct-1', date: daysAgo(3),
     impressions: 500, clicks: 25, spendMinor: 5_000, revenueMinor: 5_000,
