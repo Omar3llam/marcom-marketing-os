@@ -16,8 +16,11 @@ import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger }      from '../../utils/logger.js';
 import { extractPatterns } from './patternEngine.js';
 import { PATTERN_STATUS }   from './patternTypes.js';
+import { TEMPORAL }         from '../../config/temporal.js';
 
-const LOOKBACK_DAYS = Number(process.env.PATTERN_LOOKBACK_DAYS || 365);
+// Bounds MetricSnapshot.date — the SYNC timestamp, not a delivery horizon. A row
+// written yesterday may hold a lifetime aggregate. Value unchanged (365).
+const SYNC_RECENCY_DAYS = TEMPORAL.patternSyncRecencyDays;
 
 /**
  * Pure: map prisma rows into the pattern engine's input arrays.
@@ -56,7 +59,7 @@ function dynamicFields(p) {
  * Extract + persist this workspace's patterns and return the briefing.
  * @returns {Promise<{ patterns, promotableCount, conflicts }>}
  */
-export async function getBriefing(workspaceId, { now = new Date(), lookbackDays = LOOKBACK_DAYS } = {}) {
+export async function getBriefing(workspaceId, { now = new Date(), lookbackDays = SYNC_RECENCY_DAYS } = {}) {
   if (!workspaceId) throw new Error('getBriefing: workspaceId required');
   const since = new Date(now.getTime() - lookbackDays * 86_400_000);
 

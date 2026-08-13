@@ -15,6 +15,7 @@ import { logger } from '../../utils/logger.js';
 import { reconcile } from './blendedTruthEngine.js';
 import { isStale, OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { listConnections } from '../connectors/credentialStore.js';
+import { TEMPORAL } from '../../config/temporal.js';
 
 export const PLATFORM_SOURCES = Object.freeze(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
 // MANUAL = a manually-uploaded revenue actual (CSV). It reconciles as an ACTUAL
@@ -22,7 +23,9 @@ export const PLATFORM_SOURCES = Object.freeze(['META', 'GOOGLE', 'TIKTOK', 'SNAP
 // revenue shows an honest platform-vs-actual gap, not a collapsed-to-zero one.
 export const ACTUAL_SOURCES   = Object.freeze(['GA4', 'SHOPIFY', 'MANUAL']);
 
-const LOOKBACK_DAYS = Number(process.env.BLENDED_TRUTH_LOOKBACK_DAYS || 30);
+// Bounds MetricSnapshot.date — the SYNC timestamp, not a delivery horizon.
+// Value unchanged (30). See config/temporal.js.
+const SYNC_RECENCY_DAYS = TEMPORAL.blendedTruthSyncRecencyDays;
 
 /** A missing/unparseable date sorts oldest — it must never win a comparison. */
 function stamp(d) {
@@ -117,7 +120,7 @@ export function buildChannelInputs(snapshots, labelsById = new Map()) {
  * Reconcile platform-claimed vs actual revenue for a workspace.
  * @returns {Promise<{ channels, portfolio }>} BlendedTruthEngine output
  */
-export async function getBlendedTruth(workspaceId, { lookbackDays = LOOKBACK_DAYS } = {}) {
+export async function getBlendedTruth(workspaceId, { lookbackDays = SYNC_RECENCY_DAYS } = {}) {
   if (!workspaceId) throw new Error('getBlendedTruth: workspaceId required');
 
   const since = new Date(Date.now() - lookbackDays * 86_400_000);

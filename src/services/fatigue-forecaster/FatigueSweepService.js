@@ -24,8 +24,13 @@ import { logger }            from '../../utils/logger.js';
 import { forecastFatigue }   from './fatigueForecaster.js';
 import { resolvePrediction } from './FatiguePredictionService.js';
 import { selectCanonicalFatigueSnapshots } from './canonicalFatigueEvidence.js';
+import { TEMPORAL }          from '../../config/temporal.js';
 
-const LOOKBACK_DAYS = Number(process.env.FATIGUE_LOOKBACK_DAYS || 30);
+// Bounds MetricSnapshot.date — the SYNC timestamp — on rows that are already
+// canonical CUMULATIVE_30D observations. Shares one setting with
+// FatigueForecastService on purpose: two names would let the two drift onto
+// different populations, which is the defect Phase K closed. Value unchanged (30).
+const SYNC_RECENCY_DAYS = TEMPORAL.fatigueSyncRecencyDays;
 const CEILING       = Number(process.env.FATIGUE_CEILING || 3.5);
 const MIN_POINTS    = 2; // the forecaster needs ≥2 to fit a trend
 
@@ -106,7 +111,7 @@ async function resolveBreachedPredictions(workspaceId, entities) {
 export async function sweepFatigue(workspaceId, { now = new Date() } = {}) {
   if (!workspaceId) throw new Error('sweepFatigue: workspaceId required');
 
-  const since = new Date(now.getTime() - LOOKBACK_DAYS * 86_400_000);
+  const since = new Date(now.getTime() - SYNC_RECENCY_DAYS * 86_400_000);
   // CANONICAL 30-DAY EVIDENCE (Phase K), at every level the producer lands:
   // campaign, ad-set and ad. No entityLevel restriction — a sweep judges each
   // entity on its OWN canonical observation, and levels are never rolled up

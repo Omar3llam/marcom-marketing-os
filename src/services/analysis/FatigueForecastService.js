@@ -25,9 +25,14 @@ import { buildEntitySeries } from '../fatigue-forecaster/FatigueSweepService.js'
 import {
   selectCanonicalFatigueSnapshots, latestCanonicalByEntity,
 } from '../fatigue-forecaster/canonicalFatigueEvidence.js';
+import { TEMPORAL } from '../../config/temporal.js';
 
 const CEILING       = Number(process.env.FATIGUE_CEILING || 3.5);       // matches signalRules FREQUENCY_HIGH
-const LOOKBACK_DAYS = Number(process.env.FATIGUE_LOOKBACK_DAYS || 30);
+// Bounds MetricSnapshot.date — the SYNC timestamp — on rows that are ALREADY
+// canonical CUMULATIVE_30D observations. Two different periods, and only the
+// second is the measurement: this bound decides how many 30-day observations to
+// fit a trend through, never what any one of them covers. Value unchanged (30).
+const SYNC_RECENCY_DAYS = TEMPORAL.fatigueSyncRecencyDays;
 const MIN_VELOCITY  = 0.01;   // below this, frequency isn't meaningfully rising → no "+0.00/day"
 const AT_RISK_DAYS  = 7;      // ≤ 1 week
 const MONITOR_DAYS  = 21;     // ≤ 3 weeks
@@ -90,7 +95,7 @@ export async function computeFatigueForecast(workspaceId, campaigns = []) {
   // ── ONE batched query for every campaign (no per-campaign N+1) ──
   // CAMPAIGN level explicitly: this surface names campaigns, and an ad-set's
   // canonical row must never stand in for its parent's.
-  const since = new Date(Date.now() - LOOKBACK_DAYS * 86_400_000);
+  const since = new Date(Date.now() - SYNC_RECENCY_DAYS * 86_400_000);
   const snapshots = await selectCanonicalFatigueSnapshots(workspaceId, {
     entityIds, entityLevel: ENTITY_LEVEL.CAMPAIGN, since,
   });
