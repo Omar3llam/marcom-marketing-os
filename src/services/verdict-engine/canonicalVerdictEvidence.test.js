@@ -321,8 +321,12 @@ describe('the blast radius stops at the verdict evidence source', () => {
 
   it('guardrails stay operational', () => {
     const guard = src('../guardrail-engine/GuardrailSweepService.js');
-    expect(guard).toMatch(/OPERATIONAL_WINDOW_FILTER/);
+    // R3 handed the query to the Evidence layer, so the operational population
+    // is now declared there rather than inline here. Same population, same
+    // exclusion from canonical verdict evidence — different owner.
+    expect(guard).toMatch(/selectOperationalSnapshots/);
     expect(guard).not.toMatch(/canonicalVerdictEvidence/);
+    expect(guard).not.toMatch(/selectCanonicalVerdictSnapshots/);
   });
 
   it('the selector cannot reach a money column it has no business in', () => {

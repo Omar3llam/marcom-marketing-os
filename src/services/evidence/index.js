@@ -93,3 +93,9 @@ export {
   OPERATIONAL_WINDOW_FILTER,
   isOperationalWindow,
 } from '../connectors/connectorTypes.js';
+
+// The first thing this layer OWNS rather than forwards (R3). The canonical
+// policies above still live in their engines' own modules; the operational
+// population had no home at all — nine consumers each re-expressed it inline —
+// so it gets one here, and consumers migrate onto it one PR at a time.
+export { selectOperationalSnapshots, OPERATIONAL_ORDER_BY } from './operationalEvidence.js';

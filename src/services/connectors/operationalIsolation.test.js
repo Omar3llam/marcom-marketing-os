@@ -255,12 +255,26 @@ describe('every operational MetricSnapshot reader declares its population', () =
     'attribution-engine/AttributionService.js',
     'blended-truth/BlendedTruthService.js',
     'entity-graph/EntityGraphService.js',
-    'guardrail-engine/GuardrailSweepService.js',
     'pattern-engine/PatternService.js',
     'planning/PlanService.js',
     'revenue/RevenueCsvService.js',
     'test-generator/TestGeneratorService.js',
     'unit-economics/EconomicsService.js',
+  ];
+
+  // R3: consumers that have handed the query to the Evidence layer. They still
+  // read the operational population — the invariant is unchanged — but they no
+  // longer STATE it, so asserting the filter against their source would now fail
+  // for the right reason and prove the wrong thing.
+  //
+  // Moved here rather than deleted, for the same reason CANONICAL_READERS exists
+  // below: the three lists must stay jointly exhaustive. A reader that belongs to
+  // none of them is exactly what this sweep is for, and dropping a migrated file
+  // off the end would create the blind spot instead of closing it.
+  //
+  // This list grows by one per R3 PR, and READERS shrinks by the same one.
+  const EVIDENCE_SEAM_READERS = [
+    'guardrail-engine/GuardrailSweepService.js',
   ];
 
   // Phase K: these read CUMULATIVE_30D through the shared fatigue selector and
@@ -292,6 +306,35 @@ describe('every operational MetricSnapshot reader declares its population', () =
     // An inline `not: 'CUMULATIVE_30D'` would satisfy the count above while
     // re-admitting DAILY and everything after it. Naming the constant is what
     // makes the population one decision instead of thirteen.
+    expect(src).not.toMatch(/measurementWindow:\s*\{\s*not:/);
+    expect(src).toMatch(/import .*OPERATIONAL_WINDOW_FILTER.* from .*connectorTypes\.js/);
+  });
+
+  // The R3 half: a migrated consumer must own NO part of the population
+  // decision. Half a migration — asking the seam while keeping the old filter,
+  // or keeping a second direct read beside it — is the state that looks migrated
+  // and is not, so both halves are asserted rather than just the new call.
+  it.each(EVIDENCE_SEAM_READERS)('%s reads through the Evidence seam and states no population of its own', async (rel) => {
+    const src = await read(rel);
+    expect(src).toMatch(/selectOperationalSnapshots/);
+    expect(src).not.toMatch(/metricSnapshot\.findMany/);
+    expect(src).not.toMatch(/OPERATIONAL_WINDOW_FILTER/);
+    expect(src).not.toMatch(/measurementWindow/);
+  });
+
+  // …and the population it delegated to is still declared, one level down. The
+  // filter did not disappear when it moved; if this fails, every migrated
+  // consumer above silently lost its window filter at once.
+  it('the Evidence layer states the operational population it now owns', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const src = readFileSync(
+      fileURLToPath(new URL('../evidence/operationalEvidence.js', import.meta.url)), 'utf8',
+    );
+    const reads   = (src.match(/metricSnapshot\.findMany/g) || []).length;
+    const filters = (src.match(/measurementWindow: OPERATIONAL_WINDOW_FILTER/g) || []).length;
+    expect(reads).toBeGreaterThan(0);
+    expect(filters).toBe(reads);
     expect(src).not.toMatch(/measurementWindow:\s*\{\s*not:/);
     expect(src).toMatch(/import .*OPERATIONAL_WINDOW_FILTER.* from .*connectorTypes\.js/);
   });
