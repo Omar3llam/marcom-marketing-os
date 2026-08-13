@@ -252,7 +252,6 @@ describe('every operational MetricSnapshot reader declares its population', () =
   // filter is the exact regression Phase F shipped, so this fails on the file
   // rather than waiting for a surface to go wrong.
   const READERS = [
-    'attribution-engine/AttributionService.js',
     'entity-graph/EntityGraphService.js',
     'planning/PlanService.js',
     'revenue/RevenueCsvService.js',
@@ -275,6 +274,7 @@ describe('every operational MetricSnapshot reader declares its population', () =
     'pattern-engine/PatternService.js',
     'blended-truth/BlendedTruthService.js',
     'unit-economics/EconomicsService.js',
+    'attribution-engine/AttributionService.js',
   ];
 
   // Phase K: these read CUMULATIVE_30D through the shared fatigue selector and

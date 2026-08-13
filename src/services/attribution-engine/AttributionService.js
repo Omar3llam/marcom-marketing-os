@@ -12,8 +12,8 @@
 // holdout lift, never invented journey credit.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
-import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger } from '../../utils/logger.js';
+import { selectOperationalSnapshots } from '../evidence/index.js';
 import { attributeCredit } from './attributionEngine.js';
 import { ATTRIBUTION_MODEL } from './attributionTypes.js';
 import { getBlendedTruth, latestPerStream } from '../blended-truth/BlendedTruthService.js';
@@ -71,12 +71,32 @@ export async function getAttribution(workspaceId, { model = ATTRIBUTION_MODEL.IN
   // Each row is a trailing-window aggregate, so the newest row per stream IS the
   // channel's conversion count — adding the older rows re-counts the same
   // conversions once per sync. `date` is selected only to identify that row.
-  const snaps = await prisma.metricSnapshot.findMany({
-    // OPERATIONAL ONLY (Phase G). latestPerStream keys on entityId|source and
-    // breaks ties on `date` — and Phase F's canonical row shares BOTH with the
-    // operational row, so which one won was decided by row order.
-    where:  { workspaceId, entityId: { in: channels.map((c) => c.channelId) }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
-    select: { entityId: true, date: true, conversions: true, source: true },
+  //
+  // R3: this service no longer states where its evidence lives. The operational
+  // population — workspace scope and the window allow-list Phase G introduced —
+  // is declared once, in the Evidence layer, and asked for here.
+  //
+  // THE SAME READ AS ECONOMICS, DELIBERATELY. Both services derive per-channel
+  // conversions from the same rows, and the two numbers must never disagree:
+  // Attribution divides revenue by them, Economics divides spend by them, so a
+  // divergence would make per-conversion value and CAC tell two different
+  // stories about one account. Sharing `latestPerStream` kept the REDUCTION in
+  // step; asking the same Evidence selector with the same arguments now keeps
+  // the POPULATION in step too, which is the half that was still a convention.
+  //
+  // Preserved exactly, all three for the same reasons Economics states at
+  // length: NO temporal bound (a `since` would drop channels whose last sync
+  // predates it), NO source filter in the query (PLATFORM_SOURCES is applied
+  // below, after the reduction, so a MANUAL row still occupies its own stream),
+  // and THE CATCH, which stays here rather than moving into the seam — every
+  // other consumer relies on the Evidence layer propagating a read failure.
+  //
+  // No orderBy: this query never had one, and latestPerStream is documented
+  // order-independent precisely so it does not need one.
+  const snaps = await selectOperationalSnapshots(workspaceId, {
+    entityIds: channels.map((c) => c.channelId),
+    select:    { entityId: true, date: true, conversions: true, source: true },
+    orderBy:   null,
   }).catch(() => []);
   const conversionsByChannel = new Map();
   for (const s of latestPerStream(snaps)) {
