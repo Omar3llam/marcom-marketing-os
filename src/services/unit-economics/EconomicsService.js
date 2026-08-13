@@ -9,10 +9,10 @@
 //                          → computeUnitEconomics (LTV / payback / band).
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
-import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger } from '../../utils/logger.js';
 import { computeUnitEconomics } from './unitEconomicsEngine.js';
 import { getBlendedTruth, latestPerStream } from '../blended-truth/BlendedTruthService.js';
+import { selectOperationalSnapshots } from '../evidence/index.js';
 
 // Conservative defaults for a workspace that hasn't configured economics
 // yet — enough to compute, honestly flagged as defaults by the caller.
@@ -114,17 +114,40 @@ export async function getCurrentCac(workspaceId) {
   const totalSpendMinor = channels.reduce((sum, c) => sum + (c.spendMinor ?? 0), 0);
   const currency = channels.find((c) => c.currency)?.currency ?? 'USD';
 
-  // Platform-reported conversions from MetricSnapshot — same rows, same stream
-  // reduction and same filter as AttributionService (kept consistent so the two
-  // never disagree on volume; latestPerStream is now literally the same function
-  // rather than a copy that has to be kept in step by hand).
+  // Platform-reported conversions — same rows, same stream reduction and same
+  // population as AttributionService (kept consistent so the two never disagree
+  // on volume; latestPerStream is literally the same function rather than a copy
+  // that has to be kept in step by hand).
+  //
+  // R3: this service no longer states where its evidence lives. The operational
+  // population — workspace scope and the window allow-list Phase G introduced —
+  // is declared once, in the Evidence layer, and asked for here.
+  //
+  // THREE THINGS ARE PRESERVED EXACTLY, none of them incidental:
+  //
+  //   1. NO TEMPORAL BOUND. This query has never had one, and #359's fix was not
+  //      to add one — it was latestPerStream below, which supersedes a channel's
+  //      older readings instead of summing them. Introducing a `since` here would
+  //      silently drop channels whose last sync predates it, and a channel that
+  //      vanishes from the denominator makes CAC look CHEAPER, which is the
+  //      direction that gets a budget increased.
+  //   2. THE ENTITY NARROWING. Only the channels blended truth returned are
+  //      asked about; the seam takes them as an explicit list rather than this
+  //      service filtering a workspace-wide read afterwards, which would be a
+  //      different query wearing the same result.
+  //   3. THE CATCH. This read has always degraded to `[]`, so a failed read
+  //      yields zero conversions and therefore a NULL CAC — never a number. It
+  //      stays at THIS call site rather than moving into the seam, where it would
+  //      turn an unreachable database into "no metrics" for every other consumer.
+  //
   // entityId + date are selected so the reduction can identify a stream and its
   // newest row; the sum below then runs once per entity, not once per sync.
-  const snaps = await prisma.metricSnapshot.findMany({
-    // OPERATIONAL ONLY (Phase G) — same reason as AttributionService, whose
-    // aggregation this must keep matching.
-    where:  { workspaceId, entityId: { in: channels.map((c) => c.channelId) }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
-    select: { entityId: true, date: true, conversions: true, source: true },
+  // No orderBy — this query never had one, and latestPerStream is documented
+  // order-independent precisely so it does not need one.
+  const snaps = await selectOperationalSnapshots(workspaceId, {
+    entityIds: channels.map((c) => c.channelId),
+    select:    { entityId: true, date: true, conversions: true, source: true },
+    orderBy:   null,
   }).catch(() => []);
   let totalConversions = 0;
   for (const s of latestPerStream(snaps)) {

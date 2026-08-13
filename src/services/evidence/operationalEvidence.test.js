@@ -85,6 +85,51 @@ describe('R3 — operational evidence', () => {
     });
   });
 
+  // ── entityIds (R3.4) ──────────────────────────────────────────────────────
+  //
+  // A narrowing, not a population change. Economics and Attribution have always
+  // asked about exactly the channels blended truth returned; the predicate moved
+  // here rather than being replaced by a workspace-wide read filtered in memory,
+  // which would be a different query wearing the same result.
+  describe('the optional entity narrowing', () => {
+    it('omits the predicate ENTIRELY when no entityIds are given', async () => {
+      // The whole reason the seam may grow during a behaviour-preserving
+      // migration: a narrowing nobody passes must be indistinguishable from a
+      // narrowing that does not exist. Guardrail, Pattern and BlendedTruth were
+      // migrated before this option existed and must not notice it now.
+      await selectOperationalSnapshots(WS, { since: new Date(0), select: SELECT });
+      expect(argsOf().where.entityId).toBeUndefined();
+      expect(Object.keys(argsOf().where).sort()).toEqual(['date', 'measurementWindow', 'workspaceId']);
+    });
+
+    it('narrows to the given entities', async () => {
+      await selectOperationalSnapshots(WS, { select: SELECT, entityIds: ['e1', 'e2'] });
+      expect(argsOf().where.entityId).toEqual({ in: ['e1', 'e2'] });
+      expect(Object.keys(argsOf().where).sort()).toEqual(['entityId', 'measurementWindow', 'workspaceId']);
+    });
+
+    it('an EMPTY list matches nothing — it does not widen to the workspace', async () => {
+      // `[]` means "these zero entities". Treating it as absent would turn a
+      // scoped read into a workspace-wide one at exactly the moment the caller
+      // had nothing to ask about, which is the direction that leaks rows.
+      await selectOperationalSnapshots(WS, { select: SELECT, entityIds: [] });
+      expect(argsOf().where.entityId).toEqual({ in: [] });
+    });
+
+    it('narrowing never relaxes the population or the workspace scope', async () => {
+      await selectOperationalSnapshots(WS, { select: SELECT, entityIds: ['e1'] });
+      expect(argsOf().where.workspaceId).toBe(WS);
+      expect(argsOf().where.measurementWindow).toBe(OPERATIONAL_WINDOW_FILTER);
+    });
+
+    it('composes with `since` rather than replacing it', async () => {
+      const since = new Date('2026-08-01T00:00:00Z');
+      await selectOperationalSnapshots(WS, { since, select: SELECT, entityIds: ['e1'] });
+      expect(argsOf().where.date).toEqual({ gte: since });
+      expect(argsOf().where.entityId).toEqual({ in: ['e1'] });
+    });
+  });
+
   describe('what it deliberately does NOT do', () => {
     it('applies no source filter — actual-revenue rows stay in the population', async () => {
       // GA4/SHOPIFY/MANUAL are eligible operational rows today. Importing the
