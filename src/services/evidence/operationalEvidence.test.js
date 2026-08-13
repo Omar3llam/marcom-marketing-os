@@ -65,6 +65,20 @@ describe('R3 — operational evidence', () => {
       expect(OPERATIONAL_ORDER_BY).toEqual({ date: 'asc' });
     });
 
+    it('omits orderBy ENTIRELY when the caller passes null', async () => {
+      // Not `orderBy: null` — that is a value handed to Prisma. A consumer whose
+      // engine sorts for itself never asked the database to sort, and the only
+      // faithful reproduction of that query is the absent clause.
+      await selectOperationalSnapshots(WS, { since: new Date(0), select: SELECT, orderBy: null });
+      expect(argsOf()).not.toHaveProperty('orderBy');
+      expect(Object.keys(argsOf()).sort()).toEqual(['select', 'where']);
+    });
+
+    it('honours an explicit ordering when one is given', async () => {
+      await selectOperationalSnapshots(WS, { since: new Date(0), select: SELECT, orderBy: { date: 'desc' } });
+      expect(argsOf().orderBy).toEqual({ date: 'desc' });
+    });
+
     it('passes the caller projection through untouched', async () => {
       await selectOperationalSnapshots(WS, { since: new Date(0), select: SELECT });
       expect(argsOf().select).toBe(SELECT);
