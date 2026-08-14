@@ -13,8 +13,9 @@
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { ENTITY_LEVEL, OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
+import { ENTITY_LEVEL } from '../connectors/connectorTypes.js';
 import { effectiveByEntity, toCampaignRow, toAdSetRow, toAdRow } from './entityGraphEngine.js';
+import { selectOperationalSnapshots } from '../evidence/index.js';
 import {
   selectCanonicalVerdictSnapshots, latestCanonicalByEntity, partitionByCanonicalEvidence,
 } from '../verdict-engine/canonicalVerdictEvidence.js';
@@ -54,15 +55,35 @@ export const METRIC_SELECT = {
 async function latestSnapshots(workspaceId, entityLevel, entityIds) {
   if (!entityIds.length) return new Map();
   const since = new Date(Date.now() - SYNC_RECENCY_DAYS * 24 * 60 * 60 * 1000);
-  const snaps = await prisma.metricSnapshot.findMany({
-    // OPERATIONAL ONLY. effectiveByEntity picks the latest row per entity on
-    // `date`, and Phase F lands a canonical row at the SAME `date` as the
-    // operational one — so without this filter the spend, ROAS and frequency
-    // this surface shows (and every verdict derived from it) would be decided by
-    // Postgres row order. Phase D is what teaches this reader to consume
-    // canonical rows; until then they are not its population.
-    where:  { workspaceId, entityLevel, entityId: { in: entityIds }, date: { gte: since }, measurementWindow: OPERATIONAL_WINDOW_FILTER },
-    select: METRIC_SELECT,
+  const snaps = await selectOperationalSnapshots(workspaceId, {
+    // R3.9. This file no longer states WHERE its operational evidence lives; the
+    // population is declared once, in the Evidence layer, and asked for here.
+    // The reason it must be OPERATIONAL ONLY has not changed one bit:
+    // effectiveByEntity picks the latest row per entity on `date`, and Phase F
+    // lands a canonical row at the SAME `date` as the operational one — so
+    // without that filter the spend, ROAS and frequency this surface shows (and
+    // every verdict derived from it) would be decided by Postgres row order.
+    // Phase D is what teaches this reader to consume canonical rows; until then
+    // they are not its population.
+    //
+    // This service is the one consumer that reads BOTH populations, and they stay
+    // apart on purpose: getCanonicalVerdictCampaigns below asks a different
+    // selector, over a different measurement. Two seams, never one with a mode
+    // flag. (No selector is NAMED in this function on purpose — two guards read
+    // this body as text and assert it calls nothing canonical.)
+    //
+    // `since` is a SYNC-RECENCY bound on `date` (R2's distinction): 90 days of
+    // "when we last pulled this row", never 90 days of delivery. The rows are
+    // rolling aggregates covering whatever period their sync requested.
+    //
+    // `orderBy: null` reproduces the absent ORDER BY this query has always run
+    // without. effectiveByEntity compares dates itself and is order-independent,
+    // so asking the database to sort would add a plan change and buy nothing.
+    entityLevel,
+    entityIds,
+    since,
+    select:  METRIC_SELECT,
+    orderBy: null,
   }).catch((err) => {
     logger.debug({ err: err.message, workspaceId, entityLevel }, '[EntityGraph] snapshot read failed');
     return [];

@@ -252,7 +252,6 @@ describe('every operational MetricSnapshot reader declares its population', () =
   // filter is the exact regression Phase F shipped, so this fails on the file
   // rather than waiting for a surface to go wrong.
   const READERS = [
-    'entity-graph/EntityGraphService.js',
     'planning/PlanService.js',
   ];
 
@@ -285,6 +284,18 @@ describe('every operational MetricSnapshot reader declares its population', () =
   // intact, and an explicit assertion that what remains is a write rather than a
   // filter that survived the migration.
   const EVIDENCE_SEAM_READER_WRITERS = ['revenue/RevenueCsvService.js'];
+
+  // R3.9: EntityGraph reads BOTH populations — operational through the seam for
+  // the Campaigns surface, canonical through selectCanonicalVerdictSnapshots for
+  // the verdict path — and that duality is deliberate, not a half-migration.
+  // It gets its own entry for one narrow reason: the file's METRIC_SELECT comment
+  // names `measurementWindow` in prose, to point at the Phase-C provenance test
+  // that asserts the projection does NOT read that column. The blanket "mentions
+  // it nowhere" rule cannot tell a comment from a filter, and rewording the
+  // comment to satisfy a regex would delete the pointer to the test. So the
+  // assertion below is TIGHTER instead of looser: no `measurementWindow:` in any
+  // CODE position — not as a predicate, and not as a projected column either.
+  const EVIDENCE_SEAM_DUAL_POPULATION_READERS = ['entity-graph/EntityGraphService.js'];
 
   // Phase K: these read CUMULATIVE_30D through the shared fatigue selector and
   // must therefore NOT carry the operational filter. Listed here rather than
@@ -348,6 +359,24 @@ describe('every operational MetricSnapshot reader declares its population', () =
     // somebody could quietly widen by deleting the write.
     expect(src).toMatch(/metricSnapshot\.upsert/);
     expect(src).toMatch(/measurementWindow: MEASUREMENT_WINDOW\./);
+  });
+
+  it.each(EVIDENCE_SEAM_DUAL_POPULATION_READERS)('%s reads operational through the seam and canonical through its own selector', async (rel) => {
+    const src = await read(rel);
+    // The operational half: delegated, and stating nothing of its own.
+    expect(src).toMatch(/selectOperationalSnapshots/);
+    expect(src).not.toMatch(/metricSnapshot\.findMany/);
+    expect(src).not.toMatch(/OPERATIONAL_WINDOW_FILTER/);
+    // No `measurementWindow:` in code — neither `{ ... }` (a filter) nor `true`
+    // (a projected column, which Phase C deliberately withheld from this reader).
+    expect(src).not.toMatch(/\bmeasurementWindow:/);
+    // The canonical half: STILL HERE, and still its own selector. If this fails,
+    // somebody unified two populations that are different measurements, which is
+    // the exact merge the D-track exists to prevent.
+    expect(src).toMatch(/selectCanonicalVerdictSnapshots/);
+    // …and the canonical read is NOT what the operational assertions above are
+    // about. It goes through a selector, so it must not be re-inlined either.
+    expect(src).not.toMatch(/CANONICAL_VERDICT_WINDOW_FILTER/);
   });
 
   // R3.6 left PlanService HALF migrated, and deliberately: its actuals read went
