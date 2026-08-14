@@ -278,7 +278,12 @@ describe('I · EntityGraphService.latestSnapshots stays operational', () => {
   const ENTITY_GRAPH = '../entity-graph/EntityGraphService.js';
 
   it('still reads the operational population', () => {
-    expect(src(ENTITY_GRAPH)).toMatch(/OPERATIONAL_WINDOW_FILTER/);
+    // R3.9 handed the query to the Evidence layer, so the population is declared
+    // there rather than inline here. Same population, same exclusion from
+    // canonical evidence — different owner. (Same update the guardrail assertion
+    // took in an earlier R3 PR.)
+    expect(src(ENTITY_GRAPH)).toMatch(/selectOperationalSnapshots/);
+    expect(src(ENTITY_GRAPH)).not.toMatch(/selectCanonicalFatigueSnapshots/);
   });
 
   // If latestSnapshots itself ever gained a canonical selector, ROAS, CTR,
@@ -298,8 +303,16 @@ describe('I · EntityGraphService.latestSnapshots stays operational', () => {
     const text = src(ENTITY_GRAPH);
     const fn = text.slice(text.indexOf('async function latestSnapshots'));
     const body = fn.slice(0, fn.indexOf('\n}'));
-    expect(body).toMatch(/measurementWindow: OPERATIONAL_WINDOW_FILTER/);
+    // Still scoped to the FUNCTION rather than the file, for the reason above:
+    // getCanonicalVerdictCampaigns lives in this module and is canonical on
+    // purpose. What changed in R3.9 is only WHERE the operational population is
+    // stated — the seam owns it now, and this function names the seam.
+    expect(body).toMatch(/selectOperationalSnapshots/);
     expect(body).not.toMatch(/CUMULATIVE_30D/);
+    // Anchored to a CALL, not the word: the comment inside this function
+    // explains why canonical rows are excluded, and that explanation is the
+    // reason the guard exists rather than something for it to trip over.
+    expect(body).not.toMatch(/selectCanonical/);
   });
 });
 

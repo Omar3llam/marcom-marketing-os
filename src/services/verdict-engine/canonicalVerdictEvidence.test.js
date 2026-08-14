@@ -308,7 +308,12 @@ describe('the blast radius stops at the verdict evidence source', () => {
 
   it('latestSnapshots is still the operational reader for everyone else', () => {
     const graph = src('../entity-graph/EntityGraphService.js');
-    expect(graph).toMatch(/OPERATIONAL_WINDOW_FILTER/);
+    // R3.9: the operational population moved to the Evidence seam, exactly as
+    // the guardrail assertion below already reflects. The claim is unchanged —
+    // this file still reads operational rows for the Campaigns surface, and the
+    // canonical verdict path beside it is still a separate selector.
+    expect(graph).toMatch(/selectOperationalSnapshots/);
+    expect(graph).toMatch(/selectCanonicalVerdictSnapshots/);
     expect(graph).toMatch(/export async function getConnectorCampaigns/);
   });
 
