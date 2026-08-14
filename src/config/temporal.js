@@ -113,11 +113,13 @@ export const TEMPORAL = Object.freeze({
   /**
    * PlanService.buildActualsSeries — goal-tracking actuals.
    *
-   * WORTH KNOWING, AND NOT FIXED HERE: this consumer buckets rows by
-   * `date.slice(0,10)` and calls the result a DAILY series. Those are sync days,
-   * not delivery days, so two syncs on one date collapse into one bucket and a
-   * day with no sync has no point at all. Renaming the bound does not repair
-   * that; it makes it legible. Repair is a behaviour change and belongs to R3.
+   * WORTH KNOWING: this consumer buckets rows by `date.slice(0,10)`, and those
+   * are OBSERVATION days, not delivery days — a day with no sync has no point
+   * at all. R4 repaired the arithmetic on top of that bucketing (one entity
+   * level, and the newest observation per stream rather than a sum of
+   * re-measurements) without claiming the result became daily activity; the
+   * rows are still trailing-window observations. This bound is unrelated to
+   * either: it caps how STALE an observation may be, and is unchanged.
    */
   planActualsSyncRecencyDays: resolveDays({
     next: 'PLAN_ACTUALS_SYNC_RECENCY_DAYS', legacy: 'PLAN_ACTUALS_LOOKBACK_DAYS', fallback: 60,
