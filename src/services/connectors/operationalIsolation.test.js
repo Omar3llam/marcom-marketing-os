@@ -246,14 +246,13 @@ describe('Test 6 — a canonical zero is not shadowed by an operational positive
 // ── Structural sweep ────────────────────────────────────────────────────────
 
 describe('every operational MetricSnapshot reader declares its population', () => {
-  // The read sites Phase G audited, minus the three fatigue consumers Phase K
-  // moved to canonical evidence (see CANONICAL_READERS below — they are still
-  // covered, just by the other contract). A NEW reader added without any window
-  // filter is the exact regression Phase F shipped, so this fails on the file
-  // rather than waiting for a surface to go wrong.
-  const READERS = [
-    'planning/PlanService.js',
-  ];
+  // The read sites Phase G audited, each of which used to STATE the operational
+  // population inline. R3 emptied this list one PR at a time; R3.10 took the
+  // last entry (Plan's entity scan). It stays here, empty, rather than being
+  // deleted: the `it.each` over an empty array is vacuous, but the constant is
+  // where a newly added inline reader would have to be listed, and the
+  // completion invariant at the bottom is what actually fails if one appears.
+  const READERS = [];
 
   // R3: consumers that have handed the query to the Evidence layer. They still
   // read the operational population — the invariant is unchanged — but they no
@@ -273,6 +272,9 @@ describe('every operational MetricSnapshot reader declares its population', () =
     'unit-economics/EconomicsService.js',
     'attribution-engine/AttributionService.js',
     'test-generator/TestGeneratorService.js',
+    // R3.10, the last one: BOTH of Plan's reads now go through the seam — the
+    // actuals series and the distinct/take:50 entity scan.
+    'planning/PlanService.js',
   ];
 
   // R3.8: RevenueCsv reads through the seam like the list above, but it is also
@@ -379,18 +381,101 @@ describe('every operational MetricSnapshot reader declares its population', () =
     expect(src).not.toMatch(/CANONICAL_VERDICT_WINDOW_FILTER/);
   });
 
-  // R3.6 left PlanService HALF migrated, and deliberately: its actuals read went
-  // to the seam, its distinct/take:50 entity scan did not. That is a state the
-  // two lists above cannot express — it belongs to both — so it is pinned here
-  // instead of being left to inference. When the second read migrates, this test
-  // fails and forces the file to move lists, which is exactly the prompt a
-  // half-finished migration should produce.
-  it('planning/PlanService.js is mid-migration: one seam read, one direct read', async () => {
+  // R3.6 left PlanService half migrated and this test pinned that state, so that
+  // finishing the job would FAIL it and force the file to move lists. R3.10
+  // finished the job, so it did, and it has: PlanService is in
+  // EVIDENCE_SEAM_READERS above. The pin is replaced by its successor — both
+  // reads on the seam, and the second one still asking for its own reduction.
+  it('planning/PlanService.js is fully migrated, reduction and all', async () => {
     const src = await read('planning/PlanService.js');
-    expect(src).toMatch(/selectOperationalSnapshots/);
-    expect((src.match(/metricSnapshot\.findMany/g) || []).length).toBe(1);
-    // The one that remains still states its own population, per READERS above.
-    expect((src.match(/measurementWindow: OPERATIONAL_WINDOW_FILTER/g) || []).length).toBe(1);
+    expect(src).not.toMatch(/metricSnapshot/);
+    // Two seam reads, not one: a migration that dropped the entity scan instead
+    // of moving it would satisfy every other assertion in this file.
+    expect((src.match(/selectOperationalSnapshots\(/g) || []).length).toBe(2);
+    // The reduction survived the move. It is the only reduction in the codebase
+    // and the reason the seam has the option at all.
+    expect(src).toMatch(/distinct:\s*\['entityId'\]/);
+    expect(src).toMatch(/take:\s*50/);
+  });
+
+  // ── THE R3 COMPLETION INVARIANT ──────────────────────────────────────────
+  //
+  // Every operational consumer is migrated, so the claim is no longer "each
+  // reader declares its population" — it is that there are no readers left to
+  // declare one. Stated as an allow-list of the files that may legitimately
+  // touch metricSnapshot.findMany at all, with the reason each is exempt:
+  //
+  //   the Evidence seam        it IS the read
+  //   the two canonical        selectCanonicalVerdictSnapshots and
+  //   selectors                selectCanonicalFatigueSnapshots answer a
+  //                            DIFFERENT population, deliberately and forever
+  //   snapshotSink             a WRITE-path guard, not a consumer: it reads back
+  //                            the windows the INCOMING batch belongs to (which
+  //                            includes canonical rows) to avoid shadowing a
+  //                            legitimate zero. Its window predicate is derived
+  //                            from the batch, not from the operational
+  //                            allow-list, so classifying it as an operational
+  //                            reader would be simply wrong.
+  //
+  // Anything else that appears here is a new direct reader, and this is where it
+  // gets caught — before it has a surface to be wrong on.
+  it('R3 IS COMPLETE — nothing outside the Evidence layer reads the operational population', async () => {
+    const { readdirSync, readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const path = await import('node:path');
+
+    const ROOT = fileURLToPath(new URL('..', import.meta.url));
+    const ALLOWED = new Set([
+      'evidence/operationalEvidence.js',
+      'verdict-engine/canonicalVerdictEvidence.js',
+      'fatigue-forecaster/canonicalFatigueEvidence.js',
+      'connectors/snapshotSink.js',
+    ]);
+
+    const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) return walk(full);
+      return e.isFile() && e.name.endsWith('.js') && !e.name.includes('.test.') ? [full] : [];
+    });
+
+    // COMMENTS ARE STRIPPED FIRST, and that is not a convenience. `evidence/
+    // index.js` explains the seam by quoting the very call it exists to remove,
+    // and R3.9 already lost time to a guard that could not tell prose from a
+    // predicate. The invariant is about CODE; a scanner that flags a sentence
+    // would have to be exempted file by file, and each exemption would then also
+    // permit the real thing.
+    const codeOf = (f) => readFileSync(f, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+    const offenders = walk(ROOT)
+      .filter((f) => /prisma\.metricSnapshot\.findMany/.test(codeOf(f)))
+      .map((f) => path.relative(ROOT, f).split(path.sep).join('/'))
+      .filter((rel) => !ALLOWED.has(rel));
+
+    expect(offenders).toEqual([]);
+  });
+
+  it('…and every one of the nine migrated consumers is genuinely clean', async () => {
+    // The roll-call, by file content rather than by roadmap. Each of these once
+    // held its own `prisma.metricSnapshot.findMany` and its own window filter.
+    const NINE = [
+      'guardrail-engine/GuardrailSweepService.js',
+      'pattern-engine/PatternService.js',
+      'blended-truth/BlendedTruthService.js',
+      'unit-economics/EconomicsService.js',
+      'attribution-engine/AttributionService.js',
+      'planning/PlanService.js',
+      'test-generator/TestGeneratorService.js',
+      'revenue/RevenueCsvService.js',
+      'entity-graph/EntityGraphService.js',
+    ];
+    for (const rel of NINE) {
+      const src = await read(rel);
+      expect(src, rel).toMatch(/selectOperationalSnapshots/);
+      expect(src, rel).not.toMatch(/prisma\.metricSnapshot\.findMany/);
+      expect(src, rel).not.toMatch(/OPERATIONAL_WINDOW_FILTER/);
+    }
   });
 
   // …and the population it delegated to is still declared, one level down. The

@@ -1,12 +1,14 @@
 // ============================================================
 // R3.6 — Plan actuals migrated onto the Evidence seam
 // ============================================================
+// R3.10 finished the job: the distinct/take:50 entity-id scan in
+// projectGoalLanding is now on the seam too, so PlanService holds ZERO direct
+// MetricSnapshot reads and this file owns BOTH of its queries. The R3.6 half
+// below is unchanged; the R3.10 half is at the bottom.
+//
 // A separate file from PlanService.test.js, which owns the planning contract.
-// This one owns ONE read: the operational snapshot query behind
-// buildActualsSeries(). PlanService's SECOND MetricSnapshot read — the
-// distinct/take:50 entity-id scan in projectGoalLanding — is deliberately NOT
-// migrated here, so this file also pins the partial state: exactly one seam read
-// and exactly one remaining direct read, per goal.
+// This one owns the two operational reads: the series behind
+// buildActualsSeries(), and the entity scan behind projectGoalLanding().
 //
 // WHAT IS PROVEN, AND WHERE
 // -------------------------
@@ -59,6 +61,7 @@ vi.mock('../../lib/prisma.js', () => ({
 
 import { prisma } from '../../lib/prisma.js';
 import { estimateLanding } from '../goal-tracker/goalTrackerEngine.js';
+import { gatherLeadingSignals } from '../scenario-engine/ScenarioService.js';
 import { trackPlan } from './PlanService.js';
 import { TEMPORAL } from '../../config/temporal.js';
 
@@ -83,8 +86,12 @@ const PRE_MIGRATION_ORDER = { date: 'asc' };
 
 // ── The fake table ──────────────────────────────────────────────────────────
 
+// `entityId` is defaulted (R3.10) because the SECOND read projects it and
+// nothing else. It is invisible to the actuals read — that read's projection
+// does not include it — so the R3.6 fixture below is unchanged in effect.
 const rowOf = (over) => ({
   workspaceId: WS, measurementWindow: 'ROLLING_WINDOW', source: 'META',
+  entityId: 'e-base',
   spendMinor: 0, revenueMinor: 0, conversions: 0, ...over,
 });
 
@@ -106,16 +113,53 @@ const TABLE = [
   // every output assertion and was caught only in the query arguments. Two rows
   // that agree prove nothing about how they were combined.
   rowOf({ date: new Date('2026-08-01T09:00:00Z'), spendMinor: 10_000, revenueMinor: 30_000, conversions: 10 }),
-  rowOf({ date: new Date('2026-08-01T15:00:00Z'), source: 'GOOGLE', spendMinor: 10_000,
-    revenueMinor: 10_000, conversions: 30 }),
+  rowOf({ date: new Date('2026-08-01T15:00:00Z'), source: 'GOOGLE', entityId: 'e-second',
+    spendMinor: 10_000, revenueMinor: 10_000, conversions: 30 }),
   // canonical: same window-day as a real bucket, excluded by the population
   rowOf({ date: new Date('2026-08-03T09:00:00Z'), measurementWindow: 'CUMULATIVE_30D',
-    spendMinor: 777_000, revenueMinor: 777_000, conversions: 777 }),
-  // older than any 60-day bound
-  rowOf({ date: new Date('2026-01-01T09:00:00Z'), spendMinor: 888_000, revenueMinor: 888_000, conversions: 888 }),
+    entityId: 'e-canonical', spendMinor: 777_000, revenueMinor: 777_000, conversions: 777 }),
+  // older than any 60-day bound. For the ACTUALS read that makes it invisible;
+  // for the ENTITY scan, which has no recency bound, it is a legitimate entity —
+  // which is what makes an accidental `since` observable down there.
+  rowOf({ date: new Date('2026-01-01T09:00:00Z'), entityId: 'e-ancient',
+    spendMinor: 888_000, revenueMinor: 888_000, conversions: 888 }),
   // another tenant, inside the window
-  rowOf({ date: new Date('2026-08-02T09:00:00Z'), workspaceId: 'ws-other',
+  rowOf({ date: new Date('2026-08-02T09:00:00Z'), workspaceId: 'ws-other', entityId: 'e-otherws',
     spendMinor: 666_000, revenueMinor: 666_000, conversions: 666 }),
+];
+
+// ── The entity-scan fixture (R3.10) ─────────────────────────────────────────
+//
+// The second read caps at 50, so proving the cap needs more than 50 eligible
+// entities. These fillers are GA4-sourced, which makes them INVISIBLE to the
+// actuals series (Plan skips non-platform rows in memory) while being perfectly
+// eligible for the entity scan, which applies no source filter. So one table
+// serves both reads without the fillers perturbing the R3.6 expectations.
+//
+// Their dates DESCEND with the index, deliberately: the entity scan has no
+// ORDER BY, so an accidentally-added one changes WHICH 50 survive rather than
+// only the arguments.
+const FILLER_COUNT = 60;
+const FILLERS = Array.from({ length: FILLER_COUNT }, (_, i) => rowOf({
+  entityId: `e-${String(i).padStart(3, '0')}`,
+  source:   'GA4',
+  date:     new Date(Date.parse('2026-08-06T00:00:00Z') + (FILLER_COUNT - i) * 3_600_000),
+}));
+
+const ENTITY_TABLE = [...TABLE, ...FILLERS];
+
+// Hand-derived from the pre-migration query semantics, NOT from the helper:
+//   workspace ws-other        → excluded  (e-otherws)
+//   CUMULATIVE_30D            → excluded  (e-canonical)
+//   no recency bound          → e-ancient is IN
+//   distinct: ['entityId']    → e-base's four rows collapse to one
+//   take: 50, applied after   → the first 50 in storage order survive
+// With no ORDER BY, "storage order" is genuinely unspecified in Postgres; the
+// fake reproduces table order, which is the honest analogue. What the assertions
+// below rest on is the CAP and the MEMBERSHIP SHIFTS, not the identity of row 50.
+const EXPECTED_SCAN_ENTITIES = [
+  'e-base', 'e-second', 'e-ancient',
+  ...FILLERS.slice(0, 47).map((r) => r.entityId),
 ];
 
 // 1 Aug bucket: spend 20 000, revenue 40 000, conv 40  → ROAS 2, CAC   500
@@ -178,16 +222,18 @@ beforeEach(() => {
 describe('R3.6 — Plan actuals on the Evidence seam', () => {
   // ── ownership ────────────────────────────────────────────────────────────
   describe('ownership', () => {
-    it('buildActualsSeries no longer queries MetricSnapshot directly', () => {
-      // The actuals read is gone from the source; what remains is the ONE
-      // un-migrated scan in projectGoalLanding, which R3.6 leaves alone.
+    it('PlanService queries MetricSnapshot nowhere — both reads are on the seam', () => {
+      // R3.6 moved the first; R3.10 moved the second. This file no longer states
+      // where any of its evidence lives.
       expect(SRC).toMatch(/selectOperationalSnapshots/);
-      expect((SRC.match(/prisma\.metricSnapshot\.findMany/g) || []).length).toBe(1);
+      expect((SRC.match(/prisma\.metricSnapshot/g) || []).length).toBe(0);
+      expect(SRC).not.toMatch(/OPERATIONAL_WINDOW_FILTER/);
+      expect(SRC).not.toMatch(/measurementWindow/);
     });
 
-    it('the remaining direct read is the entity scan, not the actuals read', () => {
-      // Named explicitly so a future edit cannot migrate the wrong one and leave
-      // this file passing.
+    it('the entity scan kept its reduction — it just asks the seam for it now', () => {
+      // Named explicitly so a future edit cannot drop the reduction while
+      // leaving the migration looking done.
       expect(SRC).toMatch(/distinct:\s*\['entityId'\]/);
       expect(SRC).toMatch(/take:\s*50/);
       // And the actuals read's old shape is genuinely gone.
@@ -260,17 +306,28 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
       expect(actualsArgs().skip).toBeUndefined();
     });
 
-    it('reads evidence once per goal, beside the ONE read still un-migrated', async () => {
+    it('reads evidence twice per goal — the series and the entity scan, no more', async () => {
       // A fallback would show as a third call. The count is the assertion,
       // because an empty second population returns the same shape as none.
       await trackPlan(WS, planWith());
       expect(prisma.metricSnapshot.findMany).toHaveBeenCalledTimes(2);
       expect(actualsArgs().select).toEqual(PRE_MIGRATION_SELECT);
-      // …and the second call is unmistakably the un-migrated entity scan.
+      // …and the second call is unmistakably the entity scan, now also on the
+      // seam. Its own parity is proven in the R3.10 block below.
       const second = prisma.metricSnapshot.findMany.mock.calls[1][0];
       expect(second.select).toEqual({ entityId: true });
       expect(second.distinct).toEqual(['entityId']);
       expect(second.take).toBe(50);
+    });
+
+    it('the ACTUALS read is untouched by the seam gaining a reduction', async () => {
+      // R3.10 added `distinct` and `take` to the shared selector. The whole
+      // safety of that depends on this: the read beside it must be byte-identical
+      // to what it was, keys included.
+      await trackPlan(WS, planWith());
+      expect(Object.keys(actualsArgs()).sort()).toEqual(['orderBy', 'select', 'where']);
+      expect(Object.prototype.hasOwnProperty.call(actualsArgs(), 'distinct')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(actualsArgs(), 'take')).toBe(false);
     });
   });
 
@@ -376,6 +433,170 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
       prisma.metricSnapshot.findMany.mockRejectedValue(new Error('db down'));
       await expect(selectOperationalSnapshots(WS, { select: PRE_MIGRATION_SELECT }))
         .rejects.toThrow('db down');
+    });
+  });
+});
+
+// ============================================================================
+// R3.10 — the entity scan, the LAST direct operational read in the codebase
+// ============================================================================
+// A different question from every other consumer's: not "what did these entities
+// measure" but "which entities has this workspace synced anything for at all".
+// Hence one projected column, a collapse to one row per entity, and a cap of 50.
+//
+// The reduction is why the seam grew, and it is the growth that needed the most
+// care: six earlier R3 PRs used `distinct` at the Evidence layer as a NEGATIVE
+// CONTROL. Those controls still have to fail, which is why most of the seam-side
+// tests for this option are about it being absent.
+//
+// OBSERVED DOWNSTREAM, not at the query. The scan's real output is the id list
+// handed to gatherLeadingSignals, and from there the leadingSignals handed to
+// estimateLanding — so that is where parity is asserted. The Prisma arguments
+// are checked too, against a hand-written literal, because two of the mutations
+// below cannot move an output.
+// ============================================================================
+
+// The pre-migration entity scan, reconstructed BY HAND from the diff.
+const PRE_MIGRATION_SCAN = {
+  where:    { workspaceId: WS, measurementWindow: PRE_MIGRATION_WINDOWS },
+  select:   { entityId: true },
+  distinct: ['entityId'],
+  take:     50,
+};
+
+/** The SECOND findMany is the entity scan. */
+const scanArgs = () => prisma.metricSnapshot.findMany.mock.calls[1][0];
+/** The id list as it reaches the leading-signals gatherer — the read's real output. */
+const scannedEntities = () => gatherLeadingSignals.mock.calls[0][1].entityIds;
+
+describe('R3.10 — Plan\'s entity scan on the Evidence seam', () => {
+  beforeEach(() => useTable(ENTITY_TABLE));
+
+  describe('query parity with the pre-migration scan', () => {
+    it('issues exactly the pre-migration query, key for key', async () => {
+      await trackPlan(WS, planWith());
+      const args = scanArgs();
+
+      // Exhaustive on both levels: nothing added, nothing dropped, nothing renamed.
+      expect(args.where).toEqual(PRE_MIGRATION_SCAN.where);
+      expect(args.select).toEqual(PRE_MIGRATION_SCAN.select);
+      expect(args.distinct).toEqual(PRE_MIGRATION_SCAN.distinct);
+      expect(args.take).toBe(PRE_MIGRATION_SCAN.take);
+      expect(Object.keys(args).sort()).toEqual(['distinct', 'select', 'take', 'where']);
+      expect(Object.keys(args.where).sort()).toEqual(['measurementWindow', 'workspaceId']);
+    });
+
+    it('carries NO recency bound — an entity synced last quarter still counts', async () => {
+      // This read has never had one, and the difference is not cosmetic: a goal
+      // landing is projected over the entities a workspace HAS, not the ones it
+      // happened to sync this month.
+      await trackPlan(WS, planWith());
+      expect(scanArgs().where.date).toBeUndefined();
+      expect(scanArgs().where.windowStart).toBeUndefined();
+      expect(scanArgs().where.windowEnd).toBeUndefined();
+      expect(scannedEntities()).toContain('e-ancient');
+    });
+
+    it('asks for NO ordering — the key is absent, not null', async () => {
+      await trackPlan(WS, planWith());
+      expect(Object.prototype.hasOwnProperty.call(scanArgs(), 'orderBy')).toBe(false);
+    });
+
+    it('narrows by no level, no entity list and no source', async () => {
+      await trackPlan(WS, planWith());
+      expect(scanArgs().where.entityLevel).toBeUndefined();
+      expect(scanArgs().where.entityId).toBeUndefined();
+      expect(scanArgs().where.source).toBeUndefined();
+    });
+  });
+
+  describe('entity population output parity', () => {
+    it('produces the same entity list the direct query produced', async () => {
+      await trackPlan(WS, planWith());
+      expect(scannedEntities()).toEqual(EXPECTED_SCAN_ENTITIES);
+    });
+
+    it('collapses an entity with four eligible rows to ONE entry', async () => {
+      await trackPlan(WS, planWith());
+      expect(ENTITY_TABLE.filter((r) => r.entityId === 'e-base')).toHaveLength(3);
+      expect(scannedEntities().filter((id) => id === 'e-base')).toHaveLength(1);
+      // …and no id repeats anywhere: that is what `distinct` buys.
+      expect(new Set(scannedEntities()).size).toBe(scannedEntities().length);
+    });
+
+    it('caps at 50 even though 63 entities are eligible', async () => {
+      await trackPlan(WS, planWith());
+      const eligible = new Set(ENTITY_TABLE
+        .filter((r) => r.workspaceId === WS && r.measurementWindow !== 'CUMULATIVE_30D')
+        .map((r) => r.entityId));
+      expect(eligible.size).toBe(63);      // the cap is doing real work
+      expect(scannedEntities()).toHaveLength(50);
+    });
+
+    it('another tenant\'s entity never enters the list', async () => {
+      await trackPlan(WS, planWith());
+      expect(scannedEntities()).not.toContain('e-otherws');
+    });
+
+    it('a canonical-only entity never enters the list', async () => {
+      // e-canonical exists ONLY on a CUMULATIVE_30D row. It is a different
+      // measurement, and Plan has never counted it as an entity it can project.
+      await trackPlan(WS, planWith());
+      expect(scannedEntities()).not.toContain('e-canonical');
+    });
+
+    it('the list reaches estimateLanding as real leading signals', async () => {
+      // As far downstream as this read goes inside projectGoalLanding: the ids
+      // become signals, and the signals become an argument of the projection.
+      // The gatherer is derived from the ids here rather than stubbed flat, so
+      // the population is observable at the engine boundary too.
+      gatherLeadingSignals.mockImplementationOnce(async (_workspaceId, { entityIds }) =>
+        entityIds.map((entityId) => ({ signal: 'creative_fatigue', entityId, confidence: 'LOW' })));
+
+      const out = await trackPlan(WS, planWith());
+      const signals = estimateLanding.mock.calls[0][0].leadingSignals;
+      expect(signals.map((s) => s.entityId)).toEqual(EXPECTED_SCAN_ENTITIES);
+      // …and the projection still lands, rather than being skipped.
+      expect(out.goals[0].landing).not.toBeNull();
+    });
+  });
+
+  describe('the seam gaining a reduction changed nothing else', () => {
+    it('the entity scan is the ONLY read that asks for one', async () => {
+      await trackPlan(WS, planWith());
+      const withReduction = prisma.metricSnapshot.findMany.mock.calls
+        .filter(([a]) => a.distinct !== undefined || a.take !== undefined);
+      expect(withReduction).toHaveLength(1);
+      expect(withReduction[0][0].select).toEqual({ entityId: true });
+    });
+
+    it('a read that does not ask cannot tell the option exists', async () => {
+      await trackPlan(WS, planWith());
+      expect(Object.keys(actualsArgs()).sort()).toEqual(['orderBy', 'select', 'where']);
+    });
+  });
+
+  describe('isolation and failure', () => {
+    it('cannot scan across workspaces', async () => {
+      await trackPlan(WS, planWith());
+      expect(scanArgs().where.workspaceId).toBe(WS);
+    });
+
+    it('degrades a failed scan to no leading signals — the catch is Plan\'s own', async () => {
+      // The pre-migration scan carried `.catch(() => [])`, so a failure here has
+      // always meant "no leading signals" rather than a thrown projection. The
+      // series read succeeds, so the landing must still be computed — from an
+      // empty signal list, exactly as before.
+      let call = 0;
+      prisma.metricSnapshot.findMany.mockImplementation((args) => {
+        call += 1;
+        return call === 1 ? fakeFindMany(ENTITY_TABLE)(args) : Promise.reject(new Error('db down'));
+      });
+
+      const out = await trackPlan(WS, planWith());
+      expect(gatherLeadingSignals).toHaveBeenCalledWith(WS, expect.objectContaining({ entityIds: [] }));
+      expect(estimateLanding).toHaveBeenCalled();
+      expect(out.goals[0].landing).not.toBeNull();
     });
   });
 });

@@ -194,6 +194,60 @@ describe('R3 — operational evidence', () => {
     });
   });
 
+  // ── distinct + take (R3.10) ───────────────────────────────────────────────
+  //
+  // The seam's most dangerous option pair, and the tests are weighted
+  // accordingly: almost all of them are about the options being ABSENT. Plan's
+  // entity scan asks "which entities has this workspace synced anything for",
+  // caps the answer at 50, and is the only caller that may name either key.
+  describe('the optional reduction', () => {
+    it('omits BOTH keys entirely when neither is given', async () => {
+      // The contract in one assertion. Six earlier R3 PRs used `distinct` at
+      // this seam as a negative control; if it ever acquires a default, all of
+      // them start passing against a broken seam.
+      await selectOperationalSnapshots(WS, { since: new Date(0), select: SELECT });
+      expect(Object.keys(argsOf()).sort()).toEqual(['orderBy', 'select', 'where']);
+    });
+
+    it('the keys are ABSENT, not present-and-null', async () => {
+      // `distinct: null` / `take: null` are values Prisma reads, so `undefined`
+      // via dot-access is not enough — the keys must not exist.
+      await selectOperationalSnapshots(WS, { select: SELECT, distinct: null, take: null });
+      const a = argsOf();
+      expect(Object.prototype.hasOwnProperty.call(a, 'distinct')).toBe(false);
+      expect(Object.prototype.hasOwnProperty.call(a, 'take')).toBe(false);
+    });
+
+    it('passes a reduction through when one is asked for', async () => {
+      await selectOperationalSnapshots(WS, {
+        select: { entityId: true }, orderBy: null, distinct: ['entityId'], take: 50,
+      });
+      expect(argsOf().distinct).toEqual(['entityId']);
+      expect(argsOf().take).toBe(50);
+      expect(Object.keys(argsOf()).sort()).toEqual(['distinct', 'select', 'take', 'where']);
+    });
+
+    it('each is independent of the other', async () => {
+      await selectOperationalSnapshots(WS, { select: SELECT, take: 5 });
+      expect(argsOf().take).toBe(5);
+      expect(Object.prototype.hasOwnProperty.call(argsOf(), 'distinct')).toBe(false);
+    });
+
+    it('take: 0 survives — it is a cap, not a missing value', async () => {
+      // `== null` rather than truthiness, for the same reason `entityIds: []`
+      // survives: "cap this at zero" is a thing a caller can mean, and reading
+      // it as "no cap" would widen the read at the moment it was narrowest.
+      await selectOperationalSnapshots(WS, { select: SELECT, take: 0 });
+      expect(argsOf().take).toBe(0);
+    });
+
+    it('reduction never relaxes the population or the workspace scope', async () => {
+      await selectOperationalSnapshots(WS, { select: SELECT, distinct: ['entityId'], take: 50 });
+      expect(argsOf().where.workspaceId).toBe(WS);
+      expect(argsOf().where.measurementWindow).toBe(OPERATIONAL_WINDOW_FILTER);
+    });
+  });
+
   describe('what it deliberately does NOT do', () => {
     it('applies no source filter — actual-revenue rows stay in the population', async () => {
       // GA4/SHOPIFY/MANUAL are eligible operational rows today. Importing the
@@ -210,7 +264,28 @@ describe('R3 — operational evidence', () => {
       expect(argsOf().where.entityLevel).toBeUndefined();
     });
 
-    it('performs no latest-per-entity reduction — the full series is returned', async () => {
+    it('is not a query builder — an option it does not NAME never reaches Prisma', async () => {
+      // The architectural guard. Every option this seam accepts was added by a
+      // PR that said which consumer needed it and why; a generic `where` bag or
+      // a `...opts` spread would end that, and the operational policy would
+      // become a default callers are free to talk out of. Written as behaviour
+      // rather than a source grep so it fails on the passthrough, not the syntax.
+      await selectOperationalSnapshots(WS, {
+        select: SELECT,
+        where:   { source: 'META', measurementWindow: { equals: 'CUMULATIVE_30D' } },
+        skip:    10,
+        cursor:  { id: 'x' },
+        include: { campaign: true },
+        distinctBy: ['source'],
+      });
+      const a = argsOf();
+      expect(Object.keys(a).sort()).toEqual(['orderBy', 'select', 'where']);
+      expect(Object.keys(a.where).sort()).toEqual(['measurementWindow', 'workspaceId']);
+      expect(a.where.measurementWindow).toBe(OPERATIONAL_WINDOW_FILTER); // not the smuggled one
+      expect(a.where.source).toBeUndefined();
+    });
+
+    it('performs no latest-per-entity reduction BY DEFAULT — the full series is returned', async () => {
       const rows = [
         { entityId: 'e1', date: new Date('2026-08-01') },
         { entityId: 'e1', date: new Date('2026-08-02') },
