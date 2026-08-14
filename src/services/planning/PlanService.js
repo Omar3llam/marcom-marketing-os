@@ -22,17 +22,22 @@ import { runScenario, gatherLeadingSignals } from '../scenario-engine/ScenarioSe
 import { assessSustainability } from '../unit-economics/EconomicsService.js';
 import { estimateLanding } from '../goal-tracker/goalTrackerEngine.js';
 import { TEMPORAL } from '../../config/temporal.js';
+import { ENTITY_LEVEL } from '../connectors/connectorTypes.js';
 import { selectOperationalSnapshots } from '../evidence/index.js';
 
 const AGENDA_LIMIT = Number(process.env.PLAN_AGENDA_LIMIT || 5);
-// Bounds MetricSnapshot.date — the SYNC timestamp. buildActualsSeries then
-// buckets by that date and calls the result a DAILY series: those are sync days,
-// not delivery days. Naming it honestly here. R3.6 moved the READ behind the
-// Evidence layer and deliberately did NOT repair this: two syncs on one calendar
-// date still collapse into one bucket, and a date without a sync still gets no
-// point. R3 migrates semantics; repairing them is a behaviour change and needs
-// its own PR. Value unchanged (60).
+// Bounds MetricSnapshot.date — the SYNC/OBSERVATION timestamp, never a delivery
+// date. R3.6 moved the read behind the Evidence layer and deliberately left the
+// arithmetic sitting on top of it alone; R4 repaired that arithmetic (see
+// buildActualsSeries). The bound itself is unchanged in value (60) and unchanged
+// in meaning: how recently a row was OBSERVED, not what period it measures.
 const ACTUALS_SYNC_RECENCY_DAYS = TEMPORAL.planActualsSyncRecencyDays;
+
+/** A missing/unparseable date sorts oldest — it must never win a comparison. */
+function stampOf(d) {
+  const t = d == null ? NaN : new Date(d).getTime();
+  return Number.isFinite(t) ? t : -Infinity;
+}
 
 /**
  * Pure: is this plan's approval gate UNSATISFIED, so it must not be promoted?
@@ -59,8 +64,40 @@ export function planToAllocationInput(plan) {
 }
 
 /**
- * Aggregate platform MetricSnapshots into a daily actuals series for a metric.
- * Used to feed the goal-tracker's trend estimate. READ-ONLY.
+ * Aggregate platform MetricSnapshots into an OBSERVATION-DAY actuals series for
+ * a metric. Used to feed the goal-tracker's trend estimate. READ-ONLY.
+ *
+ * NOT A DAILY ACTIVITY SERIES, and the wording is deliberate. The stored `date`
+ * is the sync/observation timestamp, and current ingestion stores TRAILING-WINDOW
+ * OBSERVATIONS — the cron asks the platform for its last 90 days, a manual Sync
+ * asks for the account's whole retention — never a single day's activity. One
+ * point here therefore means:
+ *
+ *     the latest trailing-window observation per (entity, source), at one
+ *     entity level, on the UTC day it was observed.
+ *
+ * R4 repairs two arithmetic defects that were wrong under ANY reading of these
+ * rows. It does not, and cannot, turn them into daily activity — that needs
+ * daily ingestion (Phase E / time_increment=1) and is not reconstructible from
+ * what is already stored:
+ *
+ *   1. CROSS-LEVEL DOUBLE COUNT. A platform sync lands ACCOUNT, CAMPAIGN, ADSET
+ *      and AD rows for the SAME delivery, and the ACCOUNT row is the sum of the
+ *      campaigns beneath it. Adding the levels together counted one account's
+ *      spend about four times. The read is now scoped to ONE level, CAMPAIGN —
+ *      the grain both platform normalizers emit and the natural unit for a plan.
+ *
+ *   2. REPEATED OBSERVATIONS. Two syncs on one day are the same period measured
+ *      twice, not twice the activity. They were ADDED — a 90-day aggregate on
+ *      top of a lifetime one, called a day. Only the newest reading of a stream
+ *      survives now.
+ *
+ * The reduction rule is the one already established for this data in
+ * blended-truth (latestPerStream): a stream is (entityId, source), the newest
+ * row supersedes older ones WITHIN a stream, and rows from DIFFERENT streams are
+ * independent measurements that may legitimately be summed. It is applied here
+ * rather than imported so this repair stays local and Plan does not take a
+ * dependency on that service's DB/credential graph for a pure fold.
  */
 async function buildActualsSeries(workspaceId, metric, sinceDays = ACTUALS_SYNC_RECENCY_DAYS) {
   const since = new Date(Date.now() - sinceDays * 86_400_000);
@@ -74,6 +111,17 @@ async function buildActualsSeries(workspaceId, metric, sinceDays = ACTUALS_SYNC_
   // sync date. Same class as the over-count PR #357 removed, reached by a
   // different route. The seam is now what keeps the two apart.
   //
+  // R4 — `entityLevel`, the seam's second narrowing, is what stops the OTHER
+  // double count. This is a narrower QUESTION, not a narrower population: the
+  // levels overlap by construction, so a plan's actuals have to pick one, and
+  // CAMPAIGN is the only grain both platform normalizers emit. Asked of the
+  // seam rather than filtered in memory because it is a property of WHICH ROWS
+  // this consumer's question is about, exactly like RevenueCsv's use of it.
+  //
+  // `entityId` joins the projection for the same reason: the reduction below
+  // keys on it, and the seam refuses an unprojected read. A consumer declares
+  // the fields it needs; nothing about the population moved.
+  //
   // NO orderBy PASSED, and that is the faithful reproduction rather than a
   // shortcut: this query asked for `{ date: 'asc' }`, which is exactly what the
   // Evidence layer publishes as OPERATIONAL_ORDER_BY and applies by default.
@@ -81,7 +129,7 @@ async function buildActualsSeries(workspaceId, metric, sinceDays = ACTUALS_SYNC_
   // had no ORDER BY to reproduce; this is the first that wanted the default, so
   // it takes it. The Prisma arguments are identical either way, and the test
   // asserts `{ date: 'asc' }` against a hand-written literal, so a change to the
-  // shared constant still fails here.
+  // shared constant still fails here. The reduction below does NOT lean on it.
   //
   // THE SOURCE FILTER STAYS BELOW, in memory, where it has always been. The
   // Evidence layer owns operational eligibility; which sources count as a
@@ -94,23 +142,44 @@ async function buildActualsSeries(workspaceId, metric, sinceDays = ACTUALS_SYNC_
   // keep propagating so an outage never reads as "no actuals" for everyone.
   const rows = await selectOperationalSnapshots(workspaceId, {
     since,
-    select: { date: true, spendMinor: true, revenueMinor: true, conversions: true, source: true },
+    entityLevel: ENTITY_LEVEL.CAMPAIGN,
+    select: { date: true, entityId: true, spendMinor: true, revenueMinor: true, conversions: true, source: true },
   }).catch(() => []);
 
   const PLATFORM = new Set(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
+  // One winner per (entityId, source) per observation day. Nothing is added
+  // until the winners are known, so a re-measurement can never be mistaken for
+  // more activity. Order-INDEPENDENT on purpose: the seam's default ordering is
+  // reproduced above because the old query had it, and this must not quietly
+  // become a second thing that depends on it.
+  //
+  // No window precedence rule is invented here. A day can hold a 90-day reading
+  // and a full-retention one for the same stream and nothing stored says which
+  // is "better" — so the only existing selection rule applies, and the newest
+  // observation wins. That the basis can differ between a cron run and a manual
+  // Sync is a limitation of what ingestion records, not something to paper over.
   const byDay = new Map();
   for (const r of rows) {
     if (!PLATFORM.has(r.source)) continue;
     const key = r.date.toISOString().slice(0, 10);
-    if (!byDay.has(key)) byDay.set(key, { spendMinor: 0, revenueMinor: 0, conversions: 0 });
-    const d = byDay.get(key);
-    d.spendMinor   += r.spendMinor ?? 0;
-    d.revenueMinor += r.revenueMinor ?? 0;
-    d.conversions  += r.conversions ?? 0;
+    if (!byDay.has(key)) byDay.set(key, new Map());
+    const streams = byDay.get(key);
+    const stream = `${r.entityId}|${r.source}`;
+    const prev = streams.get(stream);
+    if (prev === undefined || stampOf(r.date) > stampOf(prev.date)) streams.set(stream, r);
   }
 
   const series = [];
-  for (const [date, d] of byDay) {
+  for (const [date, streams] of byDay) {
+    // Sum ACROSS streams — different campaigns, and different sources on one
+    // campaign, are independent measurements. Counts only; stored ratios are
+    // never read, because a ratio of one stream says nothing about the day.
+    const d = { spendMinor: 0, revenueMinor: 0, conversions: 0 };
+    for (const r of streams.values()) {
+      d.spendMinor   += r.spendMinor ?? 0;
+      d.revenueMinor += r.revenueMinor ?? 0;
+      d.conversions  += r.conversions ?? 0;
+    }
     let value = null;
     if (metric === 'blendedCac')       value = d.conversions > 0 ? d.spendMinor / d.conversions : null;
     else if (metric === 'blendedRoas') value = d.spendMinor > 0 ? d.revenueMinor / d.spendMinor : null;
