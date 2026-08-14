@@ -14,7 +14,6 @@
 // is a range + assumptions; `memoryBasis` records what the plan leaned on.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
-import { OPERATIONAL_WINDOW_FILTER } from '../connectors/connectorTypes.js';
 import { logger } from '../../utils/logger.js';
 import { previewAllocation, commitAllocation } from '../allocation-engine/AllocationService.js';
 import { GOAL_TYPE } from '../allocation-engine/allocationEngine.js';
@@ -128,14 +127,40 @@ async function projectGoalLanding(workspaceId, goal, { now } = {}) {
   if (actuals.length === 0) return null;
 
   // Leading signals across the entities that carry spend.
-  const entityRows = await prisma.metricSnapshot.findMany({
-    // OPERATIONAL ONLY (Phase G). This one picks entity IDS, so a canonical row
-    // changes no value today — but `take: 50` is applied after `distinct`, and a
-    // reader stating its population is the contract here, not the arithmetic.
-    where:   { workspaceId, measurementWindow: OPERATIONAL_WINDOW_FILTER },
-    select:  { entityId: true },
+  //
+  // R3.10 — THE LAST DIRECT OPERATIONAL READ IN THE CODEBASE. It asks a
+  // different question from every other consumer: not "what did these entities
+  // measure" but "which entities has this workspace synced anything for at all",
+  // which is why it projects one column, collapses to one row per entity and
+  // caps at 50 so a large account cannot make one goal projection unbounded.
+  //
+  // THE REDUCTION IS THE REASON THE SEAM GREW, and it is opt-in for a reason
+  // worth repeating at the call site: six earlier R3 PRs used `distinct` at the
+  // Evidence layer as a NEGATIVE CONTROL, because a reduction applied to a
+  // consumer that never asked for one deletes rows it is counting — including
+  // buildActualsSeries above, which SUMS a day's rows. Absent by default is what
+  // keeps those controls failing; this is the one caller that names them.
+  //
+  // NO `since` — deliberately, and unchanged. This read has never had a recency
+  // bound: an entity synced last quarter is still an entity this workspace has,
+  // and gatherLeadingSignals applies its own fatigue window downstream. Adding
+  // one here would quietly shrink the population a landing is projected over.
+  //
+  // NO entityLevel, NO entityIds, NO source filter — the population is every
+  // operational row in the workspace, which is what "which entities exist" means.
+  //
+  // `orderBy: null` because the old query had no ORDER BY, so which 50 entities
+  // come back is storage order. That is a property of the query being MIGRATED,
+  // not one introduced here; R3 moves ownership without changing the plan.
+  //
+  // THE CATCH STAYS HERE. A failed scan has always meant "no leading signals",
+  // never a thrown projection; the seam keeps propagating so an outage cannot
+  // read as "this workspace has no entities" for every other consumer.
+  const entityRows = await selectOperationalSnapshots(workspaceId, {
+    select:   { entityId: true },
+    orderBy:  null,
     distinct: ['entityId'],
-    take:    50,
+    take:     50,
   }).catch(() => []);
   const leadingSignals = await gatherLeadingSignals(workspaceId, {
     entityIds: entityRows.map((e) => e.entityId),

@@ -24,11 +24,14 @@
 //     verdict rule, not an operational one, and importing it here would be a
 //     behaviour change dressed as consistency.
 //
-//   • NOT a latest-per-entity reduction. Some consumers want the latest row,
-//     some want the whole series — guardrail wants the series, and collapsing it
-//     would erase the very time-shape its rules evaluate. Reduction is the
-//     caller's, applied to rows this function has ALREADY made eligible, which
-//     is what keeps filter-before-latest true by construction (I3).
+//   • NOT a latest-per-entity reduction BY DEFAULT. Some consumers want the
+//     latest row, some want the whole series — guardrail wants the series, and
+//     collapsing it would erase the very time-shape its rules evaluate.
+//     Reduction is the caller's, applied to rows this function has ALREADY made
+//     eligible, which is what keeps filter-before-latest true by construction
+//     (I3). R3.10 lets a caller ASK for one; it never applies one unasked. See
+//     the note on `distinct`/`take` below — this is the seam's most dangerous
+//     option pair and the only one that arrived with its own alarm attached.
 //
 // SCOPE VS POPULATION (R3.4, R3.8)
 // --------------------------------
@@ -48,12 +51,36 @@
 // CAMPAIGN row, and EntityGraph, which reads one level at a time — so it is
 // added once, for both, rather than twice with a rename in between.
 //
-// THE SEAM IS NOT A QUERY BUILDER. These two options are here because they are
+// THE SEAM IS NOT A QUERY BUILDER. These options are here because they are
 // concrete, repeated population narrowings that already existed in the consumers'
 // own queries. There is deliberately no `where` passthrough, no predicate bag and
 // no generic option object: the moment a caller can hand this function arbitrary
 // SQL, the operational policy stops being a decision made once and becomes a
-// default that callers are free to talk out of.
+// default that callers are free to talk out of. An option this function does not
+// NAME does not reach Prisma, and a test proves it.
+//
+// REDUCTION (R3.10): `distinct` AND `take`
+// ----------------------------------------
+// The last operational consumer to migrate is Plan's entity scan, and it is the
+// only one that asks the database to reduce:
+//
+//     select: { entityId: true }, distinct: ['entityId'], take: 50
+//
+// It wants a LIST OF IDS, not a series — "which entities has this workspace
+// synced anything for", capped so a large account cannot make one goal
+// projection unbounded.
+//
+// This pair is the seam's sharpest edge, and it is worth saying why out loud:
+// SIX earlier R3 PRs used `distinct` at this seam as a NEGATIVE CONTROL. Adding
+// a latest-per-entity reduction here is precisely how you would silently break
+// guardrail (which evaluates a time-shape), blended truth (which reduces
+// per-stream itself) and Plan's own actuals series (which SUMS a day's rows).
+// Every one of those controls must still fail after this option exists — and
+// they do, because ABSENT BY DEFAULT is the whole contract. `distinct` and
+// `take` are omitted from the Prisma arguments entirely unless a caller names
+// them, so a consumer that does not ask cannot tell the option exists.
+//
+// One caller passes them. Nothing else may, without its own PR saying why.
 //
 // WHY `select` IS REQUIRED
 // -------------------------
@@ -113,11 +140,22 @@ export const OPERATIONAL_ORDER_BY = Object.freeze({ date: 'asc' });
  *   database to sort, and making it start would add an ORDER BY to a query that
  *   has run without one. On the 365-day population that is a plan change, not a
  *   tidy-up, and R3 moves ownership without touching the query.
+ * @param {string[]|null} [opts.distinct] — collapse to one row per field tuple.
+ *   OMITTED BY DEFAULT and it must stay that way: a reduction applied to a
+ *   consumer that did not ask for one deletes rows it is counting. Six earlier
+ *   R3 PRs used exactly this key as a negative control; all of them still fail
+ *   when it is defaulted, which is what makes the option safe to have.
+ * @param {number|null} [opts.take] — row cap. OMITTED BY DEFAULT, for the same
+ *   reason and with a sharper edge: a default cap would silently truncate a
+ *   series and every figure derived from it would still look plausible.
  * @returns {Promise<Array>} eligible rows, date-ascending unless `orderBy: null`.
  */
 export async function selectOperationalSnapshots(
   workspaceId,
-  { since = null, entityIds = null, entityLevel = null, select, orderBy = OPERATIONAL_ORDER_BY } = {},
+  {
+    since = null, entityIds = null, entityLevel = null, select,
+    orderBy = OPERATIONAL_ORDER_BY, distinct = null, take = null,
+  } = {},
 ) {
   // Both are programming errors rather than runtime states, and both are
   // unreachable from a correct caller — but a missing workspaceId would query
@@ -143,5 +181,12 @@ export async function selectOperationalSnapshots(
     // the key is what reproduces an unordered query; `orderBy: null` is a
     // different thing to hand Prisma.
     ...(orderBy ? { orderBy } : {}),
+    // Same rule, and it matters more here than anywhere else in this function:
+    // `distinct: null` and `take: null` are values Prisma reads, so an unasked
+    // reduction has to leave the key OUT rather than set it to nothing. Every
+    // consumer but one omits both, and their arguments must be byte-identical to
+    // what they were before these two lines existed.
+    ...(distinct == null ? {} : { distinct }),
+    ...(take == null ? {} : { take }),
   });
 }
