@@ -42,6 +42,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { DATA_SOURCE, ENTITY_LEVEL, MEASUREMENT_WINDOW } from '../connectors/connectorTypes.js';
+import { EVIDENCE_POPULATION, EVIDENCE_SELECTOR, EVIDENCE_REDUCTION } from './evidenceReference.js';
 
 /** The one window a campaign verdict may be decided on. */
 export const CANONICAL_VERDICT_WINDOW = MEASUREMENT_WINDOW.CUMULATIVE_30D;
@@ -90,6 +91,25 @@ export const CANONICAL_VERDICT_SELECT = Object.freeze({
 
 /** The reason a campaign has no verdict. Distinct from every "no data" reason. */
 export const NO_CANONICAL_WINDOW = 'NO_CANONICAL_WINDOW';
+
+/**
+ * R5 / I18: what a decision built on THIS selector can say about its evidence.
+ *
+ * It lives here because this module owns the three facts in it — the population,
+ * the selector's own name, and the one window it can return. A reader that
+ * retyped them would be a second place that decides what canonical evidence is,
+ * and the two would drift exactly where it matters.
+ *
+ * `rowCount` is the reader's to add: it is a property of the read, not of the
+ * population. Spread this, then name the count.
+ */
+export const CANONICAL_VERDICT_EVIDENCE_BASIS = Object.freeze({
+  population:        EVIDENCE_POPULATION.CANONICAL_VERDICT,
+  selector:          EVIDENCE_SELECTOR.CANONICAL_VERDICT,
+  measurementWindow: CANONICAL_VERDICT_WINDOW,
+  // latestCanonicalByEntity, below: N rows ranked by `date`, the newest kept.
+  reduction:         EVIDENCE_REDUCTION.LATEST_PER_ENTITY,
+});
 
 /**
  * Canonical campaign evidence for a workspace.

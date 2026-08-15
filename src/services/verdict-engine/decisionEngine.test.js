@@ -425,7 +425,13 @@ describe('getConnectorVerdicts — the published numbers', () => {
     await getConnectorVerdicts('ws-1');
     const arg = findMany.mock.calls[0][0];
     expect(arg.where.workspaceId).toBe('ws-1');
-    expect(arg.select).toEqual({ id: true, entityId: true, verdict: true, createdAt: true });
+    // R5 adds `evidenceReference` — the one thing about a STORED decision this
+    // payload can never re-derive, since the verdict beside it is recomputed
+    // from today's rows. Still a named projection, so the two reasoning JSONB
+    // columns are not pulled per row to be discarded.
+    expect(arg.select).toEqual({
+      id: true, entityId: true, verdict: true, createdAt: true, evidenceReference: true,
+    });
     expect(arg).not.toHaveProperty('include');
   });
 

@@ -14,6 +14,7 @@ import { applyRelativeRanking }     from './relativeRanking.js';
 import { getCanonicalVerdictCampaigns } from '../entity-graph/index.js';
 import { buildConnectorVerdictTree } from './connectorVerdictService.js';
 import { toReasoningArtifact, toCounterfactualArtifact } from './reasoningArtifact.js';
+import { toEvidenceReference }     from './evidenceReference.js';
 import { connectorDecisionScope }  from './decisionIdentity.js';
 import { computeResolution, ctrDelta } from './decisionLifecycle.js';
 
@@ -38,6 +39,34 @@ const finite = (n) => (typeof n === 'number' && Number.isFinite(n) ? n : null);
 function nodeMetrics(node) {
   const s = node?.signalInput ?? {};
   return { ctr: finite(s.ctr), roas: finite(s.roas) };
+}
+
+/**
+ * The evidence reference for a node, or null when it carries no basis.
+ *
+ * null IS AN ANSWER, and the honest one for an internal/rollup node: the
+ * account-level verdict is computed from its children's aggregates, not from a
+ * read of its own, so there is no population, window or observation time to
+ * name. A reference invented for it would assert a read that never happened.
+ *
+ * BEST-EFFORT, LIKE resolvePrevious. toEvidenceReference throws on a contract
+ * violation — that is what keeps a false reference from being constructed at
+ * all — but a KILL must not be lost because provenance could not be described.
+ * A failure here is logged and the decision is written with `evidenceReference:
+ * null`, which reads as "not captured": true, and not a fabrication.
+ */
+function nodeEvidenceReference(node) {
+  const basis = node?.evidenceBasis;
+  if (!basis) return null;
+  try {
+    return toEvidenceReference({ ...basis, rows: node.evidenceRows ?? [] });
+  } catch (err) {
+    logger.warn(
+      { err: err.message, entityId: node?.id, level: node?.level },
+      '[VerdictService] evidence reference not recorded',
+    );
+    return null;
+  }
 }
 
 /**
@@ -129,6 +158,13 @@ async function persistNode(workspaceId, node, created) {
           // no mechanism, which an early-gate campaign genuinely produces.
           hypotheses:      toReasoningArtifact(node.hypotheses),
           counterfactuals: toCounterfactualArtifact(node.counterfactuals),
+          // WHAT IT WAS LOOKING AT (R5 / I18). The three fields above record
+          // what the engine believed; this records the evidence underneath —
+          // population, window, source(s), observation time(s), how many rows
+          // were consumed and the rule that reduced them. null when the node
+          // carried no basis (an internal/rollup node, or a caller that never
+          // declared one), which stays null rather than becoming a guess.
+          evidenceReference: nodeEvidenceReference(node),
         },
       });
       created.push({ entityId: node.id, level: node.level, verdict: node.verdict });

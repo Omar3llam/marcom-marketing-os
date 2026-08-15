@@ -152,6 +152,23 @@ export function buildConnectorVerdictTree(workspaceId, campaigns = [], { now = D
         // clock: a stored verdict must stay reproducible from its inputs.
         platformCreatedTime: c.platformCreatedTime ?? null,
         daysRunning:     daysSince(c.platformCreatedTime, now),
+        // ── Evidence provenance (R5 / I18) ──────────────────────────────────
+        // The SECOND loss point this repair closes. `evidenceBasis` is what the
+        // reader declared (population, selector, window, reduction, rows
+        // consumed); `evidenceRows` is which row(s) actually contributed, with
+        // their source and their OBSERVATION timestamp.
+        //
+        // Both used to die right here: the row's `source` was already gone at
+        // metricsOf, and `lastDate` was dropped building this node — so the
+        // engine has never known when its evidence was observed, and the
+        // decision written from it could not say either.
+        //
+        // CARRIED, NOT COMPUTED. Nothing below reads these: they are not signal
+        // inputs, they do not reach toSignalInput, and no verdict, threshold,
+        // confidence or rank moves because they exist. They ride to the
+        // persistence boundary and stop.
+        evidenceBasis: c.evidenceBasis ?? null,
+        evidenceRows:  c.evidenceRows  ?? [],
         metrics: toLeafMetrics(c),
       });
     } else {
@@ -217,7 +234,13 @@ export async function getLatestDecisions(workspaceId) {
 
   const rows = await prisma.decision.findMany({
     where:   { workspaceId, entityLevel: 'CAMPAIGN', status: 'PROPOSED', ...connectorDecisionScope() },
-    select:  { id: true, entityId: true, verdict: true, createdAt: true },
+    // `evidenceReference` (R5) joins the projection because it is the ONE thing
+    // about a stored decision this payload could never re-derive: the live
+    // verdict beside it is recomputed from today's rows, and what a past
+    // decision looked at is exactly the question re-reading cannot answer.
+    // Named, not a select-less read — that would pull both reasoning JSONB
+    // columns per row to discard them.
+    select:  { id: true, entityId: true, verdict: true, createdAt: true, evidenceReference: true },
     orderBy: { createdAt: 'desc' },
   }).catch((err) => {
     // Identity is an ENHANCEMENT: without it every row falls back to the
@@ -296,6 +319,15 @@ export async function getConnectorVerdicts(workspaceId) {
     // without a second fetch. Published beside the live one, never instead of
     // it, and never used to suppress or "correct" it.
     decisionVerdict: decisionMap.get(c.id)?.verdict ?? null,
+    // What the STORED decision was looking at (R5 / I18). Beside decisionId and
+    // decisionVerdict, and about the same row: the frozen provenance of the call
+    // Lumi committed to, not of the live verdict recomputed above.
+    //
+    // null on every pre-R5 decision, and on every campaign with no stored
+    // decision at all. Both mean "no provenance to show" — the UI renders
+    // nothing rather than an empty evidence block, because "we did not capture
+    // this" is not the same claim as "there was no evidence".
+    decisionEvidenceReference: decisionMap.get(c.id)?.evidenceReference ?? null,
     // The cohort the rank was decided in: { rank, group, cohortSize, ctrPct,
     // avgCtrPct }, null on every absolutely-decided verdict. Minted by
     // applyRelativeRanking, which runs AFTER rollupVerdicts and spreads `...c` —

@@ -219,7 +219,11 @@ describe('R3 — GuardrailSweepService on the Evidence seam', () => {
 
   // ── 9: decision parity ───────────────────────────────────────────────────
   describe('decision parity', () => {
-    it('produces the same PROPOSED Decision the pre-migration sweep produced', async () => {
+    it('produces the same PROPOSED Decision, now carrying its evidence reference', async () => {
+      // R5 ADDS ONE KEY AND CHANGES NOTHING ELSE. The eight fields below are the
+      // pre-R5 row, asserted exhaustively so a semantic change hides nowhere;
+      // `evidenceReference` is the ninth, and it describes the series this rule
+      // fired on rather than restating its conclusion.
       prisma.metricSnapshot.findMany.mockResolvedValue([
         snap({ date: new Date('2026-08-01'), frequency: 4.0 }),
         snap({ date: new Date('2026-08-02'), frequency: 4.5 }),
@@ -236,6 +240,23 @@ describe('R3 — GuardrailSweepService on the Evidence seam', () => {
         diagnosis:   'Frequency ceiling: frequency > 3 for 2 day(s)',
         rootCause:   'guardrail:Frequency ceiling',
         status:      'PROPOSED',
+        evidenceReference: {
+          population: 'operational',
+          selector:   'selectOperationalSnapshots',
+          // NOT ESTABLISHED, not invented: the operational population admits two
+          // windows and this reader projects neither the column nor `source`.
+          measurementWindow: null,
+          sources:    null,
+          // BOTH observation timestamps, from the evidence rows themselves —
+          // this is the assertion that fails if `observedAt` is ever taken from
+          // the decision's own createdAt or from a clock.
+          observedAt: ['2026-08-01T00:00:00.000Z', '2026-08-02T00:00:00.000Z'],
+          reduction:  'series',
+          entityIds:  ['e1'],
+          // TWO, not one. The decision is a single row; the evidence was not.
+          rowCount:   2,
+          refs:       [],
+        },
       }]);
       expect(out).toEqual({ rules: 1, hits: 1, decisionsCreated: 1 });
     });

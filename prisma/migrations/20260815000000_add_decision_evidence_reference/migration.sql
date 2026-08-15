@@ -1,0 +1,34 @@
+-- ============================================================
+-- R5 — Evidence References (I18)
+-- ============================================================
+-- A persisted decision must be able to name the evidence it rests on.
+--
+-- Until now a Decision kept its CONCLUSION (verdict, rootCause), its VALUES
+-- (ctrAtDecision, roasAtDecision) and its REASONING (hypotheses,
+-- counterfactuals) — and nothing at all about the rows those values came from.
+-- Not which population, not which measurement window, not which source, not
+-- when the evidence was OBSERVED, and not how several rows became one number.
+-- Every consequential surface reads many rows; every stored decision recorded
+-- one value. Re-reading the database later answers a different question, because
+-- MetricSnapshot rows are upserted per sync.
+--
+-- WHY JSONB, AND WHY ON THIS TABLE. Same reasoning as the reasoning snapshot
+-- beside it: STORAGE, NOT SEARCH. Nothing queries into this and nothing should —
+-- a join table would invite exactly that, and would also fragment the one
+-- property that already works, which is that a decision's record of itself is
+-- written once and frozen. The reference belongs next to the values it explains.
+--
+-- NO BACKFILL, and the NULL means something. NULL = "this decision predates R5,
+-- or its writer could not establish provenance honestly" (the allocation writer
+-- is the live example: its inputs are blended-truth rollups and prior decisions,
+-- not evidence rows). That is deliberately distinct from a stored reference whose
+-- `refs` is `[]`, which means "the mechanism ran and had no row-level references
+-- to give". Manufacturing provenance for historical rows would make every one of
+-- them assert something nobody recorded.
+--
+-- NO INDEX, NO RELATION, NO DEFAULT. Additive and idempotent. Hand-authored:
+-- `prisma migrate dev` is never run against the real database.
+-- ============================================================
+
+ALTER TABLE "decisions"
+  ADD COLUMN IF NOT EXISTS "evidenceReference" JSONB;
