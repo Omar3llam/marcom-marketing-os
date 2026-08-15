@@ -172,6 +172,14 @@ export async function generateNarrative(workspaceId, { period = NARRATIVE_PERIOD
       where:  { workspaceId, createdAt: { gte: periodStart } },
       select: {
         id: true, verdict: true, entityId: true, rootCause: true,
+        // R6 left this query alone, deliberately. `newest` and `current` are the
+        // same row for every chain the writer produces — a supersession always
+        // creates the new outcome last — and this read runs in the worker
+        // described above, the one that generates a client without running
+        // migrate deploy. Naming `supersededAt` here would make a narrative
+        // build depend on a column its own deploy may not have yet, to change a
+        // result it cannot change. The correctness readers filter explicitly;
+        // this one takes the newest row and cites the row it actually used.
         outcomes: {
           orderBy: { createdAt: 'desc' }, take: 1,
           select: { id: true, spendDeltaMinor: true, revenueDeltaMinor: true },

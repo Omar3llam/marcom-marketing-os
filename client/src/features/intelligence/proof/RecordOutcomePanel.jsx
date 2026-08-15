@@ -11,6 +11,21 @@
 // A successful KILL legitimately reduces both spend and revenue → negatives are
 // allowed. On success the just-recorded decision drops off the list and the
 // parent refetches the accuracy surface.
+//
+// R6 (I19) — WHAT THIS FORM NOW ASKS FOR, AND WHAT IT DOES NOT
+//   It captures `measuredAt`: WHEN the operator established these numbers, which
+//   is not when they got round to typing them and not when the row is written.
+//   Nothing here defaults it to today — a prefilled date is a value nobody
+//   stated, and the whole point of the field is that it is the operator's fact.
+//
+//   It does NOT capture provenance. The evidence reference is projected on the
+//   server from the rows Lumi actually holds for that entity over the measured
+//   period; a browser cannot see those rows, so anything it sent would be a
+//   claim about a database it has never read. The panel therefore shows no
+//   evidence summary before submitting — there is nothing honest to show yet.
+//
+//   The numbers stay the operator's, and the copy says so. They are not
+//   platform-measured and this form must never imply that they are.
 // ============================================================
 import { useState } from 'react';
 import { ClipboardCheck } from 'lucide-react';
@@ -29,10 +44,18 @@ function OutcomeForm({ decision, currency, onSubmit, busy }) {
   const [roas, setRoas] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
+  const [measured, setMeasured] = useState('');
   const [sustained, setSustained] = useState(false);
 
+  // The server owns these rules (it is the only clock that counts, and the only
+  // thing that knows when the decision was executed). Mirroring the two the
+  // operator can see keeps the common mistake out of a round trip; the server
+  // still refuses the rest and says why.
+  const today = new Date().toISOString().slice(0, 10);
+  const executedDay = decision.executedAt ? String(decision.executedAt).slice(0, 10) : undefined;
+
   const ready = spend !== '' && revenue !== '' && roas !== '' && start !== '' && end !== ''
-    && new Date(end) > new Date(start);
+    && measured !== '' && new Date(end) > new Date(start);
 
   const submit = () => {
     if (!ready) return;
@@ -42,6 +65,10 @@ function OutcomeForm({ decision, currency, onSubmit, busy }) {
       roasDelta: Number(roas),
       windowStart: new Date(start).toISOString(),
       windowEnd: new Date(end).toISOString(),
+      // WHEN it was measured — never `new Date()`. Substituting the clock here
+      // would record the moment of typing as the moment of measurement, which is
+      // the one thing this field exists to keep apart.
+      measuredAt: new Date(measured).toISOString(),
       sustained,
     });
   };
@@ -62,11 +89,25 @@ function OutcomeForm({ decision, currency, onSubmit, busy }) {
         Result held (sustained)
       </label>
       <label className="text-xs text-lumi-subtle">Window start
-        <input type="date" className={field} value={start} onChange={(e) => setStart(e.target.value)} />
+        <input type="date" className={field} value={start} min={executedDay} max={today}
+          onChange={(e) => setStart(e.target.value)} />
       </label>
       <label className="text-xs text-lumi-subtle">Window end
-        <input type="date" className={field} value={end} onChange={(e) => setEnd(e.target.value)} />
+        <input type="date" className={field} value={end} max={today}
+          onChange={(e) => setEnd(e.target.value)} />
       </label>
+      <label className="col-span-2 text-xs text-lumi-subtle">Measured on
+        <input type="date" className={field} value={measured} max={today}
+          onChange={(e) => setMeasured(e.target.value)} />
+        <span className="mt-1 block text-lumi-muted">
+          When you read these numbers — not when you&apos;re typing them in.
+        </span>
+      </label>
+      <p className="col-span-2 text-xs text-lumi-muted">
+        These are your numbers. Lumi records them as reported and stores what it holds for this
+        {' '}
+        {String(decision.entityLevel ?? 'entity').toLowerCase()} over the window you gave.
+      </p>
       <button
         type="button"
         disabled={!ready || busy}
@@ -133,7 +174,14 @@ export default function RecordOutcomePanel({ onRecorded }) {
       </div>
 
       {recordError && (
-        <p className="mt-3 text-xs text-signal-kill">Couldn&apos;t record that outcome — try again.</p>
+        // A 422 is the one refusal the operator can act on — an impossible
+        // window, a measurement dated in the future — so it is quoted verbatim
+        // rather than flattened into "try again", which would send them to retry
+        // the same rejected dates. Everything else keeps the generic line.
+        <p className="mt-3 text-xs text-signal-kill">
+          {(recordError.response?.status === 422 && recordError.response?.data?.message)
+            || 'Couldn’t record that outcome — try again.'}
+        </p>
       )}
     </div>
   );

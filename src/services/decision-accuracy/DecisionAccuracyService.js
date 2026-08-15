@@ -23,6 +23,22 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { calculateDecisionAccuracy } from './decisionAccuracyEngine.js';
 import { isExecuted, deriveAccuracyStatus } from './decisionAccuracyHelpers.js';
+import { CURRENT_OUTCOME_WHERE, CURRENT_OUTCOME_ORDER_BY } from './outcomeSelection.js';
+import { projectOutcomeEvidence } from './outcomeEvidence.js';
+
+/**
+ * The refusals this service makes, as CODES rather than message shapes. The
+ * route used to sniff `/not EXECUTED/i` against a message reading "has not been
+ * executed", which never matched — an unexecuted decision returned 500 where the
+ * contract says 409. A code cannot drift out of agreement with its own wording.
+ */
+export const OUTCOME_ERROR = Object.freeze({
+  DECISION_NOT_FOUND: 'DECISION_NOT_FOUND', // → 404
+  NOT_EXECUTED:       'NOT_EXECUTED',       // → 409
+  INVALID_WINDOW:     'INVALID_WINDOW',     // → 422
+});
+
+const outcomeError = (code, message) => Object.assign(new Error(message), { code });
 
 // The population this surface reports on: decisions a human made a call about.
 // Timestamps, not `status` — the DecisionStatus enum carries EXECUTED and
@@ -85,7 +101,14 @@ export async function getAccuracy(workspaceId, { now = new Date(), config } = {}
       // branch, and vanish from the survivorship count it exists to feed.
       executedAt: true, dismissedAt: true,
       outcomes: {
-        orderBy: { createdAt: 'desc' },
+        // THE CURRENT OUTCOME, not the newest row (R6). A re-recorded result now
+        // appends, so a decision can own several rows and only one of them is
+        // still what the operator claims happened. Scoring the superseded one —
+        // or scoring both — would let a correction contaminate the calibration
+        // it was recorded to fix. The retired rows stay in the table; they are
+        // simply not this question's answer.
+        where: CURRENT_OUTCOME_WHERE,
+        orderBy: CURRENT_OUTCOME_ORDER_BY,
         take: 1,
         select: {
           spendDeltaMinor: true, revenueDeltaMinor: true, roasDelta: true,
@@ -118,6 +141,11 @@ export async function getAccuracy(workspaceId, { now = new Date(), config } = {}
 // causal outcome a calibration engine should ingest (that's what holdouts are
 // for), and the realized-metrics fetch is still the Phase-3 stub. Honest entry
 // beats a fabricated one.
+//
+// R6 DOES NOT CHANGE THAT. The values stay human-reported; what gets added is
+// the ability to say what they were measured against, when they were measured,
+// and that they were not quietly rewritten afterwards. A platform-measured
+// outcome remains a separate, unbuilt thing — see outcomeEvidence.js.
 
 const isInt = (v) => Number.isInteger(v);
 const isFiniteNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -129,7 +157,9 @@ const isFiniteNum = (v) => typeof v === 'number' && Number.isFinite(v);
  * both — so we check integer-ness, never sign.
  */
 export function validateOutcomeBody(body = {}) {
-  const { spendDeltaMinor, revenueDeltaMinor, roasDelta, windowStart, windowEnd, sustained } = body;
+  const {
+    spendDeltaMinor, revenueDeltaMinor, roasDelta, windowStart, windowEnd, sustained, measuredAt,
+  } = body;
   if (!isInt(spendDeltaMinor))   return 'spendDeltaMinor must be an integer in minor units (negative allowed)';
   if (!isInt(revenueDeltaMinor)) return 'revenueDeltaMinor must be an integer in minor units (negative allowed)';
   if (!isFiniteNum(roasDelta))   return 'roasDelta must be a finite number';
@@ -139,11 +169,19 @@ export function validateOutcomeBody(body = {}) {
   if (Number.isNaN(startMs)) return 'windowStart must be a valid ISO date';
   if (Number.isNaN(endMs))   return 'windowEnd must be a valid ISO date';
   if (endMs <= startMs)      return 'windowEnd must be after windowStart';
+  // R6 (I19): REQUIRED on every new recording, and required rather than
+  // defaulted. A missing measuredAt has exactly one honest resolution — ask —
+  // because every available substitute is a different fact: `now` would date the
+  // measurement to the request, and createdAt would date it to the row. Legacy
+  // rows keep their NULL; they were written before anyone was asked.
+  if (Number.isNaN(Date.parse(measuredAt))) {
+    return 'measuredAt must be a valid ISO date — when the outcome was measured, which is not when it is being recorded';
+  }
   return null;
 }
 
 /**
- * Record the realized outcome of an EXECUTED decision (one per decision).
+ * Record the realized outcome of an EXECUTED decision.
  *
  * IDOR discipline: authorize by { id, workspaceId } — a cross-workspace id is
  * invisible (→404). Only an EXECUTED decision can carry an outcome (PROPOSED
@@ -151,19 +189,33 @@ export function validateOutcomeBody(body = {}) {
  *
  * entityId/entityLevel are REQUIRED on OutcomeSnapshot and are INHERITED from
  * the decision — never operator-entered (they aren't the operator's to set).
+ * R6 adds the evidence reference to that list: the client sends what it
+ * measured, never the provenance of it.
  *
- * UPSERT-BY-HAND: decisionId is not a unique column (the schema permits a
- * history the read takes the latest of), so a real upsert({where:{decisionId}})
- * is impossible. We update the newest snapshot in place, else create — one
- * outcome per decision, no duplicate, idempotent on re-record.
+ * APPEND, NEVER OVERWRITE (R6 · I19). This used to be an upsert-by-hand that
+ * UPDATED the newest snapshot in place, so a recorded result could be replaced
+ * with no version, no audit and nothing on the row to say it had happened. It
+ * now writes a NEW row and marks the previous one superseded. The old result
+ * keeps every value it was recorded with — its deltas, its window, its
+ * provenance, its measuredAt — and gains only the two columns that say it is no
+ * longer current. Nothing in this file deletes an outcome.
+ *
+ * ONE TRANSACTION, because "a new current outcome exists" and "the old one is
+ * retired" are one fact. A half-applied write would leave two rows claiming to
+ * be current, which the ordering would paper over for accuracy and which
+ * patterns would read as two observations of the same decision.
  *
  * @param {string} workspaceId
  * @param {string} decisionId
  * @param {{spendDeltaMinor:number, revenueDeltaMinor:number, roasDelta:number,
- *          windowStart:string|Date, windowEnd:string|Date, sustained:boolean}} input
- * @returns {Promise<{ workspaceId, decisionId, outcome }>}
+ *          windowStart:string|Date, windowEnd:string|Date, sustained:boolean,
+ *          measuredAt:string|Date}} input
+ * @param {{ now?: Date }} [opts] — SERVER time, injected for the temporal
+ *   guards. Never a client-supplied "now": the whole point of the future-window
+ *   check is that the client does not get to say when now is.
+ * @returns {Promise<{ workspaceId, decisionId, outcome, previousOutcomeId }>}
  */
-export async function recordOutcome(workspaceId, decisionId, input = {}) {
+export async function recordOutcome(workspaceId, decisionId, input = {}, { now = new Date() } = {}) {
   if (!workspaceId) throw new Error('recordOutcome: workspaceId required');
   if (!decisionId) throw new Error('recordOutcome: decisionId required');
 
@@ -178,38 +230,116 @@ export async function recordOutcome(workspaceId, decisionId, input = {}) {
       executedAt: true, dismissedAt: true,
     },
   });
-  if (!decision) throw new Error('recordOutcome: decision not found');
+  if (!decision) throw outcomeError(OUTCOME_ERROR.DECISION_NOT_FOUND, 'recordOutcome: decision not found');
   if (!isExecuted(decision)) {
     // A dismissed decision has no outcome by construction — nothing was done, so
     // there is nothing that happened afterwards to attribute. Named separately
     // from "never actioned" because they are different states and the caller can
     // only fix one of them.
     const why = decision.dismissedAt ? 'was dismissed, not executed' : 'has not been executed';
-    throw new Error(`recordOutcome: decision ${decisionId} ${why} — cannot record an outcome`);
+    throw outcomeError(
+      OUTCOME_ERROR.NOT_EXECUTED,
+      `recordOutcome: decision ${decisionId} ${why} — cannot record an outcome`,
+    );
   }
 
-  const { spendDeltaMinor, revenueDeltaMinor, roasDelta, windowStart, windowEnd, sustained } = input;
-  const data = {
-    spendDeltaMinor, revenueDeltaMinor, roasDelta,
-    windowStart: new Date(windowStart), windowEnd: new Date(windowEnd), sustained,
-  };
+  const {
+    spendDeltaMinor, revenueDeltaMinor, roasDelta, windowStart, windowEnd, sustained, measuredAt,
+  } = input;
+  const start = new Date(windowStart);
+  const end = new Date(windowEnd);
+  const measured = new Date(measuredAt);
+  const nowMs = now.getTime();
 
-  const existing = await prisma.outcomeSnapshot.findFirst({
-    where: { decisionId, workspaceId },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true },
+  // ── The window is ANCHORED TO THE ACTION (R6 §10) ───────────────
+  // Shape validation already proved the window is ordered and parseable. These
+  // three are the temporal claims it can still get wrong, and each one would
+  // corrupt a different thing:
+  //
+  //   • a window opening before the execution attributes to the decision a
+  //     period in which nobody had acted on it yet;
+  //   • a window closing in the future reports a result for time that has not
+  //     happened, and the maturity check would then treat it as still open
+  //     forever;
+  //   • a measurement instant in the future is not a measurement.
+  //
+  // Server time, always. A client that could name `now` could clear the second
+  // check by lying about it.
+  if (start.getTime() < new Date(decision.executedAt).getTime()) {
+    throw outcomeError(
+      OUTCOME_ERROR.INVALID_WINDOW,
+      `recordOutcome: the measurement window opens ${start.toISOString()}, before the decision was executed `
+      + `(${new Date(decision.executedAt).toISOString()}) — an outcome cannot cover time before the action it follows`,
+    );
+  }
+  if (end.getTime() > nowMs) {
+    throw outcomeError(
+      OUTCOME_ERROR.INVALID_WINDOW,
+      `recordOutcome: the measurement window closes ${end.toISOString()}, in the future — an outcome cannot cover time that has not happened`,
+    );
+  }
+  if (measured.getTime() > nowMs) {
+    throw outcomeError(
+      OUTCOME_ERROR.INVALID_WINDOW,
+      `recordOutcome: measuredAt ${measured.toISOString()} is in the future — a measurement instant cannot be ahead of the server clock`,
+    );
+  }
+
+  // ── Provenance, established from real rows (R6 · I19) ────────────
+  // Read BEFORE the write and outside the transaction, and deliberately not
+  // caught: if the evidence read fails we do not know what this outcome was
+  // measured against, and I19 says that is a reason to refuse the recording, not
+  // a reason to write `evidenceReference: null` and let a new row look like a
+  // pre-R6 one. The operator's numbers are still in the form.
+  const evidenceReference = await projectOutcomeEvidence(workspaceId, {
+    entityId: decision.entityId,
+    entityLevel: decision.entityLevel,
+    windowStart: start,
+    windowEnd: end,
   });
-  const outcome = existing
-    ? await prisma.outcomeSnapshot.update({ where: { id: existing.id }, data })
-    : await prisma.outcomeSnapshot.create({
-      data: { workspaceId, decisionId, entityId: decision.entityId, entityLevel: decision.entityLevel, ...data },
+
+  const { outcome, previousOutcomeId } = await prisma.$transaction(async (tx) => {
+    const previous = await tx.outcomeSnapshot.findFirst({
+      where: { decisionId, workspaceId, ...CURRENT_OUTCOME_WHERE },
+      orderBy: CURRENT_OUTCOME_ORDER_BY,
+      select: { id: true },
     });
 
+    const created = await tx.outcomeSnapshot.create({
+      data: {
+        workspaceId,
+        decisionId,
+        entityId: decision.entityId,
+        entityLevel: decision.entityLevel,
+        spendDeltaMinor,
+        revenueDeltaMinor,
+        roasDelta,
+        windowStart: start,
+        windowEnd: end,
+        sustained,
+        measuredAt: measured,
+        evidenceReference,
+      },
+    });
+
+    if (previous) {
+      // The ONLY write this service ever makes to an existing outcome, and it
+      // touches neither a value nor a provenance field. `supersededAt` is a
+      // server instant because it records when the replacement happened here,
+      // not when anything was measured.
+      await tx.outcomeSnapshot.update({
+        where: { id: previous.id },
+        data: { supersededAt: now, supersededById: created.id },
+      });
+    }
+    return { outcome: created, previousOutcomeId: previous?.id ?? null };
+  });
+
   logger.info(
-    { workspaceId, decisionId, outcomeId: outcome.id, updated: Boolean(existing) },
+    { workspaceId, decisionId, outcomeId: outcome.id, previousOutcomeId, rowCount: evidenceReference.rowCount },
     '[DecisionAccuracy] outcome recorded',
   );
-  return { workspaceId, decisionId, outcome };
+  return { workspaceId, decisionId, outcome, previousOutcomeId };
 }
 
 /**
@@ -231,7 +361,11 @@ export async function listPendingOutcomes(workspaceId) {
         dismissedAt: null,          // …and not un-taken. A dismissal has no outcome
         //                             to record: nothing was done, so nothing
         //                             followed from it.
-        outcomes: { none: {} },     // and nobody has said what happened yet
+        // …and nobody has said what happened yet. `none` of the CURRENT ones
+        // (R6): a decision whose outcomes have all been retired owes a fresh
+        // recording, and `none: {}` would answer "it has rows" to a question
+        // that is about whether any of them still stand.
+        outcomes: { none: { ...CURRENT_OUTCOME_WHERE } },
       },
       select: {
         id: true, verdict: true, confidence: true, diagnosis: true,
