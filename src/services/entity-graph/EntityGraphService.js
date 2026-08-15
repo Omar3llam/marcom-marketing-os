@@ -18,7 +18,11 @@ import { effectiveByEntity, toCampaignRow, toAdSetRow, toAdRow } from './entityG
 import { selectOperationalSnapshots } from '../evidence/index.js';
 import {
   selectCanonicalVerdictSnapshots, latestCanonicalByEntity, partitionByCanonicalEvidence,
+  CANONICAL_VERDICT_EVIDENCE_BASIS,
 } from '../verdict-engine/canonicalVerdictEvidence.js';
+import {
+  EVIDENCE_POPULATION, EVIDENCE_SELECTOR, EVIDENCE_REDUCTION,
+} from '../verdict-engine/evidenceReference.js';
 import { TEMPORAL } from '../../config/temporal.js';
 
 // entityId columns are @db.Uuid — a non-UUID string makes Prisma throw on the
@@ -51,9 +55,17 @@ export const METRIC_SELECT = {
   dailyBudgetMinor: true,
 };
 
-// Latest snapshot per entity for a level, over a bounded recency window.
+/**
+ * Latest snapshot per entity for a level, over a bounded recency window.
+ *
+ * Returns BOTH halves (R5): `byEntity` is the reduced row every caller already
+ * used, and `consumedByEntity` is how many rows the reduction ranked to get
+ * there. The count is not derivable from the reduced map — that is the whole
+ * point of recording it — and it is counted from the rows this read actually
+ * returned, never re-queried later against a database that has moved on.
+ */
 async function latestSnapshots(workspaceId, entityLevel, entityIds) {
-  if (!entityIds.length) return new Map();
+  if (!entityIds.length) return { byEntity: new Map(), consumedByEntity: new Map() };
   const since = new Date(Date.now() - SYNC_RECENCY_DAYS * 24 * 60 * 60 * 1000);
   const snaps = await selectOperationalSnapshots(workspaceId, {
     // R3.9. This file no longer states WHERE its operational evidence lives; the
@@ -88,7 +100,9 @@ async function latestSnapshots(workspaceId, entityLevel, entityIds) {
     logger.debug({ err: err.message, workspaceId, entityLevel }, '[EntityGraph] snapshot read failed');
     return [];
   });
-  return effectiveByEntity(snaps);
+  const consumedByEntity = new Map();
+  for (const s of snaps) consumedByEntity.set(s.entityId, (consumedByEntity.get(s.entityId) ?? 0) + 1);
+  return { byEntity: effectiveByEntity(snaps), consumedByEntity };
 }
 
 /**
@@ -144,6 +158,17 @@ export async function getCanonicalVerdictCampaigns(workspaceId) {
   // Filter BEFORE latest: the query narrows to canonical/platform/campaign, and
   // only then is the newest of those chosen.
   const rows = await selectCanonicalVerdictSnapshots(workspaceId, identities.map((c) => c.id));
+
+  // R5 — how many rows the reduction RANKED for each campaign, counted before
+  // it runs. Computed here rather than inside latestCanonicalByEntity because
+  // that function's contract is "the latest per entity" and widening it to also
+  // report a count would change a shared selector to serve one caller. The
+  // count is the difference between "we read eleven canonical rows and took the
+  // newest" and "there was one row" — two very different claims about the same
+  // verdict.
+  const consumedByEntity = new Map();
+  for (const r of rows) consumedByEntity.set(r.entityId, (consumedByEntity.get(r.entityId) ?? 0) + 1);
+
   const { withEvidence, absent } = partitionByCanonicalEvidence(identities, latestCanonicalByEntity(rows));
 
   return {
@@ -152,7 +177,15 @@ export async function getCanonicalVerdictCampaigns(workspaceId) {
         id: identity.id, name: identity.name, channel: identity.channel, objective: identity.objective,
         externalId: identity.externalId, platformCreatedTime: identity.platformCreatedTime,
         adSetCount: identity._count.adSets,
-      }, snapshot),
+      }, snapshot, {
+        // Spread from the SELECTOR's own basis rather than retyped here. The
+        // population, the selector name and the single window it can return are
+        // facts about that read, and this file is not a second place that gets
+        // to decide them. Only the count is ours — it is a property of this
+        // call, not of the population.
+        ...CANONICAL_VERDICT_EVIDENCE_BASIS,
+        rowCount: consumedByEntity.get(identity.id) ?? 0,
+      }),
     ),
     noCanonicalWindow: absent,
   };
@@ -183,12 +216,24 @@ export async function getConnectorCampaigns(workspaceId) {
   });
   if (!campaigns.length) return [];
 
-  const metrics = await latestSnapshots(workspaceId, ENTITY_LEVEL.CAMPAIGN, campaigns.map((c) => c.id));
+  const { byEntity: metrics, consumedByEntity } = await latestSnapshots(
+    workspaceId, ENTITY_LEVEL.CAMPAIGN, campaigns.map((c) => c.id),
+  );
   return campaigns.map((c) =>
     toCampaignRow({
       id: c.id, name: c.name, channel: c.channel, objective: c.objective, externalId: c.externalId,
       platformCreatedTime: c.platformCreatedTime, adSetCount: c._count.adSets,
-    }, metrics.get(c.id)),
+    }, metrics.get(c.id), {
+      population: EVIDENCE_POPULATION.OPERATIONAL,
+      selector:   EVIDENCE_SELECTOR.OPERATIONAL,
+      // The window is OMITTED, and the omission is the honest answer. The
+      // operational population admits two of them, and this reader does not
+      // project the column — so nothing here establishes which one a row
+      // represents, and the reference records "not established" rather than
+      // picking one. Absent by default, exactly as the seam's own options are.
+      reduction:  EVIDENCE_REDUCTION.EFFECTIVE_BY_ENTITY,
+      rowCount:   consumedByEntity.get(c.id) ?? 0,
+    }),
   );
 }
 
@@ -239,11 +284,11 @@ export async function getCampaignAdSets(workspaceId, campaignEntityId) {
     }),
   ]);
 
-  const metrics = await latestSnapshots(workspaceId, ENTITY_LEVEL.ADSET, adSets.map((a) => a.id));
+  const { byEntity: metrics } = await latestSnapshots(workspaceId, ENTITY_LEVEL.ADSET, adSets.map((a) => a.id));
 
   return {
     // adSetCount rides ON the entity object — toCampaignRow takes (campaign, snap).
-    entity: toCampaignRow({ ...campaign, adSetCount: campaign._count?.adSets ?? 0 }, campaignSnaps.get(campaignEntityId)),
+    entity: toCampaignRow({ ...campaign, adSetCount: campaign._count?.adSets ?? 0 }, campaignSnaps.byEntity.get(campaignEntityId)),
     objective: campaign.objective ?? null,
     adSets: adSets.map((a) => toAdSetRow({ ...a, adCount: a._count?.ads ?? 0 }, metrics.get(a.id))),
   };
@@ -312,14 +357,14 @@ export async function getAdSetAds(workspaceId, adSetEntityId) {
 
   // latestSnapshots short-circuits on an empty id list, so a childless ad-set
   // still costs no query here — and still returns a real `entity`.
-  const metrics = await latestSnapshots(workspaceId, ENTITY_LEVEL.AD, ads.map((a) => a.id));
+  const { byEntity: metrics } = await latestSnapshots(workspaceId, ENTITY_LEVEL.AD, ads.map((a) => a.id));
 
   return {
     // adCount rides ON the entity object — toAdSetRow takes (adSet, snap) and
     // would silently report 0 for a third positional argument. It comes from
     // _count, the TRUE total: counting the returned array instead would tell a
     // 140-ad ad-set it has MAX_ADS_PER_ADSET.
-    entity:    toAdSetRow({ ...adSet, adCount: adSet._count?.ads ?? 0 }, adSetSnaps.get(adSetEntityId)),
+    entity:    toAdSetRow({ ...adSet, adCount: adSet._count?.ads ?? 0 }, adSetSnaps.byEntity.get(adSetEntityId)),
     objective: adSet.campaign?.objective ?? null,
     children:  ads.map((a) => toAdRow(a, metrics.get(a.id))),
   };

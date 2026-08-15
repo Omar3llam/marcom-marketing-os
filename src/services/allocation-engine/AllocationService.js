@@ -42,6 +42,19 @@ export function planToDecisionRows(plan, { workspaceId, planId }) {
       diagnosis:   a.rationale,
       rootCause:   `${ALLOC_ROOT_PREFIX}${planId}`,
       status:      'PROPOSED',
+      // ── Evidence reference (R5 / I18): DELIBERATELY ABSENT ─────────────────
+      // Left unset, so the column stays NULL and reads as "not captured" — which
+      // is the truth. This writer's inputs are blended-truth CHANNEL ROLLUPS and
+      // the latest verdict per channel: derived records, not evidence rows. It
+      // never touches a MetricSnapshot, so it cannot name a population, a
+      // measurement window, a source or an observation time without asserting a
+      // read it did not perform.
+      //
+      // Giving it `refs: []` and a borrowed population would be worse than
+      // silence: it would make an unprovenanced decision look provenanced. The
+      // reference for a reallocation belongs to whichever PR teaches
+      // buildChannels to carry BlendedTruth's own evidence basis through the
+      // rollup — a real piece of work, not a default value.
     }));
 }
 

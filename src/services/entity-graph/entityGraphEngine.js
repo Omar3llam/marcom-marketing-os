@@ -89,11 +89,26 @@ export function effectiveByEntity(snapshots = [], { maxRevenueAgeMs = REVENUE_MA
       continue;
     }
 
+    // R5: the provenance of a BLENDED row. Two real rows, two sources, two
+    // observation timestamps — recorded in the order they contribute (the
+    // platform row supplies spend and everything else; the actual supplies
+    // revenue, and possibly conversions). Stamped here because this is the only
+    // place that knows a second row was involved; downstream all that survives
+    // is one merged object.
+    const blendedEvidence = [
+      { entityId, source: base.source ?? null,   observedAt: base.date ?? null },
+      { entityId, source: actual.source ?? null, observedAt: actual.date ?? null },
+    ];
+
     // Negative lag (an actual NEWER than the platform row) is fresh, never stale.
     const lagMs = new Date(base.date).getTime() - new Date(actual.date).getTime();
     if (lagMs > maxRevenueAgeMs) {
       // Keep the platform row untouched — including its own pixel revenue, which
       // is current even when a manual upload has gone stale.
+      //
+      // The stale actual did NOT contribute, so it is NOT in the provenance.
+      // Listing a row we deliberately declined to use would be the reference
+      // claiming evidence the number never rested on.
       out.set(entityId, { ...base, revenueStale: true });
       continue;
     }
@@ -101,6 +116,7 @@ export function effectiveByEntity(snapshots = [], { maxRevenueAgeMs = REVENUE_MA
     const spendMinor = base.spendMinor;
     out.set(entityId, {
       ...base,
+      _evidenceRows: blendedEvidence,
       revenueMinor: actual.revenueMinor,
       roas: Number.isFinite(spendMinor) && spendMinor > 0 ? actual.revenueMinor / spendMinor : null,
       // The same actual may carry the conversion COUNT the platform pixel never
@@ -118,10 +134,40 @@ export function effectiveByEntity(snapshots = [], { maxRevenueAgeMs = REVENUE_MA
   return out;
 }
 
+/**
+ * PURE: the evidence rows a projected row's numbers actually came from, as
+ * provenance metadata ONLY — entity, source, observation timestamp. Never the
+ * values: those are already on the row, and two copies of a number is two
+ * numbers that can disagree.
+ *
+ * R5 REPAIRS A LOSS POINT HERE. `source` used to die at this projection and
+ * `date` survived only as `lastDate`, so by the time a verdict was persisted
+ * nothing could say which source it read or when the reading was taken.
+ *
+ * USUALLY ONE ROW, SOMETIMES TWO. effectiveByEntity can build a row from a
+ * PLATFORM row and an ACTUAL-revenue row with different sources and different
+ * dates; when it does, it stamps both here (see `_evidenceRows`). Reporting one
+ * source and one timestamp for a blended row would name the platform's date
+ * beside the actual's revenue — a single-reference design cannot describe that
+ * row honestly, which is exactly why R5's reference is a list.
+ */
+function evidenceRowsOf(snap) {
+  if (!snap) return [];
+  if (Array.isArray(snap._evidenceRows)) return snap._evidenceRows;
+  return [{
+    entityId:   snap.entityId ?? null,
+    source:     snap.source ?? null,
+    observedAt: snap.date ?? null, // the SYNC/observation timestamp, never a clock
+  }];
+}
+
 // Metric fields lifted verbatim from a snapshot — null when the snapshot is
 // absent (distinct from a real 0), so the client shows "—" not "0".
 function metricsOf(snap) {
   return {
+    // Provenance, not a metric: which row(s) the numbers below came from. Empty
+    // when there is no snapshot at all — the same honest absence the nulls carry.
+    evidenceRows: evidenceRowsOf(snap),
     spendMinor:  snap?.spendMinor ?? null,
     roas:        snap?.roas ?? null,
     ctr:         snap?.ctr ?? null,
@@ -147,10 +193,25 @@ function metricsOf(snap) {
   };
 }
 
-/** PURE: project a Campaign entity + its latest CAMPAIGN snapshot into a row. */
-export function toCampaignRow(campaign, snap) {
+/**
+ * PURE: project a Campaign entity + its latest CAMPAIGN snapshot into a row.
+ *
+ * `evidenceBasis` (R5) is what the READER knows and the row cannot infer: which
+ * population it read, through which selector, over what measurement window, with
+ * what reduction, and how many rows it consumed before reducing. It is passed in
+ * rather than derived here for the reason the Evidence layer exists at all — the
+ * population is a property of the QUERY, and a projection that guessed it from
+ * the row in front of it would be inferring a population from a value, which is
+ * the merge the canonical/operational split is there to prevent.
+ *
+ * null when the caller did not declare one, and null stays null all the way to
+ * the stored decision: "not captured" is a real state and never a fabricated
+ * basis.
+ */
+export function toCampaignRow(campaign, snap, evidenceBasis = null) {
   return {
     entityId:   campaign.id,
+    evidenceBasis,
     channel:    campaign.channel,
     name:       campaign.name,
     objective:  campaign.objective ?? null, // platform objective (awareness vs conversion); null when unknown

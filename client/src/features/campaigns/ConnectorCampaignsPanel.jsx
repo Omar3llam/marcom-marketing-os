@@ -428,6 +428,10 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                 relativeRank={relativeRank}
                 relativeContext={info.relativeContext ?? null}
                 memory={info.memory ?? null}
+                // The STORED decision's provenance, from the same row
+                // `info.decisionId` names. Null until a sweep writes a decision
+                // with provenance captured — the panel renders nothing then.
+                evidenceReference={info.decisionEvidenceReference ?? null}
                 // The decision lifecycle, on the decision surface. `info.decisionId`
                 // is the STORED decision's id when a sweep wrote one, so the write
                 // lands on THAT row rather than on whatever the server re-resolves

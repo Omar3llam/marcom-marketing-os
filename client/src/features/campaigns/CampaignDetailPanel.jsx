@@ -24,6 +24,7 @@ import { copyToClipboard } from '@/lib/clipboard.js';
 import { recordIntent } from './decisionSignals.js';
 import { useDecisionLearning } from '@/hooks/useDecisionLearning.js';
 import { LearningInsight } from './LearningInsight.jsx';
+import { EvidenceReferenceBlock } from './EvidenceReferenceBlock.jsx';
 import {
   NO_REVENUE_DISCLAIMER, confidenceLabel, evidenceClause, nextActionFor, ignoreCostFor,
   buildRecommendationText, platformUrl,
@@ -186,6 +187,11 @@ export function CampaignDetailPanel({
   funnel = null, rootCause = null, dataConfidence = null, signalConfidence = null,
   counterfactuals = null, hypotheses = null, relativeRank = null,
   relativeContext = null, memory = null,
+  // What the STORED decision was looking at (R5). null on every decision made
+  // before provenance was captured, and on campaigns with no stored decision at
+  // all — the block below renders nothing rather than implying an absence of
+  // evidence, which is a different claim.
+  evidenceReference = null,
   // The decision lifecycle, owned by the PARENT. No hook here on purpose: the
   // campaigns table renders one of these per row from a single useDecisionAction
   // instance, and state has to stay keyed by entityId — a hook inside the panel
@@ -497,6 +503,11 @@ export function CampaignDetailPanel({
             Reasoning will appear after the next sweep.
           </p>
         )}
+
+        {/* What the stored decision was looking at. Under the reasoning on
+            purpose: the reasoning is the claim, this is what it rests on.
+            Renders nothing at all when no provenance was captured. */}
+        <EvidenceReferenceBlock reference={evidenceReference} className="mt-4" />
       </div>
     </div>
   );

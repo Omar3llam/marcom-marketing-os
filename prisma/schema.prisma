@@ -1407,6 +1407,29 @@ model Decision {
   hypotheses      Json? // [{ id, labelKey, source, supports[], contradicts[], observed[], confidence }]
   counterfactuals Json? // [{ mechanism, labelKey, rejectedBy[], preferredBecause[], confidence }]
 
+  // ── Evidence reference (R5 / I18) ──────────────────────────
+  // WHAT EVIDENCE PRODUCED THIS ROW. The three columns above record what the
+  // engine BELIEVED; this one records what it was LOOKING AT — the population,
+  // the measurement window those rows represent, the source(s) and observation
+  // timestamp(s) that actually contributed, how many rows were consumed, and the
+  // named rule that reduced them to the numbers beside it.
+  //
+  // NOT a copy of the evidence. The values that mattered are already frozen in
+  // ctrAtDecision/roasAtDecision and hypotheses[].observed[]; duplicating the
+  // rows would create a second copy of the truth, which reasoningArtifact.js
+  // already refused once. This is identity and CONTEXT beside them — which is
+  // also why a bare snapshot id would not do: snapshots are upserted, so a uuid
+  // is not proof that what it points at still says what it said.
+  //
+  // Same JSONB rule as its neighbours: STORAGE, NOT SEARCH. Written once at
+  // create, never rewritten — resolvePrevious closes a row out without going
+  // near it.
+  //
+  // NULL vs a stored reference with `refs: []`: null is "never captured" (every
+  // pre-R5 row, and any writer that cannot establish provenance honestly); a
+  // stored reference always describes a real read. Never backfilled.
+  evidenceReference Json? // { population, selector, measurementWindow, sources, observedAt, reduction, entityIds, rowCount, refs }
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
