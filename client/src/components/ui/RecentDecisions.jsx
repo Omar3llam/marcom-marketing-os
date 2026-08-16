@@ -10,33 +10,15 @@
 // ============================================================
 import { VerdictPill } from './DecisionPill.jsx';
 
-// Simple 7-day sparkline (demo data - replace with real aggregation)
-function DecisionSparkline({ data = [3, 5, 2, 8, 4, 6, 5] }) {
-  const max = Math.max(...data, 1);
-  const barWidth = 100 / data.length;
+// R7 — the 7-day sparkline that used to sit here rendered a hardcoded array,
+// [3, 5, 2, 8, 4, 6, 5], on every account that ever loaded the sidebar. Its own
+// comment said "demo data - replace with real aggregation". It was a chart of
+// nothing, beside a list of real decisions, which is the most convincing way to
+// show a number that does not exist. Removed rather than wired: a per-day
+// decision count is a real aggregation nobody has asked for, and inventing the
+// query to keep the shape would be the same mistake with more steps.
 
-  return (
-    <div className="flex items-end gap-[2px] h-6">
-      {data.map((count, i) => {
-        const height = (count / max) * 100;
-        return (
-          <div
-            key={i}
-            className="flex-1 rounded-t-sm bg-lumi-accent/60 transition-all duration-200 hover:bg-lumi-accent"
-            style={{
-              height: `${height}%`,
-              minHeight: count > 0 ? '4px' : '2px',
-              opacity: count > 0 ? 1 : 0.3,
-            }}
-            title={`Day ${i + 1}: ${count} decisions`}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-export default function RecentDecisions({ decisions = [], onViewAll, totalCount = 47 }) {
+export default function RecentDecisions({ decisions = [], onViewAll, totalCount = 0 }) {
   const recentDecisions = decisions.slice(0, 3);
 
   return (
@@ -44,9 +26,6 @@ export default function RecentDecisions({ decisions = [], onViewAll, totalCount 
       {/* Header with sparkline */}
       <div className="flex items-center justify-between mb-3 px-1">
         <span className="section-label">Recent</span>
-        <div className="w-16">
-          <DecisionSparkline />
-        </div>
       </div>
 
       {/* Decision list */}
@@ -63,13 +42,18 @@ export default function RecentDecisions({ decisions = [], onViewAll, totalCount 
             >
               <div className="flex-1 min-w-0">
                 <div className="font-display font-medium text-xs text-dark-base truncate leading-tight">
-                  {decision.campaign}
+                  {/* An em dash, not a name we do not have. */}
+                  {decision.campaign ?? '—'}
                 </div>
-                <div className="font-mono text-[10px] text-lumi-subtle mt-0.5">
-                  {decision.timestamp || '2h ago'}
-                </div>
+                {/* `|| '2h ago'` lived here and asserted a time nobody measured.
+                    A row with no timestamp now shows no timestamp. */}
+                {decision.timestamp && (
+                  <div className="font-mono text-[10px] text-lumi-subtle mt-0.5">
+                    {decision.timestamp}
+                  </div>
+                )}
               </div>
-              <VerdictPill verdict={decision.verdict} size="sm" showIcon={false} />
+              {decision.verdict && <VerdictPill verdict={decision.verdict} size="sm" showIcon={false} />}
             </button>
           ))}
 

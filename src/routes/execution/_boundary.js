@@ -21,9 +21,12 @@
 //
 // ── Internal actors (BullMQ workers — bypass HTTP) ──────────
 //   syncWorker       — reads campaigns, writes Action rows via prisma
-//   temporalObserver — reads Actions, writes DecisionMemory + CampaignState
-//   Neither worker may call the HTTP execution routes.
-//   Neither worker may update Action.status directly;
+//   (R7 retired temporalObserver, which read Actions and wrote DecisionMemory
+//    + CampaignState. Its DecisionMemory query named columns that table does
+//    not have, and it shared a Promise.all with the CampaignState read, so the
+//    sweep could never write either one.)
+//   The worker may not call the HTTP execution routes.
+//   It may not update Action.status directly;
 //   all status transitions go through ExecutionLifecycleService.
 //
 // ── Cross-cutting rules ──────────────────────────────────────
@@ -34,4 +37,4 @@
 
 export const EXECUTION_WRITERS  = /** @type {const} */ (['user-request']);
 export const EXECUTION_READERS  = /** @type {const} */ (['user-request', 'internal-worker']);
-export const INTERNAL_ACTORS    = /** @type {const} */ (['syncWorker', 'temporalObserver']);
+export const INTERNAL_ACTORS    = /** @type {const} */ (['syncWorker']);

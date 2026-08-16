@@ -3,7 +3,8 @@
 // ------------------------------------------------------------
 // Single source of truth for all intelligence data in /app tree:
 //   - campaigns (feed)
-//   - memory (patterns + narratives)
+//   (R7 removed a `memory` field here — legacy patterns/narratives that no
+//    consumer ever rendered; the sidebar reads canonical Decision history now)
 //   - radar alerts
 //   - execution state
 // Prevents N parallel fetches when N components need the same data.

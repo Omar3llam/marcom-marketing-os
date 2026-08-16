@@ -55,18 +55,13 @@ feedRouter.get('/feed', async (req, res) => {
   try {
     logger.debug({ workspaceId: wsId }, '[lumi/feed] fetching data');
 
-    const [campaignStates, pendingActions, recentMemory, fatiguePredictions, guardrailVerdicts, allocationPlans] = await Promise.all([
+    const [campaignStates, pendingActions, fatiguePredictions, guardrailVerdicts, allocationPlans] = await Promise.all([
       prisma.campaignState.findMany({
         where:   { workspaceId: wsId },
         orderBy: { lastAnalysis: 'desc' },
       }),
       prisma.action.findMany({
         where:   { workspaceId: wsId, status: { in: ['PENDING', 'QUEUED'] } },
-        orderBy: { createdAt: 'desc' },
-        take:    200,
-      }),
-      prisma.decisionMemory.findMany({
-        where:   { workspaceId: wsId },
         orderBy: { createdAt: 'desc' },
         take:    200,
       }),
@@ -213,7 +208,6 @@ feedRouter.get('/feed', async (req, res) => {
     logger.debug({
       campaignStatesFound: campaignStates.length,
       pendingActionsFound: pendingActions.length,
-      recentMemoryFound:   recentMemory.length,
     }, '[lumi/feed] db query results');
 
     // Build the same campaign-grouped / alert-flattened shape as
@@ -263,15 +257,15 @@ feedRouter.get('/feed', async (req, res) => {
         // Synthesize the structured signal rows the UI expects from
         // the raw metric block stored at upload time.
         metrics: signalsFromMetrics(m, slot.stage),
-        memory:  recentMemory
-          .filter(mem => mem.campaignId === a.campaignId)
-          .slice(0, 3)
-          .map(mem => ({
-            actionType:        mem.actionType,
-            decisionRationale: mem.decisionRationale,
-            isSustainable:     mem.isSustainable,
-            impactDurationHrs: mem.impactDurationHrs,
-          })),
+        // R7 (F7) — a `memory: [...]` array was built here from DecisionMemory
+        // rows. The QUERY was valid, so nothing ever threw; the FIELD ACCESS was
+        // not. It filtered on `mem.campaignId`, and DecisionMemory has no
+        // campaignId column — so the predicate compared undefined to a real id,
+        // matched nothing, and every campaign in every feed carried an empty
+        // memory array. Dead in effect, not merely unused. Removed rather than
+        // repointed: nothing downstream reads it, and manufacturing a canonical
+        // replacement for a field no surface consumes would be inventing a
+        // feature under cover of a migration.
         creative_assets: p.creativeAssets || null,
         // Phase 2: multi-level drill-down + forward-looking forecast +
         // provenance (reactive analysis vs a user guardrail rule).

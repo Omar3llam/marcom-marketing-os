@@ -3,15 +3,20 @@
 // ------------------------------------------------------------
 // Run with:  npm run worker
 //
-// Boots both the Action worker (Phase 2) and the Temporal
-// Observer worker + cron schedule (Phase 3) in a single Node
-// process. For multi-instance deploys, run multiple copies
+// Boots the action, execution, sync, agentic, narrative and
+// maintenance workers in a single Node process.
+// For multi-instance deploys, run multiple copies
 // behind the same Redis — BullMQ handles partitioning.
 // ============================================================
 import 'dotenv/config';
 import { startActionWorker }    from './actionWorker.js';
 import { startExecutionWorker } from './executionWorker.js';
-import { startObserverWorker }  from '../services/temporalObserver.js';
+// R7 — the Temporal Observer worker is gone. Its sweep read DecisionMemory with
+// columns that table does not have, in the same Promise.all as its CampaignState
+// read, so every tick with candidate Actions threw and every tick without them
+// was a no-op. It could not write a memory row or a stage transition, and had
+// not been able to since the two shapes diverged. Retired rather than repaired:
+// rebuilding stage transitions on canonical data is its own project.
 import { startSyncWorker }      from './syncWorker.js';
 import { startAgenticWorker }   from './agenticWorker.js';
 import { startNarrativeWorker } from './narrativeWorker.js';
@@ -21,7 +26,6 @@ import { logger }               from '../utils/logger.js';
 
 const actionWorker    = startActionWorker();
 const executionWorker = startExecutionWorker();
-const observerWorker  = startObserverWorker();
 const syncWorker      = startSyncWorker();
 const agenticWorker   = startAgenticWorker();   // Phase 9 — proactive loop sweep
 const narrativeWorker = startNarrativeWorker(); // Phase 8 — weekly/monthly report cadence
@@ -39,7 +43,6 @@ async function shutdown(signal) {
   await Promise.allSettled([
     actionWorker.close(),
     executionWorker.close(),
-    observerWorker.close(),
     syncWorker.close(),
     agenticWorker.close(),
     narrativeWorker.close(),

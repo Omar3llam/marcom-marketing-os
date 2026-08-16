@@ -14,19 +14,16 @@ async function fetchCampaigns(signal) {
   }
 }
 
-async function fetchMemory(signal) {
-  try {
-    const res = await api.get('/api/memory/patterns', { signal });
-    return res.data ?? { patterns: [], narratives: [], total: 0 };
-  } catch (err) {
-    if (axios.isCancel?.(err) || err?.name === 'CanceledError') throw err;
-    return { patterns: [], narratives: [], total: 0 };
-  }
-}
+// R7 — fetchMemory() called /api/memory/patterns on every mount, stored the
+// result in a `memory` state field, and returned it from this hook. Nothing
+// consumed it: useIntelligence() has exactly two callers (useOverviewModel and
+// useCampaignFeed) and neither destructures `memory`. It was a round-trip to a
+// legacy table whose output never reached a pixel. Removed with the endpoint.
+// The sidebar's decision list, the one surface that DID render that data, now
+// reads the canonical spine via features/shell/services.js.
 
 export function useIntelligenceData() {
   const [campaigns, setCampaigns] = useState([]);
-  const [memory, setMemory] = useState({ patterns: [], narratives: [], total: 0 });
   // Top-level feed field (Phase 2 forward signal) — fetched alongside campaigns
   // but dropped here until now; surfaced for the Intelligence FatigueForecast.
   const [fatiguePredictions, setFatiguePredictions] = useState([]);
@@ -37,13 +34,9 @@ export function useIntelligenceData() {
     setLoading(true);
     setError(null);
     try {
-      const [feedData, memData] = await Promise.all([
-        fetchCampaigns(signal),
-        fetchMemory(signal),
-      ]);
+      const feedData = await fetchCampaigns(signal);
       setCampaigns(feedData?.campaigns ?? []);
       setFatiguePredictions(Array.isArray(feedData?.fatiguePredictions) ? feedData.fatiguePredictions : []);
-      setMemory(memData);
     } catch (err) {
       if (axios.isCancel?.(err) || err?.name === 'CanceledError') return;
       setError(err?.message || 'Failed to load intelligence data');
@@ -58,23 +51,18 @@ export function useIntelligenceData() {
     return () => ctrl.abort();
   }, [refresh]);
 
-  const recordDecision = useCallback(async ({ campaignId, actionType, decisionRationale }) => {
-    try {
-      await api.post('/api/memory/record', { campaignId, actionType, decisionRationale });
-      const memData = await fetchMemory();
-      setMemory(memData);
-    } catch (err) {
-      console.error('[IntelligenceContext] Failed to record decision:', err);
-    }
-  }, []);
+  // R7 — recordDecision() POSTed { campaignId, actionType, decisionRationale }
+  // to /api/memory/record, whose serializer required executionId, decisionType,
+  // signalType, diagnosis, actionTaken, outcome and confidence. Every call it
+  // could ever have made was a guaranteed 400, swallowed by a console.error.
+  // It had no caller in the UI either. Removed with the endpoint rather than
+  // repointed: writing a Decision is the verdict engine's job, not a hook's.
 
   return {
     campaigns,
     setCampaigns,
     summary: summarize(campaigns),
-    memory,
     fatiguePredictions,
-    recordDecision,
     loading,
     error,
     refresh,

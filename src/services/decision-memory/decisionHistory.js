@@ -38,6 +38,69 @@ import { connectorDecisionScope } from '../verdict-engine/decisionIdentity.js';
  */
 export const HISTORY_LIMIT = 5;
 
+// ── The workspace-scoped read (R7) ──────────────────────────────────────────
+// getDecisionHistory above answers "what did we say about THESE campaigns".
+// This one answers "what has Lumi decided lately, anywhere in this workspace" —
+// the question the sidebar and the orchestrator's prompt both actually ask, and
+// the one the retired DecisionMemory table used to answer badly.
+//
+// WHY IT IS NOT getDecisionHistory. That function takes entityIds and is
+// correct for a campaign timeline. The orchestrator has no entityId to give it:
+// it keys on CampaignState.campaignId, a plain legacy String, while
+// Decision.entityId is a @db.Uuid from the entity graph. They are different
+// identifier spaces, so entity-scoping this path would silently return nothing.
+// Workspace scope is also what the read it replaces already had, which keeps
+// this a migration rather than a redesign.
+//
+// ONE READ, TWO CONSUMERS. The select is the UNION of what they need, and no
+// wider: the sidebar needs identity + verdict + when, the prompt needs the
+// engine's reasoning. Splitting it into two near-identical queries is how a
+// second source of decision truth starts.
+export const RECENT_DECISIONS_LIMIT = 20;
+
+/** The minimum both consumers require. Nothing here is decorative. */
+export const RECENT_DECISION_SELECT = Object.freeze({
+  id: true,          // sidebar: identity of the row it renders
+  entityId: true,    // sidebar: what to resolve a name against
+  entityLevel: true,
+  verdict: true,
+  status: true,
+  diagnosis: true,   // prompt: what the engine concluded
+  rootCause: true,   // prompt: why
+  confidence: true,
+  resolution: true,  // prompt: how it turned out, when known
+  createdAt: true,
+});
+
+/**
+ * Recent connector decisions across one workspace, newest first.
+ *
+ * Same connector scope as getDecisionHistory: a guardrail hit or an allocation
+ * move is a proposal about a campaign, not a verdict Lumi reached about it, and
+ * listing one as "we decided KILL" would be a fabrication.
+ *
+ * Ordering is deterministic — `createdAt` can tie when a sweep writes several
+ * rows in one transaction, and an unstable tiebreak would let the same request
+ * return a different three rows to the sidebar on each poll.
+ *
+ * Throws rather than swallowing: the two callers want DIFFERENT failure
+ * behaviour (the prompt distinguishes "no decisions" from "could not read"),
+ * and a service that decides that for them takes the choice away.
+ *
+ * @param {string} workspaceId
+ * @param {number} [limit=RECENT_DECISIONS_LIMIT]
+ * @returns {Promise<object[]>} newest first; [] when the workspace has none
+ */
+export async function getRecentDecisions(workspaceId, limit = RECENT_DECISIONS_LIMIT) {
+  if (!workspaceId) return [];
+  return prisma.decision.findMany({
+    where:   { workspaceId, ...connectorDecisionScope() },
+    select:  RECENT_DECISION_SELECT,
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take:    limit,
+  });
+}
+
 /** PURE: the fields a timeline states, and nothing else. */
 const stated = (d) => ({
   id:          d.id,

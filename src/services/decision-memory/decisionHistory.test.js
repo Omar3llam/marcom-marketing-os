@@ -16,7 +16,10 @@ vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import { getDecisionHistory, HISTORY_LIMIT } from './decisionHistory.js';
+import {
+  getDecisionHistory, HISTORY_LIMIT,
+  getRecentDecisions, RECENT_DECISIONS_LIMIT, RECENT_DECISION_SELECT,
+} from './decisionHistory.js';
 import { connectorDecisionScope } from '../verdict-engine/decisionIdentity.js';
 
 const dec = (over = {}) => ({
@@ -157,5 +160,89 @@ describe('it never takes the feed down with it', () => {
     await getDecisionHistory('ws-1', ['c1', 'c2', 'c3']);
     expect(findMany).toHaveBeenCalledTimes(1);
     expect(groupBy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ============================================================
+// R7 — getRecentDecisions: the workspace-scoped canonical read
+// ------------------------------------------------------------
+// One read, two consumers (the sidebar and the orchestrator's prompt), replacing
+// the retired DecisionMemory table for both. What must hold:
+//   • workspace scope, and NOTHING else the caller can widen
+//   • connector scope, so a guardrail proposal is not shown as a verdict
+//   • deterministic order, or the sidebar reshuffles between polls
+//   • no memory-table dependency
+// ============================================================
+describe('R7 · getRecentDecisions', () => {
+  const recent = () => findMany.mock.calls[0][0];
+
+  beforeEach(() => {
+    findMany.mockResolvedValue([dec()]);
+  });
+
+  it('is workspace-scoped', async () => {
+    await getRecentDecisions('ws-1');
+    expect(recent().where.workspaceId).toBe('ws-1');
+  });
+
+  it('carries NO entity predicate — the identity trap', async () => {
+    // The orchestrator keys on CampaignState.campaignId, a plain legacy String,
+    // while Decision.entityId is a @db.Uuid. An entity predicate here would
+    // return nothing, quietly, and the prompt would lose its history without a
+    // single error anywhere.
+    await getRecentDecisions('ws-1');
+    expect(recent().where).not.toHaveProperty('entityId');
+    expect(recent().where).not.toHaveProperty('entityLevel');
+  });
+
+  it('scopes to connector-authored decisions, like the timeline beside it', async () => {
+    // Without this a guardrail hit or an allocation move appears in "Recent"
+    // as something Lumi decided about the campaign.
+    await getRecentDecisions('ws-1');
+    expect(recent().where.OR).toEqual(connectorDecisionScope().OR);
+  });
+
+  it('orders deterministically — newest first, with a stable tiebreak', async () => {
+    // createdAt ties when one sweep writes several rows in a transaction. An
+    // unstable tiebreak makes the same request return a different three rows to
+    // the sidebar on each poll.
+    await getRecentDecisions('ws-1');
+    expect(recent().orderBy).toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+  });
+
+  it('bounds the read explicitly, and honours a caller\'s smaller limit', async () => {
+    await getRecentDecisions('ws-1');
+    expect(recent().take).toBe(RECENT_DECISIONS_LIMIT);
+
+    findMany.mockClear();
+    await getRecentDecisions('ws-1', 3);
+    expect(findMany.mock.calls[0][0].take).toBe(3);
+  });
+
+  it('selects only the fields its two consumers need', async () => {
+    await getRecentDecisions('ws-1');
+    expect(recent().select).toEqual(RECENT_DECISION_SELECT);
+    // The sidebar renders identity + verdict + when; the prompt needs the
+    // reasoning. Nothing else is selected, and no memory column appears.
+    expect(Object.keys(RECENT_DECISION_SELECT).sort()).toEqual([
+      'confidence', 'createdAt', 'diagnosis', 'entityId', 'entityLevel',
+      'id', 'resolution', 'rootCause', 'status', 'verdict',
+    ]);
+    for (const dead of ['actionType', 'decisionRationale', 'deltaRoas', 'isSustainable', 'signalType', 'outcome']) {
+      expect(RECENT_DECISION_SELECT).not.toHaveProperty(dead);
+    }
+  });
+
+  it('no workspace → [] without touching the database', async () => {
+    expect(await getRecentDecisions(null)).toEqual([]);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('THROWS rather than swallowing — the two callers need different failures', async () => {
+    // The prompt distinguishes "no decisions" from "could not read"; a service
+    // that caught this for them would collapse the two and put an empty list
+    // under a heading the model reasons from.
+    findMany.mockRejectedValue(new Error('db down'));
+    await expect(getRecentDecisions('ws-1')).rejects.toThrow('db down');
   });
 });
