@@ -11,11 +11,12 @@ import { logger } from '../../utils/logger.js';
 import {
   fetchCampaignInsights, fetchAccountCurrency, fetchAllCampaigns, mergeMetaCampaigns,
   fetchAdSetInsights, fetchAllAdSets, mergeMetaAdSets,
-  fetchAdInsights, fetchAllAds, mergeMetaAds, fetchCanonicalAllLevels,
+  fetchAdInsights, fetchAllAds, mergeMetaAds, fetchCanonicalAllLevels, fetchDailyInsights,
 } from '../metaAdsService.js';
 import { resolveSyncCurrency } from '../../lib/currencyDetector.js';
 import { ChannelConnector, assertNormalized } from './ChannelConnector.js';
 import { metaNormalize } from './normalize/metaNormalize.js';
+import { metaDailyNormalize } from './normalize/metaDailyNormalize.js';
 import { resolveCredential } from './credentialStore.js';
 import { CHANNEL, MEASUREMENT_WINDOW } from './connectorTypes.js';
 import { DEFAULT_MANUAL_SYNC_DATE_PRESET } from './connectorConfig.js';
@@ -181,6 +182,33 @@ export class MetaConnector extends ChannelConnector {
    * dates and the Phase D resolver rejects it as PROVENANCE_MISMATCH. That is
    * the intended outcome — an honest unusable row beats a corrected one.
    */
+  /**
+   * The DAILY additive fetch (Phase E / R8) — campaign level, `time_increment=1`.
+   *
+   * A THIRD read, separate from both others for the same reason they are
+   * separate from each other: it answers a different question. fetchRaw refreshes
+   * the account over whatever preset the trigger chose; fetchCanonicalRaw
+   * measures the decision period; this one records what happened on each day.
+   *
+   * Nothing here decides how far back to look — connectorConfig owns that, as a
+   * REQUEST bound. And nothing here decides what a row measures: Meta says so,
+   * per row, and metaDailyNormalize refuses any row that does not.
+   */
+  async fetchDailyRaw(auth, { now = new Date(), days } = {}) {
+    return fetchDailyInsights(auth.accessToken, auth.accountExternalId, { now, ...(days ? { days } : {}) });
+  }
+
+  /**
+   * Normalize a daily fetch. Returns `{ snapshots, rejected }` rather than a bare
+   * array — unlike every other normalize on this connector — because refusal is
+   * a first-class outcome here: a run in which Meta stopped honouring
+   * `time_increment` produces zero snapshots and a pile of NOT_ONE_DAY, and the
+   * caller must be able to tell that from an account that simply did not deliver.
+   */
+  normalizeDaily({ accountExternalId, currency, date = new Date(), rows = [] }) {
+    return metaDailyNormalize({ accountExternalId, currency, date, rows });
+  }
+
   normalizeCanonical({ accountExternalId, accountName, currency, date = new Date(), rows = [], windowStart, windowEnd }) {
     const out = metaNormalize({
       accountExternalId, accountName, currency, date, rows,

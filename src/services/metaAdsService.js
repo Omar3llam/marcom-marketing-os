@@ -6,7 +6,7 @@
 // ============================================================
 import { createRequire } from 'module';
 import { logger } from '../utils/logger.js';
-import { DEFAULT_MANUAL_SYNC_DATE_PRESET } from './connectors/connectorConfig.js';
+import { DEFAULT_MANUAL_SYNC_DATE_PRESET, dailyIngestionDays } from './connectors/connectorConfig.js';
 // The canonical verdict window is a product decision and lives in ONE place.
 // This module translates it into a Meta request; it never restates the number.
 import { canonicalWindowBounds } from './verdict-engine/metricWindow.js';
@@ -335,6 +335,122 @@ export async function fetchCanonicalInsights(accessToken, adAccountId, { now = n
     '[metaAdsService] fetchCanonicalInsights (30d cumulative) raw response',
   );
   return { rows, windowStart: start, windowEnd: end, truncated };
+}
+
+// ── DAILY ADDITIVE INSIGHTS (Phase E / R8) ──────────────────────────────────
+//
+// The third Meta read, and the first one that returns a TRUE DAILY OBSERVATION:
+// one row per campaign PER DAY, each measuring exactly one day of delivery.
+//
+// WHY IT EXISTS. Every other insights read in this file returns a trailing
+// aggregate — the operational fetch over whatever preset the trigger chose, the
+// canonical fetch over exactly 30 days. Neither can answer "what did this
+// campaign do on Tuesday", and the difference between two overlapping trailing
+// windows is NOT that answer: it is one day added minus one day dropped off the
+// tail, which is a statement about the tail.
+//
+// The fields are DELIBERATELY NARROWER than every other list here.
+// `reach` and `frequency` are absent, and their absence is load-bearing: they
+// are window-level quantities (metricWindow.NON_AGGREGABLE_REASON) that count
+// unique people. A daily reach is a real number about a different question, and
+// carrying it beside additive daily metrics is an invitation to sum it. The
+// canonical fetch is where those two belong, and it already serves them.
+//
+// `ctr`/`cpm`/`cpc` are absent for a milder reason: they are ratios of the
+// additive primitives on the same row, so asking for them adds a second source
+// of truth for a number we can derive exactly. snapshotSink derives them once,
+// from this row's own clicks and impressions.
+export const DAILY_INSIGHT_FIELDS = Object.freeze([
+  'campaign_name', 'campaign_id',
+  'spend', 'impressions', 'clicks',
+  'actions', 'action_values',
+  // The period, and the whole reason this read can be trusted. Meta echoes back
+  // which day each row covers; a row that does not say, or says something other
+  // than one day, is refused at normalize (metaDailyNormalize).
+  'date_start', 'date_stop',
+]);
+
+// Rows scale as campaigns × days, so the page size is the largest the other
+// levels use rather than the campaign default of 25.
+const DAILY_PAGE_SIZE = 500;
+
+/**
+ * PURE: the exact params a daily additive request sends.
+ *
+ * Extracted for the same reason as canonicalInsightsParams: that
+ * `time_increment` is PRESENT and equal to 1 is the single property that makes
+ * the response daily, and a property that load-bearing is pinned against the
+ * real object rather than a proxy for it.
+ *
+ * `time_range` rather than a preset, for the reason Phase F established: a
+ * preset is Meta's definition of a period, and we would then have to trust and
+ * validate what it meant. We state the days we want and check what comes back.
+ *
+ * @param {Date} [now] — the observation instant; the range ends on its UTC day
+ * @param {number} [days] — trailing day count (a REQUEST bound, see connectorConfig)
+ */
+export function dailyInsightsParams(now = new Date(), days = dailyIngestionDays()) {
+  const end = now instanceof Date ? new Date(now.getTime()) : new Date(now);
+  if (Number.isNaN(end.getTime())) throw new Error('dailyInsightsParams: invalid `now`');
+  if (!Number.isInteger(days) || days < 1) {
+    throw new Error('dailyInsightsParams: days must be a positive integer (a zero-day request ingests nothing while reporting success)');
+  }
+  // Inclusive both ends, like canonicalWindowBounds: `days` days means `days`
+  // days of delivery, not one more or one fewer.
+  const start = new Date(end.getTime() - (days - 1) * 86_400_000);
+  return {
+    // CAMPAIGN ONLY in R8. Ad-set and ad rows outnumber campaigns several-fold
+    // and multiplying either by `days` is how a fetch hits MAX_PAGES and lands a
+    // truncated population that looks complete. Widening the level is its own
+    // change, with its own pagination argument.
+    level: 'campaign',
+    time_range: { since: toMetaDay(start), until: toMetaDay(end) },
+    // THE line. Without it Meta returns one aggregate row for the whole range;
+    // with it, one row per day. Everything this phase claims rests on it.
+    time_increment: 1,
+    limit: DAILY_PAGE_SIZE,
+  };
+}
+
+/**
+ * Fetch true daily observations for one account.
+ *
+ * Returns the rows exactly as Meta sent them, plus the period we ASKED for —
+ * which is used only as context for logging and for the caller's own bookkeeping.
+ * It is never used to date a row: each row carries its own date_start/date_stop,
+ * and metaDailyNormalize refuses any row that does not.
+ *
+ * @param {string} accessToken
+ * @param {string} adAccountId
+ * @param {{ now?: Date, days?: number }} [opts]
+ * @returns {Promise<{ rows, requestedStart: Date, requestedEnd: Date, truncated: boolean, days: number }>}
+ */
+export async function fetchDailyInsights(accessToken, adAccountId, { now = new Date(), days = dailyIngestionDays() } = {}) {
+  initSdk(accessToken);
+  const accountId = normalizeAccountId(adAccountId);
+  const account = new AdAccount(accountId);
+  const params = dailyInsightsParams(now, days);
+
+  const cursor = await account.getInsights(DAILY_INSIGHT_FIELDS, params);
+
+  // Same pagination as every other level — reused, not reimplemented. Truncation
+  // matters here because the row count is multiplied by `days`: a partial daily
+  // population that looks complete would leave holes no reader could see.
+  const { rows, pages, truncated } = await collectCursorPages(cursor);
+  logger.info(
+    {
+      accountId, days, since: params.time_range.since, until: params.time_range.until,
+      rawCount: rows.length, pages, truncated,
+    },
+    '[metaAdsService] fetchDailyInsights (time_increment=1) raw response',
+  );
+  return {
+    rows,
+    requestedStart: new Date(`${params.time_range.since}T00:00:00.000Z`),
+    requestedEnd: new Date(`${params.time_range.until}T00:00:00.000Z`),
+    truncated,
+    days,
+  };
 }
 
 // Entity attributes fetched from the /campaigns edge — NOT metrics. These exist
