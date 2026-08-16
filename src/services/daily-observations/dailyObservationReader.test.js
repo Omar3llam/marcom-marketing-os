@@ -181,8 +181,17 @@ describe('R9 — classification is by declared period, never by sync order', () 
   });
 
   it('is not decided by the order rows arrive in', async () => {
-    const forward = classifyAndReduce([row('09'), row('11')], EXECUTED_AT);
-    const reverse = classifyAndReduce([row('11'), row('09')], EXECUTED_AT);
+    // SEVERAL days per side, deliberately: with one day either side, every
+    // ordering produces the same single-element arrays and the assertion holds
+    // even for an implementation that simply kept insertion order. The rows are
+    // fed in an order that conflicts with their measured order, so the output
+    // can only be ascending if something sorted it by DAY.
+    const scrambled = [row('12'), row('08'), row('11'), row('09')];
+    const forward = classifyAndReduce(scrambled, EXECUTED_AT);
+    const reverse = classifyAndReduce([...scrambled].reverse(), EXECUTED_AT);
+
+    expect(forward.before.map((o) => o.day)).toEqual(['2026-08-08', '2026-08-09']);
+    expect(forward.after.map((o) => o.day)).toEqual(['2026-08-11', '2026-08-12']);
     expect(forward).toEqual(reverse);
   });
 });
