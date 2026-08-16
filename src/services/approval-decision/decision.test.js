@@ -36,6 +36,23 @@ vi.mock('@prisma/client', () => ({
   PrismaClient: function() {
     return {
       artifactApproval: {
+        // R9 — getApprovalByArtifact resolves through findFirst scoped to the
+        // workspace. Predicates are applied only when supplied, so a foreign
+        // workspaceId matches nothing instead of being silently dropped.
+        findFirst: vi.fn(async ({ where, include }) => {
+          const approval = Array.from(mockApprovals.values()).find(a =>
+            (!where.id || a.id === where.id) &&
+            (!where.artifactId || a.artifactId === where.artifactId) &&
+            (!where.workspaceId || a.workspaceId === where.workspaceId)
+          );
+          if (!approval) return null;
+
+          if (include?.artifact) {
+            return { ...approval, artifact: mockArtifacts.get(approval.artifactId) };
+          }
+          return approval;
+        }),
+
         findUnique: vi.fn(async ({ where, include }) => {
           const approval = mockApprovals.get(where.id || where.artifactId);
           if (!approval) return null;
@@ -481,7 +498,7 @@ describe('Approval Decision Engine', () => {
     it('should retrieve approval by artifact ID', async () => {
       const { approval, artifact } = createTestApproval();
 
-      const result = await getApprovalByArtifact(artifact.id);
+      const result = await getApprovalByArtifact(artifact.id, '00000000-0000-0000-0000-000000000001');
 
       expect(result).toBeDefined();
       expect(result.id).toBe(approval.id);
@@ -489,9 +506,21 @@ describe('Approval Decision Engine', () => {
     });
 
     it('should return null if no approval exists', async () => {
-      const result = await getApprovalByArtifact('nonexistent_artifact');
+      const result = await getApprovalByArtifact('nonexistent_artifact', '00000000-0000-0000-0000-000000000001');
 
       expect(result).toBeNull();
+    });
+
+    // ── R9 (I40) · the returned row INCLUDES the whole artifact ───────────
+    it('does not return an approval belonging to another workspace', async () => {
+      const { artifact } = createTestApproval('00000000-0000-0000-0000-000000000001');
+
+      expect(await getApprovalByArtifact(artifact.id, '00000000-0000-0000-0000-000000000002')).toBeNull();
+      expect(await getApprovalByArtifact(artifact.id, '00000000-0000-0000-0000-000000000001')).not.toBeNull();
+    });
+
+    it('requires a workspaceId', async () => {
+      await expect(getApprovalByArtifact('artifact_1')).rejects.toThrow(/workspaceId required/);
     });
   });
 

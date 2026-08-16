@@ -39,8 +39,14 @@ export async function recordPrediction({ workspaceId, entityId, entityLevel, ser
  *
  * @returns {Promise<object>} the updated FatiguePrediction
  */
-export async function resolvePrediction({ predictionId, actualBreachDate }) {
-  const p = await prisma.fatiguePrediction.findUnique({ where: { id: predictionId } });
+export async function resolvePrediction({ predictionId, workspaceId, actualBreachDate }) {
+  // R9 (I40) — workspace-scoped. This resolver does not merely read: it scores
+  // the prediction and writes a DecisionMemoryEntry stamped with the row's OWN
+  // workspaceId, so an unscoped lookup would have written a memory entry into
+  // whichever workspace the prediction belonged to — learning attributed to an
+  // account that never made the forecast.
+  if (!workspaceId) throw new Error('resolvePrediction: workspaceId required');
+  const p = await prisma.fatiguePrediction.findFirst({ where: { id: predictionId, workspaceId } });
   if (!p) throw new Error(`resolvePrediction: prediction ${predictionId} not found`);
   if (p.resolvedAt) return p; // already resolved (idempotent)
 

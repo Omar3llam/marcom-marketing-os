@@ -68,7 +68,11 @@ export async function promotePattern(workspaceId, patternId) {
   if (!workspaceId) throw new Error('promotePattern: workspaceId required');
   if (!patternId) throw new Error('promotePattern: patternId required');
 
-  const pattern = await prisma.accountPattern.findUnique({ where: { id: patternId } });
+  // R9 (I40) — the scope is IN the query, not checked after it. The post-hoc
+  // comparison below was correct and is kept as a belt-and-braces assertion, but
+  // it is the kind of guard that survives only while every future edit remembers
+  // it; `findFirst` scoped to the workspace cannot forget.
+  const pattern = await prisma.accountPattern.findFirst({ where: { id: patternId, workspaceId } });
   if (!pattern || pattern.workspaceId !== workspaceId) throw new Error('Pattern not found in this workspace.');
 
   const ruleData = patternToGuardrailData(pattern, workspaceId); // throws if not promotable

@@ -121,10 +121,22 @@ export async function landDailySnapshots(workspaceId, channel, normalized = []) 
     throw new Error('landDailySnapshots: refused a row with no windowStart — a daily observation must carry the day it measured');
   }
 
-  // ── Decorate-only: which of these entities actually exist? ──────────────
+  // ── Decorate-only: which of these entities actually exist HERE? ─────────
+  // R9 (I33) — scoped to THIS workspace. The check answers "may I land a row on
+  // this entity", and entity id alone answers a different question: "does this
+  // entity exist anywhere". Existence in someone else's workspace is not
+  // permission, and this sink writes canonical DAILY observations — the
+  // population the comparability reader and the verdict window both draw from.
+  //
+  // Safe today only because detId derives the id FROM the workspace, so a
+  // foreign id could not collide by accident. That is a property of one hashing
+  // function, not a property of this query; the query now states the scope it
+  // depends on instead of inheriting it.
   const entityIds = [...new Set(rows.map((r) => r.entityId))];
   const known = new Set(
-    (await prisma.campaign.findMany({ where: { id: { in: entityIds } }, select: { id: true } })).map((c) => c.id),
+    (await prisma.campaign.findMany({
+      where: { id: { in: entityIds }, workspaceId }, select: { id: true },
+    })).map((c) => c.id),
   );
   const landable = rows.filter((r) => known.has(r.entityId));
   const skippedUnknownEntity = rows.length - landable.length;

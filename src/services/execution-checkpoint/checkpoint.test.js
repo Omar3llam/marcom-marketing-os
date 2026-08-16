@@ -45,9 +45,15 @@ vi.mock('@prisma/client', () => ({
           return mockCheckpoints.get(where.id) || null;
         }),
 
+        // R9 — every supplied predicate is applied, including workspaceId and
+        // id. getCheckpointById/getLatestCheckpoint are now workspace-scoped;
+        // a mock that ignored workspaceId would let an unscoped query pass.
         findFirst: vi.fn(async ({ where, orderBy }) => {
-          const checkpoints = Array.from(mockCheckpoints.values())
-            .filter(cp => cp.executionId === where.executionId);
+          const checkpoints = Array.from(mockCheckpoints.values()).filter(cp =>
+            (!where.id || cp.id === where.id) &&
+            (!where.executionId || cp.executionId === where.executionId) &&
+            (!where.workspaceId || cp.workspaceId === where.workspaceId)
+          );
 
           if (checkpoints.length === 0) return null;
 
@@ -110,6 +116,7 @@ vi.mock('@prisma/client', () => ({
 import {
   createCheckpoint,
   getLatestCheckpoint,
+  getCheckpointById,
   markCheckpointResumed,
   getPausedExecutions,
   updateCheckpointStatus,
@@ -171,7 +178,7 @@ describe('Execution Checkpoint Service', () => {
       await new Promise(resolve => setTimeout(resolve, 10)); // ensure different timestamps
       await createCheckpoint(executionId, workspaceId, 'node_2', { step: 2 });
 
-      const latest = await getLatestCheckpoint(executionId);
+      const latest = await getLatestCheckpoint(executionId, workspaceId);
 
       expect(latest).toBeDefined();
       expect(latest.nodeId).toBe('node_2');
@@ -179,9 +186,42 @@ describe('Execution Checkpoint Service', () => {
     });
 
     it('should return null if no checkpoint exists', async () => {
-      const checkpoint = await getLatestCheckpoint('nonexistent_exec');
+      const checkpoint = await getLatestCheckpoint('nonexistent_exec', '00000000-0000-0000-0000-000000000001');
 
       expect(checkpoint).toBeNull();
+    });
+
+    // ── R9 (I40) · the scope is part of the resolver, not the caller ────────
+    it('does not return a checkpoint belonging to another workspace', async () => {
+      const executionId = 'exec_cross_ws';
+      const owner = '00000000-0000-0000-0000-000000000001';
+      const other = '00000000-0000-0000-0000-000000000002';
+
+      await createCheckpoint(executionId, owner, 'node_1', { step: 1 });
+
+      // The id is real; the workspace is not this caller's. Resumable execution
+      // state must simply not exist here.
+      expect(await getLatestCheckpoint(executionId, other)).toBeNull();
+      expect(await getLatestCheckpoint(executionId, owner)).not.toBeNull();
+    });
+
+    it('requires a workspaceId rather than defaulting to a global lookup', async () => {
+      await expect(getLatestCheckpoint('exec_456')).rejects.toThrow(/workspaceId required/);
+    });
+  });
+
+  describe('getCheckpointById — R9 workspace scope', () => {
+    it('does not resolve a checkpoint id from another workspace', async () => {
+      const owner = '00000000-0000-0000-0000-000000000001';
+      const other = '00000000-0000-0000-0000-000000000002';
+      const created = await createCheckpoint('exec_by_id', owner, 'node_1', { step: 1 });
+
+      expect(await getCheckpointById(created.id, other)).toBeNull();
+      expect(await getCheckpointById(created.id, owner)).not.toBeNull();
+    });
+
+    it('requires a workspaceId', async () => {
+      await expect(getCheckpointById('checkpoint_1')).rejects.toThrow(/workspaceId required/);
     });
   });
 

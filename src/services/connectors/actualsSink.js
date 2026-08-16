@@ -39,18 +39,64 @@ export function assertActuals(descriptors) {
   return descriptors;
 }
 
+/** The lookup key an actuals descriptor is matched on: channel + folded name. */
+export const campaignKey = (channel, name) => `${channel}|${lc(name)}`;
+
+/**
+ * PURE: index existing campaigns by `${channel}|${lower(name)}`, recording which
+ * keys are AMBIGUOUS rather than resolving them.
+ *
+ * R9 (I38/I41) — a display name is not an identity. `new Map(rows.map(...))`
+ * silently kept the LAST row for a repeated key, so two live campaigns sharing a
+ * channel and a name (a duplicated "Ramadan Sale", a rebuilt campaign under the
+ * old label) made the resolver pick one by array order — and the thing being
+ * attached is REAL REVENUE. Nothing downstream could see that a choice was made.
+ *
+ * Ambiguous keys are removed from the index and listed separately so the
+ * resolver can distinguish "no campaign by that name" (fall back to the account)
+ * from "several" (attach nothing). Merging the campaigns, minting an entity, or
+ * promoting the name to a canonical id are all out of scope by construction.
+ *
+ * @param {Array<{id, name, channel}>} campaigns — workspace-scoped rows
+ * @returns {{ campaignByKey: Map<string,string>, ambiguousCampaignKeys: Set<string> }}
+ */
+export function buildCampaignIndex(campaigns = []) {
+  const campaignByKey = new Map();
+  const ambiguousCampaignKeys = new Set();
+  for (const c of campaigns) {
+    const key = campaignKey(c.channel, c.name);
+    if (ambiguousCampaignKeys.has(key)) continue;
+    if (campaignByKey.has(key)) {
+      campaignByKey.delete(key); // neither claimant wins
+      ambiguousCampaignKeys.add(key);
+      continue;
+    }
+    campaignByKey.set(key, c.id);
+  }
+  return { campaignByKey, ambiguousCampaignKeys };
+}
+
 /**
  * PURE: resolve one descriptor to the EXISTING entity it decorates, or null.
  * @param {object} descriptor — { channel, campaignName }
- * @param {{ campaignByKey: Map<string,string>, accountByChannel: Map<string,string> }} graph
+ * @param {{ campaignByKey: Map<string,string>, accountByChannel: Map<string,string>,
+ *          ambiguousCampaignKeys?: Set<string> }} graph
  *   campaignByKey keyed `${channel}|${lower(name)}` → entityId; accountByChannel
  *   keyed channel → entityId. Both built from entities that REALLY exist.
  * @returns {{ entityId, entityLevel } | null} null ⇒ drop (no fabricated entity)
  */
-export function resolveAttachment(descriptor, { campaignByKey, accountByChannel }) {
+export function resolveAttachment(descriptor, { campaignByKey, accountByChannel, ambiguousCampaignKeys = new Set() }) {
   const { channel, campaignName } = descriptor;
   if (campaignName) {
-    const hit = campaignByKey.get(`${channel}|${lc(campaignName)}`);
+    const key = campaignKey(channel, campaignName);
+    // R9 — ambiguity FAILS CLOSED, and does not fall through to the account.
+    // The account fallback is the honest home for a descriptor whose campaign we
+    // do not have; here we DO have it, more than once, and cannot say which. The
+    // two cases are different claims, so they get different answers: dropping
+    // loses one revenue row, while guessing corrupts a campaign's ROAS — and the
+    // second is indistinguishable from a real result once written.
+    if (ambiguousCampaignKeys.has(key)) return null;
+    const hit = campaignByKey.get(key);
     if (hit) return { entityId: hit, entityLevel: ENTITY_LEVEL.CAMPAIGN };
   }
   const acct = accountByChannel.get(channel);
@@ -111,11 +157,17 @@ export async function landActuals(workspaceId, descriptors = []) {
     prisma.campaign.findMany({ where: { workspaceId }, select: { id: true, name: true, channel: true } }),
     prisma.account.findMany({ where: { workspaceId }, select: { id: true, channel: true } }),
   ]);
-  const campaignByKey = new Map(campaigns.map((c) => [`${c.channel}|${lc(c.name)}`, c.id]));
+  const { campaignByKey, ambiguousCampaignKeys } = buildCampaignIndex(campaigns);
   const accountByChannel = new Map(accounts.map((a) => [a.channel, a.id]));
+  if (ambiguousCampaignKeys.size > 0) {
+    logger.warn(
+      { workspaceId, ambiguousKeys: ambiguousCampaignKeys.size },
+      '[actualsSink] campaign names that identify more than one campaign — actuals naming them are dropped, never attached to a guess',
+    );
+  }
 
   const built = descriptors.map((d) => {
-    const attachment = resolveAttachment(d, { campaignByKey, accountByChannel });
+    const attachment = resolveAttachment(d, { campaignByKey, accountByChannel, ambiguousCampaignKeys });
     return attachment ? toActualSnapshotRow(workspaceId, attachment, d) : null;
   });
   const rows = built.filter(Boolean);

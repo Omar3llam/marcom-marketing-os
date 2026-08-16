@@ -27,10 +27,11 @@ function client() {
  * Run a chat completion with injected campaign context.
  */
 export async function runChatGPTAgent({
-  campaignId, role, task, history = [],
+  campaignId, workspaceId = null, role, task, history = [],
   tools = [], onTool = null, maxTokens = 2000,
 }) {
-  const ctxBlock = campaignId ? await getRenderedContext(campaignId) : '';
+  // R9 (I32) — same workspace-scoped context contract as runClaudeAgent.
+  const ctxBlock = campaignId && workspaceId ? await getRenderedContext(campaignId, workspaceId) : '';
 
   const systemPrompt = [
     role || 'You are Lumi, an autonomous marketing intelligence agent.',

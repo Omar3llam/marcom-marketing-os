@@ -19,7 +19,7 @@ vi.mock('../../utils/logger.js', () => ({
 vi.mock('../../lib/prisma.js', () => {
   const prisma = {
     metricSnapshot:    { findMany: vi.fn() },
-    fatiguePrediction: { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+    fatiguePrediction: { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     decisionMemoryEntry: { create: vi.fn() }, // resolvePrediction writes the learning row here
     $transaction:      vi.fn(),
   };
@@ -158,7 +158,7 @@ describe('sweepFatigue — resolving a now-breached prediction (the learning loo
       { id: 'p1', entityId: ENT, entityLevel: 'ADSET', ceiling: 3.5, createdAt: new Date('2026-04-30T00:00:00Z') },
     ]);
     // resolvePrediction re-reads the row, then updates + writes the memory row.
-    prisma.fatiguePrediction.findUnique.mockResolvedValue({
+    prisma.fatiguePrediction.findFirst.mockResolvedValue({
       id: 'p1', workspaceId: 'ws-1', entityId: ENT, entityLevel: 'ADSET',
       metric: 'frequency', ceiling: 3.5, projectedBreachDate: new Date('2026-05-02T00:00:00Z'), resolvedAt: null,
     });
@@ -168,6 +168,12 @@ describe('sweepFatigue — resolving a now-breached prediction (the learning loo
     const res = await sweepFatigue('ws-1');
 
     expect(res.resolved).toBe(1);
+    // R9 — the re-read is WORKSPACE-SCOPED. resolvePrediction does not just read:
+    // it writes a DecisionMemoryEntry stamped with the row's own workspaceId, so
+    // an unscoped lookup would file this account's learning under another one.
+    expect(prisma.fatiguePrediction.findFirst).toHaveBeenCalledWith({
+      where: { id: 'p1', workspaceId: 'ws-1' },
+    });
     // a real resolution: resolvedAt + a numeric accuracy are written
     expect(prisma.fatiguePrediction.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'p1' },

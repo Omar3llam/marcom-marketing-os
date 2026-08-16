@@ -276,8 +276,8 @@ export function registerArtifactsRoute(router) {
         return res.status(404).json({ error: 'Artifact not found' });
       }
 
-      // Fetch full content from storage adapter
-      const artifact = await getArtifact(id);
+      // Fetch full content from storage adapter (R9 — workspace-scoped read)
+      const artifact = await getArtifact(id, workspaceId);
 
       if (!artifact) {
         logger.error(

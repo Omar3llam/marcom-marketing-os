@@ -40,8 +40,8 @@ export function registerCheckpointRoute(router) {
         return res.status(404).json({ error: 'Execution not found' });
       }
 
-      // Get latest checkpoint
-      const checkpoint = await getLatestCheckpoint(executionId);
+      // Get latest checkpoint (R9 — workspace-scoped read)
+      const checkpoint = await getLatestCheckpoint(executionId, workspaceId);
 
       if (!checkpoint) {
         return res.status(404).json({ error: 'No checkpoint found for execution' });

@@ -11,7 +11,7 @@ import { resolve } from './connectorRegistry.js';
 import { buildChannelInputs } from '../blended-truth/BlendedTruthService.js';
 import { reconcile } from '../blended-truth/blendedTruthEngine.js';
 import { ga4Normalize, channelFromSourceMedium } from './normalize/ga4Normalize.js';
-import { resolveAttachment, toActualSnapshotRow, assertActuals } from './actualsSink.js';
+import { resolveAttachment, toActualSnapshotRow, assertActuals, buildCampaignIndex } from './actualsSink.js';
 import { buildRunReportBody, mapGa4Response, presetToDateRange } from './google/ga4Client.js';
 
 const DATE = new Date('2026-06-01T00:00:00.000Z');
@@ -317,6 +317,69 @@ describe('actualsSink resolution — attach to existing entity, never mint', () 
   it('assertActuals rejects a non-actual source and non-integer revenue', () => {
     expect(() => assertActuals([{ channel: 'META', source: 'META', revenueMinor: 1 }])).toThrow(/ACTUAL source/);
     expect(() => assertActuals([{ channel: 'META', source: 'GA4', revenueMinor: 1.5 }])).toThrow(/integer/);
+  });
+});
+
+// ── R9 · a display name that identifies two campaigns identifies neither ────
+describe('R9 · actualsSink refuses to attach revenue to an ambiguous name', () => {
+  const first = detId('ws1', 'META', 'CAMPAIGN', 'c1');
+  const second = detId('ws1', 'META', 'CAMPAIGN', 'c2');
+  const metaAccount = detId('ws1', 'META', 'ACCOUNT', 'act_meta');
+
+  // Two REAL campaigns, same channel, same name — a duplicated "Ramadan Sale",
+  // or one rebuilt under the old label. Both exist; neither is "the" one.
+  const rows = [
+    { id: first, name: 'Ramadan Sale', channel: 'META' },
+    { id: second, name: 'ramadan sale', channel: 'META' }, // folds to the same key
+    { id: detId('ws1', 'META', 'CAMPAIGN', 'c3'), name: 'Eid Push', channel: 'META' },
+  ];
+
+  it('buildCampaignIndex reports the collision instead of resolving it', () => {
+    const { campaignByKey, ambiguousCampaignKeys } = buildCampaignIndex(rows);
+
+    expect(ambiguousCampaignKeys.has('META|ramadan sale')).toBe(true);
+    // Neither claimant is left in the index — last-write-wins is the bug.
+    expect(campaignByKey.has('META|ramadan sale')).toBe(false);
+    expect(campaignByKey.get('META|eid push')).toBeDefined();
+  });
+
+  it('an ambiguous name attaches NOTHING — not the first, not the last, not the account', () => {
+    const { campaignByKey, ambiguousCampaignKeys } = buildCampaignIndex(rows);
+    const graph = { campaignByKey, ambiguousCampaignKeys, accountByChannel: new Map([['META', metaAccount]]) };
+
+    const attachment = resolveAttachment({ channel: 'META', campaignName: 'Ramadan Sale' }, graph);
+
+    expect(attachment).toBeNull();
+    // Explicitly NOT the account fallback: that is the answer for a campaign we
+    // do not have. Here we have it twice, and coarsening would silently move
+    // campaign-attributed revenue up a level.
+    expect(attachment).not.toEqual({ entityId: metaAccount, entityLevel: 'ACCOUNT' });
+  });
+
+  it('an unambiguous name in the same account still resolves normally', () => {
+    const { campaignByKey, ambiguousCampaignKeys } = buildCampaignIndex(rows);
+    const graph = { campaignByKey, ambiguousCampaignKeys, accountByChannel: new Map([['META', metaAccount]]) };
+
+    expect(resolveAttachment({ channel: 'META', campaignName: 'Eid Push' }, graph))
+      .toEqual({ entityId: rows[2].id, entityLevel: 'CAMPAIGN' });
+  });
+
+  it('the same name on a DIFFERENT channel is not ambiguous — channel is part of the key', () => {
+    const { campaignByKey, ambiguousCampaignKeys } = buildCampaignIndex([
+      { id: first, name: 'Ramadan Sale', channel: 'META' },
+      { id: second, name: 'Ramadan Sale', channel: 'GOOGLE' },
+    ]);
+    expect(ambiguousCampaignKeys.size).toBe(0);
+    expect(campaignByKey.get('META|ramadan sale')).toBe(first);
+    expect(campaignByKey.get('GOOGLE|ramadan sale')).toBe(second);
+  });
+
+  it('a third campaign with the same name keeps the key ambiguous (never re-resolves)', () => {
+    const { campaignByKey, ambiguousCampaignKeys } = buildCampaignIndex([
+      ...rows, { id: detId('ws1', 'META', 'CAMPAIGN', 'c4'), name: 'RAMADAN SALE', channel: 'META' },
+    ]);
+    expect(ambiguousCampaignKeys.has('META|ramadan sale')).toBe(true);
+    expect(campaignByKey.has('META|ramadan sale')).toBe(false);
   });
 });
 

@@ -10,9 +10,9 @@
 //
 // OPERATIONS:
 //   - storeArtifact(artifact, metadata) → { id, storageKey }
-//   - getArtifact(artifactId) → artifact + metadata
+//   - getArtifact(artifactId, workspaceId) → artifact + metadata
 //   - listArtifacts(filters) → artifacts[]
-//   - deleteArtifact(artifactId) → void
+//   - deleteArtifact(artifactId, workspaceId) → void
 //
 // VERSIONING:
 //   Artifacts are immutable. Updates create new versions.
@@ -143,10 +143,27 @@ export async function storeArtifact({
 // Retrieve artifact by ID
 // ============================================================
 
-export async function getArtifact(artifactId) {
+/**
+ * Retrieve one artifact, WITH its content, inside a workspace.
+ *
+ * R9 (I40) — workspaceId is a required parameter of the resolver, not a check
+ * the caller performs afterwards. Every caller already compared
+ * `artifact.workspaceId` to its own once it had the row; that is authorization
+ * bolted onto a global read, and it only holds while every caller remembers to
+ * do it. Scoping the query makes a cross-workspace artifact simply not exist —
+ * and, because this function also READS THE CONTENT out of the storage adapter,
+ * the previous shape fetched the bytes of a foreign artifact before anyone
+ * checked who owned it.
+ *
+ * @param {string} artifactId
+ * @param {string} workspaceId — required; the owning workspace
+ * @returns {Promise<object|null>} null when absent OR owned by another workspace
+ */
+export async function getArtifact(artifactId, workspaceId) {
+  if (!workspaceId) throw new Error('getArtifact: workspaceId required');
   try {
-    const artifact = await prisma.artifact.findUnique({
-      where: { id: artifactId },
+    const artifact = await prisma.artifact.findFirst({
+      where: { id: artifactId, workspaceId },
     });
 
     if (!artifact) {
@@ -218,10 +235,21 @@ export async function listArtifacts({
 // Delete artifact (soft delete - keeps metadata)
 // ============================================================
 
-export async function deleteArtifact(artifactId) {
+/**
+ * R9 (I40) — same workspace contract as getArtifact, and more load-bearing: this
+ * one MUTATES. It resolved an artifact by id alone and then deleted its stored
+ * content, so a foreign id would have destroyed another workspace's bytes rather
+ * than merely reading them. Scoped, an artifact outside the workspace is simply
+ * not found and returns false.
+ *
+ * @param {string} artifactId
+ * @param {string} workspaceId — required; the owning workspace
+ */
+export async function deleteArtifact(artifactId, workspaceId) {
+  if (!workspaceId) throw new Error('deleteArtifact: workspaceId required');
   try {
-    const artifact = await prisma.artifact.findUnique({
-      where: { id: artifactId },
+    const artifact = await prisma.artifact.findFirst({
+      where: { id: artifactId, workspaceId },
     });
 
     if (!artifact) {

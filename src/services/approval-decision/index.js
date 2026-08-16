@@ -307,14 +307,20 @@ export async function getPendingApprovals(workspaceId, filters = {}) {
 }
 
 /**
- * Get approval by artifact ID.
+ * Get approval by artifact ID, within a workspace.
+ *
+ * R9 (I40) — workspace-scoped, like its twin in artifact-approval/index.js. The
+ * row it returns includes the whole artifact, so an unscoped lookup handed a
+ * foreign artifact's content to whoever asked.
  *
  * @param {string} artifactId - Artifact ID
- * @returns {Promise<Object|null>} Approval record or null
+ * @param {string} workspaceId - Required; the owning workspace
+ * @returns {Promise<Object|null>} Approval record, or null when absent or foreign
  */
-export async function getApprovalByArtifact(artifactId) {
-  const approval = await prisma.artifactApproval.findUnique({
-    where: { artifactId },
+export async function getApprovalByArtifact(artifactId, workspaceId) {
+  if (!workspaceId) throw new Error('getApprovalByArtifact: workspaceId required');
+  const approval = await prisma.artifactApproval.findFirst({
+    where: { artifactId, workspaceId },
     include: { artifact: true },
   });
 

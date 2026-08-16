@@ -55,6 +55,41 @@ vi.mock('@prisma/client', () => ({
           return approval;
         }),
 
+        // R9 — getApprovalStatus/getApproval resolve through findFirst with a
+        // workspaceId predicate. Every supplied predicate is applied, so a
+        // foreign workspaceId genuinely matches nothing here rather than being
+        // ignored by a mock that only looked at the id.
+        //
+        // This REPLACES a second, argument-less `findFirst` that used to be
+        // defined further down the same object literal for healthCheck. Two keys
+        // of the same name in one literal is not an overload: the later one won,
+        // so it returned the first approval in the map for ANY query — every
+        // predicate ignored, including workspaceId. The default `{}` below keeps
+        // healthCheck's bare findFirst() working.
+        findFirst: vi.fn(async ({ where = {}, include } = {}) => {
+          const approval = Array.from(mockApprovals.values()).find(a =>
+            (!where.id || a.id === where.id) &&
+            (!where.artifactId || a.artifactId === where.artifactId) &&
+            (!where.workspaceId || a.workspaceId === where.workspaceId)
+          );
+
+          if (!approval) return null;
+
+          if (include?.artifact) {
+            return {
+              ...approval,
+              artifact: {
+                id: approval.artifactId,
+                type: 'hook',
+                capability: 'GENERATE_HOOKS',
+                nodeId: 'node_1',
+                executionId: 'exec_1',
+              },
+            };
+          }
+          return approval;
+        }),
+
         findUnique: vi.fn(async ({ where, include }) => {
           const approval = where.id
             ? mockApprovals.get(where.id)
@@ -113,9 +148,6 @@ vi.mock('@prisma/client', () => ({
           return approvals;
         }),
 
-        findFirst: vi.fn(async () => {
-          return Array.from(mockApprovals.values())[0] || null;
-        }),
       },
     };
   },
@@ -315,7 +347,7 @@ describe('Artifact Approval Service', () => {
 
       await createApprovalRequest(artifactId, workspaceId);
 
-      const approval = await getApprovalStatus(artifactId);
+      const approval = await getApprovalStatus(artifactId, workspaceId);
 
       expect(approval).toBeDefined();
       expect(approval.artifactId).toBe(artifactId);
@@ -324,9 +356,28 @@ describe('Artifact Approval Service', () => {
     });
 
     it('should return null if no approval exists', async () => {
-      const approval = await getApprovalStatus('nonexistent_artifact');
+      const approval = await getApprovalStatus('nonexistent_artifact', '00000000-0000-0000-0000-000000000001');
 
       expect(approval).toBeNull();
+    });
+
+    // ── R9 (I40) ─────────────────────────────────────────────────────────
+    it('does not return an approval belonging to another workspace', async () => {
+      const artifactId = 'artifact_cross_ws';
+      const owner = '00000000-0000-0000-0000-000000000001';
+      const other = '00000000-0000-0000-0000-000000000002';
+
+      await createApprovalRequest(artifactId, owner);
+
+      // The routes verified the ARTIFACT's workspace and then read the approval
+      // by artifactId alone — two tables, one of them never asked about
+      // ownership. The resolver now answers for itself.
+      expect(await getApprovalStatus(artifactId, other)).toBeNull();
+      expect(await getApprovalStatus(artifactId, owner)).not.toBeNull();
+    });
+
+    it('requires a workspaceId', async () => {
+      await expect(getApprovalStatus('artifact_123')).rejects.toThrow(/workspaceId required/);
     });
   });
 });
