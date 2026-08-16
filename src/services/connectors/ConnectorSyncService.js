@@ -11,8 +11,9 @@
 import { logger } from '../../utils/logger.js';
 import { resolve, isSyncable } from './connectorRegistry.js';
 import { landSnapshots } from './snapshotSink.js';
+import { landDailySnapshots } from './dailySnapshotSink.js';
 import { listActiveSyncable, recordSync } from './credentialStore.js';
-import { DEFAULT_MANUAL_SYNC_DATE_PRESET } from './connectorConfig.js';
+import { DEFAULT_MANUAL_SYNC_DATE_PRESET, isDailyIngestionEnabled } from './connectorConfig.js';
 
 /**
  * Run the connector sync.
@@ -83,6 +84,45 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
         }
       }
 
+      // ── DAILY ADDITIVE INGESTION (Phase E / R8) ────────────────────────────
+      // A THIRD fetch, and the first one that returns true daily observations
+      // (`time_increment=1`). Separate from both reads above for the reason they
+      // are separate from each other: it answers a different question — not
+      // "refresh the account" and not "measure the decision period", but "what
+      // happened on each day".
+      //
+      // OPT-IN. As of R8 nothing reads this population: every existing selector
+      // filters DAILY out by construction (OPERATIONAL_MEASUREMENT_WINDOWS is an
+      // allow-list that names DAILY as excluded on purpose). Spending an extra
+      // Meta request per sync on rows no consumer reads is a cost, so the switch
+      // is off until a reader exists — the same trade SYNC_TRIGGERS_SWEEP makes.
+      //
+      // BEST-EFFORT, like the canonical refresh: a daily failure degrades to no
+      // daily rows for this run. It must never take down the operational sync
+      // that every existing surface reads.
+      let daily = null;
+      if (isDailyIngestionEnabled() && connector.fetchDailyRaw && connector.normalizeDaily) {
+        try {
+          const rawDaily = await connector.fetchDailyRaw(auth, { now });
+          const { snapshots, rejected } = connector.normalizeDaily({
+            ...auth, date: now, rows: rawDaily.rows,
+          });
+          daily = await landDailySnapshots(wsId, connector.channel, snapshots);
+          logger.info(
+            {
+              workspaceId: wsId, platform: channel, days: rawDaily.days,
+              ...daily, rejected: rejected.length, truncated: rawDaily.truncated,
+            },
+            '[connectorSync] daily additive observations landed',
+          );
+        } catch (err) {
+          logger.warn(
+            { workspaceId: wsId, platform: channel, err: err.message },
+            '[connectorSync] daily additive ingestion failed — no daily rows this run',
+          );
+        }
+      }
+
       // A connector MAY hang non-enumerable fetch metadata off the raw array
       // (MetaConnector does, for ad-set pagination). A sync that knowingly read
       // only part of an account is not a plain success: it lands real data, but
@@ -103,6 +143,11 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
         // operational refresh from a verdict refresh. null = this connector has
         // no canonical path, or its canonical fetch failed this run.
         canonicalSnapshots: canonical?.snapshots ?? null,
+        // Reported separately again, for the same reason: three populations,
+        // three counts. null = daily ingestion is off for this deployment, this
+        // connector has no daily path, or its daily fetch failed this run — and a
+        // caller must be able to tell those from "zero days landed".
+        dailyObservations: daily ? daily.created + daily.restated : null,
         ...(warning ? { warning } : {}),
       });
     } catch (err) {

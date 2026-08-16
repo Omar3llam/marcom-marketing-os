@@ -78,9 +78,12 @@ describe('the operational allow-list', () => {
     expect(isOperationalWindow(W.CUMULATIVE_30D)).toBe(false);
   });
 
-  it('refuses DAILY, which has no producer yet (Phase E)', () => {
-    // Not an oversight. A population no reader has been designed for must not
-    // become an input the day its first producer ships.
+  it('refuses DAILY — and now that Phase E ships a producer, this is the proof', () => {
+    // This assertion was written BEFORE anything wrote a DAILY row, against the
+    // day one would. That day is R8: metaDailyNormalize + dailySnapshotSink land
+    // true daily observations, and every operational consumer must carry on
+    // reading exactly what it read yesterday. A population no reader has been
+    // designed for must not become an input the moment its first producer ships.
     expect(isOperationalWindow(W.DAILY)).toBe(false);
   });
 
@@ -416,6 +419,15 @@ describe('every operational MetricSnapshot reader declares its population', () =
   //                            from the batch, not from the operational
   //                            allow-list, so classifying it as an operational
   //                            reader would be simply wrong.
+  //   dailySnapshotSink        the same class, and exempt on the same grounds
+  //                            (R8): its read is the write path's LOGICAL
+  //                            IDENTITY lookup — "does a row for this entity on
+  //                            this day already exist" — because the shared
+  //                            unique key cannot express a daily identity. It is
+  //                            scoped to `measurementWindow: DAILY`, a population
+  //                            that is by definition not the operational one, and
+  //                            the test below pins that scope so the exemption
+  //                            cannot quietly widen into a reader.
   //
   // Anything else that appears here is a new direct reader, and this is where it
   // gets caught — before it has a surface to be wrong on.
@@ -430,6 +442,7 @@ describe('every operational MetricSnapshot reader declares its population', () =
       'verdict-engine/canonicalVerdictEvidence.js',
       'fatigue-forecaster/canonicalFatigueEvidence.js',
       'connectors/snapshotSink.js',
+      'connectors/dailySnapshotSink.js',
     ]);
 
     const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -454,6 +467,24 @@ describe('every operational MetricSnapshot reader declares its population', () =
       .filter((rel) => !ALLOWED.has(rel));
 
     expect(offenders).toEqual([]);
+  });
+
+  // The exemption above is SCOPED, and this is what keeps it that way. A
+  // write-path identity lookup that stopped naming its own population would
+  // become a reader of whatever the query happened to match — which is the exact
+  // thing the allow-list exists to prevent, arriving through the door the
+  // allow-list just opened.
+  it('the daily sink reads ONLY the population it writes', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const src = readFileSync(fileURLToPath(new URL('./dailySnapshotSink.js', import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+    const query = src.slice(src.indexOf('prisma.metricSnapshot.findMany'));
+    expect(query).toMatch(/measurementWindow:\s*MEASUREMENT_WINDOW\.DAILY/);
+    // …and it must not reach for the operational population by any name.
+    expect(src).not.toMatch(/OPERATIONAL_WINDOW_FILTER|OPERATIONAL_MEASUREMENT_WINDOWS/);
   });
 
   it('…and every one of the nine migrated consumers is genuinely clean', async () => {
