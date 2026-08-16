@@ -138,12 +138,16 @@ describe('R8 — one row per entity per day', () => {
       expect(created()[0].windowStart).toEqual(DAY('11'));
     });
 
-    it('a DIFFERENT SOURCE measuring the same entity and day is created, not restated', async () => {
+    it('a DIFFERENT SOURCE measuring the SAME entity and day is created, not restated', async () => {
+      // The channel stays META, so the entity id is identical — this isolates
+      // `source` and nothing else. Not a hypothetical: actualsSink already writes
+      // GA4 rows against the very entity ids the Meta sync mints, so one entity
+      // genuinely receives measurements from more than one source.
       existingC1Day10();
-      const out = await landDailySnapshots(WS, CHANNEL.GOOGLE, [
-        daily({ source: DATA_SOURCE.GOOGLE, channel: CHANNEL.GOOGLE }),
-      ]);
+      const out = await landDailySnapshots(WS, CHANNEL.META, [daily({ source: DATA_SOURCE.GA4 })]);
       expect(out).toMatchObject({ created: 1, restated: 0 });
+      expect(created()[0].entityId).toBe(idOf('c1'));   // same entity…
+      expect(created()[0].source).toBe(DATA_SOURCE.GA4); // …different measurement
     });
   });
 
