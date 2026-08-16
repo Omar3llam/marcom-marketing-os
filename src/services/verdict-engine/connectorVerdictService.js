@@ -181,10 +181,125 @@ export function buildConnectorVerdictTree(workspaceId, campaigns = [], { now = D
   return { tree, gatedOut };
 }
 
+// ============================================================
+// R8 — ONE canonical evaluation, carried rather than rediscovered
+// ------------------------------------------------------------
+// There has only ever been one connector-verdict ALGORITHM. What there were
+// several of was INVOCATIONS: the read twin, the write twin, and five consumers
+// each ran the whole pipeline — canonical evidence read → tree → rollupVerdicts →
+// applyRelativeRanking — for the same logical question. One agentic sweep did it
+// two to four times.
+//
+// evaluateConnectorVerdicts IS that pipeline, extracted once and returned as a
+// value. Everything downstream now takes the result; nothing recomputes it.
+// This is explicit result threading, NOT a cache: the object lives for exactly
+// as long as the caller holds it, is never keyed, stored, shared between
+// requests or reused after the caller returns. Two HTTP requests are two
+// evaluations, by design.
+// ============================================================
+
 /**
- * Read connector campaigns for a workspace and return their verdicts.
- * @returns {Promise<{ verdicts:Array, gatedOut:Array, account:object|null, status:string }>}
+ * The status a FAILED evaluation carries.
+ *
+ * Deliberately NOT a member of the computed set (OK / NO_CAMPAIGNS /
+ * NO_ELIGIBLE_CAMPAIGNS / NO_WORKSPACE) — every one of those means "we ran the
+ * engine and this is what it found". This one means "we could not run it", and
+ * a consumer that cannot tell the two apart will render "could not compute" as
+ * "nothing to act on". That collapse is the exact class R7 removed from the
+ * memory slot, and I29 forbids it here.
  */
+export const EVALUATION_FAILED = 'EVALUATION_FAILED';
+
+/**
+ * Carry a failure forward instead of leaving the next consumer to re-attempt it.
+ *
+ * When a sweep's single evaluation throws, the sweep does not fall back to
+ * letting each of its four consumers try again — that would be four failures
+ * where there was one, and it would put the recomputation this whole change
+ * removes back on the error path. It threads THIS, and every consumer re-raises.
+ */
+export function failedEvaluation(workspaceId, err) {
+  return Object.freeze({
+    workspaceId: workspaceId ?? null,
+    campaigns: [], tree: null, annotated: null, gatedOut: [],
+    status: EVALUATION_FAILED,
+    error: err?.message ?? String(err ?? 'unknown'),
+  });
+}
+
+/** PURE: did this evaluation actually run? (An absent one has not been attempted.) */
+export function isEvaluated(evaluation) {
+  return evaluation != null && evaluation.status !== EVALUATION_FAILED;
+}
+
+/**
+ * Re-raise a supplied evaluation that cannot be used. Shared by every consumer
+ * so "failed" and "belongs to another workspace" always throw with the same
+ * words, and no consumer can quietly downgrade either into an empty result.
+ */
+export function assertUsableEvaluation(where, workspaceId, evaluation) {
+  if (!isEvaluated(evaluation)) {
+    throw new Error(`${where}: connector verdict evaluation unavailable — ${evaluation.error}`);
+  }
+  // Workspace scope is the one property an evaluation cannot carry implicitly:
+  // it was computed for ONE workspace, and threading it into a call for another
+  // would publish one account's verdicts under another's name. Cheap to check,
+  // catastrophic to miss.
+  if (evaluation.workspaceId !== workspaceId) {
+    throw new Error(`${where}: evaluation belongs to a different workspace`);
+  }
+}
+
+/**
+ * THE canonical connector verdict computation (R8 / I25). Evidence read, tree,
+ * engine, relative post-pass — once, as a reusable result.
+ *
+ * THROWS on a failed evidence read rather than returning an empty result. The
+ * two callers that used to swallow this (copilot, portfolio analysis) turned it
+ * into `verdicts: []`, which reads downstream as a healthy account with nothing
+ * to do. A throw is the only shape a caller cannot mistake for an answer.
+ *
+ * @returns {Promise<{ workspaceId:string|null, campaigns:Array, tree:object|null,
+ *   annotated:object|null, gatedOut:Array, status:string }>}
+ *   `annotated` is the engine's output — null when nothing was eligible, which
+ *   is a real answer and must never be replaced with a fabricated verdict.
+ */
+export async function evaluateConnectorVerdicts(workspaceId) {
+  if (!workspaceId) {
+    return { workspaceId: null, campaigns: [], tree: null, annotated: null, gatedOut: [], status: 'NO_WORKSPACE' };
+  }
+
+  const { campaigns, noCanonicalWindow } = await getCanonicalVerdictCampaigns(workspaceId);
+  const { tree, gatedOut: dataless } = buildConnectorVerdictTree(workspaceId, campaigns);
+
+  // TWO KINDS OF ABSENCE, kept apart (Phase D.4). `dataless` means we measured
+  // the campaign over the verdict window and it delivered nothing to judge.
+  // NO_CANONICAL_WINDOW means we never measured it over that window at all.
+  // Same empty cell on screen, opposite fixes — one waits for spend, the other
+  // waits for a sync — so collapsing them would tell the operator the wrong story.
+  const gatedOut = [...dataless, ...noCanonicalWindow];
+
+  if (!tree) {
+    const status = gatedOut.length ? 'NO_ELIGIBLE_CAMPAIGNS' : 'NO_CAMPAIGNS';
+    logger.info(
+      { workspaceId, dataless: dataless.length, noCanonicalWindow: noCanonicalWindow.length, status },
+      '[connectorVerdicts] no eligible campaigns',
+    );
+    return { workspaceId, campaigns, tree: null, annotated: null, gatedOut, status };
+  }
+
+  // Absolute verdicts first, then the portfolio-relative post-pass over the SAME
+  // annotated tree — bottom-of-cohort HOLD/WATCH engagement campaigns become
+  // KILL, top-of-cohort become SCALE, with the rationale rewritten to cite the
+  // real group average. Pure + deterministic.
+  //
+  // This line used to exist twice: here, and inside persistLevelVerdicts behind
+  // an `opts.relativeRanking` flag the write twin passed. Both produced the same
+  // tree from the same evidence, which is why the duplication was invisible.
+  const annotated = applyRelativeRanking(rollupVerdicts(tree));
+  return { workspaceId, campaigns, tree, annotated, gatedOut, status: 'OK' };
+}
+
 /**
  * The latest PROPOSED Decision per CAMPAIGN entity, as Map<entityId, row>.
  *
@@ -256,39 +371,38 @@ export async function getLatestDecisions(workspaceId) {
   return map;
 }
 
-export async function getConnectorVerdicts(workspaceId) {
+/**
+ * Read connector campaigns for a workspace and return their verdicts.
+ *
+ * @param {string} workspaceId
+ * @param {object} [opts]
+ * @param {object} [opts.evaluation] — an evaluation ALREADY produced by
+ *   evaluateConnectorVerdicts for THIS workspace. Supplied, it is used as-is and
+ *   the engine does not run again (R8 / I25, I28); omitted, this call performs
+ *   its own single evaluation, which is what an ordinary HTTP request does.
+ * @returns {Promise<{ verdicts:Array, gatedOut:Array, account:object|null, status:string }>}
+ */
+export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
   if (!workspaceId) return { verdicts: [], gatedOut: [], account: null, status: 'NO_WORKSPACE' };
+  if (evaluation) assertUsableEvaluation('getConnectorVerdicts', workspaceId, evaluation);
 
   // Parallel: neither read feeds the other. The decision lookup is keyed by
   // workspace, not by the campaigns that come back, so sequencing them would
   // add a round trip for nothing.
-  const [{ campaigns, noCanonicalWindow }, decisionMap] = await Promise.all([
-    getCanonicalVerdictCampaigns(workspaceId),
+  //
+  // getLatestDecisions runs even on a threaded evaluation, and must: it is
+  // DECISION IDENTITY (which stored row is behind this button), not a verdict
+  // computation, and it has to reflect the rows this sweep has just written.
+  const [ev, decisionMap] = await Promise.all([
+    evaluation ?? evaluateConnectorVerdicts(workspaceId),
     getLatestDecisions(workspaceId),
   ]);
-  const { tree, gatedOut: dataless } = buildConnectorVerdictTree(workspaceId, campaigns);
 
-  // TWO KINDS OF ABSENCE, kept apart (Phase D.4). `dataless` means we measured
-  // the campaign over the verdict window and it delivered nothing to judge.
-  // NO_CANONICAL_WINDOW means we never measured it over that window at all.
-  // Same empty cell on screen, opposite fixes — one waits for spend, the other
-  // waits for a sync — so collapsing them would tell the operator the wrong story.
-  const gatedOut = [...dataless, ...noCanonicalWindow];
-
-  if (!tree) {
-    const status = gatedOut.length ? 'NO_ELIGIBLE_CAMPAIGNS' : 'NO_CAMPAIGNS';
-    logger.info(
-      { workspaceId, dataless: dataless.length, noCanonicalWindow: noCanonicalWindow.length, status },
-      '[connectorVerdicts] no eligible campaigns',
-    );
-    return { verdicts: [], gatedOut, account: null, status };
+  const { gatedOut, annotated } = ev;
+  if (!annotated) {
+    return { verdicts: [], gatedOut, account: null, status: ev.status };
   }
 
-  // Absolute verdicts first, then the portfolio-relative post-pass over the SAME
-  // annotated tree (same code the write twin runs) — bottom-of-cohort HOLD/WATCH
-  // engagement campaigns become KILL, top-of-cohort become SCALE, with the
-  // rationale rewritten to cite the real group average. Pure + deterministic.
-  const annotated = applyRelativeRanking(rollupVerdicts(tree));
   const verdicts = annotated.children.map((c) => ({
     id:         c.id,
     name:       c.name,
@@ -374,13 +488,15 @@ export async function getConnectorVerdicts(workspaceId) {
     // `counterfactuals` why each alternative was set aside.
     //
     // THIS path persists nothing — getConnectorVerdicts is read-only by
-    // contract, and re-derives all three from the same signals on every read.
-    // Its WRITE twin does: persistConnectorVerdicts runs the same engine over
-    // the same tree and persistNode freezes `hypotheses` and `counterfactuals`
-    // onto the Decision row. So the reasoning a client sees here is recomputed,
-    // while the reasoning attached to a stored decision is the snapshot taken
-    // when that call was made. The two can differ, and that is the point: this
-    // one describes the campaign now, that one records what we believed then.
+    // contract. Its WRITE twin does: persistConnectorVerdicts is handed THIS
+    // SAME annotated tree (R8) and persistNode freezes `hypotheses` and
+    // `counterfactuals` onto the Decision row. Within one sweep the two are
+    // therefore the same reasoning, not two derivations that happen to agree —
+    // which is the whole point of I26.
+    //
+    // Across time they still differ, and that is also the point: a stored
+    // decision keeps the reasoning of the moment it was made, while this payload
+    // describes the campaign as it stands on THIS read.
     //
     // `declined` is the exception — it is raw material, not a conclusion, and
     // no column holds it.

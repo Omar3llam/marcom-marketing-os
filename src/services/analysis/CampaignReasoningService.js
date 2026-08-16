@@ -38,10 +38,14 @@ const REFRESH_MS = Number(process.env.REASONING_REFRESH_MS ?? 24 * 60 * 60 * 100
  * derived health + account totals). Both entry points read from this so the
  * sweep never re-fetches per campaign.
  */
-async function loadReasoningContext(workspaceId) {
+async function loadReasoningContext(workspaceId, evaluation) {
   const [campaigns, verdictResult] = await Promise.all([
     getConnectorCampaigns(workspaceId),
-    getConnectorVerdicts(workspaceId),
+    // R8: when the sweep hands us its evaluation, we explain THOSE verdicts —
+    // the ones it just stored — rather than recomputing a set that may already
+    // have moved. Absent (the on-demand entry point), this is the request's own
+    // single evaluation.
+    getConnectorVerdicts(workspaceId, { evaluation }),
   ]);
   const verdictMap = Object.fromEntries((verdictResult?.verdicts ?? []).map((v) => [v.id, v]));
   const health = computeAccountHealth(campaigns, verdictMap);
@@ -121,14 +125,17 @@ export async function generateCampaignReasoning({ workspaceId, entityId, dialect
  * fresh unchanged rows are skipped to control token spend. English only (no
  * dialect) — a background job has no single user's language preference.
  *
- * @param {{ workspaceId: string, loopRunId?: string|null, topN?: number, now?: number }} args
+ * @param {{ workspaceId: string, loopRunId?: string|null, topN?: number,
+ *   now?: number, evaluation?: object }} args — `evaluation` is the sweep's one
+ *   connector-verdict evaluation (R8); a FAILED one re-raises here and the
+ *   sweep's own catch records "reasoning pre-generation skipped".
  * @returns {Promise<{ attempted: number, generated: number, skipped: number }>}
  */
-export async function generateReasoningForSweep({ workspaceId, loopRunId = null, topN = SWEEP_TOP_N, now = Date.now() } = {}) {
+export async function generateReasoningForSweep({ workspaceId, loopRunId = null, topN = SWEEP_TOP_N, now = Date.now(), evaluation } = {}) {
   const empty = { attempted: 0, generated: 0, skipped: 0 };
   if (!workspaceId || topN <= 0) return empty;
 
-  const ctx = await loadReasoningContext(workspaceId);
+  const ctx = await loadReasoningContext(workspaceId, evaluation);
   if (!ctx.health) return empty; // no honest data to reason about
 
   // Rank the actionable (verdict-bearing) campaigns by impact; take the top N.

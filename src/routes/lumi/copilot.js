@@ -61,12 +61,25 @@ copilotRouter.post(
     try {
       // Live account context — all best-effort reads (a missing connector or the
       // un-migrated aiInsight column must degrade the answer, never 500 it).
+      //
+      // R8 / I29 — the verdict read is best-effort but NOT silent. It used to
+      // `.catch(() => ({ verdicts: [] }))`, and an empty verdict set is
+      // indistinguishable downstream from a genuinely unjudged account: every
+      // campaign printed "unscored", account health printed a score built from
+      // no verdicts at all, and the model answered "nothing needs attention"
+      // about an account it had simply failed to evaluate. Now the failure is
+      // carried as a flag and SAID, in the one place the model can read it.
+      let verdictsUnavailable = false;
       const [workspace, campaigns, verdictResult] = await Promise.all([
         prisma.workspace
           .findUnique({ where: { id: wsId }, select: { name: true, currency: true, objective: true, industry: true, market: true } })
           .catch(() => null),
         getConnectorCampaigns(wsId).catch(() => []),
-        getConnectorVerdicts(wsId).catch(() => ({ verdicts: [] })),
+        getConnectorVerdicts(wsId).catch((err) => {
+          logger.warn({ err: err.message, wsId }, '[lumi/copilot] verdicts unavailable — answering without them');
+          verdictsUnavailable = true;
+          return null;
+        }),
       ]);
 
       const verdictMap = Object.fromEntries((verdictResult?.verdicts ?? []).map((v) => [v.id, v]));
@@ -77,7 +90,12 @@ copilotRouter.post(
       // so grounding the answer in the same score the Overview shows costs nothing.
       // Computed over EVERY campaign — not the top-N slice — so wasted spend is
       // the account's real total, exactly as AccountHealthService intends.
-      const accountHealth = computeAccountHealth(allCampaigns, verdictMap);
+      //
+      // Skipped entirely when the verdicts failed: every one of its outputs is
+      // verdict-derived, so computing it over an empty map yields a real-looking
+      // score, a "0 campaigns to act on" and a "0 scaling well" — three numbers
+      // that describe the outage, not the account.
+      const accountHealth = verdictsUnavailable ? null : computeAccountHealth(allCampaigns, verdictMap);
 
       // Account-level facts the campaign slice can't carry. `totalCampaigns` is
       // the UNFILTERED count so the model can answer "how many campaigns do I
@@ -136,6 +154,7 @@ copilotRouter.post(
         portfolio: portfolioContext,
         campaigns: campaignContext,
         briefing: latestRun?.aiInsight ?? null,
+        verdictsUnavailable,
       });
       const user = buildCopilotUserPrompt(history.slice(-HISTORY_CONTEXT), question.trim());
 

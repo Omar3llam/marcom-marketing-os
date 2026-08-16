@@ -1,10 +1,16 @@
 // ============================================================
-// persistConnectorVerdicts — the write twin of getConnectorVerdicts
+// persistConnectorVerdicts — the PERSISTENCE SINK for an evaluated verdict set
 // ------------------------------------------------------------
 // Proves the wiring actually PERSISTS rows: the REAL verdict engine +
 // buildConnectorVerdictTree run; only the connector read (getCanonicalVerdictCampaigns)
 // and the DB are mocked. Asserts the row that lands, the revenue gate, the
 // synthetic-root skip, PROPOSED status, and idempotency.
+//
+// R8: every case now goes through the real seam — evaluateConnectorVerdicts once,
+// then persist THAT result. The tests read the same way they did (`persist()`
+// after mocking campaigns) but the path underneath is the production one, so a
+// regression that made persistence recompute would show up here as a second
+// getCanonicalVerdictCampaigns call, not as a passing test.
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -25,9 +31,13 @@ import { getCanonicalVerdictCampaigns } from '../entity-graph/index.js';
 const mockCampaigns = (rows) => getCanonicalVerdictCampaigns.mockResolvedValue({ campaigns: rows, noCanonicalWindow: [] });
 import { SIGNAL_TYPE } from '../diagnosis-engine/index.js';
 import { persistConnectorVerdicts } from './VerdictService.js';
+import { evaluateConnectorVerdicts, failedEvaluation } from './connectorVerdictService.js';
 
 const WS       = '7517d1b9-b967-44f3-a77f-60f5c577f867';
 const CAMPAIGN = 'c1d2e3f4-0000-0000-0000-000000000010';
+
+/** The production call shape: ONE evaluation, then persist exactly that (R8/I26). */
+const persist = async (ws = WS) => persistConnectorVerdicts(ws, await evaluateConnectorVerdicts(ws));
 
 // A connector row as EntityGraphService projects it. roas 4, ctr 5%, freq 1.5 → SCALE.
 const camp = (over = {}) => ({
@@ -47,7 +57,7 @@ describe('persistConnectorVerdicts', () => {
   it('persists a PROPOSED campaign Decision for a revenue-eligible campaign', async () => {
     mockCampaigns([camp()]);
 
-    const res = await persistConnectorVerdicts(WS);
+    const res = await persist();
 
     expect(res.status).toBe('OK');
     expect(res.created).toHaveLength(1);
@@ -64,7 +74,7 @@ describe('persistConnectorVerdicts', () => {
 
   it('never writes the synthetic ACCOUNT root (keyed by workspaceId)', async () => {
     mockCampaigns([camp()]);
-    await persistConnectorVerdicts(WS);
+    await persist();
     for (const call of prisma.decision.create.mock.calls) {
       expect(call[0].data.entityId).not.toBe(WS);
       expect(call[0].data.entityLevel).not.toBe('ACCOUNT');
@@ -75,7 +85,7 @@ describe('persistConnectorVerdicts', () => {
     const AWARE = 'e2e2e2e2-0000-0000-0000-000000000011';
     // spend + impressions but no revenue → awareness track (HOLD for healthy engagement).
     mockCampaigns([camp({ entityId: AWARE, name: 'Awareness', revenueMinor: 0 })]);
-    const res = await persistConnectorVerdicts(WS);
+    const res = await persist();
     expect(res.gatedOut).toHaveLength(0);
     expect(prisma.decision.create).toHaveBeenCalledTimes(1);
     const { data } = prisma.decision.create.mock.calls[0][0];
@@ -88,14 +98,14 @@ describe('persistConnectorVerdicts', () => {
   it('gates out a DATALESS campaign (zero spend + zero impressions)', async () => {
     const NODATA = 'e3e3e3e3-0000-0000-0000-000000000012';
     mockCampaigns([camp(), camp({ entityId: NODATA, name: 'No data', revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
-    const res = await persistConnectorVerdicts(WS);
+    const res = await persist();
     expect(res.gatedOut.map((g) => g.id)).toContain(NODATA);
     expect(prisma.decision.create).toHaveBeenCalledTimes(1); // only the revenue-eligible one
   });
 
   it('no-ops honestly when no campaign has revenue OR engagement', async () => {
     mockCampaigns([camp({ revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
-    const res = await persistConnectorVerdicts(WS);
+    const res = await persist();
     expect(res.status).toBe('NO_ELIGIBLE_CAMPAIGNS');
     expect(prisma.decision.create).not.toHaveBeenCalled();
   });
@@ -103,7 +113,7 @@ describe('persistConnectorVerdicts', () => {
   it('is idempotent: writes no new row when the latest verdict is unchanged', async () => {
     mockCampaigns([camp()]);
     prisma.decision.findFirst.mockResolvedValue({ verdict: 'SCALE' });
-    const res = await persistConnectorVerdicts(WS);
+    const res = await persist();
     expect(prisma.decision.create).not.toHaveBeenCalled();
     expect(res.created).toHaveLength(0);
   });
@@ -113,12 +123,79 @@ describe('persistConnectorVerdicts', () => {
   });
 });
 
+// ============================================================
+// R8 — persistence is a SINK (I26)
+// ------------------------------------------------------------
+// It stores the verdict it was handed. It does not read evidence, it does not
+// run the engine, and it cannot be called without a result to store.
+// ============================================================
+describe('R8 · persistConnectorVerdicts stores the verdict it was given', () => {
+  // CONTROL 3 (persistence result differs from the computed verdict).
+  it('THE CONTRACT: the stored verdict is the evaluated one, not a re-derivation', async () => {
+    mockCampaigns([camp()]);
+    const evaluation = await evaluateConnectorVerdicts(WS);
+    const evaluated = evaluation.annotated.children[0];
+
+    await persistConnectorVerdicts(WS, evaluation);
+
+    const { data } = prisma.decision.create.mock.calls[0][0];
+    // Same verdict, same rationale, same confidence, same cause — because it is
+    // the same object, not a second computation that happens to agree.
+    expect(data.verdict).toBe(evaluated.verdict);
+    expect(data.diagnosis).toBe(evaluated.rationale);
+    expect(data.confidence).toBe(evaluated.verdictConfidence);
+    expect(data.rootCause).toBe(evaluated.rootCause ?? evaluated.signalType ?? null);
+  });
+
+  // CONTROL 2/12 (a downstream consumer recomputes). The evidence read is the
+  // observable proof: one logical evaluation must touch it exactly once.
+  it('reads the canonical evidence ZERO times of its own', async () => {
+    mockCampaigns([camp()]);
+    const evaluation = await evaluateConnectorVerdicts(WS);
+    expect(getCanonicalVerdictCampaigns).toHaveBeenCalledTimes(1);
+
+    await persistConnectorVerdicts(WS, evaluation);
+
+    // Still one. If persistence ever goes back to reading for itself, this is 2.
+    expect(getCanonicalVerdictCampaigns).toHaveBeenCalledTimes(1);
+  });
+
+  // CONTROL 9/10 (failure → invented or fallback verdict).
+  it('REFUSES a failed evaluation rather than persisting an empty set', async () => {
+    const failed = failedEvaluation(WS, new Error('canonical read timed out'));
+    await expect(persistConnectorVerdicts(WS, failed))
+      .rejects.toThrow('evaluation unavailable');
+    // Nothing written, and — critically — nothing SUPERSEDED either. Treating a
+    // failed evaluation as "no campaign is eligible" would supersede every live
+    // verdict in the workspace and empty the agenda on an outage.
+    expect(prisma.decision.create).not.toHaveBeenCalled();
+    expect(prisma.decision.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses to persist without an evaluation at all', async () => {
+    await expect(persistConnectorVerdicts(WS)).rejects.toThrow('evaluation required');
+    expect(prisma.decision.updateMany).not.toHaveBeenCalled();
+  });
+
+  // CONTROL 7 (workspace scoping loss). Threading makes this newly possible:
+  // a result computed for one account is now a value that can be passed around.
+  it('refuses an evaluation computed for a DIFFERENT workspace', async () => {
+    const OTHER = '00000000-1111-2222-3333-444444444444';
+    mockCampaigns([camp()]);
+    const evaluation = await evaluateConnectorVerdicts(OTHER);
+
+    await expect(persistConnectorVerdicts(WS, evaluation))
+      .rejects.toThrow('different workspace');
+    expect(prisma.decision.create).not.toHaveBeenCalled();
+  });
+});
+
 describe('persistConnectorVerdicts — stale-verdict prune (agenda de-inflation)', () => {
   it('supersedes PROPOSED verdicts for campaigns no longer in the eligible set', async () => {
     mockCampaigns([camp()]); // only CAMPAIGN is eligible now
     prisma.decision.updateMany.mockResolvedValue({ count: 2 }); // two orphans dropped out
 
-    const res = await persistConnectorVerdicts(WS);
+    const res = await persist();
 
     expect(res.superseded).toBe(2);
     expect(prisma.decision.updateMany).toHaveBeenCalledTimes(1);
@@ -132,7 +209,7 @@ describe('persistConnectorVerdicts — stale-verdict prune (agenda de-inflation)
 
   it('scopes the prune to connector verdicts only (signalType rootCause OR null) — never guardrail/allocation rows', async () => {
     mockCampaigns([camp()]);
-    await persistConnectorVerdicts(WS);
+    await persist();
     const { where } = prisma.decision.updateMany.mock.calls[0][0];
     expect(where.OR).toHaveLength(2);
     expect(where.OR[0].rootCause.in).toEqual(expect.arrayContaining(Object.values(SIGNAL_TYPE)));
@@ -147,7 +224,7 @@ describe('persistConnectorVerdicts — stale-verdict prune (agenda de-inflation)
     mockCampaigns([camp({ revenueMinor: 0, spendMinor: 0, impressions: 0 })]);
     prisma.decision.updateMany.mockResolvedValue({ count: 3 });
 
-    const res = await persistConnectorVerdicts(WS);
+    const res = await persist();
 
     expect(res.status).toBe('NO_ELIGIBLE_CAMPAIGNS');
     expect(res.superseded).toBe(3);
@@ -157,7 +234,7 @@ describe('persistConnectorVerdicts — stale-verdict prune (agenda de-inflation)
 
   it('the prune runs even when NO campaigns exist at all (honest empty account)', async () => {
     mockCampaigns([]);
-    const res = await persistConnectorVerdicts(WS);
+    const res = await persist();
     expect(res.status).toBe('NO_CAMPAIGNS');
     expect(prisma.decision.updateMany).toHaveBeenCalledTimes(1);
     expect(prisma.decision.updateMany.mock.calls[0][0].where.entityId).toBeUndefined();
@@ -170,7 +247,7 @@ describe('persistConnectorVerdicts — stale-verdict prune (agenda de-inflation)
     // PROPOSED is created even though the verdict text is unchanged.
     prisma.decision.findFirst.mockResolvedValue(null);
 
-    const res = await persistConnectorVerdicts(WS);
+    const res = await persist();
 
     const { where } = prisma.decision.findFirst.mock.calls[0][0];
     expect(where.status).toEqual({ not: 'SUPERSEDED' });

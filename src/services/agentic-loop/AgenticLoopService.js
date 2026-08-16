@@ -20,7 +20,7 @@ import { planAgenda } from './agenticPlanner.js';
 import { sweepGuardrails } from '../guardrail-engine/GuardrailSweepService.js';
 import { sweepFatigue } from '../fatigue-forecaster/FatigueSweepService.js';
 import { persistConnectorVerdicts } from '../verdict-engine/VerdictService.js';
-import { getConnectorVerdicts } from '../verdict-engine/index.js';
+import { getConnectorVerdicts, evaluateConnectorVerdicts, failedEvaluation } from '../verdict-engine/index.js';
 import { getConnectorCampaigns } from '../entity-graph/index.js';
 import { computeAccountHealth } from '../analysis/AccountHealthService.js';
 import { getPortfolio } from '../portfolio/PortfolioService.js';
@@ -86,10 +86,10 @@ async function loadLabels(workspaceId) {
  * verdict's agenda rank matches its Campaigns-page score. Best-effort by the
  * caller: a cold connector yields an empty map (items fall back to severity order).
  */
-async function loadImpactById(workspaceId) {
+async function loadImpactById(workspaceId, evaluation) {
   const [campaigns, cv] = await Promise.all([
     getConnectorCampaigns(workspaceId),
-    getConnectorVerdicts(workspaceId),
+    getConnectorVerdicts(workspaceId, { evaluation }),
   ]);
   const verdictMap = Object.fromEntries((cv?.verdicts ?? []).map((v) => [v.id, v]));
   const health = computeAccountHealth(campaigns, verdictMap);
@@ -100,8 +100,16 @@ async function loadImpactById(workspaceId) {
  * Load every organ's surface into the planner's inputs. Each source is
  * best-effort (a cold organ never fails the whole sweep). Shared read path for
  * runSweep + AgentHomeService.getHome.
+ *
+ * @param {string} workspaceId
+ * @param {object} [opts]
+ * @param {Date} [opts.now]
+ * @param {object} [opts.evaluation] — the sweep's single connector-verdict
+ *   evaluation (R8). Threaded through to impact scoring so the sweep does not
+ *   compute the same verdicts a second time. A plain home/agenda read supplies
+ *   none and gets its own single evaluation — one HTTP request, one evaluation.
  */
-export async function buildLoopInputs(workspaceId, { now = new Date() } = {}) {
+export async function buildLoopInputs(workspaceId, { now = new Date(), evaluation } = {}) {
   if (!workspaceId) throw new Error('buildLoopInputs: workspaceId required');
   const since = new Date(now.getTime() - ACTIVITY_RECENCY_DAYS * 86_400_000);
   const safe = (p, fallback) => p.catch(() => fallback);
@@ -154,7 +162,7 @@ export async function buildLoopInputs(workspaceId, { now = new Date() } = {}) {
     safe(getBlendedTruth(workspaceId), null),
     safe(getWeeklyAgenda(workspaceId).then((a) => a.slice(0, 5)), []),
     safe(prisma.workspace.findUnique({ where: { id: workspaceId }, select: { objective: true } }).then((w) => w?.objective ?? null), null),
-    safe(loadImpactById(workspaceId), new Map()),
+    safe(loadImpactById(workspaceId, evaluation), new Map()),
   ]);
   const activePlan = plans.find((p) => p.status === 'ACTIVE') ?? plans[0] ?? null;
   const planTracking = activePlan ? await safe(trackPlan(workspaceId, activePlan, { now }), null) : null;
@@ -193,6 +201,24 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
   }
 
   const startedAt = new Date(now);
+
+  // 0. ONE logical evaluation (R8 / I25). A sweep asks "what does the engine say
+  //    about this account right now?" exactly once, and the answer is then
+  //    carried to everyone who needs it: the persistence sink (step 1), impact
+  //    scoring (step 2), per-campaign reasoning (step 4) and portfolio narration
+  //    (step 5). Those four used to compute it independently — two to four full
+  //    passes over the same evidence per sweep, each read at a different instant,
+  //    so a sync landing mid-sweep could store one verdict and narrate another.
+  //
+  //    A failure is CARRIED, not retried: threading a failedEvaluation makes
+  //    every consumer re-raise rather than quietly proceed with an empty verdict
+  //    set (I29). It is also why this is not wrapped in `safe` — the marker, not
+  //    a null, is what the consumers can distinguish.
+  const evaluation = await evaluateConnectorVerdicts(workspaceId).catch((err) => {
+    logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] connector verdict evaluation failed');
+    return failedEvaluation(workspaceId, err);
+  });
+
   // 1. detect→propose: the organs that WRITE forward signals. Each is
   //    best-effort (a cold organ never fails the sweep) and runs BEFORE
   //    buildLoopInputs so this sweep also surfaces what it just wrote. None
@@ -202,11 +228,11 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
   await Promise.all([
     sweepGuardrails(workspaceId).catch((err) => logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] guardrail sweep skipped')),
     sweepFatigue(workspaceId, { now }).catch((err) => logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] fatigue sweep skipped')),
-    persistConnectorVerdicts(workspaceId).catch((err) => logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] connector verdict sweep skipped')),
+    persistConnectorVerdicts(workspaceId, evaluation).catch((err) => logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] connector verdict sweep skipped')),
   ]);
 
   // 2. load the unified picture and plan the agenda.
-  const inputs = await buildLoopInputs(workspaceId, { now });
+  const inputs = await buildLoopInputs(workspaceId, { now, evaluation });
   const agenda = planAgenda(inputs);
 
   // 3. audit the sweep.
@@ -270,7 +296,9 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
   //    an AI failure, cold gateway, or missing key never touches the sweep audit.
   try {
     const { generateReasoningForSweep } = await import('../analysis/CampaignReasoningService.js');
-    await generateReasoningForSweep({ workspaceId, loopRunId: loopRun.id });
+    // Threaded, not recomputed (R8): the reasoning must explain the verdicts
+    // step 1 actually stored, not a fresh set read moments later.
+    await generateReasoningForSweep({ workspaceId, loopRunId: loopRun.id, evaluation });
   } catch (err) {
     logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] reasoning pre-generation skipped');
   }
@@ -290,7 +318,7 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
   //    provider methods were left behind unused and have since been deleted.
   try {
     const { runPortfolioAnalysis } = await import('../analysis/PortfolioAnalysisService.js');
-    await runPortfolioAnalysis(workspaceId, { loopRunId: loopRun.id });
+    await runPortfolioAnalysis(workspaceId, { loopRunId: loopRun.id, evaluation });
   } catch (err) {
     logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] portfolio analysis skipped');
   }

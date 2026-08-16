@@ -13,6 +13,9 @@ const h = vi.hoisted(() => ({
   verdicts: [],
   gatewayResult: { success: true, output: { insight: 'Portfolio is stable.' } },
   gatewayThrows: false,
+  // R8 / I29 — the verdict computation itself failing, as distinct from an
+  // account that legitimately has no verdicts.
+  verdictsThrow: false,
 }));
 
 const loopRunUpdate = vi.hoisted(() => vi.fn().mockResolvedValue({}));
@@ -37,7 +40,10 @@ vi.mock('../verdict-engine/index.js', async () => {
   // taxonomy (an awareness campaign must never be told it needs revenue).
   const real = await vi.importActual('../verdict-engine/connectorVerdictService.js');
   return {
-    getConnectorVerdicts: vi.fn(async () => ({ verdicts: h.verdicts })),
+    getConnectorVerdicts: vi.fn(async () => {
+      if (h.verdictsThrow) throw new Error('canonical read timed out');
+      return { verdicts: h.verdicts };
+    }),
     needsRevenueData: real.needsRevenueData,
   };
 });
@@ -53,6 +59,7 @@ vi.mock('../ai-gateway/ProviderGateway.js', () => ({
 
 import { runPortfolioAnalysis, enrichCampaigns, countVerdicts } from './PortfolioAnalysisService.js';
 import { execute } from '../ai-gateway/ProviderGateway.js';
+import { getConnectorVerdicts } from '../verdict-engine/index.js';
 
 // A conversion campaign that spent but measured no revenue → needs revenue.
 const conversionNoRevenue = {
@@ -75,6 +82,7 @@ beforeEach(() => {
   h.verdicts = [{ id: 'c1', verdict: 'KILL' }, { id: 'c3', verdict: 'SCALE' }];
   h.gatewayResult = { success: true, output: { insight: 'Portfolio is stable.' } };
   h.gatewayThrows = false;
+  h.verdictsThrow = false;
   vi.clearAllMocks();
   loopRunUpdate.mockResolvedValue({});
 });
@@ -159,5 +167,46 @@ describe('PortfolioAnalysisService — pure helpers', () => {
   it('countVerdicts counts only real verdicts (an unscored campaign adds nothing)', () => {
     expect(countVerdicts([{ verdict: 'KILL' }, { verdict: 'KILL' }, { verdict: 'SCALE' }, { verdict: null }]))
       .toEqual({ KILL: 2, SCALE: 1 });
+  });
+});
+
+// ============================================================
+// R8 / I29 — a verdict OUTAGE narrates nothing, rather than narrating calm
+// ------------------------------------------------------------
+// This service used to `.catch(() => ({ verdicts: [] }))` around its verdict
+// read. Its whole job is to narrate the deterministic verdicts, so an empty set
+// produced a prompt describing a portfolio with no KILLs, no SCALEs and nothing
+// to act on — a confident all-clear written over an outage, then stored on the
+// LoopRun as the Overview's AI Insight.
+// ============================================================
+describe('R8 · verdicts unavailable', () => {
+  it('narrates NOTHING when the verdicts could not be computed', async () => {
+    h.verdictsThrow = true;
+    const out = await runPortfolioAnalysis('ws1', { loopRunId: 'run1' });
+
+    expect(out).toBeNull();                    // the contract's "nothing honest to say"
+    expect(execute).not.toHaveBeenCalled();    // the model is never asked
+    expect(loopRunUpdate).not.toHaveBeenCalled(); // and no insight is stored
+  });
+
+  it('still fails its caller SOFTLY — a sweep is never brought down by this', async () => {
+    h.verdictsThrow = true;
+    await expect(runPortfolioAnalysis('ws1', { loopRunId: 'run1' })).resolves.toBeNull();
+  });
+
+  it('an account that genuinely has NO verdicts is still narrated — the two differ', async () => {
+    // Verdicts computed fine and came back empty. Real campaigns with real spend
+    // remain worth describing; only the failure case is silent.
+    h.verdicts = [];
+    const out = await runPortfolioAnalysis('ws1', { loopRunId: 'run1' });
+    expect(out?.insight).toBe('Portfolio is stable.');
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('CONSUMES the sweep evaluation rather than computing its own', async () => {
+    const evaluation = { workspaceId: 'ws1', annotated: null, gatedOut: [], campaigns: [], tree: null, status: 'OK' };
+    await runPortfolioAnalysis('ws1', { loopRunId: 'run1', evaluation });
+    const [, opts] = getConnectorVerdicts.mock.calls[0];
+    expect(opts).toEqual({ evaluation });
   });
 });

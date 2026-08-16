@@ -22,6 +22,8 @@
 //   derivation and no currency conversion is needed. Display-time conversion
 //   (minor → major) happens once, at the client boundary.
 // ============================================================
+import { FATIGUE_FREQ }              from '../verdict-engine/benchmarkProvider.js';
+import { AWARENESS_SATURATION_FREQ } from '../verdict-engine/verdictEngine.js';
 
 // Currency-relative thresholds — ratios/percentages, never USD absolutes, so
 // they hold identically for an EGP or KWD account as for USD.
@@ -31,18 +33,22 @@
 // VERDICT WINDOW, 30 days. CALIBRATION: UNKNOWN, same status as the verdict
 // engine's own thresholds.
 //
-// FREQ_HIGH/FREQ_ELEVATED are COPIES of the verdict engine's numbers, not
-// imports — "matches the verdict engine's fatigue floor" is maintained by hand.
-// Two homes for one uncalibrated pair means a future recalibration has to find
-// both. Left as-is here because unifying them changes an import graph, and this
-// contract PR changes no behaviour; it is a real item for the recalibration
-// work, not a nit.
+// FREQ_HIGH/FREQ_ELEVATED were COPIES of the verdict engine's numbers, carrying
+// the comment "matches the verdict engine's fatigue floor" — maintained by hand,
+// so a recalibration of the engine would have left this service silently judging
+// fatigue by the old bar. R8 §10 replaces the literals with the canonical
+// bindings. Same values (3.5 / 3.0), so no behaviour moves; what changes is that
+// there is now one place to change them.
+//
+// FATIGUE_FREQ comes from benchmarkProvider, which is its canonical home — the
+// verdictEngine re-export exists only as a convenience for a reader already
+// holding that module, and going through it would add an import for nothing.
 const THRESHOLDS = Object.freeze({
-  SPEND_FLOOR_PCT: 0.01, // a campaign must be ≥ 1% of account spend to be scored
-  FREQ_HIGH:       3.5,  // heavy saturation (matches the verdict engine's fatigue floor)
-  FREQ_ELEVATED:   3.0,  // mild saturation
-  CTR_STRONG_PCT:  2.0,  // % — a strong hook
-  CTR_WEAK_PCT:    0.5,  // % — a weak hook
+  SPEND_FLOOR_PCT: 0.01,               // a campaign must be ≥ 1% of account spend to be scored
+  FREQ_HIGH:       FATIGUE_FREQ,       // heavy saturation — the engine's fatigue ceiling
+  FREQ_ELEVATED:   AWARENESS_SATURATION_FREQ, // mild saturation — the engine's awareness floor
+  CTR_STRONG_PCT:  2.0,                // % — a strong hook
+  CTR_WEAK_PCT:    0.5,                // % — a weak hook
 });
 
 // Verdicts whose spend counts as WASTED. KILL = stop entirely; REFRESH = the

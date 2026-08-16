@@ -142,3 +142,35 @@ describe('GET /entities/health', () => {
     expect(res.body.error).toBe('HealthUnavailable');
   });
 });
+
+// ============================================================
+// R8 §9 — one HTTP request, one verdict computation
+// ------------------------------------------------------------
+// /entities/verdicts and /entities/health both run the verdict pipeline, and
+// the Campaigns page mounts hooks against both — so ONE page load computes
+// verdicts twice. That is two SEPARATE HTTP requests, which R8 §4B defines as
+// two logical evaluations, and unifying them would mean caching a result across
+// requests — the one mechanism §5 forbids.
+//
+// What R8 does require is that neither request computes twice INSIDE itself.
+// /entities/health was already correct here; this pins it, because the route
+// reads the connector graph AND the verdicts and the obvious "just add the
+// verdict map" change is exactly the one that would quietly make it two.
+// ============================================================
+describe('R8 · /entities/health computes the verdict once per request', () => {
+  it('runs the verdict pipeline exactly ONCE', async () => {
+    await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(200);
+    expect(getConnectorVerdicts).toHaveBeenCalledTimes(1);
+    // …for THIS workspace, with no second scoping argument that could widen it.
+    expect(getConnectorVerdicts).toHaveBeenCalledWith('ws1');
+  });
+
+  it('derives every health figure from that one verdict set — it re-judges nothing', async () => {
+    const res = await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(200);
+    // 'b' is the KILL the engine returned; the route must report that verdict,
+    // not one it worked out from roas 0.5 on its own (I27).
+    const b = res.body.campaigns.find((c) => c.entityId === 'b');
+    expect(b.verdict).toBe('KILL');
+    expect(getConnectorVerdicts).toHaveBeenCalledTimes(1);
+  });
+});

@@ -121,6 +121,20 @@ function mapOrchestrator(data, mode, campaignId) {
   };
 }
 
+// ── R8 · KNOWN DEAD VERDICT AUTHORITY — do not wire this up ─────────────────
+// The line below derives a verdict from a score, client-side. So does
+// mapStrategy (hardcoded 'SCALE') and normalizeVerdict (a 'HOLD' fallback, and
+// an 'OPTIMIZE' the backend engine cannot emit at all). That is a second verdict
+// authority, and it violates I27.
+//
+// It is UNREACHABLE today: these mappers are only called by runContentFlow /
+// runStrategyFlow / runCampaignFlow, which are only called by useOrchestrate,
+// which has zero importers. Only `fetchContext` in this file is live (via
+// useOnboardingContext). R8 leaves the code in place rather than spending its
+// scope on unreachable client architecture — removal belongs to R12 Legacy
+// Cleanup — and pins the unreachability instead: verdictAuthority.test.js fails
+// the moment anything imports useOrchestrate, which is the only way this
+// derivation could ever reach a screen.
 function mapContent(data) {
   const score   = Number(data?.score) || 0;
   const verdict = score >= 75 ? 'SCALE' : score >= 50 ? 'OPTIMIZE' : 'KILL';

@@ -11,8 +11,7 @@ import { prisma }                  from '../../lib/prisma.js';
 import { logger }                  from '../../utils/logger.js';
 import { rollupVerdicts }          from './verdictEngine.js';
 import { applyRelativeRanking }     from './relativeRanking.js';
-import { getCanonicalVerdictCampaigns } from '../entity-graph/index.js';
-import { buildConnectorVerdictTree } from './connectorVerdictService.js';
+import { assertUsableEvaluation }    from './connectorVerdictService.js';
 import { toReasoningArtifact, toCounterfactualArtifact } from './reasoningArtifact.js';
 import { toEvidenceReference }     from './evidenceReference.js';
 import { connectorDecisionScope }  from './decisionIdentity.js';
@@ -186,7 +185,47 @@ async function persistNode(workspaceId, node, created) {
 }
 
 /**
- * Evaluate + persist multi-level verdicts for an entity tree.
+ * THE PERSISTENCE SINK (R8 / I26). Writes an ALREADY-EVALUATED tree. It does not
+ * call the engine, and it must never learn how: the verdict it stores has to be
+ * the verdict its caller computed, not a second one that agrees with it by
+ * construction. "They agree because they run the same code on the same rows" is
+ * a property that holds until the day two reads land either side of a sync.
+ *
+ * @param {string} workspaceId
+ * @param {object} annotated — output of rollupVerdicts (+ applyRelativeRanking)
+ * @param {object} [opts]
+ * @param {boolean} [opts.skipRoot=false] — persist the CHILDREN only.
+ *   The connector tree's ACCOUNT root is keyed by workspaceId, which is not an
+ *   entity. It used to be skipped implicitly, because the write path built a
+ *   ROOTLESS literal (`{ level: 'ACCOUNT', children }`) and persistNode ignores
+ *   a node with no id. Now that both twins share ONE tree — the read path's,
+ *   which does carry `id: workspaceId` so the payload can name the account —
+ *   that implicit skip would silently become an ACCOUNT Decision row per sweep
+ *   with a workspace id in its entityId column. Made explicit rather than
+ *   re-introducing a second tree shape to keep an accident working.
+ * @returns {Promise<{ annotated:object, created:Array }>}
+ */
+export async function persistAnnotatedVerdicts(workspaceId, annotated, { skipRoot = false } = {}) {
+  if (!workspaceId) throw new Error('persistAnnotatedVerdicts: workspaceId required');
+  if (!annotated) throw new Error('persistAnnotatedVerdicts: annotated tree required');
+  const created = [];
+  if (skipRoot) {
+    for (const child of annotated.children ?? []) await persistNode(workspaceId, child, created);
+  } else {
+    await persistNode(workspaceId, annotated, created);
+  }
+  logger.info({ workspaceId, decisions: created.length }, '[VerdictService] level verdicts persisted');
+  return { annotated, created };
+}
+
+/**
+ * Evaluate + persist multi-level verdicts for a RAW entity tree.
+ *
+ * NOT the connector path. The connector verdict is evaluated once per logical
+ * evaluation by evaluateConnectorVerdicts and threaded to the sink above; this
+ * entry remains for a caller that holds a hand-built tree and no evaluation —
+ * today, the persistence tests that exercise persistNode directly.
+ *
  * @param {string} workspaceId
  * @param {object} entityTree — Account/Campaign tree with leaf metrics
  * @param {object} [opts] — passed to rollupVerdicts (currency, guardrailHitsByEntity)
@@ -195,16 +234,11 @@ async function persistNode(workspaceId, node, created) {
 export async function persistLevelVerdicts(workspaceId, entityTree, opts = {}) {
   if (!workspaceId) throw new Error('persistLevelVerdicts: workspaceId required');
   const rolled = rollupVerdicts(entityTree, opts);
-  // Connector sweeps opt into the portfolio-relative post-pass (bottom/top of a
-  // cohort upgrades an undecided HOLD/WATCH to KILL/SCALE). Pure + deterministic;
-  // default OFF so any other caller keeps pure absolute-threshold verdicts. The
-  // upgraded verdict rides the EXISTING persistNode path — one row per entity,
-  // same rootCause tagging, no separate relative-verdict table.
+  // The portfolio-relative post-pass (bottom/top of a cohort upgrades an
+  // undecided HOLD/WATCH to KILL/SCALE). Pure + deterministic; default OFF so a
+  // non-connector caller keeps pure absolute-threshold verdicts.
   const annotated = opts.relativeRanking ? applyRelativeRanking(rolled) : rolled;
-  const created = [];
-  await persistNode(workspaceId, annotated, created);
-  logger.info({ workspaceId, decisions: created.length }, '[VerdictService] level verdicts persisted');
-  return { annotated, created };
+  return persistAnnotatedVerdicts(workspaceId, annotated);
 }
 
 /**
@@ -241,49 +275,52 @@ async function supersedeDroppedConnectorVerdicts(workspaceId, eligibleIds) {
 }
 
 /**
- * Read live connector campaigns, score them through the verdict engine, and
- * PERSIST the campaign-level verdicts as PROPOSED Decisions. This is the write
- * twin of connectorVerdictService.getConnectorVerdicts (which is deliberately
- * read-only): same tree, same engine, same revenue gate — only this path
- * commits rows. (connectorVerdictService stays pure; persistence lives here, per
- * its own contract comment.)
+ * PERSIST an evaluated connector verdict set as PROPOSED Decisions.
  *
- * Three correctness seams:
+ * R8: this is a SINK, not a twin. It used to read canonical evidence and run the
+ * engine itself, independently of the read path that had just run the identical
+ * pipeline over the identical rows — two computations of one logical decision,
+ * separated by however long the first took. They agreed in practice and could
+ * not be relied on to: a sync landing between them writes a Decision the agenda
+ * beside it does not describe. It now receives the ONE evaluation its caller
+ * made and stores exactly that (I26).
+ *
+ * Three correctness seams, unchanged:
  *  - REVENUE GATE: buildConnectorVerdictTree drops campaigns with no measured
  *    revenue, so a workspace with no real revenue persists NOTHING (never a
- *    fabricated verdict) — tree is null and we write no new rows.
- *  - SYNTHETIC ROOT: that tree's ACCOUNT root is keyed by workspaceId (not a
- *    real entity), so we hand persistLevelVerdicts a ROOTLESS account node —
- *    only the real campaign children (entity-graph UUIDs) become Decision rows.
- *  - STALE PRUNE: verdicts for entities NOT in this sweep's eligible set are
+ *    fabricated verdict) — `annotated` is null and we write no new rows.
+ *  - SYNTHETIC ROOT: the ACCOUNT root is keyed by workspaceId, not a real
+ *    entity → `skipRoot`, so only campaign children become Decision rows.
+ *  - STALE PRUNE: verdicts for entities NOT in this evaluation's eligible set are
  *    superseded (runs even when nothing is eligible) so the agenda never carries
  *    a verdict for a campaign that no longer qualifies or no longer exists.
  *
  * Invoked from the agentic-loop sweep (cron / gated POST /loop/run /
  * rate-limited on-read) — never from a GET, never auto-executed (PROPOSED).
  *
+ * @param {string} workspaceId
+ * @param {object} evaluation — REQUIRED. From evaluateConnectorVerdicts, for this
+ *   workspace. Not optional by design: an optional one would let a caller omit it
+ *   and silently restore the second computation this exists to remove.
  * @returns {Promise<{ created:Array, gatedOut:Array, superseded:number, status:string }>}
  */
-export async function persistConnectorVerdicts(workspaceId) {
+export async function persistConnectorVerdicts(workspaceId, evaluation) {
   if (!workspaceId) throw new Error('persistConnectorVerdicts: workspaceId required');
-  // Canonical evidence, exactly as the read twin uses (Phase D.4). The two must
-  // never diverge: a stored Decision built from a different population than the
-  // one on screen is the "wrong row behind the button" class this service
-  // already guards against elsewhere.
-  const { campaigns, noCanonicalWindow } = await getCanonicalVerdictCampaigns(workspaceId);
-  const { tree, gatedOut: dataless } = buildConnectorVerdictTree(workspaceId, campaigns);
-  const gatedOut = [...dataless, ...noCanonicalWindow];
-  const eligibleIds = tree ? tree.children.map((c) => c.id) : [];
+  if (!evaluation) throw new Error('persistConnectorVerdicts: evaluation required');
+  assertUsableEvaluation('persistConnectorVerdicts', workspaceId, evaluation);
+
+  const { annotated, gatedOut } = evaluation;
+  const eligibleIds = annotated ? annotated.children.map((c) => c.id) : [];
 
   // Prune stale verdicts BEFORE (and regardless of) this sweep's writes — a
   // campaign that lost eligibility, or the whole account going dataless, must
   // not leave a lingering PROPOSED verdict behind.
   const superseded = await supersedeDroppedConnectorVerdicts(workspaceId, eligibleIds);
 
-  if (!tree) {
-    return { created: [], gatedOut, superseded, status: gatedOut.length ? 'NO_ELIGIBLE_CAMPAIGNS' : 'NO_CAMPAIGNS' };
+  if (!annotated) {
+    return { created: [], gatedOut, superseded, status: evaluation.status };
   }
-  const { created } = await persistLevelVerdicts(workspaceId, { level: 'ACCOUNT', children: tree.children }, { relativeRanking: true });
+  const { created } = await persistAnnotatedVerdicts(workspaceId, annotated, { skipRoot: true });
   logger.info({ workspaceId, created: created.length, gatedOut: gatedOut.length, superseded }, '[VerdictService] connector verdicts persisted');
   return { created, gatedOut, superseded, status: 'OK' };
 }
