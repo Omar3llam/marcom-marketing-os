@@ -10,7 +10,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import {
-  getAccuracy, recordOutcome, listPendingOutcomes, validateOutcomeBody,
+  getAccuracy, recordOutcome, listPendingOutcomes, validateOutcomeBody, OUTCOME_ERROR,
 } from '../../services/decision-accuracy/DecisionAccuracyService.js';
 import { accuracySurface } from '../../services/decision-accuracy/accuracyTypes.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
@@ -81,7 +81,19 @@ accuracyRouter.get('/decisions/pending-outcomes', requireOperator, async (req, r
 
 // ─────────────────────────────────────────────────────────────
 // POST /decisions/:id/outcome — record the realized outcome (human-asserted).
-// 422 bad body · 404 wrong workspace / unknown id · 409 not EXECUTED · 201 ok.
+// 422 bad body / impossible window · 404 wrong workspace / unknown id ·
+// 409 not EXECUTED · 201 ok.
+//
+// The body carries what the operator MEASURED. It never carries provenance:
+// `evidenceReference` is projected server-side from real rows and a client that
+// sends one is ignored, because a claim about the database made by something
+// that cannot see the database is worse than no claim at all.
+//
+// R6 also fixes a refusal that never fired. The 409 branch matched
+// `/not EXECUTED/i` against a message reading "has not been executed" — the two
+// never met, so an unexecuted decision returned 500 where the contract says 409.
+// The service now names its refusals with codes; the message regexes are kept
+// underneath as a fallback for anything that still throws a bare Error.
 // ─────────────────────────────────────────────────────────────
 accuracyRouter.post('/decisions/:id/outcome', requireOperator, async (req, res) => {
   const wsId = await need(req, res); if (!wsId) return;
@@ -89,11 +101,21 @@ accuracyRouter.post('/decisions/:id/outcome', requireOperator, async (req, res) 
   if (verr) return res.status(422).json({ error: 'BadOutcome', message: verr });
   try {
     const out = await recordOutcome(wsId, req.params.id, req.body);
-    logger.info({ wsId, decisionId: req.params.id }, '[lumi/accuracy] outcome recorded');
+    logger.info(
+      { wsId, decisionId: req.params.id, outcomeId: out.outcome?.id, previousOutcomeId: out.previousOutcomeId },
+      '[lumi/accuracy] outcome recorded',
+    );
     return res.status(201).json(out);
   } catch (err) {
-    if (/not found/i.test(err.message)) return res.status(404).json({ error: 'DecisionNotFound', message: err.message });
-    if (/not EXECUTED/i.test(err.message)) return res.status(409).json({ error: 'DecisionNotExecuted', message: err.message });
+    if (err.code === OUTCOME_ERROR.DECISION_NOT_FOUND || /not found/i.test(err.message)) {
+      return res.status(404).json({ error: 'DecisionNotFound', message: err.message });
+    }
+    if (err.code === OUTCOME_ERROR.NOT_EXECUTED || /not (been )?executed|was dismissed/i.test(err.message)) {
+      return res.status(409).json({ error: 'DecisionNotExecuted', message: err.message });
+    }
+    if (err.code === OUTCOME_ERROR.INVALID_WINDOW) {
+      return res.status(422).json({ error: 'BadOutcomeWindow', message: err.message });
+    }
     logger.error({ err: err.message, wsId, decisionId: req.params.id }, '[lumi/accuracy] record outcome failed');
     return res.status(500).json({ error: 'RecordOutcomeFailed', message: 'Request failed' });
   }

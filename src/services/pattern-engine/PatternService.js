@@ -14,6 +14,7 @@ import { randomUUID } from 'crypto';
 import { prisma }      from '../../lib/prisma.js';
 import { logger }      from '../../utils/logger.js';
 import { selectOperationalSnapshots } from '../evidence/index.js';
+import { CURRENT_OUTCOME_WHERE } from '../decision-accuracy/outcomeSelection.js';
 import { extractPatterns } from './patternEngine.js';
 import { PATTERN_STATUS }   from './patternTypes.js';
 import { TEMPORAL }         from '../../config/temporal.js';
@@ -105,8 +106,30 @@ export async function getBriefing(workspaceId, { now = new Date(), lookbackDays 
     }),
     prisma.testExperiment.findMany({ where: { workspaceId } }),
   ]);
+  // R6: the CURRENT outcome of each decision, explicitly projected.
+  //
+  // Two changes forced by supersession, neither of them a scoring change:
+  //   • `supersededAt: null`. Re-recording an outcome now appends instead of
+  //     overwriting, so this read would otherwise return several rows for one
+  //     decision and extractPatterns would count a corrected result and the
+  //     result it corrected as two independent observations of the same call.
+  //   • an explicit `select`. This was a SELECT * that survived only because
+  //     nothing had been added to the table; the four R6 columns would have
+  //     widened it silently and thrown during migration lag (#209). It projects
+  //     what buildPatternInputs reads, and nothing else.
+  //
+  // The pattern engine's own definition of a correct KILL (`sustained === true`)
+  // deliberately still differs from SUCCESS_PREDICATES.KILL. That divergence is
+  // a live product question and is NOT reconciled here.
   const outcomes = decisions.length
-    ? await prisma.outcomeSnapshot.findMany({ where: { workspaceId, decisionId: { in: decisions.map((d) => d.id) } } })
+    ? await prisma.outcomeSnapshot.findMany({
+      where: {
+        workspaceId,
+        decisionId: { in: decisions.map((d) => d.id) },
+        ...CURRENT_OUTCOME_WHERE,
+      },
+      select: { decisionId: true, sustained: true },
+    })
     : [];
 
   const inputs = buildPatternInputs({ decisions, outcomes, snapshots, tests });

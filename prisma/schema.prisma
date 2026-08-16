@@ -1467,11 +1467,35 @@ model OutcomeSnapshot {
   sustained   Boolean? // did the lift hold?
   createdAt   DateTime  @default(now())
 
+  // R6 (I19) — a recorded outcome must be able to name what it measured, and
+  // must not change after the fact.
+  //
+  // measuredAt: when the operator ESTABLISHED the result. Deliberately not
+  // createdAt (when the row was written), not executedAt (when they acted), and
+  // not observedAt (which belongs to the evidence rows). Nullable for the rows
+  // recorded before R6 — an unrecorded fact stays unrecorded, never backfilled.
+  measuredAt DateTime?
+
+  // The evidence Lumi holds for the entity over the measured period. Same shape
+  // as Decision.evidenceReference and a DIFFERENT question: that one describes
+  // what the decision was made from, this one what the outcome was measured
+  // against. Storage, not search — nothing queries into it.
+  evidenceReference Json?
+
+  // Supersession, not overwrite. Re-recording CREATES a new row; the previous
+  // one keeps its values, its provenance and its measuredAt, and gains only the
+  // two columns that say it is no longer current. `supersededAt IS NULL` is the
+  // definition of the current outcome (outcomeSelection.js owns it).
+  supersededAt   DateTime?
+  supersededById String?   @db.Uuid
+
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   decision  Decision  @relation(fields: [decisionId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([decisionId])
+  // The current-outcome read: one decision's non-superseded row.
+  @@index([decisionId, supersededAt])
   @@map("outcome_snapshots")
 }
 

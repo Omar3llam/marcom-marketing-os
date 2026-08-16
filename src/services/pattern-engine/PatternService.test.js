@@ -199,4 +199,40 @@ describe('R3.2 — PatternService on the Evidence seam', () => {
       await expect(getBriefing(WS, { now: NOW })).rejects.toThrow('db down');
     });
   });
+
+  // ── R6: outcomes are now a history, so this read has to say which one ──
+  describe('the outcome read after supersession', () => {
+    const withDecision = async () => {
+      prisma.decision.findMany.mockResolvedValue([
+        { id: 'dec-1', entityId: 'e1', entityLevel: 'CAMPAIGN', verdict: 'KILL', createdAt: NOW },
+      ]);
+      await getBriefing(WS, { now: NOW });
+      return prisma.outcomeSnapshot.findMany.mock.calls[0][0];
+    };
+
+    it('reads only the CURRENT outcome of each decision', async () => {
+      // Re-recording appends. Without this predicate a corrected result and the
+      // result it corrected would arrive as two independent observations of the
+      // same call, and the pattern would count one decision twice.
+      const args = await withDecision();
+      expect(args.where.supersededAt).toBeNull();
+      expect(args.where.decisionId).toEqual({ in: ['dec-1'] });
+    });
+
+    it('stays workspace-scoped', async () => {
+      expect((await withDecision()).where.workspaceId).toBe(WS);
+    });
+
+    it('names its projection — the four R6 columns must not widen it silently', async () => {
+      // It was a SELECT *, which survived only because nothing had been added to
+      // the table. An unprojected read on a freshly-migrated column is #209.
+      expect((await withDecision()).select).toEqual({ decisionId: true, sustained: true });
+    });
+
+    it('does not read outcomes at all when there are no decisions', async () => {
+      prisma.decision.findMany.mockResolvedValue([]);
+      await getBriefing(WS, { now: NOW });
+      expect(prisma.outcomeSnapshot.findMany).not.toHaveBeenCalled();
+    });
+  });
 });
