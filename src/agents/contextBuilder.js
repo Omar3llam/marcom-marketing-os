@@ -6,35 +6,28 @@
 // system prompt. Keeps the wording identical across providers
 // so A/B tests measure the *model*, not the prompt.
 //
-// Contract (fixed by Phase 4 spec):
+// Contract:
 //   - Always include CampaignState.stage (TESTING|SCALING|...)
-//   - Always include the LAST 3 DecisionMemory entries — no more.
-//     This is a hard cap to keep the prompt bounded and avoid
-//     "memory soup" where stale signals dilute fresh ones.
 //
-// ── "NO MEMORY SUBSTRATE" IS NOT "MEMORY WITH ZERO ITEMS" ───────────────────
-// Both used to render the same line to the model: "(no prior decisions on
-// record)". They are different claims, and only one of them is ours to make.
+// ── R7: WHAT THIS MODULE NO LONGER CLAIMS ──────────────────────────────────
+// It used to carry "the LAST 3 DecisionMemory entries", and a careful
+// three-state contract for them: [] meant "we looked and this campaign has no
+// history" (a fact about the campaign), null meant "we could not look at all"
+// (a fact about Lumi). The distinction was right, and the header argued for it
+// at length.
 //
-//   []    → we read the memory source and this campaign has no history.
-//           A fact about the CAMPAIGN. Fine to state.
-//   null  → we could not read the memory source at all.
-//           A fact about LUMI. Reporting it as "no prior decisions" tells the
-//           model something about the campaign that we never established.
+// The read underneath it was invalid the whole time. It projected columns —
+// campaignId, decisionRationale, deltaRoas, isSustainable — that the
+// DecisionMemory table does not have, so it could only reject, and the null
+// branch was the only branch that ever ran. Every campaign context ever built
+// said "(decision memory unavailable)".
 //
-// This matters more than it looks, because the substrate is thin. The legacy
-// DecisionMemory table's only production writer is temporalObserver, which
-// sweeps Actions in EXECUTED_SUCCESS — and Action's only remaining producer is
-// the rollback route, which needs an EXECUTED_SUCCESS Action to invert. The
-// origin of both (the CSV upload service) was deleted with the upload route in
-// PR #164. Same for CampaignState. So on a post-#164 workspace this read
-// returns [] not because the campaign is new, but because nothing writes here.
-//
-// That does NOT make an empty result dishonest by itself — a workspace with
-// residual pre-#164 rows is a real state, and this module cannot query "does
-// this table have a producer". What it CAN do is stop collapsing the two cases:
-// a read that fails now yields null and says so, instead of arriving at the
-// prompt indistinguishable from a genuinely quiet campaign.
+// R7 removed the read rather than repairing it: the canonical record of what
+// Lumi decided is the Decision table, and this module cannot reach it — it keys
+// on CampaignState.campaignId (a plain String) while Decision.entityId is a
+// @db.Uuid from the entity graph. Wiring that identity together is a new
+// capability, not a consolidation, so the section is gone until someone asks
+// for it deliberately.
 // ============================================================
 import { prisma } from '../lib/prisma.js';
 
@@ -46,40 +39,34 @@ import { prisma } from '../lib/prisma.js';
  * then decides whether to fall back to a generic prompt). That was already the
  * contract and is unchanged.
  *
- * `recent` is three-state, deliberately:
- *   Array (non-empty) — real history
- *   []                — read succeeded, this campaign has none
- *   null              — the memory source could not be read
+ * R7 — the decision-memory half of this context is GONE, not repointed.
+ *
+ * It read DecisionMemory with a Shape-B projection (`campaignId`,
+ * `decisionRationale`, `deltaRoas`, `isSustainable`, …) against a table that has
+ * none of those columns, so the query could only ever reject. The `.catch`
+ * below it turned that into null, and the renderer faithfully printed
+ * "(decision memory unavailable)" — on every call, for every campaign, since
+ * the divergence. The honest-null machinery worked perfectly; there was simply
+ * never anything behind it.
+ *
+ * Not repointed to the canonical spine, deliberately: this function keys on
+ * CampaignState.campaignId, a plain legacy String, and Decision.entityId is a
+ * @db.Uuid from the entity graph — the same identifier mismatch that forced the
+ * orchestrator's read to stay workspace-scoped. Giving this prompt real
+ * decision history is a new capability, and R7 does not add capabilities.
  */
 export async function buildCampaignContext(campaignId) {
   if (!campaignId) return null;
 
-  const [state, recent] = await Promise.all([
-    prisma.campaignState.findUnique({
-      where: { campaignId },
-      select: {
-        stage: true, healthScore: true, lastAnalysis: true, workspaceId: true,
-      },
-    }),
-    prisma.decisionMemory.findMany({
-      where:   { campaignId },
-      orderBy: { createdAt: 'desc' },
-      take:    3,                                  // hard cap per spec
-      select: {
-        actionType: true, decisionRationale: true, resultStatus: true,
-        deltaCtr: true, deltaRoas: true,
-        impactDurationHrs: true, isSustainable: true, createdAt: true,
-      },
-      // null, NOT []. A failed read is "we do not know", and the renderer says
-      // exactly that. Swallowing it into an empty array would put a claim about
-      // the campaign's history into the prompt on the strength of a DB error.
-      // It also stops a legacy-table read from taking down the agent call it was
-      // only ever meant to decorate.
-    }).catch(() => null),
-  ]);
+  const state = await prisma.campaignState.findUnique({
+    where: { campaignId },
+    select: {
+      stage: true, healthScore: true, lastAnalysis: true, workspaceId: true,
+    },
+  });
 
   if (!state) return null;
-  return { state, recent };
+  return { state };
 }
 
 /**
@@ -89,30 +76,18 @@ export async function buildCampaignContext(campaignId) {
  */
 export function renderContextPrompt(ctx) {
   if (!ctx) return '';
-  const { state, recent } = ctx;
+  const { state } = ctx;
 
-  // Three states, three lines. The middle one is the one that used to be
-  // missing: "we could not read the memory source" said "no prior decisions",
-  // which is a claim about the campaign made on the strength of our own failure.
-  const memLines = recent == null
-    ? '  (decision memory unavailable — this campaign\'s history could not be read)'
-    : recent.length === 0
-      ? '  (no prior decisions on record)'
-      : recent.map((m, i) => {
-        const dCtr  = m.deltaCtr  == null ? 'n/a' : (m.deltaCtr  >= 0 ? `+${m.deltaCtr.toFixed(4)}`  : m.deltaCtr.toFixed(4));
-        const dRoas = m.deltaRoas == null ? 'n/a' : (m.deltaRoas >= 0 ? `+${m.deltaRoas.toFixed(2)}` : m.deltaRoas.toFixed(2));
-        const sus   = m.isSustainable === true  ? 'sustained'
-                    : m.isSustainable === false ? 'regressed' : 'pending';
-        return `  ${i + 1}. ${m.actionType} → ${sus} (ΔCTR ${dCtr}, ΔROAS ${dRoas}) — "${m.decisionRationale}"`;
-      }).join('\n');
-
+  // R7 — the "Recent decisions" section is gone with the read behind it. It
+  // rendered one of three lines, and in practice always the same one:
+  // "(decision memory unavailable)". A prompt line that says the same thing on
+  // every call for every campaign is not context; it is a constant, and the
+  // model was paying attention to it.
   return [
     '── CAMPAIGN CONTEXT ──────────────────────────',
     `Stage:        ${state.stage}`,
     `Health score: ${state.healthScore?.toFixed(2) ?? 'n/a'}`,
     `Last sweep:   ${state.lastAnalysis?.toISOString() ?? 'n/a'}`,
-    'Recent decisions (most recent first, capped at 3):',
-    memLines,
     '──────────────────────────────────────────────',
   ].join('\n');
 }

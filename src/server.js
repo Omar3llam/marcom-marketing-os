@@ -43,8 +43,10 @@ import paidRouter             from './routes/paid.js';
 import executionRouter        from './routes/execution/index.js';
 import artifactApprovalRouter from './routes/artifact-approval.js';
 import eventsRouter           from './routes/events.js';
-import memoryRouter           from './routes/memory.js';
-import decisionMemoryRouter   from './routes/decision-memory/index.js';
+// R7 — /api/memory and /api/decision-memory retired. Both served the legacy
+// DecisionMemory table: the first rendered rows into a display string the
+// sidebar parsed verdicts back out of, the second had no client consumer at
+// all. Canonical decision history is GET /api/lumi/decisions/recent.
 import analyticsRouter        from './routes/analytics/index.js';
 import attributionRouter      from './routes/attribution.js';
 import { observabilityRouter } from './routes/observability/index.js';
@@ -268,20 +270,6 @@ app.use('/api/artifacts',
 // This split is required because EventSource (SSE) cannot set custom headers,
 // so the stream endpoint uses a different, URL-safe auth mechanism.
 app.use('/api/events', eventsRouter);
-
-// Decision Memory — CMO learning system (pattern analysis)
-app.use('/api/memory',
-  requireAuth,
-  apiLimiter,
-  memoryRouter
-);
-
-// Decision Memory Foundation (PR #20) — append-only strategic memory
-app.use('/api/decision-memory',
-  requireAuth,
-  apiLimiter,
-  decisionMemoryRouter
-);
 
 // Analytics (PR #37) — approval decision intelligence & provider performance
 app.use('/api/analytics',

@@ -1,2 +1,2 @@
 export { useRecentDecisions, shellQueryKeys } from './queries.js';
-export { fetchRecentDecisions, mapNarrativeToDecision } from './services.js';
+export { fetchRecentDecisions, toSidebarDecision } from './services.js';

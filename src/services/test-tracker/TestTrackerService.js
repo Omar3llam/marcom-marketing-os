@@ -30,7 +30,10 @@ import { resolveCredential } from '../connectors/credentialStore.js';
 import { designTest } from '../incrementality-engine/IncrementalityService.js';
 
 const GRAPH_BASE = `https://graph.facebook.com/${process.env.META_API_VERSION || 'v21.0'}`;
-const TEST_ROOT_PREFIX = 'test:';
+// The WRITE half of the tested-dimension contract — see TEST_MEMORY_PREFIX in
+// TestGeneratorService, which reads these rows back by this exact prefix.
+// Exported so the pairing is testable rather than conventional.
+export const TEST_ROOT_PREFIX = 'test:';
 const HOLDOUT_DEFAULT_CHANNEL = 'META'; // the only live-connected channel today
 
 // EntityLevel → the lowercase target type validateActionTarget expects.

@@ -1,39 +1,42 @@
 // ============================================================
-// contextBuilder — the AI memory boundary is honest about itself
+// R7 — the AI memory boundary reads the canonical spine, or says nothing
 // ------------------------------------------------------------
-// This module builds the only per-campaign memory fragment that reaches a
-// model. It reads two legacy substrates — CampaignState and the legacy
-// DecisionMemory table — whose shared origin (the CSV upload service) was
-// deleted with the upload route in PR #164. What survives writes to them
-// (temporalObserver → Actions in EXECUTED_SUCCESS) needs an Action producer
-// that no longer exists outside the rollback route's closed loop.
+// Two modules put "what Lumi decided before" in front of a model, and both used
+// to read the legacy DecisionMemory table. R7 moved one and removed the other,
+// for the same underlying reason: the table had two incompatible field shapes
+// and the readers were written against the one that does not exist.
 //
-// The defect that state produced was NOT "the prompt is empty". It was that a
-// FAILED READ and a GENUINELY QUIET CAMPAIGN arrived at the model as the same
-// sentence: "(no prior decisions on record)". One is a fact about the campaign;
-// the other is a fact about us, reported as a fact about the campaign.
+//   orchestrator     workspace-scoped read → REPOINTED to Decision.
+//                    The query was valid, so it genuinely returned rows.
+//   contextBuilder   campaign-scoped read → REMOVED.
+//                    It projected columns the table does not have, so it could
+//                    only ever reject; the honest-null branch was the only
+//                    branch that ever ran, on every campaign, for months.
 //
-// These tests pin the three-state contract and, just as importantly, pin that
-// the existing prompt is byte-for-byte unchanged when the substrate DOES answer
-// — a fix to an honesty bug must not quietly become a prompt rewrite.
+// What this file pins:
+//   • the orchestrator still distinguishes "no decisions" from "could not read"
+//   • its prompt payload did not widen when the source got richer
+//   • its read is WORKSPACE-scoped — the identity trap that would silently
+//     return nothing if someone entity-scoped it
+//   • contextBuilder renders campaign state and makes no memory claim at all
+//
+// (Deliberately no vi.resetModules() anywhere in this file: it segfaults the
+// forks pool.)
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const findUnique = vi.fn();
-const findMany = vi.fn();
-
+const decisionFindMany = vi.fn();
 const userFindUnique = vi.fn().mockResolvedValue(null);
 
-// ONE prisma mock, shared by both modules under test. The orchestrator block at
-// the bottom drives the same two functions the contextBuilder blocks do — which
-// is the point: the failure mode being pinned is the same read failing in two
-// callers. (Deliberately no vi.resetModules() anywhere in this file: it
-// segfaults the forks pool.)
+// ONE prisma mock, shared by both modules under test. `decision` — not
+// `decisionMemory`: if the orchestrator ever reaches for the retired table
+// again, the property is simply absent and the call throws.
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
-    campaignState:  { findUnique: (...a) => findUnique(...a) },
-    decisionMemory: { findMany:   (...a) => findMany(...a) },
-    user:           { findUnique: (...a) => userFindUnique(...a) },
+    campaignState: { findUnique: (...a) => findUnique(...a) },
+    decision:      { findMany:   (...a) => decisionFindMany(...a) },
+    user:          { findUnique: (...a) => userFindUnique(...a) },
   },
 }));
 
@@ -43,7 +46,7 @@ vi.mock('./ChatGPTAgent.js', () => ({ runChatGPTAgent: vi.fn() }));
 
 const { buildCampaignContext, renderContextPrompt, getRenderedContext } =
   await import('./contextBuilder.js');
-const { runOrchestration, MEMORY_UNAVAILABLE } = await import('./orchestrator.js');
+const { runOrchestration, MEMORY_UNAVAILABLE, promptDecisions } = await import('./orchestrator.js');
 
 const STATE = {
   stage: 'SCALING',
@@ -52,163 +55,69 @@ const STATE = {
   workspaceId: 'ws1',
 };
 
-const MEMORY_ROW = {
-  actionType: 'meta.scale_budget',
-  decisionRationale: 'Doubled daily budget after 3 days of >3x ROAS',
-  resultStatus: 'sustained_lift',
-  deltaCtr: 0.0042,
-  deltaRoas: 0.85,
-  impactDurationHrs: 24,
-  isSustainable: true,
+/** A canonical Decision row, as RECENT_DECISION_SELECT returns one. */
+const DECISION = {
+  id: 'dec-1',
+  entityId: '11111111-1111-1111-1111-111111111111',
+  entityLevel: 'CAMPAIGN',
+  verdict: 'SCALE',
+  status: 'PROPOSED',
+  diagnosis: 'ROAS held above target for three days.',
+  rootCause: 'HIGH_ROAS',
+  confidence: 0.82,
+  resolution: null,
   createdAt: new Date('2026-07-30T00:00:00.000Z'),
 };
 
-// findMany is given a resolved/rejected value per test; the .catch lives in the
-// module under test, so a rejection here is exactly the production failure mode.
 const okState = () => findUnique.mockResolvedValue(STATE);
 
 beforeEach(() => {
   findUnique.mockReset();
-  findMany.mockReset();
+  decisionFindMany.mockReset();
 });
 
-// ── A. The substrate could not be read ──────────────────────────────────────
-describe('A · an unreadable memory substrate is an explicit absence', () => {
-  it('a failed memory read yields null, NOT an empty array', async () => {
-    okState();
-    findMany.mockRejectedValue(new Error('relation "decision_memory" does not exist'));
+// ── A. contextBuilder makes no memory claim ─────────────────────────────────
 
+describe('A · contextBuilder states campaign state, and nothing about history', () => {
+  it('builds context without reading any decision source', async () => {
+    okState();
     const ctx = await buildCampaignContext('c1');
 
-    expect(ctx).not.toBeNull();          // the campaign state still resolved
-    expect(ctx.recent).toBeNull();       // ← the whole point: null, not []
-    expect(ctx.recent).not.toEqual([]);
+    expect(ctx).toEqual({ state: STATE });
+    // The removed read is the point: it must not have been quietly repointed to
+    // the canonical table either. This module cannot reach Decision honestly —
+    // it keys on a legacy String id, and Decision.entityId is a uuid.
+    expect(decisionFindMany).not.toHaveBeenCalled();
   });
 
-  it('the prompt says the history could not be read — it does not claim there is none', async () => {
+  it('the fragment carries no "Recent decisions" section at all', async () => {
     okState();
-    findMany.mockRejectedValue(new Error('db down'));
+    const fragment = await getRenderedContext('c1');
 
-    const prompt = await getRenderedContext('c1');
-
-    expect(prompt).toContain('decision memory unavailable');
-    // The specific fabrication this fix exists to prevent: asserting to the
-    // model that this campaign has no history, on the strength of OUR failure.
-    expect(prompt).not.toContain('no prior decisions on record');
+    expect(fragment).toContain('Stage:        SCALING');
+    expect(fragment).toContain('Health score: 0.72');
+    expect(fragment).not.toContain('Recent decisions');
+    // Nor the sentence it used to emit on literally every call.
+    expect(fragment).not.toContain('decision memory unavailable');
+    expect(fragment).not.toContain('no prior decisions on record');
   });
 
-  it('invents no decisions, no counts, and no zeroes', async () => {
+  it('invents no decisions, no counts and no zeroes', async () => {
     okState();
-    findMany.mockRejectedValue(new Error('db down'));
-
-    const prompt = await getRenderedContext('c1');
-
-    // No fabricated history rows: the numbered "1. <action> → ..." shape.
-    expect(prompt).not.toMatch(/^\s+\d+\.\s/m);
-    // No invented deltas or sustain verdicts.
-    expect(prompt).not.toMatch(/ΔCTR|ΔROAS/);
-    expect(prompt).not.toMatch(/sustained|regressed|pending/);
-    // No fabricated tally standing in for absent memory.
-    expect(prompt).not.toMatch(/\b0 (prior|previous|recent)\b/i);
+    const fragment = await getRenderedContext('c1');
+    expect(fragment).not.toMatch(/\b0 (prior|previous|recent)\b/i);
+    expect(fragment).not.toMatch(/\bnone\b/i);
   });
 
-  it('a memory failure does not cost the caller the campaign context it CAN have', async () => {
-    okState();
-    findMany.mockRejectedValue(new Error('db down'));
-
-    const prompt = await getRenderedContext('c1');
-
-    // Stage/health/sweep come from CampaignState and are unaffected — the read
-    // that failed was only ever decoration on top of them.
-    expect(prompt).toContain('Stage:        SCALING');
-    expect(prompt).toContain('Health score: 0.72');
-  });
-
-  // The distinction, stated as a single assertion: the two states must not
-  // render the same fragment. This is the regression that matters.
-  it('an unreadable substrate and a quiet campaign do NOT render the same prompt', async () => {
-    okState();
-    findMany.mockRejectedValue(new Error('db down'));
-    const unavailable = await getRenderedContext('c1');
-
-    okState();
-    findMany.mockResolvedValue([]);
-    const quiet = await getRenderedContext('c1');
-
-    expect(unavailable).not.toBe(quiet);
-  });
-});
-
-// ── B. The substrate answered — nothing about the contract may move ─────────
-describe('B · a readable substrate renders exactly the prompt it always did', () => {
-  it('an empty result still reads "(no prior decisions on record)"', async () => {
-    okState();
-    findMany.mockResolvedValue([]);
-
-    const prompt = await getRenderedContext('c1');
-
-    // Unchanged: [] IS a fact about the campaign, and stating it is correct.
-    expect(prompt).toContain('(no prior decisions on record)');
-    expect(prompt).not.toContain('unavailable');
-  });
-
-  it('real history renders unchanged, in the established format', async () => {
-    okState();
-    findMany.mockResolvedValue([MEMORY_ROW]);
-
-    const prompt = await getRenderedContext('c1');
-
-    expect(prompt).toContain('1. meta.scale_budget → sustained (ΔCTR +0.0042, ΔROAS +0.85)');
-    expect(prompt).toContain('"Doubled daily budget after 3 days of >3x ROAS"');
-    expect(prompt).not.toContain('unavailable');
-  });
-
-  // The full fragment, pinned. If the honesty fix had shifted a heading, a
-  // label or the section rules, this is what would catch it.
-  it('the whole fragment is byte-for-byte the established contract', async () => {
-    okState();
-    findMany.mockResolvedValue([MEMORY_ROW]);
-
-    expect(await getRenderedContext('c1')).toBe([
-      '── CAMPAIGN CONTEXT ──────────────────────────',
-      'Stage:        SCALING',
-      'Health score: 0.72',
-      'Last sweep:   2026-08-01T00:00:00.000Z',
-      'Recent decisions (most recent first, capped at 3):',
-      '  1. meta.scale_budget → sustained (ΔCTR +0.0042, ΔROAS +0.85) — "Doubled daily budget after 3 days of >3x ROAS"',
-      '──────────────────────────────────────────────',
-    ].join('\n'));
-  });
-
-  it('a null deltaCtr/deltaRoas stays "n/a" — never a fabricated 0', async () => {
-    okState();
-    findMany.mockResolvedValue([{ ...MEMORY_ROW, deltaCtr: null, deltaRoas: null, isSustainable: null }]);
-
-    const prompt = await getRenderedContext('c1');
-
-    expect(prompt).toContain('(ΔCTR n/a, ΔROAS n/a)');
-    expect(prompt).not.toContain('ΔCTR +0.0000');
-    expect(prompt).toContain('→ pending'); // unknown sustain ≠ regressed
-  });
-});
-
-// ── The pre-existing absence, unchanged ─────────────────────────────────────
-describe('no CampaignState at all → no fragment, as before', () => {
-  it('returns null, and the rendered fragment is empty rather than invented', async () => {
+  it('no CampaignState → null, and an empty fragment rather than a heading', async () => {
     findUnique.mockResolvedValue(null);
-    findMany.mockResolvedValue([]);
-
     expect(await buildCampaignContext('c1')).toBeNull();
-    // An empty string adds nothing to the prompt — the caller's documented
-    // fallback. Silence is the honest state; a "CAMPAIGN CONTEXT" heading over
-    // no context would be the dishonest one.
     expect(await getRenderedContext('c1')).toBe('');
   });
 
   it('no campaignId → null without touching the database', async () => {
     expect(await buildCampaignContext(null)).toBeNull();
     expect(findUnique).not.toHaveBeenCalled();
-    expect(findMany).not.toHaveBeenCalled();
   });
 
   it('renderContextPrompt(null) is empty, not a heading with nothing under it', () => {
@@ -216,12 +125,42 @@ describe('no CampaignState at all → no fragment, as before', () => {
   });
 });
 
-// ── C. The orchestrator survives the same absence ───────────────────────────
-// Same legacy table, second caller. Here the read sat inside a Promise.all, so
-// a rejection failed the whole gather and the Claude call never happened — an
-// analysis lost to a decoration. Memory colours the diagnosis; CampaignState IS
-// the thing being diagnosed, and only the second is a precondition.
-describe('C · orchestration is not lost to an unreadable memory table', () => {
+// ── B. the prompt projection ────────────────────────────────────────────────
+
+describe('B · promptDecisions narrows the canonical row to what a model uses', () => {
+  it('drops the fields that exist only for the sidebar', () => {
+    const [row] = promptDecisions([DECISION]);
+    expect(Object.keys(row).sort())
+      .toEqual(['confidence', 'decidedAt', 'diagnosis', 'resolution', 'rootCause', 'verdict']);
+    // Identity columns are for the surface that renders links, not for a model.
+    expect(row).not.toHaveProperty('id');
+    expect(row).not.toHaveProperty('entityId');
+    expect(row).not.toHaveProperty('entityLevel');
+  });
+
+  it('states the engine\'s own verdict and reasoning verbatim', () => {
+    const [row] = promptDecisions([DECISION]);
+    expect(row.verdict).toBe('SCALE');
+    expect(row.diagnosis).toBe('ROAS held above target for three days.');
+    expect(row.rootCause).toBe('HIGH_ROAS');
+    expect(row.decidedAt).toBe(DECISION.createdAt);
+  });
+
+  it('an unresolved decision stays unresolved — never a neutral-looking value', () => {
+    expect(promptDecisions([DECISION])[0].resolution).toBeNull();
+    expect(promptDecisions([{ ...DECISION, resolution: 'IMPROVED' }])[0].resolution).toBe('IMPROVED');
+  });
+
+  it('null in → null out, so the caller\'s "could not read" sentinel survives', () => {
+    expect(promptDecisions(null)).toBeNull();
+    expect(promptDecisions(undefined)).toBeNull();
+    expect(promptDecisions([])).toEqual([]);
+  });
+});
+
+// ── C. orchestration ────────────────────────────────────────────────────────
+
+describe('C · orchestration reads canonical decisions, and stays honest about failure', () => {
   const CLAUDE_JSON = JSON.stringify({
     verdict: 'HOLD', rootCause: 'OTHER', diagnosis: 'Steady.',
     levelVerdicts: [], actionPlan: { action: 'none', expectedImpact: 'none' },
@@ -233,9 +172,49 @@ describe('C · orchestration is not lost to an unreadable memory table', () => {
     userFindUnique.mockReset().mockResolvedValue(null);
   });
 
-  it('still runs the analysis when the memory read rejects', async () => {
+  it('reads the DECISION table, scoped to the workspace', async () => {
     okState();
-    findMany.mockRejectedValue(new Error('relation "decision_memory" does not exist'));
+    decisionFindMany.mockResolvedValue([DECISION]);
+
+    await runOrchestration({ campaignId: 'c1', workspaceId: 'ws1' });
+
+    expect(decisionFindMany).toHaveBeenCalledTimes(1);
+    const args = decisionFindMany.mock.calls[0][0];
+    expect(args.where.workspaceId).toBe('ws1');
+    // THE IDENTITY TRAP. campaignId is a legacy String; Decision.entityId is a
+    // uuid. Filtering one by the other returns nothing, silently — so this read
+    // must not carry an entity predicate at all.
+    expect(args.where).not.toHaveProperty('entityId');
+    expect(JSON.stringify(args.where)).not.toContain('c1');
+  });
+
+  it('puts the engine\'s real verdicts in the prompt', async () => {
+    okState();
+    decisionFindMany.mockResolvedValue([DECISION]);
+
+    await runOrchestration({ campaignId: 'c1', workspaceId: 'ws1' });
+    const { task } = runClaudeAgent.mock.calls[0][0];
+
+    expect(task).toContain('RECENT DECISION MEMORY:');
+
+    // Scope the payload assertions to the memory block. The prompt's own JSON
+    // SCHEMA mentions "entityId" (levelVerdicts[].entityId), so asserting over
+    // the whole task would fail against the response contract rather than the
+    // decision payload — which is what it is actually about.
+    const block = task.slice(
+      task.indexOf('RECENT DECISION MEMORY:'),
+      task.indexOf('BRAND CONTEXT LOCK:'),
+    );
+    expect(block).toContain('"verdict": "SCALE"');
+    expect(block).toContain('"rootCause": "HIGH_ROAS"');
+    // …and not the identity columns the canonical read also selects.
+    expect(block).not.toContain('"entityId"');
+    expect(block).not.toContain('dec-1');
+  });
+
+  it('still runs the analysis when the decision read rejects', async () => {
+    okState();
+    decisionFindMany.mockRejectedValue(new Error('db down'));
 
     await expect(runOrchestration({ campaignId: 'c1', workspaceId: 'ws1' })).resolves.toBeTruthy();
     expect(runClaudeAgent).toHaveBeenCalledTimes(1);
@@ -243,21 +222,21 @@ describe('C · orchestration is not lost to an unreadable memory table', () => {
 
   it('passes an explicit unavailable marker downstream — never a fabricated []', async () => {
     okState();
-    findMany.mockRejectedValue(new Error('db down'));
+    decisionFindMany.mockRejectedValue(new Error('db down'));
 
     await runOrchestration({ campaignId: 'c1', workspaceId: 'ws1' });
     const { task } = runClaudeAgent.mock.calls[0][0];
 
-    expect(task).toContain('RECENT DECISION MEMORY:');
     expect(task).toContain(MEMORY_UNAVAILABLE);
-    // The coercion this PR removed: `decisionMemory ?? []` put an empty array
-    // under a heading the role prompt tells the model to reason from.
+    // The coercion that must never come back: `?? []` puts an empty array under
+    // a heading the role prompt tells the model to reason from — turning our
+    // outage into a statement about the account.
     expect(task).not.toMatch(/RECENT DECISION MEMORY:\s*\[\]/);
   });
 
-  it('a genuinely empty memory list still renders [] — unchanged', async () => {
+  it('a genuinely empty history renders [] — a real fact about the workspace', async () => {
     okState();
-    findMany.mockResolvedValue([]);
+    decisionFindMany.mockResolvedValue([]);
 
     await runOrchestration({ campaignId: 'c1', workspaceId: 'ws1' });
     const { task } = runClaudeAgent.mock.calls[0][0];
@@ -270,7 +249,7 @@ describe('C · orchestration is not lost to an unreadable memory table', () => {
   // there is no campaign to analyse, and continuing would mean inventing one.
   it('a missing CampaignState still throws — that absence is not decoration', async () => {
     findUnique.mockResolvedValue(null);
-    findMany.mockResolvedValue([]);
+    decisionFindMany.mockResolvedValue([]);
 
     await expect(runOrchestration({ campaignId: 'c1', workspaceId: 'ws1' }))
       .rejects.toThrow(/campaignState c1 not found/);

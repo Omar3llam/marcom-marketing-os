@@ -6,6 +6,7 @@
 //   PATCH /api/lumi/decisions/:id/dismiss
 //   PATCH /api/lumi/decisions/by-entity/:entityId/execute   (fallback)
 //   PATCH /api/lumi/decisions/by-entity/:entityId/dismiss   (fallback)
+//   GET   /api/lumi/decisions/recent                        (R7 — sidebar)
 // ------------------------------------------------------------
 // Two moments the product could not previously observe: a human OPENED the
 // reasoning behind a verdict, and a human went and ACTED on it (copied the
@@ -33,6 +34,7 @@ import { logger } from '../../utils/logger.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 import { getSimilarOutcomes } from '../../services/analysis/decisionLearning.js';
+import { getRecentDecisions, RECENT_DECISIONS_LIMIT } from '../../services/decision-memory/decisionHistory.js';
 
 export const decisionsRouter = Router();
 
@@ -296,5 +298,65 @@ decisionsRouter.get(`${BASE}/learning`, requireCollabRole(...OPERATORS), async (
     // user is already looking at. Failing the panel over a missing track record
     // would cost more than the line is worth.
     return res.json({ learning: null });
+  }
+});
+
+// ── GET /api/lumi/decisions/recent (R7) ─────────────────────────────────────
+// The sidebar's "Recent" list. It used to read /api/memory/patterns, which
+// rendered legacy DecisionMemory rows into a display STRING and then parsed a
+// verdict back out of that string with `line.includes('KILL')`, defaulting to
+// TEST when no keyword matched. Every verdict it showed was reconstructed, and
+// the fallback invented one outright.
+//
+// NO ROLE GATE, deliberately. The surface it replaces sat behind requireAuth
+// alone, and the sidebar renders for every seat — gating it here would blank
+// the panel for CLIENT and call it a migration. Reading what Lumi decided is
+// not an operator action; the OPERATORS gate above guards WRITES.
+//
+// Workspace scope comes from the auth middleware and never from the caller.
+decisionsRouter.get('/decisions/recent', async (req, res) => {
+  const workspaceId = req.workspaceId;
+  // Authenticated but no workspace yet: an empty list is the true answer, and
+  // a 401/403 here would surface as a broken sidebar during onboarding.
+  if (!workspaceId) return res.json({ decisions: [] });
+
+  try {
+    const rows = await getRecentDecisions(workspaceId, RECENT_DECISIONS_LIMIT);
+
+    // Resolve display names for the campaign-level rows. Decision.entityId is a
+    // @db.Uuid from the entity graph and Campaign.id is the same uuid, so this
+    // is a real join rather than a guess — but it is scoped to the workspace as
+    // well as the id, because an id alone is a caller-independent key and this
+    // list is not the place to discover that.
+    const campaignIds = [...new Set(
+      rows.filter((d) => d.entityLevel === 'CAMPAIGN' && d.entityId).map((d) => d.entityId),
+    )];
+    const names = campaignIds.length
+      ? new Map((await prisma.campaign.findMany({
+        where:  { workspaceId, id: { in: campaignIds } },
+        select: { id: true, name: true },
+      })).map((c) => [c.id, c.name]))
+      : new Map();
+
+    return res.json({
+      decisions: rows.map((d) => ({
+        id:          d.id,
+        entityId:    d.entityId,
+        entityLevel: d.entityLevel,
+        // The engine's own verdict, off the row. Never derived from text.
+        verdict:     d.verdict,
+        status:      d.status,
+        // null, not 'Unknown': a decision about an entity we cannot name is not
+        // a decision about a campaign called Unknown. The renderer decides how
+        // to show an unnamed row; it must not be handed a fabricated one.
+        campaign:    names.get(d.entityId) ?? null,
+        decidedAt:   d.createdAt,
+      })),
+    });
+  } catch (err) {
+    logger.error({ err: err.message, workspaceId }, '[lumi/decisions] recent read failed');
+    // 500 rather than an empty 200: the sidebar must not render "No decisions
+    // yet" — a statement about the account — on the strength of our own failure.
+    return res.status(500).json({ error: 'DecisionsUnavailable', message: 'Request failed' });
   }
 });

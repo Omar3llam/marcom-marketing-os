@@ -20,6 +20,7 @@ import { runClaudeAgent }                   from './ClaudeAgent.js';
 import { runChatGPTAgent }                  from './ChatGPTAgent.js';
 import { logger }                           from '../utils/logger.js';
 import { trackDegradedState }               from '../lib/errorTelemetry.js';
+import { getRecentDecisions }               from '../services/decision-memory/decisionHistory.js';
 
 // Root causes that warrant a creative pass. Anything outside this
 // list gets strategic analysis only — saves OpenAI quota and
@@ -37,6 +38,33 @@ const CREATIVE_TRIGGERS = new Set([
 // list. Matches the '(none)' convention the other grounding slots already use,
 // and is deliberately NOT an empty array — see the RECENT DECISION MEMORY line.
 export const MEMORY_UNAVAILABLE = '(unavailable — decision memory could not be read)';
+
+/**
+ * PURE: the decision fields the prompt actually uses.
+ *
+ * R7 repointed this slot from the retired DecisionMemory table to canonical
+ * Decision rows. The canonical read serves two consumers, so it also selects
+ * `id`/`entityId`/`entityLevel` for the sidebar — none of which mean anything
+ * to a language model. Projecting here keeps the payload from widening just
+ * because the source got richer, which the migration was told not to do.
+ *
+ * null in → null out, so the caller's honest "could not read" sentinel survives
+ * this step; [] in → [] out, byte-identical to what the old table rendered when
+ * a workspace genuinely had no history.
+ */
+export function promptDecisions(rows) {
+  if (!Array.isArray(rows)) return null;
+  return rows.map((d) => ({
+    verdict:    d.verdict,
+    diagnosis:  d.diagnosis,
+    rootCause:  d.rootCause ?? null,
+    confidence: d.confidence,
+    // What actually happened, when a later verdict closed this one out. Absent
+    // stays absent — an unresolved decision is not a neutral one.
+    resolution: d.resolution ?? null,
+    decidedAt:  d.createdAt,
+  }));
+}
 
 async function analyzeWithClaude({ campaignState, decisionMemory, contextLock, grounding = {} }) {
   const role =
@@ -78,7 +106,7 @@ async function analyzeWithClaude({ campaignState, decisionMemory, contextLock, g
     // a fact about this account rather than a gap in ours. null now gets the
     // same honest-sentinel treatment its three siblings already use. A real
     // empty array still renders "[]", byte-identical to before.
-    'RECENT DECISION MEMORY:',         JSON.stringify(decisionMemory ?? MEMORY_UNAVAILABLE, null, 2),
+    'RECENT DECISION MEMORY:',         JSON.stringify(promptDecisions(decisionMemory) ?? MEMORY_UNAVAILABLE, null, 2),
     'BRAND CONTEXT LOCK:',             JSON.stringify(contextLock ?? {}, null, 2),
   ].join('\n');
 
@@ -160,18 +188,23 @@ export async function runOrchestration({ campaignId, workspaceId, actionId, user
     userId
       ? prisma.user.findUnique({ where: { id: userId }, select: { context: true } })
       : Promise.resolve(null),
-    prisma.decisionMemory.findMany({
-      where:   { workspaceId },
-      orderBy: { createdAt: 'desc' },
-      take:    3,
-      // Decoration, not a precondition. Decision memory colours the diagnosis;
-      // it is not what is being diagnosed. A legacy-table read that fails must
-      // not take down the orchestration around it — before this, a rejection
-      // here failed the whole Promise.all and the Claude call never happened.
-      // null (not []) so the prompt can tell "no memory" from "no memory READ";
-      // see MEMORY_UNAVAILABLE above.
-    }).catch((err) => {
-      logger.warn({ err: err.message, workspaceId }, '[orchestrator] decision memory unavailable — continuing without it');
+    // R7 — the canonical spine, not the retired DecisionMemory table.
+    //
+    // WORKSPACE-SCOPED, exactly as the read it replaces was. It is tempting to
+    // scope this to the campaign being diagnosed, and it would be wrong: this
+    // function keys on CampaignState.campaignId, a plain legacy String, while
+    // Decision.entityId is a @db.Uuid from the entity graph. Filtering one by
+    // the other returns nothing, quietly. The prompt asks "what has Lumi
+    // decided lately", and that is a workspace question.
+    //
+    // Decoration, not a precondition. Decision context colours the diagnosis;
+    // it is not what is being diagnosed. A failed read must not take down the
+    // orchestration around it — a rejection here once failed the whole
+    // Promise.all and the Claude call never happened. null (not []) so the
+    // prompt can tell "no decisions" from "no decisions READ"; see
+    // MEMORY_UNAVAILABLE above.
+    getRecentDecisions(workspaceId, 3).catch((err) => {
+      logger.warn({ err: err.message, workspaceId }, '[orchestrator] decision history unavailable — continuing without it');
       return null;
     }),
   ]);

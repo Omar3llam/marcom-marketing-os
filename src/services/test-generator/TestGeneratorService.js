@@ -25,7 +25,13 @@ import { TEMPORAL }       from '../../config/temporal.js';
 // Value unchanged (14).
 const SYNC_RECENCY_DAYS = TEMPORAL.testGeneratorSyncRecencyDays;
 const PLATFORM_SOURCES = new Set(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
-const TEST_MEMORY_PREFIX = 'test:';
+// The READ half of a cross-file contract: TestTracker writes
+// DecisionMemoryEntry.actionType as `${TEST_ROOT_PREFIX}${dimension}` and this
+// prefix is how those rows are found again. Exported so the two literals can be
+// asserted equal — before R7 they were declared independently in two files with
+// no test naming either, so renaming one would have silently stopped the
+// generator from excluding dimensions already tested.
+export const TEST_MEMORY_PREFIX = 'test:';
 
 /**
  * Pure: fold platform MetricSnapshot rows into generator entity inputs.
