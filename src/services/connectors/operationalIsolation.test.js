@@ -416,6 +416,14 @@ describe('every operational MetricSnapshot reader declares its population', () =
   //                            from the batch, not from the operational
   //                            allow-list, so classifying it as an operational
   //                            reader would be simply wrong.
+  //   dailyObservation-        the THIRD population selector, exempt on exactly
+  //   Reader                   the canonical selectors' grounds (R9): it answers
+  //                            the DAILY population, which the operational
+  //                            allow-list excludes by construction and always
+  //                            will. It is a genuine reader — unlike the sinks
+  //                            above — so the assertion below pins that it names
+  //                            DAILY and reaches for nothing operational, which
+  //                            is the whole basis of the exemption.
   //
   // Anything else that appears here is a new direct reader, and this is where it
   // gets caught — before it has a surface to be wrong on.
@@ -430,6 +438,7 @@ describe('every operational MetricSnapshot reader declares its population', () =
       'verdict-engine/canonicalVerdictEvidence.js',
       'fatigue-forecaster/canonicalFatigueEvidence.js',
       'connectors/snapshotSink.js',
+      'daily-observations/dailyObservationReader.js',
     ]);
 
     const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
@@ -454,6 +463,27 @@ describe('every operational MetricSnapshot reader declares its population', () =
       .filter((rel) => !ALLOWED.has(rel));
 
     expect(offenders).toEqual([]);
+  });
+
+  // The R9 exemption is SCOPED, and this is what keeps it that way. A third
+  // population selector is only harmless while it stays a THIRD population: the
+  // day it learns to read ROLLING_WINDOW rows, every guarantee this file makes
+  // about operational readers stops holding, and it would have been let through
+  // the door the allow-list just opened.
+  it('the daily reader reads ONLY the DAILY population', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const src = readFileSync(
+      fileURLToPath(new URL('../daily-observations/dailyObservationReader.js', import.meta.url)),
+      'utf8',
+    ).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+    const query = src.slice(src.indexOf('prisma.metricSnapshot.findMany'));
+    expect(query).toMatch(/measurementWindow:\s*MEASUREMENT_WINDOW\.DAILY/);
+    expect(src).not.toMatch(/OPERATIONAL_WINDOW_FILTER|OPERATIONAL_MEASUREMENT_WINDOWS|selectOperationalSnapshots/);
+    // …and it must not reach the canonical populations either. Three populations,
+    // three readers, no blending — the seam's own rule.
+    expect(src).not.toMatch(/CUMULATIVE_30D|CANONICAL_VERDICT_WINDOW|selectCanonical/);
   });
 
   it('…and every one of the nine migrated consumers is genuinely clean', async () => {
