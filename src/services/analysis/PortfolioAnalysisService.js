@@ -57,19 +57,29 @@ export function countVerdicts(enriched = []) {
  * Generate the advisory portfolio note for a workspace.
  *
  * @param {string} workspaceId
- * @param {{ loopRunId?: string|null }} [opts] — when given, the insight is stored
- *   on that LoopRun (the Overview card reads the latest run's aiInsight).
+ * @param {{ loopRunId?: string|null, evaluation?: object }} [opts] — when
+ *   loopRunId is given, the insight is stored on that LoopRun (the Overview card
+ *   reads the latest run's aiInsight). `evaluation` is the sweep's one
+ *   connector-verdict evaluation (R8): this service narrates the verdicts the
+ *   sweep stored, so it must be handed them rather than recomputing a set that
+ *   may already disagree with the agenda beside it.
  * @returns {Promise<{ insight: string|null, revenueNeeded: Array<{entityId:string,name:string}> }|null>}
  *   null when there is nothing honest to say (no workspace / no spending campaigns
- *   / the gateway produced nothing).
+ *   / the gateway produced nothing / the verdicts could not be computed).
  */
-export async function runPortfolioAnalysis(workspaceId, { loopRunId = null } = {}) {
+export async function runPortfolioAnalysis(workspaceId, { loopRunId = null, evaluation } = {}) {
   if (!workspaceId) return null;
 
   try {
     const [campaigns, verdictResult] = await Promise.all([
       getConnectorCampaigns(workspaceId).catch(() => []),
-      getConnectorVerdicts(workspaceId).catch(() => ({ verdicts: [] })),
+      // NO `.catch(() => ({ verdicts: [] }))` (R8 / I29). That fallback turned
+      // "the verdict computation failed" into "this account has no verdicts",
+      // and the model then narrated a portfolio where nothing needed acting on —
+      // a confident all-clear written over an outage. A throw here reaches the
+      // outer catch and this service returns null, which is what its contract
+      // already means: nothing honest to say.
+      getConnectorVerdicts(workspaceId, { evaluation }),
     ]);
 
     const verdictMap = Object.fromEntries((verdictResult?.verdicts ?? []).map((v) => [v.id, v]));

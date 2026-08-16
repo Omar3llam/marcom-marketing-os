@@ -196,3 +196,27 @@ describe('generateReasoningForSweep (pre-generate + persist)', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 });
+
+// ============================================================
+// R8 — the sweep's reasoning explains the sweep's verdicts
+// ------------------------------------------------------------
+// This service used to compute its own verdicts, moments after the sweep had
+// persisted a set of its own. Two reads, two instants: the prose under "Lumi's
+// Read" could describe a verdict the stored Decision no longer held, and the
+// drill-down would then explain a call the agenda was not making.
+// ============================================================
+describe('R8 · reasoning consumes the sweep evaluation', () => {
+  it('threads the evaluation through instead of computing its own', async () => {
+    const evaluation = { workspaceId: 'ws1', annotated: null, tree: null, campaigns: [], gatedOut: [], status: 'OK' };
+    await generateReasoningForSweep({ workspaceId: 'ws1', loopRunId: 'run1', evaluation });
+    const [, opts] = getConnectorVerdicts.mock.calls[0];
+    expect(opts).toEqual({ evaluation });
+  });
+
+  it('the ON-DEMAND entry point supplies none — one request, its own evaluation', async () => {
+    await generateCampaignReasoning({ workspaceId: 'ws1', entityId: 'c1' });
+    const [, opts] = getConnectorVerdicts.mock.calls[0];
+    expect(opts).toEqual({ evaluation: undefined });
+    expect(getConnectorVerdicts).toHaveBeenCalledTimes(1);
+  });
+});

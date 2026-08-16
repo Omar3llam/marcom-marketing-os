@@ -172,6 +172,69 @@ describe('POST /copilot — Q&A route', () => {
     });
   });
 
+  // ============================================================
+  // R8 / I29 — a verdict OUTAGE is not an account with no verdicts
+  // ------------------------------------------------------------
+  // This route used to `.catch(() => ({ verdicts: [] }))`. Every campaign then
+  // printed "unscored", account health was computed over an empty verdict map
+  // (a real-looking score, "0 to act on", "0 scaling well"), and the model was
+  // asked to advise on it. Three numbers describing an outage, presented as
+  // facts about the account.
+  // ============================================================
+  describe('R8 · verdicts unavailable', () => {
+    const failVerdicts = () => getConnectorVerdicts.mockRejectedValue(new Error('canonical read timed out'));
+
+    it('still answers — a verdict outage degrades the answer, it does not 500 it', async () => {
+      failVerdicts();
+      const res = await request(makeApp()).post('/copilot').send({ question: 'Status?' }).expect(200);
+      expect(res.body.answer).toBeTruthy();
+    });
+
+    it('SAYS the verdicts are unavailable instead of printing "unscored"', async () => {
+      failVerdicts();
+      getConnectorCampaigns.mockResolvedValue([
+        { entityId: 'c1', name: 'Ramadan Wave', channel: 'meta', spendMinor: 500_000, currency: 'EGP' },
+      ]);
+      await request(makeApp()).post('/copilot').send({ question: 'Status?' }).expect(200);
+
+      const { input } = execute.mock.calls[0][0];
+      expect(input.system).toContain('VERDICTS: unavailable');
+      expect(input.system).toContain('Ramadan Wave (meta) → unavailable');
+      // "unscored" is a claim about the campaign; it must not be made here.
+      expect(input.system).not.toContain('→ unscored');
+    });
+
+    it('withholds account health rather than scoring an account it could not judge', async () => {
+      failVerdicts();
+      getConnectorCampaigns.mockResolvedValue([
+        { entityId: 'c1', name: 'Ramadan Wave', channel: 'meta', spendMinor: 500_000, ctr: 0.02, frequency: 2, currency: 'EGP' },
+      ]);
+      await request(makeApp()).post('/copilot').send({ question: 'How healthy is my account?' }).expect(200);
+
+      const { input } = execute.mock.calls[0][0];
+      expect(input.system).toContain('ACCOUNT HEALTH: unavailable');
+      // Every health figure is verdict-derived. A zero here is not a low count,
+      // it is the absence of the input that would have produced one.
+      expect(input.system).not.toMatch(/Campaigns to act on \(KILL or REFRESH\): 0/);
+      expect(input.system).not.toMatch(/Campaigns scaling well \(SCALE\): 0/);
+      expect(input.system).not.toMatch(/Score: \d+\/100/);
+    });
+
+    it('a genuinely UNSCORED campaign still reads "unscored" — the two stay distinct', async () => {
+      // Verdicts computed fine; this campaign simply has none. Opposite fact,
+      // opposite word, and the model can tell them apart.
+      getConnectorVerdicts.mockResolvedValue({ verdicts: [] });
+      getConnectorCampaigns.mockResolvedValue([
+        { entityId: 'c1', name: 'Ramadan Wave', channel: 'meta', spendMinor: 500_000, currency: 'EGP' },
+      ]);
+      await request(makeApp()).post('/copilot').send({ question: 'Status?' }).expect(200);
+
+      const { input } = execute.mock.calls[0][0];
+      expect(input.system).toContain('→ unscored');
+      expect(input.system).not.toContain('VERDICTS: unavailable');
+    });
+  });
+
   it('folds prior turns into the user prompt (multi-turn context)', async () => {
     await request(makeApp())
       .post('/copilot')

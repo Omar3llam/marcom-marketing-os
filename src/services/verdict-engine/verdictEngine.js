@@ -91,6 +91,12 @@ export const MIN_DAYS = V.MIN_DAYS;
 // it has no importers today. It is also the reason the import above is aliased,
 // and why removing that alias breaks the boot.
 export const FATIGUE_FREQ = V.FATIGUE_FREQ;
+// The awareness-track saturation floor — the point at which rising frequency is
+// worth WATCHing but not yet REFRESHing. Exported (R8 §10) because
+// AccountHealthService was carrying its own 3.0 literal beside its own 3.5, both
+// annotated "matches the verdict engine". Two homes for one uncalibrated number
+// means a recalibration has to find both, and only one of them is the engine.
+export const AWARENESS_SATURATION_FREQ = V.AWARENESS_SATURATION_FREQ;
 
 /**
  * Aggregate raw metrics for a node from its annotated children, or

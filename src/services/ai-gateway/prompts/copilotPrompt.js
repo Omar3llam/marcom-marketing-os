@@ -61,9 +61,14 @@ function field(value, rendered) {
  *   { name, channel, objective, verdict, rationale, roas, ctr, frequency,
  *     spendMinor, currency, conversions, revenueMinor, impressions, clicks }
  * @param {string|null} args.briefing — pre-generated LoopRun.aiInsight (may be null)
+ * @param {boolean} [args.verdictsUnavailable] — the verdict computation FAILED for
+ *   this request. Distinct from "no campaign has a verdict yet": one is an
+ *   outage, the other is a fact about the account, and a model shown an absent
+ *   verdict cannot tell them apart. When set, every verdict reads "unavailable"
+ *   and the model is told not to answer questions that depend on one.
  * @returns {string} system prompt
  */
-export function buildCopilotSystemPrompt({ workspace = {}, portfolio = {}, campaigns = [], briefing = null } = {}) {
+export function buildCopilotSystemPrompt({ workspace = {}, portfolio = {}, campaigns = [], briefing = null, verdictsUnavailable = false } = {}) {
   const wsCurrency = workspace.currency || portfolio.currency || 'USD';
   const shown = (campaigns ?? []).length;
   const total = portfolio.totalCampaigns ?? shown;
@@ -83,7 +88,11 @@ export function buildCopilotSystemPrompt({ workspace = {}, portfolio = {}, campa
 
   const campaignLines = (campaigns ?? []).map((c) => {
     const lines = [
-      `- ${c.name}${c.channel ? ` (${c.channel})` : ''} → ${c.verdict ?? 'unscored'}`,
+      // Three states, not two: a real verdict, "unscored" (we judged the account
+      // and this campaign did not qualify), and "unavailable" (we could not
+      // judge at all). Printing the third as the second is how an outage becomes
+      // a claim about the campaign.
+      `- ${c.name}${c.channel ? ` (${c.channel})` : ''} → ${verdictsUnavailable ? 'unavailable' : (c.verdict ?? 'unscored')}`,
       `  ROAS: ${field(c.roas, `${Number(c.roas).toFixed(2)}x`)}`,
       `  CTR: ${field(c.ctr, pct(c.ctr))}`,
       `  Freq: ${field(c.frequency, Number(c.frequency).toFixed(1))}`,
@@ -113,6 +122,7 @@ ${healthBlock}
 
 ${campaignHeader}
 ${briefing ? `\nACCOUNT BRIEFING:\n${briefing}\n` : ''}
+${verdictsUnavailable ? '\nVERDICTS: unavailable for this request — the verdict engine could not be reached. Campaign metrics above are real; no verdict, account health score or "what should I act on" answer can be given right now. Say so plainly if asked.\n' : ''}
 RULES:
 - Answer in 2-4 sentences unless real detail is genuinely needed.
 - Cite specific campaign names, numbers, and verdicts from the data above.
