@@ -66,7 +66,7 @@ export function promptDecisions(rows) {
   }));
 }
 
-async function analyzeWithClaude({ campaignState, decisionMemory, contextLock, grounding = {} }) {
+async function analyzeWithClaude({ campaignState, decisionMemory, contextLock, grounding = {}, workspaceId = null }) {
   const role =
     'You are an Elite Performance Marketing Strategist. ' +
     'You diagnose ad-platform campaigns from raw metrics + the brand context lock + ' +
@@ -112,6 +112,7 @@ async function analyzeWithClaude({ campaignState, decisionMemory, contextLock, g
 
   const { text } = await runClaudeAgent({
     campaignId: campaignState?.campaignId ?? null,
+    workspaceId, // R9 — campaignId alone cannot address a CampaignState row
     role,
     task,
     maxTokens: 800,
@@ -125,7 +126,7 @@ async function analyzeWithClaude({ campaignState, decisionMemory, contextLock, g
  * for a strict JSON object with N variants matching the schema
  * the DecisionTheater UI consumes.
  */
-async function generateCreativeAssets({ contextLock, strategicBrief }) {
+async function generateCreativeAssets({ contextLock, strategicBrief, workspaceId = null }) {
   if (!process.env.OPENAI_API_KEY) {
     return null;
   }
@@ -161,6 +162,7 @@ async function generateCreativeAssets({ contextLock, strategicBrief }) {
 
   const { text } = await runChatGPTAgent({
     campaignId: strategicBrief?.campaignId ?? null,
+    workspaceId, // R9 — see analyzeWithClaude
     role,
     task,
     maxTokens: 1500,
@@ -181,10 +183,21 @@ async function generateCreativeAssets({ contextLock, strategicBrief }) {
  */
 export async function runOrchestration({ campaignId, workspaceId, actionId, userId, grounding = {} }) {
   if (!campaignId) throw new Error('orchestrator: campaignId required');
+  // R9 (I40) — REQUIRED, and checked rather than defaulted. Prisma reads an
+  // `undefined` field in a `where` as "no filter on this column", so an absent
+  // workspaceId would silently turn the scoped CampaignState read below back
+  // into the global one it replaced. Fail closed instead.
+  if (!workspaceId) throw new Error('orchestrator: workspaceId required');
 
   // ── Gather the three inputs in parallel ─────────────────────
   const [campaign, user, memory] = await Promise.all([
-    prisma.campaignState.findUnique({ where: { campaignId } }),
+    // R9 (I32/I40) — WORKSPACE-SCOPED findFirst, not findUnique on campaignId.
+    // CampaignState's only unique is @@unique([campaignId, workspaceId]), so
+    // `findUnique({ where: { campaignId } })` named no unique selector and was
+    // rejected by Prisma at call time. It was also workspace-blind by intent:
+    // campaignId is a platform-supplied String, so another workspace running the
+    // same ad account would have resolved into this orchestration.
+    prisma.campaignState.findFirst({ where: { campaignId, workspaceId } }),
     userId
       ? prisma.user.findUnique({ where: { id: userId }, select: { context: true } })
       : Promise.resolve(null),
@@ -234,6 +247,7 @@ export async function runOrchestration({ campaignId, workspaceId, actionId, user
       decisionMemory: memory,
       contextLock,
       grounding, // deterministic levelVerdicts / fatigueForecast / guardrailHits
+      workspaceId,
     });
   } catch (err) {
     logger.error({ err: err.message, campaignId }, '[orchestrator] Claude failed');
@@ -261,6 +275,7 @@ export async function runOrchestration({ campaignId, workspaceId, actionId, user
     try {
       creativeAssets = await generateCreativeAssets({
         contextLock,
+        workspaceId,
         strategicBrief: {
           campaignId,
           problem:        strategicAnalysis.rootCause,

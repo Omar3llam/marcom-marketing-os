@@ -23,8 +23,12 @@ vi.mock('@prisma/client', () => {
         findFirst: vi.fn(async ({ where, orderBy }) => {
           const artifacts = Array.from(mockArtifacts.values());
 
-          // Filter by criteria
+          // Filter by criteria. R9 — `id` is honoured here because getArtifact
+          // and deleteArtifact now resolve by (id, workspaceId) through
+          // findFirst; a mock that ignored `id` would return SOME artifact of
+          // the right workspace and let a broken lookup look correct.
           let filtered = artifacts.filter(a => {
+            if (where.id && a.id !== where.id) return false;
             if (where.workspaceId && a.workspaceId !== where.workspaceId) return false;
             if (where.executionId && a.executionId !== where.executionId) return false;
             if (where.nodeId && a.nodeId !== where.nodeId) return false;
@@ -207,7 +211,7 @@ describe('Artifact Storage Service', () => {
       provider: 'CLAUDE',
     });
 
-    const retrieved = await getArtifact(stored.id);
+    const retrieved = await getArtifact(stored.id, TEST_WORKSPACE_ID);
 
     expect(retrieved).toBeDefined();
     expect(retrieved.id).toBe(stored.id);
@@ -216,8 +220,52 @@ describe('Artifact Storage Service', () => {
   });
 
   it('should return null for non-existent artifact', async () => {
-    const retrieved = await getArtifact('non_existent_id');
+    const retrieved = await getArtifact('non_existent_id', TEST_WORKSPACE_ID);
     expect(retrieved).toBeNull();
+  });
+
+  // ── R9 (I40) · the resolver enforces the workspace itself ────────────────
+  it('does not return an artifact belonging to another workspace', async () => {
+    const OTHER_WORKSPACE_ID = '00000000-0000-0000-0000-000000000002';
+    const stored = await storeArtifact({
+      workspaceId: TEST_WORKSPACE_ID,
+      executionId: TEST_EXECUTION_ID,
+      nodeId: TEST_NODE_ID,
+      nodeType: TEST_NODE_TYPE,
+      type: 'hook',
+      content: 'Another workspace must never read this',
+      capability: 'GENERATE_HOOKS',
+      provider: 'CLAUDE',
+    });
+
+    // getArtifact also READS THE CONTENT out of the storage adapter, so an
+    // unscoped lookup does not merely leak metadata a caller might then check —
+    // it fetches the bytes before anyone has asked who owns them.
+    expect(await getArtifact(stored.id, OTHER_WORKSPACE_ID)).toBeNull();
+    expect(await getArtifact(stored.id, TEST_WORKSPACE_ID)).not.toBeNull();
+  });
+
+  it('refuses a lookup with no workspaceId instead of resolving globally', async () => {
+    await expect(getArtifact('artifact_1')).rejects.toThrow(/workspaceId required/);
+    await expect(deleteArtifact('artifact_1')).rejects.toThrow(/workspaceId required/);
+  });
+
+  it('does not delete an artifact belonging to another workspace', async () => {
+    const OTHER_WORKSPACE_ID = '00000000-0000-0000-0000-000000000002';
+    const stored = await storeArtifact({
+      workspaceId: TEST_WORKSPACE_ID,
+      executionId: TEST_EXECUTION_ID,
+      nodeId: TEST_NODE_ID,
+      nodeType: TEST_NODE_TYPE,
+      type: 'hook',
+      content: 'Not yours to delete',
+      capability: 'GENERATE_HOOKS',
+      provider: 'CLAUDE',
+    });
+
+    expect(await deleteArtifact(stored.id, OTHER_WORKSPACE_ID)).toBe(false);
+    // …and the artifact is untouched: still readable by its real owner.
+    expect(await getArtifact(stored.id, TEST_WORKSPACE_ID)).not.toBeNull();
   });
 
   it('should list artifacts with filters', async () => {
@@ -275,11 +323,11 @@ describe('Artifact Storage Service', () => {
       provider: 'CLAUDE',
     });
 
-    const deleted = await deleteArtifact(stored.id);
+    const deleted = await deleteArtifact(stored.id, TEST_WORKSPACE_ID);
     expect(deleted).toBe(true);
 
     // Artifact metadata should still exist but content cleared
-    const retrieved = await getArtifact(stored.id);
+    const retrieved = await getArtifact(stored.id, TEST_WORKSPACE_ID);
     expect(retrieved).toBeDefined();
     expect(retrieved.content).toBeNull();
     expect(retrieved.metadata.deletedAt).toBeDefined();
@@ -306,7 +354,7 @@ describe('Artifact Storage Service', () => {
     });
 
     // Should be stored inline (< 1KB)
-    const retrieved = await getArtifact(stored.id);
+    const retrieved = await getArtifact(stored.id, TEST_WORKSPACE_ID);
     expect(retrieved.content).toBe(smallContent);
   });
 

@@ -95,7 +95,7 @@ async function resolveBreachedPredictions(workspaceId, entities) {
     const breach = series.find((pt) => pt.frequency >= p.ceiling && new Date(pt.date) >= new Date(p.createdAt));
     if (!breach) continue; // no real breach yet — still a live projection
     try {
-      await resolvePrediction({ predictionId: p.id, actualBreachDate: breach.date });
+      await resolvePrediction({ predictionId: p.id, workspaceId, actualBreachDate: breach.date });
       resolved += 1;
     } catch (err) {
       logger.warn({ workspaceId, predictionId: p.id, err: err.message }, '[FatigueSweep] resolve skipped');

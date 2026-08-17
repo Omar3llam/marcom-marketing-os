@@ -25,17 +25,23 @@
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const findUnique = vi.fn();
+const findFirst = vi.fn();
 const decisionFindMany = vi.fn();
 const userFindUnique = vi.fn().mockResolvedValue(null);
 
 // ONE prisma mock, shared by both modules under test. `decision` — not
 // `decisionMemory`: if the orchestrator ever reaches for the retired table
 // again, the property is simply absent and the call throws.
+//
+// R9 — campaignState exposes findFirst ONLY. Both readers used to call
+// findUnique({ where: { campaignId } }), which real Prisma rejects (campaignId
+// is not a unique selector on its own) — the mock accepted it and hid that.
+// Omitting findUnique means any regression to the invalid, workspace-blind call
+// throws here instead of passing.
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
-    campaignState: { findUnique: (...a) => findUnique(...a) },
-    decision:      { findMany:   (...a) => decisionFindMany(...a) },
+    campaignState: { findFirst: (...a) => findFirst(...a) },
+    decision:      { findMany:  (...a) => decisionFindMany(...a) },
     user:          { findUnique: (...a) => userFindUnique(...a) },
   },
 }));
@@ -69,10 +75,10 @@ const DECISION = {
   createdAt: new Date('2026-07-30T00:00:00.000Z'),
 };
 
-const okState = () => findUnique.mockResolvedValue(STATE);
+const okState = () => findFirst.mockResolvedValue(STATE);
 
 beforeEach(() => {
-  findUnique.mockReset();
+  findFirst.mockReset();
   decisionFindMany.mockReset();
 });
 
@@ -81,7 +87,7 @@ beforeEach(() => {
 describe('A · contextBuilder states campaign state, and nothing about history', () => {
   it('builds context without reading any decision source', async () => {
     okState();
-    const ctx = await buildCampaignContext('c1');
+    const ctx = await buildCampaignContext('c1', 'ws1');
 
     expect(ctx).toEqual({ state: STATE });
     // The removed read is the point: it must not have been quietly repointed to
@@ -92,7 +98,7 @@ describe('A · contextBuilder states campaign state, and nothing about history',
 
   it('the fragment carries no "Recent decisions" section at all', async () => {
     okState();
-    const fragment = await getRenderedContext('c1');
+    const fragment = await getRenderedContext('c1', 'ws1');
 
     expect(fragment).toContain('Stage:        SCALING');
     expect(fragment).toContain('Health score: 0.72');
@@ -104,20 +110,43 @@ describe('A · contextBuilder states campaign state, and nothing about history',
 
   it('invents no decisions, no counts and no zeroes', async () => {
     okState();
-    const fragment = await getRenderedContext('c1');
+    const fragment = await getRenderedContext('c1', 'ws1');
     expect(fragment).not.toMatch(/\b0 (prior|previous|recent)\b/i);
     expect(fragment).not.toMatch(/\bnone\b/i);
   });
 
   it('no CampaignState → null, and an empty fragment rather than a heading', async () => {
-    findUnique.mockResolvedValue(null);
-    expect(await buildCampaignContext('c1')).toBeNull();
-    expect(await getRenderedContext('c1')).toBe('');
+    findFirst.mockResolvedValue(null);
+    expect(await buildCampaignContext('c1', 'ws1')).toBeNull();
+    expect(await getRenderedContext('c1', 'ws1')).toBe('');
   });
 
   it('no campaignId → null without touching the database', async () => {
     expect(await buildCampaignContext(null)).toBeNull();
-    expect(findUnique).not.toHaveBeenCalled();
+    expect(findFirst).not.toHaveBeenCalled();
+  });
+
+  // ── R9 · the read is workspace-scoped ────────────────────────────────────
+  it('scopes the CampaignState read to the workspace, not to campaignId alone', async () => {
+    okState();
+    await buildCampaignContext('c1', 'ws1');
+
+    expect(findFirst).toHaveBeenCalledTimes(1);
+    const { where } = findFirst.mock.calls[0][0];
+    // BOTH halves of @@unique([campaignId, workspaceId]). campaignId is a
+    // platform-supplied String, so it is not globally unique: two workspaces
+    // running the same ad account share it.
+    expect(where).toEqual({ campaignId: 'c1', workspaceId: 'ws1' });
+  });
+
+  it('no workspaceId → null without touching the database (never a global lookup)', async () => {
+    // Fails closed. Prisma reads an absent `where` field as "no filter", so
+    // passing it through would have restored exactly the workspace-blind read
+    // this change removes — the lookup must not happen at all.
+    expect(await buildCampaignContext('c1')).toBeNull();
+    expect(await buildCampaignContext('c1', undefined)).toBeNull();
+    expect(await getRenderedContext('c1')).toBe('');
+    expect(findFirst).not.toHaveBeenCalled();
   });
 
   it('renderContextPrompt(null) is empty, not a heading with nothing under it', () => {
@@ -188,6 +217,35 @@ describe('C · orchestration reads canonical decisions, and stays honest about f
     expect(JSON.stringify(args.where)).not.toContain('c1');
   });
 
+  // ── R9 · the orchestrator's own CampaignState read ───────────────────────
+  it('reads CampaignState scoped to the workspace, via a valid selector', async () => {
+    okState();
+    decisionFindMany.mockResolvedValue([]);
+
+    await runOrchestration({ campaignId: 'c1', workspaceId: 'ws1' });
+
+    expect(findFirst).toHaveBeenCalledTimes(1);
+    expect(findFirst.mock.calls[0][0].where).toEqual({ campaignId: 'c1', workspaceId: 'ws1' });
+  });
+
+  it('refuses to orchestrate without a workspaceId', async () => {
+    // Not cosmetic: `where: { campaignId, workspaceId: undefined }` is a LEGAL
+    // Prisma query that silently drops the workspace predicate. Throwing is what
+    // keeps the scope from evaporating when a caller forgets it.
+    await expect(runOrchestration({ campaignId: 'c1' })).rejects.toThrow(/workspaceId required/);
+    expect(findFirst).not.toHaveBeenCalled();
+    expect(runClaudeAgent).not.toHaveBeenCalled();
+  });
+
+  it('hands the workspace to the agent, so its context block is scoped too', async () => {
+    okState();
+    decisionFindMany.mockResolvedValue([]);
+
+    await runOrchestration({ campaignId: 'c1', workspaceId: 'ws1' });
+
+    expect(runClaudeAgent.mock.calls[0][0].workspaceId).toBe('ws1');
+  });
+
   it('puts the engine\'s real verdicts in the prompt', async () => {
     okState();
     decisionFindMany.mockResolvedValue([DECISION]);
@@ -248,7 +306,7 @@ describe('C · orchestration reads canonical decisions, and stays honest about f
   // The one absence that SHOULD still stop everything. Without a CampaignState
   // there is no campaign to analyse, and continuing would mean inventing one.
   it('a missing CampaignState still throws — that absence is not decoration', async () => {
-    findUnique.mockResolvedValue(null);
+    findFirst.mockResolvedValue(null);
     decisionFindMany.mockResolvedValue([]);
 
     await expect(runOrchestration({ campaignId: 'c1', workspaceId: 'ws1' }))

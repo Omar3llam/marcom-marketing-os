@@ -643,12 +643,14 @@ export async function resumeExecutionFromCheckpoint(checkpointId) {
  * @param {string} checkpointId - Checkpoint ID to resume from
  * @param {string[]} nodeIdsToReExecute - Node IDs marked for regeneration
  * @param {Object} decisionContext - Context from approval decisions (feedback, revisionInstructions, etc.)
+ * @param {string} workspaceId - Required (R9, I40); the workspace that owns the checkpoint
  * @returns {Promise<Object>} Execution result
  */
-export async function reExecuteNodes(checkpointId, nodeIdsToReExecute, decisionContext = {}) {
+export async function reExecuteNodes(checkpointId, nodeIdsToReExecute, decisionContext = {}, workspaceId) {
   try {
-    // Load checkpoint
-    const checkpoint = await getCheckpointById(checkpointId);
+    // Load checkpoint — R9: workspace-scoped, so re-execution cannot be
+    // triggered against another workspace's paused run by id alone.
+    const checkpoint = await getCheckpointById(checkpointId, workspaceId);
 
     if (!checkpoint) {
       throw new Error(`Checkpoint ${checkpointId} not found`);

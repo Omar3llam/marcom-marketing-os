@@ -41,7 +41,11 @@ const requireApprover = requireCollabRole(WORKSPACE_ROLE.STRATEGIST);
 // ============================================================
 
 async function verifyWorkspaceAccess(artifactId, userWorkspaceId) {
-  const artifact = await getArtifact(artifactId);
+  // R9 (I40) — the scope is now an argument to the resolver. The ownership
+  // comparison below is retained (it costs nothing and states the rule at the
+  // point the route depends on it), but it is no longer the ONLY thing standing
+  // between a foreign artifact id and this artifact's bytes.
+  const artifact = await getArtifact(artifactId, userWorkspaceId);
 
   if (!artifact) {
     throw new Error('Artifact not found');
@@ -81,7 +85,7 @@ router.post('/:id/approve', requireApprover, async (req, res) => {
     await verifyWorkspaceAccess(artifactId, workspaceId);
 
     // Get approval by artifactId
-    const existingApproval = await getApprovalStatus(artifactId);
+    const existingApproval = await getApprovalStatus(artifactId, workspaceId);
     if (!existingApproval) {
       return res.status(404).json({ error: 'Approval request not found' });
     }
@@ -147,7 +151,7 @@ router.post('/:id/reject', requireApprover, async (req, res) => {
     await verifyWorkspaceAccess(artifactId, workspaceId);
 
     // Get approval by artifactId
-    const existingApproval = await getApprovalStatus(artifactId);
+    const existingApproval = await getApprovalStatus(artifactId, workspaceId);
     if (!existingApproval) {
       return res.status(404).json({ error: 'Approval request not found' });
     }
@@ -214,7 +218,7 @@ router.post('/:id/request-revision', requireApprover, async (req, res) => {
     await verifyWorkspaceAccess(artifactId, workspaceId);
 
     // Get approval by artifactId
-    const existingApproval = await getApprovalStatus(artifactId);
+    const existingApproval = await getApprovalStatus(artifactId, workspaceId);
     if (!existingApproval) {
       return res.status(404).json({ error: 'Approval request not found' });
     }
@@ -329,7 +333,7 @@ router.get('/:id/approval-status', async (req, res) => {
     // Verify workspace access
     await verifyWorkspaceAccess(artifactId, workspaceId);
 
-    const approval = await getApprovalStatus(artifactId);
+    const approval = await getApprovalStatus(artifactId, workspaceId);
 
     if (!approval) {
       return res.status(404).json({ error: 'Approval not found' });

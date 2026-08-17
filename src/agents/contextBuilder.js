@@ -55,11 +55,24 @@ import { prisma } from '../lib/prisma.js';
  * orchestrator's read to stay workspace-scoped. Giving this prompt real
  * decision history is a new capability, and R7 does not add capabilities.
  */
-export async function buildCampaignContext(campaignId) {
-  if (!campaignId) return null;
+export async function buildCampaignContext(campaignId, workspaceId) {
+  if (!campaignId || !workspaceId) return null;
 
-  const state = await prisma.campaignState.findUnique({
-    where: { campaignId },
+  // R9 (I32/I40) — findFirst scoped to the workspace, not findUnique on
+  // campaignId alone. Two defects in one line, both now closed:
+  //
+  //   1. CampaignState's only unique is @@unique([campaignId, workspaceId]).
+  //      `findUnique({ where: { campaignId } })` names no unique selector, so
+  //      Prisma rejected the query at call time — this read could only throw.
+  //   2. The intent was workspace-blind. Had it been valid, it would have
+  //      resolved another workspace's campaign state into this prompt, because
+  //      CampaignState.campaignId is a plain legacy String — a platform-supplied
+  //      value, not a workspace-derived one, so it is not globally unique.
+  //
+  // workspaceId is therefore REQUIRED, not optional: a call that cannot say
+  // which workspace it is asking about returns null rather than asking globally.
+  const state = await prisma.campaignState.findFirst({
+    where: { campaignId, workspaceId },
     select: {
       stage: true, healthScore: true, lastAnalysis: true, workspaceId: true,
     },
@@ -95,7 +108,7 @@ export function renderContextPrompt(ctx) {
 /**
  * Convenience: fetch + render in one call.
  */
-export async function getRenderedContext(campaignId) {
-  const ctx = await buildCampaignContext(campaignId);
+export async function getRenderedContext(campaignId, workspaceId) {
+  const ctx = await buildCampaignContext(campaignId, workspaceId);
   return renderContextPrompt(ctx);
 }

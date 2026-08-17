@@ -240,12 +240,21 @@ export async function getPendingApprovals(workspaceId, filters = {}) {
 }
 
 /**
- * Get approval status for artifact
+ * Get approval status for artifact, within a workspace.
+ *
+ * R9 (I40) — scoped. ArtifactApproval carries its own workspaceId, and this read
+ * keyed only on artifactId; the routes then approved/rejected whatever row came
+ * back. The artifact-side check the routes already ran does not cover this row:
+ * they are two tables, and only one of them was being asked about ownership.
+ *
+ * @param {string} artifactId
+ * @param {string} workspaceId — required; the owning workspace
  */
-export async function getApprovalStatus(artifactId) {
+export async function getApprovalStatus(artifactId, workspaceId) {
+  if (!workspaceId) throw new Error('getApprovalStatus: workspaceId required');
   try {
-    const approval = await prisma.artifactApproval.findUnique({
-      where: { artifactId },
+    const approval = await prisma.artifactApproval.findFirst({
+      where: { artifactId, workspaceId },
       include: {
         artifact: {
           select: {
@@ -280,12 +289,19 @@ export async function getApprovalStatus(artifactId) {
 }
 
 /**
- * Get approval by ID
+ * Get approval by ID, within a workspace.
+ * R9 (I40) — see getApprovalStatus. Absent-or-foreign is one outcome here (the
+ * pre-existing throw), so a cross-workspace id is indistinguishable from a
+ * missing one, which is the intended answer.
+ *
+ * @param {string} approvalId
+ * @param {string} workspaceId — required; the owning workspace
  */
-export async function getApproval(approvalId) {
+export async function getApproval(approvalId, workspaceId) {
+  if (!workspaceId) throw new Error('getApproval: workspaceId required');
   try {
-    const approval = await prisma.artifactApproval.findUnique({
-      where: { id: approvalId },
+    const approval = await prisma.artifactApproval.findFirst({
+      where: { id: approvalId, workspaceId },
       include: {
         artifact: true,
       },

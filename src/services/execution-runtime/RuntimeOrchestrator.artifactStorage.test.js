@@ -13,14 +13,20 @@ vi.mock('@prisma/client', () => ({
   PrismaClient: function() {
     return {
       artifact: {
-        findFirst: vi.fn(async ({ where }) => {
-          const artifacts = Array.from(mockArtifacts.values());
-          return artifacts.find(a =>
-            a.workspaceId === where.workspaceId &&
-            a.executionId === where.executionId &&
-            a.nodeId === where.nodeId &&
+        // R9 — every predicate is applied only when the query supplies it, and
+        // `id` is one of them. getArtifact now resolves by (id, workspaceId)
+        // through findFirst; the previous shape REQUIRED executionId and nodeId
+        // to match, so a legitimate id lookup matched nothing and returned null.
+        findFirst: vi.fn(async ({ where, orderBy }) => {
+          const artifacts = Array.from(mockArtifacts.values()).filter(a =>
+            (!where.id || a.id === where.id) &&
+            (!where.workspaceId || a.workspaceId === where.workspaceId) &&
+            (!where.executionId || a.executionId === where.executionId) &&
+            (!where.nodeId || a.nodeId === where.nodeId) &&
             (!where.contentHash || a.contentHash === where.contentHash)
-          ) || null;
+          );
+          if (orderBy?.version === 'desc') artifacts.sort((a, b) => b.version - a.version);
+          return artifacts[0] || null;
         }),
 
         create: vi.fn(async ({ data }) => {
@@ -149,7 +155,7 @@ describe('RuntimeOrchestrator + Artifact Storage Integration', () => {
 
     // Verify artifacts can be retrieved
     const artifactId = executedNode.storedArtifactIds[0];
-    const artifact = await getArtifact(artifactId);
+    const artifact = await getArtifact(artifactId, '00000000-0000-0000-0000-000000000001');
 
     expect(artifact).toBeDefined();
     expect(artifact.type).toBe('hook');
@@ -273,7 +279,7 @@ describe('RuntimeOrchestrator + Artifact Storage Integration', () => {
 
     // Retrieve stored artifact
     const artifactId = result.executedNodes[0].storedArtifactIds[0];
-    const artifact = await getArtifact(artifactId);
+    const artifact = await getArtifact(artifactId, '00000000-0000-0000-0000-000000000001');
 
     // Verify metadata was stored
     expect(artifact.metadata).toBeDefined();
@@ -334,9 +340,19 @@ describe('RuntimeOrchestrator + Artifact Storage Integration', () => {
 
     // Retrieve and check version
     const artifactId = result2.executedNodes[0].storedArtifactIds[0];
-    const artifact = await getArtifact(artifactId);
+    const artifact = await getArtifact(artifactId, '00000000-0000-0000-0000-000000000001');
 
-    expect(artifact.version).toBe(2); // Should be version 2
+    // Version 3, not 2 — and this is the REAL number. The first execution's AI
+    // stub returns TWO hooks, so it stores v1 and v2 under this nodeId; the
+    // regenerated hook is the third. storeArtifact picks the previous version
+    // with `orderBy: { version: 'desc' }`, so it reads 2 and writes 3.
+    //
+    // The old expectation of 2 was an artefact of the mock: its findFirst
+    // ignored `orderBy` and returned the first-INSERTED match (always v1), which
+    // pinned every regeneration at version 2 no matter how many existed. Fixing
+    // findFirst for R9's (id, workspaceId) lookup also made it honour orderBy,
+    // and the true versioning behaviour became visible.
+    expect(artifact.version).toBe(3);
     expect(artifact.content).toContain('New version');
   });
 });

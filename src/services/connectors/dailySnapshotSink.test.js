@@ -261,6 +261,30 @@ describe('R8 — this sink decorates; it never mints', () => {
     expect(prisma.campaign.findMany).toHaveBeenCalledTimes(1); // read only
     expect(prisma.campaign.upsert).toBeUndefined();
   });
+
+  // ── R9 (I33) · existence is not permission ───────────────────────────────
+  it('scopes the existence check to THIS workspace, not to entity id alone', async () => {
+    await landDailySnapshots(WS, CHANNEL.META, [daily()]);
+
+    const { where } = prisma.campaign.findMany.mock.calls[0][0];
+    expect(where.workspaceId).toBe(WS);
+    expect(where.id.in).toContain(idOf('c1'));
+  });
+
+  it('drops a row whose entity belongs to another workspace', async () => {
+    // The graph returns nothing for THIS workspace — which is what a scoped
+    // query does when the id is real but foreign. Unscoped, the same id came
+    // back "known" and the sink wrote a canonical DAILY observation into a
+    // workspace that does not own the entity.
+    prisma.campaign.findMany.mockImplementation(async ({ where }) => (
+      where.workspaceId === WS ? [] : where.id.in.map((id) => ({ id }))
+    ));
+
+    const out = await landDailySnapshots(WS, CHANNEL.META, [daily()]);
+
+    expect(out).toEqual({ created: 0, restated: 0, skippedUnknownEntity: 1 });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
 });
 
 describe('R8 — what this sink refuses to land', () => {

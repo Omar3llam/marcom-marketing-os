@@ -6,7 +6,7 @@
 //
 // OPERATIONS:
 //   - createCheckpoint(executionId, nodeId, state)
-//   - getLatestCheckpoint(executionId)
+//   - getLatestCheckpoint(executionId, workspaceId)
 //   - markCheckpointResumed(checkpointId)
 //   - getPausedExecutions(workspaceId)
 //   - healthCheck()
@@ -88,14 +88,21 @@ export async function createCheckpoint(
 }
 
 /**
- * Get checkpoint by ID
+ * Get checkpoint by ID, within a workspace.
+ *
+ * R9 (I40) — ExecutionCheckpoint carries workspaceId; this read ignored it. A
+ * checkpoint is resumable execution state, so resolving one globally is the
+ * lookup that precedes re-running another workspace's nodes.
+ *
  * @param {string} checkpointId - Checkpoint ID
- * @returns {Promise<object|null>} Checkpoint or null
+ * @param {string} workspaceId - Required; the owning workspace
+ * @returns {Promise<object|null>} Checkpoint, or null when absent or foreign
  */
-export async function getCheckpointById(checkpointId) {
+export async function getCheckpointById(checkpointId, workspaceId) {
+  if (!workspaceId) throw new Error('getCheckpointById: workspaceId required');
   try {
-    const checkpoint = await prisma.executionCheckpoint.findUnique({
-      where: { id: checkpointId },
+    const checkpoint = await prisma.executionCheckpoint.findFirst({
+      where: { id: checkpointId, workspaceId },
     });
 
     return checkpoint;
@@ -109,14 +116,21 @@ export async function getCheckpointById(checkpointId) {
 }
 
 /**
- * Get latest checkpoint for execution
+ * Get the latest checkpoint for an execution, within a workspace.
+ *
+ * R9 (I40) — see getCheckpointById. Both callers had already verified the
+ * ExecutionRequest's workspace before calling; that check now travels WITH the
+ * query instead of sitting beside it.
+ *
  * @param {string} executionId - Execution ID
- * @returns {Promise<object|null>} Latest checkpoint or null
+ * @param {string} workspaceId - Required; the owning workspace
+ * @returns {Promise<object|null>} Latest checkpoint, or null when absent or foreign
  */
-export async function getLatestCheckpoint(executionId) {
+export async function getLatestCheckpoint(executionId, workspaceId) {
+  if (!workspaceId) throw new Error('getLatestCheckpoint: workspaceId required');
   try {
     const checkpoint = await prisma.executionCheckpoint.findFirst({
-      where: { executionId },
+      where: { executionId, workspaceId },
       orderBy: { createdAt: 'desc' },
     });
 

@@ -26,7 +26,7 @@ const TOOL_TIMEOUT_MS = 10_000;     // Phase-4 spec: 10 s per tool
  * @param {number} [opts.maxTokens=2000]
  */
 export async function runClaudeAgent({
-  campaignId, role, task, history = [],
+  campaignId, workspaceId = null, role, task, history = [],
   tools = [], onTool = null, maxTokens = 2000,
   skipRecommendations = false,
 }) {
@@ -43,7 +43,10 @@ export async function runClaudeAgent({
     toolsCount: tools.length,
   }, '[ClaudeAgent] runClaudeAgent: starting');
 
-  const ctxBlock = campaignId ? await getRenderedContext(campaignId) : '';
+  // R9 (I32) — campaign context is workspace-scoped. CampaignState.campaignId is
+  // a platform-supplied String, unique only WITH its workspace, so a caller that
+  // cannot name the workspace gets no context block rather than a global lookup.
+  const ctxBlock = campaignId && workspaceId ? await getRenderedContext(campaignId, workspaceId) : '';
 
   const RECOMMENDATION_BLOCK = `
 AUTONOMOUS RECOMMENDATION REQUIREMENT:

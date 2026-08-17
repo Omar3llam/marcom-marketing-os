@@ -45,8 +45,8 @@ export async function resumeWithDecisions(executionId, workspaceId, decisions, r
     throw new ResumeError(403, { error: 'Unauthorized: execution belongs to different workspace' });
   }
 
-  // Load latest checkpoint and validate it is resumable
-  const checkpoint = await getLatestCheckpoint(executionId);
+  // Load latest checkpoint and validate it is resumable (R9 — workspace-scoped)
+  const checkpoint = await getLatestCheckpoint(executionId, workspaceId);
 
   if (!checkpoint) {
     throw new ResumeError(404, { error: 'No checkpoint found for execution' });
@@ -85,7 +85,7 @@ export async function resumeWithDecisions(executionId, workspaceId, decisions, r
 
   // Resume with selective re-execution if REGENERATE/REQUEST_REVISION decisions exist (PR #31)
   const result = nodesToReExecute.length > 0
-    ? await reExecuteNodes(checkpoint.id, nodesToReExecute, decisionContext)
+    ? await reExecuteNodes(checkpoint.id, nodesToReExecute, decisionContext, workspaceId)
     : await resumeExecutionFromCheckpoint(checkpoint.id);
 
   return {
