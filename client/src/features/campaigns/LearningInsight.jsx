@@ -27,6 +27,13 @@ const MIN_SAMPLE = 3; // mirrors decisionLearning.MIN_SAMPLE
 
 export function LearningInsight({ learning }) {
   if (!learning) return null;
+  // R10 (F15) — the service now distinguishes "we could not read the history"
+  // from "there is no history". Both render nothing here, which was always the
+  // right behaviour; what changed is that the two are no longer the same value,
+  // so a broken read is visible in logs and metrics instead of hiding inside a
+  // legitimate empty state. Checked explicitly so a future reader does not
+  // mistake the sentinel for a tally with missing fields.
+  if (learning.status) return null;
 
   const { total, improved, unscored = 0 } = learning;
   if (!(total >= MIN_SAMPLE) || !(improved > 0)) return null;

@@ -30,6 +30,7 @@ import { EXECUTION_QUEUE_NAME }        from '../queues/index.js';
 import { executeMetaAction }           from '../services/metaExecutionService.js';
 import { lifecycleService }            from '../services/execution/ExecutionLifecycleService.js';
 import { startHeartbeat }              from '../services/execution/workerHealth.js';
+import { stampDecisionExecuted }       from '../services/execution/decisionAttribution.js';
 import { prisma }                      from '../lib/prisma.js';
 import { logger }                      from '../utils/logger.js';
 import {
@@ -71,6 +72,11 @@ async function processExecution(job) {
       id: true, status: true, version: true,
       actionType: true, targetId: true,
       correlationId: true,
+      // R10 (I55) — the decision this mutation carries out, resolved and scoped
+      // at request time. Read here so the success path below can stamp it
+      // without a second lookup, and so an unattributed execution is visibly
+      // null rather than undefined-because-unselected (#209's class).
+      decisionId: true,
     },
   });
 
@@ -124,8 +130,28 @@ async function processExecution(job) {
       },
     });
 
-    logger.info({ executionId, actionType: execution.actionType }, '[executionWorker] success');
-    return { ok: true };
+    // ── R10 (I55): the platform mutation LANDED ─────────────
+    // This is the only place in the system that stamps Decision.executedAt from
+    // a real execution, and it is deliberately after the EXECUTED_SUCCESS
+    // transition rather than before the Meta call. Queued is not executed;
+    // attempted is not executed. Only a mutation Meta accepted means the
+    // operator acted, and only that belongs in the accuracy population.
+    //
+    // Best-effort by design: the ad platform has already changed. Throwing here
+    // would make BullMQ retry a job whose side effect is done, and re-run a
+    // real budget change to fix a bookkeeping miss. The helper logs at error
+    // level instead, because an unstamped decision is exactly the invisibility
+    // R10 exists to end.
+    const stamp = await stampDecisionExecuted({
+      workspaceId,
+      decisionId: execution.decisionId,
+    });
+
+    logger.info(
+      { executionId, actionType: execution.actionType, decisionId: execution.decisionId, stamped: stamp.stamped },
+      '[executionWorker] success',
+    );
+    return { ok: true, decisionStamped: stamp.stamped };
   }
 
   // ── Failure path ─────────────────────────────────────────

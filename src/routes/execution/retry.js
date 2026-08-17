@@ -54,6 +54,7 @@ export function registerRetryRoute(router) {
           payload: true,
           status: true,
           correlationId: true,
+          decisionId: true, // R10 — carried onto the clone below
         },
       });
 
@@ -92,6 +93,11 @@ export function registerRetryRoute(router) {
           status: ExecutionStatus.PENDING,
           payload: original.payload,
           correlationId: original.correlationId,
+          // R10 (I55) — attribution travels with the retry. Re-deriving it from
+          // the payload would re-open the question the original request already
+          // answered; carrying the resolved column forward cannot disagree with
+          // it. The workspace was proven equal above, so the id stays in scope.
+          decisionId: original.decisionId,
           retryMetadata: {
             retryOf: original.id,
             retriedAt,

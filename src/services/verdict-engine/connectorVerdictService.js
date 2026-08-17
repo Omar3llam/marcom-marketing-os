@@ -33,6 +33,9 @@ import { daysSince }             from './confidenceEngine.js';
 import { isSubstantive }         from './counterfactualEngine.js';
 import { connectorDecisionScope } from './decisionIdentity.js';
 import { getDecisionHistory }    from '../decision-memory/index.js';
+import {
+  getInstitutionalMemory, selectRelevantMemory, memoryConfidenceFactor, applyMemoryToConfidence,
+} from '../pattern-engine/institutionalMemory.js';
 import { logger }                from '../../utils/logger.js';
 
 // Meta objectives that are GENUINELY awareness/reach — no purchase revenue is
@@ -393,9 +396,18 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
   // getLatestDecisions runs even on a threaded evaluation, and must: it is
   // DECISION IDENTITY (which stored row is behind this button), not a verdict
   // computation, and it has to reflect the rows this sweep has just written.
-  const [ev, decisionMap] = await Promise.all([
+  const [ev, decisionMap, memory] = await Promise.all([
     evaluation ?? evaluateConnectorVerdicts(workspaceId),
     getLatestDecisions(workspaceId),
+    // R10 (I50) — this workspace's VALIDATED institutional memory. Read in
+    // parallel with the evaluation, and deliberately not inside it: the verdict
+    // is computed from live signals alone (R8's single pass is untouched), and
+    // memory arrives afterwards to qualify how sure we are, never what we think.
+    //
+    // Never throws — a failed read returns MEMORY_UNAVAILABLE, whose factor is
+    // exactly 1.0, so an outage in the memory layer leaves every confidence
+    // figure bit-identical to the deterministic one.
+    getInstitutionalMemory(workspaceId),
   ]);
 
   const { gatedOut, annotated } = ev;
@@ -403,11 +415,50 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
     return { verdicts: [], gatedOut, account: null, status: ev.status };
   }
 
-  const verdicts = annotated.children.map((c) => ({
+  const verdicts = annotated.children.map((c) => {
+    // ── R10 (I50/I51) — the memory layer, per row ────────────────────────────
+    // Relevance is the pattern's own executable spec matching this verdict at
+    // this scope. `c.verdict` is READ here and never written: the whole
+    // adjustment is arithmetic on a number, and applyMemoryToConfidence is
+    // handed the number alone so it has nothing else it could return.
+    const relevant = selectRelevantMemory(memory.records, {
+      verdict: c.verdict, entityLevel: 'CAMPAIGN',
+    });
+    const memoryFactor = memoryConfidenceFactor(relevant);
+
+    return {
     id:         c.id,
     name:       c.name,
     verdict:    c.verdict,
-    confidence: c.verdictConfidence,
+    // The PUBLISHED figure: the engine's own confidence, qualified by what this
+    // account's validated history says about calls of this kind. Both halves
+    // travel separately below, so the adjustment is always auditable and the
+    // deterministic number is never lost.
+    confidence: applyMemoryToConfidence(c.verdictConfidence, memoryFactor),
+    // ── The memory layer, stated rather than folded away ─────────────────────
+    // `baseConfidence` is what the evidence alone said; `memory` says what was
+    // added and why, with the provenance of every pattern behind it. A reader
+    // who distrusts the history can recover the untouched number exactly.
+    //
+    // `status` distinguishes THREE states that a bare empty list would collapse:
+    // OK (we have validated memory), NO_VALIDATED_MEMORY (we looked, this
+    // account has none yet), MEMORY_UNAVAILABLE (we could not look). Only the
+    // last is our failure, and it must not read as the account's.
+    baseConfidence: c.verdictConfidence ?? null,
+    // Named in full, NOT `memory`. Two different things in this payload would
+    // otherwise wear that word: `memoryByEntityId` below is this campaign's past
+    // DECISIONS, and this is the account's validated PATTERNS. They answer
+    // different questions from different tables, and a reader who conflated them
+    // would think a verdict had been influenced by its own history.
+    institutionalMemory: {
+      status:  memory.status,
+      factor:  memoryFactor,
+      applied: memoryFactor !== 1,
+      // Bounded, and every field DB-derived. Nothing here is generated prose:
+      // `statement` and `basis` are the pattern engine's own deterministic
+      // strings, written when the pattern was extracted.
+      patterns: relevant.slice(0, 3),
+    },
     rationale:  c.rationale,
     spendMinor: c.metrics.spendMinor,
     roas:       c.signalInput.roas,
@@ -517,7 +568,8 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
     // What must not happen is publishing it as an argument. So the node keeps the
     // full list and the payload carries the ones that carry weight.
     counterfactuals: (c.counterfactuals ?? []).filter(isSubstantive),
-  }));
+    };
+  });
 
   logger.info(
     { workspaceId, scored: verdicts.length, gatedOut: gatedOut.length },

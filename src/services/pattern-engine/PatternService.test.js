@@ -62,7 +62,14 @@ beforeEach(() => {
   prisma.accountPattern.findMany.mockResolvedValue([]);
   prisma.accountPattern.createMany.mockResolvedValue({ count: 0 });
   prisma.patternObservation.createMany.mockResolvedValue({ count: 0 });
-  prisma.$transaction.mockResolvedValue([]);
+  // R10 — the persistence path is now an interactive transaction, so the mock
+  // must RUN the callback. `mockResolvedValue([])` would return without ever
+  // executing the upserts, and every assertion about what gets written would
+  // pass against code that was never reached.
+  prisma.accountPattern.upsert = vi.fn().mockImplementation(({ create }) =>
+    Promise.resolve({ id: create?.id ?? 'pattern-row' }));
+  prisma.$transaction.mockImplementation((arg) =>
+    (typeof arg === 'function' ? arg(prisma) : Promise.resolve([])));
 });
 
 const evidenceArgs = () => prisma.metricSnapshot.findMany.mock.calls[0][0];
@@ -75,7 +82,10 @@ describe('R3.2 — PatternService on the Evidence seam', () => {
       expect(SRC).toMatch(/selectOperationalSnapshots/);
       // Its own tables are still its own — I14 is about MetricSnapshot alone.
       expect(SRC).toMatch(/prisma\.decision\.findMany/);
-      expect(SRC).toMatch(/prisma\.accountPattern/);
+      // R10 moved the AccountPattern writes inside a $transaction, so they are
+      // reached through the tx client. Still this service's own table, still
+      // written here — the invariant is ownership, not the receiver's name.
+      expect(SRC).toMatch(/(prisma|tx)\.accountPattern/);
       expect(SRC).toMatch(/prisma\.testExperiment/);
     });
 
@@ -223,10 +233,20 @@ describe('R3.2 — PatternService on the Evidence seam', () => {
       expect((await withDecision()).where.workspaceId).toBe(WS);
     });
 
-    it('names its projection — the four R6 columns must not widen it silently', async () => {
+    it('names its projection — explicit, and wide enough for every predicate', async () => {
       // It was a SELECT *, which survived only because nothing had been added to
       // the table. An unprojected read on a freshly-migrated column is #209.
-      expect((await withDecision()).select).toEqual({ decisionId: true, sustained: true });
+      //
+      // R10 widened it deliberately. `sustained` alone was enough while the
+      // engine graded everything by it; SUCCESS_PREDICATES grade KILL on
+      // spendDeltaMinor and SCALE/REALLOCATE/HOLD on roasDelta, and the maturity
+      // gate reads windowEnd. Under-project any of them and the predicate
+      // returns null, which reads as UNMEASURED — every real outcome would
+      // silently stop counting, with no error anywhere.
+      expect((await withDecision()).select).toEqual({
+        decisionId: true, sustained: true,
+        spendDeltaMinor: true, revenueDeltaMinor: true, roasDelta: true, windowEnd: true,
+      });
     });
 
     it('does not read outcomes at all when there are no decisions', async () => {

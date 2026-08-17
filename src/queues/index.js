@@ -26,6 +26,11 @@ export const MAINTENANCE_QUEUE_NAME = 'maintenance';
 // The job NAME is also its jobId, so the worker can branch on job.name and the
 // scheduler can find its own repeatable by id.
 export const AI_USAGE_CLEANUP_JOB = 'ai-usage-cleanup';
+// R10 (Phase C) — pattern extraction, on a schedule instead of on a page view.
+// It shares the maintenance queue rather than minting a new one, exactly as the
+// note above invites: the queue's defining property is "always on, spends
+// nothing", and deterministic extraction has both.
+export const LEARNING_EXTRACTION_JOB = 'learning-extraction';
 
 const queueOpts = {
   connection: bullConnection,
@@ -199,6 +204,44 @@ export async function scheduleAiUsageCleanup() {
     {},
     {
       jobId:  AI_USAGE_CLEANUP_JOB,
+      repeat: { pattern: cron },
+    },
+  );
+}
+
+// ── Helper: schedule the learning-extraction sweep (R10 · Phase C) ───────────
+// ALWAYS ON, for the same reason the retention sweep is: an opt-in flag here
+// would reproduce the starvation this job exists to end. Extraction is
+// deterministic — patternEngine holds no LLM, no randomness and no network — so
+// unlike the agentic and narrative crons this one costs no AI spend, and there
+// is nothing to protect a user from by defaulting it off.
+//
+// Runs hourly by default rather than per-minute: outcomes mature over DAYS
+// (DEFAULT_CONFIG.maturationDays is 7), so extracting more often re-derives the
+// same patterns from the same rows. Hourly keeps a freshly-recorded outcome
+// visible on the briefing well within a session.
+//
+// Re-registers rather than adding: BullMQ repeatables persist in Redis keyed by
+// their pattern, so changing LEARNING_EXTRACTION_CRON would otherwise leave the
+// OLD schedule firing alongside the new one.
+export async function scheduleLearningExtraction() {
+  if (!maintenanceQueue) {
+    throw new Error('Queue subsystem unavailable — set REDIS_URL to a real Redis instance');
+  }
+  const cron = process.env.LEARNING_EXTRACTION_CRON || '17 * * * *'; // hourly, off the hour
+
+  const existing = await maintenanceQueue.getRepeatableJobs();
+  for (const j of existing) {
+    if (j.id === LEARNING_EXTRACTION_JOB) {
+      await maintenanceQueue.removeRepeatableByKey(j.key);
+    }
+  }
+
+  await maintenanceQueue.add(
+    LEARNING_EXTRACTION_JOB,
+    {},
+    {
+      jobId:  LEARNING_EXTRACTION_JOB,
       repeat: { pattern: cron },
     },
   );

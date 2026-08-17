@@ -24,6 +24,7 @@ import { executionQueue, enqueueExecution } from '../../queues/index.js';
 import { ExecutionStatus, TransitionActor } from '@marcom/runtime-contracts';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE }    from '../../services/collaboration/roleScope.js';
+import { resolveAttribution } from '../../services/execution/decisionAttribution.js';
 
 const MAX_QUEUE_DEPTH = Number(process.env.MAX_QUEUE_DEPTH || 500);
 
@@ -66,7 +67,7 @@ export function registerMetaRoute(router) {
   // Executing a Meta action is a BUYER/STRATEGIST capability — a CLIENT
   // (read-only leadership) seat must never queue a real ad-platform mutation.
   router.post('/meta', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
-    const { actionType, targetId, targetType, idempotencyKey, options } = req.body;
+    const { actionType, targetId, targetType, idempotencyKey, options, decisionId } = req.body;
     const workspaceId = req.workspaceId;
     const userId      = req.userId;
 
@@ -149,6 +150,24 @@ export function registerMetaRoute(router) {
         });
       }
 
+      // ── R10 (I55): attribution, resolved BEFORE the row is created ──
+      // An execution that names a decision must name one in THIS workspace.
+      // Refused rather than downgraded to unattributed: silently dropping the
+      // link would produce a real Meta mutation whose originating call the Proof
+      // Engine can never see, which is the precise gap R10 closes.
+      //
+      // A request that names no decision is not refused — acting on a campaign
+      // no sweep has written a verdict for is a normal operator path.
+      const attribution = await resolveAttribution(workspaceId, decisionId);
+      if (attribution.rejected) {
+        logger.warn({ workspaceId, userId, decisionId }, '[ExecutionRouter] unresolvable decision attribution');
+        return res.status(422).json({
+          success: false,
+          error:   'decisionId does not name a decision in this workspace',
+          code:    'ATTRIBUTION_UNRESOLVED',
+        });
+      }
+
       // Create ExecutionRequest at PENDING. Invariant I-1 (id immutable after create).
       const executionRequest = await prisma.executionRequest.create({
         data: {
@@ -159,6 +178,7 @@ export function registerMetaRoute(router) {
           status:        ExecutionStatus.PENDING,
           correlationId: idempotencyKey, // Invariant I-2: set at creation
           payload:       req.body,
+          decisionId:    attribution.decisionId,
         },
       });
 

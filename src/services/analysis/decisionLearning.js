@@ -39,6 +39,15 @@ const DEFAULT_LIMIT = 20;
 export const MIN_SAMPLE = 3;
 
 /**
+ * The states this read can be in, kept apart on purpose (R10 · F15).
+ *
+ * Only UNAVAILABLE is carried as a value; the other two are `null`, because the
+ * caller treats them identically AND SHOULD — a thin sample and no sample are
+ * both "nothing defensible to show". An error is not.
+ */
+export const LEARNING_STATUS = Object.freeze({ UNAVAILABLE: 'UNAVAILABLE' });
+
+/**
  * Outcome tally for comparable past decisions, or null when there is no
  * defensible track record to show.
  *
@@ -75,10 +84,26 @@ export async function getSimilarOutcomes({
     select:  { resolution: true },
     orderBy: { createdAt: 'desc' },
     take:    limit,
+  // R10 (F15) — a failed read is UNAVAILABLE, never an empty track record.
+  //
+  // This used to `return []`, which fell through the MIN_SAMPLE floor below and
+  // produced the same `null` a genuinely thin history produces. Both render
+  // nothing, so the UI looked identical either way — and that was the problem:
+  // "this workspace has no comparable decisions yet" and "we could not read this
+  // workspace's history" are different facts, and only one of them is about the
+  // account. Collapsing them meant a broken query could never be noticed from
+  // the outside, because its symptom was a legitimate empty state.
+  //
+  // The sentinel is a distinct return value rather than a throw: this is
+  // decoration beside a verdict, and losing it must not cost the caller the
+  // verdict. The distinction is preserved in the CONTRACT; what a renderer does
+  // with it stays the renderer's choice.
   }).catch((err) => {
-    logger.debug({ err: err.message, workspaceId, verdict }, '[decisionLearning] read failed');
-    return [];
+    logger.warn({ err: err.message, workspaceId, verdict }, '[decisionLearning] read failed');
+    return null;
   });
+
+  if (rows === null) return { status: LEARNING_STATUS.UNAVAILABLE };
 
   let improved = 0, unchanged = 0, worsened = 0, unscored = 0;
   for (const r of rows) {

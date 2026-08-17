@@ -144,7 +144,13 @@ export function calculateDecisionAccuracy({ decisions = [], outcomes = null, now
  */
 const windowStart = (decision) => decision.executedAt ?? decision.createdAt;
 
-function classifyMaturity(decision, outcome, nowMs, cfg) {
+// EXPORTED for R10 (I53), semantics untouched. The Pattern Engine needs the same
+// answer to "is this outcome mature enough to score" that the Proof Engine uses,
+// and the only two ways to give it one are to export this function or to write a
+// second copy of it. A second copy is precisely the duplicate definition I53
+// forbids — and the copy would drift, because this one is the version with the
+// tests. Adding `export` changes no behaviour and no caller here.
+export function classifyMaturity(decision, outcome, nowMs, cfg) {
   const ageMs = nowMs - new Date(windowStart(decision)).getTime();
   const matured = ageMs >= cfg.maturationDays * DAY_MS;
 

@@ -8,9 +8,10 @@
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { getBriefing }     from '../../services/pattern-engine/PatternService.js';
+import { readBriefing }    from '../../services/pattern-engine/PatternService.js';
 import { promotePattern }  from '../../services/pattern-engine/PlaybookService.js';
 import { setConsent, getNetworkInsights } from '../../services/network-engine/NetworkService.js';
+import { NETWORK_STATUS }  from '../../services/network-engine/networkTypes.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { requirePlan }        from '../../middleware/requirePlan.js';
 import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
@@ -42,12 +43,28 @@ async function resolveWorkspaceId(req) {
 // ─────────────────────────────────────────────────────────────
 memoryRouter.get('/briefing', async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
-  if (!wsId) {
-    return res.json({ workspaceId: null, generatedAt: new Date().toISOString(), patterns: [], promotableCount: 0, conflicts: [], network: { status: 'NOT_CONSENTED' } });
-  }
+  // R10 (F-audit) — an unresolvable workspace is a 409, not a 200 with an empty
+  // briefing. The old shape answered "this account has learned nothing" to a
+  // request we could not even attribute to an account, and an empty patterns
+  // array is indistinguishable from a real one.
+  if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
+
   try {
-    const briefing = await getBriefing(wsId);
-    const network  = await getNetworkInsights(wsId).catch(() => ({ status: 'NOT_CONSENTED' }));
+    // R10 (Phase C) — READS the persisted learnings. It no longer runs the
+    // extraction: that is the scheduled sweep's job, so a workspace learns
+    // whether or not anyone opens this page, and a page view no longer triggers
+    // a 365-day read and a multi-table write inside a GET.
+    const briefing = await readBriefing(wsId);
+
+    // R10 (F4) — a failed network read is an ERROR, not a consent state. This
+    // was `.catch(() => ({ status: 'NOT_CONSENTED' }))`, which told a user who
+    // HAD opted in that they had not, because the database blipped. Governance
+    // facts must come from the governance columns or not at all.
+    const network = await getNetworkInsights(wsId).catch((err) => {
+      logger.error({ err: err.message, wsId }, '[lumi/memory] network read failed inside briefing');
+      return { status: NETWORK_STATUS.UNAVAILABLE };
+    });
+
     return res.json({ workspaceId: wsId, generatedAt: new Date().toISOString(), ...briefing, network });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/memory] briefing failed');
@@ -104,7 +121,9 @@ memoryRouter.post('/network/consent', requireCollabRole(WORKSPACE_ROLE.STRATEGIS
 // ─────────────────────────────────────────────────────────────
 memoryRouter.get('/network', async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
-  if (!wsId) return res.json({ status: 'NOT_CONSENTED' });
+  // R10 (F4) — same correction as /briefing: "we could not resolve your
+  // workspace" is not "you have not opted in".
+  if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
   try {
     return res.json(await getNetworkInsights(wsId));
   } catch (err) {
