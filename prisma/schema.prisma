@@ -1128,6 +1128,13 @@ model Account {
   workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   campaigns Campaign[]
 
+  // R9 — DB-level canonical identity. detId(workspaceId, channel, level,
+  // externalId) already derives the primary key, but a derivation in application
+  // code is not a constraint: any write path that bypassed it could mint a second
+  // row for the same platform entity, and nothing would have said so. `level` is
+  // absent deliberately — this model IS one level, so it supplies that dimension.
+  // NULL externalId does not collide (PostgreSQL indexes are NULLS DISTINCT).
+  @@unique([workspaceId, channel, externalId])
   @@index([workspaceId])
   @@map("accounts")
 }
@@ -1159,6 +1166,13 @@ model Campaign {
   account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   adSets    AdSet[]
 
+  // R9 — DB-level canonical identity. detId(workspaceId, channel, level,
+  // externalId) already derives the primary key, but a derivation in application
+  // code is not a constraint: any write path that bypassed it could mint a second
+  // row for the same platform entity, and nothing would have said so. `level` is
+  // absent deliberately — this model IS one level, so it supplies that dimension.
+  // NULL externalId does not collide (PostgreSQL indexes are NULLS DISTINCT).
+  @@unique([workspaceId, channel, externalId])
   @@index([workspaceId])
   @@index([accountId])
   @@map("campaign_entities")
@@ -1178,6 +1192,13 @@ model AdSet {
   campaign  Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   ads       Ad[]
 
+  // R9 — DB-level canonical identity. detId(workspaceId, channel, level,
+  // externalId) already derives the primary key, but a derivation in application
+  // code is not a constraint: any write path that bypassed it could mint a second
+  // row for the same platform entity, and nothing would have said so. `level` is
+  // absent deliberately — this model IS one level, so it supplies that dimension.
+  // NULL externalId does not collide (PostgreSQL indexes are NULLS DISTINCT).
+  @@unique([workspaceId, channel, externalId])
   @@index([workspaceId])
   @@index([campaignId])
   @@map("ad_sets")
@@ -1203,6 +1224,13 @@ model Ad {
   adSet     AdSet      @relation(fields: [adSetId], references: [id], onDelete: Cascade)
   creatives Creative[]
 
+  // R9 — DB-level canonical identity. detId(workspaceId, channel, level,
+  // externalId) already derives the primary key, but a derivation in application
+  // code is not a constraint: any write path that bypassed it could mint a second
+  // row for the same platform entity, and nothing would have said so. `level` is
+  // absent deliberately — this model IS one level, so it supplies that dimension.
+  // NULL externalId does not collide (PostgreSQL indexes are NULLS DISTINCT).
+  @@unique([workspaceId, channel, externalId])
   @@index([workspaceId])
   @@index([adSetId])
   @@map("ads")
@@ -1221,6 +1249,13 @@ model Creative {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   ad        Ad        @relation(fields: [adId], references: [id], onDelete: Cascade)
 
+  // R9 — DB-level canonical identity. detId(workspaceId, channel, level,
+  // externalId) already derives the primary key, but a derivation in application
+  // code is not a constraint: any write path that bypassed it could mint a second
+  // row for the same platform entity, and nothing would have said so. `level` is
+  // absent deliberately — this model IS one level, so it supplies that dimension.
+  // NULL externalId does not collide (PostgreSQL indexes are NULLS DISTINCT).
+  @@unique([workspaceId, channel, externalId])
   @@index([workspaceId])
   @@index([adId])
   @@map("creatives")
