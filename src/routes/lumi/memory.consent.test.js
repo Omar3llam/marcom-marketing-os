@@ -39,6 +39,9 @@ function makeApp({ collabRole } = {}) {
   return app;
 }
 
+// Deliberately still carries the field R11 (F12) removed: the role gate is
+// middleware and must refuse before the body is ever inspected, so these two
+// cases prove ORDER as well as the gate.
 const body = { optIn: true, cohortTag: 'EG-apparel' };
 
 describe('POST /network/consent — STRATEGIST-gated cross-tenant consent', () => {
@@ -58,13 +61,44 @@ describe('POST /network/consent — STRATEGIST-gated cross-tenant consent', () =
     expect(setConsent).not.toHaveBeenCalled();
   });
 
-  it('lets a STRATEGIST opt in, passing optIn + cohortTag through', async () => {
-    setConsent.mockResolvedValue({ id: 'workspace-1', networkConsent: true, cohortTag: 'EG-apparel', consentedAt: new Date().toISOString() });
+  it('lets a STRATEGIST opt in — optIn only; the cohort comes back server-assigned', async () => {
+    setConsent.mockResolvedValue({ id: 'workspace-1', networkConsent: true, cohortTag: 'CUR-EGP', consentedAt: new Date().toISOString() });
     const res = await request(makeApp({ collabRole: 'STRATEGIST' }))
-      .post('/network/consent').send(body)
+      .post('/network/consent').send({ optIn: true })
       .expect(200);
-    expect(setConsent).toHaveBeenCalledWith('workspace-1', { optIn: true, cohortTag: 'EG-apparel' });
-    expect(res.body).toMatchObject({ workspaceId: 'workspace-1', networkConsent: true });
+    expect(setConsent).toHaveBeenCalledWith('workspace-1', { optIn: true });
+    expect(res.body).toMatchObject({ workspaceId: 'workspace-1', networkConsent: true, cohortTag: 'CUR-EGP' });
+  });
+
+  // ── NC-F12a · the control (R11 · F12 / RU-5) ─────────────
+  it('REFUSES a caller-supplied cohortTag — 400, and the write never fires', async () => {
+    // Cohort membership decides both who you contribute to and whose aggregate
+    // you may read. Accepting the tag from the request body made that a claim,
+    // and the claim was trusted: type a cohort's name and you were inside it.
+    // Refusing rather than ignoring matters — an ignored parameter is
+    // indistinguishable from an accepted one to whoever sent it.
+    const res = await request(makeApp({ collabRole: 'STRATEGIST' }))
+      .post('/network/consent').send({ optIn: true, cohortTag: 'EG-apparel' })
+      .expect(400);
+    expect(res.body.error).toBe('CohortNotSettable');
+    expect(setConsent).not.toHaveBeenCalled();
+  });
+
+  it('refuses even an empty-string cohortTag — presence is what is rejected', async () => {
+    await request(makeApp({ collabRole: 'STRATEGIST' }))
+      .post('/network/consent').send({ optIn: true, cohortTag: '' })
+      .expect(400);
+    expect(setConsent).not.toHaveBeenCalled();
+  });
+
+  it('no assignable cohort → 409, not a silent opt-in', async () => {
+    const err = new Error('No cohort can be established for this workspace');
+    err.code = 'COHORT_UNAVAILABLE';
+    setConsent.mockRejectedValue(err);
+    const res = await request(makeApp({ collabRole: 'STRATEGIST' }))
+      .post('/network/consent').send({ optIn: true })
+      .expect(409);
+    expect(res.body.error).toBe('CohortUnavailable');
   });
 
   it('REFUSES a null collab role — R11 (I61) removed the fail-open default', async () => {

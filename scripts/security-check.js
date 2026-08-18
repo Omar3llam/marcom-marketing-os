@@ -121,8 +121,15 @@ function forbid({ id, title, pattern, files = backendFiles, why, allow = () => f
 /** The inverse: a shape that MUST be present. */
 function require_({ id, title, file, pattern, why }) {
   const full = join(ROOT, file);
-  const src = read(full);
-  if (!src) { fail(`${id} — ${title}: ${file} not found`); return; }
+  const raw = read(full);
+  if (!raw) { fail(`${id} — ${title}: ${file} not found`); return; }
+  // Comments are stripped for the same reason `forbid` strips them, in the
+  // opposite direction: a required guard must be satisfied by CODE. Read raw,
+  // a rule is satisfied by a comment that merely names the thing it demands —
+  // including the comment written above the guard to explain it, which survives
+  // the guard's own deletion. Caught by mutating out the network self-exclusion
+  // and watching the rule pass anyway.
+  const src = stripComments(raw);
   if (pattern.test(src)) { pass(`${id} — ${title}`); return; }
   fail(`${id} — ${title}`);
   console.log(`       ${file} no longer contains the required guard`);
@@ -278,6 +285,21 @@ require_({
   file: 'src/utils/hmac.js',
   pattern: /function canonical\(\{[^}]*\bwid\b[^}]*\bact\b/,
   why: 'A signed link that names only the action is valid for that action in ANY workspace, on behalf of ANYONE — and the audit cannot say who acted.',
+});
+
+forbid({
+  id: 'SEC-TN-6',
+  title: 'network cohort membership is taken from the request',
+  pattern: /cohortTag:\s*req\.(body|query|params)/g,
+  why: 'A cohort decides both whose patterns you contribute to and whose aggregate you may read. Accepted from the caller it is an unverified claim: name a cohort and you are inside it. k-anonymity protects the contributors, not the boundary.',
+});
+
+require_({
+  id: 'SEC-TN-7',
+  title: 'the network aggregate excludes the requesting workspace',
+  file: 'src/services/network-engine/NetworkService.js',
+  pattern: /id:\s*\{\s*not:\s*workspaceId\s*\}/,
+  why: '"Across N consenting accounts" must mean N OTHERS. Including self returns an account\'s own history to it as independent corroboration, and downstream Planning and Scenario surfaces consume it as such.',
 });
 
 // ════════════════════════════════════════════════════════════

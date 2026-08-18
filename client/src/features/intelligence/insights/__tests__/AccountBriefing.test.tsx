@@ -136,13 +136,19 @@ const NETWORK_OK = {
 describe('AccountBriefing — gated network layer (consent is the cross-tenant boundary)', () => {
   const withNet = (network: unknown) => ({ patterns: [], promotableCount: 0, conflicts: [], network });
 
-  it('NOT_CONSENTED: a STRATEGIST sees the opt-in control and consents with a cohort', () => {
+  // R11 (F12 · RU-5): the cohort is server-assigned. This test used to type a
+  // cohort into a text box and assert it was passed along — the client half of
+  // membership-by-claim. It now asserts the box is GONE: leaving it rendered
+  // while the server refuses the field would offer a choice that no longer
+  // exists and fail the opt-in with a 400 the user could not explain.
+  it('NOT_CONSENTED: a STRATEGIST opts in with one click — no cohort to choose', () => {
     const onConsent = vi.fn();
     render(<AccountBriefing briefing={withNet({ status: 'NOT_CONSENTED' })} canManageConsent onConsent={onConsent} />);
     expect(screen.getByText(/isn’t contributing to the anonymized network/i)).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/cohort tag/i), { target: { value: 'EG-apparel' } });
+    expect(screen.queryByLabelText(/cohort tag/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/assigned automatically/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /join network/i }));
-    expect(onConsent).toHaveBeenCalledWith(true, 'EG-apparel');
+    expect(onConsent).toHaveBeenCalledWith(true);
   });
 
   it('NOT_CONSENTED: a non-strategist (cannot manage) gets NO opt-in control', () => {

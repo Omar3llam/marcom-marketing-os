@@ -7,7 +7,6 @@
 // ("was Lumi right?", null until outcomes are known → "—"), confidence.
 // Validated against BriefingSchema in useAccountBriefing; nothing inferred.
 // ============================================================
-import { useState } from 'react';
 import { Brain, AlertCircle, Network } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 
@@ -116,7 +115,6 @@ export function AccountBriefing({
 // The opt-in CONTROL is STRATEGIST-only (canManage) — the consent write is
 // the cross-tenant boundary; the read is safe by construction.
 function NetworkPanel({ network, canManage = false, onConsent, busy = false }) {
-  const [cohort, setCohort] = useState('');
   if (!network) return null;
 
   const consented = network.status === 'OK';
@@ -136,20 +134,13 @@ function NetworkPanel({ network, canManage = false, onConsent, busy = false }) {
       {!consented ? (
         <div className="rounded-2xl border border-dashed border-lumi-border bg-lumi-surface/40 p-6">
           <p className="font-body text-sm text-lumi-text">This account isn’t contributing to the anonymized network.</p>
+          <p className="mt-1 text-lumi-subtle text-xs">Your cohort is assigned automatically from your connected account — it isn’t something you pick.</p>
           {canManage ? (
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <input
-                type="text"
-                aria-label="Cohort tag"
-                placeholder="cohort — e.g. EG-apparel"
-                value={cohort}
-                onChange={(e) => setCohort(e.target.value)}
-                className="font-mono text-xs bg-lumi-elevated border border-lumi-border rounded px-2 py-1 text-lumi-text placeholder:text-lumi-subtle"
-              />
               <button
                 type="button"
-                disabled={busy || cohort.trim() === ''}
-                onClick={() => onConsent?.(true, cohort.trim())}
+                disabled={busy}
+                onClick={() => onConsent?.(true)}
                 className="font-mono text-xs uppercase tracking-wide px-3 py-1 rounded border border-signal-scale/30 bg-signal-scale-bg text-signal-scale disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {busy ? 'Joining…' : 'Join network'}
