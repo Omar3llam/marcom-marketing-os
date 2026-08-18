@@ -37,6 +37,15 @@ vi.mock('./campaigns/context.js', () => ({
   workspaceColumnsFromContext: () => ({}),
 }));
 
+// R11 (F15): the sole-member path now purges the credential vault before the
+// cascade — marcom_credentials is raw SQL with no FK, so Prisma never reached
+// it and a deleted account left live OAuth tokens behind. Mocked here so the
+// unit test does not need a raw Postgres pool.
+vi.mock('../services/connectors/credentialStore.js', () => ({
+  deleteWorkspaceCredentials: vi.fn().mockResolvedValue(0),
+}));
+
+import { deleteWorkspaceCredentials } from '../services/connectors/credentialStore.js';
 import { prisma } from '../lib/prisma.js';
 import { userRouter } from './user.js';
 
@@ -84,6 +93,23 @@ describe('DELETE /api/user/account — shared-workspace guard', () => {
     expect(prisma.workspace.delete).toHaveBeenCalledWith({ where: { id: WS } });
     expect(prisma.user.delete).not.toHaveBeenCalled();
     expect(deleteUserMock).toHaveBeenCalledWith(UID);
+  });
+
+  // ── NC-I4 · the control (R11 · F15) ──────────────────────
+  it('purges the credential vault BEFORE the cascade — it does not cascade on its own', async () => {
+    // marcom_credentials is a raw-SQL table with no foreign key to workspaces,
+    // so Prisma's onDelete: Cascade never reached it. This handler's own
+    // docblock claimed account deletion removed OAuth tokens; it did not, and
+    // a deleted account left live encrypted Meta and Google tokens behind.
+    mockCounts({ members: 1, otherStrategists: 0 });
+
+    await request(app).delete('/api/user/account').expect(200);
+
+    expect(deleteWorkspaceCredentials).toHaveBeenCalledWith(WS);
+    // Ordered first: a failure to purge must refuse the deletion rather than
+    // orphan the credentials it was meant to remove.
+    expect(deleteWorkspaceCredentials.mock.invocationCallOrder[0])
+      .toBeLessThan(prisma.workspace.delete.mock.invocationCallOrder[0]);
   });
 
   it('non-last member → deletes ONLY the User row; workspace untouched', async () => {
