@@ -8,13 +8,31 @@
 // referenced Action onto BullMQ.
 //
 // Token shape (URL-safe base64 of JSON):
-//   { aid: <actionId>, exp: <unixSeconds>, scope: 'execute' | 'rollback' }
-// Plus a separate `sig` query param: hex HMAC-SHA256 of the
-// canonical "<aid>.<exp>.<scope>" string.
+//   { v: 2, aid: <actionId>, wid: <workspaceId>, act: <actorUserId>,
+//     exp: <unixSeconds>, scope: 'execute' | 'rollback' }
+// Plus a separate `sig` param: hex HMAC-SHA256 of the canonical
+// "v2.<aid>.<wid>.<act>.<exp>.<scope>" string.
+//
+// R11 (I65) — the signed message now binds the WORKSPACE and the ACTOR.
+//
+// Before R11 it covered only "<aid>.<exp>.<scope>". Forging it was infeasible,
+// but the token said nothing about which tenant the action belonged to or who
+// was entitled to press the button: the handler looked the action up globally
+// by id, and the enqueue recorded no actor, so the audit trail could not say
+// who acted. Binding both means a signature is valid for exactly one action, in
+// one workspace, on behalf of one person — and changing any of the three
+// invalidates it.
+//
+// The canonical string is versioned so this change is legible rather than
+// silent: a v1 token no longer verifies. That costs nothing today because
+// signQuickAction has no production caller yet — the minting side of this
+// feature was never wired — so there are no live links to invalidate. If that
+// changes, the version prefix is the seam to migrate on.
 // ============================================================
 import { createHmac, timingSafeEqual } from 'crypto';
 
 const DEFAULT_TTL_SECONDS = 60 * 60 * 24; // 24 h, matches rollback window
+const TOKEN_VERSION = 2;
 
 function getQuickActionSecret() {
   if (process.env.QUICK_ACTION_HMAC_SECRET) return process.env.QUICK_ACTION_HMAC_SECRET;
@@ -24,8 +42,8 @@ function getQuickActionSecret() {
   return process.env.JWT_SECRET || '';
 }
 
-function canonical({ aid, exp, scope }) {
-  return `${aid}.${exp}.${scope}`;
+function canonical({ aid, wid, act, exp, scope }) {
+  return `v${TOKEN_VERSION}.${aid}.${wid}.${act}.${exp}.${scope}`;
 }
 
 function b64url(buf) {
@@ -38,14 +56,25 @@ function b64urlDecode(str) {
   return Buffer.from(str, 'base64').toString('utf8');
 }
 
-export function signQuickAction({ actionId, scope = 'execute', ttlSeconds = DEFAULT_TTL_SECONDS }) {
+/**
+ * Mint a one-click link token.
+ * @param {string} actionId    the Action this link acts on
+ * @param {string} workspaceId the workspace that owns it   (R11 · I65)
+ * @param {string} actorId     who the link was issued to   (R11 · I65)
+ */
+export function signQuickAction({ actionId, workspaceId, actorId, scope = 'execute', ttlSeconds = DEFAULT_TTL_SECONDS }) {
   const secret = getQuickActionSecret();
   if (!secret) throw new Error('QUICK_ACTION_HMAC_SECRET (or JWT_SECRET) not configured');
+  if (!actionId)    throw new Error('signQuickAction: actionId required');
+  if (!workspaceId) throw new Error('signQuickAction: workspaceId required');
+  if (!actorId)     throw new Error('signQuickAction: actorId required');
+
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
-  const aid = actionId;
-  const sig = createHmac('sha256', secret).update(canonical({ aid, exp, scope })).digest('hex');
-  const token = b64url(JSON.stringify({ aid, exp, scope }));
-  return { token, sig, expiresAt: new Date(exp * 1000) };
+  const claims = { v: TOKEN_VERSION, aid: actionId, wid: workspaceId, act: actorId, exp, scope };
+  const sig = createHmac('sha256', secret)
+    .update(canonical({ aid: actionId, wid: workspaceId, act: actorId, exp, scope }))
+    .digest('hex');
+  return { token: b64url(JSON.stringify(claims)), sig, expiresAt: new Date(exp * 1000) };
 }
 
 export function verifyQuickAction({ token, sig }) {
@@ -57,15 +86,26 @@ export function verifyQuickAction({ token, sig }) {
   try { payload = JSON.parse(b64urlDecode(token)); }
   catch { return { ok: false, reason: 'malformed_token' }; }
 
-  const { aid, exp, scope } = payload;
-  if (!aid || !exp || !scope) return { ok: false, reason: 'incomplete_payload' };
+  const { v, aid, wid, act, exp, scope } = payload;
+  // A v1 token carried no workspace and no actor. Refusing it outright is the
+  // point: accepting one "for compatibility" would keep the unbound token valid
+  // and make the binding optional, which is not a binding.
+  if (v !== TOKEN_VERSION) return { ok: false, reason: 'unsupported_token_version' };
+  if (!aid || !wid || !act || !exp || !scope) return { ok: false, reason: 'incomplete_payload' };
   if (Math.floor(Date.now() / 1000) >= exp) return { ok: false, reason: 'expired' };
 
-  const expected = createHmac('sha256', secret).update(canonical({ aid, exp, scope })).digest();
+  const expected = createHmac('sha256', secret).update(canonical({ aid, wid, act, exp, scope })).digest();
   const provided = Buffer.from(sig, 'hex');
   if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
     return { ok: false, reason: 'bad_signature' };
   }
 
-  return { ok: true, actionId: aid, scope, expiresAt: new Date(exp * 1000) };
+  return {
+    ok: true,
+    actionId:    aid,
+    workspaceId: wid,
+    actorId:     act,
+    scope,
+    expiresAt: new Date(exp * 1000),
+  };
 }

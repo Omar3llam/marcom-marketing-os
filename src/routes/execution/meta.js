@@ -102,8 +102,17 @@ export function registerMetaRoute(router) {
       // ═══════════════════════════════════════════════════════
       // LAYER 2: IDEMPOTENCY CHECK
       // ═══════════════════════════════════════════════════════
+      // R11 (I65) — scoped to the caller's workspace.
+      //
+      // This was `findUnique({ where: { idempotencyKey } })` against a globally
+      // unique, fully client-supplied column. Presenting another workspace's
+      // key returned their executionId, status and raw stored Meta response;
+      // pre-claiming a key a competitor was about to use made their real
+      // request answer "idempotentReplay: true" for an action never queued.
+      // A foreign key now simply does not match, and the request proceeds as
+      // the new execution it is.
       const existingRequest = await prisma.executionRequest.findUnique({
-        where: { idempotencyKey },
+        where: { workspaceId_idempotencyKey: { workspaceId, idempotencyKey } },
       });
 
       if (existingRequest) {

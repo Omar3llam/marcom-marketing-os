@@ -36,6 +36,22 @@ import { WORKSPACE_ROLE }    from '../../services/collaboration/roleScope.js';
  */
 const RETRYABLE_STATUSES = ['EXECUTED_FAILED', 'TIMED_OUT'];
 
+// ── R11 (I70) — bounded retry chains ─────────────────────────
+// `retryMetadata.retryOf` was written on every clone and read by nothing, so a
+// retry of a retry of a retry was unbounded — and each link re-queues a real
+// Meta mutation. The only limiter on the path was the (IP-keyed) apiLimiter.
+//
+// Depth is carried on the clone rather than walked backwards through the chain:
+// a recursive lookup would be N queries deep on exactly the request we are
+// trying to bound, and the number we need is already known at write time.
+export const MAX_RETRY_DEPTH = Number(process.env.MAX_RETRY_DEPTH || 3);
+
+/** How many retries deep an execution already is. Absent metadata ⇒ 0. */
+export function retryDepthOf(execution) {
+  const depth = execution?.retryMetadata?.retryDepth;
+  return Number.isInteger(depth) && depth > 0 ? depth : 0;
+}
+
 export function registerRetryRoute(router) {
   // Retry re-queues a real Meta mutation — same execution tier as POST /meta.
   router.post('/:id/retry', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
@@ -55,6 +71,7 @@ export function registerRetryRoute(router) {
           status: true,
           correlationId: true,
           decisionId: true, // R10 — carried onto the clone below
+          retryMetadata: true, // R11 (I70) — carries the chain depth
         },
       });
 
@@ -82,6 +99,22 @@ export function registerRetryRoute(router) {
         });
       }
 
+      // R11 (I70) — refuse an unbounded retry chain. Checked after the state
+      // check so an operator retrying a legitimately-failed execution gets the
+      // more specific answer, and expressed as a 409 because it is a conflict
+      // with the chain's history, not a malformed request.
+      const depth = retryDepthOf(original);
+      if (depth >= MAX_RETRY_DEPTH) {
+        logger.warn({ originalId, workspaceId, userId, depth, max: MAX_RETRY_DEPTH },
+          '[ExecutionRouter] Retry refused — chain depth exhausted');
+        return res.status(409).json({
+          error: `This execution has already been retried ${depth} times. Investigate the failure before retrying again.`,
+          code: 'RETRY_DEPTH_EXCEEDED',
+          retryDepth: depth,
+          maxRetryDepth: MAX_RETRY_DEPTH,
+        });
+      }
+
       // 1. Create clone in PENDING (the canonical initial state).
       const retriedAt = new Date().toISOString();
       const newRequest = await prisma.executionRequest.create({
@@ -102,6 +135,9 @@ export function registerRetryRoute(router) {
             retryOf: original.id,
             retriedAt,
             retriedBy: userId,
+            // R11 (I70): the chain depth travels forward so the next retry can
+            // bound itself in one read instead of walking the lineage.
+            retryDepth: depth + 1,
           },
         },
         select: {
