@@ -177,13 +177,23 @@ authMetaRouter.get('/callback', async (req, res) => {
     const appSecret = process.env.META_APP_SECRET || '';
     const redirectUri = REDIRECT_URI();
 
-    const exchangeUrl = `https://graph.facebook.com/${API_VERSION}/oauth/access_token`
-      + `?client_id=${encodeURIComponent(appId)}`
-      + `&redirect_uri=${encodeURIComponent(redirectUri)}`
-      + `&client_secret=${encodeURIComponent(appSecret)}`
-      + `&code=${encodeURIComponent(code)}`;
+    // R11 (I68) — the app secret and the authorization code travel in the POST
+    // body, not the URL. Meta accepts either; only one of them stays out of the
+    // access log. Google's callback in this same codebase already POSTed its
+    // secret, so the two providers now agree.
+    const exchangeUrl = `https://graph.facebook.com/${API_VERSION}/oauth/access_token`;
+    const exchangeForm = new URLSearchParams({
+      client_id:     appId,
+      redirect_uri:  redirectUri,
+      client_secret: appSecret,
+      code,
+    });
 
-    const exchRes  = await fetch(exchangeUrl);
+    const exchRes  = await fetch(exchangeUrl, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:    exchangeForm.toString(),
+    });
     const exchBody = await exchRes.json();
     if (exchBody.error) throw new Error(exchBody.error.message || 'Code exchange failed');
     const shortToken = exchBody.access_token;

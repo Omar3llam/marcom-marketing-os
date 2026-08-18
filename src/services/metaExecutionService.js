@@ -20,22 +20,10 @@
 import axios from 'axios';
 import { logger } from '../utils/logger.js';
 import { resolveCredential } from './connectors/credentialStore.js';
+import { isValidTargetId, validateOptions, ALLOWED_OPTION_KEYS } from './meta/mutationParams.js';
 
 const META_API_VERSION = process.env.META_API_VERSION || 'v21.0';
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`;
-
-// ── Action Type → Meta API Mapping ────────────────────────
-
-const ACTION_ENDPOINTS = {
-  PAUSE_CAMPAIGN: (id) => `/${id}?fields=status&status=PAUSED`,
-  RESUME_CAMPAIGN: (id) => `/${id}?fields=status&status=ACTIVE`,
-  PAUSE_ADSET: (id) => `/${id}?fields=status&status=PAUSED`,
-  RESUME_ADSET: (id) => `/${id}?fields=status&status=ACTIVE`,
-  INCREASE_BUDGET: (id, amount) => `/${id}?fields=daily_budget&daily_budget=${amount}`,
-  DECREASE_BUDGET: (id, amount) => `/${id}?fields=daily_budget&daily_budget=${amount}`,
-  SCALE_CAMPAIGN: (id, scale) => `/${id}?fields=daily_budget&daily_budget=${scale}`,
-  OPTIMIZE_CAMPAIGN: (id, data) => `/${id}?${new URLSearchParams(data).toString()}`,
-};
 
 // ── Main Execution Function ──────────────────────────────
 
@@ -76,9 +64,16 @@ export async function executeMetaAction(
 
     // ─────────────────────────────────────────────────────
     // Layer 2: Build request URL + payload
+    //
+    // R11 (I68) — the token is an Authorization header, never a query
+    // parameter. It used to be appended as `&access_token=${token}`, and
+    // without encodeURIComponent at that: a 60-day workspace credential landed
+    // in every access log, proxy log and APM span that recorded the outbound
+    // URL. Google's flow in this same codebase already did it correctly, so the
+    // pattern was known and applied inconsistently.
     // ─────────────────────────────────────────────────────
-    const endpoint = buildEndpoint(actionType, targetId, options);
-    const url = `${META_API_BASE}${endpoint}&access_token=${token}`;
+    const { path, params } = buildRequest(actionType, targetId, options);
+    const url = `${META_API_BASE}${path}`;
 
     logger.info(`[MetaExecutionService] Executing ${actionType} on ${targetId}`, {
       workspaceId,
@@ -90,10 +85,13 @@ export async function executeMetaAction(
     // ─────────────────────────────────────────────────────
     // Layer 3: Execute HTTP request with timeout
     // ─────────────────────────────────────────────────────
-    const response = await axios.post(url, {}, {
+    // Mutation fields travel in the form-encoded BODY, not the query string —
+    // same reasoning as the token: URLs are logged, bodies are not.
+    const response = await axios.post(url, new URLSearchParams(params).toString(), {
       timeout: 10000, // 10s timeout
       headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type':  'application/x-www-form-urlencoded',
+        'Authorization': `Bearer ${token}`,
       },
     });
 
@@ -132,14 +130,40 @@ export async function executeMetaAction(
 
 // ── Endpoint Builder ─────────────────────────────────────
 
-function buildEndpoint(actionType, targetId, options) {
+/**
+ * R11 (I67/I68) — build the Graph API request as a validated PATH plus a
+ * separate PARAMS object.
+ *
+ * Previously this returned a single interpolated string. `targetId` was checked
+ * only as "a non-empty string" upstream, so a value containing `/`, `?` or `&`
+ * controlled the path AND the query of an authenticated POST made with the
+ * workspace's own Meta token. OPTIMIZE_CAMPAIGN went further and passed the
+ * caller's whole options object through `new URLSearchParams`, which is not an
+ * optimisation endpoint — it is a generic Graph API proxy with someone else's
+ * credentials attached.
+ *
+ * Now: the id is format-checked here as well as at the route (a service that
+ * issues authenticated mutations does not delegate its own preconditions), and
+ * fields are returned as data rather than concatenated into a URL.
+ *
+ * @returns {{ path: string, params: Record<string, string|number> }}
+ */
+export function buildRequest(actionType, targetId, options = {}) {
+  // Re-checked here, not just at the route: this is the last point before a
+  // real credential is attached, and the worker is a separate entry path.
+  if (!isValidTargetId(targetId)) {
+    throw new Error('targetId must be a Meta object id (digits, optionally prefixed with act_)');
+  }
+
+  const path = `/${targetId}`;
+
   switch (actionType) {
     case 'PAUSE_CAMPAIGN':
     case 'RESUME_CAMPAIGN':
     case 'PAUSE_ADSET':
     case 'RESUME_ADSET': {
       const newStatus = actionType.includes('PAUSE') ? 'PAUSED' : 'ACTIVE';
-      return `/${targetId}?status=${newStatus}`;
+      return { path, params: { status: newStatus } };
     }
 
     case 'INCREASE_BUDGET':
@@ -149,20 +173,35 @@ function buildEndpoint(actionType, targetId, options) {
       // REALLOCATE moves budget; the cross-entity move is orchestrated by the
       // execution graph (reduce source, raise target). At the Meta API layer
       // this sets the resolved daily_budget on the target entity.
-      const dailyBudget = options.dailyBudget || options.amount;
-      if (!dailyBudget) throw new Error('dailyBudget required for budget actions');
-      return `/${targetId}?daily_budget=${Math.round(dailyBudget)}`;
+      const dailyBudget = Number(options.dailyBudget ?? options.amount);
+      if (!Number.isFinite(dailyBudget) || dailyBudget <= 0) {
+        throw new Error('dailyBudget required for budget actions and must be a positive number');
+      }
+      return { path, params: { daily_budget: Math.round(dailyBudget) } };
     }
 
     case 'REFRESH_CREATIVE': {
-      const creativeId = options.creativeId || options.creative_id;
-      if (!creativeId) throw new Error('creativeId required for REFRESH_CREATIVE');
-      return `/${targetId}?creative[creative_id]=${creativeId}`;
+      const creativeId = options.creativeId ?? options.creative_id;
+      if (!isValidTargetId(String(creativeId ?? ''))) {
+        throw new Error('creativeId required for REFRESH_CREATIVE and must be a Meta object id');
+      }
+      return { path, params: { 'creative[creative_id]': String(creativeId) } };
     }
 
     case 'OPTIMIZE_CAMPAIGN': {
-      const params = new URLSearchParams(options || {});
-      return `/${targetId}?${params.toString()}`;
+      // The allowlist is the contract. Anything outside it is refused here
+      // rather than forwarded to Meta with the workspace's credential.
+      const invalid = validateOptions('OPTIMIZE_CAMPAIGN', options);
+      if (invalid) throw new Error(invalid);
+
+      const params = {};
+      for (const key of ALLOWED_OPTION_KEYS.OPTIMIZE_CAMPAIGN) {
+        if (options[key] !== undefined) params[key] = options[key];
+      }
+      if (Object.keys(params).length === 0) {
+        throw new Error(`OPTIMIZE_CAMPAIGN requires at least one of: ${ALLOWED_OPTION_KEYS.OPTIMIZE_CAMPAIGN.join(', ')}`);
+      }
+      return { path, params };
     }
 
     default:

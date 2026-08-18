@@ -24,6 +24,19 @@ const GRAPH_BASE  = `https://graph.facebook.com/${API_VERSION}`;
 // ── HELPERS ──────────────────────────────────────────────────
 
 /**
+ * R11 (I68) — the ONE way a token reaches Meta from this module.
+ *
+ * Every raw-fetch call site here used to append `&access_token=…` to the URL.
+ * That put a 60-day workspace credential into the outbound URL of every one of
+ * them, where access logs, proxies and APM spans record it. Meta accepts a
+ * standard bearer header, and the OAuth flow for Google in this same codebase
+ * already used one — the pattern was known, just applied unevenly.
+ */
+function bearer(accessToken) {
+  return { Authorization: `Bearer ${accessToken}` };
+}
+
+/**
  * Ensure adAccountId is prefixed with "act_".
  * Meta rejects bare numeric IDs without this prefix.
  */
@@ -54,13 +67,23 @@ export async function exchangeForLongLivedToken(shortToken) {
   const appSecret = process.env.META_APP_SECRET;
   if (!appId || !appSecret) throw new Error('META_APP_ID / META_APP_SECRET not configured');
 
-  const url = `${GRAPH_BASE}/oauth/access_token`
-    + `?grant_type=fb_exchange_token`
-    + `&client_id=${encodeURIComponent(appId)}`
-    + `&client_secret=${encodeURIComponent(appSecret)}`
-    + `&fb_exchange_token=${encodeURIComponent(shortToken)}`;
+  // R11 (I68) — the app secret and the token travel in the POST body, never in
+  // the URL. Meta's oauth/access_token accepts either; a URL is recorded by
+  // every access log, proxy and APM span on the path, and a request body is
+  // not. encodeURIComponent made the URL well-formed, not private.
+  const url  = `${GRAPH_BASE}/oauth/access_token`;
+  const form = new URLSearchParams({
+    grant_type:        'fb_exchange_token',
+    client_id:         appId,
+    client_secret:     appSecret,
+    fb_exchange_token: shortToken,
+  });
 
-  const res  = await fetch(url);
+  const res = await fetch(url, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    form.toString(),
+  });
   const body = await res.json();
   if (body.error) throw new Error(body.error.message || 'Token exchange failed');
   // body.expires_in is in seconds from now
@@ -76,10 +99,9 @@ export async function exchangeForLongLivedToken(shortToken) {
  * id values are returned WITHOUT the "act_" prefix.
  */
 export async function listAdAccounts(accessToken) {
-  const url = `${GRAPH_BASE}/me/adaccounts`
-    + `?fields=id,name,account_status`
-    + `&access_token=${encodeURIComponent(accessToken)}`;
-  const res  = await fetch(url);
+  // R11 (I68) — token in the Authorization header, not the query string.
+  const url = `${GRAPH_BASE}/me/adaccounts?fields=id,name,account_status`;
+  const res = await fetch(url, { headers: bearer(accessToken) });
   const body = await res.json();
   if (body.error) throw new Error(body.error.message || 'Could not fetch ad accounts');
   return (body.data || []).map(a => ({
@@ -102,10 +124,9 @@ export async function listAdAccounts(accessToken) {
 export async function fetchAccountCurrency(accessToken, adAccountId) {
   try {
     const accountId = normalizeAccountId(adAccountId);
-    const url = `${GRAPH_BASE}/${accountId}`
-      + `?fields=currency`
-      + `&access_token=${encodeURIComponent(accessToken)}`;
-    const res  = await fetch(url);
+    // R11 (I68) — token in the Authorization header, not the query string.
+    const url = `${GRAPH_BASE}/${accountId}?fields=currency`;
+    const res = await fetch(url, { headers: bearer(accessToken) });
     const body = await res.json();
     if (body?.error) {
       logger.warn({ adAccountId, err: body.error.message }, '[Meta] account currency fetch failed');

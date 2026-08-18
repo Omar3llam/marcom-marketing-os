@@ -68,7 +68,7 @@ const DECISION_ID = '33333333-3333-3333-3333-333333333333';
 
 const body = (extra = {}) => ({
   actionType: 'PAUSE_CAMPAIGN',
-  targetId: 'camp-1',
+  targetId: '120200000000001',
   targetType: 'campaign',
   idempotencyKey: `key-${Math.random()}`,
   ...extra,
@@ -173,7 +173,7 @@ describe('R10 · POST /api/execute/:id/retry — attribution travels', () => {
   it('carries decisionId from the original onto the retried clone', async () => {
     prisma.executionRequest.findUnique.mockResolvedValue({
       id: 'exec-failed-1', workspaceId: WS,
-      actionType: 'PAUSE_ADSET', targetId: 'adset-1',
+      actionType: 'PAUSE_ADSET', targetId: '120200000000002',
       payload: {}, status: 'EXECUTED_FAILED', correlationId: 'c-1',
       decisionId: DECISION_ID,
     });
@@ -193,7 +193,7 @@ describe('R10 · POST /api/execute/:id/retry — attribution travels', () => {
   // with every test still green.
   it('selects decisionId from the original', async () => {
     prisma.executionRequest.findUnique.mockResolvedValue({
-      id: 'exec-failed-1', workspaceId: WS, actionType: 'PAUSE_ADSET', targetId: 'a',
+      id: 'exec-failed-1', workspaceId: WS, actionType: 'PAUSE_ADSET', targetId: '120200000000003',
       payload: {}, status: 'EXECUTED_FAILED', correlationId: 'c-1', decisionId: null,
     });
     prisma.executionRequest.create.mockResolvedValue({ id: 'r', workspaceId: WS, version: 0 });

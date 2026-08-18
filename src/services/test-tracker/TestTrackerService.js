@@ -165,8 +165,12 @@ export async function refreshFromMeta(workspaceId, testId) {
     if (!v.metaEntityId) { skipped++; continue; }
     try {
       const fields = 'impressions,clicks,spend,conversions,purchase_roas';
-      const url = `${GRAPH_BASE}/${v.metaEntityId}/insights?fields=${fields}&access_token=${token}`;
-      const res = await axios.get(url, { timeout: 10_000 });
+      // R11 (I68) — token in the Authorization header, not the query string.
+      const url = `${GRAPH_BASE}/${encodeURIComponent(v.metaEntityId)}/insights?fields=${fields}`;
+      const res = await axios.get(url, {
+        timeout: 10_000,
+        headers: { Authorization: `Bearer ${token}` },
+      });
       const row = res.data?.data?.[0];
       if (!row) { skipped++; continue; }
       updates.push({ variantId: v.id, ...parseVariantInsights(row, test.currency) });

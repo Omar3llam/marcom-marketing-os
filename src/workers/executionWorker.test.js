@@ -71,6 +71,9 @@ import { stampDecisionExecuted } from '../services/execution/decisionAttribution
 const EXECUTION_ID  = 'exec-worker-test-1';
 const WORKSPACE_ID  = 'ws-worker-1';
 const USER_ID       = 'user-1';
+// R11 (I67): targetId is format-validated now — it must look like a Meta object
+// id, because it is interpolated into the Graph API request path.
+const TARGET_ID     = '120200000000001';
 
 function makeJob({ attemptsMade = 0, maxAttempts = 3 } = {}) {
   return {
@@ -79,7 +82,7 @@ function makeJob({ attemptsMade = 0, maxAttempts = 3 } = {}) {
       workspaceId: WORKSPACE_ID,
       userId:      USER_ID,
       actionType:  'PAUSE_CAMPAIGN',
-      targetId:    'camp-1',
+      targetId:    TARGET_ID,
       options:     {},
     },
     attemptsMade,
@@ -87,12 +90,18 @@ function makeJob({ attemptsMade = 0, maxAttempts = 3 } = {}) {
   };
 }
 
+// R11 (I67): the worker re-authorizes the job against the ROW and derives every
+// mutation parameter from it, so the fixture carries the authoritative
+// workspace and the persisted request body — not just the fields the job used
+// to be trusted for.
 const BASE_EXECUTION = {
   id:            EXECUTION_ID,
+  workspaceId:   WORKSPACE_ID,
   status:        'QUEUED',
   version:       2,
   actionType:    'PAUSE_CAMPAIGN',
-  targetId:      'camp-1',
+  targetId:      TARGET_ID,
+  payload:       { actionType: 'PAUSE_CAMPAIGN', targetId: TARGET_ID, targetType: 'campaign', options: {} },
   correlationId: 'corr-1',
 };
 
