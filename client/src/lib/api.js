@@ -55,20 +55,27 @@ api.interceptors.request.use(
       config.headers['x-request-id'] = requestId;
       config.headers['x-session-id'] = sessionId;
 
-      // R11 (I58) — carry a pending invitation token to the provisioning seam.
-      // Only ever set on the hop between clicking an invite link and the
-      // server minting this user's row; the server single-uses it and every
-      // later request finds nothing to send. It is a server-issued secret, not
-      // a client identity claim: the server validates and claims it.
-      const inviteToken = getInviteToken();
-      if (inviteToken) {
-        config.headers['x-invitation-token'] = inviteToken;
-        config.metadata = { requestId, sessionId, carriedInviteToken: true };
-        return config;
-      }
-
       // Store correlation IDs in config for error mapping
       config.metadata = { requestId, sessionId };
+
+      // R11 (I58) — carry a pending invitation token to the provisioning seam.
+      //
+      // ONLY on an authenticated request. The provisioning seam that claims
+      // this token lives behind Firebase verification, so an unauthenticated
+      // request can never consume it — but it used to CARRY it, and the
+      // response interceptor then cleared it on the way back. Any public or
+      // bootstrap call that happened to fire first (a health check, a landing
+      // probe) destroyed the invited user's token before signup, after which
+      // provisioning fell through to a fresh island workspace: the invitation
+      // silently downgraded to a solo account, and nothing said so.
+      //
+      // It is a server-issued secret, not a client identity claim: the server
+      // validates, claims and single-uses it.
+      const inviteToken = token ? getInviteToken() : null;
+      if (inviteToken) {
+        config.headers['x-invitation-token'] = inviteToken;
+        config.metadata.carriedInviteToken = true;
+      }
     } catch (err) {
       // Auth not ready yet (e.g. page just loaded) — proceed without token.
       // Backend will return 401 which the response interceptor handles.
@@ -230,10 +237,22 @@ export function mapTransportError(error) {
 // _retry flag prevents infinite retry loops.
 api.interceptors.response.use(
   (response) => {
-    // R11 (I58) — the server has now had its chance to claim the invitation.
-    // Drop it either way: it is single-use, so replaying it can only produce a
-    // confusing 403 on some later first-request.
-    if (response.config?.metadata?.carriedInviteToken) clearInviteToken();
+    // R11 (I58) — drop the carrier copy ONLY when the server says it actually
+    // claimed the invitation.
+    //
+    // A 2xx is not that confirmation. The old check cleared on any successful
+    // response that had carried the token, which conflates "a request came
+    // back" with "the JOIN happened" — and those differ precisely in the
+    // cases that matter: a request that raced ahead of signup, a retry, an
+    // endpoint that never reaches provisioning. `x-invitation-claimed` is set
+    // at one place in firebaseAuth, inside the claiming transaction's success
+    // path, so it means the membership write committed.
+    //
+    // A refused invitation (403 INVITATION_INVALID) deliberately does NOT
+    // clear it. Clearing there would let the next request provision a fresh
+    // island workspace — the exact silent downgrade this seam exists to
+    // prevent. Better a loud, repeatable refusal the user can act on.
+    if (response.headers?.['x-invitation-claimed'] === '1') clearInviteToken();
     return response;
   },
   async (error) => {

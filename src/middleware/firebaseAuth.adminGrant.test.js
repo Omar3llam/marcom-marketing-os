@@ -51,8 +51,15 @@ function runMiddleware(uid, email, { verified = true, inviteToken = null, name }
   const headers = { authorization: 'Bearer tok' };
   if (inviteToken) headers['x-invitation-token'] = inviteToken;
   const req = { headers, path: '/api/admin/status', method: 'GET' };
-  return new Promise((resolve) => firebaseAuthMiddleware(req, {}, () => resolve(req)));
+  // A real Express response, minimally: the middleware confirms a consumed
+  // invitation by SETTING A RESPONSE HEADER, so a bare {} would both hide that
+  // signal and throw where production cannot.
+  lastRes = { headers: {}, setHeader(k, v) { this.headers[String(k).toLowerCase()] = v; } };
+  return new Promise((resolve) => firebaseAuthMiddleware(req, lastRes, () => resolve(req)));
 }
+
+/** Response headers written by the most recent runMiddleware call. */
+let lastRes = { headers: {} };
 
 /** Drive requireAuth over a req and capture what it answered. */
 function runRequireAuth(req) {
@@ -244,6 +251,40 @@ describe('THE INVITE SEAM — token is the membership credential (I58)', () => {
     expect(prisma.user.create).not.toHaveBeenCalled();
     expect(req.authError).toMatchObject({ status: 503, code: 'INVITATION_UNAVAILABLE' });
     expect(runRequireAuth(req)).toMatchObject({ status: 503, passed: false });
+  });
+
+  // ── NC-A11 · the control (invitationToken lifecycle) ───────
+  it('CONFIRMS a real join with x-invitation-claimed — the only signal the client may clear on', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.invitation.updateMany.mockResolvedValue({ count: 1 });
+    prisma.invitation.findUnique.mockResolvedValue({ id: 'inv-c', workspaceId: 'ws-c', collabRole: 'BUYER' });
+    prisma.user.create.mockResolvedValue({ id: 'u-c', workspaceId: 'ws-c', role: 'VIEWER', collabRole: 'BUYER' });
+
+    await runMiddleware('uid-claim-confirm', 'confirm@brand.com', { inviteToken: 'tok-confirm' });
+
+    expect(lastRes.headers['x-invitation-claimed']).toBe('1');
+  });
+
+  it('does NOT confirm when the invitation was refused — a 403 must not look consumed', async () => {
+    // If this header leaked onto the refusal path the browser would drop its
+    // carrier copy, and the retry would provision a fresh island workspace:
+    // the silent downgrade the whole seam exists to prevent.
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.invitation.updateMany.mockResolvedValue({ count: 0 });
+
+    const req = await runMiddleware('uid-no-confirm', 'noconfirm@brand.com', { inviteToken: 'tok-stale-2' });
+
+    expect(req.authError).toMatchObject({ status: 403, code: 'INVITATION_INVALID' });
+    expect(lastRes.headers['x-invitation-claimed']).toBeUndefined();
+  });
+
+  it('does NOT confirm on a fresh solo signup — nothing was claimed', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    prisma.user.create.mockResolvedValue({ id: 'u-s', workspaceId: 'ws-s', role: 'VIEWER', collabRole: 'STRATEGIST' });
+
+    await runMiddleware('uid-solo-confirm', 'solo@brand.com');
+
+    expect(lastRes.headers['x-invitation-claimed']).toBeUndefined();
   });
 });
 

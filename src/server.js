@@ -114,10 +114,18 @@ app.use(cors({
     'Authorization',
     'x-webhook-signature',
     'x-webhook-timestamp',
+    // R11 (I58) — the invitation credential travels as a request header, so a
+    // cross-origin preflight has to permit it or the JOIN silently degrades to
+    // fresh-workspace provisioning. Same-origin today (Express serves the
+    // client, Vite proxies /api in dev), which is why its absence never bit.
+    'x-invitation-token',
   ],
 
   // Expose headers the frontend may need to read
-  exposedHeaders: ['X-Request-Id'],
+  // x-invitation-claimed: the server's confirmation that the invitation was
+  // actually consumed. The client drops its carrier copy on this and nothing
+  // else, so it must be readable rather than filtered out by CORS.
+  exposedHeaders: ['X-Request-Id', 'x-invitation-claimed'],
 }));
 
 // ── FIREBASE AUTH (global — populates req.user on every request) ─────

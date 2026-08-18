@@ -308,6 +308,17 @@ export async function firebaseAuthMiddleware(req, res, next) {
 
             created = claimed.user;
             req.authSource = 'firebase-invite-join';
+            // R11 (I58) — CONFIRM the consumption to the client.
+            //
+            // The browser holds a copy of the token so it survives the signup
+            // hop, and it has to know when to drop it. It cannot infer that
+            // from "a response arrived": the token rides on whichever request
+            // happens to be first, and a 200 from an unauthenticated or
+            // unrelated endpoint says nothing about whether the invitation was
+            // claimed. This line is reached exactly once, on the transaction's
+            // success path, and it is the only thing that means the JOIN
+            // actually happened.
+            res.setHeader('x-invitation-claimed', '1');
             logger.info(
               { uid: decodedToken.uid, workspaceId: created.workspaceId, inviteId: claimed.inviteId },
               '[firebase-auth] invited user joined existing workspace via invitation token',
