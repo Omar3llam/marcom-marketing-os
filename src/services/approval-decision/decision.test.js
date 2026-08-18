@@ -128,6 +128,25 @@ vi.mock('@prisma/client', () => ({
           return approval;
         }),
 
+        // R11 (I64/I69) — executeDecision now writes through updateMany so the
+        // workspace and the PENDING precondition are enforced atomically in the
+        // WHERE. Honour every predicate so a foreign or already-decided row
+        // reports `count: 0`, exactly as Postgres would.
+        updateMany: vi.fn(async ({ where = {}, data }) => {
+          // The fixture indexes each approval under BOTH its id and its
+          // artifactId (so findUnique can resolve either way), so the values()
+          // iterator yields the same object twice. Dedupe by identity —
+          // otherwise every single-row update reports count 2 and the service
+          // correctly concludes something else already moved the row.
+          const matched = [...new Set(mockApprovals.values())].filter(a =>
+            (!where.id || a.id === where.id) &&
+            (!where.workspaceId || a.workspaceId === where.workspaceId) &&
+            (!where.status || a.status === where.status)
+          );
+          for (const a of matched) Object.assign(a, data);
+          return { count: matched.length };
+        }),
+
         count: vi.fn(async ({ where }) => {
           let approvals = Array.from(mockApprovals.values());
 
@@ -216,8 +235,7 @@ describe('Approval Decision Engine', () => {
         const reviewerId = 'user_123';
 
         const result = await executeDecision(
-          approval.id,
-          DECISION_TYPE.APPROVED,
+          approval.id, '00000000-0000-0000-0000-000000000001', DECISION_TYPE.APPROVED,
           { reviewerId, feedback: 'Looks great!' }
         );
 
@@ -233,8 +251,7 @@ describe('Approval Decision Engine', () => {
         const { approval } = createTestApproval();
 
         const result = await executeDecision(
-          approval.id,
-          DECISION_TYPE.APPROVED,
+          approval.id, '00000000-0000-0000-0000-000000000001', DECISION_TYPE.APPROVED,
           {
             reviewerId: 'user_123',
             decisionMetadata: { publishTarget: 'META', scheduledAt: '2026-05-26T10:00:00Z' },
@@ -253,8 +270,7 @@ describe('Approval Decision Engine', () => {
         const { approval } = createTestApproval();
 
         const result = await executeDecision(
-          approval.id,
-          DECISION_TYPE.REJECTED,
+          approval.id, '00000000-0000-0000-0000-000000000001', DECISION_TYPE.REJECTED,
           {
             reviewerId: 'user_456',
             feedback: 'Off-brand tone',
@@ -273,7 +289,7 @@ describe('Approval Decision Engine', () => {
         const { approval } = createTestApproval();
 
         await expect(
-          executeDecision(approval.id, DECISION_TYPE.REJECTED, {
+          executeDecision(approval.id, '00000000-0000-0000-0000-000000000001', DECISION_TYPE.REJECTED, {
             reviewerId: 'user_456',
           })
         ).rejects.toThrow('Decision REJECTED requires metadata');
@@ -285,8 +301,7 @@ describe('Approval Decision Engine', () => {
         const { approval } = createTestApproval();
 
         const result = await executeDecision(
-          approval.id,
-          DECISION_TYPE.REQUEST_REVISION,
+          approval.id, '00000000-0000-0000-0000-000000000001', DECISION_TYPE.REQUEST_REVISION,
           {
             reviewerId: 'user_789',
             feedback: 'Needs changes',
@@ -307,7 +322,7 @@ describe('Approval Decision Engine', () => {
         const { approval } = createTestApproval();
 
         await expect(
-          executeDecision(approval.id, DECISION_TYPE.REQUEST_REVISION, {
+          executeDecision(approval.id, '00000000-0000-0000-0000-000000000001', DECISION_TYPE.REQUEST_REVISION, {
             reviewerId: 'user_789',
           })
         ).rejects.toThrow('Decision REQUEST_REVISION requires metadata');
@@ -319,8 +334,7 @@ describe('Approval Decision Engine', () => {
         const { approval } = createTestApproval();
 
         const result = await executeDecision(
-          approval.id,
-          DECISION_TYPE.REGENERATE,
+          approval.id, '00000000-0000-0000-0000-000000000001', DECISION_TYPE.REGENERATE,
           {
             reviewerId: 'user_abc',
             feedback: 'Try again with different approach',
@@ -342,8 +356,7 @@ describe('Approval Decision Engine', () => {
         const { approval } = createTestApproval();
 
         const result = await executeDecision(
-          approval.id,
-          DECISION_TYPE.ESCALATE,
+          approval.id, '00000000-0000-0000-0000-000000000001', DECISION_TYPE.ESCALATE,
           {
             reviewerId: 'user_def',
             feedback: 'Escalating to senior reviewer',
@@ -366,7 +379,7 @@ describe('Approval Decision Engine', () => {
         const { approval } = createTestApproval();
 
         await expect(
-          executeDecision(approval.id, DECISION_TYPE.ESCALATE, {
+          executeDecision(approval.id, '00000000-0000-0000-0000-000000000001', DECISION_TYPE.ESCALATE, {
             reviewerId: 'user_def',
           })
         ).rejects.toThrow('Decision ESCALATE requires metadata');
@@ -378,7 +391,7 @@ describe('Approval Decision Engine', () => {
         const { approval } = createTestApproval();
 
         await expect(
-          executeDecision(approval.id, 'INVALID_DECISION', { reviewerId: 'user_123' })
+          executeDecision(approval.id, '00000000-0000-0000-0000-000000000001', 'INVALID_DECISION', { reviewerId: 'user_123' })
         ).rejects.toThrow('Invalid decision type');
       });
 
@@ -386,17 +399,17 @@ describe('Approval Decision Engine', () => {
         const { approval } = createTestApproval();
 
         // First decision
-        await executeDecision(approval.id, DECISION_TYPE.APPROVED, { reviewerId: 'user_123' });
+        await executeDecision(approval.id, '00000000-0000-0000-0000-000000000001', DECISION_TYPE.APPROVED, { reviewerId: 'user_123' });
 
         // Second decision should fail
         await expect(
-          executeDecision(approval.id, DECISION_TYPE.REJECTED, { reviewerId: 'user_456' })
+          executeDecision(approval.id, '00000000-0000-0000-0000-000000000001', DECISION_TYPE.REJECTED, { reviewerId: 'user_456' })
         ).rejects.toThrow('already completed');
       });
 
       it('should reject if approval not found', async () => {
         await expect(
-          executeDecision('nonexistent_approval', DECISION_TYPE.APPROVED, { reviewerId: 'user_123' })
+          executeDecision('nonexistent_approval', '00000000-0000-0000-0000-000000000001', DECISION_TYPE.APPROVED, { reviewerId: 'user_123' })
         ).rejects.toThrow('not found');
       });
     });
@@ -410,6 +423,7 @@ describe('Approval Decision Engine', () => {
 
       const results = await executeBatchDecision(
         [approval1.approval.id, approval2.approval.id, approval3.approval.id],
+        '00000000-0000-0000-0000-000000000001',
         DECISION_TYPE.APPROVED,
         { reviewerId: 'user_batch' }
       );
@@ -423,10 +437,11 @@ describe('Approval Decision Engine', () => {
       const approval2 = createTestApproval();
 
       // Complete one approval first
-      await executeDecision(approval1.approval.id, DECISION_TYPE.APPROVED, { reviewerId: 'user_123' });
+      await executeDecision(approval1.approval.id, '00000000-0000-0000-0000-000000000001', DECISION_TYPE.APPROVED, { reviewerId: 'user_123' });
 
       const results = await executeBatchDecision(
         [approval1.approval.id, approval2.approval.id],
+        '00000000-0000-0000-0000-000000000001',
         DECISION_TYPE.APPROVED,
         { reviewerId: 'user_batch' }
       );
@@ -472,7 +487,7 @@ describe('Approval Decision Engine', () => {
       const approval2 = createTestApproval(workspaceId);
 
       // Complete one
-      await executeDecision(approval1.approval.id, DECISION_TYPE.APPROVED, { reviewerId: 'user_123' });
+      await executeDecision(approval1.approval.id, '00000000-0000-0000-0000-000000000001', DECISION_TYPE.APPROVED, { reviewerId: 'user_123' });
 
       const pending = await getPendingApprovals(workspaceId);
 
@@ -533,8 +548,7 @@ describe('Approval Decision Engine', () => {
 
       const approval3 = createTestApproval(workspaceId);
       await executeDecision(
-        approval3.approval.id,
-        DECISION_TYPE.ESCALATE,
+        approval3.approval.id, '00000000-0000-0000-0000-000000000001', DECISION_TYPE.ESCALATE,
         {
           reviewerId: 'user_123',
           decisionMetadata: { escalationReason: 'Test escalation', escalatedTo: 'user_senior' },

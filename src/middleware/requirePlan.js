@@ -22,9 +22,14 @@
 // MEASUREMENT_TIER_OVERRIDE / COLLAB_ROLE_OVERRIDE). Set it to the effective
 // plan; the normal hierarchy check still applies (PLAN_OVERRIDE=FREE will still
 // 403 a GROWTH route, PLAN_OVERRIDE=PRO unlocks everything).
+//
+// R11 (I62): read through devOverride, which is inert in production. A stray
+// PLAN_OVERRIDE=PRO in a production environment used to unlock every paid
+// surface for every workspace, silently.
 // ============================================================
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
+import { devOverride } from '../lib/devOverrides.js';
 
 export const PLAN_RANK = { FREE: 0, GROWTH: 1, PRO: 2 };
 const rank = (p) => PLAN_RANK[p] ?? 0; // unknown/missing plan floors to FREE
@@ -60,7 +65,7 @@ function deny(res, required, current) {
 export function requirePlan(minimumPlan) {
   return async function planGate(req, res, next) {
     // Dev/local/test escape hatch — set the effective plan without a DB read.
-    const override = process.env.PLAN_OVERRIDE;
+    const override = devOverride('PLAN_OVERRIDE');
     if (override) {
       req.workspacePlan = override;
       return rank(override) >= rank(minimumPlan) ? next() : deny(res, minimumPlan, override);

@@ -1,6 +1,8 @@
 import { prisma }  from '../../lib/prisma.js';
 import { logger }  from '../../utils/logger.js';
 import { currencyForMarket } from '../../lib/currencyDetector.js';
+import { resolveCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE }    from '../../services/collaboration/roleScope.js';
 
 // Onboarding market ids → full names. Mirrors MARKETS in
 // client/src/pages/OnboardingPage/constants.js (kept in sync by hand — six
@@ -129,7 +131,9 @@ export function mountContextRoutes(router) {
 
       if (!existing) {
         const created = await prisma.user.create({
-          data: { clerkId: userId, email, context, workspace: { create: { name: workspaceName, currency: marketCurrency, ...wsPrefs } } },
+          // R11 (I61): collabRole written explicitly — this caller is minting
+          // their own workspace, so they are its strategist. See firebaseAuth.
+          data: { clerkId: userId, email, context, collabRole: 'STRATEGIST', workspace: { create: { name: workspaceName, currency: marketCurrency, ...wsPrefs } } },
           select: { id: true, workspaceId: true, context: true },
         });
         logger.info({ firebaseUid: userId, userRowId: created.id, workspaceId: created.workspaceId }, '[campaigns/me/context] created new user + workspace (Firebase)');
@@ -153,10 +157,30 @@ export function mountContextRoutes(router) {
         select: { id: true, workspaceId: true, context: true },
       });
 
+      // R11 (I63) — the explicit authorization decision for this route.
+      //
+      // The route itself stays open to every seat: it writes the CALLER'S OWN
+      // onboarding context, and gating it would lock an invited CLIENT out of
+      // finishing signup. But the same handler also projects that context onto
+      // shared WORKSPACE columns (spendTier, objective, adChannels, currency),
+      // which is a workspace-level change and belongs at the same bar as
+      // PATCH /api/user/workspace. So the self-write is ungated and the
+      // shared-state write is STRATEGIST — one route, two decisions, both
+      // written down rather than one of them being an accident.
+      let callerRole = null;
+      try {
+        callerRole = await resolveCollabRole(req);
+      } catch (roleErr) {
+        // Fail closed on the SHARED write only; the caller's own context has
+        // already been saved and re-reading it is not a permission question.
+        logger.error({ err: roleErr.message, userId }, '[campaigns/me/context] role unresolvable — skipping workspace projection');
+      }
+      const mayWriteWorkspace = callerRole === WORKSPACE_ROLE.STRATEGIST;
+
       // Keep the workspace's onboarding-preference columns in sync with the
       // latest context (re-onboarding updates them). Separate from the currency
       // guard below because these always reflect the newest answers.
-      if (updated.workspaceId) {
+      if (mayWriteWorkspace && updated.workspaceId) {
         await prisma.workspace.update({ where: { id: updated.workspaceId }, data: wsPrefs });
       }
 
@@ -165,7 +189,7 @@ export function mountContextRoutes(router) {
       // from the market — but ONLY while it's still the default USD, so a real
       // currency already detected from Meta/CSV is never clobbered. updateMany's
       // WHERE makes this atomic + idempotent.
-      if (marketCurrency !== 'USD' && updated.workspaceId) {
+      if (mayWriteWorkspace && marketCurrency !== 'USD' && updated.workspaceId) {
         await prisma.workspace.updateMany({
           where: { id: updated.workspaceId, currency: 'USD' },
           data:  { currency: marketCurrency },

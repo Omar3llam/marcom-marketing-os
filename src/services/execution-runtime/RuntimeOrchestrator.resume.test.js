@@ -58,9 +58,27 @@ vi.mock('@prisma/client', () => ({
           return mockCheckpoints.get(where.id) || null;
         }),
 
+        // R11 (I64) — markCheckpointResumed is workspace-scoped and writes via
+        // updateMany; count 0 means "not yours / not there" and is a refusal.
+        updateMany: vi.fn(async ({ where = {}, data }) => {
+          const matched = [...new Set(mockCheckpoints.values())].filter(cp =>
+            (!where.id          || cp.id          === where.id) &&
+            (!where.workspaceId || cp.workspaceId === where.workspaceId));
+          for (const cp of matched) Object.assign(cp, data);
+          return { count: matched.length };
+        }),
+
         findFirst: vi.fn(async ({ where, orderBy }) => {
+          // R11 (I64): resumeExecutionFromCheckpoint now resolves the checkpoint
+          // through a SCOPED findFirst ({ id, workspaceId }) rather than a bare
+          // findUnique, so this mock has to honour both predicates — otherwise
+          // it would answer for a by-id lookup it was never asked, and a
+          // foreign-workspace resume would look like it succeeded.
           const checkpoints = Array.from(mockCheckpoints.values())
-            .filter(cp => cp.executionId === where.executionId);
+            .filter(cp =>
+              (!where.executionId  || cp.executionId  === where.executionId) &&
+              (!where.id           || cp.id           === where.id) &&
+              (!where.workspaceId  || cp.workspaceId  === where.workspaceId));
 
           if (checkpoints.length === 0) return null;
 
@@ -317,7 +335,7 @@ describe('RuntimeOrchestrator - Interruptible Execution (PR #29)', () => {
       expect(pauseResult.status).toBe(EXECUTION_STATUS.PAUSED_FOR_APPROVAL);
 
       // STEP 2: Resume execution
-      const resumeResult = await resumeExecutionFromCheckpoint(pauseResult.checkpointId);
+      const resumeResult = await resumeExecutionFromCheckpoint(pauseResult.checkpointId, '00000000-0000-0000-0000-000000000001');
 
       // Should complete successfully
       expect(resumeResult.status).toBe(EXECUTION_STATUS.SUCCESS);
@@ -383,11 +401,11 @@ describe('RuntimeOrchestrator - Interruptible Execution (PR #29)', () => {
       expect(pauseResult.status).toBe(EXECUTION_STATUS.PAUSED_FOR_APPROVAL);
 
       // First resume
-      const firstResume = await resumeExecutionFromCheckpoint(pauseResult.checkpointId);
+      const firstResume = await resumeExecutionFromCheckpoint(pauseResult.checkpointId, '00000000-0000-0000-0000-000000000001');
       expect(firstResume.status).toBe(EXECUTION_STATUS.SUCCESS);
 
       // Second resume (should be idempotent)
-      const secondResume = await resumeExecutionFromCheckpoint(pauseResult.checkpointId);
+      const secondResume = await resumeExecutionFromCheckpoint(pauseResult.checkpointId, '00000000-0000-0000-0000-000000000001');
 
       expect(secondResume.alreadyResumed).toBe(true);
       expect(secondResume.resumedAt).toBeInstanceOf(Date);
@@ -440,7 +458,7 @@ describe('RuntimeOrchestrator - Interruptible Execution (PR #29)', () => {
       // but in-memory state is lost. Resume should restore from DB.
 
       // Resume from checkpoint ID only (no in-memory state)
-      const resumeResult = await resumeExecutionFromCheckpoint(checkpointId);
+      const resumeResult = await resumeExecutionFromCheckpoint(checkpointId, '00000000-0000-0000-0000-000000000001');
 
       expect(resumeResult.status).toBe(EXECUTION_STATUS.SUCCESS);
       expect(resumeResult.resumed).toBe(true);
@@ -504,7 +522,7 @@ describe('RuntimeOrchestrator - Interruptible Execution (PR #29)', () => {
   describe('Error Cases', () => {
     it('should error when resuming non-existent checkpoint', async () => {
       await expect(
-        resumeExecutionFromCheckpoint('nonexistent_checkpoint_id')
+        resumeExecutionFromCheckpoint('nonexistent_checkpoint_id', '00000000-0000-0000-0000-000000000001')
       ).rejects.toThrow('Checkpoint nonexistent_checkpoint_id not found');
     });
 
@@ -525,7 +543,7 @@ describe('RuntimeOrchestrator - Interruptible Execution (PR #29)', () => {
       mockCheckpoints.set(checkpoint.id, checkpoint);
 
       // First resume should return cached result (idempotent)
-      const result = await resumeExecutionFromCheckpoint(checkpoint.id);
+      const result = await resumeExecutionFromCheckpoint(checkpoint.id, '00000000-0000-0000-0000-000000000001');
       expect(result.alreadyResumed).toBe(true);
     });
   });
@@ -588,7 +606,7 @@ describe('RuntimeOrchestrator - Interruptible Execution (PR #29)', () => {
       expect(firstPause.executedNodes[0].nodeId).toBe('node_1');
 
       // Resume - should execute node_2, then pause at node_3
-      const resumeResult = await resumeExecutionFromCheckpoint(firstPause.checkpointId);
+      const resumeResult = await resumeExecutionFromCheckpoint(firstPause.checkpointId, '00000000-0000-0000-0000-000000000001');
 
       // NOTE: Current implementation only pauses once per execution.
       // Multi-pause would require recursive pause/resume logic.

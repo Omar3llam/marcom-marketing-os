@@ -319,6 +319,14 @@ export async function firebaseAuthMiddleware(req, res, next) {
                 clerkId: decodedToken.uid,
                 email,
                 role,
+                // R11 (I61/I63): write the seat explicitly. The person who
+                // mints a workspace IS its strategist — that was always the
+                // product truth, it was just left implicit in a null that the
+                // gate then had to interpret. With the role written here (and
+                // backfilled for existing rows), a null collabRole stops
+                // meaning "assume the top role" and starts meaning "something
+                // is wrong with this row", which is a denial.
+                collabRole: 'STRATEGIST',
                 context: null,
                 workspace: { create: { name: `${displayName}'s Workspace` } },
               },

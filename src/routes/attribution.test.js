@@ -134,7 +134,12 @@ describe('Attribution Routes (PR #41)', () => {
       expect(prisma.publishedCreative.create).not.toHaveBeenCalled();
     });
 
-    it('returns 404 if the publishing user row cannot be resolved', async () => {
+    it('REFUSES at the role gate when the publishing user row cannot be resolved', async () => {
+      // R11 (I61): this used to reach the handler and 404 with "Publishing user
+      // not found". It no longer gets that far — requireCollabRole resolves the
+      // caller's role from the same absent row and denies. That ordering is the
+      // correct one: if we cannot establish who is asking, the question of what
+      // they are publishing does not arise.
       prisma.user.findUnique.mockResolvedValue(null);
 
       const response = await request(app)
@@ -145,8 +150,8 @@ describe('Attribution Routes (PR #41)', () => {
           metaCampaignId: 'campaign-123',
         });
 
-      expect(response.status).toBe(404);
-      expect(response.body.error).toBe('Publishing user not found');
+      expect(response.status).toBe(403);
+      expect(response.body.error).toBe('RoleForbidden');
       expect(prisma.publishedCreative.create).not.toHaveBeenCalled();
     });
 

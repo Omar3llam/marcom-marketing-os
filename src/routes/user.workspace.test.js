@@ -98,16 +98,18 @@ describe('PATCH /api/user/workspace — STRATEGIST gate', () => {
     expect(prisma.workspace.update).not.toHaveBeenCalled();
   });
 
-  it('null collabRole (pre-Phase-8 seat) → effective STRATEGIST → 200', async () => {
-    // req.collabRole unset → middleware falls back to the DB row, which has
-    // collabRole: null → normalizeRole(null) ⇒ STRATEGIST.
+  it('null collabRole is REFUSED — R11 (I61) removed the fail-open default', async () => {
+    // req.collabRole unset → the middleware falls back to the DB row, whose
+    // collabRole is null. That used to normalize to STRATEGIST; R11 backfilled
+    // every real seat to an explicit role, so a null now means the row is
+    // anomalous, and an anomaly is a denial rather than the top privilege.
     const res = await request(buildApp())
       .patch('/api/user/workspace')
       .send({ workspaceName: 'Renamed' })
-      .expect(200);
+      .expect(403);
 
-    expect(res.body).toEqual({ success: true, workspaceName: 'Renamed' });
-    expect(prisma.workspace.update).toHaveBeenCalledTimes(1);
+    expect(res.body.error).toBe('RoleForbidden');
+    expect(prisma.workspace.update).not.toHaveBeenCalled();
   });
 
   it('PATCH /profile stays open: BUYER can still rename THEMSELVES', async () => {

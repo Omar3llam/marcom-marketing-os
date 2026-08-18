@@ -61,8 +61,8 @@ describe('POST /revenue/csv', () => {
     expect(processRevenueCsv).toHaveBeenCalledWith('ws1', [ROW]);
   });
 
-  it('null collabRole is treated as STRATEGIST (seed default)', async () => {
-    await request(makeApp({ collabRole: null })).post('/revenue/csv').send({ rows: [ROW] }).expect(200);
+  it('null collabRole is REFUSED — R11 (I61) removed the fail-open default', async () => {
+    await request(makeApp({ collabRole: null })).post('/revenue/csv').send({ rows: [ROW] }).expect(403);
   });
 
   it('501 rows → 400 TooManyRows (before touching the service)', async () => {

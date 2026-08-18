@@ -55,6 +55,21 @@ vi.mock('@prisma/client', () => ({
           return approval;
         }),
 
+        // R11 (I64/I69) — the decision writes now go through updateMany, whose
+        // WHERE carries the workspace AND the PENDING precondition. Every
+        // predicate is honoured here so a foreign workspace or a non-PENDING
+        // row genuinely reports `count: 0`, which is what the service reads to
+        // decide it may not act.
+        updateMany: vi.fn(async ({ where = {}, data }) => {
+          const matched = Array.from(mockApprovals.values()).filter(a =>
+            (!where.id || a.id === where.id) &&
+            (!where.workspaceId || a.workspaceId === where.workspaceId) &&
+            (!where.status || a.status === where.status)
+          );
+          for (const a of matched) Object.assign(a, data, { updatedAt: new Date() });
+          return { count: matched.length };
+        }),
+
         // R9 — getApprovalStatus/getApproval resolve through findFirst with a
         // workspaceId predicate. Every supplied predicate is applied, so a
         // foreign workspaceId genuinely matches nothing here rather than being
@@ -223,7 +238,7 @@ describe('Artifact Approval Service', () => {
       const reviewerId = 'user_456';
       const feedback = 'Looks good, approved!';
 
-      const approval = await approveArtifact(initialApproval.id, reviewerId, feedback);
+      const approval = await approveArtifact(initialApproval.id, '00000000-0000-0000-0000-000000000001', reviewerId, feedback);
 
       expect(approval.status).toBe(APPROVAL_STATUS.APPROVED);
       expect(approval.reviewerId).toBe(reviewerId);
@@ -239,7 +254,7 @@ describe('Artifact Approval Service', () => {
 
       const reviewerId = 'user_456';
 
-      const approval = await approveArtifact(initialApproval.id, reviewerId);
+      const approval = await approveArtifact(initialApproval.id, '00000000-0000-0000-0000-000000000001', reviewerId);
 
       expect(approval.status).toBe(APPROVAL_STATUS.APPROVED);
       expect(approval.reviewerId).toBe(reviewerId);
@@ -257,7 +272,7 @@ describe('Artifact Approval Service', () => {
       const reviewerId = 'user_456';
       const reason = 'Off-brand tone, needs revision';
 
-      const approval = await rejectArtifact(initialApproval.id, reviewerId, reason);
+      const approval = await rejectArtifact(initialApproval.id, '00000000-0000-0000-0000-000000000001', reviewerId, reason);
 
       expect(approval.status).toBe(APPROVAL_STATUS.REJECTED);
       expect(approval.reviewerId).toBe(reviewerId);
@@ -276,7 +291,7 @@ describe('Artifact Approval Service', () => {
       const reviewerId = 'user_456';
       const feedback = 'Good start, but make it more urgent';
 
-      const approval = await requestRevision(initialApproval.id, reviewerId, feedback);
+      const approval = await requestRevision(initialApproval.id, '00000000-0000-0000-0000-000000000001', reviewerId, feedback);
 
       expect(approval.status).toBe(APPROVAL_STATUS.REVISION_REQUESTED);
       expect(approval.reviewerId).toBe(reviewerId);
@@ -319,7 +334,7 @@ describe('Artifact Approval Service', () => {
       await createApprovalRequest('artifact_2', workspaceId);
 
       // Approve one
-      await approveArtifact(approval1.id, 'user_456');
+      await approveArtifact(approval1.id, '00000000-0000-0000-0000-000000000001', 'user_456');
 
       const approvals = await getPendingApprovals(workspaceId);
 

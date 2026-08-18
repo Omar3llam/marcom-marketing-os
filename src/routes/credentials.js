@@ -12,8 +12,19 @@ import {
 } from '../models/credential.js';
 import { assertProjectOwnership } from '../models/project.js';
 import { logger } from '../utils/logger.js';
+import { requireCollabRole } from '../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE }    from '../services/collaboration/roleScope.js';
 
 export const credentialsRouter = Router();
+
+// R11 (I63): connecting or disconnecting an ad platform is a workspace-level
+// act — it decides which account Lumi can read from and mutate. Ownership was
+// already enforced (assertProjectOwnership + a user-scoped ON CONFLICT), so
+// this was never cross-tenant; it was simply available to every seat, including
+// a read-only one that could sever the account's live connection.
+// PATCH /api/user/workspace already sets the bar at STRATEGIST for the same
+// class of change; this matches it rather than inventing a second answer.
+const requireStrategist = requireCollabRole(WORKSPACE_ROLE.STRATEGIST);
 
 // Deliberate 4xx errors (err.statusCode set, e.g. the 404 ownership throw)
 // keep their message — it is user feedback. Unexpected 500s must NOT echo
@@ -75,7 +86,7 @@ credentialsRouter.get('/:projectId', async (req, res) => {
 
 // ── UPSERT  POST /api/credentials ───────────────────────────
 // Body: { project_id, platform, access_token, refresh_token, account_id, scopes, expires_at }
-credentialsRouter.post('/', async (req, res) => {
+credentialsRouter.post('/', requireStrategist, async (req, res) => {
   const userId = req.userId;
   const {
     project_id:    projectId,
@@ -135,7 +146,7 @@ credentialsRouter.get('/:projectId/:platform', async (req, res) => {
 });
 
 // ── DELETE  DELETE /api/credentials/:projectId/:platform ────
-credentialsRouter.delete('/:projectId/:platform', async (req, res) => {
+credentialsRouter.delete('/:projectId/:platform', requireStrategist, async (req, res) => {
   const userId    = req.userId;
   const { projectId, platform } = req.params;
   try {

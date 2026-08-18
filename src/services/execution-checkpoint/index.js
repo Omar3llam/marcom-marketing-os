@@ -7,7 +7,7 @@
 // OPERATIONS:
 //   - createCheckpoint(executionId, nodeId, state)
 //   - getLatestCheckpoint(executionId, workspaceId)
-//   - markCheckpointResumed(checkpointId)
+//   - markCheckpointResumed(checkpointId, workspaceId)
 //   - getPausedExecutions(workspaceId)
 //   - healthCheck()
 //
@@ -15,11 +15,41 @@
 //   - One active checkpoint per execution (latest wins)
 //   - Checkpoints immutable after creation (resumedAt only mutation)
 //   - Resume must be idempotent (double resume = noop)
+//   - R11 (I70): a checkpoint is resumable only inside a bounded replay window
 // ============================================================
-import { PrismaClient } from '@prisma/client';
+// R11 (F26): shared Prisma client — this module used to open its own pool.
+import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 
-const prisma = new PrismaClient();
+// ── R11 (I70) — bounded replay window ────────────────────────
+// A PAUSED_FOR_APPROVAL checkpoint was resumable forever. It carries a frozen
+// execution graph and the plan it was built from; resuming a months-old one
+// replays decisions taken against an account that no longer looks like that,
+// and every hour it stays resumable is another hour a leaked checkpoint id is
+// worth something.
+//
+// The number is not invented here: it is the operational ceiling the resume
+// UX already implies (a pause is a review that a human comes back to, not an
+// archive), and it is env-tunable so operations can move it without a deploy
+// rather than having a constant argued about in code review.
+export const CHECKPOINT_REPLAY_WINDOW_MS = Number(
+  process.env.CHECKPOINT_REPLAY_WINDOW_MS || 7 * 24 * 60 * 60 * 1000,
+);
+
+/** True when this checkpoint is still inside its replay window. */
+export function isCheckpointReplayable(checkpoint, now = Date.now()) {
+  if (!checkpoint?.createdAt) return false;
+  return now - new Date(checkpoint.createdAt).getTime() <= CHECKPOINT_REPLAY_WINDOW_MS;
+}
+
+/** Raised when a checkpoint is real and owned, but too old to replay. */
+export class CheckpointExpiredError extends Error {
+  constructor(checkpointId) {
+    super(`Checkpoint ${checkpointId} is outside its replay window`);
+    this.name = 'CheckpointExpiredError';
+    this.statusCode = 409;
+  }
+}
 
 // ============================================================
 // Constants
@@ -145,23 +175,38 @@ export async function getLatestCheckpoint(executionId, workspaceId) {
 }
 
 /**
- * Mark checkpoint as resumed
+ * Mark checkpoint as resumed.
+ *
+ * R11 (I64) — workspaceId is required and enforced here. This was the last
+ * unscoped write in the checkpoint service: its only caller happened to have
+ * resolved the checkpoint through a scoped read, so it was safe by accident.
+ *
  * @param {string} checkpointId - Checkpoint ID
+ * @param {string} workspaceId  - REQUIRED; the owning workspace
  * @returns {Promise<object>} Updated checkpoint
  */
-export async function markCheckpointResumed(checkpointId) {
+export async function markCheckpointResumed(checkpointId, workspaceId) {
+  if (!workspaceId) throw new Error('markCheckpointResumed: workspaceId required');
   try {
-    const checkpoint = await prisma.executionCheckpoint.update({
-      where: { id: checkpointId },
+    const moved = await prisma.executionCheckpoint.updateMany({
+      where: { id: checkpointId, workspaceId },
       data: {
         status: CHECKPOINT_STATUS.RESUMED,
         resumedAt: new Date(),
       },
     });
+    if (moved.count !== 1) {
+      throw new Error(`Checkpoint not found in workspace: ${checkpointId}`);
+    }
+
+    const checkpoint = await prisma.executionCheckpoint.findFirst({
+      where: { id: checkpointId, workspaceId },
+    });
 
     logger.info({
       checkpointId,
-      executionId: checkpoint.executionId,
+      workspaceId,
+      executionId: checkpoint?.executionId,
     }, '[checkpoint] checkpoint marked as resumed');
 
     return checkpoint;

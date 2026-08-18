@@ -67,11 +67,14 @@ describe('POST /network/consent — STRATEGIST-gated cross-tenant consent', () =
     expect(res.body).toMatchObject({ workspaceId: 'workspace-1', networkConsent: true });
   });
 
-  it('treats a null collab role as STRATEGIST (legacy seats not locked out)', async () => {
+  it('REFUSES a null collab role — R11 (I61) removed the fail-open default', async () => {
+    // This gate protects a cross-tenant consent decision. Before R11 an
+    // unresolvable role was answered with STRATEGIST, so the one seat that can
+    // opt a workspace into the network was the one every seat defaulted to.
     setConsent.mockResolvedValue({ id: 'workspace-1', networkConsent: false, cohortTag: null, consentedAt: null });
     await request(makeApp({ collabRole: null }))
       .post('/network/consent').send({ optIn: false })
-      .expect(200);
-    expect(setConsent).toHaveBeenCalledWith('workspace-1', { optIn: false, cohortTag: undefined });
+      .expect(403);
+    expect(setConsent).not.toHaveBeenCalled();
   });
 });

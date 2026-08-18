@@ -80,8 +80,8 @@ describe('GET /entities/health', () => {
     await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(200);
   });
 
-  it('null collabRole is treated as STRATEGIST (seed default)', async () => {
-    await request(makeApp({ collabRole: null })).get('/entities/health').expect(200);
+  it('null collabRole is REFUSED — R11 (I61) removed the fail-open default', async () => {
+    await request(makeApp({ collabRole: null })).get('/entities/health').expect(403);
   });
 
   it('keys verdicts onto campaigns by id (verdict.id → campaign.entityId)', async () => {

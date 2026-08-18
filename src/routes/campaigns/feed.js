@@ -10,6 +10,8 @@ import { runMode5 }          from '../../modes/mode5-campaign.js';
 import { logger }            from '../../utils/logger.js';
 import { analyzeCampaignData } from '../../agents/orchestrator.js';
 import { DEFAULT_CHAT_ANALYSIS_DATE_PRESET } from '../../services/connectors/connectorConfig.js';
+import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE }    from '../../services/collaboration/roleScope.js';
 
 const MAX_HISTORY   = 40;
 
@@ -43,7 +45,10 @@ async function runCampaignAnalysis(session, dataText, userContext) {
 }
 
 export function mountFeedRoutes(router) {
-  router.post('/fetch-meta', async (req, res) => {
+  // R11 (I63): pulls live data from the workspace's connected ad account using
+  // its OAuth credential, then spends AI budget analysing it. Both are operator
+  // acts, not read-only narrative.
+  router.post('/fetch-meta', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
     const userId = req.userId;
     // Legacy chat path keeps its OWN (narrower) window on purpose: it has a
     // MAX_CAMPAIGNS cap that 400s above the limit, so it must not inherit the
