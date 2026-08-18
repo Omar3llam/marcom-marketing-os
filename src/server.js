@@ -25,6 +25,7 @@ import cors                 from 'cors';
 import path from 'path';
 import { securityHeaders }  from './middleware/securityHeaders.js';
 import { firebaseAuthMiddleware, requireAuth } from './middleware/firebaseAuth.js';
+import { requireWorkspace } from './middleware/requireWorkspace.js';
 import { validateWebhook, captureRawBody } from './middleware/validateWebhook.js';
 import { dedupeWebhookEvent } from './middleware/webhookDedup.js';
 import { apiLimiter, chatLimiter, authLimiter, syncLimiter, adminSeedLimiter } from './middleware/rateLimit.js';
@@ -201,6 +202,7 @@ app.use('/api/lumi/connections/sync', syncLimiter);
 // BUGFIX (PR #44): Changed from requireJwt → requireAuth (Firebase migration)
 app.use('/api/lumi',
   requireAuth,
+  requireWorkspace,   // R11 (I60): tenant context is a precondition, not a maybe
   apiLimiter,
   lumiRouter
 );
@@ -252,6 +254,7 @@ app.use('/api/campaigns',
 // Meta Execution — production-grade action execution with audit logging
 app.use('/api/execute',
   requireAuth,
+  requireWorkspace,   // R11 (I60)
   apiLimiter,
   executionRouter
 );
@@ -259,6 +262,7 @@ app.use('/api/execute',
 // Artifact Approval — human-in-the-loop review for AI-generated content (PR #28)
 app.use('/api/artifacts',
   requireAuth,
+  requireWorkspace,   // R11 (I60)
   apiLimiter,
   artifactApprovalRouter
 );
@@ -274,6 +278,7 @@ app.use('/api/events', eventsRouter);
 // Analytics (PR #37) — approval decision intelligence & provider performance
 app.use('/api/analytics',
   requireAuth,
+  requireWorkspace,   // R11 (I60)
   apiLimiter,
   analyticsRouter
 );
@@ -281,6 +286,7 @@ app.use('/api/analytics',
 // Attribution (PR #41) — outcome attribution & real performance metrics
 app.use('/api/attribution',
   requireAuth,
+  requireWorkspace,   // R11 (I60)
   apiLimiter,
   attributionRouter
 );
@@ -288,6 +294,7 @@ app.use('/api/attribution',
 // Observability (PR #45) — Mission Control for live execution monitoring
 app.use('/api/observability',
   requireAuth,
+  requireWorkspace,   // R11 (I60)
   apiLimiter,
   observabilityRouter
 );
@@ -326,6 +333,11 @@ app.use('/api/admin/demo/seed', adminSeedLimiter);
 app.use('/api/admin',
   requireAuth,
   requireAdmin,
+  // R11 (I60): the destructive admin guards compare against the ADMIN'S OWN
+  // workspace ("you cannot delete the workspace you are in"). A null
+  // workspaceId made that comparison silently never match — the guard failed
+  // open on the single most destructive route in the system.
+  requireWorkspace,
   apiLimiter,
   adminRouter
 );
@@ -333,6 +345,7 @@ app.use('/api/admin',
 // Paid Decision Engine — Phase 1.2 (Meta MCP + Claude Orchestrator)
 app.use('/api/v1/paid',
   requireAuth,
+  requireWorkspace,   // R11 (I60)
   apiLimiter,
   paidRouter
 );

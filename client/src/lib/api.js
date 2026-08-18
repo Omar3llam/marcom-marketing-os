@@ -22,6 +22,7 @@ import {
   ValidationError,
 } from '../contracts/errors/index';
 import { generateRequestId, getSessionId } from './correlation';
+import { getInviteToken, clearInviteToken } from './inviteToken';
 
 // Contract version - updated when API contracts change
 // See: client/src/contracts/COMPATIBILITY.md
@@ -53,6 +54,18 @@ api.interceptors.request.use(
       const sessionId = getSessionId();
       config.headers['x-request-id'] = requestId;
       config.headers['x-session-id'] = sessionId;
+
+      // R11 (I58) — carry a pending invitation token to the provisioning seam.
+      // Only ever set on the hop between clicking an invite link and the
+      // server minting this user's row; the server single-uses it and every
+      // later request finds nothing to send. It is a server-issued secret, not
+      // a client identity claim: the server validates and claims it.
+      const inviteToken = getInviteToken();
+      if (inviteToken) {
+        config.headers['x-invitation-token'] = inviteToken;
+        config.metadata = { requestId, sessionId, carriedInviteToken: true };
+        return config;
+      }
 
       // Store correlation IDs in config for error mapping
       config.metadata = { requestId, sessionId };
@@ -216,7 +229,13 @@ export function mapTransportError(error) {
 //
 // _retry flag prevents infinite retry loops.
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // R11 (I58) — the server has now had its chance to claim the invitation.
+    // Drop it either way: it is single-use, so replaying it can only produce a
+    // confusing 403 on some later first-request.
+    if (response.config?.metadata?.carriedInviteToken) clearInviteToken();
+    return response;
+  },
   async (error) => {
     const originalRequest = error.config;
 

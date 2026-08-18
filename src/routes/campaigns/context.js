@@ -72,15 +72,23 @@ export function mountContextRoutes(router) {
     const userId = req.userId;
     if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
     try {
-      const email = req.user?.email;
-      const user = await prisma.user.findFirst({
-        where: { OR: [{ clerkId: userId }, ...(email ? [{ email }] : [])] },
+      // R11 (I57): the Firebase uid is the sole identity key. This read used to
+      // carry `OR: [{ clerkId }, { email }]`, which returned another account's
+      // onboarding context to anyone who could register its email address.
+      const user = await prisma.user.findUnique({
+        where:  { clerkId: userId },
         select: { context: true },
-      }).catch(() => null);
+      });
       return res.json({ context: user?.context ?? null });
     } catch (err) {
-      logger.warn({ err: err.message }, '[campaigns/me/context] read failed');
-      return res.json({ context: null });
+      // R11 (I71): a read failure is not "this user has not onboarded". The old
+      // `.catch(() => null)` + `res.json({ context: null })` reported a DB
+      // outage as a fresh account and bounced the user back into onboarding.
+      logger.error({ err: err.message, userId }, '[campaigns/me/context] read failed');
+      return res.status(503).json({
+        error:   'ContextUnavailable',
+        message: 'Could not load your account context right now.',
+      });
     }
   });
 
@@ -90,7 +98,11 @@ export function mountContextRoutes(router) {
     const ctx = req.body?.context;
     if (!ctx || typeof ctx !== 'object') return res.status(400).json({ error: 'context object required in body' });
 
-    const email         = req.user?.email || req.body?.email || `${userId}@unknown.local`;
+    // R11 (I57/I59): the email is a CONTACT attribute taken from the verified
+    // token only. The old `|| req.body?.email` made a request-body field
+    // participate in identity resolution, which is exactly what turned this
+    // route into the account-takeover door.
+    const email         = req.user?.email || `${userId}@unknown.local`;
     const workspaceName = req.body?.workspaceName || 'My Workspace';
     const context       = withContextAliases(ctx);
     const wsPrefs       = workspaceColumnsFromContext(context);
@@ -100,8 +112,18 @@ export function mountContextRoutes(router) {
     const marketCurrency = currencyForMarket(context.market);
 
     try {
-      let existing = await prisma.user.findFirst({
-        where:  { OR: [{ clerkId: userId }, { email }] },
+      // R11 (I57): resolve by Firebase uid ONLY.
+      //
+      // This lookup used to be `OR: [{ clerkId: userId }, { email }]`, and the
+      // update below then wrote `clerkId: userId` onto whatever row it found.
+      // Together they let any authenticated caller claim an existing account by
+      // registering its email address: the row was found by email, its clerkId
+      // was rewritten to the caller's uid, and from the next request onwards the
+      // caller WAS that workspace — every workspace-scoped WHERE in the system
+      // resolved in their favour, including the connected Meta credentials.
+      // There is no compatibility case that needs the email arm; it was the bug.
+      let existing = await prisma.user.findUnique({
+        where:  { clerkId: userId },
         select: { id: true, workspaceId: true, clerkId: true, email: true },
       });
 
@@ -122,9 +144,12 @@ export function mountContextRoutes(router) {
         logger.warn({ userId, repairedWorkspaceId: workspaceId }, '[campaigns/me/context] repaired orphaned user (no workspace)');
       }
 
+      // R11 (I57): write the context only. `clerkId` is the identity key and is
+      // never reassigned by a handler — the row was found BY it, so writing it
+      // back was either a no-op or an adoption, and adoption was the takeover.
       const updated = await prisma.user.update({
         where:  { id: existing.id },
-        data:   { context, clerkId: userId, email },
+        data:   { context },
         select: { id: true, workspaceId: true, context: true },
       });
 
@@ -147,7 +172,7 @@ export function mountContextRoutes(router) {
         });
       }
 
-      logger.info({ firebaseUid: userId, userRowId: updated.id, wasUidMissing: !existing.clerkId }, '[campaigns/me/context] updated existing user (Firebase)');
+      logger.info({ firebaseUid: userId, userRowId: updated.id }, '[campaigns/me/context] updated existing user (Firebase)');
       return res.json({ ok: true, user: updated, created: false });
     } catch (err) {
       const detail = { name: err?.name, code: err?.code, meta: err?.meta, message: err?.message, userId: req.userId, workspaceId: req.workspaceId };
