@@ -60,15 +60,20 @@ jobs:
         run: npx prisma migrate deploy
 
       - name: Run backend + contract tests
-        # Explicit directory list keeps frontend tests out — those have
-        # their own job below with the JSDOM config they need.
+        # No path arguments. Positional paths OVERRIDE the `include` globs in
+        # vitest.config.js, and the list that used to sit here had become an
+        # allowlist the repository outgrew: src/middleware, src/workers,
+        # src/lib, src/models, src/agents, src/config, src/modes and src/tests
+        # all grew test files that CI never ran — including the R11 identity,
+        # authorization, rate-limit, dev-override and worker re-authorization
+        # controls. A green run has to mean the backend test surface that
+        # EXISTS was exercised, so discovery lives in vitest.config.js (which
+        # already scopes to backend and excludes the one standalone script)
+        # and a new test file enters CI by existing, not by someone
+        # remembering to edit this file.
         #
-        # src/tests/* is intentionally excluded for now: it contains
-        # dialect.test.js + resilience.integration.test.js, both of
-        # which have pre-existing failures (circuit breaker integration
-        # tests expecting old API; dialect resolver edge cases). Those
-        # need a separate cleanup PR. Tracking via CI-SETUP.md.
-        run: npx vitest run src/services src/routes src/utils packages/runtime-contracts
+        # src/utils/ciCoverage.test.js fails if a path list reappears here.
+        run: npx vitest run
 
   frontend-tests:
     name: Frontend tests
