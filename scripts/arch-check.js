@@ -259,11 +259,83 @@ for (const pattern of SIMILAR_PATTERNS) {
 if (registryPass) pass('No suspicious component name clusters detected');
 
 // ══════════════════════════════════════════════════════════════
+// CHECK 8 — Tenant-isolation architecture  (R11 · I74)
+// ══════════════════════════════════════════════════════════════
+// The architectural contract R9 established and R11 completed:
+//
+//   A service that resolves, mutates or deletes a tenant-owned row takes
+//   `workspaceId` as a parameter and enforces it ITSELF.
+//
+// This does not try to prove isolation for every Prisma call — that would be a
+// static analysis this script has no business attempting, and a rule that
+// pretends to prove something it cannot is worse than no rule. It watches the
+// specific seam that has repeatedly regressed: a scoped service quietly losing
+// its workspace argument, or its scoped predicate, while its callers keep
+// compiling because the parameter was positional.
+//
+// Deliberately a LIST, not a heuristic. Adding a service here is a decision a
+// human makes when they write one; inferring it would produce a rule that is
+// simultaneously noisy and easy to slip past.
+section('CHECK 8: Tenant isolation — scoped services keep their workspace');
+
+const WORKSPACE_SCOPED_SERVICES = [
+  ['getArtifact',                   'src/services/artifact-storage/index.js'],
+  ['deleteArtifact',                'src/services/artifact-storage/index.js'],
+  ['getCheckpointById',             'src/services/execution-checkpoint/index.js'],
+  ['getLatestCheckpoint',           'src/services/execution-checkpoint/index.js'],
+  ['markCheckpointResumed',         'src/services/execution-checkpoint/index.js'],
+  ['getApprovalStatus',             'src/services/artifact-approval/index.js'],
+  ['getApproval',                   'src/services/artifact-approval/index.js'],
+  ['decideApproval',                'src/services/artifact-approval/index.js'],
+  ['executeDecision',               'src/services/approval-decision/index.js'],
+  ['resumeExecutionFromCheckpoint', 'src/services/execution-runtime/RuntimeOrchestrator.js'],
+  ['resolveAttribution',            'src/services/execution/decisionAttribution.js'],
+  ['stampDecisionExecuted',         'src/services/execution/decisionAttribution.js'],
+  ['resolveCredential',             'src/services/connectors/credentialStore.js'],
+  ['updateCredentialAccount',       'src/services/connectors/credentialStore.js'],
+];
+
+let isolationPass = true;
+for (const [fn, relPath] of WORKSPACE_SCOPED_SERVICES) {
+  const src = readFile(join(ROOT, relPath));
+  if (!src) {
+    fail(`Tenant isolation: ${relPath} not found (did ${fn}() move?)`);
+    isolationPass = false;
+    continue;
+  }
+
+  const decl = new RegExp(`(?:export\\s+)?(?:async\\s+)?function\\s+${fn}\\s*\\(([^)]*)\\)`);
+  const m = src.match(decl);
+  if (!m) {
+    fail(`Tenant isolation: ${fn}() not found in ${relPath}`);
+    isolationPass = false;
+    continue;
+  }
+
+  // Two halves of the same contract: it must ACCEPT a workspace, and it must
+  // USE one. A parameter that is accepted and ignored is the more dangerous of
+  // the two failures, because every caller still looks correct.
+  const params = m[1];
+  const body   = src.slice(m.index, m.index + 2000);
+
+  if (!/workspaceId/.test(params)) {
+    fail(`Tenant isolation: ${fn}() no longer takes workspaceId (${relPath})`);
+    fail(`  → A tenant-owned service enforces its own scope. "The caller checks it" is not a property of this function.`);
+    isolationPass = false;
+  } else if (!/workspaceId/.test(body.slice(params.length))) {
+    fail(`Tenant isolation: ${fn}() takes workspaceId but never uses it (${relPath})`);
+    fail(`  → An accepted-and-ignored scope argument is worse than none: every caller still reads as correct.`);
+    isolationPass = false;
+  }
+}
+if (isolationPass) pass(`All ${WORKSPACE_SCOPED_SERVICES.length} workspace-scoped services still take and enforce workspaceId`);
+
+// ══════════════════════════════════════════════════════════════
 // SUMMARY
 // ══════════════════════════════════════════════════════════════
 console.log('\n══════════════════════════════════════════════');
 console.log(`Architecture Check Results:`);
-console.log(`  Checks run:  7`);
+console.log(`  Checks run:  8`);
 console.log(`  ✅ Failures: ${failures}`);
 console.log(`  🟡 Warnings: ${warnings}`);
 console.log('══════════════════════════════════════════════\n');
