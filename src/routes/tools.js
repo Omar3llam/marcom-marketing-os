@@ -10,12 +10,20 @@ import { callClaude }    from '../utils/claude.js';
 import { logger }        from '../utils/logger.js';
 import { generateContent, listContentGenerations } from './tools/content-generate.js';
 import { validate, contentGenerateSchema, contentCalendarSchema, campaignBriefSchema } from '../middleware/validate.js';
+import { requireCollabRole } from '../middleware/requireCollabRole.js';
+import { WORKSPACE_ROLE }    from '../services/collaboration/roleScope.js';
 
 export const toolsRouter = Router();
 
+// R11 (I63): every tool below makes a real Claude call on the workspace's
+// budget. They carried no authorization decision at all — a CLIENT seat, whose
+// entire surface is a read-only report, could spend the account's AI budget in
+// a loop. Reads (content-generations history) stay open to every seat.
+const requireOperator = requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST);
+
 // ── POST /api/tools/content-generate ─────────────────────────
 // Content Lab: generate ad copy, headlines, CTAs, visuals, video
-toolsRouter.post('/content-generate', validate(contentGenerateSchema), generateContent);
+toolsRouter.post('/content-generate', requireOperator, validate(contentGenerateSchema), generateContent);
 
 // ── GET /api/tools/content-generations ───────────────────────
 // Content Lab history: workspace-scoped, newest first, last 50.
@@ -24,7 +32,7 @@ toolsRouter.get('/content-generations', listContentGenerations);
 // ── POST /api/tools/content-calendar ─────────────────────────
 // Body: { projectId, targetMonth, targetSector, keyFocus }
 // Returns: { status, result }  — plain text / markdown from Claude
-toolsRouter.post('/content-calendar', validate(contentCalendarSchema), async (req, res) => {
+toolsRouter.post('/content-calendar', requireOperator, validate(contentCalendarSchema), async (req, res) => {
   const userId = req.userId;
   const { projectId, targetMonth, targetSector, keyFocus } = req.body;
 
@@ -168,7 +176,7 @@ Your response must start with { and end with }. Any character outside the JSON w
 // ── POST /api/tools/campaign-brief ───────────────────────────
 // Body: { projectId, objective, duration, budget, keyMessage, competitor }
 // Returns: { status, result } — strict JSON campaign brief
-toolsRouter.post('/campaign-brief', validate(campaignBriefSchema), async (req, res) => {
+toolsRouter.post('/campaign-brief', requireOperator, validate(campaignBriefSchema), async (req, res) => {
   const userId = req.userId;
   const { projectId, objective, duration, budget, keyMessage, competitor } = req.body;
 

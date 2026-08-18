@@ -80,7 +80,9 @@ intelligenceRouter.post('/orchestrate/:campaignId', requireCollabRole(WORKSPACE_
 // Thin Claude wrapper — strict JSON output. Used by the FSM
 // `content` mode in the Decision OS. No DB writes.
 // ─────────────────────────────────────────────────────────────
-intelligenceRouter.post('/analyze-content', async (req, res) => {
+// R11 (I63): spends real AI budget on the workspace's behalf. A CLIENT seat is
+// read-only narrative and has no business drawing on that budget.
+intelligenceRouter.post('/analyze-content', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
   const { content, platform, contextLock } = req.body || {};
   if (!content || typeof content !== 'string' || content.trim().length < 20) {
     return res.status(400).json({ error: 'content required (min 20 chars)' });
@@ -132,7 +134,8 @@ intelligenceRouter.post('/analyze-content', async (req, res) => {
 // Body: { objective, audience, budget, timeline, contextLock? }
 // Returns: { title, financialImpact, keyPoints[], markdown }
 // ─────────────────────────────────────────────────────────────
-intelligenceRouter.post('/strategy-brief', validate(strategyBriefSchema), async (req, res) => {
+// R11 (I63): AI spend — see /analyze-content.
+intelligenceRouter.post('/strategy-brief', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), validate(strategyBriefSchema), async (req, res) => {
   const { objective, audience, budget, timeline, contextLock } = req.body || {};
   if (!objective || !audience) {
     return res.status(400).json({ error: 'objective and audience required' });

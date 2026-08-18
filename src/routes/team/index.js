@@ -8,7 +8,9 @@
 //   GET    /api/team/invite/accept      — email link → /signup       (PUBLIC)
 //
 // The actual JOIN is NOT here — it happens in the firebaseAuth auto-provision
-// seam, email-matched on first sign-in. These routes manage the roster + invites.
+// seam on first sign-in, and since R11 (I58) it is keyed on the invitation
+// TOKEN carried in the `x-invitation-token` header, never on an email match.
+// These routes manage the roster + invites.
 // Every query is workspace-scoped (workspaceId: req.workspaceId). Self-identity
 // is `clerkId === req.userId` (req.userId is the Firebase uid, never User.id).
 // ============================================================
@@ -36,9 +38,11 @@ function appBaseUrl() {
 
 // ─────────────────────────────────────────────────────────────
 // PUBLIC — the link the invited user clicks in their email.
-// Validates the token, then hands off to the signup form. The JOIN itself is
-// email-matched in the firebaseAuth seam on first login, so the token is just a
-// validate-and-prefill handle here.
+// Validates the token, then hands off to the signup form carrying it. R11
+// (I58): the token is the membership credential, so the signup page must keep
+// it and replay it on the first authenticated request (`x-invitation-token`);
+// the firebaseAuth seam claims it atomically there. Before R11 the token was
+// only a prefill handle and the join was granted on an email match.
 // ─────────────────────────────────────────────────────────────
 teamRouter.get('/invite/accept', async (req, res) => {
   const { token } = req.query;
@@ -157,8 +161,9 @@ teamRouter.post('/invite', requireCollabRole('STRATEGIST'), validate(teamInviteS
       });
     }
 
-    // Best-effort email — the invite already works (join is email-matched in the
-    // seam), so a mail failure must not fail the request. Report whether it sent.
+    // Best-effort send. The invitation row and its token are already durable, so
+    // a mail failure must not fail the request — the same link can be re-sent.
+    // Report whether it actually went out rather than implying it did.
     let emailSent = false;
     try {
       const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { name: true } });

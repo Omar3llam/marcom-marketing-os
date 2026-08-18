@@ -10,6 +10,10 @@ import executionRouter from './index.js';
 
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
+    // R11 (I61): requireCollabRole falls back to the DB when req.collabRole is
+    // unset, and now FAILS CLOSED when that read throws. A mock without a
+    // `user` model makes every gated route 503 — which is the gate working.
+    user: { findUnique: vi.fn().mockResolvedValue({ collabRole: 'STRATEGIST' }) },
     executionRequest: {
       findUnique: vi.fn(),
       findMany: vi.fn(),

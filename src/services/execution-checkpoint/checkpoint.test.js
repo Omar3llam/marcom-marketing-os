@@ -106,6 +106,17 @@ vi.mock('@prisma/client', () => ({
           return checkpoint;
         }),
 
+        // R11 (I64) — markCheckpointResumed writes through a workspace-scoped
+        // updateMany. Honour every predicate so a foreign workspace reports
+        // count 0 and the service refuses rather than resuming it.
+        updateMany: vi.fn(async ({ where = {}, data }) => {
+          const matched = [...new Set(mockCheckpoints.values())].filter(cp =>
+            (!where.id          || cp.id          === where.id) &&
+            (!where.workspaceId || cp.workspaceId === where.workspaceId));
+          for (const cp of matched) Object.assign(cp, data);
+          return { count: matched.length };
+        }),
+
         count: vi.fn(async () => mockCheckpoints.size),
       },
     };
@@ -234,7 +245,7 @@ describe('Execution Checkpoint Service', () => {
       expect(created.status).toBe(CHECKPOINT_STATUS.PAUSED_FOR_APPROVAL);
       expect(created.resumedAt).toBeUndefined();
 
-      const resumed = await markCheckpointResumed(created.id);
+      const resumed = await markCheckpointResumed(created.id, '00000000-0000-0000-0000-000000000001');
 
       expect(resumed.status).toBe(CHECKPOINT_STATUS.RESUMED);
       expect(resumed.resumedAt).toBeInstanceOf(Date);
@@ -264,7 +275,7 @@ describe('Execution Checkpoint Service', () => {
       await createCheckpoint('exec_2', workspaceId, 'node_1', {});
 
       // Resume one
-      await markCheckpointResumed(cp1.id);
+      await markCheckpointResumed(cp1.id, '00000000-0000-0000-0000-000000000001');
 
       const paused = await getPausedExecutions(workspaceId);
 

@@ -16,7 +16,7 @@
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { requireCollabRole, resolveCollabRole } from '../../middleware/requireCollabRole.js';
+import { requireCollabRole, resolveCollabRoleForDisplay } from '../../middleware/requireCollabRole.js';
 import { requirePlan } from '../../middleware/requirePlan.js';
 import { WORKSPACE_ROLE, visibleStates, normalizeRole } from '../../services/collaboration/roleScope.js';
 import { generateNarrative, listNarratives, getNarrative } from '../../services/narrative-engine/NarrativeService.js';
@@ -57,7 +57,7 @@ async function need(req, res) {
 // GET /roles/me — the client gates its FSM nav from this
 // ─────────────────────────────────────────────────────────────
 collaborationRouter.get('/roles/me', async (req, res) => {
-  const role = await resolveCollabRole(req);
+  const role = await resolveCollabRoleForDisplay(req);
   // userRole is the SYSTEM axis (ADMIN | VIEWER), orthogonal to the collab role.
   // The admin panel reads it to decide whether to surface the /admin link+route.
   // firebaseAuth sets req.userRole; default VIEWER so the field is never null.
@@ -175,7 +175,7 @@ collaborationRouter.post('/handoff', requireCollabRole(WORKSPACE_ROLE.BUYER, WOR
 // ─────────────────────────────────────────────────────────────
 collaborationRouter.get('/inbox', async (req, res) => {
   const wsId = await need(req, res); if (!wsId) return;
-  const role = normalizeRole(req.collabRole ?? (await resolveCollabRole(req)));
+  const role = normalizeRole(req.collabRole ?? (await resolveCollabRoleForDisplay(req)));
   try {
     // Live alert stream: recent PROPOSED radar verdicts (no new table).
     const proposed = await prisma.decision.findMany({

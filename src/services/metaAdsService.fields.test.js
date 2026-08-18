@@ -38,7 +38,23 @@ describe('fetchAccountCurrency — the real account currency, never throwing', (
   it('returns the ISO code Meta reports on the act_<id> node', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ json: async () => ({ id: 'act_123', currency: 'EGP' }) }));
     await expect(fetchAccountCurrency('tok', '123')).resolves.toBe('EGP');
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('act_123?fields=currency'));
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('act_123?fields=currency'),
+      { headers: { Authorization: 'Bearer tok' } },
+    );
+  });
+
+  // ── NC-D4 · the control (R11 · I68) ────────────────────────
+  it('NEVER puts the access token in the URL', async () => {
+    // This call used to append `&access_token=…`, so a 60-day workspace
+    // credential landed in every access log and APM span on the path.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ json: async () => ({ id: 'act_123', currency: 'EGP' }) }));
+    await fetchAccountCurrency('super-secret-token', '123');
+
+    const [url, init] = fetch.mock.calls[0];
+    expect(url).not.toContain('access_token');
+    expect(url).not.toContain('super-secret-token');
+    expect(init.headers.Authorization).toBe('Bearer super-secret-token');
   });
 
   it('returns null on a Meta API error (never throws)', async () => {

@@ -126,8 +126,8 @@ describe('role gate — mirrors /entities/health', () => {
     await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/as1/ads').expect(200);
   });
 
-  it('null collabRole is treated as STRATEGIST (seed default)', async () => {
-    await request(makeApp({ collabRole: null })).get('/entities/as1/ads').expect(200);
+  it('null collabRole is REFUSED — R11 (I61) removed the fail-open default', async () => {
+    await request(makeApp({ collabRole: null })).get('/entities/as1/ads').expect(403);
   });
 });
 

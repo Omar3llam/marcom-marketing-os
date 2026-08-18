@@ -1,13 +1,24 @@
-import { describe, it, expect } from 'vitest';
+import { beforeAll, describe, it, expect } from 'vitest';
 import { createHmac } from 'crypto';
 import { buildState, parseState, safeReturnTo } from './meta.js';
 
+// R11 (E7) — OAuth state is signed with OAUTH_STATE_SECRET, not WEBHOOK_SECRET,
+// and hmacKey() now THROWS when neither is configured rather than signing with
+// the empty string. An HMAC keyed on '' is not a signature; it is a checksum
+// anyone can compute, and a test that relied on that was asserting round-trip
+// mechanics against a key an attacker also has.
+//
+// So the test supplies the key the code requires. It has to be set before the
+// first buildState call, not merely before the assertions.
+const TEST_STATE_SECRET = 'r11-test-oauth-state-secret-0123456789abcdef';
+beforeAll(() => { process.env.OAUTH_STATE_SECRET = TEST_STATE_SECRET; });
+process.env.OAUTH_STATE_SECRET = TEST_STATE_SECRET;
+
 // Re-sign a state with a chosen timestamp (buildState always uses Date.now()).
-// Mirrors meta.js: HMAC key is WEBHOOK_SECRET (unset → '' in the test env).
 function signedState(userId, projectId, returnTo, ts) {
   const rt = Buffer.from(returnTo || '').toString('base64url');
   const payload = `${userId}:${projectId}:${rt}:${ts}`;
-  const mac = createHmac('sha256', process.env.WEBHOOK_SECRET || '').update(payload).digest('hex');
+  const mac = createHmac('sha256', process.env.OAUTH_STATE_SECRET).update(payload).digest('hex');
   return Buffer.from(`${payload}:${mac}`).toString('base64url');
 }
 

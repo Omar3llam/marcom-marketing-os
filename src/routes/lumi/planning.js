@@ -48,7 +48,11 @@ async function resolveWorkspaceId(req) {
 // POST /api/lumi/scenario — what-if projection (ranges, ephemeral)
 // body: { change: { type, shifts?|newTotalBudgetMinor?|deltaPct? } }
 // ─────────────────────────────────────────────────────────────
-planningRouter.post('/scenario', async (req, res) => {
+// R11 (I63): read-only projection, but planning is a strategist surface and a
+// scenario run is real compute over the account's economics. The commit-side
+// writes are already STRATEGIST; the preview should not be broader than what
+// it previews.
+planningRouter.post('/scenario', requireStrategist, async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
   try {

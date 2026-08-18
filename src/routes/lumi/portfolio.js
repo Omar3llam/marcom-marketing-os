@@ -99,7 +99,10 @@ portfolioRouter.get('/blended', async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 // POST /api/lumi/portfolio/allocate   — scenario preview (no writes)
 // ─────────────────────────────────────────────────────────────
-portfolioRouter.post('/portfolio/allocate', async (req, res) => {
+// R11 (I63): preview only — no writes — but it is the preview of a STRATEGIST
+// action (/portfolio/allocate/commit) and exposes the full portfolio economics.
+// Matching the two keeps one decision rather than two that can drift.
+portfolioRouter.post('/portfolio/allocate', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
 

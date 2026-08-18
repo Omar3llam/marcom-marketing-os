@@ -314,8 +314,8 @@ describe('role gate — mirrors /ads', () => {
     await get('/entities/as1/evidence', 'STRATEGIST').expect(200);
   });
 
-  it('null collabRole is treated as STRATEGIST (seed default)', async () => {
-    await get('/entities/as1/evidence', null).expect(200);
+  it('null collabRole is REFUSED — R11 (I61) removed the fail-open default', async () => {
+    await get('/entities/as1/evidence', null).expect(403);
   });
 });
 

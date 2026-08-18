@@ -25,42 +25,25 @@ import { ExecutionStatus, TransitionActor } from '@marcom/runtime-contracts';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE }    from '../../services/collaboration/roleScope.js';
 import { resolveAttribution } from '../../services/execution/decisionAttribution.js';
+import { validateMutationParams } from '../../services/meta/mutationParams.js';
 
 const MAX_QUEUE_DEPTH = Number(process.env.MAX_QUEUE_DEPTH || 500);
-
-/** Map of allowed action types to valid target types */
-const ALLOWED_ACTIONS = {
-  PAUSE_CAMPAIGN:    ['campaign'],
-  RESUME_CAMPAIGN:   ['campaign'],
-  SCALE_CAMPAIGN:    ['campaign'],
-  OPTIMIZE_CAMPAIGN: ['campaign'],
-  INCREASE_BUDGET:   ['campaign', 'adset'],
-  DECREASE_BUDGET:   ['campaign', 'adset'],
-  PAUSE_ADSET:       ['adset'],
-  RESUME_ADSET:      ['adset'],
-  // Phase 2 — first-class verdict execution paths (human still confirms)
-  REALLOCATE_BUDGET: ['campaign', 'adset'],
-  REFRESH_CREATIVE:  ['adset', 'ad'],
-};
 
 /**
  * Layer 1 validation.
  * Returns an error string if invalid, null if valid.
+ *
+ * R11 (I67): the action/target matrix, the targetId FORMAT check and the
+ * per-action options allowlist all live in services/meta/mutationParams.js, so
+ * this route and the worker that finally builds the URL validate against one
+ * definition rather than two that can drift. `targetId` used to be accepted as
+ * any non-empty string and then interpolated into the request path.
  */
-function validateRequest(actionType, targetId, targetType, idempotencyKey) {
+function validateRequest(actionType, targetId, targetType, idempotencyKey, options) {
   if (!idempotencyKey || typeof idempotencyKey !== 'string' || idempotencyKey.trim().length === 0) {
     return 'idempotencyKey is required and must be a non-empty string';
   }
-  if (!actionType || !ALLOWED_ACTIONS[actionType]) {
-    return `Invalid action type: ${actionType}. Must be one of: ${Object.keys(ALLOWED_ACTIONS).join(', ')}`;
-  }
-  if (!targetId || typeof targetId !== 'string' || targetId.trim().length === 0) {
-    return 'targetId is required and must be a non-empty string';
-  }
-  if (!targetType || !ALLOWED_ACTIONS[actionType].includes(targetType.toLowerCase())) {
-    return `Invalid target type "${targetType}" for action "${actionType}". Must be one of: ${ALLOWED_ACTIONS[actionType].join(', ')}`;
-  }
-  return null;
+  return validateMutationParams({ actionType, targetId, targetType, options });
 }
 
 export function registerMetaRoute(router) {
@@ -75,7 +58,7 @@ export function registerMetaRoute(router) {
       // ═══════════════════════════════════════════════════════
       // LAYER 1: VALIDATION
       // ═══════════════════════════════════════════════════════
-      const validationError = validateRequest(actionType, targetId, targetType, idempotencyKey);
+      const validationError = validateRequest(actionType, targetId, targetType, idempotencyKey, options);
       if (validationError) {
         logger.warn({
           workspaceId, userId, actionType, targetId, reason: validationError,
@@ -102,8 +85,17 @@ export function registerMetaRoute(router) {
       // ═══════════════════════════════════════════════════════
       // LAYER 2: IDEMPOTENCY CHECK
       // ═══════════════════════════════════════════════════════
+      // R11 (I65) — scoped to the caller's workspace.
+      //
+      // This was `findUnique({ where: { idempotencyKey } })` against a globally
+      // unique, fully client-supplied column. Presenting another workspace's
+      // key returned their executionId, status and raw stored Meta response;
+      // pre-claiming a key a competitor was about to use made their real
+      // request answer "idempotentReplay: true" for an action never queued.
+      // A foreign key now simply does not match, and the request proceeds as
+      // the new execution it is.
       const existingRequest = await prisma.executionRequest.findUnique({
-        where: { idempotencyKey },
+        where: { workspaceId_idempotencyKey: { workspaceId, idempotencyKey } },
       });
 
       if (existingRequest) {

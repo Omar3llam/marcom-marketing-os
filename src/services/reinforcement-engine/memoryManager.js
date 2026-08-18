@@ -19,10 +19,10 @@
 //   - No mutation of existing snapshots
 //   - Timestamps are immutable
 // ============================================================
-import { PrismaClient } from '@prisma/client';
+// R11 (F26): shared Prisma client — this module used to open its own pool.
+import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 
-const prisma = new PrismaClient();
 
 /**
  * Save a new reinforcement snapshot.

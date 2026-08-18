@@ -18,12 +18,12 @@
 //   Artifacts are immutable. Updates create new versions.
 // ============================================================
 import crypto from 'crypto';
-import { PrismaClient } from '@prisma/client';
+// R11 (F26): shared Prisma client — this module used to open its own pool.
+import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { createLocalAdapter } from './adapters/localAdapter.js';
 import { createS3Adapter } from './adapters/s3Adapter.js';
 
-const prisma = new PrismaClient();
 
 // Select adapter based on environment
 const ADAPTER_TYPE = process.env.ARTIFACT_STORAGE_ADAPTER || 'local';

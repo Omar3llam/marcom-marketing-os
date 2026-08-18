@@ -17,10 +17,78 @@
 // CONFIGURATION:
 //   APPROVAL_REQUIRED: which artifact types need approval
 // ============================================================
-import { PrismaClient } from '@prisma/client';
+// R11 (F26): this module used to instantiate its own PrismaClient. Four such
+// clients existed across the codebase, each with its own connection pool — and
+// pool exhaustion is precisely what triggered the fail-open paths R11 closes.
+// One shared client, one pool.
+import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 
-const prisma = new PrismaClient();
+/**
+ * Raised when an approval mutation names a row that is absent, owned by
+ * another workspace, or no longer PENDING. Deliberately ONE error for all
+ * three: distinguishing "not yours" from "not there" would confirm the
+ * existence of another tenant's row.
+ */
+export class ApprovalNotActionableError extends Error {
+  constructor(approvalId) {
+    super(`Approval not actionable: ${approvalId}`);
+    this.name = 'ApprovalNotActionableError';
+    this.statusCode = 409;
+  }
+}
+
+/**
+ * R11 (I64/I69) — the one place an approval decision is written.
+ *
+ * Every one of approve/reject/requestRevision used to be
+ * `update({ where: { id: approvalId } })`: no workspace, and no status
+ * precondition. Two consequences, both reachable from the routes:
+ *
+ *   - The route checked the ARTIFACT's workspace, then the service updated the
+ *     APPROVAL row unscoped. Two tables; only one was asked about ownership.
+ *   - A REJECTED approval could be flipped to APPROVED, repeatedly, each time
+ *     overwriting reviewerId and the decision timestamp. The other approval
+ *     door (executeDecision) did enforce PENDING, so the same invariant had two
+ *     answers depending on which route you came through.
+ *
+ * Both preconditions now live in the WHERE, which makes them atomic as well as
+ * unbypassable: concurrent approve/reject cannot both win, because only one can
+ * move the row out of PENDING.
+ */
+async function decideApproval(approvalId, workspaceId, data, event) {
+  if (!workspaceId) throw new Error('decideApproval: workspaceId required');
+  try {
+    const moved = await prisma.artifactApproval.updateMany({
+      where: { id: approvalId, workspaceId, status: APPROVAL_STATUS.PENDING },
+      data,
+    });
+    if (moved.count !== 1) throw new ApprovalNotActionableError(approvalId);
+
+    const approval = await prisma.artifactApproval.findFirst({
+      where:   { id: approvalId, workspaceId },
+      include: { artifact: true },
+    });
+
+    logger.info({
+      approvalId,
+      workspaceId,
+      artifactId: approval?.artifactId,
+      reviewerId: data.reviewerId,
+    }, `[artifact-approval] ${event}`);
+
+    return approval;
+  } catch (error) {
+    if (error instanceof ApprovalNotActionableError) throw error;
+    logger.error({
+      error: error.message,
+      approvalId,
+      workspaceId,
+      reviewerId: data.reviewerId,
+    }, `[artifact-approval] failed to ${event}`);
+    throw error;
+  }
+}
 
 // ============================================================
 // Configuration
@@ -84,109 +152,50 @@ export async function createApprovalRequest(artifactId, workspaceId) {
 }
 
 /**
- * Approve artifact
+ * Approve artifact. Workspace-scoped and PENDING-gated inside the service.
+ * @param {string} approvalId
+ * @param {string} workspaceId — required; the owning workspace
+ * @param {string} reviewerId
+ * @param {string|null} feedback
  */
-export async function approveArtifact(approvalId, reviewerId, feedback = null) {
-  try {
-    const approval = await prisma.artifactApproval.update({
-      where: { id: approvalId },
-      data: {
-        status: APPROVAL_STATUS.APPROVED,
-        reviewerId,
-        feedback,
-        approvedAt: new Date(),
-      },
-      include: {
-        artifact: true,
-      },
-    });
-
-    logger.info({
-      approvalId,
-      artifactId: approval.artifactId,
-      reviewerId,
-    }, '[artifact-approval] artifact approved');
-
-    return approval;
-  } catch (error) {
-    logger.error({
-      error: error.message,
-      approvalId,
-      reviewerId,
-    }, '[artifact-approval] failed to approve artifact');
-    throw error;
-  }
+export async function approveArtifact(approvalId, workspaceId, reviewerId, feedback = null) {
+  return decideApproval(approvalId, workspaceId, {
+    status: APPROVAL_STATUS.APPROVED,
+    reviewerId,
+    feedback,
+    approvedAt: new Date(),
+  }, 'artifact approved');
 }
 
 /**
- * Reject artifact
+ * Reject artifact. Workspace-scoped and PENDING-gated inside the service.
+ * @param {string} approvalId
+ * @param {string} workspaceId — required; the owning workspace
+ * @param {string} reviewerId
+ * @param {string} reason
  */
-export async function rejectArtifact(approvalId, reviewerId, reason) {
-  try {
-    const approval = await prisma.artifactApproval.update({
-      where: { id: approvalId },
-      data: {
-        status: APPROVAL_STATUS.REJECTED,
-        reviewerId,
-        feedback: reason,
-        rejectedAt: new Date(),
-      },
-      include: {
-        artifact: true,
-      },
-    });
-
-    logger.info({
-      approvalId,
-      artifactId: approval.artifactId,
-      reviewerId,
-      reason,
-    }, '[artifact-approval] artifact rejected');
-
-    return approval;
-  } catch (error) {
-    logger.error({
-      error: error.message,
-      approvalId,
-      reviewerId,
-    }, '[artifact-approval] failed to reject artifact');
-    throw error;
-  }
+export async function rejectArtifact(approvalId, workspaceId, reviewerId, reason) {
+  return decideApproval(approvalId, workspaceId, {
+    status: APPROVAL_STATUS.REJECTED,
+    reviewerId,
+    feedback: reason,
+    rejectedAt: new Date(),
+  }, 'artifact rejected');
 }
 
 /**
- * Request revision for artifact
+ * Request revision. Workspace-scoped and PENDING-gated inside the service.
+ * @param {string} approvalId
+ * @param {string} workspaceId — required; the owning workspace
+ * @param {string} reviewerId
+ * @param {string} feedback
  */
-export async function requestRevision(approvalId, reviewerId, feedback) {
-  try {
-    const approval = await prisma.artifactApproval.update({
-      where: { id: approvalId },
-      data: {
-        status: APPROVAL_STATUS.REVISION_REQUESTED,
-        reviewerId,
-        feedback,
-      },
-      include: {
-        artifact: true,
-      },
-    });
-
-    logger.info({
-      approvalId,
-      artifactId: approval.artifactId,
-      reviewerId,
-      feedback,
-    }, '[artifact-approval] revision requested');
-
-    return approval;
-  } catch (error) {
-    logger.error({
-      error: error.message,
-      approvalId,
-      reviewerId,
-    }, '[artifact-approval] failed to request revision');
-    throw error;
-  }
+export async function requestRevision(approvalId, workspaceId, reviewerId, feedback) {
+  return decideApproval(approvalId, workspaceId, {
+    status: APPROVAL_STATUS.REVISION_REQUESTED,
+    reviewerId,
+    feedback,
+  }, 'revision requested');
 }
 
 /**

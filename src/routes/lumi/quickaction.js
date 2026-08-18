@@ -23,7 +23,15 @@ export async function quickActionHandler(req, res) {
   }
 
   try {
-    const action = await prisma.action.findUnique({ where: { id: v.actionId } });
+    // R11 (I65/I66) — resolve the action WITHIN the workspace the signature
+    // names. This was a global findUnique by id: the token bound the action but
+    // not the tenant, so the only thing standing between a signed link and any
+    // row in the table was the id being unguessable. The workspace now travels
+    // inside the signed message and is a predicate on the read, so a token can
+    // only ever reach the workspace it was minted for.
+    const action = await prisma.action.findFirst({
+      where: { id: v.actionId, workspaceId: v.workspaceId },
+    });
     if (!action) return res.status(404).json({ error: 'Action not found' });
 
     // Quick actions can only push PENDING rows forward; everything
@@ -44,6 +52,15 @@ export async function quickActionHandler(req, res) {
     }
 
     await enqueueAction(action);
+    // R11: record WHO acted. The enqueue previously left no actor anywhere, so
+    // an action taken through a forwarded link was indistinguishable in the
+    // audit from one taken by the person it was sent to.
+    logger.info({
+      actionId:    action.id,
+      workspaceId: action.workspaceId,
+      actorId:     v.actorId,
+      scope:       v.scope,
+    }, '[lumi/quick-action] enqueued via signed link');
     return res.json({ ok: true, enqueued: true, actionId: action.id });
 
   } catch (err) {

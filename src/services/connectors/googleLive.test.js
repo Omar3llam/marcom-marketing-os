@@ -3,6 +3,10 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 // A 64-hex test key so the credential AES helpers work in-process.
 process.env.CREDENTIAL_ENCRYPTION_KEY = 'a'.repeat(64);
 process.env.WEBHOOK_SECRET = 'test-webhook-secret';
+// R11 (E7): OAuth state is signed with its own key now, not the webhook secret.
+// Set explicitly rather than leaning on the development fallback, so this test
+// exercises the key the production code actually uses.
+process.env.OAUTH_STATE_SECRET = 'r11-test-oauth-state-secret-0123456789abcdef';
 
 import { buildGaqlReportQuery, mapGoogleAdsResponse } from './google/googleAdsClient.js';
 import { googleNormalize } from './normalize/googleNormalize.js';

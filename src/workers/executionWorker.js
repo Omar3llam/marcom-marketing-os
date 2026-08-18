@@ -31,6 +31,7 @@ import { executeMetaAction }           from '../services/metaExecutionService.js
 import { lifecycleService }            from '../services/execution/ExecutionLifecycleService.js';
 import { startHeartbeat }              from '../services/execution/workerHealth.js';
 import { stampDecisionExecuted }       from '../services/execution/decisionAttribution.js';
+import { validateMutationParams }      from '../services/meta/mutationParams.js';
 import { prisma }                      from '../lib/prisma.js';
 import { logger }                      from '../utils/logger.js';
 import {
@@ -72,6 +73,14 @@ async function processExecution(job) {
       id: true, status: true, version: true,
       actionType: true, targetId: true,
       correlationId: true,
+      // R11 (I67) — the authoritative workspace and the authoritative options.
+      // Neither was selected before, so neither could be checked: the worker
+      // took the workspace from the JOB (which chose which credential to use)
+      // and the options from the JOB ONLY — they were never persisted anywhere
+      // the worker read. `payload` is the original request body, written at
+      // creation time by a route that had already authorized it.
+      workspaceId: true,
+      payload: true,
       // R10 (I55) — the decision this mutation carries out, resolved and scoped
       // at request time. Read here so the success path below can stamp it
       // without a second lookup, and so an unattributed execution is visibly
@@ -85,10 +94,69 @@ async function processExecution(job) {
     return { skipped: true, reason: 'not_found' };
   }
 
+  // ── R11 (I67): re-authorize against persisted state ──────
+  //
+  // The worker used to trust the job for everything that mattered. It never
+  // compared `job.data.workspaceId` to the row's — and that value chose which
+  // workspace's Meta credential to resolve. It read
+  // `actionType ?? execution.actionType` and `targetId ?? execution.targetId`,
+  // so the JOB WON over the row it was supposed to be carrying out. And
+  // `options` came from the job alone, never persisted, never validated
+  // against anything.
+  //
+  // A queue payload is not an authorization. The row is the record of what a
+  // route authorized; the job carries an identifier to find it. Where the two
+  // disagree the job is wrong by definition, and this refuses rather than
+  // guessing which one to believe.
+  if (execution.workspaceId !== workspaceId) {
+    logger.error({
+      executionId,
+      jobWorkspaceId: workspaceId,
+      rowWorkspaceId: execution.workspaceId,
+    }, '[executionWorker] REFUSING — job workspace disagrees with the persisted execution');
+    throw Object.assign(new Error('executionWorker: job/row workspace mismatch'), { skipRetry: true });
+  }
+
+  for (const [field, jobValue] of [['actionType', actionType], ['targetId', targetId]]) {
+    if (jobValue !== undefined && jobValue !== null && jobValue !== execution[field]) {
+      logger.error({
+        executionId, field, rowValue: execution[field],
+      }, '[executionWorker] REFUSING — job parameter disagrees with the persisted execution');
+      throw Object.assign(new Error(`executionWorker: job/row ${field} mismatch`), { skipRetry: true });
+    }
+  }
+
   // Idempotency guard — a previous worker already reached terminal.
   if (isTerminalState(execution.status)) {
     logger.info({ executionId, status: execution.status }, '[executionWorker] already terminal — skipping');
     return { skipped: true };
+  }
+
+  // Derive the mutation from the ROW, and re-validate it. The route validated
+  // this same shape at request time; validating again here costs one pure
+  // function call and means the worker is not relying on a check that happened
+  // in a different process, minutes earlier, on a different entry path.
+  const persistedOptions = (execution.payload && typeof execution.payload === 'object')
+    ? (execution.payload.options ?? {})
+    : {};
+
+  const invalidParams = validateMutationParams({
+    actionType:  execution.actionType,
+    targetId:    execution.targetId,
+    targetType:  execution.payload?.targetType,
+    options:     persistedOptions,
+  });
+  if (invalidParams) {
+    logger.error({ executionId, reason: invalidParams }, '[executionWorker] REFUSING — persisted mutation parameters are not valid');
+    await lifecycleService.transition({
+      executionId,
+      newStatus:       ExecutionStatus.EXECUTED_FAILED,
+      expectedVersion: execution.version,
+      actor:           TransitionActor.WORKER,
+      correlationId:   execution.correlationId ?? executionId,
+      metadata:        { reason: 'invalid_parameters', detail: invalidParams, workerId: process.pid },
+    });
+    return { ok: false, reason: 'invalid_parameters' };
   }
 
   // ── QUEUED → EXECUTING ───────────────────────────────────
@@ -109,12 +177,14 @@ async function processExecution(job) {
   }
 
   // ── Call Meta API ────────────────────────────────────────
+  // Every parameter comes from the persisted row, which the checks above have
+  // just proven the job agrees with.
   const result = await executeMetaAction(
-    workspaceId,
+    execution.workspaceId,
     userId,
-    actionType  ?? execution.actionType,
-    targetId    ?? execution.targetId,
-    options,
+    execution.actionType,
+    execution.targetId,
+    persistedOptions,
   );
 
   if (result.success) {

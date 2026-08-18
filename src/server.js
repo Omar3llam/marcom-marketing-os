@@ -25,9 +25,10 @@ import cors                 from 'cors';
 import path from 'path';
 import { securityHeaders }  from './middleware/securityHeaders.js';
 import { firebaseAuthMiddleware, requireAuth } from './middleware/firebaseAuth.js';
+import { requireWorkspace } from './middleware/requireWorkspace.js';
 import { validateWebhook, captureRawBody } from './middleware/validateWebhook.js';
 import { dedupeWebhookEvent } from './middleware/webhookDedup.js';
-import { apiLimiter, chatLimiter, authLimiter, syncLimiter, adminSeedLimiter } from './middleware/rateLimit.js';
+import { apiLimiter, chatLimiter, authLimiter, syncLimiter, adminSeedLimiter, executionLimiter, streamLimiter, healthLimiter } from './middleware/rateLimit.js';
 import { errorHandler }     from './middleware/errorHandler.js';
 import { masterRouter }     from './routes/master.js';
 import { exportRouter }     from './routes/export.js';
@@ -113,10 +114,18 @@ app.use(cors({
     'Authorization',
     'x-webhook-signature',
     'x-webhook-timestamp',
+    // R11 (I58) — the invitation credential travels as a request header, so a
+    // cross-origin preflight has to permit it or the JOIN silently degrades to
+    // fresh-workspace provisioning. Same-origin today (Express serves the
+    // client, Vite proxies /api in dev), which is why its absence never bit.
+    'x-invitation-token',
   ],
 
   // Expose headers the frontend may need to read
-  exposedHeaders: ['X-Request-Id'],
+  // x-invitation-claimed: the server's confirmation that the invitation was
+  // actually consumed. The client drops its carrier copy on this and nothing
+  // else, so it must be readable rather than filtered out by CORS.
+  exposedHeaders: ['X-Request-Id', 'x-invitation-claimed'],
 }));
 
 // ── FIREBASE AUTH (global — populates req.user on every request) ─────
@@ -125,7 +134,9 @@ app.use(firebaseAuthMiddleware);
 // ── HEALTH CHECK — Render.com probe path ─────────────────────
 // Lightweight, no DB call. Required for render.yaml
 // `healthCheckPath: /api/health`.
-app.get('/api/health', (_req, res) => {
+// R11 (F11): both health routes were unauthenticated AND uncapped, and /health
+// performs a DB round trip. 60/min is generous for any real probe cadence.
+app.get('/api/health', healthLimiter, (_req, res) => {
   const firebaseAdmin = getFirebaseAdminReadiness();
   res.status(firebaseAdmin.ok ? 200 : 503).json({
     status: firebaseAdmin.ok ? 'ok' : 'degraded',
@@ -135,7 +146,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ── HEALTH CHECK (public, queries DB) ────────────────────────
-app.get('/health', async (req, res) => {
+app.get('/health', healthLimiter, async (req, res) => {
   let dbOk = false;
   try {
     const sql = getDb();
@@ -201,6 +212,7 @@ app.use('/api/lumi/connections/sync', syncLimiter);
 // BUGFIX (PR #44): Changed from requireJwt → requireAuth (Firebase migration)
 app.use('/api/lumi',
   requireAuth,
+  requireWorkspace,   // R11 (I60): tenant context is a precondition, not a maybe
   apiLimiter,
   lumiRouter
 );
@@ -252,13 +264,19 @@ app.use('/api/campaigns',
 // Meta Execution — production-grade action execution with audit logging
 app.use('/api/execute',
   requireAuth,
+  requireWorkspace,   // R11 (I60)
   apiLimiter,
+  // R11: a dedicated workspace-keyed cap. Queueing a real ad-platform mutation
+  // had no limiter of its own — it shared the blanket apiLimiter with every
+  // read in the product, and that limiter was keying on an IP.
+  executionLimiter,
   executionRouter
 );
 
 // Artifact Approval — human-in-the-loop review for AI-generated content (PR #28)
 app.use('/api/artifacts',
   requireAuth,
+  requireWorkspace,   // R11 (I60)
   apiLimiter,
   artifactApprovalRouter
 );
@@ -269,11 +287,16 @@ app.use('/api/artifacts',
 //   GET  /api/events/stream — validates its own short-lived stream token (not Firebase JWT)
 // This split is required because EventSource (SSE) cannot set custom headers,
 // so the stream endpoint uses a different, URL-safe auth mechanism.
-app.use('/api/events', eventsRouter);
+// R11 (F11): streamLimiter is IP-keyed and mounted here rather than inside the
+// router, because GET /stream presents a short-lived token in place of an
+// identity. Each connection holds a socket and a heartbeat interval for as long
+// as it lives, and the endpoint had no cap at all.
+app.use('/api/events', streamLimiter, eventsRouter);
 
 // Analytics (PR #37) — approval decision intelligence & provider performance
 app.use('/api/analytics',
   requireAuth,
+  requireWorkspace,   // R11 (I60)
   apiLimiter,
   analyticsRouter
 );
@@ -281,6 +304,7 @@ app.use('/api/analytics',
 // Attribution (PR #41) — outcome attribution & real performance metrics
 app.use('/api/attribution',
   requireAuth,
+  requireWorkspace,   // R11 (I60)
   apiLimiter,
   attributionRouter
 );
@@ -288,6 +312,7 @@ app.use('/api/attribution',
 // Observability (PR #45) — Mission Control for live execution monitoring
 app.use('/api/observability',
   requireAuth,
+  requireWorkspace,   // R11 (I60)
   apiLimiter,
   observabilityRouter
 );
@@ -326,6 +351,11 @@ app.use('/api/admin/demo/seed', adminSeedLimiter);
 app.use('/api/admin',
   requireAuth,
   requireAdmin,
+  // R11 (I60): the destructive admin guards compare against the ADMIN'S OWN
+  // workspace ("you cannot delete the workspace you are in"). A null
+  // workspaceId made that comparison silently never match — the guard failed
+  // open on the single most destructive route in the system.
+  requireWorkspace,
   apiLimiter,
   adminRouter
 );
@@ -333,6 +363,7 @@ app.use('/api/admin',
 // Paid Decision Engine — Phase 1.2 (Meta MCP + Claude Orchestrator)
 app.use('/api/v1/paid',
   requireAuth,
+  requireWorkspace,   // R11 (I60)
   apiLimiter,
   paidRouter
 );
@@ -418,7 +449,7 @@ app.use(errorHandler);
 
 // ── ROUTE ORDER (final, do not reorder) ──────────────────────
 // 1.  CORS
-// 2.  Clerk middleware (populates req.auth)
+// 2.  firebaseAuthMiddleware (populates req.user / req.userId / req.workspaceId)
 // 3.  Static + GET '/'              [dev only — vanilla shell]
 // 4.  GET  /api/health              [Render probe]
 // 5.  GET  /health                  [legacy probe + DB ping]

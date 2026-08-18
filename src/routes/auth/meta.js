@@ -32,10 +32,19 @@ const REDIRECT_URI = () => process.env.META_REDIRECT_URI
 const SCOPES       = ['ads_read', 'ads_management'].join(',');
 const API_VERSION  = 'v21.0';
 
-// HMAC key — reuse WEBHOOK_SECRET so we don't need a new env var
+// R11 (E7) — OAuth state is signed with OAUTH_STATE_SECRET, not the webhook
+// secret. Reusing WEBHOOK_SECRET "so we don't need a new env var" put webhook
+// authentication and OAuth-state signing in one trust domain: a leak in either
+// forged the other, and rotation broke both at once. Required at boot in
+// production; falls back in development so a local checkout still works, and
+// throws rather than signing with the empty string.
 function hmacKey() {
-  const k = process.env.WEBHOOK_SECRET || '';
-  if (!k) logger.warn('[meta-auth] WEBHOOK_SECRET not set — state HMAC will be weak');
+  const k = process.env.OAUTH_STATE_SECRET
+    || (process.env.NODE_ENV !== 'production' ? process.env.WEBHOOK_SECRET : '');
+  if (!k) {
+    logger.error('[meta-auth] OAUTH_STATE_SECRET is not configured — refusing to sign or verify OAuth state');
+    throw new Error('OAUTH_STATE_SECRET not configured');
+  }
   return k;
 }
 
@@ -177,13 +186,23 @@ authMetaRouter.get('/callback', async (req, res) => {
     const appSecret = process.env.META_APP_SECRET || '';
     const redirectUri = REDIRECT_URI();
 
-    const exchangeUrl = `https://graph.facebook.com/${API_VERSION}/oauth/access_token`
-      + `?client_id=${encodeURIComponent(appId)}`
-      + `&redirect_uri=${encodeURIComponent(redirectUri)}`
-      + `&client_secret=${encodeURIComponent(appSecret)}`
-      + `&code=${encodeURIComponent(code)}`;
+    // R11 (I68) — the app secret and the authorization code travel in the POST
+    // body, not the URL. Meta accepts either; only one of them stays out of the
+    // access log. Google's callback in this same codebase already POSTed its
+    // secret, so the two providers now agree.
+    const exchangeUrl = `https://graph.facebook.com/${API_VERSION}/oauth/access_token`;
+    const exchangeForm = new URLSearchParams({
+      client_id:     appId,
+      redirect_uri:  redirectUri,
+      client_secret: appSecret,
+      code,
+    });
 
-    const exchRes  = await fetch(exchangeUrl);
+    const exchRes  = await fetch(exchangeUrl, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:    exchangeForm.toString(),
+    });
     const exchBody = await exchRes.json();
     if (exchBody.error) throw new Error(exchBody.error.message || 'Code exchange failed');
     const shortToken = exchBody.access_token;

@@ -86,7 +86,7 @@ export async function resumeWithDecisions(executionId, workspaceId, decisions, r
   // Resume with selective re-execution if REGENERATE/REQUEST_REVISION decisions exist (PR #31)
   const result = nodesToReExecute.length > 0
     ? await reExecuteNodes(checkpoint.id, nodesToReExecute, decisionContext, workspaceId)
-    : await resumeExecutionFromCheckpoint(checkpoint.id);
+    : await resumeExecutionFromCheckpoint(checkpoint.id, workspaceId);
 
   return {
     executionId,
@@ -178,7 +178,9 @@ async function _processApprovalDecisions(executionId, decisions, reviewerId, wor
       }
 
       // Execute decision
-      await executeDecision(approvalId, decision, {
+      // R11 (I64): the workspace is an argument to the service now, not an
+      // assumption it inherits from this caller's earlier filtering.
+      await executeDecision(approvalId, workspaceId, decision, {
         reviewerId,
         feedback,
         decisionMetadata,

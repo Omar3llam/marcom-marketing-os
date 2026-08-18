@@ -52,10 +52,13 @@ export function useAccountBriefing() {
   // Server gates this to STRATEGIST (403 otherwise); we don't trust the POST
   // body — we re-read /briefing (the validated source of truth) so the
   // displayed consent + insights reflect what the backend actually stored.
-  const setConsent = useCallback(async (optIn, cohortTag) => {
+  // R11 (F12): no cohort argument. The server assigns the cohort from a
+  // controlled attribute and REFUSES a caller-supplied one with 400, so
+  // sending a tag here would break the opt-in rather than choose a cohort.
+  const setConsent = useCallback(async (optIn) => {
     setConsentBusy(true);
     try {
-      await api.post('/api/lumi/network/consent', { optIn, ...(cohortTag != null && { cohortTag }) });
+      await api.post('/api/lumi/network/consent', { optIn });
       if (!aliveRef.current) return;
       await refetch();
     } catch (err) {

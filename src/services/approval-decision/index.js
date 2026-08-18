@@ -16,12 +16,11 @@
 //
 // USAGE:
 //   import { executeDecision, DECISION_TYPE } from './index.js'
-//   await executeDecision(approvalId, DECISION_TYPE.APPROVED, { reviewerId })
+//   await executeDecision(approvalId, workspaceId, DECISION_TYPE.APPROVED, { reviewerId })
 // ============================================================
-import { PrismaClient } from '@prisma/client';
+// R11 (F26): shared Prisma client — this module used to open its own pool.
+import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-
-const prisma = new PrismaClient();
 
 // ============================================================
 // Decision Type Constants
@@ -93,7 +92,14 @@ function validateDecisionMetadata(decisionType, metadata) {
 /**
  * Execute an approval decision with rich semantics.
  *
+ * R11 (I64) — `workspaceId` is now a required argument, not something the
+ * caller is trusted to have checked. Both production callers did pre-resolve
+ * the approval through a scoped read, so this was safe in practice and unsafe
+ * by construction: the boundary lived in the callers, and a third caller would
+ * have inherited nothing. The service owns it now.
+ *
  * @param {string} approvalId - ArtifactApproval ID
+ * @param {string} workspaceId - REQUIRED; the owning workspace
  * @param {string} decisionType - One of DECISION_TYPE values
  * @param {Object} options - Decision options
  * @param {string} options.reviewerId - User ID making the decision
@@ -101,17 +107,20 @@ function validateDecisionMetadata(decisionType, metadata) {
  * @param {Object} options.decisionMetadata - Decision-specific metadata
  * @returns {Promise<Object>} Updated approval record
  */
-export async function executeDecision(approvalId, decisionType, options = {}) {
+export async function executeDecision(approvalId, workspaceId, decisionType, options = {}) {
   const { reviewerId, feedback, decisionMetadata } = options;
+
+  if (!workspaceId) throw new Error('executeDecision: workspaceId required');
 
   // Validate decision type
   if (!Object.values(DECISION_TYPE).includes(decisionType)) {
     throw new Error(`Invalid decision type: ${decisionType}`);
   }
 
-  // Load approval record
-  const approval = await prisma.artifactApproval.findUnique({
-    where: { id: approvalId },
+  // Load approval record — scoped. A foreign id is indistinguishable from a
+  // missing one, which is the intended answer.
+  const approval = await prisma.artifactApproval.findFirst({
+    where: { id: approvalId, workspaceId },
     include: { artifact: true },
   });
 
@@ -133,10 +142,18 @@ export async function executeDecision(approvalId, decisionType, options = {}) {
     { reviewerId, feedback, decisionMetadata }
   );
 
-  // Update approval record
-  const updatedApproval = await prisma.artifactApproval.update({
-    where: { id: approvalId },
+  // Update approval record. The PENDING precondition is repeated in the WHERE
+  // so it is enforced atomically rather than only in the read above — two
+  // concurrent decisions cannot both land.
+  const moved = await prisma.artifactApproval.updateMany({
+    where: { id: approvalId, workspaceId, status: APPROVAL_STATUS.PENDING },
     data: updateData,
+  });
+  if (moved.count !== 1) {
+    throw new Error(`Approval ${approvalId} already completed`);
+  }
+  const updatedApproval = await prisma.artifactApproval.findFirst({
+    where: { id: approvalId, workspaceId },
   });
 
   logger.info({
@@ -223,11 +240,12 @@ async function _executeDecisionLogic(decisionType, approval, options) {
  * Execute same decision on multiple approvals (bulk approve/reject).
  *
  * @param {string[]} approvalIds - Array of ArtifactApproval IDs
+ * @param {string} workspaceId - REQUIRED; the owning workspace (R11 · I64)
  * @param {string} decisionType - Decision to apply to all
  * @param {Object} options - Decision options
  * @returns {Promise<Object>} Summary of results
  */
-export async function executeBatchDecision(approvalIds, decisionType, options = {}) {
+export async function executeBatchDecision(approvalIds, workspaceId, decisionType, options = {}) {
   const results = {
     successful: [],
     failed: [],
@@ -235,7 +253,7 @@ export async function executeBatchDecision(approvalIds, decisionType, options = 
 
   for (const approvalId of approvalIds) {
     try {
-      const approval = await executeDecision(approvalId, decisionType, options);
+      const approval = await executeDecision(approvalId, workspaceId, decisionType, options);
       results.successful.push({ approvalId, artifactId: approval.artifactId });
     } catch (error) {
       results.failed.push({

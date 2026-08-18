@@ -22,6 +22,12 @@ if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.__lumi_prisma = prisma;
 }
 
-prisma.$connect()
-  .then(() => logger.info('[prisma] connected'))
-  .catch((err) => logger.warn({ err: err.message }, '[prisma] connect deferred — DB unreachable at boot'));
+// Eager connect is an optimisation, not a requirement — the client connects
+// lazily on first query either way. Guarded because this module is imported
+// under test with a substituted client that has no lifecycle methods, and a
+// module that throws at IMPORT time takes the whole file down with it.
+if (typeof prisma.$connect === 'function') {
+  prisma.$connect()
+    .then(() => logger.info('[prisma] connected'))
+    .catch((err) => logger.warn({ err: err.message }, '[prisma] connect deferred — DB unreachable at boot'));
+}

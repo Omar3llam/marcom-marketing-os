@@ -415,13 +415,29 @@ export async function executeExecutionPlan(plan, context = {}) {
 //   Same as executeExecutionPlan
 // ============================================================
 
-export async function resumeExecutionFromCheckpoint(checkpointId) {
-  const { getLatestCheckpoint, updateCheckpointStatus, markCheckpointResumed } = await import('../execution-checkpoint/index.js');
+/**
+ * R11 (I64/I70) — `workspaceId` is required and enforced here.
+ *
+ * This function took a bare checkpointId and did an unscoped findUnique. Its
+ * single caller pre-resolved the checkpoint through getLatestCheckpoint(
+ * executionId, workspaceId), so no cross-tenant resume was reachable — but the
+ * boundary lived in the caller, and "the caller checks it" is not a property of
+ * this function. It is now.
+ *
+ * The replay window is enforced in the same place, for the same reason: a
+ * checkpoint that is genuinely owned but months old is a different refusal from
+ * one that does not exist, and both belong to the service that resumes it.
+ */
+export async function resumeExecutionFromCheckpoint(checkpointId, workspaceId) {
+  const { getLatestCheckpoint, updateCheckpointStatus, markCheckpointResumed, isCheckpointReplayable, CheckpointExpiredError } =
+    await import('../execution-checkpoint/index.js');
+
+  if (!workspaceId) throw new Error('resumeExecutionFromCheckpoint: workspaceId required');
 
   try {
-    // Load checkpoint
-    const checkpoint = await prisma.executionCheckpoint.findUnique({
-      where: { id: checkpointId },
+    // Load checkpoint — scoped. A foreign id reads as absent.
+    const checkpoint = await prisma.executionCheckpoint.findFirst({
+      where: { id: checkpointId, workspaceId },
     });
 
     if (!checkpoint) {
@@ -448,6 +464,18 @@ export async function resumeExecutionFromCheckpoint(checkpointId) {
     // Validate checkpoint is resumable
     if (checkpoint.status !== 'PAUSED_FOR_APPROVAL') {
       throw new Error(`Checkpoint ${checkpointId} is not in PAUSED_FOR_APPROVAL state (current: ${checkpoint.status})`);
+    }
+
+    // R11 (I70) — bounded replay. Checked AFTER the idempotency short-circuit
+    // so an already-resumed checkpoint still returns its cached result rather
+    // than turning into a new error for callers that legitimately retry.
+    if (!isCheckpointReplayable(checkpoint)) {
+      logger.warn({
+        checkpointId,
+        workspaceId,
+        createdAt: checkpoint.createdAt,
+      }, '[RuntimeOrchestrator] refusing to resume a checkpoint outside its replay window');
+      throw new CheckpointExpiredError(checkpointId);
     }
 
     // Mark checkpoint as RESUMING
@@ -587,7 +615,7 @@ export async function resumeExecutionFromCheckpoint(checkpointId) {
     }
 
     // Mark checkpoint as RESUMED
-    await markCheckpointResumed(checkpointId);
+    await markCheckpointResumed(checkpointId, workspaceId);
 
     // Calculate summary
     // executedNodes already includes previousNodes (initialized at line 467)
@@ -898,6 +926,5 @@ export async function reExecuteNodes(checkpointId, nodeIdsToReExecute, decisionC
   }
 }
 
-// Need PrismaClient for checkpoint loading in resume
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+// R11 (F26): shared Prisma client — this module used to open its own pool.
+import { prisma } from '../../lib/prisma.js';

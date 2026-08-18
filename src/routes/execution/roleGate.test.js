@@ -12,6 +12,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
+    // R11 (I61): requireCollabRole falls back to the DB when req.collabRole is
+    // unset, and now FAILS CLOSED when that read throws. A mock without a
+    // `user` model makes every gated route 503 — which is the gate working.
+    user: { findUnique: vi.fn().mockResolvedValue({ collabRole: 'STRATEGIST' }) },
     executionRequest: {
       findUnique: vi.fn().mockResolvedValue(undefined),
       create: vi.fn().mockResolvedValue({ id: 'e1', workspaceId: 'ws1', version: 1, correlationId: 'k1' }),
@@ -36,6 +40,7 @@ vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+import { prisma } from '../../lib/prisma.js';
 import { registerMetaRoute } from './meta.js';
 import { registerRetryRoute } from './retry.js';
 import { registerResumeRoute } from './resume.js';
@@ -86,8 +91,19 @@ describe('execution mutation routes — BUYER/STRATEGIST gate', () => {
     });
   }
 
-  it('treats a null collab role as STRATEGIST (legacy seats not locked out)', async () => {
+  it('REFUSES a null collab role — R11 (I61) removed the fail-open default', async () => {
+    // The most consequential instance of the old default: an unresolvable role
+    // used to be answered with STRATEGIST on the route that queues real budget
+    // and status mutations against a live ad account.
+    prisma.user.findUnique.mockResolvedValueOnce({ collabRole: null });
     const res = await request(makeApp({ collabRole: null })).post('/execute/meta').send(ROUTES[0].body);
-    expect(res.status).not.toBe(403);
+    expect(res.status).toBe(403);
+  });
+
+  it('REFUSES with 503 when the role lookup itself fails — an outage is not a permission', async () => {
+    prisma.user.findUnique.mockRejectedValueOnce(new Error('pool timeout'));
+    const res = await request(makeApp({ collabRole: null })).post('/execute/meta').send(ROUTES[0].body);
+    expect(res.status).toBe(503);
+    expect(res.body.error).toBe('RoleUnavailable');
   });
 });

@@ -252,7 +252,7 @@ describe('role gate', () => {
 
   it('lets a BUYER through', async () => { await get(EVIDENCE_URL, 'BUYER').expect(200); });
   it('lets a STRATEGIST through', async () => { await get(EVIDENCE_URL, 'STRATEGIST').expect(200); });
-  it('null collabRole is treated as STRATEGIST (seed default)', async () => { await get(EVIDENCE_URL, null).expect(200); });
+  it('null collabRole is REFUSED — R11 (I61) removed the fail-open default', async () => { await get(EVIDENCE_URL, null).expect(403); });
 });
 
 // The collision this path exists to avoid. '/:campaignId/evidence' would have

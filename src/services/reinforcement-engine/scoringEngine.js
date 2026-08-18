@@ -21,10 +21,10 @@
 //   - CONFIDENCE_THRESHOLD: only trust scores with confidence >= threshold
 //   - Deterministic: same inputs → same outputs (no randomness)
 // ============================================================
-import { PrismaClient } from '@prisma/client';
+// R11 (F26): shared Prisma client — this module used to open its own pool.
+import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 
-const prisma = new PrismaClient();
 
 // Recency decay configuration
 const DECAY_LAMBDA = 0.023; // Half-life ≈ 30 days (ln(2) / 30)

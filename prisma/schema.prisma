@@ -649,9 +649,22 @@ model AuditLog {
 // stored response instead of re-executing on Meta.
 
 model ExecutionRequest {
-  id             String   @id @default(cuid())
-  workspaceId    String   @db.Uuid
-  idempotencyKey String   @unique
+  id          String @id @default(cuid())
+  workspaceId String @db.Uuid
+  // ── R11 (I65) — the idempotency key is workspace-qualified ──
+  // This was GLOBALLY unique and fully client-supplied, and the lookup that
+  // read it carried no workspace. Two consequences, both reachable from the
+  // route: presenting another workspace's key returned that workspace's
+  // executionId, status, and stored Meta API response; and pre-claiming a key
+  // another workspace was about to use made their genuine request come back
+  // `idempotentReplay: true`, telling them an ad-platform action had succeeded
+  // that was never queued.
+  //
+  // Uniqueness now spans (workspaceId, idempotencyKey): the guarantee the
+  // feature actually needs — "this workspace must not execute this twice" —
+  // rather than a global namespace shared with every tenant. See the compound
+  // @@unique below; the column itself carries no unique constraint.
+  idempotencyKey String
   actionType     String
   targetId       String
   status         String // PENDING, QUEUED, EXECUTING, EXECUTED_SUCCESS, EXECUTED_FAILED, TIMED_OUT, CANCELLED
@@ -691,6 +704,9 @@ model ExecutionRequest {
   checkpoints       ExecutionCheckpoint[]
   approvalDecisions ApprovalDecision[]
 
+  // R11 (I65) — replaces the global @unique on idempotencyKey. A client-supplied
+  // identifier must never occupy a namespace shared across tenants.
+  @@unique([workspaceId, idempotencyKey])
   @@index([workspaceId])
   @@index([createdAt])
   @@index([status])

@@ -34,14 +34,51 @@ const WORKSPACE_LOOKUP_ATTEMPTS = Number(process.env.WORKSPACE_LOOKUP_ATTEMPTS |
 // added to the list after they signed up is upgraded on their next request,
 // not stuck as VIEWER. Removing an email from the list does NOT auto-downgrade
 // (that's a deliberate manual action), but it stops further upgrades.
+//
+// R11 (I56): the allowlist is matched against a VERIFIED email only. Firebase
+// will mint an identity for any address a client types into the email/password
+// signup form; `email_verified` is the only claim that says the holder of that
+// address consented. Before R11 this check read `decodedToken.email` directly,
+// so registering an ADMIN_EMAILS address through the app's own signup form
+// granted the admin panel outright.
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '')
   .split(',')
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
 
-/** True when this email is on the ADMIN_EMAILS allowlist. */
-function isAdminEmail(email) {
-  return !!email && ADMIN_EMAILS.includes(email.toLowerCase());
+/**
+ * R11 (I56) — has this identity proven control of its email address?
+ *
+ * Strictly `=== true`. Firebase omits the claim entirely for some providers and
+ * sets it false for unverified email/password accounts; neither is proof, and
+ * a truthy check would let `undefined` through the moment a provider changed
+ * its claim set.
+ */
+export function hasVerifiedEmail(decodedToken) {
+  return decodedToken?.email_verified === true
+    && typeof decodedToken?.email === 'string'
+    && decodedToken.email.length > 0;
+}
+
+/** True when this token carries a VERIFIED email on the ADMIN_EMAILS allowlist. */
+function isVerifiedAdmin(decodedToken) {
+  if (!hasVerifiedEmail(decodedToken)) return false;
+  return ADMIN_EMAILS.includes(decodedToken.email.toLowerCase());
+}
+
+/**
+ * R11 (I58) — the invitation credential travels as a request header, not as a
+ * body/query field and not as an email match. It is a server-issued secret
+ * checked against a DB row, which is exactly what an `Authorization` header is;
+ * it is NOT a self-asserted identity claim, so it does not violate I59.
+ */
+const INVITE_TOKEN_HEADER = 'x-invitation-token';
+
+function readInviteToken(req) {
+  const raw = req.headers?.[INVITE_TOKEN_HEADER];
+  if (typeof raw !== 'string') return null;
+  const token = raw.trim();
+  return token.length > 0 && token.length <= 200 ? token : null;
 }
 
 const workspaceCache = new Map(); // uid -> { workspaceId, role, expiresAt }
@@ -153,7 +190,7 @@ export async function firebaseAuthMiddleware(req, res, next) {
       // In-memory override only — the durable DB upgrade happens on the next
       // cache-miss read. This keeps the gate correct within a warm TTL window
       // even if the cached role predates the ADMIN_EMAILS listing.
-      req.userRole    = isAdminEmail(decodedToken.email) ? 'ADMIN' : cached.role;
+      req.userRole    = isVerifiedAdmin(decodedToken) ? 'ADMIN' : cached.role;
       req.collabRole  = cached.collabRole ?? null;
       req.authSource  = 'firebase-cache';
       return next();
@@ -167,7 +204,7 @@ export async function firebaseAuthMiddleware(req, res, next) {
         let role = user.role;
         // Durable ADMIN upgrade: an operator listed in ADMIN_EMAILS who was
         // provisioned before the env var was set is promoted on this login.
-        if (isAdminEmail(decodedToken.email) && role !== 'ADMIN') {
+        if (isVerifiedAdmin(decodedToken) && role !== 'ADMIN') {
           try {
             await prisma.user.update({ where: { id: user.id }, data: { role: 'ADMIN' } });
             role = 'ADMIN';
@@ -189,56 +226,102 @@ export async function firebaseAuthMiddleware(req, res, next) {
       } else {
         // No Prisma row for this Firebase UID — first sign-in.
         //
-        // THE INVITE SEAM: if a PENDING, unexpired invitation exists for this
-        // email, the user JOINS that workspace (with the invited collabRole) and
-        // the invite is consumed — instead of getting a fresh island workspace.
-        // Without this branch every invited teammate would silently land in their
-        // own workspace and the whole invite flow would be a no-op.
-        // Otherwise: normal auto-provision (fresh Workspace + User). context=null
-        // means NOT onboarded — ProtectedRoute will redirect to /onboarding.
+        // THE INVITE SEAM (R11, I58). Before R11 this branch matched a PENDING
+        // invitation on `decodedToken.email` and granted membership on that
+        // match alone. The invitation TOKEN — a server-issued single-use secret,
+        // minted by POST /invite and surfaced by GET /invite/accept — was never
+        // consulted at the moment membership was granted, so registering an
+        // invited address through the public signup form joined the inviting
+        // workspace outright. The strong credential existed and was ignored.
+        //
+        // Now the token IS the membership credential: it arrives as a request
+        // header, is claimed atomically inside a transaction, and an email match
+        // grants nothing. No token ⇒ a fresh island workspace, which is the
+        // correct outcome for a genuinely new signup and confers no authority
+        // derived from the email claim. context=null means NOT onboarded —
+        // ProtectedRoute will redirect to /onboarding.
+        const inviteToken = readInviteToken(req);
         try {
-          // Normalize to lowercase so the email match against invitation.email
-          // (also stored lowercase) is reliable — Postgres equality is exact.
+          // Stored lowercase so the roster/uniqueness comparisons are reliable.
+          // R11 (I57): this is a CONTACT attribute written onto the new row. It
+          // is never used to find, adopt, or authorise an existing row.
           const email       = (decodedToken.email || `${decodedToken.uid}@unknown.local`).toLowerCase();
           const displayName = decodedToken.name  || email.split('@')[0];
-          // ADMIN only if the email is on the ADMIN_EMAILS allowlist — never
-          // self-serve. Everyone else provisions as VIEWER.
-          const role        = isAdminEmail(email) ? 'ADMIN' : 'VIEWER';
-
-          // Defensive: an invite-lookup failure must never block normal provision.
-          let pendingInvite = null;
-          try {
-            pendingInvite = await prisma.invitation.findFirst({
-              where:   { email, status: 'PENDING', expiresAt: { gt: new Date() } },
-              orderBy: { createdAt: 'desc' },
-              select:  { id: true, workspaceId: true, collabRole: true },
-            });
-          } catch (inviteErr) {
-            logger.warn({ err: inviteErr.message, uid: decodedToken.uid }, '[firebase-auth] invite lookup failed; falling back to fresh provision');
-          }
+          // ADMIN only if a VERIFIED email is on the ADMIN_EMAILS allowlist —
+          // never self-serve. Everyone else provisions as VIEWER.
+          const role        = isVerifiedAdmin(decodedToken) ? 'ADMIN' : 'VIEWER';
 
           let created;
-          if (pendingInvite) {
-            // Join the inviting workspace; consume the invite (single-use).
-            created = await prisma.user.create({
-              data: {
-                clerkId:     decodedToken.uid,
-                email,
-                role,
-                collabRole:  pendingInvite.collabRole,
-                context:     null,
-                workspaceId: pendingInvite.workspaceId,
-              },
-              select: { id: true, workspaceId: true, role: true, collabRole: true },
-            });
-            await prisma.invitation.update({
-              where: { id: pendingInvite.id },
-              data:  { status: 'ACCEPTED' },
-            });
+          if (inviteToken) {
+            // ── Token-based join ────────────────────────────────
+            // The claim and the membership write share one transaction: the
+            // updateMany's WHERE is the atomic single-use gate (only one
+            // concurrent caller can move a row out of PENDING), and if the
+            // user create then fails the claim rolls back with it. A consumed
+            // invitation and an un-created member can never coexist.
+            let claimed;
+            try {
+              claimed = await prisma.$transaction(async (tx) => {
+                const claim = await tx.invitation.updateMany({
+                  where: { token: inviteToken, status: 'PENDING', expiresAt: { gt: new Date() } },
+                  data:  { status: 'ACCEPTED' },
+                });
+                if (claim.count !== 1) return null;
+
+                const invite = await tx.invitation.findUnique({
+                  where:  { token: inviteToken },
+                  select: { id: true, workspaceId: true, collabRole: true },
+                });
+                if (!invite) return null;
+
+                const user = await tx.user.create({
+                  data: {
+                    clerkId:     decodedToken.uid,
+                    email,
+                    role,
+                    collabRole:  invite.collabRole,
+                    context:     null,
+                    workspaceId: invite.workspaceId,
+                  },
+                  select: { id: true, workspaceId: true, role: true, collabRole: true },
+                });
+                return { user, inviteId: invite.id };
+              });
+            } catch (claimErr) {
+              // A DB failure here is NOT "the invitation does not exist".
+              // Refusing loudly keeps security state and unavailable state
+              // distinct (I71) — a silent fall-through to fresh provisioning
+              // would strand an invited teammate in an island workspace and
+              // burn the only invite they were sent.
+              logger.error(
+                { err: claimErr.message, uid: decodedToken.uid },
+                '[firebase-auth] invitation claim failed',
+              );
+              throw Object.assign(new Error('invitation claim failed'), { authStatus: 503, authCode: 'INVITATION_UNAVAILABLE' });
+            }
+
+            if (!claimed) {
+              // The token is absent, expired, or already consumed. This is a
+              // refusal, not a reason to provision something else.
+              throw Object.assign(new Error('invitation invalid'), { authStatus: 403, authCode: 'INVITATION_INVALID' });
+            }
+
+            created = claimed.user;
             req.authSource = 'firebase-invite-join';
+            // R11 (I58) — CONFIRM the consumption to the client.
+            //
+            // The browser holds a copy of the token so it survives the signup
+            // hop, and it has to know when to drop it. It cannot infer that
+            // from "a response arrived": the token rides on whichever request
+            // happens to be first, and a 200 from an unauthenticated or
+            // unrelated endpoint says nothing about whether the invitation was
+            // claimed. This line is reached exactly once, on the transaction's
+            // success path, and it is the only thing that means the JOIN
+            // actually happened.
+            res.setHeader('x-invitation-claimed', '1');
             logger.info(
-              { uid: decodedToken.uid, workspaceId: created.workspaceId, inviteId: pendingInvite.id },
-              '[firebase-auth] invited user joined existing workspace',
+              { uid: decodedToken.uid, workspaceId: created.workspaceId, inviteId: claimed.inviteId },
+              '[firebase-auth] invited user joined existing workspace via invitation token',
             );
           } else {
             // Fresh Workspace + User, created atomically.
@@ -247,6 +330,14 @@ export async function firebaseAuthMiddleware(req, res, next) {
                 clerkId: decodedToken.uid,
                 email,
                 role,
+                // R11 (I61/I63): write the seat explicitly. The person who
+                // mints a workspace IS its strategist — that was always the
+                // product truth, it was just left implicit in a null that the
+                // gate then had to interpret. With the role written here (and
+                // backfilled for existing rows), a null collabRole stops
+                // meaning "assume the top role" and starts meaning "something
+                // is wrong with this row", which is a denial.
+                collabRole: 'STRATEGIST',
                 context: null,
                 workspace: { create: { name: `${displayName}'s Workspace` } },
               },
@@ -264,36 +355,67 @@ export async function firebaseAuthMiddleware(req, res, next) {
           req.collabRole  = created.collabRole ?? null;
           cacheSetWorkspace(decodedToken.uid, created.workspaceId, created.role, created.collabRole);
         } catch (provisionErr) {
-          // Likely a unique-constraint race (two simultaneous requests).
-          // Try a second read before giving up.
-          try {
-            const retried = await prisma.user.findUnique({
-              where:  { clerkId: decodedToken.uid },
-              select: { id: true, workspaceId: true, role: true, collabRole: true },
-            });
-            if (retried) {
-              const role = isAdminEmail(decodedToken.email) ? 'ADMIN' : retried.role;
-              req.workspaceId = retried.workspaceId;
-              req.userRole    = role;
-              req.collabRole  = retried.collabRole ?? null;
-              req.authSource  = 'firebase-retry';
-              cacheSetWorkspace(decodedToken.uid, retried.workspaceId, role, retried.collabRole);
-            } else {
-              req.workspaceId = null;
-              logger.error(
-                { uid: decodedToken.uid, err: provisionErr.message },
-                '[firebase-auth] auto-provision failed and retry also failed',
-              );
-            }
-          } catch (retryErr) {
+          // A deliberate refusal (bad invitation, unavailable claim) is already
+          // a decision — propagate it verbatim rather than re-reading the DB.
+          if (provisionErr.authStatus) {
             req.workspaceId = null;
-            logger.error({ err: retryErr.message }, '[firebase-auth] auto-provision retry threw');
+            req.authError = { status: provisionErr.authStatus, code: provisionErr.authCode, message: provisionErr.message };
+          } else {
+            // Otherwise: most likely a unique-constraint race between two
+            // simultaneous first requests. Try a second read before giving up.
+            try {
+              const retried = await prisma.user.findUnique({
+                where:  { clerkId: decodedToken.uid },
+                select: { id: true, workspaceId: true, role: true, collabRole: true },
+              });
+              if (retried) {
+                const role = isVerifiedAdmin(decodedToken) ? 'ADMIN' : retried.role;
+                req.workspaceId = retried.workspaceId;
+                req.userRole    = role;
+                req.collabRole  = retried.collabRole ?? null;
+                req.authSource  = 'firebase-retry';
+                cacheSetWorkspace(decodedToken.uid, retried.workspaceId, role, retried.collabRole);
+              } else if (provisionErr.code === 'P2002') {
+                // The row that blocked the insert is NOT this uid's — the only
+                // other unique column on User is `email`. That address already
+                // belongs to a different identity, and adopting it is precisely
+                // the takeover R11 closes. Refuse, distinctly (I73): this is
+                // neither "unauthenticated" nor "service unavailable".
+                req.workspaceId = null;
+                req.authError = {
+                  status: 409,
+                  code: 'EMAIL_ALREADY_LINKED',
+                  message: 'This email address is already linked to a different account.',
+                };
+                logger.error(
+                  { uid: decodedToken.uid, target: provisionErr.meta?.target },
+                  '[firebase-auth] provisioning refused — email already linked to another identity',
+                );
+              } else {
+                req.workspaceId = null;
+                req.authError = { status: 503, code: 'PROVISIONING_UNAVAILABLE', message: 'Could not provision this account.' };
+                logger.error(
+                  { uid: decodedToken.uid, err: provisionErr.message },
+                  '[firebase-auth] auto-provision failed and retry also failed',
+                );
+              }
+            } catch (retryErr) {
+              req.workspaceId = null;
+              req.authError = { status: 503, code: 'PROVISIONING_UNAVAILABLE', message: 'Could not provision this account.' };
+              logger.error({ err: retryErr.message }, '[firebase-auth] auto-provision retry threw');
+            }
           }
         }
       }
     } catch (dbErr) {
-      logger.warn({ err: dbErr.message, uid: decodedToken.uid }, '[firebase-auth] workspace lookup failed');
+      // R11 (I71): identity infrastructure failure is NOT "this user has no
+      // workspace". Leaving workspaceId null here used to hand the request on
+      // to handlers that then queried `workspaceId: null` — a non-nullable UUID
+      // column that matches nothing — and returned 200 with an empty account.
+      // A paying customer saw their data vanish because a pool read blipped.
+      logger.error({ err: dbErr.message, uid: decodedToken.uid }, '[firebase-auth] identity lookup failed');
       req.workspaceId = null;
+      req.authError = { status: 503, code: 'IDENTITY_UNAVAILABLE', message: 'Could not resolve this account right now.' };
     }
 
     // Log successful auth (optional, enable with LOG_LEVEL=debug)
@@ -357,6 +479,24 @@ export function requireAuth(req, res, next) {
     return res.status(503).json({
       error: 'AuthInfrastructureUnavailable',
       message: 'Authentication infrastructure is not ready. Check server logs and /health.',
+    });
+  }
+
+  // R11 (I71/I73): the identity layer reached a decision that is neither
+  // "authenticated" nor "anonymous" — a refused invitation, an email already
+  // bound to another identity, or an unavailable identity store. Each keeps its
+  // own status code; none of them is allowed to proceed as a contextless 200.
+  if (req.authError) {
+    logger.warn({
+      path:   req.path,
+      method: req.method,
+      uid:    req.user?.uid,
+      code:   req.authError.code,
+    }, '[firebase-auth] requireAuth blocked by identity-layer decision');
+
+    return res.status(req.authError.status).json({
+      error:   req.authError.code,
+      message: req.authError.message,
     });
   }
 

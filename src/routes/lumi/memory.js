@@ -95,7 +95,7 @@ memoryRouter.post('/patterns/:id/promote', requireCollabRole(WORKSPACE_ROLE.STRA
 });
 
 // ─────────────────────────────────────────────────────────────
-// POST /api/lumi/network/consent — opt in/out + set cohort
+// POST /api/lumi/network/consent — opt in/out (cohort is server-assigned)
 // STRATEGIST-only: consenting to contribute this workspace's learned
 // patterns into the shared cross-account pool is an outward-facing,
 // not-cleanly-reversible governance decision (once aggregated, peers
@@ -107,10 +107,27 @@ memoryRouter.post('/patterns/:id/promote', requireCollabRole(WORKSPACE_ROLE.STRA
 memoryRouter.post('/network/consent', requireCollabRole(WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
+  // R11 (F12 · RU-5): cohort membership is server-assigned. A caller-supplied
+  // cohortTag is REFUSED rather than ignored — an ignored parameter looks
+  // identical to an accepted one from the outside, so silently dropping it
+  // would leave every client believing it still chose its own cohort.
+  if (req.body?.cohortTag !== undefined) {
+    return res.status(400).json({
+      error: 'CohortNotSettable',
+      message: 'Cohort membership is assigned by the server and cannot be set by the caller.',
+    });
+  }
   try {
-    const result = await setConsent(wsId, { optIn: !!req.body?.optIn, cohortTag: req.body?.cohortTag });
+    const result = await setConsent(wsId, { optIn: !!req.body?.optIn });
     return res.json({ workspaceId: wsId, ...result });
   } catch (err) {
+    // No cohort can be established for this workspace — a refusal, not a fault.
+    if (err.code === 'COHORT_UNAVAILABLE') {
+      return res.status(409).json({
+        error: 'CohortUnavailable',
+        message: 'This workspace has no cohort yet. Connect an ad account first.',
+      });
+    }
     logger.error({ err: err.message, wsId }, '[lumi/memory] consent failed');
     return res.status(500).json({ error: 'ConsentFailed', message: 'Request failed' });
   }

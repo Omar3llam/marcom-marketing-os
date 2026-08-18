@@ -36,6 +36,26 @@ const router = express.Router();
 // gate. A read-only CLIENT or an execution-only BUYER seat cannot decide artifacts.
 const requireApprover = requireCollabRole(WORKSPACE_ROLE.STRATEGIST);
 
+// R11 (I72/I73) — every handler in this file used to answer failures with
+// `res.json({ error: error.message })`, which walks straight past the global
+// handler's production suppression and hands the caller raw Prisma constraint
+// text. Each distinct outcome keeps its own status; only the wording is
+// generic. The detail is already in the logger.error line at each call site.
+function respondWithError(res, error) {
+  if (error?.name === 'ApprovalNotActionableError') {
+    // Absent, foreign, or no longer PENDING — deliberately one answer, so the
+    // response cannot be used to probe for another tenant's approval ids.
+    return res.status(409).json({
+      error:   'ApprovalNotActionable',
+      message: 'That approval is no longer awaiting a decision.',
+    });
+  }
+  if (typeof error?.message === 'string' && error.message.includes('Unauthorized')) {
+    return res.status(403).json({ error: 'Forbidden', message: 'You do not have access to that artifact.' });
+  }
+  return res.status(500).json({ error: 'InternalError', message: 'Request failed.' });
+}
+
 // ============================================================
 // Helper: Verify workspace access
 // ============================================================
@@ -91,7 +111,9 @@ router.post('/:id/approve', requireApprover, async (req, res) => {
     }
 
     // Approve
-    const approval = await approveArtifact(existingApproval.id, reviewerId, feedback);
+    // R11 (I64): workspaceId is an argument to the service, not a check this
+    // caller performed on its behalf.
+    const approval = await approveArtifact(existingApproval.id, workspaceId, reviewerId, feedback);
 
     logger.info({
       artifactId,
@@ -118,9 +140,7 @@ router.post('/:id/approve', requireApprover, async (req, res) => {
       userId: req.user?.uid,
     }, '[artifact-approval] approve artifact failed');
 
-    res.status(error.message.includes('Unauthorized') ? 403 : 500).json({
-      error: error.message,
-    });
+    respondWithError(res, error);
   }
 });
 
@@ -157,7 +177,7 @@ router.post('/:id/reject', requireApprover, async (req, res) => {
     }
 
     // Reject
-    const approval = await rejectArtifact(existingApproval.id, reviewerId, reason);
+    const approval = await rejectArtifact(existingApproval.id, workspaceId, reviewerId, reason);
 
     logger.info({
       artifactId,
@@ -185,9 +205,7 @@ router.post('/:id/reject', requireApprover, async (req, res) => {
       userId: req.user?.uid,
     }, '[artifact-approval] reject artifact failed');
 
-    res.status(error.message.includes('Unauthorized') ? 403 : 500).json({
-      error: error.message,
-    });
+    respondWithError(res, error);
   }
 });
 
@@ -224,7 +242,7 @@ router.post('/:id/request-revision', requireApprover, async (req, res) => {
     }
 
     // Request revision
-    const approval = await requestRevision(existingApproval.id, reviewerId, feedback);
+    const approval = await requestRevision(existingApproval.id, workspaceId, reviewerId, feedback);
 
     logger.info({
       artifactId,
@@ -251,9 +269,7 @@ router.post('/:id/request-revision', requireApprover, async (req, res) => {
       userId: req.user?.uid,
     }, '[artifact-approval] request revision failed');
 
-    res.status(error.message.includes('Unauthorized') ? 403 : 500).json({
-      error: error.message,
-    });
+    respondWithError(res, error);
   }
 });
 
@@ -364,9 +380,7 @@ router.get('/:id/approval-status', async (req, res) => {
       userId: req.user?.uid,
     }, '[artifact-approval] get approval status failed');
 
-    res.status(error.message.includes('Unauthorized') ? 403 : 500).json({
-      error: error.message,
-    });
+    respondWithError(res, error);
   }
 });
 

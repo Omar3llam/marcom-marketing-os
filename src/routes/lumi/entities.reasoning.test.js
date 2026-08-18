@@ -64,8 +64,8 @@ describe('GET /entities/:id/reasoning', () => {
     }));
   });
 
-  it('null collabRole is treated as STRATEGIST (seed default)', async () => {
-    await request(makeApp({ collabRole: null })).get('/entities/c1/reasoning').expect(200);
+  it('null collabRole is REFUSED — R11 (I61) removed the fail-open default', async () => {
+    await request(makeApp({ collabRole: null })).get('/entities/c1/reasoning').expect(403);
   });
 
   it('no row yet → 200 { reasoning: null } (honest "after next sweep")', async () => {
