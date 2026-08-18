@@ -8,7 +8,7 @@
 // - Telemetry hooks fire on resilience events
 // ============================================================
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import {
   orchestratorCircuit,
   executeOrchestration,
@@ -22,6 +22,22 @@ vi.mock('../lib/sseRegistry.js', () => ({
   removeSubscriber: vi.fn(),
   _resetForTests: vi.fn(),
 }));
+
+// The ONLY stub in the circuit block, and only for the success case: the
+// outbound Anthropic call. `vi.spyOn` on the orchestrator namespace — what this
+// file used to do — cannot work, because ESM namespaces are frozen AND
+// orchestratorCircuit closed over `runOrchestration` at module load, so the
+// binding was already resolved. The spy silently no-op'd and every assertion
+// that depended on it was measuring nothing.
+//
+// vi.mock is the seam that actually intercepts. It is applied at the network
+// boundary rather than to the orchestrator, so the circuit, the accounting and
+// runOrchestration itself all remain the real production code.
+const { runClaudeAgentMock } = vi.hoisted(() => ({ runClaudeAgentMock: vi.fn() }));
+vi.mock('../agents/ClaudeAgent.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  runClaudeAgent: runClaudeAgentMock,
+}));
 import {
   getRetryStrategy,
   executeWithRetry,
@@ -33,42 +49,128 @@ import {
 } from '../../client/src/contracts/errors/retryPolicy.ts';
 import { NetworkError, PlatformError, RateLimitError } from '../../client/src/contracts/errors/index.ts';
 import { dbAvailable } from './dbProbe.js';
+import { prisma } from '../lib/prisma.js';
 
-// The Circuit Breaker block drives runOrchestration, which reads from the DB;
-// it skips when no migrated database is reachable (the rest of the file is
-// DB-free and always runs).
+// The Circuit Breaker block drives runOrchestration, which reads CampaignState
+// from the database; it skips when no migrated database is reachable (the rest
+// of the file is DB-free and always runs).
+//
+// These four tests had never actually run anywhere before R12-1. Locally the
+// block self-skipped, and CI's path allowlist never reached this file — so they
+// were written against assumptions nothing had ever checked, and all three of
+// their defects survived: a workspaceId that is not a UUID, a reset() that does
+// not close the circuit, and a threshold that cannot be reached in three calls.
 const DB_OK = await dbAvailable();
+
+// CampaignState.workspaceId and Workspace.id are @db.Uuid. The old fixture
+// passed the string 'test-workspace', which Prisma rejected before the
+// orchestrator ran at all ("Error creating UUID ... found 't' at 1"). Real,
+// fixed, and namespaced so a stray row is recognisable.
+const TEST_WORKSPACE_ID  = '00000000-0000-4000-8000-00000000b1b0';
+// A second, deliberately EMPTY workspace: it exists, but owns no CampaignState.
+// That is what drives the failure path below — see the threshold test.
+const EMPTY_WORKSPACE_ID = '00000000-0000-4000-8000-00000000b1b1';
+const TEST_CAMPAIGN_ID   = 'r12-1b-circuit-fixture';
+
+// verdict HOLD with a rootCause outside CREATIVE_TRIGGERS, so the orchestration
+// does not also take the OpenAI creative path. One boundary stubbed, not two.
+const ANALYSIS = {
+  verdict: 'HOLD',
+  rootCause: 'OTHER',
+  diagnosis: 'Deterministic fixture for the circuit breaker integration test.',
+  confidence: 90,
+  riskLevel: 'Low',
+  evidenceCount: 3,
+  financialImpact: 'No material impact',
+  actionPlan: { action: 'Hold', expectedImpact: 'None' },
+};
 
 describe('Resilience Wiring Integration Tests', () => {
   describe.skipIf(!DB_OK)('Circuit Breaker Integration', () => {
+    beforeAll(async () => {
+      // runOrchestration throws when the CampaignState is missing — correctly,
+      // since it is the SUBJECT of the analysis and inventing one would
+      // fabricate the campaign being diagnosed. So the success path needs a real
+      // row, which is what makes this a DB-gated block in the first place.
+      for (const id of [TEST_WORKSPACE_ID, EMPTY_WORKSPACE_ID]) {
+        await prisma.workspace.upsert({
+          where: { id }, update: {}, create: { id, name: `R12-1b circuit ${id.slice(-4)}` },
+        });
+      }
+      await prisma.campaignState.upsert({
+        where: { campaignId_workspaceId: { campaignId: TEST_CAMPAIGN_ID, workspaceId: TEST_WORKSPACE_ID } },
+        update: {},
+        create: {
+          campaignId: TEST_CAMPAIGN_ID,
+          campaignName: 'R12-1b circuit fixture',
+          workspaceId: TEST_WORKSPACE_ID,
+          stage: 'STABLE',
+          healthScore: 72,
+          lastAnalysis: new Date(),
+        },
+      });
+    });
+
+    afterAll(async () => {
+      // Scoped to the fixture ids only — never a blanket delete.
+      await prisma.campaignState.deleteMany({
+        where: { workspaceId: { in: [TEST_WORKSPACE_ID, EMPTY_WORKSPACE_ID] } },
+      });
+      await prisma.workspace.deleteMany({
+        where: { id: { in: [TEST_WORKSPACE_ID, EMPTY_WORKSPACE_ID] } },
+      });
+    });
+
     beforeEach(() => {
-      // Reset circuit breaker state before each test
-      orchestratorCircuit.reset();
+      // forceClose(), not reset(). reset() calls _reset(), which clears the
+      // METRICS and deliberately leaves `state` untouched — so after the
+      // force-open test the circuit stayed OPEN into the next test and the
+      // health assertion read 'degraded' where it expected 'healthy'. That is
+      // the production contract behaving as designed, so the test adopts the
+      // API that genuinely restores a closed circuit rather than asking
+      // production to change meaning. Every test now starts from a known state
+      // and none depends on the order they run in.
+      orchestratorCircuit.forceClose();
+      runClaudeAgentMock.mockReset();
+      runClaudeAgentMock.mockResolvedValue({ text: JSON.stringify(ANALYSIS) });
     });
 
     it('should wrap runOrchestration with circuit protection', async () => {
       const result = await executeOrchestration({
-        campaignId: 'test-campaign',
-        workspaceId: 'test-workspace',
+        campaignId:  TEST_CAMPAIGN_ID,
+        workspaceId: TEST_WORKSPACE_ID,
       });
 
       expect(result).toBeDefined();
       expect(result.strategicAnalysis).toBeDefined();
+      expect(result.strategicAnalysis.verdict).toBe('HOLD');
+      expect(result.degraded).toBeUndefined();          // the real result, not a fallback
+
+      // Proof the call went THROUGH the orchestrator instead of short-circuiting:
+      // the seeded row was read and the analysis boundary was reached exactly once.
+      expect(runClaudeAgentMock).toHaveBeenCalledTimes(1);
+
+      const health = getOrchestratorHealth();
+      expect(health.state).toBe('CLOSED');
+      expect(health.successCount).toBe(1);
+      expect(health.consecutiveFailures).toBe(0);
     });
 
     it('should return fallback response when circuit is open', async () => {
-      // Force circuit open
       orchestratorCircuit.forceOpen();
 
       const result = await executeOrchestration({
-        campaignId: 'test-campaign',
-        workspaceId: 'test-workspace',
+        campaignId:  TEST_CAMPAIGN_ID,
+        workspaceId: TEST_WORKSPACE_ID,
       });
 
       expect(result.degraded).toBe(true);
       expect(result.degradationReason).toBe('CIRCUIT_BREAKER_OPEN');
       expect(result.strategicAnalysis.verdict).toBe('HOLD');
       expect(result.strategicAnalysis.rootCause).toBe('CIRCUIT_OPEN');
+
+      // Fast-fail means the orchestration never ran at all.
+      expect(runClaudeAgentMock).not.toHaveBeenCalled();
     });
 
     it('should report circuit health status', () => {
@@ -78,32 +180,56 @@ describe('Resilience Wiring Integration Tests', () => {
       expect(health).toHaveProperty('state');
       expect(health).toHaveProperty('failureCount');
       expect(health).toHaveProperty('successCount');
-      expect(health.status).toBe('healthy'); // Initially healthy
+
+      // Asserted, not assumed: a closed circuit with no history is what
+      // 'healthy' means, and beforeEach establishes exactly that regardless of
+      // what the force-open test above left behind.
+      expect(health.state).toBe('CLOSED');
+      expect(health.status).toBe('healthy');
+      expect(health.consecutiveFailures).toBe(0);
+      expect(health.failureCount).toBe(0);
     });
 
-    it('should track consecutive failures', async () => {
-      // Mock runOrchestration to fail
-      const originalRun = (await import('../agents/orchestrator.js')).runOrchestration;
-      const mockRun = vi.fn().mockRejectedValue(new Error('Orchestrator failure'));
-      vi.spyOn(await import('../agents/orchestrator.js'), 'runOrchestration').mockImplementation(mockRun);
-
-      // Trigger multiple failures
-      for (let i = 0; i < 3; i++) {
+    it('should track consecutive failures and open at the configured threshold', async () => {
+      // The circuit opens on consecutiveFailures >= failureThreshold (3) AND
+      // totalCalls >= volumeThreshold (5) — BOTH, so three failures alone can
+      // never open it. The old test drove three calls and asserted a count it
+      // could not have reached even if its mock had worked.
+      //
+      // These are REAL failures, not simulated ones. EMPTY_WORKSPACE_ID owns no
+      // CampaignState, so runOrchestration throws "campaignState ... not found"
+      // from production code, before Claude is ever reached — the mock plays no
+      // part here at all. Every counter below was moved by the real path.
+      let rejections = 0;
+      let lastResult;
+      for (let i = 0; i < 5; i++) {
         try {
-          await executeOrchestration({
-            campaignId: 'test-campaign',
-            workspaceId: 'test-workspace',
+          lastResult = await executeOrchestration({
+            campaignId:  'r12-1b-absent-campaign',
+            workspaceId: EMPTY_WORKSPACE_ID,
           });
-        } catch (err) {
-          // Expected to fail
+        } catch {
+          rejections += 1;   // rethrown while the circuit is still closed
         }
       }
 
-      const health = getOrchestratorHealth();
-      expect(health.failureCount).toBeGreaterThanOrEqual(3);
+      // Calls 1-4 fail with the circuit still CLOSED and are rethrown. Call 5
+      // reaches totalCalls >= 5, trips the threshold, and comes back degraded
+      // instead of throwing — circuitState is read after the failure is
+      // recorded. Exact counts, because the contract is deterministic.
+      expect(rejections).toBe(4);
+      expect(lastResult?.degraded).toBe(true);
+      expect(lastResult?.degradationReason).toBe('CIRCUIT_BREAKER_OPEN');
 
-      // Restore original
-      vi.restoreAllMocks();
+      const health = getOrchestratorHealth();
+      expect(health.consecutiveFailures).toBe(5);
+      expect(health.failureCount).toBe(5);
+      expect(health.state).toBe('OPEN');
+      expect(health.status).toBe('degraded');
+      expect(orchestratorCircuit.getMetrics().totalCalls).toBe(5);
+
+      // The failures came from the orchestrator, not from a stubbed agent.
+      expect(runClaudeAgentMock).not.toHaveBeenCalled();
     });
   });
 
