@@ -22,7 +22,53 @@ export const PLATFORM_DB = Object.freeze({ META: 'meta_ads', GOOGLE: 'google_ads
 const DB_CHANNEL = Object.freeze({ meta_ads: 'META', google_ads: 'GOOGLE', ga4: 'GA4' });
 
 const dbPlatform = (channel) => PLATFORM_DB[String(channel || '').toUpperCase()] || null;
-const safeDecrypt = (enc) => { try { return enc ? decrypt(enc) : null; } catch { return null; } };
+
+/**
+ * R11 (E3) — a decryption failure is NOT "no credential".
+ *
+ * `safeDecrypt` swallowed every error and returned null, and `resolveCredential`
+ * returns null for "no row". The two became one answer, and the product renders
+ * that answer as "not connected" — so a wrong or missing
+ * CREDENTIAL_ENCRYPTION_KEY, or a corrupted ciphertext, showed a customer who
+ * HAD connected their ad account a screen inviting them to connect it. They
+ * would reconnect, the OAuth would succeed, and the same thing would happen
+ * again, because the fault was never in the connection.
+ *
+ * Absent ciphertext still returns null — that genuinely is "no token here".
+ * A failure to decrypt one that exists throws, distinctly, with no plaintext
+ * and no key material in the message.
+ */
+export class CredentialDecryptError extends Error {
+  constructor(field) {
+    super(`Stored credential could not be decrypted (${field}). Check CREDENTIAL_ENCRYPTION_KEY.`);
+    this.name = 'CredentialDecryptError';
+    this.code = 'DECRYPT_FAILED';
+  }
+}
+
+const decryptField = (enc, field) => {
+  if (!enc) return null;
+  try {
+    return decrypt(enc);
+  } catch (err) {
+    logger.error({ field, err: err.message }, '[credentialStore] DECRYPT_FAILED — stored credential is unreadable');
+    throw new CredentialDecryptError(field);
+  }
+};
+
+/**
+ * The batch variant, for the cross-workspace sync sweep where one bad row must
+ * not abort every other workspace's sync. Still LOGS at error level — the
+ * difference from the old safeDecrypt is that the failure is reported rather
+ * than absorbed into an indistinguishable null.
+ */
+const tolerateDecrypt = (enc, field) => {
+  try {
+    return decryptField(enc, field);
+  } catch {
+    return null;
+  }
+};
 
 /**
  * Resolve decrypted credentials for a workspace+channel, or null. The connector's
@@ -38,11 +84,12 @@ export async function resolveCredential(workspaceId, channel) {
     WHERE workspace_id = ${workspaceId} AND platform = ${platform} AND is_active = true
     ORDER BY updated_at DESC LIMIT 1
   `;
-  if (rows.length === 0) return null;
+  if (rows.length === 0) return null;   // genuinely not connected
   const r = rows[0];
   return {
-    accessToken: safeDecrypt(r.access_token_enc),
-    refreshToken: safeDecrypt(r.refresh_token_enc),
+    // Throws CredentialDecryptError rather than returning null — see above.
+    accessToken: decryptField(r.access_token_enc, 'access_token'),
+    refreshToken: decryptField(r.refresh_token_enc, 'refresh_token'),
     accountId: r.account_id ?? null,
     expiresAt: r.expires_at ?? null,
   };
@@ -102,8 +149,14 @@ export async function listActiveSyncable(workspaceId = null) {
     .map((r) => ({
       workspaceId: r.workspace_id,
       channel: DB_CHANNEL[r.platform],
-      accessToken: safeDecrypt(r.access_token_enc),
-      refreshToken: safeDecrypt(r.refresh_token_enc),
+      // R11 (E3): the sweep is a FAN-OUT over every workspace, so one
+      // undecryptable row must not abort the others. It is still reported as a
+      // decrypt failure rather than silently becoming an absent token — the
+      // sync loop's own health handling treats a null token as unusable and
+      // marks the connector unhealthy, which is the honest outcome, and the
+      // error line above names the row.
+      accessToken: tolerateDecrypt(r.access_token_enc, 'access_token'),
+      refreshToken: tolerateDecrypt(r.refresh_token_enc, 'refresh_token'),
       accountId: r.account_id ?? null,
       health: r.health ?? null,
     }));

@@ -52,7 +52,22 @@ export function getDb() {
         max:         10,
         idle_timeout: 20,
         connect_timeout: 10,
-        ssl: useSsl ? { rejectUnauthorized: false } : false,
+        // R11 (E4) — verify the server's certificate in production.
+        //
+        // This was `rejectUnauthorized: false` unconditionally: the connection
+        // was encrypted but the server was never authenticated, so anything
+        // able to answer for the host could present its own certificate and be
+        // trusted. This is the pool that carries marcom_credentials — the
+        // encrypted OAuth tokens for customers' ad accounts — over the public
+        // internet to Neon. Prisma's own connection already verifies; only this
+        // raw pool did not.
+        //
+        // Kept permissive outside production, where a local Postgres commonly
+        // has a self-signed certificate and failing closed would just make
+        // people set the flag back.
+        ssl: useSsl
+          ? { rejectUnauthorized: process.env.NODE_ENV === 'production' }
+          : false,
         onnotice: () => {},   // suppress NOTICE messages
       });
     } catch (error) {

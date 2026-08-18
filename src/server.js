@@ -28,7 +28,7 @@ import { firebaseAuthMiddleware, requireAuth } from './middleware/firebaseAuth.j
 import { requireWorkspace } from './middleware/requireWorkspace.js';
 import { validateWebhook, captureRawBody } from './middleware/validateWebhook.js';
 import { dedupeWebhookEvent } from './middleware/webhookDedup.js';
-import { apiLimiter, chatLimiter, authLimiter, syncLimiter, adminSeedLimiter } from './middleware/rateLimit.js';
+import { apiLimiter, chatLimiter, authLimiter, syncLimiter, adminSeedLimiter, executionLimiter, streamLimiter, healthLimiter } from './middleware/rateLimit.js';
 import { errorHandler }     from './middleware/errorHandler.js';
 import { masterRouter }     from './routes/master.js';
 import { exportRouter }     from './routes/export.js';
@@ -126,7 +126,9 @@ app.use(firebaseAuthMiddleware);
 // ── HEALTH CHECK — Render.com probe path ─────────────────────
 // Lightweight, no DB call. Required for render.yaml
 // `healthCheckPath: /api/health`.
-app.get('/api/health', (_req, res) => {
+// R11 (F11): both health routes were unauthenticated AND uncapped, and /health
+// performs a DB round trip. 60/min is generous for any real probe cadence.
+app.get('/api/health', healthLimiter, (_req, res) => {
   const firebaseAdmin = getFirebaseAdminReadiness();
   res.status(firebaseAdmin.ok ? 200 : 503).json({
     status: firebaseAdmin.ok ? 'ok' : 'degraded',
@@ -136,7 +138,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 // ── HEALTH CHECK (public, queries DB) ────────────────────────
-app.get('/health', async (req, res) => {
+app.get('/health', healthLimiter, async (req, res) => {
   let dbOk = false;
   try {
     const sql = getDb();
@@ -256,6 +258,10 @@ app.use('/api/execute',
   requireAuth,
   requireWorkspace,   // R11 (I60)
   apiLimiter,
+  // R11: a dedicated workspace-keyed cap. Queueing a real ad-platform mutation
+  // had no limiter of its own — it shared the blanket apiLimiter with every
+  // read in the product, and that limiter was keying on an IP.
+  executionLimiter,
   executionRouter
 );
 
@@ -273,7 +279,11 @@ app.use('/api/artifacts',
 //   GET  /api/events/stream — validates its own short-lived stream token (not Firebase JWT)
 // This split is required because EventSource (SSE) cannot set custom headers,
 // so the stream endpoint uses a different, URL-safe auth mechanism.
-app.use('/api/events', eventsRouter);
+// R11 (F11): streamLimiter is IP-keyed and mounted here rather than inside the
+// router, because GET /stream presents a short-lived token in place of an
+// identity. Each connection holds a socket and a heartbeat interval for as long
+// as it lives, and the endpoint had no cap at all.
+app.use('/api/events', streamLimiter, eventsRouter);
 
 // Analytics (PR #37) — approval decision intelligence & provider performance
 app.use('/api/analytics',
@@ -431,7 +441,7 @@ app.use(errorHandler);
 
 // ── ROUTE ORDER (final, do not reorder) ──────────────────────
 // 1.  CORS
-// 2.  Clerk middleware (populates req.auth)
+// 2.  firebaseAuthMiddleware (populates req.user / req.userId / req.workspaceId)
 // 3.  Static + GET '/'              [dev only — vanilla shell]
 // 4.  GET  /api/health              [Render probe]
 // 5.  GET  /health                  [legacy probe + DB ping]

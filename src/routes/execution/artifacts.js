@@ -21,7 +21,12 @@
 //     - Content fetched from storage adapter (local/S3)
 //
 // AUTHORIZATION:
-//   Workspace-scoped via firebaseAuth + contextGuard middleware
+//   Workspace-scoped via firebaseAuth + requireWorkspace (server.js mount).
+//   NOTE (R11 · E9): this line used to name contextGuard, which is mounted
+//   NOWHERE. The scoping was real — it comes from req.workspaceId and the
+//   per-query predicates below — but the middleware named here never ran.
+//   A false claim about which control protects a route is a security defect
+//   in its own right: it is what the next reader trusts instead of checking.
 //   All queries filtered by req.workspaceId
 //
 // RESPONSE FORMAT:

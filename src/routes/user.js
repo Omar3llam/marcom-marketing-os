@@ -10,6 +10,8 @@ import { logger } from '../utils/logger.js';
 import { prisma } from '../lib/prisma.js';
 import { requireCollabRole } from '../middleware/requireCollabRole.js';
 import { workspaceColumnsFromContext } from './campaigns/context.js';
+// R11 (F15): marcom_credentials has no FK to workspaces, so it does not cascade.
+import { deleteWorkspaceCredentials } from '../services/connectors/credentialStore.js';
 
 const getAuth = () => requireFirebaseAdminReady().auth();
 // NOTE: This project uses Prisma/PostgreSQL — do NOT add admin.firestore() here.
@@ -278,10 +280,25 @@ userRouter.delete('/account', async (req, res) => {
       const memberCount = await prisma.user.count({ where: { workspaceId } });
 
       if (memberCount === 1) {
+        // R11 (F15) — purge the credential vault BEFORE the cascade.
+        //
+        // `marcom_credentials` is a raw-SQL table with NO foreign key to
+        // workspaces, so Prisma's onDelete: Cascade does not reach it. This
+        // handler's own docblock claimed the account deletion removed OAuth
+        // tokens; it did not, and a deleted account left live encrypted Meta
+        // and Google tokens behind indefinitely. The ADMIN delete path already
+        // called this helper and documented exactly this reason — the
+        // self-serve path simply never did.
+        //
+        // Ordered before the workspace delete so a failure here refuses the
+        // whole deletion rather than orphaning the credentials it was meant to
+        // remove.
+        const credentialsDeleted = await deleteWorkspaceCredentials(workspaceId);
+
         await prisma.workspace.delete({
           where: { id: workspaceId },
         });
-        logger.info('[userRouter] Workspace deleted (sole member, with CASCADE):', { workspaceId });
+        logger.info('[userRouter] Workspace deleted (sole member, with CASCADE):', { workspaceId, credentialsDeleted });
       } else {
         // Multi-member workspace: never cascade it away on a member's account
         // deletion. Guard the roster first — the workspace must not be left

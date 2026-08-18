@@ -25,11 +25,11 @@
 //   Quality score: approval rate × confidence (0-100)
 //   Value score: quality score / cost per approval (higher is better)
 // ============================================================
-import { PrismaClient } from '@prisma/client';
+// R11 (F26): shared Prisma client — this module used to open its own pool.
+import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { calculateCostPerApproval, calculateExecutionCost } from './providerCosts.js';
 
-const prisma = new PrismaClient();
 
 // Cache performance data for 5 minutes
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes

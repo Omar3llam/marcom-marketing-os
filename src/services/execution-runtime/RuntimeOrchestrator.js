@@ -926,6 +926,5 @@ export async function reExecuteNodes(checkpointId, nodeIdsToReExecute, decisionC
   }
 }
 
-// Need PrismaClient for checkpoint loading in resume
-import { PrismaClient } from '@prisma/client';
-const prisma = new PrismaClient();
+// R11 (F26): shared Prisma client — this module used to open its own pool.
+import { prisma } from '../../lib/prisma.js';

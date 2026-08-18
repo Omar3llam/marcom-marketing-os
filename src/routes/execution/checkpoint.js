@@ -12,13 +12,18 @@
 //   before allowing user to resume
 //
 // AUTHORIZATION:
-//   Workspace-scoped via firebaseAuth + contextGuard middleware
+//   Workspace-scoped via firebaseAuth + requireWorkspace (server.js mount).
+//   NOTE (R11 · E9): this line used to name contextGuard, which is mounted
+//   NOWHERE. The scoping was real — it comes from req.workspaceId and the
+//   per-query predicates below — but the middleware named here never ran.
+//   A false claim about which control protects a route is a security defect
+//   in its own right: it is what the next reader trusts instead of checking.
 // ============================================================
-import { PrismaClient } from '@prisma/client';
+// R11 (F26): shared Prisma client — this module used to open its own pool.
+import { prisma } from '../../lib/prisma.js';
 import { getLatestCheckpoint, getPausedExecutions } from '../../services/execution-checkpoint/index.js';
 import { logger } from '../../utils/logger.js';
 
-const prisma = new PrismaClient();
 
 export function registerCheckpointRoute(router) {
   // GET /api/execute/:id/checkpoint - Get checkpoint for specific execution

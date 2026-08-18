@@ -15,8 +15,22 @@ import { logger } from '../utils/logger.js';
  * Returns 400 if context is missing required fields.
  * Populates req.context for use by AI functions.
  *
- * Usage in routes:
- *   router.use(contextGuard);   // e.g. src/routes/campaigns/context.js
+ * ⚠️ NOT MOUNTED ANYWHERE (verified R11 · E8).
+ *
+ * Three route files used to document themselves as "workspace-scoped via
+ * firebaseAuth + contextGuard". This middleware has zero mounts and zero
+ * importers outside its own test, so that sentence described a control that
+ * has never executed. Those comments were corrected rather than this file
+ * being wired up: contextGuard checks that ONBOARDING CONTEXT is complete —
+ * a product precondition, not a security boundary — and mounting it now would
+ * start 400ing routes that legitimately serve users mid-onboarding.
+ *
+ * It is kept, not deleted, because it is the right shape for the check it
+ * describes and its unit tests pass. If it is ever mounted, it belongs in front
+ * of AI-prompt routes that genuinely cannot run without a company profile.
+ *
+ * Usage in routes (currently none):
+ *   router.use(contextGuard);
  */
 export function contextGuard(req, res, next) {
   // Check if req.user exists

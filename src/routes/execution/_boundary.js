@@ -3,7 +3,13 @@
 // ============================================================
 // Single source of truth for WHO may perform which execution
 // operations. The HTTP-level enforcement is handled by
-// firebaseAuthMiddleware + contextGuard in execution/index.js.
+// firebaseAuthMiddleware + requireWorkspace + requireCollabRole at the
+// /api/execute mount (server.js).
+//
+// R11 (E9): this comment previously named contextGuard, which is mounted
+// nowhere in the codebase. Documentation is part of the security model — a
+// reader auditing this path would have gone looking for a control that has
+// never run.
 // This module makes the rules explicit and importable so they
 // can be referenced in guards, tests, and documentation.
 //
