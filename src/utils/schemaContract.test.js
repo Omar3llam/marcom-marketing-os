@@ -264,11 +264,15 @@ describe.skipIf(!DB_OK)('deployed contract — execution_requests foreign key', 
 });
 
 describe.skipIf(!DB_OK)('deployed contract — enums and canonical indexes', () => {
-  it('NC-R12C-6 — any canonical enum that exists carries exactly its labels', async () => {
-    // Guards against label drift wherever the types are present (production,
-    // and any database reconciled to it). Vacuous on a migration-built DB — see
-    // the divergence pinned below, which is why this is written conditionally
-    // rather than as a flat existence assertion.
+  it('NC-R12C-6 — all seven enums exist and carry exactly their labels', async () => {
+    // R12-1c had to write this conditionally, and pinned the reason as a KNOWN
+    // DIVERGENCE: no migration created any of the seven, so a migration-built
+    // database (CI, and every fresh developer database) had TEXT columns while
+    // production had real enums. That pinned control has now done its job and
+    // failed on purpose — 20260818040000_r12_1e_enum_reconciliation closes the
+    // gap, so the assertion is flat rather than conditional.
+    //
+    // Full verification of the reconciliation lives in enumReconciliation.test.js.
     const rows = await prisma.$queryRaw`
       SELECT t.typname::text AS type, e.enumlabel::text AS label
         FROM pg_type t
@@ -279,39 +283,8 @@ describe.skipIf(!DB_OK)('deployed contract — enums and canonical indexes', () 
 
     for (const [type, labels] of Object.entries(CANONICAL_ENUMS)) {
       const actual = rows.filter((r) => r.type === type).map((r) => r.label);
-      if (actual.length === 0) continue;
       expect(actual, `${type} labels drifted`).toEqual(labels);
     }
-  });
-
-  it('KNOWN DIVERGENCE — a migration-built database has none of the seven', async () => {
-    // NOT introduced by R12-1c, and deliberately NOT fixed by it.
-    //
-    // Production holds all seven as real enum types with the canonical labels.
-    // No migration creates any of them — production acquired them out-of-band
-    // (the `db push` documented in 20260818030000). So a database built from
-    // this repository's migration history, which is what CI and every fresh
-    // developer database are, has TEXT columns instead.
-    //
-    // The consequence is sharper than cosmetics: the generated Prisma client
-    // casts enum parameters ($1::"WebhookProvider"), so on a migration-built
-    // database every write to the seven enum-backed tables fails with 42704
-    // "type does not exist". CI and production are not running the same schema,
-    // and only production is the one the client fits.
-    //
-    // Repairing it means guarded CREATE TYPE + guarded TEXT->enum conversion,
-    // which R12-1c's own scope forbids (§2, §10: the seven are frozen and any
-    // SQL touching them is a hard stop). It therefore needs its own slice with
-    // its own production gate. Pinned here so the next reader finds it asserted
-    // rather than rediscovering it, and so this fails the moment someone starts
-    // creating them — which is exactly when a human should be looking.
-    const rows = await prisma.$queryRaw`
-      SELECT t.typname::text AS type
-        FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
-       WHERE n.nspname = 'public' AND t.typtype = 'e'`;
-
-    const present = Object.keys(CANONICAL_ENUMS).filter((t) => rows.some((r) => r.type === t));
-    expect(present, 'canonical enums appeared — see R12-1e before changing this').toEqual([]);
   });
 
   it('NC-R12C-5 — the R9 snapshot identity key is intact and unrenamed', async () => {
