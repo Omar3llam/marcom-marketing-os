@@ -473,6 +473,9 @@ model Workspace {
   loopRuns           LoopRun[]
   campaignReasonings CampaignReasoning[]
 
+  // R12-1c — back-reference required by the ExecutionRequest.workspace relation.
+  executionRequests ExecutionRequest[]
+
   @@map("workspaces")
 }
 
@@ -696,6 +699,23 @@ model ExecutionRequest {
   // of a mutation that really happened on the ad platform.
   decisionId String?   @db.Uuid
   decision   Decision? @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+
+  // ── R12-1c — the tenant key finally gets referential integrity ──
+  // `workspaceId` has been on this model since 20260518 and every sibling
+  // (Action, AuditLog, CampaignState, User) declares its Workspace relation —
+  // this one never did, so no FK backed it. Two migrations tried to add the
+  // constraint under IF NOT EXISTS guards and both recorded a clean apply, yet
+  // production had no such constraint: a `db push` reconciled the database to
+  // this model, and this model did not ask for one.
+  //
+  // It matters more since R11: @@unique([workspaceId, idempotencyKey]) makes
+  // workspaceId load-bearing for a tenant-isolation guarantee, and an
+  // unconstrained value there cannot be caught by the database.
+  //
+  // Cascade on delete matches every other workspace-owned table. Cascade on
+  // update is what the deployed FKs already carry (Prisma's implicit default),
+  // stated explicitly here so the contract is readable rather than inferred.
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   transitions       ExecutionTransition[]
   metrics           ExecutionMetric[]
@@ -1381,7 +1401,14 @@ model MetricSnapshot {
   //
   // Widening a unique key can only ever ADMIT rows that were previously
   // rejected — it cannot invalidate existing data, whatever the table holds.
-  @@unique([entityId, entityLevel, date, granularity, source, measurementWindow])
+  //
+  // R12-1c: deployed as metric_snapshots_identity_key (20260812000000), which
+  // is not the name Prisma generates — its own would be the 63-char truncation
+  // `metric_snapshots_entityId_entityLevel_date_granularity_sour_key`. The
+  // columns, order and uniqueness are identical, so the only difference is the
+  // label. `map:` adopts the deployed name; renaming instead would drop and
+  // recreate a unique constraint on a hot table to no benefit.
+  @@unique([entityId, entityLevel, date, granularity, source, measurementWindow], map: "metric_snapshots_identity_key")
   @@index([workspaceId, entityId, entityLevel, date])
   @@index([entityId, date])
   @@map("metric_snapshots")
@@ -1518,13 +1545,27 @@ model Decision {
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([entityId, entityLevel])
-  // Partial index (resolution IS NOT NULL) — see the migration. Prisma cannot
-  // express the WHERE clause, so it is declared here as a plain composite and
-  // created partially in SQL; `migrate diff` treats them as equivalent.
+  // Both indexes below are PARTIAL in SQL and plain here: Prisma cannot express
+  // a WHERE clause on @@index, so they are hand-written in the migrations. The
+  // predicate is the point of them — do not "reconcile" it away.
+  //
+  // R12-1c correction: an earlier note here claimed `migrate diff` treats the
+  // plain and partial forms as equivalent. It does not. The diff proposes
+  // creating a plain duplicate of each, which is how a redundant full-table
+  // index nearly got added alongside a smaller partial one that already serves
+  // the query. The deployed objects were confirmed against production.
+  //
+  // Deployed as decisions_verdict_resolution_idx — the name Prisma would
+  // generate anyway, so no map is needed:
+  //   ... (verdict, resolution) WHERE resolution IS NOT NULL
   @@index([verdict, resolution])
-  // Partial in SQL (resolution + intentAt both non-null) — see the migration.
-  // Prisma cannot express the WHERE, so it is declared plain here.
-  @@index([workspaceId, verdict, rootCause, channel])
+  // Deployed as decisions_similarity_idx (20260731000000), which is NOT the
+  // name Prisma generates. `map:` pins the declaration to the object that is
+  // actually deployed rather than asking production to be renamed to suit the
+  // generator:
+  //   ... (workspaceId, verdict, rootCause, channel)
+  //   WHERE resolution IS NOT NULL AND intentAt IS NOT NULL
+  @@index([workspaceId, verdict, rootCause, channel], map: "decisions_similarity_idx")
   @@map("decisions")
 }
 

@@ -105,9 +105,14 @@ describe('R9 · frozen keys were not touched while the schema was open', () => {
   // change the identity of every canonical observation and the DAILY race with
   // it. Deferred means deferred, and this pins it.
   it('MetricSnapshot keeps its six-column natural key, without workspaceId', () => {
+    // R12-1c appended `map: "metric_snapshots_identity_key"` so the declaration
+    // names the index production actually carries. The match therefore stops at
+    // the column list rather than the closing paren — the columns, their order,
+    // and the absence of workspaceId are what this control is about, and all
+    // three are still asserted exactly.
     const block = modelBlock('MetricSnapshot');
-    expect(block).toContain('@@unique([entityId, entityLevel, date, granularity, source, measurementWindow])');
-    expect(block).not.toContain('@@unique([workspaceId, entityId, entityLevel, date, granularity, source, measurementWindow])');
+    expect(block).toContain('@@unique([entityId, entityLevel, date, granularity, source, measurementWindow]');
+    expect(block).not.toContain('@@unique([workspaceId, entityId, entityLevel, date, granularity, source, measurementWindow]');
   });
 
   it('CampaignState keeps its legacy composite key (never unified with the entity graph)', () => {
