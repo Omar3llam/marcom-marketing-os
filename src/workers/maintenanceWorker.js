@@ -1,8 +1,16 @@
 // ============================================================
 // MARCOM / Lumi — Maintenance Worker
 // ------------------------------------------------------------
-// Housekeeping that keeps unbounded tables bounded. Today that is one job:
-// the ai_usage_logs retention sweep.
+// Scheduled work that must happen whether or not anyone is looking. Two jobs:
+//
+//   ai-usage-cleanup     — keeps the highest-volume table bounded.
+//   learning-extraction  — R10: derives this account's patterns from its own
+//                          executed decisions and their measured outcomes.
+//
+// They share a queue because they share the property that defines it: always
+// on, and spending nothing. Extraction is deterministic (patternEngine holds no
+// LLM, no randomness, no network), which is why it belongs beside a retention
+// sweep rather than behind the agentic cron's AI-spend flag.
 //
 // ALWAYS ON, unlike the agentic and narrative crons. Those are opt-in because
 // they SPEND — every tick fans out to the AI gateway. This one only deletes,
@@ -21,8 +29,12 @@
 // ============================================================
 import { Worker } from 'bullmq';
 import { bullConnection, QUEUE_PREFIX } from '../queues/connection.js';
-import { MAINTENANCE_QUEUE_NAME, AI_USAGE_CLEANUP_JOB, scheduleAiUsageCleanup } from '../queues/index.js';
+import {
+  MAINTENANCE_QUEUE_NAME, AI_USAGE_CLEANUP_JOB, scheduleAiUsageCleanup,
+  LEARNING_EXTRACTION_JOB, scheduleLearningExtraction,
+} from '../queues/index.js';
 import { cleanAiUsageLogs } from '../lib/aiUsage.js';
+import { runLearningSweep } from '../services/pattern-engine/learningSweep.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -39,6 +51,17 @@ export async function runMaintenanceJob(job) {
   if (name === AI_USAGE_CLEANUP_JOB) {
     const deleted = await cleanAiUsageLogs();
     return { job: name, deleted };
+  }
+
+  // R10 (Phase C) — pattern extraction. Deliberately NOT swallowed: like the
+  // retention sweep beside it, a learning job that quietly did nothing is
+  // indistinguishable from one that worked, and the whole point of moving
+  // extraction here was that nobody was watching it happen. Per-workspace
+  // failures are already isolated inside the sweep; a throw here means the
+  // sweep itself could not run.
+  if (name === LEARNING_EXTRACTION_JOB) {
+    const result = await runLearningSweep();
+    return { job: name, ...result };
   }
 
   logger.warn({ jobName: name }, '[maintenance] unknown job name — nothing run');
@@ -67,6 +90,16 @@ export function startMaintenanceWorker() {
     .then(() => logger.info('[maintenance] ai-usage retention sweep scheduled'))
     .catch((err) =>
       logger.warn({ err: err.message }, '[maintenance] schedule deferred — Redis unreachable?'),
+    );
+
+  // R10 (Phase C). Same shape as its neighbour and for the same reasons: no
+  // enable flag (extraction spends nothing, and a flag would recreate the
+  // starvation), and self-replacing registration so a changed cron does not
+  // leave two schedules running.
+  scheduleLearningExtraction()
+    .then(() => logger.info('[maintenance] learning-extraction sweep scheduled'))
+    .catch((err) =>
+      logger.warn({ err: err.message }, '[maintenance] learning schedule deferred — Redis unreachable?'),
     );
 
   logger.info('[maintenance] worker started');

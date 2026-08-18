@@ -666,6 +666,24 @@ model ExecutionRequest {
   activeStep    String? // Current orchestration step
   retryMetadata Json? // { attempt, maxAttempts, nextRetryAt }
 
+  // ── R10 (I55) — execution attribution ─────────────────────
+  // WHICH DECISION THIS EXECUTION CARRIES OUT. Before this column a real Meta
+  // mutation had no link back to the call that prompted it, so the Proof Engine
+  // could only ever see decisions a human had separately clicked "I did this"
+  // on — every actual platform action was invisible to it.
+  //
+  // Nullable, and permanently so. Not every execution comes from a Decision: an
+  // operator can act on a campaign no sweep has written a verdict for, and a
+  // rollback inverts an action rather than carrying out a call. A required
+  // column would force those paths to invent an attribution, which is the
+  // failure this exists to prevent — an unattributed execution must be able to
+  // say so.
+  //
+  // SetNull, not Cascade: deleting a Decision must not delete the audit record
+  // of a mutation that really happened on the ad platform.
+  decisionId String?   @db.Uuid
+  decision   Decision? @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+
   transitions       ExecutionTransition[]
   metrics           ExecutionMetric[]
   decisionMemory    DecisionMemory[]
@@ -677,6 +695,9 @@ model ExecutionRequest {
   @@index([createdAt])
   @@index([status])
   @@index([correlationId])
+  // R10 — "which executions carried out this decision", the read the worker's
+  // first-success stamp and any later audit both need.
+  @@index([decisionId])
   @@map("execution_requests")
 }
 
@@ -1472,6 +1493,12 @@ model Decision {
   outcomes  OutcomeSnapshot[]
   memories  DecisionMemoryEntry[]
   tests     TestExperiment[]
+  // R10 (I55) — the platform executions this call produced. A Decision can own
+  // several: a retry mints a fresh ExecutionRequest, and one verdict can be
+  // acted on at more than one target. `executedAt` is still stamped by the
+  // FIRST success only (see executionWorker) — it records when the operator
+  // first acted, not how many times.
+  executions ExecutionRequest[]
 
   @@index([workspaceId, createdAt(sort: Desc)])
   @@index([entityId, entityLevel])
@@ -1748,7 +1775,13 @@ model AccountPattern {
   support          Int           @default(1) // raw occurrence count
   effectiveSupport Float         @default(0) // recency-weighted support
   accuracy         Float? // recency-weighted "was Lumi right?" (null until known outcomes)
-  confidence       Float
+  // R10 (I54) — NULLABLE. Confidence here is derived from `accuracy`, so a
+  // pattern with no measured outcome has no confidence to state. It used to be
+  // computed from an invented 0.5 prior and rendered as a percentage, which made
+  // "never checked" indistinguishable from "checked and it was a coin flip".
+  // null is the honest value and every reader already handles it (the promotion
+  // gate, scenario and network all require `accuracy != null` first).
+  confidence       Float?
   status           PatternStatus
 
   // Promotable guardrail spec (null for informational kinds).

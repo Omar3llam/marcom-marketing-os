@@ -16,7 +16,7 @@ vi.mock('../../utils/logger.js', () => ({
 }));
 
 import { prisma } from '../../lib/prisma.js';
-import { getSimilarOutcomes, MIN_SAMPLE } from './decisionLearning.js';
+import { getSimilarOutcomes, MIN_SAMPLE, LEARNING_STATUS } from './decisionLearning.js';
 
 const WS = 'ws-1';
 const rows = (...resolutions) => resolutions.map((resolution) => ({ resolution }));
@@ -145,8 +145,26 @@ describe('no track record', () => {
     expect(await getSimilarOutcomes()).toBeNull();
   });
 
-  it('a failed read degrades to null rather than throwing at the caller', async () => {
+  // R10 (F15) — the return value CHANGED, and deliberately.
+  //
+  // It used to be `null`: the same value a workspace with no comparable history
+  // gets. Both render nothing, so from the outside a broken query was
+  // indistinguishable from a legitimate empty state, and could never be noticed.
+  // The service now says which one it is; what the renderer does with that is
+  // still the renderer's call, and it still shows nothing either way.
+  //
+  // The part that has NOT changed is the one this test was really protecting:
+  // it does not throw. Losing a track-record line must never cost the caller the
+  // verdict it decorates.
+  it('a failed read reports UNAVAILABLE — distinct from an empty track record', async () => {
     prisma.decision.findMany.mockRejectedValue(new Error('db down'));
+    const out = await ask();
+    expect(out).toEqual({ status: LEARNING_STATUS.UNAVAILABLE });
+    expect(out).not.toBeNull(); // the collapse this fix undid
+  });
+
+  it('an empty history is still null — no data is not an error', async () => {
+    prisma.decision.findMany.mockResolvedValue([]);
     expect(await ask()).toBeNull();
   });
 });

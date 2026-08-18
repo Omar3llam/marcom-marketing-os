@@ -506,7 +506,10 @@ describe('getConnectorVerdicts — the published numbers', () => {
     const res = await getConnectorVerdicts('ws-1');
     expect(res.memoryByEntityId.c1.count).toBe(3);
     expect(res.memoryByEntityId.c1.items[0].verdict).toBe('KILL');
-    // And the verdict object itself is untouched by any of it.
+    // And the verdict object itself is untouched by any of it. `memory` here
+    // means PAST DECISIONS about this campaign — R10's `institutionalMemory`
+    // field is a different thing entirely (the account's validated patterns),
+    // which is exactly why it is not named `memory`.
     expect(res.verdicts[0]).not.toHaveProperty('memory');
     expect(res.verdicts[0]).not.toHaveProperty('history');
   });

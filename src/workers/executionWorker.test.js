@@ -44,6 +44,13 @@ vi.mock('../services/execution/workerHealth.js', () => ({
   startHeartbeat: () => ({ workerId: 'test-pid', stop: vi.fn() }),
 }));
 
+// R10 — the attribution seam is mocked so these tests assert WHEN the worker
+// calls it, which is the whole lifecycle rule. Its own behaviour (first-success,
+// no-overturn, idempotent) is proven in decisionAttribution.test.js.
+vi.mock('../services/execution/decisionAttribution.js', () => ({
+  stampDecisionExecuted: vi.fn().mockResolvedValue({ stamped: true, reason: 'STAMPED' }),
+}));
+
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
     executionRequest: { findUnique: vi.fn() },
@@ -58,6 +65,7 @@ vi.mock('../utils/logger.js', () => ({
 import { executeMetaAction }  from '../services/metaExecutionService.js';
 import { lifecycleService }   from '../services/execution/ExecutionLifecycleService.js';
 import { prisma }             from '../lib/prisma.js';
+import { stampDecisionExecuted } from '../services/execution/decisionAttribution.js';
 
 // ── Test helpers ─────────────────────────────────────────────
 const EXECUTION_ID  = 'exec-worker-test-1';
@@ -142,7 +150,10 @@ describe('executionWorker — processExecution', () => {
 
     const result = await processExecution(makeJob());
 
-    expect(result).toEqual({ ok: true });
+    // R10 added `decisionStamped` to the success envelope; matched rather than
+    // compared whole so the envelope can grow without re-writing the assertion
+    // that this test is actually about (the two transitions, below).
+    expect(result).toMatchObject({ ok: true });
     expect(lifecycleService.transition).toHaveBeenCalledTimes(2);
 
     const [first, second] = lifecycleService.transition.mock.calls;
@@ -225,9 +236,131 @@ describe('executionWorker — processExecution', () => {
 
     const result = await processExecution(makeJob({ attemptsMade: 1 }));
 
-    expect(result).toEqual({ ok: true });
+    // R10 added `decisionStamped` to the success return, so the shape is
+    // matched rather than compared whole — the assertion that matters here is
+    // the transition count, not the envelope.
+    expect(result).toMatchObject({ ok: true });
     // Only one transition (EXECUTING → EXECUTED_SUCCESS), not two.
     expect(lifecycleService.transition).toHaveBeenCalledTimes(1);
     expect(lifecycleService.transition.mock.calls[0][0].newStatus).toBe('EXECUTED_SUCCESS');
+  });
+});
+
+// ============================================================
+// R10 · Phase A — the worker is the ONLY thing that turns a real platform
+// mutation into Decision.executedAt. These controls pin WHEN it does that.
+// ============================================================
+describe('R10 · execution attribution (I55)', () => {
+  const ATTRIBUTED = { ...BASE_EXECUTION, decisionId: 'dec-1' };
+
+  // NC30 — a successful Meta mutation stamps the originating decision. Delete
+  // the stampDecisionExecuted call from the success branch and this fails; the
+  // Proof Engine then never sees a single Lumi-executed decision again, exactly
+  // as before R10, and no other test in the repo notices.
+  it('NC30 · stamps the decision after a SUCCESSFUL platform mutation', async () => {
+    prisma.executionRequest.findUnique.mockResolvedValue(ATTRIBUTED);
+    lifecycleService.transition.mockResolvedValue({ ...ATTRIBUTED, version: 3 });
+    executeMetaAction.mockResolvedValue({ success: true, data: { id: 'camp-1' } });
+
+    const result = await processExecution(makeJob());
+
+    expect(stampDecisionExecuted).toHaveBeenCalledWith({
+      workspaceId: WORKSPACE_ID,
+      decisionId:  'dec-1',
+    });
+    expect(result).toMatchObject({ ok: true, decisionStamped: true });
+  });
+
+  // NC29 — the control that protects the population's meaning. Move the stamp
+  // above the `if (result.success)` branch, or into the QUEUED→EXECUTING
+  // transition, and this fails: a decision whose Meta call was REJECTED would
+  // enter the accuracy population as an executed intervention, and its
+  // "outcome" would be the effect of an action nobody took.
+  it('NC29 · does NOT stamp when the platform mutation FAILS (non-retriable)', async () => {
+    prisma.executionRequest.findUnique.mockResolvedValue(ATTRIBUTED);
+    lifecycleService.transition.mockResolvedValue({ ...ATTRIBUTED, version: 3 });
+    executeMetaAction.mockResolvedValue({
+      success: false, error: 'Invalid parameter', code: 100, platformStatus: 400,
+    });
+
+    await processExecution(makeJob());
+
+    expect(stampDecisionExecuted).not.toHaveBeenCalled();
+  });
+
+  it('NC29b · does NOT stamp on a retriable failure that will be retried', async () => {
+    prisma.executionRequest.findUnique.mockResolvedValue(ATTRIBUTED);
+    lifecycleService.transition.mockResolvedValue({ ...ATTRIBUTED, version: 3 });
+    executeMetaAction.mockResolvedValue({
+      success: false, error: 'rate limited', code: 17, platformStatus: 429,
+    });
+
+    await expect(processExecution(makeJob({ attemptsMade: 0, maxAttempts: 3 }))).rejects.toThrow();
+    expect(stampDecisionExecuted).not.toHaveBeenCalled();
+  });
+
+  it('NC29c · does NOT stamp on the final failed attempt', async () => {
+    prisma.executionRequest.findUnique.mockResolvedValue(ATTRIBUTED);
+    lifecycleService.transition.mockResolvedValue({ ...ATTRIBUTED, version: 3 });
+    executeMetaAction.mockResolvedValue({
+      success: false, error: 'server error', code: 2, platformStatus: 500,
+    });
+
+    await processExecution(makeJob({ attemptsMade: 2, maxAttempts: 3 }));
+
+    expect(stampDecisionExecuted).not.toHaveBeenCalled();
+  });
+
+  // Queued is not executed. A terminal-state skip performs no mutation, so it
+  // must not claim one — this is the path a duplicated BullMQ job takes.
+  it('does not stamp when the execution was already terminal (no mutation ran)', async () => {
+    prisma.executionRequest.findUnique.mockResolvedValue({
+      ...ATTRIBUTED, status: 'EXECUTED_SUCCESS',
+    });
+
+    await processExecution(makeJob());
+
+    expect(executeMetaAction).not.toHaveBeenCalled();
+    expect(stampDecisionExecuted).not.toHaveBeenCalled();
+  });
+
+  // An unattributed execution is a normal state, not an error: the worker still
+  // calls the seam, which is what centralises the NOT_ATTRIBUTED accounting
+  // rather than scattering `if (decisionId)` across call sites.
+  it('passes a null decisionId through for an unattributed execution', async () => {
+    prisma.executionRequest.findUnique.mockResolvedValue({ ...BASE_EXECUTION, decisionId: null });
+    lifecycleService.transition.mockResolvedValue({ ...BASE_EXECUTION, version: 3 });
+    executeMetaAction.mockResolvedValue({ success: true, data: {} });
+    stampDecisionExecuted.mockResolvedValueOnce({ stamped: false, reason: 'NOT_ATTRIBUTED' });
+
+    const result = await processExecution(makeJob());
+
+    expect(stampDecisionExecuted).toHaveBeenCalledWith({ workspaceId: WORKSPACE_ID, decisionId: null });
+    expect(result).toMatchObject({ ok: true, decisionStamped: false });
+  });
+
+  // The worker must SELECT decisionId. An unselected column is `undefined`, the
+  // stamp silently becomes a no-op, and every execution goes unattributed with
+  // nothing to show for it — the #209 class, applied to attribution.
+  it('selects decisionId when reading the execution row', async () => {
+    prisma.executionRequest.findUnique.mockResolvedValue(ATTRIBUTED);
+    lifecycleService.transition.mockResolvedValue({ ...ATTRIBUTED, version: 3 });
+    executeMetaAction.mockResolvedValue({ success: true, data: {} });
+
+    await processExecution(makeJob());
+
+    expect(prisma.executionRequest.findUnique.mock.calls[0][0].select)
+      .toHaveProperty('decisionId', true);
+  });
+
+  // A stamp failure must not fail the job: the ad platform has already changed,
+  // and a throw here would make BullMQ re-run a real budget mutation.
+  it('a stamping failure never fails the job', async () => {
+    prisma.executionRequest.findUnique.mockResolvedValue(ATTRIBUTED);
+    lifecycleService.transition.mockResolvedValue({ ...ATTRIBUTED, version: 3 });
+    executeMetaAction.mockResolvedValue({ success: true, data: {} });
+    stampDecisionExecuted.mockResolvedValueOnce({ stamped: false, reason: 'ERROR' });
+
+    await expect(processExecution(makeJob())).resolves.toMatchObject({ ok: true });
   });
 });

@@ -21,9 +21,43 @@
 //     CONFLICTED and surfaced — never silently picked, never promoted.
 // ============================================================
 import { PATTERN_KIND, PATTERN_STATUS } from './patternTypes.js';
+import { successToCorrect }             from '../decision-accuracy/decisionSuccess.js';
 import { logger }                       from '../../utils/logger.js';
 
 const DAY_MS = 86_400_000;
+
+/**
+ * What the audit trail records as the OBSERVED result, beside what was
+ * predicted. Derived from the canonical evaluation, never from a raw column.
+ *
+ * `null` when the call has no established result: PatternObservation.actual is a
+ * statement about what happened, and "we have not measured it" is not a value it
+ * may carry. Writing 'regressed' there would be a fabricated observation.
+ */
+const describeOutcome = (correct) => (correct == null ? null : (correct ? 'held' : 'did not hold'));
+
+// ── R10 (F10) — the audience dimension has no canonical source ──────────────
+// These two lines used to read `d.audienceTag ?? null` off a Decision. `Decision`
+// has no such column and never has, so the expression was always `null` and the
+// dimension it appears to segment by does not exist. The same hole runs through
+// the whole system: GuardrailSweepService hard-codes `audienceTag: null` on
+// every entity it builds, so guardrailEngine's audience filter never narrows
+// anything either. Nothing anywhere derives an audience tag from a campaign.
+//
+// So it is obsolete logic, not an unimplemented feature, and R10 does not add a
+// column for it: a column with no populator would move the fiction one layer
+// down. The dead read is gone and the value is stated for what it is.
+//
+// The KEY SHAPE is deliberately unchanged — `FATIGUE|ADSET|null|KILL`, exactly
+// as before. patternKey is the durable identity of an AccountPattern row
+// (@@unique([workspaceId, patternKey]), and promotedRuleId hangs off it), so
+// re-spelling the key would orphan every pattern this workspace has learned and
+// silently re-mint them as new, unpromoted rows.
+//
+// The day a real audience tag exists, it lands on Decision, flows in here, and
+// the key gains a value where `null` sits today — with a deliberate migration
+// for the re-keying, not as a side effect.
+const UNPOPULATED_AUDIENCE = null;
 
 // Frozen, env-overridable thresholds.
 const DEFAULTS = Object.freeze({
@@ -94,16 +128,35 @@ function score(observations, cfg) {
     ? round2(known.reduce((s, o) => s + o.weight * (o.correct ? 1 : 0), 0) / knownWeight)
     : null;
 
-  const supportFactor  = clamp01(effectiveSupport / cfg.minEstablished);
-  const accuracyFactor = accuracy ?? 0.5;
-  const confidence = round2(accuracyFactor * (0.5 + 0.5 * supportFactor));
+  const supportFactor = clamp01(effectiveSupport / cfg.minEstablished);
 
-  let status;
-  if (effectiveSupport >= cfg.minEstablished && (accuracy == null || accuracy >= cfg.minAccuracy)) {
-    status = PATTERN_STATUS.ESTABLISHED;
-  } else {
-    status = PATTERN_STATUS.EMERGING;
-  }
+  // ── R10 (I54): no measured outcome → no number ────────────────────
+  // This was `const accuracyFactor = accuracy ?? 0.5`, and the 0.5 was invented.
+  // A pattern nobody had ever checked was assigned a coin-flip accuracy, that
+  // fabricated prior was multiplied by a support factor, and the product was
+  // rendered as a confidence percentage on the briefing surface — a number
+  // presented as measurement that no row in the database supported.
+  //
+  // null, not 0. Zero is a measurement meaning "never right"; this is "not
+  // established", and the two must not render the same. Every consumer already
+  // handles a null accuracy (pct() prints "—", promotion and scenario and
+  // network all gate on `accuracy != null`), so null travels safely — a
+  // fabricated 0 would not.
+  const confidence = accuracy == null ? null : round2(accuracy * (0.5 + 0.5 * supportFactor));
+
+  // ── R10 (I48/I54): support alone cannot establish a pattern ───────
+  // The old condition read `(accuracy == null || accuracy >= cfg.minAccuracy)`,
+  // so three executed decisions with no recorded outcome produced an ESTABLISHED
+  // pattern — a claim of proven institutional knowledge derived from zero
+  // measurements. Volume is not truth; that is the premise the whole engine was
+  // built on, and this line contradicted it.
+  //
+  // EMERGING is the honest state for a pattern seen often and never checked, and
+  // it already exists — no new status was invented for this.
+  const status = (effectiveSupport >= cfg.minEstablished && accuracy != null && accuracy >= cfg.minAccuracy)
+    ? PATTERN_STATUS.ESTABLISHED
+    : PATTERN_STATUS.EMERGING;
+
   return { effectiveSupport: round2(effectiveSupport), accuracy, confidence, status };
 }
 
@@ -130,18 +183,19 @@ function fatiguePatterns(decisions, outcomeById, snapsByEntity, now, cfg) {
     const snap = snapshotNear(snapsByEntity, d.entityId, d.createdAt);
     const freq = snap?.frequency;
     if (freq == null || freq <= 0) continue;
-    const audienceTag = d.audienceTag ?? null;
+    const audienceTag = UNPOPULATED_AUDIENCE;
     const scopeLevel  = d.entityLevel ?? 'ADSET';
     const key = `FATIGUE|${scopeLevel}|${audienceTag}|${d.verdict}`;
     if (!groups.has(key)) groups.set(key, { scopeLevel, audienceTag, verdict: d.verdict, obs: [] });
-    const sustained = outcomeById.get(d.id)?.sustained;
+    // R10 (I53) — the canonical, verdict-relative answer, computed at the seam.
+    const correct = successToCorrect(outcomeById.get(d.id)?.success);
     groups.get(key).obs.push({
       value:    freq,
       weight:   recencyWeight(now, d.createdAt),
-      correct:  sustained == null ? null : sustained === true, // KILL/REFRESH "right" if the lift held
+      correct,
       at:       new Date(d.createdAt),
       decisionId: d.id, entityId: d.entityId, predicted: d.verdict,
-      actual:   sustained == null ? null : (sustained ? 'sustained' : 'regressed'),
+      actual:   describeOutcome(correct),
       occurrenceKey: d.id,
     });
   }
@@ -178,18 +232,19 @@ function scalingPatterns(decisions, outcomeById, snapsByEntity, now, cfg) {
     const snap = snapshotNear(snapsByEntity, d.entityId, d.createdAt);
     const roas = snap?.roas;
     if (roas == null || roas <= 0) continue;
-    const audienceTag = d.audienceTag ?? null;
+    const audienceTag = UNPOPULATED_AUDIENCE;
     const scopeLevel  = d.entityLevel ?? 'CAMPAIGN';
     const key = `SCALING|${scopeLevel}|${audienceTag}`;
     if (!groups.has(key)) groups.set(key, { scopeLevel, audienceTag, obs: [] });
-    const sustained = outcomeById.get(d.id)?.sustained;
+    // R10 (I53) — same canonical evaluation as every other pattern kind.
+    const correct = successToCorrect(outcomeById.get(d.id)?.success);
     groups.get(key).obs.push({
       value:   roas,
       weight:  recencyWeight(now, d.createdAt),
-      correct: sustained == null ? null : sustained === true, // scale "right" if it held
+      correct,
       at:      new Date(d.createdAt),
       decisionId: d.id, entityId: d.entityId, predicted: 'SCALE',
-      actual:  sustained == null ? null : (sustained ? 'sustained' : 'regressed'),
+      actual:  describeOutcome(correct),
       occurrenceKey: d.id,
     });
   }
@@ -319,8 +374,18 @@ function resolveConflicts(patterns, cfg) {
     for (let i = 1; i < grp.length; i++) {
       const other = grp[i];
       const oppositeVerdict = other.emitVerdict !== canonical.emitVerdict;
-      const accGap = Math.abs((canonical.accuracy ?? 0.5) - (other.accuracy ?? 0.5));
-      if (oppositeVerdict && accGap <= cfg.conflictEps) {
+      // R10 (I54) — the last invented 0.5 in this file. It used to substitute a
+      // coin flip for each missing accuracy and then compare the two, which
+      // happened to land on CONFLICTED (the safe outcome) only because two
+      // invented halves cancel. That was luck, not reasoning.
+      //
+      // Stated properly: when either side is unmeasured, the gap between them is
+      // NOT ESTABLISHED, so neither can be declared the winner and both are
+      // flagged. Same safe result, reached by an argument that holds.
+      const gapEstablished = canonical.accuracy != null && other.accuracy != null;
+      const tooCloseToCall = !gapEstablished
+        || Math.abs(canonical.accuracy - other.accuracy) <= cfg.conflictEps;
+      if (oppositeVerdict && tooCloseToCall) {
         // Genuine tie on opposite actions → both flagged, neither acts.
         canonical.status = PATTERN_STATUS.CONFLICTED;
         other.status = PATTERN_STATUS.CONFLICTED;
@@ -334,12 +399,27 @@ function resolveConflicts(patterns, cfg) {
 
 const STATUS_RANK = { ESTABLISHED: 0, EMERGING: 1, CONFLICTED: 2, SUPERSEDED: 3 };
 
+/** Sort key only — never displayed. An unmeasured pattern ranks below every
+ *  measured one instead of comparing as NaN. */
+const sortableConfidence = (p) => (p.confidence == null ? -1 : p.confidence);
+
 /**
  * Extract per-account patterns from a workspace's own history.
  *
  * @param {object} args
- * @param {Array}  args.decisions — [{ id, entityId, entityLevel, verdict, audienceTag?, createdAt }]
- * @param {Array}  args.outcomes  — [{ decisionId, sustained }]
+ * @param {Array}  args.decisions — [{ id, entityId, entityLevel, verdict, createdAt }]
+ *   R10 (I52): EXECUTED decisions only. The caller owns that filter — see
+ *   PatternService — because "executed" is a DB predicate, not an engine one.
+ * @param {Array}  args.outcomes  — [{ decisionId, success }] where `success` is
+ *   a DECISION_SUCCESS state produced by evaluateDecisionSuccess.
+ *
+ *   R10 (I53): this used to be `{ decisionId, sustained }` and the engine
+ *   decided for itself that `sustained === true` meant the call was right. It no
+ *   longer decides: the canonical, verdict-relative predicates own that, and the
+ *   engine receives their verdict. A KILL that correctly cut a losing campaign's
+ *   spend is now counted right even though revenue fell with it — which
+ *   `sustained` alone marked wrong, systematically, on the verdict Lumi is most
+ *   decisive about.
  * @param {Array}  args.snapshots — [{ entityId, date, frequency, roas, ctr, spendMinor }]
  * @param {Array}  args.tests     — TestExperiment rows
  * @param {Date}   [args.now]
@@ -369,7 +449,11 @@ export function extractPatterns({ decisions = [], outcomes = [], snapshots = [],
 
   patterns.sort((a, b) =>
     (STATUS_RANK[a.status] - STATUS_RANK[b.status]) ||
-    (b.confidence - a.confidence) ||
+    // Null confidence sorts LAST within a status band rather than poisoning the
+    // comparator: `b.confidence - a.confidence` yields NaN against a null, and a
+    // NaN comparator silently leaves the array in input order — which would make
+    // this "deterministic" sort depend on DB row order.
+    (sortableConfidence(b) - sortableConfidence(a)) ||
     a.key.localeCompare(b.key));
 
   logger.debug({ count: patterns.length }, '[PatternEngine] extracted');

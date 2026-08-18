@@ -132,7 +132,13 @@ feedRouter.get('/feed', async (req, res) => {
     try {
       const learned = await prisma.accountPattern.findMany({
         where:   { workspaceId: wsId, status: { in: ['ESTABLISHED', 'EMERGING', 'CONFLICTED'] } },
-        orderBy: [{ status: 'asc' }, { confidence: 'desc' }],
+        // R10 — `nulls: 'last'`, and it is load-bearing. Confidence is now null
+        // for a pattern with no measured outcome (I54), and PostgreSQL sorts
+        // NULLS FIRST on DESC by default — so the plain `desc` this used to
+        // carry would have promoted every UNMEASURED pattern to the top of the
+        // briefing, ranking the account's least-proven learnings above its
+        // best-proven ones.
+        orderBy: [{ status: 'asc' }, { confidence: { sort: 'desc', nulls: 'last' } }],
         take:    50,
       });
       accountBriefing = {

@@ -9,6 +9,7 @@ vi.mock('../../utils/logger.js', () => ({
 
 import { extractPatterns }            from './patternEngine.js';
 import { PATTERN_KIND, PATTERN_STATUS } from './patternTypes.js';
+import { DECISION_SUCCESS }            from '../decision-accuracy/decisionSuccess.js';
 
 const NOW = new Date('2026-06-09T00:00:00Z');
 const daysAgo = (n) => new Date(NOW.getTime() - n * 86_400_000);
@@ -32,11 +33,20 @@ function scaleAt(roas, { at = daysAgo(10), level = 'CAMPAIGN', audienceTag = nul
     id,
   };
 }
-function build(events, sustainedFlags = {}) {
+// R10 (I53) — the engine's outcome input is now the CANONICAL success verdict,
+// not a raw `sustained` column. The fixture keeps its old boolean vocabulary
+// (true = the call was right) and translates at this seam, which is exactly
+// where PatternService translates too: the tests below still describe the same
+// evidence, they simply no longer assert that the engine decides what "right"
+// means. It doesn't any more — SUCCESS_PREDICATES does.
+function build(events, correctFlags = {}) {
   return {
     decisions: events.map((e) => e.decision),
     snapshots: events.map((e) => e.snapshot),
-    outcomes:  events.map((e) => ({ decisionId: e.id, sustained: sustainedFlags[e.id] ?? true })),
+    outcomes:  events.map((e) => ({
+      decisionId: e.id,
+      success: (correctFlags[e.id] ?? true) ? DECISION_SUCCESS.SUCCESS : DECISION_SUCCESS.FAILURE,
+    })),
   };
 }
 
@@ -94,12 +104,17 @@ describe('extractPatterns — recency decay', () => {
 });
 
 describe('extractPatterns — conflict resolution', () => {
-  it('flags two opposite, equally-accurate patterns on the same audience as CONFLICTED (neither promotable)', () => {
-    const kills    = [killAt(3.5, { audienceTag: 'cold', verdict: 'KILL' }), killAt(3.6, { audienceTag: 'cold', verdict: 'KILL' }), killAt(3.5, { audienceTag: 'cold', verdict: 'KILL' })];
-    const refreshes = [killAt(3.5, { audienceTag: 'cold', verdict: 'REFRESH' }), killAt(3.6, { audienceTag: 'cold', verdict: 'REFRESH' }), killAt(3.5, { audienceTag: 'cold', verdict: 'REFRESH' })];
-    const events = [...kills, ...refreshes];
-    const patterns = extractPatterns({ ...build(events), now: NOW });
-    const fatigues = patterns.filter((p) => p.kind === PATTERN_KIND.FATIGUE_CEILING && p.audienceTag === 'cold');
+  // R10 (F10): these scenarios used to separate the groups with an
+  // `audienceTag` on the Decision. That field does not exist on the Decision
+  // model and never has — the fixture was the only place in the entire system
+  // where it was ever non-null, so the tests were exercising a dimension
+  // production could not produce. They now group the way production does: two
+  // opposite verdicts at the same scope, on the same metric.
+  it('flags two opposite, equally-accurate patterns at the same scope as CONFLICTED (neither promotable)', () => {
+    const kills     = [killAt(3.5), killAt(3.6), killAt(3.5)];
+    const refreshes = [killAt(3.5, { verdict: 'REFRESH' }), killAt(3.6, { verdict: 'REFRESH' }), killAt(3.5, { verdict: 'REFRESH' })];
+    const patterns = extractPatterns({ ...build([...kills, ...refreshes]), now: NOW });
+    const fatigues = patterns.filter((p) => p.kind === PATTERN_KIND.FATIGUE_CEILING);
     expect(fatigues).toHaveLength(2);
     for (const p of fatigues) {
       expect(p.status).toBe(PATTERN_STATUS.CONFLICTED);
@@ -108,20 +123,45 @@ describe('extractPatterns — conflict resolution', () => {
   });
 
   it('supersedes the lower-accuracy pattern when one clearly wins', () => {
-    const kills    = [killAt(3.5, { audienceTag: 'warm', verdict: 'KILL' }), killAt(3.6, { audienceTag: 'warm', verdict: 'KILL' }), killAt(3.5, { audienceTag: 'warm', verdict: 'KILL' }), killAt(3.4, { audienceTag: 'warm', verdict: 'KILL' })];
-    const refreshes = [killAt(3.5, { audienceTag: 'warm', verdict: 'REFRESH' }), killAt(3.6, { audienceTag: 'warm', verdict: 'REFRESH' }), killAt(3.5, { audienceTag: 'warm', verdict: 'REFRESH' })];
-    const sustained = {
-      ...Object.fromEntries(kills.map((e) => [e.id, true])),     // KILL accuracy 1.0
+    const kills     = [killAt(3.5), killAt(3.6), killAt(3.5), killAt(3.4)];
+    const refreshes = [killAt(3.5, { verdict: 'REFRESH' }), killAt(3.6, { verdict: 'REFRESH' }), killAt(3.5, { verdict: 'REFRESH' })];
+    const correct = {
+      ...Object.fromEntries(kills.map((e) => [e.id, true])),      // KILL accuracy 1.0
       ...Object.fromEntries(refreshes.map((e) => [e.id, false])), // REFRESH accuracy 0.0
     };
-    const patterns = extractPatterns({ ...build([...kills, ...refreshes], sustained), now: NOW });
-    const kill    = patterns.find((p) => p.audienceTag === 'warm' && p.emitVerdict === 'KILL');
-    const refresh = patterns.find((p) => p.audienceTag === 'warm' && p.emitVerdict === 'REFRESH');
+    const patterns = extractPatterns({ ...build([...kills, ...refreshes], correct), now: NOW });
+    const kill    = patterns.find((p) => p.kind === PATTERN_KIND.FATIGUE_CEILING && p.emitVerdict === 'KILL');
+    const refresh = patterns.find((p) => p.kind === PATTERN_KIND.FATIGUE_CEILING && p.emitVerdict === 'REFRESH');
     expect(kill.status).toBe(PATTERN_STATUS.ESTABLISHED);
     expect(kill.promotable).toBe(true);
     expect(refresh.status).toBe(PATTERN_STATUS.SUPERSEDED);
     expect(refresh.supersededByKey).toBe(kill.key);
     expect(refresh.promotable).toBe(false);
+  });
+
+  // R10 (I54) — the invented-prior control. When neither side has a measured
+  // accuracy the gap between them is NOT ESTABLISHED, so neither may be declared
+  // the winner. Restore `(canonical.accuracy ?? 0.5) - (other.accuracy ?? 0.5)`
+  // and this still passes by luck (two halves cancel to a zero gap); restore it
+  // as `?? 0` or `?? 1` and one side silently supersedes the other on a number
+  // nobody measured.
+  it('never picks a winner between two UNMEASURED opposite patterns', () => {
+    const kills     = [killAt(3.5), killAt(3.6), killAt(3.5)];
+    const refreshes = [killAt(3.5, { verdict: 'REFRESH' }), killAt(3.6, { verdict: 'REFRESH' }), killAt(3.5, { verdict: 'REFRESH' })];
+    const events = [...kills, ...refreshes];
+    const patterns = extractPatterns({
+      decisions: events.map((e) => e.decision),
+      snapshots: events.map((e) => e.snapshot),
+      outcomes:  events.map((e) => ({ decisionId: e.id, success: DECISION_SUCCESS.UNMEASURED })),
+      now: NOW,
+    });
+    const fatigues = patterns.filter((p) => p.kind === PATTERN_KIND.FATIGUE_CEILING);
+    expect(fatigues).toHaveLength(2);
+    for (const p of fatigues) {
+      expect(p.accuracy).toBeNull();
+      expect(p.status).toBe(PATTERN_STATUS.CONFLICTED);
+      expect(p.supersededByKey).toBeNull();
+    }
   });
 });
 
