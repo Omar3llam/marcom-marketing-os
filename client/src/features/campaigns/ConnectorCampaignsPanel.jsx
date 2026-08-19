@@ -41,6 +41,7 @@ import { EvidenceState } from '@/features/campaigns/EvidenceState.jsx';
 import { AdRows } from '@/features/campaigns/AdRows.jsx';
 import { useEvidence, evidenceKey } from '@/hooks/useEvidence.js';
 import { useDecisionAction } from '@/features/campaigns/useDecisionAction.js';
+import { useDecisionJudgment, judgmentFrom } from '@/features/campaigns/useDecisionJudgment.js';
 
 // Every band header / detail / ad-set row spans the full grid. One constant so
 // the five call sites can never drift out of step with the <thead>.
@@ -216,6 +217,13 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
   // One instance for the whole table — the hook keys its state by entityId, so
   // every row reads its own answer rather than the last one clicked.
   const { states: actionStates, execute: executeDecision, dismiss: dismissDecision } = useDecisionAction();
+  // R13-b — the operator's judgement OF the call, a separate axis from whether
+  // they acted on it. Keyed by decisionId rather than entityId: a judgement
+  // belongs to ONE stored decision, and a campaign without one has nothing to key.
+  const {
+    states: judgmentStates, recorded: judgmentRecorded,
+    messages: judgmentMessages, submit: submitJudgment,
+  } = useDecisionJudgment();
 
   // Decision-queue order. `verdicts`/`impacts` arrive FLAT from CampaignsView
   // (entityId → 'KILL' / entityId → 7), which is the shape groupCampaigns reads.
@@ -441,6 +449,21 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                 onExecute={() => executeDecision(c.entityId, info.decisionId ?? null)}
                 onDismiss={() => dismissDecision(c.entityId, info.decisionId ?? null)}
                 executionState={actionStates[c.entityId] ?? null}
+                // R13-b. Null `decisionId` ⇒ the panel renders no judgement UI
+                // at all. There is no row to attach reasoning to, and resolving
+                // one from the entity would attribute an operator's judgement to
+                // a call they were never shown — the by-entity latitude
+                // execute/dismiss can afford, this deliberately cannot.
+                decisionId={info.decisionId ?? null}
+                // The SERVER's answer whenever this session produced one — a
+                // fresh 200 and a 409's reconciliation are both newer than the
+                // feed that loaded before either happened. Otherwise the
+                // persisted judgement off the verdict read, which is what makes
+                // a recorded judgement survive a reload.
+                judgment={judgmentRecorded[info.decisionId] ?? judgmentFrom(info)}
+                judgmentState={judgmentStates[info.decisionId] ?? null}
+                judgmentMessage={judgmentMessages[info.decisionId] ?? null}
+                onJudge={(j) => submitJudgment(info.decisionId, j)}
               />
             </td>
           </tr>

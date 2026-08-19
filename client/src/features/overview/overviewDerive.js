@@ -31,12 +31,31 @@ import { nextActionFor } from '@/features/campaigns/verdictEvidence.js';
 export function decisionFeed({ healthCampaigns = [], connectorCampaigns = [], verdicts = [] }) {
   const metricsById = new Map(connectorCampaigns.map((c) => [c.entityId, c]));
   const rationaleById = new Map(verdicts.map((v) => [v.id, v.rationale ?? null]));
+  // R13-b — the STORED decision's identity and the judgement on it, from the
+  // same verdict rows the rationale comes from. Keyed by the same entityId as
+  // everything else here.
+  //
+  // Threaded rather than re-fetched: the id is already on the payload this page
+  // loads, and a second lookup ("which decision belongs to this campaign?")
+  // would be a GUESS — the very thing the decisionId contract exists to stop.
+  // A campaign with no stored decision keeps `decisionId: null`, and the card
+  // renders no judgement UI at all.
+  const decisionById = new Map(verdicts.map((v) => [v.id, v]));
 
   return healthCampaigns
     .map((c) => {
       const m = metricsById.get(c.entityId) ?? {};
+      const d = decisionById.get(c.entityId) ?? {};
       return {
         entityId: c.entityId,
+        // R13-b · decision identity + the judgement on record. Null throughout
+        // for a campaign no sweep has written a Decision for — a real answer,
+        // and the signal DecisionCard uses to ask nothing.
+        decisionId: d.decisionId ?? null,
+        humanResponse: d.humanResponse ?? null,
+        humanReasonCode: d.humanReasonCode ?? null,
+        humanReasonNote: d.humanReasonNote ?? null,
+        humanRespondedAt: d.humanRespondedAt ?? null,
         name: c.name ?? m.name ?? null,
         verdict: c.verdict,
         impactScore: c.impactScore ?? null,

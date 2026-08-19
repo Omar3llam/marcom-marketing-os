@@ -427,10 +427,14 @@ describe('getConnectorVerdicts — the published numbers', () => {
     expect(arg.where.workspaceId).toBe('ws-1');
     // R5 adds `evidenceReference` — the one thing about a STORED decision this
     // payload can never re-derive, since the verdict beside it is recomputed
-    // from today's rows. Still a named projection, so the two reasoning JSONB
-    // columns are not pulled per row to be discarded.
+    // from today's rows. R13-b adds the four judgement columns, without which
+    // the surface cannot know on first render that this decision was already
+    // judged. Still a named projection, so the two reasoning JSONB columns are
+    // not pulled per row to be discarded — and still an exact equality, so a
+    // select-less read or an unplanned column fails here.
     expect(arg.select).toEqual({
       id: true, entityId: true, verdict: true, createdAt: true, evidenceReference: true,
+      humanResponse: true, humanReasonCode: true, humanReasonNote: true, humanRespondedAt: true,
     });
     expect(arg).not.toHaveProperty('include');
   });
