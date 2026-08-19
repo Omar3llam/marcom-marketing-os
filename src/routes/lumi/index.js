@@ -22,6 +22,7 @@ import { entitiesRouter }            from './entities.js';
 import { revenueRouter }             from './revenue.js';
 import { copilotRouter }             from './copilot.js';
 import { decisionsRouter }           from './decisions.js';
+import { accountRouter }             from './account.js';
 
 export const lumiRouter = Router();
 
@@ -46,3 +47,4 @@ lumiRouter.use('/', entitiesRouter);
 lumiRouter.use('/', revenueRouter);
 lumiRouter.use('/', copilotRouter);
 lumiRouter.use('/', decisionsRouter);
+lumiRouter.use('/', accountRouter);

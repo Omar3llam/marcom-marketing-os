@@ -24,8 +24,7 @@ import { logger } from '../../utils/logger.js';
 import { execute } from '../ai-gateway/ProviderGateway.js';
 import { CAPABILITY } from '../ai-gateway/providerTypes.js';
 import { buildPortfolioAnalysisPrompt, CAMPAIGN_LIMIT } from '../ai-gateway/prompts/portfolioAnalysisPrompt.js';
-import { getConnectorCampaigns } from '../entity-graph/index.js';
-import { getConnectorVerdicts, needsRevenueData } from '../verdict-engine/index.js';
+import { getConnectorVerdicts, evaluateConnectorVerdicts, needsRevenueData } from '../verdict-engine/index.js';
 import { computeAccountHealth } from './AccountHealthService.js';
 
 /**
@@ -71,16 +70,39 @@ export async function runPortfolioAnalysis(workspaceId, { loopRunId = null, eval
   if (!workspaceId) return null;
 
   try {
-    const [campaigns, verdictResult] = await Promise.all([
-      getConnectorCampaigns(workspaceId).catch(() => []),
-      // NO `.catch(() => ({ verdicts: [] }))` (R8 / I29). That fallback turned
-      // "the verdict computation failed" into "this account has no verdicts",
-      // and the model then narrated a portfolio where nothing needed acting on —
-      // a confident all-clear written over an outage. A throw here reaches the
-      // outer catch and this service returns null, which is what its contract
-      // already means: nothing honest to say.
-      getConnectorVerdicts(workspaceId, { evaluation }),
-    ]);
+    // ── R13-D / B2 — the same population the verdicts came from ──────────────
+    // `campaigns` was read separately here, from `getConnectorCampaigns` — the
+    // OPERATIONAL population, covering whatever period the last sync requested
+    // (`maximum` ≈ 37 months from the Sync button). The verdicts beside it were
+    // canonical 30-day, so computeAccountHealth below was weighting a 30-day
+    // judgement by a lifetime spend, and the score + wastedPct it produced went
+    // into the prompt that writes the Overview AI Insight card.
+    //
+    // The route at /entities/health was corrected in R13-C; this caller and
+    // CampaignReasoningService were not, so one account had two health scores
+    // depending on which surface you looked at. AccountHealthService's own
+    // header states the canonical population as an INPUT REQUIREMENT — pass it
+    // operational rows and every threshold in it silently means something else.
+    // All three callers now satisfy it.
+    //
+    // Taken from the EVALUATION rather than re-read (R8 / I25): those are the
+    // very rows the verdicts were computed from, so the join below cannot
+    // disagree with itself, and the sweep still performs exactly one canonical
+    // read no matter how many consumers it feeds.
+    //
+    // Numbers MOVED as a result, usually downward: the spend behind them shrank
+    // from lifetime to thirty days. Nothing was recalibrated to compensate, for
+    // the same reason as last time — the old figures were not a baseline, they
+    // were an unstated mixture.
+    const ev = evaluation ?? await evaluateConnectorVerdicts(workspaceId);
+    // NO `.catch(() => ({ verdicts: [] }))` (R8 / I29). That fallback turned
+    // "the verdict computation failed" into "this account has no verdicts", and
+    // the model then narrated a portfolio where nothing needed acting on — a
+    // confident all-clear written over an outage. A throw here reaches the outer
+    // catch and this service returns null, which is what its contract already
+    // means: nothing honest to say.
+    const verdictResult = await getConnectorVerdicts(workspaceId, { evaluation: ev });
+    const campaigns = ev.campaigns ?? [];
 
     const verdictMap = Object.fromEntries((verdictResult?.verdicts ?? []).map((v) => [v.id, v]));
     const enriched = enrichCampaigns(campaigns, verdictMap);

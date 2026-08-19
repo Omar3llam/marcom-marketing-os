@@ -32,14 +32,16 @@ vi.mock('../../lib/prisma.js', () => ({
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock('../entity-graph/index.js', () => ({
-  getConnectorCampaigns: vi.fn(async () => h.campaigns),
-}));
 vi.mock('../verdict-engine/index.js', async () => {
   // Reuse the REAL needsRevenueData so the test exercises the true objective
   // taxonomy (an awareness campaign must never be told it needs revenue).
   const real = await vi.importActual('../verdict-engine/connectorVerdictService.js');
   return {
+    // R13-D / B2 — the campaigns now ride on the ONE canonical evaluation (R8),
+    // so the rows narrated and the rows judged are the same set.
+    evaluateConnectorVerdicts: vi.fn(async () => ({
+      workspaceId: 'ws-1', campaigns: h.campaigns, gatedOut: [], status: 'OK',
+    })),
     getConnectorVerdicts: vi.fn(async () => {
       if (h.verdictsThrow) throw new Error('canonical read timed out');
       return { verdicts: h.verdicts };
