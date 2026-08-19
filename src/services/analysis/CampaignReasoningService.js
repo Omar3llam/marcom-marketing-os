@@ -10,7 +10,7 @@
 //                                  the drill-down shows an instant read.
 //
 // TRACEABILITY: every signal in the prompt is re-derived HERE, server-side, from
-// real MetricSnapshot rows (getConnectorCampaigns + getConnectorVerdicts +
+// real MetricSnapshot rows (the canonical evaluation + getConnectorVerdicts +
 // computeAccountHealth) — callers never supply numbers, only an entityId and an
 // optional language hint. A campaign not in this workspace's graph is unknown
 // (NOT_FOUND / skipped) — the workspace-isolation guarantee.
@@ -21,8 +21,7 @@
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { getConnectorCampaigns } from '../entity-graph/index.js';
-import { getConnectorVerdicts } from '../verdict-engine/index.js';
+import { getConnectorVerdicts, evaluateConnectorVerdicts } from '../verdict-engine/index.js';
 import { computeAccountHealth } from './AccountHealthService.js';
 import { execute, CAPABILITY } from '../ai-gateway/index.js';
 
@@ -39,14 +38,24 @@ const REFRESH_MS = Number(process.env.REASONING_REFRESH_MS ?? 24 * 60 * 60 * 100
  * sweep never re-fetches per campaign.
  */
 async function loadReasoningContext(workspaceId, evaluation) {
-  const [campaigns, verdictResult] = await Promise.all([
-    getConnectorCampaigns(workspaceId),
-    // R8: when the sweep hands us its evaluation, we explain THOSE verdicts —
-    // the ones it just stored — rather than recomputing a set that may already
-    // have moved. Absent (the on-demand entry point), this is the request's own
-    // single evaluation.
-    getConnectorVerdicts(workspaceId, { evaluation }),
-  ]);
+  // ── R13-D / B2 — one population for the whole reasoning context ────────────
+  // `campaigns` was read separately from `getConnectorCampaigns` (operational).
+  // Two numbers below depend on it and both reach a human: `health` (see
+  // PortfolioAnalysisService for the full account of that defect) and
+  // `accountSpendMinor`, which becomes the `spendSharePct` in every campaign's
+  // "Lumi's Read" — a canonical 30-day campaign spend divided by a
+  // possibly-lifetime account total, published as a percentage of the account.
+  //
+  // Now taken from the evaluation, so the rows being explained, the rows being
+  // scored and the rows the verdicts came from are one set (R8 / I25).
+  //
+  // R8: when the sweep hands us its evaluation, we explain THOSE verdicts — the
+  // ones it just stored — rather than recomputing a set that may already have
+  // moved. Absent (the on-demand entry point), this is the request's own single
+  // evaluation.
+  const ev = evaluation ?? await evaluateConnectorVerdicts(workspaceId);
+  const verdictResult = await getConnectorVerdicts(workspaceId, { evaluation: ev });
+  const campaigns = ev.campaigns ?? [];
   const verdictMap = Object.fromEntries((verdictResult?.verdicts ?? []).map((v) => [v.id, v]));
   const health = computeAccountHealth(campaigns, verdictMap);
   const accountSpendMinor = campaigns.reduce((s, c) => s + (c.spendMinor ?? 0), 0);

@@ -239,3 +239,41 @@ describe('R13-D — the canonical row states its own period', () => {
     expect(row.measurementWindow).toBe('CUMULATIVE_30D');
   });
 });
+
+// ============================================================
+// R13-D / B2 — BOTH workspace predicates, not just the load-bearing one
+// ============================================================
+// Isolation on the canonical verdict path is defended twice: the campaign
+// IDENTITY read is workspace-scoped, and so is the snapshot read underneath it.
+// A B2 mutation control found that only the second was pinned — deleting
+// `where: { workspaceId }` from the identity read broke no test, because the
+// snapshot filter still bounded the money and the foreign campaigns simply
+// arrived with no evidence.
+//
+// Harmless for the aggregate; not harmless in general. Those foreign identities
+// come back carrying NAME and CHANNEL, and the verdict path reports campaigns
+// without canonical evidence as `noCanonicalWindow` — so a missing predicate
+// here leaks another workspace's campaign names onto this workspace's payload
+// without a single number moving. Defense in depth is only depth if both layers
+// are held in place.
+// ============================================================
+describe('R13-D — the canonical verdict path is workspace-scoped at BOTH reads', () => {
+  it('the campaign IDENTITY read names the workspace', async () => {
+    await getCanonicalVerdictCampaigns(WS);
+    const args = h.prisma.campaign.findMany.mock.calls.at(-1)[0];
+    expect(args.where).toEqual({ workspaceId: WS });
+  });
+
+  it('the SNAPSHOT read names it too, independently', async () => {
+    await getCanonicalVerdictCampaigns(WS);
+    const args = h.prisma.metricSnapshot.findMany.mock.calls.at(-1)[0];
+    expect(args.where.workspaceId).toBe(WS);
+  });
+
+  it('no workspace ⇒ no read at all, rather than an unscoped one', async () => {
+    h.prisma.campaign.findMany.mockClear();
+    const out = await getCanonicalVerdictCampaigns(null);
+    expect(out).toEqual({ campaigns: [], noCanonicalWindow: [] });
+    expect(h.prisma.campaign.findMany).not.toHaveBeenCalled();
+  });
+});

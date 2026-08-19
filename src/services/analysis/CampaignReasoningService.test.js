@@ -10,12 +10,14 @@
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { getConnectorCampaigns } = vi.hoisted(() => ({ getConnectorCampaigns: vi.fn() }));
+const { evaluateConnectorVerdicts } = vi.hoisted(() => ({ evaluateConnectorVerdicts: vi.fn() }));
 const { getConnectorVerdicts } = vi.hoisted(() => ({ getConnectorVerdicts: vi.fn() }));
 const { execute } = vi.hoisted(() => ({ execute: vi.fn() }));
 
-vi.mock('../entity-graph/index.js', () => ({ getConnectorCampaigns }));
-vi.mock('../verdict-engine/index.js', () => ({ getConnectorVerdicts }));
+// R13-D / B2: the reasoning context takes its campaigns from the ONE canonical
+// evaluation (R8) — the same rows the verdicts it explains were computed from —
+// rather than reading the population a second time beside them.
+vi.mock('../verdict-engine/index.js', () => ({ getConnectorVerdicts, evaluateConnectorVerdicts }));
 vi.mock('../ai-gateway/index.js', () => ({ execute, CAPABILITY: { EXPLAIN_VERDICT: 'EXPLAIN_VERDICT' } }));
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
@@ -42,7 +44,7 @@ const VERDICTS = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getConnectorCampaigns.mockResolvedValue(CAMPAIGNS);
+  evaluateConnectorVerdicts.mockResolvedValue({ workspaceId: 'ws-1', campaigns: CAMPAIGNS, gatedOut: [], status: 'OK' });
   getConnectorVerdicts.mockResolvedValue(VERDICTS);
   execute.mockResolvedValue({ success: true, output: { reasoning: 'Frequency is too high; refresh the creative.' } });
   prisma.campaignReasoning.findMany.mockResolvedValue([]);
@@ -185,7 +187,7 @@ describe('generateReasoningForSweep (pre-generate + persist)', () => {
   });
 
   it('no connector data → no work (honest zero, never fabricated rows)', async () => {
-    getConnectorCampaigns.mockResolvedValue([]);
+    evaluateConnectorVerdicts.mockResolvedValue({ workspaceId: 'ws-1', campaigns: [], gatedOut: [], status: 'NO_CAMPAIGNS' });
     const out = await generateReasoningForSweep({ workspaceId: 'ws1' });
     expect(out).toEqual({ attempted: 0, generated: 0, skipped: 0 });
     expect(prisma.campaignReasoning.upsert).not.toHaveBeenCalled();
@@ -213,10 +215,20 @@ describe('R8 · reasoning consumes the sweep evaluation', () => {
     expect(opts).toEqual({ evaluation });
   });
 
-  it('the ON-DEMAND entry point supplies none — one request, its own evaluation', async () => {
+  it('the ON-DEMAND entry point makes ONE evaluation and threads it', async () => {
+    // R13-D / B2 moved who OWNS that single evaluation, not how many there are.
+    // This service now needs the canonical CAMPAIGNS as well as the verdicts,
+    // and both come off one evaluation — so it creates it explicitly and hands
+    // it on, where before it let getConnectorVerdicts make one internally.
+    //
+    // Stricter than the assertion it replaces: identity is checked, so a second
+    // evaluation created for the verdict call would fail here even though the
+    // call counts still looked right.
     await generateCampaignReasoning({ workspaceId: 'ws1', entityId: 'c1' });
-    const [, opts] = getConnectorVerdicts.mock.calls[0];
-    expect(opts).toEqual({ evaluation: undefined });
+
+    expect(evaluateConnectorVerdicts).toHaveBeenCalledTimes(1);
     expect(getConnectorVerdicts).toHaveBeenCalledTimes(1);
+    const [, opts] = getConnectorVerdicts.mock.calls[0];
+    expect(opts.evaluation).toBe(await evaluateConnectorVerdicts.mock.results[0].value);
   });
 });
