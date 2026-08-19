@@ -14,7 +14,8 @@ import {
   REDIS_DISABLED,
 } from './connection.js';
 
-export const ACTION_QUEUE_NAME     = 'actions';
+// R13-D / B3-C — ACTION_QUEUE_NAME ('actions') is deliberately absent. Naming a
+// queue no worker consumes invites the next contributor to publish to it.
 export const OBSERVER_QUEUE_NAME   = 'observer';
 export const SYNC_QUEUE_NAME       = 'campaign-sync';
 export const EXECUTION_QUEUE_NAME  = 'executions';
@@ -45,7 +46,11 @@ const queueOpts = {
 
 // When Redis is disabled, all queues are `null`. Importers must
 // guard with `if (!actionQueue) return 503`.
-export const actionQueue    = REDIS_DISABLED ? null : new Queue(ACTION_QUEUE_NAME,    queueOpts);
+// R13-D / B3-C — `actionQueue` is RETIRED. It fed the legacy Action worker,
+// whose executors reported success without performing a platform mutation.
+// Registering a queue nothing consumes would leave rows accumulating where a
+// future consumer could silently pick them up, so the registration goes with
+// the worker. Real mutations use `executionQueue` below.
 export const observerQueue  = REDIS_DISABLED ? null : new Queue(OBSERVER_QUEUE_NAME,  queueOpts);
 export const syncQueue      = REDIS_DISABLED ? null : new Queue(SYNC_QUEUE_NAME,      queueOpts);
 export const executionQueue = REDIS_DISABLED ? null : new Queue(EXECUTION_QUEUE_NAME, queueOpts);
@@ -72,17 +77,10 @@ export async function enqueueExecution({ executionId, workspaceId, userId, actio
   );
 }
 
-// ── Helper: enqueue an Action row ────────────────────────────
-export async function enqueueAction(actionRow) {
-  if (!actionQueue) {
-    throw new Error('Queue subsystem unavailable — set REDIS_URL to a real Redis instance');
-  }
-  return actionQueue.add(
-    'execute',
-    { actionId: actionRow.id, workspaceId: actionRow.workspaceId },
-    { jobId: actionRow.idempotencyKey },
-  );
-}
+// R13-D / B3-C — `enqueueAction` is GONE along with the worker that drained it.
+// Its two callers (rollback, quick-action) now refuse explicitly instead of
+// queueing work that nothing would perform. Anything that needs a real platform
+// mutation goes through POST /api/execute/meta → enqueueExecution above.
 
 // ── Helper: schedule the temporal observer ───────────────────
 export async function scheduleObserver() {

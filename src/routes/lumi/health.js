@@ -5,7 +5,7 @@
 // ============================================================
 import { Router }      from 'express';
 import { prisma }      from '../../lib/prisma.js';
-import { actionQueue } from '../../queues/index.js';
+import { executionQueue } from '../../queues/index.js';
 import { getOrchestratorHealth } from '../../resilience/orchestratorCircuit.js';
 
 export const healthRouter = Router();
@@ -13,11 +13,20 @@ export const healthRouter = Router();
 // ─────────────────────────────────────────────────────────────
 healthRouter.get('/_health', async (_req, res) => {
   try {
-    const actions = await prisma.action.count().catch(() => null);
+    // R13-D / B3-C — this reported the depth of the retired `actions` queue,
+    // which no process consumes any more. Repointed at the queue that carries
+    // real platform mutations, so "queue" on this endpoint describes work that
+    // can actually be performed.
+    //
+    // `legacyActions` stays: the Action table is still read by the feed,
+    // intelligence and the agentic loop, so its row count is a real number about
+    // real (historical) rows. It is named for what it is rather than left as
+    // the unqualified `actions`, which now would suggest live work.
+    const legacyActions = await prisma.action.count().catch(() => null);
     let queue = null;
-    if (actionQueue) {
+    if (executionQueue) {
       try {
-        queue = await actionQueue.getJobCounts('waiting', 'active', 'failed', 'completed');
+        queue = await executionQueue.getJobCounts('waiting', 'active', 'failed', 'completed');
       } catch (err) {
         queue = { error: err.message };
       }
@@ -30,7 +39,7 @@ healthRouter.get('/_health', async (_req, res) => {
 
     res.json({
       ok: true,
-      actions,
+      legacyActions,
       queue,
       orchestrator,
       timestamp: new Date().toISOString(),

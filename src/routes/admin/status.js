@@ -10,7 +10,7 @@
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import {
-  actionQueue, observerQueue, syncQueue,
+  observerQueue, syncQueue,
   executionQueue, agenticQueue, narrativeQueue, maintenanceQueue,
 } from '../../queues/index.js';
 import { REDIS_DISABLED, bullConnection } from '../../queues/connection.js';
@@ -18,8 +18,10 @@ import { REDIS_DISABLED, bullConnection } from '../../queues/connection.js';
 export const statusRouter = Router();
 
 // Queue registry: stable name → the (possibly null) BullMQ Queue instance.
+// R13-D / B3-C — 'actions' is gone with the worker that drained it. An admin
+// panel listing a queue no process consumes reports depth 0 forever, which
+// reads as health rather than as absence.
 const QUEUES = {
-  'actions':       actionQueue,
   'observer':      observerQueue,
   'campaign-sync': syncQueue,
   'executions':    executionQueue,
