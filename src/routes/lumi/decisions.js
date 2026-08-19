@@ -35,6 +35,7 @@ import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 import { getSimilarOutcomes } from '../../services/analysis/decisionLearning.js';
 import { getRecentDecisions, RECENT_DECISIONS_LIMIT } from '../../services/decision-memory/decisionHistory.js';
+import { validateJudgment, recordJudgment } from '../../services/decision-memory/humanJudgment.js';
 
 export const decisionsRouter = Router();
 
@@ -267,6 +268,30 @@ decisionsRouter.patch(`${BASE}/execute`, requireCollabRole(...OPERATORS), (req, 
 
 decisionsRouter.patch(`${BASE}/dismiss`, requireCollabRole(...OPERATORS), (req, res) =>
   recordEntitySignal(req, res, 'dismissedAt'));
+
+// ------------------------------------------------------------
+// R13 — WHAT THE HUMAN DECIDED
+//   PATCH /api/lumi/decisions/:id/judgment
+// ------------------------------------------------------------
+// A third axis, independent of execute/dismiss. Those record what happened on
+// the ad platform; the verdict records what Lumi believed; this records the
+// operator's judgement OF that belief. The verdict is never rewritten — see
+// services/decision-memory/humanJudgment.js for why that matters.
+decisionsRouter.patch('/decisions/:id/judgment', requireCollabRole(...OPERATORS), async (req, res) => {
+  const { id } = req.params;
+  if (!req.workspaceId) return res.status(400).json({ error: 'NoWorkspace', message: 'No workspace resolved' });
+
+  const parsed = validateJudgment(req.body);
+  if (parsed.error) return res.status(400).json(parsed);
+
+  try {
+    const { status, payload } = await recordJudgment({ id, workspaceId: req.workspaceId, ...parsed });
+    return res.status(status).json(payload);
+  } catch (err) {
+    logger.error({ err: err.message, id }, '[lumi/decisions] judgment failed');
+    return res.status(500).json({ error: 'DecisionUnavailable', message: 'Request failed' });
+  }
+});
 
 // The track record behind this entity's live verdict: how comparable decisions
 // turned out after someone acted on them.

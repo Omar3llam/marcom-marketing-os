@@ -81,7 +81,11 @@ export async function getSimilarOutcomes({
       resolution: { not: null }, // we know what happened next
       intentAt:   { not: null }, // …and a human actually acted on it
     },
-    select:  { resolution: true },
+    // R13 — the human judgement rides along with the outcome. The similarity
+    // key above is UNCHANGED: comparability is still verdict + rootCause +
+    // entityLevel + objective + channel, and judgement narrows nothing. It is
+    // an extra dimension to REPORT, not a new filter.
+    select:  { resolution: true, humanResponse: true, humanReasonCode: true },
     orderBy: { createdAt: 'desc' },
     take:    limit,
   // R10 (F15) — a failed read is UNAVAILABLE, never an empty track record.
@@ -115,6 +119,37 @@ export async function getSimilarOutcomes({
 
   const total = improved + unchanged + worsened;
 
+  // ── R13 — the same scored outcomes, split by what the human decided ──────
+  //
+  // CORRELATIONAL, and it must stay that way. "An overridden KILL was followed
+  // by an improved outcome" is a fact about sequence; "the human was right" is a
+  // causal claim this data cannot support and nothing here computes. There is
+  // deliberately no accuracy, no win rate and no better/worse comparison
+  // between CONFIRM and OVERRIDE — only counts of what actually happened.
+  //
+  // Scored rows only, so the buckets sum to `total` and cannot be read as a
+  // denominator that includes outcomes nobody measured. `none` is the honest
+  // name for decisions carrying no judgement: they are not CONFIRM, and folding
+  // them into one would invent agreement that was never expressed.
+  const bucket = () => ({ total: 0, improved: 0, unchanged: 0, worsened: 0 });
+  const tally = (into, key, resolution) => {
+    into[key] ??= bucket();
+    into[key].total += 1;
+    if (resolution === 'IMPROVED') into[key].improved += 1;
+    else if (resolution === 'UNCHANGED') into[key].unchanged += 1;
+    else into[key].worsened += 1;
+  };
+
+  const byHumanResponse = {};
+  const byHumanReason = {};
+  for (const r of rows) {
+    if (r.resolution !== 'IMPROVED' && r.resolution !== 'UNCHANGED' && r.resolution !== 'WORSENED') continue;
+    tally(byHumanResponse, r.humanResponse ?? 'none', r.resolution);
+    // Reason is only meaningful where a judgement exists; a reason with no
+    // response would be a row this route cannot produce.
+    if (r.humanResponse && r.humanReasonCode) tally(byHumanReason, r.humanReasonCode, r.resolution);
+  }
+
   // Too small a sample, or nothing to claim. Both return null so the caller
   // renders NOTHING — an empty state here would invite reading "0 of 2" as
   // evidence, which is exactly what too small a sample cannot provide.
@@ -127,5 +162,11 @@ export async function getSimilarOutcomes({
     worsened,
     unscored,
     confidence: improved / total, // 0–1, over SCORED outcomes only
+    // R13 — additive. Every existing key above keeps its meaning, and the
+    // MIN_SAMPLE floor still gates the whole object, so these breakdowns can
+    // never surface from a sample too thin to have been reported at all.
+    // Internal evidence for R14; not a user-facing claim.
+    byHumanResponse,
+    byHumanReason,
   };
 }

@@ -1439,6 +1439,32 @@ enum DecisionResolution {
   UNKNOWN
 }
 
+// R13 — the operator's judgement of a verdict. Three answers to "what did you
+// decide?", never to "was Lumi wrong?": the second framing invites grading an
+// oracle, and what the loop actually needs is what the human chose.
+enum HumanDecisionResponse {
+  CONFIRM // agrees with the recommendation
+  OVERRIDE // deliberately chose a different action
+  ADJUST // kept the direction, changed the magnitude or scope
+}
+
+// Why. A CLOSED vocabulary, because this is the durable learning signal and a
+// free-text field cannot be aggregated across accounts without inventing
+// meaning. The note beside it carries the specifics; this carries the class.
+// OTHER is a real answer, not a gap-filler — an operator whose reason is not
+// listed must be able to say so rather than pick a nearby lie.
+enum HumanDecisionReason {
+  OBJECTIVE_CONTEXT
+  BUSINESS_CONSTRAINT
+  TOF_ROLE
+  BRAND_ROLE
+  SEASONALITY
+  DATA_CONTEXT
+  TESTING_INTENT
+  RISK_TOLERANCE
+  OTHER
+}
+
 model Decision {
   id          String         @id @default(uuid()) @db.Uuid
   workspaceId String         @db.Uuid
@@ -1467,6 +1493,27 @@ model Decision {
 
   resolution      DecisionResolution? // null until resolved
   confidenceDelta Float? // CTR delta (percentage POINTS) between issue and resolution
+
+  // ── R13 — what the HUMAN decided, kept beside what Lumi decided ──────────
+  // A THIRD axis, independent of the two above. executedAt/dismissedAt record
+  // what happened on the ad platform; `verdict` records what Lumi believed;
+  // these record the operator's judgement of that belief. All three are facts
+  // about different things, so none of them overwrites another — in particular
+  // an OVERRIDE never rewrites `verdict`, because "Lumi said KILL" stays true
+  // even when the buyer keeps the campaign. Two independent records, not one
+  // corrected one.
+  //
+  // OVERRIDE is NOT dismissal. A buyer who overrides a KILL and keeps running
+  // the campaign leaves executedAt and dismissedAt both null — accurate, and
+  // deliberately left for R14 to reconcile with the accuracy surface.
+  //
+  // All nullable and permanently so: null means NO JUDGEMENT WAS RECORDED, and
+  // must never be read as CONFIRM or filled with OTHER. The absence of an
+  // opinion is not an opinion.
+  humanResponse    HumanDecisionResponse?
+  humanReasonCode  HumanDecisionReason? // required by the route for OVERRIDE/ADJUST
+  humanReasonNote  String? // free text; context, never the learning signal
+  humanRespondedAt DateTime? // first judgement only — see the route's first-write-wins
 
   // Metrics as they stood WHEN THE VERDICT WAS ISSUED. Stamped here because a
   // MetricSnapshot is a rolling per-sync aggregate re-stamped every sweep — it
