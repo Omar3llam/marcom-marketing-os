@@ -33,6 +33,26 @@ import { AWARENESS_SATURATION_FREQ } from '../verdict-engine/verdictEngine.js';
 // VERDICT WINDOW, 30 days. CALIBRATION: UNKNOWN, same status as the verdict
 // engine's own thresholds.
 //
+// ── R13-C: THAT CLAIM IS NOW TRUE ───────────────────────────────────────────
+// It was not. This header asserted the canonical window while the caller
+// (routes/lumi/entities.js) passed `getConnectorCampaigns` — the OPERATIONAL
+// population, whose rows cover whatever period the last sync requested
+// (`maximum` ≈ 37 months from the Sync button, `last_90d` from cron). The
+// verdicts in `verdictMap` were canonical 30-day either way, so the service was
+// weighting a 30-day judgement by a lifetime spend, and `wastedSpend` was the
+// LIFETIME spend of campaigns a 30-day verdict called KILL. The Overview
+// rendered that as "/mo".
+//
+// The caller now passes `getCanonicalVerdictCampaigns`. Header, input and output
+// finally state the same period. Health scores and wasted-spend figures MOVED as
+// a result — usually downward, because the spend behind them shrank from
+// lifetime to thirty days. Nothing was recalibrated to compensate: the old
+// numbers were not a baseline, they were an unstated mixture.
+//
+// This is why the contract is stated as an input requirement rather than a
+// preference: pass this service an operational row and every threshold below
+// silently means something else.
+//
 // FREQ_HIGH/FREQ_ELEVATED were COPIES of the verdict engine's numbers, carrying
 // the comment "matches the verdict engine's fatigue floor" — maintained by hand,
 // so a recalibration of the engine would have left this service silently judging
@@ -112,8 +132,11 @@ export function healthLabel(score) {
  * Compute deterministic account analysis from live connector campaigns + their
  * verdicts. PURE — no I/O.
  *
- * @param {Array<object>} campaigns — rows from getConnectorCampaigns
- *   (each: { entityId, name, spendMinor, ctr(fraction), frequency, roas, ... })
+ * @param {Array<object>} campaigns — rows from getCanonicalVerdictCampaigns
+ *   (each: { entityId, name, spendMinor, ctr(fraction), frequency, roas, ... }),
+ *   measured over the CANONICAL VERDICT WINDOW. NOT getConnectorCampaigns —
+ *   those are operational aggregates of an unstated period, and passing them
+ *   here silently redefines every threshold above. See the header.
  * @param {Record<string, {verdict:string, roas:number|null}>} verdictMap
  *   — keyed by entityId (built by the route from getConnectorVerdicts)
  * @returns {null | {

@@ -372,9 +372,18 @@ describe('every operational MetricSnapshot reader declares its population', () =
     expect(src).toMatch(/selectOperationalSnapshots/);
     expect(src).not.toMatch(/metricSnapshot\.findMany/);
     expect(src).not.toMatch(/OPERATIONAL_WINDOW_FILTER/);
-    // No `measurementWindow:` in code — neither `{ ... }` (a filter) nor `true`
-    // (a projected column, which Phase C deliberately withheld from this reader).
-    expect(src).not.toMatch(/\bmeasurementWindow:/);
+    // R13-C splits what Phase C forbade wholesale.
+    //
+    // FORBIDDEN, still: `measurementWindow: { ... }` — a PREDICATE. This reader
+    // does not choose its population by window; the seam does, from one
+    // allow-list, and a second opinion here is how the two populations merge.
+    expect(src).not.toMatch(/\bmeasurementWindow:\s*\{/);
+    // PERMITTED, now: `measurementWindow: true` — a PROJECTION. Phase C withheld
+    // it as a proxy for "does not resolve by window", which also left the row
+    // unable to say what period it covered. That is how a ~37-month aggregate
+    // reached a surface labelled "last 30 days" with nothing able to contradict
+    // it. Selecting a column is not filtering on one.
+    expect(src).toMatch(/\bmeasurementWindow:\s*true/);
     // The canonical half: STILL HERE, and still its own selector. If this fails,
     // somebody unified two populations that are different measurements, which is
     // the exact merge the D-track exists to prevent.

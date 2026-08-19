@@ -186,6 +186,20 @@ function metricsOf(snap) {
     dailyBudgetMinor: snap?.dailyBudgetMinor ?? null,
     currency:    snap?.currency ?? null,
     lastDate:    snap?.date ?? null,
+    // ── R13-C · what period these numbers describe ──────────────────────────
+    // Every metric above is a measurement, and a measurement without a period
+    // is not a fact. These three say which period, straight off the row the
+    // reduction picked — never inferred, never defaulted.
+    //
+    // null when there is no snapshot at all, which is the same honest absence
+    // the metrics above carry: no row, no window, and no claim about one.
+    // `windowStart`/`windowEnd` stay null when the platform did not report
+    // bounds — `lastDate` is the SYNC timestamp and is not a substitute for
+    // them, which is exactly the substitution that made an operational
+    // aggregate look like a recent one.
+    measurementWindow: snap?.measurementWindow ?? null,
+    windowStart:       snap?.windowStart ?? null,
+    windowEnd:         snap?.windowEnd ?? null,
     // true only when a real actual-revenue row exists but lags the platform row
     // past the bound — i.e. "revenue data outdated", distinct from never having
     // uploaded any (false), which the needs-revenue surface already covers.

@@ -1,20 +1,33 @@
 // ============================================================
 // GET /api/lumi/entities/health — role gate + composition contract
 // ------------------------------------------------------------
-// Gated to BUYER/STRATEGIST (a CLIENT is 403'd). Composes getConnectorCampaigns
-// + getConnectorVerdicts into the pure AccountHealthService, keying verdicts by
-// id. Empty substrate → honest nulls. The engines are mocked — the scoring math
-// is covered in AccountHealthService.test.js; this pins the wiring.
+// Gated to BUYER/STRATEGIST (a CLIENT is 403'd). Empty substrate → honest
+// nulls. The engines are mocked — the scoring math is covered in
+// AccountHealthService.test.js; this pins the WIRING.
+//
+// R13-C changed which population that wiring reads, and the change IS the point:
+//
+//   score / wastedSpend / needsRevenue  ← getCanonicalVerdictCampaigns (30 days)
+//   revenueStale                        ← getConnectorCampaigns (operational)
+//
+// Health is a decision-layer signal: it weights verdicts by spend, and those
+// verdicts are canonical 30-day. Pairing them with an operational aggregate (up
+// to ~37 months, whatever the last sync asked for) made wastedSpend a number
+// with no period. revenueStale stays operational because that read is the only
+// place the actual-revenue overlay runs — the canonical path bypasses it by
+// design, so a canonical-derived staleness would be false for everything.
 // ============================================================
 import express from 'express';
 import request from 'supertest';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const { getConnectorCampaigns } = vi.hoisted(() => ({ getConnectorCampaigns: vi.fn() }));
+const { getCanonicalVerdictCampaigns } = vi.hoisted(() => ({ getCanonicalVerdictCampaigns: vi.fn() }));
 const { getConnectorVerdicts } = vi.hoisted(() => ({ getConnectorVerdicts: vi.fn() }));
 
 vi.mock('../../services/entity-graph/index.js', () => ({
   getConnectorCampaigns,
+  getCanonicalVerdictCampaigns,
   getCampaignAdSets: vi.fn(),
   getAdSetAds: vi.fn(),
 }));
@@ -47,9 +60,20 @@ function makeApp({ collabRole } = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The canonical 30-day rows — what health is now measured over.
+  getCanonicalVerdictCampaigns.mockResolvedValue({
+    campaigns: [
+      { entityId: 'a', name: 'A', spendMinor: 80000, ctr: 0.015, frequency: 1, roas: 2 },
+      { entityId: 'b', name: 'B', spendMinor: 20000, ctr: 0.015, frequency: 1, roas: 0.5 },
+    ],
+    noCanonicalWindow: [],
+  });
+  // The operational rows — read ONLY for revenueStale. Deliberately given a
+  // DIFFERENT spend, so a regression that scores these instead of the canonical
+  // rows moves the numbers below rather than passing quietly.
   getConnectorCampaigns.mockResolvedValue([
-    { entityId: 'a', name: 'A', spendMinor: 80000, ctr: 0.015, frequency: 1, roas: 2 },
-    { entityId: 'b', name: 'B', spendMinor: 20000, ctr: 0.015, frequency: 1, roas: 0.5 },
+    { entityId: 'a', name: 'A', spendMinor: 9_900_000, ctr: 0.015, frequency: 1, roas: 2 },
+    { entityId: 'b', name: 'B', spendMinor: 100_000, ctr: 0.015, frequency: 1, roas: 0.5 },
   ]);
   getConnectorVerdicts.mockResolvedValue({
     verdicts: [
@@ -64,6 +88,7 @@ describe('GET /entities/health', () => {
   it('403s a CLIENT (efficiency critique is an operator surface)', async () => {
     const res = await request(makeApp({ collabRole: 'CLIENT' })).get('/entities/health').expect(403);
     expect(res.body.error).toBe('RoleForbidden');
+    expect(getCanonicalVerdictCampaigns).not.toHaveBeenCalled();
     expect(getConnectorCampaigns).not.toHaveBeenCalled();
   });
 
@@ -74,6 +99,33 @@ describe('GET /entities/health', () => {
     expect(res.body.wastedSpend).toEqual({ minor: 20000, pct: 20 }); // KILL b
     expect(res.body.campaigns).toHaveLength(2);
     expect(res.body.workspaceId).toBe('ws1');
+  });
+
+  // ── R13-C · the measurement contract ──────────────────────────────────
+  it('scores from the CANONICAL rows, not the operational aggregate', async () => {
+    // The two fixtures carry deliberately different spend. The operational rows
+    // total 10,000,000 minor; the canonical rows total 100,000. A route that
+    // regressed to getConnectorCampaigns would produce a wastedSpend of 100,000
+    // (operational b) instead of 20,000 — the exact defect this slice closed,
+    // where a 30-day KILL was multiplied by a lifetime spend.
+    const res = await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(200);
+    expect(res.body.wastedSpend.minor).toBe(20000);
+    expect(res.body.wastedSpend.minor).not.toBe(100000);
+  });
+
+  it('STATES the window it measured, so no surface has to assume one', async () => {
+    // Overview rendered 'last 30 days' and '/mo' as hardcoded strings over
+    // numbers that had neither. The period is a fact about the payload and now
+    // travels with it.
+    const res = await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(200);
+    expect(res.body.measurementWindow).toBe('CUMULATIVE_30D');
+    expect(res.body.windowDays).toBe(30);
+  });
+
+  it('reads BOTH populations — the operational one only for revenueStale', async () => {
+    await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(200);
+    expect(getCanonicalVerdictCampaigns).toHaveBeenCalledWith('ws1');
+    expect(getConnectorCampaigns).toHaveBeenCalledWith('ws1');
   });
 
   it('lets a STRATEGIST through', async () => {
@@ -101,10 +153,13 @@ describe('GET /entities/health', () => {
   // The Overview "Revenue data needed" list reads these rows, so the flag has to
   // survive the health composition — and only for a real tracking gap.
   it('decorates needsRevenue: a spending CONVERSION campaign with no measured revenue', async () => {
-    getConnectorCampaigns.mockResolvedValue([
-      { entityId: 'a', name: 'Sales No Rev', objective: 'OUTCOME_SALES', spendMinor: 80000, revenueMinor: 0, ctr: 0.015, frequency: 1, roas: null },
-      { entityId: 'b', name: 'Brand Reach', objective: 'OUTCOME_AWARENESS', spendMinor: 20000, revenueMinor: 0, ctr: 0.015, frequency: 1, roas: null },
-    ]);
+    getCanonicalVerdictCampaigns.mockResolvedValue({
+      campaigns: [
+        { entityId: 'a', name: 'Sales No Rev', objective: 'OUTCOME_SALES', spendMinor: 80000, revenueMinor: 0, ctr: 0.015, frequency: 1, roas: null },
+        { entityId: 'b', name: 'Brand Reach', objective: 'OUTCOME_AWARENESS', spendMinor: 20000, revenueMinor: 0, ctr: 0.015, frequency: 1, roas: null },
+      ],
+      noCanonicalWindow: [],
+    });
     const res = await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(200);
     const byId = Object.fromEntries(res.body.campaigns.map((c) => [c.entityId, c.needsRevenue]));
     expect(byId.a).toBe(true);  // conversion + no revenue → a closable tracking gap
@@ -115,6 +170,16 @@ describe('GET /entities/health', () => {
   // decided staleness — the route only carries the flag, so the two surfaces can
   // never disagree about whose revenue went stale.
   it('carries revenueStale onto the health rows, distinct from needsRevenue', async () => {
+    getCanonicalVerdictCampaigns.mockResolvedValue({
+      campaigns: [
+        { entityId: 'a', name: 'Went Stale', spendMinor: 80000, ctr: 0.015, frequency: 1, roas: 2 },
+        { entityId: 'b', name: 'Fresh', spendMinor: 20000, ctr: 0.015, frequency: 1, roas: 0.5 },
+      ],
+      noCanonicalWindow: [],
+    });
+    // The flag lives on the OPERATIONAL row and must still reach the payload.
+    // The canonical rows above carry no revenueStale at all — which is exactly
+    // why the route keeps reading both populations.
     getConnectorCampaigns.mockResolvedValue([
       { entityId: 'a', name: 'Went Stale', spendMinor: 80000, ctr: 0.015, frequency: 1, roas: 2, revenueStale: true },
       { entityId: 'b', name: 'Fresh', spendMinor: 20000, ctr: 0.015, frequency: 1, roas: 0.5 },
@@ -127,6 +192,7 @@ describe('GET /entities/health', () => {
   });
 
   it('no connector data → honest nulls, never a fabricated 0', async () => {
+    getCanonicalVerdictCampaigns.mockResolvedValue({ campaigns: [], noCanonicalWindow: [] });
     getConnectorCampaigns.mockResolvedValue([]);
     getConnectorVerdicts.mockResolvedValue({ verdicts: [], gatedOut: [], account: null, status: 'NO_CAMPAIGNS' });
     const res = await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(200);
@@ -137,7 +203,7 @@ describe('GET /entities/health', () => {
   });
 
   it('500s (never crashes) when an engine throws', async () => {
-    getConnectorCampaigns.mockRejectedValue(new Error('db down'));
+    getCanonicalVerdictCampaigns.mockRejectedValue(new Error('db down'));
     const res = await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(500);
     expect(res.body.error).toBe('HealthUnavailable');
   });

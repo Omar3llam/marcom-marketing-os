@@ -47,12 +47,29 @@ const filesMatching = (root, pattern) => walk(root)
 const callsTo = (name) => new RegExp(`\\b${name}\\s*\\(`);
 
 describe('R8 · one authority computes the connector verdict', () => {
-  it('the canonical EVIDENCE read has exactly one consumer', () => {
+  it('the canonical EVIDENCE read has exactly one VERDICT consumer', () => {
     // getCanonicalVerdictCampaigns is the door every connector verdict comes
     // through. One caller ⇒ one computation site, and no consumer can widen or
     // re-scope the population behind the engine's back (Controls 5–8).
+    //
+    // R13-C adds a SECOND reader that is not a verdict consumer: /entities/health
+    // scores account health over the same canonical rows. It was reading the
+    // OPERATIONAL population — an aggregate covering whatever the last sync
+    // requested — while weighting it by canonical 30-day verdicts, so its
+    // `wastedSpend` was a lifetime figure attached to a 30-day judgement.
+    //
+    // Why that does not breach this control: the route does not judge. It takes
+    // verdicts verbatim from getConnectorVerdicts (pinned in
+    // entities.health.test.js: "derives every health figure from that one verdict
+    // set — it re-judges nothing"), and the two assertions below still forbid it
+    // from running the engine on the rows it reads. Reading the population is
+    // permitted; being a second authority over it is not.
+    //
+    // Adding a name here is therefore a deliberate act, not a formality: a new
+    // entry must be a reader that provably does not judge.
     expect(filesMatching(SRC, callsTo('getCanonicalVerdictCampaigns'))).toEqual([
-      'services/entity-graph/EntityGraphService.js',   // the definition
+      'routes/lumi/entities.js',                           // R13-C — health scoring, judges nothing
+      'services/entity-graph/EntityGraphService.js',       // the definition
       'services/verdict-engine/connectorVerdictService.js', // evaluateConnectorVerdicts
     ]);
   });
