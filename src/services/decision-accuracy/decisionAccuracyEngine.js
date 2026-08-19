@@ -279,8 +279,21 @@ function computeAccountLift(scored, cfg) {
 function windowStats(items, cfg) {
   const cal = computeCalibration(items, cfg);
   return {
-    calibrationError: cal.expectedCalibrationError ?? 0,
-    accuracy: cal.accuracy ?? 0,
+    // R13-C — null, never 0. 0 is the BEST possible ECE ("perfectly
+    // calibrated"), so coercing an absent measurement into it states the
+    // strongest claim the metric can make about a window nothing was measured
+    // on.
+    //
+    // CURRENTLY UNREACHABLE, and kept anyway. computeCalibration returns a null
+    // ECE on exactly one path — an EMPTY input — and windowStats is only ever
+    // called with a slice that already passed the minSample floor. So this is a
+    // latent fabrication, not a live one: it activates the day computeCalibration
+    // gains a second null path (a bin ladder that collapses to nothing, a future
+    // predicate that scores nothing in-window). The unreachability is pinned in
+    // calibrationNullSemantics.test.js rather than assumed, so a change that
+    // opens that path fails there instead of shipping a perfect score.
+    calibrationError: cal.expectedCalibrationError ?? null,
+    accuracy: cal.accuracy ?? null,
     sampleSize: items.length,
     span: {
       from: new Date(items[0].createdAt).toISOString(),
@@ -305,12 +318,20 @@ function computeVelocity(scored, cfg) {
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
     .map(([label, items]) => ({
       label,
-      calibrationError: computeCalibration(items, cfg).expectedCalibrationError ?? 0,
+      // R13-C — null, never 0, for the same reason as windowStats above, and
+      // with the same status: a period group is built from at least one item, so
+      // computeCalibration's only null path (empty input) is not reachable from
+      // here today. Latent, not live. The renderer decides how to show a period
+      // that could not be measured; it must never be handed a perfect score
+      // standing in for one.
+      calibrationError: computeCalibration(items, cfg).expectedCalibrationError ?? null,
       sampleSize: items.length,
     }));
 
-  // A thin month must not swing the trend — only fit on qualifying periods.
-  const fit = periods.filter((p) => p.sampleSize >= cfg.minSample);
+  // A thin month must not swing the trend — only fit on qualifying periods, and
+  // only on periods that actually produced a number. `calibrationError` is now
+  // nullable, and linregSlope over a null would poison the whole slope.
+  const fit = periods.filter((p) => p.sampleSize >= cfg.minSample && p.calibrationError != null);
   if (fit.length < 2) return { periods, trend: LIFT_STATUS.INSUFFICIENT_DATA, slope: null };
 
   const slope = r4(linregSlope(fit.map((p, i) => [i, p.calibrationError])));

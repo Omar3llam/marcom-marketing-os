@@ -224,13 +224,37 @@ describe('R3.9 — the read EntityGraph issues', () => {
     expect(args.where.source).toBeUndefined();
   });
 
-  it('projects METRIC_SELECT unchanged — this PR is a read migration, not a projection redesign', async () => {
+  it('projects METRIC_SELECT, and now projects its window provenance with it', async () => {
     await getConnectorCampaigns(WS);
     expect(callAt('CAMPAIGN').select).toBe(METRIC_SELECT);
-    // Phase C's boundary, restated where it can break: the reader still does not
-    // resolve BY window, it only filters on it (and now the seam does that).
-    expect(Object.keys(METRIC_SELECT)).not.toContain('measurementWindow');
-    expect(Object.keys(METRIC_SELECT)).not.toContain('windowStart');
+    // R13-C inverts the Phase-C assertion that stood here. The boundary it was
+    // guarding has NOT moved — what changed is which half of it the select
+    // proves. Phase C used the absence of these columns as a proxy for "this
+    // reader does not resolve by window"; that proxy also made the row unable to
+    // say what period it covered, which is how an operational aggregate reached
+    // a surface labelled "last 30 days".
+    //
+    // So the guard now states the real invariant directly (below), and the
+    // columns are projected.
+    expect(Object.keys(METRIC_SELECT)).toContain('measurementWindow');
+    expect(Object.keys(METRIC_SELECT)).toContain('windowStart');
+    expect(Object.keys(METRIC_SELECT)).toContain('windowEnd');
+  });
+
+  it('still does not RESOLVE by window — projecting a column is not reducing on it', async () => {
+    await getConnectorCampaigns(WS);
+    const args = callAt('CAMPAIGN');
+    // The population is still the operational allow-list, applied at the seam —
+    // not narrowed to one window because the column is now readable.
+    expect(args.where.measurementWindow.in).not.toContain('CUMULATIVE_30D');
+    expect(args.where.measurementWindow).not.toHaveProperty('not');
+    // And the reduction is still effectiveByEntity over `date`. Nothing here
+    // ranks, filters or prefers rows by measurementWindow — the moment it does,
+    // this reader has silently become a second canonical resolver.
+    // No ORDER BY reaches Postgres at all (the seam drops the explicit null),
+    // so nothing can be ranked by window before effectiveByEntity sees it.
+    expect(args.orderBy ?? null).toBeNull();
+    expect(args.distinct).toBeUndefined();
   });
 
   it('asks ONCE per level — no evidence fallback behind it', async () => {

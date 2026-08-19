@@ -221,11 +221,22 @@ describe('TEST 6 — historical rows keep their meaning, and Phase D has not hap
     expect(row.measurementWindow).toBe('ROLLING_WINDOW'); // and it did not become DAILY
   });
 
-  // §9: readers must NOT filter on the new column yet. If this fails, Phase D
-  // has landed early and this test is the thing that should be updated.
-  it('no reader selects the column yet — resolution is Phase D', () => {
-    expect(Object.keys(METRIC_SELECT)).not.toContain('measurementWindow');
-    expect(Object.keys(METRIC_SELECT)).not.toContain('windowStart');
+  // §9 said readers must not select the column yet, and told its own successor
+  // what to do: "if this fails, Phase D has landed early and this test is the
+  // thing that should be updated." R13-C is that update.
+  //
+  // The display reader now SELECTS the window (so a row can state what period it
+  // covers — the audit found "last 30 days" rendered over a ~37-month aggregate,
+  // and nothing in the payload could contradict it). What it still does not do
+  // is RESOLVE by it: the population comes from the operational allow-list at the
+  // seam, and the reduction ranks on `date`. Selecting is not resolving, and the
+  // difference is the whole of Phase D.
+  it('the display reader selects the column — but only to report it', () => {
+    expect(Object.keys(METRIC_SELECT)).toContain('measurementWindow');
+    expect(Object.keys(METRIC_SELECT)).toContain('windowStart');
+    // Every entry is a plain boolean projection. A nested object here would be
+    // a filter wearing a select's clothes.
+    for (const v of Object.values(METRIC_SELECT)) expect(typeof v).toBe('boolean');
   });
 
   // A legacy row read back has no window field at all in memory; the display

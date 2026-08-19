@@ -14,7 +14,11 @@
 // req.workspaceId is resolved by the auth middleware; null → honest empty.
 // ============================================================
 import { Router } from 'express';
-import { getConnectorCampaigns, getCampaignAdSets, getAdSetAds } from '../../services/entity-graph/index.js';
+import { getConnectorCampaigns, getCanonicalVerdictCampaigns, getCampaignAdSets, getAdSetAds } from '../../services/entity-graph/index.js';
+// R13-C — the window health is measured over, named from its own source rather
+// than restated here. Two copies of "30 days" is how a period starts drifting.
+import { CANONICAL_VERDICT_EVIDENCE_BASIS } from '../../services/verdict-engine/canonicalVerdictEvidence.js';
+import { CANONICAL_VERDICT_WINDOW_DAYS } from '../../services/verdict-engine/metricWindow.js';
 import { getConnectorVerdicts, needsRevenueData, analyzeEvidence, isRankable } from '../../services/verdict-engine/index.js';
 import { ENTITY_LEVEL } from '../../services/connectors/connectorTypes.js';
 import { computeAccountHealth } from '../../services/analysis/AccountHealthService.js';
@@ -66,12 +70,28 @@ entitiesRouter.get('/entities/verdicts', async (req, res) => {
 // No connector data → honest nulls (never a fabricated 0 or health score).
 entitiesRouter.get('/entities/health', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
   try {
-    const [campaigns, { verdicts }] = await Promise.all([
+    // R13-C — health is a DECISION-LAYER signal, so it reads the canonical
+    // 30-day population, not the operational aggregate.
+    //
+    // It was reading `getConnectorCampaigns`, whose rows cover whatever period
+    // the last sync requested (`maximum` ≈ 37 months from the Sync button). The
+    // verdicts weighting them are canonical 30-day. So the score was a 30-day
+    // verdict weighted by a lifetime spend, and `wastedSpend` was the LIFETIME
+    // spend of campaigns a 30-day verdict called KILL — a number with no period
+    // and no meaning, rendered on Overview as "/mo".
+    //
+    // Two reads, not one, and deliberately: the canonical rows are the
+    // measurement, and the operational rows are still the only place the
+    // actual-revenue overlay (effectiveByEntity) runs — which is what
+    // `revenueStale` is a fact about. Folding them would either lose staleness
+    // or put an unknown-period revenue back inside the score.
+    const [{ campaigns: canonicalCampaigns }, operational, { verdicts }] = await Promise.all([
+      getCanonicalVerdictCampaigns(req.workspaceId),
       getConnectorCampaigns(req.workspaceId),
       getConnectorVerdicts(req.workspaceId),
     ]);
     const verdictMap = Object.fromEntries(verdicts.map((v) => [v.id, v]));
-    const health = computeAccountHealth(campaigns, verdictMap);
+    const health = computeAccountHealth(canonicalCampaigns, verdictMap);
 
     if (!health) {
       return res.json({
@@ -84,11 +104,18 @@ entitiesRouter.get('/entities/health', requireCollabRole(WORKSPACE_ROLE.BUYER, W
     // Carry the same deterministic needsRevenue flag onto the health rows the
     // Overview renders, so "needs revenue" reads identically on both surfaces
     // (one source of truth — computed from the raw rows, never the health score).
-    // revenueStale rides along on the same terms: the engine already decided it
-    // (entityGraphEngine's age bound), so the Overview and the Campaigns table
-    // can never disagree about whose revenue went stale.
-    const needsRevenueIds = new Set(campaigns.filter(needsRevenueData).map((c) => c.entityId));
-    const staleRevenueIds = new Set(campaigns.filter((c) => c.revenueStale).map((c) => c.entityId));
+    //
+    // R13-C: needsRevenue moves to the canonical rows with the score: it is the same
+    // question the verdict gate asks, and answering it from a different
+    // population would let the Overview and the verdict feed disagree about
+    // which campaigns are scoreable.
+    //
+    // revenueStale STAYS on the operational rows, because that is the only read
+    // where the actual-revenue overlay runs — the canonical path bypasses it by
+    // design. A canonical-derived staleness would be `false` for every campaign,
+    // which is not the same claim as "nothing is stale".
+    const needsRevenueIds = new Set(canonicalCampaigns.filter(needsRevenueData).map((c) => c.entityId));
+    const staleRevenueIds = new Set(operational.filter((c) => c.revenueStale).map((c) => c.entityId));
     const decorated = (health.campaigns ?? []).map((c) => ({
       ...c,
       needsRevenue: needsRevenueIds.has(c.entityId),
@@ -98,6 +125,12 @@ entitiesRouter.get('/entities/health', requireCollabRole(WORKSPACE_ROLE.BUYER, W
     return res.json({
       workspaceId: req.workspaceId ?? null,
       generatedAt: new Date().toISOString(),
+      // R13-C — the period every figure below describes, stated rather than
+      // assumed. A client rendering `wastedSpend` or `score` beside a period
+      // label must read it from here; the previous surface hardcoded "last 30
+      // days" and "/mo" over numbers that had neither.
+      measurementWindow: CANONICAL_VERDICT_EVIDENCE_BASIS.measurementWindow,
+      windowDays:        CANONICAL_VERDICT_WINDOW_DAYS,
       ...health,
       campaigns: decorated,
     });

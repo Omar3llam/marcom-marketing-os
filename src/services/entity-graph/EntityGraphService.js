@@ -33,12 +33,32 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // requested. Value unchanged (90); see config/temporal.js.
 const SYNC_RECENCY_DAYS = TEMPORAL.entitySnapshotSyncRecencyDays;
 
-// Exported for the Phase-C provenance test, which asserts that this reader does
-// NOT yet select `measurementWindow` — resolution by window is Phase D, and the
-// test is what makes the boundary between the two phases visible rather than
-// implied. Export only; the object and its use are unchanged.
+// R13-C — the operational reader now PROJECTS its window provenance.
+//
+// It still does not RESOLVE by window, and that distinction is the whole point.
+// The population is unchanged (OPERATIONAL_MEASUREMENT_WINDOWS, filtered at the
+// seam) and the reduction is unchanged (effectiveByEntity, ranking on `date`).
+// What changes is that the row can now SAY what period it covers, instead of
+// arriving as a number with no stated meaning.
+//
+// Why that mattered: an operational row is a rolling aggregate covering whatever
+// the sync requested — `maximum` (~37 months) from the Sync button, `last_90d`
+// from cron. Without these three columns nothing downstream could tell those
+// apart, so a surface summing them had no way to state a period and no way to
+// know it was mixing two. It labelled them anyway.
+//
+// Projecting a column is not reinterpreting it. Nothing here promotes an
+// operational aggregate into a canonical 30-day measurement; the canonical
+// population remains a separate selector over a separate window.
 export const METRIC_SELECT = {
   entityId: true, date: true, source: true, spendMinor: true, roas: true, ctr: true, frequency: true, currency: true,
+  // What period this row's metrics actually cover, and its bounds when the
+  // platform reported them. `measurementWindow` is NOT NULL on the model, so it
+  // always states something (LEGACY_UNKNOWN for pre-Phase-C rows — itself an
+  // honest answer). windowStart/windowEnd are nullable and stay null rather than
+  // being reconstructed from `date`, which is the SYNC timestamp and says
+  // nothing about the delivery period.
+  measurementWindow: true, windowStart: true, windowEnd: true,
   reach: true, // unique people reached — feeds the fatigue exhaustion readout (null when unreported)
   conversions: true, // needed for the account-level Blended CPA aggregate (Σspend / Σconversions)
   // The verdict engine rolls up raw totals and re-derives roas/ctr itself, so it

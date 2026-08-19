@@ -151,12 +151,18 @@ export const SCORABLE_VERDICT = Object.freeze({
 export function accuracySurface(result, config = {}) {
   const cfg = { ...DEFAULT_CONFIG, ...config };
   const coverage = result?.coverage ?? {};
-  const scored = coverage.scored ?? 0;
+  // R13-C — a count we do not have is not a count of zero. `scored` is a real
+  // number on every result the engine produces; it is missing only when there is
+  // no result at all, and "0 decisions scored" is a claim about the account that
+  // nothing measured.
+  const scored = typeof coverage.scored === 'number' ? coverage.scored : null;
 
   if (coverage.verdict !== COVERAGE_VERDICT.RELIABLE) {
     return {
       gated: true,
-      headline: `Still learning this account (${scored} decisions scored, need ${cfg.minSample})`,
+      headline: scored == null
+        ? 'Still learning this account'
+        : `Still learning this account (${scored} decisions scored, need ${cfg.minSample})`,
       status: null,
       calibrationErrorPct: null, // SUPPRESSED — no calibration number below RELIABLE
       improvementPct: null,
@@ -166,18 +172,57 @@ export function accuracySurface(result, config = {}) {
   }
 
   const lift = result.accountLift ?? {};
-  const recentEcePct = Math.round((lift.recentWindow?.calibrationError ?? 0) * 100);
-  const earlyEcePct = Math.round((lift.earlyWindow?.calibrationError ?? 0) * 100);
+  // R13-C — the second gate, and the one that was missing.
+  //
+  // `coverage.verdict === RELIABLE` needs minSample scored decisions.
+  // computeAccountLift needs minSample * 2 before it will split into an early
+  // and a recent window, and returns BOTH as null below that. So every account
+  // between those two thresholds reached this branch with no windows at all —
+  // and `?? 0` turned that into the headline "calibration error 0% (was 0% in
+  // your first window) — holding steady". An ECE of 0% is PERFECT calibration.
+  // The surface was telling accounts with no measurable lift that Lumi had never
+  // been wrong, on Home and on Proof, and returning 0 in `calibrationErrorPct`
+  // one branch after the gated path deliberately suppressed it to null.
+  //
+  // Coverage says the account has enough scored decisions to talk about; lift
+  // says whether there is enough to talk about CHANGE. They are different
+  // questions and now have different answers.
+  const recentEce = lift.recentWindow?.calibrationError ?? null;
+  const earlyEce = lift.earlyWindow?.calibrationError ?? null;
+  const pctOf = (v) => (v == null ? null : Math.round(v * 100));
+  const recentEcePct = pctOf(recentEce);
+  const earlyEcePct = pctOf(earlyEce);
   const improvementPct = lift.calibrationImprovementPct == null
     ? null
     : Math.round(lift.calibrationImprovementPct * 100);
   const verb = lift.status === LIFT_STATUS.IMPROVING ? 'improving'
     : lift.status === LIFT_STATUS.DEGRADING ? 'degrading' : 'holding steady';
 
+  // No recent window ⇒ no calibration number and no trend verb. The account IS
+  // reliably covered, which is worth saying; what cannot be said is how the
+  // error is moving.
+  if (recentEcePct == null) {
+    return {
+      gated: false,
+      headline: scored == null
+        ? 'Lumi\'s calls on this account are being scored — not enough history yet to measure whether calibration is improving'
+        : `Lumi's calls on this account are being scored (${scored} decisions) — not enough history yet to measure whether calibration is improving`,
+      status: LIFT_STATUS.INSUFFICIENT_DATA,
+      calibrationErrorPct: null,
+      improvementPct: null,
+      scored,
+      needed: cfg.minSample,
+    };
+  }
+
   return {
     gated: false,
     headline: `Lumi's calls on this account: calibration error ${recentEcePct}% `
-      + `(was ${earlyEcePct}% in your first window) — ${verb}`,
+      // The first window can be absent while the recent one is not. Saying
+      // "was 0%" there would invent the best possible starting point and turn a
+      // real improvement into a fabricated regression.
+      + (earlyEcePct == null ? '' : `(was ${earlyEcePct}% in your first window) `)
+      + `— ${verb}`,
     status: lift.status ?? null,
     calibrationErrorPct: recentEcePct,
     improvementPct,
