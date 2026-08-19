@@ -358,7 +358,21 @@ export async function getLatestDecisions(workspaceId) {
     // decision looked at is exactly the question re-reading cannot answer.
     // Named, not a select-less read — that would pull both reasoning JSONB
     // columns per row to discard them.
-    select:  { id: true, entityId: true, verdict: true, createdAt: true, evidenceReference: true },
+    //
+    // The four `human*` columns (R13) join for one reason: without them the
+    // surface cannot know, on first render, that this decision has already been
+    // judged. It would ask "what did you decide?" about a question already
+    // answered, and only discover the answer by attempting to write it. That is
+    // the read path being authoritative — the PATCH response keeps the UI
+    // correct for one session; this keeps it correct after a reload.
+    //
+    // Read-only here, and deliberately four scalars: there is no actor column on
+    // R13 and none is invented, so a judgement is attributable to the workspace
+    // and never to a person.
+    select:  {
+      id: true, entityId: true, verdict: true, createdAt: true, evidenceReference: true,
+      humanResponse: true, humanReasonCode: true, humanReasonNote: true, humanRespondedAt: true,
+    },
     orderBy: { createdAt: 'desc' },
   }).catch((err) => {
     // Identity is an ENHANCEMENT: without it every row falls back to the
@@ -493,6 +507,21 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
     // nothing rather than an empty evidence block, because "we did not capture
     // this" is not the same claim as "there was no evidence".
     decisionEvidenceReference: decisionMap.get(c.id)?.evidenceReference ?? null,
+    // ── What the HUMAN decided about that stored decision (R13) ──────────────
+    // A third axis, beside the live verdict and the stored one. Never merged
+    // into either: an OVERRIDE does not correct `verdict` and does not suppress
+    // `decisionVerdict` — "Lumi said KILL" and "the buyer disagreed" are two
+    // facts, and the surface renders both.
+    //
+    // All four null means NO JUDGEMENT WAS RECORDED, which the UI must render as
+    // an unanswered question — never as CONFIRM, never as a zero. Null is also
+    // the honest answer for every campaign with no stored decision at all, which
+    // is why the client gates the judgement UI on `decisionId` rather than on
+    // these.
+    humanResponse:    decisionMap.get(c.id)?.humanResponse    ?? null,
+    humanReasonCode:  decisionMap.get(c.id)?.humanReasonCode  ?? null,
+    humanReasonNote:  decisionMap.get(c.id)?.humanReasonNote  ?? null,
+    humanRespondedAt: decisionMap.get(c.id)?.humanRespondedAt ?? null,
     // The cohort the rank was decided in: { rank, group, cohortSize, ctrPct,
     // avgCtrPct }, null on every absolutely-decided verdict. Minted by
     // applyRelativeRanking, which runs AFTER rollupVerdicts and spreads `...c` —

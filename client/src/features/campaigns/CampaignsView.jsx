@@ -378,6 +378,14 @@ export default function CampaignsView() {
         // reconciled with it. Both null when no sweep has run this campaign.
         decisionId: v.decisionId ?? null,
         decisionVerdict: v.decisionVerdict ?? null,
+        // R13-b — what the human decided about that stored decision, straight
+        // off the same row. All four null means NO judgement was recorded, which
+        // the panel renders as an unanswered question — never as agreement, and
+        // never as a zero.
+        humanResponse: v.humanResponse ?? null,
+        humanReasonCode: v.humanReasonCode ?? null,
+        humanReasonNote: v.humanReasonNote ?? null,
+        humanRespondedAt: v.humanRespondedAt ?? null,
         // The cohort a relative verdict was decided in. Unlike relativeRank
         // below this has no second route to the panel — the `relativeRanks` map
         // carries only the tag.

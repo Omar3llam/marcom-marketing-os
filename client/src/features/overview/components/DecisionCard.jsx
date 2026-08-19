@@ -26,11 +26,25 @@ import { ExecutionContext } from '@/features/campaigns/ExecutionContext.jsx';
 import { EvidenceState } from '@/features/campaigns/EvidenceState.jsx';
 import { ACTIONABLE_VERDICTS } from '@/features/campaigns/executionContext.js';
 import { useDecisionAction } from '@/features/campaigns/useDecisionAction.js';
+import { useDecisionJudgment, judgmentFrom } from '@/features/campaigns/useDecisionJudgment.js';
+import { DecisionJudgment } from '@/features/campaigns/DecisionJudgment.jsx';
 
 export default function DecisionCard({
   entityId, name, verdict,
   rationale = null, impactScore = null, humanAction = null,
   ctr = null, spendMinor = null, currency = null,
+  // R13-b — the STORED decision behind this card, threaded from the verdict
+  // payload through decisionFeed. Explicit props like everything else here: an
+  // agenda item carries none of these, and a card that read them off an `item`
+  // blob would silently render nothing forever.
+  //
+  // decisionId null ⇒ no judgement UI. Deliberately NOT resolved from entityId:
+  // "the newest decision for this campaign" is a query, and attaching an
+  // operator's reasoning to whatever it resolves to would credit them with
+  // judging a call they never saw.
+  decisionId = null,
+  humanResponse = null, humanReasonCode = null,
+  humanReasonNote = null, humanRespondedAt = null,
 }) {
   // ONE fetch behind the expansion. useEntityDrillDown used to run beside this
   // one to feed ExecutionContext's ad-set rows; now that the ranking is the
@@ -42,6 +56,13 @@ export default function DecisionCard({
     byId: evidenceById, loading: evidenceLoading, errors: evidenceErrors, load: loadEvidence,
   } = useEvidence();
   const { states: actionStates, execute, dismiss } = useDecisionAction();
+  // One instance per card here, unlike the campaigns table: each card is its own
+  // decision and there is no shared list to key across. The hook is still keyed
+  // by decisionId internally, so the shape is identical on both surfaces.
+  const {
+    states: judgmentStates, recorded: judgmentRecorded,
+    messages: judgmentMessages, submit: submitJudgment,
+  } = useDecisionJudgment();
   const [expanded, setExpanded] = useState(false);
 
   // The same verdicts ExecutionContext itself acts on — imported rather than
@@ -154,6 +175,24 @@ export default function DecisionCard({
           )}
         </div>
       )}
+
+      {/* ── R13-b · what the HUMAN decided ────────────────────────────────
+          Below the verdict, the spend, the rationale and the suggested step —
+          so the question follows the case for it. Outside the `canDrill`
+          expansion on purpose: the execution context is an ad-set ranking the
+          server may decline to produce, and gating the judgement on it would
+          remove the question from a verdict that was perfectly answerable. The
+          Campaigns page already made exactly that mistake once. */}
+      <DecisionJudgment
+        decisionId={decisionId}
+        judgment={
+          judgmentRecorded[decisionId]
+          ?? judgmentFrom({ humanResponse, humanReasonCode, humanReasonNote, humanRespondedAt })
+        }
+        state={judgmentStates[decisionId] ?? null}
+        message={judgmentMessages[decisionId] ?? null}
+        onSubmit={(j) => submitJudgment(decisionId, j)}
+      />
 
       <Link
         to={`${appRoutes.campaigns}?entity=${encodeURIComponent(entityId)}`}

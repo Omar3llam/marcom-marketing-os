@@ -38,6 +38,7 @@ import { CohortBlock } from '@/features/campaigns/CohortBlock.jsx';
 import { MemoryTimeline } from '@/features/campaigns/MemoryTimeline.jsx';
 import { buildMemoryTimelineViewModel } from '@/features/campaigns/memoryTimelineViewModel.js';
 import { DecisionLifecycle } from '@/features/campaigns/DecisionLifecycle.jsx';
+import { DecisionJudgment } from '@/features/campaigns/DecisionJudgment.jsx';
 
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
 
@@ -197,6 +198,14 @@ export function CampaignDetailPanel({
   // instance, and state has to stay keyed by entityId — a hook inside the panel
   // would give every expanded row its own map and lose the answer on collapse.
   onExecute = null, onDismiss = null, executionState = null,
+  // R13-b — the judgement axis, owned by the PARENT for the same reason the
+  // lifecycle is: one useDecisionJudgment instance serves every row, and a hook
+  // in here would give each expanded row its own map and drop the answer on
+  // collapse. `decisionId` null ⇒ DecisionJudgment renders nothing; `judgment`
+  // is the SERVER's record (persisted read, or this session's newer answer),
+  // never a local draft; `onJudge` null ⇒ read-only.
+  decisionId = null, judgment = null, judgmentState = null,
+  judgmentMessage = null, onJudge = null,
 }) {
   // OPEN on mount. The disclosure exists to let a reader put the audit trail
   // away, not to hide it: a verdict whose reasoning takes a click reads as
@@ -453,6 +462,26 @@ export function CampaignDetailPanel({
           {/* How decisions like this one have gone in this workspace. Silent
               below a defensible sample. */}
           {!dataOnly && <LearningInsight learning={learning} />}
+
+          {/* ── R13-b · what the HUMAN decided ──────────────────────────────
+              LAST, and inside the "why" block on purpose: this asks the
+              operator to judge a call, and a judgement collected above its own
+              reasoning is a judgement of something unread. It sits below
+              DecisionLifecycle for the same reason — "did you act" is about the
+              ad account, "what did you decide" is about the recommendation, and
+              the second is the harder question.
+
+              NOT gated on `dataOnly`. A verdict the engine hedged because the
+              data was thin is exactly the one an operator most often overrides,
+              and that override is the signal. Gated only on `decisionId`, by the
+              component itself. */}
+          <DecisionJudgment
+            decisionId={decisionId}
+            judgment={judgment}
+            state={judgmentState}
+            message={judgmentMessage}
+            onSubmit={onJudge}
+          />
         </div>
       )}
       {/* ── Signals ─────────────────────────────────────────── */}
