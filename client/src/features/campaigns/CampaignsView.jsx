@@ -371,6 +371,15 @@ export default function CampaignsView() {
         // Projected whole anyway: the list is what the engine produced, and a
         // consumer that wants the rest should not have to re-fetch.
         hypotheses: v.hypotheses ?? [],
+        // R13-D / B3 — what Lumi can actually RUN for this verdict, decided by
+        // the server from the mutation layer's own rules (verdictToActionType →
+        // ALLOWED_ACTIONS → the endpoint builder's option requirements).
+        //
+        // This projection is an explicit list, so a field arriving on every
+        // verdict row still has to be named to survive it — the same trap that
+        // hid funnel/rootCause for two PRs. null on a legacy payload, which the
+        // panel renders as no execution UI at all.
+        execution: v.execution ?? null,
         // The STORED decision for this entity, when a sweep has written one.
         // Identity only: `decisionId` routes execute/dismiss at one row instead
         // of at a query the server re-resolves, and `decisionVerdict` is what
