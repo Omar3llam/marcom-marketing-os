@@ -25,14 +25,54 @@ import { logger }      from '../utils/logger.js';
 //   { ok: true,  result: {...} }   → status EXECUTED_SUCCESS
 //   { ok: false, error: '...' }    → status FAILED (no throw)
 // Throwing escapes to BullMQ and triggers retry/backoff.
-const executors = {
-  // Phase 2 placeholder — replaced in Phase 5
-  noop: async (payload) => ({ ok: true, result: { echoed: payload } }),
+//
+// ── R13-D / B3-B (§9) — NO EXECUTOR HERE MAY REPORT SUCCESS ──────────────────
+//
+// Every entry in this registry used to return `{ ok: true }` without touching
+// an ad platform:
+//
+//   noop                  → { ok: true, result: { echoed: payload } }
+//   meta.pause_ad         → { ok: true, result: { stub: true } }
+//   meta.scale_budget     → { ok: true, result: { stub: true } }
+//   google.pause_keyword  → { ok: true, result: { stub: true } }
+//
+// `{ ok: true }` here writes EXECUTED_SUCCESS and stamps `executedAt` on the
+// Action row. So a rollback — the one operation whose entire purpose is undoing
+// a real change on a real ad account — reported that it had succeeded while the
+// campaign carried on exactly as before. The route producing those payloads is
+// live (routes/lumi/rollback.js, routes/lumi/quickaction.js), so this was not
+// dormant scaffolding; it was a reachable path that lied.
+//
+// This substrate could not simply be deleted: those two routes depend on it and
+// removal would break them, so the safe treatment is the loud one. Each kind now
+// FAILS with a message naming itself. The comparison that matters is against the
+// canonical path: POST /api/execute/meta → executionWorker → executeMetaAction()
+// makes a real Graph API call and records what Meta actually returned. This
+// substrate never did, and now says so instead of pretending.
+//
+// Adding a real executor here is not the fix. Route the action through the
+// canonical producer; a second execution path is what produced this divergence.
+//
+const notImplemented = (kind) => async () => ({
+  ok: false,
+  error:
+    `No executor is implemented for "${kind}". This legacy Action path performs no ` +
+    `real platform mutation — it previously reported success without one. Real Meta ` +
+    `mutations go through POST /api/execute/meta → executionWorker → executeMetaAction().`,
+});
 
-  // Stubs registered now so route handlers can already enqueue
-  'meta.pause_ad':       async () => ({ ok: true, result: { stub: true } }),
-  'meta.scale_budget':   async () => ({ ok: true, result: { stub: true } }),
-  'google.pause_keyword':async () => ({ ok: true, result: { stub: true } }),
+// Exported so the "no executor may report success" property is testable
+// directly. It is the kind of invariant that is easy to reintroduce by adding
+// one convenient-looking entry, and a test that enumerates the registry catches
+// that where a test of any single kind would not.
+export const executors = {
+  // Registered so the failure names the kind rather than falling through to the
+  // generic "unknown executor" branch — "not implemented" and "never heard of
+  // it" are different problems and an operator should be able to tell them apart.
+  noop:                   notImplemented('noop'),
+  'meta.pause_ad':        notImplemented('meta.pause_ad'),
+  'meta.scale_budget':    notImplemented('meta.scale_budget'),
+  'google.pause_keyword': notImplemented('google.pause_keyword'),
 };
 
 // ── Worker definition ────────────────────────────────────────
@@ -70,8 +110,20 @@ export function startActionWorker() {
       if (result.skipped) return { skipped: true };
 
       const { action } = result;
-      const kind       = action.payload?.kind || 'noop';
-      const executor   = executors[kind];
+      // R13-D / B3-B (§9) — an absent kind is a failure, not a no-op.
+      //
+      // This read `action.payload?.kind || 'noop'`, and `noop` returned
+      // `{ ok: true }`. Any Action row whose payload omitted `kind` therefore
+      // reached EXECUTED_SUCCESS with `executedAt` stamped and nothing changed
+      // on any ad platform — the default case was the fake-success case, which
+      // is the worst place for one to hide.
+      const kind     = action.payload?.kind || null;
+      const executor = kind ? executors[kind] : null;
+
+      if (!kind) {
+        await failAction(action, 'Action payload names no executor kind');
+        return { ok: false, reason: 'no_executor_kind' };
+      }
 
       if (!executor) {
         await failAction(action, `Unknown executor: ${kind}`);
