@@ -42,6 +42,7 @@ import { AdRows } from '@/features/campaigns/AdRows.jsx';
 import { useEvidence, evidenceKey } from '@/hooks/useEvidence.js';
 import { useDecisionAction } from '@/features/campaigns/useDecisionAction.js';
 import { useDecisionJudgment, judgmentFrom } from '@/features/campaigns/useDecisionJudgment.js';
+import { useLumiExecution } from '@/features/campaigns/useLumiExecution.js';
 
 // Every band header / detail / ad-set row spans the full grid. One constant so
 // the five call sites can never drift out of step with the <thead>.
@@ -224,6 +225,15 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
     states: judgmentStates, recorded: judgmentRecorded,
     messages: judgmentMessages, submit: submitJudgment,
   } = useDecisionJudgment();
+
+  // R13-D / B3 — REAL execution, keyed by decisionId like the judgement above.
+  // One instance for the whole table: a hook inside the expanded panel would
+  // give every row its own state and lose an in-flight execution on collapse —
+  // and this is the one axis where losing state means an operator cannot see
+  // whether a live ad-account change landed.
+  const {
+    states: lumiStates, rejections: lumiRejections, run: runLumiExecution,
+  } = useLumiExecution();
 
   // Decision-queue order. `verdicts`/`impacts` arrive FLAT from CampaignsView
   // (entityId → 'KILL' / entityId → 7), which is the shape groupCampaigns reads.
@@ -464,6 +474,13 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                 judgmentState={judgmentStates[info.decisionId] ?? null}
                 judgmentMessage={judgmentMessages[info.decisionId] ?? null}
                 onJudge={(j) => submitJudgment(info.decisionId, j)}
+                // R13-D / B3 — the SERVER decides what Lumi may run; this only
+                // forwards the descriptor and the click.  is
+                // absent on a legacy payload, which renders nothing at all.
+                execution={info.execution ?? null}
+                lumiState={lumiStates[info.decisionId] ?? null}
+                lumiRejection={lumiRejections[info.decisionId] ?? null}
+                onLumiExecute={() => runLumiExecution(info.decisionId, info.execution)}
               />
             </td>
           </tr>

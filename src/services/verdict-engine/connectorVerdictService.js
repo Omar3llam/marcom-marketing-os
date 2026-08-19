@@ -36,6 +36,7 @@ import { getDecisionHistory }    from '../decision-memory/index.js';
 import {
   getInstitutionalMemory, selectRelevantMemory, memoryConfidenceFactor, applyMemoryToConfidence,
 } from '../pattern-engine/institutionalMemory.js';
+import { executabilityFor }      from '../execution/decisionExecutability.js';
 import { logger }                from '../../utils/logger.js';
 
 // Meta objectives that are GENUINELY awareness/reach — no purchase revenue is
@@ -141,6 +142,16 @@ export function buildConnectorVerdictTree(workspaceId, campaigns = [], { now = D
         // conversion campaign with no measured revenue (a tracking gap).
         objective:       c.objective ?? null,
         revenueExpected: revenueExpectedFor(c.objective),
+        // ── R13-D / B3 — the id Meta actually addresses ──────────────────────
+        // `id` above is our entityId (a uuid); a Meta mutation is addressed by
+        // the platform-native id, and the two are not interchangeable. It was
+        // already on the connector row and dropped at this projection, so the
+        // payload could name a campaign but never name the thing to pause.
+        //
+        // CARRIED, NOT COMPUTED — nothing below reads it, exactly like
+        // evidenceBasis. null on every pre-connector row, which is an honest
+        // "not addressable" rather than a guess.
+        externalId:      c.externalId ?? null,
         // The channel was on the connector row all along and got dropped here.
         // persistNode stamps it onto the Decision so the learning query can ask
         // "how did KILLs go on META" — without it, `node.channel` is undefined
@@ -556,6 +567,28 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
     humanReasonCode:  decisionMap.get(c.id)?.humanReasonCode  ?? null,
     humanReasonNote:  decisionMap.get(c.id)?.humanReasonNote  ?? null,
     humanRespondedAt: decisionMap.get(c.id)?.humanRespondedAt ?? null,
+    // ── R13-D / B3 · can Lumi carry this out, and with what ──────────────────
+    // Server-decided, because the answer is composed from the mutation layer's
+    // own rules (verdictToActionType → ALLOWED_ACTIONS → the endpoint builder's
+    // option requirements). A client deriving it would be a second copy of the
+    // execution contract living in React — the pattern B2 spent a whole slice
+    // removing from the account aggregates.
+    //
+    // Keyed on the STORED decision's verdict, not the live one beside it: the
+    // execution will carry out the decision the operator was shown and whose id
+    // it names, and executing a live verdict under a stored decision's id would
+    // attribute a mutation to a call that never asked for it.
+    //
+    // `supported: false` always carries a `reason`, so a surface can say "this
+    // asks for nothing" (HOLD) differently from "we would raise the budget but
+    // do not know to what" (SCALE) differently from "Google has no mutation".
+    execution: executabilityFor({
+      verdict:     decisionMap.get(c.id)?.verdict ?? null,
+      entityLevel: 'CAMPAIGN',
+      channel:     c.channel ?? null,
+      externalId:  c.externalId ?? null,
+      decisionId:  decisionMap.get(c.id)?.id ?? null,
+    }),
     // The cohort the rank was decided in: { rank, group, cohortSize, ctrPct,
     // avgCtrPct }, null on every absolutely-decided verdict. Minted by
     // applyRelativeRanking, which runs AFTER rollupVerdicts and spreads `...c` —

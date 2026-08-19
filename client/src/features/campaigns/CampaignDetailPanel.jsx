@@ -38,6 +38,7 @@ import { CohortBlock } from '@/features/campaigns/CohortBlock.jsx';
 import { MemoryTimeline } from '@/features/campaigns/MemoryTimeline.jsx';
 import { buildMemoryTimelineViewModel } from '@/features/campaigns/memoryTimelineViewModel.js';
 import { DecisionLifecycle } from '@/features/campaigns/DecisionLifecycle.jsx';
+import { LumiExecute } from '@/features/campaigns/LumiExecute.jsx';
 import { DecisionJudgment } from '@/features/campaigns/DecisionJudgment.jsx';
 
 const Dash = () => <span className="text-lumi-subtle" title="No data" aria-label="No data">—</span>;
@@ -64,6 +65,10 @@ const COPY_FEEDBACK_MS = 2000;
 function ActionBar({
   entityId, verdict, name, rationale, confidence, spendMinor, currency, channel, externalId,
   onExecute = null, onDismiss = null, executionState = null,
+  // R13-D / B3 — the SERVER's executability descriptor and the real-execution
+  // lifecycle beside it. Separate props from onExecute/executionState because
+  // they are a separate act: one records a claim, the other changes the ad account.
+  execution = null, onLumiExecute = null, lumiState = null, lumiRejection = null,
 }) {
   const [copyState, setCopyState] = useState('idle'); // idle | copied | failed
   const timerRef = useRef(null);
@@ -130,6 +135,17 @@ function ActionBar({
           its own evidence is a claim about something the operator has not read
           yet. Renders nothing at all when the host passes no callbacks, which
           is how every other consumer of this panel stays unchanged. */}
+      {/* R13-D / B3 — LUMI ACTS. Above the self-report on purpose: when Lumi
+          can perform the action, that is the offer, and "I already did this"
+          becomes the fallback for an operator who went to Ads Manager instead.
+          Renders nothing when the server says this verdict is not executable. */}
+      <LumiExecute
+        execution={execution}
+        onExecute={onLumiExecute}
+        state={lumiState}
+        rejection={lumiRejection}
+        className="mt-3 border-t border-lumi-border/60 pt-3"
+      />
       <DecisionLifecycle
         onExecute={onExecute}
         onDismiss={onDismiss}
@@ -206,6 +222,12 @@ export function CampaignDetailPanel({
   // never a local draft; `onJudge` null ⇒ read-only.
   decisionId = null, judgment = null, judgmentState = null,
   judgmentMessage = null, onJudge = null,
+  // R13-D / B3 — REAL execution, owned by the PARENT for the same reason as the
+  // two axes above: one useLumiExecution instance serves every row, keyed by
+  // decisionId.  is the SERVER's descriptor off the verdict payload —
+  // never derived here, because deciding what Meta can be asked to do is the
+  // mutation layer's judgement, not a component's.
+  execution = null, onLumiExecute = null, lumiState = null, lumiRejection = null,
 }) {
   // OPEN on mount. The disclosure exists to let a reader put the audit trail
   // away, not to hide it: a verdict whose reasoning takes a click reads as
@@ -457,6 +479,10 @@ export function CampaignDetailPanel({
               onExecute={onExecute}
               onDismiss={onDismiss}
               executionState={executionState}
+              execution={execution}
+              onLumiExecute={onLumiExecute}
+              lumiState={lumiState}
+              lumiRejection={lumiRejection}
             />
           )}
           {/* How decisions like this one have gone in this workspace. Silent
