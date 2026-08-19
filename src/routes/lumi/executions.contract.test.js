@@ -240,3 +240,114 @@ describe.skipIf(!DB_OK)('B3 — the execution read path', () => {
     expect((await get(d.id, { collabRole: 'STRATEGIST' })).status).toBe(200);
   });
 });
+
+// ============================================================
+// R13-D / B3-B (§6) — the execution summary, and what it may not be built from
+// ============================================================
+// `Decision.executedAt` is written by TWO different actors for two different
+// reasons: the worker stamps it after Meta accepted a mutation, and the
+// self-report route stamps the same column when an operator says they did the
+// thing by hand. Read on its own it cannot tell you which happened.
+//
+// So the summary is derived from the ExecutionRequest lifecycle and from
+// nothing else. These tests are the guard on that — each one sets up a state
+// where reading executedAt instead would produce a confident wrong answer.
+// ============================================================
+describe.skipIf(!DB_OK)('B3-B — honest execution summary', () => {
+  beforeAll(async () => {
+    for (const id of [WS, OTHER_WS]) {
+      await prisma.workspace.upsert({ where: { id }, update: {}, create: { id, name: `B3 ${id.slice(-4)}` } });
+    }
+  });
+  afterAll(async () => {
+    await prisma.executionRequest.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
+    await prisma.decision.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
+    await prisma.workspace.deleteMany({ where: { id: { in: [WS, OTHER_WS] } } });
+  });
+  beforeEach(async () => {
+    await prisma.executionRequest.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
+    await prisma.decision.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
+  });
+
+  it('no execution reads as NONE — a measured zero, not a failure', async () => {
+    const d = await makeDecision();
+    const res = await get(d.id);
+    expect(res.body.execution).toEqual({
+      state: 'NONE', count: 0, succeeded: false, terminal: false,
+    });
+  });
+
+  it('a SELF-REPORTED decision still reads as NONE', async () => {
+    // The whole point. executedAt is set, no execution exists, and the summary
+    // must not turn the operator's claim into a platform confirmation.
+    const d = await makeDecision({ executedAt: new Date('2026-08-19T10:00:00Z') });
+    const res = await get(d.id);
+    expect(res.body.executedAt).toBeTruthy();
+    expect(res.body.execution.state).toBe('NONE');
+    expect(res.body.execution.succeeded).toBe(false);
+  });
+
+  it('a QUEUED execution is never reported as succeeded', async () => {
+    const d = await makeDecision();
+    await makeExecution({ decisionId: d.id, status: 'QUEUED' });
+    const res = await get(d.id);
+    expect(res.body.execution.state).toBe('QUEUED');
+    expect(res.body.execution.succeeded).toBe(false);
+    expect(res.body.execution.terminal).toBe(false);
+  });
+
+  it('queued + a stamped executedAt STILL is not succeeded', async () => {
+    // The trap case: both signals present, disagreeing. The lifecycle wins.
+    const d = await makeDecision({ executedAt: new Date('2026-08-19T10:00:00Z') });
+    await makeExecution({ decisionId: d.id, status: 'QUEUED' });
+    const res = await get(d.id);
+    expect(res.body.execution.succeeded).toBe(false);
+    expect(res.body.execution.state).toBe('QUEUED');
+  });
+
+  it('succeeded is true only on a persisted EXECUTED_SUCCESS', async () => {
+    const d = await makeDecision();
+    await makeExecution({ decisionId: d.id, status: 'EXECUTED_SUCCESS' });
+    const res = await get(d.id);
+    expect(res.body.execution.state).toBe('SUCCEEDED');
+    expect(res.body.execution.succeeded).toBe(true);
+    expect(res.body.execution.terminal).toBe(true);
+  });
+
+  it('a failed execution is FAILED, and a timeout is not', async () => {
+    const failed = await makeDecision();
+    await makeExecution({ decisionId: failed.id, status: 'EXECUTED_FAILED' });
+    expect((await get(failed.id)).body.execution.state).toBe('FAILED');
+
+    const timedOut = await makeDecision();
+    await makeExecution({ decisionId: timedOut.id, status: 'TIMED_OUT' });
+    const res = await get(timedOut.id);
+    expect(res.body.execution.state).toBe('TIMED_OUT');
+    expect(res.body.execution.state).not.toBe('FAILED');
+  });
+
+  it('the summary counts every execution and collapses no retry', async () => {
+    const d = await makeDecision();
+    await makeExecution({ decisionId: d.id, status: 'EXECUTED_FAILED' });
+    await new Promise((r) => setTimeout(r, 5));
+    await makeExecution({ decisionId: d.id, status: 'QUEUED' });
+
+    const res = await get(d.id);
+    expect(res.body.execution.count).toBe(2);
+    // Newest first: the live attempt gives the state.
+    expect(res.body.execution.state).toBe('QUEUED');
+  });
+
+  it('labels executedAt so no reader has to guess what it means', async () => {
+    const d = await makeDecision();
+    const res = await get(d.id);
+    expect(res.body.executedAtMeaning).toBe('OPERATOR_SELF_REPORT_OR_WORKER_STAMP');
+  });
+
+  it('each row carries the same state vocabulary as GET /api/execute/:id', async () => {
+    const d = await makeDecision();
+    await makeExecution({ decisionId: d.id, status: 'EXECUTING' });
+    const res = await get(d.id);
+    expect(res.body.current.state).toBe('EXECUTING');
+  });
+});

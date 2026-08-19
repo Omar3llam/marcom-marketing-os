@@ -25,6 +25,7 @@ import { registerTraceRoute } from './trace.js';
 import { registerResumeRoute } from './resume.js';         // PR #29
 import { registerCheckpointRoute } from './checkpoint.js';  // PR #29
 import { registerArtifactsRoute } from './artifacts.js';    // PR #35
+import { registerDetailRoute } from './detail.js';          // R13-D / B3-B
 
 const router = Router();
 
@@ -44,5 +45,10 @@ registerRetryRoute(router);
 registerTraceRoute(router);
 registerResumeRoute(router);       // PR #29: /:id/resume
 registerArtifactsRoute(router);    // PR #35: /:executionId/artifacts, /artifacts/:id
+
+// LAST, deliberately. `GET /:id` matches any single segment, so registering it
+// before the literal one-segment routes above (`/audit`, `/vitals`, `/active`,
+// `/paused`) would swallow every one of them and answer 404 for each.
+registerDetailRoute(router);       // R13-D / B3-B: GET /:id
 
 export default router;

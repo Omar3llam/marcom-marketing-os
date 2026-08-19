@@ -29,6 +29,12 @@ import { prisma } from '../../lib/prisma.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 import { logger } from '../../utils/logger.js';
+import {
+  TERMINAL_STATUSES as PROJECTION_TERMINAL_STATUSES,
+  executionStateOf,
+  retryLineage,
+  summarizeExecutionState,
+} from '../../services/execution/executionProjection.js';
 
 export const executionsRouter = Router();
 
@@ -38,10 +44,11 @@ export const executionsRouter = Router();
 const OPERATORS = [WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST];
 
 // Terminal states, from the ExecutionRequest.status vocabulary on the model.
-// Named here rather than inferred so "is this finished" has one answer.
-export const TERMINAL_STATUSES = Object.freeze([
-  'EXECUTED_SUCCESS', 'EXECUTED_FAILED', 'TIMED_OUT', 'CANCELLED',
-]);
+// R13-D / B3-B: re-exported from executionProjection rather than declared twice.
+// This route and GET /api/execute/:id describe the same rows, and "is this
+// finished" drifting between them is precisely how one surface starts calling
+// an execution done while the other still shows it running.
+export const TERMINAL_STATUSES = PROJECTION_TERMINAL_STATUSES;
 
 /**
  * The columns this contract publishes. Named rather than a select-less read,
@@ -69,11 +76,13 @@ export const EXECUTION_SELECT = Object.freeze({
  * of the blob is not published; it is operational detail.
  */
 export function toExecutionRow(e) {
-  const meta = (e.retryMetadata && typeof e.retryMetadata === 'object') ? e.retryMetadata : null;
   return {
     executionId: e.id,
     decisionId:  e.decisionId ?? null,
     status:      e.status,
+    // R13-D / B3-B — the same vocabulary GET /api/execute/:id reports, so the
+    // two paths cannot describe one row two ways.
+    state:       executionStateOf(e.status),
     terminal:    TERMINAL_STATUSES.includes(e.status),
     // A mutation names an action and a target. Both are row values; neither is
     // a label we chose at read time.
@@ -87,8 +96,7 @@ export function toExecutionRow(e) {
     // Lineage: null on an original, the parent's id on a retry. This is what
     // makes "three rows" readable as "one attempt, twice retried" instead of
     // three separate executions.
-    retryOf:    meta?.retryOf ?? null,
-    retryDepth: Number.isFinite(meta?.retryDepth) ? meta.retryDepth : 0,
+    ...retryLineage(e.retryMetadata),
     // Shared across a whole retry chain (the route seeds it from the original
     // idempotency key), so a client can group without walking the lineage.
     correlationId: e.correlationId ?? null,
@@ -147,6 +155,19 @@ executionsRouter.get('/decisions/:id/executions', requireCollabRole(...OPERATORS
       // it is what distinguishes them. Empty list + executedAt set ⇒ self-report.
       executedAt: decision.executedAt,
       dismissedAt: decision.dismissedAt,
+
+      // ── R13-D / B3-B (§6) — the honest execution summary ──────────────────
+      // Platform truth, derived ONLY from the persisted ExecutionRequest
+      // lifecycle. `executedAt` above is NOT an input to this and must never
+      // become one: the worker writes that column after a real mutation and the
+      // self-report route writes the same column when a human says they acted
+      // by hand, so read alone it cannot tell you which happened.
+      //
+      // NONE is a measured zero — we looked, and this decision has no
+      // execution. It is not the same as QUEUED, and neither is SUCCEEDED.
+      execution: summarizeExecutionState(executions),
+      // Named so no reader has to infer what the column means from its name.
+      executedAtMeaning: 'OPERATOR_SELF_REPORT_OR_WORKER_STAMP',
       // Newest first, so [0] is the live attempt. Named explicitly rather than
       // left to the client to index — "which one counts" is a contract decision,
       // not a rendering one.
