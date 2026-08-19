@@ -337,6 +337,24 @@ describe('the blast radius stops at the verdict evidence source', () => {
   it('the selector cannot reach a money column it has no business in', () => {
     expect(Object.keys(CANONICAL_VERDICT_SELECT)).toContain('spendMinor');
     expect(CANONICAL_VERDICT_SELECT).not.toHaveProperty('entityLevel'); // pinned by the query, not projected
-    expect(CANONICAL_VERDICT_SELECT).not.toHaveProperty('measurementWindow');
+  });
+
+  // R13-D / B1 — measurementWindow moved from "not projected" to "must be".
+  //
+  // The old assertion sat beside entityLevel under one rationale: pinned by the
+  // query, so projecting it is redundant. That was true while the window was
+  // only ever an input to arithmetic. It stopped being true when
+  // /entities/verdicts had to LABEL the numbers it publishes — a payload that
+  // cannot state its period leaves the frontend to assume one.
+  //
+  // What the old test actually protected is untouched and asserted above: the
+  // population is chosen by CANONICAL_VERDICT_WINDOW_FILTER in the `where`, in
+  // one place, and no consumer re-reads the column to pick rows (the
+  // `measurementWindow ===` guard earlier in this file still holds).
+  // entityLevel keeps the original treatment because nothing publishes it.
+  it('…but it MUST project the provenance the API has to publish', () => {
+    expect(CANONICAL_VERDICT_SELECT.measurementWindow).toBe(true);
+    expect(CANONICAL_VERDICT_SELECT.windowStart).toBe(true);
+    expect(CANONICAL_VERDICT_SELECT.windowEnd).toBe(true);
   });
 });

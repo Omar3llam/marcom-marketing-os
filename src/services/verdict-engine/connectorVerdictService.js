@@ -172,6 +172,20 @@ export function buildConnectorVerdictTree(workspaceId, campaigns = [], { now = D
         // persistence boundary and stop.
         evidenceBasis: c.evidenceBasis ?? null,
         evidenceRows:  c.evidenceRows  ?? [],
+        // ── R13-D / B1 — the period the metrics below describe ──────────────
+        // Carried at NODE level, not inside `metrics`: rollupVerdicts replaces
+        // `metrics` with its own aggregate, and a period is not a quantity that
+        // can be summed. Everything on the node rides through that function's
+        // `...node` spread and applyRelativeRanking's `...c`, so these reach the
+        // payload without either pass having to know about them.
+        //
+        // CARRIED, NOT COMPUTED — the same contract as evidenceBasis above.
+        // Nothing below reads them: no threshold, confidence, rank or verdict
+        // moves because a row states its window. They travel to the projection
+        // and stop.
+        measurementWindow: c.measurementWindow ?? null,
+        windowStart:       c.windowStart       ?? null,
+        windowEnd:         c.windowEnd         ?? null,
         metrics: toLeafMetrics(c),
       });
     } else {
@@ -476,6 +490,26 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
     rationale:  c.rationale,
     spendMinor: c.metrics.spendMinor,
     roas:       c.signalInput.roas,
+    // ── R13-D / B1 · what period the three numbers around here describe ──────
+    // spendMinor, roas and ctr are measurements, and a measurement without a
+    // period is not a fact. Until now this payload published all three with no
+    // way to say what they covered, so the only place a period could come from
+    // was an assumption in React — which is how a 30-day figure and a lifetime
+    // figure ended up wearing the same caption on two different surfaces.
+    //
+    // Straight off the canonical row this verdict was computed from. NOT
+    // restated from CANONICAL_VERDICT_WINDOW_DAYS, not derived from
+    // `createdAt`, not defaulted to 30: the reader asked for one window and the
+    // row answers with the one it has, and publishing the answer rather than
+    // the question is what makes the claim checkable.
+    //
+    // null is a real value here. A campaign whose platform reported no bounds
+    // carries null start/end, and the surface must render nothing rather than
+    // inventing "today − 30 days" — an invented period is worse than an absent
+    // one, because it cannot be told apart from a measured one.
+    measurementWindow: c.measurementWindow ?? null,
+    windowStart:       c.windowStart       ?? null,
+    windowEnd:         c.windowEnd         ?? null,
     // revenueExpected (derived from the campaign objective) rides through so a
     // no-revenue campaign can be split honestly on-screen: a genuine awareness
     // campaign vs a conversion campaign with a tracking gap — the rationale

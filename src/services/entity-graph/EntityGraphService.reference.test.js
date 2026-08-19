@@ -47,7 +47,15 @@ const canonicalRow = (over = {}) => ({
   entityId: C1, source: 'META', date: ago(1), currency: 'EGP',
   spendMinor: 100_000, revenueMinor: 400_000, impressions: 50_000, clicks: 800,
   conversions: 20, roas: 4, ctr: 0.016, frequency: 2.1, reach: 20_000,
-  actionMetrics: null, dailyBudgetMinor: null, ...over,
+  actionMetrics: null, dailyBudgetMinor: null,
+  // R13-D / B1 — the period this row measured, as the platform stated it.
+  // Deliberately NOT derivable from `date`: the row was synced yesterday and
+  // measures 20 Jul → 18 Aug, so anything reconstructed from the sync timestamp
+  // lands somewhere else.
+  measurementWindow: 'CUMULATIVE_30D',
+  windowStart: new Date('2026-07-20T00:00:00Z'),
+  windowEnd:   new Date('2026-08-18T00:00:00Z'),
+  ...over,
 });
 
 const project = (rows, select) => {
@@ -174,5 +182,60 @@ describe('R5 — the operational read declares a DIFFERENT basis', () => {
     expect(operational.population).not.toBe(canonical.population);
     expect(operational.selector).not.toBe(canonical.selector);
     expect(operational.reduction).not.toBe(canonical.reduction);
+  });
+});
+
+// ============================================================
+// R13-D / B1 — the DECLARED basis is not the same claim as the row's own
+// ============================================================
+// The block above pins what the READER declares. This one pins what the ROW
+// answers, and the two are separate on purpose: a basis is a description of the
+// query, and a query can be described correctly while returning columns it never
+// asked for.
+//
+// That is exactly what was happening. `evidenceBasis.measurementWindow` said
+// CUMULATIVE_30D on every canonical row — truthfully, the filter guarantees it —
+// while `row.measurementWindow` was null on every one of them, because
+// CANONICAL_VERDICT_SELECT did not project the column. The declaration was right
+// and the row was empty, and /entities/verdicts publishes the row.
+//
+// These tests run through the real `project()` fake, so they fail if the SELECT
+// stops asking — which is the defect B1 closed, caught at the seam where it lived
+// rather than at the API where it showed.
+// ============================================================
+describe('R13-D — the canonical row states its own period', () => {
+  it('carries the window off the query projection, not off the declared basis', async () => {
+    const { campaigns } = await getCanonicalVerdictCampaigns(WS);
+    const row = rowFor(campaigns, C1);
+
+    expect(row.measurementWindow).toBe('CUMULATIVE_30D');
+    expect(row.windowStart).toEqual(new Date('2026-07-20T00:00:00Z'));
+    expect(row.windowEnd).toEqual(new Date('2026-08-18T00:00:00Z'));
+  });
+
+  it('the bounds are the platform\'s, never reconstructed from the sync time', async () => {
+    const { campaigns } = await getCanonicalVerdictCampaigns(WS);
+    const row = rowFor(campaigns, C1);
+
+    // `lastDate` IS the sync timestamp and is published beside these three. It
+    // is a day old here; the window it sits next to ended weeks earlier. A
+    // reader that treated one as the other would misdate every canonical figure
+    // on the surface by however long the account had been syncing.
+    expect(row.lastDate).not.toEqual(row.windowEnd);
+    expect(new Date(row.lastDate).getTime()).toBeGreaterThan(row.windowEnd.getTime());
+  });
+
+  it('a platform that reported no bounds leaves them null, keeping the label', async () => {
+    h.prisma.metricSnapshot.findMany.mockImplementation((args) => Promise.resolve(
+      project([canonicalRow({ windowStart: null, windowEnd: null })], args.select)));
+
+    const { campaigns } = await getCanonicalVerdictCampaigns(WS);
+    const row = rowFor(campaigns, C1);
+
+    expect(row.windowStart).toBeNull();
+    expect(row.windowEnd).toBeNull();
+    // The column is NOT NULL on the model, so the period survives even when the
+    // bounds do not. Partial provenance, honestly reported.
+    expect(row.measurementWindow).toBe('CUMULATIVE_30D');
   });
 });

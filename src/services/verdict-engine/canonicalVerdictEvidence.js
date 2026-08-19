@@ -87,6 +87,29 @@ export const CANONICAL_VERDICT_SELECT = Object.freeze({
   roas: true, ctr: true,
   frequency: true, reach: true,
   actionMetrics: true, dailyBudgetMinor: true,
+  // ── R13-D / B1 — the row states its own period ───────────────────────────
+  // These three are PROJECTIONS, never predicates. The population is still
+  // decided one place only — CANONICAL_VERDICT_WINDOW_FILTER in the `where`
+  // below — and nothing downstream re-reads `measurementWindow` to choose rows.
+  // Selecting a column is not filtering on one.
+  //
+  // Withheld until now because no consumer had to SAY the period; the filter
+  // guaranteed it and that was enough for arithmetic. It is not enough for an
+  // API. /entities/verdicts publishes spend, ROAS and CTR to a surface that has
+  // to label them, and a payload that cannot state its own period leaves the
+  // frontend to assume one — which is precisely how a ~37-month operational
+  // aggregate reached a screen captioned "last 30 days".
+  //
+  // Projected rather than restated from CANONICAL_VERDICT_WINDOW: the constant
+  // is what this reader ASKED for, the column is what the row ANSWERS. They
+  // agree today because the filter makes them agree — and if they ever stop,
+  // the honest thing to publish is what the row says, not what we intended.
+  // `entityLevel` stays unprojected precisely because nothing publishes it.
+  //
+  // windowStart/windowEnd are nullable and carry the platform's OWN bounds
+  // (Meta's date_start/date_stop). They stay null when the platform reported
+  // none — never reconstructed from `date`, which is the sync timestamp.
+  measurementWindow: true, windowStart: true, windowEnd: true,
 });
 
 /** The reason a campaign has no verdict. Distinct from every "no data" reason. */
