@@ -18,7 +18,6 @@ vi.mock('../../lib/prisma.js', () => ({
     testExperiment:      { findMany: vi.fn() },
     plan:                { findMany: vi.fn() },
     allocationPlan:      { findMany: vi.fn() },
-    action:              { findMany: vi.fn() },
     outcomeSnapshot:     { findMany: vi.fn() },
     decisionMemoryEntry: { findMany: vi.fn() },
     account:             { findMany: vi.fn() },
@@ -84,7 +83,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Every organ cold by default; the verdict query is overridden per-test.
   for (const model of ['fatiguePrediction', 'testExperiment', 'plan', 'allocationPlan',
-    'action', 'outcomeSnapshot', 'decisionMemoryEntry', 'account', 'campaign', 'adSet']) {
+    'outcomeSnapshot', 'decisionMemoryEntry', 'account', 'campaign', 'adSet']) {
     prisma[model].findMany.mockResolvedValue([]);
   }
   prisma.decision.findMany.mockResolvedValue([]);
