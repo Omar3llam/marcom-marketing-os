@@ -25,6 +25,7 @@ import { ExecutionStatus, TransitionActor } from '@marcom/runtime-contracts';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE }    from '../../services/collaboration/roleScope.js';
 import { resolveAttribution } from '../../services/execution/decisionAttribution.js';
+import { loadExecutability, NOT_EXECUTABLE } from '../../services/execution/decisionEligibility.js';
 import { validateMutationParams } from '../../services/meta/mutationParams.js';
 
 const MAX_QUEUE_DEPTH = Number(process.env.MAX_QUEUE_DEPTH || 500);
@@ -158,6 +159,36 @@ export function registerMetaRoute(router) {
           error:   'decisionId does not name a decision in this workspace',
           code:    'ATTRIBUTION_UNRESOLVED',
         });
+      }
+
+      // ── B4-A (D2): the decision must still be executable ────────────
+      // Checked AFTER attribution (so we know the id is real and ours) and
+      // BEFORE the row is created — a refused execution must leave no
+      // ExecutionRequest, no queue job and no audit trail of work.
+      //
+      // Only when a decision is actually named. An execution carrying no
+      // decisionId is an operator acting directly on a campaign, which has no
+      // decision lifecycle to violate.
+      //
+      // 409, not 403: nothing is wrong with the caller's permissions — the
+      // conflict is with the decision's own state, and the body names which.
+      if (attribution.decisionId) {
+        const { executable, reason } = await loadExecutability(workspaceId, attribution.decisionId);
+        if (!executable) {
+          logger.warn({
+            workspaceId, userId, decisionId: attribution.decisionId, reason,
+          }, '[ExecutionRouter] refused — decision is not executable');
+          return res.status(409).json({
+            success: false,
+            error:   reason === NOT_EXECUTABLE.DISMISSED
+              ? 'This decision was dismissed; a dismissed decision cannot be executed'
+              : reason === NOT_EXECUTABLE.SUPERSEDED
+                ? 'This decision has been superseded by a newer verdict and cannot be executed'
+                : 'This decision could not be confirmed as executable',
+            code:    'DECISION_NOT_EXECUTABLE',
+            reason,
+          });
+        }
       }
 
       // Create ExecutionRequest at PENDING. Invariant I-1 (id immutable after create).

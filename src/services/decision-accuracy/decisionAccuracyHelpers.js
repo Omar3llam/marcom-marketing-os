@@ -26,9 +26,28 @@
 //   subtlest arithmetic for no behavioural gain. The translation happens once, at
 //   the seam where DB rows become engine inputs.
 // ============================================================
+import { wasActedOn } from '../execution/decisionProvenance.js';
 
-/** PURE: an operator said they acted on this call. */
-export const isExecuted = (d) => d?.executedAt != null;
+/**
+ * PURE: was this call acted on — by ANYONE?
+ *
+ * B4-A. `executedAt` split into `humanExecutedAt` (an operator's claim) and
+ * `platformExecutedAt` (Lumi's confirmed mutation), and this predicate takes
+ * the UNION of the two, deliberately.
+ *
+ * The Proof Engine's subject is whether LUMI'S RECOMMENDATION was right, not
+ * who carried it out. A KILL executed by hand tests the KILL exactly as well as
+ * one executed by the worker, so excluding self-reports would not make the
+ * metric stricter — it would make it answer a different question on a smaller
+ * population, and production's population is ENTIRELY self-reported (zero
+ * execution requests exist). The surface would have gone quiet and read as
+ * "accuracy improved" rather than "we stopped counting".
+ *
+ * Platform-only claims — anything asserting that LUMI executed something — must
+ * use `wasPlatformExecuted` from decisionProvenance instead. That is a
+ * different question and it has a different predicate.
+ */
+export const isExecuted = (d) => wasActedOn(d);
 
 /** PURE: an operator said they looked at this call and chose not to act. */
 export const isDismissed = (d) => d?.dismissedAt != null;

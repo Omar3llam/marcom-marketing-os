@@ -207,12 +207,12 @@ describe('toExecutionDetail', () => {
       decision: {
         id: 'dec_1', entityId: 'ent_1', entityLevel: 'CAMPAIGN',
         verdict: 'KILL', status: 'PROPOSED',
-        executedAt: new Date('2026-08-19T09:00:00Z'), dismissedAt: null,
+        humanExecutedAt: new Date('2026-08-19T09:00:00Z'), platformExecutedAt: null, dismissedAt: null,
       },
     });
     expect(out.decision.entityId).toBe('ent_1');
     // The self-report axis, under a name that cannot be mistaken for proof.
-    expect(out.decision.selfReportedOrExecutedAt).toBeTruthy();
+    expect(out.decision.humanExecutedAt).toBeTruthy();
     expect(out.decision).not.toHaveProperty('executedAt');
     // And it did not turn a queued execution into a successful one.
     expect(out.state).toBe(EXECUTION_STATE.QUEUED);

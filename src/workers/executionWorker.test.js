@@ -54,6 +54,11 @@ vi.mock('../services/execution/decisionAttribution.js', () => ({
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
     executionRequest: { findUnique: vi.fn() },
+    // B4-A — the worker re-reads the Decision immediately before the platform
+    // call to confirm it is STILL executable (a queued request can outlive a
+    // dismissal or a supersession). Defaults to a live decision so the existing
+    // cases exercise the success path; the D2 suite overrides it per test.
+    decision: { findFirst: vi.fn(async () => ({ id: 'dec-1', status: 'PROPOSED', dismissedAt: null })) },
   },
 }));
 
@@ -257,7 +262,7 @@ describe('executionWorker — processExecution', () => {
 
 // ============================================================
 // R10 · Phase A — the worker is the ONLY thing that turns a real platform
-// mutation into Decision.executedAt. These controls pin WHEN it does that.
+// mutation into Decision.platformExecutedAt. These controls pin WHEN it does that.
 // ============================================================
 describe('R10 · execution attribution (I55)', () => {
   const ATTRIBUTED = { ...BASE_EXECUTION, decisionId: 'dec-1' };

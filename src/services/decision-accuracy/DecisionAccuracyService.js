@@ -5,7 +5,8 @@
 //   getAccuracy(): load this workspace's ACTIONED Decisions + their
 //     OutcomeSnapshots → calculateDecisionAccuracy() → the §1 contract.
 //
-// "Actioned" means a human signal landed — executedAt or dismissedAt — NOT a
+// "Actioned" means a signal landed — humanExecutedAt, platformExecutedAt or
+// dismissedAt (B4-A: execution provenance is two facts) — NOT a
 // DecisionStatus. The enum carries EXECUTED and DISMISSED and nothing writes
 // them, so this surface used to query an empty set and report, quite honestly,
 // on nothing at all. decisionAccuracyHelpers owns that definition; the engine
@@ -25,6 +26,12 @@ import { calculateDecisionAccuracy } from './decisionAccuracyEngine.js';
 import { isExecuted, deriveAccuracyStatus } from './decisionAccuracyHelpers.js';
 import { CURRENT_OUTCOME_WHERE, CURRENT_OUTCOME_ORDER_BY } from './outcomeSelection.js';
 import { projectOutcomeEvidence } from './outcomeEvidence.js';
+import { interventionAt, PROVENANCE_SELECT } from '../execution/decisionProvenance.js';
+
+// listPendingOutcomes fetches to this cap, sorts by the intervention instant in
+// JS (no Prisma orderBy expresses LEAST of two columns), then returns a page.
+const PENDING_FETCH_CAP = 500;
+const PENDING_PAGE_SIZE = 100;
 
 /**
  * The refusals this service makes, as CODES rather than message shapes. The
@@ -50,7 +57,15 @@ const outcomeError = (code, message) => Object.assign(new Error(message), { code
 // action still happened. Scoping on status would have excluded almost every
 // decision anyone ever acted on.
 const ACTIONED = Object.freeze({
-  OR: [{ executedAt: { not: null } }, { dismissedAt: { not: null } }],
+  OR: [
+    // B4-A — EITHER execution provenance counts as "acted on". The engine's
+    // subject is whether the RECOMMENDATION was right, and a call executed by
+    // hand tests that as well as one Lumi performed. Platform-only claims use
+    // wasPlatformExecuted; this is not one of them.
+    { humanExecutedAt: { not: null } },
+    { platformExecutedAt: { not: null } },
+    { dismissedAt: { not: null } },
+  ],
 });
 
 /**
@@ -71,12 +86,14 @@ export function buildAccuracyInputs(decisions = []) {
     // `outcomes` array and both timestamps into it.
     status: deriveAccuracyStatus(d),
     createdAt: d.createdAt,
-    // The instant the operator said they acted. The engine opens its outcome
-    // window here and falls back to createdAt — so this MUST also be added to
-    // the findMany select below: an absent field is undefined, the fallback
-    // fires silently, and the window quietly reverts to issuance with nothing
-    // to show that it did.
-    executedAt: d.executedAt ?? null,
+    // The instant SOMEONE acted — the earliest of the two provenance columns.
+    // The engine opens its outcome window here and falls back to createdAt, so
+    // both columns MUST be in the findMany select below (PROVENANCE_SELECT
+    // exists to make that impossible to forget): an absent field is undefined,
+    // the fallback fires silently, and the window quietly reverts to issuance
+    // with nothing to show that it did.
+    humanExecutedAt:    d.humanExecutedAt    ?? null,
+    platformExecutedAt: d.platformExecutedAt ?? null,
     outcome: (d.outcomes && d.outcomes[0]) || null,
   }));
 }
@@ -99,7 +116,7 @@ export async function getAccuracy(workspaceId, { now = new Date(), config } = {}
       // dismissedAt would make every dismissal read as its raw status
       // (PROPOSED), fall through the engine's "not a realized prediction"
       // branch, and vanish from the survivorship count it exists to feed.
-      executedAt: true, dismissedAt: true,
+      ...PROVENANCE_SELECT, dismissedAt: true,
       outcomes: {
         // THE CURRENT OUTCOME, not the newest row (R6). A re-recorded result now
         // appends, so a decision can own several rows and only one of them is
@@ -221,13 +238,13 @@ export async function recordOutcome(workspaceId, decisionId, input = {}, { now =
 
   const decision = await prisma.decision.findFirst({
     where: { id: decisionId, workspaceId },
-    // executedAt is what the guard below reads. Selecting `status` and testing a
+    // The provenance columns are what the guard below reads. Selecting `status` and testing a
     // field that was never selected is how this check silently inverted before:
     // an unselected column is undefined, and every decision would fail the guard.
     // dismissedAt rides along so the refusal can say WHICH call was made.
     select: {
       id: true, status: true, entityId: true, entityLevel: true,
-      executedAt: true, dismissedAt: true,
+      ...PROVENANCE_SELECT, dismissedAt: true,
     },
   });
   if (!decision) throw outcomeError(OUTCOME_ERROR.DECISION_NOT_FOUND, 'recordOutcome: decision not found');
@@ -265,11 +282,16 @@ export async function recordOutcome(workspaceId, decisionId, input = {}, { now =
   //
   // Server time, always. A client that could name `now` could clear the second
   // check by lying about it.
-  if (start.getTime() < new Date(decision.executedAt).getTime()) {
+  // B4-A — anchored to the INTERVENTION, whichever route performed it. Using
+  // one provenance column would let a window legitimately opened after a
+  // self-report be refused because Lumi had not also executed it (or vice
+  // versa), which is a refusal about bookkeeping rather than about time.
+  const actedAt = interventionAt(decision);
+  if (start.getTime() < new Date(actedAt).getTime()) {
     throw outcomeError(
       OUTCOME_ERROR.INVALID_WINDOW,
-      `recordOutcome: the measurement window opens ${start.toISOString()}, before the decision was executed `
-      + `(${new Date(decision.executedAt).toISOString()}) — an outcome cannot cover time before the action it follows`,
+      `recordOutcome: the measurement window opens ${start.toISOString()}, before the decision was acted on `
+      + `(${new Date(actedAt).toISOString()}) — an outcome cannot cover time before the action it follows`,
     );
   }
   if (end.getTime() > nowMs) {
@@ -357,7 +379,10 @@ export async function listPendingOutcomes(workspaceId) {
     prisma.decision.findMany({
       where: {
         workspaceId,
-        executedAt: { not: null },  // an action was taken…
+        // B4-A — acted on by EITHER route. A self-reported action owes an
+        // outcome exactly as much as one Lumi performed; the queue is about the
+        // recommendation's result, not about who carried it out.
+        OR: [{ humanExecutedAt: { not: null } }, { platformExecutedAt: { not: null } }],
         dismissedAt: null,          // …and not un-taken. A dismissal has no outcome
         //                             to record: nothing was done, so nothing
         //                             followed from it.
@@ -369,16 +394,34 @@ export async function listPendingOutcomes(workspaceId) {
       },
       select: {
         id: true, verdict: true, confidence: true, diagnosis: true,
-        entityId: true, entityLevel: true, createdAt: true, executedAt: true,
+        entityId: true, entityLevel: true, createdAt: true, ...PROVENANCE_SELECT,
       },
       // Oldest EXECUTION first, not newest issuance. This is a work queue, and
       // the decision most overdue for an outcome is the one acted on longest ago
       // — which is not the one issued longest ago once operators act out of
       // order. `desc` on createdAt also buried the oldest debt past the take:100.
-      orderBy: { executedAt: 'asc' },
-      take: 100,
+      // Ordered in JS below, not here: the queue's key is the EARLIEST of the
+      // two provenance columns, and no Prisma orderBy expresses LEAST(a, b).
+      // Sorting on one column then the other would group all self-reported
+      // decisions ahead of all Lumi-executed ones regardless of age.
+      //
+      // Fetched to a wider cap and sliced after sorting, so the cap truncates
+      // the TAIL of a correctly ordered queue rather than deciding membership
+      // by the wrong key.
+      orderBy: { createdAt: 'asc' },
+      take: PENDING_FETCH_CAP,
     }),
     prisma.workspace.findUnique({ where: { id: workspaceId }, select: { currency: true } }),
   ]);
-  return { decisions, currency: ws?.currency ?? 'USD' };
+
+  // Oldest DEBT first — the decision acted on longest ago, whichever route
+  // acted on it. Every row here satisfies the OR above, so `interventionAt` is
+  // non-null for all of them; the `?? 0` guard is only there so an impossible
+  // null cannot silently reorder the queue.
+  const ordered = [...decisions].sort((a, b) => {
+    const at = interventionAt(a); const bt = interventionAt(b);
+    return (at ? new Date(at).getTime() : 0) - (bt ? new Date(bt).getTime() : 0);
+  }).slice(0, PENDING_PAGE_SIZE);
+
+  return { decisions: ordered, currency: ws?.currency ?? 'USD' };
 }

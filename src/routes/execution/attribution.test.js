@@ -92,7 +92,11 @@ describe('R10 · POST /api/execute/meta — decision attribution (I55)', () => {
   });
 
   it('persists decisionId on the ExecutionRequest when it resolves', async () => {
-    prisma.decision.findFirst.mockResolvedValue({ id: DECISION_ID });
+    // B4-A — the route now resolves this row TWICE: once to attribute the
+    // execution and once to confirm the decision is still executable. A live
+    // decision carries status PROPOSED and no dismissedAt; without them the
+    // eligibility read would refuse a decision this test means to be executable.
+    prisma.decision.findFirst.mockResolvedValue({ id: DECISION_ID, status: 'PROPOSED', dismissedAt: null });
 
     await request(app).post('/api/execute/meta').send(body({ decisionId: DECISION_ID })).expect(202);
 
@@ -104,7 +108,11 @@ describe('R10 · POST /api/execute/meta — decision attribution (I55)', () => {
   // alone would resolve another account's decision and attribute this
   // workspace's Meta mutation to it.
   it('proves workspace ownership in the lookup, before the row is created', async () => {
-    prisma.decision.findFirst.mockResolvedValue({ id: DECISION_ID });
+    // B4-A — the route now resolves this row TWICE: once to attribute the
+    // execution and once to confirm the decision is still executable. A live
+    // decision carries status PROPOSED and no dismissedAt; without them the
+    // eligibility read would refuse a decision this test means to be executable.
+    prisma.decision.findFirst.mockResolvedValue({ id: DECISION_ID, status: 'PROPOSED', dismissedAt: null });
 
     await request(app).post('/api/execute/meta').send(body({ decisionId: DECISION_ID })).expect(202);
 

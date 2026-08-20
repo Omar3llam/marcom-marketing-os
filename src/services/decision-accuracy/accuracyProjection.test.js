@@ -1,9 +1,9 @@
 // ============================================================
-// getAccuracy's projection — executedAt has to survive the select
+// getAccuracy's projection — humanExecutedAt has to survive the select
 // ============================================================
-// The engine opens its outcome window at `executedAt` and falls back to
+// The engine opens its outcome window at `humanExecutedAt` and falls back to
 // `createdAt`. That fallback is silent by design (legacy rows have no
-// executedAt), which makes the Prisma `select` load-bearing in a way nothing
+// humanExecutedAt), which makes the Prisma `select` load-bearing in a way nothing
 // else here is: omit the field and every row arrives undefined, the fallback
 // fires for all of them, and the window quietly reverts to issuance with no
 // error, no log line, and a plausible-looking number on the surface.
@@ -28,9 +28,13 @@ beforeEach(() => {
 });
 
 describe('the select', () => {
-  it('asks for executedAt — without it the window silently reverts to issuance', async () => {
+  it('asks for BOTH provenance columns — without them the window silently reverts to issuance', async () => {
+    // B4-A — the window opens at the earliest of the two. Selecting only one
+    // would leave the other undefined, which interventionAt() reads as "never",
+    // so a Lumi-executed decision would quietly measure from issuance.
     await getAccuracy('ws-1');
-    expect(prisma.decision.findMany.mock.calls[0][0].select).toMatchObject({ executedAt: true });
+    expect(prisma.decision.findMany.mock.calls[0][0].select)
+      .toMatchObject({ humanExecutedAt: true, platformExecutedAt: true });
   });
 
   it('still asks for createdAt — it is the legacy fallback AND the velocity axis', async () => {
@@ -53,9 +57,18 @@ describe('the where clause', () => {
   it('selects on the human SIGNALS, not on DecisionStatus', async () => {
     await getAccuracy('ws-1');
     const { where } = prisma.decision.findMany.mock.calls[0][0];
+    // B4-A — three arms. EITHER execution provenance counts as "acted on",
+    // because the Proof Engine asks whether the RECOMMENDATION was right, not
+    // who carried it out. Dropping the platform arm would exclude every
+    // decision Lumi executed itself; dropping the human arm would empty the
+    // population outright, since production holds zero execution requests.
     expect(where).toEqual({
       workspaceId: 'ws-1',
-      OR: [{ executedAt: { not: null } }, { dismissedAt: { not: null } }],
+      OR: [
+        { humanExecutedAt: { not: null } },
+        { platformExecutedAt: { not: null } },
+        { dismissedAt: { not: null } },
+      ],
     });
     // The old gate. Nothing ever wrote either status, so this matched an empty
     // set and the whole surface reported on zero rows without erroring.
@@ -82,7 +95,7 @@ describe('end to end — the surface finally sees a row', () => {
       // Superseded by the next sweep — the common case, and the one a
       // status-scoped query would have thrown away.
       status: 'SUPERSEDED',
-      createdAt: days(30), executedAt: days(20), dismissedAt: null,
+      createdAt: days(30), humanExecutedAt: days(20), dismissedAt: null,
       outcomes: [{
         spendDeltaMinor: -5000, revenueDeltaMinor: -2000, roasDelta: -0.1,
         windowEnd: days(1), sustained: true,
@@ -97,7 +110,7 @@ describe('end to end — the surface finally sees a row', () => {
   it('counts a dismissal in coverage without scoring it', async () => {
     prisma.decision.findMany.mockResolvedValue([{
       id: 'd2', verdict: 'KILL', confidence: 0.8, status: 'PROPOSED',
-      createdAt: days(30), executedAt: null, dismissedAt: days(20), outcomes: [],
+      createdAt: days(30), humanExecutedAt: null, dismissedAt: days(20), outcomes: [],
     }]);
 
     const r = await getAccuracy('ws-1', { now: NOW });
@@ -117,9 +130,9 @@ describe('buildAccuracyInputs', () => {
 
   // The seam. The pure engine still reads d.status, so the timestamps are
   // translated here rather than rewriting the layer with the densest tests.
-  it('derives EXECUTED from executedAt, whatever the row status says', () => {
-    expect(buildAccuracyInputs([row({ executedAt: '2026-07-20T00:00:00.000Z' })])[0].status).toBe('EXECUTED');
-    expect(buildAccuracyInputs([row({ status: 'SUPERSEDED', executedAt: '2026-07-20T00:00:00.000Z' })])[0].status).toBe('EXECUTED');
+  it('derives EXECUTED from humanExecutedAt, whatever the row status says', () => {
+    expect(buildAccuracyInputs([row({ humanExecutedAt: '2026-07-20T00:00:00.000Z' })])[0].status).toBe('EXECUTED');
+    expect(buildAccuracyInputs([row({ status: 'SUPERSEDED', humanExecutedAt: '2026-07-20T00:00:00.000Z' })])[0].status).toBe('EXECUTED');
   });
 
   it('derives DISMISSED from dismissedAt', () => {
@@ -133,27 +146,27 @@ describe('buildAccuracyInputs', () => {
   // The engine input is a CONTRACT, not "whatever the row had". A spread would
   // leak the raw outcomes array and both timestamps into it.
   it('emits the engine input shape and nothing else', () => {
-    const out = buildAccuracyInputs([row({ executedAt: '2026-07-20T00:00:00.000Z', dismissedAt: null })])[0];
+    const out = buildAccuracyInputs([row({ humanExecutedAt: '2026-07-20T00:00:00.000Z', dismissedAt: null })])[0];
     expect(Object.keys(out).sort()).toEqual(
-      ['confidence', 'createdAt', 'executedAt', 'id', 'outcome', 'status', 'verdict'],
+      ['confidence', 'createdAt', 'humanExecutedAt', 'id', 'outcome', 'platformExecutedAt', 'status', 'verdict'],
     );
     expect(out.outcomes).toBeUndefined();
     expect(out.dismissedAt).toBeUndefined();
   });
 
-  it('carries executedAt through to the engine', () => {
+  it('carries humanExecutedAt through to the engine', () => {
     const at = '2026-07-20T00:00:00.000Z';
-    expect(buildAccuracyInputs([row({ executedAt: at })])[0].executedAt).toBe(at);
+    expect(buildAccuracyInputs([row({ humanExecutedAt: at })])[0].humanExecutedAt).toBe(at);
   });
 
-  it('emits null (not undefined) when a row has no executedAt', () => {
+  it('emits null (not undefined) when a row has no humanExecutedAt', () => {
     // Both fall back the same way in the engine, but null says "asked and there
     // was none" while undefined cannot be told apart from "never selected".
-    expect(buildAccuracyInputs([row()])[0].executedAt).toBeNull();
+    expect(buildAccuracyInputs([row()])[0].humanExecutedAt).toBeNull();
   });
 
   it('leaves createdAt untouched — the velocity curve still bins by issuance', () => {
-    const out = buildAccuracyInputs([row({ executedAt: '2026-07-20T00:00:00.000Z' })])[0];
+    const out = buildAccuracyInputs([row({ humanExecutedAt: '2026-07-20T00:00:00.000Z' })])[0];
     expect(out.createdAt).toBe('2026-07-01T00:00:00.000Z');
   });
 });

@@ -54,7 +54,7 @@ function makeApp({ workspaceId = WS, collabRole = 'BUYER' } = {}) {
 const send = (signal, opts) =>
   request(makeApp(opts)).patch(`/api/lumi/decisions/${D_ID}/${signal}`).send({});
 
-const live = (over = {}) => ({ id: D_ID, status: 'PROPOSED', executedAt: null, dismissedAt: null, ...over });
+const live = (over = {}) => ({ id: D_ID, status: 'PROPOSED', humanExecutedAt: null, dismissedAt: null, ...over });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -63,7 +63,7 @@ beforeEach(() => {
 });
 
 describe('recording a signal', () => {
-  it.each([['execute', 'executedAt'], ['dismiss', 'dismissedAt']])(
+  it.each([['execute', 'humanExecutedAt'], ['dismiss', 'dismissedAt']])(
     '%s stamps %s on a live decision', async (signal, field) => {
       const res = await send(signal).expect(200);
       expect(res.body.ok).toBe(true);
@@ -85,7 +85,7 @@ describe('recording a signal', () => {
   it('does NOT touch status — the decision stays live for the feed and the agenda', async () => {
     await send('execute');
     const { data } = prisma.decision.update.mock.calls[0][0];
-    expect(data).toEqual({ executedAt: expect.any(Date) });
+    expect(data).toEqual({ humanExecutedAt: expect.any(Date) });
     expect(data.status).toBeUndefined();
   });
 
@@ -109,7 +109,7 @@ describe('recording a signal', () => {
 });
 
 describe('idempotency — a second click is not a second execution', () => {
-  it.each([['execute', 'executedAt'], ['dismiss', 'dismissedAt']])(
+  it.each([['execute', 'humanExecutedAt'], ['dismiss', 'dismissedAt']])(
     '%s returns the ORIGINAL %s and writes nothing', async (signal, field) => {
       const first = new Date('2026-08-01T10:00:00.000Z');
       prisma.decision.findFirst.mockResolvedValue(live({ [field]: first }));
@@ -126,20 +126,20 @@ describe('idempotency — a second click is not a second execution', () => {
   // like a rejected write.
   it('reports an existing signal even after the decision was superseded', async () => {
     const first = new Date('2026-08-01T10:00:00.000Z');
-    prisma.decision.findFirst.mockResolvedValue(live({ status: 'SUPERSEDED', executedAt: first }));
+    prisma.decision.findFirst.mockResolvedValue(live({ status: 'SUPERSEDED', humanExecutedAt: first }));
     const res = await send('execute').expect(200);
     expect(res.body.recorded).toBe(false);
-    expect(res.body.executedAt).toBe(first.toISOString());
+    expect(res.body.humanExecutedAt).toBe(first.toISOString());
   });
 });
 
 describe('mutual exclusion — the two claims contradict each other', () => {
   it('409s dismiss on an already-executed decision', async () => {
     const at = new Date('2026-08-01T10:00:00.000Z');
-    prisma.decision.findFirst.mockResolvedValue(live({ executedAt: at }));
+    prisma.decision.findFirst.mockResolvedValue(live({ humanExecutedAt: at }));
     const res = await send('dismiss').expect(409);
     expect(res.body.error).toBe('AlreadyExecuted');
-    expect(res.body.executedAt).toBe(at.toISOString());
+    expect(res.body.humanExecutedAt).toBe(at.toISOString());
     expect(prisma.decision.update).not.toHaveBeenCalled();
   });
 

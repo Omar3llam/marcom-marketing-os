@@ -31,6 +31,7 @@ import { executeMetaAction }           from '../services/metaExecutionService.js
 import { lifecycleService }            from '../services/execution/ExecutionLifecycleService.js';
 import { startHeartbeat }              from '../services/execution/workerHealth.js';
 import { stampDecisionExecuted }       from '../services/execution/decisionAttribution.js';
+import { loadExecutability }           from '../services/execution/decisionEligibility.js';
 import { validateMutationParams }      from '../services/meta/mutationParams.js';
 import { prisma }                      from '../lib/prisma.js';
 import { logger }                      from '../utils/logger.js';
@@ -159,6 +160,40 @@ async function processExecution(job) {
     return { ok: false, reason: 'invalid_parameters' };
   }
 
+  // ── B4-A (D2 · §6): is the decision STILL executable? ────
+  //
+  // The route checked this before creating the row. That check has since gone
+  // stale: a request can sit in the queue while the sweep supersedes the
+  // decision or an operator dismisses it, and without this the mutation still
+  // lands — against a call nobody stands behind, looking exactly like a
+  // legitimate one. The route's answer is about request time; this is about
+  // mutation time, and only the second one is load-bearing.
+  //
+  // Read fresh from the database rather than from the row or the job, both of
+  // which were written before the queue wait. Same rule object as the route, so
+  // the two moments cannot disagree about what "executable" means.
+  //
+  // CANCELLED, not EXECUTED_FAILED: nothing was attempted and Meta refused
+  // nothing. Recording a platform failure here would put a fabricated refusal
+  // in the audit and let a retry look reasonable.
+  if (execution.decisionId) {
+    const { executable, reason } = await loadExecutability(execution.workspaceId, execution.decisionId);
+    if (!executable) {
+      logger.warn({
+        executionId, decisionId: execution.decisionId, reason,
+      }, '[executionWorker] REFUSING — decision is no longer executable');
+      await lifecycleService.transition({
+        executionId,
+        newStatus:       ExecutionStatus.CANCELLED,
+        expectedVersion: execution.version,
+        actor:           TransitionActor.WORKER,
+        correlationId:   execution.correlationId ?? executionId,
+        metadata:        { reason: `decision_not_executable:${reason}`, workerId: process.pid },
+      });
+      return { ok: false, reason: 'decision_not_executable', detail: reason };
+    }
+  }
+
   // ── QUEUED → EXECUTING ───────────────────────────────────
   // On the first attempt: status is QUEUED — perform the transition.
   // On BullMQ retries: status is already EXECUTING — skip to Meta call.
@@ -188,7 +223,7 @@ async function processExecution(job) {
   );
 
   if (result.success) {
-    await lifecycleService.transition({
+    const succeeded = await lifecycleService.transition({
       executionId,
       newStatus:       ExecutionStatus.EXECUTED_SUCCESS,
       expectedVersion: currentVersion,
@@ -212,9 +247,16 @@ async function processExecution(job) {
     // real budget change to fix a bookkeeping miss. The helper logs at error
     // level instead, because an unstamped decision is exactly the invisibility
     // R10 exists to end.
+    // B4-A — the timestamp is the LIFECYCLE's, not a fresh clock reading.
+    // `updatedAt` on the row the transition just returned is the instant
+    // EXECUTED_SUCCESS was persisted, which is the authoritative event time the
+    // transition log already owns. Calling `new Date()` here would mint a
+    // second, slightly later instant for the same event and leave the two
+    // disagreeing by however long the write took.
     const stamp = await stampDecisionExecuted({
       workspaceId,
       decisionId: execution.decisionId,
+      at:         succeeded?.updatedAt ?? undefined,
     });
 
     logger.info(

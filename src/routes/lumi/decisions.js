@@ -116,9 +116,15 @@ decisionsRouter.patch(`${BASE}/intent`, requireCollabRole(...OPERATORS), (req, r
 // contradictory claims, and letting both land would leave a row that reports
 // itself as acted-on AND rejected. Whichever arrived first wins, and the second
 // gets a 409 naming it.
+//
+// B4-A — the execute signal writes `humanExecutedAt`, NOT `platformExecutedAt`.
+// This route records a CLAIM: the operator says they went and did it. Lumi did
+// not perform it, no platform confirmed it, and nothing here may imply
+// otherwise. The only writer of platform provenance is the canonical worker,
+// after Meta accepts a real mutation.
 const SIGNALS = Object.freeze({
-  executedAt:  { opposite: 'dismissedAt', oppositeError: 'AlreadyDismissed' },
-  dismissedAt: { opposite: 'executedAt',  oppositeError: 'AlreadyExecuted' },
+  humanExecutedAt: { opposite: 'dismissedAt',     oppositeError: 'AlreadyDismissed' },
+  dismissedAt:     { opposite: 'humanExecutedAt', oppositeError: 'AlreadyExecuted' },
 });
 
 /**
@@ -140,13 +146,13 @@ async function stampSignal(res, decision, field, guard = null) {
   // sweep must still report its own signal rather than 409 on a claim that was
   // already true when it was made.
   if (decision[field]) {
-    return res.json({ ok: true, recorded: false, [field]: decision[field] });
+    return res.json({ ok: true, recorded: false, ...signalBody(field, decision[field]) });
   }
 
   if (decision[opposite]) {
     return res.status(409).json({
       error: oppositeError,
-      message: `This decision was already recorded as ${opposite === 'executedAt' ? 'executed' : 'dismissed'}`,
+      message: `This decision was already recorded as ${opposite === 'humanExecutedAt' ? 'executed' : 'dismissed'}`,
       [opposite]: decision[opposite],
     });
   }
@@ -156,7 +162,35 @@ async function stampSignal(res, decision, field, guard = null) {
 
   const at = new Date();
   await prisma.decision.update({ where: { id: decision.id }, data: { [field]: at } });
-  return res.json({ ok: true, recorded: true, [field]: at });
+  return res.json({ ok: true, recorded: true, ...signalBody(field, at) });
+}
+
+/**
+ * B4-A — the response body for one recorded signal.
+ *
+ * The execute signal answers with BOTH halves of the provenance question, so no
+ * client has to infer which kind of execution happened from a bare timestamp:
+ *
+ *   humanExecution:    { reported: true, reportedAt }
+ *   platformExecution: null            ← this route never creates one
+ *
+ * `platformExecution: null` is stated rather than omitted. Omission would read
+ * as "not part of this response"; null says "we looked, and Lumi has not
+ * executed this" — which is the fact the caller needs and the one the old
+ * single-field response could not express.
+ *
+ * `executedAt` rides along as a DEPRECATED alias for clients shipped before the
+ * split. It carries the human timestamp because that is what this route wrote;
+ * it is not the stored column, which nothing reads any more.
+ */
+function signalBody(field, at) {
+  if (field !== 'humanExecutedAt') return { [field]: at };
+  return {
+    humanExecutedAt: at,
+    humanExecution:    { reported: true, reportedAt: at },
+    platformExecution: null,
+    executedAt: at, // DEPRECATED — remove once no client reads it
+  };
 }
 
 /**
@@ -173,7 +207,7 @@ async function recordSignal(req, res, field) {
     // existed. The two are different facts and the caller can act on only one.
     const decision = await prisma.decision.findFirst({
       where:  { id, workspaceId: req.workspaceId },
-      select: { id: true, status: true, executedAt: true, dismissedAt: true },
+      select: { id: true, status: true, humanExecutedAt: true, dismissedAt: true },
     });
 
     if (!decision) return res.status(404).json({ error: 'DecisionNotFound', message: 'No such decision in this workspace' });
@@ -234,7 +268,7 @@ async function recordEntitySignal(req, res, field) {
     const decision = await prisma.decision.findFirst({
       where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED' },
       orderBy: { createdAt: 'desc' },
-      select:  { id: true, executedAt: true, dismissedAt: true },
+      select:  { id: true, humanExecutedAt: true, dismissedAt: true },
     });
 
     // No live verdict. Honest 404 rather than a cheerful ok:true — a signal we
@@ -251,7 +285,7 @@ async function recordEntitySignal(req, res, field) {
 // A human says they acted on this call. The strongest signal the product has,
 // and the one the accuracy surface will score against.
 decisionsRouter.patch('/decisions/:id/execute', requireCollabRole(...OPERATORS), (req, res) =>
-  recordSignal(req, res, 'executedAt'));
+  recordSignal(req, res, 'humanExecutedAt'));
 
 // A human says they looked at this call and chose not to act. NOT the absence of
 // a signal: an explicit rejection is survivorship data the accuracy surface
@@ -264,7 +298,7 @@ decisionsRouter.patch('/decisions/:id/dismiss', requireCollabRole(...OPERATORS),
 // prefix for the same reason every route in this file does — see the flat-mount
 // note at the top.
 decisionsRouter.patch(`${BASE}/execute`, requireCollabRole(...OPERATORS), (req, res) =>
-  recordEntitySignal(req, res, 'executedAt'));
+  recordEntitySignal(req, res, 'humanExecutedAt'));
 
 decisionsRouter.patch(`${BASE}/dismiss`, requireCollabRole(...OPERATORS), (req, res) =>
   recordEntitySignal(req, res, 'dismissedAt'));

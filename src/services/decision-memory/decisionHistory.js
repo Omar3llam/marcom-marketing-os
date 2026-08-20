@@ -30,6 +30,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { connectorDecisionScope } from '../verdict-engine/decisionIdentity.js';
+import { PROVENANCE_SELECT, legacyExecutedAt } from '../execution/decisionProvenance.js';
 
 /**
  * How many past decisions travel per campaign. A bound with an explicit
@@ -107,7 +108,11 @@ const stated = (d) => ({
   verdict:     d.verdict,
   status:      d.status,
   createdAt:   d.createdAt,
-  executedAt:  d.executedAt  ?? null,
+  // B4-A — memory shows BOTH provenance facts. A timeline that said only
+  // "Executed" could not tell an operator whether they had done it or Lumi had.
+  humanExecutedAt:    d.humanExecutedAt    ?? null,
+  platformExecutedAt: d.platformExecutedAt ?? null,
+  executedAt:  legacyExecutedAt(d), // DEPRECATED alias for pre-split clients
   dismissedAt: d.dismissedAt ?? null,
   // The engine's OWN per-decision outcome, written by computeResolution when a
   // later verdict superseded this one. IMPROVED | UNCHANGED | WORSENED |
@@ -151,7 +156,7 @@ export async function getDecisionHistory(workspaceId, entityIds = []) {
         where,
         select: {
           id: true, entityId: true, verdict: true, status: true, createdAt: true,
-          executedAt: true, dismissedAt: true, resolution: true, confidenceDelta: true,
+          ...PROVENANCE_SELECT, dismissedAt: true, resolution: true, confidenceDelta: true,
         },
         orderBy: { createdAt: 'desc' },
         // Bounded by the feed, not by a magic number. Ordering is global, so a

@@ -311,7 +311,12 @@ describe.skipIf(!DB_OK)('R13 — recording judgment', () => {
     expect(res.body).toMatchObject({ ok: true, recorded: true });
     const row = await prisma.decision.findUnique({ where: { id: d.id } });
     expect(row.humanResponse).toBe('CONFIRM');
-    expect(row.executedAt).toBeInstanceOf(Date);
+    // B4-A — the self-report route writes the HUMAN axis. A third axis, and it
+    // must not touch the platform one: agreeing with a verdict and saying you
+    // acted on it are both claims by the operator, and neither is evidence Lumi
+    // executed anything.
+    expect(row.humanExecutedAt).toBeInstanceOf(Date);
+    expect(row.platformExecutedAt).toBeNull();
   });
 
   it('20. judgment then dismiss both land', async () => {

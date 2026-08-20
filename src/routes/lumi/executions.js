@@ -35,6 +35,7 @@ import {
   retryLineage,
   summarizeExecutionState,
 } from '../../services/execution/executionProjection.js';
+import { PROVENANCE_SELECT, legacyExecutedAt } from '../../services/execution/decisionProvenance.js';
 
 export const executionsRouter = Router();
 
@@ -126,7 +127,12 @@ executionsRouter.get('/decisions/:id/executions', requireCollabRole(...OPERATORS
       // after Meta accepted the mutation (stampDecisionExecuted). It is the
       // Decision's, not the execution's, and is published once here rather
       // than copied onto every row.
-      select: { id: true, verdict: true, status: true, executedAt: true, dismissedAt: true },
+      select: {
+        id: true, verdict: true, status: true, dismissedAt: true,
+        ...PROVENANCE_SELECT,
+        // The human-judgement axis, independent of both execution facts.
+        humanResponse: true, humanReasonCode: true, humanRespondedAt: true,
+      },
     });
     if (!decision) {
       return res.status(404).json({ error: 'DecisionNotFound', message: 'No such decision in this workspace' });
@@ -149,11 +155,38 @@ executionsRouter.get('/decisions/:id/executions', requireCollabRole(...OPERATORS
       decisionId: decision.id,
       verdict: decision.verdict,
       decisionStatus: decision.status,
-      // The two human/lifecycle timestamps, so a reader can tell "Lumi executed
-      // this" from "the operator said they executed it themselves" — the
-      // self-report route writes the same column, and the execution list beside
-      // it is what distinguishes them. Empty list + executedAt set ⇒ self-report.
-      executedAt: decision.executedAt,
+      // ── B4-A — three independent axes, never collapsed ───────────────────
+      //
+      // Before the split a reader had to infer provenance: "empty executions
+      // list + executedAt set ⇒ probably a self-report". That inference is gone.
+      // Each fact now states itself.
+      //
+      // `reported: false` and `at: null` are stated rather than omitted —
+      // omission reads as "not part of this response", null says "we looked and
+      // it has not happened", and only the second is true here.
+      humanJudgment: {
+        response:    decision.humanResponse    ?? null,
+        reasonCode:  decision.humanReasonCode  ?? null,
+        respondedAt: decision.humanRespondedAt ?? null,
+        dismissedAt: decision.dismissedAt      ?? null,
+      },
+      // A CLAIM by the operator that they acted themselves. Not evidence Lumi
+      // executed anything, and it never creates an ExecutionRequest.
+      humanExecution: {
+        reported:   decision.humanExecutedAt != null,
+        reportedAt: decision.humanExecutedAt ?? null,
+      },
+      // The ONLY evidence Lumi performed a platform mutation: written by the
+      // worker after EXECUTED_SUCCESS, from the lifecycle's own instant.
+      platformExecution: {
+        executed:   decision.platformExecutedAt != null,
+        executedAt: decision.platformExecutedAt ?? null,
+      },
+      // DEPRECATED — the pre-split field, derived (platform wins when both
+      // exist). Kept so clients shipped before B4-A keep working; new readers
+      // take the two objects above. Scheduled for removal.
+      executedAt: legacyExecutedAt(decision),
+      executedAtMeaning: 'DEPRECATED_DERIVED_PREFER_platformExecution',
       dismissedAt: decision.dismissedAt,
 
       // ── R13-D / B3-B (§6) — the honest execution summary ──────────────────
@@ -166,8 +199,6 @@ executionsRouter.get('/decisions/:id/executions', requireCollabRole(...OPERATORS
       // NONE is a measured zero — we looked, and this decision has no
       // execution. It is not the same as QUEUED, and neither is SUCCEEDED.
       execution: summarizeExecutionState(executions),
-      // Named so no reader has to infer what the column means from its name.
-      executedAtMeaning: 'OPERATOR_SELF_REPORT_OR_WORKER_STAMP',
       // Newest first, so [0] is the live attempt. Named explicitly rather than
       // left to the client to index — "which one counts" is a contract decision,
       // not a rendering one.

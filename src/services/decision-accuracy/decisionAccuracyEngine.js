@@ -33,6 +33,9 @@ import {
   COVERAGE_VERDICT, LIFT_STATUS, CALIBRATION_DIRECTION, MATURITY,
   DEFAULT_CONFIG, SUCCESS_PREDICATES, SCORABLE_VERDICT,
 } from './accuracyTypes.js';
+// B4-A — the one definition of "when was this acted on". Pure; no DB, no clock,
+// so the engine's determinism contract above is untouched.
+import { interventionAt } from '../execution/decisionProvenance.js';
 
 const r4 = (n) => Math.round(n * 1e4) / 1e4;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -127,13 +130,20 @@ export function calculateDecisionAccuracy({ decisions = [], outcomes = null, now
 /**
  * The instant the outcome window opens.
  *
- * `executedAt` when a human told us they acted, `createdAt` otherwise. The
- * distinction is causal, not cosmetic: measuring from issuance charges the
- * result for however long the verdict sat unread in a queue, so a call acted on
- * three weeks late reads as mature when its intervention is three days old.
+ * `interventionAt` when SOMEONE acted, `createdAt` otherwise. The distinction is
+ * causal, not cosmetic: measuring from issuance charges the result for however
+ * long the verdict sat unread in a queue, so a call acted on three weeks late
+ * reads as mature when its intervention is three days old.
+ *
+ * B4-A — the field is named for the QUESTION, not for a column. It is projected
+ * at the seam (buildAccuracyInputs) as the earliest of `humanExecutedAt` and
+ * `platformExecutedAt`, because the window opens when the campaign first
+ * changed and it does not matter here who changed it. The old name was
+ * `executedAt`, which after the provenance split would have forced every reader
+ * of this engine to ask which kind of execution it meant.
  *
  * The fallback is for LEGACY rows only — every decision written before the
- * human-signal routes existed has no executedAt and never will. It measures a
+ * human-signal routes existed has no intervention instant and never will. It measures a
  * window that includes unread time and is the less causally honest of the two;
  * it is here because the alternative is dropping those rows entirely, and their
  * issuance date is a real fact even if it answers a slightly different question.
@@ -142,7 +152,7 @@ export function calculateDecisionAccuracy({ decisions = [], outcomes = null, now
  * purpose: that axis is "when did the engine make calls", and re-anchoring it to
  * execution would reorder the learning curve by how fast the operator responded.
  */
-const windowStart = (decision) => decision.executedAt ?? decision.createdAt;
+const windowStart = (decision) => interventionAt(decision) ?? decision.createdAt;
 
 // EXPORTED for R10 (I53), semantics untouched. The Pattern Engine needs the same
 // answer to "is this outcome mature enough to score" that the Proof Engine uses,

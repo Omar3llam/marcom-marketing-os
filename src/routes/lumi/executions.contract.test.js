@@ -103,9 +103,14 @@ describe.skipIf(!DB_OK)('B3 — the execution read path', () => {
 
   it('3. a self-reported decision has executedAt but NO executions', async () => {
     // The distinction B3 exists to make readable. Same column, different story.
-    const d = await makeDecision({ executedAt: new Date('2026-08-19T10:00:00Z') });
+    const d = await makeDecision({ humanExecutedAt: new Date('2026-08-19T10:00:00Z') });
     const res = await get(d.id);
     expect(res.body.count).toBe(0);
+    // B4-A — the self-report is its own axis, and the deprecated derived
+    // alias still resolves to it while no platform execution exists.
+    expect(new Date(res.body.humanExecution.reportedAt)).toEqual(new Date('2026-08-19T10:00:00Z'));
+    expect(res.body.humanExecution.reported).toBe(true);
+    expect(res.body.platformExecution.executed).toBe(false);
     expect(new Date(res.body.executedAt)).toEqual(new Date('2026-08-19T10:00:00Z'));
   });
 
@@ -278,11 +283,12 @@ describe.skipIf(!DB_OK)('B3-B — honest execution summary', () => {
   });
 
   it('a SELF-REPORTED decision still reads as NONE', async () => {
-    // The whole point. executedAt is set, no execution exists, and the summary
-    // must not turn the operator's claim into a platform confirmation.
-    const d = await makeDecision({ executedAt: new Date('2026-08-19T10:00:00Z') });
+    // The whole point. The operator reported acting, no execution exists, and
+    // the summary must not turn that claim into a platform confirmation.
+    const d = await makeDecision({ humanExecutedAt: new Date('2026-08-19T10:00:00Z') });
     const res = await get(d.id);
-    expect(res.body.executedAt).toBeTruthy();
+    expect(res.body.humanExecution.reported).toBe(true);
+    expect(res.body.platformExecution.executed).toBe(false);
     expect(res.body.execution.state).toBe('NONE');
     expect(res.body.execution.succeeded).toBe(false);
   });
@@ -298,7 +304,7 @@ describe.skipIf(!DB_OK)('B3-B — honest execution summary', () => {
 
   it('queued + a stamped executedAt STILL is not succeeded', async () => {
     // The trap case: both signals present, disagreeing. The lifecycle wins.
-    const d = await makeDecision({ executedAt: new Date('2026-08-19T10:00:00Z') });
+    const d = await makeDecision({ humanExecutedAt: new Date('2026-08-19T10:00:00Z') });
     await makeExecution({ decisionId: d.id, status: 'QUEUED' });
     const res = await get(d.id);
     expect(res.body.execution.succeeded).toBe(false);
@@ -341,7 +347,7 @@ describe.skipIf(!DB_OK)('B3-B — honest execution summary', () => {
   it('labels executedAt so no reader has to guess what it means', async () => {
     const d = await makeDecision();
     const res = await get(d.id);
-    expect(res.body.executedAtMeaning).toBe('OPERATOR_SELF_REPORT_OR_WORKER_STAMP');
+    expect(res.body.executedAtMeaning).toBe('DEPRECATED_DERIVED_PREFER_platformExecution');
   });
 
   it('each row carries the same state vocabulary as GET /api/execute/:id', async () => {
