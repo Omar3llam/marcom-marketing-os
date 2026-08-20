@@ -154,7 +154,7 @@ async function stampSignal(res, decision, field, guard = null) {
   // sweep must still report its own signal rather than 409 on a claim that was
   // already true when it was made.
   if (decision[field]) {
-    return res.json({ ok: true, recorded: false, ...signalBody(field, decision[field]) });
+    return res.json({ ok: true, recorded: false, ...signalBody(field, decision[field], decision.platformExecutedAt) });
   }
 
   if (decision[opposite]) {
@@ -170,7 +170,9 @@ async function stampSignal(res, decision, field, guard = null) {
 
   const at = new Date();
   await prisma.decision.update({ where: { id: decision.id }, data: { [field]: at } });
-  return res.json({ ok: true, recorded: true, ...signalBody(field, at) });
+  // `decision.platformExecutedAt` is the row as it was READ, and that is correct:
+  // this update writes one human column and cannot have changed Lumi's.
+  return res.json({ ok: true, recorded: true, ...signalBody(field, at, decision.platformExecutedAt) });
 }
 
 /**
@@ -179,33 +181,54 @@ async function stampSignal(res, decision, field, guard = null) {
  * The execute signal answers with BOTH halves of the provenance question, so no
  * client has to infer which kind of execution happened from a bare timestamp:
  *
- *   humanExecution:    { reported: true, reportedAt }
- *   platformExecution: null            ← this route never creates one
+ *   humanExecution:    { reported: true,  reportedAt }   ← humanExecutedAt only
+ *   platformExecution: { executed: true,  executedAt }   ← platformExecutedAt only
  *
- * `platformExecution: null` is stated rather than omitted. Omission would read
- * as "not part of this response"; null says "we looked, and Lumi has not
- * executed this" — which is the fact the caller needs and the one the old
- * single-field response could not express.
+ * T12-A — EACH SIDE IS READ FROM ITS OWN COLUMN AND NOTHING ELSE. Neither may be
+ * inferred from the other, and neither may be inferred from this request. This
+ * route used to state `platformExecution: null` unconditionally, on the reasoning
+ * that "this route never creates one" — true, and the wrong question. The field
+ * does not report what this REQUEST did; it reports what is true of the DECISION.
+ * A decision Lumi had already executed answered the self-report with a flat null,
+ * which reads as "we looked, and Lumi has not executed this" about a row whose
+ * `platformExecutedAt` was set. That is a fact denied on the wire, not a naming
+ * drift, so it is derived here rather than assumed.
+ *
+ * `null` still means absence, and is stated rather than omitted: omission reads
+ * as "not part of this response", null says "we looked and it has not happened".
+ * Note the sibling endpoint spells absence differently — GET /lumi/decisions/:id/
+ * executions always returns the object and flags it `executed: false`. Both are
+ * honest; the presence shape (`{ executed, executedAt }`) is deliberately the
+ * same vocabulary, and this route keeps `null` because that is the shape it has
+ * always published for absence and changing it would break readers that test the
+ * field for truthiness.
  *
  * DEPRECATED COMPATIBILITY FIELD — `executedAt` rides along for clients shipped
  * before the split. Its derivation HERE is "the human timestamp this route just
  * wrote", always, because that is the only kind of execution this route can
- * record. GET /lumi/decisions/:id/executions derives its own `executedAt`
- * differently (platformExecutedAt ?? humanExecutedAt), so the two endpoints can
- * report different instants for one decision. They are not the same canonical
- * fact and must never be treated as one — the structured `humanExecution` /
+ * record. It is emphatically NOT the union: even when `platformExecutedAt` is
+ * already set — the state T12-A fixed above — this field stays human. GET
+ * /lumi/decisions/:id/executions derives its own `executedAt` differently
+ * (platformExecutedAt ?? humanExecutedAt), so the two endpoints can report
+ * different instants for one decision. They are not the same canonical fact and
+ * must never be treated as one — the structured `humanExecution` /
  * `platformExecution` fields are authoritative.
  *
  * It is not the stored `Decision.executedAt` column either. Nothing reads or
  * writes that column any more; this value is computed for the wire.
+ *
+ * Exported for the projection contract test: two of the four provenance states
+ * are unreachable through this endpoint (it always writes `humanExecutedAt`, so
+ * no response it sends can carry a null one), and a contract that only holds for
+ * the states HTTP can reach is not the contract.
  */
-function signalBody(field, at) {
+export function signalBody(field, at, platformExecutedAt = null) {
   if (field !== 'humanExecutedAt') return { [field]: at };
   return {
     humanExecutedAt: at,
-    humanExecution:    { reported: true, reportedAt: at },
-    platformExecution: null,
-    executedAt: at, // DEPRECATED — remove once no client reads it
+    humanExecution:    at                 ? { reported: true, reportedAt: at }             : null,
+    platformExecution: platformExecutedAt ? { executed: true, executedAt: platformExecutedAt } : null,
+    executedAt: at, // DEPRECATED — human-only, never the union. Remove once no client reads it.
   };
 }
 
@@ -221,9 +244,12 @@ async function recordSignal(req, res, field) {
     // Found by id + workspace, with NO status filter: a decision that has moved
     // on is a 409 that says what it moved to, not a 404 that implies it never
     // existed. The two are different facts and the caller can act on only one.
+    // T12-A — `platformExecutedAt` is selected because the response REPORTS it.
+    // Without it `decision.platformExecutedAt` is `undefined`, the projection
+    // falls to null, and the body denies an execution the row records.
     const decision = await prisma.decision.findFirst({
       where:  { id, workspaceId: req.workspaceId },
-      select: { id: true, status: true, humanExecutedAt: true, dismissedAt: true },
+      select: { id: true, status: true, humanExecutedAt: true, dismissedAt: true, platformExecutedAt: true },
     });
 
     if (!decision) return res.status(404).json({ error: 'DecisionNotFound', message: 'No such decision in this workspace' });
@@ -284,7 +310,10 @@ async function recordEntitySignal(req, res, field) {
     const decision = await prisma.decision.findFirst({
       where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED' },
       orderBy: { createdAt: 'desc' },
-      select:  { id: true, humanExecutedAt: true, dismissedAt: true },
+      // T12-A — same reason as the by-id path: the response reports this column,
+      // so the query has to carry it. The two paths share `signalBody`, and a
+      // select that drifted between them would publish two different truths.
+      select:  { id: true, humanExecutedAt: true, dismissedAt: true, platformExecutedAt: true },
     });
 
     // No live verdict. Honest 404 rather than a cheerful ok:true — a signal we

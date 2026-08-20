@@ -135,6 +135,10 @@ describe.skipIf(!DB_OK)('B4-A — execution provenance', () => {
     // The fixture is already platform-executed, which is the only state where
     // the two derivations disagree. Without it this test would pass against
     // either one and prove nothing.
+    //
+    // T12-A · routes/lumi/signalProjection.contract.test.js reuses this exact
+    // state to prove the other half — that the response also REPORTS the
+    // platform execution it must not adopt as its alias. Change one, read both.
     const PLATFORM = new Date('2026-08-01T00:00:00.000Z');
     const d = await makeDecision({ platformExecutedAt: PLATFORM });
 
