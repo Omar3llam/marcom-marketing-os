@@ -55,7 +55,7 @@ const VALID = Object.freeze({
 // human-signal routes deliberately do not move it — the timestamp is the fact.
 const executed = (over = {}) => ({
   id: 'dec-1', status: 'PROPOSED', entityId: 'ent-1', entityLevel: 'ADSET',
-  executedAt: new Date('2026-06-01T10:00:00.000Z'), dismissedAt: null, ...over,
+  humanExecutedAt: new Date('2026-06-01T10:00:00.000Z'), dismissedAt: null, ...over,
 });
 
 const record = (input = VALID, over = {}) => recordOutcome('ws-1', 'dec-1', input, { now: NOW, ...over });
@@ -131,7 +131,7 @@ describe('recordOutcome — write path', () => {
   });
 
   it('throws (→409) when nobody ever said they acted', async () => {
-    prisma.decision.findFirst.mockResolvedValue(executed({ executedAt: null }));
+    prisma.decision.findFirst.mockResolvedValue(executed({ humanExecutedAt: null }));
     await expect(record()).rejects.toThrow(/has not been executed/i);
     expect(prisma.outcomeSnapshot.create).not.toHaveBeenCalled();
   });
@@ -141,7 +141,7 @@ describe('recordOutcome — write path', () => {
     // was done, so nothing followed. Collapsing the two messages would send an
     // operator looking for a missing execution record that will never exist.
     prisma.decision.findFirst.mockResolvedValue(
-      executed({ executedAt: null, dismissedAt: new Date('2026-06-01T10:00:00.000Z') }),
+      executed({ humanExecutedAt: null, dismissedAt: new Date('2026-06-01T10:00:00.000Z') }),
     );
     await expect(record()).rejects.toThrow(/was dismissed, not executed/i);
     expect(prisma.outcomeSnapshot.create).not.toHaveBeenCalled();
@@ -154,17 +154,17 @@ describe('recordOutcome — write path', () => {
     prisma.decision.findFirst.mockResolvedValue(null);
     await expect(record()).rejects.toMatchObject({ code: OUTCOME_ERROR.DECISION_NOT_FOUND });
 
-    prisma.decision.findFirst.mockResolvedValue(executed({ executedAt: null }));
+    prisma.decision.findFirst.mockResolvedValue(executed({ humanExecutedAt: null }));
     await expect(record()).rejects.toMatchObject({ code: OUTCOME_ERROR.NOT_EXECUTED });
   });
 
-  // The guard reads executedAt, so the select MUST ask for it. Testing a field
+  // The guard reads humanExecutedAt, so the select MUST ask for it. Testing a field
   // that was never selected is how this check would silently invert: undefined
   // fails the guard for every decision, and the write path dies for all of them.
   it('selects the timestamps its own guard reads', async () => {
     await record();
     expect(prisma.decision.findFirst.mock.calls[0][0].select)
-      .toMatchObject({ executedAt: true, dismissedAt: true });
+      .toMatchObject({ humanExecutedAt: true, dismissedAt: true });
   });
 
   // status is no longer consulted at all: the routes leave it PROPOSED, and a
@@ -189,7 +189,7 @@ describe('R6 — measuredAt is its own fact', () => {
     const created = createdData();
     expect(created.measuredAt).not.toEqual(NOW);
     expect(created.measuredAt).not.toEqual(created.windowEnd);
-    expect(created.measuredAt).not.toEqual(executed().executedAt);
+    expect(created.measuredAt).not.toEqual(executed().humanExecutedAt);
     // …and createdAt is not written at all — the column defaults in the database,
     // which is what keeps "written" and "measured" from ever being the same value
     // by construction.
@@ -201,7 +201,9 @@ describe('R6 — the measured period is anchored to the action', () => {
   it('refuses a window that opens before the decision was executed', async () => {
     const err = await record({ ...VALID, windowStart: '2026-05-20T00:00:00Z' }).catch((e) => e);
     expect(err.code).toBe(OUTCOME_ERROR.INVALID_WINDOW);
-    expect(err.message).toMatch(/before the decision was executed/);
+    // B4-A — "acted on", not "executed": the anchor is the intervention
+    // instant from either provenance, so the wording no longer implies which.
+    expect(err.message).toMatch(/before the decision was acted on/);
     expect(prisma.outcomeSnapshot.create).not.toHaveBeenCalled();
   });
 
@@ -231,7 +233,7 @@ describe('R6 — the measured period is anchored to the action', () => {
   it('accepts a window opening exactly at the execution and closing exactly now', async () => {
     await expect(record({
       ...VALID,
-      windowStart: executed().executedAt.toISOString(),
+      windowStart: executed().humanExecutedAt.toISOString(),
       windowEnd: NOW.toISOString(),
       measuredAt: NOW.toISOString(),
     })).resolves.toBeTruthy();
@@ -349,7 +351,7 @@ describe('R6 — accuracy scores the CURRENT outcome only', () => {
     prisma.decision.findMany.mockResolvedValue([{
       id: 'dec-legacy', verdict: 'KILL', confidence: 0.9, status: 'PROPOSED',
       createdAt: new Date('2026-01-01T00:00:00Z'),
-      executedAt: new Date('2026-01-02T00:00:00Z'), dismissedAt: null,
+      humanExecutedAt: new Date('2026-01-02T00:00:00Z'), dismissedAt: null,
       outcomes: [{ spendDeltaMinor: -1000, revenueDeltaMinor: -200, roasDelta: 0.1, windowEnd: new Date('2026-01-09T00:00:00Z'), sustained: true }],
     }]);
     const result = await getAccuracy('ws-1', { now: new Date('2026-03-01T00:00:00Z') });
@@ -372,7 +374,8 @@ describe('listPendingOutcomes — the manual-entry queue', () => {
       expect.objectContaining({
         where: {
           workspaceId: 'ws-1',
-          executedAt: { not: null },
+          // B4-A — acted on by EITHER route owes an outcome.
+          OR: [{ humanExecutedAt: { not: null } }, { platformExecutedAt: { not: null } }],
           dismissedAt: null,
           // NONE of the CURRENT ones — a decision whose outcomes have all been
           // retired owes a fresh recording.
@@ -401,11 +404,23 @@ describe('listPendingOutcomes — the manual-entry queue', () => {
   // A work queue, ordered by the debt it represents. Oldest EXECUTION first, not
   // oldest issuance: once operators act out of order the two disagree, and
   // `createdAt: desc` actively buried the most overdue rows past the take:100.
-  it('orders by oldest execution first', async () => {
-    prisma.decision.findMany.mockResolvedValue([]);
+  it('orders by oldest DEBT first, across both provenance routes', async () => {
+    // B4-A — the queue key is the EARLIEST of the two provenance columns, and no
+    // Prisma orderBy expresses LEAST(a, b), so the ordering is applied in JS.
+    // This asserts the BEHAVIOUR rather than the query shape: sorting on one
+    // column and then the other would group every self-reported decision ahead
+    // of every Lumi-executed one regardless of age, which is the bug this
+    // ordering exists to avoid.
+    const iso = (d) => new Date(d).toISOString();
+    prisma.decision.findMany.mockResolvedValue([
+      { id: 'newest-human',   humanExecutedAt: iso('2026-06-03'), platformExecutedAt: null },
+      { id: 'oldest-platform', humanExecutedAt: null, platformExecutedAt: iso('2026-06-01') },
+      { id: 'middle-human',   humanExecutedAt: iso('2026-06-02'), platformExecutedAt: null },
+    ]);
     prisma.workspace.findUnique.mockResolvedValue({ currency: 'USD' });
-    await listPendingOutcomes('ws-1');
-    expect(prisma.decision.findMany.mock.calls[0][0].orderBy).toEqual({ executedAt: 'asc' });
+
+    const out = await listPendingOutcomes('ws-1');
+    expect(out.decisions.map((d) => d.id)).toEqual(['oldest-platform', 'middle-human', 'newest-human']);
   });
 
   it('defaults currency to USD when the workspace row is missing', async () => {

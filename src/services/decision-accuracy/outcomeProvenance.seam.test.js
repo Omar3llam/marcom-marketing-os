@@ -60,7 +60,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   prisma.decision.findFirst.mockResolvedValue({
     id: 'dec-1', status: 'PROPOSED', entityId: 'ent-1', entityLevel: 'CAMPAIGN',
-    executedAt: new Date('2026-06-01T10:00:00.000Z'), dismissedAt: null,
+    humanExecutedAt: new Date('2026-06-01T10:00:00.000Z'), dismissedAt: null,
   });
   prisma.outcomeSnapshot.findFirst.mockResolvedValue(null);
   prisma.outcomeSnapshot.create.mockResolvedValue({ id: 'out-new' });

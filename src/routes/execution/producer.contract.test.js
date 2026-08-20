@@ -57,7 +57,7 @@ const makeDecision = (workspaceId = WS) => prisma.decision.create({
     workspaceId, entityId: ENTITY, entityLevel: 'CAMPAIGN',
     verdict: 'KILL', confidence: 0.8, diagnosis: 'B3 producer fixture', channel: 'META',
   },
-  select: { id: true, executedAt: true },
+  select: { id: true, platformExecutedAt: true },
 });
 
 describe('B3 producer — this contract must actually run', () => {
@@ -121,10 +121,10 @@ describe.skipIf(!DB_OK)('B3 — Decision → ExecutionRequest, persisted', () =>
     expect(res.body.status).not.toBe('EXECUTED_SUCCESS');
     expect(JSON.stringify(res.body)).not.toMatch(/EXECUTED_SUCCESS/);
 
-    // …and the Decision is NOT stamped. executedAt is worker-written, after the
+    // …and the Decision is NOT stamped. platformExecutedAt is worker-written, after the
     // platform accepted the mutation, and nothing earlier may set it.
-    const after = await prisma.decision.findUnique({ where: { id: d.id }, select: { executedAt: true } });
-    expect(after.executedAt).toBeNull();
+    const after = await prisma.decision.findUnique({ where: { id: d.id }, select: { platformExecutedAt: true } });
+    expect(after.platformExecutedAt).toBeNull();
   });
 
   it('4. a decision from ANOTHER workspace is refused, not executed unattributed', async () => {
@@ -198,7 +198,7 @@ describe.skipIf(!DB_OK)('B3 — Decision → ExecutionRequest, persisted', () =>
 // ============================================================
 // The other end of the chain: only a REAL success stamps the Decision
 // ============================================================
-// executedAt is the column the whole Proof Engine population derives from, and
+// platformExecutedAt is the column the whole Proof Engine population derives from, and
 // the worker is the only thing that writes it from an execution. Every existing
 // test of that mocked Prisma — so the conditional WHERE that makes it
 // first-success-only, and that refuses to overturn a dismissal, had never been
@@ -222,13 +222,13 @@ describe.skipIf(!DB_OK)('B3 — stampDecisionExecuted, against real rows', () =>
     const r = await stampDecisionExecuted({ workspaceId: WS, decisionId: d.id, at });
 
     expect(r).toEqual({ stamped: true, reason: 'STAMPED' });
-    const after = await prisma.decision.findUnique({ where: { id: d.id }, select: { executedAt: true } });
-    expect(after.executedAt).toEqual(at);
+    const after = await prisma.decision.findUnique({ where: { id: d.id }, select: { platformExecutedAt: true } });
+    expect(after.platformExecutedAt).toEqual(at);
   });
 
   it('a SECOND success does not re-date it', async () => {
     // One Decision can own several executions — retries, or the same call acted
-    // on twice. executedAt records WHEN the operator first acted, not how often.
+    // on twice. platformExecutedAt records WHEN the operator first acted, not how often.
     // This is also what makes the worker safe for BullMQ to deliver twice.
     const d = await makeDecision();
     const first = new Date('2026-08-19T12:00:00Z');
@@ -238,8 +238,8 @@ describe.skipIf(!DB_OK)('B3 — stampDecisionExecuted, against real rows', () =>
     });
 
     expect(again).toEqual({ stamped: false, reason: 'ALREADY_RESOLVED' });
-    const after = await prisma.decision.findUnique({ where: { id: d.id }, select: { executedAt: true } });
-    expect(after.executedAt).toEqual(first);
+    const after = await prisma.decision.findUnique({ where: { id: d.id }, select: { platformExecutedAt: true } });
+    expect(after.platformExecutedAt).toEqual(first);
   });
 
   it('NEVER overturns an explicit dismissal', async () => {
@@ -256,8 +256,8 @@ describe.skipIf(!DB_OK)('B3 — stampDecisionExecuted, against real rows', () =>
 
     const r = await stampDecisionExecuted({ workspaceId: WS, decisionId: d.id });
     expect(r.stamped).toBe(false);
-    const after = await prisma.decision.findUnique({ where: { id: d.id }, select: { executedAt: true } });
-    expect(after.executedAt).toBeNull();
+    const after = await prisma.decision.findUnique({ where: { id: d.id }, select: { platformExecutedAt: true } });
+    expect(after.platformExecutedAt).toBeNull();
   });
 
   it('cannot stamp a decision in another workspace', async () => {
@@ -265,8 +265,8 @@ describe.skipIf(!DB_OK)('B3 — stampDecisionExecuted, against real rows', () =>
     const r = await stampDecisionExecuted({ workspaceId: WS, decisionId: foreign.id });
 
     expect(r.stamped).toBe(false);
-    const after = await prisma.decision.findUnique({ where: { id: foreign.id }, select: { executedAt: true } });
-    expect(after.executedAt).toBeNull();
+    const after = await prisma.decision.findUnique({ where: { id: foreign.id }, select: { platformExecutedAt: true } });
+    expect(after.platformExecutedAt).toBeNull();
   });
 
   it('an unattributed execution stamps nothing, and says so', async () => {

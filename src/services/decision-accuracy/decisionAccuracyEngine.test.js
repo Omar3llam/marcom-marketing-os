@@ -92,7 +92,7 @@ describe('decisionAccuracyEngine — per-verdict success predicates (§2.1)', ()
 // The predicate had no test of any kind before this. It could have been deleted,
 // inverted, or had holdTolerance set to 100 and nothing would have gone red —
 // which matters more than usual because no HOLD can currently reach this
-// population at all (the UI gives HOLD no way to obtain executedAt), so a break
+// population at all (the UI gives HOLD no way to obtain humanExecutedAt), so a break
 // would be invisible in production too.
 //
 // The tolerance is read from DEFAULT_CONFIG rather than written as 0.1: a test
@@ -225,7 +225,7 @@ describe('decisionAccuracyEngine — the outcome window opens at execution', () 
   const lateAction = (over = {}) => ({
     id: 'late', verdict: 'KILL', confidence: 0.9, status: 'EXECUTED',
     createdAt: new Date(NOW.getTime() - day(30)).toISOString(),
-    executedAt: new Date(NOW.getTime() - day(3)).toISOString(),
+    humanExecutedAt: new Date(NOW.getTime() - day(3)).toISOString(),
     outcome: null, ...over,
   });
 
@@ -237,37 +237,37 @@ describe('decisionAccuracyEngine — the outcome window opens at execution', () 
     expect(r.coverage.unscorable).toBe(0);
   });
 
-  it('the same row without executedAt IS unscorable — the fallback is the legacy path', () => {
+  it('the same row without humanExecutedAt IS unscorable — the fallback is the legacy path', () => {
     const legacy = lateAction();
-    delete legacy.executedAt; // a row written before the human-signal routes existed
+    delete legacy.humanExecutedAt; // a row written before the human-signal routes existed
     const r = calculateDecisionAccuracy({ now: NOW, decisions: [legacy] });
     expect(r.coverage.unscorable).toBe(1);
     expect(r.coverage.pendingMaturation).toBe(0);
   });
 
-  it('an executedAt past the deadline still matures', () => {
+  it('an humanExecutedAt past the deadline still matures', () => {
     const r = calculateDecisionAccuracy({
       now: NOW,
-      decisions: [lateAction({ executedAt: new Date(NOW.getTime() - day(10)).toISOString() })],
+      decisions: [lateAction({ humanExecutedAt: new Date(NOW.getTime() - day(10)).toISOString() })],
     });
     expect(r.coverage.unscorable).toBe(1);
   });
 
-  it('a null executedAt falls back rather than throwing on new Date(null)', () => {
+  it('a null humanExecutedAt falls back rather than throwing on new Date(null)', () => {
     // new Date(null) is the epoch, not Invalid Date — it would silently mature
     // every row instead of failing loudly. `?? createdAt` has to catch null too.
-    const r = calculateDecisionAccuracy({ now: NOW, decisions: [lateAction({ executedAt: null })] });
+    const r = calculateDecisionAccuracy({ now: NOW, decisions: [lateAction({ humanExecutedAt: null })] });
     expect(r.coverage.unscorable).toBe(1);
   });
 
   // The velocity curve bins by createdAt ON PURPOSE: that axis is "when did the
   // engine make calls", and re-anchoring it to execution would reorder the
   // learning curve by how fast the operator happened to respond.
-  it('does NOT re-anchor the velocity curve to executedAt', () => {
+  it('does NOT re-anchor the velocity curve to humanExecutedAt', () => {
     const janIssued = Array.from({ length: 60 }, (_, i) => ({
       ...scored(`j${i}`, { confidence: 0.9, success: false, at: new Date('2026-01-10T00:00:00Z').getTime() + i * 1000 }),
       // Acted on in February — a month after issuance.
-      executedAt: new Date('2026-02-20T00:00:00Z').toISOString(),
+      humanExecutedAt: new Date('2026-02-20T00:00:00Z').toISOString(),
     }));
     const r = calculateDecisionAccuracy({ now: NOW, decisions: janIssued });
     // One period, and it is the ISSUANCE month.

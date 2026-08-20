@@ -219,12 +219,17 @@ export function toExecutionDetail({ execution, transitions = [], decision = null
         entityLevel: decision.entityLevel,
         verdict:     decision.verdict,
         status:      decision.status,
-        // Published, and labelled. This is the OPERATOR/self-report axis: the
-        // worker writes it after a real mutation, and the self-report route
-        // writes the same column when a human says they acted by hand. It is
-        // NOT proof of a Meta mutation — `state` above is.
-        selfReportedOrExecutedAt: decision.executedAt,
-        dismissedAt:              decision.dismissedAt,
+        // B4-A — the two provenance facts, named. This was ONE field
+        // (`selfReportedOrExecutedAt`) whose name admitted it could not say
+        // which had happened. Now it can, and a reader branches on the field it
+        // cares about instead of comparing timestamps or guessing.
+        //
+        // humanExecutedAt is a CLAIM the operator made. platformExecutedAt is
+        // the only evidence Lumi executed anything, written solely by the
+        // worker after Meta accepted a mutation.
+        humanExecutedAt:    decision.humanExecutedAt    ?? null,
+        platformExecutedAt: decision.platformExecutedAt ?? null,
+        dismissedAt:        decision.dismissedAt ?? null,
       }
       : null,
   };

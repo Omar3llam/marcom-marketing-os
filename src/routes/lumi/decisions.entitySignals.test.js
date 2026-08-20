@@ -55,7 +55,7 @@ const send = (signal, opts) =>
     .patch(`/api/lumi/decisions/by-entity/${ENTITY}/${signal}`)
     .send({});
 
-const live = (over = {}) => ({ id: 'd-1', executedAt: null, dismissedAt: null, ...over });
+const live = (over = {}) => ({ id: 'd-1', humanExecutedAt: null, dismissedAt: null, ...over });
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -90,7 +90,7 @@ describe('resolution — which decision a click lands on', () => {
     prisma.decision.findFirst.mockResolvedValue(live());
     await send('execute').expect(200);
     expect(prisma.decision.findFirst.mock.calls[0][0].select)
-      .toMatchObject({ id: true, executedAt: true, dismissedAt: true });
+      .toMatchObject({ id: true, humanExecutedAt: true, dismissedAt: true });
   });
 });
 
@@ -112,13 +112,13 @@ describe('workspace scope', () => {
 });
 
 describe('the two signals', () => {
-  it('execute stamps executedAt and reports recorded:true', async () => {
+  it('execute stamps humanExecutedAt and reports recorded:true', async () => {
     prisma.decision.findFirst.mockResolvedValue(live());
     const res = await send('execute').expect(200);
 
     expect(res.body).toMatchObject({ ok: true, recorded: true });
     expect(prisma.decision.update).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'd-1' }, data: { executedAt: expect.any(Date) } }),
+      expect.objectContaining({ where: { id: 'd-1' }, data: { humanExecutedAt: expect.any(Date) } }),
     );
   });
 
@@ -139,16 +139,16 @@ describe('the two signals', () => {
 
 describe('the shared tail — inherited, not re-implemented', () => {
   it('idempotent: a second click reports the ORIGINAL timestamp and writes nothing', async () => {
-    prisma.decision.findFirst.mockResolvedValue(live({ executedAt: AT }));
+    prisma.decision.findFirst.mockResolvedValue(live({ humanExecutedAt: AT }));
     const res = await send('execute').expect(200);
 
     expect(res.body).toMatchObject({ ok: true, recorded: false });
-    expect(new Date(res.body.executedAt)).toEqual(AT);
+    expect(new Date(res.body.humanExecutedAt)).toEqual(AT);
     expect(prisma.decision.update).not.toHaveBeenCalled();
   });
 
   it.each([
-    ['dismiss', { executedAt: AT },  'AlreadyExecuted'],
+    ['dismiss', { humanExecutedAt: AT },  'AlreadyExecuted'],
     ['execute', { dismissedAt: AT }, 'AlreadyDismissed'],
   ])('%s on an already-%s decision is a 409 naming the state', async (signal, stamped, code) => {
     prisma.decision.findFirst.mockResolvedValue(live(stamped));

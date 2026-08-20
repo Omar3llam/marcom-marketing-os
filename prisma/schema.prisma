@@ -1487,6 +1487,37 @@ model Decision {
   // means "took it somewhere they could act" and is what decisionLearning leans
   // on for that weaker claim. Deliberately timestamps rather than a `status`
   // move: see the migration for the four readers that gate on PROPOSED.
+  // ── R13-D / B4-A — execution provenance is TWO facts, never one ──────────
+  //
+  // `executedAt` carried both of these at once and nothing could tell them
+  // apart. Before B3 that was harmless: `execution_requests` was empty, so
+  // every value was a self-report and the column had one meaning. B3 wired the
+  // real producer and gave it a second writer, at which point the same column
+  // meant "a human says they acted" on some rows and "Meta accepted a mutation"
+  // on others — with no discriminator, and no consumer joining to
+  // ExecutionRequest to recover one.
+  //
+  // A human self-report is NOT evidence that Lumi executed anything. Any claim
+  // about Lumi's platform performance must read `platformExecutedAt` alone.
+  //
+  // Both may be set on one decision: an operator can act by hand and later run
+  // it through Lumi, or the reverse. They are independent facts, so neither
+  // write clears the other. Questions of the form "was this acted on at all"
+  // take the union through decisionProvenance.interventionAt() — explicitly,
+  // at a named seam, never by reaching for whichever column is nearer.
+  humanExecutedAt    DateTime? // the operator reported acting themselves
+  platformExecutedAt DateTime? // the canonical worker landed a real mutation
+
+  // DEPRECATED (B4-A). No code reads or writes this column any more; the two
+  // above replace it, and a migration copied every existing value into
+  // `humanExecutedAt` (safe because production held zero execution_requests, so
+  // no value here was ever a platform stamp).
+  //
+  // KEPT, not dropped: dropping a column is irreversible and this database is
+  // known to sit ahead of its migration history. API responses still publish an
+  // `executedAt` field for already-shipped clients, but it is DERIVED at read
+  // time from the two columns above — it is no longer this column. Removing it
+  // is a follow-up slice once the derived alias is confirmed unused.
   executedAt  DateTime?
   dismissedAt DateTime?
   resolvedAt  DateTime? // SYSTEM signal: when a new verdict replaced this one
@@ -1606,6 +1637,14 @@ model Decision {
   // generate anyway, so no map is needed:
   //   ... (verdict, resolution) WHERE resolution IS NOT NULL
   @@index([verdict, resolution])
+
+  // B4-A — the two population reads that replaced `executedAt IS NOT NULL`
+  // (accuracy population, pending-outcomes queue). Same treatment as the index
+  // above: deployed as PARTIAL (`WHERE ... IS NOT NULL`) under exactly the name
+  // Prisma generates for these declarations, so the migration's CREATE INDEX IF
+  // NOT EXISTS wins and no full-table duplicate is ever added beside it.
+  @@index([workspaceId, humanExecutedAt])
+  @@index([workspaceId, platformExecutedAt])
   // Deployed as decisions_similarity_idx (20260731000000), which is NOT the
   // name Prisma generates. `map:` pins the declaration to the object that is
   // actually deployed rather than asking production to be renamed to suit the

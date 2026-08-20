@@ -101,13 +101,19 @@ export async function stampDecisionExecuted({ workspaceId, decisionId, at = new 
     // `dismissedAt: null` makes an explicit rejection unoverturnable; and
     // `workspaceId` keeps the write scoped even though the id came from a
     // scoped read, because a second guarantee costs one column.
+    // B4-A — this writes PLATFORM provenance and nothing else. It is the only
+    // writer of `platformExecutedAt` in the system, and the column means one
+    // thing: Meta accepted a mutation Lumi performed. `humanExecutedAt` is a
+    // different fact with a different writer and is deliberately untouched
+    // here — an operator's earlier self-report is not overwritten, corrected or
+    // cleared by Lumi later executing the same call.
     const { count } = await prisma.decision.updateMany({
-      where: { id: decisionId, workspaceId, executedAt: null, dismissedAt: null },
-      data: { executedAt: at },
+      where: { id: decisionId, workspaceId, platformExecutedAt: null, dismissedAt: null },
+      data: { platformExecutedAt: at },
     });
 
     if (count > 0) {
-      logger.info({ workspaceId, decisionId, executedAt: at }, '[decisionAttribution] decision stamped executed');
+      logger.info({ workspaceId, decisionId, platformExecutedAt: at }, '[decisionAttribution] decision stamped platform-executed');
       return { stamped: true, reason: 'STAMPED' };
     }
     // Nothing matched. Either it was already stamped (a retry, or a second

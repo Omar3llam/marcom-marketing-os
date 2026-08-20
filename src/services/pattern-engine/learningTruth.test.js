@@ -72,7 +72,7 @@ const killEvent = (freq = 3.5, at = daysAgo(30)) => {
   const entityId = `e-${seq}`;
   return {
     id,
-    decision: { id, entityId, entityLevel: 'ADSET', verdict: 'KILL', createdAt: at, executedAt: at },
+    decision: { id, entityId, entityLevel: 'ADSET', verdict: 'KILL', createdAt: at, humanExecutedAt: at },
     snapshot: { entityId, date: at, frequency: freq, roas: 0.7, ctr: 0.5, spendMinor: 100000 },
   };
 };
@@ -100,30 +100,41 @@ beforeEach(() => {
 
 // ============================================================
 describe('NC31/NC32 · I52 — only EXECUTED decisions enter causal learning', () => {
-  // NC31 — remove `executedAt: { not: null }` from the population query and this
+  // NC31 — remove the execution requirement from the population query and this
   // fails. Restoring it means a verdict nobody touched contributes the support
   // that decides ESTABLISHED, so the account "learns" from interventions that
   // were never performed.
-  it('NC31 · the population query requires executedAt', async () => {
+  //
+  // B4-A — the requirement is now an OR over BOTH provenance columns. An
+  // intervention is an intervention whether the operator performed it or Lumi
+  // did; what must stay excluded is a decision nobody acted on at all.
+  it('NC31 · the population query requires an execution, by either route', async () => {
     await getBriefing(WS, { now: NOW });
     const where = prisma.decision.findMany.mock.calls[0][0].where;
-    expect(where).toHaveProperty('executedAt');
-    expect(where.executedAt).toEqual({ not: null });
+    expect(where.OR).toEqual([
+      { humanExecutedAt: { not: null } },
+      { platformExecutedAt: { not: null } },
+    ]);
+    // And NOT a bare pass-through that would admit untouched verdicts.
+    expect(where.OR.length).toBe(2);
   });
 
   // NC32 — a dismissal is a human saying NO. It is legitimate PROOF data
   // (survivorship) and illegitimate LEARNING data, because no intervention
-  // happened. `executedAt: { not: null }` excludes it structurally: the two
+  // happened. `humanExecutedAt: { not: null }` excludes it structurally: the two
   // signals are mutually exclusive at the write path, so a dismissed-only row
-  // has a null executedAt by construction and cannot match.
+  // carries neither execution timestamp by construction and cannot match.
   it('NC32 · a dismissed-only decision cannot match the population predicate', async () => {
     await getBriefing(WS, { now: NOW });
     const where = prisma.decision.findMany.mock.calls[0][0].where;
 
-    const dismissedOnly = { executedAt: null, dismissedAt: new Date() };
-    const matches = where.executedAt.not === null
-      ? dismissedOnly.executedAt !== null
-      : false;
+    // A dismissed-only row carries neither execution timestamp, so it satisfies
+    // no arm of the OR and cannot enter the learning population.
+    const dismissedOnly = { humanExecutedAt: null, platformExecutedAt: null, dismissedAt: new Date() };
+    const matches = where.OR.some((arm) => {
+      const [field] = Object.keys(arm);
+      return dismissedOnly[field] !== null;
+    });
     expect(matches).toBe(false);
   });
 
@@ -132,13 +143,13 @@ describe('NC31/NC32 · I52 — only EXECUTED decisions enter causal learning', (
   // learning would silently stop entirely, and every surface would report zero
   // patterns as though the account had nothing to teach.
   it('gates on the timestamp, never on the unwritten status enum', () => {
-    expect(SERVICE_SRC).toMatch(/executedAt:\s*\{\s*not:\s*null\s*\}/);
+    expect(SERVICE_SRC).toMatch(/humanExecutedAt:\s*\{\s*not:\s*null\s*\}/);
     expect(SERVICE_SRC).not.toMatch(/status:\s*['"]EXECUTED['"]/);
   });
 
-  it('selects executedAt — the outcome window opens there, not at createdAt', async () => {
+  it('selects humanExecutedAt — the outcome window opens there, not at createdAt', async () => {
     await getBriefing(WS, { now: NOW });
-    expect(prisma.decision.findMany.mock.calls[0][0].select).toHaveProperty('executedAt', true);
+    expect(prisma.decision.findMany.mock.calls[0][0].select).toHaveProperty('humanExecutedAt', true);
   });
 
   it('remains workspace-scoped', async () => {
@@ -168,7 +179,7 @@ describe('NC33 · I53 — one canonical definition of success', () => {
   // answering, just differently.
   it('buildPatternInputs emits the canonical tri-state, not a raw column', () => {
     const at = daysAgo(30);
-    const decisions = [{ id: 'd1', entityId: 'e1', entityLevel: 'ADSET', verdict: 'KILL', createdAt: at, executedAt: at }];
+    const decisions = [{ id: 'd1', entityId: 'e1', entityLevel: 'ADSET', verdict: 'KILL', createdAt: at, humanExecutedAt: at }];
     // A textbook correct KILL: spend fell and the cut held.
     const outcomes = [{ decisionId: 'd1', sustained: true, spendDeltaMinor: -5000, roasDelta: 0.1, windowEnd: at }];
 
@@ -196,7 +207,7 @@ describe('NC33 · I53 — one canonical definition of success', () => {
   // used a KILL and let exactly that mutation through.
   it('NC33b · grades REALLOCATE by roasDelta, not by `sustained`', () => {
     const at = daysAgo(30);
-    const decisions = [{ id: 'd1', entityId: 'e1', entityLevel: 'CAMPAIGN', verdict: 'REALLOCATE', createdAt: at, executedAt: at }];
+    const decisions = [{ id: 'd1', entityId: 'e1', entityLevel: 'CAMPAIGN', verdict: 'REALLOCATE', createdAt: at, humanExecutedAt: at }];
     const outcomes = [{
       decisionId: 'd1',
       roasDelta: 0.5,      // the freed budget's new home outperformed its old one
@@ -213,7 +224,7 @@ describe('NC33 · I53 — one canonical definition of success', () => {
   // with it — the consequence a correct KILL is supposed to have.
   it('a correct KILL is graded right even when revenue fell with the spend', () => {
     const at = daysAgo(30);
-    const decisions = [{ id: 'd1', entityId: 'e1', entityLevel: 'ADSET', verdict: 'KILL', createdAt: at, executedAt: at }];
+    const decisions = [{ id: 'd1', entityId: 'e1', entityLevel: 'ADSET', verdict: 'KILL', createdAt: at, humanExecutedAt: at }];
     const outcomes = [{
       decisionId: 'd1',
       spendDeltaMinor: -12000,   // the bleed stopped
@@ -329,9 +340,9 @@ describe('NC28 · F10 — the audience dimension is not pretended into existence
 // ============================================================
 describe('NC27 · I49 — extraction is idempotent and concurrency-safe', () => {
   const twoKills = [
-    { id: 'd1', entityId: 'e1', entityLevel: 'ADSET', verdict: 'KILL', createdAt: daysAgo(30), executedAt: daysAgo(30) },
-    { id: 'd2', entityId: 'e2', entityLevel: 'ADSET', verdict: 'KILL', createdAt: daysAgo(28), executedAt: daysAgo(28) },
-    { id: 'd3', entityId: 'e3', entityLevel: 'ADSET', verdict: 'KILL', createdAt: daysAgo(26), executedAt: daysAgo(26) },
+    { id: 'd1', entityId: 'e1', entityLevel: 'ADSET', verdict: 'KILL', createdAt: daysAgo(30), humanExecutedAt: daysAgo(30) },
+    { id: 'd2', entityId: 'e2', entityLevel: 'ADSET', verdict: 'KILL', createdAt: daysAgo(28), humanExecutedAt: daysAgo(28) },
+    { id: 'd3', entityId: 'e3', entityLevel: 'ADSET', verdict: 'KILL', createdAt: daysAgo(26), humanExecutedAt: daysAgo(26) },
   ];
   const snaps = twoKills.map((d, i) => ({
     entityId: d.entityId, date: d.createdAt, frequency: 3.5 + i * 0.1, roas: 0.7, ctr: 0.5, spendMinor: 1000,

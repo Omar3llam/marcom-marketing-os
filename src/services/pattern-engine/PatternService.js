@@ -19,6 +19,7 @@ import { evaluateDecisionSuccess } from '../decision-accuracy/decisionSuccess.js
 import { extractPatterns } from './patternEngine.js';
 import { PATTERN_STATUS, isActionablePattern } from './patternTypes.js';
 import { TEMPORAL }         from '../../config/temporal.js';
+import { PROVENANCE_SELECT } from '../execution/decisionProvenance.js';
 
 // Bounds MetricSnapshot.date — the SYNC timestamp, not a delivery horizon. A row
 // written yesterday may hold a lifetime aggregate. Value unchanged (365).
@@ -107,7 +108,7 @@ export async function getBriefing(workspaceId, { now = new Date(), lookbackDays 
       // counting things that never happened.
       //
       // Causal learning asks "what happened when the recommended intervention
-      // was actually carried out", and only executedAt answers that. Dismissals
+      // was actually carried out", and only an execution timestamp answers that. Dismissals
       // remain in the PROOF population (DecisionAccuracyService.ACTIONED counts
       // them as survivorship) — the two engines ask different questions, and
       // this is the line where they legitimately differ.
@@ -115,14 +116,26 @@ export async function getBriefing(workspaceId, { now = new Date(), lookbackDays 
       // Deliberately the TIMESTAMP, not `status: 'EXECUTED'`: nothing in this
       // system writes that enum value, so a status filter would silently match
       // an empty set — the exact bug the Proof Engine already climbed out of.
-      where:  { workspaceId, executedAt: { not: null }, createdAt: { gte: since } },
+      //
+      // B4-A — EITHER provenance. "The intervention was carried out" is true
+      // whether the operator did it by hand or Lumi did it on the platform;
+      // the causal question is about the campaign changing, not about who
+      // changed it. Restricting this to platform executions would have emptied
+      // the learning population outright — production holds zero execution
+      // requests, so every carried-out intervention there is self-reported.
+      where:  {
+        workspaceId,
+        OR: [{ humanExecutedAt: { not: null } }, { platformExecutedAt: { not: null } }],
+        createdAt: { gte: since },
+      },
       select: {
         id: true, verdict: true, entityId: true, entityLevel: true, createdAt: true,
-        // Both read by evaluateDecisionSuccess: `executedAt` opens the outcome
-        // window (measuring from issuance would charge the result for however
-        // long the verdict sat unread), and an unselected column is `undefined`,
-        // which silently reverts it to createdAt.
-        executedAt: true,
+        // Read by evaluateDecisionSuccess: the intervention instant opens the
+        // outcome window (measuring from issuance would charge the result for
+        // however long the verdict sat unread), and an unselected column is
+        // `undefined`, which silently reverts it to createdAt. PROVENANCE_SELECT
+        // names both columns so neither can be forgotten.
+        ...PROVENANCE_SELECT,
       },
     }),
     // R3: this service no longer knows how to find its evidence — it asks. The

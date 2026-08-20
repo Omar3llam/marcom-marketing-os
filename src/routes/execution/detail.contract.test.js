@@ -288,15 +288,17 @@ describe.skipIf(!DB_OK)('B3-B — execution → decision read path', () => {
     // a real mutation and by the self-report route when a human says they acted
     // by hand. Deriving success from it would call an operator's claim a Meta
     // confirmation.
-    const d = await makeDecision({ executedAt: new Date('2026-08-19T10:00:00Z') });
+    const d = await makeDecision({ humanExecutedAt: new Date('2026-08-19T10:00:00Z') });
     const e = await makeExecution({ decisionId: d.id, status: 'QUEUED' });
 
     const res = await getDetail(e.id);
     expect(res.body.state).toBe('QUEUED');
     expect(res.body.succeededAt).toBeNull();
     // Published, but under a name that says what it is.
-    expect(res.body.decision.selfReportedOrExecutedAt).toBeTruthy();
+    expect(res.body.decision.humanExecutedAt).toBeTruthy();
+    // B4-A — no ambiguous field survives on the decision projection.
     expect(res.body.decision).not.toHaveProperty('executedAt');
+    expect(res.body.decision.platformExecutedAt).toBeNull();
   });
 
   // ── FK behaviour ───────────────────────────────────────────────────────────

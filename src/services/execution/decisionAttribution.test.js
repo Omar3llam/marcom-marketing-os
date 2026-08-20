@@ -90,13 +90,13 @@ describe('R10 · resolveAttribution — fails closed', () => {
 
 describe('R10 · stampDecisionExecuted — the lifecycle rule lives in the WHERE', () => {
   // NC30 (the positive half): a successful platform mutation stamps the call.
-  it('stamps executedAt for an attributed decision', async () => {
+  it('stamps platformExecutedAt for an attributed decision', async () => {
     const at = new Date('2026-08-17T10:00:00Z');
     const out = await stampDecisionExecuted({ workspaceId: WS, decisionId: DEC, at });
     expect(out).toEqual({ stamped: true, reason: 'STAMPED' });
     expect(decision.updateMany).toHaveBeenCalledWith({
-      where: { id: DEC, workspaceId: WS, executedAt: null, dismissedAt: null },
-      data: { executedAt: at },
+      where: { id: DEC, workspaceId: WS, platformExecutedAt: null, dismissedAt: null },
+      data: { platformExecutedAt: at },
     });
   });
 
@@ -109,7 +109,7 @@ describe('R10 · stampDecisionExecuted — the lifecycle rule lives in the WHERE
     expect(decision.updateMany).not.toHaveBeenCalled();
   });
 
-  // FIRST SUCCESS WINS. Remove `executedAt: null` from the predicate and a
+  // FIRST SUCCESS WINS. Remove `platformExecutedAt: null` from the predicate and a
   // second execution re-dates the column — turning "when they first acted" into
   // "when they last acted", which is the question nobody asked and which moves
   // every outcome measurement window with it.
@@ -117,7 +117,7 @@ describe('R10 · stampDecisionExecuted — the lifecycle rule lives in the WHERE
     decision.updateMany.mockResolvedValue({ count: 0 });
     const out = await stampDecisionExecuted({ workspaceId: WS, decisionId: DEC });
     expect(out).toEqual({ stamped: false, reason: 'ALREADY_RESOLVED' });
-    expect(decision.updateMany.mock.calls[0][0].where).toHaveProperty('executedAt', null);
+    expect(decision.updateMany.mock.calls[0][0].where).toHaveProperty('platformExecutedAt', null);
   });
 
   // Remove `dismissedAt: null` and an execution that named a rejected decision

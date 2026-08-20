@@ -37,6 +37,7 @@ import {
   toExecutionDetail,
   EXECUTION_DETAIL_SELECT,
 } from '../../services/execution/executionProjection.js';
+import { PROVENANCE_SELECT } from '../../services/execution/decisionProvenance.js';
 
 // The roles that may queue a mutation (routes/execution/meta.js) are the roles
 // that may read the mutation log. A CLIENT seat cannot execute and has no
@@ -81,7 +82,11 @@ export function registerDetailRoute(router) {
           where:  { id: execution.decisionId, workspaceId },
           select: {
             id: true, entityId: true, entityLevel: true,
-            verdict: true, status: true, executedAt: true, dismissedAt: true,
+            verdict: true, status: true, dismissedAt: true,
+            // B4-A — both provenance columns, so the projection can name which
+            // kind of execution happened rather than publishing one ambiguous
+            // timestamp.
+            ...PROVENANCE_SELECT,
           },
         })
         : null;
