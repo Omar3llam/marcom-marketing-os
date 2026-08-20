@@ -120,3 +120,33 @@ export const PROVENANCE_SELECT = Object.freeze({
   humanExecutedAt:    true,
   platformExecutedAt: true,
 });
+
+/**
+ * The Prisma WHERE fragment for "somebody intervened" — the query-side twin of
+ * `wasActedOn`, for populations that must be narrowed by the DATABASE rather
+ * than filtered in memory after the fact.
+ *
+ * WHY IT LIVES HERE AND NOT IN THE CONSUMER
+ *   The union is one definition of one fact, and provenance is the thing most
+ *   likely to get stricter. A consumer that spells the OR out inline is a copy
+ *   that will not be found when the definition moves, and the failure mode is
+ *   silent: the stale copy keeps returning rows, just a different set from
+ *   everyone else's. C1 adds the first consumer of this constant.
+ *
+ * SPREAD IT, DO NOT NEST IT: `{ workspaceId, ...INTERVENED_WHERE }`. It owns
+ * the `OR` key outright, so a where clause that already carries its own `OR`
+ * must combine them under `AND` instead of spreading, or one will silently win.
+ *
+ * NOT YET THE ONLY COPY. `DecisionAccuracyService.ACTIONED` and
+ * `PatternService`'s population filter still spell the same union out inline.
+ * Repointing them is a behaviour-free substitution and is deliberately NOT part
+ * of C1 — that slice's scope forbids touching either engine. Named here so the
+ * consolidation is findable rather than merely intended.
+ */
+export const INTERVENED_WHERE = Object.freeze({
+  OR: Object.freeze([
+    Object.freeze({ humanExecutedAt:    { not: null } }),
+    Object.freeze({ platformExecutedAt: { not: null } }),
+  ]),
+});
+

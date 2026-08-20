@@ -311,6 +311,27 @@ describe.skipIf(!DB_OK)('deployed contract — enums and canonical indexes', () 
     expect(idx, 'decisions_similarity_idx is absent').toBeDefined();
     expect(idx.def).toMatch(/WHERE/i);
     expect(idx.def).toMatch(/resolution IS NOT NULL/i);
-    expect(idx.def).toMatch(/intentAt/i);
+
+    // C1 — the predicate now names the INTERVENTION union. It used to name
+    // `intentAt`, which recorded that somebody copied a recommendation; the
+    // query it covers stopped asking that question, and an index whose
+    // predicate describes a different population from its query is an index
+    // the planner will quietly decline to use.
+    expect(idx.def).toMatch(/humanExecutedAt/i);
+    expect(idx.def).toMatch(/platformExecutedAt/i);
+    expect(idx.def).not.toMatch(/intentAt/i);
+  });
+
+  it('C1 · the old similarity predicate was REPLACED, not shadowed', async () => {
+    // A partial index's predicate cannot be altered in place, so the migration
+    // drops and recreates. If it had instead created a second index beside the
+    // first, both would exist: dead weight on every write to `decisions`, and a
+    // stale object still describing the engagement population.
+    const rows = await prisma.$queryRaw`
+      SELECT indexname::text AS name, indexdef::text AS def FROM pg_indexes
+       WHERE schemaname = 'public' AND tablename = 'decisions'
+         AND indexdef ILIKE '%intentAt%'`;
+    expect(rows).toEqual([]);
   });
 });
+

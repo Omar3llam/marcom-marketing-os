@@ -2,7 +2,9 @@
 // getSimilarOutcomes — the track record behind "9 of 12 improved"
 // ------------------------------------------------------------
 // Three properties carry the weight:
-//   • only decisions a human ACTED on are counted (intentAt)
+//   • only decisions somebody INTERVENED on are counted (C1: the canonical
+//     humanExecutedAt / platformExecutedAt union, never intentAt — copying a
+//     recommendation is not changing a campaign)
 //   • UNKNOWN rows are OUTSIDE the denominator — "9 of 12" must mean twelve
 //     decisions that were actually scored
 //   • below a defensible sample it returns null, so the UI shows nothing rather
@@ -109,10 +111,26 @@ describe('the similarity key', () => {
     expect(where().rootCause).toBe('LOW_CTR');
   });
 
-  it('only reads resolved decisions a human acted on', async () => {
+  it('only reads resolved decisions somebody intervened on', async () => {
     await ask();
-    expect(where()).toMatchObject({ resolution: { not: null }, intentAt: { not: null } });
+    expect(where()).toMatchObject({
+      resolution: { not: null },
+      OR: [{ humanExecutedAt: { not: null } }, { platformExecutedAt: { not: null } }],
+    });
   });
+
+  it('C1 · engagement is not eligibility — intentAt is not in the query at all', async () => {
+    await ask();
+    // The defect this slice corrects. `intentAt` records that a human copied
+    // the recommendation or opened the ad platform; the sentence this data
+    // renders says "improved after action". Asserted as an ABSENCE because a
+    // half-migrated gate — intervention added, intentAt left in place — would
+    // pass every inclusion test above while still excluding the rows C1 exists
+    // to admit.
+    expect(where()).not.toHaveProperty('intentAt');
+    expect(where()).not.toHaveProperty('executedAt');
+  });
+
 
   it('looks at the most recent decisions, bounded', async () => {
     await ask();
