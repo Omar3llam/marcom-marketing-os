@@ -52,7 +52,6 @@ const ROUTES = [
   { method: 'post', path: '/loop/run',         body: {} },
   { method: 'post', path: '/connections/sync', body: {} },
   { method: 'post', path: '/approvals',        body: { planId: 'p1' } },
-  { method: 'post', path: '/orchestrate/c1',   body: {} },
 ];
 
 describe('Lumi BUYER/STRATEGIST mutation routes — collab-role gate', () => {
@@ -73,10 +72,6 @@ describe('Lumi BUYER/STRATEGIST mutation routes — collab-role gate', () => {
   // No over-block: an allowed role gets past the gate (some non-403 outcome).
   it('lets a BUYER past the gate on POST /tests', async () => {
     const res = await request(makeApp({ collabRole: 'BUYER' })).post('/tests').send({ picks: [{ id: 'x' }] });
-    expect(res.status).not.toBe(403);
-  });
-  it('lets a STRATEGIST past the gate on POST /orchestrate/c1', async () => {
-    const res = await request(makeApp({ collabRole: 'STRATEGIST' })).post('/orchestrate/c1').send({});
     expect(res.status).not.toBe(403);
   });
 });

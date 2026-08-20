@@ -1,16 +1,16 @@
 // ============================================================
 // MARCOM / Lumi — ClaudeAgent (Phase 4)
 // ------------------------------------------------------------
-// Wraps Anthropic Claude with the Phase-4 context-injection
-// contract: every call automatically prepends the campaign's
-// CampaignState.stage and the last 3 DecisionMemory entries.
+// Wraps Anthropic Claude. It used to prepend a campaign-context block built
+// from CampaignState.stage plus recent DecisionMemory; S1-B retired both
+// populations, so `contextInjected` is now permanently false and the field is
+// kept only so callers reading it do not break.
 //
 // The base Anthropic SDK call is delegated to the existing
 // utility in `src/utils/claude.js` so token/header/retry logic
 // stays in one place.
 // ============================================================
 import { callClaude }          from '../utils/claude.js';
-import { getRenderedContext }  from './contextBuilder.js';
 import { logger }              from '../utils/logger.js';
 
 const TOOL_TIMEOUT_MS = 10_000;     // Phase-4 spec: 10 s per tool
@@ -26,7 +26,7 @@ const TOOL_TIMEOUT_MS = 10_000;     // Phase-4 spec: 10 s per tool
  * @param {number} [opts.maxTokens=2000]
  */
 export async function runClaudeAgent({
-  campaignId, workspaceId = null, role, task, history = [],
+  campaignId, role, task, history = [],
   tools = [], onTool = null, maxTokens = 2000,
   skipRecommendations = false,
 }) {
@@ -42,11 +42,6 @@ export async function runClaudeAgent({
     hasHistory: history.length > 0,
     toolsCount: tools.length,
   }, '[ClaudeAgent] runClaudeAgent: starting');
-
-  // R9 (I32) — campaign context is workspace-scoped. CampaignState.campaignId is
-  // a platform-supplied String, unique only WITH its workspace, so a caller that
-  // cannot name the workspace gets no context block rather than a global lookup.
-  const ctxBlock = campaignId && workspaceId ? await getRenderedContext(campaignId, workspaceId) : '';
 
   const RECOMMENDATION_BLOCK = `
 AUTONOMOUS RECOMMENDATION REQUIREMENT:
@@ -73,12 +68,16 @@ GOOD: {
 }
 `;
 
+  // S1-B — there is no campaign-context block any more, and no instruction to
+  // ground in one. It rendered stage / health score / last sweep out of
+  // CampaignState, a table with no writer since R7 deleted temporalObserver, so
+  // every live caller already passed `campaignId: null` and got an empty string
+  // — and the line telling the model to "use the campaign context above" pointed
+  // at nothing on every call. Removed rather than repointed: an equivalent block
+  // sourced from the entity graph would be a new prompt capability, not a
+  // migration of an old one.
   const systemPrompt = [
     role || 'You are Lumi, an autonomous marketing intelligence agent.',
-    ctxBlock || '',
-    'Use the campaign context above to ground every recommendation. ' +
-    'If a recent decision regressed, do NOT recommend the same action again ' +
-    'unless you can articulate what would change.',
     skipRecommendations ? null : RECOMMENDATION_BLOCK,
   ].filter(Boolean).join('\n\n');
 
@@ -91,7 +90,7 @@ GOOD: {
     onTool: onTool ? withTimeout(onTool, TOOL_TIMEOUT_MS) : null,
   });
 
-  return { text: result, contextInjected: Boolean(ctxBlock) };
+  return { text: result, contextInjected: false };
 }
 
 // ── Tool-call timeout wrapper ────────────────────────────────

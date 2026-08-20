@@ -1,12 +1,16 @@
 // ============================================================
 // MARCOM / Lumi — AI intelligence routes
-// POST /api/lumi/orchestrate/:campaignId
 // POST /api/lumi/analyze-content
 // POST /api/lumi/strategy-brief
 // Extracted from lumi.js for architecture size compliance.
+//
+// S1-B — POST /orchestrate/:campaignId was removed. It resolved a PENDING
+// Action row and handed it to the dual-agent orchestrator, and both halves were
+// unreachable: nothing in this repository creates an Action row, so the route
+// 404'd before it could run, and the orchestrator behind it read CampaignState,
+// which has had no writer since R7. Zero client callers. Retired, not repointed.
 // ============================================================
 import { Router }  from 'express';
-import { prisma }  from '../../lib/prisma.js';
 import { logger }  from '../../utils/logger.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { validate, strategyBriefSchema } from '../../middleware/validate.js';
@@ -14,62 +18,6 @@ import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
 
 export const intelligenceRouter = Router();
 
-// ─────────────────────────────────────────────────────────────
-// Orchestration runs the dual-agent and writes its output onto an Action row —
-// a state mutation a read-only CLIENT seat must not trigger.
-intelligenceRouter.post('/orchestrate/:campaignId', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
-  const { campaignId } = req.params;
-  let wsId = req.workspaceId;
-  if (!wsId && req.userId) {
-    try {
-      const u = await prisma.user.findUnique({
-        where:  { clerkId: req.userId },
-        select: { workspaceId: true },
-      });
-      wsId = u?.workspaceId ?? null;
-    } catch (fallbackErr) {
-      logger.error(
-        { err: fallbackErr.message, userId: req.userId },
-        '[lumi/orchestrate] workspaceId fallback lookup failed'
-      );
-    }
-  }
-  const userId = req.userId;
-  if (!wsId)        return res.status(401).json({ error: 'Unauthenticated' });
-  if (!campaignId)  return res.status(400).json({ error: 'campaignId required' });
-
-  try {
-    // Pick the most recent PENDING action for this campaign as the
-    // canonical row to write the orchestration output onto.
-    const action = await prisma.action.findFirst({
-      where:   { workspaceId: wsId, campaignId, status: 'PENDING' },
-      orderBy: { createdAt: 'desc' },
-    });
-    if (!action) {
-      return res.status(404).json({ error: 'No PENDING action for this campaign' });
-    }
-
-    // Use circuit breaker wrapper for resilience (Phase 11B)
-    const { executeOrchestration } = await import('../../resilience/orchestratorCircuit.js');
-
-    const result = await executeOrchestration({
-      campaignId,
-      workspaceId: wsId,
-      actionId:    action.id,
-      userId,
-    });
-
-    return res.json({
-      ok:        true,
-      actionId:  action.id,
-      campaignId,
-      ...result,
-    });
-  } catch (err) {
-    logger.error({ err: err.message, campaignId, wsId }, '[lumi/orchestrate] failed');
-    return res.status(500).json({ error: 'OrchestrationFailed', detail: 'Request failed' });
-  }
-});
 
 // ─────────────────────────────────────────────────────────────
 // POST /api/lumi/analyze-content   (JWT — Mode 4 content scoring)

@@ -167,9 +167,18 @@ node src/tests/dialect.test.js      # dialect resolution tests
 ```
 User              → workspace membership, Firebase UID
 Workspace         → the company/account unit
-CampaignState     → campaign health snapshot from CSV
-Action            → executed Meta API actions (audit log)
-DecisionMemory    → AI decision history with ROAS delta
+Decision          → what Lumi decided, and its provenance
+MetricSnapshot    → one observation of an entity over a declared window
+ExecutionRequest  → the platform-mutation lifecycle
+```
+
+**Retired, still in the schema** (S1-B — no runtime readers or writers; model
+removal is a separate schema slice):
+
+```
+CampaignState     → writer deleted in R7, last reader removed in S1-B
+Action            → zero writers; one diagnostic row count on /lumi/_health
+DecisionMemory    → no production code touches this model at all
 ```
 
 Full schema: `prisma/schema.prisma`
@@ -268,13 +277,25 @@ The system is now **connector-only** for all user-facing data ingestion. CSV upl
 - CSV copy / messaging across landing, empty states, CTAs — REMOVED (Phase 4, PR #166)
 - `UploadCSVResponse` / `UploadCSVError` types + `mockUploadCSVResponse` fixture — DELETED (Phase 5, this PR). `FetchMetaResponse` promoted from a CSV alias to a standalone live-contract interface.
 
-### Intentionally kept (Option A — NOT dead code, DO NOT delete)
+### ~~Intentionally kept (Option A)~~ — SUPERSEDED by S1-B
 
-These are the **legacy `CampaignState` feed** substrate — internal infrastructure, invisible to users, deliberately preserved. Retiring them is a separate **Option B** migration project, out of scope for the CSV-removal program.
+The paragraph here described the legacy `CampaignState` feed substrate as
+"deliberately preserved" and named `temporalObserver` as its writer. **Both
+statements were already false when written**: R7 had deleted `temporalObserver`,
+leaving the model structurally unwritable, and the readers were not preserving a
+feature — they were reading a table nothing could fill.
 
-- `client/src/hooks/useCampaignFeed.js` — legacy `CampaignState` reader.
-  Live non-CSV callers: `MainLayout` (sidebar alerts), `InsightsView`, `ContentLabView`, `CampaignsView`; exports `summarize`/`metricValue` feeding `IntelligenceContext` + `CampaignFeedContext`.
-- `CampaignState` model (`prisma/schema.prisma`) — written by `temporalObserver`; read by `orchestrator`, `contextBuilder`, `lumi/feed.js`, `EntityGraphService`.
-- `src/utils/csvParser.js`, `orchestrator.analyzeCampaignData(source='csv')` — backend CSV *parsing/analysis* logic still reachable by the legacy feed; not a user-facing ingestion path.
+**S1-B removed the backend half.** `GET /api/lumi/feed` no longer publishes a
+`campaigns` array, the agent context block is gone, and `POST
+/lumi/orchestrate/:campaignId` plus the dual-agent `runOrchestration` behind it
+are deleted. See "Retired, still in the schema" above.
 
-**DO NOT DELETE any of the above without a dedicated Option B migration project.**
+**Still open, deliberately:**
+
+- `client/src/hooks/useCampaignFeed.js` and the two contexts that read
+  `feed.campaigns` — the field is gone from the response; both already default
+  to `[]`, so nothing breaks, but the empty state they render now means "this
+  field no longer exists" rather than "you have no campaigns". Frontend was
+  out of scope for S1-B.
+- `src/utils/csvParser.js` — no production importer.
+- The `CampaignState` / `Action` / `DecisionMemory` **models** — schema slice.
