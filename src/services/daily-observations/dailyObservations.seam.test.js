@@ -31,7 +31,7 @@ import { additiveDifference, areComparable, COMPARABILITY } from './observationC
 const WS = 'ws-1';
 const ENTITY = 'e1';
 const DAY = (d) => new Date(`2026-08-${d}T00:00:00.000Z`);
-const EXECUTED_AT = new Date('2026-08-10T14:20:00.000Z');
+const INTERVENTION_AT = new Date('2026-08-10T14:20:00.000Z');
 
 /**
  * A row exactly as the Phase E sink writes one: `date` is the sync instant,
@@ -62,7 +62,7 @@ const stored = (day, over = {}) => ({
 });
 
 const read = (over = {}) => readDailyObservations(WS, {
-  entityId: ENTITY, entityLevel: 'CAMPAIGN', source: 'META', executedAt: EXECUTED_AT, ...over,
+  entityId: ENTITY, entityLevel: 'CAMPAIGN', source: 'META', interventionAt: INTERVENTION_AT, ...over,
 });
 
 beforeEach(() => {

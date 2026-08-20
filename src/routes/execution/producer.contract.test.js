@@ -85,9 +85,55 @@ describe.skipIf(!DB_OK)('B3 — Decision → ExecutionRequest, persisted', () =>
     executionQueue.count.mockResolvedValue(0);
     await prisma.executionRequest.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
     await prisma.decision.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
+    await prisma.auditLog.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
+  });
+
+  // ── The audit row, against the real enum ──────────────────────────────────
+  // This suite is the only place that can prove it. Every other execution-route
+  // suite mocks `prisma.auditLog.create` with a resolved stub, which agrees
+  // with any value at all — including one the column cannot store.
+  //
+  // It could not store `'QUEUED'`: AuditLog.status is Prisma's `ExecutionStatus`
+  // enum (PENDING | SUCCESS | FAILED | …), a different type from the
+  // execution-lifecycle enum of the same name that owns QUEUED. Prisma rejected
+  // the write, the route's `.catch` logged it, and the request returned 202
+  // anyway — so a successful enqueue produced no audit row at all, on every
+  // request, invisibly.
+  it('0. a successful enqueue PERSISTS an audit row the column can hold', async () => {
+    const res = await post(validBody());
+    expect(res.status).toBe(202);
+
+    const rows = await prisma.auditLog.findMany({
+      where: { workspaceId: WS },
+      select: { status: true, actionType: true, targetId: true, platform: true },
+    });
+
+    // The assertion the mocks could never make: a row exists.
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe('PENDING');
+    expect(rows[0].platform).toBe('META');
+    expect(rows[0].actionType).toBe('PAUSE_CAMPAIGN');
+
+    // And it is a value the enum actually admits — read back through the
+    // generated client, which is what rejected the old one.
+    const pendingOnly = await prisma.auditLog.count({ where: { workspaceId: WS, status: 'PENDING' } });
+    expect(pendingOnly).toBe(1);
+  });
+
+  it('0b. the audit write is not silently absent when the enum rejects a value', async () => {
+    // A guard against the failure MODE, not just the value: prove that the
+    // column really does refuse a runtime-lifecycle word, so a future edit
+    // reaching for one cannot pass unnoticed the way the last one did.
+    await expect(prisma.auditLog.create({
+      data: {
+        workspaceId: WS, userId: USER, actionType: 'PAUSE_CAMPAIGN',
+        targetId: '23851234567', platform: 'META', status: 'QUEUED', payload: {},
+      },
+    })).rejects.toThrow(/ExecutionStatus/);
   });
 
   it('1. a decisionId is attributed and PERSISTED on the row', async () => {
+
     const d = await makeDecision();
     const res = await post(validBody({ decisionId: d.id }));
     expect(res.status).toBe(202);

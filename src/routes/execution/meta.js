@@ -237,15 +237,35 @@ export function registerMetaRoute(router) {
       // ═══════════════════════════════════════════════════════
       // LAYER 4: AUDIT LOG
       // ═══════════════════════════════════════════════════════
+      // TWO CONTRACTS SHARE THE NAME `ExecutionStatus`, AND ONLY ONE FITS HERE.
+      //
+      //   AuditLog.status  → the PRISMA enum: PENDING | SUCCESS | FAILED |
+      //                      PAUSED_FOR_APPROVAL | RESUMING | RESUMED
+      //   the import above → @marcom/runtime-contracts: PENDING | QUEUED |
+      //                      EXECUTING | EXECUTED_SUCCESS | EXECUTED_FAILED |
+      //                      TIMED_OUT | CANCELLED
+      //
+      // This wrote `'QUEUED'` — a member of the runtime lifecycle, not of the
+      // audit enum. Prisma rejected every one of those writes with a validation
+      // error, the `.catch` below logged it, and the request carried on: the
+      // audit log gained NO row for any successfully queued execution, silently
+      // and on every request. The two failure paths in this file write
+      // `'FAILED'`, which IS a member, so the log went on looking alive.
+      //
+      // PENDING is the audit lifecycle's own word for "recorded, not yet
+      // resolved", and it is this column's default. The queued/executing detail
+      // belongs to the ExecutionRequest row and its transition log; copying it
+      // into a column that cannot express it is what caused this.
       await prisma.auditLog.create({
         data: {
           workspaceId, userId,
           actionType, targetId,
           platform: 'META',
-          status:   'QUEUED',
+          status:   'PENDING',
           payload:  req.body,
         },
       }).catch((err) => {
+
         // Audit log failure must not fail the execution. Log and continue.
         logger.error({
           executionId: executionRequest.id, err: err.message,

@@ -1,9 +1,10 @@
 // ============================================================
 // R13 — what the HUMAN decided about a verdict
 // ============================================================
-// A third axis, independent of the other two. executedAt/dismissedAt record
-// what happened on the ad platform; `verdict` records what Lumi believed; this
-// records the operator's judgement OF that belief.
+// A third axis, independent of the other two. humanExecutedAt (the operator
+// reported making the change), platformExecutedAt (Lumi made it) and
+// dismissedAt record whether the campaign was touched at all; `verdict` records
+// what Lumi believed; this records the operator's judgement OF that belief.
 //
 // The verdict is NEVER rewritten. If Lumi says KILL and the buyer says KEEP,
 // the row keeps verdict=KILL and gains humanResponse=OVERRIDE: "Lumi said KILL"
@@ -12,9 +13,9 @@
 // which is precisely what a later learning slice needs to read.
 //
 // OVERRIDE is NOT dismissal. A buyer who overrides a KILL and keeps spending
-// leaves executedAt and dismissedAt both null. That is accurate — no platform
-// action was taken — and inferring one here would fabricate a signal nobody
-// sent.
+// leaves every execution timestamp and dismissedAt null. That is accurate — no
+// intervention was made, by the operator or by Lumi — and inferring one here
+// would fabricate a signal nobody sent.
 //
 // Lives here rather than in the route because the route file is at its size
 // budget, and because this is decision-memory logic: the route's job is to map

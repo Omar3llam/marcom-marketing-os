@@ -5,18 +5,18 @@
 //
 // The Proof Engine used to ask `status === 'EXECUTED'`. Nothing ever wrote that
 // status, so every gate matched an empty set and the whole surface reported on
-// zero rows without erroring. The human signals (PR#326) are TIMESTAMPS —
-// executedAt / dismissedAt — and these predicates are the only place that
-// definition lives.
+// zero rows without erroring. The signals it reads instead are TIMESTAMPS —
+// humanExecutedAt, platformExecutedAt and dismissedAt — and these predicates are
+// the only place that definition lives.
 //
 // WHY A MODULE AND NOT SIX INLINE CHECKS:
 //   "Has this been actioned?" is a provenance question, and provenance is the
 //   thing most likely to get stricter. A later revision may want a Meta action id
 //   to corroborate the claim, or a verifiedAt, or to stop trusting a self-report
 //   on a decision the operator never opened. Every one of those is a change to
-//   this file and to nothing else. Six inline `executedAt != null` checks would
-//   each have to be found, and the one that was missed would silently keep
-//   counting rows the others had started excluding.
+//   this file and to nothing else. Six inline "did somebody act" checks spelled
+//   out at their call sites would each have to be found, and the one that was
+//   missed would silently keep counting rows the others had started excluding.
 //
 // STATUS IS NOW A VIEW, NOT THE TRUTH.
 //   deriveAccuracyStatus projects the timestamps back onto the legacy vocabulary
@@ -30,6 +30,13 @@ import { wasActedOn } from '../execution/decisionProvenance.js';
 
 /**
  * PURE: was this call acted on — by ANYONE?
+ *
+ * RE-EXPORTED, not redefined. This used to be a local alias named `isExecuted`,
+ * and the name was the problem: "is executed" reads as platform execution, and
+ * the agentic loop's EXECUTE stage means exactly that and deliberately excludes
+ * self-reports. Two subsystems, one English word, opposite answers — so the
+ * word is gone from here and the canonical predicate is exposed under the name
+ * that describes what it actually tests.
  *
  * B4-A. `executedAt` split into `humanExecutedAt` (an operator's claim) and
  * `platformExecutedAt` (Lumi's confirmed mutation), and this predicate takes
@@ -47,7 +54,7 @@ import { wasActedOn } from '../execution/decisionProvenance.js';
  * use `wasPlatformExecuted` from decisionProvenance instead. That is a
  * different question and it has a different predicate.
  */
-export const isExecuted = (d) => wasActedOn(d);
+export { wasActedOn };
 
 /** PURE: an operator said they looked at this call and chose not to act. */
 export const isDismissed = (d) => d?.dismissedAt != null;
@@ -59,7 +66,7 @@ export const isDismissed = (d) => d?.dismissedAt != null;
  * report counts, and treating it as no-signal would quietly shrink the
  * denominator the accuracy claim rests on.
  */
-export const isActioned = (d) => isExecuted(d) || isDismissed(d);
+export const isActioned = (d) => wasActedOn(d) || isDismissed(d);
 
 /**
  * PURE: the status vocabulary the accuracy ENGINE reads, derived from the
@@ -77,7 +84,7 @@ export const isActioned = (d) => isExecuted(d) || isDismissed(d);
  * "not a realized prediction" branch keeps working.
  */
 export const deriveAccuracyStatus = (d) => (
-  isExecuted(d) ? 'EXECUTED'
+  wasActedOn(d) ? 'EXECUTED'
     : isDismissed(d) ? 'DISMISSED'
       : d?.status
 );

@@ -27,7 +27,8 @@
 // THREE KINDS OF TEMPORAL BOUND, KEPT APART
 // ------------------------------------------
 //   SYNC RECENCY   — bounds MetricSnapshot.date. "How recently did we write it."
-//   ACTIVITY       — bounds createdAt/executedAt on decisions, actions, outcomes.
+//   ACTIVITY       — bounds real event instants: createdAt, and Decision
+//                    .platformExecutedAt on the agentic loop's EXECUTE stage.
 //                    Real event times, not sync artefacts. A different question.
 //   MEASUREMENT    — the period the metrics actually cover. Exactly ONE constant
 //                    in the system earns this name: CANONICAL_VERDICT_WINDOW_DAYS

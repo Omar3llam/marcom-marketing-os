@@ -23,10 +23,10 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { calculateDecisionAccuracy } from './decisionAccuracyEngine.js';
-import { isExecuted, deriveAccuracyStatus } from './decisionAccuracyHelpers.js';
+import { wasActedOn, deriveAccuracyStatus } from './decisionAccuracyHelpers.js';
 import { CURRENT_OUTCOME_WHERE, CURRENT_OUTCOME_ORDER_BY } from './outcomeSelection.js';
 import { projectOutcomeEvidence } from './outcomeEvidence.js';
-import { interventionAt, PROVENANCE_SELECT } from '../execution/decisionProvenance.js';
+import { interventionAt, PROVENANCE_SELECT, INTERVENED_WHERE } from '../execution/decisionProvenance.js';
 
 // listPendingOutcomes fetches to this cap, sorts by the intervention instant in
 // JS (no Prisma orderBy expresses LEAST of two columns), then returns a page.
@@ -56,14 +56,23 @@ const outcomeError = (code, message) => Object.assign(new Error(message), { code
 // replaced by the next sweep is the common case, not an edge one — and the
 // action still happened. Scoping on status would have excluded almost every
 // decision anyone ever acted on.
+// NOT the intervention union. This is a WIDER question — "did a human make any
+// call about this verdict" — and the dismissal arm is what makes it wider: a
+// decision the operator explicitly rejected is survivorship data the coverage
+// report counts, even though nothing was done to the campaign.
+//
+// The intervention arms are spread from the canonical seam rather than spelled
+// out again, so "somebody intervened" keeps ONE definition across the codebase
+// and a later tightening of it reaches this population too. The dismissal arm is
+// added here because it belongs to this question and to no other.
+//
+// B4-A — either execution provenance counts. The engine's subject is whether the
+// RECOMMENDATION was right, and a call executed by hand tests that as well as
+// one Lumi performed. Platform-only claims use wasPlatformExecuted; this is not
+// one of them.
 const ACTIONED = Object.freeze({
   OR: [
-    // B4-A — EITHER execution provenance counts as "acted on". The engine's
-    // subject is whether the RECOMMENDATION was right, and a call executed by
-    // hand tests that as well as one Lumi performed. Platform-only claims use
-    // wasPlatformExecuted; this is not one of them.
-    { humanExecutedAt: { not: null } },
-    { platformExecutedAt: { not: null } },
+    ...INTERVENED_WHERE.OR,
     { dismissedAt: { not: null } },
   ],
 });
@@ -84,7 +93,13 @@ export function buildAccuracyInputs(decisions = []) {
     // truth moves underneath it. Explicit field list, NOT a spread of `d`: the
     // engine's input shape is a contract, and spreading would leak the raw
     // `outcomes` array and both timestamps into it.
-    status: deriveAccuracyStatus(d),
+    // NAMED `accuracyStatus`, not `status`. The stored Decision.status is a
+    // different fact with a different value for the same row — the human-signal
+    // routes deliberately leave it PROPOSED — and calling both `status` meant
+    // one word carried two answers across a seam. The engine reads this one; the
+    // database owns the other; `accountLift.status` in the engine's OUTPUT is a
+    // third and unrelated thing.
+    accuracyStatus: deriveAccuracyStatus(d),
     createdAt: d.createdAt,
     // The instant SOMEONE acted — the earliest of the two provenance columns.
     // The engine opens its outcome window here and falls back to createdAt, so
@@ -248,7 +263,8 @@ export async function recordOutcome(workspaceId, decisionId, input = {}, { now =
     },
   });
   if (!decision) throw outcomeError(OUTCOME_ERROR.DECISION_NOT_FOUND, 'recordOutcome: decision not found');
-  if (!isExecuted(decision)) {
+  if (!wasActedOn(decision)) {
+
     // A dismissed decision has no outcome by construction — nothing was done, so
     // there is nothing that happened afterwards to attribute. Named separately
     // from "never actioned" because they are different states and the caller can
@@ -381,8 +397,9 @@ export async function listPendingOutcomes(workspaceId) {
         workspaceId,
         // B4-A — acted on by EITHER route. A self-reported action owes an
         // outcome exactly as much as one Lumi performed; the queue is about the
-        // recommendation's result, not about who carried it out.
-        OR: [{ humanExecutedAt: { not: null } }, { platformExecutedAt: { not: null } }],
+        // recommendation's result, not about who carried it out. The union is
+        // spread from the canonical seam; this where clause owns no other `OR`.
+        ...INTERVENED_WHERE,
         dismissedAt: null,          // …and not un-taken. A dismissal has no outcome
         //                             to record: nothing was done, so nothing
         //                             followed from it.

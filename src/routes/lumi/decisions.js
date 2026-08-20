@@ -91,8 +91,16 @@ decisionsRouter.patch(`${BASE}/explain`, requireCollabRole(...OPERATORS), (req, 
   stampOnce(req, res, 'explainedAt'));
 
 // A human took the decision somewhere they could act on it (copied it, or opened
-// the ad platform). This is the column getSimilarOutcomes gates on — it is what
-// separates a verdict someone acted on from one that merely sat in a list.
+// the ad platform). ENGAGEMENT / ADOPTION, and nothing beyond it: carrying a
+// recommendation toward a place where action is possible is not action, and the
+// gap between the two is however long the operator took to not act.
+//
+// C1 removed the last reader that treated it otherwise. getSimilarOutcomes used
+// to gate the learning population on this column and render "improved after
+// action" over it; it now gates on the intervention union
+// (humanExecutedAt OR platformExecutedAt) and nothing in the backend reads
+// intentAt at all. It is kept because it is the only adoption signal the system
+// has — which is a real question, just not this one.
 decisionsRouter.patch(`${BASE}/intent`, requireCollabRole(...OPERATORS), (req, res) =>
   stampOnce(req, res, 'intentAt'));
 
@@ -179,9 +187,17 @@ async function stampSignal(res, decision, field, guard = null) {
  * executed this" — which is the fact the caller needs and the one the old
  * single-field response could not express.
  *
- * `executedAt` rides along as a DEPRECATED alias for clients shipped before the
- * split. It carries the human timestamp because that is what this route wrote;
- * it is not the stored column, which nothing reads any more.
+ * DEPRECATED COMPATIBILITY FIELD — `executedAt` rides along for clients shipped
+ * before the split. Its derivation HERE is "the human timestamp this route just
+ * wrote", always, because that is the only kind of execution this route can
+ * record. GET /lumi/decisions/:id/executions derives its own `executedAt`
+ * differently (platformExecutedAt ?? humanExecutedAt), so the two endpoints can
+ * report different instants for one decision. They are not the same canonical
+ * fact and must never be treated as one — the structured `humanExecution` /
+ * `platformExecution` fields are authoritative.
+ *
+ * It is not the stored `Decision.executedAt` column either. Nothing reads or
+ * writes that column any more; this value is computed for the wire.
  */
 function signalBody(field, at) {
   if (field !== 'humanExecutedAt') return { [field]: at };

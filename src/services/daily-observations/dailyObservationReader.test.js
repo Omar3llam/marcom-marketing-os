@@ -33,7 +33,7 @@ const ENTITY = 'e1';
 const DAY = (d) => new Date(`2026-08-${d}T00:00:00.000Z`);
 // The operator acted mid-morning on the 10th — deliberately NOT midnight, so the
 // day containing the boundary is a real case rather than an edge one.
-const EXECUTED_AT = new Date('2026-08-10T09:30:00.000Z');
+const INTERVENTION_AT = new Date('2026-08-10T09:30:00.000Z');
 
 /** A raw DAILY row, as Phase E writes it. */
 const row = (d, over = {}) => ({
@@ -60,7 +60,7 @@ const row = (d, over = {}) => ({
 });
 
 const read = (over = {}) => readDailyObservations(WS, {
-  entityId: ENTITY, entityLevel: 'CAMPAIGN', source: 'META', executedAt: EXECUTED_AT, ...over,
+  entityId: ENTITY, entityLevel: 'CAMPAIGN', source: 'META', interventionAt: INTERVENTION_AT, ...over,
 });
 
 beforeEach(() => {
@@ -127,11 +127,11 @@ describe('R9 — the query', () => {
   });
 
   it('refuses to run without any part of its scope', async () => {
-    await expect(readDailyObservations('', { entityId: ENTITY, entityLevel: 'CAMPAIGN', source: 'META', executedAt: EXECUTED_AT })).rejects.toThrow(/workspaceId/);
+    await expect(readDailyObservations('', { entityId: ENTITY, entityLevel: 'CAMPAIGN', source: 'META', interventionAt: INTERVENTION_AT })).rejects.toThrow(/workspaceId/);
     await expect(read({ entityId: null })).rejects.toThrow(/entityId/);
     await expect(read({ entityLevel: null })).rejects.toThrow(/entityLevel/);
     await expect(read({ source: null })).rejects.toThrow(/source/);
-    await expect(read({ executedAt: 'never' })).rejects.toThrow(/executedAt/);
+    await expect(read({ interventionAt: 'never' })).rejects.toThrow(/interventionAt/);
     await expect(read({ beforeDays: 0 })).rejects.toThrow(/beforeDays/);
     await expect(read({ afterDays: 1.5 })).rejects.toThrow(/afterDays/);
   });
@@ -160,7 +160,7 @@ describe('R9 — classification is by declared period, never by sync order', () 
     // Midnight execution: the day that begins at that instant is cleanly after,
     // and the one that ended at it is cleanly before. No gap, no overlap.
     prisma.metricSnapshot.findMany.mockResolvedValue([row('09'), row('10')]);
-    const res = await read({ executedAt: DAY('10') });
+    const res = await read({ interventionAt: DAY('10') });
     expect(res.before.map((o) => o.day)).toEqual(['2026-08-09']);
     expect(res.after.map((o) => o.day)).toEqual(['2026-08-10']);
     expect(res.excluded).toEqual([]);
@@ -187,8 +187,8 @@ describe('R9 — classification is by declared period, never by sync order', () 
     // fed in an order that conflicts with their measured order, so the output
     // can only be ascending if something sorted it by DAY.
     const scrambled = [row('12'), row('08'), row('11'), row('09')];
-    const forward = classifyAndReduce(scrambled, EXECUTED_AT);
-    const reverse = classifyAndReduce([...scrambled].reverse(), EXECUTED_AT);
+    const forward = classifyAndReduce(scrambled, INTERVENTION_AT);
+    const reverse = classifyAndReduce([...scrambled].reverse(), INTERVENTION_AT);
 
     expect(forward.before.map((o) => o.day)).toEqual(['2026-08-08', '2026-08-09']);
     expect(forward.after.map((o) => o.day)).toEqual(['2026-08-11', '2026-08-12']);
@@ -287,8 +287,8 @@ describe('R9 — duplicate rows for one day', () => {
   });
 
   it('reduces the same way whichever order the rows arrive in', async () => {
-    const forward = classifyAndReduce([early, late], EXECUTED_AT);
-    const reverse = classifyAndReduce([late, early], EXECUTED_AT);
+    const forward = classifyAndReduce([early, late], INTERVENTION_AT);
+    const reverse = classifyAndReduce([late, early], INTERVENTION_AT);
     expect(forward.after[0].id).toBe('r-late');
     expect(reverse.after[0].id).toBe('r-late');
   });
@@ -331,7 +331,7 @@ describe('R9 — what the result says', () => {
     expect(res.pair.before.day).toBe('2026-08-09'); // the LAST day before
     expect(res.pair.after.day).toBe('2026-08-11');  // the FIRST day after
     expect(res.pair.comparable).toBe(true);
-    expect(res.boundary).toBe(EXECUTED_AT.toISOString());
+    expect(res.boundary).toBe(INTERVENTION_AT.toISOString());
   });
 
   it('carries the two counts R5 keeps apart', async () => {

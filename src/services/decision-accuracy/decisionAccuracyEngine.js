@@ -42,7 +42,15 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * @param {object}   args
- * @param {Array}    args.decisions — [{ id, verdict, confidence, status, createdAt, executedAt?, outcome? }]
+ * @param {Array}    args.decisions — the engine's INPUT contract, built by
+ *   DecisionAccuracyService.buildAccuracyInputs. Not raw Decision rows:
+ *   [{ id, verdict, confidence, accuracyStatus, createdAt,
+ *      humanExecutedAt?, platformExecutedAt?, outcome? }]
+ *   `accuracyStatus` is DERIVED from the provenance timestamps and is not the
+ *   stored Decision.status. The two timestamps are read by `windowStart` via
+ *   decisionProvenance.interventionAt; the deprecated `executedAt` is not an
+ *   input here and passing it anchors every window to `createdAt` instead.
+
  * @param {Array}   [args.outcomes] — optional [{ decisionId, ... }] joined by id if `outcome` absent
  * @param {Date}     args.now       — injected; the engine never reads the clock
  * @param {object}  [args.config]
@@ -65,8 +73,8 @@ export function calculateDecisionAccuracy({ decisions = [], outcomes = null, now
   let notAPrediction = 0;
 
   for (const d of decisions) {
-    if (d.status === 'DISMISSED') { dismissed += 1; continue; } // survivorship: counted, never scored
-    if (d.status !== 'EXECUTED') continue;                      // PROPOSED is not a realized prediction
+    if (d.accuracyStatus === 'DISMISSED') { dismissed += 1; continue; } // survivorship: counted, never scored
+    if (d.accuracyStatus !== 'EXECUTED') continue;                      // PROPOSED is not a realized prediction
 
     if (!SCORABLE_VERDICT[d.verdict]) { notAPrediction += 1; continue; }
 
