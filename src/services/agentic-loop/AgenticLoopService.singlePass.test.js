@@ -47,7 +47,6 @@ vi.mock('../../lib/prisma.js', () => ({
     testExperiment:      { findMany: vi.fn() },
     plan:                { findMany: vi.fn() },
     allocationPlan:      { findMany: vi.fn() },
-    action:              { findMany: vi.fn() },
     outcomeSnapshot:     { findMany: vi.fn() },
     decisionMemoryEntry: { findMany: vi.fn() },
     account:             { findMany: vi.fn() },
@@ -91,7 +90,7 @@ beforeEach(() => {
   getConnectorCampaigns.mockResolvedValue([camp()]);
 
   for (const model of ['decision', 'fatiguePrediction', 'testExperiment', 'plan', 'allocationPlan',
-    'action', 'outcomeSnapshot', 'decisionMemoryEntry', 'account', 'campaign', 'adSet', 'campaignReasoning']) {
+    'outcomeSnapshot', 'decisionMemoryEntry', 'account', 'campaign', 'adSet', 'campaignReasoning']) {
     prisma[model].findMany.mockResolvedValue([]);
   }
   prisma.decision.findFirst.mockResolvedValue(null);

@@ -31,7 +31,7 @@ import { BUYER_ACTIONABLE_ROOT_CAUSES } from '../verdict-engine/decisionIdentity
 import { TEMPORAL } from '../../config/temporal.js';
 
 // ACTIVITY recency, NOT sync recency — this one never touches MetricSnapshot.
-// It bounds Action.executedAt, OutcomeSnapshot.createdAt and
+// It bounds Decision.platformExecutedAt, OutcomeSnapshot.createdAt and
 // DecisionMemoryEntry.createdAt: times when something actually happened. Calling
 // it a sync bound would have been a fresh inaccuracy in a change about removing
 // one. Value unchanged (30).
@@ -116,7 +116,7 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
 
   const [
     verdicts, fatiguePredictions, openTests, plans, allocationPlans,
-    executedActions, recentOutcomes, recentMemory, labelsById,
+    platformExecutions, recentOutcomes, recentMemory, labelsById,
   ] = await Promise.all([
     // Buyer-band verdicts = guardrail hits + connector verdicts (revenue +
     // awareness). distinct keeps only the LATEST verdict per entity so a
@@ -148,7 +148,29 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
     safe(prisma.testExperiment.findMany({ where: { workspaceId, status: 'RUNNING' }, orderBy: { startedAt: 'desc' }, take: 20 }), []),
     safe(prisma.plan.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 10, include: { goals: true } }), []),
     safe(prisma.allocationPlan.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 10 }), []),
-    safe(prisma.action.findMany({ where: { workspaceId, status: 'EXECUTED_SUCCESS', executedAt: { gte: since } }, select: { id: true, executedAt: true }, take: 100 }), []),
+    // B4-B — canonical PLATFORM execution evidence, and nothing else.
+    //
+    // `Decision.platformExecutedAt` has exactly one writer in the system
+    // (decisionAttribution.stampDecisionExecuted) and it runs only after the
+    // worker has seen Meta accept a mutation — never at queue time, never on a
+    // failure. The operator's "I did this myself" writes `humanExecutedAt`, a
+    // different column this query deliberately cannot see, because the EXECUTE
+    // stage asks whether LUMI turned the loop, not whether a human did.
+    //
+    // This replaced `prisma.action` WHERE status = EXECUTED_SUCCESS. B3-C
+    // retired the actionWorker and with it every producer of Action rows, so
+    // that query could only ever return rows nothing writes any more — pinning
+    // EXECUTE to STALE and the loop to STALLED however many mutations Lumi
+    // actually landed. It reported a dead substrate as a dead loop.
+    //
+    // `{ gte: since }` carries the NOT NULL too: a null cannot satisfy a range
+    // comparison, so an unexecuted decision is excluded by the same predicate
+    // that windows the rest. One condition, not two that could drift.
+    safe(prisma.decision.findMany({
+      where:  { workspaceId, platformExecutedAt: { gte: since } },
+      select: { id: true, platformExecutedAt: true },
+      take:   100,
+    }), []),
     safe(prisma.outcomeSnapshot.findMany({ where: { workspaceId, createdAt: { gte: since } }, select: { id: true, createdAt: true }, take: 100 }), []),
     safe(prisma.decisionMemoryEntry.findMany({ where: { workspaceId, createdAt: { gte: since } }, select: { id: true, createdAt: true }, take: 100 }), []),
     safe(loadLabels(workspaceId), new Map()),
@@ -170,7 +192,7 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
   return {
     verdicts, fatiguePredictions, pacing: pacingFromPortfolio(portfolio),
     testAgenda, openTests, planTracking, blended, objective,
-    plans, allocationPlans, executedActions, recentOutcomes, recentMemory, labelsById, impactById, now,
+    plans, allocationPlans, platformExecutions, recentOutcomes, recentMemory, labelsById, impactById, now,
   };
 }
 

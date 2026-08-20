@@ -153,15 +153,29 @@ describe('nothing creates legacy Action rows any more', () => {
     expect(filesWhereCode(/(prisma|tx)\.action\.create/)).toEqual([]);
   });
 
+
+
   it('the Action model is KEPT — it still has legitimate readers', () => {
     // §6/§17: the model is not removed merely because its worker is gone. The
-    // feed, the intelligence route and the agentic loop all read historical
-    // rows. Removing it would be a schema change with real consumers, which
-    // this slice does not authorise.
+    // feed and the intelligence route still read historical rows. Removing it
+    // would be a schema change with real consumers, which this slice does not
+    // authorise.
     const schema = read('prisma/schema.prisma');
     expect(schema).toMatch(/model Action \{/);
     expect(read('src/routes/lumi/feed.js')).toMatch(/prisma\.action\.findMany/);
-    expect(read('src/services/agentic-loop/AgenticLoopService.js')).toMatch(/prisma\.action\.findMany/);
+    expect(read('src/routes/lumi/intelligence.js')).toMatch(/prisma\.action\.findFirst/);
+  });
+
+  it('B4-B · but the agentic loop is no longer one of them', () => {
+    // Reading Action as HISTORY is fine — those rows really happened. Reading
+    // it as EXECUTION AUTHORITY is not, and that is what the loop's EXECUTE
+    // stage was doing: after this retirement the table can never gain a row, so
+    // the stage reported a dead substrate as a dead loop for every workspace,
+    // however many mutations Lumi actually landed. Fixed in B4-B by sourcing
+    // the stage from Decision.platformExecutedAt.
+    const loop = code(resolve(process.cwd(), 'src/services/agentic-loop/AgenticLoopService.js'));
+    expect(loop).not.toMatch(/prisma\.action\./);
+
   });
 });
 

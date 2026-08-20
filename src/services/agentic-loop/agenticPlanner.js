@@ -255,7 +255,7 @@ function stageState(lastAt, now) {
   return STAGE_STATE.STALE;
 }
 
-function loopStatus({ plans = [], allocationPlans = [], executedActions = [], openTests = [], testAgenda = [], recentOutcomes = [], recentMemory = [], buyerCount = 0, now }) {
+function loopStatus({ plans = [], allocationPlans = [], platformExecutions = [], openTests = [], testAgenda = [], recentOutcomes = [], recentMemory = [], buyerCount = 0, now }) {
   const freshest = (rows, field) => rows.reduce((acc, r) => {
     const t = r[field] ? new Date(r[field]).getTime() : 0;
     return t > acc ? t : acc;
@@ -264,14 +264,19 @@ function loopStatus({ plans = [], allocationPlans = [], executedActions = [], op
   const lastByStage = {
     [LOOP_STAGE.PLAN]:     freshest(plans, 'createdAt'),
     [LOOP_STAGE.ALLOCATE]: freshest(allocationPlans, 'createdAt'),
-    [LOOP_STAGE.EXECUTE]:  freshest(executedActions, 'executedAt'),
+    // B4-B — PLATFORM execution only. These rows carry `platformExecutedAt`,
+    // stamped solely by the worker after a mutation landed. A human self-report
+    // (`humanExecutedAt`) and the union of the two (`interventionAt`) are both
+    // evidence that SOMEONE acted; neither is evidence that Lumi executed, and
+    // this stage asks only the second question.
+    [LOOP_STAGE.EXECUTE]:  freshest(platformExecutions, 'platformExecutedAt'),
     [LOOP_STAGE.TEST]:     Math.max(freshest(openTests, 'startedAt'), testAgenda.length ? now.getTime() : 0),
     [LOOP_STAGE.MEASURE]:  freshest(recentOutcomes, 'createdAt'),
     [LOOP_STAGE.LEARN]:    freshest(recentMemory, 'createdAt'),
   };
   const countByStage = {
     [LOOP_STAGE.PLAN]: plans.length, [LOOP_STAGE.ALLOCATE]: allocationPlans.length,
-    [LOOP_STAGE.EXECUTE]: executedActions.length, [LOOP_STAGE.TEST]: openTests.length + testAgenda.length,
+    [LOOP_STAGE.EXECUTE]: platformExecutions.length, [LOOP_STAGE.TEST]: openTests.length + testAgenda.length,
     [LOOP_STAGE.MEASURE]: recentOutcomes.length, [LOOP_STAGE.LEARN]: recentMemory.length,
   };
 
@@ -300,14 +305,14 @@ function loopStatus({ plans = [], allocationPlans = [], executedActions = [], op
  */
 export function planAgenda({
   verdicts = [], fatiguePredictions = [], pacing = [], testAgenda = [], openTests = [],
-  planTracking = null, blended = null, plans = [], allocationPlans = [], executedActions = [],
+  planTracking = null, blended = null, plans = [], allocationPlans = [], platformExecutions = [],
   recentOutcomes = [], recentMemory = [], labelsById = new Map(), impactById = new Map(), objective = null, now = new Date(),
 } = {}) {
   const buyerBand = buyerAgenda({ verdicts, fatiguePredictions, pacing, testAgenda, openTests, labelsById, impactById, now });
   const strategistBand = strategistAgenda({ planTracking, blended, pacing, now });
 
   const loop = loopStatus({
-    plans, allocationPlans, executedActions, openTests, testAgenda, recentOutcomes, recentMemory,
+    plans, allocationPlans, platformExecutions, openTests, testAgenda, recentOutcomes, recentMemory,
     buyerCount: buyerBand.length, now,
   });
 

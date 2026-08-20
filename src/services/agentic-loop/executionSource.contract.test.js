@@ -1,0 +1,263 @@
+// ============================================================
+// B4-B — the agentic loop's EXECUTE stage, and what may satisfy it
+// ============================================================
+// The stage answers exactly one question:
+//
+//     did LUMI successfully execute a mutation on the platform?
+//
+// It does not answer "did a human act on this recommendation", and the two are
+// separately recorded columns since B4-A. So three things must all be true, and
+// a green suite that proves only the first is not enough:
+//
+//   1. platformExecutedAt   SATISFIES the stage
+//   2. humanExecutedAt      does NOT — a self-report is intervention, not proof
+//      that Lumi did anything, and interventionAt (the union of the two) is
+//      therefore also disqualified
+//   3. Action.status        does NOT — B3-C retired every producer of Action
+//      rows, so the old source could only ever report a dead substrate as a
+//      dead loop
+//
+// Everything below runs against the REAL database, because what is being tested
+// IS the query predicate: a Prisma mock returns whatever it was told to for
+// `platformExecutedAt`, for `humanExecutedAt` and for `workspaceId` alike, and
+// would pass with any of the three sources wired up. Only the read-services
+// around the query are doubled — none of them is the subject.
+// ============================================================
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+
+vi.mock('../../utils/logger.js', () => ({
+  logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+vi.mock('../guardrail-engine/GuardrailSweepService.js', () => ({ sweepGuardrails: vi.fn().mockResolvedValue() }));
+vi.mock('../fatigue-forecaster/FatigueSweepService.js', () => ({ sweepFatigue: vi.fn().mockResolvedValue() }));
+vi.mock('../verdict-engine/VerdictService.js', () => ({ persistConnectorVerdicts: vi.fn().mockResolvedValue() }));
+vi.mock('../verdict-engine/index.js', () => ({
+  getConnectorVerdicts:      vi.fn().mockResolvedValue({ verdicts: [] }),
+  evaluateConnectorVerdicts: vi.fn().mockResolvedValue({ verdicts: [] }),
+  failedEvaluation:          vi.fn(() => ({ verdicts: [] })),
+}));
+vi.mock('../entity-graph/index.js', () => ({ getConnectorCampaigns: vi.fn().mockResolvedValue([]) }));
+vi.mock('../analysis/AccountHealthService.js', () => ({ computeAccountHealth: vi.fn(() => ({ campaigns: [] })) }));
+vi.mock('../portfolio/PortfolioService.js', () => ({ getPortfolio: vi.fn().mockResolvedValue(null) }));
+vi.mock('../test-generator/TestGeneratorService.js', () => ({ getWeeklyAgenda: vi.fn().mockResolvedValue([]) }));
+vi.mock('../planning/PlanService.js', () => ({ trackPlan: vi.fn().mockResolvedValue(null) }));
+vi.mock('../blended-truth/BlendedTruthService.js', () => ({ getBlendedTruth: vi.fn().mockResolvedValue(null) }));
+
+const { dbAvailable } = await import('../../tests/dbProbe.js');
+const { prisma }      = await import('../../lib/prisma.js');
+const { buildLoopInputs } = await import('./AgenticLoopService.js');
+const { planAgenda }      = await import('./agenticPlanner.js');
+const { STAGE_STATE, LOOP_STAGE } = await import('./agenticTypes.js');
+
+const DB_OK = await dbAvailable();
+
+const WS_A   = '00000000-0000-4000-8000-00000000b4b0';
+const WS_B   = '00000000-0000-4000-8000-00000000b4b1';
+const ENTITY = '00000000-0000-4000-8000-00000000b4b2';
+
+const NOW = new Date('2026-08-20T12:00:00.000Z');
+const daysAgo = (n) => new Date(NOW.getTime() - n * 86_400_000);
+
+const makeDecision = (workspaceId, over = {}) => prisma.decision.create({
+  data: {
+    workspaceId, entityId: ENTITY, entityLevel: 'CAMPAIGN',
+    verdict: 'KILL', confidence: 0.8, diagnosis: 'B4-B fixture',
+    channel: 'META', objective: 'OUTCOME_SALES', status: 'PROPOSED', ...over,
+  },
+  select: { id: true },
+});
+
+const makeLegacyAction = (workspaceId, over = {}) => prisma.action.create({
+  data: {
+    workspaceId, campaignId: 'legacy-campaign',
+    idempotencyKey: `b4b-${Math.random().toString(36).slice(2)}`,
+    status: 'EXECUTED_SUCCESS', payload: {}, executedAt: daysAgo(1), ...over,
+  },
+  select: { id: true },
+});
+
+/** The EXECUTE stage as the loop actually computes it, end to end. */
+async function executeStage(workspaceId) {
+  const inputs = await buildLoopInputs(workspaceId, { now: NOW });
+  const agenda = planAgenda(inputs);
+  return {
+    inputs,
+    agenda,
+    stage: agenda.stageStatus.find((s) => s.stage === LOOP_STAGE.EXECUTE),
+  };
+}
+
+describe('B4-B — this contract must actually run', () => {
+  it('CI provides a migrated database', () => {
+    if (process.env.CI) expect(DB_OK, 'CI must run this suite against real Postgres').toBe(true);
+    else expect(typeof DB_OK).toBe('boolean');
+  });
+});
+
+describe.skipIf(!DB_OK)('B4-B — EXECUTE is sourced from platform execution evidence', () => {
+  beforeAll(async () => {
+    for (const id of [WS_A, WS_B]) {
+      await prisma.workspace.upsert({ where: { id }, update: {}, create: { id, name: `B4B-${id.slice(-1)}` } });
+    }
+  });
+  afterAll(async () => {
+    await prisma.action.deleteMany({ where: { workspaceId: { in: [WS_A, WS_B] } } });
+    await prisma.decision.deleteMany({ where: { workspaceId: { in: [WS_A, WS_B] } } });
+    await prisma.workspace.deleteMany({ where: { id: { in: [WS_A, WS_B] } } });
+  });
+  beforeEach(async () => {
+    await prisma.action.deleteMany({ where: { workspaceId: { in: [WS_A, WS_B] } } });
+    await prisma.decision.deleteMany({ where: { workspaceId: { in: [WS_A, WS_B] } } });
+  });
+
+  // ── T1 ────────────────────────────────────────────────────────────────────
+  it('T1 · an empty Action table can no longer hold EXECUTE stale', async () => {
+    await makeDecision(WS_A, { platformExecutedAt: daysAgo(1) });
+    // Non-vacuous: the retired substrate is genuinely empty, so a stage that
+    // still read it would have to report STALE here.
+    expect(await prisma.action.count({ where: { workspaceId: WS_A } })).toBe(0);
+
+    const { stage } = await executeStage(WS_A);
+    expect(stage.state).toBe(STAGE_STATE.ACTIVE);
+    expect(stage.count).toBe(1);
+    expect(stage.lastAt).toBe(daysAgo(1).toISOString());
+  });
+
+  // ── T2 ────────────────────────────────────────────────────────────────────
+  it('T2 · a human self-report alone does NOT satisfy EXECUTE', async () => {
+    await makeDecision(WS_A, { humanExecutedAt: daysAgo(1), platformExecutedAt: null });
+
+    const { inputs, stage } = await executeStage(WS_A);
+    // The evidence set is empty — not "empty of recent rows", empty of rows.
+    expect(inputs.platformExecutions).toEqual([]);
+    expect(stage.count).toBe(0);
+    expect(stage.lastAt).toBeNull();
+    expect(stage.state).toBe(STAGE_STATE.STALE);
+  });
+
+  it('T2b · and the loop says so out loud rather than reporting progress', async () => {
+    // A PROPOSED verdict puts an item in the buyer band, so the honest reading
+    // of "proposals waiting, nothing executed" is a stale EXECUTE stage. The
+    // point is that a self-report must not buy its way out of that state.
+    await makeDecision(WS_A, { rootCause: null, humanExecutedAt: daysAgo(1) });
+    const { agenda } = await executeStage(WS_A);
+    expect(agenda.staleStages).toContain(LOOP_STAGE.EXECUTE);
+  });
+
+  // ── T3 ────────────────────────────────────────────────────────────────────
+  it('T3 · a platform execution IS visible to the loop', async () => {
+    const d = await makeDecision(WS_A, { platformExecutedAt: daysAgo(2) });
+
+    const { inputs, stage } = await executeStage(WS_A);
+    expect(inputs.platformExecutions.map((r) => r.id)).toEqual([d.id]);
+    expect(stage.state).toBe(STAGE_STATE.ACTIVE);
+    expect(stage.lastAt).toBe(daysAgo(2).toISOString());
+  });
+
+  // ── T4 ────────────────────────────────────────────────────────────────────
+  it('T4 · with both timestamps, only the platform one is used', async () => {
+    // The human timestamp is deliberately the OLDER of the two, which is what
+    // separates the three candidate sources:
+    //   platformExecutedAt → daysAgo(1)  → ACTIVE   the contract
+    //   interventionAt     → daysAgo(20) → IDLE     earliest of the two
+    //   humanExecutedAt    → daysAgo(20) → IDLE
+    await makeDecision(WS_A, { humanExecutedAt: daysAgo(20), platformExecutedAt: daysAgo(1) });
+
+    const { stage } = await executeStage(WS_A);
+    expect(stage.lastAt).toBe(daysAgo(1).toISOString());
+    expect(stage.state).toBe(STAGE_STATE.ACTIVE);
+    expect(stage.count).toBe(1);
+  });
+
+  it('T4b · the human timestamp changes nothing about the stage', async () => {
+    await makeDecision(WS_A, { humanExecutedAt: daysAgo(20), platformExecutedAt: daysAgo(1) });
+    const withHuman = (await executeStage(WS_A)).stage;
+
+    await prisma.decision.updateMany({ where: { workspaceId: WS_A }, data: { humanExecutedAt: null } });
+    const withoutHuman = (await executeStage(WS_A)).stage;
+
+    expect(withHuman).toEqual(withoutHuman);
+  });
+
+  // ── T5 ────────────────────────────────────────────────────────────────────
+  it('T5 · one workspace cannot see the executions of another', async () => {
+    const a = await makeDecision(WS_A, { platformExecutedAt: daysAgo(1) });
+    await makeDecision(WS_B, { platformExecutedAt: null });
+
+    const seenByB = await executeStage(WS_B);
+    expect(seenByB.inputs.platformExecutions).toEqual([]);
+    expect(seenByB.stage.state).toBe(STAGE_STATE.STALE);
+
+    // A's own row is still there, so B's emptiness is isolation and not a
+    // fixture that never landed.
+    const seenByA = await executeStage(WS_A);
+    expect(seenByA.inputs.platformExecutions.map((r) => r.id)).toEqual([a.id]);
+  });
+
+  // ── T6 ────────────────────────────────────────────────────────────────────
+  it('T6 · a historical Action row cannot fabricate EXECUTE progress', async () => {
+    // The migration is about source AUTHORITY, not about production happening
+    // to hold an empty table today. A leftover EXECUTED_SUCCESS row from before
+    // B3-C is exactly the input the old query would have believed.
+    await makeLegacyAction(WS_A, { executedAt: daysAgo(1) });
+    await makeDecision(WS_A, { platformExecutedAt: null });
+    expect(await prisma.action.count({ where: { workspaceId: WS_A, status: 'EXECUTED_SUCCESS' } })).toBe(1);
+
+    const { inputs, stage } = await executeStage(WS_A);
+    expect(inputs.platformExecutions).toEqual([]);
+    expect(stage.count).toBe(0);
+    expect(stage.state).toBe(STAGE_STATE.STALE);
+  });
+
+  it('T6b · a legacy Action row does not add to a real execution either', async () => {
+    await makeLegacyAction(WS_A, { executedAt: daysAgo(1) });
+    await makeDecision(WS_A, { platformExecutedAt: daysAgo(3) });
+
+    const { stage } = await executeStage(WS_A);
+    // One platform execution, counted once. The Action row is not a second one,
+    // and its fresher timestamp does not become the stage's.
+    expect(stage.count).toBe(1);
+    expect(stage.lastAt).toBe(daysAgo(3).toISOString());
+  });
+});
+
+// ── Source-authority ratchet ────────────────────────────────────────────────
+// Runs with or without a database. The DB tests above prove the CURRENT source
+// behaves; these prove no future edit can quietly re-point it, which is the
+// failure this slice exists to end — the last one survived a full audit because
+// the query kept working, on a table that had stopped being written.
+//
+// Comments are stripped first. The prose above and in the service explains what
+// was retired BY NAME, and a raw grep would score the explanation as the defect.
+describe('B4-B — the loop may not re-acquire a non-platform execution source', () => {
+  const code = (file) => readFileSync(new URL(file, import.meta.url), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+
+  const service = () => code('./AgenticLoopService.js');
+  const planner = () => code('./agenticPlanner.js');
+
+  it('reads Decision.platformExecutedAt, workspace-scoped', () => {
+    const s = service();
+    expect(s).toMatch(/platformExecutedAt:\s*\{\s*gte:\s*since\s*\}/);
+    // The scope predicate must live in the SAME where clause as the evidence.
+    expect(s).toMatch(/where:\s*\{\s*workspaceId,\s*platformExecutedAt:/);
+  });
+
+  it('no longer queries the retired Action substrate', () => {
+    expect(service()).not.toMatch(/prisma\.action\./);
+  });
+
+  it('never sources execution progress from human or union evidence', () => {
+    for (const src of [service(), planner()]) {
+      expect(src).not.toMatch(/humanExecutedAt/);
+      expect(src).not.toMatch(/interventionAt/);
+      expect(src).not.toMatch(/legacyExecutedAt/);
+    }
+  });
+
+  it('the planner reads the platform column by name', () => {
+    expect(planner()).toMatch(/freshest\(platformExecutions,\s*'platformExecutedAt'\)/);
+  });
+});

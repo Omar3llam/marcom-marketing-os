@@ -148,7 +148,7 @@ export const TEMPORAL = Object.freeze({
    * AgenticLoopService.buildLoopInputs — how far back the loop counts activity.
    *
    * NOT sync recency, and naming it so would have been a fresh lie in a PR about
-   * removing one. It bounds `Action.executedAt`, `OutcomeSnapshot.createdAt` and
+   * removing one. It bounds `Decision.platformExecutedAt`, `OutcomeSnapshot.createdAt` and
    * `DecisionMemoryEntry.createdAt` — times when something actually HAPPENED.
    * It never touches MetricSnapshot.
    */

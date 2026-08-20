@@ -23,7 +23,7 @@ const labelsById = new Map([['as1', 'Cold #1'], ['cmp1', 'PMax'], ['as2', 'Cold 
 const fullLoop = {
   plans: [{ id: 'p1', createdAt: daysAgo(2) }],
   allocationPlans: [{ id: 'a1', createdAt: daysAgo(3) }],
-  executedActions: [{ id: 'e1', executedAt: daysAgo(1) }],
+  platformExecutions: [{ id: 'e1', platformExecutedAt: daysAgo(1) }],
   openTests: [{ id: 't1', dimension: 'HOOK', startedAt: daysAgo(2) }],
   recentOutcomes: [{ id: 'o1', createdAt: daysAgo(1) }],
   recentMemory: [{ id: 'm1', createdAt: daysAgo(1) }],
@@ -318,7 +318,7 @@ describe('agenticPlanner — loop status', () => {
   });
 
   it('marks a stage STALE when its row is old / missing, and the loop not closed', () => {
-    const out = planAgenda({ ...base, executedActions: [], recentMemory: [{ id: 'm1', createdAt: daysAgo(90) }] });
+    const out = planAgenda({ ...base, platformExecutions: [], recentMemory: [{ id: 'm1', createdAt: daysAgo(90) }] });
     const execute = out.stageStatus.find((s) => s.stage === 'EXECUTE');
     const learn = out.stageStatus.find((s) => s.stage === 'LEARN');
     expect(execute.state).toBe(STAGE_STATE.STALE);
@@ -328,7 +328,8 @@ describe('agenticPlanner — loop status', () => {
   });
 
   it('STALLED when buyers have proposals but EXECUTE has gone stale', () => {
-    const out = planAgenda({ ...base, executedActions: [] }); // proposals exist, no recent execution
+    const out = planAgenda({ ...base, platformExecutions: [] }); // proposals exist, no recent platform execution
+
     expect(out.loopHealth).toBe(LOOP_HEALTH.STALLED);
   });
 });

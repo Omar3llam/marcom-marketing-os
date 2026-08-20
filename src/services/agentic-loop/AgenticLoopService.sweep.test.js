@@ -27,7 +27,6 @@ vi.mock('../../lib/prisma.js', () => ({
     testExperiment:      { findMany: vi.fn() },
     plan:                { findMany: vi.fn() },
     allocationPlan:      { findMany: vi.fn() },
-    action:              { findMany: vi.fn() },
     outcomeSnapshot:     { findMany: vi.fn() },
     decisionMemoryEntry: { findMany: vi.fn() },
     account:             { findMany: vi.fn() },
@@ -58,7 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   delete process.env.AI_AUTOMATIC_ENABLED; // default: automatic AI OFF (manual-only)
   for (const model of ['decision', 'fatiguePrediction', 'testExperiment', 'plan', 'allocationPlan',
-    'action', 'outcomeSnapshot', 'decisionMemoryEntry', 'account', 'campaign', 'adSet']) {
+    'outcomeSnapshot', 'decisionMemoryEntry', 'account', 'campaign', 'adSet']) {
     prisma[model].findMany.mockResolvedValue([]);
   }
   prisma.workspace.findUnique.mockResolvedValue({ objective: null });
