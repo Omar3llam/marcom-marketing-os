@@ -367,6 +367,13 @@ describe.skipIf(!DB_OK)('R13 — learning projection', () => {
     await prisma.decision.deleteMany({ where: { workspaceId: WS } });
 
     // Four comparable, SCORED, acted-on decisions — above MIN_SAMPLE (3).
+    //
+    // C1 — "acted on" is `humanExecutedAt`, the operator's report that they
+    // performed the intervention. These rows used to carry `intentAt` instead,
+    // which is what the learning query gated on before the evidence contract
+    // was corrected — copying a recommendation is not changing a campaign, and
+    // a fixture that still qualified on intent would keep passing against the
+    // defect this suite's sibling exists to catch.
     const rows = [
       { resolution: 'IMPROVED', humanResponse: 'CONFIRM', humanReasonCode: null },
       { resolution: 'IMPROVED', humanResponse: 'OVERRIDE', humanReasonCode: 'TOF_ROLE' },
@@ -377,7 +384,8 @@ describe.skipIf(!DB_OK)('R13 — learning projection', () => {
       await prisma.decision.create({ data: {
         workspaceId: WS, entityId: ENTITY, entityLevel: 'CAMPAIGN', verdict: 'KILL',
         confidence: 0.8, diagnosis: 'R13 learning fixture', rootCause: 'EFFICIENCY',
-        channel: 'META', objective: 'SALES', intentAt: new Date(),
+        channel: 'META', objective: 'SALES', humanExecutedAt: new Date(),
+
         humanRespondedAt: r.humanResponse ? new Date() : null, ...r,
       } });
     }

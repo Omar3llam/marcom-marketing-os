@@ -11,11 +11,33 @@
 // channel recorded compares against the wider set rather than against nothing.
 //
 // ── What it refuses to count ────────────────────────────────────────────────
-// Only decisions that are BOTH resolved (we know what happened next) AND acted
-// on (intentAt — a human took it somewhere they could act). A verdict that sat
-// in a list and got replaced two weeks later says nothing about whether ACTING
-// on this kind of verdict works; counting it would turn "acting on this helped"
+// Only decisions that are BOTH resolved (we know what happened next) AND
+// INTERVENED ON (somebody actually changed the campaign). A verdict that sat in
+// a list and got replaced two weeks later says nothing about whether ACTING on
+// this kind of verdict works; counting it would turn "acting on this helped"
 // into "this campaign drifted".
+//
+// ── C1: what "acted on" is allowed to mean ──────────────────────────────────
+// This gate used to read `intentAt`, and that was the defect. `intentAt` is
+// stamped when an operator COPIES the recommendation text or CLICKS the link to
+// the ad platform — engagement, carried toward a place where action could
+// happen. Neither event observes an ad account, and the two are separated by
+// however long the operator took to not act. So a marketer who copied a KILL,
+// did nothing, and watched the campaign drift upward produced a row this
+// function counted as "improved after action" — the exact sentence
+// LearningInsight renders.
+//
+// The fix is the evidence, not the wording. Eligibility is now the canonical
+// intervention union (`humanExecutedAt` OR `platformExecutedAt`): an operator's
+// own report that they performed the change, or Lumi's record that it performed
+// the change itself. Both are claims ABOUT AN AD ACCOUNT. `intentAt` keeps its
+// own meaning and its own column and is untouched — it is the only adoption
+// signal this system has, and nothing here reads it any more.
+//
+// The swap moves the population in BOTH directions, which is why it is not a
+// simple tightening: a copied-but-never-executed verdict leaves, and a verdict
+// self-reported from Home (a surface with no copy button, so no `intentAt` was
+// ever stamped) enters for the first time.
 //
 // UNKNOWN rows are excluded from the denominator entirely. They are decisions
 // whose outcome could not be scored, and "9 of 12" must mean twelve decisions
@@ -28,6 +50,7 @@
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
+import { INTERVENED_WHERE } from '../execution/decisionProvenance.js';
 
 // How far back to look. Recent behaviour is the relevant behaviour.
 const DEFAULT_LIMIT = 20;
@@ -79,13 +102,24 @@ export async function getSimilarOutcomes({
       ...(objective   ? { objective }   : {}),
       ...(channel     ? { channel }     : {}),
       resolution: { not: null }, // we know what happened next
-      intentAt:   { not: null }, // …and a human actually acted on it
+      // C1 — …and somebody actually intervened on the campaign. Spread from the
+      // canonical seam rather than spelled out here: this is the same union the
+      // provenance module defines once, and a local copy of it is a definition
+      // that drifts. It contributes the `OR` key, which nothing else in this
+      // where clause uses.
+      ...INTERVENED_WHERE,
     },
     // R13 — the human judgement rides along with the outcome. The similarity
     // key above is UNCHANGED: comparability is still verdict + rootCause +
     // entityLevel + objective + channel, and judgement narrows nothing. It is
     // an extra dimension to REPORT, not a new filter.
+    //
+    // C1 — the provenance columns are deliberately NOT selected. Eligibility is
+    // decided by the database in the `where` above, so pulling the timestamps
+    // back would be bytes nobody reads, and a second in-memory check would be a
+    // second place the rule could disagree with itself.
     select:  { resolution: true, humanResponse: true, humanReasonCode: true },
+
     orderBy: { createdAt: 'desc' },
     take:    limit,
   // R10 (F15) — a failed read is UNAVAILABLE, never an empty track record.

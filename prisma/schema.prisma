@@ -1648,9 +1648,13 @@ model Decision {
   // Deployed as decisions_similarity_idx (20260731000000), which is NOT the
   // name Prisma generates. `map:` pins the declaration to the object that is
   // actually deployed rather than asking production to be renamed to suit the
-  // generator:
+  // generator. C1 (20260820100000) REPLACED its predicate in place — same name,
+  // same key, new WHERE — because the learning population it serves stopped
+  // being "engaged with" and became "intervened on":
   //   ... (workspaceId, verdict, rootCause, channel)
-  //   WHERE resolution IS NOT NULL AND intentAt IS NOT NULL
+  //   WHERE resolution IS NOT NULL
+  //     AND ("humanExecutedAt" IS NOT NULL OR "platformExecutedAt" IS NOT NULL)
+
   @@index([workspaceId, verdict, rootCause, channel], map: "decisions_similarity_idx")
   @@map("decisions")
 }
