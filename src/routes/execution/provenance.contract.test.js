@@ -124,7 +124,36 @@ describe.skipIf(!DB_OK)('B4-A — execution provenance', () => {
     expect(body.platformExecution).toBeNull();
   });
 
+  it('T11-T4 · this route\u2019s executedAt alias stays HUMAN-only, by design', async () => {
+    // Three surfaces publish a deprecated field called `executedAt` and they do
+    // NOT all mean the same thing. Two derive `platformExecutedAt ??
+    // humanExecutedAt`; this one returns the human instant IT just wrote,
+    // because a self-report can only ever record a human execution — answering
+    // "I did this myself" with Lumi's timestamp would answer a different
+    // question.
+    //
+    // The fixture is already platform-executed, which is the only state where
+    // the two derivations disagree. Without it this test would pass against
+    // either one and prove nothing.
+    const PLATFORM = new Date('2026-08-01T00:00:00.000Z');
+    const d = await makeDecision({ platformExecutedAt: PLATFORM });
+
+    const { status, body } = await selfReport(d.id);
+    expect(status).toBe(200);
+
+    expect(body.executedAt).toBe(body.humanExecutedAt);
+    expect(new Date(body.executedAt).getTime()).not.toBe(PLATFORM.getTime());
+
+    // The stored columns are untouched by the shape of the response: the human
+    // report is recorded, and Lumi's earlier execution is neither overwritten
+    // nor re-dated.
+    const row = await readDecision(d.id);
+    expect(row.humanExecutedAt).toBeTruthy();
+    expect(row.platformExecutedAt).toEqual(PLATFORM);
+  });
+
   it('T1c · engagement signals touch NEITHER execution fact', async () => {
+
     // explain and intent record that a human READ a verdict and carried it
     // somewhere they could act. Reading is not acting, and neither is opening
     // the ad platform — so neither may write an execution timestamp of either

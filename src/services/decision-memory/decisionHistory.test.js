@@ -24,7 +24,12 @@ import { connectorDecisionScope } from '../verdict-engine/decisionIdentity.js';
 
 const dec = (over = {}) => ({
   id: 'd1', entityId: 'c1', verdict: 'KILL', status: 'SUPERSEDED',
-  createdAt: new Date('2026-08-01'), executedAt: null, dismissedAt: null,
+  createdAt: new Date('2026-08-01'), dismissedAt: null,
+  // The two provenance columns `stated()` actually reads. This fixture carried
+  // `executedAt` until T11 — a key nothing has read since the B4-A split, which
+  // made the alias look covered while every assertion over it was really
+  // reading the fallback.
+  humanExecutedAt: null, platformExecutedAt: null,
   resolution: null, confidenceDelta: null, ...over,
 });
 
@@ -74,7 +79,8 @@ describe('scope', () => {
   it('keeps decisions that have been superseded, executed or dismissed', async () => {
     findMany.mockResolvedValue([
       dec({ id: 'a', status: 'SUPERSEDED' }),
-      dec({ id: 'b', status: 'PROPOSED', executedAt: new Date('2026-08-02') }),
+      dec({ id: 'b', status: 'PROPOSED', humanExecutedAt: new Date('2026-08-02') }),
+
       dec({ id: 'c', status: 'PROPOSED', dismissedAt: new Date('2026-08-03') }),
     ]);
     groupBy.mockResolvedValue([{ entityId: 'c1', _count: { _all: 3 } }]);
@@ -83,7 +89,61 @@ describe('scope', () => {
   });
 });
 
+// ============================================================
+// T11 — the compatibility alias on the memory timeline
+// ============================================================
+// `stated().executedAt` is a DEPRECATED alias for clients shipped before B4-A
+// split the column in two. It reaches the wire through getDecisionHistory →
+// memoryByEntityId → GET /api/lumi/entities/verdicts.
+//
+// Behaviour is unchanged by T11; these tests exist because it was UNPROVEN.
+// The fixture that looked like it covered this set a plain `executedAt` key
+// that nothing has read since the split, so every assertion over the alias was
+// really reading the null fallback.
+describe('T11 · legacy executedAt alias — platformExecutedAt ?? humanExecutedAt', () => {
+  const alias = async (over) => {
+    findMany.mockResolvedValue([dec(over)]);
+    const map = await getDecisionHistory('ws-1', ['c1']);
+    return map.get('c1').items[0];
+  };
+
+  const H = new Date('2026-08-02T09:00:00.000Z');
+  const P = new Date('2026-08-03T17:30:00.000Z');
+
+  it('T1 · human-only → the human instant', async () => {
+    const row = await alias({ humanExecutedAt: H, platformExecutedAt: null });
+    expect(row.executedAt).toEqual(H);
+    // …and the two facts stay separately stated beside it, which is what a
+    // post-split reader should use instead.
+    expect(row.humanExecutedAt).toEqual(H);
+    expect(row.platformExecutedAt).toBeNull();
+  });
+
+  it('T2 · both present → PLATFORM wins', async () => {
+    // The discriminating case. `H` is deliberately EARLIER, so a derivation
+    // that took the first non-null in the other order, or the earliest of the
+    // two, would return H and pass every other test in this file.
+    const row = await alias({ humanExecutedAt: H, platformExecutedAt: P });
+    expect(row.executedAt).toEqual(P);
+    expect(row.executedAt).not.toEqual(H);
+  });
+
+  it('T2b · platform-only → the platform instant', async () => {
+    const row = await alias({ humanExecutedAt: null, platformExecutedAt: P });
+    expect(row.executedAt).toEqual(P);
+  });
+
+  it('T3 · neither → null, and never a substituted timestamp', async () => {
+    const row = await alias({ humanExecutedAt: null, platformExecutedAt: null });
+    expect(row.executedAt).toBeNull();
+    // Not createdAt, which is present on the row and is the fallback a helpful
+    // implementation would reach for. "Nobody executed this" is the answer.
+    expect(row.executedAt).not.toEqual(row.createdAt);
+  });
+});
+
 describe('what it returns', () => {
+
   it('groups by entity, newest first, in the order the database gave', async () => {
     findMany.mockResolvedValue([
       dec({ id: 'new', createdAt: new Date('2026-08-05') }),
@@ -236,6 +296,16 @@ describe('R7 · getRecentDecisions', () => {
   it('no workspace → [] without touching the database', async () => {
     expect(await getRecentDecisions(null)).toEqual([]);
     expect(findMany).not.toHaveBeenCalled();
+  });
+
+  it('T11 · publishes no executedAt alias at all — its select carries no provenance', () => {
+    // The one surface people expect to carry the alias and which does not.
+    // /decisions/recent renders identity + verdict + when; it never asked for
+    // either execution column, so there is nothing to derive an alias from and
+    // inventing one would put a timestamp on the sidebar that no query read.
+    expect(RECENT_DECISION_SELECT).not.toHaveProperty('humanExecutedAt');
+    expect(RECENT_DECISION_SELECT).not.toHaveProperty('platformExecutedAt');
+    expect(RECENT_DECISION_SELECT).not.toHaveProperty('executedAt');
   });
 
   it('THROWS rather than swallowing — the two callers need different failures', async () => {
