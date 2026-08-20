@@ -104,7 +104,11 @@ describe('GET /api/admin/status', () => {
 
     expect(res.body.db).toEqual({ ok: true, latencyMs: expect.any(Number) });
     expect(res.body.redis).toEqual({ ok: true, disabled: false });
-    expect(res.body.queues.actions).toEqual({ waiting: 0, active: 1, completed: 5, failed: 2, delayed: 0 });
+    expect(res.body.queues.executions).toEqual({ waiting: 0, active: 1, completed: 5, failed: 2, delayed: 0 });
+    // R13-D / B3-C — the 'actions' queue is retired along with its worker.
+    // Listing it here would report depth 0 forever, which reads as health
+    // rather than as a queue nothing drains.
+    expect(res.body.queues.actions).toBeUndefined();
     // null queue → honest disabled marker, never a throw.
     expect(res.body.queues['campaign-sync']).toEqual({ disabled: true });
     expect(res.body.workers.agentic.cron).toBeTruthy();

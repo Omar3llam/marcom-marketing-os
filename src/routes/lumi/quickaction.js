@@ -1,72 +1,67 @@
 // ============================================================
 // MARCOM / Lumi — Quick Action handler (HMAC-signed links)
 // POST /api/lumi/quick-action
-// Extracted from lumi.js for architecture size compliance.
 // ============================================================
-import { Router }           from 'express';
-import { prisma }           from '../../lib/prisma.js';
-import { enqueueAction }    from '../../queues/index.js';
+// R13-D / B3-C — RETIRED, for the same reason as rollback.js: it enqueued onto
+// the legacy `actions` queue, and the worker draining that queue dispatched
+// through stub executors that returned `{ ok: true }` without calling any ad
+// platform. A signed link therefore reported "enqueued" for a mutation that
+// would be marked EXECUTED_SUCCESS having done nothing.
+//
+// It was unreachable twice over:
+//
+//   * `signQuickAction` — the minting half of this flow — has no production
+//     caller. utils/hmac.js says so in its own comment. No token, no entry.
+//   * it required an existing PENDING Action row, and nothing in the repository
+//     ever created one (the sole `action.create` was rollback's inverse).
+//
+// So there is no working behaviour to migrate. A signed one-click link that
+// executes a real Meta mutation is a legitimate feature, but building it means
+// minting tokens bound to a Decision and posting to the canonical producer —
+// new work on the canonical path, not a move of anything that exists here.
+// Recorded as remaining backend debt.
+//
+// The route stays mounted so an old link receives an explicit, machine-readable
+// refusal rather than a 404. The HMAC verification stays in front of it: an
+// unsigned or forged token must still be rejected as forged, and must not be
+// able to learn anything from the retirement notice that a valid one would not.
+// ============================================================
+import { Router }            from 'express';
 import { verifyQuickAction } from '../../utils/hmac.js';
-import { logger }           from '../../utils/logger.js';
+import { logger }            from '../../utils/logger.js';
+import { LEGACY_RETIRED_CODE } from './rollback.js';
 
 export const quickActionRouter = Router();
-
-// Rollback window: an action becomes immutable after 24h.
-const ROLLBACK_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // ─────────────────────────────────────────────────────────────
 export async function quickActionHandler(req, res) {
   const { token, sig } = req.body || {};
+
+  // Signature first. This endpoint is unauthenticated by design — the signature
+  // IS the authorization — so verifying before answering keeps a forged token
+  // from probing the endpoint at all.
   const v = verifyQuickAction({ token, sig });
   if (!v.ok) {
     return res.status(401).json({ error: 'InvalidQuickAction', reason: v.reason });
   }
 
-  try {
-    // R11 (I65/I66) — resolve the action WITHIN the workspace the signature
-    // names. This was a global findUnique by id: the token bound the action but
-    // not the tenant, so the only thing standing between a signed link and any
-    // row in the table was the id being unguessable. The workspace now travels
-    // inside the signed message and is a predicate on the read, so a token can
-    // only ever reach the workspace it was minted for.
-    const action = await prisma.action.findFirst({
-      where: { id: v.actionId, workspaceId: v.workspaceId },
-    });
-    if (!action) return res.status(404).json({ error: 'Action not found' });
+  logger.warn(
+    { actionId: v.actionId, workspaceId: v.workspaceId, actorId: v.actorId, scope: v.scope },
+    '[lumi/quick-action] refused — legacy Action execution substrate is retired',
+  );
 
-    // Quick actions can only push PENDING rows forward; everything
-    // else requires a fully-authenticated session.
-    if (action.status !== 'PENDING') {
-      return res.status(409).json({
-        error: 'NotEnqueueable',
-        reason: `status is ${action.status}`,
-      });
-    }
-
-    if (v.scope === 'rollback') {
-      // Same window check as the JWT route
-      if (!action.executedAt ||
-          Date.now() - new Date(action.executedAt).getTime() > ROLLBACK_WINDOW_MS) {
-        return res.status(410).json({ error: 'RollbackWindowExpired' });
-      }
-    }
-
-    await enqueueAction(action);
-    // R11: record WHO acted. The enqueue previously left no actor anywhere, so
-    // an action taken through a forwarded link was indistinguishable in the
-    // audit from one taken by the person it was sent to.
-    logger.info({
-      actionId:    action.id,
-      workspaceId: action.workspaceId,
-      actorId:     v.actorId,
-      scope:       v.scope,
-    }, '[lumi/quick-action] enqueued via signed link');
-    return res.json({ ok: true, enqueued: true, actionId: action.id });
-
-  } catch (err) {
-    logger.error({ err: err.message }, '[lumi/quick-action] failed');
-    return res.status(500).json({ error: 'EnqueueFailed', message: 'Request failed' });
-  }
+  // NOTHING IS READ OR WRITTEN. No Action lookup, no status change, no enqueue.
+  // `enqueued: false` is stated explicitly because the previous response said
+  // `enqueued: true`, and a client that kept reading that field must not see a
+  // stale truthy value.
+  return res.status(501).json({
+    error:   'QuickActionUnsupported',
+    code:    LEGACY_RETIRED_CODE,
+    message:
+      'Quick actions ran on the legacy Action substrate, which performed no real '
+      + 'platform mutation and has been retired. Nothing was changed on your ad account.',
+    enqueued: false,
+  });
 }
 
 quickActionRouter.post('/', quickActionHandler);

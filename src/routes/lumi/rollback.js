@@ -1,22 +1,57 @@
 // ============================================================
 // MARCOM / Lumi — Rollback handler
 // POST /api/lumi/rollback/:actionId
-// Extracted from lumi.js for architecture size compliance.
 // ============================================================
-import { Router }        from 'express';
-import { prisma }        from '../../lib/prisma.js';
-import { enqueueAction } from '../../queues/index.js';
-import { logger }        from '../../utils/logger.js';
+// R13-D / B3-C — RETIRED. This endpoint never performed a platform mutation,
+// and it now says so instead of behaving as though it had.
+//
+// WHAT IT USED TO DO, and why none of it reached an ad account:
+//
+//   1. load an Action whose status is EXECUTED_SUCCESS, within a 24h window
+//   2. build an inverse payload (pause ↔ resume, budget restore)
+//   3. create the inverse as a PENDING Action, mark the original ROLLED_BACK
+//   4. enqueue it onto the `actions` queue
+//
+// Step 4 handed the work to actionWorker, whose executor registry returned
+// `{ ok: true, result: { stub: true } }` without calling Meta or Google. The
+// inverse Action then reached EXECUTED_SUCCESS with `executedAt` stamped. So a
+// rollback — the one operation whose entire purpose is undoing a real change on
+// a real ad account — reported that it had succeeded while the campaign carried
+// on exactly as before.
+//
+// It could not even reach that point. Step 1 requires an existing Action row,
+// and the ONLY `action.create` anywhere in the repository was step 3 of this
+// same handler: the inverse of a row that nothing else ever minted. The table
+// is empty by construction, so this handler could never fire — the same
+// self-sealing emptiness B3 found in `execution_requests`.
+//
+// WHY THIS IS A REFUSAL AND NOT A MIGRATION. Rolling back a real execution
+// means inverting a persisted ExecutionRequest (PAUSE_CAMPAIGN → RESUME_CAMPAIGN)
+// through POST /api/execute/meta, with attribution and lineage back to the
+// original. That is a capability to BUILD, not one to move: there is nothing
+// here to carry over, because nothing here ever mutated anything. Inventing it
+// inside a retirement slice would be a second execution path — the exact thing
+// this consolidation removes. It is named as remaining backend debt instead.
+//
+// The route is kept rather than deleted so a caller receives an explicit,
+// machine-readable answer instead of a 404 that reads like a routing bug.
+// ============================================================
+import { Router } from 'express';
+import { logger } from '../../utils/logger.js';
 
 export const rollbackRouter = Router();
 
-// Rollback window: an action becomes immutable after 24h.
-const ROLLBACK_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** Shared by both retired legacy endpoints, so they cannot drift apart. */
+export const LEGACY_RETIRED_CODE = 'LEGACY_EXECUTION_RETIRED';
 
 // ─────────────────────────────────────────────────────────────
 rollbackRouter.post('/:actionId', async (req, res) => {
   const { actionId } = req.params;
 
+  // Authorization is still evaluated first. The answer below is the same either
+  // way, but a caller without the seat should learn that before learning
+  // anything about the feature — and removing the gate would quietly widen who
+  // may probe the endpoint.
   if (!req.userId) {
     return res.status(401).json({ error: 'Unauthenticated' });
   }
@@ -25,141 +60,24 @@ rollbackRouter.post('/:actionId', async (req, res) => {
     return res.status(403).json({ error: 'Forbidden' });
   }
 
-  try {
-    // Resolve Prisma User record — AuditLog.userId expects User.id (UUID), not Firebase uid
-    const userRecord = await prisma.user.findUnique({
-      where:  { clerkId: req.userId },
-      select: { id: true },
-    });
-    if (!userRecord) {
-      return res.status(401).json({ error: 'User record not found' });
-    }
+  logger.warn(
+    { actionId, userId: req.userId, workspaceId: req.workspaceId },
+    '[lumi/rollback] refused — legacy Action execution substrate is retired',
+  );
 
-    const action = await prisma.action.findUnique({
-      where:   { id: actionId },
-      include: {
-        auditLogs: { orderBy: { performedAt: 'desc' }, take: 1 },
-      },
-    });
-
-    if (!action) return res.status(404).json({ error: 'Action not found' });
-
-    // Workspace isolation — return 404 to avoid leaking that action exists
-    if (action.workspaceId !== req.workspaceId) {
-      return res.status(404).json({ error: 'Action not found' });
-    }
-
-    // ── Status & window enforcement ─────────────────────────
-    if (action.status !== 'EXECUTED_SUCCESS') {
-      return res.status(409).json({
-        error: 'NotRollbackable',
-        reason: `status is ${action.status}; only EXECUTED_SUCCESS can be rolled back`,
-      });
-    }
-    if (!action.executedAt) {
-      return res.status(409).json({ error: 'NotRollbackable', reason: 'no executedAt' });
-    }
-    const ageMs = Date.now() - new Date(action.executedAt).getTime();
-    if (ageMs > ROLLBACK_WINDOW_MS) {
-      return res.status(410).json({
-        error:  'RollbackWindowExpired',
-        reason: `executed ${Math.round(ageMs / 3_600_000)}h ago; window is 24h`,
-      });
-    }
-
-    const lastAudit = action.auditLogs[0];
-    const previousState = lastAudit?.previousState ?? {};
-
-    // ── Build inverse payload ────────────────────────────────
-    const inversePayload = invertPayload(action.payload, previousState);
-
-    // Extract audit metadata from original action payload
-    const { platform, actionType } = extractAuditMetadata(action.payload);
-
-    const inverse = await prisma.$transaction(async (tx) => {
-      const created = await tx.action.create({
-        data: {
-          workspaceId:    action.workspaceId,
-          campaignId:     action.campaignId,
-          idempotencyKey: `rollback:${action.id}:${Date.now()}`,
-          status:         'PENDING',
-          payload:        inversePayload,
-        },
-      });
-      await tx.action.update({
-        where: { id: action.id },
-        data:  { status: 'ROLLED_BACK' },
-      });
-      await tx.auditLog.create({
-        data: {
-          workspaceId: action.workspaceId,
-          userId:      userRecord.id,
-          actionId:    action.id,
-          actionType,
-          targetId:    action.campaignId,
-          platform,
-          status:      'SUCCESS',
-          payload: {
-            rollback: true,
-            originalActionId: action.id,
-            inverseActionId:  created.id,
-            performedBy: `user:${req.userId}`,
-          },
-        },
-      });
-      return created;
-    });
-
-    await enqueueAction(inverse);
-
-    return res.json({
-      ok:               true,
-      rolledBackAction: action.id,
-      inverseActionId:  inverse.id,
-      enqueued:         true,
-    });
-
-  } catch (err) {
-    logger.error({ err: err.message, actionId, userId: req.userId }, '[lumi/rollback] failed');
-    return res.status(500).json({ error: 'RollbackFailed', message: 'Request failed' });
-  }
+  // 501, not 200-with-a-flag and not 410. The capability is not implemented on
+  // the canonical path; it is not a resource that used to exist and went away.
+  //
+  // NOTHING IS WRITTEN BEFORE THIS RETURN. No Action row is created, the
+  // original is not marked ROLLED_BACK, and no AuditLog is written — recording
+  // a rollback that did not happen is the same lie in a different table.
+  return res.status(501).json({
+    error:   'RollbackUnsupported',
+    code:    LEGACY_RETIRED_CODE,
+    message:
+      'Rollback ran on the legacy Action substrate, which performed no real platform '
+      + 'mutation and has been retired. Nothing was changed on your ad account by this '
+      + 'request, and nothing was changed by the action it refers to.',
+    rolledBack: false,
+  });
 });
-
-// Build the inverse of a payload. Conservative: only known kinds
-// are inverted; everything else uses `previousState` as the diff.
-function invertPayload(payload, previousState) {
-  const kind = payload?.kind;
-  switch (kind) {
-    case 'meta.pause_ad':    return { ...payload, kind: 'meta.resume_ad' };
-    case 'meta.resume_ad':   return { ...payload, kind: 'meta.pause_ad' };
-    case 'meta.scale_budget':
-      return {
-        ...payload,
-        kind: 'meta.scale_budget',
-        newBudget: previousState?.payload?.newBudget ?? payload?.previousBudget,
-        previousBudget: payload?.newBudget,
-      };
-    case 'google.pause_keyword': return { ...payload, kind: 'google.resume_keyword' };
-    case 'google.resume_keyword':return { ...payload, kind: 'google.pause_keyword' };
-    default:
-      return { kind: 'restore_state', restore: previousState, originalKind: kind };
-  }
-}
-
-// Extract platform and actionType from payload for AuditLog
-function extractAuditMetadata(payload) {
-  const kind = payload?.kind || '';
-
-  // Derive platform from payload.kind prefix
-  let platform = 'UNKNOWN';
-  if (kind.startsWith('meta.')) platform = 'META';
-  else if (kind.startsWith('google.')) platform = 'GOOGLE';
-
-  // Map payload.kind to ActionType enum values
-  let actionType = 'OPTIMIZE_CAMPAIGN'; // fallback
-  if (kind.includes('pause_ad') || kind.includes('pause')) actionType = 'PAUSE_ADSET';
-  else if (kind.includes('resume_ad') || kind.includes('resume')) actionType = 'RESUME_ADSET';
-  else if (kind.includes('scale') || kind.includes('budget')) actionType = 'SCALE_CAMPAIGN';
-
-  return { platform, actionType };
-}
