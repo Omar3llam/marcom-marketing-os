@@ -112,7 +112,26 @@ const stated = (d) => ({
   // "Executed" could not tell an operator whether they had done it or Lumi had.
   humanExecutedAt:    d.humanExecutedAt    ?? null,
   platformExecutedAt: d.platformExecutedAt ?? null,
-  executedAt:  legacyExecutedAt(d), // DEPRECATED alias for pre-split clients
+  // DEPRECATED COMPATIBILITY FIELD — derivation: platformExecutedAt ?? humanExecutedAt
+  //
+  // Computed by `legacyExecutedAt`, the one place that derivation lives. It is
+  // NOT the stored `Decision.executedAt` column: nothing reads or writes that
+  // column any more, and this value never touches it.
+  //
+  // THE THREE SURFACES CARRYING THIS FIELD DO NOT ALL MEAN THE SAME THING, and
+  // that is deliberate rather than an inconsistency to be smoothed over:
+  //
+  //   here + GET /lumi/decisions/:id/executions   platformExecutedAt ?? humanExecutedAt
+  //   PATCH /lumi/decisions/:id/execute           the human instant that request wrote
+  //
+  // The self-report route can only ever record a human execution, so returning
+  // the union there would answer a question the caller did not ask — it would
+  // hand back Lumi's timestamp in the response to "I did this myself". Reading
+  // the same field name across endpoints and assuming one canonical fact is
+  // therefore wrong about at least one of them; `humanExecutedAt` and
+  // `platformExecutedAt` above are stated separately so no reader has to.
+  executedAt:  legacyExecutedAt(d),
+
   dismissedAt: d.dismissedAt ?? null,
   // The engine's OWN per-decision outcome, written by computeResolution when a
   // later verdict superseded this one. IMPROVED | UNCHANGED | WORSENED |

@@ -109,16 +109,81 @@ describe('legacy Decision.executedAt stays a compatibility projection', () => {
     expect(offenders).toEqual([]);
   });
 
-  it('the two wire aliases both declare themselves deprecated', () => {
-    // They derive DIFFERENTLY — decisions.js always returns the human instant it
-    // just wrote, executions.js returns platform ?? human — so a reader who
-    // assumed one canonical fact would be wrong about at least one endpoint.
-    for (const f of ['routes/lumi/decisions.js', 'routes/lumi/executions.js']) {
-      const raw = readFileSync(resolve(SRC, f), 'utf8');
-      expect(raw, `${f} must mark its executedAt alias deprecated`)
-        .toMatch(/DEPRECATED COMPATIBILITY FIELD/);
-    }
+  // The COMPLETE inventory of compatibility surfaces, with what each one means.
+  // Two of the three derive the union; the self-report route derives the human
+  // instant it just wrote, and that difference is intentional — the route can
+  // only record a human execution, so returning the union there would answer a
+  // question the caller did not ask.
+  //
+  // `derivesUnion` is what stops this from being a string count: the assertions
+  // below check the CODE matches the derivation claimed, in both directions, so
+  // a surface cannot quietly switch which one it uses while keeping its prose.
+  const COMPAT_SURFACES = [
+    {
+      file: 'routes/lumi/decisions.js',
+      endpoint: 'PATCH /api/lumi/decisions/:id/execute',
+      derivesUnion: false,
+      derivation: /the human instant that request wrote|human timestamp/i,
+    },
+    {
+      file: 'routes/lumi/executions.js',
+      endpoint: 'GET /api/lumi/decisions/:id/executions',
+      derivesUnion: true,
+      derivation: /platformExecutedAt \?\? humanExecutedAt/,
+    },
+    {
+      file: 'services/decision-memory/decisionHistory.js',
+      // NOT /decisions/recent — that route uses RECENT_DECISION_SELECT, which
+      // omits both provenance columns and publishes no alias at all. `stated()`
+      // reaches the wire through getDecisionHistory → memoryByEntityId.
+      endpoint: 'GET /api/lumi/entities/verdicts (memoryByEntityId timeline)',
+
+      derivesUnion: true,
+      derivation: /platformExecutedAt \?\? humanExecutedAt/,
+    },
+  ];
+
+  it('the inventory is COMPLETE — no surface publishes executedAt unlisted', () => {
+    // The gap this closes: the previous version of this test named two files by
+    // hand while a third had been publishing the field all along. Derived from
+    // the source now, so a fourth cannot appear without failing here.
+    const publishing = FILES
+      .filter((f) => /(?<![A-Za-z])executedAt\s*:/.test(code(f)))
+      .map(rel).sort();
+    expect(publishing).toEqual(COMPAT_SURFACES.map((s) => `/src/${s.file}`).sort());
   });
+
+  it.each(COMPAT_SURFACES)('$endpoint declares its executedAt deprecated', ({ file }) => {
+    expect(readFileSync(resolve(SRC, file), 'utf8'),
+      `${file} must mark its executedAt alias DEPRECATED COMPATIBILITY FIELD`)
+      .toMatch(/DEPRECATED COMPATIBILITY FIELD/);
+  });
+
+  it.each(COMPAT_SURFACES)('$endpoint states what its executedAt derives from', ({ file, derivation }) => {
+    expect(readFileSync(resolve(SRC, file), 'utf8'),
+      `${file} must state its derivation, not leave it to be reverse-engineered`)
+      .toMatch(derivation);
+  });
+
+  it.each(COMPAT_SURFACES)('$endpoint\'s CODE matches the derivation it claims', ({ file, derivesUnion }) => {
+    // Both directions. A union surface must call the canonical helper; a
+    // human-only surface must NOT, because calling it is exactly how that
+    // endpoint would silently start returning Lumi's timestamp instead.
+    const src = code(resolve(SRC, file));
+    const usesHelper = /executedAt:\s*legacyExecutedAt\(/.test(src);
+    expect(usesHelper, `${file} derivesUnion=${derivesUnion} but ${usesHelper ? 'calls' : 'does not call'} legacyExecutedAt`)
+      .toBe(derivesUnion);
+  });
+
+  it('the union derivation itself has exactly one implementation', () => {
+    const provenance = code(resolve(SRC, 'services/execution/decisionProvenance.js'));
+    expect(provenance).toMatch(/export const legacyExecutedAt = \(d\) => platformExecutedAt\(d\) \?\? humanExecutedAt\(d\);/);
+    // Nobody re-derives it locally — that is what would let the two union
+    // surfaces drift apart while both still looking correct.
+    expect(filesWhereCode(/platformExecutedAt\([^)]*\)\s*\?\?\s*humanExecutedAt\(/))
+      .toEqual(['/src/services/execution/decisionProvenance.js']);
+  });
+
 });
 
 // ── one definition of "somebody intervened" ─────────────────────────────────
