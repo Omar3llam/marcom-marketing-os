@@ -62,7 +62,16 @@ export const DECISION_SUCCESS = Object.freeze({
  * PURE: evaluate one decision against its CURRENT outcome, using the canonical
  * predicates.
  *
- * @param {{verdict:string, createdAt:Date|string, executedAt?:Date|string|null}} decision
+ * @param {{verdict:string, createdAt:Date|string,
+ *          humanExecutedAt?:Date|string|null,
+ *          platformExecutedAt?:Date|string|null}} decision
+ *   The two provenance columns, NOT the deprecated `executedAt`. classifyMaturity
+ *   opens the outcome window at the earlier of them (decisionProvenance
+ *   .interventionAt) and falls back to `createdAt` when neither is present — so a
+ *   caller that passes `executedAt`, as this contract used to ask for, silently
+ *   anchors every maturity decision to issuance instead. Select them together
+ *   via PROVENANCE_SELECT.
+
  * @param {object|null} outcome — the CURRENT OutcomeSnapshot (supersededAt null),
  *   or null when none has been recorded. Callers must resolve "current"
  *   themselves via outcomeSelection — this module does not query.

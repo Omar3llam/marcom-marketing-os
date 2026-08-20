@@ -185,6 +185,14 @@ executionsRouter.get('/decisions/:id/executions', requireCollabRole(...OPERATORS
       // DEPRECATED — the pre-split field, derived (platform wins when both
       // exist). Kept so clients shipped before B4-A keep working; new readers
       // take the two objects above. Scheduled for removal.
+      //
+      // DEPRECATED COMPATIBILITY FIELD — derivation is endpoint-specific.
+      //   HERE:                    platformExecutedAt ?? humanExecutedAt
+      //   PATCH /decisions/:id/execute: always the human timestamp it just wrote
+      // The two can therefore return DIFFERENT instants for the same decision,
+      // and neither is a canonical fact. Never treat them as one: the
+      // structured `humanExecution` / `platformExecution` objects above are
+      // authoritative and say which happened.
       executedAt: legacyExecutedAt(decision),
       executedAtMeaning: 'DEPRECATED_DERIVED_PREFER_platformExecution',
       dismissedAt: decision.dismissedAt,
@@ -192,9 +200,10 @@ executionsRouter.get('/decisions/:id/executions', requireCollabRole(...OPERATORS
       // ── R13-D / B3-B (§6) — the honest execution summary ──────────────────
       // Platform truth, derived ONLY from the persisted ExecutionRequest
       // lifecycle. `executedAt` above is NOT an input to this and must never
-      // become one: the worker writes that column after a real mutation and the
-      // self-report route writes the same column when a human says they acted
-      // by hand, so read alone it cannot tell you which happened.
+      // become one: it is a DERIVED alias that collapses two different facts
+      // into one field, so read alone it cannot tell you whether Lumi executed
+      // the mutation or an operator said they had. The ExecutionRequest rows
+      // can, which is why they are the only source here.
       //
       // NONE is a measured zero — we looked, and this decision has no
       // execution. It is not the same as QUEUED, and neither is SUCCEEDED.

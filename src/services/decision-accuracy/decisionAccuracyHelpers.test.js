@@ -11,30 +11,51 @@
 // here and nowhere else.
 import { describe, it, expect } from 'vitest';
 import {
-  isExecuted, isDismissed, isActioned, deriveAccuracyStatus,
+  wasActedOn, isDismissed, isActioned, deriveAccuracyStatus,
 } from './decisionAccuracyHelpers.js';
 
 const at = new Date('2026-08-01T10:00:00.000Z');
 
-describe('isExecuted / isDismissed', () => {
+describe('wasActedOn / isDismissed', () => {
   it('reads the timestamp, not the status', () => {
     // The human-signal routes leave status PROPOSED on purpose. A predicate that
     // consulted status would report false on every decision anyone ever acted on.
-    expect(isExecuted({ status: 'PROPOSED', humanExecutedAt: at })).toBe(true);
-    expect(isExecuted({ status: 'EXECUTED', humanExecutedAt: null })).toBe(false);
+    expect(wasActedOn({ status: 'PROPOSED', humanExecutedAt: at })).toBe(true);
+    expect(wasActedOn({ status: 'EXECUTED', humanExecutedAt: null })).toBe(false);
     expect(isDismissed({ status: 'PROPOSED', dismissedAt: at })).toBe(true);
     expect(isDismissed({ status: 'DISMISSED', dismissedAt: null })).toBe(false);
   });
 
+  // Half of `wasActedOn` had no test at all: every case above and below reaches
+  // it through `humanExecutedAt`, so a predicate rewritten to read that column
+  // ALONE stayed green — the union arm was assumed, never asserted. A mutation
+  // control found it, which is the only way an absence of a test can be found.
+  it('either provenance satisfies it — the union is a union', () => {
+    expect(wasActedOn({ humanExecutedAt: null, platformExecutedAt: at })).toBe(true);
+    expect(wasActedOn({ humanExecutedAt: at, platformExecutedAt: null })).toBe(true);
+    expect(wasActedOn({ humanExecutedAt: at, platformExecutedAt: at })).toBe(true);
+    expect(wasActedOn({ humanExecutedAt: null, platformExecutedAt: null })).toBe(false);
+  });
+
+  it('a platform execution alone is actioned, and reads as EXECUTED', () => {
+    // The case production does not hold yet and will: a decision Lumi executed
+    // where the operator never filed a self-report. Excluding it would drop
+    // every worker-executed call out of the accuracy population.
+    const platformOnly = { status: 'PROPOSED', humanExecutedAt: null, platformExecutedAt: at };
+    expect(isActioned(platformOnly)).toBe(true);
+    expect(deriveAccuracyStatus(platformOnly)).toBe('EXECUTED');
+  });
+
   it('treats null and undefined alike — an unselected column must not read as a signal', () => {
-    expect(isExecuted({ humanExecutedAt: null })).toBe(false);
-    expect(isExecuted({})).toBe(false);
+
+    expect(wasActedOn({ humanExecutedAt: null })).toBe(false);
+    expect(wasActedOn({})).toBe(false);
     expect(isDismissed({ dismissedAt: null })).toBe(false);
     expect(isDismissed({})).toBe(false);
   });
 
   it('survives a null row rather than throwing inside a filter', () => {
-    expect(isExecuted(null)).toBe(false);
+    expect(wasActedOn(null)).toBe(false);
     expect(isDismissed(undefined)).toBe(false);
     expect(isActioned(null)).toBe(false);
   });

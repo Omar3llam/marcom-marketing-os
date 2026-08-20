@@ -11,10 +11,18 @@
 // and refuses, by name, when it cannot answer honestly.
 //
 // IT IS NOT AN OUTCOME ENGINE. Nothing here scores, judges, attributes or
-// concludes. `executedAt` is used as a temporal boundary and nothing more — it
-// is the instant an operator SAID they acted, not proof that a platform change
-// happened then, and this module adds no causal meaning to it. The word
+// concludes. `interventionAt` is used as a temporal boundary and nothing more —
+// the instant the caller says the campaign was changed, from whichever
+// provenance it holds, and this module adds no causal meaning to it. The word
 // "outcome" does not appear in the result shape on purpose.
+//
+// THE PARAMETER USED TO BE CALLED `executedAt`, which named a Decision column
+// this module never reads and which, since the provenance split, cannot say
+// whose execution it recorded. Nothing here needs to know: the value is a
+// divider between before and after. `interventionAt` is what the caller should
+// pass — decisionProvenance.interventionAt over the decision, the earlier of
+// humanExecutedAt and platformExecutedAt.
+
 //
 // THE POPULATION IS NAMED, NEVER INFERRED
 // ---------------------------------------
@@ -67,7 +75,7 @@ export const ROW_REJECTION = Object.freeze({
   WRONG_POPULATION:  'WRONG_POPULATION',  // not a DAILY row
   MISSING_PERIOD:    'MISSING_PERIOD',    // no windowStart / windowEnd
   MALFORMED_PERIOD:  'MALFORMED_PERIOD',  // inverted, unparseable, or not one day
-  CROSSES_BOUNDARY:  'CROSSES_BOUNDARY',  // the day contains executedAt itself
+  CROSSES_BOUNDARY:  'CROSSES_BOUNDARY',  // the day contains interventionAt itself
   MISSING_OBSERVED:  'MISSING_OBSERVED',  // no `date` — cannot rank same-day rows
 });
 
@@ -121,7 +129,7 @@ export function logicalDay(observation) {
  *   1. REFUSE what is not a day. A row with no declared period, an inverted one,
  *      or one spanning more than a day is excluded by name. It is not repaired,
  *      not clamped, and not counted as evidence.
- *   2. REFUSE what straddles the boundary. A day containing `executedAt` is
+ *   2. REFUSE what straddles the boundary. A day containing `interventionAt` is
  *      neither a clean before nor a clean after — the intervention happened
  *      partway through the period it would be evidence for. There is no
  *      tolerance and no rounding to midnight: the boundary is where the operator
@@ -129,11 +137,11 @@ export function logicalDay(observation) {
  *   3. REDUCE each remaining day to ONE reading, latest observation first.
  *
  * @param {Array} rows — raw rows, DAILY population only
- * @param {Date}  executedAt — the boundary; rows are classified around it
+ * @param {Date}  interventionAt — the boundary; rows are classified around it
  * @returns {{ before: Array, after: Array, excluded: Array }}
  */
-export function classifyAndReduce(rows = [], executedAt) {
-  const boundary = executedAt instanceof Date ? executedAt.getTime() : new Date(executedAt).getTime();
+export function classifyAndReduce(rows = [], interventionAt) {
+  const boundary = interventionAt instanceof Date ? interventionAt.getTime() : new Date(interventionAt).getTime();
   const excluded = [];
   const beforeByDay = new Map();
   const afterByDay = new Map();
@@ -244,14 +252,14 @@ export function reduceDay(day, rows) {
  * @param {string} args.entityId
  * @param {string} args.entityLevel
  * @param {string} args.source
- * @param {Date}   args.executedAt — the boundary. Used as a temporal divider and
+ * @param {Date}   args.interventionAt — the boundary. Used as a temporal divider and
  *   nothing else; this module attaches no causal meaning to it.
  * @param {number} [args.beforeDays] — days of history to read before the boundary
  * @param {number} [args.afterDays]  — days to read after it
  * @returns {Promise<object>} the result contract — see OBSERVATION_STATUS
  */
 export async function readDailyObservations(workspaceId, {
-  entityId, entityLevel, source, executedAt,
+  entityId, entityLevel, source, interventionAt,
   beforeDays = DEFAULT_SPAN_DAYS, afterDays = DEFAULT_SPAN_DAYS,
 } = {}) {
   // Programming errors, not runtime states: every one of these would silently
@@ -261,8 +269,8 @@ export async function readDailyObservations(workspaceId, {
   if (!entityId) throw new Error('readDailyObservations: entityId required');
   if (!entityLevel) throw new Error('readDailyObservations: entityLevel required — a level is part of an entity\'s identity');
   if (!source) throw new Error('readDailyObservations: source required — two sources measuring one day are two measurements');
-  const boundary = executedAt instanceof Date ? executedAt : new Date(executedAt);
-  if (!Number.isFinite(boundary.getTime())) throw new Error('readDailyObservations: executedAt must be a valid date');
+  const boundary = interventionAt instanceof Date ? interventionAt : new Date(interventionAt);
+  if (!Number.isFinite(boundary.getTime())) throw new Error('readDailyObservations: interventionAt must be a valid date');
   for (const [name, n] of [['beforeDays', beforeDays], ['afterDays', afterDays]]) {
     if (!Number.isInteger(n) || n < 1) throw new Error(`readDailyObservations: ${name} must be a positive integer`);
   }

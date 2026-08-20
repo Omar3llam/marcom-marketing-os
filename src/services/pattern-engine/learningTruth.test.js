@@ -143,9 +143,16 @@ describe('NC31/NC32 · I52 — only EXECUTED decisions enter causal learning', (
   // learning would silently stop entirely, and every surface would report zero
   // patterns as though the account had nothing to teach.
   it('gates on the timestamp, never on the unwritten status enum', () => {
-    expect(SERVICE_SRC).toMatch(/humanExecutedAt:\s*\{\s*not:\s*null\s*\}/);
+    // The predicate moved to the canonical seam, so the source no longer spells
+    // the union out — it spreads decisionProvenance.INTERVENED_WHERE, which is
+    // the one place "somebody intervened" is defined. NC31 above still proves
+    // the RESOLVED shape at runtime; this proves the source did not quietly
+    // re-acquire a local copy or fall back to the status enum.
+    expect(SERVICE_SRC).toMatch(/\.\.\.INTERVENED_WHERE/);
+    expect(SERVICE_SRC).not.toMatch(/humanExecutedAt:\s*\{\s*not:\s*null\s*\}/);
     expect(SERVICE_SRC).not.toMatch(/status:\s*['"]EXECUTED['"]/);
   });
+
 
   it('selects humanExecutedAt — the outcome window opens there, not at createdAt', async () => {
     await getBriefing(WS, { now: NOW });

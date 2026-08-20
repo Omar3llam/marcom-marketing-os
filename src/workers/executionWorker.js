@@ -236,8 +236,9 @@ async function processExecution(job) {
     });
 
     // ── R10 (I55): the platform mutation LANDED ─────────────
-    // This is the only place in the system that stamps Decision.executedAt from
-    // a real execution, and it is deliberately after the EXECUTED_SUCCESS
+    // This is the only place in the system that stamps
+    // Decision.platformExecutedAt, and it is deliberately after the EXECUTED_SUCCESS
+
     // transition rather than before the Meta call. Queued is not executed;
     // attempted is not executed. Only a mutation Meta accepted means the
     // operator acted, and only that belongs in the accuracy population.

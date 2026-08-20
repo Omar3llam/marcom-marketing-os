@@ -19,7 +19,8 @@ import { evaluateDecisionSuccess } from '../decision-accuracy/decisionSuccess.js
 import { extractPatterns } from './patternEngine.js';
 import { PATTERN_STATUS, isActionablePattern } from './patternTypes.js';
 import { TEMPORAL }         from '../../config/temporal.js';
-import { PROVENANCE_SELECT } from '../execution/decisionProvenance.js';
+import { PROVENANCE_SELECT, INTERVENED_WHERE } from '../execution/decisionProvenance.js';
+
 
 // Bounds MetricSnapshot.date — the SYNC timestamp, not a delivery horizon. A row
 // written yesterday may hold a lifetime aggregate. Value unchanged (365).
@@ -125,7 +126,9 @@ export async function getBriefing(workspaceId, { now = new Date(), lookbackDays 
       // requests, so every carried-out intervention there is self-reported.
       where:  {
         workspaceId,
-        OR: [{ humanExecutedAt: { not: null } }, { platformExecutedAt: { not: null } }],
+        // The canonical seam, not a local copy: "somebody intervened" has one
+        // definition and this population must move with it. No other `OR` here.
+        ...INTERVENED_WHERE,
         createdAt: { gte: since },
       },
       select: {

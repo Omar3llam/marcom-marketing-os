@@ -26,10 +26,11 @@
 //
 // FIRST SUCCESS WINS
 //   One Decision can own several ExecutionRequests: `retry` mints a fresh row,
-//   and one verdict can be acted on at more than one target. `executedAt` is
-//   documented on the model as set ONCE and never overwritten — it records WHEN
-//   the operator first acted, not how many times. So the stamp is conditional on
-//   the column still being null, and a second success is a no-op rather than a
+//   and one verdict can be acted on at more than one target.
+//   `platformExecutedAt` is set ONCE and never overwritten — it records WHEN
+//   Lumi first landed a mutation for this call, not how many times. So the stamp
+//   is conditional on that column still being null, and a second success is a
+//   no-op rather than a
 //   re-dating. This is also what makes the worker safe to retry: BullMQ can
 //   deliver the same job twice and the second delivery changes nothing.
 //
@@ -97,7 +98,7 @@ export async function stampDecisionExecuted({ workspaceId, decisionId, at = new 
 
   try {
     // updateMany, not update: the predicate carries the whole rule, so the
-    // database decides. `executedAt: null` makes the first success win; a
+    // database decides. `platformExecutedAt: null` makes the first success win; a
     // `dismissedAt: null` makes an explicit rejection unoverturnable; and
     // `workspaceId` keeps the write scoped even though the id came from a
     // scoped read, because a second guarantee costs one column.
@@ -123,7 +124,7 @@ export async function stampDecisionExecuted({ workspaceId, decisionId, at = new 
   } catch (err) {
     logger.error(
       { err: err.message, workspaceId, decisionId },
-      '[decisionAttribution] could not stamp executedAt — this execution is missing from the accuracy population',
+      '[decisionAttribution] could not stamp platformExecutedAt — this execution is missing from the accuracy population',
     );
     return { stamped: false, reason: 'ERROR' };
   }

@@ -36,7 +36,7 @@ const T0 = new Date('2026-01-01T00:00:00Z').getTime();
  */
 const scorable = (i, { confidence = 0.8, success = true } = {}) => ({
   id: `d${i}`,
-  status: 'EXECUTED',
+  accuracyStatus: 'EXECUTED',
   verdict: 'KILL',
   confidence,
   createdAt: new Date(T0 + i * DAY),
@@ -152,7 +152,7 @@ describe('window statistics carry null, not a perfect score', () => {
     const n = DEFAULT_CONFIG.minSample * 2;
     const decisions = [
       ...Array.from({ length: n }, (_, i) => scorable(i, { success: i % 4 !== 0 })),
-      { id: 'x', status: 'EXECUTED', verdict: 'KILL', confidence: 0.9, createdAt: new Date(T0 + 400 * DAY), outcome: null },
+      { id: 'x', accuracyStatus: 'EXECUTED', verdict: 'KILL', confidence: 0.9, createdAt: new Date(T0 + 400 * DAY), outcome: null },
     ];
     const { velocity } = calculateDecisionAccuracy({ decisions, now: new Date(T0 + 500 * DAY) });
     expect(velocity.periods.length).toBeGreaterThan(0);

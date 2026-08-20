@@ -7,9 +7,15 @@
 //
 // This answers a narrow question and must not be read as more than it is. It is
 // CORRELATIONAL: it says the entity improved after a KILL verdict was raised,
-// not that the KILL caused it, and not that anyone acted on it. The intentAt
-// column is what separates "a verdict nobody touched" from "a verdict a human
-// went and acted on" — getSimilarOutcomes gates on it for exactly that reason.
+// not that the KILL caused it, and not that anyone acted on it. Whether anyone
+// DID act is a separate fact carried by separate columns — humanExecutedAt (the
+// operator reported making the change) and platformExecutedAt (Lumi made it) —
+// and getSimilarOutcomes gates its population on that union before it counts
+// any resolution this module produced.
+//
+// It is NOT `intentAt`. That column records that a recommendation was copied or
+// the ad platform was opened, which is engagement rather than intervention; C1
+// removed it from the learning gate for exactly that reason.
 //
 // UNKNOWN is a real answer here, not a fallback. A decision with no metric on
 // either end cannot be scored, and saying so is the whole point.

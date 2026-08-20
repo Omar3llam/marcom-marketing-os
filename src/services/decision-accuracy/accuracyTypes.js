@@ -96,8 +96,9 @@ export const SUCCESS_PREDICATES = Object.freeze({
   // surprise is a missed SCALE.
   //
   // CURRENTLY UNREACHABLE, DELIBERATELY KEPT. No HOLD can enter this population
-  // today. The population is decisions carrying executedAt or dismissedAt
-  // (DecisionAccuracyService.ACTIONED), those timestamps come only from
+  // today. The population is decisions carrying humanExecutedAt,
+  // platformExecutedAt or dismissedAt (DecisionAccuracyService.ACTIONED); the
+  // human ones come only from
   // DecisionLifecycle's buttons, that component mounts only inside ActionBar,
   // and ActionBar returns null when nextActionFor(verdict) is null — which it is
   // for HOLD. The Overview mount is gated on ACTIONABLE_VERDICTS

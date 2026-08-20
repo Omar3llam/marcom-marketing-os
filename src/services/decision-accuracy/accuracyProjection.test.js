@@ -131,16 +131,16 @@ describe('buildAccuracyInputs', () => {
   // The seam. The pure engine still reads d.status, so the timestamps are
   // translated here rather than rewriting the layer with the densest tests.
   it('derives EXECUTED from humanExecutedAt, whatever the row status says', () => {
-    expect(buildAccuracyInputs([row({ humanExecutedAt: '2026-07-20T00:00:00.000Z' })])[0].status).toBe('EXECUTED');
-    expect(buildAccuracyInputs([row({ status: 'SUPERSEDED', humanExecutedAt: '2026-07-20T00:00:00.000Z' })])[0].status).toBe('EXECUTED');
+    expect(buildAccuracyInputs([row({ humanExecutedAt: '2026-07-20T00:00:00.000Z' })])[0].accuracyStatus).toBe('EXECUTED');
+    expect(buildAccuracyInputs([row({ status: 'SUPERSEDED', humanExecutedAt: '2026-07-20T00:00:00.000Z' })])[0].accuracyStatus).toBe('EXECUTED');
   });
 
   it('derives DISMISSED from dismissedAt', () => {
-    expect(buildAccuracyInputs([row({ dismissedAt: '2026-07-20T00:00:00.000Z' })])[0].status).toBe('DISMISSED');
+    expect(buildAccuracyInputs([row({ dismissedAt: '2026-07-20T00:00:00.000Z' })])[0].accuracyStatus).toBe('DISMISSED');
   });
 
   it('passes the raw status through when neither signal landed', () => {
-    expect(buildAccuracyInputs([row()])[0].status).toBe('PROPOSED');
+    expect(buildAccuracyInputs([row()])[0].accuracyStatus).toBe('PROPOSED');
   });
 
   // The engine input is a CONTRACT, not "whatever the row had". A spread would
@@ -148,7 +148,7 @@ describe('buildAccuracyInputs', () => {
   it('emits the engine input shape and nothing else', () => {
     const out = buildAccuracyInputs([row({ humanExecutedAt: '2026-07-20T00:00:00.000Z', dismissedAt: null })])[0];
     expect(Object.keys(out).sort()).toEqual(
-      ['confidence', 'createdAt', 'humanExecutedAt', 'id', 'outcome', 'platformExecutedAt', 'status', 'verdict'],
+      ['accuracyStatus', 'confidence', 'createdAt', 'humanExecutedAt', 'id', 'outcome', 'platformExecutedAt', 'verdict'],
     );
     expect(out.outcomes).toBeUndefined();
     expect(out.dismissedAt).toBeUndefined();

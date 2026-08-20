@@ -18,7 +18,7 @@ function scored(id, { confidence, success, at }) {
     id,
     verdict: 'REALLOCATE',
     confidence,
-    status: 'EXECUTED',
+    accuracyStatus: 'EXECUTED',
     createdAt: at,
     outcome: {
       roasDelta: success ? 0.1 : -0.1,
@@ -58,7 +58,7 @@ describe('decisionAccuracyEngine — per-verdict success predicates (§2.1)', ()
   it('a correct KILL (spend fell, sustained) scores SUCCESS, not failure', () => {
     const r = calculateDecisionAccuracy({
       now: NOW,
-      decisions: [{ id: 'k', verdict: 'KILL', confidence: 0.8, status: 'EXECUTED', createdAt: new Date(NOW.getTime() - day(20)).toISOString(), outcome: mature({ spendDeltaMinor: -5000, revenueDeltaMinor: -2000 }) }],
+      decisions: [{ id: 'k', verdict: 'KILL', confidence: 0.8, accuracyStatus: 'EXECUTED', createdAt: new Date(NOW.getTime() - day(20)).toISOString(), outcome: mature({ spendDeltaMinor: -5000, revenueDeltaMinor: -2000 }) }],
     });
     expect(r.coverage.scored).toBe(1);
     expect(r.calibration.accuracy).toBe(1); // observed success rate = 1, NOT scored as a failure
@@ -67,7 +67,7 @@ describe('decisionAccuracyEngine — per-verdict success predicates (§2.1)', ()
   it('a SCALE that did not hold (sustained:false) scores FAILURE', () => {
     const r = calculateDecisionAccuracy({
       now: NOW,
-      decisions: [{ id: 's', verdict: 'SCALE', confidence: 0.8, status: 'EXECUTED', createdAt: new Date(NOW.getTime() - day(20)).toISOString(), outcome: { windowEnd: new Date(NOW.getTime() - day(1)).toISOString(), sustained: false, roasDelta: 0.5 } }],
+      decisions: [{ id: 's', verdict: 'SCALE', confidence: 0.8, accuracyStatus: 'EXECUTED', createdAt: new Date(NOW.getTime() - day(20)).toISOString(), outcome: { windowEnd: new Date(NOW.getTime() - day(1)).toISOString(), sustained: false, roasDelta: 0.5 } }],
     });
     expect(r.coverage.scored).toBe(1);
     expect(r.calibration.accuracy).toBe(0);
@@ -76,7 +76,7 @@ describe('decisionAccuracyEngine — per-verdict success predicates (§2.1)', ()
   it('a WATCH is excluded from accuracy entirely (not a prediction)', () => {
     const r = calculateDecisionAccuracy({
       now: NOW,
-      decisions: [{ id: 'w', verdict: 'WATCH', confidence: 0.5, status: 'EXECUTED', createdAt: new Date(NOW.getTime() - day(20)).toISOString(), outcome: mature({ roasDelta: 0.1 }) }],
+      decisions: [{ id: 'w', verdict: 'WATCH', confidence: 0.5, accuracyStatus: 'EXECUTED', createdAt: new Date(NOW.getTime() - day(20)).toISOString(), outcome: mature({ roasDelta: 0.1 }) }],
     });
     expect(r.coverage.scored).toBe(0);
     expect(r.coverage.notAPrediction).toBe(1);
@@ -103,7 +103,7 @@ describe('decisionAccuracyEngine — HOLD is a prediction of stability (§2.1)',
     id: 'h',
     verdict: 'HOLD',
     confidence: 0.8,
-    status: 'EXECUTED',
+    accuracyStatus: 'EXECUTED',
     createdAt: new Date(NOW.getTime() - day(20)).toISOString(),
     outcome: {
       windowEnd: new Date(NOW.getTime() - day(1)).toISOString(),
@@ -171,7 +171,7 @@ describe('SCORABLE_VERDICT — HOLD predicts, WATCH declines to', () => {
   it('identical outcomes land in different buckets: HOLD scored, WATCH not-a-prediction', () => {
     const base = {
       confidence: 0.8,
-      status: 'EXECUTED',
+      accuracyStatus: 'EXECUTED',
       createdAt: new Date(NOW.getTime() - day(20)).toISOString(),
       outcome: { windowEnd: new Date(NOW.getTime() - day(1)).toISOString(), sustained: true, roasDelta: 0.01 },
     };
@@ -197,7 +197,7 @@ describe('decisionAccuracyEngine — maturity (§2.2)', () => {
   it('a 3-day-old decision with sustained:null + open window is PENDING — absent from every numerator/denominator', () => {
     const r = calculateDecisionAccuracy({
       now: NOW,
-      decisions: [{ id: 'p', verdict: 'KILL', confidence: 0.9, status: 'EXECUTED', createdAt: new Date(NOW.getTime() - day(3)).toISOString(), outcome: { windowEnd: new Date(NOW.getTime() + day(4)).toISOString(), sustained: null, spendDeltaMinor: -1000 } }],
+      decisions: [{ id: 'p', verdict: 'KILL', confidence: 0.9, accuracyStatus: 'EXECUTED', createdAt: new Date(NOW.getTime() - day(3)).toISOString(), outcome: { windowEnd: new Date(NOW.getTime() + day(4)).toISOString(), sustained: null, spendDeltaMinor: -1000 } }],
     });
     expect(r.coverage.pendingMaturation).toBe(1);
     expect(r.coverage.scored).toBe(0);
@@ -209,7 +209,7 @@ describe('decisionAccuracyEngine — maturity (§2.2)', () => {
   it('an executed decision past the deadline with no outcome is UNSCORABLE (a data-quality gap)', () => {
     const r = calculateDecisionAccuracy({
       now: NOW,
-      decisions: [{ id: 'u', verdict: 'KILL', confidence: 0.9, status: 'EXECUTED', createdAt: new Date(NOW.getTime() - day(30)).toISOString(), outcome: null }],
+      decisions: [{ id: 'u', verdict: 'KILL', confidence: 0.9, accuracyStatus: 'EXECUTED', createdAt: new Date(NOW.getTime() - day(30)).toISOString(), outcome: null }],
     });
     expect(r.coverage.unscorable).toBe(1);
     expect(r.coverage.scored).toBe(0);
@@ -223,7 +223,7 @@ describe('decisionAccuracyEngine — maturity (§2.2)', () => {
 describe('decisionAccuracyEngine — the outcome window opens at execution', () => {
   // Issued 30 days ago (long past the 7-day deadline), acted on 3 days ago.
   const lateAction = (over = {}) => ({
-    id: 'late', verdict: 'KILL', confidence: 0.9, status: 'EXECUTED',
+    id: 'late', verdict: 'KILL', confidence: 0.9, accuracyStatus: 'EXECUTED',
     createdAt: new Date(NOW.getTime() - day(30)).toISOString(),
     humanExecutedAt: new Date(NOW.getTime() - day(3)).toISOString(),
     outcome: null, ...over,
