@@ -87,18 +87,31 @@ describe('R7 — the canonical spine is what replaced it', () => {
     expect(src).toMatch(/getRecentDecisions/);
   });
 
-  it('the orchestrator reads canonical decisions', () => {
+  it('the orchestrator no longer reads ANY decision history — S1-B', () => {
+    // This used to assert `getRecentDecisions(workspaceId, 3)` inside
+    // runOrchestration: R7's proof that the canonical spine had replaced the
+    // DecisionMemory read, rather than the read simply vanishing.
+    //
+    // S1-B removed runOrchestration entirely. It loaded a CampaignState row as
+    // the SUBJECT of its analysis, and that table has had no writer since R7
+    // deleted temporalObserver — so the function threw for every campaign in
+    // every workspace, and the route above it 404'd before reaching it anyway.
+    //
+    // The R7 guarantee is unaffected and is asserted by the two tests around
+    // this one: the canonical read still has exactly one definition, and the
+    // sidebar route still calls it. What is gone is a second caller, not the
+    // spine — so the assertion inverts rather than being deleted. Reinstating a
+    // history read here would mean the orchestration came back with it.
     const src = codeOf(path.join(SRC, 'agents/orchestrator.js'));
-    expect(src).toMatch(/getRecentDecisions\(workspaceId, 3\)/);
-    // …and not with an entity predicate bolted on: CampaignState.campaignId is
-    // a legacy String and Decision.entityId is a uuid, so scoping this read by
-    // campaign returns nothing, quietly.
-    expect(src).not.toMatch(/getRecentDecisions\([^)]*campaignId/);
+    expect(src).not.toMatch(/getRecentDecisions/);
+    expect(src).not.toMatch(/runOrchestration/);
+    expect(src).not.toMatch(/campaignState/);
   });
 
   it('exactly ONE workspace-scoped recent-decision read exists', () => {
     // Two near-identical reads is how a second source of decision truth starts.
-    // The route and the orchestrator must share this one.
+    // Every caller must share this one — after S1-B that is the sidebar route
+    // and decisionHistory's own consumers, the orchestrator having dropped out.
     const defs = walk(SRC).filter((f) => /export (async )?function getRecentDecisions/.test(codeOf(f)));
     expect(defs.map((f) => path.relative(SRC, f).split(path.sep).join('/')))
       .toEqual(['services/decision-memory/decisionHistory.js']);

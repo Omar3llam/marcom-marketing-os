@@ -1,350 +1,37 @@
 // ============================================================
-// MARCOM / Lumi — Dual-Agent Orchestrator
+// MARCOM / Lumi — Claude analysis adapters
 // ------------------------------------------------------------
-// Coordinates Agent 1 (runClaudeAgent — strategic analysis)
-// then conditionally Agent 2 (runChatGPTAgent — creative
-// generation), persists the combined result onto the Action row,
-// and returns the merged payload to the caller.
+// S1-B — THE DUAL-AGENT ORCHESTRATOR IS GONE, and with it this file's original
+// reason to exist. `runOrchestration` took a campaignId, loaded the CampaignState
+// row as the SUBJECT of the analysis, ran Claude then conditionally GPT for
+// creative, and wrote the merged payload onto an Action row.
 //
-// Per Decision C2: this file uses the EXISTING agent exports
-// (runClaudeAgent, runChatGPTAgent) directly — no rename of
-// upstream files. The spec's analyzeWithClaude / generateCreativeAssets
-// names live only as adapter functions inside this module.
+// Both of those populations are unwritable. CampaignState has had no writer
+// since R7 deleted temporalObserver, and no code in this repository CREATES an
+// Action row — the one remaining `prisma.action` write was an `update` on a row
+// nothing mints. So the function threw "campaignState … not found" for every
+// campaign in every workspace, and its only caller (the circuit breaker behind
+// POST /lumi/orchestrate/:campaignId) could not reach it anyway: that route
+// 404s first on the PENDING Action it requires.
 //
-// Per Decision B3: brand context is read from User.context (Json
-// column added to the Prisma User model in this batch). No
-// separate Project model is used.
+// Retired rather than repointed. Rebuilding it against the connector entity
+// graph would be a new capability wearing a cleanup's clothes, and the
+// deliberate decision was to remove, not replace.
+//
+// WHAT SURVIVES is the set of Claude adapters paidController and
+// routes/campaigns/feed.js actually call. They take campaigns as ARGUMENTS —
+// they never read a decision or campaign row — which is why they were reachable
+// all along while the orchestration around them was not.
 // ============================================================
-import { prisma }                           from '../lib/prisma.js';
 import { runClaudeAgent }                   from './ClaudeAgent.js';
-import { runChatGPTAgent }                  from './ChatGPTAgent.js';
 import { logger }                           from '../utils/logger.js';
-import { trackDegradedState }               from '../lib/errorTelemetry.js';
-import { getRecentDecisions }               from '../services/decision-memory/decisionHistory.js';
 
-// Root causes that warrant a creative pass. Anything outside this
-// list gets strategic analysis only — saves OpenAI quota and
-// keeps the UI fast for low-stakes alerts.
-const CREATIVE_TRIGGERS = new Set([
-  'CRITICAL_PERFORMANCE_DECLINE',
-  'CREATIVE_FATIGUE',
-]);
-
-/**
- * Adapter — wraps runClaudeAgent and forces a strict JSON output
- * shape the orchestrator can consume programmatically.
- */
-// What goes into the prompt when the decision-memory read did not return a
-// list. Matches the '(none)' convention the other grounding slots already use,
-// and is deliberately NOT an empty array — see the RECENT DECISION MEMORY line.
-export const MEMORY_UNAVAILABLE = '(unavailable — decision memory could not be read)';
-
-/**
- * PURE: the decision fields the prompt actually uses.
- *
- * R7 repointed this slot from the retired DecisionMemory table to canonical
- * Decision rows. The canonical read serves two consumers, so it also selects
- * `id`/`entityId`/`entityLevel` for the sidebar — none of which mean anything
- * to a language model. Projecting here keeps the payload from widening just
- * because the source got richer, which the migration was told not to do.
- *
- * null in → null out, so the caller's honest "could not read" sentinel survives
- * this step; [] in → [] out, byte-identical to what the old table rendered when
- * a workspace genuinely had no history.
- */
-export function promptDecisions(rows) {
-  if (!Array.isArray(rows)) return null;
-  return rows.map((d) => ({
-    verdict:    d.verdict,
-    diagnosis:  d.diagnosis,
-    rootCause:  d.rootCause ?? null,
-    confidence: d.confidence,
-    // What actually happened, when a later verdict closed this one out. Absent
-    // stays absent — an unresolved decision is not a neutral one.
-    resolution: d.resolution ?? null,
-    decidedAt:  d.createdAt,
-  }));
-}
-
-async function analyzeWithClaude({ campaignState, decisionMemory, contextLock, grounding = {}, workspaceId = null }) {
-  const role =
-    'You are an Elite Performance Marketing Strategist. ' +
-    'You diagnose ad-platform campaigns from raw metrics + the brand context lock + ' +
-    'recent decision memory, and return a strict JSON verdict. Deterministic engines have ' +
-    'already computed the per-level verdicts, the fatigue forecast, and any guardrail hits — ' +
-    'treat those as the source of truth and explain/reconcile them; do not contradict them.';
-
-  const { levelVerdicts = null, fatigueForecast = null, guardrailHits = null } = grounding;
-
-  const task = [
-    'Analyze the campaign below and return JSON with this EXACT shape (no markdown fences, no commentary):',
-    '{',
-    '  "verdict": "KILL" | "HOLD" | "SCALE" | "REFRESH" | "REALLOCATE" | "WATCH",',
-    '  "rootCause": "CRITICAL_PERFORMANCE_DECLINE" | "CREATIVE_FATIGUE" | "AUDIENCE_SATURATION" | "SCALING_OPPORTUNITY" | "OTHER",',
-    '  "diagnosis": "<2-3 sentence plain-language diagnosis>",',
-    '  "levelVerdicts": [ { "level": "CAMPAIGN"|"ADSET"|"CREATIVE", "entityId": "<id>", "verdict": "<verdict>", "rationale": "<one sentence>" } ],',
-    '  "fatigueForecast": { "willBreach": <bool>, "metric": "frequency", "daysToBreach": <number|null>, "projectedBreachDate": "<ISO|null>", "note": "<plain-language, e.g. \'breaches frequency 3.5 in ~3 days\'>" },',
-    '  "actionPlan": { "action": "<one specific action>", "expectedImpact": "<single sentence>" },',
-    '  "confidence": <integer 0-100, your certainty in this verdict>,',
-    '  "riskLevel": "High" | "Medium" | "Low",',
-    '  "evidenceCount": <integer, number of metrics/signals analyzed>,',
-    '  "financialImpact": "<string in EGP, e.g. \'Wasting EGP 2,400/week\' or \'Could gain EGP 15,000/month\'>"',
-    '}',
-    '',
-    'RULES: The top-level "verdict" must equal the CAMPAIGN-level verdict in DETERMINISTIC LEVEL VERDICTS when provided. ',
-    'Echo DETERMINISTIC LEVEL VERDICTS into "levelVerdicts" (you may add a rationale). ',
-    'Echo the DETERMINISTIC FATIGUE FORECAST into "fatigueForecast" with a human-readable "note". ',
-    'AI must be auditable: include confidence (0-100), risk level, evidence count, financial impact in EGP.',
-    '',
-    'CAMPAIGN STATE:',                 JSON.stringify(campaignState ?? {}, null, 2),
-    'DETERMINISTIC LEVEL VERDICTS:',   JSON.stringify(levelVerdicts ?? '(none — derive from state)', null, 2),
-    'DETERMINISTIC FATIGUE FORECAST:', JSON.stringify(fatigueForecast ?? '(none)', null, 2),
-    'GUARDRAIL HITS:',                 JSON.stringify(guardrailHits ?? '(none)', null, 2),
-    // `?? []` was the bug: it turned "we could not read the memory source" into
-    // "there is no memory", and the role prompt above tells the model it
-    // diagnoses partly FROM recent decision memory — so an empty array reads as
-    // a fact about this account rather than a gap in ours. null now gets the
-    // same honest-sentinel treatment its three siblings already use. A real
-    // empty array still renders "[]", byte-identical to before.
-    'RECENT DECISION MEMORY:',         JSON.stringify(promptDecisions(decisionMemory) ?? MEMORY_UNAVAILABLE, null, 2),
-    'BRAND CONTEXT LOCK:',             JSON.stringify(contextLock ?? {}, null, 2),
-  ].join('\n');
-
-  const { text } = await runClaudeAgent({
-    campaignId: campaignState?.campaignId ?? null,
-    workspaceId, // R9 — campaignId alone cannot address a CampaignState row
-    role,
-    task,
-    maxTokens: 800,
-  });
-
-  return safeParseJson(text);
-}
-
-/**
- * Adapter — wraps runChatGPTAgent for creative generation. Asks
- * for a strict JSON object with N variants matching the schema
- * the DecisionTheater UI consumes.
- */
-async function generateCreativeAssets({ contextLock, strategicBrief, workspaceId = null }) {
-  if (!process.env.OPENAI_API_KEY) {
-    return null;
-  }
-
-  const role =
-    'You are an Elite Creative Director and Direct-Response Copywriter. ' +
-    'You execute advertising strategies based on a Strategic Brief, while ' +
-    'STRICTLY adhering to the client\'s Context Lock. You write platform-native ' +
-    'copy and visual direction precise enough that a designer or Midjourney can ' +
-    'execute it without follow-up questions.';
-
-  const task = [
-    'Generate exactly 3 creative variants to address the strategic brief below.',
-    'Return ONLY a valid JSON object — no markdown fences, no commentary.',
-    'Schema (exact):',
-    '{',
-    '  "creative_strategy_rationale": "<2 sentences explaining the angle mix>",',
-    '  "variants": [',
-    '    {',
-    '      "angle_name": "<short name>",',
-    '      "primary_text": "<≤125 chars for Meta feed>",',
-    '      "headline": "<≤40 chars>",',
-    '      "description": "<one sentence>",',
-    '      "visual_direction": "<designer brief or Midjourney prompt>",',
-    '      "platform_notes": "<any platform-specific adjustment>"',
-    '    }',
-    '  ]',
-    '}',
-    '',
-    'CONTEXT LOCK (never violate):', JSON.stringify(contextLock ?? {}, null, 2),
-    'STRATEGIC BRIEF:',              JSON.stringify(strategicBrief ?? {}, null, 2),
-  ].join('\n');
-
-  const { text } = await runChatGPTAgent({
-    campaignId: strategicBrief?.campaignId ?? null,
-    workspaceId, // R9 — see analyzeWithClaude
-    role,
-    task,
-    maxTokens: 1500,
-  });
-
-  return safeParseJson(text);
-}
-
-/**
- * Main entry point. Runs Claude → conditionally OpenAI → persists
- * onto the supplied Action row → returns the merged result.
- *
- * @param {object} args
- * @param {string} args.campaignId   — CampaignState.campaignId
- * @param {string} args.workspaceId  — request workspace (for memory + context lookup)
- * @param {string} [args.actionId]   — Action row to persist onto (optional; if absent, no DB write)
- * @param {string} [args.userId]     — for fetching the user's context lock
- */
-export async function runOrchestration({ campaignId, workspaceId, actionId, userId, grounding = {} }) {
-  if (!campaignId) throw new Error('orchestrator: campaignId required');
-  // R9 (I40) — REQUIRED, and checked rather than defaulted. Prisma reads an
-  // `undefined` field in a `where` as "no filter on this column", so an absent
-  // workspaceId would silently turn the scoped CampaignState read below back
-  // into the global one it replaced. Fail closed instead.
-  if (!workspaceId) throw new Error('orchestrator: workspaceId required');
-
-  // ── Gather the three inputs in parallel ─────────────────────
-  const [campaign, user, memory] = await Promise.all([
-    // R9 (I32/I40) — WORKSPACE-SCOPED findFirst, not findUnique on campaignId.
-    // CampaignState's only unique is @@unique([campaignId, workspaceId]), so
-    // `findUnique({ where: { campaignId } })` named no unique selector and was
-    // rejected by Prisma at call time. It was also workspace-blind by intent:
-    // campaignId is a platform-supplied String, so another workspace running the
-    // same ad account would have resolved into this orchestration.
-    prisma.campaignState.findFirst({ where: { campaignId, workspaceId } }),
-    userId
-      ? prisma.user.findUnique({ where: { id: userId }, select: { context: true } })
-      : Promise.resolve(null),
-    // R7 — the canonical spine, not the retired DecisionMemory table.
-    //
-    // WORKSPACE-SCOPED, exactly as the read it replaces was. It is tempting to
-    // scope this to the campaign being diagnosed, and it would be wrong: this
-    // function keys on CampaignState.campaignId, a plain legacy String, while
-    // Decision.entityId is a @db.Uuid from the entity graph. Filtering one by
-    // the other returns nothing, quietly. The prompt asks "what has Lumi
-    // decided lately", and that is a workspace question.
-    //
-    // Decoration, not a precondition. Decision context colours the diagnosis;
-    // it is not what is being diagnosed. A failed read must not take down the
-    // orchestration around it — a rejection here once failed the whole
-    // Promise.all and the Claude call never happened. null (not []) so the
-    // prompt can tell "no decisions" from "no decisions READ"; see
-    // MEMORY_UNAVAILABLE above.
-    getRecentDecisions(workspaceId, 3).catch((err) => {
-      logger.warn({ err: err.message, workspaceId }, '[orchestrator] decision history unavailable — continuing without it');
-      return null;
-    }),
-  ]);
-
-  // CampaignState is a different matter and still throws: it is the SUBJECT of
-  // the analysis, not context for it. There is nothing to diagnose without it,
-  // and inventing one would fabricate the campaign itself.
-  if (!campaign) {
-    throw new Error(`orchestrator: campaignState ${campaignId} not found`);
-  }
-
-  const contextLock = user?.context ?? null;
-
-  // ── Agent 1: Claude (always) ────────────────────────────────
-  // 🔍 VERIFICATION LOG — Track orchestrator usage
-  logger.info({
-    provider: 'CLAUDE',
-    model: 'claude-sonnet-4.5',
-    feature: 'strategic-analysis',
-    campaignId,
-  }, '[orchestrator] dual-agent verification');
-
-  let strategicAnalysis;
-  try {
-    strategicAnalysis = await analyzeWithClaude({
-      campaignState:  campaign,
-      decisionMemory: memory,
-      contextLock,
-      grounding, // deterministic levelVerdicts / fatigueForecast / guardrailHits
-      workspaceId,
-    });
-  } catch (err) {
-    logger.error({ err: err.message, campaignId }, '[orchestrator] Claude failed');
-    throw new Error(`Strategic analysis failed: ${err.message}`);
-  }
-
-  // ── Agent 2: OpenAI (conditional) ───────────────────────────
-  let creativeAssets = null;
-  // REFRESH verdicts always warrant a creative pass (the whole point of the
-  // verdict is to swap creative), in addition to the root-cause triggers.
-  const needsCreative =
-    CREATIVE_TRIGGERS.has(strategicAnalysis?.rootCause) ||
-    strategicAnalysis?.verdict === 'REFRESH';
-
-  if (needsCreative) {
-    // 🔍 VERIFICATION LOG — Track orchestrator OpenAI usage
-    logger.info({
-      provider: 'OPENAI',
-      model: 'gpt-4o-mini',
-      feature: 'creative-generation',
-      campaignId,
-      trigger: strategicAnalysis?.rootCause,
-    }, '[orchestrator] dual-agent verification');
-
-    try {
-      creativeAssets = await generateCreativeAssets({
-        contextLock,
-        workspaceId,
-        strategicBrief: {
-          campaignId,
-          problem:        strategicAnalysis.rootCause,
-          stage:          campaign.stage,
-          verdict:        strategicAnalysis.verdict,
-          requiredAction: strategicAnalysis?.actionPlan?.action,
-          metrics: {
-            healthScore: campaign.healthScore,
-            stage:       campaign.stage,
-          },
-        },
-      });
-    } catch (err) {
-      // Creative is best-effort — log and continue with strategic only.
-      logger.warn({ err: err.message, campaignId }, '[orchestrator] OpenAI creative failed — returning strategic only');
-
-      // Track degraded state for observability (Phase 11D)
-      trackDegradedState({
-        feature: 'creative_generation',
-        degradationType: 'openai_failure',
-        cause: err.code || err.name || 'OPENAI_ERROR',
-        metadata: {
-          campaignId,
-          rootCause: strategicAnalysis?.rootCause,
-          errorMessage: err.message,
-          hasApiKey: !!process.env.OPENAI_API_KEY,
-        },
-      });
-
-      creativeAssets = { error: err.message };
-    }
-  }
-
-  const merged = {
-    strategicAnalysis,
-    creativeAssets,
-    orchestratedAt:   new Date().toISOString(),
-    creativeSkipped:  !needsCreative,
-    creativeProvider: process.env.OPENAI_API_KEY ? 'openai' : 'unconfigured',
-  };
-
-  // ── Persist onto the Action row if provided ─────────────────
-  if (actionId) {
-    try {
-      await prisma.action.update({
-        where: { id: actionId },
-        data:  { payload: merged },
-      });
-    } catch (err) {
-      logger.warn({ err: err.message, actionId }, '[orchestrator] action.update failed — returning result anyway');
-    }
-  }
-
-  return merged;
-}
-
-// ── helpers ──────────────────────────────────────────────────
-function safeParseJson(s) {
-  if (!s) return null;
-  const cleaned = String(s).replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim();
-  try { return JSON.parse(cleaned); }
-  catch { return { _raw: cleaned }; }
-}
 
 // ── Compatibility adapters for paidController ─────────────────
-// These wrap the dual-agent pipeline to match the method signatures
-// expected by paidController.js (previously from services/orchestrator).
-// They use the SAME ClaudeAgent that runOrchestration uses — no new
-// Anthropic calls, same dual-agent quality.
+// These match the method signatures expected by paidController.js (previously
+// from services/orchestrator). Each takes its campaigns as an argument and
+// reads no table, which is why S1-B left them intact while removing the
+// orchestration that used to sit above them.
 // ──────────────────────────────────────────────────────────────
 
 /**

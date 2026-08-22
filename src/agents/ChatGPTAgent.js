@@ -1,14 +1,13 @@
 // ============================================================
 // MARCOM / Lumi — ChatGPTAgent (Phase 4)
 // ------------------------------------------------------------
-// Mirror of ClaudeAgent for OpenAI models. Same context-
-// injection contract (CampaignState.stage + last 3 DecisionMemory)
-// and same 10 s tool timeout, plus a DALL-E fallback path for
+// Mirror of ClaudeAgent for OpenAI models. The shared context-injection
+// contract (CampaignState.stage + recent DecisionMemory) was retired in S1-B
+// along with both populations; same 10 s tool timeout, plus a DALL-E fallback for
 // `generateVisual()` so creative brainstorming never hard-fails
 // when the image endpoint rate-limits or 5xxs.
 // ============================================================
 import OpenAI                   from 'openai';
-import { getRenderedContext }   from './contextBuilder.js';
 import { logger }               from '../utils/logger.js';
 
 const TOOL_TIMEOUT_MS = 10_000;
@@ -27,18 +26,12 @@ function client() {
  * Run a chat completion with injected campaign context.
  */
 export async function runChatGPTAgent({
-  campaignId, workspaceId = null, role, task, history = [],
+  role, task, history = [],
   tools = [], onTool = null, maxTokens = 2000,
 }) {
-  // R9 (I32) — same workspace-scoped context contract as runClaudeAgent.
-  const ctxBlock = campaignId && workspaceId ? await getRenderedContext(campaignId, workspaceId) : '';
-
-  const systemPrompt = [
-    role || 'You are Lumi, an autonomous marketing intelligence agent.',
-    ctxBlock,
-    'Ground every recommendation in the context above. Do not repeat a ' +
-    'recently-regressed action without explaining what changed.',
-  ].filter(Boolean).join('\n\n');
+  // S1-B — same as runClaudeAgent: the CampaignState-backed context block is
+  // retired, not repointed, and so is the instruction that pointed at it.
+  const systemPrompt = role || 'You are Lumi, an autonomous marketing intelligence agent.';
 
   const messages = [
     { role: 'system',  content: systemPrompt },
@@ -73,7 +66,7 @@ export async function runChatGPTAgent({
     }
   }
 
-  return { text, toolResults, contextInjected: Boolean(ctxBlock) };
+  return { text, toolResults, contextInjected: false };
 }
 
 /**

@@ -6,7 +6,6 @@
 import { Router }      from 'express';
 import { prisma }      from '../../lib/prisma.js';
 import { executionQueue } from '../../queues/index.js';
-import { getOrchestratorHealth } from '../../resilience/orchestratorCircuit.js';
 
 export const healthRouter = Router();
 
@@ -18,10 +17,15 @@ healthRouter.get('/_health', async (_req, res) => {
     // real platform mutations, so "queue" on this endpoint describes work that
     // can actually be performed.
     //
-    // `legacyActions` stays: the Action table is still read by the feed,
-    // intelligence and the agentic loop, so its row count is a real number about
-    // real (historical) rows. It is named for what it is rather than left as
-    // the unqualified `actions`, which now would suggest live work.
+    // `legacyActions` stays, but S1-B changed what it means. It used to be one
+    // reader among several; removing the feed's and intelligence's Action reads
+    // — and the `action.update` inside the retired orchestrator — leaves this
+    // count as the LAST reference to the table anywhere in production, and the
+    // table with no writer at all.
+    //
+    // Kept deliberately: it is a diagnostic row count of real historical rows,
+    // and it is the only thing that can still say how many there are. Retiring
+    // the model itself is a schema slice, which is where this line goes with it.
     const legacyActions = await prisma.action.count().catch(() => null);
     let queue = null;
     if (executionQueue) {
@@ -34,14 +38,14 @@ healthRouter.get('/_health', async (_req, res) => {
       queue = { disabled: true, reason: 'REDIS_URL not configured' };
     }
 
-    // Circuit breaker health (Phase 11B)
-    const orchestrator = getOrchestratorHealth();
-
+    // S1-B — the `orchestrator` field is gone. It reported the circuit-breaker
+    // state around runOrchestration, which was removed with the CampaignState
+    // population it read: a breaker protecting a function that no longer exists
+    // reports on nothing. Zero client consumers.
     res.json({
       ok: true,
       legacyActions,
       queue,
-      orchestrator,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {

@@ -26,17 +26,20 @@
 //   GET /execution/:id/incident   incident report
 //
 // ── Internal actors (BullMQ workers — bypass HTTP) ──────────
-//   syncWorker       — reads campaigns, writes Action rows via prisma
-//   (R7 retired temporalObserver, which read Actions and wrote DecisionMemory
-//    + CampaignState. Its DecisionMemory query named columns that table does
-//    not have, and it shared a Promise.all with the CampaignState read, so the
-//    sweep could never write either one.)
+//   syncWorker       — reads campaigns and runs the connector sweep.
 //   The worker may not call the HTTP execution routes.
-//   It may not update Action.status directly;
-//   all status transitions go through ExecutionLifecycleService.
+//   All execution status transitions go through ExecutionLifecycleService.
+//
+//   S1-B — this used to say syncWorker "writes Action rows via prisma". It does
+//   not, and nothing does: R7 retired temporalObserver (which read Actions and
+//   wrote CampaignState + DecisionMemory), B3-C retired the action worker, and
+//   S1-B removed the last `prisma.action.update` with the orchestrator that
+//   held it. The Action table now has ZERO writers and one reader — a
+//   diagnostic row count on GET /lumi/_health. Retiring the model itself is a
+//   schema slice.
 //
 // ── Cross-cutting rules ──────────────────────────────────────
-//   1. No direct prisma.action.update() outside agents/ or routes/execution/
+//   1. Nothing writes Action rows. If that changes, this file changes with it.
 //   2. Retries must flow through POST /:id/retry, not direct DB writes
 //   3. All status transitions must be logged via ExecutionLifecycleService
 // ============================================================

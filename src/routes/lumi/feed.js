@@ -45,26 +45,33 @@ feedRouter.get('/feed', async (req, res) => {
   // No workspace → graceful empty feed (correct shape, never a 500/401 here).
   // The user is authenticated; they just have no resolvable workspace yet.
   if (!wsId) {
+    // S1-B — no `campaigns: []` here either. It said "this account has none",
+    // and the field no longer exists at all: see the note at the reads below.
     return res.json({
       workspaceId: null,
       generatedAt: new Date().toISOString(),
-      campaigns:   [],
     });
   }
 
   try {
     logger.debug({ workspaceId: wsId }, '[lumi/feed] fetching data');
 
-    const [campaignStates, pendingActions, fatiguePredictions, guardrailVerdicts, allocationPlans] = await Promise.all([
-      prisma.campaignState.findMany({
-        where:   { workspaceId: wsId },
-        orderBy: { lastAnalysis: 'desc' },
-      }),
-      prisma.action.findMany({
-        where:   { workspaceId: wsId, status: { in: ['PENDING', 'QUEUED'] } },
-        orderBy: { createdAt: 'desc' },
-        take:    200,
-      }),
+    // S1-B — the `campaigns` array is gone, and with it the two reads that fed
+    // it. CampaignState has had no writer since R7 deleted temporalObserver, and
+    // no Action row has been CREATED anywhere in this codebase since B3-C: the
+    // one remaining `prisma.action` write is an `update` on a row nothing mints.
+    // So this endpoint published `campaigns: []` on every poll for every
+    // workspace — not "this account has no campaigns", but "the two tables this
+    // was built from can no longer be written". The client could not tell those
+    // apart, and rendered the first.
+    //
+    // Removed rather than repointed. The live campaign surface is the connector
+    // entity graph (GET /lumi/entities/campaigns), which answers a different
+    // question from a population that exists; making this field read from there
+    // would be inventing a replacement for a retired capability under cover of a
+    // cleanup. Everything else in this response reads a table with a live writer
+    // and is untouched.
+    const [fatiguePredictions, guardrailVerdicts, allocationPlans] = await Promise.all([
       // Phase 2: forward-looking fatigue forecasts (unresolved).
       prisma.fatiguePrediction.findMany({
         where:   { workspaceId: wsId, resolvedAt: null },
@@ -211,96 +218,10 @@ feedRouter.get('/feed', async (req, res) => {
     // (extracted to feedSurfacing.js; best-effort, never blocks the feed).
     const collaboration = await surfaceCollaboration(wsId, req.collabRole);
 
-    logger.debug({
-      campaignStatesFound: campaignStates.length,
-      pendingActionsFound: pendingActions.length,
-    }, '[lumi/feed] db query results');
-
-    // Build the same campaign-grouped / alert-flattened shape as
-    // /demo-feed so the client adapter works without changes.
-    const byCampaign = new Map();
-    const ensure = (state) => {
-      if (!byCampaign.has(state.campaignId)) {
-        byCampaign.set(state.campaignId, {
-          campaign_id:  state.campaignName || state.campaignId,
-          stage:        state.stage,
-          // Real persisted health (computeHealthScore, 0.00–1.00); client scales ×100. Never inferred.
-          health_score: Number.isFinite(state.healthScore) ? state.healthScore : null,
-          alerts:       [],
-        });
-      }
-      return byCampaign.get(state.campaignId);
-    };
-    for (const cs of campaignStates) {
-      ensure({ ...cs, campaignName: cs.campaignName || pendingActions.find(a => a.campaignId === cs.campaignId)?.payload?.campaignName || cs.campaignId });
-    }
-
-    for (const a of pendingActions) {
-      const stateRow = campaignStates.find(s => s.campaignId === a.campaignId);
-      if (!stateRow) continue;
-      const slot = ensure({ ...stateRow, campaignName: stateRow.campaignName || a.payload?.campaignName || stateRow.campaignId });
-      const p    = a.payload || {};
-      const m    = p.metrics || {};
-
-      slot.alerts.push({
-        action_id:        a.id,
-        idempotency_key:  a.idempotencyKey,
-        priority:         p.priority || 'LOW',
-        analysis: {
-          verdict:    p.verdict   || p.strategicAnalysis?.verdict   || 'HOLD',
-          root_cause: p.rootCause || p.strategicAnalysis?.rootCause || 'UNKNOWN',
-        },
-        historical_insight:
-          p.strategicAnalysis?.diagnosis ||
-          p.rationale ||
-          null,
-        action_plan: {
-          action:           p.strategicAnalysis?.actionPlan?.action || p.rationale || '(awaiting orchestration)',
-          status:           a.status,
-          imageUrl:         null,
-          reference_prompt: p.creativeAssets?.variants?.[0]?.visual_direction || null,
-        },
-        // Synthesize the structured signal rows the UI expects from
-        // the raw metric block stored at upload time.
-        metrics: signalsFromMetrics(m, slot.stage),
-        // R7 (F7) — a `memory: [...]` array was built here from DecisionMemory
-        // rows. The QUERY was valid, so nothing ever threw; the FIELD ACCESS was
-        // not. It filtered on `mem.campaignId`, and DecisionMemory has no
-        // campaignId column — so the predicate compared undefined to a real id,
-        // matched nothing, and every campaign in every feed carried an empty
-        // memory array. Dead in effect, not merely unused. Removed rather than
-        // repointed: nothing downstream reads it, and manufacturing a canonical
-        // replacement for a field no surface consumes would be inventing a
-        // feature under cover of a migration.
-        creative_assets: p.creativeAssets || null,
-        // Phase 2: multi-level drill-down + forward-looking forecast +
-        // provenance (reactive analysis vs a user guardrail rule).
-        source:          p.source === 'guardrail' ? 'guardrail' : 'reactive',
-        platform:        p.platform || null,   // real channel from payload; drives client filter (null = absent)
-        levelVerdicts:   p.levelVerdicts || p.strategicAnalysis?.levelVerdicts || [],
-        fatigueForecast: p.fatigueForecast || p.strategicAnalysis?.fatigueForecast || null,
-      });
-    }
-
-    const stageRank = { DYING: 0, FATIGUED: 1, TESTING: 2, SCALING: 3, STABLE: 4 };
-    const campaigns = [...byCampaign.values()]
-      .filter(c => c.alerts.length > 0)
-      .sort((a, b) => (stageRank[a.stage] ?? 99) - (stageRank[b.stage] ?? 99));
-
-    const stageBreakdown = campaigns.reduce((acc, c) => {
-      acc[c.stage] = (acc[c.stage] || 0) + 1;
-      return acc;
-    }, {});
-
-    logger.debug({
-      campaignsFound: campaigns.length,
-      stageBreakdown,
-    }, '[lumi/feed] feed calculated');
 
     return res.json({
       workspaceId: wsId,
       generatedAt: new Date().toISOString(),
-      campaigns,
       // Phase 2 — predictive + guardrail surfacing
       fatiguePredictions: fatiguePredictions.map(fp => ({
         entityId:            fp.entityId,
@@ -366,34 +287,3 @@ feedRouter.get('/feed', async (req, res) => {
   }
 });
 
-// Structured-signal rows for DecisionTheater. CRITICAL: useCampaignFeed.summarize()
-// reads these for dashboard stats — a missing metric here = $0 in the dashboard.
-function signalsFromMetrics(m = {}, _stage = 'TESTING') {
-  const rows = [];
-  const fmtPct  = (v) => `${(Number(v) || 0).toFixed(2)}%`;
-  const fmtRoas = (v) => `${(Number(v) || 0).toFixed(2)}x`;
-  const fmtFreq = (v) => `${(Number(v) || 0).toFixed(2)}`;
-  const fmtUsd  = (v) => `$${(Number(v) || 0).toFixed(2)}`;
-  const fmtNum  = (v) => Number(v || 0).toLocaleString('en-US');
-  // Typed numeric beside the formatted string (null = absent, distinct from 0 → client renders "—").
-  const num     = (v) => (Number.isFinite(Number(v)) ? Number(v) : null);
-
-  const ctrStatus  = m.ctr  >= 2 ? 'positive' : m.ctr  >= 1 ? 'warning' : 'danger';
-  const roasStatus = m.roas >= 3 ? 'positive' : m.roas >= 1 ? 'warning' : 'danger';
-  const freqStatus = m.frequency <= 2 ? 'positive' : m.frequency <= 3 ? 'warning' : 'danger';
-  const cprStatus  = m.costPerResult > 0 && m.costPerResult <= 20 ? 'positive'
-                   : m.costPerResult <= 50 ? 'warning' : 'danger';
-
-  rows.push({ metric: 'CTR',       trend: ctrStatus  === 'danger' ? 'down' : 'up',   value: fmtPct(m.ctr),       raw: num(m.ctr),           delta: '',  context: 'Per CSV upload', status: ctrStatus  });
-  rows.push({ metric: 'ROAS',      trend: roasStatus === 'danger' ? 'down' : 'up',   value: fmtRoas(m.roas),     raw: num(m.roas),          delta: '',  context: 'Per CSV upload', status: roasStatus });
-  rows.push({ metric: 'Frequency', trend: freqStatus === 'danger' ? 'up'   : 'flat', value: fmtFreq(m.frequency), raw: num(m.frequency),    delta: '',  context: 'Per CSV upload', status: freqStatus });
-  rows.push({ metric: 'CPA',       trend: cprStatus  === 'danger' ? 'up'   : 'flat', value: fmtUsd(m.costPerResult), raw: num(m.costPerResult), delta: '', context: 'Cost per result', status: cprStatus  });
-
-  // Essential totals the dashboard summary reads (omitting any → $0 in dashboard).
-  rows.push({ metric: 'Spend',       trend: 'neutral', value: fmtUsd(m.spend),       raw: num(m.spend),       delta: '', context: 'Total', status: 'neutral' });
-  rows.push({ metric: 'Impressions', trend: 'neutral', value: fmtNum(m.impressions), raw: num(m.impressions), delta: '', context: 'Total', status: 'neutral' });
-  rows.push({ metric: 'Results',     trend: 'neutral', value: fmtNum(m.results),     raw: num(m.results),     delta: '', context: 'Total', status: 'neutral' });
-  rows.push({ metric: 'Reach',       trend: 'neutral', value: fmtNum(m.reach),       raw: num(m.reach),       delta: '', context: 'Unique', status: 'neutral' });
-
-  return rows;
-}

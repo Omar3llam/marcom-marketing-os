@@ -155,15 +155,29 @@ describe('nothing creates legacy Action rows any more', () => {
 
 
 
-  it('the Action model is KEPT — it still has legitimate readers', () => {
-    // §6/§17: the model is not removed merely because its worker is gone. The
-    // feed and the intelligence route still read historical rows. Removing it
-    // would be a schema change with real consumers, which this slice does not
-    // authorise.
+  it('the Action model is KEPT — but S1-B left it one diagnostic reader', () => {
+    // §6/§17 still holds: the model is not removed merely because its worker is
+    // gone, and removing it is a schema change this slice does not authorise.
+    //
+    // What changed is the EVIDENCE. This used to point at the feed and the
+    // intelligence route as proof the table had legitimate readers. S1-B removed
+    // both — the feed's `campaigns` array was built from Action rows joined to
+    // CampaignState, and the intelligence route resolved a PENDING Action before
+    // handing it to the retired orchestrator. Neither could ever match anything:
+    // `no source file creates one` above is the reason.
+    //
+    // The last reference is a row COUNT on /lumi/_health. It reads real
+    // historical rows and is the only thing that can still say how many exist,
+    // which is why it survives and why this assertion follows it rather than
+    // being deleted.
     const schema = read('prisma/schema.prisma');
     expect(schema).toMatch(/model Action \{/);
-    expect(read('src/routes/lumi/feed.js')).toMatch(/prisma\.action\.findMany/);
-    expect(read('src/routes/lumi/intelligence.js')).toMatch(/prisma\.action\.findFirst/);
+    expect(read('src/routes/lumi/health.js')).toMatch(/prisma\.action\.count/);
+
+    // …and the two former readers stay gone. Restoring either re-creates a read
+    // of a table with no writer, which is what S1-B existed to end.
+    expect(read('src/routes/lumi/feed.js')).not.toMatch(/prisma\.action\./);
+    expect(read('src/routes/lumi/intelligence.js')).not.toMatch(/prisma\.action\./);
   });
 
   it('B4-B · but the agentic loop is no longer one of them', () => {
