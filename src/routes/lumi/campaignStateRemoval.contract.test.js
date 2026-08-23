@@ -272,11 +272,15 @@ describe.skipIf(!DB_OK)('SC-1 · and the database agrees', () => {
     // than the list simply shrinking. They are DIFFERENT models one word
     // apart, and the live one belongs among the survivors precisely because
     // the dead one no longer does.
+    //
+    // `oauth_tokens` left in SC-4 and `users` took its place, for the same
+    // reason: users is the table oauth_tokens hung off, so it is the one that
+    // would have been collateral had that drop been careless.
     const rows = await prisma.$queryRaw`
       SELECT table_name::text AS t FROM information_schema.tables
        WHERE table_schema = 'public'
-         AND table_name IN ('workspaces','decisions','decision_memory_entries','oauth_tokens')`;
+         AND table_name IN ('workspaces','decisions','decision_memory_entries','users')`;
     expect(rows.map((r) => r.t).sort())
-      .toEqual(['decision_memory_entries', 'decisions', 'oauth_tokens', 'workspaces']);
+      .toEqual(['decision_memory_entries', 'decisions', 'users', 'workspaces']);
   });
 });

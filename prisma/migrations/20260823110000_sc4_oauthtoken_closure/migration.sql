@@ -1,0 +1,22 @@
+-- SC-4 — OAuthToken schema closure.
+--
+-- Production measured before this migration ran:
+--   oauth_tokens rows                = 0
+--   inbound FK constraints           = 0
+--   dependent rewrite / view objects = 0
+-- No backfill, no archival: there was nothing in it to archive.
+--
+-- One statement, and users is deliberately untouched. The only foreign key of
+-- this relationship lives ON oauth_tokens (userId -> users.id), so DROP TABLE
+-- removes it along with the table. `User.oauthTokens` was a Prisma virtual
+-- back-relation that never had a column, so no oauthTokenId exists to drop.
+--
+-- The generated migration proposed an explicit
+-- ALTER TABLE "oauth_tokens" DROP CONSTRAINT ... — but regenerating from
+-- unmodified master proposed the same drop and then re-added it, so it is
+-- pre-existing FK churn rather than part of this slice.
+--
+-- Live credentials are unaffected. They live in marcom_credentials, a raw-SQL
+-- table this migration does not name.
+
+DROP TABLE IF EXISTS "oauth_tokens";

@@ -220,8 +220,8 @@ userRouter.patch('/workspace', requireCollabRole('STRATEGIST'), async (req, res)
  * CLIENT) destroy the shared workspace for everyone. Three paths now:
  *
  *   1. SOLE member         → delete workspace (CASCADE removes all data)
- *   2. Non-last member     → delete ONLY this User row (OAuthTokens cascade
- *                            via the userId FK); workspace + teammates intact
+ *   2. Non-last member     → delete ONLY this User row (the rows it owns
+ *                            cascade via their FKs); workspace + teammates intact
  *   3. Last strategist     → 409 LastStrategist — transfer the role first
  *                            (effective role: null collabRole ⇒ STRATEGIST,
  *                            mirroring countEffectiveStrategists in team/index.js)
@@ -324,7 +324,7 @@ userRouter.delete('/account', async (req, res) => {
           });
         }
 
-        // Delete ONLY this member. OAuthToken rows cascade via the userId FK;
+        // Delete ONLY this member. The rows it owns cascade via their FKs;
         // the workspace and every other member's data stay intact.
         await prisma.user.delete({ where: { id: user.id } });
         logger.info('[userRouter] User deleted (multi-member workspace kept):', {
