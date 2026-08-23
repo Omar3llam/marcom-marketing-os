@@ -155,29 +155,48 @@ describe('nothing creates legacy Action rows any more', () => {
 
 
 
-  it('the Action model is KEPT — but S1-B left it one diagnostic reader', () => {
-    // §6/§17 still holds: the model is not removed merely because its worker is
-    // gone, and removing it is a schema change this slice does not authorise.
+  it('SC-2 · the Action model is GONE, and so is its last reader', () => {
+    // This assertion has inverted twice, and the reason each time is the same:
+    // the EVIDENCE moved, not the guarantee.
     //
-    // What changed is the EVIDENCE. This used to point at the feed and the
-    // intelligence route as proof the table had legitimate readers. S1-B removed
-    // both — the feed's `campaigns` array was built from Action rows joined to
-    // CampaignState, and the intelligence route resolved a PENDING Action before
-    // handing it to the retired orchestrator. Neither could ever match anything:
-    // `no source file creates one` above is the reason.
+    //   R13-D  the model is KEPT — the feed and the intelligence route read it
+    //   S1-B   the model is KEPT — one diagnostic row count on /lumi/_health is
+    //          all that is left, and removing the model is a schema slice
+    //   SC-2   that schema slice. Production answered the one question the
+    //          count existed to answer — 0 rows, 0 workspaces, no earliest and
+    //          no latest — and the table went with the answer.
     //
-    // The last reference is a row COUNT on /lumi/_health. It reads real
-    // historical rows and is the only thing that can still say how many exist,
-    // which is why it survives and why this assertion follows it rather than
-    // being deleted.
+    // What this file protects is unchanged: no fake platform success is
+    // reachable. It is now protected at the strongest level available, because
+    // the substrate that could report one does not exist.
     const schema = read('prisma/schema.prisma');
-    expect(schema).toMatch(/model Action \{/);
-    expect(read('src/routes/lumi/health.js')).toMatch(/prisma\.action\.count/);
+    expect(schema).not.toMatch(/^model Action \{/m);
+    expect(schema).not.toMatch(/^enum ActionStatus \{/m);
 
-    // …and the two former readers stay gone. Restoring either re-creates a read
-    // of a table with no writer, which is what S1-B existed to end.
+    // The count is ABSENT from the health payload, not zeroed. A count of a
+    // table that does not exist is not a measurement.
+    // Stripped, not raw: the comment left at the removal site names the field
+    // it removed, and a raw scan would score that explanation as the defect.
+    const health = code(resolve(process.cwd(), 'src/routes/lumi/health.js'));
+    expect(health).not.toMatch(/prisma\.action/);
+    expect(health).not.toMatch(/legacyActions/);
+
+    // …and the earlier readers stay gone. Restoring any of them would now be a
+    // read of a model that cannot be resolved at all.
     expect(read('src/routes/lumi/feed.js')).not.toMatch(/prisma\.action\./);
     expect(read('src/routes/lumi/intelligence.js')).not.toMatch(/prisma\.action\./);
+  });
+
+  it('SC-2 · ActionType survives — a different enum with a live owner', () => {
+    // The one thing a careless Action closure breaks. `ActionType` names the
+    // execution a request performs (PAUSE_CAMPAIGN, SCALE_CAMPAIGN…) and is
+    // owned by AuditLog.actionType, which routes/execution/meta.js writes on
+    // every request. `ActionStatus` named the lifecycle of the retired Action
+    // row. Same prefix, unrelated contracts, and only one of them was dead.
+    const schema = read('prisma/schema.prisma');
+    expect(schema).toMatch(/^enum ActionType \{/m);
+    expect(schema).toMatch(/actionType\s+ActionType/);
+    expect(read('src/routes/execution/meta.js')).toMatch(/prisma\.auditLog\.create/);
   });
 
   it('B4-B · but the agentic loop is no longer one of them', () => {

@@ -78,7 +78,6 @@ async function runSafetyChecks() {
     'DecisionMemory',
     'ExecutionRequest',
     'AuditLog',
-    'Action',
     'Integration',
     'OAuthToken',
     'User',
@@ -140,7 +139,6 @@ async function clearDatabase() {
   beforeCounts.decisionMemory = await prisma.decisionMemory.count();
   beforeCounts.executionRequest = await prisma.executionRequest.count();
   beforeCounts.auditLog = await prisma.auditLog.count();
-  beforeCounts.action = await prisma.action.count();
   beforeCounts.oauthToken = await prisma.oAuthToken.count();
   beforeCounts.user = await prisma.user.count();
   beforeCounts.workspace = await prisma.workspace.count();
@@ -183,11 +181,9 @@ async function clearDatabase() {
     console.log(`  ✓ Deleted ${deletionResults.decisionMemory.count} DecisionMemory records`);
     console.log(`  ✓ Deleted ${deletionResults.executionRequest.count} ExecutionRequest records\n`);
 
-    console.log('Layer 6: Audit logs and actions...');
+    console.log('Layer 6: Audit logs...');
     deletionResults.auditLog = await prisma.auditLog.deleteMany({});
-    deletionResults.action = await prisma.action.deleteMany({});
-    console.log(`  ✓ Deleted ${deletionResults.auditLog.count} AuditLog records`);
-    console.log(`  ✓ Deleted ${deletionResults.action.count} Action records\n`);
+    console.log(`  ✓ Deleted ${deletionResults.auditLog.count} AuditLog records\n`);
 
     console.log('Layer 7: Campaign data...');
     deletionResults.reinforcementSnapshot = await prisma.reinforcementSnapshot.deleteMany({});
@@ -228,7 +224,6 @@ async function clearDatabase() {
     decisionMemory: await prisma.decisionMemory.count(),
     executionRequest: await prisma.executionRequest.count(),
     auditLog: await prisma.auditLog.count(),
-    action: await prisma.action.count(),
     oauthToken: await prisma.oAuthToken.count(),
     user: await prisma.user.count(),
     workspace: await prisma.workspace.count(),

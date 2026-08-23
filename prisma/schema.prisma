@@ -5,9 +5,12 @@
 // Generator: prisma-client-js
 //
 // This schema introduces the persistent "temporal intelligence"
-// layer for Lumi: Workspaces, Users, OAuth tokens, the Action
-// engine with audit + idempotency, Campaign state tracking,
-// Decision memory, and Webhook deduplication.
+// layer for Lumi: Workspaces, Users, OAuth tokens, execution
+// audit + idempotency, Decision memory, and Webhook deduplication.
+//
+// The Action engine and Campaign state tracking this paragraph used to name
+// were both removed once production measured them at 0 rows with no writer:
+// see 20260823000000_sc1_campaignstate_closure and the SC-2 Action closure.
 //
 // IMPORTANT: This schema is additive. It does NOT yet replace
 // the existing Airtable-backed `MARCOM_Sessions` table or the
@@ -32,14 +35,6 @@ datasource db {
 enum UserRole {
   ADMIN
   VIEWER
-}
-
-enum ActionStatus {
-  PENDING
-  QUEUED
-  EXECUTED_SUCCESS
-  FAILED
-  ROLLED_BACK
 }
 
 enum ExecutionStatus {
@@ -415,7 +410,6 @@ model Workspace {
   consentedAt    DateTime?
 
   users                      User[]
-  actions                    Action[]
   decisionMemory             DecisionMemory[]
   auditLogs                  AuditLog[]
   artifacts                  Artifact[]
@@ -592,30 +586,20 @@ model OAuthToken {
 // read now goes through credentialStore (marcom_credentials), the
 // OAuth-authoritative store. Dropped in migration 20260615000000_drop_integration_model.
 
-// ── Action Engine ────────────────────────────────────────────
-
-model Action {
-  id             String       @id @default(uuid()) @db.Uuid
-  workspaceId    String       @db.Uuid
-  campaignId     String
-  idempotencyKey String       @unique
-  status         ActionStatus @default(PENDING)
-  payload        Json
-  createdAt      DateTime     @default(now())
-  executedAt     DateTime?
-
-  workspace Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  auditLogs AuditLog[]
-
-  @@index([workspaceId, status])
-  @@index([campaignId])
-  @@map("actions")
-}
-
 model AuditLog {
   id           String          @id @default(uuid()) @db.Uuid
   workspaceId  String          @db.Uuid
   userId       String          @db.Uuid
+  // SC-2 — this was the FK to the legacy Action table, which is gone. The
+  // COLUMN stays: dropping a column from a live table is a data decision, and
+  // production was measured for `actions` (0 rows), not for how many audit rows
+  // carry a non-null actionId. What went is the CONSTRAINT and the relation,
+  // both of which pointed at a table that no longer exists.
+  //
+  // Nothing has ever written it. All three `auditLog.create` calls in
+  // routes/execution/meta.js omit it, so every row this system has produced
+  // carries null. It is named residue, not a live reference — closing it needs
+  // its own production count.
   actionId     String?         @db.Uuid
   actionType   ActionType
   targetId     String // Campaign ID, AdSet ID, etc.
@@ -627,7 +611,6 @@ model AuditLog {
   performedAt  DateTime        @default(now())
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  action    Action?   @relation(fields: [actionId], references: [id], onDelete: SetNull)
 
   @@index([workspaceId, performedAt(sort: Desc)])
   @@index([targetId])
@@ -693,7 +676,7 @@ model ExecutionRequest {
 
   // ── R12-1c — the tenant key finally gets referential integrity ──
   // `workspaceId` has been on this model since 20260518 and every sibling
-  // (Action, AuditLog, User) declares its Workspace relation —
+  // (AuditLog, User) declares its Workspace relation —
   // this one never did, so no FK backed it. Two migrations tried to add the
   // constraint under IF NOT EXISTS guards and both recorded a clean apply, yet
   // production had no such constraint: a `db push` reconciled the database to

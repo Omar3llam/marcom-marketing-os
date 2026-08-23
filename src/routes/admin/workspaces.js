@@ -241,9 +241,15 @@ workspacesRouter.patch('/:id/plan', async (req, res) => {
 // the audit row keeps afterwards. Read in ONE query with the name, because after
 // the delete none of it is recoverable — the audit row is the only surviving
 // record of how much was destroyed.
+//
+// SC-2 dropped `actions` from this list with the model behind it. It was the
+// second and last production reader of the legacy Action table — a `_count`
+// relation traversal rather than a `prisma.action` call, which is why a
+// delegate-level search does not find it. Every other key here counts a
+// population something still writes.
 const DELETE_COUNTS = {
   users: true, decisions: true, accounts: true, campaignEntities: true,
-  adSets: true, ads: true, metricSnapshots: true, actions: true,
+  adSets: true, ads: true, metricSnapshots: true,
 };
 
 // DELETE /api/admin/workspaces/:id — destroy a workspace and everything in it.

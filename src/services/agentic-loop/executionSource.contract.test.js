@@ -15,7 +15,9 @@
 //      therefore also disqualified
 //   3. Action.status        does NOT — B3-C retired every producer of Action
 //      rows, so the old source could only ever report a dead substrate as a
-//      dead loop
+//      dead loop. SC-2 then dropped the table, which is why the tests below
+//      no longer build a legacy row to be ignored: the input is now
+//      unconstructible rather than merely disregarded.
 //
 // Everything below runs against the REAL database, because what is being tested
 // IS the query predicate: a Prisma mock returns whatever it was told to for
@@ -68,14 +70,6 @@ const makeDecision = (workspaceId, over = {}) => prisma.decision.create({
   select: { id: true },
 });
 
-const makeLegacyAction = (workspaceId, over = {}) => prisma.action.create({
-  data: {
-    workspaceId, campaignId: 'legacy-campaign',
-    idempotencyKey: `b4b-${Math.random().toString(36).slice(2)}`,
-    status: 'EXECUTED_SUCCESS', payload: {}, executedAt: daysAgo(1), ...over,
-  },
-  select: { id: true },
-});
 
 /** The EXECUTE stage as the loop actually computes it, end to end. */
 async function executeStage(workspaceId) {
@@ -102,21 +96,21 @@ describe.skipIf(!DB_OK)('B4-B — EXECUTE is sourced from platform execution evi
     }
   });
   afterAll(async () => {
-    await prisma.action.deleteMany({ where: { workspaceId: { in: [WS_A, WS_B] } } });
     await prisma.decision.deleteMany({ where: { workspaceId: { in: [WS_A, WS_B] } } });
     await prisma.workspace.deleteMany({ where: { id: { in: [WS_A, WS_B] } } });
   });
   beforeEach(async () => {
-    await prisma.action.deleteMany({ where: { workspaceId: { in: [WS_A, WS_B] } } });
     await prisma.decision.deleteMany({ where: { workspaceId: { in: [WS_A, WS_B] } } });
   });
 
   // ── T1 ────────────────────────────────────────────────────────────────────
-  it('T1 · an empty Action table can no longer hold EXECUTE stale', async () => {
+  it('T1 · a missing Action table can no longer hold EXECUTE stale', async () => {
     await makeDecision(WS_A, { platformExecutedAt: daysAgo(1) });
-    // Non-vacuous: the retired substrate is genuinely empty, so a stage that
-    // still read it would have to report STALE here.
-    expect(await prisma.action.count({ where: { workspaceId: WS_A } })).toBe(0);
+    // Non-vacuous, and more so than before. This used to assert the retired
+    // substrate was EMPTY, so a stage still reading it would have to report
+    // STALE here. SC-2 dropped the table, so a stage still reading it could
+    // not answer at all — that assertion moved to T6, where the substrate
+    // being unconstructible is the claim rather than a precondition.
 
     const { stage } = await executeStage(WS_A);
     expect(stage.state).toBe(STAGE_STATE.ACTIVE);
@@ -196,27 +190,37 @@ describe.skipIf(!DB_OK)('B4-B — EXECUTE is sourced from platform execution evi
   });
 
   // ── T6 ────────────────────────────────────────────────────────────────────
-  it('T6 · a historical Action row cannot fabricate EXECUTE progress', async () => {
-    // The migration is about source AUTHORITY, not about production happening
-    // to hold an empty table today. A leftover EXECUTED_SUCCESS row from before
-    // B3-C is exactly the input the old query would have believed.
-    await makeLegacyAction(WS_A, { executedAt: daysAgo(1) });
-    await makeDecision(WS_A, { platformExecutedAt: null });
-    expect(await prisma.action.count({ where: { workspaceId: WS_A, status: 'EXECUTED_SUCCESS' } })).toBe(1);
+  it('T6 · SC-2 · the row that could have fabricated progress cannot be built', async () => {
+    // This used to CREATE a leftover EXECUTED_SUCCESS Action row — the exact
+    // input the pre-B4-B query would have believed — and prove the stage
+    // ignored it. SC-2 dropped the table after production measured it at 0
+    // rows, so that row is no longer constructible.
+    //
+    // The guarantee is not weaker, it is stronger, and it moved one layer
+    // down: 'the stage ignores this input' becomes 'this input cannot exist'.
+    // Both halves are asserted, because a stale generated client would let the
+    // delegate outlive a schema that no longer declares the model.
+    expect(prisma.action).toBeUndefined();
+    expect(readFileSync(new URL('../../../prisma/schema.prisma', import.meta.url), 'utf8'))
+      .not.toMatch(/^model Action \{/m);
 
+    // …and the behavioural half survives unchanged: no platform execution
+    // means STALE, with nothing else able to stand in for one.
+    await makeDecision(WS_A, { platformExecutedAt: null });
     const { inputs, stage } = await executeStage(WS_A);
     expect(inputs.platformExecutions).toEqual([]);
     expect(stage.count).toBe(0);
     expect(stage.state).toBe(STAGE_STATE.STALE);
   });
 
-  it('T6b · a legacy Action row does not add to a real execution either', async () => {
-    await makeLegacyAction(WS_A, { executedAt: daysAgo(1) });
+  it('T6b · a real execution is still counted once, with its own timestamp', async () => {
+    // The arithmetic half of the old T6b. It asserted that a legacy Action row
+    // was not counted as a SECOND execution and that its fresher timestamp did
+    // not become the stage's. The row is gone; what survives is that one
+    // platform execution yields exactly one, dated by itself.
     await makeDecision(WS_A, { platformExecutedAt: daysAgo(3) });
 
     const { stage } = await executeStage(WS_A);
-    // One platform execution, counted once. The Action row is not a second one,
-    // and its fresher timestamp does not become the stage's.
     expect(stage.count).toBe(1);
     expect(stage.lastAt).toBe(daysAgo(3).toISOString());
   });
