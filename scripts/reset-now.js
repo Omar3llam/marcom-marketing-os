@@ -31,7 +31,6 @@ async function main() {
 
     console.log('Deleting audit & actions...');
     await prisma.auditLog.deleteMany({});
-    await prisma.action.deleteMany({});
 
     console.log('Deleting campaign data...');
     await prisma.reinforcementSnapshot.deleteMany({});

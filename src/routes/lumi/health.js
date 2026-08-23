@@ -4,7 +4,6 @@
 // Extracted from lumi.js for architecture size compliance.
 // ============================================================
 import { Router }      from 'express';
-import { prisma }      from '../../lib/prisma.js';
 import { executionQueue } from '../../queues/index.js';
 
 export const healthRouter = Router();
@@ -17,16 +16,17 @@ healthRouter.get('/_health', async (_req, res) => {
     // real platform mutations, so "queue" on this endpoint describes work that
     // can actually be performed.
     //
-    // `legacyActions` stays, but S1-B changed what it means. It used to be one
-    // reader among several; removing the feed's and intelligence's Action reads
-    // — and the `action.update` inside the retired orchestrator — leaves this
-    // count as the LAST reference to the table anywhere in production, and the
-    // table with no writer at all.
+    // SC-2 — `legacyActions` is gone, and this is the schema slice the comment
+    // that used to sit here promised it would leave in. It was a diagnostic row
+    // count kept for one reason: it was the only thing left that could say how
+    // many historical rows the table held. Production answered that question
+    // directly — 0 rows, 0 workspaces, no earliest and no latest — and then the
+    // table was dropped.
     //
-    // Kept deliberately: it is a diagnostic row count of real historical rows,
-    // and it is the only thing that can still say how many there are. Retiring
-    // the model itself is a schema slice, which is where this line goes with it.
-    const legacyActions = await prisma.action.count().catch(() => null);
+    // The field is ABSENT rather than 0 or null. A count of a table that does
+    // not exist is not a measurement, and this endpoint's whole job is to say
+    // what is true. Nothing read it: no client, no monitoring config, no other
+    // service. Render's health check is /api/health, not this route.
     let queue = null;
     if (executionQueue) {
       try {
@@ -44,7 +44,6 @@ healthRouter.get('/_health', async (_req, res) => {
     // reports on nothing. Zero client consumers.
     res.json({
       ok: true,
-      legacyActions,
       queue,
       timestamp: new Date().toISOString(),
     });

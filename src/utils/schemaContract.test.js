@@ -60,15 +60,16 @@ const NEW_MIGRATION = '20260818030000_r12_1c_execution_request_workspace_fk';
 // Production was audited read-only and carries precisely these labels in this
 // order.
 //
-// R12-1c found seven. SC-1 dropped the entry that used to sit here between
-// ActionType and WebhookProvider — CampaignStage — together with the
-// campaign_states table it belonged to, after production was measured at 0
-// rows. Six remain, and every control below is scoped to whatever this map
-// holds: an enum production no longer carries must not be asserted as one it
-// does.
+// R12-1c found seven. SC-1 dropped CampaignStage with the campaign_states
+// table, and SC-2 dropped ActionStatus with `actions` — both after production
+// was measured at 0 rows. Five remain, and every control below is scoped to
+// whatever this map holds: an enum production no longer carries must not be
+// asserted as one it does.
+//
+// ActionType is NOT ActionStatus. It is owned by AuditLog.actionType, which is
+// live and written on every execution request, and it stays in this map.
 const CANONICAL_ENUMS = {
   UserRole: ['ADMIN', 'VIEWER'],
-  ActionStatus: ['PENDING', 'QUEUED', 'EXECUTED_SUCCESS', 'FAILED', 'ROLLED_BACK'],
   ExecutionStatus: ['SUCCESS', 'FAILED', 'PENDING', 'PAUSED_FOR_APPROVAL', 'RESUMING', 'RESUMED'],
   ActionType: ['PAUSE_CAMPAIGN', 'RESUME_CAMPAIGN', 'INCREASE_BUDGET', 'DECREASE_BUDGET',
     'PAUSE_ADSET', 'RESUME_ADSET', 'SCALE_CAMPAIGN', 'OPTIMIZE_CAMPAIGN',
@@ -298,7 +299,7 @@ describe.skipIf(!DB_OK)('deployed contract — execution_requests foreign key', 
 });
 
 describe.skipIf(!DB_OK)('deployed contract — enums and canonical indexes', () => {
-  it('NC-R12C-6 — all seven enums exist and carry exactly their labels', async () => {
+  it('NC-R12C-6 — all canonical enums exist and carry exactly their labels', async () => {
     // R12-1c had to write this conditionally, and pinned the reason as a KNOWN
     // DIVERGENCE: no migration created any of the seven, so a migration-built
     // database (CI, and every fresh developer database) had TEXT columns while

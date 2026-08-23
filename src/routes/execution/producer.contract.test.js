@@ -229,15 +229,22 @@ describe.skipIf(!DB_OK)('B3 — Decision → ExecutionRequest, persisted', () =>
     expect(enqueueExecution).toHaveBeenCalledTimes(1);
   });
 
-  it('10. the legacy Action substrate is never touched by this path', async () => {
-    // The negative control B3 §17 asks for. `actions` rows are written by
-    // rollback alone, and its worker's Meta executors are stubs that report
-    // success without calling a platform. Nothing on the new execution path may
-    // reach it.
-    const before = await prisma.action.count({ where: { workspaceId: WS } });
+  it('10. SC-2 · the legacy Action substrate cannot be touched — it is gone', async () => {
+    // The negative control B3 §17 asks for. It used to count `actions` rows
+    // before and after a queue, proving the new path did not write to the
+    // substrate whose stub executors reported success without calling a
+    // platform.
+    //
+    // SC-2 dropped the table after production measured it at 0 rows, so the
+    // control inverts: there is no count to take, and a write is impossible
+    // rather than merely absent. The run below still exercises the whole
+    // producer path, so a reintroduced Action write would surface here and
+    // not only in a source ratchet.
+    expect(prisma.action).toBeUndefined();
+
     const d = await makeDecision();
-    await post(validBody({ decisionId: d.id }));
-    expect(await prisma.action.count({ where: { workspaceId: WS } })).toBe(before);
+    const res = await post(validBody({ decisionId: d.id }));
+    expect(res.status).toBe(202);
   });
 });
 

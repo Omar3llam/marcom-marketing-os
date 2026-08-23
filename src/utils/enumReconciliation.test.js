@@ -12,10 +12,17 @@
 // developer database — writes to those seven tables failed with 42704 "type
 // does not exist". CI and production were not running the same physical schema.
 //
+// SC-2 — ActionStatus is no longer one of them either. The type and the
+// `actions` table it belonged to went the same way, on the same evidence:
+// production measured 0 rows, no writer, no semantic reader. Only the
+// diagnostic count on /lumi/_health and one admin _count traversal read it,
+// and both are gone. `ActionType` is a DIFFERENT enum, owned by
+// AuditLog.actionType, and it stays — it is still asserted below.
+//
 // SC-1 — CampaignStage is no longer one of them. The type and the
 // campaign_states table it belonged to were dropped once production was
 // measured at 0 rows: see 20260823000000_sc1_campaignstate_closure. The
-// R12-1e guarantee is unchanged for the six that remain, and this file
+// R12-1e guarantee is unchanged for the five that remain, and this file
 // deliberately keeps naming CampaignStage in the history above, because that
 // history is why the guarantee exists.
 //
@@ -44,7 +51,6 @@ const MIGRATION = path.join(ROOT, 'prisma', 'migrations',
 // order, so a reordering is a real difference and not a cosmetic one.
 const CANONICAL_ENUMS = {
   UserRole: ['ADMIN', 'VIEWER'],
-  ActionStatus: ['PENDING', 'QUEUED', 'EXECUTED_SUCCESS', 'FAILED', 'ROLLED_BACK'],
   ExecutionStatus: ['SUCCESS', 'FAILED', 'PENDING', 'PAUSED_FOR_APPROVAL', 'RESUMING', 'RESUMED'],
   ActionType: ['PAUSE_CAMPAIGN', 'RESUME_CAMPAIGN', 'INCREASE_BUDGET', 'DECREASE_BUDGET',
     'PAUSE_ADSET', 'RESUME_ADSET', 'SCALE_CAMPAIGN', 'OPTIMIZE_CAMPAIGN',
@@ -55,7 +61,6 @@ const CANONICAL_ENUMS = {
 
 // column -> enum, and the default production carries (null = no default).
 const ENUM_COLUMNS = [
-  ['actions', 'status', 'ActionStatus', 'PENDING'],
   ['audit_logs', 'actionType', 'ActionType', null],
   ['audit_logs', 'status', 'ExecutionStatus', 'PENDING'],
   ['users', 'role', 'UserRole', 'VIEWER'],
@@ -109,10 +114,10 @@ describe('R12-1e migration is non-destructive by construction (NC5)', () => {
 const DB_OK = await dbAvailable();
 
 // ============================================================
-// A + B — the six types exist with exactly the canonical labels
+// A + B — the five types exist with exactly the canonical labels
 // ============================================================
 describe.skipIf(!DB_OK)('R12-1e deployed — enum types (NC1 · NC2 · NC3)', () => {
-  it('all six types exist', async () => {
+  it('all five types exist', async () => {
     const rows = await prisma.$queryRaw`
       SELECT t.typname::text AS type
         FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
@@ -142,7 +147,7 @@ describe.skipIf(!DB_OK)('R12-1e deployed — enum types (NC1 · NC2 · NC3)', ()
 // C + D + E — the columns, their defaults, and what must not have moved
 // ============================================================
 describe.skipIf(!DB_OK)('R12-1e deployed — enum-backed columns (NC4)', () => {
-  it('all six columns use their enum type, not text', async () => {
+  it('all five columns use their enum type, not text', async () => {
     const rows = await prisma.$queryRaw`
       SELECT table_name::text AS tbl, column_name::text AS col,
              udt_name::text AS udt, is_nullable::text AS nullable,

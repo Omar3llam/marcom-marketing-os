@@ -262,11 +262,16 @@ describe.skipIf(!DB_OK)('SC-1 · and the database agrees', () => {
     // outage. campaign_states was the child of workspaces and the parent of
     // nothing, so this must hold trivially — asserted because "trivially" is a
     // claim about a schema that just changed.
+    //
+    // `actions` left this list in SC-2, which dropped it on the same evidence.
+    // Its own absence is asserted by that slice's contract; naming a dropped
+    // table among the survivors here would make this control assert the
+    // opposite of what the next one proves.
     const rows = await prisma.$queryRaw`
       SELECT table_name::text AS t FROM information_schema.tables
        WHERE table_schema = 'public'
-         AND table_name IN ('workspaces','actions','decisions','decision_memory','oauth_tokens')`;
+         AND table_name IN ('workspaces','decisions','decision_memory','oauth_tokens')`;
     expect(rows.map((r) => r.t).sort())
-      .toEqual(['actions', 'decision_memory', 'decisions', 'oauth_tokens', 'workspaces']);
+      .toEqual(['decision_memory', 'decisions', 'oauth_tokens', 'workspaces']);
   });
 });
