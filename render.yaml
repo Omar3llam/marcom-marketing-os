@@ -131,6 +131,28 @@ services:
       - key: REVENUE_MAX_AGE_DAYS
         value: "90"
 
+      # ── DAILY additive observations (B4-D) ───────────────────────────
+      # Turns on the THIRD connector fetch (`time_increment=1`), whose rows are
+      # the only population that measures exactly one day. R8 built it and left it
+      # off because nothing read it; B4-D turns it on so the evidence exists before
+      # anything is asked to measure an outcome from it.
+      #
+      # SET ON BOTH SERVICES ON PURPOSE. runConnectorSync runs in two processes —
+      # the cron loop on the worker, and the manual /connections/sync button on the
+      # web service — and each reads its own process.env. Setting it on only one
+      # would make the daily population depend on which trigger fired, which is the
+      # split-brain the connectorConfig module exists to prevent.
+      #
+      # Exactly the string "true" enables it (isDailyIngestionEnabled); any other
+      # value, or unset, leaves the path switched off and the sync otherwise intact.
+      - key: DAILY_INGESTION_ENABLED
+        value: "true"
+      # Trailing days one daily fetch REQUESTS — a request bound, never a claim
+      # about what a row measures. Clamped in code to [1, 28]; the code default is
+      # 7, set here so the span is tunable without a deploy.
+      - key: DAILY_INGESTION_DAYS
+        value: "7"
+
   # ── Background worker: BullMQ Action + Observer ───────────
   - type: worker
     name: lumi-worker
@@ -191,6 +213,28 @@ services:
       # finer AGENTIC_CRON_ENABLED / SYNC_TRIGGERS_SWEEP flags are misconfigured.
       - key: AI_AUTOMATIC_ENABLED
         value: "false"
+
+      # ── DAILY additive observations (B4-D) ───────────────────────────
+      # Turns on the THIRD connector fetch (`time_increment=1`), whose rows are
+      # the only population that measures exactly one day. R8 built it and left it
+      # off because nothing read it; B4-D turns it on so the evidence exists before
+      # anything is asked to measure an outcome from it.
+      #
+      # SET ON BOTH SERVICES ON PURPOSE. runConnectorSync runs in two processes —
+      # the cron loop on the worker, and the manual /connections/sync button on the
+      # web service — and each reads its own process.env. Setting it on only one
+      # would make the daily population depend on which trigger fired, which is the
+      # split-brain the connectorConfig module exists to prevent.
+      #
+      # Exactly the string "true" enables it (isDailyIngestionEnabled); any other
+      # value, or unset, leaves the path switched off and the sync otherwise intact.
+      - key: DAILY_INGESTION_ENABLED
+        value: "true"
+      # Trailing days one daily fetch REQUESTS — a request bound, never a claim
+      # about what a row measures. Clamped in code to [1, 28]; the code default is
+      # 7, set here so the span is tunable without a deploy.
+      - key: DAILY_INGESTION_DAYS
+        value: "7"
       - key: CREDENTIAL_ENCRYPTION_KEY
         sync: false
 
