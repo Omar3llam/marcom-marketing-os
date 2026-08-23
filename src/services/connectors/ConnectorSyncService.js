@@ -13,7 +13,7 @@ import { resolve, isSyncable } from './connectorRegistry.js';
 import { landSnapshots } from './snapshotSink.js';
 import { landDailySnapshots } from './dailySnapshotSink.js';
 import { listActiveSyncable, recordSync } from './credentialStore.js';
-import { DEFAULT_MANUAL_SYNC_DATE_PRESET, isDailyIngestionEnabled } from './connectorConfig.js';
+import { DEFAULT_MANUAL_SYNC_DATE_PRESET, isDailyIngestionEnabled, DAILY_STATE } from './connectorConfig.js';
 
 /**
  * Run the connector sync.
@@ -91,31 +91,82 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
       // "refresh the account" and not "measure the decision period", but "what
       // happened on each day".
       //
-      // OPT-IN. As of R8 nothing reads this population: every existing selector
+      // STILL OPT-IN, and B4-D turned the deployment's copy of the switch ON.
+      // R8 left it off because nothing read the rows — every existing selector
       // filters DAILY out by construction (OPERATIONAL_MEASUREMENT_WINDOWS is an
-      // allow-list that names DAILY as excluded on purpose). Spending an extra
-      // Meta request per sync on rows no consumer reads is a cost, so the switch
-      // is off until a reader exists — the same trade SYNC_TRIGGERS_SWEEP makes.
+      // allow-list that names DAILY as excluded on purpose). That is STILL true:
+      // B4-D adds no reader.
+      //
+      // It is on anyway, deliberately, because the ordering only works one way.
+      // Nothing can be built to measure an outcome from a population that has
+      // never existed — the first consumer would be written against imagined
+      // rows and validated against none. Ingestion has to run first so the
+      // evidence is real before anything reads it. The cost is one extra Meta
+      // request per sync per account, bounded by DAILY_INGESTION_DAYS.
       //
       // BEST-EFFORT, like the canonical refresh: a daily failure degrades to no
       // daily rows for this run. It must never take down the operational sync
       // that every existing surface reads.
+      //
+      // ── B4-D — the four meanings of `null` ───────────────────────────────
+      //
+      // R8 reported this population as a single nullable count, and null meant
+      // FOUR different things: the deployment has daily off, this connector has
+      // no daily path, the fetch threw, or the run landed nothing. An operator
+      // enabling the flag and finding no rows could not tell which — and "why is
+      // the population empty" is the entire question this activation must answer.
+      //
+      // So the outcome is now a NAMED STATE beside the count, never derived from
+      // it. `dailyObservations` keeps its exact prior semantics (0 = landed
+      // nothing, null = no count exists) because it is the shape callers were
+      // written against; the state is additive and carries the numbers needed to
+      // separate "the account delivered nothing" from "every row was refused".
       let daily = null;
-      if (isDailyIngestionEnabled() && connector.fetchDailyRaw && connector.normalizeDaily) {
+      let dailyState = DAILY_STATE.DISABLED;
+      let dailyDetail = { fetchedRows: null, rejected: null, days: null, truncated: null, error: null };
+
+      if (!isDailyIngestionEnabled()) {
+        // Not a failure and not an absence of data: nobody asked.
+        dailyState = DAILY_STATE.DISABLED;
+      } else if (!connector.fetchDailyRaw || !connector.normalizeDaily) {
+        // The connector takes part in sync but cannot answer "what happened on
+        // each day". Reported as its own state because the fix is to implement a
+        // provider, not to investigate an account.
+        dailyState = DAILY_STATE.UNIMPLEMENTED;
+      } else {
         try {
           const rawDaily = await connector.fetchDailyRaw(auth, { now });
           const { snapshots, rejected } = connector.normalizeDaily({
             ...auth, date: now, rows: rawDaily.rows,
           });
           daily = await landDailySnapshots(wsId, connector.channel, snapshots);
+          dailyDetail = {
+            // What the platform returned, what the normalizer refused, and how
+            // far back we asked. Real counts or null — never a zero standing in
+            // for a number nobody produced.
+            fetchedRows: Array.isArray(rawDaily.rows) ? rawDaily.rows.length : null,
+            rejected: Array.isArray(rejected) ? rejected.length : null,
+            days: rawDaily.days ?? null,
+            truncated: rawDaily.truncated ?? null,
+            error: null,
+          };
+          // SUCCESS means rows exist for this run. Zero landed rows is NO_DATA —
+          // a real, honest outcome, and NOT a failure: an account that did not
+          // deliver on any requested day produces exactly this.
+          dailyState = (daily.created + daily.restated) > 0 ? DAILY_STATE.SUCCESS : DAILY_STATE.NO_DATA;
           logger.info(
             {
               workspaceId: wsId, platform: channel, days: rawDaily.days,
-              ...daily, rejected: rejected.length, truncated: rawDaily.truncated,
+              ...daily, rejected: dailyDetail.rejected, truncated: rawDaily.truncated,
+              dailyState,
             },
             '[connectorSync] daily additive observations landed',
           );
         } catch (err) {
+          // FAILED, never folded into NO_DATA. "We could not look" and "we looked
+          // and there was nothing" are different facts with different fixes.
+          dailyState = DAILY_STATE.FAILED;
+          dailyDetail = { ...dailyDetail, error: err.message };
           logger.warn(
             { workspaceId: wsId, platform: channel, err: err.message },
             '[connectorSync] daily additive ingestion failed — no daily rows this run',
@@ -147,7 +198,20 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
         // three counts. null = daily ingestion is off for this deployment, this
         // connector has no daily path, or its daily fetch failed this run — and a
         // caller must be able to tell those from "zero days landed".
+        //
+        // UNCHANGED by B4-D on purpose. `daily.state` below is what tells those
+        // three apart; this count keeps meaning exactly what it meant, so no
+        // existing reader changes behaviour.
         dailyObservations: daily ? daily.created + daily.restated : null,
+        // B4-D — the state, and the numbers that qualify it. Present on every
+        // result, including the ones where nothing ran.
+        daily: {
+          state: dailyState,
+          created: daily?.created ?? null,
+          restated: daily?.restated ?? null,
+          skippedUnknownEntity: daily?.skippedUnknownEntity ?? null,
+          ...dailyDetail,
+        },
         ...(warning ? { warning } : {}),
       });
     } catch (err) {

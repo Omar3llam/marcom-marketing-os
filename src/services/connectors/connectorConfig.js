@@ -70,11 +70,15 @@ export function dailyIngestionDays(env = process.env) {
 /**
  * PURE: is daily additive ingestion switched on for this deployment?
  *
- * OPT-IN, and deliberately so. It is a THIRD Meta request on every sync, and as
- * of R8 nothing reads the rows it produces — every existing selector filters the
- * DAILY population out by construction. Defaulting it on would spend API budget
- * and rate-limit headroom on a population with no consumer, which is the same
- * trade `SYNC_TRIGGERS_SWEEP` and `AGENTIC_CRON_ENABLED` already make explicit.
+ * OPT-IN, and it stays opt-in. It is a THIRD Meta request on every sync, and no
+ * production reader consumes the rows it produces — every existing selector
+ * filters the DAILY population out by construction, and B4-D did not add one.
+ *
+ * The CODE DEFAULT stays off, which is what this function is: an unconfigured
+ * deployment, a local checkout and every test spend nothing. What B4-D changed
+ * is the DEPLOYMENT (render.yaml, both services), because a measurement layer
+ * cannot be built against a population that has never been written. Evidence
+ * first, then the reader — not the other way round.
  *
  * Exactly the string 'true' — an unset, empty, or typo'd variable stays off, so
  * the expensive state is never reached by accident.
@@ -82,3 +86,42 @@ export function dailyIngestionDays(env = process.env) {
 export function isDailyIngestionEnabled(env = process.env) {
   return env.DAILY_INGESTION_ENABLED === 'true';
 }
+
+// ── B4-D — WHAT THE DAILY PATH DID, AS A NAMED STATE ────────────────────────
+//
+// Activating this pipeline is only half a slice. The other half is being able to
+// answer "so why is the population empty?" without guessing, and R8 could not:
+// it reported one nullable count, and null meant the deployment has daily off,
+// OR this connector has no daily path, OR the fetch threw, OR the run landed
+// nothing. Four different problems with four different fixes, arriving as the
+// same value.
+//
+// These five are deliberately NOT collapsible into a boolean or a count. The
+// distinctions that must survive:
+//
+//   DISABLED vs NO_DATA        — nobody asked, versus we asked and there was
+//                                nothing. Reading DISABLED as an empty account
+//                                is how a switched-off pipeline gets mistaken
+//                                for a quiet one.
+//   UNIMPLEMENTED vs NO_DATA   — the provider cannot answer the question at all,
+//                                versus it answered "no delivery". The first is
+//                                fixed by writing a connector, the second is not
+//                                a defect.
+//   FAILED vs NO_DATA          — we could not look, versus we looked. Folding a
+//                                rate limit into "no data" turns an outage into
+//                                a measurement.
+//   SUCCESS vs NO_DATA         — rows exist, versus none do. NO_DATA is honest
+//                                and expected; it is never upgraded to success
+//                                by writing a placeholder row.
+export const DAILY_STATE = Object.freeze({
+  // Daily ingestion is off for this deployment. Nothing was requested.
+  DISABLED:      'DISABLED',
+  // The connector takes part in sync but implements no daily capability.
+  UNIMPLEMENTED: 'UNIMPLEMENTED',
+  // The real fetch ran and no observations were persisted. A true outcome.
+  NO_DATA:       'NO_DATA',
+  // Real rows were fetched, normalized and persisted.
+  SUCCESS:       'SUCCESS',
+  // The path was attempted and threw before a persistence result.
+  FAILED:        'FAILED',
+});
