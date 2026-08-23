@@ -36,8 +36,69 @@ import {
   summarizeExecutionState,
 } from '../../services/execution/executionProjection.js';
 import { PROVENANCE_SELECT, legacyExecutedAt } from '../../services/execution/decisionProvenance.js';
+import { getCurrentOutcome } from '../../services/decision-accuracy/outcomeSelection.js';
 
 export const executionsRouter = Router();
+
+/**
+ * The OutcomeSnapshot columns this contract publishes.
+ *
+ * `getCurrentOutcome` REQUIRES a select — an unprojected read widens on every
+ * new column — and this one deliberately omits `evidenceReference`, which is
+ * storage rather than wire, and the supersession columns, which cannot be
+ * anything but null on a row that seam already filtered to the current one.
+ */
+export const OUTCOME_SELECT = Object.freeze({
+  id: true,
+  measuredAt: true,
+  createdAt: true,
+  windowStart: true,
+  windowEnd: true,
+  sustained: true,
+  spendDeltaMinor: true,
+  revenueDeltaMinor: true,
+  roasDelta: true,
+});
+
+/**
+ * PURE: project the current outcome, or state that there is not one.
+ *
+ * NO `status` FIELD. OutcomeSnapshot has no status column, and the honest
+ * answer to "what state is the outcome in" is the facts it actually carries:
+ * when it was measured, over which window, and whether the lift held. Inventing
+ * a status here would mean deriving a word nobody recorded.
+ *
+ * EVERY NULL STAYS NULL. `sustained` is a nullable Boolean where null means the
+ * question was never established — a decision whose lift nobody checked is not
+ * a decision whose lift failed, and `?? false` would silently convert one into
+ * the other. The three deltas are the same: null is "not measured", and a 0
+ * there would be a fabricated result, not an absent one.
+ *
+ * When there is no outcome the object carries `available: false` and NOTHING
+ * else — no zeroed metrics, no null-filled skeleton that reads at a glance like
+ * a recorded result.
+ */
+export function toOutcomeSection(o) {
+  if (!o) return { available: false };
+  return {
+    available:  true,
+    outcomeId:  o.id,
+    // When the operator ESTABLISHED the result. Nullable on rows recorded
+    // before R6 — an unrecorded fact stays unrecorded, never backfilled to
+    // createdAt, which answers a different question.
+    measuredAt: o.measuredAt ?? null,
+    // When the row was written. Never a substitute for measuredAt.
+    recordedAt: o.createdAt,
+    window: { start: o.windowStart ?? null, end: o.windowEnd ?? null },
+    // null = nobody established whether the lift held. NOT false.
+    sustained: o.sustained ?? null,
+    deltas: {
+      spendMinor:   o.spendDeltaMinor   ?? null,
+      revenueMinor: o.revenueDeltaMinor ?? null,
+      roas:         o.roasDelta         ?? null,
+    },
+  };
+}
 
 // Gated to the operating roles, matching the producer it reports on: a CLIENT
 // cannot queue a mutation (routes/execution/meta.js) and has no business
@@ -128,7 +189,7 @@ executionsRouter.get('/decisions/:id/executions', requireCollabRole(...OPERATORS
       // Decision's, not the execution's, and is published once here rather
       // than copied onto every row.
       select: {
-        id: true, verdict: true, status: true, dismissedAt: true,
+        id: true, verdict: true, status: true, dismissedAt: true, createdAt: true,
         ...PROVENANCE_SELECT,
         // The human-judgement axis, independent of both execution facts.
         humanResponse: true, humanReasonCode: true, humanRespondedAt: true,
@@ -149,12 +210,26 @@ executionsRouter.get('/decisions/:id/executions', requireCollabRole(...OPERATORS
 
     const executions = rows.map(toExecutionRow);
 
+    // ── B4-A — the fourth axis: did anything come of it? ────────────────────
+    //
+    // Read through outcomeSelection.getCurrentOutcome, which owns the ONE
+    // definition of "current" (`supersededAt IS NULL`, newest first). Re-deriving
+    // it here as "the latest row" would be correct by accident today and wrong
+    // the first time a repair script inserts out of order — and it would put a
+    // second definition of the same word in the codebase.
+    //
+    // Workspace-scoped in its own WHERE, like the two reads above. Sequential
+    // rather than parallel with them on purpose: there is nothing to look up
+    // until the decision has been proven to exist in this workspace.
+    const outcomeRow = await getCurrentOutcome(workspaceId, decision.id, { select: OUTCOME_SELECT });
+
     return res.json({
       workspaceId,
       generatedAt: new Date().toISOString(),
       decisionId: decision.id,
       verdict: decision.verdict,
       decisionStatus: decision.status,
+      decisionCreatedAt: decision.createdAt,
       // ── B4-A — three independent axes, never collapsed ───────────────────
       //
       // Before the split a reader had to infer provenance: "empty executions
@@ -215,6 +290,12 @@ executionsRouter.get('/decisions/:id/executions', requireCollabRole(...OPERATORS
       executions,
       // A real, established zero: we looked, and this decision has none.
       count: executions.length,
+
+      // The measured result of having acted, or an explicit absence. This is
+      // the LAST axis and it is independent of the three above: an executed
+      // decision may have no outcome yet, and an outcome exists only because
+      // somebody recorded one — nothing in this slice matures it.
+      outcome: toOutcomeSection(outcomeRow),
     });
   } catch (err) {
     logger.error({ err: err.message, workspaceId, decisionId: id }, '[lumi/executions] read failed');

@@ -179,6 +179,13 @@ describe('R10 · POST /api/execute/:id/retry — attribution travels', () => {
   // would make the retried execution — the one that actually succeeds, in the
   // common case — the unattributed one.
   it('carries decisionId from the original onto the retried clone', async () => {
+    // B4-A (D2): the retry producer now checks the decision is still executable
+    // before cloning, so a retry that names one needs that decision to exist and
+    // be live — the same stub the /meta tests above use. The guarantee under
+    // test is unchanged (the column travels onto the clone); what changed is
+    // that a retry against a dismissed or superseded decision no longer gets
+    // that far, which T9a/T9b in provenance.contract.test.js prove directly.
+    prisma.decision.findFirst.mockResolvedValue({ id: DECISION_ID, status: 'PROPOSED', dismissedAt: null });
     prisma.executionRequest.findUnique.mockResolvedValue({
       id: 'exec-failed-1', workspaceId: WS,
       actionType: 'PAUSE_ADSET', targetId: '120200000000002',
