@@ -24,7 +24,6 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "seed": "prisma db seed",
-    "migrate:credentials": "node scripts/migrate-credentials-to-oauth.js",
     "worker": "node src/workers/index.js",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",

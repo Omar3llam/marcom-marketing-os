@@ -486,7 +486,6 @@ model User {
   createdAt   DateTime       @default(now())
 
   workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  oauthTokens        OAuthToken[]
   contentGenerations ContentGeneration[]
 
   @@index([workspaceId])
@@ -565,20 +564,15 @@ model Invitation {
   @@map("invitations")
 }
 
-model OAuthToken {
-  id                String    @id @default(uuid()) @db.Uuid
-  userId            String    @db.Uuid
-  provider          String
-  accessToken       String
-  refreshToken      String?
-  encryptionVersion String
-  expiresAt         DateTime?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, provider])
-  @@map("oauth_tokens")
-}
+// NOTE: The OAuthToken model (table "oauth_tokens") was removed in SC-4.
+// It was a destination that never received anything: production measured 0
+// rows, no runtime reader or writer existed, and the only thing that could
+// fill it was a manual `migrate:credentials` script copying LIVE credential
+// ciphertext OUT of marcom_credentials — the store named just below — INTO a
+// table with no rotation, no revocation on disconnect and no purge path.
+// The cutover it was built for never happened; Phase 12B/12c re-pointed the
+// connector layer onto marcom_credentials instead. Script and npm command
+// were retired with the model. Dropped in 20260823110000_sc4_oauthtoken_closure.
 
 // NOTE: The Integration model (table "integrations") was removed 2026-06-15.
 // It was write-dead — nothing populated it — and every Meta/Google credential

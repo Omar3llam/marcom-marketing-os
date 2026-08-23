@@ -35,7 +35,6 @@ async function main() {
     await prisma.reinforcementSnapshot.deleteMany({});
 
     console.log('Deleting auth data...');
-    await prisma.oAuthToken.deleteMany({});
     await prisma.user.deleteMany({});
     await prisma.workspace.deleteMany({});
 

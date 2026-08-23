@@ -133,7 +133,6 @@ async function runSafetyChecks() {
     'ExecutionRequest',
     'AuditLog',
     'Integration',
-    'OAuthToken',
     'User',
     'Workspace',
     'WebhookEvent',
@@ -202,7 +201,6 @@ async function clearDatabase() {
   beforeCounts.artifact = await prisma.artifact.count();
   beforeCounts.executionRequest = await prisma.executionRequest.count();
   beforeCounts.auditLog = await prisma.auditLog.count();
-  beforeCounts.oauthToken = await prisma.oAuthToken.count();
   beforeCounts.user = await prisma.user.count();
   beforeCounts.workspace = await prisma.workspace.count();
   beforeCounts.webhookEvent = await prisma.webhookEvent.count();
@@ -253,8 +251,6 @@ async function clearDatabase() {
     console.log(`  ✓ Deleted ${deletionResults.reinforcementSnapshot.count} ReinforcementSnapshot records\n`);
 
     console.log('Layer 8: OAuth tokens...');
-    deletionResults.oauthToken = await prisma.oAuthToken.deleteMany({});
-    console.log(`  ✓ Deleted ${deletionResults.oauthToken.count} OAuthToken records\n`);
 
     console.log('Layer 9: Users...');
     deletionResults.user = await prisma.user.deleteMany({});
@@ -286,7 +282,6 @@ async function clearDatabase() {
   afterCounts.artifact = await prisma.artifact.count();
   afterCounts.executionRequest = await prisma.executionRequest.count();
   afterCounts.auditLog = await prisma.auditLog.count();
-  afterCounts.oauthToken = await prisma.oAuthToken.count();
   afterCounts.user = await prisma.user.count();
   afterCounts.workspace = await prisma.workspace.count();
   afterCounts.webhookEvent = await prisma.webhookEvent.count();
@@ -437,7 +432,6 @@ async function verifyReset() {
     artifact: await prisma.artifact.count(),
     executionRequest: await prisma.executionRequest.count(),
     auditLog: await prisma.auditLog.count(),
-    oauthToken: await prisma.oAuthToken.count(),
     user: await prisma.user.count(),
     workspace: await prisma.workspace.count(),
     webhookEvent: await prisma.webhookEvent.count(),

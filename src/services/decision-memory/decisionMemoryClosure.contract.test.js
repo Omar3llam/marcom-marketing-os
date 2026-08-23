@@ -209,10 +209,10 @@ describe.skipIf(!DB_OK)('SC-3 · and the database agrees', () => {
       SELECT table_name::text AS t FROM information_schema.tables
        WHERE table_schema = 'public'
          AND table_name IN ('workspaces','execution_requests','decisions',
-                            'audit_logs','oauth_tokens','decision_memory_entries')`;
+                            'audit_logs','users','decision_memory_entries')`;
     expect(rows.map((r) => r.t).sort()).toEqual([
       'audit_logs', 'decision_memory_entries', 'decisions',
-      'execution_requests', 'oauth_tokens', 'workspaces',
+      'execution_requests', 'users', 'workspaces',
     ]);
   });
 
