@@ -56,8 +56,16 @@ function migrations() {
 
 const NEW_MIGRATION = '20260818030000_r12_1c_execution_request_workspace_fk';
 
-// The seven enums, in the exact order schema.prisma declares them. Production
-// was audited read-only and carries precisely these labels in this order.
+// The canonical enums, in the exact order schema.prisma declares them.
+// Production was audited read-only and carries precisely these labels in this
+// order.
+//
+// R12-1c found seven. SC-1 dropped the entry that used to sit here between
+// ActionType and WebhookProvider — CampaignStage — together with the
+// campaign_states table it belonged to, after production was measured at 0
+// rows. Six remain, and every control below is scoped to whatever this map
+// holds: an enum production no longer carries must not be asserted as one it
+// does.
 const CANONICAL_ENUMS = {
   UserRole: ['ADMIN', 'VIEWER'],
   ActionStatus: ['PENDING', 'QUEUED', 'EXECUTED_SUCCESS', 'FAILED', 'ROLLED_BACK'],
@@ -65,7 +73,6 @@ const CANONICAL_ENUMS = {
   ActionType: ['PAUSE_CAMPAIGN', 'RESUME_CAMPAIGN', 'INCREASE_BUDGET', 'DECREASE_BUDGET',
     'PAUSE_ADSET', 'RESUME_ADSET', 'SCALE_CAMPAIGN', 'OPTIMIZE_CAMPAIGN',
     'REALLOCATE_BUDGET', 'REFRESH_CREATIVE'],
-  CampaignStage: ['TESTING', 'SCALING', 'STABLE', 'FATIGUED', 'DYING'],
   WebhookProvider: ['META', 'GOOGLE'],
   WebhookStatus: ['RECEIVED', 'PROCESSED', 'DUPLICATE', 'FAILED'],
 };
@@ -144,8 +151,8 @@ describe('migration safety — production is canonical, history catches up to it
     }
   });
 
-  it('never recreates one of the seven enums production already holds (NC-R12C-7)', () => {
-    // Scoped deliberately to the seven. Those exist in production without any
+  it('never recreates one of the canonical enums production already holds (NC-R12C-7)', () => {
+    // Scoped deliberately to the canonical set above. Those exist in production without any
     // migration having created them, so a CREATE TYPE for one of them raises
     // 42710 and fails the Render deploy outright — precisely what Prisma's
     // generated reconciliation SQL would have done.
@@ -162,13 +169,40 @@ describe('migration safety — production is canonical, history catches up to it
   });
 
   it('never drops or recreates campaign_states.stage (NC-R12C-8)', () => {
-    // The column that opened this investigation. Production holds it as
-    // CampaignStage already; a DROP/ADD would destroy the column to rebuild it
-    // identically.
+    // The column that opened this investigation. Production held it as
+    // CampaignStage; a DROP/ADD would have destroyed a populated column to
+    // rebuild it identically.
+    //
+    // SC-1 dropped the table outright, which does NOT retire this control. It
+    // is an assertion about migration HISTORY, and history is immutable: the
+    // migrations that built and altered campaign_states are still replayed on
+    // every fresh database, still ahead of the drop, and a DROP COLUMN
+    // introduced into any of them would still be destructive on a production
+    // that has not yet reached the drop.
     for (const { name, sql } of migrations()) {
       const risky = /ALTER TABLE\s+"?campaign_states"?[\s\S]{0,200}?DROP COLUMN\s+"?stage"?/i;
       expect(sql, `${name} drops campaign_states.stage`).not.toMatch(risky);
     }
+  });
+
+  it('closes campaign_states by dropping the table, never by editing history (SC-1)', () => {
+    // The whole table goes in one late, additive migration. Two guarantees
+    // matter and neither implies the other: the closure exists, and it did not
+    // reach back into the migrations that created the table.
+    const closure = migrations().find((x) => x.name === '20260823000000_sc1_campaignstate_closure');
+    expect(closure, 'the SC-1 closure migration is missing').toBeDefined();
+    expect(closure.sql).toMatch(/DROP TABLE IF EXISTS "campaign_states"/);
+    expect(closure.sql).toMatch(/DROP TYPE IF EXISTS "CampaignStage"/);
+
+    // Scoped: two statements, those two objects, nothing else. This is the
+    // control that would have caught the nineteen unrelated statements
+    // `prisma migrate dev` generated for this slice out of pre-existing drift.
+    const statements = closure.sql.split(';').map((x) => x.trim()).filter(Boolean);
+    expect(statements).toHaveLength(2);
+
+    // …and every earlier migration still creates the table it later drops.
+    const creators = migrations().filter((x) => /CREATE TABLE[^;]*"campaign_states"/i.test(x.sql));
+    expect(creators.length, 'history stopped creating campaign_states — it was edited').toBeGreaterThan(0);
   });
 
   it('never converts a populated enum-backed column with a USING cast', () => {

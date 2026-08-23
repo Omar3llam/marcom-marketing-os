@@ -12,6 +12,13 @@
 // developer database — writes to those seven tables failed with 42704 "type
 // does not exist". CI and production were not running the same physical schema.
 //
+// SC-1 — CampaignStage is no longer one of them. The type and the
+// campaign_states table it belonged to were dropped once production was
+// measured at 0 rows: see 20260823000000_sc1_campaignstate_closure. The
+// R12-1e guarantee is unchanged for the six that remain, and this file
+// deliberately keeps naming CampaignStage in the history above, because that
+// history is why the guarantee exists.
+//
 // 20260818040000_r12_1e_enum_reconciliation closes that gap by reconciling the
 // history UP TO production: guarded type creation, exact-label validation, a
 // value preflight, and a conditional TEXT -> enum conversion that is a no-op
@@ -42,7 +49,6 @@ const CANONICAL_ENUMS = {
   ActionType: ['PAUSE_CAMPAIGN', 'RESUME_CAMPAIGN', 'INCREASE_BUDGET', 'DECREASE_BUDGET',
     'PAUSE_ADSET', 'RESUME_ADSET', 'SCALE_CAMPAIGN', 'OPTIMIZE_CAMPAIGN',
     'REALLOCATE_BUDGET', 'REFRESH_CREATIVE'],
-  CampaignStage: ['TESTING', 'SCALING', 'STABLE', 'FATIGUED', 'DYING'],
   WebhookProvider: ['META', 'GOOGLE'],
   WebhookStatus: ['RECEIVED', 'PROCESSED', 'DUPLICATE', 'FAILED'],
 };
@@ -52,7 +58,6 @@ const ENUM_COLUMNS = [
   ['actions', 'status', 'ActionStatus', 'PENDING'],
   ['audit_logs', 'actionType', 'ActionType', null],
   ['audit_logs', 'status', 'ExecutionStatus', 'PENDING'],
-  ['campaign_states', 'stage', 'CampaignStage', null],
   ['users', 'role', 'UserRole', 'VIEWER'],
   ['webhook_events', 'provider', 'WebhookProvider', null],
   ['webhook_events', 'status', 'WebhookStatus', 'RECEIVED'],
@@ -104,10 +109,10 @@ describe('R12-1e migration is non-destructive by construction (NC5)', () => {
 const DB_OK = await dbAvailable();
 
 // ============================================================
-// A + B — the seven types exist with exactly the canonical labels
+// A + B — the six types exist with exactly the canonical labels
 // ============================================================
 describe.skipIf(!DB_OK)('R12-1e deployed — enum types (NC1 · NC2 · NC3)', () => {
-  it('all seven types exist', async () => {
+  it('all six types exist', async () => {
     const rows = await prisma.$queryRaw`
       SELECT t.typname::text AS type
         FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
@@ -137,7 +142,7 @@ describe.skipIf(!DB_OK)('R12-1e deployed — enum types (NC1 · NC2 · NC3)', ()
 // C + D + E — the columns, their defaults, and what must not have moved
 // ============================================================
 describe.skipIf(!DB_OK)('R12-1e deployed — enum-backed columns (NC4)', () => {
-  it('all seven columns use their enum type, not text', async () => {
+  it('all six columns use their enum type, not text', async () => {
     const rows = await prisma.$queryRaw`
       SELECT table_name::text AS tbl, column_name::text AS col,
              udt_name::text AS udt, is_nullable::text AS nullable,
@@ -205,24 +210,21 @@ describe.skipIf(!DB_OK)('R12-1e deployed — the generated client can write enum
 
   afterAll(async () => {
     await prisma.webhookEvent.deleteMany({ where: { externalEventId: { startsWith: 'r12-1e-' } } });
-    await prisma.workspace.deleteMany({ where: { id: WS } });   // cascades users + campaign_states
+    await prisma.workspace.deleteMany({ where: { id: WS } });   // cascades users
   });
 
-  it('CampaignState.stage — the write that broke the resilience suite', async () => {
-    // This is the exact operation that failed with 42704 on CI: the client
-    // issues $1::"CampaignStage", and the type did not exist there.
-    const row = await prisma.campaignState.create({
-      data: {
-        campaignId: 'r12-1e-stage', campaignName: 'R12-1e', workspaceId: WS,
-        stage: 'STABLE', healthScore: 71, lastAnalysis: new Date(),
-      },
-    });
-    expect(row.stage).toBe('STABLE');
-
-    const read = await prisma.campaignState.findFirst({
-      where: { campaignId: 'r12-1e-stage', workspaceId: WS }, select: { stage: true },
-    });
-    expect(read.stage).toBe('STABLE');
+  it('SC-1 — the write that broke the resilience suite has no model left to make it', () => {
+    // This used to be `prisma.campaignState.create({ stage: 'STABLE' })`: the
+    // exact operation that failed with 42704 on CI, kept as R12-1e's proof that
+    // the generated client could finally issue $1::"CampaignStage".
+    //
+    // SC-1 dropped the model, so the client no longer exposes the delegate at
+    // all. The assertion inverts rather than disappearing — a returning
+    // delegate would mean the schema closure was reverted, and the enum write
+    // guarantee itself is still proved below on WebhookEvent, whose provider
+    // column carries the same "enum, no default" shape campaign_states.stage
+    // did.
+    expect(prisma.campaignState).toBeUndefined();
   });
 
   it('WebhookEvent.provider and .status — two enums on one row', async () => {
@@ -252,11 +254,16 @@ describe.skipIf(!DB_OK)('R12-1e deployed — the generated client can write enum
   });
 
   it('rejects a value outside the contract instead of storing it', async () => {
+    // Repointed by SC-1 from CampaignState.stage to WebhookEvent.provider. The
+    // guarantee is about the COLUMN TYPE, not about which table carries it: a
+    // real Postgres enum refuses an unlisted label, a TEXT column accepts it
+    // silently, and that difference is the whole of R12-1e. Deleting this
+    // control with its table would have quietly dropped the guarantee.
     await expect(
-      prisma.campaignState.create({
+      prisma.webhookEvent.create({
         data: {
-          campaignId: 'r12-1e-bogus', campaignName: 'R12-1e', workspaceId: WS,
-          stage: 'NOT_A_STAGE', healthScore: 1, lastAnalysis: new Date(),
+          provider: 'NOT_A_PROVIDER', status: 'RECEIVED',
+          externalEventId: `r12-1e-bogus-${Date.now()}`, payload: {},
         },
       }),
     ).rejects.toThrow();
