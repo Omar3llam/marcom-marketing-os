@@ -28,6 +28,7 @@ import { lifecycleService } from '../../services/execution/ExecutionLifecycleSer
 import { ExecutionStatus, TransitionActor } from '@marcom/runtime-contracts';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE }    from '../../services/collaboration/roleScope.js';
+import { loadExecutability, NOT_EXECUTABLE } from '../../services/execution/decisionEligibility.js';
 
 /**
  * Statuses eligible for retry. Only failure terminals — retrying a
@@ -113,6 +114,41 @@ export function registerRetryRoute(router) {
           retryDepth: depth,
           maxRetryDepth: MAX_RETRY_DEPTH,
         });
+      }
+
+      // ── B4-A (D2) — the decision must STILL be executable ────────────────
+      //
+      // meta.js has carried this check since the split; this route did not, and
+      // it is the other producer of ExecutionRequest rows. A retry re-enters the
+      // execution path with the ORIGINAL decisionId, and the gap between the
+      // first attempt and the retry is exactly when a sweep supersedes a verdict
+      // or an operator dismisses it.
+      //
+      // The worker checks again before the real Meta call, so no platform
+      // mutation was ever landing against a terminal decision. What was landing
+      // is a queued row and a 202 that reads as acceptance — the operator is
+      // told the retry is under way, and only the worker log says it will not
+      // be. Refusing here makes the two producers agree, and it refuses at the
+      // boundary rather than downstream of it.
+      //
+      // Only when a decision is actually named: an execution carrying no
+      // decisionId is an operator acting directly on a campaign, which has no
+      // decision lifecycle to violate.
+      if (original.decisionId) {
+        const { executable, reason } = await loadExecutability(workspaceId, original.decisionId);
+        if (!executable) {
+          logger.warn({ originalId, workspaceId, userId, decisionId: original.decisionId, reason },
+            '[ExecutionRouter] Retry refused — decision is not executable');
+          return res.status(409).json({
+            error: reason === NOT_EXECUTABLE.DISMISSED
+              ? 'This decision was dismissed; a dismissed decision cannot be executed'
+              : reason === NOT_EXECUTABLE.SUPERSEDED
+                ? 'This decision has been superseded by a newer verdict and cannot be executed'
+                : 'This decision could not be confirmed as executable',
+            code: 'DECISION_NOT_EXECUTABLE',
+            reason,
+          });
+        }
       }
 
       // 1. Create clone in PENDING (the canonical initial state).

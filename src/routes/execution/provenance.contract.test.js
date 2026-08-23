@@ -60,6 +60,23 @@ const execute = (decisionId, key) => request(app(executionRouter, '/api/execute'
     ...(decisionId ? { decisionId } : {}),
   });
 
+// The OTHER producer of ExecutionRequest rows. Same router, same role gate.
+const retry = (executionId) => request(app(executionRouter, '/api/execute'))
+  .post(`/api/execute/${executionId}/retry`)
+  .send({});
+
+// A failure terminal is the only state a retry may start from, so a fixture
+// for this guard has to be one — a QUEUED row would be refused by the state
+// check first and never reach the eligibility gate being tested.
+const makeFailedExecution = (decisionId) => prisma.executionRequest.create({
+  data: {
+    workspaceId: WS, idempotencyKey: `k-${Math.random().toString(36).slice(2)}`,
+    actionType: 'PAUSE_CAMPAIGN', targetId: '23851234567',
+    status: 'EXECUTED_FAILED', decisionId,
+  },
+  select: { id: true },
+});
+
 const makeDecision = (over = {}) => prisma.decision.create({
   data: {
     workspaceId: WS, entityId: ENTITY, entityLevel: 'CAMPAIGN',
@@ -373,5 +390,66 @@ describe.skipIf(!DB_OK)('B4-A — execution provenance', () => {
     await stampDecisionExecuted({ workspaceId: WS, decisionId: executed.id });
     expect((await readDecision(executed.id)).platformExecutedAt).toBeTruthy();
     expect(await prisma.outcomeSnapshot.count({ where: { decisionId: executed.id } })).toBe(0);
+  });
+
+  // ── T9 ────────────────────────────────────────────────────────────────────
+  //
+  // THE SECOND PRODUCER. meta.js has carried the D2 gate since the split and
+  // T4/T5 prove it there. `retry` also creates ExecutionRequest rows, with the
+  // ORIGINAL decisionId, and it did not check — so a decision dismissed AFTER a
+  // failed attempt could be re-queued. The worker still refused before the real
+  // Meta call, so no mutation was landing, but the operator got a 202 and a row.
+  // A guard that only holds at the last moment is not a boundary.
+  it('T9a · a retry of a DISMISSED decision is refused, and mints no row', async () => {
+    const d = await makeDecision();
+    const failed = await makeFailedExecution(d.id);
+    await prisma.decision.update({ where: { id: d.id }, data: { dismissedAt: new Date() } });
+
+    const before = await countExecutions();
+    const res = await retry(failed.id);
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('DECISION_NOT_EXECUTABLE');
+    expect(res.body.reason).toBe(NOT_EXECUTABLE.DISMISSED);
+    // Nothing left behind, exactly as at the other producer.
+    expect(await countExecutions()).toBe(before);
+    expect(enqueueExecution).not.toHaveBeenCalled();
+  });
+
+  it('T9b · a retry of a SUPERSEDED decision is refused', async () => {
+    const d = await makeDecision();
+    const failed = await makeFailedExecution(d.id);
+    await prisma.decision.update({ where: { id: d.id }, data: { status: 'SUPERSEDED', resolvedAt: new Date() } });
+
+    const before = await countExecutions();
+    const res = await retry(failed.id);
+
+    expect(res.status).toBe(409);
+    expect(res.body.reason).toBe(NOT_EXECUTABLE.SUPERSEDED);
+    expect(await countExecutions()).toBe(before);
+    expect(enqueueExecution).not.toHaveBeenCalled();
+  });
+
+  it('T9c · a retry of a LIVE decision still works — the gate is not a blanket refusal', async () => {
+    const d = await makeDecision();
+    const failed = await makeFailedExecution(d.id);
+
+    const res = await retry(failed.id);
+
+    expect(res.status).toBe(201);
+    // A second row exists: the original failure plus the retry clone.
+    expect(await countExecutions()).toBe(2);
+  });
+
+  it('T9d · a retry carrying NO decision is untouched by the gate', async () => {
+    // An execution with no decisionId is an operator acting directly on a
+    // campaign. There is no decision lifecycle to violate, so the gate must
+    // not invent one and refuse.
+    const failed = await makeFailedExecution(null);
+
+    const res = await retry(failed.id);
+
+    expect(res.status).toBe(201);
+    expect(await countExecutions()).toBe(2);
   });
 });
