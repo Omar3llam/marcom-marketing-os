@@ -130,7 +130,6 @@ async function runSafetyChecks() {
     'PublishedCreative',
     'ArtifactApproval',
     'Artifact',
-    'DecisionMemory',
     'ExecutionRequest',
     'AuditLog',
     'Integration',
@@ -201,7 +200,6 @@ async function clearDatabase() {
   beforeCounts.publishedCreative = await prisma.publishedCreative.count();
   beforeCounts.artifactApproval = await prisma.artifactApproval.count();
   beforeCounts.artifact = await prisma.artifact.count();
-  beforeCounts.decisionMemory = await prisma.decisionMemory.count();
   beforeCounts.executionRequest = await prisma.executionRequest.count();
   beforeCounts.auditLog = await prisma.auditLog.count();
   beforeCounts.oauthToken = await prisma.oAuthToken.count();
@@ -242,10 +240,8 @@ async function clearDatabase() {
     console.log(`  ✓ Deleted ${deletionResults.artifactApproval.count} ArtifactApproval records`);
     console.log(`  ✓ Deleted ${deletionResults.artifact.count} Artifact records\n`);
 
-    console.log('Layer 5: Decision memory and execution requests...');
-    deletionResults.decisionMemory = await prisma.decisionMemory.deleteMany({});
+    console.log('Layer 5: Execution requests...');
     deletionResults.executionRequest = await prisma.executionRequest.deleteMany({});
-    console.log(`  ✓ Deleted ${deletionResults.decisionMemory.count} DecisionMemory records`);
     console.log(`  ✓ Deleted ${deletionResults.executionRequest.count} ExecutionRequest records\n`);
 
     console.log('Layer 6: Audit logs...');
@@ -288,7 +284,6 @@ async function clearDatabase() {
   afterCounts.publishedCreative = await prisma.publishedCreative.count();
   afterCounts.artifactApproval = await prisma.artifactApproval.count();
   afterCounts.artifact = await prisma.artifact.count();
-  afterCounts.decisionMemory = await prisma.decisionMemory.count();
   afterCounts.executionRequest = await prisma.executionRequest.count();
   afterCounts.auditLog = await prisma.auditLog.count();
   afterCounts.oauthToken = await prisma.oAuthToken.count();
@@ -440,7 +435,6 @@ async function verifyReset() {
     publishedCreative: await prisma.publishedCreative.count(),
     artifactApproval: await prisma.artifactApproval.count(),
     artifact: await prisma.artifact.count(),
-    decisionMemory: await prisma.decisionMemory.count(),
     executionRequest: await prisma.executionRequest.count(),
     auditLog: await prisma.auditLog.count(),
     oauthToken: await prisma.oAuthToken.count(),

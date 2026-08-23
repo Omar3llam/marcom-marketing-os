@@ -263,15 +263,20 @@ describe.skipIf(!DB_OK)('SC-1 · and the database agrees', () => {
     // nothing, so this must hold trivially — asserted because "trivially" is a
     // claim about a schema that just changed.
     //
-    // `actions` left this list in SC-2, which dropped it on the same evidence.
-    // Its own absence is asserted by that slice's contract; naming a dropped
-    // table among the survivors here would make this control assert the
-    // opposite of what the next one proves.
+    // `actions` left this list in SC-2 and `decision_memory` in SC-3, both
+    // dropped on the same evidence. Each slice's own contract asserts its
+    // table is absent; naming a dropped table among the survivors here would
+    // make this control assert the opposite of what those prove.
+    //
+    // `decision_memory_entries` replaced `decision_memory` in the list rather
+    // than the list simply shrinking. They are DIFFERENT models one word
+    // apart, and the live one belongs among the survivors precisely because
+    // the dead one no longer does.
     const rows = await prisma.$queryRaw`
       SELECT table_name::text AS t FROM information_schema.tables
        WHERE table_schema = 'public'
-         AND table_name IN ('workspaces','decisions','decision_memory','oauth_tokens')`;
+         AND table_name IN ('workspaces','decisions','decision_memory_entries','oauth_tokens')`;
     expect(rows.map((r) => r.t).sort())
-      .toEqual(['decision_memory', 'decisions', 'oauth_tokens', 'workspaces']);
+      .toEqual(['decision_memory_entries', 'decisions', 'oauth_tokens', 'workspaces']);
   });
 });
