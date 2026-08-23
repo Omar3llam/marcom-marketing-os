@@ -115,7 +115,20 @@ describe('R9 · frozen keys were not touched while the schema was open', () => {
     expect(block).not.toContain('@@unique([workspaceId, entityId, entityLevel, date, granularity, source, measurementWindow]');
   });
 
-  it('CampaignState keeps its legacy composite key (never unified with the entity graph)', () => {
-    expect(modelBlock('CampaignState')).toContain('@@unique([campaignId, workspaceId])');
+  it('SC-1 · CampaignState was never unified with the entity graph — it was removed', () => {
+    // This used to assert that the legacy model kept its own
+    // @@unique([campaignId, workspaceId]), pinning the fact that R9 did not
+    // quietly fold a health-snapshot table into the connector entity graph.
+    //
+    // SC-1 dropped the model after production measured 0 rows, so the original
+    // form has no block to read. The guarantee it defended is not that the key
+    // exists — it is that the entity graph did not ABSORB the legacy shape on
+    // the way out, which is the failure mode a removal invites: a
+    // stage/healthScore pair reappearing on Campaign so "nothing is lost".
+    expect(schema).not.toMatch(/^model CampaignState \{/m);
+    const campaign = modelBlock('Campaign');
+    expect(campaign).not.toMatch(/\bstage\b/);
+    expect(campaign).not.toMatch(/\bhealthScore\b/);
+    expect(campaign).not.toMatch(/\blastAnalysis\b/);
   });
 });

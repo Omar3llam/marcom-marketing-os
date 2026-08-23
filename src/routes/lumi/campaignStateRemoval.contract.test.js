@@ -28,6 +28,19 @@
 // The source ratchets sit beside them because the behavioural half cannot see a
 // reader that has not been wired up yet — a reinstated `prisma.campaignState`
 // read in a service, or a `campaigns: []` fallback on a branch no fixture takes.
+//
+// SC-1 — THE STORAGE FOLLOWED THE CONTRACT
+//   S1-B removed everything that could read the table. SC-1 removed the table,
+//   after production was measured directly at 0 rows: no backfill, no archival,
+//   nothing to preserve. `model CampaignState`, `enum CampaignStage` and
+//   `Workspace.campaignStates` are gone from schema.prisma, and
+//   20260823000000_sc1_campaignstate_closure drops the two database objects.
+//
+//   The schema ratchets at the bottom of this file are the inverse of what the
+//   ones above assert. S1-B could only prove nothing READS the model; those
+//   prove the model cannot come back for something to read. They are here
+//   rather than in schemaContract.test.js because they are the same guarantee
+//   as the rest of this file, one layer down.
 // ============================================================
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import express from 'express';
@@ -196,5 +209,64 @@ describe.skipIf(!DB_OK)('S1-B · "no campaigns" and "no longer answered" are dif
     const { status, body } = await request(a).get('/api/lumi/feed');
     expect(status).toBe(200);
     expect(Object.keys(body)).not.toContain('campaigns');
+  });
+});
+
+// ── SC-1 · the schema objects are gone, and cannot quietly return ───────────
+describe('SC-1 · CampaignState has no storage left', () => {
+  const schema = readFileSync(resolve(process.cwd(), 'prisma/schema.prisma'), 'utf8');
+
+  it('T1 · schema.prisma declares no CampaignState model', () => {
+    expect(schema).not.toMatch(/^model CampaignState \{/m);
+  });
+
+  it('T2 · schema.prisma declares no CampaignStage enum', () => {
+    expect(schema).not.toMatch(/^enum CampaignStage \{/m);
+  });
+
+  it('T3 · Workspace no longer owns the relation', () => {
+    // Scoped to the Workspace block on purpose. A bare repo-wide grep would
+    // also pass if the field had merely moved to another model, which is not
+    // the guarantee — the relation is removed, not relocated.
+    const workspace = schema.match(/^model Workspace \{([\s\S]*?)^\}/m);
+    expect(workspace, 'model Workspace not found').not.toBeNull();
+    expect(workspace[1]).not.toMatch(/campaignStates/);
+    expect(workspace[1]).not.toMatch(/CampaignState/);
+  });
+
+  it('the generated client exposes no campaignState delegate', () => {
+    // The schema and the client can disagree — a stale `prisma generate` is
+    // exactly how a removed model keeps working locally for another week.
+    expect(prisma.campaignState).toBeUndefined();
+  });
+});
+
+describe.skipIf(!DB_OK)('SC-1 · and the database agrees', () => {
+  it('T4 · campaign_states does not exist', async () => {
+    const rows = await prisma.$queryRaw`
+      SELECT table_name::text AS t FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_name = 'campaign_states'`;
+    expect(rows).toEqual([]);
+  });
+
+  it('T5 · the CampaignStage type does not exist', async () => {
+    const rows = await prisma.$queryRaw`
+      SELECT t.typname::text AS t FROM pg_type t
+        JOIN pg_namespace n ON n.oid = t.typnamespace
+       WHERE n.nspname = 'public' AND t.typname = 'CampaignStage'`;
+    expect(rows).toEqual([]);
+  });
+
+  it('the drop took nothing with it — the sibling tables are still there', async () => {
+    // `DROP TABLE` on a table other rows point AT is how a closure becomes an
+    // outage. campaign_states was the child of workspaces and the parent of
+    // nothing, so this must hold trivially — asserted because "trivially" is a
+    // claim about a schema that just changed.
+    const rows = await prisma.$queryRaw`
+      SELECT table_name::text AS t FROM information_schema.tables
+       WHERE table_schema = 'public'
+         AND table_name IN ('workspaces','actions','decisions','decision_memory','oauth_tokens')`;
+    expect(rows.map((r) => r.t).sort())
+      .toEqual(['actions', 'decision_memory', 'decisions', 'oauth_tokens', 'workspaces']);
   });
 });
