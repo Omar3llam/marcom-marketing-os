@@ -26,7 +26,6 @@ async function main() {
     await prisma.artifact.deleteMany({});
 
     console.log('Deleting execution requests...');
-    await prisma.decisionMemory.deleteMany({});
     await prisma.executionRequest.deleteMany({});
 
     console.log('Deleting audit & actions...');

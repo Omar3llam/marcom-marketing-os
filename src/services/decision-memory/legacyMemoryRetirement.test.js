@@ -119,19 +119,40 @@ describe('R7 — the canonical spine is what replaced it', () => {
 });
 
 describe('R7 — retained on purpose', () => {
-  it('the DecisionMemory MODEL stays in the schema — residue, not a code path', () => {
-    // Ruled explicitly: retire the code, keep the table. Workspace and
-    // ExecutionRequest still declare FK relations to it, and dropping it is a
-    // migration R7 has no evidence it needs. Asserted so a later cleanup is a
-    // decision someone makes, not something that happens.
+  it('SC-3 · the DecisionMemory MODEL is gone — the decision someone made', () => {
+    // This gate used to assert the opposite, on purpose: retire the code, keep
+    // the table, and make any later cleanup a decision someone MAKES rather
+    // than something that happens. SC-3 is that decision, and the evidence R7
+    // said it lacked arrived as a direct production measurement — 0 rows, 0
+    // workspaces, no earliest and no latest.
+    //
+    // The old comment here also carried a factual error worth correcting,
+    // because it is what made this model look harder to remove than it was:
+    // it said Workspace and ExecutionRequest "still declare FK relations to
+    // it". Neither did. Both were Prisma BACK-relations, which have no
+    // database column. Both physical foreign keys lived on decision_memory
+    // itself — workspaceId -> workspaces and executionId -> execution_requests
+    // — so dropping the table took them with it and execution_requests, a live
+    // model, needed no DDL at all.
     const schema = readFileSync(fileURLToPath(new URL('../../../prisma/schema.prisma', import.meta.url)), 'utf8');
-    expect(schema).toMatch(/model DecisionMemory \{/);
-    expect(schema).toMatch(/@@map\("decision_memory"\)/);
+    expect(schema).not.toMatch(/^model DecisionMemory \{/m);
+    expect(schema).not.toMatch(/@@map\("decision_memory"\)/);
+
+    // …and neither back-relation came back with it.
+    const workspace = schema.match(/^model Workspace \{([\s\S]*?)^\}/m);
+    const execution = schema.match(/^model ExecutionRequest \{([\s\S]*?)^\}/m);
+    expect(workspace[1]).not.toMatch(/\bDecisionMemory\[\]/);
+    expect(execution[1]).not.toMatch(/\bDecisionMemory\[\]/);
   });
 
   it('DecisionMemoryEntry survives — it has a real consumer', () => {
+    // The naming-collision guard, and the reason SC-3 could not be a bare
+    // grep. `DecisionMemory` and `DecisionMemoryEntry` differ by one word and
+    // map to `decision_memory` and `decision_memory_entries`; only the first
+    // was dead.
     const schema = readFileSync(fileURLToPath(new URL('../../../prisma/schema.prisma', import.meta.url)), 'utf8');
     expect(schema).toMatch(/model DecisionMemoryEntry \{/);
+    expect(schema).toMatch(/@@map\("decision_memory_entries"\)/);
     // The tested-dimension loop still reads it. See testMemoryContract.test.js.
     expect(offenders(SRC, /prisma\.decisionMemoryEntry\.findMany/).length).toBeGreaterThan(0);
   });

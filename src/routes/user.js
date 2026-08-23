@@ -274,8 +274,13 @@ userRouter.delete('/account', async (req, res) => {
     });
 
     // ✅ Step 2: Delete workspace ONLY when the caller is its sole member.
-    // Prisma schema has onDelete: Cascade for:
-    //   - users, actions, campaignStates, decisionMemory, auditLogs
+    // Prisma schema has onDelete: Cascade for every workspace-owned model.
+    // This list used to name actions, campaignStates and decisionMemory; the
+    // backend closure sequence dropped all three after production measured each
+    // at 0 rows, so it now names what actually cascades rather than three tables
+    // that no longer exist.
+    //   - users, auditLogs, decisions, executionRequests, accounts, campaign
+    //     entities and their snapshots, artifacts, approvals, loop runs
     if (workspaceId) {
       const memberCount = await prisma.user.count({ where: { workspaceId } });
 
