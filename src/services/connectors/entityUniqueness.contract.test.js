@@ -105,14 +105,23 @@ describe('R9 · frozen keys were not touched while the schema was open', () => {
   // change the identity of every canonical observation and the DAILY race with
   // it. Deferred means deferred, and this pins it.
   it('MetricSnapshot keeps its six-column natural key, without workspaceId', () => {
-    // R12-1c appended `map: "metric_snapshots_identity_key"` so the declaration
-    // names the index production actually carries. The match therefore stops at
-    // the column list rather than the closing paren — the columns, their order,
-    // and the absence of workspaceId are what this control is about, and all
-    // three are still asserted exactly.
-    const block = modelBlock('MetricSnapshot');
-    expect(block).toContain('@@unique([entityId, entityLevel, date, granularity, source, measurementWindow]');
-    expect(block).not.toContain('@@unique([workspaceId, entityId, entityLevel, date, granularity, source, measurementWindow]');
+    // The columns, their order, and the absence of workspaceId are what this
+    // control is about, and all three are still asserted exactly.
+    //
+    // B4-E5 moved WHERE they are declared. The deployed identity is now a PARTIAL
+    // index (WHERE "measurementWindow" <> 'DAILY') so that DAILY observations
+    // stop colliding on a shared sync timestamp, and Prisma cannot express an
+    // index predicate — so the `@@unique` is gone from the model and the key
+    // lives in 20260824000000_b4e5_non_daily_partial_identity. The temptation
+    // this control was written against is unchanged: adding workspaceId would
+    // change the identity of every canonical observation.
+    const sql = readFileSync(resolve(
+      ROOT, 'prisma/migrations/20260824000000_b4e5_non_daily_partial_identity/migration.sql',
+    ), 'utf8');
+    expect(sql).toContain('ON "metric_snapshots" ("entityId", "entityLevel", "date", "granularity", "source", "measurementWindow")');
+    expect(sql).not.toContain('"workspaceId", "entityId", "entityLevel", "date", "granularity", "source", "measurementWindow"');
+    // A DECLARATION, not the word — the block's comments explain why it is gone.
+    expect(modelBlock('MetricSnapshot')).not.toMatch(/^\s*@@unique\(/m);
   });
 
   it('SC-1 · CampaignState was never unified with the entity graph — it was removed', () => {

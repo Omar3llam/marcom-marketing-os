@@ -115,18 +115,39 @@ describe('schema contract — indexes name the objects that are actually deploye
     );
   });
 
-  it('maps the metric snapshot identity key to its deployed name (M6)', () => {
-    expect(model('MetricSnapshot')).toMatch(/map:\s*"metric_snapshots_identity_key"/);
+  it('declares NO snapshot identity, because the deployed one is partial (M6)', () => {
+    // Was: `map: "metric_snapshots_identity_key"`, pinning the declaration to the
+    // index production carried. B4-E5 made that index PARTIAL
+    // (WHERE "measurementWindow" <> 'DAILY') so DAILY observations stop
+    // colliding on a sync timestamp, and Prisma cannot express a predicate.
+    //
+    // The guarantee this control exists for is unchanged and is now the stronger
+    // one: the schema must not name an identity the database does not have. A
+    // full `@@unique` here makes `migrate diff` emit
+    // `CREATE UNIQUE INDEX "metric_snapshots_identity_key"` — so leaving it for
+    // the sake of the generated types would hand the next `migrate dev` a
+    // migration that silently re-breaks DAILY.
+    expect(model('MetricSnapshot')).not.toMatch(/^\s*@@unique\(/m);
+    // …and it must SAY so. `model()` strips comments, so this reads the raw file:
+    // an undeclared identity with no explanation is indistinguishable from one
+    // somebody deleted by accident.
+    expect(SCHEMA).toMatch(/metric_snapshots_non_daily_identity_key/);
   });
 
   it('leaves R9 canonical snapshot uniqueness exactly as it was (NC-R12C-5)', () => {
-    // Name-only reconciliation. The columns, their order, and the absence of
-    // workspaceId are the R9 contract and must not move.
-    const uniq = model('MetricSnapshot').match(/@@unique\(\[([^\]]+)\]/);
-    expect(uniq).not.toBeNull();
-    expect(uniq[1].split(',').map((s) => s.trim())).toEqual([
+    // The columns, their order, and the absence of workspaceId are the R9
+    // contract and must not move. They now live in the migration that creates
+    // the partial index rather than in a Prisma `@@unique`, so that is where
+    // they are read from — the declaration moved, the contract did not.
+    const m = migrations().find((x) => x.name === '20260824000000_b4e5_non_daily_partial_identity');
+    expect(m, 'the B4-E5 identity migration is missing').toBeDefined();
+    const cols = m.sql.match(/CREATE UNIQUE INDEX IF NOT EXISTS "metric_snapshots_non_daily_identity_key"\s*\n\s*ON "metric_snapshots" \(([^)]+)\)/);
+    expect(cols, 'the partial identity index is not created by its migration').not.toBeNull();
+    expect(cols[1].split(',').map((s) => s.trim().replace(/"/g, ''))).toEqual([
       'entityId', 'entityLevel', 'date', 'granularity', 'source', 'measurementWindow',
     ]);
+    // R9: deliberately NOT workspace-scoped — see the DB-side control below.
+    expect(cols[1]).not.toContain('workspaceId');
   });
 });
 
@@ -322,13 +343,18 @@ describe.skipIf(!DB_OK)('deployed contract — enums and canonical indexes', () 
     }
   });
 
-  it('NC-R12C-5 — the R9 snapshot identity key is intact and unrenamed', async () => {
+  it('NC-R12C-5 — the R9 snapshot identity is intact, partial, and unrenamed', async () => {
+    // B4-E5 renamed and narrowed this index on purpose:
+    //   metric_snapshots_identity_key  (full table)
+    //     → metric_snapshots_non_daily_identity_key  WHERE measurementWindow <> 'DAILY'
+    // Everything else about it is still frozen — same six columns, same order,
+    // still not workspace-scoped.
     const [idx] = await prisma.$queryRaw`
       SELECT indexname::text AS name, indexdef::text AS def
         FROM pg_indexes
-       WHERE schemaname = 'public' AND indexname = 'metric_snapshots_identity_key'`;
+       WHERE schemaname = 'public' AND indexname = 'metric_snapshots_non_daily_identity_key'`;
 
-    expect(idx, 'metric_snapshots_identity_key was renamed or dropped').toBeDefined();
+    expect(idx, 'metric_snapshots_non_daily_identity_key was renamed or dropped').toBeDefined();
     expect(idx.def).toMatch(/UNIQUE/);
     for (const col of ['entityId', 'entityLevel', 'date', 'granularity', 'source', 'measurementWindow']) {
       expect(idx.def).toContain(col);
@@ -336,6 +362,17 @@ describe.skipIf(!DB_OK)('deployed contract — enums and canonical indexes', () 
     // R9: the key is deliberately NOT workspace-scoped. Adding workspaceId would
     // let the same entity be snapshotted twice under different tenants.
     expect(idx.def).not.toContain('workspaceId');
+    // The predicate is the whole point — without it DAILY collides again, and
+    // upsertNonDailyMetricSnapshot's ON CONFLICT has nothing to match.
+    expect(idx.def).toContain(`WHERE ("measurementWindow" <> 'DAILY'`);
+
+    // And the one it replaced must be gone: two identities on the same columns
+    // would mean the full one still rejects multi-day DAILY writes.
+    const survivors = await prisma.$queryRaw`
+      SELECT indexname::text AS name FROM pg_indexes
+       WHERE schemaname = 'public' AND tablename = 'metric_snapshots'
+         AND indexname = 'metric_snapshots_identity_key'`;
+    expect(survivors, 'the retired full-table identity is still deployed').toEqual([]);
   });
 
   it('keeps the decisions similarity index partial — the predicate is the point', async () => {

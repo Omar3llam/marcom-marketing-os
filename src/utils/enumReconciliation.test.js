@@ -195,7 +195,10 @@ describe.skipIf(!DB_OK)('R12-1e deployed — enum-backed columns (NC4)', () => {
     expect(idem, 'R11 workspace-scoped idempotency key is missing').toBeDefined();
     expect(idem.def).toMatch(/UNIQUE/);
 
-    const snap = rows.find((r) => r.name === 'metric_snapshots_identity_key');
+    // Renamed and narrowed by B4-E5 (partial, non-DAILY only). What this control
+    // is about — that the ALTER COLUMN TYPE rebuild left the snapshot identity
+    // standing and un-scoped — is unchanged.
+    const snap = rows.find((r) => r.name === 'metric_snapshots_non_daily_identity_key');
     expect(snap, 'R9 snapshot identity key is missing').toBeDefined();
     expect(snap.def).not.toContain('workspaceId');
   });
