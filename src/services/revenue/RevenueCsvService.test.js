@@ -8,6 +8,7 @@
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const { upsertNonDaily } = vi.hoisted(() => ({ upsertNonDaily: vi.fn(() => Promise.resolve(1)) }));
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     campaign: { findMany: vi.fn() },
@@ -16,6 +17,10 @@ const { prismaMock } = vi.hoisted(() => ({
   },
 }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: prismaMock }));
+// B4-E4 — the written row is now handed to the shared non-DAILY mechanism
+// instead of Prisma's compound-key upsert. Spying HERE keeps every assertion
+// below about the same thing it was always about: the row that gets persisted.
+vi.mock('../connectors/nonDailySnapshotWrite.js', () => ({ upsertNonDailyMetricSnapshot: upsertNonDaily }));
 vi.mock('../../utils/logger.js', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 import { processRevenueCsv, findBestMatch, parseAmount, parseCount, MAX_REVENUE_CSV_ROWS } from './RevenueCsvService.js';
@@ -80,7 +85,7 @@ describe('processRevenueCsv — lands MANUAL actuals, never overwrites platform'
     const res = await processRevenueCsv('ws1', [{ campaignIdentifier: 'Folla Facebook', revenueAmount: '12,500', currency: 'EGP' }]);
     expect(res).toMatchObject({ matched: 1, updated: 1, unmatched: [], errors: [] });
 
-    const { create } = prismaMock.metricSnapshot.upsert.mock.calls[0][0];
+    const create = upsertNonDaily.mock.calls[0][1];
     expect(create).toMatchObject({
       entityId: 'u1', entityLevel: 'CAMPAIGN', source: 'MANUAL', granularity: 'DAILY',
       spendMinor: 0, revenueMinor: 1250000, // 12,500 EGP × 100
@@ -99,9 +104,9 @@ describe('processRevenueCsv — lands MANUAL actuals, never overwrites platform'
       { currency: 'KWD', amount: '100', expect: 100000 }, // 3 decimals → ×1000
     ];
     for (const c of cases) {
-      prismaMock.metricSnapshot.upsert.mockClear();
+      upsertNonDaily.mockClear();
       await processRevenueCsv('ws1', [{ campaignIdentifier: 'C', revenueAmount: c.amount, currency: c.currency }]);
-      expect(prismaMock.metricSnapshot.upsert.mock.calls[0][0].create.revenueMinor).toBe(c.expect);
+      expect(upsertNonDaily.mock.calls[0][1].revenueMinor).toBe(c.expect);
     }
   });
 
@@ -121,14 +126,14 @@ describe('processRevenueCsv — lands MANUAL actuals, never overwrites platform'
     expect(res.updated).toBe(0);
     expect(res.matched).toBe(0);
     expect(res.unmatched[0]).toMatchObject({ identifier: 'Folla Facebook' });
-    expect(prismaMock.metricSnapshot.upsert).not.toHaveBeenCalled();
+    expect(upsertNonDaily).not.toHaveBeenCalled();
   });
 
   it('invalid revenue amounts go to errors[], not a fabricated 0', async () => {
     const res = await processRevenueCsv('ws1', [{ campaignIdentifier: 'Folla Facebook', revenueAmount: 'N/A', currency: 'EGP' }]);
     expect(res.updated).toBe(0);
     expect(res.errors[0]).toMatchObject({ identifier: 'Folla Facebook', reason: 'invalid revenue amount' });
-    expect(prismaMock.metricSnapshot.upsert).not.toHaveBeenCalled();
+    expect(upsertNonDaily).not.toHaveBeenCalled();
   });
 
   it('workspace isolation — only loads the caller workspace campaigns', async () => {
@@ -148,7 +153,7 @@ describe('processRevenueCsv — lands MANUAL actuals, never overwrites platform'
 // The optional conversions column: unlocks Blended CPA for a pixel-less account.
 // It must never regress the 2-column upload that shipped before it existed.
 describe('processRevenueCsv — the optional conversions column', () => {
-  const create = () => prismaMock.metricSnapshot.upsert.mock.calls[0][0].create;
+  const create = () => upsertNonDaily.mock.calls[0][1];
 
   it('lands a mapped conversion count on the MANUAL snapshot', async () => {
     await processRevenueCsv('ws1', [{ campaignIdentifier: 'Folla Facebook', revenueAmount: '12,500', conversions: '42', currency: 'EGP' }]);

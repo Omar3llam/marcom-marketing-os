@@ -13,6 +13,7 @@
 // entity, else is DROPPED — we never fabricate an entity to hang revenue on.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { upsertNonDailyMetricSnapshot } from './nonDailySnapshotWrite.js';
 import { logger } from '../../utils/logger.js';
 import { CHANNEL, DATA_SOURCE, ENTITY_LEVEL, MEASUREMENT_WINDOW } from './connectorTypes.js';
 
@@ -174,20 +175,15 @@ export async function landActuals(workspaceId, descriptors = []) {
   const dropped = built.length - rows.length; // descriptors with no existing entity to decorate
 
   if (rows.length) {
-    await prisma.$transaction(
-      rows.map((r) =>
-        prisma.metricSnapshot.upsert({
-          where: {
-            entityId_entityLevel_date_granularity_source_measurementWindow: {
-              entityId: r.entityId, entityLevel: r.entityLevel, date: r.date, granularity: r.granularity, source: r.source,
-              measurementWindow: r.measurementWindow, // identity since Phase F
-            },
-          },
-          create: r,
-          update: r,
-        }),
-      ),
-    );
+      // B4-E4 — the SAME identity, the SAME atomic batch, a different mechanism.
+      // Prisma's generated compound-key upsert cannot carry an ON CONFLICT
+      // predicate, and PostgreSQL will not match a predicated statement to a
+      // partial index without one. Nothing about what is written changes here.
+    // These rows omit reach / actionMetrics / dailyBudgetMinor entirely, and the
+    // mechanism preserves that: an absent key keeps its database default on
+    // insert and is left untouched on update, exactly as Prisma skipped
+    // `undefined` on both halves of `{ create: r, update: r }`.
+    await prisma.$transaction(rows.map((r) => upsertNonDailyMetricSnapshot(prisma, r)));
   }
 
   logger.info({ workspaceId, snapshots: rows.length, attached: rows.length, dropped }, '[actualsSink] landed actuals');

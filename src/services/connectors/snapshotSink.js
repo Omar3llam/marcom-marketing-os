@@ -13,6 +13,7 @@
 // each run as one $transaction(map).
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { upsertNonDailyMetricSnapshot } from './nonDailySnapshotWrite.js';
 import { logger } from '../../utils/logger.js';
 import { detId, ENTITY_LEVEL, PARENT_LEVEL } from './connectorTypes.js';
 
@@ -374,24 +375,16 @@ export async function landSnapshots(workspaceId, channel, normalized = []) {
     workspaceId,
     toSnapshotRows(workspaceId, channel, normalized).filter((r) => landedIds.has(r.entityId)),
   );
-  await prisma.$transaction(
-    rows.map((r) =>
-      prisma.metricSnapshot.upsert({
-        where: {
-          entityId_entityLevel_date_granularity_source_measurementWindow: {
-            entityId: r.entityId, entityLevel: r.entityLevel, date: r.date, granularity: r.granularity, source: r.source,
-            // Part of the identity since Phase F. One sync run stamps ONE `date`,
-            // so a canonical 30-day row and the operational rolling row beside it
-            // match on every other column — and this is an UPSERT, so without
-            // this line the second silently overwrites the first.
-            measurementWindow: r.measurementWindow,
-          },
-        },
-        create: r,
-        update: r,
-      }),
-    ),
-  );
+      // B4-E4 — the SAME identity, the SAME atomic batch, a different mechanism.
+      // Prisma's generated compound-key upsert cannot carry an ON CONFLICT
+      // predicate, and PostgreSQL will not match a predicated statement to a
+      // partial index without one. Nothing about what is written changes here.
+  //
+  // The identity is unchanged and still includes `measurementWindow`: one sync
+  // run stamps ONE `date`, so a canonical 30-day row and the operational rolling
+  // row beside it match on every other column, and without it the second would
+  // silently overwrite the first.
+  await prisma.$transaction(rows.map((r) => upsertNonDailyMetricSnapshot(prisma, r)));
 
   logger.info({ workspaceId, channel, entities: entityOps.length, snapshots: rows.length }, '[snapshotSink] landed');
   return { entities: entityOps.length, snapshots: rows.length };
