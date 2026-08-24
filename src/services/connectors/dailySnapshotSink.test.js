@@ -87,8 +87,14 @@ describe('R8 — one row per entity per day', () => {
   });
 
   it('keeps three days of one campaign as three rows', async () => {
-    // The collision the shared unique key would have caused: one `date`, three
-    // periods. If the identity were the schema's, a week would fold into a day.
+    // The collision the shared unique key caused: one `date`, three periods.
+    //
+    // Prisma is MOCKED here, so this asserts what the sink INTENDS and cannot
+    // see whether the database allows it. It passed throughout the entire period
+    // the write was impossible — B4-E2 measured P2002 and a full rollback on
+    // real PostgreSQL while this test was green. The persistence half is proved
+    // in dailyPersistence.integration.test.js (E5-T3), against a real database;
+    // do not read this one as evidence that a day can be stored.
     await landDailySnapshots(WS, CHANNEL.META, [
       daily({ windowStart: DAY('08'), windowEnd: DAY('08') }),
       daily({ windowStart: DAY('09'), windowEnd: DAY('09') }),

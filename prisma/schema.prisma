@@ -1314,26 +1314,39 @@ model MetricSnapshot {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  // measurementWindow is part of the IDENTITY, not decoration (Phase F).
+  // ── THE WRITE IDENTITY IS NOT DECLARED HERE (B4-E5) ────────────────────────
   //
-  // Without it, a canonical 30-day row and the operational rolling row from the
-  // SAME sync collide: ConnectorSyncService stamps one `date` on the whole run,
-  // so both rows share (entityId, entityLevel, date, granularity, source). And
-  // because the sinks UPSERT, the collision is silent — the second write
-  // overwrites the first, and which one survives depends on ordering. A canonical
-  // row losing a race to a 90-day row is precisely the defect this track exists
-  // to remove, so the two must be separately addressable.
+  // It still exists, and it is still
+  //     (entityId, entityLevel, date, granularity, source, measurementWindow)
+  // but as of 20260824000000 it is a PARTIAL unique index:
   //
-  // Widening a unique key can only ever ADMIT rows that were previously
-  // rejected — it cannot invalidate existing data, whatever the table holds.
+  //     metric_snapshots_non_daily_identity_key
+  //       ON (…the six columns…) WHERE "measurementWindow" <> 'DAILY'
   //
-  // R12-1c: deployed as metric_snapshots_identity_key (20260812000000), which
-  // is not the name Prisma generates — its own would be the 63-char truncation
-  // `metric_snapshots_entityId_entityLevel_date_granularity_sour_key`. The
-  // columns, order and uniqueness are identical, so the only difference is the
-  // label. `map:` adopts the deployed name; renaming instead would drop and
-  // recreate a unique constraint on a hot table to no benefit.
-  @@unique([entityId, entityLevel, date, granularity, source, measurementWindow], map: "metric_snapshots_identity_key")
+  // Prisma's schema language cannot express an index predicate, so there is no
+  // faithful `@@unique` to write. A full `@@unique` would be a lie in the one
+  // direction that matters: `prisma migrate diff` reads it as drift and emits
+  // `CREATE UNIQUE INDEX "metric_snapshots_identity_key"` — measured, not
+  // assumed — so keeping it for the sake of the generated types would hand the
+  // next `migrate dev` a migration that silently re-breaks DAILY.
+  //
+  // WHY PARTIAL. `date` above is the SYNC timestamp. One sync stamps ONE instant
+  // across a whole run, so seven days of one campaign arrive with seven periods
+  // and one identical `date`, differing only in `windowStart` — which cannot
+  // join the key because it is nullable, and NULL <> NULL inside a unique index
+  // would silently stop de-duplicating GA4, MANUAL, Google and every legacy row.
+  // The key is right for populations that report a trailing aggregate and wrong
+  // for the one that reports a day, so the day was released from it instead.
+  //
+  // The consequences of removing the declaration, both deliberate:
+  //   · the generated compound-key selector is gone. Nothing used it — B4-E4
+  //     moved the last three writers onto upsertNonDailyMetricSnapshot, whose
+  //     raw statement carries the predicate PostgreSQL needs to match a partial
+  //     index. Restoring `@@unique` here would not restore that path.
+  //   · DAILY has no database-level uniqueness. Its identity is
+  //     (workspaceId, entityId, entityLevel, source, windowStart) and is
+  //     enforced by dailySnapshotSink's read-then-write. That residual is
+  //     documented at the head of that file; it pre-dates this change.
   @@index([workspaceId, entityId, entityLevel, date])
   @@index([entityId, date])
   @@map("metric_snapshots")

@@ -318,33 +318,28 @@ describe.skipIf(!DB_OK)('B4-E4 · the non-DAILY write mechanism, on real Postgre
   });
 
   // ── the predicate, which is the entire point of this slice ────────────────
-  it('matches a PARTIAL unique index — the reason the predicate exists', async () => {
-    // Against the index that ships today this statement and a predicate-less one
-    // behave identically, so nothing else in this suite can tell them apart. The
-    // predicate is here for B4-E5's partial index, and an untested predicate is
-    // the kind of thing a later tidy-up deletes. This is the only test that
-    // proves it does anything.
+  it('matches the PARTIAL unique index — the reason the predicate exists', async () => {
+    // B4-E4 had to BUILD a partial index here to test the predicate at all,
+    // because the index shipping at the time was full-table and a full index
+    // satisfies a predicated ON CONFLICT trivially. B4-E5 made the shipped index
+    // partial, so the probe is gone: this now runs against the real one.
     //
-    // It manipulates ONLY this disposable test database and restores the shipped
-    // shape in `finally`. No migration is authored by this PR, and the schema is
-    // untouched — B4-E5 owns that change.
-    try {
-      await prisma.$executeRawUnsafe('DROP INDEX IF EXISTS "metric_snapshots_identity_key"');
-      await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX "b4e4_partial_probe"
-        ON "metric_snapshots" ("entityId","entityLevel","date","granularity","source","measurementWindow")
-        WHERE "measurementWindow" <> 'DAILY'`);
+    // (The old version also recreated `metric_snapshots_identity_key` in its
+    // `finally`. Left in place after B4-E5 that would quietly restore the retired
+    // full-table index onto the test database and break every DAILY suite that
+    // ran after it.)
+    const [{ partial }] = await prisma.$queryRawUnsafe(`
+      SELECT (ix.indpred IS NOT NULL) AS partial
+      FROM pg_index ix JOIN pg_class i ON i.oid = ix.indexrelid
+      WHERE i.relname = 'metric_snapshots_non_daily_identity_key'`);
+    expect(partial, 'the shipped identity index is not partial').toBe(true);
 
-      await prisma.$transaction([upsertNonDailyMetricSnapshot(prisma, platformRow())]);
-      await prisma.$transaction([upsertNonDailyMetricSnapshot(prisma, platformRow({ spendMinor: 42 }))]);
+    await prisma.$transaction([upsertNonDailyMetricSnapshot(prisma, platformRow())]);
+    await prisma.$transaction([upsertNonDailyMetricSnapshot(prisma, platformRow({ spendMinor: 42 }))]);
 
-      const rows = await rowsFor();
-      expect(rows).toHaveLength(1);       // conflicted, not duplicated
-      expect(rows[0].spendMinor).toBe(42); // and updated
-    } finally {
-      await prisma.$executeRawUnsafe('DROP INDEX IF EXISTS "b4e4_partial_probe"');
-      await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX IF NOT EXISTS "metric_snapshots_identity_key"
-        ON "metric_snapshots" ("entityId","entityLevel","date","granularity","source","measurementWindow")`);
-    }
+    const rows = await rowsFor();
+    expect(rows).toHaveLength(1);        // conflicted against the partial index
+    expect(rows[0].spendMinor).toBe(42); // and updated, not duplicated
   });
 
   // ── concurrency, carried over from the B4-E3 proof ────────────────────────
