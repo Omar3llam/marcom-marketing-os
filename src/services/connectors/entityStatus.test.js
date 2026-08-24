@@ -25,6 +25,10 @@ vi.mock('../../lib/prisma.js', () => {
       account: model(), campaign: model(), adSet: model(), ad: model(), creative: model(),
       metricSnapshot: model(),
       $transaction: vi.fn((arr) => Promise.all(arr)),
+      // B4-E4: snapshots are written through a raw predicated upsert now. These
+      // suites are about the ENTITY ops above and do not inspect it, but the
+      // mock has to answer the call the code makes.
+      $executeRaw: vi.fn().mockResolvedValue(1),
     },
   };
 });
@@ -158,9 +162,13 @@ describe('toEntityOps — the hardcode is gone', () => {
 describe('landSnapshots — a re-sync never re-activates a paused entity', () => {
   // Phase C: measurementWindow is required on every normalized row reaching the
   // sink — ROLLING_WINDOW is what a live Meta sync produces.
+  //
+  // B4-E4: `source` is stated too. It is NOT NULL in the schema and part of the
+  // write identity, so a row without one could never have persisted — the mock
+  // simply never checked. These tests are about the ENTITY upsert either way.
   const land = (status) => landSnapshots(WS, 'META', [
-    { externalId: 'act_1', entityLevel: 'ACCOUNT', name: 'Acct', date: DATE, currency: 'USD', spendMinor: 100, measurementWindow: 'ROLLING_WINDOW' },
-    { externalId: 'c1', entityLevel: 'CAMPAIGN', parentExternalId: 'act_1', name: 'Eid', date: DATE, currency: 'USD', spendMinor: 100, status, measurementWindow: 'ROLLING_WINDOW' },
+    { externalId: 'act_1', entityLevel: 'ACCOUNT', name: 'Acct', date: DATE, source: 'META', currency: 'USD', spendMinor: 100, measurementWindow: 'ROLLING_WINDOW' },
+    { externalId: 'c1', entityLevel: 'CAMPAIGN', parentExternalId: 'act_1', name: 'Eid', date: DATE, source: 'META', currency: 'USD', spendMinor: 100, status, measurementWindow: 'ROLLING_WINDOW' },
   ]);
   const campaignUpsert = () => prisma.campaign.upsert.mock.calls[0][0];
 

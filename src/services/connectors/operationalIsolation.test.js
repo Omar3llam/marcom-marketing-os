@@ -362,7 +362,7 @@ describe('every operational MetricSnapshot reader declares its population', () =
     expect(src).not.toMatch(/\bmeasurementWindow:\s*\{/);
     // …and it really is still a writer, so the exemption above is not a hole
     // somebody could quietly widen by deleting the write.
-    expect(src).toMatch(/metricSnapshot\.upsert/);
+    expect(src).toMatch(/upsertNonDailyMetricSnapshot/);
     expect(src).toMatch(/measurementWindow: MEASUREMENT_WINDOW\./);
   });
 

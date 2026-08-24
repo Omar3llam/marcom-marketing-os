@@ -28,6 +28,7 @@
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const { upsertNonDaily } = vi.hoisted(() => ({ upsertNonDaily: vi.fn(() => Promise.resolve(1)) }));
 const { prismaMock } = vi.hoisted(() => ({
   prismaMock: {
     campaign:       { findMany: vi.fn() },
@@ -36,6 +37,9 @@ const { prismaMock } = vi.hoisted(() => ({
   },
 }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: prismaMock }));
+// B4-E4 — see RevenueCsvService.test.js. The write seam moved; what is asserted
+// about the written row has not.
+vi.mock('../connectors/nonDailySnapshotWrite.js', () => ({ upsertNonDailyMetricSnapshot: upsertNonDaily }));
 vi.mock('../../utils/logger.js', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 import { processRevenueCsv } from './RevenueCsvService.js';
@@ -140,7 +144,7 @@ beforeEach(() => {
 });
 
 const readArgs = () => prismaMock.metricSnapshot.findMany.mock.calls[0][0];
-const written  = () => prismaMock.metricSnapshot.upsert.mock.calls.map((c) => c[0].create);
+const written  = () => upsertNonDaily.mock.calls.map((c) => c[1]);
 const writtenFor = (entityId) => written().find((r) => r.entityId === entityId);
 
 // ── The query RevenueCsv now asks the seam for ──────────────────────────────
@@ -303,7 +307,7 @@ describe('R3.8 — a failed read is not an empty upload', () => {
   it('and writes nothing when it fails', async () => {
     prismaMock.metricSnapshot.findMany.mockRejectedValue(new Error('db down'));
     await processRevenueCsv(WS, ROWS).catch(() => {});
-    expect(prismaMock.metricSnapshot.upsert).not.toHaveBeenCalled();
+    expect(upsertNonDaily).not.toHaveBeenCalled();
   });
 });
 
