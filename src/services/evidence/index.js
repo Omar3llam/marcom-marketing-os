@@ -64,6 +64,12 @@ export {
   PLATFORM_VERDICT_SOURCES,
   PLATFORM_SOURCE_FILTER,
   NO_CANONICAL_WINDOW,
+  // The two ways canonical evidence can be absent, exported together on purpose:
+  // NO_CANONICAL_WINDOW is "the database answered and this campaign was never
+  // measured"; this error is "the database did not answer". A consumer that can
+  // reach the reader through this seam can identify its failure through it too.
+  CANONICAL_EVIDENCE_READ_FAILED,
+  CanonicalEvidenceUnavailableError,
   selectCanonicalVerdictSnapshots,
   partitionByCanonicalEvidence,
 } from '../verdict-engine/canonicalVerdictEvidence.js';
