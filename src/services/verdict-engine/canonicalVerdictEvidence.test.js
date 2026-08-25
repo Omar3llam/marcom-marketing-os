@@ -29,7 +29,7 @@ import { prisma } from '../../lib/prisma.js';
 import {
   selectCanonicalVerdictSnapshots, latestCanonicalByEntity, partitionByCanonicalEvidence,
   CANONICAL_VERDICT_WINDOW, CANONICAL_VERDICT_WINDOW_FILTER, PLATFORM_VERDICT_SOURCES,
-  CANONICAL_VERDICT_SELECT, NO_CANONICAL_WINDOW,
+  CANONICAL_VERDICT_SELECT, NO_CANONICAL_WINDOW, CANONICAL_EVIDENCE_READ_FAILED,
 } from './canonicalVerdictEvidence.js';
 import { MIN_DAYS } from './verdictEngine.js';
 import { getCanonicalVerdictCampaigns } from '../entity-graph/EntityGraphService.js';
@@ -155,9 +155,14 @@ describe('missing canonical evidence is returned, not swallowed', () => {
     expect(absent).toHaveLength(3);
   });
 
-  it('a DB failure yields no evidence rather than an unfiltered retry', async () => {
+  // B5 F-2 — this used to assert `[]`, which was the defect written down as a
+  // guarantee: a failed read produced the SAME value as a campaign that was
+  // genuinely never measured. The half that was always right is kept — a failure
+  // must not become an unfiltered retry either.
+  it('a DB failure raises rather than yielding an empty population', async () => {
     prisma.metricSnapshot.findMany.mockRejectedValue(new Error('boom'));
-    expect(await selectCanonicalVerdictSnapshots('ws1', ['c1'])).toEqual([]);
+    await expect(selectCanonicalVerdictSnapshots('ws1', ['c1']))
+      .rejects.toMatchObject({ code: CANONICAL_EVIDENCE_READ_FAILED });
     expect(prisma.metricSnapshot.findMany).toHaveBeenCalledTimes(1);
   });
 });

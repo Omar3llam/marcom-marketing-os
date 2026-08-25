@@ -29,6 +29,16 @@
 // exists and was not measured over the verdict window — which is a different
 // claim from "it spent nothing", and only one of them is true.
 //
+// AND NOT WHEN WE COULD NOT LOOK (B5 F-2)
+// ----------------------------------------
+// There is a third claim, and it used to wear the second one's words: the read
+// FAILED. `NO_CANONICAL_WINDOW` is a fact about the campaign; a failed query is
+// a fact about us, and answering one question with the other is how a database
+// outage was published as ten campaigns that were never measured. The reader
+// below now throws CanonicalEvidenceUnavailableError instead. An empty array
+// still means exactly what it always meant — the database answered, and there
+// was nothing.
+//
 // PLATFORM SOURCES ONLY (Phase D.3 Model A)
 // ------------------------------------------
 // GA4, Shopify and MANUAL revenue cannot enter here. Not because they are
@@ -116,6 +126,43 @@ export const CANONICAL_VERDICT_SELECT = Object.freeze({
 export const NO_CANONICAL_WINDOW = 'NO_CANONICAL_WINDOW';
 
 /**
+ * The stable identity of a FAILED canonical read. Matched on, never on a message.
+ */
+export const CANONICAL_EVIDENCE_READ_FAILED = 'CANONICAL_EVIDENCE_READ_FAILED';
+
+/**
+ * Raised when the canonical evidence read itself could not complete.
+ *
+ * ── THE DISTINCTION THIS EXISTS TO KEEP (B5 F-2) ────────────────────────────
+ * `NO_CANONICAL_WINDOW` above is a claim about the CAMPAIGN: we asked the
+ * database, it answered, and this campaign was never measured over the verdict
+ * window. This error is a claim about US: we could not ask.
+ *
+ * They used to be the same value. The reader ended in `.catch(() => [])`, so a
+ * failed query returned an empty population, `latestCanonicalByEntity` built an
+ * empty Map, and partitionByCanonicalEvidence placed EVERY campaign into
+ * `absent` carrying `NO_CANONICAL_WINDOW` — byte-identical to a genuinely empty
+ * canonical population, published as HTTP 200. An operator reading
+ * `noCanonicalWindow: 10` could not tell which had happened, and neither could
+ * any other observer, inside the system or outside it.
+ *
+ * A throw is the only shape a caller cannot mistake for an answer — the same
+ * reasoning, and the same idiom, evaluateConnectorVerdicts already uses one
+ * layer up. The two absences now differ in KIND, not merely in value, so
+ * collapsing them again requires deleting this rather than dropping a field.
+ *
+ * `cause` carries the underlying error for logs and observability; nothing
+ * outside this module reads its message, and no route surfaces it to a client.
+ */
+export class CanonicalEvidenceUnavailableError extends Error {
+  constructor(message = 'Canonical verdict evidence could not be read', options = {}) {
+    super(message, options);
+    this.name = 'CanonicalEvidenceUnavailableError';
+    this.code = CANONICAL_EVIDENCE_READ_FAILED;
+  }
+}
+
+/**
  * R5 / I18: what a decision built on THIS selector can say about its evidence.
  *
  * It lives here because this module owns the three facts in it — the population,
@@ -141,24 +188,42 @@ export const CANONICAL_VERDICT_EVIDENCE_BASIS = Object.freeze({
  * @param {string[]} entityIds — campaign entity ids to fetch evidence for
  * @returns {Promise<Array>} canonical rows, date-ascending. EMPTY is a real
  *   answer ("not measured over this period"), never a cue to widen the query.
+ * @throws {CanonicalEvidenceUnavailableError} when the query itself fails. An
+ *   empty result means the database answered and there was nothing; this means
+ *   it did not answer, and the two must never reach a caller as the same value.
  */
 export async function selectCanonicalVerdictSnapshots(workspaceId, entityIds = []) {
+  // A successful empty population, decided without a query: no workspace, or no
+  // entities to ask about. Unchanged, and deliberately NOT an error — there is
+  // nothing broken about asking for evidence on zero campaigns.
   if (!workspaceId || !Array.isArray(entityIds) || entityIds.length === 0) return [];
 
-  return prisma.metricSnapshot.findMany({
-    where: {
-      workspaceId,
-      entityId:          { in: entityIds },
-      entityLevel:       ENTITY_LEVEL.CAMPAIGN,
-      measurementWindow: CANONICAL_VERDICT_WINDOW_FILTER,
-      source:            PLATFORM_SOURCE_FILTER,
-    },
-    select:  CANONICAL_VERDICT_SELECT,
-    orderBy: { date: 'asc' },
-  }).catch((err) => {
-    logger.debug({ err: err.message, workspaceId }, '[canonicalVerdictEvidence] read failed');
-    return [];
-  });
+  try {
+    return await prisma.metricSnapshot.findMany({
+      where: {
+        workspaceId,
+        entityId:          { in: entityIds },
+        entityLevel:       ENTITY_LEVEL.CAMPAIGN,
+        measurementWindow: CANONICAL_VERDICT_WINDOW_FILTER,
+        source:            PLATFORM_SOURCE_FILTER,
+      },
+      select:  CANONICAL_VERDICT_SELECT,
+      orderBy: { date: 'asc' },
+    });
+  } catch (err) {
+    // ERROR, not debug. The previous level matched the previous behaviour — a
+    // best-effort read whose failure cost nothing. It costs the whole verdict
+    // surface for this workspace, so it is logged like the dependency failure it
+    // is, with the workspace and a stable code an alert can match on.
+    logger.error(
+      { err: err.message, workspaceId, code: CANONICAL_EVIDENCE_READ_FAILED, entityCount: entityIds.length },
+      '[canonicalVerdictEvidence] canonical evidence read failed — no verdict can be decided for this workspace',
+    );
+    // NO FALLBACK, in any direction. Not the operational rows, not a stale
+    // in-memory result, not an empty set. The evidence required to decide is
+    // unavailable, and "no verdict" is the honest outcome of that.
+    throw new CanonicalEvidenceUnavailableError(undefined, { cause: err });
+  }
 }
 
 /**
