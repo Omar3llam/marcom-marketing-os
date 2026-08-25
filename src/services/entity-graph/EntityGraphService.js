@@ -126,6 +126,44 @@ async function latestSnapshots(workspaceId, entityLevel, entityIds) {
 }
 
 /**
+ * The stable identity of a FAILED campaign-identity read. Matched on, never on
+ * a message.
+ */
+export const CAMPAIGN_IDENTITY_READ_FAILED = 'CAMPAIGN_IDENTITY_READ_FAILED';
+
+/**
+ * Raised when the campaign identity read itself could not complete.
+ *
+ * ── THE DISTINCTION THIS EXISTS TO KEEP (B5 F-1) ────────────────────────────
+ * `NO_CAMPAIGNS` — the status evaluateConnectorVerdicts computes when this read
+ * comes back empty — is a claim about the WORKSPACE: we asked the database, it
+ * answered, and this workspace contains no campaigns. This error is a claim
+ * about US: we could not ask, so whether campaigns exist is unknown.
+ *
+ * They used to be the same value. This read ended in `.catch(() => [])`, so a
+ * failed query returned an empty identity list, getCanonicalVerdictCampaigns
+ * short-circuited on `!identities.length`, and the evaluation reported
+ * `NO_CAMPAIGNS` over HTTP 200 — the most reassuring of the empty states, shown
+ * to a fully-connected account as "Connect a channel" during a database outage.
+ *
+ * A database failure is not evidence that a workspace has zero campaigns. This
+ * is the identity-layer twin of CanonicalEvidenceUnavailableError, and it takes
+ * the same shape for the same reason: a throw is the only result a caller cannot
+ * mistake for an answer. Every consumer of this path already handles one — the
+ * routes map it to 500 and the agentic sweep converts it to EVALUATION_FAILED.
+ *
+ * `cause` carries the underlying error for logs; no route surfaces it to a
+ * client.
+ */
+export class CampaignIdentityUnavailableError extends Error {
+  constructor(message = 'Campaign identities could not be read', options = {}) {
+    super(message, options);
+    this.name = 'CampaignIdentityUnavailableError';
+    this.code = CAMPAIGN_IDENTITY_READ_FAILED;
+  }
+}
+
+/**
  * The CAMPAIGN identities a verdict could be about — names, channels and the
  * platform facts the engine needs, with NO metrics attached.
  *
@@ -133,17 +171,33 @@ async function latestSnapshots(workspaceId, entityLevel, entityIds) {
  * metrics for the Campaigns surface and must go on doing exactly that. This one
  * exists so the verdict path can take identity from the entity graph and
  * evidence from somewhere else entirely.
+ *
+ * @throws {CampaignIdentityUnavailableError} when the query itself fails. An
+ *   empty array means the database answered and this workspace has no
+ *   campaigns; the two must never reach a caller as the same value.
  */
 async function verdictCampaignIdentities(workspaceId) {
-  return prisma.campaign.findMany({
-    where:   { workspaceId },
-    select:  { id: true, name: true, channel: true, objective: true, externalId: true, platformCreatedTime: true, _count: { select: { adSets: true } } },
-    orderBy: { createdAt: 'desc' },
-    take:    200,
-  }).catch((err) => {
-    logger.debug({ err: err.message, workspaceId }, '[EntityGraph] verdict identities read failed');
-    return [];
-  });
+  try {
+    return await prisma.campaign.findMany({
+      where:   { workspaceId },
+      select:  { id: true, name: true, channel: true, objective: true, externalId: true, platformCreatedTime: true, _count: { select: { adSets: true } } },
+      orderBy: { createdAt: 'desc' },
+      take:    200,
+    });
+  } catch (err) {
+    // ERROR, not debug. The old level matched the old behaviour — a read whose
+    // failure cost nothing because an empty list looked like a valid answer. It
+    // costs this workspace its entire verdict surface, so it is logged like the
+    // dependency failure it is, with a stable code an alert can match on.
+    logger.error(
+      { err: err.message, workspaceId, code: CAMPAIGN_IDENTITY_READ_FAILED },
+      '[EntityGraph] campaign identity read failed — the verdict population is unknown for this workspace',
+    );
+    // NO FALLBACK. Not an empty list, not another workspace's campaigns, not an
+    // inference from the connectors being present. Whether this workspace has
+    // campaigns is exactly what we failed to find out.
+    throw new CampaignIdentityUnavailableError(undefined, { cause: err });
+  }
 }
 
 /**
@@ -173,6 +227,10 @@ export async function getCanonicalVerdictCampaigns(workspaceId) {
   if (!workspaceId) return { campaigns: [], noCanonicalWindow: [] };
 
   const identities = await verdictCampaignIdentities(workspaceId);
+  // B5 F-1 — reachable only on a SUCCESSFUL read that found nothing. A failed
+  // read throws above and never arrives here, so the empty result this returns
+  // (which the evaluation reports as NO_CAMPAIGNS) is now always a fact about
+  // the workspace rather than sometimes a fact about the database.
   if (!identities.length) return { campaigns: [], noCanonicalWindow: [] };
 
   // Filter BEFORE latest: the query narrows to canonical/platform/campaign, and
