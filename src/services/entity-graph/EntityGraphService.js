@@ -17,7 +17,7 @@ import { ENTITY_LEVEL } from '../connectors/connectorTypes.js';
 import { effectiveByEntity, toCampaignRow, toAdSetRow, toAdRow } from './entityGraphEngine.js';
 import { selectOperationalSnapshots } from '../evidence/index.js';
 import {
-  selectCanonicalVerdictSnapshots, latestCanonicalByEntity, partitionByCanonicalEvidence,
+  selectCanonicalVerdictSnapshots, resolveCanonicalVerdictByEntity, partitionByCanonicalEvidence,
   CANONICAL_VERDICT_EVIDENCE_BASIS,
 } from '../verdict-engine/canonicalVerdictEvidence.js';
 import {
@@ -233,21 +233,27 @@ export async function getCanonicalVerdictCampaigns(workspaceId) {
   // the workspace rather than sometimes a fact about the database.
   if (!identities.length) return { campaigns: [], noCanonicalWindow: [] };
 
-  // Filter BEFORE latest: the query narrows to canonical/platform/campaign, and
-  // only then is the newest of those chosen.
+  // Filter BEFORE resolve: the query narrows to canonical/platform/campaign, and
+  // only then is one of those chosen. Resolving first and filtering after is the
+  // bug this order exists to prevent.
   const rows = await selectCanonicalVerdictSnapshots(workspaceId, identities.map((c) => c.id));
 
-  // R5 — how many rows the reduction RANKED for each campaign, counted before
-  // it runs. Computed here rather than inside latestCanonicalByEntity because
-  // that function's contract is "the latest per entity" and widening it to also
-  // report a count would change a shared selector to serve one caller. The
-  // count is the difference between "we read eleven canonical rows and took the
-  // newest" and "there was one row" — two very different claims about the same
-  // verdict.
+  // R5 — how many rows the reduction CONSIDERED for each campaign, counted
+  // before it runs. Computed here rather than inside the reduction because that
+  // function's contract is "one snapshot per entity" and widening it to also
+  // report a count would change a shared selector to serve one caller. The count
+  // is the difference between "we read eleven canonical candidates and resolved
+  // to one" and "there was one row" — two very different claims about the same
+  // verdict. It counts CANDIDATES, including any the resolver then rejected.
   const consumedByEntity = new Map();
   for (const r of rows) consumedByEntity.set(r.entityId, (consumedByEntity.get(r.entityId) ?? 0) + 1);
 
-  const { withEvidence, absent } = partitionByCanonicalEvidence(identities, latestCanonicalByEntity(rows));
+  // B5-01E — STRUCTURAL RESOLUTION, not "newest sync wins". Candidates are
+  // validated by canonicalEligibility and the survivors ordered by the period
+  // they MEASURE; a campaign whose candidates are all malformed gets no snapshot
+  // and lands in `absent`, never the newest raw row.
+  const { selected } = resolveCanonicalVerdictByEntity(rows, { now: new Date() });
+  const { withEvidence, absent } = partitionByCanonicalEvidence(identities, selected);
 
   return {
     campaigns: withEvidence.map(({ identity, snapshot }) =>

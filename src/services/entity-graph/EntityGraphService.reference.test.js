@@ -81,7 +81,12 @@ describe('R5 — the canonical verdict read declares its basis', () => {
       population:        'canonical-verdict',
       selector:          'selectCanonicalVerdictSnapshots',
       measurementWindow: 'CUMULATIVE_30D',
-      reduction:         'latest-per-entity',
+      // B5-01E — the reduction is now the resolver's, and the name changed with
+      // it. `latest-per-entity` described ranking on `date` (the sync
+      // timestamp); the row is now chosen by structural resolution ordered on
+      // windowEnd. A stored decision claiming the old name would describe a
+      // selection that no longer happens.
+      reduction:         'canonical-resolved-per-entity',
       rowCount:          1,
     });
   });
@@ -225,18 +230,30 @@ describe('R13-D — the canonical row states its own period', () => {
     expect(new Date(row.lastDate).getTime()).toBeGreaterThan(row.windowEnd.getTime());
   });
 
-  it('a platform that reported no bounds leaves them null, keeping the label', async () => {
+  // B5-01E CHANGED THIS ONE, AND THE CHANGE IS THE POINT.
+  //
+  // It used to assert that a canonical row reporting NO period was published
+  // with null bounds and its label intact — "partial provenance, honestly
+  // reported". That was honest about the projection and wrong about the row:
+  // a row that cannot say which period it measured is not evidence for a
+  // measurement, and canonicalEligibility has always called it MISSING_PERIOD.
+  // Nothing consulted that opinion, because the old selector ranked on `date`
+  // and validated nothing.
+  //
+  // Now the resolver decides, so such a row is refused rather than published.
+  // The absence is the honest answer, and it is the same absence a campaign with
+  // no canonical rows at all receives.
+  it('a canonical row that reported NO period is not verdict evidence at all', async () => {
     h.prisma.metricSnapshot.findMany.mockImplementation((args) => Promise.resolve(
       project([canonicalRow({ windowStart: null, windowEnd: null })], args.select)));
 
-    const { campaigns } = await getCanonicalVerdictCampaigns(WS);
-    const row = rowFor(campaigns, C1);
+    const { campaigns, noCanonicalWindow } = await getCanonicalVerdictCampaigns(WS);
 
-    expect(row.windowStart).toBeNull();
-    expect(row.windowEnd).toBeNull();
-    // The column is NOT NULL on the model, so the period survives even when the
-    // bounds do not. Partial provenance, honestly reported.
-    expect(row.measurementWindow).toBe('CUMULATIVE_30D');
+    expect(rowFor(campaigns, C1)).toBeUndefined();
+    expect(noCanonicalWindow.map((c) => c.id)).toContain(C1);
+    // NOT fabricated into a row with null bounds, and NOT back-filled from the
+    // sync timestamp — the two ways a period-less row could have been published.
+    expect(campaigns.some((c) => c.windowStart == null)).toBe(false);
   });
 });
 

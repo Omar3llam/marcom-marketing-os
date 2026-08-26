@@ -583,6 +583,47 @@ export function inclusiveDays(start, end) {
 }
 
 /**
+ * The UTC calendar day an instant falls in, as an integer index from the epoch.
+ * Exact integer arithmetic — no rounding, and therefore no threshold to sit on.
+ */
+const utcDayIndex = (t) => Math.floor(t / DAY_MS);
+
+/**
+ * Inclusive day count over UTC CALENDAR DAYS, not over elapsed milliseconds.
+ *
+ * ── WHY THIS EXISTS SEPARATELY FROM inclusiveDays (B5 F-14 / F-15) ──────────
+ * `inclusiveDays` measures a DURATION and rounds it. That is the right tool for
+ * a period whose two boundaries share a precision, and the wrong one for a
+ * canonical row, whose boundaries routinely do not:
+ *
+ *   • metaNormalize falls back PER BOUNDARY (`toDate(r.date_start) ?? requested`,
+ *     and the same for date_stop), so one row can carry Meta's `date_start` at
+ *     UTC midnight beside a `windowEnd` that is the SYNC INSTANT;
+ *   • the Google writer passes the sync instant for BOTH boundaries, while
+ *     Meta's own dates are always midnight.
+ *
+ * Under rounding, that difference decides eligibility. A window starting at
+ * midnight and ending at the sync instant measured 30 inclusive days before
+ * 12:00 UTC and 31 after it — the same row, structurally valid in the morning
+ * and PROVENANCE_MISMATCH in the afternoon (proven at 12:01Z on this trunk).
+ *
+ * Day indices remove the arithmetic that had a threshold in it. Two instants on
+ * the same UTC day are the same day, whatever hour they carry, so a canonical
+ * period spans the same number of days at 00:01 and at 23:59 — and Meta's
+ * midnight and Google's instant describe the same measurement, as they always
+ * did in fact.
+ *
+ * This is a READER-side interpretation. No stored row changes; nothing is
+ * rewritten to make a test pass. Both writers keep emitting exactly what their
+ * platform reported.
+ */
+export function inclusiveCanonicalDays(start, end) {
+  const [s, e] = [ms(start), ms(end)];
+  if (s == null || e == null) return null;
+  return utcDayIndex(e) - utcDayIndex(s) + 1;
+}
+
+/**
  * Is this row a valid canonical-window measurement?
  *
  * BOTH halves must hold, and neither substitutes for the other:
@@ -605,12 +646,21 @@ export function canonicalEligibility(row, { now = new Date() } = {}) {
   // A period that has not finished cannot be a completed 30-day measurement.
   // Not clamped to `now` — clamping would silently turn a producer bug into a
   // shorter window that then fails the span check for the wrong reason.
-  if (nowMs != null && end > nowMs) return { ok: false, reason: REJECTION.FUTURE_PERIOD };
+  //
+  // Compared by UTC DAY, for the same reason the span is (B5 F-15): the Google
+  // writer stamps windowEnd with the sync instant and Meta stamps UTC midnight,
+  // so an instant-level comparison rejected one provider's row and accepted the
+  // other's for the identical measurement whenever `now` was day-aligned — a
+  // provider's timestamp precision deciding structural validity. A window ending
+  // on a LATER DAY than now is still refused, which is the thing this guards.
+  if (nowMs != null && utcDayIndex(end) > utcDayIndex(nowMs)) {
+    return { ok: false, reason: REJECTION.FUTURE_PERIOD };
+  }
 
-  // The declaration and the dates must agree. Day-granularity comparison so an
-  // hours-level or DST wobble in a platform's range does not reject a genuine
-  // row; a window that is off by a whole day is a different window.
-  if (inclusiveDays(start, end) !== CANONICAL_VERDICT_WINDOW_DAYS) {
+  // The declaration and the dates must agree, counted in whole UTC days so the
+  // answer cannot depend on the hour the row was written or the hour it is read.
+  // A window that is off by a whole day is still a different window.
+  if (inclusiveCanonicalDays(start, end) !== CANONICAL_VERDICT_WINDOW_DAYS) {
     return { ok: false, reason: REJECTION.PROVENANCE_MISMATCH };
   }
   return { ok: true };

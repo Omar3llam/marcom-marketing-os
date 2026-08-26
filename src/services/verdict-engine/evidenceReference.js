@@ -83,6 +83,12 @@ export const EVIDENCE_REDUCTION = Object.freeze({
   LATEST_PER_ENTITY:         'latest-per-entity',
   LATEST_PER_STREAM:         'latest-per-stream',
   LATEST_PER_STREAM_PER_DAY: 'latest-per-stream-per-day',
+  // B5-01E — candidates validated by canonicalEligibility, survivors ordered by
+  // windowEnd (the period MEASURED), `date` demoted to a tie-break. Named apart
+  // from LATEST_PER_ENTITY because it is a different reduction, and a stored
+  // decision that says "latest-per-entity" when a resolver chose the row would
+  // be describing a selection that never happened.
+  CANONICAL_RESOLVED_PER_ENTITY: 'canonical-resolved-per-entity',
   EFFECTIVE_BY_ENTITY:       'effective-by-entity',
   SERIES:                    'series',
   SUM:                       'sum',
