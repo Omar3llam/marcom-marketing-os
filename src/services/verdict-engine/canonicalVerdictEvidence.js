@@ -53,6 +53,7 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { DATA_SOURCE, ENTITY_LEVEL, MEASUREMENT_WINDOW } from '../connectors/connectorTypes.js';
 import { EVIDENCE_POPULATION, EVIDENCE_SELECTOR, EVIDENCE_REDUCTION } from './evidenceReference.js';
+import { resolveCanonicalSnapshot, RESOLUTION } from './metricWindow.js';
 
 /** The one window a campaign verdict may be decided on. */
 export const CANONICAL_VERDICT_WINDOW = MEASUREMENT_WINDOW.CUMULATIVE_30D;
@@ -177,8 +178,10 @@ export const CANONICAL_VERDICT_EVIDENCE_BASIS = Object.freeze({
   population:        EVIDENCE_POPULATION.CANONICAL_VERDICT,
   selector:          EVIDENCE_SELECTOR.CANONICAL_VERDICT,
   measurementWindow: CANONICAL_VERDICT_WINDOW,
-  // latestCanonicalByEntity, below: N rows ranked by `date`, the newest kept.
-  reduction:         EVIDENCE_REDUCTION.LATEST_PER_ENTITY,
+  // resolveCanonicalVerdictByEntity, below: N candidates validated structurally,
+  // the survivors ranked by windowEnd (the period measured) rather than by
+  // `date` (the instant we synced).
+  reduction:         EVIDENCE_REDUCTION.CANONICAL_RESOLVED_PER_ENTITY,
 });
 
 /**
@@ -244,6 +247,57 @@ export function latestCanonicalByEntity(rows = []) {
     if (!held || new Date(r.date).getTime() >= new Date(held.date).getTime()) latest.set(r.entityId, r);
   }
   return latest;
+}
+
+/**
+ * PURE: the canonical snapshot per campaign, chosen by STRUCTURAL RESOLUTION.
+ *
+ * ── WHAT THIS REPLACES, AND WHY (B5 F-3A / F-4) ─────────────────────────────
+ * `latestCanonicalByEntity` above ranks on `date`, and `date` is the SYNC
+ * TIMESTAMP. That is a fact about when we pulled a row, not about what period it
+ * measures, and the two come apart exactly when it matters: re-syncing an older
+ * canonical period stamps it with a NEWER `date`, so the stale measurement wins
+ * and decides the verdict. Proven on this trunk — ranking by `date` selected a
+ * June–July window over a July–August one for the same campaign.
+ *
+ * `resolveCanonicalSnapshot` was written for this, tested, and then left with
+ * zero production callers (F-4). It is called here rather than reimplemented:
+ * it validates each candidate structurally and orders the survivors by
+ * `windowEnd` — the most recently MEASURED period, with `date` demoted to an
+ * exact-tie break, which is all a sync timestamp was ever entitled to decide.
+ *
+ * Grouping is by entityId (not by `entityId|source`, which resolveCanonicalByStream
+ * uses) because this reader's contract is one snapshot per campaign, and its
+ * query has already narrowed the population to CAMPAIGN level and platform
+ * sources. Within that population a campaign's rows are competing measurements
+ * of the same thing, which is precisely what the resolver is for.
+ *
+ * NO FALLBACK. An entity whose candidates are all structurally invalid gets no
+ * snapshot — never the newest raw row — and lands in `absent` as
+ * NO_CANONICAL_WINDOW, the same honest absence as having no rows at all.
+ *
+ * `rejected` is returned for observability and tests. It is NOT surfaced by the
+ * API: this slice changes which row is selected, not the vocabulary the product
+ * explains absence in.
+ *
+ * @returns {{ selected: Map<string,object>, rejected: Map<string,Array> }}
+ */
+export function resolveCanonicalVerdictByEntity(rows = [], { now = new Date() } = {}) {
+  const byEntity = new Map();
+  for (const r of rows) {
+    if (!r || r.entityId == null) continue;
+    const held = byEntity.get(r.entityId);
+    if (held) held.push(r); else byEntity.set(r.entityId, [r]);
+  }
+
+  const selected = new Map();
+  const rejected = new Map();
+  for (const [entityId, candidates] of byEntity) {
+    const result = resolveCanonicalSnapshot(candidates, { now });
+    if (result.status === RESOLUTION.OK && result.snapshot) selected.set(entityId, result.snapshot);
+    if (result.rejected.length) rejected.set(entityId, result.rejected);
+  }
+  return { selected, rejected };
 }
 
 /**

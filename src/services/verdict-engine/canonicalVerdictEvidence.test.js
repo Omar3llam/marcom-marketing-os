@@ -38,8 +38,20 @@ import { FATIGUE_FREQ } from './benchmarkProvider.js';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const src = (rel) => readFileSync(path.resolve(HERE, rel), 'utf8');
 
+// B5-01E — this fixture now carries the WINDOW PROVENANCE a real canonical row
+// has. It did not before, and the tests below still passed, because the old
+// selector ranked on `date` and validated nothing: a row with no declared window
+// and no period was accepted as verdict evidence. No writer emits that shape
+// (canonicalWriterConformance.test.js proves what Meta and Google actually
+// emit), so the fixture was describing a row that cannot exist.
+//
+// 2026-07-14 → 2026-08-12 inclusive is exactly 30 days, and ends on the day this
+// fixture says it was synced.
 const snap = (o = {}) => ({
   entityId: 'c1', date: new Date('2026-08-12T09:00:00Z'), source: 'META',
+  measurementWindow: 'CUMULATIVE_30D',
+  windowStart: new Date('2026-07-14T00:00:00Z'),
+  windowEnd: new Date('2026-08-12T00:00:00Z'),
   spendMinor: 100_000, revenueMinor: 300_000, impressions: 50_000, clicks: 1_000,
   conversions: 20, roas: 3, ctr: 0.02, frequency: 2.1, reach: 24_000, currency: 'USD', ...o,
 });
