@@ -270,9 +270,52 @@ export async function getCanonicalVerdictCampaigns(workspaceId) {
 }
 
 /**
+ * The stable identity of a FAILED connector-campaign read. Matched on, never on
+ * a message.
+ */
+export const CAMPAIGN_READ_FAILED = 'CAMPAIGN_READ_FAILED';
+
+/**
+ * Raised when the connector-campaign read itself could not complete.
+ *
+ * ── THE DISTINCTION THIS EXISTS TO KEEP (B5-01D) ────────────────────────────
+ * An empty array from this reader is a claim about the WORKSPACE: we asked the
+ * database, it answered, and no connector has synced a campaign. This error is a
+ * claim about US: we could not ask, so whether campaigns exist is unknown.
+ *
+ * They used to be the same value — provably, not arguably. A non-UUID
+ * workspaceId makes the driver raise P2023 inside the findMany below; before
+ * this change the returned value was byte-identical to the one a genuinely empty
+ * workspace produces. Downstream, `GET /entities/campaigns` answered HTTP 200
+ * with `campaigns: []` (the route's own 500 handler was unreachable, because
+ * nothing ever threw), the Campaigns surface rendered "No campaigns synced yet",
+ * and the copilot prompt told the model "the answer is 0 campaigns" — a
+ * fabricated zero, asserted to a marketer in prose, during a database outage.
+ *
+ * This is the operational-population twin of CampaignIdentityUnavailableError
+ * and takes the same shape for the same reason: a throw is the only result a
+ * caller cannot mistake for an answer. Every route that reads this already has
+ * a catch that maps it to an honest failure response.
+ *
+ * `cause` carries the underlying error for logs; no route surfaces it to a
+ * client.
+ */
+export class CampaignsUnavailableError extends Error {
+  constructor(message = 'Connector campaigns could not be read', options = {}) {
+    super(message, options);
+    this.name = 'CampaignsUnavailableError';
+    this.code = CAMPAIGN_READ_FAILED;
+  }
+}
+
+/**
  * Connector-synced campaigns for the workspace, each with its latest metrics +
  * ad-set count (so the client knows which rows are drillable). Empty array when
  * no connector has synced — the honest "connect a live channel" state upstream.
+ *
+ * @throws {CampaignsUnavailableError} when the campaign query itself fails. An
+ *   empty array means the database answered and this workspace has no synced
+ *   campaigns; the two must never reach a caller as the same value.
  */
 export async function getConnectorCampaigns(workspaceId) {
   if (!workspaceId) return [];
@@ -289,9 +332,26 @@ export async function getConnectorCampaigns(workspaceId) {
     orderBy: { createdAt: 'desc' },
     take:    200,
   }).catch((err) => {
-    logger.debug({ err: err.message, workspaceId }, '[EntityGraph] campaigns read failed');
-    return [];
+    // ERROR, not debug. The old level matched the old behaviour — a read whose
+    // failure cost nothing because an empty list looked like a valid answer. It
+    // costs this workspace its entire Campaigns surface and every answer the
+    // copilot gives about it, so it is logged like the dependency failure it is,
+    // with a stable code an alert can match on. `debug` is also invisible where
+    // it matters: logger.js sets `info` under NODE_ENV=production, so in
+    // production this failure previously emitted nothing at all.
+    logger.error(
+      { err: err.message, workspaceId, code: CAMPAIGN_READ_FAILED },
+      '[EntityGraph] connector campaign read failed — the campaign population is unknown for this workspace',
+    );
+    // NO FALLBACK. Not an empty list, not another workspace's campaigns, not a
+    // last-known population. Whether this workspace has campaigns is exactly
+    // what we failed to find out.
+    throw new CampaignsUnavailableError(undefined, { cause: err });
   });
+  // Reachable only on a SUCCESSFUL read that found nothing — a failed read
+  // throws above and never arrives here. So this empty return (and every "no
+  // campaigns" state built on it) is now always a fact about the workspace
+  // rather than sometimes a fact about the database.
   if (!campaigns.length) return [];
 
   const { byEntity: metrics, consumedByEntity } = await latestSnapshots(
