@@ -69,12 +69,31 @@ copilotRouter.post(
       // no verdicts at all, and the model answered "nothing needs attention"
       // about an account it had simply failed to evaluate. Now the failure is
       // carried as a flag and SAID, in the one place the model can read it.
+      //
+      // B5-01D — THE CAMPAIGN READ IS NOT BEST-EFFORT, and it is the one read
+      // here that cannot be. It used to `.catch(() => [])`, which made a
+      // database failure arrive as a real answer: `totalCampaigns` became 0, the
+      // prompt's campaign section became "No campaigns synced yet", and the
+      // standing rule below it told the model that if asked how many campaigns
+      // exist, "the answer is 0 campaigns". A marketer with a fully synced
+      // account was told, in prose, that they had none.
+      //
+      // It PROPAGATES rather than carrying a `campaignsUnavailable` flag beside
+      // `verdictsUnavailable`, and the asymmetry is deliberate. That flag works
+      // because the campaign metrics survive: the prompt can say verdicts are
+      // gone and still answer questions about real spend and ROAS. Campaigns are
+      // the substrate those answers are made of — lose them and account health,
+      // the portfolio totals and every per-campaign line go with them, leaving a
+      // model with nothing to be honest ABOUT. So the request fails at the route
+      // boundary below (500), which is what B5-01B and B5-01C do with the same
+      // class of failure, and no prompt is built at all — the strongest possible
+      // guarantee that none of it can be fabricated.
       let verdictsUnavailable = false;
       const [workspace, campaigns, verdictResult] = await Promise.all([
         prisma.workspace
           .findUnique({ where: { id: wsId }, select: { name: true, currency: true, objective: true, industry: true, market: true } })
           .catch(() => null),
-        getConnectorCampaigns(wsId).catch(() => []),
+        getConnectorCampaigns(wsId),
         getConnectorVerdicts(wsId).catch((err) => {
           logger.warn({ err: err.message, wsId }, '[lumi/copilot] verdicts unavailable — answering without them');
           verdictsUnavailable = true;
