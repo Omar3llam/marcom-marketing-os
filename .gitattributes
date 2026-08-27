@@ -1,0 +1,19 @@
+# ============================================================
+# Line-ending contract (B5-01K)
+# ============================================================
+# This repository is developed on Windows with core.autocrlf=true, so files are
+# rewritten to CRLF on checkout unless told otherwise. That is fine for source,
+# and NOT fine for files whose consumers parse them on Linux.
+#
+# `.nvmrc` is read by nvm/fnm/Volta locally, by actions/setup-node in CI
+# (node-version-file), and by Render at deploy time — the last two on Linux. A
+# CRLF checkout hands them "24.20.0\r" and they try to install a version with a
+# trailing carriage return.
+#
+# This is not hypothetical. B5-01H shipped `#!/usr/bin/env node` in
+# scripts/run-tests.js, autocrlf rewrote it to CRLF, and the CR defeated the
+# shebang strip — the import failed with a bare "SyntaxError: Invalid or
+# unexpected token" naming the wrong file. It passed review only because the
+# file was still LF on the machine that wrote it. Do not repeat that with the
+# runtime pin.
+.nvmrc text eol=lf

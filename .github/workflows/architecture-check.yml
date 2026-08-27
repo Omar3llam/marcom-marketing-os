@@ -27,7 +27,8 @@ jobs:
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          # B5-01K: read the pin from .nvmrc, never a literal here.
+          node-version-file: '.nvmrc'
           cache: 'npm'
           # Workspaces use the root lockfile (client/package-lock.json
           # was removed by PR #8).

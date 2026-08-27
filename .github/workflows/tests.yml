@@ -49,7 +49,10 @@ jobs:
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          # B5-01K: read the pin from .nvmrc, never a literal here. '24' also
+          # matched 24.15.x, the runtime whose worker crash silently drops a
+          # test module. See scripts/runtimeContract.js.
+          node-version-file: '.nvmrc'
           cache: 'npm'
           cache-dependency-path: 'package-lock.json'
 
@@ -91,7 +94,10 @@ jobs:
       - name: Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          # B5-01K: read the pin from .nvmrc, never a literal here. '24' also
+          # matched 24.15.x, the runtime whose worker crash silently drops a
+          # test module. See scripts/runtimeContract.js.
+          node-version-file: '.nvmrc'
           cache: 'npm'
           cache-dependency-path: 'package-lock.json'
 

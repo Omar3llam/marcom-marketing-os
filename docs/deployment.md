@@ -48,11 +48,11 @@ git push -u origin main
 ```bash
 # On your server (Ubuntu 20.04+)
 
-# 1. Install Node.js 20 via nvm
+# 1. Install the pinned Node runtime via nvm (version comes from .nvmrc)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 source ~/.bashrc
-nvm install 20
-nvm use 20
+nvm install    # reads .nvmrc → 24.20.0
+nvm use
 
 # 2. Install PM2
 npm install -g pm2
