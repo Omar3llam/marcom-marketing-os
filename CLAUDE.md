@@ -156,9 +156,97 @@ npx prisma studio                   # visual DB browser
 npx prisma migrate dev              # run new migrations
 npx prisma generate                 # regenerate client after schema change
 
-# Testing
-node src/tests/dialect.test.js      # dialect resolution tests
+# Testing — see "Verification" below for what each one proves
+npm test                            # = test:fast
+npm run test:fast                   # backend suite; DB-backed suites MAY skip
+npm run test:full                   # backend suite; DB-backed suites MUST run
+npm run test:http                   # 13 HTTP cases vs a running server (NOT the suite)
+node src/tests/dialect.test.js      # standalone node script, excluded from vitest
 ```
+
+---
+
+## Verification
+
+Two commands, **one suite**. The difference is not which tests run — it is which
+claim the command is allowed to make.
+
+| Command | `REQUIRE_DB` | DB-backed suites | Claim |
+|---|---|---|---|
+| `npm test` / `npm run test:fast` | unset | may skip | *nothing about database semantics* |
+| `npm run test:full` | `1` | **must execute** | database semantics were verified |
+
+Both run the same vitest discovery (`vitest.config.js` → `src/**/*.test.js` +
+`packages/**/*.test.js`). `test:full` is `test:fast` plus a requirement; it is
+**not** a separate file list.
+
+### Fast verification
+
+```bash
+npm test
+```
+
+Runs the backend suite. With no migrated database configured, the 27 DB-gated
+suites skip and the run still exits 0. **That is a valid result for a fast loop
+and is not evidence that database behaviour works.**
+
+### Full verification
+
+Requires a migrated PostgreSQL database. From a clean environment:
+
+```bash
+# 1. Create a disposable database (any reachable PostgreSQL instance)
+createdb marcom_verify                      # or: CREATE DATABASE marcom_verify;
+
+# 2+3. Point BOTH variables at it. DIRECT_URL is NOT optional — `migrate deploy`
+#      fails with P1012 without it, despite the comment in schema.prisma:29
+#      claiming it falls back to DATABASE_URL. It does not.
+export DATABASE_URL="postgresql://<user>:<pass>@localhost:5432/marcom_verify"
+export DIRECT_URL="$DATABASE_URL"
+
+# 4. Apply every migration. A partially-migrated database is worse than none.
+npx prisma migrate deploy
+
+# 5. Verify
+npm run test:full
+```
+
+On Windows PowerShell, use `$env:DATABASE_URL = "…"` — the `VAR=value cmd` form
+is POSIX-only. `test:full` itself is cross-platform; it sets `REQUIRE_DB`
+through `scripts/run-tests.js` rather than through shell syntax.
+
+### Failure semantics
+
+`test:full` with an unusable database is a **verification failure**, not a
+graceful fallback:
+
+```
+DatabaseVerificationRequiredError: REQUIRE_DB=1 but no migrated database is
+reachable, so this suite cannot be verified.
+```
+
+Non-zero exit. It does **not** degrade to fast mode. This is the point of the
+command: B5-Discovery-03 measured a real data-corruption defect (timestamps
+three hours adrift; a repeated revenue upload inserting a duplicate row instead
+of updating one) surviving a fast run that reported `4631 passed | 330 skipped`
+and exit 0.
+
+### What full verification still does NOT prove
+
+Open findings from B5-Discovery-03, deliberately not closed by B5-01G:
+
+- **STOP-2** — the probe answers "available" for a database missing 11
+  migrations. It checks one column (`workspaces.networkConsent`, added June
+  2026), not migration completeness.
+- **STOP-3** — the full suite is not deterministic: a vitest forks-pool worker
+  crashed in 4 of 14 measured runs, dropping 1–22 tests with exit 1 and a
+  reduced "passed" count rather than a named failure.
+- **STOP-4** — `budgetAllocator.test.js` and `memoryManager.test.js` share the
+  `test-` provider namespace and each `deleteMany` it in `beforeEach`, while
+  vitest runs files in parallel against one database.
+- GitHub Actions has been blocked by billing since 2026-08-23, so **no CI run
+  has executed** for any B5 slice. `npm run test:full`, run by hand, is
+  currently the only backend verification that exists.
 
 ---
 

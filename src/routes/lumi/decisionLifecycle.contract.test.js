@@ -37,7 +37,7 @@
 import express from 'express';
 import request from 'supertest';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { dbAvailable } from '../../tests/dbProbe.js';
+import { dbAvailable, dbRequired } from '../../tests/dbProbe.js';
 import { prisma } from '../../lib/prisma.js';
 import { executionsRouter, toOutcomeSection } from './executions.js';
 
@@ -82,8 +82,8 @@ const makeOutcome = (decisionId, over = {}) => prisma.outcomeSnapshot.create({
 
 // NOT skippable — an absent database must not read as a passing contract.
 describe('B4-A — this contract must actually run', () => {
-  it('CI provides a migrated database', () => {
-    if (process.env.CI) expect(DB_OK, 'CI must run this suite against real Postgres').toBe(true);
+  it('a full-verification run provides a migrated database', () => {
+    if (dbRequired()) expect(DB_OK, 'REQUIRE_DB=1 — this suite must run against real Postgres').toBe(true);
     else expect(typeof DB_OK).toBe('boolean');
   });
 });
