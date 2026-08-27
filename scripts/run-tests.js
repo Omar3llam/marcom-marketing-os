@@ -38,6 +38,7 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { assertVerificationRuntime, NodeRuntimeMismatchError } from './runtimeContract.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '..');
@@ -78,6 +79,24 @@ export function banner(mode) {
 function main() {
   const [, , mode = 'fast', ...passthrough] = process.argv;
   const plan = resolveRun(mode, passthrough);
+
+  // B5-01K. BEFORE any verification work: the runtime decides whether a green
+  // result means anything (see scripts/runtimeContract.js). This is the single
+  // seam `test`, `test:fast` and `test:full` all pass through, so guarding here
+  // guards all three — and a future script that bypasses it fails a ratchet in
+  // src/tests/runtimeContract.test.js rather than silently going unguarded.
+  //
+  // A warning would be useless: the failure this prevents is a run that looks
+  // green while a whole test module was dropped.
+  try {
+    assertVerificationRuntime(process.version, `npm run test:${plan.mode}`);
+  } catch (err) {
+    if (err instanceof NodeRuntimeMismatchError) {
+      console.error(`\n${err.message}\n`);
+      process.exit(1);
+    }
+    throw err;
+  }
 
   console.log(banner(plan.mode));
 

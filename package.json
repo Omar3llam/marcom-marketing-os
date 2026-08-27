@@ -78,7 +78,7 @@
     "vitest": "^4.1.7"
   },
   "engines": {
-    "node": ">=22.0.0"
+    "node": "24.20.x"
   },
   "overrides": {
     "@firebase/firestore": {

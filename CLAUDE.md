@@ -16,7 +16,7 @@
 - FSM state machine: `client/src/hooks/useDecisionFSM.js`
 
 ### Backend
-- Node.js 22 + Express + ES Modules
+- Node.js **24.20.x** (pinned — see "Runtime" below) + Express + ES Modules
 - Prisma + PostgreSQL (NOT MongoDB, NOT Airtable)
 - BullMQ + Redis (async job queue)
 - Firebase Admin SDK (token verification)
@@ -167,6 +167,39 @@ node src/tests/dialect.test.js      # standalone node script, excluded from vite
 ---
 
 ## Verification
+
+### Runtime (pinned — B5-01K)
+
+Verification runs on **Node 24.20.x**, declared in `.nvmrc` and enforced before
+any test executes. Select it first:
+
+```bash
+nvm use          # reads .nvmrc; fnm and Volta read it too
+node --version   # must print v24.20.x
+npm run test:fast
+npm run test:full
+```
+
+A wrong runtime **fails** the command — it is not a warning:
+
+```
+Verification requires Node 24.20.x. Detected Node v24.15.0.
+```
+
+This is not bureaucracy. B5-01J measured the same commit on the same machine:
+Node 24.15.0 produced **8 worker fast-fails in 25 runs**, Node 24.20.0 **0 in
+25**. The failure mode is the dangerous one — a worker dies, its module never
+reports, and the suite prints `310 passed (311)` with **zero failed tests**. A
+green run on 24.15.x does not mean what it says, which is exactly why the
+runtime is part of the verification contract rather than a footnote.
+
+`24.15.x` and `22.23.2` are both rejected. 22.23.2 also measured clean; we are
+pinning one chosen environment, not keeping a lottery of runtimes that happened
+to pass. `.nvmrc` is the single source of truth — `package.json` `engines` and
+both GitHub Actions workflows derive from it, and a drift between them fails
+`src/tests/runtimeContract.test.js`.
+
+### The two commands
 
 Two commands, **one suite**. The difference is not which tests run — it is which
 claim the command is allowed to make.
