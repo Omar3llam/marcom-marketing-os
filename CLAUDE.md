@@ -192,28 +192,43 @@ and is not evidence that database behaviour works.**
 
 ### Full verification
 
-Requires a migrated PostgreSQL database. From a clean environment:
+Requires PostgreSQL and one environment variable:
 
 ```bash
-# 1. Create a disposable database (any reachable PostgreSQL instance)
-createdb marcom_verify                      # or: CREATE DATABASE marcom_verify;
+# Point at a database name on any reachable server. It does NOT need to exist,
+# and nothing is ever run against it directly — it is the naming root and the
+# admin connection. The credentials need CREATEDB.
+export TEST_DATABASE_URL="postgresql://<user>:<pass>@localhost:5432/marcom_verify"
 
-# 2+3. Point BOTH variables at it. DIRECT_URL is NOT optional — `migrate deploy`
-#      fails with P1012 without it, despite the comment in schema.prisma:29
-#      claiming it falls back to DATABASE_URL. It does not.
-export DATABASE_URL="postgresql://<user>:<pass>@localhost:5432/marcom_verify"
-export DIRECT_URL="$DATABASE_URL"
-
-# 4. Apply every migration. A partially-migrated database is worse than none.
-npx prisma migrate deploy
-
-# 5. Verify
 npm run test:full
 ```
 
-On Windows PowerShell, use `$env:DATABASE_URL = "…"` — the `VAR=value cmd` form
-is POSIX-only. `test:full` itself is cross-platform; it sets `REQUIRE_DB`
+That is the whole flow. `test:full` provisions the databases itself:
+
+```
+TEST_DATABASE_URL  →  marcom_verify_tmpl    created + `prisma migrate deploy`  (~3s, once)
+                   →  marcom_verify_w1..wN  CREATE DATABASE … TEMPLATE         (~360ms each)
+                                            one per vitest worker
+```
+
+Every worker gets **its own physical database**, so two test files running in
+parallel cannot see, delete, update, or collide with each other's rows. All of
+them are dropped on teardown, including after a failure.
+
+`DIRECT_URL` no longer needs setting by hand — the provisioner passes it to
+`migrate deploy` itself. (It is genuinely required there: `migrate deploy` fails
+with P1012 without it, despite the comment at `schema.prisma:29` claiming it
+falls back to `DATABASE_URL`. It does not.)
+
+On Windows PowerShell use `$env:TEST_DATABASE_URL = "…"` — the `VAR=value cmd`
+form is POSIX-only. `test:full` itself is cross-platform; it sets `REQUIRE_DB`
 through `scripts/run-tests.js` rather than through shell syntax.
+
+**`TEST_DATABASE_URL` may not name your development database.** Full
+verification drops and recreates databases derived from it, so it refuses to
+start if it resolves to the same PostgreSQL identity (host + port + name) as
+`DATABASE_URL` — comparing identity, not the string, so different credentials
+on the same database are still caught.
 
 ### Failure semantics
 
@@ -239,11 +254,14 @@ Open findings from B5-Discovery-03, deliberately not closed by B5-01G:
   migrations. It checks one column (`workspaces.networkConsent`, added June
   2026), not migration completeness.
 - **STOP-3** — the full suite is not deterministic: a vitest forks-pool worker
-  crashed in 4 of 14 measured runs, dropping 1–22 tests with exit 1 and a
-  reduced "passed" count rather than a named failure.
-- **STOP-4** — `budgetAllocator.test.js` and `memoryManager.test.js` share the
-  `test-` provider namespace and each `deleteMany` it in `beforeEach`, while
-  vitest runs files in parallel against one database.
+  still crashes in roughly 3 of 10 runs, dropping tests with exit 1 and a
+  reduced "passed" count rather than a named failure. This is a pool-level
+  crash, unrelated to database state; B5-01H did not address it.
+- ~~**STOP-4** — cross-suite database mutation~~ — **CLOSED by B5-01H.** Every
+  worker holds its own database, so no suite's cleanup predicate or hard-coded
+  identity can reach another's rows. Fast mode is unchanged and still shares
+  the ambient database if one is configured, which is a further reason a
+  verification claim belongs to `test:full`.
 - GitHub Actions has been blocked by billing since 2026-08-23, so **no CI run
   has executed** for any B5 slice. `npm run test:full`, run by hand, is
   currently the only backend verification that exists.
