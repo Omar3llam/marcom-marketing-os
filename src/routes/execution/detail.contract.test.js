@@ -32,7 +32,7 @@ vi.mock('../../queues/index.js', () => ({
   ACTION_QUEUE_NAME: 'actions',
 }));
 
-const { dbAvailable } = await import('../../tests/dbProbe.js');
+const { dbAvailable, dbRequired } = await import('../../tests/dbProbe.js');
 const { prisma }      = await import('../../lib/prisma.js');
 const executionRouter = (await import('./index.js')).default;
 
@@ -83,8 +83,8 @@ const makeTransition = (executionId, toStatus, over = {}) => prisma.executionTra
 
 // NOT skippable — an absent database must not read as a passing contract.
 describe('B3-B — this contract must actually run', () => {
-  it('CI provides a migrated database', () => {
-    if (process.env.CI) expect(DB_OK, 'CI must run this suite against real Postgres').toBe(true);
+  it('a full-verification run provides a migrated database', () => {
+    if (dbRequired()) expect(DB_OK, 'REQUIRE_DB=1 — this suite must run against real Postgres').toBe(true);
     else expect(typeof DB_OK).toBe('boolean');
   });
 });

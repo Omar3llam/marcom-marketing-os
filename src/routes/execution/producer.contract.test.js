@@ -20,7 +20,7 @@ const { enqueueExecution, executionQueue } = vi.hoisted(() => ({
 }));
 vi.mock('../../queues/index.js', () => ({ enqueueExecution, executionQueue }));
 
-const { dbAvailable } = await import('../../tests/dbProbe.js');
+const { dbAvailable, dbRequired } = await import('../../tests/dbProbe.js');
 const { prisma } = await import('../../lib/prisma.js');
 const executionRouter = (await import('./index.js')).default;
 
@@ -61,8 +61,8 @@ const makeDecision = (workspaceId = WS) => prisma.decision.create({
 });
 
 describe('B3 producer — this contract must actually run', () => {
-  it('CI provides a migrated database', () => {
-    if (process.env.CI) expect(DB_OK, 'CI must run this suite against real Postgres').toBe(true);
+  it('a full-verification run provides a migrated database', () => {
+    if (dbRequired()) expect(DB_OK, 'REQUIRE_DB=1 — this suite must run against real Postgres').toBe(true);
     else expect(typeof DB_OK).toBe('boolean');
   });
 });

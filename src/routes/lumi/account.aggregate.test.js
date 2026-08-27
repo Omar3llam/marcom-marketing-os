@@ -17,7 +17,7 @@
 import express from 'express';
 import request from 'supertest';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { dbAvailable } from '../../tests/dbProbe.js';
+import { dbAvailable, dbRequired } from '../../tests/dbProbe.js';
 import { prisma } from '../../lib/prisma.js';
 import { accountRouter } from './account.js';
 
@@ -86,8 +86,8 @@ async function seedCampaign(id, name, workspaceId = WS, accountId = ACC) {
 // provided one. Locally the blocks below may skip; in CI they may not.
 // ============================================================
 describe('B2 — this contract must actually run', () => {
-  it('CI provides a migrated database, so nothing below is vacuous', () => {
-    if (process.env.CI) expect(DB_OK, 'CI must run this suite against real Postgres').toBe(true);
+  it('a full-verification run provides a migrated database, so nothing below is vacuous', () => {
+    if (dbRequired()) expect(DB_OK, 'REQUIRE_DB=1 — this suite must run against real Postgres').toBe(true);
     else expect(typeof DB_OK).toBe('boolean');
   });
 });

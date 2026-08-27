@@ -261,12 +261,16 @@ Append-only table tracking provider scores over time.
 
 Full test coverage included:
 
-```bash
-# Run all tests
-npm test src/services/reinforcement-engine/
+These suites are DB-backed. `npm test` (fast mode) SKIPS them when no migrated
+database is configured, so use full mode — see "Verification" in CLAUDE.md for
+the database setup.
 
-# Run specific test file
-npm test src/services/reinforcement-engine/scoringEngine.test.js
+```bash
+# Run all tests in this directory, with database semantics required
+npm run test:full -- src/services/reinforcement-engine/
+
+# Run a specific test file
+npm run test:full -- src/services/reinforcement-engine/scoringEngine.test.js
 ```
 
 **Test Coverage:**
@@ -345,7 +349,7 @@ Before deploying PR #42:
 
 - [ ] Prisma migration applied (`20260527000000_add_reinforcement_snapshots`)
 - [ ] `npx prisma generate` run (regenerate client)
-- [ ] Tests passing (`npm test src/services/reinforcement-engine/`)
+- [ ] Tests passing (`npm run test:full -- src/services/reinforcement-engine/`)
 - [ ] Architecture check clean (`npm run arch-check`)
 - [ ] Environment variables set (if needed)
 - [ ] Cron job configured for score updates

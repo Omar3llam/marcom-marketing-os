@@ -16,7 +16,7 @@
 import express from 'express';
 import request from 'supertest';
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { dbAvailable } from '../tests/dbProbe.js';
+import { dbAvailable, dbRequired } from '../tests/dbProbe.js';
 import { prisma } from '../lib/prisma.js';
 import { decisionsRouter } from '../routes/lumi/decisions.js';
 import { getSimilarOutcomes } from '../services/analysis/decisionLearning.js';
@@ -56,8 +56,8 @@ async function makeDecision(over = {}) {
 // suite — the exact shape that let R12-1d hide for five weeks — so CI is
 // required to have provided one. Locally the block may skip; in CI it may not.
 describe('R13 — this contract must actually run', () => {
-  it('CI provides a migrated database, so the contract below is not vacuous', () => {
-    if (process.env.CI) expect(DB_OK, 'CI must run this suite against real Postgres').toBe(true);
+  it('a full-verification run provides a migrated database, so the contract below is not vacuous', () => {
+    if (dbRequired()) expect(DB_OK, 'REQUIRE_DB=1 — this suite must run against real Postgres').toBe(true);
     else expect(typeof DB_OK).toBe('boolean');
   });
 });

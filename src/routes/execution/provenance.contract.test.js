@@ -27,7 +27,7 @@ vi.mock('../../queues/index.js', () => ({
   EXECUTION_QUEUE_NAME: 'executions',
 }));
 
-const { dbAvailable } = await import('../../tests/dbProbe.js');
+const { dbAvailable, dbRequired } = await import('../../tests/dbProbe.js');
 const { prisma }      = await import('../../lib/prisma.js');
 const executionRouter = (await import('./index.js')).default;
 const { decisionsRouter } = await import('../lumi/decisions.js');
@@ -94,8 +94,8 @@ const readDecision = (id) => prisma.decision.findUnique({
 const countExecutions = () => prisma.executionRequest.count({ where: { workspaceId: WS } });
 
 describe('B4-A — this contract must actually run', () => {
-  it('CI provides a migrated database', () => {
-    if (process.env.CI) expect(DB_OK, 'CI must run this suite against real Postgres').toBe(true);
+  it('a full-verification run provides a migrated database', () => {
+    if (dbRequired()) expect(DB_OK, 'REQUIRE_DB=1 — this suite must run against real Postgres').toBe(true);
     else expect(typeof DB_OK).toBe('boolean');
   });
 });

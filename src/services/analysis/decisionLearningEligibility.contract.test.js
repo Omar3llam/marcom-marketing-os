@@ -20,7 +20,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import express from 'express';
 import request from 'supertest';
 
-const { dbAvailable } = await import('../../tests/dbProbe.js');
+const { dbAvailable, dbRequired } = await import('../../tests/dbProbe.js');
 const { prisma } = await import('../../lib/prisma.js');
 const { getSimilarOutcomes } = await import('./decisionLearning.js');
 const { decisionsRouter } = await import('../../routes/lumi/decisions.js');
@@ -71,8 +71,8 @@ const app = () => {
 };
 
 describe('C1 — this contract must actually run', () => {
-  it('CI provides a migrated database', () => {
-    if (process.env.CI) expect(DB_OK, 'CI must run this suite against real Postgres').toBe(true);
+  it('a full-verification run provides a migrated database', () => {
+    if (dbRequired()) expect(DB_OK, 'REQUIRE_DB=1 — this suite must run against real Postgres').toBe(true);
     else expect(typeof DB_OK).toBe('boolean');
   });
 });
