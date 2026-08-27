@@ -1,6 +1,17 @@
-#!/usr/bin/env node
 // ============================================================
 // run-tests — the backend verification entry point (B5-01G)
+// ============================================================
+// NO SHEBANG, deliberately. This module is IMPORTED by
+// src/tests/verificationContract.test.js so the mode contract can be asserted
+// without spawning a suite, and it is always invoked as `node scripts/run-tests.js`
+// — never executed directly — so a shebang buys nothing.
+//
+// It costs something, though. B5-01G shipped one, and git's autocrlf rewrote
+// the file to CRLF on the next checkout: `#!/usr/bin/env node\r\n` defeats the
+// transform's shebang strip, and the import failed with a bare
+// "SyntaxError: Invalid or unexpected token" naming the importing TEST rather
+// than this file. It passed in B5-01G only because the file was still LF on
+// disk at the time; a fresh clone would have failed. Do not add it back.
 // ============================================================
 // ONE suite, TWO claims:
 //

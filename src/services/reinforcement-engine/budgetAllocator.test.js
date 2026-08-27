@@ -1,5 +1,17 @@
 // ============================================================
 // Budget Allocator Tests — PR #42
+// ------------------------------------------------------------
+// B5-01H. This IS a database test — it writes real reinforcementSnapshot rows
+// through saveSnapshot and reads them back — but it was the only DB-writing
+// suite in the repository with no gate at all. B5-Discovery-03 measured the
+// consequence: on an ordinary `npm test` it wrote to whatever database `.env`
+// pointed at, which locally is the developer's own development database.
+//
+// It now takes the same gate as the other 27 (B5-01G): skipped in fast mode,
+// mandatory under REQUIRE_DB=1. Its `new PrismaClient()` needs no change to
+// participate in isolation — src/tests/workerDb.js rewrites DATABASE_URL
+// before any test module is imported, so the client is constructed against
+// this worker's own database.
 // ============================================================
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
@@ -10,10 +22,12 @@ import {
 } from './budgetAllocator.js';
 import { saveSnapshot } from './memoryManager.js';
 import { PrismaClient } from '@prisma/client';
+import { dbAvailable } from '../../tests/dbProbe.js';
 
+const DB_OK = await dbAvailable();
 const prisma = new PrismaClient();
 
-describe('budgetAllocator', () => {
+describe.skipIf(!DB_OK)('budgetAllocator', () => {
   beforeEach(async () => {
     await prisma.reinforcementSnapshot.deleteMany({
       where: { provider: { startsWith: 'test-' } },

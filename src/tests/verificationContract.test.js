@@ -46,14 +46,23 @@ function allTestFiles(dir = join(REPO_ROOT, 'src'), out = []) {
   return out;
 }
 
+/** This file, by its own module URL rather than a path literal that could rot. */
+const SELF = fileURLToPath(import.meta.url);
+
 /**
  * A file is DB-gated iff it CALLS the shared probe — not merely mentions it.
- * The distinction is load-bearing: this very file names `dbAvailable` and
- * `process.env.CI` as strings it searches for, and a substring predicate
- * counted itself as the 28th DB-gated suite and as a Ratchet C violation.
+ *
+ * SELF is excluded, and the exclusion is structural rather than a special case:
+ * this is the file that DEFINES the census, so it necessarily quotes every
+ * pattern it searches for — `dbAvailable()`, `process.env.CI`,
+ * `skipIf(!DB_OK)`. It counted itself twice during development, first as the
+ * 28th gated suite and then as a Ratchet C violation. A file that searches for
+ * a pattern cannot also be a specimen of it.
  */
 const dbGatedFiles = () =>
-  allTestFiles().filter((f) => /\bdbAvailable\s*\(/.test(readFileSync(f, 'utf8')));
+  allTestFiles()
+    .filter((f) => f !== SELF)
+    .filter((f) => /\bdbAvailable\s*\(/.test(readFileSync(f, 'utf8')));
 
 const rel = (p) => relative(REPO_ROOT, p).split('\\').join('/');
 
@@ -115,11 +124,16 @@ describe('B5-01G · Ratchet D — `test:full` cannot quietly become `test:fast`'
 
 // ── Ratchets B + C — the census, complete and CI-free ───────────────────────
 describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => {
-  it('the census matches the B5-Discovery-03 baseline of 27 files', () => {
-    // A drift here is not automatically a failure of this slice — but it must
-    // be noticed, because a new DB-gated file added through a different
-    // mechanism is exactly how the guarantee erodes.
-    expect(dbGatedFiles().length).toBe(27);
+  it('the census matches the current baseline of 28 files', () => {
+    // A drift here is not automatically a failure — but it must be NOTICED,
+    // because a new DB-gated file added through a different mechanism is
+    // exactly how the guarantee erodes.
+    //
+    // 27 → 28 in B5-01H: budgetAllocator.test.js writes real
+    // reinforcementSnapshot rows and had no gate at all, so an ordinary
+    // `npm test` wrote them to the developer's own development database. It
+    // now takes the same gate as the rest.
+    expect(dbGatedFiles().length).toBe(28);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {
@@ -132,6 +146,19 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
       return !/['"][./]+tests\/dbProbe\.js['"]/.test(src);
     });
     // A file rolling its own probe would sit outside REQUIRE_DB enforcement.
+    expect(offenders.map(rel)).toEqual([]);
+  });
+
+  it('Ratchet B · …and every one of them ACTS on the answer', () => {
+    // Calling the probe is not the same as obeying it. B5-01H's MCB mutation
+    // removed `describe.skipIf(!DB_OK)` while leaving the `await dbAvailable()`
+    // call in place, and the census above still counted the file as gated — a
+    // suite that asks whether a database exists and then runs anyway would
+    // have passed this ratchet.
+    const offenders = dbGatedFiles().filter((f) => {
+      const src = readFileSync(f, 'utf8');
+      return !/skipIf\(\s*!\s*DB_OK\s*\)/.test(src);
+    });
     expect(offenders.map(rel)).toEqual([]);
   });
 
@@ -209,6 +236,11 @@ function runMode(mode) {
   // REQUIRE_DB truthy-but-wrong and quietly invert what fast mode means.
   const env = { ...process.env, DATABASE_URL: BROKEN_DB, DIRECT_URL: BROKEN_DB };
   delete env.REQUIRE_DB;
+  // Also removed so the outcome does not depend on the developer's shell:
+  // with B5-01H, a designated test database is what full mode provisions from,
+  // and inheriting a working one would make "full mode refuses" untestable.
+  delete env.TEST_DATABASE_URL;
+  delete env.LUMI_TEST_DB_ROOT;
 
   const r = spawnSync(
     process.execPath,
@@ -237,10 +269,15 @@ describe('B5-01G · §9 the two modes against an unusable database', () => {
 
   it('Test 2 · full mode FAILS rather than reporting a skipped suite as green', () => {
     expect(full.status).toBeGreaterThan(0);
-    expect(full.out).toContain('DatabaseVerificationRequiredError');
-    expect(full.out).toMatch(/no migrated database is reachable/i);
-    // The failure names the variable that caused it, so the reader can act.
-    expect(full.out).toContain(REQUIRE_DB_ENV);
+    // B5-01H moved the first line of defence EARLIER. Full verification now
+    // refuses at provisioning, before a suite can even be collected, because
+    // without a designated test database there is nowhere safe to run. The
+    // B5-01G refusal (a skipped DB suite under REQUIRE_DB is a failure) is
+    // still in place behind it as a second line — see dbProbe.js.
+    expect(full.out).toContain('IsolationSetupError');
+    expect(full.out).toContain('TEST_DATABASE_URL');
+    // Whichever line fires, the run must never degrade to the ambient database.
+    expect(full.out).not.toMatch(/falling back|using DATABASE_URL instead/i);
   });
 
   it('the two modes genuinely differ on the SAME file — mode is the only variable', () => {
