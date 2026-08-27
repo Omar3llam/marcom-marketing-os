@@ -70,7 +70,7 @@ describe.skipIf(!DB_OK)('B5 F-1 · campaign identity read outcomes on real Postg
 
   it('READ SUCCESS + ZERO CAMPAIGNS — a real empty workspace still yields NO_CAMPAIGNS', async () => {
     await expect(getCanonicalVerdictCampaigns(empty))
-      .resolves.toEqual({ campaigns: [], noCanonicalWindow: [] });
+      .resolves.toEqual({ campaigns: [], noCanonicalWindow: [], staleEvidence: [] });
 
     const ev = await evaluateConnectorVerdicts(empty);
     expect(ev.status).toBe('NO_CAMPAIGNS');

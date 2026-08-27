@@ -297,20 +297,28 @@ export async function evaluateConnectorVerdicts(workspaceId) {
     return { workspaceId: null, campaigns: [], tree: null, annotated: null, gatedOut: [], status: 'NO_WORKSPACE' };
   }
 
-  const { campaigns, noCanonicalWindow } = await getCanonicalVerdictCampaigns(workspaceId);
+  const { campaigns, noCanonicalWindow, staleEvidence = [] } = await getCanonicalVerdictCampaigns(workspaceId);
   const { tree, gatedOut: dataless } = buildConnectorVerdictTree(workspaceId, campaigns);
 
-  // TWO KINDS OF ABSENCE, kept apart (Phase D.4). `dataless` means we measured
-  // the campaign over the verdict window and it delivered nothing to judge.
-  // NO_CANONICAL_WINDOW means we never measured it over that window at all.
-  // Same empty cell on screen, opposite fixes — one waits for spend, the other
-  // waits for a sync — so collapsing them would tell the operator the wrong story.
-  const gatedOut = [...dataless, ...noCanonicalWindow];
+  // THREE KINDS OF ABSENCE, kept apart (Phase D.4, extended by B5-01F).
+  //   dataless               — we measured it over the verdict window and it
+  //                            delivered nothing to judge. Waits for spend.
+  //   NO_CANONICAL_WINDOW    — we never measured it over that window. Waits for
+  //                            a first canonical sync.
+  //   CANONICAL_EVIDENCE_STALE — we measured it properly, and the period we
+  //                            measured ended too long ago to decide today.
+  //                            Waits for a FRESH sync.
+  // Same empty cell on screen, three different fixes, so collapsing any pair
+  // would tell the operator the wrong story about their own account.
+  const gatedOut = [...dataless, ...noCanonicalWindow, ...staleEvidence];
 
   if (!tree) {
     const status = gatedOut.length ? 'NO_ELIGIBLE_CAMPAIGNS' : 'NO_CAMPAIGNS';
     logger.info(
-      { workspaceId, dataless: dataless.length, noCanonicalWindow: noCanonicalWindow.length, status },
+      {
+        workspaceId, dataless: dataless.length, noCanonicalWindow: noCanonicalWindow.length,
+        staleEvidence: staleEvidence.length, status,
+      },
       '[connectorVerdicts] no eligible campaigns',
     );
     return { workspaceId, campaigns, tree: null, annotated: null, gatedOut, status };

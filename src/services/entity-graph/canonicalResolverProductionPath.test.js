@@ -78,7 +78,15 @@ const arrange = (rows, identities = [identity()]) => {
   prisma.metricSnapshot.findMany.mockResolvedValue(rows);
 };
 
-beforeEach(() => { vi.clearAllMocks(); });
+// B5-01F — every scenario below is dated (JUL_AUG ends 2026-08-11) and the
+// reader is now time-relative. Pinned to the scenario's own day so these tests
+// keep proving what they were written to prove: WHICH row structural resolution
+// picks. The freshness gate has its own suite and its own fixtures.
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-08-11T09:00:00Z'));
+});
 
 // ── §12 · the resolver is genuinely on the production path ───────────────────
 describe('B5-01E · §12 — the production verdict path invokes the resolver', () => {
@@ -139,7 +147,11 @@ describe('B5-01E · §11 Test B — newer malformed, older valid', () => {
     arrange([
       // Newer sync AND newer window, but the span is 31 days — not canonical.
       candidate({ period: ['2026-07-12T00:00:00Z', '2026-08-11T00:00:00Z'], syncedAt: '2026-08-11T09:00:00Z', spendMinor: 111 }),
-      candidate({ period: JUN_JUL, syncedAt: '2026-07-12T09:00:00Z', spendMinor: 999 }),
+      // Older window (ends a day earlier) and a valid 30-day span. B5-01F: kept
+      // within the freshness bound on purpose — this test is about MALFORMED vs
+      // VALID, and an older-AND-stale candidate would gate out for a second
+      // reason and stop proving the first.
+      candidate({ period: ['2026-07-12T00:00:00Z', '2026-08-10T00:00:00Z'], syncedAt: '2026-07-12T09:00:00Z', spendMinor: 999 }),
     ]);
 
     const { campaigns } = await getCanonicalVerdictCampaigns(WS);
@@ -244,22 +256,27 @@ describe('B5-01E · §16 — the canonical READ FAILURE contract is untouched', 
   });
 });
 
-// ── §14 · THE FRESHNESS GUARD — this slice does NOT close F-13 / F-3B ────────
-describe('B5-01E · §14 — a STRUCTURALLY VALID row is accepted however old it is', () => {
-  it('a January window is ACCEPTED STRUCTURALLY in August — this is NOT a freshness claim', async () => {
-    // 2026-01-01 → 2026-01-30 inclusive: a real, well-formed canonical period,
-    // seven months stale. It is accepted, and that is the CURRENT CONTRACT.
-    arrange([candidate({ period: ['2026-01-01T00:00:00Z', '2026-01-30T00:00:00Z'], syncedAt: '2026-01-30T09:00:00Z', spendMinor: 777 })]);
+// ── §14 · STRUCTURAL VALIDITY IS STILL NOT FRESHNESS ─────────────────────────
+describe('B5-01E · §14 — structural resolution does not know what "too old" means', () => {
+  // ADAPTED BY B5-01F, and the adaptation is itself the evidence that the
+  // layering held. This test used to assert a January window was ACCEPTED in
+  // August, because B5-01E deliberately left F-13 open. F-13 is now closed, so
+  // the row no longer reaches `campaigns` — but the claim the test was written to
+  // protect is unchanged and still worth pinning: the STRUCTURAL layer still
+  // accepts and selects that row. A separate gate, one layer later, withholds it.
+  it('a January window is still STRUCTURALLY RESOLVED in August — the gate is elsewhere', async () => {
+    const january = candidate({ period: ['2026-01-01T00:00:00Z', '2026-01-30T00:00:00Z'], syncedAt: '2026-01-30T09:00:00Z', spendMinor: 777 });
+    arrange([january]);
 
-    const { campaigns, noCanonicalWindow } = await getCanonicalVerdictCampaigns(WS);
+    // The structural layer accepts it, exactly as it did before B5-01F.
+    const { selected } = resolveCanonicalVerdictByEntity([january], { now: new Date('2026-08-11T09:00:00Z') });
+    expect(selected.get(C1)?.spendMinor).toBe(777);
 
-    // ACCEPTED STRUCTURALLY. Deliberately not called "fresh", "current", or
-    // "valid evidence for a verdict today" — B5-01E resolves WHICH row, never
-    // WHETHER a measurement is recent enough to support a verdict. That question
-    // is F-13 / F-3B and needs a product ruling, not an implementation slice.
-    expect(campaigns).toHaveLength(1);
-    expect(campaigns[0].spendMinor).toBe(777);
+    // The reader withholds it — as STALE, and never as "never measured".
+    const { campaigns, noCanonicalWindow, staleEvidence } = await getCanonicalVerdictCampaigns(WS);
+    expect(campaigns).toEqual([]);
     expect(noCanonicalWindow).toEqual([]);
+    expect(staleEvidence[0].reason).toBe('CANONICAL_EVIDENCE_STALE');
   });
 
   it('between two structurally valid rows, staleness is not a tie-break either', async () => {
@@ -274,10 +291,24 @@ describe('B5-01E · §14 — a STRUCTURALLY VALID row is accepted however old it
     expect(campaigns[0].spendMinor).toBe(999);
   });
 
-  it('NO FRESHNESS THRESHOLD EXISTS IN THE IMPLEMENTATION', () => {
-    const code = strip(EVIDENCE) + strip(GRAPH);
-    expect(code).not.toMatch(/MAX_CANONICAL_AGE|STALE_AFTER|maxAgeDays|freshnessDays|CANONICAL_TTL/);
-    // The only day constant the canonical contract may hold is the window itself.
+  // ADAPTED BY B5-01F. This ratchet asserted that NO freshness threshold existed
+  // anywhere in the canonical implementation, because B5-01E was forbidden from
+  // inventing one. It fired the moment B5-01F introduced the approved threshold —
+  // which is exactly what it was for: a freshness rule may not appear without a
+  // product ruling behind it.
+  //
+  // Re-pointed rather than deleted, at the invariant that outlives the ruling: the
+  // threshold may exist, and it may NOT live inside the structural predicate. A
+  // row's structural validity must never depend on the day it is read.
+  it('the freshness threshold is not inside structural eligibility', () => {
+    const structural = strip(readFileSync(fileURLToPath(new URL('../verdict-engine/metricWindow.js', import.meta.url)), 'utf8'));
+    const eligibilityBody = structural.slice(
+      structural.indexOf('export function canonicalEligibility'),
+      structural.indexOf('export function resolveCanonicalSnapshot'),
+    );
+
+    expect(eligibilityBody).not.toMatch(/MAX_CANONICAL_EVIDENCE_AGE_DAYS|measurementAgeDays/);
+    // Still the only MEASUREMENT-LENGTH constant the canonical contract holds.
     expect(CANONICAL_VERDICT_WINDOW_DAYS).toBe(30);
   });
 });

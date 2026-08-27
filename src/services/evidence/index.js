@@ -64,6 +64,11 @@ export {
   PLATFORM_VERDICT_SOURCES,
   PLATFORM_SOURCE_FILTER,
   NO_CANONICAL_WINDOW,
+  // B5-01F — the third absence. Exported beside the second because the whole
+  // point is that a consumer can tell them apart: one campaign was never
+  // measured over the verdict window, the other was measured properly and too
+  // long ago. Neither is a failure; both mean "no verdict today".
+  CANONICAL_EVIDENCE_STALE,
   // The two ways canonical evidence can be absent, exported together on purpose:
   // NO_CANONICAL_WINDOW is "the database answered and this campaign was never
   // measured"; this error is "the database did not answer". A consumer that can

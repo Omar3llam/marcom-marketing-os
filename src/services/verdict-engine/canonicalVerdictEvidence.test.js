@@ -56,7 +56,17 @@ const snap = (o = {}) => ({
   conversions: 20, roas: 3, ctr: 0.02, frequency: 2.1, reach: 24_000, currency: 'USD', ...o,
 });
 
-beforeEach(() => vi.clearAllMocks());
+// B5-01F — this suite's fixtures describe a DATED scenario (a canonical window
+// ending 2026-08-12), and the verdict reader is now time-relative: evidence more
+// than MAX_CANONICAL_EVIDENCE_AGE_DAYS old is gated out. Pinning the clock to the
+// scenario's own day is what makes these tests deterministic instead of
+// accidentally passing for a fortnight and then failing on their own. Nothing
+// here is testing freshness — canonicalFreshness.test.js does that.
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-08-12T09:00:00Z'));
+});
 const whereOf = () => prisma.metricSnapshot.findMany.mock.calls[0][0].where;
 
 // ── Canonical selection ─────────────────────────────────────────────────────
@@ -306,7 +316,7 @@ describe('getCanonicalVerdictCampaigns joins identity to canonical evidence', ()
   it('no campaigns at all → no snapshot query', async () => {
     prisma.campaign.findMany.mockResolvedValue([]);
     const out = await getCanonicalVerdictCampaigns('ws1');
-    expect(out).toEqual({ campaigns: [], noCanonicalWindow: [] });
+    expect(out).toEqual({ campaigns: [], noCanonicalWindow: [], staleEvidence: [] });
     expect(prisma.metricSnapshot.findMany).not.toHaveBeenCalled();
   });
 });
