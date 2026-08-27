@@ -67,6 +67,19 @@ const rowFor = (rows, id) => rows.find((r) => r.entityId === id);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // B5-01F — the canonical reader is now time-relative (evidence older than
+  // MAX_CANONICAL_EVIDENCE_AGE_DAYS is gated out), and this suite's fixture
+  // describes a window ending 2026-08-18. Pinned so the provenance assertions
+  // below stay about provenance; freshness has its own suite.
+  //
+  // TWO DAYS AFTER that window ends, not on the day itself: the fixture's `date`
+  // is RELATIVE (`ago(1)`) while its window bounds are absolute, and the R13-D
+  // test below turns on `lastDate` being LATER than `windowEnd` — the whole point
+  // being that a sync timestamp is not a measurement period. Pinning to the 18th
+  // would put the "synced yesterday" row before the window it measures. The 20th
+  // keeps that ordering true and the evidence comfortably fresh (age 2 of 3).
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-08-20T09:00:00Z'));
   h.prisma.campaign.findMany.mockResolvedValue(CAMPAIGNS);
   h.prisma.metricSnapshot.findMany.mockImplementation((args) =>
     Promise.resolve(project([canonicalRow()], args.select)));
@@ -290,7 +303,7 @@ describe('R13-D — the canonical verdict path is workspace-scoped at BOTH reads
   it('no workspace ⇒ no read at all, rather than an unscoped one', async () => {
     h.prisma.campaign.findMany.mockClear();
     const out = await getCanonicalVerdictCampaigns(null);
-    expect(out).toEqual({ campaigns: [], noCanonicalWindow: [] });
+    expect(out).toEqual({ campaigns: [], noCanonicalWindow: [], staleEvidence: [] });
     expect(h.prisma.campaign.findMany).not.toHaveBeenCalled();
   });
 });

@@ -624,6 +624,59 @@ export function inclusiveCanonicalDays(start, end) {
 }
 
 /**
+ * How many whole UTC days ago a measurement PERIOD ENDED.
+ *
+ * Measured from `windowEnd` — the last day the metrics describe — and never from
+ * `date`, `createdAt` or the last successful sync. Those say when we LEARNED
+ * something; this says how old the thing we learned is, and the two come apart
+ * exactly where it matters: re-syncing a January period today writes a row with
+ * today's `date` and January's `windowEnd`, and only one of those numbers is
+ * evidence about the campaign.
+ *
+ * UTC calendar days, reusing the same day-index arithmetic canonicalEligibility
+ * uses (B5-01E), so a provider's timestamp precision cannot move the answer:
+ * 2026-08-23T00:00:00Z and 2026-08-23T18:43:12Z are the same measurement day.
+ *
+ * @returns {number|null} whole days, 0 when the period ended today. Negative for
+ *   a period ending in the future — reported as-is rather than clamped, because
+ *   FUTURE_PERIOD is canonicalEligibility's call to make, not this function's.
+ *   null when no end is known, which is "we cannot say how old this is" and must
+ *   never be read as fresh.
+ */
+export function measurementAgeDays(windowEnd, now = new Date()) {
+  const [e, n] = [ms(windowEnd), ms(now)];
+  if (e == null || n == null) return null;
+  return utcDayIndex(n) - utcDayIndex(e);
+}
+
+/**
+ * THE FRESHNESS CONTRACT, in days. Product ruling, 2026-08-26.
+ *
+ * How old a structurally valid canonical measurement may be and still support a
+ * NEW verdict. INCLUSIVE: an age of exactly 3 is current; 4 is not.
+ *
+ * ── WHY THIS IS NOT DERIVED FROM ANYTHING ELSE ──────────────────────────────
+ * Nothing already in the repository could supply this number, and B5-02 checked
+ * each candidate rather than assuming: the nine bounds in config/temporal.js are
+ * SYNC-RECENCY (how recently we wrote a row); CONNECTOR_STALE_HOURS is about the
+ * connector, not the evidence; and CANONICAL_VERDICT_WINDOW_DAYS is the window's
+ * LENGTH, not its shelf life. Reverse-engineering any of them into a freshness
+ * rule would have been a product decision smuggled into an implementation.
+ *
+ * Frozen rather than env-tunable, and deliberately: it sits beside
+ * CANONICAL_VERDICT_WINDOW_DAYS, which is also not configurable for the same
+ * reason — an operator who can move it can change what a verdict MEANS without
+ * anyone deciding to. config/temporal.js states the same boundary from the other
+ * side: nothing in it is a measurement bound, and this is one.
+ *
+ * DEFINING AGE IS NOT ENFORCING IT. Nothing in this module gates on this value —
+ * canonicalEligibility must stay a STRUCTURAL predicate, so that the same row
+ * cannot be structurally valid yesterday and invalid today. Enforcement lives at
+ * the verdict evidence partition, which is where `now` already belongs.
+ */
+export const MAX_CANONICAL_EVIDENCE_AGE_DAYS = 3;
+
+/**
  * Is this row a valid canonical-window measurement?
  *
  * BOTH halves must hold, and neither substitutes for the other:

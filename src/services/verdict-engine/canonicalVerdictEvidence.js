@@ -53,7 +53,9 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { DATA_SOURCE, ENTITY_LEVEL, MEASUREMENT_WINDOW } from '../connectors/connectorTypes.js';
 import { EVIDENCE_POPULATION, EVIDENCE_SELECTOR, EVIDENCE_REDUCTION } from './evidenceReference.js';
-import { resolveCanonicalSnapshot, RESOLUTION } from './metricWindow.js';
+import {
+  resolveCanonicalSnapshot, RESOLUTION, measurementAgeDays, MAX_CANONICAL_EVIDENCE_AGE_DAYS,
+} from './metricWindow.js';
 
 /** The one window a campaign verdict may be decided on. */
 export const CANONICAL_VERDICT_WINDOW = MEASUREMENT_WINDOW.CUMULATIVE_30D;
@@ -125,6 +127,28 @@ export const CANONICAL_VERDICT_SELECT = Object.freeze({
 
 /** The reason a campaign has no verdict. Distinct from every "no data" reason. */
 export const NO_CANONICAL_WINDOW = 'NO_CANONICAL_WINDOW';
+
+/**
+ * The reason a campaign has no CURRENT verdict despite having been measured
+ * properly (B5-01F).
+ *
+ * ── THE DISTINCTION THIS EXISTS TO KEEP ─────────────────────────────────────
+ *   NO_CANONICAL_WINDOW    — we never measured this campaign over the verdict
+ *                            window. Waiting on a first canonical sync.
+ *   CANONICAL_EVIDENCE_STALE — we measured it, correctly, and the period we
+ *                            measured ended too long ago to decide anything now.
+ *
+ * Same empty cell on screen, opposite fixes — one waits for a first sync, the
+ * other for a fresh one — and the older of the two states is the one that
+ * currently tells a fully-synced account to "connect a channel". Collapsing them
+ * would be the same class of lie B5-01B/01C/01D each removed one layer down:
+ * answering a question about the DATA'S AGE with a claim that the data never
+ * existed.
+ *
+ * This is a GATING reason, not a failure: nothing is broken, and no error is
+ * raised. The campaign simply cannot support a new verdict today.
+ */
+export const CANONICAL_EVIDENCE_STALE = 'CANONICAL_EVIDENCE_STALE';
 
 /**
  * The stable identity of a FAILED canonical read. Matched on, never on a message.
@@ -311,14 +335,44 @@ export function resolveCanonicalVerdictByEntity(rows = [], { now = new Date() } 
  * @param {Array<{id:string,name?:string}>} identities
  * @param {Map<string,object>} evidenceByEntity
  */
-export function partitionByCanonicalEvidence(identities = [], evidenceByEntity = new Map()) {
+export function partitionByCanonicalEvidence(identities = [], evidenceByEntity = new Map(), { now = new Date() } = {}) {
   const withEvidence = [];
   const absent = [];
+  const stale = [];
   for (const identity of identities) {
     if (!identity || !identity.id) continue;
     const snapshot = evidenceByEntity.get(identity.id);
-    if (snapshot) withEvidence.push({ identity, snapshot });
-    else absent.push({ id: identity.id, name: identity.name ?? null, reason: NO_CANONICAL_WINDOW });
+    if (!snapshot) {
+      absent.push({ id: identity.id, name: identity.name ?? null, reason: NO_CANONICAL_WINDOW });
+      continue;
+    }
+
+    // B5-01F — THE FRESHNESS GATE. The row is structurally valid (it survived
+    // the resolver); the only question left is whether the period it measures is
+    // recent enough to decide anything TODAY.
+    //
+    // Age comes from windowEnd, never from `date`. A re-sync of a January period
+    // lands today and is still January evidence.
+    const ageDays = measurementAgeDays(snapshot.windowEnd, now);
+    // A null age means we could not establish when this measurement ended, and
+    // an unprovable age is not a fresh one. It should be unreachable — a row
+    // without bounds is MISSING_PERIOD and never survives resolution — so this
+    // is the belt to that braces, resolved in the only direction that cannot
+    // fabricate currency.
+    if (ageDays == null || ageDays > MAX_CANONICAL_EVIDENCE_AGE_DAYS) {
+      stale.push({
+        id: identity.id,
+        name: identity.name ?? null,
+        reason: CANONICAL_EVIDENCE_STALE,
+        // The facts a caller needs to explain the gate without recomputing it.
+        measurementAgeDays: ageDays,
+        windowEnd: snapshot.windowEnd ?? null,
+        maxAgeDays: MAX_CANONICAL_EVIDENCE_AGE_DAYS,
+      });
+      continue;
+    }
+
+    withEvidence.push({ identity, snapshot });
   }
-  return { withEvidence, absent };
+  return { withEvidence, absent, stale };
 }

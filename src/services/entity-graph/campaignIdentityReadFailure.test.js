@@ -77,6 +77,11 @@ const canonicalRow = (entityId) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // B5-01F — the canonical reader is time-relative now; this suite's canonical
+  // fixture measures a window ending 2026-08-24. Pinned so these identity-read
+  // tests keep testing identity reads rather than the freshness gate.
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-08-24T09:00:00Z'));
   prisma.decision.findMany.mockResolvedValue([]);
 });
 
@@ -132,7 +137,7 @@ describe('2 · a successful empty identity read is still NO_CAMPAIGNS', () => {
 
   it('the reader resolves to an empty population rather than throwing', async () => {
     await expect(getCanonicalVerdictCampaigns(WS))
-      .resolves.toEqual({ campaigns: [], noCanonicalWindow: [] });
+      .resolves.toEqual({ campaigns: [], noCanonicalWindow: [], staleEvidence: [] });
   });
 
   it('the evaluation reports NO_CAMPAIGNS — a business answer, not a failure', async () => {
@@ -149,7 +154,7 @@ describe('2 · a successful empty identity read is still NO_CAMPAIGNS', () => {
 
   it('no workspace resolves to an empty population without querying at all', async () => {
     await expect(getCanonicalVerdictCampaigns(null))
-      .resolves.toEqual({ campaigns: [], noCanonicalWindow: [] });
+      .resolves.toEqual({ campaigns: [], noCanonicalWindow: [], staleEvidence: [] });
     expect(prisma.campaign.findMany).not.toHaveBeenCalled();
   });
 });

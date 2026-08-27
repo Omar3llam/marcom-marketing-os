@@ -32,9 +32,25 @@ const C2       = '00000000-0000-4000-8000-00000000b2c2';
 const OTHER_C  = '00000000-0000-4000-8000-00000000b2c9';
 const ADSET    = '00000000-0000-4000-8000-00000000b2d1';
 
-const START = new Date('2026-07-20T00:00:00Z');
-const END   = new Date('2026-08-18T00:00:00Z');
-const SYNCED = new Date('2026-08-19T06:00:00Z');
+// B5-01F — RELATIVE, not fixed. The canonical verdict reader is now
+// time-relative: evidence whose window ended more than
+// MAX_CANONICAL_EVIDENCE_AGE_DAYS ago is gated out. A hardcoded window here
+// would pass this week and silently stop being verdict evidence a fortnight
+// later — a suite that rots rather than fails. Anchored to the run, the 30-day
+// window always ends YESTERDAY, which is inside the freshness bound and keeps
+// every assertion below about what it was written for: aggregate provenance.
+const DAY_MS = 86_400_000;
+/** UTC midnight, `n` days before today. */
+const utcMidnightDaysAgo = (n) =>
+  new Date(`${new Date(Date.now() - n * DAY_MS).toISOString().slice(0, 10)}T00:00:00Z`);
+
+const END   = utcMidnightDaysAgo(1);
+const START = new Date(END.getTime() - 29 * DAY_MS);
+// Synced after the window it measures — a sync timestamp is not a period.
+const SYNCED = new Date(END.getTime() + 6 * 60 * 60 * 1000);
+// A LATER sync than the canonical row's, for the rows below that must not win
+// the reduction despite arriving afterwards.
+const LATER_SYNC = new Date(END.getTime() + 23 * 60 * 60 * 1000);
 
 function makeApp({ workspaceId = WS, collabRole = 'BUYER' } = {}) {
   const app = express();
@@ -161,7 +177,7 @@ describe.skipIf(!DB_OK)('B2 — account aggregate over real rows', () => {
     await prisma.metricSnapshot.create({
       data: canonical(C1, {
         measurementWindow: 'ROLLING_WINDOW',
-        date: new Date('2026-08-19T23:00:00Z'),
+        date: LATER_SYNC,
         spendMinor: 5_000_000,
       }),
     });
@@ -191,7 +207,7 @@ describe.skipIf(!DB_OK)('B2 — account aggregate over real rows', () => {
     await prisma.metricSnapshot.create({ data: canonical(C1, { spendMinor: 20_000 }) });
     await prisma.metricSnapshot.create({
       data: canonical(C1, {
-        source: 'GA4', date: new Date('2026-08-19T23:00:00Z'), spendMinor: 888_888,
+        source: 'GA4', date: LATER_SYNC, spendMinor: 888_888,
       }),
     });
 
@@ -228,7 +244,7 @@ describe.skipIf(!DB_OK)('B2 — account aggregate over real rows', () => {
     await prisma.metricSnapshot.create({
       data: canonical(C1, {
         entityLevel: 'ADSET',
-        date: new Date('2026-08-19T23:00:00Z'),
+        date: LATER_SYNC,
         spendMinor: 7,
       }),
     });

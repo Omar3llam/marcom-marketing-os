@@ -221,17 +221,21 @@ async function verdictCampaignIdentities(workspaceId) {
  * than as a row with null metrics — the caller must be able to tell "not
  * measured over this window" from "measured, and it was zero".
  *
- * @returns {Promise<{campaigns: Array, noCanonicalWindow: Array}>}
+ * A campaign whose canonical row is VALID but too old (B5-01F) is returned in
+ * `staleEvidence`, which is a third answer and not a variant of the second: one
+ * campaign was never measured, the other was measured well and long ago.
+ *
+ * @returns {Promise<{campaigns: Array, noCanonicalWindow: Array, staleEvidence: Array}>}
  */
-export async function getCanonicalVerdictCampaigns(workspaceId) {
-  if (!workspaceId) return { campaigns: [], noCanonicalWindow: [] };
+export async function getCanonicalVerdictCampaigns(workspaceId, { now: nowArg } = {}) {
+  if (!workspaceId) return { campaigns: [], noCanonicalWindow: [], staleEvidence: [] };
 
   const identities = await verdictCampaignIdentities(workspaceId);
   // B5 F-1 — reachable only on a SUCCESSFUL read that found nothing. A failed
   // read throws above and never arrives here, so the empty result this returns
   // (which the evaluation reports as NO_CAMPAIGNS) is now always a fact about
   // the workspace rather than sometimes a fact about the database.
-  if (!identities.length) return { campaigns: [], noCanonicalWindow: [] };
+  if (!identities.length) return { campaigns: [], noCanonicalWindow: [], staleEvidence: [] };
 
   // Filter BEFORE resolve: the query narrows to canonical/platform/campaign, and
   // only then is one of those chosen. Resolving first and filtering after is the
@@ -248,12 +252,31 @@ export async function getCanonicalVerdictCampaigns(workspaceId) {
   const consumedByEntity = new Map();
   for (const r of rows) consumedByEntity.set(r.entityId, (consumedByEntity.get(r.entityId) ?? 0) + 1);
 
+  // ONE evaluation instant for both passes below. Read once and shared on
+  // purpose: resolution asks "is this period in the future?" and the freshness
+  // gate asks "how long ago did it end?", and two `new Date()` calls could answer
+  // those about different days across a midnight boundary.
+  //
+  // INJECTABLE, because B5-01F made this reader time-relative. Production passes
+  // nothing and gets the wall clock, exactly as before. A caller that owns an
+  // evaluation instant — or a test describing a dated scenario — passes it, and
+  // that is the repository's existing idiom for time in this path: the verdict
+  // engine's determinism contract already forbids reading the clock, so `now` is
+  // resolved at a service boundary and handed down.
+  const now = nowArg ?? new Date();
+
   // B5-01E — STRUCTURAL RESOLUTION, not "newest sync wins". Candidates are
   // validated by canonicalEligibility and the survivors ordered by the period
   // they MEASURE; a campaign whose candidates are all malformed gets no snapshot
   // and lands in `absent`, never the newest raw row.
-  const { selected } = resolveCanonicalVerdictByEntity(rows, { now: new Date() });
-  const { withEvidence, absent } = partitionByCanonicalEvidence(identities, selected);
+  const { selected } = resolveCanonicalVerdictByEntity(rows, { now });
+
+  // B5-01F — the FRESHNESS GATE runs here, after resolution and never inside it.
+  // Structural validity is a property of the row; currency is a relationship
+  // between the row and today. Folding the second into the first would make the
+  // same stored row "structurally valid on Tuesday, invalid on Friday", which is
+  // exactly the time-dependence B5-01E removed from that predicate.
+  const { withEvidence, absent, stale } = partitionByCanonicalEvidence(identities, selected, { now });
 
   return {
     campaigns: withEvidence.map(({ identity, snapshot }) =>
@@ -272,6 +295,7 @@ export async function getCanonicalVerdictCampaigns(workspaceId) {
       }),
     ),
     noCanonicalWindow: absent,
+    staleEvidence: stale,
   };
 }
 
