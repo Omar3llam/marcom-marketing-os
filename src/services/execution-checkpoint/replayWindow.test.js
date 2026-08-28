@@ -51,9 +51,40 @@ describe('isCheckpointReplayable (I70)', () => {
     expect(isCheckpointReplayable({ createdAt: new Date() })).toBe(true);
   });
 
-  it('accepts one at the edge of the window', () => {
-    const at = new Date(Date.now() - CHECKPOINT_REPLAY_WINDOW_MS);
-    expect(isCheckpointReplayable(at ? { createdAt: at } : null, Date.now())).toBe(true);
+  // ── B5-01N · the boundary is evaluated against ONE reference ───────────────
+  // This read the wall clock twice — once to build `createdAt`, once to supply
+  // `now` — and the predicate is `now - createdAt <= WINDOW`. Substituting
+  // createdAt = T0 - WINDOW gives `WINDOW + (T1 - T0) <= WINDOW`, so the test
+  // passed only when both reads landed on the same millisecond: measured at 188
+  // failures in 2,000,000 trials (~1 run in 10,600) on this machine. The
+  // boundary was never flaky; the test was asking two clocks the same question.
+  it('accepts one exactly at the edge of the window', () => {
+    const now = Date.now();
+    const at = new Date(now - CHECKPOINT_REPLAY_WINDOW_MS);
+    expect(isCheckpointReplayable({ createdAt: at }, now)).toBe(true);
+  });
+
+  // The adjacent invalid state, so the edge above cannot be satisfied by moving
+  // the boundary rather than by honouring it. Inclusive means inclusive: one
+  // millisecond past the window is already out.
+  it('REFUSES one a single millisecond past the edge', () => {
+    const now = Date.now();
+    const at = new Date(now - CHECKPOINT_REPLAY_WINDOW_MS - 1);
+    expect(isCheckpointReplayable({ createdAt: at }, now)).toBe(false);
+  });
+
+  // The positive control for the two tests above. The boundary is a pure
+  // function of two explicit inputs, so the same question must get the same
+  // answer every time it is asked. Reintroducing an independent clock read for
+  // either input puts a tick between them; at the rate measured above this loop
+  // straddles one within the first few thousand iterations.
+  it('answers the boundary identically every time it is asked', () => {
+    const answers = new Set();
+    for (let i = 0; i < 200_000; i += 1) {
+      const now = Date.now();
+      answers.add(isCheckpointReplayable({ createdAt: new Date(now - CHECKPOINT_REPLAY_WINDOW_MS) }, now));
+    }
+    expect([...answers]).toEqual([true]);
   });
 
   // ── NC-H8 · the control ────────────────────────────────────
