@@ -23,7 +23,7 @@
 // opposite failure and it is tested for first, deliberately: a campaign nobody
 // has synced yet is not an outage.
 // ============================================================
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -62,6 +62,9 @@ import {
 } from './canonicalVerdictEvidence.js';
 import { getCanonicalVerdictCampaigns } from '../entity-graph/EntityGraphService.js';
 import { evaluateConnectorVerdicts, getConnectorVerdicts } from './connectorVerdictService.js';
+import {
+  CANONICAL_VERDICT_WINDOW_DAYS, MAX_CANONICAL_EVIDENCE_AGE_DAYS, measurementAgeDays,
+} from './metricWindow.js';
 
 const SOURCE = readFileSync(fileURLToPath(new URL('./canonicalVerdictEvidence.js', import.meta.url)), 'utf8');
 /** Source with comments removed — the header QUOTES the old `.catch(() => [])`
@@ -70,25 +73,71 @@ const SOURCE = readFileSync(fileURLToPath(new URL('./canonicalVerdictEvidence.js
 const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
 const WS = 'ws-a';
+
+// ── B5-01N — the clock is an INPUT to this suite, not an ambient fact ────────
+// These fixtures used to carry absolute dates: a canonical window ending
+// 2026-08-24. Nothing in this file tests freshness, but the reader it exercises
+// gates on it — evidence older than MAX_CANONICAL_EVIDENCE_AGE_DAYS is refused,
+// and a window ending in the future is structurally invalid. So the fixture was
+// eligible on exactly four calendar days and then began failing on its own. The
+// suite changed meaning because the calendar moved, not because the code did.
+//
+// The clock is now pinned and every temporal fixture is derived from it, so the
+// scenario describes the same situation whenever it runs. canonicalFreshness
+// .test.js owns the freshness BOUNDARY; this age only has to sit inside it.
+const DAY = 24 * 60 * 60 * 1000;
+const EVIDENCE_AGE_DAYS = 1;
+const REFERENCE_NOW = '2026-08-25T13:47:11Z';
+/** Materially different instants the same scenario must survive unchanged —
+ *  a past one, the default, and one years out, deliberately at a day boundary. */
+const REFERENCES = [['2026-01-15T00:00:00Z'], [REFERENCE_NOW], ['2030-07-15T23:59:59Z']];
+
+const utcMidnight = (t) => Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+/** The period this suite's evidence measures: it ended EVIDENCE_AGE_DAYS ago and
+ *  spans exactly CANONICAL_VERDICT_WINDOW_DAYS inclusive days. Derived from the
+ *  constant rather than written out, so the row stays structurally canonical by
+ *  construction instead of by coincidence — the span is metricWindow's contract,
+ *  not this file's. */
+const evidenceWindow = () => {
+  const windowEnd = new Date(utcMidnight(new Date()) - EVIDENCE_AGE_DAYS * DAY);
+  return {
+    windowStart: new Date(windowEnd.getTime() - (CANONICAL_VERDICT_WINDOW_DAYS - 1) * DAY),
+    windowEnd,
+  };
+};
+
 const identity = (id, name) => ({
   id, name, channel: 'META', objective: 'OUTCOME_SALES',
-  externalId: `ext-${id}`, platformCreatedTime: new Date('2026-01-01T00:00:00Z'),
+  externalId: `ext-${id}`,
+  // Long-running by construction, so the campaign is past verdictEngine's
+  // MIN_DAYS learning gate at whatever instant the clock is pinned to.
+  platformCreatedTime: new Date(Date.now() - 240 * DAY),
   _count: { adSets: 1 },
 });
 /** A canonical row rich enough to clear the eligibility gate and be scored. */
-const canonicalRow = (entityId = 'c1') => ({
-  entityId, date: new Date('2026-08-24T09:00:00Z'), source: 'META', currency: 'USD',
-  spendMinor: 500_000, revenueMinor: 1_500_000, impressions: 200_000, clicks: 4_000,
-  conversions: 60, roas: 3, ctr: 0.02, frequency: 2.1, reach: 95_000,
-  actionMetrics: null, dailyBudgetMinor: null,
-  measurementWindow: 'CUMULATIVE_30D',
-  windowStart: new Date('2026-07-26T00:00:00Z'), windowEnd: new Date('2026-08-24T00:00:00Z'),
-});
+const canonicalRow = (entityId = 'c1') => {
+  const { windowStart, windowEnd } = evidenceWindow();
+  return {
+    entityId,
+    // Sync time, not measurement time — the row landed the morning after the
+    // period closed. `date` only ever breaks ties between canonical rows.
+    date: new Date(windowEnd.getTime() + 9 * 60 * 60 * 1000),
+    source: 'META', currency: 'USD',
+    spendMinor: 500_000, revenueMinor: 1_500_000, impressions: 200_000, clicks: 4_000,
+    conversions: 60, roas: 3, ctr: 0.02, frequency: 2.1, reach: 95_000,
+    actionMetrics: null, dailyBudgetMinor: null,
+    measurementWindow: 'CUMULATIVE_30D',
+    windowStart, windowEnd,
+  };
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date(REFERENCE_NOW));
   prisma.decision.findMany.mockResolvedValue([]);
 });
+afterEach(() => { vi.useRealTimers(); });
 
 // ── TEST 1 — the state that must NOT become an error ────────────────────────
 describe('1 · a successful empty read is still NO_CANONICAL_WINDOW', () => {
@@ -125,7 +174,11 @@ describe('1 · a successful empty read is still NO_CANONICAL_WINDOW', () => {
 
 // ── TEST 2 — the happy path is untouched ────────────────────────────────────
 describe('2 · a successful populated read behaves exactly as before', () => {
-  it('rows reach the caller and a verdict is produced', async () => {
+  // B5-01N — the same scenario at materially different calendar instants. A
+  // fixture that is only eligible near its own historical date fails here
+  // immediately, rather than passing for four days and then inverting.
+  it.each(REFERENCES)('rows reach the caller and a verdict is produced (clock %s)', async (instant) => {
+    vi.setSystemTime(new Date(instant));
     prisma.campaign.findMany.mockResolvedValue([identity('c1', 'Alpha')]);
     prisma.metricSnapshot.findMany.mockResolvedValue([canonicalRow('c1')]);
 
@@ -134,6 +187,21 @@ describe('2 · a successful populated read behaves exactly as before', () => {
     expect(ev.annotated).not.toBeNull();
     expect(ev.campaigns).toHaveLength(1);
     expect(rollupVerdicts).toHaveBeenCalledTimes(1);
+  });
+
+  // The fixture's age is INTENDED, and stated. Asserting the age rather than the
+  // date string is what makes a reintroduced absolute `windowEnd` fail on the
+  // spot instead of silently four days later, and it names the freshness policy
+  // this suite depends on without re-testing the boundary that owns it.
+  it.each(REFERENCES)('the evidence is deliberately fresh, not accidentally (clock %s)', (instant) => {
+    vi.setSystemTime(new Date(instant));
+    const { windowStart, windowEnd } = canonicalRow('c1');
+
+    expect(measurementAgeDays(windowEnd, new Date())).toBe(EVIDENCE_AGE_DAYS);
+    expect(EVIDENCE_AGE_DAYS).toBeLessThanOrEqual(MAX_CANONICAL_EVIDENCE_AGE_DAYS);
+    // …and it is still a canonical period, not merely a recent one.
+    expect(Math.round((windowEnd - windowStart) / DAY) + 1).toBe(CANONICAL_VERDICT_WINDOW_DAYS);
+    expect(windowEnd.getTime()).toBeLessThanOrEqual(Date.now());
   });
 
   it('the query itself is unchanged — window, sources, level, ordering', async () => {
