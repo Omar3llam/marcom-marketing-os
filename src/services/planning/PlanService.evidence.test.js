@@ -44,7 +44,7 @@
 // point is still a trailing-window reading rather than that day's activity.
 // R4 did not claim otherwise, and the assertions below hold it to that.
 // ============================================================
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -82,6 +82,69 @@ const SRC = readFileSync(
 
 const WS = 'ws-plan';
 
+// ── The controlled clock (B5-01S) ───────────────────────────────────────────
+//
+// This file used to write its evidence rows as calendar dates — 2026-08-01
+// through 2026-08-05 — while the reader bounds them with `date >= now - 60d`.
+// Absolute rows against a moving `now` is a staged expiry, not a fixture: the
+// suite was green until 2026-09-30T09:00Z and then lost tests day by day as each
+// row aged past the bound. Measured on this baseline, same bytes, clock only:
+//
+//   2026-08-28   53 passed             2026-10-02   38 passed | 15 failed
+//   2026-09-30T08:00Z   53 passed      2026-10-04   20 passed | 33 failed
+//   2026-09-30T10:00Z   48 passed |  5 failed       2027-08-30   19 | 34
+//
+// So the clock is pinned and every temporal fixture is derived from it. The
+// idiom is the one canonicalFreshness.test.js and canonicalReadFailure.test.js
+// already use; this file was the outlier. What is NOT done here: the lookback is
+// unchanged, no assertion was weakened, and no expiring test was skipped.
+const DAY = 86_400_000;
+const RECENCY_DAYS = TEMPORAL.planActualsSyncRecencyDays;
+
+/**
+ * The default pinned instant. ARBITRARY BY DESIGN — nothing may depend on which
+ * instant it is, and T3 proves that by running the same scenario at three
+ * materially separated others.
+ */
+const REFERENCE_NOW = new Date('2026-08-30T12:00:00Z');
+
+/** UTC midnight of whatever day the clock is currently pinned to. */
+const refDay = () => Math.floor(Date.now() / DAY) * DAY;
+/** UTC midnight `ageDays` before the reference day. */
+const dayStart = (ageDays) => refDay() - ageDays * DAY;
+/** An observation WRITTEN `ageDays` ago at `hour` UTC — a sync timestamp. */
+const obs = (ageDays, hour) => new Date(dayStart(ageDays) + hour * 3_600_000);
+/** The bucket label buildActualsSeries will produce for that day. */
+const dayLabel = (ageDays) => new Date(dayStart(ageDays)).toISOString().slice(0, 10);
+
+// The ages the fixture is built from, all derived from the real policy bound.
+//
+// The fixture spans SEVEN consecutive observation days and its oldest row sits
+// at half the bound, so the whole span is inside by a margin wider than the span
+// itself. That margin is deliberate: this suite's job is that the fixture stays
+// temporally valid, not to own where the edge is (see the ownership census at
+// T5). A fixture parked one day inside the limit would be a boundary test
+// wearing a fixture's clothes, and would re-acquire the fragility B5-01S removed.
+const OLDEST_AGE_DAYS = Math.floor(RECENCY_DAYS / 2);
+const D1 = OLDEST_AGE_DAYS;          // the oldest bucket day
+const D2 = OLDEST_AGE_DAYS - 1;      // the repair fixture's day
+const D3 = OLDEST_AGE_DAYS - 2;      // canonical-only — no eligible point
+const D4 = OLDEST_AGE_DAYS - 3;      // another tenant only — no eligible point
+const D5 = OLDEST_AGE_DAYS - 4;      // the newest bucket day
+const FILLER_AGE_DAYS = OLDEST_AGE_DAYS - 5;
+const SPARE_AGE_DAYS  = OLDEST_AGE_DAYS - 6;  // used only by the null-value tables
+
+/**
+ * Far outside the bound — four times it, not one day past it. The exact edge is
+ * owned elsewhere (T5); what this row is for is that a genuinely stale
+ * observation is genuinely excluded, which stays true however the edge is drawn.
+ */
+const ANCIENT_AGE_DAYS = RECENCY_DAYS * 4;
+
+/** A cron run reporting a trailing 90 days: the period a row MEASURES, which is
+ *  not the day it lands in. Drives the windowStart rows on D2. */
+const REPORTED_WINDOW_DAYS = 90;
+
 // ── The literal expected query ──────────────────────────────────────────────
 //
 // Reconstructed BY HAND. Importing OPERATIONAL_WINDOW_FILTER, OPERATIONAL_ORDER_BY
@@ -114,20 +177,24 @@ const rowOf = (over) => ({
 
 // Deliberately NOT in date order, so losing the ORDER BY changes the series the
 // test reads rather than merely the arguments it inspects.
-const TABLE = [
-  // 5 Aug, the later bucket, placed first
-  rowOf({ date: new Date('2026-08-05T09:00:00Z'), spendMinor: 20_000, revenueMinor: 60_000,
+//
+// B5-01S: a FUNCTION, not a literal. The rows have to be rebuilt every time the
+// clock moves, or "derived from the reference instant" would only be true of the
+// first instant the suite happens to run at.
+const buildTable = () => [
+  // D5, the later bucket, placed first
+  rowOf({ date: obs(D5, 9), spendMinor: 20_000, revenueMinor: 60_000,
     conversions: 8, measurementWindow: 'LEGACY_UNKNOWN' }),
   // non-platform sources: FETCHED by the seam, skipped by Plan in memory. All
   // three of them, because "the actual-revenue sources" is a set, not one row —
   // GA4 alone would leave SHOPIFY and MANUAL untested against the same skip.
-  rowOf({ date: new Date('2026-08-05T10:00:00Z'), source: 'GA4', spendMinor: 999_000,
+  rowOf({ date: obs(D5, 10), source: 'GA4', spendMinor: 999_000,
     revenueMinor: 999_000, conversions: 999, measurementWindow: 'LEGACY_UNKNOWN' }),
-  rowOf({ date: new Date('2026-08-05T11:00:00Z'), source: 'SHOPIFY', spendMinor: 0,
+  rowOf({ date: obs(D5, 11), source: 'SHOPIFY', spendMinor: 0,
     revenueMinor: 888_000, conversions: 888, measurementWindow: 'LEGACY_UNKNOWN' }),
-  rowOf({ date: new Date('2026-08-05T12:00:00Z'), source: 'MANUAL', spendMinor: 0,
+  rowOf({ date: obs(D5, 12), source: 'MANUAL', spendMinor: 0,
     revenueMinor: 777_000, conversions: 777, measurementWindow: 'LEGACY_UNKNOWN' }),
-  // 1 Aug — TWO DIFFERENT STREAMS on one day: one campaign's META row and
+  // D1 — TWO DIFFERENT STREAMS on one day: one campaign's META row and
   // another campaign's GOOGLE row. They are independent measurements, so they
   // are still SUMMED. R4 changed how re-measurements combine, not how separate
   // campaigns do, and this bucket is the control that says so: its value is
@@ -138,10 +205,10 @@ const TABLE = [
   // identical values — so a `distinct: ['date']` mutation at the seam passed
   // every output assertion and was caught only in the query arguments. Two rows
   // that agree prove nothing about how they were combined.
-  rowOf({ date: new Date('2026-08-01T09:00:00Z'), spendMinor: 10_000, revenueMinor: 30_000, conversions: 10 }),
-  rowOf({ date: new Date('2026-08-01T15:00:00Z'), source: 'GOOGLE', entityId: 'e-second',
+  rowOf({ date: obs(D1, 9), spendMinor: 10_000, revenueMinor: 30_000, conversions: 10 }),
+  rowOf({ date: obs(D1, 15), source: 'GOOGLE', entityId: 'e-second',
     spendMinor: 10_000, revenueMinor: 10_000, conversions: 30 }),
-  // 2 Aug — THE REPAIR FIXTURE. One stream (e-base|META) observed TWICE on one
+  // D2 — THE REPAIR FIXTURE. One stream (e-base|META) observed TWICE on one
   // day, with a third row from a different stream beside it.
   //
   // The two e-base rows also carry DIFFERENT measurement windows, deliberately:
@@ -153,45 +220,46 @@ const TABLE = [
   // `roas` is stored on the winner and CONTRADICTS revenue/spend. It is not in
   // the projection, so reading it is impossible rather than merely wrong; the
   // assertion below pins that.
-  rowOf({ date: new Date('2026-08-02T09:00:00Z'), measurementWindow: 'LEGACY_UNKNOWN',
-    windowStart: new Date('2026-05-05T00:00:00Z'),
+  rowOf({ date: obs(D2, 9), measurementWindow: 'LEGACY_UNKNOWN',
+    windowStart: obs(D2 + REPORTED_WINDOW_DAYS, 0),
     spendMinor: 10_000, revenueMinor: 20_000, conversions: 4 }),
-  rowOf({ date: new Date('2026-08-02T14:00:00Z'), roas: 99,
-    windowStart: new Date('2026-05-05T00:00:00Z'),
+  rowOf({ date: obs(D2, 14), roas: 99,
+    windowStart: obs(D2 + REPORTED_WINDOW_DAYS, 0),
     spendMinor: 40_000, revenueMinor: 160_000, conversions: 32 }),
-  rowOf({ date: new Date('2026-08-02T11:00:00Z'), source: 'GOOGLE', entityId: 'e-second',
-    windowStart: new Date('2026-05-05T00:00:00Z'),
+  rowOf({ date: obs(D2, 11), source: 'GOOGLE', entityId: 'e-second',
+    windowStart: obs(D2 + REPORTED_WINDOW_DAYS, 0),
     spendMinor: 10_000, revenueMinor: 40_000, conversions: 8 }),
   // canonical: same window-day as a real bucket, excluded by the population
-  rowOf({ date: new Date('2026-08-03T09:00:00Z'), measurementWindow: 'CUMULATIVE_30D',
+  rowOf({ date: obs(D3, 9), measurementWindow: 'CUMULATIVE_30D',
     entityId: 'e-canonical', spendMinor: 777_000, revenueMinor: 777_000, conversions: 777 }),
-  // older than any 60-day bound. For the ACTUALS read that makes it invisible;
-  // for the ENTITY scan, which has no recency bound, it is a legitimate entity —
-  // which is what makes an accidental `since` observable down there.
-  rowOf({ date: new Date('2026-01-01T09:00:00Z'), entityId: 'e-ancient',
+  // older than the recency bound, by a wide margin. For the ACTUALS read that
+  // makes it invisible; for the ENTITY scan, which has no recency bound, it is a
+  // legitimate entity — which is what makes an accidental `since` observable
+  // down there. Its AGE is what matters, so its age is what it is built from.
+  rowOf({ date: obs(ANCIENT_AGE_DAYS, 9), entityId: 'e-ancient',
     spendMinor: 888_000, revenueMinor: 888_000, conversions: 888 }),
-  // another tenant, inside the window. On 4 Aug, a day nothing else occupies, so
+  // another tenant, inside the window. On D4, a day nothing else occupies, so
   // its leaking in would ADD a point rather than perturb one.
-  rowOf({ date: new Date('2026-08-04T09:00:00Z'), workspaceId: 'ws-other', entityId: 'e-otherws',
+  rowOf({ date: obs(D4, 9), workspaceId: 'ws-other', entityId: 'e-otherws',
     spendMinor: 666_000, revenueMinor: 666_000, conversions: 666 }),
 ];
 
 // ── The cross-level rows (R4) ───────────────────────────────────────────────
 //
-// The same 2 Aug delivery as seen at the other three levels a platform sync
+// The same D2 delivery as seen at the other three levels a platform sync
 // lands. The ACCOUNT row is the SUM of that day's campaigns — that is what makes
 // adding the levels together a double count rather than a rounding error.
 //
 // The AD row's ratios deliberately DIFFER from the campaigns'. With every level
 // proportional, summing them all would produce the same ROAS as summing one, and
 // the mutation that drops the level narrowing would pass every output assertion.
-const CROSS_LEVEL_TABLE = [
+const buildCrossLevelTable = () => [
   ...TABLE,
-  rowOf({ date: new Date('2026-08-02T14:00:00Z'), entityId: 'e-acct', entityLevel: 'ACCOUNT',
+  rowOf({ date: obs(D2, 14), entityId: 'e-acct', entityLevel: 'ACCOUNT',
     spendMinor: 50_000, revenueMinor: 200_000, conversions: 40 }),
-  rowOf({ date: new Date('2026-08-02T14:00:00Z'), entityId: 'e-adset', entityLevel: 'ADSET',
+  rowOf({ date: obs(D2, 14), entityId: 'e-adset', entityLevel: 'ADSET',
     spendMinor: 40_000, revenueMinor: 160_000, conversions: 32 }),
-  rowOf({ date: new Date('2026-08-02T14:00:00Z'), entityId: 'e-ad', entityLevel: 'AD',
+  rowOf({ date: obs(D2, 14), entityId: 'e-ad', entityLevel: 'AD',
     spendMinor: 40_000, revenueMinor: 100_000, conversions: 20 }),
 ];
 
@@ -207,13 +275,11 @@ const CROSS_LEVEL_TABLE = [
 // ORDER BY, so an accidentally-added one changes WHICH 50 survive rather than
 // only the arguments.
 const FILLER_COUNT = 60;
-const FILLERS = Array.from({ length: FILLER_COUNT }, (_, i) => rowOf({
+const buildFillers = () => Array.from({ length: FILLER_COUNT }, (_, i) => rowOf({
   entityId: `e-${String(i).padStart(3, '0')}`,
   source:   'GA4',
-  date:     new Date(Date.parse('2026-08-06T00:00:00Z') + (FILLER_COUNT - i) * 3_600_000),
+  date:     new Date(dayStart(FILLER_AGE_DAYS) + (FILLER_COUNT - i) * 3_600_000),
 }));
-
-const ENTITY_TABLE = [...TABLE, ...FILLERS];
 
 // Hand-derived from the pre-migration query semantics, NOT from the helper:
 //   workspace ws-other        → excluded  (e-otherws)
@@ -224,7 +290,7 @@ const ENTITY_TABLE = [...TABLE, ...FILLERS];
 // With no ORDER BY, "storage order" is genuinely unspecified in Postgres; the
 // fake reproduces table order, which is the honest analogue. What the assertions
 // below rest on is the CAP and the MEMBERSHIP SHIFTS, not the identity of row 50.
-const EXPECTED_SCAN_ENTITIES = [
+const buildExpectedScanEntities = () => [
   'e-base', 'e-second', 'e-ancient',
   ...FILLERS.slice(0, 47).map((r) => r.entityId),
 ];
@@ -232,9 +298,9 @@ const EXPECTED_SCAN_ENTITIES = [
 // Hand-derived from the REPAIRED rule: one winner per (entityId, source) per
 // observation day, at CAMPAIGN level only, summed across streams, ratios last.
 //
-// 1 Aug — two streams, both winners: spend 20 000, rev 40 000, conv 40
+// D1    — two streams, both winners: spend 20 000, rev 40 000, conv 40
 //         → ROAS 2, CAC 500. Unchanged by R4, and that is the point of it.
-// 2 Aug — e-base|META observed twice; 14:00 supersedes 09:00. With e-second:
+// D2    — e-base|META observed twice; 14:00 supersedes 09:00. With e-second:
 //         spend 50 000, rev 200 000, conv 40 → ROAS 4, CAC 1 250.
 //         The values R4 replaced, kept here so the assertions can exclude them:
 //           summed (the old behaviour)  → spend 60 000, rev 220 000, conv 44
@@ -245,15 +311,37 @@ const EXPECTED_SCAN_ENTITIES = [
 //           every level summed (no CAMPAIGN narrowing, CROSS_LEVEL_TABLE)
 //                                       → spend 180 000, rev 660 000, conv 132
 //                                       → ROAS 3.666…, CAC 1 363.63…
-// 5 Aug — one platform stream: spend 20 000, rev 60 000, conv 8 → ROAS 3, CAC 2 500.
-// 3/4 Aug: no point at all — a day without a sync of this workspace's own is
+// D5    — one platform stream: spend 20 000, rev 60 000, conv 8 → ROAS 3, CAC 2 500.
+// D3/D4: no point at all — a day without a sync of this workspace's own is
 // absent, which is the bucketing defect R4 did NOT repair, not a gap in the
 // fixture.
-const EXPECTED_ROAS_SERIES = [
-  { date: '2026-08-01', value: 2 },
-  { date: '2026-08-02', value: 4 },
-  { date: '2026-08-05', value: 3 },
+const buildExpectedRoasSeries = () => [
+  { date: dayLabel(D1), value: 2 },
+  { date: dayLabel(D2), value: 4 },
+  { date: dayLabel(D5), value: 3 },
 ];
+
+// ── The fixtures, rebuilt whenever the clock moves (B5-01S) ─────────────────
+//
+// `let`, not `const`, and assigned from the builders above. Nothing here is a
+// calendar date any more: every row and every expected label is a function of
+// whatever instant the clock is currently pinned to, so moving the clock moves
+// the fixture with it instead of ageing it out from under the assertions.
+let TABLE;
+let CROSS_LEVEL_TABLE;
+let FILLERS;
+let ENTITY_TABLE;
+let EXPECTED_SCAN_ENTITIES;
+let EXPECTED_ROAS_SERIES;
+
+function buildFixtures() {
+  TABLE                  = buildTable();
+  CROSS_LEVEL_TABLE      = buildCrossLevelTable();
+  FILLERS                = buildFillers();
+  ENTITY_TABLE           = [...TABLE, ...FILLERS];
+  EXPECTED_SCAN_ENTITIES = buildExpectedScanEntities();
+  EXPECTED_ROAS_SERIES   = buildExpectedRoasSeries();
+}
 
 const fakeFindMany = (table) => (args = {}) => {
   const w = args.where ?? {};
@@ -287,11 +375,19 @@ const useTable = (table = TABLE) => {
   prisma.metricSnapshot.findMany.mockImplementation(fakeFindMany(table));
 };
 
+// The goal period BRACKETS the reference instant, opening on the fixture's
+// oldest bucket day and closing tomorrow — which is what its 2026-08-01 →
+// 2026-08-31 literal did against a wall clock in late August. That relationship
+// is not decoration: estimateLanding derives pctOfPeriodElapsed from
+// (now - periodStart) / (periodEnd - periodStart) and widens the landing band
+// when the period is young. Pinning it keeps the projection's inputs fixed too,
+// where before they drifted with every day that passed.
 const planWith = (metric = 'blendedRoas') => ({
   id: 'p1',
   goals: [{
     id: 'g1', metric, comparator: 'GTE', targetValue: 2, spendCeilingMinor: null,
-    periodStart: '2026-08-01T00:00:00Z', periodEnd: '2026-08-31T00:00:00Z',
+    periodStart: new Date(dayStart(D1)).toISOString(),
+    periodEnd:   new Date(dayStart(-1)).toISOString(),
   }],
 });
 
@@ -300,10 +396,26 @@ const actualsArgs = () => prisma.metricSnapshot.findMany.mock.calls[0][0];
 /** The series buildActualsSeries produced, as it reaches the goal tracker. */
 const seriesOf = () => estimateLanding.mock.calls[0][0].actuals;
 
+/**
+ * Pin the clock to `instant` and REBUILD every fixture from it.
+ *
+ * The rebuild is the half that matters. Pinning alone would only freeze the
+ * suite at one calendar position; rebuilding is what makes the same bytes mean
+ * the same thing at any position, which is what T3 measures.
+ */
+const at = (instant) => {
+  vi.setSystemTime(instant);
+  buildFixtures();
+  useTable();
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
-  useTable();
+  vi.useFakeTimers();
+  at(REFERENCE_NOW);
 });
+
+afterEach(() => { vi.useRealTimers(); });
 
 describe('R3.6 — Plan actuals on the Evidence seam', () => {
   // ── ownership ────────────────────────────────────────────────────────────
@@ -446,18 +558,18 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
 
     it('another tenant\'s rows never enter a bucket', async () => {
       await trackPlan(WS, planWith('blendedRoas'));
-      // ws-other's row sits alone on 4 Aug, so leaking would ADD a point.
-      expect(seriesOf().map((p) => p.date)).not.toContain('2026-08-04');
+      // ws-other's row sits alone on D4, so leaking would ADD a point.
+      expect(seriesOf().map((p) => p.date)).not.toContain(dayLabel(D4));
     });
 
     it('a row older than the bound is excluded', async () => {
       await trackPlan(WS, planWith('blendedRoas'));
-      expect(seriesOf().map((p) => p.date)).not.toContain('2026-01-01');
+      expect(seriesOf().map((p) => p.date)).not.toContain(dayLabel(ANCIENT_AGE_DAYS));
     });
 
     it('a canonical row is excluded — it would otherwise be its own bucket', async () => {
       await trackPlan(WS, planWith('blendedRoas'));
-      expect(seriesOf().map((p) => p.date)).not.toContain('2026-08-03');
+      expect(seriesOf().map((p) => p.date)).not.toContain(dayLabel(D3));
     });
 
     it('the actual-revenue sources are FETCHED and then skipped in memory', async () => {
@@ -465,23 +577,23 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
       // would be dead code reaching the same number by a different route.
       await trackPlan(WS, planWith('blendedRoas'));
       expect(actualsArgs().where.source).toBeUndefined();
-      // GA4, SHOPIFY and MANUAL all sit on 5 Aug and would have swamped it —
+      // GA4, SHOPIFY and MANUAL all sit on D5 and would have swamped it —
       // and two of them carry ZERO spend, so admitting them would also drag the
       // denominator the wrong way rather than merely inflating both halves.
-      expect(seriesOf().find((p) => p.date === '2026-08-05').value).toBe(3);
+      expect(seriesOf().find((p) => p.date === dayLabel(D5)).value).toBe(3);
     });
 
     it('two observations of ONE stream on one day do not sum — the newest wins', async () => {
       // THE R4 REPAIR, inverted from the assertion R3.6 pinned. e-base|META was
-      // observed at 09:00 and again at 14:00 on 2 Aug: the same period measured
+      // observed at 09:00 and again at 14:00 on D2: the same period measured
       // twice, not twice the activity. 14:00 supersedes 09:00, and only then is
       // e-second's independent stream added.
       await trackPlan(WS, planWith('blendedRoas'));
-      const aug2 = seriesOf().filter((p) => p.date === '2026-08-02');
-      expect(aug2).toHaveLength(1);
-      expect(aug2[0].value).toBe(4);                    // 200 000 / 50 000
-      expect(aug2[0].value).not.toBeCloseTo(11 / 3, 6); // 220 000 / 60 000, both added
-      expect(aug2[0].value).not.toBe(3);                // 60 000 / 20 000, 09:00 alone
+      const d2Point = seriesOf().filter((p) => p.date === dayLabel(D2));
+      expect(d2Point).toHaveLength(1);
+      expect(d2Point[0].value).toBe(4);                    // 200 000 / 50 000
+      expect(d2Point[0].value).not.toBeCloseTo(11 / 3, 6); // 220 000 / 60 000, both added
+      expect(d2Point[0].value).not.toBe(3);                // 60 000 / 20 000, 09:00 alone
     });
 
     it('the winner is chosen across DIFFERENT measurement windows, by recency alone', async () => {
@@ -491,50 +603,50 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
       // observation wins because it is later. If a window rule had been added,
       // the value here would stop being the 14:00 row's.
       await trackPlan(WS, planWith('blendedRoas'));
-      const winner = TABLE.find((r) => r.date.toISOString() === '2026-08-02T14:00:00.000Z' && r.source === 'META');
-      const loser  = TABLE.find((r) => r.date.toISOString() === '2026-08-02T09:00:00.000Z');
+      const winner = TABLE.find((r) => r.date.getTime() === obs(D2, 14).getTime() && r.source === 'META');
+      const loser  = TABLE.find((r) => r.date.getTime() === obs(D2, 9).getTime());
       expect(winner.measurementWindow).not.toBe(loser.measurementWindow); // genuinely mixed
-      expect(seriesOf().find((p) => p.date === '2026-08-02').value)
+      expect(seriesOf().find((p) => p.date === dayLabel(D2)).value)
         .toBe((winner.revenueMinor + 40_000) / (winner.spendMinor + 10_000));
     });
 
     it('two DIFFERENT streams on one day are still summed', async () => {
       // The other half of the rule, and the reason this is a repair rather than
       // a blanket deduplication: separate campaigns are independent
-      // measurements. 1 Aug reads exactly what it read before R4.
+      // measurements. D1 reads exactly what it read before R4.
       await trackPlan(WS, planWith('blendedRoas'));
-      const aug1 = seriesOf().filter((p) => p.date === '2026-08-01');
-      expect(aug1).toHaveLength(1);
-      expect(aug1[0].value).toBe(2);     // 40 000 / 20 000, both streams
-      expect(aug1[0].value).not.toBe(3); // 30 000 / 10 000, one stream alone
+      const d1Point = seriesOf().filter((p) => p.date === dayLabel(D1));
+      expect(d1Point).toHaveLength(1);
+      expect(d1Point[0].value).toBe(2);     // 40 000 / 20 000, both streams
+      expect(d1Point[0].value).not.toBe(3); // 30 000 / 10 000, one stream alone
     });
 
     it('a stored ratio is never read — the value is derived from the counts', async () => {
-      // The 2 Aug winner carries `roas: 99`. It is not in the projection, so it
+      // The D2 winner carries `roas: 99`. It is not in the projection, so it
       // is not merely ignored — it never arrives. Both halves are asserted,
       // because a projection that started returning it is the change that would
       // make "ignored" the only thing standing between it and the series.
       await trackPlan(WS, planWith('blendedRoas'));
       expect(actualsArgs().select.roas).toBeUndefined();
-      expect(seriesOf().find((p) => p.date === '2026-08-02').value).toBe(4);
+      expect(seriesOf().find((p) => p.date === dayLabel(D2)).value).toBe(4);
       expect(seriesOf().map((p) => p.value)).not.toContain(99);
     });
 
     it('a calendar day without a sync gets no point (defect NOT repaired)', async () => {
-      // R4 deliberately left this alone. 3 and 4 Aug have no eligible platform
+      // R4 deliberately left this alone. D3 and D4 have no eligible platform
       // observation of this workspace's own, and nothing is interpolated to fill
       // them — a series with 5 points here would mean days were invented.
       await trackPlan(WS, planWith('blendedRoas'));
-      expect(seriesOf()).toHaveLength(3); // not 5, despite spanning 1–5 Aug
-      expect(seriesOf().map((p) => p.date)).not.toContain('2026-08-03');
-      expect(seriesOf().map((p) => p.date)).not.toContain('2026-08-04');
+      expect(seriesOf()).toHaveLength(3); // not 5, despite spanning D1–D5
+      expect(seriesOf().map((p) => p.date)).not.toContain(dayLabel(D3));
+      expect(seriesOf().map((p) => p.date)).not.toContain(dayLabel(D4));
     });
 
     it('date ASC ordering reaches the series', async () => {
-      // The table is stored 5 Aug first. Only the ORDER BY makes the series
+      // The table is stored D5 first. Only the ORDER BY makes the series
       // chronological. The reduction does NOT lean on it — see the test below.
       await trackPlan(WS, planWith('blendedRoas'));
-      expect(seriesOf().map((p) => p.date)).toEqual(['2026-08-01', '2026-08-02', '2026-08-05']);
+      expect(seriesOf().map((p) => p.date)).toEqual([dayLabel(D1), dayLabel(D2), dayLabel(D5)]);
     });
 
     it('the newest-wins rule survives the rows arriving in the worst order', async () => {
@@ -548,15 +660,15 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
       prisma.metricSnapshot.findMany.mockImplementation((args) =>
         fakeFindMany([...TABLE].reverse())({ ...args, orderBy: undefined }));
       await trackPlan(WS, planWith('blendedRoas'));
-      expect(seriesOf().find((p) => p.date === '2026-08-02').value).toBe(4);
+      expect(seriesOf().find((p) => p.date === dayLabel(D2)).value).toBe(4);
     });
 
     it('spend and conversions produce the matching blendedCac series', async () => {
       await trackPlan(WS, planWith('blendedCac'));
       expect(seriesOf()).toEqual([
-        { date: '2026-08-01', value: 500 },   // 20 000 / 40, two streams
-        { date: '2026-08-02', value: 1_250 }, // 50 000 / 40, newest per stream
-        { date: '2026-08-05', value: 2_500 }, // 20 000 / 8
+        { date: dayLabel(D1), value: 500 },   // 20 000 / 40, two streams
+        { date: dayLabel(D2), value: 1_250 }, // 50 000 / 40, newest per stream
+        { date: dayLabel(D5), value: 2_500 }, // 20 000 / 8
       ]);
     });
 
@@ -576,7 +688,7 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
       it('only CAMPAIGN rows contribute — the series is unmoved by the other levels', async () => {
         // The strongest form of the claim: the SAME delivery, now also present
         // as an ACCOUNT rollup, an ADSET row and an AD row, changes nothing at
-        // all. Not the 2 Aug value, not the day count, not any other point.
+        // all. Not the D2 value, not the day count, not any other point.
         await trackPlan(WS, planWith('blendedRoas'));
         expect(seriesOf()).toEqual(EXPECTED_ROAS_SERIES);
       });
@@ -584,12 +696,12 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
       it('the ACCOUNT rollup is the sum of the campaigns — which is why adding them is a double count', async () => {
         // Not an assertion about the code: an assertion about the fixture, so
         // the test below is measuring the real defect rather than an arbitrary
-        // number. The rollup equals 2 Aug's repaired campaign totals exactly.
+        // number. The rollup equals D2's repaired campaign totals exactly.
         const acct = CROSS_LEVEL_TABLE.find((r) => r.entityId === 'e-acct');
         expect(acct.spendMinor).toBe(50_000);
         expect(acct.revenueMinor).toBe(200_000);
         await trackPlan(WS, planWith('blendedRoas'));
-        expect(seriesOf().find((p) => p.date === '2026-08-02').value)
+        expect(seriesOf().find((p) => p.date === dayLabel(D2)).value)
           .toBe(acct.revenueMinor / acct.spendMinor);
       });
 
@@ -598,15 +710,15 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
         // out so the assertion excludes a specific wrong number rather than
         // merely confirming a right one.
         await trackPlan(WS, planWith('blendedRoas'));
-        expect(seriesOf().find((p) => p.date === '2026-08-02').value)
+        expect(seriesOf().find((p) => p.date === dayLabel(D2)).value)
           .not.toBeCloseTo(660_000 / 180_000, 6);
       });
 
       it('and the same holds for blendedCac', async () => {
         await trackPlan(WS, planWith('blendedCac'));
-        const aug2 = seriesOf().find((p) => p.date === '2026-08-02').value;
-        expect(aug2).toBe(1_250);                       // 50 000 / 40, campaigns only
-        expect(aug2).not.toBeCloseTo(180_000 / 132, 6); // every level summed
+        const d2Value = seriesOf().find((p) => p.date === dayLabel(D2)).value;
+        expect(d2Value).toBe(1_250);                       // 50 000 / 40, campaigns only
+        expect(d2Value).not.toBeCloseTo(180_000 / 132, 6); // every level summed
       });
     });
 
@@ -616,7 +728,7 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
         // The day's only row measures nothing. `?? 0` keeps the arithmetic from
         // going NaN, and the `spendMinor > 0` guard then suppresses the point
         // rather than emitting a ROAS of 0 the data does not support.
-        useTable([rowOf({ date: new Date('2026-08-07T09:00:00Z'), spendMinor: null, revenueMinor: null, conversions: null })]);
+        useTable([rowOf({ date: obs(SPARE_AGE_DAYS, 9), spendMinor: null, revenueMinor: null, conversions: null })]);
         const out = await trackPlan(WS, planWith('blendedRoas'));
         expect(estimateLanding).not.toHaveBeenCalled();
         expect(out.goals[0].landing).toBeNull();
@@ -624,24 +736,25 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
 
       it('a null spend beside a real stream neither breaks nor inflates the day', async () => {
         useTable([
-          rowOf({ date: new Date('2026-08-07T09:00:00Z'), spendMinor: null, revenueMinor: null, conversions: null }),
-          rowOf({ date: new Date('2026-08-07T10:00:00Z'), entityId: 'e-second',
+          rowOf({ date: obs(SPARE_AGE_DAYS, 9), spendMinor: null, revenueMinor: null, conversions: null }),
+          rowOf({ date: obs(SPARE_AGE_DAYS, 10), entityId: 'e-second',
             spendMinor: 10_000, revenueMinor: 30_000, conversions: 5 }),
         ]);
         await trackPlan(WS, planWith('blendedRoas'));
-        expect(seriesOf()).toEqual([{ date: '2026-08-07', value: 3 }]);
+        expect(seriesOf()).toEqual([{ date: dayLabel(SPARE_AGE_DAYS), value: 3 }]);
       });
 
       it('windowStart is neither read nor projected — the bucket is the observation day', async () => {
-        // The 2 Aug rows carry a windowStart in MAY. If the bucket key were the
-        // reported period rather than the observation, they would land on
-        // 2026-05-05. The column is not even projected, so the series is the
+        // The D2 rows carry a windowStart 90 DAYS EARLIER — a cron run reporting
+        // a trailing quarter. If the bucket key were the reported period rather
+        // than the observation, they would land on the day that window OPENED,
+        // three months back. The column is not even projected, so the series is the
         // proof and the projection assertion is the reason it cannot drift.
         await trackPlan(WS, planWith('blendedRoas'));
         expect(actualsArgs().select.windowStart).toBeUndefined();
         expect(actualsArgs().select.windowEnd).toBeUndefined();
-        expect(seriesOf().map((p) => p.date)).not.toContain('2026-05-05');
-        expect(seriesOf().map((p) => p.date)).toContain('2026-08-02');
+        expect(seriesOf().map((p) => p.date)).not.toContain(dayLabel(D2 + REPORTED_WINDOW_DAYS));
+        expect(seriesOf().map((p) => p.date)).toContain(dayLabel(D2));
       });
 
       it('a null observation date yields no point, and no fabricated one', async () => {
@@ -860,5 +973,180 @@ describe('R3.10 — Plan\'s entity scan on the Evidence seam', () => {
       expect(estimateLanding).toHaveBeenCalled();
       expect(out.goals[0].landing).not.toBeNull();
     });
+  });
+});
+
+// ============================================================================
+// B5-01S — clock safety
+// ============================================================================
+// Everything above describes timeless behaviour: how a day's observations
+// combine, which rows a tenant may see, what a stale row does. None of it is
+// about the calendar, and none of it should change depending on which day the
+// suite runs. It did.
+//
+// These tests are the ratchet on that. They do NOT re-own the evidence policy —
+// see the census at T5 — they own the one property this file is responsible for:
+// its own fixture stays temporally valid, forever, without anyone maintaining it.
+// ============================================================================
+
+/** Whole UTC days between the pinned reference day and the day a row landed in. */
+const ageInDays = (date) => (refDay() - Math.floor(new Date(date).getTime() / DAY) * DAY) / DAY;
+
+/**
+ * Burn REAL wall-clock time and report how much was burnt.
+ *
+ * `process.uptime()` is the real-time source vitest's fake timers leave alone.
+ * MEASURED, not assumed: under `vi.useFakeTimers()` a 20 000 000-iteration loop
+ * moved `process.uptime` by 25.5 ms while `Date.now`, `performance.now` AND
+ * `process.hrtime` all reported a delta of exactly 0. hrtime was the first
+ * choice here and is faked — the premise check below is what caught it.
+ *
+ * `sink` is module-level AND returned so V8 cannot eliminate the loop, and the
+ * guard bounds the worst case at ~4e8 iterations if the asymmetry ever
+ * disappears, so the test fails on its own premise instead of hanging the suite.
+ */
+let sink = 0;
+const spinRealMs = (ms) => {
+  const start = process.uptime();
+  const elapsed = () => (process.uptime() - start) * 1000;
+  for (let guard = 0; guard < 2_000 && elapsed() < ms; guard += 1) {
+    for (let i = 0; i < 200_000; i += 1) sink += i % 7;
+  }
+  return { elapsedMs: elapsed(), work: sink };
+};
+
+describe('B5-01S — the calendar cannot change whether this file is correct', () => {
+  // ── T1 · the intended path, under the controlled clock ───────────────────
+  it('T1 — the intended evidence path is green at the pinned reference instant', async () => {
+    await trackPlan(WS, planWith('blendedRoas'));
+    expect(seriesOf()).toEqual(EXPECTED_ROAS_SERIES);
+    expect(seriesOf().map((p) => p.value)).toEqual([2, 4, 3]);
+  });
+
+  // ── T2 · the AGE, not the date ───────────────────────────────────────────
+  it('T2 — every observation is exactly the age it is declared to be', () => {
+    // Rows are located by their BUSINESS identity — the tenant, the canonical
+    // window, the contradictory stored ratio — and only then is their age
+    // asserted. Finding a row by the timestamp the helper built and then
+    // checking that timestamp would prove nothing but that `===` works.
+    const cases = [
+      [D1,               TABLE.find((r) => r.source === 'GOOGLE' && r.conversions === 30)],
+      [D2,               TABLE.find((r) => r.roas === 99)],
+      [D3,               TABLE.find((r) => r.entityId === 'e-canonical')],
+      [D4,               TABLE.find((r) => r.entityId === 'e-otherws')],
+      [D5,               TABLE.find((r) => r.source === 'MANUAL')],
+      [ANCIENT_AGE_DAYS, TABLE.find((r) => r.entityId === 'e-ancient')],
+    ];
+    for (const [intendedAge, row] of cases) {
+      expect(row, `no fixture row for age ${intendedAge}`).toBeTruthy();
+      expect(ageInDays(row.date)).toBe(intendedAge);
+    }
+
+    // …and the ages mean what the policy says they mean. This is the assertion
+    // that fails the day someone edits an age past the bound: the fixture is
+    // inside by construction, and the one stale row is outside by construction.
+    for (const row of TABLE.filter((r) => r.entityId !== 'e-ancient')) {
+      expect(ageInDays(row.date)).toBeLessThan(RECENCY_DAYS);
+    }
+    expect(ageInDays(TABLE.find((r) => r.entityId === 'e-ancient').date))
+      .toBeGreaterThan(RECENCY_DAYS);
+  });
+
+  // ── T3 · the same bytes at materially separated instants ─────────────────
+  //
+  // Two years apart at the extremes, which is the point: nothing about the
+  // fixture, the bucket labels or the goal period may depend on the era. The
+  // VALUE assertion is the clock-independent core — a series rebuilt at a
+  // different instant still reads 2, 4, 3, because those come from the counts.
+  const INSTANTS = ['2026-01-15T00:00:00Z', '2026-08-25T09:00:00Z', '2030-07-15T18:00:00Z'];
+
+  it.each(INSTANTS)('T3 — the actuals series is identical at %s', async (instant) => {
+    at(instant);
+    await trackPlan(WS, planWith('blendedRoas'));
+    expect(seriesOf().map((p) => p.value)).toEqual([2, 4, 3]);
+    expect(seriesOf()).toHaveLength(3);
+    expect(seriesOf()).toEqual(EXPECTED_ROAS_SERIES);
+  });
+
+  it.each(INSTANTS)('T3 — the entity scan is identical at %s', async (instant) => {
+    at(instant);
+    useTable(ENTITY_TABLE);
+    await trackPlan(WS, planWith());
+    expect(scannedEntities()).toEqual(EXPECTED_SCAN_ENTITIES);
+    expect(scannedEntities()).toHaveLength(50);
+  });
+
+  it('T3b — the clock is pinned, not merely sampled once', async () => {
+    // WHY THIS EXISTS. Every fixture above is derived from `Date.now()`, so if
+    // the pinning were deleted the fixtures would simply self-adjust to the real
+    // clock and the whole suite would still be green — the safety property would
+    // be true by luck rather than by construction, and nothing would say so.
+    // This is the assertion that fails when the pin goes away.
+    expect(Date.now(), 'the clock is not pinned to the reference instant')
+      .toBe(REFERENCE_NOW.getTime());
+
+    // …and it does not merely start there: real milliseconds pass and the
+    // frozen clock does not notice, across a synchronous burn and an await.
+    const t0 = Date.now();
+    const { elapsedMs, work } = spinRealMs(25);
+    expect(work, 'the burn loop was optimised away — it proves nothing').toBeGreaterThan(0);
+    expect(elapsedMs, 'the guard must burn REAL time, or it proves nothing').toBeGreaterThanOrEqual(25);
+    expect(Date.now(), 'the system clock advanced during a test — it is not pinned').toBe(t0);
+    await Promise.resolve();
+    expect(Date.now()).toBe(t0);
+  });
+
+  // ── T4 · stale is still stale ────────────────────────────────────────────
+  it('T4 — a genuinely stale observation is still excluded, not made fresh by freezing time', async () => {
+    await trackPlan(WS, planWith('blendedRoas'));
+    const ancient = TABLE.find((r) => r.entityId === 'e-ancient');
+    expect(ageInDays(ancient.date)).toBeGreaterThan(RECENCY_DAYS);
+    expect(seriesOf().map((p) => p.date)).not.toContain(dayLabel(ANCIENT_AGE_DAYS));
+    expect(seriesOf()).toHaveLength(3);
+  });
+
+  it('T4b — a population of nothing BUT stale observations still yields no landing', async () => {
+    // The strong form. If pinning had quietly widened the window — or if the
+    // fixture had stopped interacting with the real bound at all — this row
+    // would come back and produce a projection out of evidence too old to use.
+    useTable([rowOf({
+      date: obs(ANCIENT_AGE_DAYS, 9), spendMinor: 10_000, revenueMinor: 30_000, conversions: 5,
+    })]);
+    const out = await trackPlan(WS, planWith('blendedRoas'));
+    expect(out.goals[0].landing).toBeNull();
+    expect(estimateLanding).not.toHaveBeenCalled();
+  });
+
+  // ── T5 · boundary ownership ──────────────────────────────────────────────
+  //
+  // THE CENSUS (B5-01S §5), recorded rather than summarised:
+  //
+  //   the VALUE 60, and its env-var precedence
+  //       → src/config/temporal.test.js. Named there, asserted there.
+  //   the SHAPE of the bound — that it is `date >= since`, inclusive, and never
+  //   windowStart/windowEnd
+  //       → src/services/evidence/operationalEvidence.test.js
+  //         ('bounds `date` — the SYNC timestamp — and never windowStart/windowEnd').
+  //   the exact EDGE — a row at age == 60 vs age == 61
+  //       → NOBODY, in the behavioural sense: `gte` is Prisma's, and no suite
+  //         drives a row across it. Recorded as a gap; NOT closed here, because
+  //         a fixture parked on the edge is precisely the fragility this slice
+  //         removed, and a second owner of the evidence policy is what §5
+  //         forbids. It belongs to whichever slice takes evidence freshness.
+  //
+  // What this file owns, and has always owned, is the DERIVATION: that Plan asks
+  // for `now - planActualsSyncRecencyDays`. Pinning the clock lets that be
+  // asserted exactly instead of as a range — a strengthening, and the range
+  // assertions above are kept unchanged beside it.
+  it('T5 — the `since` this file owns is exactly now minus the configured bound', async () => {
+    await trackPlan(WS, planWith());
+    expect(actualsArgs().where.date.gte.getTime()).toBe(Date.now() - RECENCY_DAYS * DAY);
+  });
+
+  it('T5b — no fixture row sits near the boundary, so this suite cannot become its second owner', () => {
+    // A margin, not an edge. If a future edit moves a row to age 59 or 61 to
+    // "also test the boundary", this fails and says where that test belongs.
+    const margins = TABLE.map((r) => Math.abs(ageInDays(r.date) - RECENCY_DAYS));
+    expect(Math.min(...margins)).toBeGreaterThanOrEqual(RECENCY_DAYS / 4);
   });
 });
