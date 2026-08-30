@@ -9,9 +9,16 @@
 // Exit code 0 = all checks pass
 // Exit code 1 = one or more checks fail
 // ============================================================
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
+import * as pathForMigrations from 'path';
 import { join, extname } from 'path';
 import { execSync } from 'child_process';
+import {
+  scanMigrations, verifyAgainstBaseline, summarise,
+} from './migrationCompatibility.js';
+
+// The classifier takes its fs/path as arguments so it stays pure and testable.
+const fsForMigrations = { readdirSync, readFileSync, existsSync };
 
 const ROOT      = process.cwd();
 const CLIENT    = join(ROOT, 'client/src');
@@ -331,11 +338,52 @@ for (const [fn, relPath] of WORKSPACE_SCOPED_SERVICES) {
 if (isolationPass) pass(`All ${WORKSPACE_SCOPED_SERVICES.length} workspace-scoped services still take and enforce workspaceId`);
 
 // ══════════════════════════════════════════════════════════════
+// CHECK 9 — MIGRATION ROLLOUT COMPATIBILITY (B5-01R⁗)
+// ══════════════════════════════════════════════════════════════
+// A migration can be valid SQL, apply cleanly, and still break a rolling
+// deploy — render.yaml runs lumi-backend and lumi-worker independently with no
+// ordering, so old and new instances overlap on every deploy. This classifies
+// each migration's operations and requires anything that is not
+// rollout-COMPATIBLE to be declared, by name, with a reason.
+//
+// Lives here on purpose: `npm run arch-check` is what the local loop and CI's
+// architecture audit both run. A migration checker nobody invokes is not a
+// contract, it is a script.
+section('MIGRATION ROLLOUT COMPATIBILITY');
+{
+  const scan = scanMigrations(fsForMigrations, pathForMigrations, join(ROOT, 'prisma/migrations'));
+  const baseline = JSON.parse(readFileSync(join(ROOT, 'scripts/migrationCompatibility.baseline.json'), 'utf8'));
+  delete baseline.$comment;
+  const counts = summarise(scan);
+  const result = verifyAgainstBaseline(scan, baseline);
+
+  console.log(`  ${scan.length} migrations — `
+    + `${counts.COMPATIBLE} compatible, ${counts.TRANSITION_REQUIRED} transitional, `
+    + `${counts.INCOMPATIBLE} incompatible, ${counts.UNKNOWN} unknown`);
+
+  for (const m of result.undeclared) {
+    const ops = [...new Set(m.operations.filter((o) => o.cls !== 'COMPATIBLE').map((o) => o.id))];
+    fail(`Migration is not rollout-safe and is not declared: ${m.name} → ${m.verdict}`);
+    if (ops.length) fail(`  → ${ops.join(', ')}`);
+    for (const u of m.unknown.slice(0, 2)) fail(`  → unclassifiable SQL: ${u}`);
+    fail('  → Old and new instances overlap on every deploy. Either rewrite it as an');
+    fail('     additive step, or declare it in scripts/migrationCompatibility.baseline.json');
+    fail('     with a reason saying why the overlap is acceptable.');
+  }
+  for (const line of [...result.mismatched, ...result.stale, ...result.unreasoned]) fail(line);
+
+  if (result.ok) {
+    pass(`Every non-compatible migration is declared with a reason `
+      + `(${counts.TRANSITION_REQUIRED + counts.INCOMPATIBLE + counts.UNKNOWN} entries)`);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 // SUMMARY
 // ══════════════════════════════════════════════════════════════
 console.log('\n══════════════════════════════════════════════');
 console.log(`Architecture Check Results:`);
-console.log(`  Checks run:  8`);
+console.log(`  Checks run:  9`);
 console.log(`  ✅ Failures: ${failures}`);
 console.log(`  🟡 Warnings: ${warnings}`);
 console.log('══════════════════════════════════════════════\n');

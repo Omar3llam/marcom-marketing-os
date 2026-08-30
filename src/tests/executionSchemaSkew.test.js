@@ -113,8 +113,22 @@ const TARGET = '120200000000001';
  * API response and is set by the EXECUTED_SUCCESS transition.
  */
 const SKEWED_COLUMN = 'response';
-const DROP = `ALTER TABLE "execution_requests" DROP COLUMN IF EXISTS "${SKEWED_COLUMN}"`;
-const RESTORE = `ALTER TABLE "execution_requests" ADD COLUMN IF NOT EXISTS "${SKEWED_COLUMN}" JSONB`;
+const HIDDEN = `${SKEWED_COLUMN}__b5r_hidden`;
+
+// RENAME, not DROP + ADD. Both make Prisma fail with P2022 — the column it
+// names is not there — so the skew under test is identical. The difference is
+// what is left behind: `ADD COLUMN` APPENDS, so dropping and re-adding moved
+// `response` from ordinal position 8 to 15 and it stayed there for the rest of
+// the run. That is shared state, and worker databases are shared between FILES
+// even though B5-01H gave each worker its own.
+//
+// MEASURED: it broke decisionMemoryClosure.contract.test.js T5, which asserts
+// execution_requests' fifteen columns in ordinal order — but only on the runs
+// where both files landed in the same worker slot, in that order. One failure
+// in three full runs, with nothing in either file to suggest a connection.
+// A rename does not move the column, so nothing survives the test.
+const DROP = `ALTER TABLE "execution_requests" RENAME COLUMN "${SKEWED_COLUMN}" TO "${HIDDEN}"`;
+const RESTORE = `ALTER TABLE "execution_requests" RENAME COLUMN "${HIDDEN}" TO "${SKEWED_COLUMN}"`;
 
 let seq = 0;
 async function seedQueuedExecution() {

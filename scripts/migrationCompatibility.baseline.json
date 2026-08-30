@@ -1,0 +1,105 @@
+{
+  "$comment": [
+    "B5-01R⁗ — every migration that is NOT rollout-COMPATIBLE, declared one at a time.",
+    "",
+    "This is the escape hatch, and the only one. Adding a line here is a deliberate,",
+    "reviewable act that shows up in a diff; there is no catch-and-continue anywhere",
+    "in the check. `npm run arch-check` recomputes every verdict and fails if a",
+    "migration is not listed, if its verdict changed, if its reason is missing, or if",
+    "a listed migration is now COMPATIBLE or no longer exists.",
+    "",
+    "These entries are HISTORY. They record what was already shipped and why it was",
+    "acceptable, so the contract can be enforced on what comes next without rewriting",
+    "the past. Listing a migration does NOT make it safe — it records that someone",
+    "looked. A new migration should almost always be COMPATIBLE instead.",
+    "",
+    "Verdicts: COMPATIBLE | TRANSITION_REQUIRED | INCOMPATIBLE | UNKNOWN"
+  ],
+
+  "20260518100000_create_execution_requests_table": {
+    "verdict": "TRANSITION_REQUIRED",
+    "reason": "Adds the workspace foreign key to execution_requests, which already existed from the previous migration. An instance still writing rows without a valid workspaceId would be rejected. Historical: the table had no production writers at the time."
+  },
+  "20260526120000_fix_workspace_isolation_campaign_state": {
+    "verdict": "TRANSITION_REQUIRED",
+    "reason": "Swaps a constraint on campaign_states — drops one and adds a workspace-scoped replacement. During the swap the two versions disagree about which rows are legal. CampaignState has since been retired entirely (S1-B)."
+  },
+  "20260623000000_add_incrementality_source_test": {
+    "verdict": "TRANSITION_REQUIRED",
+    "reason": "Adds a foreign key to incrementality_tests, an existing table. An older instance could still insert a row whose reference does not resolve."
+  },
+  "20260715000000_add_plan_to_workspace": {
+    "verdict": "TRANSITION_REQUIRED",
+    "reason": "Backfills workspaces.plan for existing rows. The rewrite races any instance still creating workspaces without the column, which is why the column is added with a default in the same migration."
+  },
+  "20260817120000_add_execution_decision_attribution": {
+    "verdict": "TRANSITION_REQUIRED",
+    "reason": "Adds the decisionId foreign key to execution_requests, an existing and actively written table. Nullable and SetNull on purpose, so an old instance writing an unattributed execution is still legal."
+  },
+  "20260818000000_r11_backfill_collab_role": {
+    "verdict": "TRANSITION_REQUIRED",
+    "reason": "Backfills collabRole on existing users. Readers treat null as STRATEGIST, so an instance that has not seen the backfill behaves identically — the backfill makes explicit what was already implied."
+  },
+  "20260818020000_r11_server_assigned_cohort": {
+    "verdict": "TRANSITION_REQUIRED",
+    "reason": "Backfills server-assigned cohort values that were previously client-supplied. Races an old instance still writing its own cohort, which is exactly the behaviour R11 removed."
+  },
+  "20260818030000_r12_1c_execution_request_workspace_fk": {
+    "verdict": "TRANSITION_REQUIRED",
+    "reason": "Adds a workspace foreign key to execution_requests. Guarded by an existence check so it is re-runnable; an old instance writing an orphaned workspaceId would be rejected during the overlap."
+  },
+  "20260820000000_b4a_execution_provenance": {
+    "verdict": "TRANSITION_REQUIRED",
+    "reason": "Splits executedAt into humanExecutedAt and platformExecutedAt and backfills the existing values. The backfill races an instance still writing the single old column."
+  },
+
+  "20260524120000_pr20_decision_memory_foundation": {
+    "verdict": "INCOMPATIBLE",
+    "reason": "Drops a table while creating the decision-memory foundation. Historical: the dropped table had no readers, and DecisionMemory itself has since been retired (sc3)."
+  },
+  "20260615000000_drop_integration_model": {
+    "verdict": "INCOMPATIBLE",
+    "reason": "Drops the Integration table. Phase 12B had already re-pointed every connector at marcom_credentials, so the readers were gone before the table was — the contract half of an expand/contract done across two slices."
+  },
+  "20260730000000_add_decision_lifecycle": {
+    "verdict": "INCOMPATIBLE",
+    "reason": "Converts decisions.status to the DecisionStatus enum and enforces NOT NULL on updatedAt, with the backfill in between. The type change means the two versions disagree about the column for the length of any overlap. Correctly ordered internally (add, backfill, enforce) but not splittable across deploys as written."
+  },
+  "20260818050000_r12_1d_loop_run_ai_insight_rename": {
+    "verdict": "INCOMPATIBLE",
+    "reason": "Renames loop_runs.ai_insight to aiInsight. The one genuine rollback hazard in the corpus: an instance on either side names a column the other does not have. The migration guards the rename so it is re-runnable, but re-runnability is not rollout compatibility."
+  },
+  "20260823000000_sc1_campaignstate_closure": {
+    "verdict": "INCOMPATIBLE",
+    "reason": "Drops campaign_states. The contract phase of a deliberate retirement: R7 deleted the writer and S1-B removed the last reader, so nothing named the table by the time it was dropped."
+  },
+  "20260823090000_sc2_action_closure": {
+    "verdict": "INCOMPATIBLE",
+    "reason": "Drops the Action table. Contract phase — R13-D/B3-C retired the action worker and both of its feeders first, so the substrate had zero writers and one diagnostic reader, which was removed with it."
+  },
+  "20260823100000_sc3_decisionmemory_closure": {
+    "verdict": "INCOMPATIBLE",
+    "reason": "Drops decision_memory. Contract phase — no production code touched the model at all; the temporal observer that would have written it was deleted in R7."
+  },
+  "20260823110000_sc4_oauthtoken_closure": {
+    "verdict": "INCOMPATIBLE",
+    "reason": "Drops oauth_tokens. Contract phase — credential storage had already been consolidated onto marcom_credentials in Phase 12B, leaving this table unread."
+  },
+
+  "20260812000000_measurement_window_in_snapshot_identity": {
+    "verdict": "UNKNOWN",
+    "reason": "Reconciles the snapshot identity index, which may exist as either a constraint-backed index or a plain unique index depending on how the database was built. It must therefore discover the object's real name at runtime and EXECUTE a statement built from it — unclassifiable from repository bytes by construction, not by omission."
+  },
+  "20260818040000_r12_1e_enum_reconciliation": {
+    "verdict": "UNKNOWN",
+    "reason": "Reconciles enum types across databases whose history diverged, looping over catalogue rows and issuing dynamic ALTER COLUMN statements. The targets are only known at runtime."
+  },
+  "20260819000000_r13_human_judgment": {
+    "verdict": "UNKNOWN",
+    "reason": "Uses dynamic SQL to adapt to the shape it finds while adding the human-judgment columns. The statement text is assembled at runtime."
+  },
+  "20260824000000_b4e5_non_daily_partial_identity": {
+    "verdict": "UNKNOWN",
+    "reason": "Rebuilds the non-daily partial identity index, discovering the existing index name from the catalogue before dropping and recreating it. Dynamic by construction."
+  }
+}
