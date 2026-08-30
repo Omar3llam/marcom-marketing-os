@@ -12,19 +12,40 @@
 //       * cloned actionType, targetId, payload from the original
 //       * preserved correlationId (lineage stays intact)
 //       * retryMetadata: { retryOf, retriedAt, retriedBy }
-//   - Created in PENDING then immediately transitioned to QUEUED
-//     via the lifecycle service. That transition emits the
+//   - Created in PENDING, ENQUEUED, and only then transitioned to
+//     QUEUED via the lifecycle service. That transition emits the
 //     canonical audit log + SSE broadcast so the new row shows up
 //     in the Live Monitor in real time.
 //
-// Note: queueing is not the same as executing. This endpoint
-// creates a retry record and surfaces it; running it (synchronously
-// like POST /meta does, or via a dedicated worker) is a separate
-// concern.
+// ── B5-01P′ — QUEUED IS EVIDENCE, NOT A LABEL ───────────────
+//
+// This endpoint used to create the clone, transition it to QUEUED,
+// log "Retry queued" and return 201 — WITHOUT ever calling
+// enqueueExecution. The header here said so out loud ("running it …
+// is a separate concern"), while the route guard eleven lines below
+// said the opposite ("Retry re-queues a real Meta mutation"). Only
+// one of those could be true, and the state machine took the side
+// that lies: the row sat QUEUED forever, the Live Monitor showed a
+// QUEUED pill, no BullMQ job existed, and no worker ever ran. The
+// operator was told work was underway that nothing would ever do.
+//
+// The route now calls enqueueExecution, and a failure to create the
+// job WITHDRAWS the QUEUED claim (→ CANCELLED, reason
+// EXECUTION_ENQUEUE_FAILED) and answers 503. QUEUED is evidence of a
+// job, not a label the row wears on its own.
+//
+// Enqueue-then-claim would be the tighter order and is deliberately
+// NOT used: executionWorker transitions QUEUED → EXECUTING only
+// `if (execution.status === QUEUED)` and then calls executeMetaAction
+// unconditionally, so a job that arrives before its row is QUEUED
+// reaches a real Meta mutation with no EXECUTING transition at all.
+// Claiming first closes that race; step 3 undoes the claim when the
+// job never appears.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { lifecycleService } from '../../services/execution/ExecutionLifecycleService.js';
+import { enqueueExecution } from '../../queues/index.js';
 import { ExecutionStatus, TransitionActor } from '@marcom/runtime-contracts';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE }    from '../../services/collaboration/roleScope.js';
@@ -36,6 +57,14 @@ import { loadExecutability, NOT_EXECUTABLE } from '../../services/execution/deci
  * a no-op, so both are excluded.
  */
 const RETRYABLE_STATUSES = ['EXECUTED_FAILED', 'TIMED_OUT'];
+
+/**
+ * B5-01P′ — the machine-readable class for "the execution job could not be
+ * created". Distinct from RETRY_TRANSITION_FAILED (the job EXISTS but the row
+ * could not be advanced): a caller has to be able to tell "nothing will run"
+ * from "something may already be running".
+ */
+export const EXECUTION_ENQUEUE_FAILED = 'EXECUTION_ENQUEUE_FAILED';
 
 // ── R11 (I70) — bounded retry chains ─────────────────────────
 // `retryMetadata.retryOf` was written on every clone and read by nothing, so a
@@ -187,6 +216,15 @@ export function registerRetryRoute(router) {
       // 2. Transition PENDING → QUEUED via the lifecycle service.
       //    Audit + SSE moment: the Live Monitor will see the new row
       //    appear with a QUEUED pill in real time.
+      //
+      //    ORDER: this precedes the enqueue, matching POST /meta, and the
+      //    reason is the worker rather than symmetry. executionWorker performs
+      //    QUEUED → EXECUTING only `if (execution.status === QUEUED)` and then
+      //    calls executeMetaAction UNCONDITIONALLY — so a job whose row is not
+      //    yet QUEUED would reach a real Meta mutation having skipped the
+      //    EXECUTING transition entirely. Enqueueing first would open exactly
+      //    that race. The row is therefore made QUEUED before any job can
+      //    observe it, and step 3 undoes the claim if the job never appears.
       let updated;
       try {
         updated = await lifecycleService.transition({
@@ -204,9 +242,10 @@ export function registerRetryRoute(router) {
           },
         });
       } catch (transitionErr) {
-        // The record exists but couldn't be promoted. Log + surface a
-        // 500 so the operator sees the failure rather than a silent
-        // PENDING ghost.
+        // The record exists but couldn't be promoted, and no job has been
+        // created yet (step 3 has not run). Log + surface a 500 so the operator
+        // sees the failure rather than a silent PENDING ghost. A PENDING row is
+        // not a claim that anything is queued, so nothing here is fabricated.
         logger.error({
           originalId,
           newExecutionId: newRequest.id,
@@ -218,6 +257,70 @@ export function registerRetryRoute(router) {
           error: 'Retry created but could not be queued',
           code: 'RETRY_TRANSITION_FAILED',
           executionId: newRequest.id,
+        });
+      }
+
+      // 3. Create the execution job. Until this succeeds the QUEUED above is a
+      //    claim, not a fact — this is what turns it into one.
+      //    jobId = executionId, so a duplicate enqueue of the same clone is a
+      //    BullMQ no-op rather than a second Meta mutation.
+      try {
+        await enqueueExecution({
+          executionId: newRequest.id,
+          workspaceId,
+          userId,
+          actionType: original.actionType,
+          targetId:   original.targetId,
+          // Shape-parity with POST /meta. Not authoritative: the worker reads
+          // `execution.payload.options` off the row (R11 · I67), and the clone
+          // carries the original payload forward, so the persisted options are
+          // the ones that actually get validated and executed.
+          options:    original.payload?.options ?? {},
+        });
+      } catch (enqueueErr) {
+        // FAIL CLOSED. No job exists, so nothing will ever run this clone, and
+        // it must not be left asserting QUEUED — that assertion is the whole
+        // defect this slice removes. Withdraw the claim before answering.
+        //
+        // CANCELLED, deliberately, and NOT EXECUTED_FAILED: the transition
+        // matrix admits no QUEUED → EXECUTED_FAILED edge, and inventing one
+        // would make the row claim a provider attempt that never happened —
+        // the same species of lie as the QUEUED it replaces. CANCELLED states
+        // what is true: this execution never started. The code below carries WHY.
+        let closed = true;
+        try {
+          await lifecycleService.transition({
+            executionId:     newRequest.id,
+            newStatus:       ExecutionStatus.CANCELLED,
+            expectedVersion: updated.version,
+            actor:           TransitionActor.SYSTEM,
+            correlationId:   original.correlationId,
+            metadata: {
+              reason: EXECUTION_ENQUEUE_FAILED,
+              auditMetadata: { retryOf: original.id, retriedBy: userId, enqueueError: enqueueErr.message },
+            },
+          });
+        } catch (closeErr) {
+          // Logged and surfaced, never swallowed into a success. The response
+          // is still a failure either way; `stranded` tells an operator that a
+          // row is left claiming QUEUED with no job behind it, which is the one
+          // state this endpoint can no longer fix by itself.
+          closed = false;
+          logger.error({
+            newExecutionId: newRequest.id, workspaceId, error: closeErr.message,
+          }, '[ExecutionRouter] Retry enqueue failed AND the QUEUED claim could not be withdrawn');
+        }
+
+        logger.error({
+          originalId, newExecutionId: newRequest.id, workspaceId, userId,
+          error: enqueueErr.message, closed,
+        }, '[ExecutionRouter] Retry enqueue failed — nothing will run');
+
+        return res.status(503).json({
+          error: 'Retry could not be queued for execution — no work has been started',
+          code:  EXECUTION_ENQUEUE_FAILED,
+          executionId: newRequest.id,
+          stranded: !closed,
         });
       }
 
