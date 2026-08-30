@@ -40,6 +40,14 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import postgres from 'postgres';
 import { databaseIdentity, databaseName, urlForDatabase, adminUrl } from './dbIsolation.js';
+// B5-01Q moved these OUT of this file. The production migration gate
+// (scripts/prisma-migrate-safe.js) now asks the same question of the deploy
+// target that this file asks of the migration set, and two copies of an
+// allow-list is two allow-lists. Re-exported below so this file's own
+// hygiene tests, and anything importing them from here, keep working.
+import { ALLOWED, parseDiff, classify, tableMatches } from '../../scripts/migrationDiff.js';
+
+export { ALLOWED, parseDiff, classify };
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const PRISMA = resolve(REPO, 'node_modules/prisma/build/index.js');
@@ -54,94 +62,9 @@ const ROOT_NAME = ENABLED ? databaseName(ROOT) : null;
 const SHADOW_DB = ENABLED ? `${ROOT_NAME}_mdiff` : null;   // for migrate diff
 const PROV_ROOT = ENABLED ? `${ROOT_NAME}_mc` : null;      // for the provisioning ratchet
 
-// ============================================================
-// THE ALLOW-LIST — a customs checkpoint, not a broom.
-// ============================================================
-// Each entry names ONE table and ONE narrow pattern, and carries a reason that
-// says why the difference is not evidence of a wrong database shape. An entry
-// that could swallow an unrelated change is rejected mechanically below.
-export const ALLOWED = [
-  {
-    id: 'decisions-partial-indexes',
-    reason:
-      'The migrations create these as PARTIAL indexes (WHERE resolution IS NOT NULL AND '
-      + 'intentAt IS NOT NULL, and similar). Prisma @@index cannot express a WHERE predicate, '
-      + 'so the datamodel declares them unconditionally and the diff reports the predicate-free '
-      + 'form as missing. The indexes exist; their predicates do not fit the schema language.',
-    table: 'decisions',
-    pattern: /^\[\+\] Added index on columns \((verdict, resolution|workspaceId, humanExecutedAt|workspaceId, platformExecutedAt|workspaceId, verdict, rootCause, channel)\)$/,
-  },
-  {
-    id: 'provider-performance-unique-index-name',
-    reason:
-      'The migration issues CREATE UNIQUE INDEX "provider_performance_metrics_publishedCreativeId_startD_idx". '
-      + 'Uniqueness IS enforced; only the identifier differs from the "_key" name Prisma would generate, '
-      + 'so the diff reports a rename rather than a missing constraint.',
-    table: 'provider_performance_metrics',
-    pattern: /^\[\*\] Renamed index `provider_performance_metrics_publishedCreativeId_startD_idx` to `provider_performance_metrics_publishedCreativeId_startDate__key`$/,
-  },
-  {
-    id: 'client-managed-updatedat-default',
-    reason:
-      'The migrations give updatedAt a database-level DEFAULT now(); the datamodel marks it @updatedAt, '
-      + 'which Prisma Client writes on every update and therefore does not declare as a DB default. '
-      + 'The column is never read without the client setting it.',
-    table: /^(decisions|execution_requests)$/,
-    pattern: /^\[\*\] Altered column `updatedAt` \(default changed from `Some\(Now\)` to `None`\)$/,
-  },
-  {
-    id: 'workspaces-adchannels-default',
-    reason:
-      'The migration gives adChannels a DB-level empty-list default; the datamodel leaves the default '
-      + 'to Prisma Client. Same client-ownership shape as updatedAt above.',
-    table: 'workspaces',
-    pattern: /^\[\*\] Altered column `adChannels` \(default changed from `Some\(Value\(List\(\[\]\)\)\)` to `None`\)$/,
-  },
-  {
-    id: 'workspace-fk-on-update-omitted',
-    reason:
-      'REAL, NOT COSMETIC — recorded deliberately. The migrations declare these FKs with ON DELETE '
-      + 'CASCADE but omit ON UPDATE CASCADE, which the Prisma relation implies, so the diff drops and '
-      + 're-adds the constraint. It is inert because workspaces.id is a UUID primary key that is never '
-      + 'updated, so the ON UPDATE action can never fire. Allow-listed as known and inert, NOT as '
-      + 'representational. If workspace ids ever become mutable this entry must be removed and the '
-      + 'migrations corrected.',
-    table: /^(audit_logs|users)$/,
-    pattern: /^\[[-+]\] (Removed|Added) foreign key on columns \(workspaceId\)$/,
-  },
-];
+// The allow-list, parseDiff and classify now live in scripts/migrationDiff.js
+// (imported above) so the production gate and this ratchet share one definition.
 
-// ============================================================
-// Parsing — turn the diff into discrete, individually-classifiable differences.
-// ============================================================
-/** PURE. `[*] Changed the \`x\` table` opens a block; indented lines are its changes. */
-export function parseDiff(text) {
-  const out = [];
-  let table = null;
-  for (const raw of String(text ?? '').split(/\r?\n/)) {
-    if (!raw.trim()) continue;
-    const header = /^\[[*+-]\] (?:Changed|Added|Removed) the `([^`]+)` (?:table|enum|view)/.exec(raw);
-    if (header) {
-      table = header[1];
-      // A whole table added or removed is itself a difference, not just a header.
-      if (!raw.startsWith('[*]')) out.push({ table, change: raw.trim(), raw });
-      continue;
-    }
-    if (/^\s+\[/.test(raw)) {
-      out.push({ table, change: raw.trim(), raw });
-      continue;
-    }
-    out.push({ table: table ?? '(none)', change: raw.trim(), raw });
-  }
-  return out;
-}
-
-const tableMatches = (spec, table) => (spec instanceof RegExp ? spec.test(table ?? '') : spec === table);
-
-/** PURE. Which allow-list entry, if any, covers this difference? */
-export function classify(diffLine, allowed = ALLOWED) {
-  return allowed.find((a) => tableMatches(a.table, diffLine.table) && a.pattern.test(diffLine.change)) ?? null;
-}
 
 /**
  * Apply the repository's migration set to our own disposable database, then
