@@ -34,6 +34,20 @@ vi.mock('../metaAdsService.js', async (importActual) => {
     // suite would still pass while making live HTTP calls on every run.
     fetchAdSetInsights: vi.fn(),
     fetchAllAdSets: vi.fn(),
+    // B5-01P″′ — and the AD edges, which is the warning above coming true. They
+    // were added to fetchRaw after this comment was written, the stub list was
+    // not extended, and both stayed real: every run of this file opened live
+    // connections to graph.facebook.com, softFail ate the rejection, and the
+    // suite reported green while depending on the public internet. The only
+    // visible symptom was the occasional 5000ms timeout that B5-01P″ traced.
+    fetchAdInsights: vi.fn(),
+    fetchAllAds: vi.fn(),
+    // Not reached by the tests below — this file exercises authenticate and
+    // fetchRaw only — but stubbed anyway. The whole defect was a function
+    // becoming reachable without its stub following, and "no test calls it yet"
+    // is the assumption that failed last time.
+    fetchCanonicalAllLevels: vi.fn(async () => ({ rows: [], windowStart: new Date(0), windowEnd: new Date(0) })),
+    fetchDailyInsights: vi.fn(async () => ({ rows: [], days: 0, truncated: false })),
   };
 });
 vi.mock('./credentialStore.js', () => ({ resolveCredential: vi.fn() }));
@@ -41,7 +55,7 @@ vi.mock('./credentialStore.js', () => ({ resolveCredential: vi.fn() }));
 import { prisma } from '../../lib/prisma.js';
 import {
   fetchAccountCurrency, fetchCampaignInsights, fetchAllCampaigns,
-  fetchAdSetInsights, fetchAllAdSets,
+  fetchAdSetInsights, fetchAllAdSets, fetchAdInsights, fetchAllAds,
 } from '../metaAdsService.js';
 import { resolveCredential } from './credentialStore.js';
 import { MetaConnector } from './MetaConnector.js';
@@ -58,6 +72,11 @@ beforeEach(() => {
   // describing campaign behaviour alone.
   fetchAdSetInsights.mockResolvedValue({ rows: [], truncated: false });
   fetchAllAdSets.mockResolvedValue({ rows: [], truncated: false });
+  // Ads default to "none" for the same reason. The shape is the one fetchRaw's
+  // own softFail fallback declares — `{ rows, truncated }`, not a bare array —
+  // so a mock that is merely quiet cannot pass for a mock that is correct.
+  fetchAdInsights.mockResolvedValue({ rows: [], truncated: false });
+  fetchAllAds.mockResolvedValue({ rows: [], truncated: false });
 });
 
 describe('MetaConnector.authenticate — currency resolution', () => {
@@ -278,5 +297,66 @@ describe('MetaConnector.fetchRaw — ad-sets ride in the same flat array', () =>
     expect(Object.keys(rows)).not.toContain('fetchMeta');
     expect(JSON.parse(JSON.stringify(rows))).toEqual([{ campaign_id: 'c1', campaign_name: 'Spring', spend: '100' }]);
     expect(rows.fetchMeta.truncated).toBe(true); // still readable by a caller that knows
+  });
+});
+
+// ── B5-01P″′ — the ad level, actually exercised ─────────────────────────────
+// Until now these edges were unstubbed, so every call rejected on the network,
+// softFail returned `{ rows: [] }`, and `mergeMetaAds([], [])` produced nothing.
+// The ad path was not merely untested — it was tested against a population that
+// could never be non-empty, and every assertion in this file passed BECAUSE the
+// network failed. Closing the mock gap without adding these would have left the
+// suite network-free and permanently empty, which is the same blind spot with a
+// quieter symptom.
+describe('MetaConnector.fetchRaw — ads ride in the same flat array', () => {
+  const auth = { accessToken: 'tok', accountExternalId: 'act_123' };
+  const adInsight = { ad_id: 'ad1', ad_name: 'Video A', adset_id: 'as1', campaign_id: 'c1', spend: '40', impressions: '400', clicks: '20' };
+
+  beforeEach(() => {
+    fetchCampaignInsights.mockResolvedValue([{ campaign_id: 'c1', campaign_name: 'Spring', spend: '100' }]);
+    fetchAllCampaigns.mockResolvedValue([]);
+  });
+
+  it('delivered ads land alongside campaigns in the one flat array', async () => {
+    fetchAdInsights.mockResolvedValue({ rows: [adInsight], truncated: false });
+
+    const rows = await connector.fetchRaw(auth);
+
+    expect(rows).toHaveLength(2);
+    const ad = rows.find((r) => r.ad_id === 'ad1');
+    expect(ad).toMatchObject({ ad_name: 'Video A', adset_id: 'as1', spend: '40' });
+    expect(ad._rosterOnly).toBeUndefined(); // it delivered — real data, not a shell
+  });
+
+  it('merges the ad roster so non-delivering ads still land, without fabricated spend', async () => {
+    fetchAdInsights.mockResolvedValue({ rows: [adInsight], truncated: false });
+    fetchAllAds.mockResolvedValue({ rows: [{ id: 'ad2', name: 'Static B', adset_id: 'as1' }], truncated: false });
+
+    const rows = await connector.fetchRaw(auth);
+
+    // The roster-only ad is present as an ENTITY and flagged, so the sink writes
+    // the ad but no zero snapshot that would read as "measured, and it was nil".
+    expect(rows.find((r) => r.ad_id === 'ad2')).toMatchObject({ _rosterOnly: true });
+    expect(rows.find((r) => r.ad_id === 'ad1')._rosterOnly).toBeUndefined();
+  });
+
+  it('asks Meta for ads at the account level, once', async () => {
+    await connector.fetchRaw(auth);
+
+    expect(fetchAdInsights).toHaveBeenCalledTimes(1);
+    expect(fetchAdInsights).toHaveBeenCalledWith('tok', 'act_123', expect.any(String));
+    expect(fetchAllAds).toHaveBeenCalledWith('tok', 'act_123');
+  });
+
+  it.each([
+    ['ad insights', () => fetchAdInsights.mockRejectedValue(new Error('rate limited'))],
+    ['the ad roster', () => fetchAllAds.mockRejectedValue(new Error('permissions'))],
+  ])('a %s failure degrades to campaigns-only — never breaks the sync', async (_label, fail) => {
+    fail();
+
+    const rows = await connector.fetchRaw(auth);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].campaign_id).toBe('c1');
   });
 });

@@ -113,7 +113,12 @@ describe('B5-01H · isolation contract (pure)', () => {
   it('the isolation mechanism is actually wired into the runner', () => {
     const cfg = readFileSync(resolve(process.cwd(), 'vitest.config.js'), 'utf8');
     expect(cfg).toMatch(/globalSetup:\s*\[['"]\.\/src\/tests\/globalSetup\.js['"]\]/);
-    expect(cfg).toMatch(/setupFiles:\s*\[['"]\.\/src\/tests\/workerDb\.js['"]\]/);
+    // Asserts workerDb is WIRED, not that it is the only setup file. B5-01P″′
+    // added networkGuard.js ahead of it (it must install before anything can
+    // open a socket), and pinning the whole array made an unrelated, correct
+    // addition look like a broken isolation contract. Removing workerDb still
+    // fails this, which is the property that matters.
+    expect(cfg).toMatch(/setupFiles:\s*\[[^\]]*['"]\.\/src\/tests\/workerDb\.js['"]/);
   });
 });
 
