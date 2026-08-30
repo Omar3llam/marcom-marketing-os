@@ -96,8 +96,14 @@ const rawStatus = async (id) => (await prisma.$queryRawUnsafe(
 
 /** Hide one applied migration: a database that has not run this image's latest. */
 async function withLaggingDatabase(fn) {
+  // Every column is captured, so the row goes back byte-for-byte rather than
+  // merely equivalently. Worker databases are shared between FILES, so anything
+  // this leaves altered is a trap for whichever suite runs next in the slot —
+  // a lesson this run actually taught (see the RENAME note in
+  // executionSchemaSkew.test.js).
   const [row] = await prisma.$queryRawUnsafe(
-    'SELECT migration_name, finished_at FROM _prisma_migrations WHERE migration_name = $1', LATEST,
+    'SELECT id, checksum, migration_name, started_at, finished_at, logs, rolled_back_at,'
+    + ' applied_steps_count FROM _prisma_migrations WHERE migration_name = $1', LATEST,
   );
   expect(row, `${LATEST} must be applied in the test database before it can be hidden`).toBeTruthy();
   await raw(`DELETE FROM _prisma_migrations WHERE migration_name = '${LATEST}'`);
@@ -106,9 +112,10 @@ async function withLaggingDatabase(fn) {
     return await fn();
   } finally {
     await prisma.$executeRawUnsafe(
-      'INSERT INTO _prisma_migrations (id, checksum, migration_name, finished_at, applied_steps_count)'
-      + " VALUES (gen_random_uuid()::text, 'b5-01r3-restored', $1, $2, 1)",
-      LATEST, row.finished_at,
+      'INSERT INTO _prisma_migrations (id, checksum, migration_name, started_at, finished_at,'
+      + ' logs, rolled_back_at, applied_steps_count) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      row.id, row.checksum, row.migration_name, row.started_at, row.finished_at,
+      row.logs, row.rolled_back_at, row.applied_steps_count,
     );
     __resetReadinessCache();
   }
