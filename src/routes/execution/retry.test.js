@@ -81,6 +81,7 @@ vi.mock('../../services/metaExecutionService.js', () => ({
 import { prisma } from '../../lib/prisma.js';
 import { lifecycleService } from '../../services/execution/ExecutionLifecycleService.js';
 import { firebaseAuthMiddleware } from '../../middleware/firebaseAuth.js';
+import { enqueueExecution } from '../../queues/index.js';
 
 describe('POST /api/execute/:id/retry', () => {
   let app;
@@ -260,5 +261,101 @@ describe('POST /api/execute/:id/retry', () => {
       .expect(500);
 
     expect(response.body.code).toBe('RETRY_ERROR');
+  });
+
+  // ══════════════════════════════════════════════════════════════
+  // B5-01P′ — QUEUED IS EVIDENCE OF A JOB, NOT A DATABASE LABEL
+  // ──────────────────────────────────────────────────────────────
+  // This route created the clone, transitioned it to QUEUED, logged
+  // "Retry queued" and returned 201 — and never called enqueueExecution.
+  // enqueueExecution has exactly one other caller (POST /meta), and
+  // executionWorker is a pure BullMQ worker driven by job.data with no DB
+  // poll, so the row sat QUEUED forever behind zero jobs and zero work.
+  //
+  // Nothing caught it because the mock for enqueueExecution already existed
+  // in this file (the author expected the call) while no test asserted it.
+  // These four do.
+  // ══════════════════════════════════════════════════════════════
+  const stageRetry = (version = 1) => {
+    prisma.executionRequest.findUnique.mockResolvedValueOnce(failedOriginal);
+    prisma.executionRequest.create.mockResolvedValueOnce({
+      id: 'exec-retry-q', workspaceId, version: 0, correlationId: 'corr-retry-1',
+    });
+    lifecycleService.transition.mockResolvedValueOnce({ id: 'exec-retry-q', status: 'QUEUED', version });
+  };
+
+  // ── T1 · a reported retry is a real job ─────────────────────────
+  it('T1 — enqueues a real execution job before reporting QUEUED', async () => {
+    stageRetry();
+
+    const response = await request(app)
+      .post(`/api/execute/${originalId}/retry`)
+      .expect(201);
+
+    expect(enqueueExecution).toHaveBeenCalledTimes(1);
+    // The job must describe the SAME mutation the row carries; a job that
+    // disagrees with its row is refused by the worker by design.
+    expect(enqueueExecution).toHaveBeenCalledWith(expect.objectContaining({
+      executionId: 'exec-retry-q',
+      workspaceId,
+      actionType:  'PAUSE_ADSET',
+      targetId:    'adset-911',
+    }));
+    expect(response.body.status).toBe('QUEUED');
+  });
+
+  // ── T3 · fail closed ────────────────────────────────────────────
+  it('T3 — a failed enqueue is never reported as success', async () => {
+    stageRetry();
+    enqueueExecution.mockRejectedValueOnce(new Error('Execution queue unavailable'));
+    // The compensating withdrawal of the QUEUED claim.
+    lifecycleService.transition.mockResolvedValueOnce({ id: 'exec-retry-q', status: 'CANCELLED', version: 2 });
+
+    const response = await request(app)
+      .post(`/api/execute/${originalId}/retry`)
+      .expect(503);
+
+    expect(response.status).not.toBe(201);
+    expect(response.body.code).toBe('EXECUTION_ENQUEUE_FAILED');
+    expect(response.body.executionId).toBe('exec-retry-q');
+    // Nothing in the answer may suggest work is underway.
+    expect(response.body.status).toBeUndefined();
+    expect(JSON.stringify(response.body)).not.toContain('QUEUED');
+  });
+
+  // ── T4 · no fake QUEUED state survives ──────────────────────────
+  it('T4 — a failed enqueue withdraws the QUEUED claim from the row', async () => {
+    stageRetry();
+    enqueueExecution.mockRejectedValueOnce(new Error('Execution queue unavailable'));
+    lifecycleService.transition.mockResolvedValueOnce({ id: 'exec-retry-q', status: 'CANCELLED', version: 2 });
+
+    await request(app).post(`/api/execute/${originalId}/retry`).expect(503);
+
+    // STATE integrity, not just "an error was thrown": the row must be left in
+    // a terminal state that does not claim queued work. Asserted on the LAST
+    // transition so a fix that merely throws after claiming QUEUED still fails.
+    const transitions = lifecycleService.transition.mock.calls.map((c) => c[0]);
+    expect(transitions.at(-1)).toMatchObject({
+      executionId: 'exec-retry-q',
+      newStatus:   'CANCELLED',
+      metadata:    expect.objectContaining({ reason: 'EXECUTION_ENQUEUE_FAILED' }),
+    });
+    expect(transitions.at(-1).newStatus).not.toBe('QUEUED');
+  });
+
+  // ── T4b · the double failure is reported, not hidden ────────────
+  it('T4b — when the claim cannot be withdrawn it still fails, and says so', async () => {
+    stageRetry();
+    enqueueExecution.mockRejectedValueOnce(new Error('Execution queue unavailable'));
+    lifecycleService.transition.mockRejectedValueOnce(new Error('OCC conflict'));
+
+    const response = await request(app)
+      .post(`/api/execute/${originalId}/retry`)
+      .expect(503);
+
+    expect(response.body.code).toBe('EXECUTION_ENQUEUE_FAILED');
+    // The one state this endpoint can no longer repair is named rather than
+    // rounded down to a generic error.
+    expect(response.body.stranded).toBe(true);
   });
 });
