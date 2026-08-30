@@ -315,6 +315,51 @@ describe.skipIf(!ENABLED)('B5-01Q · production migration safety', () => {
     expect(r.out).toMatch(/__b5q_extra__/);
   }, 180_000);
 
+  it('T6c — legacy tables the datamodel does not declare do not stop the deploy', async () => {
+    // The case that actually reached production. `migrate diff` reports whole
+    // tables in a GROUPED form whose children carry no sign of their own:
+    //
+    //     [-] Removed tables
+    //       - marcom_sessions
+    //
+    // The first version of the parser lost the group's `[-]`, scored these by
+    // the fail-safe default, and stopped a real deploy over four inert legacy
+    // tables. T6b used a spare COLUMN, which is the per-object shape, so it
+    // could not have caught this. Named after the real tables on purpose.
+    const db = await clone('legacy');
+    await on(db, 'CREATE TABLE "marcom_sessions" (id int PRIMARY KEY, note text)');
+    await on(db, 'CREATE TABLE "marcom_user_context" (id int PRIMARY KEY)');
+
+    const r = runGate(db);
+    expect(r.status, r.out).toBe(0);
+    expect(r.out).toMatch(/SCHEMA DRIFT/);
+    expect(r.out).toMatch(/marcom_sessions/);
+    expect(r.out).not.toMatch(/SCHEMA MISMATCH/);
+
+    // Each table named individually with its own sign — the grouped header
+    // must not arrive as one nameless "(none)" difference.
+    for (const t of ['marcom_sessions', 'marcom_user_context']) {
+      expect(r.out).toMatch(new RegExp(`${t}: \\[-\\] Removed table`));
+    }
+    expect(r.out).not.toMatch(/\(none\)/);
+    // ...and the deploy does not claim a clean match while reporting drift.
+    expect(r.out).toMatch(/satisfies prisma\/schema\.prisma \(2 unmanaged object/);
+  }, 180_000);
+
+  it('T6d — a table the datamodel declares and the database lacks stops the deploy', async () => {
+    // The same grouped shape in the dangerous direction, so the fix for T6c
+    // cannot have been "treat grouped output as harmless".
+    const db = await clone('missingtable');
+    await on(db, `DROP TABLE IF EXISTS "${HARDCODED_TABLE}" CASCADE`);
+
+    const r = runGate(db);
+    expect(r.status, 'a missing table must stop the deploy').not.toBe(0);
+    expect(r.out).toMatch(/SCHEMA MISMATCH/);
+    expect(r.out).toMatch(new RegExp(HARDCODED_TABLE));
+    // ...and it must be reported as an understood difference, not a parser gap.
+    expect(r.out).not.toMatch(/could not parse/);
+  }, 180_000);
+
   // ── T7 · inspection is inspection ───────────────────────────────────────
   it('T7 — verification does not modify the database it inspects', async () => {
     // Run the gate against a database it will REJECT: the failure path is where

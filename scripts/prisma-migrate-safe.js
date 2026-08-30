@@ -36,7 +36,7 @@
 // of guessing on their behalf. See §"operator procedure" output below.
 // ============================================================
 import { execSync } from 'child_process';
-import { classifyDiff } from './migrationDiff.js';
+import { classifyDiff, isUnrecognised } from './migrationDiff.js';
 
 // Ensure DIRECT_URL is set (fallback to DATABASE_URL if not present)
 // Required for Prisma Migrate on Neon pooler connections
@@ -172,6 +172,19 @@ function verifySchema() {
     shout('\n❌ SCHEMA MISMATCH — DEPLOYMENT STOPPED');
     shout(`   prisma/schema.prisma requires ${blocking.length} thing(s) the deploy target does not have:`);
     for (const d of blocking) shout(`   • ${d.table}: ${d.change}`);
+
+    // A shape the parser does not know is scored as dangerous on purpose, but
+    // it must not masquerade as a confident finding — that is exactly how four
+    // inert legacy tables once stopped a deploy. Say which it is.
+    const gaps = blocking.filter(isUnrecognised);
+    if (gaps.length) {
+      shout(`\n   ⚠️  ${gaps.length} of these are lines this gate could not parse, not`);
+      shout('       differences it understood. Treated as dangerous by default. If');
+      shout('       `migrate diff` has a new output shape, teach scripts/migrationDiff.js');
+      shout('       about it — do NOT widen the allow-list to make them disappear:');
+      for (const d of gaps) shout(`       ${JSON.stringify(d.raw)}`);
+    }
+
     shout('\n   Prisma Client selects every column the datamodel declares, so a model missing');
     shout('   a column here fails EVERY read of that model at runtime — after a green deploy.');
     shout('   Either the migration set does not express the schema (npm run test:full covers');
@@ -179,7 +192,9 @@ function verifySchema() {
     process.exit(1);
   }
 
-  console.log('✅ Deploy target matches prisma/schema.prisma');
+  console.log(extra.length
+    ? `✅ Deploy target satisfies prisma/schema.prisma (${extra.length} unmanaged object(s) reported above)`
+    : '✅ Deploy target matches prisma/schema.prisma');
 }
 
 let err = null;
