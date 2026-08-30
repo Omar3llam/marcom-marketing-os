@@ -69,12 +69,38 @@ vi.mock('../metaAdsService.js', async (importOriginal) => ({
   fetchCampaignInsights: vi.fn(async () => ([
     { _data: { campaign_id: 'c1', campaign_name: 'M Camp', spend: '100.00', impressions: '1000', clicks: '50', actions: [], action_values: [{ action_type: 'offsite_conversion.fb_pixel_purchase', value: '420.00' }] } },
   ])),
+  // ── B5-01P″′ — the rest of the reachable network surface ──────────────────
+  // "Mock BOTH live network calls" was true when this file was written and
+  // stopped being true as fetchRaw grew. runConnectorSync drives authenticate →
+  // fetchRaw → fetchCanonicalRaw, which between them reach SEVEN network-capable
+  // metaAdsService functions; only two were stubbed. The other five ran for
+  // real against graph.facebook.com every time this suite executed, and
+  // fetchRaw's softFail swallowed each rejection so the test still passed.
+  //
+  // Shapes are the ones fetchRaw's own softFail fallbacks declare: a bare array
+  // for campaigns, `{ rows, truncated }` for the ad-set and ad edges.
+  fetchAllCampaigns: vi.fn(async () => ([])),
+  fetchAdSetInsights: vi.fn(async () => ({ rows: [], truncated: false })),
+  fetchAllAdSets: vi.fn(async () => ({ rows: [], truncated: false })),
+  fetchAdInsights: vi.fn(async () => ({ rows: [], truncated: false })),
+  fetchAllAds: vi.fn(async () => ({ rows: [], truncated: false })),
+  // The canonical 30-day refresh runs on EVERY sync, so it is reachable here
+  // even though nothing in this file asserts on it.
+  fetchCanonicalAllLevels: vi.fn(async () => ({ rows: [], windowStart: new Date('2026-05-12'), windowEnd: new Date('2026-06-11') })),
+  fetchDailyInsights: vi.fn(async () => ({ rows: [], days: 0, truncated: false })),
 }));
 vi.mock('./google/googleAdsClient.js', async (importOriginal) => ({
   ...(await importOriginal()),
   fetchGoogleCampaignMetrics: vi.fn(async () => ([
     { campaign: { id: 'g1', name: 'G Camp' }, metrics: { cost_micros: 800000, impressions: 2000, clicks: 40, conversions: 3, conversions_value: 300 } },
   ])),
+  // B5-01P″′ — Google's canonical refresh, reached through a DYNAMIC import in
+  // GoogleAdsConnector.fetchCanonicalRaw and therefore invisible to a static
+  // read of this file's imports. Left real it was failing on every run and being
+  // swallowed by the same best-effort catch that hid Meta's.
+  fetchGoogleCanonicalMetrics: vi.fn(async () => ({
+    rows: [], windowStart: new Date('2026-05-12'), windowEnd: new Date('2026-06-11'),
+  })),
 }));
 
 describe('Meta Workspace Bridge — one key resolves both channels', () => {
@@ -96,8 +122,18 @@ describe('Meta Workspace Bridge — one key resolves both channels', () => {
   it('runConnectorSync enumerates BOTH channels → dual-source ingestion', async () => {
     const result = await runConnectorSync(WS, { now: new Date('2026-06-11') });
     expect(result).toMatchObject({ synced: 2, failed: 0 });
-    const landedChannels = landSnapshots.mock.calls.map((c) => c[1]).sort();
-    expect(landedChannels).toEqual(['GOOGLE', 'META']);
+    const landedChannels = landSnapshots.mock.calls.map((c) => c[1]);
+    expect([...new Set(landedChannels)].sort()).toEqual(['GOOGLE', 'META']);
+    // ── B5-01P″′ — each channel lands TWICE, and that is the point ──────────
+    // runConnectorSync performs a second, separate canonical 30-day fetch on
+    // every sync. This assertion used to read ['GOOGLE','META'] — not because
+    // the canonical pass did not run, but because fetchCanonicalAllLevels and
+    // fetchGoogleCanonicalMetrics were unstubbed, failed every time, and were
+    // swallowed by the best-effort catch around them. The suite was asserting
+    // the shape of a fetch that never worked. Counting the landings is what
+    // makes the canonical refresh visible instead of merely absent.
+    expect(landedChannels.filter((c) => c === 'META')).toHaveLength(2);
+    expect(landedChannels.filter((c) => c === 'GOOGLE')).toHaveLength(2);
     expect(landSnapshots.mock.calls.every((c) => c[0] === WS)).toBe(true);
   });
 

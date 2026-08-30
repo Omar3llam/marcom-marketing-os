@@ -20,7 +20,10 @@ export default defineConfig({
     // globalSetup provisions them; setupFiles binds each worker to one. Both
     // are no-ops in fast mode. See src/tests/dbIsolation.js.
     globalSetup: ['./src/tests/globalSetup.js'],
-    setupFiles: ['./src/tests/workerDb.js'],
+    // B5-01P″′ — networkGuard is FIRST on purpose. It sets CHECKPOINT_DISABLE
+    // before any Prisma client can be constructed, and it must be installed
+    // before a suite gets the chance to open a socket. See src/tests/networkGuard.js.
+    setupFiles: ['./src/tests/networkGuard.js', './src/tests/workerDb.js'],
     // Pinned so the provisioner and the pool agree on the worker count: a
     // worker whose database was never created must not be able to exist. This
     // is the pool's normal width, NOT a serialisation — isolation is the fix

@@ -42,7 +42,17 @@ async function provision(root) {
     const migrate = spawnSync(
       process.execPath,
       ['node_modules/prisma/build/index.js', 'migrate', 'deploy'],
-      { env: { ...process.env, DATABASE_URL: tmplUrl, DIRECT_URL: tmplUrl }, encoding: 'utf8' },
+      // B5-01P″′ — CHECKPOINT_DISABLE: prisma phones checkpoint.prisma.io for
+      // version telemetry. networkGuard sets this for the test WORKERS, but
+      // globalSetup runs in the main vitest process and spawns this child with
+      // its own env, so the provisioning step was the last thing in `test:full`
+      // still reaching the public internet.
+      {
+        env: {
+          ...process.env, DATABASE_URL: tmplUrl, DIRECT_URL: tmplUrl, CHECKPOINT_DISABLE: '1',
+        },
+        encoding: 'utf8',
+      },
     );
     if (migrate.status !== 0) {
       throw new IsolationSetupError(
