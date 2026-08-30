@@ -44,6 +44,16 @@ vi.mock('../services/execution/workerHealth.js', () => ({
   startHeartbeat: () => ({ workerId: 'test-pid', stop: vi.fn() }),
 }));
 
+// B5-01R‴ — the schema readiness gate is a seam here, not a subject. It reads
+// `_prisma_migrations` with raw SQL, which the substituted prisma below does not
+// implement; unmocked it would (correctly, per its fail-closed rule) refuse every
+// job in this file. Its own behaviour — refusal under a lagging database, zero
+// provider calls, fail-closed when the check cannot run — is proven against a
+// real database in src/tests/executionReadinessGate.test.js.
+vi.mock('../services/execution/schemaReadiness.js', () => ({
+  assertExecutionSchemaReady: vi.fn(async () => {}),
+}));
+
 // R10 — the attribution seam is mocked so these tests assert WHEN the worker
 // calls it, which is the whole lifecycle rule. Its own behaviour (first-success,
 // no-overturn, idempotent) is proven in decisionAttribution.test.js.
