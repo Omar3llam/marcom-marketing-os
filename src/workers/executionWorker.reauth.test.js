@@ -24,6 +24,11 @@ vi.mock('../services/execution/ExecutionLifecycleService.js', () => ({
   lifecycleService: { transition: vi.fn().mockResolvedValue({ version: 3 }) },
 }));
 vi.mock('../services/execution/workerHealth.js', () => ({ startHeartbeat: () => ({ stop: vi.fn() }) }));
+// B5-01R‴ — seam, not subject. See the note in executionWorker.test.js; the gate
+// itself is proven in src/tests/executionReadinessGate.test.js.
+vi.mock('../services/execution/schemaReadiness.js', () => ({
+  assertExecutionSchemaReady: vi.fn(async () => {}),
+}));
 vi.mock('../services/execution/decisionAttribution.js', () => ({
   stampDecisionExecuted: vi.fn().mockResolvedValue({ stamped: false }),
 }));

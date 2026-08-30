@@ -32,6 +32,7 @@ import { lifecycleService }            from '../services/execution/ExecutionLife
 import { startHeartbeat }              from '../services/execution/workerHealth.js';
 import { stampDecisionExecuted }       from '../services/execution/decisionAttribution.js';
 import { loadExecutability }           from '../services/execution/decisionEligibility.js';
+import { assertExecutionSchemaReady }  from '../services/execution/schemaReadiness.js';
 import { validateMutationParams }      from '../services/meta/mutationParams.js';
 import { prisma }                      from '../lib/prisma.js';
 import { logger }                      from '../utils/logger.js';
@@ -66,6 +67,27 @@ async function processExecution(job) {
       skipRetry: true,
     });
   }
+
+  // ── B5-01R‴: is this database new enough for this code? ──
+  //
+  // FIRST, before any read, any transition, and any platform call. render.yaml
+  // deploys lumi-backend and lumi-worker independently with no dependsOn, and
+  // the worker's build is the shorter of the two (no migration, no client
+  // bundle) — so a worker running ahead of the schema is the DEFAULT on every
+  // deploy, not an unlucky race.
+  //
+  // Until now that was survivable only by accident: a full-row Prisma read
+  // happened to throw first. B5-01R measured what a narrowed read does instead —
+  // two real platform mutations across three attempts. This makes the refusal
+  // intentional, and independent of how any Prisma read is projected.
+  //
+  // Deliberately NOT `skipRetry`: this is the one failure here that is expected
+  // to stop being true on its own, the moment the backend's migration lands. It
+  // throws like any other retriable error, so BullMQ's existing policy (attempts
+  // + exponential backoff, set in enqueueExecution) decides what happens to the
+  // job — the same policy that already governed this exact skew before the gate
+  // existed. No new queue semantics are introduced here.
+  await assertExecutionSchemaReady();
 
   // ── Read current state ───────────────────────────────────
   const execution = await prisma.executionRequest.findUnique({
