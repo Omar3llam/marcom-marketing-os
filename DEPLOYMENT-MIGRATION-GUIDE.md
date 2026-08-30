@@ -33,14 +33,58 @@ This tells Prisma: "The database already has these tables, don't try to create t
 
 2. **Deploy the new code** — future deployments will work automatically.
 
-#### Option B: Automatic Handling (If Manual Resolution Not Possible)
+#### ~~Option B: Automatic Handling~~ — REMOVED (B5-01Q)
 
-The baseline migration (`20260517000000_init`) is intentionally empty (only comments). If `prisma migrate deploy` runs on first deploy:
-- It will see the migration as "pending"
-- It will "apply" it (but no SQL executes since the file is empty)
-- Future migrations will work correctly
+This section used to say the deploy would baseline itself, on the grounds that
+`20260517000000_init` "is intentionally empty (only comments)".
 
-**Result:** Both approaches are safe. Option A is cleaner.
+**That was false when it was written.** The file is 140 lines, of which 109 are
+DDL: it creates `workspaces`, `users`, `oauth_tokens`, `integrations` and more.
+Marking it applied does not "execute nothing" — it *skips* that DDL and asserts
+the tables already exist in exactly the declared shape.
+
+The build no longer baselines automatically. See **Baselining an existing
+database** below.
+
+### Baselining an existing database
+
+`prisma migrate deploy` reports **P3005** when the target has schema objects but
+no `_prisma_migrations` history. The deploy now stops there.
+
+It stops because baselining is a *claim about a database nobody has inspected*.
+`migrate resolve --applied` writes "succeeded" into history without reading the
+schema, so a wrong baseline produces a green deploy on top of a database whose
+real shape is unknown.
+
+To baseline deliberately:
+
+1. Determine which migration the schema **actually** corresponds to — compare it
+   against `prisma/migrations/*/migration.sql`, oldest first.
+2. In a shell against that database, mark that migration and every earlier one:
+   ```bash
+   npx prisma migrate resolve --applied "<migration it truly matches>"
+   ```
+3. Redeploy. The build verifies the result against `prisma/schema.prisma` before
+   it continues.
+
+If the database was *meant* to be empty, the answer is not to baseline — it is to
+point `DATABASE_URL` at the right database.
+
+### A failed migration (P3009)
+
+The deploy stops and prints `prisma migrate status` plus the procedure. It does
+**not** resolve anything for you.
+
+Before B5-01Q it did, against a hard-coded migration name. Measured on a
+disposable copy with that migration genuinely failed and its table dropped: the
+build exited **0**, history recorded 66/66 applied, `migrate status` said
+*"Database schema is up to date!"* — and the table was still missing. Five
+modules read it.
+
+The recovery did not repair anything; it erased the evidence that anything was
+wrong. Resolve a failed migration only after checking the database for every
+object its SQL creates. See `scripts/prisma-migrate-safe.js` and
+`src/tests/productionMigrationSafety.test.js`.
 
 ### Future Deployments
 
