@@ -124,7 +124,7 @@ describe('B5-01G · Ratchet D — `test:full` cannot quietly become `test:fast`'
 
 // ── Ratchets B + C — the census, complete and CI-free ───────────────────────
 describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => {
-  it('the census matches the current baseline of 28 files', () => {
+  it('the census matches the current baseline of 29 files', () => {
     // A drift here is not automatically a failure — but it must be NOTICED,
     // because a new DB-gated file added through a different mechanism is
     // exactly how the guarantee erodes.
@@ -133,7 +133,14 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
     // reinforcementSnapshot rows and had no gate at all, so an ordinary
     // `npm test` wrote them to the developer's own development database. It
     // now takes the same gate as the rest.
-    expect(dbGatedFiles().length).toBe(28);
+    //
+    // 28 → 29 in B5-01V: institutionalMemory.projection.integration.test.js.
+    // The defect it guards was invisible to a mocked suite BY CONSTRUCTION — a
+    // mocked findMany never applies the Prisma `select`, so the memory layer's
+    // 31 green unit tests were asserting on a row shape production could not
+    // return. Proving a projection needs a real database, so this file is
+    // gated like the rest and the census moves with it.
+    expect(dbGatedFiles().length).toBe(29);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {
