@@ -81,6 +81,21 @@ const MEMORY_SELECT = Object.freeze({
   metric: true, scopeLevel: true, emitVerdict: true, threshold: true, unit: true,
   accuracy: true, confidence: true, support: true, effectiveSupport: true,
   firstObservedAt: true, lastObservedAt: true, updatedAt: true,
+  // B5-01V — `status` is NOT decoration here, it is the first thing
+  // isValidatedMemory asks of every row. Omitting it did not omit a display
+  // field: it delivered `status: undefined` to a predicate testing
+  // `=== ESTABLISHED`, so every row this query returned was discarded and
+  // getInstitutionalMemory answered NO_VALIDATED_MEMORY for every workspace,
+  // permanently. Measured on a real database: one ESTABLISHED pattern
+  // (accuracy 1.0, effectiveSupport 4) survived the WHERE and then died in the
+  // filter; with this line, the same row yields factor 1.1 and a published
+  // confidence of 0.77 instead of 0.70.
+  //
+  // The WHERE already constrains status to ESTABLISHED, which is exactly why
+  // this was invisible — the query is correct and the projection then withheld
+  // the column the caller needed to believe it. Any field a predicate reads
+  // must be projected, even when the same field is filtered on in SQL.
+  status: true,
 });
 
 /**
