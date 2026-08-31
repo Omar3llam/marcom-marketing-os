@@ -113,6 +113,80 @@ export const PendingOutcomesResponseSchema = z.object({
 export type PendingOutcome = z.infer<typeof PendingOutcomeSchema>;
 export type PendingOutcomesResponse = z.infer<typeof PendingOutcomesResponseSchema>;
 
+// ── Observed evidence (B5-01X' · the READ side of outcome review) ────
+// GET /api/lumi/decisions/:id/outcome-evidence → what Lumi observed over the
+// comparison policy's baseline and observation windows. It is EVIDENCE, never
+// an outcome: no field here says whether the decision was correct, and the
+// operator's judgement is still recorded through POST …/outcome.
+//
+// Seven states, none of them collapsible into another. `NOT_OBSERVED` (we
+// looked and saw nothing) and `UNSUPPORTED` (we have no way to look) and
+// `UNAVAILABLE` (the read failed) mean three different things to the person
+// reading the screen, and only one of them is about their account.
+export const OutcomeEvidenceStatusSchema = z.enum([
+  'MEASURABLE', 'NOT_OBSERVED', 'AMBIGUOUS', 'NOT_MEASURABLE',
+  'INSUFFICIENT_COVERAGE', 'UNSUPPORTED', 'UNAVAILABLE',
+]);
+
+export const EvidenceCoverageSchema = z.object({
+  required: z.number(),
+  observed: z.number(),
+  // The exact dates nobody reported. A count cannot tell an operator which day
+  // to go and look at, so the dates travel rather than the number alone.
+  missing: z.array(z.string()),
+  complete: z.boolean(),
+});
+
+export const EvidenceWindowSchema = z.object({
+  days: z.array(z.string()),
+  // Nullable throughout: an unobserved window has no total, and 0 would read as
+  // "it spent nothing" rather than "we have no rows".
+  spendMinor: z.number().nullable(),
+  revenueMinor: z.number().nullable(),
+  roas: z.number().nullable(),
+  currency: z.string().nullable(),
+  coverage: EvidenceCoverageSchema,
+  refs: z.array(z.object({
+    id: z.string(),
+    day: z.string(),
+    observedAt: z.string().nullable(),
+  })),
+});
+
+export const OutcomeEvidenceResponseSchema = z.object({
+  workspaceId: z.string(),
+  decisionId: z.string(),
+  entityId: z.string(),
+  entityLevel: z.string(),
+  verdict: z.string(),
+  interventionAt: z.string(),
+  interventionDay: z.string(),
+  source: z.string().nullable(),
+  status: OutcomeEvidenceStatusSchema,
+  reason: z.string().nullable(),
+  policy: z.object({
+    comparisonWindowDays: z.number(),
+    baselineWindow: z.object({ start: z.string(), end: z.string() }),
+    observationWindow: z.object({ start: z.string(), end: z.string() }),
+    interventionDayExcluded: z.boolean(),
+  }),
+  baseline: EvidenceWindowSchema.nullable(),
+  observation: EvidenceWindowSchema.nullable(),
+  delta: z.object({
+    spendMinor: z.number().nullable(),
+    revenueMinor: z.number().nullable(),
+    roas: z.number().nullable(),
+  }),
+  // Present only on AMBIGUOUS: the exact days that did not reduce to one
+  // reading. The window holding them reports null totals, because a sum over an
+  // arbitrarily-chosen tied row is not reproducible between two reads.
+  ambiguousDays: z.array(z.string()).optional(),
+});
+
+export type OutcomeEvidenceStatus = z.infer<typeof OutcomeEvidenceStatusSchema>;
+export type EvidenceWindow = z.infer<typeof EvidenceWindowSchema>;
+export type OutcomeEvidenceResponse = z.infer<typeof OutcomeEvidenceResponseSchema>;
+
 export type CoverageVerdict = z.infer<typeof CoverageVerdictSchema>;
 export type LiftStatus = z.infer<typeof LiftStatusSchema>;
 export type CalibrationDirection = z.infer<typeof CalibrationDirectionSchema>;
