@@ -114,6 +114,19 @@ portfolioRouter.post('/portfolio/allocate', requireCollabRole(WORKSPACE_ROLE.BUY
     if (!plan) return res.json({ workspaceId: wsId, plan: null, message: 'No connected channels to allocate.' });
     return res.json({ workspaceId: wsId, plan });
   } catch (err) {
+    // B5-01T′ · STOP-3. A refusal that arrives as a generic 500 is fail-closed
+    // but illegible — the caller cannot tell "we could not read the evidence you
+    // asked us to reason from" apart from "the allocator broke". The refusal is
+    // raised by ReconciliationService.incrementalChannels and only on the
+    // explicit `basis: 'incremental'` path; every other failure keeps the
+    // existing generic code, byte for byte.
+    if (err.code === 'ATTRIBUTION_EVIDENCE_UNAVAILABLE') {
+      logger.warn({ err: err.message, wsId, reason: err.reason }, '[lumi/portfolio] allocate refused — evidence unavailable');
+      return res.status(503).json({
+        error: 'AttributionEvidenceUnavailable', code: err.code, reason: err.reason,
+        message: 'Incremental allocation was requested, but the measurement evidence could not be read. No plan was produced.',
+      });
+    }
     logger.error({ err: err.message, wsId }, '[lumi/portfolio] allocate preview failed');
     return res.status(500).json({ error: 'AllocationFailed', message: 'Request failed' });
   }

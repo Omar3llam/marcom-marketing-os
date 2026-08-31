@@ -19,7 +19,13 @@ export const AttributionModelSchema = z.enum([
   'POSITION_BASED',
   'INCREMENTALITY_WEIGHTED',
 ]);
-export const AttributionStatusSchema = z.enum(['OK', 'INSUFFICIENT_DATA']);
+// EVIDENCE_UNAVAILABLE (B5-01T′) is distinct from INSUFFICIENT_DATA on purpose:
+// the first says we could not look, the second says we looked and this account
+// does not have what the model needs.
+export const AttributionStatusSchema = z.enum(['OK', 'INSUFFICIENT_DATA', 'EVIDENCE_UNAVAILABLE']);
+export const AttributionEvidenceSchema = z.object({
+  conversions: z.string(), incrementality: z.string(), paths: z.string(),
+});
 
 export const AttributionChannelSchema = z.object({
   channelId: z.string(),
@@ -34,7 +40,8 @@ export const AttributionResultSchema = z.object({
   channels: z.array(AttributionChannelSchema).optional(), // absent when INSUFFICIENT_DATA
   totalRevenueMinor: AttributedSchema.optional(),
   caveat: z.string().nullish(),
-  reason: z.string().nullish(), // why dark, when INSUFFICIENT_DATA
+  reason: z.string().nullish(), // why dark, when INSUFFICIENT_DATA / EVIDENCE_UNAVAILABLE
+  evidence: AttributionEvidenceSchema.nullish(), // per-source read health
 });
 
 export type AttributionModel = z.infer<typeof AttributionModelSchema>;

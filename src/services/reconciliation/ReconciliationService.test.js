@@ -99,6 +99,89 @@ describe('ReconciliationService.getReconciliation', () => {
   });
 });
 
+// ── B5-01T′ · reporting degrades, decisions refuse ─────────────────────────
+//
+// Both halves read the SAME holdout query through the same helper. Before this
+// slice both answered a rejection with an empty Map, so the report said "no
+// holdout on this channel" and the allocation feed said "optimise on claimed
+// performance" — two different lies from one dead read.
+describe('ReconciliationService — a failed holdout read (B5-01T′)', () => {
+  it('T3 — the REPORT says unavailable, not "no holdout on this channel"', async () => {
+    getBlendedTruth.mockResolvedValue(bt([channel()]));
+    prisma.incrementalityTest.findMany.mockRejectedValue(new Error('db down'));
+
+    const out = await getReconciliation('ws1');
+
+    expect(out.status).toBe('EVIDENCE_UNAVAILABLE');
+    expect(out.evidence).toEqual({ incrementality: 'UNAVAILABLE' });
+
+    const inc = out.rows[0].incremental;
+    expect(inc.value).toBeNull();
+    expect(inc.status).toBe('UNAVAILABLE');
+    expect(inc.reason).toBe('INCREMENTALITY_EVIDENCE_UNAVAILABLE');
+    expect(inc.source).toBe('UNAVAILABLE');
+    expect(inc.source).not.toBe('INCREMENTALITY');
+    expect(inc.caveat).not.toMatch(/no holdout on this channel/);
+    expect(inc.caveat).toMatch(/could not be read/);
+  });
+
+  it('T3b — a SUCCESSFUL empty read keeps saying "no holdout on this channel"', async () => {
+    // The distinction, from the other side. This is a real finding about the
+    // account and must survive untouched — value null, but for a reason we
+    // actually established.
+    getBlendedTruth.mockResolvedValue(bt([channel()]));
+    prisma.incrementalityTest.findMany.mockResolvedValue([]);
+
+    const out = await getReconciliation('ws1');
+
+    expect(out.status).toBe('OK');
+    expect(out.evidence).toEqual({ incrementality: 'OK' });
+    expect(out.rows[0].incremental.value).toBeNull();
+    expect(out.rows[0].incremental.status).toBe('OK');
+    expect(out.rows[0].incremental.source).toBe('INCREMENTALITY');
+    expect(out.rows[0].incremental.caveat).toMatch(/no holdout on this channel/);
+  });
+
+  it('T5 — the platform and blended columns still carry their real numbers', async () => {
+    // Reporting degrades; it does not blank. Only the column whose evidence died
+    // goes dark.
+    getBlendedTruth.mockResolvedValue(bt([channel()]));
+    prisma.incrementalityTest.findMany.mockRejectedValue(new Error('db down'));
+
+    const out = await getReconciliation('ws1');
+    expect(out.rows[0].platform.value).toBe(100_000);
+    expect(out.rows[0].platform.status).toBe('OK');
+    expect(out.rows[0].blended.value).toBe(90_000);
+    expect(out.portfolio.spendMinor).toBe(50_000);
+  });
+
+  it('T7 — the ALLOCATION FEED refuses instead of falling back to claimed', async () => {
+    // The half that moves money. `basis: 'incremental'` is a caller stating that
+    // claimed performance is not good enough for this decision; answering it with
+    // claimed performance anyway is the failure this refuses.
+    getBlendedTruth.mockResolvedValue(bt([channel()]));
+    prisma.incrementalityTest.findMany.mockRejectedValue(new Error('db down'));
+
+    await expect(incrementalChannels('ws1')).rejects.toMatchObject({
+      code: 'ATTRIBUTION_EVIDENCE_UNAVAILABLE',
+      reason: 'INCREMENTALITY_EVIDENCE_UNAVAILABLE',
+    });
+  });
+
+  it('T8 — a SUCCESSFUL empty read still feeds allocation on the blended basis', async () => {
+    // Successful absence is not failed measurement. "This account has run no
+    // holdouts" is a legitimate answer and must keep working, or the refusal
+    // above would have made the feature unusable rather than honest.
+    getBlendedTruth.mockResolvedValue(bt([channel({ blendedRoas: 2.0 })]));
+    prisma.incrementalityTest.findMany.mockResolvedValue([]);
+
+    const { channels, anyIncremental } = await incrementalChannels('ws1');
+    expect(anyIncremental).toBe(false);
+    expect(channels[0].basis).toBe('blended');
+    expect(channels[0].marginalEfficiency).toBeCloseTo(2.0);
+  });
+});
+
 describe('ReconciliationService.incrementalChannels — allocation feed', () => {
   it('requires a workspaceId', async () => {
     await expect(incrementalChannels()).rejects.toThrow(/workspaceId/);
