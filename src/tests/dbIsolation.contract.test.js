@@ -203,10 +203,24 @@ describe.skipIf(!ISOLATED)('B5-01H · cross-worker isolation on real PostgreSQL'
     // The identity both memoryManager and scoringEngine upsert, which produced
     // "Unique constraint failed on (id)" during B5-01G verification.
     const SHARED = '00000000-0000-0000-0000-000000000001';
-    await a.workspace.upsert({ where: { id: SHARED }, update: {}, create: { id: SHARED, name: 'A' } });
+    // `update` SETS THE NAME rather than being a no-op (B5-01T′).
+    //
+    // It used to be `update: {}`, which quietly made this test assume it was the
+    // FIRST writer of this id on worker databases 1 and 2. It is not: this id is
+    // hard-coded in eight other suites, and memoryManager.test.js creates it with
+    // `name: 'Test Workspace 1'`. Whichever ran first won, so when scheduling put
+    // that suite on worker 1 ahead of this one, `expect(...name).toBe('A')` read
+    // 'Test Workspace 1' and the run failed — about once in three, with nothing
+    // in the message pointing at the real cause.
+    //
+    // Forcing the name removes the assumption without weakening the test: the
+    // claim is that ONE primary key can hold DIFFERENT rows in two databases, and
+    // that claim is now asserted from any starting state rather than only from an
+    // empty one. Surfaced by this slice adding a file, not caused by it.
+    await a.workspace.upsert({ where: { id: SHARED }, update: { name: 'A' }, create: { id: SHARED, name: 'A' } });
     // Same primary key, other database — must simply succeed.
     await expect(
-      b.workspace.upsert({ where: { id: SHARED }, update: {}, create: { id: SHARED, name: 'B' } }),
+      b.workspace.upsert({ where: { id: SHARED }, update: { name: 'B' }, create: { id: SHARED, name: 'B' } }),
     ).resolves.toBeTruthy();
     expect((await a.workspace.findUnique({ where: { id: SHARED } })).name).toBe('A');
     expect((await b.workspace.findUnique({ where: { id: SHARED } })).name).toBe('B');

@@ -23,10 +23,27 @@
 import { logger } from '../../utils/logger.js';
 import {
   ATTRIBUTION_MODEL, ATTRIBUTION_SOURCE, CONFIDENCE_LEVEL, ATTRIBUTION_STATUS,
-  POSITION_WEIGHTS, MODEL_CAVEAT, attributed,
+  POSITION_WEIGHTS, MODEL_CAVEAT, EVIDENCE_STATUS, EVIDENCE_REASON,
+  attributed, unavailable,
 } from './attributionTypes.js';
 
 const PATH_MODELS = new Set([ATTRIBUTION_MODEL.FIRST_TOUCH, ATTRIBUTION_MODEL.LINEAR, ATTRIBUTION_MODEL.POSITION_BASED]);
+
+/**
+ * Per-source evidence health (B5-01T′). Every field defaults to OK, so a caller
+ * that does not pass `evidence` gets exactly the pre-slice behaviour — which is
+ * correct, because a caller that never had a failed read never had one to report.
+ *
+ * THE WHOLE POINT OF THIS PARAMETER: `paths: []` and "the PathTouch read threw"
+ * arrive at this engine as the same empty array. They are different facts and
+ * only the SERVICE knows which one happened, so the service has to say.
+ */
+const EVIDENCE_OK = Object.freeze({
+  conversions:    EVIDENCE_STATUS.OK,
+  incrementality: EVIDENCE_STATUS.OK,
+  paths:          EVIDENCE_STATUS.OK,
+});
+const isDown = (evidence, key) => evidence?.[key] === EVIDENCE_STATUS.UNAVAILABLE;
 
 function validate(channels, model) {
   if (!Array.isArray(channels) || channels.length === 0) {
@@ -40,11 +57,17 @@ function validate(channels, model) {
 const round = (n) => Math.round(n);
 
 /** LAST_TOUCH: each channel keeps its own platform-reported conversions/revenue. */
-function lastTouch(channels) {
+function lastTouch(channels, evidence) {
+  // B5-01T′ · I2/I3. When the conversion read failed there is no platform zero
+  // to report — the platform reported nothing. Revenue is untouched: it comes
+  // from blended truth, which propagates its own failures and did not fail here.
+  const conversionsDown = isDown(evidence, 'conversions');
   const rows = channels.map((c) => ({
     channelId: c.channelId,
     channel:   c.channel ?? null,
-    creditedConversions:  attributed(c.conversions ?? 0, ATTRIBUTION_SOURCE.PLATFORM, CONFIDENCE_LEVEL.MEDIUM, { caveat: MODEL_CAVEAT.LAST_TOUCH }),
+    creditedConversions: conversionsDown
+      ? unavailable(EVIDENCE_REASON.CONVERSIONS, { caveat: MODEL_CAVEAT.CONVERSIONS_UNAVAILABLE })
+      : attributed(c.conversions ?? 0, ATTRIBUTION_SOURCE.PLATFORM, CONFIDENCE_LEVEL.MEDIUM, { caveat: MODEL_CAVEAT.LAST_TOUCH }),
     creditedRevenueMinor: attributed(c.platformRevenueMinor ?? 0, ATTRIBUTION_SOURCE.PLATFORM, CONFIDENCE_LEVEL.MEDIUM, { caveat: MODEL_CAVEAT.LAST_TOUCH }),
   }));
   const total = channels.reduce((s, c) => s + (c.platformRevenueMinor ?? 0), 0);
@@ -71,7 +94,15 @@ function pathWeights(n, model) {
  * Path-based redistribution. Honest by construction: with no paths we return
  * INSUFFICIENT_DATA rather than invent journey credit.
  */
-function pathBased(channels, model, paths, economics) {
+function pathBased(channels, model, paths, economics, evidence) {
+  // B5-01T′ · I6/T4. ORDER MATTERS, and this is the whole fix: the unavailable
+  // check comes FIRST, because a failed PathTouch read also arrives here as an
+  // empty array. Falling through to the line below would tell an operator to go
+  // connect a journey source they may already have connected — an outage
+  // rendered as an onboarding prompt, with a call to action attached.
+  if (isDown(evidence, 'paths')) {
+    return { status: ATTRIBUTION_STATUS.EVIDENCE_UNAVAILABLE, model, reason: EVIDENCE_REASON.PATHS };
+  }
   if (!Array.isArray(paths) || paths.length === 0) {
     return { status: ATTRIBUTION_STATUS.INSUFFICIENT_DATA, model, reason: 'no path data connected — connect a journey source to compute this model' };
   }
@@ -115,11 +146,21 @@ function pathBased(channels, model, paths, economics) {
  * with no test fall back to last-click but flagged LOW + "not proven causal".
  * Explicitly NOT Google path-based DDA.
  */
-function incrementalityWeighted(channels, incrementality, economics) {
+function incrementalityWeighted(channels, incrementality, economics, evidence) {
   const aov = economics?.aovMinor ?? 0;
   const inc = incrementality ?? {};
+  // B5-01T′. Two INDEPENDENT reads feed this model and they fail independently,
+  // so they are answered independently rather than blanking the whole row:
+  //
+  //   holdout read down    → the channel's causal status is UNKNOWN. The claimed
+  //                          number is still real, so it is still reported as
+  //                          PLATFORM/LOW — what changes is the caveat, which may
+  //                          no longer assert that no holdout exists (I6).
+  //   conversion read down → there is no conversion number at all (I2).
+  const holdoutDown     = isDown(evidence, 'incrementality');
+  const conversionsDown = isDown(evidence, 'conversions');
   const rows = channels.map((c) => {
-    const t = inc[c.channelId];
+    const t = holdoutDown ? undefined : inc[c.channelId];
     if (t && typeof t.incrementalConversions === 'number') {
       const rev = round(t.incrementalConversions * aov);
       const band = (typeof t.ciLow === 'number' && typeof t.ciHigh === 'number') ? [t.ciLow, t.ciHigh] : null;
@@ -129,11 +170,15 @@ function incrementalityWeighted(channels, incrementality, economics) {
         creditedRevenueMinor: attributed(rev, ATTRIBUTION_SOURCE.INCREMENTALITY, t.confidenceLabel ?? CONFIDENCE_LEVEL.MEDIUM, { modelName: ATTRIBUTION_MODEL.INCREMENTALITY_WEIGHTED, caveat: MODEL_CAVEAT.INCREMENTALITY_WEIGHTED }),
       };
     }
-    // No holdout — honest fallback to claimed, flagged LOW.
+    // No holdout — honest fallback to claimed, flagged LOW. The caveat states
+    // WHY there is no causal number, and the two whys are not the same fact.
+    const caveat = holdoutDown ? MODEL_CAVEAT.HOLDOUT_UNAVAILABLE : MODEL_CAVEAT.NO_HOLDOUT;
     return {
       channelId: c.channelId, channel: c.channel ?? null,
-      creditedConversions:  attributed(c.conversions ?? 0, ATTRIBUTION_SOURCE.PLATFORM, CONFIDENCE_LEVEL.LOW, { caveat: MODEL_CAVEAT.NO_HOLDOUT }),
-      creditedRevenueMinor: attributed(c.platformRevenueMinor ?? 0, ATTRIBUTION_SOURCE.PLATFORM, CONFIDENCE_LEVEL.LOW, { caveat: MODEL_CAVEAT.NO_HOLDOUT }),
+      creditedConversions: conversionsDown
+        ? unavailable(EVIDENCE_REASON.CONVERSIONS, { caveat: MODEL_CAVEAT.CONVERSIONS_UNAVAILABLE })
+        : attributed(c.conversions ?? 0, ATTRIBUTION_SOURCE.PLATFORM, CONFIDENCE_LEVEL.LOW, { caveat }),
+      creditedRevenueMinor: attributed(c.platformRevenueMinor ?? 0, ATTRIBUTION_SOURCE.PLATFORM, CONFIDENCE_LEVEL.LOW, { caveat }),
     };
   });
   const total = rows.reduce((s, r) => s + (r.creditedRevenueMinor.value ?? 0), 0);
@@ -157,19 +202,36 @@ function incrementalityWeighted(channels, incrementality, economics) {
  * @param {{aovMinor:number}} [args.economics]
  * @returns {{ model, status, channels?, totalRevenueMinor?, caveat?, reason? }}
  */
-export function attributeCredit({ channels, model, paths = [], incrementality = {}, economics = {}, now } = {}) {
+export function attributeCredit({
+  channels, model, paths = [], incrementality = {}, economics = {}, evidence = EVIDENCE_OK, now,
+} = {}) {
   validate(channels, model);
   void now;
 
+  const ev = { ...EVIDENCE_OK, ...(evidence ?? {}) };
+
   let result;
   if (model === ATTRIBUTION_MODEL.LAST_TOUCH) {
-    result = { status: ATTRIBUTION_STATUS.OK, ...lastTouch(channels) };
+    result = { status: ATTRIBUTION_STATUS.OK, ...lastTouch(channels, ev) };
   } else if (PATH_MODELS.has(model)) {
-    result = pathBased(channels, model, paths, economics);
+    result = pathBased(channels, model, paths, economics, ev);
   } else { // INCREMENTALITY_WEIGHTED
-    result = incrementalityWeighted(channels, incrementality, economics);
+    result = incrementalityWeighted(channels, incrementality, economics, ev);
   }
 
-  logger.debug({ model, status: result.status }, '[AttributionEngine] attributed');
-  return { model, ...result };
+  // B5-01T′ · §8 — the response must not LOOK complete. A caller that reads only
+  // `status` must be able to tell that something could not be read, without
+  // walking every channel; `evidence` then says which read it was.
+  //
+  // This DOWNGRADES OK, and never upgrades: a path model that is already
+  // INSUFFICIENT_DATA or EVIDENCE_UNAVAILABLE keeps the more specific answer it
+  // computed, because "we could not read paths" is more useful than "something
+  // somewhere was unavailable".
+  const anyDown = Object.values(ev).some((s) => s === EVIDENCE_STATUS.UNAVAILABLE);
+  if (anyDown && result.status === ATTRIBUTION_STATUS.OK) {
+    result = { ...result, status: ATTRIBUTION_STATUS.EVIDENCE_UNAVAILABLE };
+  }
+
+  logger.debug({ model, status: result.status, evidence: ev }, '[AttributionEngine] attributed');
+  return { model, ...result, evidence: ev };
 }

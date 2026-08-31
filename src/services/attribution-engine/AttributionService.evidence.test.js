@@ -193,15 +193,27 @@ describe('R3.5 — AttributionService on the Evidence seam', () => {
 
     it('keeps its OWN error swallow at its OWN call site', () => {
       // Anchored on `orderBy: null`, which appears exactly once in the file, so
-      // the match cannot drift forward to the `.catch(() => [])` on the
-      // IncrementalityTest read below. A structural assertion that can be
-      // satisfied by a different statement is not a structural assertion — the
-      // first draft of this test was, and passed with the catch deleted.
-      expect(SRC).toMatch(/orderBy:\s*null,\s*\}\)\.catch\(\(\) => \[\]\)/);
+      // the match cannot drift forward to the read on IncrementalityTest below.
+      // A structural assertion that can be satisfied by a different statement is
+      // not a structural assertion — the first draft of this test was, and
+      // passed with the catch deleted.
+      //
+      // B5-01T′ CHANGED THE SHAPE, NOT THE DECISION. The swallow is still this
+      // service's own and still at this call site; it is now `readOrNull`, which
+      // returns null instead of [] so the failure survives to the caller. The
+      // behavioural half is the empty-vs-failed pair further down — this only
+      // keeps the swallow from migrating into the shared Evidence seam, where it
+      // would turn one dead read into "no metrics" for every other consumer.
+      expect(SRC).toMatch(/orderBy:\s*null,\s*\}\),\s*\{\s*workspaceId,\s*read:\s*'MetricSnapshot'\s*\}\)/);
+      expect(SRC).toMatch(/function readOrNull[\s\S]*?\.catch\(/);
+      // …and no bare `catch(() => [])` may come back anywhere in the file: that
+      // is the exact form that made a failure indistinguishable from an account
+      // with no data.
+      expect(SRC).not.toMatch(/\.catch\(\(\) => \[\]\)/);
     });
 
     it('keeps the reduction and the source filter in the service', () => {
-      expect(SRC).toMatch(/latestPerStream\(snaps\)/);
+      expect(SRC).toMatch(/latestPerStream\(snaps \?\? \[\]\)/);
       expect(SRC).toMatch(/PLATFORM_SOURCES\.has\(s\.source\)/);
     });
   });
@@ -424,13 +436,151 @@ describe('R3.5 — AttributionService on the Evidence seam', () => {
       await expect(getAttribution(null)).rejects.toThrow(/workspaceId required/);
     });
 
-    it('degrades a failed read to zero conversions — preserved', async () => {
-      // The pre-migration read carried `.catch(() => [])`. R3 moves the query,
-      // not this decision.
+    // ── B5-01T′ — THE INVERTED CONTRACT ───────────────────────────────────
+    //
+    // This assertion used to read:
+    //
+    //   it('degrades a failed read to zero conversions — preserved', …)
+    //     expect(conversionsOf(result, id)).toBe(0);
+    //
+    // It passed, it was deliberate, and it was wrong. A dead database does not
+    // establish that a platform reported zero conversions — and the wrapper said
+    // it did: `{ value: 0, source: PLATFORM, confidence: MEDIUM }`. Zero
+    // conversions at medium confidence is not a missing number, it is a
+    // confident wrong one, and it is the reading that gets a channel killed.
+    //
+    // The old test is not kept alongside this one. Two tests asserting opposite
+    // things about the same input is not history, it is an unresolved argument.
+    it('T1 — a failed conversion read yields NULL, never a fabricated zero', async () => {
       prisma.metricSnapshot.findMany.mockRejectedValue(new Error('db down'));
       const result = await lastTouch();
+
       for (const id of Object.keys(EXPECTED_BY_CHANNEL)) {
-        expect(conversionsOf(result, id)).toBe(0);
+        const f = result.channels.find((r) => r.channelId === id).creditedConversions;
+        expect(f.value, 'a failed read must not produce a number').toBeNull();
+        expect(f.value).not.toBe(0);
+        // I3 — provenance may not name a source that returned nothing.
+        expect(f.source).toBe('UNAVAILABLE');
+        expect(f.source).not.toBe('PLATFORM');
+        // T6 — and may not claim a confidence a successful read never gave it.
+        expect(f.confidence).toBe('UNKNOWN');
+        expect(['MEDIUM', 'HIGH', 'LOW']).not.toContain(f.confidence);
+        expect(f.status).toBe('UNAVAILABLE');
+        expect(f.reason).toBe('CONVERSION_EVIDENCE_UNAVAILABLE');
+      }
+      // …and the response must not look complete.
+      expect(result.status).toBe('EVIDENCE_UNAVAILABLE');
+      expect(result.evidence.conversions).toBe('UNAVAILABLE');
+    });
+
+    it('T2 — a SUCCESSFUL empty read keeps its existing meaning', async () => {
+      // The separation that makes T1 meaningful rather than merely stricter.
+      // `resolve([])` is a statement about the account: it synced nothing, so
+      // zero conversions is the true answer and PLATFORM is the true source.
+      // Only `reject()` is a statement about us.
+      useTable([]);
+      const result = await lastTouch();
+
+      for (const id of Object.keys(EXPECTED_BY_CHANNEL)) {
+        const f = result.channels.find((r) => r.channelId === id).creditedConversions;
+        expect(f.value, 'an empty account still has a real zero').toBe(0);
+        expect(f.source).toBe('PLATFORM');
+        expect(f.status).toBe('OK');
+      }
+      expect(result.status).toBe('OK');
+      expect(result.evidence.conversions).toBe('OK');
+    });
+
+    it('T5 — revenue that WAS read survives a failed conversion read', async () => {
+      // Partial, not blanked. Blended truth answered, so its numbers are real and
+      // stay visible; only the column whose evidence died goes dark.
+      prisma.metricSnapshot.findMany.mockRejectedValue(new Error('db down'));
+      const result = await lastTouch();
+
+      const meta = result.channels.find((r) => r.channelId === 'meta');
+      expect(meta.creditedRevenueMinor.value).not.toBeNull();
+      expect(meta.creditedRevenueMinor.source).toBe('PLATFORM');
+      expect(meta.creditedRevenueMinor.status).toBe('OK');
+      expect(meta.creditedConversions.value).toBeNull();
+      expect(result.evidence).toEqual({
+        conversions: 'UNAVAILABLE', incrementality: 'OK', paths: 'OK',
+      });
+    });
+
+    it('T3 — a failed holdout read is never reported as "no holdout"', async () => {
+      // I6. The two are not the same fact, and the caveat is where a user reads
+      // which one happened.
+      prisma.incrementalityTest.findMany.mockRejectedValue(new Error('db down'));
+      const result = await getAttribution(WS, { model: ATTRIBUTION_MODEL.INCREMENTALITY_WEIGHTED });
+
+      expect(result.evidence.incrementality).toBe('UNAVAILABLE');
+      expect(result.status).toBe('EVIDENCE_UNAVAILABLE');
+      for (const row of result.channels) {
+        expect(row.creditedRevenueMinor.caveat).not.toMatch(/no holdout test on this channel/);
+        expect(row.creditedRevenueMinor.caveat).toMatch(/could not be read/);
+      }
+      // Conversions were readable, so they are still real — one dead read does
+      // not darken the other two.
+      expect(conversionsOf(result, 'meta')).toBe(EXPECTED_BY_CHANNEL.meta);
+    });
+
+    it('T3b — a SUCCESSFUL empty holdout read still says "no holdout"', async () => {
+      prisma.incrementalityTest.findMany.mockResolvedValue([]);
+      const result = await getAttribution(WS, { model: ATTRIBUTION_MODEL.INCREMENTALITY_WEIGHTED });
+
+      expect(result.evidence.incrementality).toBe('OK');
+      expect(result.status).toBe('OK');
+      expect(result.channels[0].creditedRevenueMinor.caveat).toMatch(/no holdout test on this channel/);
+    });
+
+    it('T4 — a failed path read is never reported as "no path data connected"', async () => {
+      // The worst of the three to get wrong: the old text told an operator to go
+      // connect a journey source, which is a task list item produced by an outage.
+      prisma.pathTouch.findMany.mockRejectedValue(new Error('db down'));
+      const result = await getAttribution(WS, { model: ATTRIBUTION_MODEL.LINEAR });
+
+      expect(result.status).toBe('EVIDENCE_UNAVAILABLE');
+      expect(result.reason).toBe('PATH_EVIDENCE_UNAVAILABLE');
+      expect(result.reason).not.toMatch(/connect a journey source/);
+      expect(result.evidence.paths).toBe('UNAVAILABLE');
+    });
+
+    it('T4b — a SUCCESSFUL empty path read still says the model is dark', async () => {
+      prisma.pathTouch.findMany.mockResolvedValue([]);
+      const result = await getAttribution(WS, { model: ATTRIBUTION_MODEL.LINEAR });
+
+      expect(result.status).toBe('INSUFFICIENT_DATA');
+      expect(result.reason).toMatch(/no path data connected/);
+      expect(result.evidence.paths).toBe('OK');
+    });
+
+    it('no fabricated zero can reach the payload from ANY failed read', async () => {
+      // The whole matrix at once, as a closing net: whatever combination of the
+      // three reads dies, a credited figure is either real or null — never 0
+      // wearing a source label.
+      for (const dead of ['metricSnapshot', 'incrementalityTest', 'pathTouch']) {
+        vi.clearAllMocks();
+        getBlendedTruth.mockResolvedValue({ channels: CHANNELS, portfolio: {} });
+        useTable();
+        prisma.incrementalityTest.findMany.mockResolvedValue([]);
+        prisma.pathTouch.findMany.mockResolvedValue([]);
+        prisma.workspace.findUnique.mockResolvedValue({ currency: 'USD' });
+        prisma.accountEconomics.findUnique.mockResolvedValue({
+          workspaceId: WS, currency: 'USD', aovMinor: 10_000, grossMarginPct: 0.6,
+          repeatRate: 0, avgOrdersPerCustomer: 2, targetLtvToCac: 3,
+        });
+        prisma[dead].findMany.mockRejectedValue(new Error('db down'));
+
+        const result = await getAttribution(WS, { model: ATTRIBUTION_MODEL.INCREMENTALITY_WEIGHTED });
+        expect(result.status, `${dead} down`).toBe('EVIDENCE_UNAVAILABLE');
+        for (const row of result.channels ?? []) {
+          for (const f of [row.creditedConversions, row.creditedRevenueMinor]) {
+            if (f.status === 'UNAVAILABLE') {
+              expect(f.value, `${dead} down`).toBeNull();
+              expect(f.source, `${dead} down`).toBe('UNAVAILABLE');
+            }
+          }
+        }
       }
     });
 
