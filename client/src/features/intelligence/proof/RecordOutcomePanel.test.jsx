@@ -34,6 +34,12 @@ vi.mock('@/hooks/usePendingOutcomes.js', () => ({ usePendingOutcomes: () => pend
 vi.mock('@/hooks/useRecordOutcome.js', () => ({
   useRecordOutcome: () => ({ record, recordingId: null, error: recordError }),
 }));
+// B5-01X' — the form now shows observed evidence beside the fields. It is read
+// only, so it is stubbed to its quietest real state here: this file's claims are
+// about what the form SENDS, and evidence must not change any of them.
+vi.mock('@/hooks/useOutcomeEvidence.js', () => ({
+  useOutcomeEvidence: () => ({ evidence: null, loading: false, error: null }),
+}));
 
 import RecordOutcomePanel from './RecordOutcomePanel.jsx';
 

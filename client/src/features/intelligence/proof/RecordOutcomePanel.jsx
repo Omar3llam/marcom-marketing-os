@@ -21,11 +21,23 @@
 //   It does NOT capture provenance. The evidence reference is projected on the
 //   server from the rows Lumi actually holds for that entity over the measured
 //   period; a browser cannot see those rows, so anything it sent would be a
-//   claim about a database it has never read. The panel therefore shows no
-//   evidence summary before submitting — there is nothing honest to show yet.
+//   claim about a database it has never read.
 //
 //   The numbers stay the operator's, and the copy says so. They are not
 //   platform-measured and this form must never imply that they are.
+//
+// B5-01X' — WHAT CHANGED, AND WHAT DELIBERATELY DID NOT
+//   This header used to end "the panel therefore shows no evidence summary
+//   before submitting — there is nothing honest to show yet." There is now:
+//   OutcomeEvidence reports Lumi's own daily observations either side of the
+//   intervention, over a comparison window the product defines rather than one
+//   this form invents.
+//
+//   It is shown BESIDE the fields and fills none of them. No default is
+//   prefilled from it, `sustained` is untouched, and nothing about it moves the
+//   submit button — an operator who disagrees with what Lumi observed records
+//   what they saw. Evidence is not an outcome, and this panel is still the only
+//   place an outcome is authored.
 // ============================================================
 import { useState } from 'react';
 import { ClipboardCheck } from 'lucide-react';
@@ -34,6 +46,7 @@ import { usePendingOutcomes } from '@/hooks/usePendingOutcomes.js';
 import { useRecordOutcome } from '@/hooks/useRecordOutcome.js';
 import { toMinor } from '@/lib/money.ts';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
+import OutcomeEvidence from './OutcomeEvidence.jsx';
 
 const field = 'w-full rounded-lg border border-lumi-border bg-lumi-surface px-2.5 py-1.5 text-sm text-lumi-text';
 
@@ -74,7 +87,11 @@ function OutcomeForm({ decision, currency, onSubmit, busy }) {
   };
 
   return (
-    <div className="mt-3 grid grid-cols-2 gap-2.5">
+    <>
+      {/* Read-only, and above the fields on purpose: what Lumi observed is
+          context for the operator's judgement, never a draft of it. */}
+      <OutcomeEvidence decisionId={decision.id} currency={currency} />
+      <div className="mt-3 grid grid-cols-2 gap-2.5">
       <label className="text-xs text-lumi-subtle">Spend change ({currency})
         <input type="number" className={field} value={spend} onChange={(e) => setSpend(e.target.value)} placeholder="-4200" />
       </label>
@@ -116,7 +133,8 @@ function OutcomeForm({ decision, currency, onSubmit, busy }) {
       >
         {busy ? 'Recording…' : 'Record what actually happened'}
       </button>
-    </div>
+      </div>
+    </>
   );
 }
 

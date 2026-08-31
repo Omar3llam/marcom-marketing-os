@@ -479,6 +479,10 @@ export {
   DecisionAccuracySchema,
   PendingOutcomeSchema,
   PendingOutcomesResponseSchema,
+  OutcomeEvidenceStatusSchema,
+  EvidenceCoverageSchema,
+  EvidenceWindowSchema,
+  OutcomeEvidenceResponseSchema,
   type CoverageVerdict,
   type LiftStatus,
   type CalibrationDirection,
@@ -492,6 +496,9 @@ export {
   type DecisionAccuracy,
   type PendingOutcome,
   type PendingOutcomesResponse,
+  type OutcomeEvidenceStatus,
+  type EvidenceWindow,
+  type OutcomeEvidenceResponse,
 } from './accuracy.schema';
 
 // ──────────────────────────────────────────────────────────

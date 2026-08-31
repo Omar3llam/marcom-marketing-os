@@ -13,6 +13,7 @@ import {
   getAccuracy, recordOutcome, listPendingOutcomes, validateOutcomeBody, OUTCOME_ERROR,
 } from '../../services/decision-accuracy/DecisionAccuracyService.js';
 import { accuracySurface } from '../../services/decision-accuracy/accuracyTypes.js';
+import { readOutcomeEvidence, EVIDENCE_ERROR } from '../../services/decision-accuracy/outcomeEvidenceComparison.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 
@@ -76,6 +77,42 @@ accuracyRouter.get('/decisions/pending-outcomes', requireOperator, async (req, r
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/accuracy] pending-outcomes failed');
     return res.status(500).json({ error: 'PendingOutcomesUnavailable', message: 'Request failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET /decisions/:id/outcome-evidence — what Lumi OBSERVED around the
+// intervention, over the comparison policy's baseline and observation windows.
+//
+// READ-ONLY, and the boundary it sits on is the point: this endpoint reports
+// evidence, never an outcome. It cannot write an OutcomeSnapshot, cannot set
+// `sustained`, and cannot change accuracy, pattern support or Decision Memory.
+// The operator reads it, brings what Lumi cannot see, and records their own
+// judgement through the POST below — which remains the only author of an
+// outcome.
+//
+// Fetched per decision when the operator opens one, rather than attached to
+// every row of pending-outcomes: the evidence read is one query per decision,
+// and folding it into the list would make the queue an N+1.
+//
+// 404 unknown id / wrong workspace · 409 never acted on · 200 with an explicit
+// evidence state otherwise. An unreadable evidence population is a 200 with
+// status UNAVAILABLE, not a 500 — the operator can still record what they saw.
+// ─────────────────────────────────────────────────────────────
+accuracyRouter.get('/decisions/:id/outcome-evidence', requireOperator, async (req, res) => {
+  const wsId = await need(req, res); if (!wsId) return;
+  try {
+    const evidence = await readOutcomeEvidence(wsId, req.params.id);
+    return res.json({ workspaceId: wsId, ...evidence });
+  } catch (err) {
+    if (err.code === EVIDENCE_ERROR.DECISION_NOT_FOUND) {
+      return res.status(404).json({ error: 'DecisionNotFound', message: err.message });
+    }
+    if (err.code === EVIDENCE_ERROR.NOT_EXECUTED) {
+      return res.status(409).json({ error: 'DecisionNotExecuted', message: err.message });
+    }
+    logger.error({ err: err.message, wsId, decisionId: req.params.id }, '[lumi/accuracy] outcome-evidence failed');
+    return res.status(500).json({ error: 'OutcomeEvidenceUnavailable', message: 'Request failed' });
   }
 });
 

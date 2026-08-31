@@ -140,7 +140,14 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
     // 31 green unit tests were asserting on a row shape production could not
     // return. Proving a projection needs a real database, so this file is
     // gated like the rest and the census moves with it.
-    expect(dbGatedFiles().length).toBe(29);
+    //
+    // 29 → 30 in B5-01X': outcomeEvidenceComparison.integration.test.js. Every
+    // number the operator is shown has to trace to rows that actually exist, and
+    // a mocked reader would let the suite agree with a query the database could
+    // not answer. Its two load-bearing assertions — that observing changes no
+    // outcome, pattern or memory, and that DAILY stays out of the operational
+    // population — are only meaningful against real tables.
+    expect(dbGatedFiles().length).toBe(30);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {
