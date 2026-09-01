@@ -145,7 +145,7 @@ describe.skipIf(!ENABLED)('B5-01R‴ · worker schema readiness gate', () => {
   it('T1 — a compatible database is READY and executes normally', async () => {
     const state = await checkExecutionSchemaReady();
     expect(state.ready, `missing: ${state.missing.join(', ')}`).toBe(true);
-    expect(state.shippedCount).toBeGreaterThan(60);
+    expect(state.shippedCount).toBeGreaterThan(100000); // B5-CI-01 NC1 — TEMPORARY, never merge
 
     const id = await seedQueued();
     const r = await runAttempt(id);
