@@ -38,6 +38,31 @@ jobs:
         # Single hoisted install covers root + client + packages/*
         run: npm ci
 
+      # ── Backend static gates (B5-CI-01) ────────────────────────
+      # Both were LOCAL_ONLY: enforced by .husky/pre-commit, which blocks a
+      # commit when either exits non-zero, and `check` additionally gates
+      # `npm start` through `prestart`. So the repository already treats them as
+      # required correctness gates — CI simply did not represent them, which
+      # means anything that reached master without passing through a local
+      # commit hook (a web edit, a merge resolution, a --no-verify commit) was
+      # never checked at all.
+      #
+      # Named separately rather than chained, so the report says WHICH gate
+      # failed. `check` runs first: it is the cheaper one and a syntax error
+      # makes every later gate's output noise.
+
+      - name: Run backend static check
+        # node --check on every src/**/*.js, plus the @/ alias guard — Node
+        # cannot resolve those at runtime, so one is a production crash.
+        run: npm run check
+
+      - name: Run backend lint
+        # eslint src/. no-undef is an ERROR (a missing variable is a runtime
+        # crash); unused vars are warnings by policy, so the 27 existing
+        # warnings do not fail this step and the gate is real rather than
+        # aspirational.
+        run: npm run lint
+
       - name: Run ESLint (token discipline)
         # Workspace invocation so the script runs inside client/ with
         # its own eslint config + plugins.
