@@ -223,24 +223,32 @@ describe.skipIf(!ENABLED)('B5-01R‴ · worker schema readiness gate', () => {
   // ── T5 · the check itself failing is NOT READY ──────────────────────────
   it('T5 — a readiness check that cannot run fails closed', async () => {
     const broken = {
-      $queryRawUnsafe: async () => { throw new Error('relation "_prisma_migrations" does not exist'); },
+      $queryRaw: async () => { throw new Error('relation "_prisma_migrations" does not exist'); },
     };
     await expect(assertExecutionSchemaReady(broken)).rejects.toThrow(SchemaNotReadyError);
     await expect(assertExecutionSchemaReady(broken)).rejects.toThrow(/could not be determined/);
+    // Name the underlying failure, not just the wrapper. Without this line the
+    // test passes when the gate never reaches the client at all: a mock whose
+    // method name has drifted from production throws TypeError, and the same
+    // catch converts that into the same SchemaNotReadyError with the same
+    // wrapper text. "Fails closed" would then be proven by a broken wire rather
+    // than by the refusal it claims to measure.
+    await expect(assertExecutionSchemaReady(broken))
+      .rejects.toThrow(/_prisma_migrations" does not exist/);
   }, 60_000);
 
   it('T5b — a ready answer is cached, a refusal never is', async () => {
     // Recovery without a timer, a poll loop or a sleep: the next job re-asks.
     let calls = 0;
     const lagging = {
-      $queryRawUnsafe: async () => { calls += 1; return []; },   // nothing applied
+      $queryRaw: async () => { calls += 1; return []; },   // nothing applied
     };
     await expect(assertExecutionSchemaReady(lagging)).rejects.toThrow(SchemaNotReadyError);
     await expect(assertExecutionSchemaReady(lagging)).rejects.toThrow(SchemaNotReadyError);
     expect(calls, 'a NOT-READY answer must be re-asked, or the worker can never recover').toBe(2);
 
     const ready = {
-      $queryRawUnsafe: async () => {
+      $queryRaw: async () => {
         calls += 1;
         return shippedMigrations().map((migration_name) => ({ migration_name }));
       },

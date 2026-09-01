@@ -79,9 +79,15 @@ export function shippedMigrations(dir = MIGRATIONS_DIR) {
  */
 export async function checkExecutionSchemaReady(client = prisma) {
   const shipped = shippedMigrations();
-  const rows = await client.$queryRawUnsafe(
-    'SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL',
-  );
+  // A tagged template, never the Unsafe variant. This query takes no input at
+  // all, so the pre-built string bought nothing — it only kept the one shape
+  // that becomes an injection the day someone adds a filter to it, which is why
+  // the security gate forbids the shape rather than judging each use. Still RAW
+  // SQL, which is the point above: no model, no projection, no dependency on
+  // the generated client agreeing with the database (I3).
+  const rows = await client.$queryRaw`
+    SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL
+  `;
   const applied = new Set(rows.map((r) => r.migration_name));
   const missing = shipped.filter((m) => !applied.has(m));
   return {
