@@ -26,6 +26,19 @@ jobs:
     env:
       DATABASE_URL: "postgresql://test_user:test_password@localhost:5432/marcom_test"
       DIRECT_URL: "postgresql://test_user:test_password@localhost:5432/marcom_test"
+      # B5-CI-01. The isolation ROOT for full verification. It is a naming and
+      # admin root, not a database this run connects to: globalSetup rewrites the
+      # path to /postgres to CREATE and DROP, and derives marcom_verify_tmpl +
+      # marcom_verify_w1..N from the name. `marcom_verify` therefore does not
+      # need to exist, and deliberately does not.
+      #
+      # It MUST NOT name the same database as DATABASE_URL. Full verification
+      # drops and recreates everything derived from this root, so
+      # resolveIsolationRoot() refuses to start when the two resolve to the same
+      # PostgreSQL identity (host + port + name). Keeping DATABASE_URL pointed at
+      # a different name means that guard is actually exercised here rather than
+      # skipped for want of an ambient value.
+      TEST_DATABASE_URL: "postgresql://test_user:test_password@localhost:5432/marcom_verify"
 
     services:
       postgres:
@@ -59,29 +72,42 @@ jobs:
       - name: Install dependencies (workspace-wide)
         run: npm ci
 
-      - name: Set up test database schema
-        run: npx prisma migrate deploy
+      # NO `prisma migrate deploy` STEP, deliberately (B5-CI-01 §8).
+      #
+      # Migration ownership belongs to full verification, which migrates the
+      # TEMPLATE database itself (src/tests/globalSetup.js runs `prisma migrate
+      # deploy` against marcom_verify_tmpl, then clones each worker database from
+      # it) and FAILS the run if that migration fails. Nothing in this job reads
+      # the shared marcom_test database: workerDb.js overwrites DATABASE_URL and
+      # DIRECT_URL inside every worker before the first import of the Prisma
+      # client. A second migrate step here would be a parallel ritual that proves
+      # nothing the provisioner does not already prove, on a database no test
+      # touches.
 
-      - name: Run backend + contract tests
-        # No path arguments. Positional paths OVERRIDE the `include` globs in
-        # vitest.config.js, and the list that used to sit here had become an
+      - name: Run backend full verification (REQUIRE_DB=1)
+        # B5-CI-01. This was `npx vitest run`, which bypassed
+        # scripts/run-tests.js — the repository's verification owner — and so
+        # made a WEAKER claim than the repository's own contract. REQUIRE_DB was
+        # unset, DB-backed suites were permitted to skip, and they did: measured
+        # on 6505872, CI reported `5127 passed | 36 skipped` where `test:full`
+        # reports `5163 passed | 0 skipped`. Among the skipped were all six tests
+        # of the worker schema-readiness gate — a safety property about not
+        # mutating a live ad platform against a stale schema, invisible to a
+        # green badge.
+        #
+        # `npm run test:full` is the same suite plus a requirement. It is not a
+        # different file list; `include` in vitest.config.js remains the single
+        # definition of what the backend suite IS. Routing through the script
+        # also activates the Node runtime guard (B5-01K), which raw vitest skips.
+        #
+        # Still no path arguments. Positional paths OVERRIDE the `include` globs
+        # in vitest.config.js, and the list that used to sit here had become an
         # allowlist the repository had outgrown: src/middleware, src/workers,
         # src/lib, src/models, src/agents, src/config, src/modes and src/tests
         # all held test files CI never ran — including R11 identity,
         # authorization and worker re-authorization suites. A green run said
         # nothing about them.
-        #
-        # The config already scopes discovery correctly: it includes only
-        # src/**/*.test.js + packages/**/*.test.js, and already excludes
-        # client/** (its own jsdom config), Playwright specs, and
-        # src/tests/dialect.test.js (a standalone node script, not a suite).
-        #
-        # The old note here said resilience.integration.test.js had
-        # "pre-existing failures". That was true, and it stayed true precisely
-        # because excluding it meant nobody ever saw them. Its three defects
-        # are fixed in this PR; the fourth — CampaignStage missing from a
-        # migration-built database — was fixed by R12-1e.
-        run: npx vitest run
+        run: npm run test:full
 
   frontend-tests:
     name: Frontend tests
