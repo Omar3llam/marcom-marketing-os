@@ -25,6 +25,7 @@ vi.mock('@/hooks/useRecordOutcome.js', () => ({
 }));
 
 import OutcomeEvidence from './OutcomeEvidence.jsx';
+import { OutcomeEvidenceResponseSchema } from '@/contracts/schemas';
 
 const BASELINE_DAYS = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06', '2026-08-07', '2026-08-08', '2026-08-09'];
 const OBSERVATION_DAYS = ['2026-08-11', '2026-08-12', '2026-08-13', '2026-08-14', '2026-08-15', '2026-08-16', '2026-08-17'];
@@ -123,7 +124,11 @@ describe('the states that are NOT about the account', () => {
     expect(screen.getByText(/campaign level only/i)).toBeInTheDocument();
   });
 
-  it('UNAVAILABLE says the read failed and prints no number', () => {
+  // RENAMED IN B5-01Y. This case was called "UNAVAILABLE" and never exercised
+  // the UNAVAILABLE status — it drives the TRANSPORT path (a rejected request),
+  // which is a different branch entirely. The name is why the real defect hid:
+  // the suite looked like it covered the state. The status is covered below.
+  it('a rejected REQUEST says the read failed and prints no number', () => {
     evidenceState = { evidence: null, loading: false, error: new Error('boom') };
     render(<OutcomeEvidence decisionId="dec-1" currency="USD" />);
     const text = document.body.textContent;
@@ -156,6 +161,104 @@ describe('NOT_OBSERVED', () => {
     expect(text).toMatch(/No usable evidence was observed/i);
     expect(text).toMatch(/holds none across the compared windows/i);
     expect(text).not.toMatch(/0\.00/);
+  });
+});
+
+// ── B5-01Y · a failed read must not impersonate incompatible evidence ──
+// The defect this section exists to keep closed: `readOutcomeEvidence` catches a
+// failed evidence read and RETURNS a refusal, so the endpoint answers HTTP 200
+// with `status: 'UNAVAILABLE'`. The component's `if (error || !evidence)` guard
+// therefore does not fire — `error` is null and the payload is valid — and
+// before this slice the status matched no branch and fell through to the
+// NOT_MEASURABLE fallback, which told the operator Lumi "holds observations
+// either side of the intervention". It held none; it never managed to look.
+//
+// Lumi must never tell an operator that observations are incompatible when it
+// never successfully read them.
+//
+// EXACTLY what `refusal(EVIDENCE_STATUS.UNAVAILABLE, null, { ...base, source })`
+// produces, serialised through res.json(): null windows, null deltas, a null
+// reason, and the policy block (which is computed BEFORE the read is attempted).
+const PRODUCTION_UNAVAILABLE = Object.freeze({
+  workspaceId: 'ws', decisionId: 'dec-1', entityId: 'ent-1', entityLevel: 'CAMPAIGN',
+  verdict: 'KILL', interventionAt: '2026-08-10T09:30:00.000Z', interventionDay: '2026-08-10',
+  source: 'META',
+  status: 'UNAVAILABLE', reason: null,
+  policy: {
+    comparisonWindowDays: 7,
+    baselineWindow: { start: '2026-08-03T00:00:00.000Z', end: '2026-08-09T00:00:00.000Z' },
+    observationWindow: { start: '2026-08-11T00:00:00.000Z', end: '2026-08-17T00:00:00.000Z' },
+    interventionDayExcluded: true,
+  },
+  baseline: null, observation: null,
+  delta: { spendMinor: null, revenueMinor: null, roas: null },
+});
+
+const renderPayload = (payload) => {
+  evidenceState = { evidence: payload, loading: false, error: null };
+  render(<OutcomeEvidence decisionId="dec-1" currency="USD" />);
+  return document.body.textContent;
+};
+
+describe('B5-01Y · backend UNAVAILABLE reaches the operator as UNAVAILABLE', () => {
+  // THE RATCHET'S FOUNDATION. A hand-written fixture can drift into a shape the
+  // API could never return — which is exactly how the original "UNAVAILABLE"
+  // test passed while testing nothing. Parsing it through the production
+  // response contract means this suite fails the day the two disagree.
+  it('the fixture is a payload the real API contract accepts', () => {
+    const parsed = OutcomeEvidenceResponseSchema.safeParse(PRODUCTION_UNAVAILABLE);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.status).toBe('UNAVAILABLE');
+    // …and it is NOT the transport path: there is a valid payload and no error.
+    expect(PRODUCTION_UNAVAILABLE.baseline).toBeNull();
+    expect(PRODUCTION_UNAVAILABLE.observation).toBeNull();
+  });
+
+  it('T1 · renders the read-failure state, never the NOT_MEASURABLE fallback', () => {
+    const text = renderPayload(PRODUCTION_UNAVAILABLE);
+    expect(text).toMatch(/Evidence unavailable/i);
+    // The exact sentence the defect produced, named so a regression is obvious.
+    expect(text).not.toMatch(/can’t be compared/i);
+    expect(text).not.toMatch(/holds observations either side/i);
+  });
+
+  it('T1 · does not borrow any other state’s meaning', () => {
+    const text = renderPayload(PRODUCTION_UNAVAILABLE);
+    expect(text).not.toMatch(/No usable evidence was observed/i); // NOT_OBSERVED
+    expect(text).not.toMatch(/can’t measure this one automatically/i); // UNSUPPORTED
+    expect(text).not.toMatch(/couldn’t be reconciled/i); // AMBIGUOUS
+    expect(text).not.toMatch(/What Lumi observed/i); // MEASURABLE
+    expect(text).not.toMatch(/incomplete evidence/i); // INSUFFICIENT_COVERAGE
+  });
+
+  it('T1 · shows no number at all — nothing was measured to report', () => {
+    const text = renderPayload(PRODUCTION_UNAVAILABLE);
+    // Deliberately strict. The policy windows ARE known here (they are computed
+    // before the read is attempted), and printing them would imply Lumi looked
+    // at those days. It did not.
+    expect(text).not.toMatch(/[0-9]/);
+    expect(text).not.toMatch(/Observed change/i);
+  });
+
+  it('T2 · every state still renders its own distinct heading', () => {
+    const seen = new Map();
+    const cases = [
+      ['MEASURABLE', evidenceOf()],
+      ['INSUFFICIENT_COVERAGE', evidenceOf({ status: 'INSUFFICIENT_COVERAGE', delta: { spendMinor: null, revenueMinor: null, roas: null } })],
+      ['NOT_OBSERVED', evidenceOf({ status: 'NOT_OBSERVED' })],
+      ['AMBIGUOUS', evidenceOf({ status: 'AMBIGUOUS' })],
+      ['UNSUPPORTED', evidenceOf({ status: 'UNSUPPORTED', reason: 'CHANNEL_HAS_NO_DAILY_CAPABILITY', baseline: null, observation: null })],
+      ['NOT_MEASURABLE', evidenceOf({ status: 'NOT_MEASURABLE', reason: 'DIFFERENT_SOURCE' })],
+      ['UNAVAILABLE', PRODUCTION_UNAVAILABLE],
+    ];
+    for (const [name, payload] of cases) {
+      document.body.innerHTML = '';
+      const heading = renderPayload(payload).slice(0, 60);
+      // No two states may share the sentence an operator reads first.
+      expect(seen.has(heading)).toBe(false);
+      seen.set(heading, name);
+    }
+    expect(seen.size).toBe(cases.length);
   });
 });
 

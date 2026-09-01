@@ -177,13 +177,54 @@ export default function OutcomeEvidence({ decisionId, currency }) {
     );
   }
 
-  // NOT_MEASURABLE — the comparability contract refused the two windows.
+  // B5-01Y — THE READ FAILED. Distinct from every state above and from the
+  // transport branch at the top, and it must never be confused with any of them.
+  //
+  // `readOutcomeEvidence` catches a failed evidence read and RETURNS a refusal,
+  // so this arrives as HTTP 200 with a perfectly valid payload — `error` is null
+  // and the guard above does not fire. Before this branch existed the status
+  // matched nothing and fell through to NOT_MEASURABLE, which told the operator
+  // Lumi "holds observations either side of the intervention". It holds none. It
+  // never managed to look.
+  //
+  // No number is printed, deliberately. The policy windows ARE known here — they
+  // are computed before the read is attempted — and showing them would imply
+  // Lumi examined those days.
+  if (status === 'UNAVAILABLE') {
+    return (
+      <Shell title="Evidence unavailable">
+        <p className={note}>
+          Lumi couldn’t read the observations needed to evaluate this outcome.
+        </p>
+        <p className={`${note} mt-1`}>
+          Nothing was concluded from the failed read, and your own numbers below are unaffected.
+        </p>
+      </Shell>
+    );
+  }
+
+  // NOT_MEASURABLE — the comparability contract refused the two windows. This
+  // says the observations WERE read and found incompatible, so it is now an
+  // explicit branch rather than the fallback: a state that makes a positive
+  // claim about what Lumi holds must never be what an unhandled status inherits.
+  if (status === 'NOT_MEASURABLE') {
+    return (
+      <Shell title="These observations can’t be compared">
+        <p className={note}>
+          Lumi holds observations either side of the intervention but they don’t describe one comparable subject
+          {reason ? ` (${reason.toLowerCase().replace(/_/g, ' ')})` : ''}.
+        </p>
+      </Shell>
+    );
+  }
+
+  // A status this component does not recognise. Unreachable while the response
+  // schema's enum and the branches above agree — which is exactly the pair that
+  // drifted apart to produce B5-01Y, when a status the contract already carried
+  // had no branch here. It claims nothing about what Lumi holds.
   return (
-    <Shell title="These observations can’t be compared">
-      <p className={note}>
-        Lumi holds observations either side of the intervention but they don’t describe one comparable subject
-        {reason ? ` (${reason.toLowerCase().replace(/_/g, ' ')})` : ''}.
-      </p>
+    <Shell title="Evidence couldn’t be established">
+      <p className={note}>Lumi couldn’t establish evidence for this decision, and drew no conclusion.</p>
     </Shell>
   );
 }
