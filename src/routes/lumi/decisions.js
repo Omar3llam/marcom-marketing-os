@@ -61,22 +61,15 @@ async function stampOnce(req, res, field) {
 
   try {
     const decision = await prisma.decision.findFirst({
-      // C-01 — scoped to connector verdicts, and NOT given a class parameter.
-      // The reason is in the address itself: `by-entity` can only ever be
-      // correct for a class that has at most one open row per entity, and
-      // supersession makes Signal that class. A Guardrail entity can hold
-      // several open episodes and an Experiment is not addressed this way at
-      // all, so no entity-keyed route could aim at either — widening this one
-      // would only let it miss more precisely. Both current callers
-      // (ConnectorCampaignsPanel, CampaignDetailPanel) render connector
-      // verdicts, so this is right for every caller with no client change.
+      // C-01 — scoped to Signal, and deliberately given no class parameter:
+      // `by-entity` can only address a class that is singular per entity, which
+      // supersession makes Signal and nothing else. A Guardrail entity holds
+      // several open episodes, so widening this route would only let it miss
+      // more precisely; stamping those needs item addressing (C-11).
       //
-      // Unscoped, `createdAt desc` meant "whichever class was written last", and
-      // under a standing breach that is always the guardrail sweep — so reading
-      // a Signal's reasoning stamped `explainedAt` on a Guardrail episode. B7-03
-      // ruled explainedAt is not a "reviewed" product state, but it is still a
-      // real fact, and a real fact recorded against the wrong call is worse than
-      // one not recorded at all.
+      // Unscoped, `createdAt desc` meant "whichever class wrote last" — always
+      // the 15-minute guardrail sweep under a standing breach — so reading a
+      // Signal's reasoning stamped `explainedAt` onto a Guardrail episode.
       where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED', ...connectorDecisionScope() },
       orderBy: { createdAt: 'desc' },
       select:  { id: true, [field]: true },
