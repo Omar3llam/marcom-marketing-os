@@ -40,6 +40,7 @@ import { dirname, resolve } from 'node:path';
 import postgres from 'postgres';
 import {
   databaseIdentity, databaseName, urlForDatabase, adminUrl,
+  sealTemplate, withSourceInUseRetry,
 } from './dbIsolation.js';
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -107,7 +108,11 @@ describe.skipIf(!ENABLED)('B5-01Q · production migration safety', () => {
   async function clone(suffix) {
     const name = `${ROOT_NAME}_q_${suffix}`;
     await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
-    await admin.unsafe(`CREATE DATABASE "${name}" TEMPLATE "${TMPL}"`);
+    // Sealed in beforeAll, so this succeeds first time. The bounded retry is
+    // defence in depth and never turns a stuck source into a silent skip.
+    await withSourceInUseRetry(
+      () => admin.unsafe(`CREATE DATABASE "${name}" TEMPLATE "${TMPL}"`),
+    );
     made.add(name);
     return name;
   }
@@ -139,6 +144,12 @@ describe.skipIf(!ENABLED)('B5-01Q · production migration safety', () => {
       env: { ...process.env, DATABASE_URL: url, DIRECT_URL: url, CHECKPOINT_DISABLE: '1' },
     });
     expect(r.status, `template migration failed:\n${r.stdout ?? ''}${r.stderr ?? ''}`).toBe(0);
+
+    // Nothing connects to this template again, and every `it` below copies
+    // from it. Shut it: a connectable source can be re-occupied between
+    // copies, which on Neon reliably breaks every clone with 55006. See
+    // sealTemplate in dbIsolation.js for the measurement.
+    await sealTemplate((statement) => admin.unsafe(statement), TMPL);
   }, 300_000);
 
   afterAll(async () => {

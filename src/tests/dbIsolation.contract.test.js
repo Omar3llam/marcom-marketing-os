@@ -26,12 +26,14 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
   MAX_WORKERS, databaseIdentity, databaseName, workerName,
   urlForDatabase, resolveIsolationRoot, IsolationSetupError, TEST_DB_ENV,
+  sealTemplate, unsealTemplate, isSourceInUseError, withSourceInUseRetry,
+  TEMPLATE_COPY_ATTEMPTS, isRemoteVerificationHost, REMOTE_TEST_TIMEOUT_MS,
 } from './dbIsolation.js';
 
 const ISOLATED = process.env.REQUIRE_DB === '1' && Boolean(process.env.LUMI_TEST_DB_ROOT);
@@ -119,6 +121,157 @@ describe('B5-01H · isolation contract (pure)', () => {
     // addition look like a broken isolation contract. Removing workerDb still
     // fails this, which is the property that matters.
     expect(cfg).toMatch(/setupFiles:\s*\[[^\]]*['"]\.\/src\/tests\/workerDb\.js['"]/);
+  });
+  it('§26.8 · globalSetup seals the template BEFORE it copies from it', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/tests/globalSetup.js'), 'utf8');
+    // Match the STATEMENTS, not the words. This file’s header comment contains
+    // the phrase “CREATE DATABASE … TEMPLATE”, so anchoring on it asserted only
+    // that a comment precedes an import — which is true no matter what the
+    // provisioner does. The same trap the poolOptions note above describes.
+    const sealed = src.indexOf('await sealTemplate(');
+    const copies = src.indexOf('CREATE DATABASE "${name}" TEMPLATE');
+    expect(sealed).toBeGreaterThanOrEqual(0);
+    expect(copies).toBeGreaterThanOrEqual(0);
+    expect(sealed).toBeLessThan(copies);
+  });
+
+  it('§21 · a copy that stays occupied fails the run — it is not skipped past', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/tests/globalSetup.js'), 'utf8');
+    // The copy loop must not swallow its error and carry on with fewer
+    // databases than workers: a worker without a database would then fall
+    // through to workerDb.js, and the run would claim more than it verified.
+    expect(src).not.toMatch(/CREATE DATABASE[\s\S]{0,200}?\.catch\(\(\)\s*=>\s*\{?\s*\}?\)/);
+    expect(src).toMatch(/withSourceInUseRetry/);
+  });
+
+});
+
+// ── B5-01Z · sealing the template against reattachment ─────────────────────
+// Measured against Neon on 2026-09-02: `CREATE DATABASE … TEMPLATE` failed 24
+// times in 125s with ZERO sessions ever visible in pg_stat_activity, because a
+// background-worker launcher re-attaches to any CONNECTABLE database faster
+// than a copy can start. That race cannot be won by terminating — the door has
+// to be closed, which is exactly why template0 is not connectable and is
+// therefore always copyable.
+describe('B5-01Z · template sealing (pure)', () => {
+  /** Records the statements a seal issues, in order. */
+  const recorder = () => {
+    const seen = [];
+    return { seen, exec: async (sql) => { seen.push(sql); return []; } };
+  };
+
+  it('closes the database to new connections BEFORE evicting the occupants', async () => {
+    // Order is the whole property. Terminate-then-close leaves a window in
+    // which the launcher reconnects, and that window is the measured failure.
+    const { seen, exec } = recorder();
+    await sealTemplate(exec, 'root_tmpl');
+    const closed = seen.findIndex((s) => /ALLOW_CONNECTIONS\s+false/i.test(s));
+    const evicted = seen.findIndex((s) => /pg_terminate_backend/i.test(s));
+    expect(closed).toBeGreaterThanOrEqual(0);
+    expect(evicted).toBeGreaterThanOrEqual(0);
+    expect(closed).toBeLessThan(evicted);
+  });
+
+  it('evicts only backends on the template, and never the sealing session itself', async () => {
+    const { seen, exec } = recorder();
+    await sealTemplate(exec, 'root_tmpl');
+    const kill = seen.find((s) => /pg_terminate_backend/i.test(s));
+    expect(kill).toMatch(/datname\s*=\s*'root_tmpl'/);
+    expect(kill).toMatch(/pid\s*<>\s*pg_backend_pid\(\)/);
+  });
+
+  it('reopens the template once copying is done', async () => {
+    // The seal exists only for the copy window. Leaving it shut would make
+    // the template permanently uninspectable, and migrationContract.test.js
+    // P1 legitimately connects to it to prove stale state was destroyed.
+    const { seen, exec } = recorder();
+    await unsealTemplate(exec, 'root_tmpl');
+    expect(seen.some((x) => x.includes('ALLOW_CONNECTIONS true'))).toBe(true);
+  });
+
+  it('§26.8 · globalSetup reopens the template AFTER the copies, not before', () => {
+    const src = readFileSync(resolve(process.cwd(), 'src/tests/globalSetup.js'), 'utf8');
+    const copies = src.indexOf('CREATE DATABASE "${name}" TEMPLATE');
+    const reopened = src.indexOf('await unsealTemplate(');
+    expect(reopened).toBeGreaterThanOrEqual(0);
+    expect(copies).toBeLessThan(reopened);
+  });
+  it('does not mark the template IS_TEMPLATE — that would block its own teardown', () => {
+    // A datistemplate=true database cannot be dropped, and drop() swallows
+    // errors, so setting it would silently leak one database per run.
+    const src = readFileSync(resolve(process.cwd(), 'src/tests/dbIsolation.js'), 'utf8');
+    expect(src).not.toMatch(/IS_TEMPLATE\s+true/i);
+  });
+
+  it('B5-01Z · EVERY template-copy site in the repo seals its source first', () => {
+    // The class, not the caught instance. globalSetup was not the only place
+    // copying from a template: productionMigrationSafety.test.js has its own
+    // provisioner, and it failed against Neon with the identical 55006 after
+    // globalSetup was fixed. A ratchet keyed on the STATEMENT finds the next
+    // one too, instead of waiting for it to fail on someone's machine.
+    const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+      const full = resolve(dir, e.name);
+      if (e.isDirectory()) return e.name === 'node_modules' ? [] : walk(full);
+      return e.name.endsWith('.js') ? [full] : [];
+    });
+    const copiesFromTemplate = (src) => src.split('\n')
+      .some((line) => line.includes('CREATE DATABASE') && line.includes('TEMPLATE'));
+    const offenders = walk(resolve(process.cwd(), 'src'))
+      .map((f) => [f, readFileSync(f, 'utf8')])
+      .filter(([, src]) => copiesFromTemplate(src) && !src.includes('sealTemplate'))
+      .map(([f]) => f.slice(process.cwd().length + 1));
+    expect(offenders, 'these copy from a template without sealing it first').toEqual([]);
+  });
+
+
+  it('B5-01Z · a loopback verification database keeps the 5s per-test budget', () => {
+    expect(isRemoteVerificationHost({ REQUIRE_DB: '1', [TEST_DB_ENV]: 'postgresql://u:p@localhost:5432/v' })).toBe(false);
+    expect(isRemoteVerificationHost({ REQUIRE_DB: '1', [TEST_DB_ENV]: 'postgresql://u:p@127.0.0.1:5432/v' })).toBe(false);
+    expect(isRemoteVerificationHost({})).toBe(false);
+    // Fast mode makes no database claim, so it never widens the budget even
+    // when a remote URL happens to be exported in the shell.
+    expect(isRemoteVerificationHost({ [TEST_DB_ENV]: 'postgresql://u:p@db.neon.tech/v' })).toBe(false);
+  });
+
+  it('B5-01Z · a remote verification database widens it, because every query is a round trip', () => {
+    expect(isRemoteVerificationHost({ REQUIRE_DB: '1', [TEST_DB_ENV]: 'postgresql://u:p@ep-x.aws.neon.tech/v' })).toBe(true);
+  });
+
+  it('B5-01Z · the runner actually uses that budget', async () => {
+    const { default: cfg } = await import('../../vitest.config.js');
+    expect(cfg.test.testTimeout).toBe(isRemoteVerificationHost() ? REMOTE_TEST_TIMEOUT_MS : 5000);
+  });
+
+  it('recognises 55006 as the source-in-use error, and nothing else', () => {
+    expect(isSourceInUseError({ code: '55006' })).toBe(true);
+    expect(isSourceInUseError({ code: '42501' })).toBe(false);   // permission denied
+    expect(isSourceInUseError(new Error('boom'))).toBe(false);
+    expect(isSourceInUseError(undefined)).toBe(false);
+  });
+
+  it('retries a source-in-use failure, then returns the eventual success', async () => {
+    let calls = 0;
+    const result = await withSourceInUseRetry(async () => {
+      calls += 1;
+      if (calls < 3) { const e = new Error('in use'); e.code = '55006'; throw e; }
+      return 'created';
+    }, { sleep: async () => {} });
+    expect(result).toBe('created');
+    expect(calls).toBe(3);
+  });
+
+  it('§21 · the retry is BOUNDED and ends in a throw — it never gives up quietly', async () => {
+    let calls = 0;
+    const boom = async () => { calls += 1; const e = new Error('in use'); e.code = '55006'; throw e; };
+    await expect(withSourceInUseRetry(boom, { sleep: async () => {} })).rejects.toThrow(/in use/);
+    expect(calls).toBe(TEMPLATE_COPY_ATTEMPTS);
+  });
+
+  it('never retries an error that is not source-in-use', async () => {
+    let calls = 0;
+    const denied = async () => { calls += 1; const e = new Error('permission denied'); e.code = '42501'; throw e; };
+    await expect(withSourceInUseRetry(denied, { sleep: async () => {} })).rejects.toThrow(/permission denied/);
+    expect(calls).toBe(1);
   });
 });
 
@@ -264,6 +417,27 @@ describe.skipIf(!ISOLATED)('B5-01H · cross-worker isolation on real PostgreSQL'
     // designated root the worker databases were derived from.
     expect(db).not.toBe(databaseName(process.env.TEST_DATABASE_URL));
     expect(databaseIdentity(process.env.DATABASE_URL)).toContain(db);
+  });
+
+  it('B5-01Z · the template is left inspectable, and the copies are usable', async () => {
+    // The seal is transient by design: shut for the copy window, reopened
+    // immediately after. What must be true by the time suites run is that every
+    // database here is connectable — the template because migrationContract P1
+    // inspects it, the workers because they are what the suites run against.
+    const rows = await a.$queryRaw`
+      SELECT datname, datallowconn FROM pg_database
+       WHERE datname IN (${`${ROOT}_tmpl`}, ${workerName(ROOT, 1)}, ${workerName(ROOT, 2)})
+       ORDER BY datname`;
+    const byName = Object.fromEntries(rows.map((r) => [r.datname, r.datallowconn]));
+    expect(byName[`${ROOT}_tmpl`]).toBe(true);
+    expect(byName[workerName(ROOT, 1)]).toBe(true);
+    expect(byName[workerName(ROOT, 2)]).toBe(true);
+  });
+
+  it('B5-01Z · the template is not marked datistemplate, so teardown can drop it', async () => {
+    const [row] = await a.$queryRaw`
+      SELECT datistemplate FROM pg_database WHERE datname = ${`${ROOT}_tmpl`}`;
+    expect(row.datistemplate).toBe(false);
   });
 
   it('Test 9 · every worker database carries the full migration state', async () => {
