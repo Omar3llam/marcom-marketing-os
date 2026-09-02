@@ -1,1 +1,1 @@
-export { evaluateGuardrails, COMPARATOR } from './guardrailEngine.js';
+export { evaluateGuardrails, COMPARATOR, GUARDRAIL_OUTCOME } from './guardrailEngine.js';

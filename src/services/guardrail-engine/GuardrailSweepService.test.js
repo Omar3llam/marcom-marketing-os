@@ -23,7 +23,10 @@ vi.mock('../../lib/prisma.js', () => ({
   prisma: {
     metricSnapshot: { findMany: vi.fn() },
     guardrailRule:  { findMany: vi.fn() },
-    decision:       { createMany: vi.fn() },
+    // C-02 — the sweep now reads open episodes before writing and closes ended
+    // ones, so the mock carries the reader and the transaction as well.
+    decision:       { createMany: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
+    $transaction:   vi.fn(async (ops) => Promise.all(ops)),
   },
 }));
 
@@ -62,6 +65,10 @@ beforeEach(() => {
   prisma.guardrailRule.findMany.mockResolvedValue([RULE]);
   prisma.metricSnapshot.findMany.mockResolvedValue([]);
   prisma.decision.createMany.mockResolvedValue({ count: 0 });
+  // C-02 default: no episode is already running, so every hit is a new one and
+  // these tests keep asserting exactly what they asserted before.
+  prisma.decision.findMany.mockResolvedValue([]);
+  prisma.decision.updateMany.mockResolvedValue({ count: 0 });
 });
 
 const evidenceArgs = () => prisma.metricSnapshot.findMany.mock.calls[0][0];
@@ -213,7 +220,18 @@ describe('R3 — GuardrailSweepService on the Evidence seam', () => {
       // live in the query, and why nothing here re-checks it.
       expect(SRC).not.toMatch(/measurementWindow/);
       expect(SRC).not.toMatch(/CUMULATIVE_30D/);
-      expect(SRC).not.toMatch(/\.filter\(/);
+      // NARROWED BY C-02, from a bare /\.filter\(/ over the whole file.
+      //
+      // The prohibition is about the EVIDENCE SERIES — "whatever the Evidence
+      // layer returned IS the series". The blunt form also caught filtering of
+      // DECISION rows, which is a different subject: C-02 selects which hits are
+      // new by comparing them against the episodes already open, and that has
+      // nothing to do with which snapshots reached the loop.
+      //
+      // These two name the actual rule instead of a token that happened to
+      // appear in it, so the guard still fails if anyone re-filters the evidence.
+      expect(SRC).not.toMatch(/snapshots\s*\.\s*filter\(/);
+      expect(SRC).not.toMatch(/series\s*\.\s*filter\(/);
     });
   });
 
@@ -224,6 +242,14 @@ describe('R3 — GuardrailSweepService on the Evidence seam', () => {
       // pre-R5 row, asserted exhaustively so a semantic change hides nowhere;
       // `evidenceReference` is the ninth, and it describes the series this rule
       // fired on rather than restating its conclusion.
+      //
+      // C-02 ADDS TWO MORE, and deliberately does not touch the nine. The
+      // identity is written ALONGSIDE `rootCause`, not instead of it: every
+      // current consumer still matches the `guardrail:` prefix, so replacing the
+      // display string here would have been a second change smuggled in behind
+      // a dedupe. `guardrailRuleId` is the stable id the engine always returned
+      // and this writer used to discard; `openHitKey` is that id joined to the
+      // entity, and it is NULLed when the episode closes.
       prisma.metricSnapshot.findMany.mockResolvedValue([
         snap({ date: new Date('2026-08-01'), frequency: 4.0 }),
         snap({ date: new Date('2026-08-02'), frequency: 4.5 }),
@@ -240,6 +266,8 @@ describe('R3 — GuardrailSweepService on the Evidence seam', () => {
         diagnosis:   'Frequency ceiling: frequency > 3 for 2 day(s)',
         rootCause:   'guardrail:Frequency ceiling',
         status:      'PROPOSED',
+        guardrailRuleId: 'rule-1',
+        openHitKey:      'rule-1:e1:ADSET',
         evidenceReference: {
           population: 'operational',
           selector:   'selectOperationalSnapshots',
@@ -258,7 +286,7 @@ describe('R3 — GuardrailSweepService on the Evidence seam', () => {
           refs:       [],
         },
       }]);
-      expect(out).toEqual({ rules: 1, hits: 1, decisionsCreated: 1 });
+      expect(out).toEqual({ rules: 1, hits: 1, decisionsCreated: 1, episodesClosed: 0 });
     });
 
     it('writes nothing when no rule fires', async () => {
@@ -268,14 +296,178 @@ describe('R3 — GuardrailSweepService on the Evidence seam', () => {
       ]);
       const out = await sweepGuardrails(WS);
       expect(prisma.decision.createMany).not.toHaveBeenCalled();
-      expect(out).toEqual({ rules: 1, hits: 0, decisionsCreated: 0 });
+      expect(out).toEqual({ rules: 1, hits: 0, decisionsCreated: 0, episodesClosed: 0 });
     });
 
     it('short-circuits before touching evidence when no rules are enabled', async () => {
       prisma.guardrailRule.findMany.mockResolvedValue([]);
       const out = await sweepGuardrails(WS);
       expect(prisma.metricSnapshot.findMany).not.toHaveBeenCalled();
-      expect(out).toEqual({ rules: 0, hits: 0, decisionsCreated: 0 });
+      expect(out).toEqual({ rules: 0, hits: 0, decisionsCreated: 0, episodesClosed: 0 });
     });
+  });
+});
+
+// ============================================================
+// C-02 — a hit is a breach EPISODE
+// ============================================================
+// Before this, `createMany` ran with no existence check: a standing breach on a
+// 15-minute cron minted roughly 96 indistinguishable rows a day. The fix is not
+// a dedupe query — it is that the sweep now knows what makes two breaches the
+// same breach, and equally what it did NOT look at.
+//
+// The tests that matter most here are the ones asserting nothing closes.
+// Treating "we did not evaluate this pair" as an all-clear would let disabling a
+// rule silently clear every breach it was holding open, and an ingest gap read
+// as the problem going away.
+describe('C-02 — guardrail hit identity', () => {
+  const breaching = () => [
+    snap({ date: new Date('2026-08-01'), frequency: 4.0 }),
+    snap({ date: new Date('2026-08-02'), frequency: 4.5 }),
+  ];
+  const calm = () => [
+    snap({ date: new Date('2026-08-01'), frequency: 1.0 }),
+    snap({ date: new Date('2026-08-02'), frequency: 1.1 }),
+  ];
+  const openEpisode = { id: 'dec-open', openHitKey: 'rule-1:e1:ADSET' };
+  const created = () => (prisma.decision.createMany.mock.calls[0]?.[0]?.data ?? []);
+  const closed  = () => (prisma.decision.updateMany.mock.calls[0]?.[0] ?? null);
+
+  it('a second sweep over an unchanged breach writes nothing', async () => {
+    prisma.metricSnapshot.findMany.mockResolvedValue(breaching());
+    prisma.decision.findMany.mockResolvedValue([openEpisode]);
+
+    const out = await sweepGuardrails(WS);
+
+    // The rule still fires — the breach is real and ongoing. What changed is
+    // that its episode was already open, so no second row is minted.
+    expect(out.hits).toBe(1);
+    expect(out.decisionsCreated).toBe(0);
+    expect(prisma.decision.createMany).not.toHaveBeenCalled();
+    expect(out.episodesClosed).toBe(0);
+  });
+
+  it('only the pairs it judged are looked up, scoped to this workspace', async () => {
+    prisma.metricSnapshot.findMany.mockResolvedValue(breaching());
+    await sweepGuardrails(WS);
+
+    expect(prisma.decision.findMany).toHaveBeenCalledWith({
+      where:  { workspaceId: WS, openHitKey: { in: ['rule-1:e1:ADSET'] } },
+      select: { id: true, openHitKey: true },
+    });
+  });
+
+  it('a pair judged CLEAR closes its open episode and releases the key', async () => {
+    prisma.metricSnapshot.findMany.mockResolvedValue(calm());
+    prisma.decision.findMany.mockResolvedValue([openEpisode]);
+
+    const out = await sweepGuardrails(WS);
+
+    expect(out.episodesClosed).toBe(1);
+    expect(closed().where).toEqual({ id: { in: ['dec-open'] } });
+    expect(closed().data.status).toBe('RESOLVED');
+    // Releasing the key is what lets the same breach return as a NEW episode:
+    // PostgreSQL exempts NULL from the unique index.
+    expect(closed().data.openHitKey).toBeNull();
+    // Closure says the episode ended. It makes no claim about the outcome, and
+    // this assertion is the guard on that: `resolution` is the column
+    // `decisionLearning` admits rows on (resolution IS NOT NULL +
+    // INTERVENED_WHERE), so writing one here would quietly enrol executed
+    // Guardrail decisions into institutional memory. That population has an
+    // owner and it is not this sweep.
+    expect(closed().data).not.toHaveProperty('resolution');
+    expect(closed().data.resolvedAt).toBeInstanceOf(Date);
+  });
+
+  it('a breach returning after closure opens a NEW row, never revives the old one', async () => {
+    prisma.metricSnapshot.findMany.mockResolvedValue(breaching());
+    // The previous episode closed, so its key was released and nothing is open.
+    prisma.decision.findMany.mockResolvedValue([]);
+
+    const out = await sweepGuardrails(WS);
+
+    expect(out.decisionsCreated).toBe(1);
+    expect(created()[0].openHitKey).toBe('rule-1:e1:ADSET');
+    expect(prisma.decision.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('DISABLING a rule closes nothing — the sweep never judged the pair', async () => {
+    // sweepGuardrails loads only enabled rules, so a disabled rule produces no
+    // evaluated pairs at all. The open episode must survive: switching a rule
+    // off is not evidence that the breach behind it ended.
+    prisma.guardrailRule.findMany.mockResolvedValue([]);
+    prisma.decision.findMany.mockResolvedValue([openEpisode]);
+
+    const out = await sweepGuardrails(WS);
+
+    expect(out).toEqual({ rules: 0, hits: 0, decisionsCreated: 0, episodesClosed: 0 });
+    expect(prisma.decision.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('an entity that fell out of the sync window closes nothing', async () => {
+    // No snapshots means no entity window, so the pair is never judged. Closing
+    // here would end an episode because we stopped receiving evidence about it.
+    prisma.metricSnapshot.findMany.mockResolvedValue([]);
+    prisma.decision.findMany.mockResolvedValue([openEpisode]);
+
+    const out = await sweepGuardrails(WS);
+
+    expect(out.episodesClosed).toBe(0);
+    expect(prisma.decision.updateMany).not.toHaveBeenCalled();
+    // And it did not even ask: with nothing judged there is no key to look up.
+    expect(prisma.decision.findMany).not.toHaveBeenCalled();
+  });
+
+  it('too little history to sustain closes nothing', async () => {
+    // One day against sustainedDays: 2 — in scope, but not enough to say either
+    // way. Insufficient data is not an all-clear.
+    prisma.metricSnapshot.findMany.mockResolvedValue([snap({ date: new Date('2026-08-02'), frequency: 1.0 })]);
+    prisma.decision.findMany.mockResolvedValue([openEpisode]);
+
+    const out = await sweepGuardrails(WS);
+
+    expect(out.episodesClosed).toBe(0);
+    expect(prisma.decision.findMany).not.toHaveBeenCalled();
+  });
+
+  it('two rules over one entity are two independent episodes', async () => {
+    const second = { ...RULE, id: 'rule-2', name: 'Frequency floor', comparator: 'LT', threshold: 0.5 };
+    prisma.guardrailRule.findMany.mockResolvedValue([RULE, second]);
+    prisma.metricSnapshot.findMany.mockResolvedValue(breaching());
+    // rule-1 breaches and is already open; rule-2 declines and is open too.
+    prisma.decision.findMany.mockResolvedValue([
+      openEpisode,
+      { id: 'dec-open-2', openHitKey: 'rule-2:e1:ADSET' },
+    ]);
+
+    const out = await sweepGuardrails(WS);
+
+    // One entity, one sweep: one episode held open and a different one closed.
+    expect(out.decisionsCreated).toBe(0);
+    expect(out.episodesClosed).toBe(1);
+    expect(closed().where).toEqual({ id: { in: ['dec-open-2'] } });
+  });
+
+  it('opens and closes in a single transaction', async () => {
+    const second = { ...RULE, id: 'rule-2', name: 'Frequency floor', comparator: 'LT', threshold: 0.5 };
+    prisma.guardrailRule.findMany.mockResolvedValue([RULE, second]);
+    prisma.metricSnapshot.findMany.mockResolvedValue(breaching());
+    prisma.decision.findMany.mockResolvedValue([{ id: 'dec-open-2', openHitKey: 'rule-2:e1:ADSET' }]);
+
+    await sweepGuardrails(WS);
+
+    // A partial application would leave an episode both closed and re-opened, or
+    // neither — the pair is one statement about what this sweep concluded.
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction.mock.calls[0][0]).toHaveLength(2);
+  });
+
+  it('the insert carries skipDuplicates — the index is the backstop, not the plan', async () => {
+    // Two sweeps racing on one workspace can both read "no episode open". The
+    // filter is the intent; the unique index is what makes the loser a no-op
+    // rather than a failed sweep.
+    prisma.metricSnapshot.findMany.mockResolvedValue(breaching());
+    await sweepGuardrails(WS);
+    expect(prisma.decision.createMany.mock.calls[0][0].skipDuplicates).toBe(true);
   });
 });

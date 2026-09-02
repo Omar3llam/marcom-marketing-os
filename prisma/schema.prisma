@@ -1365,6 +1365,16 @@ enum DecisionStatus {
   EXECUTED
   DISMISSED
   SUPERSEDED
+  // C-02 — the condition a decision was raised about ended, with no human act.
+  // None of the other four can say that. SUPERSEDED means a NEWER VERDICT
+  // replaced this one and is written only by VerdictService over its own scope;
+  // EXECUTED and DISMISSED are claims a person made; PROPOSED would leave the
+  // row in every open query forever, which is the accumulation R-3 named.
+  //
+  // A guardrail episode closes here: a sweep that evaluated the rule against the
+  // entity found no breach. Never written from a sweep that merely stopped
+  // looking — see GUARDRAIL_OUTCOME in guardrailEngine.js.
+  RESOLVED
 }
 
 // How the entity behaved between a verdict being issued and being replaced.
@@ -1545,6 +1555,27 @@ model Decision {
   // stored reference always describes a real read. Never backfilled.
   evidenceReference Json? // { population, selector, measurementWindow, sources, observedAt, reduction, entityIds, rowCount, refs }
 
+  // ── C-02 · guardrail hit identity ──────────────────────────────────────────
+  // The STABLE rule id. `rootCause` carries `guardrail:<rule.name>`, and a name
+  // is mutable, so it can never identify anything — the sweep has had
+  // `hit.ruleId` in hand all along and discarded it for the display string.
+  //
+  // Deliberately NOT a relation. A hit must stay identifiable after its rule is
+  // deleted; an FK would either null this out (destroying the identity of every
+  // historical hit) or block the deletion. Same reasoning and same shape as
+  // AccountPattern.promotedRuleId.
+  //
+  // NULL on every non-guardrail Decision, and on guardrail rows written before
+  // this column existed — those cannot be back-filled, because resolving their
+  // mutable name to a rule today would be inventing an identity.
+  guardrailRuleId String? @db.Uuid
+  // `<ruleId>:<entityId>:<entityLevel>` while the breach episode is OPEN, NULL
+  // once it closes. PostgreSQL exempts NULL from unique constraints, so any
+  // number of closed episodes coexist while at most one may be open per
+  // (rule, entity) — deduplication enforced by the database rather than by a
+  // query a later edit could quietly widen.
+  openHitKey String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1594,6 +1625,14 @@ model Decision {
   //     AND ("humanExecutedAt" IS NOT NULL OR "platformExecutedAt" IS NOT NULL)
 
   @@index([workspaceId, verdict, rootCause, channel], map: "decisions_similarity_idx")
+
+  // C-02 — at most one OPEN guardrail episode per (rule, entity) per workspace.
+  // Closed episodes carry NULL and are exempt, so a breach that returns opens a
+  // genuinely new row rather than reviving a dead one.
+  @@unique([workspaceId, openHitKey])
+  // Answers "what has this rule caught" as a join on a stable id (C-14), which
+  // is today attempted as a match on a display name.
+  @@index([workspaceId, guardrailRuleId])
   @@map("decisions")
 }
 

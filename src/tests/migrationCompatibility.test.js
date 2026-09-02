@@ -41,9 +41,15 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
   // ── T1 · the corpus census, as a ratchet ────────────────────────────────
   it('T1 — the production corpus classifies to the recorded distribution', () => {
     const counts = summarise(scan);
-    expect(scan.length).toBe(66);
+    // 66 → 67 and COMPATIBLE 45 → 46: C-02 adds
+    // 20260901120000_c02_guardrail_hit_identity. Every operation in it is
+    // additive — one enum value, two nullable columns, two indexes — so an
+    // instance running the previous code against the new schema simply never
+    // produces the new value and never populates the new columns. No baseline
+    // entry follows, because the baseline records only what is NOT compatible.
+    expect(scan.length).toBe(67);
     expect(counts).toEqual({
-      COMPATIBLE: 45,
+      COMPATIBLE: 46,
       TRANSITION_REQUIRED: 9,
       INCOMPATIBLE: 8,
       UNKNOWN: 4,
@@ -195,7 +201,7 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
   // ── T7 · corpus boundary ────────────────────────────────────────────────
   it('T7 — the scanner reads production migrations and nothing else', () => {
     const dirs = migrationDirs(fs, MIGRATIONS);
-    expect(dirs).toHaveLength(66);
+    expect(dirs).toHaveLength(67); // +1: C-02 (see T1)
     expect(dirs.every((d) => /^\d{14}_/.test(d))).toBe(true);
     // Real non-migration entries that sit in this directory today.
     expect(dirs).not.toContain('migration_lock.toml');
