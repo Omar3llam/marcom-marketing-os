@@ -257,6 +257,31 @@ On Windows PowerShell use `$env:TEST_DATABASE_URL = "…"` — the `VAR=value cm
 form is POSIX-only. `test:full` itself is cross-platform; it sets `REQUIRE_DB`
 through `scripts/run-tests.js` rather than through shell syntax.
 
+**Remote databases, including Neon, are supported.** The template is sealed —
+`ALTER DATABASE … ALLOW_CONNECTIONS false` — between `migrate deploy` and the
+copy loop, then reopened once copying is done.
+
+That seal is not a nicety. `CREATE DATABASE … TEMPLATE` refuses while anything
+holds the source, and on Neon a background-worker launcher re-attaches to any
+*connectable* database faster than a copy can start: measured 2026-09-02, a copy
+failed **24 consecutive times over 125s** while `pg_stat_activity` showed **zero
+sessions** on the template the whole time. There is nothing to terminate, and
+`UPDATE pg_database` is refused (42501 — `neondb_owner` is not a superuser).
+Sealed, the same copies succeed on the **first attempt** in ~200ms each. This is
+why `template0` is not connectable, and it is generic: local PostgreSQL behaves
+identically and is equally protected from a stray `psql` on the template.
+
+Point `TEST_DATABASE_URL` at the **direct** endpoint, not `-pooler` — PgBouncer
+cannot run `CREATE DATABASE`.
+
+Because every query is then an internet round trip, full verification against a
+non-loopback host raises the per-test budget to 30s. **Loopback is untouched**:
+CI and local development keep vitest's 5s default exactly, and fast mode never
+widens it, because fast mode makes no database claim.
+
+Verified end to end on 2026-09-02 — `5192 passed | 0 skipped` on Neon and on
+local PostgreSQL, with fast mode unchanged at `4765 passed | 427 skipped`.
+
 **`TEST_DATABASE_URL` may not name your development database.** Full
 verification drops and recreates databases derived from it, so it refuses to
 start if it resolves to the same PostgreSQL identity (host + port + name) as
