@@ -79,8 +79,13 @@ describe('legacy Decision.executedAt stays a compatibility projection', () => {
   // The three wire projections that still publish it — and only they.
   // decisionProvenance is NOT on this list: `legacyExecutedAt` is built from the
   // two split columns and never names the bare one, which is the point of it.
+  // `decisionSignalStamps.js` rather than `decisions.js`: the four signal
+  // handlers, `signalBody` among them, were extracted out of the route file when
+  // it crossed the size budget. Same projection, same endpoint, new home — the
+  // route file now only mounts, and re-exports `signalBody` for this suite's
+  // sibling test.
   const ALLOWED = [
-    '/src/routes/lumi/decisions.js',
+    '/src/routes/lumi/decisionSignalStamps.js',
     '/src/routes/lumi/executions.js',
     '/src/services/decision-memory/decisionHistory.js',
   ].sort();
@@ -120,7 +125,8 @@ describe('legacy Decision.executedAt stays a compatibility projection', () => {
   // a surface cannot quietly switch which one it uses while keeping its prose.
   const COMPAT_SURFACES = [
     {
-      file: 'routes/lumi/decisions.js',
+      // The ENDPOINT did not move; only the module holding its projection did.
+      file: 'routes/lumi/decisionSignalStamps.js',
       endpoint: 'PATCH /api/lumi/decisions/:id/execute',
       derivesUnion: false,
       derivation: /the human instant that request wrote|human timestamp/i,
