@@ -147,7 +147,15 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
     // not answer. Its two load-bearing assertions — that observing changes no
     // outcome, pattern or memory, and that DAILY stays out of the operational
     // population — are only meaningful against real tables.
-    expect(dbGatedFiles().length).toBe(30);
+    //
+    // 30 → 31 in C-02: guardrailHitIdentity.integration.test.js. The unit suite
+    // can show that the sweep INTENDS to deduplicate; it cannot show that
+    // anything stops it when the intent is wrong, because a mocked createMany
+    // accepts whatever it is handed. The guarantee being verified is a unique
+    // index and PostgreSQL's exemption of NULL from it — and the decision NOT to
+    // back-fill legacy guardrail rows rests entirely on that exemption, so it is
+    // demonstrated on PostgreSQL rather than asserted in a comment.
+    expect(dbGatedFiles().length).toBe(31);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {

@@ -10,7 +10,8 @@
 // ============================================================
 import { prisma }              from '../../lib/prisma.js';
 import { logger }              from '../../utils/logger.js';
-import { evaluateGuardrails }  from './guardrailEngine.js';
+import { evaluateGuardrails, GUARDRAIL_OUTCOME } from './guardrailEngine.js';
+import { openHitKey }         from './guardrailHitIdentity.js';
 import { fromMinor }           from '../../lib/money.js';
 import { TEMPORAL }            from '../../config/temporal.js';
 import { selectOperationalSnapshots } from '../evidence/index.js';
@@ -85,13 +86,14 @@ function valuesFromSnapshot(s) {
 
 /**
  * Run the guardrail sweep for one workspace.
- * @returns {Promise<{ rules:number, hits:number, decisionsCreated:number }>}
+ * @returns {Promise<{ rules:number, hits:number, decisionsCreated:number, episodesClosed:number }>}
  */
 export async function sweepGuardrails(workspaceId) {
   if (!workspaceId) throw new Error('sweepGuardrails: workspaceId required');
 
   const rules = await prisma.guardrailRule.findMany({ where: { workspaceId, enabled: true } });
-  if (rules.length === 0) return { rules: 0, hits: 0, decisionsCreated: 0 };
+  // No enabled rules is NOT EVALUATED for every pair — nothing is closed here.
+  if (rules.length === 0) return { rules: 0, hits: 0, decisionsCreated: 0, episodesClosed: 0 };
 
   const since = new Date(Date.now() - SYNC_RECENCY_DAYS * 86_400_000);
   // R3: this service no longer knows how to find its evidence — it asks for it.
@@ -128,9 +130,35 @@ export async function sweepGuardrails(workspaceId) {
   }
   const entities = [...byEntity.values()];
 
-  const hits = evaluateGuardrails({ rules, entities });
+  const { hits, evaluated } = evaluateGuardrails({ rules, entities });
 
-  // Record each hit as a PROPOSED Decision (radar verdict, human confirms).
+  // ── C-02 · episodes, not rows ──────────────────────────────────────────────
+  // `evaluated` holds only the (rule, entity) pairs this pass reached a
+  // conclusion about. A pair absent from it was never judged — a disabled rule,
+  // an entity that fell out of the sync window, an out-of-scope level — and its
+  // open episode must survive untouched. That absence is load-bearing: treating
+  // it as an all-clear would let switching a rule off close every breach it was
+  // holding, and an ingest gap read as "the problem went away".
+  const evaluatedKeys = evaluated
+    .map((e) => ({ ...e, key: openHitKey(e) }))
+    .filter((e) => e.key !== null);
+
+  // Which of the pairs we JUDGED already have an episode running. Scoped to this
+  // pass's keys rather than reading every open episode in the workspace: pairs we
+  // did not judge are not our business this sweep.
+  const openByKey = new Map(
+    evaluatedKeys.length === 0 ? [] : (await prisma.decision.findMany({
+      where:  { workspaceId, openHitKey: { in: evaluatedKeys.map((e) => e.key) } },
+      select: { id: true, openHitKey: true },
+    })).map((d) => [d.openHitKey, d.id]),
+  );
+
+  // A pair we judged CLEAR whose episode is running: the breach ended.
+  const closingIds = evaluatedKeys
+    .filter((e) => e.outcome === GUARDRAIL_OUTCOME.CLEAR && openByKey.has(e.key))
+    .map((e) => openByKey.get(e.key));
+
+  // Record each NEW hit as a PROPOSED Decision (radar verdict, human confirms).
   // Single batched write — never an N+1 create loop.
   const decisionRows = hits.map((hit) => ({
     workspaceId,
@@ -141,6 +169,10 @@ export async function sweepGuardrails(workspaceId) {
     diagnosis:   hit.rationale,
     rootCause:   `guardrail:${hit.ruleName}`,
     status:      'PROPOSED',
+    // The stable identity. `rootCause` above keeps the display string every
+    // current consumer still matches on; this is what anything may key off.
+    guardrailRuleId: hit.ruleId ?? null,
+    openHitKey:      openHitKey(hit),
     // R5 / I18 — the SERIES this rule fired on, described rather than copied.
     // A guardrail decision is the sharpest multi-row case in the product: an
     // entity's whole window of observations is evaluated and what survived was
@@ -148,12 +180,61 @@ export async function sweepGuardrails(workspaceId) {
     // hit can no longer imply it came from a single reading.
     evidenceReference: guardrailEvidenceReference(byEntity.get(`${hit.entityId}:${hit.entityLevel}`)),
   }));
-  if (decisionRows.length > 0) {
-    await prisma.decision.createMany({ data: decisionRows });
+
+  // Only hits whose episode is not already running. A hit with no key cannot be
+  // deduplicated, so it is written — unidentifiable is not a reason to drop a
+  // breach, and the null key is exempt from the unique index by construction.
+  const openingRows = decisionRows.filter((row) => row.openHitKey === null || !openByKey.has(row.openHitKey));
+
+  // One transaction. A close and an open can land on the SAME (rule, entity) in
+  // one pass only across different rules, but the two writes are still one
+  // statement about what this sweep concluded, and a partial application would
+  // leave an episode both closed and re-opened — or neither.
+  if (closingIds.length > 0 || openingRows.length > 0) {
+    await prisma.$transaction([
+      ...(closingIds.length > 0 ? [prisma.decision.updateMany({
+        where: { id: { in: closingIds } },
+        data: {
+          status:     'RESOLVED',
+          resolvedAt: new Date(),
+          // `resolution` is deliberately NOT written here, and no substitute for
+          // it belongs in this slice. Closing an episode says the breach ended;
+          // it does not claim the outcome was good. Nor would the claim stay
+          // decorative: `decisionLearning` admits a row on `resolution IS NOT
+          // NULL` + INTERVENED_WHERE, so setting one would enrol every executed
+          // Guardrail decision into institutional memory — a population that
+          // has an owner, and it is not this sweep. Guardrail lifecycle is not
+          // outcome semantics.
+          // Closing the episode IS releasing the key. Any number of closed
+          // episodes coexist because PostgreSQL exempts NULL from the unique
+          // index, so the same breach returning opens a genuinely new row.
+          openHitKey: null,
+        },
+      })] : []),
+      ...(openingRows.length > 0 ? [prisma.decision.createMany({
+        data: openingRows,
+        // Backstop, not the mechanism. `openByKey` is read before the write, so
+        // two sweeps racing on one workspace could both see no episode; the
+        // unique index rejects the loser and this keeps that a no-op rather than
+        // a failed sweep. The filter above is what makes the intent explicit.
+        skipDuplicates: true,
+      })] : []),
+    ]);
   }
 
-  const decisionsCreated = decisionRows.length;
-  logger.info({ workspaceId, rules: rules.length, hits: hits.length, decisionsCreated },
-    '[GuardrailSweep] complete');
-  return { rules: rules.length, hits: hits.length, decisionsCreated };
+  const decisionsCreated = openingRows.length;
+  const episodesClosed   = closingIds.length;
+  logger.info(
+    {
+      workspaceId, rules: rules.length, hits: hits.length,
+      evaluated: evaluatedKeys.length, decisionsCreated, episodesClosed,
+      // Hits suppressed because their episode was already running. Logged
+      // because it is the number that proves this sweep stopped duplicating.
+      alreadyOpen: decisionRows.length - openingRows.length,
+    },
+    '[GuardrailSweep] complete',
+  );
+  return {
+    rules: rules.length, hits: hits.length, decisionsCreated, episodesClosed,
+  };
 }

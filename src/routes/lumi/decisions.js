@@ -36,6 +36,7 @@ import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 import { getSimilarOutcomes } from '../../services/analysis/decisionLearning.js';
 import { getRecentDecisions, RECENT_DECISIONS_LIMIT } from '../../services/decision-memory/decisionHistory.js';
 import { validateJudgment, recordJudgment } from '../../services/decision-memory/humanJudgment.js';
+import { connectorDecisionScope } from '../../services/verdict-engine/decisionIdentity.js';
 
 export const decisionsRouter = Router();
 
@@ -60,7 +61,16 @@ async function stampOnce(req, res, field) {
 
   try {
     const decision = await prisma.decision.findFirst({
-      where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED' },
+      // C-01 — scoped to Signal, and deliberately given no class parameter:
+      // `by-entity` can only address a class that is singular per entity, which
+      // supersession makes Signal and nothing else. A Guardrail entity holds
+      // several open episodes, so widening this route would only let it miss
+      // more precisely; stamping those needs item addressing (C-11).
+      //
+      // Unscoped, `createdAt desc` meant "whichever class wrote last" — always
+      // the 15-minute guardrail sweep under a standing breach — so reading a
+      // Signal's reasoning stamped `explainedAt` onto a Guardrail episode.
+      where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED', ...connectorDecisionScope() },
       orderBy: { createdAt: 'desc' },
       select:  { id: true, [field]: true },
     });

@@ -26,6 +26,7 @@ vi.mock('../../middleware/requireCollabRole.js', () => ({
 
 import { prisma } from '../../lib/prisma.js';
 import { decisionsRouter } from './decisions.js';
+import { connectorDecisionScope } from '../../services/verdict-engine/decisionIdentity.js';
 
 const WS = 'ws-1';
 const ENTITY = 'e1e1e1e1-0000-4000-8000-000000000001';
@@ -75,12 +76,34 @@ describe.each([
     expect(prisma.decision.update).not.toHaveBeenCalled();
   });
 
-  it('reads only the live PROPOSED verdict, newest first', async () => {
+  // C-01 — the scope is new, and it is the whole point of the assertion.
+  // `by-entity` is only ever a correct address for a class with at most one open
+  // row per entity, and supersession makes Signal that class. Unscoped,
+  // `createdAt desc` meant "whichever class wrote last", which under a standing
+  // breach is always the guardrail sweep — so reading a Signal's reasoning
+  // stamped `explainedAt` onto a Guardrail episode.
+  //
+  // Asserted on the QUERY rather than by seeding a guardrail row: prisma is
+  // mocked and hands back whatever it is given regardless of the filter, so a
+  // seeded row would prove the route's behaviour and nothing about the boundary.
+  // Spread from the exported scope, never a restated list of causes.
+  it('reads only the live PROPOSED SIGNAL for this entity, newest first', async () => {
     await patch(signal);
     expect(prisma.decision.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where:   { workspaceId: WS, entityId: ENTITY, status: 'PROPOSED' },
+      where:   { workspaceId: WS, entityId: ENTITY, status: 'PROPOSED', ...connectorDecisionScope() },
       orderBy: { createdAt: 'desc' },
     }));
+  });
+
+  it('cannot reach a guardrail episode on the same entity', async () => {
+    await patch(signal);
+    const { where } = prisma.decision.findFirst.mock.calls[0][0];
+    const admits = (rootCause) => where.OR.some((c) => (c.rootCause === null
+      ? rootCause === null
+      : Array.isArray(c.rootCause?.in) && c.rootCause.in.includes(rootCause)));
+    expect(admits('guardrail:frequency')).toBe(false);
+    expect(admits('test:variant-a')).toBe(false);
+    expect(admits(null)).toBe(true); // the engine's own no-diagnosis verdicts
   });
 
   // Silence would make a missing signal indistinguishable from a recorded one

@@ -73,10 +73,33 @@ function scopeAdmits(orClauses, rootCause) {
   });
 }
 
-/** The OR clauses buildLoopInputs passed to the Decision query. */
+/**
+ * The OR clauses buildLoopInputs passed to the SIGNAL read.
+ *
+ * C-01 split the Decision query in two, so call 0 is Signal and call 1 is
+ * Guardrail. The scope assertions below are all about which connector causes
+ * reach the buyer band, which is call 0's question; `guardrailRead()` covers
+ * the other.
+ */
 async function verdictScope() {
   await buildLoopInputs(WS, { now });
   return prisma.decision.findMany.mock.calls[0][0].where.OR;
+}
+
+/** The args buildLoopInputs passed to the GUARDRAIL read. */
+async function guardrailRead() {
+  await buildLoopInputs(WS, { now });
+  return prisma.decision.findMany.mock.calls[1][0];
+}
+
+/**
+ * Answer the two Decision reads separately. The shared mock hands the same rows
+ * to both calls, so a single `mockResolvedValue` would double every row and
+ * prove nothing about which read found what.
+ */
+function seedDecisionReads({ signal = [], guardrail = [] } = {}) {
+  prisma.decision.findMany.mockImplementation((args) =>
+    Promise.resolve(args?.where?.openHitKey ? guardrail : signal));
 }
 
 beforeEach(() => {
@@ -95,28 +118,68 @@ beforeEach(() => {
 
 describe('buildLoopInputs — verdict query wiring', () => {
   it('loads connector verdicts (signalType rootCause), not only guardrail hits', async () => {
-    prisma.decision.findMany.mockResolvedValue([connectorVerdict]);
+    seedDecisionReads({ signal: [connectorVerdict] });
     const inputs = await buildLoopInputs(WS, { now });
     expect(inputs.verdicts).toEqual([connectorVerdict]);
   });
 
-  it('widens the query to guardrail + connector verdicts, workspace-scoped, latest-per-entity', async () => {
+  // C-01 / R-C — this test used to assert ONE query covering both families with a
+  // shared `distinct(entityId, entityLevel)`. That shape is now wrong, and not
+  // by a detail: it encoded "an entity deserves one attention item", which B7-03
+  // ruled false. The two reads exist because the classes do not share a
+  // deduplication rule, so the assertion is that they are kept apart.
+  it('issues TWO reads, each with its own identity rule', async () => {
     await buildLoopInputs(WS, { now });
-    const args = prisma.decision.findMany.mock.calls[0][0];
-    expect(args.where.workspaceId).toBe(WS);
-    expect(args.where.status).toBe('PROPOSED');
-    expect(args.distinct).toEqual(['entityId', 'entityLevel']);
+    const [signalArgs, guardrailArgs] = prisma.decision.findMany.mock.calls.map((c) => c[0]);
 
-    // The OR must cover BOTH families — guardrail prefix AND the connector scope.
+    // SIGNAL — one per entity, and legitimately so: VerdictService supersedes the
+    // previous connector verdict when it writes a new one, so `distinct` collapses
+    // re-sweeps rather than hiding a second live call.
+    expect(signalArgs.where.workspaceId).toBe(WS);
+    expect(signalArgs.where.status).toBe('PROPOSED');
+    expect(signalArgs.distinct).toEqual(['entityId', 'entityLevel']);
     // Checked against the EXPORTED scope, not a restated `Object.values(SIGNAL_TYPE)`:
     // that was a third copy of the taxonomy, and it asserted only "at least the
     // old values are present" — which is why it never noticed FUNNEL_SIGNAL going
     // missing, and why it broke the moment a SIGNAL_TYPE was deliberately excluded.
-    const hasGuardrail = args.where.OR.some((c) => c.rootCause?.startsWith === 'guardrail:');
-    const hasConnector = args.where.OR.some((c) => Array.isArray(c.rootCause?.in)
-      && BUYER_ACTIONABLE_ROOT_CAUSES.every((t) => c.rootCause.in.includes(t)));
-    expect(hasGuardrail).toBe(true);
-    expect(hasConnector).toBe(true);
+    expect(signalArgs.where.OR.some((c) => Array.isArray(c.rootCause?.in)
+      && BUYER_ACTIONABLE_ROOT_CAUSES.every((t) => c.rootCause.in.includes(t)))).toBe(true);
+    // …and the guardrail prefix has LEFT this read.
+    expect(signalArgs.where.OR.some((c) => c.rootCause?.startsWith === 'guardrail:')).toBe(false);
+
+    // GUARDRAIL — no `distinct` at all. C-02's unique index already makes an open
+    // episode singular per (rule, entity), so three breaching rules on one entity
+    // are three calls. Deduplicating here would restore the assumption R-C removed.
+    expect(guardrailArgs.where.workspaceId).toBe(WS);
+    expect(guardrailArgs.where.status).toBe('PROPOSED');
+    expect(guardrailArgs.where.openHitKey).toEqual({ not: null });
+    expect(guardrailArgs.distinct).toBeUndefined();
+  });
+
+  it('an entity carrying a Signal and two open episodes yields THREE items', async () => {
+    // The case the old single `distinct` collapsed to one. All three share an
+    // entityId; none of them is a duplicate of another.
+    const ep = (id, rule) => ({
+      ...connectorVerdict, id, verdict: 'WATCH',
+      rootCause: `guardrail:${rule}`, diagnosis: `${rule} breached`,
+    });
+    seedDecisionReads({
+      signal: [connectorVerdict],
+      guardrail: [ep('g1', 'frequency'), ep('g2', 'cpa')],
+    });
+
+    const inputs = await buildLoopInputs(WS, { now });
+    expect(inputs.verdicts.map((d) => d.id)).toEqual([connectorVerdict.id, 'g1', 'g2']);
+  });
+
+  it('a pre-C-02 guardrail row is not a current attention item', async () => {
+    // Legacy rows carry no `openHitKey`, so nothing can say whether they are
+    // still open. The read excludes them by asking for identified episodes —
+    // which is also what stops the old duplicate pile reappearing now that the
+    // `distinct` that was accidentally hiding it is gone. Their disposal stays a
+    // separate decision; they remain in history and in the campaign lens.
+    const args = await guardrailRead();
+    expect(args.where.openHitKey).toEqual({ not: null });
   });
 
   it('a connector verdict flows through the planner into a buyer CONFIRM item', async () => {
@@ -194,14 +257,17 @@ describe('buildLoopInputs — buyer-actionable scope', () => {
     expect(scopeAdmits(or, SIGNAL_TYPE.HEALTHY)).toBe(true);
   });
 
-  it('keeps the clauses that were already correct: guardrail hits and a null cause', async () => {
+  it('keeps the clause that was already correct: a null cause', async () => {
     const or = await verdictScope();
-    expect(scopeAdmits(or, 'guardrail:spend_spike')).toBe(true);
     expect(scopeAdmits(or, null)).toBe(true);
     // The other PROPOSED writers have their own surfaces and stay out.
     expect(scopeAdmits(or, 'allocation:plan-1')).toBe(false);
     expect(scopeAdmits(or, 'incrementality:test-1')).toBe(false);
     expect(scopeAdmits(or, 'test:variant-a')).toBe(false);
+    // C-01 — and so does guardrail, which is NOT an exclusion from Attention:
+    // it moved to its own read, because an entity can hold several open episodes
+    // and this read's `distinct` would have picked one of them.
+    expect(scopeAdmits(or, 'guardrail:spend_spike')).toBe(false);
   });
 
   it('issues exactly the exported scope — no local copy of the taxonomy', async () => {
