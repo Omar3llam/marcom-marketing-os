@@ -36,6 +36,7 @@ import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 import { getSimilarOutcomes } from '../../services/analysis/decisionLearning.js';
 import { getRecentDecisions, RECENT_DECISIONS_LIMIT } from '../../services/decision-memory/decisionHistory.js';
 import { validateJudgment, recordJudgment } from '../../services/decision-memory/humanJudgment.js';
+import { connectorDecisionScope } from '../../services/verdict-engine/decisionIdentity.js';
 
 export const decisionsRouter = Router();
 
@@ -60,7 +61,23 @@ async function stampOnce(req, res, field) {
 
   try {
     const decision = await prisma.decision.findFirst({
-      where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED' },
+      // C-01 — scoped to connector verdicts, and NOT given a class parameter.
+      // The reason is in the address itself: `by-entity` can only ever be
+      // correct for a class that has at most one open row per entity, and
+      // supersession makes Signal that class. A Guardrail entity can hold
+      // several open episodes and an Experiment is not addressed this way at
+      // all, so no entity-keyed route could aim at either — widening this one
+      // would only let it miss more precisely. Both current callers
+      // (ConnectorCampaignsPanel, CampaignDetailPanel) render connector
+      // verdicts, so this is right for every caller with no client change.
+      //
+      // Unscoped, `createdAt desc` meant "whichever class was written last", and
+      // under a standing breach that is always the guardrail sweep — so reading
+      // a Signal's reasoning stamped `explainedAt` on a Guardrail episode. B7-03
+      // ruled explainedAt is not a "reviewed" product state, but it is still a
+      // real fact, and a real fact recorded against the wrong call is worse than
+      // one not recorded at all.
+      where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED', ...connectorDecisionScope() },
       orderBy: { createdAt: 'desc' },
       select:  { id: true, [field]: true },
     });

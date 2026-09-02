@@ -106,7 +106,24 @@ async function persistNode(workspaceId, node, created) {
       // SUPERSEDED (a campaign that had dropped out of the eligible set, below)
       // must NOT block a fresh PROPOSED when the campaign re-enters with the same
       // verdict — otherwise it would silently vanish from the agenda.
-      where:   { workspaceId, entityId: node.id, entityLevel: node.level, status: { not: 'SUPERSEDED' } },
+      //
+      // C-01 — …and it must be OUR row. Without the scope this is exactly the
+      // predicate decisionIdentity warns about: entity + level + status names
+      // "some proposal about this entity", a far larger set than "the connector
+      // verdict for it". R-3 lets a Guardrail episode and an Experiment sit open
+      // on the same entity, so the unscoped read could pick a foreign class as
+      // `latest` and then do one of two damaging things — suppress a real
+      // verdict because the foreign row's verdict happened to match, or hand it
+      // to resolvePrevious, which SUPERSEDES it and stamps `resolution` on it.
+      // The second reopens, from the write side, the door C-02 deliberately shut
+      // by keeping `resolution` off guardrail closure. This is an identity
+      // question, so it takes the identity scope; BUYER_ACTIONABLE is the
+      // actionability one and would leave HOLD verdicts un-supersedable.
+      where:   {
+        workspaceId, entityId: node.id, entityLevel: node.level,
+        status: { not: 'SUPERSEDED' },
+        ...connectorDecisionScope(),
+      },
       orderBy: { createdAt: 'desc' },
       // The four fields this row is used for: `verdict` decides whether anything
       // changed, and resolvePrevious reads the other three. Named rather than

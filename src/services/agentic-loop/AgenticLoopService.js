@@ -115,18 +115,23 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
   const safe = (p, fallback) => p.catch(() => fallback);
 
   const [
-    verdicts, fatiguePredictions, openTests, plans, allocationPlans,
+    signalVerdicts, guardrailEpisodes, fatiguePredictions, openTests, plans, allocationPlans,
     platformExecutions, recentOutcomes, recentMemory, labelsById,
   ] = await Promise.all([
-    // Buyer-band verdicts = guardrail hits + connector verdicts (revenue +
-    // awareness). distinct keeps only the LATEST verdict per entity so a
-    // campaign that flips verdicts over time (or is re-swept) surfaces once,
-    // not once per historical row.
+    // C-01 / R-C — TWO reads, because the classes do not share a deduplication
+    // rule. One `distinct(entityId, entityLevel)` over both was not merely lossy:
+    // it asserted that an entity deserves one attention item, which B7-03 ruled
+    // false. Attention identity is not entity identity.
+    //
+    // SIGNAL — one per entity is CORRECT here, and by a real mechanism rather
+    // than by convention: VerdictService supersedes the previous connector
+    // verdict when it writes a new one, so `distinct` collapses re-sweeps of the
+    // same call rather than hiding a second live one. BUYER_ACTIONABLE (not the
+    // identity scope) because this read asks who needs a buyer, not who wrote it.
     safe(prisma.decision.findMany({
       where: {
         workspaceId, status: 'PROPOSED',
         OR: [
-          { rootCause: { startsWith: 'guardrail:' } },        // guardrail rule hits
           { rootCause: { in: BUYER_ACTIONABLE_ROOT_CAUSES } },  // connector verdicts
           { rootCause: null },                                 // connector writes `signalType ?? null`
         ],
@@ -139,6 +144,29 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
       // and it is `diagnosis` that exists, so naming the fields also documents
       // which of that pair is real. rootCause rides along because the OR above
       // filters on it and callers group by it.
+      select: {
+        id: true, entityId: true, entityLevel: true, verdict: true,
+        diagnosis: true, rootCause: true, status: true, createdAt: true,
+      },
+    }), []),
+    // GUARDRAIL — no `distinct`, deliberately. C-02 made an open episode a row
+    // the database itself keeps unique, via `@@unique(workspaceId, openHitKey)`,
+    // so one entity breaching three rules holds three open episodes and each is
+    // its own call. Deduplicating them here would re-impose the very assumption
+    // R-C removed.
+    //
+    // `openHitKey: { not: null }` IS the open-episode population, and it also
+    // decides what happens to the pre-C-02 rows: they carry no episode identity,
+    // so nothing can say whether they are still open, and they cannot be current
+    // attention. This does NOT dispose of them — they stay in the table, in
+    // history and in the campaign lens; their fate is still its own decision.
+    // Naming it matters because the old `distinct` was collapsing that legacy
+    // pile to one row per entity BY ACCIDENT, and removing `distinct` without
+    // this filter would bring ~96 rows a day back to the surface.
+    safe(prisma.decision.findMany({
+      where: { workspaceId, status: 'PROPOSED', openHitKey: { not: null } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
       select: {
         id: true, entityId: true, entityLevel: true, verdict: true,
         diagnosis: true, rootCause: true, status: true, createdAt: true,
@@ -186,6 +214,11 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
     safe(prisma.workspace.findUnique({ where: { id: workspaceId }, select: { objective: true } }).then((w) => w?.objective ?? null), null),
     safe(loadImpactById(workspaceId, evaluation), new Map()),
   ]);
+  // One population again, but assembled from two reads that each kept their own
+  // identity rule. Signal first so a re-swept verdict and a standing breach on
+  // the same entity arrive in a stable order before the planner ranks them.
+  const verdicts = [...signalVerdicts, ...guardrailEpisodes];
+
   const activePlan = plans.find((p) => p.status === 'ACTIVE') ?? plans[0] ?? null;
   const planTracking = activePlan ? await safe(trackPlan(workspaceId, activePlan, { now }), null) : null;
 

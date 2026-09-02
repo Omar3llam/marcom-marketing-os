@@ -21,6 +21,7 @@ vi.mock('../../utils/logger.js', () => ({
 
 import { prisma } from '../../lib/prisma.js';
 import { persistLevelVerdicts } from './VerdictService.js';
+import { connectorDecisionScope, CONNECTOR_ROOT_CAUSES } from './decisionIdentity.js';
 
 const WS = 'ws-1';
 const ID = 'c1c1c1c1-0000-4000-8000-000000000001';
@@ -176,5 +177,61 @@ describe('resolving the verdict being replaced', () => {
 
     await persistLevelVerdicts(WS, tree());
     expect(order).toEqual(['create', 'resolve']);
+  });
+});
+
+// ============================================================
+// C-01 — the row it compares against must be OUR row
+// ------------------------------------------------------------
+// This is the write half of "one entity can carry more than one open call", and
+// the only one of C-01's three sites that CORRUPTS a stored row rather than
+// mis-reading one. R-3 lets a Guardrail episode and an Experiment sit open on
+// the same entity, and decisionIdentity says in as many words that
+// entity + level + status "identifies some campaign-level proposal, which is a
+// different and much larger set" than a connector verdict.
+//
+// Unscoped, `findFirst(..., createdAt desc)` could return a foreign class and
+// then do one of two things, both damaging:
+//   • verdicts happen to match  → the real verdict is never written
+//   • verdicts differ           → resolvePrevious SUPERSEDES the foreign row and
+//                                 stamps `resolution` on it — which is exactly
+//                                 the write C-02 kept off guardrail closure,
+//                                 arriving through the back door.
+// ============================================================
+// Asserted on the QUERY throughout. The prisma mock returns whatever it is
+// handed regardless of the filter, so seeding a guardrail row and watching it
+// get superseded would pass identically against a query with no scope at all —
+// it would prove the mock's behaviour, not the boundary. Real-row verification
+// covers the consequence.
+describe('C-01 — the comparison is scoped to connector verdicts', () => {
+  it('asks only for connector-authored rows', async () => {
+    await persistLevelVerdicts(WS, tree());
+    const { where } = prisma.decision.findFirst.mock.calls[0][0];
+
+    expect(where.entityId).toBe(ID);
+    expect(where.status).toEqual({ not: 'SUPERSEDED' });
+    // Spread from the exported scope rather than restated: a local copy of the
+    // taxonomy is what let FUNNEL_SIGNAL go missing elsewhere.
+    expect(where).toMatchObject(connectorDecisionScope());
+  });
+
+  it('scopes on IDENTITY, not on buyer actionability', async () => {
+    // BUYER_ACTIONABLE excludes HOLD and the data-quality causes. Using it here
+    // would make those verdicts invisible to the comparison, so they could never
+    // be superseded and would accumulate as permanently-open rows — the failure
+    // decisionIdentity calls out for exactly this reason.
+    await persistLevelVerdicts(WS, tree());
+    const { where } = prisma.decision.findFirst.mock.calls[0][0];
+    const listed = where.OR.find((c) => Array.isArray(c.rootCause?.in));
+    expect(listed.rootCause.in).toEqual(CONNECTOR_ROOT_CAUSES);
+  });
+
+  it('admits a null cause — the engine writes one on its early gates', async () => {
+    // `rootCause: null` is IN the scope, not an oversight. Dropping it would
+    // exclude exactly the campaigns that never got a diagnosis, so their
+    // verdicts would never be compared and never superseded.
+    await persistLevelVerdicts(WS, tree());
+    const { where } = prisma.decision.findFirst.mock.calls[0][0];
+    expect(where.OR.some((c) => c.rootCause === null)).toBe(true);
   });
 });
