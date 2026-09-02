@@ -19,11 +19,17 @@ import postgres from 'postgres';
 import {
   MAX_WORKERS, IsolationSetupError, resolveIsolationRoot,
   adminUrl, databaseName, templateName, workerName, urlForDatabase, scrubUrl,
+  sealTemplate, unsealTemplate, withSourceInUseRetry, isSourceInUseError,
+  TEMPLATE_COPY_ATTEMPTS,
 } from './dbIsolation.js';
 
 const isFullVerification = () => process.env.REQUIRE_DB === '1';
 
-/** Serial on purpose: CREATE DATABASE … TEMPLATE refuses while the source has other sessions. */
+/**
+ * Serial on purpose: CREATE DATABASE … TEMPLATE refuses while the source has
+ * other sessions. Spawning `migrate deploy` as a child makes OUR session go
+ * away; sealing the template afterwards makes everyone else's stay away.
+ */
 async function provision(root) {
   const sql = postgres(adminUrl(root), { max: 1, idle_timeout: 5, onnotice: () => {} });
   const created = [];
@@ -60,12 +66,37 @@ async function provision(root) {
       );
     }
 
+    // The template is migrated and nothing needs to connect to it again, so
+    // shut it. A CONNECTABLE database can be re-occupied between copies, and on
+    // Neon it reliably is — see sealTemplate in dbIsolation.js for the measured
+    // failure this removes. Sealing after `migrate deploy` (which needs to
+    // connect) and before the first copy is the only window that works.
+    await sealTemplate((statement) => sql.unsafe(statement), tmpl);
+
     for (let id = 1; id <= MAX_WORKERS; id++) {
       const name = workerName(rootName, id);
       await sql.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
-      await sql.unsafe(`CREATE DATABASE "${name}" TEMPLATE "${tmpl}"`);
+      try {
+        // Sealed, this succeeds on the first attempt. The retry is defence in
+        // depth for servers that hold the source some other way, and it is
+        // bounded — it cannot turn a broken provisioner into a slow one.
+        await withSourceInUseRetry(() => sql.unsafe(`CREATE DATABASE "${name}" TEMPLATE "${tmpl}"`));
+      } catch (err) {
+        if (!isSourceInUseError(err)) throw err;
+        throw new IsolationSetupError(
+          `worker database "${name}" could not be copied: the template "${tmpl}" stayed occupied\n`
+          + `  through ${TEMPLATE_COPY_ATTEMPTS} attempts. It was already sealed against new connections, so\n`
+          + '  something holds it that ALLOW_CONNECTIONS=false does not exclude — a replication slot,\n'
+          + '  or a backend owned by a role this connection may not terminate.',
+        );
+      }
       created.push(name);
     }
+    // Copying is done, so the seal has served its purpose. Reopen it:
+    // migrationContract.test.js P1 connects to the template to prove a stale
+    // one was destroyed, and a permanently shut template would fail that for
+    // a reason that has nothing to do with what it is testing.
+    await unsealTemplate((statement) => sql.unsafe(statement), tmpl);
     return { rootName, created };
   } finally {
     await sql.end({ timeout: 5 }).catch(() => {});

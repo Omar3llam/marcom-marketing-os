@@ -6,7 +6,9 @@
 import { defineConfig } from 'vitest/config';
 import { config as dotenvConfig } from 'dotenv';
 import { resolve } from 'path';
-import { MAX_WORKERS } from './src/tests/dbIsolation.js';
+import {
+  MAX_WORKERS, isRemoteVerificationHost, REMOTE_TEST_TIMEOUT_MS,
+} from './src/tests/dbIsolation.js';
 
 // Load .env from project root
 dotenvConfig({ path: resolve(process.cwd(), '.env') });
@@ -24,6 +26,12 @@ export default defineConfig({
     // before any Prisma client can be constructed, and it must be installed
     // before a suite gets the chance to open a socket. See src/tests/networkGuard.js.
     setupFiles: ['./src/tests/networkGuard.js', './src/tests/workerDb.js'],
+    // B5-01Z. Loopback keeps vitest’s 5s default verbatim — CI and local
+    // development are unchanged. Only FULL verification against a database
+    // that is not on this machine widens it, because there every query is an
+    // internet round trip. See isRemoteVerificationHost in dbIsolation.js.
+    testTimeout: isRemoteVerificationHost() ? REMOTE_TEST_TIMEOUT_MS : 5000,
+
     // Pinned so the provisioner and the pool agree on the worker count: a
     // worker whose database was never created must not be able to exist. This
     // is the pool's normal width, NOT a serialisation — isolation is the fix
