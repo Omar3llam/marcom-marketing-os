@@ -36,6 +36,7 @@ vi.mock('../../middleware/requireCollabRole.js', () => ({
 
 import { prisma } from '../../lib/prisma.js';
 import { decisionsRouter } from './decisions.js';
+import { connectorDecisionScope } from '../../services/verdict-engine/decisionIdentity.js';
 
 const WS = 'ws-1';
 const ENTITY = 'e1e1e1e1-0000-4000-8000-000000000001';
@@ -63,16 +64,35 @@ beforeEach(() => {
 });
 
 describe('resolution — which decision a click lands on', () => {
-  it('the newest LIVE verdict for the entity, in this workspace', async () => {
+  // C-01 (follow-up) — the scope is the assertion. This route writes
+  // `humanExecutedAt`/`dismissedAt`, the columns INTERVENED_WHERE gates the
+  // learning population and the accuracy surface on, so an unscoped resolution
+  // is the most consequential of the by-entity ones: under a standing breach the
+  // newest row is always the 15-minute guardrail sweep, and "I executed this" on
+  // a Signal would have stamped a Guardrail episode and enrolled it in memory.
+  it('the newest LIVE SIGNAL for the entity, in this workspace', async () => {
     prisma.decision.findFirst.mockResolvedValue(live());
     await send('execute').expect(200);
 
     expect(prisma.decision.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where:   { workspaceId: WS, entityId: ENTITY, status: 'PROPOSED' },
+        where:   { workspaceId: WS, entityId: ENTITY, status: 'PROPOSED', ...connectorDecisionScope() },
         orderBy: { createdAt: 'desc' },
       }),
     );
+  });
+
+  it('cannot land on a guardrail episode sharing the entity', async () => {
+    prisma.decision.findFirst.mockResolvedValue(live());
+    await send('execute').expect(200);
+
+    const { where } = prisma.decision.findFirst.mock.calls[0][0];
+    const admits = (rootCause) => where.OR.some((c) => (c.rootCause === null
+      ? rootCause === null
+      : Array.isArray(c.rootCause?.in) && c.rootCause.in.includes(rootCause)));
+    expect(admits('guardrail:frequency')).toBe(false);
+    expect(admits('allocation:plan-1')).toBe(false);
+    expect(admits(null)).toBe(true); // the engine's own no-diagnosis verdicts
   });
 
   // The lookup filters on PROPOSED, so a superseded row is simply not found.
