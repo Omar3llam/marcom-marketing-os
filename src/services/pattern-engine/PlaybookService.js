@@ -10,11 +10,16 @@
 // with a valid spec can be promoted — Lumi never ships an unproven or
 // contradictory rule.
 // ============================================================
-import { prisma } from '../../lib/prisma.js';
-import { logger } from '../../utils/logger.js';
+// C-05 — this module is now PURE. It shapes and it refuses; it does not write.
+// The DB half moved to PromotionService along with the authorization it needs.
 import { PATTERN_STATUS } from './patternTypes.js';
 
-const MIN_ACCURACY = Number(process.env.PATTERN_PROMOTE_MIN_ACCURACY || 0.6);
+// Exported (C-05) because it is a property of the MOMENT, not of the code: it
+// is env-driven and read once at module load, so a promotion authorized under
+// 0.75 and one authorized under 0.6 are different claims. The authorization
+// record stores the floor that was applied rather than reading this later.
+export const PROMOTE_MIN_ACCURACY = Number(process.env.PATTERN_PROMOTE_MIN_ACCURACY || 0.6);
+const MIN_ACCURACY = PROMOTE_MIN_ACCURACY;
 const VALID_COMPARATORS = new Set(['GT', 'GTE', 'LT', 'LTE']);
 const VALID_UNITS       = new Set(['MINOR', 'RATIO', 'PCT']);
 
@@ -49,6 +54,11 @@ export function patternToGuardrailData(p, workspaceId) {
     workspaceId,
     name:          `Learned: ${String(p.statement).slice(0, 80)}`,
     enabled:       true,
+    // C-05 · which learning produced this rule. IDENTITY, not belief: the
+    // pattern row is upserted in place, so this answers "where did it come
+    // from" and never "what did it claim at the time". The frozen claim is in
+    // the AUTONOMY_GRANTED event. NULL on a hand-authored rule.
+    sourcePatternId: p.id ?? null,
     scopeLevel:    p.scopeLevel ?? 'ADSET',
     audienceTag:   p.audienceTag ?? null,
     metric:        p.metric,
@@ -60,29 +70,17 @@ export function patternToGuardrailData(p, workspaceId) {
   };
 }
 
-/**
- * Promote a pattern → GuardrailRule, linking provenance. One transaction.
- * @returns {Promise<{ ruleId, rule }>}
- */
-export async function promotePattern(workspaceId, patternId) {
-  if (!workspaceId) throw new Error('promotePattern: workspaceId required');
-  if (!patternId) throw new Error('promotePattern: patternId required');
-
-  // R9 (I40) — the scope is IN the query, not checked after it. The post-hoc
-  // comparison below was correct and is kept as a belt-and-braces assertion, but
-  // it is the kind of guard that survives only while every future edit remembers
-  // it; `findFirst` scoped to the workspace cannot forget.
-  const pattern = await prisma.accountPattern.findFirst({ where: { id: patternId, workspaceId } });
-  if (!pattern || pattern.workspaceId !== workspaceId) throw new Error('Pattern not found in this workspace.');
-
-  const ruleData = patternToGuardrailData(pattern, workspaceId); // throws if not promotable
-
-  const rule = await prisma.$transaction(async (tx) => {
-    const created = await tx.guardrailRule.create({ data: ruleData });
-    await tx.accountPattern.update({ where: { id: patternId }, data: { promotedRuleId: created.id } });
-    return created;
-  });
-
-  logger.info({ workspaceId, patternId, ruleId: rule.id }, '[PlaybookService] pattern promoted to guardrail');
-  return { ruleId: rule.id, rule };
-}
+// ── C-05 · `promotePattern` USED TO LIVE HERE ───────────────────────────────
+//
+// It took a workspace and a pattern id, created the rule, linked it, and wrote
+// a `logger.info`. One call: propose and grant, by one person, leaving no row
+// behind that named them.
+//
+// R-13 ruled that granting Lumi durable authority over later judgments requires
+// an explicit authorization, so the function is gone rather than wrapped — a
+// surviving one-call path would be an ungated route to the same grant, which is
+// the defect and not a compatibility courtesy.
+//
+// The shaping and the governance gate above are unchanged and are now called by
+// PromotionService, which owns the authorization, the frozen record of what was
+// believed at the time, and the way back (R-14).

@@ -47,9 +47,18 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
     // instance running the previous code against the new schema simply never
     // produces the new value and never populates the new columns. No baseline
     // entry follows, because the baseline records only what is NOT compatible.
-    expect(scan.length).toBe(67);
+    //
+    // 67 → 68 and COMPATIBLE 46 → 47: C-05 adds
+    // 20260903120000_c05_promotion_authorization. Additive on the same terms —
+    // two enum values, one new enum type, three nullable columns, one index.
+    // The ordering it DOES require runs the other way: the migration must reach
+    // an environment before the code that names `decisions.closureReason`,
+    // because a new column widens every `select`-less read of that table. That
+    // is a deploy-order constraint, not a rollback hazard, so the verdict stays
+    // COMPATIBLE and no baseline entry follows.
+    expect(scan.length).toBe(68);
     expect(counts).toEqual({
-      COMPATIBLE: 46,
+      COMPATIBLE: 47,
       TRANSITION_REQUIRED: 9,
       INCOMPATIBLE: 8,
       UNKNOWN: 4,
@@ -201,7 +210,7 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
   // ── T7 · corpus boundary ────────────────────────────────────────────────
   it('T7 — the scanner reads production migrations and nothing else', () => {
     const dirs = migrationDirs(fs, MIGRATIONS);
-    expect(dirs).toHaveLength(67); // +1: C-02 (see T1)
+    expect(dirs).toHaveLength(68); // +1 C-02, +1 C-05 (see T1)
     expect(dirs.every((d) => /^\d{14}_/.test(d))).toBe(true);
     // Real non-migration entries that sit in this directory today.
     expect(dirs).not.toContain('migration_lock.toml');

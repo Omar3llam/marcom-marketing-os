@@ -197,6 +197,12 @@ export async function sweepGuardrails(workspaceId) {
         data: {
           status:     'RESOLVED',
           resolvedAt: new Date(),
+          // C-05 — WHY it ended. A revoked rule now closes episodes too, and
+          // `RESOLVED + resolvedAt + openHitKey NULL` describes both endings
+          // identically. Stating the reason here is what keeps a NULL meaning
+          // "written before this column existed" instead of quietly meaning
+          // "the condition cleared".
+          closureReason: 'CONDITION_CLEARED',
           // `resolution` is deliberately NOT written here, and no substitute for
           // it belongs in this slice. Closing an episode says the breach ended;
           // it does not claim the outcome was good. Nor would the claim stay

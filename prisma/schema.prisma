@@ -339,6 +339,14 @@ enum CollaborationEventType {
   APPROVAL_DECIDED
   HANDOFF
   NARRATIVE_GENERATED
+  // C-05 — promoting a learned pattern hands Lumi durable authority to JUDGE
+  // and RAISE on its own. (The rule it creates still writes PROPOSED, so the
+  // grant is never authority to ACT.) That is neither an approval decision nor
+  // a handoff: it is the grant itself, and its withdrawal. Filing either under
+  // APPROVAL_DECIDED would make the moment autonomy changed hands unfindable
+  // in the log that exists to record it.
+  AUTONOMY_GRANTED
+  AUTONOMY_REVOKED
 }
 
 // ── Phase 9: Agentic OS ──────────────────────────────────────
@@ -1360,6 +1368,22 @@ model MetricSnapshot {
 // The four states a Decision can hold. EXECUTED and DISMISSED have no writer
 // today, but DecisionAccuracyService QUERIES both — an enum without them makes
 // Prisma throw on those reads, no matching row required.
+// C-05 — WHY a guardrail episode ended. `RESOLVED + resolvedAt + openHitKey
+// null` describes two different events, and the row is all a later reader gets:
+//
+//   CONDITION_CLEARED — a sweep judged the pair and found no breach. The only
+//                       ending that says anything about the account.
+//   RULE_REVOKED      — a person withdrew the rule's authority. Nothing judged
+//                       the breach to have ended; we stopped asking.
+//
+// null is neither. It is a row written before this column existed, and it is
+// never read as "cleared" — which is exactly why the natural closer states its
+// reason explicitly instead of letting absence stand in for it.
+enum DecisionClosureReason {
+  CONDITION_CLEARED
+  RULE_REVOKED
+}
+
 enum DecisionStatus {
   PROPOSED
   EXECUTED
@@ -1575,6 +1599,11 @@ model Decision {
   // (rule, entity) — deduplication enforced by the database rather than by a
   // query a later edit could quietly widen.
   openHitKey String?
+  // C-05 — why the episode above ended. Written by both closers, so that NULL
+  // means "written before this column existed" and never "the condition
+  // cleared". Deliberately NOT `resolution`: that column is half of the
+  // learning predicate, and an administrative closure is not an outcome.
+  closureReason DecisionClosureReason?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1751,12 +1780,26 @@ model GuardrailRule {
   unit          ThresholdUnit @default(RATIO)
   sustainedDays Int           @default(1)
   emitVerdict   Verdict       @default(WATCH)
+
+  // C-05 · provenance. The pattern this rule was promoted from — IDENTITY, not
+  // belief. `AccountPattern` is upserted in place (R-6), so this says which
+  // learning produced the rule and nothing about what that learning claimed at
+  // the time; the frozen claim lives in the AUTONOMY_GRANTED event. Plain
+  // column rather than a relation, same reasoning as Decision.guardrailRuleId.
+  // NULL on a hand-authored rule and on every rule promoted before C-05.
+  sourcePatternId String? @db.Uuid
+  // When a person withdrew this rule's authority. `enabled` is the state the
+  // sweep reads; this is the fact that explains it, so "revoked" can never be
+  // inferred from a switch that anything else might also flip.
+  revokedAt DateTime?
+
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
   @@index([workspaceId, enabled])
+  @@index([sourcePatternId])
   @@map("guardrail_rules")
 }
 

@@ -65,40 +65,85 @@ describe('AccountBriefing — promote a pattern to a rule (STRATEGIST owner acti
     promotableCount: 1, conflicts: [], network: { status: 'NOT_CONSENTED' },
   };
 
-  it('a strategist sees "Make it a rule" on a promotable pattern; clicking fires onPromote(id)', () => {
-    const onPromote = vi.fn();
-    render(<AccountBriefing briefing={PROMOTABLE} canPromote onPromote={onPromote} />);
-    const btn = screen.getByRole('button', { name: /make it a rule/i });
-    fireEvent.click(btn);
-    expect(onPromote).toHaveBeenCalledWith('pp');
+  // C-05 · the button used to say "Make it a rule" and one click did it. Now
+  // proposing and granting are two acts, and the second one is where the panel
+  // says out loud what is being handed over.
+  it('a strategist proposes first; clicking fires onRequestPromotion(id) and grants nothing', () => {
+    const onRequestPromotion = vi.fn();
+    const onGrantPromotion = vi.fn();
+    render(<AccountBriefing briefing={PROMOTABLE} canPromote
+      onRequestPromotion={onRequestPromotion} onGrantPromotion={onGrantPromotion} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /propose as a rule/i }));
+    expect(onRequestPromotion).toHaveBeenCalledWith('pp');
+    expect(onGrantPromotion).not.toHaveBeenCalled();
   });
 
-  it('a non-strategist (canPromote=false) never sees the promote control', () => {
-    render(<AccountBriefing briefing={PROMOTABLE} canPromote={false} onPromote={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: /make it a rule/i })).not.toBeInTheDocument();
+  it('with an authorization filed, the grant is a separate click that names the authority', () => {
+    const onGrantPromotion = vi.fn();
+    render(<AccountBriefing briefing={PROMOTABLE} canPromote
+      pendingRequestId={{ pp: 'req-1' }} onGrantPromotion={onGrantPromotion} />);
+
+    // The proposal is no longer on offer; the grant is.
+    expect(screen.queryByRole('button', { name: /propose as a rule/i })).not.toBeInTheDocument();
+    // And it states the ceiling on what is being granted: judge and raise, not act.
+    expect(screen.getByText(/never acts on its own/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /grant this authority/i }));
+    expect(onGrantPromotion).toHaveBeenCalledWith('pp', 'req-1');
   });
 
-  it('shows no promote control on a non-promotable pattern, even for a strategist', () => {
+  it('a non-strategist (canPromote=false) never sees either control', () => {
+    render(<AccountBriefing briefing={PROMOTABLE} canPromote={false} onRequestPromotion={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /propose as a rule/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /grant this authority/i })).not.toBeInTheDocument();
+  });
+
+  it('shows no proposal control on a non-promotable pattern, even for a strategist', () => {
     const notPromotable = { ...PROMOTABLE, patterns: [pattern({ id: 'np', promotable: false })], promotableCount: 0 };
-    render(<AccountBriefing briefing={notPromotable} canPromote onPromote={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: /make it a rule/i })).not.toBeInTheDocument();
+    render(<AccountBriefing briefing={notPromotable} canPromote onRequestPromotion={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /propose as a rule/i })).not.toBeInTheDocument();
   });
 
-  it('hides the control on an already-promoted pattern (promotedRuleId set)', () => {
+  // R-14 · an authority that cannot be withdrawn is the thing the ruling refused.
+  it('an already-promoted pattern offers revocation instead of promotion', () => {
+    const onRevokePromotion = vi.fn();
     const already = { ...PROMOTABLE, patterns: [pattern({ id: 'ap', promotable: true, promotedRuleId: 'rule-1' })] };
-    render(<AccountBriefing briefing={already} canPromote onPromote={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: /make it a rule/i })).not.toBeInTheDocument();
+    render(<AccountBriefing briefing={already} canPromote onRevokePromotion={onRevokePromotion} />);
+
+    expect(screen.queryByRole('button', { name: /propose as a rule/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /revoke this authority/i }));
+    // Revocation targets the RULE. The pattern outlives it and can be promoted
+    // again as a new authorization.
+    expect(onRevokePromotion).toHaveBeenCalledWith('rule-1');
   });
 
-  it('reflects the in-flight promote (disabled + Promoting…)', () => {
-    render(<AccountBriefing briefing={PROMOTABLE} canPromote onPromote={vi.fn()} promotingId="pp" />);
-    const btn = screen.getByRole('button', { name: /promoting/i });
-    expect(btn).toBeDisabled();
+  it('a CLIENT or BUYER cannot revoke either — the guarantee runs both ways', () => {
+    const already = { ...PROMOTABLE, patterns: [pattern({ id: 'ap', promotable: true, promotedRuleId: 'rule-1' })] };
+    render(<AccountBriefing briefing={already} canPromote={false} onRevokePromotion={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /revoke this authority/i })).not.toBeInTheDocument();
   });
 
-  it('surfaces the real promote error (the backend governance message), not a generic one', () => {
-    render(<AccountBriefing briefing={PROMOTABLE} canPromote onPromote={vi.fn()} promoteError={new Error('pattern is CONFLICTED — not promotable')} />);
+  it('reflects the in-flight request (disabled + Requesting…)', () => {
+    render(<AccountBriefing briefing={PROMOTABLE} canPromote onRequestPromotion={vi.fn()} promotingId="pp" />);
+    expect(screen.getByRole('button', { name: /requesting/i })).toBeDisabled();
+  });
+
+  it('surfaces the real refusal (the backend governance message), not a generic one', () => {
+    render(<AccountBriefing briefing={PROMOTABLE} canPromote onRequestPromotion={vi.fn()}
+      promoteError={new Error('pattern is CONFLICTED — not promotable')} />);
     expect(screen.getByText(/CONFLICTED — not promotable/i)).toBeInTheDocument();
+  });
+
+  it('prefers the server’s message over the transport’s', () => {
+    // A 409 from axios carries "Request failed with status code 409" on the
+    // Error and the reason in the body. Showing the former would tell the user
+    // nothing about why their promotion was refused.
+    const axiosish = Object.assign(new Error('Request failed with status code 409'), {
+      response: { data: { error: 'BeliefDegraded', message: 'Pattern accuracy 0.31 is below the 0.6 floor to promote.' } },
+    });
+    render(<AccountBriefing briefing={PROMOTABLE} canPromote onRequestPromotion={vi.fn()} promoteError={axiosish} />);
+    expect(screen.getByText(/below the 0.6 floor/i)).toBeInTheDocument();
   });
 });
 
