@@ -3,6 +3,11 @@ export { CHANNEL, DATA_SOURCE, ENTITY_LEVEL, detId, isStale, CONNECTOR_STALE_HOU
 export { toSnapshotRows, toEntityOps, landSnapshots } from './snapshotSink.js';
 export { resolve, isSyncable, SYNCABLE_PLATFORMS } from './connectorRegistry.js';
 export { nextHealth } from './connectorHealth.js';
+export {
+  CONNECTION_STATE, AVAILABILITY_STATE, COMPLETENESS_STATE, READINESS_STATE,
+  CAPABILITY, CAPABILITY_RUN,
+  connectionOf, availabilityOf, completenessOf, readinessOf, capabilitiesOf,
+} from './connectorReadiness.js';
 export { resolveCredential, listConnections, listActiveSyncable, recordSync, upsertWorkspaceCredential, PLATFORM_DB } from './credentialStore.js';
 export { MetaConnector, metaConnector } from './MetaConnector.js';
 export { GoogleAdsConnector, googleAdsConnector } from './GoogleAdsConnector.js';

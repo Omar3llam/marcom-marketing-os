@@ -163,12 +163,15 @@ export async function listActiveSyncable(workspaceId = null) {
 }
 
 /** Fold a sync result into the row's health + last_synced_at (reuses pure nextHealth). */
-export async function recordSync(workspaceId, channel, { ok, error = null, warning = null, records = 0, now = new Date() } = {}) {
+export async function recordSync(workspaceId, channel, { ok, error = null, warning = null, records = 0, capabilities = null, now = new Date() } = {}) {
   const platform = dbPlatform(channel);
   if (!workspaceId || !platform) return null;
   const sql = getDb();
   const cur = await sql`SELECT health FROM marcom_credentials WHERE workspace_id = ${workspaceId} AND platform = ${platform} LIMIT 1`;
-  const health = nextHealth(cur[0]?.health ?? {}, { platform, ok, error, warning, records, now });
+  // `capabilities` (C-04) rides the same JSON column — no new column, no
+  // migration. nextHealth merges it, so a caller that exercised no capability
+  // this run passes null and the last recorded outcome survives untouched.
+  const health = nextHealth(cur[0]?.health ?? {}, { platform, ok, error, warning, records, capabilities, now });
   await sql`
     UPDATE marcom_credentials
     SET health = ${sql.json(health)},
