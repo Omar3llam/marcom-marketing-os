@@ -9,6 +9,9 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { isStale } from '../../services/connectors/connectorTypes.js';
+import {
+  connectionOf, availabilityOf, completenessOf, readinessOf, capabilitiesOf,
+} from '../../services/connectors/connectorReadiness.js';
 import { listConnections, updateCredentialAccount } from '../../services/connectors/credentialStore.js';
 import { runConnectorSync } from '../../services/connectors/ConnectorSyncService.js';
 import { DEFAULT_MANUAL_SYNC_DATE_PRESET } from '../../services/connectors/connectorConfig.js';
@@ -41,11 +44,37 @@ connectionsRouter.get('/connections', async (req, res) => {
         platform: c.platform,
         isActive: c.isActive,
         connected: c.isActive,
+        // KEPT, unchanged. `stale` is a two-state answer and `readiness` below
+        // is the honest three-state one, but BlendedTruthService consumes the
+        // same isStale() for a different question and ConnectionHealthStrip
+        // renders this field today. Removing it would be a second change paid
+        // for by the first; it is superseded, not replaced.
         stale: isStale(lastSuccess, now),
         lastSyncedAt: c.lastSyncedAt ?? null,
         accountId: c.accountId ?? null,
         availableAccounts: c.availableAccounts ?? [],
         health: c.health ?? null,
+
+        // ── C-04 · five axes, five answers ─────────────────────────────────
+        // Every one of these was already computable from data the writer
+        // stores. None of them reached a user. They are published SEPARATELY
+        // and never folded into one badge: a channel can be CONNECTED, FAILING,
+        // INCOMPLETE and CURRENT at once, and each word is true about a
+        // different fact.
+        //
+        // R-8: this explains absence. It does not gate a claim — no verdict,
+        // no confidence and no evidence read consults any of it.
+        connection:   connectionOf(c),
+        availability: availabilityOf(c.health),
+        // The axis the account owner was the one person not told about: a
+        // successful-but-short sync is recorded on every run and, until C-04,
+        // was visible only in the admin drill-down.
+        completeness: completenessOf(c.health),
+        // Three states, so "never synced" stops being reported as "stale" — a
+        // word that claims we used to have data and it aged.
+        readiness:    readinessOf(c.health, now),
+        // One line per capability, never a single verdict for the source.
+        capabilities: capabilitiesOf(c.platform, c.health),
       };
     });
     return res.json({ workspaceId: wsId, connections });

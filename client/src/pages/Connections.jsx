@@ -58,7 +58,16 @@ export function ConnectionsView({ connections = [], projectId, onSwitchAccount, 
       {KNOWN.map((platform) => {
         const c = byPlatform.get(platform);
         const connected = !!c?.connected;
-        const stale = !!c?.stale;
+        // C-04 — `readiness` is the three-state answer; `stale` is the boolean
+        // that could not tell "we had data and it aged" from "this has never
+        // once worked". Fall back to the boolean so a server that predates the
+        // projection keeps behaving exactly as it did.
+        const readiness = c?.readiness ?? (c?.stale ? 'STALE' : null);
+        const stale = readiness === 'STALE';
+        const neverSynced = readiness === 'NEVER_SYNCED';
+        // Data DID land and is knowingly short. Not an error, and not silence —
+        // the one axis the account owner was never shown.
+        const incomplete = c?.completeness === 'INCOMPLETE';
         // A picker only when the token grants more than one ad account — the
         // single-account user sees no change. Lets the user correct connect-time's
         // auto-pick (first active account ≠ always the one with delivery).
@@ -87,7 +96,15 @@ export function ConnectionsView({ connections = [], projectId, onSwitchAccount, 
             {connected ? (
               <span className="font-mono text-xs text-lumi-subtle">
                 {switching === platform ? 'switching…' : `last sync ${ago(c.lastSyncedAt)}`}
+                {/* Three outcomes, three sentences. "Never synced" is not
+                    staleness: nothing aged, because nothing ever arrived. */}
+                {switching !== platform && neverSynced ? ' · never synced' : ''}
                 {switching !== platform && stale ? ' · stale — reconnect' : ''}
+                {/* Stated BESIDE lastError, never instead of it. A sync can
+                    have failed today and landed short data yesterday; both are
+                    true and neither explains the other. */}
+                {switching !== platform && incomplete
+                  ? ` · incomplete — ${c.health?.lastWarning ?? 'some data was not read'}` : ''}
                 {switching !== platform && c.health?.lastError ? ` · ${c.health.lastError}` : ''}
               </span>
             ) : CONNECT_PATH[platform] ? (

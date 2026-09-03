@@ -14,6 +14,7 @@ import { landSnapshots } from './snapshotSink.js';
 import { landDailySnapshots } from './dailySnapshotSink.js';
 import { listActiveSyncable, recordSync } from './credentialStore.js';
 import { DEFAULT_MANUAL_SYNC_DATE_PRESET, isDailyIngestionEnabled, DAILY_STATE } from './connectorConfig.js';
+import { CAPABILITY } from './connectorReadiness.js';
 
 /**
  * Run the connector sync.
@@ -187,7 +188,19 @@ export async function runConnectorSync(workspaceId = null, { datePreset = DEFAUL
         logger.warn({ workspaceId: wsId, platform: channel, fetchMeta: raw.fetchMeta }, '[connectorSync] partial fetch');
       }
 
-      await recordSync(wsId, channel, { ok: true, records: landed.snapshots, warning, now });
+      // C-04 — the daily outcome is PERSISTED, not just returned. `dailyState`
+      // was computed on every run and discarded at the end of it, so the
+      // connections read could not tell DISABLED from UNIMPLEMENTED from
+      // NO_DATA from FAILED — the four different problems with four different
+      // fixes that DAILY_STATE exists to keep apart.
+      //
+      // Only this call site passes it, and deliberately: the two failure paths
+      // above and below never reached the daily branch, so they have no outcome
+      // to report and must not overwrite the last one that did.
+      await recordSync(wsId, channel, {
+        ok: true, records: landed.snapshots, warning, now,
+        capabilities: { [CAPABILITY.DAILY_OBSERVATIONS]: dailyState },
+      });
       results.push({
         workspaceId: wsId, platform: channel, status: 'success', ...landed,
         // Reported separately from `snapshots` so a caller can tell an
