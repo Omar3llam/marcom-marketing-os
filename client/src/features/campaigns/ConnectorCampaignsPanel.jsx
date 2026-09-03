@@ -446,6 +446,9 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                 relativeRank={relativeRank}
                 relativeContext={info.relativeContext ?? null}
                 memory={info.memory ?? null}
+                // Whether the null above is "never judged" or "could not read"
+                // (C-03). Without it the panel has one value for two facts.
+                memoryStatus={info.memoryStatus ?? null}
                 // The STORED decision's provenance, from the same row
                 // `info.decisionId` names. Null until a sweep writes a decision
                 // with provenance captured — the panel renders nothing then.

@@ -17,7 +17,7 @@ vi.mock('../../utils/logger.js', () => ({
 }));
 
 import {
-  getDecisionHistory, HISTORY_LIMIT,
+  getDecisionHistory, HISTORY_LIMIT, HISTORY_STATUS,
   getRecentDecisions, RECENT_DECISIONS_LIMIT, RECENT_DECISION_SELECT,
 } from './decisionHistory.js';
 import { connectorDecisionScope } from '../verdict-engine/decisionIdentity.js';
@@ -41,15 +41,25 @@ beforeEach(() => {
 
 const where = () => findMany.mock.calls[0][0].where;
 
+/**
+ * C-03 — the map half, for the tests that are about WHAT came back.
+ *
+ * getDecisionHistory answers with two things now: the history, and whether the
+ * read happened at all. Everything below this line was written about the first
+ * and stays about it; the tests that are about the second call the function
+ * directly, so that the distinction is never asserted by accident.
+ */
+const history = async (...args) => (await getDecisionHistory(...args)).byEntityId;
+
 describe('scope', () => {
   it('is workspace scoped, and only for the entities asked about', async () => {
-    await getDecisionHistory('ws-1', ['c1', 'c2']);
+    await history('ws-1', ['c1', 'c2']);
     expect(where().workspaceId).toBe('ws-1');
     expect(where().entityId).toEqual({ in: ['c1', 'c2'] });
   });
 
   it('is campaign level only', async () => {
-    await getDecisionHistory('ws-1', ['c1']);
+    await history('ws-1', ['c1']);
     expect(where().entityLevel).toBe('CAMPAIGN');
   });
 
@@ -58,7 +68,7 @@ describe('scope', () => {
   // rows. They are proposals about the campaign, not verdicts Lumi reached
   // about it, and listing them as "we said KILL before" invents a history.
   it('memory excludes non-connector campaign decisions', async () => {
-    await getDecisionHistory('ws-1', ['c1']);
+    await history('ws-1', ['c1']);
     // The SAME canonical definition, not a second allowlist.
     expect(where().OR).toEqual(connectorDecisionScope().OR);
     const named = where().OR.find((c) => c.rootCause?.in)?.rootCause.in ?? [];
@@ -72,7 +82,7 @@ describe('scope', () => {
   // row do I act on now". Reusing it here would hide every decision the moment
   // a later sweep superseded it — a timeline that empties itself.
   it('memory timeline does not reuse latest PROPOSED identity query', async () => {
-    await getDecisionHistory('ws-1', ['c1']);
+    await history('ws-1', ['c1']);
     expect(where()).not.toHaveProperty('status');
   });
 
@@ -84,7 +94,7 @@ describe('scope', () => {
       dec({ id: 'c', status: 'PROPOSED', dismissedAt: new Date('2026-08-03') }),
     ]);
     groupBy.mockResolvedValue([{ entityId: 'c1', _count: { _all: 3 } }]);
-    const map = await getDecisionHistory('ws-1', ['c1']);
+    const map = await history('ws-1', ['c1']);
     expect(map.get('c1').items.map((i) => i.id)).toEqual(['a', 'b', 'c']);
   });
 });
@@ -103,7 +113,7 @@ describe('scope', () => {
 describe('T11 · legacy executedAt alias — platformExecutedAt ?? humanExecutedAt', () => {
   const alias = async (over) => {
     findMany.mockResolvedValue([dec(over)]);
-    const map = await getDecisionHistory('ws-1', ['c1']);
+    const map = await history('ws-1', ['c1']);
     return map.get('c1').items[0];
   };
 
@@ -153,7 +163,7 @@ describe('what it returns', () => {
     groupBy.mockResolvedValue([
       { entityId: 'c1', _count: { _all: 2 } }, { entityId: 'c2', _count: { _all: 1 } },
     ]);
-    const map = await getDecisionHistory('ws-1', ['c1', 'c2']);
+    const map = await history('ws-1', ['c1', 'c2']);
     expect(map.get('c1').items.map((i) => i.id)).toEqual(['new', 'old']);
     expect(map.get('c2').items).toHaveLength(1);
     expect(findMany.mock.calls[0][0].orderBy).toEqual({ createdAt: 'desc' });
@@ -165,7 +175,7 @@ describe('what it returns', () => {
   it('counts every decision, even the ones it does not list', async () => {
     groupBy.mockResolvedValue([{ entityId: 'c1', _count: { _all: 9 } }]);
     findMany.mockResolvedValue([dec({ id: 'a' }), dec({ id: 'b' })]);
-    const map = await getDecisionHistory('ws-1', ['c1']);
+    const map = await history('ws-1', ['c1']);
     expect(map.get('c1').count).toBe(9);
     expect(map.get('c1').items).toHaveLength(2);
   });
@@ -173,7 +183,7 @@ describe('what it returns', () => {
   it(`lists at most ${HISTORY_LIMIT} per campaign, sliced in the service`, async () => {
     findMany.mockResolvedValue(Array.from({ length: 12 }, (_, i) => dec({ id: `d${i}` })));
     groupBy.mockResolvedValue([{ entityId: 'c1', _count: { _all: 12 } }]);
-    const map = await getDecisionHistory('ws-1', ['c1']);
+    const map = await history('ws-1', ['c1']);
     expect(map.get('c1').items).toHaveLength(HISTORY_LIMIT);
     expect(map.get('c1').count).toBe(12);
   });
@@ -183,7 +193,7 @@ describe('what it returns', () => {
       dec({ id: 'a', resolution: 'IMPROVED', confidenceDelta: 0.4 }),
       dec({ id: 'b', resolution: null }),
     ]);
-    const [a, b] = (await getDecisionHistory('ws-1', ['c1'])).get('c1').items;
+    const [a, b] = (await history('ws-1', ['c1'])).get('c1').items;
     expect(a.resolution).toBe('IMPROVED');
     expect(b.resolution).toBeNull();
   });
@@ -193,31 +203,88 @@ describe('what it returns', () => {
   it('omits entities with no history rather than giving them a zero', async () => {
     groupBy.mockResolvedValue([{ entityId: 'c1', _count: { _all: 1 } }]);
     findMany.mockResolvedValue([dec({ entityId: 'c1' })]);
-    const map = await getDecisionHistory('ws-1', ['c1', 'c2']);
+    const map = await history('ws-1', ['c1', 'c2']);
     expect(map.has('c2')).toBe(false);
   });
 });
 
-describe('it never takes the feed down with it', () => {
+// ============================================================
+// C-03 — a failed read is not an empty history
+// ============================================================
+// The defect: `catch → new Map()` delivered "we could not look" and "we looked
+// and this campaign has never been judged" as the same value. Both render as
+// silence, and silence about a campaign is a claim about the campaign.
+//
+// The vocabulary is not invented here. MEMORY_STATUS in
+// pattern-engine/institutionalMemory.js already draws this exact line for the
+// OTHER memory in the SAME payload, and its header says why: `[]` is a
+// statement about the account, made when the truth is a statement about us.
+// This is that rule reaching the sibling that missed it.
+//
+// Two values, not three. MEMORY_STATUS needs NO_VALIDATED_MEMORY because its
+// "none" is a workspace-level answer; here "none" is per entity and is already
+// said by a key's ABSENCE from the map — a fact this module documents and the
+// tests above pin. A third status would be a claim nothing can make correctly.
+describe('C-03 · it never takes the feed down, and never lies about why', () => {
   it.each([[null], [''], [undefined]])('asks nothing for workspace %s', async (ws) => {
-    expect((await getDecisionHistory(ws, ['c1'])).size).toBe(0);
+    const out = await getDecisionHistory(ws, ['c1']);
+    expect(out.byEntityId.size).toBe(0);
     expect(findMany).not.toHaveBeenCalled();
+    // OK, not HISTORY_UNAVAILABLE. Nothing failed — nothing was asked. A guard
+    // that reported unavailability would put an outage badge on every screen
+    // that legitimately has no entities to ask about.
+    expect(out.status).toBe(HISTORY_STATUS.OK);
   });
 
   it.each([[[]], [null], ['nope']])('asks nothing for entityIds %s', async (ids) => {
-    expect((await getDecisionHistory('ws-1', ids)).size).toBe(0);
+    const out = await getDecisionHistory('ws-1', ids);
+    expect(out.byEntityId.size).toBe(0);
     expect(findMany).not.toHaveBeenCalled();
+    expect(out.status).toBe(HISTORY_STATUS.OK);
+  });
+
+  it('a successful read with no rows is OK — we looked, there is nothing', async () => {
+    groupBy.mockResolvedValue([]);
+    findMany.mockResolvedValue([]);
+    const out = await getDecisionHistory('ws-1', ['c1']);
+    expect(out.status).toBe(HISTORY_STATUS.OK);
+    expect(out.byEntityId.size).toBe(0);
   });
 
   // History is context, not the call. A failed read costs the Memory section;
-  // throwing would cost the whole verdict screen.
-  it('returns an empty map when the read fails', async () => {
+  // throwing would cost the whole verdict screen. It must still say it failed.
+  it('a failed ROW read is HISTORY_UNAVAILABLE, and does not throw', async () => {
     findMany.mockRejectedValue(new Error('column does not exist'));
-    expect((await getDecisionHistory('ws-1', ['c1'])).size).toBe(0);
+    const out = await getDecisionHistory('ws-1', ['c1']);
+    expect(out.status).toBe(HISTORY_STATUS.HISTORY_UNAVAILABLE);
+    expect(out.byEntityId.size).toBe(0);
+  });
+
+  // Both halves of the Promise.all, because either can fail on its own. A catch
+  // placed around one of them would report the other's failure as a clean read.
+  it('a failed COUNT read is HISTORY_UNAVAILABLE too', async () => {
+    groupBy.mockRejectedValue(new Error('deadlock detected'));
+    const out = await getDecisionHistory('ws-1', ['c1']);
+    expect(out.status).toBe(HISTORY_STATUS.HISTORY_UNAVAILABLE);
+  });
+
+  // THE ASSERTION THE SLICE EXISTS FOR. Both cases produce an empty map, so the
+  // map is not the answer — a consumer reading only the map is reading a coin
+  // flip and rendering the result as a fact about the campaign.
+  it('the two empty maps are told apart by status alone', async () => {
+    groupBy.mockResolvedValue([]);
+    findMany.mockResolvedValue([]);
+    const looked = await getDecisionHistory('ws-1', ['c1']);
+
+    findMany.mockRejectedValue(new Error('read failed'));
+    const failed = await getDecisionHistory('ws-1', ['c1']);
+
+    expect(looked.byEntityId.size).toBe(failed.byEntityId.size); // identical evidence
+    expect(looked.status).not.toBe(failed.status);               // different truth
   });
 
   it('asks the database twice for the whole feed, not twice per campaign', async () => {
-    await getDecisionHistory('ws-1', ['c1', 'c2', 'c3']);
+    await history('ws-1', ['c1', 'c2', 'c3']);
     expect(findMany).toHaveBeenCalledTimes(1);
     expect(groupBy).toHaveBeenCalledTimes(1);
   });

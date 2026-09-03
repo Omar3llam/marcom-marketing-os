@@ -687,9 +687,7 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
   //
   // Sequenced after the feed rather than parallel to it: it needs the entity ids
   // the feed produced, so there is nothing to overlap with.
-  const memoryByEntityId = Object.fromEntries(
-    await getDecisionHistory(workspaceId, verdicts.map((v) => v.id)),
-  );
+  const history = await getDecisionHistory(workspaceId, verdicts.map((v) => v.id));
 
   return {
     verdicts,
@@ -697,7 +695,22 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
     account: { verdict: annotated.verdict, confidence: annotated.verdictConfidence },
     // Keyed by entityId, and ABSENT for campaigns with no history — never
     // present with a zero, which would be indistinguishable from a real one.
-    memoryByEntityId,
+    memoryByEntityId: Object.fromEntries(history.byEntityId),
+    // C-03 — whether the map above is an answer or a silence. Both an account
+    // that has judged nothing and a failed read produce `{}`, and a client
+    // reading only the map renders one as the other: an outage becomes "Lumi
+    // has never judged this campaign", which is a claim about the account.
+    //
+    // NAMED IN FULL for the reason given at the top of this projection: two
+    // different things in this payload already wear the word "memory", and a
+    // bare `memoryStatus` would read as `institutionalMemory`'s — the account's
+    // validated PATTERNS, a different table answering a different question.
+    // This one is the status of `memoryByEntityId`, the past DECISIONS.
+    decisionHistoryStatus: history.status,
+    // UNTOUCHED, deliberately. This describes workspace / verdict-feed
+    // readiness. Folding a memory-subsection failure into it would report the
+    // whole feed as degraded when the verdicts are intact — trading the defect
+    // above for a larger one. The two states are orthogonal and stay so.
     status: 'OK',
   };
 }

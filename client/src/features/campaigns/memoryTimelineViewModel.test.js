@@ -161,3 +161,59 @@ describe('nothing to remember', () => {
     expect(JSON.stringify(input)).toBe(before);
   });
 });
+
+// ============================================================
+// C-03 — "we could not look" is not "there is nothing"
+// ============================================================
+// Before this, both arrived as `null` and rendered as an absent Memory section.
+// The absent section is still CORRECT for one of them: a campaign we have never
+// judged has no memory, and the file above already argues that saying so out
+// loud would claim we looked. What was wrong is that a failed read borrowed
+// that silence and read as the same honest absence.
+describe('C-03 · history availability', () => {
+  const UNAVAILABLE = 'HISTORY_UNAVAILABLE';
+
+  it('OK with no history stays silent — the ruling, not an oversight', () => {
+    expect(buildMemoryTimelineViewModel(null, 'OK')).toBeNull();
+    expect(buildMemoryTimelineViewModel({ count: 0, items: [] }, 'OK')).toBeNull();
+  });
+
+  it('a missing status behaves exactly as OK', () => {
+    // The status is additive on the wire. A payload from before it existed, or
+    // one whose field did not survive a proxy, must not start claiming an outage.
+    expect(buildMemoryTimelineViewModel(null)).toBeNull();
+    expect(buildMemoryTimelineViewModel(null, undefined)).toBeNull();
+    expect(buildMemoryTimelineViewModel(null, null)).toBeNull();
+  });
+
+  it('an unreadable history is a stated state, not silence', () => {
+    const vm = buildMemoryTimelineViewModel(null, UNAVAILABLE);
+    expect(vm).not.toBeNull();
+    expect(vm.unavailable).toBe(true);
+    expect(typeof vm.notice).toBe('string');
+  });
+
+  // The number is the claim. A count of any kind here would say we counted.
+  it('states no count and no rows when it could not look', () => {
+    const vm = buildMemoryTimelineViewModel(null, UNAVAILABLE);
+    expect(vm.count).toBeUndefined();
+    expect(vm.items).toBeUndefined();
+  });
+
+  // Structurally impossible today — the service returns an empty map on failure —
+  // but if the two ever disagree, the honest answer is the one about US. A
+  // timeline rendered under a status that says we could not read it would be
+  // asserting a history we have no basis for.
+  it('status wins over stale rows', () => {
+    const vm = buildMemoryTimelineViewModel({ count: 3, items: [item()] }, UNAVAILABLE);
+    expect(vm.unavailable).toBe(true);
+    expect(vm.items).toBeUndefined();
+  });
+
+  it('an available history is unaffected by the new argument', () => {
+    const vm = buildMemoryTimelineViewModel(memory({ count: 4 }), 'OK');
+    expect(vm.unavailable).toBeUndefined();
+    expect(vm.count).toBe(4);
+    expect(vm.items).toHaveLength(1);
+  });
+});

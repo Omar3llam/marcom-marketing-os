@@ -16,6 +16,7 @@
 export {
   getDecisionHistory,
   HISTORY_LIMIT,
+  HISTORY_STATUS,
   getRecentDecisions,
   RECENT_DECISIONS_LIMIT,
   RECENT_DECISION_SELECT,
