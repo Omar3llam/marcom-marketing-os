@@ -53,6 +53,11 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { DATA_SOURCE, ENTITY_LEVEL, MEASUREMENT_WINDOW } from '../connectors/connectorTypes.js';
 import { EVIDENCE_POPULATION, EVIDENCE_SELECTOR, EVIDENCE_REDUCTION } from './evidenceReference.js';
+// C-07 — the two gating reasons below are members of the shared vocabulary, not
+// strings this module owns. The constants stay exported (evidence/index.js
+// re-exports them, and ~20 tests import them) as ALIASES of the vocabulary, so
+// there is exactly one definition and the values cannot drift apart.
+import { GATING_REASON } from '@marcom/runtime-contracts';
 import {
   resolveCanonicalSnapshot, RESOLUTION, measurementAgeDays, MAX_CANONICAL_EVIDENCE_AGE_DAYS,
 } from './metricWindow.js';
@@ -126,7 +131,7 @@ export const CANONICAL_VERDICT_SELECT = Object.freeze({
 });
 
 /** The reason a campaign has no verdict. Distinct from every "no data" reason. */
-export const NO_CANONICAL_WINDOW = 'NO_CANONICAL_WINDOW';
+export const NO_CANONICAL_WINDOW = GATING_REASON.NO_CANONICAL_WINDOW;
 
 /**
  * The reason a campaign has no CURRENT verdict despite having been measured
@@ -148,7 +153,7 @@ export const NO_CANONICAL_WINDOW = 'NO_CANONICAL_WINDOW';
  * This is a GATING reason, not a failure: nothing is broken, and no error is
  * raised. The campaign simply cannot support a new verdict today.
  */
-export const CANONICAL_EVIDENCE_STALE = 'CANONICAL_EVIDENCE_STALE';
+export const CANONICAL_EVIDENCE_STALE = GATING_REASON.CANONICAL_EVIDENCE_STALE;
 
 /**
  * The stable identity of a FAILED canonical read. Matched on, never on a message.
@@ -343,7 +348,7 @@ export function partitionByCanonicalEvidence(identities = [], evidenceByEntity =
     if (!identity || !identity.id) continue;
     const snapshot = evidenceByEntity.get(identity.id);
     if (!snapshot) {
-      absent.push({ id: identity.id, name: identity.name ?? null, reason: NO_CANONICAL_WINDOW });
+      absent.push({ id: identity.id, name: identity.name ?? null, reason: GATING_REASON.NO_CANONICAL_WINDOW });
       continue;
     }
 
@@ -363,8 +368,10 @@ export function partitionByCanonicalEvidence(identities = [], evidenceByEntity =
       stale.push({
         id: identity.id,
         name: identity.name ?? null,
-        reason: CANONICAL_EVIDENCE_STALE,
+        reason: GATING_REASON.CANONICAL_EVIDENCE_STALE,
         // The facts a caller needs to explain the gate without recomputing it.
+        // C-07 — and now a caller finally does: they cross the wire and reach
+        // the surface instead of being dropped with the reason at the door.
         measurementAgeDays: ageDays,
         windowEnd: snapshot.windowEnd ?? null,
         maxAgeDays: MAX_CANONICAL_EVIDENCE_AGE_DAYS,

@@ -13,31 +13,38 @@
 //   total    = campaigns.length from useConnectorCampaigns
 //              (verified identical to CampaignsView's connector count)
 //   verdicts = per-entity connector ENGINE verdict (NOT pending Actions)
-//   gatedOut = surfaced explicitly as needsRevenue, never folded into
-//              a verdict count (a revenue-gated campaign is not a HOLD)
+//   gatedOut = surfaced per REASON, never folded into a verdict count
+//              (a gated campaign is not a HOLD) and never collapsed into
+//              one number (C-07: three reasons, three different fixes —
+//              `needsRevenue` named one of them and counted all three)
 //
 // The engine emits six verdicts (KILL/HOLD/SCALE/WATCH/REALLOCATE/REFRESH,
 // see verdict-engine/verdictTypes.js). This tile surfaces the four the
 // Growth Strategy sub-line names; REALLOCATE/REFRESH are counted in `total`
 // but not broken out here (they have their own execution surfaces).
 //
-// INVARIANT (tested): scaling + holding + watching + killing + needsRevenue
+// INVARIANT (tested): scaling + holding + watching + killing + gatedTotal
 //   <= total  — no campaign counted twice, buckets never exceed the roster.
+//   `gatedTotal` exists for that arithmetic ONLY; every surface that says
+//   something to a person reads `gated` and speaks per reason.
 //
 // TECH DEBT (noted, not fixed here): "scaling" is overloaded across three
 // layers — CampaignState.stage / Action verdict / connector engine verdict.
 // A future rename (LifecycleStage vs OptimizationVerdict) would disambiguate.
 // ============================================================
+import { summarizeGatedOut } from '@/features/campaigns/gatingReasonCopy.js';
 import { useConnectorCampaigns } from './useConnectorCampaigns.js';
 import { useConnectorVerdicts } from './useConnectorVerdicts.js';
 
 const EMPTY_SUMMARY = Object.freeze({
-  total:        0,
-  scaling:      0,
-  holding:      0,
-  watching:     0,
-  killing:      0,
-  needsRevenue: 0,
+  total:       0,
+  scaling:     0,
+  holding:     0,
+  watching:    0,
+  killing:     0,
+  // One entry per reason present, each with its own count and sentence.
+  gated:       Object.freeze([]),
+  gatedTotal:  0,
 });
 
 export function useGrowthStrategySummary() {
@@ -65,7 +72,9 @@ export function useGrowthStrategySummary() {
     }
   }
 
-  const needsRevenue = (gatedOut ?? []).length;
+  // Grouped, not counted. The single number this replaced was rendered as
+  // "N need revenue data" over campaigns that needed a sync.
+  const gated = summarizeGatedOut(gatedOut);
 
   return {
     loading: false,
@@ -76,7 +85,8 @@ export function useGrowthStrategySummary() {
       holding:      counts.HOLD,
       watching:     counts.WATCH,
       killing:      counts.KILL,
-      needsRevenue,
+      gated,
+      gatedTotal:   gated.reduce((n, g) => n + g.count, 0),
     },
   };
 }

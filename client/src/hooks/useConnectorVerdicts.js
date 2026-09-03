@@ -34,7 +34,11 @@
 //                      verdict, so what a client sees here (recomputed from
 //                      today's signals) and what a stored decision carries
 //                      (what we believed then) can legitimately differ.
-//   gatedOut[]: { id, name, reason }
+//   gatedOut[]: { id, name, reason, knowledge, prerequisite, …operands }
+//     C-07 — `reason` is a declared GATING_REASON, `knowledge` its C-06 token
+//     and `prerequisite` the class of action that would produce a verdict.
+//     Two of the three reasons share a token, so the reason is NOT redundant
+//     with it. Rows travel WHOLE from here — the id alone loses the point.
 //
 // Rows pass through WHOLE — this hook never projects a subset, so a new engine
 // field reaches consumers without a change here.

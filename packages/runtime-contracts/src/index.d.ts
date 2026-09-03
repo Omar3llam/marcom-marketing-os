@@ -160,3 +160,59 @@ export function declareStatusVocabulary(
   vocabulary: Record<string, string>,
   mapping: Record<string, KnowledgeToken>
 ): StatusVocabularyDeclaration;
+
+// -- Gating reasons (C-07) -----------------------------------
+
+export const GATING_REASON: {
+  readonly NO_MEASURABLE_DELIVERY: 'NO_MEASURABLE_DELIVERY';
+  readonly NO_CANONICAL_WINDOW: 'NO_CANONICAL_WINDOW';
+  readonly CANONICAL_EVIDENCE_STALE: 'CANONICAL_EVIDENCE_STALE';
+};
+
+export type GatingReason = typeof GATING_REASON[keyof typeof GATING_REASON];
+
+export const GATING_REASON_VALUES: readonly GatingReason[];
+
+export const PREREQUISITE: {
+  readonly DELIVERY: 'DELIVERY';
+  readonly FIRST_MEASUREMENT: 'FIRST_MEASUREMENT';
+  readonly FRESH_MEASUREMENT: 'FRESH_MEASUREMENT';
+};
+
+export type Prerequisite = typeof PREREQUISITE[keyof typeof PREREQUISITE];
+
+export const PREREQUISITE_VALUES: readonly Prerequisite[];
+
+export class GatingReasonDeclarationError extends Error {}
+
+export class UndeclaredGatingReasonError extends Error {
+  readonly reason: string | null;
+}
+
+export interface GatingReasonDeclaration {
+  readonly reason: GatingReason;
+  readonly knowledge: KnowledgeToken;
+  readonly prerequisite: Prerequisite;
+}
+
+export interface GatingReasonRegistry {
+  readonly values: readonly string[];
+  declarationOf(reason: string | null | undefined): GatingReasonDeclaration | null;
+}
+
+export const GATING_REASONS: GatingReasonRegistry;
+
+export function declareGatingReasons(
+  vocabulary: Record<string, string>,
+  declarations: Record<string, { knowledge: KnowledgeToken; prerequisite: Prerequisite }>
+): GatingReasonRegistry;
+
+export function isGatingReason(reason: string | null | undefined): boolean;
+
+export function knowledgeOfGatingReason(reason: string | null | undefined): KnowledgeToken | null;
+
+export function prerequisiteOfGatingReason(reason: string | null | undefined): Prerequisite | null;
+
+export function withGatingKnowledge<T extends { reason: string }>(
+  row: T
+): T & { knowledge: KnowledgeToken; prerequisite: Prerequisite };

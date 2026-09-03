@@ -296,8 +296,10 @@ function StrategistApprovals() {
 // ── Sub-components ─────────────────────────────────────────
 
 // Connector-sourced verdict breakdown for the Active Campaigns tile. Zero
-// buckets are omitted; revenue-gated campaigns are surfaced honestly as
-// "N need revenue data" (never folded into a verdict count).
+// buckets are omitted; GATED campaigns are surfaced honestly, one entry per
+// reason (never folded into a verdict count, and never collapsed into one
+// number — C-07: "N need revenue data" was the wrong instruction for the two
+// reasons out of three that a sync fixes).
 function ActiveCampaignsBreakdown({ g }) {
   const parts = [
     g.scaling  > 0 && `${g.scaling} Scaling`,
@@ -306,18 +308,20 @@ function ActiveCampaignsBreakdown({ g }) {
     g.killing  > 0 && `${g.killing} Killing`,
   ].filter(Boolean);
 
-  if (parts.length === 0 && g.needsRevenue === 0) {
+  const gated = g.gated ?? [];
+
+  if (parts.length === 0 && gated.length === 0) {
     return <>{g.total > 0 ? 'Awaiting verdicts' : 'No connected campaigns yet'}</>;
   }
 
   return (
     <>
       {parts.join(' · ')}
-      {g.needsRevenue > 0 && (
-        <span className="text-lumi-subtle">
-          {parts.length > 0 ? ' · ' : ''}{g.needsRevenue} need revenue data
+      {gated.map((entry, i) => (
+        <span key={entry.reason ?? `unknown-${i}`} className="text-lumi-subtle">
+          {parts.length > 0 || i > 0 ? ' · ' : ''}{entry.count} {entry.label}
         </span>
-      )}
+      ))}
     </>
   );
 }

@@ -66,7 +66,18 @@ const legacyFeed = () => ({
 const growthSummary = (over = {}) => ({
   loading: false,
   error: null,
-  summary: { total: 44, scaling: 5, holding: 2, watching: 0, killing: 1, needsRevenue: 3, ...over },
+  summary: {
+    total: 44, scaling: 5, holding: 2, watching: 0, killing: 1,
+    // C-07 - the tile reads GROUPS, not a single count. The shape is what
+    // useGrowthStrategySummary returns: one entry per reason, each already
+    // carrying its own label and sentence.
+    gated: [
+      { reason: 'NO_MEASURABLE_DELIVERY', count: 1, label: 'with no measurable delivery', action: 'connect a revenue source so spend can be scored', sentence: '1 campaign with no measurable delivery - connect a revenue source so spend can be scored.', items: [] },
+      { reason: 'CANONICAL_EVIDENCE_STALE', count: 2, label: 'measured too long ago to score today', action: 'sync again so the measurement is current', sentence: '2 campaigns measured too long ago to score today - sync again so the measurement is current.', items: [] },
+    ],
+    gatedTotal: 3,
+    ...over,
+  },
 });
 
 const renderBoard = () =>
@@ -100,15 +111,19 @@ describe('GrowthStrategyBoard — Active Campaigns tile (connector-sourced)', ()
     expect(screen.getByText(/1 Killing/)).toBeInTheDocument();
   });
 
-  it('surfaces gatedOut honestly as "N need revenue data"', () => {
+  // C-07 - this asserted a single line, "3 need revenue data", over three
+  // campaigns of which only one needed revenue. The other two needed a sync.
+  it('surfaces gatedOut per REASON, never as one undifferentiated count', () => {
     renderBoard();
-    expect(screen.getByText(/3 need revenue data/)).toBeInTheDocument();
+    expect(screen.getByText(/1 with no measurable delivery/)).toBeInTheDocument();
+    expect(screen.getByText(/2 measured too long ago to score today/)).toBeInTheDocument();
+    expect(screen.queryByText(/3 need revenue data/)).not.toBeInTheDocument();
   });
 
   it('shows "…" (not 0) while the connector summary is loading', () => {
-    useGrowthStrategySummary.mockReturnValue(growthSummary({ total: 0, scaling: 0, holding: 0, killing: 0, needsRevenue: 0 }));
+    useGrowthStrategySummary.mockReturnValue(growthSummary({ total: 0, scaling: 0, holding: 0, killing: 0, gated: [], gatedTotal: 0 }));
     // flip to loading after seeding a zeroed summary
-    useGrowthStrategySummary.mockReturnValue({ loading: true, error: null, summary: { total: 0, scaling: 0, holding: 0, watching: 0, killing: 0, needsRevenue: 0 } });
+    useGrowthStrategySummary.mockReturnValue({ loading: true, error: null, summary: { total: 0, scaling: 0, holding: 0, watching: 0, killing: 0, gated: [], gatedTotal: 0 } });
     renderBoard();
     expect(screen.getByText('…')).toBeInTheDocument();
   });

@@ -22,6 +22,7 @@ import { MetricsPanel }    from '@/components/campaign-analysis/MetricsPanel.jsx
 import { PerformanceChart } from '@/components/campaign-analysis/PerformanceChart.jsx';
 import { AnalysisSummary } from '@/components/campaign-analysis/AnalysisSummary.jsx';
 import { ConnectorCampaignsPanel } from '@/features/campaigns/ConnectorCampaignsPanel.jsx';
+import { summarizeGatedOut } from '@/features/campaigns/gatingReasonCopy.js';
 import { groupCampaigns, GROUPS } from '@/features/campaigns/campaignGrouping.js';
 import { fmtCurrency } from '@/components/campaign-analysis/campaignFormatters.js';
 import { generateCampaignReport, generateTextReport } from '@/lib/pdfExport.js';
@@ -151,8 +152,9 @@ export default function CampaignsView() {
   } = useConnectorCampaigns();
 
   // Verdict engine over the connector campaigns WITH measured revenue. `gatedOut`
-  // carries the campaigns that can't be honestly scored (no revenue) so they show
-  // an explicit "needs revenue data" note, never a fabricated KILL.
+  // carries the campaigns that can't be honestly scored, each NAMING WHY (C-07):
+  // no measurable delivery, never measured, or measured too long ago. Three
+  // different fixes — so never one fabricated KILL, and never one instruction.
   const {
     verdicts: connectorVerdicts,
     gatedOut: connectorGatedOut,
@@ -178,13 +180,24 @@ export default function CampaignsView() {
     refetchConnectors, refetchVerdicts, refetchHealth,
   });
 
-  // Industry (from onboarding, surfaced on the workspace) tailors the
-  // "needs revenue data" guidance below to the source this business actually uses.
+  // Industry (from onboarding, surfaced on the workspace) tailors the guidance
+  // for ONE of the three gating reasons — NO_MEASURABLE_DELIVERY, the only one
+  // a revenue source fixes — to the source this business actually uses.
   const { workspace } = useWorkspace();
   const revenueGuidance = useMemo(() => {
     const industry = INDUSTRIES.find((i) => i.id === workspace?.industry);
     return REVENUE_GUIDANCE[industry?.revenueSource] ?? GENERIC_REVENUE_GUIDANCE;
   }, [workspace?.industry]);
+
+  // C-07 — ONE LINE PER REASON, not one count over three problems. The line
+  // this replaces read "N connected campaigns need revenue data before they can
+  // be scored", which is simply false for a campaign awaiting a first sync and
+  // for one whose measurement went stale: adding revenue changes nothing there.
+  // Only the delivery gate takes the industry-tailored revenue guidance.
+  const gatedGroups = useMemo(
+    () => summarizeGatedOut(connectorGatedOut, { revenueGuidance }),
+    [connectorGatedOut, revenueGuidance],
+  );
 
   const [downloading, setDownloading] = useState(false);
 
@@ -204,7 +217,10 @@ export default function CampaignsView() {
         verdictByEntityId,
         verdictInfoByEntityId,
         impactByEntityId,
-        gatedOutIds: new Set((connectorGatedOut ?? []).map((g) => g.id)),
+        // C-07 — the WHOLE rows. This was `new Set(...map((g) => g.id))`: the
+        // reason the backend published died on this line, and every gated
+        // campaign in the export got the same note.
+        gatedOut: connectorGatedOut ?? [],
       }),
       healthScore,                       // health?.score ?? null (live engine)
       healthLabel: health?.label ?? null, // null (not the on-screen fallback) → honest PDF state
@@ -584,14 +600,18 @@ export default function CampaignsView() {
         </p>
       )}
 
-      {/* Connector campaigns that can't be scored at all (no spend or no delivery)
-          — explicit, never dropped silently (hiding them would be a quieter form of
-          the same fabrication). */}
-      {connectorGatedOut.length > 0 && (
-        <p className={cn('font-mono text-[11px] text-lumi-subtle mb-6', awarenessCount > 0 ? '' : '-mt-3')}>
-          {connectorGatedOut.length} connected campaign{connectorGatedOut.length === 1 ? '' : 's'} need revenue data before
-          {connectorGatedOut.length === 1 ? ' it' : ' they'} can be scored — {revenueGuidance}.
-        </p>
+      {/* Connector campaigns that can't be scored at all — explicit, never dropped
+          silently (hiding them would be a quieter form of the same fabrication),
+          and one line per REASON: no measurable delivery, never measured, or
+          measured too long ago. Three absences, three different next steps. */}
+      {gatedGroups.length > 0 && (
+        <div className={cn('mb-6', awarenessCount > 0 ? '' : '-mt-3')}>
+          {gatedGroups.map((g, i) => (
+            <p key={g.reason ?? `unknown-${i}`} className="font-mono text-[11px] text-lumi-subtle">
+              {g.sentence}
+            </p>
+          ))}
+        </div>
       )}
 
       {/* The decision queue — the reason the page exists, so it comes before

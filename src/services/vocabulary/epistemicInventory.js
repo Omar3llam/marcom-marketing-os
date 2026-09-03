@@ -160,6 +160,16 @@ export const EXCLUDED = Object.freeze([
            + 'UNSUPPORTED, already declared CANNOT_ASK.',
   },
   {
+    at: 'packages/runtime-contracts/src/gatingReason.js', symbol: 'GATING_REASON',
+    because: 'A reason vocabulary, and C-07 gives it its OWN registry rather than '
+           + 'this one. Its three values refine an absence the token has already '
+           + 'classified — two of them share NOTHING_THERE — so declaring them here '
+           + 'as well would let one gatedOut row carry two knowledge tokens. The '
+           + 'reason answers WHY the judgment is absent and which prerequisite is '
+           + 'missing; the token answers what Lumi knows. Orthogonal, never merged: '
+           + 'see src/services/verdict-engine/gatingReasonInventory.js.',
+  },
+  {
     at: 'src/services/verdict-engine/metricWindow.js', symbol: 'NON_AGGREGABLE_REASON',
     because: 'A reason vocabulary, and its values are English sentences explaining '
            + 'why a metric cannot be summed — prose, not states.',
