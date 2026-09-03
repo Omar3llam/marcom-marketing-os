@@ -50,7 +50,15 @@ import {
 import { DAILY_KNOWLEDGE } from '../connectors/connectorConfig.js';
 import { EXECUTION_STATE_KNOWLEDGE } from '../execution/executionProjection.js';
 
-/** The suffixes that define the ratchet's jurisdiction. A shape, not a guess. */
+/**
+ * The suffixes that define the ratchet's jurisdiction. A shape, not a guess.
+ *
+ * ── AND THE SUFFIX IS NOT THE DEFINITION ────────────────────────────────────
+ * Matching `_STATUS` proves nothing about meaning. All the regex guarantees is
+ * that SOMEONE RULED — the ruling below is what says a vocabulary is epistemic.
+ * `_RUN` is here because CAPABILITY_RUN is one (see its entry); it is not here
+ * because "_RUN sounds like a status".
+ */
 export const JURISDICTION_SUFFIXES = Object.freeze(['_STATUS', '_STATE', '_REASON', '_RUN']);
 
 /**
@@ -59,6 +67,26 @@ export const JURISDICTION_SUFFIXES = Object.freeze(['_STATUS', '_STATE', '_REASO
  * `at` and `symbol` together are how the ratchet matches a vocabulary it found
  * in the source to a ruling here — the pair is unique even where the SYMBOL is
  * not, which is the case for EVIDENCE_STATUS.
+ *
+ * ── TWO OF THESE FIFTEEN ARE NEWLY ADJUDICATED (C-06) ───────────────────────
+ * They were NOT inherited from the vocabularies C-06's discovery listed. They
+ * are marked `adjudicated: true` and the reason is written on each, because a
+ * ratchet that lists everything uniformly would hide the fact that a judgement
+ * was exercised here — and the next person to disagree needs to know there is
+ * something to disagree WITH:
+ *
+ *   EXECUTION_STATE  a LIFECYCLE vocabulary admitted for two of its values.
+ *                    "no execution" and "we do not know how the execution
+ *                    ended" are different facts, and only this vocabulary can
+ *                    say which. Leaving it out would have described one of
+ *                    Lumi's most consequential states less precisely than the
+ *                    code already does.
+ *   CAPABILITY_RUN   an expansion of the JURISDICTION itself: `_RUN` was added
+ *                    to the suffix list so the widest epistemic vocabulary in
+ *                    the system (7 values, 4 tokens, and it crosses the wire)
+ *                    could not sit outside the ratchet on a naming accident.
+ *                    The declaration is what makes it epistemic; the suffix
+ *                    only makes it VISIBLE.
  */
 export const DECLARED = Object.freeze([
   { at: 'src/services/decision-memory/decisionHistory.js',            symbol: 'HISTORY_STATUS',      declaration: HISTORY_KNOWLEDGE },
@@ -73,9 +101,9 @@ export const DECLARED = Object.freeze([
   { at: 'src/services/connectors/connectorReadiness.js',              symbol: 'AVAILABILITY_STATE',  declaration: AVAILABILITY_KNOWLEDGE },
   { at: 'src/services/connectors/connectorReadiness.js',              symbol: 'COMPLETENESS_STATE',  declaration: COMPLETENESS_KNOWLEDGE },
   { at: 'src/services/connectors/connectorReadiness.js',              symbol: 'READINESS_STATE',     declaration: READINESS_KNOWLEDGE },
-  { at: 'src/services/connectors/connectorReadiness.js',              symbol: 'CAPABILITY_RUN',      declaration: CAPABILITY_RUN_KNOWLEDGE },
+  { at: 'src/services/connectors/connectorReadiness.js',              symbol: 'CAPABILITY_RUN',      declaration: CAPABILITY_RUN_KNOWLEDGE, adjudicated: true },
   { at: 'src/services/connectors/connectorConfig.js',                 symbol: 'DAILY_STATE',         declaration: DAILY_KNOWLEDGE },
-  { at: 'src/services/execution/executionProjection.js',              symbol: 'EXECUTION_STATE',     declaration: EXECUTION_STATE_KNOWLEDGE },
+  { at: 'src/services/execution/executionProjection.js',              symbol: 'EXECUTION_STATE',     declaration: EXECUTION_STATE_KNOWLEDGE, adjudicated: true },
 ]);
 
 /**

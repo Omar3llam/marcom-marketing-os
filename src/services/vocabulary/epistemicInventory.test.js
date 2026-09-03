@@ -118,6 +118,20 @@ describe('C-06 · every declaration is exhaustive and well-formed', () => {
     expect(names).toContain('outcome-evidence/EVIDENCE_STATUS');
   });
 
+  it('marks the two declarations that were adjudicated, not inherited', () => {
+    // C-06 admitted two vocabularies that its own discovery had not listed, by
+    // judgement: EXECUTION_STATE (a lifecycle vocabulary carrying two POSITION
+    // values) and CAPABILITY_RUN (which required widening the jurisdiction to
+    // _RUN). A ratchet that listed all fifteen uniformly would hide that a call
+    // was made here — and someone who disagrees needs to see there is something
+    // to disagree WITH. The marker is part of the record, not decoration.
+    const adjudicated = DECLARED.filter((d) => d.adjudicated).map((d) => d.symbol);
+    expect(adjudicated.sort()).toEqual(['CAPABILITY_RUN', 'EXECUTION_STATE']);
+    // And the suffix that made CAPABILITY_RUN visible is a VISIBILITY rule, not
+    // the semantic definition — the declaration beside the vocabulary is.
+    expect(JURISDICTION_SUFFIXES).toContain('_RUN');
+  });
+
   it('gives every exclusion a written reason', () => {
     for (const entry of EXCLUDED) {
       expect(entry.because, `${entry.symbol} was excluded with no reason`).toBeTruthy();
