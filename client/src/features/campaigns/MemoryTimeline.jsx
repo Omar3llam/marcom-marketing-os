@@ -23,6 +23,21 @@
 export function MemoryTimeline({ viewModel }) {
   if (!viewModel) return null;
 
+  // C-03 — the read failed, and that is the only thing we know. The heading
+  // still appears, because the section exists and we have something true to say
+  // in it; what does NOT appear is a count, which would claim we counted.
+  //
+  // The sentence arrives already worded, exactly as the verdict, the action and
+  // the outcome do. Naming this state is a domain judgement, not a rendering one.
+  if (viewModel.unavailable) {
+    return (
+      <div className="mt-4 space-y-1.5">
+        <p className="section-label text-lumi-muted">Memory</p>
+        <p className="text-sm text-lumi-subtle">{viewModel.notice}</p>
+      </div>
+    );
+  }
+
   const { count, items } = viewModel;
 
   return (

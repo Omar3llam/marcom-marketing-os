@@ -524,6 +524,68 @@ describe('getConnectorVerdicts — the published numbers', () => {
     expect(res.memoryByEntityId).toEqual({});
   });
 
+  // ── C-03 · why the empty map is not the whole answer ──────────────────────
+  // The test directly above passes in TWO different worlds: one where we read
+  // the decision table and this account has judged nothing, and one where the
+  // read failed. Until this block, the payload said the same thing in both.
+  //
+  // `decisionHistoryStatus` and not `memoryStatus`: two different things in this
+  // response already wear the word "memory" — `memoryByEntityId` (this
+  // campaign's past DECISIONS) and `institutionalMemory` (the account's
+  // validated PATTERNS) — and the service comment above names that collision as
+  // the reason the second one is spelled out in full. A bare `memoryStatus`
+  // would read as the status of the wrong one.
+  describe('C-03 · the payload says whether it could look', () => {
+    // The history read is the ONLY consumer of groupBy here; the identity read
+    // (getLatestDecisions) uses findMany alone. Rejecting groupBy therefore
+    // fails history and nothing else, which is the isolation this needs.
+    const breakHistory = () => groupBy.mockRejectedValue(new Error('read failed'));
+
+    it('OK when the read happened and found nothing', async () => {
+      mockCampaigns([row()]);
+      const res = await getConnectorVerdicts('ws-1');
+      expect(res.decisionHistoryStatus).toBe('OK');
+      expect(res.memoryByEntityId).toEqual({});
+    });
+
+    it('HISTORY_UNAVAILABLE when the read failed — and the feed still answers', async () => {
+      mockCampaigns([row()]);
+      breakHistory();
+      const res = await getConnectorVerdicts('ws-1');
+
+      expect(res.decisionHistoryStatus).toBe('HISTORY_UNAVAILABLE');
+      expect(res.memoryByEntityId).toEqual({});
+      // History is context, not the call. Losing it costs the Memory section.
+      expect(res.verdicts).toHaveLength(1);
+      // And the FEED's own status is untouched: it describes workspace/verdict
+      // readiness, not a memory subsection. Collapsing one into the other would
+      // trade this defect for a larger one.
+      expect(res.status).toBe('OK');
+    });
+
+    // TEST 9 — the invariant the whole slice is measured against. History is not
+    // decision authority: it may not move a verdict, a confidence, or an order.
+    // Asserted by EQUALITY of the two payloads rather than by a comment, because
+    // a comment cannot fail.
+    it('a history failure changes decisionHistoryStatus and nothing else', async () => {
+      mockCampaigns([row()]);
+      const healthy = await getConnectorVerdicts('ws-1');
+
+      // Same fixtures, same engine, ONE variable changed. Not re-mocked in
+      // between: a fresh setup would make this a comparison of two arrangements
+      // rather than of one system under two read outcomes.
+      breakHistory();
+      const broken = await getConnectorVerdicts('ws-1');
+
+      expect(broken.verdicts).toEqual(healthy.verdicts);
+      expect(broken.account).toEqual(healthy.account);
+      expect(broken.gatedOut).toEqual(healthy.gatedOut);
+      expect(broken.memoryByEntityId).toEqual(healthy.memoryByEntityId);
+      expect(broken.status).toBe(healthy.status);
+      expect(broken.decisionHistoryStatus).not.toBe(healthy.decisionHistoryStatus);
+    });
+  });
+
   // The cohort figures reach the payload, or the block that renders them has
   // nothing to render. Same three-seam walk `signalConfidence` needed: minted in
   // rankCohort, spread onto the node by applyRelativeRanking, and NAMED here.

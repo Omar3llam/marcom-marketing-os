@@ -52,16 +52,45 @@ function actionLabel(item) {
   return 'No answer recorded';
 }
 
+// ── C-03 · the state where there is nothing to say, and no right to be silent ─
+// The status the server publishes for the history read as a whole. Only the
+// failure case is named here: every other value, including a missing one, means
+// the read happened, and this file has nothing to add to what it returned.
+const HISTORY_UNAVAILABLE = 'HISTORY_UNAVAILABLE';
+
+// Worded here rather than in the renderer, like RESOLUTION_LABELS above — the
+// component owns no vocabulary. It says what it is: OUR read failed. Not "no
+// history", which is a statement about the campaign we cannot make, and not
+// "try again", which is an instruction we have no basis to give.
+const UNAVAILABLE_NOTICE = 'Decision history could not be loaded';
+
 /**
  * PURE: the service's history bucket → the timeline view model, or null.
  *
  * @param {{count:number, items:Array}|null|undefined} memory
- * @returns {{count:number, items:Array}|null} null when there is no history to
- *   show — which the renderer turns into nothing at all, not into "Seen 0
- *   times". A campaign we have never judged has no memory, and saying "0" about
- *   it implies we looked and found none.
+ * @param {string|null} [historyStatus] — HISTORY_UNAVAILABLE when the read
+ *   failed; anything else (including absent) means it succeeded.
+ * @returns {{count:number, items:Array}|{unavailable:true, notice:string}|null}
+ *   null when there is no history to show — which the renderer turns into
+ *   nothing at all, not into "Seen 0 times". A campaign we have never judged has
+ *   no memory, and saying "0" about it implies we looked and found none.
+ *
+ *   THAT SILENCE IS ONLY HONEST WHEN WE LOOKED. Before C-03 a failed read
+ *   borrowed it, so an outage rendered as the settled fact that Lumi had never
+ *   judged this campaign. The unavailable branch exists to stop the two sharing
+ *   one appearance — not to fill the empty case with a sentence, which stays
+ *   silent by ruling.
  */
-export function buildMemoryTimelineViewModel(memory) {
+export function buildMemoryTimelineViewModel(memory, historyStatus = null) {
+  // Checked FIRST, and ahead of any rows. Structurally the service returns no
+  // rows when the read failed, so the two cannot disagree today — but if they
+  // ever did, a timeline rendered under a status saying we could not read it
+  // would be asserting a history we have no basis for.
+  if (historyStatus === HISTORY_UNAVAILABLE) {
+    // No count and no items, deliberately: a number here would say we counted.
+    return { unavailable: true, notice: UNAVAILABLE_NOTICE };
+  }
+
   if (!memory || typeof memory !== 'object') return null;
 
   const items = Array.isArray(memory.items) ? memory.items : [];

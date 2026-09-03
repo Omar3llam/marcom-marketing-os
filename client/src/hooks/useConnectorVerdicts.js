@@ -54,6 +54,14 @@ export function useConnectorVerdicts() {
   // field on a verdict: the verdict is what Lumi thinks now and this is what it
   // said before, and merging them would let history edit the current call.
   const [memory, setMemory] = useState({});
+  // C-03 — whether `memory` above is an answer or a silence. An account that has
+  // judged nothing and a failed history read both arrive as `{}`, so the map
+  // cannot say which, and a surface reading only the map turns our outage into
+  // "Lumi has never judged this campaign".
+  //
+  // Separate from `status` below, which is the verdict feed's own readiness.
+  // The feed can be perfectly healthy while the history read failed.
+  const [memoryStatus, setMemoryStatus] = useState(null);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -69,6 +77,11 @@ export function useConnectorVerdicts() {
       setGatedOut(Array.isArray(res.data?.gatedOut) ? res.data.gatedOut : []);
       setAccount(res.data?.account ?? null);
       setMemory(res.data?.memoryByEntityId ?? {});
+      // null, not 'OK', when the server said nothing about it: the field is
+      // additive, and a response that predates it has made no claim either way.
+      // The view model treats null exactly as OK, so an older payload keeps the
+      // behaviour it has always had rather than growing an outage notice.
+      setMemoryStatus(res.data?.decisionHistoryStatus ?? null);
       setStatus(res.data?.status ?? null);
     } catch (err) {
       if (!aliveRef.current) return;
@@ -84,5 +97,5 @@ export function useConnectorVerdicts() {
     return () => { aliveRef.current = false; };
   }, [refetch]);
 
-  return { verdicts, gatedOut, account, memory, status, loading, error, refetch };
+  return { verdicts, gatedOut, account, memory, memoryStatus, status, loading, error, refetch };
 }

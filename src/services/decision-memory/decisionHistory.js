@@ -39,6 +39,24 @@ import { PROVENANCE_SELECT, legacyExecutedAt } from '../execution/decisionProven
  */
 export const HISTORY_LIMIT = 5;
 
+// ── C-03 · did we manage to look? ───────────────────────────────────────────
+// Following the MEMORY_STATUS precedent in
+// pattern-engine/institutionalMemory.js, whose header states the rule this
+// module was breaking: an empty collection is a claim about the ACCOUNT, and
+// returning one after a failed read makes that claim when the truth is a
+// statement about US. That module draws the line for the OTHER memory in the
+// same payload; this is the same line reaching the sibling that missed it.
+//
+// TWO values, not three. MEMORY_STATUS needs NO_VALIDATED_MEMORY because its
+// "none" is one workspace-level answer. Here "none" is per entity and is
+// already said, precisely, by a key's ABSENCE from the map — see
+// getDecisionHistory's contract below. A third status would have to claim
+// something about a population this function never resolves.
+export const HISTORY_STATUS = Object.freeze({
+  OK:                  'OK',                  // we looked
+  HISTORY_UNAVAILABLE: 'HISTORY_UNAVAILABLE', // we could not look
+});
+
 // ── The workspace-scoped read (R7) ──────────────────────────────────────────
 // getDecisionHistory above answers "what did we say about THESE campaigns".
 // This one answers "what has Lumi decided lately, anywhere in this workspace" —
@@ -151,15 +169,29 @@ const stated = (d) => ({
  * would under-report every campaign with a long history, which is the quiet
  * kind of wrong this surface exists to avoid.
  *
+ * TWO ANSWERS, because the map alone cannot carry both (C-03). `byEntityId`
+ * is the history; `status` is whether the read happened at all. They are not
+ * derivable from each other: an empty map is the correct result of a workspace
+ * that has judged nothing AND of a read that failed, and until this function
+ * said which, every consumer downstream rendered a coin flip as a fact about
+ * the campaign.
+ *
  * @param {string} workspaceId
  * @param {string[]} entityIds — campaign entity ids from the live feed
- * @returns {Promise<Map<string, {count:number, items:object[]}>>}
+ * @returns {Promise<{status:string, byEntityId:Map<string, {count:number, items:object[]}>}>}
  *   Entities with no history are ABSENT from the map, not present with zero:
  *   the caller turns absence into an honest empty state, and a fabricated zero
- *   would be indistinguishable from a real one.
+ *   would be indistinguishable from a real one. That absence is only readable
+ *   as "no history" under status OK — under HISTORY_UNAVAILABLE the map is
+ *   empty because we never got an answer, which is a different sentence.
  */
 export async function getDecisionHistory(workspaceId, entityIds = []) {
-  if (!workspaceId || !Array.isArray(entityIds) || entityIds.length === 0) return new Map();
+  // OK, not HISTORY_UNAVAILABLE. Nothing failed here — nothing was asked. A
+  // guard that reported an outage would put one on every screen that
+  // legitimately has no entities to look up.
+  if (!workspaceId || !Array.isArray(entityIds) || entityIds.length === 0) {
+    return { status: HISTORY_STATUS.OK, byEntityId: new Map() };
+  }
 
   const where = {
     workspaceId,
@@ -194,11 +226,16 @@ export async function getDecisionHistory(workspaceId, entityIds = []) {
       if (bucket.items.length < HISTORY_LIMIT) bucket.items.push(stated(d));
       map.set(d.entityId, bucket);
     }
-    return map;
+    return { status: HISTORY_STATUS.OK, byEntityId: map };
   } catch (err) {
     // History is context, not the call. Losing it must not take the verdict feed
-    // with it — the panel simply shows no memory section.
+    // with it — so this still does not throw.
+    //
+    // What it no longer does is stay quiet about WHY the map is empty. The
+    // empty map used to be the entire answer, and it read downstream as "this
+    // campaign has never been judged" — a statement about the account, made at
+    // the one moment we had no basis for any statement about it at all.
     logger.debug({ err: err.message, workspaceId }, '[decisionHistory] read failed');
-    return new Map();
+    return { status: HISTORY_STATUS.HISTORY_UNAVAILABLE, byEntityId: new Map() };
   }
 }

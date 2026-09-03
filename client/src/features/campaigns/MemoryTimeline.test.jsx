@@ -84,6 +84,44 @@ describe('what it refuses to render', () => {
   });
 });
 
+// ============================================================
+// C-03 — the unavailable state
+// ============================================================
+// The renderer stays vocabulary-free: the sentence arrives already worded, the
+// way verdict, action and outcome do. What it owns is the SHAPE — that an
+// unreadable history prints a notice and never a number.
+describe('C-03 · when the history could not be read', () => {
+  const NOTICE = 'Decision history could not be loaded';
+  const unavailable = { unavailable: true, notice: NOTICE };
+
+  it('renders the notice under the Memory heading', () => {
+    render(<MemoryTimeline viewModel={unavailable} />);
+    expect(screen.getByText('Memory')).toBeInTheDocument();
+    expect(screen.getByText(NOTICE)).toBeInTheDocument();
+  });
+
+  // THE POINT. Any count would say we counted; a zero would say we looked and
+  // found none. Both are claims about the campaign, made when the only thing we
+  // know is a fact about ourselves.
+  it('prints no count, and above all no zero', () => {
+    const { container } = render(<MemoryTimeline viewModel={unavailable} />);
+    expect(screen.queryByText(/Seen/)).not.toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/\d/);
+  });
+
+  it('takes the sentence from the view model, never from itself', () => {
+    render(<MemoryTimeline viewModel={{ unavailable: true, notice: 'Custom wording' }} />);
+    expect(screen.getByText('Custom wording')).toBeInTheDocument();
+  });
+
+  // Unchanged, and deliberately: no view model at all is still nothing at all.
+  // That is the OK-with-no-history case, silent by ruling.
+  it('still renders nothing for a null view model', () => {
+    const { container } = render(<MemoryTimeline viewModel={null} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+});
+
 describe('it holds no vocabulary, no state, and no data access', () => {
   it('renders whatever labels the view model carries', () => {
     render(<MemoryTimeline viewModel={vm({

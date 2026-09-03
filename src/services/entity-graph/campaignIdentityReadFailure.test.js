@@ -43,7 +43,12 @@ vi.mock('../pattern-engine/institutionalMemory.js', async (importOriginal) => {
   const mod = await importOriginal();
   return { ...mod, getInstitutionalMemory: vi.fn(async () => ({ status: 'NO_VALIDATED_MEMORY', records: [] })) };
 });
-vi.mock('../decision-memory/index.js', () => ({ getDecisionHistory: vi.fn(async () => []) }));
+// C-03 — the real shape: the history AND whether it could be read. Kept exact
+// rather than loosened; a mock that still answered with a bare collection would
+// let this suite pass over a service contract that no longer exists.
+vi.mock('../decision-memory/index.js', () => ({
+  getDecisionHistory: vi.fn(async () => ({ status: 'OK', byEntityId: new Map() })),
+}));
 
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';

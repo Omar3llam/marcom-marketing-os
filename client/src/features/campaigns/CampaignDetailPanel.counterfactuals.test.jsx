@@ -529,6 +529,39 @@ describe('memory never edits the current call', () => {
   });
 });
 
+// ============================================================
+// C-03 — the panel can tell the two absences apart
+// ============================================================
+// The two tests directly above are the whole reason this slice exists: every
+// one of them passed when the history read had FAILED, because a failure and a
+// first-ever judgement arrived at this component as the same `null`.
+describe('C-03 · memory availability reaches the panel', () => {
+  it('says so when the history could not be read', () => {
+    panel({ hypotheses: HYPOTHESES, memory: null, memoryStatus: 'HISTORY_UNAVAILABLE' });
+    expect(screen.getByText('Memory')).toBeInTheDocument();
+    expect(screen.getByText(/could not be loaded/i)).toBeInTheDocument();
+    // Never a count, and never the zero that would claim we looked.
+    expect(screen.queryByText(/Seen/)).not.toBeInTheDocument();
+  });
+
+  it('stays silent when the read succeeded and found nothing — the ruling', () => {
+    panel({ hypotheses: HYPOTHESES, memory: null, memoryStatus: 'OK' });
+    expect(screen.queryByText('Memory')).not.toBeInTheDocument();
+  });
+
+  // An unavailable history is context we lost, not a verdict we changed. The
+  // rest of the panel must read exactly as it does with no history at all.
+  it('changes nothing else on the panel', () => {
+    const silent = panel({ hypotheses: HYPOTHESES, memory: null, memoryStatus: 'OK' });
+    const before = silent.container.textContent;
+    silent.unmount();
+
+    const noticed = panel({ hypotheses: HYPOTHESES, memory: null, memoryStatus: 'HISTORY_UNAVAILABLE' });
+    const after = noticed.container.textContent.replace(/Memory.*?(?=Next step:)/s, '');
+    expect(after).toBe(before);
+  });
+});
+
 describe('no reasoning to show', () => {
   it('renders no Reasoning section at all when neither half has anything', () => {
     panel({ hypotheses: null, counterfactuals: null });

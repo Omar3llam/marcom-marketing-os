@@ -204,6 +204,10 @@ export function CampaignDetailPanel({
   funnel = null, rootCause = null, dataConfidence = null, signalConfidence = null,
   counterfactuals = null, hypotheses = null, relativeRank = null,
   relativeContext = null, memory = null,
+  // C-03 — whether `memory` being null means "we have never judged this
+  // campaign" or "we could not read its history". They render differently
+  // because they are different sentences, and one of them is about us.
+  memoryStatus = null,
   // What the STORED decision was looking at (R5). null on every decision made
   // before provenance was captured, and on campaigns with no stored decision at
   // all — the block below renders nothing rather than implying an absence of
@@ -310,7 +314,7 @@ export function CampaignDetailPanel({
   // for TODAY'S verdict, and a past KILL is not evidence for the current one.
   // Filing history under "Reasoning" would invite exactly that reading, and it
   // would also let the toggle hide it.
-  const memoryVM = buildMemoryTimelineViewModel(memory);
+  const memoryVM = buildMemoryTimelineViewModel(memory, memoryStatus);
 
   // UNCHANGED, deliberately. The obvious move is to suppress the prose clause
   // once the structured block renders — but they answer different questions.

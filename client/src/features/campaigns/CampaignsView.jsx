@@ -157,6 +157,10 @@ export default function CampaignsView() {
     verdicts: connectorVerdicts,
     gatedOut: connectorGatedOut,
     memory: connectorMemory,
+    // C-03 — one status for the whole history read, not one per campaign. A
+    // campaign missing from `connectorMemory` means "never judged" only while
+    // this says OK; under HISTORY_UNAVAILABLE it means we never got an answer.
+    memoryStatus: connectorMemoryStatus,
     refetch: refetchVerdicts,
   } = useConnectorVerdicts();
 
@@ -404,6 +408,10 @@ export default function CampaignsView() {
         // current call cannot edit each other. null the first time we judge a
         // campaign, which the panel renders as no Memory section at all.
         memory: connectorMemory?.[v.id] ?? null,
+        // Travels WITH the null above, because on its own that null is
+        // ambiguous — it is the value for a campaign we have never judged and
+        // for one whose history we could not read. Same map, opposite sentences.
+        memoryStatus: connectorMemoryStatus,
         // NOTE relativeRank is deliberately NOT here. It is already resolved
         // per-row in ConnectorCampaignsPanel from the `relativeRanks` map that
         // feeds the Impact badge; carrying a second copy would give the badge
@@ -411,7 +419,7 @@ export default function CampaignsView() {
       };
     }
     return m;
-  }, [connectorVerdicts, connectorMemory]);
+  }, [connectorVerdicts, connectorMemory, connectorMemoryStatus]);
 
   // No-revenue scored campaigns split by OBJECTIVE: awareness (no revenue by
   // design) vs a conversion campaign with a tracking gap. Lumping them as one
