@@ -51,6 +51,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { INTERVENED_WHERE } from '../execution/decisionProvenance.js';
+import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
 
 // How far back to look. Recent behaviour is the relevant behaviour.
 const DEFAULT_LIMIT = 20;
@@ -69,6 +70,12 @@ export const MIN_SAMPLE = 3;
  * both "nothing defensible to show". An error is not.
  */
 export const LEARNING_STATUS = Object.freeze({ UNAVAILABLE: 'UNAVAILABLE' });
+
+// C-06 — a one-value vocabulary, and the value is a statement about US.
+export const LEARNING_KNOWLEDGE = declareStatusVocabulary('LEARNING_STATUS', LEARNING_STATUS, {
+  [LEARNING_STATUS.UNAVAILABLE]: KNOWLEDGE.COULD_NOT_LOOK,
+});
+
 
 /**
  * Outcome tally for comparable past decisions, or null when there is no

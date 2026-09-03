@@ -12,10 +12,19 @@ import { logger } from '../../utils/logger.js';
 import {
   getAccuracy, recordOutcome, listPendingOutcomes, validateOutcomeBody, OUTCOME_ERROR,
 } from '../../services/decision-accuracy/DecisionAccuracyService.js';
-import { accuracySurface } from '../../services/decision-accuracy/accuracyTypes.js';
-import { readOutcomeEvidence, EVIDENCE_ERROR } from '../../services/decision-accuracy/outcomeEvidenceComparison.js';
+import { accuracySurface, LIFT_KNOWLEDGE } from '../../services/decision-accuracy/accuracyTypes.js';
+import { readOutcomeEvidence, EVIDENCE_ERROR, EVIDENCE_KNOWLEDGE } from '../../services/decision-accuracy/outcomeEvidenceComparison.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
+
+// C-06 — the surface's `status` is a LIFT_STATUS. Publish what it means as
+// knowledge beside it, and nothing at all when the surface carries no status
+// (the plan-gated branch), because there is no claim there to classify.
+const withLiftKnowledge = (surface) => {
+  const knowledge = LIFT_KNOWLEDGE.knowledgeOf(surface?.status);
+  return knowledge ? { ...surface, knowledge } : surface;
+};
+
 
 export const accuracyRouter = Router();
 
@@ -55,7 +64,7 @@ accuracyRouter.get('/accuracy', async (req, res) => {
     return res.json({
       workspaceId: wsId,
       generatedAt: new Date().toISOString(),
-      surface: accuracySurface(result),
+      surface: withLiftKnowledge(accuracySurface(result)),
       ...result,
     });
   } catch (err) {
@@ -103,7 +112,13 @@ accuracyRouter.get('/decisions/:id/outcome-evidence', requireOperator, async (re
   const wsId = await need(req, res); if (!wsId) return;
   try {
     const evidence = await readOutcomeEvidence(wsId, req.params.id);
-    return res.json({ workspaceId: wsId, ...evidence });
+    // C-06 — seven statuses, five knowledge tokens. The only vocabulary in the
+    // system that uses the whole language, published beside the status it
+    // classifies. `knowledgeOf` returns null for anything it does not
+    // recognise, and a null is spread away rather than published as a
+    // fabricated token.
+    const knowledge = EVIDENCE_KNOWLEDGE.knowledgeOf(evidence?.status);
+    return res.json({ workspaceId: wsId, ...evidence, ...(knowledge ? { knowledge } : {}) });
   } catch (err) {
     if (err.code === EVIDENCE_ERROR.DECISION_NOT_FOUND) {
       return res.status(404).json({ error: 'DecisionNotFound', message: err.message });

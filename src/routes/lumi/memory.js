@@ -14,7 +14,7 @@ import { readBriefing }    from '../../services/pattern-engine/PatternService.js
 import { requestPromotion, decidePromotion, revokePromotion, PROMOTION_STATE }
   from '../../services/pattern-engine/PromotionService.js';
 import { setConsent, getNetworkInsights } from '../../services/network-engine/NetworkService.js';
-import { NETWORK_STATUS }  from '../../services/network-engine/networkTypes.js';
+import { NETWORK_STATUS, NETWORK_KNOWLEDGE }  from '../../services/network-engine/networkTypes.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { requirePlan }        from '../../middleware/requirePlan.js';
 import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
@@ -68,7 +68,16 @@ memoryRouter.get('/briefing', async (req, res) => {
       return { status: NETWORK_STATUS.UNAVAILABLE };
     });
 
-    return res.json({ workspaceId: wsId, generatedAt: new Date().toISOString(), ...briefing, network });
+    // C-06 — NOT_CONSENTED is CANNOT_ASK, INSUFFICIENT_DATA is NOT_ENOUGH and
+    // UNAVAILABLE is COULD_NOT_LOOK. The three that R10 (F4) fought to keep
+    // apart stay apart in the shared language too: three values, three tokens.
+    const networkKnowledge = NETWORK_KNOWLEDGE.knowledgeOf(network?.status);
+    return res.json({
+      workspaceId: wsId,
+      generatedAt: new Date().toISOString(),
+      ...briefing,
+      network: networkKnowledge ? { ...network, knowledge: networkKnowledge } : network,
+    });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/memory] briefing failed');
     return res.status(500).json({ error: 'BriefingUnavailable', message: 'Request failed' });

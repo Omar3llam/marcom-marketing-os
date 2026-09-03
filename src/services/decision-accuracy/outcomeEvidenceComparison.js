@@ -45,6 +45,7 @@ import { ENTITY_LEVEL } from '../connectors/connectorTypes.js';
 import { resolve as resolveConnector } from '../connectors/connectorRegistry.js';
 import { interventionAt, PROVENANCE_SELECT } from '../execution/decisionProvenance.js';
 import { comparisonWindows, COMPARISON_WINDOW_DAYS } from './comparisonWindow.js';
+import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
 
 /**
  * What the evidence read could establish. Seven states, and the four that mean
@@ -67,6 +68,29 @@ export const EVIDENCE_STATUS = Object.freeze({
   UNSUPPORTED:           'UNSUPPORTED',           // no daily population can answer this decision
   UNAVAILABLE:           'UNAVAILABLE',           // the read itself failed
 });
+
+// C-06 — the seven values are FIVE knowledge tokens: the only vocabulary in
+// the system that uses the whole language, and the reason B6-01 named this
+// surface the template for the canonical view model. MODULE-QUALIFIED for the
+// collision with attributionTypes.js's two-value EVIDENCE_STATUS, which C-06
+// records and does not resolve.
+//
+// AMBIGUOUS is NOT_ENOUGH, not COULD_NOT_LOOK — the read succeeded and returned
+// rows; they simply do not reduce to one reading. NOT_MEASURABLE and
+// UNSUPPORTED are CANNOT_ASK: the question does not apply to these windows, or
+// to this decision at all.
+export const EVIDENCE_KNOWLEDGE = declareStatusVocabulary(
+  'outcome-evidence/EVIDENCE_STATUS', EVIDENCE_STATUS, {
+    [EVIDENCE_STATUS.MEASURABLE]:            KNOWLEDGE.KNOWN,
+    [EVIDENCE_STATUS.NOT_OBSERVED]:          KNOWLEDGE.NOTHING_THERE,
+    [EVIDENCE_STATUS.AMBIGUOUS]:             KNOWLEDGE.NOT_ENOUGH,
+    [EVIDENCE_STATUS.NOT_MEASURABLE]:        KNOWLEDGE.CANNOT_ASK,
+    [EVIDENCE_STATUS.INSUFFICIENT_COVERAGE]: KNOWLEDGE.NOT_ENOUGH,
+    [EVIDENCE_STATUS.UNSUPPORTED]:           KNOWLEDGE.CANNOT_ASK,
+    [EVIDENCE_STATUS.UNAVAILABLE]:           KNOWLEDGE.COULD_NOT_LOOK,
+  },
+);
+
 
 /**
  * WHY a decision has no daily population. Named because "unsupported" alone

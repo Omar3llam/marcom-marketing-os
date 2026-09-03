@@ -11,6 +11,7 @@
 //   - TransitionActor enum (matches Prisma)
 //   - Timeout policy + overage detection
 //   - Reconciliation payload contract
+//   - Epistemic status tokens + vocabulary declarations (C-06)
 //
 // What does NOT live here:
 //   - Date-arithmetic helpers tied to a specific runtime (e.g. retry
@@ -51,3 +52,10 @@ export {
   validateReconciliationPayload,
   createReconciliationPayload,
 } from './reconciliation.js';
+
+export {
+  KNOWLEDGE,
+  KNOWLEDGE_VALUES,
+  declareStatusVocabulary,
+  VocabularyDeclarationError,
+} from './epistemicStatus.js';

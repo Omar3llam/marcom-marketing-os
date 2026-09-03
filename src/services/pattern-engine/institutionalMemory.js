@@ -52,12 +52,23 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { PATTERN_STATUS, MIN_PATTERN_ACCURACY } from './patternTypes.js';
+import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
 
 export const MEMORY_STATUS = Object.freeze({
   OK:                  'OK',                  // validated patterns exist and are stated
   NO_VALIDATED_MEMORY: 'NO_VALIDATED_MEMORY', // we looked; this account has none yet
   MEMORY_UNAVAILABLE:  'MEMORY_UNAVAILABLE',  // we could not look
 });
+
+// C-06 — the three-way split this vocabulary invented, said in the shared
+// language. NO_VALIDATED_MEMORY is NOTHING_THERE, not COULD_NOT_LOOK: we
+// looked, and this account has learned nothing yet. That is a finding.
+export const MEMORY_KNOWLEDGE = declareStatusVocabulary('MEMORY_STATUS', MEMORY_STATUS, {
+  [MEMORY_STATUS.OK]:                  KNOWLEDGE.KNOWN,
+  [MEMORY_STATUS.NO_VALIDATED_MEMORY]: KNOWLEDGE.NOTHING_THERE,
+  [MEMORY_STATUS.MEMORY_UNAVAILABLE]:  KNOWLEDGE.COULD_NOT_LOOK,
+});
+
 
 // How far confidence may move on validated history, in either direction.
 //

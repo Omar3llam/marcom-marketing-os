@@ -11,6 +11,7 @@ import { logger } from '../../utils/logger.js';
 import { isStale } from '../../services/connectors/connectorTypes.js';
 import {
   connectionOf, availabilityOf, completenessOf, readinessOf, capabilitiesOf,
+  AVAILABILITY_KNOWLEDGE, COMPLETENESS_KNOWLEDGE, READINESS_KNOWLEDGE,
 } from '../../services/connectors/connectorReadiness.js';
 import { listConnections, updateCredentialAccount } from '../../services/connectors/credentialStore.js';
 import { runConnectorSync } from '../../services/connectors/ConnectorSyncService.js';
@@ -66,13 +67,20 @@ connectionsRouter.get('/connections', async (req, res) => {
         // no confidence and no evidence read consults any of it.
         connection:   connectionOf(c),
         availability: availabilityOf(c.health),
+        // C-06 — what each axis means as KNOWLEDGE, published as its own
+        // sibling so the axes are never folded into one badge. CONNECTION has
+        // no sibling: every value of it is a fact about a credential row, not a
+        // statement about what we could find out.
+        availabilityKnowledge: AVAILABILITY_KNOWLEDGE.knowledgeOf(availabilityOf(c.health)),
         // The axis the account owner was the one person not told about: a
         // successful-but-short sync is recorded on every run and, until C-04,
         // was visible only in the admin drill-down.
         completeness: completenessOf(c.health),
+        completenessKnowledge: COMPLETENESS_KNOWLEDGE.knowledgeOf(completenessOf(c.health)),
         // Three states, so "never synced" stops being reported as "stale" — a
         // word that claims we used to have data and it aged.
         readiness:    readinessOf(c.health, now),
+        readinessKnowledge: READINESS_KNOWLEDGE.knowledgeOf(readinessOf(c.health, now)),
         // One line per capability, never a single verdict for the source.
         capabilities: capabilitiesOf(c.platform, c.health),
       };

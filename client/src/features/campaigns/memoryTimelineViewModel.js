@@ -20,6 +20,8 @@
 // turn "we looked and could not tell" into "we never looked".
 // ============================================================
 
+import { KNOWLEDGE } from '@marcom/runtime-contracts';
+
 /** The engine's resolution enum → what a marketer can read. */
 const RESOLUTION_LABELS = Object.freeze({
   IMPROVED:  'Improved after',
@@ -56,6 +58,12 @@ function actionLabel(item) {
 // The status the server publishes for the history read as a whole. Only the
 // failure case is named here: every other value, including a missing one, means
 // the read happened, and this file has nothing to add to what it returned.
+//
+// C-06 — kept as a FALLBACK, not as the primary test. A payload that predates
+// the knowledge token still carries the status, and dropping this branch would
+// silently stop honouring it. The token is preferred when present, so this file
+// no longer has to know that THIS vocabulary spells "we could not look" that
+// way — the next vocabulary spells it differently and means the same thing.
 const HISTORY_UNAVAILABLE = 'HISTORY_UNAVAILABLE';
 
 // Worded here rather than in the renderer, like RESOLUTION_LABELS above — the
@@ -70,6 +78,9 @@ const UNAVAILABLE_NOTICE = 'Decision history could not be loaded';
  * @param {{count:number, items:Array}|null|undefined} memory
  * @param {string|null} [historyStatus] — HISTORY_UNAVAILABLE when the read
  *   failed; anything else (including absent) means it succeeded.
+ * @param {string|null} [historyKnowledge] — the C-06 token for that status.
+ *   COULD_NOT_LOOK is the only one this file acts on; every other token, and an
+ *   absent one, means the read happened.
  * @returns {{count:number, items:Array}|{unavailable:true, notice:string}|null}
  *   null when there is no history to show — which the renderer turns into
  *   nothing at all, not into "Seen 0 times". A campaign we have never judged has
@@ -81,12 +92,17 @@ const UNAVAILABLE_NOTICE = 'Decision history could not be loaded';
  *   one appearance — not to fill the empty case with a sentence, which stays
  *   silent by ruling.
  */
-export function buildMemoryTimelineViewModel(memory, historyStatus = null) {
+export function buildMemoryTimelineViewModel(memory, historyStatus = null, historyKnowledge = null) {
   // Checked FIRST, and ahead of any rows. Structurally the service returns no
   // rows when the read failed, so the two cannot disagree today — but if they
   // ever did, a timeline rendered under a status saying we could not read it
   // would be asserting a history we have no basis for.
-  if (historyStatus === HISTORY_UNAVAILABLE) {
+  //
+  // C-06 — the TOKEN decides, and the raw status is the fallback for a payload
+  // that predates it. Written this way round on purpose: the next surface that
+  // needs "we could not look" should reach for the token and never learn a
+  // second module's spelling of it.
+  if (historyKnowledge === KNOWLEDGE.COULD_NOT_LOOK || historyStatus === HISTORY_UNAVAILABLE) {
     // No count and no items, deliberately: a number here would say we counted.
     return { unavailable: true, notice: UNAVAILABLE_NOTICE };
   }

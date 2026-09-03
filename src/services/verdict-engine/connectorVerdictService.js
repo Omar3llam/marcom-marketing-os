@@ -32,7 +32,7 @@ import { applyRelativeRanking }  from './relativeRanking.js';
 import { daysSince }             from './confidenceEngine.js';
 import { isSubstantive }         from './counterfactualEngine.js';
 import { connectorDecisionScope } from './decisionIdentity.js';
-import { getDecisionHistory }    from '../decision-memory/index.js';
+import { getDecisionHistory, HISTORY_KNOWLEDGE } from '../decision-memory/index.js';
 import {
   getInstitutionalMemory, selectRelevantMemory, memoryConfidenceFactor, applyMemoryToConfidence,
 } from '../pattern-engine/institutionalMemory.js';
@@ -707,6 +707,11 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
     // validated PATTERNS, a different table answering a different question.
     // This one is the status of `memoryByEntityId`, the past DECISIONS.
     decisionHistoryStatus: history.status,
+    // C-06 — the same fact in the SHARED language, published beside the domain
+    // status rather than instead of it. A client can act on the class of the
+    // absence (COULD_NOT_LOOK) without knowing this module's dialect, and the
+    // dialect stays for anyone who needs to know WHICH read failed.
+    decisionHistoryKnowledge: HISTORY_KNOWLEDGE.knowledgeOf(history.status),
     // UNTOUCHED, deliberately. This describes workspace / verdict-feed
     // readiness. Folding a memory-subsection failure into it would report the
     // whole feed as degraded when the verdicts are intact — trading the defect

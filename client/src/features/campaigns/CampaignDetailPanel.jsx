@@ -207,7 +207,11 @@ export function CampaignDetailPanel({
   // C-03 — whether `memory` being null means "we have never judged this
   // campaign" or "we could not read its history". They render differently
   // because they are different sentences, and one of them is about us.
-  memoryStatus = null,
+  //
+  // C-06 — the server's full name, kept. `decisionHistoryKnowledge` is the
+  // same fact in the shared language and is what the view model reads.
+  decisionHistoryStatus = null,
+  decisionHistoryKnowledge = null,
   // What the STORED decision was looking at (R5). null on every decision made
   // before provenance was captured, and on campaigns with no stored decision at
   // all — the block below renders nothing rather than implying an absence of
@@ -314,7 +318,7 @@ export function CampaignDetailPanel({
   // for TODAY'S verdict, and a past KILL is not evidence for the current one.
   // Filing history under "Reasoning" would invite exactly that reading, and it
   // would also let the toggle hide it.
-  const memoryVM = buildMemoryTimelineViewModel(memory, memoryStatus);
+  const memoryVM = buildMemoryTimelineViewModel(memory, decisionHistoryStatus, decisionHistoryKnowledge);
 
   // UNCHANGED, deliberately. The obvious move is to suppress the prose clause
   // once the structured block renders — but they answer different questions.

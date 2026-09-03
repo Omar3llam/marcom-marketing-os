@@ -12,6 +12,8 @@
 // path data). Our causal model is INCREMENTALITY_WEIGHTED: credit weighted
 // by MEASURED holdout lift. Calling it DATA_DRIVEN would itself be a quiet
 // lie, so we don't.
+import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
+
 export const ATTRIBUTION_MODEL = Object.freeze({
   FIRST_TOUCH:            'FIRST_TOUCH',
   LAST_TOUCH:             'LAST_TOUCH',
@@ -53,8 +55,29 @@ export const ATTRIBUTION_STATUS = Object.freeze({
   EVIDENCE_UNAVAILABLE: 'EVIDENCE_UNAVAILABLE',
 });
 
+// C-06 — INSUFFICIENT_DATA is NOT_ENOUGH (we read it; it does not suffice) and
+// EVIDENCE_UNAVAILABLE is COULD_NOT_LOOK. Two absences, two different fixes.
+export const ATTRIBUTION_KNOWLEDGE = declareStatusVocabulary('ATTRIBUTION_STATUS', ATTRIBUTION_STATUS, {
+  [ATTRIBUTION_STATUS.OK]:                   KNOWLEDGE.KNOWN,
+  [ATTRIBUTION_STATUS.INSUFFICIENT_DATA]:    KNOWLEDGE.NOT_ENOUGH,
+  [ATTRIBUTION_STATUS.EVIDENCE_UNAVAILABLE]: KNOWLEDGE.COULD_NOT_LOOK,
+});
+
+
 /** Per-source evidence health, carried alongside the result. */
 export const EVIDENCE_STATUS = Object.freeze({ OK: 'OK', UNAVAILABLE: 'UNAVAILABLE' });
+
+// C-06 — registered under a MODULE-QUALIFIED key. `EVIDENCE_STATUS` is defined
+// twice on trunk: here with two values, and in outcomeEvidenceComparison.js
+// with seven. Resolving that collision is deliberately NOT in C-06's scope, so
+// the registry records it rather than pretending the two are one vocabulary.
+export const ATTRIBUTION_EVIDENCE_KNOWLEDGE = declareStatusVocabulary(
+  'attribution/EVIDENCE_STATUS', EVIDENCE_STATUS, {
+    [EVIDENCE_STATUS.OK]:          KNOWLEDGE.KNOWN,
+    [EVIDENCE_STATUS.UNAVAILABLE]: KNOWLEDGE.COULD_NOT_LOOK,
+  },
+);
+
 
 /** WHICH read failed — named, because "attribution unavailable" pointed at the
  *  wrong half of the problem is worse than silence. */

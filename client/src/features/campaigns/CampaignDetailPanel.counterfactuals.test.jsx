@@ -537,7 +537,7 @@ describe('memory never edits the current call', () => {
 // first-ever judgement arrived at this component as the same `null`.
 describe('C-03 · memory availability reaches the panel', () => {
   it('says so when the history could not be read', () => {
-    panel({ hypotheses: HYPOTHESES, memory: null, memoryStatus: 'HISTORY_UNAVAILABLE' });
+    panel({ hypotheses: HYPOTHESES, memory: null, decisionHistoryStatus: 'HISTORY_UNAVAILABLE' });
     expect(screen.getByText('Memory')).toBeInTheDocument();
     expect(screen.getByText(/could not be loaded/i)).toBeInTheDocument();
     // Never a count, and never the zero that would claim we looked.
@@ -545,18 +545,18 @@ describe('C-03 · memory availability reaches the panel', () => {
   });
 
   it('stays silent when the read succeeded and found nothing — the ruling', () => {
-    panel({ hypotheses: HYPOTHESES, memory: null, memoryStatus: 'OK' });
+    panel({ hypotheses: HYPOTHESES, memory: null, decisionHistoryStatus: 'OK' });
     expect(screen.queryByText('Memory')).not.toBeInTheDocument();
   });
 
   // An unavailable history is context we lost, not a verdict we changed. The
   // rest of the panel must read exactly as it does with no history at all.
   it('changes nothing else on the panel', () => {
-    const silent = panel({ hypotheses: HYPOTHESES, memory: null, memoryStatus: 'OK' });
+    const silent = panel({ hypotheses: HYPOTHESES, memory: null, decisionHistoryStatus: 'OK' });
     const before = silent.container.textContent;
     silent.unmount();
 
-    const noticed = panel({ hypotheses: HYPOTHESES, memory: null, memoryStatus: 'HISTORY_UNAVAILABLE' });
+    const noticed = panel({ hypotheses: HYPOTHESES, memory: null, decisionHistoryStatus: 'HISTORY_UNAVAILABLE' });
     const after = noticed.container.textContent.replace(/Memory.*?(?=Next step:)/s, '');
     expect(after).toBe(before);
   });

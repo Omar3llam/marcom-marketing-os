@@ -21,6 +21,8 @@
 // ============================================================
 
 // ── Enums ────────────────────────────────────────────────────────
+import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
+
 export const COVERAGE_VERDICT = Object.freeze({
   RELIABLE:          'RELIABLE',
   THIN:              'THIN',
@@ -33,6 +35,16 @@ export const LIFT_STATUS = Object.freeze({
   DEGRADING:         'DEGRADING',
   INSUFFICIENT_DATA: 'INSUFFICIENT_DATA',
 });
+
+// C-06 — DEGRADING is KNOWN. The token classifies whether the claim can be
+// made, never whether the claim is good news.
+export const LIFT_KNOWLEDGE = declareStatusVocabulary('LIFT_STATUS', LIFT_STATUS, {
+  [LIFT_STATUS.IMPROVING]:         KNOWLEDGE.KNOWN,
+  [LIFT_STATUS.FLAT]:              KNOWLEDGE.KNOWN,
+  [LIFT_STATUS.DEGRADING]:         KNOWLEDGE.KNOWN,
+  [LIFT_STATUS.INSUFFICIENT_DATA]: KNOWLEDGE.NOT_ENOUGH,
+});
+
 
 export const CALIBRATION_DIRECTION = Object.freeze({
   OVERCONFIDENT:  'OVERCONFIDENT',

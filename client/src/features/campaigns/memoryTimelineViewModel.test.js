@@ -217,3 +217,37 @@ describe('C-03 · history availability', () => {
     expect(vm.items).toHaveLength(1);
   });
 });
+
+// ── C-06 · the view model reads the TOKEN, not one vocabulary's spelling ────
+describe('buildMemoryTimelineViewModel · epistemic knowledge (C-06)', () => {
+  it('renders the unavailable notice from the token alone', () => {
+    // No HISTORY_UNAVAILABLE anywhere: only the shared token. This is the whole
+    // point of C-06 — a surface can honour "we could not look" without knowing
+    // which module's dialect produced it.
+    const vm = buildMemoryTimelineViewModel(null, 'SOME_OTHER_DIALECT', 'COULD_NOT_LOOK');
+    expect(vm).toEqual({ unavailable: true, notice: expect.any(String) });
+  });
+
+  it('still honours the raw status when no token is present', () => {
+    // A payload that predates the token must keep behaving as it did.
+    const vm = buildMemoryTimelineViewModel(null, 'HISTORY_UNAVAILABLE', null);
+    expect(vm).toEqual({ unavailable: true, notice: expect.any(String) });
+  });
+
+  it('stays silent for every other token — absence is not a failure', () => {
+    // NOTHING_THERE and KNOWN both mean the read happened. Rendering a notice
+    // for them would tell the user we failed when we did not.
+    for (const token of ['KNOWN', 'NOTHING_THERE', 'NOT_ENOUGH', 'CANNOT_ASK']) {
+      expect(buildMemoryTimelineViewModel(null, 'OK', token)).toBeNull();
+    }
+  });
+
+  it('a token saying we could not look outranks rows that arrived anyway', () => {
+    // The two cannot disagree today. If they ever do, a timeline rendered under
+    // "we could not read this" would assert a history we have no basis for.
+    const memory = { count: 2, items: [{ id: 'd1', verdict: 'KILL', createdAt: '2026-08-08T00:00:00Z' }] };
+    const vm = buildMemoryTimelineViewModel(memory, 'OK', 'COULD_NOT_LOOK');
+    expect(vm.unavailable).toBe(true);
+    expect(vm.count).toBeUndefined();
+  });
+});
