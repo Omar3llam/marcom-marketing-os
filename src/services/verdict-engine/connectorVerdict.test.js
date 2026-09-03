@@ -3,6 +3,7 @@ import {
   buildConnectorVerdictTree, hasMeasuredRevenue, hasEngagement,
   isAwarenessObjective, revenueExpectedFor, needsRevenueData,
 } from './connectorVerdictService.js';
+import { GATING_REASON } from '@marcom/runtime-contracts';
 import { rollupVerdicts } from './verdictEngine.js';
 
 const WS = '7517d1b9-b967-44f3-a77f-60f5c577f867';
@@ -63,7 +64,10 @@ describe('buildConnectorVerdictTree', () => {
     ]);
     expect(tree.children.map((c) => c.id).sort()).toEqual(['a', 'b']);
     expect(gatedOut.map((g) => g.id)).toEqual(['d']);
-    expect(gatedOut[0].reason).toBe('no measured revenue or engagement');
+    // C-07 — this line used to pin the English sentence the producer emitted,
+    // which is how display text stayed on a domain wire long enough for the
+    // client to substitute a sentence of its own for all three gates.
+    expect(gatedOut[0].reason).toBe(GATING_REASON.NO_MEASURABLE_DELIVERY);
   });
 
   it('feeds the engine RAW metrics (revenue/impressions/clicks), never zero-filled', () => {

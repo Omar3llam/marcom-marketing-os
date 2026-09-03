@@ -12,6 +12,7 @@
 //   - Timeout policy + overage detection
 //   - Reconciliation payload contract
 //   - Epistemic status tokens + vocabulary declarations (C-06)
+//   - Gating reasons + their prerequisites (C-07)
 //
 // What does NOT live here:
 //   - Date-arithmetic helpers tied to a specific runtime (e.g. retry
@@ -59,3 +60,18 @@ export {
   declareStatusVocabulary,
   VocabularyDeclarationError,
 } from './epistemicStatus.js';
+
+export {
+  GATING_REASON,
+  GATING_REASON_VALUES,
+  PREREQUISITE,
+  PREREQUISITE_VALUES,
+  GATING_REASONS,
+  declareGatingReasons,
+  isGatingReason,
+  knowledgeOfGatingReason,
+  prerequisiteOfGatingReason,
+  withGatingKnowledge,
+  GatingReasonDeclarationError,
+  UndeclaredGatingReasonError,
+} from './gatingReason.js';

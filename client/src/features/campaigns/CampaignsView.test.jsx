@@ -137,3 +137,41 @@ describe('CampaignsView — KPI strip uses the currency exponent, never /100', (
     expect(screen.queryByText(/١٤٬١٦٠/)).not.toBeInTheDocument();   // the /100 answer, 10x over
   });
 });
+
+// ── C-07 · test 8 — the gated banner speaks per reason ──────────────────────
+describe('CampaignsView — gated campaigns name their own reason', () => {
+  it('renders one line per reason, and no single "need revenue data" count', () => {
+    // Before C-07 this banner read "3 connected campaigns need revenue data
+    // before they can be scored" for exactly this population — true for one of
+    // the three, and an instruction that would waste the operator's time on the
+    // other two, whose fix is a sync.
+    useConnectorVerdicts.mockReturnValue({
+      verdicts: [],
+      gatedOut: [
+        { id: 'd', name: 'Dataless', reason: 'NO_MEASURABLE_DELIVERY' },
+        { id: 'n', name: 'Never', reason: 'NO_CANONICAL_WINDOW' },
+        { id: 's', name: 'Stale', reason: 'CANONICAL_EVIDENCE_STALE', measurementAgeDays: 42, maxAgeDays: 3 },
+      ],
+      refetch: vi.fn(),
+    });
+    renderView();
+
+    expect(screen.getByText(/with no measurable delivery/)).toBeInTheDocument();
+    expect(screen.getByText(/never measured over the verdict window/)).toBeInTheDocument();
+    expect(screen.getByText(/measured too long ago to score today/)).toBeInTheDocument();
+    expect(screen.queryByText(/3 connected campaigns need revenue data/)).not.toBeInTheDocument();
+  });
+
+  it('says nothing about revenue for the two gates a sync fixes', () => {
+    useConnectorVerdicts.mockReturnValue({
+      verdicts: [],
+      gatedOut: [
+        { id: 'n', name: 'Never', reason: 'NO_CANONICAL_WINDOW' },
+        { id: 's', name: 'Stale', reason: 'CANONICAL_EVIDENCE_STALE', measurementAgeDays: 9, maxAgeDays: 3 },
+      ],
+      refetch: vi.fn(),
+    });
+    renderView();
+    expect(screen.queryByText(/need revenue data/)).not.toBeInTheDocument();
+  });
+});

@@ -33,6 +33,10 @@ import { daysSince }             from './confidenceEngine.js';
 import { isSubstantive }         from './counterfactualEngine.js';
 import { connectorDecisionScope } from './decisionIdentity.js';
 import { getDecisionHistory, HISTORY_KNOWLEDGE } from '../decision-memory/index.js';
+// C-07 — the reason a campaign has no verdict, and the prerequisite that would
+// give it one. Two orthogonal layers on one row: the C-06 token says what we
+// know, the reason says why, the prerequisite says what must happen.
+import { GATING_REASON, withGatingKnowledge } from '@marcom/runtime-contracts';
 import {
   getInstitutionalMemory, selectRelevantMemory, memoryConfidenceFactor, applyMemoryToConfidence,
 } from '../pattern-engine/institutionalMemory.js';
@@ -200,7 +204,12 @@ export function buildConnectorVerdictTree(workspaceId, campaigns = [], { now = D
         metrics: toLeafMetrics(c),
       });
     } else {
-      gatedOut.push({ id: c.entityId, name: c.name, reason: 'no measured revenue or engagement' });
+      // C-07 — a DOMAIN value, not display text. This shipped for years as the
+      // English sentence 'no measured revenue or engagement', which no consumer
+      // could branch on: the client dropped it at the door and printed a
+      // sentence of its own over all three gates, telling two thirds of gated
+      // campaigns to add revenue data when they needed a sync.
+      gatedOut.push({ id: c.entityId, name: c.name, reason: GATING_REASON.NO_MEASURABLE_DELIVERY });
     }
   }
   const tree = eligible.length
@@ -310,7 +319,20 @@ export async function evaluateConnectorVerdicts(workspaceId) {
   //                            Waits for a FRESH sync.
   // Same empty cell on screen, three different fixes, so collapsing any pair
   // would tell the operator the wrong story about their own account.
-  const gatedOut = [...dataless, ...noCanonicalWindow, ...staleEvidence];
+  //
+  // C-07 — THE ONE BOUNDARY WHERE THE THREE BECOME ONE LIST, and therefore the
+  // one place the contract belongs: every row leaving here names a DECLARED
+  // reason, the C-06 token for what we know, and the prerequisite that would
+  // open the road. Rows keep whatever else their producer supplied — the stale
+  // row's measurementAgeDays / windowEnd / maxAgeDays ride through untouched,
+  // because they are the facts a caller needs to explain the gate without
+  // recomputing it.
+  //
+  // An undeclared reason THROWS rather than publishing a row with no
+  // explanation. The producer set is closed and ratcheted, so the only way here
+  // with an unknown reason is a change that skipped the ruling — which CI fails
+  // before it can reach a request.
+  const gatedOut = [...dataless, ...noCanonicalWindow, ...staleEvidence].map(withGatingKnowledge);
 
   if (!tree) {
     const status = gatedOut.length ? 'NO_ELIGIBLE_CAMPAIGNS' : 'NO_CAMPAIGNS';

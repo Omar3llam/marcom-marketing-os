@@ -9,7 +9,9 @@
 // Honesty rules enforced here:
 //   • null health score → "— / 100" + neutral color (never green "null / 100")
 //   • all SIX engine verdicts counted, collapsed into 3 lanes that sum to 100%
-//   • gated (no-revenue) campaigns show "Add revenue data…", never a fake verdict
+//   • a GATED campaign shows the reason it was gated and the action that reason
+//     implies (C-07) — never a fake verdict, and never one instruction for the
+//     three different absences the engine distinguishes
 //   • spend is major-unit already (caller converts via fromMinor) → currency-safe
 //
 // Arabic: jsPDF ships no Unicode font, so we embed Noto Naskh Arabic (lazily, only
@@ -26,6 +28,7 @@
 // (tested below) never pulls the PDF engine or the font into the bundle/test.
 // ============================================================
 import { VERDICT_RANK } from './verdictRank.js';
+import { summarizeGatedOut } from '@/features/campaigns/gatingReasonCopy.js';
 
 // App design tokens (dark theme). Kept as hex; converted to rgb at draw time so
 // we never depend on a particular jsPDF hex-parsing behavior.
@@ -127,8 +130,29 @@ export const VERDICT_LANES = [
 ];
 
 /**
+ * The gated PDF rows, back in the shape summarizeGatedOut reads.
+ *
+ * buildPdfCampaigns flattens gatedOut onto its rows (so a row can render its own
+ * rationale); this rebuilds just enough of the original item — the reason and
+ * the stale row's operands — for the per-reason grouping. Nothing is recomputed
+ * and nothing is inferred: a row with no gatingReason was scored.
+ */
+export function gatedRowsOf(campaigns = []) {
+  return campaigns
+    .filter((c) => c.gatingReason != null)
+    .map((c) => ({
+      id: c.entityId,
+      name: c.campaign,
+      reason: c.gatingReason,
+      measurementAgeDays: c.measurementAgeDays ?? null,
+      maxAgeDays: c.maxAgeDays ?? null,
+    }));
+}
+
+/**
  * Verdict distribution over SCORED campaigns (a gated/null-verdict campaign is
- * not in the denominator — it's reported separately as "needs revenue data").
+ * not in the denominator — the gated rows are reported separately, grouped by
+ * the REASON each was gated).
  * All six verdicts land in exactly one lane, and the three integer percentages
  * always sum to 100 (the last lane absorbs the rounding remainder).
  * @returns {Array<{ key, label, colorKey, count, pct }>}
@@ -155,7 +179,7 @@ function verdictColor(v) {
 // ── MAIN: executive PDF ──────────────────────────────────────
 /**
  * @param {Object}  data
- * @param {Array}   data.campaigns   - PDF rows { campaign, verdict, rationale, spend(major|null), roas, ctr(%|null), currency, needsRevenue }
+ * @param {Array}   data.campaigns   - PDF rows { campaign, verdict, rationale, spend(major|null), roas, ctr(%|null), currency, gatingReason }
  * @param {number?} data.healthScore - 0..100 or null
  * @param {string?} data.healthLabel - engine label or null
  * @param {number?} data.wastedSpend - major-unit wasted budget or null
@@ -336,12 +360,18 @@ export async function generateCampaignReport({
     y += 8;
   });
 
-  const gatedCount = campaigns.filter((c) => c.needsRevenue).length;
-  if (gatedCount > 0) {
+  // C-07 — ONE LINE PER REASON. This was a single count under "N campaigns
+  // need revenue data to be scored", which is the wrong instruction for the
+  // campaigns waiting on a sync rather than on revenue.
+  const gatedGroups = summarizeGatedOut(gatedRowsOf(campaigns));
+  if (gatedGroups.length > 0) {
     doc.setFontSize(8);
     doc.setTextColor(...rgb(COLORS.muted));
-    doc.text(`${gatedCount} campaign${gatedCount === 1 ? '' : 's'} need revenue data to be scored.`, M, y);
-    y += 8;
+    gatedGroups.forEach((g) => {
+      doc.text(g.sentence, M, y);
+      y += 6;
+    });
+    y += 2;
   }
   y += 2;
 
@@ -458,7 +488,7 @@ export function generateTextReport({
   const currency = campaigns.find((c) => c.currency)?.currency || 'USD';
   const hd = healthDisplay(healthScore, healthLabel);
   const totalSpend = campaigns.reduce((s, c) => s + (c.spend ?? 0), 0);
-  const gatedCount = campaigns.filter((c) => c.needsRevenue).length;
+  const gatedGroups = summarizeGatedOut(gatedRowsOf(campaigns));
 
   const lines = [
     '='.repeat(60),
@@ -475,7 +505,7 @@ export function generateTextReport({
     '',
     'VERDICT DISTRIBUTION',
     ...buildVerdictLanes(campaigns).map((l) => `  ${l.label}: ${l.count} (${l.pct}%)`),
-    ...(gatedCount > 0 ? [`  Needs revenue data: ${gatedCount}`] : []),
+    ...gatedGroups.map((g) => `  Not scored — ${g.sentence}`),
     '',
     'CAMPAIGN DETAILS',
     '-'.repeat(60),

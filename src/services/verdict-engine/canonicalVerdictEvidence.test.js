@@ -31,6 +31,7 @@ import {
   CANONICAL_VERDICT_WINDOW, CANONICAL_VERDICT_WINDOW_FILTER, PLATFORM_VERDICT_SOURCES,
   CANONICAL_VERDICT_SELECT, NO_CANONICAL_WINDOW, CANONICAL_EVIDENCE_READ_FAILED,
 } from './canonicalVerdictEvidence.js';
+import { GATING_REASON } from '@marcom/runtime-contracts';
 import { MIN_DAYS } from './verdictEngine.js';
 import { getCanonicalVerdictCampaigns } from '../entity-graph/EntityGraphService.js';
 import { FATIGUE_FREQ } from './benchmarkProvider.js';
@@ -158,8 +159,11 @@ describe('missing canonical evidence is returned, not swallowed', () => {
   it('NO_CANONICAL_WINDOW is distinct from every "no data" reason', () => {
     expect(NO_CANONICAL_WINDOW).toBe('NO_CANONICAL_WINDOW');
     // The dataless reason buildConnectorVerdictTree emits for a campaign that WAS
-    // measured and delivered nothing. Same empty cell, opposite fix.
-    expect(NO_CANONICAL_WINDOW).not.toBe('no measured revenue or engagement');
+    // measured and delivered nothing. Same empty cell, opposite fix — and since
+    // C-07 both are members of one declared vocabulary, so the distinction is
+    // kept by the registry rather than by two unrelated string literals.
+    expect(NO_CANONICAL_WINDOW).not.toBe(GATING_REASON.NO_MEASURABLE_DELIVERY);
+    expect(NO_CANONICAL_WINDOW).toBe(GATING_REASON.NO_CANONICAL_WINDOW);
   });
 
   it('fabricates no metrics for a campaign without evidence', () => {
