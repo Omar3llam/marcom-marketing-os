@@ -42,6 +42,7 @@ import { CONNECTOR_STALE_HOURS } from './connectorTypes.js';
 import { DAILY_STATE } from './connectorConfig.js';
 import { resolve } from './connectorRegistry.js';
 import { EXECUTABLE_CHANNELS } from '../execution/decisionExecutability.js';
+import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
 
 /** Is there a live credential for this channel? */
 export const CONNECTION_STATE = Object.freeze({
@@ -56,6 +57,16 @@ export const AVAILABILITY_STATE = Object.freeze({
   NOT_RECORDED: 'NOT_RECORDED', // no attempt has ever been recorded
 });
 
+// C-06 — FAILING is KNOWN: we know the last attempt failed, and an operator can
+// act on that. NOT_RECORDED is COULD_NOT_LOOK: we hold no record to tell us,
+// which is the distinction C-04 was fought over and must not be re-collapsed.
+export const AVAILABILITY_KNOWLEDGE = declareStatusVocabulary('AVAILABILITY_STATE', AVAILABILITY_STATE, {
+  [AVAILABILITY_STATE.OK]:           KNOWLEDGE.KNOWN,
+  [AVAILABILITY_STATE.FAILING]:      KNOWLEDGE.KNOWN,
+  [AVAILABILITY_STATE.NOT_RECORDED]: KNOWLEDGE.COULD_NOT_LOOK,
+});
+
+
 /** Did the data that landed arrive whole? */
 export const COMPLETENESS_STATE = Object.freeze({
   COMPLETE:     'COMPLETE',     // a successful sync landed with no warning
@@ -63,12 +74,32 @@ export const COMPLETENESS_STATE = Object.freeze({
   NOT_RECORDED: 'NOT_RECORDED', // no successful sync to judge completeness of
 });
 
+// C-06 — INCOMPLETE is KNOWN, for the same reason FAILING is: the data landed
+// and we know it is short. Only NOT_RECORDED is a statement about our records.
+export const COMPLETENESS_KNOWLEDGE = declareStatusVocabulary('COMPLETENESS_STATE', COMPLETENESS_STATE, {
+  [COMPLETENESS_STATE.COMPLETE]:     KNOWLEDGE.KNOWN,
+  [COMPLETENESS_STATE.INCOMPLETE]:   KNOWLEDGE.KNOWN,
+  [COMPLETENESS_STATE.NOT_RECORDED]: KNOWLEDGE.COULD_NOT_LOOK,
+});
+
+
 /** How old is the last SUCCESS? Three states, never a boolean. */
 export const READINESS_STATE = Object.freeze({
   CURRENT:      'CURRENT',      // last success within CONNECTOR_STALE_HOURS
   STALE:        'STALE',        // we had data and it aged
   NEVER_SYNCED: 'NEVER_SYNCED', // we never had any
 });
+
+// C-06 — NEVER_SYNCED is NOTHING_THERE, NOT COULD_NOT_LOOK. We looked at what
+// we hold and there is nothing; that is a finding about the connector, not a
+// failure of ours. It is the exact counterpart to NOT_RECORDED above, and the
+// pair is why this axis needed three states instead of a boolean.
+export const READINESS_KNOWLEDGE = declareStatusVocabulary('READINESS_STATE', READINESS_STATE, {
+  [READINESS_STATE.CURRENT]:      KNOWLEDGE.KNOWN,
+  [READINESS_STATE.STALE]:        KNOWLEDGE.KNOWN,
+  [READINESS_STATE.NEVER_SYNCED]: KNOWLEDGE.NOTHING_THERE,
+});
+
 
 /** The capabilities that have a predicate in code. Not a wish list. */
 export const CAPABILITY = Object.freeze({
@@ -94,6 +125,21 @@ export const CAPABILITY_RUN = Object.freeze({
   NOT_RECORDED:   'NOT_RECORDED',
   NOT_APPLICABLE: 'NOT_APPLICABLE',
 });
+
+// C-06 — the widest epistemic vocabulary in the system: seven values, four
+// tokens. DISABLED / UNIMPLEMENTED / NOT_APPLICABLE are all CANNOT_ASK by three
+// different routes, and keeping the words apart is what lets a screen say which
+// one. NO_DATA is NOTHING_THERE — a measurement, as the comment above insists.
+export const CAPABILITY_RUN_KNOWLEDGE = declareStatusVocabulary('CAPABILITY_RUN', CAPABILITY_RUN, {
+  [CAPABILITY_RUN.DISABLED]:       KNOWLEDGE.CANNOT_ASK,
+  [CAPABILITY_RUN.UNIMPLEMENTED]:  KNOWLEDGE.CANNOT_ASK,
+  [CAPABILITY_RUN.NOT_APPLICABLE]: KNOWLEDGE.CANNOT_ASK,
+  [CAPABILITY_RUN.NO_DATA]:        KNOWLEDGE.NOTHING_THERE,
+  [CAPABILITY_RUN.SUCCESS]:        KNOWLEDGE.KNOWN,
+  [CAPABILITY_RUN.FAILED]:         KNOWLEDGE.COULD_NOT_LOOK,
+  [CAPABILITY_RUN.NOT_RECORDED]:   KNOWLEDGE.COULD_NOT_LOOK,
+});
+
 
 /**
  * Did the writer stamp this record at all?
@@ -219,11 +265,19 @@ export function capabilitiesOf(platform, health) {
       // the old rows do not carry the fact, and inventing one would be the
       // same class of claim as calling a failed read an empty result.
       lastRun:     stored[CAPABILITY.DAILY_OBSERVATIONS] ?? CAPABILITY_RUN.NOT_RECORDED,
+      // C-06 — the class of that outcome, per capability. NOT_RECORDED and
+      // FAILED are both COULD_NOT_LOOK; NO_DATA is NOTHING_THERE. A reader can
+      // tell "we have no measurement" from "the account had nothing" without
+      // learning seven words.
+      lastRunKnowledge: CAPABILITY_RUN_KNOWLEDGE.knowledgeOf(
+        stored[CAPABILITY.DAILY_OBSERVATIONS] ?? CAPABILITY_RUN.NOT_RECORDED,
+      ),
     },
     {
       capability:  CAPABILITY.CANONICAL_WINDOW,
       implemented: implementsCanonical(connector),
       lastRun:     CAPABILITY_RUN.NOT_RECORDED,
+      lastRunKnowledge: CAPABILITY_RUN_KNOWLEDGE.knowledgeOf(CAPABILITY_RUN.NOT_RECORDED),
     },
     {
       capability:  CAPABILITY.EXECUTION,
@@ -231,6 +285,7 @@ export function capabilitiesOf(platform, health) {
       // Not exercised by the sync loop at all — a different fact from
       // "exercised but not recorded", which is why it is a different word.
       lastRun:     CAPABILITY_RUN.NOT_APPLICABLE,
+      lastRunKnowledge: CAPABILITY_RUN_KNOWLEDGE.knowledgeOf(CAPABILITY_RUN.NOT_APPLICABLE),
     },
   ];
 }

@@ -161,3 +161,65 @@ describe('what C-04 did NOT change', () => {
     expect(body.connections[0].connection).toBe(CONNECTION_STATE.DISCONNECTED);
   });
 });
+
+// ── C-06 · the axes reach the wire in the shared language too ───────────────
+describe('C-06 · each axis carries its knowledge token', () => {
+  it('publishes a token beside availability, completeness and readiness', async () => {
+    listConnections.mockResolvedValue([row()]);
+    const res = await get();
+    const c = res.body.connections[0];
+    expect(c.availabilityKnowledge).toBe('KNOWN');
+    expect(c.completenessKnowledge).toBe('KNOWN');
+    expect(c.readinessKnowledge).toBe('KNOWN');
+    // The domain values are UNTOUCHED. The token is additive, never a
+    // replacement — the fifty-two client mirrors still describe the wire.
+    expect(c.availability).toBe(AVAILABILITY_STATE.OK);
+    expect(c.completeness).toBe(COMPLETENESS_STATE.COMPLETE);
+    expect(c.readiness).toBe(READINESS_STATE.CURRENT);
+  });
+
+  it('separates "we hold no record" from "we hold nothing"', async () => {
+    // A channel that has never been synced at all: NOT_RECORDED on the axes
+    // that need an attempt, NEVER_SYNCED on the one that needs a success. The
+    // two are different sentences and C-06 keeps them different — this is the
+    // distinction C-04 was fought over, now stated in one language.
+    listConnections.mockResolvedValue([row({ health: null })]);
+    const c = (await get()).body.connections[0];
+    expect(c.availabilityKnowledge).toBe('COULD_NOT_LOOK');
+    expect(c.completenessKnowledge).toBe('COULD_NOT_LOOK');
+    expect(c.readinessKnowledge).toBe('NOTHING_THERE');
+    expect(c.readinessKnowledge).not.toBe(c.availabilityKnowledge);
+  });
+
+  it('says a failing connector is KNOWN — a bad answer is still an answer', async () => {
+    listConnections.mockResolvedValue([row({ health: health({ ok: false, error: 'token expired' }) })]);
+    const c = (await get()).body.connections[0];
+    expect(c.availability).toBe(AVAILABILITY_STATE.FAILING);
+    expect(c.availabilityKnowledge).toBe('KNOWN');
+  });
+
+  it('gives CONNECTION no token at all, by ruling', async () => {
+    // CONNECTED / DISCONNECTED are facts about a credential row. No value of
+    // that axis reports our position, so it is outside the epistemic registry
+    // and publishing a token for it would be noise dressed as knowledge.
+    listConnections.mockResolvedValue([row()]);
+    const c = (await get()).body.connections[0];
+    expect(c.connection).toBe(CONNECTION_STATE.CONNECTED);
+    expect(c).not.toHaveProperty('connectionKnowledge');
+  });
+
+  it('carries one token per capability row, not one for the source', async () => {
+    listConnections.mockResolvedValue([row({
+      health: health({ daily: { state: DAILY_STATE.NO_DATA } }),
+    })]);
+    const caps = (await get()).body.connections[0].capabilities;
+    const byName = Object.fromEntries(caps.map((c) => [c.capability, c]));
+    // NOT_APPLICABLE and UNIMPLEMENTED are both CANNOT_ASK; NOT_RECORDED is
+    // COULD_NOT_LOOK. Three words, and the token says which KIND each one is
+    // without a reader learning all seven.
+    expect(byName[CAPABILITY.EXECUTION].lastRun).toBe(CAPABILITY_RUN.NOT_APPLICABLE);
+    expect(byName[CAPABILITY.EXECUTION].lastRunKnowledge).toBe('CANNOT_ASK');
+    expect(byName[CAPABILITY.CANONICAL_WINDOW].lastRunKnowledge).toBe('COULD_NOT_LOOK');
+    for (const cap of caps) expect(cap.lastRunKnowledge).toBeTruthy();
+  });
+});

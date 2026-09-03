@@ -9,7 +9,7 @@
 import { Router } from 'express';
 import { logger } from '../../utils/logger.js';
 import { getAttribution } from '../../services/attribution-engine/AttributionService.js';
-import { ATTRIBUTION_MODEL } from '../../services/attribution-engine/attributionTypes.js';
+import { ATTRIBUTION_MODEL, ATTRIBUTION_KNOWLEDGE } from '../../services/attribution-engine/attributionTypes.js';
 import { getReconciliation } from '../../services/reconciliation/ReconciliationService.js';
 import { designTest, listTests, getTest, recordCounts, concludeIncrementality } from '../../services/incrementality-engine/IncrementalityService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
@@ -42,7 +42,16 @@ measurementRouter.get('/attribution', async (req, res) => {
   const model = req.query.model && Object.values(ATTRIBUTION_MODEL).includes(req.query.model)
     ? req.query.model : ATTRIBUTION_MODEL.INCREMENTALITY_WEIGHTED;
   try {
-    return res.json({ workspaceId: wsId, generatedAt: new Date().toISOString(), attribution: await getAttribution(wsId, { model }) });
+    const attribution = await getAttribution(wsId, { model });
+    // C-06 — INSUFFICIENT_DATA (NOT_ENOUGH) and EVIDENCE_UNAVAILABLE
+    // (COULD_NOT_LOOK) are two different absences with two different fixes, and
+    // the token says which without the reader learning this vocabulary.
+    const knowledge = ATTRIBUTION_KNOWLEDGE.knowledgeOf(attribution?.status);
+    return res.json({
+      workspaceId: wsId,
+      generatedAt: new Date().toISOString(),
+      attribution: knowledge ? { ...attribution, knowledge } : attribution,
+    });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/measurement] attribution failed');
     return res.status(500).json({ error: 'AttributionUnavailable', message: 'Request failed' });

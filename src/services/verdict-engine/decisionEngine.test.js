@@ -545,6 +545,9 @@ describe('getConnectorVerdicts — the published numbers', () => {
       mockCampaigns([row()]);
       const res = await getConnectorVerdicts('ws-1');
       expect(res.decisionHistoryStatus).toBe('OK');
+      // C-06 — 'we looked' is KNOWN, even though what we found was nothing.
+      // The token classifies whether the claim can be made, not what it says.
+      expect(res.decisionHistoryKnowledge).toBe('KNOWN');
       expect(res.memoryByEntityId).toEqual({});
     });
 
@@ -554,6 +557,10 @@ describe('getConnectorVerdicts — the published numbers', () => {
       const res = await getConnectorVerdicts('ws-1');
 
       expect(res.decisionHistoryStatus).toBe('HISTORY_UNAVAILABLE');
+      // C-06 — and the same fact in the shared language, published beside it.
+      // A client can act on COULD_NOT_LOOK without ever learning that THIS
+      // vocabulary spells it HISTORY_UNAVAILABLE.
+      expect(res.decisionHistoryKnowledge).toBe('COULD_NOT_LOOK');
       expect(res.memoryByEntityId).toEqual({});
       // History is context, not the call. Losing it costs the Memory section.
       expect(res.verdicts).toHaveLength(1);

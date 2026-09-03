@@ -31,6 +31,7 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { connectorDecisionScope } from '../verdict-engine/decisionIdentity.js';
 import { PROVENANCE_SELECT, legacyExecutedAt } from '../execution/decisionProvenance.js';
+import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
 
 /**
  * How many past decisions travel per campaign. A bound with an explicit
@@ -56,6 +57,14 @@ export const HISTORY_STATUS = Object.freeze({
   OK:                  'OK',                  // we looked
   HISTORY_UNAVAILABLE: 'HISTORY_UNAVAILABLE', // we could not look
 });
+
+// C-06 — what each of those two words means as KNOWLEDGE, so a client can act
+// on the CLASS of the absence without knowing this module's dialect.
+export const HISTORY_KNOWLEDGE = declareStatusVocabulary('HISTORY_STATUS', HISTORY_STATUS, {
+  [HISTORY_STATUS.OK]:                  KNOWLEDGE.KNOWN,
+  [HISTORY_STATUS.HISTORY_UNAVAILABLE]: KNOWLEDGE.COULD_NOT_LOOK,
+});
+
 
 // ── The workspace-scoped read (R7) ──────────────────────────────────────────
 // getDecisionHistory above answers "what did we say about THESE campaigns".

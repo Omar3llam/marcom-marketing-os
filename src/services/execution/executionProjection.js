@@ -41,6 +41,8 @@
  * slice exists to remove. Keeping them distinct preserves every required
  * distinction and adds two, which is the safe direction.
  */
+import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
+
 export const EXECUTION_STATE = Object.freeze({
   NONE:      'NONE',       // we looked; this decision has no execution
   REQUESTED: 'REQUESTED',  // row exists, not yet queued (PENDING)
@@ -51,6 +53,22 @@ export const EXECUTION_STATE = Object.freeze({
   TIMED_OUT: 'TIMED_OUT',  // no answer — outcome genuinely unknown
   CANCELLED: 'CANCELLED',  // stopped before the platform was called
 });
+
+// C-06 — a lifecycle vocabulary that carries two POSITION values, which is what
+// admits it to the registry: NONE ("we looked; there is no execution") is
+// NOTHING_THERE, and TIMED_OUT ("no answer — outcome genuinely unknown") is
+// COULD_NOT_LOOK. Every other value is a lifecycle fact we hold.
+export const EXECUTION_STATE_KNOWLEDGE = declareStatusVocabulary('EXECUTION_STATE', EXECUTION_STATE, {
+  [EXECUTION_STATE.NONE]:      KNOWLEDGE.NOTHING_THERE,
+  [EXECUTION_STATE.REQUESTED]: KNOWLEDGE.KNOWN,
+  [EXECUTION_STATE.QUEUED]:    KNOWLEDGE.KNOWN,
+  [EXECUTION_STATE.EXECUTING]: KNOWLEDGE.KNOWN,
+  [EXECUTION_STATE.SUCCEEDED]: KNOWLEDGE.KNOWN,
+  [EXECUTION_STATE.FAILED]:    KNOWLEDGE.KNOWN,
+  [EXECUTION_STATE.CANCELLED]: KNOWLEDGE.KNOWN,
+  [EXECUTION_STATE.TIMED_OUT]: KNOWLEDGE.COULD_NOT_LOOK,
+});
+
 
 const STATUS_TO_STATE = Object.freeze({
   PENDING:          EXECUTION_STATE.REQUESTED,

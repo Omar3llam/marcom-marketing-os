@@ -61,7 +61,18 @@ export function useConnectorVerdicts() {
   //
   // Separate from `status` below, which is the verdict feed's own readiness.
   // The feed can be perfectly healthy while the history read failed.
-  const [memoryStatus, setMemoryStatus] = useState(null);
+  //
+  // C-06 — NAMED AS THE SERVER NAMES IT. This used to be `memoryStatus`, which
+  // undid the one thing the projection went out of its way to do: two different
+  // things in that payload wear the word "memory", and the server spells this
+  // one out in full so a reader cannot mistake the past DECISIONS for the
+  // account's validated PATTERNS. Renaming it on arrival re-collapsed exactly
+  // that distinction, three files downstream of the comment forbidding it.
+  const [decisionHistoryStatus, setDecisionHistoryStatus] = useState(null);
+  // The same fact as a KNOWLEDGE token (C-06): COULD_NOT_LOOK, KNOWN, and so
+  // on. What lets a component act on the CLASS of an absence without learning
+  // this vocabulary — and what stops the next component matching a string.
+  const [decisionHistoryKnowledge, setDecisionHistoryKnowledge] = useState(null);
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -81,7 +92,8 @@ export function useConnectorVerdicts() {
       // additive, and a response that predates it has made no claim either way.
       // The view model treats null exactly as OK, so an older payload keeps the
       // behaviour it has always had rather than growing an outage notice.
-      setMemoryStatus(res.data?.decisionHistoryStatus ?? null);
+      setDecisionHistoryStatus(res.data?.decisionHistoryStatus ?? null);
+      setDecisionHistoryKnowledge(res.data?.decisionHistoryKnowledge ?? null);
       setStatus(res.data?.status ?? null);
     } catch (err) {
       if (!aliveRef.current) return;
@@ -97,5 +109,9 @@ export function useConnectorVerdicts() {
     return () => { aliveRef.current = false; };
   }, [refetch]);
 
-  return { verdicts, gatedOut, account, memory, memoryStatus, status, loading, error, refetch };
+  return {
+    verdicts, gatedOut, account, memory,
+    decisionHistoryStatus, decisionHistoryKnowledge,
+    status, loading, error, refetch,
+  };
 }

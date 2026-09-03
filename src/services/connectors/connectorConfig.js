@@ -25,6 +25,8 @@
 // campaigns are — any fixed number (180d/365d) just relocates the same failure
 // to a later date. The real ceiling is Meta's documented insights retention
 // (~37 months), not a literal we assert here; we ask for the most available.
+import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
+
 export const DEFAULT_MANUAL_SYNC_DATE_PRESET = 'maximum';
 
 // CRON / BullMQ scheduled path (syncWorker.js): stays bounded. An unattended
@@ -125,3 +127,15 @@ export const DAILY_STATE = Object.freeze({
   // The path was attempted and threw before a persistence result.
   FAILED:        'FAILED',
 });
+
+// C-06 — the sync loop's own outcome vocabulary, in the shared language.
+// FAILED is COULD_NOT_LOOK and NO_DATA is NOTHING_THERE: the distinction this
+// enum was written to protect, now stated in a form a client can read.
+export const DAILY_KNOWLEDGE = declareStatusVocabulary('DAILY_STATE', DAILY_STATE, {
+  [DAILY_STATE.DISABLED]:      KNOWLEDGE.CANNOT_ASK,
+  [DAILY_STATE.UNIMPLEMENTED]: KNOWLEDGE.CANNOT_ASK,
+  [DAILY_STATE.NO_DATA]:       KNOWLEDGE.NOTHING_THERE,
+  [DAILY_STATE.SUCCESS]:       KNOWLEDGE.KNOWN,
+  [DAILY_STATE.FAILED]:        KNOWLEDGE.COULD_NOT_LOOK,
+});
+

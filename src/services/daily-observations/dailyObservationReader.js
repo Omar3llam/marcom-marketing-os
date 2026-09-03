@@ -54,6 +54,7 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { MEASUREMENT_WINDOW } from '../connectors/connectorTypes.js';
 import { areComparable, dailyPeriod } from './observationComparability.js';
+import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
 
 const DAY_MS = 86_400_000;
 
@@ -69,6 +70,17 @@ export const OBSERVATION_STATUS = Object.freeze({
   AMBIGUOUS:      'AMBIGUOUS',      // a day did not reduce to a single reading
   NOT_MEASURABLE: 'NOT_MEASURABLE', // structurally refused — see `reason`
 });
+
+// C-06 — the same four tokens the outcome-evidence vocabulary resolves to,
+// which is the evidence that these two really are one question asked twice.
+// Their VALUES still differ, and C-06 does not merge them.
+export const OBSERVATION_KNOWLEDGE = declareStatusVocabulary('OBSERVATION_STATUS', OBSERVATION_STATUS, {
+  [OBSERVATION_STATUS.MEASURABLE]:     KNOWLEDGE.KNOWN,
+  [OBSERVATION_STATUS.NOT_OBSERVED]:   KNOWLEDGE.NOTHING_THERE,
+  [OBSERVATION_STATUS.AMBIGUOUS]:      KNOWLEDGE.NOT_ENOUGH,
+  [OBSERVATION_STATUS.NOT_MEASURABLE]: KNOWLEDGE.CANNOT_ASK,
+});
+
 
 /** Why a single row was excluded from the population before reduction. */
 export const ROW_REJECTION = Object.freeze({

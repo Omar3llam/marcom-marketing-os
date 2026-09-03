@@ -5,6 +5,8 @@
 // states it can report. No dynamic labels.
 // ============================================================
 
+import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
+
 export const NETWORK_STATUS = Object.freeze({
   OK:                'OK',                // enough consenting workspaces → a banded insight
   INSUFFICIENT_DATA: 'INSUFFICIENT_DATA', // below k-anonymity / support → suppressed (honest)
@@ -20,6 +22,18 @@ export const NETWORK_STATUS = Object.freeze({
   // one needs us to fix something.
   UNAVAILABLE:       'UNAVAILABLE',
 });
+
+// C-06 — NOT_CONSENTED is CANNOT_ASK: we are not entitled to put the question,
+// which is neither a failed read nor a thin cohort. The three stay separate for
+// exactly the reason stated above, and the token preserves that separation for
+// a client that has never heard of this vocabulary.
+export const NETWORK_KNOWLEDGE = declareStatusVocabulary('NETWORK_STATUS', NETWORK_STATUS, {
+  [NETWORK_STATUS.OK]:                KNOWLEDGE.KNOWN,
+  [NETWORK_STATUS.INSUFFICIENT_DATA]: KNOWLEDGE.NOT_ENOUGH,
+  [NETWORK_STATUS.NOT_CONSENTED]:     KNOWLEDGE.CANNOT_ASK,
+  [NETWORK_STATUS.UNAVAILABLE]:       KNOWLEDGE.COULD_NOT_LOOK,
+});
+
 
 // k-anonymity: never surface a cohort insight unless at least this many
 // DISTINCT consenting workspaces contribute to it.

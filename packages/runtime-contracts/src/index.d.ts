@@ -131,3 +131,32 @@ export function validateReconciliationPayload(
 export function createReconciliationPayload(
   execution: Record<string, unknown>
 ): ExecutionReconciliationPayload;
+
+// ── Epistemic status (C-06) ─────────────────────────────────
+
+export const KNOWLEDGE: {
+  readonly KNOWN: 'KNOWN';
+  readonly COULD_NOT_LOOK: 'COULD_NOT_LOOK';
+  readonly NOT_ENOUGH: 'NOT_ENOUGH';
+  readonly NOTHING_THERE: 'NOTHING_THERE';
+  readonly CANNOT_ASK: 'CANNOT_ASK';
+};
+
+export type KnowledgeToken = typeof KNOWLEDGE[keyof typeof KNOWLEDGE];
+
+export const KNOWLEDGE_VALUES: readonly KnowledgeToken[];
+
+export class VocabularyDeclarationError extends Error {}
+
+export interface StatusVocabularyDeclaration {
+  readonly name: string;
+  readonly values: readonly string[];
+  readonly mapping: Readonly<Record<string, KnowledgeToken>>;
+  knowledgeOf(value: string | null | undefined): KnowledgeToken | null;
+}
+
+export function declareStatusVocabulary(
+  name: string,
+  vocabulary: Record<string, string>,
+  mapping: Record<string, KnowledgeToken>
+): StatusVocabularyDeclaration;

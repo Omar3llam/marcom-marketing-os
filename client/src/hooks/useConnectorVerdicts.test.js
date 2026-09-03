@@ -40,7 +40,7 @@ describe('useConnectorVerdicts · history availability', () => {
 
   it('publishes the status the server sent', async () => {
     const result = await load(payload());
-    expect(result.current.memoryStatus).toBe('OK');
+    expect(result.current.decisionHistoryStatus).toBe('OK');
     expect(result.current.memory).toEqual({});
   });
 
@@ -48,7 +48,7 @@ describe('useConnectorVerdicts · history availability', () => {
   // so a consumer reading only `memory` is reading a coin flip.
   it('carries HISTORY_UNAVAILABLE through unchanged', async () => {
     const result = await load(payload({ decisionHistoryStatus: 'HISTORY_UNAVAILABLE' }));
-    expect(result.current.memoryStatus).toBe('HISTORY_UNAVAILABLE');
+    expect(result.current.decisionHistoryStatus).toBe('HISTORY_UNAVAILABLE');
     expect(result.current.memory).toEqual({});
     // History is context, not the call: the verdicts still arrive.
     expect(result.current.verdicts).toHaveLength(1);
@@ -61,7 +61,7 @@ describe('useConnectorVerdicts · history availability', () => {
   it('is null when the server said nothing about it', async () => {
     const { decisionHistoryStatus, ...older } = payload();
     const result = await load(older);
-    expect(result.current.memoryStatus).toBeNull();
+    expect(result.current.decisionHistoryStatus).toBeNull();
   });
 
   // A failed REQUEST is a different failure, already owned by `error`. The
@@ -74,6 +74,39 @@ describe('useConnectorVerdicts · history availability', () => {
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBeTruthy();
-    expect(result.current.memoryStatus).toBeNull();
+    expect(result.current.decisionHistoryStatus).toBeNull();
+  });
+});
+
+// ── C-06 · the token travels, and the name is no longer rewritten ───────────
+describe('useConnectorVerdicts · epistemic knowledge (C-06)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('publishes the knowledge token beside the status', async () => {
+    const result = await load(payload({
+      decisionHistoryStatus: 'HISTORY_UNAVAILABLE',
+      decisionHistoryKnowledge: 'COULD_NOT_LOOK',
+    }));
+    expect(result.current.decisionHistoryStatus).toBe('HISTORY_UNAVAILABLE');
+    expect(result.current.decisionHistoryKnowledge).toBe('COULD_NOT_LOOK');
+  });
+
+  it('does not rename the field to memoryStatus', async () => {
+    // THE DEFECT THIS SLICE WAS SHAPED ON. The server spells this out in full
+    // because two different things in that payload wear the word "memory"; the
+    // hook used to shorten it back to `memoryStatus` on arrival, re-collapsing
+    // the distinction three files downstream of the comment forbidding it.
+    const result = await load(payload());
+    expect(result.current).not.toHaveProperty('memoryStatus');
+    expect(result.current).toHaveProperty('decisionHistoryStatus');
+  });
+
+  it('leaves the token null when the server sent none, and does not infer one', async () => {
+    // An older payload has made no claim about knowledge. Deriving KNOWN from
+    // a bare 'OK' here would be this client inventing an epistemic assertion
+    // the server never made.
+    const result = await load(payload());
+    expect(result.current.decisionHistoryStatus).toBe('OK');
+    expect(result.current.decisionHistoryKnowledge).toBeNull();
   });
 });
