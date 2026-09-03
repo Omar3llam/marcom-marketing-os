@@ -1,40 +1,59 @@
 // ============================================================
-// MARCOM / Lumi — usePromotePattern (Phase 5 · the "make it a rule" trigger)
+// MARCOM / Lumi — usePromotePattern (C-05 · the autonomy authorization)
 // ------------------------------------------------------------
-// POST /api/lumi/patterns/:id/promote → { workspaceId, ruleId }. Turns a proven
-// AccountPattern into a GuardrailRule that then rides the existing Phase-2
-// sweep → confirm → execute governance (it never auto-executes). The account
-// briefing already surfaces how many patterns are promotable; this is the tap.
+// This hook used to be one call: POST /patterns/:id/promote → { ruleId }. One
+// tap turned a learned pattern into a rule that judges the account from then
+// on, with nothing recording who did it or what they believed at the time.
 //
-// Role: STRATEGIST-only (route gate). Promoting a pattern to an account-wide
-// rule is an owner decision, like the network-consent control beside it. The
-// view gates the button; the server stays the arbiter and rejects unproven /
-// conflicted / already-promoted patterns with a 409 we surface honestly.
+// R-13 split that into a proposal and a decision, and R-14 added a way back:
 //
-// Returns { promote, promotingId, error }. `promote(id)` resolves to the
-// response (or null on failure) so the caller can refetch + surface.
+//   requestPromotion(patternId)   → { requestId }   files the authorization
+//   grantPromotion(requestId)     → { ruleId }      creates the rule
+//   revokePromotion(ruleId)       → { episodesClosed }
+//
+// Today the same STRATEGIST seat performs both halves — the server records that
+// as `selfApproved` rather than dressing it up as a second pair of eyes — so the
+// view holds the requestId between the two clicks. It is deliberately NOT a
+// queue: there is no read of pending authorizations yet, so a page reload loses
+// the local handle and the server answers a repeat request with `AlreadyPending`,
+// which the caller surfaces as-is rather than hiding.
+//
+// WHAT THE GRANT ACTUALLY GIVES: authority to JUDGE and RAISE, never to act.
+// The created rule writes PROPOSED decisions that still ride confirm→execute.
 // ============================================================
 import { useCallback, useState } from 'react';
 import { api } from '@/lib/api.js';
 
 export function usePromotePattern() {
-  const [promotingId, setPromotingId] = useState(null);
+  const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState(null);
 
-  const promote = useCallback(async (patternId) => {
-    if (!patternId) return null;
-    setPromotingId(patternId);
+  const call = useCallback(async (id, fn) => {
+    if (!id) return null;
+    setBusyId(id);
     setError(null);
     try {
-      const res = await api.post(`/api/lumi/patterns/${patternId}/promote`);
-      return res.data; // { workspaceId, ruleId }
+      const res = await fn();
+      return res.data;
     } catch (err) {
       setError(err);
       return null;
     } finally {
-      setPromotingId(null);
+      setBusyId(null);
     }
   }, []);
 
-  return { promote, promotingId, error };
+  /** Propose that a pattern become a rule. Grants nothing. */
+  const requestPromotion = useCallback((patternId) => call(patternId, () =>
+    api.post(`/api/lumi/patterns/${patternId}/promotion-request`)), [call]);
+
+  /** Grant the standing authority. This is the act that creates the rule. */
+  const grantPromotion = useCallback((requestId) => call(requestId, () =>
+    api.post(`/api/lumi/promotions/${requestId}/decision`, { decision: 'APPROVED' })), [call]);
+
+  /** Withdraw it. The rule stops being evaluated; the record of the grant stays. */
+  const revokePromotion = useCallback((ruleId) => call(ruleId, () =>
+    api.post(`/api/lumi/guardrails/${ruleId}/revoke`)), [call]);
+
+  return { requestPromotion, grantPromotion, revokePromotion, busyId, error };
 }

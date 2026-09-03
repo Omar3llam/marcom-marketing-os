@@ -6,7 +6,7 @@
 // backend endpoints yet — those tiles render the section label
 // with an honest "—" placeholder rather than fabricating numbers.
 // ============================================================
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Target, Brain, Zap } from 'lucide-react';
 import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
 import { useGrowthStrategySummary } from '@/hooks/useGrowthStrategySummary.js';
@@ -41,14 +41,32 @@ export default function GrowthStrategyBoard() {
   const { summary: growth, loading: growthLoading } = useGrowthStrategySummary();
   const { forecast: fatigueForecast, isLoading: fatigueLoading } = useFatigueForecast();
   const { briefing, loading: briefingLoading, error: briefingError, refetch: refetchBriefing, setConsent, consentBusy } = useAccountBriefing();
-  const { promote, promotingId, error: promoteError } = usePromotePattern();
+  const { requestPromotion, grantPromotion, revokePromotion, busyId: promotingId, error: promoteError } = usePromotePattern();
+  // C-05 · the authorization filed for a pattern in THIS session. There is no
+  // read of pending authorizations yet, so this is a session handle and not a
+  // queue: after a reload the server answers a repeat request with
+  // `AlreadyPending`, which the panel surfaces rather than papering over.
+  const [pendingRequestId, setPendingRequestId] = useState({});
   const { role: collabRole } = useCollabRole();
   const canManageConsent = collabRole === WORKSPACE_ROLE.STRATEGIST;
   // Promoting a pattern to an account-wide rule is the same STRATEGIST-tier
   // owner decision as the network-consent control beside it.
-  const onPromote = async (patternId) => {
-    const result = await promote(patternId);
-    if (result) await refetchBriefing(); // re-read so the promotable count + flags update
+  const onRequestPromotion = async (patternId) => {
+    const result = await requestPromotion(patternId);
+    // Filing the authorization changes nothing about the account, so there is
+    // nothing to re-read: the grant is the act that creates a rule.
+    if (result?.requestId) setPendingRequestId((prev) => ({ ...prev, [patternId]: result.requestId }));
+  };
+  const onGrantPromotion = async (patternId, requestId) => {
+    const result = await grantPromotion(requestId);
+    if (result) {
+      setPendingRequestId((prev) => { const next = { ...prev }; delete next[patternId]; return next; });
+      await refetchBriefing(); // re-read so the promotable count + flags update
+    }
+  };
+  const onRevokePromotion = async (ruleId) => {
+    const result = await revokePromotion(ruleId);
+    if (result) await refetchBriefing();
   };
   const { data: economics, loading: economicsLoading, error: economicsError, refetch: refetchEconomics } = useEconomics();
   const { save: saveEconomics, saving: economicsSaving } = useSaveEconomics();
@@ -200,7 +218,10 @@ export default function GrowthStrategyBoard() {
         onConsent={setConsent}
         consentBusy={consentBusy}
         canManageConsent={canManageConsent}
-        onPromote={onPromote}
+        onRequestPromotion={onRequestPromotion}
+        onGrantPromotion={onGrantPromotion}
+        onRevokePromotion={onRevokePromotion}
+        pendingRequestId={pendingRequestId}
         promotingId={promotingId}
         promoteError={promoteError}
         canPromote={canManageConsent}

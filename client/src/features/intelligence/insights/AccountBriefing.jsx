@@ -20,7 +20,12 @@ const statusTone = {
 export function AccountBriefing({
   briefing, loading = false, error = null,
   onConsent, consentBusy = false, canManageConsent = false,
-  onPromote, promotingId = null, promoteError = null, canPromote = false,
+  // C-05 · promotion is an authorization with two ends and a way back.
+  // `pendingRequestId` maps a pattern id to the authorization filed for it in
+  // this session — the grant is a second, deliberate act, never a side effect
+  // of the first click.
+  onRequestPromotion, onGrantPromotion, onRevokePromotion,
+  pendingRequestId = {}, promotingId = null, promoteError = null, canPromote = false,
 }) {
   const patterns = briefing?.patterns ?? [];
   const conflicts = briefing?.conflicts ?? [];
@@ -55,7 +60,9 @@ export function AccountBriefing({
           )}
           {promoteError && (
             <p className="mb-3 text-xs text-signal-kill">
-              {promoteError.message || 'Couldn’t promote that pattern to a rule right now. Try again shortly.'}
+              {promoteError.response?.data?.message
+                || promoteError.message
+                || 'Couldn’t change this rule’s authority right now. Try again shortly.'}
             </p>
           )}
           <ul className="grid gap-3">
@@ -76,19 +83,53 @@ export function AccountBriefing({
                     {conf != null && <span>confidence {conf}%</span>}
                   </div>
 
-                  {/* Promote → GuardrailRule. STRATEGIST-only, and only on a
-                      pattern the engine marks promotable that isn't already a
-                      rule. The new rule rides the existing confirm→execute
-                      governance (never auto-executes). */}
-                  {canPromote && p.promotable && !p.promotedRuleId && (
+                  {/* C-05 · granting Lumi standing authority takes two acts.
+                      The first files the authorization; the second grants it,
+                      and only that one creates the rule. Both are STRATEGIST-
+                      only, and the rule that results still writes PROPOSED
+                      decisions — it judges and raises, it never acts. */}
+                  {canPromote && p.promotable && !p.promotedRuleId && !pendingRequestId[p.id] && (
                     <div className="mt-2.5">
                       <button
                         type="button"
                         disabled={promotingId === p.id}
-                        onClick={() => onPromote?.(p.id)}
+                        onClick={() => onRequestPromotion?.(p.id)}
                         className="font-mono text-xs uppercase tracking-wide px-3 py-1 rounded border border-signal-scale/30 bg-signal-scale-bg text-signal-scale disabled:opacity-40 disabled:cursor-not-allowed"
                       >
-                        {promotingId === p.id ? 'Promoting…' : 'Make it a rule'}
+                        {promotingId === p.id ? 'Requesting…' : 'Propose as a rule'}
+                      </button>
+                    </div>
+                  )}
+
+                  {canPromote && !p.promotedRuleId && pendingRequestId[p.id] && (
+                    <div className="mt-2.5">
+                      <p className="mb-1.5 text-xs text-lumi-muted">
+                        Granting this lets Lumi judge the account on it from now on and raise
+                        proposals without being asked again. It never acts on its own.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={promotingId === pendingRequestId[p.id]}
+                        onClick={() => onGrantPromotion?.(p.id, pendingRequestId[p.id])}
+                        className="font-mono text-xs uppercase tracking-wide px-3 py-1 rounded border border-signal-scale/30 bg-signal-scale-bg text-signal-scale disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {promotingId === pendingRequestId[p.id] ? 'Granting…' : 'Grant this authority'}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* R-14 · the way back. Revoking stops future evaluation; it
+                      does not claim the breaches it was holding were resolved,
+                      and it does not erase the grant. */}
+                  {canPromote && p.promotedRuleId && (
+                    <div className="mt-2.5">
+                      <button
+                        type="button"
+                        disabled={promotingId === p.promotedRuleId}
+                        onClick={() => onRevokePromotion?.(p.promotedRuleId)}
+                        className="font-mono text-xs uppercase tracking-wide px-3 py-1 rounded border border-lumi-border bg-lumi-elevated text-lumi-muted disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {promotingId === p.promotedRuleId ? 'Revoking…' : 'Revoke this authority'}
                       </button>
                     </div>
                   )}

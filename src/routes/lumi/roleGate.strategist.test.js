@@ -52,7 +52,13 @@ const ROUTES = [
   { method: 'post',  path: '/incrementality',                  body: {} },
   { method: 'post',  path: '/incrementality/t1/metrics',       body: {} },
   { method: 'post',  path: '/incrementality/t1/conclude',      body: {} },
-  { method: 'post',  path: '/patterns/p1/promote',             body: {} },
+  // C-05 — the one-call promote is gone. Granting Lumi standing authority now
+  // takes a proposal and a decision, and can be withdrawn; all three are the
+  // same STRATEGIST tier, because a seat that cannot grant must not be able to
+  // revoke either.
+  { method: 'post',  path: '/patterns/p1/promotion-request',    body: {} },
+  { method: 'post',  path: '/promotions/r1/decision',           body: { decision: 'APPROVED' } },
+  { method: 'post',  path: '/guardrails/g1/revoke',             body: {} },
   { method: 'patch', path: '/connections/account',            body: { platform: 'META', accountId: '1' } },
 ];
 

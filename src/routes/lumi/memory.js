@@ -1,15 +1,18 @@
 // ============================================================
 // MARCOM / Lumi — Memory Moat (per-account learning + gated network)
-// GET  /api/lumi/briefing            — what Lumi has learned (JWT)
-// POST /api/lumi/patterns/:id/promote — one-tap → GuardrailRule
-// POST /api/lumi/network/consent     — opt in/out of the network
-// GET  /api/lumi/network             — gated, anonymized cohort insights
+// GET  /api/lumi/briefing                        — what Lumi has learned (JWT)
+// POST /api/lumi/patterns/:id/promotion-request  — propose that it become a rule
+// POST /api/lumi/promotions/:requestId/decision  — grant or refuse the authority
+// POST /api/lumi/guardrails/:ruleId/revoke       — take the authority back
+// POST /api/lumi/network/consent                 — opt in/out of the network
+// GET  /api/lumi/network                         — gated, anonymized cohort insights
 // ============================================================
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { readBriefing }    from '../../services/pattern-engine/PatternService.js';
-import { promotePattern }  from '../../services/pattern-engine/PlaybookService.js';
+import { requestPromotion, decidePromotion, revokePromotion, PROMOTION_STATE }
+  from '../../services/pattern-engine/PromotionService.js';
 import { setConsent, getNetworkInsights } from '../../services/network-engine/NetworkService.js';
 import { NETWORK_STATUS }  from '../../services/network-engine/networkTypes.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
@@ -72,25 +75,121 @@ memoryRouter.get('/briefing', async (req, res) => {
   }
 });
 
+// ═════════════════════════════════════════════════════════════
+// C-05 · PROMOTION IS AN AUTHORIZATION
 // ─────────────────────────────────────────────────────────────
-// POST /api/lumi/patterns/:id/promote — one-tap "make it a rule"
-// Creates a GuardrailRule from a proven pattern; it then rides the
-// existing Phase-2 sweep → confirm → execute governance. Rejects
-// unproven / conflicted patterns (never ships a contradictory rule).
+// `POST /patterns/:id/promote` used to stand here: one call, one person,
+// creating a rule that judges the account from then on. R-13 replaced it with a
+// proposal and a decision, and R-14 gave it a way back. The old route is GONE
+// rather than aliased — a surviving one-call path would be an ungated route to
+// the same standing authority.
+//
+// All three are STRATEGIST-only. Withdrawing autonomy is the same tier of act
+// as granting it; a seat that cannot grant must not be able to revoke either,
+// or the guarantee runs one way only.
 // ─────────────────────────────────────────────────────────────
-memoryRouter.post('/patterns/:id/promote', requireCollabRole(WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
+
+/**
+ * The actor as the AUDIT COLUMNS mean it: a `User.id` uuid.
+ *
+ * `req.userId` is the Firebase uid, and `ApprovalRequest.requestedById` /
+ * `CollaborationEvent.actorId` are `@db.Uuid`. Writing the one into the other
+ * does not produce a wrong name — it produces a failed insert, or a column that
+ * cannot be joined back to a person. R-13 requires this trail to prove WHO, so
+ * an unresolvable actor is a refusal, never a null in the actor column.
+ */
+async function resolveActorId(req) {
+  if (!req.userId) return null;
+  try {
+    const u = await prisma.user.findUnique({ where: { clerkId: req.userId }, select: { id: true } });
+    return u?.id ?? null;
+  } catch (err) {
+    logger.error({ err: err.message, userId: req.userId }, '[lumi/memory] actor resolution failed');
+    return null;
+  }
+}
+
+/** Typed service refusals → the status that describes them. Never a blanket 500. */
+const PROMOTION_STATUS = Object.freeze({
+  NotFound: 404, RoleForbidden: 403,
+  NotPromotable: 409, AlreadyPending: 409, AlreadyDecided: 409,
+  AlreadyRevoked: 409, BeliefDegraded: 409, ActorUnresolved: 409,
+});
+
+function sendPromotionError(res, err, wsId, where) {
+  // The governance gate throws plain Errors from patternToGuardrailData; they
+  // are client errors, not faults, exactly as the removed route treated them.
+  const governance = /ESTABLISHED|accuracy|CONFLICTED|SUPERSEDED|informational|spec|already|not found/i.test(err.message);
+  const code   = err.code ?? (governance ? 'NotPromotable' : null);
+  const status = PROMOTION_STATUS[code];
+  if (status) {
+    return res.status(status).json({
+      error: code, message: err.message,
+      // A degraded belief carries BOTH readings to the caller. The person
+      // deciding is owed the divergence, not just the refusal.
+      ...(err.beliefAtRequest  ? { beliefAtRequest:  err.beliefAtRequest }  : {}),
+      ...(err.beliefAtDecision ? { beliefAtDecision: err.beliefAtDecision } : {}),
+    });
+  }
+  logger.error({ err: err.message, wsId }, `[lumi/memory] ${where} failed`);
+  return res.status(500).json({ error: 'PromotionFailed', message: 'Request failed' });
+}
+
+// ── Propose ──────────────────────────────────────────────────
+memoryRouter.post('/patterns/:id/promotion-request', requireCollabRole(WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
+  const requestedById = await resolveActorId(req);
+  if (!requestedById) {
+    return res.status(409).json({ error: 'ActorUnresolved', message: 'Could not identify the requesting seat.' });
+  }
   try {
-    const { ruleId } = await promotePattern(wsId, req.params.id);
-    logger.info({ wsId, patternId: req.params.id, ruleId }, '[lumi/memory] pattern promoted');
-    return res.status(201).json({ workspaceId: wsId, ruleId });
+    const out = await requestPromotion(wsId, { patternId: req.params.id, requestedById });
+    logger.info({ wsId, patternId: req.params.id, requestId: out.requestId }, '[lumi/memory] promotion requested');
+    return res.status(201).json({ workspaceId: wsId, ...out });
   } catch (err) {
-    // Governance rejections are client errors, not server faults.
-    const governance = /ESTABLISHED|accuracy|CONFLICTED|SUPERSEDED|informational|spec|already|not found/i.test(err.message);
-    if (governance) return res.status(409).json({ error: 'NotPromotable', message: err.message });
-    logger.error({ err: err.message, wsId }, '[lumi/memory] promote failed');
-    return res.status(500).json({ error: 'PromoteFailed', message: 'Request failed' });
+    return sendPromotionError(res, err, wsId, 'promotion request');
+  }
+});
+
+// ── Decide ───────────────────────────────────────────────────
+memoryRouter.post('/promotions/:requestId/decision', requireCollabRole(WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
+  const decision = req.body?.decision;
+  if (decision !== PROMOTION_STATE.APPROVED && decision !== PROMOTION_STATE.REJECTED) {
+    return res.status(400).json({ error: 'BadDecision', message: "decision must be 'APPROVED' or 'REJECTED'." });
+  }
+  const wsId = await resolveWorkspaceId(req);
+  if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
+  const approverId = await resolveActorId(req);
+  if (!approverId) {
+    return res.status(409).json({ error: 'ActorUnresolved', message: 'Could not identify the deciding seat.' });
+  }
+  try {
+    const out = await decidePromotion(wsId, {
+      requestId: req.params.requestId, decision, approverId, approverRole: req.collabRole,
+    });
+    logger.info({ wsId, requestId: req.params.requestId, decision, ruleId: out.ruleId },
+      '[lumi/memory] promotion decided');
+    return res.json({ workspaceId: wsId, ...out });
+  } catch (err) {
+    return sendPromotionError(res, err, wsId, 'promotion decision');
+  }
+});
+
+// ── Revoke ───────────────────────────────────────────────────
+memoryRouter.post('/guardrails/:ruleId/revoke', requireCollabRole(WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
+  const wsId = await resolveWorkspaceId(req);
+  if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
+  const actorId = await resolveActorId(req);
+  if (!actorId) {
+    return res.status(409).json({ error: 'ActorUnresolved', message: 'Could not identify the revoking seat.' });
+  }
+  try {
+    const out = await revokePromotion(wsId, { ruleId: req.params.ruleId, actorId });
+    logger.info({ wsId, ...out }, '[lumi/memory] autonomy revoked');
+    return res.json({ workspaceId: wsId, ...out });
+  } catch (err) {
+    return sendPromotionError(res, err, wsId, 'revocation');
   }
 });
 
