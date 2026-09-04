@@ -56,9 +56,22 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
     // because a new column widens every `select`-less read of that table. That
     // is a deploy-order constraint, not a rollback hazard, so the verdict stays
     // COMPATIBLE and no baseline entry follows.
-    expect(scan.length).toBe(68);
+    //
+    // 68 → 69 and COMPATIBLE 47 → 48: C-18 adds
+    // 20260904120000_c18_plan_promotion_lifecycle. Three nullable columns on
+    // `plans` and one plain index; no enum is created or altered, because
+    // PlanStatus.CLOSED already existed and simply had no writer. Additive on
+    // exactly the same terms as its two predecessors, so no baseline entry.
+    //
+    // It carries the SAME deploy-order constraint C-05 documented above, and for
+    // the same reason: `plans` is read `select`-less by PlanService.getPlan,
+    // AgenticLoopService and lumi/feed, so a new column widens all three. The
+    // migration must reach an environment before the code naming
+    // `promotedAt` / `closedAt` does. A deploy-order constraint, not a
+    // rollback hazard — the verdict stays COMPATIBLE.
+    expect(scan.length).toBe(69);
     expect(counts).toEqual({
-      COMPATIBLE: 47,
+      COMPATIBLE: 48,
       TRANSITION_REQUIRED: 9,
       INCOMPATIBLE: 8,
       UNKNOWN: 4,
@@ -210,7 +223,7 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
   // ── T7 · corpus boundary ────────────────────────────────────────────────
   it('T7 — the scanner reads production migrations and nothing else', () => {
     const dirs = migrationDirs(fs, MIGRATIONS);
-    expect(dirs).toHaveLength(68); // +1 C-02, +1 C-05 (see T1)
+    expect(dirs).toHaveLength(69); // +1 C-02, +1 C-05, +1 C-18 (see T1)
     expect(dirs.every((d) => /^\d{14}_/.test(d))).toBe(true);
     // Real non-migration entries that sit in this directory today.
     expect(dirs).not.toContain('migration_lock.toml');

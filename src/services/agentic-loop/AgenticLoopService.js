@@ -56,6 +56,25 @@ const AGENTIC_CRON_MS = Number(process.env.LOOP_INTERVAL_MS || 15 * 60 * 1000);
 // A second copy of a taxonomy cannot be kept in step by discipline alone.
 
 /** Flatten portfolio pacing into the planner's pacing[] shape. */
+/**
+ * Pure: the plan in force, or nothing. Exported for unit testing without a DB.
+ *
+ * 🔒 C-18. This was `plans.find(p => p.status === 'ACTIVE') ?? plans[0] ?? null`
+ * — a fallback that named ANY plan `activePlan` and then had `trackPlan`
+ * compute goal landings for it, which reach the strategist band on /lumi/home.
+ *
+ * The fallback was survivable only because ACTIVE used to be permanent:
+ * `PlanStatus.CLOSED` had no writer, so a promoted plan never left the state and
+ * `find` almost always hit. C-18 gives closure a writer, so a plan whose period
+ * ended now leaves ACTIVE — and the fallback would start firing for exactly the
+ * workspaces whose plan just expired, tracking the goals of a finished period
+ * and calling them current. Making closure real is what made this line unsafe,
+ * so closing it belongs to the same slice.
+ */
+export function activePlanOf(plans) {
+  return (plans ?? []).find((p) => p?.status === 'ACTIVE') ?? null;
+}
+
 function pacingFromPortfolio(portfolio) {
   const out = [];
   if (portfolio?.pacing?.status && portfolio.pacing.status !== 'ON_TRACK') {
@@ -219,7 +238,7 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
   // the same entity arrive in a stable order before the planner ranks them.
   const verdicts = [...signalVerdicts, ...guardrailEpisodes];
 
-  const activePlan = plans.find((p) => p.status === 'ACTIVE') ?? plans[0] ?? null;
+  const activePlan = activePlanOf(plans);
   const planTracking = activePlan ? await safe(trackPlan(workspaceId, activePlan, { now }), null) : null;
 
   return {

@@ -8,7 +8,9 @@
 // GET  /api/lumi/plans/:id    → { workspaceId, plan } — plan + LIVE tracking, where
 //                              tracking.goals[].landing is the goal-tracker estimate
 //                              (a RANGE {low,expected,high} — never a point).
-// POST /api/lumi/plans/:id/promote → 201 { planId, allocationPlanId, decisionsCreated }
+// POST /api/lumi/plans/:id/promote → 201 { planId, allocationPlanId, decisionsCreated,
+//                                          outcome, promotedAt } — 200 on a repeat,
+//   where nothing was created. `outcome` is the fact; promotionCopy owns the words.
 //                              — mix → PROPOSED REALLOCATE Decisions (STRATEGIST).
 //                              Blocked 409 ApprovalRequired if the plan's gate is open.
 // POST /api/lumi/approvals    → 201 { request } — open the approval gate on a plan

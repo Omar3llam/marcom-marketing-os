@@ -1,11 +1,13 @@
 // ============================================================
 // MARCOM / Lumi — Maintenance Worker
 // ------------------------------------------------------------
-// Scheduled work that must happen whether or not anyone is looking. Two jobs:
+// Scheduled work that must happen whether or not anyone is looking. Three jobs:
 //
 //   ai-usage-cleanup     — keeps the highest-volume table bounded.
 //   learning-extraction  — R10: derives this account's patterns from its own
 //                          executed decisions and their measured outcomes.
+//   plan-closure         — C-18: ends plans whose period has passed, and makes
+//                          no claim about whether their goals were met.
 //
 // They share a queue because they share the property that defines it: always
 // on, and spending nothing. Extraction is deterministic (patternEngine holds no
@@ -32,9 +34,11 @@ import { bullConnection, QUEUE_PREFIX } from '../queues/connection.js';
 import {
   MAINTENANCE_QUEUE_NAME, AI_USAGE_CLEANUP_JOB, scheduleAiUsageCleanup,
   LEARNING_EXTRACTION_JOB, scheduleLearningExtraction,
+  PLAN_CLOSURE_JOB, schedulePlanClosure,
 } from '../queues/index.js';
 import { cleanAiUsageLogs } from '../lib/aiUsage.js';
 import { runLearningSweep } from '../services/pattern-engine/learningSweep.js';
+import { runPlanClosureSweep } from '../services/planning/planClosureSweep.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -61,6 +65,14 @@ export async function runMaintenanceJob(job) {
   // sweep itself could not run.
   if (name === LEARNING_EXTRACTION_JOB) {
     const result = await runLearningSweep();
+    return { job: name, ...result };
+  }
+
+  // C-18 — administrative closure. Not swallowed either: a plan that failed to
+  // close stays "the active plan" for its workspace, and Lumi keeps tracking the
+  // goals of a period that finished.
+  if (name === PLAN_CLOSURE_JOB) {
+    const result = await runPlanClosureSweep();
     return { job: name, ...result };
   }
 
@@ -100,6 +112,15 @@ export function startMaintenanceWorker() {
     .then(() => logger.info('[maintenance] learning-extraction sweep scheduled'))
     .catch((err) =>
       logger.warn({ err: err.message }, '[maintenance] learning schedule deferred — Redis unreachable?'),
+    );
+
+  // C-18. Same shape and the same reasoning as the two above: no enable flag
+  // (one UPDATE spends nothing, and a flag would recreate the starvation this
+  // job exists to end), and self-replacing registration.
+  schedulePlanClosure()
+    .then(() => logger.info('[maintenance] plan-closure sweep scheduled'))
+    .catch((err) =>
+      logger.warn({ err: err.message }, '[maintenance] plan-closure schedule deferred — Redis unreachable?'),
     );
 
   logger.info('[maintenance] worker started');

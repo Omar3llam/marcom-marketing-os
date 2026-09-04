@@ -127,15 +127,27 @@ export async function previewAllocation(workspaceId, { totalBudgetMinor, goal, b
 }
 
 /**
- * Commit — persist the AllocationPlan + PROPOSED REALLOCATE Decisions.
- * @returns {Promise<{ planId, decisionsCreated }>}
+ * Persist an ALREADY-BUILT allocation: the AllocationPlan row + its PROPOSED
+ * REALLOCATE Decisions. Writes only; computes nothing and reads no live truth.
+ *
+ * C-18 split this out of `commitAllocation` so a plan promotion can persist the
+ * mix a strategist APPROVED instead of one recomputed at the moment of the
+ * click. `commitAllocation` below is unchanged in behaviour — it is now
+ * literally "preview, then persist".
+ *
+ * @param {object} db a Prisma client OR a transaction client. Promotion passes
+ *   a transaction, because its third write (Plan → ACTIVE) must land or fail
+ *   with these two: a crash in between mints proposals against a plan that
+ *   still reads DRAFT, and the next promote mints them all over again.
+ * @param {string} workspaceId
+ * @param {object} plan an `allocate()`-shaped result
+ * @returns {Promise<{ allocationPlanId, decisionsCreated }>}
  */
-export async function commitAllocation(workspaceId, { totalBudgetMinor, goal } = {}) {
-  if (!workspaceId) throw new Error('commitAllocation: workspaceId required');
-  const plan = await previewAllocation(workspaceId, { totalBudgetMinor, goal });
-  if (!plan) throw new Error('commitAllocation: no channels to allocate');
+export async function persistAllocation(db, workspaceId, plan) {
+  if (!workspaceId) throw new Error('persistAllocation: workspaceId required');
+  if (!plan) throw new Error('persistAllocation: plan required');
 
-  const created = await prisma.allocationPlan.create({
+  const created = await db.allocationPlan.create({
     data: {
       workspaceId,
       goalType:          plan.goal.type,
@@ -152,8 +164,22 @@ export async function commitAllocation(workspaceId, { totalBudgetMinor, goal } =
   });
 
   const rows = planToDecisionRows(plan, { workspaceId, planId: created.id });
-  if (rows.length > 0) await prisma.decision.createMany({ data: rows });
+  if (rows.length > 0) await db.decision.createMany({ data: rows });
 
-  logger.info({ workspaceId, planId: created.id, decisionsCreated: rows.length }, '[AllocationService] committed');
-  return { planId: created.id, decisionsCreated: rows.length, plan };
+  return { allocationPlanId: created.id, decisionsCreated: rows.length };
+}
+
+/**
+ * Commit — preview against current truth, then persist.
+ * @returns {Promise<{ planId, decisionsCreated }>}
+ */
+export async function commitAllocation(workspaceId, { totalBudgetMinor, goal } = {}) {
+  if (!workspaceId) throw new Error('commitAllocation: workspaceId required');
+  const plan = await previewAllocation(workspaceId, { totalBudgetMinor, goal });
+  if (!plan) throw new Error('commitAllocation: no channels to allocate');
+
+  const { allocationPlanId, decisionsCreated } = await persistAllocation(prisma, workspaceId, plan);
+
+  logger.info({ workspaceId, planId: allocationPlanId, decisionsCreated }, '[AllocationService] committed');
+  return { planId: allocationPlanId, decisionsCreated, plan };
 }

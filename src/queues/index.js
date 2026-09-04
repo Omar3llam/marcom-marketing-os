@@ -32,6 +32,9 @@ export const AI_USAGE_CLEANUP_JOB = 'ai-usage-cleanup';
 // note above invites: the queue's defining property is "always on, spends
 // nothing", and deterministic extraction has both.
 export const LEARNING_EXTRACTION_JOB = 'learning-extraction';
+// C-18 — administrative closure of plans whose period has ended. Same queue,
+// same defining property: always on, spends nothing. One indexed UPDATE.
+export const PLAN_CLOSURE_JOB = 'plan-closure';
 
 const queueOpts = {
   connection: bullConnection,
@@ -240,6 +243,41 @@ export async function scheduleLearningExtraction() {
     {},
     {
       jobId:  LEARNING_EXTRACTION_JOB,
+      repeat: { pattern: cron },
+    },
+  );
+}
+
+// ── Helper: schedule plan closure (C-18) ─────────────────────
+// Hourly, off the hour again but on a different minute from its neighbours: a
+// plan's period ends on a date, so the granularity that matters is a day and
+// hourly is already an order of magnitude finer than the fact it records. It
+// only has to be finer than "someone might look".
+//
+// No enable flag, for the same reason as the two above: an opt-in sweep is a
+// sweep nobody enables, and this one exists precisely because closure must not
+// wait for a page view.
+//
+// Re-registers rather than adding, so a changed cron replaces the schedule
+// instead of running beside it.
+export async function schedulePlanClosure() {
+  if (!maintenanceQueue) {
+    throw new Error('Queue subsystem unavailable — set REDIS_URL to a real Redis instance');
+  }
+  const cron = process.env.PLAN_CLOSURE_CRON || '41 * * * *';
+
+  const existing = await maintenanceQueue.getRepeatableJobs();
+  for (const j of existing) {
+    if (j.id === PLAN_CLOSURE_JOB) {
+      await maintenanceQueue.removeRepeatableByKey(j.key);
+    }
+  }
+
+  await maintenanceQueue.add(
+    PLAN_CLOSURE_JOB,
+    {},
+    {
+      jobId:  PLAN_CLOSURE_JOB,
       repeat: { pattern: cron },
     },
   );

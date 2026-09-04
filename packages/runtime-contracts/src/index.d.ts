@@ -246,3 +246,17 @@ export interface ConfidenceDimensions {
   /** null when the age could not be established — the 0.70 above is a default, not a measurement. */
   readonly daysRunning: number | null;
 }
+
+// -- Plan promotion outcomes (C-18) --------------------------
+
+export const PROMOTION_OUTCOME: {
+  readonly PROMOTED: 'PROMOTED';
+  readonly PROMOTED_WITH_NO_MOVES: 'PROMOTED_WITH_NO_MOVES';
+  readonly ALREADY_PROMOTED: 'ALREADY_PROMOTED';
+};
+
+export type PromotionOutcome = typeof PROMOTION_OUTCOME[keyof typeof PROMOTION_OUTCOME];
+
+export const PROMOTION_OUTCOME_VALUES: readonly PromotionOutcome[];
+
+export function isPromotionOutcome(value: string | null | undefined): boolean;

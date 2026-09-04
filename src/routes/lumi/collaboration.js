@@ -24,6 +24,7 @@ import { NARRATIVE_PERIOD, NARRATIVE_AUDIENCE } from '../../services/narrative-e
 import { requestApproval, decideApproval, handoff, listApprovals, APPROVAL_STATE } from '../../services/collaboration/ApprovalService.js';
 import { inboxFor } from '../../services/collaboration/InboxService.js';
 import { ALERT_KIND } from '../../services/collaboration/notificationRouter.js';
+import { resolveActorId } from './actorId.js';
 
 export const collaborationRouter = Router();
 
@@ -97,7 +98,9 @@ collaborationRouter.post('/narratives/generate', requireCollabRole(WORKSPACE_ROL
   const period = Object.values(NARRATIVE_PERIOD).includes(b.period) ? b.period : NARRATIVE_PERIOD.WEEKLY;
   const audience = Object.values(NARRATIVE_AUDIENCE).includes(b.audience) ? b.audience : NARRATIVE_AUDIENCE.LEADERSHIP;
   try {
-    const narrative = await generateNarrative(wsId, { period, audience, actorId: req.userId ?? null });
+    const actorId = await resolveActorId(req);
+    if (!actorId) return res.status(409).json({ error: 'ActorUnresolved', message: 'Could not identify the authoring seat.' });
+    const narrative = await generateNarrative(wsId, { period, audience, actorId });
     return res.status(201).json({ workspaceId: wsId, narrative });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/collaboration] generate narrative failed');
@@ -125,8 +128,10 @@ collaborationRouter.post('/approvals', requireCollabRole(WORKSPACE_ROLE.BUYER, W
   const wsId = await need(req, res); if (!wsId) return;
   const b = req.body ?? {};
   if (!b.planId && !b.subjectId) return res.status(400).json({ error: 'BadApproval', message: 'planId or subjectId required.' });
+  const requestedById = await resolveActorId(req);
+  if (!requestedById) return res.status(409).json({ error: 'ActorUnresolved', message: 'Could not identify the requesting seat.' });
   try {
-    const request = await requestApproval(wsId, { planId: b.planId, subjectType: b.subjectType, subjectId: b.subjectId, requestedById: req.userId ?? null });
+    const request = await requestApproval(wsId, { planId: b.planId, subjectType: b.subjectType, subjectId: b.subjectId, requestedById });
     return res.status(201).json({ workspaceId: wsId, request });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/collaboration] request approval failed');
@@ -140,8 +145,10 @@ collaborationRouter.post('/approvals/:id/decide', requireCollabRole(WORKSPACE_RO
   if (b.decision !== APPROVAL_STATE.APPROVED && b.decision !== APPROVAL_STATE.REJECTED) {
     return res.status(400).json({ error: 'BadDecision', message: "decision must be 'APPROVED' or 'REJECTED'." });
   }
+  const approverId = await resolveActorId(req);
+  if (!approverId) return res.status(409).json({ error: 'ActorUnresolved', message: 'Could not identify the deciding seat.' });
   try {
-    const updated = await decideApproval(wsId, { requestId: req.params.id, decision: b.decision, approverId: req.userId ?? null, approverRole: req.collabRole, reason: b.reason });
+    const updated = await decideApproval(wsId, { requestId: req.params.id, decision: b.decision, approverId, approverRole: req.collabRole, reason: b.reason });
     return res.status(201).json({ workspaceId: wsId, request: updated });
   } catch (err) {
     if (err.code === 'RoleForbidden') return res.status(403).json({ error: 'RoleForbidden', message: err.message });
@@ -160,8 +167,10 @@ collaborationRouter.post('/handoff', requireCollabRole(WORKSPACE_ROLE.BUYER, WOR
   const b = req.body ?? {};
   if (!b.subjectId) return res.status(400).json({ error: 'BadHandoff', message: 'subjectId required.' });
   const fromRole = b.fromRole ?? req.collabRole;
+  const actorId = await resolveActorId(req);
+  if (!actorId) return res.status(409).json({ error: 'ActorUnresolved', message: 'Could not identify the handing-off seat.' });
   try {
-    const event = await handoff(wsId, { subjectType: b.subjectType, subjectId: b.subjectId, fromRole, toRole: b.toRole, actorId: req.userId ?? null, note: b.note });
+    const event = await handoff(wsId, { subjectType: b.subjectType, subjectId: b.subjectId, fromRole, toRole: b.toRole, actorId, note: b.note });
     return res.status(201).json({ workspaceId: wsId, event });
   } catch (err) {
     if (err.code === 'RoleForbidden') return res.status(403).json({ error: 'RoleForbidden', message: err.message });
