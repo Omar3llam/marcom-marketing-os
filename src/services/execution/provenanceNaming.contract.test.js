@@ -47,7 +47,7 @@ const filesWhereCode = (re) => FILES.filter((f) => re.test(code(f))).map(rel).so
 
 // ── intentAt is engagement, and nothing reads it ────────────────────────────
 describe('intentAt may not become action evidence again', () => {
-  it('has exactly one production site: the route that writes it', () => {
+  it('has exactly two production sites: the route that writes it, and the read that states it', () => {
     // C1 removed the single reader — decisionLearning gated its population on
     // this column and rendered "improved after action" over it. Copying a
     // recommendation is not changing a campaign, and the distance between the
@@ -56,7 +56,26 @@ describe('intentAt may not become action evidence again', () => {
     // Asserted as an exact set rather than "not in decisionLearning": the next
     // reader will not necessarily be that one, and a predicate naming its own
     // exception can only catch the mistake it already knows about.
-    expect(filesWhereCode(/\bintentAt\b/)).toEqual(['/src/routes/lumi/decisions.js']);
+    //
+    // C-11 added the second, and it is a PUBLISHER rather than a reader: the
+    // detail read states the stamp so an operator can see whether anyone
+    // carried this call anywhere. The next assertion is what keeps that
+    // distinction real, because "it is only publishing it" is exactly what the
+    // reader C1 deleted would also have claimed.
+    expect(filesWhereCode(/\bintentAt\b/)).toEqual([
+      '/src/routes/lumi/decisions.js',
+      '/src/services/decisions/decisionDetail.js',
+    ]);
+  });
+
+  it('the detail read STATES it and never branches on it', () => {
+    // Twice, and both times as a projection: once to select the column, once to
+    // put it in the body. A third form — `if (row.intentAt)`, `intentAt: { not:
+    // null }`, a sort, a filter — would be this column re-entering a judgement,
+    // which is the whole thing C1 undid.
+    const src = code(resolve(SRC, 'services/decisions/decisionDetail.js'));
+    const uses = src.match(/\bintentAt\b[^,\n]*/g) ?? [];
+    expect(uses).toEqual(['intentAt: true', 'intentAt: row.intentAt']);
   });
 
   it('the writer names it exactly once, as a stamp literal', () => {
