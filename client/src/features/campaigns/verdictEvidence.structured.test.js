@@ -135,8 +135,10 @@ describe('confidenceDetail — say WHY confidence is low', () => {
   });
 
   it('does not blame the data when the data is fine', () => {
+    // C-09 - the signal half is not passed here, so it is UNKNOWN rather than
+    // healthy. The data claim is unchanged: measured, and not the limit.
     expect(confidenceDetail({ confidence: 0.85, dataConfidence: 0.94 }))
-      .toEqual({ label: 'High', limitedByData: false, limitedBySignal: false });
+      .toEqual({ label: 'High', limitedByData: false, limitedBySignal: null });
   });
 
   it('null confidence renders nothing rather than a default label', () => {
@@ -144,8 +146,14 @@ describe('confidenceDetail — say WHY confidence is low', () => {
     expect(confidenceDetail({})).toBeNull();
   });
 
-  it('a missing dataConfidence is not read as thin data', () => {
-    expect(confidenceDetail({ confidence: 0.7, dataConfidence: null }).limitedByData).toBe(false);
+  it('a missing dataConfidence is read as UNKNOWN - neither thin nor fine', () => {
+    // C-09, ruling B. This test's NAME was always right and its assertion was
+    // not: `false` does not mean "not thin", it means "measured, and healthy".
+    // A row whose data half was never computed rendered as a clean band, so
+    // UNKNOWN read as GOOD on the confidence surface itself.
+    expect(confidenceDetail({ confidence: 0.7, dataConfidence: null }).limitedByData).toBeNull();
+    // And it is still not TRUE - we are not claiming the data is thin either.
+    expect(confidenceDetail({ confidence: 0.7, dataConfidence: null }).limitedByData).not.toBe(true);
   });
 });
 
@@ -179,9 +187,13 @@ describe('confidenceDetail — the signal half', () => {
     expect([conf.limitedByData, conf.limitedBySignal].filter(Boolean)).toHaveLength(1);
   });
 
-  it.each([[null], [undefined], [NaN], ['0.4']])('%s is not read as a weak signal', (signalConfidence) => {
-    expect(confidenceDetail({ confidence: 0.7, dataConfidence: 0.9, signalConfidence }).limitedBySignal)
-      .toBe(false);
+  // C-09 - a value that is not a finite number is UNKNOWN, and a malformed one
+  // ('0.4' as a string) is not a healthy one either. Still never TRUE: we do not
+  // claim a weak signal we never measured.
+  it.each([[null], [undefined], [NaN], ['0.4']])('%s is UNKNOWN, never a weak signal', (signalConfidence) => {
+    const flag = confidenceDetail({ confidence: 0.7, dataConfidence: 0.9, signalConfidence }).limitedBySignal;
+    expect(flag).toBeNull();
+    expect(flag).not.toBe(true);
   });
 
   // Both halves share confidenceLabel's bands, so the boundary is the same one
@@ -221,6 +233,10 @@ describe('confidenceDetail — the signal half', () => {
   it('two-argument callers keep the answer they always got', () => {
     expect(confidenceDetail({ confidence: 0.35, dataConfidence: 0.39 }))
       .toMatchObject({ label: 'Low', limitedByData: true });
-    expect(confidenceDetail({ confidence: 0.9, dataConfidence: 0.9 }).limitedBySignal).toBe(false);
+    // C-09 - the DATA answer these callers actually read is bit-identical.
+    // The signal flag they never passed is now UNKNOWN rather than a quiet
+    // "healthy", which is the whole correction.
+    expect(confidenceDetail({ confidence: 0.9, dataConfidence: 0.9 }).limitedByData).toBe(false);
+    expect(confidenceDetail({ confidence: 0.9, dataConfidence: 0.9 }).limitedBySignal).toBeNull();
   });
 });

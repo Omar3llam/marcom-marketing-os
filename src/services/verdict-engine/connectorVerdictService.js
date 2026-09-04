@@ -654,6 +654,23 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
     // Pinned by the golden test in decisionEngine.test.js.
     signalConfidence: c.signalConfidence ?? null,
     dataConfidence: c.dataConfidence ?? null,
+    // ── C-09 — what the data half is MADE OF ─────────────────────────────────
+    // sample × completeness × temporal, each with the basis that makes it
+    // explainable: `impressions` behind the sample, `daysRunning` behind the
+    // temporal score, and the identities of the fields the diagnosis could not
+    // see behind the completeness score. All three were computed on every
+    // verdict since the engine existed and returned to nobody, so a surface
+    // could say "Low" and never which of three things was low, nor which field
+    // to go and connect.
+    //
+    // A SCALAR CAN QUANTIFY AN ABSENCE; IT CANNOT EXPLAIN IT. 0.75 says how
+    // much is missing; only `dataCompletenessMissingFields` says what.
+    //
+    // null exactly when `dataConfidence` is null — the two are inseparable by
+    // construction, so this never describes a confidence that does not exist.
+    // And these are DESCRIPTIVE OUTPUTS: the engine owns composition, and no
+    // consumer should multiply them back together. See confidenceDimensions.js.
+    dataConfidenceDimensions: c.dataConfidenceDimensions ?? null,
     // { signal, stage, evidence[], counterfactual, action } when a funnel stage
     // was diagnosed; null when the funnel was never measured or is healthy.
     // evidence[] carries the real value AND the benchmark it was judged against,

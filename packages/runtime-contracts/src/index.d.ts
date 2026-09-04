@@ -216,3 +216,33 @@ export function prerequisiteOfGatingReason(reason: string | null | undefined): P
 export function withGatingKnowledge<T extends { reason: string }>(
   row: T
 ): T & { knowledge: KnowledgeToken; prerequisite: Prerequisite };
+
+// -- Confidence dimensions (C-09) ----------------------------
+
+export const COMPLETENESS_FIELD: {
+  readonly LPV: 'LPV';
+  readonly ATC: 'ATC';
+  readonly CREATED_TIME: 'CREATED_TIME';
+  readonly OBJECTIVE: 'OBJECTIVE';
+};
+
+export type CompletenessField = typeof COMPLETENESS_FIELD[keyof typeof COMPLETENESS_FIELD];
+
+export const COMPLETENESS_FIELD_VALUES: readonly CompletenessField[];
+
+export function isCompletenessField(field: string | null | undefined): boolean;
+
+/**
+ * The decomposition of dataConfidence. Present exactly when dataConfidence is,
+ * and null otherwise — an unknown sample yields no dimensions rather than a
+ * fabricated sampleQuality of 0.
+ */
+export interface ConfidenceDimensions {
+  readonly sampleQuality: number;
+  readonly impressions: number;
+  readonly dataCompleteness: number;
+  readonly dataCompletenessMissingFields: readonly CompletenessField[];
+  readonly temporalQuality: number;
+  /** null when the age could not be established — the 0.70 above is a default, not a measurement. */
+  readonly daysRunning: number | null;
+}
