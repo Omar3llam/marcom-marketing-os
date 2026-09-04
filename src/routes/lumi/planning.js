@@ -17,6 +17,18 @@ import { buildPlan, listPlans, getPlan, promotePlanMix } from '../../services/pl
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { requirePlan }        from '../../middleware/requirePlan.js';
 import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
+import { resolveActorId }     from './actorId.js';
+import { PROMOTION_OUTCOME }  from '@marcom/runtime-contracts';
+import { PROMOTION_REFUSAL, PROMOTION_PREREQUISITE } from '../../services/planning/planPromotionSnapshot.js';
+
+// Typed service refusals → the status that describes them, mirroring
+// PROMOTION_STATUS in lumi/memory.js. Never a blanket 500: each of these is a
+// state of the plan, not a failure of the request.
+const PROMOTION_REFUSAL_STATUS = Object.freeze({
+  [PROMOTION_REFUSAL.SNAPSHOT_INCOMPLETE]: 409,
+  [PROMOTION_REFUSAL.NOTHING_TO_PROMOTE]:  409,
+  [PROMOTION_REFUSAL.ACTOR_UNRESOLVED]:    409,
+});
 
 // Planning (PLAN surface) is STRATEGIST-only — not in a BUYER/CLIENT's visibleStates.
 const requireStrategist = requireCollabRole(WORKSPACE_ROLE.STRATEGIST);
@@ -198,14 +210,35 @@ planningRouter.get('/plans/:id', async (req, res) => {
 planningRouter.post('/plans/:id/promote', requireStrategist, async (req, res) => {
   const wsId = await resolveWorkspaceId(req);
   if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
+
+  // C-18 — a promotion is an act, and `Plan.promotedBy` is a `User.id` uuid.
+  // Resolved BEFORE the call so an unidentifiable seat is a 409 rather than a
+  // failed insert inside the transaction (R-13).
+  const promotedById = await resolveActorId(req);
+  if (!promotedById) {
+    return res.status(409).json({ error: 'ActorUnresolved', message: 'Could not identify the promoting seat.' });
+  }
+
   try {
-    const result = await promotePlanMix(wsId, req.params.id);
+    const result = await promotePlanMix(wsId, req.params.id, { promotedById });
     logger.info({ wsId, ...result }, '[lumi/planning] plan mix promoted');
-    return res.status(201).json({ workspaceId: wsId, ...result });
+    // 201 says "created". A repeat promotion creates nothing, and the status
+    // line is part of the answer — the client should not have to read the body
+    // to learn whether anything happened.
+    const status = result.outcome === PROMOTION_OUTCOME.ALREADY_PROMOTED ? 200 : 201;
+    return res.status(status).json({ workspaceId: wsId, ...result });
   } catch (err) {
     if (err.code === 'ApprovalRequired') return res.status(409).json({ error: 'ApprovalRequired', message: err.message, planId: req.params.id, approvalState: err.approvalState ?? null });
     if (/not found/i.test(err.message)) return res.status(404).json({ error: 'PlanNotFound', message: err.message });
-    if (/no channels/i.test(err.message)) return res.status(409).json({ error: 'NothingToPromote', message: err.message });
+    // C-18 refusals carry the prerequisite that would end them (C-07's law):
+    // a snapshot too old to promote is answered with "rebuild the plan", not
+    // with a bare 409 the operator has to interpret.
+    if (err.code && PROMOTION_REFUSAL_STATUS[err.code]) {
+      return res.status(PROMOTION_REFUSAL_STATUS[err.code]).json({
+        error: err.code, message: err.message,
+        planId: req.params.id, prerequisite: PROMOTION_PREREQUISITE[err.code] ?? null,
+      });
+    }
     logger.error({ err: err.message, wsId }, '[lumi/planning] promote failed');
     return res.status(500).json({ error: 'PromoteFailed', message: 'Request failed' });
   }

@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { planToAllocationInput, isPromotionApprovalBlocked } from './PlanService.js';
+import { isPromotionApprovalBlocked } from './PlanService.js';
 import { buildScenarioInputs } from '../scenario-engine/ScenarioService.js';
-import { GOAL_TYPE } from '../allocation-engine/allocationEngine.js';
 
 describe('isPromotionApprovalBlocked — the role-agnostic plan-state gate', () => {
   it('does NOT block a plan with no approval gate (the default)', () => {
@@ -18,18 +17,6 @@ describe('isPromotionApprovalBlocked — the role-agnostic plan-state gate', () 
   });
   it('treats a missing plan as not-blocked (the not-found path owns that error)', () => {
     expect(isPromotionApprovalBlocked(null)).toBe(false);
-  });
-});
-
-describe('planToAllocationInput — promotion rides the Phase-3 loop', () => {
-  it('derives a GROWTH_CEILING allocation input from a stored plan', () => {
-    const input = planToAllocationInput({ totalBudgetMinor: 2_000_000 });
-    expect(input.totalBudgetMinor).toBe(2_000_000);
-    expect(input.goal.type).toBe(GOAL_TYPE.GROWTH_CEILING);
-  });
-
-  it('throws when the plan has no budget', () => {
-    expect(() => planToAllocationInput({})).toThrow(/totalBudgetMinor/);
   });
 });
 

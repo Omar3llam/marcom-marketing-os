@@ -18,6 +18,7 @@ import { NETWORK_STATUS, NETWORK_KNOWLEDGE }  from '../../services/network-engin
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { requirePlan }        from '../../middleware/requirePlan.js';
 import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
+import { resolveActorId } from './actorId.js';
 
 export const memoryRouter = Router();
 
@@ -97,26 +98,6 @@ memoryRouter.get('/briefing', async (req, res) => {
 // as granting it; a seat that cannot grant must not be able to revoke either,
 // or the guarantee runs one way only.
 // ─────────────────────────────────────────────────────────────
-
-/**
- * The actor as the AUDIT COLUMNS mean it: a `User.id` uuid.
- *
- * `req.userId` is the Firebase uid, and `ApprovalRequest.requestedById` /
- * `CollaborationEvent.actorId` are `@db.Uuid`. Writing the one into the other
- * does not produce a wrong name — it produces a failed insert, or a column that
- * cannot be joined back to a person. R-13 requires this trail to prove WHO, so
- * an unresolvable actor is a refusal, never a null in the actor column.
- */
-async function resolveActorId(req) {
-  if (!req.userId) return null;
-  try {
-    const u = await prisma.user.findUnique({ where: { clerkId: req.userId }, select: { id: true } });
-    return u?.id ?? null;
-  } catch (err) {
-    logger.error({ err: err.message, userId: req.userId }, '[lumi/memory] actor resolution failed');
-    return null;
-  }
-}
 
 /** Typed service refusals → the status that describes them. Never a blanket 500. */
 const PROMOTION_STATUS = Object.freeze({

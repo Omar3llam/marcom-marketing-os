@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { ClipboardList, ChevronRight, ChevronDown, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatCurrency, toMinor } from '@/lib/money';
+import { promotionCopyFor, isPromoted } from './promotionCopy.js';
 
 const METRIC_LABEL = { blendedRoas: 'Blended ROAS', blendedCac: 'Blended CAC', mer: 'MER' };
 const CMP_SYMBOL = { GT: '>', GTE: '≥', LT: '<', LTE: '≤' };
@@ -23,6 +24,8 @@ const CMP_SYMBOL = { GT: '>', GTE: '≥', LT: '<', LTE: '≤' };
 const planTone = {
   DRAFT:  'text-lumi-subtle bg-lumi-elevated border-lumi-border',
   ACTIVE: 'text-signal-scale bg-signal-scale-bg border-signal-scale/25',
+  // C-18 gave CLOSED a writer. Until then this style existed for a state
+  // nothing could reach: a plan whose period ended stayed ACTIVE forever.
   CLOSED: 'text-lumi-muted bg-lumi-elevated border-lumi-border',
 };
 const goalTone = {
@@ -145,6 +148,10 @@ function PlanDetail({ plan, detail, loading, canManage, canSubmit, onSubmit, sub
 
   const tracked = detail.tracking?.goals ?? [];
   const gateBlocks = plan?.requiresApproval === true && plan?.approvalState !== 'APPROVED';
+  // C-18 — a promotion with no budget moves writes no AllocationPlan, so the id
+  // is null on a plan that IS promoted. Guarding on it would re-arm the button.
+  const promoted = isPromoted(detail);
+  const promotionCopy = promotionCopyFor(promoteResult);
   return (
     <div className="px-4 py-3 border-t border-lumi-border bg-lumi-elevated/40 space-y-2">
       {tracked.length === 0 ? (
@@ -162,18 +169,18 @@ function PlanDetail({ plan, detail, loading, canManage, canSubmit, onSubmit, sub
         <div className="pt-1">
           <button
             type="button"
-            disabled={promoting || !!detail.allocationPlanId || gateBlocks}
+            disabled={promoting || promoted || gateBlocks}
             onClick={() => onPromote?.(detail.id)}
             className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg hover:bg-lumi-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {detail.allocationPlanId ? 'Already promoted' : promoting ? 'Promoting…' : 'Promote mix → proposals'}
+            {promoted ? 'Already promoted' : promoting ? 'Promoting…' : 'Promote mix → proposals'}
           </button>
           {gateBlocks && (
             <p className="mt-1 text-[11px] text-signal-hold">Blocked until approved — submit it for STRATEGIST review first.</p>
           )}
-          {promoteResult && (
-            <p className="mt-1.5 text-xs text-signal-scale">
-              Promoted — {promoteResult.decisionsCreated} proposed move{promoteResult.decisionsCreated === 1 ? '' : 's'}. Confirm {promoteResult.decisionsCreated === 1 ? 'it' : 'them'} in Decisions to execute.
+          {promotionCopy && (
+            <p className={cn('mt-1.5 text-xs', promotionCopy.tone === 'success' ? 'text-signal-scale' : 'text-lumi-muted')}>
+              {promotionCopy.message}
             </p>
           )}
           <p className="mt-1 text-[11px] text-lumi-subtle">Promote stages PROPOSED moves only — Lumi never moves budget without a human confirm.</p>

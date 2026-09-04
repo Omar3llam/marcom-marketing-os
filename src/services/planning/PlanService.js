@@ -7,15 +7,17 @@
 //                     (ranges) + unit economics + goal landing + memoryBasis
 //                     → persist ONE Plan (+ ONE NorthStarGoal) in a txn.
 //   getPlan/listPlans/trackPlan(): live actuals-vs-plan, READ-ONLY.
-//   promotePlanMix(): reuse commitAllocation → PROPOSED REALLOCATE Decisions
-//                     ride the existing Phase-3 governance. No new exec code.
+//   promotePlanMix(): the APPROVED mix, read back from the plan's own snapshot
+//                     → PROPOSED REALLOCATE Decisions riding the existing
+//                     Phase-3 governance. No new exec code, and (C-18) no
+//                     recomputation: nothing on that path reads live truth.
 //
 // THE HONESTY RULE rides through: every projection persisted in `projections`
 // is a range + assumptions; `memoryBasis` records what the plan leaned on.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { previewAllocation, commitAllocation } from '../allocation-engine/AllocationService.js';
+import { previewAllocation, persistAllocation } from '../allocation-engine/AllocationService.js';
 import { GOAL_TYPE } from '../allocation-engine/allocationEngine.js';
 import { getWeeklyAgenda } from '../test-generator/TestGeneratorService.js';
 import { runScenario, gatherLeadingSignals } from '../scenario-engine/ScenarioService.js';
@@ -24,6 +26,11 @@ import { estimateLanding } from '../goal-tracker/goalTrackerEngine.js';
 import { TEMPORAL } from '../../config/temporal.js';
 import { ENTITY_LEVEL } from '../connectors/connectorTypes.js';
 import { selectOperationalSnapshots } from '../evidence/index.js';
+import { PROMOTION_OUTCOME } from '@marcom/runtime-contracts';
+import {
+  captureMixSnapshot, planToAllocationCommit, hasBudgetMoves,
+  refusePromotion, PROMOTION_REFUSAL,
+} from './planPromotionSnapshot.js';
 
 const AGENDA_LIMIT = Number(process.env.PLAN_AGENDA_LIMIT || 5);
 // Bounds MetricSnapshot.date — the SYNC/OBSERVATION timestamp, never a delivery
@@ -52,16 +59,12 @@ export function isPromotionApprovalBlocked(plan) {
   return !!plan && plan.requiresApproval === true && plan.approvalState !== 'APPROVED';
 }
 
-/**
- * Pure: derive the Phase-3 allocation input from a stored plan, so promoting
- * a plan's mix rides the existing commit path. Exported for testing.
- */
-export function planToAllocationInput(plan) {
-  if (!plan || typeof plan.totalBudgetMinor !== 'number') {
-    throw new Error('planToAllocationInput: plan.totalBudgetMinor required');
-  }
-  return { totalBudgetMinor: plan.totalBudgetMinor, goal: { type: GOAL_TYPE.GROWTH_CEILING } };
-}
+// C-18 removed `planToAllocationInput` here. It returned the budget and a
+// hardcoded goal, and `commitAllocation` recomputed the whole mix from live
+// blended truth — so a plan approved on Tuesday executed Friday's arithmetic.
+// The approved mix is now rebuilt from the stored snapshot by
+// `planToAllocationCommit`, and no path from promotion reaches
+// `previewAllocation` at all.
 
 /**
  * Aggregate platform MetricSnapshots into an OBSERVATION-DAY actuals series for
@@ -280,6 +283,11 @@ export async function buildPlan(workspaceId, { name, periodStart, periodEnd, tot
     scenario: scenario ? { scenarioType: scenario.scenarioType, projections: scenario.projections, assumptions: scenario.assumptions, confidence: scenario.confidence, basis: scenario.basis } : null,
     economics: econ ? { ltvToCac: econ.result.ltvToCac, sustainabilityBand: econ.result.sustainabilityBand, paybackOrders: econ.result.paybackOrders, ltvMinor: econ.result.ltvMinor, isDefault: econ.isDefault, assumptions: econ.result.assumptions } : null,
     goalLanding: landing,
+    // C-18 — the rest of the preview, so promotion can execute the mix that was
+    // approved instead of recomputing one. `channelMix` keeps the allocations;
+    // this keeps everything else `persistAllocation` needs and cannot derive
+    // (goalType and reasoning are NOT NULL columns on AllocationPlan).
+    mix: captureMixSnapshot(mix),
   };
 
   // ── Persist ONE Plan (+ ONE NorthStarGoal) in a single transaction ──
@@ -365,31 +373,84 @@ export async function trackPlan(workspaceId, planOrId, { now } = {}) {
 }
 
 /**
- * Promote the plan's channel mix → PROPOSED REALLOCATE Decisions via the
- * existing Phase-3 governance. Sets Plan.allocationPlanId. The ONLY write
- * that touches execution.
- * @returns {Promise<{ planId, allocationPlanId, decisionsCreated }>}
+ * Promote the plan's APPROVED channel mix → PROPOSED REALLOCATE Decisions.
+ * The ONLY write here that touches execution.
+ *
+ * 🔒 C-18. Three things changed, and each closes a way this could lie:
+ *
+ *   1. The mix comes from the stored snapshot. Nothing on this path calls
+ *      `previewAllocation`, so what executes is what was approved (Ruling A).
+ *   2. Who and when are recorded, and an unresolvable actor REFUSES rather
+ *      than writing a null into the column (R-13, as C-05 settled it).
+ *   3. Every write shares one transaction, and `promotedAt` — not
+ *      `allocationPlanId` — is what says this already happened. A promotion
+ *      whose approved mix asks for no moves writes no AllocationPlan, so
+ *      guarding on the id would let that plan be promoted twice.
+ *
+ * @returns {Promise<{ planId, allocationPlanId, decisionsCreated, outcome, promotedAt }>}
  */
-export async function promotePlanMix(workspaceId, planId) {
+export async function promotePlanMix(workspaceId, planId, { promotedById = null, now = new Date() } = {}) {
   if (!workspaceId) throw new Error('promotePlanMix: workspaceId required');
   const plan = await prisma.plan.findFirst({ where: { id: planId, workspaceId } });
   if (!plan) throw new Error('promotePlanMix: plan not found');
+
   // Approval gate (Phase 6B): an unapproved plan with an open gate cannot become
   // budget moves. Backend is the real arbiter — rejects regardless of caller.
+  //
+  // FIRST, and deliberately so: a blocked plan must hear "you need approval",
+  // never "your snapshot is too old". The second would send a strategist off to
+  // rebuild a plan they are not yet permitted to promote.
   if (isPromotionApprovalBlocked(plan)) {
     const err = new Error('Plan requires STRATEGIST approval before execution');
     err.code = 'ApprovalRequired';
     err.approvalState = plan.approvalState ?? null;
     throw err;
   }
-  if (plan.allocationPlanId) {
-    return { planId: plan.id, allocationPlanId: plan.allocationPlanId, decisionsCreated: 0, alreadyPromoted: true };
+
+  // `allocationPlanId` alongside `promotedAt` is not redundancy: a plan promoted
+  // before C-18 has the id and no timestamp. Both mean promoted — one is the
+  // record, the other is all that was left behind.
+  if (plan.promotedAt || plan.allocationPlanId) {
+    return {
+      planId: plan.id,
+      allocationPlanId: plan.allocationPlanId ?? null,
+      decisionsCreated: 0,
+      outcome: PROMOTION_OUTCOME.ALREADY_PROMOTED,
+      promotedAt: plan.promotedAt ?? null,
+    };
   }
 
-  const input = planToAllocationInput(plan);
-  const { planId: allocationPlanId, decisionsCreated } = await commitAllocation(workspaceId, input);
-  await prisma.plan.update({ where: { id: plan.id }, data: { allocationPlanId, status: 'ACTIVE' } });
+  if (!promotedById) {
+    throw refusePromotion(
+      PROMOTION_REFUSAL.ACTOR_UNRESOLVED,
+      'Could not establish who is promoting this plan.',
+    );
+  }
 
-  logger.info({ workspaceId, planId: plan.id, allocationPlanId, decisionsCreated }, '[PlanService] mix promoted');
-  return { planId: plan.id, allocationPlanId, decisionsCreated };
+  const commit = planToAllocationCommit(plan);
+  const moves = hasBudgetMoves(commit);
+
+  const result = await prisma.$transaction(async (tx) => {
+    // No moves ⇒ no AllocationPlan row. /lumi/feed publishes those as "open,
+    // awaiting your confirm"; one containing nothing to confirm is a claim
+    // about work that does not exist.
+    const persisted = moves
+      ? await persistAllocation(tx, workspaceId, commit)
+      : { allocationPlanId: null, decisionsCreated: 0 };
+
+    await tx.plan.update({
+      where: { id: plan.id },
+      data: {
+        allocationPlanId: persisted.allocationPlanId,
+        status: 'ACTIVE',
+        promotedAt: now,
+        promotedBy: promotedById,
+      },
+    });
+    return persisted;
+  });
+
+  const outcome = moves ? PROMOTION_OUTCOME.PROMOTED : PROMOTION_OUTCOME.PROMOTED_WITH_NO_MOVES;
+  logger.info({ workspaceId, planId: plan.id, ...result, outcome }, '[PlanService] mix promoted');
+  return { planId: plan.id, ...result, outcome, promotedAt: now };
 }

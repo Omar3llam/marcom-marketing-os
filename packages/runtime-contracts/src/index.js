@@ -14,6 +14,7 @@
 //   - Epistemic status tokens + vocabulary declarations (C-06)
 //   - Gating reasons + their prerequisites (C-07)
 //   - Confidence dimension field identities (C-09)
+//   - Plan promotion outcomes (C-18)
 //
 // What does NOT live here:
 //   - Date-arithmetic helpers tied to a specific runtime (e.g. retry
@@ -82,3 +83,9 @@ export {
   COMPLETENESS_FIELD_VALUES,
   isCompletenessField,
 } from './confidenceDimensions.js';
+
+export {
+  PROMOTION_OUTCOME,
+  PROMOTION_OUTCOME_VALUES,
+  isPromotionOutcome,
+} from './promotionOutcome.js';

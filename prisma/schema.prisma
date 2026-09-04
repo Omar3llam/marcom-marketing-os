@@ -2076,6 +2076,22 @@ model Plan {
   projections      Json // scenario + econ + landing ranges, with assumptions
   memoryBasis      Json // [{ patternId, kind, statement, accuracy }] — "Powered by Memory"
   allocationPlanId String?        @db.Uuid // set when the mix is promoted (Phase-3 loop)
+  // ── C-18: the promotion, and the end of the lifecycle ─────────
+  // `createdAt` is when someone BUILT this plan; it says nothing about whether
+  // the plan was ever put into force, and the loop-health surface was reading it
+  // as if it did. These three record the two transitions that actually happen.
+  //
+  // `promotedAt` is also the idempotency key. `allocationPlanId` cannot be: an
+  // approved mix that matches current spend is promoted with no moves, so it
+  // writes no AllocationPlan and would be promotable a second time.
+  //
+  // `closedAt` records that a period ENDED. It is written by a scheduled sweep
+  // and carries no claim about what was learned — GoalStatus.ACHIEVED/MISSED and
+  // AllocationStatus.ACCEPTED/REJECTED still have no writer, and need a producer
+  // that owns evidence rather than a clock (Invariant 13).
+  promotedAt       DateTime?
+  promotedBy       String?        @db.Uuid // User.id — never the Firebase uid
+  closedAt         DateTime?
   // ── Phase 8: approval gate (opt-in per plan) ──────────────────
   // When requiresApproval, a buyer cannot promote/execute the plan until a
   // strategist signs off; approvalState tracks that PENDING→APPROVED gate.
@@ -2089,6 +2105,9 @@ model Plan {
   approvals ApprovalRequest[]
 
   @@index([workspaceId, status])
+  // C-18 — the closure sweep runs globally, so the workspace-scoped index above
+  // cannot serve it.
+  @@index([status, periodEnd])
   @@map("plans")
 }
 
