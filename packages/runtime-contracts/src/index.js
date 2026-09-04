@@ -13,6 +13,7 @@
 //   - Reconciliation payload contract
 //   - Epistemic status tokens + vocabulary declarations (C-06)
 //   - Gating reasons + their prerequisites (C-07)
+//   - Confidence dimension field identities (C-09)
 //
 // What does NOT live here:
 //   - Date-arithmetic helpers tied to a specific runtime (e.g. retry
@@ -75,3 +76,9 @@ export {
   GatingReasonDeclarationError,
   UndeclaredGatingReasonError,
 } from './gatingReason.js';
+
+export {
+  COMPLETENESS_FIELD,
+  COMPLETENESS_FIELD_VALUES,
+  isCompletenessField,
+} from './confidenceDimensions.js';

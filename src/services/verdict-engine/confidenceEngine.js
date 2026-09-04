@@ -27,7 +27,16 @@
 // NEVER 1.0:
 //   Capped at 0.97. Platform-reported numbers carry attribution error we cannot
 //   see from here, so certainty is never honest.
+//
+// ── C-09: THE DIMENSIONS ARE PUBLISHED, THE ARITHMETIC IS UNCHANGED ─────────
+// All three were exported, documented and tested here, and had ZERO callers
+// outside this module: `computeConfidence` multiplied them and returned the
+// product, so a payload could say "low" and never which of the three was low.
+// `computeConfidenceDimensions` returns them WITH the basis each needs to be
+// explainable, and `computeConfidence` is now folded from that one computation
+// rather than performing a second one.
 // ============================================================
+import { COMPLETENESS_FIELD } from '@marcom/runtime-contracts';
 
 // Below this, a rate computed off the sample is noise — the domain model's
 // "< 1000 impressions = no verdict possible". Exported because the min-sample
@@ -55,11 +64,15 @@ export const MAX_CONFIDENCE = 0.97;
 // we know nothing at all.
 const COMPLETENESS_FLOOR = 0.4;
 
+// C-09 — keyed by the FIELD IDENTITY, so the score and the list of what is
+// missing come from one structure. Two structures would drift, and the first
+// place they would drift is `createdTimeApplicable`, where the penalty is
+// deliberately not charged.
 const PENALTY = Object.freeze({
-  NO_LPV:         0.15, // funnel blind — cannot tell a creative problem from a landing-page one
-  NO_ATC:         0.10, // mid-funnel blind
-  NO_CREATED_TIME: 0.10, // cannot assess the learning window
-  NO_OBJECTIVE:   0.10, // benchmarks fall back to DEFAULT — judged against the wrong bar
+  [COMPLETENESS_FIELD.LPV]:          0.15, // funnel blind — cannot tell a creative problem from a landing-page one
+  [COMPLETENESS_FIELD.ATC]:          0.10, // mid-funnel blind
+  [COMPLETENESS_FIELD.CREATED_TIME]: 0.10, // cannot assess the learning window
+  [COMPLETENESS_FIELD.OBJECTIVE]:    0.10, // benchmarks fall back to DEFAULT — judged against the wrong bar
 });
 
 /** PURE: clamp into [0, 1]. */
@@ -92,18 +105,35 @@ export function sampleQuality(impressions = 0) {
  * Defaults to true, so every existing caller is unaffected: a missing
  * createdTime on a level that HAS one is still a real gap in our ingestion.
  */
-export function dataCompleteness({
+export function dataCompleteness(args = {}) {
+  return completenessAssessment(args).score;
+}
+
+/**
+ * PURE: the completeness score AND the identities behind it, from ONE pass.
+ *
+ * C-09 — the list is not derived from the number and the number is not derived
+ * from the list; both fall out of the same walk over the four fields, in the
+ * same order the score was always accumulated in. A separately-built list could
+ * disagree with the score, and `createdTimeApplicable` is exactly where it
+ * would: the penalty is not charged there, so the field must not be NAMED there
+ * either, or the two halves of one claim would contradict each other on the wire.
+ */
+function completenessAssessment({
   actionMetrics = null,
   objective = null,
   createdTime = null,
   createdTimeApplicable = true,
 } = {}) {
+  const missing = [];
+  if (!actionMetrics?.lpv) missing.push(COMPLETENESS_FIELD.LPV);
+  if (!actionMetrics?.atc) missing.push(COMPLETENESS_FIELD.ATC);
+  if (createdTimeApplicable && !createdTime) missing.push(COMPLETENESS_FIELD.CREATED_TIME);
+  if (!objective)          missing.push(COMPLETENESS_FIELD.OBJECTIVE);
+
   let score = 1.0;
-  if (!actionMetrics?.lpv) score -= PENALTY.NO_LPV;
-  if (!actionMetrics?.atc) score -= PENALTY.NO_ATC;
-  if (createdTimeApplicable && !createdTime) score -= PENALTY.NO_CREATED_TIME;
-  if (!objective)          score -= PENALTY.NO_OBJECTIVE;
-  return Math.max(score, COMPLETENESS_FLOOR);
+  for (const field of missing) score -= PENALTY[field];
+  return { score: Math.max(score, COMPLETENESS_FLOOR), missing };
 }
 
 /**
@@ -147,17 +177,81 @@ export function temporalQuality(daysRunning = null) {
  *   completeness; the temporal half still scores the unknown window honestly.
  * @returns {number} 0–MAX_CONFIDENCE, 2dp
  */
-export function computeConfidence({
-  impressions = 0,
+export function computeConfidence(args = {}) {
+  const dimensions = computeConfidenceDimensions(args);
+  // An unknown sample yields no dimensions (see below). The result is unchanged
+  // from before C-09: sampleQuality() returns 0 for a non-finite input, so the
+  // product was — and still is — exactly 0. No caller's number moves.
+  return dimensions ? foldConfidenceDimensions(dimensions) : 0;
+}
+
+/**
+ * The three dimensions behind `dataConfidence`, each WITH the basis that makes
+ * it explainable (C-09).
+ *
+ * ── WHY null RATHER THAN sampleQuality: 0 ───────────────────────────────────
+ * `sampleQuality(undefined)` is 0, and 0 is a real answer meaning "we measured
+ * this campaign and it delivered nothing". Publishing that for a caller who
+ * never told us the sample size would state a measurement we never made — the
+ * exact class of defect C-03, C-04 and C-07 each removed one layer down.
+ *
+ * So the whole object is absent when the sample is unknown, which mirrors
+ * `dataConfidence` (already null in precisely this case) and makes the rule
+ * structural rather than a convention:
+ *
+ *     dataConfidenceDimensions !== null  ⟺  dataConfidence !== null
+ *
+ * ── WHY EACH DIMENSION CARRIES ITS BASIS ────────────────────────────────────
+ * `temporalQuality` returns 0.70 for an UNKNOWN age and 0.70 for a five-day-old
+ * campaign: one number answering two different questions. Only `daysRunning`
+ * separates them, and neither it nor `impressions` reached any consumer before
+ * C-09 — so a published dimension could be neither explained nor checked.
+ *
+ * @returns {{sampleQuality:number, impressions:number, dataCompleteness:number,
+ *   dataCompletenessMissingFields:readonly string[], temporalQuality:number,
+ *   daysRunning:number|null}|null}
+ */
+export function computeConfidenceDimensions({
+  // NO DEFAULT, deliberately — `= 0` would turn "you never told us" into "we
+  // measured zero", which is the very substitution this function exists to
+  // refuse. computeConfidence keeps its own 0 for that case, so no number moves.
+  impressions,
   daysRunning = null,
   actionMetrics = null,
   objective = null,
   createdTime = null,
   createdTimeApplicable = true,
 } = {}) {
-  const raw = sampleQuality(impressions)
-    * dataCompleteness({ actionMetrics, objective, createdTime, createdTimeApplicable })
-    * temporalQuality(daysRunning);
+  if (!Number.isFinite(impressions)) return null;
+
+  const completeness = completenessAssessment({
+    actionMetrics, objective, createdTime, createdTimeApplicable,
+  });
+
+  return Object.freeze({
+    sampleQuality: sampleQuality(impressions),
+    impressions,
+    dataCompleteness: completeness.score,
+    dataCompletenessMissingFields: Object.freeze(completeness.missing),
+    temporalQuality: temporalQuality(daysRunning),
+    // The honest "we could not establish this", NOT the 0.70 default above.
+    daysRunning: Number.isFinite(daysRunning) ? daysRunning : null,
+  });
+}
+
+/**
+ * PURE: fold the three dimensions back into `dataConfidence`.
+ *
+ * THE ENGINE OWNS THIS. It exists so the composition has exactly one
+ * implementation that both the scalar and the decomposition come from — never
+ * so a consumer can call it. A surface that multiplies published numbers can
+ * land on a different figure (the cap and the rounding both bite) and mistake
+ * it for the truth; every intermediate value is published precisely so nobody
+ * has to compute one.
+ */
+export function foldConfidenceDimensions(dimensions) {
+  if (!dimensions) return null;
+  const raw = dimensions.sampleQuality * dimensions.dataCompleteness * dimensions.temporalQuality;
   return Math.min(Math.round(raw * 100) / 100, MAX_CONFIDENCE);
 }
 

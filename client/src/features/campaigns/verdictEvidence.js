@@ -7,6 +7,7 @@
 // into the rationale, or is the campaign's own snapshot metric — nothing is
 // recomputed or invented on the client.
 // ============================================================
+import { COMPLETENESS_FIELD } from '@marcom/runtime-contracts';
 import { formatCurrency } from '@/lib/money';
 
 // Shown whenever a KILL/SCALE was reached with no measured revenue.
@@ -209,8 +210,18 @@ export function whyBlock({ verdict, funnel = null, rootCause = null } = {}) {
   return { show: false, heading: null };
 }
 
-/** PURE: is this half of the confidence product what is holding it down? */
-const below = (n) => typeof n === 'number' && Number.isFinite(n) && n < BAND.MEDIUM;
+/**
+ * PURE: is this half of the confidence product what is holding it down?
+ *
+ * THREE-STATE, since C-09: `true` / `false` / `null` for "we cannot say".
+ *
+ * It used to be a boolean, and `below(null)` was `false` — so a row whose data
+ * half was never computed reported `limitedByData: false` and rendered as a
+ * clean "Medium", when the truth was that we never knew the sample size at all.
+ * UNKNOWN read as GOOD, on the confidence surface itself. Missing confidence
+ * stays missing and never enters a band as a healthy state.
+ */
+const limitOf = (n) => (typeof n === 'number' && Number.isFinite(n) ? n < BAND.MEDIUM : null);
 
 /**
  * PURE: the engine's confidence dimensions → a label plus the reason it is not
@@ -250,14 +261,90 @@ export function confidenceDetail({
   const label = confidenceLabel(confidence);
   if (!label) return null;
 
-  const limitedByData = below(dataConfidence);
+  const limitedByData = limitOf(dataConfidence);
   return {
     label,
     limitedByData,
     // Named for the CAUSE, not the symptom: `weakSignal` reads as a claim about
     // the campaign, and this is a claim about our evidence for it.
-    limitedBySignal: !limitedByData && below(signalConfidence),
+    //
+    // The data half still wins when it is DEFINITELY the limit. An unknown data
+    // half no longer suppresses this one — not knowing about data tells us
+    // nothing about the signal, and silencing both would be the old defect in a
+    // new place.
+    limitedBySignal: limitedByData === true ? false : limitOf(signalConfidence),
   };
+}
+
+/**
+ * C-09 — the wording for each completeness field. The SERVER owns the fact
+ * (which inputs the diagnosis could not see); the CLIENT owns the sentence —
+ * the same split C-03 set for the memory timeline and C-07 for gating reasons.
+ */
+const FIELD_WORDING = Object.freeze({
+  [COMPLETENESS_FIELD.LPV]:          'landing-page views',
+  [COMPLETENESS_FIELD.ATC]:          'add-to-cart events',
+  [COMPLETENESS_FIELD.CREATED_TIME]: 'the platform creation date',
+  [COMPLETENESS_FIELD.OBJECTIVE]:    'the campaign objective',
+});
+
+/** PURE: a natural list — "a", "a and b", "a, b and c". */
+const joinWords = (words) => (words.length <= 1
+  ? (words[0] ?? '')
+  : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`);
+
+/**
+ * PURE: the three factors behind `dataConfidence`, each as a value plus the
+ * BASIS that makes it mean something (C-09).
+ *
+ * ── WHY THE BASIS IS NOT DECORATION ─────────────────────────────────────────
+ * `temporalQuality` is 0.70 for a campaign whose age we do not know AND for one
+ * that has run five days. Identical number, two different situations, and only
+ * `daysRunning` tells them apart. The same holds for completeness: a scalar can
+ * quantify an absence, and only the field identities explain it.
+ *
+ * ── WHAT THIS DELIBERATELY DOES NOT DO ──────────────────────────────────────
+ * It computes no number. The engine owns composition — sample × completeness ×
+ * temporal is ITS arithmetic, with its own rounding and cap — and a surface that
+ * multiplied these back together could print a figure disagreeing with the
+ * confidence beside it. Display, never recompute.
+ *
+ * @param {object|null} dimensions — verdict.dataConfidenceDimensions
+ * @returns {Array<{key:string,label:string,value:number,detail:string}>} empty
+ *   when the row carries none, which is the honest state for a campaign whose
+ *   sample size we were never given.
+ */
+export function describeConfidenceDimensions(dimensions) {
+  if (!dimensions) return [];
+  const {
+    sampleQuality, impressions, dataCompleteness,
+    dataCompletenessMissingFields = [], temporalQuality, daysRunning,
+  } = dimensions;
+
+  const named = dataCompletenessMissingFields.map((f) => FIELD_WORDING[f]).filter(Boolean);
+  // A field this build has no wording for is COUNTED, never invented into a
+  // name — the same refusal gatingReasonCopy makes for an unrecognised reason.
+  const unnamed = dataCompletenessMissingFields.length - named.length;
+  const missingWords = unnamed > 0 ? [...named, 'other inputs'] : named;
+
+  return [
+    {
+      key: 'sample', label: 'Traffic behind the rates', value: sampleQuality,
+      detail: `${Number(impressions).toLocaleString('en-US')} impressions measured`,
+    },
+    {
+      key: 'completeness', label: 'Diagnostic inputs', value: dataCompleteness,
+      detail: missingWords.length > 0
+        ? `Missing ${joinWords(missingWords)}`
+        : 'Every diagnostic input present',
+    },
+    {
+      key: 'temporal', label: 'Time to settle', value: temporalQuality,
+      detail: Number.isFinite(daysRunning)
+        ? `${daysRunning} days running`
+        : 'We do not know how long this has been running',
+    },
+  ];
 }
 
 /**

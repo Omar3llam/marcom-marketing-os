@@ -30,7 +30,9 @@ import { VERDICT, VERDICT_TO_REC_TYPES, ROOT_CAUSE } from './verdictTypes.js';
 // conflict and nothing catches it until the server fails to boot.
 import { getBenchmarks, FATIGUE_FREQ as SATURATION_CEILING } from './benchmarkProvider.js';
 import { diagnoseFunnel }                from './funnelDiagnosis.js';
-import { computeConfidence, composeConfidence, MIN_IMPRESSIONS } from './confidenceEngine.js';
+import {
+  computeConfidence, computeConfidenceDimensions, composeConfidence, MIN_IMPRESSIONS,
+} from './confidenceEngine.js';
 import { projectHypotheses }             from './signalProjector.js';
 import { buildCounterfactuals }          from './counterfactualEngine.js';
 import { logger }                        from '../../utils/logger.js';
@@ -222,6 +224,17 @@ export function evaluateVerdict({
   // out of data we were never given. rollupVerdicts always supplies impressions,
   // so every connector-path verdict is composed.
   const sampleKnown = Number.isFinite(impressions);
+  // C-09 — the DECOMPOSITION is what is computed, and the scalar is folded from
+  // it. One computation, published two ways: `dataConfidence` for every caller
+  // that already reads it, and the three dimensions with their bases for a
+  // reader who needs to know WHICH of them is holding the number down.
+  //
+  // The two are structurally inseparable — `computeConfidenceDimensions` returns
+  // null on exactly the input that leaves `dataConfidence` null — so a payload
+  // can never carry a dimension set describing a confidence it does not have.
+  const dataConfidenceDimensions = sampleKnown
+    ? computeConfidenceDimensions({ impressions, daysRunning, actionMetrics, objective, createdTime })
+    : null;
   const dataConfidence = sampleKnown
     ? computeConfidence({ impressions, daysRunning, actionMetrics, objective, createdTime })
     : null;
@@ -236,6 +249,10 @@ export function evaluateVerdict({
     // number, and on the gates below it is a literal 1.0.
     signalConfidence,
     dataConfidence,
+    // C-09 — sample × completeness × temporal, each with the basis that makes it
+    // explainable. null exactly when dataConfidence is null; NEVER a
+    // sampleQuality of 0 standing in for a sample we were never given.
+    dataConfidenceDimensions,
     rationale: why,
     rootCause: extra.rootCause ?? null,
     signalType: extra.signalType ?? null,
@@ -532,6 +549,14 @@ export function rollupVerdicts(node, opts = {}) {
     // can compose its own signal strength against the same inputs instead of
     // stamping a frozen literal over a computed number.
     dataConfidence: result.dataConfidence,
+    // C-09 — the three factors OF the number above. Named here for the same
+    // reason `declined` and `hypotheses` had to be: this return is a hand-picked
+    // allowlist over `result`, and a field it does not name can never reach
+    // connectorVerdictService. It rides through applyRelativeRanking's `...c`
+    // untouched, which is correct — that pass re-stamps the SIGNAL half and
+    // reuses this same dataConfidence, so the dimensions still describe the
+    // number actually published.
+    dataConfidenceDimensions: result.dataConfidenceDimensions,
     // The signal half. It had been computed on every verdict since the engine
     // existed and named in NEITHER allowlist, so the payload published a product
     // and one of its two factors — leaving a reader unable to tell a weak signal

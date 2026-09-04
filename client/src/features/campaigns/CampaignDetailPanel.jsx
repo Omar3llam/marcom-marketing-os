@@ -28,7 +28,7 @@ import { EvidenceReferenceBlock } from './EvidenceReferenceBlock.jsx';
 import {
   NO_REVENUE_DISCLAIMER, confidenceLabel, evidenceClause, nextActionFor, ignoreCostFor,
   buildRecommendationText, platformUrl,
-  evidenceRows, whyBlock, confidenceDetail, isDataQualityCause,
+  evidenceRows, whyBlock, confidenceDetail, isDataQualityCause, describeConfidenceDimensions,
 } from '@/features/campaigns/verdictEvidence.js';
 import { buildCounterfactualViewModel } from '@/features/campaigns/counterfactualViewModel.js';
 import { CounterfactualsBlock } from '@/features/campaigns/CounterfactualsBlock.jsx';
@@ -202,6 +202,10 @@ function EvidenceTable({ rows }) {
 export function CampaignDetailPanel({
   campaign, verdict = null, impact = null, rationale = null, confidence = null,
   funnel = null, rootCause = null, dataConfidence = null, signalConfidence = null,
+  // C-09 — what the data half is MADE of. Every dimension was computed on every
+  // verdict since the engine existed and reached nobody, so "Low" could never
+  // say which of three things was low, nor which field to go and connect.
+  dataConfidenceDimensions = null,
   counterfactuals = null, hypotheses = null, relativeRank = null,
   relativeContext = null, memory = null,
   // C-03 — whether `memory` being null means "we have never judged this
@@ -330,6 +334,10 @@ export function CampaignDetailPanel({
   const evidence = funnel ? null : evidenceClause(rationale);
   const dataOnly = isDataQualityCause(rootCause);
   const conf = confidenceDetail({ confidence, dataConfidence, signalConfidence });
+  // C-09 — sample / completeness / temporal, each with the basis that makes it
+  // explainable. `[]` when the row carries none, which is the honest state for
+  // a campaign whose sample size we were never given — never three zeroes.
+  const confDimensions = describeConfidenceDimensions(dataConfidenceDimensions);
   const confLabel = confidenceLabel(confidence);
   // A data-quality state has no action to take on the platform — the honest
   // next step is to wait, which nextActionFor (keyed on verdict) cannot know.
@@ -456,13 +464,34 @@ export function CampaignDetailPanel({
               leaving this underneath it prints an unexplained doubt over a
               complete explanation. */}
           {funnel && conf && !relativeRank && (
-            <p className="mt-1.5 font-mono text-[11px] text-lumi-subtle">
-              {conf.label} confidence
-              {conf.limitedByData && ' · limited by available data'}
-              {/* "limited supporting signal quality", not "weak signal": the
-                  claim is about our evidence, not about the campaign. */}
-              {conf.limitedBySignal && ' · limited supporting signal quality'}
-            </p>
+            <>
+              <p className="mt-1.5 font-mono text-[11px] text-lumi-subtle">
+                {conf.label} confidence
+                {conf.limitedByData === true && ' · limited by available data'}
+                {/* C-09 — the THIRD state, said out loud. A null half used to
+                    render exactly like a healthy one: silence. "We could not
+                    assess it" is a different sentence from "it is fine", and
+                    the operator is entitled to know which one applies. */}
+                {conf.limitedByData === null && ' · we could not assess the data behind it'}
+                {/* "limited supporting signal quality", not "weak signal": the
+                    claim is about our evidence, not about the campaign. */}
+                {conf.limitedBySignal === true && ' · limited supporting signal quality'}
+              </p>
+
+              {/* C-09 — WHICH of the three, and why. Shown only when the data
+                  half is what is holding the number down, so a healthy row
+                  gains no noise. Every line is the engine's own number and its
+                  own basis; nothing here is multiplied or re-derived. */}
+              {conf.limitedByData === true && confDimensions.length > 0 && (
+                <ul className="mt-1.5 space-y-0.5">
+                  {confDimensions.map((d) => (
+                    <li key={d.key} className="font-mono text-[11px] text-lumi-subtle">
+                      {d.label}: {Math.round(d.value * 100)}% — {d.detail}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
 
           {ignoreCost && !dataOnly && <p className="mt-1.5 text-xs text-lumi-muted leading-relaxed">{ignoreCost}</p>}

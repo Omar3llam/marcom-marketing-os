@@ -45,6 +45,10 @@ describe('CampaignsView → verdictInfo', () => {
     // read by no client file until the confidence breakdown — the same silent
     // drop as counterfactuals, one field later.
     ['signalConfidence'],
+    // C-09 - the three factors OF dataConfidence. Same allowlist, same risk:
+    // computed on every verdict since the engine existed, and dropped here
+    // would leave 'Low confidence' unable to say which of three things is low.
+    ['dataConfidenceDimensions'],
     ['counterfactuals'],
     ['hypotheses'],
     // Unlike relativeRank below, this has no second route — the `relativeRanks`

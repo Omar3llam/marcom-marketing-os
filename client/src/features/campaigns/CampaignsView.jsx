@@ -378,6 +378,12 @@ export default function CampaignsView() {
         funnel: v.funnel ?? null,
         rootCause: v.rootCause ?? null,
         dataConfidence: v.dataConfidence ?? null,
+        // C-09 - the three factors OF the number above, each with its basis.
+        // Named here for the same reason every other structured field had to
+        // be: this projection is an explicit allowlist, and a field that
+        // arrives on every verdict row still dies here unless it is listed.
+        // That is exactly how C-07 lost the gating reason.
+        dataConfidenceDimensions: v.dataConfidenceDimensions ?? null,
         // The OTHER half of the same product. It has been published on every
         // verdict row since the engine started splitting the two, and no client
         // file read it — so "Low confidence" could say the data was thin but
