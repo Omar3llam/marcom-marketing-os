@@ -1384,6 +1384,24 @@ enum DecisionClosureReason {
   RULE_REVOKED
 }
 
+// C-10 — WHAT KIND of decision a row is. Five writers share this table and the
+// kind used to be a string prefix on `rootCause`, owned privately by each of
+// them; three separate consumers had written their own parser to recover it.
+//
+// Mirrors DECISION_CLASS in @marcom/runtime-contracts — that module is the
+// contract and carries the reasoning; this is the storage side of it.
+//
+// ALLOCATION is here because AllocationService writes Decision rows TODAY.
+// Whether a REALLOCATE proposal belongs in this table at all is a real and
+// separate architectural question; leaving the class off would make the column
+// NULL for a producer we know exactly, which is a different and false claim.
+enum DecisionClass {
+  SIGNAL
+  GUARDRAIL
+  ALLOCATION
+  EXPERIMENT
+}
+
 enum DecisionStatus {
   PROPOSED
   EXECUTED
@@ -1447,6 +1465,22 @@ model Decision {
   diagnosis   String
   rootCause   String?
   status      DecisionStatus @default(PROPOSED)
+
+  // ── C-10 · the CANONICAL semantic identity of this row ─────────────────────
+  // Which of the five writers authored it, and therefore which questions its
+  // `verdict` can answer. `rootCause` keeps explanation / subtype / provenance
+  // — it is no longer where the kind is stored, and no consumer parses it to
+  // recover one.
+  //
+  //     A verdict may only be interpreted within the decision class that gives
+  //     that verdict its meaning. SIGNAL KILL ≠ GUARDRAIL KILL.
+  //
+  // NULLABLE, AND PERMANENTLY SO. NULL means UNCLASSIFIED — a row written
+  // before this column whose `rootCause` names an enum value since deleted from
+  // the code. It is never a fifth class and never a synonym for any of the four.
+  // Deliberately NO `@default`: a default would let a future writer claim a
+  // class it never declared, which is exactly what the writer contract forbids.
+  decisionClass DecisionClass?
 
   // ── Lifecycle ──────────────────────────────────────────────
   // Three moments, each set ONCE and never overwritten: a second click is not a
@@ -1662,6 +1696,9 @@ model Decision {
   // Answers "what has this rule caught" as a join on a stable id (C-14), which
   // is today attempted as a match on a display name.
   @@index([workspaceId, guardrailRuleId])
+  // C-10 — the pair every scoped population read now carries. Eight readers ask
+  // for SIGNAL alone and four for GUARDRAIL alone, each within one workspace.
+  @@index([workspaceId, decisionClass])
   @@map("decisions")
 }
 

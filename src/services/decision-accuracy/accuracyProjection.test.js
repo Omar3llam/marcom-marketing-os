@@ -64,6 +64,10 @@ describe('the where clause', () => {
     // population outright, since production holds zero execution requests.
     expect(where).toEqual({
       workspaceId: 'ws-1',
+      // C-10 — "was Lumi's call right" is a question about the connector
+      // engine's own judgement. A guardrail episode states what a RULE says,
+      // and scoring one would calibrate the engine on somebody else's policy.
+      decisionClass: { in: ['SIGNAL'] },
       OR: [
         { humanExecutedAt: { not: null } },
         { platformExecutedAt: { not: null } },

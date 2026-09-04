@@ -15,6 +15,7 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { designHoldout, readIncrementality } from './incrementalityEngine.js';
 import { getEconomics } from '../unit-economics/EconomicsService.js';
+import { DECISION_CLASS } from '@marcom/runtime-contracts';
 
 const MEMORY_PREFIX = 'incrementality:';
 
@@ -151,6 +152,9 @@ export async function concludeIncrementality(workspaceId, testId) {
           workspaceId, entityId: test.entityId, entityLevel: test.entityLevel ?? 'CAMPAIGN',
           verdict: 'SCALE', confidence: readout.confidenceLabel === 'HIGH' ? 0.9 : 0.7,
           diagnosis: mem.rationale, rootCause: `${MEMORY_PREFIX}${test.id}`, status: 'PROPOSED',
+          // C-10 — EXPERIMENT covers both test producers; `incrementality:` vs
+          // `test:` stays a SUBTYPE on rootCause, where it has always been.
+          decisionClass: DECISION_CLASS.EXPERIMENT,
         },
       });
       decisionId = decision.id;

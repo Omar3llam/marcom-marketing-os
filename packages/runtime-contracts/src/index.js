@@ -15,6 +15,7 @@
 //   - Gating reasons + their prerequisites (C-07)
 //   - Confidence dimension field identities (C-09)
 //   - Plan promotion outcomes (C-18)
+//   - Decision classes (C-10)
 //
 // What does NOT live here:
 //   - Date-arithmetic helpers tied to a specific runtime (e.g. retry
@@ -89,3 +90,9 @@ export {
   PROMOTION_OUTCOME_VALUES,
   isPromotionOutcome,
 } from './promotionOutcome.js';
+
+export {
+  DECISION_CLASS,
+  DECISION_CLASS_VALUES,
+  isDecisionClass,
+} from './decisionClass.js';

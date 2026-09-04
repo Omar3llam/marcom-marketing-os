@@ -11,11 +11,18 @@
 //
 // A guardrail-style convention links moves to their plan:
 //   Decision.rootCause = `allocation:${planId}`.
+//
+// C-10 — and the KIND of row is now `decisionClass: ALLOCATION`, declared as a
+// token rather than left to be parsed back out of that string. `rootCause`
+// keeps the plan link, which NarrativeService legitimately reads; what ends is
+// deriving the class from it.
 // ============================================================
 import { prisma }   from '../../lib/prisma.js';
 import { logger }   from '../../utils/logger.js';
 import { allocate, GOAL_TYPE } from './allocationEngine.js';
 import { getBlendedTruth }     from '../blended-truth/BlendedTruthService.js';
+import { DECISION_CLASS }      from '@marcom/runtime-contracts';
+import { scopeFor }            from '../decisions/decisionClassScope.js';
 
 const ALLOC_ROOT_PREFIX = 'allocation:';
 
@@ -42,6 +49,10 @@ export function planToDecisionRows(plan, { workspaceId, planId }) {
       diagnosis:   a.rationale,
       rootCause:   `${ALLOC_ROOT_PREFIX}${planId}`,
       status:      'PROPOSED',
+      // C-10 — declared as a TOKEN, never derived from the string above. A
+      // writer that classified its own rootCause would leave the string in
+      // charge: rename the prefix and the class silently follows.
+      decisionClass: DECISION_CLASS.ALLOCATION,
       // ── Evidence reference (R5 / I18): DELIBERATELY ABSENT ─────────────────
       // Left unset, so the column stays NULL and reads as "not captured" — which
       // is the truth. This writer's inputs are blended-truth CHANNEL ROLLUPS and
@@ -70,7 +81,20 @@ async function buildChannels(workspaceId) {
   // loop below reads entityId and verdict and nothing else, and a select-less
   // read here would pull both reasoning JSONB columns per row to discard them.
   const decisions = await prisma.decision.findMany({
-    where:   { workspaceId, entityId: { in: channels.map((c) => c.channelId) } },
+    // C-10 — SIGNAL ONLY, and this is the slice's load-bearing repair.
+    //
+    // `channelId` is `MetricSnapshot.entityId` — the SAME ids Decisions are
+    // written against — so unscoped, under a standing breach, the newest row
+    // here was a guardrail episode from the 15-minute sweep. VERDICT_APPETITE
+    // reads KILL as 0.0, the channel drained to zero, and the plan published
+    // 'Drain <ch>: KILL verdict — pull budget out.' A policy breach is not a
+    // judgement about performance, and C-18 now freezes whatever this produces
+    // into an approved snapshot that promotion executes verbatim.
+    //
+    // It also closes a loop: this writer's OWN previous REALLOCATE rows carry
+    // appetite 0.5, so the last plan's output was damping the next plan's
+    // input — the engine reading its own echo as a finding about the account.
+    where:   { workspaceId, ...scopeFor('allocation/appetite'), entityId: { in: channels.map((c) => c.channelId) } },
     orderBy: { createdAt: 'desc' },
     select:  { entityId: true, verdict: true },
   });
@@ -101,7 +125,8 @@ async function buildIncrementalChannels(workspaceId) {
   if (channels.length === 0) return [];
 
   const decisions = await prisma.decision.findMany({
-    where:   { workspaceId, entityId: { in: channels.map((c) => c.channelId) } },
+    // C-10 — SIGNAL only, same reasoning as buildChannels above.
+    where:   { workspaceId, ...scopeFor('allocation/appetite-incremental'), entityId: { in: channels.map((c) => c.channelId) } },
     orderBy: { createdAt: 'desc' },
     select:  { entityId: true, verdict: true },
   });

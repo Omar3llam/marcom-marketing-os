@@ -29,7 +29,7 @@ import { getCanonicalVerdictCampaigns } from '../entity-graph/index.js';
 // have none. These tests are about the campaigns, so noCanonicalWindow is empty;
 // the absence path has its own tests in canonicalVerdictEvidence.test.js.
 const mockCampaigns = (rows) => getCanonicalVerdictCampaigns.mockResolvedValue({ campaigns: rows, noCanonicalWindow: [] });
-import { SIGNAL_TYPE } from '../diagnosis-engine/index.js';
+import { DECISION_CLASS } from '@marcom/runtime-contracts';
 import { persistConnectorVerdicts } from './VerdictService.js';
 import { evaluateConnectorVerdicts, failedEvaluation } from './connectorVerdictService.js';
 
@@ -207,16 +207,18 @@ describe('persistConnectorVerdicts — stale-verdict prune (agenda de-inflation)
     });
   });
 
-  it('scopes the prune to connector verdicts only (signalType rootCause OR null) — never guardrail/allocation rows', async () => {
+  it('scopes the prune to SIGNAL decisions — never guardrail/allocation rows', async () => {
     mockCampaigns([camp()]);
     await persist();
     const { where } = prisma.decision.updateMany.mock.calls[0][0];
-    expect(where.OR).toHaveLength(2);
-    expect(where.OR[0].rootCause.in).toEqual(expect.arrayContaining(Object.values(SIGNAL_TYPE)));
-    expect(where.OR[1]).toEqual({ rootCause: null });
-    // A guardrail:/allocation: rootCause is neither in the signalType set nor null,
-    // so it can never match this filter.
-    expect(where.OR[0].rootCause.in).not.toContain('guardrail:BUDGET_CAP');
+    // C-10 — the prune scopes on the CLASS. It used to reproduce a union of
+    // three enum families in the where clause, which is a class filter written
+    // as a string match: any cause the engine gained and this list missed made
+    // its verdicts un-supersedable, and they piled up as permanently-open rows.
+    expect(where.decisionClass).toEqual({ in: [DECISION_CLASS.SIGNAL] });
+    for (const foreign of [DECISION_CLASS.GUARDRAIL, DECISION_CLASS.ALLOCATION, DECISION_CLASS.EXPERIMENT]) {
+      expect(where.decisionClass.in).not.toContain(foreign);
+    }
   });
 
   it('with NO eligible campaigns, supersedes every connector verdict (omits the entityId filter)', async () => {

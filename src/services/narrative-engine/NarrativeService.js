@@ -12,6 +12,8 @@
 // the persisted narrative is, by construction, free of hallucinated numbers.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { scopeFor } from '../decisions/decisionClassScope.js';
+import { DECISION_CLASS } from '@marcom/runtime-contracts';
 import { logger } from '../../utils/logger.js';
 import { composeNarrative } from './narrativeEngine.js';
 import { NARRATIVE_PERIOD, NARRATIVE_AUDIENCE, confidenceLabel } from './narrativeTypes.js';
@@ -72,12 +74,23 @@ export function buildNarrativeInputs({
     };
   });
 
-  // Where it went — REALLOCATE decisions whose rootCause names a real plan.
+  // Where it went — ALLOCATION decisions whose rootCause names a real plan.
+  //
+  // C-10 — the CLASS decides whether this is an allocation move; `rootCause`
+  // still carries WHICH plan. This module's own regex was the proof the old
+  // encoding had outlived itself: a consumer running a parser to learn what
+  // kind of row it holds was never given the identity. Reading the plan id out
+  // of the subtype payload stays legitimate and is unchanged.
+  //
+  // The verdict check goes with it. `REALLOCATE` was standing in for "this is
+  // an allocation row", which is what the class now says; keeping both would
+  // silently drop any future allocation move that carried another verdict.
   const allocationDeltas = [];
   for (const d of decisions) {
-    if (d.verdict !== 'REALLOCATE') continue;
-    const m = typeof d.rootCause === 'string' ? d.rootCause.match(/^allocation:([0-9a-f-]+)/i) : null;
-    const planId = m && allocationPlanIds.has(m[1]) ? m[1] : null;
+    if (d.decisionClass !== DECISION_CLASS.ALLOCATION) continue;
+    const m = typeof d.rootCause === 'string' ? d.rootCause.split(':') : null;
+    const candidate = m && m.length > 1 ? m.slice(1).join(':') : null;
+    const planId = candidate && allocationPlanIds.has(candidate) ? candidate : null;
     const outcome = (d.outcomes && d.outcomes[0]) || null;
     if (planId && outcome && typeof outcome.spendDeltaMinor === 'number') {
       allocationDeltas.push({
@@ -169,9 +182,14 @@ export async function generateNarrative(workspaceId, { period = NARRATIVE_PERIOD
     // yet is precisely how #209 took getLoopState down. buildNarrativeInputs
     // reads exactly these four fields plus the newest outcome.
     prisma.decision.findMany({
-      where:  { workspaceId, createdAt: { gte: periodStart } },
+      // C-10 — ALL classes, declared. The leadership report narrates the whole
+      // account, and it needs ALLOCATION in particular for the section below.
+      where:  { workspaceId, ...scopeFor('narrative/report'), createdAt: { gte: periodStart } },
       select: {
-        id: true, verdict: true, entityId: true, rootCause: true,
+        // C-10 — the class rides along because the allocation section now
+        // branches on it. An unselected column is `undefined`, which would make
+        // every row fail the check and empty the section silently.
+        id: true, verdict: true, entityId: true, rootCause: true, decisionClass: true,
         // R6 left this query alone, deliberately. `newest` and `current` are the
         // same row for every chain the writer produces — a supersession always
         // creates the new outcome last — and this read runs in the worker

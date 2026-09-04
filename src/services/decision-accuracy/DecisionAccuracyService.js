@@ -21,6 +21,7 @@
 // a leak later.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { scopeFor } from '../decisions/decisionClassScope.js';
 import { logger } from '../../utils/logger.js';
 import { calculateDecisionAccuracy } from './decisionAccuracyEngine.js';
 import { wasActedOn, deriveAccuracyStatus } from './decisionAccuracyHelpers.js';
@@ -124,7 +125,10 @@ export async function getAccuracy(workspaceId, { now = new Date(), config } = {}
 
   // One scoped findMany (no N+1) — newest outcome first per decision.
   const decisions = await prisma.decision.findMany({
-    where: { workspaceId, ...ACTIONED },
+    // C-10 — SIGNAL only: 'was Lumi's call right' is a question about the
+    // connector engine's own judgement. A guardrail episode states what a rule
+    // says, and scoring it would calibrate the engine on someone else's policy.
+    where: { workspaceId, ...scopeFor('accuracy/population'), ...ACTIONED },
     select: {
       id: true, verdict: true, confidence: true, status: true, createdAt: true,
       // Both timestamps, because deriveAccuracyStatus reads both. Omitting
@@ -395,6 +399,9 @@ export async function listPendingOutcomes(workspaceId) {
     prisma.decision.findMany({
       where: {
         workspaceId,
+        // C-10 — SIGNAL only. You can owe an outcome for a call you were asked
+        // to make; a breach episode closes itself when the condition clears.
+        ...scopeFor('accuracy/pending-outcomes'),
         // B4-A — acted on by EITHER route. A self-reported action owes an
         // outcome exactly as much as one Lumi performed; the queue is about the
         // recommendation's result, not about who carried it out. The union is

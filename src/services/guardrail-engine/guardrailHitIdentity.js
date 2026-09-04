@@ -28,6 +28,7 @@
 // inventing an identity for rows that never had one. They are identifiable AS
 // legacy (below) and nothing more is claimed about them.
 // ============================================================
+import { DECISION_CLASS } from '@marcom/runtime-contracts';
 
 /**
  * The open-episode key, or null when the pair cannot be identified.
@@ -67,5 +68,9 @@ export function identifiedGuardrailScope() {
  * how that stays a decision instead of an oversight.
  */
 export function legacyGuardrailScope() {
-  return { guardrailRuleId: null, rootCause: { startsWith: 'guardrail:' } };
+  // C-10 — the CLASS, not a prefix match on a display string. The comment above
+  // called that dependency out when C-02 wrote it; this is the column that ends
+  // it. The two conditions now say exactly what the set is: a guardrail row
+  // (class) with no stable rule identity (guardrailRuleId).
+  return { guardrailRuleId: null, decisionClass: DECISION_CLASS.GUARDRAIL };
 }

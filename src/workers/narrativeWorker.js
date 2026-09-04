@@ -17,6 +17,7 @@ import { Worker } from 'bullmq';
 import { bullConnection, QUEUE_PREFIX } from '../queues/connection.js';
 import { NARRATIVE_QUEUE_NAME, scheduleNarratives, unscheduleNarratives } from '../queues/index.js';
 import { prisma } from '../lib/prisma.js';
+import { scopeFor } from '../services/decisions/decisionClassScope.js';
 import { logger } from '../utils/logger.js';
 import { generateNarrative } from '../services/narrative-engine/NarrativeService.js';
 import { NARRATIVE_PERIOD, NARRATIVE_AUDIENCE } from '../services/narrative-engine/narrativeTypes.js';
@@ -43,7 +44,10 @@ export async function runNarrativeSweepAll({ period = NARRATIVE_PERIOD.WEEKLY, n
   const activity = ids.length
     ? await prisma.decision.groupBy({
         by: ['workspaceId'],
-        where: { workspaceId: { in: ids }, createdAt: { gte: since } },
+        // C-10 — ALL classes, declared. A class predicate here would make a
+        // workspace with only guardrail activity look dormant, and the worker
+        // would decline to write a report about a real week.
+        where: { workspaceId: { in: ids }, ...scopeFor('narrative/activity'), createdAt: { gte: since } },
         _count: { _all: true },
       })
     : [];

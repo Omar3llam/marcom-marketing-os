@@ -55,7 +55,9 @@ const makeDecision = (over = {}) => prisma.decision.create({
   data: {
     workspaceId: WS, entityId: ENTITY, entityLevel: 'CAMPAIGN',
     verdict: 'KILL', confidence: 0.8, diagnosis: 'T12-A fixture',
-    channel: 'META', objective: 'OUTCOME_SALES', status: 'PROPOSED', ...over,
+    channel: 'META', objective: 'OUTCOME_SALES', status: 'PROPOSED',
+    // C-10 — the by-entity route resolves SIGNAL rows only.
+    decisionClass: 'SIGNAL', ...over,
   },
   select: { id: true },
 });

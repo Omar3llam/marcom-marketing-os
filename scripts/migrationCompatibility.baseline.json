@@ -15,7 +15,6 @@
     "",
     "Verdicts: COMPATIBLE | TRANSITION_REQUIRED | INCOMPATIBLE | UNKNOWN"
   ],
-
   "20260518100000_create_execution_requests_table": {
     "verdict": "TRANSITION_REQUIRED",
     "reason": "Adds the workspace foreign key to execution_requests, which already existed from the previous migration. An instance still writing rows without a valid workspaceId would be rejected. Historical: the table had no production writers at the time."
@@ -52,7 +51,6 @@
     "verdict": "TRANSITION_REQUIRED",
     "reason": "Splits executedAt into humanExecutedAt and platformExecutedAt and backfills the existing values. The backfill races an instance still writing the single old column."
   },
-
   "20260524120000_pr20_decision_memory_foundation": {
     "verdict": "INCOMPATIBLE",
     "reason": "Drops a table while creating the decision-memory foundation. Historical: the dropped table had no readers, and DecisionMemory itself has since been retired (sc3)."
@@ -85,7 +83,6 @@
     "verdict": "INCOMPATIBLE",
     "reason": "Drops oauth_tokens. Contract phase — credential storage had already been consolidated onto marcom_credentials in Phase 12B, leaving this table unread."
   },
-
   "20260812000000_measurement_window_in_snapshot_identity": {
     "verdict": "UNKNOWN",
     "reason": "Reconciles the snapshot identity index, which may exist as either a constraint-backed index or a plain unique index depending on how the database was built. It must therefore discover the object's real name at runtime and EXECUTE a statement built from it — unclassifiable from repository bytes by construction, not by omission."
@@ -101,5 +98,9 @@
   "20260824000000_b4e5_non_daily_partial_identity": {
     "verdict": "UNKNOWN",
     "reason": "Rebuilds the non-daily partial identity index, discovering the existing index name from the catalogue before dropping and recreating it. Dynamic by construction."
+  },
+  "20260905120000_c10_decision_class": {
+    "verdict": "TRANSITION_REQUIRED",
+    "reason": "C-10 adds decisions.decisionClass (nullable enum + index, both additive) and BACK-FILLS it from the rootCause prefixes five writers encoded it in. The backfill is what makes this transitional, and the classifier is right: during the deploy window an instance running the OLD code writes rows that know nothing about the column, so those rows land NULL after the UPDATEs have already run — and NULL means UNCLASSIFIED, which every scoped reader excludes. Phased deploy: (1) apply this migration; (2) deploy the code, at which point all five writers declare a class on every new row; (3) re-run the backfill to sweep the window. Step 3 is safe and is why every UPDATE here carries \"decisionClass\" IS NULL — the statements are idempotent and can never overwrite a class a writer declared. The migration also reports the residual unclassified count via RAISE NOTICE rather than failing on it: a row whose rootCause names an enum value since deleted is genuinely unclassifiable, and inventing a class for it would enrol it in the accuracy surface, the learning population and the budget appetite gate at once."
   }
 }

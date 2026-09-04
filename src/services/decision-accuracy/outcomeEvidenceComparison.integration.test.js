@@ -59,6 +59,7 @@ describe.skipIf(!DB_OK)("B5-01X' · outcome evidence comparison", () => {
       confidence: 0.72, diagnosis: 'bleeding at frequency 3.6', rootCause: 'creative_fatigue',
       createdAt: new Date(BOUNDARY.getTime() - DAY),
       humanExecutedAt: BOUNDARY,
+      decisionClass: 'SIGNAL', // C-10 — what VerdictService writes
       ...over,
     },
   });
@@ -495,6 +496,10 @@ describe.skipIf(!DB_OK)("B5-01X' · outcome evidence comparison", () => {
           data: {
             workspaceId: ws, entityId, entityLevel: 'CAMPAIGN', verdict: 'KILL',
             confidence: 0.7, diagnosis: 'learning fixture', rootCause: 'creative_fatigue',
+            // C-10 — the pending-outcomes queue and the learning population are
+            // both SIGNAL-scoped, and an unclassified row is correctly invisible
+            // to them. This is what VerdictService writes.
+            decisionClass: 'SIGNAL',
             createdAt, humanExecutedAt: new Date(createdAt.getTime() + DAY),
           },
         });

@@ -266,6 +266,10 @@ describe('R3 — GuardrailSweepService on the Evidence seam', () => {
         diagnosis:   'Frequency ceiling: frequency > 3 for 2 day(s)',
         rootCause:   'guardrail:Frequency ceiling',
         status:      'PROPOSED',
+        // C-10 — declared as a token. `rootCause` above keeps the display
+        // string; this is what any reader may scope by, and what stopped three
+        // separate modules parsing that prefix.
+        decisionClass: 'GUARDRAIL',
         guardrailRuleId: 'rule-1',
         openHitKey:      'rule-1:e1:ADSET',
         evidenceReference: {
@@ -352,7 +356,10 @@ describe('C-02 — guardrail hit identity', () => {
     await sweepGuardrails(WS);
 
     expect(prisma.decision.findMany).toHaveBeenCalledWith({
-      where:  { workspaceId: WS, openHitKey: { in: ['rule-1:e1:ADSET'] } },
+      // C-10 — the class is declared alongside the key. `openHitKey` already
+      // implied GUARDRAIL, but implication is what the eleven blind reads were
+      // made of: a reader that means one class says so.
+      where:  { workspaceId: WS, decisionClass: { in: ['GUARDRAIL'] }, openHitKey: { in: ['rule-1:e1:ADSET'] } },
       select: { id: true, openHitKey: true },
     });
   });

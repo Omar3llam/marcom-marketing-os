@@ -76,6 +76,11 @@ export const STAGE_STALE_DAYS  = Number(process.env.LOOP_STAGE_STALE_DAYS || 30)
  * or null when unscored) is the SAME deterministic priority-to-act the Campaigns
  * page shows, so the agenda can rank by the identical lever within a severity tier.
  */
-export function agendaItem({ id, band, type, title, rationale, severity = SEVERITY.MEDIUM, evidenceRef = null, humanAction = HUMAN_ACTION.REVIEW, entityId = null, impactScore = null }) {
-  return { id, band, type, title, rationale, severity, evidenceRef, humanAction, entityId, impactScore };
+// C-10 — `decisionClass` defaults to NULL and is never guessed. A fatigue
+// forecast and a pacing alert are not Decisions and have no class; defaulting to
+// SIGNAL because it is the commonest value would make every non-decision item
+// claim to be a connector verdict. Silence about a class is honest; a confident
+// wrong one is not.
+export function agendaItem({ id, band, type, title, rationale, severity = SEVERITY.MEDIUM, evidenceRef = null, humanAction = HUMAN_ACTION.REVIEW, entityId = null, impactScore = null, decisionClass = null }) {
+  return { id, band, type, title, rationale, severity, evidenceRef, humanAction, entityId, impactScore, decisionClass };
 }

@@ -6,6 +6,7 @@
 // ============================================================
 import { Router }  from 'express';
 import { prisma }  from '../../lib/prisma.js';
+import { scopeFor } from '../../services/decisions/decisionClassScope.js';
 import { logger }  from '../../utils/logger.js';
 import { getPortfolio } from '../../services/portfolio/PortfolioService.js';
 import { getWeeklyAgenda } from '../../services/test-generator/TestGeneratorService.js';
@@ -80,7 +81,8 @@ feedRouter.get('/feed', async (req, res) => {
       }).catch(() => []),
       // Phase 2: guardrail radar verdicts. `select` = exactly what the map below reads.
       prisma.decision.findMany({
-        where:   { workspaceId: wsId, status: 'PROPOSED', rootCause: { startsWith: 'guardrail:' } },
+        // C-10 — the class, not a prefix match on a mutable display string.
+        where:   { workspaceId: wsId, status: 'PROPOSED', ...scopeFor('feed/guardrail-verdicts') },
         orderBy: { createdAt: 'desc' }, take: 100,
         select: { entityId: true, entityLevel: true, verdict: true, diagnosis: true, rootCause: true, status: true },
       }).catch(() => []),

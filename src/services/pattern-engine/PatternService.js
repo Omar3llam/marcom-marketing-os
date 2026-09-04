@@ -12,6 +12,7 @@
 // ============================================================
 import { randomUUID } from 'crypto';
 import { prisma }      from '../../lib/prisma.js';
+import { scopeFor } from '../decisions/decisionClassScope.js';
 import { logger }      from '../../utils/logger.js';
 import { selectOperationalSnapshots } from '../evidence/index.js';
 import { CURRENT_OUTCOME_WHERE } from '../decision-accuracy/outcomeSelection.js';
@@ -126,6 +127,11 @@ export async function getBriefing(workspaceId, { now = new Date(), lookbackDays 
       // requests, so every carried-out intervention there is self-reported.
       where:  {
         workspaceId,
+        // C-10 — SIGNAL only. Causal learning asks whether the RECOMMENDATION
+        // was right, and only a connector verdict is a recommendation of that
+        // kind. Behaviour-preserving today (nothing stamps a foreign class);
+        // protective from here.
+        ...scopeFor('learning/patterns'),
         // The canonical seam, not a local copy: "somebody intervened" has one
         // definition and this population must move with it. No other `OR` here.
         ...INTERVENED_WHERE,

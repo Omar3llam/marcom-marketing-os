@@ -15,6 +15,7 @@
 // memory rows. No new execution path.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { scopeFor } from '../decisions/decisionClassScope.js';
 import { logger } from '../../utils/logger.js';
 import { planAgenda } from './agenticPlanner.js';
 import { sweepGuardrails } from '../guardrail-engine/GuardrailSweepService.js';
@@ -150,9 +151,22 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
     safe(prisma.decision.findMany({
       where: {
         workspaceId, status: 'PROPOSED',
+        // C-10 — the CLASS says whose row it is; BUYER_ACTIONABLE still says
+        // which of those findings may ask a buyer for anything. Two questions,
+        // and before this ONE `rootCause` list answered both — which is why an
+        // identity scope had to have HOLD and INSUFFICIENT_DATA carved out of
+        // it to express an actionability one.
+        //
+        // The `OR` STAYS, and is now purely about actionability. Folding it
+        // into a single `in` would drop `{ rootCause: null }`, and null is not
+        // an absence here: it is what the engine writes on verdicts it reached
+        // without a diagnosis — the early gates especially. Those are real
+        // buyer-actionable calls, and collapsing the clause would have silently
+        // emptied the band for exactly the campaigns that never got a cause.
+        ...scopeFor('loop/signal-verdicts'),
         OR: [
-          { rootCause: { in: BUYER_ACTIONABLE_ROOT_CAUSES } },  // connector verdicts
-          { rootCause: null },                                 // connector writes `signalType ?? null`
+          { rootCause: { in: BUYER_ACTIONABLE_ROOT_CAUSES } },
+          { rootCause: null },
         ],
       },
       orderBy: { createdAt: 'desc' },
@@ -166,6 +180,9 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
       select: {
         id: true, entityId: true, entityLevel: true, verdict: true,
         diagnosis: true, rootCause: true, status: true, createdAt: true,
+        // C-10 — an unselected column is `undefined`, and the planner would
+        // publish null for every item in a band that is scoped by class.
+        decisionClass: true,
       },
     }), []),
     // GUARDRAIL — no `distinct`, deliberately. C-02 made an open episode a row
@@ -183,12 +200,13 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
     // pile to one row per entity BY ACCIDENT, and removing `distinct` without
     // this filter would bring ~96 rows a day back to the surface.
     safe(prisma.decision.findMany({
-      where: { workspaceId, status: 'PROPOSED', openHitKey: { not: null } },
+      where: { workspaceId, status: 'PROPOSED', ...scopeFor('loop/guardrail-episodes'), openHitKey: { not: null } },
       orderBy: { createdAt: 'desc' },
       take: 100,
       select: {
         id: true, entityId: true, entityLevel: true, verdict: true,
         diagnosis: true, rootCause: true, status: true, createdAt: true,
+        decisionClass: true,
       },
     }), []),
     safe(prisma.fatiguePrediction.findMany({ where: { workspaceId, resolvedAt: null }, orderBy: { projectedBreachDate: 'asc' }, take: 100 }), []),
@@ -214,7 +232,10 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
     // comparison, so an unexecuted decision is excluded by the same predicate
     // that windows the rest. One condition, not two that could drift.
     safe(prisma.decision.findMany({
-      where:  { workspaceId, platformExecutedAt: { gte: since } },
+      // C-10 — ALL classes, declared. 'Did Lumi land a platform mutation' is
+      // class-agnostic by nature: the EXECUTE stage asks whether the system
+      // turned, and a mutation counts however it was proposed.
+      where:  { workspaceId, ...scopeFor('loop/platform-executions'), platformExecutedAt: { gte: since } },
       select: { id: true, platformExecutedAt: true },
       take:   100,
     }), []),

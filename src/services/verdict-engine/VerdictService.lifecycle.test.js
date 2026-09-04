@@ -21,7 +21,8 @@ vi.mock('../../utils/logger.js', () => ({
 
 import { prisma } from '../../lib/prisma.js';
 import { persistLevelVerdicts } from './VerdictService.js';
-import { connectorDecisionScope, CONNECTOR_ROOT_CAUSES } from './decisionIdentity.js';
+import { DECISION_CLASS } from '@marcom/runtime-contracts';
+import { scopeFor } from '../decisions/decisionClassScope.js';
 
 const WS = 'ws-1';
 const ID = 'c1c1c1c1-0000-4000-8000-000000000001';
@@ -210,9 +211,10 @@ describe('C-01 — the comparison is scoped to connector verdicts', () => {
 
     expect(where.entityId).toBe(ID);
     expect(where.status).toEqual({ not: 'SUPERSEDED' });
-    // Spread from the exported scope rather than restated: a local copy of the
-    // taxonomy is what let FUNNEL_SIGNAL go missing elsewhere.
-    expect(where).toMatchObject(connectorDecisionScope());
+    // C-10 — spread from the declared reader rather than restated. A local copy
+    // of the taxonomy is what let FUNNEL_SIGNAL go missing elsewhere, and the
+    // class removes the taxonomy from this question entirely.
+    expect(where).toMatchObject(scopeFor('verdict/previous'));
   });
 
   it('scopes on IDENTITY, not on buyer actionability', async () => {
@@ -220,18 +222,28 @@ describe('C-01 — the comparison is scoped to connector verdicts', () => {
     // would make those verdicts invisible to the comparison, so they could never
     // be superseded and would accumulate as permanently-open rows — the failure
     // decisionIdentity calls out for exactly this reason.
+    //
+    // C-10 — the two questions are now answered by two different mechanisms
+    // rather than by two different lists of the same kind of thing: identity is
+    // the CLASS, actionability is the cause. This read asks the first, so it
+    // carries no cause predicate at all.
     await persistLevelVerdicts(WS, tree());
     const { where } = prisma.decision.findFirst.mock.calls[0][0];
-    const listed = where.OR.find((c) => Array.isArray(c.rootCause?.in));
-    expect(listed.rootCause.in).toEqual(CONNECTOR_ROOT_CAUSES);
+    expect(where.decisionClass).toEqual({ in: [DECISION_CLASS.SIGNAL] });
+    expect(where.rootCause).toBeUndefined();
   });
 
   it('admits a null cause — the engine writes one on its early gates', async () => {
     // `rootCause: null` is IN the scope, not an oversight. Dropping it would
     // exclude exactly the campaigns that never got a diagnosis, so their
     // verdicts would never be compared and never superseded.
+    //
+    // Under C-10 that is guaranteed structurally rather than by a clause: the
+    // predicate says nothing about the cause, so every SIGNAL row qualifies
+    // whatever its cause — including none.
     await persistLevelVerdicts(WS, tree());
     const { where } = prisma.decision.findFirst.mock.calls[0][0];
-    expect(where.OR.some((c) => c.rootCause === null)).toBe(true);
+    expect(where.rootCause).toBeUndefined();
+    expect(where.decisionClass.in).toContain(DECISION_CLASS.SIGNAL);
   });
 });

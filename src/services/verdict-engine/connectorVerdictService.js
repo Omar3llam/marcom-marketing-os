@@ -31,7 +31,7 @@ import { rollupVerdicts }        from './verdictEngine.js';
 import { applyRelativeRanking }  from './relativeRanking.js';
 import { daysSince }             from './confidenceEngine.js';
 import { isSubstantive }         from './counterfactualEngine.js';
-import { connectorDecisionScope } from './decisionIdentity.js';
+import { scopeFor } from '../decisions/decisionClassScope.js';
 import { getDecisionHistory, HISTORY_KNOWLEDGE } from '../decision-memory/index.js';
 // C-07 — the reason a campaign has no verdict, and the prerequisite that would
 // give it one. Two orthogonal layers on one row: the C-06 token says what we
@@ -406,7 +406,7 @@ export async function getLatestDecisions(workspaceId) {
   if (!workspaceId) return new Map();
 
   const rows = await prisma.decision.findMany({
-    where:   { workspaceId, entityLevel: 'CAMPAIGN', status: 'PROPOSED', ...connectorDecisionScope() },
+    where:   { workspaceId, entityLevel: 'CAMPAIGN', status: 'PROPOSED', ...scopeFor('verdict/latest-decisions') },
     // `evidenceReference` (R5) joins the projection because it is the ONE thing
     // about a stored decision this payload could never re-derive: the live
     // verdict beside it is recomputed from today's rows, and what a past
@@ -426,6 +426,10 @@ export async function getLatestDecisions(workspaceId) {
     // and never to a person.
     select:  {
       id: true, entityId: true, verdict: true, createdAt: true, evidenceReference: true,
+      // C-10 — published so the client is TOLD what kind of call this is rather
+      // than inferring it. SIGNAL for every row this scoped read returns, which
+      // is exactly why publishing it costs nothing and settles it forever.
+      decisionClass: true,
       humanResponse: true, humanReasonCode: true, humanReasonNote: true, humanRespondedAt: true,
     },
     orderBy: { createdAt: 'desc' },

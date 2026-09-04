@@ -15,6 +15,7 @@
 // ============================================================
 import { randomUUID } from 'crypto';
 import { prisma }     from '../../lib/prisma.js';
+import { scopeFor } from '../decisions/decisionClassScope.js';
 import { logger }     from '../../utils/logger.js';
 import { selectOperationalSnapshots } from '../evidence/index.js';
 import { fromMinor }  from '../../lib/money.js';
@@ -170,7 +171,10 @@ export async function getWeeklyAgenda(workspaceId, { lookbackDays = SYNC_RECENCY
     // every reasoning blob the workspace has ever written to build a map of
     // latest-verdict-per-entity.
     prisma.decision.findMany({
-      where:   { workspaceId },
+      // C-10 — SIGNAL only. This builds latest-verdict-per-entity for the weekly
+      // agenda, and the read is UNBOUNDED, so under a standing breach every
+      // entity's "verdict" was whichever guardrail episode the sweep wrote last.
+      where:   { workspaceId, ...scopeFor('test-generator/latest-verdict') },
       orderBy: { createdAt: 'desc' },
       select:  { entityId: true, verdict: true },
     }),

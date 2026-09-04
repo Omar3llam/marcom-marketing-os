@@ -48,6 +48,7 @@ describe.skipIf(!DB_OK)('C-02 · guardrail hit identity on real rows', () => {
       rootCause: 'guardrail:Frequency ceiling',
       status: 'PROPOSED',
       guardrailRuleId: ruleId,
+      decisionClass: 'GUARDRAIL', // C-10 — what GuardrailSweepService declares
       openHitKey: openHitKey({ ruleId, entityId, entityLevel: 'ADSET' }),
       ...over,
     },
@@ -141,11 +142,20 @@ describe.skipIf(!DB_OK)('C-02 · guardrail hit identity on real rows', () => {
   it('legacy rows carry no identity, never collide, and are never counted open', async () => {
     // Exactly what the pre-C-02 sweep wrote: a mutable display name and nothing
     // else. Two of them, on the same rule and entity as the live episodes.
+    //
+    // C-10 — with the CLASS the migration's backfill gives them, and no
+    // `guardrailRuleId`. That combination is what "legacy" now means, and it is
+    // the whole point of the two conditions in `legacyGuardrailScope`: these
+    // rows ARE guardrail rows (the backfill can say so from the prefix, with no
+    // invention), and they have no stable rule identity (which cannot be
+    // recovered, because resolving a mutable name to a rule today would
+    // attribute a hit to a rule that may since have been renamed).
     const legacy = () => prisma.decision.create({
       data: {
         workspaceId: ws, entityId, entityLevel: 'ADSET', verdict: 'WATCH', confidence: 0.9,
         diagnosis: 'Frequency ceiling: frequency > 3 for 2 day(s)',
         rootCause: 'guardrail:Frequency ceiling', status: 'PROPOSED',
+        decisionClass: 'GUARDRAIL',
       },
     });
     await legacy();

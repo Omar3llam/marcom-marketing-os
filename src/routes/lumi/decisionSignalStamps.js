@@ -23,7 +23,7 @@
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { connectorDecisionScope } from '../../services/verdict-engine/decisionIdentity.js';
+import { scopeFor } from '../../services/decisions/decisionClassScope.js';
 
 /**
  * Stamp a lifecycle timestamp on the live verdict for an entity, once.
@@ -44,7 +44,7 @@ export async function stampOnce(req, res, field) {
       // Unscoped, `createdAt desc` meant "whichever class wrote last" — always
       // the 15-minute guardrail sweep under a standing breach — so reading a
       // Signal's reasoning stamped `explainedAt` onto a Guardrail episode.
-      where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED', ...connectorDecisionScope() },
+      where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED', ...scopeFor('decisions/stamp-by-entity') },
       orderBy: { createdAt: 'desc' },
       select:  { id: true, [field]: true },
     });
@@ -286,7 +286,7 @@ export async function recordEntitySignal(req, res, field) {
     // clicking "I executed this" on a Signal could, under a standing breach,
     // stamp a Guardrail episode instead and enrol it in institutional memory.
     const decision = await prisma.decision.findFirst({
-      where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED', ...connectorDecisionScope() },
+      where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED', ...scopeFor('decisions/signal-by-entity') },
       orderBy: { createdAt: 'desc' },
       // T12-A — same reason as the by-id path: the response reports this column,
       // so the query has to carry it. The two paths share `signalBody`, and a

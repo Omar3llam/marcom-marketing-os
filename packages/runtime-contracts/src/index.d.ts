@@ -260,3 +260,18 @@ export type PromotionOutcome = typeof PROMOTION_OUTCOME[keyof typeof PROMOTION_O
 export const PROMOTION_OUTCOME_VALUES: readonly PromotionOutcome[];
 
 export function isPromotionOutcome(value: string | null | undefined): boolean;
+
+// -- Decision classes (C-10) ---------------------------------
+
+export const DECISION_CLASS: {
+  readonly SIGNAL: 'SIGNAL';
+  readonly GUARDRAIL: 'GUARDRAIL';
+  readonly ALLOCATION: 'ALLOCATION';
+  readonly EXPERIMENT: 'EXPERIMENT';
+};
+
+export type DecisionClass = typeof DECISION_CLASS[keyof typeof DECISION_CLASS];
+
+export const DECISION_CLASS_VALUES: readonly DecisionClass[];
+
+export function isDecisionClass(value: string | null | undefined): boolean;

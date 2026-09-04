@@ -49,6 +49,7 @@
 // copy built on it may claim otherwise.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { scopeFor } from '../decisions/decisionClassScope.js';
 import { logger } from '../../utils/logger.js';
 import { INTERVENED_WHERE } from '../execution/decisionProvenance.js';
 import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
@@ -102,6 +103,11 @@ export async function getSimilarOutcomes({
   const rows = await prisma.decision.findMany({
     where: {
       workspaceId,
+      // C-10 — SIGNAL only. The similarity key below is verdict + rootCause +
+      // entityLevel + objective + channel, and only VerdictService writes the
+      // last two; a foreign class would compare against a key with two null
+      // dimensions and call the result a track record.
+      ...scopeFor('learning/track-record'),
       verdict,
       // Each dimension narrows ONLY when the asking decision carries it.
       ...(rootCause   ? { rootCause }   : {}),
