@@ -29,7 +29,6 @@ import { getCanonicalVerdictCampaigns } from '../entity-graph/index.js';
 // have none. These tests are about the campaigns, so noCanonicalWindow is empty;
 // the absence path has its own tests in canonicalVerdictEvidence.test.js.
 const mockCampaigns = (rows) => getCanonicalVerdictCampaigns.mockResolvedValue({ campaigns: rows, noCanonicalWindow: [] });
-import { SIGNAL_TYPE } from '../diagnosis-engine/index.js';
 import { DECISION_CLASS } from '@marcom/runtime-contracts';
 import { persistConnectorVerdicts } from './VerdictService.js';
 import { evaluateConnectorVerdicts, failedEvaluation } from './connectorVerdictService.js';
