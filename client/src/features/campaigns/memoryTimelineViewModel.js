@@ -20,7 +20,7 @@
 // turn "we looked and could not tell" into "we never looked".
 // ============================================================
 
-import { KNOWLEDGE } from '@marcom/runtime-contracts';
+import { KNOWLEDGE, EXECUTION_PROVENANCE } from '@marcom/runtime-contracts';
 
 /** The engine's resolution enum → what a marketer can read. */
 const RESOLUTION_LABELS = Object.freeze({
@@ -46,8 +46,38 @@ function shortDate(value) {
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
 }
 
-/** What a human did about it. Timestamps, not status — see the schema note. */
+/** What was done about it, and BY WHOM (C-12). */
+const PROVENANCE_LABELS = Object.freeze({
+  [EXECUTION_PROVENANCE.HUMAN]:    'Executed by you',
+  [EXECUTION_PROVENANCE.PLATFORM]: 'Executed by Lumi',
+  // Both records exist and neither implies the other, so both are named. Showing
+  // only the platform fact would delete the operator's own record of what they
+  // did; showing only theirs would credit them with Lumi's mutation.
+  [EXECUTION_PROVENANCE.BOTH]:     'Executed by you and by Lumi',
+});
+
+/**
+ * What was done about this call.
+ *
+ * ── WHAT THIS USED TO DO, AND WHY IT WAS WRONG (C-12) ───────────────────────
+ * It read `executedAt` — the DERIVED union `platformExecutedAt ??
+ * humanExecutedAt` — under a docstring that said "what a human did about it".
+ * So a mutation Lumi's worker landed on Meta was reported to the operator as
+ * something they had done themselves. B4-A split those two facts apart
+ * precisely because "was this acted on" and "did LUMI act" are different
+ * questions; this label was where they were quietly rejoined.
+ *
+ * The server now states the answer as one token and this branches on it. It
+ * does NOT re-derive: two timestamps and four outcomes are exactly what the
+ * union already hid.
+ */
 function actionLabel(item) {
+  const named = PROVENANCE_LABELS[item?.executionProvenance];
+  if (named) return named;
+  // No token: a cached response, or a row from before C-12. The row WAS acted
+  // on, so falling through to "No answer recorded" would be a NEW falsehood —
+  // worse than the one this replaced. Unattributed is the honest label, and it
+  // is exactly what shipped before, so an old payload renders as it always did.
   if (item?.executedAt) return 'Executed';
   if (item?.dismissedAt) return 'Dismissed';
   if (item?.status === 'SUPERSEDED') return 'Replaced by a later call';

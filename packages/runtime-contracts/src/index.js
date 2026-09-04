@@ -96,3 +96,9 @@ export {
   DECISION_CLASS_VALUES,
   isDecisionClass,
 } from './decisionClass.js';
+
+export {
+  EXECUTION_PROVENANCE,
+  EXECUTION_PROVENANCE_VALUES,
+  isExecutionProvenance,
+} from './executionProvenance.js';

@@ -275,3 +275,17 @@ export type DecisionClass = typeof DECISION_CLASS[keyof typeof DECISION_CLASS];
 export const DECISION_CLASS_VALUES: readonly DecisionClass[];
 
 export function isDecisionClass(value: string | null | undefined): boolean;
+
+// ── C-12 · who acted on a decision ─────────────────────────────────────────
+export const EXECUTION_PROVENANCE: {
+  readonly NONE: 'NONE';
+  readonly HUMAN: 'HUMAN';
+  readonly PLATFORM: 'PLATFORM';
+  readonly BOTH: 'BOTH';
+};
+
+export type ExecutionProvenance = typeof EXECUTION_PROVENANCE[keyof typeof EXECUTION_PROVENANCE];
+
+export const EXECUTION_PROVENANCE_VALUES: readonly ExecutionProvenance[];
+
+export function isExecutionProvenance(value: string | null | undefined): boolean;

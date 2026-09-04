@@ -121,6 +121,13 @@ export const DECISION_READERS = Object.freeze({
   'guardrail/open-episodes': [DECISION_CLASS.GUARDRAIL],
   /** Closing every open episode of a revoked rule (C-05). */
   'guardrail/revoke-close': [DECISION_CLASS.GUARDRAIL],
+  /**
+   * C-12 — which of a campaign's ad sets carry an OPEN breach, and therefore
+   * name a claim that justifies descending to them (B8-04). A SIGNAL verdict
+   * on an ad set is not such a claim: the campaign-level judgement is not a
+   * statement about that ad set.
+   */
+  'drill-basis/guardrail-episodes': [DECISION_CLASS.GUARDRAIL],
   /** The feed's guardrail radar block. */
   'feed/guardrail-verdicts': [DECISION_CLASS.GUARDRAIL],
 
