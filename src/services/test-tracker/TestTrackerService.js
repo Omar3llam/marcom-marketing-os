@@ -28,6 +28,7 @@ import { verdictToActionType } from '../verdict-engine/verdictTypes.js';
 import { validateActionTarget } from '../metaExecutionService.js';
 import { resolveCredential } from '../connectors/credentialStore.js';
 import { designTest } from '../incrementality-engine/IncrementalityService.js';
+import { DECISION_CLASS } from '@marcom/runtime-contracts';
 
 const GRAPH_BASE = `https://graph.facebook.com/${process.env.META_API_VERSION || 'v21.0'}`;
 // The WRITE half of the tested-dimension contract — see TEST_MEMORY_PREFIX in
@@ -268,6 +269,8 @@ export async function concludeTest(workspaceId, testId, { refresh = true } = {})
           diagnosis:   rationale,
           rootCause:   `${TEST_ROOT_PREFIX}${test.id}`,
           status:      'PROPOSED',
+          // C-10 — one class over both test producers. See decisionClass.js.
+          decisionClass: DECISION_CLASS.EXPERIMENT,
         },
       });
       decisionId = decision.id;

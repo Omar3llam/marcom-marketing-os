@@ -9,12 +9,14 @@
 // through the existing /api/execute/meta governance.
 // ============================================================
 import { prisma }              from '../../lib/prisma.js';
+import { scopeFor } from '../decisions/decisionClassScope.js';
 import { logger }              from '../../utils/logger.js';
 import { evaluateGuardrails, GUARDRAIL_OUTCOME } from './guardrailEngine.js';
 import { openHitKey }         from './guardrailHitIdentity.js';
 import { fromMinor }           from '../../lib/money.js';
 import { TEMPORAL }            from '../../config/temporal.js';
 import { selectOperationalSnapshots } from '../evidence/index.js';
+import { DECISION_CLASS } from '@marcom/runtime-contracts';
 import {
   toEvidenceReference, EVIDENCE_POPULATION, EVIDENCE_SELECTOR, EVIDENCE_REDUCTION,
 } from '../verdict-engine/evidenceReference.js';
@@ -148,7 +150,7 @@ export async function sweepGuardrails(workspaceId) {
   // did not judge are not our business this sweep.
   const openByKey = new Map(
     evaluatedKeys.length === 0 ? [] : (await prisma.decision.findMany({
-      where:  { workspaceId, openHitKey: { in: evaluatedKeys.map((e) => e.key) } },
+      where:  { workspaceId, ...scopeFor('guardrail/open-episodes'), openHitKey: { in: evaluatedKeys.map((e) => e.key) } },
       select: { id: true, openHitKey: true },
     })).map((d) => [d.openHitKey, d.id]),
   );
@@ -168,6 +170,10 @@ export async function sweepGuardrails(workspaceId) {
     confidence:  0.9, // guardrail rules are user-asserted policy
     diagnosis:   hit.rationale,
     rootCause:   `guardrail:${hit.ruleName}`,
+    // C-10 — the KIND of row, as a token. `rootCause` above still carries the
+    // display string every current consumer matches on; this is what anything
+    // may scope by, and what stops three separate modules parsing that prefix.
+    decisionClass: DECISION_CLASS.GUARDRAIL,
     status:      'PROPOSED',
     // The stable identity. `rootCause` above keeps the display string every
     // current consumer still matches on; this is what anything may key off.

@@ -36,7 +36,7 @@ import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 import { getSimilarOutcomes } from '../../services/analysis/decisionLearning.js';
 import { getRecentDecisions, RECENT_DECISIONS_LIMIT } from '../../services/decision-memory/decisionHistory.js';
 import { validateJudgment, recordJudgment } from '../../services/decision-memory/humanJudgment.js';
-import { connectorDecisionScope } from '../../services/verdict-engine/decisionIdentity.js';
+import { scopeFor } from '../../services/decisions/decisionClassScope.js';
 import { stampOnce, recordSignal, recordEntitySignal } from './decisionSignalStamps.js';
 
 // Re-exported, not re-implemented: signalProjection.contract.test.js imports it
@@ -144,7 +144,7 @@ decisionsRouter.get(`${BASE}/learning`, requireCollabRole(...OPERATORS), async (
     // beside a Signal verdict would have been looked up under another class's
     // key, with two of its five dimensions null.
     const decision = await prisma.decision.findFirst({
-      where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED', ...connectorDecisionScope() },
+      where:   { workspaceId: req.workspaceId, entityId, status: 'PROPOSED', ...scopeFor('decisions/learning-key') },
       orderBy: { createdAt: 'desc' },
       select:  { verdict: true, rootCause: true, entityLevel: true, objective: true, channel: true },
     });

@@ -42,7 +42,9 @@ const AT = new Date('2026-08-01T10:00:00.000Z');
 const makeDecision = (over = {}) => prisma.decision.create({
   data: {
     workspaceId: WS, entityId: ENTITY, confidence: 0.8, diagnosis: 'C1 fixture',
-    status: 'PROPOSED', ...KEY, ...over,
+    // C-10 — the learning population is SIGNAL-scoped. An unclassified row is
+    // correctly invisible to it, which is what these fixtures were tripping on.
+    status: 'PROPOSED', decisionClass: 'SIGNAL', ...KEY, ...over,
   },
   select: { id: true },
 });

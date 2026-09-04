@@ -26,7 +26,8 @@ vi.mock('../../middleware/requireCollabRole.js', () => ({
 
 import { prisma } from '../../lib/prisma.js';
 import { decisionsRouter } from './decisions.js';
-import { connectorDecisionScope } from '../../services/verdict-engine/decisionIdentity.js';
+import { DECISION_CLASS } from '@marcom/runtime-contracts';
+import { scopeFor } from '../../services/decisions/decisionClassScope.js';
 
 const WS = 'ws-1';
 const ENTITY = 'e1e1e1e1-0000-4000-8000-000000000001';
@@ -90,7 +91,7 @@ describe.each([
   it('reads only the live PROPOSED SIGNAL for this entity, newest first', async () => {
     await patch(signal);
     expect(prisma.decision.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where:   { workspaceId: WS, entityId: ENTITY, status: 'PROPOSED', ...connectorDecisionScope() },
+      where:   { workspaceId: WS, entityId: ENTITY, status: 'PROPOSED', ...scopeFor('decisions/stamp-by-entity') },
       orderBy: { createdAt: 'desc' },
     }));
   });
@@ -98,12 +99,13 @@ describe.each([
   it('cannot reach a guardrail episode on the same entity', async () => {
     await patch(signal);
     const { where } = prisma.decision.findFirst.mock.calls[0][0];
-    const admits = (rootCause) => where.OR.some((c) => (c.rootCause === null
-      ? rootCause === null
-      : Array.isArray(c.rootCause?.in) && c.rootCause.in.includes(rootCause)));
-    expect(admits('guardrail:frequency')).toBe(false);
-    expect(admits('test:variant-a')).toBe(false);
-    expect(admits(null)).toBe(true); // the engine's own no-diagnosis verdicts
+    // C-10 — the same boundary, now asked of the CLASS. A prefix that a rename
+    // could move out from under this is no longer what keeps a foreign row out.
+    const admits = (cls) => where.decisionClass.in.includes(cls);
+    expect(admits(DECISION_CLASS.GUARDRAIL)).toBe(false);
+    expect(admits(DECISION_CLASS.ALLOCATION)).toBe(false);
+    expect(admits(DECISION_CLASS.EXPERIMENT)).toBe(false);
+    expect(admits(DECISION_CLASS.SIGNAL)).toBe(true);
   });
 
   // Silence would make a missing signal indistinguishable from a recorded one

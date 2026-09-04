@@ -39,6 +39,7 @@ import { SIGNAL_TYPE } from '../diagnosis-engine/index.js';
 import { ROOT_CAUSE } from '../verdict-engine/verdictTypes.js';
 import { FUNNEL_SIGNAL } from '../verdict-engine/funnelDiagnosis.js';
 import { BUYER_ACTIONABLE_ROOT_CAUSES, CONNECTOR_ROOT_CAUSES } from '../verdict-engine/decisionIdentity.js';
+import { DECISION_CLASS } from '@marcom/runtime-contracts';
 import { buildLoopInputs } from './AgenticLoopService.js';
 import { planAgenda } from './agenticPlanner.js';
 
@@ -144,7 +145,10 @@ describe('buildLoopInputs — verdict query wiring', () => {
     // missing, and why it broke the moment a SIGNAL_TYPE was deliberately excluded.
     expect(signalArgs.where.OR.some((c) => Array.isArray(c.rootCause?.in)
       && BUYER_ACTIONABLE_ROOT_CAUSES.every((t) => c.rootCause.in.includes(t)))).toBe(true);
-    // …and the guardrail prefix has LEFT this read.
+    // C-10 — guardrail rows are kept out by the CLASS now, not by the absence
+    // of a prefix clause. The OR above is purely about actionability: which of
+    // OUR findings may ask a buyer for something.
+    expect(signalArgs.where.decisionClass).toEqual({ in: [DECISION_CLASS.SIGNAL] });
     expect(signalArgs.where.OR.some((c) => c.rootCause?.startsWith === 'guardrail:')).toBe(false);
 
     // GUARDRAIL — no `distinct` at all. C-02's unique index already makes an open
@@ -153,6 +157,7 @@ describe('buildLoopInputs — verdict query wiring', () => {
     expect(guardrailArgs.where.workspaceId).toBe(WS);
     expect(guardrailArgs.where.status).toBe('PROPOSED');
     expect(guardrailArgs.where.openHitKey).toEqual({ not: null });
+    expect(guardrailArgs.where.decisionClass).toEqual({ in: [DECISION_CLASS.GUARDRAIL] });
     expect(guardrailArgs.distinct).toBeUndefined();
   });
 

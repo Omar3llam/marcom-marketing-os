@@ -46,6 +46,7 @@ async function makeDecision(over = {}) {
       workspaceId: WS, entityId: ENTITY, entityLevel: 'CAMPAIGN',
       verdict: 'KILL', confidence: 0.8, diagnosis: 'R13 fixture',
       rootCause: 'EFFICIENCY', channel: 'META', objective: 'SALES',
+      decisionClass: 'SIGNAL', // C-10 — the learning projection is SIGNAL-scoped
       ...over,
     },
     select: { id: true, verdict: true, status: true },
@@ -385,7 +386,8 @@ describe.skipIf(!DB_OK)('R13 — learning projection', () => {
         workspaceId: WS, entityId: ENTITY, entityLevel: 'CAMPAIGN', verdict: 'KILL',
         confidence: 0.8, diagnosis: 'R13 learning fixture', rootCause: 'EFFICIENCY',
         channel: 'META', objective: 'SALES', humanExecutedAt: new Date(),
-
+        // C-10 — the learning projection is SIGNAL-scoped.
+        decisionClass: 'SIGNAL',
         humanRespondedAt: r.humanResponse ? new Date() : null, ...r,
       } });
     }

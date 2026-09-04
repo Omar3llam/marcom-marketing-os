@@ -69,10 +69,21 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
     // migration must reach an environment before the code naming
     // `promotedAt` / `closedAt` does. A deploy-order constraint, not a
     // rollback hazard — the verdict stays COMPATIBLE.
-    expect(scan.length).toBe(69);
+    // 69 → 70 and TRANSITION_REQUIRED 9 → 10: C-10 adds
+    // 20260905120000_c10_decision_class. The column, the enum type and the index
+    // are all additive — but the migration also BACK-FILLS the column from the
+    // rootCause prefixes, and a data rewrite races instances still writing the
+    // old shape. That is the first non-COMPATIBLE migration this programme has
+    // produced, and the classifier is right about it: an old instance writes
+    // rows that land NULL after the UPDATEs have run, and NULL means
+    // UNCLASSIFIED, which every scoped reader excludes.
+    //
+    // So this one DOES get a baseline entry, carrying the phased deploy that
+    // makes it safe. See scripts/migrationCompatibility.baseline.json.
+    expect(scan.length).toBe(70);
     expect(counts).toEqual({
       COMPATIBLE: 48,
-      TRANSITION_REQUIRED: 9,
+      TRANSITION_REQUIRED: 10,
       INCOMPATIBLE: 8,
       UNKNOWN: 4,
     });
@@ -223,7 +234,7 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
   // ── T7 · corpus boundary ────────────────────────────────────────────────
   it('T7 — the scanner reads production migrations and nothing else', () => {
     const dirs = migrationDirs(fs, MIGRATIONS);
-    expect(dirs).toHaveLength(69); // +1 C-02, +1 C-05, +1 C-18 (see T1)
+    expect(dirs).toHaveLength(70); // +1 C-02, +1 C-05, +1 C-18, +1 C-10 (see T1)
     expect(dirs.every((d) => /^\d{14}_/.test(d))).toBe(true);
     // Real non-migration entries that sit in this directory today.
     expect(dirs).not.toContain('migration_lock.toml');

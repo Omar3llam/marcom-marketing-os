@@ -29,7 +29,7 @@
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { connectorDecisionScope } from '../verdict-engine/decisionIdentity.js';
+import { scopeFor } from '../decisions/decisionClassScope.js';
 import { PROVENANCE_SELECT, legacyExecutedAt } from '../execution/decisionProvenance.js';
 import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
 
@@ -122,7 +122,7 @@ export const RECENT_DECISION_SELECT = Object.freeze({
 export async function getRecentDecisions(workspaceId, limit = RECENT_DECISIONS_LIMIT) {
   if (!workspaceId) return [];
   return prisma.decision.findMany({
-    where:   { workspaceId, ...connectorDecisionScope() },
+    where:   { workspaceId, ...scopeFor('memory/recent-decisions') },
     select:  RECENT_DECISION_SELECT,
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     take:    limit,
@@ -135,6 +135,10 @@ const stated = (d) => ({
   verdict:     d.verdict,
   status:      d.status,
   createdAt:   d.createdAt,
+  // C-10 — what KIND of call each entry was. The timeline is the one surface
+  // where a mixed history would be most misleading, and it is scoped to SIGNAL
+  // today; saying so is what keeps that a fact rather than an assumption.
+  decisionClass: d.decisionClass ?? null,
   // B4-A — memory shows BOTH provenance facts. A timeline that said only
   // "Executed" could not tell an operator whether they had done it or Lumi had.
   humanExecutedAt:    d.humanExecutedAt    ?? null,
@@ -206,7 +210,7 @@ export async function getDecisionHistory(workspaceId, entityIds = []) {
     workspaceId,
     entityId:    { in: entityIds },
     entityLevel: 'CAMPAIGN',
-    ...connectorDecisionScope(),
+    ...scopeFor('memory/decision-history'),
   };
 
   try {
@@ -216,6 +220,9 @@ export async function getDecisionHistory(workspaceId, entityIds = []) {
         where,
         select: {
           id: true, entityId: true, verdict: true, status: true, createdAt: true,
+          // C-10 — `stated()` publishes it, and an unselected column is
+          // `undefined`, which would put a null class on every timeline entry.
+          decisionClass: true,
           ...PROVENANCE_SELECT, dismissedAt: true, resolution: true, confidenceDelta: true,
         },
         orderBy: { createdAt: 'desc' },

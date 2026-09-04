@@ -14,8 +14,9 @@ import { applyRelativeRanking }     from './relativeRanking.js';
 import { assertUsableEvaluation }    from './connectorVerdictService.js';
 import { toReasoningArtifact, toCounterfactualArtifact } from './reasoningArtifact.js';
 import { toEvidenceReference }     from './evidenceReference.js';
-import { connectorDecisionScope }  from './decisionIdentity.js';
+import { scopeFor }                from '../decisions/decisionClassScope.js';
 import { computeResolution, ctrDelta } from './decisionLifecycle.js';
+import { DECISION_CLASS } from '@marcom/runtime-contracts';
 
 // The rootCauses persistConnectorVerdicts writes: a diagnosis signalType, a
 // funnel-stage or data-quality cause, or null when the engine set none.
@@ -122,7 +123,9 @@ async function persistNode(workspaceId, node, created) {
       where:   {
         workspaceId, entityId: node.id, entityLevel: node.level,
         status: { not: 'SUPERSEDED' },
-        ...connectorDecisionScope(),
+        // C-10 — the same identity question, now asked of the column instead of
+        // a three-enum union of `rootCause` strings.
+        ...scopeFor('verdict/previous'),
       },
       orderBy: { createdAt: 'desc' },
       // The four fields this row is used for: `verdict` decides whether anything
@@ -156,6 +159,10 @@ async function persistNode(workspaceId, node, created) {
           // makes the learning query average two unrelated populations.
           rootCause:   node.rootCause ?? node.signalType ?? null,
           status:      'PROPOSED',
+          // C-10 — declared as a TOKEN, never `classifyRootCause(rootCause)`.
+          // A writer that classified its own string would put the string back
+          // in charge: rename a cause and the class would silently follow.
+          decisionClass: DECISION_CLASS.SIGNAL,
           ctrAtDecision:  now.ctr,
           roasAtDecision: now.roas,
           // The similarity key. Both ride on the node from
@@ -280,7 +287,7 @@ async function supersedeDroppedConnectorVerdicts(workspaceId, eligibleIds) {
     workspaceId,
     status:      'PROPOSED',
     entityLevel: 'CAMPAIGN',
-    ...connectorDecisionScope(),
+    ...scopeFor('verdict/supersede-dropped'),
   };
   // Empty eligible set ⇒ nothing is current (whole account went dataless) ⇒
   // supersede EVERY connector verdict. Omit the entityId filter entirely —

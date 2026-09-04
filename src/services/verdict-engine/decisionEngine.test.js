@@ -41,7 +41,8 @@ import { getConnectorVerdicts } from './connectorVerdictService.js';
 import { isSubstantive } from './counterfactualEngine.js';
 import { diagnoseFunnel } from './funnelDiagnosis.js';
 import { composeConfidence } from './confidenceEngine.js';
-import { connectorDecisionScope } from './decisionIdentity.js';
+import { DECISION_CLASS } from '@marcom/runtime-contracts';
+import { scopeFor } from '../decisions/decisionClassScope.js';
 import { SIGNAL_TYPE } from '../diagnosis-engine/diagnosisTypes.js';
 import { VERDICT } from './verdictTypes.js';
 
@@ -303,7 +304,8 @@ describe('getConnectorVerdicts — the published numbers', () => {
   // — and projecting the stored verdict lets a client see the call has moved on
   // without a second fetch. Neither is reconciled with the live verdict here.
   const decisionRow = (over = {}) => ({
-    id: 'dec-1', entityId: 'c1', verdict: 'HOLD', createdAt: new Date('2026-08-01'), ...over,
+    id: 'dec-1', entityId: 'c1', verdict: 'HOLD', createdAt: new Date('2026-08-01'),
+    decisionClass: DECISION_CLASS.SIGNAL, ...over,
   });
 
   it('projects the id of the stored decision for an entity', async () => {
@@ -373,18 +375,20 @@ describe('getConnectorVerdicts — the published numbers', () => {
     await getConnectorVerdicts('ws-1');
 
     const { where } = findMany.mock.calls[0][0];
-    expect(where.OR).toBeDefined();
 
-    // Connector causes are named explicitly; null is IN the set, because the
-    // engine leaves it null on verdicts reached without a diagnosis.
-    const named = where.OR.find((c) => c.rootCause?.in)?.rootCause.in ?? [];
-    expect(where.OR).toContainEqual({ rootCause: null });
-    expect(named).toContain(SIGNAL_TYPE.CREATIVE_FATIGUE);
-
-    // And every foreign author's prefix is absent from the allowed set.
-    for (const foreign of ['guardrail:', 'allocation:', 'incrementality:', 'test:']) {
-      expect(named.some((c) => String(c).startsWith(foreign))).toBe(false);
+    // C-10 — the identity question is now asked of the CLASS. It used to be a
+    // union of three enum families reproduced in the where clause, which is a
+    // class filter written as a string match: a cause the engine gained and
+    // that list missed made its verdicts invisible to this projection, and the
+    // surface silently fell back to by-entity routing.
+    expect(where.decisionClass).toEqual({ in: [DECISION_CLASS.SIGNAL] });
+    for (const foreign of [DECISION_CLASS.GUARDRAIL, DECISION_CLASS.ALLOCATION, DECISION_CLASS.EXPERIMENT]) {
+      expect(where.decisionClass.in).not.toContain(foreign);
     }
+    // And nothing about the cause is left in this predicate. A row the engine
+    // wrote with no diagnosis — `rootCause: null` — is a connector verdict, and
+    // it is admitted by the class alone rather than by a special clause.
+    expect(where.rootCause).toBeUndefined();
   });
 
   // The half that a naive fix would still get wrong. Ordering is `createdAt`
@@ -396,12 +400,12 @@ describe('getConnectorVerdicts — the published numbers', () => {
     // What the scoped query returns: the foreign rows never come back at all.
     findMany.mockImplementation(async ({ where }) => {
       const all = [
-        { id: 'alloc-2',  entityId: 'c1', verdict: 'REALLOCATE', rootCause: 'allocation:plan-1', createdAt: new Date('2026-08-05') },
-        { id: 'guard-1',  entityId: 'c1', verdict: 'KILL',       rootCause: 'guardrail:frequency', createdAt: new Date('2026-08-04') },
-        { id: 'conn-1',   entityId: 'c1', verdict: 'KILL',       rootCause: SIGNAL_TYPE.CREATIVE_FATIGUE, createdAt: new Date('2026-08-01') },
+        { id: 'alloc-2',  entityId: 'c1', verdict: 'REALLOCATE', decisionClass: DECISION_CLASS.ALLOCATION, createdAt: new Date('2026-08-05') },
+        { id: 'guard-1',  entityId: 'c1', verdict: 'KILL',       decisionClass: DECISION_CLASS.GUARDRAIL,  createdAt: new Date('2026-08-04') },
+        { id: 'conn-1',   entityId: 'c1', verdict: 'KILL',       decisionClass: DECISION_CLASS.SIGNAL,     createdAt: new Date('2026-08-01') },
       ];
-      const allowed = where.OR.find((c) => c.rootCause?.in)?.rootCause.in ?? [];
-      return all.filter((d) => d.rootCause === null || allowed.includes(d.rootCause));
+      const allowed = where.decisionClass.in;
+      return all.filter((d) => allowed.includes(d.decisionClass));
     });
 
     const { verdicts } = await getConnectorVerdicts('ws-1');
@@ -417,7 +421,8 @@ describe('getConnectorVerdicts — the published numbers', () => {
   it('scopes identity with the same definition the write path supersedes with', async () => {
     mockCampaigns([row()]);
     await getConnectorVerdicts('ws-1');
-    expect(findMany.mock.calls[0][0].where.OR).toEqual(connectorDecisionScope().OR);
+    expect(findMany.mock.calls[0][0].where.decisionClass)
+      .toEqual(scopeFor('verdict/latest-decisions').decisionClass);
   });
 
   it('scopes the read to the workspace, and selects rather than taking the row whole', async () => {
@@ -432,8 +437,12 @@ describe('getConnectorVerdicts — the published numbers', () => {
     // judged. Still a named projection, so the two reasoning JSONB columns are
     // not pulled per row to be discarded — and still an exact equality, so a
     // select-less read or an unplanned column fails here.
+    // C-10 adds `decisionClass`: the client is TOLD what kind of call this is
+    // rather than inferring it. Every row this scoped read returns is SIGNAL,
+    // which is exactly why publishing it costs nothing and settles it for good.
     expect(arg.select).toEqual({
       id: true, entityId: true, verdict: true, createdAt: true, evidenceReference: true,
+      decisionClass: true,
       humanResponse: true, humanReasonCode: true, humanReasonNote: true, humanRespondedAt: true,
     });
     expect(arg).not.toHaveProperty('include');

@@ -160,6 +160,12 @@ function buyerAgenda({ verdicts = [], fatiguePredictions = [], pacing = [], test
       // DESTINATION's capability, not from an enum's non-nullness.
       evidenceRef: d.id,
       humanAction: HUMAN_ACTION.REVIEW,
+      // C-10 — the class survives the merge. Two rows about one campaign, both
+      // reading KILL, are a performance verdict and a policy breach; without
+      // this they publish with the same type, title and severity and no
+      // rootCause, so nothing downstream can tell them apart. B8-02's attention
+      // row needs it to fill a slot.
+      decisionClass: d.decisionClass ?? null,
       entityId: d.entityId,
       impactScore: impactById.get(d.entityId) ?? null,
     }));

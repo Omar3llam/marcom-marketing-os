@@ -20,7 +20,8 @@ import {
   getDecisionHistory, HISTORY_LIMIT, HISTORY_STATUS,
   getRecentDecisions, RECENT_DECISIONS_LIMIT, RECENT_DECISION_SELECT,
 } from './decisionHistory.js';
-import { connectorDecisionScope } from '../verdict-engine/decisionIdentity.js';
+import { DECISION_CLASS } from '@marcom/runtime-contracts';
+import { scopeFor } from '../decisions/decisionClassScope.js';
 
 const dec = (over = {}) => ({
   id: 'd1', entityId: 'c1', verdict: 'KILL', status: 'SUPERSEDED',
@@ -70,10 +71,12 @@ describe('scope', () => {
   it('memory excludes non-connector campaign decisions', async () => {
     await history('ws-1', ['c1']);
     // The SAME canonical definition, not a second allowlist.
-    expect(where().OR).toEqual(connectorDecisionScope().OR);
-    const named = where().OR.find((c) => c.rootCause?.in)?.rootCause.in ?? [];
-    for (const foreign of ['guardrail:', 'allocation:', 'incrementality:', 'test:']) {
-      expect(named.some((c) => String(c).startsWith(foreign))).toBe(false);
+    // C-10 — the timeline scopes on the CLASS. Same boundary, no longer
+    // dependent on a union of three enum families reproduced in a where clause.
+    expect(where().decisionClass).toEqual(scopeFor('memory/decision-history').decisionClass);
+    const named = where().decisionClass.in;
+    for (const foreign of [DECISION_CLASS.GUARDRAIL, DECISION_CLASS.ALLOCATION, DECISION_CLASS.EXPERIMENT]) {
+      expect(named).not.toContain(foreign);
     }
   });
 
@@ -326,7 +329,7 @@ describe('R7 · getRecentDecisions', () => {
     // Without this a guardrail hit or an allocation move appears in "Recent"
     // as something Lumi decided about the campaign.
     await getRecentDecisions('ws-1');
-    expect(recent().where.OR).toEqual(connectorDecisionScope().OR);
+    expect(recent().where.decisionClass).toEqual(scopeFor('memory/recent-decisions').decisionClass);
   });
 
   it('orders deterministically — newest first, with a stable tiebreak', async () => {

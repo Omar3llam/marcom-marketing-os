@@ -32,6 +32,7 @@
 // records of the same thing is a fact.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { scopeFor } from '../decisions/decisionClassScope.js';
 import { logger } from '../../utils/logger.js';
 import { patternToGuardrailData, PROMOTE_MIN_ACCURACY } from './PlaybookService.js';
 import {
@@ -301,7 +302,8 @@ export async function revokePromotion(workspaceId, { ruleId, actorId } = {}) {
 
     const closed = await tx.decision.updateMany({
       where: {
-        workspaceId, guardrailRuleId: rule.id,
+        workspaceId, ...scopeFor('guardrail/revoke-close'),
+        guardrailRuleId: rule.id,
         status: 'PROPOSED', openHitKey: { not: null },
       },
       data: {

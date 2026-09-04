@@ -10,8 +10,10 @@ const blended = {
 };
 
 const decisions = [
-  { id: 'd1', verdict: 'KILL', entityId: 'as1', rootCause: null, outcomes: [{ id: 'o1', spendDeltaMinor: -120_000, revenueDeltaMinor: 0 }] },
-  { id: 'd2', verdict: 'REALLOCATE', entityId: 'cmp1', rootCause: 'allocation:11111111-1111-1111-1111-111111111111', outcomes: [{ id: 'o2', spendDeltaMinor: 200_000 }] },
+  { id: 'd1', verdict: 'KILL', entityId: 'as1', rootCause: null, decisionClass: 'SIGNAL', outcomes: [{ id: 'o1', spendDeltaMinor: -120_000, revenueDeltaMinor: 0 }] },
+  // C-10 — the CLASS is what makes this an allocation move; `rootCause` still
+  // carries WHICH plan, which is the subtype payload the section reads.
+  { id: 'd2', verdict: 'REALLOCATE', entityId: 'cmp1', rootCause: 'allocation:11111111-1111-1111-1111-111111111111', decisionClass: 'ALLOCATION', outcomes: [{ id: 'o2', spendDeltaMinor: 200_000 }] },
 ];
 
 const concludedTests = [
@@ -34,7 +36,7 @@ describe('buildNarrativeInputs', () => {
     expect(out.decisions[0].entityLabel).toBe('Cold #1');
   });
 
-  it('derives allocation deltas only from REALLOCATE decisions citing a real plan', () => {
+  it('derives allocation deltas only from ALLOCATION decisions citing a real plan', () => {
     expect(out.allocationDeltas).toHaveLength(1);
     expect(out.allocationDeltas[0].planId).toBe('11111111-1111-1111-1111-111111111111');
     expect(out.allocationDeltas[0].deltaMinor).toBe(200_000);

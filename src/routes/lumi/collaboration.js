@@ -15,6 +15,7 @@
 // ============================================================
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
+import { scopeFor } from '../../services/decisions/decisionClassScope.js';
 import { logger } from '../../utils/logger.js';
 import { requireCollabRole, resolveCollabRoleForDisplay } from '../../middleware/requireCollabRole.js';
 import { requirePlan } from '../../middleware/requirePlan.js';
@@ -188,7 +189,11 @@ collaborationRouter.get('/inbox', async (req, res) => {
   try {
     // Live alert stream: recent PROPOSED radar verdicts (no new table).
     const proposed = await prisma.decision.findMany({
-      where: { workspaceId: wsId, status: 'PROPOSED' },
+      // C-10 — SIGNAL only. Every row here is published as ALERT_KIND.RADAR with
+      // a severity derived from `confidence`; unscoped, a guardrail episode
+      // (constant confidence 0.9) arrived as a HIGH-severity radar verdict, and
+      // an allocation move arrived as one too.
+      where: { workspaceId: wsId, status: 'PROPOSED', ...scopeFor('collaboration/inbox') },
       orderBy: { createdAt: 'desc' }, take: 20,
       select: { id: true, verdict: true, diagnosis: true, confidence: true },
     }).catch(() => []);

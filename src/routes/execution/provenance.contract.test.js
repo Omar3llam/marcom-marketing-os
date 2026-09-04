@@ -81,7 +81,10 @@ const makeDecision = (over = {}) => prisma.decision.create({
   data: {
     workspaceId: WS, entityId: ENTITY, entityLevel: 'CAMPAIGN',
     verdict: 'KILL', confidence: 0.8, diagnosis: 'B4-A fixture',
-    channel: 'META', objective: 'OUTCOME_SALES', status: 'PROPOSED', ...over,
+    channel: 'META', objective: 'OUTCOME_SALES', status: 'PROPOSED',
+    // C-10 — the class VerdictService declares. Before `...over`, so a test can
+    // still seed a foreign class on purpose.
+    decisionClass: 'SIGNAL', ...over,
   },
   select: { id: true },
 });

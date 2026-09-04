@@ -246,7 +246,10 @@ describe('B4-B — the loop may not re-acquire a non-platform execution source',
     const s = service();
     expect(s).toMatch(/platformExecutedAt:\s*\{\s*gte:\s*since\s*\}/);
     // The scope predicate must live in the SAME where clause as the evidence.
-    expect(s).toMatch(/where:\s*\{\s*workspaceId,\s*platformExecutedAt:/);
+    // C-10 — the reader now DECLARES that it accepts every class before the
+    // window predicate. "Did Lumi land a mutation" is class-agnostic by nature,
+    // and saying so is what stops it looking like a forgotten filter.
+    expect(s).toMatch(/where:\s*\{\s*workspaceId,\s*\.\.\.scopeFor\('loop\/platform-executions'\),\s*platformExecutedAt:/);
   });
 
   it('no longer queries the retired Action substrate', () => {

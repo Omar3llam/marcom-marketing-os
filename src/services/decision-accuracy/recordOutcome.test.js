@@ -374,6 +374,11 @@ describe('listPendingOutcomes — the manual-entry queue', () => {
       expect.objectContaining({
         where: {
           workspaceId: 'ws-1',
+          // C-10 — you can owe an outcome for a call you were ASKED to make. A
+          // breach episode closes itself when the condition clears, and putting
+          // one in this queue would ask an operator to report on something that
+          // was never a recommendation.
+          decisionClass: { in: ['SIGNAL'] },
           // B4-A — acted on by EITHER route owes an outcome.
           OR: [{ humanExecutedAt: { not: null } }, { platformExecutedAt: { not: null } }],
           dismissedAt: null,
