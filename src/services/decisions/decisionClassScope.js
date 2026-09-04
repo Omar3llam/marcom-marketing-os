@@ -191,3 +191,51 @@ for (const [readerId, declared] of Object.entries(DECISION_READERS)) {
     }
   }
 }
+
+// ============================================================
+// C-11 · WHICH CLASSES HAVE A DESTINATION
+// ============================================================
+// A SECOND declaration, deliberately not folded into the ledger above, because
+// it answers a different question:
+//
+//     the ledger asks       what may this read MIX?
+//     this set asks         what may a person OPEN?
+//
+// The first is population safety — and a by-id read is class-safe there by
+// construction, since an id names one row. All eight by-id reads on trunk are
+// therefore correctly class-blind, and must stay that way: they resolve a row
+// to AUTHORISE OR DECORATE AN ACTION (execute, dismiss, judge, stamp,
+// attribute, eligibility). A guardrail episode must still be executable and an
+// allocation move must still be attributable to its execution.
+//
+// This set is a PRODUCT ruling instead, and it is already constitutional:
+//
+//     R-3 — Lumi has three Decision classes: Signal, Experiment, Guardrail.
+//           ALLOCATION is a plan artifact, not a Decision.
+//
+// C-10 shipped four STORAGE classes because four writers exist and a row that
+// exists must be classifiable. Four storage classes; three destinations. The
+// two counts are not in tension — they answer different questions too.
+// ============================================================
+
+/** The three classes a person may open as a Decision (R-3). */
+export const DECISION_DESTINATION_CLASSES = Object.freeze([
+  DECISION_CLASS.SIGNAL,
+  DECISION_CLASS.GUARDRAIL,
+  DECISION_CLASS.EXPERIMENT,
+]);
+
+/**
+ * PURE: may a row of this class be served as a Decision destination?
+ *
+ * `null` answers false, and NOT because null is ALLOCATION — it is
+ * UNCLASSIFIED, which cannot be interpreted at all. The caller must keep the
+ * two refusals apart: telling an operator their unclassified row is a budget
+ * plan is a fabrication about a producer we do not know.
+ *
+ * @param {string|null|undefined} decisionClass
+ * @returns {boolean}
+ */
+export function hasDestination(decisionClass) {
+  return DECISION_DESTINATION_CLASSES.includes(decisionClass);
+}

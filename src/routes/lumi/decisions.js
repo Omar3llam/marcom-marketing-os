@@ -37,6 +37,7 @@ import { getSimilarOutcomes } from '../../services/analysis/decisionLearning.js'
 import { getRecentDecisions, RECENT_DECISIONS_LIMIT } from '../../services/decision-memory/decisionHistory.js';
 import { validateJudgment, recordJudgment } from '../../services/decision-memory/humanJudgment.js';
 import { scopeFor } from '../../services/decisions/decisionClassScope.js';
+import { getDecisionDetail } from '../../services/decisions/decisionDetail.js';
 import { stampOnce, recordSignal, recordEntitySignal } from './decisionSignalStamps.js';
 
 // Re-exported, not re-implemented: signalProjection.contract.test.js imports it
@@ -218,5 +219,36 @@ decisionsRouter.get('/decisions/recent', async (req, res) => {
     // 500 rather than an empty 200: the sidebar must not render "No decisions
     // yet" — a statement about the account — on the strength of our own failure.
     return res.status(500).json({ error: 'DecisionsUnavailable', message: 'Request failed' });
+  }
+});
+
+// ── GET /api/lumi/decisions/:id (C-11) ──────────────────────────────────────
+// The Decision, readable as the object it was. Lumi could execute one by id,
+// dismiss it, judge it and record an outcome against it; it could not read one.
+//
+// REGISTERED LAST, AND THAT IS LOAD-BEARING. This router is flat-mounted at '/'
+// and Express matches in registration order, so a `:id` pattern placed above
+// `/decisions/recent` captures id="recent" and answers the sidebar 404 — with
+// nothing anywhere reporting a fault. Pinned by decisions.detail.test.js.
+//
+// NO ROLE GATE, for the same reason /decisions/recent has none: reading what
+// Lumi decided is not an operator action, and the CLIENT seat that can already
+// read the list must not be blocked from opening an item of it. The OPERATORS
+// gates above guard WRITES.
+//
+// The response is a THEN surface (R-1 / R-2 / B7-06) — see decisionDetail.js
+// for what that forbids and why memory is deliberately not traversed here.
+decisionsRouter.get('/decisions/:id', async (req, res) => {
+  const { id } = req.params;
+  if (!req.workspaceId) return res.status(400).json({ error: 'NoWorkspace', message: 'No workspace resolved' });
+
+  try {
+    const { status, payload } = await getDecisionDetail({ id, workspaceId: req.workspaceId });
+    return res.status(status).json(payload);
+  } catch (err) {
+    logger.error({ err: err.message, id }, '[lumi/decisions] detail read failed');
+    // 500 rather than a 404: "no such decision" would be a claim about the
+    // account made on the strength of our own failure.
+    return res.status(500).json({ error: 'DecisionUnavailable', message: 'Request failed' });
   }
 });
