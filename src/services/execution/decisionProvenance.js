@@ -37,6 +37,8 @@
 // The union is expressed here, once, with a name that says it is a union.
 // ============================================================
 
+import { EXECUTION_PROVENANCE } from '@marcom/runtime-contracts';
+
 /** PURE: the operator's self-report instant, or null. A claim, never proof. */
 export const humanExecutedAt = (d) => d?.humanExecutedAt ?? null;
 
@@ -86,19 +88,27 @@ export const wasActedOn = (d) => interventionAt(d) != null;
 export const legacyExecutedAt = (d) => platformExecutedAt(d) ?? humanExecutedAt(d);
 
 /**
+ * The provenance vocabulary — RE-EXPORTED from the shared package (C-12).
+ *
+ * It was DEFINED here, promising in its own docstring "a value a reader can
+ * branch on without comparing timestamps or guessing" — and it had zero
+ * callers, while the campaign timeline compared timestamps, guessed, and told
+ * operators that a mutation Lumi's worker landed was something a human did.
+ *
+ * It moved because C-07 decides where a vocabulary lives: in the shared
+ * package when the CLIENT must branch on its values. The last reader standing
+ * is a client. The COMPUTATION stays here, and stays the only one — the client
+ * never derives, it receives.
+ */
+export { EXECUTION_PROVENANCE };
+
+/**
  * PURE: the provenance of an intervention, as a value a reader can branch on
  * without comparing timestamps or guessing.
  *
  * NONE is a real answer — it is what an un-acted decision honestly reports, and
  * it is not the same as "we did not look".
  */
-export const EXECUTION_PROVENANCE = Object.freeze({
-  NONE:     'NONE',      // nobody acted
-  HUMAN:    'HUMAN',     // operator self-report only
-  PLATFORM: 'PLATFORM',  // Lumi executed it
-  BOTH:     'BOTH',      // both records exist; they do not contradict
-});
-
 export function provenanceOf(d) {
   const human = wasSelfReported(d);
   const platform = wasPlatformExecuted(d);

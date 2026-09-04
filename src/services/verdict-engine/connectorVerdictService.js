@@ -32,6 +32,7 @@ import { applyRelativeRanking }  from './relativeRanking.js';
 import { daysSince }             from './confidenceEngine.js';
 import { isSubstantive }         from './counterfactualEngine.js';
 import { scopeFor } from '../decisions/decisionClassScope.js';
+import { agreementOf } from './decisionAgreement.js';
 import { getDecisionHistory, HISTORY_KNOWLEDGE } from '../decision-memory/index.js';
 // C-07 — the reason a campaign has no verdict, and the prerequisite that would
 // give it one. Two orthogonal layers on one row: the C-06 token says what we
@@ -403,7 +404,10 @@ export async function evaluateConnectorVerdicts(workspaceId) {
  * looks like an absence.
  */
 export async function getLatestDecisions(workspaceId) {
-  if (!workspaceId) return new Map();
+  // `ok: true` — nothing failed here, nothing was asked. A workspace we never
+  // resolved has no stored decisions to miss, and reporting an outage would put
+  // "we could not look" on every screen during onboarding.
+  if (!workspaceId) return { decisions: new Map(), ok: true };
 
   const rows = await prisma.decision.findMany({
     where:   { workspaceId, entityLevel: 'CAMPAIGN', status: 'PROPOSED', ...scopeFor('verdict/latest-decisions') },
@@ -438,13 +442,21 @@ export async function getLatestDecisions(workspaceId) {
     // by-entity path, which still works. Taking the whole verdict feed down
     // because this one query failed would trade a degraded surface for none.
     logger.debug({ err: err.message, workspaceId }, '[connectorVerdicts] decision identity read failed');
-    return [];
+    return null;
   });
 
-  // First hit wins, and `orderBy` desc makes that the most recent.
+  // C-12 — the failure is REPORTED, not merely survived. The fallback above is
+  // right for the button, and it was fatal for anything that reasons about the
+  // ABSENCE of a stored decision: an empty map published silently says "Lumi has
+  // never decided about this campaign", which is a claim about the account made
+  // on the strength of our own outage. C-03's ruling, one object over.
+  //
+  // `ok` travels with the map rather than as a second lookup, because every
+  // consumer that reads the map needs it and none may forget to ask.
   const map = new Map();
-  for (const d of rows) if (!map.has(d.entityId)) map.set(d.entityId, d);
-  return map;
+  // First hit wins, and `orderBy` desc makes that the most recent.
+  for (const d of rows ?? []) if (!map.has(d.entityId)) map.set(d.entityId, d);
+  return { decisions: map, ok: rows !== null };
 }
 
 /**
@@ -469,7 +481,7 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
   // getLatestDecisions runs even on a threaded evaluation, and must: it is
   // DECISION IDENTITY (which stored row is behind this button), not a verdict
   // computation, and it has to reflect the rows this sweep has just written.
-  const [ev, decisionMap, memory] = await Promise.all([
+  const [ev, decisionIdentity, memory] = await Promise.all([
     evaluation ?? evaluateConnectorVerdicts(workspaceId),
     getLatestDecisions(workspaceId),
     // R10 (I50) — this workspace's VALIDATED institutional memory. Read in
@@ -482,6 +494,11 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
     // figure bit-identical to the deterministic one.
     getInstitutionalMemory(workspaceId),
   ]);
+
+  // C-12 — the map and whether we actually got it. Named apart so no reader
+  // can use one without the other being in scope.
+  const decisionMap = decisionIdentity.decisions;
+  const decisionIdentityOk = decisionIdentity.ok;
 
   const { gatedOut, annotated } = ev;
   if (!annotated) {
@@ -577,6 +594,22 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
     // without a second fetch. Published beside the live one, never instead of
     // it, and never used to suppress or "correct" it.
     decisionVerdict: decisionMap.get(c.id)?.verdict ?? null,
+    // C-12 — and whether the two AGREE, stated once here so no client works it
+    // out. `decisionVerdict` has been on the wire since R13 and is read by no
+    // component: the operator sees the live verdict while their Execute /
+    // Dismiss / Judgment attaches to the stored Decision, and nothing says the
+    // two can differ.
+    //
+    // R-1: verdict equality alone decides, and a confidence difference is NOT
+    // divergence. B7-06 bounds what may be done with it — named, never rendered
+    // as a then/now diff, because a comparison asks which is right and both are.
+    decisionAgreement: agreementOf({
+      live:   { verdict: c.verdict ?? null },
+      stored: decisionMap.get(c.id) ?? null,
+      // Carries the read's own success, so a failed identity lookup reports
+      // COULD_NOT_LOOK instead of "Lumi has never decided about this campaign".
+      ok:     decisionIdentityOk,
+    }),
     // What the STORED decision was looking at (R5 / I18). Beside decisionId and
     // decisionVerdict, and about the same row: the frozen provenance of the call
     // Lumi committed to, not of the live verdict recomputed above.

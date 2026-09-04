@@ -30,7 +30,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { scopeFor } from '../decisions/decisionClassScope.js';
-import { PROVENANCE_SELECT, legacyExecutedAt } from '../execution/decisionProvenance.js';
+import { PROVENANCE_SELECT, legacyExecutedAt, provenanceOf } from '../execution/decisionProvenance.js';
 import { KNOWLEDGE, declareStatusVocabulary } from '@marcom/runtime-contracts';
 
 /**
@@ -139,6 +139,11 @@ const stated = (d) => ({
   // where a mixed history would be most misleading, and it is scoped to SIGNAL
   // today; saying so is what keeps that a fact rather than an assumption.
   decisionClass: d.decisionClass ?? null,
+  // C-12 — WHO acted, as ONE value, computed here so nobody downstream has to
+  // compare the two timestamps below. The client that did compare them read the
+  // DERIVED union and told operators a human had performed a mutation Lumi
+  // landed. The two raw facts stay beside this — it is added, never instead.
+  executionProvenance: provenanceOf(d),
   // B4-A — memory shows BOTH provenance facts. A timeline that said only
   // "Executed" could not tell an operator whether they had done it or Lumi had.
   humanExecutedAt:    d.humanExecutedAt    ?? null,

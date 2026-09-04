@@ -15,6 +15,7 @@
 // ============================================================
 import { Router } from 'express';
 import { getConnectorCampaigns, getCanonicalVerdictCampaigns, getCampaignAdSets, getAdSetAds } from '../../services/entity-graph/index.js';
+import { drillBasisFor } from '../../services/entity-graph/drillBasis.js';
 // R13-C — the window health is measured over, named from its own source rather
 // than restated here. Two copies of "30 days" is how a period starts drifting.
 import { CANONICAL_VERDICT_EVIDENCE_BASIS } from '../../services/verdict-engine/canonicalVerdictEvidence.js';
@@ -203,12 +204,20 @@ entitiesRouter.get('/entities/:campaignId/adsets', async (req, res) => {
     if (result === null) {
       return res.status(404).json({ error: 'CampaignNotFound', message: 'No such campaign in this workspace' });
     }
+    // C-12 / B8-04 — WHY this descent is legitimate. Canonical verdict evidence
+    // is campaign-level, so a performance verdict never names an ad set; only an
+    // OPEN breach or a live fatigue forecast does. The route SERVES either way —
+    // hiding the affordance is B7's ruling and this slice does not presume it —
+    // but it no longer descends without saying what brought you here.
+    const drillBasis = await drillBasisFor(req.workspaceId, result.adSets.map((a) => a.id));
+
     return res.json({
       campaignId: req.params.campaignId,
       entity: result.entity,
       objective: result.objective,
       generatedAt: new Date().toISOString(),
       adSets: result.adSets,
+      drillBasis,
     });
   } catch (err) {
     logger.error({ err: err.message, workspaceId: req.workspaceId, campaignId: req.params.campaignId }, '[lumi/entities] adsets failed');
