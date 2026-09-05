@@ -10,7 +10,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { getWeeklyAgenda, commitAgenda } from '../../services/test-generator/TestGeneratorService.js';
-import { startTest, recordVariantMetrics, concludeTest, promoteTestToHoldout } from '../../services/test-tracker/TestTrackerService.js';
+import { startTest, recordVariantMetrics, concludeTest, promoteTestToHoldout, getTestById } from '../../services/test-tracker/TestTrackerService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { requireMeasurementTier } from '../../middleware/requireMeasurementTier.js';
 import { requirePlan }        from '../../middleware/requirePlan.js';
@@ -70,6 +70,37 @@ testingRouter.get('/tests', async (req, res) => {
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/testing] list failed');
     return res.status(500).json({ error: 'TestsUnavailable', message: 'Request failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
+// GET /api/lumi/tests/:id   — ONE experiment, by its own id
+// ─────────────────────────────────────────────────────────────
+// C-13 · B7-03's carried consequence: "Experiment → that experiment,
+// resolvable without going through entityId". The holdout half has had this
+// read since Phase 7C (`GET /incrementality/:id`); the A/B half never did.
+//
+// No role gate, matching the list it came from: reading an experiment is not
+// an act. The PRO gate above already covers it — `use('/tests', …)` matches
+// this path too — and a by-id read more permissive than its own list would be
+// a way around that gate.
+//
+// Declared openly: this ships with no client caller. B7-03 named the consumer
+// in advance and `testing.detail.test.js` is its reader of record until B7
+// builds the destination. Nobody wrote that sentence for
+// `GET /incrementality/:id`, which is why it has sat callerless since Phase 7C.
+testingRouter.get('/tests/:id', async (req, res) => {
+  const wsId = await resolveWorkspaceId(req);
+  if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
+  try {
+    const test = await getTestById(wsId, req.params.id);
+    // 404 for "not yours" as well as "not there". Distinguishing them would
+    // confirm the row exists to someone who may not see it.
+    if (!test) return res.status(404).json({ error: 'TestNotFound', message: 'No such experiment in this workspace.' });
+    return res.json({ workspaceId: wsId, test });
+  } catch (err) {
+    logger.error({ err: err.message, wsId, testId: req.params.id }, '[lumi/testing] get test failed');
+    return res.status(500).json({ error: 'TestUnavailable', message: 'Request failed' });
   }
 });
 

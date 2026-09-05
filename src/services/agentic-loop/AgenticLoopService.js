@@ -135,7 +135,7 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
   const safe = (p, fallback) => p.catch(() => fallback);
 
   const [
-    signalVerdicts, guardrailEpisodes, fatiguePredictions, openTests, plans, allocationPlans,
+    signalVerdicts, guardrailEpisodes, fatiguePredictions, openTests, openHoldouts, plans, allocationPlans,
     platformExecutions, recentOutcomes, recentMemory, labelsById,
   ] = await Promise.all([
     // C-01 / R-C — TWO reads, because the classes do not share a deduplication
@@ -211,6 +211,19 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
     }), []),
     safe(prisma.fatiguePrediction.findMany({ where: { workspaceId, resolvedAt: null }, orderBy: { projectedBreachDate: 'asc' }, take: 100 }), []),
     safe(prisma.testExperiment.findMany({ where: { workspaceId, status: 'RUNNING' }, orderBy: { startedAt: 'desc' }, take: 20 }), []),
+    // C-13 — the OTHER half of the same class. R-3 unified Test and
+    // Incrementality; R-A says the class enters Attention through its live
+    // object. Reading only one of the two live objects published a partial
+    // Experiment population as a complete one, so a running causal holdout —
+    // the slowest and most deliberate thing Lumi can be doing — was invisible
+    // here while its A/B sibling was not.
+    //
+    // RUNNING only, mirroring the read above rather than inventing a second
+    // rule: DESIGNED asks the strategist for nothing yet and CONCLUDED has
+    // already been read out. Two reads, not one `OR` over two tables, because
+    // they are two tables — and `safe()` for the same reason as every sibling:
+    // one organ's outage must not empty the whole agenda.
+    safe(prisma.incrementalityTest.findMany({ where: { workspaceId, status: 'RUNNING' }, orderBy: { startedAt: 'desc' }, take: 20 }), []),
     safe(prisma.plan.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 10, include: { goals: true } }), []),
     safe(prisma.allocationPlan.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 10 }), []),
     // B4-B — canonical PLATFORM execution evidence, and nothing else.
@@ -264,7 +277,7 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
 
   return {
     verdicts, fatiguePredictions, pacing: pacingFromPortfolio(portfolio),
-    testAgenda, openTests, planTracking, blended, objective,
+    testAgenda, openTests, openHoldouts, planTracking, blended, objective,
     plans, allocationPlans, platformExecutions, recentOutcomes, recentMemory, labelsById, impactById, now,
   };
 }

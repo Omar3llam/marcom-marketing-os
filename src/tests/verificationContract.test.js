@@ -124,7 +124,11 @@ describe('B5-01G · Ratchet D — `test:full` cannot quietly become `test:fast`'
 
 // ── Ratchets B + C — the census, complete and CI-free ───────────────────────
 describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => {
-  it('the census matches the current baseline of 29 files', () => {
+  // The number in this title had drifted to 29 while the assertion below said
+  // 31 — two increments landed without it. A title that disagrees with its own
+  // assertion is a small untruth inside the verification contract itself, so it
+  // now states the same number the test enforces.
+  it('the census matches the current baseline of 32 files', () => {
     // A drift here is not automatically a failure — but it must be NOTICED,
     // because a new DB-gated file added through a different mechanism is
     // exactly how the guarantee erodes.
@@ -155,7 +159,16 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
     // index and PostgreSQL's exemption of NULL from it — and the decision NOT to
     // back-fill legacy guardrail rows rests entirely on that exemption, so it is
     // demonstrated on PostgreSQL rather than asserted in a comment.
-    expect(dbGatedFiles().length).toBe(31);
+    //
+    // 31 → 32 in C-13: experimentSymmetry.contract.test.js. What it verifies is
+    // a QUERY PREDICATE — that a RUNNING holdout enters the Experiment
+    // population while DESIGNED, CONCLUDED, ABANDONED and another workspace's
+    // rows do not. A Prisma mock returns whatever it was told to for
+    // `status: 'RUNNING'` and for every one of those exclusions alike, so a
+    // mocked suite would pass with the predicate wired to anything at all,
+    // including to nothing. The projection half of the same file is pure and
+    // needs no database; only the population half is gated.
+    expect(dbGatedFiles().length).toBe(32);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {

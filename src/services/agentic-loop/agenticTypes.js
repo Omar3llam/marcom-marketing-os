@@ -81,6 +81,12 @@ export const STAGE_STALE_DAYS  = Number(process.env.LOOP_STAGE_STALE_DAYS || 30)
 // SIGNAL because it is the commonest value would make every non-decision item
 // claim to be a connector verdict. Silence about a class is honest; a confident
 // wrong one is not.
-export function agendaItem({ id, band, type, title, rationale, severity = SEVERITY.MEDIUM, evidenceRef = null, humanAction = HUMAN_ACTION.REVIEW, entityId = null, impactScore = null, decisionClass = null }) {
-  return { id, band, type, title, rationale, severity, evidenceRef, humanAction, entityId, impactScore, decisionClass };
+// C-13 — `subjectRef` names WHICH row an item is about, when the class alone
+// does not narrow it to one. EXPERIMENT contains two live objects that live in
+// two tables on two pages, so `{ kind, id }` is the difference between an item
+// a destination can resolve and one it can only approximate. Null by default
+// and never inferred: a Signal's subject is already its entity, and a weekly
+// suggestion has no subject at all because the experiment does not exist yet.
+export function agendaItem({ id, band, type, title, rationale, severity = SEVERITY.MEDIUM, evidenceRef = null, humanAction = HUMAN_ACTION.REVIEW, entityId = null, impactScore = null, decisionClass = null, subjectRef = null }) {
+  return { id, band, type, title, rationale, severity, evidenceRef, humanAction, entityId, impactScore, decisionClass, subjectRef };
 }

@@ -18,6 +18,7 @@
 //   yields honest empty bands, never fabricated work.
 // ============================================================
 import { logger } from '../../utils/logger.js';
+import { DECISION_CLASS, EXPERIMENT_SUBJECT } from '@marcom/runtime-contracts';
 import {
   AGENDA_BAND, AGENDA_TYPE, LOOP_STAGE, LOOP_STAGE_ORDER, STAGE_STATE, LOOP_HEALTH,
   SEVERITY, SEVERITY_RANK, HUMAN_ACTION, STAGE_ACTIVE_DAYS, STAGE_STALE_DAYS, agendaItem,
@@ -115,7 +116,7 @@ function ageDays(then, now) {
 }
 
 // ── Buyer band — "what needs a decision today" ──────────────────
-function buyerAgenda({ verdicts = [], fatiguePredictions = [], pacing = [], testAgenda = [], openTests = [], labelsById = new Map(), impactById = new Map(), now }) {
+function buyerAgenda({ verdicts = [], fatiguePredictions = [], pacing = [], testAgenda = [], openTests = [], openHoldouts = [], labelsById = new Map(), impactById = new Map(), now }) {
   const items = [];
 
   for (const d of verdicts) {
@@ -203,11 +204,54 @@ function buyerAgenda({ verdicts = [], fatiguePredictions = [], pacing = [], test
       evidenceRef: null, humanAction: HUMAN_ACTION.REVIEW, entityId: t.entityId ?? null,
     }));
   }
+  // C-13 — THE TWO LIVE OBJECTS OF ONE CLASS.
+  //
+  // R-3 unified Test and Incrementality; R-A ruled that the class enters here
+  // through its live object rather than by promoting its historical Decision.
+  // Both loops below therefore publish the SAME class and DIFFERENT subjects —
+  // the class says what kind of call this is, the subject says which row it is
+  // about, and nothing downstream should have to parse an id prefix to learn
+  // either. That parse is the tool C-10 named as always wrong.
+  //
+  // `decisionClass` on an item read from `test_experiments` is not a claim that
+  // the row is a Decision. The class belongs to the ATTENTION ITEM. Read any
+  // other way, R-A is unimplementable: the class would exist only on the rows
+  // R-A forbids promoting into current state.
+  //
+  // Severity LOW and REVIEW for both, and deliberately so: a running experiment
+  // asks for nothing. It is here to be read, not acted on — which is also why
+  // neither carries an impactScore.
   for (const t of openTests) {
+    // F-3 — `TestExperiment.entityId` has always existed and BOTH publishers
+    // dropped it, so the item could not be labelled, deep-linked or scoped to
+    // the campaign it runs on. Titled like a verdict is, for the same reason.
+    const label = t.entityId ? labelsById.get(t.entityId) : null;
     items.push(agendaItem({
       id: `test-open:${t.id}`, band: AGENDA_BAND.BUYER, type: AGENDA_TYPE.TEST,
-      title: `Running test: ${t.dimension ?? ''}`.trim(), rationale: t.hypothesis ?? 'In flight — read when concluded.',
+      title: `Running test: ${[t.dimension, label].filter(Boolean).join(' — ')}`.trim(),
+      rationale: t.hypothesis ?? 'In flight — read when concluded.',
       severity: SEVERITY.LOW, evidenceRef: t.id, humanAction: HUMAN_ACTION.REVIEW,
+      entityId: t.entityId ?? null,
+      decisionClass: DECISION_CLASS.EXPERIMENT,
+      subjectRef: { kind: EXPERIMENT_SUBJECT.AB_TEST, id: t.id },
+    }));
+  }
+
+  for (const h of openHoldouts) {
+    // Its own id namespace, so it can never collide with `test-open:` on a
+    // shared uuid — and R-C's rule holds: one campaign running both an A/B test
+    // and a causal holdout owes the operator two readings, not one.
+    const label = h.entityId ? labelsById.get(h.entityId) : null;
+    items.push(agendaItem({
+      id: `holdout-open:${h.id}`, band: AGENDA_BAND.BUYER, type: AGENDA_TYPE.TEST,
+      title: `Running holdout: ${[h.name, label].filter(Boolean).join(' — ')}`.trim(),
+      rationale: h.channel
+        ? `Causal holdout on ${h.channel} — read when concluded.`
+        : 'In flight — read when concluded.',
+      severity: SEVERITY.LOW, evidenceRef: h.id, humanAction: HUMAN_ACTION.REVIEW,
+      entityId: h.entityId ?? null,
+      decisionClass: DECISION_CLASS.EXPERIMENT,
+      subjectRef: { kind: EXPERIMENT_SUBJECT.HOLDOUT, id: h.id },
     }));
   }
 
@@ -261,6 +305,14 @@ function stageState(lastAt, now) {
   return STAGE_STATE.STALE;
 }
 
+// C-13 DELIBERATELY STOPS AT THE AGENDA. The TEST stage below still counts
+// `openTests` alone, so an account running only causal holdouts reports TEST as
+// stale while the agenda shows the holdouts running. That is a real
+// inconsistency and it is left standing on purpose: loop HEALTH is a different
+// claim from attention MEMBERSHIP, it feeds LOOP_HEALTH.STALLED/DEGRADED, and
+// widening it here would decide inside a read slice a question nobody has
+// ruled. Recorded rather than quietly fixed — a declared boundary beats a
+// silent one.
 function loopStatus({ plans = [], allocationPlans = [], platformExecutions = [], openTests = [], testAgenda = [], recentOutcomes = [], recentMemory = [], buyerCount = 0, now }) {
   const freshest = (rows, field) => rows.reduce((acc, r) => {
     const t = r[field] ? new Date(r[field]).getTime() : 0;
@@ -310,11 +362,11 @@ function loopStatus({ plans = [], allocationPlans = [], platformExecutions = [],
  * @returns {{ buyerBand, strategistBand, stageStatus, staleStages, closed, loopHealth, summary }}
  */
 export function planAgenda({
-  verdicts = [], fatiguePredictions = [], pacing = [], testAgenda = [], openTests = [],
+  verdicts = [], fatiguePredictions = [], pacing = [], testAgenda = [], openTests = [], openHoldouts = [],
   planTracking = null, blended = null, plans = [], allocationPlans = [], platformExecutions = [],
   recentOutcomes = [], recentMemory = [], labelsById = new Map(), impactById = new Map(), objective = null, now = new Date(),
 } = {}) {
-  const buyerBand = buyerAgenda({ verdicts, fatiguePredictions, pacing, testAgenda, openTests, labelsById, impactById, now });
+  const buyerBand = buyerAgenda({ verdicts, fatiguePredictions, pacing, testAgenda, openTests, openHoldouts, labelsById, impactById, now });
   const strategistBand = strategistAgenda({ planTracking, blended, pacing, now });
 
   const loop = loopStatus({

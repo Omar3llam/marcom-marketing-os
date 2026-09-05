@@ -96,7 +96,12 @@ describe('AgendaItem — verb + evidence honesty', () => {
   it('shows the backend human verb and a backed-by chip when a row backs it', () => {
     render(<AgendaItem item={item({ humanAction: 'confirm', type: 'VERDICT', evidenceRef: 'd1' })} />);
     expect(screen.getByText('Confirm')).toBeInTheDocument();
-    expect(screen.getByText(/backed by guardrail/i)).toBeInTheDocument();
+    // C-13/F-5 — this line read /backed by guardrail/i, and it passed because
+    // the label was the hardcoded string 'guardrail' for EVERY verdict. The
+    // fixture carries no decisionClass, so what it was really pinning was the
+    // defect: an unclassified verdict claiming a policy breach backed it.
+    // Unclassified now degrades to "decision" — true of every case it covers.
+    expect(screen.getByText(/backed by decision/i)).toBeInTheDocument();
     expect(screen.getByText('HIGH')).toBeInTheDocument();
   });
 

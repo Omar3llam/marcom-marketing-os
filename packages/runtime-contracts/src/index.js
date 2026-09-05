@@ -102,3 +102,9 @@ export {
   EXECUTION_PROVENANCE_VALUES,
   isExecutionProvenance,
 } from './executionProvenance.js';
+
+export {
+  EXPERIMENT_SUBJECT,
+  EXPERIMENT_SUBJECT_VALUES,
+  isExperimentSubject,
+} from './experimentSubject.js';

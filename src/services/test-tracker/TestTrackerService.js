@@ -43,6 +43,30 @@ const LEVEL_TO_TARGET = Object.freeze({
   ACCOUNT: 'campaign', CAMPAIGN: 'campaign', ADSET: 'adset', AD: 'ad', CREATIVE: 'creative',
 });
 
+/**
+ * ONE experiment, by its own id. Workspace-scoped, so a test outside
+ * `workspaceId` is indistinguishable from one that does not exist.
+ *
+ * C-13. The Testing OS could start, meter, conclude and promote a test by id
+ * and could not READ one: five POSTs addressed a single row, and the only GET
+ * was the list. A client holding one experiment id had to fetch a hundred and
+ * filter, which is what "not addressable" means in practice.
+ *
+ * `variants` travel with it because B7-04 puts an Experiment's evidence on its
+ * domain row rather than on the Decision — the arms ARE the readout, and a
+ * by-id read without them would be addressable and useless.
+ *
+ * Mirrors `IncrementalityService.getTest`, which has existed since Phase 7C.
+ */
+export async function getTestById(workspaceId, testId) {
+  if (!workspaceId) throw new Error('getTestById: workspaceId required');
+  if (!testId) throw new Error('getTestById: testId required');
+  return prisma.testExperiment.findFirst({
+    where: { id: testId, workspaceId },
+    include: { variants: true },
+  });
+}
+
 /** PROPOSED → RUNNING. Workspace-scoped: a test outside `workspaceId` is invisible. */
 export async function startTest(workspaceId, testId) {
   if (!workspaceId) throw new Error('startTest: workspaceId required');
