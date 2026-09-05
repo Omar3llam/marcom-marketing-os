@@ -32,7 +32,34 @@ const KINDS_BY_ROLE = Object.freeze({
 
 const SEVERITY_RANK = Object.freeze({ LOW: 0, MEDIUM: 1, HIGH: 2, CRITICAL: 3 });
 
+// C-16 — an UNRANKED alert sorts between LOW and MEDIUM: visible without
+// claiming urgency, and never sorted to the floor, because "we could not rank
+// this" is not "this barely matters".
+const UNRANKED_RANK = 0.5;
+const rankOf = (s) => (s == null ? UNRANKED_RANK : SEVERITY_RANK[s] ?? UNRANKED_RANK);
+
+/**
+ * A radar alert's severity, derived from the Decision's confidence.
+ *
+ * C-16 — null when nothing was measured. `decisions.confidence` used to be NOT
+ * NULL, so a bare `confidence >= 0.6` could not meet an absence; now it can,
+ * and `null >= 0.6` is false — which would have published a call Lumi never
+ * scored as a real LOW. The alert is still delivered; we simply do not claim a
+ * severity we did not compute.
+ */
+export function radarSeverity(confidence) {
+  if (!Number.isFinite(confidence)) return null;
+  if (confidence >= 0.85) return SEVERITY.HIGH;
+  if (confidence >= 0.6) return SEVERITY.MEDIUM;
+  return SEVERITY.LOW;
+}
+
 function normalizeSeverity(s) {
+  // C-16 — an ABSENT severity stays absent. The old `?? SEVERITY.MEDIUM`
+  // invented a middle band for an alert nobody had ranked. An unrecognised
+  // STRING is a different question — a malformed value, not an absence — and
+  // still normalises to MEDIUM.
+  if (s == null) return null;
   const up = typeof s === 'string' ? s.toUpperCase() : '';
   return SEVERITY[up] ?? SEVERITY.MEDIUM;
 }
@@ -49,13 +76,16 @@ export function routeByRole({ role, alerts = [] } = {}) {
   return alerts
     .filter((a) => a && allowed.has(a.kind))
     .map((a) => ({ ...a, severity: normalizeSeverity(a.severity) }))
-    .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity]);
+    .sort((a, b) => rankOf(b.severity) - rankOf(a.severity));
 }
 
 /** Count of routed alerts by severity — for a compact feed badge. */
 export function severityCounts(routed = []) {
   const counts = { LOW: 0, MEDIUM: 0, HIGH: 0, CRITICAL: 0 };
-  for (const a of routed) counts[a.severity] = (counts[a.severity] ?? 0) + 1;
+  // C-16 — an unranked alert is counted in no band. A `null` key would put a
+  // fabricated bucket on the badge; folding it into LOW or MEDIUM would be the
+  // same invention one layer up.
+  for (const a of routed) if (a.severity != null) counts[a.severity] = (counts[a.severity] ?? 0) + 1;
   return counts;
 }
 

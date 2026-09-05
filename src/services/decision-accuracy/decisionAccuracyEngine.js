@@ -88,6 +88,18 @@ export function calculateDecisionAccuracy({ decisions = [], outcomes = null, now
     const predicate = SUCCESS_PREDICATES[d.verdict];
     const ok = predicate ? predicate(outcome, cfg) : null;
     if (ok == null) { unscorable += 1; continue; } // mature but missing the field the predicate needs
+
+    // C-16 — a calibration measures a STATED probability against reality. A
+    // decision with no measured confidence states none, so it is UNSCORABLE:
+    // the same bucket, and the same meaning — mature, but missing the field
+    // this measurement needs. Before C-16 the column was NOT NULL, so clamp01's
+    // `: 0` fallback was unreachable; now it is not, and admitting the row
+    // would enter the Brier score and the bins as a CLAIM of 0% confidence — a
+    // maximally-wrong prediction Lumi never made, on the surface that is the
+    // moat. It stays in the coverage denominator, so the account reads as less
+    // measured rather than better calibrated.
+    if (!Number.isFinite(d.confidence)) { unscorable += 1; continue; }
+
     scored.push({
       id: d.id,
       confidence: clamp01(d.confidence),

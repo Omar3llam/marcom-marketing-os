@@ -24,7 +24,7 @@ import { generateNarrative, listNarratives, getNarrative } from '../../services/
 import { NARRATIVE_PERIOD, NARRATIVE_AUDIENCE } from '../../services/narrative-engine/narrativeTypes.js';
 import { requestApproval, decideApproval, handoff, listApprovals, APPROVAL_STATE } from '../../services/collaboration/ApprovalService.js';
 import { inboxFor } from '../../services/collaboration/InboxService.js';
-import { ALERT_KIND } from '../../services/collaboration/notificationRouter.js';
+import { ALERT_KIND, radarSeverity } from '../../services/collaboration/notificationRouter.js';
 import { resolveActorId } from './actorId.js';
 
 export const collaborationRouter = Router();
@@ -199,7 +199,9 @@ collaborationRouter.get('/inbox', async (req, res) => {
     }).catch(() => []);
     const alerts = proposed.map((d) => ({
       kind: ALERT_KIND.RADAR, id: d.id, verdict: d.verdict, headline: d.diagnosis,
-      severity: d.confidence >= 0.85 ? 'HIGH' : d.confidence >= 0.6 ? 'MEDIUM' : 'LOW',
+      // C-16 — null when the confidence was never measured, rather than the
+      // real-looking LOW that `null >= 0.6` would have produced silently.
+      severity: radarSeverity(d.confidence),
     }));
     const inbox = await inboxFor(wsId, role, { alerts });
     return res.json({ workspaceId: wsId, ...inbox });

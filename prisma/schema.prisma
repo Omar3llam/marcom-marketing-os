@@ -1402,6 +1402,20 @@ enum DecisionClass {
   EXPERIMENT
 }
 
+// C-16 (R-6) — what a Decision knew about this account's validated history at
+// the moment it was committed. The first three values already existed in
+// `institutionalMemory.js` and are mirrored here so the column can carry them;
+// NOT_CONSULTED is the state every Decision written before C-16 is in, because
+// the write path never asked. It is deliberately a value rather than a NULL:
+// a null would have to be READ as "not consulted", and R-4 forbids deriving a
+// state from the shape of the data.
+enum MemoryStatus {
+  OK
+  NO_VALIDATED_MEMORY
+  MEMORY_UNAVAILABLE
+  NOT_CONSULTED
+}
+
 enum DecisionStatus {
   PROPOSED
   EXECUTED
@@ -1461,7 +1475,18 @@ model Decision {
   entityId    String         @db.Uuid
   entityLevel EntityLevel
   verdict     Verdict
-  confidence  Float // 0.0 – 1.0
+  // C-16 — NULLABLE. null means the engine produced no confidence for this
+  // call: "we did not measure this", which is exactly what baseConfidence
+  // records beside it.
+  //
+  // It used to be NOT NULL, and the writer satisfied that with `?? 0.5` — an
+  // invented coin flip on the one row R-6 exists to make auditable, and the
+  // same fabrication I54 removed from the pattern engine. Dropping NOT NULL is
+  // what let the fabrication go: no production path produces a null today
+  // (every finalise() passes an explicit number, and persistLevelVerdicts has
+  // no production callers), so this widens what the column ACCEPTS without
+  // changing what it holds.
+  confidence  Float? // 0.0 – 1.0, or null when nothing was measured
   diagnosis   String
   rootCause   String?
   status      DecisionStatus @default(PROPOSED)
@@ -1481,6 +1506,28 @@ model Decision {
   // Deliberately NO `@default`: a default would let a future writer claim a
   // class it never declared, which is exactly what the writer contract forbids.
   decisionClass DecisionClass?
+
+  // ── C-16 (R-6) · the memory that shaped this call, frozen at commitment ────
+  // Three facts, and they are a MEASUREMENT rather than a reference.
+  //
+  // `AccountPattern` is upserted in place and `dynamicFields` rewrites nine of
+  // its columns every sweep — including `statement`, the sentence itself. So a
+  // stored patternId dereferenced six months from now would yield TODAY's
+  // wording and TODAY's accuracy: an audit trail that looks correct and lies.
+  // `ctrAtDecision` / `roasAtDecision` exist for exactly this reason, because
+  // MetricSnapshot is re-stamped per sync. Same argument, one object over.
+  //
+  // `confidence` above is now the PUBLISHED figure — what the operator was
+  // actually shown. `baseConfidence` keeps the engine's own, so the adjustment
+  // is always recoverable and the deterministic number is never lost. Before
+  // C-16 the two sides of one sweep disagreed silently: the read published
+  // base × memoryFactor while the writer stored base.
+  //
+  // All three NULLABLE and permanently so. A row written before this column
+  // carries NOT_CONSULTED, which is the truth about it.
+  baseConfidence   Float?
+  memoryStatus     MemoryStatus?
+  memoryProvenance Json?
 
   // ── Lifecycle ──────────────────────────────────────────────
   // Three moments, each set ONCE and never overwritten: a second click is not a

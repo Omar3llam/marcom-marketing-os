@@ -58,15 +58,31 @@ export const MEMORY_STATUS = Object.freeze({
   OK:                  'OK',                  // validated patterns exist and are stated
   NO_VALIDATED_MEMORY: 'NO_VALIDATED_MEMORY', // we looked; this account has none yet
   MEMORY_UNAVAILABLE:  'MEMORY_UNAVAILABLE',  // we could not look
+  // C-16 (R-6) — nobody asked. Not an outcome of a read: the ABSENCE of one.
+  // Until C-16 the write path never consulted memory at all, so every Decision
+  // ever written is in this state, and a row that cannot say so would leave a
+  // reader unable to tell "memory did not move this call" from "memory was
+  // never brought to it".
+  NOT_CONSULTED:       'NOT_CONSULTED',
 });
 
-// C-06 — the three-way split this vocabulary invented, said in the shared
-// language. NO_VALIDATED_MEMORY is NOTHING_THERE, not COULD_NOT_LOOK: we
-// looked, and this account has learned nothing yet. That is a finding.
+// C-06 — the split this vocabulary invented, said in the shared language.
+// NO_VALIDATED_MEMORY is NOTHING_THERE, not COULD_NOT_LOOK: we looked, and this
+// account has learned nothing yet. That is a finding.
+//
+// C-16 — NOT_CONSULTED is COULD_NOT_LOOK. That token's own definition reads
+// "the read failed, OR NO RECORD OF IT EXISTS", and a pre-C-16 Decision is
+// exactly the second case. It is NOT NOTHING_THERE (that would report our
+// omission as a finding about the account — the precise confusion this
+// vocabulary was built to prevent) and NOT CANNOT_ASK (memory genuinely applies
+// to a Signal verdict; it was simply never wired to the writer). The reader's
+// position is identical either way: this decision cannot tell you what memory
+// shaped it.
 export const MEMORY_KNOWLEDGE = declareStatusVocabulary('MEMORY_STATUS', MEMORY_STATUS, {
   [MEMORY_STATUS.OK]:                  KNOWLEDGE.KNOWN,
   [MEMORY_STATUS.NO_VALIDATED_MEMORY]: KNOWLEDGE.NOTHING_THERE,
   [MEMORY_STATUS.MEMORY_UNAVAILABLE]:  KNOWLEDGE.COULD_NOT_LOOK,
+  [MEMORY_STATUS.NOT_CONSULTED]:       KNOWLEDGE.COULD_NOT_LOOK,
 });
 
 
