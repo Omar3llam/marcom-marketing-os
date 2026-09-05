@@ -56,10 +56,32 @@ export const AccountPatternSchema = z.object({
   sustainedDays: z.number().int().nullish(),
   // conflict resolution + provenance
   supersededById: z.string().nullish(),
-  supersededByKey: z.string().nullish(),
+  // C-14 — `supersededByKey` was declared here and is NOT a database column at
+  // all: it is an in-memory field of the extraction pass, consumed at
+  // PatternService:262 to resolve an id and never published by anything. A
+  // declaration is what a component may rely on, so declaring a field the
+  // server cannot ever send is a promise that resolves to `undefined` forever.
+  // Removed rather than selected, because there is nothing to select.
   promotedRuleId: z.string().nullish(),
   firstObservedAt: z.coerce.date().optional(),
   lastObservedAt: z.coerce.date().optional(),
+  // C-14 · A — how often this belief met a measured outcome, and how often it
+  // held. RAW counts, published BESIDE `accuracy` and never as its derivation:
+  // accuracy is recency-weighted, so 0.85 beside 3 of 5 is two true facts about
+  // one belief, not an arithmetic error. `made`/`held` are null (not zero) when
+  // the count could not be read — a zero would be the claim "never checked".
+  checks: z.object({
+    made: z.number().int().nullable(),
+    held: z.number().int().nullable(),
+    knowledge: z.string(),
+  }).optional(),
+  // C-14 · B — what replaced this belief. The FORWARD edge: the row carrying
+  // `supersededById` is the superseded one, and it points at the winner.
+  // Resolved to a statement, because an id is not readable.
+  replacedBy: z.object({
+    value: z.object({ id: z.string(), statement: z.string() }).nullable(),
+    knowledge: z.string(),
+  }).optional(),
 });
 
 export type PatternKind = z.infer<typeof PatternKindSchema>;
