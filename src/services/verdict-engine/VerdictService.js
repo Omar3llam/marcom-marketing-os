@@ -17,6 +17,7 @@ import { toEvidenceReference }     from './evidenceReference.js';
 import { scopeFor }                from '../decisions/decisionClassScope.js';
 import { computeResolution, ctrDelta } from './decisionLifecycle.js';
 import { DECISION_CLASS } from '@marcom/runtime-contracts';
+import { memoryDecisionFacts } from './memoryProvenance.js';
 
 // The rootCauses persistConnectorVerdicts writes: a diagnosis signalType, a
 // funnel-stage or data-quality cause, or null when the engine set none.
@@ -99,7 +100,7 @@ async function resolvePrevious(previous, now) {
   }
 }
 
-async function persistNode(workspaceId, node, created) {
+async function persistNode(workspaceId, node, created, memory) {
   // Only persist real entity ids (uuids); skip synthetic roots.
   if (node.id && node.level) {
     const latest = await prisma.decision.findFirst({
@@ -145,13 +146,38 @@ async function persistNode(workspaceId, node, created) {
       // roas is null when revenue was never measured; it stays null.
       const now = nodeMetrics(node);
 
+      // C-16 (R-6) — the memory that shaped this call, measured at commitment.
+      // `memory` is undefined for any caller that did not consult it, which
+      // yields NOT_CONSULTED rather than a crash or a silent factor of 1.
+      const mem = memoryDecisionFacts(memory, {
+        verdict:        node.verdict,
+        entityLevel:    node.level,
+        baseConfidence: node.verdictConfidence,
+      });
+
       await prisma.decision.create({
         data: {
           workspaceId,
           entityId:    node.id,
           entityLevel: node.level,
           verdict:     node.verdict,
-          confidence:  node.verdictConfidence ?? 0.5,
+          // C-16 — the PUBLISHED figure, the one the operator was actually
+          // shown. This used to be `node.verdictConfidence ?? 0.5`, which was
+          // wrong twice over: it stored the engine's number while the read
+          // published that number times the memory factor, and it invented a
+          // 0.5 for a confidence nobody had measured — the same fabrication
+          // I54 removed from the pattern engine. The `?? 0.5` was also
+          // unreachable (persistLevelVerdicts has no production callers and
+          // every finalise() passes an explicit number), so removing it changes
+          // no behaviour and removes an invented number from the one row R-6
+          // exists to make auditable.
+          confidence:     mem.confidence,
+          baseConfidence: mem.baseConfidence,
+          memoryStatus:   mem.memoryStatus,
+          // Prisma refuses a plain `null` on a nullable Json column (it cannot
+          // tell DbNull from JsonNull), so the field is OMITTED when there is
+          // no measurement — which writes a DB NULL and says the same thing.
+          ...(mem.memoryProvenance ? { memoryProvenance: mem.memoryProvenance } : {}),
           diagnosis:   node.rationale ?? '',
           // The engine's explicit cause wins over the raw diagnosis signal: a
           // WATCH from a broken landing page and a WATCH from a thin sample are
@@ -204,7 +230,7 @@ async function persistNode(workspaceId, node, created) {
     }
   }
   for (const child of node.children ?? []) {
-    await persistNode(workspaceId, child, created);
+    await persistNode(workspaceId, child, created, memory);
   }
 }
 
@@ -229,14 +255,14 @@ async function persistNode(workspaceId, node, created) {
  *   re-introducing a second tree shape to keep an accident working.
  * @returns {Promise<{ annotated:object, created:Array }>}
  */
-export async function persistAnnotatedVerdicts(workspaceId, annotated, { skipRoot = false } = {}) {
+export async function persistAnnotatedVerdicts(workspaceId, annotated, { skipRoot = false, memory } = {}) {
   if (!workspaceId) throw new Error('persistAnnotatedVerdicts: workspaceId required');
   if (!annotated) throw new Error('persistAnnotatedVerdicts: annotated tree required');
   const created = [];
   if (skipRoot) {
-    for (const child of annotated.children ?? []) await persistNode(workspaceId, child, created);
+    for (const child of annotated.children ?? []) await persistNode(workspaceId, child, created, memory);
   } else {
-    await persistNode(workspaceId, annotated, created);
+    await persistNode(workspaceId, annotated, created, memory);
   }
   logger.info({ workspaceId, decisions: created.length }, '[VerdictService] level verdicts persisted');
   return { annotated, created };
@@ -328,7 +354,7 @@ async function supersedeDroppedConnectorVerdicts(workspaceId, eligibleIds) {
  *   and silently restore the second computation this exists to remove.
  * @returns {Promise<{ created:Array, gatedOut:Array, superseded:number, status:string }>}
  */
-export async function persistConnectorVerdicts(workspaceId, evaluation) {
+export async function persistConnectorVerdicts(workspaceId, evaluation, { memory } = {}) {
   if (!workspaceId) throw new Error('persistConnectorVerdicts: workspaceId required');
   if (!evaluation) throw new Error('persistConnectorVerdicts: evaluation required');
   assertUsableEvaluation('persistConnectorVerdicts', workspaceId, evaluation);
@@ -344,7 +370,13 @@ export async function persistConnectorVerdicts(workspaceId, evaluation) {
   if (!annotated) {
     return { created: [], gatedOut, superseded, status: evaluation.status };
   }
-  const { created } = await persistAnnotatedVerdicts(workspaceId, annotated, { skipRoot: true });
+  // C-16 — `memory` is threaded, never re-read here. The sweep fetches it ONCE
+  // and hands the same object to this writer and to getConnectorVerdicts, which
+  // is what guarantees the stored provenance describes the same memory the
+  // published number was computed from. A second read inside this function
+  // could see a different sweep's patterns and reintroduce the divergence C-16
+  // exists to close, in a subtler form.
+  const { created } = await persistAnnotatedVerdicts(workspaceId, annotated, { skipRoot: true, memory });
   logger.info({ workspaceId, created: created.length, gatedOut: gatedOut.length, superseded }, '[VerdictService] connector verdicts persisted');
   return { created, gatedOut, superseded, status: 'OK' };
 }

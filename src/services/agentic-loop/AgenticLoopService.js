@@ -21,6 +21,7 @@ import { planAgenda } from './agenticPlanner.js';
 import { sweepGuardrails } from '../guardrail-engine/GuardrailSweepService.js';
 import { sweepFatigue } from '../fatigue-forecaster/FatigueSweepService.js';
 import { persistConnectorVerdicts } from '../verdict-engine/VerdictService.js';
+import { getInstitutionalMemory } from '../pattern-engine/institutionalMemory.js';
 import { getConnectorVerdicts, evaluateConnectorVerdicts, failedEvaluation } from '../verdict-engine/index.js';
 import { getConnectorCampaigns } from '../entity-graph/index.js';
 import { computeAccountHealth } from '../analysis/AccountHealthService.js';
@@ -106,10 +107,10 @@ async function loadLabels(workspaceId) {
  * verdict's agenda rank matches its Campaigns-page score. Best-effort by the
  * caller: a cold connector yields an empty map (items fall back to severity order).
  */
-async function loadImpactById(workspaceId, evaluation) {
+async function loadImpactById(workspaceId, evaluation, memory) {
   const [campaigns, cv] = await Promise.all([
     getConnectorCampaigns(workspaceId),
-    getConnectorVerdicts(workspaceId, { evaluation }),
+    getConnectorVerdicts(workspaceId, { evaluation, memory }),
   ]);
   const verdictMap = Object.fromEntries((cv?.verdicts ?? []).map((v) => [v.id, v]));
   const health = computeAccountHealth(campaigns, verdictMap);
@@ -129,7 +130,7 @@ async function loadImpactById(workspaceId, evaluation) {
  *   compute the same verdicts a second time. A plain home/agenda read supplies
  *   none and gets its own single evaluation — one HTTP request, one evaluation.
  */
-export async function buildLoopInputs(workspaceId, { now = new Date(), evaluation } = {}) {
+export async function buildLoopInputs(workspaceId, { now = new Date(), evaluation, memory } = {}) {
   if (!workspaceId) throw new Error('buildLoopInputs: workspaceId required');
   const since = new Date(now.getTime() - ACTIVITY_RECENCY_DAYS * 86_400_000);
   const safe = (p, fallback) => p.catch(() => fallback);
@@ -265,7 +266,7 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
     safe(getBlendedTruth(workspaceId), null),
     safe(getWeeklyAgenda(workspaceId).then((a) => a.slice(0, 5)), []),
     safe(prisma.workspace.findUnique({ where: { id: workspaceId }, select: { objective: true } }).then((w) => w?.objective ?? null), null),
-    safe(loadImpactById(workspaceId, evaluation), new Map()),
+    safe(loadImpactById(workspaceId, evaluation, memory), new Map()),
   ]);
   // One population again, but assembled from two reads that each kept their own
   // identity rule. Signal first so a re-swept verdict and a standing breach on
@@ -322,10 +323,25 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
   //    every consumer re-raise rather than quietly proceed with an empty verdict
   //    set (I29). It is also why this is not wrapped in `safe` — the marker, not
   //    a null, is what the consumers can distinguish.
-  const evaluation = await evaluateConnectorVerdicts(workspaceId).catch((err) => {
-    logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] connector verdict evaluation failed');
-    return failedEvaluation(workspaceId, err);
-  });
+  //    C-16 (R-6) — memory is read HERE, once per sweep, beside the evaluation
+  //    and never inside it. `connectorVerdictService` states why the two are
+  //    parallel rather than nested: the verdict is computed from live signals
+  //    alone, and memory arrives afterwards to qualify how SURE we are, never
+  //    what we think. Fetching it at this altitude keeps that boundary exactly
+  //    as written while giving the writer and the reader the SAME object — the
+  //    only way the stored provenance is guaranteed to describe the memory the
+  //    published confidence was computed from.
+  //
+  //    Never throws: a failed read returns MEMORY_UNAVAILABLE, whose factor is
+  //    exactly 1.0, so an outage leaves every confidence bit-identical to the
+  //    deterministic one and the row records WHY they are identical.
+  const [evaluation, memory] = await Promise.all([
+    evaluateConnectorVerdicts(workspaceId).catch((err) => {
+      logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] connector verdict evaluation failed');
+      return failedEvaluation(workspaceId, err);
+    }),
+    getInstitutionalMemory(workspaceId),
+  ]);
 
   // 1. detect→propose: the organs that WRITE forward signals. Each is
   //    best-effort (a cold organ never fails the sweep) and runs BEFORE
@@ -336,11 +352,11 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
   await Promise.all([
     sweepGuardrails(workspaceId).catch((err) => logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] guardrail sweep skipped')),
     sweepFatigue(workspaceId, { now }).catch((err) => logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] fatigue sweep skipped')),
-    persistConnectorVerdicts(workspaceId, evaluation).catch((err) => logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] connector verdict sweep skipped')),
+    persistConnectorVerdicts(workspaceId, evaluation, { memory }).catch((err) => logger.warn({ err: err.message, workspaceId }, '[AgenticLoop] connector verdict sweep skipped')),
   ]);
 
   // 2. load the unified picture and plan the agenda.
-  const inputs = await buildLoopInputs(workspaceId, { now, evaluation });
+  const inputs = await buildLoopInputs(workspaceId, { now, evaluation, memory });
   const agenda = planAgenda(inputs);
 
   // 3. audit the sweep.

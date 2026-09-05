@@ -27,7 +27,13 @@ export const DecisionSchema = z.object({
   entityId: z.string().min(1),
   entityLevel: EntityLevelSchema,
   verdict: VerdictSchema,
-  confidence: z.number().min(0).max(1),
+  // C-16 — NULLABLE, because the column is. `decisions.confidence` used to be
+  // NOT NULL and the writer satisfied it with an invented `?? 0.5`; dropping
+  // both means null now means "the engine measured no confidence for this
+  // call". No production path writes one today, which is exactly why this must
+  // be declared rather than left: a strict schema does not blank one field on
+  // an unexpected null, it fails the whole parse and takes the surface with it.
+  confidence: z.number().min(0).max(1).nullable(),
   diagnosis: z.string(),
   rootCause: z.string().nullish(),
   status: DecisionStatusSchema.default('PROPOSED'),
@@ -72,7 +78,9 @@ export const LevelVerdictSchema = z.object({
   entityId: z.string().min(1),
   entityLevel: EntityLevelSchema,
   verdict: VerdictSchema,
-  confidence: z.number().min(0).max(1),
+  // C-16 — see DecisionSchema above. A level verdict carries the same figure
+  // from the same engine, so it accepts the same absence.
+  confidence: z.number().min(0).max(1).nullable(),
   rationale: z.string().nullish(),
 });
 

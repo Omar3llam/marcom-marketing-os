@@ -470,7 +470,7 @@ export async function getLatestDecisions(workspaceId) {
  *   its own single evaluation, which is what an ordinary HTTP request does.
  * @returns {Promise<{ verdicts:Array, gatedOut:Array, account:object|null, status:string }>}
  */
-export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
+export async function getConnectorVerdicts(workspaceId, { evaluation, memory: suppliedMemory } = {}) {
   if (!workspaceId) return { verdicts: [], gatedOut: [], account: null, status: 'NO_WORKSPACE' };
   if (evaluation) assertUsableEvaluation('getConnectorVerdicts', workspaceId, evaluation);
 
@@ -484,6 +484,12 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
   const [ev, decisionIdentity, memory] = await Promise.all([
     evaluation ?? evaluateConnectorVerdicts(workspaceId),
     getLatestDecisions(workspaceId),
+    // C-16 — a SUPPLIED memory is used as-is, exactly the idiom `evaluation`
+    // above already uses. The sweep reads memory once and hands the same object
+    // to this read and to persistConnectorVerdicts, which is what makes the
+    // published confidence and the stored provenance describe the same memory
+    // rather than two reads that happened to agree. A caller with none still
+    // gets its own, so nothing is forced to change.
     // R10 (I50) — this workspace's VALIDATED institutional memory. Read in
     // parallel with the evaluation, and deliberately not inside it: the verdict
     // is computed from live signals alone (R8's single pass is untouched), and
@@ -492,7 +498,7 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
     // Never throws — a failed read returns MEMORY_UNAVAILABLE, whose factor is
     // exactly 1.0, so an outage in the memory layer leaves every confidence
     // figure bit-identical to the deterministic one.
-    getInstitutionalMemory(workspaceId),
+    suppliedMemory ?? getInstitutionalMemory(workspaceId),
   ]);
 
   // C-12 — the map and whether we actually got it. Named apart so no reader
@@ -548,6 +554,15 @@ export async function getConnectorVerdicts(workspaceId, { evaluation } = {}) {
       // `statement` and `basis` are the pattern engine's own deterministic
       // strings, written when the pattern was extracted.
       patterns: relevant.slice(0, 3),
+      // C-16 — HOW MANY the factor was actually computed from.
+      // `memoryConfidenceFactor` is a support-weighted mean over EVERY relevant
+      // record, and this list shows three. Without the count, a reader auditing
+      // the number sees three patterns and a figure the three do not produce —
+      // the shown audit trail silently failing to explain the shown number.
+      // The count is the cheapest possible fix and the only honest one: hiding
+      // the remainder is a display choice, pretending there is no remainder is
+      // not. The PERSISTED provenance carries all of them (memoryProvenance).
+      patternCount: relevant.length,
     },
     rationale:  c.rationale,
     spendMinor: c.metrics.spendMinor,

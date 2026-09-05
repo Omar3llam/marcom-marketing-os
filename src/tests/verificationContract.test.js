@@ -128,7 +128,7 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
   // 31 — two increments landed without it. A title that disagrees with its own
   // assertion is a small untruth inside the verification contract itself, so it
   // now states the same number the test enforces.
-  it('the census matches the current baseline of 33 files', () => {
+  it('the census matches the current baseline of 34 files', () => {
     // A drift here is not automatically a failure — but it must be NOTICED,
     // because a new DB-gated file added through a different mechanism is
     // exactly how the guarantee erodes.
@@ -179,7 +179,14 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
     // `onDelete: SetNull` is a database guarantee, and the refusal to publish
     // "nothing replaced it" for an unresolvable pointer rests entirely on the
     // pointer never dangling — demonstrated on PostgreSQL, not asserted.
-    expect(dbGatedFiles().length).toBe(33);
+    //
+    // 33 → 34 in C-16: memoryWritePath.contract.test.js. The ruling it enforces
+    // is that a Decision's memory record does not follow the pattern it was
+    // taken from — and `AccountPattern` is upserted in place, so demonstrating
+    // that requires holding BOTH versions of a row: the one at commitment and
+    // the one a later sweep rewrote. Nothing mocked can do that, because
+    // nothing in a mock rewrites a row behind a reader's back.
+    expect(dbGatedFiles().length).toBe(34);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {

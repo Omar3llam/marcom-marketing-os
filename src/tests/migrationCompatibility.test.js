@@ -80,9 +80,30 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
     //
     // So this one DOES get a baseline entry, carrying the phased deploy that
     // makes it safe. See scripts/migrationCompatibility.baseline.json.
-    expect(scan.length).toBe(70);
+    //
+    // 70 → 71 and COMPATIBLE 48 → 49: C-16 adds
+    // 20260905130000_c16_memory_provenance. Additive on the same terms as C-02,
+    // C-05 and C-18 — one enum type, three nullable columns — and NOT
+    // transitional, because unlike C-10 it back-fills nothing. It could not:
+    // the write path never consulted memory, so no existing row carries a trace
+    // of what memory said when it was written, and a backfill could only invent
+    // one. The absence is READ instead — a null `memoryStatus` is published by
+    // the server as NOT_CONSULTED — so there are no UPDATEs for an old instance
+    // to race.
+    //
+    // It also drops NOT NULL from `decisions.confidence`, which is a WIDENING:
+    // every existing row keeps its value and a reader expecting a number keeps
+    // receiving one, because no production path can produce a null. That is why
+    // the classifier is right to call it compatible — the constraint change
+    // admits a value the writer does not yet emit, rather than rewriting data.
+    //
+    // It carries the same deploy-order constraint C-05, C-18 and C-10 all
+    // documented: `decisions` is read `select`-less in several places, so the
+    // migration must reach an environment before the code naming the new
+    // columns. A deploy-order constraint, not a rollback hazard.
+    expect(scan.length).toBe(71);
     expect(counts).toEqual({
-      COMPATIBLE: 48,
+      COMPATIBLE: 49,
       TRANSITION_REQUIRED: 10,
       INCOMPATIBLE: 8,
       UNKNOWN: 4,
@@ -234,7 +255,7 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
   // ── T7 · corpus boundary ────────────────────────────────────────────────
   it('T7 — the scanner reads production migrations and nothing else', () => {
     const dirs = migrationDirs(fs, MIGRATIONS);
-    expect(dirs).toHaveLength(70); // +1 C-02, +1 C-05, +1 C-18, +1 C-10 (see T1)
+    expect(dirs).toHaveLength(71); // +1 C-02, +1 C-05, +1 C-18, +1 C-10, +1 C-16 (see T1)
     expect(dirs.every((d) => /^\d{14}_/.test(d))).toBe(true);
     // Real non-migration entries that sit in this directory today.
     expect(dirs).not.toContain('migration_lock.toml');
