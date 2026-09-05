@@ -45,6 +45,8 @@ vi.mock('../../lib/prisma.js', () => ({
     campaignReasoning:   { findMany: vi.fn(), upsert: vi.fn() },
     fatiguePrediction:   { findMany: vi.fn() },
     testExperiment:      { findMany: vi.fn() },
+    // C-13 — the Experiment class's OTHER live object; buildLoopInputs reads both.
+    incrementalityTest:  { findMany: vi.fn() },
     plan:                { findMany: vi.fn() },
     allocationPlan:      { findMany: vi.fn() },
     outcomeSnapshot:     { findMany: vi.fn() },
@@ -89,7 +91,7 @@ beforeEach(() => {
   getCanonicalVerdictCampaigns.mockResolvedValue({ campaigns: [camp()], noCanonicalWindow: [] });
   getConnectorCampaigns.mockResolvedValue([camp()]);
 
-  for (const model of ['decision', 'fatiguePrediction', 'testExperiment', 'plan', 'allocationPlan',
+  for (const model of ['decision', 'fatiguePrediction', 'testExperiment', 'incrementalityTest', 'plan', 'allocationPlan',
     'outcomeSnapshot', 'decisionMemoryEntry', 'account', 'campaign', 'adSet', 'campaignReasoning']) {
     prisma[model].findMany.mockResolvedValue([]);
   }

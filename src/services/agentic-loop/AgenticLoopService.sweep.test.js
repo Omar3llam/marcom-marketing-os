@@ -25,6 +25,8 @@ vi.mock('../../lib/prisma.js', () => ({
     decision:            { findMany: vi.fn() },
     fatiguePrediction:   { findMany: vi.fn() },
     testExperiment:      { findMany: vi.fn() },
+    // C-13 — the Experiment class's OTHER live object; buildLoopInputs reads both.
+    incrementalityTest:  { findMany: vi.fn() },
     plan:                { findMany: vi.fn() },
     allocationPlan:      { findMany: vi.fn() },
     outcomeSnapshot:     { findMany: vi.fn() },
@@ -56,7 +58,7 @@ const ORIGINAL_AI = process.env.AI_AUTOMATIC_ENABLED;
 beforeEach(() => {
   vi.clearAllMocks();
   delete process.env.AI_AUTOMATIC_ENABLED; // default: automatic AI OFF (manual-only)
-  for (const model of ['decision', 'fatiguePrediction', 'testExperiment', 'plan', 'allocationPlan',
+  for (const model of ['decision', 'fatiguePrediction', 'testExperiment', 'incrementalityTest', 'plan', 'allocationPlan',
     'outcomeSnapshot', 'decisionMemoryEntry', 'account', 'campaign', 'adSet']) {
     prisma[model].findMany.mockResolvedValue([]);
   }

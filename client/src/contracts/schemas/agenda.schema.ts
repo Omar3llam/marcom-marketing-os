@@ -30,6 +30,22 @@ export const AgendaItemSchema = z.object({
   // Priority-to-act (1-10) — the same score the Campaigns page shows; null when
   // the item isn't a scored campaign (fatigue/pacing/test, or an unscored verdict).
   impactScore: z.number().nullable(),
+  // C-10 — which KIND of decision backs this item. SIGNAL and GUARDRAIL both
+  // arrive as `type: VERDICT` with the same title, severity and human verb, so
+  // without this the client cannot tell a performance verdict from a policy
+  // breach. Null when the item is not decision-derived, predates the column, or
+  // carries a class this bundle has never heard of — all three deserve silence.
+  //
+  // C-13/F-6 — it was published from the day C-10 shipped and DECLARED here
+  // only now. `z.object()` strips what it does not declare and `useHome` stores
+  // the parsed object, so the field reached the browser and never reached a
+  // component. `agendaFieldParity.contract.test.js` is the ratchet that fails
+  // the next time a field is added on one side only.
+  decisionClass: z.string().nullable().optional(),
+  // C-13 — WHICH live row an item is about, when its class contains more than
+  // one kind. Today that is Experiment: an A/B test and a causal holdout are
+  // one class in two tables on two pages.
+  subjectRef: z.object({ kind: z.string(), id: z.string() }).nullable().optional(),
 });
 
 export type AgendaBand = z.infer<typeof AgendaBandSchema>;

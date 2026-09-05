@@ -16,6 +16,10 @@ vi.mock('../../lib/prisma.js', () => ({
     decision:            { findMany: vi.fn() },
     fatiguePrediction:   { findMany: vi.fn() },
     testExperiment:      { findMany: vi.fn() },
+    // C-13 — the Experiment class's OTHER live object. buildLoopInputs reads
+    // both; an absent model here is a synchronous throw that escapes safe()
+    // and empties the whole agenda rather than just this organ.
+    incrementalityTest:  { findMany: vi.fn() },
     plan:                { findMany: vi.fn() },
     allocationPlan:      { findMany: vi.fn() },
     outcomeSnapshot:     { findMany: vi.fn() },
@@ -106,7 +110,7 @@ function seedDecisionReads({ signal = [], guardrail = [] } = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   // Every organ cold by default; the verdict query is overridden per-test.
-  for (const model of ['fatiguePrediction', 'testExperiment', 'plan', 'allocationPlan',
+  for (const model of ['fatiguePrediction', 'testExperiment', 'incrementalityTest', 'plan', 'allocationPlan',
     'outcomeSnapshot', 'decisionMemoryEntry', 'account', 'campaign', 'adSet']) {
     prisma[model].findMany.mockResolvedValue([]);
   }

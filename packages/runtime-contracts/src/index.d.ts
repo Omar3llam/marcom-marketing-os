@@ -289,3 +289,18 @@ export type ExecutionProvenance = typeof EXECUTION_PROVENANCE[keyof typeof EXECU
 export const EXECUTION_PROVENANCE_VALUES: readonly ExecutionProvenance[];
 
 export function isExecutionProvenance(value: string | null | undefined): boolean;
+
+/**
+ * Which live object an Experiment attention item is about (C-13). The class
+ * (EXPERIMENT) says what kind of call it is; this says which row it concerns.
+ */
+export const EXPERIMENT_SUBJECT: {
+  readonly AB_TEST: 'AB_TEST';
+  readonly HOLDOUT: 'HOLDOUT';
+};
+
+export type ExperimentSubject = typeof EXPERIMENT_SUBJECT[keyof typeof EXPERIMENT_SUBJECT];
+
+export const EXPERIMENT_SUBJECT_VALUES: readonly ExperimentSubject[];
+
+export function isExperimentSubject(value: string | null | undefined): boolean;

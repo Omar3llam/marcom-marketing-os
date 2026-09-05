@@ -9,7 +9,9 @@
 // ============================================================
 import { useNavigate } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
+import { EXPERIMENT_SUBJECT } from '@marcom/runtime-contracts';
 import { appRoutes } from '@/app/routeManifest.js';
+import { decisionClassLabel } from './agendaItemClass.js';
 
 // Severity → the design-system verdict tone. HIGH bleeds (kill), MEDIUM holds,
 // LOW is healthy (scale). The agenda severity enum tops out at HIGH; CRITICAL is
@@ -19,12 +21,30 @@ const SEVERITY_TONE = { CRITICAL: 'kill', HIGH: 'kill', MEDIUM: 'hold', LOW: 'sc
 // The human verb comes straight from the backend HUMAN_ACTION enum.
 const ACTION_LABEL = { confirm: 'Confirm', review: 'Review', adjust: 'Adjust' };
 
-// What real row backs the claim — derived from the item type, shown only when an
-// evidenceRef actually exists (no ref ⇒ no chip; we never imply backing we lack).
+// What real row backs the claim — shown only when an evidenceRef actually
+// exists (no ref ⇒ no chip; we never imply backing we lack).
+//
+// C-13/F-5 — `VERDICT` used to be the literal string 'guardrail' here, so EVERY
+// verdict said "backed by guardrail", Signal included. That is the exact
+// confusion C-10 exists to remove, printed for a person to read, while C-10's
+// own cure sat one file away with no consumers — it could not have had one,
+// because the class was stripped at the contract boundary (F-6).
+//
+// The type is now only the FALLBACK. When an item carries a class, the class
+// names its backing: a Signal is backed by a verdict, a Guardrail by a
+// guardrail, an Experiment by an experiment. `VERDICT: 'decision'` is what an
+// unclassifiable verdict degrades to — true of every case, specific to none.
 const EVIDENCE_LABEL = {
-  VERDICT: 'guardrail', FATIGUE: 'forecast', TEST: 'test',
+  VERDICT: 'decision', FATIGUE: 'forecast', TEST: 'test',
   PACING: 'pacing', PLAN_ADJUSTMENT: 'plan', REALLOCATION: 'budget',
 };
+
+function evidenceLabel(item) {
+  if (!item.evidenceRef) return null;
+  const named = decisionClassLabel(item.decisionClass);
+  if (named) return named.toLowerCase();
+  return EVIDENCE_LABEL[item.type] ?? null;
+}
 
 // Where the full context for an item lives. The agenda navigates — never acts.
 // (No `/app/decisions` route exists; the guardrail verdict's full alert lives on
@@ -37,7 +57,14 @@ export function agendaItemRoute(item) {
     case 'VERDICT': return item.entityId
       ? `${appRoutes.campaigns}?entity=${encodeURIComponent(item.entityId)}`
       : appRoutes.campaigns;
-    case 'TEST':    return appRoutes.testing;
+    // C-13 — one Experiment class, two live objects, two pages that list them.
+    // An attention item must land where its subject actually is; sending a
+    // holdout to Testing would be a page that cannot show it. Destination
+    // CORRECTNESS only — deep-linking to a single experiment is B7's, and an
+    // unrecognised kind falls back to Testing rather than to Insights.
+    case 'TEST':    return item.subjectRef?.kind === EXPERIMENT_SUBJECT.HOLDOUT
+      ? appRoutes.measure
+      : appRoutes.testing;
     case 'FATIGUE':
     case 'PACING':
     case 'PLAN_ADJUSTMENT':
@@ -50,7 +77,7 @@ export default function AgendaItem({ item }) {
   const navigate = useNavigate();
   const tone = SEVERITY_TONE[item.severity] || 'hold';
   const actionLabel = ACTION_LABEL[item.humanAction] || 'Review';
-  const evidence = item.evidenceRef ? EVIDENCE_LABEL[item.type] : null;
+  const evidence = evidenceLabel(item);
 
   return (
     <button
