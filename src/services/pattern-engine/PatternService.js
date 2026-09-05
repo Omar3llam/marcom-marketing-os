@@ -18,6 +18,7 @@ import { selectOperationalSnapshots } from '../evidence/index.js';
 import { CURRENT_OUTCOME_WHERE } from '../decision-accuracy/outcomeSelection.js';
 import { evaluateDecisionSuccess } from '../decision-accuracy/decisionSuccess.js';
 import { extractPatterns } from './patternEngine.js';
+import { checksByPattern, replacementOf } from './patternHistory.js';
 import { PATTERN_STATUS, isActionablePattern } from './patternTypes.js';
 import { TEMPORAL }         from '../../config/temporal.js';
 import { PROVENANCE_SELECT, INTERVENED_WHERE } from '../execution/decisionProvenance.js';
@@ -309,12 +310,22 @@ export async function getBriefing(workspaceId, { now = new Date(), lookbackDays 
 
 /** The columns every briefing consumer reads. Explicit — an unprojected read on
  *  this table widens with the next migration (#209). */
-const BRIEFING_SELECT = Object.freeze({
+// EXPORTED for `briefingFieldParity.contract.test.js` — the ratchet asserting
+// that the client schema declares nothing this projection cannot send. Reading
+// the real object beats matching its source text, and the constant is a
+// contract rather than an internal.
+export const BRIEFING_SELECT = Object.freeze({
   id: true, patternKey: true, kind: true, statement: true, basis: true,
   support: true, effectiveSupport: true, accuracy: true, confidence: true, status: true,
   metric: true, scopeLevel: true, audienceTag: true, comparator: true, threshold: true,
   unit: true, emitVerdict: true, sustainedDays: true, promotedRuleId: true,
   firstObservedAt: true, lastObservedAt: true, updatedAt: true,
+  // C-14 — the pointer B8-05's "what replaced this" is built on. It has been a
+  // column since the pattern engine shipped, is written in a deliberate
+  // two-pass transaction (below), and was never once selected — while the
+  // client schema declared it, so the field LOOKED available for as long as it
+  // has existed. Selecting it is the whole of B's substrate.
+  supersededById: true,
 });
 
 /**
@@ -337,7 +348,30 @@ export async function readBriefing(workspaceId) {
     orderBy: [{ status: 'asc' }, { confidence: { sort: 'desc', nulls: 'last' } }],
   });
 
-  const patterns = rows.map((p) => ({ ...p, promotable: isActionablePattern(p) }));
+  // C-14 — the two temporal facts that could not cross the wire. Both are
+  // derived at READ: `PatternObservation` and `supersededById` already hold the
+  // truth, and a stored copy would drift the moment an observation lands
+  // between extractions. Issued after the rows, because both are keyed by ids
+  // this read has just produced.
+  //
+  // Neither can fail the briefing. A memory surface that 500s because a
+  // supplementary count was unavailable would trade a missing figure for a
+  // missing page — so both publish a C-06 knowledge token instead, and the
+  // patterns themselves arrive either way.
+  const [checks, replacedBy] = await Promise.all([
+    checksByPattern(workspaceId, rows.map((r) => r.id)),
+    replacementOf(workspaceId, rows),
+  ]);
+
+  const patterns = rows.map((p) => ({
+    ...p,
+    promotable: isActionablePattern(p),
+    // RAW counts, published BESIDE the recency-weighted `accuracy` and never
+    // instead of it. They will disagree — 0.85 beside 3 of 5 is correct, not a
+    // contradiction — and nothing here recomputes `accuracy` from them.
+    checks:     checks.get(p.id),
+    replacedBy: replacedBy.get(p.id),
+  }));
 
   return {
     patterns,

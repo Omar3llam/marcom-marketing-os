@@ -1,11 +1,22 @@
 // ============================================================
-// Backend Closure S1 — PatternObservation is DORMANT, and says so
+// Backend Closure S1 — PatternObservation: DORMANT until C-14, now LIVE
 // ============================================================
+// RECLASSIFIED 2026-09-05 by C-14. The register below is kept in full rather
+// than rewritten, because the reasoning that held while the table was dormant
+// is what makes the reader that arrived legible — and because this file's own
+// instruction was to reclassify rather than relax.
+//
 // The closure audit found `PatternObservation` written on every extraction and
 // read by nothing. That is not a defect, and this file exists so it stops
 // looking like one — an unclassified write-only table is indistinguishable from
 // a reader somebody forgot to write, and the next person to find it has no way
 // to tell which.
+//
+// C-14 wrote that reader. `readBriefing` now counts these rows to publish how
+// often a belief met a measured outcome and how often it held — the two
+// denominators `score()` computes on every extraction and throws away, leaving
+// `accuracy` as a percentage no reader can weigh. The dormant classification
+// was right for two years and is simply no longer the state of the world.
 //
 // WHAT IT IS
 //   The per-occurrence audit trail behind a pattern: one row per occurrence,
@@ -87,14 +98,27 @@ describe('S1 · PatternObservation — the dormant classification', () => {
     expect(s).not.toMatch(/patternObservation\.(upsert|update|delete)/);
   });
 
-  it('has ZERO production readers — DORMANT, deliberately', () => {
+  it('has exactly ONE production reader — LIVE since C-14', () => {
+    // RECLASSIFIED, on purpose, exactly as this file's own instruction demanded:
+    // "it moves the surface from DORMANT to LIVE, and the closure register must
+    // be updated to match rather than this assertion relaxed."
+    //
+    // C-14 made `readBriefing` count these rows so a belief can publish how
+    // often it was checked and how often it held — the denominators `score()`
+    // computes every run and discards. The prediction in the header above was
+    // exact: the future reader arrived precisely to "decay stale evidence by
+    // date rather than trusting a rollup that cannot say when it was earned".
+    //
+    // The ratchet is NOT relaxed, only re-aimed. It still pins the count, so a
+    // SECOND reader has to be added deliberately rather than by accident — and
+    // the rollup separation below is untouched and still enforced.
     const readers = sites(READ_OPS);
     expect(
       readers,
-      'PatternObservation gained a production reader. That is allowed — but it moves the '
-      + 'surface from DORMANT to LIVE, and the closure register must be updated to match '
-      + 'rather than this assertion relaxed. Reclassify, then change this test on purpose.',
-    ).toEqual([]);
+      'PatternObservation gained ANOTHER production reader. One is the C-14 briefing '
+      + 'count; a second means two definitions of "how often was this checked" with no '
+      + 'arbiter between them. Reclassify deliberately, then change this test on purpose.',
+    ).toEqual(['src/services/pattern-engine/patternHistory.js']);
   });
 
   it('the question the rows exist for is answered from the ROLLUP, not from them', () => {

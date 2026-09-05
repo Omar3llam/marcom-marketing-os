@@ -128,7 +128,7 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
   // 31 — two increments landed without it. A title that disagrees with its own
   // assertion is a small untruth inside the verification contract itself, so it
   // now states the same number the test enforces.
-  it('the census matches the current baseline of 32 files', () => {
+  it('the census matches the current baseline of 33 files', () => {
     // A drift here is not automatically a failure — but it must be NOTICED,
     // because a new DB-gated file added through a different mechanism is
     // exactly how the guarantee erodes.
@@ -168,7 +168,18 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
     // mocked suite would pass with the predicate wired to anything at all,
     // including to nothing. The projection half of the same file is pure and
     // needs no database; only the population half is gated.
-    expect(dbGatedFiles().length).toBe(32);
+    //
+    // 32 → 33 in C-14: memoryRecordHistory.contract.test.js. `correct` is a
+    // THREE-valued Boolean column — true, false, and NULL for an occurrence
+    // seen but never scored — and the whole contract is which of the three
+    // count as "checked" and which as "held". A mock answers
+    // `correct: { not: null }` and `correct: true` with whatever it was handed,
+    // so both predicates could be wired to the same thing, or to nothing, and
+    // stay green. The supersession half is here for a second reason:
+    // `onDelete: SetNull` is a database guarantee, and the refusal to publish
+    // "nothing replaced it" for an unresolvable pointer rests entirely on the
+    // pointer never dangling — demonstrated on PostgreSQL, not asserted.
+    expect(dbGatedFiles().length).toBe(33);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {
