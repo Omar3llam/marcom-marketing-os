@@ -186,7 +186,15 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
     // that requires holding BOTH versions of a row: the one at commitment and
     // the one a later sweep rewrote. Nothing mocked can do that, because
     // nothing in a mock rewrites a row behind a reader's back.
-    expect(dbGatedFiles().length).toBe(34);
+    //
+    // 34 → 35 in B8-01: decisionDetailMemory.db.contract.test.js. C-16 proved
+    // the three memory columns are WRITTEN; this proves `/decisions/:id`
+    // publishes them, and it needs Postgres for a reason a mock cannot supply:
+    // a misspelled key in DETAIL_SELECT is a P2022 only against a live schema,
+    // so the pure sibling test would stay green while the destination 500s. It
+    // also separates a SQL NULL provenance from a JSON `null` one — Prisma
+    // spells them identically, and only one means "memory was never asked".
+    expect(dbGatedFiles().length).toBe(35);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {
