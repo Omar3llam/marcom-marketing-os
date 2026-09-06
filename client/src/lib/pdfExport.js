@@ -202,15 +202,32 @@ export async function generateCampaignReport({
   const pageHeight = doc.internal.pageSize.getHeight();
   const M = 16;
 
-  // Lazy-load the embedded Arabic font ONLY here so it code-splits with jsPDF and
-  // never enters the main bundle. jsPDF's built-in processArabic (auto preProcessText
-  // hook) shapes; its BidiEngine reorders via the RTL options in drawText/table.
-  // If the module ever fails to load, Arabic degrades gracefully (Latin font, likely
-  // blank glyphs) rather than crashing the export.
+  // The Arabic font is FETCHED, not bundled. It used to be a base64 string in a
+  // JS module — 197KB of binary inflated ~33% by base64 and then shipped as
+  // JavaScript, which the bundle budget counts whether or not it is lazy. As a
+  // real asset it leaves the JS graph entirely: Vite emits a content-hashed
+  // .ttf, and a browser downloads it ONLY when someone exports a report that
+  // actually contains Arabic.
+  //
+  // jsPDF's built-in processArabic (auto preProcessText hook) shapes; its
+  // BidiEngine reorders via the RTL options in drawText/table. addFileToVFS
+  // wants base64, so the bytes are re-encoded here — in chunks, because
+  // `String.fromCharCode(...bytes)` on a 197KB array overflows the call stack.
+  //
+  // If the fetch or the decode fails, Arabic degrades gracefully (Latin font,
+  // likely blank glyphs) rather than crashing the export. That was true before
+  // and stays true — a report is worth more than a typeface.
   let arabicReady = false;
   try {
-    const { notoNaskhArabicBase64 } = await import('../assets/fonts/notoNaskhArabic.js');
-    doc.addFileToVFS('NotoNaskhArabic-Regular.ttf', notoNaskhArabicBase64);
+    const { default: fontUrl } = await import('../assets/fonts/NotoNaskhArabic-Regular.ttf?url');
+    const res = await fetch(fontUrl);
+    if (!res.ok) throw new Error(`font ${res.status}`);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    }
+    doc.addFileToVFS('NotoNaskhArabic-Regular.ttf', btoa(binary));
     doc.addFont('NotoNaskhArabic-Regular.ttf', 'NotoNaskh', 'normal');
     arabicReady = true;
   } catch {
