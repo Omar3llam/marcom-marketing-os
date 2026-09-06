@@ -17,10 +17,13 @@ import { cn } from '@/lib/utils.js';
  * precision the belief does not have. Returns null for anything unparseable
  * rather than a fabricated date.
  */
+// Built ONCE. `Intl.DateTimeFormat` is expensive to construct and this runs per
+// belief, per render.
+const MONTH_FMT = new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' });
+
 function monthYear(d) {
   const date = d instanceof Date ? d : new Date(d);
-  if (Number.isNaN(date.getTime())) return null;
-  return new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' }).format(date);
+  return Number.isNaN(date.getTime()) ? null : MONTH_FMT.format(date);
 }
 
 const statusTone = {
