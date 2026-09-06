@@ -52,6 +52,7 @@ const Publishing          = lazy(() => import('./pages/Publishing.jsx'));     //
 const BlendedTruth = lazy(() => import('./pages/BlendedTruth.jsx'));
 // B8-03 — the THEN destination. Its route was a redirect to Overview until now.
 const DecisionHistory = lazy(() => import('./features/decisions/DecisionHistoryView.jsx'));
+const DecisionDetail  = lazy(() => import('./features/decisions/DecisionDetailView.jsx'));
 const Proof        = lazy(() => import('./pages/Proof.jsx'));
 
 // ── Internal admin panel — standalone (no app shell), ADMIN-only ─
@@ -201,6 +202,14 @@ export default function App() {
           <Route path="decisions"  element={
             <ErrorBoundary boundaryId="decisions">
               <Suspense fallback={<PageFallback />}><DecisionHistory /></Suspense>
+            </ErrorBoundary>
+          } />
+          {/* B8-04 — the Decision is independently addressable (B7 Ruling 1).
+              Campaign remains the lens you LOCATE a decision through; it does
+              not own the decision's destination. Ungated, like the list. */}
+          <Route path="decisions/:id" element={
+            <ErrorBoundary boundaryId="decision-detail">
+              <Suspense fallback={<PageFallback />}><DecisionDetail /></Suspense>
             </ErrorBoundary>
           } />
           <Route path="campaigns"  element={

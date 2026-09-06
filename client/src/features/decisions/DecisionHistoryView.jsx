@@ -6,10 +6,6 @@
 // me now?" and Campaigns answers "what are we investigating?".
 //
 // ── WHAT THIS DELIBERATELY DOES NOT DO ──────────────────────────────────────
-// · No row links to a detail page. `/app/decisions/:id` does not exist yet, and
-//   a link to it would be the UI promising a capability the destination lacks —
-//   one of B8-01's seven forbidden inferences. Rows become links in the slice
-//   that builds the detail surface, not before.
 // · No filters, no sort control. Ordering is the CLOCK and only the clock
 //   (B7 R-N2); any other ordering is new product meaning and needs a ruling.
 // · No confidence figure on a GUARDRAIL row. L-4: the column is called
@@ -43,7 +39,14 @@ function DecisionRow({ d }) {
   const showsConfidence = d.decisionClass === 'SIGNAL' && Number.isFinite(d.confidence);
 
   return (
-    <li className="border-b border-lumi-border last:border-0 py-4">
+    <li className="border-b border-lumi-border last:border-0">
+      {/* B8-04 — the row is a link NOW, because the destination exists now. It
+          was deliberately inert while `/app/decisions/:id` did not, since a link
+          to a missing surface is the UI promising a capability it lacks. */}
+      <Link
+        to={`${appRoutes.decisions}/${encodeURIComponent(d.id)}`}
+        className="block py-4 rounded focus:outline-none focus:ring-2 focus:ring-lumi-accent hover:bg-lumi-elevated/40"
+      >
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -66,6 +69,7 @@ function DecisionRow({ d }) {
           )}
         </div>
       </div>
+      </Link>
     </li>
   );
 }
