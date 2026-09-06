@@ -31,9 +31,12 @@ import { ABSENCE, absenceState } from '@/design-system/states/absence.js';
 import { appRoutes } from '@/app/routeManifest.js';
 import { useDecisionDetail, knowledgeOfRefusal, DETAIL_REFUSAL } from '@/hooks/useDecisionDetail.js';
 
-const fmt = (d) => (d ? new Intl.DateTimeFormat(undefined, {
+// Built ONCE — constructing an Intl formatter per timestamp, per render, is
+// pure waste on a page that prints eight of them.
+const STAMP_FMT = new Intl.DateTimeFormat(undefined, {
   year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-}).format(d instanceof Date ? d : new Date(d)) : null);
+});
+const fmt = (d) => (d ? STAMP_FMT.format(d instanceof Date ? d : new Date(d)) : null);
 
 const CLASS_LABEL = { SIGNAL: 'Signal', GUARDRAIL: 'Guardrail', EXPERIMENT: 'Experiment' };
 

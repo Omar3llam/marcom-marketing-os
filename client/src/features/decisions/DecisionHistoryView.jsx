@@ -21,9 +21,8 @@ import { useDecisionHistory } from '@/hooks/useDecisionHistory.js';
 
 const CLASS_LABEL = { SIGNAL: 'Signal', GUARDRAIL: 'Guardrail' };
 
-const fmtDate = (d) => new Intl.DateTimeFormat(undefined, {
-  year: 'numeric', month: 'short', day: 'numeric',
-}).format(d instanceof Date ? d : new Date(d));
+const DATE_FMT = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+const fmtDate = (d) => DATE_FMT.format(d instanceof Date ? d : new Date(d));
 
 /** The status a closed decision ended in, in the operator's words. */
 const STATUS_COPY = {
