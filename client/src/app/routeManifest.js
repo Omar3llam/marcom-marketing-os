@@ -1,5 +1,9 @@
 export const appRoutes = {
   overview: '/app/overview',
+  // B7 R-N2 — reclaimed, not invented. This URL existed as a redirect to
+  // Overview ("Legacy Command Center surface removed"), so existing bookmarks
+  // and deep links resolve to the destination they were always named for.
+  decisions: '/app/decisions',
   campaigns: '/app/campaigns',
   intelligence: '/app/intelligence',
   blendedTruth: '/app/intelligence/blended-truth',

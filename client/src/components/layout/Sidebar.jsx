@@ -14,7 +14,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layout, BarChart3, Send,
   Settings, PanelLeftClose, Plus, Search, ChevronDown,
-  Brain, FlaskConical, Microscope, Megaphone, FileText, Plug,
+  Brain, FlaskConical, Microscope, Megaphone, FileText, Plug, History,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
@@ -48,8 +48,14 @@ export const tools = [
   // ── FREE — always unlocked ──────────────────────────────────
   // "Today's decisions" — NOT "Decision queue", which is Campaigns' sub-label.
   // Two nav rows carrying the same phrase would read as the same destination.
-  { key: 'overview',     label: 'Decisions',    sub: "Today's decisions",      icon: Layout,       path: appRoutes.overview,     roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
-  { key: 'campaigns',    label: 'Campaigns',    sub: 'Decision queue',        icon: BarChart3,    path: appRoutes.campaigns,    roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
+  // B7 R-N1 — Overview YIELDS the word "Decisions". It named the NOW axis while
+  // "Decision queue" named the SUBJECT axis, so the one name covered two axes
+  // and THEN, which owns the object, had none. This was fought once already and
+  // settled with sub-labels; the axes are what needed separating, not the copy.
+  { key: 'overview',     label: 'Attention',    sub: 'What needs you now',    icon: Layout,       path: appRoutes.overview,     roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
+  // THEN — historical commitment. Ungated by plan (B7 Ruling 3).
+  { key: 'decisions',    label: 'Decisions',    sub: 'What Lumi decided',     icon: History,      path: appRoutes.decisions,    roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
+  { key: 'campaigns',    label: 'Campaigns',    sub: 'Where to investigate',  icon: BarChart3,    path: appRoutes.campaigns,    roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
   { key: 'content',      label: 'Creative Optimizer', sub: 'Improve creative performance', icon: Send,   path: appRoutes.contentLab,   roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
   { key: 'leadership',   label: 'Reports',      sub: 'Weekly narratives',      icon: FileText,     path: appRoutes.leadership,   plan: 'FREE' },
   // ── GROWTH — locked on FREE ─────────────────────────────────
