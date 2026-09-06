@@ -18,8 +18,26 @@ import { EntityLevelSchema } from './entity.schema';
 /** Marketing decision verdict. Phase 2 adds REALLOCATE + REFRESH. */
 export const VerdictSchema = z.enum(['KILL', 'HOLD', 'SCALE', 'WATCH', 'REALLOCATE', 'REFRESH']);
 
-/** Workflow status of a decision. */
-export const DecisionStatusSchema = z.enum(['PROPOSED', 'EXECUTED', 'DISMISSED']);
+/**
+ * Workflow status of a decision — all FIVE the backend writes.
+ *
+ * B8-01 — this declared three. The two it omitted are the two a decision ends
+ * in once it stops being someone's problem: SUPERSEDED (a newer verdict
+ * replaced it) and RESOLVED (C-02 — the condition ended with no human act).
+ * PROPOSED / EXECUTED / DISMISSED describe a decision that is still LIVE, so
+ * the omission was not an edge case; it was every historical decision.
+ *
+ * The consequence is the one named under `confidence` below: a strict enum
+ * fails the WHOLE parse. A history surface fed by this schema would not have
+ * rendered a blank status — it would have rendered nothing, reporting an
+ * account with no decisions. Failure is not emptiness.
+ *
+ * Widening is not opening: an unrecognised status still fails, so contract
+ * drift is still reported rather than absorbed.
+ */
+export const DecisionStatusSchema = z.enum([
+  'PROPOSED', 'EXECUTED', 'DISMISSED', 'SUPERSEDED', 'RESOLVED',
+]);
 
 export const DecisionSchema = z.object({
   id: z.string().min(1),

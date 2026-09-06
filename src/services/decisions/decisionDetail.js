@@ -141,6 +141,12 @@ export const DETAIL_SELECT = Object.freeze({
   ctrAtDecision: true, roasAtDecision: true, objective: true, channel: true,
   hypotheses: true, counterfactuals: true, evidenceReference: true,
   guardrailRuleId: true, openHitKey: true,
+  // B8-01 — C-16's three columns. They are the Decision's OWN historical truth,
+  // not Memory: R-5 keeps provenance and Memory as two objects and forbids
+  // reconciling their divergence. Selecting them adds no join, because C-16
+  // froze provenance BY VALUE precisely so a reader never has to traverse to a
+  // pattern row that has since been rewritten.
+  memoryProvenance: true, baseConfidence: true, memoryStatus: true,
 });
 
 /** PURE: the row as a response body. */
@@ -189,6 +195,21 @@ export function detailBody(row) {
     // published one line above, so nobody has to guess why it is empty.
     guardrailRuleId: row.guardrailRuleId,
     openHitKey: row.openHitKey,
+
+    // B8-01 — what memory said AT COMMITMENT (R-6), travelling FLAT for the
+    // same reason the guardrail identity does: the field that explains the null
+    // is published beside it. `memoryStatus` IS the knowledge here — C-16
+    // declared NOT_CONSULTED and mapped it to C-06's COULD_NOT_LOOK — so
+    // wrapping these in a second knowledge token would state the same fact
+    // twice and let the two disagree.
+    //
+    // `baseConfidence` is the engine's own number before memory touched it. It
+    // is published BESIDE `confidence`, never instead of it: either alone
+    // cannot say whether memory moved anything, and a null baseConfidence is
+    // "the engine measured none", never a zero.
+    memoryProvenance: row.memoryProvenance ?? null,
+    baseConfidence: row.baseConfidence ?? null,
+    memoryStatus: row.memoryStatus ?? null,
 
     committed: committedFields(row),
   };
