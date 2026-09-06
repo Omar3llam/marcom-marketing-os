@@ -10,6 +10,19 @@
 import { Brain, AlertCircle, Network } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 
+/**
+ * B8-04b — a belief's dates at MONTH resolution.
+ *
+ * A pattern is observed over months, so a to-the-minute timestamp would imply a
+ * precision the belief does not have. Returns null for anything unparseable
+ * rather than a fabricated date.
+ */
+function monthYear(d) {
+  const date = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' }).format(date);
+}
+
 const statusTone = {
   ESTABLISHED: 'text-signal-scale bg-signal-scale-bg border-signal-scale/25',
   EMERGING:    'text-stage-testing bg-stage-testing/10 border-stage-testing/25',
@@ -80,8 +93,39 @@ export function AccountBriefing({
                   <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-xs text-lumi-subtle">
                     {p.kind && <span>{p.kind.replace(/_/g, ' ')}</span>}
                     <span>right {acc == null ? '—' : `${acc}%`}</span>
+                    {/* B8-04b · HOW OFTEN TESTED — C-14's denominator, stated
+                        BESIDE accuracy and never as its derivation. Accuracy is
+                        recency-weighted, so "85%" and "held 3 of 5" are two true
+                        facts about one belief, not an arithmetic error. They are
+                        deliberately separate items, with no connective between
+                        them that would imply one is the working of the other.
+
+                        `made`/`held` are null (not zero) when the count could
+                        not be read — a zero would be the claim "never checked" —
+                        so an unreadable count renders nothing at all rather than
+                        a fabricated 0 of 0. */}
+                    {Number.isFinite(p.checks?.made) && Number.isFinite(p.checks?.held) && (
+                      <span>held {p.checks.held} of {p.checks.made}</span>
+                    )}
                     {conf != null && <span>confidence {conf}%</span>}
+                    {/* B8-04b · SINCE WHEN, and WHEN LAST TESTED. Omitted rather
+                        than invented when the row does not carry them. */}
+                    {p.firstObservedAt && <span>since {monthYear(p.firstObservedAt)}</span>}
+                    {p.lastObservedAt && <span>last tested {monthYear(p.lastObservedAt)}</span>}
                   </div>
+
+                  {/* B8-04b · WHAT IT REPLACED — C-14's FORWARD edge. The row
+                      carrying `supersededById` is the SUPERSEDED one and points
+                      at the winner, so this reads "replaced by", never
+                      "supersedes". Resolved to a statement because an id is not
+                      readable, and shown only when something actually replaced
+                      it: `NOTHING_THERE` is a finding, and printing "replaced by
+                      nothing" would turn an answer into a blank. */}
+                  {p.replacedBy?.value?.statement && (
+                    <p className="mt-2 text-xs text-lumi-muted">
+                      Replaced by: <span className="text-lumi-text">{p.replacedBy.value.statement}</span>
+                    </p>
+                  )}
 
                   {/* C-05 · granting Lumi standing authority takes two acts.
                       The first files the authorization; the second grants it,
