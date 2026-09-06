@@ -43,11 +43,17 @@ import {
 
 export function useOverviewModel() {
   const { workspace } = useWorkspace();
-  const { campaigns, summary, loading: intelligenceLoading } = useIntelligence();
-  const { campaigns: connectorCampaigns, loading: connectorLoading } = useConnectorCampaigns();
+  // B8-02 — `error` is destructured from every substrate that decides whether
+  // data EXISTS. Before this the word did not appear in this file at all, from
+  // seven hooks, so a failed read arrived as `hasAnyData: false` and the hero
+  // said "Connect a channel to get your first verdict" — an outage reported as
+  // an empty account. Same discipline as the readiness gate below: name every
+  // substrate a rendered claim reads, not just the ones that carry data.
+  const { campaigns, summary, loading: intelligenceLoading, error: intelligenceError } = useIntelligence();
+  const { campaigns: connectorCampaigns, loading: connectorLoading, error: connectorError } = useConnectorCampaigns();
   const { data: connectionsData } = useConnections(); // channel sync status (lastSyncedAt)
   // `loading` is destructured DELIBERATELY — see the readiness gate below.
-  const { health, loading: healthLoading } = useAccountHealth(); // connector campaign health + wasted spend + impact scores
+  const { health, loading: healthLoading, error: healthError } = useAccountHealth(); // connector campaign health + wasted spend + impact scores
   const { home, isStale: homeStale } = useHome();     // agentic loop home (includes aiInsight)
   const { verdicts } = useConnectorVerdicts();       // the engine's own rationale per campaign
   const { surface: proofSurface } = useAccuracy();   // gated proof one-liner (best-effort)
@@ -136,6 +142,21 @@ export function useOverviewModel() {
   // cannot be confused with a genuine fetch failure.
   const scoringHidden = collabRole === WORKSPACE_ROLE.CLIENT && hasAnyData;
 
+  // B8-02 — THE CAUSE OF ABSENCE. `hasAnyData: false` has two causes that look
+  // identical from here: the account genuinely has nothing, or we could not
+  // read it. Only the second is a statement about Lumi, and it is the one the
+  // page was getting wrong.
+  //
+  // Every substrate that feeds `hasAnyData` is named, for the same reason the
+  // readiness gate names them: a substrate whose failure is dropped becomes an
+  // absence the page asserts without having established it. `health` is
+  // included because it is the sole source of the bands.
+  //
+  // Distinct from `scoringHidden` by construction — that one is derived from
+  // the ROLE, never sniffed from a failed request, precisely so the two can
+  // never be confused.
+  const readFailed = Boolean(intelligenceError || connectorError || healthError);
+
   // Account-health card tone + caption (pure; see overviewDerive).
   const { tone: healthTone, label: healthLabel } = healthPresentation({
     score: kpis.health,
@@ -152,6 +173,7 @@ export function useOverviewModel() {
     hasAnyData,
     loading,
     scoringHidden,
+    unreadable: readFailed,
   });
 
   // ── Lumi's briefing, folded into the hero ───────────────────
@@ -186,6 +208,7 @@ export function useOverviewModel() {
     hasRevenueData,
     isStrategist: collabRole === WORKSPACE_ROLE.STRATEGIST,
     dismissed,
+    unreadable: readFailed,
   });
 
   const showCopilot = collabRole !== WORKSPACE_ROLE.CLIENT; // CLIENT home stays read-only & minimal

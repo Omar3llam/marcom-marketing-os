@@ -3,15 +3,19 @@ import axios from 'axios';
 import { api } from '@/lib/api.js';
 import { summarize } from '@/hooks/useCampaignFeed.js';
 
+// B8-02 — this used to catch every non-cancel error and `return { campaigns: [] }`.
+// That made `refresh`'s own catch unreachable for anything but a cancellation
+// (which returns before setError), so the exported `error` was declared,
+// cleared, returned and structurally ALWAYS NULL. A backend outage arrived at
+// four live surfaces shaped exactly like a successful read of an empty account.
+//
+// It does not catch now. A failure is a measured semantic state and belongs to
+// the caller; a hook may report it or rethrow it, but it may not turn it into
+// data. An empty array still means "this account has no campaigns" — which is
+// the whole point of not spelling a failure the same way.
 async function fetchCampaigns(signal) {
-  try {
-    const res = await api.get('/api/lumi/feed', { signal });
-    // Empty array = new user with 0 uploads → show empty state, NOT demo data.
-    return res.data;
-  } catch (err) {
-    if (axios.isCancel?.(err) || err?.name === 'CanceledError') throw err;
-    return { campaigns: [] };
-  }
+  const res = await api.get('/api/lumi/feed', { signal });
+  return res.data;
 }
 
 // R7 — fetchMemory() called /api/memory/patterns on every mount, stored the
@@ -40,6 +44,12 @@ export function useIntelligenceData() {
     } catch (err) {
       if (axios.isCancel?.(err) || err?.name === 'CanceledError') return;
       setError(err?.message || 'Failed to load intelligence data');
+      // B8-02 — empty the collections BESIDE the error, never instead of it.
+      // Stale rows under a failure banner would be a second claim: that these
+      // are the account's campaigns right now, which is exactly what we just
+      // failed to establish.
+      setCampaigns([]);
+      setFatiguePredictions([]);
     } finally {
       setLoading(false);
     }
