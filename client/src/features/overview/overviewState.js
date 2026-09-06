@@ -30,6 +30,13 @@ export const ACCOUNT_STATE = Object.freeze({
   // enough data to score yet" about an account that was fully scored — an
   // absence produced by AUTHORIZATION, reported as one produced by DATA.
   SCORING_HIDDEN:  'SCORING_HIDDEN',
+  // B8-02 — the read FAILED. Indistinguishable from LEARNING by count, because
+  // both see zero of everything; only the cause separates them, which is why
+  // the cause has to be carried rather than inferred. Before this existed a
+  // backend outage rendered "Connect a channel to get your first verdict" —
+  // the page telling an operator their account was empty when Lumi simply
+  // could not read it.
+  UNREADABLE:      'UNREADABLE',
 });
 
 /**
@@ -59,8 +66,20 @@ export function getAccountState({
   hasAnyData = false,
   loading = false,
   scoringHidden = false,
+  unreadable = false,
 } = {}) {
   if (loading) return null;                        // don't flash a state
+
+  // B8-02 — checked BEFORE `hasAnyData`, because a failed read produces zero of
+  // everything and would otherwise be reported as an empty account. Checked
+  // AFTER `loading` for the existing reason: a page that shows a failure for
+  // 400ms before revealing three KILLs has told the user something false.
+  //
+  // It does NOT outrank a real verdict. A partial failure must not suppress
+  // what was actually measured, so the band checks come first below — the same
+  // ordering SCORING_HIDDEN already follows.
+  if (!hasAnyData && unreadable) return ACCOUNT_STATE.UNREADABLE;
+
   if (!hasAnyData) return ACCOUNT_STATE.LEARNING;  // nothing to score yet
 
   if (actNowTotal > 0)  return ACCOUNT_STATE.ACTION_REQUIRED;
@@ -176,6 +195,16 @@ export function buildHeroNarrative({
         'Campaign-level verdicts aren’t shown for your access level.',
       ];
 
+    // B8-02 — the read failed. Every line here is about LUMI's position, never
+    // about the operator's account: we do not know whether they have campaigns,
+    // so we say nothing about them. "Couldn't" not "no data", because the
+    // second is a claim we cannot support.
+    case ACCOUNT_STATE.UNREADABLE:
+      return [
+        'Lumi couldn’t read this account just now.',
+        'This is a problem on our side, not a verdict about your campaigns.',
+      ];
+
     default:
       return [];
   }
@@ -211,6 +240,19 @@ export const STATE_CONFIG = Object.freeze({
     label: 'Portfolio view',
     color: 'text-lumi-muted',
     heroBg: 'bg-lumi-surface border-lumi-border',
+  },
+  // B8-02 — its OWN entry, not LEARNING's. The hero falls back to whatever this
+  // map lacks, so an absent entry here would have re-rendered a failed read as
+  // "still learning about your account" one layer below the fix. Same shape as
+  // C-16, where publishing `severity: null` was not enough because the router
+  // re-invented MEDIUM underneath it.
+  //
+  // Toned as a WARNING, not a danger: nothing is known to be wrong with the
+  // account, only with our reading of it.
+  [ACCOUNT_STATE.UNREADABLE]: {
+    label: 'Not reachable',
+    color: 'text-signal-hold',
+    heroBg: 'bg-lumi-surface border-signal-hold/30',
   },
 });
 

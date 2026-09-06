@@ -764,3 +764,53 @@ describe('OverviewView — two-column layout', () => {
     expect(screen.getByRole('link', { name: /Review decisions/ })).toHaveAttribute('href', '#act-now');
   });
 });
+
+// ============================================================
+// B8-02 — a failed read is not an empty account
+// ------------------------------------------------------------
+// This is the REACHED half of the slice. `getAccountState` returning UNREADABLE
+// and `STATE_CONFIG` carrying its own entry prove the state EXISTS; only a
+// render through the real view model proves an operator can ever see it.
+//
+// That distinction is the whole lesson of the B7 consumer sweep: three closed
+// contracts published fields no surface read, and every gate that proved they
+// LANDED passed. So the state half is asserted in overviewState.*.test.js, and
+// the reaching half is asserted here.
+// ============================================================
+describe('B8-02 · the hero reports a failed read as a failure', () => {
+  it('does NOT tell the operator to connect a channel when the read failed', () => {
+    useConnectorCampaigns.mockReturnValue({
+      campaigns: [], loading: false, error: new Error('Network Error'), refetch: vi.fn(),
+    });
+    renderView();
+
+    // The precise falsehood: an outage rendered as an empty, un-onboarded account.
+    expect(screen.queryByText(/connect a channel/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/first verdict/i)).not.toBeInTheDocument();
+  });
+
+  it('says the read failed, and says it is not a verdict about the campaigns', () => {
+    useConnectorCampaigns.mockReturnValue({
+      campaigns: [], loading: false, error: new Error('Network Error'), refetch: vi.fn(),
+    });
+    renderView();
+
+    expect(screen.getByText(/couldn’t read this account/i)).toBeInTheDocument();
+    expect(screen.getByText(/not a verdict about your campaigns/i)).toBeInTheDocument();
+  });
+
+  it('a health failure counts too — every substrate that decides hasAnyData', () => {
+    useAccountHealth.mockReturnValue({
+      health: null, loading: false, error: new Error('500'), refetch: vi.fn(),
+    });
+    renderView();
+    expect(screen.getByText(/couldn’t read this account/i)).toBeInTheDocument();
+  });
+
+  it('a GENUINELY empty account still reads as empty — failure ≠ empty, both ways', () => {
+    // Non-vacuity. Without this the tests above would pass on a page that
+    // called everything a failure.
+    renderView(); // all defaults: no data, no errors
+    expect(screen.queryByText(/couldn’t read this account/i)).not.toBeInTheDocument();
+  });
+});

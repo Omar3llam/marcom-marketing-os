@@ -45,7 +45,14 @@ const RULES = [
   },
   {
     id: INTERRUPT.CONNECT,
-    when: (c) => !c.hasAnyData,
+    // B8-02 — `unreadable` excluded, because this interrupt is an instruction,
+    // not a description: it tells the operator to go connect a channel. On a
+    // failed read we do not know whether they have one, so the instruction may
+    // be both wrong and impossible to act on — and it would sit under a hero
+    // that just said we could not read the account. The hero states the
+    // failure; nothing beside it should give onboarding advice about an
+    // account nobody has read.
+    when: (c) => !c.hasAnyData && !c.unreadable,
   },
 ];
 
