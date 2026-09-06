@@ -50,6 +50,8 @@ const Publishing          = lazy(() => import('./pages/Publishing.jsx'));     //
 
 // ── Phase 11A · surfacing the built brain (role-gated) ────────
 const BlendedTruth = lazy(() => import('./pages/BlendedTruth.jsx'));
+// B8-03 — the THEN destination. Its route was a redirect to Overview until now.
+const DecisionHistory = lazy(() => import('./features/decisions/DecisionHistoryView.jsx'));
 const Proof        = lazy(() => import('./pages/Proof.jsx'));
 
 // ── Internal admin panel — standalone (no app shell), ADMIN-only ─
@@ -189,10 +191,18 @@ export default function App() {
               <Suspense fallback={<PageFallback />}><Leadership /></Suspense>
             </ErrorBoundary>
           } />
-          {/* Legacy Command Center surface removed — the decision feed lives on
-              Overview now. Route kept as a redirect so existing deep-links and
-              bookmarks resolve instead of 404-ing. */}
-          <Route path="decisions"  element={<Navigate to={appRoutes.overview} replace />} />
+          {/* B8-03 — THE THEN DESTINATION (B7 R-N1 + R-N2).
+              This route was a redirect to Overview ever since the legacy Command
+              Center was removed. It is now a real destination again: the
+              Decision is the unit of work and owns its own address, and Campaign
+              is the lens you locate it through, not the place it lives.
+              UNGATED by plan (B7 Ruling 3) and by role — reading what Lumi
+              decided is not an operator action. */}
+          <Route path="decisions"  element={
+            <ErrorBoundary boundaryId="decisions">
+              <Suspense fallback={<PageFallback />}><DecisionHistory /></Suspense>
+            </ErrorBoundary>
+          } />
           <Route path="campaigns"  element={
             <ErrorBoundary boundaryId="campaigns">
               <LockFromClient>

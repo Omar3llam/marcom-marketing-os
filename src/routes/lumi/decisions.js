@@ -38,6 +38,7 @@ import { getRecentDecisions, RECENT_DECISIONS_LIMIT } from '../../services/decis
 import { validateJudgment, recordJudgment } from '../../services/decision-memory/humanJudgment.js';
 import { scopeFor } from '../../services/decisions/decisionClassScope.js';
 import { getDecisionDetail } from '../../services/decisions/decisionDetail.js';
+import { getDecisionHistoryPage, HISTORY_PAGE_SIZE } from '../../services/decision-memory/decisionHistoryList.js';
 import { stampOnce, recordSignal, recordEntitySignal } from './decisionSignalStamps.js';
 
 // Re-exported, not re-implemented: signalProjection.contract.test.js imports it
@@ -175,6 +176,44 @@ decisionsRouter.get(`${BASE}/learning`, requireCollabRole(...OPERATORS), async (
 // not an operator action; the OPERATORS gate above guards WRITES.
 //
 // Workspace scope comes from the auth middleware and never from the caller.
+// ─────────────────────────────────────────────────────────────
+// GET /decisions — THE THEN DESTINATION'S LIST (B7 R-N2, B8-03)
+// ─────────────────────────────────────────────────────────────
+// The workspace's decision history: SIGNAL + GUARDRAIL, newest first, paged.
+// Its own read, NOT a widened `/decisions/recent` — that one is a capped,
+// SIGNAL-only sidebar strip and answers a different question.
+//
+// NO PLAN GATE, deliberately: B7 Ruling 3 put the Decision destination at FREE,
+// and this router carries no `requirePlan`. NO ROLE GATE, for the reason stated
+// above `/decisions/recent`: reading what Lumi decided is not an operator
+// action.
+//
+// `total` is COUNTED, never inferred from the page — a capped list is not a
+// capped count (B8-01's forbidden inference). `nextCursor` is observed by
+// over-fetching one row, so a full last page never publishes a cursor that
+// leads nowhere.
+decisionsRouter.get('/decisions', async (req, res) => {
+  const workspaceId = req.workspaceId;
+  // Same reasoning as `/decisions/recent`: authenticated but not yet in a
+  // workspace is an EMPTY history, not a failure. A 401 here would surface as a
+  // broken destination during onboarding.
+  if (!workspaceId) return res.json({ decisions: [], total: 0, nextCursor: null });
+
+  try {
+    const page = await getDecisionHistoryPage({
+      workspaceId,
+      limit:  req.query.limit ? Number(req.query.limit) : HISTORY_PAGE_SIZE,
+      cursor: typeof req.query.cursor === 'string' ? req.query.cursor : null,
+    });
+    return res.json(page);
+  } catch (err) {
+    logger.error({ err: err.message, workspaceId }, '[lumi/decisions] history failed');
+    // NOT an empty list. C-03's rule: a failed read must never be spelled the
+    // same way as a workspace that has decided nothing.
+    return res.status(500).json({ error: 'DecisionHistoryUnavailable', message: 'Request failed' });
+  }
+});
+
 decisionsRouter.get('/decisions/recent', async (req, res) => {
   const workspaceId = req.workspaceId;
   // Authenticated but no workspace yet: an empty list is the true answer, and

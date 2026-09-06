@@ -194,7 +194,15 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
     // so the pure sibling test would stay green while the destination 500s. It
     // also separates a SQL NULL provenance from a JSON `null` one — Prisma
     // spells them identically, and only one means "memory was never asked".
-    expect(dbGatedFiles().length).toBe(35);
+    //
+    // 35 → 36 in B8-03: decisionHistoryList.db.contract.test.js. The THEN
+    // destination pages with a keyset cursor, and a cursor is only correct if
+    // the ordering is TOTAL — `createdAt` ties whenever a sweep writes several
+    // rows in one transaction, which is the normal case. A mock cannot produce
+    // that tie, so it cannot prove the tiebreak stops the cursor skipping or
+    // repeating a row. Nor can it prove `total` is a COUNT rather than the page
+    // length: only a real table can hold more rows than a page returns.
+    expect(dbGatedFiles().length).toBe(36);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {

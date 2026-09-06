@@ -58,6 +58,49 @@ export const DecisionSchema = z.object({
   createdAt: z.coerce.date(),
 });
 
+/**
+ * One row of the THEN destination's list (`GET /api/lumi/decisions`).
+ *
+ * B8-03 — NOT `DecisionSchema`. That one describes a whole Decision and
+ * requires `workspaceId`, which the list projection deliberately omits: a row
+ * the caller already scoped by workspace does not restate it. A list row is its
+ * own shape, and saying so keeps the destination free to carry less than the
+ * detail surface does.
+ *
+ * `decisionClass` is NULLABLE but always ADMITTED. C-13's F-6 is the reason it
+ * is spelled out here: C-10 published the class and the client's zod schema
+ * stripped it, so the cure could never have had a consumer. A row's class fills
+ * B8-02's "why credible" slot, and a schema that dropped it would empty that
+ * slot silently.
+ */
+export const DecisionHistoryRowSchema = z.object({
+  id: z.string().min(1),
+  decisionClass: z.string().nullable(),
+  entityId: z.string().nullish(),
+  entityLevel: EntityLevelSchema,
+  verdict: VerdictSchema,
+  status: DecisionStatusSchema,
+  diagnosis: z.string(),
+  rootCause: z.string().nullish(),
+  // C-16 — the same absence the detail surface admits. Null means the engine
+  // measured no confidence, and it must never render as a number.
+  confidence: z.number().min(0).max(1).nullable(),
+  createdAt: z.coerce.date(),
+});
+
+/**
+ * A page of decision history.
+ *
+ * `total` is the whole population and is INDEPENDENT of `decisions.length` —
+ * B8-01's forbidden inference, held at the parse boundary: a capped list is not
+ * a capped count. `nextCursor` is null on the last page, never an empty string.
+ */
+export const DecisionHistoryPageSchema = z.object({
+  decisions: z.array(DecisionHistoryRowSchema),
+  total: z.number().int().min(0),
+  nextCursor: z.string().nullable(),
+});
+
 export const OutcomeSnapshotSchema = z.object({
   id: z.string().min(1),
   workspaceId: z.string().min(1),
@@ -108,3 +151,6 @@ export type DecisionStatus = z.infer<typeof DecisionStatusSchema>;
 export type Decision = z.infer<typeof DecisionSchema>;
 export type OutcomeSnapshot = z.infer<typeof OutcomeSnapshotSchema>;
 export type DecisionMemoryEntry = z.infer<typeof DecisionMemoryEntrySchema>;
+
+export type DecisionHistoryRow = z.infer<typeof DecisionHistoryRowSchema>;
+export type DecisionHistoryPage = z.infer<typeof DecisionHistoryPageSchema>;

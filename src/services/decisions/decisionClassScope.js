@@ -87,6 +87,24 @@ export const DECISION_READERS = Object.freeze({
   'memory/decision-history': [S],
   /** The sidebar's recent-decisions list. */
   'memory/recent-decisions': [S],
+
+  /**
+   * B8-03 — the THEN destination's own list (`/app/decisions`).
+   *
+   * SIGNAL + GUARDRAIL, and deliberately NOT the sidebar's scope one line
+   * above. The two answer different questions and must be free to diverge:
+   * `memory/recent-decisions` is a capped, SIGNAL-only strip that identifies
+   * rows for a sidebar; this is the workspace's decision history.
+   *
+   * EXPERIMENT is excluded because no writer puts one in this table. Only three
+   * sites create decision rows — VerdictService (SIGNAL), GuardrailSweepService
+   * (GUARDRAIL) and AllocationService (ALLOCATION); the `decisionClass:
+   * EXPERIMENT` in agenticPlanner is on an in-memory agenda item sourced from
+   * TestExperiment / IncrementalityTest. Admitting it here would promise a
+   * population that cannot exist. ALLOCATION is excluded by R-3, the same
+   * ruling `/decisions/:id` enforces with its typed 409.
+   */
+  'decisions/history': [S, DECISION_CLASS.GUARDRAIL],
   /** The attention band's Signal partition (C-01). */
   'loop/signal-verdicts': [S],
 
