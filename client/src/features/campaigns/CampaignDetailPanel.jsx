@@ -189,7 +189,7 @@ function EvidenceTable({ rows }) {
       {rows.map((r) => (
         <Fragment key={r.metric}>
           <dt className="text-lumi-muted truncate">{r.label}</dt>
-          <dd className={`font-mono text-right ${r.status === 'weak' ? 'text-lumi-danger' : 'text-lumi-text'}`}>{r.value}</dd>
+          <dd className={`font-mono text-right ${r.status === 'weak' ? 'text-signal-kill' : 'text-lumi-text'}`}>{r.value}</dd>
           <dd className="font-mono text-right text-lumi-subtle">
             {r.benchmark ? `vs ${r.benchmark}` : <Dash />}
           </dd>

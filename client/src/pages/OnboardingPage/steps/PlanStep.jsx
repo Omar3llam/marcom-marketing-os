@@ -61,29 +61,29 @@ export function PlanStep({ form, set }) {
                 </div>
               )}
 
-              <div className="text-xs font-semibold uppercase tracking-wider text-dark-tertiary mb-1">
+              <div className="text-xs font-semibold uppercase tracking-wider text-dark-muted mb-1">
                 {plan.tag}
               </div>
 
-              <div className="decision-title text-dark-primary mb-1">
+              <div className="decision-title text-dark-base mb-1">
                 {plan.name}
               </div>
 
               <div className="mb-4">
                 <div className="flex items-baseline gap-1">
-                  <span className="metric-display text-dark-primary">
+                  <span className="metric-display text-dark-base">
                     {price.toLocaleString()}
                   </span>
-                  <span className="text-sm text-dark-secondary">
+                  <span className="text-sm text-dark-soft">
                     {form.currency}
                   </span>
                 </div>
-                <div className="text-xs text-dark-tertiary">
+                <div className="text-xs text-dark-muted">
                   {priceLabel}
                 </div>
               </div>
 
-              <ul className="space-y-2 text-xs text-dark-secondary flex-1">
+              <ul className="space-y-2 text-xs text-dark-soft flex-1">
                 {plan.bullets.map((bullet, i) => (
                   <li key={i} className="flex items-start gap-2">
                     <Check className="h-3.5 w-3.5 text-lumi-gold flex-shrink-0 mt-0.5" />
@@ -96,11 +96,11 @@ export function PlanStep({ form, set }) {
         })}
       </div>
 
-      <div className="mt-5 p-4 rounded-lg bg-surface-muted border border-surface-border">
-        <div className="text-xs font-medium text-dark-secondary mb-1">
+      <div className="mt-5 p-4 rounded-lg bg-surface-elevated border border-surface-border">
+        <div className="text-xs font-medium text-dark-soft mb-1">
           Free during early access —
         </div>
-        <div className="text-xs text-dark-secondary leading-relaxed">
+        <div className="text-xs text-dark-soft leading-relaxed">
           You won&apos;t be charged while Lumi is in early access. We&apos;ll let you know before any paid plan begins.
         </div>
       </div>

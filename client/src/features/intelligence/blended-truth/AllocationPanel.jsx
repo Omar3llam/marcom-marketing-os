@@ -134,7 +134,7 @@ export function AllocationPanel({
                 type="button"
                 disabled={committing || !validBudget}
                 onClick={() => onCommit?.({ totalBudgetMinor })}
-                className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-gold disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {committing ? 'Committing…' : 'Commit allocation'}
               </button>

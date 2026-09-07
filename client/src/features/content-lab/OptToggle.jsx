@@ -9,7 +9,7 @@ export function OptToggle({ on, onToggle, label, sub, disabled = false }) {
         disabled ? 'opacity-50 cursor-not-allowed' : ''
       } ${
         on
-          ? 'bg-lumi-accent/4 border border-lumi-accent/30'
+          ? 'bg-lumi-accent/5 border border-lumi-accent/30'
           : 'border border-transparent hover:bg-surface-elevated'
       }`}
     >

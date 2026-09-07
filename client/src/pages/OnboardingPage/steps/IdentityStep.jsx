@@ -70,7 +70,7 @@ export function IdentityStep({ form, set }) {
             placeholder="e.g., Fashion / Q2 / Performance"
             className={inputBase}
           />
-          <div className="mt-1.5 text-xs text-dark-tertiary">
+          <div className="mt-1.5 text-xs text-dark-muted">
             Used to organize workspaces if you manage multiple brands
           </div>
         </Field>

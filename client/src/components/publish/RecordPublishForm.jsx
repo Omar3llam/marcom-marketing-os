@@ -66,9 +66,9 @@ export function RecordPublishForm({ artifact, onRecorded }) {
   // ── Recorded confirmation ─────────────────────────────────
   if (published) {
     return (
-      <div className="mt-4 p-3 bg-signal-success/10 border border-signal-success/20 rounded">
+      <div className="mt-4 p-3 bg-signal-scale/10 border border-signal-scale/20 rounded">
         <div className="flex items-center gap-2">
-          <CheckCircle className="h-4 w-4 text-signal-success" />
+          <CheckCircle className="h-4 w-4 text-signal-scale" />
           <Text variant="data" intent="success" className="font-semibold">
             Publish recorded
           </Text>
@@ -86,7 +86,7 @@ export function RecordPublishForm({ artifact, onRecorded }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-brand-gold/30 text-brand-gold text-sm font-medium hover:bg-brand-gold/10 transition-colors"
+        className="mt-4 inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-lumi-gold/30 text-lumi-gold text-sm font-medium hover:bg-lumi-gold/10 transition-colors"
       >
         <Send className="h-4 w-4" />
         Record Meta publish
@@ -96,7 +96,7 @@ export function RecordPublishForm({ artifact, onRecorded }) {
 
   // ── Entry form ────────────────────────────────────────────
   return (
-    <form onSubmit={handleSubmit} className="mt-4 p-4 bg-surface-dark/20 border border-border-subtle rounded-lg space-y-3">
+    <form onSubmit={handleSubmit} className="mt-4 p-4 bg-surface-dark/20 border border-surface-border rounded-lg space-y-3">
       <div>
         <Text variant="label" intent="primary">
           Record Meta publish
@@ -109,8 +109,8 @@ export function RecordPublishForm({ artifact, onRecorded }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         {FIELDS.map(({ name, label, required, placeholder }) => (
           <div key={name}>
-            <label htmlFor={`publish-${name}`} className="block text-sm font-medium text-text-secondary mb-1">
-              {label} {required && <span className="text-signal-danger">*</span>}
+            <label htmlFor={`publish-${name}`} className="block text-sm font-medium text-dark-soft mb-1">
+              {label} {required && <span className="text-signal-kill">*</span>}
             </label>
             <input
               id={`publish-${name}`}
@@ -118,7 +118,7 @@ export function RecordPublishForm({ artifact, onRecorded }) {
               value={values[name]}
               onChange={setField(name)}
               placeholder={placeholder}
-              className="w-full px-3 py-2 bg-surface-base border border-border-subtle rounded text-text-primary placeholder:text-text-subtle focus:outline-none focus:ring-2 focus:ring-brand-gold/50"
+              className="w-full px-3 py-2 bg-surface-card border border-surface-border rounded text-dark-base placeholder:text-dark-subtle focus:outline-none focus:ring-2 focus:ring-lumi-gold/50"
             />
           </div>
         ))}
@@ -126,7 +126,7 @@ export function RecordPublishForm({ artifact, onRecorded }) {
 
       {/* Client-side required-field message */}
       {missing && (
-        <div className="flex items-center gap-2 text-signal-danger text-sm">
+        <div className="flex items-center gap-2 text-signal-kill text-sm">
           <AlertCircle className="h-4 w-4" />
           <span>Meta ad ID and campaign ID are required.</span>
         </div>
@@ -134,7 +134,7 @@ export function RecordPublishForm({ artifact, onRecorded }) {
 
       {/* Mapped server error (malformed IDs, already-published, permission) */}
       {error && (
-        <div className="flex items-center gap-2 text-signal-danger text-sm">
+        <div className="flex items-center gap-2 text-signal-kill text-sm">
           <AlertCircle className="h-4 w-4" />
           <span>{error}</span>
         </div>
@@ -147,8 +147,8 @@ export function RecordPublishForm({ artifact, onRecorded }) {
           className={cn(
             'px-4 py-2 rounded-lg font-medium transition-all',
             submitting
-              ? 'bg-surface-dark text-text-muted cursor-not-allowed'
-              : 'bg-brand-gold text-surface-dark hover:bg-brand-gold/90 active:scale-95'
+              ? 'bg-surface-dark text-dark-muted cursor-not-allowed'
+              : 'bg-lumi-gold text-surface-dark hover:bg-lumi-gold/90 active:scale-95'
           )}
         >
           {submitting ? 'Recording...' : 'Record publish'}
@@ -156,7 +156,7 @@ export function RecordPublishForm({ artifact, onRecorded }) {
         <button
           type="button"
           onClick={() => { setOpen(false); setMissing(false); reset(); }}
-          className="px-4 py-2 rounded-lg font-medium text-text-secondary hover:text-text-primary hover:bg-surface-dark/50 transition-colors"
+          className="px-4 py-2 rounded-lg font-medium text-dark-soft hover:text-dark-base hover:bg-surface-dark/50 transition-colors"
         >
           Cancel
         </button>

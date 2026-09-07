@@ -121,7 +121,7 @@ function NotFound({ app = false }) {
         <p className="mt-2 text-sm leading-6 text-lumi-muted">This page does not exist or has moved.</p>
         <Link
           to={app ? appRoutes.overview : '/'}
-          className="mt-5 inline-flex rounded-xl bg-lumi-accent px-4 py-2 font-display text-sm font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover"
+          className="mt-5 inline-flex rounded-xl bg-lumi-accent px-4 py-2 font-display text-sm font-semibold text-lumi-bg transition-colors hover:bg-lumi-gold"
         >
           {app ? 'Back to overview' : 'Back to home'}
         </Link>

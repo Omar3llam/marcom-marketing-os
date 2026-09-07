@@ -29,7 +29,7 @@ export default function UpgradePrompt({ feature, requiredPlan = 'GROWTH' }) {
         </p>
         <a
           href="/#pricing"
-          className="mt-5 inline-flex rounded-xl bg-lumi-accent px-4 py-2 font-display text-sm font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover"
+          className="mt-5 inline-flex rounded-xl bg-lumi-accent px-4 py-2 font-display text-sm font-semibold text-lumi-bg transition-colors hover:bg-lumi-gold"
         >
           View plans →
         </a>

@@ -51,7 +51,7 @@ export function Step1Company({ form, set }) {
                 'rounded-xl border p-2 sm:p-2.5 text-xs sm:text-sm font-semibold text-center transition-all',
                 form.language === lang
                   ? 'border-lumi-gold/50 bg-lumi-gold/10 text-lumi-gold'
-                  : 'border-white/8 bg-white/[0.03] text-white/50 hover:border-white/20 hover:text-white/70',
+                  : 'border-white/10 bg-white/[0.03] text-white/50 hover:border-white/20 hover:text-white/70',
               )}
             >
               {lang}

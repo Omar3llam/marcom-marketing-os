@@ -69,31 +69,31 @@ export function ApprovalForm({ artifact, onSubmit, onCancel, initialDecision }) 
       value: DECISION.APPROVED,
       label: 'Approve',
       icon: Check,
-      className: 'border-signal-success/30 hover:bg-signal-success/10 text-signal-success',
+      className: 'border-signal-scale/30 hover:bg-signal-scale/10 text-signal-scale',
     },
     {
       value: DECISION.REGENERATE,
       label: 'Regenerate',
       icon: RotateCcw,
-      className: 'border-signal-warning/30 hover:bg-signal-warning/10 text-signal-warning',
+      className: 'border-signal-hold/30 hover:bg-signal-hold/10 text-signal-hold',
     },
     {
       value: DECISION.REQUEST_REVISION,
       label: 'Request Revision',
       icon: Edit,
-      className: 'border-brand-gold/30 hover:bg-brand-gold/10 text-brand-gold',
+      className: 'border-lumi-gold/30 hover:bg-lumi-gold/10 text-lumi-gold',
     },
     {
       value: DECISION.REJECTED,
       label: 'Reject',
       icon: X,
-      className: 'border-signal-danger/30 hover:bg-signal-danger/10 text-signal-danger',
+      className: 'border-signal-kill/30 hover:bg-signal-kill/10 text-signal-kill',
     },
     {
       value: DECISION.ESCALATE,
       label: 'Escalate',
       icon: AlertTriangle,
-      className: 'border-text-muted/30 hover:bg-surface-dark/50 text-text-muted',
+      className: 'border-dark-muted/30 hover:bg-surface-dark/50 text-dark-muted',
     },
   ];
 
@@ -147,8 +147,8 @@ export function ApprovalForm({ artifact, onSubmit, onCancel, initialDecision }) 
                 'flex flex-col items-center gap-2 px-3 py-3 border rounded-lg transition-all',
                 'hover:scale-105 active:scale-95',
                 selectedDecision === value
-                  ? cn(className, 'ring-2 ring-offset-2 ring-offset-surface-base')
-                  : 'border-border-subtle bg-surface-base text-text-secondary hover:border-border-base'
+                  ? cn(className, 'ring-2 ring-offset-2 ring-offset-surface-card')
+                  : 'border-surface-border bg-surface-card text-dark-soft hover:border-surface-border-strong'
               )}
             >
               <Icon className="h-5 w-5" />
@@ -160,21 +160,21 @@ export function ApprovalForm({ artifact, onSubmit, onCancel, initialDecision }) 
 
       {/* Structured Feedback (conditional) */}
       {needsStructuredFeedback && (
-        <div className="p-4 bg-surface-dark/20 border border-border-subtle rounded-lg space-y-4">
+        <div className="p-4 bg-surface-dark/20 border border-surface-border rounded-lg space-y-4">
           <Text variant="label" intent="primary">
             Structured Feedback
           </Text>
 
           {/* Feedback Type */}
           <div>
-            <label htmlFor="feedbackType" className="block text-sm font-medium text-text-secondary mb-1">
+            <label htmlFor="feedbackType" className="block text-sm font-medium text-dark-soft mb-1">
               Feedback Type
             </label>
             <select
               id="feedbackType"
               value={feedbackType}
               onChange={(e) => setFeedbackType(e.target.value)}
-              className="w-full px-3 py-2 bg-surface-base border border-border-subtle rounded text-text-primary focus:outline-none focus:ring-2 focus:ring-brand-gold/50"
+              className="w-full px-3 py-2 bg-surface-card border border-surface-border rounded text-dark-base focus:outline-none focus:ring-2 focus:ring-lumi-gold/50"
             >
               <option value="">Select feedback type...</option>
               {relevantFeedbackTypes.map(type => (
@@ -199,11 +199,11 @@ export function ApprovalForm({ artifact, onSubmit, onCancel, initialDecision }) 
                     value={level}
                     checked={severity === level}
                     onChange={(e) => setSeverity(e.target.value)}
-                    className="text-brand-gold focus:ring-brand-gold/50"
+                    className="text-lumi-gold focus:ring-lumi-gold/50"
                   />
                   <span className={cn(
                     'text-sm font-medium',
-                    severity === level ? 'text-text-primary' : 'text-text-muted'
+                    severity === level ? 'text-dark-base' : 'text-dark-muted'
                   )}>
                     {level}
                   </span>
@@ -224,13 +224,13 @@ export function ApprovalForm({ artifact, onSubmit, onCancel, initialDecision }) 
                     type="checkbox"
                     checked={preserveAspects.includes(aspect)}
                     onChange={() => handlePreserveAspectToggle(aspect)}
-                    className="text-brand-gold focus:ring-brand-gold/50 rounded"
+                    className="text-lumi-gold focus:ring-lumi-gold/50 rounded"
                   />
                   <span className={cn(
                     'text-sm',
                     preserveAspects.includes(aspect)
-                      ? 'text-text-primary font-medium'
-                      : 'text-text-muted group-hover:text-text-secondary'
+                      ? 'text-dark-base font-medium'
+                      : 'text-dark-muted group-hover:text-dark-soft'
                   )}>
                     {PRESERVE_ASPECT_LABELS[aspect]}
                   </span>
@@ -243,7 +243,7 @@ export function ApprovalForm({ artifact, onSubmit, onCancel, initialDecision }) 
 
       {/* Free-form Feedback */}
       <div>
-        <label htmlFor="feedback" className="block text-sm font-medium text-text-secondary mb-1">
+        <label htmlFor="feedback" className="block text-sm font-medium text-dark-soft mb-1">
           Feedback {needsStructuredFeedback ? '(optional)' : ''}
         </label>
         <textarea
@@ -256,7 +256,7 @@ export function ApprovalForm({ artifact, onSubmit, onCancel, initialDecision }) 
               ? 'Add additional context or specific instructions...'
               : 'Explain your decision...'
           }
-          className="w-full px-3 py-2 bg-surface-base border border-border-subtle rounded text-text-primary placeholder:text-text-subtle focus:outline-none focus:ring-2 focus:ring-brand-gold/50 resize-none"
+          className="w-full px-3 py-2 bg-surface-card border border-surface-border rounded text-dark-base placeholder:text-dark-subtle focus:outline-none focus:ring-2 focus:ring-lumi-gold/50 resize-none"
         />
       </div>
 
@@ -268,8 +268,8 @@ export function ApprovalForm({ artifact, onSubmit, onCancel, initialDecision }) 
           className={cn(
             'px-4 py-2 rounded-lg font-medium transition-all',
             selectedDecision
-              ? 'bg-brand-gold text-surface-dark hover:bg-brand-gold/90 active:scale-95'
-              : 'bg-surface-dark text-text-muted cursor-not-allowed'
+              ? 'bg-lumi-gold text-surface-dark hover:bg-lumi-gold/90 active:scale-95'
+              : 'bg-surface-dark text-dark-muted cursor-not-allowed'
           )}
         >
           Submit Decision
@@ -278,7 +278,7 @@ export function ApprovalForm({ artifact, onSubmit, onCancel, initialDecision }) 
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-lg font-medium text-text-secondary hover:text-text-primary hover:bg-surface-dark/50 transition-colors"
+            className="px-4 py-2 rounded-lg font-medium text-dark-soft hover:text-dark-base hover:bg-surface-dark/50 transition-colors"
           >
             Cancel
           </button>

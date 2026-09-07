@@ -16,7 +16,7 @@ export function Step2Business({ form, set, togglePlatform }) {
                 'rounded-xl border p-2.5 sm:p-3 text-xs sm:text-sm font-semibold transition-all',
                 form.businessType === t
                   ? 'border-lumi-gold/50 bg-lumi-gold/10 text-lumi-gold'
-                  : 'border-white/8 bg-white/[0.03] text-white/50 hover:border-white/20 hover:text-white/70',
+                  : 'border-white/10 bg-white/[0.03] text-white/50 hover:border-white/20 hover:text-white/70',
               )}
             >
               {t}
@@ -38,7 +38,7 @@ export function Step2Business({ form, set, togglePlatform }) {
                   'flex items-center gap-2 rounded-xl border p-3 text-left text-sm transition-all',
                   active
                     ? 'border-lumi-gold/50 bg-lumi-gold/10 text-lumi-gold'
-                    : 'border-white/8 bg-white/[0.03] text-white/50 hover:border-white/20',
+                    : 'border-white/10 bg-white/[0.03] text-white/50 hover:border-white/20',
                 )}
               >
                 <span>{p.icon}</span>

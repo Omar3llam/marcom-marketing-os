@@ -69,7 +69,9 @@
     "text":          "#2B2B2B",
     "muted":         "#6B6B6B",
     "subtle":        "#9A9A9A",
-    "accent":        "#E0A800"
+    "accent":        "#E0A800",
+    "_accent-soft":  "FE-01 — the soft accent wash. Written in 13 places and defined in none, so every one of them rendered no background at all. Derived, not invented: brand.gold #F6C945 composited at 25% over lumi.bg #F8F6F2, which is the tint its own call sites imply (always paired with border-lumi-accent/40 and text-lumi-accent).",
+    "accent-soft":   "#F8EBC7"
   },
 
   "radar": {

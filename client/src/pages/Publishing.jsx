@@ -51,12 +51,12 @@ function Zone({ title, count, loading, error, onRetry, EmptyIcon, emptyText, err
 
       {!loading && error && (
         <div role="alert" className="flex flex-col items-center justify-center py-12 text-center">
-          <AlertCircle className="h-9 w-9 text-signal-danger mb-3" />
+          <AlertCircle className="h-9 w-9 text-signal-kill mb-3" />
           <Text variant="body" intent="danger" className="mb-1">{errorText}</Text>
           <Text variant="body" intent="muted" className="mb-4">{error}</Text>
           <button
             onClick={onRetry}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-gold text-surface-dark rounded-lg font-medium hover:bg-brand-gold/90"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-lumi-gold text-surface-dark rounded-lg font-medium hover:bg-lumi-gold/90"
           >
             <Loader2 className="h-4 w-4" />
             Retry
@@ -65,8 +65,8 @@ function Zone({ title, count, loading, error, onRetry, EmptyIcon, emptyText, err
       )}
 
       {!loading && !error && !hasItems && (
-        <div className="flex flex-col items-center justify-center py-12 text-center border border-dashed border-border-subtle rounded-lg">
-          <EmptyIcon className="h-9 w-9 text-signal-success mb-3" />
+        <div className="flex flex-col items-center justify-center py-12 text-center border border-dashed border-surface-border rounded-lg">
+          <EmptyIcon className="h-9 w-9 text-signal-scale mb-3" />
           <Text variant="body" intent="muted">{emptyText}</Text>
         </div>
       )}
@@ -130,7 +130,7 @@ export default function Publishing() {
           {approved.artifacts.map((artifact) => (
             <div
               key={artifact.id}
-              className="p-6 border border-border-subtle rounded-lg bg-surface-base"
+              className="p-6 border border-surface-border rounded-lg bg-surface-card"
             >
               <ArtifactCard artifact={artifact} />
             </div>

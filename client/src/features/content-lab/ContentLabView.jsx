@@ -197,7 +197,7 @@ export default function ContentLabView() {
           <div className="section-label mb-3">Campaign context</div>
 
           {contextCampaign ? (
-            <div className="relative p-3.5 bg-lumi-accent/6 border border-lumi-accent/30 rounded-lg mb-3.5">
+            <div className="relative p-3.5 bg-lumi-accent/5 border border-lumi-accent/30 rounded-lg mb-3.5">
               <button
                 onClick={() => { setContextCampaign(null); setProduct(''); setOffer(''); setKeyFacts(''); }}
                 className="absolute top-2 right-2 p-0.5 text-dark-muted hover:text-dark-base transition-colors"
@@ -569,7 +569,7 @@ export default function ContentLabView() {
             <div className="flex flex-col gap-3">
               {/* Historical badge + metadata — the user always knows this is saved,
                   not the live generation. */}
-              <div className="flex items-center justify-between gap-2 p-2.5 bg-lumi-accent/6 border border-lumi-accent/25 rounded-lg">
+              <div className="flex items-center justify-between gap-2 p-2.5 bg-lumi-accent/5 border border-lumi-accent/25 rounded-lg">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="px-1.5 py-0.5 rounded bg-lumi-accent/15 text-lumi-accent font-mono text-[9px] font-semibold tracking-wider flex-shrink-0">
                     HISTORICAL

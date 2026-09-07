@@ -218,7 +218,7 @@ function ProposedBody({ exp, canOperate, onStart, startingId }) {
         type="button"
         disabled={isStarting}
         onClick={() => onStart?.(exp.id)}
-        className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+        className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-gold disabled:cursor-not-allowed disabled:opacity-40"
       >
         {isStarting ? 'Starting…' : 'Start test'}
       </button>
@@ -269,7 +269,7 @@ function RunningBody({ exp, canOperate, onConclude, concludingId, onRecord, reco
             type="button"
             disabled={!gate.ready || isConcluding}
             onClick={() => onConclude?.(exp.id)}
-            className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-gold disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isConcluding ? 'Concluding…' : 'Conclude test'}
           </button>
@@ -407,7 +407,7 @@ function MetricsForm({ exp, onRecord, recordingId, recordError }) {
           type="button"
           disabled={isRecording}
           onClick={submit}
-          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-gold disabled:cursor-not-allowed disabled:opacity-40"
         >
           {isRecording ? 'Recording…' : 'Save metrics'}
         </button>
@@ -515,7 +515,7 @@ function PromoteControl({ exp, role, onPromote, promotingId, promoteError }) {
       </div>
       <div className="flex items-center gap-2">
         <button type="submit" disabled={!valid || isPromoting}
-          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover disabled:cursor-not-allowed disabled:opacity-40">
+          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-gold disabled:cursor-not-allowed disabled:opacity-40">
           {isPromoting ? 'Promoting…' : 'Design holdout'}
         </button>
         <button type="button" disabled={isPromoting} onClick={() => setOpen(false)}
@@ -572,7 +572,7 @@ export function TestingView({
                   type="button"
                   disabled={committing}
                   onClick={() => onCommit?.(agenda)}
-                  className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-gold disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {committing ? 'Committing…' : 'Commit agenda'}
                 </button>

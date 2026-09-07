@@ -71,7 +71,7 @@ function Controls({ onRun, loading }) {
         />
       </label>
       <button type="submit" disabled={!valid || loading}
-        className="rounded-lg bg-lumi-accent px-3 py-2 text-xs font-semibold text-lumi-bg hover:bg-lumi-accent-hover disabled:opacity-40 disabled:cursor-not-allowed">
+        className="rounded-lg bg-lumi-accent px-3 py-2 text-xs font-semibold text-lumi-bg hover:bg-lumi-gold disabled:opacity-40 disabled:cursor-not-allowed">
         {loading ? 'Projecting…' : 'Project'}
       </button>
     </form>

@@ -125,7 +125,7 @@ export function AnalysisSummary({ rows, loading, sortKey, sortDir, setSort, expa
                             if (next.has(r.id)) next.delete(r.id); else next.add(r.id);
                             return next;
                           })}
-                          className="mt-1 inline-flex items-center text-lumi-accent hover:text-lumi-accent-hover"
+                          className="mt-1 inline-flex items-center text-lumi-accent hover:text-lumi-gold"
                         >
                           {isOpen ? <ChevronUp className="w-3.5 h-3.5" strokeWidth={2} /> : <ChevronDown className="w-3.5 h-3.5" strokeWidth={2} />}
                         </button>

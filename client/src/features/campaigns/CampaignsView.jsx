@@ -590,7 +590,7 @@ export default function CampaignsView() {
         </p>
       )}
       {trackingGapCount > 0 && (
-        <p className={cn('font-mono text-[11px] text-signal-warning', awarenessCount > 0 ? 'mb-2' : 'mb-2 -mt-3')}>
+        <p className={cn('font-mono text-[11px] text-signal-hold', awarenessCount > 0 ? 'mb-2' : 'mb-2 -mt-3')}>
           {trackingGapCount} conversion campaign{trackingGapCount === 1 ? '' : 's'} scored on engagement but tracking no revenue — verify the Meta Pixel or lead-form setup so ROAS can be measured.
         </p>
       )}

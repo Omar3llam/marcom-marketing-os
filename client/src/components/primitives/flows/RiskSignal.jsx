@@ -25,10 +25,10 @@ const signalVariants = cva(
   {
     variants: {
       severity: {
-        low: 'bg-signal-success/10 text-signal-success border border-signal-success/20',
-        moderate: 'bg-signal-warning/10 text-signal-warning border border-signal-warning/20',
+        low: 'bg-signal-scale/10 text-signal-scale border border-signal-scale/20',
+        moderate: 'bg-signal-hold/10 text-signal-hold border border-signal-hold/20',
         high: 'bg-orange-500/10 text-orange-600 border border-orange-500/20',
-        critical: 'bg-signal-danger/10 text-signal-danger border border-signal-danger/20',
+        critical: 'bg-signal-kill/10 text-signal-kill border border-signal-kill/20',
       },
     },
   }

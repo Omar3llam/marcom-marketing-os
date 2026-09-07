@@ -24,9 +24,9 @@ const indicatorVariants = cva(
   {
     variants: {
       level: {
-        high: 'text-signal-success',
-        medium: 'text-signal-warning',
-        low: 'text-signal-danger',
+        high: 'text-signal-scale',
+        medium: 'text-signal-hold',
+        low: 'text-signal-kill',
       },
       size: {
         sm: 'text-xs',
@@ -45,9 +45,9 @@ const dotVariants = cva(
   {
     variants: {
       level: {
-        high: 'bg-signal-success',
-        medium: 'bg-signal-warning',
-        low: 'bg-signal-danger',
+        high: 'bg-signal-scale',
+        medium: 'bg-signal-hold',
+        low: 'bg-signal-kill',
       },
       size: {
         sm: 'w-1.5 h-1.5',

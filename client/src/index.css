@@ -215,7 +215,23 @@
 
   --c-lumi-elevated: #F1EEE8;
 
-  /* ── Font Sizes ──────────────────────────────────────────── */
+  /* ── Font Sizes ──────────────────────────────────────────────
+     FE-01 — NOT a divergence from tokens/typography.json, a NAMING
+     COLLISION, and the difference decides whether touching it is a fix
+     or a regression.
+
+       tokens   xs 11 · sm 12 · base 14 · md 15 · lg 17 · xl 20 · 2xl 24
+       here     xs 11 · sm 12 ·           md 14 · lg 17 · xl 20 · 2xl 24
+
+     Every shared step agrees. This ladder simply has no `base`, and reuses
+     the name `md` for it. So `--font-size-md` is the tokens' `base`, and the
+     tokens' real `md` (15px) has no name here at all.
+
+     `--font-size-md: 15px` therefore looks like an alignment and is a silent
+     resize of every .tsx component that reads it — and those files are
+     outside the ESLint glob, so nothing would flag it. Left as measured;
+     the two ladders are reconciled when the .tsx layer is folded in, which
+     is its own slice. ── */
   --font-size-xs: 11px;
   --font-size-sm: 12px;
   --font-size-md: 14px;

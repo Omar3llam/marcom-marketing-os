@@ -18,7 +18,7 @@ export function MetricTile({ label, value, detail, icon: Icon, tone = 'neutral',
           {detail && <p className="mt-1 text-xs leading-5 text-lumi-muted">{detail}</p>}
         </div>
         {Icon && (
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-current/20 text-lumi-accent">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-lumi-border text-lumi-accent">
             <Icon className="h-4 w-4" strokeWidth={1.5} />
           </div>
         )}

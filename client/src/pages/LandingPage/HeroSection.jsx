@@ -26,7 +26,7 @@ export function Hero() {
       <div className="max-w-7xl mx-auto grid lg:grid-cols-[1.05fr_0.95fr] gap-16 lg:gap-20 items-center relative">
         {/* LEFT */}
         <div>
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-lumi-accent/10 border border-lumi-accent/28 mb-7">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-lumi-accent/10 border border-lumi-accent/30 mb-7">
             <span className="w-1.5 h-1.5 rounded-full bg-lumi-accent shadow-gold-glow animate-pulse" />
             <span className="font-mono text-[11px] tracking-[0.1em] uppercase text-lumi-accent font-semibold">
               Built for MENA performance marketers
@@ -107,7 +107,7 @@ function VerdictDemo() {
         {/* Window chrome */}
         <div className="flex items-center gap-1.5 px-3.5 py-2.5 bg-lumi-surface border-b border-lumi-border">
           <span className="w-2.5 h-2.5 rounded-full bg-signal-kill/60" />
-          <span className="w-2.5 h-2.5 rounded-full bg-lumi-accent/60" />
+          <span className="w-2.5 h-2.5 rounded-full bg-lumi-accent/50" />
           <span className="w-2.5 h-2.5 rounded-full bg-signal-scale/60" />
           <span className="ml-2 font-mono text-[10px] text-lumi-muted">Lumi — Campaign Analysis</span>
         </div>

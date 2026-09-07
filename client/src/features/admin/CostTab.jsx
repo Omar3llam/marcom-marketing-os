@@ -110,7 +110,7 @@ function DailyBars({ byDay }) {
             key={day}
             title={`${day}: ${v.toLocaleString()} tokens`}
             style={{ height: `${Math.max(2, (v / peak) * 100)}%` }}
-            className="flex-1 rounded-sm bg-lumi-accent/60"
+            className="flex-1 rounded-sm bg-lumi-accent/50"
           />
         ))}
       </div>

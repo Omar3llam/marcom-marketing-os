@@ -17,7 +17,7 @@ export function StateBlock({
 }) {
   return (
     <section className={cn('rounded-xl border p-6 text-center shadow-sm', stateTone[tone], className)}>
-      <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-current/20 bg-white/5">
+      <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-lumi-border bg-white/5">
         <Icon className="h-5 w-5" strokeWidth={1.5} />
       </div>
       <h2 className="font-display text-sm font-semibold text-lumi-text">{title}</h2>

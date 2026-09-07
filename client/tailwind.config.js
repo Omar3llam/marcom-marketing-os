@@ -69,6 +69,7 @@ export default {
         'lumi-muted':         colors.lumi.muted,
         'lumi-subtle':        colors.lumi.subtle,
         'lumi-accent':        colors.lumi.accent,
+        'lumi-accent-soft':   colors.lumi['accent-soft'],
 
         // Intelligence system tokens
         'radar-active':   colors.radar.active,

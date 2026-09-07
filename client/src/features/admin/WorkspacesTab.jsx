@@ -259,7 +259,7 @@ export function WorkspacesTab() {
           </select>
         </div>
         <button type="button" onClick={onSeed} disabled={seeding}
-          className="flex-shrink-0 rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover disabled:opacity-50">
+          className="flex-shrink-0 rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-gold disabled:opacity-50">
           {seeding ? 'Seeding…' : 'Seed demo workspace'}
         </button>
       </div>

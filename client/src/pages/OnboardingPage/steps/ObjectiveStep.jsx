@@ -41,18 +41,18 @@ export function ObjectiveStep({ form, set }) {
               rows={4}
               className={textareaBase}
             />
-            <div className="mt-1.5 text-xs text-dark-tertiary">
+            <div className="mt-1.5 text-xs text-dark-muted">
               Be specific — include target metrics, geography, or constraints
             </div>
           </Field>
         </div>
       )}
 
-      <div className="mt-5 p-4 rounded-lg bg-surface-muted border border-surface-border">
-        <div className="text-xs font-medium text-dark-secondary mb-1">
+      <div className="mt-5 p-4 rounded-lg bg-surface-elevated border border-surface-border">
+        <div className="text-xs font-medium text-dark-soft mb-1">
           What this means —
         </div>
-        <div className="text-xs text-dark-secondary leading-relaxed">
+        <div className="text-xs text-dark-soft leading-relaxed">
           Your objective becomes part of the context Lumi reasons with — it shapes how
           recommendations are framed and prioritized for your account.
         </div>
