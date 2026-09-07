@@ -1,30 +1,33 @@
 // ============================================================
 // MARCOM / Lumi — GrowthStrategyBoard  (/app/intelligence/insights)
 // ------------------------------------------------------------
-// 4 macro metrics + an active-bets strip + the account's goals, plans, approval
-// queue and unit economics. MRR / LTV:CAC / CAC don't exist as backend
-// endpoints yet — those tiles render the section label with an honest "—"
-// placeholder rather than fabricating numbers.
+// The account's macro metrics, goals, plans, approval queue and unit economics.
+// MRR / LTV:CAC don't exist as backend endpoints yet — those tiles render the
+// section label with an honest "—" rather than fabricating a number.
 //
-// FE-02 — the ACROSS axis is no longer here. The memory-layer timeline and the
-// account briefing moved to /app/memory, which is the destination for the
-// object they are two readings of (B7 Ruling 2).
+// FE-02 — the ACROSS axis left: the memory-layer timeline and the account
+// briefing moved to /app/memory (B7 Ruling 2).
 //
-// STILL OPEN, and named rather than left to be discovered: `bets` and the
-// Blended CPA tile read `campaigns` off `useCampaignFeed`, and `GET /lumi/feed`
-// stopped publishing that array in S1-B. Both therefore render a claim about an
-// account from a field that does not exist — "No strategic bets active" and "No
-// campaigns yet". They are the SUBJECT axis and FE-03 repoints them together
-// with the hook's other two consumers; splitting that across two slices is how
-// a half-repointed hook gets left behind.
+// FE-03 — and the SUBJECT half left with the substrate behind it. "Active
+// Strategic Bets" was built from campaigns[].alerts[], and the Blended CPA tile
+// from that same feed's roll-up. S1-B deleted the array, so for every workspace
+// the strip rendered
+//
+//     "No strategic bets active. Analyze your first campaign to generate
+//      strategic recommendations."
+//
+// and the tile read "—  ·  No campaigns yet". Both are claims about an account,
+// made from a field that does not exist.
+//
+// Deleted rather than repointed, on S1-B's own precedent. A "bet" here was a
+// PENDING Action, and no Action row has been minted anywhere since B3-C; the
+// live equivalents are the connector verdict queue on /app/campaigns and the
+// agenda on /app/overview. Rebuilding this strip over those would be inventing
+// a third view of them under cover of a repoint.
 // ============================================================
-import { useMemo } from 'react';
-import { Target } from 'lucide-react';
-import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
 import { useGrowthStrategySummary } from '@/hooks/useGrowthStrategySummary.js';
 import { useEconomics, useSaveEconomics } from '@/hooks/useEconomics.js';
 import { cn } from '@/lib/utils.js';
-import { PriorityBadge, StageBadge } from '@/layouts';
 import RoleGate from '@/components/auth/RoleGate.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useGoals } from '@/hooks/useGoals.js';
@@ -38,14 +41,9 @@ import { GoalsPanel } from './GoalsPanel.jsx';
 import { PlansPanel } from './PlansPanel.jsx';
 import { ApprovalsPanel } from './ApprovalsPanel.jsx';
 
-const STAGES = ['DYING', 'FATIGUED', 'TESTING', 'SCALING', 'STABLE'];
-
 export default function GrowthStrategyBoard() {
-  // Legacy CampaignState feed — the source for Strategic Bets, and structurally
-  // empty since S1-B. See the header: FE-03 owns the repoint.
-  const { campaigns, summary, loading } = useCampaignFeed();
-  // Active Campaigns tile ONLY — repointed to the connector substrate so its
-  // count matches CampaignsView instead of "campaigns with a pending Action".
+  // The connector substrate, so this count matches CampaignsView rather than
+  // "campaigns with a pending Action" — a population that stopped growing at B3-C.
   const { summary: growth, loading: growthLoading } = useGrowthStrategySummary();
   const { forecast: fatigueForecast, isLoading: fatigueLoading } = useFatigueForecast();
   const { role: collabRole } = useCollabRole();
@@ -65,27 +63,6 @@ export default function GrowthStrategyBoard() {
   // Submitting a plan for sign-off is a BUYER/STRATEGIST workflow action (matches
   // the POST /approvals gate); a CLIENT seat is read-only.
   const canSubmitPlan = collabRole === WORKSPACE_ROLE.STRATEGIST || collabRole === WORKSPACE_ROLE.BUYER;
-
-  // Active bets = pending alerts, treated as hypotheses under test.
-  const bets = useMemo(() => {
-    const out = [];
-    for (const c of campaigns) {
-      for (const a of c.alerts ?? []) {
-        out.push({
-          id:        a.action_id,
-          status:    a.action_plan?.status === 'PENDING' ? 'ACTIVE' : 'CONCLUDED',
-          title:     a.action_plan?.action || a.analysis?.root_cause || c.campaign_id,
-          campaign:  c.campaign_id,
-          // Real signals straight off the alert/campaign — never an inferred %.
-          priority:  a.priority || 'MEDIUM',
-          verdict:   a.analysis?.verdict || 'HOLD',
-          stage:     STAGES.includes(c.stage) ? c.stage : null,
-          conclusion: a.action_plan?.status === 'PENDING' ? null : 'Awaiting outcome data',
-        });
-      }
-    }
-    return out.slice(0, 12);
-  }, [campaigns]);
 
   // FE-02 — a `learnings` memo stood here. It walked
   // campaigns[].alerts[].memory[] out of `useCampaignFeed` and rendered a
@@ -119,7 +96,8 @@ export default function GrowthStrategyBoard() {
       <IntelligenceSubNav />
 
       {/* ── MACRO METRICS ───────────────────────────────────── */}
-      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-10">
+      {/* Three tiles, not four — Blended CPA left with its substrate. */}
+      <section className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-10">
         <MetricCard
           label="MRR Target"
           primary="—"
@@ -133,35 +111,14 @@ export default function GrowthStrategyBoard() {
           footer="Awaiting customer-data integration"
         />
         <MetricCard
-          label="Blended CPA"
-          primary={summary.blendedCpa != null ? `$${summary.blendedCpa.toFixed(2)}` : '—'}
-          secondary={loading ? 'Loading…' : (summary.pending ? 'Avg across pending decisions' : 'No campaigns yet')}
-          footer={summary.blendedCpa != null ? <Sparkline values={[summary.blendedCpa]} /> : null}
-        />
-        <MetricCard
           label="Active Campaigns"
           primary={growthLoading ? '…' : growth.total}
           secondary={growthLoading ? 'Loading…' : <ActiveCampaignsBreakdown g={growth} />}
         />
       </section>
 
-      {/* ── ACTIVE STRATEGIC BETS ───────────────────────────── */}
-      <section className="mb-10">
-        <div className="section-label">Active Strategic Bets</div>
-        <p className="mt-1 text-lumi-muted text-sm mb-4">Hypotheses currently being tested by the system</p>
-
-        {bets.length === 0 ? (
-          <EmptyBets loading={loading} />
-        ) : (
-          <div
-            className="flex gap-4 overflow-x-auto pb-4 -mx-2 px-2"
-            role="list"
-            aria-label="Active strategic bets"
-          >
-            {bets.map((b) => <BetCard key={b.id} bet={b} />)}
-          </div>
-        )}
-      </section>
+      {/* FE-03 — "Active Strategic Bets" stood here, and the Blended CPA tile
+          above it. Both read the retired CampaignState feed; see the header. */}
 
       {/* ── FATIGUE FORECAST (forward signal · per-campaign, named) ─── */}
       <FatigueForecastPanel forecast={fatigueForecast} loading={fatigueLoading} />
@@ -283,70 +240,7 @@ function MetricCard({ label, primary, secondary, footer }) {
   );
 }
 
-function BetCard({ bet }) {
-  const statusColor =
-    bet.status === 'ACTIVE'    ? 'text-lumi-accent  bg-lumi-accent-soft'
-  : bet.status === 'PAUSED'    ? 'text-signal-hold  bg-signal-hold-bg'
-  :                              'text-signal-scale bg-signal-scale-bg';
-
-  const verdictColor =
-    bet.verdict === 'KILL'  ? 'text-signal-kill'
-  : bet.verdict === 'SCALE' ? 'text-signal-scale'
-  :                           'text-signal-hold';
-
-  return (
-    <article
-      role="listitem"
-      className="w-72 flex-shrink-0 bg-lumi-surface border border-lumi-border rounded-2xl p-5 hover:border-lumi-border-strong transition-all"
-    >
-      <span className={cn('inline-block font-mono text-xs uppercase px-2 py-0.5 rounded', statusColor)}>
-        {bet.status}
-      </span>
-      <h3 className="font-display font-semibold text-sm text-lumi-text leading-snug mt-2 line-clamp-3">{bet.title}</h3>
-      <p className="text-xs text-lumi-subtle mt-1 truncate">{bet.campaign}</p>
-
-      {/* Real per-alert/-campaign signals via the frozen primitives — priority
-          + stage + verdict from the feed, never an inferred confidence number. */}
-      <div className="mt-4 flex items-center flex-wrap gap-2 font-mono text-xs">
-        <PriorityBadge priority={bet.priority} />
-        {bet.stage && <StageBadge stage={bet.stage} />}
-        <span className={cn('uppercase', verdictColor)}>{bet.verdict}</span>
-      </div>
-
-      {bet.conclusion && (
-        <div className="bg-signal-scale-bg border-t border-signal-scale/25 -mx-5 -mb-5 px-5 py-2 mt-4 rounded-b-2xl">
-          <p className="font-mono text-xs text-signal-scale">Result: {bet.conclusion}</p>
-        </div>
-      )}
-    </article>
-  );
-}
-
-function Sparkline({ values = [] }) {
-  if (values.length === 0) return null;
-  const min = Math.min(...values), max = Math.max(...values);
-  const range = max - min || 1;
-  const pts = values.map((v, i) => {
-    const x = (i / Math.max(1, values.length - 1)) * 60;
-    const y = 16 - ((v - min) / range) * 16;
-    return `${x},${y}`;
-  }).join(' ');
-  return (
-    <svg width="60" height="16" viewBox="0 0 60 16" aria-hidden="true">
-      <polyline fill="none" stroke="currentColor" strokeWidth="1.25" points={pts} className="text-lumi-accent" />
-    </svg>
-  );
-}
-
-function EmptyBets({ loading }) {
-  if (loading) return <div className="rounded-xl border border-dashed border-lumi-border p-6 text-center text-sm text-lumi-subtle">Loading…</div>;
-  return (
-    <div className="rounded-2xl border border-dashed border-lumi-border bg-lumi-surface/40 p-10 text-center">
-      <Target className="w-12 h-12 mx-auto text-lumi-subtle" strokeWidth={1.5} />
-      <p className="mt-3 font-display text-lumi-text">No strategic bets active.</p>
-      <p className="mt-1 text-lumi-muted text-sm">
-        Analyze your first campaign to generate strategic recommendations.
-      </p>
-    </div>
-  );
-}
+// FE-03 — `BetCard`, `EmptyBets` and `Sparkline` stood here. The first two
+// rendered the Strategic Bets strip; the third drew the Blended CPA tile's
+// footer, and had no other caller. All three are gone with the substrate that
+// fed them. `cn` stays — ActiveCampaignsBreakdown and MetricCard still use it.

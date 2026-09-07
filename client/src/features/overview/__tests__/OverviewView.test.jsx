@@ -18,7 +18,6 @@ import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('@/context/AuthContext.jsx', () => ({ useAuth: () => ({ currentUser: { displayName: 'Omar A' } }) }));
 vi.mock('@/hooks/useWorkspace.js', () => ({ useWorkspace: () => ({ workspace: { name: 'Acme', currency: 'USD' } }) }));
-vi.mock('@/context/IntelligenceContext.jsx', () => ({ useIntelligence: vi.fn() }));
 vi.mock('@/hooks/useConnectorCampaigns.js', () => ({ useConnectorCampaigns: vi.fn() }));
 vi.mock('@/hooks/useConnections.js', () => ({ useConnections: vi.fn() }));
 vi.mock('@/hooks/useAccuracy.js', () => ({ useAccuracy: vi.fn() }));
@@ -50,7 +49,6 @@ vi.mock('@/components/ui/StatCard.jsx', () => ({
 // architecture is what these tests are about, so both render for real.
 
 import OverviewView from '../OverviewView.jsx';
-import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { useConnections } from '@/hooks/useConnections.js';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
@@ -60,7 +58,6 @@ import { useAccuracy } from '@/hooks/useAccuracy.js';
 import { useHome } from '@/hooks/useHome.js';
 
 const CONNECTOR_ROW = { entityId: 'c1', name: 'Eid Sale', channel: 'META', spendMinor: 50000, ctr: 0.0185 };
-const LEGACY_ROW = { campaign_id: 'x', alerts: [] };
 
 const renderView = () => render(<MemoryRouter><OverviewView /></MemoryRouter>);
 
@@ -69,7 +66,6 @@ beforeEach(() => {
   sessionStorage.clear(); // firstActivation flag must not bleed across tests
   useCollabRole.mockReturnValue({ role: WORKSPACE_ROLE.STRATEGIST });
   // defaults; each test overrides the substrate under test
-  useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: false });
   useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: false, error: null, refetch: vi.fn() });
   // Default: no channel has ever synced → the revenue-onboarding banner stays hidden
   // and every pre-existing test is unaffected. Revenue-banner tests override this.
@@ -86,7 +82,6 @@ beforeEach(() => {
 
 describe('OverviewView — agentic shell is decoupled from the legacy CampaignState feed', () => {
   it('renders the agenda AND connector-first KPI cards when only connector data exists', () => {
-    useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: false }); // legacy feed empty
     useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
     renderView();
 
@@ -97,8 +92,10 @@ describe('OverviewView — agentic shell is decoupled from the legacy CampaignSt
     expect(screen.getAllByTestId('stat-card').length).toBe(4);
   });
 
-  it('shows the empty state (and no agenda) only when BOTH substrates are empty', () => {
-    useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: false });
+  // FE-03 — was "…only when BOTH substrates are empty". There is one substrate
+  // now, so "both" no longer names anything. The claim is unchanged in effect:
+  // an account the connector graph reports as empty gets the empty state.
+  it('shows the empty state (and no agenda) when the connector graph is empty', () => {
     useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: false, error: null, refetch: vi.fn() });
     renderView();
 
@@ -106,18 +103,29 @@ describe('OverviewView — agentic shell is decoupled from the legacy CampaignSt
     expect(screen.queryByTestId('agentic-shell')).not.toBeInTheDocument();
   });
 
-  it('renders the agenda AND the legacy stat block when the legacy feed has data (unchanged behavior)', () => {
-    useIntelligence.mockReturnValue({ campaigns: [LEGACY_ROW], summary: { spend: 0, health: 0 }, loading: false });
+  // REPLACES "renders the agenda AND the legacy stat block when the legacy feed
+  // has data (unchanged behavior)". That test described a REAL behaviour change
+  // and it is worth stating plainly rather than deleting quietly: an account
+  // whose ONLY data was legacy CampaignState rows used to mount the agenda, and
+  // now would not.
+  //
+  // No such account can exist. `GET /lumi/feed` stopped publishing the
+  // `campaigns` array in S1-B, and CampaignState has had no writer since R7, so
+  // the scenario the old test constructed could be built in a mock and nowhere
+  // else. What it actually pinned — that the agenda is not gated on a substrate
+  // that cannot answer — is now true by construction, because that substrate is
+  // not read at all.
+  it('gates the agenda on the connector graph alone', () => {
+    useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
+    renderView();
+    expect(screen.getByTestId('agentic-shell')).toBeInTheDocument();
+
     useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: false, error: null, refetch: vi.fn() });
     renderView();
-
-    expect(screen.getByTestId('agentic-shell')).toBeInTheDocument();
-    expect(screen.getAllByTestId('stat-card').length).toBe(4);
-    expect(screen.queryByText(/No campaign data yet/i)).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('agentic-shell').length).toBe(1); // still only the first render's
   });
 
   it('shows neither the empty state nor the agenda while data is still loading', () => {
-    useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: true });
     useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: true, error: null, refetch: vi.fn() });
     renderView();
 
@@ -571,7 +579,6 @@ describe('OverviewView — a CLIENT is told what it actually cannot see', () => 
 describe('OverviewView — first-run activation banner (wires the onboarding flag)', () => {
   it('firstActivation flag + no data → banner shows, and REPLACES the generic empty state', () => {
     sessionStorage.setItem('marcom:firstActivation', '1');
-    useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: false });
     useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: false, error: null, refetch: vi.fn() });
     renderView();
 
@@ -581,7 +588,6 @@ describe('OverviewView — first-run activation banner (wires the onboarding fla
   });
 
   it('no flag (returning user) + no data → generic empty state, never the banner', () => {
-    useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: false });
     useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: false, error: null, refetch: vi.fn() });
     renderView();
 
@@ -591,7 +597,6 @@ describe('OverviewView — first-run activation banner (wires the onboarding fla
 
   it('flag set but data exists → banner hidden AND the flag is retired (never resurfaces)', () => {
     sessionStorage.setItem('marcom:firstActivation', '1');
-    useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: false });
     useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
     renderView();
 
@@ -601,7 +606,6 @@ describe('OverviewView — first-run activation banner (wires the onboarding fla
 
   it('flag set but still loading → banner not shown yet (waits for the data verdict)', () => {
     sessionStorage.setItem('marcom:firstActivation', '1');
-    useIntelligence.mockReturnValue({ campaigns: [], summary: null, loading: true });
     useConnectorCampaigns.mockReturnValue({ campaigns: [], loading: true, error: null, refetch: vi.fn() });
     renderView();
 

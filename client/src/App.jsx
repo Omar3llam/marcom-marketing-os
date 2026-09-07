@@ -37,7 +37,6 @@ import UpgradePrompt from './components/plan/UpgradePrompt.jsx';
 import RequireUserRole from './components/auth/RequireUserRole.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from './hooks/useCollabRole.js';
 import { useAuth } from './context/AuthContext.jsx';
-import { IntelligenceProvider } from './context/IntelligenceContext.jsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { appRoutes } from './app/routeManifest.js';
 
@@ -175,10 +174,13 @@ export default function App() {
         <Route
           path="/app"
           element={
+            // FE-03 — IntelligenceProvider stood here, singleton-fetching
+            // GET /api/lumi/feed for the whole /app tree. Its only consumed
+            // field was deleted server-side by S1-B, so every mount paid for a
+            // round trip whose output reached no pixel — and its failure still
+            // made Attention claim it could not read the account.
             <ProtectedRoute>
-              <IntelligenceProvider>
-                <MainLayout />
-              </IntelligenceProvider>
+              <MainLayout />
             </ProtectedRoute>
           }
         >

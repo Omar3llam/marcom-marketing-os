@@ -3,8 +3,13 @@
 // ------------------------------------------------------------
 // The page answers "what needs action" before "how much did I spend": the title
 // names the queue, the headline count comes from the SAME pure helper the table
-// bands with, and the decision queue renders before the account-level chart and
-// the legacy feed table rather than after both.
+// bands with, and the decision queue renders before the account-level chart.
+//
+// FE-03 — the legacy feed table is no longer one of the sections it renders
+// before. It was fed by campaigns[].alerts[] off GET /lumi/feed, whose
+// `campaigns` array S1-B deleted, and it went with that substrate. The render-
+// order assertion is REPLACED rather than trimmed: what it pins is the ruling
+// (decisions first, context after), not a list of three markers.
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -12,10 +17,6 @@ import { MemoryRouter } from 'react-router-dom';
 
 const renderView = () => render(<CampaignsView />, { wrapper: MemoryRouter });
 
-vi.mock('@/hooks/useCampaignFeed.js', () => ({
-  useCampaignFeed: () => ({ campaigns: [], loading: false }),
-  metricValue: () => null,
-}));
 vi.mock('@/hooks/useConnectorCampaigns.js', () => ({ useConnectorCampaigns: vi.fn() }));
 vi.mock('@/hooks/useConnectorVerdicts.js', () => ({ useConnectorVerdicts: vi.fn() }));
 vi.mock('@/hooks/useAccountHealth.js', () => ({ useAccountHealth: vi.fn() }));
@@ -26,7 +27,6 @@ vi.mock('@/hooks/useCampaignAnalysis.js', () => ({ useCampaignAnalysis: () => ({
 // Marker stubs — the children's own behaviour is tested elsewhere; here we only
 // need to know WHERE each one lands in the document.
 vi.mock('@/components/campaign-analysis/PerformanceChart.jsx', () => ({ PerformanceChart: () => <div data-section="chart" /> }));
-vi.mock('@/components/campaign-analysis/AnalysisSummary.jsx', () => ({ AnalysisSummary: () => <div data-section="legacy-table" /> }));
 vi.mock('@/features/campaigns/ConnectorCampaignsPanel.jsx', () => ({ ConnectorCampaignsPanel: () => <div data-section="queue" /> }));
 
 import CampaignsView from './CampaignsView.jsx';
@@ -151,8 +151,20 @@ describe('CampaignsView — render order', () => {
   const orderOf = (container) =>
     [...container.querySelectorAll('[data-section]')].map((el) => el.dataset.section);
 
-  it('puts the decision queue ahead of the chart and the legacy table', () => {
+  // REPLACES "puts the decision queue ahead of the chart and the legacy table".
+  // Two markers now, because there are two sections — and the ruling this pins
+  // is that DECISIONS come before CONTEXT, so it is written as "the queue is
+  // first", which stays true however many context sections follow it.
+  it('puts the decision queue first, ahead of every context section', () => {
     const { container } = renderView();
-    expect(orderOf(container)).toEqual(['queue', 'chart', 'legacy-table']);
+    const order = orderOf(container);
+    expect(order[0]).toBe('queue');
+    expect(order).toEqual(['queue', 'chart']);
+  });
+
+  it('renders no legacy analysis table — the substrate behind it is retired', () => {
+    const { container } = renderView();
+    expect(orderOf(container)).not.toContain('legacy-table');
+    expect(container.textContent).not.toMatch(/No campaign data yet/i);
   });
 });

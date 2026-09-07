@@ -21,7 +21,6 @@
 // ============================================================
 import { useMemo } from 'react';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
-import { useIntelligence } from '@/context/IntelligenceContext.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { useConnections } from '@/hooks/useConnections.js';
@@ -49,7 +48,18 @@ export function useOverviewModel() {
   // said "Connect a channel to get your first verdict" — an outage reported as
   // an empty account. Same discipline as the readiness gate below: name every
   // substrate a rendered claim reads, not just the ones that carry data.
-  const { campaigns, summary, loading: intelligenceLoading, error: intelligenceError } = useIntelligence();
+  //
+  // FE-03 — and the rule has a converse this file was breaking. `useIntelligence`
+  // (GET /lumi/feed) stood here, and its `error` fed `readFailed` below. Since
+  // S1-B deleted that response's `campaigns` array, the page read NOTHING from
+  // it — yet a 500 there made Attention announce, on an account whose
+  // /entities/campaigns read had succeeded:
+  //
+  //     "Lumi couldn't read this account just now."
+  //
+  // and, because the first-run interrupt is `!hasAnyData && !unreadable`,
+  // withhold the connect-a-channel instruction that would have helped.
+  // NAME EVERY SUBSTRATE A CLAIM READS — and no others.
   const { campaigns: connectorCampaigns, loading: connectorLoading, error: connectorError } = useConnectorCampaigns();
   const { data: connectionsData } = useConnections(); // channel sync status (lastSyncedAt)
   // `loading` is destructured DELIBERATELY — see the readiness gate below.
@@ -66,8 +76,8 @@ export function useOverviewModel() {
   // Home headline reflects a live sync instead of the disjoint legacy feed. Every
   // value is null-when-absent → the card shows "—", never a fabricated 0.
   const kpis = useMemo(
-    () => overviewKpis({ connectorCampaigns, summary, health, currency }),
-    [connectorCampaigns, summary, health, currency],
+    () => overviewKpis({ connectorCampaigns, health, currency }),
+    [connectorCampaigns, health, currency],
   );
 
   // The decision feed + the two revenue-data stories, all keyed off the health
@@ -93,12 +103,8 @@ export function useOverviewModel() {
   );
 
   const killCount = useMemo(
-    () => countKillVerdicts({
-      live: kpis.live,
-      healthCampaigns: health?.campaigns ?? [],
-      legacyCampaigns: campaigns,
-    }),
-    [kpis.live, health, campaigns],
+    () => countKillVerdicts({ healthCampaigns: health?.campaigns ?? [] }),
+    [health],
   );
 
   // Two DISJOINT substrates: the legacy CampaignState feed (drives the stat
@@ -124,10 +130,13 @@ export function useOverviewModel() {
   // health-derived claim is gated on this one value (or, for the health card's
   // caption, on the same flag passed into healthPresentation) so a fourth cannot
   // be added without passing through it.
-  const loading = intelligenceLoading || connectorLoading || healthLoading;
-  const hasData = campaigns.length > 0;                        // legacy CampaignState feed
+  const loading = connectorLoading || healthLoading;
   const hasConnectorData = connectorCampaigns.length > 0;      // connector entity graph
-  const hasAnyData = hasData || hasConnectorData;
+  // FE-03 — this was `hasData || hasConnectorData`, where `hasData` read the
+  // legacy CampaignState feed. The two were already equal in FACT, since that
+  // feed could not be non-empty; they are equal by CONSTRUCTION now, so nothing
+  // downstream can be gated on a substrate that no longer answers.
+  const hasAnyData = hasConnectorData;
 
   // The scoring engine reads the CONNECTOR graph and nothing else
   // (/entities/health runs over getConnectorCampaigns), so "has data" and "can
@@ -155,7 +164,15 @@ export function useOverviewModel() {
   // Distinct from `scoringHidden` by construction — that one is derived from
   // the ROLE, never sniffed from a failed request, precisely so the two can
   // never be confused.
-  const readFailed = Boolean(intelligenceError || connectorError || healthError);
+  //
+  // FE-03 — `intelligenceError` was a third disjunct here. It has gone with the
+  // fetch behind it: a substrate that feeds no claim cannot make a claim
+  // unreadable. The two that remain are the two Attention actually reads, and
+  // `useIntelligenceData.error.test.jsx` — B8-02's guard that "an exported
+  // `error` state is not an error path" — is retired with its hook, so this
+  // slice owns the replacement: useOverviewModel.substrates.test.jsx pins that
+  // a failure of EITHER remaining substrate still reaches the operator.
+  const readFailed = Boolean(connectorError || healthError);
 
   // Account-health card tone + caption (pure; see overviewDerive).
   const { tone: healthTone, label: healthLabel } = healthPresentation({

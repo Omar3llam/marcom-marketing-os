@@ -14,10 +14,6 @@ import { MemoryRouter } from 'react-router-dom';
 // CampaignsView reads ?entity= via useSearchParams → needs a Router context.
 const renderView = () => render(<CampaignsView />, { wrapper: MemoryRouter });
 
-vi.mock('@/hooks/useCampaignFeed.js', () => ({
-  useCampaignFeed: () => ({ campaigns: [], loading: false }),
-  metricValue: () => null,
-}));
 vi.mock('@/hooks/useConnectorCampaigns.js', () => ({ useConnectorCampaigns: vi.fn() }));
 vi.mock('@/hooks/useConnectorVerdicts.js', () => ({ useConnectorVerdicts: vi.fn() }));
 vi.mock('@/hooks/useAccountHealth.js', () => ({ useAccountHealth: vi.fn() }));
@@ -27,7 +23,6 @@ vi.mock('@/hooks/useCampaignAnalysis.js', () => ({ useCampaignAnalysis: () => ({
 
 // Stub the heavy children — the KPI cards under test live in MetricsPanel (real).
 vi.mock('@/components/campaign-analysis/PerformanceChart.jsx', () => ({ PerformanceChart: () => <div /> }));
-vi.mock('@/components/campaign-analysis/AnalysisSummary.jsx', () => ({ AnalysisSummary: () => <div /> }));
 vi.mock('@/features/campaigns/ConnectorCampaignsPanel.jsx', () => ({ ConnectorCampaignsPanel: () => <div /> }));
 
 import CampaignsView from './CampaignsView.jsx';

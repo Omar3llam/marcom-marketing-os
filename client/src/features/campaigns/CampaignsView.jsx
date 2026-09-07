@@ -1,16 +1,28 @@
 // ============================================================
-// MARCOM / Lumi — CampaignAnalysis  (/app/campaigns)
+// MARCOM / Lumi — CampaignAnalysis  (/app/campaigns) · the SUBJECT axis
 // ------------------------------------------------------------
-// Bloomberg-terminal-style analysis report.
-// All metrics derived from the live /api/lumi/feed payload.
+// Every metric on this page derives from the connector entity graph
+// (GET /api/lumi/entities/{campaigns,health,verdicts}).
+//
+// FE-03 — it used to read TWO substrates. The second was the legacy
+// CampaignState feed, whose `campaigns` array S1-B deleted from
+// GET /api/lumi/feed, and it fed a whole parallel apparatus here: a flattened
+// row set, a sortable analysis table, a channel filter, an account-level
+// `totals` roll-up and a `hasCsv` flag threaded through the KPI strip.
+//
+// None of it was rendering a FALSEHOOD — the table returned null whenever
+// connector data existed, and an honest "No campaign data yet" when it did not,
+// so the page never lied about the account. It was ~180 lines computing over an
+// array that could not be non-empty, plus a channel filter whose options were
+// derived from that array, which is why the `?channel=` deep-link from Blended
+// Truth has been inert: `platforms` was always [].
 // ============================================================
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { RefreshCw, Loader2, Download } from 'lucide-react';
 import { appRoutes } from '@/app/routeManifest.js';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils.js';
-import { useCampaignFeed, metricValue } from '@/hooks/useCampaignFeed.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useAccountHealth } from '@/hooks/useAccountHealth.js';
@@ -20,7 +32,6 @@ import { INDUSTRIES } from '@/pages/OnboardingPage/constants.js';
 import { useCampaignAnalysis } from '@/hooks/useCampaignAnalysis.js';
 import { MetricsPanel }    from '@/components/campaign-analysis/MetricsPanel.jsx';
 import { PerformanceChart } from '@/components/campaign-analysis/PerformanceChart.jsx';
-import { AnalysisSummary } from '@/components/campaign-analysis/AnalysisSummary.jsx';
 import { ConnectorCampaignsPanel } from '@/features/campaigns/ConnectorCampaignsPanel.jsx';
 import { summarizeGatedOut } from '@/features/campaigns/gatingReasonCopy.js';
 import { groupCampaigns, GROUPS } from '@/features/campaigns/campaignGrouping.js';
@@ -46,67 +57,12 @@ const REVENUE_GUIDANCE = {
 };
 const GENERIC_REVENUE_GUIDANCE = 'connect a revenue source or confirm purchase tracking';
 
-// Flatten campaigns → rows the table can sort + render.
-// Missing metrics stay null (not 0): the renderer shows "—" and the sort pushes
-// them last, so an absent metric never masquerades as a real zero.
-//
-// NO `impact` HERE, DELIBERATELY. This row used to carry
-// `KILL ? 9 : HOLD ? 6 : SCALE ? 4 : 5` and the table printed it as "6/10" beside
-// a progress bar — a number that traced to no row at all, only to the verdict it
-// was standing next to. The canonical impact (AccountHealthService.
-// computeImpactScore) is verdict base × spend share + a ROAS adjustment, backed
-// by MetricSnapshot; the two disagreed on five of six verdicts and ranked HOLD
-// second-most-urgent instead of fifth.
-//
-// They were never reconcilable: the legacy row is keyed by a CSV campaignId and
-// the canonical score by connector entityId, so no join exists to spend-weight
-// this row even if the base maps matched. A legacy row has no measured impact —
-// so it shows none, rather than a plausible-looking substitute.
-function flatten(campaigns) {
-  const rows = [];
-  for (const c of campaigns) {
-    for (const a of c.alerts ?? []) {
-      const spend = metricValue(a, 'spend') ?? metricValue(a, 'amount spent') ?? null;
-      const ctr   = metricValue(a, 'CTR') ?? null;
-      const roas  = metricValue(a, 'ROAS') ?? null;
-      const freq  = metricValue(a, 'Frequency') ?? metricValue(a, 'Freq') ?? null;
-      const verdict  = a.analysis?.verdict || 'HOLD';
-      const reason   = a.analysis?.root_cause || a.action_plan?.action || '—';
-      // Real channel from the feed's backing field; fall back only for the
-      // static demo path (which carries no platform).
-      const platform = (a.platform || a.action_plan?.kind || a.action_plan?.platform || 'META').toUpperCase();
-      const currency = a.currency || a._rawDecision?.currency || 'USD';  // Extract currency from alert
-      rows.push({ id: a.action_id, campaign: c.campaign_id, platform, spend, ctr, roas, freq, verdict, reasoning: reason, currency });
-    }
-  }
-  return rows;
-}
-
-// Verdict sorts by action-urgency, NOT alphabetically: worst/most-actionable
-// first (KILL), good news last (SCALE). The ranking itself now lives in
-// lib/verdictRank.js — the PDF export sorts by the same urgency and used to keep
-// its own drifted copy. An unknown verdict has no rank and sinks like a null
-// metric.
-
-// Null-last comparator: an unknown metric (or unranked verdict) is not a small
-// number, so it always sinks to the bottom regardless of sort direction.
-export function compareRows(a, b, key, dir) {
-  if (key === 'verdict') {
-    const ar = VERDICT_RANK[a.verdict], br = VERDICT_RANK[b.verdict];
-    if (ar == null && br == null) return 0;
-    if (ar == null) return 1;
-    if (br == null) return -1;
-    return dir === 'asc' ? ar - br : br - ar;
-  }
-  const av = a[key], bv = b[key];
-  if (av == null && bv == null) return 0;
-  if (av == null) return 1;
-  if (bv == null) return -1;
-  if (typeof av === 'number' && typeof bv === 'number') return dir === 'asc' ? av - bv : bv - av;
-  return dir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
-}
-
-export const sortableCols = new Set(['campaign', 'spend', 'ctr', 'roas', 'verdict']);
+// FE-03 — `flatten()`, `compareRows()` and `sortableCols` stood here: the row
+// builder, comparator and sortable-column set for the legacy analysis table.
+// All three operated on campaigns[].alerts[] from a feed that no longer
+// publishes the array, so they ran over [] on every render. Deleted with the
+// table; `VERDICT_RANK` survives in lib/verdictRank.js, where the PDF export
+// (which sorts LIVE connector rows by the same urgency) reads it.
 
 // PURE: split no-revenue scored campaigns (roas null) by objective. A conversion
 // campaign that expects revenue but measures none is a fixable TRACKING GAP; an
@@ -124,26 +80,21 @@ export function splitNoRevenueVerdicts(verdicts = []) {
 }
 
 export default function CampaignsView() {
-  const { campaigns, loading } = useCampaignFeed();
   // Deep-link target from an Overview agenda item (?entity=<Campaign.id>). The
   // connector panel scrolls-to + expands that row, then calls back so we drop the
   // param (browser back/forward stays clean, a refresh won't re-trigger).
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkEntityId = searchParams.get('entity');
   const clearDeepLink = useCallback(() => setSearchParams({}, { replace: true }), [setSearchParams]);
-  const [sortKey, setSortKey] = useState('spend');
-  const [sortDir, setSortDir] = useState('desc');
-  // `expanded` drives the per-row reasoning expand/collapse on the CSV-fed table.
-  // AdSet drill-down lives in <ConnectorCampaignsPanel> instead: it reads the
-  // connector entity graph (keyed by Campaign.id UUID via /api/lumi/entities),
-  // the only substrate that carries ad-set detail. The CSV feed is
-  // campaign-level only, so it has nothing to drill into.
-  const [expanded, setExpanded] = useState(new Set());
-  const [channel, setChannel] = useState('ALL');   // CAPABILITY 2 — channel filter
 
-  // Connector entity graph — the substrate the Sync button writes (disjoint from
-  // the CSV feed above). Rendered as its own "Connected channels" section so
-  // synced campaigns are visible + drillable; refetched after a successful sync.
+  // FE-03 — `sortKey`/`sortDir`/`expanded`/`channel` lived here, all four owned
+  // by the legacy table and its filter. AdSet drill-down was never theirs: it
+  // lives in <ConnectorCampaignsPanel>, which reads the connector entity graph,
+  // the only substrate carrying ad-set detail.
+
+  // Connector entity graph — the substrate the Sync button writes. Rendered as
+  // its own "Connected channels" section so synced campaigns are visible +
+  // drillable; refetched after a successful sync.
   const {
     campaigns: connectorCampaigns,
     loading: connectorLoading,
@@ -239,57 +190,24 @@ export default function CampaignsView() {
     }
   };
 
-  // Account-wide rows (every channel). The KPI cards + health are account-level
-  // and read from this, so a channel filter narrows the *table* without
-  // silently changing the headline account numbers.
-  const allRows = useMemo(() => flatten(campaigns), [campaigns]);
+  // FE-03 — `allRows` · `platforms` · `tableRows` · `totals` stood here, each
+  // derived from `flatten(campaigns)` over the retired feed, so each was empty
+  // or zero on every render for every workspace.
+  //
+  // ⚠️ `platforms` took the CHANNEL FILTER down with it, and that is a real
+  // consequence rather than a tidy-up. Blended Truth links here with
+  // `?channel=<CHANNEL>`, and the effect that consumed it applied the filter
+  // ONLY when `platforms.includes(...)` — over an array that was always []. So
+  // that deep-link has been inert since S1-B; deleting the filter makes the
+  // deadness explicit instead of latent, and does not change what happens when
+  // an operator follows the link. Rebuilding it over `connectorCampaigns`
+  // (which do carry `channel`) means filtering the LIVE panel — a feature, with
+  // its own questions about which sections a filter governs. Reported, not
+  // rebuilt here.
 
-  // Distinct channels actually present in the data (not a hardcoded list). The
-  // filter only earns its place when there are ≥2 channels to separate — the
-  // same "don't show it until it's real" discipline as portfolio pacing.
-  const platforms = useMemo(
-    () => [...new Set(allRows.map((r) => r.platform).filter(Boolean))].sort(),
-    [allRows],
-  );
-
-  // Deep-link filter from Blended Truth (?channel=<CHANNEL>). Applied ONLY when
-  // that channel is a real platform in the data — so an absent/unknown channel
-  // (e.g. a connector-only account whose legacy table is empty) degrades to plain
-  // navigation instead of stranding the user on an empty-filtered table.
-  const urlChannel = searchParams.get('channel');
-  useEffect(() => {
-    if (urlChannel && platforms.includes(urlChannel.toUpperCase())) {
-      setChannel(urlChannel.toUpperCase());
-    }
-  }, [urlChannel, platforms]);
-
-  // Table rows: channel-filtered, then sorted (null metrics last).
-  const tableRows = useMemo(() => {
-    const filtered = channel === 'ALL' ? allRows : allRows.filter((r) => r.platform === channel);
-    return [...filtered].sort((a, b) => compareRows(a, b, sortKey, sortDir));
-  }, [allRows, channel, sortKey, sortDir]);
-
-  // Detect primary currency from campaigns (first non-USD currency wins); fall
-  // back to the workspace currency, then USD — never a hardcoded assumption.
-  const currency = useMemo(() => {
-    for (const row of allRows) {
-      if (row.currency && row.currency !== 'USD') return row.currency;
-    }
-    return allRows[0]?.currency || workspace?.currency || 'USD';
-  }, [allRows, workspace?.currency]);
-
-  const totals = useMemo(() => {
-    const r = { spend: 0, kill: 0, hold: 0, scale: 0, cpaSum: 0, cpaCount: 0 };
-    for (const row of allRows) {
-      const spend = row.spend ?? 0;   // unknown spend contributes 0, never a guess
-      r.spend += spend;
-      if (row.verdict === 'KILL')  r.kill  += spend;
-      if (row.verdict === 'HOLD')  r.hold  += spend;
-      if (row.verdict === 'SCALE') r.scale += spend;
-    }
-    const blendedCpa = r.cpaCount > 0 ? r.cpaSum / r.cpaCount : null;
-    return { ...r, blendedCpa, wastedPct: r.spend > 0 ? Math.round((r.kill / r.spend) * 100) : 0 };
-  }, [allRows]);
+  // The account's currency. Taken from the connector rows below when they carry
+  // one, else the workspace's — never a hardcoded assumption.
+  const currency = workspace?.currency || 'USD';
 
   // Account Health now comes from the deterministic engine (spend-weighted
   // roll-up of per-campaign verdicts over the live connector graph), NOT the
@@ -325,10 +243,12 @@ export default function CampaignsView() {
     return t;
   }, [connectorVerdicts]);
 
-  // Live connector verdicts take the allocation chart when they exist (mirrors the
-  // KPI strip's live-XOR-csv rule below — the two substrates never blend), else
-  // the CSV-derived totals.
-  const chartTotals = connectorTotals.spend > 0 ? connectorTotals : totals;
+  // FE-03 — this was `connectorTotals.spend > 0 ? connectorTotals : totals`,
+  // and the fallback was a zeroed roll-up of the retired feed. There is one
+  // substrate now, so there is nothing to fall back TO: an account with no
+  // scored connector spend has all-zero totals, and PerformanceChart already
+  // takes `hasConnectorData` to tell "nothing yet" from "nothing scored".
+  const chartTotals = connectorTotals;
 
   // Join the engine verdict onto each connector campaign row (by entityId) so the
   // Connected-channels table can render a verdict badge — revenue track (KILL/
@@ -480,36 +400,26 @@ export default function CampaignsView() {
     };
   }, [connectorCampaigns, workspace?.currency]);
 
-  // The KPI strip reads the live connector when a channel has synced, else the
-  // CSV feed — the same source feeding the panels below it, so the headline and
-  // the table can't disagree about whether data exists. Wasted Spend + Account
-  // Health are now backed by the deterministic analysis engine over the live
-  // connector graph (see `health` above), "—" when nothing scores (never a 0).
+  // The KPI strip reads the live connector graph — the same source feeding every
+  // panel below it, so the headline and the tables cannot disagree about whether
+  // data exists. Wasted Spend + Account Health come from the deterministic
+  // analysis engine (see `health` above); "—" when nothing scores, never a 0.
+  //
+  // FE-03 — every one of these was `live ? connector : legacy`. The legacy arm
+  // is gone with its substrate, and with it `hasCsv`, which could only ever be
+  // false. Note what the arms did NOT do: they never blended the two, so
+  // removing one changes no rendered number on any account.
   const live = connectorCampaigns.length > 0;
-  const hasCsv = allRows.length > 0;
-  // Single source of truth for "is there anything to show". The CSV analysis
-  // table and the budget-allocation chart both derive their empty/non-empty
-  // messaging from this, so no two sections can disagree (the analysis box saying
-  // "No campaigns analyzed — upload a CSV" while live connector verdicts render
-  // below it was exactly that contradiction). The substrates stay DISJOINT — we
-  // never conflate connector rows into the CSV table; the CSV table just stops
-  // claiming the page is empty when live connector data exists.
   const hasConnectorData = live;
-  const kpiSpend = live ? connectorAgg.spend : (hasCsv ? totals.spend : null);
-  const kpiBlendedCpa = live ? connectorAgg.blendedCpa : totals.blendedCpa;
+  const kpiSpend = live ? connectorAgg.spend : null;
+  const kpiBlendedCpa = live ? connectorAgg.blendedCpa : null;
   const kpiCurrency = live ? connectorAgg.currency : currency;
-  const kpiSpendLabel = live ? 'Live · connector' : (hasCsv ? 'Campaign feed' : 'No data yet');
+  const kpiSpendLabel = live ? 'Live · connector' : 'No data yet';
   // Wasted spend from the analysis engine (minor units → major for the panel's
   // major-unit formatter, currency-correct so it stays on the same scale as the
   // Total Spend card). Null → "—", never a fabricated 0.
   const kpiWasted = health?.wastedSpend?.minor != null ? fromMinor(health.wastedSpend.minor, kpiCurrency) : null;
   const kpiWastedPct = health?.wastedSpend?.pct ?? null;
-
-  const setSort = (key) => {
-    if (!sortableCols.has(key)) return;
-    if (key === sortKey) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
-    else { setSortKey(key); setSortDir('desc'); }
-  };
 
   return (
     // NOT a scroller: MainLayout's <main> (overflow-y-auto) is the single
@@ -533,7 +443,7 @@ export default function CampaignsView() {
               // Count from whichever substrate has data — a connector-synced
               // account has 0 CSV rows but N live campaigns, so keying this off
               // the CSV feed alone falsely read "no data" with 34 campaigns synced.
-              const n = connectorCampaigns.length || allRows.length;
+              const n = connectorCampaigns.length;
               if (n === 0) return 'No campaigns synced yet';
               const scanned = `${n} campaign${n === 1 ? '' : 's'} · live`;
               // Budget at Risk is the analysis engine's figure (KILL + REFRESH),
@@ -574,7 +484,7 @@ export default function CampaignsView() {
         blendedCpa={kpiBlendedCpa}
         wasted={kpiWasted}
         wastedPct={kpiWastedPct}
-        loading={loading || connectorLoading}
+        loading={connectorLoading}
         healthScore={healthScore}
         healthLabel={healthLabel}
         healthColor={healthColor}
@@ -641,42 +551,16 @@ export default function CampaignsView() {
         <PerformanceChart totals={chartTotals} currency={currency} hasConnectorData={hasConnectorData} />
       </div>
 
-      {/* Channel filter — rendered only when ≥2 real channels exist in the data,
-          so it never shows an empty "Google" pill before Google data flows.
-          Filters the legacy feed table only, so it travels with it. */}
-      {platforms.length >= 2 && (
-        <div className="flex items-center gap-1.5 mb-3" role="group" aria-label="Filter by channel">
-          {['ALL', ...platforms].map((p) => (
-            <button
-              key={p}
-              type="button"
-              onClick={() => setChannel(p)}
-              aria-pressed={channel === p}
-              className={cn(
-                'px-3 py-1 rounded-full font-mono text-[11px] uppercase tracking-wide border transition-colors',
-                channel === p
-                  ? 'bg-lumi-accent text-lumi-bg border-lumi-accent'
-                  : 'bg-lumi-elevated text-lumi-muted border-lumi-border hover:border-lumi-accent/40',
-              )}
-            >
-              {p === 'ALL' ? 'All' : p}
-            </button>
-          ))}
-        </div>
-      )}
+      {/* FE-03 — the channel filter and <AnalysisSummary> stood here. The
+          filter's options came from the retired feed, so it never rendered
+          (its gate was `platforms.length >= 2` over an empty array), and the
+          table's rows came from the same place. The table itself was already
+          careful: it returned NULL when connector data existed and an honest
+          "No campaign data yet" when it did not, which is why removing it
+          changes nothing an operator sees on either kind of account.
 
-      <AnalysisSummary
-        rows={tableRows}
-        loading={loading}
-        sortKey={sortKey}
-        sortDir={sortDir}
-        setSort={setSort}
-        expanded={expanded}
-        setExpanded={setExpanded}
-        currency={currency}
-        hasConnectorData={hasConnectorData}
-        emptyChannel={channel !== 'ALL' && tableRows.length === 0 ? channel : null}
-      />
+          The live decision queue is <ConnectorCampaignsPanel> above — it was
+          moved above the chart deliberately, being the reason the page exists. */}
     </div>
   );
 }

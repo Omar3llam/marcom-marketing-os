@@ -1,15 +1,17 @@
 // ============================================================
-// GrowthStrategyBoard — Active Campaigns tile is connector-sourced;
-// the ACROSS axis has moved out; Strategic Bets are FE-03's
+// GrowthStrategyBoard — one substrate left, and it is the connector graph
 // ------------------------------------------------------------
 // The Active Campaigns tile (count + verdict breakdown + "need revenue data")
-// reads useGrowthStrategySummary — the connector substrate. That half is
-// unchanged and still pinned here.
+// reads useGrowthStrategySummary — the connector substrate. That half was
+// always live and is still pinned here.
 //
-// FE-02 removed the OTHER half this file used to assert. "Bets + Memory stay on
-// the legacy feed" was true of a mock and false of the product: GET /lumi/feed
-// stopped publishing the `campaigns` array in S1-B, so both sections were
-// structurally empty, and the Memory one said so in words. See the blocks below.
+// This file used to assert the other half too, under the title "Bets + Memory
+// stay on the legacy feed". That was true of a mock and false of the product:
+// GET /lumi/feed stopped publishing the `campaigns` array in S1-B, so both
+// sections were structurally empty for every workspace.
+//
+//   FE-02 removed the MEMORY half — the one that said so out loud.
+//   FE-03 removes the BETS half, and the Blended CPA tile beside it.
 //
 // The board composes ~10 hooks; mock them all so the test isolates the wiring.
 // Role = BUYER keeps the STRATEGIST-gated panels unmounted (smaller surface).
@@ -18,7 +20,6 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
-vi.mock('@/hooks/useCampaignFeed.js', () => ({ useCampaignFeed: vi.fn() }));
 vi.mock('@/hooks/useGrowthStrategySummary.js', () => ({ useGrowthStrategySummary: vi.fn() }));
 vi.mock('@/hooks/useAccountBriefing.js', () => ({ useAccountBriefing: vi.fn() }));
 vi.mock('@/hooks/usePromotePattern.js', () => ({ usePromotePattern: vi.fn() }));
@@ -33,7 +34,6 @@ vi.mock('@/hooks/useCollabRole.js', () => ({
 }));
 
 import GrowthStrategyBoard from './InsightsView.jsx';
-import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
 import { useGrowthStrategySummary } from '@/hooks/useGrowthStrategySummary.js';
 import { useAccountBriefing } from '@/hooks/useAccountBriefing.js';
 import { usePromotePattern } from '@/hooks/usePromotePattern.js';
@@ -42,29 +42,6 @@ import { useGoals } from '@/hooks/useGoals.js';
 import { usePlans } from '@/hooks/usePlans.js';
 import { useFatigueForecast } from '@/hooks/useFatigueForecast.js';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
-
-// A legacy feed with one pending SCALE alert carrying one memory entry — so
-// Strategic Bets and the Memory Layer have something legacy-sourced to render.
-const legacyFeed = () => ({
-  campaigns: [{
-    campaign_id: 'Legacy Camp',
-    stage: 'TESTING',
-    alerts: [{
-      action_id: 'a1',
-      priority: 'HIGH',
-      analysis: { verdict: 'SCALE', root_cause: 'rc' },
-      action_plan: { status: 'PENDING', action: 'Scale the legacy bet' },
-      memory: [{
-        actionType: 'SCALE',
-        decisionRationale: 'learned the legacy lesson',
-        isSustainable: true,
-        recordedAt: new Date().toISOString(),
-      }],
-    }],
-  }],
-  summary: { blendedCpa: null, pending: false, total: 3 },
-  loading: false,
-});
 
 const growthSummary = (over = {}) => ({
   loading: false,
@@ -88,7 +65,6 @@ const renderBoard = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  useCampaignFeed.mockReturnValue(legacyFeed());
   useGrowthStrategySummary.mockReturnValue(growthSummary());
   useAccountBriefing.mockReturnValue({ briefing: null, loading: false, error: null, refetch: vi.fn(), setConsent: vi.fn(), consentBusy: false });
   usePromotePattern.mockReturnValue({ promote: vi.fn(), promotingId: null, error: null });
@@ -132,24 +108,6 @@ describe('GrowthStrategyBoard — Active Campaigns tile (connector-sourced)', ()
   });
 });
 
-// ── R-M6 · STILL ON THE DELETED FIELD, and deliberately left there ──────
-// `bets` reads campaigns[].alerts[] off useCampaignFeed, and `GET /lumi/feed`
-// stopped publishing `campaigns` in S1-B. So in production this section always
-// renders "No strategic bets active. Analyze your first campaign…" — a claim
-// about the account derived from a field that no longer exists.
-//
-// This test is GREEN only because the mock below hands the board a shape the
-// backend cannot send. That is named here rather than quietly relied on: bets
-// are the SUBJECT axis, and FE-03 ("SUBJECT stops reading a deleted field")
-// owns the repoint together with the other two useCampaignFeed consumers.
-// FE-02 removed the ACROSS half and nothing else.
-describe('GrowthStrategyBoard — Strategic Bets, still legacy-fed (FE-03 owns this)', () => {
-  it('Strategic Bets render from the legacy feed alerts', () => {
-    renderBoard();
-    expect(screen.getByText('Scale the legacy bet')).toBeInTheDocument();
-  });
-});
-
 // ══════════════════════════════════════════════════════════════════════
 // FE-02 — the ACROSS axis has left this board
 // ----------------------------------------------------------------------
@@ -168,17 +126,7 @@ describe('GrowthStrategyBoard — Strategic Bets, still legacy-fed (FE-03 owns t
 // from here — a section that cannot be filled must not be re-added, and the
 // briefing must not be rendered in two places (B7 Ruling 2).
 // ══════════════════════════════════════════════════════════════════════
-const realFeed = () => ({
-  // The shape `GET /api/lumi/feed` actually returns: no `campaigns` key at all,
-  // which useIntelligenceData resolves to [] via `feedData?.campaigns ?? []`.
-  campaigns: [],
-  summary: { blendedCpa: null, pending: false, total: 0 },
-  loading: false,
-});
-
 describe('FE-02 · the memory layer is no longer claimed to be empty', () => {
-  beforeEach(() => { useCampaignFeed.mockReturnValue(realFeed()); });
-
   it('makes no claim about what Lumi has learned', () => {
     const { container } = renderBoard();
     expect(container.textContent).not.toMatch(/memory layer is empty/i);
@@ -197,5 +145,42 @@ describe('FE-02 · the memory layer is no longer claimed to be empty', () => {
     // become a second claim.
     renderBoard();
     expect(useAccountBriefing).not.toHaveBeenCalled();
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// FE-03 — the SUBJECT half has left this board too
+// ----------------------------------------------------------------------
+// REPLACES "Strategic Bets render from the legacy feed alerts", which passed
+// only because the fixture handed the board a `campaigns` array the backend
+// cannot send. In production the strip rendered "No strategic bets active.
+// Analyze your first campaign to generate strategic recommendations." and the
+// Blended CPA tile read "— · No campaigns yet" — two claims about an account,
+// made from a field that does not exist.
+//
+// Deleted, not repointed: a "bet" was a PENDING Action, and no Action row has
+// been minted since B3-C. What these assertions pin is that neither claim can
+// come back without a substrate that can answer for it.
+// ══════════════════════════════════════════════════════════════════════
+describe('FE-03 · no claim is made from the retired feed', () => {
+  it('offers no Strategic Bets strip, empty or otherwise', () => {
+    const { container } = renderBoard();
+    expect(container.textContent).not.toMatch(/Strategic Bets/i);
+    expect(container.textContent).not.toMatch(/No strategic bets active/i);
+    expect(container.textContent).not.toMatch(/Analyze your first campaign/i);
+  });
+
+  it('offers no Blended CPA tile — the number had no source', () => {
+    const { container } = renderBoard();
+    expect(container.textContent).not.toMatch(/Blended CPA/i);
+    expect(container.textContent).not.toMatch(/No campaigns yet/i);
+  });
+
+  it('still renders the tile that DOES have a live source', () => {
+    // The self-refutation for the two assertions above: they must be failing to
+    // find copy because it was removed, not because the board stopped rendering.
+    renderBoard();
+    expect(screen.getByText('Active Campaigns')).toBeInTheDocument();
+    expect(screen.getByText('44')).toBeInTheDocument();
   });
 });
