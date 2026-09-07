@@ -47,7 +47,18 @@ export const IncrementalityTestSchema = z.object({
   sampleSizePerArm: z.number().int(),
   durationDays: z.number().int(),
   status: IncrementalityStatusSchema,
-  // Observed counters — empty until results are recorded (the write seam).
+  // Observed counters. B8-05 · R-E3 — THESE ARE NEVER EMPTY. The columns are
+  // `Int @default(0)` and NOT NULL, so the wire always sends a number and the
+  // null this once claimed to describe can never arrive. A 0 therefore does not
+  // mean "not recorded": `recordCounts` is what moves a holdout DESIGNED →
+  // RUNNING, so **status** is the only thing that separates "nobody has entered
+  // results" from "we measured, and it was zero". The backend already reads it
+  // that way — `concludeIncrementality` refuses on `!(test.exposedUsers > 0)`.
+  //
+  // They stay `.nullish()` on purpose: admitting more than arrives is the safe
+  // direction (B8-01 — a schema narrower than the wire takes the whole surface
+  // with it, not one field). The rule that changed is who may be asked, and
+  // `HoldoutDetailView` is where it is enforced.
   exposedUsers: z.number().int().nullish(),
   exposedConversions: z.number().int().nullish(),
   holdoutUsers: z.number().int().nullish(),
@@ -57,6 +68,13 @@ export const IncrementalityTestSchema = z.object({
   ciHigh: z.number().nullish(),
   confidenceLabel: ConfidenceLevelSchema.nullish(),
   incrementalRevenueMinor: z.number().int().nullish(),
+  // C-13 F-6 — PUBLISHED, THEN EATEN. The route sends a full Prisma row, so
+  // `decisionId` was always on the wire; a `z.object` strips what it does not
+  // declare, so the id of the Decision this holdout produced never reached a
+  // component. The A/B half declares it and keeps it: the two halves of one
+  // class, each missing what the other has, one more time. B8-05's forward edge
+  // (holdout → `/app/decisions/:id`) cannot exist until this parses.
+  decisionId: z.string().nullish(),
   startedAt: z.string().nullish(),
   concludedAt: z.string().nullish(),
   // Provenance (Phase 7C): the concluded A/B test this holdout was promoted from.
@@ -85,3 +103,12 @@ export type IncrementalityReadout = z.infer<typeof IncrementalityReadoutSchema>;
 export type IncrementalityTest = z.infer<typeof IncrementalityTestSchema>;
 export type IncrementalityListResponse = z.infer<typeof IncrementalityListResponseSchema>;
 export type ConcludeIncrementalityResponse = z.infer<typeof ConcludeIncrementalityResponseSchema>;
+
+// B8-05 — the by-id read's envelope. `GET /api/lumi/incrementality/:id` answers
+// `{ workspaceId, test }`; a 404/403 is an error status, never an empty body,
+// so the absence never has to be inferred from a shape here.
+export const IncrementalityDetailResponseSchema = z.object({
+  workspaceId: z.string(),
+  test: IncrementalityTestSchema,
+});
+export type IncrementalityDetailResponse = z.infer<typeof IncrementalityDetailResponseSchema>;

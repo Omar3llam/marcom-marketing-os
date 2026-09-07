@@ -113,9 +113,28 @@ export async function recordCounts(workspaceId, testId, counts = {}) {
   return updated;
 }
 
+/**
+ * One holdout, by its own id — the read behind `GET /incrementality/:id`.
+ *
+ * B8-05 · R-E2 — A DETAIL READ MAY NOT BE WEAKER THAN ITS OWN LIST. This
+ * carried no `include`, so a holdout PROMOTED from a concluded A/B test came
+ * back without the `sourceTest` that `listTests` shows in the panel. That is
+ * not a missing decoration: `IncrementalityTestSchema` declares `sourceTest` as
+ * nullish, so the row parsed cleanly and the surface read "designed directly"
+ * for a holdout that was promoted. `undefined` (we did not ask) and `null`
+ * (there is no source) are the same value, and nothing travelled beside them to
+ * say which — the defect B8-04b named one layer up.
+ *
+ * The projection is deliberately IDENTICAL to `listTests`, and
+ * `incrementalityDetail.test.js` derives its expectation from that function
+ * rather than restating it, so the two cannot drift apart again in silence.
+ */
 export async function getTest(workspaceId, testId) {
   if (!workspaceId) throw new Error('getTest: workspaceId required');
-  return prisma.incrementalityTest.findFirst({ where: { id: testId, workspaceId } });
+  return prisma.incrementalityTest.findFirst({
+    where: { id: testId, workspaceId },
+    include: { sourceTest: { select: { id: true, dimension: true, hypothesis: true } } },
+  });
 }
 
 /**

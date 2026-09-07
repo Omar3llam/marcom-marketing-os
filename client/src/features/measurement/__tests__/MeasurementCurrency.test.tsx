@@ -10,7 +10,14 @@
 // (The minor-unit exponent correctness itself lives in money.ts's own tests.)
 // ============================================================
 import { describe, it, expect, vi } from 'vitest';
-import { render } from '@testing-library/react';
+import { render as rtlRender } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+
+// B8-05 — each holdout row now links to its own destination (/app/measure/:id),
+// so these renders need a router in context. Wrapping here leaves every call
+// site below untouched.
+const render = (ui: React.ReactElement, opts?: Parameters<typeof rtlRender>[1]) =>
+  rtlRender(ui, { wrapper: MemoryRouter, ...opts });
 
 // MeasurementView's hooks are mocked file-wide; the pure-panel tests below don't
 // touch these modules, so the mocks are inert for them.

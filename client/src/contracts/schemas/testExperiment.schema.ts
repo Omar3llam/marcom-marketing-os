@@ -68,3 +68,12 @@ export type TestMetric = z.infer<typeof TestMetricSchema>;
 export type ConfidenceLabel = z.infer<typeof ConfidenceLabelSchema>;
 export type TestVariant = z.infer<typeof TestVariantSchema>;
 export type TestExperiment = z.infer<typeof TestExperimentSchema>;
+
+// B8-05 — the by-id read's envelope for `GET /api/lumi/tests/:id`, which
+// answers `{ workspaceId, test }` with the variants included. The arms are the
+// experiment's evidence (B7-04), so they are part of the contract, not an extra.
+export const TestExperimentDetailResponseSchema = z.object({
+  workspaceId: z.string(),
+  test: TestExperimentSchema,
+});
+export type TestExperimentDetailResponse = z.infer<typeof TestExperimentDetailResponseSchema>;

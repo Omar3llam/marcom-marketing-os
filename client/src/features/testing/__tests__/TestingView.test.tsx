@@ -62,17 +62,28 @@ describe('thinGate — mirrors the readout engine sample floor', () => {
 
 describe('TestingView — CONCLUDED readouts are honest', () => {
   it('renders the real winner, lift, confidence and a link to the proposed decision', () => {
-    renderView({ experiments: [CONCLUDED_WINNER], role: 'BUYER' });
+    const { container } = renderView({ experiments: [CONCLUDED_WINNER], role: 'BUYER' });
     expect(screen.getByText('Hook B')).toBeInTheDocument();
     expect(screen.getByText(/\+31% CTR/)).toBeInTheDocument();
     expect(screen.getByText(/HIGH confidence/i)).toBeInTheDocument();
-    expect(screen.getByText(/review on Overview/i)).toBeInTheDocument();
+    // B8-05 · E6 — this asserted the copy "review on Overview". The assertion
+    // was REPLACED rather than re-spelled: what it should have been pinning all
+    // along is that the link resolves to the DECISION, whose id the experiment
+    // is already holding. Overview shows `status: 'PROPOSED'` only, so the old
+    // sentence stopped being true the moment anybody acted on the decision.
+    const hrefs = [...container.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+    expect(hrefs).toContain(`/app/decisions/${CONCLUDED_WINNER.decisionId}`);
   });
   it('refuses to invent a winner when inconclusive — shows WHY, not a fake call', () => {
-    renderView({ experiments: [CONCLUDED_INCONCLUSIVE], role: 'BUYER' });
+    const { container } = renderView({ experiments: [CONCLUDED_INCONCLUSIVE], role: 'BUYER' });
     expect(screen.getByText(/No winner called/i)).toBeInTheDocument();
     expect(screen.getByText(/too thin to call/i)).toBeInTheDocument();
-    expect(screen.queryByText(/review on Overview/i)).not.toBeInTheDocument();
+    // Also replaced, and for a sharper reason: once the old copy was gone this
+    // assertion would have passed vacuously — a query for a string that exists
+    // nowhere is satisfied by any page at all. It now names the real
+    // requirement: an experiment that produced no decision offers no decision.
+    const hrefs = [...container.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+    expect(hrefs.filter((h) => h?.startsWith('/app/decisions/'))).toHaveLength(0);
   });
 });
 

@@ -70,7 +70,14 @@ export function useDecisionDetail(id) {
     } catch (err) {
       if (!aliveRef.current) return;
       if (axios.isCancel?.(err) || err?.name === 'CanceledError') return;
-      const status = err?.response?.status;
+      // B8-05 — `httpStatus` FIRST. `api.js` rejects with `mapTransportError`'s
+      // AppError, which carries `httpStatus` and has no `response` at all, so
+      // reading only `err.response.status` made this `undefined` on every real
+      // request and collapsed all three refusals into UNREADABLE — undoing
+      // C-11's deliberate 409. `useIncrementality` already read it this way.
+      // Proved by `useExperimentDetail.test.js`, which drives THIS hook against
+      // the shape the api client actually throws.
+      const status = err?.httpStatus ?? err?.response?.status;
       setDecision(null);
       if (status === 404) setRefusal(DETAIL_REFUSAL.NOT_FOUND);
       else if (status === 409) setRefusal(DETAIL_REFUSAL.NOT_DESTINATION);

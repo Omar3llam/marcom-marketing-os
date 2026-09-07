@@ -11,7 +11,15 @@
 // The contract seam safeParses representative response envelopes.
 // ============================================================
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { confidenceRung, confidenceText } from '@/design-system/states/confidence.js';
+
+// B8-05 — each holdout row now links to its own destination (/app/measure/:id),
+// so these renders need a router in context. Wrapping here leaves every call
+// site below untouched.
+const render = (ui: React.ReactElement, opts?: Parameters<typeof rtlRender>[1]) =>
+  rtlRender(ui, { wrapper: MemoryRouter, ...opts });
 import { ScenarioPanel } from '../ScenarioPanel.jsx';
 import { IncrementalityPanel } from '../IncrementalityPanel.jsx';
 import {
@@ -104,7 +112,15 @@ describe('IncrementalityPanel — gated lock + honest holdout loop', () => {
   it('a conclusive CONCLUDED holdout shows its persisted lift + confidence', () => {
     const { container } = render(<IncrementalityPanel tests={[concludedYes]} onDesign={vi.fn()} onRecord={vi.fn()} onConclude={vi.fn()} />);
     expect(container.textContent).toMatch(/\+20% incremental lift/);
-    expect(container.textContent).toMatch(/MEDIUM confidence/);
+    // B8-05 · R-E4 — this asserted the STORED WORD, "MEDIUM". The stored word
+    // is still MEDIUM; what the reader is shown is the RUNG, and the A/B half
+    // reaches the same rung from its own spelling, "MODERATE". Pinning the
+    // presentation to one producer's vocabulary is what let the two halves of
+    // one decision class print two different words for one fact.
+    expect(container.textContent).toMatch(/Medium confidence/i);
+    expect(container.textContent).toBe(
+      container.textContent.replace('Medium confidence', confidenceText(confidenceRung('MODERATE'))),
+    );
   });
 
   it('an inconclusive CONCLUDED holdout says so plainly (no hopeful number)', () => {
