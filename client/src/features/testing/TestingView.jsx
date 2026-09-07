@@ -31,6 +31,7 @@ import { toMinor, fromMinor } from '@/lib/money';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
 import { appRoutes } from '@/app/routeManifest.js';
+import { CONFIDENCE, confidenceRung, confidenceText } from '@/design-system/states/confidence.js';
 
 // ── The thin-sample floor — a mirror of testReadoutEngine FLOOR (frozen). ──
 // Below this on the smaller arm the backend refuses to call a winner, so we
@@ -80,17 +81,34 @@ function StatusPill({ status }) {
   );
 }
 
+// B8-05 · R-E4 — the badge presents a RUNG, not a stored string.
+//
+// It used to print `{label} confidence` straight from the column and style it
+// with `CONF_STYLE[label] || CONF_STYLE.INCONCLUSIVE`. Three things were wrong
+// with that, and all three are fixed by asking the adapter:
+//
+//  · "MODERATE" here and "MEDIUM" in Measure were the same rung under two
+//    spellings — one decision class, two producers, two vocabularies.
+//  · "INCONCLUSIVE confidence" gave a FINDING the grammar of a MEASUREMENT,
+//    which L-4 forbids: a confidence figure only where one was measured.
+//  · An unrecognised label silently inherited the INCONCLUSIVE style, so
+//    contract drift rendered as a legitimate finding about the experiment.
+//
+// The adapter does not merge the two enums — see design-system/states/confidence.js.
 const CONF_STYLE = {
-  HIGH:         'text-signal-scale bg-signal-scale-bg',
-  MODERATE:     'text-lumi-accent bg-lumi-accent-soft',
-  LOW:          'text-lumi-muted bg-lumi-surface',
-  INCONCLUSIVE: 'text-lumi-subtle bg-lumi-surface',
+  [CONFIDENCE.HIGH]:    'text-signal-scale bg-signal-scale-bg',
+  [CONFIDENCE.MEDIUM]:  'text-lumi-accent bg-lumi-accent-soft',
+  [CONFIDENCE.LOW]:     'text-lumi-muted bg-lumi-surface',
+  [CONFIDENCE.NO_CALL]: 'text-lumi-subtle bg-lumi-surface',
 };
 function ConfidenceBadge({ label }) {
-  if (!label) return null;
+  const rung = confidenceRung(label);
+  // Drift claims nothing. Rendering it as any band — or as a finding — would be
+  // stating something about the experiment that we did not learn.
+  if (rung === CONFIDENCE.UNRECOGNISED) return null;
   return (
-    <span className={`rounded-md px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${CONF_STYLE[label] || CONF_STYLE.INCONCLUSIVE}`}>
-      {label} confidence
+    <span className={`rounded-md px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide ${CONF_STYLE[rung]}`}>
+      {confidenceText(rung)}
     </span>
   );
 }
@@ -108,7 +126,17 @@ function ExperimentCard({ exp, role, canOperate, onConclude, concludingId, onSta
         </div>
         <StatusPill status={exp.status} />
       </div>
-      {exp.hypothesis && <p className="mt-1.5 text-sm text-lumi-text">{exp.hypothesis}</p>}
+      {/* B8-05 — the experiment is addressable. `GET /tests/:id` has existed
+          since C-13 with no caller; this is how a person reaches it without a
+          hand-typed URL. The list keeps every operator control; the destination
+          is for reading. */}
+      {exp.hypothesis && (
+        <p className="mt-1.5 text-sm text-lumi-text">
+          <Link to={`${appRoutes.testing}/${encodeURIComponent(exp.id)}`} className="hover:underline">
+            {exp.hypothesis}
+          </Link>
+        </p>
+      )}
 
       {exp.status === 'CONCLUDED' && (
         <div className="mt-3 space-y-2">
@@ -129,9 +157,18 @@ function ExperimentCard({ exp, role, canOperate, onConclude, concludingId, onSta
             </div>
           )}
           {exp.sampleNote && <p className="text-xs font-mono text-lumi-subtle">{exp.sampleNote}</p>}
+          {/* B8-05 · E6 — the experiment is holding the decision's own id, so
+              it names the decision. This used to send the reader to Overview,
+              which shows `status: 'PROPOSED'` only (feed.js): the sentence was
+              true until somebody acted on it, and then it promised a review
+              that page could no longer deliver. `/app/decisions/:id` admits all
+              five statuses — B8-01 widened the enum for exactly this. */}
           {exp.decisionId && (
-            <Link to={appRoutes.overview} className="inline-block text-xs font-medium text-lumi-accent hover:underline">
-              Lumi proposed an action — review on Overview →
+            <Link
+              to={`${appRoutes.decisions}/${exp.decisionId}`}
+              className="inline-block text-xs font-medium text-lumi-accent hover:underline"
+            >
+              Read the decision this experiment produced →
             </Link>
           )}
           {canOperate && (

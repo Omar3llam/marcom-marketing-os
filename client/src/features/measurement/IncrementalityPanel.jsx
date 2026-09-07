@@ -21,6 +21,7 @@ import { formatCurrency } from '@/lib/money';
 import { HelpTip } from '@/components/ui/HelpTip.jsx';
 import { HELP } from '@/lib/helpContent.js';
 import { appRoutes } from '@/app/routeManifest.js';
+import { confidenceRung, confidenceText } from '@/design-system/states/confidence.js';
 
 const statusTone = {
   DESIGNED:  'text-stage-testing bg-stage-testing/10 border-stage-testing/25',
@@ -126,7 +127,15 @@ function HoldoutRow({ test, readout, busy, onRecord, onConclude, ccy = 'USD' }) 
     <div className="rounded-2xl border border-lumi-border bg-lumi-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
         <Microscope className="w-4 h-4 text-lumi-accent" strokeWidth={1.5} />
-        <span className="font-display text-sm text-lumi-text">{test.name || `${test.channel} holdout`}</span>
+        {/* B8-05 — the holdout is addressable. `GET /incrementality/:id` has
+            been served since Phase 7C with no caller at all; this is how a
+            person reaches it. The row keeps every operator control. */}
+        <Link
+          to={`${appRoutes.measure}/${encodeURIComponent(test.id)}`}
+          className="font-display text-sm text-lumi-text hover:underline"
+        >
+          {test.name || `${test.channel} holdout`}
+        </Link>
         <span className={cn('font-mono text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border', statusTone[test.status] || statusTone.ABANDONED)}>
           {test.status}
         </span>
@@ -147,11 +156,16 @@ function HoldoutRow({ test, readout, busy, onRecord, onConclude, ccy = 'USD' }) 
         <div className="mt-3">
           {conclusive ? (
             <p className="text-sm text-signal-scale">
-              {Number(test.liftPct) > 0 ? '+' : ''}{test.liftPct}% incremental lift · {test.confidenceLabel} confidence
+              {/* B8-05 · R-E4 — the rung, not the stored word. This half spells
+                  the middle band MEDIUM and the A/B half spells it MODERATE;
+                  a reader should not have to learn which engine wrote the row. */}
+              {Number(test.liftPct) > 0 ? '+' : ''}{test.liftPct}% incremental lift · {confidenceText(confidenceRung(test.confidenceLabel))}
               {test.incrementalRevenueMinor != null && <span className="text-lumi-subtle"> · {formatCurrency(test.incrementalRevenueMinor, ccy)} incremental revenue</span>}
             </p>
           ) : (
-            <p className="text-sm text-lumi-muted">No causal lift called — INCONCLUSIVE.</p>
+            // The A/B half stores the word INCONCLUSIVE where this half stores
+            // null. Same finding, and now the same sentence.
+            <p className="text-sm text-lumi-muted">No causal lift called — no call could be made.</p>
           )}
           {readout?.rationale && <p className="mt-1 text-[11px] text-lumi-subtle">{readout.rationale}</p>}
         </div>
