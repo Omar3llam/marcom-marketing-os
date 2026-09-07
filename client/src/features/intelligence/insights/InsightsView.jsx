@@ -1,20 +1,29 @@
 // ============================================================
 // MARCOM / Lumi — GrowthStrategyBoard  (/app/intelligence/insights)
 // ------------------------------------------------------------
-// CMO war room: 4 macro metrics + horizontal active-bets strip
-// + memory-layer timeline. MRR / LTV:CAC / CAC don't exist as
-// backend endpoints yet — those tiles render the section label
-// with an honest "—" placeholder rather than fabricating numbers.
+// 4 macro metrics + an active-bets strip + the account's goals, plans, approval
+// queue and unit economics. MRR / LTV:CAC / CAC don't exist as backend
+// endpoints yet — those tiles render the section label with an honest "—"
+// placeholder rather than fabricating numbers.
+//
+// FE-02 — the ACROSS axis is no longer here. The memory-layer timeline and the
+// account briefing moved to /app/memory, which is the destination for the
+// object they are two readings of (B7 Ruling 2).
+//
+// STILL OPEN, and named rather than left to be discovered: `bets` and the
+// Blended CPA tile read `campaigns` off `useCampaignFeed`, and `GET /lumi/feed`
+// stopped publishing that array in S1-B. Both therefore render a claim about an
+// account from a field that does not exist — "No strategic bets active" and "No
+// campaigns yet". They are the SUBJECT axis and FE-03 repoints them together
+// with the hook's other two consumers; splitting that across two slices is how
+// a half-repointed hook gets left behind.
 // ============================================================
-import { useMemo, useState } from 'react';
-import { Target, Brain, Zap } from 'lucide-react';
+import { useMemo } from 'react';
+import { Target } from 'lucide-react';
 import { useCampaignFeed } from '@/hooks/useCampaignFeed.js';
 import { useGrowthStrategySummary } from '@/hooks/useGrowthStrategySummary.js';
-import { useAccountBriefing } from '@/hooks/useAccountBriefing.js';
-import { usePromotePattern } from '@/hooks/usePromotePattern.js';
 import { useEconomics, useSaveEconomics } from '@/hooks/useEconomics.js';
 import { cn } from '@/lib/utils.js';
-import { fmtRelative } from '@/lib/dateUtils.js';
 import { PriorityBadge, StageBadge } from '@/layouts';
 import RoleGate from '@/components/auth/RoleGate.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
@@ -24,7 +33,6 @@ import { useApprovals } from '@/hooks/useApprovals.js';
 import { useFatigueForecast } from '@/hooks/useFatigueForecast.js';
 import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
 import { FatigueForecastPanel } from './FatigueForecastPanel.jsx';
-import { AccountBriefing } from './AccountBriefing.jsx';
 import { UnitEconomicsPanel } from './UnitEconomicsPanel.jsx';
 import { GoalsPanel } from './GoalsPanel.jsx';
 import { PlansPanel } from './PlansPanel.jsx';
@@ -33,41 +41,14 @@ import { ApprovalsPanel } from './ApprovalsPanel.jsx';
 const STAGES = ['DYING', 'FATIGUED', 'TESTING', 'SCALING', 'STABLE'];
 
 export default function GrowthStrategyBoard() {
-  // Legacy CampaignState feed — still the source for Strategic Bets + Memory
-  // Layer (they read Action/DecisionMemory rows the connector doesn't produce).
+  // Legacy CampaignState feed — the source for Strategic Bets, and structurally
+  // empty since S1-B. See the header: FE-03 owns the repoint.
   const { campaigns, summary, loading } = useCampaignFeed();
   // Active Campaigns tile ONLY — repointed to the connector substrate so its
   // count matches CampaignsView instead of "campaigns with a pending Action".
   const { summary: growth, loading: growthLoading } = useGrowthStrategySummary();
   const { forecast: fatigueForecast, isLoading: fatigueLoading } = useFatigueForecast();
-  const { briefing, loading: briefingLoading, error: briefingError, refetch: refetchBriefing, setConsent, consentBusy } = useAccountBriefing();
-  const { requestPromotion, grantPromotion, revokePromotion, busyId: promotingId, error: promoteError } = usePromotePattern();
-  // C-05 · the authorization filed for a pattern in THIS session. There is no
-  // read of pending authorizations yet, so this is a session handle and not a
-  // queue: after a reload the server answers a repeat request with
-  // `AlreadyPending`, which the panel surfaces rather than papering over.
-  const [pendingRequestId, setPendingRequestId] = useState({});
   const { role: collabRole } = useCollabRole();
-  const canManageConsent = collabRole === WORKSPACE_ROLE.STRATEGIST;
-  // Promoting a pattern to an account-wide rule is the same STRATEGIST-tier
-  // owner decision as the network-consent control beside it.
-  const onRequestPromotion = async (patternId) => {
-    const result = await requestPromotion(patternId);
-    // Filing the authorization changes nothing about the account, so there is
-    // nothing to re-read: the grant is the act that creates a rule.
-    if (result?.requestId) setPendingRequestId((prev) => ({ ...prev, [patternId]: result.requestId }));
-  };
-  const onGrantPromotion = async (patternId, requestId) => {
-    const result = await grantPromotion(requestId);
-    if (result) {
-      setPendingRequestId((prev) => { const next = { ...prev }; delete next[patternId]; return next; });
-      await refetchBriefing(); // re-read so the promotable count + flags update
-    }
-  };
-  const onRevokePromotion = async (ruleId) => {
-    const result = await revokePromotion(ruleId);
-    if (result) await refetchBriefing();
-  };
   const { data: economics, loading: economicsLoading, error: economicsError, refetch: refetchEconomics } = useEconomics();
   const { save: saveEconomics, saving: economicsSaving } = useSaveEconomics();
   const onSaveEconomics = async (inputs) => { const ok = await saveEconomics(inputs); if (ok) await refetchEconomics(); };
@@ -106,40 +87,32 @@ export default function GrowthStrategyBoard() {
     return out.slice(0, 12);
   }, [campaigns]);
 
-  // Memory entries — the orchestrator + temporal observer write
-  // these into DecisionMemory. We surface them via /api/lumi/feed
-  // (each alert carries a `memory` array of last-3 prior decisions).
-  const learnings = useMemo(() => {
-    const out = [];
-    for (const c of campaigns) {
-      for (const a of c.alerts ?? []) {
-        for (const m of a.memory ?? []) {
-          out.push({
-            id:           `${a.action_id}-${m.actionType}-${m.recordedAt || ''}`,
-            campaign:     c.campaign_id,
-            actionType:   m.actionType,
-            rationale:    m.decisionRationale || m.rationale || '—',
-            sustainable:  m.isSustainable,
-            durationHrs:  m.impactDurationHrs,
-            recordedAt:   m.recordedAt,
-          });
-        }
-      }
-    }
-    return out.slice(0, 8);
-  }, [campaigns]);
+  // FE-02 — a `learnings` memo stood here. It walked
+  // campaigns[].alerts[].memory[] out of `useCampaignFeed` and rendered a
+  // "System Learnings — The Memory Layer" timeline, and when it came back
+  // empty the section printed "The memory layer is empty."
+  //
+  // `GET /lumi/feed` stopped publishing `campaigns` in S1-B, so it came back
+  // empty for EVERY workspace, and that sentence was a false claim about the
+  // account — contradicted a hundred lines lower on this same page, where the
+  // account briefing rendered the patterns Lumi actually holds.
+  //
+  // Deleted rather than repointed, on S1-B's own precedent: the real memory is
+  // the briefing, and both readings of it now live at /app/memory. Building a
+  // replacement timeline here would be inventing a surface for a retired
+  // capability under cover of an IA change.
 
   return (
     <div className="flex flex-col h-full overflow-y-auto p-6 lg:p-8 animate-fade-in">
       {/* ── HEADER ──────────────────────────────────────────── */}
+      {/* The "Memory Layer: N learnings" badge that stood here counted the
+          deleted feed's rows, so it read "0 learnings" for every workspace on
+          every render — a count of an account's beliefs, taken from a field
+          that no longer exists. The sub-title claimed the same thing in prose. */}
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-8">
         <div>
           <h1 className="decision-title text-lumi-text">Growth Strategy</h1>
-          <p className="text-lumi-muted text-sm mt-1">The macro view — CMO memory layer active</p>
-        </div>
-        <div className="inline-flex items-center gap-1.5 bg-stage-testing/10 border border-stage-testing/25 text-stage-testing font-mono text-xs px-3 py-1 rounded-full self-start sm:self-auto">
-          <Brain className="w-3 h-3" strokeWidth={1.5} />
-          Memory Layer: {learnings.length} learning{learnings.length === 1 ? '' : 's'}
+          <p className="text-lumi-muted text-sm mt-1">Goals, plans and unit economics for the account</p>
         </div>
       </header>
 
@@ -193,39 +166,12 @@ export default function GrowthStrategyBoard() {
       {/* ── FATIGUE FORECAST (forward signal · per-campaign, named) ─── */}
       <FatigueForecastPanel forecast={fatigueForecast} loading={fatigueLoading} />
 
-      {/* ── MEMORY LAYER TIMELINE ───────────────────────────── */}
-      <section className="mb-10">
-        <div className="section-label">System Learnings — The Memory Layer</div>
-        <p className="mt-1 text-lumi-muted text-sm mb-4">
-          Rules the AI has learned from your campaigns. Applied to every future decision.
-        </p>
-
-        {learnings.length === 0 ? (
-          <EmptyMemory />
-        ) : (
-          <ol className="relative">
-            <span aria-hidden="true" className="absolute left-4 top-2 bottom-2 w-px bg-lumi-border" />
-            {learnings.map((l) => <MemoryRow key={l.id} l={l} />)}
-          </ol>
-        )}
-      </section>
-
-      {/* ── WHAT LUMI KNOWS (account briefing + gated network) ─── */}
-      <AccountBriefing
-        briefing={briefing}
-        loading={briefingLoading}
-        error={briefingError}
-        onConsent={setConsent}
-        consentBusy={consentBusy}
-        canManageConsent={canManageConsent}
-        onRequestPromotion={onRequestPromotion}
-        onGrantPromotion={onGrantPromotion}
-        onRevokePromotion={onRevokePromotion}
-        pendingRequestId={pendingRequestId}
-        promotingId={promotingId}
-        promoteError={promoteError}
-        canPromote={canManageConsent}
-      />
+      {/* ── FE-02 · the ACROSS axis left this board ──────────────
+          The "System Learnings — The Memory Layer" timeline and the account
+          briefing both stood here. They are the two readings of ONE object
+          (B7 Ruling 2) and they now live at /app/memory, which is where a
+          person can link to them. Nothing about either reading changed in the
+          move — only its address. ── */}
 
       {/* ── NORTH-STAR GOALS (Phase 6A · view all; create STRATEGIST) ─── */}
       <GoalsPanel
@@ -376,45 +322,6 @@ function BetCard({ bet }) {
   );
 }
 
-function MemoryRow({ l }) {
-  const dotColor = l.sustainable === true ? 'bg-signal-scale'
-                 : l.sustainable === false ? 'bg-signal-hold'
-                 : 'bg-stage-testing';
-  const impactColor = l.sustainable === true
-    ? 'text-signal-scale bg-signal-scale-bg border-signal-scale/25'
-    : 'text-signal-hold bg-signal-hold-bg border-signal-hold/25';
-  const impactLabel = l.sustainable === true ? 'HIGH IMPACT'
-                    : l.sustainable === false ? 'REGRESSED' : 'PENDING';
-
-  return (
-    <li className="relative flex gap-4 pl-10 pb-5">
-      <span aria-hidden="true" className={cn('absolute left-[14px] top-1 w-2 h-2 rounded-full', dotColor)} />
-      <span className="font-mono text-xs text-lumi-subtle w-24 flex-shrink-0 pt-0.5">
-        {fmtRelative(l.recordedAt)}
-      </span>
-      <div className="flex-1 min-w-0">
-        <p className="font-body text-sm text-lumi-text leading-relaxed">{l.rationale}</p>
-        <div className="flex flex-wrap gap-2 mt-1.5">
-          <Tag>{(l.actionType || 'OBSERVATION').toUpperCase()}</Tag>
-          <Tag>{l.campaign}</Tag>
-          {l.durationHrs ? <Tag>{l.durationHrs}H WINDOW</Tag> : null}
-          <span className={cn('font-mono text-xs uppercase tracking-wide px-2 py-0.5 rounded border', impactColor)}>
-            {impactLabel}
-          </span>
-        </div>
-      </div>
-    </li>
-  );
-}
-
-function Tag({ children }) {
-  return (
-    <span className="font-mono text-xs bg-lumi-elevated border border-lumi-border text-lumi-muted px-2 py-0.5 rounded">
-      {children}
-    </span>
-  );
-}
-
 function Sparkline({ values = [] }) {
   if (values.length === 0) return null;
   const min = Math.min(...values), max = Math.max(...values);
@@ -439,18 +346,6 @@ function EmptyBets({ loading }) {
       <p className="mt-3 font-display text-lumi-text">No strategic bets active.</p>
       <p className="mt-1 text-lumi-muted text-sm">
         Analyze your first campaign to generate strategic recommendations.
-      </p>
-    </div>
-  );
-}
-
-function EmptyMemory() {
-  return (
-    <div className="rounded-2xl border border-dashed border-lumi-border bg-lumi-surface/40 p-10 text-center">
-      <Zap className="w-12 h-12 mx-auto text-lumi-subtle" strokeWidth={1.5} />
-      <p className="mt-3 font-display text-lumi-text">The memory layer is empty.</p>
-      <p className="mt-1 text-lumi-muted text-sm">
-        Lumi will learn from your campaigns and store rules here.
       </p>
     </div>
   );

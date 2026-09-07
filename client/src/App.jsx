@@ -53,7 +53,10 @@ const BlendedTruth = lazy(() => import('./pages/BlendedTruth.jsx'));
 // B8-03 — the THEN destination. Its route was a redirect to Overview until now.
 const DecisionHistory = lazy(() => import('./features/decisions/DecisionHistoryView.jsx'));
 const DecisionDetail  = lazy(() => import('./features/decisions/DecisionDetailView.jsx'));
-const Proof        = lazy(() => import('./pages/Proof.jsx'));
+// FE-02 — the ACROSS destination. `Proof` used to be lazy-loaded here as its own
+// page; it is a reading inside this one now, and /app/intelligence/proof is a
+// redirect (B7 Ruling 2 — one object may not have two destinations).
+const MemoryView   = lazy(() => import('./features/memory/MemoryView.jsx'));
 
 // ── Internal admin panel — standalone (no app shell), ADMIN-only ─
 const AdminPanel = lazy(() => import('./pages/AdminPanel.jsx'));
@@ -236,14 +239,29 @@ export default function App() {
             </ErrorBoundary>
           } />
 
-          {/* ── Phase 11A · Proof of Learning (all roles; view narrows by role; GROWTH) ── */}
-          <Route path="intelligence/proof" element={
-            <ErrorBoundary boundaryId="proof">
-              <PlanGate required="GROWTH" fallback={<UpgradePrompt feature="Intelligence" requiredPlan="GROWTH" />}>
-                <Suspense fallback={<PageFallback />}><Proof /></Suspense>
+          {/* ── FE-02 · ACROSS — Memory, read two ways (B7 Ruling 2) ───────
+              PlanGate only. NO RoleGate, deliberately: before this destination
+              existed the two readings had different entitlements — the briefing
+              was STRATEGIST/BUYER, Proof of Learning was open to every role and
+              narrowed itself to a narrative line for a CLIENT. A page-level
+              RoleGate would have taken Proof away from the CLIENT seat, which is
+              a regression, not a consolidation. The gate lives on the briefing
+              reading inside MemoryView, where it always was.
+
+              GROWTH matches `GET /lumi/briefing`'s own requirePlan('GROWTH') —
+              B7 Ruling 3's test that a surface and its API agree. ── */}
+          <Route path="memory" element={
+            <ErrorBoundary boundaryId="memory">
+              <PlanGate required="GROWTH" fallback={<UpgradePrompt feature="Memory" requiredPlan="GROWTH" />}>
+                <Suspense fallback={<PageFallback />}><MemoryView /></Suspense>
               </PlanGate>
             </ErrorBoundary>
           } />
+
+          {/* Phase 11A's Proof of Learning page. The URL stays alive — it is
+              linked and bookmarked — but it resolves to the destination that
+              now owns the object, rather than rendering a second one. */}
+          <Route path="intelligence/proof" element={<Navigate to={appRoutes.memory} replace />} />
 
           {/* ── Phase 4-B · Growth Strategy + Account Briefing (STRATEGIST/BUYER; CLIENT → Reports) ──
               The memory-moat war room. Gated to match its sibling blended-truth + the
@@ -370,7 +388,9 @@ export default function App() {
           <Route path="home"  element={<Navigate to={appRoutes.overview} replace />} />
           <Route path="feed"  element={<Navigate to={appRoutes.overview} replace />} />
           <Route path="truth" element={<Navigate to={appRoutes.blendedTruth} replace />} />
-          <Route path="proof" element={<Navigate to={appRoutes.proof} replace />} />
+          {/* FE-02 — straight to the destination. Pointing this at
+              `appRoutes.proof` would now be a redirect to a redirect. */}
+          <Route path="proof" element={<Navigate to={appRoutes.memory} replace />} />
 
           {/* ── PR #45 · Mission Control (Observability Dashboard) ── */}
           <Route path="observability" element={
