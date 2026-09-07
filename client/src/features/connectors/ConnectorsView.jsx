@@ -22,15 +22,17 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Scale, Plus, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import { api } from '@/lib/api.js';
 import { useConnections } from '@/hooks/useConnections.js';
 import { useProjectId } from '@/hooks/useProjectId.js';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
 import { PageHeader } from '@/design-system/patterns';
-// Lives in its own module so onboarding's ConnectStep can start an OAuth flow
-// without importing this whole surface (see startConnect.js).
-import { startConnect, CONNECT_PATH } from './startConnect.js';
+// startConnect lives in its own module so onboarding's ConnectStep can start an
+// OAuth flow without importing this whole surface. The requests go through the
+// feature service — a destination under features/ may not call the shared api
+// client directly (arch-check CHECK 2B).
+import { startConnect } from './startConnect.js';
+import { isConnectable, switchAdAccount } from './services.js';
 
 const KNOWN = ['META', 'GOOGLE', 'TIKTOK', 'LINKEDIN', 'SNAP'];
 const LABEL = { META: 'Meta Ads', GOOGLE: 'Google Ads', TIKTOK: 'TikTok', LINKEDIN: 'LinkedIn', SNAP: 'Snap' };
@@ -100,7 +102,7 @@ export function ConnectionsView({ connections = [], projectId, onSwitchAccount, 
                   ? ` · incomplete — ${c.health?.lastWarning ?? 'some data was not read'}` : ''}
                 {switching !== platform && c.health?.lastError ? ` · ${c.health.lastError}` : ''}
               </span>
-            ) : CONNECT_PATH[platform] ? (
+            ) : isConnectable(platform) ? (
               <button onClick={() => startConnect(platform, projectId)} className="font-mono text-xs text-lumi-accent hover:underline">connect</button>
             ) : (
               <span className="font-mono text-xs text-lumi-subtle">soon</span>
@@ -125,7 +127,7 @@ export default function ConnectorsView() {
     if (!accountId || switching) return;
     setSwitching(platform);
     try {
-      await api.patch('/api/lumi/connections/account', { platform, accountId });
+      await switchAdAccount(platform, accountId);
       toast.success('Ad account switched — re-syncing its campaigns…');
       refetch();
     } catch (err) {
