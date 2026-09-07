@@ -27,7 +27,7 @@ describe('ConnectionHealthStrip — Connect affordance', () => {
     });
     renderStrip();
     const link = screen.getByRole('link', { name: /Connect/i });
-    expect(link).toHaveAttribute('href', '/app/settings/integrations');
+    expect(link).toHaveAttribute('href', '/app/connections');
   });
 
   it('a channel is connected → read-only, no Connect link', () => {

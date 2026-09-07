@@ -8,7 +8,6 @@ import { toast } from 'sonner';
 import { clearContextCache } from '@/router/ProtectedRoute.jsx';
 import { settingsSections } from '@/app/routeManifest.js';
 import { EmptyState, PageHeader } from '@/design-system/patterns';
-import Connections from '@/pages/Connections.jsx';
 import { ProfileTab } from './ProfileTab.jsx';
 import { WorkspaceTab } from './WorkspaceTab.jsx';
 import TeamTab from './TeamTab.jsx';
@@ -153,10 +152,11 @@ export default function Settings() {
 
   const renderSection = () => {
     switch (activeSection) {
-      case 'integrations':
-        // ONE connection-status implementation: the workspace-scoped <Connections>
-        // surface (GET /api/lumi/connections), not a second Meta-only panel.
-        return <Connections />;
+      // FE-04 — `integrations` is gone from here. It was never a settings
+      // CONCERN: it is the surface an operator connects and repairs a channel
+      // on, and it now owns /app/connections. The address still resolves —
+      // App.jsx redirects it — so rendering it here as well would give one
+      // object two destinations, which is what B7 Ruling 2 forbids.
       case 'team':
         return <TeamTab />;
       case 'revenue':

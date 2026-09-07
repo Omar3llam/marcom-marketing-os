@@ -26,6 +26,7 @@ const ROUTES = [
   ['/app/overview',  appRoutes.overview],
   ['/app/campaigns', appRoutes.campaigns],
   ['/app/settings',  appRoutes.settings],
+  ['/app/connections', appRoutes.connections],
   ['/onboarding',    '/onboarding'],
 ];
 
@@ -50,6 +51,8 @@ function Harness({ initial }) {
           <Route path="decisions" element={<Navigate to={appRoutes.overview} replace />} />
           {/* Settings is a layout route in App.jsx too — it renders its section
               through an Outlet, which is the shape being exercised here. */}
+          <Route path="connections" element={<div>connectors-view</div>} />
+          <Route path="settings/integrations" element={<Navigate to={appRoutes.connections} replace />} />
           <Route path="settings" element={<div><span>settings-view</span><Outlet /></div>}>
             <Route path="general" element={<div>settings-general</div>} />
           </Route>
@@ -79,6 +82,25 @@ describe('route resolution', () => {
   it('/app/settings lands on the settings element', () => {
     render(<Harness initial={appRoutes.settings} />);
     expect(screen.getByText('settings-view')).toBeInTheDocument();
+  });
+
+  // FE-04 · the reclaimed destination. ⚠️ INSTRUMENT HONESTY: this harness does
+  // NOT import App.jsx — it hand-declares a table "with the same SHAPE", so
+  // what these two cases prove is that react-router ranks a STATIC segment
+  // (`settings/integrations`) above a DYNAMIC sibling (`settings/:section`)
+  // regardless of declaration order, which is the matcher behaviour the real
+  // redirect depends on. That App.jsx actually declares these routes is a
+  // separate claim, made against App.jsx's own source in
+  // connectorsDestination.test.js.
+  it('/app/connections lands on the connectors element, not a redirect', () => {
+    render(<Harness initial={appRoutes.connections} />);
+    expect(screen.getByText('connectors-view')).toBeInTheDocument();
+  });
+
+  it('the Settings › Channels address still resolves — to the destination', () => {
+    render(<Harness initial={appRoutes.settingsIntegrations} />);
+    expect(screen.getByText('connectors-view')).toBeInTheDocument();
+    expect(screen.queryByText('settings-view')).not.toBeInTheDocument();
   });
 
   it('/onboarding is outside the app layout', () => {

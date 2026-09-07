@@ -215,7 +215,7 @@ export function IncrementalityPanel({ tests = [], readouts = {}, gated = false, 
           <AlertCircle className="w-5 h-5 mx-auto mb-1.5" strokeWidth={1.5} />
           <p>We couldn’t load incrementality right now.</p>
           <p className="mt-1 text-dark-soft">Holdout testing needs a connected channel with live campaigns.</p>
-          <Link to={appRoutes.settingsIntegrations} className="mt-3 inline-flex items-center gap-1 font-medium text-lumi-accent hover:underline">
+          <Link to={appRoutes.connections} className="mt-3 inline-flex items-center gap-1 font-medium text-lumi-accent hover:underline">
             Connect Meta →
           </Link>
         </div>

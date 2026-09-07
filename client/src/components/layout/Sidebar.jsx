@@ -211,7 +211,7 @@ export default function Sidebar({
   // Discoverability: a highlighted "Connect a channel" entry, shown ONLY until the
   // first channel connects (self-hiding — existing users never see it). Operators
   // only; a read-only CLIENT can't connect. Reads the same real Integration rows
-  // the Channels page uses, so it disappears the moment a connection lands.
+  // the Connectors destination uses, so it disappears the moment a connection lands.
   const hasConnector = (connectionsData?.connections ?? []).some((c) => c.connected);
   const showConnectCTA = roleAllowed(collabRole, ['STRATEGIST', 'BUYER']) && !connectionsLoading && !hasConnector;
 
@@ -449,7 +449,7 @@ export default function Sidebar({
               Integrations" gap for new users; self-hides after the first connect. */}
           {showConnectCTA && (
             <NavLink
-              to={appRoutes.settingsIntegrations}
+              to={appRoutes.connections}
               title={collapsed ? 'Connect a channel' : undefined}
               onClick={() => onMobileMenuToggle?.()}
               className={cn(

@@ -7,7 +7,7 @@
 // ============================================================
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
-import { ConnectionsView } from './Connections.jsx';
+import { ConnectionsView } from '../ConnectorsView.jsx';
 
 describe('ConnectionsView — honest channel availability', () => {
   it('Google Ads shows a real "connect" action (live), never "coming soon"', () => {

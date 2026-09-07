@@ -56,6 +56,11 @@ const DecisionDetail  = lazy(() => import('./features/decisions/DecisionDetailVi
 // page; it is a reading inside this one now, and /app/intelligence/proof is a
 // redirect (B7 Ruling 2 — one object may not have two destinations).
 const MemoryView   = lazy(() => import('./features/memory/MemoryView.jsx'));
+// FE-04 — the Connectors destination. This surface shipped in Phase 12 but only
+// ever rendered inside Settings, so it was never lazy: SettingsPage is a static
+// import, and so was onboarding, which pulled the same module in for one
+// exported function. Both paths are cut (see features/connectors/startConnect.js).
+const ConnectorsView = lazy(() => import('./features/connectors/ConnectorsView.jsx'));
 
 // ── Internal admin panel — standalone (no app shell), ADMIN-only ─
 const AdminPanel = lazy(() => import('./pages/AdminPanel.jsx'));
@@ -334,8 +339,28 @@ export default function App() {
             </ErrorBoundary>
           } />
 
-          {/* ── Phase 12 · Connected Channels (STRATEGIST/BUYER; CLIENT → Reports) ── */}
-          <Route path="connections" element={<Navigate to={appRoutes.settingsIntegrations} replace />} />
+          {/* ── FE-04 · Connectors — the destination, reclaimed ─────────────
+              This path was a <Navigate> into Settings › Channels while the
+              surface it names lived there as a tab. B8-03's shape exactly.
+
+              RoleGate STRATEGIST/BUYER, and NO PlanGate. Settings carried no
+              gate at all, so a CLIENT could reach Channels by URL — that was
+              an omission, not an entitlement, and URL reachability does not
+              decide product audience. The backend already scopes the writes
+              (POST /connections/sync is BUYER+, PATCH /connections/account is
+              STRATEGIST); this makes the surface agree with them.
+
+              A plan gate would be the wrong instrument: connectors are how an
+              account gets ANY data at all, so gating them on tier would lock a
+              FREE workspace out of the one action that makes Lumi work. This
+              is role authorization, not monetization. ── */}
+          <Route path="connections" element={
+            <ErrorBoundary boundaryId="connectors">
+              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<RoleAwareRedirect />}>
+                <Suspense fallback={<PageFallback />}><ConnectorsView /></Suspense>
+              </RoleGate>
+            </ErrorBoundary>
+          } />
           <Route path="content"    element={
             <ErrorBoundary boundaryId="content">
               <LockFromClient><ContentLab /></LockFromClient>
@@ -376,6 +401,13 @@ export default function App() {
               <MarketingTools />
             </ErrorBoundary>
           } />
+          {/* FE-04 — Settings › Channels is a REDIRECT now, never a second
+              rendering of the same object (B7 Ruling 2). The address stays
+              alive because it is bookmarked and is where Meta's OAuth callback
+              returns. Declared before `settings/:section` for readability;
+              React Router ranks the static segment above the dynamic one
+              regardless of order. */}
+          <Route path="settings/integrations" element={<Navigate to={appRoutes.connections} replace />} />
           <Route path="settings"   element={
             <ErrorBoundary boundaryId="settings">
               <SettingsPage />
