@@ -32,6 +32,29 @@ import RadarStrip from './RadarStrip.jsx';
 import { appRoutes } from '@/app/routeManifest.js';
 import LumiStar from '@/components/brand/LumiStar.jsx';
 
+// FE-05 — the nav reduction. B7-08 locked a primary navigation of the four
+// axes plus Connectors; this executes it, with two exceptions the discovery
+// forced.
+//
+// `group` is a THIRD, orthogonal axis to the two gates below. It decides where
+// a row is drawn — never whether the seat may reach it. Every demoted surface
+// keeps its route, its gates and its ⌘K entry; demotion is not deletion, and
+// nothing here becomes URL-only.
+//
+// 🔒 Testing and Measurement stay PRIMARY. The proof that they could be demoted
+// failed in a closed loop: a RUNNING experiment reaches Attention through the
+// agenda ("In flight — read when concluded."), and the moment it CONCLUDES the
+// planner stops emitting it, its Decision has no back-edge to it (B8-05
+// deferred — `rootCause` is not an identity contract), Memory holds no reading
+// of it, and the only links into an experiment detail are from these two lists.
+// The experiment tells the operator to come back when it is done, and demotion
+// would remove the door it asked them to come back through.
+//
+// 🔒 Reports stays PRIMARY. It is the only item with no `roles` constraint —
+// nine of ten are STRATEGIST/BUYER — so demoting it would empty a CLIENT's
+// primary navigation entirely. A navigation regression, not a preference.
+export const NAV_GROUP = { PRIMARY: 'PRIMARY', SECONDARY: 'SECONDARY' };
+
 // Simplified navigation structure from Figma. Two orthogonal gates:
 //   • `roles` (optional) gates an item to the listed collabRoles; absent =
 //     visible to all. CLIENT is a read-only stakeholder — its only operator
@@ -52,28 +75,62 @@ export const tools = [
   // "Decision queue" named the SUBJECT axis, so the one name covered two axes
   // and THEN, which owns the object, had none. This was fought once already and
   // settled with sub-labels; the axes are what needed separating, not the copy.
-  { key: 'overview',     label: 'Attention',    sub: 'What needs you now',    icon: Layout,       path: appRoutes.overview,     roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
+  { key: 'overview',     label: 'Attention',    sub: 'What needs you now',    icon: Layout,       path: appRoutes.overview,     roles: ['STRATEGIST', 'BUYER'], plan: 'FREE',  group: NAV_GROUP.PRIMARY },
   // THEN — historical commitment. Ungated by plan (B7 Ruling 3).
-  { key: 'decisions',    label: 'Decisions',    sub: 'What Lumi decided',     icon: History,      path: appRoutes.decisions,    roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
-  { key: 'campaigns',    label: 'Campaigns',    sub: 'Where to investigate',  icon: BarChart3,    path: appRoutes.campaigns,    roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
-  { key: 'content',      label: 'Creative Optimizer', sub: 'Improve creative performance', icon: Send,   path: appRoutes.contentLab,   roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
-  { key: 'leadership',   label: 'Reports',      sub: 'Weekly narratives',      icon: FileText,     path: appRoutes.leadership,   plan: 'FREE' },
+  { key: 'decisions',    label: 'Decisions',    sub: 'What Lumi decided',     icon: History,      path: appRoutes.decisions,    roles: ['STRATEGIST', 'BUYER'], plan: 'FREE',  group: NAV_GROUP.PRIMARY },
+  { key: 'campaigns',    label: 'Campaigns',    sub: 'Where to investigate',  icon: BarChart3,    path: appRoutes.campaigns,    roles: ['STRATEGIST', 'BUYER'], plan: 'FREE',  group: NAV_GROUP.PRIMARY },
+  // 🔒 PRIMARY — a CLIENT's only nav destination. Nine of the ten items carry a
+  // STRATEGIST/BUYER constraint and this one carries none, so it is not merely
+  // the CLIENT's most useful row: it is the whole of their navigation.
+  { key: 'leadership',   label: 'Reports',      sub: 'Weekly narratives',      icon: FileText,     path: appRoutes.leadership,   plan: 'FREE',  group: NAV_GROUP.PRIMARY },
+  // FE-05 — Connectors takes the slot FE-04 deferred to this slice. The
+  // destination had NINE inbound production CTAs and no navigation owner, which
+  // left the topology one node short of what FE-04 built.
+  //
+  // `plan: 'FREE'` is load-bearing, not a default. /app/connections carries a
+  // RoleGate and deliberately NO PlanGate — connectors are how an account gets
+  // ANY data at all, so a tier gate there would lock a FREE workspace out of
+  // the one action that makes the product work. `plan` here is an entitlement
+  // FILTER (`canAccess`), not a heading, so anything stricter than FREE would
+  // hide the connect destination from exactly the accounts with nothing
+  // connected — B7 Ruling 3's mismatch, pointing the other way.
+  { key: 'connections',  label: 'Connectors',   sub: 'Where data comes from',  icon: Plug,         path: appRoutes.connections,  roles: ['STRATEGIST', 'BUYER'], plan: 'FREE',  group: NAV_GROUP.PRIMARY },
   // ── GROWTH — locked on FREE ─────────────────────────────────
   // ACROSS — what Lumi learned, and whether it held up. FE-02 gave the axis an
   // address; until then its two readings were tabs under "Intelligence" below,
   // and the axis had no name in this list at all. GROWTH because the read it
   // depends on, GET /lumi/briefing, is `requirePlan('GROWTH')` — a nav row that
   // outruns its API is a lie one click deep.
-  { key: 'memory',       label: 'Memory',       sub: 'What Lumi learned',      icon: Brain,        path: appRoutes.memory,       roles: ['STRATEGIST', 'BUYER'], plan: 'GROWTH' },
-  { key: 'intelligence', label: 'Intelligence', sub: 'Truth + strategy board', icon: Layers,       path: appRoutes.intelligence, roles: ['STRATEGIST', 'BUYER'], plan: 'GROWTH' },
-  { key: 'publishing',   label: 'Publishing',   sub: 'Content approvals',      icon: Megaphone,    path: appRoutes.publishing,   roles: ['STRATEGIST', 'BUYER'], plan: 'GROWTH' },
+  { key: 'memory',       label: 'Memory',       sub: 'What Lumi learned',      icon: Brain,        path: appRoutes.memory,       roles: ['STRATEGIST', 'BUYER'], plan: 'GROWTH', group: NAV_GROUP.PRIMARY },
   // ── PRO — locked on FREE / GROWTH ───────────────────────────
-  { key: 'testing',      label: 'Testing',      sub: 'A/B experiments',        icon: FlaskConical, path: appRoutes.testing,      roles: ['STRATEGIST', 'BUYER'], plan: 'PRO' },
-  { key: 'measure',      label: 'Measurement',  sub: 'Scenarios + holdouts',   icon: Microscope,   path: appRoutes.measure,      roles: ['STRATEGIST', 'BUYER'], plan: 'PRO' },
+  // 🔒 Both PRIMARY. See the LOCK note above the array: a concluded experiment
+  // has no other door.
+  { key: 'testing',      label: 'Testing',      sub: 'A/B experiments',        icon: FlaskConical, path: appRoutes.testing,      roles: ['STRATEGIST', 'BUYER'], plan: 'PRO',    group: NAV_GROUP.PRIMARY },
+  { key: 'measure',      label: 'Measurement',  sub: 'Scenarios + holdouts',   icon: Microscope,   path: appRoutes.measure,      roles: ['STRATEGIST', 'BUYER'], plan: 'PRO',    group: NAV_GROUP.PRIMARY },
+  // ── SECONDARY — demoted, NOT deleted ────────────────────────
+  // The census measured each of these as having no inbound production link but
+  // the Sidebar itself (content 1, intelligence 1, publishing 2 — all of them
+  // this file). A secondary group therefore leaves them exactly as reachable as
+  // they are today, which is what makes the demotion safe: nothing else was
+  // pointing at them to be orphaned.
+  //
+  // Intelligence is a redirect covering TWO surfaces (Blended Truth + Growth
+  // Strategy). Both keep their own inbound links from Attention's PacingWidget,
+  // the agenda, ScenarioPanel and the inbox, so demoting the landing row does
+  // not strand either of them.
+  { key: 'content',      label: 'Creative Optimizer', sub: 'Improve creative performance', icon: Send, path: appRoutes.contentLab, roles: ['STRATEGIST', 'BUYER'], plan: 'FREE',  group: NAV_GROUP.SECONDARY },
+  { key: 'intelligence', label: 'Intelligence', sub: 'Truth + strategy board', icon: Layers,       path: appRoutes.intelligence, roles: ['STRATEGIST', 'BUYER'], plan: 'GROWTH', group: NAV_GROUP.SECONDARY },
+  { key: 'publishing',   label: 'Publishing',   sub: 'Content approvals',      icon: Megaphone,    path: appRoutes.publishing,   roles: ['STRATEGIST', 'BUYER'], plan: 'GROWTH', group: NAV_GROUP.SECONDARY },
   // Copilot is demoted from the primary nav while it's a static placeholder — it
   // now lives as a teaser card in Overview. The /app/copilot route stays
   // reachable by direct URL (see App.jsx); restore this line to re-promote it.
 ];
+
+// Derived, so the two groups can never disagree with `tools` — the drift a
+// hand-maintained second array invites (`legacyAppRedirects` is the standing
+// example of that mistake, kept accurate by hand and importable by nobody).
+export const primaryTools   = tools.filter((t) => t.group === NAV_GROUP.PRIMARY);
+export const secondaryTools = tools.filter((t) => t.group === NAV_GROUP.SECONDARY);
 
 // ══════════════════════════════════════════════════════════════
 // WorkspaceHQ — Enhanced with live status from Figma
@@ -197,6 +254,11 @@ export default function Sidebar({
   const navItems = tools.filter(
     (t) => roleAllowed(collabRole, t.roles) && (planLoading || canAccess(t.plan)),
   );
+  // FE-05 — the same filtered list, split by where it is drawn. The gates run
+  // FIRST and identically for both groups: `group` decides placement, never
+  // permission, so a demoted surface is exactly as reachable as it was.
+  const primaryNav   = navItems.filter((t) => t.group !== NAV_GROUP.SECONDARY);
+  const secondaryNav = navItems.filter((t) => t.group === NAV_GROUP.SECONDARY);
 
   // Publishing approval badge: count of artifacts awaiting approval (the same
   // usePendingApprovals feed the Publishing page uses — NOT plan approvals). Only
@@ -214,6 +276,65 @@ export default function Sidebar({
   // the Connectors destination uses, so it disappears the moment a connection lands.
   const hasConnector = (connectionsData?.connections ?? []).some((c) => c.connected);
   const showConnectCTA = roleAllowed(collabRole, ['STRATEGIST', 'BUYER']) && !connectionsLoading && !hasConnector;
+
+  // FE-05 — one row renderer, used by BOTH groups. Extracted rather than
+  // duplicated so a demoted surface can never drift into looking different
+  // from a primary one: the only thing that differs is where it is drawn.
+  const renderNavRow = (tool) => {
+    const badge = alertsByKey[tool.key];
+    return (
+              <NavLink
+                key={tool.path}
+                to={tool.path}
+                title={collapsed ? tool.label : undefined}
+                onClick={() => onMobileMenuToggle?.()} // Close mobile menu on navigation
+                className={({ isActive }) => cn(
+                  'flex items-center gap-3 rounded-xl transition-all duration-150 mb-0.5 text-sm group relative',
+                  collapsed ? 'justify-center p-3' : 'px-3 py-2.5',
+                  isActive
+                    ? 'border-l-2 border-lumi-accent bg-lumi-accent/5 text-lumi-accent font-medium'
+                    : 'border-l-2 border-transparent text-lumi-muted hover:text-lumi-text hover:bg-lumi-elevated/60',
+                )}
+              >
+                {({ isActive }) => (
+                  <>
+                    <tool.icon
+                      className={cn(
+                        'flex-shrink-0',
+                        collapsed ? 'w-5 h-5' : 'w-4 h-4',
+                        isActive && 'text-lumi-accent',
+                      )}
+                      strokeWidth={1.5}
+                    />
+                    {!collapsed && (
+                      <div className="flex-1 min-w-0 flex items-center justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className={cn(
+                            'font-display font-medium text-sm leading-tight truncate',
+                            isActive && 'font-semibold',
+                          )}>
+                            {tool.label}
+                          </div>
+                          <div className="text-xs text-lumi-subtle truncate mt-0.5">{tool.sub}</div>
+                        </div>
+                        {badge > 0 && (
+                          <span className="ml-2 px-1.5 py-0.5 rounded-full bg-signal-kill text-white text-[10px] font-mono font-semibold">
+                            {badge > 9 ? '9+' : badge}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {collapsed && badge > 0 && (
+                      <span
+                        className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-signal-kill"
+                        style={{ boxShadow: '0 0 4px var(--c-kill)' }}
+                      />
+                    )}
+                  </>
+                )}
+              </NavLink>
+    );
+  };
 
   // UI state
   const [notifOpen, setNotifOpen] = useState(false);
@@ -389,64 +510,29 @@ export default function Sidebar({
             <div className="section-label px-1 mb-2">Navigation</div>
           )}
 
-          {navItems.map((tool) => {
-            const badge = alertsByKey[tool.key];
-            return (
-              <NavLink
-                key={tool.path}
-                to={tool.path}
-                title={collapsed ? tool.label : undefined}
-                onClick={() => onMobileMenuToggle?.()} // Close mobile menu on navigation
-                className={({ isActive }) => cn(
-                  'flex items-center gap-3 rounded-xl transition-all duration-150 mb-0.5 text-sm group relative',
-                  collapsed ? 'justify-center p-3' : 'px-3 py-2.5',
-                  isActive
-                    ? 'border-l-2 border-lumi-accent bg-lumi-accent/5 text-lumi-accent font-medium'
-                    : 'border-l-2 border-transparent text-lumi-muted hover:text-lumi-text hover:bg-lumi-elevated/60',
-                )}
-              >
-                {({ isActive }) => (
-                  <>
-                    <tool.icon
-                      className={cn(
-                        'flex-shrink-0',
-                        collapsed ? 'w-5 h-5' : 'w-4 h-4',
-                        isActive && 'text-lumi-accent',
-                      )}
-                      strokeWidth={1.5}
-                    />
-                    {!collapsed && (
-                      <div className="flex-1 min-w-0 flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className={cn(
-                            'font-display font-medium text-sm leading-tight truncate',
-                            isActive && 'font-semibold',
-                          )}>
-                            {tool.label}
-                          </div>
-                          <div className="text-xs text-lumi-subtle truncate mt-0.5">{tool.sub}</div>
-                        </div>
-                        {badge > 0 && (
-                          <span className="ml-2 px-1.5 py-0.5 rounded-full bg-signal-kill text-white text-[10px] font-mono font-semibold">
-                            {badge > 9 ? '9+' : badge}
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    {collapsed && badge > 0 && (
-                      <span
-                        className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-signal-kill"
-                        style={{ boxShadow: '0 0 4px var(--c-kill)' }}
-                      />
-                    )}
-                  </>
-                )}
-              </NavLink>
-            );
-          })}
+          {primaryNav.map(renderNavRow)}
 
-          {/* Connect-a-channel shortcut — solves the "no main-nav entry to
-              Integrations" gap for new users; self-hides after the first connect. */}
+          {/* FE-05 — the demoted surfaces. A SECOND GROUP, not a removal: each
+              of these still carries its own route, its own gates and its ⌘K
+              entry, and the census measured that nothing but this Sidebar ever
+              linked to them — so a heading is the whole of what changed for
+              them. Hidden while collapsed, where there is no room for a label
+              and an unlabelled second cluster would read as one long list. */}
+          {secondaryNav.length > 0 && !collapsed && (
+            <div className="mt-5 pt-3 border-t border-lumi-border/60">
+              <div className="section-label px-1 mb-2">More</div>
+              {secondaryNav.map(renderNavRow)}
+            </div>
+          )}
+          {secondaryNav.length > 0 && collapsed && secondaryNav.map(renderNavRow)}
+
+          {/* Connect-a-channel shortcut. ⚠️ Its old justification — "solves the
+              no-main-nav-entry-to-Integrations gap" — stopped being true in this
+              slice: Connectors is a primary row now. What remains is first-run
+              EMPHASIS, not a missing entrance, and for a brand-new account it is
+              a second sidebar path to the same destination. Kept because
+              self-hiding first-run guidance is a product decision, not a nav
+              reduction; reported rather than removed here. */}
           {showConnectCTA && (
             <NavLink
               to={appRoutes.connections}

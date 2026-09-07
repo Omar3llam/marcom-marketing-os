@@ -48,7 +48,24 @@ function Harness({ initial }) {
           <Route index element={<Navigate to={appRoutes.overview} replace />} />
           <Route path="overview" element={<div>overview-view</div>} />
           <Route path="campaigns" element={<div>campaigns-view</div>} />
-          <Route path="decisions" element={<Navigate to={appRoutes.overview} replace />} />
+          {/* FE-05 — `decisions` was a <Navigate> here, mirroring App.jsx as it
+              stood before B8-03 RECLAIMED /app/decisions as the THEN
+              destination. The harness kept the redirect long after the product
+              dropped it, and a case below asserted it — passing, because the
+              harness declared the very redirect it was testing. A table that
+              can assert the opposite of the shipped product is not a smoke test
+              of anything. Corrected here because FE-05 makes Decisions a
+              PRIMARY nav destination, and a harness saying it redirects away
+              would contradict the slice it is meant to cover. */}
+          <Route path="decisions" element={<div>decisions-view</div>} />
+          <Route path="leadership" element={<div>leadership-view</div>} />
+          <Route path="memory" element={<div>memory-view</div>} />
+          <Route path="testing" element={<div>testing-view</div>} />
+          <Route path="measure" element={<div>measure-view</div>} />
+          {/* Demoted by FE-05 — still routed, which is the whole point. */}
+          <Route path="content" element={<div>content-view</div>} />
+          <Route path="intelligence" element={<div>intelligence-view</div>} />
+          <Route path="publishing" element={<div>publishing-view</div>} />
           {/* Settings is a layout route in App.jsx too — it renders its section
               through an Outlet, which is the shape being exercised here. */}
           <Route path="connections" element={<div>connectors-view</div>} />
@@ -103,6 +120,34 @@ describe('route resolution', () => {
     expect(screen.queryByText('settings-view')).not.toBeInTheDocument();
   });
 
+  // FE-05 — every nav destination, PRIMARY and SECONDARY alike, still resolves.
+  // The point of the demoted half is that it is NOT deleted, so the two groups
+  // are asserted the same way and against the same table. ⚠️ Same instrument
+  // honesty as above: this harness does not import App.jsx, so what it proves
+  // is that these paths are matchable by the router, not that App.jsx declares
+  // them. That claim is made against App.jsx's own source in
+  // Sidebar.reduction.test.jsx ("and every nav path … is a route App.jsx declares").
+  it.each([
+    ['PRIMARY',   appRoutes.overview],   ['PRIMARY',   appRoutes.decisions],
+    ['PRIMARY',   appRoutes.campaigns],  ['PRIMARY',   appRoutes.leadership],
+    ['PRIMARY',   appRoutes.connections], ['PRIMARY',  appRoutes.memory],
+    ['PRIMARY',   appRoutes.testing],    ['PRIMARY',   appRoutes.measure],
+    ['SECONDARY', appRoutes.contentLab], ['SECONDARY', appRoutes.intelligence],
+    ['SECONDARY', appRoutes.publishing],
+  ])('%s destination %s resolves to a real element, not the 404', (_group, path) => {
+    render(<Harness initial={path} />);
+    expect(screen.queryByText('app-404')).not.toBeInTheDocument();
+    expect(screen.queryByText('root-404')).not.toBeInTheDocument();
+  });
+
+  // The control for the loop above: a path the table does NOT carry must reach
+  // the scoped 404. Without it, "no 404 appeared" would also be true of a
+  // harness that had stopped rendering anything at all.
+  it('a destination that does not exist still reaches the 404 (self-refutation)', () => {
+    render(<Harness initial="/app/not-a-destination" />);
+    expect(screen.getByText('app-404')).toBeInTheDocument();
+  });
+
   it('/onboarding is outside the app layout', () => {
     render(<Harness initial="/onboarding" />);
     expect(screen.getByText('onboarding')).toBeInTheDocument();
@@ -129,8 +174,23 @@ describe('redirect elements', () => {
     expect(screen.getByText('overview-view')).toBeInTheDocument();
   });
 
-  it('the retired /app/decisions route redirects to overview', () => {
-    render(<Harness initial="/app/decisions" />);
+  // REPLACES "the retired /app/decisions route redirects to overview", which
+  // was true when written and false from B8-03 onward — /app/decisions is the
+  // THEN destination now, and App.jsx renders DecisionHistory there. The old
+  // case kept passing because this harness declared the redirect it asserted,
+  // so it measured its own fixture rather than the product. Pinning the ruling
+  // (Decisions is a destination) rather than the string, the way B8-03's own
+  // nav test was replaced.
+  it('/app/decisions is a destination, not a redirect to Attention', () => {
+    render(<Harness initial={appRoutes.decisions} />);
+    expect(screen.getByText('decisions-view')).toBeInTheDocument();
+    expect(screen.queryByText('overview-view')).not.toBeInTheDocument();
+  });
+
+  it('the redirects that ARE still redirects still redirect', () => {
+    // Self-refutation for the case above: <Navigate> has not stopped working,
+    // so the assertion there is about /app/decisions specifically.
+    render(<Harness initial="/app" />);
     expect(screen.getByText('overview-view')).toBeInTheDocument();
   });
 
