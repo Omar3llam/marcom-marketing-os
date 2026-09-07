@@ -77,7 +77,7 @@ function ApprovalRow({ approval, onDecide, deciding }) {
             'rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed',
             confirming
               ? 'bg-signal-scale text-lumi-bg hover:opacity-90'
-              : 'bg-lumi-accent text-lumi-bg hover:bg-lumi-accent-hover',
+              : 'bg-lumi-accent text-lumi-bg hover:bg-lumi-gold',
           )}
         >
           {deciding ? 'Saving…' : confirming ? 'Confirm approve' : 'Approve'}

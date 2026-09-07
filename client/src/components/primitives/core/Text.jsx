@@ -38,13 +38,13 @@ const textVariants = cva(
 
       // Visual emphasis (optional)
       intent: {
-        primary: 'text-text-primary',
-        secondary: 'text-text-secondary',
-        muted: 'text-text-muted',
-        subtle: 'text-text-subtle',
-        success: 'text-signal-success',
-        warning: 'text-signal-warning',
-        danger: 'text-signal-danger',
+        primary: 'text-dark-base',
+        secondary: 'text-dark-soft',
+        muted: 'text-dark-muted',
+        subtle: 'text-dark-subtle',
+        success: 'text-signal-scale',
+        warning: 'text-signal-hold',
+        danger: 'text-signal-kill',
       },
 
       // Scale override (optional)

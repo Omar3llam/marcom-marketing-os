@@ -2,8 +2,28 @@
 **Last updated: post-Firebase migration, post-dual-agent, post-Prisma**
 
 > Full architecture: see MARCOM-ARCHITECTURE.md  
-> Design system: see MARCOM-DESIGN-BIBLE.md  
+> Design system: see the table below — **there is no MARCOM-DESIGN-BIBLE.md**  
 > This file: quick reference for Claude Code sessions
+
+### Design system — where the authority actually lives
+
+This line used to read *"Design system: see MARCOM-DESIGN-BIBLE.md"*. That file
+has never existed in this repository (`git log --all` returns zero commits for
+the path), and three other files still point at it. FE-01 replaced the pointer
+with the documents that are real and enforced:
+
+| Layer | Path | Enforced by |
+|---|---|---|
+| Token **values** | `client/design-system/tokens/*.json` | *"Edit THIS file, not tailwind.config.js. Tailwind reads from here."* |
+| Token **discipline** | `client/design-system/lint/no-generic-tailwind.js` | `npm run lint:ci --workspace client` |
+| Token **existence** | `client/scripts/checkTokenResolution.js` | `npm run check:tokens --workspace client`, after a build |
+| Component governance | `client/design-system/{ui-registry,component-states,TAXONOMY-FREEZE}.md` | review |
+| State grammar | `client/src/design-system/states/{absence,confidence}.js`, `patterns/DetailGrammar.jsx` | B8, locked |
+
+The last two rows of enforcement are **different questions and both are
+needed**: the linter asks *"is this class forbidden?"*, the resolver asks *"does
+this class exist?"*. A denylist cannot answer the second, which is how 60
+undefined colour classes reached 180 call sites while CI stayed green.
 
 ---
 
@@ -406,10 +426,12 @@ Every prompt must include:
 |---|---|---|---|---|
 | `src/middleware/clerkAuth.js` | DEAD | Firebase replaced Clerk (auth/meta.js now uses firebaseAuth) | 0 | YES — verified zero imports |
 | `src/models/userContext.js` | LEGACY | Replaced by /api/campaigns/me/context | 1 (project.js) | NO — refactor project.js first |
-| `client/src/pages/AuthPage-Clerk-BACKUP.jsx` | DEAD | Backup from Clerk → Firebase migration | 0 | YES — backup file, not in routes |
-| `client/src/pages/PlaceholderPage.jsx` | STUB | Placeholder, not in App.jsx routes | 0 | YES — verify not in router first |
+| ~~`client/src/pages/AuthPage-Clerk-BACKUP.jsx`~~ | ✅ ALREADY DELETED | Removed in `a0a9b08`; the row outlived the file by two months | — | DONE |
+| ~~`client/src/pages/PlaceholderPage.jsx`~~ | ✅ ALREADY DELETED | Removed in the same commit | — | DONE |
 | ~~`client/src/pages/v2/` + `client/src/types/fsm.ts`~~ | ✅ DELETED (PR-11) | v2/decision strangler never activated (features.newDecisionView=false); route + dir + FSM types removed | 0 | DONE |
-| `client/src/config/routes.ts`, `config/features.ts`, `components/dev/ComparisonHarness.tsx` | DEAD (residual) | Remaining strangler infra: routes.ts/getActiveRoute have **zero importers**; features flags are all false; ComparisonHarness only mentions the deleted v2 view in comments | 0 | YES — next strangler-cleanup PR (left out of PR-11 to keep it scoped) |
+| `client/src/config/routes.ts` | DEAD (residual) | `getActiveRoute` is referenced only inside its own file | 0 | YES — verified 2026-09-07 |
+| `client/src/components/dev/ComparisonHarness.tsx` | DEAD (residual) | Exports `ComparisonHarness` + `ComparisonRoute`, both unreferenced; mentions the deleted v2 view only in comments | 0 | YES — verified 2026-09-07 |
+| ⚠️ `client/src/config/features.ts` | **NOT DEAD** | **The register said 0 importers and "safe to delete". It has TWO** — `components/dev/ComparisonHarness.tsx:23` and **`lib/telemetry.ts:25`, which is live code.** Deleting it on this table's word breaks telemetry. Corrected FE-01, verified 2026-09-07. | 2 | **NO** — remove the `ComparisonHarness` importer first, then re-measure |
 
 ### Deletion Protocol
 

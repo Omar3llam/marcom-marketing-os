@@ -137,7 +137,7 @@ export function Pricing({ onStartFree }) {
                 className={cn(
                   'w-full font-display font-semibold px-5 py-3 rounded-xl text-sm inline-flex items-center justify-center gap-2 transition-all',
                   tier.popular
-                    ? 'bg-lumi-accent text-lumi-bg hover:bg-lumi-accent-hover shadow-accent-glow'
+                    ? 'bg-lumi-accent text-lumi-bg hover:bg-lumi-gold shadow-accent-glow'
                     : 'bg-lumi-elevated text-lumi-text hover:bg-lumi-border border border-lumi-border'
                 )}
               >

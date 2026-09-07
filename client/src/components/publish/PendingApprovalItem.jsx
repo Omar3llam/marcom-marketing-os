@@ -29,14 +29,14 @@ export function PendingApprovalItem({ artifact }) {
   const executionId = artifact.executionId;
 
   return (
-    <div className="p-6 border border-border-subtle rounded-lg bg-surface-base">
+    <div className="p-6 border border-surface-border rounded-lg bg-surface-card">
       <ArtifactCard artifact={artifact} />
 
       <div className="mt-4 flex items-center justify-end">
         {canDecide && executionId ? (
           <Link
             to={`/app/approvals/${executionId}`}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-brand-gold text-surface-dark rounded-lg font-medium hover:bg-brand-gold/90"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-lumi-gold text-surface-dark rounded-lg font-medium hover:bg-lumi-gold/90"
           >
             Review &amp; decide
             <ArrowRight className="h-4 w-4" />

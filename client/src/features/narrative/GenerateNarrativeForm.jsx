@@ -59,7 +59,7 @@ export function GenerateNarrativeForm({ role, onGenerate, isGenerating = false, 
         <button
           type="submit"
           disabled={isGenerating}
-          className="rounded-lg bg-lumi-accent px-3.5 py-2 text-xs font-semibold text-lumi-bg hover:bg-lumi-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
+          className="rounded-lg bg-lumi-accent px-3.5 py-2 text-xs font-semibold text-lumi-bg hover:bg-lumi-gold disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {isGenerating ? 'Authoring…' : 'Generate report'}
         </button>

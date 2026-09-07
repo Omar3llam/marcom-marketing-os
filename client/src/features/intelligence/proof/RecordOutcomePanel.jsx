@@ -129,7 +129,7 @@ function OutcomeForm({ decision, currency, onSubmit, busy }) {
         type="button"
         disabled={!ready || busy}
         onClick={submit}
-        className="col-span-2 rounded-lg bg-lumi-accent px-3 py-2 text-sm font-medium text-lumi-bg hover:bg-lumi-accent-hover disabled:opacity-40"
+        className="col-span-2 rounded-lg bg-lumi-accent px-3 py-2 text-sm font-medium text-lumi-bg hover:bg-lumi-gold disabled:opacity-40"
       >
         {busy ? 'Recording…' : 'Record what actually happened'}
       </button>

@@ -65,7 +65,7 @@ function DesignForm({ onDesign, busy }) {
       </label>
       <div className="sm:col-span-4 flex items-center gap-3">
         <button type="submit" disabled={!valid || busy}
-          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg hover:bg-lumi-accent-hover disabled:opacity-40 disabled:cursor-not-allowed">
+          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg hover:bg-lumi-gold disabled:opacity-40 disabled:cursor-not-allowed">
           {busy ? 'Designing…' : 'Design holdout'}
         </button>
         <span className="text-xs text-lumi-subtle">Computes the sample size + duration to detect that lift at 95% / 80% power.</span>
@@ -177,7 +177,7 @@ function HoldoutRow({ test, readout, busy, onRecord, onConclude, ccy = 'USD' }) 
           <RecordForm test={test} onRecord={onRecord} busy={busy} />
           {test.status === 'RUNNING' ? (
             <button type="button" onClick={() => onConclude(test.id)} disabled={busy}
-              className="mt-3 rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg hover:bg-lumi-accent-hover disabled:opacity-40 disabled:cursor-not-allowed">
+              className="mt-3 rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg hover:bg-lumi-gold disabled:opacity-40 disabled:cursor-not-allowed">
               {busy ? 'Reading out…' : 'Conclude holdout'}
             </button>
           ) : (

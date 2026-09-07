@@ -51,7 +51,7 @@ function Navbar({ menuOpen, setMenuOpen }) {
     <header
       className={`sticky top-0 z-50 transition-all duration-240 ${
         scrolled
-          ? 'bg-surface-light/82 backdrop-blur-xl border-b border-surface-border'
+          ? 'bg-surface-light/80 backdrop-blur-xl border-b border-surface-border'
           : 'bg-surface-light/70 backdrop-blur-sm border-b border-surface-border/40'
       }`}
     >

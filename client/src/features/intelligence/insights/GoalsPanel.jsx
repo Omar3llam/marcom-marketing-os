@@ -118,7 +118,7 @@ function GoalForm({ currency, onCreate, creating }) {
       </label>
       <div className="sm:col-span-2 flex items-center gap-3">
         <button type="submit" disabled={!valid || creating}
-          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg hover:bg-lumi-accent-hover disabled:opacity-40 disabled:cursor-not-allowed">
+          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg hover:bg-lumi-gold disabled:opacity-40 disabled:cursor-not-allowed">
           {creating ? 'Creating…' : 'Create goal'}
         </button>
         <span className="text-xs text-lumi-subtle">Sets a target; it doesn’t move budget. Lumi tracks progress against it.</span>

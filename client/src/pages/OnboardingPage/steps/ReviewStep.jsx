@@ -63,7 +63,7 @@ export function ReviewStep({ form }) {
         />
       </div>
 
-      <div className="mt-6 p-5 rounded-xl bg-lumi-accent/6 border border-lumi-accent/30 flex gap-3.5 items-start max-w-3xl">
+      <div className="mt-6 p-5 rounded-xl bg-lumi-accent/5 border border-lumi-accent/30 flex gap-3.5 items-start max-w-3xl">
         <Sparkles className="w-5 h-5 text-lumi-accent flex-shrink-0 mt-0.5" strokeWidth={1.5} />
         <div>
           <div className="font-display text-sm font-bold text-dark-base">

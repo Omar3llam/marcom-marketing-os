@@ -100,17 +100,17 @@ export function ArtifactCard({ artifact, expanded: initialExpanded = false, onEx
 
   // Approval status styling
   const approvalStatusClass = {
-    PENDING: 'bg-signal-warning/10 text-signal-warning border-signal-warning/20',
-    COMPLETED: 'bg-signal-success/10 text-signal-success border-signal-success/20',
-  }[artifact.approval?.status] || 'bg-surface-base text-text-muted border-border-subtle';
+    PENDING: 'bg-signal-hold/10 text-signal-hold border-signal-hold/20',
+    COMPLETED: 'bg-signal-scale/10 text-signal-scale border-signal-scale/20',
+  }[artifact.approval?.status] || 'bg-surface-card text-dark-muted border-surface-border';
 
   return (
-    <div className="border border-border-subtle rounded-lg bg-surface-base overflow-hidden">
+    <div className="border border-surface-border rounded-lg bg-surface-card overflow-hidden">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-border-subtle bg-surface-dark/30">
+      <div className="px-4 py-3 border-b border-surface-border bg-surface-dark/30">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 flex-1">
-            <div className="mt-1 text-text-muted">
+            <div className="mt-1 text-dark-muted">
               <Icon className="h-5 w-5" />
             </div>
             <div className="flex-1 min-w-0">
@@ -129,7 +129,7 @@ export function ArtifactCard({ artifact, expanded: initialExpanded = false, onEx
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-3 text-xs text-text-subtle">
+              <div className="flex items-center gap-3 text-xs text-dark-subtle">
                 <span>Node: {artifact.nodeId}</span>
                 <span>•</span>
                 <span>{formatBytes(artifact.size)}</span>
@@ -142,7 +142,7 @@ export function ArtifactCard({ artifact, expanded: initialExpanded = false, onEx
           {/* Expand/Collapse button */}
           <button
             onClick={handleToggle}
-            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-text-secondary hover:text-text-primary transition-colors rounded hover:bg-surface-dark/50"
+            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-dark-soft hover:text-dark-base transition-colors rounded hover:bg-surface-dark/50"
             aria-label={expanded ? 'Collapse content' : 'Expand content'}
           >
             {expanded ? (
@@ -171,8 +171,8 @@ export function ArtifactCard({ artifact, expanded: initialExpanded = false, onEx
             <div className="space-y-1">
               {Object.entries(artifact.metadata).map(([key, value]) => (
                 <div key={key} className="flex gap-2">
-                  <span className="text-text-muted font-medium">{key}:</span>
-                  <span className="text-text-secondary">{JSON.stringify(value)}</span>
+                  <span className="text-dark-muted font-medium">{key}:</span>
+                  <span className="text-dark-soft">{JSON.stringify(value)}</span>
                 </div>
               ))}
             </div>
@@ -186,7 +186,7 @@ export function ArtifactCard({ artifact, expanded: initialExpanded = false, onEx
           </Text>
           <div
             className={cn(
-              'p-3 bg-surface-dark/10 rounded font-mono text-sm text-text-secondary whitespace-pre-wrap break-words',
+              'p-3 bg-surface-dark/10 rounded font-mono text-sm text-dark-soft whitespace-pre-wrap break-words',
               !expanded && 'max-h-32 overflow-hidden'
             )}
           >
@@ -196,7 +196,7 @@ export function ArtifactCard({ artifact, expanded: initialExpanded = false, onEx
 
         {/* Approval decision (if completed) */}
         {artifact.approval?.status === 'COMPLETED' && artifact.approval.decision && (
-          <div className="mt-3 p-3 bg-signal-success/5 border border-signal-success/20 rounded">
+          <div className="mt-3 p-3 bg-signal-scale/5 border border-signal-scale/20 rounded">
             <div className="flex items-center gap-2 mb-1">
               <Text variant="data" intent="success" className="font-semibold">
                 Decision: {artifact.approval.decision}
@@ -213,7 +213,7 @@ export function ArtifactCard({ artifact, expanded: initialExpanded = false, onEx
         {/* Approved → tell the operator the honest next step (there is no
             one-click API publish; they create the ad in Meta, then record it). */}
         {isApproved(artifact) && (
-          <div className="mt-4 p-3 rounded-lg bg-signal-success/10 border border-signal-success/20">
+          <div className="mt-4 p-3 rounded-lg bg-signal-scale/10 border border-signal-scale/20">
             <Text variant="data" intent="success" className="font-semibold">
               Approved — ready to publish
             </Text>

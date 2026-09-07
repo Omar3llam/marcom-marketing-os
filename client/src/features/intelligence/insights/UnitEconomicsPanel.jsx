@@ -81,7 +81,7 @@ function EconomicsForm({ initial, onSave, saving }) {
       </label>
       <div className="sm:col-span-2 flex items-center gap-3">
         <button type="submit" disabled={!valid || saving}
-          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg hover:bg-lumi-accent-hover disabled:opacity-40 disabled:cursor-not-allowed">
+          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg hover:bg-lumi-gold disabled:opacity-40 disabled:cursor-not-allowed">
           {saving ? 'Saving…' : 'Save economics'}
         </button>
         <span className="text-xs text-lumi-subtle">You own these inputs — Lumi treats them as asserted, not measured.</span>

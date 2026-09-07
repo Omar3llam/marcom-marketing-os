@@ -79,7 +79,7 @@ export function DemoTab() {
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-lumi-muted">Mint a fresh, fully-populated demo workspace (the Maison Salam 9-phase graph).</p>
           <button type="button" onClick={onSeed} disabled={seeding}
-            className="shrink-0 rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-accent-hover disabled:opacity-50">
+            className="shrink-0 rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-gold disabled:opacity-50">
             {seeding ? 'Seeding…' : 'Seed demo workspace'}
           </button>
         </div>

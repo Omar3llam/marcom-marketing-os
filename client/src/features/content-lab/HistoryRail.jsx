@@ -65,7 +65,7 @@ export default function HistoryRail({ generations = [], isLoading = false, error
                   aria-current={active ? 'true' : undefined}
                   className={`w-full text-left p-2.5 rounded-lg border transition-colors ${
                     active
-                      ? 'border-lumi-accent/50 bg-lumi-accent/6'
+                      ? 'border-lumi-accent/50 bg-lumi-accent/5'
                       : 'border-surface-border bg-surface-elevated hover:border-lumi-accent/30'
                   }`}
                 >

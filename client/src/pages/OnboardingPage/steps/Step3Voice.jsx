@@ -14,8 +14,8 @@ export function Step3Voice({ form, set }) {
               className={cn(
                 'w-full rounded-xl border p-2.5 sm:p-3 text-left transition-all',
                 form.tone === t.id
-                  ? 'border-lumi-gold/50 bg-lumi-gold/8'
-                  : 'border-white/8 bg-white/[0.03] hover:border-white/20',
+                  ? 'border-lumi-gold/50 bg-lumi-gold/10'
+                  : 'border-white/10 bg-white/[0.03] hover:border-white/20',
               )}
             >
               <div className="text-sm font-semibold text-white/90">{t.title}</div>

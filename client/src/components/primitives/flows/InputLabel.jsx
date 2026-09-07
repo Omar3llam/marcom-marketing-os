@@ -40,7 +40,7 @@ export function InputLabel({
         intent === 'constraint' && 'text-lumi-gold text-sm',
         intent === 'risk' && 'text-trend-danger text-sm',
         intent === 'target' && 'text-signal-scale text-sm',
-        intent === 'context' && 'text-lumi-text-muted text-sm',
+        intent === 'context' && 'text-lumi-muted text-sm',
         className,
       )}
       {...props}

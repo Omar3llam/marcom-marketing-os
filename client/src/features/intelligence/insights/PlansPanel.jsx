@@ -171,7 +171,7 @@ function PlanDetail({ plan, detail, loading, canManage, canSubmit, onSubmit, sub
             type="button"
             disabled={promoting || promoted || gateBlocks}
             onClick={() => onPromote?.(detail.id)}
-            className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg hover:bg-lumi-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
+            className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg hover:bg-lumi-gold disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {promoted ? 'Already promoted' : promoting ? 'Promoting…' : 'Promote mix → proposals'}
           </button>
@@ -233,7 +233,7 @@ function PlanForm({ currency, onCreate, creating }) {
       </label>
       <div className="sm:col-span-2 flex items-center gap-3">
         <button type="submit" disabled={!valid || creating}
-          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg hover:bg-lumi-accent-hover disabled:opacity-40 disabled:cursor-not-allowed">
+          className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg hover:bg-lumi-gold disabled:opacity-40 disabled:cursor-not-allowed">
           {creating ? 'Building…' : 'Build plan'}
         </button>
         <span className="text-xs text-lumi-subtle">Assembles a channel mix + testing agenda from your real data. It doesn’t move budget until you promote it.</span>

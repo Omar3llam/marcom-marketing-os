@@ -88,6 +88,17 @@ jobs:
       - name: Build client
         run: npm run build --workspace client
 
+      # FE-01 — a colour class that does not EXIST renders nothing, and the
+      # token linter cannot see it: `no-generic-tailwind` is a denylist, so it
+      # bans nine named hues and waves through any class it was never told
+      # about. Measured on a30c912: 60 undefined classes across 180 call sites,
+      # all of them in linted files, all of them green. This asks the only
+      # question that catches them — did Tailwind emit a rule for what you
+      # wrote? — and so it must run AFTER the build.
+      - name: Token resolution (every colour class exists)
+        working-directory: client
+        run: npm run check:tokens
+
       - name: Bundle size budget (gzip <700KB)
         working-directory: client
         run: |

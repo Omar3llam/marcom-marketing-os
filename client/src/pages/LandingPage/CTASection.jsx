@@ -15,7 +15,7 @@ export function BottomCTA({ onCta }) {
         <button
           type="button"
           onClick={onCta}
-          className="mt-6 bg-lumi-accent text-lumi-bg font-display font-semibold hover:bg-lumi-accent-hover shadow-accent-glow px-6 py-3 rounded-xl text-sm inline-flex items-center gap-2"
+          className="mt-6 bg-lumi-accent text-lumi-bg font-display font-semibold hover:bg-lumi-gold shadow-accent-glow px-6 py-3 rounded-xl text-sm inline-flex items-center gap-2"
         >
           Start watching — it&apos;s free <ArrowRight className="w-4 h-4" strokeWidth={2} />
         </button>
