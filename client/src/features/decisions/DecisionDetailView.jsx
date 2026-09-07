@@ -24,9 +24,9 @@
 //   — the class genuinely has no such evidence, and an empty box would imply a
 //   gap where there is none.
 // ============================================================
-import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader2, AlertTriangle, Ban } from 'lucide-react';
-import { PageHeader } from '@/design-system/patterns/index.js';
+import { useParams } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
+import { PageHeader, DetailSection, DetailRefusal, DetailBackLink } from '@/design-system/patterns/index.js';
 import { ABSENCE, absenceState } from '@/design-system/states/absence.js';
 import { appRoutes } from '@/app/routeManifest.js';
 import { useDecisionDetail, knowledgeOfRefusal, DETAIL_REFUSAL } from '@/hooks/useDecisionDetail.js';
@@ -40,20 +40,14 @@ const fmt = (d) => (d ? STAMP_FMT.format(d instanceof Date ? d : new Date(d)) : 
 
 const CLASS_LABEL = { SIGNAL: 'Signal', GUARDRAIL: 'Guardrail', EXPERIMENT: 'Experiment' };
 
-/** A section renders only when it has a fact. B8-03. */
-function Section({ title, children }) {
-  if (!children) return null;
-  return (
-    <section className="mt-8">
-      <h2 className="section-label mb-2">{title}</h2>
-      {children}
-    </section>
-  );
-}
-
 /** PURE: is this committed field worth rendering at all? */
 const stated = (f) => f && f.knowledge === 'KNOWN';
 
+// B8-05 — `Section` and the refusal block moved to design-system/patterns as
+// `DetailSection` / `DetailRefusal` when the experiment surfaces became the
+// second and third by-id destination. R-N4 says ONE detail grammar; two copies
+// of a grammar is how two halves of one class drift apart (C-13). The words
+// stay here, because only this surface knows what it failed to open.
 function Refused({ refusal }) {
   const state = absenceState({
     knowledge: knowledgeOfRefusal(refusal),
@@ -64,28 +58,19 @@ function Refused({ refusal }) {
   const notADestination = state === ABSENCE.NOT_SUPPORTED;
 
   return (
-    <section className="rounded-xl border border-lumi-border bg-lumi-surface p-6">
-      <div className="flex items-center gap-2">
-        {notADestination
-          ? <Ban className="h-5 w-5 text-lumi-muted" strokeWidth={1.5} />
-          : <AlertTriangle className="h-5 w-5 text-signal-hold" strokeWidth={1.5} />}
-        <h2 className="font-display text-sm font-semibold text-lumi-text">
-          {notADestination
-            ? 'This row isn’t a decision you can open.'
-            : 'Lumi couldn’t read this decision.'}
-        </h2>
-      </div>
-      <p className="mt-2 text-sm leading-6 text-lumi-muted">
-        {notADestination
-          ? 'It’s a plan artifact rather than a decision — budget moves live with the plan that proposed them, not in decision history.'
-          : refusal === DETAIL_REFUSAL.NOT_FOUND
-            ? 'We couldn’t find it in this workspace. It may have been from another account, or the link may be incomplete.'
-            : 'This is a problem on our side, not a statement about the decision.'}
-      </p>
-      <Link to={appRoutes.decisions} className="mt-4 inline-flex items-center gap-1 text-sm underline">
-        <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} /> Back to decisions
-      </Link>
-    </section>
+    <DetailRefusal
+      state={state}
+      heading={notADestination
+        ? 'This row isn’t a decision you can open.'
+        : 'Lumi couldn’t read this decision.'}
+      body={notADestination
+        ? 'It’s a plan artifact rather than a decision — budget moves live with the plan that proposed them, not in decision history.'
+        : refusal === DETAIL_REFUSAL.NOT_FOUND
+          ? 'We couldn’t find it in this workspace. It may have been from another account, or the link may be incomplete.'
+          : 'This is a problem on our side, not a statement about the decision.'}
+      backTo={appRoutes.decisions}
+      backLabel="Back to decisions"
+    />
   );
 }
 
@@ -111,9 +96,7 @@ export default function DecisionDetailView() {
 
   return (
     <div className="max-w-3xl">
-      <Link to={appRoutes.decisions} className="inline-flex items-center gap-1 text-sm text-lumi-muted underline">
-        <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.5} /> Decisions
-      </Link>
+      <DetailBackLink to={appRoutes.decisions}>Decisions</DetailBackLink>
 
       {/* 1 — THE CALL. Opens with the verdict, not with an instrument (B8-01). */}
       <PageHeader
@@ -132,7 +115,7 @@ export default function DecisionDetailView() {
       />
 
       {/* 2 — WHY IT WAS CREDIBLE. One slot, filled differently by each class. */}
-      <Section title="Why Lumi believed it">
+      <DetailSection title="Why Lumi believed it">
         {isSignal && (hypotheses?.length || counterfactuals?.length) ? (
           <div className="space-y-4">
             {hypotheses?.length > 0 && (
@@ -168,10 +151,10 @@ export default function DecisionDetailView() {
             A guardrail rule was breached. This is a rule firing, not a scored judgement.
           </p>
         ) : null}
-      </Section>
+      </DetailSection>
 
       {/* 3 — WHAT MEMORY SAID, measured at commitment (R-6, C-16, B8-01). */}
-      <Section title="What Lumi knew at the time">
+      <DetailSection title="What Lumi knew at the time">
         {d.memoryStatus === 'NOT_CONSULTED' ? (
           <p className="text-sm text-lumi-muted">
             Memory wasn’t consulted for this call.
@@ -206,11 +189,11 @@ export default function DecisionDetailView() {
             </p>
           </div>
         ) : null}
-      </Section>
+      </DetailSection>
 
       {/* 4 — DID A HUMAN LOOK. Adoption is NOT action; the gap between them is
           how long the operator took to not act, which is a fact worth seeing. */}
-      <Section title="Did anyone look">
+      <DetailSection title="Did anyone look">
         {d.explainedAt || d.intentAt ? (
           <ul className="text-sm text-lumi-muted space-y-1">
             {d.explainedAt && <li>Reviewed {fmt(d.explainedAt)}</li>}
@@ -219,12 +202,12 @@ export default function DecisionDetailView() {
         ) : (
           <p className="text-sm text-lumi-muted">Nobody has opened this decision yet.</p>
         )}
-      </Section>
+      </DetailSection>
 
       {/* 5 — HOW IT CLOSED. "Lumi did this" and "I did this" must be
           unmistakable (invariant 9), so they are separate lines with separate
           subjects, never one merged "executed". */}
-      <Section title="How it closed">
+      <DetailSection title="How it closed">
         {d.platformExecutedAt || d.humanExecutedAt || d.dismissedAt || d.resolvedAt || d.humanResponse ? (
           <ul className="text-sm text-lumi-muted space-y-1">
             {d.platformExecutedAt && <li>Lumi carried it out on the platform — {fmt(d.platformExecutedAt)}</li>}
@@ -242,7 +225,7 @@ export default function DecisionDetailView() {
         ) : (
           <p className="text-sm text-lumi-muted">Still open.</p>
         )}
-      </Section>
+      </DetailSection>
     </div>
   );
 }

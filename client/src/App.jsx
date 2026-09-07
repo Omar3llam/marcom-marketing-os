@@ -60,9 +60,11 @@ const AdminPanel = lazy(() => import('./pages/AdminPanel.jsx'));
 
 // ── Phase 4-A · Testing OS readout (BUYER-primary, role-gated) ─
 const Testing      = lazy(() => import('./pages/Testing.jsx'));
+const TestDetail   = lazy(() => import('./features/testing/TestDetailView.jsx'));
 
 // ── Phase 4-E · Measurement OS (scenario + incrementality; tier-gated) ─
-const Measure      = lazy(() => import('./pages/Measure.jsx'));
+const Measure       = lazy(() => import('./pages/Measure.jsx'));
+const HoldoutDetail = lazy(() => import('./features/measurement/HoldoutDetailView.jsx'));
 
 // ── Phase 8 · Leadership/Reports (the reasoned narrative; CLIENT's home) ─
 const Leadership   = lazy(() => import('./pages/Leadership.jsx'));
@@ -267,6 +269,23 @@ export default function App() {
             </ErrorBoundary>
           } />
 
+          {/* B8-05 · R-E1 — the experiment gets its own address, carrying EXACTLY
+              the gates of the list it opens from. The two experiment surfaces
+              keep separate addresses because their entitlements genuinely
+              differ (`/tests/:id` is PRO; `/incrementality/:id` is PRO *and*
+              measurement-tier), and one shared address would have to satisfy
+              the looser gate — which is how a by-id read becomes a way around
+              the gate on its own list. */}
+          <Route path="testing/:id" element={
+            <ErrorBoundary boundaryId="test-detail">
+              <RoleGate role={['BUYER', 'STRATEGIST']} fallback={<RoleAwareRedirect />}>
+                <PlanGate required="PRO" fallback={<UpgradePrompt feature="Testing" requiredPlan="PRO" />}>
+                  <Suspense fallback={<PageFallback />}><TestDetail /></Suspense>
+                </PlanGate>
+              </RoleGate>
+            </ErrorBoundary>
+          } />
+
           {/* ── Phase 4-E · Measurement OS (STRATEGIST/BUYER; CLIENT → Reports; PRO).
               Scenario is open to both roles; incrementality is further gated to
               STRATEGIST inside the view AND tier-gated server-side. ── */}
@@ -275,6 +294,21 @@ export default function App() {
               <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<RoleAwareRedirect />}>
                 <PlanGate required="PRO" fallback={<UpgradePrompt feature="Measurement" requiredPlan="PRO" />}>
                   <Suspense fallback={<PageFallback />}><Measure /></Suspense>
+                </PlanGate>
+              </RoleGate>
+            </ErrorBoundary>
+          } />
+
+          {/* B8-05 — the holdout's own address. The route it reads has been
+              served since Phase 7C with no caller at all. The measurement TIER
+              is enforced server-side and reported here as a measured
+              NOT_PERMITTED, not as a failure: a 403 is an honest locked state,
+              which is the rule `useIncrementality` already follows for the list. */}
+          <Route path="measure/:id" element={
+            <ErrorBoundary boundaryId="holdout-detail">
+              <RoleGate role={['STRATEGIST', 'BUYER']} fallback={<RoleAwareRedirect />}>
+                <PlanGate required="PRO" fallback={<UpgradePrompt feature="Measurement" requiredPlan="PRO" />}>
+                  <Suspense fallback={<PageFallback />}><HoldoutDetail /></Suspense>
                 </PlanGate>
               </RoleGate>
             </ErrorBoundary>

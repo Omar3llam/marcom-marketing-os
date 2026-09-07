@@ -220,12 +220,14 @@ export {
   ConfidenceLabelSchema,
   TestVariantSchema,
   TestExperimentSchema,
+  TestExperimentDetailResponseSchema,
   type TestDimension,
   type TestStatus,
   type TestMetric,
   type ConfidenceLabel,
   type TestVariant,
   type TestExperiment,
+  type TestExperimentDetailResponse,
 } from './testExperiment.schema';
 
 export {
@@ -350,12 +352,14 @@ export {
   IncrementalityReadoutSchema,
   IncrementalityTestSchema,
   IncrementalityListResponseSchema,
+  IncrementalityDetailResponseSchema,
   ConcludeIncrementalityResponseSchema,
   type IncrementalityStatus,
   type HoldoutDesign,
   type IncrementalityReadout,
   type IncrementalityTest,
   type IncrementalityListResponse,
+  type IncrementalityDetailResponse,
   type ConcludeIncrementalityResponse,
 } from './incrementality.schema';
 
