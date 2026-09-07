@@ -180,18 +180,31 @@ describe('overviewKpis', () => {
     expect(k.health).toBeNull();
   });
 
-  it('falls back to the legacy summary only when no channel has synced', () => {
+  // REPLACES "falls back to the legacy summary only when no channel has
+  // synced". That fallback read the CampaignState feed's roll-up, and S1-B
+  // deleted the array it summarised — so the branch could only ever be reached
+  // with `summarize([])`, whose values are 0/0/0/null. FE-03 removed the
+  // parameter; this pins that a caller who still passes one gets nothing from it.
+  //
+  // ⚠️ THREE OF THE FOUR FALLBACKS DEGRADED HONESTLY AND ONE DID NOT, and the
+  // difference was the GUARD, not the data: spend and wasted were `> 0 ? : null`,
+  // cpa was genuinely null, but health was `?? null` over a sentinel 0 — and
+  // `0 ?? null` is 0. That 0 became `{ tone: 'danger', label: 'Needs attention' }`
+  // and would have rendered as "0/100". It never reached a pixel, because
+  // KpiStrip is gated on `hasAnyData`, which equalled `live` exactly. A hazard
+  // held shut by a coincidence in another file is not a hazard that is closed.
+  it('ignores a legacy summary entirely — including its sentinel health: 0', () => {
     const k = overviewKpis({
       connectorCampaigns: [],
-      summary: { spend: 1200, blendedCpa: 45, wasted: 300, health: 60 },
+      summary: { spend: 1200, blendedCpa: 45, wasted: 300, health: 0 },
       health: null,
       currency: 'USD',
     });
     expect(k.live).toBe(false);
-    expect(k.spend).toBe(1200);
-    expect(k.cpa).toBe(45);
-    expect(k.wasted).toBe(300);
-    expect(k.health).toBe(60);
+    expect(k.spend).toBeNull();
+    expect(k.cpa).toBeNull();
+    expect(k.wasted).toBeNull();
+    expect(k.health).toBeNull();   // not 0 — "—", not "Needs attention"
   });
 
   it('connector present but metrics absent → null, never a fabricated 0', () => {

@@ -123,13 +123,32 @@ export function partitionDecisions(feed = []) {
   };
 }
 
-// PURE: the four Overview KPI values, CONNECTOR-FIRST (mirrors CampaignsView's
-// live-XOR-legacy rule) so a synced workspace's headline matches the Campaigns
-// page instead of the disjoint legacy CampaignState feed. Every figure is
-// null-when-absent → the card renders "—", never a fabricated 0. Spend/CPA come
-// from the live connector aggregate; Wasted/Health from the deterministic engine
-// (health). The legacy summary is used ONLY when no channel has synced.
-export function overviewKpis({ connectorCampaigns = [], summary = null, health = null, currency = 'USD' }) {
+// PURE: the four Overview KPI values, from the connector graph and the
+// deterministic health engine. Every figure is null-when-absent → the card
+// renders "—", never a fabricated 0.
+//
+// FE-03 — the `summary` parameter is gone with the substrate behind it. It held
+// the legacy CampaignState feed's roll-up, used "ONLY when no channel has
+// synced", and `GET /lumi/feed` stopped publishing `campaigns` in S1-B — so
+// every one of those fallbacks read `summarize([])`.
+//
+// ⚠️ THREE OF THE FOUR DEGRADED HONESTLY AND ONE DID NOT, and the difference was
+// the guard, not the data:
+//
+//     spend   summary?.spend  > 0 ? … : null     → null   ✅
+//     wasted  summary?.wasted > 0 ? … : null     → null   ✅
+//     cpa     summary?.blendedCpa ?? null        → null   ✅ (it really was null)
+//     health  summary?.health     ?? null        → 0      ❌
+//
+// because `summarize()` returns `health: 0` as its own "nothing scored"
+// sentinel, and `0 ?? null` is 0. That 0 flowed into healthPresentation →
+// `{ tone: 'danger', label: 'Needs attention' }`, and KpiStrip renders
+// `${kpis.health}/100`. It never reached a pixel — KpiStrip is gated on
+// `hasAnyData`, which equalled `live` exactly, the same condition that made the
+// branch unreachable — so this is a hazard removed, not a bug caught in the
+// wild. Removing the parameter retires it by construction rather than leaving
+// it standing behind a coincidence between two files.
+export function overviewKpis({ connectorCampaigns = [], health = null, currency = 'USD' }) {
   let spendMinor = 0, conversions = 0, sawSpend = false, sawConv = false, cur = null;
   for (const c of connectorCampaigns) {
     if (c.spendMinor != null) { spendMinor += c.spendMinor; sawSpend = true; }
@@ -141,12 +160,10 @@ export function overviewKpis({ connectorCampaigns = [], summary = null, health =
   return {
     live,
     currency: kpiCurrency,
-    spend: live ? (sawSpend ? spendMinor / 100 : null) : (summary?.spend > 0 ? summary.spend : null),
-    cpa:   live ? (sawConv && conversions > 0 ? spendMinor / conversions / 100 : null) : (summary?.blendedCpa ?? null),
-    wasted: health?.wastedSpend?.minor != null
-      ? fromMinor(health.wastedSpend.minor, kpiCurrency)
-      : (live ? null : (summary?.wasted > 0 ? summary.wasted : null)),
-    health: health?.score ?? (live ? null : (summary?.health ?? null)),
+    spend: live && sawSpend ? spendMinor / 100 : null,
+    cpa:   live && sawConv && conversions > 0 ? spendMinor / conversions / 100 : null,
+    wasted: health?.wastedSpend?.minor != null ? fromMinor(health.wastedSpend.minor, kpiCurrency) : null,
+    health: health?.score ?? null,
   };
 }
 
@@ -171,14 +188,14 @@ export function healthPresentation({ score = null, loading = false } = {}) {
 }
 
 /**
- * PURE: the real count of KILL-verdict campaigns — from the connector health
- * engine when synced, else the legacy feed's alerts. No fabricated count.
+ * PURE: the real count of KILL-verdict campaigns, from the connector health
+ * engine. No fabricated count.
+ *
+ * FE-03 — the `legacyCampaigns` branch counted alerts on the CampaignState feed
+ * and is gone with it. It was reachable only when `!live`, which is exactly when
+ * the array it counted was empty, so it could only ever return 0 — a count of
+ * KILL verdicts on a substrate that has had no writer since R7.
  */
-export function countKillVerdicts({ live = false, healthCampaigns = [], legacyCampaigns = [] } = {}) {
-  return live
-    ? healthCampaigns.filter((c) => c.verdict === 'KILL').length
-    : legacyCampaigns.reduce(
-      (n, c) => n + (c.alerts || []).filter((a) => a.analysis?.verdict === 'KILL').length,
-      0,
-    );
+export function countKillVerdicts({ healthCampaigns = [] } = {}) {
+  return healthCampaigns.filter((c) => c.verdict === 'KILL').length;
 }
