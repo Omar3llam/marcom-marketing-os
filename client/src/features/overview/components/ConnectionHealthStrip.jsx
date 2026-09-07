@@ -2,19 +2,21 @@
 // MARCOM / Lumi — Home · Connection Health Strip (UI-2)
 // ------------------------------------------------------------
 // The daily-home "is data flowing?" signal. Reads the same
-// GET /api/lumi/connections contract the Channels page uses, so
-// every value (connected · stale · last sync) traces to a real
-// Integration row — no fabricated status. Read-only on Home;
-// connecting/reconnecting lives on the Channels page.
-// Honest states: skeleton while loading, honest line on error,
-// "not connected" / "stale" surfaced plainly.
+// GET /api/lumi/connections contract the Connectors destination
+// uses, so every value traces to a real Integration row — no
+// fabricated status. Read-only here; connecting and reconnecting
+// live at /app/connections (FE-04).
+// FOUR claims, never folded: "not connected" (no credential),
+// "never synced" (a credential, nothing landed yet), "stale"
+// (data landed and aged), "synced". Plus a skeleton while
+// loading and an honest line on error — it never goes quiet.
 // ============================================================
 import { Link } from 'react-router-dom';
 import { CheckCircle2, AlertTriangle, Plug } from 'lucide-react';
 import { useConnections } from '@/hooks/useConnections.js';
 import { appRoutes } from '@/app/routeManifest.js';
 
-// The two live connectors (TikTok/LinkedIn are "coming soon" on the Channels page).
+// The two live connectors (TikTok/LinkedIn are "coming soon" at /app/connections).
 const CHANNELS = [
   { key: 'META', label: 'Meta' },
   { key: 'GOOGLE', label: 'Google' },
@@ -26,6 +28,29 @@ function ago(iso) {
   if (mins < 60) return `${mins}m ago`;
   if (mins < 1440) return `${Math.round(mins / 60)}h ago`;
   return `${Math.round(mins / 1440)}d ago`;
+}
+
+// FE-04 — which of the three C-04 readiness states this channel is in.
+//
+// This strip rendered the two-state `stale` boolean, and `isStale(null)` is
+// TRUE — correct for the question isStale answers ("is there fresh data?") and
+// wrong as a WORD. A channel connected minutes ago and not yet synced arrives
+// as { connected: true, stale: true, lastSyncedAt: null } and rendered
+// "Stale · never": stale claims we had data and it aged, never says nothing
+// ever arrived. Both, about one channel, in one line.
+//
+// C-04 published `readiness` for exactly this distinction and the Channels page
+// has read it since — so the same channel read "Stale · never" here and "never
+// synced" there. One object, two readings, and the honest one was the one
+// three clicks deep in Settings. Nothing about C-04 changes here; a reader
+// comes into compliance with a field it was already being sent.
+//
+// The fallback is derived from the two fields a pre-C-04 server DOES publish,
+// not from a guess: nothing can have aged if nothing ever landed.
+function readinessOf(c) {
+  if (c?.readiness) return c.readiness;
+  if (!c?.stale) return 'CURRENT';
+  return c?.lastSyncedAt ? 'STALE' : 'NEVER_SYNCED';
 }
 
 export default function ConnectionHealthStrip({ compact = false }) {
@@ -57,7 +82,7 @@ export default function ConnectionHealthStrip({ compact = false }) {
   const connections = data?.connections ?? [];
   const byPlatform = new Map(connections.map((c) => [c.platform, c]));
   // No channel connected at all → the strip becomes actionable (its one job on
-  // Home is honest status; connecting still lives on the Channels page).
+  // Home is honest status; connecting lives at /app/connections).
   const hasConnector = connections.some((c) => c.connected);
 
   // ── Rail variant ──────────────────────────────────────────
@@ -70,23 +95,34 @@ export default function ConnectionHealthStrip({ compact = false }) {
         {CHANNELS.map(({ key, label }) => {
           const c = byPlatform.get(key);
           const connected = !!c?.connected;
-          const stale = !!c?.stale;
+          const readiness = readinessOf(c);
+          const stale = readiness === 'STALE';
+          const neverSynced = readiness === 'NEVER_SYNCED';
           return (
             <div key={key} className="flex items-baseline justify-between gap-2">
               <span className="text-xs text-lumi-text">{label}</span>
               <span
                 className={`section-label truncate ${
-                  !connected ? 'text-lumi-muted' : stale ? 'text-signal-kill' : 'text-signal-scale'
+                  !connected ? 'text-lumi-muted' : stale ? 'text-signal-kill' : neverSynced ? 'text-lumi-muted' : 'text-signal-scale'
                 }`}
               >
-                {!connected ? 'Not connected' : stale ? `Stale · ${ago(c.lastSyncedAt)}` : `Synced ${ago(c.lastSyncedAt)}`}
+                {/* Three connected states, three sentences — and "Not
+                    connected" is a FOURTH claim, about a credential that does
+                    not exist, never folded into the others. */}
+                {!connected
+                  ? 'Not connected'
+                  : neverSynced
+                    ? 'Never synced'
+                    : stale
+                      ? `Stale · ${ago(c.lastSyncedAt)}`
+                      : `Synced ${ago(c.lastSyncedAt)}`}
               </span>
             </div>
           );
         })}
         {!hasConnector && (
           <Link
-            to={appRoutes.settingsIntegrations}
+            to={appRoutes.connections}
             className="section-label inline-block text-lumi-accent hover:underline"
           >
             Connect →
@@ -104,14 +140,18 @@ export default function ConnectionHealthStrip({ compact = false }) {
       {CHANNELS.map(({ key, label }) => {
         const c = byPlatform.get(key);
         const connected = !!c?.connected;
-        const stale = !!c?.stale;
-        const Icon = !connected ? Plug : stale ? AlertTriangle : CheckCircle2;
-        const tone = !connected ? 'text-dark-subtle' : stale ? 'text-signal-kill' : 'text-signal-scale';
+        const readiness = readinessOf(c);
+        const stale = readiness === 'STALE';
+        const neverSynced = readiness === 'NEVER_SYNCED';
+        const Icon = !connected || neverSynced ? Plug : stale ? AlertTriangle : CheckCircle2;
+        const tone = !connected || neverSynced ? 'text-dark-subtle' : stale ? 'text-signal-kill' : 'text-signal-scale';
         const status = !connected
           ? 'not connected'
-          : stale
-            ? `stale · last sync ${ago(c.lastSyncedAt)}`
-            : `synced ${ago(c.lastSyncedAt)}`;
+          : neverSynced
+            ? 'never synced'
+            : stale
+              ? `stale · last sync ${ago(c.lastSyncedAt)}`
+              : `synced ${ago(c.lastSyncedAt)}`;
         return (
           <span key={key} className="inline-flex items-center gap-1.5" title={status}>
             <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${tone}`} strokeWidth={1.5} />
@@ -122,7 +162,7 @@ export default function ConnectionHealthStrip({ compact = false }) {
       })}
       {!hasConnector && (
         <Link
-          to={appRoutes.settingsIntegrations}
+          to={appRoutes.connections}
           className="ml-auto inline-flex items-center gap-1 font-mono text-[11px] font-medium text-lumi-accent hover:underline"
         >
           Connect →

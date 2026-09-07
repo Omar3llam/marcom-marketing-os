@@ -5,6 +5,12 @@ export const appRoutes = {
   // and deep links resolve to the destination they were always named for.
   decisions: '/app/decisions',
   campaigns: '/app/campaigns',
+  // FE-04 — reclaimed, like `decisions` before it. This URL was a redirect into
+  // a Settings tab labelled "Channels", so the surface existed and the address
+  // pointed away from it. Nine production CTAs — the first-run interrupt and
+  // the Sidebar's "Connect a channel" among them — now land here instead of in
+  // Settings.
+  connections: '/app/connections',
   intelligence: '/app/intelligence',
   blendedTruth: '/app/intelligence/blended-truth',
   insights: '/app/intelligence/insights',
@@ -25,6 +31,8 @@ export const appRoutes = {
   copilot: '/app/copilot',
   settings: '/app/settings',
   settingsGeneral: '/app/settings/general',
+  // FE-04 — this is now a REDIRECT SOURCE, not a destination. Kept because the
+  // address is bookmarked and is where Meta's OAuth callback can return.
   settingsIntegrations: '/app/settings/integrations',
   settingsTeam: '/app/settings/team',
   settingsRevenue: '/app/settings/revenue',
@@ -44,9 +52,12 @@ export const intelligenceSections = [
   { key: 'insights',      label: 'Growth Strategy',  path: appRoutes.insights,     roles: ['STRATEGIST', 'BUYER'] },
 ];
 
+// FE-04 — "Channels" is no longer listed here. It is a destination now, and a
+// tab that only redirects away is a trap: it offers a place to stand that does
+// not exist. `settingsIntegrations` is KEPT in appRoutes above because the
+// address is bookmarked and linked from outside the app; App.jsx redirects it.
 export const settingsSections = [
   { key: 'general', label: 'General', path: appRoutes.settingsGeneral },
-  { key: 'integrations', label: 'Channels', path: appRoutes.settingsIntegrations },
   { key: 'team', label: 'Team & Roles', path: appRoutes.settingsTeam },
   { key: 'revenue', label: 'Revenue data', path: appRoutes.settingsRevenue },
   { key: 'workspace', label: 'Workspace', path: appRoutes.settingsWorkspace },
@@ -63,6 +74,9 @@ export const legacyAppRedirects = [
   // FE-02 — straight to the destination, not through `proof`, which is itself
   // now a redirect. Two hops for a bookmark is a redirect chain waiting to rot.
   { from: 'proof', to: appRoutes.memory },
-  { from: 'connections', to: appRoutes.settingsIntegrations },
+  // FE-04 — this entry ran the OTHER way until now (`connections` → the
+  // Settings tab). The direction is reversed because the destination moved,
+  // not because a new redirect was added.
+  { from: 'settings/integrations', to: appRoutes.connections },
   { from: 'growth', to: appRoutes.insights },
 ];

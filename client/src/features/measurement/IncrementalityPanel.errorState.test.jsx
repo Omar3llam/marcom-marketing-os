@@ -27,6 +27,6 @@ describe('IncrementalityPanel — error state', () => {
   it('offers a real Connect-Meta action to the integrations route', () => {
     renderPanel({ error: new Error('boom') });
     const link = screen.getByRole('link', { name: /connect meta/i });
-    expect(link).toHaveAttribute('href', '/app/settings/integrations');
+    expect(link).toHaveAttribute('href', '/app/connections');
   });
 });

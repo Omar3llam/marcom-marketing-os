@@ -61,7 +61,7 @@ export default function OverviewView() {
         step={1}
         title="Connect a channel to get started"
         description="Lumi needs your live campaign data to generate verdicts and decisions. Connect Meta or Google and your account starts populating within minutes."
-        primaryAction={{ label: 'Connect a channel', href: appRoutes.settingsIntegrations }}
+        primaryAction={{ label: 'Connect a channel', href: appRoutes.connections }}
         onCtaClick={() => dismiss(INTERRUPT.FIRST_RUN)}
         onDismiss={() => dismiss(INTERRUPT.FIRST_RUN)}
       />
@@ -86,7 +86,7 @@ export default function OverviewView() {
           Connect Meta or Google to unlock account pulse, AI insights, and automated recommendations.
         </p>
         <Link
-          to={appRoutes.settingsIntegrations}
+          to={appRoutes.connections}
           className="flex items-center gap-2 px-5 py-3 bg-lumi-accent hover:bg-lumi-accent/90 text-white rounded-lg transition-all font-display font-semibold text-sm shadow-accent-glow focus:outline-none focus:ring-2 focus:ring-lumi-accent focus:ring-offset-2 focus:ring-offset-surface-dark"
         >
           <Plug className="w-4 h-4" strokeWidth={1.5} />

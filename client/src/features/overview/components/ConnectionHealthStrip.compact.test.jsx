@@ -48,7 +48,7 @@ describe('per-channel status', () => {
   it('offers a way out when nothing is connected at all', () => {
     ok([]);
     rail();
-    expect(screen.getByRole('link', { name: /Connect/ })).toHaveAttribute('href', '/app/settings/integrations');
+    expect(screen.getByRole('link', { name: /Connect/ })).toHaveAttribute('href', '/app/connections');
   });
 
   it('drops the Connect link once a channel is live', () => {

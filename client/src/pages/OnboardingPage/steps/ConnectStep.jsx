@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
 import { useConnections } from '@/hooks/useConnections.js';
 import { useProjectId } from '@/hooks/useProjectId.js';
-import { startConnect } from '@/pages/Connections.jsx';
+import { startConnect } from '@/features/connectors/startConnect.js';
 import { PRIMARY_BTN, GHOST_BTN } from './onboardingStyles.js';
 
 // The OAuth callback returns the browser here (full-page load) with a

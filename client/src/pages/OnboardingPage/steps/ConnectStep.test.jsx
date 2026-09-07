@@ -9,7 +9,7 @@ const { useConnectionsMock, useProjectIdMock, startConnectMock } = vi.hoisted(()
 
 vi.mock('@/hooks/useConnections.js', () => ({ useConnections: () => useConnectionsMock() }));
 vi.mock('@/hooks/useProjectId.js', () => ({ useProjectId: () => useProjectIdMock() }));
-vi.mock('@/pages/Connections.jsx', () => ({ startConnect: (...a) => startConnectMock(...a) }));
+vi.mock('@/features/connectors/startConnect.js', () => ({ startConnect: (...a) => startConnectMock(...a) }));
 
 import { ConnectStep } from './ConnectStep.jsx';
 

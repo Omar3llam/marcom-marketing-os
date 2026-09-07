@@ -15,7 +15,7 @@ import FirstRunBanner from './FirstRunBanner.jsx';
 const base = {
   title: 'Connect a channel to get started',
   description: 'Lumi needs your live campaign data.',
-  primaryAction: { label: 'Connect a channel', href: '/app/settings/integrations' },
+  primaryAction: { label: 'Connect a channel', href: '/app/connections' },
 };
 
 const renderBanner = (props = {}) =>
@@ -27,7 +27,7 @@ describe('FirstRunBanner', () => {
     expect(screen.getByText('Connect a channel to get started')).toBeInTheDocument();
     expect(screen.getByText(/Lumi needs your live campaign data/)).toBeInTheDocument();
     const cta = screen.getByRole('link', { name: /Connect a channel/i });
-    expect(cta).toHaveAttribute('href', '/app/settings/integrations');
+    expect(cta).toHaveAttribute('href', '/app/connections');
   });
 
   it('clicking the CTA fires onCtaClick (how OverviewView retires the flag)', () => {

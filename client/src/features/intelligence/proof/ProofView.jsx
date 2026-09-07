@@ -176,7 +176,7 @@ export function ProofReading() {
     return (
       <div className="flex flex-col items-center gap-3">
         <EmptyPanel Icon={Gauge} text="We couldn't load Proof of Learning right now. It tracks how calibrated Lumi gets on your account as decisions accumulate." />
-        <Link to={appRoutes.settingsIntegrations} className="inline-flex items-center gap-1 text-sm font-medium text-lumi-accent hover:underline">
+        <Link to={appRoutes.connections} className="inline-flex items-center gap-1 text-sm font-medium text-lumi-accent hover:underline">
           Connect Meta →
         </Link>
       </div>

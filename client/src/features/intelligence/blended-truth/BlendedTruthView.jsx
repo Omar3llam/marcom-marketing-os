@@ -175,7 +175,7 @@ export default function BlendedTruth() {
       {!gated && !loading && error && (
         <div className="flex flex-col items-center gap-3">
           <EmptyPanel Icon={AlertTriangle} text="We couldn't load Blended Truth right now. It reconciles platform-reported spend against your store's real revenue." />
-          <Link to={appRoutes.settingsIntegrations} className="inline-flex items-center gap-1 text-sm font-medium text-lumi-accent hover:underline">
+          <Link to={appRoutes.connections} className="inline-flex items-center gap-1 text-sm font-medium text-lumi-accent hover:underline">
             Connect Meta →
           </Link>
         </div>

@@ -10,7 +10,7 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { RoleContext } from '@/context/RoleContext.jsx';
 import { BlendedTruthView } from '@/pages/BlendedTruth.jsx';
-import { ConnectionsView } from '@/pages/Connections.jsx';
+import { ConnectionsView } from '@/features/connectors/ConnectorsView.jsx';
 import { ConnectionsResponseSchema, BlendedTruthSchema } from '@/contracts/schemas';
 
 function withRole(role: string) {
