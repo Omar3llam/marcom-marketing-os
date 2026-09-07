@@ -8,6 +8,14 @@ export const appRoutes = {
   intelligence: '/app/intelligence',
   blendedTruth: '/app/intelligence/blended-truth',
   insights: '/app/intelligence/insights',
+  // FE-02 — the ACROSS axis. B7 locked four axes and three had destinations;
+  // this one's two readings lived as tabs under a fourth thing ("Intelligence —
+  // truth, insights, proof"), so the object a person would call "what Lumi has
+  // learned" had no address at all. Unlike `decisions` this is NOT a reclaim:
+  // /app/memory has never resolved to anything.
+  memory: '/app/memory',
+  // Kept so App.jsx can keep the old address alive. It no longer renders a
+  // page — it redirects to `memory`, of which it is now the second reading.
   proof: '/app/intelligence/proof',
   testing: '/app/testing',
   measure: '/app/measure',
@@ -24,15 +32,16 @@ export const appRoutes = {
   settingsSecurity: '/app/settings/security',
 };
 
-// The three Intelligence surfaces, rendered as a shared sub-nav strip on each
-// (mirrors `settingsSections`). `roles` gates a tab to those collabRoles — Proof
-// is ungated (all roles; the view itself narrows by role). The Sidebar's
-// "Intelligence" item only lands on Blended Truth; this strip is how Growth
-// Strategy + Proof become reachable without a deep-link.
+// The Intelligence surfaces, rendered as a shared sub-nav strip on each
+// (mirrors `settingsSections`). `roles` gates a tab to those collabRoles.
+//
+// FE-02 — "Proof of Learning" is no longer listed. It was never a peer of these
+// two: it is the SECOND READING of the object Memory now owns (B7 Ruling 2 —
+// one surface, read two ways), and leaving a tab here would give one object two
+// destinations, which is the divergence that ruling exists to prevent.
 export const intelligenceSections = [
   { key: 'blended-truth', label: 'Blended Truth',    path: appRoutes.blendedTruth, roles: ['STRATEGIST', 'BUYER'] },
   { key: 'insights',      label: 'Growth Strategy',  path: appRoutes.insights,     roles: ['STRATEGIST', 'BUYER'] },
-  { key: 'proof',         label: 'Proof of Learning', path: appRoutes.proof },
 ];
 
 export const settingsSections = [
@@ -44,11 +53,16 @@ export const settingsSections = [
   { key: 'security', label: 'Security', path: appRoutes.settingsSecurity },
 ];
 
+// ⚠️ This array has NO importer. It documents App.jsx's redirect table by hand
+// rather than driving it, so the two can drift silently — it is kept accurate
+// here, and reported as a finding rather than deleted inside this slice.
 export const legacyAppRedirects = [
   { from: 'home', to: appRoutes.overview },
   { from: 'feed', to: appRoutes.overview },
   { from: 'truth', to: appRoutes.blendedTruth },
-  { from: 'proof', to: appRoutes.proof },
+  // FE-02 — straight to the destination, not through `proof`, which is itself
+  // now a redirect. Two hops for a bookmark is a redirect chain waiting to rot.
+  { from: 'proof', to: appRoutes.memory },
   { from: 'connections', to: appRoutes.settingsIntegrations },
   { from: 'growth', to: appRoutes.insights },
 ];

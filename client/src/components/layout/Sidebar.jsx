@@ -14,7 +14,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   Layout, BarChart3, Send,
   Settings, PanelLeftClose, Plus, Search, ChevronDown,
-  Brain, FlaskConical, Microscope, Megaphone, FileText, Plug, History,
+  Brain, FlaskConical, Microscope, Megaphone, FileText, Plug, History, Layers,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
@@ -59,7 +59,13 @@ export const tools = [
   { key: 'content',      label: 'Creative Optimizer', sub: 'Improve creative performance', icon: Send,   path: appRoutes.contentLab,   roles: ['STRATEGIST', 'BUYER'], plan: 'FREE' },
   { key: 'leadership',   label: 'Reports',      sub: 'Weekly narratives',      icon: FileText,     path: appRoutes.leadership,   plan: 'FREE' },
   // ── GROWTH — locked on FREE ─────────────────────────────────
-  { key: 'intelligence', label: 'Intelligence', sub: 'Truth, insights, proof', icon: Brain,        path: appRoutes.intelligence, roles: ['STRATEGIST', 'BUYER'], plan: 'GROWTH' },
+  // ACROSS — what Lumi learned, and whether it held up. FE-02 gave the axis an
+  // address; until then its two readings were tabs under "Intelligence" below,
+  // and the axis had no name in this list at all. GROWTH because the read it
+  // depends on, GET /lumi/briefing, is `requirePlan('GROWTH')` — a nav row that
+  // outruns its API is a lie one click deep.
+  { key: 'memory',       label: 'Memory',       sub: 'What Lumi learned',      icon: Brain,        path: appRoutes.memory,       roles: ['STRATEGIST', 'BUYER'], plan: 'GROWTH' },
+  { key: 'intelligence', label: 'Intelligence', sub: 'Truth + strategy board', icon: Layers,       path: appRoutes.intelligence, roles: ['STRATEGIST', 'BUYER'], plan: 'GROWTH' },
   { key: 'publishing',   label: 'Publishing',   sub: 'Content approvals',      icon: Megaphone,    path: appRoutes.publishing,   roles: ['STRATEGIST', 'BUYER'], plan: 'GROWTH' },
   // ── PRO — locked on FREE / GROWTH ───────────────────────────
   { key: 'testing',      label: 'Testing',      sub: 'A/B experiments',        icon: FlaskConical, path: appRoutes.testing,      roles: ['STRATEGIST', 'BUYER'], plan: 'PRO' },

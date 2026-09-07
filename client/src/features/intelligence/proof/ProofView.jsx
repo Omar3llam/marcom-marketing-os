@@ -18,7 +18,6 @@ import { Link } from 'react-router-dom';
 import { Gauge } from 'lucide-react';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
-import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
 import RecordOutcomePanel from './RecordOutcomePanel.jsx';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
 import EmptyPanel from '@/components/ui/EmptyPanel.jsx';
@@ -154,34 +153,41 @@ export function ProofView({ data, surface, role = WORKSPACE_ROLE.STRATEGIST }) {
   );
 }
 
-// ── Page wrapper: fetch + three states ──────────────────────────
-export default function Proof() {
+// ── The reading: fetch + three states, and NO page chrome ───────
+//
+// FE-02 — this used to be `export default function Proof()`, a page with its own
+// <h1> and Intelligence sub-nav strip at /app/intelligence/proof. It is not a
+// page any more: B7 Ruling 2 says Memory is ONE surface read TWO ways, and this
+// is the second reading — *is what Lumi learned any good?* — of the object the
+// first reading states. Two addresses for one object is precisely the
+// divergence that ruling forbids, so /app/intelligence/proof now redirects to
+// /app/memory and this composes into it.
+//
+// Deliberately unchanged: the fetch, the gate, the three states and the role
+// narrowing. Moving a reading must not quietly re-specify it — a CLIENT still
+// gets the narrative line and nothing else, exactly as at the old address.
+export function ProofReading() {
   const { role } = useCollabRole();
   const { data, surface, loading, error, refetch } = useAccuracy();
 
+  if (loading) return <div className="space-y-3"><CardSkeleton /><CardSkeleton /></div>;
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center gap-3">
+        <EmptyPanel Icon={Gauge} text="We couldn't load Proof of Learning right now. It tracks how calibrated Lumi gets on your account as decisions accumulate." />
+        <Link to={appRoutes.settingsIntegrations} className="inline-flex items-center gap-1 text-sm font-medium text-lumi-accent hover:underline">
+          Connect Meta →
+        </Link>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8">
-      <h1 className="decision-title text-lumi-text mb-1 inline-flex items-center gap-2">Proof of Learning <HelpTip variant="popover" content={HELP.PROOF_OF_LEARNING} size={14} /></h1>
-      <p className="text-sm text-lumi-muted mb-6">Is Lumi getting more calibrated on this account over time?</p>
-
-      <IntelligenceSubNav />
-
-      {loading && <div className="space-y-3"><CardSkeleton /><CardSkeleton /></div>}
-      {!loading && error && (
-        <div className="flex flex-col items-center gap-3">
-          <EmptyPanel Icon={Gauge} text="We couldn't load Proof of Learning right now. It tracks how calibrated Lumi gets on your account as decisions accumulate." />
-          <Link to={appRoutes.settingsIntegrations} className="inline-flex items-center gap-1 text-sm font-medium text-lumi-accent hover:underline">
-            Connect Meta →
-          </Link>
-        </div>
-      )}
-      {!loading && !error && (
-        <div className="space-y-4">
-          <ProofView data={data} surface={surface} role={role} />
-          {/* Closing the loop by hand — recording a real outcome refreshes the surface. */}
-          <RecordOutcomePanel onRecorded={refetch} />
-        </div>
-      )}
+    <div className="space-y-4">
+      <ProofView data={data} surface={surface} role={role} />
+      {/* Closing the loop by hand — recording a real outcome refreshes the surface. */}
+      <RecordOutcomePanel onRecorded={refetch} />
     </div>
   );
 }

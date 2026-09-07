@@ -1,12 +1,15 @@
 // ============================================================
-// GrowthStrategyBoard — Active Campaigns tile is connector-sourced,
-// Bets + Memory stay on the legacy feed
+// GrowthStrategyBoard — Active Campaigns tile is connector-sourced;
+// the ACROSS axis has moved out; Strategic Bets are FE-03's
 // ------------------------------------------------------------
-// The repoint must be surgical: the Active Campaigns tile (count + verdict
-// breakdown + "need revenue data") now reads useGrowthStrategySummary (connector
-// substrate), while Strategic Bets and the Memory Layer keep reading the legacy
-// CampaignState feed (useCampaignFeed). These assertions pin BOTH halves so a
-// future refactor can't silently swap the wrong one.
+// The Active Campaigns tile (count + verdict breakdown + "need revenue data")
+// reads useGrowthStrategySummary — the connector substrate. That half is
+// unchanged and still pinned here.
+//
+// FE-02 removed the OTHER half this file used to assert. "Bets + Memory stay on
+// the legacy feed" was true of a mock and false of the product: GET /lumi/feed
+// stopped publishing the `campaigns` array in S1-B, so both sections were
+// structurally empty, and the Memory one said so in words. See the blocks below.
 //
 // The board composes ~10 hooks; mock them all so the test isolates the wiring.
 // Role = BUYER keeps the STRATEGIST-gated panels unmounted (smaller surface).
@@ -129,15 +132,70 @@ describe('GrowthStrategyBoard — Active Campaigns tile (connector-sourced)', ()
   });
 });
 
-describe('GrowthStrategyBoard — Bets + Memory stay on the legacy feed', () => {
+// ── R-M6 · STILL ON THE DELETED FIELD, and deliberately left there ──────
+// `bets` reads campaigns[].alerts[] off useCampaignFeed, and `GET /lumi/feed`
+// stopped publishing `campaigns` in S1-B. So in production this section always
+// renders "No strategic bets active. Analyze your first campaign…" — a claim
+// about the account derived from a field that no longer exists.
+//
+// This test is GREEN only because the mock below hands the board a shape the
+// backend cannot send. That is named here rather than quietly relied on: bets
+// are the SUBJECT axis, and FE-03 ("SUBJECT stops reading a deleted field")
+// owns the repoint together with the other two useCampaignFeed consumers.
+// FE-02 removed the ACROSS half and nothing else.
+describe('GrowthStrategyBoard — Strategic Bets, still legacy-fed (FE-03 owns this)', () => {
   it('Strategic Bets render from the legacy feed alerts', () => {
     renderBoard();
     expect(screen.getByText('Scale the legacy bet')).toBeInTheDocument();
   });
+});
 
-  it('Memory Layer renders from the legacy feed DecisionMemory', () => {
+// ══════════════════════════════════════════════════════════════════════
+// FE-02 — the ACROSS axis has left this board
+// ----------------------------------------------------------------------
+// REPLACES "Memory Layer renders from the legacy feed DecisionMemory", which
+// asserted `Memory Layer: 1 learning` against a mocked `campaigns` array. The
+// assertion was true of the fixture and false of the product: with the real
+// response the timeline was always empty, so the board told the operator
+//
+//     "The memory layer is empty. Lumi will learn from your campaigns…"
+//
+// while rendering, ~100 lines lower on the SAME page, the account's actual
+// learned patterns from /api/lumi/briefing. Two claims about one object, one
+// of them false, and a green test protecting the false one.
+//
+// Both halves now live at /app/memory. These assertions pin that they are GONE
+// from here — a section that cannot be filled must not be re-added, and the
+// briefing must not be rendered in two places (B7 Ruling 2).
+// ══════════════════════════════════════════════════════════════════════
+const realFeed = () => ({
+  // The shape `GET /api/lumi/feed` actually returns: no `campaigns` key at all,
+  // which useIntelligenceData resolves to [] via `feedData?.campaigns ?? []`.
+  campaigns: [],
+  summary: { blendedCpa: null, pending: false, total: 0 },
+  loading: false,
+});
+
+describe('FE-02 · the memory layer is no longer claimed to be empty', () => {
+  beforeEach(() => { useCampaignFeed.mockReturnValue(realFeed()); });
+
+  it('makes no claim about what Lumi has learned', () => {
+    const { container } = renderBoard();
+    expect(container.textContent).not.toMatch(/memory layer is empty/i);
+    expect(container.textContent).not.toMatch(/Memory Layer:/);
+    expect(container.textContent).not.toMatch(/System Learnings/i);
+  });
+
+  it('does not render the account briefing — it has one destination now', () => {
+    const { container } = renderBoard();
+    expect(container.textContent).not.toMatch(/What Lumi Knows About This Account/i);
+  });
+
+  it('does not even read the briefing from here', () => {
+    // The strongest form of the assertion: the hook is not called. A surface
+    // that still fetches what it no longer shows is a second reader waiting to
+    // become a second claim.
     renderBoard();
-    expect(screen.getByText('learned the legacy lesson')).toBeInTheDocument();
-    expect(screen.getByText(/Memory Layer: 1 learning/)).toBeInTheDocument();
+    expect(useAccountBriefing).not.toHaveBeenCalled();
   });
 });
