@@ -33,6 +33,43 @@ describe('ApprovalsPanel — states', () => {
   });
 });
 
+// ── Tier 2a · governance fails CLOSED ───────────────────────────────────────
+// The consequence, not `unreadableCount === 1`: a queue holding an item it
+// cannot read may not tell a STRATEGIST that nothing is awaiting them.
+describe('ApprovalsPanel — an unreadable authorization is never an absent one', () => {
+  it('does NOT claim the queue is empty when an item could not be read', () => {
+    render(<ApprovalsPanel approvals={[]} unreadableCount={1} />);
+    expect(screen.queryByText(/no plans awaiting your approval/i)).not.toBeInTheDocument();
+  });
+
+  it('says so, and says the item cannot be decided here', () => {
+    render(<ApprovalsPanel approvals={[]} unreadableCount={2} />);
+    expect(screen.getByText(/couldn’t be read/i)).toBeInTheDocument();
+    expect(screen.getByText(/cannot be decided here/i)).toBeInTheDocument();
+  });
+
+  it('offers NO governance control for what it could not read', () => {
+    const onDecide = vi.fn();
+    render(<ApprovalsPanel approvals={[]} unreadableCount={1} onDecide={onDecide} />);
+    expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /request revision/i })).not.toBeInTheDocument();
+  });
+
+  it('readable rows stay decidable beside an unreadable one', () => {
+    render(<ApprovalsPanel approvals={APPROVALS} unreadableCount={1} />);
+    expect(screen.getByText('Q3 growth plan')).toBeInTheDocument();
+    expect(screen.getByText(/couldn’t be read/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /approve/i })).toBeInTheDocument();
+  });
+
+  // ── self-refutation ───────────────────────────────────────────────────────
+  it('a GENUINELY empty queue still says so, with no unreadable notice', () => {
+    render(<ApprovalsPanel approvals={[]} unreadableCount={0} />);
+    expect(screen.getByText(/no plans awaiting your approval/i)).toBeInTheDocument();
+    expect(screen.queryByText(/couldn’t be read/i)).not.toBeInTheDocument();
+  });
+});
+
 describe('ApprovalsPanel — row + decisions', () => {
   it('renders the plan name and budget (from minor)', () => {
     render(<ApprovalsPanel approvals={APPROVALS} />);

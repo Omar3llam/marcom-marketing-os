@@ -128,7 +128,10 @@ function ApprovalRow({ approval, onDecide, deciding }) {
 }
 
 // ── Pure, prop-driven panel ─────────────────────────────────────
-export function ApprovalsPanel({ approvals = [], loading = false, error = null, onDecide, decidingId = null }) {
+export function ApprovalsPanel({
+  approvals = [], unreadableCount = 0,
+  loading = false, error = null, onDecide, decidingId = null,
+}) {
   if (loading) {
     return <Section><div className="rounded-xl border border-dashed border-lumi-border p-6 text-center text-sm text-lumi-subtle">Loading approvals…</div></Section>;
   }
@@ -142,20 +145,44 @@ export function ApprovalsPanel({ approvals = [], loading = false, error = null, 
     );
   }
 
+  // Tier 2a — the empty state is a CLAIM, and it may only be made when the
+  // queue is genuinely empty. An authorization we could not read still exists.
+  const nothingAwaiting = approvals.length === 0 && unreadableCount === 0;
+
   return (
     <Section>
-      {approvals.length === 0 ? (
+      {nothingAwaiting ? (
         <div className="rounded-2xl border border-dashed border-lumi-border bg-lumi-surface/40 p-8 text-center">
           <ShieldCheck className="w-10 h-10 mx-auto text-lumi-subtle" strokeWidth={1.5} />
           <p className="mt-3 font-display text-lumi-text">No plans awaiting your approval.</p>
           <p className="mt-1 text-lumi-muted text-sm">When someone submits a plan for sign-off, it shows up here.</p>
         </div>
       ) : (
-        <div className="rounded-2xl border border-lumi-border bg-lumi-surface overflow-hidden">
-          {approvals.map((a) => (
-            <ApprovalRow key={a.id} approval={a} onDecide={onDecide} deciding={decidingId === a.id} />
-          ))}
-        </div>
+        <>
+          {/* Governance fails CLOSED: named, not decidable, and never counted
+              into the queue above. No control is offered, because deciding what
+              we could not read is exactly the act to refuse. */}
+          {unreadableCount > 0 && (
+            <div className="mb-3 rounded-2xl border border-signal-kill/25 bg-signal-kill-bg p-4">
+              <p className="font-body text-sm text-signal-kill">
+                {unreadableCount === 1
+                  ? '1 pending approval couldn’t be read.'
+                  : `${unreadableCount} pending approvals couldn’t be read.`}
+              </p>
+              <p className="mt-1 text-lumi-muted text-xs">
+                {unreadableCount === 1 ? 'It is' : 'They are'} still awaiting sign-off and cannot be decided here,
+                so this queue is not complete.
+              </p>
+            </div>
+          )}
+          {approvals.length > 0 && (
+            <div className="rounded-2xl border border-lumi-border bg-lumi-surface overflow-hidden">
+              {approvals.map((a) => (
+                <ApprovalRow key={a.id} approval={a} onDecide={onDecide} deciding={decidingId === a.id} />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </Section>
   );
