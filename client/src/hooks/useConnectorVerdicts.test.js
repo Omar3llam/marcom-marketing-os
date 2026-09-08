@@ -110,3 +110,54 @@ describe('useConnectorVerdicts · epistemic knowledge (C-06)', () => {
     expect(result.current.decisionHistoryKnowledge).toBeNull();
   });
 });
+
+// ── PARITY-04 · the boundary parse, at the hook ─────────────────────────────
+// The middle link of the chain. The schema is proved in
+// contracts/schemas/connectorCampaigns.schema.test.ts and the consequence in
+// features/campaigns/__tests__/campaignsSubstrateParity.test.jsx; this proves
+// the hook actually runs the one and produces the input for the other.
+describe('useConnectorVerdicts · a malformed 200 is an error, never an empty verdict set', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('a MISSING verdicts collection sets error and does not pretend to be empty', async () => {
+    const { verdicts, ...noCollection } = payload();
+    expect(verdicts).toBeDefined();
+    const r = await load(noCollection);
+    expect(r.current.error).toBeTruthy();
+    expect(r.current.error.message).toMatch(/contract validation/i);
+    expect(r.current.verdicts).toEqual([]);
+  });
+
+  it('a MISSING gatedOut collection is its own error', async () => {
+    const { gatedOut, ...noGated } = payload();
+    expect(gatedOut).toBeDefined();
+    const r = await load(noGated);
+    expect(r.current.error).toBeTruthy();
+  });
+
+  it('an UNKNOWN verdict value is an error, not a silently dropped row', async () => {
+    const r = await load(payload({ verdicts: [{ id: 'c1', name: 'C', verdict: 'PAUSE' }] }));
+    expect(r.current.error).toBeTruthy();
+    expect(r.current.verdicts).toEqual([]);
+  });
+
+  it('a WRONG-TYPE field is an error', async () => {
+    const r = await load(payload({ verdicts: [{ id: 'c1', verdict: 'KILL', confidence: 'high' }] }));
+    expect(r.current.error).toBeTruthy();
+  });
+
+  // ── self-refutation: the genuine empty is NOT an error ────────────────────
+  it('a VALID empty payload is a measured empty set, with no error', async () => {
+    const r = await load(payload({ verdicts: [], gatedOut: [] }));
+    expect(r.current.error).toBeNull();
+    expect(r.current.verdicts).toEqual([]);
+    expect(r.current.gatedOut).toEqual([]);
+  });
+
+  it('…and a valid populated payload still arrives intact', async () => {
+    const r = await load(payload());
+    expect(r.current.error).toBeNull();
+    expect(r.current.verdicts).toHaveLength(1);
+    expect(r.current.verdicts[0].verdict).toBe('KILL');
+  });
+});

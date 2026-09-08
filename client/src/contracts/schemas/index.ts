@@ -538,3 +538,22 @@ export {
   type AccountAggregate,
   type AccountAggregateResponse,
 } from './accountAggregate.schema';
+
+// ──────────────────────────────────────────────────────────
+// PARITY-04 — the SUBJECT axis's two reads. NOT entity.schema.ts, which
+// describes the Prisma entity GRAPH; these describe the flattened HTTP WIRE.
+// ──────────────────────────────────────────────────────────
+export {
+  ConnectorVerdictValueSchema,
+  ConnectorCampaignRowSchema,
+  ConnectorVerdictRowSchema,
+  GatedOutRowSchema,
+  ConnectorCampaignsResponseSchema,
+  ConnectorVerdictsResponseSchema,
+  type ConnectorVerdictValue,
+  type ConnectorCampaignRow,
+  type ConnectorVerdictRow,
+  type GatedOutRow,
+  type ConnectorCampaignsResponse,
+  type ConnectorVerdictsResponse,
+} from './connectorCampaigns.schema';
