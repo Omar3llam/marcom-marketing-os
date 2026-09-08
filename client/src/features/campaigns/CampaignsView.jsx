@@ -17,7 +17,7 @@
 // derived from that array, which is why the `?channel=` deep-link from Blended
 // Truth has been inert: `platforms` was always [].
 // ============================================================
-import { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { RefreshCw, Loader2, Download } from 'lucide-react';
 import { appRoutes } from '@/app/routeManifest.js';
@@ -82,12 +82,21 @@ export function splitNoRevenueVerdicts(verdicts = []) {
 }
 
 export default function CampaignsView() {
-  // Deep-link target from an Overview agenda item (?entity=<Campaign.id>). The
-  // connector panel scrolls-to + expands that row, then calls back so we drop the
-  // param (browser back/forward stays clean, a refresh won't re-trigger).
-  const [searchParams, setSearchParams] = useSearchParams();
+  // Deep-link target from an Overview agenda item, a Decision card or the
+  // fatigue panel (?entity=<Campaign.id>). The connector panel scrolls-to and
+  // expands that row.
+  //
+  // PARITY-03 — the param is KEPT. It used to be deleted the moment the row was
+  // found ("a refresh won't re-trigger"), which is exactly the problem: a
+  // refresh SHOULD re-trigger, because the URL names what the operator is
+  // looking at. Erasing it meant the address could not be copied or reloaded,
+  // and the one case where it survived was the case where nothing was found.
+  //
+  // Campaign remains the investigation LENS — this is not a destination and
+  // there is no /app/campaigns/:id. What the param has to do is carry the
+  // identity honestly for as long as the lens is showing it.
+  const [searchParams] = useSearchParams();
   const deepLinkEntityId = searchParams.get('entity');
-  const clearDeepLink = useCallback(() => setSearchParams({}, { replace: true }), [setSearchParams]);
 
   // FE-03 — `sortKey`/`sortDir`/`expanded`/`channel` lived here, all four owned
   // by the legacy table and its filter. AdSet drill-down was never theirs: it
@@ -558,7 +567,6 @@ export default function CampaignsView() {
         loading={connectorLoading}
         error={connectorError}
         deepLinkEntityId={deepLinkEntityId}
-        onDeepLinkHandled={clearDeepLink}
       />
 
       {/* Where the money currently sits, as context BELOW the decisions rather

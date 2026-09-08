@@ -9,7 +9,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { ConnectorCampaignsPanel } from '../ConnectorCampaignsPanel.jsx';
+import { ConnectorCampaignsPanel, deepLinkState, DEEP_LINK } from '../ConnectorCampaignsPanel.jsx';
 
 // Kept for rows that once carried router Links; harmless for plain rows.
 const renderPanel = (ui) => render(ui, { wrapper: MemoryRouter });
@@ -29,6 +29,38 @@ vi.mock('../decisionSignals.js', () => ({ recordExplain, recordIntent: vi.fn() }
 const campaign = (over = {}) => ({
   entityId: 'c1', channel: 'META', name: 'Awareness Reach', adSetCount: 0,
   spendMinor: 50000, roas: null, ctr: 0.012, frequency: 2.4, currency: 'USD', ...over,
+});
+
+// ── PARITY-03 · five states, five different claims (C-07) ──────────────────
+describe('deepLinkState', () => {
+  const rows = [{ entityId: 'c1' }];
+
+  it('no address asked, nothing to answer', () => {
+    expect(deepLinkState({ id: null, campaigns: rows, loading: false, error: null })).toBe(DEEP_LINK.NONE);
+  });
+
+  it('found', () => {
+    expect(deepLinkState({ id: 'c1', campaigns: rows, loading: false, error: null })).toBe(DEEP_LINK.RESOLVED);
+  });
+
+  it('the read landed and the id is not among the rows', () => {
+    expect(deepLinkState({ id: 'zz', campaigns: rows, loading: false, error: null })).toBe(DEEP_LINK.NOT_IN_LIST);
+  });
+
+  it('still in flight — NOT the same claim as absent', () => {
+    expect(deepLinkState({ id: 'zz', campaigns: [], loading: true, error: null })).toBe(DEEP_LINK.PENDING);
+  });
+
+  it('the read FAILED — we cannot say whether it is here', () => {
+    expect(deepLinkState({ id: 'zz', campaigns: [], loading: false, error: new Error('x') })).toBe(DEEP_LINK.UNREADABLE);
+  });
+
+  it('a failure outranks a retry in flight, and neither is absence', () => {
+    // Self-refutation: if UNREADABLE collapsed into NOT_IN_LIST, an outage would
+    // tell the operator their campaign does not exist.
+    expect(deepLinkState({ id: 'zz', campaigns: [], loading: true, error: new Error('x') })).toBe(DEEP_LINK.UNREADABLE);
+    expect(deepLinkState({ id: 'zz', campaigns: [], loading: false, error: null })).not.toBe(DEEP_LINK.UNREADABLE);
+  });
 });
 
 describe('ConnectorCampaignsPanel — verdict column', () => {
@@ -215,34 +247,100 @@ describe('ConnectorCampaignsPanel — deep-link (?entity=)', () => {
     expect(document.getElementById('campaign-row-c1')).toBeInTheDocument();
   });
 
-  it('a matching deep-link auto-expands the detail, scrolls to the row, and hands back (URL cleanup)', async () => {
-    const onHandled = vi.fn();
+  // PARITY-03 — REPLACES "…and hands back (URL cleanup)". The hand-back deleted
+  // ?entity= the moment the row was found, so the address was erased at the
+  // instant it succeeded: the URL could not be copied and a refresh returned to
+  // the top of an unexpanded list. The ONE case where the param survived was the
+  // case where nothing was found — exactly backwards.
+  it('a matching deep-link expands the detail and scrolls, and does NOT erase the address', async () => {
     render(
       <ConnectorCampaignsPanel
         campaigns={[campaign({ entityId: 'c1', name: 'Awareness Reach' })]}
         verdicts={{ c1: 'REFRESH' }}
         deepLinkEntityId="c1"
-        onDeepLinkHandled={onHandled}
       />,
     );
-    // The signals + reasoning panel appears with NO click — driven by the deep-link.
     expect(await screen.findByText('Signals')).toBeInTheDocument();
     expect(window.HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
-    expect(onHandled).toHaveBeenCalledTimes(1); // parent clears ?entity=
   });
 
-  it('an unknown/stale entity id is a graceful no-op — no expand, no callback', () => {
-    const onHandled = vi.fn();
+  // PARITY-03 — arriving IS opening the reasoning. If the product reads an open
+  // as "the operator asked why", the door used may not change the institutional
+  // record. Measurement integrity, not polish.
+  it('a deep-link arrival records explain, exactly like a click on the row', async () => {
+    recordExplain.mockClear();
+    render(
+      <ConnectorCampaignsPanel
+        campaigns={[campaign({ entityId: 'c1' })]}
+        verdicts={{ c1: 'REFRESH' }}
+        deepLinkEntityId="c1"
+      />,
+    );
+    expect(await screen.findByText('Signals')).toBeInTheDocument();
+    expect(recordExplain).toHaveBeenCalledWith('c1');
+  });
+
+  // ⚠️ REWRITTEN. The first version rerendered with a fresh array and asserted
+  // one call — and passed with the once-guard REMOVED, because the effect keys
+  // on the resolved STATE, not the array, so a plain refetch never re-runs it.
+  // The test proved nothing. The case that genuinely re-runs the effect is a
+  // read that flaps: RESOLVED → UNREADABLE → RESOLVED. Recovering from an
+  // outage is not a second arrival, and must not be recorded as one.
+  it('…and records it ONCE across a read that fails and recovers', async () => {
+    recordExplain.mockClear();
+    const rows = [campaign({ entityId: 'c1' })];
+    const props = { verdicts: { c1: 'REFRESH' }, deepLinkEntityId: 'c1' };
+    const { rerender } = render(<ConnectorCampaignsPanel campaigns={rows} {...props} />);
+    expect(await screen.findByText('Signals')).toBeInTheDocument();
+    expect(recordExplain).toHaveBeenCalledTimes(1);
+
+    rerender(<ConnectorCampaignsPanel campaigns={[]} error={new Error('flap')} {...props} />);
+    rerender(<ConnectorCampaignsPanel campaigns={rows} {...props} />);
+    expect(recordExplain).toHaveBeenCalledTimes(1);
+  });
+
+  // PARITY-03 — REPLACES "a graceful no-op". Silence WAS the defect: the link
+  // resolved to a page that ignored it, with nothing said.
+  it('an id the read did not return says so, instead of failing silently', () => {
     render(
       <ConnectorCampaignsPanel
         campaigns={[campaign({ entityId: 'c1' })]}
         verdicts={{ c1: 'REFRESH' }}
         deepLinkEntityId="not-a-real-campaign"
-        onDeepLinkHandled={onHandled}
       />,
     );
     expect(screen.queryByText('Signals')).not.toBeInTheDocument();
-    expect(onHandled).not.toHaveBeenCalled();
+    expect(screen.getByText(/not among this account/i)).toBeInTheDocument();
+  });
+
+  // hasData ≠ read succeeded — PARITY-01's rule, applied to the deep link.
+  it('a FAILED read never claims the campaign is not here', () => {
+    render(
+      <ConnectorCampaignsPanel
+        campaigns={[]}
+        verdicts={{}}
+        loading={false}
+        error={new Error('boom')}
+        deepLinkEntityId="c1"
+      />,
+    );
+    expect(screen.queryByText(/not among this account/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/couldn.t check/i)).toBeInTheDocument();
+  });
+
+  it('and while the read is still in flight it claims nothing at all', () => {
+    render(
+      <ConnectorCampaignsPanel campaigns={[]} verdicts={{}} loading deepLinkEntityId="c1" />,
+    );
+    expect(screen.queryByText(/not among this account/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/couldn.t check/i)).not.toBeInTheDocument();
+  });
+
+  it('an account with NO campaigns still answers a deep link', () => {
+    // The panel renders nothing when there is nothing to show. A deep link asked
+    // a question, so silence is not an available answer.
+    render(<ConnectorCampaignsPanel campaigns={[]} verdicts={{}} deepLinkEntityId="c1" />);
+    expect(screen.getByText(/not among this account/i)).toBeInTheDocument();
   });
 
   it('no deep-link → normal behavior, nothing auto-expands', () => {
@@ -361,17 +459,15 @@ describe('ConnectorCampaignsPanel — decision queue grouping', () => {
 
   it('keeps the deep-link row anchor findable after grouping', () => {
     const { container } = renderPanel(
-      <ConnectorCampaignsPanel campaigns={four} verdicts={verdicts} deepLinkEntityId="h" onDeepLinkHandled={vi.fn()} />,
+      <ConnectorCampaignsPanel campaigns={four} verdicts={verdicts} deepLinkEntityId="h" />,
     );
     expect(container.querySelector('#campaign-row-h')).toBeInTheDocument();
   });
 
   it('expands the deep-linked row even when it sits in a later band', () => {
-    const onDeepLinkHandled = vi.fn();
     renderPanel(
-      <ConnectorCampaignsPanel campaigns={four} verdicts={verdicts} deepLinkEntityId="h" onDeepLinkHandled={onDeepLinkHandled} />,
+      <ConnectorCampaignsPanel campaigns={four} verdicts={verdicts} deepLinkEntityId="h" />,
     );
-    expect(onDeepLinkHandled).toHaveBeenCalled();
     expect(screen.getByLabelText('Toggle details for Healthy One')).toHaveAttribute('aria-expanded', 'true');
   });
 });
