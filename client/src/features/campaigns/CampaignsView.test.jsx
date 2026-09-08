@@ -8,8 +8,8 @@
 // The heavy chart/table children are stubbed; MetricsPanel renders for real.
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, useLocation } from 'react-router-dom';
 
 // CampaignsView reads ?entity= via useSearchParams → needs a Router context.
 const renderView = () => render(<CampaignsView />, { wrapper: MemoryRouter });
@@ -24,7 +24,25 @@ vi.mock('@/hooks/useCampaignAnalysis.js', () => ({ useCampaignAnalysis: () => ({
 
 // Stub the heavy children — the KPI cards under test live in MetricsPanel (real).
 vi.mock('@/components/campaign-analysis/PerformanceChart.jsx', () => ({ PerformanceChart: () => <div /> }));
-vi.mock('@/features/campaigns/ConnectorCampaignsPanel.jsx', () => ({ ConnectorCampaignsPanel: () => <div /> }));
+// ⚠️ The stub MUST be able to erase. The old panel called `onDeepLinkHandled`
+// on arrival and the parent deleted the param; a stub that ignores the callback
+// makes the URL assertion below vacuous — it passed even with the erasure
+// reinstated, which mutation testing is how I found out. So the stub does what
+// the old panel did: hand back if given the chance.
+vi.mock('@/features/campaigns/ConnectorCampaignsPanel.jsx', async () => {
+  const { useEffect } = await import('react');
+  return {
+    ConnectorCampaignsPanel: ({ deepLinkEntityId, onDeepLinkHandled }) => {
+      // In an EFFECT, exactly where the real panel called it. Calling it during
+      // render instead makes React defer the state update, and the assertion
+      // below passes with the erasure reinstated — which is not a proof.
+      useEffect(() => {
+        if (deepLinkEntityId && onDeepLinkHandled) onDeepLinkHandled();
+      }, [deepLinkEntityId, onDeepLinkHandled]);
+      return <div data-testid="panel-deeplink">{deepLinkEntityId ?? ''}</div>;
+    },
+  };
+});
 
 import CampaignsView from './CampaignsView.jsx';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
@@ -237,5 +255,48 @@ describe('CampaignsView — gated campaigns name their own reason', () => {
     });
     renderView();
     expect(screen.queryByText(/need revenue data/)).not.toBeInTheDocument();
+  });
+});
+
+// ── PARITY-03 · the address survives the arrival ────────────────────────────
+// Omar's invariant: "the resulting UI must preserve the identity in an
+// addressable, refreshable way." The ruling KEPT ?entity= as the mechanism, so
+// the thing to prove is that the param is still there after the page has
+// handled it — the old behaviour deleted it at the moment it succeeded.
+//
+// This asserts the LIVE URL, not a prop: the erasure lived in CampaignsView
+// (setSearchParams({}, { replace: true })), so a prop-level assertion could pass
+// while the address still vanished.
+describe('CampaignsView — the deep-linked identity stays in the URL', () => {
+  function LocationProbe() {
+    const { search } = useLocation();
+    return <div data-testid="url-search">{search}</div>;
+  }
+  const renderAt = (entry) => render(
+    <MemoryRouter initialEntries={[entry]}>
+      <CampaignsView />
+      <LocationProbe />
+    </MemoryRouter>,
+  );
+
+  beforeEach(() => {
+    useAccountHealth.mockReturnValue({ health: null, refetch: vi.fn() });
+  });
+
+  it('keeps ?entity= after the page has rendered — the URL is copyable', async () => {
+    renderAt('/app/campaigns?entity=a');
+    await waitFor(() => expect(screen.getByTestId('panel-deeplink')).toHaveTextContent('a'));
+    expect(screen.getByTestId('url-search')).toHaveTextContent('entity=a');
+  });
+
+  it('…and hands the identity down unchanged', async () => {
+    renderAt('/app/campaigns?entity=a');
+    await waitFor(() => expect(screen.getByTestId('panel-deeplink')).toHaveTextContent('a'));
+  });
+
+  it('no ?entity= means no deep link — the control for both cases above', async () => {
+    renderAt('/app/campaigns');
+    await waitFor(() => expect(screen.getByTestId('panel-deeplink')).toHaveTextContent(''));
+    expect(screen.getByTestId('url-search')).not.toHaveTextContent('entity');
   });
 });

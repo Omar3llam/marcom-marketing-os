@@ -21,7 +21,7 @@
 // Governing law: every metric traces to a MetricSnapshot row. A missing metric
 // renders "—" (Dash), never a fabricated 0. Loading/error/empty are honest.
 // ============================================================
-import { useState, useEffect, useMemo, Fragment } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { ChevronRight, Loader2, Plug, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { roasColor, freqColor } from '@/components/campaign-analysis/campaignFormatters.js';
@@ -201,7 +201,43 @@ function AdSetRows({ state, ads }) {
   });
 }
 
-export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativeRanks = {}, impacts = {}, verdictInfo = {}, loading = false, error = null, deepLinkEntityId = null, onDeepLinkHandled }) {
+/**
+ * PARITY-03 · what happened to the address the URL asked for.
+ *
+ * FIVE states, because they are five different claims and three of them used to
+ * be one silence. C-07's rule on a deep link: a token cannot replace a reason,
+ * and "we could not look" is not "it is not here".
+ */
+export const DEEP_LINK = Object.freeze({
+  NONE:        'NONE',        // no ?entity= — nothing was asked
+  PENDING:     'PENDING',     // the campaign read has not landed; nothing can be said
+  RESOLVED:    'RESOLVED',    // the id is among the rows
+  NOT_IN_LIST: 'NOT_IN_LIST', // the read SUCCEEDED and the id is not among them
+  UNREADABLE:  'UNREADABLE',  // the read FAILED — whether it is here is unknown
+});
+
+/**
+ * PURE. hasData ≠ read succeeded (PARITY-01), on the deep link this time: a
+ * failed read must never resolve to "that campaign is not here", which is a
+ * claim about the operator's account made by a request that never landed.
+ */
+export function deepLinkState({ id, campaigns = [], loading = false, error = null }) {
+  if (!id) return DEEP_LINK.NONE;
+  if (error) return DEEP_LINK.UNREADABLE;
+  if (loading) return DEEP_LINK.PENDING;
+  return campaigns.some((c) => c.entityId === id) ? DEEP_LINK.RESOLVED : DEEP_LINK.NOT_IN_LIST;
+}
+
+// One sentence per unresolved state. NOT_IN_LIST deliberately says "not among
+// this account's synced campaigns" rather than "does not exist": the campaign
+// read is capped (`take: 200`), so absence from the list is not proof of absence
+// from the account. That cap is a separate finding with its own owner.
+const DEEP_LINK_NOTICE = Object.freeze({
+  [DEEP_LINK.NOT_IN_LIST]: 'That campaign is not among this account’s synced campaigns.',
+  [DEEP_LINK.UNREADABLE]:  'Couldn’t check whether that campaign is here — the campaign read failed.',
+});
+
+export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativeRanks = {}, impacts = {}, verdictInfo = {}, loading = false, error = null, deepLinkEntityId = null }) {
   const [open, setOpen] = useState(new Set());          // ad-set drill-down
   const [adsOpen, setAdsOpen] = useState(new Set());    // ad drill-down, keyed by AD-SET id
   const [detailOpen, setDetailOpen] = useState(new Set()); // signals + reasoning panel
@@ -242,24 +278,46 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
     [campaigns, verdicts, impacts],
   );
 
-  // Deep-link from an Overview agenda item (?entity=<id>): once the target row
-  // exists, expand its detail (signals + Lumi's Read) and scroll it into view,
-  // then hand back so the parent can clear the URL param. An id not in this list
-  // (stale/invalid, or still loading) is a graceful no-op — no expand, no crash.
-  // Grouping is presentation-only: the row keeps its id, so this still finds it.
+  const linkState = deepLinkState({ id: deepLinkEntityId, campaigns, loading, error });
+
+  // Deep-link from an Overview agenda item, a Decision card or the fatigue
+  // panel (?entity=<Campaign.id>): expand the target's detail (signals + Lumi's
+  // Read) and scroll it into view. Grouping is presentation-only — the row keeps
+  // its id, so this still finds it in any band.
+  //
+  // ⚠️ TWO THINGS THIS DELIBERATELY NO LONGER DOES.
+  //
+  // It does not hand back for the parent to delete ?entity=. That erased the
+  // address at the exact moment it succeeded: the URL could not be copied to the
+  // thing on screen, and a refresh landed at the top of an unexpanded list. The
+  // only case where the param survived was the case where nothing was found.
+  //
+  // And it does not open the panel silently. A real click runs `toggleDetail`,
+  // which records `explain` — "a human opened the reasoning". Arriving by link
+  // IS opening the reasoning, so it records the same signal; otherwise the
+  // institutional record depends on which door the operator used.
+  //
+  // Once per id per mount: the effect re-runs whenever the list refetches (a new
+  // array, same rows), and a refetch is not a second arrival. A genuine reload
+  // remounts, which IS one.
+  const arrived = useRef(new Set());
   useEffect(() => {
-    if (!deepLinkEntityId) return;
-    if (!campaigns.some((c) => c.entityId === deepLinkEntityId)) return;
+    if (linkState !== DEEP_LINK.RESOLVED) return;
+    if (arrived.current.has(deepLinkEntityId)) return;
+    arrived.current.add(deepLinkEntityId);
+    recordExplain(deepLinkEntityId);
     setDetailOpen((s) => (s.has(deepLinkEntityId) ? s : new Set(s).add(deepLinkEntityId)));
     document.getElementById(`campaign-row-${deepLinkEntityId}`)
       ?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
-    onDeepLinkHandled?.();
-  }, [deepLinkEntityId, campaigns, onDeepLinkHandled]);
+  }, [linkState, deepLinkEntityId]);
 
   // Stay quiet until there's something real to show. Connector data is a
   // separate substrate from the CSV feed, so a CSV-only workspace gets no empty
   // section here — the Sync toast carries the "nothing landed" feedback instead.
-  if (!loading && !error && campaigns.length === 0) return null;
+  // Stay quiet when there is nothing to show — UNLESS a deep link asked a
+  // question. Silence is not an available answer to an address.
+  const notice = DEEP_LINK_NOTICE[linkState] ?? null;
+  if (!loading && !error && campaigns.length === 0 && !notice) return null;
 
   const toggle = (id) => {
     // The fetches fire OUTSIDE the state updater, for the reason toggleDetail
@@ -562,6 +620,14 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
           </span>
         )}
       </header>
+
+      {/* The deep link's own answer, when it has one. PENDING and RESOLVED say
+          nothing here: one has no answer yet, the other IS the expanded row. */}
+      {notice && (
+        <p className="px-4 py-3 font-mono text-[11px] text-lumi-subtle border-b border-lumi-border">
+          {notice}
+        </p>
+      )}
 
       {loading ? (
         <div className="p-8 text-center text-lumi-subtle text-sm"><Loader2 className="inline w-4 h-4 animate-spin mr-2" strokeWidth={2} />Loading connector campaigns…</div>
