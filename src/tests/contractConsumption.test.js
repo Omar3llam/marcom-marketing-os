@@ -44,6 +44,20 @@ const unvalidated = graph.callers.filter((c) => !c.validates).map((c) => c.path.
 // owning the proof it admits the truth (B8-01 — a strict enum killed a whole
 // surface, not one field), and the first 25 here MUTATE, where a rejected
 // parse would change execution semantics rather than a rendering.
+// ── PARITY-04 · two lines left this list, by ruling ─────────────────────────
+// `hooks/useConnectorCampaigns.js` and `hooks/useConnectorVerdicts.js` were
+// here. This guard's baseline-rot direction caught their adoption on the first
+// run after they started parsing — the third time it has done that to a slice
+// in this programme, and the reason that direction exists.
+//
+// They are removed because they genuinely validate now: both were reading
+// `Array.isArray(res.data?.x) ? … : []`, so a 200 whose shape had changed
+// rendered as a measured empty account and, for verdicts, banded every campaign
+// as "Needs Data" with no error anywhere. Arming these two was a ruling, not a
+// silent working-off of the list — LOCK 2 still holds for the other 47.
+//
+// If either ever stops parsing, it reappears in `unvalidated` and the OTHER
+// direction fails it as a new gap.
 const UNVALIDATED_CALLERS = [
   // ── mutating (25) ─────────────────────────────────────────
   'features/admin/api.js',
@@ -79,8 +93,6 @@ const UNVALIDATED_CALLERS = [
   'hooks/useApprovedArtifacts.js',
   'hooks/useArtifactApproval.js',
   'hooks/useCampaignReasoning.js',
-  'hooks/useConnectorCampaigns.js',
-  'hooks/useConnectorVerdicts.js',
   'hooks/useContentHistory.js',
   'hooks/useDecisionLearning.js',
   'hooks/useEntityDrillDown.js',

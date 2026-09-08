@@ -49,6 +49,7 @@
 // ============================================================
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api.js';
+import { ConnectorVerdictsResponseSchema } from '@/contracts/schemas';
 
 export function useConnectorVerdicts() {
   const [verdicts, setVerdicts] = useState([]);
@@ -88,17 +89,33 @@ export function useConnectorVerdicts() {
     try {
       const res = await api.get('/api/lumi/entities/verdicts');
       if (!aliveRef.current) return;
-      setVerdicts(Array.isArray(res.data?.verdicts) ? res.data.verdicts : []);
-      setGatedOut(Array.isArray(res.data?.gatedOut) ? res.data.gatedOut : []);
-      setAccount(res.data?.account ?? null);
-      setMemory(res.data?.memoryByEntityId ?? {});
+      // PARITY-04 — parse at the boundary. The two `Array.isArray(…) ? … : []`
+      // defaults that stood here are the defect: a 200 whose shape had changed
+      // emptied BOTH collections with `error` null, so every campaign fell to
+      // UNSCORED ("Needs Data") and `gatedOut` — the C-07 instruction saying
+      // WHY a campaign cannot be scored — disappeared with it. The operator was
+      // told there was a problem and not what it was, by a request that
+      // succeeded.
+      //
+      // A failed parse is an ERROR. A VALID empty collection is still empty.
+      const parsed = ConnectorVerdictsResponseSchema.safeParse(res.data);
+      if (!parsed.success) {
+        setVerdicts([]);
+        setGatedOut([]);
+        setError(new Error('Verdicts response failed contract validation'));
+        return;
+      }
+      setVerdicts(parsed.data.verdicts);
+      setGatedOut(parsed.data.gatedOut);
+      setAccount(parsed.data.account ?? null);
+      setMemory(parsed.data.memoryByEntityId ?? {});
       // null, not 'OK', when the server said nothing about it: the field is
       // additive, and a response that predates it has made no claim either way.
       // The view model treats null exactly as OK, so an older payload keeps the
       // behaviour it has always had rather than growing an outage notice.
-      setDecisionHistoryStatus(res.data?.decisionHistoryStatus ?? null);
-      setDecisionHistoryKnowledge(res.data?.decisionHistoryKnowledge ?? null);
-      setStatus(res.data?.status ?? null);
+      setDecisionHistoryStatus(parsed.data.decisionHistoryStatus ?? null);
+      setDecisionHistoryKnowledge(parsed.data.decisionHistoryKnowledge ?? null);
+      setStatus(parsed.data.status ?? null);
     } catch (err) {
       if (!aliveRef.current) return;
       setError(err);

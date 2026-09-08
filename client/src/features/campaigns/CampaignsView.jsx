@@ -136,8 +136,19 @@ export default function CampaignsView() {
     // distinction the projection protects get lost in transit.
     decisionHistoryStatus,
     decisionHistoryKnowledge,
+    // ⚠️ PARITY-04 — this hook has exported `error` all along and NOTHING read
+    // it. B6-01's finding, exactly: an exported error state is not an error
+    // path. Combined with the `?? []` default it removed, a verdicts read that
+    // FAILED — network or contract — left every campaign unscored and the page
+    // said "Needs Data" for the whole account.
+    error: verdictsError,
     refetch: refetchVerdicts,
   } = useConnectorVerdicts();
+
+  // The two reads that back every claim on this page. Either one unreadable
+  // means the decision table cannot be drawn honestly: campaigns without
+  // verdicts render as UNSCORED, which is a measurement nobody took.
+  const substrateError = connectorError ?? verdictsError;
 
   // Deterministic analysis over the live connector graph: Account Health +
   // Wasted Spend + per-campaign Impact. Every number traces to a MetricSnapshot
@@ -170,6 +181,10 @@ export default function CampaignsView() {
   const [downloading, setDownloading] = useState(false);
 
   const handleDownloadPdf = async () => {
+    if (substrateError) {
+      toast.error('Can’t export while the campaign read is unavailable');
+      return;
+    }
     if (!canExportPdf(connectorCampaigns)) {
       toast.error('No campaign data to export');
       return;
@@ -482,9 +497,13 @@ export default function CampaignsView() {
           <button
             type="button"
             onClick={handleDownloadPdf}
-            disabled={downloading || !canExportPdf(connectorCampaigns)}
+            // The PDF carries verdicts and gating reasons, so an unreadable
+            // verdict read would export a document asserting every campaign is
+            // unscored. Refuse rather than publish it.
+            disabled={downloading || !canExportPdf(connectorCampaigns) || Boolean(substrateError)}
             className="inline-flex items-center gap-1.5 bg-lumi-elevated border border-lumi-border rounded-xl px-4 py-2 text-sm font-display text-lumi-text hover:border-lumi-accent/40 disabled:opacity-60 transition-all"
-            title={!canExportPdf(connectorCampaigns) ? 'Sync your Meta account to export' : 'Download PDF Report'}
+            title={substrateError ? 'Can’t export while the campaign read is unavailable'
+              : !canExportPdf(connectorCampaigns) ? 'Sync your Meta account to export' : 'Download PDF Report'}
           >
             {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" strokeWidth={1.5} />}
             {downloading ? 'Generating…' : 'PDF Report'}
@@ -565,7 +584,10 @@ export default function CampaignsView() {
         impacts={impactByEntityId}
         verdictInfo={verdictInfoByEntityId}
         loading={connectorLoading}
-        error={connectorError}
+        // NOT just `connectorError`. A verdicts failure with a healthy campaign
+        // read is the exact shape that manufactured "Needs Data": rows present,
+        // verdicts empty, no error anywhere.
+        error={substrateError}
         deepLinkEntityId={deepLinkEntityId}
       />
 
