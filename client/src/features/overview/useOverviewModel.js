@@ -28,6 +28,8 @@ import { useAccountHealth } from '@/hooks/useAccountHealth.js';
 import { useHome } from '@/hooks/useHome.js';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
+import { useAccountAggregate } from '@/hooks/useAccountAggregate.js';
+import { accountAggregateReading } from '@/lib/accountAggregate.js';
 import { getAccountState } from './overviewState.js';
 import { buildSurfacePlan } from './overviewPlan.js';
 import { pickInterrupt } from './overviewInterrupts.js';
@@ -68,16 +70,43 @@ export function useOverviewModel() {
   const { verdicts } = useConnectorVerdicts();       // the engine's own rationale per campaign
   const { surface: proofSurface } = useAccuracy();   // gated proof one-liner (best-effort)
   const { role: collabRole } = useCollabRole();
+  // PARITY-01 — the CANONICAL account aggregate. Attention used to sum the
+  // connector rows itself; so did Campaigns, with a different divisor. This is
+  // the one answer both surfaces now read.
+  const {
+    response: aggregateResponse,
+    loading: aggregateLoading,
+    error: aggregateError,
+    forbidden: aggregateForbidden,
+  } = useAccountAggregate();
 
   // Currency detection from workspace (defaults to USD)
   const currency = workspace?.currency || 'USD';
 
-  // KPI strip — CONNECTOR-FIRST (same substrate as the Campaigns page), so the
-  // Home headline reflects a live sync instead of the disjoint legacy feed. Every
-  // value is null-when-absent → the card shows "—", never a fabricated 0.
+  // KPI strip — read from GET /lumi/account/aggregate, the SAME answer the
+  // Campaigns page reads, so the two axes cannot state different totals for the
+  // same account. Every value is null-when-absent → the card shows "—", never a
+  // fabricated 0.
+  //
+  // Deliberately NOT added to `readFailed` below. That names the substrates
+  // that decide whether data EXISTS, and this one does not: it decides what the
+  // KPI cards say, and each card states its own absence with its own reason. A
+  // failed aggregate read must not blank the hero and the agenda too.
+  // The aggregate's own read state travels WITH it: a KPI card must be able to
+  // say "we could not read this" rather than print an absence that reads as a
+  // fact about the account.
+  const aggregate = useMemo(
+    () => accountAggregateReading({
+      response: aggregateResponse,
+      loading: aggregateLoading,
+      error: aggregateError,
+      forbidden: aggregateForbidden,
+    }),
+    [aggregateResponse, aggregateLoading, aggregateError, aggregateForbidden],
+  );
   const kpis = useMemo(
-    () => overviewKpis({ connectorCampaigns, health, currency }),
-    [connectorCampaigns, health, currency],
+    () => overviewKpis({ aggregate, health, currency }),
+    [aggregate, health, currency],
   );
 
   // The decision feed + the two revenue-data stories, all keyed off the health

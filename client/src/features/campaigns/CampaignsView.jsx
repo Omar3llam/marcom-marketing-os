@@ -26,6 +26,8 @@ import { cn } from '@/lib/utils.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useAccountHealth } from '@/hooks/useAccountHealth.js';
+import { useAccountAggregate } from '@/hooks/useAccountAggregate.js';
+import { accountAggregateReading, AGGREGATE_ABSENCE } from '@/lib/accountAggregate.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { fromMinor } from '@/lib/money';
 import { INDUSTRIES } from '@/pages/OnboardingPage/constants.js';
@@ -101,6 +103,12 @@ export default function CampaignsView() {
     error: connectorError,
     refetch: refetchConnectors,
   } = useConnectorCampaigns();
+
+  // PARITY-01 — the CANONICAL account aggregate: one spend figure and one
+  // blended CPA for the whole account, computed once by AccountAggregateService
+  // and read here rather than derived a second time in the browser. Attention
+  // reads exactly the same answer.
+  const accountAggregateRead = useAccountAggregate();
 
   // Verdict engine over the connector campaigns WITH measured revenue. `gatedOut`
   // carries the campaigns that can't be honestly scored, each NAMING WHY (C-07):
@@ -379,42 +387,48 @@ export default function CampaignsView() {
     [connectorVerdicts],
   );
 
-  // Account-level aggregate from the LIVE connector graph (sums real
-  // MetricSnapshot rows; null-when-absent so an unsynced metric never reads 0).
-  const connectorAgg = useMemo(() => {
-    let spendMinor = 0, conversions = 0, sawSpend = false, sawConv = false, cur = null;
-    for (const c of connectorCampaigns) {
-      if (c.spendMinor != null) { spendMinor += c.spendMinor; sawSpend = true; }
-      if (c.conversions != null) { conversions += c.conversions; sawConv = true; }
-      if (!cur && c.currency) cur = c.currency;
-    }
-    // Minor → major via the CURRENCY's real exponent, not a hardcoded /100: a
-    // Gulf dinar is 1000 fils, so /100 overstated both cards 10x. The panel's
-    // formatter takes major units (kpiWasted below already does this).
-    const currency = cur || workspace?.currency || 'USD';
-    const spendMajor = fromMinor(spendMinor, currency);
-    return {
-      spend: sawSpend ? spendMajor : null,
-      blendedCpa: sawConv && conversions > 0 ? spendMajor / conversions : null,
-      currency,
-    };
-  }, [connectorCampaigns, workspace?.currency]);
-
-  // The KPI strip reads the live connector graph — the same source feeding every
-  // panel below it, so the headline and the tables cannot disagree about whether
-  // data exists. Wasted Spend + Account Health come from the deterministic
-  // analysis engine (see `health` above); "—" when nothing scores, never a 0.
+  // ── PARITY-01 · the account aggregate is READ, not recomputed ─────────────
+  // What stood here summed `spendMinor` over the connector campaigns, took the
+  // FIRST currency in the array as the currency of the total, and divided by
+  // that currency's exponent. Attention ran the same loop with a hardcoded 100,
+  // so the two axes printed totals differing by a FACTOR OF TEN on a KWD, BHD or
+  // JOD workspace; and on a mixed-currency account both summed rows denominated
+  // in different money and labelled the result with whichever came first.
   //
-  // FE-03 — every one of these was `live ? connector : legacy`. The legacy arm
-  // is gone with its substrate, and with it `hasCsv`, which could only ever be
-  // false. Note what the arms did NOT do: they never blended the two, so
-  // removing one changes no rendered number on any account.
-  const live = connectorCampaigns.length > 0;
-  const hasConnectorData = live;
-  const kpiSpend = live ? connectorAgg.spend : null;
-  const kpiBlendedCpa = live ? connectorAgg.blendedCpa : null;
-  const kpiCurrency = live ? connectorAgg.currency : currency;
-  const kpiSpendLabel = live ? 'Live · connector' : 'No data yet';
+  // `GET /lumi/account/aggregate` has answered this correctly since the
+  // aggregate track — currency resolved or the question refused, ONE total
+  // divided by ONE total — with no client caller at all. It is the canonical
+  // source now, and the loop is DELETED rather than corrected, so no second
+  // derivation is left to drift.
+  const aggregate = accountAggregateReading(accountAggregateRead);
+
+  // ⚠️ THE FLAG IS GONE, not renamed. `const live = connectorCampaigns.length > 0`
+  // guarded every figure below and produced the label directly:
+  //
+  //     kpiSpendLabel = live ? 'Live · connector' : 'No data yet'
+  //
+  // On a FAILED read the array is [], so `live` was false and the strip told the
+  // operator "No data yet" — a claim about their account, asserted by a request
+  // that never landed, while the panel eight lines down correctly said it could
+  // not load. One page, two answers.
+  //
+  //     hasData ≠ read succeeded
+  //
+  // Nothing needs the flag now: the aggregate answers directly, and each absence
+  // carries its own reason (C-07 — a token cannot replace a reason; loading,
+  // failed, refused, unmeasured and mixed-currency have five different next
+  // steps, and only one of them is a fact about the account).
+  const kpiSpend = aggregate.spend;
+  const kpiBlendedCpa = aggregate.blendedCpa;
+  const kpiCurrency = aggregate.currency ?? currency;
+  const kpiSpendLabel = aggregate.spendLabel;
+
+  // Deliberately NOT `live`. This asks "are there connector rows to chart and
+  // export?" — a question about the array, which stays a question about the
+  // array. `live` asks "did the server measure this account?". Conflating the
+  // two is exactly what made a failed read look like an empty account.
+  const hasConnectorData = connectorCampaigns.length > 0;
+
   // Wasted spend from the analysis engine (minor units → major for the panel's
   // major-unit formatter, currency-correct so it stays on the same scale as the
   // Total Spend card). Null → "—", never a fabricated 0.
@@ -484,7 +498,9 @@ export default function CampaignsView() {
         blendedCpa={kpiBlendedCpa}
         wasted={kpiWasted}
         wastedPct={kpiWastedPct}
-        loading={connectorLoading}
+        // The SPEND card's own read, not the campaign list's: the two are
+        // different requests and only one of them backs this figure.
+        loading={aggregate.spendAbsence === AGGREGATE_ABSENCE.LOADING}
         healthScore={healthScore}
         healthLabel={healthLabel}
         healthColor={healthColor}

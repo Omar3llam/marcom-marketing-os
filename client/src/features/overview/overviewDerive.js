@@ -123,9 +123,27 @@ export function partitionDecisions(feed = []) {
   };
 }
 
-// PURE: the four Overview KPI values, from the connector graph and the
-// deterministic health engine. Every figure is null-when-absent → the card
-// renders "—", never a fabricated 0.
+// PURE: the four Overview KPI values.
+//
+// PARITY-01 — spend and CPA are READ from the canonical account aggregate now,
+// not derived here. What this function used to do, and why it may never do it
+// again: it summed `spendMinor` across the connector campaigns, took the FIRST
+// currency it saw as the currency of the total, and divided by a hardcoded 100.
+//
+//     spend: live && sawSpend ? spendMinor / 100 : null
+//
+// Campaigns did the same sum with `fromMinor()` — the currency's real exponent —
+// so on a KWD, BHD or JOD workspace (1000 fils to the dinar) the two axes
+// printed figures differing by a factor of TEN for the same rows. This file
+// imports fromMinor and used it on the very next line, for the wasted-spend
+// card: the defect was not ignorance of the rule, it was the second derivation.
+//
+// `AccountAggregateService` resolves the currency or refuses to answer, and
+// divides ONE total by ONE total. Reading it is the fix; deleting the loop is
+// what stops the fix from being undone. Wasted spend and health still come from
+// the deterministic health engine — a different substrate, unchanged here.
+//
+// Every figure is null-when-absent → the card renders "—", never a fabricated 0.
 //
 // FE-03 — the `summary` parameter is gone with the substrate behind it. It held
 // the legacy CampaignState feed's roll-up, used "ONLY when no channel has
@@ -148,20 +166,23 @@ export function partitionDecisions(feed = []) {
 // branch unreachable — so this is a hazard removed, not a bug caught in the
 // wild. Removing the parameter retires it by construction rather than leaving
 // it standing behind a coincidence between two files.
-export function overviewKpis({ connectorCampaigns = [], health = null, currency = 'USD' }) {
-  let spendMinor = 0, conversions = 0, sawSpend = false, sawConv = false, cur = null;
-  for (const c of connectorCampaigns) {
-    if (c.spendMinor != null) { spendMinor += c.spendMinor; sawSpend = true; }
-    if (c.conversions != null) { conversions += c.conversions; sawConv = true; }
-    if (!cur && c.currency) cur = c.currency;
-  }
-  const live = connectorCampaigns.length > 0;
-  const kpiCurrency = cur || currency;
+export function overviewKpis({ aggregate = null, health = null, currency = 'USD' }) {
+  // The aggregate names its own currency; the workspace's is the fallback for
+  // the wasted-spend card, which comes from a different service and is still
+  // denominated even when the account aggregate refuses to be.
+  const kpiCurrency = aggregate?.currency ?? currency;
   return {
-    live,
+    live: aggregate?.available === true,
     currency: kpiCurrency,
-    spend: live && sawSpend ? spendMinor / 100 : null,
-    cpa:   live && sawConv && conversions > 0 ? spendMinor / conversions / 100 : null,
+    spend: aggregate?.spend ?? null,
+    cpa: aggregate?.blendedCpa ?? null,
+    // The card's captions come from the ANSWER, not from the markup: the period
+    // the rows reported, and — when there is no figure — which absence this is.
+    // "last 30 days" was typed into KpiStrip and asserted for every account,
+    // including ones whose rows do not agree on a window.
+    spendCaption: aggregate?.windowCaption || '',
+    spendLabel: aggregate?.spendLabel ?? null,
+    cpaLabel: aggregate?.cpaLabel ?? null,
     wasted: health?.wastedSpend?.minor != null ? fromMinor(health.wastedSpend.minor, kpiCurrency) : null,
     health: health?.score ?? null,
   };
