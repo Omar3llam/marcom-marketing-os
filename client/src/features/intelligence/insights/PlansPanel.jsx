@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { ClipboardList, ChevronRight, ChevronDown, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatCurrency, toMinor } from '@/lib/money';
+import { ROW } from '@/lib/rowIntegrity.js';
 import { promotionCopyFor, isPromoted } from './promotionCopy.js';
 
 const METRIC_LABEL = { blendedRoas: 'Blended ROAS', blendedCac: 'Blended CAC', mer: 'MER' };
@@ -244,12 +245,15 @@ function PlanForm({ currency, onCreate, creating }) {
 
 // ── Pure-ish, prop-driven panel (own expand/detail state) ───────
 export function PlansPanel({
-  plans = [], loading = false, error = null,
+  plans = [], planRows = null, loading = false, error = null,
   onCreate, creating = false, canManage = false, currency = 'USD',
   getPlanDetail, onPromote, promotingId = null,
   canSubmit = false, onSubmit, submittingId = null,
 }) {
   const [expandedId, setExpandedId] = useState(null);
+  // Tier 2b — render from the POSITIONAL rows when the hook supplies them.
+  // `plans` stays the readable-only collection for anything that counts.
+  const rows = planRows ?? plans.map((p, index) => ({ state: ROW.READABLE, index, value: p }));
   const [details, setDetails] = useState({});       // id → plan-with-tracking
   const [detailLoadingId, setDetailLoadingId] = useState(null);
   const [promoteResults, setPromoteResults] = useState({}); // id → { decisionsCreated }
@@ -295,7 +299,7 @@ export function PlansPanel({
 
   return (
     <Section>
-      {plans.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-lumi-border bg-lumi-surface/40 p-8 text-center">
           <ClipboardList className="w-10 h-10 mx-auto text-lumi-subtle" strokeWidth={1.5} />
           <p className="mt-3 font-display text-lumi-text">No plans yet.</p>
@@ -305,7 +309,18 @@ export function PlansPanel({
         </div>
       ) : (
         <div className="rounded-2xl border border-lumi-border bg-lumi-surface overflow-hidden">
-          {plans.map((p) => {
+          {rows.map((row) => {
+            if (row.state === ROW.UNREADABLE) {
+              /* The ruled shape: preserve the row, mark it. Dropping it would
+                 make this list shorter than the truth while claiming to be
+                 complete — a false absence. */
+              return (
+                <div key={'unreadable-' + row.index} className="border-b border-lumi-border/60 last:border-b-0 px-4 py-3">
+                  <span className="text-sm text-signal-kill">This plan couldn’t be read.</span>
+                </div>
+              );
+            }
+            const p = row.value;
             const open = expandedId === p.id;
             return (
               <div key={p.id} className="border-b border-lumi-border/60 last:border-b-0">

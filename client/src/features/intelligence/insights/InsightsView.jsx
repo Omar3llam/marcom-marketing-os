@@ -53,13 +53,13 @@ export default function GrowthStrategyBoard() {
 
   // North-star goals (Phase 6A). Viewable by everyone who reaches this page
   // (STRATEGIST/BUYER); creating one is STRATEGIST-only.
-  const { goals, isLoading: goalsLoading, error: goalsError, createGoal, isCreating: goalCreating } = useGoals();
+  const { goals, goalRows, isLoading: goalsLoading, error: goalsError, createGoal, isCreating: goalCreating } = useGoals();
   const canSetGoals = collabRole === WORKSPACE_ROLE.STRATEGIST;
   const goalsCurrency = economics?.economics?.currency || economics?.currentCac?.currency || 'USD';
 
   // Forward-looking plans (Phase 6A). View all who reach this page; build +
   // promote are STRATEGIST-only.
-  const { plans, isLoading: plansLoading, error: plansError, createPlan, isCreating: planCreating, getPlan, promotePlan, promotingId: planPromotingId, submitForApproval, submittingId: planSubmittingId } = usePlans();
+  const { plans, planRows, isLoading: plansLoading, error: plansError, createPlan, isCreating: planCreating, getPlan, promotePlan, promotingId: planPromotingId, submitForApproval, submittingId: planSubmittingId } = usePlans();
   // Submitting a plan for sign-off is a BUYER/STRATEGIST workflow action (matches
   // the POST /approvals gate); a CLIENT seat is read-only.
   const canSubmitPlan = collabRole === WORKSPACE_ROLE.STRATEGIST || collabRole === WORKSPACE_ROLE.BUYER;
@@ -133,6 +133,7 @@ export default function GrowthStrategyBoard() {
       {/* ── NORTH-STAR GOALS (Phase 6A · view all; create STRATEGIST) ─── */}
       <GoalsPanel
         goals={goals}
+        goalRows={goalRows}
         loading={goalsLoading}
         error={goalsError}
         onCreate={createGoal}
@@ -146,6 +147,7 @@ export default function GrowthStrategyBoard() {
           + reflected status + the reviewer's note on a revision. */}
       <PlansPanel
         plans={plans}
+        planRows={planRows}
         loading={plansLoading}
         error={plansError}
         onCreate={createPlan}

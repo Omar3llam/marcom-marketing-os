@@ -15,6 +15,7 @@
 import { useState } from 'react';
 import { Target, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
+import { ROW } from '@/lib/rowIntegrity.js';
 
 // blendedCac / blendedRoas / mer are the metrics the goal-tracker series
 // supports (see PlanService.buildActualsSeries) — not free text.
@@ -128,7 +129,14 @@ function GoalForm({ currency, onCreate, creating }) {
 }
 
 // ── Pure, prop-driven panel (unit-tested directly) ──────────────
-export function GoalsPanel({ goals = [], loading = false, error = null, onCreate, creating = false, canCreate = false, currency = 'USD' }) {
+export function GoalsPanel({
+  goals = [], goalRows = null,
+  loading = false, error = null, onCreate, creating = false, canCreate = false, currency = 'USD',
+}) {
+  // Tier 2b — render from the POSITIONAL rows when the hook supplies them, so a
+  // row we could not read keeps its place instead of closing the gap. `goals`
+  // remains the readable-only collection for anything that counts.
+  const rows = goalRows ?? goals.map((g, index) => ({ state: ROW.READABLE, index, value: g }));
   if (loading) {
     return <Section><div className="rounded-xl border border-dashed border-lumi-border p-6 text-center text-sm text-lumi-subtle">Loading goals…</div></Section>;
   }
@@ -144,7 +152,7 @@ export function GoalsPanel({ goals = [], loading = false, error = null, onCreate
 
   return (
     <Section>
-      {goals.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-lumi-border bg-lumi-surface/40 p-8 text-center">
           <Target className="w-10 h-10 mx-auto text-lumi-subtle" strokeWidth={1.5} />
           <p className="mt-3 font-display text-lumi-text">No goals set yet.</p>
@@ -164,22 +172,31 @@ export function GoalsPanel({ goals = [], loading = false, error = null, onCreate
               </tr>
             </thead>
             <tbody>
-              {goals.map((g) => (
-                <tr key={g.id} className="border-b border-lumi-border/60">
-                  <td className="px-4 py-2.5 text-lumi-text">{g.name}</td>
+              {rows.map((row) => (row.state === ROW.UNREADABLE ? (
+                /* The ruled shape: A / UNREADABLE / C. Dropping this row would
+                   make the table shorter than the truth while it claims to be
+                   complete — a false absence. */
+                <tr key={'unreadable-' + row.index} className="border-b border-lumi-border/60">
+                  <td className="px-4 py-2.5 text-signal-kill" colSpan={4}>
+                    This goal couldn’t be read.
+                  </td>
+                </tr>
+              ) : (
+                <tr key={row.value.id} className="border-b border-lumi-border/60">
+                  <td className="px-4 py-2.5 text-lumi-text">{row.value.name}</td>
                   <td className="px-4 py-2.5 text-lumi-muted font-mono">
-                    {METRIC_LABEL[g.metric] ?? g.metric} {CMP_SYMBOL[g.comparator] ?? g.comparator} {g.targetValue}
+                    {METRIC_LABEL[row.value.metric] ?? row.value.metric} {CMP_SYMBOL[row.value.comparator] ?? row.value.comparator} {row.value.targetValue}
                   </td>
                   <td className="px-4 py-2.5 text-lumi-subtle font-mono text-xs">
-                    {fmtDate(g.periodStart)} – {fmtDate(g.periodEnd)}
+                    {fmtDate(row.value.periodStart)} – {fmtDate(row.value.periodEnd)}
                   </td>
                   <td className="px-4 py-2.5">
-                    <span className={cn('font-mono text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border', statusTone[g.status] || statusTone.ON_TRACK)}>
-                      {(g.status || 'ON_TRACK').replace('_', ' ')}
+                    <span className={cn('font-mono text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border', statusTone[row.value.status] || statusTone.ON_TRACK)}>
+                      {(row.value.status || 'ON_TRACK').replace('_', ' ')}
                     </span>
                   </td>
                 </tr>
-              ))}
+              )))}
             </tbody>
           </table>
         </div>

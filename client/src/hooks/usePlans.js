@@ -27,9 +27,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api.js';
 import { PlanSchema } from '@/contracts/schemas/plan.schema';
+import { readRows } from '@/lib/rowIntegrity.js';
 
 export function usePlans() {
   const [plans, setPlans] = useState([]);
+  /** Positional: every row that arrived, readable or not. See lib/rowIntegrity. */
+  const [planRows, setPlanRows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -43,13 +46,16 @@ export function usePlans() {
     try {
       const res = await api.get('/api/lumi/plans');
       if (!aliveRef.current) return;
-      const raw = Array.isArray(res.data?.plans) ? res.data.plans : [];
-      const parsed = [];
-      for (const p of raw) {
-        const r = PlanSchema.safeParse(p);
-        if (r.success) parsed.push(r.data);
+      // Tier 2b — every row survives, readable or not. A missing or renamed
+      // collection is not an empty one.
+      const read = readRows(PlanSchema, res.data?.plans);
+      if (!read.ok) {
+        setPlans([]); setPlanRows([]);
+        setError(new Error('Plans response failed contract validation'));
+        return;
       }
-      setPlans(parsed);
+      setPlans(read.readable);
+      setPlanRows(read.entries);
     } catch (err) {
       if (!aliveRef.current) return;
       setError(err);
@@ -145,5 +151,5 @@ export function usePlans() {
     }
   }, [refetch]);
 
-  return { plans, isLoading, error, createPlan, isCreating, getPlan, promotePlan, promotingId, submitForApproval, submittingId };
+  return { plans, planRows, isLoading, error, createPlan, isCreating, getPlan, promotePlan, promotingId, submitForApproval, submittingId };
 }

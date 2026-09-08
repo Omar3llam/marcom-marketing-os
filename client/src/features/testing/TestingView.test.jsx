@@ -59,3 +59,39 @@ describe('thinGate — unrecorded arm counts as 0 (gate stays closed)', () => {
     expect(gate.minSample).toBe(1500);
   });
 });
+
+// ── Tier 2b · an unreadable experiment is never an absent one ───────────────
+// `useTests` used to drop a row that failed the contract, calling it an
+// "honest seam, resilient to one bad row". A list every row of which failed
+// then rendered "No experiments yet — Lumi proposes a weekly testing agenda you
+// can commit." — a claim about the account, made from rows it could not read.
+//
+// This list is re-ordered by STATUS, so wire position carries no meaning here;
+// what is asserted is that the row SURVIVES and the empty claim accounts for it.
+describe('TestingView — unreadable experiments survive', () => {
+  const unreadable = (index) => ({ state: 'UNREADABLE', index, value: null });
+
+  it('does NOT claim "No experiments yet" when a row could not be read', () => {
+    const { container } = render(
+      <MemoryRouter><TestingView experiments={[]} experimentRows={[unreadable(0)]} /></MemoryRouter>,
+    );
+    expect(container.textContent).not.toMatch(/No experiments yet/i);
+    expect(container.textContent).toMatch(/couldn’t be read/i);
+  });
+
+  // ── self-refutation ───────────────────────────────────────────────────────
+  it('a GENUINELY empty list still says so, with nothing marked', () => {
+    const { container } = render(
+      <MemoryRouter><TestingView experiments={[]} experimentRows={[]} /></MemoryRouter>,
+    );
+    expect(container.textContent).toMatch(/No experiments yet/i);
+    expect(container.textContent).not.toMatch(/couldn’t be read/i);
+  });
+
+  it('and given no rows at all it still renders from experiments (back-compat)', () => {
+    const { container } = render(
+      <MemoryRouter><TestingView experiments={[]} /></MemoryRouter>,
+    );
+    expect(container.textContent).toMatch(/No experiments yet/i);
+  });
+});

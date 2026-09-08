@@ -72,3 +72,44 @@ describe('GoalsPanel — create (STRATEGIST gate)', () => {
     expect(screen.getByRole('button', { name: /create goal/i })).toBeDisabled();
   });
 });
+
+// ── Tier 2b · an unreadable row is never an absent one ──────────────────────
+// The consequence, not the entry shape: a list holding a row it could not read
+// may not claim to be empty, and may not quietly render one row short.
+describe('GoalsPanel — unreadable rows keep their place', () => {
+  const rows = (states) => states.map((state, index) => (
+    state === 'UNREADABLE'
+      ? { state: 'UNREADABLE', index, value: null }
+      : { state: 'READABLE', index, value: GOALS[index] }
+  ));
+
+  it('does NOT claim "No goals set yet" when a row could not be read', () => {
+    render(<GoalsPanel goals={[]} goalRows={rows(['UNREADABLE'])} />);
+    expect(screen.queryByText(/no goals set yet/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/couldn’t be read/i)).toBeInTheDocument();
+  });
+
+  it('keeps the gap open between two readable rows', () => {
+    render(<GoalsPanel goals={GOALS} goalRows={[
+      { state: 'READABLE', index: 0, value: GOALS[0] },
+      { state: 'UNREADABLE', index: 1, value: null },
+      { state: 'READABLE', index: 2, value: GOALS[1] },
+    ]} />);
+    expect(screen.getByText('Q3 ROAS floor')).toBeInTheDocument();
+    expect(screen.getByText('CAC ceiling')).toBeInTheDocument();
+    expect(screen.getByText(/couldn’t be read/i)).toBeInTheDocument();
+  });
+
+  // ── self-refutation ───────────────────────────────────────────────────────
+  it('a GENUINELY empty list still says so, with nothing marked', () => {
+    render(<GoalsPanel goals={[]} goalRows={[]} />);
+    expect(screen.getByText(/no goals set yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/couldn’t be read/i)).not.toBeInTheDocument();
+  });
+
+  it('and a panel given no rows at all still renders from goals (back-compat)', () => {
+    render(<GoalsPanel goals={GOALS} />);
+    expect(screen.getByText('Q3 ROAS floor')).toBeInTheDocument();
+    expect(screen.queryByText(/couldn’t be read/i)).not.toBeInTheDocument();
+  });
+});
