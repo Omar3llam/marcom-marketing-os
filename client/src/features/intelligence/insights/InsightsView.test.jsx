@@ -41,6 +41,7 @@ import { useEconomics, useSaveEconomics } from '@/hooks/useEconomics.js';
 import { useGoals } from '@/hooks/useGoals.js';
 import { usePlans } from '@/hooks/usePlans.js';
 import { useFatigueForecast } from '@/hooks/useFatigueForecast.js';
+import { useApprovals } from '@/hooks/useApprovals.js';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
 
 const growthSummary = (over = {}) => ({
@@ -73,7 +74,36 @@ beforeEach(() => {
   useGoals.mockReturnValue({ goals: [], isLoading: false, error: null, createGoal: vi.fn(), isCreating: false });
   usePlans.mockReturnValue({ plans: [], isLoading: false, error: null, createPlan: vi.fn(), isCreating: false, getPlan: vi.fn(), promotePlan: vi.fn(), promotingId: null, submitForApproval: vi.fn(), submittingId: null });
   useFatigueForecast.mockReturnValue({ forecast: [], isLoading: false });
+  useApprovals.mockReturnValue({
+    pendingApprovals: [], unreadableCount: 0, isLoading: false, error: null,
+    decide: vi.fn(), decidingId: null, refetch: vi.fn(),
+  });
   useCollabRole.mockReturnValue({ role: 'BUYER', loading: false });
+});
+
+// ── Tier 2a · the wiring, not just the panel ────────────────────────────────
+// A mutation that deleted `unreadableCount={unreadableCount}` from this view
+// SURVIVED the hook and panel suites: both were green while the value the hook
+// computed reached nothing. That is B6-01's finding — an exported state is not
+// a read one — and PARITY-04's, one layer up. It is caught here.
+describe('GrowthStrategyBoard — the approvals queue is wired, not merely exported', () => {
+  it('an unreadable authorization reaches the STRATEGIST through the view', () => {
+    useCollabRole.mockReturnValue({ role: 'STRATEGIST', loading: false });
+    useApprovals.mockReturnValue({
+      pendingApprovals: [], unreadableCount: 1, isLoading: false, error: null,
+      decide: vi.fn(), decidingId: null, refetch: vi.fn(),
+    });
+    renderBoard();
+    expect(screen.getByText(/couldn’t be read/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no plans awaiting your approval/i)).not.toBeInTheDocument();
+  });
+
+  it('…and a genuinely empty queue still says so through the same wiring', () => {
+    useCollabRole.mockReturnValue({ role: 'STRATEGIST', loading: false });
+    renderBoard();
+    expect(screen.getByText(/no plans awaiting your approval/i)).toBeInTheDocument();
+    expect(screen.queryByText(/couldn’t be read/i)).not.toBeInTheDocument();
+  });
 });
 
 describe('GrowthStrategyBoard — Active Campaigns tile (connector-sourced)', () => {

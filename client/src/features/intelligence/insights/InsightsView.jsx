@@ -184,10 +184,11 @@ export default function GrowthStrategyBoard() {
 // Thin wrapper so useApprovals only fetches when a STRATEGIST is actually
 // viewing (mounted behind the RoleGate above).
 function StrategistApprovals() {
-  const { pendingApprovals, isLoading, error, decide, decidingId } = useApprovals();
+  const { pendingApprovals, unreadableCount, isLoading, error, decide, decidingId } = useApprovals();
   return (
     <ApprovalsPanel
       approvals={pendingApprovals}
+      unreadableCount={unreadableCount}
       loading={isLoading}
       error={error}
       onDecide={decide}
