@@ -9,6 +9,12 @@
 // never a fabricated 0. A card that printed 0 for an unmeasured metric would be
 // making a measurement nobody took.
 //
+// PARITY-01 — and a "—" with no explanation is only half of that rule. The
+// captions under Total spend and Blended CPA now come from the aggregate: the
+// period the ROWS reported when there is a figure, and WHICH absence this is
+// when there is not. "last 30 days" used to be typed here and asserted for
+// every account, including the ones whose rows do not agree on a window.
+//
 // Lifted verbatim out of OverviewView so the page stops carrying four cards'
 // worth of markup. Presentation only — no fetching, no deriving.
 // ============================================================
@@ -23,14 +29,14 @@ export default function KpiStrip({ kpis, killCount = 0, healthLabel, healthTone 
       <StatCard
         label="Total spend"
         value={kpis.spend != null ? formatCurrencyWhole(kpis.spend, kpis.currency) : '—'}
-        sub="last 30 days"
+        sub={kpis.spend != null ? kpis.spendCaption : kpis.spendLabel}
         Icon={BarChart}
         tone="neutral"
       />
       <StatCard
         label="Blended CPA"
         value={kpis.cpa != null ? formatCurrencyWhole(kpis.cpa, kpis.currency) : '—'}
-        sub="across active campaigns"
+        sub={kpis.cpa != null ? 'across active campaigns' : (kpis.cpaLabel ?? 'across active campaigns')}
         Icon={Target}
         tone="neutral"
       />

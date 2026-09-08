@@ -119,9 +119,24 @@ const UNREACHED_SCHEMAS = [
 // Published lumi endpoints with no client caller. `/_health` is a diagnostic
 // and is meant to have none; the rest need an owner and a rationale before
 // anyone retires or adopts them (LOCK 2).
+//
+// ── PARITY-01 · one line left this list, by ruling ──────────────────────────
+// `GET /account/aggregate` was here. This guard's baseline-rot direction is
+// what caught its adoption — the test failed with
+// `expected [ 'GET /account/aggregate' ] to deeply equal []` on the first run
+// after the client started calling it, which is the entire reason that
+// direction exists.
+//
+// It is removed rather than annotated because it genuinely has a caller now:
+// Parity discovery measured Attention and Campaigns each recomputing this
+// account aggregate in the browser, disagreeing by a factor of ten on a
+// 3-exponent currency, and the endpoint had been publishing the correct answer
+// with nobody reading it. Adopting it was a ruling, not a cleanup.
+//
+// Nothing is weakened by the removal: if the caller ever goes away, the line
+// reappears in `uncalled` and the OTHER direction fails it as a new gap.
 const UNCALLED_ENDPOINTS = [
   'GET /_health',
-  'GET /account/aggregate',
   'GET /attribution',
   'GET /feed',
   'GET /loop',

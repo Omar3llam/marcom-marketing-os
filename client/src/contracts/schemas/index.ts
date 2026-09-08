@@ -516,3 +516,25 @@ export {
   type Connection,
   type ConnectionsResponse,
 } from './connections.schema';
+
+// ──────────────────────────────────────────────────────────
+// PARITY-01 — the CANONICAL account aggregate. One spend figure and one
+// blended CPA for the whole account, read rather than recomputed: Attention and
+// Campaigns each derived their own and disagreed by a factor of ten.
+// ──────────────────────────────────────────────────────────
+export {
+  BoundsStatusSchema,
+  CurrencyStatusSchema,
+  AggregateUnavailableSchema,
+  VerdictCountsSchema,
+  AggregatePopulationSchema,
+  AccountAggregateSchema,
+  AccountAggregateResponseSchema,
+  type BoundsStatus,
+  type CurrencyStatus,
+  type AggregateUnavailable,
+  type VerdictCounts,
+  type AggregatePopulation,
+  type AccountAggregate,
+  type AccountAggregateResponse,
+} from './accountAggregate.schema';

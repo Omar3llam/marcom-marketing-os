@@ -10,6 +10,7 @@
 // ============================================================
 import { describe, it, expect } from 'vitest';
 import { overviewKpis, decisionFeed, partitionDecisions, SECTION_CAP } from './overviewDerive.js';
+import { accountAggregateReading } from '@/lib/accountAggregate.js';
 
 describe('decisionFeed', () => {
   const health = (over = {}) => ({ entityId: 'c1', name: 'Ramadan Cold', verdict: 'KILL', impactScore: 9, ...over });
@@ -152,32 +153,96 @@ describe('partitionDecisions', () => {
   });
 });
 
+// PARITY-01 — overviewKpis no longer DERIVES the account total. It reads the
+// canonical aggregate, which is why these cases feed a reading rather than a
+// row array: the derivation that used to live here is deleted, and the sum it
+// performed is the one AccountAggregateService already performs correctly.
+const reading = (over = {}) => accountAggregateReading({
+  loading: false,
+  error: null,
+  response: {
+    workspaceId: 'ws', generatedAt: 'now', available: true, reason: null,
+    aggregate: {
+      aggregationLevel: 'CAMPAIGN',
+      population: {
+        measurementWindow: 'CUMULATIVE_30D', windowStart: null, windowEnd: null,
+        boundsStatus: 'NOT_REPORTED', declaredWindow: 'CUMULATIVE_30D', campaignCount: 2,
+      },
+      currency: 'EGP', currencyStatus: 'SINGLE',
+      spend: { minor: 400_000, unavailable: null },
+      acquisition: { conversions: 40, blendedCpaMinor: 10_000, unavailable: null },
+      verdicts: { KILL: 0, HOLD: 0, SCALE: 0, WATCH: 0, REALLOCATE: 0, REFRESH: 0, unverdicted: 2 },
+      spendByVerdict: null,
+      spendByVerdictUnavailable: 'NOT_MEASURED',
+      ...over,
+    },
+  },
+});
+
 describe('overviewKpis', () => {
-  it('uses the live connector aggregate when a channel has synced (legacy ignored)', () => {
+  it('reads the canonical aggregate, and keeps the engine figures beside it', () => {
     const k = overviewKpis({
-      connectorCampaigns: [
-        { spendMinor: 300000, conversions: 30, currency: 'EGP' },
-        { spendMinor: 100000, conversions: 10, currency: 'EGP' },
-      ],
-      summary: { spend: 999, blendedCpa: 999, wasted: 999, health: 12 }, // must NOT leak through when live
+      aggregate: reading(),
       health: { score: 82, wastedSpend: { minor: 50000 } },
       currency: 'USD',
     });
     expect(k.live).toBe(true);
-    expect(k.currency).toBe('EGP');       // real per-connector currency wins
-    expect(k.spend).toBe(4000);           // 400000 minor / 100
-    expect(k.cpa).toBeCloseTo(100);       // 400000 / 40 conv / 100
-    expect(k.wasted).toBe(500);           // fromMinor(50000, EGP)
-    expect(k.health).toBe(82);            // deterministic engine, not legacy 12
+    expect(k.currency).toBe('EGP');       // the aggregate's own currency wins
+    expect(k.spend).toBe(4000);           // 400_000 minor EGP
+    expect(k.cpa).toBe(100);              // 10_000 minor EGP
+    expect(k.wasted).toBe(500);           // fromMinor(50000, EGP) — health engine
+    expect(k.health).toBe(82);
+  });
+
+  // ⚠️ THE DIVERGENCE THIS SLICE EXISTS TO CLOSE.
+  // This function divided by a hardcoded 100 while Campaigns divided by the
+  // currency's real exponent, so a KWD account read 10x higher HERE than on the
+  // other axis. Both now read one function, so the only way to reintroduce the
+  // gap is to reintroduce a second derivation — and this asserts they agree.
+  it('a 3-exponent currency agrees with the reading the other axis uses', () => {
+    const r = reading({ currency: 'KWD' });
+    const k = overviewKpis({ aggregate: r, health: null, currency: 'USD' });
+    expect(k.spend).toBe(400);            // 400_000 fils = 400 KWD, not 4,000
+    expect(k.cpa).toBe(10);
+    expect(k.spend).toBe(r.spend);        // the two axes read the SAME number
+    expect(k.cpa).toBe(r.blendedCpa);
   });
 
   it('returns null for every KPI when there is no data at all (→ "—", never 0)', () => {
-    const k = overviewKpis({ connectorCampaigns: [], summary: null, health: null, currency: 'USD' });
+    const k = overviewKpis({
+      aggregate: accountAggregateReading({
+        response: { workspaceId: 'ws', generatedAt: 'now', available: false, reason: 'NO_CANONICAL_MEASUREMENT', aggregate: null },
+        loading: false, error: null,
+      }),
+      health: null,
+      currency: 'USD',
+    });
     expect(k.live).toBe(false);
     expect(k.spend).toBeNull();
     expect(k.cpa).toBeNull();
     expect(k.wasted).toBeNull();
     expect(k.health).toBeNull();
+    expect(k.spendLabel).toMatch(/no data yet/i);
+  });
+
+  it('a FAILED read is null too — but says something different about it', () => {
+    const k = overviewKpis({
+      aggregate: accountAggregateReading({ response: null, loading: false, error: new Error('x') }),
+      health: null,
+      currency: 'USD',
+    });
+    expect(k.spend).toBeNull();
+    expect(k.live).toBe(false);
+    expect(k.spendLabel).not.toMatch(/no data yet/i);
+  });
+
+  it('the period caption comes from the ROWS, not from the card', () => {
+    expect(overviewKpis({ aggregate: reading(), health: null }).spendCaption).toBe('last 30 days');
+    const varied = overviewKpis({
+      aggregate: reading({ population: { measurementWindow: null, windowStart: null, windowEnd: null, boundsStatus: 'NON_UNIFORM', declaredWindow: 'CUMULATIVE_30D', campaignCount: 2 } }),
+      health: null,
+    });
+    expect(varied.spendCaption).not.toBe('last 30 days');
   });
 
   // REPLACES "falls back to the legacy summary only when no channel has
@@ -207,16 +272,25 @@ describe('overviewKpis', () => {
     expect(k.health).toBeNull();   // not 0 — "—", not "Needs attention"
   });
 
-  it('connector present but metrics absent → null, never a fabricated 0', () => {
+  // Same claim, from the canonical answer: the account WAS measured — campaigns
+  // exist — and no contributing row reported spend. NOT_MEASURED, which is not
+  // the same absence as "no campaigns" and not remotely the same as 0.
+  it('campaigns measured but metrics absent → null, never a fabricated 0', () => {
     const k = overviewKpis({
-      connectorCampaigns: [{ spendMinor: null, conversions: null, currency: 'USD' }],
-      summary: { spend: 500 }, // ignored because live
+      aggregate: reading({
+        currency: null,
+        currencyStatus: 'UNKNOWN',
+        spend: { minor: null, unavailable: 'NOT_MEASURED' },
+        acquisition: { conversions: null, blendedCpaMinor: null, unavailable: 'NOT_MEASURED' },
+      }),
       health: null,
       currency: 'USD',
     });
-    expect(k.live).toBe(true);
+    expect(k.live).toBe(true);          // the account was measured
     expect(k.spend).toBeNull();
     expect(k.cpa).toBeNull();
     expect(k.health).toBeNull();
+    expect(k.spendLabel).not.toMatch(/no data yet/i);
+    expect(k.spendLabel).toMatch(/not measured/i);
   });
 });
