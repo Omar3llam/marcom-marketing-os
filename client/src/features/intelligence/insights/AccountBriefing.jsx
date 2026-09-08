@@ -253,8 +253,24 @@ export function AccountBriefing({
 function NetworkPanel({ network, canManage = false, onConsent, busy = false }) {
   if (!network) return null;
 
-  const consented = network.status === 'OK';
-  const insights  = consented ? (network.insights ?? []) : [];
+  // ACROSS Tier 1 — THREE states, not a boolean. This was
+  //
+  //     const consented = network.status === 'OK';
+  //
+  // which sent UNAVAILABLE down the NOT_CONSENTED branch: an account that HAD
+  // opted in was told it had not, and offered a button to do what it already
+  // did. The server refuses to make exactly that collapse — NetworkService.js:
+  // "reporting NOT_CONSENTED here would tell an account that opted in that it
+  // had not" — and publishes UNAVAILABLE, plus a C-06 token, so the client need
+  // not guess. The client guessed anyway, from an enum missing the value.
+  //
+  // Only one of the three is the operator's to act on, so only one has a
+  // button. UNAVAILABLE is ours to fix, and we do not know the standing we
+  // failed to read — offering "Join" would repeat the original lie and "Leave"
+  // would be its mirror.
+  const consented   = network.status === 'OK';
+  const unreadable  = network.status === 'UNAVAILABLE';
+  const insights    = consented ? (network.insights ?? []) : [];
   const ok        = insights.filter((i) => i.status === 'OK' && i.statement);
   const pending   = insights.filter((i) => i.status === 'INSUFFICIENT_DATA');
 
@@ -267,7 +283,14 @@ function NetworkPanel({ network, canManage = false, onConsent, busy = false }) {
         Anonymized, k-anonymity-gated patterns across consenting accounts in your cohort — a pattern is shown only once enough distinct accounts share it, so none is ever identifiable.
       </p>
 
-      {!consented ? (
+      {unreadable ? (
+        <div className="rounded-2xl border border-dashed border-lumi-border bg-lumi-surface/40 p-6">
+          <p className="font-body text-sm text-lumi-text">Lumi couldn’t read the network for this account.</p>
+          <p className="mt-1 text-lumi-subtle text-xs">
+            This isn’t a consent setting, and your participation is unchanged — it’s ours to fix.
+          </p>
+        </div>
+      ) : !consented ? (
         <div className="rounded-2xl border border-dashed border-lumi-border bg-lumi-surface/40 p-6">
           <p className="font-body text-sm text-lumi-text">This account isn’t contributing to the anonymized network.</p>
           <p className="mt-1 text-lumi-subtle text-xs">Your cohort is assigned automatically from your connected account — it isn’t something you pick.</p>
