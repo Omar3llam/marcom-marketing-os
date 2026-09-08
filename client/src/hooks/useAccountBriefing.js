@@ -4,9 +4,13 @@
 // Fetches GET /api/lumi/briefing (Phase 5 Memory Moat) and validates it against
 // BriefingSchema — the contract for "what Lumi has learned about this account".
 // Every pattern is a truth-weighted AccountPattern row (statement, status,
-// accuracy = "was Lumi right?", confidence). On a contract mismatch we surface
-// only the structurally-safe subset (patterns stay real) and log, rather than
-// render an unvalidated shape — never fabricate.
+// accuracy = "was Lumi right?", confidence).
+//
+// A contract mismatch is an ERROR: this hook reports it and holds NO briefing
+// beside it, so a caller can tell "this account has learned nothing" from "we
+// could not read what it learned". These four lines used to describe a salvage
+// instead — and the salvage is precisely what made the first of those two
+// render as the second, while ending on the words "never fabricate".
 // ============================================================
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api.js';
@@ -26,20 +30,22 @@ export function useAccountBriefing() {
       const res = await api.get('/api/lumi/briefing');
       if (!aliveRef.current) return;
       const parsed = BriefingSchema.safeParse(res.data);
-      if (parsed.success) {
-        setBriefing(parsed.data);
-      } else {
-        // Contract drift — don't drop real patterns, but don't render an
-        // unvalidated shape either: keep only what's structurally safe.
-        console.warn('[useAccountBriefing] briefing contract mismatch:', parsed.error?.issues?.[0]);
-        const raw = res.data || {};
-        setBriefing({
-          patterns: Array.isArray(raw.patterns) ? raw.patterns : [],
-          promotableCount: Number.isInteger(raw.promotableCount) ? raw.promotableCount : 0,
-          conflicts: Array.isArray(raw.conflicts) ? raw.conflicts : [],
-          network: raw.network ?? null,
-        });
+      if (!parsed.success) {
+        // ACROSS Tier 1 — a parse failure is an INABILITY TO KNOW, never an
+        // empty result. What stood here salvaged: it rebuilt a briefing from
+        // the unvalidated payload and left `error` null, so a response we could
+        // not read reached the operator as "No established patterns yet" — a
+        // claim about what Lumi has learned, made from a read it did not
+        // understand. `promotableCount: 0` and `conflicts: []` were invented
+        // outright, three lines under a header that said "never fabricate".
+        //
+        // HTTP success ≠ semantic success. The view already renders `error`
+        // honestly; it was this branch that could never produce one.
+        setBriefing(null);
+        setError(new Error('Briefing response failed contract validation'));
+        return;
       }
+      setBriefing(parsed.data);
     } catch (err) {
       if (!aliveRef.current) return;
       setError(err);

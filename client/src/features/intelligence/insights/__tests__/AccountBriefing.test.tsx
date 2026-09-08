@@ -225,11 +225,45 @@ describe('AccountBriefing — gated network layer (consent is the cross-tenant b
     render(<AccountBriefing briefing={{ patterns: [], promotableCount: 0, conflicts: [] }} />);
     expect(screen.queryByText(/Network Intelligence/i)).not.toBeInTheDocument();
   });
+
+  // ── ACROSS Tier 1 · the third state ───────────────────────────────────────
+  // `UNAVAILABLE` used to reach this panel through `status === 'OK'` being the
+  // only question asked, and came out as NOT_CONSENTED — the one thing the
+  // server refuses to say, because it tells an account that opted in that it
+  // had not.
+  it('UNAVAILABLE: says the read failed, and does not touch the consent claim', () => {
+    render(<AccountBriefing briefing={withNet({ status: 'UNAVAILABLE', knowledge: 'COULD_NOT_LOOK' })} canManageConsent />);
+    expect(screen.getByText(/couldn’t read the network/i)).toBeInTheDocument();
+    expect(screen.queryByText(/isn’t contributing to the anonymized network/i)).not.toBeInTheDocument();
+  });
+
+  it('UNAVAILABLE: offers NEITHER button — the standing is what we could not read', () => {
+    render(<AccountBriefing briefing={withNet({ status: 'UNAVAILABLE' })} canManageConsent onConsent={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /join network/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /leave network/i })).not.toBeInTheDocument();
+  });
 });
 
-describe('contract seam — NetworkResponseSchema safeParses the fixtures', () => {
+describe('contract seam — NetworkResponseSchema admits the published vocabulary', () => {
   it('validates NOT_CONSENTED and OK (with banded + gated insights) shapes', () => {
     expect(NetworkResponseSchema.safeParse({ status: 'NOT_CONSENTED' }).success).toBe(true);
     expect(NetworkResponseSchema.safeParse(NETWORK_OK).success).toBe(true);
+  });
+
+  it('validates UNAVAILABLE, which the service returns for a CONSENTED workspace', () => {
+    expect(NetworkResponseSchema.safeParse({ status: 'UNAVAILABLE' }).success).toBe(true);
+  });
+
+  it('keeps the C-06 knowledge token instead of stripping it', () => {
+    const parsed = NetworkResponseSchema.safeParse({ status: 'UNAVAILABLE', knowledge: 'COULD_NOT_LOOK' });
+    expect(parsed.success && parsed.data.knowledge).toBe('COULD_NOT_LOOK');
+  });
+
+  it('refuses INSUFFICIENT_DATA at RESPONSE level — it is a per-insight finding', () => {
+    expect(NetworkResponseSchema.safeParse({ status: 'INSUFFICIENT_DATA' }).success).toBe(false);
+    // …and still accepts it where the engine actually publishes it.
+    expect(NetworkResponseSchema.safeParse(
+      { status: 'OK', insights: [{ status: 'INSUFFICIENT_DATA' }] },
+    ).success).toBe(true);
   });
 });

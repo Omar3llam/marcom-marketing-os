@@ -263,10 +263,14 @@ export {
 } from './accountPattern.schema';
 
 export {
-  NetworkStatusSchema,
+  // ACROSS Tier 1 — two levels, two vocabularies. `NetworkStatusSchema` was one
+  // enum serving both, and it matched neither publisher.
+  NetworkResponseStatusSchema,
+  NetworkInsightStatusSchema,
   NetworkInsightSchema,
   NetworkResponseSchema,
-  type NetworkStatus,
+  type NetworkResponseStatus,
+  type NetworkInsightStatus,
   type NetworkInsight,
   type NetworkResponse,
 } from './networkInsight.schema';
