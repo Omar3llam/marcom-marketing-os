@@ -119,3 +119,35 @@ describe('PlansPanel — STRATEGIST gate', () => {
     expect(await screen.findByRole('button', { name: /promote mix/i })).toBeInTheDocument();
   });
 });
+
+// ── Tier 2b · an unreadable row is never an absent one ──────────────────────
+// The consequence, not the entry shape: a list holding a row it could not read
+// may not claim to be empty, and may not quietly render one row short.
+describe('PlansPanel — unreadable rows keep their place', () => {
+  it('does NOT claim "No plans yet" when a row could not be read', () => {
+    render(<PlansPanel plans={[]} planRows={[{ state: 'UNREADABLE', index: 0, value: null }]} />);
+    expect(screen.queryByText(/no plans yet/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/couldn’t be read/i)).toBeInTheDocument();
+  });
+
+  it('keeps a readable plan beside an unreadable one', () => {
+    render(<PlansPanel plans={PLANS} planRows={[
+      { state: 'READABLE', index: 0, value: PLANS[0] },
+      { state: 'UNREADABLE', index: 1, value: null },
+    ]} />);
+    expect(screen.getByText(PLANS[0].name)).toBeInTheDocument();
+    expect(screen.getByText(/couldn’t be read/i)).toBeInTheDocument();
+  });
+
+  // ── self-refutation ───────────────────────────────────────────────────────
+  it('a GENUINELY empty list still says so', () => {
+    render(<PlansPanel plans={[]} planRows={[]} />);
+    expect(screen.getByText(/no plans yet/i)).toBeInTheDocument();
+    expect(screen.queryByText(/couldn’t be read/i)).not.toBeInTheDocument();
+  });
+
+  it('and a panel given no rows at all still renders from plans (back-compat)', () => {
+    render(<PlansPanel plans={PLANS} />);
+    expect(screen.getByText(PLANS[0].name)).toBeInTheDocument();
+  });
+});

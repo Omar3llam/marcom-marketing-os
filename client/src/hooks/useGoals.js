@@ -18,9 +18,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { api } from '@/lib/api.js';
 import { NorthStarGoalSchema } from '@/contracts/schemas/plan.schema';
+import { readRows } from '@/lib/rowIntegrity.js';
 
 export function useGoals() {
   const [goals, setGoals] = useState([]);
+  /** Positional: every row that arrived, readable or not. See lib/rowIntegrity. */
+  const [goalRows, setGoalRows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
@@ -32,13 +35,16 @@ export function useGoals() {
     try {
       const res = await api.get('/api/lumi/goals');
       if (!aliveRef.current) return;
-      const raw = Array.isArray(res.data?.goals) ? res.data.goals : [];
-      const parsed = [];
-      for (const g of raw) {
-        const r = NorthStarGoalSchema.safeParse(g);
-        if (r.success) parsed.push(r.data);
+      // Tier 2b — every row survives, readable or not. A missing or renamed
+      // collection is not an empty one.
+      const read = readRows(NorthStarGoalSchema, res.data?.goals);
+      if (!read.ok) {
+        setGoals([]); setGoalRows([]);
+        setError(new Error('Goals response failed contract validation'));
+        return;
       }
-      setGoals(parsed);
+      setGoals(read.readable);
+      setGoalRows(read.entries);
     } catch (err) {
       if (!aliveRef.current) return;
       setError(err);
@@ -78,5 +84,5 @@ export function useGoals() {
     }
   }, [refetch]);
 
-  return { goals, isLoading, error, createGoal, isCreating, refetch };
+  return { goals, goalRows, isLoading, error, createGoal, isCreating, refetch };
 }

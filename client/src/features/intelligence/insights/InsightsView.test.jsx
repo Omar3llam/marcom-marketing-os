@@ -98,6 +98,29 @@ describe('GrowthStrategyBoard — the approvals queue is wired, not merely expor
     expect(screen.queryByText(/no plans awaiting your approval/i)).not.toBeInTheDocument();
   });
 
+  // Tier 2b — the SAME mutation class, twice more. Deleting goalRows= or
+  // planRows= from this view survived the hook and panel suites exactly as the
+  // approvals wiring did: the positional rows were computed and reached nothing.
+  it('an unreadable GOAL row reaches the operator through the view', () => {
+    useGoals.mockReturnValue({
+      goals: [], goalRows: [{ state: 'UNREADABLE', index: 0, value: null }],
+      isLoading: false, error: null, createGoal: vi.fn(), isCreating: false,
+    });
+    renderBoard();
+    expect(screen.queryByText(/no goals set yet/i)).not.toBeInTheDocument();
+  });
+
+  it('an unreadable PLAN row reaches the operator through the view', () => {
+    usePlans.mockReturnValue({
+      plans: [], planRows: [{ state: 'UNREADABLE', index: 0, value: null }],
+      isLoading: false, error: null, createPlan: vi.fn(), isCreating: false,
+      getPlan: vi.fn(), promotePlan: vi.fn(), promotingId: null,
+      submitForApproval: vi.fn(), submittingId: null,
+    });
+    renderBoard();
+    expect(screen.queryByText(/no plans yet/i)).not.toBeInTheDocument();
+  });
+
   it('…and a genuinely empty queue still says so through the same wiring', () => {
     useCollabRole.mockReturnValue({ role: 'STRATEGIST', loading: false });
     renderBoard();

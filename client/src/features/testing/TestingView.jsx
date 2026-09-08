@@ -21,6 +21,7 @@ import { useState } from 'react';
 import { FlaskConical } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
+import { ROW } from '@/lib/rowIntegrity.js';
 import { useTests } from '@/hooks/useTests.js';
 import { useConcludeTest } from '@/hooks/useConcludeTest.js';
 import { useStartTest } from '@/hooks/useStartTest.js';
@@ -534,7 +535,7 @@ function PromoteControl({ exp, role, onPromote, promotingId, promoteError }) {
 
 // ── Pure, prop-driven view (unit-tested directly) ───────────────
 export function TestingView({
-  experiments = [], agenda = [], role = WORKSPACE_ROLE.BUYER,
+  experiments = [], experimentRows = null, agenda = [], role = WORKSPACE_ROLE.BUYER,
   onConclude, concludingId, concludeError,
   onStart, startingId, startError,
   onRecord, recordingId, recordError,
@@ -543,7 +544,15 @@ export function TestingView({
 }) {
   const canOperate = role === WORKSPACE_ROLE.BUYER || role === WORKSPACE_ROLE.STRATEGIST;
 
-  if (experiments.length === 0) {
+  // Tier 2b — every row that arrived, readable or not. `experiments` stays the
+  // readable-only collection, so the sort and the cards below cannot be handed
+  // a marker. This list is re-ordered by STATUS, so wire position carries no
+  // meaning here; an unreadable row has no status and is marked after the
+  // ordered ones rather than pretending to a place in that order.
+  const rows = experimentRows ?? experiments.map((e, index) => ({ state: ROW.READABLE, index, value: e }));
+  const unreadable = rows.filter((r) => r.state === ROW.UNREADABLE);
+
+  if (rows.length === 0) {
     return (
       <div className="rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
         <EmptyPanel Icon={FlaskConical} text="No experiments yet — Lumi proposes a weekly testing agenda you can commit." />
@@ -606,6 +615,14 @@ export function TestingView({
           {startError.message || 'Couldn’t start that test right now. Try again shortly.'}
         </p>
       )}
+      {unreadable.map((row) => (
+        /* Preserved, not dropped: a list shorter than the truth would claim to
+           be complete, and a wholly unreadable one would read "No experiments
+           yet" — a false absence. */
+        <div key={'unreadable-' + row.index} className="rounded-2xl border border-signal-kill/25 bg-signal-kill-bg px-4 py-3">
+          <span className="text-sm text-signal-kill">This experiment couldn’t be read.</span>
+        </div>
+      ))}
       {ordered.map((exp) => (
         <ExperimentCard
           key={exp.id}
@@ -631,7 +648,7 @@ export function TestingView({
 // ── Page wrapper: fetch + three states ──────────────────────────
 export default function Testing() {
   const { role } = useCollabRole();
-  const { experiments, agenda, loading, error, refetch } = useTests();
+  const { experiments, experimentRows, agenda, loading, error, refetch } = useTests();
   const { conclude, concludingId, error: concludeError } = useConcludeTest();
   const { start, startingId, error: startError } = useStartTest();
   const { record, recordingId, error: recordError } = useRecordMetrics();
@@ -676,6 +693,7 @@ export default function Testing() {
       {!loading && !error && (
         <TestingView
           experiments={experiments}
+          experimentRows={experimentRows}
           agenda={agenda}
           role={role}
           onConclude={onConclude}
