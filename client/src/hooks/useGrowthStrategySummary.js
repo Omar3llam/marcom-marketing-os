@@ -38,10 +38,15 @@ import { useConnectorVerdicts } from './useConnectorVerdicts.js';
 
 const EMPTY_SUMMARY = Object.freeze({
   total:       0,
-  scaling:     0,
-  holding:     0,
-  watching:    0,
-  killing:     0,
+  // Counts keyed by the verdict token itself. Four named fields stood here —
+  // scaling/holding/watching/killing — which is how REALLOCATE and REFRESH came
+  // to be dropped: a bucket LIST can forget a member, a map discovered from the
+  // data cannot. See the counting loop.
+  byVerdict:   Object.freeze({}),
+  // How many verdicts we actually received, whatever they were named. The
+  // breakdown's empty state is decided by this, never by whether the four words
+  // it happened to know matched anything.
+  scored:      0,
   // One entry per reason present, each with its own count and sentence.
   gated:       Object.freeze([]),
   gatedTotal:  0,
@@ -61,15 +66,26 @@ export function useGrowthStrategySummary() {
   // total: the same connector array CampaignsView counts (no revenue filter).
   const total = campaigns?.length ?? 0;
 
-  // Verdict counts — four buckets kept separate (the UI decides display).
-  // Defensive: any verdict outside these four (REALLOCATE/REFRESH/unknown)
-  // is skipped silently, so the invariant can never be violated by a
-  // future verdict value.
-  const counts = { SCALE: 0, HOLD: 0, WATCH: 0, KILL: 0 };
+  // Verdict counts, keyed by the token the engine actually sent.
+  //
+  // This was a four-bucket list — `{ SCALE, HOLD, WATCH, KILL }` — over a SIX
+  // member vocabulary, and its comment called REALLOCATE/REFRESH "future verdict
+  // values" that were "skipped silently". They are emitted today
+  // (verdictEngine.js reaches REFRESH at 375/431/435 and REALLOCATE at 439/443),
+  // so two live, actionable calls disappeared here — and when they were an
+  // account's ONLY calls the breakdown came out empty and the tile said
+  // "Awaiting verdicts" over decisions Lumi had already made.
+  //
+  // RULING (Omar): a canonical verdict cannot disappear because a downstream
+  // consumer forgot that it exists. Discovering the keys from the data rather
+  // than declaring them closes the class — there is no list left to forget a
+  // member of, so a seventh verdict is counted the day it ships.
+  const byVerdict = {};
+  let scored = 0;
   for (const v of verdicts ?? []) {
-    if (v?.verdict && Object.prototype.hasOwnProperty.call(counts, v.verdict)) {
-      counts[v.verdict]++;
-    }
+    if (!v?.verdict) continue;
+    byVerdict[v.verdict] = (byVerdict[v.verdict] ?? 0) + 1;
+    scored += 1;
   }
 
   // Grouped, not counted. The single number this replaced was rendered as
@@ -81,10 +97,8 @@ export function useGrowthStrategySummary() {
     error:   null,
     summary: {
       total,
-      scaling:      counts.SCALE,
-      holding:      counts.HOLD,
-      watching:     counts.WATCH,
-      killing:      counts.KILL,
+      byVerdict,
+      scored,
       gated,
       gatedTotal:   gated.reduce((n, g) => n + g.count, 0),
     },
