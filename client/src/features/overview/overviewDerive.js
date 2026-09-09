@@ -189,22 +189,51 @@ export function overviewKpis({ aggregate = null, health = null, currency = 'USD'
 }
 
 /**
- * PURE: the Account-health card's tone + caption, derived from the real score.
+ * PURE: the Account-health card's tone + caption.
  *
- * A null score has TWO causes and they are DIFFERENT claims: the health fetch
- * has not landed yet, or it landed and scored nothing. "No score yet" asserts
- * the second — saying it during the first is the false-absence bug the readiness
- * gate exists to prevent (see useOverviewModel).
+ * RULING (Omar): **one engine fact → one published vocabulary → zero client
+ * reclassification.**
+ *
+ * This function used to CLASSIFY. It re-thresholded `score` into a vocabulary
+ * of its own while `AccountHealthService.healthLabel` published five bands from
+ * the same number:
+ *
+ *     engine     ≥80 HEALTHY · ≥60 GOOD · ≥40 FAIR · ≥20 NEEDS ATTENTION · CRITICAL
+ *     here       ≥75 Healthy · ≥50 "Fair — review soon" · else "Needs attention"
+ *
+ * SUBJECT/Campaigns rendered the engine's label and NOW/Attention rendered this
+ * one, so the two axes printed different verdicts about ONE account, from ONE
+ * score, in the same KPI-sub-label role — on 50 of the 101 integer scores.
+ * `AccountHealthService.test.js` pins `healthLabel(70) === 'GOOD'`; this surface
+ * printed "Fair — review soon" for that score. And CRITICAL had no band here at
+ * all: the engine's worst state read in the same words as a score of 30, on the
+ * axis whose whole job is what matters NOW.
+ *
+ * So the band is now the engine's, passed through. There is no enum: a band this
+ * client has never heard of renders verbatim rather than blanking the card,
+ * which is B8-01's hazard avoided rather than re-armed.
+ *
+ * ── WHAT DID NOT CHANGE ─────────────────────────────────────────────────────
+ * The TONE ladder. Visual severity is a separate question from the semantic
+ * band, and mixing the two into one slice was ruled out; `CampaignsView`'s own
+ * colour ladder (<40 / <70) is parked beside it.
+ *
+ * A null band has TWO causes and they are DIFFERENT claims: the health fetch has
+ * not landed yet, or it landed and scored nothing. "No score yet" asserts the
+ * second — saying it during the first is the false-absence bug the readiness
+ * gate exists to prevent (see useOverviewModel). `score` and `label` are
+ * published together by the engine (both null in its no-data branch), so a
+ * missing band is the same fact as a missing score; `accountHealthLabelParity`
+ * pins that rather than assuming it.
  */
-export function healthPresentation({ score = null, loading = false } = {}) {
+export function healthPresentation({ score = null, label = null, loading = false } = {}) {
   return {
     tone: score == null ? 'neutral'
         : score >= 75 ? 'positive'
         : score >= 50 ? 'warn' : 'danger',
-    label: score != null
-      ? (score >= 75 ? 'Healthy'
-        : score >= 50 ? 'Fair — review soon' : 'Needs attention')
-      : (loading ? 'Scoring…' : 'No score yet'),
+    // Value wins over loading, exactly as the score used to: a refetch does not
+    // retract a band the operator is already reading.
+    label: label ?? (loading ? 'Scoring…' : 'No score yet'),
   };
 }
 
