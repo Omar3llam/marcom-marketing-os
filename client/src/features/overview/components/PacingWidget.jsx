@@ -16,8 +16,21 @@
 //   else               → real pacing (projected vs budget · run rate · early)
 //
 // Strategist-band metric → gated to STRATEGIST/BUYER (a CLIENT gets the
-// narrative lens elsewhere, not the raw budget figures). Money is integer
-// minor units; divide by 100 before formatting.
+// narrative lens elsewhere, not the raw budget figures).
+//
+// MONEY. This header used to instruct: "Money is integer minor units; divide by
+// 100 before formatting." That is true of most currencies and false of ones this
+// product already declares — `lib/money.ts` records KWD/BHD/OMR/JOD at THREE
+// minor digits and JPY at ZERO — so the literal overstated a Gulf-dinar account
+// tenfold and understated a yen account by a hundred, on the surface whose only
+// job is saying whether the budget is burning too fast. PARITY-01 removed the
+// same literal from the account aggregate and never swept here.
+//
+//   Never assume a 2-digit currency exponent. Minor-unit conversion must come
+//   from the canonical currency table.
+//
+// `fromMinor` reads that table; `formatCurrencyWhole` only formats the major
+// number it is handed, so the conversion is the part that had to change.
 // ============================================================
 import { Gauge } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -26,6 +39,7 @@ import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
 import { roleAllowed } from '@/components/auth/RoleGate.jsx';
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
+import { fromMinor } from '@/lib/money';
 import { appRoutes } from '@/app/routeManifest.js';
 
 function Shell({ children }) {
@@ -90,9 +104,10 @@ export default function PacingWidget() {
 
   // ── Real pacing. ──
   const currency = workspace?.currency || 'USD';
-  const projected = formatCurrencyWhole(pacing.projectedSpendMinor / 100, currency);
-  const budget = formatCurrencyWhole(budgetMinor / 100, currency);
-  const runRate = formatCurrencyWhole(pacing.runRateMinor / 100, currency);
+  const major = (amountMinor) => formatCurrencyWhole(fromMinor(amountMinor, currency), currency);
+  const projected = major(pacing.projectedSpendMinor);
+  const budget = major(budgetMinor);
+  const runRate = major(pacing.runRateMinor);
   const statusCfg = STATUS[pacing.status] || { label: pacing.status, tone: 'text-dark-base' };
   const daysEarly = pacing.daysEarly != null ? Math.round(pacing.daysEarly) : null;
 
