@@ -5,6 +5,9 @@ import { appRoutes } from '@/app/routeManifest.js';
 import { HelpTip } from '@/components/ui/HelpTip.jsx';
 import { HELP } from '@/lib/helpContent.js';
 import { fmtCurrency } from './campaignFormatters.js';
+// The absence vocabulary PARITY-01 published. Compared against by token so the
+// one absence that has a fix is the only one offered it.
+import { AGGREGATE_ABSENCE } from '@/lib/accountAggregate.js';
 
 function KpiCard({ label, help, value, valueClass, delta, deltaClass, footer }) {
   return (
@@ -22,8 +25,28 @@ function KpiCard({ label, help, value, valueClass, delta, deltaClass, footer }) 
 // Wasted Spend + Account Health exist only in the CSV-analysis pipeline), and
 // renders "—" when no source backs it — never a fabricated 0 or a stale
 // "CSV-derived" label asserting a source that isn't feeding the page.
+// ── THE CPA ABSENCE CARRIES ITS OWN REASON ──────────────────────────────────
+// This card used to INFER the reason from the value:
+//
+//     delta={blendedCpa != null ? 'Per-campaign avg' : 'No conversions tracked yet'}
+//
+// `accountAggregateReading`'s `blank(absence)` sets `blendedCpa: null` for ALL
+// SEVEN absences, so six of them rendered the seventh's reason — and the footer
+// turned that wrong reason into an ACTION. A failed read, a refused seat, a
+// mixed-currency account and a request still in flight were each reported as a
+// conversion-tracking gap, under an instruction to go connect revenue data that
+// is already connected, or that this seat cannot reach.
+//
+// C-07 — a token cannot replace a reason. B8-04b — when a VALUE cannot decide an
+// absence, the TOKEN must; `blendedCpa == null` cannot tell five absences apart.
+// `spendLabel` was already consumed three lines below, which is what made this an
+// oversight rather than a position: PARITY-01 published both captions and this
+// card adopted one.
+//
+// RULING (Omar): the aggregate token carries the reason; the consumer does not
+// infer it from `blendedCpa === null`.
 export function MetricsPanel({
-  spend, spendLabel, blendedCpa, wasted, wastedPct,
+  spend, spendLabel, blendedCpa, cpaLabel = null, cpaAbsence = null, wasted, wastedPct,
   healthScore, healthLabel, healthColor, currency = 'USD', loading,
 }) {
   const wastedKnown = wasted != null;
@@ -67,9 +90,15 @@ export function MetricsPanel({
         label="Blended CPA"
         help={<HelpTip variant="popover" content={HELP.BLENDED_CPA} />}
         value={blendedCpa != null ? fmtCurrency(blendedCpa, currency) : '—'}
-        delta={blendedCpa != null ? 'Per-campaign avg' : 'No conversions tracked yet'}
+        // "Per-campaign avg" is the SURFACE's caption for a figure that is
+        // present — the reading publishes `cpaLabel: null` in that case for
+        // exactly this reason. Every absence names itself.
+        delta={blendedCpa != null ? 'Per-campaign avg' : cpaLabel}
         deltaClass="text-lumi-subtle"
-        footer={blendedCpa == null ? (
+        // The instruction belongs to ONE absence. Connecting revenue data fixes
+        // a missing denominator; it does nothing for an outage, a mixed-currency
+        // account, a seat that may not read this, or a request still in flight.
+        footer={cpaAbsence === AGGREGATE_ABSENCE.NO_CONVERSIONS ? (
           <Link to={appRoutes.settingsRevenue} className="text-xs font-medium text-lumi-accent hover:underline">
             Connect sales data to unlock profit-based recommendations →
           </Link>

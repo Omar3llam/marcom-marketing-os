@@ -446,6 +446,11 @@ export default function CampaignsView() {
   const kpiBlendedCpa = aggregate.blendedCpa;
   const kpiCurrency = aggregate.currency ?? currency;
   const kpiSpendLabel = aggregate.spendLabel;
+  // The CPA card used to infer its caption from `blendedCpa == null`, so six of
+  // the seven absences above rendered the seventh's reason — and its footer
+  // turned that into an instruction. The token and its sentence travel together.
+  const kpiCpaLabel = aggregate.cpaLabel;
+  const kpiCpaAbsence = aggregate.cpaAbsence;
 
   // Deliberately NOT `live`. This asks "are there connector rows to chart and
   // export?" — a question about the array, which stays a question about the
@@ -524,6 +529,8 @@ export default function CampaignsView() {
         spend={kpiSpend}
         spendLabel={kpiSpendLabel}
         blendedCpa={kpiBlendedCpa}
+        cpaLabel={kpiCpaLabel}
+        cpaAbsence={kpiCpaAbsence}
         wasted={kpiWasted}
         wastedPct={kpiWastedPct}
         // The SPEND card's own read, not the campaign list's: the two are

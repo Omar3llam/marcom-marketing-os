@@ -190,7 +190,8 @@ describe('CampaignsView — the KPI strip never turns a failed read into a claim
     });
     renderView();
     expect(screen.queryByText(/No data yet/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/Couldn’t read this account/i)).toBeInTheDocument();
+    // Matches TWICE now: spend AND CPA both name the absence they have.
+    expect(screen.getAllByText(/Couldn’t read this account/i).length).toBeGreaterThan(0);
   });
 
   it('a MEASURED empty account still says "No data yet" — the one true case', () => {
@@ -202,7 +203,7 @@ describe('CampaignsView — the KPI strip never turns a failed read into a claim
       loading: false, error: null, forbidden: false, refetch: vi.fn(),
     });
     renderView();
-    expect(screen.getByText(/No data yet/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/No data yet/i).length).toBeGreaterThan(0);
   });
 
   it('a MIXED-CURRENCY account gets no total at all — not a sum, not a zero', () => {
@@ -213,7 +214,8 @@ describe('CampaignsView — the KPI strip never turns a failed read into a claim
     mixed.response.aggregate.acquisition = { conversions: 40, blendedCpaMinor: null, unavailable: 'MIXED_CURRENCY' };
     useAccountAggregate.mockReturnValue(mixed);
     renderView();
-    expect(screen.getByText(/Mixed currencies/i)).toBeInTheDocument();
+    // Matches TWICE now: spend AND CPA both name the absence they have.
+    expect(screen.getAllByText(/Mixed currencies/i).length).toBeGreaterThan(0);
     expect(screen.queryByText(/No data yet/i)).not.toBeInTheDocument();
     // and no fabricated figure in any currency
     expect(screen.queryByText('$1,000.00')).not.toBeInTheDocument();
@@ -298,5 +300,53 @@ describe('CampaignsView — the deep-linked identity stays in the URL', () => {
     renderAt('/app/campaigns');
     await waitFor(() => expect(screen.getByTestId('panel-deeplink')).toHaveTextContent(''));
     expect(screen.getByTestId('url-search')).not.toHaveTextContent('entity');
+  });
+});
+
+// ── The CPA absence reaches the card, not just the model ────────────────────
+// The wiring, not the derivation. In Tier 2 the equivalent mutation — deleting
+// the prop that carries a computed state out of the view — survived the hook and
+// panel suites three times running. `cpaLabel` and `cpaAbsence` are computed by
+// `accountAggregateReading` and would reach nothing if this view stopped passing
+// them, while every unit test stayed green.
+describe('CampaignsView — the CPA card is told WHICH absence it has', () => {
+  it('a FAILED read does not report a conversion-tracking gap', () => {
+    useAccountAggregate.mockReturnValue({
+      response: null, loading: false, error: new Error('boom'), forbidden: false, refetch: vi.fn(),
+    });
+    renderView();
+    expect(screen.queryByText('No conversions tracked yet')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Connect sales data/i)).not.toBeInTheDocument();
+  });
+
+  it('a MIXED-CURRENCY account says so on the CPA card too, not just on spend', () => {
+    const mixed = AGG();
+    mixed.response.aggregate.currency = null;
+    mixed.response.aggregate.currencyStatus = 'MIXED';
+    mixed.response.aggregate.spend = { minor: null, unavailable: 'MIXED_CURRENCY' };
+    mixed.response.aggregate.acquisition = { conversions: 40, blendedCpaMinor: null, unavailable: 'MIXED_CURRENCY' };
+    useAccountAggregate.mockReturnValue(mixed);
+    renderView();
+    expect(screen.queryByText('No conversions tracked yet')).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Mixed currencies/i).length).toBeGreaterThan(0);
+  });
+
+  it('a REFUSED seat is not sent to connect revenue data', () => {
+    useAccountAggregate.mockReturnValue({
+      response: null, loading: false, error: null, forbidden: true, refetch: vi.fn(),
+    });
+    renderView();
+    expect(screen.queryByText(/Connect sales data/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Not available for this seat/i).length).toBeGreaterThan(0);
+  });
+
+  // ── self-refutation ───────────────────────────────────────────────────────
+  it('a genuine conversion gap still says so, and still offers the fix', () => {
+    const noConv = AGG();
+    noConv.response.aggregate.acquisition = { conversions: null, blendedCpaMinor: null, unavailable: 'NO_CONVERSIONS' };
+    useAccountAggregate.mockReturnValue(noConv);
+    renderView();
+    expect(screen.getByText('No conversions tracked yet')).toBeInTheDocument();
+    expect(screen.getByText(/Connect sales data/i)).toBeInTheDocument();
   });
 });
