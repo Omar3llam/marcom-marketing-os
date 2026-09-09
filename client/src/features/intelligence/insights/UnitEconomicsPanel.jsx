@@ -17,12 +17,19 @@
 import { useState } from 'react';
 import { Calculator, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
-import { formatCurrency } from '@/lib/money';
+import { formatCurrency, fromMinor, toMinor } from '@/lib/money';
 
 // Currency-aware minor-unit formatter (was an inline /100 that truncated 3-dp
 // currencies like KWD and added cents to 0-dp JPY). ccy comes from the economics
 // data (assessment/economics/cac), never a hardcoded assumption.
 const money = (minor, ccy = 'USD') => formatCurrency(minor, ccy);
+
+// ⚠️ The comment above was written for the READ-ONLY figures below and fixed
+// only those. The assertion FORM kept the same literal in both directions, and
+// the form is the dangerous half — it is the only write path to
+// AccountEconomics. A wrong AOV shown is an operator who "corrects" it to the
+// wrong minor value, which LTV, contribution per order and the LTV:CAC band
+// then inherit. `fromMinor` / `toMinor` are the canonical crossings.
 
 const bandTone = {
   HEALTHY:    'text-signal-scale bg-signal-scale-bg border-signal-scale/25',
@@ -44,7 +51,10 @@ function Section({ children }) {
 
 // ── The assertion form (AOV / margin / lifetime orders / target) ──
 function EconomicsForm({ initial, onSave, saving }) {
-  const [aov, setAov] = useState(initial?.aovMinor != null ? String(initial.aovMinor / 100) : '');
+  // The denomination of `aovMinor` is the currency stored ALONGSIDE it on the
+  // same AccountEconomics row — not the assessment's and not the CAC's.
+  const ccy = initial?.currency || 'USD';
+  const [aov, setAov] = useState(initial?.aovMinor != null ? String(fromMinor(initial.aovMinor, ccy)) : '');
   const [margin, setMargin] = useState(initial?.grossMarginPct != null ? String(Math.round(initial.grossMarginPct * 100)) : '');
   const [orders, setOrders] = useState(initial?.avgOrdersPerCustomer != null ? String(initial.avgOrdersPerCustomer) : '1');
   const [target, setTarget] = useState(initial?.targetLtvToCac != null ? String(initial.targetLtvToCac) : '3');
@@ -57,7 +67,13 @@ function EconomicsForm({ initial, onSave, saving }) {
     e.preventDefault();
     if (!valid) return;
     onSave({
-      aovMinor: Math.round(aovNum * 100),
+      // A minor-unit amount without its currency is a guess, not a number. This
+      // form is the only writer of AccountEconomics, and the row is CREATED with
+      // the column default 'USD' when the payload omits `currency` — so a KWD
+      // account saving 50 dinars would read back 500 on the next refetch. The
+      // denomination travels with the amount it denominates.
+      currency: ccy,
+      aovMinor: toMinor(aovNum, ccy),
       grossMarginPct: marginNum / 100,
       avgOrdersPerCustomer: Math.max(1, parseFloat(orders) || 1),
       targetLtvToCac: Math.max(0.1, parseFloat(target) || 3),
