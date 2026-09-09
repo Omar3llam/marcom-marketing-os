@@ -204,8 +204,13 @@ export function useOverviewModel() {
   const readFailed = Boolean(connectorError || healthError);
 
   // Account-health card tone + caption (pure; see overviewDerive).
+  // The band is the ENGINE's, read off the same payload the score came from —
+  // Campaigns already renders `health.label`, and this axis re-derived its own
+  // from the score, so the two disagreed about one account. One published
+  // vocabulary, no reclassification here. See overviewDerive.healthPresentation.
   const { tone: healthTone, label: healthLabel } = healthPresentation({
     score: kpis.health,
+    label: health?.label ?? null,
     loading: healthLoading,
   });
 

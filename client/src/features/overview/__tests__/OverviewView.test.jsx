@@ -818,3 +818,57 @@ describe('B8-02 · the hero reports a failed read as a failure', () => {
     expect(screen.queryByText(/couldn’t read this account/i)).not.toBeInTheDocument();
   });
 });
+
+// ── ONE published vocabulary · zero client reclassification ─────────────────
+// Attention used to re-derive the account-health band from the score:
+//
+//     engine     ≥80 HEALTHY · ≥60 GOOD · ≥40 FAIR · ≥20 NEEDS ATTENTION · CRITICAL
+//     Attention  ≥75 Healthy · ≥50 "Fair — review soon" · else "Needs attention"
+//
+// so this axis and Campaigns printed different verdicts about ONE account, from
+// ONE score, in the same KPI-sub-label role — on 50 of the 101 integer scores.
+// `AccountHealthService.test.js` pins `healthLabel(70) === 'GOOD'`; this surface
+// printed "Fair — review soon" for that score.
+//
+// These assert what the OPERATOR reads, never the shape of the derivation.
+describe('Account health · Attention renders the engine’s band, never its own', () => {
+  const withHealth = (health) => {
+    useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
+    useAccountHealth.mockReturnValue({ health, loading: false, error: null, refetch: vi.fn() });
+  };
+  const cardText = () => screen.getAllByTestId('stat-card').map((n) => n.textContent).join(' | ');
+
+  it('score 70 reads GOOD here — the value a server test pins', () => {
+    withHealth({ score: 70, label: 'GOOD', campaigns: [] });
+    renderView();
+    expect(cardText()).toContain('GOOD');
+    expect(cardText()).not.toContain('Fair — review soon');
+  });
+
+  it('CRITICAL is expressible at all — it had no band on this axis', () => {
+    // The decision-risking direction: an account the engine calls CRITICAL was
+    // shown in the same words as a score of 30.
+    withHealth({ score: 15, label: 'CRITICAL', campaigns: [] });
+    renderView();
+    expect(cardText()).toContain('CRITICAL');
+    expect(cardText()).not.toContain('Needs attention');
+  });
+
+  it('a band this client has never heard of still reaches the operator', () => {
+    // No enum, so a new engine band cannot blank the surface (B8-01's hazard).
+    withHealth({ score: 55, label: 'RECOVERING', campaigns: [] });
+    renderView();
+    expect(cardText()).toContain('RECOVERING');
+  });
+
+  // ── self-refutation: the absence states B8-02 established are untouched ────
+  it('a resolved health that scored nothing still says "No score yet"', () => {
+    withHealth({ score: null, label: null, campaigns: [] });
+    renderView();
+    expect(cardText()).toContain('No score yet');
+  });
+
+  // The score's own passthrough is asserted in overviewDerive.test.js, not
+  // here: this file stubs StatCard down to {label, sub} and drops `value`
+  // entirely, so a score assertion in this harness would be testing the stub.
+});

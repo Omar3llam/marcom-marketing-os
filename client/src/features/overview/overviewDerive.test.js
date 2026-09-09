@@ -9,7 +9,7 @@
 // and must leave a field null when no source carries it.
 // ============================================================
 import { describe, it, expect } from 'vitest';
-import { overviewKpis, decisionFeed, partitionDecisions, SECTION_CAP } from './overviewDerive.js';
+import { overviewKpis, decisionFeed, partitionDecisions, SECTION_CAP, healthPresentation } from './overviewDerive.js';
 import { accountAggregateReading } from '@/lib/accountAggregate.js';
 
 describe('decisionFeed', () => {
@@ -292,5 +292,53 @@ describe('overviewKpis', () => {
     expect(k.health).toBeNull();
     expect(k.spendLabel).not.toMatch(/no data yet/i);
     expect(k.spendLabel).toMatch(/not measured/i);
+  });
+});
+
+// ── ONE published vocabulary · zero client reclassification ─────────────────
+// `healthPresentation` used to CLASSIFY: it re-thresholded the score into a
+// three-band vocabulary of its own (≥75 Healthy / ≥50 "Fair — review soon" /
+// else "Needs attention") while the engine published five bands from the same
+// number. It now consumes the engine's band and classifies nothing.
+//
+// The TONE ladder is deliberately untouched — visual severity is a separate,
+// parked question, and mixing it into this slice was ruled out.
+describe('healthPresentation · the band is the engine’s', () => {
+  const ENGINE_BANDS = ['HEALTHY', 'GOOD', 'FAIR', 'NEEDS ATTENTION', 'CRITICAL'];
+
+  it.each(ENGINE_BANDS)('passes %s through verbatim', (label) => {
+    expect(healthPresentation({ score: 50, label }).label).toBe(label);
+  });
+
+  it('does not re-derive a band from the score — 70 is GOOD, not "Fair"', () => {
+    // AccountHealthService.test.js pins healthLabel(70) === 'GOOD'.
+    expect(healthPresentation({ score: 70, label: 'GOOD' }).label).toBe('GOOD');
+  });
+
+  it('a band the client has never seen is still passed through', () => {
+    // No enum here, so a new engine band cannot blank the card (B8-01).
+    expect(healthPresentation({ score: 55, label: 'RECOVERING' }).label).toBe('RECOVERING');
+  });
+
+  // ── self-refutation: B8-02's two absences are untouched ───────────────────
+  it('still tells "not landed yet" from "landed and scored nothing"', () => {
+    expect(healthPresentation({ score: null, label: null, loading: true }).label).toBe('Scoring…');
+    expect(healthPresentation({ score: null, label: null, loading: false }).label).toBe('No score yet');
+  });
+
+  it('a refetch does not RETRACT a band the operator is already reading', () => {
+    // Precedence: the value wins over `loading`, exactly as the score used to.
+    // Without this, a background refresh replaces a real band with "Scoring…".
+    expect(healthPresentation({ score: 70, label: 'GOOD', loading: true }).label).toBe('GOOD');
+  });
+
+  it('and the tone ladder is unchanged — this slice did not touch severity', () => {
+    // Asserted at the BOUNDARIES, not at comfortable midpoints: a ladder that
+    // has moved is only visible within one point of its own cut.
+    expect(healthPresentation({ score: 75, label: 'GOOD' }).tone).toBe('positive');
+    expect(healthPresentation({ score: 74, label: 'GOOD' }).tone).toBe('warn');
+    expect(healthPresentation({ score: 50, label: 'FAIR' }).tone).toBe('warn');
+    expect(healthPresentation({ score: 49, label: 'FAIR' }).tone).toBe('danger');
+    expect(healthPresentation({ score: null, label: null }).tone).toBe('neutral');
   });
 });
