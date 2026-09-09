@@ -28,6 +28,8 @@
 import { useGrowthStrategySummary } from '@/hooks/useGrowthStrategySummary.js';
 import { useEconomics, useSaveEconomics } from '@/hooks/useEconomics.js';
 import { cn } from '@/lib/utils.js';
+// Exhaustive over the verdict enum, and already the single source for urgency.
+import { VERDICT_RANK } from '@/lib/verdictRank.js';
 import RoleGate from '@/components/auth/RoleGate.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useGoals } from '@/hooks/useGoals.js';
@@ -206,18 +208,38 @@ function StrategistApprovals() {
 // reason (never folded into a verdict count, and never collapsed into one
 // number — C-07: "N need revenue data" was the wrong instruction for the two
 // reasons out of three that a sync fixes).
+// The word this surface shows for each verdict. The four that stood here were a
+// LIST, and a list forgot REALLOCATE and REFRESH — so the parts are built from
+// the counts the hook received instead, and a verdict with no word here still
+// appears under its own token rather than vanishing.
+const VERDICT_WORD = Object.freeze({
+  KILL: 'Killing', REFRESH: 'Refreshing', REALLOCATE: 'Reallocating',
+  WATCH: 'Watching', HOLD: 'Holding', SCALE: 'Scaling',
+});
+
 function ActiveCampaignsBreakdown({ g }) {
-  const parts = [
-    g.scaling  > 0 && `${g.scaling} Scaling`,
-    g.holding  > 0 && `${g.holding} Holding`,
-    g.watching > 0 && `${g.watching} Watching`,
-    g.killing  > 0 && `${g.killing} Killing`,
-  ].filter(Boolean);
+  const byVerdict = g.byVerdict ?? {};
+  // Ordered by VERDICT_RANK, which is exhaustive over the enum and already the
+  // single source for urgency — not a second hand-typed order. Anything the
+  // ranking has never heard of sorts last rather than being dropped.
+  const parts = Object.keys(byVerdict)
+    .filter((v) => byVerdict[v] > 0)
+    .sort((a, b) => (VERDICT_RANK[a] ?? 99) - (VERDICT_RANK[b] ?? 99))
+    .map((v) => `${byVerdict[v]} ${VERDICT_WORD[v] ?? v}`);
 
   const gated = g.gated ?? [];
 
+  // Three different facts, stated separately. "Awaiting verdicts" is a claim
+  // about LUMI and "No connected campaigns yet" is a claim about the ACCOUNT;
+  // collapsing either onto "the words this file knows matched nothing" is what
+  // let two live verdicts render as "still deciding".
   if (parts.length === 0 && gated.length === 0) {
-    return <>{g.total > 0 ? 'Awaiting verdicts' : 'No connected campaigns yet'}</>;
+    if (g.total === 0) return <>No connected campaigns yet</>;
+    if ((g.scored ?? 0) === 0) return <>Awaiting verdicts</>;
+    // Verdicts arrived and none of them produced a part. Unreachable while the
+    // counts and `scored` agree — but saying either sentence above here would
+    // be false, so this states only the count it actually has.
+    return <>{g.scored} scored</>;
   }
 
   return (

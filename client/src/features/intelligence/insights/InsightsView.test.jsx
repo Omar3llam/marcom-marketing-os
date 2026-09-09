@@ -48,7 +48,12 @@ const growthSummary = (over = {}) => ({
   loading: false,
   error: null,
   summary: {
-    total: 44, scaling: 5, holding: 2, watching: 0, killing: 1,
+    // Counts keyed by the verdict token — four named fields stood here, which
+    // is how REALLOCATE and REFRESH came to be dropped. `scored` is what the
+    // empty state reads, so it can never disagree with the parts.
+    total: 44,
+    byVerdict: { SCALE: 5, HOLD: 2, KILL: 1 },
+    scored: 8,
     // C-07 - the tile reads GROUPS, not a single count. The shape is what
     // useGrowthStrategySummary returns: one entry per reason, each already
     // carrying its own label and sentence.
@@ -235,5 +240,101 @@ describe('FE-03 · no claim is made from the retired feed', () => {
     renderBoard();
     expect(screen.getByText('Active Campaigns')).toBeInTheDocument();
     expect(screen.getByText('44')).toBeInTheDocument();
+  });
+});
+
+// ── "Awaiting verdicts" may not be said over real verdicts ──────────────────
+// The breakdown listed four of the six published verdicts, so an account whose
+// only calls were REALLOCATE/REFRESH produced an empty `parts`, fell through
+// `parts.length === 0 && gated.length === 0`, and rendered "Awaiting verdicts" —
+// while Lumi had already decided. REALLOCATE means MOVE THIS BUDGET.
+//
+// CLOSURE CONDITION (Omar): if REALLOCATE/REFRESH appear in the breakdown but
+// the empty-state can still say "Awaiting verdicts", the slice is not closed.
+// So the last two cases below matter more than the first four.
+describe('Active Campaigns — the breakdown admits every verdict Lumi published', () => {
+  const withSummary = (byVerdict, over = {}) => {
+    const scored = Object.values(byVerdict).reduce((n, c) => n + c, 0);
+    useGrowthStrategySummary.mockReturnValue({
+      loading: false,
+      error: null,
+      summary: { total: 10, byVerdict, scored, gated: [], gatedTotal: 0, ...over },
+    });
+  };
+  const tile = () => screen.getByText('Active Campaigns').closest('article').textContent;
+
+  it('REALLOCATE alone is shown, and is NOT "Awaiting verdicts"', () => {
+    withSummary({ REALLOCATE: 3 });
+    renderBoard();
+    expect(tile()).toMatch(/3 Reallocating/);
+    expect(tile()).not.toMatch(/Awaiting verdicts/);
+  });
+
+  it('REFRESH alone is shown, and is NOT "Awaiting verdicts"', () => {
+    withSummary({ REFRESH: 1 });
+    renderBoard();
+    expect(tile()).toMatch(/1 Refreshing/);
+    expect(tile()).not.toMatch(/Awaiting verdicts/);
+  });
+
+  it('a mixed REALLOCATE/REFRESH account shows both', () => {
+    withSummary({ REALLOCATE: 2, REFRESH: 4 });
+    renderBoard();
+    expect(tile()).toMatch(/2 Reallocating/);
+    expect(tile()).toMatch(/4 Refreshing/);
+    expect(tile()).not.toMatch(/Awaiting verdicts/);
+  });
+
+  it('all six appear together, in the ranking’s urgency order', () => {
+    withSummary({ SCALE: 1, HOLD: 2, WATCH: 3, KILL: 4, REALLOCATE: 5, REFRESH: 6 });
+    renderBoard();
+    const t = tile();
+    for (const w of ['Killing', 'Refreshing', 'Reallocating', 'Watching', 'Holding', 'Scaling']) {
+      expect(t).toMatch(new RegExp(w));
+    }
+    // Urgency order comes from VERDICT_RANK: KILL < REFRESH < REALLOCATE < …
+    expect(t.indexOf('Killing')).toBeLessThan(t.indexOf('Scaling'));
+  });
+
+  // ── THE CLOSURE CONDITION ────────────────────────────────────────────────
+  it('a verdict this client has never seen still prevents "Awaiting verdicts"', () => {
+    // The invariant must be structural, not a longer list: any verdict received
+    // produces a part, so the empty branch cannot be reached while verdicts exist.
+    withSummary({ SOME_FUTURE_VERDICT: 2 });
+    renderBoard();
+    // Shown under its own token — asserting only the ABSENCE of "Awaiting
+    // verdicts" let a mutation that filtered unknown words survive, because it
+    // fell through to a different wrong sentence instead.
+    expect(tile()).toMatch(/2 SOME_FUTURE_VERDICT/);
+    expect(tile()).not.toMatch(/Awaiting verdicts/);
+    expect(tile()).not.toMatch(/No connected campaigns yet/);
+  });
+
+  it('verdicts arrived but produced no part — still NOT "Awaiting verdicts"', () => {
+    // Belt and braces for the closure condition. Building the parts from the
+    // counts already makes an empty breakdown impossible while verdicts exist,
+    // so this pins the SECOND guard: the empty state reads `scored`, not the
+    // parts. If the two ever disagree, the claim about Lumi is the one that
+    // must not be made.
+    withSummary({}, { scored: 3 });
+    renderBoard();
+    expect(tile()).not.toMatch(/Awaiting verdicts/);
+    // …and it may not fall back to the OTHER claim either: there are 10
+    // campaigns. Only the count it actually has may be stated.
+    expect(tile()).not.toMatch(/No connected campaigns yet/);
+    expect(tile()).toMatch(/3 scored/);
+  });
+
+  // ── self-refutation: the empty states are still the right words ───────────
+  it('genuinely no verdicts, with campaigns, still says "Awaiting verdicts"', () => {
+    withSummary({});
+    renderBoard();
+    expect(tile()).toMatch(/Awaiting verdicts/);
+  });
+
+  it('no campaigns at all still says "No connected campaigns yet"', () => {
+    withSummary({}, { total: 0 });
+    renderBoard();
+    expect(tile()).toMatch(/No connected campaigns yet/);
   });
 });
