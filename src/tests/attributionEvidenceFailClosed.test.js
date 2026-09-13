@@ -29,8 +29,18 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 vi.mock('../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock('../services/blended-truth/BlendedTruthService.js', () => ({
+// Spend-window slice: previewAllocation now also reads the governed period's
+// spend, through the Evidence seam and BlendedTruth's own latestPerStream. That
+// read is a DATABASE leaf, so it is stubbed like the others (no rows → the
+// period is NOT_MEASURABLE); the real BlendedTruth helpers are kept. None of the
+// assertions below changes — the refusal still happens before the spend read.
+vi.mock('../services/blended-truth/BlendedTruthService.js', async (importOriginal) => ({
+  ...(await importOriginal()),
   getBlendedTruth: vi.fn(),
+}));
+vi.mock('../services/evidence/index.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  selectOperationalSnapshots: vi.fn(async () => []),
 }));
 vi.mock('../lib/prisma.js', () => ({
   prisma: {

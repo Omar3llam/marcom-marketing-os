@@ -98,6 +98,22 @@ export default function PacingWidget() {
       </Shell>
     );
   }
+  // The server refused the comparison: the spend it holds does not cover this
+  // month to date. Said as that — never as "not enough data", which reads as
+  // "wait a little", and never as a hidden card, which reads as nothing at all.
+  // Any refusal renders this, including a reason this build cannot name.
+  const spendPeriod = data?.spendPeriod ?? null;
+  if (!pacing && spendPeriod?.status === 'NOT_MEASURABLE') {
+    const held = spendPeriod.window;
+    return (
+      <Shell>
+        <Note>
+          Lumi hasn’t measured spend for this month to date, so it won’t compare your budget with it.
+          {held ? ` The spend it holds covers ${held.start} – ${held.end}.` : ''}
+        </Note>
+      </Shell>
+    );
+  }
   if (!pacing) {
     return <Shell><Note>Not enough data to project pacing yet.</Note></Shell>;
   }

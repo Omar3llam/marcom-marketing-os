@@ -36,6 +36,13 @@ const COPY = {
     // which is a complete and successful promotion.
     message: 'Promoted — this plan is now in force. Its mix already matches what you are spending, so there is nothing to confirm.',
   }),
+  [PROMOTION_OUTCOME.PROMOTED_MOVES_NOT_MEASURABLE]: () => ({
+    tone: 'neutral',
+    // Zero moves for a different reason than the sentence above: nothing could
+    // be sized. Saying the mix "matches what you are spending" here would be a
+    // claim about spend nobody measured over this plan's period.
+    message: 'Promoted — this plan is now in force. No budget moves were staged: Lumi has not measured spend over this plan’s period, so it will not size them.',
+  }),
   [PROMOTION_OUTCOME.ALREADY_PROMOTED]: (r) => ({
     tone: 'neutral',
     message: r.promotedAt

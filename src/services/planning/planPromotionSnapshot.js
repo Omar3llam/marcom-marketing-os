@@ -48,6 +48,8 @@
 // the legacy corpus settled it again: a migration must never pretend to know.
 // ============================================================
 
+import { SPEND_PERIOD_STATUS } from '../budget-period/spendPeriod.js';
+
 /** Typed refusals, so the route answers 409 rather than 500. */
 export const PROMOTION_REFUSAL = Object.freeze({
   SNAPSHOT_INCOMPLETE: 'PlanSnapshotIncomplete',
@@ -87,6 +89,10 @@ export function captureMixSnapshot(mix) {
     currency:         mix.currency ?? null,
     projected:        mix.projected ?? null,
     reasoningTrail:   Array.isArray(mix.reasoningTrail) ? mix.reasoningTrail : null,
+    // What the mix's moves were sized against — or why they were not. A mix
+    // captured before this field existed has none, and promotion reads that as
+    // "not measured", never as "measured".
+    spendPeriod:      mix.spendPeriod ?? null,
   };
 }
 
@@ -137,6 +143,7 @@ export function planToAllocationCommit(plan) {
     allocations,
     projected:        snap.projected,
     reasoningTrail:   snap.reasoningTrail,
+    spendPeriod:      snap.spendPeriod ?? null,
   };
 }
 
@@ -148,5 +155,18 @@ export function planToAllocationCommit(plan) {
  * and not "0 moves to confirm".
  */
 export function hasBudgetMoves(commit) {
-  return (commit?.allocations ?? []).some((a) => a?.deltaMinor !== 0);
+  // `deltaMinor !== 0` alone let a null through. A move is a measured number.
+  return budgetMovesAreMeasured(commit)
+    && (commit?.allocations ?? []).some((a) => Number.isFinite(a?.deltaMinor) && a.deltaMinor !== 0);
+}
+
+/**
+ * Were this mix's moves sized against spend over the budget period?
+ *
+ * False for a NOT_MEASURABLE period AND for a mix with no recorded period —
+ * every plan approved before spend periods existed. Its deltas are numbers, but
+ * numbers computed from a window nobody checked, and C-18 promotes verbatim.
+ */
+export function budgetMovesAreMeasured(commit) {
+  return commit?.spendPeriod?.status === SPEND_PERIOD_STATUS.MEASURABLE;
 }

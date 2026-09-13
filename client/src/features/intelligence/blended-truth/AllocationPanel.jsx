@@ -38,6 +38,10 @@ export function AllocationPanel({
 
   const allocations = plan?.allocations ?? [];
   const projected = plan?.projected ?? null;
+  // The server sized no move: spend over the period this budget governs is not
+  // measured. Every figure below would have been computed from that spend.
+  const unmeasured = plan?.spendPeriod?.status === 'NOT_MEASURABLE';
+  const money = (minor) => (minor == null ? '—' : formatCurrency(minor, currency));
 
   return (
     <section className="mt-8">
@@ -93,7 +97,13 @@ export function AllocationPanel({
       {/* Proposed plan */}
       {plan && (
         <div className="mt-2 rounded-2xl border border-lumi-border bg-lumi-surface overflow-hidden">
-          {projected && (
+          {unmeasured && (
+            <p className="px-4 py-3 border-b border-lumi-border text-xs text-lumi-subtle">
+              No move is sized. Lumi hasn’t measured spend over {plan.spendPeriod.period.start} – {plan.spendPeriod.period.end},
+              the period this budget governs, so it won’t compare the two.
+            </p>
+          )}
+          {projected && !unmeasured && (
             <div className="px-4 py-3 border-b border-lumi-border font-mono text-xs text-lumi-subtle">
               Projected MER <span className="text-lumi-muted">{fx(projected.merBefore)}</span> →{' '}
               <span className="text-signal-scale">{fx(projected.merAfter)}</span>
@@ -116,10 +126,10 @@ export function AllocationPanel({
               {allocations.map((a) => (
                 <tr key={a.channelId} className="border-b border-lumi-border/60" title={a.rationale}>
                   <td className="px-4 py-2.5 text-lumi-text font-mono">{a.channel ?? a.channelId}</td>
-                  <td className="px-4 py-2.5 text-lumi-muted font-mono">{formatCurrency(a.currentSpendMinor, currency)}</td>
-                  <td className="px-4 py-2.5 text-lumi-text font-mono">{formatCurrency(a.recommendedSpendMinor, currency)}</td>
+                  <td className="px-4 py-2.5 text-lumi-muted font-mono">{money(a.currentSpendMinor)}</td>
+                  <td className="px-4 py-2.5 text-lumi-text font-mono">{money(a.recommendedSpendMinor)}</td>
                   <td className={`px-4 py-2.5 font-mono ${a.deltaMinor > 0 ? 'text-signal-scale' : a.deltaMinor < 0 ? 'text-signal-kill' : 'text-lumi-subtle'}`}>
-                    {a.deltaMinor > 0 ? '+' : ''}{formatCurrency(a.deltaMinor, currency)}
+                    {a.deltaMinor > 0 ? '+' : ''}{money(a.deltaMinor)}
                   </td>
                   <td className="px-4 py-2.5 text-lumi-muted font-mono">{fx(a.blendedRoas)}</td>
                 </tr>
@@ -143,9 +153,18 @@ export function AllocationPanel({
                   {commitError.message || 'Couldn’t commit the allocation right now. Try again shortly.'}
                 </p>
               )}
-              {committed && (
+              {committed && committed.decisionsCreated > 0 && (
                 <p className="mt-1.5 text-xs text-signal-scale">
                   Committed — {committed.decisionsCreated} proposed move{committed.decisionsCreated === 1 ? '' : 's'}. Confirm {committed.decisionsCreated === 1 ? 'it' : 'them'} in Decisions to execute.
+                </p>
+              )}
+              {/* Zero moves is not "0 proposed moves — confirm them": there is
+                  nothing in Decisions to confirm. The budget itself was recorded. */}
+              {committed && !(committed.decisionsCreated > 0) && (
+                <p className="mt-1.5 text-xs text-signal-scale">
+                  {unmeasured
+                    ? 'Committed — budget recorded. No moves were proposed, because spend over this period isn’t measured.'
+                    : 'Committed — budget recorded. The mix asked for no moves.'}
                 </p>
               )}
             </div>

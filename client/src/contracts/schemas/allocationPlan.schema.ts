@@ -10,6 +10,7 @@
  */
 
 import { z } from 'zod';
+import { SpendPeriodSchema } from './portfolio.schema';
 
 // Engine is goal-generic; only GROWTH_CEILING is implemented today.
 export const GoalTypeSchema = z.enum(['GROWTH_CEILING']);
@@ -25,18 +26,20 @@ export const AllocationMoveSchema = z.object({
   channelId: z.string().min(1),
   channel: z.string().nullish(),
   verdict: z.string(),
-  currentSpendMinor: z.number().int(),
-  recommendedSpendMinor: z.number().int(),
-  deltaMinor: z.number().int(),
+  // Null when spend over the governed period is not measured: no current spend,
+  // no target, no move. Never a zero standing in for "we don't know".
+  currentSpendMinor: z.number().int().nullable(),
+  recommendedSpendMinor: z.number().int().nullable(),
+  deltaMinor: z.number().int().nullable(),
   blendedRoas: z.number(),
   rationale: z.string(),
 });
 
 export const AllocationProjectedSchema = z.object({
-  blendedRevenueMinor: z.number().int(),
+  blendedRevenueMinor: z.number().int().nullable(),
   projectedCpaMinor: z.number().int().nullable(),
-  merBefore: z.number(),
-  merAfter: z.number(),
+  merBefore: z.number().nullable(),
+  merAfter: z.number().nullable(),
 });
 
 // allocationEngine.allocate() preview shape.
@@ -44,6 +47,8 @@ export const AllocationPlanPreviewSchema = z.object({
   goal: AllocationGoalSchema,
   totalBudgetMinor: z.number().int(),
   currency: z.string().default('USD'),
+  // The period the budget governs, and whether moves could be sized against it.
+  spendPeriod: SpendPeriodSchema.nullish(),
   allocations: z.array(AllocationMoveSchema),
   projected: AllocationProjectedSchema,
   reasoningTrail: z.array(z.string()),

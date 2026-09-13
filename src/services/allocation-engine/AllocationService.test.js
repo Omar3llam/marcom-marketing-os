@@ -22,16 +22,24 @@ import { reconcile }           from '../blended-truth/blendedTruthEngine.js';
 import { verdictToActionType } from '../verdict-engine/verdictTypes.js';
 import { validateActionTarget } from '../metaExecutionService.js';
 
+// Spend-window slice: a move is a Decision only when the plan says its spend
+// period was MEASURABLE. This fixture is a measured plan; the refusal side is
+// pinned in src/tests/spendWindowIntegrity.allocation.red.test.js.
 function samplePlan() {
-  return allocate({
+  return withMeasuredPeriod(allocate({
     totalBudgetMinor: 1_000_000,
     goal: { type: GOAL_TYPE.GROWTH_CEILING },
     channels: [
       { channelId: 'camp-a', blendedRoas: 3.2, currentSpendMinor: 400_000, verdict: 'SCALE' },
       { channelId: 'camp-b', blendedRoas: 0.8, currentSpendMinor: 600_000, verdict: 'KILL' },
     ],
-  });
+  }));
 }
+
+const withMeasuredPeriod = (plan) => ({
+  ...plan,
+  spendPeriod: { status: 'MEASURABLE', reason: null, period: { start: '2026-08-01', end: '2026-08-31' } },
+});
 
 describe('AllocationService.planToDecisionRows — governance', () => {
   it('emits a PROPOSED REALLOCATE Decision per non-zero move, linked to its plan', () => {

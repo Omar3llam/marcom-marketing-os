@@ -49,6 +49,7 @@ import {
 } from '../connectors/connectorReadiness.js';
 import { DAILY_KNOWLEDGE } from '../connectors/connectorConfig.js';
 import { EXECUTION_STATE_KNOWLEDGE } from '../execution/executionProjection.js';
+import { SPEND_PERIOD_KNOWLEDGE } from '../budget-period/spendPeriod.js';
 
 /**
  * The suffixes that define the ratchet's jurisdiction. A shape, not a guess.
@@ -104,6 +105,9 @@ export const DECLARED = Object.freeze([
   { at: 'src/services/connectors/connectorReadiness.js',              symbol: 'CAPABILITY_RUN',      declaration: CAPABILITY_RUN_KNOWLEDGE, adjudicated: true },
   { at: 'src/services/connectors/connectorConfig.js',                 symbol: 'DAILY_STATE',         declaration: DAILY_KNOWLEDGE },
   { at: 'src/services/execution/executionProjection.js',              symbol: 'EXECUTION_STATE',     declaration: EXECUTION_STATE_KNOWLEDGE, adjudicated: true },
+  // Dogfood readiness — whether spend may be compared with a budget. NOT_MEASURABLE
+  // reports our position (the rows cannot answer for the period), MEASURABLE the claim.
+  { at: 'src/services/budget-period/spendPeriod.js',                  symbol: 'SPEND_PERIOD_STATUS', declaration: SPEND_PERIOD_KNOWLEDGE },
 ]);
 
 /**
@@ -173,6 +177,12 @@ export const EXCLUDED = Object.freeze([
     at: 'src/services/verdict-engine/metricWindow.js', symbol: 'NON_AGGREGABLE_REASON',
     because: 'A reason vocabulary, and its values are English sentences explaining '
            + 'why a metric cannot be summed — prose, not states.',
+  },
+  {
+    at: 'src/services/budget-period/spendPeriod.js', symbol: 'SPEND_PERIOD_REASON',
+    because: 'A reason vocabulary — it names WHY a comparison was refused under '
+           + 'SPEND_PERIOD_STATUS.NOT_MEASURABLE, which is already declared CANNOT_ASK. '
+           + 'Declaring both would let one refusal carry two knowledge tokens.',
   },
   {
     at: 'src/services/pattern-engine/patternTypes.js', symbol: 'PATTERN_STATUS',
