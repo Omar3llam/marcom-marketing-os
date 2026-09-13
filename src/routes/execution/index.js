@@ -7,10 +7,16 @@
 // (`/meta`, `/audit`, `/vitals`, `/active`) BEFORE `/:id/*`
 // so Express doesn't match `:id` against literal segments.
 //
-// Auth is already applied globally in server.js via requireAuth
-// on the /api/execute mount. No router-level middleware needed.
+// Auth is applied in server.js via requireAuth + requireWorkspace on the
+// /api/execute mount. AUTHORIZATION is applied HERE, once, for every route
+// this router assembles — see ./authorizationBaseline.js. The line this
+// replaces read "No router-level middleware needed", and that assumption is
+// why thirteen reads shipped with no role gate: each route was trusted to opt
+// in, and thirteen times nobody did.
 // ============================================================
 import { Router } from 'express';
+
+import { executionAuthorizationBaseline } from './authorizationBaseline.js';
 
 import { registerMetaRoute } from './meta.js';
 import { registerAuditRoute } from './audit.js';
@@ -28,6 +34,13 @@ import { registerArtifactsRoute } from './artifacts.js';    // PR #35
 import { registerDetailRoute } from './detail.js';          // R13-D / B3-B
 
 const router = Router();
+
+// ── THE AUTHORIZATION BASELINE — before any route is registered ────────────
+// Every request into this router meets it, so a route added below inherits the
+// refusal without its author doing anything. A route needing a stricter or
+// fresher authority still declares its own (POST /meta and POST /:id/retry
+// carry Slice B's requireFreshAuthority): this is a floor, not a ceiling.
+router.use(executionAuthorizationBaseline);
 
 // Specific paths first — order matters for Express route matching.
 registerMetaRoute(router);
