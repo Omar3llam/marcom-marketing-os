@@ -22,7 +22,7 @@ import { logger }          from '../../utils/logger.js';
 import { lifecycleService } from '../../services/execution/ExecutionLifecycleService.js';
 import { executionQueue, enqueueExecution } from '../../queues/index.js';
 import { ExecutionStatus, TransitionActor } from '@marcom/runtime-contracts';
-import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { requireFreshAuthority } from '../../middleware/requireFreshAuthority.js';
 import { WORKSPACE_ROLE }    from '../../services/collaboration/roleScope.js';
 import { resolveAttribution } from '../../services/execution/decisionAttribution.js';
 import { loadExecutability, NOT_EXECUTABLE } from '../../services/execution/decisionEligibility.js';
@@ -50,7 +50,7 @@ function validateRequest(actionType, targetId, targetType, idempotencyKey, optio
 export function registerMetaRoute(router) {
   // Executing a Meta action is a BUYER/STRATEGIST capability — a CLIENT
   // (read-only leadership) seat must never queue a real ad-platform mutation.
-  router.post('/meta', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
+  router.post('/meta', requireFreshAuthority(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
     const { actionType, targetId, targetType, idempotencyKey, options, decisionId } = req.body;
     const workspaceId = req.workspaceId;
     const userId      = req.userId;

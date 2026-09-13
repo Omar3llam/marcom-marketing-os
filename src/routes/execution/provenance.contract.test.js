@@ -27,6 +27,14 @@ vi.mock('../../queues/index.js', () => ({
   EXECUTION_QUEUE_NAME: 'executions',
 }));
 
+// Slice B: /meta and /:id/retry now re-confirm the credential with the issuer at
+// the money boundary. The issuer is not the claim under test here, so it answers
+// "still valid"; revocation itself is proven in src/tests/authorizationFreshness.*.
+vi.mock('../../utils/firebaseAdmin.js', () => ({
+  default: { auth: () => ({ verifyIdToken: vi.fn().mockResolvedValue({ uid: 'user-b4a' }) }) },
+  getFirebaseAdminReadiness: () => ({ ok: true, error: null }),
+}));
+
 const { dbAvailable, dbRequired } = await import('../../tests/dbProbe.js');
 const { prisma }      = await import('../../lib/prisma.js');
 const executionRouter = (await import('./index.js')).default;
@@ -45,6 +53,7 @@ function app(router, mount, { collabRole = 'BUYER', userRole = 'MEMBER' } = {}) 
   a.use((req, _res, next) => {
     req.workspaceId = WS; req.collabRole = collabRole;
     req.userId = 'user-b4a'; req.userRole = userRole;
+    req.headers.authorization = 'Bearer contract-token';  // requireAuth ran upstream
     next();
   });
   a.use(mount, router);
@@ -106,10 +115,19 @@ describe('B4-A — this contract must actually run', () => {
 describe.skipIf(!DB_OK)('B4-A — execution provenance', () => {
   beforeAll(async () => {
     await prisma.workspace.upsert({ where: { id: WS }, update: {}, create: { id: WS, name: 'B4A' } });
+    // Slice B: the money boundary reads the CURRENT role from the user row
+    // rather than trusting req.collabRole, so the seat has to exist where the
+    // gate looks. Every case in this suite acts as the same BUYER.
+    await prisma.user.upsert({
+      where:  { clerkId: 'user-b4a' },
+      update: { collabRole: 'BUYER', workspaceId: WS },
+      create: { clerkId: 'user-b4a', email: 'b4a@contract.local', workspaceId: WS, collabRole: 'BUYER' },
+    });
   });
   afterAll(async () => {
     await prisma.executionRequest.deleteMany({ where: { workspaceId: WS } });
     await prisma.decision.deleteMany({ where: { workspaceId: WS } });
+    await prisma.user.deleteMany({ where: { clerkId: 'user-b4a' } });
     await prisma.workspace.deleteMany({ where: { id: WS } });
   });
   beforeEach(async () => {

@@ -19,6 +19,14 @@ const { enqueueExecution, executionQueue } = vi.hoisted(() => ({
   executionQueue: { count: vi.fn(async () => 0) },
 }));
 vi.mock('../../queues/index.js', () => ({ enqueueExecution, executionQueue }));
+// Slice B: /meta and /:id/retry now re-confirm the credential with the issuer at
+// the money boundary. The issuer is not the claim under test here, so it answers
+// "still valid"; revocation itself is proven in src/tests/authorizationFreshness.*.
+vi.mock('../../utils/firebaseAdmin.js', () => ({
+  default: { auth: () => ({ verifyIdToken: vi.fn().mockResolvedValue({ uid: 'contract-user' }) }) },
+  getFirebaseAdminReadiness: () => ({ ok: true, error: null }),
+}));
+
 
 const { dbAvailable, dbRequired } = await import('../../tests/dbProbe.js');
 const { prisma } = await import('../../lib/prisma.js');
@@ -36,13 +44,30 @@ function makeApp({ workspaceId = WS, collabRole = 'BUYER' } = {}) {
   app.use(express.json());
   app.use((req, _res, next) => {
     req.workspaceId = workspaceId; req.collabRole = collabRole; req.userId = USER;
+    req.headers.authorization = 'Bearer contract-token';  // requireAuth ran upstream
     next();
   });
   app.use('/api/execute', executionRouter);
   return app;
 }
 
-const post = (body, opts) => request(makeApp(opts)).post('/api/execute/meta').send(body);
+/**
+ * Slice B: the money boundary reads the CURRENT role from the user row rather
+ * than trusting req.collabRole, so this contract test — which runs the real
+ * gate against the real database — has to put the role where the gate looks.
+ */
+async function seatAs(collabRole, workspaceId = WS) {
+  await prisma.user.upsert({
+    where:  { clerkId: USER },
+    update: { collabRole, workspaceId },
+    create: { clerkId: USER, email: 'b3-producer@contract.local', workspaceId, collabRole },
+  });
+}
+
+const post = async (body, opts) => {
+  await seatAs(opts?.collabRole ?? 'BUYER', opts?.workspaceId ?? WS);
+  return request(makeApp(opts)).post('/api/execute/meta').send(body);
+};
 
 const validBody = (over = {}) => ({
   actionType: 'PAUSE_CAMPAIGN',
@@ -77,6 +102,7 @@ describe.skipIf(!DB_OK)('B3 — Decision → ExecutionRequest, persisted', () =>
     await prisma.executionRequest.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
     await prisma.decision.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
     await prisma.auditLog.deleteMany({ where: { workspaceId: { in: [WS, OTHER_WS] } } });
+    await prisma.user.deleteMany({ where: { clerkId: USER } });
     await prisma.workspace.deleteMany({ where: { id: { in: [WS, OTHER_WS] } } });
   });
   beforeEach(async () => {
