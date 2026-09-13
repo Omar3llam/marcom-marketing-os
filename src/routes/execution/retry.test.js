@@ -44,6 +44,7 @@ vi.mock('../../middleware/firebaseAuth.js', () => ({
     req.user = { uid: 'test-user-123' };
     req.workspaceId = 'test-workspace-456';
     req.userId = 'test-user-123';
+    req.headers.authorization = 'Bearer test-token';  // requireAuth ran upstream
     next();
   },
 }));
@@ -59,6 +60,15 @@ vi.mock('../../utils/logger.js', () => ({
     warn: vi.fn(),
     error: vi.fn(),
   },
+}));
+
+// Slice B: the canonical mutation routes now re-confirm the credential with the
+// issuer at the money boundary (requireFreshAuthority). These suites are about
+// the routes, not about Firebase, so the issuer answers "still valid" — the
+// revocation behaviour itself is proven in src/tests/authorizationFreshness.*.
+vi.mock('../../utils/firebaseAdmin.js', () => ({
+  default: { auth: () => ({ verifyIdToken: vi.fn().mockResolvedValue({ uid: 'test-user' }) }) },
+  getFirebaseAdminReadiness: () => ({ ok: true, error: null }),
 }));
 
 vi.mock('../events.js', () => ({

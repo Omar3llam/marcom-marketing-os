@@ -47,7 +47,7 @@ import { logger } from '../../utils/logger.js';
 import { lifecycleService } from '../../services/execution/ExecutionLifecycleService.js';
 import { enqueueExecution } from '../../queues/index.js';
 import { ExecutionStatus, TransitionActor } from '@marcom/runtime-contracts';
-import { requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { requireFreshAuthority } from '../../middleware/requireFreshAuthority.js';
 import { WORKSPACE_ROLE }    from '../../services/collaboration/roleScope.js';
 import { loadExecutability, NOT_EXECUTABLE } from '../../services/execution/decisionEligibility.js';
 
@@ -84,7 +84,7 @@ export function retryDepthOf(execution) {
 
 export function registerRetryRoute(router) {
   // Retry re-queues a real Meta mutation — same execution tier as POST /meta.
-  router.post('/:id/retry', requireCollabRole(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
+  router.post('/:id/retry', requireFreshAuthority(WORKSPACE_ROLE.BUYER, WORKSPACE_ROLE.STRATEGIST), async (req, res) => {
     const { id: originalId } = req.params;
     const workspaceId = req.workspaceId;
     const userId      = req.userId;

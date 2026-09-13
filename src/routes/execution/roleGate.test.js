@@ -40,6 +40,15 @@ vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+// Slice B: the canonical mutation routes now re-confirm the credential with the
+// issuer at the money boundary (requireFreshAuthority). These suites are about
+// the routes, not about Firebase, so the issuer answers "still valid" — the
+// revocation behaviour itself is proven in src/tests/authorizationFreshness.*.
+vi.mock('../../utils/firebaseAdmin.js', () => ({
+  default: { auth: () => ({ verifyIdToken: vi.fn().mockResolvedValue({ uid: 'test-user' }) }) },
+  getFirebaseAdminReadiness: () => ({ ok: true, error: null }),
+}));
+
 import { prisma } from '../../lib/prisma.js';
 import { registerMetaRoute } from './meta.js';
 import { registerRetryRoute } from './retry.js';
@@ -50,9 +59,15 @@ function makeApp({ collabRole } = {}) {
   app.use(express.json());
   app.use((req, _res, next) => {
     req.userId = 'firebase-user-1';
+    req.headers.authorization = 'Bearer test-token';  // requireAuth ran upstream
     req.user = { uid: 'firebase-user-1' };
     req.workspaceId = 'ws1';
     if (collabRole !== undefined) req.collabRole = collabRole;
+    // Slice B: on /meta and /:id/retry the AUTHORITY is the row, not
+    // req.collabRole — that is the whole point of the fix. Drive both from one
+    // value so every assertion below still means what it says. /:id/resume
+    // still reads req.collabRole, and is deliberately out of Slice B's scope.
+    prisma.user.findUnique.mockResolvedValue(collabRole === undefined ? { collabRole: 'STRATEGIST' } : { collabRole });
     next();
   });
   const router = Router();
@@ -104,6 +119,11 @@ describe('execution mutation routes — BUYER/STRATEGIST gate', () => {
     prisma.user.findUnique.mockRejectedValueOnce(new Error('pool timeout'));
     const res = await request(makeApp({ collabRole: null })).post('/execute/meta').send(ROUTES[0].body);
     expect(res.status).toBe(503);
-    expect(res.body.error).toBe('RoleUnavailable');
+    // The RULE is unchanged and is what this case defends: an unreadable
+    // identity store denies, and says it could not decide rather than deciding.
+    // Slice B replaced the gate on this route, so the token it answers with is
+    // that gate's — 'AuthorityUnavailable' where requireCollabRole said
+    // 'RoleUnavailable'. Same status, same refusal, same reason.
+    expect(res.body.error).toBe('AuthorityUnavailable');
   });
 });
