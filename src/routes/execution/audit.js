@@ -32,6 +32,34 @@ export function registerAuditRoute(router) {
         orderBy: { performedAt: 'desc' },
         skip,
         take,
+        // ── THE PROJECTION IS DECLARED, not inherited ───────────────────
+        // This read had no `select`, and Prisma's default projection is every
+        // scalar column. So the response was "whatever AuditLog happens to
+        // hold" — and the day a migration adds a column, that column ships
+        // from this endpoint, with nobody editing the schema having any reason
+        // to open this file.
+        //
+        // The list below is TODAY'S CONTRACT, UNCHANGED. Slice C closes a
+        // widening risk; it does not decide what the audit contract should
+        // contain, so no consumer loses a field it already receives. Narrowing
+        // this — dropping `payload`, say — is a separate product ruling.
+        //
+        // Changing the audit response should now take a decision here, rather
+        // than a migration somewhere else.
+        select: {
+          id:           true,
+          workspaceId:  true,
+          userId:       true,
+          actionId:     true,
+          actionType:   true,
+          targetId:     true,
+          platform:     true,
+          status:       true,
+          payload:      true,
+          response:     true,
+          errorMessage: true,
+          performedAt:  true,
+        },
       });
 
       const total = await prisma.auditLog.count({ where });

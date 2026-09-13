@@ -29,6 +29,13 @@ vi.mock('../../middleware/firebaseAuth.js', () => ({
     req.user = { uid: 'user-1' };
     req.workspaceId = 'ws-111';
     req.userId = 'user-1';
+    // Slice C: the /api/execute mount now applies an authorization baseline to
+    // every route it assembles, so a request needs a ROLE and not only an
+    // identity. This suite is about the route's behaviour, so it seats an
+    // operator explicitly — which it was relying on implicitly before, when the
+    // mount asked nobody. Refusal of a CLIENT is proven in
+    // src/tests/executeMountAuthorization.red.test.js, not here.
+    req.collabRole = 'STRATEGIST';
     next();
   },
 }));
