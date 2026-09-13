@@ -134,14 +134,33 @@ describe('State Transition Matrix', () => {
 });
 
 describe('getAllowedNextStates', () => {
+  // Slice D — TIMED_OUT joins both lists. These two assertions pinned a matrix
+  // in which TIMED_OUT was reachable from EXECUTING ONLY, while TIMEOUT_POLICY
+  // declared a budget for PENDING (5m) and QUEUED (10m) and the PHASE_11B
+  // governance table listed TIMED_OUT as a legal next state for both. A budget
+  // for a state that cannot legally time out is a rule with no way to apply.
+  //
+  // Note what these tests did NOT say: nothing here ever asserted "PENDING must
+  // REJECT TIMED_OUT". The rejection cases beside them name EXECUTING and
+  // EXECUTED_SUCCESS and are untouched. These are exhaustive LISTS, so they
+  // move when the matrix does — the deliberate consequence of the correction,
+  // not an assertion weakened to let an implementation through.
   it('should return correct allowed states for PENDING', () => {
     const allowed = getAllowedNextStates(ExecutionStatus.PENDING);
-    expect(allowed).toEqual([ExecutionStatus.QUEUED, ExecutionStatus.CANCELLED]);
+    expect(allowed).toEqual([
+      ExecutionStatus.QUEUED,
+      ExecutionStatus.TIMED_OUT,
+      ExecutionStatus.CANCELLED,
+    ]);
   });
 
   it('should return correct allowed states for QUEUED', () => {
     const allowed = getAllowedNextStates(ExecutionStatus.QUEUED);
-    expect(allowed).toEqual([ExecutionStatus.EXECUTING, ExecutionStatus.CANCELLED]);
+    expect(allowed).toEqual([
+      ExecutionStatus.EXECUTING,
+      ExecutionStatus.TIMED_OUT,
+      ExecutionStatus.CANCELLED,
+    ]);
   });
 
   it('should return correct allowed states for EXECUTING', () => {

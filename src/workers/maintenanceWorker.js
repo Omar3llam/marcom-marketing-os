@@ -35,10 +35,12 @@ import {
   MAINTENANCE_QUEUE_NAME, AI_USAGE_CLEANUP_JOB, scheduleAiUsageCleanup,
   LEARNING_EXTRACTION_JOB, scheduleLearningExtraction,
   PLAN_CLOSURE_JOB, schedulePlanClosure,
+  EXECUTION_TIMEOUT_JOB, scheduleExecutionTimeout,
 } from '../queues/index.js';
 import { cleanAiUsageLogs } from '../lib/aiUsage.js';
 import { runLearningSweep } from '../services/pattern-engine/learningSweep.js';
 import { runPlanClosureSweep } from '../services/planning/planClosureSweep.js';
+import { runExecutionTimeoutSweep } from '../services/execution/executionTimeoutSweep.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -73,6 +75,16 @@ export async function runMaintenanceJob(job) {
   // goals of a period that finished.
   if (name === PLAN_CLOSURE_JOB) {
     const result = await runPlanClosureSweep();
+    return { job: name, ...result };
+  }
+
+  // Slice D — the execution timeout backstop. Not swallowed either, and for the
+  // sharpest version of the reason: this sweep is the only thing that can move
+  // an execution out of an in-flight state when its next transition never
+  // arrives. A sweep that failed quietly would leave exactly the zombie rows it
+  // exists to resolve, and leave them looking like executions still in progress.
+  if (name === EXECUTION_TIMEOUT_JOB) {
+    const result = await runExecutionTimeoutSweep();
     return { job: name, ...result };
   }
 
@@ -121,6 +133,16 @@ export function startMaintenanceWorker() {
     .then(() => logger.info('[maintenance] plan-closure sweep scheduled'))
     .catch((err) =>
       logger.warn({ err: err.message }, '[maintenance] plan-closure schedule deferred — Redis unreachable?'),
+    );
+
+  // Slice D. Same shape and the same reasoning as the three above, with one
+  // addition: this is the backstop for the execution lifecycle itself, so a
+  // deferred registration is worth seeing in the logs rather than inferring
+  // later from rows that never resolved.
+  scheduleExecutionTimeout()
+    .then(() => logger.info('[maintenance] execution-timeout sweep scheduled'))
+    .catch((err) =>
+      logger.warn({ err: err.message }, '[maintenance] execution-timeout schedule deferred — Redis unreachable?'),
     );
 
   logger.info('[maintenance] worker started');

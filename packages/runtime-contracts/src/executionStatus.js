@@ -73,14 +73,41 @@ export function isFailureState(status) {
  * State Transition Matrix — explicit allowed transitions.
  * Everything not listed here is ILLEGAL. No "best effort" transitions.
  */
+// ── SLICE D — TIMED_OUT was reachable from EXECUTING ONLY ───────────────────
+// Four declarations describe what a timeout is, and this one disagreed with the
+// other three:
+//
+//   PHASE_11B_LIFECYCLE_GOVERNANCE.md  PENDING → QUEUED, TIMED_OUT
+//                                      QUEUED  → EXECUTING, TIMED_OUT, CANCELLED
+//   TIMEOUT_POLICY                     declares a BUDGET for PENDING (5m) and
+//                                      for QUEUED (10m)
+//   isExecutionTimedOut()              returns true for ANY non-terminal status
+//                                      holding a budget
+//   this matrix                        TIMED_OUT only from EXECUTING
+//
+// A budget for a state that cannot legally time out is a rule with no way to
+// apply. The three that agree are also the three a reader would consult, so the
+// matrix is the outlier and is corrected here rather than the policy narrowed.
+//
+// The semantics hold either way: "backend timeout threshold exceeded" is true
+// of an execution nothing ever picked up, and TIMED_OUT is already a FAILURE
+// terminal that retry accepts — which is what makes a stranded execution
+// recoverable instead of merely tidy. CANCELLED would have been the wrong
+// answer: retry.js reads it as "conceptually a re-run", and nothing here was
+// cancelled by anyone.
+//
+// executionLifecycleIntegrity.wiring.test.js now asserts the agreement, so the
+// four declarations cannot drift apart again in silence.
 export const STATE_TRANSITION_MATRIX = Object.freeze({
   [ExecutionStatus.PENDING]: Object.freeze([
     ExecutionStatus.QUEUED,
+    ExecutionStatus.TIMED_OUT,
     ExecutionStatus.CANCELLED,
   ]),
 
   [ExecutionStatus.QUEUED]: Object.freeze([
     ExecutionStatus.EXECUTING,
+    ExecutionStatus.TIMED_OUT,
     ExecutionStatus.CANCELLED,
   ]),
 

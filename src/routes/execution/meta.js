@@ -27,6 +27,9 @@ import { WORKSPACE_ROLE }    from '../../services/collaboration/roleScope.js';
 import { resolveAttribution } from '../../services/execution/decisionAttribution.js';
 import { loadExecutability, NOT_EXECUTABLE } from '../../services/execution/decisionEligibility.js';
 import { validateMutationParams } from '../../services/meta/mutationParams.js';
+// Slice D — one definition of "the job could not be created", shared with the
+// route that already had it.
+import { EXECUTION_ENQUEUE_FAILED } from './retry.js';
 
 const MAX_QUEUE_DEPTH = Number(process.env.MAX_QUEUE_DEPTH || 500);
 
@@ -211,7 +214,7 @@ export function registerMetaRoute(router) {
 
       // Transition PENDING → QUEUED via lifecycle service.
       // Invariant II-3: all state changes go through lifecycleService.
-      await lifecycleService.transition({
+      const queued = await lifecycleService.transition({
         executionId:     executionRequest.id,
         newStatus:       ExecutionStatus.QUEUED,
         expectedVersion: executionRequest.version,
@@ -221,14 +224,67 @@ export function registerMetaRoute(router) {
       });
 
       // Enqueue. jobId = executionId for BullMQ-level deduplication.
-      await enqueueExecution({
-        executionId: executionRequest.id,
-        workspaceId,
-        userId,
-        actionType,
-        targetId,
-        options: options ?? {},
-      });
+      //
+      // ── SLICE D — QUEUED IS A PROMISE THIS ROUTE HAS TO KEEP ──────────────
+      //
+      // The row says QUEUED the moment the transition above lands. If the
+      // enqueue then throws — Redis restarting, a failover, the queue refusing
+      // — nothing will ever run this job, and the row went on saying QUEUED
+      // forever: counted in-flight, not retryable (RETRYABLE_STATUSES is the
+      // failure terminals), and invisible to the stale-PENDING vitals signal,
+      // which watches PENDING and not QUEUED.
+      //
+      // The AuditLog row written by the handler below said FAILED the whole
+      // time. Two records of one event, disagreeing, and only the one nobody
+      // queries was telling the truth.
+      //
+      // `retry.js` has resolved this exact failure since B5-01P′, to CANCELLED
+      // with EXECUTION_ENQUEUE_FAILED, and says why: a caller has to be able to
+      // tell "nothing will run" from "something may already be running". This
+      // is the primary path obeying an invariant the product already had — the
+      // class is imported from there rather than restated, because two copies
+      // of a reason is how the two copies drift apart.
+      //
+      // CANCELLED, not EXECUTED_FAILED: nothing was attempted and Meta refused
+      // nothing. A platform failure written here would put a refusal in the
+      // audit that never happened, and make a retry look like it was retrying
+      // something real.
+      try {
+        await enqueueExecution({
+          executionId: executionRequest.id,
+          workspaceId,
+          userId,
+          actionType,
+          targetId,
+          options: options ?? {},
+        });
+      } catch (enqueueErr) {
+        await lifecycleService.transition({
+          executionId:     executionRequest.id,
+          newStatus:       ExecutionStatus.CANCELLED,
+          expectedVersion: queued.version,
+          actor:           TransitionActor.SYSTEM,
+          correlationId:   executionRequest.correlationId,
+          metadata: {
+            reason: EXECUTION_ENQUEUE_FAILED,
+            auditMetadata: { userId, workspaceId, enqueueError: enqueueErr.message },
+          },
+        }).catch((cancelErr) => {
+          // The row could not be resolved either. Say so loudly: this is the
+          // one case that leaves an execution in-flight, and it must not be
+          // discoverable only by someone noticing a stuck row weeks later.
+          logger.error({
+            executionId: executionRequest.id,
+            enqueueError: enqueueErr.message,
+            cancelError:  cancelErr.message,
+          }, '[ExecutionRouter] enqueue failed AND the execution could not be cancelled — row left in-flight');
+        });
+
+        // Re-thrown so the handler below writes the audit row and answers 500.
+        // The two records now agree: the execution is terminal, the audit says
+        // the request failed.
+        throw enqueueErr;
+      }
 
       logger.info({
         executionId: executionRequest.id, actionType, targetId, workspaceId,

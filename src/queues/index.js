@@ -35,6 +35,10 @@ export const LEARNING_EXTRACTION_JOB = 'learning-extraction';
 // C-18 — administrative closure of plans whose period has ended. Same queue,
 // same defining property: always on, spends nothing. One indexed UPDATE.
 export const PLAN_CLOSURE_JOB = 'plan-closure';
+// Slice D — the declared execution timeout policy, applied. Same queue, same
+// property: always on, spends nothing. It writes no status directly; it hands
+// each candidate to lifecycleService.timeout().
+export const EXECUTION_TIMEOUT_JOB = 'execution-timeout';
 
 const queueOpts = {
   connection: bullConnection,
@@ -278,6 +282,44 @@ export async function schedulePlanClosure() {
     {},
     {
       jobId:  PLAN_CLOSURE_JOB,
+      repeat: { pattern: cron },
+    },
+  );
+}
+
+// ── Helper: schedule the execution timeout sweep (Slice D) ───
+// ALWAYS ON, for the same reason as its two neighbours above: this sweep is the
+// ONLY thing that can move an execution out of an in-flight state when its next
+// transition never comes, and an opt-in backstop is a backstop nobody enables.
+// It spends nothing — no AI gateway, no platform call, one indexed query per
+// in-flight status.
+//
+// Every minute by default. The tightest budget in TIMEOUT_POLICY is EXECUTING
+// at two minutes, so a minute-granular sweep resolves a zombie well inside the
+// window an operator would be watching, and anything coarser would let the
+// tightest budget drift by a multiple of itself.
+//
+// Re-registers rather than adding, so a changed cron REPLACES the schedule
+// instead of running beside it — BullMQ repeatables persist in Redis keyed by
+// their pattern, the hazard unscheduleAgenticSweep exists to handle.
+export async function scheduleExecutionTimeout() {
+  if (!maintenanceQueue) {
+    throw new Error('Queue subsystem unavailable — set REDIS_URL to a real Redis instance');
+  }
+  const cron = process.env.EXECUTION_TIMEOUT_CRON || '* * * * *';
+
+  const existing = await maintenanceQueue.getRepeatableJobs();
+  for (const j of existing) {
+    if (j.id === EXECUTION_TIMEOUT_JOB) {
+      await maintenanceQueue.removeRepeatableByKey(j.key);
+    }
+  }
+
+  await maintenanceQueue.add(
+    EXECUTION_TIMEOUT_JOB,
+    {},
+    {
+      jobId:  EXECUTION_TIMEOUT_JOB,
       repeat: { pattern: cron },
     },
   );
