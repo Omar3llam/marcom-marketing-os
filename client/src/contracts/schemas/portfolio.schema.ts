@@ -24,6 +24,23 @@ export const PortfolioTotalsSchema = z.object({
   unverifiedCount: z.number().int(),
 });
 
+/**
+ * What a spend-to-budget comparison was allowed to use — or why it was refused.
+ * Mirrors src/services/budget-period/spendPeriod.js.
+ *
+ * `status` and `reason` are strings, not enums, on purpose: B8-01 measured that
+ * a strict enum kills the WHOLE surface on one unknown value. A refusal the
+ * client cannot name must still reach the operator as a refusal.
+ */
+export const SpendPeriodSchema = z.object({
+  status: z.string(),
+  reason: z.string().nullable(),
+  period: z.object({ start: z.string(), end: z.string() }),
+  window: z.object({ start: z.string(), end: z.string() }).nullable(),
+  daysCovered: z.number().int().nullable(),
+  spendMinor: z.number().int().nullable(),
+});
+
 export const PortfolioChannelSchema = BlendedChannelSchema.extend({
   pacing: PacingSchema.nullable(),
 });
@@ -34,8 +51,12 @@ export const PortfolioViewSchema = z.object({
   monthlyBudgetMinor: z.number().int().nullable(),
   totals: PortfolioTotalsSchema.nullable(),
   pacing: PacingSchema.nullable(),
+  // Optional: a server older than the spend-window slice does not send it.
+  spendPeriod: SpendPeriodSchema.nullish(),
   channels: z.array(PortfolioChannelSchema),
 });
+
+export type SpendPeriod = z.infer<typeof SpendPeriodSchema>;
 
 export type PortfolioTotals = z.infer<typeof PortfolioTotalsSchema>;
 export type PortfolioChannel = z.infer<typeof PortfolioChannelSchema>;

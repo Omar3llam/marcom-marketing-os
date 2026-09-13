@@ -23,6 +23,9 @@ import { allocate, GOAL_TYPE } from './allocationEngine.js';
 import { getBlendedTruth }     from '../blended-truth/BlendedTruthService.js';
 import { DECISION_CLASS }      from '@marcom/runtime-contracts';
 import { scopeFor }            from '../decisions/decisionClassScope.js';
+import {
+  readPeriodSpend, calendarMonthOf, PERIOD_COVERAGE, SPEND_PERIOD_STATUS, SPEND_PERIOD_REASON,
+} from '../budget-period/spendPeriod.js';
 
 const ALLOC_ROOT_PREFIX = 'allocation:';
 
@@ -32,14 +35,21 @@ const ALLOC_ROOT_PREFIX = 'allocation:';
  * account/campaign-level, so the REALLOCATE_BUDGET target level is CAMPAIGN.
  * Exported for unit testing without a DB.
  *
- * @param {object} plan — allocationEngine.allocate() output
+ * ONLY A MEASURED MOVE IS A MOVE. The filter used to be `deltaMinor !== 0`,
+ * which a null passes — and every mix persisted before spend periods existed
+ * carries numeric deltas computed against whatever window the last sync had
+ * fetched. So a plan must say its spend period was MEASURABLE, and each move
+ * must carry a real number, before anything becomes a Decision.
+ *
+ * @param {object} plan — a previewAllocation() result (carries `spendPeriod`)
  * @param {object} ctx — { workspaceId, planId }
  * @returns {Array<object>} Decision createMany rows
  */
 export function planToDecisionRows(plan, { workspaceId, planId }) {
   if (!workspaceId) throw new Error('planToDecisionRows: workspaceId required');
-  return plan.allocations
-    .filter((a) => a.deltaMinor !== 0)
+  if (plan?.spendPeriod?.status !== SPEND_PERIOD_STATUS.MEASURABLE) return [];
+  return (plan.allocations ?? [])
+    .filter((a) => Number.isFinite(a.deltaMinor) && a.deltaMinor !== 0)
     .map((a) => ({
       workspaceId,
       entityId:    a.channelId,
@@ -141,14 +151,79 @@ async function buildIncrementalChannels(workspaceId) {
  * @param {object} [opts] — { totalBudgetMinor, goal, basis: 'blended'|'incremental' }
  * @returns {Promise<object|null>} the plan, or null if no channels
  */
-export async function previewAllocation(workspaceId, { totalBudgetMinor, goal, basis = 'blended' } = {}) {
+export async function previewAllocation(workspaceId, {
+  totalBudgetMinor, goal, basis = 'blended', period = null, now = new Date(),
+} = {}) {
   if (!workspaceId) throw new Error('previewAllocation: workspaceId required');
   const channels = basis === 'incremental'
     ? await buildIncrementalChannels(workspaceId)
     : await buildChannels(workspaceId);
   if (channels.length === 0) return null;
-  const plan = allocate({ totalBudgetMinor, goal: goal ?? { type: GOAL_TYPE.GROWTH_CEILING }, channels });
-  return { ...plan, basis };
+  const resolvedGoal = goal ?? { type: GOAL_TYPE.GROWTH_CEILING };
+
+  // ── The period this budget governs, and the spend measured over it ──────
+  //
+  // Every number an allocation produces — the move cap, the target split, the
+  // delta, the projection — is computed from `currentSpendMinor`. That used to
+  // be the blended total for whatever window the last sync fetched, so two
+  // identical channels spending exactly on budget were told "Trim a by 60000".
+  //
+  // A plan names its own period; the monthly cap governs the calendar month.
+  // Only spend whose DECLARED window is that whole period may size a move.
+  const governed = period ?? calendarMonthOf(now);
+  const spend = await readPeriodSpend(workspaceId, {
+    period: governed, coverage: PERIOD_COVERAGE.COMPLETE, now,
+  });
+  const unmeasured = spend.portfolio.status !== SPEND_PERIOD_STATUS.MEASURABLE
+    || channels.some((c) => !spend.byEntity.has(c.channelId));
+  if (unmeasured) {
+    const spendPeriod = spend.portfolio.status === SPEND_PERIOD_STATUS.MEASURABLE
+      // Measured overall, but a channel in the mix holds no platform spend row
+      // for the period — its current spend is unknown, not zero.
+      ? { ...spend.portfolio, status: SPEND_PERIOD_STATUS.NOT_MEASURABLE, reason: SPEND_PERIOD_REASON.NO_SPEND_ROWS, daysCovered: null, spendMinor: null }
+      : spend.portfolio;
+    return unmeasuredAllocation({ totalBudgetMinor, goal: resolvedGoal, channels, basis, spendPeriod });
+  }
+
+  const measured = channels.map((c) => ({ ...c, currentSpendMinor: spend.byEntity.get(c.channelId) }));
+  const plan = allocate({ totalBudgetMinor, goal: resolvedGoal, channels: measured });
+  return { ...plan, basis, spendPeriod: spend.portfolio };
+}
+
+/**
+ * PURE: the answer when no move can be sized. Still an answer — never null,
+ * which already means "no connected channels". The budget is kept exactly as
+ * entered, because refusing to size moves is not a reason to lose the budget.
+ */
+function unmeasuredAllocation({ totalBudgetMinor, goal, channels, basis, spendPeriod }) {
+  if (!Number.isFinite(totalBudgetMinor) || totalBudgetMinor <= 0) {
+    throw new Error('allocate: totalBudgetMinor must be a positive finite number');
+  }
+  if ((goal?.type ?? GOAL_TYPE.GROWTH_CEILING) !== GOAL_TYPE.GROWTH_CEILING) {
+    throw new Error(`allocate: unsupported goal type "${goal.type}" (only GROWTH_CEILING is implemented)`);
+  }
+  const { start, end } = spendPeriod.period;
+  return {
+    goal: { type: goal?.type ?? GOAL_TYPE.GROWTH_CEILING, value: goal?.value ?? null },
+    totalBudgetMinor,
+    currency: channels.find((c) => c.currency)?.currency ?? 'USD',
+    basis,
+    spendPeriod,
+    allocations: channels.map((c) => ({
+      channelId: c.channelId,
+      channel: c.channel ?? null,
+      verdict: c.verdict ?? 'HOLD',
+      blendedRoas: c.blendedRoas,
+      currentSpendMinor: null,
+      recommendedSpendMinor: null,
+      deltaMinor: null,
+      rationale: `No move sized for ${c.channel ?? c.channelId}: its spend over ${start} – ${end} is not measured.`,
+    })),
+    projected: { blendedRevenueMinor: null, projectedCpaMinor: null, merBefore: null, merAfter: null },
+    reasoningTrail: [
+      `Budget recorded for ${start} – ${end}. No move is sized, because spend over that period is not measurable (${spendPeriod.reason}).`,
+    ],
+  };
 }
 
 /**
@@ -198,9 +273,9 @@ export async function persistAllocation(db, workspaceId, plan) {
  * Commit — preview against current truth, then persist.
  * @returns {Promise<{ planId, decisionsCreated }>}
  */
-export async function commitAllocation(workspaceId, { totalBudgetMinor, goal } = {}) {
+export async function commitAllocation(workspaceId, { totalBudgetMinor, goal, now = new Date() } = {}) {
   if (!workspaceId) throw new Error('commitAllocation: workspaceId required');
-  const plan = await previewAllocation(workspaceId, { totalBudgetMinor, goal });
+  const plan = await previewAllocation(workspaceId, { totalBudgetMinor, goal, now });
   if (!plan) throw new Error('commitAllocation: no channels to allocate');
 
   const { allocationPlanId, decisionsCreated } = await persistAllocation(prisma, workspaceId, plan);

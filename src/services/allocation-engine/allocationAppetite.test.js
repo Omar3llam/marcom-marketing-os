@@ -37,7 +37,19 @@ vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: { decision: { findMany: (...a) => findMany(...a) } } }));
-vi.mock('../blended-truth/BlendedTruthService.js', () => ({
+// Spend-window slice: previewAllocation now reads the period's spend through
+// spendPeriod, which uses BlendedTruth's own latestPerStream — so the real module
+// is kept and only getBlendedTruth is replaced. The appetite gate is exercised on
+// a MEASURED period, because an unmeasured one sizes nothing at all.
+vi.mock('../budget-period/spendPeriod.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  readPeriodSpend: vi.fn(async (_workspaceId, { period } = {}) => ({
+    portfolio: { status: 'MEASURABLE', reason: null, period, window: period, daysCovered: 31, spendMinor: 1_000_000 },
+    byEntity: new Map([['camp-a', 500_000], ['camp-b', 500_000]]),
+  })),
+}));
+vi.mock('../blended-truth/BlendedTruthService.js', async (importOriginal) => ({
+  ...(await importOriginal()),
   getBlendedTruth: vi.fn(async () => ({
     channels: [
       { channelId: 'camp-a', channel: 'META',   blendedRoas: 3.0, spendMinor: 500_000, blendedRevenueMinor: 1_500_000, currency: 'USD' },

@@ -27,8 +27,9 @@ import { TEMPORAL } from '../../config/temporal.js';
 import { ENTITY_LEVEL } from '../connectors/connectorTypes.js';
 import { selectOperationalSnapshots } from '../evidence/index.js';
 import { PROMOTION_OUTCOME } from '@marcom/runtime-contracts';
+import { periodBetween } from '../budget-period/spendPeriod.js';
 import {
-  captureMixSnapshot, planToAllocationCommit, hasBudgetMoves,
+  captureMixSnapshot, planToAllocationCommit, hasBudgetMoves, budgetMovesAreMeasured,
   refusePromotion, PROMOTION_REFUSAL,
 } from './planPromotionSnapshot.js';
 
@@ -263,7 +264,12 @@ export async function buildPlan(workspaceId, { name, periodStart, periodEnd, tot
 
   // ── Assemble (all reads, delegated to the engines/services) ──
   const [mix, agenda, scenario] = await Promise.all([
-    previewAllocation(workspaceId, { totalBudgetMinor, goal: { type: GOAL_TYPE.GROWTH_CEILING } }),
+    // The plan's OWN period is the one its budget governs — so it is the only
+    // period its moves may be sized against (spendPeriod.js).
+    previewAllocation(workspaceId, {
+      totalBudgetMinor, goal: { type: GOAL_TYPE.GROWTH_CEILING },
+      period: periodBetween(periodStart, periodEnd), now,
+    }),
     getWeeklyAgenda(workspaceId).then((a) => a.slice(0, AGENDA_LIMIT)).catch(() => []),
     change ? runScenario(workspaceId, { change, now }) : Promise.resolve(null),
   ]);
@@ -450,7 +456,13 @@ export async function promotePlanMix(workspaceId, planId, { promotedById = null,
     return persisted;
   });
 
-  const outcome = moves ? PROMOTION_OUTCOME.PROMOTED : PROMOTION_OUTCOME.PROMOTED_WITH_NO_MOVES;
+  // Three outcomes, not two. "Nothing was asked for" and "nothing could be
+  // sized" both stage zero moves; only the first may say the mix matches spend.
+  const outcome = moves
+    ? PROMOTION_OUTCOME.PROMOTED
+    : budgetMovesAreMeasured(commit)
+      ? PROMOTION_OUTCOME.PROMOTED_WITH_NO_MOVES
+      : PROMOTION_OUTCOME.PROMOTED_MOVES_NOT_MEASURABLE;
   logger.info({ workspaceId, planId: plan.id, ...result, outcome }, '[PlanService] mix promoted');
   return { planId: plan.id, ...result, outcome, promotedAt: now };
 }

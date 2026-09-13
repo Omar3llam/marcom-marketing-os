@@ -45,6 +45,17 @@ export const PROMOTION_OUTCOME = Object.freeze({
    * does not exist.
    */
   PROMOTED_WITH_NO_MOVES: 'PROMOTED_WITH_NO_MOVES',
+  /**
+   * The plan is in force, and NO move was staged because none was measured: the
+   * spend its mix was sized against does not cover the plan's own period (or
+   * the mix predates spend periods being recorded at all).
+   *
+   * Not PROMOTED_WITH_NO_MOVES. That outcome tells the operator their mix
+   * "already matches what you are spending" — a claim about spend nobody
+   * measured. Zero moves because nothing was asked for, and zero moves because
+   * nothing could be sized, are two different things that happened.
+   */
+  PROMOTED_MOVES_NOT_MEASURABLE: 'PROMOTED_MOVES_NOT_MEASURABLE',
   /** This plan was already promoted. Nothing was created by this call. */
   ALREADY_PROMOTED: 'ALREADY_PROMOTED',
 });

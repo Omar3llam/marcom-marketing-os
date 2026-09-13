@@ -48,8 +48,12 @@ const WS = 'workspace-1';
 const ACTOR = '11111111-1111-1111-1111-111111111111';
 const NOW = new Date('2026-09-04T10:00:00.000Z');
 
+// Spend-window slice: promotion stages moves only from a mix whose spend period
+// was MEASURABLE. These C-18 rulings are about a measured mix; the unmeasured
+// and legacy cases are pinned in src/tests/spendWindowIntegrity.promotion.red.test.js.
 const mixPreview = (deltas = [200_000, -200_000]) => ({
   goal: { type: 'GROWTH_CEILING', value: null },
+  spendPeriod: { status: 'MEASURABLE', reason: null, period: { start: '2026-08-01', end: '2026-08-31' } },
   totalBudgetMinor: 1_000_000,
   currency: 'USD',
   allocations: deltas.map((d, i) => ({

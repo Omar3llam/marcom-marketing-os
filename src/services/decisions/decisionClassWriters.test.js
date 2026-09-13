@@ -22,13 +22,19 @@ import { DECISION_CLASS } from '@marcom/runtime-contracts';
 import { planToDecisionRows } from '../allocation-engine/AllocationService.js';
 import { allocate, GOAL_TYPE } from '../allocation-engine/allocationEngine.js';
 
-const plan = () => allocate({
+// Spend-window slice: a move is a Decision only when the plan says its spend
+// period was MEASURABLE. This fixture is a measured plan; the refusal side is
+// pinned in src/tests/spendWindowIntegrity.allocation.red.test.js.
+const plan = () => ({
+  spendPeriod: { status: 'MEASURABLE', reason: null, period: { start: '2026-08-01', end: '2026-08-31' } },
+  ...allocate({
   totalBudgetMinor: 1_000_000,
   goal: { type: GOAL_TYPE.GROWTH_CEILING },
   channels: [
     { channelId: 'camp-a', blendedRoas: 3.2, currentSpendMinor: 400_000, verdict: 'SCALE' },
     { channelId: 'camp-b', blendedRoas: 0.8, currentSpendMinor: 600_000, verdict: 'KILL' },
   ],
+  }),
 });
 
 describe('T1 — AllocationService declares ALLOCATION on every row it mints', () => {

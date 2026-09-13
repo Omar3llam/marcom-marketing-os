@@ -57,7 +57,6 @@ const AGENTIC_CRON_MS = Number(process.env.LOOP_INTERVAL_MS || 15 * 60 * 1000);
 // persisted, counted as connector-authored everywhere else, and invisible here.
 // A second copy of a taxonomy cannot be kept in step by discipline alone.
 
-/** Flatten portfolio pacing into the planner's pacing[] shape. */
 /**
  * Pure: the plan in force, or nothing. Exported for unit testing without a DB.
  *
@@ -77,7 +76,14 @@ export function activePlanOf(plans) {
   return (plans ?? []).find((p) => p?.status === 'ACTIVE') ?? null;
 }
 
-function pacingFromPortfolio(portfolio) {
+/**
+ * Flatten portfolio pacing into the planner's pacing[] shape.
+ *
+ * Exported so the spend-window suite tests THIS function and not a copy of it:
+ * Attention's over-pacing alarm is only as honest as this seam, and a copy in a
+ * test file cannot notice the day the original changes.
+ */
+export function pacingFromPortfolio(portfolio) {
   const out = [];
   if (portfolio?.pacing?.status && portfolio.pacing.status !== 'ON_TRACK') {
     out.push({ channelId: 'portfolio', channel: 'Portfolio', status: portfolio.pacing.status, daysEarly: portfolio.pacing.daysEarly });

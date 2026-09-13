@@ -17,12 +17,18 @@ import {
   isPromotionOutcome,
 } from './promotionOutcome.js';
 
-describe('the three outcomes of a promotion', () => {
-  it('names exactly three, and no more', () => {
-    expect(PROMOTION_OUTCOME_VALUES).toHaveLength(3);
+describe('the four outcomes of a promotion', () => {
+  // Three at C-18. The spend-window slice added the fourth: moves that were
+  // never measured are not moves that were not needed.
+  it('names exactly four, and no more', () => {
+    expect(PROMOTION_OUTCOME_VALUES).toHaveLength(4);
     expect([...PROMOTION_OUTCOME_VALUES].sort()).toEqual([
-      'ALREADY_PROMOTED', 'PROMOTED', 'PROMOTED_WITH_NO_MOVES',
+      'ALREADY_PROMOTED', 'PROMOTED', 'PROMOTED_MOVES_NOT_MEASURABLE', 'PROMOTED_WITH_NO_MOVES',
     ]);
+  });
+
+  it('separates "nothing was asked for" from "nothing could be sized"', () => {
+    expect(PROMOTION_OUTCOME.PROMOTED_MOVES_NOT_MEASURABLE).not.toBe(PROMOTION_OUTCOME.PROMOTED_WITH_NO_MOVES);
   });
 
   it('separates "promoted, and it asked for nothing" from "promoted, with moves"', () => {
