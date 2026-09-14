@@ -44,10 +44,18 @@ Appendix A); never resolve it silently.
   `client/design-system/*.md`, `client/src/components/{ASSEMBLY-*,primitives/PRIMITIVE-FREEZE}.md`,
   `client/{DESIGN-SYSTEM-REFACTOR,MIGRATION-MAP}.md`, `design-system-figma/` and
   `MARCOM-ARCHITECTURE.md` §3C / §13. The full list is in `design-governance/README.md` §4.
-- **Historical token files are not current token authority.**
-  `client/design-system/tokens/*.json` still calls itself "Source of Truth". That
-  describes the legacy implementation Tailwind reads today, not LUMI's design. New
-  token values come only from Phase 2 under `DESIGN_TOKEN_ARCHITECTURE.md`.
+- **The current token implementation authority is `client/design-system/foundation/`**
+  (Phase 2, 2026-09-14): the source files `tokens/{brand,primitive,semantic,component}.json`,
+  built to `generated/tokens.css` (`--lumi-*` variables) and checked by
+  `npm run tokens:check --workspace client`. Architecture: `DESIGN_TOKEN_ARCHITECTURE.md`.
+  New token values come only from that source.
+- **Legacy token files are not the token source of truth.**
+  `client/design-system/tokens/*.json` (and the legacy `:root` variables in
+  `client/src/index.css`) are legacy inputs that the existing UI still renders
+  with during migration. Their headers say LEGACY. They are not deleted, and their
+  values are not changed. Every entry's disposition is in
+  `client/design-system/foundation/LEGACY_TOKEN_MIGRATION.md`; **migration is not
+  complete**.
 - **`TAXONOMY-FREEZE.md` is historical and superseded** wherever it conflicts with
   `design-governance/`.
 - **Never infer a current design decision from the legacy implementation.** An
@@ -62,23 +70,27 @@ Appendix A); never resolve it silently.
 - **Phase gating.** Do not start a design phase (tokens, primitives, surfaces)
   without its gate in `design-governance/REVIEW_GATE.md`.
 
-### Enforcement mechanisms still in force (legacy implementation, until Phase 2 re-points them)
+### Enforcement mechanisms in force
 
 | Mechanism | Path | Run by |
 |---|---|---|
+| Token **rules** (layers, naming, contrast pairs, states, motion) — implemented in Phase 2 | `client/design-system/foundation/{resolve,build}.js`, `tokens.test.js` | `npm run tokens:check --workspace client` · client vitest |
 | Token **discipline** | `client/design-system/lint/no-generic-tailwind.js` | `npm run lint:ci --workspace client` |
 | Token **existence** | `client/scripts/checkTokenResolution.js` | `npm run check:tokens --workspace client`, after a build |
 | State grammar (locked, B8) | `client/src/design-system/states/{absence,confidence}.js`, `patterns/DetailGrammar.jsx` | tests |
 
-The two enforcement rows ask **different questions and both are needed**:
+The discipline and existence rows ask **different questions and both are needed**:
 
 - the linter asks *"is this class forbidden?"*;
 - the resolver asks *"does this class exist?"*.
 
 A denylist cannot answer the second. That is how 60 undefined colour classes
-reached 180 call sites while CI stayed green. Both mechanisms currently check the
-**legacy** token names. They are kept as mechanisms and re-pointed in Phase 2.
-They are not design authority.
+reached 180 call sites while CI stayed green. Both still check the **legacy**
+class names, because the existing UI is written in them and no component consumes
+the new `--lumi-*` tokens yet. They are kept as mechanisms and are re-pointed when
+the first surface consumes the new tokens. Phase 3 decides how primitives consume
+the token system (`DESIGN_TOKEN_ARCHITECTURE.md` §13, §15). Neither is design
+authority.
 
 `MARCOM-DESIGN-BIBLE.md` has never existed in this repository. Any reference to
 it is stale.
@@ -128,7 +140,7 @@ prisma/schema.prisma       → Database schema (source of truth for models)
 
 **API calls:**     `api.get`/`post` via `client/src/lib/api.js` ONLY  
 **State:**         `useState` / `useReducer` / Context ONLY (no Redux/Zustand)  
-**Styling:**       Semantic tokens only, no raw hex and no `bg-gray-*`. Existing code uses the legacy `design-system/tokens/` names until Phase 2; new design values come only from `DESIGN_TOKEN_ARCHITECTURE.md` (see Authority)  
+**Styling:**       Semantic tokens only, no raw hex and no `bg-gray-*`. Existing code still uses the legacy `design-system/tokens/` names until its surface migrates; new design values come only from `client/design-system/foundation/tokens/` (see Authority)  
 **AI calls:**      `src/agents/orchestrator.js` ONLY (not `services/orchestrator.js`)  
 **Sessions:**      `src/utils/sessionStore.js` (active sessions, `master.js`)  
 **Memory:**        `src/utils/memoryStore.js` (Anthropic Memory API, `lumi.js`)  

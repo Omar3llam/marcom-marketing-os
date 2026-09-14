@@ -1,5 +1,6 @@
 {
-  "_comment": "MARCOM Design Token Source of Truth — Spacing",
+  "_comment": "LEGACY — MARCOM implementation spacing, radius and shadow tokens. Not the current token authority (Phase 2, 2026-09-14). Tailwind still reads borderRadius and shadows for the existing UI; change no value. Disposition of every entry: client/design-system/foundation/LEGACY_TOKEN_MIGRATION.md.",
+  "_authority": "client/design-system/foundation/tokens/",
   "_version": "1.0.0",
   "_philosophy": "Every level maps to a cognitive unit in the decision UX.",
 

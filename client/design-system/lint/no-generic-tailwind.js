@@ -3,7 +3,9 @@
 // no-generic-tailwind
 // ============================================================
 // Prevents generic Tailwind utilities from appearing in JSX.
-// Enforces semantic token usage from the Design Bible.
+// Enforces the LEGACY token names the existing UI uses. (The "Design Bible"
+// this line once cited never existed.) Current token authority:
+// client/design-system/foundation/tokens/ — see DESIGN_TOKEN_ARCHITECTURE.md.
 //
 // FAILS on:
 //   bg-gray-*, text-gray-*, border-gray-*

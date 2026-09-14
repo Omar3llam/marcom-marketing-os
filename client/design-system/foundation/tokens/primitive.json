@@ -1,0 +1,161 @@
+{
+  "$layer": "primitive",
+  "$description": "LAYER 2 — PRIMITIVE. Context-free raw values and small closed scales. A primitive is a literal, or is derived from a brand NEUTRAL (charcoal, offWhite, warmGray) or a brand typeface. A primitive never references brand gold. The six verdict primitives are literal and locked (PR-6), so no brand change can move a verdict. Primitive tokens are never emitted as CSS variables and never consumed by components. Every primitive must be referenced by at least one semantic token. 'Primitive token' means a raw scale value; it is unrelated to the Phase 3 primitive COMPONENTS.",
+  "primitive": {
+    "color": {
+      "kill":       { "$type": "color", "$value": "#C74646", "$description": "Locked KILL value (PR-6)." },
+      "hold":       { "$type": "color", "$value": "#D97732", "$description": "Locked HOLD value (PR-6)." },
+      "scale":      { "$type": "color", "$value": "#3D9B6D", "$description": "Locked SCALE value (PR-6)." },
+      "watch":      { "$type": "color", "$value": "#3B82F6", "$description": "Locked WATCH value (PR-6)." },
+      "refresh":    { "$type": "color", "$value": "#B7791F", "$description": "Locked REFRESH value (PR-6)." },
+      "reallocate": { "$type": "color", "$value": "#D4A017", "$description": "Locked REALLOCATE value (PR-6). Equal in VALUE to brand.color.gold and declared separately on purpose (FC-2): it is a literal, not a reference to brand." },
+
+      "light": {
+        "$description": "Steps of light on Charcoal: Off White composited at n% over Charcoal and emitted as a solid colour (Constitution Article 11). No grey has an identity of its own. The ladder is closed; every step is used.",
+        "0":   { "$type": "color", "$value": { "$mix": "{brand.color.offWhite}", "$over": "{brand.color.charcoal}", "$alpha": 0 } },
+        "4":   { "$type": "color", "$value": { "$mix": "{brand.color.offWhite}", "$over": "{brand.color.charcoal}", "$alpha": 0.04 } },
+        "6":   { "$type": "color", "$value": { "$mix": "{brand.color.offWhite}", "$over": "{brand.color.charcoal}", "$alpha": 0.06 } },
+        "8":   { "$type": "color", "$value": { "$mix": "{brand.color.offWhite}", "$over": "{brand.color.charcoal}", "$alpha": 0.08 } },
+        "10":  { "$type": "color", "$value": { "$mix": "{brand.color.offWhite}", "$over": "{brand.color.charcoal}", "$alpha": 0.10 } },
+        "12":  { "$type": "color", "$value": { "$mix": "{brand.color.offWhite}", "$over": "{brand.color.charcoal}", "$alpha": 0.12 } },
+        "20":  { "$type": "color", "$value": { "$mix": "{brand.color.offWhite}", "$over": "{brand.color.charcoal}", "$alpha": 0.20 } },
+        "44":  { "$type": "color", "$value": { "$mix": "{brand.color.offWhite}", "$over": "{brand.color.charcoal}", "$alpha": 0.44 } },
+        "60":  { "$type": "color", "$value": { "$mix": "{brand.color.offWhite}", "$over": "{brand.color.charcoal}", "$alpha": 0.60 } },
+        "80":  { "$type": "color", "$value": { "$mix": "{brand.color.offWhite}", "$over": "{brand.color.charcoal}", "$alpha": 0.80 } },
+        "100": { "$type": "color", "$value": { "$mix": "{brand.color.offWhite}", "$over": "{brand.color.charcoal}", "$alpha": 1 } }
+      },
+
+      "shade": {
+        "$description": "Steps of shade on Off White: Charcoal composited at n% over Off White and emitted as a solid colour. The ladder is closed; every step is used.",
+        "0":   { "$type": "color", "$value": { "$mix": "{brand.color.charcoal}", "$over": "{brand.color.offWhite}", "$alpha": 0 } },
+        "6":   { "$type": "color", "$value": { "$mix": "{brand.color.charcoal}", "$over": "{brand.color.offWhite}", "$alpha": 0.06 } },
+        "8":   { "$type": "color", "$value": { "$mix": "{brand.color.charcoal}", "$over": "{brand.color.offWhite}", "$alpha": 0.08 } },
+        "10":  { "$type": "color", "$value": { "$mix": "{brand.color.charcoal}", "$over": "{brand.color.offWhite}", "$alpha": 0.10 } },
+        "12":  { "$type": "color", "$value": { "$mix": "{brand.color.charcoal}", "$over": "{brand.color.offWhite}", "$alpha": 0.12 } },
+        "20":  { "$type": "color", "$value": { "$mix": "{brand.color.charcoal}", "$over": "{brand.color.offWhite}", "$alpha": 0.20 } },
+        "52":  { "$type": "color", "$value": { "$mix": "{brand.color.charcoal}", "$over": "{brand.color.offWhite}", "$alpha": 0.52 } },
+        "68":  { "$type": "color", "$value": { "$mix": "{brand.color.charcoal}", "$over": "{brand.color.offWhite}", "$alpha": 0.68 } },
+        "84":  { "$type": "color", "$value": { "$mix": "{brand.color.charcoal}", "$over": "{brand.color.offWhite}", "$alpha": 0.84 } },
+        "100": { "$type": "color", "$value": { "$mix": "{brand.color.charcoal}", "$over": "{brand.color.offWhite}", "$alpha": 1 } }
+      },
+
+      "warm": {
+        "$description": "Warm Gray on Off White. One step: the structural background of marketing pages.",
+        "100": { "$type": "color", "$value": { "$mix": "{brand.color.warmGray}", "$over": "{brand.color.offWhite}", "$alpha": 1 } }
+      },
+
+      "shadow": {
+        "$description": "The only translucent colour in the system. It exists solely for the one functional overlay shadow (Constitution Article 18). It is not a glow.",
+        "24": { "$type": "color", "$value": { "$mix": "{brand.color.charcoal}", "$alpha": 0.24, "$translucent": true } }
+      }
+    },
+
+    "font": {
+      "stack": {
+        "$description": "Brand typeface plus platform fallbacks. Arabic account data (campaign names) is covered by per-glyph fallback to the platform system-ui / sans-serif / monospace faces; no fourth typeface is shipped (Constitution Article 20 §7; Phase 2 spec §6).",
+        "display": { "$type": "fontFamily", "$value": { "$stack": ["{brand.font.display}", "system-ui", "sans-serif"] } },
+        "ui":      { "$type": "fontFamily", "$value": { "$stack": ["{brand.font.ui}", "system-ui", "sans-serif"] } },
+        "data":    { "$type": "fontFamily", "$value": { "$stack": ["{brand.font.data}", "ui-monospace", "monospace"] } }
+      }
+    },
+
+    "fontSize": {
+      "$description": "Closed type-size scale in CSS px. The legibility floor is 12 (Constitution Article 20 §5).",
+      "12": { "$type": "dimension", "$value": "12px" },
+      "14": { "$type": "dimension", "$value": "14px" },
+      "16": { "$type": "dimension", "$value": "16px" },
+      "20": { "$type": "dimension", "$value": "20px" },
+      "24": { "$type": "dimension", "$value": "24px" },
+      "48": { "$type": "dimension", "$value": "48px" }
+    },
+
+    "lineHeight": {
+      "$description": "Line heights on the 4px grid, one per type size.",
+      "16": { "$type": "dimension", "$value": "16px" },
+      "20": { "$type": "dimension", "$value": "20px" },
+      "24": { "$type": "dimension", "$value": "24px" },
+      "28": { "$type": "dimension", "$value": "28px" },
+      "32": { "$type": "dimension", "$value": "32px" },
+      "56": { "$type": "dimension", "$value": "56px" }
+    },
+
+    "fontWeight": {
+      "$description": "The only weights the type roles use. Each is already shipped by client/src/main.jsx (Inter 400/500/600, Space Grotesk 600, JetBrains Mono 400/500).",
+      "400": { "$type": "fontWeight", "$value": 400 },
+      "500": { "$type": "fontWeight", "$value": 500 },
+      "600": { "$type": "fontWeight", "$value": 600 }
+    },
+
+    "letterSpacing": {
+      "tight":  { "$type": "dimension", "$value": "-0.02em" },
+      "snug":   { "$type": "dimension", "$value": "-0.01em" },
+      "normal": { "$type": "dimension", "$value": "0em" }
+    },
+
+    "numeric": {
+      "tabular": { "$type": "fontVariantNumeric", "$value": "tabular-nums" }
+    },
+
+    "space": {
+      "$description": "Spacing scale on a 4px base. The five relational tiers double (4 · 8 · 16 · 32 · 64); 24 exists only for the tablet layout gutter.",
+      "4":  { "$type": "dimension", "$value": "4px" },
+      "8":  { "$type": "dimension", "$value": "8px" },
+      "16": { "$type": "dimension", "$value": "16px" },
+      "24": { "$type": "dimension", "$value": "24px" },
+      "32": { "$type": "dimension", "$value": "32px" },
+      "64": { "$type": "dimension", "$value": "64px" }
+    },
+
+    "size": {
+      "$description": "Fixed sizes: icon ladder, target sizes and content widths.",
+      "16":   { "$type": "dimension", "$value": "16px" },
+      "20":   { "$type": "dimension", "$value": "20px" },
+      "24":   { "$type": "dimension", "$value": "24px" },
+      "44":   { "$type": "dimension", "$value": "44px" },
+      "360":  { "$type": "dimension", "$value": "360px" },
+      "640":  { "$type": "dimension", "$value": "640px" },
+      "1280": { "$type": "dimension", "$value": "1280px" }
+    },
+
+    "borderWidth": {
+      "1": { "$type": "dimension", "$value": "1px" },
+      "2": { "$type": "dimension", "$value": "2px" }
+    },
+
+    "radius": {
+      "0":    { "$type": "dimension", "$value": "0px" },
+      "2":    { "$type": "dimension", "$value": "2px" },
+      "4":    { "$type": "dimension", "$value": "4px" },
+      "full": { "$type": "dimension", "$value": "9999px" }
+    },
+
+    "duration": {
+      "0":   { "$type": "duration", "$value": "0ms" },
+      "100": { "$type": "duration", "$value": "100ms" },
+      "200": { "$type": "duration", "$value": "200ms" },
+      "240": { "$type": "duration", "$value": "240ms" },
+      "400": { "$type": "duration", "$value": "400ms" }
+    },
+
+    "easing": {
+      "$description": "No bounce, elastic, spring overshoot or anticipation: every control-point y lies within [0, 1] (MOTION_RULES.md MO-3).",
+      "decelerate": { "$type": "cubicBezier", "$value": "cubic-bezier(0, 0, 0.2, 1)" },
+      "standard":   { "$type": "cubicBezier", "$value": "cubic-bezier(0.4, 0, 0.2, 1)" },
+      "linear":     { "$type": "cubicBezier", "$value": "linear" }
+    },
+
+    "motionDistance": {
+      "0": { "$type": "dimension", "$value": "0px" },
+      "4": { "$type": "dimension", "$value": "4px" }
+    },
+
+    "zIndex": {
+      "0":   { "$type": "number", "$value": 0 },
+      "100": { "$type": "number", "$value": 100 },
+      "200": { "$type": "number", "$value": 200 },
+      "300": { "$type": "number", "$value": 300 },
+      "400": { "$type": "number", "$value": 400 },
+      "500": { "$type": "number", "$value": 500 }
+    }
+  }
+}

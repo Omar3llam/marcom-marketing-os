@@ -28,7 +28,7 @@ zero** as a reset, not a refresh. The legacy frontend and its design system are
 | [ANTI_CONVERGENCE.md](ANTI_CONVERGENCE.md) | Six tests that stop LUMI looking like every other AI or SaaS product | reviewing any new component or surface |
 | [REFERENCE_POLICY.md](REFERENCE_POLICY.md) | How external references may and may not be used | bringing in inspiration |
 | [REVIEW_GATE.md](REVIEW_GATE.md) | The mandatory gates between phases, and the Phase 1 run | moving work between phases |
-| [../DESIGN_TOKEN_ARCHITECTURE.md](../DESIGN_TOKEN_ARCHITECTURE.md) | Token layers, categories, and brand vs product-state separation (a proposal for Phase 2) | Phase 2 |
+| [../DESIGN_TOKEN_ARCHITECTURE.md](../DESIGN_TOKEN_ARCHITECTURE.md) | The implemented token architecture (Phase 2): layers, namespaces, environments, contrast manifest, legacy status. Current token implementation authority: `client/design-system/foundation/` | working with tokens |
 | [LUMI_DESIGN_SYSTEM_MASTER_BUILD_SPEC.md](LUMI_DESIGN_SYSTEM_MASTER_BUILD_SPEC.md) | **Authority level 3.** The governing implementation brief for the whole rebuild, stored verbatim (§2.1) | planning any rebuild phase |
 | [brand/README.md](brand/README.md) | **Authority level 4.** Approved brand source files. The logo "01 / Current Base" source is **still required** | brand implementation |
 
@@ -147,7 +147,7 @@ governs.
 | `client/TYPOGRAPHY-QUICK-REF.md` | "Design System v2.0" legacy typography role classes | HISTORICAL *(added Phase 1.5)*; the classes still exist in the legacy implementation |
 | `MARCOM-ARCHITECTURE.md` §3C "Styling" and §13 "Component Registry" | named legacy tokens and `ui-registry.md` as canonical / source of truth | HISTORICAL for those two sections only; the rest of the architecture document is unaffected *(added Phase 1.5)* |
 | `design-system-figma/` | May 2026 Claude Design handoff bundle, addressed to coding agents; includes copies of legacy token files. **Not** the Figma brand file of Master Build Spec §45 | HISTORICAL *(added Phase 1.5)* |
-| `client/design-system/tokens/*.json` **values** | token values; their `_comment` still reads "Design Token Source of Truth" | HISTORICAL (the JSON single-source **mechanism** may be reused, DESIGN_TOKEN_ARCHITECTURE.md §10). The self-description is not edited because the file is implementation (Phase 1.5 Task G). It is neutralized here and in `CLAUDE.md` |
+| `client/design-system/tokens/*.json` **values** | formerly self-described as "Design Token Source of Truth" | LEGACY INPUTS — **not** the token source of truth. The current token implementation authority is `client/design-system/foundation/` (Phase 2). The existing UI still renders with these values during migration, so the files are not deleted and no value is changed. Since Phase 2 their own headers read "LEGACY" (comments only). Disposition of every entry: `client/design-system/foundation/LEGACY_TOKEN_MIGRATION.md`; migration is not complete. *(updated Phase 2 closure)* |
 | "MARCOM-DESIGN-BIBLE.md" | cited in the past; has never existed in the repository | n/a |
 
 **Still binding, not superseded:**
@@ -155,7 +155,10 @@ governs.
 - the `CLAUDE.md` file-size budgets — they are project instructions, not a
   historical design document;
 - the enforcement mechanisms `design-system/lint/no-generic-tailwind.js` and
-  `client/scripts/checkTokenResolution.js`, which are re-pointed in Phase 2;
+  `client/scripts/checkTokenResolution.js`. They still check the legacy class names
+  and are re-pointed when the first surface consumes the new tokens; Phase 3
+  decides how primitives consume the token system (DESIGN_TOKEN_ARCHITECTURE.md §13).
+  The Phase 2 token resolver, build and tests are implemented alongside them;
 - the locked state adapters `client/src/design-system/states/{absence,confidence}.js`.
 
 ✅ **FC-9 closed in Phase 1.5.** `CLAUDE.md` now points at `design-governance/`
@@ -188,13 +191,15 @@ authority carry a one-line HISTORICAL notice; their content is unchanged.
    product truth. Inconvenience is not that evidence.
 4. Every change passes the relevant gate in REVIEW_GATE.md.
 
-## 7. Where Phase 1 and Phase 1.5 stopped
+## 7. Where each phase stopped
 
-- No token file, CSS, component, screen, route, API, schema or backend file was
-  created or modified.
+- **Phase 1 and Phase 1.5:** no token file, CSS, component, screen, route, API,
+  schema or backend file was created or modified.
 - No legacy file was deleted.
 - **Phase 1.5** registered the Master Build Spec (§2.1) and the brand-asset
   location (`brand/`), updated `CLAUDE.md`, and marked conflicting legacy
   documents HISTORICAL. See `../GOVERNANCE_SYNC.md`.
-- **Next:** Review Gate G-1 (Omar). Then Phase 2 — Design Tokens, after the
-  entry conditions in REVIEW_GATE.md RG-5.4 and RG-5.6.
+- **Phase 2 — Design Tokens is implemented** (2026-09-14): the token authority
+  `client/design-system/foundation/`, `DESIGN_TOKEN_ARCHITECTURE.md` and
+  `../PHASE_2_TOKEN_AUDIT.md`. Legacy token migration is **not** complete.
+- **Next:** Phase 3 — Primitives, when Omar opens it (gate G-2).
