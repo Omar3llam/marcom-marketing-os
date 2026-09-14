@@ -1,29 +1,87 @@
 # MARCOM v4.1 — Claude Code Project Guide
 **Last updated: post-Firebase migration, post-dual-agent, post-Prisma**
 
-> Full architecture: see MARCOM-ARCHITECTURE.md  
-> Design system: see the table below — **there is no MARCOM-DESIGN-BIBLE.md**  
+> Full architecture: see MARCOM-ARCHITECTURE.md (its design sections §3C and §13 are HISTORICAL — see below)  
+> Design authority: **`design-governance/`** — start at `design-governance/README.md`  
 > This file: quick reference for Claude Code sessions
 
-### Design system — where the authority actually lives
+## Authority — read before any frontend, design or product-semantics work
 
-This line used to read *"Design system: see MARCOM-DESIGN-BIBLE.md"*. That file
-has never existed in this repository (`git log --all` returns zero commits for
-the path), and three other files still point at it. FE-01 replaced the pointer
-with the documents that are real and enforced:
+**Synchronized in Phase 1.5 (2026-09-14).** LUMI is in a controlled frontend and
+design-system rebuild. This section outranks any older design instruction
+anywhere in the repository, including the rest of this file.
 
-| Layer | Path | Enforced by |
+### Authority order
+
+```text
+1. PRODUCT TRUTH        backend / API behaviour and DB-backed product behaviour ·
+                        LUMI_PRODUCT_TRUTH_RULINGS.md, closed as Product Rulings PR-1…PR-13
+                        (recorded in design-governance/README.md §3) · the locked Product
+                        Constitution and B7 / B8 rulings as cited there
+2. DESIGN AUTHORITY     design-governance/  (LUMI_DESIGN_CONSTITUTION.md, PRODUCT_GRAMMAR.md,
+                        VISUAL_BOUNDARIES.md, REFERENCE_POLICY.md, COMPONENT_RULES.md,
+                        STATE_RULES.md, MOTION_RULES.md, ANTI_CONVERGENCE.md, REVIEW_GATE.md,
+                        README.md) + DESIGN_TOKEN_ARCHITECTURE.md
+3. MASTER BUILD SPEC    design-governance/LUMI_DESIGN_SYSTEM_MASTER_BUILD_SPEC.md — the governing
+                        implementation brief for the rebuild
+4. APPROVED BRAND ASSETS design-governance/brand/  (logo "01 / Current Base" — source still required)
+5. HISTORICAL           legacy design docs, legacy token files, TAXONOMY-FREEZE.md, legacy UI
+                        patterns — reference and evidence only, never current authority
+```
+
+When sources conflict: **PRODUCT TRUTH > DESIGN CONSTITUTION > MASTER BUILD SPEC
+interpretation > LEGACY MATERIAL.** Register the conflict (Constitution
+Appendix A); never resolve it silently.
+
+### Rules that follow
+
+- **The backend is frozen** unless a task explicitly authorizes backend work.
+- **Product Truth Rulings are authoritative for product semantics.** Product truth
+  takes priority over any visual or design preference.
+- **`design-governance/` is the current design authority.** The Master Build Spec
+  governs the rebuild, as interpreted by those documents.
+- **Historical design documents are references only.** This covers
+  `client/design-system/*.md`, `client/src/components/{ASSEMBLY-*,primitives/PRIMITIVE-FREEZE}.md`,
+  `client/{DESIGN-SYSTEM-REFACTOR,MIGRATION-MAP}.md`, `design-system-figma/` and
+  `MARCOM-ARCHITECTURE.md` §3C / §13. The full list is in `design-governance/README.md` §4.
+- **Historical token files are not current token authority.**
+  `client/design-system/tokens/*.json` still calls itself "Source of Truth". That
+  describes the legacy implementation Tailwind reads today, not LUMI's design. New
+  token values come only from Phase 2 under `DESIGN_TOKEN_ARCHITECTURE.md`.
+- **`TAXONOMY-FREEZE.md` is historical and superseded** wherever it conflicts with
+  `design-governance/`.
+- **Never infer a current design decision from the legacy implementation.** An
+  existing colour, component, layout or pattern is evidence of what was built, not
+  of what is right.
+- **No fabricated numbers and no altered product states.** Every displayed number
+  traces to real evidence. Illustrative figures must be labelled "Illustrative
+  example".
+- **No frontend-derived semantic truth where backend / API truth exists.** Render
+  published verdicts, classes, confidence, eligibility and states. Never recompute
+  them, and never derive a state from the shape of data.
+- **Phase gating.** Do not start a design phase (tokens, primitives, surfaces)
+  without its gate in `design-governance/REVIEW_GATE.md`.
+
+### Enforcement mechanisms still in force (legacy implementation, until Phase 2 re-points them)
+
+| Mechanism | Path | Run by |
 |---|---|---|
-| Token **values** | `client/design-system/tokens/*.json` | *"Edit THIS file, not tailwind.config.js. Tailwind reads from here."* |
 | Token **discipline** | `client/design-system/lint/no-generic-tailwind.js` | `npm run lint:ci --workspace client` |
 | Token **existence** | `client/scripts/checkTokenResolution.js` | `npm run check:tokens --workspace client`, after a build |
-| Component governance | `client/design-system/{ui-registry,component-states,TAXONOMY-FREEZE}.md` | review |
-| State grammar | `client/src/design-system/states/{absence,confidence}.js`, `patterns/DetailGrammar.jsx` | B8, locked |
+| State grammar (locked, B8) | `client/src/design-system/states/{absence,confidence}.js`, `patterns/DetailGrammar.jsx` | tests |
 
-The last two rows of enforcement are **different questions and both are
-needed**: the linter asks *"is this class forbidden?"*, the resolver asks *"does
-this class exist?"*. A denylist cannot answer the second, which is how 60
-undefined colour classes reached 180 call sites while CI stayed green.
+The two enforcement rows ask **different questions and both are needed**:
+
+- the linter asks *"is this class forbidden?"*;
+- the resolver asks *"does this class exist?"*.
+
+A denylist cannot answer the second. That is how 60 undefined colour classes
+reached 180 call sites while CI stayed green. Both mechanisms currently check the
+**legacy** token names. They are kept as mechanisms and re-pointed in Phase 2.
+They are not design authority.
+
+`MARCOM-DESIGN-BIBLE.md` has never existed in this repository. Any reference to
+it is stale.
 
 ---
 
@@ -70,7 +128,7 @@ prisma/schema.prisma       → Database schema (source of truth for models)
 
 **API calls:**     `api.get`/`post` via `client/src/lib/api.js` ONLY  
 **State:**         `useState` / `useReducer` / Context ONLY (no Redux/Zustand)  
-**Styling:**       Semantic tokens from `design-system/tokens/` ONLY (no `bg-gray-*`)  
+**Styling:**       Semantic tokens only, no raw hex and no `bg-gray-*`. Existing code uses the legacy `design-system/tokens/` names until Phase 2; new design values come only from `DESIGN_TOKEN_ARCHITECTURE.md` (see Authority)  
 **AI calls:**      `src/agents/orchestrator.js` ONLY (not `services/orchestrator.js`)  
 **Sessions:**      `src/utils/sessionStore.js` (active sessions, `master.js`)  
 **Memory:**        `src/utils/memoryStore.js` (Anthropic Memory API, `lumi.js`)  

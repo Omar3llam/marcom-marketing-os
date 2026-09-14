@@ -1,5 +1,7 @@
 # MARCOM Design System Architecture Refactor v2.0
 
+> **HISTORICAL DOCUMENT — NOT CURRENT DESIGN AUTHORITY.** Superseded by `design-governance/` (authority map: `design-governance/README.md` §2, §4). Kept as evidence; unchanged apart from this notice. *(Phase 1.5 Governance Synchronization, 2026-09-14)*
+
 **Date:** 2026-05-17  
 **Status:** ✅ Complete  
 **Build Status:** Passing  

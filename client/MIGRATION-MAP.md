@@ -1,5 +1,7 @@
 # MARCOM Design System — Legacy → Semantic Migration Map
 
+> **HISTORICAL DOCUMENT — NOT CURRENT DESIGN AUTHORITY.** Superseded by `design-governance/` (authority map: `design-governance/README.md` §2, §4). Kept as evidence; unchanged apart from this notice. *(Phase 1.5 Governance Synchronization, 2026-09-14)*
+
 **Purpose:** Human-readable contract for automated migration (codemods, AST transforms, AI-assisted refactors).
 
 **Status:** Active governance — enforced by ESLint `marcom-ds/no-generic-tailwind` rule.

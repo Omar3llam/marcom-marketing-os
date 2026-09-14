@@ -104,6 +104,8 @@ const { data } = useSWR('/api');    // SWR
 
 ### 3C. Styling — ONE WAY
 
+> **HISTORICAL SECTION — NOT CURRENT DESIGN AUTHORITY.** The legacy `design-system/tokens/` are the implementation Tailwind reads today, not LUMI's design authority. Current authority is `design-governance/`; new token values come only from `DESIGN_TOKEN_ARCHITECTURE.md`. The banned patterns below still apply. *(Phase 1.5, 2026-09-14)*
+
 **CANONICAL:** Tailwind utility classes using semantic tokens from `design-system/tokens/`  
 **BANNED:**    raw hex in JSX, `bg-gray-*`, `text-gray-*`, inline styles (except `tabular-nums`)  
                CSS modules, styled-components, Emotion
@@ -368,6 +370,8 @@ does NOT refactor outside the described scope.
 ---
 
 ## 13. Component Registry
+
+> **HISTORICAL SECTION — NOT CURRENT DESIGN AUTHORITY.** `ui-registry.md`, `component-states.md` and the inventory below describe the legacy frontend. Current component and state rules are `design-governance/COMPONENT_RULES.md` and `design-governance/STATE_RULES.md`. *(Phase 1.5, 2026-09-14)*
 
 **Source of truth:** `client/design-system/ui-registry.md`
 

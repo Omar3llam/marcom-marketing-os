@@ -1,4 +1,6 @@
 # Semantic Primitive Taxonomy Freeze
+
+> **HISTORICAL DOCUMENT — NOT CURRENT DESIGN AUTHORITY.** Superseded by `design-governance/` (authority map: `design-governance/README.md` §2, §4). Kept as evidence; unchanged apart from this notice. *(Phase 1.5 Governance Synchronization, 2026-09-14)*
 **Effective Date:** 2026-05-18  
 **Status:** 🔒 **FROZEN** — No new primitives without governance approval  
 **Authority:** Design System Architecture Sprint 1
