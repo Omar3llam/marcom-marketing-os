@@ -1,5 +1,6 @@
 {
-  "_comment": "MARCOM Design Token Source of Truth — Typography",
+  "_comment": "LEGACY — MARCOM implementation typography tokens. Not the current token authority (Phase 2, 2026-09-14). Disposition of every entry: client/design-system/foundation/LEGACY_TOKEN_MIGRATION.md.",
+  "_authority": "client/design-system/foundation/tokens/",
   "_version": "1.0.0",
   "_law": "Never use text-xl font-bold. Use semantic role classes.",
 

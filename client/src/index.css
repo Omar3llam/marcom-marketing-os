@@ -21,6 +21,12 @@
  * - Cross-browser scrollbar support
  * ============================================================ */
 
+/* LUMI design tokens — the current token authority (Phase 2).
+ * Generated from client/design-system/foundation/tokens/*.json; defines
+ * `--lumi-*` custom properties only and styles no element. Environment
+ * colours apply only inside an explicit [data-lumi-env] scope. */
+@import '../design-system/foundation/generated/tokens.css';
+
 /* stylelint-disable at-rule-no-unknown */
 @tailwind base;
 @tailwind components;
@@ -29,6 +35,12 @@
 
 /* ============================================================
  * CSS CUSTOM PROPERTIES — Theming Foundation
+ * ------------------------------------------------------------
+ * LEGACY TOKEN LAYER. Every variable in this :root block (and the
+ * [data-theme="dark"] block below) is legacy implementation, kept only
+ * because the existing UI reads it. Not current token authority; add
+ * nothing and change no value. Disposition of every entry:
+ * client/design-system/foundation/LEGACY_TOKEN_MIGRATION.md.
  * ============================================================
  * RATIONALE:
  * - Enables runtime theming without Tailwind rebuild

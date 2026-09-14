@@ -1,0 +1,5 @@
+{
+  "$layer": "component",
+  "$description": "LAYER 4 — COMPONENT. Deliberately empty in Phase 2. A component token is created only by the Phase 3 component that needs it, only references SEMANTIC tokens, and never references brand or primitive tokens. Phase 2 implements no component and no component-specific spacing, typography or state behaviour (STATE_RULES.md §18).",
+  "component": {}
+}

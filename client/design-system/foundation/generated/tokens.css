@@ -1,0 +1,201 @@
+/* ============================================================
+ * GENERATED — do not edit. LUMI design tokens (Phase 2).
+ * Source of truth: client/design-system/foundation/tokens/*.json
+ * Rebuild:        npm run tokens:build --workspace client
+ *
+ * Environments are product contexts chosen by route family, not a
+ * theme: there is no prefers-color-scheme branch and no user switch.
+ * `initial` means the role does not exist on that ground (for
+ * example a verdict mark on Off White) and cannot be used there.
+ * ============================================================ */
+
+:root {
+  --lumi-border-width-hairline: 1px;
+  --lumi-layer-announcement: 500;
+  --lumi-layer-base: 0;
+  --lumi-layer-modal: 400;
+  --lumi-layer-navigation: 200;
+  --lumi-layer-overlay: 300;
+  --lumi-layer-sticky: 100;
+  --lumi-layout-gutter-desktop: 32px;
+  --lumi-layout-gutter-mobile: 16px;
+  --lumi-layout-gutter-tablet: 24px;
+  --lumi-layout-width-claim: 640px;
+  --lumi-layout-width-evidence: 360px;
+  --lumi-layout-width-page: 1280px;
+  --lumi-motion-distance-settle: 4px;
+  --lumi-motion-duration-feedback: 100ms;
+  --lumi-motion-duration-maximum: 400ms;
+  --lumi-motion-duration-reveal: 200ms;
+  --lumi-motion-duration-transition: 240ms;
+  --lumi-motion-easing-feedback: linear;
+  --lumi-motion-easing-reveal: cubic-bezier(0, 0, 0.2, 1);
+  --lumi-motion-easing-transition: cubic-bezier(0.4, 0, 0.2, 1);
+  --lumi-radius-container: 4px;
+  --lumi-radius-control: 2px;
+  --lumi-radius-round: 9999px;
+  --lumi-radius-structural: 0px;
+  --lumi-shadow-overlay: 0px 8px 24px 0px rgb(11 15 20 / 0.24);
+  --lumi-size-focus-offset: 2px;
+  --lumi-size-focus-width: 2px;
+  --lumi-size-icon-inline: 16px;
+  --lumi-size-icon-standalone: 20px;
+  --lumi-size-target-minimum: 24px;
+  --lumi-size-target-touch: 44px;
+  --lumi-space-inline: 4px;
+  --lumi-space-macro: 64px;
+  --lumi-space-meta: 8px;
+  --lumi-space-object: 16px;
+  --lumi-space-section: 32px;
+  --lumi-type-body-claim-family: "Inter", system-ui, sans-serif;
+  --lumi-type-body-claim-letter-spacing: 0em;
+  --lumi-type-body-claim-line-height: 24px;
+  --lumi-type-body-claim-size: 16px;
+  --lumi-type-body-claim-weight: 600;
+  --lumi-type-body-default-family: "Inter", system-ui, sans-serif;
+  --lumi-type-body-default-letter-spacing: 0em;
+  --lumi-type-body-default-line-height: 20px;
+  --lumi-type-body-default-size: 14px;
+  --lumi-type-body-default-weight: 400;
+  --lumi-type-caption-default-family: "Inter", system-ui, sans-serif;
+  --lumi-type-caption-default-letter-spacing: 0em;
+  --lumi-type-caption-default-line-height: 16px;
+  --lumi-type-caption-default-size: 12px;
+  --lumi-type-caption-default-weight: 400;
+  --lumi-type-display-brand-family: "Space Grotesk", system-ui, sans-serif;
+  --lumi-type-display-brand-letter-spacing: -0.02em;
+  --lumi-type-display-brand-line-height: 56px;
+  --lumi-type-display-brand-size: 48px;
+  --lumi-type-display-brand-weight: 600;
+  --lumi-type-heading-section-family: "Inter", system-ui, sans-serif;
+  --lumi-type-heading-section-letter-spacing: 0em;
+  --lumi-type-heading-section-line-height: 24px;
+  --lumi-type-heading-section-size: 16px;
+  --lumi-type-heading-section-weight: 600;
+  --lumi-type-heading-surface-family: "Space Grotesk", system-ui, sans-serif;
+  --lumi-type-heading-surface-letter-spacing: -0.01em;
+  --lumi-type-heading-surface-line-height: 32px;
+  --lumi-type-heading-surface-size: 24px;
+  --lumi-type-heading-surface-weight: 600;
+  --lumi-type-label-default-family: "Inter", system-ui, sans-serif;
+  --lumi-type-label-default-letter-spacing: 0em;
+  --lumi-type-label-default-line-height: 20px;
+  --lumi-type-label-default-size: 14px;
+  --lumi-type-label-default-weight: 500;
+  --lumi-type-metric-headline-family: "JetBrains Mono", ui-monospace, monospace;
+  --lumi-type-metric-headline-letter-spacing: 0em;
+  --lumi-type-metric-headline-line-height: 28px;
+  --lumi-type-metric-headline-numeric: tabular-nums;
+  --lumi-type-metric-headline-size: 20px;
+  --lumi-type-metric-headline-weight: 500;
+  --lumi-type-metric-inline-family: "JetBrains Mono", ui-monospace, monospace;
+  --lumi-type-metric-inline-letter-spacing: 0em;
+  --lumi-type-metric-inline-line-height: 20px;
+  --lumi-type-metric-inline-numeric: tabular-nums;
+  --lumi-type-metric-inline-size: 14px;
+  --lumi-type-metric-inline-weight: 400;
+  --lumi-type-technical-identifier-family: "JetBrains Mono", ui-monospace, monospace;
+  --lumi-type-technical-identifier-letter-spacing: 0em;
+  --lumi-type-technical-identifier-line-height: 16px;
+  --lumi-type-technical-identifier-size: 12px;
+  --lumi-type-technical-identifier-weight: 400;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --lumi-motion-distance-settle: 0px;
+    --lumi-motion-duration-feedback: 100ms;
+    --lumi-motion-duration-maximum: 0ms;
+    --lumi-motion-duration-reveal: 0ms;
+    --lumi-motion-duration-transition: 0ms;
+  }
+}
+
+[data-lumi-env="product"],
+[data-lumi-env="marketing-dark-section"] {
+  --lumi-color-border-divider: #272B2F;
+  --lumi-color-border-strong: #737576;
+  --lumi-color-border-subtle: #3A3D41;
+  --lumi-color-interaction-active-indicator: #F7F7F3;
+  --lumi-color-interaction-disabled-border: #3A3D41;
+  --lumi-color-interaction-disabled-foreground: #737576;
+  --lumi-color-interaction-focus-ring: #F7F7F3;
+  --lumi-color-interaction-hover-surface: #191D21;
+  --lumi-color-interaction-pressed-surface: #23262A;
+  --lumi-color-interaction-selected-indicator: #F7F7F3;
+  --lumi-color-interaction-selected-surface: #1E2226;
+  --lumi-color-signal-attention: #D4A017;
+  --lumi-color-state-available-foreground: #C8C9C6;
+  --lumi-color-state-empty-foreground: #C8C9C6;
+  --lumi-color-state-failed-border: #737576;
+  --lumi-color-state-failed-foreground: #F7F7F3;
+  --lumi-color-state-insufficient-data-foreground: #999A9A;
+  --lumi-color-state-loading-foreground: #999A9A;
+  --lumi-color-state-mixed-currency-foreground: #999A9A;
+  --lumi-color-state-no-conversions-foreground: #999A9A;
+  --lumi-color-state-not-connected-foreground: #999A9A;
+  --lumi-color-state-not-measured-foreground: #999A9A;
+  --lumi-color-state-not-permitted-foreground: #999A9A;
+  --lumi-color-state-not-supported-foreground: #999A9A;
+  --lumi-color-state-partial-foreground: #C8C9C6;
+  --lumi-color-state-processing-foreground: #C8C9C6;
+  --lumi-color-state-stale-foreground: #C8C9C6;
+  --lumi-color-state-success-foreground: #C8C9C6;
+  --lumi-color-state-unavailable-foreground: #999A9A;
+  --lumi-color-surface-base: #0B0F14;
+  --lumi-color-surface-elevated: #1E2226;
+  --lumi-color-surface-raised: #14181D;
+  --lumi-color-text-body: #C8C9C6;
+  --lumi-color-text-claim: #F7F7F3;
+  --lumi-color-text-meta: #999A9A;
+  --lumi-color-verdict-hold-mark: #D97732;
+  --lumi-color-verdict-kill-mark: #C74646;
+  --lumi-color-verdict-reallocate-mark: #D4A017;
+  --lumi-color-verdict-refresh-mark: #B7791F;
+  --lumi-color-verdict-scale-mark: #3D9B6D;
+  --lumi-color-verdict-watch-mark: #3B82F6;
+}
+
+[data-lumi-env="marketing"] {
+  --lumi-color-border-divider: #DBDBD8;
+  --lumi-color-border-strong: #7C7E7F;
+  --lumi-color-border-subtle: #C8C9C6;
+  --lumi-color-interaction-active-indicator: #0B0F14;
+  --lumi-color-interaction-disabled-border: #C8C9C6;
+  --lumi-color-interaction-disabled-foreground: #7C7E7F;
+  --lumi-color-interaction-focus-ring: #0B0F14;
+  --lumi-color-interaction-hover-surface: #E9E9E6;
+  --lumi-color-interaction-pressed-surface: #DFE0DD;
+  --lumi-color-interaction-selected-indicator: #0B0F14;
+  --lumi-color-interaction-selected-surface: #E4E4E1;
+  --lumi-color-signal-attention: initial;
+  --lumi-color-state-available-foreground: #313438;
+  --lumi-color-state-empty-foreground: #313438;
+  --lumi-color-state-failed-border: #7C7E7F;
+  --lumi-color-state-failed-foreground: #0B0F14;
+  --lumi-color-state-insufficient-data-foreground: #57595B;
+  --lumi-color-state-loading-foreground: #57595B;
+  --lumi-color-state-mixed-currency-foreground: #57595B;
+  --lumi-color-state-no-conversions-foreground: #57595B;
+  --lumi-color-state-not-connected-foreground: #57595B;
+  --lumi-color-state-not-measured-foreground: #57595B;
+  --lumi-color-state-not-permitted-foreground: #57595B;
+  --lumi-color-state-not-supported-foreground: #57595B;
+  --lumi-color-state-partial-foreground: #313438;
+  --lumi-color-state-processing-foreground: #313438;
+  --lumi-color-state-stale-foreground: #313438;
+  --lumi-color-state-success-foreground: #313438;
+  --lumi-color-state-unavailable-foreground: #57595B;
+  --lumi-color-surface-base: #F7F7F3;
+  --lumi-color-surface-elevated: #F7F7F3;
+  --lumi-color-surface-raised: #E6E2DA;
+  --lumi-color-text-body: #313438;
+  --lumi-color-text-claim: #0B0F14;
+  --lumi-color-text-meta: #57595B;
+  --lumi-color-verdict-hold-mark: initial;
+  --lumi-color-verdict-kill-mark: initial;
+  --lumi-color-verdict-reallocate-mark: initial;
+  --lumi-color-verdict-refresh-mark: initial;
+  --lumi-color-verdict-scale-mark: initial;
+  --lumi-color-verdict-watch-mark: initial;
+}

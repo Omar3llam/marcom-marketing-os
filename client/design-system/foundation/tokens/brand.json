@@ -1,0 +1,53 @@
+{
+  "$layer": "brand",
+  "$description": "LAYER 1 — BRAND. LUMI identity values, locked by the September 2026 Brand Identity Lock (Constitution Articles 12 and 20). Literal values only; a brand token references nothing. Brand tokens are never emitted as CSS variables and never consumed by components. Product state never references this layer.",
+  "brand": {
+    "color": {
+      "gold": {
+        "$type": "color",
+        "$value": "#D4A017",
+        "$description": "LUMI Gold. Its jobs are the LUMI mark and the source of color.signal.attention. REALLOCATE has its own primitive and never references this token.",
+        "$means": ["signal", "attention", "decision", "meaningful emphasis"],
+        "$notMeans": ["generic success", "generic interaction", "universal focus", "universal selection", "decoration"]
+      },
+      "charcoal": {
+        "$type": "color",
+        "$value": "#0B0F14",
+        "$description": "Charcoal. The ground of the authenticated product and of controlled marketing sections.",
+        "$means": ["depth", "focus", "stability"],
+        "$notMeans": []
+      },
+      "offWhite": {
+        "$type": "color",
+        "$value": "#F7F7F3",
+        "$description": "Off White. The ground of marketing pages and the source of light on Charcoal.",
+        "$means": ["clarity", "clean space"],
+        "$notMeans": []
+      },
+      "warmGray": {
+        "$type": "color",
+        "$value": "#E6E2DA",
+        "$description": "Warm Gray. The structural background step on Off White.",
+        "$means": ["balance", "structure", "background"],
+        "$notMeans": []
+      }
+    },
+    "font": {
+      "display": {
+        "$type": "fontFamily",
+        "$value": "Space Grotesk",
+        "$description": "Display, headlines, major titles and brand expression. Rare: never dense UI, table cells or verdict words (Constitution Article 20)."
+      },
+      "ui": {
+        "$type": "fontFamily",
+        "$value": "Inter",
+        "$description": "UI, body, navigation, forms and operational copy. The verdict word is set in this family."
+      },
+      "data": {
+        "$type": "fontFamily",
+        "$value": "JetBrains Mono",
+        "$description": "Metrics, identifiers, technical values and data-heavy contexts. Mono is a promise that a value is a measurement."
+      }
+    }
+  }
+}

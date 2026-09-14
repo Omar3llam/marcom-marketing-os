@@ -1,7 +1,8 @@
 {
-  "_comment": "MARCOM Design Token Source of Truth — Colors",
+  "_comment": "LEGACY — MARCOM implementation colour tokens. Not the current token authority (Phase 2, 2026-09-14).",
+  "_authority": "client/design-system/foundation/tokens/",
   "_version": "1.0.0",
-  "_warning": "Edit THIS file, not tailwind.config.js. Tailwind reads from here.",
+  "_warning": "Tailwind still reads these values for the existing UI until each surface migrates. Add nothing here, and change no value: a change restyles shipped UI. Disposition of every entry: client/design-system/foundation/LEGACY_TOKEN_MIGRATION.md.",
 
   "brand": {
     "gold":  "#F6C945",

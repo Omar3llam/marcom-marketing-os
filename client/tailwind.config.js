@@ -1,9 +1,11 @@
 // ============================================================
 // MARCOM / Lumi — Tailwind Config
 // ============================================================
-// IMPORTANT: Do NOT edit token values here.
-// Edit /client/design-system/tokens/*.json instead.
-// This file imports from the JSON source of truth.
+// LEGACY WIRING. The JSON files imported below are the LEGACY token set
+// that the existing UI still renders with. They are not the current token
+// authority: that is client/design-system/foundation/tokens/ (Phase 2),
+// emitted as `--lumi-*` CSS variables. Change no legacy value here or there;
+// a change restyles shipped UI.
 // ============================================================
 import colors   from './design-system/tokens/colors.json'   assert { type: 'json' };
 import motion   from './design-system/tokens/motion.json'   assert { type: 'json' };
