@@ -12,7 +12,11 @@
 //          (KILL → PAUSE_CAMPAIGN on META is the only self-contained action;
 //           SCALE / REFRESH / REALLOCATE → NEEDS_OPERATOR_INPUT;
 //           HOLD / WATCH → NO_ACTION_FOR_VERDICT; Google → UNSUPPORTED_CHANNEL)
-//   no revenue → no KILL / SCALE   verdictEngine.js:358-363
+//   no revenue → engagement only   verdictEngine.js:358-363 (no revenue verdict on the
+//          campaign's own numbers), then relativeRanking.js, run on every connector
+//          sweep (connectorVerdictService.js:358): a no-revenue HOLD / WATCH with real
+//          spend, in a cohort of ≥ 3 comparable campaigns, becomes KILL (bottom) or
+//          SCALE (top) by CTR, its rationale saying "Based on engagement signals only"
 // ============================================================
 import { Text, VerdictMark } from '../../index.js';
 import { cx } from '../../contract.js';
@@ -20,10 +24,10 @@ import { LandingSection } from '../parts.jsx';
 import css from '../landing.module.css';
 
 const VERDICT_ROWS = [
-  ['KILL', 'Return is below break-even and the audience is past the fatigue ceiling.',
+  ['KILL', 'Return is below break-even and the audience is past the fatigue ceiling — or, where revenue was never measured, its engagement is among the weakest of comparable campaigns in the account.',
     'LUMI can pause the campaign on Meta once you confirm. It is the one verdict LUMI can carry out today.'],
   ['HOLD', 'No change is warranted now.', 'Nothing to do, so no action is offered.'],
-  ['SCALE', 'Return is strong and engagement is above the bar for the campaign’s objective.',
+  ['SCALE', 'Return is strong and engagement is above the bar for the campaign’s objective — or, where revenue was never measured, its engagement is among the strongest of comparable campaigns in the account.',
     'Needs a budget figure from you. LUMI does not guess how much.'],
   ['WATCH', 'Something needs a person’s attention that no ad change fixes: a weak funnel stage, rising frequency, or too little signal to diagnose.',
     'No platform action. The verdict names what to look at.'],
@@ -56,8 +60,9 @@ export function VerdictsSection() {
       </div>
       <div className={cx(css.claimColumn)}>
         <Text variant="body" as="p">
-          Where a campaign’s revenue was never measured, LUMI does not call KILL or SCALE. It judges engagement
-          instead, and says so.
+          Where a campaign’s revenue was never measured, LUMI judges it on engagement alone and says so. It can
+          still call KILL or SCALE when that engagement is among the weakest or strongest of comparable campaigns
+          in your account.
         </Text>
       </div>
     </LandingSection>

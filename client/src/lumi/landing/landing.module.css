@@ -271,24 +271,6 @@
   margin: 0;
 }
 
-/* ── Axis: the model and the memory sequence, drawn as one line ── */
-.axis {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.axisStop {
-  display: flex;
-  flex-direction: column;
-  gap: var(--lumi-space-inline);
-  min-width: 0;
-  padding-block: var(--lumi-space-meta) var(--lumi-space-object);
-  padding-inline-start: var(--lumi-space-object);
-  border-inline-start: var(--lumi-border-width-hairline) solid var(--lumi-color-border-strong);
-}
-
 /* ── Product band: the recorded decision and today's assessment ── */
 .split {
   display: grid;
@@ -437,17 +419,6 @@
     display: grid;
     gap: var(--lumi-space-section);
     padding-block-end: var(--lumi-space-meta);
-  }
-  .axis {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, 1fr);
-    border-block-start: var(--lumi-border-width-hairline) solid var(--lumi-color-border-strong);
-  }
-  .axisStop {
-    padding-block: var(--lumi-space-object) 0;
-    padding-inline: 0 var(--lumi-space-object);
-    border-inline-start: 0;
   }
   /* Pulled into the gutter by the mark's own inset, so the first word aligns with the
      section heading and the mark hangs in the page gutter (32px, wider than the pull). */
