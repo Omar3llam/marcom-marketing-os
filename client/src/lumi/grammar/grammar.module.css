@@ -1,0 +1,234 @@
+/* ============================================================
+ * LUMI grammar parts. Tokens only.
+ * Verdict mark colours appear ONLY in the .mark* rules; the attention signal
+ * appears nowhere in Phase 3. The token-usage test enforces both.
+ * ============================================================ */
+
+/* ── Verdict ─────────────────────────────────────────────── */
+.verdict {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lumi-space-meta);
+  color: var(--lumi-color-text-claim);
+}
+.verdictClaim {
+  font-family: var(--lumi-type-body-claim-family);
+  font-size: var(--lumi-type-body-claim-size);
+  line-height: var(--lumi-type-body-claim-line-height);
+  font-weight: var(--lumi-type-body-claim-weight);
+  letter-spacing: var(--lumi-type-body-claim-letter-spacing);
+}
+.verdictList {
+  font-family: var(--lumi-type-label-default-family);
+  font-size: var(--lumi-type-label-default-size);
+  line-height: var(--lumi-type-label-default-line-height);
+  font-weight: var(--lumi-type-label-default-weight);
+  letter-spacing: var(--lumi-type-label-default-letter-spacing);
+}
+.verdictMark {
+  display: inline-block;
+  flex-shrink: 0;
+  width: var(--lumi-size-icon-inline);
+  height: var(--lumi-size-icon-inline);
+  border-radius: var(--lumi-radius-control);
+}
+.markKill {
+  background: var(--lumi-color-verdict-kill-mark);
+}
+.markHold {
+  background: var(--lumi-color-verdict-hold-mark);
+}
+.markScale {
+  background: var(--lumi-color-verdict-scale-mark);
+}
+.markWatch {
+  background: var(--lumi-color-verdict-watch-mark);
+}
+.markRefresh {
+  background: var(--lumi-color-verdict-refresh-mark);
+}
+.markReallocate {
+  background: var(--lumi-color-verdict-reallocate-mark);
+}
+
+/* ── Tense, agreement, identity ──────────────────────────── */
+.tense,
+.identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--lumi-space-meta);
+  margin: 0;
+}
+.tenseWord {
+  color: var(--lumi-color-text-claim);
+  font-family: var(--lumi-type-label-default-family);
+  font-size: var(--lumi-type-label-default-size);
+  line-height: var(--lumi-type-label-default-line-height);
+  font-weight: var(--lumi-type-label-default-weight);
+}
+.clock,
+.identifier {
+  color: var(--lumi-color-text-meta);
+  font-family: var(--lumi-type-technical-identifier-family);
+  font-size: var(--lumi-type-technical-identifier-size);
+  line-height: var(--lumi-type-technical-identifier-line-height);
+  font-weight: var(--lumi-type-technical-identifier-weight);
+}
+.metaText {
+  margin: 0;
+  color: var(--lumi-color-text-meta);
+  font-family: var(--lumi-type-caption-default-family);
+  font-size: var(--lumi-type-caption-default-size);
+  line-height: var(--lumi-type-caption-default-line-height);
+  font-weight: var(--lumi-type-caption-default-weight);
+}
+.bodyText {
+  margin: 0;
+  color: var(--lumi-color-text-body);
+  font-family: var(--lumi-type-body-default-family);
+  font-size: var(--lumi-type-body-default-size);
+  line-height: var(--lumi-type-body-default-line-height);
+  font-weight: var(--lumi-type-body-default-weight);
+}
+
+/* ── Decision Spine: one continuous axis (Article 8) ─────── */
+.spine {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.spineTense {
+  padding-block-end: var(--lumi-space-meta);
+}
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumi-space-meta);
+  margin: 0;
+  padding-block: var(--lumi-space-meta) var(--lumi-space-object);
+  padding-inline-start: var(--lumi-space-object);
+  border-inline-start: var(--lumi-border-width-hairline) solid var(--lumi-color-border-subtle);
+}
+.stageLabel {
+  margin: 0;
+  color: var(--lumi-color-text-meta);
+  font-family: var(--lumi-type-caption-default-family);
+  font-size: var(--lumi-type-caption-default-size);
+  line-height: var(--lumi-type-caption-default-line-height);
+  font-weight: var(--lumi-type-caption-default-weight);
+}
+
+/* ── States: light by illumination class; words carry the difference ── */
+.claimState {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumi-space-inline);
+  min-width: 0;
+}
+.stateLabel {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lumi-space-inline);
+  font-family: var(--lumi-type-label-default-family);
+  font-size: var(--lumi-type-label-default-size);
+  line-height: var(--lumi-type-label-default-line-height);
+  font-weight: var(--lumi-type-label-default-weight);
+}
+.stateLoading { color: var(--lumi-color-state-loading-foreground); }
+.stateAvailable { color: var(--lumi-color-state-available-foreground); }
+.stateEmpty { color: var(--lumi-color-state-empty-foreground); }
+.stateUnavailable { color: var(--lumi-color-state-unavailable-foreground); }
+.stateNotConnected { color: var(--lumi-color-state-not-connected-foreground); }
+.stateNotPermitted { color: var(--lumi-color-state-not-permitted-foreground); }
+.stateNotSupported { color: var(--lumi-color-state-not-supported-foreground); }
+.stateStale { color: var(--lumi-color-state-stale-foreground); }
+.stateProcessing { color: var(--lumi-color-state-processing-foreground); }
+.stateSuccess { color: var(--lumi-color-state-success-foreground); }
+.stateNotMeasured { color: var(--lumi-color-state-not-measured-foreground); }
+.stateInsufficientData { color: var(--lumi-color-state-insufficient-data-foreground); }
+.stateNoConversions { color: var(--lumi-color-state-no-conversions-foreground); }
+.stateMixedCurrency { color: var(--lumi-color-state-mixed-currency-foreground); }
+.statePartial { color: var(--lumi-color-state-partial-foreground); }
+/* A failure is never calm absence: highest light, a boundary and words. */
+.stateFailed {
+  color: var(--lumi-color-state-failed-foreground);
+}
+.failedBoundary {
+  padding: var(--lumi-space-meta);
+  border: var(--lumi-border-width-hairline) solid var(--lumi-color-state-failed-border);
+  border-radius: var(--lumi-radius-container);
+}
+
+/* ── Measurement ─────────────────────────────────────────── */
+.measurement {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumi-space-inline);
+  min-width: 0;
+  margin: 0;
+}
+.measurementLabel {
+  margin: 0;
+  color: var(--lumi-color-text-body);
+  font-family: var(--lumi-type-label-default-family);
+  font-size: var(--lumi-type-label-default-size);
+  line-height: var(--lumi-type-label-default-line-height);
+  font-weight: var(--lumi-type-label-default-weight);
+}
+.figure {
+  margin: 0;
+  color: var(--lumi-color-state-available-foreground);
+}
+.figureHeadline {
+  font-family: var(--lumi-type-metric-headline-family);
+  font-size: var(--lumi-type-metric-headline-size);
+  line-height: var(--lumi-type-metric-headline-line-height);
+  font-weight: var(--lumi-type-metric-headline-weight);
+  letter-spacing: var(--lumi-type-metric-headline-letter-spacing);
+  font-variant-numeric: var(--lumi-type-metric-headline-numeric);
+}
+.figureInline {
+  font-family: var(--lumi-type-metric-inline-family);
+  font-size: var(--lumi-type-metric-inline-size);
+  line-height: var(--lumi-type-metric-inline-line-height);
+  font-weight: var(--lumi-type-metric-inline-weight);
+  letter-spacing: var(--lumi-type-metric-inline-letter-spacing);
+  font-variant-numeric: var(--lumi-type-metric-inline-numeric);
+}
+.moneyRefusal {
+  color: var(--lumi-color-state-unavailable-foreground);
+  font-family: var(--lumi-type-body-default-family);
+  font-size: var(--lumi-type-body-default-size);
+  line-height: var(--lumi-type-body-default-line-height);
+  font-weight: var(--lumi-type-body-default-weight);
+}
+
+/* ── Evidence group and action group ─────────────────────── */
+.evidenceGroup,
+.actionGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumi-space-meta);
+  min-width: 0;
+  margin: 0;
+}
+/* Body light, not claim light: evidence steps down from the verdict it grounds
+   (Article 11 §3). Found in the Phase 3 visual review. */
+.evidenceHeading {
+  margin: 0;
+  color: var(--lumi-color-text-body);
+  font-family: var(--lumi-type-heading-section-family);
+  font-size: var(--lumi-type-heading-section-size);
+  line-height: var(--lumi-type-heading-section-line-height);
+  font-weight: var(--lumi-type-heading-section-weight);
+}
+.evidenceItems {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumi-space-object);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}

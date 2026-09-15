@@ -773,3 +773,67 @@ than meeting it early, and both are carried in §15.
    for the legacy UI, while the new roles use only Space Grotesk 600. Trimming the
    weights is a font-loading change, made when their legacy consumers are gone
    (Article 26 §2).
+
+## 16. Token consumption by primitives (Phase 3, 2026-09-14)
+
+No token was added, removed or changed in Phase 3. This section records how the
+Phase 3 primitives (`client/src/lumi/`, registry `client/src/lumi/README.md`)
+consume the tokens, and where each §15 item now stands.
+
+**Consumption API (closes §15 item 1): `var()` directly, through CSS modules.**
+
+```text
+generated/tokens.css  --lumi-*  ──var()──►  client/src/lumi/**/*.module.css  ──►  primitive
+```
+
+- No Tailwind namespace was added. The legacy collisions in §10 therefore stay
+  unresolved and harmless: the new layer never writes a Tailwind class.
+- `client/tailwind.config.js` excludes `./src/lumi/**` from its content scan. 📏 A
+  probe class placed inside `src/lumi` was not generated, and the same class
+  outside it was.
+- Colour tokens are read only inside `<Environment>`, which sets `data-lumi-env`
+  (§5). A coloured primitive outside an environment throws.
+- Component tokens (§2, layer 4) stay empty. Every value a primitive needs already
+  exists as a semantic token.
+
+📏 **What is consumed.** 108 of the 130 emitted variables are referenced by the
+four LUMI CSS modules. The 22 not referenced:
+
+| Group | Tokens | Why not yet |
+|---|---|---|
+| stacking | `layer.*` (6) | no overlay, sticky or modal primitive exists (dialog deferred, see below) |
+| layout | `layout.width.*` (3), `layout.gutter.*` (3) | page and column widths belong to surfaces and the app shell |
+| motion | `motion.duration.{reveal, transition, maximum}`, `motion.easing.{reveal, transition}`, `motion.distance.settle` | no primitive reveals or transitions; only control feedback moves |
+| radius | `radius.structural`, `radius.round` | structural regions use no radius property; no round-by-meaning element is built |
+| interaction | `color.interaction.selected.surface` | no selectable-set primitive (tabs, listbox) passed CMP-01 |
+| signal | `color.signal.attention` | no Attention surface consumes it yet; 📏 the token-usage test asserts it is referenced nowhere |
+
+**Enforcement added** (`client/src/lumi/__tests__/tokenUsage.test.js`). Each checker
+is first shown to fail on a planted violation.
+
+- every `var()` names a defined `--lumi-*` token, with no fallback;
+- no raw colour, length or duration, gradient, blur, glow, animation, legacy
+  variable or non-token font family;
+- verdict mark tokens appear only in the six `.mark*` rules, one per verdict, and
+  `.markReallocate` resolves through `color.verdict.reallocate.mark`;
+- no `:hover`, `:active`, `:focus`, `aria-disabled` or `aria-current` rule
+  reaches a verdict, gold or state colour, and every focus outline is
+  `size.focus.width` + `color.interaction.focus.ring`.
+
+**§15 status after Phase 3**
+
+| §15 item | Status |
+|---|---|
+| 1 Consumption API | **closed** — above |
+| 2 Re-point linter and resolver | **open, unchanged.** The new layer writes no class names, so neither mechanism has anything new to check. Its own static test covers it. They are re-pointed with the first migrating surface. |
+| 3 Environment attribute | **partly met.** `<Environment>` applies the attribute; applying it by route family remains app-shell work. |
+| 4 `surface.inset` | **open.** Identifiers are distinguished by `type.technical.identifier` and meta light, not by an inset surface; no token was added. |
+| 5 Breakpoints | **open.** No primitive encodes a breakpoint; the Decision Spine exists as a part but has not been measured on a real surface. |
+| 6 Verdict word adjacency | **closed.** `VerdictMark` renders the mark and the word together and has no mark-only form. |
+| 7 48 UNKNOWN legacy entries | **open, unchanged.** |
+| 8 Fonts shipped vs used | **open, unchanged.** |
+
+**New token question (not answered here).** A modal dialog needs a flat dimming
+backdrop (Constitution Article 16). No semantic token expresses one, and tokens
+were locked for Phase 3, so no dialog primitive was built
+(PHASE_3_PRIMITIVE_AUDIT.md, Findings).

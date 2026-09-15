@@ -1,0 +1,36 @@
+/* ============================================================
+ * LUMI Primitive Lab page layout. Non-production. Tokens only, audited by
+ * tokenUsage.test.js like every other LUMI stylesheet.
+ * ============================================================ */
+
+.page {
+  box-sizing: border-box;
+  max-width: var(--lumi-layout-width-page);
+  margin-inline: auto;
+  padding-block: var(--lumi-space-section);
+  padding-inline: var(--lumi-layout-gutter-mobile);
+}
+
+.section {
+  padding-block-start: var(--lumi-space-section);
+  scroll-margin-block-start: var(--lumi-space-section);
+}
+
+/* A wrapping row of equal-basis review cells. */
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lumi-space-section) var(--lumi-space-object);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.cell {
+  flex: 1 1 var(--lumi-layout-width-evidence);
+  min-width: 0;
+}
+
+/* The primary reading column that carries a Decision Spine. */
+.claimColumn {
+  max-width: var(--lumi-layout-width-claim);
+}
