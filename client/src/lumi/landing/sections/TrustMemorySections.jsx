@@ -5,19 +5,26 @@
 // <ClaimState>, each with its own words and reason (STATE_RULES.md §4, §12–§15):
 //   failed ≠ empty · missing ≠ zero · unknown ≠ healthy.
 //   NOT_MEASURED / no revenue verdict   verdictEngine.js:358-363
-//   INSUFFICIENT_DATA                    C-07 NO_MEASURABLE_DELIVERY
+//   INSUFFICIENT_DATA                    C-07 NO_MEASURABLE_DELIVERY: no measured revenue
+//                                        and no spend or impressions → gated out, no
+//                                        verdict (connectorVerdictService.js:213). Some
+//                                        delivery below the sample gate is a WATCH
+//                                        (verdictEngine.js:290), so this is "nothing".
 //   NO_CONVERSIONS · MIXED_CURRENCY      AccountAggregateService.js:70-78
+// The lead speaks only for the states shown: an unreported metric can still be read
+// as 0 by the engine (PHASE_4_1_VISUAL_MOTION_RESEARCH.md §18.16, Finding A).
 //
 // MEMORY (brief question 7): institutional memory of decisions and outcomes,
 // never chat memory. One belief with the four temporal facts C-14 / B8-05
-// publish — since when, how often tested, how often it held, what it replaced —
-// and the constitutional edge: memory adjusts confidence, never the verdict
-// (Constitution R-1). Its figures are an illustrative fixture, labelled.
+// publish — since when, how often tested, how often it held, what it replaced.
+// The constitutional edge (memory can adjust confidence, never the verdict;
+// Constitution R-1) is stated once, in the #how spine's Memory stage (Phase 4.4
+// removed the axis here that repeated it). Its figures are an illustrative fixture, labelled.
 // ============================================================
 import {
   ClaimState, EvidenceGroup, Heading, Measurement, Stack, Surface, Text,
 } from '../../index.js';
-import { Axis, IllustrativeNote, LandingSection } from '../parts.jsx';
+import { IllustrativeNote, LandingSection } from '../parts.jsx';
 import css from '../landing.module.css';
 
 const ABSENCES = [
@@ -26,7 +33,7 @@ const ABSENCES = [
   ['NO_CONVERSIONS', 'Cost per conversion',
     'Spend is known, but no conversions were reported, so there is no cost per conversion to show.'],
   ['INSUFFICIENT_DATA', 'Verdict',
-    'The campaign delivered too little in its window to judge. No verdict is issued; this reason is.'],
+    'The campaign delivered nothing measurable in its window. No verdict is issued; this reason is.'],
   ['MIXED_CURRENCY', 'Account spend',
     'Campaigns report in more than one currency. LUMI does not add them together.'],
   ['FAILED', 'Google Ads campaigns',
@@ -38,7 +45,7 @@ export function TrustSection() {
     <LandingSection
       id="trust"
       title="When LUMI cannot know, it says so."
-      lead="A missing number is never drawn as a zero, and an unmeasured signal is never treated as healthy. Each absence has its own name and its own reason."
+      lead="These are the absences LUMI names. Each has its own words and its own reason, and none is shown as a zero."
     >
       <Stack gap="object">
         <IllustrativeNote>how these states read in LUMI. The claims are invented.</IllustrativeNote>
@@ -53,13 +60,6 @@ export function TrustSection() {
     </LandingSection>
   );
 }
-
-const MEMORY = [
-  ['Decision', 'A call, recorded with its reason, its evidence and what LUMI knew at the time.'],
-  ['Outcome', 'What was measured after acting — or why it could not be measured.'],
-  ['Memory', 'A belief about your account, once outcomes keep agreeing.'],
-  ['Next assessment', 'Beliefs raise or lower confidence. The verdict is still decided by the evidence.'],
-];
 
 function Belief() {
   return (
@@ -97,7 +97,6 @@ export function MemorySection() {
       title="Decisions compound into memory."
       lead="Every decision is kept with what LUMI knew when it made it. Outcomes are measured against it. What keeps holding becomes a belief about your account — and every belief shows its record."
     >
-      <Axis label="How a decision becomes memory" stops={MEMORY} />
       <div className={css.claimColumn}>
         <Belief />
       </div>

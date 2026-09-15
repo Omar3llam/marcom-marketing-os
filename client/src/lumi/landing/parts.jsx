@@ -42,23 +42,6 @@ export function IllustrativeNote({ children }) {
 }
 
 /**
- * A sequence read on one line: vertical when narrow, horizontal when the whole
- * sequence fits (Article 8 §1). Used for the product model and for memory.
- */
-export function Axis({ label, stops }) {
-  return (
-    <ol aria-label={label} className={css.axis}>
-      {stops.map(([name, description]) => (
-        <li key={name} className={css.axisStop}>
-          <Text variant="claim" as="p">{name}</Text>
-          <Text variant="body" as="p">{description}</Text>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-/**
  * ⚠️ PLACEHOLDER — the approved logo "01 / Current Base" is not in the repository
  * (Constitution FC-10; design-governance/brand/README.md: SOURCE REQUIRED).
  * The mark is not recreated, redrawn or approximated. This labelled text link

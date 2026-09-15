@@ -11,13 +11,16 @@
 //
 // NOW = REFRESH is the engine's creative-fatigue branch once return is back
 // above break-even (verdictEngine.js:429-433). Every name, id and time here is an
-// illustrative fixture, labelled as one (Article 28). Activating an action
+// illustrative fixture, labelled as one (Article 28). "Its call and reasons are
+// never rewritten" is the Phase 4.2 ruled form: a superseded row gets status and
+// outcome fields, never a new verdict or reasons (PHASE_4_1_VISUAL_MOTION_RESEARCH.md
+// §18.16 S4). Activating an action
 // changes only this page: nothing is sent, and the confirmation says so.
 // ============================================================
 import { useEffect, useRef, useState } from 'react';
 import {
-  ActionControl, AgreementNote, ClaimState, DecisionIdentity, EvidenceGroup, Heading, Spine, SpineStage,
-  Stack, Text, VerdictMark,
+  ActionControl, ActionLink, AgreementNote, ClaimState, DecisionIdentity, EvidenceGroup, Heading, Inline, Spine,
+  SpineStage, Stack, Text, VerdictMark,
 } from '../../index.js';
 import { IllustrativeNote, LandingSection } from '../parts.jsx';
 import css from '../landing.module.css';
@@ -117,7 +120,7 @@ function TodaysAssessment() {
         </SpineStage>
       </Spine>
       <Text variant="caption" light="body" as="p">
-        The recorded decision is not rewritten. LUMI states the difference and leaves the call to you.
+        Its call and reasons are never rewritten. LUMI states the difference and leaves the call to you.
       </Text>
     </Stack>
   );
@@ -128,13 +131,18 @@ export function DecisionSection() {
     <LandingSection
       id="evidence"
       title="A decision keeps its grounds."
-      lead="When LUMI commits to a verdict, its reason and evidence are recorded with it. A later assessment never rewrites that decision. If the two disagree, LUMI says so in words."
+      lead="When LUMI commits to a verdict, its reason and evidence are recorded with it. Its call and reasons are never rewritten when a later assessment disagrees. If the two disagree, LUMI says so in words."
     >
       <IllustrativeNote>an invented campaign and decision. Nothing on this page is sent anywhere.</IllustrativeNote>
       <div className={css.split}>
         <RecordedDecision />
         <TodaysAssessment />
       </div>
+      {/* Phase 4.4: the page's one mid-page next step, at its proof peak. Same quiet
+          ActionLink and destination as the hero; `data-landing-cta` is a hook only. */}
+      <Inline gap="object" align="center">
+        <ActionLink prominence="quiet" to="/signup" data-landing-cta="proof">Create an account</ActionLink>
+      </Inline>
     </LandingSection>
   );
 }

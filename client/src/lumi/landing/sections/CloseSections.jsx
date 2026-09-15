@@ -11,7 +11,8 @@
 //                path exists in src/)
 //   connectors   connectorRegistry.js:19-23
 //   verdicts     verdictEngine.js is a pure function of the evidence, not a chat model
-//   no revenue   verdictEngine.js:358-363
+//   no revenue   verdictEngine.js:358-363 (roas null, engagement only), and relativeRanking.js
+//                can still rank a no-revenue campaign KILL / SCALE against comparable ones
 // No price, plan or market claim is made: none has a source (audit §3C).
 // ============================================================
 import { ChevronDown } from 'lucide-react';
@@ -60,9 +61,9 @@ export function DifferenceSection() {
 
 const QUESTIONS = [
   ['I already have dashboards. Why add LUMI?',
-    'Keep them. A dashboard shows what happened; LUMI commits to what each campaign needs and shows its grounds. Where a dashboard shows a zero, LUMI tells you whether it measured zero or measured nothing.'],
+    'Keep them. A dashboard shows what happened; LUMI commits to what each campaign needs and shows its grounds. Where there is no revenue to judge return on, LUMI says so instead of showing a return of zero.'],
   ['What if my data is incomplete?',
-    'LUMI says what it could not measure, and why. A campaign whose revenue was never measured is not called KILL or SCALE — it is judged on engagement, and the verdict says so.'],
+    'Where revenue, conversions or delivery were not measured, LUMI says so, and why. A campaign whose revenue was never measured is judged on engagement alone, and its verdict says so — including when it is compared with similar campaigns in your account.'],
   ['Does LUMI change my campaigns on its own?',
     'No. Today one action can be carried out from a verdict: pausing a campaign on Meta after a KILL, when you confirm it. SCALE, REFRESH and REALLOCATE need a figure or a creative from you, so LUMI does not pretend to act on them.'],
   ['Which platforms does it connect to?',
