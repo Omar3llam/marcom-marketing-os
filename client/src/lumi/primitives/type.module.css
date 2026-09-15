@@ -1,0 +1,104 @@
+/* ============================================================
+ * LUMI type primitives. One class per semantic type role, one per light step.
+ * Metric roles are deliberately absent here: a figure is only reachable through
+ * <Measurement>, which refuses a figure without its window (Article 20 §1).
+ * ============================================================ */
+
+.text {
+  margin: 0;
+}
+
+.roleClaim {
+  font-family: var(--lumi-type-body-claim-family);
+  font-size: var(--lumi-type-body-claim-size);
+  line-height: var(--lumi-type-body-claim-line-height);
+  font-weight: var(--lumi-type-body-claim-weight);
+  letter-spacing: var(--lumi-type-body-claim-letter-spacing);
+}
+.roleBody {
+  font-family: var(--lumi-type-body-default-family);
+  font-size: var(--lumi-type-body-default-size);
+  line-height: var(--lumi-type-body-default-line-height);
+  font-weight: var(--lumi-type-body-default-weight);
+  letter-spacing: var(--lumi-type-body-default-letter-spacing);
+}
+.roleLabel {
+  font-family: var(--lumi-type-label-default-family);
+  font-size: var(--lumi-type-label-default-size);
+  line-height: var(--lumi-type-label-default-line-height);
+  font-weight: var(--lumi-type-label-default-weight);
+  letter-spacing: var(--lumi-type-label-default-letter-spacing);
+}
+.roleCaption {
+  font-family: var(--lumi-type-caption-default-family);
+  font-size: var(--lumi-type-caption-default-size);
+  line-height: var(--lumi-type-caption-default-line-height);
+  font-weight: var(--lumi-type-caption-default-weight);
+  letter-spacing: var(--lumi-type-caption-default-letter-spacing);
+}
+.roleIdentifier {
+  font-family: var(--lumi-type-technical-identifier-family);
+  font-size: var(--lumi-type-technical-identifier-size);
+  line-height: var(--lumi-type-technical-identifier-line-height);
+  font-weight: var(--lumi-type-technical-identifier-weight);
+  letter-spacing: var(--lumi-type-technical-identifier-letter-spacing);
+}
+
+.headingSurface {
+  font-family: var(--lumi-type-heading-surface-family);
+  font-size: var(--lumi-type-heading-surface-size);
+  line-height: var(--lumi-type-heading-surface-line-height);
+  font-weight: var(--lumi-type-heading-surface-weight);
+  letter-spacing: var(--lumi-type-heading-surface-letter-spacing);
+}
+.headingSection {
+  font-family: var(--lumi-type-heading-section-family);
+  font-size: var(--lumi-type-heading-section-size);
+  line-height: var(--lumi-type-heading-section-line-height);
+  font-weight: var(--lumi-type-heading-section-weight);
+  letter-spacing: var(--lumi-type-heading-section-letter-spacing);
+}
+.headingBrand {
+  font-family: var(--lumi-type-display-brand-family);
+  font-size: var(--lumi-type-display-brand-size);
+  line-height: var(--lumi-type-display-brand-line-height);
+  font-weight: var(--lumi-type-display-brand-weight);
+  letter-spacing: var(--lumi-type-display-brand-letter-spacing);
+}
+
+/* Light follows the claim, not the container (Article 11 §3). */
+.lightClaim {
+  color: var(--lumi-color-text-claim);
+}
+.lightBody {
+  color: var(--lumi-color-text-body);
+}
+.lightMeta {
+  color: var(--lumi-color-text-meta);
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: currentColor;
+}
+.iconInline {
+  width: var(--lumi-size-icon-inline);
+  height: var(--lumi-size-icon-inline);
+}
+.iconStandalone {
+  width: var(--lumi-size-icon-standalone);
+  height: var(--lumi-size-icon-standalone);
+}

@@ -13,7 +13,11 @@ import spacing  from './design-system/tokens/spacing.json'  assert { type: 'json
 
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
+  // src/lumi/ (Phase 3 primitives) consumes --lumi-* variables through CSS
+  // modules and writes no Tailwind classes, so it is not scanned: a utility
+  // class written there generates nothing, and the legacy stylesheet stays
+  // byte-identical while the new layer grows.
+  content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}', '!./src/lumi/**'],
   theme: {
     extend: {
       colors: {

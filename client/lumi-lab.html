@@ -1,0 +1,23 @@
+<!doctype html>
+<!--
+  LUMI Primitive Lab — Phase 3 visual review surface. NOT a production page.
+  Served only by the Vite dev server at /lumi-lab.html. `vite build` builds
+  index.html alone, so this file and its module never enter client/dist, and no
+  application route or navigation links here.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>LUMI Primitive Lab — not a product surface</title>
+    <style>
+      html, body { margin: 0; }
+      #lab-root > div { min-height: 100vh; }
+    </style>
+  </head>
+  <body>
+    <div id="lab-root"></div>
+    <script type="module" src="/src/lumi/lab/main.jsx"></script>
+  </body>
+</html>

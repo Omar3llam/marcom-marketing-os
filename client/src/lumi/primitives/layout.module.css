@@ -1,0 +1,128 @@
+/* ============================================================
+ * LUMI layout primitives. Tokens only: every value is a --lumi-* variable.
+ * Spacing tiers follow relationship, not size (Constitution Article 14).
+ * ============================================================ */
+
+.environment {
+  background: var(--lumi-color-surface-base);
+  color: var(--lumi-color-text-body);
+  font-family: var(--lumi-type-body-default-family);
+  font-size: var(--lumi-type-body-default-size);
+  line-height: var(--lumi-type-body-default-line-height);
+  font-weight: var(--lumi-type-body-default-weight);
+  letter-spacing: var(--lumi-type-body-default-letter-spacing);
+}
+/* Native controls (checkbox, radio, select popup, scrollbars) follow the ground.
+   Fixed per environment — not a media query and not a preference (🔒 PR-9).
+   Found in the Phase 3 visual review: without it they rendered light on Charcoal. */
+.groundCharcoal {
+  color-scheme: dark;
+}
+.groundOffWhite {
+  color-scheme: light;
+}
+
+/* Surface — a region of ground holding one question (Article 16). */
+.surface {
+  margin: 0;
+  min-width: 0;
+}
+.levelBase {
+  background: var(--lumi-color-surface-base);
+}
+.levelRaised {
+  background: var(--lumi-color-surface-raised);
+}
+/* Elevated is the overlay role: the only surface that sits above content. */
+.levelElevated {
+  background: var(--lumi-color-surface-elevated);
+  border: var(--lumi-border-width-hairline) solid var(--lumi-color-border-subtle);
+  border-radius: var(--lumi-radius-container);
+  box-shadow: var(--lumi-shadow-overlay);
+}
+/* A bounded container exists only with a CMP-04 reason (see Surface.jsx). */
+.bounded {
+  border: var(--lumi-border-width-hairline) solid var(--lumi-color-border-subtle);
+  border-radius: var(--lumi-radius-container);
+}
+.paddingMeta {
+  padding: var(--lumi-space-meta);
+}
+.paddingObject {
+  padding: var(--lumi-space-object);
+}
+.paddingSection {
+  padding: var(--lumi-space-section);
+}
+
+/* Stack and Inline — flow by relationship tier. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.alignStart {
+  align-items: flex-start;
+}
+.inline {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.nowrap {
+  flex-wrap: nowrap;
+}
+.crossBaseline {
+  align-items: baseline;
+}
+.crossCenter {
+  align-items: center;
+}
+.crossStart {
+  align-items: flex-start;
+}
+.justifyBetween {
+  justify-content: space-between;
+}
+.gapInline {
+  gap: var(--lumi-space-inline);
+}
+.gapMeta {
+  gap: var(--lumi-space-meta);
+}
+.gapObject {
+  gap: var(--lumi-space-object);
+}
+.gapSection {
+  gap: var(--lumi-space-section);
+}
+.gapMacro {
+  gap: var(--lumi-space-macro);
+}
+
+/* Rule — a hairline that separates or aligns real content (Article 18). */
+.rule {
+  margin: 0;
+  border: 0;
+  flex-shrink: 0;
+}
+.ruleHorizontal {
+  border-block-start: var(--lumi-border-width-hairline) solid;
+}
+.ruleVertical {
+  align-self: stretch;
+  border-inline-start: var(--lumi-border-width-hairline) solid;
+}
+.ruleDivider {
+  border-color: var(--lumi-color-border-divider);
+}
+.ruleStructure {
+  border-color: var(--lumi-color-border-subtle);
+}
