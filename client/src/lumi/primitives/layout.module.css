@@ -21,6 +21,13 @@
 .groundOffWhite {
   color-scheme: light;
 }
+/* Selected text inside LUMI is neutral. Without this the legacy global
+   ::selection (client/src/index.css, a gold wash with gold text) applies —
+   gold as an interaction state (Article 12, FC-14). Found in the Phase 4 review. */
+.environment ::selection {
+  color: var(--lumi-color-surface-base);
+  background: var(--lumi-color-text-claim);
+}
 
 /* Surface — a region of ground holding one question (Article 16). */
 .surface {

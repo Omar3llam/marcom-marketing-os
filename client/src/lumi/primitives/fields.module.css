@@ -1,0 +1,107 @@
+/* ============================================================
+ * LUMI field primitives — TextField · SelectField · CheckboxField · RadioGroup.
+ * Split out of controls.module.css in the Phase 4 remediation: a CSS module
+ * ships whole, so every page that drew one button also shipped every field rule
+ * (PHASE_4_LANDING_VISUAL_LANGUAGE_AUDIT.md §23). Rules unchanged, same tokens.
+ * Interaction roles only (DESIGN_TOKEN_ARCHITECTURE.md §6.2); no gold and no
+ * verdict colour reaches a field.
+ * ============================================================ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumi-space-inline);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.fieldLabel {
+  color: var(--lumi-color-text-claim);
+  font-family: var(--lumi-type-label-default-family);
+  font-size: var(--lumi-type-label-default-size);
+  line-height: var(--lumi-type-label-default-line-height);
+  font-weight: var(--lumi-type-label-default-weight);
+  padding: 0;
+}
+.fieldDescription {
+  margin: 0;
+  color: var(--lumi-color-text-meta);
+  font-family: var(--lumi-type-caption-default-family);
+  font-size: var(--lumi-type-caption-default-size);
+  line-height: var(--lumi-type-caption-default-line-height);
+}
+.fieldInvalid {
+  display: flex;
+  align-items: center;
+  gap: var(--lumi-space-inline);
+  margin: 0;
+  color: var(--lumi-color-text-claim);
+  font-family: var(--lumi-type-caption-default-family);
+  font-size: var(--lumi-type-caption-default-size);
+  line-height: var(--lumi-type-caption-default-line-height);
+}
+.input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--lumi-size-target-minimum);
+  margin: 0;
+  padding: var(--lumi-space-meta);
+  color: var(--lumi-color-text-claim);
+  background: var(--lumi-color-surface-base);
+  border: var(--lumi-border-width-hairline) solid var(--lumi-color-border-strong);
+  border-radius: var(--lumi-radius-control);
+  font-family: var(--lumi-type-body-default-family);
+  font-size: var(--lumi-type-body-default-size);
+  line-height: var(--lumi-type-body-default-line-height);
+}
+.input[aria-disabled='true'] {
+  color: var(--lumi-color-interaction-disabled-foreground);
+  border-color: var(--lumi-color-interaction-disabled-border);
+  cursor: not-allowed;
+}
+
+.choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--lumi-space-meta);
+  min-height: var(--lumi-size-target-minimum);
+  color: var(--lumi-color-text-body);
+  font-family: var(--lumi-type-label-default-family);
+  font-size: var(--lumi-type-label-default-size);
+  line-height: var(--lumi-type-label-default-line-height);
+  font-weight: var(--lumi-type-label-default-weight);
+  cursor: pointer;
+}
+.choiceInput {
+  width: var(--lumi-size-icon-inline);
+  height: var(--lumi-size-icon-inline);
+  margin: 0;
+  accent-color: var(--lumi-color-interaction-selected-indicator);
+  cursor: inherit;
+}
+.choice[aria-disabled='true'] {
+  color: var(--lumi-color-interaction-disabled-foreground);
+  cursor: not-allowed;
+}
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumi-space-inline);
+}
+
+/* The same neutral ring as controls.module.css, declaration for declaration
+   (the token-usage test holds every outline in src/lumi to that one value). */
+.input:focus-visible,
+.choiceInput:focus-visible {
+  outline: var(--lumi-size-focus-width) solid var(--lumi-color-interaction-focus-ring);
+  outline-offset: var(--lumi-size-focus-offset);
+  box-shadow: none;
+}
+
+@media (pointer: coarse) {
+  .input,
+  .choice {
+    min-height: var(--lumi-size-target-touch);
+  }
+}

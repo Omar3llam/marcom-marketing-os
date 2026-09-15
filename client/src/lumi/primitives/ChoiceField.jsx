@@ -13,7 +13,7 @@
 import { assertOneOf, assertProps, assertText } from '../contract.js';
 import { useGround } from './Environment.jsx';
 import { FieldDescription, FieldMessages, useFieldParts } from './FieldParts.jsx';
-import css from './controls.module.css';
+import css from './fields.module.css';
 
 export function CheckboxField(props) {
   assertProps('CheckboxField', props, ['label', 'description', 'disabledReason', 'checked', 'onCheckedChange', 'name', 'id']);

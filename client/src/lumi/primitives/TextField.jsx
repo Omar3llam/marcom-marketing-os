@@ -14,7 +14,7 @@
 import { assertOneOf, assertProps } from '../contract.js';
 import { useGround } from './Environment.jsx';
 import { FieldDescription, FieldMessages, useFieldParts } from './FieldParts.jsx';
-import css from './controls.module.css';
+import css from './fields.module.css';
 
 const FIELD_PROPS = ['label', 'description', 'invalidReason', 'disabledReason', 'required', 'name', 'id'];
 

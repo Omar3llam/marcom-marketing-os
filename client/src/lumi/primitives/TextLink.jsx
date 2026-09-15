@@ -19,7 +19,7 @@ export function TextLink(props) {
   useGround('TextLink');
   assertText('TextLink', 'children (its visible text)', children);
   if ((to === undefined) === (href === undefined)) {
-    throw new Error('TextLink: pass exactly one of `to` (in-app route) or `href` (leaves the app).');
+    throw new Error('TextLink: pass exactly one of `to` (an in-app route) or `href` (a same-page anchor or an address outside the app).');
   }
   if (current !== undefined) assertOneOf('TextLink', 'current', current, ['page', 'location']);
 

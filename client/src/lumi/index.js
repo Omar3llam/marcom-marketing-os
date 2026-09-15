@@ -1,8 +1,9 @@
 // ============================================================
 // LUMI primitives and grammar parts (Phase 3)
 // ------------------------------------------------------------
-// Registry and documentation: ./README.md. Nothing in the application imports
-// this module yet; surfaces adopt it when they migrate (Phase 5).
+// Registry and documentation: ./README.md. Its first application consumer is the
+// public landing page (Phase 4, ./landing/); authenticated surfaces adopt it when
+// they migrate (Phase 5).
 // ============================================================
 
 // Primitives — grammar-agnostic (COMPONENT_RULES.md CMP-01)
@@ -13,6 +14,7 @@ export { Text, Heading, VisuallyHidden } from './primitives/Text.jsx';
 export { Icon, Announcement, FORBIDDEN_GLYPHS } from './primitives/Icon.jsx';
 export { Button, IconButton } from './primitives/Button.jsx';
 export { TextLink } from './primitives/TextLink.jsx';
+export { ActionLink } from './primitives/ActionLink.jsx';
 export { TextField, SelectField } from './primitives/TextField.jsx';
 export { CheckboxField, RadioGroup } from './primitives/ChoiceField.jsx';
 

@@ -5,7 +5,7 @@ Status      IMPLEMENTED — Phase 3 (Primitives), 2026-09-14, on 9872525 (origin
 Authority   design-governance/ · DESIGN_TOKEN_ARCHITECTURE.md (tokens) · this file (registry)
 Supersedes  client/design-system/ui-registry.md (HISTORICAL) — COMPONENT_RULES.md CMP-10 §2
 Audit       PHASE_3_PRIMITIVE_AUDIT.md
-Consumers   none yet. Surfaces adopt these parts when they migrate (Phase 5).
+Consumers   the public landing page (Phase 4, client/src/lumi/landing/). Authenticated surfaces adopt these parts when they migrate (Phase 5).
 ```
 
 **Check this registry before creating a component.** A part that expresses a
@@ -27,7 +27,9 @@ FOUNDATION → GENERIC PRIMITIVES → LUMI GRAMMAR → PRODUCT SURFACE COMPONENT
 | **LUMI Grammar** | `grammar/` | CMP-02: expresses one grammar object; carries a header with grammar object · contract · states · why LUMI | **yes — explicitly product-aware** (FC-18) |
 
 `lab/` holds the non-production Primitive Lab (served only at `/lumi-lab.html`
-by the Vite dev server; never built into `client/dist`).
+by the Vite dev server; never built into `client/dist`) and the Phase 4 landing review
+entry (`/lumi-landing.html`, same rule). `landing/` is the public landing page — the
+PAGES layer, composed only of these parts (PHASE_4_LANDING_VISUAL_LANGUAGE_AUDIT.md).
 
 Grammar parts compose primitives. Primitives never import grammar parts.
 Neither imports anything from the legacy layers (`client/src/primitives`,
@@ -73,6 +75,7 @@ Enforced by `__tests__/tokenUsage.test.js` (static) and the behaviour tests.
 | `Announcement` | live region | politeness | — | `status` / `alert` |
 | `Button` | a control with a visible text label | **prominence**, **onActivate** (or `type="submit"`), disabledReason, type | default · hover · pressed · focus-visible · disabled | native button; disabled = `aria-disabled` + focusable + described reason |
 | `IconButton` | icon-only control | **prominence**, **glyph**, **label**, **onActivate** | as Button | name from `label` |
+| `ActionLink` *(Phase 4)* | navigation that carries a control's weight: a real link drawn with Button's two prominences | **prominence**, **to** or **href** | as Button (no disabled: a link that goes nowhere is not rendered) | native link; name from its visible label |
 | `TextLink` | navigation in text | **to** or **href**, current | default · hover · focus-visible · current | always underlined; `aria-current` |
 | `TextField` | labelled text input or textarea | **label**, **value**, **onValueChange**, type, multiline, description, invalidReason, disabledReason | default · focus · invalid · disabled | label, description and messages linked |
 | `SelectField` | labelled native select | **label**, **value**, **options**, **onValueChange**, unsetLabel | as TextField | value outside options refused |

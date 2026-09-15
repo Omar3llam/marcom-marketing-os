@@ -17,6 +17,11 @@ export default {
   // modules and writes no Tailwind classes, so it is not scanned: a utility
   // class written there generates nothing, and the legacy stylesheet stays
   // byte-identical while the new layer grows.
+  //
+  // Do not exclude a directory that still holds Tailwind classes, even an
+  // unreferenced one: `npm run check:tokens` reads every source file and fails
+  // on a class the compiled CSS does not define (Phase 4: excluding the legacy
+  // src/pages/LandingPage/ broke it at 27 classes). Delete such code instead.
   content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}', '!./src/lumi/**'],
   theme: {
     extend: {
