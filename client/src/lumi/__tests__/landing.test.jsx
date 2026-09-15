@@ -194,11 +194,13 @@ describe('LUMI landing — identity and first-load hygiene (Phase 4 remediation)
     expect(rule).toContain('box-shadow: none;');
   });
 
-  it('keeps the legacy landing out of the Tailwind scan only while no route renders it', () => {
-    const excluded = read('tailwind.config.js').includes("'!./src/pages/LandingPage/**'");
-    const routed = /from '\.\/LandingPage\//.test(read('src/pages/LandingPage.jsx'));
-    expect(excluded).toBe(true);
-    expect(routed).toBe(false);
+  it('excludes nothing from the Tailwind scan but LUMI, which writes no Tailwind classes', () => {
+    // check:tokens reads every file under src/ and fails on a class Tailwind did
+    // not emit, so excluding a directory that still holds classes breaks it.
+    const content = read('tailwind.config.js').match(/content:\s*\[([^\]]*)\]/)[1];
+    const exclusions = [...content.matchAll(/'!([^']+)'/g)].map((m) => m[1]);
+    expect(exclusions).toEqual(['./src/lumi/**']);
+    expect(/from '\.\/LandingPage\//.test(read('src/pages/LandingPage.jsx'))).toBe(false);
   });
 });
 

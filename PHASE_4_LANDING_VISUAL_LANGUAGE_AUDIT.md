@@ -2,6 +2,7 @@
 
 ```text
 Status     READY FOR REVIEW — Final Review Gate (§24) under Omar's temporary bundle-cost ruling;
+           ⚠️ post-PR CI correction in §25 changes the measured first load (needs Omar's acknowledgement);
            original gate in §22; remediation pass in §23
            (Stages A–B written before implementation; C–K after; §23 after the remediation spec)
 Branch     feat/lumi-landing (new; from origin/master b35d22e)
@@ -1219,3 +1220,64 @@ APPROVER        Omar — pending (visual review of the rendered landing)
 
 - **Not `READY FOR PHASE 5`.** Phase 5 begins only after Omar reviews the rendered landing and explicitly approves it.
 - **Nothing committed, pushed or merged.**
+
+---
+
+## 25. Post-PR correction — CI `check:tokens` failure (PR #478)
+
+### 25.1 What failed
+
+PR #478's **Architecture & Token Discipline → Token resolution (every colour class exists)** step failed. 📏 `npm run check:tokens` reported 27 colour classes, at 37 call sites, all in `src/pages/LandingPage/**`.
+
+The same failure reproduced locally after `npm run build`.
+
+### 25.2 Cause — a defect introduced in §23 R-1, and missed by validation
+
+- **The mechanism.** R-1 excluded `src/pages/LandingPage/**` from the Tailwind scan. `client/scripts/checkTokenResolution.js` walks **every** file under `src/` and fails on any colour class the compiled CSS does not define. With the legacy files still present, their classes stayed in source but were no longer generated.
+- **Why validation missed it.** §23.13 and §24.15 listed "`tokens:check`" as not run, on the grounds that no token source changed. That conflated two different commands:
+  - `tokens:check` validates the token source;
+  - `check:tokens` asks whether every class in source exists in the build (CLAUDE.md, "Enforcement mechanisms in force").
+
+  A Tailwind content change is exactly what the second one measures, so it should have run.
+
+### 25.3 Fix
+
+| Option | Decision |
+|---|---|
+| Revert R-1 (restore the Tailwind scan of the legacy landing) | **applied** |
+| Make the checker skip `src/pages/LandingPage/**` | rejected. It blinds the existence check in exactly the files where a class cannot resolve, which weakens enforcement. |
+| Delete the legacy landing | not authorised. It needs approval and the Deletion Protocol's separate commit (§21 item 10). |
+
+- `client/tailwind.config.js`: the content globs are back to `['./index.html', './src/**/*.{js,jsx,ts,tsx}', '!./src/lumi/**']`, with a comment explaining why a directory that still holds classes must not be excluded.
+- `landing.test.jsx`: the pairing test is replaced. The test now pins the only allowed exclusion to `./src/lumi/**` and still checks that the route does not import the legacy page.
+
+The same commit fixes two comments flagged by the PR code review (both scored 50, below the posting threshold):
+
+- `ActionLink.jsx` and `TextLink.jsx`: the error message now reads "`href` (a same-page anchor or an address outside the app)".
+- `HeroSection.jsx`: the header comment now matches its light steps.
+
+### 25.4 Re-measured (📏 same `measure-dist.mjs`)
+
+| | Raw | Gzip | Brotli |
+|---|---:|---:|---:|
+| baseline `b35d22e` | 1,044,498 | 287,336 | 242,645 |
+| accepted in §24.1 | 1,081,011 | 298,840 | 251,991 |
+| **now** | **1,086,645** | **299,989** | **252,601** |
+| delta vs baseline | +42,147 | **+12,653 (+4.40 %)** | +9,956 (+4.10 %) |
+| delta vs accepted | +5,634 | **+1,149** | +610 |
+
+**Composition of the +1,149 B:**
+
+- **entry CSS +913 B** (33,280 → 34,193): the legacy-landing utilities are back;
+- **entry JS +236 B** (172,816 → 173,052): the only JS change is the longer error-message text in `ActionLink` and `TextLink`.
+
+**⚠️ This exceeds the +11,504 B Omar accepted in §24.1 by 1,149 B**, so the ruling needs acknowledging at the corrected figure. The cause and the Phase 5 remedy are unchanged. Deleting the unreferenced legacy landing (§21 item 10) would recover the CSS part without touching the checker.
+
+### 25.5 Validation after the fix
+
+| Check | 📏 Result |
+|---|---|
+| `npm run build` | exit 0 |
+| `npm run check:tokens` | exit 0; every colour class resolves (1,140 selectors) |
+| `vitest run src/lumi src/pages/LandingPage src/app` | 375 / 375 |
+| `npm run lint:ci` | exit 0 |

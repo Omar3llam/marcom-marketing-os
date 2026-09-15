@@ -29,7 +29,7 @@ export function ActionLink(props) {
   assertOneOf('ActionLink', 'prominence', prominence, Object.keys(PROMINENCE));
   assertText('ActionLink', 'children (its visible label)', children);
   if ((to === undefined) === (href === undefined)) {
-    throw new Error('ActionLink: pass exactly one of `to` (in-app route) or `href` (leaves the app).');
+    throw new Error('ActionLink: pass exactly one of `to` (an in-app route) or `href` (a same-page anchor or an address outside the app).');
   }
 
   const className = cx(css.button, PROMINENCE[prominence]);

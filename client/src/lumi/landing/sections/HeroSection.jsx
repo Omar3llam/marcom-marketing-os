@@ -3,8 +3,9 @@
 // ------------------------------------------------------------
 // Brief question 1: what is LUMI? The statement is 🔒 Article 4's positioning.
 // The demonstration reads in PRODUCTION order, DATA → EVIDENCE → VERDICT
-// (Article 5), and expresses it as light: inputs in meta light, the questions
-// asked of them in body light, the call in claim light (Article 11 §3).
+// (Article 5), and expresses it as light: raw inputs in meta light; in the
+// evidence column each question in meta light and its answer in body light;
+// the call in claim light (Article 11 §3).
 //
 // Grounding: KILL is reached when return is below break-even AND frequency is
 // past the fatigue ceiling (src/services/verdict-engine/verdictEngine.js:387-391),

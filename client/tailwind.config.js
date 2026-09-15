@@ -18,12 +18,11 @@ export default {
   // class written there generates nothing, and the legacy stylesheet stays
   // byte-identical while the new layer grows.
   //
-  // src/pages/LandingPage/ is the legacy landing. Since Phase 4 `/` renders
-  // src/lumi/landing/ and nothing imports the legacy directory, so the utilities
-  // only it used are dead weight in every page's first load (918 B gzip, measured in
-  // PHASE_4_LANDING_VISUAL_LANGUAGE_AUDIT.md §23). Re-pointing the route at the legacy
-  // page means removing this exclusion too; landing.test.jsx fails until both agree.
-  content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}', '!./src/lumi/**', '!./src/pages/LandingPage/**'],
+  // Do not exclude a directory that still holds Tailwind classes, even an
+  // unreferenced one: `npm run check:tokens` reads every source file and fails
+  // on a class the compiled CSS does not define (Phase 4: excluding the legacy
+  // src/pages/LandingPage/ broke it at 27 classes). Delete such code instead.
+  content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}', '!./src/lumi/**'],
   theme: {
     extend: {
       colors: {
