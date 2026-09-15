@@ -127,6 +127,119 @@
   border-block-start: var(--lumi-border-width-hairline) solid var(--lumi-color-border-subtle);
 }
 
+/* ── Selective illumination (Phase 4.2 prototype) ──────────────
+   Light follows the reader's choice: Article 11's three text light steps, set by
+   the component. Nothing here hides, moves or reorders content (M-0).
+   The mark at an item's inline start is the non-colour-alone sign of selection,
+   in interaction.selected.indicator, never gold (FC-14); it is as thick as the
+   active-link indicator in controls.module.css. Its opacity is the ONLY property
+   this page transitions (motion.duration.reveal, 0 ms under reduced motion).
+   Light steps change at once: text colour is never transitioned (MO-6.5; Phase 4.2
+   review Q-12), so a choice reads as a state becoming clear, not a light coming on. */
+.lit,
+.modelStop {
+  position: relative;
+  padding-inline-start: var(--lumi-space-object);
+}
+.lit::before,
+.modelStop::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  width: var(--lumi-size-focus-width);
+  background: var(--lumi-color-interaction-selected-indicator);
+  opacity: 0;
+  transition: opacity var(--lumi-motion-duration-reveal) var(--lumi-motion-easing-reveal);
+}
+.lit[data-landing-light='claim']::before,
+.modelStop[data-landing-light='claim']::before {
+  opacity: 1;
+}
+/* The evidence question and the stage word are the controls: text with a
+   persistent structural rule (🔒 FC-19), not boxes or tabs. */
+.lightControl,
+.modelWord {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: var(--lumi-size-target-minimum);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--lumi-radius-control);
+  background: transparent;
+  text-align: start;
+  cursor: pointer;
+}
+.lightControl {
+  border-block-end: var(--lumi-border-width-hairline) solid var(--lumi-color-border-strong);
+  color: var(--lumi-color-text-body);
+  font-family: var(--lumi-type-body-default-family);
+  font-size: var(--lumi-type-body-default-size);
+  line-height: var(--lumi-type-body-default-line-height);
+  font-weight: var(--lumi-type-body-default-weight);
+  letter-spacing: var(--lumi-type-body-default-letter-spacing);
+}
+.lightControl[aria-pressed='true'] {
+  color: var(--lumi-color-text-claim);
+  border-block-end-color: var(--lumi-color-interaction-selected-indicator);
+}
+/* Hover only where a pointer can hover: on touch the surface would stay after a tap
+   and read as a selected box. */
+@media (hover: hover) {
+  .lightControl:hover,
+  .modelWord:hover {
+    background: var(--lumi-color-interaction-hover-surface);
+  }
+}
+
+/* ── Model spine: DATA → … → MEMORY, one phrase of words ───────
+   A decision model, not navigation (review Q-16). Narrow: one vertical axis.
+   Tablet: the same axis, each stage a row (word | what it holds and never does).
+   Laptop and wider: the seven words on one line, joined by hairlines, so the line
+   reads as a sequence of stages rather than a row of tabs: no rule above or below
+   the words, no underline, no panel. */
+.model {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.modelStop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumi-space-inline);
+  min-width: 0;
+  padding-block: var(--lumi-space-meta) var(--lumi-space-object);
+  border-inline-start: var(--lumi-border-width-hairline) solid var(--lumi-color-border-strong);
+}
+.modelStop::before {
+  inset-inline-start: calc(var(--lumi-border-width-hairline) * -1);
+}
+.modelHead {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.modelWord {
+  flex: none;
+  width: auto;
+  color: var(--lumi-color-text-meta);
+  font-family: var(--lumi-type-heading-surface-family);
+  font-size: var(--lumi-type-heading-surface-size);
+  line-height: var(--lumi-type-heading-surface-line-height);
+  font-weight: var(--lumi-type-heading-surface-weight);
+  letter-spacing: var(--lumi-type-heading-surface-letter-spacing);
+}
+.modelStop[data-landing-light='body'] .modelWord {
+  color: var(--lumi-color-text-body);
+}
+.modelWord[aria-pressed='true'] {
+  color: var(--lumi-color-text-claim);
+}
+
 /* ── Ledger: parallel rows separated by hairlines ──────────── */
 .ledger {
   margin: 0;
@@ -230,6 +343,8 @@
 /* One focus ring, neutral; the legacy global box-shadow ring is not drawn here. */
 .brandPlaceholder:focus-visible,
 .question:focus-visible,
+.lightControl:focus-visible,
+.modelWord:focus-visible,
 .focusTarget:focus-visible {
   outline: var(--lumi-size-focus-width) solid var(--lumi-color-interaction-focus-ring);
   outline-offset: var(--lumi-size-focus-offset);
@@ -240,6 +355,21 @@
 @media (min-width: 688px) {
   .pageNav {
     display: block;
+  }
+  /* The vertical axis keeps its line; each stage becomes one row, so seven stages
+     take seven rows instead of twenty-one lines. */
+  .modelStop {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+    column-gap: var(--lumi-space-section);
+    row-gap: var(--lumi-space-inline);
+    align-items: start;
+  }
+  .modelHead {
+    grid-row: 1 / span 2;
+  }
+  .modelStop > p {
+    grid-column: 2;
   }
   .frame {
     padding-inline: var(--lumi-layout-gutter-tablet);
@@ -319,6 +449,37 @@
     padding-inline: 0 var(--lumi-space-object);
     border-inline-start: 0;
   }
+  /* Pulled into the gutter by the mark's own inset, so the first word aligns with the
+     section heading and the mark hangs in the page gutter (32px, wider than the pull). */
+  .model {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    margin-inline-start: calc(var(--lumi-space-object) * -1);
+  }
+  .modelStop {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding-block: 0;
+    border-inline-start: 0;
+  }
+  /* The mark stays beside the chosen stage, as in the hero: never above it, where a
+     row of words over a rule with one lit segment reads as a tab strip. */
+  .modelStop::before {
+    inset-inline-start: 0;
+  }
+  /* The hairline that joins a word to the next stage: sequence, not a separator. */
+  .modelHead::after {
+    content: '';
+    flex: 1 1 auto;
+    min-width: var(--lumi-space-object);
+    margin-inline-start: var(--lumi-space-meta);
+    border-block-start: var(--lumi-border-width-hairline) solid var(--lumi-color-border-strong);
+  }
+  .modelStop:last-child .modelHead::after {
+    content: none;
+  }
   .split {
     grid-template-columns: minmax(0, var(--lumi-layout-width-claim)) minmax(0, var(--lumi-layout-width-evidence));
     justify-content: space-between;
@@ -328,7 +489,9 @@
 /* ── Coarse pointers: touch-size targets (last, so it wins over the base rules) ── */
 @media (pointer: coarse) {
   .navList > li,
-  .brandPlaceholder {
+  .brandPlaceholder,
+  .lightControl,
+  .modelWord {
     min-height: var(--lumi-size-target-touch);
   }
 }

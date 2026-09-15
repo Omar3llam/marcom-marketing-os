@@ -134,7 +134,10 @@ describe('LUMI landing — the decision demonstration (PR-1, PR-2, FC-5)', () =>
     expect(evidence.textContent).not.toMatch(/[→←⇒⇐]/);
     expect(evidence.querySelector('s, del, strike')).toBeNull();
     const hero = container.querySelector('figure');
-    expect(within(hero).queryByRole('button')).toBeNull();
+    // Phase 4.2: the hero's only buttons choose an evidence question (aria-pressed).
+    // None is an action, and the verdict column holds no control at all.
+    for (const button of within(hero).getAllByRole('button')) expect(button).toHaveAttribute('aria-pressed');
+    expect(within(hero.querySelector('[data-landing-call]').closest('li')).queryByRole('button')).toBeNull();
     expect(hero.querySelector('[data-lumi-tense="NOW"]')).not.toBeNull();
   });
 

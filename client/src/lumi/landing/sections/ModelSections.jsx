@@ -2,7 +2,8 @@
 // Landing — the problem, and how LUMI thinks
 // ------------------------------------------------------------
 // Brief questions 2–4. The model is drawn as ONE axis (Article 8 §1), in
-// production order (Article 5), with its narrow feedback edge stated in words:
+// production order (Article 5), as the reader-driven spine in ./ModelSpine.jsx
+// (Phase 4.2 prototype). Its narrow feedback edge is stated in words there:
 // memory adjusts confidence, never the verdict (Constitution R-1).
 //
 // Claims and their sources:
@@ -13,7 +14,8 @@
 // ============================================================
 import { Heading, Stack, Text } from '../../index.js';
 import { cx } from '../../contract.js';
-import { Axis, LandingSection } from '../parts.jsx';
+import { LandingSection } from '../parts.jsx';
+import { ModelSpine } from './ModelSpine.jsx';
 import css from '../landing.module.css';
 
 const HANDED_COLUMNS = ['What a dashboard hands you', 'What is still left to you'];
@@ -54,16 +56,6 @@ export function ProblemSection() {
   );
 }
 
-const MODEL = [
-  ['Data', 'What Meta Ads, Google Ads and Google Analytics 4 report.'],
-  ['Evidence', 'Measurements over a stated window, with anything unmeasured named.'],
-  ['Verdict', 'One of six calls on a campaign.'],
-  ['Decision', 'The call LUMI commits to, recorded with its reason and evidence.'],
-  ['Action', 'What you confirm. Not every verdict has one.'],
-  ['Outcome', 'What was measured after acting — or why it could not be.'],
-  ['Memory', 'What keeps holding across decisions on your account.'],
-];
-
 const SUBJECTS = [
   ['Campaigns', 'A verdict on each campaign it can judge, and a recorded decision whenever that call changes.'],
   ['Budget', 'Allocation plans across campaigns. A plan is something you approve; it is not a verdict.'],
@@ -77,14 +69,7 @@ export function ModelSection() {
       title="LUMI reasons in one direction."
       lead="From the data to a decision it can defend — and from what happened afterwards into memory."
     >
-      <Stack gap="section">
-        <Axis label="How LUMI moves from data to memory" stops={MODEL} />
-        <div className={css.claimColumn}>
-          <Text variant="body" as="p">
-            Memory can make LUMI more or less confident in a new assessment. It never changes the verdict.
-          </Text>
-        </div>
-      </Stack>
+      <ModelSpine />
       <Stack gap="object">
         <Heading level={3} variant="section">What LUMI decides about</Heading>
         <ul className={cx(css.ledgerTwo, css.ledger)}>
