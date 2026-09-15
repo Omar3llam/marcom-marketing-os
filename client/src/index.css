@@ -384,6 +384,24 @@
    */
 }
 
+/* ── Document skip link (client/index.html) ──────────────────
+ * Phase 4 remediation: the one element every route shares was drawn with a gold
+ * fill and, through :focus-visible above, a gold ring. Gold is never a focus ring
+ * (DESIGN_TOKEN_ARCHITECTURE.md §6.2; FC-14). The link carries
+ * data-lumi-env="marketing", so these --lumi-* tokens resolve on every route: an
+ * Off White chip with the neutral LUMI ring, the same declarations as the LUMI
+ * controls. Position and type stay on the link's own utility classes. Outside any
+ * @layer, so it follows the base rule it overrides.
+ */
+.lumi-skip-link:focus,
+.lumi-skip-link:focus-visible {
+  color: var(--lumi-color-text-claim);
+  background: var(--lumi-color-surface-base);
+  outline: var(--lumi-size-focus-width) solid var(--lumi-color-interaction-focus-ring);
+  outline-offset: var(--lumi-size-focus-offset);
+  box-shadow: none;
+}
+
 /* ============================================================
  * @layer components — Semantic UI Primitives
  * ============================================================

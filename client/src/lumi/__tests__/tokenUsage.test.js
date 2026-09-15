@@ -25,7 +25,8 @@ describe('instrument controls — each checker can fail', () => {
     expect(defined.size).toBe(130);
     expect(defined.has('--lumi-color-text-claim')).toBe(true);
     expect(cssFiles.map(rel)).toEqual([
-      'grammar/grammar.module.css', 'lab/lab.module.css', 'primitives/controls.module.css', 'primitives/layout.module.css',
+      'grammar/grammar.module.css', 'lab/lab.module.css', 'landing/landing.module.css', 'primitives/controls.module.css',
+      'primitives/fields.module.css', 'primitives/layout.module.css',
       'primitives/type.module.css',
     ]);
     expect(sourceFiles.length).toBeGreaterThan(10);
@@ -69,6 +70,11 @@ describe('instrument controls — each checker can fail', () => {
     expect(auditSource(source).join('\n')).toContain(expected);
   });
 
+  it('does not flag box-shadow: none, a reset of the legacy global focus ring', () => {
+    expect(auditCss('.a:focus-visible { box-shadow: none; }', defined)).toEqual([]);
+    expect(auditCss('.a:focus-visible { box-shadow: none, 0 0 4px var(--lumi-color-text-claim); }', defined).join('\n')).toContain('box-shadow other than shadow.overlay');
+  });
+
   it('does not flag a legacy path that is only named in a comment', () => {
     expect(auditSource('// "StateBlock" lives in client/src/design-system/patterns/StateBlock.jsx')).toEqual([]);
   });
@@ -96,6 +102,20 @@ describe('LUMI CSS modules consume Phase 2 tokens only', () => {
     expect(standard.body).toContain('border-color: var(--lumi-color-border-strong);');
     const disabledQuiet = controls.find((r) => r.selector === ".quiet[aria-disabled='true']");
     expect(disabledQuiet.body).toContain('border-block-end-color: var(--lumi-color-interaction-disabled-border);');
+  });
+
+  it('removes the legacy gold focus ring and gold selection inside LUMI (Phase 4 rendered review)', () => {
+    const controls = cssRules(read(cssFiles.find((f) => f.endsWith('controls.module.css'))));
+    const focus = controls.find((r) => r.selector.includes('.button:focus-visible'));
+    expect(focus.body).toContain('box-shadow: none;');
+    // Phase 4 remediation moved the field rules out; their ring must reset the legacy one too.
+    const fields = cssRules(read(cssFiles.find((f) => f.endsWith('fields.module.css'))));
+    const fieldFocus = fields.find((r) => r.selector.includes('.input:focus-visible'));
+    expect(fieldFocus.selector).toContain('.choiceInput:focus-visible');
+    expect(fieldFocus.body).toBe(focus.body);
+    const layout = cssRules(read(cssFiles.find((f) => f.endsWith('layout.module.css'))));
+    const selection = layout.find((r) => r.selector === '.environment ::selection');
+    expect(selection.body).toContain('background: var(--lumi-color-text-claim);');
   });
 
   it('never consumes the attention signal, and never declares a focus ring other than the neutral one', () => {

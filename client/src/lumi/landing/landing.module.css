@@ -1,0 +1,334 @@
+/* ============================================================
+ * LUMI landing — page composition (Phase 4). Tokens only: audited by
+ * __tests__/tokenUsage.test.js like every LUMI stylesheet.
+ *
+ * Breakpoints are the provisional layout tokens, written as literals because a
+ * custom property cannot be used in a media query (DESIGN_TOKEN_ARCHITECTURE.md §9):
+ *   688px  = layout.breakpoint.tablet   (claim + 2 × tablet gutter)
+ *   1096px = layout.breakpoint.laptop   (claim + evidence + 3 × desktop gutter)
+ *
+ * Grouping order (Constitution Article 14 §2): alignment → spacing tier →
+ * hairline rule → type change → container. No card grid, no pill, no texture.
+ * ============================================================ */
+
+/* ── Frame and rhythm ──────────────────────────────────────── */
+.frame {
+  box-sizing: border-box;
+  max-width: var(--lumi-layout-width-page);
+  margin-inline: auto;
+  padding-inline: var(--lumi-layout-gutter-mobile);
+}
+
+.section,
+.band {
+  padding-block: var(--lumi-space-macro);
+  scroll-margin-block-start: var(--lumi-space-object);
+}
+
+.claimColumn {
+  max-width: var(--lumi-layout-width-claim);
+}
+
+.plainList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumi-space-meta);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ── Header and footer ─────────────────────────────────────── */
+.header {
+  padding-block: var(--lumi-space-object);
+  border-block-end: var(--lumi-border-width-hairline) solid var(--lumi-color-border-divider);
+}
+.footer {
+  padding-block: var(--lumi-space-section);
+  border-block-start: var(--lumi-border-width-hairline) solid var(--lumi-color-border-divider);
+}
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lumi-space-object);
+}
+.navList {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lumi-space-meta) var(--lumi-space-object);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* Standalone links get a full target row (WCAG 2.5.8), not only their text height. */
+.navList > li {
+  display: flex;
+  align-items: center;
+  min-height: var(--lumi-size-target-minimum);
+}
+
+/* The approved mark is not in the repository (FC-10). A labelled text
+   placeholder stands in; it is not typeset as the wordmark. */
+.brandPlaceholder {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--lumi-size-target-minimum);
+  color: var(--lumi-color-text-claim);
+  font-family: var(--lumi-type-heading-section-family);
+  font-size: var(--lumi-type-heading-section-size);
+  line-height: var(--lumi-type-heading-section-line-height);
+  font-weight: var(--lumi-type-heading-section-weight);
+  letter-spacing: var(--lumi-type-heading-section-letter-spacing);
+  text-decoration-line: none;
+  border-radius: var(--lumi-radius-control);
+}
+
+/* In-page section links are shown from tablet width. On a phone they would take the
+   first screen; the same links stay reachable in the footer at every width. */
+.pageNav {
+  display: none;
+}
+
+/* ── Hero ──────────────────────────────────────────────────── */
+.hero {
+  padding-block: var(--lumi-space-macro) var(--lumi-space-macro);
+}
+
+/* ── Hero demonstration: DATA → EVIDENCE → VERDICT ─────────── */
+.demo {
+  margin-block: 0;
+}
+.demoGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--lumi-space-section);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* The raw inputs: a dense run of words when narrow (complexity, unlit), a column when wide. */
+.dataList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lumi-space-meta) var(--lumi-space-object);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.demoColumn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumi-space-object);
+  min-width: 0;
+  padding-block-start: var(--lumi-space-object);
+  border-block-start: var(--lumi-border-width-hairline) solid var(--lumi-color-border-subtle);
+}
+
+/* ── Ledger: parallel rows separated by hairlines ──────────── */
+.ledger {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-block-start: var(--lumi-border-width-hairline) solid var(--lumi-color-border-divider);
+}
+.ledgerRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--lumi-space-meta);
+  margin: 0;
+  padding-block: var(--lumi-space-object);
+  border-block-end: var(--lumi-border-width-hairline) solid var(--lumi-color-border-divider);
+}
+.ledgerHeader {
+  display: none;
+}
+/* A column label repeated inside each row: read on narrow layouts, where the row
+   stacks; replaced by the one header row once the columns sit side by side. */
+.cellCaption {
+  display: block;
+}
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumi-space-inline);
+  min-width: 0;
+  margin: 0;
+}
+
+/* ── Axis: the model and the memory sequence, drawn as one line ── */
+.axis {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.axisStop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lumi-space-inline);
+  min-width: 0;
+  padding-block: var(--lumi-space-meta) var(--lumi-space-object);
+  padding-inline-start: var(--lumi-space-object);
+  border-inline-start: var(--lumi-border-width-hairline) solid var(--lumi-color-border-strong);
+}
+
+/* ── Product band: the recorded decision and today's assessment ── */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--lumi-space-macro);
+}
+
+/* ── States ────────────────────────────────────────────────── */
+.stateGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--lumi-space-section);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ── Questions (native disclosure; opens instantly) ─────────── */
+.question {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lumi-space-object);
+  min-height: var(--lumi-size-target-minimum);
+  padding-block: var(--lumi-space-object);
+  color: var(--lumi-color-text-claim);
+  font-family: var(--lumi-type-body-claim-family);
+  font-size: var(--lumi-type-body-claim-size);
+  line-height: var(--lumi-type-body-claim-line-height);
+  font-weight: var(--lumi-type-body-claim-weight);
+  list-style: none;
+  cursor: pointer;
+  border-radius: var(--lumi-radius-control);
+}
+.disclosure {
+  border-block-end: var(--lumi-border-width-hairline) solid var(--lumi-color-border-divider);
+}
+.question::-webkit-details-marker {
+  display: none;
+}
+.question:hover {
+  background: var(--lumi-color-interaction-hover-surface);
+}
+.disclosure[open] .disclosureGlyph {
+  transform: rotate(180deg);
+}
+.answer {
+  max-width: var(--lumi-layout-width-claim);
+  padding-block-end: var(--lumi-space-object);
+}
+
+/* One focus ring, neutral; the legacy global box-shadow ring is not drawn here. */
+.brandPlaceholder:focus-visible,
+.question:focus-visible,
+.focusTarget:focus-visible {
+  outline: var(--lumi-size-focus-width) solid var(--lumi-color-interaction-focus-ring);
+  outline-offset: var(--lumi-size-focus-offset);
+  box-shadow: none;
+}
+
+/* ── Tablet: 688px (layout.breakpoint.tablet) ──────────────── */
+@media (min-width: 688px) {
+  .pageNav {
+    display: block;
+  }
+  .frame {
+    padding-inline: var(--lumi-layout-gutter-tablet);
+  }
+  .ledgerRow {
+    gap: var(--lumi-space-section);
+  }
+  .ledgerTwo .ledgerRow,
+  .ledgerTwo .ledgerHeader {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  }
+  .ledgerTwo .ledgerHeader {
+    display: grid;
+    gap: var(--lumi-space-section);
+    padding-block-end: var(--lumi-space-meta);
+  }
+  .ledgerTwo .cellCaption {
+    display: none;
+  }
+  .stateGrid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+/* ── Laptop and wider: 1096px (layout.breakpoint.laptop) ───── */
+@media (min-width: 1096px) {
+  .frame {
+    padding-inline: var(--lumi-layout-gutter-desktop);
+  }
+  .section {
+    padding-block: calc(var(--lumi-space-macro) * 1.5);
+  }
+  .band {
+    padding-block: var(--lumi-space-macro) calc(var(--lumi-space-macro) * 1.5);
+  }
+  .ledgerFour .cellCaption {
+    display: none;
+  }
+  .dataList {
+    flex-direction: column;
+  }
+  .demoGrid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.25fr);
+    gap: 0;
+  }
+  .demoColumn {
+    padding-block-start: 0;
+    padding-inline: var(--lumi-space-section);
+    border-block-start: 0;
+    border-inline-start: var(--lumi-border-width-hairline) solid var(--lumi-color-border-subtle);
+  }
+  .demoColumn:first-child {
+    padding-inline-start: 0;
+    border-inline-start: 0;
+  }
+  .ledgerThree .ledgerRow,
+  .ledgerThree .ledgerHeader {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 2fr);
+  }
+  .ledgerFour .ledgerRow,
+  .ledgerFour .ledgerHeader {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .ledgerHeader {
+    display: grid;
+    gap: var(--lumi-space-section);
+    padding-block-end: var(--lumi-space-meta);
+  }
+  .axis {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    border-block-start: var(--lumi-border-width-hairline) solid var(--lumi-color-border-strong);
+  }
+  .axisStop {
+    padding-block: var(--lumi-space-object) 0;
+    padding-inline: 0 var(--lumi-space-object);
+    border-inline-start: 0;
+  }
+  .split {
+    grid-template-columns: minmax(0, var(--lumi-layout-width-claim)) minmax(0, var(--lumi-layout-width-evidence));
+    justify-content: space-between;
+  }
+}
+
+/* ── Coarse pointers: touch-size targets (last, so it wins over the base rules) ── */
+@media (pointer: coarse) {
+  .navList > li,
+  .brandPlaceholder {
+    min-height: var(--lumi-size-target-touch);
+  }
+}

@@ -61,7 +61,9 @@ export function auditCss(text, defined) {
     if (/gradient|backdrop-filter|(^|[\s;])filter\s*:|blur\(|text-shadow|animation|@keyframes|!important/i.test(body)) {
       flag(selector, 'forbidden effect (gradient, blur, glow, animation or !important)');
     }
-    if (/box-shadow\s*:/.test(body) && !/box-shadow\s*:\s*var\(--lumi-shadow-overlay\)/.test(body)) {
+    // `box-shadow: none` is a reset, not an effect: it removes the legacy global
+    // gold focus ring (client/src/index.css :focus-visible) from LUMI controls.
+    if (/box-shadow\s*:/.test(body) && !/box-shadow\s*:\s*(var\(--lumi-shadow-overlay\)|none)\s*(;|$)/.test(body)) {
       flag(selector, 'box-shadow other than shadow.overlay');
     }
     if (/font-family\s*:/.test(body) && !/font-family\s*:\s*var\(--lumi-type-[a-z-]+-family\)/.test(body)) {

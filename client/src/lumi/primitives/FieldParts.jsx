@@ -14,7 +14,8 @@ import { useId } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { assertText } from '../contract.js';
 import { Icon } from './Icon.jsx';
-import css from './controls.module.css';
+import controls from './controls.module.css';
+import css from './fields.module.css';
 
 /** Validates and wires the shared field props. Call it at the top of a field. */
 export function useFieldParts(component, { label, description, invalidReason, disabledReason }) {
@@ -48,7 +49,7 @@ export function FieldMessages({ ids, invalidReason, disabledReason }) {
           {invalidReason}
         </p>
       )}
-      {ids.disabled && <p id={ids.disabled} className={css.reason}>{disabledReason}</p>}
+      {ids.disabled && <p id={ids.disabled} className={controls.reason}>{disabledReason}</p>}
     </>
   );
 }

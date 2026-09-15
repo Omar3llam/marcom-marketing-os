@@ -5,11 +5,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
     <!-- ── SEO ──────────────────────────────────────────── -->
-    <title>Lumi — AI Marketing Decision Engine | MARCOM AI</title>
-    <meta name="description" content="Drop a URL. Lock your context in 30 seconds. Get SCALE / HOLD / KILL verdicts on every campaign. Lumi is the AI operating system for marketing decisions." />
-    <meta property="og:title" content="Lumi — AI Marketing Decision Engine" />
-    <meta property="og:description" content="Replace marketing consultants with always-on AI strategic intelligence." />
+    <!-- Phase 4 (2026-09-15): the product is LUMI, its category Decision Intelligence
+         for Performance Marketing; copy from the landing's own claims. No image tag:
+         no approved OG image exists (PHASE_4_LANDING_VISUAL_LANGUAGE_AUDIT.md §14, §23). -->
+    <title>LUMI | Decision Intelligence for Performance Marketing</title>
+    <meta name="description" content="LUMI reads the evidence in your Meta Ads and Google Ads accounts and commits to a call on each campaign it can judge — with its reason, its evidence, and what it could not measure." />
+    <meta property="og:title" content="LUMI | Decision Intelligence for Performance Marketing" />
+    <meta property="og:description" content="A call on each campaign — KILL, HOLD, SCALE, WATCH, REFRESH or REALLOCATE — with its reason, its evidence, and what could not be measured." />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="LUMI" />
+    <meta property="og:url" content="https://lumi.marcomai.com/" />
+    <meta name="twitter:card" content="summary" />
     <meta name="theme-color" content="#0A0B0F" />
     <link rel="canonical" href="https://lumi.marcomai.com/" />
 
@@ -17,9 +23,13 @@
     <!-- Self-hosted via @fontsource (imported in main.jsx) -->
   </head>
   <body class="bg-lumi-bg text-lumi-text antialiased">
+    <!-- Skip link: neutral LUMI focus treatment, never gold (.lumi-skip-link in
+         src/index.css). It carries its own marketing environment so the --lumi-*
+         colour tokens resolve on every route, light or dark. -->
     <a
       href="#main-content"
-      class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:bg-lumi-accent focus:text-lumi-bg focus:px-3 focus:py-1.5 focus:rounded-lg focus:font-display focus:font-semibold focus:text-sm"
+      data-lumi-env="marketing"
+      class="lumi-skip-link sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-1.5 focus:rounded-lg focus:font-display focus:font-semibold focus:text-sm"
     >Skip to main content</a>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
