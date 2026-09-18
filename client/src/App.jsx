@@ -14,7 +14,6 @@
 // ============================================================
 import { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, Link } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
 import LandingPage      from './pages/LandingPage.jsx';
 import PrivacyPage      from './pages/PrivacyPage.jsx';
 import TermsPage        from './pages/TermsPage.jsx';
@@ -30,13 +29,12 @@ import ScoreContent     from './pages/tools/ScoreContent.jsx';
 import SettingsPage     from './pages/Settings.jsx';
 import Observability    from './pages/Observability.jsx';
 import { CardSkeleton } from './components/ui/Skeleton.jsx';
-import { ProtectedRoute, OnboardingRoute } from './router/ProtectedRoute.jsx';
+import { ProtectedRoute, OnboardingRoute, AdminRoute } from './router/ProtectedRoute.jsx';
 import RoleGate from './components/auth/RoleGate.jsx';
 import PlanGate from './components/auth/PlanGate.jsx';
 import UpgradePrompt from './components/plan/UpgradePrompt.jsx';
 import RequireUserRole from './components/auth/RequireUserRole.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from './hooks/useCollabRole.js';
-import { useAuth } from './context/AuthContext.jsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { appRoutes } from './app/routeManifest.js';
 
@@ -86,17 +84,6 @@ function PageFallback() {
   );
 }
 
-function AuthLoadingScreen() {
-  return (
-    <div className="flex h-screen items-center justify-center bg-surface-dark">
-      <div className="flex items-center gap-2 text-dark-soft">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        <span className="text-sm">Initializing authentication…</span>
-      </div>
-    </div>
-  );
-}
-
 // ── Phase 8 · CLIENT routing ──────────────────────────────────
 // A CLIENT seat is a read-only stakeholder: its home is the Reports surface, not
 // the operator Overview. These route by the RESOLVED role and err OPEN while it
@@ -138,14 +125,11 @@ function NotFound({ app = false }) {
 }
 
 export default function App() {
-  const { loading: authLoading } = useAuth();
-
-  // CRITICAL: Don't render any routes until Firebase auth state resolves.
-  // This prevents components from accessing currentUser before it's available.
-  if (authLoading) {
-    return <AuthLoadingScreen />;
-  }
-
+  // Phase 5.2 — the auth boundary lives on THE ROUTES THAT NEED IT, not here.
+  // This function used to return a full-screen loader for EVERY path while
+  // Firebase resolved, so the public landing waited on a service it never reads.
+  // Each guard below (ProtectedRoute, OnboardingRoute, AdminRoute) still holds
+  // its own route until auth resolves, so nothing authenticated renders early.
   return (
     <ErrorBoundary boundaryId="root">
       <Routes>
@@ -169,9 +153,11 @@ export default function App() {
         <Route
           path="/admin"
           element={
-            <RequireUserRole role="ADMIN" fallback={<Navigate to={appRoutes.overview} replace />}>
-              <Suspense fallback={<PageFallback />}><AdminPanel /></Suspense>
-            </RequireUserRole>
+            <AdminRoute>
+              <RequireUserRole role="ADMIN" fallback={<Navigate to={appRoutes.overview} replace />}>
+                <Suspense fallback={<PageFallback />}><AdminPanel /></Suspense>
+              </RequireUserRole>
+            </AdminRoute>
           }
         />
 
