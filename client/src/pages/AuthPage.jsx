@@ -7,16 +7,17 @@ import { MetricValue, DecisionTitle } from '@/components/primitives';
 import { isEmbeddedWebviewOrMobile } from '@/firebase.js';
 import { GoogleSignInButton } from '@/components/auth/GoogleSignInButton.jsx';
 import { LoginForm } from '@/components/auth/LoginForm.jsx';
-
-function safeAppPath(value) {
-  return typeof value === 'string' && value.startsWith('/app') ? value : null;
-}
+import { safeNextPath } from '@/router/nextPath.js';
+import { FullscreenLoader } from '@/router/ProtectedRoute.jsx';
 
 export default function AuthPage({ mode: defaultMode = 'login' }) {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { signInWithGoogle, signInWithEmail, signUpWithEmail, currentUser, authReady } = useAuth();
-  const nextPath = safeAppPath(searchParams.get('next'));
+  // Phase 5.2 — one shared validator, so every destination a guard preserves is
+  // one this page can restore. The local copy here accepted /app paths ONLY,
+  // which is why /admin and /onboarding lost their destination at login.
+  const nextPath = safeNextPath(searchParams.get('next'));
   const postAuthPath = nextPath || '/onboarding';
 
   const [mode, setMode] = useState(searchParams.get('mode') || defaultMode);
@@ -31,6 +32,12 @@ export default function AuthPage({ mode: defaultMode = 'login' }) {
   useEffect(() => {
     if (currentUser && authReady) navigate(postAuthPath, { replace: true });
   }, [currentUser, authReady, navigate, postAuthPath]);
+
+  // Hold the form until Firebase has answered: this page DOES depend on the
+  // session (it redirects an already-signed-in visitor), unlike the landing.
+  // Rendering a sign-in form at someone who is already signed in is the flash
+  // this prevents.
+  if (!authReady) return <FullscreenLoader label="Restoring your session…" />;
 
   const isLogin = mode === 'login';
   const inEmbeddedBrowser = isEmbeddedWebviewOrMobile();

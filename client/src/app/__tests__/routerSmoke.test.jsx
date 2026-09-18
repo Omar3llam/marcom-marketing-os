@@ -72,11 +72,15 @@ vi.mock('@/hooks/useUserRole.js', () => ({
 
 // ── the shell: auth + the two fetching route wrappers ───────────────────────
 vi.mock('@/context/AuthContext.jsx', () => ({
-  useAuth: () => ({ loading: false, currentUser: { uid: 'u1' } }),
+  // Phase 5.2 — authReady joined the contract: the guards hold a route until
+  // Firebase has answered, and this harness is testing the table, not the wait.
+  useAuth: () => ({ loading: false, authReady: true, currentUser: { uid: 'u1' } }),
 }));
 vi.mock('@/router/ProtectedRoute.jsx', () => ({
   ProtectedRoute: ({ children }) => children,
   OnboardingRoute: ({ children }) => children,
+  // Phase 5.2 — /admin answers the SESSION question before the role one.
+  AdminRoute: ({ children }) => children,
 }));
 vi.mock('@/components/layout/MainLayout.jsx', async () => {
   const { Outlet } = await import('react-router-dom');

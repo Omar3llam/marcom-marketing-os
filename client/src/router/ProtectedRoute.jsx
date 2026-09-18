@@ -1,19 +1,34 @@
 // ============================================================
 // MARCOM / Lumi — Route guards
 // ------------------------------------------------------------
-// ProtectedRoute  — requires Firebase session AND a saved user context.
-// OnboardingRoute — requires Firebase session, blocks if context already set.
+// ProtectedRoute  — requires a Firebase session AND a saved user context.
+// OnboardingRoute — requires a Firebase session, blocks if context is already set.
+// AdminRoute      — requires a Firebase session before the ADMIN role is read.
+//
+// Phase 5.2 — the auth boundary owns three things, and only these:
+//   1. WHO is asking (AuthContext, the single owner of session truth);
+//   2. WHETHER their account setup is readable (this file, from the API);
+//   3. WHERE to send them back to afterwards (./nextPath.js).
+//
+// ⚠️ A FAILED READ IS NOT AN ANSWER. Until Phase 5.2 a failed
+// `/api/campaigns/me/context` fell back to a localStorage flag, so a network
+// blip decided a route from a value written by an earlier session — and both
+// possible wrong answers were bad: "skip onboarding" and "redo onboarding".
+// The storage is gone. The API is the only source, and when it cannot be read
+// the guard says so and offers a retry instead of guessing. Four outcomes, kept
+// distinct: LOADING · onboarded · not onboarded · UNREADABLE.
 // ============================================================
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth }             from '../context/AuthContext.jsx';
 import { api }                 from '../lib/api.js';
-import { Loader2 }             from 'lucide-react';
+import { Loader2, RefreshCw }  from 'lucide-react';
+import { loginPathFor, safeNextPath, currentDestination } from './nextPath.js';
 
-function FullscreenLoader({ label = 'Loading…' }) {
+export function FullscreenLoader({ label = 'Loading…' }) {
   return (
     <div className="flex h-screen items-center justify-center bg-surface-dark">
-      <div className="flex items-center gap-2 text-dark-soft">
+      <div className="flex items-center gap-2 text-dark-soft" role="status">
         <Loader2 className="h-4 w-4 animate-spin" />
         <span className="text-sm">{label}</span>
       </div>
@@ -21,10 +36,36 @@ function FullscreenLoader({ label = 'Loading…' }) {
   );
 }
 
-// ── Shared cache + onboarded predicate ─────────────────────
-// Strict check: a context is only "complete" once the wizard's
-// required field (name) is populated. An empty {} object
-// does NOT count as onboarded, even though it's truthy in JS.
+/**
+ * The read failed. This names which read, and offers the only honest next step.
+ * It deliberately does NOT name a cause it cannot know (offline? signed out?
+ * server?), and it never continues into the app or into onboarding on a guess.
+ */
+function AccountSetupUnavailable({ onRetry }) {
+  return (
+    <div className="flex h-screen items-center justify-center bg-surface-dark p-6">
+      <div className="max-w-md text-center" role="alert">
+        <h1 className="decision-title text-dark-base">Your account setup could not be read</h1>
+        <p className="mt-2 text-sm leading-6 text-dark-muted">
+          Lumi could not reach the service that stores it, so it does not know whether your
+          setup is complete. Nothing on your account has changed.
+        </p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-5 inline-flex items-center gap-2 rounded-xl border border-lumi-border px-4 py-2 font-display text-sm font-semibold text-dark-base transition-colors hover:bg-lumi-elevated"
+        >
+          <RefreshCw className="h-4 w-4" strokeWidth={1.5} />
+          Try again
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── The onboarded predicate ────────────────────────────────
+// Strict: a context counts as complete only once the wizard's required field
+// (name) is populated. An empty {} does NOT count, even though it is truthy.
 function isOnboarded(context) {
   if (!context || typeof context !== 'object') {
     return false;
@@ -37,83 +78,31 @@ function isOnboarded(context) {
     return false;
   }
 
-  const trimmed = brandName.trim();
-  return trimmed.length > 0;
+  return brandName.trim().length > 0;
 }
 
-// ── LocalStorage persistence ────────────────────────────────
-const STORAGE_KEY = 'marcom:onboarded';
-
-function getStoredOnboardingState() {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'true') return true;
-    if (stored === 'false') return false;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-function setStoredOnboardingState(value) {
-  try {
-    localStorage.setItem(STORAGE_KEY, String(value));
-  } catch {
-    // Ignore storage errors
-  }
-}
-
-function safeAppPath(value) {
-  return typeof value === 'string' && value.startsWith('/app') ? value : null;
-}
-
-function currentDestination(location) {
-  return `${location.pathname}${location.search}${location.hash}`;
-}
-
-// Module-level cache so route flips between /app and /onboarding
-// don't trigger a refetch storm. Three states:
-//   null            → never fetched, useEffect will fetch
-//   { loading:true} → fetch in flight
-//   { hasContext}   → resolved (true OR false)
-let _cached = null;
-const _subs  = new Set();   // listeners for live cache updates
+// Module-level broadcast so a route flip between /app and /onboarding, or a
+// sign-out, reaches every mounted guard at once. It carries the last RESOLVED
+// answer only — it is never consulted when a read fails, and it is not
+// persisted anywhere, so it cannot outlive the session that produced it.
+const _subs = new Set();
 
 function publish(next) {
-  _cached = next;
-  // Sync to localStorage when we have a definitive answer
-  if (next && !next.loading) {
-    setStoredOnboardingState(next.hasContext);
-  }
-  // null means "invalidated — next mount will refetch". Subscribers
-  // get a transient loading state so the UI doesn't flash an empty
-  // object into a route guard.
-  const broadcast = next ?? { loading: true, hasContext: false };
+  const broadcast = next ?? { loading: true, hasContext: false, failed: false };
   _subs.forEach((fn) => fn(broadcast));
 }
 
 function useUserContext() {
   const { currentUser, loading: authLoading } = useAuth();
 
-  // ── Initial state ─────────────────────────────────────────
-  // CRITICAL: Always start pessimistic (loading:true, hasContext:false).
-  // localStorage and _cached can contain stale data from:
-  //   - Previous user sessions (if logout didn't clear cache)
-  //   - Incomplete onboarding attempts
-  //   - API responses that haven't been revalidated
-  //
-  // The API is the ONLY source of truth. We show a loader until the API
-  // confirms the current user's onboarding state.
-  const [state, setState] = useState({
-    loading: true,
-    hasContext: false,
-  });
+  // Always start pessimistic: the API is the only source of truth, so the route
+  // is held until it answers.
+  const [state, setState] = useState({ loading: true, hasContext: false, failed: false });
+  // Bumped by retry(); the fetch effect depends on it, so a retry re-reads.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    // Subscribe to cache updates (clearContextCache, primeContextCache, etc.)
-    const listener = (newState) => {
-      setState(newState);
-    };
+    const listener = (newState) => setState(newState);
     _subs.add(listener);
     return () => { _subs.delete(listener); };
   }, []);
@@ -122,123 +111,72 @@ function useUserContext() {
     if (authLoading) return;   // Firebase still initialising
 
     if (!currentUser) {
-      publish({ loading: false, hasContext: false });
+      // Not signed in: there is no protected status to ask for, and asking
+      // would 401. A resolved answer, not a failure.
+      publish({ loading: false, hasContext: false, failed: false });
       return;
     }
 
-    // ── CRITICAL FIX: Always call the API ─────────────────────
-    // The previous implementation had an early return here that reused
-    // _cached if it existed. This caused a SEVERE bug:
-    //
-    //   1. User A completes onboarding
-    //   2. _cached = { loading: false, hasContext: true }
-    //   3. User A logs out (cache not cleared properly)
-    //   4. User B logs in (new user, not onboarded)
-    //   5. This effect runs, sees _cached exists, and returns early
-    //   6. API is NEVER called for User B
-    //   7. User B bypasses onboarding
-    //
-    // FIX: ALWAYS call the API for the current user. The backend is the
-    // authoritative source. We cannot trust module-level cache across
-    // auth state changes.
-
-    publish({ loading: true, hasContext: false });
+    publish({ loading: true, hasContext: false, failed: false });
 
     let cancelled = false;
     api.get('/api/campaigns/me/context')
       .then((res) => {
         if (cancelled) return;
-
-        // Normalize the response — backend may return various shapes
         const context = res?.data?.context ?? null;
-        const hasContext = isOnboarded(context);
-
-        // Sync localStorage with the real answer from the DB
-        setStoredOnboardingState(hasContext);
-
-        publish({ loading: false, hasContext });
+        publish({ loading: false, hasContext: isOnboarded(context), failed: false });
       })
       .catch((err) => {
         if (cancelled) return;
         console.error('[ProtectedRoute] Context API failed:', err);
-
-        // Classify the error
-        const isTransient =
-          err?.httpStatus === 429 ||  // rate limit
-          err?.httpStatus >= 500 ||   // server error
-          err?.code === 'RATE_LIMIT_EXCEEDED' ||
-          err?.code === 'NETWORK_ERROR' ||
-          err?.code === 'NETWORK_TIMEOUT' ||
-          !err?.httpStatus;           // no response at all (offline)
-
-        if (isTransient) {
-          // Transient error — do NOT wipe cache. Fall back to whatever localStorage says.
-          // If localStorage says onboarded, keep them in the app.
-          // If localStorage is empty/false, redirect to onboarding as before.
-          const cached = getStoredOnboardingState();
-          console.warn('[ProtectedRoute] Transient error — using cached onboarding state:', cached);
-          publish({ loading: false, hasContext: cached === true });
-        } else {
-          // Auth errors (401, 403) or explicit null context from the API
-          // → treat as not onboarded, wipe cache
-          setStoredOnboardingState(false);
-          publish({ loading: false, hasContext: false });
-        }
+        // EVERY failure lands here, transient or not. We do not know the
+        // answer, so we do not route on one — see the file header.
+        publish({ loading: false, hasContext: false, failed: true });
       });
 
     return () => { cancelled = true; };
-  }, [authLoading, currentUser]);
+  }, [authLoading, currentUser, attempt]);
 
-  return state;
+  return { ...state, retry: () => setAttempt((a) => a + 1) };
 }
 
-// Prime the cache directly from a PUT response — eliminates the
-// race where navigate('/app') fires a refetch before the new
-// context is visible to the route guard.
+// Prime the guards directly from a PUT response — eliminates the race where
+// navigate('/app') fires a refetch before the new context is visible.
 export function primeContextCache(context) {
-  const hasContext = isOnboarded(context);
-  setStoredOnboardingState(hasContext);
-  publish({ loading: false, hasContext });
+  publish({ loading: false, hasContext: isOnboarded(context), failed: false });
 }
 
+// Called on sign-out and on "reset setup": the next mount must ask again.
 export function clearContextCache() {
-  try {
-    localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // Ignore storage errors
-  }
-
-  // Explicitly reset module-level cache to force a fresh API call on next mount
-  _cached = null;
-
-  // Publish a definitive "not onboarded" state to all subscribers
-  publish({
-    loading: false,
-    hasContext: false,
-  });
+  publish({ loading: false, hasContext: false, failed: false });
 }
 
 export function ProtectedRoute({ children }) {
   const { currentUser, loading: authLoading, authReady } = useAuth();
-  const { loading, hasContext }  = useUserContext();
+  const { loading, hasContext, failed, retry } = useUserContext();
   const location = useLocation();
 
-  // Wait for Firebase to complete initial auth check before redirecting.
+  // Wait for Firebase to complete its initial check before redirecting.
   // Without this, OAuth callbacks briefly show currentUser=null and bounce to login.
-  if (!authReady) {
-    return <FullscreenLoader label="Restoring your session…" />;
-  }
-
-  if (authLoading || loading) {
+  if (!authReady || authLoading) {
     return <FullscreenLoader label="Restoring your session…" />;
   }
 
   if (!currentUser) {
-    return <Navigate to={`/login?next=${encodeURIComponent(currentDestination(location))}`} replace />;
+    return <Navigate to={loginPathFor(location)} replace />;
+  }
+
+  if (loading) {
+    return <FullscreenLoader label="Checking your account…" />;
+  }
+
+  if (failed) {
+    return <AccountSetupUnavailable onRetry={retry} />;
   }
 
   if (!hasContext) {
-    return <Navigate to={`/onboarding?next=${encodeURIComponent(currentDestination(location))}`} replace />;
+    const next = safeNextPath(currentDestination(location));
+    return <Navigate to={next ? `/onboarding?next=${encodeURIComponent(next)}` : '/onboarding'} replace />;
   }
 
   return children;
@@ -246,27 +184,51 @@ export function ProtectedRoute({ children }) {
 
 export function OnboardingRoute({ children }) {
   const { currentUser, loading: authLoading, authReady } = useAuth();
-  const { loading, hasContext }  = useUserContext();
+  const { loading, hasContext, failed, retry } = useUserContext();
   const location = useLocation();
-  const params = new URLSearchParams(location.search);
-  const nextPath = safeAppPath(params.get('next'));
+  const nextPath = safeNextPath(new URLSearchParams(location.search).get('next'));
 
-  // Wait for Firebase to complete initial auth check before redirecting.
-  if (!authReady) {
-    return <FullscreenLoader label="Checking your account…" />;
-  }
-
-  if (authLoading || loading) {
+  if (!authReady || authLoading) {
     return <FullscreenLoader label="Checking your account…" />;
   }
 
   if (!currentUser) {
-    const next = nextPath ? `?next=${encodeURIComponent(nextPath)}` : '';
-    return <Navigate to={`/login${next}`} replace />;
+    // Keeps the whole address, so a deep link through onboarding survives login.
+    return <Navigate to={loginPathFor(location)} replace />;
+  }
+
+  if (loading) {
+    return <FullscreenLoader label="Checking your account…" />;
+  }
+
+  if (failed) {
+    return <AccountSetupUnavailable onRetry={retry} />;
   }
 
   if (hasContext) {
     return <Navigate to={nextPath || '/app'} replace />;
+  }
+
+  return children;
+}
+
+/**
+ * /admin lives OUTSIDE the /app shell, so it had no session guard of its own:
+ * an unauthenticated visitor fell through to RequireUserRole's fallback, which
+ * redirects to Overview, which then asked for login — and by then the address
+ * they wanted was gone. This answers the session question first, so the
+ * destination survives. The ROLE check still belongs to RequireUserRole.
+ */
+export function AdminRoute({ children }) {
+  const { currentUser, loading: authLoading, authReady } = useAuth();
+  const location = useLocation();
+
+  if (!authReady || authLoading) {
+    return <FullscreenLoader label="Restoring your session…" />;
+  }
+
+  if (!currentUser) {
+    return <Navigate to={loginPathFor(location)} replace />;
   }
 
   return children;
