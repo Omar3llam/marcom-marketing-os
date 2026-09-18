@@ -81,6 +81,10 @@ vi.mock('@/router/ProtectedRoute.jsx', () => ({
   OnboardingRoute: ({ children }) => children,
   // Phase 5.2 — /admin answers the SESSION question before the role one.
   AdminRoute: ({ children }) => children,
+  // Phase 5.4 — App.jsx now renders this as the Suspense fallback for the
+  // deferred shell and onboarding. The harness never waits on a chunk, so it
+  // only has to exist.
+  FullscreenLoader: () => <div>loading</div>,
 }));
 vi.mock('@/components/layout/MainLayout.jsx', async () => {
   const { Outlet } = await import('react-router-dom');

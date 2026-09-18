@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { formatCurrency } from '@/lib/money';
 import { localDir } from '../../../design-system/foundation/resolve.js';
 import { Button, CLAIM_STATES, ClaimState, EvidenceGroup, Measurement, Money } from '../index.js';
-import { STATE_CLASS, STATE_LABEL, STATES } from '../grammar/vocabulary.js';
+import { DECISION_STATUSES, STATE_CLASS, STATE_LABEL, STATES, VERDICTS } from '../grammar/vocabulary.js';
 import { expectRefused, quietRenderErrors, renderIn } from './helpers.jsx';
 
 const semantic = JSON.parse(fs.readFileSync(localDir('../../../design-system/foundation/tokens/semantic.json', import.meta.url), 'utf8'));
@@ -38,6 +38,41 @@ describe('the state registry is the locked vocabulary, in both directions', () =
     expect(CLAIM_STATES).not.toContain('DISABLED');
     renderIn(<Button prominence="standard" onActivate={() => {}} disabledReason="Your role cannot pause campaigns.">Pause</Button>);
     expect(screen.getByRole('button', { name: 'Pause' })).toHaveAccessibleDescription('Your role cannot pause campaigns.');
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// Phase 5.4 — the verdict and status lists are declared in vocabulary.js
+// instead of read off the parse layer, because that import pulled the whole
+// zod runtime onto the public landing. Declaring them is only safe while THIS
+// holds: the parse layer stays the authority, and any divergence fails here.
+// ════════════════════════════════════════════════════════════════════════════
+describe('the declared verdict vocabulary equals the parse layer, in both directions', () => {
+  it('is exactly VerdictSchema.options, same members and same order', async () => {
+    const { VerdictSchema } = await import('@/contracts/schemas/decision.schema');
+    const canonical = [...VerdictSchema.options];
+    expect([...VERDICTS]).toEqual(canonical);                       // nothing missing, nothing reordered
+    expect(canonical.every((v) => VERDICTS.includes(v))).toBe(true); // …and nothing only in the contract
+    expect(VERDICTS.every((v) => canonical.includes(v))).toBe(true); // …and nothing only here
+    expect(VERDICTS).toHaveLength(canonical.length);
+  });
+
+  it('is exactly DecisionStatusSchema.options, same members and same order', async () => {
+    const { DecisionStatusSchema } = await import('@/contracts/schemas/decision.schema');
+    const canonical = [...DecisionStatusSchema.options];
+    expect([...DECISION_STATUSES]).toEqual(canonical);
+    expect(canonical.every((v) => DECISION_STATUSES.includes(v))).toBe(true);
+    expect(DECISION_STATUSES.every((v) => canonical.includes(v))).toBe(true);
+    expect(DECISION_STATUSES).toHaveLength(canonical.length);
+  });
+
+  // The equality above is worth nothing if the import quietly comes back: the
+  // landing would ship zod again and every assertion here would still pass.
+  it('keeps the schema edge severed — vocabulary.js imports no parse-layer module', () => {
+    const source = fs.readFileSync(localDir('../grammar/vocabulary.js', import.meta.url), 'utf8');
+    expect(source).not.toMatch(/from\s+'@\/contracts\//);
+    expect(source).not.toMatch(/from\s+'zod'/);
+    expect(source).toMatch(/@marcom\/runtime-contracts/); // this one is plain data, and stays
   });
 });
 
