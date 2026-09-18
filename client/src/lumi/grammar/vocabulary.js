@@ -1,10 +1,21 @@
 // ============================================================
-// Grammar vocabulary — read from the contracts, never re-listed
+// Grammar vocabulary — declared here, held equal to the contracts
 // ------------------------------------------------------------
-// Verdicts and Decision statuses come from the client parse layer (B8-01), and
-// Decision classes and knowledge tokens from @marcom/runtime-contracts (C-06,
-// C-10). A LUMI part that typed its own copy of a vocabulary would be the
-// second verdict map the audit already counted (audit §15).
+// Decision classes and knowledge tokens come from @marcom/runtime-contracts
+// (C-06, C-10), which is plain data and costs the page nothing.
+//
+// Verdicts and Decision statuses are DECLARED, for the same reason the state
+// registry below is: reading them off the parse layer meant importing
+// `decision.schema`, and with it the whole zod runtime, into every page that
+// renders a VerdictMark — the public landing included. Measured at d7f3c2b:
+// 55,729 B raw / 13,018 B gzip, to obtain eleven string literals.
+//
+// This is NOT a second verdict map (audit §15). The parse layer remains the
+// only authority: `states.test.jsx` holds these arrays equal to
+// `VerdictSchema.options` and `DecisionStatusSchema.options` in BOTH
+// directions and in order, and asserts this file never imports the schema
+// again. If the contract gains a verdict and this list does not, the suite
+// fails — which is the same control STATE_CLASS has always had.
 //
 // THE STATE REGISTRY below mirrors semantic.json `$states` (the 17 locked
 // states and their illumination class). It is declared, not imported, so the
@@ -12,10 +23,13 @@
 // in both directions.
 // ============================================================
 import { DECISION_CLASS, KNOWLEDGE } from '@marcom/runtime-contracts';
-import { DecisionStatusSchema, VerdictSchema } from '@/contracts/schemas/decision.schema';
 
-export const VERDICTS = Object.freeze([...VerdictSchema.options]);
-export const DECISION_STATUSES = Object.freeze([...DecisionStatusSchema.options]);
+/** Exactly `VerdictSchema.options`, in schema order. */
+export const VERDICTS = Object.freeze(['KILL', 'HOLD', 'SCALE', 'WATCH', 'REALLOCATE', 'REFRESH']);
+
+/** Exactly `DecisionStatusSchema.options`, in schema order. */
+export const DECISION_STATUSES = Object.freeze(['PROPOSED', 'EXECUTED', 'DISMISSED', 'SUPERSEDED', 'RESOLVED']);
+
 export { DECISION_CLASS, KNOWLEDGE };
 
 /**

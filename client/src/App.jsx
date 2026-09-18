@@ -18,18 +18,8 @@ import LandingPage      from './pages/LandingPage.jsx';
 import PrivacyPage      from './pages/PrivacyPage.jsx';
 import TermsPage        from './pages/TermsPage.jsx';
 import AuthPage         from './pages/AuthPage.jsx';
-import OnboardingPage   from './pages/OnboardingPage.jsx';
-import MainLayout       from './components/layout/MainLayout.jsx';
-import HomePage         from './pages/Home.jsx';
-import ContentLab       from './pages/ContentLab/index.jsx';
-import CopilotPage      from './pages/CopilotPage.jsx';
-import MarketingTools   from './pages/tools/MarketingTools.jsx';
-import SocialCalendar   from './pages/tools/SocialCalendar.jsx';
-import ScoreContent     from './pages/tools/ScoreContent.jsx';
-import SettingsPage     from './pages/Settings.jsx';
-import Observability    from './pages/Observability.jsx';
 import { CardSkeleton } from './components/ui/Skeleton.jsx';
-import { ProtectedRoute, OnboardingRoute, AdminRoute } from './router/ProtectedRoute.jsx';
+import { ProtectedRoute, OnboardingRoute, AdminRoute, FullscreenLoader } from './router/ProtectedRoute.jsx';
 import RoleGate from './components/auth/RoleGate.jsx';
 import PlanGate from './components/auth/PlanGate.jsx';
 import UpgradePrompt from './components/plan/UpgradePrompt.jsx';
@@ -37,6 +27,26 @@ import RequireUserRole from './components/auth/RequireUserRole.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from './hooks/useCollabRole.js';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { appRoutes } from './app/routeManifest.js';
+
+// ── Phase 5.4 · the authenticated half is deferred ────────────
+// These were static imports, so every visitor to the PUBLIC landing downloaded
+// the app shell, the operator home, Content Lab, Copilot, the tools, Settings
+// and Observability before `/` could paint. Not one of them is reachable
+// without a session, and the landing reads none of them.
+//
+// The shell is deferred with them, which costs a signed-in visitor one chunk
+// fetch after the guards resolve. That trade is deliberate: the wait belongs
+// to the surface that needs the code, not to the marketing page.
+const MainLayout     = lazy(() => import('./components/layout/MainLayout.jsx'));
+const OnboardingPage = lazy(() => import('./pages/OnboardingPage.jsx'));
+const HomePage       = lazy(() => import('./pages/Home.jsx'));
+const ContentLab     = lazy(() => import('./pages/ContentLab/index.jsx'));
+const CopilotPage    = lazy(() => import('./pages/CopilotPage.jsx'));
+const MarketingTools = lazy(() => import('./pages/tools/MarketingTools.jsx'));
+const SocialCalendar = lazy(() => import('./pages/tools/SocialCalendar.jsx'));
+const ScoreContent   = lazy(() => import('./pages/tools/ScoreContent.jsx'));
+const SettingsPage   = lazy(() => import('./pages/Settings.jsx'));
+const Observability  = lazy(() => import('./pages/Observability.jsx'));
 
 // ── Heavy views — lazy-load to keep the initial bundle slim ──
 const CampaignAnalysis    = lazy(() => import('./pages/CampaignAnalysis.jsx'));
@@ -143,7 +153,7 @@ export default function App() {
         {/* ── Onboarding gate ──────────────────────────────── */}
         <Route
           path="/onboarding"
-          element={<OnboardingRoute><OnboardingPage /></OnboardingRoute>}
+          element={<OnboardingRoute><Suspense fallback={<FullscreenLoader />}><OnboardingPage /></Suspense></OnboardingRoute>}
         />
 
         {/* ── Internal admin panel ─────────────────────────── */}
@@ -171,14 +181,16 @@ export default function App() {
             // round trip whose output reached no pixel — and its failure still
             // made Attention claim it could not read the account.
             <ProtectedRoute>
-              <MainLayout />
+              <Suspense fallback={<FullscreenLoader />}>
+                <MainLayout />
+              </Suspense>
             </ProtectedRoute>
           }
         >
           <Route index             element={<RoleAwareRedirect />} />
           <Route path="overview"   element={
             <ErrorBoundary boundaryId="home">
-              <LockFromClient><HomePage /></LockFromClient>
+              <LockFromClient><Suspense fallback={<PageFallback />}><HomePage /></Suspense></LockFromClient>
             </ErrorBoundary>
           } />
 
@@ -349,7 +361,7 @@ export default function App() {
           } />
           <Route path="content"    element={
             <ErrorBoundary boundaryId="content">
-              <LockFromClient><ContentLab /></LockFromClient>
+              <LockFromClient><Suspense fallback={<PageFallback />}><ContentLab /></Suspense></LockFromClient>
             </ErrorBoundary>
           } />
 
@@ -367,24 +379,24 @@ export default function App() {
           } />
           <Route path="copilot"    element={
             <ErrorBoundary boundaryId="copilot">
-              <CopilotPage />
+              <Suspense fallback={<PageFallback />}><CopilotPage /></Suspense>
             </ErrorBoundary>
           } />
           <Route path="growth"     element={<Navigate to={appRoutes.insights} replace />} />
           <Route path="tools/score"    element={
             <ErrorBoundary boundaryId="tools-score">
-              <ScoreContent />
+              <Suspense fallback={<PageFallback />}><ScoreContent /></Suspense>
             </ErrorBoundary>
           } />
           <Route path="tools/calendar" element={
             <ErrorBoundary boundaryId="tools-calendar">
-              <SocialCalendar />
+              <Suspense fallback={<PageFallback />}><SocialCalendar /></Suspense>
             </ErrorBoundary>
           } />
           {/* Legacy tools mount kept so the sidebar's old "/marketing" deep-link still resolves */}
           <Route path="tools/marketing" element={
             <ErrorBoundary boundaryId="tools-marketing">
-              <MarketingTools />
+              <Suspense fallback={<PageFallback />}><MarketingTools /></Suspense>
             </ErrorBoundary>
           } />
           {/* FE-04 — Settings › Channels is a REDIRECT now, never a second
@@ -396,12 +408,12 @@ export default function App() {
           <Route path="settings/integrations" element={<Navigate to={appRoutes.connections} replace />} />
           <Route path="settings"   element={
             <ErrorBoundary boundaryId="settings">
-              <SettingsPage />
+              <Suspense fallback={<PageFallback />}><SettingsPage /></Suspense>
             </ErrorBoundary>
           } />
           <Route path="settings/:section" element={
             <ErrorBoundary boundaryId="settings-section">
-              <SettingsPage />
+              <Suspense fallback={<PageFallback />}><SettingsPage /></Suspense>
             </ErrorBoundary>
           } />
 
@@ -415,7 +427,7 @@ export default function App() {
           {/* ── PR #45 · Mission Control (Observability Dashboard) ── */}
           <Route path="observability" element={
             <ErrorBoundary boundaryId="observability">
-              <Observability />
+              <Suspense fallback={<PageFallback />}><Observability /></Suspense>
             </ErrorBoundary>
           } />
 
