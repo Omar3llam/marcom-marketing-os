@@ -64,6 +64,67 @@ describe('RoleContext — a seat that was NOT read', () => {
     expect(result.current.status).not.toBe(ROLE_READ.PRESENT);
   };
 
+  // ── Phase 5.14 — the server now states the outcome ────────────────────
+  it('REGRESSION: roleStatus UNRESOLVED is refused even when a role STRING came with it', async () => {
+    // The exact defect: the endpoint published { role: "STRATEGIST" } from
+    // DEFAULT_ROLE. If a server ever does that again while also saying
+    // UNRESOLVED, the stated fact wins over the recognisable string.
+    api.get.mockResolvedValue({
+      data: { role: 'STRATEGIST', roleStatus: 'UNRESOLVED', roleReason: 'ROLE_LOOKUP_FAILED' },
+    });
+    const { result } = await settled();
+    expect(result.current.status).toBe(ROLE_READ.NOT_REACHABLE);
+    expect(result.current.role).toBeNull();
+  });
+
+  it('ROLE_UNSET is NOTHING_FOUND — an answer, not a failure', async () => {
+    api.get.mockResolvedValue({ data: { role: null, roleStatus: 'UNRESOLVED', roleReason: 'ROLE_UNSET' } });
+    const { result } = await settled();
+    expect(result.current.status).toBe(ROLE_READ.NOTHING_FOUND);
+    expect(result.current.role).toBeNull();
+  });
+
+  it('ROLE_LOOKUP_FAILED is NOT_REACHABLE — a retry would be honest', async () => {
+    api.get.mockResolvedValue({ data: { role: null, roleStatus: 'UNRESOLVED', roleReason: 'ROLE_LOOKUP_FAILED' } });
+    const { result } = await settled();
+    expect(result.current.status).toBe(ROLE_READ.NOT_REACHABLE);
+  });
+
+  it('the two unresolved reasons do NOT collapse to one state', async () => {
+    api.get.mockResolvedValue({ data: { role: null, roleStatus: 'UNRESOLVED', roleReason: 'ROLE_UNSET' } });
+    const unset = (await settled()).result.current.status;
+    api.get.mockResolvedValue({ data: { role: null, roleStatus: 'UNRESOLVED', roleReason: 'ROLE_LOOKUP_FAILED' } });
+    const failed = (await settled()).result.current.status;
+    expect(unset).not.toBe(failed);
+  });
+
+  it('roleStatus RESOLVED with a valid role is PRESENT, and carries visibleStates', async () => {
+    api.get.mockResolvedValue({
+      data: { role: 'BUYER', roleStatus: 'RESOLVED', roleReason: null, visibleStates: ['REPORT'] },
+    });
+    const { result } = await settled();
+    expect(result.current.status).toBe(ROLE_READ.PRESENT);
+    expect(result.current.role).toBe('BUYER');
+    expect(result.current.visibleStates).toEqual(['REPORT']);
+  });
+
+  it('an UNRESOLVED body never carries visibleStates through', async () => {
+    api.get.mockResolvedValue({
+      data: { role: null, roleStatus: 'UNRESOLVED', roleReason: 'ROLE_UNSET', visibleStates: ['PORTFOLIO'] },
+    });
+    const { result } = await settled();
+    expect(result.current.visibleStates).toBeNull();
+  });
+
+  it('degrades safely against a server that sends no roleStatus at all', async () => {
+    // A deploy where the client lands first. A valid role still resolves, and
+    // an absent one still refuses — the KNOWN_ROLES belt, unchanged.
+    api.get.mockResolvedValue({ data: { role: 'CLIENT' } });
+    expect((await settled()).result.current.status).toBe(ROLE_READ.PRESENT);
+    api.get.mockResolvedValue({ data: {} });
+    expect((await settled()).result.current.status).toBe(ROLE_READ.NOT_REACHABLE);
+  });
+
   it('a 500 is NOT_REACHABLE, and is not a role', async () => {
     api.get.mockRejectedValue(domainError(500));
     const { result } = await settled();

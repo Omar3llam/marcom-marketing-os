@@ -66,7 +66,7 @@ describe('MainLayout — the role boundary', () => {
   it('a failed read says what happened rather than showing a half shell', () => {
     seat(ROLE_READ.NOT_REACHABLE);
     renderShell();
-    expect(screen.getByText(/couldn’t read this account/i)).toBeInTheDocument();
+    expect(screen.getByText(/Lumi couldn’t check your access just now/i)).toBeInTheDocument();
   });
 
   it('REGRESSION: a null role does not read as an operator seat', () => {

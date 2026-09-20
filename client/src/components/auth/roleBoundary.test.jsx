@@ -76,10 +76,23 @@ describe('RoleGate — a seat that was NOT read', () => {
     expect(screen.queryByText('denied-redirect')).not.toBeInTheDocument();
   });
 
-  it.each(UNRESOLVED)('%s says the read failed instead', (_l, status) => {
+  it.each(UNRESOLVED)('%s says so, naming the ACCESS read', (_l, status) => {
     seat(null, status);
     renderRoleGate();
-    expect(screen.getByText(/couldn’t read this account/i)).toBeInTheDocument();
+    // Phase 5.14 — the axis is named. "this account" was used by five different
+    // reads, so a role failure and a workspace failure read identically.
+    expect(screen.getByText(/your access/i)).toBeInTheDocument();
+  });
+
+  it('an UNASSIGNED seat is not spoken as a failed read', () => {
+    // NOTHING_FOUND: the server established that this seat carries no role. An
+    // ANSWER, and the only one of these states with a real next step.
+    seat(null, ROLE_READ.NOTHING_FOUND);
+    renderRoleGate();
+    expect(screen.getByText(/No access level is set/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ask a Strategist/i)).toBeInTheDocument();
+    expect(screen.queryByText(/problem on our side/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('operator content')).not.toBeInTheDocument();
   });
 
   it('a refusal does not claim the fault is on our side; an outage does', () => {
@@ -139,7 +152,7 @@ describe('RequireUserRole — still fails CLOSED, now legibly', () => {
     renderAdminGate();
     // The bounce is a DENIAL. An unread seat has not been denied anything.
     expect(screen.queryByText('bounced')).not.toBeInTheDocument();
-    expect(screen.getByText(/couldn’t read this account/i)).toBeInTheDocument();
+    expect(screen.getByText(/your access/i)).toBeInTheDocument();
   });
 
   it('REGRESSION: a failed admin read never renders the panel', () => {
