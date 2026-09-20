@@ -15,7 +15,10 @@ import { Outlet }   from 'react-router-dom';
 import Sidebar      from './Sidebar.jsx';
 import ContextBar   from './ContextBar.jsx';
 import { useRecentDecisions } from '@/features/shell';
-import { RoleProvider } from '@/context/RoleContext.jsx';
+import { RoleProvider, ROLE_READ } from '@/context/RoleContext.jsx';
+import { useCollabRole } from '@/hooks/useCollabRole.js';
+import RoleUnavailable from '@/components/auth/RoleUnavailable.jsx';
+import { FullscreenLoader } from '@/router/ProtectedRoute.jsx';
 import LumiStar from '@/components/brand/LumiStar.jsx';
 
 export default function MainLayout() {
@@ -30,6 +33,29 @@ function MainLayoutShell() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { data: recentDecisions = [] } = useRecentDecisions();
+  const { status: roleStatus } = useCollabRole();
+
+  // ── THE ROLE BOUNDARY (Phase 5.11) ───────────────────────────
+  // Nothing inside this shell renders until the seat is KNOWN.
+  //
+  // It is one gate here rather than nineteen at the consumers because that is
+  // where the rule actually lives: eight surfaces decide operator-vs-client by
+  // testing `role === CLIENT`, so a null role would fall into the OPERATOR
+  // branch in every one of them — a fail-open dressed as a fix. Holding the
+  // shell is the only boundary that makes "do not expose operator navigation
+  // while the role is pending" true of the sidebar, the ⌘K palette, the write
+  // controls and the pages at once.
+  //
+  // The cost is honest and deliberate: one loading state before any app
+  // content, where before the shell rendered and the seat arrived late.
+  if (roleStatus === ROLE_READ.LOADING) {
+    return <FullscreenLoader label="Checking your access…" />;
+  }
+  if (roleStatus !== ROLE_READ.PRESENT) {
+    // Not a redirect: routing on an unknown seat is the same guess, one layer
+    // down. The route is preserved and the reason is stated.
+    return <RoleUnavailable status={roleStatus} />;
+  }
 
   // FE-03 — `highPriorityAlerts` was built here from
   // campaigns[].alerts[] off the legacy CampaignState feed, and fed the

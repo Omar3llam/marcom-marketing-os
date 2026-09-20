@@ -14,16 +14,34 @@
 //   <RoleGate role={['STRATEGIST','BUYER']} fallback={<Summary/>}> ... </RoleGate>
 // ============================================================
 import { useCollabRole } from '@/hooks/useCollabRole.js';
+import { ROLE_READ } from '@/context/RoleContext.jsx';
+import RoleUnavailable from './RoleUnavailable.jsx';
 
-export default function RoleGate({ role, fallback = null, children }) {
-  const { role: current, loading } = useCollabRole();
+export default function RoleGate({ role, fallback = null, unavailable, children }) {
+  const { role: current, loading, status } = useCollabRole();
   const allow = Array.isArray(role) ? role : [role];
 
-  if (loading) return null;
+  if (loading || status === ROLE_READ.LOADING) return null;
+  // Phase 5.11 — three outcomes, not two. `fallback` is a DENIAL (at route
+  // level a redirect, or a narrative for a CLIENT); it names a seat the caller
+  // does not hold. An unread seat is not a denial, so it may not route and may
+  // not borrow that sentence. Children stay withheld either way — the gate
+  // still refuses, it just stops claiming a reason it does not have.
+  //
+  // MainLayout already holds the shell on an unread seat, so in practice this
+  // fires only outside it or if that boundary is ever moved. Kept because a
+  // gate that depends on another gate is not a gate.
+  if (status !== ROLE_READ.PRESENT) return unavailable ?? <RoleUnavailable status={status} />;
   return allow.includes(current) ? children : fallback;
 }
 
-/** Imperative form for filtering lists (e.g. nav items). */
+/**
+ * Imperative form for filtering lists (e.g. nav items).
+ *
+ * `current` is null when the seat was not read, and null is in no allow-list,
+ * so a constrained item is withheld — fail closed. An UNCONSTRAINED item stays
+ * visible: withholding it would claim a restriction that does not exist.
+ */
 export function roleAllowed(current, allowed) {
   if (!allowed || allowed.length === 0) return true; // no constraint → visible to all
   return allowed.includes(current);

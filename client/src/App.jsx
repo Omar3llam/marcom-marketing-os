@@ -25,6 +25,8 @@ import PlanGate from './components/auth/PlanGate.jsx';
 import UpgradePrompt from './components/plan/UpgradePrompt.jsx';
 import RequireUserRole from './components/auth/RequireUserRole.jsx';
 import { useCollabRole, WORKSPACE_ROLE } from './hooks/useCollabRole.js';
+import { ROLE_READ } from './context/RoleContext.jsx';
+import RoleUnavailable from './components/auth/RoleUnavailable.jsx';
 import { ErrorBoundary } from './components/ErrorBoundary.tsx';
 import { appRoutes } from './app/routeManifest.js';
 
@@ -102,16 +104,31 @@ function PageFallback() {
 
 // CLIENT → Reports; everyone else → Overview. Used for the app index and as the
 // denied-fallback for the operator surfaces below.
+// Only ever reached from a RESOLVED seat: RoleGate renders its `fallback` —
+// this — after `status === PRESENT`, and the shell is held until then. A null
+// role therefore cannot arrive here; it is guarded anyway, because sending an
+// unknown seat to the operator home is the guess this phase exists to end.
 function RoleAwareRedirect() {
-  const { role } = useCollabRole();
+  const { role, status } = useCollabRole();
+  if (status !== ROLE_READ.PRESENT) return <RoleUnavailable status={status} />;
   return <Navigate to={role === WORKSPACE_ROLE.CLIENT ? appRoutes.leadership : appRoutes.overview} replace />;
 }
 
-// Keep a CLIENT out of an operator surface WITHOUT bouncing during the role-load
-// window — Overview must never flicker for a logged-in operator.
+// Keep a CLIENT out of an operator surface.
+//
+// Phase 5.11 — this used to `return children` while the role loaded, so that
+// Overview "never flickers for a logged-in operator". Measured in 5.10: a
+// CLIENT with a 1.2s role read saw the full thirteen-item operator shell for
+// the duration, then was redirected. The approved ruling forbids exposing
+// operator surfaces while the seat is pending, so the window now renders
+// nothing here and the shell above holds the loader.
+//
+// A null role no longer slips through either: `role === CLIENT` is false for
+// null, which would have sent every unread seat down the OPERATOR branch.
 function LockFromClient({ children }) {
-  const { role, loading } = useCollabRole();
-  if (loading) return children;
+  const { role, loading, status } = useCollabRole();
+  if (loading || status === ROLE_READ.LOADING) return null;
+  if (status !== ROLE_READ.PRESENT) return <RoleUnavailable status={status} />;
   if (role === WORKSPACE_ROLE.CLIENT) return <Navigate to={appRoutes.leadership} replace />;
   return children;
 }

@@ -28,7 +28,8 @@ vi.mock('@/hooks/useGoals.js', () => ({ useGoals: vi.fn() }));
 vi.mock('@/hooks/usePlans.js', () => ({ usePlans: vi.fn() }));
 vi.mock('@/hooks/useApprovals.js', () => ({ useApprovals: vi.fn() }));
 vi.mock('@/hooks/useFatigueForecast.js', () => ({ useFatigueForecast: vi.fn() }));
-vi.mock('@/hooks/useCollabRole.js', () => ({
+vi.mock('@/hooks/useCollabRole.js', async (io) => ({
+  ...(await io()),
   useCollabRole: vi.fn(),
   WORKSPACE_ROLE: { STRATEGIST: 'STRATEGIST', BUYER: 'BUYER', CLIENT: 'CLIENT' },
 }));
@@ -83,7 +84,7 @@ beforeEach(() => {
     pendingApprovals: [], unreadableCount: 0, isLoading: false, error: null,
     decide: vi.fn(), decidingId: null, refetch: vi.fn(),
   });
-  useCollabRole.mockReturnValue({ role: 'BUYER', loading: false });
+  useCollabRole.mockReturnValue({ role: 'BUYER', loading: false, status: 'PRESENT' });
 });
 
 // ── Tier 2a · the wiring, not just the panel ────────────────────────────────
@@ -93,7 +94,7 @@ beforeEach(() => {
 // a read one — and PARITY-04's, one layer up. It is caught here.
 describe('GrowthStrategyBoard — the approvals queue is wired, not merely exported', () => {
   it('an unreadable authorization reaches the STRATEGIST through the view', () => {
-    useCollabRole.mockReturnValue({ role: 'STRATEGIST', loading: false });
+    useCollabRole.mockReturnValue({ role: 'STRATEGIST', loading: false, status: 'PRESENT' });
     useApprovals.mockReturnValue({
       pendingApprovals: [], unreadableCount: 1, isLoading: false, error: null,
       decide: vi.fn(), decidingId: null, refetch: vi.fn(),
@@ -127,7 +128,7 @@ describe('GrowthStrategyBoard — the approvals queue is wired, not merely expor
   });
 
   it('…and a genuinely empty queue still says so through the same wiring', () => {
-    useCollabRole.mockReturnValue({ role: 'STRATEGIST', loading: false });
+    useCollabRole.mockReturnValue({ role: 'STRATEGIST', loading: false, status: 'PRESENT' });
     renderBoard();
     expect(screen.getByText(/no plans awaiting your approval/i)).toBeInTheDocument();
     expect(screen.queryByText(/couldn’t be read/i)).not.toBeInTheDocument();

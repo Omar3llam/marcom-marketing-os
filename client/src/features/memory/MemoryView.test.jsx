@@ -24,7 +24,8 @@ import { MemoryRouter } from 'react-router-dom';
 vi.mock('@/hooks/useAccountBriefing.js', () => ({ useAccountBriefing: vi.fn() }));
 vi.mock('@/hooks/usePromotePattern.js', () => ({ usePromotePattern: vi.fn() }));
 vi.mock('@/hooks/useAccuracy.js', () => ({ useAccuracy: vi.fn() }));
-vi.mock('@/hooks/useCollabRole.js', () => ({
+vi.mock('@/hooks/useCollabRole.js', async (io) => ({
+  ...(await io()),
   useCollabRole: vi.fn(),
   WORKSPACE_ROLE: { STRATEGIST: 'STRATEGIST', BUYER: 'BUYER', CLIENT: 'CLIENT' },
 }));
@@ -76,7 +77,7 @@ beforeEach(() => {
     requestPromotion: vi.fn(), grantPromotion: vi.fn(), revokePromotion: vi.fn(),
     busyId: null, error: null,
   });
-  useCollabRole.mockReturnValue({ role: 'STRATEGIST', loading: false });
+  useCollabRole.mockReturnValue({ role: 'STRATEGIST', loading: false, status: 'PRESENT' });
 });
 
 describe('FE-02 · one object, two readings, one destination', () => {
@@ -100,7 +101,7 @@ describe('FE-02 · the move changes the address, never an entitlement', () => {
   // Gating the whole destination would have silently deleted a CLIENT's access
   // to Proof of Learning — a regression dressed as consolidation.
   it('a CLIENT keeps the proof reading and still cannot read the briefing', () => {
-    useCollabRole.mockReturnValue({ role: 'CLIENT', loading: false });
+    useCollabRole.mockReturnValue({ role: 'CLIENT', loading: false, status: 'PRESENT' });
     renderMemory();
     expect(screen.getByText('Lumi is well-calibrated on this account.')).toBeInTheDocument();
     expect(screen.queryByText(/Video creative fatigues after 9 days/)).not.toBeInTheDocument();
@@ -108,7 +109,7 @@ describe('FE-02 · the move changes the address, never an entitlement', () => {
   });
 
   it('a BUYER reads both, as they could across the two tabs before', () => {
-    useCollabRole.mockReturnValue({ role: 'BUYER', loading: false });
+    useCollabRole.mockReturnValue({ role: 'BUYER', loading: false, status: 'PRESENT' });
     renderMemory();
     expect(screen.getByText(/Video creative fatigues after 9 days/)).toBeInTheDocument();
     expect(screen.getByText('Lumi is well-calibrated on this account.')).toBeInTheDocument();
@@ -117,7 +118,7 @@ describe('FE-02 · the move changes the address, never an entitlement', () => {
   it('renders neither reading while the role is still unknown', () => {
     // RoleGate's law: during the load window a denied fallback would bounce an
     // entitled operator. Nothing is asserted about them until the role resolves.
-    useCollabRole.mockReturnValue({ role: null, loading: true });
+    useCollabRole.mockReturnValue({ role: null, loading: true, status: 'PRESENT' });
     renderMemory();
     expect(screen.queryByText(/Video creative fatigues after 9 days/)).not.toBeInTheDocument();
   });

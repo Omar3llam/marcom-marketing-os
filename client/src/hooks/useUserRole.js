@@ -13,29 +13,44 @@
 import { useEffect, useState } from 'react';
 import { api } from '@/lib/api.js';
 import { useAuth } from '@/context/AuthContext.jsx';
+import { READ, readStatusForError } from '@/design-system/states/readStatus.js';
+
+/** The read vocabulary, re-exported so admin consumers need not know its home. */
+export { READ as ADMIN_READ };
 
 export function useUserRole() {
   const { currentUser } = useAuth();
-  const [state, setState] = useState({ isAdmin: false, isLoading: true });
+  const [state, setState] = useState({ isAdmin: false, isLoading: true, status: READ.LOADING });
 
   useEffect(() => {
     let cancelled = false;
 
     // No session → not admin, nothing to fetch.
     if (!currentUser) {
-      setState({ isAdmin: false, isLoading: false });
+      // No session, so the read was never made. Not admin, and not a refusal.
+      setState({ isAdmin: false, isLoading: false, status: READ.NOT_REACHABLE });
       return;
     }
 
-    setState((s) => ({ ...s, isLoading: true }));
+    setState((s) => ({ ...s, isLoading: true, status: READ.LOADING }));
     (async () => {
       try {
         const res = await api.get('/api/lumi/roles/me');
         if (cancelled) return;
-        setState({ isAdmin: res.data?.userRole === 'ADMIN', isLoading: false });
-      } catch {
+        // A 200 that does not carry a userRole answers nothing: it is not a
+        // confirmed VIEWER, and it is certainly not an ADMIN.
+        const userRole = res.data?.userRole ?? null;
+        const known = userRole === 'ADMIN' || userRole === 'VIEWER';
+        setState({
+          isAdmin: userRole === 'ADMIN',
+          isLoading: false,
+          status: known ? READ.PRESENT : READ.NOT_REACHABLE,
+        });
+      } catch (err) {
         if (cancelled) return;
-        setState({ isAdmin: false, isLoading: false });
+        // Still CLOSED — a failed read never grants admin. The status only
+        // makes the REASON legible, so an outage stops looking like a refusal.
+        setState({ isAdmin: false, isLoading: false, status: readStatusForError(err) });
       }
     })();
 
