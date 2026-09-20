@@ -21,14 +21,23 @@ vi.mock('@/context/AuthContext.jsx', () => ({
 vi.mock('@/hooks/useCollabRole.js', () => ({
   useCollabRole: vi.fn(() => ({ role: 'STRATEGIST' })),
 }));
-vi.mock('@/hooks/useWorkspace.js', () => ({
-  useWorkspace: () => ({ workspace: { name: 'Acme', market: 'EG' }, hasWorkspace: true, loading: false }),
+// Partial: usePlan.js re-exports WORKSPACE_READ from here, so a whole-module
+// factory would leave that re-export undefined in every consumer.
+vi.mock('@/hooks/useWorkspace.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  useWorkspace: () => ({ workspace: { name: 'Acme', market: 'EG' }, hasWorkspace: true, loading: false, status: 'PRESENT' }),
 }));
 // Default the workspace to PRO so every role-visible item is unlocked (a link) —
 // the existing badge/label assertions below expect interactive nav items. The
 // plan-gating suite at the bottom overrides this per-test.
-vi.mock('@/hooks/usePlan.js', () => ({
-  usePlan: vi.fn(() => ({ canAccess: () => true, loading: false })),
+// Partial mock: the Sidebar also reads the real WORKSPACE_READ tokens to tell
+// a KNOWN entitlement from an unread one, so the module's other exports must
+// survive (Phase 5.9).
+vi.mock('@/hooks/usePlan.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  // 'PRESENT' spelled literally: vi.mock factories are hoisted above imports,
+  // so WORKSPACE_READ.PRESENT is not in scope here. Same value.
+  usePlan: vi.fn(() => ({ canAccess: () => true, loading: false, status: 'PRESENT' })),
 }));
 vi.mock('@/hooks/useConnections.js', () => ({
   useConnections: vi.fn(() => ({ data: null, loading: false, error: null })),
@@ -47,13 +56,15 @@ import Sidebar from './Sidebar.jsx';
 import { useConnections } from '@/hooks/useConnections.js';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
 import { usePendingApprovals } from '@/hooks/usePendingApprovals.js';
-import { usePlan } from '@/hooks/usePlan.js';
+import { usePlan, WORKSPACE_READ } from '@/hooks/usePlan.js';
 
 // Mirror the real hierarchy so a mocked plan locks exactly what usePlan would.
 const PLAN_RANK = { FREE: 0, GROWTH: 1, PRO: 2 };
 const setPlan = (tier) => usePlan.mockReturnValue({
   canAccess: (req) => req == null || (PLAN_RANK[tier] ?? 0) >= (PLAN_RANK[req] ?? 0),
   loading: false,
+  // A tier only gates once it has actually been READ (Phase 5.9).
+  status: WORKSPACE_READ.PRESENT,
 });
 
 function renderSidebar(props = {}, { path = '/' } = {}) {
@@ -70,7 +81,7 @@ afterEach(() => {
   useCollabRole.mockReturnValue({ role: 'STRATEGIST' });
   useConnections.mockReturnValue({ data: null, loading: false, error: null });
   usePendingApprovals.mockReturnValue({ pending: [], loading: false, error: null, refetch: vi.fn() });
-  usePlan.mockReturnValue({ canAccess: () => true, loading: false }); // back to PRO/unlocked
+  usePlan.mockReturnValue({ canAccess: () => true, loading: false, status: WORKSPACE_READ.PRESENT }); // back to PRO/unlocked
 });
 
 describe('Sidebar — mobile drawer visibility', () => {
@@ -206,8 +217,25 @@ describe('Sidebar — plan-based feature gating (locked items hidden)', () => {
     expect(queryByText('Measurement')).toBeNull();
   });
 
+  // Phase 5.9 — an entitlement we never READ is not a tier, so the plan filter
+  // does not run at all. Hiding would claim the operator is not entitled; the
+  // route-level PlanGate still refuses, as an absence rather than an upsell.
+  // `canAccess` answers false for EVERY tier here, FREE included, so a filter
+  // that ran would empty the navigation entirely rather than trim it.
+  it.each([
+    ['a failed read', 'NOT_REACHABLE'],
+    ['a refused read', 'NOT_PERMITTED'],
+    ['an absent workspace', 'NOTHING_FOUND'],
+  ])('%s hides NOTHING — including the FREE items', (_label, status) => {
+    usePlan.mockReturnValue({ canAccess: () => false, loading: false, status });
+    const { getByText } = renderSidebar({ mobileMenuOpen: true });
+    for (const label of ['Decisions', 'Campaigns', 'Reports', 'Intelligence', 'Testing']) {
+      expect(isLink(getByText, label)).toBe(true);
+    }
+  });
+
   it('while the plan is still loading, NOTHING is hidden (no flash for a paying operator)', () => {
-    usePlan.mockReturnValue({ canAccess: () => false, loading: true });
+    usePlan.mockReturnValue({ canAccess: () => false, loading: true, status: WORKSPACE_READ.LOADING });
     const { getByText } = renderSidebar({ mobileMenuOpen: true });
     // loading guard wins → every role-visible item still renders as a link
     expect(isLink(getByText, 'Testing')).toBe(true);

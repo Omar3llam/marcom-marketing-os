@@ -58,10 +58,15 @@ vi.mock('@/hooks/useCollabRole.js', () => ({
   useCollabRole: () => ({ role: seat.role, loading: seat.roleLoading }),
   WORKSPACE_ROLE: { CLIENT: 'CLIENT', BUYER: 'BUYER', STRATEGIST: 'STRATEGIST' },
 }));
-vi.mock('@/hooks/usePlan.js', () => ({
+vi.mock('@/hooks/usePlan.js', async (importOriginal) => ({
+  ...(await importOriginal()),
   usePlan: () => ({
     plan: seat.plan,
     loading: seat.planLoading,
+    // Phase 5.9 — the gate now asks whether the entitlement was ESTABLISHED
+    // before it asks which tier it is, so the seat carries a read status.
+    // Default PRESENT: these cases are all about a plan that WAS read.
+    status: seat.planStatus ?? 'PRESENT',
     // Mirrors the real hierarchical check: an absent requirement is open.
     canAccess: (required) => required == null || RANK[seat.plan] >= RANK[required],
   }),

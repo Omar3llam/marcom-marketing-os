@@ -19,7 +19,7 @@ import {
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
 import { roleAllowed } from '@/components/auth/RoleGate.jsx';
-import { usePlan } from '@/hooks/usePlan.js';
+import { usePlan, WORKSPACE_READ } from '@/hooks/usePlan.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useConnections } from '@/hooks/useConnections.js';
 import { usePendingApprovals } from '@/hooks/usePendingApprovals.js';
@@ -241,7 +241,7 @@ export default function Sidebar({
   const { pathname } = useLocation();
   const { currentUser } = useAuth();
   const { role: collabRole } = useCollabRole();
-  const { canAccess, loading: planLoading } = usePlan();
+  const { canAccess, loading: planLoading, status: planStatus } = usePlan();
   const { workspace, hasWorkspace, loading: workspaceLoading } = useWorkspace();
   const { data: connectionsData, loading: connectionsLoading } = useConnections();
 
@@ -251,8 +251,18 @@ export default function Sidebar({
   // (planLoading ⇒ show), so a paying operator never sees items flash away
   // mid-load. Filtering here also keeps locked items out of the ⌘K palette,
   // which reads navItems.
+  //
+  // Phase 5.9 — an UNKNOWN entitlement is treated exactly like a loading one:
+  // the plan filter does not run. Not because the user is entitled, but because
+  // hiding claims they are not, and we did not read a plan. Two consequences
+  // are deliberate. A failed read no longer deletes the FREE items as well
+  // (`canAccess('FREE')` is false when nothing was read, so enforcing here
+  // would empty the whole nav). And the route-level PlanGate still refuses —
+  // honestly, as an absence rather than as an upgrade wall — if the item is
+  // clicked. R-4 (show-locked vs hide) is untouched and still open.
+  const planKnown = planStatus === WORKSPACE_READ.PRESENT;
   const navItems = tools.filter(
-    (t) => roleAllowed(collabRole, t.roles) && (planLoading || canAccess(t.plan)),
+    (t) => roleAllowed(collabRole, t.roles) && (planLoading || !planKnown || canAccess(t.plan)),
   );
   // FE-05 — the same filtered list, split by where it is drawn. The gates run
   // FIRST and identically for both groups: `group` decides placement, never
