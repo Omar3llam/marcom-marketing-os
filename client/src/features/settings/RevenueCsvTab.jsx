@@ -202,7 +202,19 @@ export default function RevenueCsvTab() {
   const [currency, setCurrency] = useState(workspace?.currency || 'USD');
 
   // STRATEGIST-only: revenue is a portfolio-truth input (the endpoint enforces it too).
-  if (role && role !== WORKSPACE_ROLE.STRATEGIST) {
+  //
+  // Phase 5.12 — the `role &&` short-circuit is gone. Since 5.11 `role` is null
+  // whenever the seat was not READ, and `null && …` is falsy, so an unresolved
+  // seat SKIPPED this refusal and rendered the upload form: the guard failed
+  // OPEN on exactly the input it exists to stop. Nothing reached it, because
+  // MainLayout holds the shell on an unread seat and the section gate in
+  // SettingsView now holds this tab as well — but a guard that is correct only
+  // because two other guards fired first is not a guard.
+  //
+  // It is kept rather than deleted, as deliberate redundancy: the audience is
+  // declared once in the route manifest, and this is the component refusing on
+  // its own account if it is ever mounted from somewhere else.
+  if (role !== WORKSPACE_ROLE.STRATEGIST) {
     return (
       <div className="rounded-2xl border border-lumi-border bg-lumi-surface p-6 flex items-center gap-3">
         <FileText className="w-5 h-5 text-lumi-subtle" strokeWidth={1.5} />

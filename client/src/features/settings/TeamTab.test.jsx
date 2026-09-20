@@ -1,10 +1,21 @@
 // ============================================================
 // TeamTab — STRATEGIST gating + self-protection
 // ------------------------------------------------------------
-// useTeam + useCollabRole + sonner are mocked so we drive the two role states
-// directly: a STRATEGIST gets the invite form and per-member controls; everyone
-// else gets a read-only roster and the gated message. Your own row never exposes
-// a Remove control.
+// useTeam + useCollabRole + sonner are mocked so we drive the role states
+// directly: a STRATEGIST gets the invite form and per-member controls, and your
+// own row never exposes a Remove control.
+//
+// Phase 5.12 — the non-STRATEGIST case below is now about THIS COMPONENT, not
+// about what a BUYER sees in the product. R-15 moved the section audience to
+// the route manifest, and SettingsView refuses to mount this tab for a seat
+// that is not a STRATEGIST, so a BUYER no longer reaches the roster through
+// Settings (see settingsAudience.test.jsx, which asserts that).
+//
+// The assertion is kept rather than deleted because it is still TRUE of the
+// component and it is the second layer: if this tab is ever mounted from
+// somewhere that does not gate it, the mutation controls must still be absent.
+// Deleting it would delete the only thing standing between a future caller and
+// an invite form for a BUYER.
 // ============================================================
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -48,7 +59,7 @@ describe('TeamTab', () => {
     expect(screen.queryByLabelText(/Remove self@ws.com/i)).not.toBeInTheDocument();
   });
 
-  it('non-STRATEGIST gets a read-only roster + the gated invite message', () => {
+  it('mounted directly for a non-STRATEGIST: no mutation controls, gated invite message (defence in depth — Settings no longer mounts it for this seat)', () => {
     useCollabRole.mockReturnValue({ role: 'BUYER' });
     useTeam.mockReturnValue(teamState());
     render(<TeamTab />);

@@ -56,10 +56,34 @@ export const intelligenceSections = [
 // tab that only redirects away is a trap: it offers a place to stand that does
 // not exist. `settingsIntegrations` is KEPT in appRoutes above because the
 // address is bookmarked and linked from outside the app; App.jsx redirects it.
+//
+// R-15 (Phase 5.12) — `roles` carries the SECTION AUDIENCE, exactly as it does
+// for `intelligenceSections` above. It is declared here rather than inside each
+// tab so that one list answers both questions a permission has to answer: which
+// nav entries appear, and which section a URL is allowed to render. A tab that
+// resolves its own role answers the first and not the second, which is how
+// /app/settings/team came to render a full roster to every seat.
+//
+// An entry with NO `roles` is unconstrained on this axis — not "unknown", and
+// not an oversight. `general` and `security` act on the caller's OWN identity
+// (display name, notification prefs, password reset, account deletion) and the
+// backend gates none of them by collabRole, so a role restriction here would
+// invent a rule the product does not have.
+//
+// `workspace` is deliberately left unconstrained and is an OPEN RULING: the
+// backend serves the read to any member (GET /api/user/workspace) and gates only
+// the write (PATCH -> requireCollabRole('STRATEGIST')), and the tab has never
+// been gated. Whether a BUYER should see the workspace name at all is a product
+// decision, and guessing it here is what this slice forbids.
 export const settingsSections = [
   { key: 'general', label: 'General', path: appRoutes.settingsGeneral },
-  { key: 'team', label: 'Team & Roles', path: appRoutes.settingsTeam },
-  { key: 'revenue', label: 'Revenue data', path: appRoutes.settingsRevenue },
+  // Backend: the roster read is open to any member and the mutations are
+  // STRATEGIST-only. This ruling narrows the SURFACE below the backend's
+  // audience; the backend is unchanged and remains the enforcement layer.
+  { key: 'team', label: 'Team & Roles', path: appRoutes.settingsTeam, roles: ['STRATEGIST'] },
+  // Backend: POST /api/lumi/revenue/csv is requireCollabRole('STRATEGIST'), and
+  // the tab already declared itself STRATEGIST-only in its own body.
+  { key: 'revenue', label: 'Revenue data', path: appRoutes.settingsRevenue, roles: ['STRATEGIST'] },
   { key: 'workspace', label: 'Workspace', path: appRoutes.settingsWorkspace },
   { key: 'security', label: 'Security', path: appRoutes.settingsSecurity },
 ];
