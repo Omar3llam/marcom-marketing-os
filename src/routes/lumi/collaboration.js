@@ -17,7 +17,7 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { scopeFor } from '../../services/decisions/decisionClassScope.js';
 import { logger } from '../../utils/logger.js';
-import { requireCollabRole, resolveCollabRoleForDisplay } from '../../middleware/requireCollabRole.js';
+import { requireCollabRole, resolveCollabRoleForDisplay, resolveCollabRoleContext } from '../../middleware/requireCollabRole.js';
 import { requirePlan } from '../../middleware/requirePlan.js';
 import { WORKSPACE_ROLE, visibleStates, normalizeRole } from '../../services/collaboration/roleScope.js';
 import { generateNarrative, listNarratives, getNarrative } from '../../services/narrative-engine/NarrativeService.js';
@@ -57,13 +57,59 @@ async function need(req, res) {
 
 // ─────────────────────────────────────────────────────────────
 // GET /roles/me — the client gates its FSM nav from this
+//
+// ── R-14.a (Phase 5.14) — THIS ENDPOINT REPORTS A SEAT ─────────────────────
+// It used to answer `resolveCollabRoleForDisplay`, which maps every failure to
+// DEFAULT_ROLE. So a database blip, or a row with no collabRole, was published
+// as `{role:'STRATEGIST'}` with a 200, and the client — seeing a role it
+// recognises — recorded a CONFIRMED seat and rendered the full operator
+// surface. That is "unknown → permitted", and no amount of refusal copy can fix
+// it, because the client was never told anything had failed.
+//
+// WHY THIS IS STILL A 200, and not a 503 or a 403:
+//
+//   · A 403 would be false. This endpoint has no gate — asking about your own
+//     seat is never refused — and the client maps 403 to NOT_PERMITTED, which
+//     would turn an outage into a refusal. That is the inversion R-14 exists to
+//     prevent, pointed the other way.
+//   · A 503 would couple two orthogonal axes. `userRole` (ADMIN | VIEWER) is
+//     resolved by firebaseAuth and is independent of the collaboration role;
+//     useUserRole reads it from THIS response to gate /admin. Failing the whole
+//     response would take a genuine ADMIN's panel away because an unrelated
+//     store was unavailable.
+//   · The request succeeded. What could not be established is one FIELD of the
+//     answer, and the body says so explicitly. This mirrors
+//     GET /api/user/workspace, which answers 200 {workspace:null,
+//     hasWorkspace:false} rather than erroring when there is nothing to report.
+//
+// The enforcement gate is unchanged and still fails closed: requireCollabRole
+// answers 503 RoleUnavailable on an unresolvable role and 403 RoleForbidden on
+// an unassigned one. This endpoint reports; that one enforces.
 // ─────────────────────────────────────────────────────────────
 collaborationRouter.get('/roles/me', async (req, res) => {
-  const role = await resolveCollabRoleForDisplay(req);
-  // userRole is the SYSTEM axis (ADMIN | VIEWER), orthogonal to the collab role.
-  // The admin panel reads it to decide whether to surface the /admin link+route.
-  // firebaseAuth sets req.userRole; default VIEWER so the field is never null.
-  return res.json({ role, visibleStates: visibleStates(role), userRole: req.userRole ?? 'VIEWER' });
+  const ctx = await resolveCollabRoleContext(req);
+  const resolved = ctx.status === 'RESOLVED';
+  return res.json({
+    // null, never a guess. A client that only knows the old shape still reads
+    // this correctly, because null is not a role it recognises.
+    role: resolved ? ctx.role : null,
+    // The explicit discriminator, so the client branches on a stated fact
+    // rather than inferring one from a missing field.
+    roleStatus: ctx.status,
+    // WHY it could not be established: ROLE_UNSET (a Strategist must assign a
+    // seat — a retry changes nothing) vs ROLE_LOOKUP_FAILED (a retry is honest).
+    // Two reasons because they have two different next steps.
+    roleReason: ctx.reason,
+    // Withheld when the seat is unknown: visibleStates(null) resolves through
+    // normalizeRole to the STRATEGIST list, which is the same leak one field
+    // over.
+    visibleStates: resolved ? visibleStates(ctx.role) : null,
+    // userRole is the SYSTEM axis (ADMIN | VIEWER), orthogonal to the collab
+    // role. The admin panel reads it to decide whether to surface the /admin
+    // link+route. firebaseAuth sets req.userRole; default VIEWER so the field
+    // is never null — and it stays truthful even when the collab seat does not.
+    userRole: req.userRole ?? 'VIEWER',
+  });
 });
 
 // ─────────────────────────────────────────────────────────────

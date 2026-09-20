@@ -29,32 +29,81 @@
 // Compose with RoleGate OUTSIDE this (role decides visibility; a CLIENT is
 // routed to Reports before we ever consider the plan).
 // ============================================================
-import { usePlan, WORKSPACE_READ } from '@/hooks/usePlan.js';
-import { ErrorState } from '@/design-system/patterns/index.js';
+import { AlertTriangle, Lock, SearchX } from 'lucide-react';
+import { usePlan } from '@/hooks/usePlan.js';
+// The vocabulary comes from its HOME, not through the hook's re-export. The
+// copy map below is built at MODULE SCOPE, and `usePlan.js` is whole-module
+// mocked by several suites — keying a static map off a mockable hook makes
+// every one of those mocks responsible for a constant it does not care about,
+// and the failure is an import-time crash rather than a readable assertion.
+// READ and WORKSPACE_READ are the same frozen object.
+import { READ as WORKSPACE_READ } from '@/design-system/states/readStatus.js';
+import { StateBlock } from '@/design-system/patterns/index.js';
 
 /**
- * The default absence surface.
+ * The default absence surface — one sentence per state (R-14, Phase 5.14).
  *
- * The wording is B8-02's already-approved UNREADABLE copy, reused verbatim
- * rather than written fresh (overviewState.js). The second line — "a problem on
- * our side" — is TRUE of a failed read and NOT true of a refusal, so
- * NOT_PERMITTED gets the first line alone. Inventing a permission sentence here
- * would be inventing product copy; naming the gap is the honest move, and it is
- * an open ruling.
+ * Until 5.14 every non-PRESENT status rendered the same "Lumi couldn't read
+ * this account just now." That was wrong in two ways, and Phase 5.13 measured
+ * both:
+ *
+ *   · NOTHING_FOUND is a MEASURED ANSWER. `useWorkspace` sets it when the
+ *     server explicitly replies `hasWorkspace: false` — the read SUCCEEDED.
+ *     Saying "couldn't read" and "a problem on our side" were both FALSE
+ *     statements about Lumi's own position, on a reachable path. B8-02 holds
+ *     this token apart from the absences for exactly this reason
+ *     (absence.js — isAbsent() answers false for it).
+ *
+ *   · The sentence named no axis, so a workspace failure and a ROLE failure
+ *     were textually identical. These say WORKSPACE; RoleUnavailable's say
+ *     ACCESS.
+ *
+ * What is NOT claimed: no plan, no tier, no upgrade path. An unread entitlement
+ * is not a FREE seat (Phase 5.9), and none of these sentences mentions money.
+ *
+ * No retry control: `useWorkspace` exposes `refetch`, but wiring it here
+ * changes when the entitlement is re-read, which is a behaviour change rather
+ * than copy. Recorded as follow-up in PHASE_5_14 rather than faked with a
+ * button that does nothing.
  */
+const ENTITLEMENT_COPY = {
+  [WORKSPACE_READ.NOTHING_FOUND]: {
+    icon: SearchX,
+    title: 'Lumi couldn’t find a workspace for this account.',
+    // Deliberately no instruction. What a person should DO about having no
+    // workspace is an open product ruling (R-14.b), and inventing a next step
+    // here would be inventing product.
+    description: 'Your account is signed in, but no workspace is attached to it yet.',
+  },
+  [WORKSPACE_READ.NOT_REACHABLE]: {
+    icon: AlertTriangle,
+    title: 'Lumi couldn’t read your workspace just now.',
+    description: 'This is a problem on our side, not a verdict about your campaigns.',
+  },
+  [WORKSPACE_READ.NOT_PERMITTED]: {
+    icon: Lock,
+    title: 'Lumi isn’t allowed to read this workspace.',
+    description: undefined,
+  },
+};
+
 function EntitlementUnavailable({ status }) {
-  const permissionDenied = status === WORKSPACE_READ.NOT_PERMITTED;
+  const copy = ENTITLEMENT_COPY[status] ?? ENTITLEMENT_COPY[WORKSPACE_READ.NOT_REACHABLE];
   return (
     <div className="flex min-h-full items-center justify-center p-6">
-      <ErrorState
+      <StateBlock
         tone="warning"
         className="max-w-md"
-        title="Lumi couldn’t read this account just now."
-        description={permissionDenied ? undefined : 'This is a problem on our side, not a verdict about your campaigns.'}
+        icon={copy.icon}
+        title={copy.title}
+        description={copy.description}
       />
     </div>
   );
 }
+
+/** Exported for the exhaustiveness test — not for rendering. */
+export { ENTITLEMENT_COPY };
 
 export default function PlanGate({ required, fallback = null, unavailable, children }) {
   const { canAccess, loading, status } = usePlan();

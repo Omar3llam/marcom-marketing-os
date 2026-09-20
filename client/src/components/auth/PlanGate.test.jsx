@@ -95,7 +95,48 @@ describe('PlanGate — an entitlement that was NOT established', () => {
   it.each(ABSENCES)('%s says what happened instead of asking for money', (_label, status) => {
     mockPlan(null, false, status);
     renderGate();
-    expect(screen.getByText(/couldn’t read this account/i)).toBeInTheDocument();
+    // Whatever the state, the sentence is about the WORKSPACE and mentions no
+    // tier, no plan and no money. getAllBy — some states name it in both the
+    // title and the description.
+    expect(screen.getAllByText(/workspace/i).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/upgrade|plan|tier/i)).not.toBeInTheDocument();
+  });
+
+  // Phase 5.14 — one sentence per state. Until now all three rendered the same
+  // title, so a measured ANSWER and an outage were indistinguishable.
+  it('a failed read names the workspace read, not the account generally', () => {
+    mockPlan(null, false, WORKSPACE_READ.NOT_REACHABLE);
+    renderGate();
+    expect(screen.getByText(/Lumi couldn’t read your workspace just now/i)).toBeInTheDocument();
+  });
+
+  it('REGRESSION: an ABSENT workspace is not spoken as a failed read', () => {
+    // hasWorkspace:false is a MEASURED ANSWER — the read succeeded. Saying
+    // "couldn't read" and "a problem on our side" were both false statements
+    // about Lumi's own position (Phase 5.13, F-3).
+    mockPlan(null, false, WORKSPACE_READ.NOTHING_FOUND);
+    renderGate();
+    expect(screen.getByText(/couldn’t find a workspace/i)).toBeInTheDocument();
+    expect(screen.queryByText(/couldn’t read your workspace/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/problem on our side/i)).not.toBeInTheDocument();
+  });
+
+  it('a refused read is not spoken as an outage either', () => {
+    mockPlan(null, false, WORKSPACE_READ.NOT_PERMITTED);
+    renderGate();
+    expect(screen.getByText(/isn’t allowed to read this workspace/i)).toBeInTheDocument();
+    expect(screen.queryByText(/problem on our side/i)).not.toBeInTheDocument();
+  });
+
+  it('no two absence states read alike', () => {
+    const seen = new Set();
+    for (const [, status] of ABSENCES) {
+      mockPlan(null, false, status);
+      const { container, unmount } = renderGate();
+      seen.add(container.textContent.trim());
+      unmount();
+    }
+    expect(seen.size).toBe(ABSENCES.length);
   });
 
   it('a PRO workspace whose read failed is NOT told to upgrade — the reported defect', () => {
@@ -103,7 +144,7 @@ describe('PlanGate — an entitlement that was NOT established', () => {
     mockPlan('PRO', false, WORKSPACE_READ.NOT_REACHABLE);
     renderGate();
     expect(screen.queryByText('upgrade wall')).not.toBeInTheDocument();
-    expect(screen.getByText(/couldn’t read this account/i)).toBeInTheDocument();
+    expect(screen.getByText(/Lumi couldn’t read your workspace just now/i)).toBeInTheDocument();
   });
 
   it('a refusal does not claim the failure is on our side; a failed read does', () => {

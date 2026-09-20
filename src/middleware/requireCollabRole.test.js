@@ -15,7 +15,10 @@ vi.mock('../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-import { requireCollabRole, resolveCollabRole, resolveCollabRoleForDisplay, RoleUnavailableError } from './requireCollabRole.js';
+import {
+  requireCollabRole, resolveCollabRole, resolveCollabRoleForDisplay,
+  resolveCollabRoleContext, ROLE_UNRESOLVED_REASON, RoleUnavailableError,
+} from './requireCollabRole.js';
 import { _resetOverrideWarnings } from '../lib/devOverrides.js';
 import { prisma } from '../lib/prisma.js';
 
@@ -90,17 +93,82 @@ describe('the gate fails CLOSED (I61)', () => {
 });
 
 describe('display resolution is generous, enforcement is strict', () => {
-  it('resolveCollabRoleForDisplay defaults an outage to the default seat', async () => {
-    // Deliberate asymmetry: a screen that cannot resolve a role still renders,
-    // while an action that cannot resolve one is refused. The direction matters
-    // — the reverse (strict display, generous gate) is the bug R11 removed.
+  // These two are KEPT, not deleted: resolveCollabRoleForDisplay still has three
+  // callers (/inbox, /home, feedSurfacing) that SHAPE role-scoped content rather
+  // than publish a seat, and its generosity is still deliberate there.
+  //
+  // R-14.a (Phase 5.14) narrowed what the asymmetry is allowed to reach. It may
+  // decide what a view composes; it may NOT answer "what seat is this". The
+  // renamed titles say which of the two each case is about, because the old
+  // names read as a blanket endorsement of the default — and GET /roles/me
+  // relied on exactly that reading.
+  it('SHAPING: resolveCollabRoleForDisplay still defaults an outage to the default seat', async () => {
     prisma.user.findUnique.mockRejectedValue(new Error('down'));
     await expect(resolveCollabRoleForDisplay({ userId: 'u1' })).resolves.toBe('STRATEGIST');
   });
 
-  it('resolveCollabRoleForDisplay never throws on a null role', async () => {
+  it('SHAPING: resolveCollabRoleForDisplay never throws on a null role', async () => {
     prisma.user.findUnique.mockResolvedValue({ collabRole: null });
     await expect(resolveCollabRoleForDisplay({ userId: 'u1' })).resolves.toBe('STRATEGIST');
+  });
+});
+
+// ── R-14.a — PUBLISHING a seat has no default ───────────────────────────────
+describe('resolveCollabRoleContext — the reporting resolver', () => {
+  it('reports a resolved seat, with no reason', async () => {
+    prisma.user.findUnique.mockResolvedValue({ collabRole: 'BUYER' });
+    await expect(resolveCollabRoleContext({ userId: 'u1' }))
+      .resolves.toEqual({ status: 'RESOLVED', role: 'BUYER', reason: null });
+  });
+
+  for (const role of ['STRATEGIST', 'BUYER', 'CLIENT']) {
+    it(`carries ${role} through untouched`, async () => {
+      prisma.user.findUnique.mockResolvedValue({ collabRole: role });
+      const ctx = await resolveCollabRoleContext({ userId: 'u1' });
+      expect(ctx).toEqual({ status: 'RESOLVED', role, reason: null });
+    });
+  }
+
+  it('REGRESSION: an outage is UNRESOLVED — never STRATEGIST', async () => {
+    prisma.user.findUnique.mockRejectedValue(new Error('down'));
+    const ctx = await resolveCollabRoleContext({ userId: 'u1' });
+    expect(ctx.status).toBe('UNRESOLVED');
+    expect(ctx.role).toBeNull();
+    expect(ctx.reason).toBe(ROLE_UNRESOLVED_REASON.ROLE_LOOKUP_FAILED);
+  });
+
+  it('REGRESSION: an unset role is UNRESOLVED — never STRATEGIST', async () => {
+    prisma.user.findUnique.mockResolvedValue({ collabRole: null });
+    const ctx = await resolveCollabRoleContext({ userId: 'u1' });
+    expect(ctx.status).toBe('UNRESOLVED');
+    expect(ctx.role).toBeNull();
+    expect(ctx.reason).toBe(ROLE_UNRESOLVED_REASON.ROLE_UNSET);
+  });
+
+  it('a MALFORMED role value is UNRESOLVED, not passed through', async () => {
+    prisma.user.findUnique.mockResolvedValue({ collabRole: 'SUPERUSER' });
+    const ctx = await resolveCollabRoleContext({ userId: 'u1' });
+    expect(ctx.status).toBe('UNRESOLVED');
+    expect(ctx.role).toBeNull();
+  });
+
+  it('the two reasons are DISTINCT — they have different next steps', async () => {
+    prisma.user.findUnique.mockRejectedValue(new Error('down'));
+    const failed = await resolveCollabRoleContext({ userId: 'u1' });
+    prisma.user.findUnique.mockResolvedValue({ collabRole: null });
+    const unset = await resolveCollabRoleContext({ userId: 'u1' });
+    expect(failed.reason).not.toBe(unset.reason);
+  });
+
+  it('never throws — an endpoint that reports a seat must still answer', async () => {
+    prisma.user.findUnique.mockRejectedValue(new Error('down'));
+    await expect(resolveCollabRoleContext({ userId: 'u1' })).resolves.toBeTruthy();
+  });
+
+  it('no userId (never authenticated) is UNRESOLVED, not a seat', async () => {
+    const ctx = await resolveCollabRoleContext({});
+    expect(ctx.status).toBe('UNRESOLVED');
+    expect(ctx.role).toBeNull();
   });
 });
 

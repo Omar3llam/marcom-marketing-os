@@ -134,7 +134,10 @@ const INVITE_FORM = /teammate@company\.com/i;          // the placeholder — a 
 const INVITE_REFUSED = /Only Strategists can invite team members/i;
 const REVENUE_CONTENT = /Upload revenue data/i;
 const REFUSAL = /Restricted section/i;
-const READ_FAILED = /read this account/i;
+// Phase 5.14 — the role axis names itself now, so this no longer collides with
+// the workspace axis's sentence. That collision is exactly what made the old
+// shared regex unable to tell RoleUnavailable from EntitlementUnavailable.
+const READ_FAILED = /your access/i;
 
 beforeEach(() => { vi.clearAllMocks(); });
 

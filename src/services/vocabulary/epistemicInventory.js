@@ -164,6 +164,20 @@ export const EXCLUDED = Object.freeze([
            + 'UNSUPPORTED, already declared CANNOT_ASK.',
   },
   {
+    at: 'src/middleware/requireCollabRole.js', symbol: 'ROLE_UNRESOLVED_REASON',
+    because: 'A reason vocabulary (R-14.a, Phase 5.14) — it refines the UNRESOLVED '
+           + 'half of the roleStatus published by GET /roles/me, which the '
+           + 'client already '
+           + 'classifies into a single READ token. ROLE_UNSET lands on '
+           + 'NOTHING_FOUND and ROLE_LOOKUP_FAILED on NOT_REACHABLE, so declaring '
+           + 'these two here as well would let one seat carry two knowledge '
+           + 'tokens — the ambiguity C-06 exists to remove, and the same ground '
+           + 'the four reason vocabularies above are excluded on. It exists at all '
+           + 'because the two have DIFFERENT NEXT STEPS (a Strategist must assign '
+           + 'a seat vs a retry is honest) — the C-07 rule that a token '
+           + 'cannot replace a reason.',
+  },
+  {
     at: 'packages/runtime-contracts/src/gatingReason.js', symbol: 'GATING_REASON',
     because: 'A reason vocabulary, and C-07 gives it its OWN registry rather than '
            + 'this one. Its three values refine an absence the token has already '

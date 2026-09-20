@@ -19,6 +19,19 @@ export const WORKSPACE_ROLE = Object.freeze({
 
 // Null/unknown collab role falls back to STRATEGIST so existing seats (who
 // predate Phase 8) are never locked out of their own workspace.
+//
+// ⚠️ R-14.a (Phase 5.14) — THIS DEFAULT MAY NOT BE PUBLISHED AS A ROLE.
+// It exists so a role-SCOPED view can still compose something; it is not an
+// answer to "what seat is this". GET /api/lumi/roles/me used to hand it to the
+// client through `resolveCollabRoleForDisplay`, and the client, seeing a
+// recognised role, recorded a CONFIRMED STRATEGIST — so a database blip or an
+// unassigned seat rendered the full operator surface. Anything that PUBLISHES a
+// seat must read `asKnownRole` below, which has no default.
+//
+// The default is left in place for the callers that legitimately need a concrete
+// role AFTER enforcement has already run, and for the role-scoped composers
+// (/inbox, /home, feedSurfacing) whose blast radius is data shaping rather than
+// an access claim. Those are recorded as follow-ups, not silently changed here.
 export const DEFAULT_ROLE = WORKSPACE_ROLE.STRATEGIST;
 
 // FSM views each role may see. Maps to client useDecisionFSM view names.
@@ -30,6 +43,21 @@ const VISIBLE_STATES = Object.freeze({
 
 export function normalizeRole(role) {
   return Object.values(WORKSPACE_ROLE).includes(role) ? role : DEFAULT_ROLE;
+}
+
+/**
+ * PURE: the role, or null. No default, ever.
+ *
+ * The counterpart to `normalizeRole` for every path that reports a seat rather
+ * than shapes a view. "We could not establish your role" and "your role is
+ * STRATEGIST" are different answers, and only this function can express the
+ * first one.
+ *
+ * @param {unknown} role
+ * @returns {string|null} a WORKSPACE_ROLE, or null when there is no known seat
+ */
+export function asKnownRole(role) {
+  return Object.values(WORKSPACE_ROLE).includes(role) ? role : null;
 }
 
 /** FSM views this role may navigate to. */
