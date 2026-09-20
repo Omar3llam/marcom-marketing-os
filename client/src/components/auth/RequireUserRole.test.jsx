@@ -8,7 +8,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-vi.mock('@/hooks/useUserRole.js', () => ({ useUserRole: vi.fn() }));
+vi.mock('@/hooks/useUserRole.js', async (io) => ({ ...(await io()), useUserRole: vi.fn() }));
 import { useUserRole } from '@/hooks/useUserRole.js';
 import RequireUserRole from './RequireUserRole.jsx';
 
@@ -28,13 +28,13 @@ describe('RequireUserRole', () => {
   });
 
   it('renders children once an ADMIN resolves', () => {
-    useUserRole.mockReturnValue({ isAdmin: true, isLoading: false });
+    useUserRole.mockReturnValue({ isAdmin: true, isLoading: false, status: 'PRESENT' });
     renderGuard();
     expect(screen.getByText('secret')).toBeInTheDocument();
   });
 
   it('renders the fallback for a non-admin', () => {
-    useUserRole.mockReturnValue({ isAdmin: false, isLoading: false });
+    useUserRole.mockReturnValue({ isAdmin: false, isLoading: false, status: 'PRESENT' });
     renderGuard();
     expect(screen.queryByText('secret')).not.toBeInTheDocument();
     expect(screen.getByText('nope')).toBeInTheDocument();

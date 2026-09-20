@@ -61,12 +61,13 @@ vi.mock('@/pages/Observability.jsx', async () => {
 });
 
 // Gates stay real; their data sources do not.
-vi.mock('@/hooks/useCollabRole.js', () => ({
-  useCollabRole: () => ({ role: 'STRATEGIST', loading: false }),
+vi.mock('@/hooks/useCollabRole.js', async (io) => ({
+  ...(await io()),
+  useCollabRole: () => ({ role: 'STRATEGIST', loading: false, status: 'PRESENT' }),
   WORKSPACE_ROLE: { CLIENT: 'CLIENT', BUYER: 'BUYER', STRATEGIST: 'STRATEGIST' },
 }));
 vi.mock('@/hooks/usePlan.js', () => ({ usePlan: () => ({ plan: 'PRO', loading: false, canAccess: () => true }) }));
-vi.mock('@/hooks/useUserRole.js', () => ({ useUserRole: () => ({ isAdmin: true, isLoading: false }) }));
+vi.mock('@/hooks/useUserRole.js', async (io) => ({ ...(await io()), useUserRole: () => ({ isAdmin: true, isLoading: false, status: 'PRESENT' }) }));
 
 // Public leaves are plain: they are NOT what this file is watching.
 const page = vi.hoisted(() => (name) => ({ default: () => <div>{name}</div> }));

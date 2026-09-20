@@ -47,15 +47,18 @@ import { appRoutes } from '../routeManifest.js';
 
 // ── the seat under test, settable per case ──────────────────────────────────
 const seat = vi.hoisted(() => ({
-  role: 'STRATEGIST', roleLoading: false,
+  role: 'STRATEGIST', roleLoading: false, roleStatus: undefined,
   plan: 'PRO', planLoading: false,
   isAdmin: false, adminLoading: false,
 }));
 
 // ── the gates' data sources (the gates themselves stay REAL) ────────────────
 const RANK = vi.hoisted(() => ({ FREE: 0, GROWTH: 1, PRO: 2 }));
-vi.mock('@/hooks/useCollabRole.js', () => ({
-  useCollabRole: () => ({ role: seat.role, loading: seat.roleLoading }),
+vi.mock('@/hooks/useCollabRole.js', async (io) => ({
+  ...(await io()),
+  // Phase 5.11 — a seat is only trusted when the READ resolved; default
+  // PRESENT because these cases are all about a role that WAS read.
+  useCollabRole: () => ({ role: seat.role, loading: seat.roleLoading, status: seat.roleStatus ?? 'PRESENT' }),
   WORKSPACE_ROLE: { CLIENT: 'CLIENT', BUYER: 'BUYER', STRATEGIST: 'STRATEGIST' },
 }));
 vi.mock('@/hooks/usePlan.js', async (importOriginal) => ({
@@ -71,8 +74,9 @@ vi.mock('@/hooks/usePlan.js', async (importOriginal) => ({
     canAccess: (required) => required == null || RANK[seat.plan] >= RANK[required],
   }),
 }));
-vi.mock('@/hooks/useUserRole.js', () => ({
-  useUserRole: () => ({ isAdmin: seat.isAdmin, isLoading: seat.adminLoading }),
+vi.mock('@/hooks/useUserRole.js', async (io) => ({
+  ...(await io()),
+  useUserRole: () => ({ isAdmin: seat.isAdmin, isLoading: seat.adminLoading, status: seat.adminStatus ?? 'PRESENT' }),
 }));
 
 // ── the shell: auth + the two fetching route wrappers ───────────────────────
@@ -157,7 +161,7 @@ const NAVIGABLE = navigableFrom(ROUTE_DECLS);
 
 let errorSpy;
 beforeEach(() => {
-  seat.role = 'STRATEGIST'; seat.roleLoading = false;
+  seat.role = 'STRATEGIST'; seat.roleLoading = false; seat.roleStatus = undefined;
   seat.plan = 'PRO'; seat.planLoading = false;
   seat.isAdmin = false; seat.adminLoading = false;
   errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -404,10 +408,27 @@ describe('PARITY-02 · nothing is claimed while a gate is still loading', () => 
     expect(screen.queryByText(/upgrade/i)).not.toBeInTheDocument();
   });
 
-  it('LockFromClient errs OPEN while the role loads — Attention may not flicker', async () => {
+  // Phase 5.11 — this asserted the OPPOSITE rule: LockFromClient used to
+  // render children through the role-load window so Attention never
+  // flickered for an operator. Measured in 5.10, that showed a CLIENT the
+  // full operator shell for the length of the read. The approved ruling
+  // forbids exposing operator surfaces on an unresolved seat, so the case is
+  // inverted rather than deleted — the flicker it guarded against is still
+  // asserted, as the absence of BOTH outcomes rather than the presence of one.
+  it('an unresolved ROLE renders neither the operator surface nor a redirect', async () => {
     seat.role = 'CLIENT'; seat.roleLoading = true;
     at(appRoutes.overview);
-    await lands('overview-view');
+    await waitFor(() => expect(screen.getByText('layout')).toBeInTheDocument());
+    expect(screen.queryByText('overview-view')).not.toBeInTheDocument();
+    expect(screen.queryByText('leadership-view')).not.toBeInTheDocument();
+  });
+
+  it('a FAILED role read reaches neither the operator surface nor the CLIENT home', async () => {
+    seat.role = null; seat.roleLoading = false; seat.roleStatus = 'NOT_REACHABLE';
+    at(appRoutes.overview);
+    await waitFor(() => expect(screen.getByText('layout')).toBeInTheDocument());
+    expect(screen.queryByText('overview-view')).not.toBeInTheDocument();
+    expect(screen.queryByText('leadership-view')).not.toBeInTheDocument();
   });
 });
 

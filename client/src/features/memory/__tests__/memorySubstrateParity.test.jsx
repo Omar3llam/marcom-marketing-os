@@ -29,8 +29,9 @@ import { MemoryRouter } from 'react-router-dom';
 // is no exception — the rule is about the directory, not about production code.
 const transport = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('@/lib/api.js', () => ({ api: transport }));
-vi.mock('@/hooks/useCollabRole.js', () => ({
-  useCollabRole: () => ({ role: 'STRATEGIST', loading: false }),
+vi.mock('@/hooks/useCollabRole.js', async (io) => ({
+  ...(await io()),
+  useCollabRole: () => ({ role: 'STRATEGIST', loading: false, status: 'PRESENT' }),
   WORKSPACE_ROLE: { STRATEGIST: 'STRATEGIST', BUYER: 'BUYER', CLIENT: 'CLIENT' },
 }));
 // Memory's SECOND reading. Not this chain; stubbed so its own transport does

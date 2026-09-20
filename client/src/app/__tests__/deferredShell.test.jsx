@@ -46,12 +46,13 @@ const page = vi.hoisted(() => (name) => ({ default: () => <div>{name}</div> }));
 vi.mock('@/pages/Home.jsx', () => page('overview-view'));
 vi.mock('@/pages/LandingPage.jsx', () => page('landing'));
 vi.mock('@/pages/AuthPage.jsx', () => page('auth'));
-vi.mock('@/hooks/useCollabRole.js', () => ({
-  useCollabRole: () => ({ role: 'STRATEGIST', loading: false }),
+vi.mock('@/hooks/useCollabRole.js', async (io) => ({
+  ...(await io()),
+  useCollabRole: () => ({ role: 'STRATEGIST', loading: false, status: 'PRESENT' }),
   WORKSPACE_ROLE: { CLIENT: 'CLIENT', BUYER: 'BUYER', STRATEGIST: 'STRATEGIST' },
 }));
 vi.mock('@/hooks/usePlan.js', () => ({ usePlan: () => ({ plan: 'PRO', loading: false, canAccess: () => true }) }));
-vi.mock('@/hooks/useUserRole.js', () => ({ useUserRole: () => ({ isAdmin: true, isLoading: false }) }));
+vi.mock('@/hooks/useUserRole.js', async (io) => ({ ...(await io()), useUserRole: () => ({ isAdmin: true, isLoading: false, status: 'PRESENT' }) }));
 
 const App = (await import('../../App.jsx')).default;
 

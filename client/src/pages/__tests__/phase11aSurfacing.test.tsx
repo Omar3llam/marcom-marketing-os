@@ -20,7 +20,7 @@ function withRole(role: string, loading = false) {
   // have a Router context.
   return ({ children }: { children: React.ReactNode }) => (
     <MemoryRouter>
-      <RoleContext.Provider value={{ role, visibleStates: null, loading, error: null }}>
+      <RoleContext.Provider value={{ role, visibleStates: null, loading, error: null, status: loading ? 'LOADING' : 'PRESENT' }}>
         {children}
       </RoleContext.Provider>
     </MemoryRouter>

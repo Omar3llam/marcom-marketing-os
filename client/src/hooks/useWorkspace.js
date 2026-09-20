@@ -7,33 +7,18 @@
 import { useState, useEffect } from 'react';
 import { api } from '@/lib/api.js';
 import { useAuth } from '@/context/AuthContext.jsx';
-import { ABSENCE } from '@/design-system/states/absence.js';
+import { READ, readStatusForError } from '@/design-system/states/readStatus.js';
 
 /**
- * What this read established about the workspace's ENTITLEMENT.
+ * What this read established about the workspace ENTITLEMENT.
  *
- * The four resolved values ARE B8-02's locked tokens, by value — this invents
- * no second vocabulary. Only `LOADING` is added, because B8-02 describes what a
- * surface knows about a CLAIM and says nothing about a request still in flight;
- * "loading ≠ success" is exactly why it needs its own token here rather than
- * borrowing one that already means something.
- *
- * Classifying a transport outcome is not frontend-derived product truth: the
- * HTTP result IS the API's answer, observed directly. What the code may never
- * do is turn "we could not ask" into a plan — see usePlan.
+ * Phase 5.11 — the tokens now live in design-system/states/readStatus.js,
+ * because the ROLE read needs exactly the same five outcomes and two
+ * identical vocabularies would be the duplication that module prevents. The
+ * alias is kept so every existing importer and test keeps its own name for a
+ * workspace-shaped read.
  */
-export const WORKSPACE_READ = Object.freeze({
-  /** The request has not resolved. No entitlement decision may be made. */
-  LOADING: 'LOADING',
-  /** A valid workspace with a plan we recognise. The only state that entitles. */
-  PRESENT: ABSENCE.PRESENT,
-  /** The server answered, and this user has no workspace. A FINDING. */
-  NOTHING_FOUND: ABSENCE.NOTHING_FOUND,
-  /** The read failed, or the entitlement it returned is unreadable. */
-  NOT_REACHABLE: ABSENCE.NOT_REACHABLE,
-  /** We are not entitled to ask. Never the same thing as a lower tier. */
-  NOT_PERMITTED: ABSENCE.NOT_PERMITTED,
-});
+export const WORKSPACE_READ = READ;
 
 /** The plans this client recognises. Anything else is not a plan we can act on. */
 const KNOWN_PLANS = Object.freeze(['FREE', 'GROWTH', 'PRO']);
@@ -109,11 +94,9 @@ export function useWorkspace() {
         setError(err.response?.data?.error || 'Failed to load workspace');
         setWorkspace(null);
         setHasWorkspace(false);
-        // api.js rejects with a mapped domain error carrying `httpStatus`;
-        // `response.status` is read too so a raw axios error is classified the
-        // same way rather than silently falling through to "unreachable".
-        const httpStatus = err?.httpStatus ?? err?.response?.status;
-        setStatus(httpStatus === 403 ? WORKSPACE_READ.NOT_PERMITTED : WORKSPACE_READ.NOT_REACHABLE);
+        // Classified by the shared helper: a 403 is a refusal, anything else
+        // is a read we could not complete. Never the same thing as a tier.
+        setStatus(readStatusForError(err));
       } finally {
         if (!isCancelled()) setLoading(false);
       }
