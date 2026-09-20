@@ -7,12 +7,26 @@
 // 400s it too). The "last STRATEGIST" guard lives in the backend; here we just
 // surface its honest message via toast. No fabricated data — one member shows
 // one member.
+//
+// Phase 5.12 (R-15) — the read/manage split is now DECLARED, in the route
+// manifest, rather than restated here as a literal. The roster is open to every
+// member because GET /api/team/members is, and the controls below are gated on
+// `manageAudience` because each mutation route carries
+// requireCollabRole('STRATEGIST'). Reading the declaration instead of repeating
+// it is what keeps this tab and the section gate from drifting into two
+// different answers.
+//
+// `roleAllowed` is deliberate rather than `role === STRATEGIST`: since 5.11
+// `role` is null whenever the seat was not READ, and null is in no allow-list,
+// so an unresolved seat gets the read-only roster — never the controls.
 // ============================================================
 import { useState } from 'react';
 import { UserPlus, Trash2, Shield, Loader2, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { useTeam } from '@/hooks/useTeam.js';
-import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
+import { useCollabRole } from '@/hooks/useCollabRole.js';
+import { roleAllowed } from '@/components/auth/RoleGate.jsx';
+import { settingsSection } from '@/app/routeManifest.js';
 
 const ROLES = ['STRATEGIST', 'BUYER', 'CLIENT'];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -48,7 +62,7 @@ function RoleBadge({ role }) {
 
 export default function TeamTab() {
   const { role } = useCollabRole();
-  const isStrategist = role === WORKSPACE_ROLE.STRATEGIST;
+  const isStrategist = roleAllowed(role, settingsSection('team')?.manageAudience);
   const {
     members, pendingInvitations, isLoading, error,
     isInviting, invite, changeRole, removeMember, cancelInvitation,

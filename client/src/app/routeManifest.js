@@ -56,13 +56,73 @@ export const intelligenceSections = [
 // tab that only redirects away is a trap: it offers a place to stand that does
 // not exist. `settingsIntegrations` is KEPT in appRoutes above because the
 // address is bookmarked and linked from outside the app; App.jsx redirects it.
+//
+// R-15 (Phase 5.12) — the SECTION AUDIENCE, declared here rather than inside
+// each tab so that one list answers every question a permission has to answer:
+// which nav entries appear, which section a URL is allowed to render, and which
+// controls inside it may act. A tab that resolves its own role answers the
+// middle question and not the first, which is how /app/settings/team came to
+// render from a URL parameter with no check at all.
+//
+// TWO FIELDS, NOT ONE. "May I look at this" and "may I change it" are different
+// permissions, and the backend already treats them as different: the team
+// roster read is open to any member, while every team mutation carries
+// requireCollabRole('STRATEGIST'). Collapsing them into a single `roles` field
+// forced one answer onto two questions, and the answer it forced was the
+// stricter one — which took a read-only roster away from BUYER and CLIENT that
+// the API grants them. A surface may be narrower than its backend deliberately;
+// it may not be narrower by accident, because one field had to mean two things.
+//
+//   viewAudience   — may this seat OPEN the section. Gated in SettingsView, so
+//                    the nav and the URL cannot disagree.
+//   manageAudience — may this seat ACT inside it. Read by the section itself,
+//                    because only the section knows which controls are the
+//                    mutations. It is the frontend's account of a rule the
+//                    backend enforces; it never replaces that enforcement.
+//
+// An ABSENT field is unconstrained on that axis — not "unknown", and not an
+// oversight. `general` and `security` act on the caller's OWN identity (display
+// name, notification prefs, password reset, account deletion) and the backend
+// gates neither by collabRole, so a restriction here would invent a rule the
+// product does not have.
+//
+// `workspace` is deliberately left unconstrained on BOTH axes and is an OPEN
+// RULING: the backend serves the read to any member (GET /api/user/workspace)
+// and gates only the write (PATCH -> requireCollabRole('STRATEGIST')), and the
+// tab has never been gated. Whether a BUYER should see the workspace name, and
+// whether the name field should be read-only rather than 403 on save, are
+// product decisions — guessing them here is what this slice forbids.
 export const settingsSections = [
   { key: 'general', label: 'General', path: appRoutes.settingsGeneral },
-  { key: 'team', label: 'Team & Roles', path: appRoutes.settingsTeam },
-  { key: 'revenue', label: 'Revenue data', path: appRoutes.settingsRevenue },
+  // Backend: GET /api/team/members is open to ANY MEMBER by design
+  // (src/routes/team/index.js). The four mutations — invite, change role,
+  // remove, cancel invite — each carry requireCollabRole('STRATEGIST'). The
+  // surface mirrors that split exactly rather than narrowing the read.
+  {
+    key: 'team',
+    label: 'Team & Roles',
+    path: appRoutes.settingsTeam,
+    manageAudience: ['STRATEGIST'],
+  },
+  // Backend: POST /api/lumi/revenue/csv is requireCollabRole('STRATEGIST').
+  // Here the two axes genuinely coincide: the section IS the upload, so there
+  // is no read for a non-strategist to be shown. Stated as both fields rather
+  // than inferred, so that a future read-only revenue view has somewhere to go.
+  {
+    key: 'revenue',
+    label: 'Revenue data',
+    path: appRoutes.settingsRevenue,
+    viewAudience: ['STRATEGIST'],
+    manageAudience: ['STRATEGIST'],
+  },
   { key: 'workspace', label: 'Workspace', path: appRoutes.settingsWorkspace },
   { key: 'security', label: 'Security', path: appRoutes.settingsSecurity },
 ];
+
+/** The one lookup, so no caller re-declares an audience it should be reading. */
+export function settingsSection(key) {
+  return settingsSections.find((s) => s.key === key);
+}
 
 // ⚠️ This array has NO importer. It documents App.jsx's redirect table by hand
 // rather than driving it, so the two can drift silently — it is kept accurate

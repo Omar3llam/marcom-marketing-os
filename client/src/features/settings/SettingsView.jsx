@@ -7,6 +7,9 @@ import { sendPasswordResetEmail, auth } from '@/firebase.js';
 import { toast } from 'sonner';
 import { clearContextCache } from '@/router/ProtectedRoute.jsx';
 import { settingsSections } from '@/app/routeManifest.js';
+import { useCollabRole } from '@/hooks/useCollabRole.js';
+import RoleGate, { roleAllowed } from '@/components/auth/RoleGate.jsx';
+import SectionNotPermitted from './SectionNotPermitted.jsx';
 import { EmptyState, PageHeader } from '@/design-system/patterns';
 import { ProfileTab } from './ProfileTab.jsx';
 import { WorkspaceTab } from './WorkspaceTab.jsx';
@@ -27,6 +30,9 @@ export default function Settings() {
   const { section } = useParams();
   const { currentUser, logout } = useAuth();
   const { isAdmin } = useUserRole();
+  // R-15 — the collab seat, for the SECTION audience. Distinct axis from
+  // useUserRole above, which is the system ADMIN allowlist and gates /admin.
+  const { role: collabRole } = useCollabRole();
   const [busy, setBusy] = useState(false);
 
   const [displayName, setDisplayName] = useState('');
@@ -149,6 +155,44 @@ export default function Settings() {
   const activeSection = settingsSections.some((item) => item.key === section)
     ? section
     : 'general';
+  // Always defined: activeSection is either a declared key or 'general', which
+  // is one. An unknown key ('billing', 'team-and-roles', anything invented)
+  // already resolves to General above, so a URL cannot name a section that has
+  // no audience declared for it.
+  const activeItem = settingsSections.find((item) => item.key === activeSection);
+
+  // ── THE SECTION BOUNDARY (Phase 5.12 · R-15) ──────────────────────────
+  // The same manifest entry answers the nav question and the URL question, so
+  // there is no way to reach a section by typing its address that does not go
+  // through the check that hid its nav item. Hiding the link alone is not a
+  // permission — it is a suggestion.
+  //
+  // This gate reads viewAudience ONLY. Whether a seat may ACT inside a section
+  // is manageAudience, and it is the section's own question: only the section
+  // knows which of its controls are the mutations. Gating the door on the
+  // stricter of the two would take a legitimate READ away — which is exactly
+  // what a single `roles` field did to the team roster, a read the API grants
+  // to every member.
+  //
+  // RoleGate is reused rather than reimplemented: it already carries the three
+  // outcomes this needs (hold while LOADING, RoleUnavailable when the seat was
+  // not READ, fallback when it was read and excludes us), and a second copy of
+  // that logic is how two copies of a rule drift apart.
+  //
+  // Note what does NOT happen here: no redirect. A refused section keeps its
+  // address and states the rule, so Back and Forward behave, a refresh lands in
+  // the same place, and there is no loop to fall into.
+  const gated = (content) =>
+    (activeItem?.viewAudience
+      ? (
+        <RoleGate
+          role={activeItem.viewAudience}
+          fallback={<SectionNotPermitted label={activeItem.label} roles={activeItem.viewAudience} />}
+        >
+          {content}
+        </RoleGate>
+      )
+      : content);
 
   const renderSection = () => {
     switch (activeSection) {
@@ -224,19 +268,28 @@ export default function Settings() {
 
         <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
           <nav className="space-y-1" aria-label="Settings sections">
-            {settingsSections.map((item) => (
-              <NavLink
-                key={item.key}
-                to={item.path}
-                className={({ isActive }) => `block rounded-lg px-3 py-2 text-sm transition-colors ${
-                  isActive || activeSection === item.key
-                    ? 'bg-lumi-elevated text-lumi-text'
-                    : 'text-lumi-muted hover:bg-lumi-elevated/60 hover:text-lumi-text'
-                }`}
-              >
-                {item.label}
-              </NavLink>
-            ))}
+            {/* viewAudience, matching the gate below — a nav link that leads
+                to a refusal is a trap, and a hidden link to a section the URL
+                would happily render is theatre. An unconstrained item stays
+                visible to every seat; a constrained one needs a READ seat in
+                its list, so a pending or failed role hides it rather than
+                betting on it. Manage rights never hide a link: you can look at
+                Team & Roles without being able to change it. */}
+            {settingsSections
+              .filter((item) => roleAllowed(collabRole, item.viewAudience))
+              .map((item) => (
+                <NavLink
+                  key={item.key}
+                  to={item.path}
+                  className={({ isActive }) => `block rounded-lg px-3 py-2 text-sm transition-colors ${
+                    isActive || activeSection === item.key
+                      ? 'bg-lumi-elevated text-lumi-text'
+                      : 'text-lumi-muted hover:bg-lumi-elevated/60 hover:text-lumi-text'
+                  }`}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
 
             {/* Internal admin panel — only an ADMIN (ADMIN_EMAILS allowlist)
                 ever sees this link; the /admin route is independently gated. */}
@@ -250,7 +303,7 @@ export default function Settings() {
             )}
           </nav>
 
-          <div>{renderSection()}</div>
+          <div>{gated(renderSection())}</div>
         </div>
       </div>
     </div>
