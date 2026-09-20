@@ -167,6 +167,13 @@ export default function Settings() {
   // through the check that hid its nav item. Hiding the link alone is not a
   // permission — it is a suggestion.
   //
+  // This gate reads viewAudience ONLY. Whether a seat may ACT inside a section
+  // is manageAudience, and it is the section's own question: only the section
+  // knows which of its controls are the mutations. Gating the door on the
+  // stricter of the two would take a legitimate READ away — which is exactly
+  // what a single `roles` field did to the team roster, a read the API grants
+  // to every member.
+  //
   // RoleGate is reused rather than reimplemented: it already carries the three
   // outcomes this needs (hold while LOADING, RoleUnavailable when the seat was
   // not READ, fallback when it was read and excludes us), and a second copy of
@@ -176,11 +183,11 @@ export default function Settings() {
   // address and states the rule, so Back and Forward behave, a refresh lands in
   // the same place, and there is no loop to fall into.
   const gated = (content) =>
-    (activeItem?.roles
+    (activeItem?.viewAudience
       ? (
         <RoleGate
-          role={activeItem.roles}
-          fallback={<SectionNotPermitted label={activeItem.label} roles={activeItem.roles} />}
+          role={activeItem.viewAudience}
+          fallback={<SectionNotPermitted label={activeItem.label} roles={activeItem.viewAudience} />}
         >
           {content}
         </RoleGate>
@@ -261,11 +268,15 @@ export default function Settings() {
 
         <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
           <nav className="space-y-1" aria-label="Settings sections">
-            {/* An unconstrained item stays visible to every seat; a
-                constrained one needs a READ seat that is in its list, so a
-                pending or failed role hides it rather than betting on it. */}
+            {/* viewAudience, matching the gate below — a nav link that leads
+                to a refusal is a trap, and a hidden link to a section the URL
+                would happily render is theatre. An unconstrained item stays
+                visible to every seat; a constrained one needs a READ seat in
+                its list, so a pending or failed role hides it rather than
+                betting on it. Manage rights never hide a link: you can look at
+                Team & Roles without being able to change it. */}
             {settingsSections
-              .filter((item) => roleAllowed(collabRole, item.roles))
+              .filter((item) => roleAllowed(collabRole, item.viewAudience))
               .map((item) => (
                 <NavLink
                   key={item.key}
