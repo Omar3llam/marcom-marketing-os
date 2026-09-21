@@ -18,7 +18,7 @@
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { WORKSPACE_ROLE, canApprove, canHandoffTo, normalizeRole } from './roleScope.js';
+import { WORKSPACE_ROLE, asKnownRole, canApprove, canHandoffTo, normalizeRole } from './roleScope.js';
 
 export const APPROVAL_STATE = Object.freeze({ PENDING: 'PENDING', APPROVED: 'APPROVED', REJECTED: 'REJECTED' });
 
@@ -108,7 +108,9 @@ export async function isExecutionBlocked(workspaceId, planId, role) {
 export async function handoff(workspaceId, { subjectType = 'DECISION', subjectId, fromRole, toRole, actorId, note } = {}) {
   if (!workspaceId) throw new Error('handoff: workspaceId required');
   if (!subjectId) throw new Error('handoff: subjectId required');
-  if (!canHandoffTo(fromRole, toRole)) {
+  const sourceRole = asKnownRole(fromRole);
+  const destinationRole = asKnownRole(toRole);
+  if (!sourceRole || !destinationRole || !canHandoffTo(sourceRole, destinationRole)) {
     const err = new Error(`handoff: ${fromRole}→${toRole} is not a legal handoff`);
     err.code = 'RoleForbidden';
     throw err;
@@ -116,11 +118,11 @@ export async function handoff(workspaceId, { subjectType = 'DECISION', subjectId
   const event = await prisma.collaborationEvent.create({
     data: {
       workspaceId, actorId: actorId ?? null, type: 'HANDOFF',
-      subjectType, subjectId, fromRole: normalizeRole(fromRole), toRole: normalizeRole(toRole),
+      subjectType, subjectId, fromRole: sourceRole, toRole: destinationRole,
       detail: note ? { note } : undefined,
     },
   });
-  logger.info({ workspaceId, subjectId, fromRole, toRole }, '[ApprovalService] handoff recorded');
+  logger.info({ workspaceId, subjectId, fromRole: sourceRole, toRole: destinationRole }, '[ApprovalService] handoff recorded');
   return event;
 }
 

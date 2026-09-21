@@ -91,8 +91,12 @@ export function canAuthorNarrative(role) {
  * verdict/plan to a buyer for execution. Clients neither give nor receive.
  */
 export function canHandoffTo(fromRole, toRole) {
-  const from = normalizeRole(fromRole);
-  const to = normalizeRole(toRole);
+  // Handoffs are an authorization boundary, so an unknown value must remain
+  // unknown. normalizeRole is intentionally generous for display shaping and
+  // would otherwise promote an unrecognised role to STRATEGIST here.
+  const from = asKnownRole(fromRole);
+  const to = asKnownRole(toRole);
+  if (!from || !to) return false;
   if (from === WORKSPACE_ROLE.CLIENT || to === WORKSPACE_ROLE.CLIENT) return false;
   if (from === WORKSPACE_ROLE.STRATEGIST && to === WORKSPACE_ROLE.BUYER) return true;
   if (from === WORKSPACE_ROLE.BUYER && to === WORKSPACE_ROLE.STRATEGIST) return true; // escalate back

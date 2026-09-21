@@ -213,11 +213,13 @@ collaborationRouter.post('/handoff', requireCollabRole(WORKSPACE_ROLE.BUYER, WOR
   const wsId = await need(req, res); if (!wsId) return;
   const b = req.body ?? {};
   if (!b.subjectId) return res.status(400).json({ error: 'BadHandoff', message: 'subjectId required.' });
-  const fromRole = b.fromRole ?? req.collabRole;
   const actorId = await resolveActorId(req);
   if (!actorId) return res.status(409).json({ error: 'ActorUnresolved', message: 'Could not identify the handing-off seat.' });
   try {
-    const event = await handoff(wsId, { subjectType: b.subjectType, subjectId: b.subjectId, fromRole, toRole: b.toRole, actorId, note: b.note });
+    // The gate above is the authority boundary. Keep accepting legacy payloads
+    // that include fromRole, but never let caller-controlled data name the
+    // actor's role or widen the transition it may perform.
+    const event = await handoff(wsId, { subjectType: b.subjectType, subjectId: b.subjectId, fromRole: req.collabRole, toRole: b.toRole, actorId, note: b.note });
     return res.status(201).json({ workspaceId: wsId, event });
   } catch (err) {
     if (err.code === 'RoleForbidden') return res.status(403).json({ error: 'RoleForbidden', message: err.message });

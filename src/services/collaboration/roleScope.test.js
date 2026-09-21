@@ -40,4 +40,10 @@ describe('roleScope', () => {
     expect(canHandoffTo(WORKSPACE_ROLE.STRATEGIST, WORKSPACE_ROLE.CLIENT)).toBe(false);
     expect(canHandoffTo(WORKSPACE_ROLE.CLIENT, WORKSPACE_ROLE.BUYER)).toBe(false);
   });
+
+  it('handoff rejects unknown roles instead of defaulting them to STRATEGIST', () => {
+    expect(canHandoffTo('UNKNOWN', WORKSPACE_ROLE.BUYER)).toBe(false);
+    expect(canHandoffTo(null, WORKSPACE_ROLE.BUYER)).toBe(false);
+    expect(canHandoffTo(WORKSPACE_ROLE.BUYER, 'UNKNOWN')).toBe(false);
+  });
 });
