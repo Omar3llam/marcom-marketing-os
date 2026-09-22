@@ -63,8 +63,8 @@ beforeEach(() => {
   // The canonical 30-day rows — what health is now measured over.
   getCanonicalVerdictCampaigns.mockResolvedValue({
     campaigns: [
-      { entityId: 'a', name: 'A', spendMinor: 80000, ctr: 0.015, frequency: 1, roas: 2 },
-      { entityId: 'b', name: 'B', spendMinor: 20000, ctr: 0.015, frequency: 1, roas: 0.5 },
+      { entityId: 'a', name: 'A', spendMinor: 80000, ctr: 0.015, frequency: 1, roas: 2, currency: 'EGP' },
+      { entityId: 'b', name: 'B', spendMinor: 20000, ctr: 0.015, frequency: 1, roas: 0.5, currency: 'EGP' },
     ],
     noCanonicalWindow: [],
   });
@@ -96,7 +96,8 @@ describe('GET /entities/health', () => {
     const res = await request(makeApp({ collabRole: 'BUYER' })).get('/entities/health').expect(200);
     expect(res.body.score).toBe(70);                 // spend-weighted (85*.8 + 10*.2)
     expect(res.body.label).toBe('GOOD');
-    expect(res.body.wastedSpend).toEqual({ minor: 20000, pct: 20 }); // KILL b
+    expect(res.body.wastedSpend).toEqual({ minor: 20000, pct: 20, unavailable: null }); // KILL b
+    expect(res.body).toMatchObject({ currency: 'EGP', currencyStatus: 'HOMOGENEOUS_KNOWN' });
     expect(res.body.campaigns).toHaveLength(2);
     expect(res.body.workspaceId).toBe('ws1');
   });
@@ -198,8 +199,29 @@ describe('GET /entities/health', () => {
     const res = await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(200);
     expect(res.body.score).toBeNull();
     expect(res.body.label).toBeNull();
-    expect(res.body.wastedSpend).toEqual({ minor: null, pct: null });
+    expect(res.body.wastedSpend).toEqual({ minor: null, pct: null, unavailable: 'UNKNOWN_CURRENCY' });
+    expect(res.body.currencyStatus).toBe('UNKNOWN');
     expect(res.body.campaigns).toEqual([]);
+  });
+
+  it('publishes an explicit mixed-currency refusal while preserving campaign verdicts', async () => {
+    getCanonicalVerdictCampaigns.mockResolvedValue({
+      campaigns: [
+        { entityId: 'a', name: 'A', spendMinor: 80000, ctr: 0.015, frequency: 1, currency: 'EGP' },
+        { entityId: 'b', name: 'B', spendMinor: 20000, ctr: 0.015, frequency: 1, currency: 'USD' },
+      ],
+      noCanonicalWindow: [],
+    });
+    const res = await request(makeApp({ collabRole: 'STRATEGIST' })).get('/entities/health').expect(200);
+    expect(res.body).toMatchObject({
+      currency: null,
+      currencyStatus: 'MIXED',
+      currencyUnavailable: 'MIXED_CURRENCY',
+      score: null,
+      wastedSpend: { minor: null, pct: null, unavailable: 'MIXED_CURRENCY' },
+    });
+    expect(res.body.campaigns.map((c) => c.verdict)).toEqual(['SCALE', 'KILL']);
+    expect(res.body.campaigns.map((c) => c.impactScore)).toEqual([null, null]);
   });
 
   it('500s (never crashes) when an engine throws', async () => {

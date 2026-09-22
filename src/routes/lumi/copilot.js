@@ -20,6 +20,7 @@ import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 import { copilotLimiter } from '../../middleware/rateLimit.js';
 import { buildCopilotSystemPrompt, buildCopilotUserPrompt } from '../../services/ai-gateway/prompts/copilotPrompt.js';
+import { CURRENCY_HOMOGENEITY, classifyCurrencyHomogeneity } from '../../lib/currencyHomogeneity.js';
 
 export const copilotRouter = Router();
 
@@ -115,17 +116,20 @@ copilotRouter.post(
       // score, a "0 campaigns to act on" and a "0 scaling well" — three numbers
       // that describe the outage, not the account.
       const accountHealth = verdictsUnavailable ? null : computeAccountHealth(allCampaigns, verdictMap);
+      const currencyTruth = classifyCurrencyHomogeneity(allCampaigns);
 
       // Account-level facts the campaign slice can't carry. `totalCampaigns` is
       // the UNFILTERED count so the model can answer "how many campaigns do I
       // have?" without mistaking the top-N slice for the whole account.
       const portfolioContext = {
         totalCampaigns: allCampaigns.length,
-        currency: workspace?.currency ?? 'USD',
+        currency: currencyTruth.currency,
+        currencyStatus: currencyTruth.status,
         health: accountHealth
           ? {
             score: accountHealth.score,
             label: accountHealth.label,
+            currencyUnavailable: accountHealth.currencyUnavailable,
             // wastedSpend is { minor, pct } — the minor units, not the object.
             wastedSpendMinor: accountHealth.wastedSpend?.minor ?? null,
             // Counted over every campaign (health.campaigns holds only the rows
@@ -137,11 +141,12 @@ copilotRouter.post(
         totals: null, // reserved — blended CPA/ROAS/spend land here without an API change
       };
 
-      const campaignContext = allCampaigns
-        .filter((c) => (c.spendMinor ?? 0) > 0)
-        .sort((a, b) => (b.spendMinor ?? 0) - (a.spendMinor ?? 0))
-        .slice(0, TOP_CAMPAIGNS)
-        .map((c) => ({
+      const campaignContext = currencyTruth.status === CURRENCY_HOMOGENEITY.HOMOGENEOUS_KNOWN
+        ? allCampaigns
+          .filter((c) => (c.spendMinor ?? 0) > 0)
+          .sort((a, b) => (b.spendMinor ?? 0) - (a.spendMinor ?? 0))
+          .slice(0, TOP_CAMPAIGNS)
+          .map((c) => ({
           name: c.name,
           channel: c.channel,
           objective: c.objective,
@@ -162,7 +167,8 @@ copilotRouter.post(
           // lastDate is DELIBERATELY excluded: a connector row is a rolling
           // aggregate re-stamped every sync, so its date would imply a time
           // window the data cannot support.
-        }));
+          }))
+        : [];
 
       const latestRun = await prisma.loopRun
         .findFirst({ where: { workspaceId: wsId }, orderBy: { createdAt: 'desc' }, select: { aiInsight: true } })
@@ -172,7 +178,11 @@ copilotRouter.post(
         workspace: workspace ?? {},
         portfolio: portfolioContext,
         campaigns: campaignContext,
-        briefing: latestRun?.aiInsight ?? null,
+        // A stored briefing may predate this contract and may have been built
+        // from a raw-spend ordering. Do not ground a mixed/unknown answer in it.
+        briefing: currencyTruth.status === CURRENCY_HOMOGENEITY.HOMOGENEOUS_KNOWN
+          ? (latestRun?.aiInsight ?? null)
+          : null,
         verdictsUnavailable,
       });
       const user = buildCopilotUserPrompt(history.slice(-HISTORY_CONTEXT), question.trim());

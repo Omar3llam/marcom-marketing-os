@@ -24,6 +24,7 @@ import { logger } from '../../utils/logger.js';
 import { getConnectorVerdicts, evaluateConnectorVerdicts } from '../verdict-engine/index.js';
 import { computeAccountHealth } from './AccountHealthService.js';
 import { execute, CAPABILITY } from '../ai-gateway/index.js';
+import { CURRENCY_HOMOGENEITY, classifyCurrencyHomogeneity } from '../../lib/currencyHomogeneity.js';
 
 // How many campaigns (ranked by impact) a sweep pre-generates reasoning for.
 // 0 disables sweep pre-generation entirely (a no-deploy kill switch).
@@ -58,14 +59,24 @@ async function loadReasoningContext(workspaceId, evaluation) {
   const campaigns = ev.campaigns ?? [];
   const verdictMap = Object.fromEntries((verdictResult?.verdicts ?? []).map((v) => [v.id, v]));
   const health = computeAccountHealth(campaigns, verdictMap);
-  const accountSpendMinor = campaigns.reduce((s, c) => s + (c.spendMinor ?? 0), 0);
+  const currencyTruth = classifyCurrencyHomogeneity(campaigns);
+  const accountSpendMinor = currencyTruth.status === CURRENCY_HOMOGENEITY.HOMOGENEOUS_KNOWN
+    ? campaigns.reduce((s, c) => s + (c.spendMinor ?? 0), 0)
+    : null;
 
   // Account-level objective is a promoted Workspace column (onboarding goal id).
   const ws = await prisma.workspace
     .findUnique({ where: { id: workspaceId }, select: { objective: true } })
     .catch(() => null);
 
-  return { campaigns, verdictMap, health, accountSpendMinor, accountObjective: ws?.objective ?? null };
+  return {
+    campaigns,
+    verdictMap,
+    health,
+    accountSpendMinor,
+    currencyStatus: currencyTruth.status,
+    accountObjective: ws?.objective ?? null,
+  };
 }
 
 /**
@@ -149,7 +160,7 @@ export async function generateReasoningForSweep({ workspaceId, loopRunId = null,
 
   // Rank the actionable (verdict-bearing) campaigns by impact; take the top N.
   const ranked = ctx.health.campaigns
-    .filter((c) => c.verdict)
+    .filter((c) => c.verdict && Number.isFinite(c.impactScore))
     .sort((a, b) => (b.impactScore ?? 0) - (a.impactScore ?? 0))
     .slice(0, topN);
   if (ranked.length === 0) return empty;

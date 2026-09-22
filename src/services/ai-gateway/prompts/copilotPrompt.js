@@ -32,7 +32,8 @@ import { formatCurrency } from '../../../lib/money.js';
  */
 function money(minor, currency, fallbackCurrency) {
   if (minor == null) return null;
-  const cur = currency || fallbackCurrency || 'USD';
+  const cur = currency || fallbackCurrency;
+  if (!cur) return null;
   return formatCurrency(minor, cur, 'en-US');
 }
 
@@ -49,7 +50,7 @@ function pct(frac) {
  * @param {string} rendered — the formatted value when present
  */
 function field(value, rendered) {
-  return value == null ? 'unavailable' : rendered;
+  return value == null || rendered == null ? 'unavailable' : rendered;
 }
 
 /**
@@ -69,7 +70,8 @@ function field(value, rendered) {
  * @returns {string} system prompt
  */
 export function buildCopilotSystemPrompt({ workspace = {}, portfolio = {}, campaigns = [], briefing = null, verdictsUnavailable = false } = {}) {
-  const wsCurrency = workspace.currency || portfolio.currency || 'USD';
+  const establishedCurrency = portfolio.currency ?? null;
+  const currencyStatus = portfolio.currencyStatus ?? 'UNKNOWN';
   const shown = (campaigns ?? []).length;
   const total = portfolio.totalCampaigns ?? shown;
 
@@ -77,8 +79,10 @@ export function buildCopilotSystemPrompt({ workspace = {}, portfolio = {}, campa
   const healthBlock = health
     ? [
       'ACCOUNT HEALTH',
-      `Score: ${health.score}/100 (${health.label})`,
-      `Wasted spend: ${field(health.wastedSpendMinor, money(health.wastedSpendMinor, wsCurrency))}`,
+      health.score != null
+        ? `Score: ${health.score}/100 (${health.label})`
+        : `Score: unavailable (${health.currencyUnavailable ?? currencyStatus})`,
+      `Wasted spend: ${field(health.wastedSpendMinor, money(health.wastedSpendMinor, establishedCurrency))}`,
       // Named by verdict so "critical" can never be misread as the CRITICAL
       // health label (a different axis entirely).
       health.criticalCampaigns != null ? `Campaigns to act on (KILL or REFRESH): ${health.criticalCampaigns}` : null,
@@ -96,16 +100,18 @@ export function buildCopilotSystemPrompt({ workspace = {}, portfolio = {}, campa
       `  ROAS: ${field(c.roas, `${Number(c.roas).toFixed(2)}x`)}`,
       `  CTR: ${field(c.ctr, pct(c.ctr))}`,
       `  Freq: ${field(c.frequency, Number(c.frequency).toFixed(1))}`,
-      `  Spend: ${field(c.spendMinor, money(c.spendMinor, c.currency, wsCurrency))}`,
+      `  Spend: ${field(c.spendMinor, money(c.spendMinor, c.currency, establishedCurrency))}`,
       `  Conversions: ${field(c.conversions, String(c.conversions))}`,
-      `  Revenue: ${field(c.revenueMinor, money(c.revenueMinor, c.currency, wsCurrency))}`,
+      `  Revenue: ${field(c.revenueMinor, money(c.revenueMinor, c.currency, establishedCurrency))}`,
     ];
     if (c.rationale) lines.push(`  (${c.rationale})`);
     return lines.join('\n');
   }).join('\n');
 
-  const campaignHeader = shown === 0
+  const campaignHeader = total === 0
     ? 'CAMPAIGNS:\nNo campaigns synced yet.'
+    : currencyStatus !== 'HOMOGENEOUS_KNOWN'
+      ? `CAMPAIGN DETAILS: unavailable — currency population is ${currencyStatus}, so spend cannot be ranked.`
     : `CAMPAIGNS (showing top ${shown} of ${total} by spend)${
       total > shown ? `\n${total - shown} additional campaigns are not shown in this summary.` : ''
     }\n${campaignLines}`;
@@ -114,7 +120,7 @@ export function buildCopilotSystemPrompt({ workspace = {}, portfolio = {}, campa
 
 WORKSPACE: ${workspace.name ?? 'Unknown'}
 MARKET: ${workspace.market ?? 'MENA'}
-CURRENCY: ${wsCurrency}
+CURRENCY: ${establishedCurrency ?? `unavailable (${currencyStatus})`}
 OBJECTIVE: ${workspace.objective ?? 'performance marketing'}
 INDUSTRY: ${workspace.industry ?? 'unknown'}
 

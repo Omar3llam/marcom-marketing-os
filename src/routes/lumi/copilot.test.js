@@ -168,7 +168,31 @@ describe('POST /copilot — Q&A route', () => {
       await request(makeApp()).post('/copilot').send({ question: 'Status?' }).expect(200);
       const { input } = execute.mock.calls[0][0];
       expect(input.system).toContain('ACCOUNT HEALTH: unavailable');
-      expect(input.system).toContain('No campaigns synced yet.');
+      expect(input.system).toContain('CAMPAIGN DETAILS: unavailable');
+      expect(input.system).toContain('1 campaigns');
+      expect(input.system).not.toContain('No campaigns synced yet.');
+    });
+
+    it.each([
+      ['mixed', 'USD', 'MIXED'],
+      ['unknown', null, 'UNKNOWN'],
+    ])('omits spend-ranked campaigns and stale briefing for %s currency', async (_label, secondCurrency, status) => {
+      getConnectorCampaigns.mockResolvedValue([
+        { ...richCampaigns[0], currency: 'EGP' },
+        { ...richCampaigns[1], currency: secondCurrency },
+      ]);
+      getConnectorVerdicts.mockResolvedValue(richVerdicts);
+
+      await request(makeApp()).post('/copilot').send({ question: 'What should I do?' }).expect(200);
+      const prompt = execute.mock.calls[0][0].input.system;
+      expect(prompt).toContain(`CURRENCY: unavailable (${status})`);
+      expect(prompt).toContain('CAMPAIGN DETAILS: unavailable');
+      expect(prompt).not.toContain('Ramadan Wave (meta)');
+      expect(prompt).not.toContain('Eid Push (meta)');
+      expect(prompt).not.toContain('ACCOUNT BRIEFING:');
+      // Currency-independent verdict counts remain grounded.
+      expect(prompt).toContain('Campaigns to act on (KILL or REFRESH): 1');
+      expect(prompt).toContain('Campaigns scaling well (SCALE): 1');
     });
   });
 

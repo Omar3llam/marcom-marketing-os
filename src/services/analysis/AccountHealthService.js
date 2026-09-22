@@ -24,6 +24,11 @@
 // ============================================================
 import { FATIGUE_FREQ }              from '../verdict-engine/benchmarkProvider.js';
 import { AWARENESS_SATURATION_FREQ } from '../verdict-engine/verdictEngine.js';
+import {
+  CURRENCY_HOMOGENEITY,
+  classifyCurrencyHomogeneity,
+  currencyUnavailableReason,
+} from '../../lib/currencyHomogeneity.js';
 
 // Currency-relative thresholds — ratios/percentages, never USD absolutes, so
 // they hold identically for an EGP or KWD account as for USD.
@@ -151,6 +156,37 @@ export function healthLabel(score) {
 export function computeAccountHealth(campaigns, verdictMap = {}) {
   if (!Array.isArray(campaigns) || campaigns.length === 0) return null;
 
+  const currencyTruth = classifyCurrencyHomogeneity(campaigns);
+  const currencyUnavailable = currencyUnavailableReason(currencyTruth.status);
+
+  // Verdict, identity and engagement signals remain real when currencies do
+  // not agree. Every account-level health calculation below, however, depends
+  // on a cross-campaign spend total or share. Publish the independent signals
+  // and state why the monetary/weighted claims are absent.
+  if (currencyTruth.status !== CURRENCY_HOMOGENEITY.HOMOGENEOUS_KNOWN) {
+    const campaignsWithSignals = campaigns
+      .filter((c) => (c.spendMinor ?? 0) > 0)
+      .map((c) => ({
+        entityId: c.entityId,
+        name: c.name ?? null,
+        impactScore: null,
+        impactUnavailable: currencyUnavailable,
+        verdict: verdictMap[c.entityId]?.verdict ?? null,
+      }));
+
+    if (campaignsWithSignals.length === 0) return null;
+
+    return {
+      score: null,
+      label: null,
+      currency: null,
+      currencyStatus: currencyTruth.status,
+      currencyUnavailable,
+      wastedSpend: { minor: null, pct: null, unavailable: currencyUnavailable },
+      campaigns: campaignsWithSignals,
+    };
+  }
+
   const accountSpendMinor = campaigns.reduce((sum, c) => sum + (c.spendMinor ?? 0), 0);
   if (accountSpendMinor <= 0) return null; // no real spend → honest null, never 0
 
@@ -196,12 +232,17 @@ export function computeAccountHealth(campaigns, verdictMap = {}) {
   return {
     score,
     label: healthLabel(score),
+    currency: currencyTruth.currency,
+    currencyStatus: currencyTruth.status,
+    currencyUnavailable: null,
     wastedSpend: {
       minor: wastedSpendMinor,
       pct: Math.round((wastedSpendMinor / accountSpendMinor) * 100),
+      unavailable: null,
     },
     campaigns: scored.map((c) => ({
-      entityId: c.entityId, name: c.name, impactScore: c.impactScore, verdict: c.verdict,
+      entityId: c.entityId, name: c.name, impactScore: c.impactScore,
+      impactUnavailable: null, verdict: c.verdict,
     })),
   };
 }

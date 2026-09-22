@@ -12,6 +12,7 @@ describe('buildCopilotSystemPrompt', () => {
   const portfolio = {
     totalCampaigns: 44,
     currency: 'EGP',
+    currencyStatus: 'HOMOGENEOUS_KNOWN',
     health: { score: 38, label: 'NEEDS ATTENTION', wastedSpendMinor: 250000, criticalCampaigns: 3, healthyCampaigns: 1 },
     totals: null,
   };
@@ -82,6 +83,31 @@ describe('buildCopilotSystemPrompt', () => {
       const s = build({ portfolio: { ...portfolio, health: null } });
       expect(s).toContain('ACCOUNT HEALTH: unavailable');
       expect(s).not.toContain('Score:');
+    });
+
+    it('preserves verdict counts while withholding mixed-currency score and money', () => {
+      const s = build({
+        campaigns: [],
+        portfolio: {
+          ...portfolio,
+          currency: null,
+          currencyStatus: 'MIXED',
+          health: {
+            score: null,
+            label: null,
+            currencyUnavailable: 'MIXED_CURRENCY',
+            wastedSpendMinor: null,
+            criticalCampaigns: 3,
+            healthyCampaigns: 1,
+          },
+        },
+      });
+      expect(s).toContain('CURRENCY: unavailable (MIXED)');
+      expect(s).toContain('Score: unavailable (MIXED_CURRENCY)');
+      expect(s).toContain('Wasted spend: unavailable');
+      expect(s).toContain('Campaigns to act on (KILL or REFRESH): 3');
+      expect(s).toContain('CAMPAIGN DETAILS: unavailable');
+      expect(s).not.toContain('top 0 of 44 by spend');
     });
   });
 
