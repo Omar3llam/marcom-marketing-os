@@ -27,6 +27,7 @@
 // @property {Date?}   windowStart       the period the platform itself reported,
 // @property {Date?}   windowEnd         null when it reported none (never inferred)
 // @property {string}  currency          ISO 4217
+// @property {string}  currencyProvenance CURRENCY_PROVENANCE origin; omitted means unknown
 // @property {number}  spendMinor        integer minor units
 // @property {number}  revenueMinor      integer minor units (platform-claimed, as-is)
 // @property {number}  impressions

@@ -45,6 +45,7 @@
 // beside additive daily metrics would put the two families in one row and invite
 // exactly the arithmetic that is wrong.
 // ============================================================
+import { currencyWithProvenance } from '../../../lib/currencyProvenance.js';
 import { toMinor } from '../../../lib/money.js';
 import { num } from './fieldUtils.js';
 import { CHANNEL, DATA_SOURCE, MEASUREMENT_WINDOW } from '../connectorTypes.js';
@@ -129,7 +130,9 @@ export function dailyEligibility(row) {
  * @param {Array}  input.rows — raw Meta insight objects, campaign level, daily
  * @returns {{ snapshots: Array, rejected: Array<{externalId, reason}> }}
  */
-export function metaDailyNormalize({ accountExternalId, currency = 'USD', date, rows = [] } = {}) {
+export function metaDailyNormalize({ accountExternalId, currency, currencyProvenance, date, rows = [] } = {}) {
+  const denomination = currencyWithProvenance(currency, currencyProvenance);
+  currency = denomination.currency;
   const d = date instanceof Date ? date : new Date(date);
   const snapshots = [];
   const rejected = [];
@@ -168,7 +171,7 @@ export function metaDailyNormalize({ accountExternalId, currency = 'USD', date, 
       // range, never derived from `date`.
       windowStart: verdict.windowStart,
       windowEnd: verdict.windowEnd,
-      currency,
+      ...denomination,
       spendMinor,
       revenueMinor: toMinor(revenueMajor, currency),
       impressions: Math.round(num(r.impressions)),

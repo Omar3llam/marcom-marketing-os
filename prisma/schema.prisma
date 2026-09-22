@@ -1319,6 +1319,9 @@ model MetricSnapshot {
   dailyBudgetMinor Int?
 
   currency String // ISO 4217 (EGP, SAR, AED, KWD, USD, …)
+  // Origin of this observation's denomination. A valid code alone is not proof.
+  // Old rows and old writers remain uncertain; never backfill from workspace.
+  currencyProvenance String @default("LEGACY_UNKNOWN")
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 

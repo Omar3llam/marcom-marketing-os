@@ -8,6 +8,7 @@
 //   - conversions_value is the platform-claimed value, landed PLATFORM_CLAIMED.
 //   - where Google has no equivalent (e.g. frequency on Search) → null, never a guess.
 // ============================================================
+import { currencyWithProvenance } from '../../../lib/currencyProvenance.js';
 import { toMinor } from '../../../lib/money.js';
 import { logger } from '../../../utils/logger.js';
 import { num, accountRollup } from './fieldUtils.js';
@@ -24,13 +25,15 @@ export function microsToMinor(micros, currency) {
  * @returns {NormalizedSnapshot[]} one ACCOUNT rollup + one CAMPAIGN row each
  */
 export function googleNormalize({
-  accountExternalId, accountName = null, currency = 'USD', date, rows = [],
+  accountExternalId, accountName = null, currency, currencyProvenance, date, rows = [],
   // Window provenance. Defaults preserve the OPERATIONAL contract exactly, so
   // every existing caller is unchanged; only the canonical path passes these.
   measurementWindow = MEASUREMENT_WINDOW.ROLLING_WINDOW,
   windowStart = null,
   windowEnd = null,
 }) {
+  const denomination = currencyWithProvenance(currency, currencyProvenance);
+  currency = denomination.currency;
   const d = date instanceof Date ? date : new Date(date);
   const campaigns = rows
     // R9 (I41) — a row with NEITHER a platform id NOR a name has no identity of
@@ -95,5 +98,6 @@ export function googleNormalize({
     accountExternalId, accountName, channel: CHANNEL.GOOGLE, source: DATA_SOURCE.GOOGLE, date: d, currency,
     measurementWindow,
   });
-  return account ? [account, ...campaigns] : campaigns;
+  return (account ? [account, ...campaigns] : campaigns)
+    .map((row) => ({ ...row, ...denomination }));
 }

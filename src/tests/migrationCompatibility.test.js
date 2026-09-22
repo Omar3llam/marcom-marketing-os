@@ -101,9 +101,14 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
     // documented: `decisions` is read `select`-less in several places, so the
     // migration must reach an environment before the code naming the new
     // columns. A deploy-order constraint, not a rollback hazard.
-    expect(scan.length).toBe(71);
+    // 71 → 72 and COMPATIBLE 49 → 50: Phase 6 adds
+    // 20260922000000_currency_provenance. One text column with an uncertain
+    // LEGACY_UNKNOWN default preserves old inserts without a historical
+    // backfill. Apply the migration before code naming the new column.
+    // No non-compatible baseline entry is needed for this additive operation.
+    expect(scan.length).toBe(72);
     expect(counts).toEqual({
-      COMPATIBLE: 49,
+      COMPATIBLE: 50,
       TRANSITION_REQUIRED: 10,
       INCOMPATIBLE: 8,
       UNKNOWN: 4,
@@ -255,7 +260,7 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
   // ── T7 · corpus boundary ────────────────────────────────────────────────
   it('T7 — the scanner reads production migrations and nothing else', () => {
     const dirs = migrationDirs(fs, MIGRATIONS);
-    expect(dirs).toHaveLength(71); // +1 C-02, +1 C-05, +1 C-18, +1 C-10, +1 C-16 (see T1)
+    expect(dirs).toHaveLength(72); // +1 Phase 6 currency provenance (see T1)
     expect(dirs.every((d) => /^\d{14}_/.test(d))).toBe(true);
     // Real non-migration entries that sit in this directory today.
     expect(dirs).not.toContain('migration_lock.toml');

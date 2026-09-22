@@ -109,6 +109,7 @@ describe('R8 seam — one Meta day becomes exactly one row', () => {
       actionMetrics: { purchase: 12, purchaseValue: 2100 },
       dailyBudgetMinor: null,
       currency: 'EGP',
+      currencyProvenance: 'LEGACY_UNKNOWN', // fixture supplies a code without its origin
     });
   });
 

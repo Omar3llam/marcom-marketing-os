@@ -12,6 +12,7 @@
 // snapshot's entityId WITHOUT a DB lookup — no N+1. Entity + snapshot upserts
 // each run as one $transaction(map).
 // ============================================================
+import { currencyWithProvenance } from '../../lib/currencyProvenance.js';
 import { prisma } from '../../lib/prisma.js';
 import { upsertNonDailyMetricSnapshot } from './nonDailySnapshotWrite.js';
 import { logger } from '../../utils/logger.js';
@@ -109,7 +110,7 @@ export function toSnapshotRows(workspaceId, channel, normalized = []) {
       // their rows stay null and the funnel rules honestly decline to fire.
       actionMetrics: n.actionMetrics ?? null,
       dailyBudgetMinor: n.dailyBudgetMinor ?? null,
-      currency: n.currency || 'USD',
+      ...currencyWithProvenance(n.currency, n.currencyProvenance),
     };
   });
 }
