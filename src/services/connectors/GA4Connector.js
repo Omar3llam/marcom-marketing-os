@@ -14,6 +14,7 @@
 // Data API and is exercised ONLY on a real connect (no creds/network here) —
 // thin and clearly marked, mirroring GoogleAdsConnector.
 // ============================================================
+import { CURRENCY_PROVENANCE } from '../../lib/currencyProvenance.js';
 import { logger } from '../../utils/logger.js';
 import { ChannelConnector } from './ChannelConnector.js';
 import { ga4Normalize } from './normalize/ga4Normalize.js';
@@ -37,6 +38,7 @@ export class GA4Connector extends ChannelConnector {
       refreshToken: cred.refreshToken,
       propertyId: cred.accountId,
       currency: 'USD',
+      currencyProvenance: CURRENCY_PROVENANCE.FALLBACK_DEFAULT,
     };
   }
 
@@ -48,8 +50,8 @@ export class GA4Connector extends ChannelConnector {
     return fetchGa4Revenue(auth, dateRange);
   }
 
-  normalize({ currency, date = new Date(), rows = [] }) {
-    return assertActuals(ga4Normalize({ currency, date, rows }));
+  normalize({ currency, currencyProvenance, date = new Date(), rows = [] }) {
+    return assertActuals(ga4Normalize({ currency, currencyProvenance, date, rows }));
   }
 
   // Override: actuals DECORATE existing entities, they don't mint. The sync loop

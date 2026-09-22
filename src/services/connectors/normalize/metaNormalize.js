@@ -7,6 +7,7 @@
 // frequency — that is exactly the "platform-claimed number wearing a trusted
 // badge" the governing rule forbids, so the connector does not use it.)
 // ============================================================
+import { currencyWithProvenance } from '../../../lib/currencyProvenance.js';
 import { toMinor } from '../../../lib/money.js';
 import { num, accountRollup } from './fieldUtils.js';
 import { CHANNEL, DATA_SOURCE, MEASUREMENT_WINDOW } from '../connectorTypes.js';
@@ -288,7 +289,7 @@ function normalizeAds(rows, currency, d, accountExternalId, win) {
  * @returns {NormalizedSnapshot[]} one ACCOUNT rollup + CAMPAIGN + ADSET + AD rows
  */
 export function metaNormalize({
-  accountExternalId, accountName = null, currency = 'USD', date, rows = [],
+  accountExternalId, accountName = null, currency, currencyProvenance, date, rows = [],
   // ── Phase F: the canonical 30-day path ────────────────────────────────────
   // Defaults reproduce the operational path exactly, so every existing caller is
   // untouched. The canonical fetch passes CUMULATIVE_30D plus the period it
@@ -299,6 +300,8 @@ export function metaNormalize({
   requestedWindowStart = null,
   requestedWindowEnd = null,
 } = {}) {
+  const denomination = currencyWithProvenance(currency, currencyProvenance);
+  currency = denomination.currency;
   const d = date instanceof Date ? date : new Date(date);
 
   // ── THREE-WAY PARTITION (architectural invariant) ─────────────────────────
@@ -376,7 +379,8 @@ export function metaNormalize({
   // Ads append AFTER ad-sets. Order is not load-bearing for correctness — the
   // sink sorts ops by LEVEL_ORDER so parents always upsert first — but keeping
   // the array in hierarchy order makes a raw dump readable.
-  return account
+  const normalized = account
     ? [account, ...campaigns, ...adSets, ...ads]
     : [...campaigns, ...adSets, ...ads];
+  return normalized.map((row) => ({ ...row, ...denomination }));
 }

@@ -11,7 +11,7 @@
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { resolveSyncCurrency } from '../../lib/currencyDetector.js';
+import { resolveSyncCurrencyWithProvenance } from '../../lib/currencyProvenance.js';
 import { ChannelConnector, assertNormalized } from './ChannelConnector.js';
 import { googleNormalize } from './normalize/googleNormalize.js';
 import { resolveCredential } from './credentialStore.js';
@@ -27,15 +27,15 @@ export class GoogleAdsConnector extends ChannelConnector {
 
     // The GAQL report query does not pull customer.currency_code (and the live
     // path is unverifiable without real creds), so we honour the workspace's
-    // stored currency rather than assuming USD. Meta is the authoritative
-    // account-currency source that corrects Workspace.currency on its sync.
+    // stored currency rather than assuming USD. This is inference even when
+    // Meta previously updated the workspace: it does not attest Google's unit.
     let ws = null;
     try {
       ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { currency: true } });
     } catch (err) {
       logger.warn({ workspaceId, err: err.message }, '[GoogleAdsConnector] workspace currency read failed; using USD');
     }
-    const { currency } = resolveSyncCurrency(null, ws?.currency);
+    const { currency, currencyProvenance } = resolveSyncCurrencyWithProvenance(null, ws?.currency);
 
     return {
       ok: true,
@@ -44,6 +44,7 @@ export class GoogleAdsConnector extends ChannelConnector {
       accountExternalId: cred.accountId,
       accountName: null,
       currency,
+      currencyProvenance,
     };
   }
 
@@ -55,8 +56,8 @@ export class GoogleAdsConnector extends ChannelConnector {
     return fetchGoogleCampaignMetrics(auth, dateRange);
   }
 
-  normalize({ accountExternalId, accountName, currency, date = new Date(), rows = [] }) {
-    const out = googleNormalize({ accountExternalId, accountName, currency, date, rows });
+  normalize({ accountExternalId, accountName, currency, currencyProvenance, date = new Date(), rows = [] }) {
+    const out = googleNormalize({ accountExternalId, accountName, currency, currencyProvenance, date, rows });
     return assertNormalized(out);
   }
 
@@ -90,9 +91,9 @@ export class GoogleAdsConnector extends ChannelConnector {
    * `segments.date` before aggregation. If that corroboration failed, no rows
    * reached this point at all.
    */
-  normalizeCanonical({ accountExternalId, accountName, currency, date = new Date(), rows = [], windowStart, windowEnd }) {
+  normalizeCanonical({ accountExternalId, accountName, currency, currencyProvenance, date = new Date(), rows = [], windowStart, windowEnd }) {
     const out = googleNormalize({
-      accountExternalId, accountName, currency, date, rows,
+      accountExternalId, accountName, currency, currencyProvenance, date, rows,
       measurementWindow: MEASUREMENT_WINDOW.CUMULATIVE_30D,
       windowStart: windowStart ?? null,
       windowEnd: windowEnd ?? null,

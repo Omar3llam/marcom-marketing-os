@@ -75,7 +75,7 @@ export function dailyKey({ entityId, entityLevel, source, windowStart }) {
 const RESTATEABLE = Object.freeze([
   'date', 'spendMinor', 'revenueMinor', 'cpaMinor', 'impressions', 'clicks',
   'conversions', 'ctr', 'roas', 'reach', 'frequency', 'actionMetrics',
-  'dailyBudgetMinor', 'currency', 'windowEnd',
+  'dailyBudgetMinor', 'currency', 'currencyProvenance', 'windowEnd',
 ]);
 
 /** PURE: the update payload for a re-observed day — never its identity. */

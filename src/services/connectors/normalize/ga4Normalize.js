@@ -18,6 +18,7 @@
 //      source); two un-summed GA4 rows on one entity would upsert over each
 //      other and silently undercount — so aggregation is correctness, not polish.
 // ============================================================
+import { currencyWithProvenance } from '../../../lib/currencyProvenance.js';
 import { toMinor } from '../../../lib/money.js';
 import { num } from './fieldUtils.js';
 import { CHANNEL, DATA_SOURCE } from '../connectorTypes.js';
@@ -58,7 +59,9 @@ export function channelFromSourceMedium(source, medium) {
  *          ACTUAL-revenue descriptors, summed per (channel, campaign). NOT
  *          NormalizedSnapshot[] — these never mint entities (see actualsSink).
  */
-export function ga4Normalize({ currency = 'USD', date, rows = [] }) {
+export function ga4Normalize({ currency, currencyProvenance, date, rows = [] }) {
+  const denomination = currencyWithProvenance(currency, currencyProvenance);
+  currency = denomination.currency;
   const d = date instanceof Date ? date : new Date(date);
   const byKey = new Map();
   for (const r of rows) {
@@ -74,7 +77,7 @@ export function ga4Normalize({ currency = 'USD', date, rows = [] }) {
         revenueMinor: 0,
         conversions: 0,
         date: d,
-        currency,
+        ...denomination,
       });
     }
     const agg = byKey.get(key);

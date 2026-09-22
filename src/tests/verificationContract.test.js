@@ -128,7 +128,7 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
   // 31 — two increments landed without it. A title that disagrees with its own
   // assertion is a small untruth inside the verification contract itself, so it
   // now states the same number the test enforces.
-  it('the census matches the current baseline of 34 files', () => {
+  it('the census matches the current baseline of 37 files', () => {
     // A drift here is not automatically a failure — but it must be NOTICED,
     // because a new DB-gated file added through a different mechanism is
     // exactly how the guarantee erodes.
@@ -202,7 +202,10 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
     // that tie, so it cannot prove the tiebreak stops the cursor skipping or
     // repeating a row. Nor can it prove `total` is a COUNT rather than the page
     // length: only a real table can hold more rows than a page returns.
-    expect(dbGatedFiles().length).toBe(36);
+    // 36 → 37 in Phase 6: currencyProvenance.integration.test.js proves the
+    // shipped migration preserves legacy amounts/codes and real snapshot
+    // inserts/restatements carry origin. Both require PostgreSQL semantics.
+    expect(dbGatedFiles().length).toBe(37);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {

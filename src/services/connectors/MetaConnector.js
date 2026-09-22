@@ -13,7 +13,7 @@ import {
   fetchAdSetInsights, fetchAllAdSets, mergeMetaAdSets,
   fetchAdInsights, fetchAllAds, mergeMetaAds, fetchCanonicalAllLevels, fetchDailyInsights,
 } from '../metaAdsService.js';
-import { resolveSyncCurrency } from '../../lib/currencyDetector.js';
+import { resolveSyncCurrencyWithProvenance } from '../../lib/currencyProvenance.js';
 import { ChannelConnector, assertNormalized } from './ChannelConnector.js';
 import { metaNormalize } from './normalize/metaNormalize.js';
 import { metaDailyNormalize } from './normalize/metaDailyNormalize.js';
@@ -40,7 +40,7 @@ export class MetaConnector extends ChannelConnector {
     } catch (err) {
       logger.warn({ workspaceId, err: err.message }, '[MetaConnector] workspace currency read failed; using platform/USD');
     }
-    const { currency, source } = resolveSyncCurrency(metaCurrency, ws?.currency);
+    const { currency, source, currencyProvenance } = resolveSyncCurrencyWithProvenance(metaCurrency, ws?.currency);
     if (source !== 'reported') {
       logger.warn({ workspaceId, accountId: cred.accountId, metaCurrency, reason: source }, '[MetaConnector] currency fallback');
     }
@@ -60,6 +60,7 @@ export class MetaConnector extends ChannelConnector {
       accountExternalId: cred.accountId,
       accountName: null,
       currency,
+      currencyProvenance,
     };
   }
 
@@ -145,8 +146,8 @@ export class MetaConnector extends ChannelConnector {
     return rows;
   }
 
-  normalize({ accountExternalId, accountName, currency, date = new Date(), rows = [] }) {
-    const out = metaNormalize({ accountExternalId, accountName, currency, date, rows });
+  normalize({ accountExternalId, accountName, currency, currencyProvenance, date = new Date(), rows = [] }) {
+    const out = metaNormalize({ accountExternalId, accountName, currency, currencyProvenance, date, rows });
     return assertNormalized(out);
   }
 
@@ -205,13 +206,13 @@ export class MetaConnector extends ChannelConnector {
    * `time_increment` produces zero snapshots and a pile of NOT_ONE_DAY, and the
    * caller must be able to tell that from an account that simply did not deliver.
    */
-  normalizeDaily({ accountExternalId, currency, date = new Date(), rows = [] }) {
-    return metaDailyNormalize({ accountExternalId, currency, date, rows });
+  normalizeDaily({ accountExternalId, currency, currencyProvenance, date = new Date(), rows = [] }) {
+    return metaDailyNormalize({ accountExternalId, currency, currencyProvenance, date, rows });
   }
 
-  normalizeCanonical({ accountExternalId, accountName, currency, date = new Date(), rows = [], windowStart, windowEnd }) {
+  normalizeCanonical({ accountExternalId, accountName, currency, currencyProvenance, date = new Date(), rows = [], windowStart, windowEnd }) {
     const out = metaNormalize({
-      accountExternalId, accountName, currency, date, rows,
+      accountExternalId, accountName, currency, currencyProvenance, date, rows,
       measurementWindow: MEASUREMENT_WINDOW.CUMULATIVE_30D,
       requestedWindowStart: windowStart ?? null,
       requestedWindowEnd: windowEnd ?? null,

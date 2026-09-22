@@ -12,6 +12,7 @@
 // CAMPAIGN entity (by channel + name), else falls back to that channel's ACCOUNT
 // entity, else is DROPPED — we never fabricate an entity to hang revenue on.
 // ============================================================
+import { currencyWithProvenance } from '../../lib/currencyProvenance.js';
 import { prisma } from '../../lib/prisma.js';
 import { upsertNonDailyMetricSnapshot } from './nonDailySnapshotWrite.js';
 import { logger } from '../../utils/logger.js';
@@ -139,7 +140,7 @@ export function toActualSnapshotRow(workspaceId, attachment, descriptor) {
     ctr: null,
     roas: null,
     frequency: null,
-    currency: descriptor.currency || 'USD',
+    ...currencyWithProvenance(descriptor.currency, descriptor.currencyProvenance),
   };
 }
 

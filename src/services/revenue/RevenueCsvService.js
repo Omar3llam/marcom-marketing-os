@@ -17,6 +17,7 @@
 // with no synced snapshot to attach to, is SURFACED (never silently dropped);
 // truly-zero revenue still leaves ROAS at "—".
 // ============================================================
+import { CURRENCY_PROVENANCE } from '../../lib/currencyProvenance.js';
 import { prisma } from '../../lib/prisma.js';
 import { upsertNonDailyMetricSnapshot } from '../connectors/nonDailySnapshotWrite.js';
 import { logger } from '../../utils/logger.js';
@@ -166,6 +167,11 @@ export async function processRevenueCsv(workspaceId, rows) {
       continue;
     }
     const currency = m.currency || latest.currency || 'USD';
+    // The client supplies a local currency selector, not a platform response.
+    // Borrowing another observation's code cannot attest this upload's unit.
+    const currencyProvenance = m.currency ? CURRENCY_PROVENANCE.USER_SUPPLIED
+      : latest.currency ? CURRENCY_PROVENANCE.SNAPSHOT_INFERRED
+        : CURRENCY_PROVENANCE.FALLBACK_DEFAULT;
     snapshotRows.push({
       workspaceId,
       entityId: m.campaign.id,
@@ -198,6 +204,7 @@ export async function processRevenueCsv(workspaceId, rows) {
       roas: null, // ratios stay null; the projection re-derives roas from platform spend
       frequency: null,
       currency,
+      currencyProvenance,
     });
   }
 
