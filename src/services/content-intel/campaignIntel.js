@@ -14,6 +14,7 @@
 import { getConnectorCampaigns } from '../entity-graph/index.js';
 import { getConnectorVerdicts }  from '../verdict-engine/connectorVerdictService.js';
 import { logger }                from '../../utils/logger.js';
+import { CURRENCY_HOMOGENEITY, classifyCurrencyHomogeneity } from '../../lib/currencyHomogeneity.js';
 
 const MAX_CAMPAIGNS = 5;
 
@@ -24,8 +25,11 @@ const MAX_CAMPAIGNS = 5;
  */
 export function selectTopCampaigns(campaigns = [], verdicts = [], limit = MAX_CAMPAIGNS) {
   const verdictById = new Map(verdicts.map((v) => [v.id, v])); // verdict.id === campaign.entityId
-  return campaigns
-    .filter((c) => Number.isFinite(c.spendMinor) && c.spendMinor > 0) // skip zero-spend roster rows
+  const spenders = campaigns.filter((c) => Number.isFinite(c.spendMinor) && c.spendMinor > 0);
+  const currencyTruth = classifyCurrencyHomogeneity(spenders);
+  if (currencyTruth.status !== CURRENCY_HOMOGENEITY.HOMOGENEOUS_KNOWN) return [];
+
+  return spenders
     .sort((a, b) => b.spendMinor - a.spendMinor)
     .slice(0, limit)
     .map((c) => {
@@ -42,6 +46,7 @@ export function selectTopCampaigns(campaigns = [], verdicts = [], limit = MAX_CA
         frequency:  c.frequency ?? null,
         roas:       c.roas ?? null,       // null for awareness — honest
         spendMinor: c.spendMinor,
+        currency:   c.currency,
       };
     });
 }

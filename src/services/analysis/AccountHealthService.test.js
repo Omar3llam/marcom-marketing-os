@@ -15,7 +15,8 @@ import {
 
 // A connector row carries CTR as a FRACTION (0.0185 = 1.85%), spend in minor units.
 const row = (over = {}) => ({
-  entityId: 'c', name: 'C', spendMinor: 10000, ctr: 0.015, frequency: 1.0, roas: 2.0, ...over,
+  entityId: 'c', name: 'C', spendMinor: 10000, ctr: 0.015, frequency: 1.0,
+  roas: 2.0, currency: 'EGP', ...over,
 });
 
 describe('computeAccountHealth — honest nulls', () => {
@@ -33,6 +34,70 @@ describe('computeAccountHealth — honest nulls', () => {
     // Spend exists, but no CTR and no frequency anywhere → nothing to score.
     const campaigns = [row({ entityId: 'a', ctr: 0, frequency: null })];
     expect(computeAccountHealth(campaigns, { a: { verdict: 'HOLD' } })).toBeNull();
+  });
+});
+
+describe('computeAccountHealth — currency homogeneity', () => {
+  it.each(['EGP', 'USD', 'SAR'])('%s preserves the existing weighted calculations', (currency) => {
+    const campaigns = [
+      row({ entityId: 's', currency, spendMinor: 80000 }),
+      row({ entityId: 'k', currency, spendMinor: 20000 }),
+    ];
+    const out = computeAccountHealth(campaigns, {
+      s: { verdict: 'SCALE' }, k: { verdict: 'KILL' },
+    });
+    expect(out).toMatchObject({
+      currency,
+      currencyStatus: 'HOMOGENEOUS_KNOWN',
+      currencyUnavailable: null,
+      score: 70,
+      wastedSpend: { minor: 20000, pct: 20, unavailable: null },
+    });
+    expect(out.campaigns.every((c) => Number.isFinite(c.impactScore))).toBe(true);
+  });
+
+  it.each([
+    ['EGP + USD', ['EGP', 'USD'], 'MIXED', 'MIXED_CURRENCY'],
+    ['SAR + EGP', ['SAR', 'EGP'], 'MIXED', 'MIXED_CURRENCY'],
+    ['known + null', ['EGP', null], 'UNKNOWN', 'UNKNOWN_CURRENCY'],
+    ['known + malformed', ['USD', 'XYZ'], 'UNKNOWN', 'UNKNOWN_CURRENCY'],
+  ])('%s withholds every cross-campaign monetary claim', (_label, currencies, status, reason) => {
+    const campaigns = currencies.map((currency, i) => row({
+      entityId: `c${i}`, currency, spendMinor: i === 0 ? 80000 : 20000,
+    }));
+    const out = computeAccountHealth(campaigns, {
+      c0: { verdict: 'SCALE' }, c1: { verdict: 'KILL' },
+    });
+
+    expect(out).toMatchObject({
+      currency: null,
+      currencyStatus: status,
+      currencyUnavailable: reason,
+      score: null,
+      label: null,
+      wastedSpend: { minor: null, pct: null, unavailable: reason },
+    });
+    expect(out.campaigns.map((c) => c.impactScore)).toEqual([null, null]);
+    expect(out.campaigns.map((c) => c.impactUnavailable)).toEqual([reason, reason]);
+    // Currency-independent engine calls remain visible.
+    expect(out.campaigns.map((c) => c.verdict)).toEqual(['SCALE', 'KILL']);
+  });
+
+  it('a single campaign remains valid without conversion or recomputation', () => {
+    const out = computeAccountHealth(
+      [row({ entityId: 'only', currency: 'SAR', spendMinor: 12345 })],
+      { only: { verdict: 'KILL' } },
+    );
+    expect(out.currency).toBe('SAR');
+    expect(out.wastedSpend.minor).toBe(12345);
+    expect(out.wastedSpend.pct).toBe(100);
+  });
+
+  it('zero monetary contributors produce no currency or zero-money claim', () => {
+    expect(computeAccountHealth([
+      row({ entityId: 'zero', spendMinor: 0, currency: 'USD' }),
+      row({ entityId: 'missing', spendMinor: null, currency: null }),
+    ], {})).toBeNull();
   });
 });
 

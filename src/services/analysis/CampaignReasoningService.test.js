@@ -94,6 +94,21 @@ describe('generateCampaignReasoning (on-demand)', () => {
     const out = await generateCampaignReasoning({ workspaceId: 'ws1', entityId: 'c1' });
     expect(out).toEqual({ status: 'OK', reasoning: 'Frequency is too high; refresh the creative.' });
   });
+
+  it.each([
+    ['mixed', [{ ...CAMPAIGNS[0], currency: 'EGP' }, { ...CAMPAIGNS[1], currency: 'USD' }]],
+    ['unknown', [{ ...CAMPAIGNS[0], currency: 'EGP' }, { ...CAMPAIGNS[1], currency: null }]],
+  ])('%s currency withholds spend share and spend-derived impact', async (_label, campaigns) => {
+    evaluateConnectorVerdicts.mockResolvedValue({ workspaceId: 'ws-1', campaigns, gatedOut: [], status: 'OK' });
+    await generateCampaignReasoning({ workspaceId: 'ws1', entityId: 'c1' });
+    const input = execute.mock.calls[0][0].input;
+    expect(input.spendSharePct).toBeNull();
+    expect(input.impactScore).toBeNull();
+    // Independent evidence still grounds the explanation.
+    expect(input.verdict).toBe('KILL');
+    expect(input.ctrPct).toBeCloseTo(0.42, 5);
+    expect(input.frequency).toBe(4.1);
+  });
 });
 
 describe('buildReasoningInput (pure)', () => {
@@ -191,6 +206,18 @@ describe('generateReasoningForSweep (pre-generate + persist)', () => {
     const out = await generateReasoningForSweep({ workspaceId: 'ws1' });
     expect(out).toEqual({ attempted: 0, generated: 0, skipped: 0 });
     expect(prisma.campaignReasoning.upsert).not.toHaveBeenCalled();
+  });
+
+  it('does not invent a top-impact ordering when currencies are mixed', async () => {
+    evaluateConnectorVerdicts.mockResolvedValue({
+      workspaceId: 'ws-1',
+      campaigns: [{ ...CAMPAIGNS[0], currency: 'EGP' }, { ...CAMPAIGNS[1], currency: 'USD' }],
+      gatedOut: [],
+      status: 'OK',
+    });
+    const out = await generateReasoningForSweep({ workspaceId: 'ws1' });
+    expect(out).toEqual({ attempted: 0, generated: 0, skipped: 0 });
+    expect(execute).not.toHaveBeenCalled();
   });
 
   it('missing workspaceId → no work', async () => {

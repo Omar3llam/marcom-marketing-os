@@ -68,9 +68,9 @@ function campaignLine(c, i, currency) {
  * @returns {{ system: string, user: string }}
  */
 export function buildPortfolioAnalysisPrompt(stats = {}, campaigns = [], workspace = {}) {
-  const currency = workspace.currency || 'USD';
   const shown = campaigns.slice(0, CAMPAIGN_LIMIT);
   const counts = stats.verdictCounts ?? {};
+  const moneyComparable = stats.currencyStatus === 'HOMOGENEOUS_KNOWN';
 
   const system = [
     'You are a MENA performance marketing analyst writing a short portfolio note for a media buyer.',
@@ -101,12 +101,16 @@ export function buildPortfolioAnalysisPrompt(stats = {}, campaigns = [], workspa
     `Verdict mix: ${['KILL', 'REFRESH', 'WATCH', 'HOLD', 'SCALE', 'REALLOCATE']
       .map((v) => `${v} ${counts[v] ?? 0}`)
       .join(' · ')}`,
-    stats.healthScore != null ? `Account health: ${stats.healthScore}/100 (${stats.healthLabel ?? 'unlabelled'})` : 'Account health: unknown',
-    stats.wastedPct != null ? `Wasted spend: ${num(stats.wastedPct, 1)}% of spend` : null,
+    moneyComparable && stats.healthScore != null
+      ? `Account health: ${stats.healthScore}/100 (${stats.healthLabel ?? 'unlabelled'})`
+      : `Account health: unavailable (${stats.currencyStatus ?? 'UNKNOWN'} currency population)`,
+    moneyComparable && stats.wastedPct != null ? `Wasted spend: ${num(stats.wastedPct, 1)}% of spend` : null,
     `Campaigns whose ROAS cannot be scored (no revenue measured): ${stats.needsRevenueCount ?? 0}`,
     '',
-    `CAMPAIGNS (top ${shown.length} by spend):`,
-    shown.map((c, i) => campaignLine(c, i, currency)).join('\n\n'),
+    stats.currencyStatus === 'HOMOGENEOUS_KNOWN'
+      ? `CAMPAIGNS (top ${shown.length} by spend):`
+      : `CAMPAIGN DETAIL: unavailable — currency population is ${stats.currencyStatus ?? 'UNKNOWN'}, so spend cannot be ranked.`,
+    shown.map((c, i) => campaignLine(c, i, c.currency)).join('\n\n'),
     '',
     'Write the 2-3 sentence portfolio note now.',
   ]

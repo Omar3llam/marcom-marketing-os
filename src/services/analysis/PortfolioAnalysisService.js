@@ -26,6 +26,17 @@ import { CAPABILITY } from '../ai-gateway/providerTypes.js';
 import { buildPortfolioAnalysisPrompt, CAMPAIGN_LIMIT } from '../ai-gateway/prompts/portfolioAnalysisPrompt.js';
 import { getConnectorVerdicts, evaluateConnectorVerdicts, needsRevenueData } from '../verdict-engine/index.js';
 import { computeAccountHealth } from './AccountHealthService.js';
+import { CURRENCY_HOMOGENEITY, classifyCurrencyHomogeneity } from '../../lib/currencyHomogeneity.js';
+
+function campaignEvidence(campaigns = [], verdictMap = {}) {
+  return campaigns
+    .filter((c) => Number.isFinite(c?.spendMinor) && c.spendMinor > 0)
+    .map((c) => ({
+      ...c,
+      verdict: verdictMap[c.entityId]?.verdict ?? null,
+      needsRevenue: needsRevenueData(c),
+    }));
+}
 
 /**
  * PURE: enrich connector rows with the deterministic verdict + needs-revenue flag,
@@ -33,14 +44,10 @@ import { computeAccountHealth } from './AccountHealthService.js';
  * Sorted by spend desc so the prompt's top-N slice is the meaningful one.
  */
 export function enrichCampaigns(campaigns = [], verdictMap = {}) {
-  return campaigns
-    .filter((c) => Number.isFinite(c?.spendMinor) && c.spendMinor > 0)
-    .map((c) => ({
-      ...c,
-      verdict: verdictMap[c.entityId]?.verdict ?? null,
-      needsRevenue: needsRevenueData(c),
-    }))
-    .sort((a, b) => (b.spendMinor ?? 0) - (a.spendMinor ?? 0));
+  const evidence = campaignEvidence(campaigns, verdictMap);
+  const currencyTruth = classifyCurrencyHomogeneity(evidence);
+  if (currencyTruth.status !== CURRENCY_HOMOGENEITY.HOMOGENEOUS_KNOWN) return [];
+  return evidence.sort((a, b) => (b.spendMinor ?? 0) - (a.spendMinor ?? 0));
 }
 
 /** PURE: count the deterministic verdicts by name (absent ⇒ 0, never fabricated). */
@@ -105,17 +112,19 @@ export async function runPortfolioAnalysis(workspaceId, { loopRunId = null, eval
     const campaigns = ev.campaigns ?? [];
 
     const verdictMap = Object.fromEntries((verdictResult?.verdicts ?? []).map((v) => [v.id, v]));
-    const enriched = enrichCampaigns(campaigns, verdictMap);
+    const evidence = campaignEvidence(campaigns, verdictMap);
+    const rankedCampaigns = enrichCampaigns(campaigns, verdictMap);
+    const currencyTruth = classifyCurrencyHomogeneity(evidence);
 
     // Honest empty state: a cold or zero-spend account gets no narration at all
     // (rather than a generic "everything looks fine" written about nothing).
-    if (enriched.length === 0) {
+    if (evidence.length === 0) {
       logger.debug({ workspaceId }, '[portfolioAnalysis] no spending campaigns — nothing to narrate');
       return null;
     }
 
     // Deterministic — the model never sees this list, it only sees the COUNT.
-    const revenueNeeded = enriched
+    const revenueNeeded = evidence
       .filter((c) => c.needsRevenue)
       .map((c) => ({ entityId: c.entityId, name: c.name }));
 
@@ -128,15 +137,16 @@ export async function runPortfolioAnalysis(workspaceId, { loopRunId = null, eval
       .catch(() => null);
 
     const stats = {
-      total: enriched.length,
-      verdictCounts: countVerdicts(enriched),
+      total: evidence.length,
+      verdictCounts: countVerdicts(evidence),
       healthScore: health?.score ?? null,
       healthLabel: health?.label ?? null,
       wastedPct: health?.wastedSpend?.pct ?? null,
       needsRevenueCount: revenueNeeded.length,
+      currencyStatus: currencyTruth.status,
     };
 
-    const { system, user } = buildPortfolioAnalysisPrompt(stats, enriched, workspace ?? {});
+    const { system, user } = buildPortfolioAnalysisPrompt(stats, rankedCampaigns, workspace ?? {});
     const result = await execute({
       capability: CAPABILITY.ANALYZE_PORTFOLIO,
       input: { system, user },
@@ -159,8 +169,8 @@ export async function runPortfolioAnalysis(workspaceId, { loopRunId = null, eval
     logger.info(
       {
         workspaceId,
-        campaigns: enriched.length,
-        narrated: Math.min(enriched.length, CAMPAIGN_LIMIT),
+        campaigns: evidence.length,
+        narrated: Math.min(rankedCampaigns.length, CAMPAIGN_LIMIT),
         needsRevenue: revenueNeeded.length,
       },
       '[portfolioAnalysis] advisory generated',

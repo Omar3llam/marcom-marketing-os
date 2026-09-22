@@ -18,7 +18,7 @@ import { selectTopCampaigns, formatCampaignIntel, getCampaignIntelligence } from
 
 const camp = (over = {}) => ({
   entityId: 'c1', name: 'Eid Sale', channel: 'META',
-  spendMinor: 50000, ctr: 0.03, frequency: 1.4, roas: 2.1, ...over,
+  spendMinor: 50000, ctr: 0.03, frequency: 1.4, roas: 2.1, currency: 'EGP', ...over,
 });
 const verdict = (over = {}) => ({ id: 'c1', name: 'Eid Sale', verdict: 'SCALE', rationale: 'Strong ROAS — scale.', ...over });
 
@@ -45,6 +45,27 @@ describe('selectTopCampaigns (pure)', () => {
     const top = selectTopCampaigns([camp({ ctr: null, roas: null })], [verdict()]);
     expect(top[0].ctr).toBeNull();
     expect(top[0].roas).toBeNull();
+  });
+
+  it.each(['EGP', 'USD', 'SAR'])('preserves spend ranking for homogeneous %s', (currency) => {
+    const top = selectTopCampaigns([
+      camp({ entityId: 'small', name: 'Small', spendMinor: 100, currency }),
+      camp({ entityId: 'big', name: 'Big', spendMinor: 900, currency }),
+    ]);
+    expect(top.map((c) => c.name)).toEqual(['Big', 'Small']);
+  });
+
+  it.each([
+    ['EGP + USD', 'EGP', 'USD'],
+    ['SAR + EGP', 'SAR', 'EGP'],
+    ['known + null', 'EGP', null],
+    ['known + malformed', 'USD', 'XYZ'],
+  ])('%s yields no spend-ranked slice', (_label, first, second) => {
+    const top = selectTopCampaigns([
+      camp({ entityId: 'a', currency: first, spendMinor: 100 }),
+      camp({ entityId: 'b', currency: second, spendMinor: 900 }),
+    ]);
+    expect(top).toEqual([]);
   });
 });
 
@@ -85,6 +106,15 @@ describe('getCampaignIntelligence (composition)', () => {
 
   it('returns "" when no connector has synced (graceful omit)', async () => {
     getConnectorCampaigns.mockResolvedValue([]);
+    getConnectorVerdicts.mockResolvedValue({ verdicts: [] });
+    expect(await getCampaignIntelligence('ws1')).toBe('');
+  });
+
+  it('omits Content Lab intelligence when campaign currencies are mixed', async () => {
+    getConnectorCampaigns.mockResolvedValue([
+      camp({ entityId: 'egp', currency: 'EGP', spendMinor: 100 }),
+      camp({ entityId: 'usd', currency: 'USD', spendMinor: 900 }),
+    ]);
     getConnectorVerdicts.mockResolvedValue({ verdicts: [] });
     expect(await getCampaignIntelligence('ws1')).toBe('');
   });

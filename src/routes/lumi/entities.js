@@ -23,6 +23,7 @@ import { CANONICAL_VERDICT_WINDOW_DAYS } from '../../services/verdict-engine/met
 import { getConnectorVerdicts, needsRevenueData, analyzeEvidence, isRankable } from '../../services/verdict-engine/index.js';
 import { ENTITY_LEVEL } from '../../services/connectors/connectorTypes.js';
 import { computeAccountHealth } from '../../services/analysis/AccountHealthService.js';
+import { classifyCurrencyHomogeneity, currencyUnavailableReason } from '../../lib/currencyHomogeneity.js';
 import { computeFatigueForecast } from '../../services/analysis/FatigueForecastService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
@@ -95,10 +96,20 @@ entitiesRouter.get('/entities/health', requireCollabRole(WORKSPACE_ROLE.BUYER, W
     const health = computeAccountHealth(canonicalCampaigns, verdictMap);
 
     if (!health) {
+      const currencyTruth = classifyCurrencyHomogeneity(canonicalCampaigns);
       return res.json({
         workspaceId: req.workspaceId ?? null,
         generatedAt: new Date().toISOString(),
-        score: null, label: null, wastedSpend: { minor: null, pct: null }, campaigns: [],
+        score: null, label: null,
+        currency: null,
+        currencyStatus: currencyTruth.status,
+        currencyUnavailable: currencyUnavailableReason(currencyTruth.status),
+        wastedSpend: {
+          minor: null,
+          pct: null,
+          unavailable: currencyUnavailableReason(currencyTruth.status),
+        },
+        campaigns: [],
       });
     }
 

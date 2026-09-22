@@ -66,17 +66,17 @@ import { getConnectorVerdicts } from '../verdict-engine/index.js';
 // A conversion campaign that spent but measured no revenue → needs revenue.
 const conversionNoRevenue = {
   entityId: 'c1', name: 'Ramadan Cold', channel: 'META', objective: 'OUTCOME_SALES',
-  spendMinor: 1_416_000, revenueMinor: 0, impressions: 90_000, clicks: 900, ctr: 0.01, frequency: 4.2,
+  spendMinor: 1_416_000, revenueMinor: 0, impressions: 90_000, clicks: 900, ctr: 0.01, frequency: 4.2, currency: 'EGP',
 };
 // A genuine awareness campaign with no revenue → does NOT need revenue.
 const awareness = {
   entityId: 'c2', name: 'Brand Reach', channel: 'META', objective: 'OUTCOME_AWARENESS',
-  spendMinor: 500_000, revenueMinor: 0, impressions: 200_000, clicks: 1000, ctr: 0.005, frequency: 2.1,
+  spendMinor: 500_000, revenueMinor: 0, impressions: 200_000, clicks: 1000, ctr: 0.005, frequency: 2.1, currency: 'EGP',
 };
 // A measured conversion campaign → scoreable, no gap.
 const measured = {
   entityId: 'c3', name: 'PMax Warm', channel: 'GOOGLE', objective: 'OUTCOME_SALES',
-  spendMinor: 200_000, revenueMinor: 960_000, roas: 4.8, impressions: 40_000, clicks: 800, ctr: 0.02, frequency: 1.4,
+  spendMinor: 200_000, revenueMinor: 960_000, roas: 4.8, impressions: 40_000, clicks: 800, ctr: 0.02, frequency: 1.4, currency: 'EGP',
 };
 
 beforeEach(() => {
@@ -169,6 +169,40 @@ describe('PortfolioAnalysisService — pure helpers', () => {
   it('countVerdicts counts only real verdicts (an unscored campaign adds nothing)', () => {
     expect(countVerdicts([{ verdict: 'KILL' }, { verdict: 'KILL' }, { verdict: 'SCALE' }, { verdict: null }]))
       .toEqual({ KILL: 2, SCALE: 1 });
+  });
+
+  it.each([
+    ['mixed', [{ ...conversionNoRevenue, currency: 'EGP' }, { ...awareness, currency: 'USD' }]],
+    ['unknown', [{ ...conversionNoRevenue, currency: 'EGP' }, { ...awareness, currency: null }]],
+  ])('enrichCampaigns omits the spend-ranked slice for %s currency', (_label, rows) => {
+    expect(enrichCampaigns(rows, {})).toEqual([]);
+  });
+
+  it.each(['EGP', 'USD', 'SAR'])('preserves spend ranking for homogeneous %s', (currency) => {
+    const rows = enrichCampaigns([
+      { ...awareness, currency }, { ...conversionNoRevenue, currency },
+    ], {});
+    expect(rows.map((r) => r.entityId)).toEqual(['c1', 'c2']);
+  });
+});
+
+describe('PortfolioAnalysisService — mixed-currency AI grounding', () => {
+  it('omits campaign detail while preserving verdict counts and the revenue tracking gap', async () => {
+    h.campaigns = [
+      { ...conversionNoRevenue, currency: 'EGP' },
+      { ...measured, currency: 'USD' },
+    ];
+    h.verdicts = [{ id: 'c1', verdict: 'KILL' }, { id: 'c3', verdict: 'SCALE' }];
+
+    const out = await runPortfolioAnalysis('ws1');
+    expect(out.revenueNeeded).toEqual([{ entityId: 'c1', name: 'Ramadan Cold' }]);
+    const prompt = execute.mock.calls[0][0].input.user;
+    expect(prompt).toContain('currency population is MIXED');
+    expect(prompt).toContain('KILL 1');
+    expect(prompt).toContain('SCALE 1');
+    expect(prompt).toContain('Campaigns whose ROAS cannot be scored (no revenue measured): 1');
+    expect(prompt).not.toContain('"Ramadan Cold"');
+    expect(prompt).not.toContain('"PMax Warm"');
   });
 });
 
