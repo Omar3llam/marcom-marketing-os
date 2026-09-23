@@ -120,6 +120,10 @@ export const DECLARED = Object.freeze([
  */
 export const EXCLUDED = Object.freeze([
   {
+    at: 'src/services/planning/planningActuals.js', symbol: 'PLANNING_REASON',
+    because: 'These codes refine insufficient-evidence tracking with the failed currency, window, or business-revenue prerequisite; they are reasons rather than independent knowledge states.',
+  },
+  {
     at: 'src/lib/operationalMonetary.js', symbol: 'MONETARY_REASON',
     because: 'A reason vocabulary refining MONETARY_STATUS. It identifies which currency proof or budget match failed; the status already classifies the monetary question as KNOWN or CANNOT_ASK.',
   },

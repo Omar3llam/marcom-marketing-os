@@ -16,7 +16,7 @@ import { UnitEconomicsSchema } from './unitEconomics.schema';
 import { ComparatorSchema } from './guardrailRule.schema';
 
 export const PlanStatusSchema = z.enum(['DRAFT', 'ACTIVE', 'CLOSED']);
-export const GoalStatusSchema = z.enum(['ON_TRACK', 'AT_RISK', 'OFF_TRACK', 'ACHIEVED', 'MISSED']);
+export const GoalStatusSchema = z.enum(['ON_TRACK', 'AT_RISK', 'OFF_TRACK', 'INSUFFICIENT_EVIDENCE', 'ACHIEVED', 'MISSED']);
 
 // Phase 6B — the plan approval gate (collaboration ApprovalService). The DB
 // enum is exactly these three; "Request revision" in the UI is REJECTED + reason
@@ -101,6 +101,8 @@ export const NorthStarGoalSchema = z.object({
   periodStart: z.coerce.date(),
   periodEnd: z.coerce.date(),
   status: GoalStatusSchema,
+  trackingUnavailableReason: z.string().nullish(),
+  measuredCurrency: z.string().nullish(),
   planId: z.string().nullish(),
 });
 
@@ -122,6 +124,10 @@ export const PlanProjectionsSchema = z.object({
   scenario: PlanScenarioProjectionSchema.nullable(),
   economics: UnitEconomicsSchema.partial().nullable(),
   goalLanding: GoalLandingSchema.nullable(),
+  goalTracking: z.object({
+    contractVersion: z.number(), status: GoalStatusSchema,
+    unavailableReason: z.string().nullable(), measuredCurrency: z.string().nullable(),
+  }).nullish(),
 });
 
 export const PlanSchema = z.object({
@@ -154,7 +160,8 @@ export const PlanSchema = z.object({
   goals: z.array(NorthStarGoalSchema).optional(),
   tracking: z
     .object({
-      goals: z.array(z.object({ goalId: z.string(), metric: z.string(), landing: GoalLandingSchema.nullable() })),
+      goals: z.array(z.object({ goalId: z.string(), metric: z.string(), status: GoalStatusSchema.optional(),
+        unavailableReason: z.string().nullish(), currency: z.string().nullish(), landing: GoalLandingSchema.nullable() })),
       refreshedAt: z.string(),
     })
     .optional(),

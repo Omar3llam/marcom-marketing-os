@@ -10,6 +10,7 @@ import { scopeFor } from '../../services/decisions/decisionClassScope.js';
 import { logger }  from '../../utils/logger.js';
 import { getPortfolio } from '../../services/portfolio/PortfolioService.js';
 import { getWeeklyAgenda } from '../../services/test-generator/TestGeneratorService.js';
+import { evaluateGoalTracking } from '../../services/planning/PlanService.js';
 import { surfaceCollaboration } from './feedSurfacing.js';
 
 // The static public demo feed lives in its own module (route-file size).
@@ -175,6 +176,7 @@ feedRouter.get('/feed', async (req, res) => {
       });
       if (plan) {
         const g = plan.goals?.[0] ?? null;
+        const goalTracking = g ? await evaluateGoalTracking(wsId, g) : null;
         planning = {
           activePlan: {
             id: plan.id, name: plan.name, status: plan.status,
@@ -184,8 +186,10 @@ feedRouter.get('/feed', async (req, res) => {
           },
           goal: g ? {
             id: g.id, metric: g.metric, comparator: g.comparator,
-            targetValue: g.targetValue, status: g.status,
-            landing: plan.projections?.goalLanding?.trendBasedLandingEstimate ?? null,
+            targetValue: g.targetValue, status: goalTracking.status,
+            unavailableReason: goalTracking.reason,
+            currency: goalTracking.currency,
+            landing: goalTracking.landing?.trendBasedLandingEstimate ?? null,
           } : null,
         };
       }

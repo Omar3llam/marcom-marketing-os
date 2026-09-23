@@ -31,6 +31,15 @@ function allFigures(narrative) {
 }
 
 describe('narrativeEngine — the honesty invariant', () => {
+  it('does not turn an unavailable MER goal into a landing or status claim', () => {
+    const n = composeNarrative({ ...base, audience: NARRATIVE_AUDIENCE.STRATEGIST,
+      goals: [{ goalId: 'mer-goal', name: 'MER', status: 'INSUFFICIENT_EVIDENCE',
+        unavailableReason: 'BUSINESS_REVENUE_SOURCE_UNAVAILABLE', targetValue: 3,
+        unit: 'mer', landingEstimate: 4.2 }] });
+    const text = n.sections.flatMap((s) => s.claims.map((c) => c.text)).join(' ');
+    expect(text).toMatch(/cannot currently be measured from authoritative business-revenue data/i);
+    expect(text).not.toMatch(/landing estimate|on track|off track|at risk|4\.2/i);
+  });
   it('every figure in every section carries a non-empty evidenceRef (zero hallucination)', () => {
     const n = composeNarrative({ ...base, audience: NARRATIVE_AUDIENCE.STRATEGIST });
     const figs = allFigures(n);

@@ -362,4 +362,16 @@ describe('agenticPlanner — honesty + determinism', () => {
     const out = planAgenda({ ...base, planTracking: { goals: [{ goalId: 'g1', metric: 'roas', landing: { status: 'ON_TRACK' } }] }, blended: null, pacing: [] });
     expect(out.strategistBand).toEqual([]);
   });
+
+  it('keeps an unavailable MER goal distinct from progress or success', () => {
+    const out = planAgenda({ ...base, planTracking: { goals: [{
+      goalId: 'mer-goal', metric: 'mer', status: 'INSUFFICIENT_EVIDENCE',
+      unavailableReason: 'BUSINESS_REVENUE_SOURCE_UNAVAILABLE', landing: null,
+    }] }, blended: null, pacing: [] });
+    expect(out.strategistBand).toHaveLength(1);
+    expect(out.strategistBand[0]).toMatchObject({
+      title: 'Goal mer is insufficient evidence',
+      rationale: 'BUSINESS_REVENUE_SOURCE_UNAVAILABLE',
+    });
+  });
 });

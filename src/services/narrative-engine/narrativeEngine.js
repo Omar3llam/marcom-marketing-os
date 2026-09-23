@@ -161,7 +161,13 @@ function sectionGoal(goals) {
         figs.push(figure(g.targetValue, g.unit ?? '', g.goalId, { kind: EVIDENCE_KIND.GOAL }));
         tail = ` (target ${g.targetValue}${g.unit ? ` ${g.unit}` : ''})`;
       }
-      const status = (g.status ?? 'ON_TRACK').replace(/_/g, ' ').toLowerCase();
+      const status = (g.status ?? 'INSUFFICIENT_EVIDENCE').replace(/_/g, ' ').toLowerCase();
+      if (g.status === 'INSUFFICIENT_EVIDENCE' || !g.status) {
+        const unavailable = g.unavailableReason === 'BUSINESS_REVENUE_SOURCE_UNAVAILABLE'
+          ? 'cannot currently be measured from authoritative business-revenue data'
+          : 'has insufficient measurement evidence';
+        return claim(`North-star "${g.name}" ${unavailable}${tail}.`, figs, { tier: 'exec' });
+      }
       const landing = g.landingEstimate != null
         ? ` Trend-based landing estimate: ${g.landingEstimate}${g.unit ? ` ${g.unit}` : ''}.`
         : '';
