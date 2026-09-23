@@ -13,6 +13,7 @@
 // entity, else is DROPPED — we never fabricate an entity to hang revenue on.
 // ============================================================
 import { currencyWithProvenance } from '../../lib/currencyProvenance.js';
+import { exactRevenueWindow, REVENUE_WINDOW_STATUS, unknownRevenueWindow } from '../../lib/revenueMeasurementWindow.js';
 import { prisma } from '../../lib/prisma.js';
 import { upsertNonDailyMetricSnapshot } from './nonDailySnapshotWrite.js';
 import { logger } from '../../utils/logger.js';
@@ -113,6 +114,12 @@ export function resolveAttachment(descriptor, { campaignByKey, accountByChannel,
  * reads revenueMinor by source; those ratios are not its inputs.
  */
 export function toActualSnapshotRow(workspaceId, attachment, descriptor) {
+  // Shopify has no producer whose reporting period has been established yet.
+  // GA4 descriptors may assert a window only after the report request and its
+  // property time zone have been carried through normalization.
+  const window = descriptor.source === DATA_SOURCE.GA4 && descriptor.windowStatus === REVENUE_WINDOW_STATUS.EXACT
+    ? exactRevenueWindow(descriptor.windowStart, descriptor.windowEnd)
+    : unknownRevenueWindow();
   return {
     workspaceId,
     entityId: attachment.entityId,
@@ -120,17 +127,12 @@ export function toActualSnapshotRow(workspaceId, attachment, descriptor) {
     date: descriptor.date instanceof Date ? descriptor.date : new Date(descriptor.date),
     source: descriptor.source,
     granularity: 'DAILY',
-    // LEGACY_UNKNOWN, and not because this row is old — because an actual has no
-    // measurement period we can establish. A GA4 pull is bounded by the request
-    // range the connector chose, and that range is not carried on the descriptor
-    // and is not persisted anywhere. Claiming ROLLING_WINDOW would assert a
-    // period; claiming CUMULATIVE_30D would assert the canonical one. Both would
-    // be inventions, and this row is the numerator of a ROAS — the number
-    // metricWindow.sameWindow() exists to stop being divided by a mismatched
-    // denominator. Phase F is where an actual gains a real window.
-    measurementWindow: MEASUREMENT_WINDOW.LEGACY_UNKNOWN,
-    windowStart: null,
-    windowEnd: null,
+    // Reuse the existing operational declaration and nullable bounds. A sync
+    // date, or a Shopify tag without a producer, never supplies this evidence.
+    measurementWindow: window.windowStatus === REVENUE_WINDOW_STATUS.EXACT
+      ? MEASUREMENT_WINDOW.ROLLING_WINDOW : MEASUREMENT_WINDOW.LEGACY_UNKNOWN,
+    windowStart: window.windowStart,
+    windowEnd: window.windowEnd,
     spendMinor: 0,
     revenueMinor: round(descriptor.revenueMinor || 0),
     cpaMinor: null,
@@ -184,7 +186,19 @@ export async function landActuals(workspaceId, descriptors = []) {
     // mechanism preserves that: an absent key keeps its database default on
     // insert and is left untouched on update, exactly as Prisma skipped
     // `undefined` on both halves of `{ create: r, update: r }`.
-    await prisma.$transaction(rows.map((r) => upsertNonDailyMetricSnapshot(prisma, r)));
+    // measurementWindow is part of the non-DAILY identity. A restatement with
+    // the SAME sync date can gain or lose window proof, crossing that identity.
+    // Remove the superseded GA4 declaration atomically with the new observation
+    // so a later reader cannot choose a stale EXACT row on a timestamp tie.
+    const superseded = rows.filter((r) => r.source === DATA_SOURCE.GA4).map((r) => prisma.metricSnapshot.deleteMany({
+      where: {
+        workspaceId: r.workspaceId, entityId: r.entityId, entityLevel: r.entityLevel,
+        date: r.date, granularity: r.granularity, source: r.source,
+        measurementWindow: r.measurementWindow === MEASUREMENT_WINDOW.ROLLING_WINDOW
+          ? MEASUREMENT_WINDOW.LEGACY_UNKNOWN : MEASUREMENT_WINDOW.ROLLING_WINDOW,
+      },
+    }));
+    await prisma.$transaction([...superseded, ...rows.map((r) => upsertNonDailyMetricSnapshot(prisma, r))]);
   }
 
   logger.info({ workspaceId, snapshots: rows.length, attached: rows.length, dropped }, '[actualsSink] landed actuals');

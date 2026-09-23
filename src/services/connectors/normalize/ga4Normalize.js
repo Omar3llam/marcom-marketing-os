@@ -20,6 +20,7 @@
 // ============================================================
 import { currencyWithProvenance } from '../../../lib/currencyProvenance.js';
 import { toMinor } from '../../../lib/money.js';
+import { combineRevenueWindows, unknownRevenueWindow } from '../../../lib/revenueMeasurementWindow.js';
 import { num } from './fieldUtils.js';
 import { CHANNEL, DATA_SOURCE } from '../connectorTypes.js';
 
@@ -77,12 +78,17 @@ export function ga4Normalize({ currency, currencyProvenance, date, rows = [] }) 
         revenueMinor: 0,
         conversions: 0,
         date: d,
+        _windows: [],
         ...denomination,
       });
     }
     const agg = byKey.get(key);
     agg.revenueMinor += toMinor(num(r.revenue), currency);
     agg.conversions += num(r.conversions);
+    agg._windows.push(r.windowStatus ? r : unknownRevenueWindow());
   }
-  return [...byKey.values()];
+  return [...byKey.values()].map(({ _windows, ...descriptor }) => ({
+    ...descriptor,
+    ...combineRevenueWindows(_windows),
+  }));
 }

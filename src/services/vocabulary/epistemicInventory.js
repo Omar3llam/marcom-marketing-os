@@ -51,6 +51,7 @@ import { DAILY_KNOWLEDGE } from '../connectors/connectorConfig.js';
 import { EXECUTION_STATE_KNOWLEDGE } from '../execution/executionProjection.js';
 import { SPEND_PERIOD_KNOWLEDGE } from '../budget-period/spendPeriod.js';
 import { MONETARY_KNOWLEDGE } from '../../lib/operationalMonetary.js';
+import { REVENUE_WINDOW_KNOWLEDGE } from '../../lib/revenueMeasurementWindow.js';
 
 /**
  * The suffixes that define the ratchet's jurisdiction. A shape, not a guess.
@@ -92,6 +93,7 @@ export const JURISDICTION_SUFFIXES = Object.freeze(['_STATUS', '_STATE', '_REASO
  */
 export const DECLARED = Object.freeze([
   { at: 'src/lib/operationalMonetary.js', symbol: 'MONETARY_STATUS', declaration: MONETARY_KNOWLEDGE },
+  { at: 'src/lib/revenueMeasurementWindow.js', symbol: 'REVENUE_WINDOW_STATUS', declaration: REVENUE_WINDOW_KNOWLEDGE },
   { at: 'src/services/decision-memory/decisionHistory.js',            symbol: 'HISTORY_STATUS',      declaration: HISTORY_KNOWLEDGE },
   { at: 'src/services/pattern-engine/institutionalMemory.js',         symbol: 'MEMORY_STATUS',       declaration: MEMORY_KNOWLEDGE },
   { at: 'src/services/attribution-engine/attributionTypes.js',        symbol: 'ATTRIBUTION_STATUS',  declaration: ATTRIBUTION_KNOWLEDGE },

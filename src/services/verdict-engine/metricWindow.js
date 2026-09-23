@@ -59,7 +59,7 @@
 //   NOW: Phase F produces canonical Meta rows and Phase H has established what
 //   every revenue source can and cannot prove about itself. Meta's PLATFORM
 //   revenue is canonical; the ACTUAL revenue that overrides it (GA4 / MANUAL) is
-//   not, and cannot become so without configuration Lumi does not hold and a
+//   not, and cannot become so without attribution configuration Lumi does not hold and a
 //   product decision nobody has made. See ACTUAL_SOURCE_CONTRACT below — the
 //   remaining blocker is now stated per source, with the exact missing facts.
 //
@@ -264,9 +264,9 @@ export function sameWindow(a, b) {
 // Activating the resolver makes Meta spend a canonical 30-day measurement. The
 // revenue divided BY that spend often does not come from Meta at all:
 // effectiveByEntity overlays the latest GA4 / Shopify / MANUAL revenue onto the
-// platform row and re-derives ROAS. Those actual rows are LEGACY_UNKNOWN, and
-// not because they are old — because NOTHING IN THIS SYSTEM RECORDS WHAT PERIOD
-// AN ACTUAL MEASURES. Dividing one by the other is the cross-window ROAS
+// platform row and re-derives ROAS. New GA4 rows may now carry an exact period;
+// legacy GA4 and manual rows remain unknown, and GA4 attribution semantics still
+// prevent canonical use. Dividing incompatible periods is the cross-window ROAS
 // sameWindow() exists to forbid: a ratio whose numerator covers one period and
 // whose denominator covers another is not a measurement of anything.
 //
@@ -295,12 +295,11 @@ export const WINDOW_FACT = Object.freeze({
  *   axis here: the platform reports conversions already attributed under the ad
  *   account's own setting, inside the window it was asked for.
  *
- * GA4 — the request range is `presetToDateRange(datePreset)` (ga4Client.js), so
- *   the period is decided by WHICHEVER SYNC TRIGGER FIRED: 540 days for a manual
- *   sync, 90 for the cron, and an unrecognised preset silently defaults to 90.
- *   That range is passed to fetchRaw and then DROPPED — GA4Connector.normalize
- *   takes { currency, date, rows } and never receives it, so it is not persisted
- *   and cannot be recovered. Attribution is worse than unrecorded: the report is
+ * GA4 — new reports carry their requested range and the response property's
+ *   time zone through normalization, into exact UTC bounds on the snapshot.
+ *   Older rows are not reconstructed; responses missing that proof stay UNKNOWN.
+ *   The request still depends on the sync trigger's preset. Attribution remains
+ *   unrecorded: the report is
  *   built on sessionSource / sessionMedium / sessionCampaignName, which are
  *   resolved by the GA4 PROPERTY's own attribution model and lookback window —
  *   configuration that lives in Google's UI, is not read by this codebase, and
@@ -323,10 +322,10 @@ export const ACTUAL_SOURCE_WINDOW_FACTS = Object.freeze({
     canBeCanonical: true,
   }),
   GA4: Object.freeze({
-    measurementStart: WINDOW_FACT.UNKNOWN,
-    measurementEnd: WINDOW_FACT.UNKNOWN,
+    measurementStart: WINDOW_FACT.KNOWN, // new reports with valid response time zone only
+    measurementEnd: WINDOW_FACT.KNOWN,
     attributionLookback: WINDOW_FACT.UNKNOWN,
-    persisted: WINDOW_FACT.UNKNOWN,
+    persisted: WINDOW_FACT.KNOWN,
     canBeCanonical: false,
   }),
   MANUAL: Object.freeze({
@@ -348,7 +347,7 @@ export const ACTUAL_SOURCE_WINDOW_FACTS = Object.freeze({
 
 /**
  * THE GATE. False until every ACTUAL revenue source can state the period it
- * measured — which today means GA4's measurement window AND its attribution
+ * measured — which today still means GA4's attribution model and
  * lookback, and the revenue CSV's measurement period, are defined as product
  * semantics and persisted on the row.
  *
@@ -363,9 +362,8 @@ export const ACTUAL_SOURCE_WINDOW_CONTRACT_RESOLVED = false;
  * whose denominator is canonical spend?
  *
  * This is the single predicate the gate protects. It is deliberately stricter
- * than sameWindow(): an actual row has no window to compare, so there is nothing
- * for sameWindow to match on and a caller reaching for it would get `false` for
- * the right reason but by accident. This says WHY.
+ * than sameWindow(): even an actual row with proved bounds may lack the
+ * attribution contract required for canonical verdict ROAS. This says WHY.
  *
  * @returns {{ ok: boolean, reason: string|null }}
  */
@@ -440,23 +438,16 @@ export const ACTUAL_SOURCE_CONTRACT = Object.freeze({
 
   GA4: Object.freeze({
     verdict: SOURCE_CONTRACT.BLOCKED,
-    evidence: 'THREE independent failures, any one of which is disqualifying. '
-            + '(1) PERIOD: ga4Client.presetToDateRange maps the sync trigger\'s preset to a range '
-            + '(maximum→540d, last_90d→90, last_30d→30, last_7d→7, unrecognised→90 silently), so the period '
-            + 'is decided by which trigger fired; and GA4Connector.normalize({currency,date,rows}) never '
-            + 'receives that range, so it is not persisted and cannot be recovered. '
-            + '(2) ATTRIBUTION: buildRunReportBody requests sessionSource/sessionMedium/sessionCampaignName '
+    evidence: 'New GA4 observations preserve exact UTC bounds derived from the requested date range '
+            + 'and response metadata.timeZone; legacy and unproven reports remain unknown. Canonical '
+            + 'use remains blocked by ATTRIBUTION: buildRunReportBody requests sessionSource/sessionMedium/sessionCampaignName '
             + 'with purchaseRevenue/transactions and specifies NO attribution model and NO lookback — those '
             + 'are resolved by the GA4 PROPERTY\'s own settings, which live in Google\'s UI, are never read '
             + 'here, and can change without Lumi observing it. marcom_credentials persists platform, '
-            + 'account_id, tokens, scopes and health; no attribution configuration of any kind. '
-            + '(3) TIMEZONE: a date range only means something in a timezone, and GA4 returns the property\'s '
-            + 'in runReport\'s response metadata — which mapGa4Response discards, reading only body.rows.',
+            + 'account_id, tokens, scopes and health; no attribution configuration of any kind.',
     missing: Object.freeze([
-      'the requested measurement period, threaded through normalize and persisted on the row',
       'the property attribution model in force when the number was produced',
       'the acquisition/conversion lookback window in force when the number was produced',
-      'the property timezone the date range is expressed in',
       'a product decision that GA4-attributed revenue is comparable to Meta-attributed spend at all',
     ]),
     historicalRecoverable: false,

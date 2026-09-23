@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { metaNormalize } from './normalize/metaNormalize.js';
 import { googleNormalize, microsToMinor } from './normalize/googleNormalize.js';
 import { accountRollup } from './normalize/fieldUtils.js';
@@ -12,7 +12,7 @@ import { buildChannelInputs } from '../blended-truth/BlendedTruthService.js';
 import { reconcile } from '../blended-truth/blendedTruthEngine.js';
 import { ga4Normalize, channelFromSourceMedium } from './normalize/ga4Normalize.js';
 import { resolveAttachment, toActualSnapshotRow, assertActuals, buildCampaignIndex } from './actualsSink.js';
-import { buildRunReportBody, mapGa4Response, presetToDateRange } from './google/ga4Client.js';
+import { buildRunReportBody, fetchGa4Revenue, ga4ResponseWindow, mapGa4Response, presetToDateRange } from './google/ga4Client.js';
 
 const DATE = new Date('2026-06-01T00:00:00.000Z');
 
@@ -421,5 +421,60 @@ describe('ga4Client pure helpers — request/response shaping (no network)', () 
   it('mapGa4Response reads parallel dimension/metric arrays by position', () => {
     const mapped = mapGa4Response({ rows: [{ dimensionValues: [{ value: 'facebook' }, { value: 'cpc' }, { value: 'Eid Sale' }], metricValues: [{ value: '210.5' }, { value: '5' }] }] });
     expect(mapped).toEqual([{ source: 'facebook', medium: 'cpc', campaignName: 'Eid Sale', revenue: 210.5, conversions: 5 }]);
+  });
+
+  it('preserves the requested GA4 property-calendar period through normalization and the actual sink', () => {
+    const request = buildRunReportBody({ startDate: '2026-03-07', endDate: '2026-03-09' });
+    const response = {
+      metadata: { timeZone: 'America/New_York' },
+      rows: [{ dimensionValues: [{ value: 'facebook' }, { value: 'cpc' }, { value: 'Eid Sale' }],
+        metricValues: [{ value: '210.5' }, { value: '5' }] }],
+    };
+    const raw = mapGa4Response(response, request);
+    const [descriptor] = ga4Normalize({ currency: 'USD', date: DATE, rows: raw });
+    const row = toActualSnapshotRow('ws1', { entityId: 'campaign', entityLevel: 'CAMPAIGN' }, descriptor);
+    expect(row).toMatchObject({ revenueMinor: 21050, measurementWindow: 'ROLLING_WINDOW' });
+    expect(row.windowStart.toISOString()).toBe('2026-03-07T05:00:00.000Z');
+    expect(row.windowEnd.toISOString()).toBe('2026-03-10T03:59:59.999Z'); // DST transition
+    expect(row.date).toEqual(DATE); // sync timestamp remains separate
+  });
+
+  it('leaves GA4 unknown without property time zone or with an unproven range', () => {
+    const request = buildRunReportBody({ startDate: '2026-03-07', endDate: '2026-03-09' });
+    const response = { rows: [{ dimensionValues: [{ value: 'facebook' }, { value: 'cpc' }, { value: 'Eid Sale' }],
+      metricValues: [{ value: '1' }, { value: '1' }] }] };
+    expect(ga4ResponseWindow(request, response).windowStatus).toBe('UNKNOWN');
+    const [descriptor] = ga4Normalize({ currency: 'USD', date: DATE, rows: mapGa4Response(response, request) });
+    const row = toActualSnapshotRow('ws1', { entityId: 'campaign', entityLevel: 'CAMPAIGN' }, descriptor);
+    expect(row).toMatchObject({ measurementWindow: 'LEGACY_UNKNOWN', windowStart: null, windowEnd: null });
+  });
+
+  it('attaches the exact body sent by the live fetch to its returned revenue rows', async () => {
+    const oldId = process.env.GOOGLE_ADS_CLIENT_ID;
+    const oldSecret = process.env.GOOGLE_ADS_CLIENT_SECRET;
+    process.env.GOOGLE_ADS_CLIENT_ID = 'test-client';
+    process.env.GOOGLE_ADS_CLIENT_SECRET = 'test-secret';
+    const mockedFetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ metadata: { timeZone: 'UTC' }, rows: [{
+        dimensionValues: [{ value: 'facebook' }, { value: 'cpc' }, { value: 'Eid Sale' }],
+        metricValues: [{ value: '25' }, { value: '1' }],
+      }] }),
+    }));
+    vi.stubGlobal('fetch', mockedFetch);
+    try {
+      const rows = await fetchGa4Revenue({ propertyId: '123', accessToken: 'test-token' },
+        { startDate: '2026-08-01', endDate: '2026-08-31' });
+      const body = JSON.parse(mockedFetch.mock.calls[0][1].body);
+      expect(body.dateRanges).toEqual([{ startDate: '2026-08-01', endDate: '2026-08-31' }]);
+      expect(rows[0].windowStart.toISOString()).toBe('2026-08-01T00:00:00.000Z');
+      expect(rows[0].windowEnd.toISOString()).toBe('2026-08-31T23:59:59.999Z');
+    } finally {
+      vi.unstubAllGlobals();
+      if (oldId === undefined) delete process.env.GOOGLE_ADS_CLIENT_ID;
+      else process.env.GOOGLE_ADS_CLIENT_ID = oldId;
+      if (oldSecret === undefined) delete process.env.GOOGLE_ADS_CLIENT_SECRET;
+      else process.env.GOOGLE_ADS_CLIENT_SECRET = oldSecret;
+    }
   });
 });

@@ -11,6 +11,7 @@
 // and differ only by `source`.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
+import { combineRevenueWindows, revenueWindowOfSnapshot } from '../../lib/revenueMeasurementWindow.js';
 import { logger } from '../../utils/logger.js';
 import { reconcile } from './blendedTruthEngine.js';
 import { isStale } from '../connectors/connectorTypes.js';
@@ -108,26 +109,38 @@ export function buildChannelInputs(snapshots, labelsById = new Map()) {
         _spendEvidence: [],
         _platformEvidence: [],
         _actualEvidence: [],
+        _actualWindows: [],
+        _platformWindows: [],
       });
     }
     const row = byChannel.get(key);
     if (ACTUAL_SOURCES.includes(s.source)) {
       row.actualRevenueMinor = (row.actualRevenueMinor ?? 0) + (s.revenueMinor ?? 0);
       row._actualEvidence.push({ amountMinor: s.revenueMinor, currency: s.currency, currencyProvenance: s.currencyProvenance });
+      row._actualWindows.push(revenueWindowOfSnapshot(s));
     } else {
       row.platformRevenueMinor += s.revenueMinor ?? 0;
       row.spendMinor           += s.spendMinor ?? 0;
       row._platformEvidence.push({ amountMinor: s.revenueMinor, currency: s.currency, currencyProvenance: s.currencyProvenance });
+      row._platformWindows.push(revenueWindowOfSnapshot(s));
       row._spendEvidence.push({ amountMinor: s.spendMinor, currency: s.currency, currencyProvenance: s.currencyProvenance });
     }
   }
-  return [...byChannel.values()].map(({ _spendEvidence, _platformEvidence, _actualEvidence, ...row }) => {
+  return [...byChannel.values()].map(({ _spendEvidence, _platformEvidence, _actualEvidence, _actualWindows, _platformWindows, ...row }) => {
     const spend = authoritativeMoney(_spendEvidence);
     const platform = authoritativeMoney(_platformEvidence);
     const actual = authoritativeMoney(_actualEvidence);
     const blended = row.actualRevenueMinor != null ? actual : platform;
     const monetary = sameMonetaryUnit(spend, blended);
-    return { ...row, currency: monetary.currency, monetaryEvidence: { spend, platform, actual, blended }, monetaryStatus: monetary.monetaryStatus, monetaryReason: monetary.monetaryReason };
+    const actualRevenueWindow = combineRevenueWindows(_actualWindows);
+    const platformRevenueWindow = combineRevenueWindows(_platformWindows);
+    const blendedRevenueWindow = row.actualRevenueMinor != null ? actualRevenueWindow : platformRevenueWindow;
+    return {
+      ...row, currency: monetary.currency,
+      monetaryEvidence: { spend, platform, actual, blended },
+      monetaryStatus: monetary.monetaryStatus, monetaryReason: monetary.monetaryReason,
+      actualRevenueWindow, platformRevenueWindow, blendedRevenueWindow,
+    };
   });
 }
 
@@ -163,12 +176,12 @@ export async function getBlendedTruth(workspaceId, { lookbackDays = SYNC_RECENCY
     // the default. orderBy: null — this query never had one, and latestPerStream
     // is documented as order-independent precisely so no caller needs it.
     //
-    // Projection stays here, named by the consumer: buildChannelInputs reads
-    // exactly these six, and `date` is what lets it pick the newest row per
-    // stream instead of summing overlapping windows.
+    // Projection stays here, named by the consumer: `date` picks the newest row
+    // per stream, while the declared bounds travel with the revenue selected
+    // from that row. The Evidence seam still owns the population filter.
     selectOperationalSnapshots(workspaceId, {
       since,
-      select: { entityId: true, date: true, source: true, revenueMinor: true, spendMinor: true, currency: true, currencyProvenance: true },
+      select: { entityId: true, date: true, source: true, revenueMinor: true, spendMinor: true, currency: true, currencyProvenance: true, measurementWindow: true, windowStart: true, windowEnd: true },
       orderBy: null,
     }),
     // Snapshots are CAMPAIGN-grain: MetricSnapshot.entityId == Campaign.id (both are

@@ -137,7 +137,7 @@ describe('META', () => {
 // ── GA4 ─────────────────────────────────────────────────────────────────────
 
 describe('GA4', () => {
-  it('a row as GA4 actually writes it today → rejected', () => {
+  it('a legacy GA4 row without period evidence remains rejected', () => {
     const verdict = actualRevenueEligibleForCanonicalRoas(todaysActual('GA4'));
     expect(verdict.ok).toBe(false);
     expect(verdict.reason).toBe('SOURCE_NOT_CANONICAL');
@@ -180,11 +180,12 @@ describe('GA4', () => {
     expect(actualRevenueEligibleForCanonicalRoas(asserted).ok).toBe(false);
   });
 
-  it('names the missing facts, including the timezone the range is expressed in', () => {
+  it('retains the canonical attribution blockers after the new period is preserved', () => {
     const missing = ACTUAL_SOURCE_CONTRACT.GA4.missing.join(' ').toLowerCase();
     expect(missing).toContain('lookback');
-    expect(missing).toContain('timezone');
     expect(missing).toContain('attribution model');
+    expect(missing).not.toContain('timezone');
+    expect(ACTUAL_SOURCE_CONTRACT.GA4.evidence).toContain('metadata.timeZone');
   });
 });
 

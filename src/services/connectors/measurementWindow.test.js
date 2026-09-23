@@ -188,6 +188,15 @@ describe('sources with no measurable period say so explicitly', () => {
     expect(row.windowEnd).toBeNull();
   });
 
+  it('a Shopify descriptor cannot claim an exact period without a registered producer', () => {
+    const row = toActualSnapshotRow(WS, { entityId: 'e1', entityLevel: 'CAMPAIGN' }, {
+      source: DATA_SOURCE.SHOPIFY, date: new Date('2026-08-11'), revenueMinor: 5000,
+      currency: 'USD', windowStatus: 'EXACT',
+      windowStart: new Date('2026-08-01T00:00:00Z'), windowEnd: new Date('2026-08-10T23:59:59Z'),
+    });
+    expect(row).toMatchObject({ measurementWindow: MEASUREMENT_WINDOW.LEGACY_UNKNOWN, windowStart: null, windowEnd: null });
+  });
+
   // An actual is the NUMERATOR of a blended ROAS. Letting it claim a window it
   // never had is how a cross-window ROAS gets built (metricWindow.sameWindow).
   it('an actual never claims the canonical window', () => {
