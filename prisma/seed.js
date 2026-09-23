@@ -322,7 +322,11 @@ async function seedPhase3(ws) {
     const revenueMinor = toMinor(revenue, currency);
     const data = {
       workspaceId, entityId: accountId, entityLevel: 'ACCOUNT', date: DATE, source,
-      granularity: 'DAILY', spendMinor, revenueMinor,
+      granularity: 'DAILY',
+      // Demo figures have no documented reporting period. The seed's fixed
+      // observation date is not evidence of one, including for its GA4 actual.
+      measurementWindow: 'LEGACY_UNKNOWN', windowStart: null, windowEnd: null,
+      spendMinor, revenueMinor,
       cpaMinor: conversions > 0 ? Math.round(spendMinor / conversions) : null,
       impressions, clicks, conversions,
       ctr: impressions > 0 ? clicks / impressions : null,
