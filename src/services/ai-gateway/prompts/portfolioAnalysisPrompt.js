@@ -68,9 +68,9 @@ function campaignLine(c, i, currency) {
  * @returns {{ system: string, user: string }}
  */
 export function buildPortfolioAnalysisPrompt(stats = {}, campaigns = [], workspace = {}) {
-  const shown = campaigns.slice(0, CAMPAIGN_LIMIT);
+  const moneyComparable = stats.currencyStatus === 'HOMOGENEOUS_AUTHORITATIVE';
+  const shown = moneyComparable ? campaigns.slice(0, CAMPAIGN_LIMIT) : [];
   const counts = stats.verdictCounts ?? {};
-  const moneyComparable = stats.currencyStatus === 'HOMOGENEOUS_KNOWN';
 
   const system = [
     'You are a MENA performance marketing analyst writing a short portfolio note for a media buyer.',
@@ -107,7 +107,7 @@ export function buildPortfolioAnalysisPrompt(stats = {}, campaigns = [], workspa
     moneyComparable && stats.wastedPct != null ? `Wasted spend: ${num(stats.wastedPct, 1)}% of spend` : null,
     `Campaigns whose ROAS cannot be scored (no revenue measured): ${stats.needsRevenueCount ?? 0}`,
     '',
-    stats.currencyStatus === 'HOMOGENEOUS_KNOWN'
+    moneyComparable
       ? `CAMPAIGNS (top ${shown.length} by spend):`
       : `CAMPAIGN DETAIL: unavailable — currency population is ${stats.currencyStatus ?? 'UNKNOWN'}, so spend cannot be ranked.`,
     shown.map((c, i) => campaignLine(c, i, c.currency)).join('\n\n'),

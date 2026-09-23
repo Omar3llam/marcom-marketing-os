@@ -53,9 +53,11 @@ const NOW = new Date('2026-09-04T10:00:00.000Z');
 // and legacy cases are pinned in src/tests/spendWindowIntegrity.promotion.red.test.js.
 const mixPreview = (deltas = [200_000, -200_000]) => ({
   goal: { type: 'GROWTH_CEILING', value: null },
-  spendPeriod: { status: 'MEASURABLE', reason: null, period: { start: '2026-08-01', end: '2026-08-31' } },
+  spendPeriod: { status: 'MEASURABLE', reason: null, currency: 'USD', period: { start: '2026-08-01', end: '2026-08-31' } },
   totalBudgetMinor: 1_000_000,
   currency: 'USD',
+  monetaryStatus: 'MONETARY_VALID',
+  monetaryReason: null,
   allocations: deltas.map((d, i) => ({
     channelId: `ch-${i}`, channel: 'META', verdict: 'SCALE',
     currentSpendMinor: 500_000, recommendedSpendMinor: 500_000 + d, deltaMinor: d,

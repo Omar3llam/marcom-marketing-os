@@ -51,7 +51,7 @@ const SYNC_RECENCY_DAYS = TEMPORAL.entitySnapshotSyncRecencyDays;
 // operational aggregate into a canonical 30-day measurement; the canonical
 // population remains a separate selector over a separate window.
 export const METRIC_SELECT = {
-  entityId: true, date: true, source: true, spendMinor: true, roas: true, ctr: true, frequency: true, currency: true,
+  entityId: true, date: true, source: true, spendMinor: true, roas: true, ctr: true, frequency: true, currency: true, currencyProvenance: true,
   // What period this row's metrics actually cover, and its bounds when the
   // platform reported them. `measurementWindow` is NOT NULL on the model, so it
   // always states something (LEGACY_UNKNOWN for pre-Phase-C rows — itself an

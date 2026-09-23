@@ -65,6 +65,7 @@ export function snapshot({
   revenueMinor = 0,
   date = SYNCED_AT,
   currency = 'USD',
+  currencyProvenance = 'PLATFORM_REPORTED',
 } = {}) {
   return {
     entityId,
@@ -77,6 +78,7 @@ export function snapshot({
     spendMinor,
     revenueMinor,
     currency,
+    currencyProvenance,
   };
 }
 

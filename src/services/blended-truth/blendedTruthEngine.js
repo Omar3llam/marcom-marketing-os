@@ -25,6 +25,7 @@
 // Money stays in integer minor units throughout.
 // ============================================================
 import { logger } from '../../utils/logger.js';
+import { MONETARY_STATUS, MONETARY_REASON, monetaryUnavailable, sameMonetaryUnit } from '../../lib/operationalMonetary.js';
 
 export const COVERAGE   = Object.freeze({ RECONCILED: 'RECONCILED', UNVERIFIED: 'UNVERIFIED' });
 export const CONFIDENCE = Object.freeze({ HIGH: 'HIGH', LOW: 'LOW' });
@@ -44,6 +45,14 @@ function validate(channels) {
 
 function roas(revenueMinor, spendMinor) {
   return spendMinor > 0 ? revenueMinor / spendMinor : 0;
+}
+
+const valid = (state) => state?.monetaryStatus === MONETARY_STATUS.VALID;
+
+function aggregateUnit(channels, field, evidenceKey) {
+  const contributors = channels.filter((c) => c[field] > 0);
+  if (contributors.length === 0) return monetaryUnavailable(MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED);
+  return sameMonetaryUnit(...contributors.map((c) => c.monetaryEvidence?.[evidenceKey]));
 }
 
 /**
@@ -70,6 +79,12 @@ export function reconcile({ channels } = {}) {
     const hasActual = typeof c.actualRevenueMinor === 'number' && Number.isFinite(c.actualRevenueMinor);
     const platformRevenueMinor = c.platformRevenueMinor;
     const blendedRevenueMinor  = hasActual ? c.actualRevenueMinor : platformRevenueMinor;
+    const spendUnit = c.monetaryEvidence?.spend;
+    const platformUnit = c.monetaryEvidence?.platform;
+    const blendedUnit = c.monetaryEvidence?.blended;
+    const comparisonUnit = sameMonetaryUnit(platformUnit, blendedUnit);
+    const platformRatioUnit = sameMonetaryUnit(spendUnit, platformUnit);
+    const blendedRatioUnit = sameMonetaryUnit(spendUnit, blendedUnit);
 
     // gap = how much the platform OVER-reports vs the blended truth
     // (positive ⇒ platform inflated). For unverified channels gap is 0
@@ -81,26 +96,29 @@ export function reconcile({ channels } = {}) {
       channelId:           c.channelId,
       channel:             c.channel ?? null,   // platform enum — grouping/staleness/styling
       name:                c.name ?? null,      // display identity (campaign name); null → view falls back
-      currency:            c.currency ?? 'USD',
-      spendMinor:          c.spendMinor,
-      platformRevenueMinor,
-      actualRevenueMinor:  hasActual ? c.actualRevenueMinor : null,
-      blendedRevenueMinor,
-      gapMinor,
-      gapPct,
-      platformRoas:        roas(platformRevenueMinor, c.spendMinor),
-      blendedRoas:         roas(blendedRevenueMinor, c.spendMinor),
+      currency:            blendedRatioUnit.currency,
+      monetaryStatus:      blendedRatioUnit.monetaryStatus,
+      monetaryReason:      blendedRatioUnit.monetaryReason,
+      monetaryEvidence:    c.monetaryEvidence ?? null,
+      spendMinor:          valid(spendUnit) ? c.spendMinor : null,
+      platformRevenueMinor: valid(platformUnit) ? platformRevenueMinor : null,
+      actualRevenueMinor:  hasActual && valid(c.monetaryEvidence?.actual) ? c.actualRevenueMinor : null,
+      blendedRevenueMinor: valid(blendedUnit) ? blendedRevenueMinor : null,
+      gapMinor:            valid(comparisonUnit) ? gapMinor : null,
+      gapPct:              valid(comparisonUnit) ? gapPct : null,
+      platformRoas:        valid(platformRatioUnit) ? roas(platformRevenueMinor, c.spendMinor) : null,
+      blendedRoas:         valid(blendedRatioUnit) ? roas(blendedRevenueMinor, c.spendMinor) : null,
       coverage:            hasActual ? COVERAGE.RECONCILED : COVERAGE.UNVERIFIED,
       confidence:          hasActual ? CONFIDENCE.HIGH : CONFIDENCE.LOW,
     };
   });
 
-  const portfolio = rows.reduce(
+  const portfolio = channels.reduce(
     (acc, r) => {
       acc.spendMinor            += r.spendMinor;
       acc.platformRevenueMinor  += r.platformRevenueMinor;
-      acc.blendedRevenueMinor   += r.blendedRevenueMinor;
-      if (r.coverage === COVERAGE.RECONCILED) acc.reconciledCount += 1;
+      acc.blendedRevenueMinor   += r.actualRevenueMinor != null ? r.actualRevenueMinor : r.platformRevenueMinor;
+      if (r.actualRevenueMinor != null) acc.reconciledCount += 1;
       else acc.unverifiedCount += 1;
       return acc;
     },
@@ -110,6 +128,24 @@ export function reconcile({ channels } = {}) {
   portfolio.gapPct       = portfolio.platformRevenueMinor > 0 ? portfolio.gapMinor / portfolio.platformRevenueMinor : 0;
   portfolio.platformRoas = roas(portfolio.platformRevenueMinor, portfolio.spendMinor);
   portfolio.blendedRoas  = roas(portfolio.blendedRevenueMinor, portfolio.spendMinor);
+
+  const spendUnit = aggregateUnit(channels, 'spendMinor', 'spend');
+  const platformUnit = aggregateUnit(channels, 'platformRevenueMinor', 'platform');
+  const blendedContributors = channels.map((c) => ({ ...c, _blended: c.actualRevenueMinor != null ? c.actualRevenueMinor : c.platformRevenueMinor }));
+  const blendedUnit = aggregateUnit(blendedContributors, '_blended', 'blended');
+  const platformComparison = sameMonetaryUnit(spendUnit, platformUnit);
+  const blendedComparison = sameMonetaryUnit(spendUnit, blendedUnit);
+  const gapComparison = sameMonetaryUnit(platformUnit, blendedUnit);
+  portfolio.currency = blendedComparison.currency;
+  portfolio.monetaryStatus = blendedComparison.monetaryStatus;
+  portfolio.monetaryReason = blendedComparison.monetaryReason;
+  portfolio.monetaryEvidence = { spend: spendUnit, platform: platformUnit, blended: blendedUnit };
+  if (!valid(spendUnit)) portfolio.spendMinor = null;
+  if (!valid(platformUnit)) portfolio.platformRevenueMinor = null;
+  if (!valid(blendedUnit)) portfolio.blendedRevenueMinor = null;
+  if (!valid(gapComparison)) { portfolio.gapMinor = null; portfolio.gapPct = null; }
+  if (!valid(platformComparison)) portfolio.platformRoas = null;
+  if (!valid(blendedComparison)) portfolio.blendedRoas = null;
 
   logger.debug(
     { channels: rows.length, reconciled: portfolio.reconciledCount, unverified: portfolio.unverifiedCount, gapPct: portfolio.gapPct },

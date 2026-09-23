@@ -116,7 +116,7 @@ copilotRouter.post(
       // score, a "0 campaigns to act on" and a "0 scaling well" — three numbers
       // that describe the outage, not the account.
       const accountHealth = verdictsUnavailable ? null : computeAccountHealth(allCampaigns, verdictMap);
-      const currencyTruth = classifyCurrencyHomogeneity(allCampaigns);
+      const currencyTruth = classifyCurrencyHomogeneity(allCampaigns, { requireAuthoritative: true });
 
       // Account-level facts the campaign slice can't carry. `totalCampaigns` is
       // the UNFILTERED count so the model can answer "how many campaigns do I
@@ -125,6 +125,10 @@ copilotRouter.post(
         totalCampaigns: allCampaigns.length,
         currency: currencyTruth.currency,
         currencyStatus: currencyTruth.status,
+        monetaryStatus: currencyTruth.status === CURRENCY_HOMOGENEITY.HOMOGENEOUS_AUTHORITATIVE
+          ? 'MONETARY_VALID'
+          : currencyTruth.status === CURRENCY_HOMOGENEITY.MIXED
+            ? 'MONETARY_UNAVAILABLE_MIXED' : 'MONETARY_UNAVAILABLE_UNTRUSTED',
         health: accountHealth
           ? {
             score: accountHealth.score,
@@ -141,7 +145,7 @@ copilotRouter.post(
         totals: null, // reserved — blended CPA/ROAS/spend land here without an API change
       };
 
-      const campaignContext = currencyTruth.status === CURRENCY_HOMOGENEITY.HOMOGENEOUS_KNOWN
+      const campaignContext = currencyTruth.status === CURRENCY_HOMOGENEITY.HOMOGENEOUS_AUTHORITATIVE
         ? allCampaigns
           .filter((c) => (c.spendMinor ?? 0) > 0)
           .sort((a, b) => (b.spendMinor ?? 0) - (a.spendMinor ?? 0))
@@ -157,6 +161,7 @@ copilotRouter.post(
           frequency: c.frequency,
           spendMinor: c.spendMinor,
           currency: c.currency,
+          monetaryStatus: 'MONETARY_VALID',
           // Already on every connector row (entityGraphEngine.metricsOf) and
           // previously dropped right here — which is why no CPA question could
           // be answered: without conversions, CPA isn't even derivable.
@@ -180,7 +185,7 @@ copilotRouter.post(
         campaigns: campaignContext,
         // A stored briefing may predate this contract and may have been built
         // from a raw-spend ordering. Do not ground a mixed/unknown answer in it.
-        briefing: currencyTruth.status === CURRENCY_HOMOGENEITY.HOMOGENEOUS_KNOWN
+        briefing: currencyTruth.status === CURRENCY_HOMOGENEITY.HOMOGENEOUS_AUTHORITATIVE
           ? (latestRun?.aiInsight ?? null)
           : null,
         verdictsUnavailable,

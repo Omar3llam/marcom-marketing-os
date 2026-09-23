@@ -45,8 +45,8 @@ function campaignEvidence(campaigns = [], verdictMap = {}) {
  */
 export function enrichCampaigns(campaigns = [], verdictMap = {}) {
   const evidence = campaignEvidence(campaigns, verdictMap);
-  const currencyTruth = classifyCurrencyHomogeneity(evidence);
-  if (currencyTruth.status !== CURRENCY_HOMOGENEITY.HOMOGENEOUS_KNOWN) return [];
+  const currencyTruth = classifyCurrencyHomogeneity(evidence, { requireAuthoritative: true });
+  if (currencyTruth.status !== CURRENCY_HOMOGENEITY.HOMOGENEOUS_AUTHORITATIVE) return [];
   return evidence.sort((a, b) => (b.spendMinor ?? 0) - (a.spendMinor ?? 0));
 }
 
@@ -114,7 +114,7 @@ export async function runPortfolioAnalysis(workspaceId, { loopRunId = null, eval
     const verdictMap = Object.fromEntries((verdictResult?.verdicts ?? []).map((v) => [v.id, v]));
     const evidence = campaignEvidence(campaigns, verdictMap);
     const rankedCampaigns = enrichCampaigns(campaigns, verdictMap);
-    const currencyTruth = classifyCurrencyHomogeneity(evidence);
+    const currencyTruth = classifyCurrencyHomogeneity(evidence, { requireAuthoritative: true });
 
     // Honest empty state: a cold or zero-spend account gets no narration at all
     // (rather than a generic "everything looks fine" written about nothing).

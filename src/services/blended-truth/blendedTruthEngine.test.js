@@ -9,10 +9,16 @@ vi.mock('../../utils/logger.js', () => ({
 
 import { reconcile, COVERAGE, CONFIDENCE } from './blendedTruthEngine.js';
 
+const proven = (c) => {
+  const state = { monetaryStatus: 'MONETARY_VALID', monetaryReason: null, currency: c.currency ?? 'EGP' };
+  return { ...c, monetaryEvidence: { spend: state, platform: state, actual: state, blended: state } };
+};
+const reconcileProven = ({ channels }) => reconcile({ channels: channels.map(proven) });
+
 describe('blendedTruthEngine.reconcile', () => {
   it('uses the GA4/Shopify actual where present and surfaces the inflation gap', () => {
     // Meta claims 84,200 (EGP minor) but GA4 actual is 63,150 on 20,000 spend.
-    const { channels } = reconcile({
+    const { channels } = reconcileProven({
       channels: [
         { channelId: 'meta', platformRevenueMinor: 8420000, actualRevenueMinor: 6315000, spendMinor: 2000000, currency: 'EGP' },
       ],
@@ -30,7 +36,7 @@ describe('blendedTruthEngine.reconcile', () => {
   });
 
   it('falls back to the raw platform number but flags LOW / UNVERIFIED when no actual exists', () => {
-    const { channels } = reconcile({
+    const { channels } = reconcileProven({
       channels: [
         { channelId: 'tiktok', platformRevenueMinor: 5000000, actualRevenueMinor: null, spendMinor: 1000000 },
       ],
@@ -44,7 +50,7 @@ describe('blendedTruthEngine.reconcile', () => {
   });
 
   it('treats a missing actualRevenueMinor key the same as null (unverified)', () => {
-    const { channels } = reconcile({
+    const { channels } = reconcileProven({
       channels: [{ channelId: 'snap', platformRevenueMinor: 100, spendMinor: 50 }],
     });
     expect(channels[0].coverage).toBe(COVERAGE.UNVERIFIED);
@@ -52,7 +58,7 @@ describe('blendedTruthEngine.reconcile', () => {
   });
 
   it('rolls a mixed portfolio up: blended truth + per-coverage counts', () => {
-    const { portfolio } = reconcile({
+    const { portfolio } = reconcileProven({
       channels: [
         { channelId: 'meta',   platformRevenueMinor: 8420000, actualRevenueMinor: 6315000, spendMinor: 2000000 },
         { channelId: 'tiktok', platformRevenueMinor: 5000000, actualRevenueMinor: null,    spendMinor: 1000000 },
@@ -71,9 +77,9 @@ describe('blendedTruthEngine.reconcile', () => {
     const { channels } = reconcile({
       channels: [{ channelId: 'x', platformRevenueMinor: 0, actualRevenueMinor: 0, spendMinor: 0 }],
     });
-    expect(channels[0].platformRoas).toBe(0);
-    expect(channels[0].blendedRoas).toBe(0);
-    expect(channels[0].gapPct).toBe(0);
+    expect(channels[0].platformRoas).toBeNull();
+    expect(channels[0].blendedRoas).toBeNull();
+    expect(channels[0].gapPct).toBeNull();
   });
 
   it('throws on a non-finite platform revenue', () => {

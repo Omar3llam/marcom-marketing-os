@@ -167,7 +167,7 @@ const argsOf = () => prisma.metricSnapshot.findMany.mock.calls[0][0];
 beforeEach(() => {
   vi.clearAllMocks();
   prisma.workspace.findUnique.mockResolvedValue({ currency: 'USD' });
-  getBlendedTruth.mockResolvedValue({ channels: CHANNELS, portfolio: {} });
+  getBlendedTruth.mockResolvedValue({ channels: CHANNELS, portfolio: { monetaryEvidence: { spend: { monetaryStatus: 'MONETARY_VALID', monetaryReason: null, currency: 'USD' } } } });
   useTable();
 });
 
@@ -333,7 +333,7 @@ describe('R3.4 — EconomicsService on the Evidence seam', () => {
     });
 
     it('no channels means no read at all', async () => {
-      getBlendedTruth.mockResolvedValue({ channels: [], portfolio: {} });
+      getBlendedTruth.mockResolvedValue({ channels: [], portfolio: { monetaryEvidence: { spend: { monetaryStatus: 'MONETARY_VALID', monetaryReason: null, currency: 'USD' } } } });
       const cac = await getCurrentCac(WS);
       expect(cac.currentBlendedCacMinor).toBeNull();
       expect(prisma.metricSnapshot.findMany).not.toHaveBeenCalled();

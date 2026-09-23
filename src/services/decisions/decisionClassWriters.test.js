@@ -26,13 +26,15 @@ import { allocate, GOAL_TYPE } from '../allocation-engine/allocationEngine.js';
 // period was MEASURABLE. This fixture is a measured plan; the refusal side is
 // pinned in src/tests/spendWindowIntegrity.allocation.red.test.js.
 const plan = () => ({
-  spendPeriod: { status: 'MEASURABLE', reason: null, period: { start: '2026-08-01', end: '2026-08-31' } },
+  spendPeriod: { status: 'MEASURABLE', reason: null, currency: 'USD', period: { start: '2026-08-01', end: '2026-08-31' } },
+  monetaryStatus: 'MONETARY_VALID',
   ...allocate({
   totalBudgetMinor: 1_000_000,
+  totalBudgetCurrency: 'USD',
   goal: { type: GOAL_TYPE.GROWTH_CEILING },
   channels: [
-    { channelId: 'camp-a', blendedRoas: 3.2, currentSpendMinor: 400_000, verdict: 'SCALE' },
-    { channelId: 'camp-b', blendedRoas: 0.8, currentSpendMinor: 600_000, verdict: 'KILL' },
+    { channelId: 'camp-a', blendedRoas: 3.2, currentSpendMinor: 400_000, verdict: 'SCALE', currency: 'USD', monetaryStatus: 'MONETARY_VALID' },
+    { channelId: 'camp-b', blendedRoas: 0.8, currentSpendMinor: 600_000, verdict: 'KILL', currency: 'USD', monetaryStatus: 'MONETARY_VALID' },
   ],
   }),
 });

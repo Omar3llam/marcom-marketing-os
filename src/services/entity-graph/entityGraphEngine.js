@@ -117,6 +117,10 @@ export function effectiveByEntity(snapshots = [], { maxRevenueAgeMs = REVENUE_MA
     out.set(entityId, {
       ...base,
       _evidenceRows: blendedEvidence,
+      // Keep both monetary origins: the platform row supplies spend while the
+      // actual row supplies revenue. A code match alone proves neither origin.
+      _revenueCurrency: actual.currency ?? null,
+      _revenueCurrencyProvenance: actual.currencyProvenance ?? null,
       revenueMinor: actual.revenueMinor,
       roas: Number.isFinite(spendMinor) && spendMinor > 0 ? actual.revenueMinor / spendMinor : null,
       // The same actual may carry the conversion COUNT the platform pixel never
@@ -164,6 +168,9 @@ function evidenceRowsOf(snap) {
 // Metric fields lifted verbatim from a snapshot — null when the snapshot is
 // absent (distinct from a real 0), so the client shows "—" not "0".
 function metricsOf(snap) {
+  const revenueCurrency = snap?._revenueCurrency ?? snap?.currency ?? null;
+  const sameUnit = revenueCurrency === (snap?.currency ?? null);
+  const revenueProvenance = snap?._revenueCurrencyProvenance ?? snap?.currencyProvenance ?? null;
   return {
     // Provenance, not a metric: which row(s) the numbers below came from. Empty
     // when there is no snapshot at all — the same honest absence the nulls carry.
@@ -185,6 +192,8 @@ function metricsOf(snap) {
     actionMetrics: snap?.actionMetrics ?? null,
     dailyBudgetMinor: snap?.dailyBudgetMinor ?? null,
     currency:    snap?.currency ?? null,
+    currencyProvenance: sameUnit && revenueProvenance === 'PLATFORM_REPORTED'
+      ? snap?.currencyProvenance ?? null : 'LEGACY_UNKNOWN',
     lastDate:    snap?.date ?? null,
     // ── R13-C · what period these numbers describe ──────────────────────────
     // Every metric above is a measurement, and a measurement without a period

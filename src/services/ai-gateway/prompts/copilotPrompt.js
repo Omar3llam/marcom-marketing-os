@@ -70,7 +70,9 @@ function field(value, rendered) {
  * @returns {string} system prompt
  */
 export function buildCopilotSystemPrompt({ workspace = {}, portfolio = {}, campaigns = [], briefing = null, verdictsUnavailable = false } = {}) {
-  const establishedCurrency = portfolio.currency ?? null;
+  const moneyProven = portfolio.monetaryStatus === 'MONETARY_VALID'
+    && (campaigns ?? []).every((c) => c.monetaryStatus === 'MONETARY_VALID');
+  const establishedCurrency = moneyProven ? portfolio.currency ?? null : null;
   const currencyStatus = portfolio.currencyStatus ?? 'UNKNOWN';
   const shown = (campaigns ?? []).length;
   const total = portfolio.totalCampaigns ?? shown;
@@ -79,10 +81,10 @@ export function buildCopilotSystemPrompt({ workspace = {}, portfolio = {}, campa
   const healthBlock = health
     ? [
       'ACCOUNT HEALTH',
-      health.score != null
+      moneyProven && health.score != null
         ? `Score: ${health.score}/100 (${health.label})`
         : `Score: unavailable (${health.currencyUnavailable ?? currencyStatus})`,
-      `Wasted spend: ${field(health.wastedSpendMinor, money(health.wastedSpendMinor, establishedCurrency))}`,
+      `Wasted spend: ${moneyProven ? field(health.wastedSpendMinor, money(health.wastedSpendMinor, establishedCurrency)) : 'unavailable'}`,
       // Named by verdict so "critical" can never be misread as the CRITICAL
       // health label (a different axis entirely).
       health.criticalCampaigns != null ? `Campaigns to act on (KILL or REFRESH): ${health.criticalCampaigns}` : null,
@@ -110,7 +112,7 @@ export function buildCopilotSystemPrompt({ workspace = {}, portfolio = {}, campa
 
   const campaignHeader = total === 0
     ? 'CAMPAIGNS:\nNo campaigns synced yet.'
-    : currencyStatus !== 'HOMOGENEOUS_KNOWN'
+    : !moneyProven || currencyStatus !== 'HOMOGENEOUS_AUTHORITATIVE'
       ? `CAMPAIGN DETAILS: unavailable — currency population is ${currencyStatus}, so spend cannot be ranked.`
     : `CAMPAIGNS (showing top ${shown} of ${total} by spend)${
       total > shown ? `\n${total - shown} additional campaigns are not shown in this summary.` : ''

@@ -66,17 +66,17 @@ import { getConnectorVerdicts } from '../verdict-engine/index.js';
 // A conversion campaign that spent but measured no revenue → needs revenue.
 const conversionNoRevenue = {
   entityId: 'c1', name: 'Ramadan Cold', channel: 'META', objective: 'OUTCOME_SALES',
-  spendMinor: 1_416_000, revenueMinor: 0, impressions: 90_000, clicks: 900, ctr: 0.01, frequency: 4.2, currency: 'EGP',
+  spendMinor: 1_416_000, revenueMinor: 0, impressions: 90_000, clicks: 900, ctr: 0.01, frequency: 4.2, currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED',
 };
 // A genuine awareness campaign with no revenue → does NOT need revenue.
 const awareness = {
   entityId: 'c2', name: 'Brand Reach', channel: 'META', objective: 'OUTCOME_AWARENESS',
-  spendMinor: 500_000, revenueMinor: 0, impressions: 200_000, clicks: 1000, ctr: 0.005, frequency: 2.1, currency: 'EGP',
+  spendMinor: 500_000, revenueMinor: 0, impressions: 200_000, clicks: 1000, ctr: 0.005, frequency: 2.1, currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED',
 };
 // A measured conversion campaign → scoreable, no gap.
 const measured = {
   entityId: 'c3', name: 'PMax Warm', channel: 'GOOGLE', objective: 'OUTCOME_SALES',
-  spendMinor: 200_000, revenueMinor: 960_000, roas: 4.8, impressions: 40_000, clicks: 800, ctr: 0.02, frequency: 1.4, currency: 'EGP',
+  spendMinor: 200_000, revenueMinor: 960_000, roas: 4.8, impressions: 40_000, clicks: 800, ctr: 0.02, frequency: 1.4, currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED',
 };
 
 beforeEach(() => {

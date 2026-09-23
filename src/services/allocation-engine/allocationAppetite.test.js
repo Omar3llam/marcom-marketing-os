@@ -44,7 +44,7 @@ vi.mock('../../lib/prisma.js', () => ({ prisma: { decision: { findMany: (...a) =
 vi.mock('../budget-period/spendPeriod.js', async (importOriginal) => ({
   ...(await importOriginal()),
   readPeriodSpend: vi.fn(async (_workspaceId, { period } = {}) => ({
-    portfolio: { status: 'MEASURABLE', reason: null, period, window: period, daysCovered: 31, spendMinor: 1_000_000 },
+    portfolio: { status: 'MEASURABLE', reason: null, period, window: period, daysCovered: 31, spendMinor: 1_000_000, currency: 'USD', monetaryStatus: 'MONETARY_VALID' },
     byEntity: new Map([['camp-a', 500_000], ['camp-b', 500_000]]),
   })),
 }));
@@ -52,8 +52,8 @@ vi.mock('../blended-truth/BlendedTruthService.js', async (importOriginal) => ({
   ...(await importOriginal()),
   getBlendedTruth: vi.fn(async () => ({
     channels: [
-      { channelId: 'camp-a', channel: 'META',   blendedRoas: 3.0, spendMinor: 500_000, blendedRevenueMinor: 1_500_000, currency: 'USD' },
-      { channelId: 'camp-b', channel: 'GOOGLE', blendedRoas: 2.5, spendMinor: 500_000, blendedRevenueMinor: 1_250_000, currency: 'USD' },
+      { channelId: 'camp-a', channel: 'META',   blendedRoas: 3.0, spendMinor: 500_000, blendedRevenueMinor: 1_500_000, currency: 'USD', monetaryStatus: 'MONETARY_VALID' },
+      { channelId: 'camp-b', channel: 'GOOGLE', blendedRoas: 2.5, spendMinor: 500_000, blendedRevenueMinor: 1_250_000, currency: 'USD', monetaryStatus: 'MONETARY_VALID' },
     ],
   })),
 }));
@@ -100,7 +100,7 @@ beforeEach(() => {
 describe('T6 — a GUARDRAIL KILL cannot reach the appetite gate as a Signal KILL', () => {
   it('the appetite read declares the classes it accepts', () => {
     findMany.mockImplementation(databaseLike(ROWS));
-    return previewAllocation('ws1', { totalBudgetMinor: 1_000_000 }).then(() => {
+    return previewAllocation('ws1', { totalBudgetMinor: 1_000_000, totalBudgetCurrency: 'USD' }).then(() => {
       const { where } = findMany.mock.calls[0][0];
       // Not "there happens to be a filter" — the reader must NAME what it takes.
       expect(where.decisionClass).toEqual({ in: [DECISION_CLASS.SIGNAL] });
@@ -110,7 +110,7 @@ describe('T6 — a GUARDRAIL KILL cannot reach the appetite gate as a Signal KIL
   it('does not drain a channel whose only KILL is a policy breach', async () => {
     findMany.mockImplementation(databaseLike(ROWS));
 
-    const plan = await previewAllocation('ws1', { totalBudgetMinor: 1_000_000 });
+    const plan = await previewAllocation('ws1', { totalBudgetMinor: 1_000_000, totalBudgetCurrency: 'USD' });
     const a = allocationFor(plan, 'camp-a');
 
     // The connector's live judgement on camp-a is SCALE. The guardrail episode
@@ -123,7 +123,7 @@ describe('T6 — a GUARDRAIL KILL cannot reach the appetite gate as a Signal KIL
   it('never publishes a KILL rationale sourced from a breach episode', async () => {
     findMany.mockImplementation(databaseLike(ROWS));
 
-    const plan = await previewAllocation('ws1', { totalBudgetMinor: 1_000_000 });
+    const plan = await previewAllocation('ws1', { totalBudgetMinor: 1_000_000, totalBudgetCurrency: 'USD' });
 
     // The exact sentence the strategist reads, and the one C-18 now freezes into
     // the approved snapshot and promotes verbatim.

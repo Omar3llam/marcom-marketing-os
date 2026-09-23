@@ -36,6 +36,9 @@ import { prisma } from '../lib/prisma.js';
 vi.mock('../lib/prisma.js', () => ({
   prisma: { webhookEvent: { create: vi.fn() } },
 }));
+// This suite exercises the documented in-process fallback. Test verification
+// never connects to a shared Redis instance.
+vi.mock('../queues/connection.js', () => ({ bullConnection: null, REDIS_DISABLED: true }));
 
 vi.mock('../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },

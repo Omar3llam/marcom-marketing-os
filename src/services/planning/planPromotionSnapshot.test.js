@@ -34,6 +34,9 @@ const preview = () => ({
   goal: { type: 'GROWTH_CEILING', value: null },
   totalBudgetMinor: 1_000_000,
   currency: 'USD',
+  monetaryStatus: 'MONETARY_VALID',
+  monetaryReason: null,
+  spendPeriod: { status: 'MEASURABLE', currency: 'USD', spendMinor: 1_000_000 },
   basis: 'blended',
   allocations: [
     { channelId: 'ch-meta', channel: 'META', verdict: 'SCALE',

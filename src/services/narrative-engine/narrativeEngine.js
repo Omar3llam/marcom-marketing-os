@@ -48,12 +48,12 @@ function sectionDid(decisions) {
   const byVerdict = new Map();
   let savedMinor = 0;
   let savedRef = null;
-  let currency = 'USD';
+  let currency = null;
   for (const d of decisions) {
     byVerdict.set(d.verdict, (byVerdict.get(d.verdict) ?? 0) + 1);
     currency = d.currency ?? currency;
     // A negative spend delta = budget freed by the action.
-    if (typeof d.spendDeltaMinor === 'number' && d.spendDeltaMinor < 0 && d.outcomeId) {
+    if (d.monetaryStatus === 'MONETARY_VALID' && typeof d.spendDeltaMinor === 'number' && d.spendDeltaMinor < 0 && d.outcomeId) {
       savedMinor += -d.spendDeltaMinor;
       savedRef = d.outcomeId; // any concrete row anchors the aggregate
     }
@@ -61,10 +61,10 @@ function sectionDid(decisions) {
   const verbCounts = [...byVerdict.entries()]
     .map(([v, n]) => `${VERDICT_VERB[v] ?? v.toLowerCase()} ${n}`)
     .join(', ');
-  const summaryFigs = savedMinor > 0 && savedRef
+  const summaryFigs = savedMinor > 0 && savedRef && currency
     ? [figure(savedMinor, currency, savedRef, { kind: EVIDENCE_KIND.OUTCOME })]
     : [];
-  const savedText = savedMinor > 0 && savedRef ? `, freeing ${formatCurrency(savedMinor, currency)} of spend` : '';
+  const savedText = savedMinor > 0 && savedRef && currency ? `, freeing ${formatCurrency(savedMinor, currency)} of spend` : '';
   claims.push(claim(`We acted on ${decisions.length} ${decisions.length === 1 ? 'entity' : 'entities'} this period — ${verbCounts}${savedText}.`, summaryFigs, { tier: 'exec' }));
 
   // Per-entity detail (buyer/strategist only — dropped for leadership).
@@ -72,7 +72,7 @@ function sectionDid(decisions) {
     const label = d.entityLabel ?? d.entityId;
     const figs = [];
     let tail = '';
-    if (typeof d.spendDeltaMinor === 'number' && d.outcomeId) {
+    if (d.monetaryStatus === 'MONETARY_VALID' && typeof d.spendDeltaMinor === 'number' && d.outcomeId && d.currency) {
       figs.push(figure(d.spendDeltaMinor, d.currency ?? currency, d.outcomeId, { kind: EVIDENCE_KIND.OUTCOME }));
       tail = ` (${d.spendDeltaMinor < 0 ? '−' : '+'}${formatCurrency(Math.abs(d.spendDeltaMinor), d.currency ?? currency)} spend)`;
     }
@@ -85,13 +85,13 @@ function sectionDid(decisions) {
 function sectionAllocated(allocationDeltas) {
   if (allocationDeltas.length === 0) return null;
   const claims = allocationDeltas
-    .filter((a) => typeof a.deltaMinor === 'number' && a.deltaMinor !== 0 && a.planId)
+    .filter((a) => a.monetaryStatus === 'MONETARY_VALID' && typeof a.deltaMinor === 'number' && a.deltaMinor !== 0 && a.planId && a.currency)
     .map((a) => {
       const dir = a.deltaMinor > 0 ? 'into' : 'out of';
       const amt = Math.abs(a.deltaMinor);
       return claim(
-        `Moved ${formatCurrency(amt, a.currency ?? 'USD')} ${dir} ${a.channel ?? a.channelId}.`,
-        [figure(a.deltaMinor, a.currency ?? 'USD', a.planId, { kind: EVIDENCE_KIND.ALLOCATION })],
+        `Moved ${formatCurrency(amt, a.currency)} ${dir} ${a.channel ?? a.channelId}.`,
+        [figure(a.deltaMinor, a.currency, a.planId, { kind: EVIDENCE_KIND.ALLOCATION })],
         { tier: 'exec' },
       );
     });
@@ -101,7 +101,7 @@ function sectionAllocated(allocationDeltas) {
 
 /** "What it changed" — blended truth. Only states a delta when one is given. */
 function sectionChanged(blended) {
-  if (!blended || !blended.evidenceRef) return null;
+  if (!blended || !blended.evidenceRef || blended.monetaryStatus !== 'MONETARY_VALID') return null;
   const claims = [];
   if (typeof blended.deltaPct === 'number') {
     const better = blended.deltaPct >= 0;

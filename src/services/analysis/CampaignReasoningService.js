@@ -59,8 +59,8 @@ async function loadReasoningContext(workspaceId, evaluation) {
   const campaigns = ev.campaigns ?? [];
   const verdictMap = Object.fromEntries((verdictResult?.verdicts ?? []).map((v) => [v.id, v]));
   const health = computeAccountHealth(campaigns, verdictMap);
-  const currencyTruth = classifyCurrencyHomogeneity(campaigns);
-  const accountSpendMinor = currencyTruth.status === CURRENCY_HOMOGENEITY.HOMOGENEOUS_KNOWN
+  const currencyTruth = classifyCurrencyHomogeneity(campaigns, { requireAuthoritative: true });
+  const accountSpendMinor = currencyTruth.status === CURRENCY_HOMOGENEITY.HOMOGENEOUS_AUTHORITATIVE
     ? campaigns.reduce((s, c) => s + (c.spendMinor ?? 0), 0)
     : null;
 
@@ -85,7 +85,8 @@ async function loadReasoningContext(workspaceId, evaluation) {
  */
 export function buildReasoningInput({ campaign, verdictMap, health, accountSpendMinor, accountObjective, dialect } = {}) {
   const v = verdictMap?.[campaign.entityId] ?? null;
-  const impactScore = health?.campaigns.find((c) => c.entityId === campaign.entityId)?.impactScore ?? null;
+  const monetaryProven = campaign.currencyProvenance === 'PLATFORM_REPORTED' && accountSpendMinor != null;
+  const impactScore = monetaryProven ? health?.campaigns.find((c) => c.entityId === campaign.entityId)?.impactScore ?? null : null;
   const spendSharePct = accountSpendMinor > 0 && campaign.spendMinor != null
     ? (campaign.spendMinor / accountSpendMinor) * 100
     : null;
@@ -98,9 +99,9 @@ export function buildReasoningInput({ campaign, verdictMap, health, accountSpend
     impactScore,
     ctrPct:           campaign.ctr != null ? campaign.ctr * 100 : null, // fraction → percent
     frequency:        campaign.frequency ?? null,
-    roas:             campaign.roas ?? null,
-    spendSharePct,
-    rationale:        v?.rationale ?? null,
+    roas:             monetaryProven ? campaign.roas ?? null : null,
+    spendSharePct:    monetaryProven ? spendSharePct : null,
+    rationale:        monetaryProven ? v?.rationale ?? null : null,
     accountObjective: accountObjective ?? null,
     dialect:          dialect ?? null,
   };

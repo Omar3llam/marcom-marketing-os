@@ -26,6 +26,8 @@ import { scopeFor }            from '../decisions/decisionClassScope.js';
 import {
   readPeriodSpend, calendarMonthOf, PERIOD_COVERAGE, SPEND_PERIOD_STATUS, SPEND_PERIOD_REASON,
 } from '../budget-period/spendPeriod.js';
+import { MONETARY_STATUS, MONETARY_REASON, matchBudgetCurrency, sameMonetaryUnit } from '../../lib/operationalMonetary.js';
+import { isSupportedCurrency } from '../../lib/currencyDetector.js';
 
 const ALLOC_ROOT_PREFIX = 'allocation:';
 
@@ -47,6 +49,8 @@ const ALLOC_ROOT_PREFIX = 'allocation:';
  */
 export function planToDecisionRows(plan, { workspaceId, planId }) {
   if (!workspaceId) throw new Error('planToDecisionRows: workspaceId required');
+  if (plan?.monetaryStatus !== MONETARY_STATUS.VALID) return [];
+  if (!isSupportedCurrency(plan?.currency) || plan?.currency !== plan?.spendPeriod?.currency) return [];
   if (plan?.spendPeriod?.status !== SPEND_PERIOD_STATUS.MEASURABLE) return [];
   return (plan.allocations ?? [])
     .filter((a) => Number.isFinite(a.deltaMinor) && a.deltaMinor !== 0)
@@ -119,6 +123,8 @@ async function buildChannels(workspaceId) {
     currentRevenueMinor: c.blendedRevenueMinor,
     verdict:             verdictByEntity.get(c.channelId) ?? 'HOLD',
     currency:            c.currency,
+    monetaryStatus:      c.monetaryStatus,
+    monetaryReason:      c.monetaryReason,
   }));
 }
 
@@ -152,7 +158,7 @@ async function buildIncrementalChannels(workspaceId) {
  * @returns {Promise<object|null>} the plan, or null if no channels
  */
 export async function previewAllocation(workspaceId, {
-  totalBudgetMinor, goal, basis = 'blended', period = null, now = new Date(),
+  totalBudgetMinor, totalBudgetCurrency, goal, basis = 'blended', period = null, now = new Date(),
 } = {}) {
   if (!workspaceId) throw new Error('previewAllocation: workspaceId required');
   const channels = basis === 'incremental'
@@ -174,7 +180,12 @@ export async function previewAllocation(workspaceId, {
   const spend = await readPeriodSpend(workspaceId, {
     period: governed, coverage: PERIOD_COVERAGE.COMPLETE, now,
   });
+  const spendMoney = matchBudgetCurrency(spend.portfolio, totalBudgetCurrency);
+  const channelMoney = sameMonetaryUnit(...channels.map((c) => ({ monetaryStatus: c.monetaryStatus, monetaryReason: c.monetaryReason, currency: c.currency })));
+  const money = spendMoney.monetaryStatus !== MONETARY_STATUS.VALID
+    ? spendMoney : sameMonetaryUnit(spendMoney, channelMoney);
   const unmeasured = spend.portfolio.status !== SPEND_PERIOD_STATUS.MEASURABLE
+    || money.monetaryStatus !== MONETARY_STATUS.VALID
     || channels.some((c) => !spend.byEntity.has(c.channelId));
   if (unmeasured) {
     const spendPeriod = spend.portfolio.status === SPEND_PERIOD_STATUS.MEASURABLE
@@ -182,12 +193,12 @@ export async function previewAllocation(workspaceId, {
       // for the period — its current spend is unknown, not zero.
       ? { ...spend.portfolio, status: SPEND_PERIOD_STATUS.NOT_MEASURABLE, reason: SPEND_PERIOD_REASON.NO_SPEND_ROWS, daysCovered: null, spendMinor: null }
       : spend.portfolio;
-    return unmeasuredAllocation({ totalBudgetMinor, goal: resolvedGoal, channels, basis, spendPeriod });
+    return unmeasuredAllocation({ totalBudgetMinor, goal: resolvedGoal, channels, basis, spendPeriod, money });
   }
 
   const measured = channels.map((c) => ({ ...c, currentSpendMinor: spend.byEntity.get(c.channelId) }));
-  const plan = allocate({ totalBudgetMinor, goal: resolvedGoal, channels: measured });
-  return { ...plan, basis, spendPeriod: spend.portfolio };
+  const plan = allocate({ totalBudgetMinor, totalBudgetCurrency, goal: resolvedGoal, channels: measured });
+  return { ...plan, basis, spendPeriod: spend.portfolio, monetaryStatus: MONETARY_STATUS.VALID, monetaryReason: null };
 }
 
 /**
@@ -195,7 +206,7 @@ export async function previewAllocation(workspaceId, {
  * which already means "no connected channels". The budget is kept exactly as
  * entered, because refusing to size moves is not a reason to lose the budget.
  */
-function unmeasuredAllocation({ totalBudgetMinor, goal, channels, basis, spendPeriod }) {
+function unmeasuredAllocation({ totalBudgetMinor, goal, channels, basis, spendPeriod, money }) {
   if (!Number.isFinite(totalBudgetMinor) || totalBudgetMinor <= 0) {
     throw new Error('allocate: totalBudgetMinor must be a positive finite number');
   }
@@ -206,22 +217,24 @@ function unmeasuredAllocation({ totalBudgetMinor, goal, channels, basis, spendPe
   return {
     goal: { type: goal?.type ?? GOAL_TYPE.GROWTH_CEILING, value: goal?.value ?? null },
     totalBudgetMinor,
-    currency: channels.find((c) => c.currency)?.currency ?? 'USD',
+    currency: null,
+    monetaryStatus: money.monetaryStatus === MONETARY_STATUS.VALID ? MONETARY_STATUS.UNAVAILABLE_UNTRUSTED : money.monetaryStatus,
+    monetaryReason: money.monetaryStatus === MONETARY_STATUS.VALID ? spendPeriod.reason : money.monetaryReason,
     basis,
     spendPeriod,
     allocations: channels.map((c) => ({
       channelId: c.channelId,
       channel: c.channel ?? null,
       verdict: c.verdict ?? 'HOLD',
-      blendedRoas: c.blendedRoas,
+      blendedRoas: c.monetaryStatus === MONETARY_STATUS.VALID ? c.blendedRoas : null,
       currentSpendMinor: null,
       recommendedSpendMinor: null,
       deltaMinor: null,
-      rationale: `No move sized for ${c.channel ?? c.channelId}: its spend over ${start} – ${end} is not measured.`,
+      rationale: `No move sized for ${c.channel ?? c.channelId}: monetary eligibility over ${start} – ${end} is unavailable (${money.monetaryReason ?? spendPeriod.reason}).`,
     })),
     projected: { blendedRevenueMinor: null, projectedCpaMinor: null, merBefore: null, merAfter: null },
     reasoningTrail: [
-      `Budget recorded for ${start} – ${end}. No move is sized, because spend over that period is not measurable (${spendPeriod.reason}).`,
+      `Budget received for ${start} – ${end}. No move is sized because monetary eligibility is unavailable (${money.monetaryReason ?? spendPeriod.reason}).`,
     ],
   };
 }
@@ -246,6 +259,13 @@ function unmeasuredAllocation({ totalBudgetMinor, goal, channels, basis, spendPe
 export async function persistAllocation(db, workspaceId, plan) {
   if (!workspaceId) throw new Error('persistAllocation: workspaceId required');
   if (!plan) throw new Error('persistAllocation: plan required');
+  if (plan.monetaryStatus !== MONETARY_STATUS.VALID || !isSupportedCurrency(plan.currency)
+    || plan.spendPeriod?.status !== SPEND_PERIOD_STATUS.MEASURABLE
+    || plan.currency !== plan.spendPeriod?.currency) {
+    throw Object.assign(new Error('Allocation monetary eligibility is unavailable'), {
+      code: 'AllocationMonetaryUnavailable', reason: plan.monetaryReason ?? plan.spendPeriod?.reason ?? MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED,
+    });
+  }
 
   const created = await db.allocationPlan.create({
     data: {
@@ -273,12 +293,14 @@ export async function persistAllocation(db, workspaceId, plan) {
  * Commit — preview against current truth, then persist.
  * @returns {Promise<{ planId, decisionsCreated }>}
  */
-export async function commitAllocation(workspaceId, { totalBudgetMinor, goal, now = new Date() } = {}) {
+export async function commitAllocation(workspaceId, { totalBudgetMinor, totalBudgetCurrency, goal, now = new Date() } = {}) {
   if (!workspaceId) throw new Error('commitAllocation: workspaceId required');
-  const plan = await previewAllocation(workspaceId, { totalBudgetMinor, goal, now });
+  const plan = await previewAllocation(workspaceId, { totalBudgetMinor, totalBudgetCurrency, goal, now });
   if (!plan) throw new Error('commitAllocation: no channels to allocate');
 
-  const { allocationPlanId, decisionsCreated } = await persistAllocation(prisma, workspaceId, plan);
+  const { allocationPlanId, decisionsCreated } = await prisma.$transaction(
+    (tx) => persistAllocation(tx, workspaceId, plan),
+  );
 
   logger.info({ workspaceId, planId: allocationPlanId, decisionsCreated }, '[AllocationService] committed');
   return { planId: allocationPlanId, decisionsCreated, plan };

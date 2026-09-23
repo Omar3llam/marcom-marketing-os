@@ -20,6 +20,7 @@ import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
 import { resolveActorId }     from './actorId.js';
 import { PROMOTION_OUTCOME }  from '@marcom/runtime-contracts';
 import { PROMOTION_REFUSAL, PROMOTION_PREREQUISITE } from '../../services/planning/planPromotionSnapshot.js';
+import { isSupportedCurrency } from '../../lib/currencyDetector.js';
 
 // Typed service refusals → the status that describes them, mirroring
 // PROMOTION_STATUS in lumi/memory.js. Never a blanket 500: each of these is a
@@ -28,6 +29,7 @@ const PROMOTION_REFUSAL_STATUS = Object.freeze({
   [PROMOTION_REFUSAL.SNAPSHOT_INCOMPLETE]: 409,
   [PROMOTION_REFUSAL.NOTHING_TO_PROMOTE]:  409,
   [PROMOTION_REFUSAL.ACTOR_UNRESOLVED]:    409,
+  [PROMOTION_REFUSAL.MONETARY_UNAVAILABLE]: 409,
 });
 
 // Planning (PLAN surface) is STRATEGIST-only — not in a BUYER/CLIENT's visibleStates.
@@ -132,6 +134,9 @@ planningRouter.post('/goals', requireStrategist, async (req, res) => {
   if (!b.metric || !b.comparator || typeof b.targetValue !== 'number' || !b.periodStart || !b.periodEnd) {
     return res.status(400).json({ error: 'BadGoal', message: 'metric, comparator, targetValue, periodStart, periodEnd required.' });
   }
+  if (!isSupportedCurrency(b.currency)) {
+    return res.status(400).json({ error: 'BadGoal', message: 'An explicit supported currency is required.' });
+  }
   try {
     const goal = await prisma.northStarGoal.create({
       data: {
@@ -139,7 +144,7 @@ planningRouter.post('/goals', requireStrategist, async (req, res) => {
         name: b.name ?? `${b.metric} ${b.comparator} ${b.targetValue}`,
         metric: b.metric, comparator: b.comparator, targetValue: b.targetValue,
         spendCeilingMinor: typeof b.spendCeilingMinor === 'number' ? b.spendCeilingMinor : null,
-        currency: b.currency ?? 'USD',
+        currency: b.currency.trim().toUpperCase(),
         periodStart: new Date(b.periodStart), periodEnd: new Date(b.periodEnd),
         planId: b.planId ?? null,
       },
@@ -176,10 +181,13 @@ planningRouter.post('/plans', requireStrategist, async (req, res) => {
   try {
     const plan = await buildPlan(wsId, {
       name: b.name, periodStart: b.periodStart, periodEnd: b.periodEnd,
-      totalBudgetMinor: b.totalBudgetMinor, change: b.change, goal: b.goal,
+      totalBudgetMinor: b.totalBudgetMinor, totalBudgetCurrency: b.totalBudgetCurrency, change: b.change, goal: b.goal,
     });
     return res.status(201).json({ workspaceId: wsId, plan });
   } catch (err) {
+    if (err.code === 'PlanMonetaryUnavailable') {
+      return res.status(409).json({ error: err.code, monetaryStatus: err.monetaryStatus, reason: err.reason, message: err.message });
+    }
     const bad = /totalBudgetMinor|periodEnd|required/i.test(err.message);
     if (bad) return res.status(400).json({ error: 'BadPlan', message: err.message });
     logger.error({ err: err.message, wsId }, '[lumi/planning] plan build failed');
@@ -236,7 +244,7 @@ planningRouter.post('/plans/:id/promote', requireStrategist, async (req, res) =>
     if (err.code && PROMOTION_REFUSAL_STATUS[err.code]) {
       return res.status(PROMOTION_REFUSAL_STATUS[err.code]).json({
         error: err.code, message: err.message,
-        planId: req.params.id, prerequisite: PROMOTION_PREREQUISITE[err.code] ?? null,
+        planId: req.params.id, prerequisite: PROMOTION_PREREQUISITE[err.code] ?? null, reason: err.reason ?? null,
       });
     }
     logger.error({ err: err.message, wsId }, '[lumi/planning] promote failed');

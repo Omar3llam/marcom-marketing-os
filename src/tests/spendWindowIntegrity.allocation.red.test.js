@@ -38,6 +38,10 @@ vi.mock('../services/connectors/credentialStore.js', () => ({
 }));
 vi.mock('../lib/prisma.js', () => ({
   prisma: {
+    $transaction: vi.fn(async (callback) => callback({
+      allocationPlan: { create: vi.fn(async ({ data }) => { io.created.push(data); return { id: 'alloc-1', ...data }; }) },
+      decision: { createMany: vi.fn(async () => ({ count: 0 })) },
+    })),
     campaign: {
       findMany: vi.fn(async () => [
         { id: 'camp-a', name: 'A', channel: 'META' },
@@ -93,7 +97,7 @@ describe('a genuine measurement of the governed period still sizes real moves', 
   it('a genuine August measurement against an August plan sizes moves', async () => {
     // Channel B earns half of A's ROAS, so the budget genuinely moves toward A.
     io.rows = twin(WINDOWS.AUGUST, [3, 1.5]);
-    const plan = await previewAllocation('ws', { totalBudgetMinor: AUGUST_BUDGET, period: AUGUST_PERIOD, now: NOW });
+    const plan = await previewAllocation('ws', { totalBudgetMinor: AUGUST_BUDGET, totalBudgetCurrency: 'USD', period: AUGUST_PERIOD, now: NOW });
 
     expect(plan.spendPeriod?.status).toBe('MEASURABLE');
     expect(plan.spendPeriod?.window).toEqual({ start: '2026-08-01', end: '2026-08-31' });
@@ -105,7 +109,7 @@ describe('a genuine measurement of the governed period still sizes real moves', 
 
   it('identical channels spending exactly an August budget ask for no move — for the right reason', async () => {
     io.rows = twin(WINDOWS.AUGUST);
-    const plan = await previewAllocation('ws', { totalBudgetMinor: AUGUST_BUDGET, period: AUGUST_PERIOD, now: NOW });
+    const plan = await previewAllocation('ws', { totalBudgetMinor: AUGUST_BUDGET, totalBudgetCurrency: 'USD', period: AUGUST_PERIOD, now: NOW });
     expect(plan.spendPeriod?.status).toBe('MEASURABLE');
     expect(plan.allocations.map((x) => x.deltaMinor)).toEqual([0, 0]);
     expect(planToDecisionRows(plan, { workspaceId: 'ws', planId: 'p' })).toEqual([]);
@@ -121,7 +125,7 @@ describe('allocation never sizes a move from spend of a different period', () =>
     ['this month, only partly elapsed', WINDOWS.MONTH_TO_DATE],
   ])('%s against the monthly cap produces no numeric recommendation', async (_label, window) => {
     io.rows = twin(window);
-    const plan = await previewAllocation('ws', { totalBudgetMinor: SEPTEMBER_BUDGET, now: NOW });
+    const plan = await previewAllocation('ws', { totalBudgetMinor: SEPTEMBER_BUDGET, totalBudgetCurrency: 'USD', now: NOW });
 
     expect(plan, 'a refusal is still an answer — never null, which already means "no channels"').not.toBeNull();
     expect(plan.spendPeriod?.status).toBe('NOT_MEASURABLE');
@@ -132,14 +136,14 @@ describe('allocation never sizes a move from spend of a different period', () =>
 
   it('a COMPLETE month that is the wrong month is still the wrong period', async () => {
     io.rows = twin(WINDOWS.JULY);
-    const plan = await previewAllocation('ws', { totalBudgetMinor: AUGUST_BUDGET, period: AUGUST_PERIOD, now: NOW });
+    const plan = await previewAllocation('ws', { totalBudgetMinor: AUGUST_BUDGET, totalBudgetCurrency: 'USD', period: AUGUST_PERIOD, now: NOW });
     expect(plan.spendPeriod?.reason).toBe('WINDOW_MISMATCH');
     assertNoNumbers(plan);
   });
 
   it('an undeclared window is NOT_MEASURABLE, whatever the sync date', async () => {
     io.rows = ['camp-a', 'camp-b'].map((entityId) => snapshot({ entityId, window: null, spendMinor: 31_000 }));
-    const plan = await previewAllocation('ws', { totalBudgetMinor: AUGUST_BUDGET, period: AUGUST_PERIOD, now: NOW });
+    const plan = await previewAllocation('ws', { totalBudgetMinor: AUGUST_BUDGET, totalBudgetCurrency: 'USD', period: AUGUST_PERIOD, now: NOW });
     expect(plan.spendPeriod?.reason).toBe('WINDOW_UNKNOWN');
     assertNoNumbers(plan);
   });
@@ -153,7 +157,7 @@ describe('allocation never sizes a move from spend of a different period', () =>
       ...twin(WINDOWS.AUGUST),
       snapshot({ entityId: 'camp-c', source: 'GA4', measurementWindow: 'LEGACY_UNKNOWN', window: null, spendMinor: 0, revenueMinor: 40_000 }),
     ];
-    const plan = await previewAllocation('ws', { totalBudgetMinor: AUGUST_BUDGET, period: AUGUST_PERIOD, now: NOW });
+    const plan = await previewAllocation('ws', { totalBudgetMinor: AUGUST_BUDGET, totalBudgetCurrency: 'USD', period: AUGUST_PERIOD, now: NOW });
     expect(plan.allocations.map((a) => a.channelId)).toContain('camp-c');
     expect(plan.spendPeriod?.status).toBe('NOT_MEASURABLE');
     expect(plan.spendPeriod?.reason).toBe('NO_SPEND_ROWS');
@@ -165,7 +169,7 @@ describe('allocation never sizes a move from spend of a different period', () =>
       snapshot({ entityId: 'camp-a', window: WINDOWS.AUGUST, spendMinor: 31_000, revenueMinor: 62_000 }),
       snapshot({ entityId: 'camp-b', window: WINDOWS.LAST_90D, spendMinor: 90_000, revenueMinor: 180_000 }),
     ];
-    const plan = await previewAllocation('ws', { totalBudgetMinor: AUGUST_BUDGET, period: AUGUST_PERIOD, now: NOW });
+    const plan = await previewAllocation('ws', { totalBudgetMinor: AUGUST_BUDGET, totalBudgetCurrency: 'USD', period: AUGUST_PERIOD, now: NOW });
     expect(plan.spendPeriod?.reason).toBe('MIXED_WINDOWS');
     assertNoNumbers(plan);
   });
@@ -195,20 +199,19 @@ describe('only a measured move becomes a Decision', () => {
   });
 
   it('control — a measured, non-zero move still becomes a Decision', () => {
-    const plan = { spendPeriod: { status: 'MEASURABLE' }, allocations: [move(-60_000)] };
+    const plan = { monetaryStatus: 'MONETARY_VALID', currency: 'USD', spendPeriod: { status: 'MEASURABLE', currency: 'USD' }, allocations: [move(-60_000)] };
     expect(planToDecisionRows(plan, { workspaceId: 'ws', planId: 'p' })).toHaveLength(1);
   });
 });
 
 // ── 3. The budget survives ─────────────────────────────────────────────────
-describe('refusing to size moves does not take the budget away', () => {
-  it('committing a monthly cap over unmeasurable spend still records the budget, with no moves', async () => {
+describe('unavailable monetary allocation cannot be persisted', () => {
+  it('refuses an unmeasurable spend period before any AllocationPlan or Decision write', async () => {
     io.rows = twin(WINDOWS.LAST_90D);
-    const out = await commitAllocation('ws', { totalBudgetMinor: SEPTEMBER_BUDGET, now: NOW });
+    await expect(commitAllocation('ws', { totalBudgetMinor: SEPTEMBER_BUDGET, totalBudgetCurrency: 'USD', now: NOW }))
+      .rejects.toMatchObject({ code: 'AllocationMonetaryUnavailable', reason: 'WINDOW_MISMATCH' });
 
-    expect(io.created, 'the AllocationPlan row is the budget pacing reads').toHaveLength(1);
-    expect(io.created[0].totalBudgetMinor).toBe(SEPTEMBER_BUDGET);
-    expect(out.decisionsCreated).toBe(0);
+    expect(io.created).toEqual([]);
     expect(prisma.decision.createMany).not.toHaveBeenCalled();
   });
 });

@@ -36,10 +36,11 @@ describe('buildNarrativeInputs', () => {
     expect(out.decisions[0].entityLabel).toBe('Cold #1');
   });
 
-  it('derives allocation deltas only from ALLOCATION decisions citing a real plan', () => {
-    expect(out.allocationDeltas).toHaveLength(1);
-    expect(out.allocationDeltas[0].planId).toBe('11111111-1111-1111-1111-111111111111');
-    expect(out.allocationDeltas[0].deltaMinor).toBe(200_000);
+  it('withholds OutcomeSnapshot monetary deltas even when an allocation plan is linked', () => {
+    expect(out.allocationDeltas).toEqual([]);
+    expect(out.decisions[0].spendDeltaMinor).toBeNull();
+    expect(out.decisions[1].spendDeltaMinor).toBeNull();
+    expect(out.decisions[1].monetaryReason).toBe('OUTCOME_MONETARY_BASIS_UNPROVEN');
   });
 
   it('cites the top-spend channel real Account id for blended', () => {

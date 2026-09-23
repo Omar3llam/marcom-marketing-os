@@ -28,6 +28,7 @@ import { ENTITY_LEVEL } from '../connectors/connectorTypes.js';
 import { selectOperationalSnapshots } from '../evidence/index.js';
 import { PROMOTION_OUTCOME } from '@marcom/runtime-contracts';
 import { periodBetween } from '../budget-period/spendPeriod.js';
+import { MONETARY_STATUS, MONETARY_REASON } from '../../lib/operationalMonetary.js';
 import {
   captureMixSnapshot, planToAllocationCommit, hasBudgetMoves, budgetMovesAreMeasured,
   refusePromotion, PROMOTION_REFUSAL,
@@ -256,7 +257,7 @@ async function projectGoalLanding(workspaceId, goal, { now } = {}) {
  * Assemble + persist a forward-looking plan.
  * @returns {Promise<object>} the persisted plan, decorated with the assembled projections
  */
-export async function buildPlan(workspaceId, { name, periodStart, periodEnd, totalBudgetMinor, change, goal, now } = {}) {
+export async function buildPlan(workspaceId, { name, periodStart, periodEnd, totalBudgetMinor, totalBudgetCurrency, change, goal, now } = {}) {
   if (!workspaceId) throw new Error('buildPlan: workspaceId required');
   if (typeof totalBudgetMinor !== 'number' || totalBudgetMinor <= 0) {
     throw new Error('buildPlan: totalBudgetMinor must be a positive number');
@@ -267,27 +268,37 @@ export async function buildPlan(workspaceId, { name, periodStart, periodEnd, tot
     // The plan's OWN period is the one its budget governs — so it is the only
     // period its moves may be sized against (spendPeriod.js).
     previewAllocation(workspaceId, {
-      totalBudgetMinor, goal: { type: GOAL_TYPE.GROWTH_CEILING },
+      totalBudgetMinor, totalBudgetCurrency, goal: { type: GOAL_TYPE.GROWTH_CEILING },
       period: periodBetween(periodStart, periodEnd), now,
     }),
     getWeeklyAgenda(workspaceId).then((a) => a.slice(0, AGENDA_LIMIT)).catch(() => []),
     change ? runScenario(workspaceId, { change, now }) : Promise.resolve(null),
   ]);
 
+  // Plan and Goal currency columns are required. Refuse before either write if
+  // allocation cannot prove the budget's denomination; scenario cannot repair it.
+  if (mix?.monetaryStatus !== MONETARY_STATUS.VALID || !mix.currency) {
+    throw Object.assign(new Error('Plan monetary eligibility is unavailable'), {
+      code: 'PlanMonetaryUnavailable',
+      monetaryStatus: mix?.monetaryStatus ?? MONETARY_STATUS.UNAVAILABLE_UNTRUSTED,
+      reason: mix?.monetaryReason ?? MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED,
+    });
+  }
+
   // Sustainability of the projected CAC (scenario range if present, else the
   // allocation's projected CPA point).
   const cacMinor = scenario?.projections?.blendedCacMinor ?? mix?.projected?.projectedCpaMinor ?? null;
-  const econ = cacMinor != null ? await assessSustainability(workspaceId, { cacMinor }) : null;
+  const econ = cacMinor != null ? await assessSustainability(workspaceId, { cacMinor, currency: mix.currency }) : null;
 
   // Goal landing (best-effort) before persistence, so the plan stores an
   // initial read alongside its target.
   const landing = goal ? await projectGoalLanding(workspaceId, { ...goal, periodStart, periodEnd }, { now }) : null;
 
   const memoryBasis = scenario?.memoryBasis ?? [];
-  const currency = mix?.currency ?? scenario?.currency ?? 'USD';
+  const currency = mix.currency;
   const projections = {
     scenario: scenario ? { scenarioType: scenario.scenarioType, projections: scenario.projections, assumptions: scenario.assumptions, confidence: scenario.confidence, basis: scenario.basis } : null,
-    economics: econ ? { ltvToCac: econ.result.ltvToCac, sustainabilityBand: econ.result.sustainabilityBand, paybackOrders: econ.result.paybackOrders, ltvMinor: econ.result.ltvMinor, isDefault: econ.isDefault, assumptions: econ.result.assumptions } : null,
+    economics: econ?.result ? { ltvToCac: econ.result.ltvToCac, sustainabilityBand: econ.result.sustainabilityBand, paybackOrders: econ.result.paybackOrders, ltvMinor: econ.result.ltvMinor, isDefault: econ.isDefault, assumptions: econ.result.assumptions } : null,
     goalLanding: landing,
     // C-18 — the rest of the preview, so promotion can execute the mix that was
     // approved instead of recomputing one. `channelMix` keeps the allocations;
@@ -297,8 +308,8 @@ export async function buildPlan(workspaceId, { name, periodStart, periodEnd, tot
   };
 
   // ── Persist ONE Plan (+ ONE NorthStarGoal) in a single transaction ──
-  const writes = [
-    prisma.plan.create({
+  const plan = await prisma.$transaction(async (tx) => {
+    const saved = await tx.plan.create({
       data: {
         workspaceId, name: name ?? 'Untitled plan',
         periodStart: new Date(periodStart), periodEnd: new Date(periodEnd),
@@ -309,14 +320,10 @@ export async function buildPlan(workspaceId, { name, periodStart, periodEnd, tot
         projections,
         memoryBasis,
       },
-    }),
-  ];
-  const [plan] = await prisma.$transaction(writes);
-
-  if (goal) {
-    await prisma.northStarGoal.create({
+    });
+    if (goal) await tx.northStarGoal.create({
       data: {
-        workspaceId, planId: plan.id,
+        workspaceId, planId: saved.id,
         name: goal.name ?? `${goal.metric} ${goal.comparator} ${goal.targetValue}`,
         metric: goal.metric, comparator: goal.comparator, targetValue: goal.targetValue,
         spendCeilingMinor: goal.spendCeilingMinor ?? null,
@@ -325,7 +332,8 @@ export async function buildPlan(workspaceId, { name, periodStart, periodEnd, tot
         status: landing?.status ?? 'ON_TRACK',
       },
     });
-  }
+    return saved;
+  });
 
   logger.info({ workspaceId, planId: plan.id, hasScenario: !!scenario, hasGoal: !!goal, memoryBasis: memoryBasis.length }, '[PlanService] plan built');
   return getPlan(workspaceId, plan.id, { now });

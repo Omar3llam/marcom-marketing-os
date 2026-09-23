@@ -69,6 +69,7 @@ function measuredMtd(channels) {
     portfolio: {
       status: 'MEASURABLE', reason: null, period: { start: '2026-06-01', end: '2026-06-30' },
       window: { start: '2026-06-01', end: '2026-06-15' }, daysCovered: 15, spendMinor,
+      currency: 'USD', monetaryStatus: 'MONETARY_VALID', monetaryReason: null,
     },
     byEntity,
   };
@@ -135,7 +136,7 @@ describe('PortfolioService.getPortfolio — budget resolution', () => {
       { channelId: 'b', channel: 'GOOGLE', spendMinor: 400_000 },
     ]);
 
-    const view = await getPortfolio('ws1', { monthlyBudgetMinor: 1_000_000, now: NOW });
+    const view = await getPortfolio('ws1', { monthlyBudgetMinor: 1_000_000, monthlyBudgetCurrency: 'USD', now: NOW });
 
     expect(view.monthlyBudgetMinor).toBe(1_000_000);
     expect(prisma.allocationPlan.findFirst).not.toHaveBeenCalled(); // override short-circuits the lookup
@@ -150,7 +151,7 @@ describe('PortfolioService.getPortfolio — budget resolution', () => {
       { channelId: 'b', channel: 'GOOGLE', spendMinor: 400_000 },
     ]);
 
-    const view = await getPortfolio('ws1', { monthlyBudgetMinor: 1_000_000, now: NOW });
+    const view = await getPortfolio('ws1', { monthlyBudgetMinor: 1_000_000, monthlyBudgetCurrency: 'USD', now: NOW });
 
     const a = view.channels.find((c) => c.channelId === 'a');
     const b = view.channels.find((c) => c.channelId === 'b');
@@ -167,7 +168,7 @@ describe('PortfolioService.getPortfolio — budget resolution', () => {
     seat([
       { channelId: 'a', channel: 'META', spendMinor: 100_000 },
     ]);
-    prisma.allocationPlan.findFirst.mockResolvedValue({ totalBudgetMinor: 500_000 });
+    prisma.allocationPlan.findFirst.mockResolvedValue({ totalBudgetMinor: 500_000, currency: 'USD' });
 
     const view = await getPortfolio('ws1', { now: NOW });
 

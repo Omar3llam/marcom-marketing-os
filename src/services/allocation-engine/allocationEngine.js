@@ -20,6 +20,7 @@
 //   verdicts). Money stays in integer minor units.
 // ============================================================
 import { logger } from '../../utils/logger.js';
+import { isSupportedCurrency } from '../../lib/currencyDetector.js';
 
 export const GOAL_TYPE = Object.freeze({
   GROWTH_CEILING: 'GROWTH_CEILING',
@@ -142,14 +143,18 @@ function weightsToMinorBudget(weights, channelIds, totalBudgetMinor) {
  * @param {object} [args.constraints]
  * @returns {{ goal, totalBudgetMinor, currency, allocations, projected, reasoningTrail }}
  */
-export function allocate({ totalBudgetMinor, goal, channels, constraints } = {}) {
+export function allocate({ totalBudgetMinor, totalBudgetCurrency, goal, channels, constraints } = {}) {
   validate(totalBudgetMinor, channels ?? []);
   const goalType = goal?.type ?? GOAL_TYPE.GROWTH_CEILING;
   if (goalType !== GOAL_TYPE.GROWTH_CEILING) {
     throw new Error(`allocate: unsupported goal type "${goalType}" (only GROWTH_CEILING is implemented)`);
   }
   const cons = { ...DEFAULT_CONSTRAINTS, ...(constraints ?? {}) };
-  const currency = channels.find((c) => c.currency)?.currency ?? 'USD';
+  if (!isSupportedCurrency(totalBudgetCurrency)) throw new Error('allocate: totalBudgetCurrency must be an explicit supported currency');
+  const currency = totalBudgetCurrency.trim().toUpperCase();
+  if (channels.some((c) => c.currency !== currency || c.monetaryStatus !== 'MONETARY_VALID')) {
+    throw new Error('allocate: channels require proven monetary eligibility in the budget currency');
+  }
   const ids = channels.map((c) => c.channelId);
 
   // Current shares (reference frame for the move cap).

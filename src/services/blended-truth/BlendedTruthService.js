@@ -17,6 +17,7 @@ import { isStale } from '../connectors/connectorTypes.js';
 import { listConnections } from '../connectors/credentialStore.js';
 import { TEMPORAL } from '../../config/temporal.js';
 import { selectOperationalSnapshots } from '../evidence/index.js';
+import { authoritativeMoney, sameMonetaryUnit } from '../../lib/operationalMonetary.js';
 
 export const PLATFORM_SOURCES = Object.freeze(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
 // MANUAL = a manually-uploaded revenue actual (CSV). It reconciles as an ACTUAL
@@ -100,21 +101,34 @@ export function buildChannelInputs(snapshots, labelsById = new Map()) {
         channelId: key,
         channel:   meta.channel ?? null,
         name:      meta.name ?? null,
-        currency:  meta.currency ?? s.currency ?? 'USD',
+        currency:  null,
         spendMinor: 0,
         platformRevenueMinor: 0,
         actualRevenueMinor: null, // stays null unless an actual row is seen
+        _spendEvidence: [],
+        _platformEvidence: [],
+        _actualEvidence: [],
       });
     }
     const row = byChannel.get(key);
     if (ACTUAL_SOURCES.includes(s.source)) {
       row.actualRevenueMinor = (row.actualRevenueMinor ?? 0) + (s.revenueMinor ?? 0);
+      row._actualEvidence.push({ amountMinor: s.revenueMinor, currency: s.currency, currencyProvenance: s.currencyProvenance });
     } else {
       row.platformRevenueMinor += s.revenueMinor ?? 0;
       row.spendMinor           += s.spendMinor ?? 0;
+      row._platformEvidence.push({ amountMinor: s.revenueMinor, currency: s.currency, currencyProvenance: s.currencyProvenance });
+      row._spendEvidence.push({ amountMinor: s.spendMinor, currency: s.currency, currencyProvenance: s.currencyProvenance });
     }
   }
-  return [...byChannel.values()];
+  return [...byChannel.values()].map(({ _spendEvidence, _platformEvidence, _actualEvidence, ...row }) => {
+    const spend = authoritativeMoney(_spendEvidence);
+    const platform = authoritativeMoney(_platformEvidence);
+    const actual = authoritativeMoney(_actualEvidence);
+    const blended = row.actualRevenueMinor != null ? actual : platform;
+    const monetary = sameMonetaryUnit(spend, blended);
+    return { ...row, currency: monetary.currency, monetaryEvidence: { spend, platform, actual, blended }, monetaryStatus: monetary.monetaryStatus, monetaryReason: monetary.monetaryReason };
+  });
 }
 
 /**
@@ -154,7 +168,7 @@ export async function getBlendedTruth(workspaceId, { lookbackDays = SYNC_RECENCY
     // stream instead of summing overlapping windows.
     selectOperationalSnapshots(workspaceId, {
       since,
-      select: { entityId: true, date: true, source: true, revenueMinor: true, spendMinor: true, currency: true },
+      select: { entityId: true, date: true, source: true, revenueMinor: true, spendMinor: true, currency: true, currencyProvenance: true },
       orderBy: null,
     }),
     // Snapshots are CAMPAIGN-grain: MetricSnapshot.entityId == Campaign.id (both are
@@ -164,13 +178,11 @@ export async function getBlendedTruth(workspaceId, { lookbackDays = SYNC_RECENCY
     prisma.campaign.findMany({ where: { workspaceId }, select: { id: true, name: true, channel: true } }),
   ]);
 
-  const ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { currency: true } });
-  // currency still comes from the workspace (unchanged) — this fix touches labels only.
-  const labelsById = new Map(campaigns.map((c) => [c.id, { name: c.name, channel: c.channel, currency: ws?.currency }]));
+  const labelsById = new Map(campaigns.map((c) => [c.id, { name: c.name, channel: c.channel }]));
 
   const channels = buildChannelInputs(snapshots, labelsById);
   if (channels.length === 0) {
-    return { channels: [], portfolio: { spendMinor: 0, platformRevenueMinor: 0, blendedRevenueMinor: 0, gapMinor: 0, gapPct: 0, platformRoas: 0, blendedRoas: 0, reconciledCount: 0, unverifiedCount: 0 } };
+    return reconcile({ channels: [] });
   }
 
   const result = reconcile({ channels });

@@ -49,12 +49,15 @@
 // ============================================================
 
 import { SPEND_PERIOD_STATUS } from '../budget-period/spendPeriod.js';
+import { MONETARY_STATUS, MONETARY_REASON } from '../../lib/operationalMonetary.js';
+import { isSupportedCurrency } from '../../lib/currencyDetector.js';
 
 /** Typed refusals, so the route answers 409 rather than 500. */
 export const PROMOTION_REFUSAL = Object.freeze({
   SNAPSHOT_INCOMPLETE: 'PlanSnapshotIncomplete',
   NOTHING_TO_PROMOTE:  'NothingToPromote',
   ACTOR_UNRESOLVED:    'ActorUnresolved',
+  MONETARY_UNAVAILABLE: 'PlanMonetaryUnavailable',
 });
 
 /** The prerequisite that would end each refusal — C-07's law, one slice over. */
@@ -62,6 +65,7 @@ export const PROMOTION_PREREQUISITE = Object.freeze({
   [PROMOTION_REFUSAL.SNAPSHOT_INCOMPLETE]: 'REBUILD_PLAN',
   [PROMOTION_REFUSAL.NOTHING_TO_PROMOTE]:  'CONNECT_A_CHANNEL',
   [PROMOTION_REFUSAL.ACTOR_UNRESOLVED]:    'SIGN_IN_AGAIN',
+  [PROMOTION_REFUSAL.MONETARY_UNAVAILABLE]: 'REBUILD_PLAN',
 });
 
 export function refusePromotion(code, message) {
@@ -87,6 +91,8 @@ export function captureMixSnapshot(mix) {
     goal:             mix.goal ?? null,
     totalBudgetMinor: mix.totalBudgetMinor ?? null,
     currency:         mix.currency ?? null,
+    monetaryStatus:   mix.monetaryStatus ?? MONETARY_STATUS.UNAVAILABLE_UNTRUSTED,
+    monetaryReason:   mix.monetaryReason ?? null,
     projected:        mix.projected ?? null,
     reasoningTrail:   Array.isArray(mix.reasoningTrail) ? mix.reasoningTrail : null,
     // What the mix's moves were sized against — or why they were not. A mix
@@ -127,6 +133,14 @@ export function planToAllocationCommit(plan) {
   }
 
   const allocations = Array.isArray(plan.channelMix) ? plan.channelMix : [];
+  if (snap.monetaryStatus !== MONETARY_STATUS.VALID || !isSupportedCurrency(snap.currency)
+    || snap.currency !== plan.currency || snap.spendPeriod?.status !== SPEND_PERIOD_STATUS.MEASURABLE
+    || snap.spendPeriod?.currency !== snap.currency) {
+    const err = refusePromotion(PROMOTION_REFUSAL.MONETARY_UNAVAILABLE,
+      'This plan cannot prove the denomination of its approved allocation. Build a new plan with an explicit budget currency.');
+    err.reason = snap.monetaryReason ?? MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED;
+    throw err;
+  }
   if (allocations.length === 0) {
     // A complete snapshot that says "there were no channels to allocate". A
     // different fact from an incomplete one, and it gets its own name.
@@ -139,7 +153,9 @@ export function planToAllocationCommit(plan) {
   return {
     goal:             snap.goal,
     totalBudgetMinor: snap.totalBudgetMinor,
-    currency:         snap.currency ?? 'USD',
+    currency:         snap.currency,
+    monetaryStatus:   snap.monetaryStatus,
+    monetaryReason:   null,
     allocations,
     projected:        snap.projected,
     reasoningTrail:   snap.reasoningTrail,
@@ -168,5 +184,6 @@ export function hasBudgetMoves(commit) {
  * numbers computed from a window nobody checked, and C-18 promotes verbatim.
  */
 export function budgetMovesAreMeasured(commit) {
-  return commit?.spendPeriod?.status === SPEND_PERIOD_STATUS.MEASURABLE;
+  return commit?.monetaryStatus === MONETARY_STATUS.VALID
+    && commit?.spendPeriod?.status === SPEND_PERIOD_STATUS.MEASURABLE;
 }

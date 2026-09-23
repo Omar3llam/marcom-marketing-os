@@ -26,6 +26,7 @@ function channel(over = {}) {
     channelId: 'a', channel: 'META',
     platformRevenueMinor: 100_000, blendedRevenueMinor: 90_000,
     spendMinor: 50_000, blendedRoas: 1.8, currency: 'USD', coverage: 'RECONCILED',
+    gapMinor: 10_000, monetaryStatus: 'MONETARY_VALID', monetaryReason: null,
     ...over,
   };
 }
@@ -76,11 +77,11 @@ describe('ReconciliationService.getReconciliation', () => {
     const a = out.rows.find((r) => r.channelId === 'a');
     expect(a.platform.confidence).toBe('MEDIUM');
     expect(a.blended.confidence).toBe('HIGH');        // RECONCILED → HIGH
-    expect(a.incremental.value).toBe(60_000);
-    expect(a.incremental.source).toBe('INCREMENTALITY');
-    expect(a.incremental.band).toEqual([50_000, 70_000]);
+    expect(a.incremental.value).toBeNull();
+    expect(a.incremental.reason).toBe('INCREMENTAL_MONETARY_BASIS_UNPROVEN');
+    expect(a.holdout).toMatchObject({ ciLow: 50_000, ciHigh: 70_000, confidenceLabel: 'MEDIUM' });
     expect(a.gaps.platformVsBlendedMinor).toBe(10_000);   // 100k − 90k
-    expect(a.gaps.blendedVsIncrementalMinor).toBe(30_000); // 90k − 60k
+    expect(a.gaps.blendedVsIncrementalMinor).toBeNull();
 
     const b = out.rows.find((r) => r.channelId === 'b');
     expect(b.blended.confidence).toBe('LOW');         // UNVERIFIED → LOW
@@ -95,7 +96,7 @@ describe('ReconciliationService.getReconciliation', () => {
     ]);
 
     const out = await getReconciliation('ws1');
-    expect(out.rows[0].incremental.value).toBe(45_000);
+    expect(out.rows[0].incremental.reason).toBe('INCREMENTAL_MONETARY_BASIS_UNPROVEN');
   });
 });
 
@@ -200,36 +201,36 @@ describe('ReconciliationService.incrementalChannels — allocation feed', () => 
     expect(channels[0].basis).toBe('blended');
   });
 
-  it('discounts marginal efficiency by the measured incremental/claimed ratio (basis=incremental)', async () => {
-    // ratio = 60k / 100k = 0.6 → 2.0 * 0.6 = 1.2
+  it('refuses a historical holdout ratio without a valuation denomination', async () => {
     getBlendedTruth.mockResolvedValue(bt([channel({ blendedRoas: 2.0, blendedRevenueMinor: 100_000 })]));
     prisma.incrementalityTest.findMany.mockResolvedValue([
       { entityId: 'a', channel: 'META', status: 'CONCLUDED', incrementalRevenueMinor: 60_000 },
     ]);
     const { channels, anyIncremental } = await incrementalChannels('ws1');
-    expect(anyIncremental).toBe(true);
-    expect(channels[0].marginalEfficiency).toBeCloseTo(1.2);
-    expect(channels[0].basis).toBe('incremental');
+    expect(anyIncremental).toBe(false);
+    expect(channels[0].monetaryStatus).toBe('MONETARY_UNAVAILABLE_UNTRUSTED');
+    expect(channels[0].monetaryReason).toBe('INCREMENTAL_MONETARY_BASIS_UNPROVEN');
+    expect(channels[0].currency).toBeNull();
   });
 
-  it('clamps the ratio to [0, 1.5] — incremental cannot inflate efficiency unboundedly', async () => {
-    // ratio = 200k / 100k = 2.0 → clamped to 1.5 → 2.0 * 1.5 = 3.0
+  it('does not turn an oversized unproven holdout value into efficiency', async () => {
     getBlendedTruth.mockResolvedValue(bt([channel({ blendedRoas: 2.0, blendedRevenueMinor: 100_000 })]));
     prisma.incrementalityTest.findMany.mockResolvedValue([
       { entityId: 'a', channel: 'META', status: 'CONCLUDED', incrementalRevenueMinor: 200_000 },
     ]);
     const { channels } = await incrementalChannels('ws1');
-    expect(channels[0].marginalEfficiency).toBeCloseTo(3.0);
+    expect(channels[0].monetaryReason).toBe('INCREMENTAL_MONETARY_BASIS_UNPROVEN');
+    expect(channels[0].basis).toBe('blended');
   });
 
-  it('clamps a negative measured lift to 0 (basis=incremental, efficiency floored)', async () => {
+  it('does not treat negative unproven holdout money as a zero efficiency', async () => {
     getBlendedTruth.mockResolvedValue(bt([channel({ blendedRoas: 2.0, blendedRevenueMinor: 100_000 })]));
     prisma.incrementalityTest.findMany.mockResolvedValue([
       { entityId: 'a', channel: 'META', status: 'CONCLUDED', incrementalRevenueMinor: -10_000 },
     ]);
     const { channels, anyIncremental } = await incrementalChannels('ws1');
-    expect(anyIncremental).toBe(true);
-    expect(channels[0].marginalEfficiency).toBe(0);
-    expect(channels[0].basis).toBe('incremental');
+    expect(anyIncremental).toBe(false);
+    expect(channels[0].monetaryReason).toBe('INCREMENTAL_MONETARY_BASIS_UNPROVEN');
+    expect(channels[0].marginalEfficiency).toBeCloseTo(2.0);
   });
 });

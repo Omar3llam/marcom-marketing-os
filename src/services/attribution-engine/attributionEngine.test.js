@@ -6,8 +6,8 @@ const channels = [
   { channelId: 'meta',   channel: 'META',   conversions: 200, platformRevenueMinor: 1_000_000, blendedRevenueMinor: 820_000, spendMinor: 400_000, currency: 'USD' },
   { channelId: 'google', channel: 'GOOGLE', conversions: 120, platformRevenueMinor:   600_000, blendedRevenueMinor: 560_000, spendMinor: 250_000, currency: 'USD' },
   { channelId: 'tiktok', channel: 'TIKTOK', conversions:  40, platformRevenueMinor:   180_000, blendedRevenueMinor: 180_000, spendMinor: 100_000, currency: 'USD' },
-];
-const economics = { aovMinor: 5_000 };
+].map((c) => ({ ...c, monetaryStatus: 'MONETARY_VALID', platformMonetaryStatus: 'MONETARY_VALID' }));
+const economics = { aovMinor: 5_000, currency: 'USD' };
 
 // Every figure must be wrapped: { value, source, confidence, ... }.
 function isAttributed(a) {
@@ -63,6 +63,18 @@ describe('attributeCredit — the GUARD: no bare numbers, no invented journeys',
     expect(linear.channels.find((c) => c.channelId === 'meta').creditedConversions.value).toBeCloseTo(0.83, 2);
   });
 
+  it('withholds path-model money when AOV is a default despite matching currency codes', () => {
+    const paths = [{ conversionId: 'c1', channel: 'meta', touchPosition: 0 }];
+    const result = attributeCredit({
+      channels, model: ATTRIBUTION_MODEL.FIRST_TOUCH, paths,
+      economics: { ...economics, isDefault: true },
+    });
+    expect(result.channels[0].creditedConversions.value).toBe(1);
+    expect(result.channels[0].creditedRevenueMinor.value).toBeNull();
+    expect(result.totalRevenueMinor.value).toBeNull();
+    expect(result.monetaryStatus).toBe('MONETARY_UNAVAILABLE_UNTRUSTED');
+  });
+
   it('INCREMENTALITY_WEIGHTED uses measured lift, flags untested channels LOW, NOT Google DDA', () => {
     const incrementality = {
       meta: { incrementalConversions: 150, confidenceLabel: CONFIDENCE_LEVEL.HIGH, ciLow: 0.1, ciHigh: 0.25 },
@@ -74,7 +86,8 @@ describe('attributeCredit — the GUARD: no bare numbers, no invented journeys',
     expect(meta.creditedConversions.value).toBe(150); // incremental, not the 200 claimed
     expect(meta.creditedConversions.source).toBe(ATTRIBUTION_SOURCE.INCREMENTALITY);
     expect(meta.creditedConversions.confidence).toBe(CONFIDENCE_LEVEL.HIGH);
-    expect(meta.creditedRevenueMinor.value).toBe(150 * economics.aovMinor);
+    expect(meta.creditedRevenueMinor.value).toBeNull();
+    expect(meta.creditedRevenueMinor.reason).toBe('INCREMENTAL_MONETARY_BASIS_UNPROVEN');
     const google = r.channels.find((c) => c.channelId === 'google');
     expect(google.creditedConversions.confidence).toBe(CONFIDENCE_LEVEL.LOW);
     expect(google.creditedConversions.caveat).toMatch(/no holdout/i);
