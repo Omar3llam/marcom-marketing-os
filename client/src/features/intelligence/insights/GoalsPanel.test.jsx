@@ -51,6 +51,8 @@ describe('GoalsPanel — create (STRATEGIST gate)', () => {
   it('a strategist can create; submit fires onCreate with the backend payload shape', () => {
     const onCreate = vi.fn().mockResolvedValue({ id: 'g3' });
     render(<GoalsPanel goals={GOALS} canCreate onCreate={onCreate} currency="USD" />);
+    expect(screen.getByRole('combobox', { name: 'Currency' })).toHaveValue('');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Currency' }), { target: { value: 'EGP' } });
 
     fireEvent.change(screen.getByLabelText(/target value/i), { target: { value: '3' } });
     fireEvent.change(screen.getByLabelText(/period start/i), { target: { value: '2026-07-01' } });
@@ -63,8 +65,19 @@ describe('GoalsPanel — create (STRATEGIST gate)', () => {
       targetValue: 3,
       periodStart: '2026-07-01',
       periodEnd: '2026-09-30',
-      currency: 'USD',
+      currency: 'EGP',
     }));
+  });
+
+  it('cannot submit without choosing a currency, despite a legacy USD prop', () => {
+    const onCreate = vi.fn();
+    render(<GoalsPanel canCreate onCreate={onCreate} currency="USD" />);
+    fireEvent.change(screen.getByLabelText(/target value/i), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText(/period start/i), { target: { value: '2026-07-01' } });
+    fireEvent.change(screen.getByLabelText(/period end/i), { target: { value: '2026-09-30' } });
+    expect(screen.getByRole('combobox', { name: 'Currency' })).toHaveValue('');
+    expect(screen.getByRole('button', { name: /create goal/i })).toBeDisabled();
+    expect(onCreate).not.toHaveBeenCalled();
   });
 
   it('keeps Create disabled until the target + valid period are entered', () => {

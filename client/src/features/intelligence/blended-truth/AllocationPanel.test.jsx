@@ -11,7 +11,7 @@ import { AllocationPanel } from './AllocationPanel.jsx';
 
 const PLAN = {
   goal: { type: 'GROWTH_CEILING', value: null },
-  totalBudgetMinor: 5000000, currency: 'USD',
+  totalBudgetMinor: 5000000, currency: 'USD', monetaryStatus: 'MONETARY_VALID', monetaryReason: null,
   allocations: [
     { channelId: 'meta', channel: 'Meta', verdict: 'SCALE', currentSpendMinor: 3000000, recommendedSpendMinor: 3500000, deltaMinor: 500000, blendedRoas: 2.4, rationale: 'higher blended ROAS' },
     { channelId: 'google', channel: 'Google', verdict: 'TRIM', currentSpendMinor: 2000000, recommendedSpendMinor: 1500000, deltaMinor: -500000, blendedRoas: 1.1, rationale: 'lower blended ROAS' },
@@ -26,7 +26,7 @@ describe('AllocationPanel — preview', () => {
     render(<AllocationPanel currency="USD" onPreview={onPreview} />);
     fireEvent.change(screen.getByLabelText(/total budget/i), { target: { value: '50000' } });
     fireEvent.click(screen.getByRole('button', { name: /preview allocation/i }));
-    expect(onPreview).toHaveBeenCalledWith({ totalBudgetMinor: 5000000 }); // 50000 * 100
+    expect(onPreview).toHaveBeenCalledWith({ totalBudgetMinor: 5000000, totalBudgetCurrency: 'USD' }); // 50000 * 100
   });
 
   it('keeps Preview disabled until a positive budget is entered', () => {
@@ -38,7 +38,7 @@ describe('AllocationPanel — preview', () => {
     render(<AllocationPanel currency="USD" onPreview={vi.fn()} canAllocate={false} />);
     fireEvent.change(screen.getByLabelText(/total budget/i), { target: { value: '50000' } });
     expect(screen.getByRole('button', { name: /preview allocation/i })).toBeDisabled();
-    expect(screen.getByText(/Allocation needs blended revenue/i)).toBeInTheDocument();
+    expect(screen.getByText(/Allocation unavailable/i)).toBeInTheDocument();
   });
 
   it('shows the honest no-channels note (not a fabricated split)', () => {
@@ -49,6 +49,30 @@ describe('AllocationPanel — preview', () => {
   it('surfaces the real preview error', () => {
     render(<AllocationPanel currency="USD" previewError={new Error('Request failed')} />);
     expect(screen.getByText(/Request failed/i)).toBeInTheDocument();
+  });
+
+  it('does not display or submit a fallback denomination when portfolio money is unavailable', () => {
+    const onPreview = vi.fn();
+    render(<AllocationPanel currency={null} monetaryReason="SPEND_CURRENCY_MIXED" onPreview={onPreview} canAllocate={false} />);
+    fireEvent.change(screen.getByLabelText(/total budget/i), { target: { value: '50000' } });
+    expect(screen.getByText(/SPEND_CURRENCY_MIXED/)).toBeInTheDocument();
+    expect(screen.queryByText('USD')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /preview allocation/i })).toBeDisabled();
+    expect(onPreview).not.toHaveBeenCalled();
+  });
+
+  it('renders an unavailable preview without zero, USD, projections, or commit', () => {
+    const unavailable = {
+      ...PLAN, currency: null, monetaryStatus: 'MONETARY_UNAVAILABLE_MIXED', monetaryReason: 'SPEND_CURRENCY_MIXED',
+      allocations: [{ ...PLAN.allocations[0], currentSpendMinor: null, recommendedSpendMinor: null, deltaMinor: null, blendedRoas: null }],
+      projected: { blendedRevenueMinor: null, projectedCpaMinor: null, merBefore: null, merAfter: null },
+    };
+    render(<AllocationPanel currency="EGP" plan={unavailable} canCommit />);
+    expect(screen.getByText(/SPEND_CURRENCY_MIXED/)).toBeInTheDocument();
+    expect(screen.queryByText('USD')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Projected MER/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /commit allocation/i })).not.toBeInTheDocument();
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 });
 
@@ -68,7 +92,7 @@ describe('AllocationPanel — proposed plan + commit', () => {
     fireEvent.change(screen.getByLabelText(/total budget/i), { target: { value: '50000' } });
     const btn = screen.getByRole('button', { name: /commit allocation/i });
     fireEvent.click(btn);
-    expect(onCommit).toHaveBeenCalledWith({ totalBudgetMinor: 5000000 });
+    expect(onCommit).toHaveBeenCalledWith({ totalBudgetMinor: 5000000, totalBudgetCurrency: 'USD' });
   });
 
   it('hides Commit when the viewer cannot commit (non-strategist)', () => {

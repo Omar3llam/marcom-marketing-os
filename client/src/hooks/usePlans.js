@@ -35,6 +35,7 @@ export function usePlans() {
   const [planRows, setPlanRows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [createError, setCreateError] = useState(null);
   const [isCreating, setIsCreating] = useState(false);
   const [promotingId, setPromotingId] = useState(null);
   const [submittingId, setSubmittingId] = useState(null);
@@ -79,14 +80,14 @@ export function usePlans() {
       return null;
     }
     setIsCreating(true);
-    setError(null);
+    setCreateError(null);
     try {
       const res = await api.post('/api/lumi/plans', input);
       const created = res.data?.plan ?? null;
       await refetch();
       return created;
     } catch (err) {
-      setError(err);
+      setCreateError(err);
       return null;
     } finally {
       setIsCreating(false);
@@ -151,5 +152,5 @@ export function usePlans() {
     }
   }, [refetch]);
 
-  return { plans, planRows, isLoading, error, createPlan, isCreating, getPlan, promotePlan, promotingId, submitForApproval, submittingId };
+  return { plans, planRows, isLoading, error, createError, createPlan, isCreating, getPlan, promotePlan, promotingId, submitForApproval, submittingId };
 }

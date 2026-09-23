@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils.js';
 import { formatCurrency, toMinor } from '@/lib/money';
 import { ROW } from '@/lib/rowIntegrity.js';
 import { promotionCopyFor, isPromoted } from './promotionCopy.js';
+import { SUPPORTED_CURRENCY_CODES } from '@marcom/runtime-contracts';
 
 const METRIC_LABEL = { blendedRoas: 'Blended ROAS', blendedCac: 'Blended CAC', mer: 'MER' };
 const CMP_SYMBOL = { GT: '>', GTE: '≥', LT: '<', LTE: '≤' };
@@ -192,14 +193,16 @@ function PlanDetail({ plan, detail, loading, canManage, canSubmit, onSubmit, sub
 }
 
 // ── Create form (STRATEGIST only) ───────────────────────────────
-function PlanForm({ currency, onCreate, creating }) {
+function PlanForm({ onCreate, creating }) {
   const [name, setName] = useState('');
   const [budget, setBudget] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
+  const [currency, setCurrency] = useState('');
 
   const budgetMajor = Number(budget);
-  const valid = Number.isFinite(budgetMajor) && budgetMajor > 0 && !!start && !!end && new Date(end) > new Date(start);
+  const valid = Number.isFinite(budgetMajor) && budgetMajor > 0 && SUPPORTED_CURRENCY_CODES.includes(currency)
+    && !!start && !!end && new Date(end) > new Date(start);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -209,7 +212,7 @@ function PlanForm({ currency, onCreate, creating }) {
       totalBudgetMinor: toMinor(budgetMajor, currency),
       periodStart: start,
       periodEnd: end,
-      currency,
+      totalBudgetCurrency: currency,
     });
     if (created) { setName(''); setBudget(''); setStart(''); setEnd(''); }
   };
@@ -224,7 +227,10 @@ function PlanForm({ currency, onCreate, creating }) {
         <input className={field} inputMode="decimal" value={budget} onChange={(e) => setBudget(e.target.value)} placeholder="e.g. 50000" aria-label="Total budget" />
       </label>
       <label className="text-xs text-lumi-muted">Currency
-        <input className={cn(field, 'text-lumi-muted')} value={currency} readOnly aria-label="Currency" />
+        <select className={field} value={currency} onChange={(e) => setCurrency(e.target.value)} aria-label="Currency">
+          <option value="">Select currency</option>
+          {SUPPORTED_CURRENCY_CODES.map((code) => <option key={code} value={code}>{code}</option>)}
+        </select>
       </label>
       <label className="text-xs text-lumi-muted">Period start
         <input type="date" className={field} value={start} onChange={(e) => setStart(e.target.value)} aria-label="Period start" />
@@ -245,8 +251,8 @@ function PlanForm({ currency, onCreate, creating }) {
 
 // ── Pure-ish, prop-driven panel (own expand/detail state) ───────
 export function PlansPanel({
-  plans = [], planRows = null, loading = false, error = null,
-  onCreate, creating = false, canManage = false, currency = 'USD',
+  plans = [], planRows = null, loading = false, error = null, createError = null,
+  onCreate, creating = false, canManage = false,
   getPlanDetail, onPromote, promotingId = null,
   canSubmit = false, onSubmit, submittingId = null,
 }) {
@@ -333,7 +339,7 @@ export function PlansPanel({
                   {open ? <ChevronDown className="w-4 h-4 text-lumi-subtle flex-shrink-0" strokeWidth={1.5} /> : <ChevronRight className="w-4 h-4 text-lumi-subtle flex-shrink-0" strokeWidth={1.5} />}
                   <span className="flex-1 min-w-0 text-sm text-lumi-text truncate">{p.name}</span>
                   <span className="font-mono text-xs text-lumi-subtle hidden sm:inline">{fmtDate(p.periodStart)} – {fmtDate(p.periodEnd)}</span>
-                  <span className="font-mono text-xs text-lumi-text">{formatCurrency(p.totalBudgetMinor, p.currency || currency)}</span>
+                  <span className="font-mono text-xs text-lumi-text">{p.currency ? formatCurrency(p.totalBudgetMinor, p.currency) : '—'}</span>
                   <span className={cn('font-mono text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border', planTone[p.status] || planTone.DRAFT)}>
                     {p.status}
                   </span>
@@ -363,7 +369,12 @@ export function PlansPanel({
         </div>
       )}
 
-      {canManage && <PlanForm currency={currency} onCreate={onCreate} creating={creating} />}
+      {canManage && <PlanForm onCreate={onCreate} creating={creating} />}
+      {canManage && createError && (
+        <p className="mt-2 text-xs text-signal-kill" role="alert">
+          Plan unavailable: {createError.context?.reason ?? createError.response?.data?.reason ?? createError.message}
+        </p>
+      )}
     </Section>
   );
 }

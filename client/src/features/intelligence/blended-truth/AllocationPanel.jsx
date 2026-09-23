@@ -21,7 +21,7 @@ import { formatCurrency, toMinor } from '@/lib/money';
 const fx = (n) => (n == null || !Number.isFinite(Number(n))) ? '—' : `${Number(n).toFixed(1)}×`;
 
 export function AllocationPanel({
-  currency = 'USD',
+  currency = null, monetaryReason = null,
   onPreview, onCommit,
   plan = null, previewNote = null, previewing = false, previewError = null,
   committed = null, committing = false, commitError = null,
@@ -33,15 +33,18 @@ export function AllocationPanel({
 }) {
   const [budget, setBudget] = useState('');
   const budgetMajor = Number(budget);
-  const validBudget = Number.isFinite(budgetMajor) && budgetMajor > 0;
-  const totalBudgetMinor = validBudget ? toMinor(budgetMajor, currency) : 0;
+  const validBudget = Boolean(currency) && Number.isFinite(budgetMajor) && budgetMajor > 0;
+  const totalBudgetMinor = validBudget ? toMinor(budgetMajor, currency) : null;
 
   const allocations = plan?.allocations ?? [];
   const projected = plan?.projected ?? null;
   // The server sized no move: spend over the period this budget governs is not
   // measured. Every figure below would have been computed from that spend.
+  const monetaryValid = plan?.monetaryStatus === 'MONETARY_VALID' && plan.currency === currency;
+  const unavailable = plan && !monetaryValid;
   const unmeasured = plan?.spendPeriod?.status === 'NOT_MEASURABLE';
-  const money = (minor) => (minor == null ? '—' : formatCurrency(minor, currency));
+  const money = (minor) => (!monetaryValid || minor == null ? '—' : formatCurrency(minor, currency));
+  const refusal = (error) => error?.context?.reason ?? error?.response?.data?.reason ?? error?.message;
 
   return (
     <section className="mt-8">
@@ -55,7 +58,7 @@ export function AllocationPanel({
       {/* Budget input + preview */}
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs text-lumi-subtle">{currency}</span>
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono text-xs text-lumi-subtle">{currency ?? '—'}</span>
           <input
             type="number"
             min="0"
@@ -71,7 +74,7 @@ export function AllocationPanel({
           type="button"
           disabled={!validBudget || previewing || !canAllocate}
           title={!canAllocate ? 'Reconcile revenue across your channels to enable allocation' : undefined}
-          onClick={() => onPreview?.({ totalBudgetMinor })}
+          onClick={() => onPreview?.({ totalBudgetMinor, totalBudgetCurrency: currency })}
           className="rounded-lg border border-lumi-border bg-lumi-elevated px-3 py-2 text-xs font-semibold text-lumi-text transition-colors hover:bg-lumi-surface disabled:cursor-not-allowed disabled:opacity-40"
         >
           {previewing ? 'Previewing…' : 'Preview allocation'}
@@ -81,13 +84,13 @@ export function AllocationPanel({
       {/* Honest reason the control is inert — no blended revenue to allocate against. */}
       {!canAllocate && (
         <p className="text-xs text-lumi-subtle mb-2">
-          Allocation needs blended revenue across your channels. Connect a revenue source (and a second channel) to enable it.
+          Allocation unavailable{monetaryReason ? `: ${monetaryReason}` : ' until blended revenue and its currency are proven.'}
         </p>
       )}
 
       {previewError && (
         <p className="text-xs text-signal-kill">
-          {previewError.message || 'Couldn’t preview an allocation right now. Try again shortly.'}
+          {refusal(previewError) || 'Couldn’t preview an allocation right now. Try again shortly.'}
         </p>
       )}
       {!previewError && previewNote && (
@@ -97,13 +100,18 @@ export function AllocationPanel({
       {/* Proposed plan */}
       {plan && (
         <div className="mt-2 rounded-2xl border border-lumi-border bg-lumi-surface overflow-hidden">
+          {unavailable && (
+            <p className="px-4 py-3 border-b border-lumi-border text-xs text-lumi-subtle">
+              Monetary allocation unavailable{plan.monetaryReason ? `: ${plan.monetaryReason}` : '.'} No move is sized.
+            </p>
+          )}
           {unmeasured && (
             <p className="px-4 py-3 border-b border-lumi-border text-xs text-lumi-subtle">
               No move is sized. Lumi hasn’t measured spend over {plan.spendPeriod.period.start} – {plan.spendPeriod.period.end},
               the period this budget governs, so it won’t compare the two.
             </p>
           )}
-          {projected && !unmeasured && (
+          {projected && monetaryValid && !unmeasured && (
             <div className="px-4 py-3 border-b border-lumi-border font-mono text-xs text-lumi-subtle">
               Projected MER <span className="text-lumi-muted">{fx(projected.merBefore)}</span> →{' '}
               <span className="text-signal-scale">{fx(projected.merAfter)}</span>
@@ -138,19 +146,19 @@ export function AllocationPanel({
           </table>
 
           {/* Commit — STRATEGIST only. Persists the plan + PROPOSED moves. */}
-          {canCommit && (
+          {canCommit && monetaryValid && (
             <div className="px-4 py-3 border-t border-lumi-border">
               <button
                 type="button"
                 disabled={committing || !validBudget}
-                onClick={() => onCommit?.({ totalBudgetMinor })}
+                onClick={() => onCommit?.({ totalBudgetMinor, totalBudgetCurrency: currency })}
                 className="rounded-lg bg-lumi-accent px-3 py-1.5 text-xs font-semibold text-lumi-bg transition-colors hover:bg-lumi-gold disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {committing ? 'Committing…' : 'Commit allocation'}
               </button>
               {commitError && (
                 <p className="mt-1.5 text-xs text-signal-kill">
-                  {commitError.message || 'Couldn’t commit the allocation right now. Try again shortly.'}
+                  {refusal(commitError) || 'Couldn’t commit the allocation right now. Try again shortly.'}
                 </p>
               )}
               {committed && committed.decisionsCreated > 0 && (

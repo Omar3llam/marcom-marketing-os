@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { Target, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { ROW } from '@/lib/rowIntegrity.js';
+import { SUPPORTED_CURRENCY_CODES } from '@marcom/runtime-contracts';
 
 // blendedCac / blendedRoas / mer are the metrics the goal-tracker series
 // supports (see PlanService.buildActualsSeries) — not free text.
@@ -59,17 +60,19 @@ function Section({ children }) {
 }
 
 // ── Create form (STRATEGIST only) ───────────────────────────────
-function GoalForm({ currency, onCreate, creating }) {
+function GoalForm({ onCreate, creating }) {
   const [name, setName] = useState('');
   const [metric, setMetric] = useState('blendedRoas');
   const [comparator, setComparator] = useState('GTE');
   const [target, setTarget] = useState('');
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
+  const [currency, setCurrency] = useState('');
 
   const targetNum = parseFloat(target);
   const valid =
-    Number.isFinite(targetNum) && !!start && !!end && new Date(end) > new Date(start);
+    Number.isFinite(targetNum) && SUPPORTED_CURRENCY_CODES.includes(currency)
+    && !!start && !!end && new Date(end) > new Date(start);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -109,7 +112,10 @@ function GoalForm({ currency, onCreate, creating }) {
         <input className={field} inputMode="decimal" value={target} onChange={(e) => setTarget(e.target.value)} placeholder="e.g. 2.5" aria-label="Target value" />
       </label>
       <label className="text-xs text-lumi-muted">Currency
-        <input className={cn(field, 'bg-lumi-elevated text-lumi-muted')} value={currency} readOnly aria-label="Currency" />
+        <select className={field} value={currency} onChange={(e) => setCurrency(e.target.value)} aria-label="Currency">
+          <option value="">Select currency</option>
+          {SUPPORTED_CURRENCY_CODES.map((code) => <option key={code} value={code}>{code}</option>)}
+        </select>
       </label>
       <label className="text-xs text-lumi-muted">Period start
         <input type="date" className={field} value={start} onChange={(e) => setStart(e.target.value)} aria-label="Period start" />
@@ -131,7 +137,7 @@ function GoalForm({ currency, onCreate, creating }) {
 // ── Pure, prop-driven panel (unit-tested directly) ──────────────
 export function GoalsPanel({
   goals = [], goalRows = null,
-  loading = false, error = null, onCreate, creating = false, canCreate = false, currency = 'USD',
+  loading = false, error = null, onCreate, creating = false, canCreate = false,
 }) {
   // Tier 2b — render from the POSITIONAL rows when the hook supplies them, so a
   // row we could not read keeps its place instead of closing the gap. `goals`
@@ -204,7 +210,7 @@ export function GoalsPanel({
 
       {/* Create — STRATEGIST only. The server gate (requireStrategist) is the
           real arbiter; this just hides the affordance from a BUYER. */}
-      {canCreate && <GoalForm currency={currency} onCreate={onCreate} creating={creating} />}
+      {canCreate && <GoalForm onCreate={onCreate} creating={creating} />}
     </Section>
   );
 }

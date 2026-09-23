@@ -5,6 +5,7 @@
 // Supports: EGP, USD, SAR, AED, EUR, GBP, and other ISO 4217 codes.
 // ============================================================
 import { logger } from '../utils/logger.js';
+import { SUPPORTED_CURRENCY_CODES } from '@marcom/runtime-contracts';
 
 /**
  * Extract currency code from CSV headers.
@@ -84,12 +85,7 @@ export function detectCurrencyFromMetaAccount(accountData) {
 
 // The ISO-4217 codes we recognise. The single source of truth for both
 // validateCurrencyCode (USD-coercing) and isSupportedCurrency (boolean).
-export const SUPPORTED_CURRENCIES = new Set([
-  'USD', 'EUR', 'GBP', 'JPY', 'CNY', 'INR', 'CAD', 'AUD',
-  'EGP', 'SAR', 'AED', 'KWD', 'QAR', 'BHD', 'OMR', 'JOD', 'MAD',
-  'TRY', 'ZAR', 'BRL', 'MXN', 'RUB', 'CHF', 'SEK', 'NOK',
-  'DKK', 'PLN', 'THB', 'MYR', 'SGD', 'HKD', 'NZD', 'KRW',
-]);
+export const SUPPORTED_CURRENCIES = new Set(SUPPORTED_CURRENCY_CODES);
 
 // Onboarding market id → default display currency. Mirrors the MARKETS list in
 // client/src/pages/OnboardingPage/constants.js (the id is stored lowercase on

@@ -6,7 +6,7 @@
 // carries the right target for a STRATEGIST viewer.
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import BlendedTruth, { BlendedTruthView } from './BlendedTruthView.jsx';
 import { useBlendedTruth } from '@/hooks/useBlendedTruth.js';
@@ -18,7 +18,8 @@ vi.mock('@/hooks/useCollabRole.js', () => ({
   useCollabRole: () => ({ role: 'STRATEGIST' }),
   WORKSPACE_ROLE: { STRATEGIST: 'STRATEGIST', BUYER: 'BUYER', CLIENT: 'CLIENT' },
 }));
-vi.mock('@/hooks/useAllocation.js', () => ({ useAllocation: () => ({ preview: vi.fn(), commit: vi.fn(), plan: null }) }));
+const previewAllocation = vi.hoisted(() => vi.fn());
+vi.mock('@/hooks/useAllocation.js', () => ({ useAllocation: () => ({ preview: previewAllocation, commit: vi.fn(), plan: null }) }));
 vi.mock('@/hooks/useWorkspace.js', () => ({ useWorkspace: () => ({ workspace: { currency: 'USD' } }) }));
 vi.mock('../IntelligenceSubNav.jsx', () => ({ default: () => null }));
 
@@ -100,5 +101,26 @@ describe('BlendedTruth (wrapper) — tier gate', () => {
     renderWrapper();
     expect(screen.getByText(/couldn't load Blended Truth/i)).toBeInTheDocument();
     expect(screen.queryByText(/is a Growth feature/i)).not.toBeInTheDocument();
+  });
+
+  it('forwards only proven portfolio currency to allocation preview', () => {
+    useBlendedTruth.mockReturnValue({ data: {
+      ...data, channels: data.channels.map((channel) => ({ ...channel, currency: 'EGP' })),
+      portfolio: { ...data.portfolio, currency: 'EGP', monetaryStatus: 'MONETARY_VALID', monetaryReason: null },
+    }, loading: false, error: null, gated: false });
+    renderWrapper();
+    fireEvent.change(screen.getByLabelText(/total budget/i), { target: { value: '500' } });
+    fireEvent.click(screen.getByRole('button', { name: /preview allocation/i }));
+    expect(previewAllocation).toHaveBeenCalledWith({ totalBudgetMinor: 50000, totalBudgetCurrency: 'EGP' });
+  });
+
+  it('does not use workspace currency when portfolio money is unavailable', () => {
+    useBlendedTruth.mockReturnValue({ data: {
+      ...data, portfolio: { ...data.portfolio, currency: null, monetaryStatus: 'MONETARY_UNAVAILABLE_MIXED', monetaryReason: 'SPEND_CURRENCY_MIXED', blendedRoas: null, gapMinor: null, gapPct: null, platformRoas: null },
+    }, loading: false, error: null, gated: false });
+    renderWrapper();
+    expect(screen.getAllByText(/SPEND_CURRENCY_MIXED/).length).toBeGreaterThan(0);
+    expect(screen.queryByText('USD')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /preview allocation/i })).toBeDisabled();
   });
 });
