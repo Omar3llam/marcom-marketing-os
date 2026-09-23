@@ -208,7 +208,7 @@ export function projectScenario({ baseline, change, economics, memory = [], now,
   const bands = { ...RETENTION_BANDS, ...(config.retentionBands ?? {}) };
   const { accuracy, hasMemory } = memoryAccuracy(memory);
   const widen = Math.max(0, Math.min(1, (1 - accuracy) * MEMORY_WIDEN_MAX));
-  const currency = economics.currency ?? baseline.find((c) => c.currency)?.currency ?? 'USD';
+  const currency = config.monetaryCurrency ?? null;
 
   // Compute metrics at each retention band.
   const perBand = {};

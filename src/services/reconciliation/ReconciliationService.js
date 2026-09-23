@@ -19,6 +19,7 @@ import {
   attributed, unavailable, ATTRIBUTION_SOURCE, CONFIDENCE_LEVEL, ATTRIBUTION_STATUS,
   EVIDENCE_STATUS, EVIDENCE_REASON, MODEL_CAVEAT, AttributionEvidenceUnavailableError,
 } from '../attribution-engine/attributionTypes.js';
+import { MONETARY_STATUS, MONETARY_REASON } from '../../lib/operationalMonetary.js';
 
 /**
  * Concluded holdouts keyed by the channel they measured, WITH the read's health.
@@ -59,8 +60,12 @@ export async function getReconciliation(workspaceId) {
   const holdoutDown = holdoutEvidence === EVIDENCE_STATUS.UNAVAILABLE;
 
   const rows = channels.map((c) => {
-    const platform = attributed(c.platformRevenueMinor, ATTRIBUTION_SOURCE.PLATFORM, CONFIDENCE_LEVEL.MEDIUM, { caveat: 'last-click, as reported' });
-    const blended  = attributed(c.blendedRevenueMinor, ATTRIBUTION_SOURCE.BLENDED,
+    const platform = c.platformRevenueMinor == null
+      ? unavailable(c.monetaryEvidence?.platform?.monetaryReason ?? MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED)
+      : attributed(c.platformRevenueMinor, ATTRIBUTION_SOURCE.PLATFORM, CONFIDENCE_LEVEL.MEDIUM, { caveat: 'last-click, as reported' });
+    const blended  = c.blendedRevenueMinor == null
+      ? unavailable(c.monetaryEvidence?.blended?.monetaryReason ?? MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED)
+      : attributed(c.blendedRevenueMinor, ATTRIBUTION_SOURCE.BLENDED,
       c.coverage === 'RECONCILED' ? CONFIDENCE_LEVEL.HIGH : CONFIDENCE_LEVEL.LOW,
       { caveat: c.coverage === 'RECONCILED' ? 'GA4/Shopify reconciled' : 'unverified — no actuals source' });
 
@@ -71,9 +76,9 @@ export async function getReconciliation(workspaceId) {
     let incremental;
     if (holdoutDown) {
       incremental = unavailable(EVIDENCE_REASON.INCREMENTALITY, { caveat: MODEL_CAVEAT.HOLDOUT_UNAVAILABLE });
-    } else if (t && t.incrementalRevenueMinor != null) {
-      incremental = attributed(t.incrementalRevenueMinor, ATTRIBUTION_SOURCE.INCREMENTALITY, t.confidenceLabel ?? CONFIDENCE_LEVEL.MEDIUM,
-        { band: (t.ciLow != null && t.ciHigh != null) ? [t.ciLow, t.ciHigh] : null, caveat: 'measured holdout lift' });
+    } else if (t) {
+      incremental = unavailable(MONETARY_REASON.INCREMENTAL_MONETARY_BASIS_UNPROVEN,
+        { band: (t.ciLow != null && t.ciHigh != null) ? [t.ciLow, t.ciHigh] : null, caveat: 'holdout monetary valuation basis unproven' });
     } else {
       // Copy preserved verbatim — this slice changes the FAILURE state, not the
       // wording of the finding beside it.
@@ -84,9 +89,12 @@ export async function getReconciliation(workspaceId) {
       channelId: c.channelId,
       channel:   c.channel,
       platform, blended, incremental,
+      monetaryStatus: c.monetaryStatus,
+      monetaryReason: c.monetaryReason,
+      holdout: t ? { liftPct: t.liftPct, ciLow: t.ciLow, ciHigh: t.ciHigh, confidenceLabel: t.confidenceLabel } : null,
       gaps: {
-        platformVsBlendedMinor:     c.platformRevenueMinor - c.blendedRevenueMinor,
-        blendedVsIncrementalMinor:  incremental.value != null ? c.blendedRevenueMinor - incremental.value : null,
+        platformVsBlendedMinor:     c.gapMinor,
+        blendedVsIncrementalMinor:  null,
       },
     };
   });
@@ -100,6 +108,9 @@ export async function getReconciliation(workspaceId) {
     evidence: { incrementality: holdoutEvidence },
     rows,
     portfolio: {
+      currency:              portfolio.currency,
+      monetaryStatus:        portfolio.monetaryStatus,
+      monetaryReason:        portfolio.monetaryReason,
       spendMinor:            portfolio.spendMinor,
       platformRevenueMinor:  portfolio.platformRevenueMinor,
       blendedRevenueMinor:   portfolio.blendedRevenueMinor,
@@ -145,13 +156,9 @@ export async function incrementalChannels(workspaceId) {
     const t = tests.get(c.channelId);
     let marginalEfficiency = c.blendedRoas;
     let basis = 'blended';
-    if (t && t.incrementalRevenueMinor != null && c.blendedRevenueMinor > 0) {
-      // incremental / claimed ratio scales the efficiency Lumi optimizes on.
-      const ratio = Math.max(0, Math.min(1.5, t.incrementalRevenueMinor / c.blendedRevenueMinor));
-      marginalEfficiency = c.blendedRoas * ratio;
-      basis = 'incremental';
-      anyIncremental = true;
-    }
+    // Historical incrementalRevenueMinor has no persisted denomination or AOV
+    // basis. Its ratio to blended revenue is not a proven monetary comparison.
+    const moneyUnavailable = !!t;
     return {
       channelId:           c.channelId,
       channel:             c.channel,
@@ -159,7 +166,9 @@ export async function incrementalChannels(workspaceId) {
       marginalEfficiency,
       currentSpendMinor:   c.spendMinor,
       currentRevenueMinor: c.blendedRevenueMinor,
-      currency:            c.currency,
+      currency:            moneyUnavailable ? null : c.currency,
+      monetaryStatus:      moneyUnavailable ? MONETARY_STATUS.UNAVAILABLE_UNTRUSTED : c.monetaryStatus,
+      monetaryReason:      moneyUnavailable ? MONETARY_REASON.INCREMENTAL_MONETARY_BASIS_UNPROVEN : c.monetaryReason,
       basis,
     };
   });

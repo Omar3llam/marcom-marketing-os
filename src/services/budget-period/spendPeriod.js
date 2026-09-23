@@ -32,6 +32,7 @@ import { selectOperationalSnapshots } from '../evidence/index.js';
 import { MEASUREMENT_WINDOW } from '../connectors/connectorTypes.js';
 import { PLATFORM_SOURCES, latestPerStream } from '../blended-truth/BlendedTruthService.js';
 import { TEMPORAL } from '../../config/temporal.js';
+import { authoritativeMoney, MONETARY_STATUS, MONETARY_REASON, monetaryUnavailable } from '../../lib/operationalMonetary.js';
 
 const DAY_MS = 86_400_000;
 
@@ -58,6 +59,8 @@ export const SPEND_PERIOD_REASON = Object.freeze({
   WINDOW_MISMATCH: 'WINDOW_MISMATCH',
   // Streams declare different windows, so their spends are not one period.
   MIXED_WINDOWS:   'MIXED_WINDOWS',
+  SPEND_CURRENCY_MIXED: MONETARY_REASON.SPEND_CURRENCY_MIXED,
+  SPEND_CURRENCY_UNTRUSTED: MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED,
 });
 
 /** How much of the budget period the spend must cover. */
@@ -116,10 +119,11 @@ export function declaredWindowOf(row) {
   return { start, end };
 }
 
-function refusal(period, reason, window = null) {
+function refusal(period, reason, window = null, money = monetaryUnavailable(reason)) {
   return {
     status: SPEND_PERIOD_STATUS.NOT_MEASURABLE, reason, period,
     window, daysCovered: null, spendMinor: null,
+    currency: null, monetaryStatus: money.monetaryStatus, monetaryReason: money.monetaryReason,
   };
 }
 
@@ -166,6 +170,11 @@ export function resolvePeriodSpend(rows = [], period, { coverage, now = new Date
     return { portfolio: refusal(period, SPEND_PERIOD_REASON.WINDOW_MISMATCH, window), byEntity };
   }
 
+  const money = authoritativeMoney(streams, 'spendMinor');
+  if (money.monetaryStatus !== MONETARY_STATUS.VALID) {
+    return { portfolio: refusal(period, money.monetaryReason, window, money), byEntity };
+  }
+
   let spendMinor = 0;
   for (const s of streams) {
     const spend = s.spendMinor ?? 0;
@@ -176,6 +185,7 @@ export function resolvePeriodSpend(rows = [], period, { coverage, now = new Date
     portfolio: {
       status: SPEND_PERIOD_STATUS.MEASURABLE, reason: null, period,
       window, daysCovered: daysIn(window), spendMinor,
+      currency: money.currency, monetaryStatus: money.monetaryStatus, monetaryReason: null,
     },
     byEntity,
   };
@@ -187,6 +197,8 @@ export const SPEND_PERIOD_SELECT = Object.freeze({
   source: true,
   date: true,
   spendMinor: true,
+  currency: true,
+  currencyProvenance: true,
   measurementWindow: true,
   windowStart: true,
   windowEnd: true,

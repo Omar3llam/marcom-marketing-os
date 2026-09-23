@@ -48,14 +48,14 @@ const SRC = readFileSync(
 
 const WS = 'ws-blended';
 
-// The exact projection the pre-migration query used — six fields.
-const PRE_MIGRATION_SELECT = {
-  entityId: true, date: true, source: true, revenueMinor: true, spendMinor: true, currency: true,
+// Provenance is the only additional field needed for monetary eligibility.
+const MONETARY_SELECT = {
+  entityId: true, date: true, source: true, revenueMinor: true, spendMinor: true, currency: true, currencyProvenance: true,
 };
 
 const row = (over = {}) => ({
   entityId: 'c1', date: new Date('2026-08-10T00:00:00Z'), source: 'META',
-  revenueMinor: 0, spendMinor: 0, currency: 'USD', ...over,
+  revenueMinor: 0, spendMinor: 0, currency: 'USD', currencyProvenance: 'PLATFORM_REPORTED', ...over,
 });
 
 // One campaign, two measurement streams: META claims 10 000, GA4 measures 6 000.
@@ -85,7 +85,7 @@ describe('R3.3 — BlendedTruthService on the Evidence seam', () => {
       expect(SRC).toMatch(/selectOperationalSnapshots/);
       // Its own reads stay its own — I14 is about MetricSnapshot alone.
       expect(SRC).toMatch(/prisma\.campaign\.findMany/);
-      expect(SRC).toMatch(/prisma\.workspace\.findUnique/);
+      expect(SRC).not.toMatch(/prisma\.workspace\.findUnique/);
     });
 
     it('states no population of its own any more', () => {
@@ -109,7 +109,7 @@ describe('R3.3 — BlendedTruthService on the Evidence seam', () => {
       const after = Date.now();
       const args = evidenceArgs();
 
-      expect(args.select).toEqual(PRE_MIGRATION_SELECT);
+      expect(args.select).toEqual(MONETARY_SELECT);
       expect(args.where.workspaceId).toBe(WS);
       expect(args.where.measurementWindow).toEqual(OPERATIONAL_WINDOW_FILTER);
 
@@ -208,11 +208,12 @@ describe('R3.3 — BlendedTruthService on the Evidence seam', () => {
     it('MANUAL revenue still reconciles as an actual, not a platform claim', async () => {
       prisma.metricSnapshot.findMany.mockResolvedValue([
         row({ source: 'META',   spendMinor: 2_000, revenueMinor: 9_000 }),
-        row({ source: 'MANUAL', revenueMinor: 3_000 }),
+        row({ source: 'MANUAL', revenueMinor: 3_000, currencyProvenance: 'USER_SUPPLIED' }),
       ]);
       const { channels } = await getBlendedTruth(WS);
-      expect(channels[0].actualRevenueMinor).toBe(3_000);
-      expect(channels[0].blendedRevenueMinor).toBe(3_000);
+      expect(channels[0].actualRevenueMinor).toBeNull();
+      expect(channels[0].blendedRevenueMinor).toBeNull();
+      expect(channels[0].monetaryStatus).toBe('MONETARY_UNAVAILABLE_UNTRUSTED');
       expect(channels[0].coverage).toBe('RECONCILED');
     });
 
@@ -234,7 +235,7 @@ describe('R3.3 — BlendedTruthService on the Evidence seam', () => {
       prisma.metricSnapshot.findMany.mockResolvedValue([]);
       const { channels, portfolio } = await getBlendedTruth(WS);
       expect(channels).toEqual([]);
-      expect(portfolio.spendMinor).toBe(0);
+      expect(portfolio.spendMinor).toBeNull();
       expect(portfolio.reconciledCount).toBe(0);
     });
   });

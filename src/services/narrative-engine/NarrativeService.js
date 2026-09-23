@@ -13,11 +13,11 @@
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { scopeFor } from '../decisions/decisionClassScope.js';
-import { DECISION_CLASS } from '@marcom/runtime-contracts';
 import { logger } from '../../utils/logger.js';
 import { composeNarrative } from './narrativeEngine.js';
 import { NARRATIVE_PERIOD, NARRATIVE_AUDIENCE, confidenceLabel } from './narrativeTypes.js';
 import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
+import { MONETARY_REASON } from '../../lib/operationalMonetary.js';
 
 const PERIOD_DAYS = Object.freeze({ WEEKLY: 7, MONTHLY: 30 });
 const TIER_ATTR_CONFIDENCE = Object.freeze({ NONE: 0.3, AGENCY: 0.6, ENTERPRISE: 0.8 });
@@ -58,8 +58,8 @@ export function serializeNarrative(row) {
  * without a DB. `now` is injected; nothing here reads the clock.
  */
 export function buildNarrativeInputs({
-  decisions = [], allocationPlanIds = new Set(), blended = null, concludedTests = [],
-  goals = [], patterns = [], labelsById = new Map(), currency = 'USD', measurementTier = 'NONE',
+  decisions = [], blended = null, concludedTests = [],
+  goals = [], patterns = [], labelsById = new Map(), measurementTier = 'NONE',
 } = {}) {
   // What we did — decisions with their realized outcome.
   const decisionInputs = decisions.map((d) => {
@@ -68,9 +68,11 @@ export function buildNarrativeInputs({
       id: d.id, verdict: d.verdict, entityId: d.entityId,
       entityLabel: labelsById.get(d.entityId) ?? null,
       outcomeId: outcome?.id ?? null,
-      spendDeltaMinor: outcome?.spendDeltaMinor ?? null,
-      revenueDeltaMinor: outcome?.revenueDeltaMinor ?? null,
-      currency,
+      spendDeltaMinor: null,
+      revenueDeltaMinor: null,
+      currency: null,
+      monetaryReason: outcome ? MONETARY_REASON.OUTCOME_MONETARY_BASIS_UNPROVEN : null,
+      monetaryStatus: outcome ? 'MONETARY_UNAVAILABLE_UNTRUSTED' : null,
     };
   });
 
@@ -85,29 +87,19 @@ export function buildNarrativeInputs({
   // The verdict check goes with it. `REALLOCATE` was standing in for "this is
   // an allocation row", which is what the class now says; keeping both would
   // silently drop any future allocation move that carried another verdict.
+  // OutcomeSnapshot has no currency or provenance for its human-reported
+  // delta. A matching AllocationPlan cannot establish the outcome's unit.
   const allocationDeltas = [];
-  for (const d of decisions) {
-    if (d.decisionClass !== DECISION_CLASS.ALLOCATION) continue;
-    const m = typeof d.rootCause === 'string' ? d.rootCause.split(':') : null;
-    const candidate = m && m.length > 1 ? m.slice(1).join(':') : null;
-    const planId = candidate && allocationPlanIds.has(candidate) ? candidate : null;
-    const outcome = (d.outcomes && d.outcomes[0]) || null;
-    if (planId && outcome && typeof outcome.spendDeltaMinor === 'number') {
-      allocationDeltas.push({
-        planId, channel: labelsById.get(d.entityId) ?? d.entityId,
-        deltaMinor: outcome.spendDeltaMinor, currency,
-      });
-    }
-  }
 
   // What it changed — blended truth (cite the top channel's real Account id).
   let blendedInput = null;
   if (blended && blended.channels && blended.channels.length > 0) {
-    const top = [...blended.channels].sort((a, b) => (b.spendMinor ?? 0) - (a.spendMinor ?? 0))[0];
+    const top = blended.channels.find((c) => c.monetaryStatus === 'MONETARY_VALID') ?? blended.channels[0];
     blendedInput = {
       evidenceRef: top.channelId,
       blendedRoas: blended.portfolio?.blendedRoas ?? null,
       gapPct: blended.portfolio?.gapPct ?? null,
+      monetaryStatus: blended.portfolio?.monetaryStatus ?? 'MONETARY_UNAVAILABLE_UNTRUSTED',
     };
   }
 
@@ -173,8 +165,8 @@ export async function generateNarrative(workspaceId, { period = NARRATIVE_PERIOD
   const periodStart = new Date(now.getTime() - days * 86_400_000);
   const periodEnd = now;
 
-  const [workspace, decisions, allocationPlans, blended, concludedTests, goals, patterns, labelsById] = await Promise.all([
-    prisma.workspace.findUnique({ where: { id: workspaceId }, select: { currency: true, measurementTier: true } }),
+  const [workspace, decisions, blended, concludedTests, goals, patterns, labelsById] = await Promise.all([
+    prisma.workspace.findUnique({ where: { id: workspaceId }, select: { measurementTier: true } }),
     // `select` rather than `include`: an include is SELECT * plus the relation,
     // and this read runs in the NARRATIVE WORKER — the one service whose Render
     // build does `prisma generate` without `migrate deploy` (render.yaml). A
@@ -205,7 +197,6 @@ export async function generateNarrative(workspaceId, { period = NARRATIVE_PERIOD
       },
       orderBy: { createdAt: 'desc' }, take: 100,
     }),
-    prisma.allocationPlan.findMany({ where: { workspaceId, createdAt: { gte: periodStart } }, select: { id: true } }),
     getBlendedTruth(workspaceId).catch(() => null),
     prisma.incrementalityTest.findMany({ where: { workspaceId, status: 'CONCLUDED' } }),
     prisma.northStarGoal.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 10 }),
@@ -215,9 +206,7 @@ export async function generateNarrative(workspaceId, { period = NARRATIVE_PERIOD
 
   const inputs = buildNarrativeInputs({
     decisions,
-    allocationPlanIds: new Set(allocationPlans.map((p) => p.id)),
     blended, concludedTests, goals, patterns, labelsById,
-    currency: workspace?.currency ?? 'USD',
     measurementTier: workspace?.measurementTier ?? 'NONE',
   });
 

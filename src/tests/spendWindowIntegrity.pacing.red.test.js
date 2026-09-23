@@ -48,7 +48,7 @@ vi.mock('../lib/prisma.js', () => ({
     },
     workspace: { findUnique: vi.fn(async () => ({ currency: 'USD' })) },
     allocationPlan: {
-      findFirst: vi.fn(async () => (io.budget == null ? null : { totalBudgetMinor: io.budget })),
+      findFirst: vi.fn(async () => (io.budget == null ? null : { totalBudgetMinor: io.budget, currency: 'USD' })),
     },
   },
 }));

@@ -54,7 +54,9 @@ const NOT_MEASURABLE_OUTCOME = 'PROMOTED_MOVES_NOT_MEASURABLE';
 const mix = ({ deltas, spendPeriod }) => ({
   goal: { type: 'GROWTH_CEILING', value: null },
   totalBudgetMinor: 1_000_000,
-  currency: 'USD',
+  currency: spendPeriod?.status === 'MEASURABLE' ? 'USD' : null,
+  monetaryStatus: spendPeriod?.status === 'MEASURABLE' ? 'MONETARY_VALID' : 'MONETARY_UNAVAILABLE_UNTRUSTED',
+  monetaryReason: spendPeriod?.status === 'MEASURABLE' ? null : spendPeriod?.reason ?? 'WINDOW_UNKNOWN',
   ...(spendPeriod === undefined ? {} : { spendPeriod }),
   allocations: deltas.map((d, i) => ({
     channelId: `ch-${i}`, channel: 'META', verdict: 'HOLD', blendedRoas: 2,
@@ -68,14 +70,14 @@ const mix = ({ deltas, spendPeriod }) => ({
 
 const planRow = (m) => ({
   id: 'plan-1', workspaceId: WS,
-  totalBudgetMinor: m.totalBudgetMinor, currency: m.currency,
+  totalBudgetMinor: m.totalBudgetMinor, currency: 'USD',
   channelMix: m.allocations,
   projections: { scenario: null, economics: null, goalLanding: null, mix: captureMixSnapshot(m) },
   status: 'DRAFT', requiresApproval: false, approvalState: null,
   allocationPlanId: null, promotedAt: null, promotedBy: null, closedAt: null,
 });
 
-const MEASURED = { status: 'MEASURABLE', reason: null, period: { start: '2026-08-01', end: '2026-08-31' } };
+const MEASURED = { status: 'MEASURABLE', reason: null, currency: 'USD', period: { start: '2026-08-01', end: '2026-08-31' } };
 const UNMEASURED = { status: 'NOT_MEASURABLE', reason: 'WINDOW_MISMATCH', period: { start: '2026-10-01', end: '2026-10-31' } };
 
 beforeEach(() => {
@@ -96,7 +98,7 @@ describe('buildPlan asks for a mix over the plan\'s own period', () => {
     previewAllocation.mockResolvedValue(mix({ deltas: [null, null], spendPeriod: UNMEASURED }));
     await buildPlan(WS, {
       name: 'October', periodStart: '2026-10-01', periodEnd: '2026-10-31',
-      totalBudgetMinor: 1_000_000, now: NOW,
+      totalBudgetMinor: 1_000_000, totalBudgetCurrency: 'USD', now: NOW,
     }).catch(() => null); // the read-back after persistence is not what this case measures
 
     expect(previewAllocation).toHaveBeenCalled();
@@ -111,22 +113,21 @@ describe('buildPlan asks for a mix over the plan\'s own period', () => {
 });
 
 describe('promotion stages only measured moves', () => {
-  it('a mix whose moves were NOT measurable stages nothing and says so', async () => {
+  it('a mix whose moves were NOT measurable refuses promotion without writes', async () => {
     prisma.plan.findFirst.mockResolvedValue(planRow(mix({ deltas: [null, null], spendPeriod: UNMEASURED })));
-    const out = await promotePlanMix(WS, 'plan-1', { promotedById: ACTOR, now: NOW });
-
+    await expect(promotePlanMix(WS, 'plan-1', { promotedById: ACTOR, now: NOW }))
+      .rejects.toMatchObject({ code: 'PlanMonetaryUnavailable', reason: 'WINDOW_MISMATCH' });
     expect(persistAllocation).not.toHaveBeenCalled();
-    expect(out.decisionsCreated).toBe(0);
-    expect(out.outcome).toBe(NOT_MEASURABLE_OUTCOME);
+    expect(prisma.plan.update).not.toHaveBeenCalled();
   });
 
   it('a mix approved BEFORE spend periods were recorded is not a measured mix', async () => {
     // Numeric deltas, no spendPeriod: every plan in the database today.
     prisma.plan.findFirst.mockResolvedValue(planRow(mix({ deltas: [-60_000, -60_000], spendPeriod: undefined })));
-    const out = await promotePlanMix(WS, 'plan-1', { promotedById: ACTOR, now: NOW });
-
+    await expect(promotePlanMix(WS, 'plan-1', { promotedById: ACTOR, now: NOW }))
+      .rejects.toMatchObject({ code: 'PlanMonetaryUnavailable' });
     expect(persistAllocation).not.toHaveBeenCalled();
-    expect(out.outcome).toBe(NOT_MEASURABLE_OUTCOME);
+    expect(prisma.plan.update).not.toHaveBeenCalled();
   });
 
   it('control — a measured mix with moves is still PROMOTED', async () => {

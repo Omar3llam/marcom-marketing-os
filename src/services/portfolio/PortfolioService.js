@@ -19,6 +19,7 @@ import { projectPacing }   from '../pacing-engine/pacingEngine.js';
 import {
   readPeriodSpend, calendarMonthOf, PERIOD_COVERAGE, SPEND_PERIOD_STATUS,
 } from '../budget-period/spendPeriod.js';
+import { matchBudgetCurrency, MONETARY_STATUS } from '../../lib/operationalMonetary.js';
 
 /** Days in the calendar month of `date` (UTC). */
 function daysInMonth(date) {
@@ -34,7 +35,7 @@ function daysInMonth(date) {
  * @param {Date}   [opts.now] — injectable clock (defaults to new Date())
  * @returns {Promise<object>} portfolio view
  */
-export async function getPortfolio(workspaceId, { monthlyBudgetMinor, now = new Date() } = {}) {
+export async function getPortfolio(workspaceId, { monthlyBudgetMinor, monthlyBudgetCurrency, now = new Date() } = {}) {
   if (!workspaceId) throw new Error('getPortfolio: workspaceId required');
 
   const { channels, portfolio } = await getBlendedTruth(workspaceId);
@@ -42,13 +43,15 @@ export async function getPortfolio(workspaceId, { monthlyBudgetMinor, now = new 
   // Monthly budget: explicit override, else the most recent allocation plan's
   // ceiling (its budget IS the monthly spend cap).
   let budgetMinor = monthlyBudgetMinor ?? null;
+  let budgetCurrency = monthlyBudgetCurrency ?? null;
   if (budgetMinor == null) {
     const latestPlan = await prisma.allocationPlan.findFirst({
       where:   { workspaceId },
       orderBy: { createdAt: 'desc' },
-      select:  { totalBudgetMinor: true },
+      select:  { totalBudgetMinor: true, currency: true },
     }).catch(() => null);
     budgetMinor = latestPlan?.totalBudgetMinor ?? null;
+    budgetCurrency = latestPlan?.currency ?? null;
   }
 
   // ── Pacing: this month's budget against THIS MONTH'S spend, or nothing ──
@@ -70,9 +73,11 @@ export async function getPortfolio(workspaceId, { monthlyBudgetMinor, now = new 
     period: calendarMonthOf(now), coverage: PERIOD_COVERAGE.TO_DATE, now,
   });
   const measured = spend.portfolio.status === SPEND_PERIOD_STATUS.MEASURABLE;
+  const pacingMoney = matchBudgetCurrency(spend.portfolio, budgetCurrency);
+  const canPace = measured && pacingMoney.monetaryStatus === MONETARY_STATUS.VALID;
 
   let pacing = null;
-  if (budgetMinor && budgetMinor > 0 && measured) {
+  if (budgetMinor && budgetMinor > 0 && canPace) {
     pacing = projectPacing({
       monthlyBudgetMinor: budgetMinor,
       spentMinor:         spend.portfolio.spendMinor,
@@ -86,7 +91,7 @@ export async function getPortfolio(workspaceId, { monthlyBudgetMinor, now = new 
   // this month, so an unmeasured period leaves every channel unpaced too.
   const channelPacing = channels.map((c) => {
     const chSpend = spend.byEntity.get(c.channelId);
-    if (!budgetMinor || !measured || chSpend == null || spend.portfolio.spendMinor <= 0) {
+    if (!budgetMinor || !canPace || chSpend == null || spend.portfolio.spendMinor <= 0) {
       return { channelId: c.channelId, pacing: null };
     }
     const chBudget = Math.round(budgetMinor * (chSpend / spend.portfolio.spendMinor));
@@ -102,6 +107,11 @@ export async function getPortfolio(workspaceId, { monthlyBudgetMinor, now = new 
 
   return {
     monthlyBudgetMinor: budgetMinor,
+    monthlyBudgetCurrency: budgetCurrency,
+    monetaryStatus: portfolio.monetaryStatus,
+    monetaryReason: portfolio.monetaryReason,
+    pacingMonetaryStatus: pacingMoney.monetaryStatus,
+    pacingMonetaryReason: pacingMoney.monetaryReason,
     totals: {
       spendMinor:           portfolio.spendMinor,
       platformRevenueMinor: portfolio.platformRevenueMinor,
@@ -112,6 +122,9 @@ export async function getPortfolio(workspaceId, { monthlyBudgetMinor, now = new 
       gapPct:               portfolio.gapPct,
       reconciledCount:      portfolio.reconciledCount,
       unverifiedCount:      portfolio.unverifiedCount,
+      currency:             portfolio.currency,
+      monetaryStatus:       portfolio.monetaryStatus,
+      monetaryReason:       portfolio.monetaryReason,
     },
     pacing,
     // What the pacing comparison was allowed to use — or why it was refused.

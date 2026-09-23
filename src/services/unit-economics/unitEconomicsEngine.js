@@ -109,6 +109,6 @@ export function computeUnitEconomics({
     sustainabilityBand,
     sustainable: sustainabilityBand.expected === SUSTAINABILITY_BAND.HEALTHY,
     assumptions,
-    currency: config.currency ?? 'USD',
+    currency: config.currency ?? null,
   };
 }

@@ -16,7 +16,7 @@ const stats = {
   healthLabel: 'Fair',
   wastedPct: 12.5,
   needsRevenueCount: 1,
-  currencyStatus: 'HOMOGENEOUS_KNOWN',
+  currencyStatus: 'HOMOGENEOUS_AUTHORITATIVE',
 };
 const campaigns = [
   { name: 'Ramadan Cold', channel: 'META', objective: 'OUTCOME_SALES', verdict: 'KILL', spendMinor: 1_416_000, roas: null, ctr: 0.01, frequency: 4.2, needsRevenue: true, currency: 'EGP' },
@@ -67,7 +67,7 @@ describe('buildPortfolioAnalysisPrompt — grounding', () => {
   // prose. The exponent must come from the currency (lib/money).
   it('renders a 3-decimal currency at its true value, never 10x (KWD = 1000 fils)', () => {
     const { user } = buildPortfolioAnalysisPrompt(
-      { total: 1, needsRevenueCount: 0, currencyStatus: 'HOMOGENEOUS_KNOWN' },
+      { total: 1, needsRevenueCount: 0, currencyStatus: 'HOMOGENEOUS_AUTHORITATIVE' },
       [{ name: 'Gulf Push', channel: 'META', spendMinor: 1_416_000, needsRevenue: false, currency: 'KWD' }],
       { name: 'Acme', currency: 'KWD' },
     );
@@ -77,7 +77,7 @@ describe('buildPortfolioAnalysisPrompt — grounding', () => {
 
   it('a 2-decimal currency is unaffected by the exponent fix (no regression)', () => {
     const { user } = buildPortfolioAnalysisPrompt(
-      { total: 1, needsRevenueCount: 0, currencyStatus: 'HOMOGENEOUS_KNOWN' },
+      { total: 1, needsRevenueCount: 0, currencyStatus: 'HOMOGENEOUS_AUTHORITATIVE' },
       [{ name: 'Cairo', channel: 'META', spendMinor: 1_416_000, needsRevenue: false, currency: 'EGP' }],
       { name: 'Acme', currency: 'EGP' },
     );
@@ -86,7 +86,7 @@ describe('buildPortfolioAnalysisPrompt — grounding', () => {
 
   it('renders Latin digits for an Arabic-locale currency (a prompt the model must read)', () => {
     const { user } = buildPortfolioAnalysisPrompt(
-      { total: 1, needsRevenueCount: 0, currencyStatus: 'HOMOGENEOUS_KNOWN' },
+      { total: 1, needsRevenueCount: 0, currencyStatus: 'HOMOGENEOUS_AUTHORITATIVE' },
       [{ name: 'Cairo', channel: 'META', spendMinor: 1_416_000, needsRevenue: false, currency: 'EGP' }],
       { name: 'Acme', currency: 'EGP' },
     );
@@ -95,7 +95,7 @@ describe('buildPortfolioAnalysisPrompt — grounding', () => {
 
   it('absent metrics render "unknown" — never a fabricated zero', () => {
     const { user } = buildPortfolioAnalysisPrompt(
-      { total: 1, needsRevenueCount: 0, currencyStatus: 'HOMOGENEOUS_KNOWN' },
+      { total: 1, needsRevenueCount: 0, currencyStatus: 'HOMOGENEOUS_AUTHORITATIVE' },
       [{ name: 'Cold', channel: 'META', spendMinor: 1000, roas: null, ctr: null, frequency: null, needsRevenue: false, currency: 'EGP' }],
       workspace,
     );
@@ -113,7 +113,7 @@ describe('buildPortfolioAnalysisPrompt — grounding', () => {
 
   it('caps the campaign slice but still reports the true total (never shrinks the account)', () => {
     const many = Array.from({ length: 30 }, (_, i) => ({ name: `C${i}`, channel: 'META', spendMinor: 100, needsRevenue: false, currency: 'EGP' }));
-    const { user } = buildPortfolioAnalysisPrompt({ total: 30, needsRevenueCount: 0, currencyStatus: 'HOMOGENEOUS_KNOWN' }, many, workspace);
+    const { user } = buildPortfolioAnalysisPrompt({ total: 30, needsRevenueCount: 0, currencyStatus: 'HOMOGENEOUS_AUTHORITATIVE' }, many, workspace);
     expect(user).toContain('Campaigns with spend: 30');
     expect(user).toContain(`CAMPAIGNS (top ${CAMPAIGN_LIMIT} by spend)`);
     expect(user).not.toContain('"C29"');

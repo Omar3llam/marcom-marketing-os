@@ -21,6 +21,7 @@ import { forecastFatigue } from '../fatigue-forecaster/fatigueForecaster.js';
 import { selectCanonicalFatigueSnapshots } from '../fatigue-forecaster/canonicalFatigueEvidence.js';
 import { buildEntitySeries } from '../fatigue-forecaster/FatigueSweepService.js';
 import { TEMPORAL } from '../../config/temporal.js';
+import { MONETARY_STATUS, MONETARY_REASON, sameMonetaryUnit } from '../../lib/operationalMonetary.js';
 
 // Bounds MetricSnapshot.date — the SYNC timestamp — on canonical CUMULATIVE_30D
 // rows. Deliberately its own setting rather than sharing the fatigue one: a
@@ -41,6 +42,8 @@ export function buildScenarioInputs(channels, economics, patterns = []) {
     spendMinor:  c.spendMinor,
     blendedRoas: c.blendedRoas,
     currency:    c.currency,
+    monetaryStatus: c.monetaryStatus,
+    monetaryReason: c.monetaryReason,
   }));
   const memory = patterns
     .filter((p) => typeof p.accuracy === 'number' && Number.isFinite(p.accuracy))
@@ -112,13 +115,24 @@ export async function runScenario(workspaceId, { change, now } = {}) {
   const enriched = patterns.map((p) => ({ ...p, cohortTag: p.cohortTag ?? ws?.cohortTag ?? null }));
 
   const { baseline, economics: econ, memory, memoryBasis } = buildScenarioInputs(channels, economics, enriched);
-  const scenario = projectScenario({ baseline, change, economics: econ, memory, now });
+  const money = sameMonetaryUnit(...channels.map((c) => ({ monetaryStatus: c.monetaryStatus, monetaryReason: c.monetaryReason, currency: c.currency })));
+  if (money.monetaryStatus !== MONETARY_STATUS.VALID) {
+    const blank = { low: null, expected: null, high: null };
+    return {
+      scenarioType: change?.type ?? null, change, currency: null,
+      monetaryStatus: money.monetaryStatus, monetaryReason: money.monetaryReason,
+      projections: { blendedCacMinor: blank, volume: blank, revenueMinor: blank, grossProfitMinor: blank, merAfter: blank },
+      assumptions: ['Operational monetary basis unavailable.'], confidence: null, basis: null, memoryBasis,
+    };
+  }
+  const scenario = projectScenario({ baseline, change, economics: econ, memory, now, config: { monetaryCurrency: money.currency } });
   // GOVERNING LAW: never dress a default-AOV number as a measurement. When economics
   // is unconfigured, blank the volume-derived projections to honest "—" (null ranges).
-  const withStatus = withEconomicsStatus(scenario, isDefault);
+  const economicsCompatible = !isDefault && economics.currency === money.currency;
+  const withStatus = withEconomicsStatus(scenario, !economicsCompatible);
 
   logger.info({ workspaceId, type: change?.type, patterns: memoryBasis.length, economicsStatus: withStatus.economicsStatus }, '[ScenarioService] projected');
-  return { ...withStatus, memoryBasis };
+  return { ...withStatus, monetaryStatus: MONETARY_STATUS.VALID, monetaryReason: null, economicsMonetaryReason: economicsCompatible ? null : MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED, memoryBasis };
 }
 
 /**

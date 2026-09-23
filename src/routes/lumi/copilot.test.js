@@ -45,6 +45,7 @@ function makeApp({ collabRole = 'STRATEGIST' } = {}) {
 }
 
 const okGateway = () => execute.mockResolvedValue({ success: true, output: { answer: 'CPA rose on Ramadan Wave; consider pausing it.' }, metadata: {} });
+const reported = (row) => ({ ...row, currencyProvenance: 'PLATFORM_REPORTED' });
 
 describe('POST /copilot — Q&A route', () => {
   beforeEach(() => {
@@ -93,8 +94,8 @@ describe('POST /copilot — Q&A route', () => {
 
   it('injects live account context (workspace + campaign + verdict) into the system prompt', async () => {
     getConnectorCampaigns.mockResolvedValue([
-      { entityId: 'c1', name: 'Ramadan Wave', channel: 'meta', objective: 'conversions', roas: 0.8, ctr: 0.012, frequency: 4.2, spendMinor: 500000, currency: 'EGP' },
-      { entityId: 'c2', name: 'Low Spender', channel: 'meta', roas: 3, spendMinor: 100, currency: 'EGP' },
+      reported({ entityId: 'c1', name: 'Ramadan Wave', channel: 'meta', objective: 'conversions', roas: 0.8, ctr: 0.012, frequency: 4.2, spendMinor: 500000, currency: 'EGP' }),
+      reported({ entityId: 'c2', name: 'Low Spender', channel: 'meta', roas: 3, spendMinor: 100, currency: 'EGP' }),
     ]);
     getConnectorVerdicts.mockResolvedValue({ verdicts: [{ id: 'c1', verdict: 'KILL', rationale: 'ROAS below breakeven' }] });
 
@@ -112,9 +113,9 @@ describe('POST /copilot — Q&A route', () => {
   describe('portfolio context', () => {
     // Two campaigns clear the 1%-of-spend scoring floor; one is a KILL.
     const richCampaigns = [
-      { entityId: 'c1', name: 'Ramadan Wave', channel: 'meta', objective: 'conversions', roas: 0.8, ctr: 0.012, frequency: 4.2, spendMinor: 500000, currency: 'EGP', conversions: 12, revenueMinor: 400000, impressions: 90000, clicks: 1080, lastDate: new Date('2026-07-20') },
-      { entityId: 'c2', name: 'Eid Push', channel: 'meta', objective: 'conversions', roas: 4, ctr: 0.03, frequency: 1.2, spendMinor: 300000, currency: 'EGP', conversions: 40, revenueMinor: 1200000, impressions: 50000, clicks: 1500 },
-      { entityId: 'c3', name: 'Zero Spender', channel: 'meta', roas: null, spendMinor: 0, currency: 'EGP' },
+      reported({ entityId: 'c1', name: 'Ramadan Wave', channel: 'meta', objective: 'conversions', roas: 0.8, ctr: 0.012, frequency: 4.2, spendMinor: 500000, currency: 'EGP', conversions: 12, revenueMinor: 400000, impressions: 90000, clicks: 1080, lastDate: new Date('2026-07-20') }),
+      reported({ entityId: 'c2', name: 'Eid Push', channel: 'meta', objective: 'conversions', roas: 4, ctr: 0.03, frequency: 1.2, spendMinor: 300000, currency: 'EGP', conversions: 40, revenueMinor: 1200000, impressions: 50000, clicks: 1500 }),
+      reported({ entityId: 'c3', name: 'Zero Spender', channel: 'meta', roas: null, spendMinor: 0, currency: 'EGP' }),
     ];
     const richVerdicts = { verdicts: [
       { id: 'c1', verdict: 'KILL', rationale: 'ROAS below breakeven' },
@@ -163,7 +164,7 @@ describe('POST /copilot — Q&A route', () => {
     });
 
     it('degrades honestly when health cannot be computed (no spend anywhere)', async () => {
-      getConnectorCampaigns.mockResolvedValue([{ entityId: 'c9', name: 'Nothing', channel: 'meta', spendMinor: 0, currency: 'EGP' }]);
+      getConnectorCampaigns.mockResolvedValue([reported({ entityId: 'c9', name: 'Nothing', channel: 'meta', spendMinor: 0, currency: 'EGP' })]);
       getConnectorVerdicts.mockResolvedValue({ verdicts: [] });
       await request(makeApp()).post('/copilot').send({ question: 'Status?' }).expect(200);
       const { input } = execute.mock.calls[0][0];
@@ -217,7 +218,7 @@ describe('POST /copilot — Q&A route', () => {
     it('SAYS the verdicts are unavailable instead of printing "unscored"', async () => {
       failVerdicts();
       getConnectorCampaigns.mockResolvedValue([
-        { entityId: 'c1', name: 'Ramadan Wave', channel: 'meta', spendMinor: 500_000, currency: 'EGP' },
+        reported({ entityId: 'c1', name: 'Ramadan Wave', channel: 'meta', spendMinor: 500_000, currency: 'EGP' }),
       ]);
       await request(makeApp()).post('/copilot').send({ question: 'Status?' }).expect(200);
 
@@ -231,7 +232,7 @@ describe('POST /copilot — Q&A route', () => {
     it('withholds account health rather than scoring an account it could not judge', async () => {
       failVerdicts();
       getConnectorCampaigns.mockResolvedValue([
-        { entityId: 'c1', name: 'Ramadan Wave', channel: 'meta', spendMinor: 500_000, ctr: 0.02, frequency: 2, currency: 'EGP' },
+        reported({ entityId: 'c1', name: 'Ramadan Wave', channel: 'meta', spendMinor: 500_000, ctr: 0.02, frequency: 2, currency: 'EGP' }),
       ]);
       await request(makeApp()).post('/copilot').send({ question: 'How healthy is my account?' }).expect(200);
 
@@ -249,7 +250,7 @@ describe('POST /copilot — Q&A route', () => {
       // opposite word, and the model can tell them apart.
       getConnectorVerdicts.mockResolvedValue({ verdicts: [] });
       getConnectorCampaigns.mockResolvedValue([
-        { entityId: 'c1', name: 'Ramadan Wave', channel: 'meta', spendMinor: 500_000, currency: 'EGP' },
+        reported({ entityId: 'c1', name: 'Ramadan Wave', channel: 'meta', spendMinor: 500_000, currency: 'EGP' }),
       ]);
       await request(makeApp()).post('/copilot').send({ question: 'Status?' }).expect(200);
 

@@ -26,6 +26,7 @@ import {
   POSITION_WEIGHTS, MODEL_CAVEAT, EVIDENCE_STATUS, EVIDENCE_REASON,
   attributed, unavailable,
 } from './attributionTypes.js';
+import { MONETARY_STATUS, MONETARY_REASON } from '../../lib/operationalMonetary.js';
 
 const PATH_MODELS = new Set([ATTRIBUTION_MODEL.FIRST_TOUCH, ATTRIBUTION_MODEL.LINEAR, ATTRIBUTION_MODEL.POSITION_BASED]);
 
@@ -170,6 +171,14 @@ function incrementalityWeighted(channels, incrementality, economics, evidence) {
         creditedRevenueMinor: attributed(rev, ATTRIBUTION_SOURCE.INCREMENTALITY, t.confidenceLabel ?? CONFIDENCE_LEVEL.MEDIUM, { modelName: ATTRIBUTION_MODEL.INCREMENTALITY_WEIGHTED, caveat: MODEL_CAVEAT.INCREMENTALITY_WEIGHTED }),
       };
     }
+    if (t) {
+      return {
+        channelId: c.channelId, channel: c.channel ?? null,
+        creditedConversions: unavailable(MONETARY_REASON.INCREMENTAL_MONETARY_BASIS_UNPROVEN),
+        creditedRevenueMinor: unavailable(MONETARY_REASON.INCREMENTAL_MONETARY_BASIS_UNPROVEN),
+        holdout: t.observed ?? null,
+      };
+    }
     // No holdout — honest fallback to claimed, flagged LOW. The caveat states
     // WHY there is no causal number, and the two whys are not the same fact.
     const caveat = holdoutDown ? MODEL_CAVEAT.HOLDOUT_UNAVAILABLE : MODEL_CAVEAT.NO_HOLDOUT;
@@ -230,6 +239,32 @@ export function attributeCredit({
   const anyDown = Object.values(ev).some((s) => s === EVIDENCE_STATUS.UNAVAILABLE);
   if (anyDown && result.status === ATTRIBUTION_STATUS.OK) {
     result = { ...result, status: ATTRIBUTION_STATUS.EVIDENCE_UNAVAILABLE };
+  }
+
+  // Models may compute a number internally, but a monetary credit is publishable
+  // only when its channel and valuation basis have the same proven unit.
+  if (Array.isArray(result.channels)) {
+    const rows = result.channels.map((row) => {
+      const input = channels.find((c) => c.channelId === row.channelId);
+      const reason = model === ATTRIBUTION_MODEL.INCREMENTALITY_WEIGHTED && incrementality?.[row.channelId]
+        ? MONETARY_REASON.INCREMENTAL_MONETARY_BASIS_UNPROVEN
+        : PATH_MODELS.has(model)
+          ? (input?.monetaryStatus === MONETARY_STATUS.VALID && economics?.isDefault !== true && economics?.currency === input?.currency
+            ? null : input?.monetaryReason ?? MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED)
+          : input?.platformMonetaryStatus === MONETARY_STATUS.VALID
+            ? null : input?.platformMonetaryReason ?? MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED;
+      return reason ? { ...row, creditedRevenueMinor: unavailable(reason) } : row;
+    });
+    const unavailableRow = rows.find((r) => r.creditedRevenueMinor?.value == null);
+    result = {
+      ...result,
+      channels: rows,
+      totalRevenueMinor: unavailableRow
+        ? unavailable(unavailableRow.creditedRevenueMinor.reason)
+        : result.totalRevenueMinor,
+      monetaryStatus: unavailableRow ? MONETARY_STATUS.UNAVAILABLE_UNTRUSTED : MONETARY_STATUS.VALID,
+      monetaryReason: unavailableRow?.creditedRevenueMinor?.reason ?? null,
+    };
   }
 
   logger.debug({ model, status: result.status, evidence: ev }, '[AttributionEngine] attributed');

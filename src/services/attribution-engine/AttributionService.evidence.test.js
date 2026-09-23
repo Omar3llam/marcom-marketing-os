@@ -114,6 +114,8 @@ const EXPECTED_TOTAL = 100;
 
 const chan = (channelId, over = {}) => ({
   channelId, channel: channelId.toUpperCase(), currency: 'USD',
+  monetaryStatus: 'MONETARY_VALID', platformMonetaryStatus: 'MONETARY_VALID',
+  monetaryEvidence: { platform: { monetaryStatus: 'MONETARY_VALID', currency: 'USD' } },
   spendMinor: 100_000, platformRevenueMinor: 200_000, blendedRevenueMinor: 200_000, ...over,
 });
 const CHANNELS = [chan('meta'), chan('google'), chan('tiktok', { spendMinor: 0 })];
@@ -164,7 +166,7 @@ const conversionsOf = (result, channelId) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getBlendedTruth.mockResolvedValue({ channels: CHANNELS, portfolio: {} });
+  getBlendedTruth.mockResolvedValue({ channels: CHANNELS, portfolio: { spendMinor: 200_000, monetaryEvidence: { spend: { monetaryStatus: 'MONETARY_VALID', currency: 'USD' } } } });
   prisma.incrementalityTest.findMany.mockResolvedValue([]);
   prisma.pathTouch.findMany.mockResolvedValue([]);
   prisma.workspace.findUnique.mockResolvedValue({ currency: 'USD' });
@@ -385,7 +387,9 @@ describe('R3.5 — AttributionService on the Evidence seam', () => {
       );
       expect(engineChannels[0]).toMatchObject({ channelId: 'meta', conversions: 42, spendMinor: 100_000 });
       expect(incrementality.meta).toEqual({
-        incrementalConversions: 9, confidenceLabel: 'HIGH', ciLow: 1, ciHigh: 2,
+        incrementalConversions: null, monetaryReason: 'INCREMENTAL_MONETARY_BASIS_UNPROVEN',
+        observed: { exposedUsers: undefined, exposedConversions: undefined, holdoutUsers: undefined, holdoutConversions: undefined, liftPct: undefined },
+        confidenceLabel: 'HIGH', ciLow: 1, ciHigh: 2,
       });
     });
 

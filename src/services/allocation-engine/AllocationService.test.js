@@ -28,17 +28,19 @@ import { validateActionTarget } from '../metaExecutionService.js';
 function samplePlan() {
   return withMeasuredPeriod(allocate({
     totalBudgetMinor: 1_000_000,
+    totalBudgetCurrency: 'USD',
     goal: { type: GOAL_TYPE.GROWTH_CEILING },
     channels: [
-      { channelId: 'camp-a', blendedRoas: 3.2, currentSpendMinor: 400_000, verdict: 'SCALE' },
-      { channelId: 'camp-b', blendedRoas: 0.8, currentSpendMinor: 600_000, verdict: 'KILL' },
+      { channelId: 'camp-a', blendedRoas: 3.2, currentSpendMinor: 400_000, verdict: 'SCALE', currency: 'USD', monetaryStatus: 'MONETARY_VALID' },
+      { channelId: 'camp-b', blendedRoas: 0.8, currentSpendMinor: 600_000, verdict: 'KILL', currency: 'USD', monetaryStatus: 'MONETARY_VALID' },
     ],
   }));
 }
 
 const withMeasuredPeriod = (plan) => ({
   ...plan,
-  spendPeriod: { status: 'MEASURABLE', reason: null, period: { start: '2026-08-01', end: '2026-08-31' } },
+  monetaryStatus: 'MONETARY_VALID',
+  spendPeriod: { status: 'MEASURABLE', reason: null, currency: 'USD', period: { start: '2026-08-01', end: '2026-08-31' } },
 });
 
 describe('AllocationService.planToDecisionRows — governance', () => {
@@ -95,7 +97,7 @@ describe('portfolio reconciliation — totals == the CURRENT MetricSnapshot rows
       { entityId: 'acct-b', source: 'SNAP', date: D1, spendMinor: 30_000, revenueMinor: 27_000 },
       { entityId: 'acct-b', source: 'SNAP', date: D2, spendMinor: 52_400, revenueMinor: 47_160 },
     ];
-    const channels = buildChannelInputs(snapshots);
+    const channels = buildChannelInputs(snapshots.map((s) => ({ ...s, currency: 'USD', currencyProvenance: 'PLATFORM_REPORTED' })));
     const { channels: rows, portfolio } = reconcile({ channels });
 
     const a = rows.find((c) => c.channelId === 'acct-a');

@@ -53,7 +53,7 @@ function parseAllocationBody(body = {}) {
     return { error: `unsupported goal type "${type}" (only GROWTH_CEILING is supported)` };
   }
   const value = body.goal?.value;
-  return { totalBudgetMinor, goal: { type, value: typeof value === 'number' ? value : null } };
+  return { totalBudgetMinor, totalBudgetCurrency: body.totalBudgetCurrency, goal: { type, value: typeof value === 'number' ? value : null } };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -150,6 +150,9 @@ portfolioRouter.post('/portfolio/allocate/commit', requireCollabRole(WORKSPACE_R
     logger.info({ wsId, planId, decisionsCreated }, '[lumi/portfolio] allocation committed');
     return res.status(201).json({ workspaceId: wsId, planId, decisionsCreated, plan });
   } catch (err) {
+    if (err.code === 'AllocationMonetaryUnavailable') {
+      return res.status(409).json({ error: err.code, reason: err.reason, monetaryStatus: 'MONETARY_UNAVAILABLE_UNTRUSTED' });
+    }
     logger.error({ err: err.message, wsId }, '[lumi/portfolio] allocate commit failed');
     return res.status(500).json({ error: 'AllocationCommitFailed', message: 'Request failed' });
   }

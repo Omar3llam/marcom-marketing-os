@@ -2,9 +2,11 @@
 // be compared or added without conversion? It never chooses a default currency,
 // repairs a row, or converts an amount.
 import { isSupportedCurrency } from './currencyDetector.js';
+import { isAuthoritativeCurrency } from './currencyProvenance.js';
 
 export const CURRENCY_HOMOGENEITY = Object.freeze({
   HOMOGENEOUS_KNOWN: 'HOMOGENEOUS_KNOWN',
+  HOMOGENEOUS_AUTHORITATIVE: 'HOMOGENEOUS_AUTHORITATIVE',
   MIXED: 'MIXED',
   UNKNOWN: 'UNKNOWN',
 });
@@ -14,7 +16,7 @@ export const CURRENCY_HOMOGENEITY = Object.freeze({
  * Null and measured-zero amounts do not enter a sum, share, or ranking and
  * therefore do not establish (or invalidate) its unit.
  */
-export function classifyCurrencyHomogeneity(rows = [], { amountField = 'spendMinor' } = {}) {
+export function classifyCurrencyHomogeneity(rows = [], { amountField = 'spendMinor', requireAuthoritative = false } = {}) {
   const contributors = Array.isArray(rows)
     ? rows.filter((row) => Number.isFinite(row?.[amountField]) && row[amountField] > 0)
     : [];
@@ -25,7 +27,7 @@ export function classifyCurrencyHomogeneity(rows = [], { amountField = 'spendMin
 
   const currencies = new Set();
   for (const row of contributors) {
-    if (!isSupportedCurrency(row?.currency)) {
+    if (!isSupportedCurrency(row?.currency) || (requireAuthoritative && !isAuthoritativeCurrency(row))) {
       return {
         status: CURRENCY_HOMOGENEITY.UNKNOWN,
         currency: null,
@@ -44,7 +46,7 @@ export function classifyCurrencyHomogeneity(rows = [], { amountField = 'spendMin
   }
 
   return {
-    status: CURRENCY_HOMOGENEITY.HOMOGENEOUS_KNOWN,
+    status: requireAuthoritative ? CURRENCY_HOMOGENEITY.HOMOGENEOUS_AUTHORITATIVE : CURRENCY_HOMOGENEITY.HOMOGENEOUS_KNOWN,
     currency: [...currencies][0],
     contributorCount: contributors.length,
   };

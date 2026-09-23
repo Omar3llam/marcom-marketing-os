@@ -13,6 +13,7 @@ import { logger } from '../../utils/logger.js';
 import { computeUnitEconomics } from './unitEconomicsEngine.js';
 import { getBlendedTruth, latestPerStream } from '../blended-truth/BlendedTruthService.js';
 import { selectOperationalSnapshots } from '../evidence/index.js';
+import { MONETARY_STATUS, MONETARY_REASON } from '../../lib/operationalMonetary.js';
 
 // Conservative defaults for a workspace that hasn't configured economics
 // yet — enough to compute, honestly flagged as defaults by the caller.
@@ -106,13 +107,15 @@ export async function setEconomics(workspaceId, data = {}) {
  */
 export async function getCurrentCac(workspaceId) {
   if (!workspaceId) throw new Error('getCurrentCac: workspaceId required');
-  const { channels } = await getBlendedTruth(workspaceId);
+  const { channels, portfolio } = await getBlendedTruth(workspaceId);
   if (!channels || channels.length === 0) {
-    return { currentBlendedCacMinor: null, totalSpendMinor: 0, totalConversions: 0, currency: 'USD' };
+    return { currentBlendedCacMinor: null, totalSpendMinor: null, totalConversions: 0, currency: null, monetaryStatus: MONETARY_STATUS.UNAVAILABLE_UNTRUSTED, monetaryReason: MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED };
   }
 
-  const totalSpendMinor = channels.reduce((sum, c) => sum + (c.spendMinor ?? 0), 0);
-  const currency = channels.find((c) => c.currency)?.currency ?? 'USD';
+  const spendMoney = portfolio.monetaryEvidence?.spend;
+  const totalSpendMinor = spendMoney?.monetaryStatus === MONETARY_STATUS.VALID
+    ? (portfolio.spendMinor ?? channels.reduce((sum, c) => sum + c.spendMinor, 0)) : null;
+  const currency = spendMoney?.currency ?? null;
 
   // Platform-reported conversions — same rows, same stream reduction and same
   // population as AttributionService (kept consistent so the two never disagree
@@ -155,8 +158,8 @@ export async function getCurrentCac(workspaceId) {
     totalConversions += s.conversions ?? 0;
   }
 
-  const currentBlendedCacMinor = totalConversions > 0 ? Math.round(totalSpendMinor / totalConversions) : null;
-  return { currentBlendedCacMinor, totalSpendMinor, totalConversions, currency };
+  const currentBlendedCacMinor = totalConversions > 0 && totalSpendMinor != null ? Math.round(totalSpendMinor / totalConversions) : null;
+  return { currentBlendedCacMinor, totalSpendMinor, totalConversions, currency, monetaryStatus: spendMoney?.monetaryStatus ?? MONETARY_STATUS.UNAVAILABLE_UNTRUSTED, monetaryReason: spendMoney ? spendMoney.monetaryReason : MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED };
 }
 
 /**
@@ -180,7 +183,9 @@ export async function getEconomicsAssessment(workspaceId) {
   if (isDefault) {
     reason = 'NOT_CONFIGURED'; // economics never asserted — don't compute off defaults
   } else if (currentCac.currentBlendedCacMinor == null) {
-    reason = 'NO_CONVERSIONS'; // no realized CAC to assess against
+    reason = currentCac.monetaryReason ?? 'NO_CONVERSIONS';
+  } else if (economics.currency !== currentCac.currency) {
+    reason = 'ECONOMICS_CURRENCY_MISMATCH';
   } else {
     assessment = computeUnitEconomics({
       aovMinor:             economics.aovMinor,
@@ -199,9 +204,12 @@ export async function getEconomicsAssessment(workspaceId) {
  * workspace's economics.
  * @returns {Promise<{ economics, isDefault, result }>}
  */
-export async function assessSustainability(workspaceId, { cacMinor } = {}) {
+export async function assessSustainability(workspaceId, { cacMinor, currency } = {}) {
   if (!workspaceId) throw new Error('assessSustainability: workspaceId required');
   const { economics, isDefault } = await getEconomics(workspaceId);
+  if (isDefault || !currency || economics.currency !== currency) {
+    return { economics, isDefault, result: null, monetaryReason: isDefault ? 'NOT_CONFIGURED' : 'ECONOMICS_CURRENCY_MISMATCH' };
+  }
   const result = computeUnitEconomics({
     aovMinor:             economics.aovMinor,
     grossMarginPct:       economics.grossMarginPct,

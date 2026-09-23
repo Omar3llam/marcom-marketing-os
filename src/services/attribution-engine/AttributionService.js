@@ -18,6 +18,7 @@ import { attributeCredit } from './attributionEngine.js';
 import { ATTRIBUTION_MODEL, ATTRIBUTION_STATUS, EVIDENCE_STATUS } from './attributionTypes.js';
 import { getBlendedTruth, latestPerStream } from '../blended-truth/BlendedTruthService.js';
 import { getEconomics } from '../unit-economics/EconomicsService.js';
+import { MONETARY_REASON } from '../../lib/operationalMonetary.js';
 
 const PLATFORM_SOURCES = new Set(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
 
@@ -58,6 +59,10 @@ export function buildAttributionInputs(channels, conversionsByChannel = new Map(
     blendedRevenueMinor:  c.blendedRevenueMinor,
     spendMinor:           c.spendMinor,
     currency:             c.currency,
+    monetaryStatus:       c.monetaryStatus,
+    monetaryReason:       c.monetaryReason,
+    platformMonetaryStatus: c.monetaryEvidence?.platform?.monetaryStatus,
+    platformMonetaryReason: c.monetaryEvidence?.platform?.monetaryReason,
   }));
 
   // Map a concluded holdout to a channelId via entityId, else channel name.
@@ -68,7 +73,9 @@ export function buildAttributionInputs(channels, conversionsByChannel = new Map(
     // incrementalConversions is derived from the stored revenue / AOV (the
     // service enriches each test with `_incrementalConversions` before this).
     incrementality[match.channelId] = {
-      incrementalConversions: t._incrementalConversions ?? null,
+      incrementalConversions: null,
+      monetaryReason: MONETARY_REASON.INCREMENTAL_MONETARY_BASIS_UNPROVEN,
+      observed: { exposedUsers: t.exposedUsers, exposedConversions: t.exposedConversions, holdoutUsers: t.holdoutUsers, holdoutConversions: t.holdoutConversions, liftPct: t.liftPct },
       confidenceLabel:        t.confidenceLabel,
       ciLow:                  t.ciLow,
       ciHigh:                 t.ciHigh,
@@ -84,7 +91,7 @@ export function buildAttributionInputs(channels, conversionsByChannel = new Map(
 export async function getAttribution(workspaceId, { model = ATTRIBUTION_MODEL.INCREMENTALITY_WEIGHTED } = {}) {
   if (!workspaceId) throw new Error('getAttribution: workspaceId required');
 
-  const [{ channels }, { economics }] = await Promise.all([
+  const [{ channels }, { economics, isDefault }] = await Promise.all([
     getBlendedTruth(workspaceId),
     getEconomics(workspaceId),
   ]);
@@ -128,17 +135,11 @@ export async function getAttribution(workspaceId, { model = ATTRIBUTION_MODEL.IN
     conversionsByChannel.set(s.entityId, (conversionsByChannel.get(s.entityId) ?? 0) + (s.conversions ?? 0));
   }
 
-  // Concluded holdouts → incremental conversions (from stored lift × exposed,
-  // recomputed as incrementalRevenueMinor / AOV for the engine).
+  // Historical holdout revenue has no persisted denomination or AOV basis.
   const tests = await readOrNull(prisma.incrementalityTest.findMany({
     where: { workspaceId, status: 'CONCLUDED' },
   }), { workspaceId, read: 'IncrementalityTest' });
 
-  const aov = economics.aovMinor || 1;
-  const enriched = (tests ?? []).map((t) => ({
-    ...t,
-    _incrementalConversions: t.incrementalRevenueMinor != null ? Math.round(t.incrementalRevenueMinor / aov) : null,
-  }));
 
   // PathTouch — usually empty; when present, path models compute for real.
   const paths = await readOrNull(prisma.pathTouch.findMany({
@@ -156,11 +157,11 @@ export async function getAttribution(workspaceId, { model = ATTRIBUTION_MODEL.IN
   };
 
   const { engineChannels, incrementality } = buildAttributionInputs(
-    channels, conversionsByChannel, enriched, { conversionsAvailable: snaps !== null },
+    channels, conversionsByChannel, tests ?? [], { conversionsAvailable: snaps !== null },
   );
   const result = attributeCredit({
     channels: engineChannels, model, paths: paths ?? [],
-    incrementality, economics: { aovMinor: economics.aovMinor }, evidence,
+    incrementality, economics: { aovMinor: economics.aovMinor, currency: economics.currency, isDefault }, evidence,
   });
 
   if (result.status === ATTRIBUTION_STATUS.EVIDENCE_UNAVAILABLE) {

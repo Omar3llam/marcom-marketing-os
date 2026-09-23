@@ -7,12 +7,13 @@ import { buildCopilotSystemPrompt, buildCopilotUserPrompt } from './copilotPromp
 describe('buildCopilotSystemPrompt', () => {
   const workspace = { name: 'Acme', currency: 'EGP', objective: 'sales', industry: 'retail', market: 'EG' };
   const campaigns = [
-    { name: 'Ramadan Wave', channel: 'meta', verdict: 'KILL', rationale: 'ROAS below breakeven', roas: 0.8, ctr: 0.012, frequency: 4.2, spendMinor: 1234500, currency: 'EGP', conversions: 12, revenueMinor: 900000 },
+    { name: 'Ramadan Wave', channel: 'meta', verdict: 'KILL', rationale: 'ROAS below breakeven', roas: 0.8, ctr: 0.012, frequency: 4.2, spendMinor: 1234500, currency: 'EGP', monetaryStatus: 'MONETARY_VALID', conversions: 12, revenueMinor: 900000 },
   ];
   const portfolio = {
     totalCampaigns: 44,
     currency: 'EGP',
-    currencyStatus: 'HOMOGENEOUS_KNOWN',
+    currencyStatus: 'HOMOGENEOUS_AUTHORITATIVE',
+    monetaryStatus: 'MONETARY_VALID',
     health: { score: 38, label: 'NEEDS ATTENTION', wastedSpendMinor: 250000, criticalCampaigns: 3, healthyCampaigns: 1 },
     totals: null,
   };

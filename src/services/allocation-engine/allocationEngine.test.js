@@ -10,10 +10,14 @@ vi.mock('../../utils/logger.js', () => ({
 import { allocate, GOAL_TYPE } from './allocationEngine.js';
 
 const sum = (arr, f) => arr.reduce((s, x) => s + f(x), 0);
+const allocateProven = (args) => allocate({
+  ...args,
+  channels: args.channels.map((c) => ({ ...c, currency: 'USD', monetaryStatus: 'MONETARY_VALID' })),
+});
 
 describe('allocationEngine.allocate (GROWTH_CEILING)', () => {
   it('allocates the full budget exactly (integer minor units sum to the ceiling)', () => {
-    const r = allocate({
+    const r = allocateProven({ totalBudgetCurrency: 'USD',
       totalBudgetMinor: 1_000_000,
       goal: { type: GOAL_TYPE.GROWTH_CEILING },
       channels: [
@@ -26,7 +30,7 @@ describe('allocationEngine.allocate (GROWTH_CEILING)', () => {
   });
 
   it('drains a KILL channel and favours the SCALE channel', () => {
-    const r = allocate({
+    const r = allocateProven({ totalBudgetCurrency: 'USD',
       totalBudgetMinor: 1_000_000,
       goal: { type: GOAL_TYPE.GROWTH_CEILING },
       channels: [
@@ -45,11 +49,11 @@ describe('allocationEngine.allocate (GROWTH_CEILING)', () => {
       { channelId: 'meta',   currentSpendMinor: 500_000, verdict: 'HOLD' },
       { channelId: 'snap',   currentSpendMinor: 500_000, verdict: 'HOLD' },
     ];
-    const honest = allocate({
+    const honest = allocateProven({ totalBudgetCurrency: 'USD',
       totalBudgetMinor: 1_000_000, goal: { type: GOAL_TYPE.GROWTH_CEILING },
       channels: [{ ...base[0], blendedRoas: 3.0 }, { ...base[1], blendedRoas: 3.0 }],
     });
-    const inflated = allocate({
+    const inflated = allocateProven({ totalBudgetCurrency: 'USD',
       totalBudgetMinor: 1_000_000, goal: { type: GOAL_TYPE.GROWTH_CEILING },
       channels: [{ ...base[0], blendedRoas: 5.0 }, { ...base[1], blendedRoas: 3.0 }],
     });
@@ -61,7 +65,7 @@ describe('allocationEngine.allocate (GROWTH_CEILING)', () => {
   });
 
   it('never lets a single channel exceed the maxShare cap', () => {
-    const r = allocate({
+    const r = allocateProven({ totalBudgetCurrency: 'USD',
       totalBudgetMinor: 1_000_000,
       goal: { type: GOAL_TYPE.GROWTH_CEILING },
       constraints: { maxShare: 0.6, maxMoveShare: 1.0 },
@@ -75,7 +79,7 @@ describe('allocationEngine.allocate (GROWTH_CEILING)', () => {
   });
 
   it('projects merBefore → merAfter and a blended CPA', () => {
-    const r = allocate({
+    const r = allocateProven({ totalBudgetCurrency: 'USD',
       totalBudgetMinor: 1_000_000,
       goal: { type: GOAL_TYPE.GROWTH_CEILING },
       channels: [
@@ -89,9 +93,9 @@ describe('allocationEngine.allocate (GROWTH_CEILING)', () => {
   });
 
   it('rejects a non-positive budget and an unsupported goal', () => {
-    expect(() => allocate({ totalBudgetMinor: 0, goal: { type: GOAL_TYPE.GROWTH_CEILING }, channels: [{ channelId: 'a', blendedRoas: 1 }] }))
+    expect(() => allocateProven({ totalBudgetMinor: 0, totalBudgetCurrency: 'USD', goal: { type: GOAL_TYPE.GROWTH_CEILING }, channels: [{ channelId: 'a', blendedRoas: 1 }] }))
       .toThrow(/totalBudgetMinor/);
-    expect(() => allocate({ totalBudgetMinor: 100, goal: { type: 'TARGET_CAC' }, channels: [{ channelId: 'a', blendedRoas: 1 }] }))
+    expect(() => allocateProven({ totalBudgetMinor: 100, totalBudgetCurrency: 'USD', goal: { type: 'TARGET_CAC' }, channels: [{ channelId: 'a', blendedRoas: 1 }] }))
       .toThrow(/GROWTH_CEILING/);
   });
 });

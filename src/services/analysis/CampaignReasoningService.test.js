@@ -31,8 +31,8 @@ import { prisma } from '../../lib/prisma.js';
 import { generateCampaignReasoning, generateReasoningForSweep, buildReasoningInput } from './CampaignReasoningService.js';
 
 const CAMPAIGNS = [
-  { entityId: 'c1', name: 'Eid Sale', channel: 'META', objective: 'OUTCOME_SALES', spendMinor: 80000, ctr: 0.0042, frequency: 4.1, roas: 0.6, currency: 'EGP' },
-  { entityId: 'c2', name: 'Reach', channel: 'META', objective: null, spendMinor: 20000, ctr: 0.02, frequency: 1, roas: 3, currency: 'EGP' },
+  { entityId: 'c1', name: 'Eid Sale', channel: 'META', objective: 'OUTCOME_SALES', spendMinor: 80000, ctr: 0.0042, frequency: 4.1, roas: 0.6, currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED' },
+  { entityId: 'c2', name: 'Reach', channel: 'META', objective: null, spendMinor: 20000, ctr: 0.02, frequency: 1, roas: 3, currency: 'EGP', currencyProvenance: 'PLATFORM_REPORTED' },
 ];
 const VERDICTS = {
   verdicts: [
