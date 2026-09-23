@@ -344,7 +344,14 @@ describe('every operational MetricSnapshot reader declares its population', () =
     expect(src).toMatch(/selectOperationalSnapshots/);
     expect(src).not.toMatch(/metricSnapshot\.findMany/);
     expect(src).not.toMatch(/OPERATIONAL_WINDOW_FILTER/);
-    expect(src).not.toMatch(/measurementWindow/);
+    if (rel === 'planning/PlanService.js') {
+      // Planning projects the row's period to verify ratio compatibility; the
+      // Evidence seam still owns which operational rows may be read.
+      expect(src).toMatch(/measurementWindow: true/);
+      expect(src).not.toMatch(/measurementWindow:\s*\{/);
+    } else {
+      expect(src).not.toMatch(/measurementWindow/);
+    }
   });
 
   it.each(EVIDENCE_SEAM_READER_WRITERS)('%s reads through the Evidence seam and keeps only its WRITE population', async (rel) => {

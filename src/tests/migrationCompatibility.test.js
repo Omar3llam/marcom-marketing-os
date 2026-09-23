@@ -106,9 +106,12 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
     // LEGACY_UNKNOWN default preserves old inserts without a historical
     // backfill. Apply the migration before code naming the new column.
     // No non-compatible baseline entry is needed for this additive operation.
-    expect(scan.length).toBe(72);
+    // 72 → 73 and COMPATIBLE 50 → 51: Phase 6 adds one GoalStatus value and
+    // one nullable reason column. New writers set status explicitly; the DB
+    // default stays unchanged for older instances during rollout.
+    expect(scan.length).toBe(73);
     expect(counts).toEqual({
-      COMPATIBLE: 50,
+      COMPATIBLE: 51,
       TRANSITION_REQUIRED: 10,
       INCOMPATIBLE: 8,
       UNKNOWN: 4,
@@ -260,7 +263,7 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
   // ── T7 · corpus boundary ────────────────────────────────────────────────
   it('T7 — the scanner reads production migrations and nothing else', () => {
     const dirs = migrationDirs(fs, MIGRATIONS);
-    expect(dirs).toHaveLength(72); // +1 Phase 6 currency provenance (see T1)
+    expect(dirs).toHaveLength(73); // +1 additive Phase 6 Goal evidence migration
     expect(dirs.every((d) => /^\d{14}_/.test(d))).toBe(true);
     // Real non-migration entries that sit in this directory today.
     expect(dirs).not.toContain('migration_lock.toml');

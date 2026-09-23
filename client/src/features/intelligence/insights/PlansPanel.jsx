@@ -36,6 +36,7 @@ const goalTone = {
   AT_RISK:   'text-signal-hold bg-signal-hold-bg border-signal-hold/25',
   OFF_TRACK: 'text-signal-kill bg-signal-kill-bg border-signal-kill/25',
   MISSED:    'text-signal-kill bg-signal-kill-bg border-signal-kill/25',
+  INSUFFICIENT_EVIDENCE: 'text-lumi-muted bg-lumi-elevated border-lumi-border',
 };
 // Phase 6B — the approval gate's reflected state on a plan.
 const approvalMeta = {
@@ -64,12 +65,12 @@ function Section({ children }) {
 }
 
 // ── One goal's live landing (a RANGE, never a point) ────────────
-function GoalLanding({ metric, landing }) {
+function GoalLanding({ metric, landing, status, unavailableReason }) {
   const label = METRIC_LABEL[metric] ?? metric;
   if (!landing) {
     return (
       <div className="text-xs text-lumi-subtle">
-        {label} — not enough actuals to estimate a landing yet.
+        {label} — {status === 'INSUFFICIENT_EVIDENCE' ? 'insufficient measurement evidence' : 'not enough actuals to estimate a landing yet'}{unavailableReason ? ` (${unavailableReason.replaceAll('_', ' ').toLowerCase()})` : ''}.
       </div>
     );
   }
@@ -159,7 +160,7 @@ function PlanDetail({ plan, detail, loading, canManage, canSubmit, onSubmit, sub
       {tracked.length === 0 ? (
         <p className="text-xs text-lumi-subtle">No goal attached to this plan — nothing to track yet.</p>
       ) : (
-        tracked.map((g) => <GoalLanding key={g.goalId} metric={g.metric} landing={g.landing} />)
+        tracked.map((g) => <GoalLanding key={g.goalId} metric={g.metric} landing={g.landing} status={g.status} unavailableReason={g.unavailableReason} />)
       )}
 
       {/* Approval gate — governance precedes execution. */}

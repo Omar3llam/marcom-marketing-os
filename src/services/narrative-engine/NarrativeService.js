@@ -18,6 +18,7 @@ import { composeNarrative } from './narrativeEngine.js';
 import { NARRATIVE_PERIOD, NARRATIVE_AUDIENCE, confidenceLabel } from './narrativeTypes.js';
 import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
 import { MONETARY_REASON } from '../../lib/operationalMonetary.js';
+import { evaluateGoalTracking } from '../planning/PlanService.js';
 
 const PERIOD_DAYS = Object.freeze({ WEEKLY: 7, MONTHLY: 30 });
 const TIER_ATTR_CONFIDENCE = Object.freeze({ NONE: 0.3, AGENCY: 0.6, ENTERPRISE: 0.8 });
@@ -116,7 +117,7 @@ export function buildNarrativeInputs({
   // Against the goal.
   const goalInputs = goals.map((g) => ({
     goalId: g.id, name: g.name, status: g.status, targetValue: g.targetValue,
-    unit: g.metric, landingEstimate: null,
+    unit: g.metric, landingEstimate: null, unavailableReason: g.trackingUnavailableReason ?? null,
   }));
 
   // Coverage signals — each a 0..1 ratio from real rows (drives confidence).
@@ -199,14 +200,22 @@ export async function generateNarrative(workspaceId, { period = NARRATIVE_PERIOD
     }),
     getBlendedTruth(workspaceId).catch(() => null),
     prisma.incrementalityTest.findMany({ where: { workspaceId, status: 'CONCLUDED' } }),
-    prisma.northStarGoal.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 10 }),
+    // Explicit old columns keep the narrative worker read compatible while the
+    // additive Goal migration is rolling out; current status is recomputed below.
+    prisma.northStarGoal.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 10,
+      select: { id: true, name: true, metric: true, comparator: true, targetValue: true,
+        spendCeilingMinor: true, currency: true, periodStart: true, periodEnd: true } }),
     prisma.accountPattern.findMany({ where: { workspaceId }, select: { status: true } }),
     loadLabels(workspaceId),
   ]);
 
+  const currentGoals = await Promise.all(goals.map(async (g) => {
+    const tracking = await evaluateGoalTracking(workspaceId, g, { now });
+    return { ...g, status: tracking.status, trackingUnavailableReason: tracking.reason };
+  }));
   const inputs = buildNarrativeInputs({
     decisions,
-    blended, concludedTests, goals, patterns, labelsById,
+    blended, concludedTests, goals: currentGoals, patterns, labelsById,
     measurementTier: workspace?.measurementTier ?? 'NONE',
   });
 

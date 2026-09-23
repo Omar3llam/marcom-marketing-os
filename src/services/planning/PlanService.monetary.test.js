@@ -23,6 +23,7 @@ vi.mock('../../utils/logger.js', () => ({ logger: { info: vi.fn(), debug: vi.fn(
 import { prisma } from '../../lib/prisma.js';
 import { previewAllocation } from '../allocation-engine/AllocationService.js';
 import { runScenario } from '../scenario-engine/ScenarioService.js';
+import { selectOperationalSnapshots } from '../evidence/index.js';
 import { buildPlan } from './PlanService.js';
 
 const goal = { metric: 'blendedCac', comparator: 'LTE', targetValue: 1000 };
@@ -54,6 +55,43 @@ describe('Plan monetary persistence boundary', () => {
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(prisma.plan.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ currency }) }));
     expect(prisma.northStarGoal.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ currency, planId: 'plan-1' }) }));
+  });
+
+  it('persists a MER target with an explicit unavailable state and no landing', async () => {
+    previewAllocation.mockResolvedValue(validMix('EGP'));
+    await buildPlan('ws-1', input('EGP', { goal: { metric: 'mer', comparator: 'GTE', targetValue: 3 } }));
+    expect(selectOperationalSnapshots).not.toHaveBeenCalled();
+    expect(prisma.plan.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      projections: expect.objectContaining({
+        goalLanding: null,
+        goalTracking: {
+          contractVersion: 1, status: 'INSUFFICIENT_EVIDENCE',
+          unavailableReason: 'BUSINESS_REVENUE_SOURCE_UNAVAILABLE', measuredCurrency: null,
+        },
+      }),
+    }) }));
+    expect(prisma.northStarGoal.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      metric: 'mer', status: 'INSUFFICIENT_EVIDENCE',
+      trackingUnavailableReason: 'BUSINESS_REVENUE_SOURCE_UNAVAILABLE',
+    }) }));
+  });
+
+  it('persists missing non-MER measurement as unavailable rather than ON_TRACK', async () => {
+    previewAllocation.mockResolvedValue(validMix('USD'));
+    await buildPlan('ws-1', input('USD'));
+    expect(prisma.plan.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      projections: expect.objectContaining({
+        goalLanding: null,
+        goalTracking: expect.objectContaining({
+          status: 'INSUFFICIENT_EVIDENCE',
+          unavailableReason: 'INSUFFICIENT_MEASUREMENT_EVIDENCE',
+        }),
+      }),
+    }) }));
+    expect(prisma.northStarGoal.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      status: 'INSUFFICIENT_EVIDENCE',
+      trackingUnavailableReason: 'INSUFFICIENT_MEASUREMENT_EVIDENCE',
+    }) }));
   });
 
   it.each([

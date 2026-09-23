@@ -12,6 +12,7 @@ export const GOAL_STATUS = Object.freeze({
   ON_TRACK:  'ON_TRACK',
   AT_RISK:   'AT_RISK',
   OFF_TRACK: 'OFF_TRACK',
+  INSUFFICIENT_EVIDENCE: 'INSUFFICIENT_EVIDENCE',
 });
 
 // Standing honesty caveat on every estimate: CAC/ROAS/MER are not linear,

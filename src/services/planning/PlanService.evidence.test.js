@@ -156,6 +156,7 @@ const REPORTED_WINDOW_DAYS = 90;
 // seam refuses an unprojected read. The rest is the pre-migration select.
 const EXPECTED_SELECT = {
   date: true, entityId: true, spendMinor: true, revenueMinor: true, conversions: true, source: true,
+  currency: true, currencyProvenance: true, measurementWindow: true, windowStart: true, windowEnd: true,
 };
 const PRE_MIGRATION_WINDOWS = { in: ['LEGACY_UNKNOWN', 'ROLLING_WINDOW'] };
 const PRE_MIGRATION_ORDER = { date: 'asc' };
@@ -172,7 +173,11 @@ const EXPECTED_LEVEL = 'CAMPAIGN';
 const rowOf = (over) => ({
   workspaceId: WS, measurementWindow: 'ROLLING_WINDOW', source: 'META',
   entityId: 'e-base', entityLevel: 'CAMPAIGN',
-  spendMinor: 0, revenueMinor: 0, conversions: 0, ...over,
+  spendMinor: 0, revenueMinor: 0, conversions: 0,
+  currency: 'USD', currencyProvenance: 'PLATFORM_REPORTED',
+  windowStart: new Date(Math.floor(new Date(over.date).getTime() / DAY) * DAY - 29 * DAY),
+  windowEnd: new Date(Math.floor(new Date(over.date).getTime() / DAY) * DAY),
+  ...over,
 });
 
 // Deliberately NOT in date order, so losing the ORDER BY changes the series the
@@ -184,7 +189,7 @@ const rowOf = (over) => ({
 const buildTable = () => [
   // D5, the later bucket, placed first
   rowOf({ date: obs(D5, 9), spendMinor: 20_000, revenueMinor: 60_000,
-    conversions: 8, measurementWindow: 'LEGACY_UNKNOWN' }),
+    conversions: 8 }),
   // non-platform sources: FETCHED by the seam, skipped by Plan in memory. All
   // three of them, because "the actual-revenue sources" is a set, not one row —
   // GA4 alone would leave SHOPIFY and MANUAL untested against the same skip.
@@ -385,7 +390,7 @@ const useTable = (table = TABLE) => {
 const planWith = (metric = 'blendedRoas') => ({
   id: 'p1',
   goals: [{
-    id: 'g1', metric, comparator: 'GTE', targetValue: 2, spendCeilingMinor: null,
+    id: 'g1', metric, comparator: 'GTE', targetValue: 2, spendCeilingMinor: null, currency: 'USD',
     periodStart: new Date(dayStart(D1)).toISOString(),
     periodEnd:   new Date(dayStart(-1)).toISOString(),
   }],
@@ -426,7 +431,7 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
       expect(SRC).toMatch(/selectOperationalSnapshots/);
       expect((SRC.match(/prisma\.metricSnapshot/g) || []).length).toBe(0);
       expect(SRC).not.toMatch(/OPERATIONAL_WINDOW_FILTER/);
-      expect(SRC).not.toMatch(/measurementWindow/);
+      expect(SRC).toMatch(/measurementWindow: true/);
     });
 
     it('the entity scan kept its reduction — it just asks the seam for it now', () => {
@@ -441,7 +446,7 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
     it('keeps its OWN error swallow at its OWN call site', () => {
       // Anchored on the actuals projection, which appears exactly once, so the
       // match cannot drift to the `.catch(() => [])` on the entity scan below.
-      expect(SRC).toMatch(/source: true \},\s*\}\)\.catch\(\(\) => \[\]\)/);
+      expect(SRC).toMatch(/windowEnd: true \},\s*\}\)\.catch\(\(\) => \[\]\)/);
     });
 
     it('keeps the platform source set in the service, not in the seam', () => {
@@ -672,13 +677,12 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
       ]);
     });
 
-    it('mer reads the same as blendedRoas — its semantics are NOT repaired here', async () => {
-      // `mer` computes identically to `blendedRoas` over platform rows only, so
-      // it excludes exactly the actual revenue a marketing-efficiency ratio is
-      // supposed to include. Real, known, and deliberately out of R4's scope:
-      // this pins it unchanged so the day it is fixed is a visible change.
-      await trackPlan(WS, planWith('mer'));
-      expect(seriesOf()).toEqual(EXPECTED_ROAS_SERIES);
+    it('MER never aliases platform ROAS while business revenue has no authoritative producer', async () => {
+      const out = await trackPlan(WS, planWith('mer'));
+      expect(out.goals[0]).toMatchObject({ status: 'INSUFFICIENT_EVIDENCE',
+        unavailableReason: 'BUSINESS_REVENUE_SOURCE_UNAVAILABLE', landing: null });
+      expect(estimateLanding).not.toHaveBeenCalled();
+      expect(prisma.metricSnapshot.findMany).not.toHaveBeenCalled();
     });
 
     // ── the cross-level double count (R4) ─────────────────────────────────
@@ -734,25 +738,27 @@ describe('R3.6 — Plan actuals on the Evidence seam', () => {
         expect(out.goals[0].landing).toBeNull();
       });
 
-      it('a null spend beside a real stream neither breaks nor inflates the day', async () => {
+      it('a null spend beside a real stream makes completeness unprovable', async () => {
         useTable([
           rowOf({ date: obs(SPARE_AGE_DAYS, 9), spendMinor: null, revenueMinor: null, conversions: null }),
           rowOf({ date: obs(SPARE_AGE_DAYS, 10), entityId: 'e-second',
             spendMinor: 10_000, revenueMinor: 30_000, conversions: 5 }),
         ]);
-        await trackPlan(WS, planWith('blendedRoas'));
-        expect(seriesOf()).toEqual([{ date: dayLabel(SPARE_AGE_DAYS), value: 3 }]);
+        const out = await trackPlan(WS, planWith('blendedRoas'));
+        expect(out.goals[0]).toMatchObject({ status: 'INSUFFICIENT_EVIDENCE',
+          unavailableReason: 'INSUFFICIENT_MEASUREMENT_EVIDENCE', landing: null });
+        expect(estimateLanding).not.toHaveBeenCalled();
       });
 
-      it('windowStart is neither read nor projected — the bucket is the observation day', async () => {
+      it('window bounds are read for compatibility while the bucket remains the observation day', async () => {
         // The D2 rows carry a windowStart 90 DAYS EARLIER — a cron run reporting
         // a trailing quarter. If the bucket key were the reported period rather
         // than the observation, they would land on the day that window OPENED,
         // three months back. The column is not even projected, so the series is the
         // proof and the projection assertion is the reason it cannot drift.
         await trackPlan(WS, planWith('blendedRoas'));
-        expect(actualsArgs().select.windowStart).toBeUndefined();
-        expect(actualsArgs().select.windowEnd).toBeUndefined();
+        expect(actualsArgs().select.windowStart).toBe(true);
+        expect(actualsArgs().select.windowEnd).toBe(true);
         expect(seriesOf().map((p) => p.date)).not.toContain(dayLabel(D2 + REPORTED_WINDOW_DAYS));
         expect(seriesOf().map((p) => p.date)).toContain(dayLabel(D2));
       });
