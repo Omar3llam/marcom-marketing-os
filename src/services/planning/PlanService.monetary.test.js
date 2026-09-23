@@ -23,6 +23,7 @@ vi.mock('../../utils/logger.js', () => ({ logger: { info: vi.fn(), debug: vi.fn(
 import { prisma } from '../../lib/prisma.js';
 import { previewAllocation } from '../allocation-engine/AllocationService.js';
 import { runScenario } from '../scenario-engine/ScenarioService.js';
+import { gatherLeadingSignals } from '../scenario-engine/ScenarioService.js';
 import { selectOperationalSnapshots } from '../evidence/index.js';
 import { buildPlan } from './PlanService.js';
 
@@ -92,6 +93,35 @@ describe('Plan monetary persistence boundary', () => {
       status: 'INSUFFICIENT_EVIDENCE',
       trackingUnavailableReason: 'INSUFFICIENT_MEASUREMENT_EVIDENCE',
     }) }));
+  });
+
+  it('persists a valid homogeneous CAC goal with its measured currency and landing', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-23T00:00:00Z'));
+    try {
+      previewAllocation.mockResolvedValue(validMix('USD'));
+      selectOperationalSnapshots.mockImplementation(async (_workspaceId, options) => options.select.spendMinor
+        ? [{ date: new Date('2026-09-20T12:00:00Z'), entityId: 'campaign-1', source: 'META',
+          spendMinor: 20_000, revenueMinor: 0, conversions: 20, currency: 'USD',
+          currencyProvenance: 'PLATFORM_REPORTED', measurementWindow: 'ROLLING_WINDOW',
+          windowStart: new Date('2026-09-01T00:00:00Z'), windowEnd: new Date('2026-09-20T00:00:00Z') }]
+        : []);
+      gatherLeadingSignals.mockResolvedValue([]);
+      await buildPlan('ws-1', input('USD', {
+        now: '2026-09-23T00:00:00Z', goal: { metric: 'blendedCac', comparator: 'LTE', targetValue: 3000 },
+      }));
+      expect(prisma.plan.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+        projections: expect.objectContaining({
+          goalLanding: expect.objectContaining({ status: 'ON_TRACK', paceToDate: 1000 }),
+          goalTracking: { contractVersion: 1, status: 'ON_TRACK', unavailableReason: null, measuredCurrency: 'USD' },
+        }),
+      }) }));
+      expect(prisma.northStarGoal.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+        status: 'ON_TRACK', trackingUnavailableReason: null, currency: 'USD',
+      }) }));
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it.each([
