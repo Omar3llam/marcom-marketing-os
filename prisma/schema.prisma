@@ -246,6 +246,7 @@ enum GoalStatus {
   ON_TRACK
   AT_RISK
   OFF_TRACK
+  INSUFFICIENT_EVIDENCE
   ACHIEVED
   MISSED
 }
@@ -2132,6 +2133,7 @@ model NorthStarGoal {
   periodStart       DateTime
   periodEnd         DateTime
   status            GoalStatus @default(ON_TRACK)
+  trackingUnavailableReason String?
   planId            String?    @db.Uuid
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt

@@ -264,13 +264,13 @@ function strategistAgenda({ planTracking = null, blended = null, pacing = [], no
   const items = [];
 
   for (const g of planTracking?.goals ?? []) {
-    const status = g.landing?.status ?? 'ON_TRACK';
+    const status = g.status ?? g.landing?.status ?? 'INSUFFICIENT_EVIDENCE';
     if (status === 'ON_TRACK' || status === 'ACHIEVED') continue; // only what needs a strategist
     const sev = status === 'OFF_TRACK' || status === 'MISSED' ? SEVERITY.HIGH : SEVERITY.MEDIUM;
     items.push(agendaItem({
       id: `goal:${g.goalId}`, band: AGENDA_BAND.STRATEGIST, type: AGENDA_TYPE.PLAN_ADJUSTMENT,
       title: `Goal ${g.metric} is ${status.replace(/_/g, ' ').toLowerCase()}`,
-      rationale: g.landing?.basis ?? 'Trend-based landing estimate drifting from target.',
+      rationale: g.landing?.basis ?? g.unavailableReason ?? 'Measurement evidence is insufficient.',
       severity: sev, evidenceRef: g.goalId, humanAction: HUMAN_ACTION.ADJUST,
     }));
   }

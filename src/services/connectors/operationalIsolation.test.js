@@ -344,8 +344,13 @@ describe('every operational MetricSnapshot reader declares its population', () =
     expect(src).toMatch(/selectOperationalSnapshots/);
     expect(src).not.toMatch(/metricSnapshot\.findMany/);
     expect(src).not.toMatch(/OPERATIONAL_WINDOW_FILTER/);
-    // A consumer may project window EVIDENCE; only a local population predicate
-    // would bypass the shared Evidence seam's operational allow-list.
+    // Planning and Blended Truth project window evidence. Neither may define
+    // its own population predicate outside the shared Evidence seam.
+    if (['planning/PlanService.js', 'blended-truth/BlendedTruthService.js'].includes(rel)) {
+      expect(src).toMatch(/measurementWindow: true/);
+    } else {
+      expect(src).not.toMatch(/measurementWindow/);
+    }
     expect(src).not.toMatch(/\bmeasurementWindow:\s*\{/);
   });
 

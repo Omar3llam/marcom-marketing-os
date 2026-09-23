@@ -35,6 +35,7 @@ const statusTone = {
   AT_RISK:   'text-signal-hold bg-signal-hold-bg border-signal-hold/25',
   OFF_TRACK: 'text-signal-kill bg-signal-kill-bg border-signal-kill/25',
   MISSED:    'text-signal-kill bg-signal-kill-bg border-signal-kill/25',
+  INSUFFICIENT_EVIDENCE: 'text-lumi-muted bg-lumi-elevated border-lumi-border',
 };
 const CMP_SYMBOL = { GT: '>', GTE: '≥', LT: '<', LTE: '≤' };
 
@@ -197,8 +198,8 @@ export function GoalsPanel({
                     {fmtDate(row.value.periodStart)} – {fmtDate(row.value.periodEnd)}
                   </td>
                   <td className="px-4 py-2.5">
-                    <span className={cn('font-mono text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border', statusTone[row.value.status] || statusTone.ON_TRACK)}>
-                      {(row.value.status || 'ON_TRACK').replace('_', ' ')}
+                    <span className={cn('font-mono text-[10px] uppercase tracking-wide px-2 py-0.5 rounded border', statusTone[row.value.status] || statusTone.INSUFFICIENT_EVIDENCE)}>
+                      {(row.value.status || 'INSUFFICIENT_EVIDENCE').replaceAll('_', ' ')}
                     </span>
                   </td>
                 </tr>

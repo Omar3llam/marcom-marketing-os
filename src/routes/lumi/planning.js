@@ -13,7 +13,7 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { runScenario } from '../../services/scenario-engine/ScenarioService.js';
 import { getEconomicsAssessment, setEconomics } from '../../services/unit-economics/EconomicsService.js';
-import { buildPlan, listPlans, getPlan, promotePlanMix } from '../../services/planning/PlanService.js';
+import { buildPlan, listPlans, getPlan, promotePlanMix, evaluateGoalTracking } from '../../services/planning/PlanService.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { requirePlan }        from '../../middleware/requirePlan.js';
 import { WORKSPACE_ROLE }     from '../../services/collaboration/roleScope.js';
@@ -120,7 +120,11 @@ planningRouter.get('/goals', async (req, res) => {
   if (!wsId) return res.json({ workspaceId: null, goals: [] });
   try {
     const goals = await prisma.northStarGoal.findMany({ where: { workspaceId: wsId }, orderBy: { createdAt: 'desc' }, take: 50 });
-    return res.json({ workspaceId: wsId, goals });
+    const current = await Promise.all(goals.map(async (g) => {
+      const tracking = await evaluateGoalTracking(wsId, g);
+      return { ...g, status: tracking.status, trackingUnavailableReason: tracking.reason, measuredCurrency: tracking.currency };
+    }));
+    return res.json({ workspaceId: wsId, goals: current });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/planning] goals list failed');
     return res.status(500).json({ error: 'GoalsUnavailable', message: 'Request failed' });
@@ -138,18 +142,22 @@ planningRouter.post('/goals', requireStrategist, async (req, res) => {
     return res.status(400).json({ error: 'BadGoal', message: 'An explicit supported currency is required.' });
   }
   try {
+    const currency = b.currency.trim().toUpperCase();
+    const tracking = await evaluateGoalTracking(wsId, { ...b, currency });
     const goal = await prisma.northStarGoal.create({
       data: {
         workspaceId: wsId,
         name: b.name ?? `${b.metric} ${b.comparator} ${b.targetValue}`,
         metric: b.metric, comparator: b.comparator, targetValue: b.targetValue,
         spendCeilingMinor: typeof b.spendCeilingMinor === 'number' ? b.spendCeilingMinor : null,
-        currency: b.currency.trim().toUpperCase(),
+        currency,
         periodStart: new Date(b.periodStart), periodEnd: new Date(b.periodEnd),
         planId: b.planId ?? null,
+        status: tracking.status,
+        trackingUnavailableReason: tracking.reason,
       },
     });
-    return res.status(201).json({ workspaceId: wsId, goal });
+    return res.status(201).json({ workspaceId: wsId, goal: { ...goal, measuredCurrency: tracking.currency } });
   } catch (err) {
     logger.error({ err: err.message, wsId }, '[lumi/planning] goal create failed');
     return res.status(500).json({ error: 'GoalCreateFailed', message: 'Request failed' });

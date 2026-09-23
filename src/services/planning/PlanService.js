@@ -29,6 +29,7 @@ import { selectOperationalSnapshots } from '../evidence/index.js';
 import { PROMOTION_OUTCOME } from '@marcom/runtime-contracts';
 import { periodBetween } from '../budget-period/spendPeriod.js';
 import { MONETARY_STATUS, MONETARY_REASON } from '../../lib/operationalMonetary.js';
+import { evaluatePlanningActual, PLANNING_EVIDENCE, PLANNING_REASON } from './planningActuals.js';
 import {
   captureMixSnapshot, planToAllocationCommit, hasBudgetMoves, budgetMovesAreMeasured,
   refusePromotion, PROMOTION_REFUSAL,
@@ -104,7 +105,10 @@ export function isPromotionApprovalBlocked(plan) {
  * rather than imported so this repair stays local and Plan does not take a
  * dependency on that service's DB/credential graph for a pure fold.
  */
-async function buildActualsSeries(workspaceId, metric, sinceDays = ACTUALS_SYNC_RECENCY_DAYS) {
+async function buildActualsSeries(workspaceId, metric, targetCurrency, sinceDays = ACTUALS_SYNC_RECENCY_DAYS) {
+  if (metric === 'mer') {
+    return { status: PLANNING_EVIDENCE.INSUFFICIENT, reason: PLANNING_REASON.BUSINESS_REVENUE_SOURCE_UNAVAILABLE, currency: null, series: [] };
+  }
   const since = new Date(Date.now() - sinceDays * 86_400_000);
   // R3: this read no longer states where its evidence lives. The operational
   // population — workspace scope and the window allow-list Phase G introduced —
@@ -148,7 +152,7 @@ async function buildActualsSeries(workspaceId, metric, sinceDays = ACTUALS_SYNC_
   const rows = await selectOperationalSnapshots(workspaceId, {
     since,
     entityLevel: ENTITY_LEVEL.CAMPAIGN,
-    select: { date: true, entityId: true, spendMinor: true, revenueMinor: true, conversions: true, source: true },
+    select: { date: true, entityId: true, spendMinor: true, revenueMinor: true, conversions: true, source: true, currency: true, currencyProvenance: true, measurementWindow: true, windowStart: true, windowEnd: true },
   }).catch(() => []);
 
   const PLATFORM = new Set(['META', 'GOOGLE', 'TIKTOK', 'SNAP', 'LINKEDIN']);
@@ -175,30 +179,28 @@ async function buildActualsSeries(workspaceId, metric, sinceDays = ACTUALS_SYNC_
   }
 
   const series = [];
+  let currency = null;
   for (const [date, streams] of byDay) {
-    // Sum ACROSS streams — different campaigns, and different sources on one
-    // campaign, are independent measurements. Counts only; stored ratios are
-    // never read, because a ratio of one stream says nothing about the day.
-    const d = { spendMinor: 0, revenueMinor: 0, conversions: 0 };
-    for (const r of streams.values()) {
-      d.spendMinor   += r.spendMinor ?? 0;
-      d.revenueMinor += r.revenueMinor ?? 0;
-      d.conversions  += r.conversions ?? 0;
+    const point = evaluatePlanningActual([...streams.values()], metric, targetCurrency);
+    if (point.status !== PLANNING_EVIDENCE.VALID) return { ...point, series: [] };
+    if (currency && currency !== point.currency) {
+      return { status: PLANNING_EVIDENCE.INSUFFICIENT, reason: PLANNING_REASON.ACTUAL_CURRENCY_MIXED, currency: null, series: [] };
     }
-    let value = null;
-    if (metric === 'blendedCac')       value = d.conversions > 0 ? d.spendMinor / d.conversions : null;
-    else if (metric === 'blendedRoas') value = d.spendMinor > 0 ? d.revenueMinor / d.spendMinor : null;
-    else if (metric === 'mer')         value = d.spendMinor > 0 ? d.revenueMinor / d.spendMinor : null;
-    if (value != null && Number.isFinite(value)) series.push({ date, value });
+    currency = point.currency;
+    series.push({ date, value: point.value });
   }
-  return series;
+  return series.length > 0
+    ? { status: PLANNING_EVIDENCE.VALID, reason: null, currency, series }
+    : { status: PLANNING_EVIDENCE.INSUFFICIENT, reason: PLANNING_REASON.INSUFFICIENT_MEASUREMENT_EVIDENCE, currency: null, series: [] };
 }
 
-/** Project a goal's landing (best-effort; null if no actuals). READ-ONLY. */
-async function projectGoalLanding(workspaceId, goal, { now } = {}) {
-  if (!goal) return null;
-  const actuals = await buildActualsSeries(workspaceId, goal.metric);
-  if (actuals.length === 0) return null;
+/** Current tracking is always recomputed; a persisted legacy status is not evidence. */
+export async function evaluateGoalTracking(workspaceId, goal, { now } = {}) {
+  if (!goal) return { status: PLANNING_EVIDENCE.INSUFFICIENT, reason: PLANNING_REASON.INSUFFICIENT_MEASUREMENT_EVIDENCE, currency: null, landing: null };
+  const measured = await buildActualsSeries(workspaceId, goal.metric, goal.currency);
+  if (measured.status !== PLANNING_EVIDENCE.VALID) {
+    return { status: PLANNING_EVIDENCE.INSUFFICIENT, reason: measured.reason, currency: null, landing: null };
+  }
 
   // Leading signals across the entities that carry spend.
   //
@@ -242,14 +244,16 @@ async function projectGoalLanding(workspaceId, goal, { now } = {}) {
   });
 
   try {
-    return estimateLanding({
+    const landing = estimateLanding({
       target: { metric: goal.metric, comparator: goal.comparator, targetValue: goal.targetValue, spendCeilingMinor: goal.spendCeilingMinor },
-      actuals, leadingSignals,
+      actuals: measured.series, leadingSignals,
+      measurementEligibility: { status: PLANNING_EVIDENCE.VALID, currency: measured.currency },
       periodStart: goal.periodStart, periodEnd: goal.periodEnd, now: now ?? new Date().toISOString(),
     });
+    return { status: landing.status, reason: null, currency: measured.currency, landing };
   } catch (err) {
     logger.debug({ err: err.message, workspaceId }, '[PlanService] goal landing skipped');
-    return null;
+    return { status: PLANNING_EVIDENCE.INSUFFICIENT, reason: PLANNING_REASON.INSUFFICIENT_MEASUREMENT_EVIDENCE, currency: null, landing: null };
   }
 }
 
@@ -292,7 +296,9 @@ export async function buildPlan(workspaceId, { name, periodStart, periodEnd, tot
 
   // Goal landing (best-effort) before persistence, so the plan stores an
   // initial read alongside its target.
-  const landing = goal ? await projectGoalLanding(workspaceId, { ...goal, periodStart, periodEnd }, { now }) : null;
+  const goalCurrency = goal?.currency ?? mix.currency;
+  const tracking = goal ? await evaluateGoalTracking(workspaceId, { ...goal, currency: goalCurrency, periodStart, periodEnd }, { now }) : null;
+  const landing = tracking?.landing ?? null;
 
   const memoryBasis = scenario?.memoryBasis ?? [];
   const currency = mix.currency;
@@ -300,6 +306,7 @@ export async function buildPlan(workspaceId, { name, periodStart, periodEnd, tot
     scenario: scenario ? { scenarioType: scenario.scenarioType, projections: scenario.projections, assumptions: scenario.assumptions, confidence: scenario.confidence, basis: scenario.basis } : null,
     economics: econ?.result ? { ltvToCac: econ.result.ltvToCac, sustainabilityBand: econ.result.sustainabilityBand, paybackOrders: econ.result.paybackOrders, ltvMinor: econ.result.ltvMinor, isDefault: econ.isDefault, assumptions: econ.result.assumptions } : null,
     goalLanding: landing,
+    goalTracking: tracking ? { contractVersion: 1, status: tracking.status, unavailableReason: tracking.reason, measuredCurrency: tracking.currency } : null,
     // C-18 — the rest of the preview, so promotion can execute the mix that was
     // approved instead of recomputing one. `channelMix` keeps the allocations;
     // this keeps everything else `persistAllocation` needs and cannot derive
@@ -327,9 +334,10 @@ export async function buildPlan(workspaceId, { name, periodStart, periodEnd, tot
         name: goal.name ?? `${goal.metric} ${goal.comparator} ${goal.targetValue}`,
         metric: goal.metric, comparator: goal.comparator, targetValue: goal.targetValue,
         spendCeilingMinor: goal.spendCeilingMinor ?? null,
-        currency,
+        currency: goalCurrency,
         periodStart: new Date(periodStart), periodEnd: new Date(periodEnd),
-        status: landing?.status ?? 'ON_TRACK',
+        status: tracking.status,
+        trackingUnavailableReason: tracking.reason,
       },
     });
     return saved;
@@ -342,12 +350,19 @@ export async function buildPlan(workspaceId, { name, periodStart, periodEnd, tot
 /** List plans (lightweight). READ-ONLY. */
 export async function listPlans(workspaceId) {
   if (!workspaceId) throw new Error('listPlans: workspaceId required');
-  return prisma.plan.findMany({
+  const plans = await prisma.plan.findMany({
     where:   { workspaceId },
     orderBy: { createdAt: 'desc' },
     include: { goals: true },
     take:    50,
   });
+  return Promise.all(plans.map(async (plan) => ({
+    ...plan,
+    goals: await Promise.all((plan.goals ?? []).map(async (goal) => {
+      const tracking = await evaluateGoalTracking(workspaceId, goal);
+      return { ...goal, status: tracking.status, trackingUnavailableReason: tracking.reason, measuredCurrency: tracking.currency };
+    })),
+  })));
 }
 
 /** One plan + live actuals-vs-plan tracking. READ-ONLY. */
@@ -366,7 +381,14 @@ export async function getPlan(workspaceId, planId, { now } = {}) {
   const latestApproval = a
     ? { id: a.id, state: a.state, reason: a.reason ?? null, decidedAt: a.decidedAt, createdAt: a.createdAt }
     : null;
-  return { ...rest, latestApproval, tracking: await trackPlan(workspaceId, plan, { now }) };
+  const tracking = await trackPlan(workspaceId, plan, { now });
+  const goals = (rest.goals ?? []).map((goal) => {
+    const current = tracking.goals.find((g) => g.goalId === goal.id);
+    return { ...goal, status: current?.status ?? PLANNING_EVIDENCE.INSUFFICIENT,
+      trackingUnavailableReason: current ? current.unavailableReason : PLANNING_REASON.INSUFFICIENT_MEASUREMENT_EVIDENCE,
+      measuredCurrency: current?.currency ?? null };
+  });
+  return { ...rest, goals, latestApproval, tracking };
 }
 
 /**
@@ -381,7 +403,8 @@ export async function trackPlan(workspaceId, planOrId, { now } = {}) {
 
   const goals = [];
   for (const g of plan.goals ?? []) {
-    goals.push({ goalId: g.id, metric: g.metric, landing: await projectGoalLanding(workspaceId, g, { now }) });
+    const tracking = await evaluateGoalTracking(workspaceId, g, { now });
+    goals.push({ goalId: g.id, metric: g.metric, status: tracking.status, unavailableReason: tracking.reason, currency: tracking.currency, landing: tracking.landing });
   }
   return { goals, refreshedAt: new Date().toISOString() };
 }

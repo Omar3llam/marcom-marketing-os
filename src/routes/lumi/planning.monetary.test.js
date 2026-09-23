@@ -5,6 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 vi.mock('../../lib/prisma.js', () => ({ prisma: { northStarGoal: { create: vi.fn() } } }));
 vi.mock('../../services/planning/PlanService.js', () => ({
   buildPlan: vi.fn(), listPlans: vi.fn(), getPlan: vi.fn(), promotePlanMix: vi.fn(),
+  evaluateGoalTracking: vi.fn(async () => ({ status: 'INSUFFICIENT_EVIDENCE', reason: 'BUSINESS_REVENUE_SOURCE_UNAVAILABLE', currency: null, landing: null })),
 }));
 vi.mock('../../utils/logger.js', () => ({ logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
@@ -58,7 +59,8 @@ describe('planning HTTP monetary contract', () => {
     prisma.northStarGoal.create.mockResolvedValue({ id: 'goal-1', currency: 'EGP' });
     await request(app).post('/goals').send({ ...body, currency: 'egp' }).expect(201);
     expect(prisma.northStarGoal.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ currency: 'EGP' }),
+      data: expect.objectContaining({ currency: 'EGP', status: 'INSUFFICIENT_EVIDENCE',
+        trackingUnavailableReason: 'BUSINESS_REVENUE_SOURCE_UNAVAILABLE' }),
     }));
   });
 });

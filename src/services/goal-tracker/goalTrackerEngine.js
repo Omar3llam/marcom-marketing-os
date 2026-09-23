@@ -85,7 +85,10 @@ function worse(a, b) { return RANK[a] >= RANK[b] ? a : b; }
  *   laggingStatus, leadingRisk, leadingSignals, status, pctOfPeriodElapsed,
  *   assumptions, basis }}
  */
-export function estimateLanding({ target, actuals, leadingSignals = [], periodStart, periodEnd, now } = {}) {
+export function estimateLanding({ target, actuals, leadingSignals = [], periodStart, periodEnd, now, measurementEligibility } = {}) {
+  if (measurementEligibility && (measurementEligibility.status !== 'VALID' || !measurementEligibility.currency)) {
+    throw new Error('estimateLanding: authoritative measurement eligibility required');
+  }
   validate(target, actuals, periodStart, periodEnd);
 
   const tStart = toTime(periodStart);
