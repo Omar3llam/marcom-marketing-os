@@ -344,7 +344,9 @@ describe('every operational MetricSnapshot reader declares its population', () =
     expect(src).toMatch(/selectOperationalSnapshots/);
     expect(src).not.toMatch(/metricSnapshot\.findMany/);
     expect(src).not.toMatch(/OPERATIONAL_WINDOW_FILTER/);
-    expect(src).not.toMatch(/measurementWindow/);
+    // A consumer may project window EVIDENCE; only a local population predicate
+    // would bypass the shared Evidence seam's operational allow-list.
+    expect(src).not.toMatch(/\bmeasurementWindow:\s*\{/);
   });
 
   it.each(EVIDENCE_SEAM_READER_WRITERS)('%s reads through the Evidence seam and keeps only its WRITE population', async (rel) => {

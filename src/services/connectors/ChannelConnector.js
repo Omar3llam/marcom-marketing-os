@@ -81,8 +81,8 @@ export function assertNormalized(rows) {
     // the message, rather than several layers later inside the sink. The two
     // guards are deliberate duplication: this one is about authoring a
     // connector, that one is about nothing reaching the table without a period.
-    // (Actual sources take the other path — assertActuals → actualsSink — and
-    // are stamped LEGACY_UNKNOWN explicitly there.)
+    // (Actual sources take the other path — assertActuals → actualsSink — where
+    // only a proved GA4 request/response period gets exact bounds.)
     if (!Object.values(MEASUREMENT_WINDOW).includes(r.measurementWindow)) {
       throw new Error(
         `NormalizedSnapshot.measurementWindow must be one of ${Object.values(MEASUREMENT_WINDOW).join('/')}: ${r.measurementWindow}`,

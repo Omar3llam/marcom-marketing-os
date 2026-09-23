@@ -67,9 +67,10 @@ export const MEASUREMENT_WINDOW = Object.freeze({
 // DAILY is therefore NOT here, even though no row carries it today. Adding it is
 // Phase E's job, made deliberately, one reader at a time.
 //
-// LEGACY_UNKNOWN is here and must stay: it covers every pre-Phase-C row AND every
-// ACTUAL-revenue row (GA4 / MANUAL), which the blended-truth and overlay paths
-// legitimately read. Dropping it would blank actual revenue everywhere — a far
+// LEGACY_UNKNOWN is here and must stay: it covers every pre-Phase-C row and
+// actual-revenue rows without proved periods (including manual uploads and old
+// GA4 observations), which blended-truth and overlay legitimately read. New GA4
+// observations with proved bounds are ROLLING_WINDOW. Dropping UNKNOWN would blank historical actual revenue — a far
 // larger behaviour change than the one this exists to prevent.
 export const OPERATIONAL_MEASUREMENT_WINDOWS = Object.freeze([
   MEASUREMENT_WINDOW.LEGACY_UNKNOWN,

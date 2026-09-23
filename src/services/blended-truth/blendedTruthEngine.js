@@ -26,6 +26,7 @@
 // ============================================================
 import { logger } from '../../utils/logger.js';
 import { MONETARY_STATUS, MONETARY_REASON, monetaryUnavailable, sameMonetaryUnit } from '../../lib/operationalMonetary.js';
+import { combineRevenueWindows, unknownRevenueWindow } from '../../lib/revenueMeasurementWindow.js';
 
 export const COVERAGE   = Object.freeze({ RECONCILED: 'RECONCILED', UNVERIFIED: 'UNVERIFIED' });
 export const CONFIDENCE = Object.freeze({ HIGH: 'HIGH', LOW: 'LOW' });
@@ -104,6 +105,9 @@ export function reconcile({ channels } = {}) {
       platformRevenueMinor: valid(platformUnit) ? platformRevenueMinor : null,
       actualRevenueMinor:  hasActual && valid(c.monetaryEvidence?.actual) ? c.actualRevenueMinor : null,
       blendedRevenueMinor: valid(blendedUnit) ? blendedRevenueMinor : null,
+      blendedRevenueWindow: hasActual
+        ? (c.actualRevenueWindow ?? unknownRevenueWindow())
+        : (c.platformRevenueWindow ?? unknownRevenueWindow()),
       gapMinor:            valid(comparisonUnit) ? gapMinor : null,
       gapPct:              valid(comparisonUnit) ? gapPct : null,
       platformRoas:        valid(platformRatioUnit) ? roas(platformRevenueMinor, c.spendMinor) : null,
@@ -140,6 +144,7 @@ export function reconcile({ channels } = {}) {
   portfolio.monetaryStatus = blendedComparison.monetaryStatus;
   portfolio.monetaryReason = blendedComparison.monetaryReason;
   portfolio.monetaryEvidence = { spend: spendUnit, platform: platformUnit, blended: blendedUnit };
+  portfolio.blendedRevenueWindow = combineRevenueWindows(rows.map((r) => r.blendedRevenueWindow));
   if (!valid(spendUnit)) portfolio.spendMinor = null;
   if (!valid(platformUnit)) portfolio.platformRevenueMinor = null;
   if (!valid(blendedUnit)) portfolio.blendedRevenueMinor = null;

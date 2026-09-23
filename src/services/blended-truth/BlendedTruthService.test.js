@@ -13,6 +13,7 @@ vi.mock('../../utils/logger.js', () => ({
 }));
 
 import { buildChannelInputs, latestPerStream } from './BlendedTruthService.js';
+import { reconcile } from './blendedTruthEngine.js';
 
 const snap = (over = {}) => ({
   entityId: 'B', entityLevel: 'CAMPAIGN', source: 'META',
@@ -56,6 +57,41 @@ describe('buildChannelInputs — campaign-keyed label join', () => {
     expect(b.spendMinor).toBe(2000);
     expect(b.platformRevenueMinor).toBe(8000);
     expect(b.actualRevenueMinor).toBe(6000);
+  });
+});
+
+describe('selected blended revenue window', () => {
+  const start = new Date('2026-08-01T00:00:00Z');
+  const end = new Date('2026-08-31T23:59:59.999Z');
+  const platform = (over = {}) => snap({ entityId: 'A', source: 'META',
+    date: new Date('2026-09-01T12:00:00Z'), spendMinor: 100, revenueMinor: 300,
+    measurementWindow: 'ROLLING_WINDOW', windowStart: start, windowEnd: end, ...over });
+  const actual = (over = {}) => snap({ entityId: 'A', source: 'GA4',
+    date: new Date('2026-09-01T12:00:00Z'), revenueMinor: 250,
+    measurementWindow: 'ROLLING_WINDOW', windowStart: start, windowEnd: end, ...over });
+
+  it('carries the actual observation window when actual revenue is selected', () => {
+    const [channel] = reconcile({ channels: buildChannelInputs([platform(), actual()]) }).channels;
+    expect(channel.blendedRevenueWindow).toEqual({ windowStatus: 'EXACT', windowStart: start, windowEnd: end });
+  });
+
+  it('carries the platform window on fallback, never an absent actual window', () => {
+    const [channel] = reconcile({ channels: buildChannelInputs([platform()]) }).channels;
+    expect(channel.blendedRevenueWindow).toEqual({ windowStatus: 'EXACT', windowStart: start, windowEnd: end });
+  });
+
+  it('does not borrow the discarded platform window when the selected actual is unknown', () => {
+    const [channel] = reconcile({ channels: buildChannelInputs([platform(), actual({
+      measurementWindow: 'LEGACY_UNKNOWN', windowStart: null, windowEnd: null,
+    })]) }).channels;
+    expect(channel.blendedRevenueWindow).toMatchObject({ windowStatus: 'UNKNOWN', windowStart: null, windowEnd: null });
+  });
+
+  it('refuses to present mixed actual-source periods as one exact period', () => {
+    const [channel] = reconcile({ channels: buildChannelInputs([platform(), actual(), actual({
+      source: 'MANUAL', windowStart: new Date('2026-08-02T00:00:00Z'),
+    })]) }).channels;
+    expect(channel.blendedRevenueWindow.windowStatus).toBe('UNKNOWN');
   });
 });
 

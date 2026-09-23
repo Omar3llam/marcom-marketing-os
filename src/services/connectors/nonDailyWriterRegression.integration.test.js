@@ -229,6 +229,26 @@ describe.skipIf(!DB_OK)('B4-E5 · the non-DAILY writers against the partial iden
       expect(row.dailyBudgetMinor).toBeNull();
     });
 
+    it('restates the current observation across unknown/exact without retaining a stale window', async () => {
+      const window = {
+        windowStatus: 'EXACT',
+        windowStart: new Date('2026-08-01T00:00:00Z'),
+        windowEnd: new Date('2026-08-31T23:59:59.999Z'),
+      };
+      await landActuals(WS, [actual()]);
+      await landActuals(WS, [actual({ ...window, revenueMinor: 810000 })]);
+      let rows = await rowsWhere({ source: 'GA4' });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ measurementWindow: 'ROLLING_WINDOW', revenueMinor: 810000,
+        windowStart: window.windowStart, windowEnd: window.windowEnd });
+
+      await landActuals(WS, [actual({ revenueMinor: 820000 })]);
+      rows = await rowsWhere({ source: 'GA4' });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ measurementWindow: 'LEGACY_UNKNOWN', revenueMinor: 820000,
+        windowStart: null, windowEnd: null });
+    });
+
     it('R5 · one bad row persists none of the batch', async () => {
       await expect(landActuals(WS, [
         actual(), actual({ campaignName: undefined, revenueMinor: 3_000_000_000 }),

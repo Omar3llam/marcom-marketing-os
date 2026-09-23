@@ -48,9 +48,11 @@ const SRC = readFileSync(
 
 const WS = 'ws-blended';
 
-// Provenance is the only additional field needed for monetary eligibility.
-const MONETARY_SELECT = {
+// Monetary and measurement-window provenance are selected without changing the
+// Evidence seam's operational population or reduction policy.
+const EVIDENCE_SELECT = {
   entityId: true, date: true, source: true, revenueMinor: true, spendMinor: true, currency: true, currencyProvenance: true,
+  measurementWindow: true, windowStart: true, windowEnd: true,
 };
 
 const row = (over = {}) => ({
@@ -90,7 +92,7 @@ describe('R3.3 — BlendedTruthService on the Evidence seam', () => {
 
     it('states no population of its own any more', () => {
       expect(SRC).not.toMatch(/OPERATIONAL_WINDOW_FILTER/);
-      expect(SRC).not.toMatch(/measurementWindow/);
+      expect(SRC).not.toMatch(/\bmeasurementWindow:\s*\{/); // a predicate, not a select field
     });
 
     it('keeps latestPerStream in the service, not the Evidence layer', () => {
@@ -102,14 +104,14 @@ describe('R3.3 — BlendedTruthService on the Evidence seam', () => {
   });
 
   // ── A · query parity ─────────────────────────────────────────────────────
-  describe('query parity with the pre-migration read', () => {
-    it('issues exactly the pre-migration query', async () => {
+  describe('query parity with the operational population', () => {
+    it('projects revenue-window evidence without changing the population', async () => {
       const before = Date.now();
       await getBlendedTruth(WS);
       const after = Date.now();
       const args = evidenceArgs();
 
-      expect(args.select).toEqual(MONETARY_SELECT);
+      expect(args.select).toEqual(EVIDENCE_SELECT);
       expect(args.where.workspaceId).toBe(WS);
       expect(args.where.measurementWindow).toEqual(OPERATIONAL_WINDOW_FILTER);
 
