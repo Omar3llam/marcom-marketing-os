@@ -32,9 +32,9 @@ describe('useAllocation', () => {
     api.post.mockResolvedValueOnce({ data: { workspaceId: 'ws', plan: PREVIEW } });
 
     const { result } = renderHook(() => useAllocation());
-    await act(async () => { await result.current.preview({ totalBudgetMinor: 5000000 }); });
+    await act(async () => { await result.current.preview({ totalBudgetMinor: 5000000, totalBudgetCurrency: 'USD' }); });
 
-    expect(api.post).toHaveBeenCalledWith('/api/lumi/portfolio/allocate', { totalBudgetMinor: 5000000, goal: undefined });
+    expect(api.post).toHaveBeenCalledWith('/api/lumi/portfolio/allocate', { totalBudgetMinor: 5000000, totalBudgetCurrency: 'USD', goal: undefined });
     expect(result.current.plan?.allocations).toHaveLength(2);
     expect(result.current.previewNote).toBeNull();
     expect(result.current.previewError).toBeNull();
@@ -64,11 +64,18 @@ describe('useAllocation', () => {
 
     const { result } = renderHook(() => useAllocation());
     let returned;
-    await act(async () => { returned = await result.current.commit({ totalBudgetMinor: 5000000 }); });
+    await act(async () => { returned = await result.current.commit({ totalBudgetMinor: 5000000, totalBudgetCurrency: 'USD' }); });
 
-    expect(api.post).toHaveBeenCalledWith('/api/lumi/portfolio/allocate/commit', { totalBudgetMinor: 5000000, goal: undefined });
+    expect(api.post).toHaveBeenCalledWith('/api/lumi/portfolio/allocate/commit', { totalBudgetMinor: 5000000, totalBudgetCurrency: 'USD', goal: undefined });
     expect(returned).toEqual({ planId: 'plan-1', decisionsCreated: 2 });
     expect(result.current.committed).toEqual({ planId: 'plan-1', decisionsCreated: 2 });
+  });
+
+  it('does not fabricate a currency when none was provided', async () => {
+    api.post.mockResolvedValueOnce({ data: { plan: null, message: 'No connected channels to allocate.' } });
+    const { result } = renderHook(() => useAllocation());
+    await act(async () => { await result.current.preview({ totalBudgetMinor: 5000000 }); });
+    expect(api.post.mock.calls[0][1].totalBudgetCurrency).toBeUndefined();
   });
 
   it('surfaces a real commit error and returns null', async () => {

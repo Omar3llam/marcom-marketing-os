@@ -100,16 +100,36 @@ describe('PlansPanel — STRATEGIST gate', () => {
     expect(screen.queryByRole('button', { name: /build plan/i })).not.toBeInTheDocument();
   });
 
-  it('a strategist build converts the budget to minor and fires onCreate', () => {
+  it.each(['EGP', 'USD', 'SAR'])('a strategist selects %s and submits that denomination unchanged', (currency) => {
     const onCreate = vi.fn().mockResolvedValue({ id: 'p2' });
     render(<PlansPanel plans={PLANS} canManage onCreate={onCreate} currency="USD" />);
+    expect(screen.getByRole('combobox', { name: 'Currency' })).toHaveValue('');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Currency' }), { target: { value: currency } });
     fireEvent.change(screen.getByLabelText(/total budget/i), { target: { value: '50000' } });
     fireEvent.change(screen.getByLabelText(/period start/i), { target: { value: '2026-07-01' } });
     fireEvent.change(screen.getByLabelText(/period end/i), { target: { value: '2026-09-30' } });
     fireEvent.click(screen.getByRole('button', { name: /build plan/i }));
     expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({
-      totalBudgetMinor: 5000000, periodStart: '2026-07-01', periodEnd: '2026-09-30', currency: 'USD',
+      totalBudgetMinor: 5000000, periodStart: '2026-07-01', periodEnd: '2026-09-30', totalBudgetCurrency: currency,
     }));
+  });
+
+  it('requires a visible choice even when an inferred currency prop is supplied', () => {
+    const onCreate = vi.fn();
+    render(<PlansPanel canManage onCreate={onCreate} currency="USD" />);
+    fireEvent.change(screen.getByLabelText(/total budget/i), { target: { value: '50000' } });
+    fireEvent.change(screen.getByLabelText(/period start/i), { target: { value: '2026-07-01' } });
+    fireEvent.change(screen.getByLabelText(/period end/i), { target: { value: '2026-09-30' } });
+    expect(screen.getByRole('combobox', { name: 'Currency' })).toHaveValue('');
+    expect(screen.getByRole('button', { name: /build plan/i })).toBeDisabled();
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it('keeps a monetary 409 refusal visible without hiding the form or list', () => {
+    render(<PlansPanel plans={PLANS} canManage createError={{ context: { reason: 'BUDGET_CURRENCY_MISMATCH' } }} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('BUDGET_CURRENCY_MISMATCH');
+    expect(screen.getByRole('button', { name: /build plan/i })).toBeInTheDocument();
+    expect(screen.getByText('Q3 growth plan')).toBeInTheDocument();
   });
 
   it('shows the promote control (STRATEGIST) inside an expanded plan', async () => {

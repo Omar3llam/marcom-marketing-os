@@ -30,7 +30,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const goal = (over = {}) => ({
   id: 'g1', workspaceId: 'w1', name: 'Cut CAC', metric: 'CAC', comparator: 'LTE',
-  targetValue: 40, periodStart: '2026-07-01T00:00:00.000Z',
+  targetValue: 40, currency: 'USD', periodStart: '2026-07-01T00:00:00.000Z',
   periodEnd: '2026-09-30T00:00:00.000Z', status: 'ON_TRACK', ...over,
 });
 const plan = (over = {}) => ({

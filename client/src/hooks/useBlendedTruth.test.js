@@ -43,6 +43,17 @@ describe('useBlendedTruth', () => {
     expect(result.current.error).toBeNull();
   });
 
+  it('carries the backend-proven portfolio denomination into the page data', async () => {
+    api.get.mockResolvedValue({ data: {
+      channels: PAYLOAD.channels.map((channel) => ({ ...channel, currency: 'EGP', monetaryStatus: 'MONETARY_VALID', monetaryReason: null })),
+      portfolio: { ...PAYLOAD.portfolio, currency: 'EGP', monetaryStatus: 'MONETARY_VALID', monetaryReason: null },
+    } });
+    const { result } = renderHook(() => useBlendedTruth());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBeNull();
+    expect(result.current.data?.portfolio.currency).toBe('EGP');
+  });
+
   it('treats an AppError httpStatus 403 (GROWTH tier gate) as gated — not an error', async () => {
     api.get.mockRejectedValue({ httpStatus: 403 });
     const { result } = renderHook(() => useBlendedTruth());

@@ -11,6 +11,7 @@
 
 import { z } from 'zod';
 import { SpendPeriodSchema } from './portfolio.schema';
+import { MonetaryStatusSchema } from './blendedTruth.schema';
 
 // Engine is goal-generic; only GROWTH_CEILING is implemented today.
 export const GoalTypeSchema = z.enum(['GROWTH_CEILING']);
@@ -31,7 +32,7 @@ export const AllocationMoveSchema = z.object({
   currentSpendMinor: z.number().int().nullable(),
   recommendedSpendMinor: z.number().int().nullable(),
   deltaMinor: z.number().int().nullable(),
-  blendedRoas: z.number(),
+  blendedRoas: z.number().nullable(),
   rationale: z.string(),
 });
 
@@ -46,7 +47,9 @@ export const AllocationProjectedSchema = z.object({
 export const AllocationPlanPreviewSchema = z.object({
   goal: AllocationGoalSchema,
   totalBudgetMinor: z.number().int(),
-  currency: z.string().default('USD'),
+  currency: z.string().nullable(),
+  monetaryStatus: MonetaryStatusSchema.optional(),
+  monetaryReason: z.string().nullable().optional(),
   // The period the budget governs, and whether moves could be sized against it.
   spendPeriod: SpendPeriodSchema.nullish(),
   allocations: z.array(AllocationMoveSchema),
@@ -61,7 +64,7 @@ export const AllocationPlanSchema = z.object({
   goalType: GoalTypeSchema,
   goalValue: z.number().nullish(),
   totalBudgetMinor: z.number().int(),
-  currency: z.string().default('USD'),
+  currency: z.string(),
   projectedRoas: z.number().nullish(),
   projectedCpaMinor: z.number().int().nullish(),
   merBefore: z.number().nullish(),

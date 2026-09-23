@@ -97,6 +97,8 @@ export {
   isDecisionClass,
 } from './decisionClass.js';
 
+export { SUPPORTED_CURRENCY_CODES } from './supportedCurrencies.js';
+
 export {
   EXECUTION_PROVENANCE,
   EXECUTION_PROVENANCE_VALUES,

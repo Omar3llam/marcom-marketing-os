@@ -18,7 +18,6 @@ import { formatCurrency } from '@/lib/money';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useBlendedTruth } from '@/hooks/useBlendedTruth.js';
 import { useAllocation } from '@/hooks/useAllocation.js';
-import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { AllocationPanel } from './AllocationPanel.jsx';
 import IntelligenceSubNav from '../IntelligenceSubNav.jsx';
 import { CardSkeleton } from '@/components/ui/Skeleton.jsx';
@@ -33,7 +32,7 @@ import UpgradePrompt from '@/components/plan/UpgradePrompt.jsx';
 const fx = (n) => (n == null || !Number.isFinite(Number(n))) ? '—' : `${Number(n).toFixed(1)}×`;
 
 // ── Pure, prop-driven view (unit-tested directly) ───────────────
-export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST, currency: currencyProp }) {
+export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST }) {
   const channels = data?.channels ?? [];
   const portfolio = data?.portfolio ?? null;
 
@@ -47,9 +46,7 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST, curre
   }
 
   const single = channels.length < 2;
-  // A connected channel carries its own currency (real, per PR #144); the
-  // workspace currency threaded from the page is the fallback, then USD.
-  const currency = currencyProp ?? channels[0]?.currency ?? 'USD';
+  const currency = portfolio?.monetaryStatus === 'MONETARY_VALID' ? portfolio.currency : null;
   const isStrategist = role === WORKSPACE_ROLE.STRATEGIST;
   const staleChannels = channels.filter((c) => c.stale);
 
@@ -71,14 +68,22 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST, curre
             Platform claims vs reality
             <HelpTip variant="popover" content={HELP.BLENDED_TRUTH} />
           </div>
-          <p className="decision-title text-lumi-text leading-snug">
-            Platforms claim <span className="text-lumi-muted">{fx(portfolio.platformRoas)}</span>;
-            {' '}blended truth says <span className="text-signal-scale font-semibold">{fx(portfolio.blendedRoas)}</span>
-            <HelpTip variant="popover" content={HELP.BLENDED_ROAS} className="ml-1" />.
-          </p>
-          <p className="mt-2 text-sm text-signal-kill font-mono">
-            Over-reported by {Math.round(portfolio.gapPct)}% · {formatCurrency(portfolio.gapMinor, currency)} of revenue you&apos;d have over-allocated against.
-          </p>
+          {portfolio.platformRoas != null && portfolio.blendedRoas != null ? (
+            <p className="decision-title text-lumi-text leading-snug">
+              Platforms claim <span className="text-lumi-muted">{fx(portfolio.platformRoas)}</span>;
+              {' '}blended truth says <span className="text-signal-scale font-semibold">{fx(portfolio.blendedRoas)}</span>
+              <HelpTip variant="popover" content={HELP.BLENDED_ROAS} className="ml-1" />.
+            </p>
+          ) : (
+            <p className="decision-title text-lumi-text leading-snug">Blended monetary comparison unavailable.</p>
+          )}
+          {currency && portfolio.gapPct != null && portfolio.gapMinor != null ? (
+            <p className="mt-2 text-sm text-signal-kill font-mono">
+              Over-reported by {Math.round(portfolio.gapPct)}% · {formatCurrency(portfolio.gapMinor, currency)} of revenue you&apos;d have over-allocated against.
+            </p>
+          ) : (
+            <p className="mt-2 text-sm text-lumi-subtle font-mono">Monetary comparison unavailable{portfolio.monetaryReason ? `: ${portfolio.monetaryReason}` : '.'}</p>
+          )}
           <p className="mt-1 text-xs text-lumi-subtle font-mono">
             {portfolio.reconciledCount} reconciled · {portfolio.unverifiedCount} unverified (raw platform number, flagged).
           </p>
@@ -132,7 +137,7 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST, curre
                   </td>
                   <td className="px-4 py-2.5 text-lumi-muted font-mono">{fx(c.platformRoas)}</td>
                   <td className="px-4 py-2.5 text-lumi-text font-mono">{fx(c.blendedRoas)}</td>
-                  <td className="px-4 py-2.5 font-mono text-signal-kill">{Math.round(c.gapPct)}%</td>
+                  <td className="px-4 py-2.5 font-mono text-signal-kill">{c.gapPct == null ? '—' : `${Math.round(c.gapPct)}%`}</td>
                   <td className="px-4 py-2.5">
                     <span className={`font-mono text-xs ${c.coverage === 'RECONCILED' ? 'text-signal-scale' : 'text-lumi-subtle'}`}>
                       {c.coverage} · {c.confidence}
@@ -153,11 +158,11 @@ export default function BlendedTruth() {
   const { role } = useCollabRole();
   const { data, loading, error, gated } = useBlendedTruth();
   const allocation = useAllocation();
-  const { workspace } = useWorkspace();
 
   const isStrategist = role === WORKSPACE_ROLE.STRATEGIST;
   const channels = data?.channels ?? [];
-  const currency = channels[0]?.currency ?? workspace?.currency ?? 'USD';
+  const portfolio = data?.portfolio;
+  const currency = portfolio?.monetaryStatus === 'MONETARY_VALID' ? portfolio.currency : null;
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
@@ -180,14 +185,15 @@ export default function BlendedTruth() {
           </Link>
         </div>
       )}
-      {!gated && !loading && !error && <BlendedTruthView data={data} role={role} currency={currency} />}
+      {!gated && !loading && !error && <BlendedTruthView data={data} role={role} />}
 
       {/* Reallocate capital — acts on these very channels. STRATEGIST-only (the
           commit gate), and only once there are channels to allocate across. */}
       {!gated && !loading && !error && isStrategist && channels.length > 0 && (
         <AllocationPanel
           currency={currency}
-          canAllocate={data?.portfolio?.blendedRoas != null}
+          monetaryReason={portfolio?.monetaryReason}
+          canAllocate={Boolean(currency && portfolio?.blendedRoas != null)}
           onPreview={allocation.preview}
           onCommit={allocation.commit}
           plan={allocation.plan}

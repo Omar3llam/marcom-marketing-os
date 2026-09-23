@@ -13,6 +13,9 @@ import { z } from 'zod';
 
 export const CoverageSchema   = z.enum(['RECONCILED', 'UNVERIFIED']);
 export const ConfidenceSchema = z.enum(['HIGH', 'LOW']);
+export const MonetaryStatusSchema = z.enum([
+  'MONETARY_VALID', 'MONETARY_UNAVAILABLE_MIXED', 'MONETARY_UNAVAILABLE_UNTRUSTED',
+]);
 
 export const BlendedChannelSchema = z.object({
   channelId: z.string().min(1),
@@ -20,15 +23,18 @@ export const BlendedChannelSchema = z.object({
   // Display identity (campaign name). Nullish: pre-fix rows + any snapshot whose
   // entityId has no matching Campaign fall back to channel → channelId in the view.
   name: z.string().nullish(),
-  currency: z.string().default('USD'),
-  spendMinor: z.number().int(),
-  platformRevenueMinor: z.number().int(),
+  currency: z.string().nullable().optional(),
+  // The no-workspace empty response predates these fields; measured rows carry them.
+  monetaryStatus: MonetaryStatusSchema.optional(),
+  monetaryReason: z.string().nullable().optional(),
+  spendMinor: z.number().int().nullable(),
+  platformRevenueMinor: z.number().int().nullable(),
   actualRevenueMinor: z.number().int().nullable(),
-  blendedRevenueMinor: z.number().int(),
-  gapMinor: z.number().int(),
-  gapPct: z.number(),
-  platformRoas: z.number(),
-  blendedRoas: z.number(),
+  blendedRevenueMinor: z.number().int().nullable(),
+  gapMinor: z.number().int().nullable(),
+  gapPct: z.number().nullable(),
+  platformRoas: z.number().nullable(),
+  blendedRoas: z.number().nullable(),
   coverage: CoverageSchema,
   confidence: ConfidenceSchema,
   // Phase 12 — connector freshness. `stale` only when a connector tracks this
@@ -39,13 +45,17 @@ export const BlendedChannelSchema = z.object({
 });
 
 export const BlendedPortfolioSchema = z.object({
-  spendMinor: z.number().int(),
-  platformRevenueMinor: z.number().int(),
-  blendedRevenueMinor: z.number().int(),
-  gapMinor: z.number().int(),
-  gapPct: z.number(),
-  platformRoas: z.number(),
-  blendedRoas: z.number(),
+  currency: z.string().nullable().optional(),
+  // The no-workspace empty response has no monetary status or denomination.
+  monetaryStatus: MonetaryStatusSchema.optional(),
+  monetaryReason: z.string().nullable().optional(),
+  spendMinor: z.number().int().nullable(),
+  platformRevenueMinor: z.number().int().nullable(),
+  blendedRevenueMinor: z.number().int().nullable(),
+  gapMinor: z.number().int().nullable(),
+  gapPct: z.number().nullable(),
+  platformRoas: z.number().nullable(),
+  blendedRoas: z.number().nullable(),
   reconciledCount: z.number().int(),
   unverifiedCount: z.number().int(),
   hasStale: z.boolean().optional(), // any tracked channel stale → render the honesty banner

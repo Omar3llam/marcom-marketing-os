@@ -29,13 +29,13 @@ export function useAllocation() {
   const [committing, setCommitting] = useState(false);
   const [commitError, setCommitError] = useState(null);
 
-  const preview = useCallback(async ({ totalBudgetMinor, goal } = {}) => {
+  const preview = useCallback(async ({ totalBudgetMinor, totalBudgetCurrency, goal } = {}) => {
     setPreviewing(true);
     setPreviewError(null);
     setPreviewNote(null);
     setCommitted(null); // a fresh preview invalidates any prior commit confirmation
     try {
-      const res = await api.post('/api/lumi/portfolio/allocate', { totalBudgetMinor, goal });
+      const res = await api.post('/api/lumi/portfolio/allocate', { totalBudgetMinor, totalBudgetCurrency, goal });
       const raw = res.data?.plan ?? null;
       if (!raw) {
         setPlan(null);
@@ -59,11 +59,11 @@ export function useAllocation() {
     }
   }, []);
 
-  const commit = useCallback(async ({ totalBudgetMinor, goal } = {}) => {
+  const commit = useCallback(async ({ totalBudgetMinor, totalBudgetCurrency, goal } = {}) => {
     setCommitting(true);
     setCommitError(null);
     try {
-      const res = await api.post('/api/lumi/portfolio/allocate/commit', { totalBudgetMinor, goal });
+      const res = await api.post('/api/lumi/portfolio/allocate/commit', { totalBudgetMinor, totalBudgetCurrency, goal });
       const result = { planId: res.data?.planId, decisionsCreated: res.data?.decisionsCreated ?? 0 };
       setCommitted(result);
       return result;

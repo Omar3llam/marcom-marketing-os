@@ -6,6 +6,8 @@
 // build step on the package itself.
 // ============================================================
 
+export const SUPPORTED_CURRENCY_CODES: ReadonlyArray<string>;
+
 // ── ExecutionStatus ─────────────────────────────────────────
 
 export type ExecutionStatusValue =

@@ -32,3 +32,20 @@ describe('mapTransportError — 403 PLAN_REQUIRED', () => {
     expect(mapped.code).not.toBe('PLAN_REQUIRED');
   });
 });
+
+describe('mapTransportError — monetary 409', () => {
+  it.each(['AllocationMonetaryUnavailable', 'PlanMonetaryUnavailable'])('preserves %s reason and status', (error) => {
+    const mapped = mapTransportError({
+      response: { status: 409, data: { error, monetaryStatus: 'MONETARY_UNAVAILABLE_UNTRUSTED', reason: 'BUDGET_CURRENCY_MISMATCH' } },
+      config: { url: '/api/lumi/plans' },
+    });
+    expect(mapped.httpStatus).toBe(409);
+    expect(mapped.code).toBe(error);
+    expect(mapped.context).toMatchObject({ reason: 'BUDGET_CURRENCY_MISMATCH', monetaryStatus: 'MONETARY_UNAVAILABLE_UNTRUSTED' });
+  });
+
+  it('leaves unrelated 409 mapping unchanged', () => {
+    const mapped = mapTransportError({ response: { status: 409, data: { error: 'ApprovalRequired' } }, config: { url: '/api/lumi/plans/1/promote' } });
+    expect(mapped.code).toBe('UNKNOWN_ERROR');
+  });
+});

@@ -180,6 +180,21 @@ export function mapTransportError(error) {
     });
   }
 
+  // These two backend refusals are expected monetary states. Preserve their
+  // structured reason without changing how unrelated 409s are mapped.
+  if (status === 409 && ['AllocationMonetaryUnavailable', 'PlanMonetaryUnavailable'].includes(error.response?.data?.error)) {
+    const refusal = error.response.data;
+    return new ValidationError({
+      message: refusal.message || refusal.reason || 'Monetary eligibility is unavailable',
+      code: refusal.error,
+      httpStatus: status,
+      fallbackAction: 'Review the monetary reason and budget currency',
+      requestId,
+      sessionId,
+      context: { endpoint, reason: refusal.reason, monetaryStatus: refusal.monetaryStatus },
+    });
+  }
+
   // Platform errors (5xx)
   if (status >= 500) {
     return new PlatformError({
