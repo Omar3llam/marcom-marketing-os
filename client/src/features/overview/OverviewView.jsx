@@ -43,7 +43,7 @@ import { useOverviewModel } from './useOverviewModel.js';
 
 export default function OverviewView() {
   const {
-    workspace, currency, plan, dismiss,
+    workspace, plan, dismiss,
     hasAnyData, hasScorableData,
     accountState, insight, bands, kpis, healthTone, healthLabel, killCount,
     needsRevenue, staleRevenue,
@@ -137,7 +137,8 @@ export default function OverviewView() {
         <PerformingWellSection
           count={bands.healthyCount}
           spend={bands.healthySpend}
-          currency={bands.healthyCurrency || currency}
+          currency={bands.healthyCurrency}
+          spendStatus={bands.healthySpendStatus}
         />
       )
       : null,

@@ -30,6 +30,7 @@ import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
 import { useAccountAggregate } from '@/hooks/useAccountAggregate.js';
 import { accountAggregateReading } from '@/lib/accountAggregate.js';
+import { isKnownCurrency } from '@/lib/monetaryCurrency.js';
 import { getAccountState } from './overviewState.js';
 import { buildSurfacePlan } from './overviewPlan.js';
 import { pickInterrupt } from './overviewInterrupts.js';
@@ -43,7 +44,7 @@ import {
 } from './overviewDerive.js';
 
 export function useOverviewModel() {
-  const { workspace } = useWorkspace();
+  const { workspace, loading: workspaceLoading, error: workspaceError, status: workspaceStatus } = useWorkspace();
   // B8-02 — `error` is destructured from every substrate that decides whether
   // data EXISTS. Before this the word did not appear in this file at all, from
   // seven hooks, so a failed read arrived as `hasAnyData: false` and the hero
@@ -80,8 +81,9 @@ export function useOverviewModel() {
     forbidden: aggregateForbidden,
   } = useAccountAggregate();
 
-  // Currency detection from workspace (defaults to USD)
-  const currency = workspace?.currency || 'USD';
+  const currency = !workspaceLoading && !workspaceError && workspaceStatus !== 'NOT_REACHABLE'
+    && isKnownCurrency(workspace?.currency) ? workspace.currency : null;
+  const currencyError = Boolean(workspaceError || workspaceStatus === 'NOT_REACHABLE');
 
   // KPI strip — read from GET /lumi/account/aggregate, the SAME answer the
   // Campaigns page reads, so the two axes cannot state different totals for the
@@ -105,8 +107,8 @@ export function useOverviewModel() {
     [aggregateResponse, aggregateLoading, aggregateError, aggregateForbidden],
   );
   const kpis = useMemo(
-    () => overviewKpis({ aggregate, health, currency }),
-    [aggregate, health, currency],
+    () => overviewKpis({ aggregate, health, currency, currencyError, currencyLoading: workspaceLoading }),
+    [aggregate, health, currency, currencyError, workspaceLoading],
   );
 
   // The decision feed + the two revenue-data stories, all keyed off the health

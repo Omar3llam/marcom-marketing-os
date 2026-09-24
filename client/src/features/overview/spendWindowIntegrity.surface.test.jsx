@@ -47,6 +47,8 @@ const view = (over = {}) => ({
   workspaceId: 'ws',
   generatedAt: '2026-09-13T12:00:00.000Z',
   monthlyBudgetMinor: 3_000_000,
+  monthlyBudgetCurrency: 'USD',
+  pacingMonetaryStatus: 'MONETARY_VALID',
   totals: null,
   pacing: null,
   spendPeriod: NOT_MEASURABLE_PERIOD,
@@ -75,6 +77,24 @@ describe('the contract carries the refusal', () => {
     const parsed = PortfolioViewSchema.safeParse(view());
     expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
     expect(parsed.data?.spendPeriod?.status, 'the refusal must survive parsing, not be stripped').toBe('NOT_MEASURABLE');
+  });
+
+  it('preserves a mixed-currency portfolio refusal through validation', () => {
+    const parsed = PortfolioViewSchema.safeParse(view({
+      monthlyBudgetCurrency: 'USD',
+      pacingMonetaryStatus: 'MONETARY_UNAVAILABLE_MIXED',
+      pacingMonetaryReason: 'SPEND_CURRENCY_MIXED',
+      totals: {
+        spendMinor: null, platformRevenueMinor: null, blendedRevenueMinor: null,
+        blendedRoas: null, platformRoas: null, gapMinor: null, gapPct: null,
+        reconciledCount: 0, unverifiedCount: 2,
+        currency: null, monetaryStatus: 'MONETARY_UNAVAILABLE_MIXED',
+        monetaryReason: 'SPEND_CURRENCY_MIXED',
+      },
+    }));
+    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
+    expect(parsed.data?.pacingMonetaryStatus).toBe('MONETARY_UNAVAILABLE_MIXED');
+    expect(parsed.data?.totals?.spendMinor).toBeNull();
   });
 
   it('an allocation with no measurable moves parses', () => {
@@ -122,6 +142,7 @@ describe('Attention · pacing says what it cannot measure', () => {
       spendPeriod: {
         status: 'MEASURABLE', reason: null, period: { start: '2026-09-01', end: '2026-09-30' },
         window: { start: '2026-09-01', end: '2026-09-12' }, daysCovered: 12, spendMinor: 2_880_000,
+        currency: 'USD',
       },
       pacing: {
         runRateMinor: 240_000, projectedSpendMinor: 7_200_000, paceRatio: 2.4,

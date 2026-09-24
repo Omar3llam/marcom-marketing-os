@@ -308,9 +308,19 @@ describe('spend', () => {
     expect(screen.getByText('$0.00 spent')).toBeInTheDocument();
   });
 
-  it('falls back to USD rather than printing a bare number', () => {
+  it('withholds spend without currency while preserving the decision', () => {
     setup({ spendMinor: 1_000, currency: null });
-    expect(screen.getByText('$10.00 spent')).toBeInTheDocument();
+    expect(screen.queryByText(/spent/)).not.toBeInTheDocument();
+    expect(screen.getByText('KILL')).toBeInTheDocument();
+    expect(screen.getByText('Lowest CTR in the conversion group')).toBeInTheDocument();
+    expect(screen.getByText('Impact 9/10')).toBeInTheDocument();
+  });
+
+  it.each(['XYZ', 'usd', ''])('withholds spend with invalid currency %s', (currency) => {
+    setup({ spendMinor: 1_000, currency });
+    expect(screen.queryByText(/spent/)).not.toBeInTheDocument();
+    expect(screen.queryByText('$10.00 spent')).not.toBeInTheDocument();
+    expect(screen.getByText('Ramadan Cold')).toBeInTheDocument();
   });
 });
 

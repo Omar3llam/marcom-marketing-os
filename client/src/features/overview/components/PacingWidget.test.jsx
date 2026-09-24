@@ -43,10 +43,13 @@ import PacingWidget from './PacingWidget.jsx';
 
 // Two connected channels and a committed budget — the widget's honest gates all
 // open, so what remains on screen is the money.
-const portfolio = ({ projectedSpendMinor, budgetMinor, runRateMinor }) => ({
+const portfolio = ({ projectedSpendMinor, budgetMinor, runRateMinor }, currency = 'USD') => ({
   data: {
     channels: [{ channel: 'meta' }, { channel: 'google' }],
     monthlyBudgetMinor: budgetMinor,
+    monthlyBudgetCurrency: currency,
+    pacingMonetaryStatus: 'MONETARY_VALID',
+    spendPeriod: { currency, status: 'MEASURABLE' },
     pacing: { projectedSpendMinor, runRateMinor, status: 'OVER', daysEarly: 4 },
   },
   loading: false,
@@ -54,7 +57,7 @@ const portfolio = ({ projectedSpendMinor, budgetMinor, runRateMinor }) => ({
 });
 
 const renderAt = (currency, amounts) => {
-  seam.portfolio = portfolio(amounts);
+  seam.portfolio = portfolio(amounts, currency);
   seam.workspace = { workspace: { currency } };
   return render(<MemoryRouter><PacingWidget /></MemoryRouter>).container.textContent;
 };
@@ -123,22 +126,47 @@ describe('the currency exponent comes from the canonical table', () => {
     expect(text).toContain(formatCurrencyWhole(80, code));
   });
 
-  // An unrecognised code is not a crash and not a guess — money.ts declares 2.
-  it('an unknown currency code falls back to the table default of 2', () => {
+  it('an unknown currency code withholds pacing money', () => {
     const text = renderAt('XYZ', {
       projectedSpendMinor: 250_000,
       budgetMinor: 400_000,
       runRateMinor: 8_000,
     });
-    expect(text).toContain(formatCurrencyWhole(2_500, 'XYZ'));
+    expect(text).toMatch(/currency basis is unverified/);
+    expect(text).not.toMatch(/Projected|Run rate|Over budget/);
   });
 
-  // A workspace with no currency at all still renders — USD, as the widget already assumed.
-  it('a missing workspace currency renders USD rather than throwing', () => {
+  it('a missing workspace currency withholds pacing money', () => {
     seam.portfolio = portfolio({ projectedSpendMinor: 250_000, budgetMinor: 400_000, runRateMinor: 8_000 });
     seam.workspace = { workspace: null };
     const { container } = render(<MemoryRouter><PacingWidget /></MemoryRouter>);
-    expect(container.textContent).toContain(formatCurrencyWhole(2_500, 'USD'));
+    expect(container.textContent).toMatch(/currency basis is unverified/);
+    expect(container.textContent).not.toContain(formatCurrencyWhole(2_500, 'USD'));
+  });
+
+  it('a failed workspace read is an error, never an empty budget or USD', () => {
+    seam.portfolio = portfolio({ projectedSpendMinor: 250_000, budgetMinor: 400_000, runRateMinor: 8_000 });
+    seam.workspace = { workspace: null, error: 'Failed to load workspace', status: 'NOT_REACHABLE' };
+    const { container } = render(<MemoryRouter><PacingWidget /></MemoryRouter>);
+    expect(container.textContent).toMatch(/Couldn't read workspace currency/);
+    expect(container.textContent).not.toMatch(/Set a monthly budget|Projected/);
+  });
+
+  it('a valid workspace cannot relabel a different budget currency', () => {
+    seam.portfolio = portfolio({ projectedSpendMinor: 250_000, budgetMinor: 400_000, runRateMinor: 8_000 }, 'USD');
+    seam.workspace = { workspace: { currency: 'EGP' } };
+    const { container } = render(<MemoryRouter><PacingWidget /></MemoryRouter>);
+    expect(container.textContent).toMatch(/currency basis is unverified/);
+    expect(container.textContent).not.toMatch(/Projected|Over budget/);
+  });
+
+  it('a backend monetary refusal withholds pacing money', () => {
+    seam.portfolio = portfolio({ projectedSpendMinor: 250_000, budgetMinor: 400_000, runRateMinor: 8_000 });
+    seam.portfolio.data.pacingMonetaryStatus = 'MONETARY_UNAVAILABLE_MIXED';
+    seam.workspace = { workspace: { currency: 'USD' } };
+    const { container } = render(<MemoryRouter><PacingWidget /></MemoryRouter>);
+    expect(container.textContent).toMatch(/currency basis is unverified/);
+    expect(container.textContent).not.toMatch(/Projected|Over budget/);
   });
 });
 

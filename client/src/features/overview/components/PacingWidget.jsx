@@ -41,6 +41,7 @@ import { roleAllowed } from '@/components/auth/RoleGate.jsx';
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
 import { fromMinor } from '@/lib/money';
 import { appRoutes } from '@/app/routeManifest.js';
+import { isKnownCurrency, isKnownMinorAmount } from '@/lib/monetaryCurrency.js';
 
 function Shell({ children }) {
   return (
@@ -67,16 +68,19 @@ const STATUS = {
 export default function PacingWidget() {
   const { role } = useCollabRole();
   const { data, loading, error } = usePortfolio();
-  const { workspace } = useWorkspace();
+  const { workspace, loading: workspaceLoading, error: workspaceError, status: workspaceStatus } = useWorkspace();
 
   // Budget burn-rate is a strategist-band figure — never surface it to a CLIENT.
   if (!roleAllowed(role, ['STRATEGIST', 'BUYER'])) return null;
 
-  if (loading) {
+  if (loading || workspaceLoading) {
     return <div className="mb-6 h-[68px] rounded-xl border border-lumi-border bg-lumi-elevated animate-pulse" aria-hidden="true" />;
   }
   if (error) {
     return <Shell><Note>Couldn&apos;t load pacing right now.</Note></Shell>;
+  }
+  if (workspaceError || workspaceStatus === 'NOT_REACHABLE') {
+    return <Shell><Note>Couldn&apos;t read workspace currency right now. Pacing amounts are unavailable.</Note></Shell>;
   }
 
   const channels = data?.channels ?? [];
@@ -114,12 +118,24 @@ export default function PacingWidget() {
       </Shell>
     );
   }
+  if (data?.pacingMonetaryStatus && data.pacingMonetaryStatus !== 'MONETARY_VALID') {
+    return <Shell><Note>Pacing amounts are unavailable because their currency basis is unverified.</Note></Shell>;
+  }
   if (!pacing) {
     return <Shell><Note>Not enough data to project pacing yet.</Note></Shell>;
   }
 
   // ── Real pacing. ──
-  const currency = workspace?.currency || 'USD';
+  const currency = workspace?.currency;
+  if (!isKnownCurrency(currency)
+    || data?.pacingMonetaryStatus !== 'MONETARY_VALID'
+    || data?.monthlyBudgetCurrency !== currency
+    || spendPeriod?.currency !== currency
+    || !isKnownMinorAmount(budgetMinor)
+    || !isKnownMinorAmount(pacing.projectedSpendMinor)
+    || !isKnownMinorAmount(pacing.runRateMinor)) {
+    return <Shell><Note>Pacing amounts are unavailable because their currency basis is unverified.</Note></Shell>;
+  }
   const major = (amountMinor) => formatCurrencyWhole(fromMinor(amountMinor, currency), currency);
   const projected = major(pacing.projectedSpendMinor);
   const budget = major(budgetMinor);

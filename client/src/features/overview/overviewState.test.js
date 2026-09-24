@@ -131,9 +131,9 @@ describe('buildHeroNarrative — ACTION_REQUIRED', () => {
     expect(money).not.toContain('84,310'); // proves it is NOT the en-US rendering
   });
 
-  it('falls back to USD rather than emitting a bare number', () => {
+  it('withholds the money sentence without a known currency', () => {
     const [, money] = narrate({ wastedAmount: 5000, currency: null });
-    expect(money).toBe('$5,000 at risk.');
+    expect(money).toBeUndefined();
   });
 });
 

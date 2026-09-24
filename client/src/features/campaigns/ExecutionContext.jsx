@@ -25,6 +25,7 @@ import {
   buildHypothesis,
 } from './executionContext.js';
 import { formatCurrency } from '@/lib/money';
+import { isKnownCurrency, isKnownMinorAmount } from '@/lib/monetaryCurrency.js';
 import { useDecisionLearning } from '@/hooks/useDecisionLearning.js';
 import { LearningInsight } from './LearningInsight.jsx';
 import { DecisionLifecycle } from './DecisionLifecycle.jsx';
@@ -66,8 +67,11 @@ export function ExecutionContext({
 
   const gap = formatGap(worst.ctr, campaign.ctr);
   const magnitude = gapMagnitude(worst.ctr, campaign.ctr);
-  const share = spendConcentration(worst.spendMinor, campaign.spendMinor);
-  const hypothesis = buildHypothesis(worst);
+  const spendKnown = isKnownMinorAmount(worst.spendMinor) && isKnownCurrency(worst.currency);
+  const shareKnown = spendKnown && isKnownMinorAmount(campaign.spendMinor)
+    && isKnownCurrency(campaign.currency) && worst.currency === campaign.currency;
+  const share = shareKnown ? spendConcentration(worst.spendMinor, campaign.spendMinor) : null;
+  const hypothesis = buildHypothesis({ ...worst, spendMinor: spendKnown ? worst.spendMinor : null });
 
   // "Compared against N" — how strong the pick is, from the set the SERVER
   // actually ranked. `ranked` is the cohort after its rankability filter, so N
@@ -75,9 +79,9 @@ export function ExecutionContext({
   // claim errs downward: every row in it does report a CTR, and some rows too
   // thin to compare are no longer counted as though they had been.
   const bullets = buildEvidenceBullets(
-    { ...worst, comparedCount: evidence.ranked?.length ?? 0 },
+    { ...worst, spendMinor: spendKnown ? worst.spendMinor : null, comparedCount: evidence.ranked?.length ?? 0 },
     campaign.ctr,
-    campaign.spendMinor,
+    shareKnown ? campaign.spendMinor : null,
   );
 
   return (
@@ -120,7 +124,7 @@ export function ExecutionContext({
         <div>
           <Label>Spend</Label>
           <p className="font-mono text-sm tabular-nums text-lumi-text">
-            {worst.spendMinor != null
+            {spendKnown
               ? formatCurrency(worst.spendMinor, worst.currency)
               : <span className="text-lumi-subtle" title="No data">—</span>}
           </p>

@@ -9,21 +9,12 @@
  */
 
 import { z } from 'zod';
-import { BlendedChannelSchema, BlendedRevenueEfficiencySchema } from './blendedTruth.schema';
+import { BlendedChannelSchema, BlendedPortfolioSchema } from './blendedTruth.schema';
 import { PacingSchema } from './pacing.schema';
 
-export const PortfolioTotalsSchema = z.object({
-  spendMinor: z.number().int(),
-  platformRevenueMinor: z.number().int(),
-  blendedRevenueMinor: z.number().int(),
-  blendedRoas: z.number().nullable(),
-  blendedRevenueEfficiency: BlendedRevenueEfficiencySchema.optional(),
-  platformRoas: z.number().nullable(),
-  gapMinor: z.number().int(),
-  gapPct: z.number(),
-  reconciledCount: z.number().int(),
-  unverifiedCount: z.number().int(),
-});
+// PortfolioService passes through the blended portfolio's monetary refusal.
+// Reuse its nullable fields so mixed/untrusted money remains a parsed refusal.
+export const PortfolioTotalsSchema = BlendedPortfolioSchema;
 
 /**
  * What a spend-to-budget comparison was allowed to use — or why it was refused.
@@ -40,6 +31,7 @@ export const SpendPeriodSchema = z.object({
   window: z.object({ start: z.string(), end: z.string() }).nullable(),
   daysCovered: z.number().int().nullable(),
   spendMinor: z.number().int().nullable(),
+  currency: z.string().nullable().optional(),
 });
 
 export const PortfolioChannelSchema = BlendedChannelSchema.extend({
@@ -50,6 +42,9 @@ export const PortfolioViewSchema = z.object({
   workspaceId: z.string().nullable(),
   generatedAt: z.string().optional(),
   monthlyBudgetMinor: z.number().int().nullable(),
+  monthlyBudgetCurrency: z.string().nullable().optional(),
+  pacingMonetaryStatus: z.string().optional(),
+  pacingMonetaryReason: z.string().nullable().optional(),
   totals: PortfolioTotalsSchema.nullable(),
   pacing: PacingSchema.nullable(),
   // Optional: a server older than the spend-window slice does not send it.
