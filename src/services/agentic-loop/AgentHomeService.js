@@ -16,7 +16,7 @@
 import { logger } from '../../utils/logger.js';
 import { prisma } from '../../lib/prisma.js';
 import { planAgenda } from './agenticPlanner.js';
-import { buildLoopInputs, runSweep, getLoopState, LOOP_MIN_INTERVAL_MS } from './AgenticLoopService.js';
+import { buildLoopInputs, runSweep, getLoopState, readRequiredLoopSource, LOOP_MIN_INTERVAL_MS } from './AgenticLoopService.js';
 import { normalizeRole, WORKSPACE_ROLE } from '../collaboration/roleScope.js';
 import { getAccuracy } from '../decision-accuracy/DecisionAccuracyService.js';
 import { accuracySurface } from '../decision-accuracy/accuracyTypes.js';
@@ -69,16 +69,15 @@ export async function getHome(workspaceId, role) {
   const r = normalizeRole(role);
   const now = new Date();
 
-  // Guarded: a getLoopState failure (e.g. a not-yet-migrated column) must degrade
-  // to a stale picture, never blank the whole agenda. lastRun=null is already a
-  // valid, handled state below (stale ⇒ on-read sweep / planAgenda fallback).
-  const loopState = await getLoopState(workspaceId).catch(() => null);
-  const lastRun = loopState?.lastRun ?? null;
-  const intervalMs = loopState?.intervalMs ?? LOOP_MIN_INTERVAL_MS;
+  // Timing determines whether Home reuses a sweep and what the loop ring says.
+  // A failed read cannot be treated as a genuine first run with null timing.
+  const loopState = await readRequiredLoopSource('LOOP_STATE', () => getLoopState(workspaceId));
+  const lastRun = loopState.lastRun ?? null;
+  const intervalMs = loopState.intervalMs ?? LOOP_MIN_INTERVAL_MS;
   const stale = !lastRun || (now.getTime() - new Date(lastRun.createdAt).getTime() > LOOP_MIN_INTERVAL_MS);
 
-  // On-read stale-sweep: keeps the loop proactive without a cron. Best-effort —
-  // a sweep failure must never blank the home.
+  // On-read stale-sweep: keeps the loop proactive without a cron. A failed
+  // required read inside the sweep cannot become a successful fallback agenda.
   let agenda;
   let runAt = lastRun?.createdAt ?? null;
   if (stale) {
@@ -87,6 +86,7 @@ export async function getHome(workspaceId, role) {
       agenda = swept.agenda;
       runAt = swept.loopRun?.createdAt ?? runAt;
     } catch (err) {
+      if (err.source) throw err;
       logger.warn({ err: err.message, workspaceId }, '[AgentHome] on-read sweep skipped');
     }
   }
@@ -112,7 +112,7 @@ export async function getHome(workspaceId, role) {
   try {
     proof = accuracySurface(await getAccuracy(workspaceId, { now }));
   } catch (err) {
-    logger.warn({ err: err.message, workspaceId }, '[AgentHome] accuracy headline skipped');
+    logger.warn({ source: 'ACCURACY', err: err.message, workspaceId }, '[AgentHome] accuracy headline skipped');
   }
 
   // AI Insight — pre-generated briefing from the latest LoopRun. Null when no
@@ -126,7 +126,7 @@ export async function getHome(workspaceId, role) {
     });
     aiInsight = latestRun?.aiInsight ?? null;
   } catch (err) {
-    logger.warn({ err: err.message, workspaceId }, '[AgentHome] aiInsight read skipped');
+    logger.warn({ source: 'BRIEFING', err: err.message, workspaceId }, '[AgentHome] aiInsight read skipped');
   }
 
   logger.info({ workspaceId, role: r, loopHealth: loop.loopHealth }, '[AgentHome] composed');

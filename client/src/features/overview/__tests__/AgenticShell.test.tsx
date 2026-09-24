@@ -223,6 +223,8 @@ describe('AgenticShellView — role-aware composition', () => {
     vi.mocked(useHome).mockReturnValue({ home: null, isStale: false, isLoading: false, error: new Error('x'), refetch: vi.fn() } as never);
     rerender(<AgenticShellView />);
     expect(screen.getByText(/Couldn.t load your agenda/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing needs a decision right now/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Portfolio on track/i)).not.toBeInTheDocument();
   });
 });
 

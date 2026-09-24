@@ -100,6 +100,30 @@ describe('PortfolioService.getPortfolio — guards', () => {
 });
 
 describe('PortfolioService.getPortfolio — empty workspace is honest', () => {
+  it('Home strict budget read distinguishes a failed lookup from no allocation plan', async () => {
+    seat([]);
+    const failure = new Error('private allocation read failure');
+    prisma.allocationPlan.findFirst.mockRejectedValue(failure);
+    await expect(getPortfolio('ws1', { now: NOW, strictBudgetRead: true })).rejects.toBe(failure);
+    expect(readPeriodSpend).not.toHaveBeenCalled();
+  });
+
+  it('Home strict budget read accepts genuine absence', async () => {
+    seat([]);
+    prisma.allocationPlan.findFirst.mockResolvedValue(null);
+    const view = await getPortfolio('ws1', { now: NOW, strictBudgetRead: true });
+    expect(view.monthlyBudgetMinor).toBeNull();
+    expect(view.pacing).toBeNull();
+  });
+
+  it('other callers retain their existing best-effort budget behavior', async () => {
+    seat([]);
+    prisma.allocationPlan.findFirst.mockRejectedValue(new Error('budget unavailable'));
+    const view = await getPortfolio('ws1', { now: NOW });
+    expect(view.monthlyBudgetMinor).toBeNull();
+    expect(view.pacing).toBeNull();
+  });
+
   it('no channels + no plan → null budget, null pacing, no channels (never a fabricated burn)', async () => {
     seat([]);
     prisma.allocationPlan.findFirst.mockResolvedValue(null);

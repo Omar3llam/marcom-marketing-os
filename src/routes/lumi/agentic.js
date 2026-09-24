@@ -47,7 +47,7 @@ agenticRouter.get('/home', async (req, res) => {
     const home = await getHome(wsId, role);
     return res.json({ workspaceId: wsId, generatedAt: new Date().toISOString(), ...home });
   } catch (err) {
-    logger.error({ err: err.message, wsId }, '[lumi/agentic] home failed');
+    logger.error({ err: err.message, source: err.source ?? null, wsId }, '[lumi/agentic] home failed');
     return res.status(500).json({ error: 'HomeUnavailable', message: 'Request failed' });
   }
 });

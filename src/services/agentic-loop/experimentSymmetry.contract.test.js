@@ -139,15 +139,13 @@ describe.skipIf(!DB_OK)('C-13 · A1 — a running holdout is part of the Experim
     expect(inputs.openHoldouts).toEqual([]);
   });
 
-  it('T4 · the read is best-effort, like every sibling in the same Promise.all', async () => {
-    // Every other read in buildLoopInputs is wrapped in `safe(...)`: one
-    // organ's outage must not empty the whole agenda. A new read that can
-    // reject would take the entire band down with it.
+  it('T4 · a failed holdout read cannot become an empty experiment population', async () => {
+    // A complete Home must know both running experiment populations. A failed
+    // holdout read cannot publish zero holdouts while sibling reads succeed.
     const spy = vi.spyOn(prisma.incrementalityTest, 'findMany')
       .mockRejectedValueOnce(new Error('holdout read exploded'));
-    const inputs = await buildLoopInputs(WS_A, { now: NOW });
-    expect(inputs.openHoldouts).toEqual([]);
-    expect(inputs).toHaveProperty('verdicts');
+    await expect(buildLoopInputs(WS_A, { now: NOW }))
+      .rejects.toMatchObject({ source: 'HOLDOUTS' });
     spy.mockRestore();
   });
 });

@@ -58,6 +58,27 @@ describe('useHome', () => {
     expect(result.current.home).toBeNull();
     expect(result.current.error?.message).toBe('No resolvable workspace.');
   });
+
+  it('keeps a non-2xx HomeUnavailable distinct from genuine empty success', async () => {
+    const failure = Object.assign(new Error('HomeUnavailable'), { httpStatus: 500 });
+    api.get.mockRejectedValueOnce(failure);
+    const { result } = renderHook(() => useHome());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.home).toBeNull();
+    expect(result.current.error).toBe(failure);
+  });
+
+  it('accepts a genuine empty Home response without an error', async () => {
+    api.get.mockResolvedValueOnce({ data: {
+      ...validHome,
+      summary: 'Nothing needs a decision right now — the loop is quiet.',
+      buyerBand: band([]),
+    } });
+    const { result } = renderHook(() => useHome());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toBeNull();
+    expect(result.current.home?.buyerBand).toMatchObject({ items: [], count: 0, empty: true });
+  });
 });
 
 describe('computeStale', () => {
