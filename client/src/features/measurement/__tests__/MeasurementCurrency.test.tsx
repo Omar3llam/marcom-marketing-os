@@ -30,7 +30,7 @@ vi.mock('@/hooks/useScenario.js', () => ({
         volume:           { low: 90, expected: 100, high: 110 },
         revenueMinor:     { low: 900000, expected: 1000000, high: 1100000 },
         grossProfitMinor: { low: 540000, expected: 600000, high: 660000 },
-        merAfter:         { low: 3.1, expected: 3.5, high: 3.9 },
+        blendedRevenueEfficiencyAfter: { low: 3.1, expected: 3.5, high: 3.9 },
       },
       assumptions: ['added budget retains efficiency'], confidence: 0.6,
     },
@@ -55,7 +55,7 @@ const scenarioNoCcy = {
     volume:           { low: 90, expected: 100, high: 110 },
     revenueMinor:     { low: 900000, expected: 1000000, high: 1100000 },
     grossProfitMinor: { low: 540000, expected: 600000, high: 660000 },
-    merAfter:         { low: 3.1, expected: 3.5, high: 3.9 },
+    blendedRevenueEfficiencyAfter: { low: 3.1, expected: 3.5, high: 3.9 },
   },
   assumptions: ['x'], confidence: 0.6,
 };
@@ -67,9 +67,9 @@ describe('ScenarioPanel — formats money in the given currency (Layer 2/3)', ()
     expect(container.textContent).toMatch(/Projected outcome/);
     expect(container.textContent).not.toContain('$');
   });
-  it('falls back to USD only when neither scenario nor prop carries a currency', () => {
+  it('does not invent USD when neither scenario nor prop carries a currency', () => {
     const { container } = render(<ScenarioPanel scenario={scenarioNoCcy} onRun={vi.fn()} />);
-    expect(container.textContent).toContain('$10,000.00'); // 1000000 minor → $10,000.00 via money.ts
+    expect(container.textContent).not.toContain('$');
   });
 });
 

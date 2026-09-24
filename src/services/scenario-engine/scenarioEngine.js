@@ -174,13 +174,14 @@ function bandMetrics(spendMinor, revenueMinor, economics) {
   const volume = revenueMinor / economics.aovMinor;                 // orders
   const blendedCacMinor = volume > 0 ? Math.round(spendMinor / volume) : null;
   const grossProfitMinor = Math.round(revenueMinor * economics.grossMarginPct);
-  const merAfter = spendMinor > 0 ? revenueMinor / spendMinor : 0;
-  return { blendedCacMinor, volume, revenueMinor, grossProfitMinor, merAfter };
+  const blendedRevenueEfficiencyAfter = spendMinor > 0 ? revenueMinor / spendMinor : null;
+  return { blendedCacMinor, volume, revenueMinor, grossProfitMinor, blendedRevenueEfficiencyAfter };
 }
 
 /** Collapse three band values into a {low, expected, high} range, memory-widened. */
 function toRange(values, expectedVal, widen, { higherIsWorse = false } = {}) {
   const finite = values.filter((v) => typeof v === 'number' && Number.isFinite(v));
+  if (finite.length === 0 || !Number.isFinite(expectedVal)) return { low: null, expected: null, high: null };
   let low = Math.min(...finite);
   let high = Math.max(...finite);
   // Memory uncertainty pushes the bounds outward symmetrically.
@@ -224,7 +225,7 @@ export function projectScenario({ baseline, change, economics, memory = [], now,
     volume:           toRange(collect('volume'),           exp.volume,           widen),
     revenueMinor:     toRange(collect('revenueMinor'),     exp.revenueMinor,     widen),
     grossProfitMinor: toRange(collect('grossProfitMinor'), exp.grossProfitMinor, widen),
-    merAfter:         toRange(collect('merAfter'),         exp.merAfter,         widen),
+    blendedRevenueEfficiencyAfter: toRange(collect('blendedRevenueEfficiencyAfter'), exp.blendedRevenueEfficiencyAfter, widen),
   };
 
   // ── Assumptions: every named driver of the range, stated plainly ──

@@ -17,11 +17,12 @@ const PREVIEW = {
   goal: { type: 'GROWTH_CEILING', value: null },
   totalBudgetMinor: 5000000,
   currency: 'USD',
+  efficiencyStatus: 'VALID', efficiencyReason: null,
   allocations: [
     { channelId: 'meta', channel: 'Meta', verdict: 'SCALE', currentSpendMinor: 3000000, recommendedSpendMinor: 3500000, deltaMinor: 500000, blendedRoas: 2.4, rationale: 'higher blended ROAS' },
     { channelId: 'google', channel: 'Google', verdict: 'TRIM', currentSpendMinor: 2000000, recommendedSpendMinor: 1500000, deltaMinor: -500000, blendedRoas: 1.1, rationale: 'lower blended ROAS' },
   ],
-  projected: { blendedRevenueMinor: 12000000, projectedCpaMinor: 4500, merBefore: 1.8, merAfter: 2.2 },
+  projected: { blendedRevenueMinor: 12000000, projectedCpaMinor: 4500, blendedRevenueEfficiencyBefore: 1.8, blendedRevenueEfficiencyAfter: 2.2 },
   reasoningTrail: ['shift toward higher blended ROAS'],
 };
 

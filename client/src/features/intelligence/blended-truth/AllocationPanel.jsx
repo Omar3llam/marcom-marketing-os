@@ -28,7 +28,7 @@ export function AllocationPanel({
   canCommit = false,
   // Allocation reconciles budget against BLENDED truth, so it needs a blended
   // revenue signal. Default true (ungated) preserves the standalone panel; the
-  // Blended Truth page passes false when there's no blended ROAS yet.
+  // Blended Truth page passes false when blended efficiency is unavailable.
   canAllocate = true,
 }) {
   const [budget, setBudget] = useState('');
@@ -38,10 +38,9 @@ export function AllocationPanel({
 
   const allocations = plan?.allocations ?? [];
   const projected = plan?.projected ?? null;
-  // The server sized no move: spend over the period this budget governs is not
-  // measured. Every figure below would have been computed from that spend.
+  // The server sizes no move when governed spend or efficiency evidence is unavailable.
   const monetaryValid = plan?.monetaryStatus === 'MONETARY_VALID' && plan.currency === currency;
-  const unavailable = plan && !monetaryValid;
+  const unavailable = plan && (!monetaryValid || plan.efficiencyStatus !== 'VALID');
   const unmeasured = plan?.spendPeriod?.status === 'NOT_MEASURABLE';
   const money = (minor) => (!monetaryValid || minor == null ? '—' : formatCurrency(minor, currency));
   const refusal = (error) => error?.context?.reason ?? error?.response?.data?.reason ?? error?.message;
@@ -102,7 +101,7 @@ export function AllocationPanel({
         <div className="mt-2 rounded-2xl border border-lumi-border bg-lumi-surface overflow-hidden">
           {unavailable && (
             <p className="px-4 py-3 border-b border-lumi-border text-xs text-lumi-subtle">
-              Monetary allocation unavailable{plan.monetaryReason ? `: ${plan.monetaryReason}` : '.'} No move is sized.
+              Allocation unavailable{plan.efficiencyReason || plan.monetaryReason ? `: ${!monetaryValid ? plan.monetaryReason : plan.efficiencyReason}` : '.'} No move is sized.
             </p>
           )}
           {unmeasured && (
@@ -111,10 +110,10 @@ export function AllocationPanel({
               the period this budget governs, so it won’t compare the two.
             </p>
           )}
-          {projected && monetaryValid && !unmeasured && (
+          {projected && monetaryValid && plan.efficiencyStatus === 'VALID' && !unmeasured && (
             <div className="px-4 py-3 border-b border-lumi-border font-mono text-xs text-lumi-subtle">
-              Projected MER <span className="text-lumi-muted">{fx(projected.merBefore)}</span> →{' '}
-              <span className="text-signal-scale">{fx(projected.merAfter)}</span>
+              Projected blended efficiency <span className="text-lumi-muted">{fx(projected.blendedRevenueEfficiencyBefore)}</span> →{' '}
+              <span className="text-signal-scale">{fx(projected.blendedRevenueEfficiencyAfter)}</span>
               {projected.projectedCpaMinor != null && (
                 <> · projected CPA <span className="text-lumi-text">{formatCurrency(projected.projectedCpaMinor, currency)}</span></>
               )}
@@ -127,7 +126,7 @@ export function AllocationPanel({
                 <th className="px-4 py-2.5 font-medium">Now</th>
                 <th className="px-4 py-2.5 font-medium">Recommended</th>
                 <th className="px-4 py-2.5 font-medium">Δ</th>
-                <th className="px-4 py-2.5 font-medium">Blended ROAS</th>
+                <th className="px-4 py-2.5 font-medium">Blended efficiency</th>
               </tr>
             </thead>
             <tbody>
@@ -146,7 +145,7 @@ export function AllocationPanel({
           </table>
 
           {/* Commit — STRATEGIST only. Persists the plan + PROPOSED moves. */}
-          {canCommit && monetaryValid && (
+          {canCommit && !unavailable && !unmeasured && (
             <div className="px-4 py-3 border-t border-lumi-border">
               <button
                 type="button"

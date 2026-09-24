@@ -32,6 +32,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const findMany = vi.fn();
+const exact = { windowStatus: 'EXACT', windowStart: new Date('2026-08-01T00:00:00Z'), windowEnd: new Date('2026-09-01T00:00:00Z') };
+const usd = { monetaryStatus: 'MONETARY_VALID', currency: 'USD' };
 
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -44,7 +46,7 @@ vi.mock('../../lib/prisma.js', () => ({ prisma: { decision: { findMany: (...a) =
 vi.mock('../budget-period/spendPeriod.js', async (importOriginal) => ({
   ...(await importOriginal()),
   readPeriodSpend: vi.fn(async (_workspaceId, { period } = {}) => ({
-    portfolio: { status: 'MEASURABLE', reason: null, period, window: period, daysCovered: 31, spendMinor: 1_000_000, currency: 'USD', monetaryStatus: 'MONETARY_VALID' },
+    portfolio: { status: 'MEASURABLE', reason: null, period, window: period, daysCovered: 31, spendMinor: 1_000_000, currency: 'USD', monetaryStatus: 'MONETARY_VALID', spendWindow: exact },
     byEntity: new Map([['camp-a', 500_000], ['camp-b', 500_000]]),
   })),
 }));
@@ -52,13 +54,14 @@ vi.mock('../blended-truth/BlendedTruthService.js', async (importOriginal) => ({
   ...(await importOriginal()),
   getBlendedTruth: vi.fn(async () => ({
     channels: [
-      { channelId: 'camp-a', channel: 'META',   blendedRoas: 3.0, spendMinor: 500_000, blendedRevenueMinor: 1_500_000, currency: 'USD', monetaryStatus: 'MONETARY_VALID' },
-      { channelId: 'camp-b', channel: 'GOOGLE', blendedRoas: 2.5, spendMinor: 500_000, blendedRevenueMinor: 1_250_000, currency: 'USD', monetaryStatus: 'MONETARY_VALID' },
+      { channelId: 'camp-a', channel: 'META',   blendedRoas: 3.0, spendMinor: 500_000, blendedRevenueMinor: 1_500_000, currency: 'USD', monetaryStatus: 'MONETARY_VALID', monetaryEvidence: { blended: usd }, blendedRevenueWindow: exact },
+      { channelId: 'camp-b', channel: 'GOOGLE', blendedRoas: 2.5, spendMinor: 500_000, blendedRevenueMinor: 1_250_000, currency: 'USD', monetaryStatus: 'MONETARY_VALID', monetaryEvidence: { blended: usd }, blendedRevenueWindow: exact },
     ],
   })),
 }));
 
 import { previewAllocation } from './AllocationService.js';
+import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
 import { DECISION_CLASS } from '@marcom/runtime-contracts';
 
 // The rows a real workspace holds: a healthy connector verdict on camp-a, and a
@@ -128,6 +131,35 @@ describe('T6 — a GUARDRAIL KILL cannot reach the appetite gate as a Signal KIL
     // The exact sentence the strategist reads, and the one C-18 now freezes into
     // the approved snapshot and promotes verbatim.
     expect(plan.reasoningTrail.join('\n')).not.toMatch(/Drain camp-a/);
+  });
+});
+
+describe('allocation efficiency gate', () => {
+  it.each([
+    ['EUR', 'CURRENCY_MISMATCH'],
+    [undefined, 'CURRENCY_UNTRUSTED'],
+  ])('keeps budget currency refusal distinct from missing spend (%s)', async (totalBudgetCurrency, reason) => {
+    findMany.mockImplementation(databaseLike(ROWS));
+    const plan = await previewAllocation('ws1', { totalBudgetMinor: 1_000_000, totalBudgetCurrency });
+    expect(plan.efficiencyStatus).toBe('UNAVAILABLE');
+    expect(plan.efficiencyReason).toBe(reason);
+    expect(plan.projected.blendedRevenueEfficiencyAfter).toBeNull();
+  });
+
+  it('refuses to size moves when the selected revenue window differs from measured spend', async () => {
+    findMany.mockImplementation(databaseLike(ROWS));
+    const mismatch = { windowStatus: 'EXACT', windowStart: new Date('2026-08-01T04:00:00Z'), windowEnd: new Date('2026-09-01T04:00:00Z') };
+    getBlendedTruth.mockResolvedValueOnce({ channels: [
+      { channelId: 'camp-a', channel: 'META', blendedRevenueMinor: 1_500_000, spendMinor: 500_000,
+        currency: 'USD', monetaryStatus: 'MONETARY_VALID', monetaryEvidence: { blended: usd }, blendedRevenueWindow: mismatch },
+      { channelId: 'camp-b', channel: 'GOOGLE', blendedRevenueMinor: 1_250_000, spendMinor: 500_000,
+        currency: 'USD', monetaryStatus: 'MONETARY_VALID', monetaryEvidence: { blended: usd }, blendedRevenueWindow: exact },
+    ] });
+    const plan = await previewAllocation('ws1', { totalBudgetMinor: 1_000_000, totalBudgetCurrency: 'USD' });
+    expect(plan.efficiencyStatus).toBe('UNAVAILABLE');
+    expect(plan.efficiencyReason).toBe('MEASUREMENT_WINDOW_MISMATCH');
+    expect(plan.projected.blendedRevenueEfficiencyAfter).toBeNull();
+    expect(plan.allocations.every((a) => a.deltaMinor == null)).toBe(true);
   });
 });
 

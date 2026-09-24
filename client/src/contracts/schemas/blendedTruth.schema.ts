@@ -16,6 +16,13 @@ export const ConfidenceSchema = z.enum(['HIGH', 'LOW']);
 export const MonetaryStatusSchema = z.enum([
   'MONETARY_VALID', 'MONETARY_UNAVAILABLE_MIXED', 'MONETARY_UNAVAILABLE_UNTRUSTED',
 ]);
+export const BlendedRevenueEfficiencySchema = z.object({
+  status: z.enum(['VALID', 'UNAVAILABLE']),
+  reason: z.string().nullable(),
+  value: z.number().nullable(),
+  currency: z.string().nullable(),
+  windowCompatibility: z.enum(['COMPATIBLE', 'INCOMPATIBLE', 'UNKNOWN']),
+});
 
 export const BlendedChannelSchema = z.object({
   channelId: z.string().min(1),
@@ -35,6 +42,7 @@ export const BlendedChannelSchema = z.object({
   gapPct: z.number().nullable(),
   platformRoas: z.number().nullable(),
   blendedRoas: z.number().nullable(),
+  blendedRevenueEfficiency: BlendedRevenueEfficiencySchema.optional(),
   coverage: CoverageSchema,
   confidence: ConfidenceSchema,
   // Phase 12 — connector freshness. `stale` only when a connector tracks this
@@ -56,6 +64,7 @@ export const BlendedPortfolioSchema = z.object({
   gapPct: z.number().nullable(),
   platformRoas: z.number().nullable(),
   blendedRoas: z.number().nullable(),
+  blendedRevenueEfficiency: BlendedRevenueEfficiencySchema.optional(),
   reconciledCount: z.number().int(),
   unverifiedCount: z.number().int(),
   hasStale: z.boolean().optional(), // any tracked channel stale → render the honesty banner

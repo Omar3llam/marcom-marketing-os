@@ -28,6 +28,8 @@ import {
 } from '../budget-period/spendPeriod.js';
 import { MONETARY_STATUS, MONETARY_REASON, matchBudgetCurrency, sameMonetaryUnit } from '../../lib/operationalMonetary.js';
 import { isSupportedCurrency } from '../../lib/currencyDetector.js';
+import { evaluateBlendedRevenueEfficiency, EFFICIENCY_STATUS, EFFICIENCY_REASON } from '../../lib/blendedRevenueEfficiency.js';
+import { tagAllocationReasoning } from './allocationPlanMetric.js';
 
 const ALLOC_ROOT_PREFIX = 'allocation:';
 
@@ -49,6 +51,7 @@ const ALLOC_ROOT_PREFIX = 'allocation:';
  */
 export function planToDecisionRows(plan, { workspaceId, planId }) {
   if (!workspaceId) throw new Error('planToDecisionRows: workspaceId required');
+  if (plan?.efficiencyStatus !== EFFICIENCY_STATUS.VALID) return [];
   if (plan?.monetaryStatus !== MONETARY_STATUS.VALID) return [];
   if (!isSupportedCurrency(plan?.currency) || plan?.currency !== plan?.spendPeriod?.currency) return [];
   if (plan?.spendPeriod?.status !== SPEND_PERIOD_STATUS.MEASURABLE) return [];
@@ -125,6 +128,10 @@ async function buildChannels(workspaceId) {
     currency:            c.currency,
     monetaryStatus:      c.monetaryStatus,
     monetaryReason:      c.monetaryReason,
+    monetaryEvidence:    c.monetaryEvidence,
+    blendedRevenueMinor: c.blendedRevenueMinor,
+    blendedRevenueWindow: c.blendedRevenueWindow,
+    blendedRevenueEfficiency: c.blendedRevenueEfficiency,
   }));
 }
 
@@ -196,9 +203,24 @@ export async function previewAllocation(workspaceId, {
     return unmeasuredAllocation({ totalBudgetMinor, goal: resolvedGoal, channels, basis, spendPeriod, money });
   }
 
-  const measured = channels.map((c) => ({ ...c, currentSpendMinor: spend.byEntity.get(c.channelId) }));
+  const efficiencies = channels.map((c) => evaluateBlendedRevenueEfficiency({
+    revenueMinor: c.blendedRevenueMinor,
+    spendMinor: spend.byEntity.get(c.channelId),
+    revenueMoney: c.monetaryEvidence?.blended,
+    spendMoney: spend.portfolio,
+    revenueWindow: c.blendedRevenueWindow,
+    spendWindow: spend.portfolio.spendWindow,
+  }));
+  const unavailableEfficiency = efficiencies.find((e) => e.status !== EFFICIENCY_STATUS.VALID);
+  if (unavailableEfficiency) {
+    return unmeasuredAllocation({ totalBudgetMinor, goal: resolvedGoal, channels, basis,
+      spendPeriod: spend.portfolio, money, efficiencyReason: unavailableEfficiency.reason });
+  }
+
+  const measured = channels.map((c, i) => ({ ...c, currentSpendMinor: spend.byEntity.get(c.channelId), blendedRoas: efficiencies[i].value }));
   const plan = allocate({ totalBudgetMinor, totalBudgetCurrency, goal: resolvedGoal, channels: measured });
-  return { ...plan, basis, spendPeriod: spend.portfolio, monetaryStatus: MONETARY_STATUS.VALID, monetaryReason: null };
+  return { ...plan, basis, spendPeriod: spend.portfolio, monetaryStatus: MONETARY_STATUS.VALID, monetaryReason: null,
+    efficiencyStatus: EFFICIENCY_STATUS.VALID, efficiencyReason: null };
 }
 
 /**
@@ -206,7 +228,7 @@ export async function previewAllocation(workspaceId, {
  * which already means "no connected channels". The budget is kept exactly as
  * entered, because refusing to size moves is not a reason to lose the budget.
  */
-function unmeasuredAllocation({ totalBudgetMinor, goal, channels, basis, spendPeriod, money }) {
+function unmeasuredAllocation({ totalBudgetMinor, goal, channels, basis, spendPeriod, money, efficiencyReason = null }) {
   if (!Number.isFinite(totalBudgetMinor) || totalBudgetMinor <= 0) {
     throw new Error('allocate: totalBudgetMinor must be a positive finite number');
   }
@@ -214,27 +236,37 @@ function unmeasuredAllocation({ totalBudgetMinor, goal, channels, basis, spendPe
     throw new Error(`allocate: unsupported goal type "${goal.type}" (only GROWTH_CEILING is implemented)`);
   }
   const { start, end } = spendPeriod.period;
+  const refusalReason = efficiencyReason ?? (money.monetaryStatus === MONETARY_STATUS.UNAVAILABLE_MIXED
+    || money.monetaryReason === MONETARY_REASON.BUDGET_CURRENCY_MISMATCH
+    ? EFFICIENCY_REASON.CURRENCY_MISMATCH
+    : money.monetaryStatus !== MONETARY_STATUS.VALID
+      ? EFFICIENCY_REASON.CURRENCY_UNTRUSTED
+      : EFFICIENCY_REASON.SPEND_BASIS_UNAVAILABLE);
   return {
     goal: { type: goal?.type ?? GOAL_TYPE.GROWTH_CEILING, value: goal?.value ?? null },
     totalBudgetMinor,
-    currency: null,
-    monetaryStatus: money.monetaryStatus === MONETARY_STATUS.VALID ? MONETARY_STATUS.UNAVAILABLE_UNTRUSTED : money.monetaryStatus,
-    monetaryReason: money.monetaryStatus === MONETARY_STATUS.VALID ? spendPeriod.reason : money.monetaryReason,
+    currency: money.monetaryStatus === MONETARY_STATUS.VALID && spendPeriod.status === SPEND_PERIOD_STATUS.MEASURABLE ? money.currency : null,
+    monetaryStatus: money.monetaryStatus === MONETARY_STATUS.VALID && spendPeriod.status !== SPEND_PERIOD_STATUS.MEASURABLE
+      ? MONETARY_STATUS.UNAVAILABLE_UNTRUSTED : money.monetaryStatus,
+    monetaryReason: money.monetaryStatus === MONETARY_STATUS.VALID && spendPeriod.status !== SPEND_PERIOD_STATUS.MEASURABLE
+      ? spendPeriod.reason : money.monetaryReason,
     basis,
     spendPeriod,
+    efficiencyStatus: EFFICIENCY_STATUS.UNAVAILABLE,
+    efficiencyReason: refusalReason,
     allocations: channels.map((c) => ({
       channelId: c.channelId,
       channel: c.channel ?? null,
       verdict: c.verdict ?? 'HOLD',
-      blendedRoas: c.monetaryStatus === MONETARY_STATUS.VALID ? c.blendedRoas : null,
+      blendedRoas: c.blendedRevenueEfficiency?.status === EFFICIENCY_STATUS.VALID ? c.blendedRevenueEfficiency.value : null,
       currentSpendMinor: null,
       recommendedSpendMinor: null,
       deltaMinor: null,
-      rationale: `No move sized for ${c.channel ?? c.channelId}: monetary eligibility over ${start} – ${end} is unavailable (${money.monetaryReason ?? spendPeriod.reason}).`,
+      rationale: `No move sized for ${c.channel ?? c.channelId}: efficiency evidence over ${start} – ${end} is unavailable (${refusalReason}).`,
     })),
-    projected: { blendedRevenueMinor: null, projectedCpaMinor: null, merBefore: null, merAfter: null },
+    projected: { blendedRevenueMinor: null, projectedCpaMinor: null, blendedRevenueEfficiencyBefore: null, blendedRevenueEfficiencyAfter: null },
     reasoningTrail: [
-      `Budget received for ${start} – ${end}. No move is sized because monetary eligibility is unavailable (${money.monetaryReason ?? spendPeriod.reason}).`,
+      `Budget received for ${start} – ${end}. No move is sized because efficiency evidence is unavailable (${refusalReason}).`,
     ],
   };
 }
@@ -266,6 +298,13 @@ export async function persistAllocation(db, workspaceId, plan) {
       code: 'AllocationMonetaryUnavailable', reason: plan.monetaryReason ?? plan.spendPeriod?.reason ?? MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED,
     });
   }
+  if (plan.efficiencyStatus !== EFFICIENCY_STATUS.VALID
+    || !Number.isFinite(plan.projected?.blendedRevenueEfficiencyBefore)
+    || !Number.isFinite(plan.projected?.blendedRevenueEfficiencyAfter)) {
+    throw Object.assign(new Error('Allocation efficiency evidence is unavailable'), {
+      code: 'AllocationEfficiencyUnavailable', reason: plan.efficiencyReason ?? EFFICIENCY_REASON.REVENUE_BASIS_UNAVAILABLE,
+    });
+  }
 
   const created = await db.allocationPlan.create({
     data: {
@@ -274,11 +313,12 @@ export async function persistAllocation(db, workspaceId, plan) {
       goalValue:         typeof plan.goal.value === 'number' ? plan.goal.value : null,
       totalBudgetMinor:  plan.totalBudgetMinor,
       currency:          plan.currency,
-      projectedRoas:     plan.projected.merAfter,
+      projectedRoas:     null, // legacy ROAS column cannot describe blended revenue efficiency
       projectedCpaMinor: plan.projected.projectedCpaMinor,
-      merBefore:         plan.projected.merBefore,
-      merAfter:          plan.projected.merAfter,
-      reasoning:         plan.reasoningTrail.join('\n'),
+      // Legacy physical names; only a proven current semantic metric is stored.
+      merBefore:         plan.projected.blendedRevenueEfficiencyBefore,
+      merAfter:          plan.projected.blendedRevenueEfficiencyAfter,
+      reasoning:         tagAllocationReasoning(plan.reasoningTrail),
       status:            'PROPOSED',
     },
   });

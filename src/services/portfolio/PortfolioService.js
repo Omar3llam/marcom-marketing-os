@@ -4,7 +4,7 @@
 // Owns DB I/O. Composes the deterministic engines:
 //   blended-truth (honest revenue) + pacing (burn projection).
 //
-// Surfaces: total spend, blended CPA, blended ROAS / MER across
+// Surfaces: total spend, blended CPA, distinct blended efficiency across
 // connected channels, paced against a monthly budget. The totals
 // reconcile to the Phase-1 entity rollup (every channel figure is a
 // sum of MetricSnapshot rows — see the reconciliation test).
@@ -116,7 +116,8 @@ export async function getPortfolio(workspaceId, { monthlyBudgetMinor, monthlyBud
       spendMinor:           portfolio.spendMinor,
       platformRevenueMinor: portfolio.platformRevenueMinor,
       blendedRevenueMinor:  portfolio.blendedRevenueMinor,
-      blendedRoas:          portfolio.blendedRoas,  // MER (blended)
+      blendedRoas:          portfolio.blendedRoas,  // deprecated API alias, never MER
+      blendedRevenueEfficiency: portfolio.blendedRevenueEfficiency,
       platformRoas:         portfolio.platformRoas,
       gapMinor:             portfolio.gapMinor,
       gapPct:               portfolio.gapPct,

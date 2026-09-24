@@ -25,7 +25,7 @@ describe('projectScenario — honesty: every projection is a range', () => {
       economics, memory: memoryHigh,
     });
     expect(out.scenarioType).toBe(SCENARIO_TYPE.CHANNEL_REALLOCATION);
-    for (const key of ['blendedCacMinor', 'volume', 'revenueMinor', 'grossProfitMinor', 'merAfter']) {
+    for (const key of ['blendedCacMinor', 'volume', 'revenueMinor', 'grossProfitMinor', 'blendedRevenueEfficiencyAfter']) {
       expect(isRange(out.projections[key])).toBe(true);
     }
     expect(out.projections.blendedCacMinor.low).toBeLessThan(out.projections.blendedCacMinor.high);

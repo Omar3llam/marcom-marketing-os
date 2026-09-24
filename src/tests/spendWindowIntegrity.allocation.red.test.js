@@ -87,7 +87,7 @@ function assertNoNumbers(plan) {
     expect(a.rationale).not.toMatch(SIZED);
   }
   expect(plan.projected?.blendedRevenueMinor ?? null).toBeNull();
-  expect(plan.projected?.merAfter ?? null).toBeNull();
+  expect(plan.projected?.blendedRevenueEfficiencyAfter ?? null).toBeNull();
   for (const line of plan.reasoningTrail ?? []) expect(line).not.toMatch(SIZED);
   expect(planToDecisionRows(plan, { workspaceId: 'ws', planId: 'p' })).toEqual([]);
 }
@@ -199,7 +199,7 @@ describe('only a measured move becomes a Decision', () => {
   });
 
   it('control — a measured, non-zero move still becomes a Decision', () => {
-    const plan = { monetaryStatus: 'MONETARY_VALID', currency: 'USD', spendPeriod: { status: 'MEASURABLE', currency: 'USD' }, allocations: [move(-60_000)] };
+    const plan = { monetaryStatus: 'MONETARY_VALID', efficiencyStatus: 'VALID', currency: 'USD', spendPeriod: { status: 'MEASURABLE', currency: 'USD' }, allocations: [move(-60_000)] };
     expect(planToDecisionRows(plan, { workspaceId: 'ws', planId: 'p' })).toHaveLength(1);
   });
 });

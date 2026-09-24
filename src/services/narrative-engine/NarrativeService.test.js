@@ -6,7 +6,7 @@ const blended = {
     { channelId: 'acc-meta', channel: 'META', spendMinor: 400_000 },
     { channelId: 'acc-google', channel: 'GOOGLE', spendMinor: 250_000 },
   ],
-  portfolio: { blendedRoas: 3.2, gapPct: 38, reconciledCount: 1, unverifiedCount: 1 },
+  portfolio: { blendedRevenueEfficiency: { status: 'VALID', value: 3.2 }, gapPct: 38, reconciledCount: 1, unverifiedCount: 1 },
 };
 
 const decisions = [

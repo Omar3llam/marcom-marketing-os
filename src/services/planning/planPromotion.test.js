@@ -58,12 +58,13 @@ const mixPreview = (deltas = [200_000, -200_000]) => ({
   currency: 'USD',
   monetaryStatus: 'MONETARY_VALID',
   monetaryReason: null,
+  efficiencyStatus: 'VALID', efficiencyReason: null,
   allocations: deltas.map((d, i) => ({
     channelId: `ch-${i}`, channel: 'META', verdict: 'SCALE',
     currentSpendMinor: 500_000, recommendedSpendMinor: 500_000 + d, deltaMinor: d,
     blendedRoas: 2, rationale: 'because',
   })),
-  projected: { blendedRevenueMinor: 2_000_000, projectedCpaMinor: 3_000, merBefore: 1.7, merAfter: 2 },
+  projected: { blendedRevenueMinor: 2_000_000, projectedCpaMinor: 3_000, blendedRevenueEfficiencyBefore: 1.7, blendedRevenueEfficiencyAfter: 2 },
   reasoningTrail: ['ceiling 10,000.00 USD'],
 });
 

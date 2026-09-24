@@ -74,6 +74,10 @@ export function snapshot({
     measurementWindow,
     windowStart: window ? day(window.start) : null,
     windowEnd: window ? day(window.end) : null,
+    // This fixture models a source account whose timezone is UTC; these are
+    // exact UTC interval bounds, distinct from the inclusive date labels above.
+    spendWindowStartUtc: window ? day(window.start) : null,
+    spendWindowEndUtc: window ? new Date(day(window.end).getTime() + 86_400_000) : null,
     date,
     spendMinor,
     revenueMinor,

@@ -68,10 +68,10 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST }) {
             Platform claims vs reality
             <HelpTip variant="popover" content={HELP.BLENDED_TRUTH} />
           </div>
-          {portfolio.platformRoas != null && portfolio.blendedRoas != null ? (
+          {portfolio.platformRoas != null && portfolio.blendedRevenueEfficiency?.value != null ? (
             <p className="decision-title text-lumi-text leading-snug">
               Platforms claim <span className="text-lumi-muted">{fx(portfolio.platformRoas)}</span>;
-              {' '}blended truth says <span className="text-signal-scale font-semibold">{fx(portfolio.blendedRoas)}</span>
+              {' '}blended revenue efficiency is <span className="text-signal-scale font-semibold">{fx(portfolio.blendedRevenueEfficiency.value)}</span>
               <HelpTip variant="popover" content={HELP.BLENDED_ROAS} className="ml-1" />.
             </p>
           ) : (
@@ -116,7 +116,7 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST }) {
               <tr className="text-left text-lumi-subtle border-b border-lumi-border">
                 <th className="px-4 py-2.5 font-medium">Channel</th>
                 <th className="px-4 py-2.5 font-medium">Platform ROAS</th>
-                <th className="px-4 py-2.5 font-medium">Blended ROAS</th>
+                <th className="px-4 py-2.5 font-medium">Blended efficiency</th>
                 <th className="px-4 py-2.5 font-medium">Gap</th>
                 <th className="px-4 py-2.5 font-medium">Coverage</th>
               </tr>
@@ -136,7 +136,7 @@ export function BlendedTruthView({ data, role = WORKSPACE_ROLE.STRATEGIST }) {
                     </Link>
                   </td>
                   <td className="px-4 py-2.5 text-lumi-muted font-mono">{fx(c.platformRoas)}</td>
-                  <td className="px-4 py-2.5 text-lumi-text font-mono">{fx(c.blendedRoas)}</td>
+                  <td className="px-4 py-2.5 text-lumi-text font-mono">{fx(c.blendedRevenueEfficiency?.value)}</td>
                   <td className="px-4 py-2.5 font-mono text-signal-kill">{c.gapPct == null ? '—' : `${Math.round(c.gapPct)}%`}</td>
                   <td className="px-4 py-2.5">
                     <span className={`font-mono text-xs ${c.coverage === 'RECONCILED' ? 'text-signal-scale' : 'text-lumi-subtle'}`}>
@@ -193,7 +193,7 @@ export default function BlendedTruth() {
         <AllocationPanel
           currency={currency}
           monetaryReason={portfolio?.monetaryReason}
-          canAllocate={Boolean(currency && portfolio?.blendedRoas != null)}
+          canAllocate={Boolean(currency && portfolio?.blendedRevenueEfficiency?.value != null)}
           onPreview={allocation.preview}
           onCommit={allocation.commit}
           plan={allocation.plan}

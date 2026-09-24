@@ -98,7 +98,7 @@ export function buildNarrativeInputs({
     const top = blended.channels.find((c) => c.monetaryStatus === 'MONETARY_VALID') ?? blended.channels[0];
     blendedInput = {
       evidenceRef: top.channelId,
-      blendedRoas: blended.portfolio?.blendedRoas ?? null,
+      blendedRoas: blended.portfolio?.blendedRevenueEfficiency?.value ?? null,
       gapPct: blended.portfolio?.gapPct ?? null,
       monetaryStatus: blended.portfolio?.monetaryStatus ?? 'MONETARY_UNAVAILABLE_UNTRUSTED',
     };

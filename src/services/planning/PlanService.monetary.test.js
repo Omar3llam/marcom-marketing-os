@@ -24,6 +24,7 @@ import { prisma } from '../../lib/prisma.js';
 import { previewAllocation } from '../allocation-engine/AllocationService.js';
 import { runScenario } from '../scenario-engine/ScenarioService.js';
 import { gatherLeadingSignals } from '../scenario-engine/ScenarioService.js';
+import { assessSustainability } from '../unit-economics/EconomicsService.js';
 import { selectOperationalSnapshots } from '../evidence/index.js';
 import { buildPlan } from './PlanService.js';
 
@@ -49,6 +50,21 @@ beforeEach(() => {
 });
 
 describe('Plan monetary persistence boundary', () => {
+  it('does not assess or persist sustainability from an unavailable scenario CAC range', async () => {
+    previewAllocation.mockResolvedValue(validMix('USD'));
+    runScenario.mockResolvedValue({
+      scenarioType: 'BUDGET_EXPANSION', efficiencyStatus: 'UNAVAILABLE',
+      efficiencyReason: 'MEASUREMENT_WINDOW_UNKNOWN',
+      projections: { blendedCacMinor: { low: null, expected: null, high: null } },
+      assumptions: [], confidence: 'LOW', basis: [],
+    });
+    await buildPlan('ws-1', input('USD', { change: { type: 'BUDGET_EXPANSION' } }));
+    expect(assessSustainability).not.toHaveBeenCalled();
+    expect(prisma.plan.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      projections: expect.objectContaining({ economics: null }),
+    }) }));
+  });
+
   it.each(['EGP', 'USD', 'SAR'])('forwards explicit %s and persists Plan/Goal in one transaction', async (currency) => {
     previewAllocation.mockResolvedValue(validMix(currency));
     await buildPlan('ws-1', input(currency));

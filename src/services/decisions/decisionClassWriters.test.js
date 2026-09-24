@@ -28,6 +28,7 @@ import { allocate, GOAL_TYPE } from '../allocation-engine/allocationEngine.js';
 const plan = () => ({
   spendPeriod: { status: 'MEASURABLE', reason: null, currency: 'USD', period: { start: '2026-08-01', end: '2026-08-31' } },
   monetaryStatus: 'MONETARY_VALID',
+  efficiencyStatus: 'VALID',
   ...allocate({
   totalBudgetMinor: 1_000_000,
   totalBudgetCurrency: 'USD',

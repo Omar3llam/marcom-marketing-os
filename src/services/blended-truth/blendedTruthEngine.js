@@ -27,6 +27,7 @@
 import { logger } from '../../utils/logger.js';
 import { MONETARY_STATUS, MONETARY_REASON, monetaryUnavailable, sameMonetaryUnit } from '../../lib/operationalMonetary.js';
 import { combineRevenueWindows, unknownRevenueWindow } from '../../lib/revenueMeasurementWindow.js';
+import { evaluateBlendedRevenueEfficiency } from '../../lib/blendedRevenueEfficiency.js';
 
 export const COVERAGE   = Object.freeze({ RECONCILED: 'RECONCILED', UNVERIFIED: 'UNVERIFIED' });
 export const CONFIDENCE = Object.freeze({ HIGH: 'HIGH', LOW: 'LOW' });
@@ -51,7 +52,9 @@ function roas(revenueMinor, spendMinor) {
 const valid = (state) => state?.monetaryStatus === MONETARY_STATUS.VALID;
 
 function aggregateUnit(channels, field, evidenceKey) {
-  const contributors = channels.filter((c) => c[field] > 0);
+  const contributors = channels.filter((c) => c[field] >= 0 && c.monetaryEvidence?.[evidenceKey]
+    && (evidenceKey !== 'spend' || c.spendEvidencePresent !== false)
+    && (evidenceKey !== 'platform' || c.platformEvidencePresent !== false));
   if (contributors.length === 0) return monetaryUnavailable(MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED);
   return sameMonetaryUnit(...contributors.map((c) => c.monetaryEvidence?.[evidenceKey]));
 }
@@ -84,8 +87,21 @@ export function reconcile({ channels } = {}) {
     const platformUnit = c.monetaryEvidence?.platform;
     const blendedUnit = c.monetaryEvidence?.blended;
     const comparisonUnit = sameMonetaryUnit(platformUnit, blendedUnit);
-    const platformRatioUnit = sameMonetaryUnit(spendUnit, platformUnit);
     const blendedRatioUnit = sameMonetaryUnit(spendUnit, blendedUnit);
+    const blendedRevenueWindow = hasActual
+      ? (c.actualRevenueWindow ?? unknownRevenueWindow())
+      : (c.platformRevenueWindow ?? unknownRevenueWindow());
+    const spendWindow = c.spendWindow ?? unknownRevenueWindow();
+    const blendedRevenueEfficiency = evaluateBlendedRevenueEfficiency({
+      revenueMinor: blendedRevenueMinor, spendMinor: c.spendMinor,
+      revenueMoney: blendedUnit, spendMoney: spendUnit,
+      revenueWindow: blendedRevenueWindow, spendWindow,
+    });
+    const platformRoasEvidence = evaluateBlendedRevenueEfficiency({
+      revenueMinor: platformRevenueMinor, spendMinor: c.spendMinor,
+      revenueMoney: platformUnit, spendMoney: spendUnit,
+      revenueWindow: c.platformRevenueWindow ?? unknownRevenueWindow(), spendWindow,
+    });
 
     // gap = how much the platform OVER-reports vs the blended truth
     // (positive ⇒ platform inflated). For unverified channels gap is 0
@@ -105,14 +121,14 @@ export function reconcile({ channels } = {}) {
       platformRevenueMinor: valid(platformUnit) ? platformRevenueMinor : null,
       actualRevenueMinor:  hasActual && valid(c.monetaryEvidence?.actual) ? c.actualRevenueMinor : null,
       blendedRevenueMinor: valid(blendedUnit) ? blendedRevenueMinor : null,
-      blendedRevenueWindow: hasActual
-        ? (c.actualRevenueWindow ?? unknownRevenueWindow())
-        : (c.platformRevenueWindow ?? unknownRevenueWindow()),
-      spendWindow: c.spendWindow ?? unknownRevenueWindow(),
+      blendedRevenueWindow,
+      platformRevenueWindow: c.platformRevenueWindow ?? unknownRevenueWindow(),
+      spendWindow,
+      blendedRevenueEfficiency,
       gapMinor:            valid(comparisonUnit) ? gapMinor : null,
       gapPct:              valid(comparisonUnit) ? gapPct : null,
-      platformRoas:        valid(platformRatioUnit) ? roas(platformRevenueMinor, c.spendMinor) : null,
-      blendedRoas:         valid(blendedRatioUnit) ? roas(blendedRevenueMinor, c.spendMinor) : null,
+      platformRoas:        platformRoasEvidence.value,
+      blendedRoas:         blendedRevenueEfficiency.value, // deprecated API alias
       coverage:            hasActual ? COVERAGE.RECONCILED : COVERAGE.UNVERIFIED,
       confidence:          hasActual ? CONFIDENCE.HIGH : CONFIDENCE.LOW,
     };
@@ -151,6 +167,19 @@ export function reconcile({ channels } = {}) {
   portfolio.spendWindow = combineRevenueWindows(rows
     .filter((_r, i) => channels[i].spendEvidencePresent !== false)
     .map((r) => r.spendWindow));
+  portfolio.blendedRevenueEfficiency = evaluateBlendedRevenueEfficiency({
+    revenueMinor: portfolio.blendedRevenueMinor, spendMinor: portfolio.spendMinor,
+    revenueMoney: blendedUnit, spendMoney: spendUnit,
+    revenueWindow: portfolio.blendedRevenueWindow, spendWindow: portfolio.spendWindow,
+  });
+  portfolio.blendedRoas = portfolio.blendedRevenueEfficiency.value; // deprecated API alias
+  portfolio.platformRoas = evaluateBlendedRevenueEfficiency({
+    revenueMinor: portfolio.platformRevenueMinor, spendMinor: portfolio.spendMinor,
+    revenueMoney: platformUnit, spendMoney: spendUnit,
+    revenueWindow: combineRevenueWindows(rows.filter((_r, i) => channels[i].platformEvidencePresent !== false)
+      .map((r) => r.platformRevenueWindow)),
+    spendWindow: portfolio.spendWindow,
+  }).value;
   if (!valid(spendUnit)) portfolio.spendMinor = null;
   if (!valid(platformUnit)) portfolio.platformRevenueMinor = null;
   if (!valid(blendedUnit)) portfolio.blendedRevenueMinor = null;

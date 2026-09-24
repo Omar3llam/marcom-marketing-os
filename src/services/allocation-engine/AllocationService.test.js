@@ -15,7 +15,7 @@ vi.mock('../../utils/logger.js', () => ({
 }));
 vi.mock('../../lib/prisma.js', () => ({ prisma: {} }));
 
-import { planToDecisionRows } from './AllocationService.js';
+import { planToDecisionRows, persistAllocation } from './AllocationService.js';
 import { allocate, GOAL_TYPE } from './allocationEngine.js';
 import { buildChannelInputs }  from '../blended-truth/BlendedTruthService.js';
 import { reconcile }           from '../blended-truth/blendedTruthEngine.js';
@@ -40,6 +40,7 @@ function samplePlan() {
 const withMeasuredPeriod = (plan) => ({
   ...plan,
   monetaryStatus: 'MONETARY_VALID',
+  efficiencyStatus: 'VALID', efficiencyReason: null,
   spendPeriod: { status: 'MEASURABLE', reason: null, currency: 'USD', period: { start: '2026-08-01', end: '2026-08-31' } },
 });
 
@@ -69,6 +70,27 @@ describe('AllocationService.planToDecisionRows — governance', () => {
 
   it('requires a workspaceId', () => {
     expect(() => planToDecisionRows(samplePlan(), { planId: 'p' })).toThrow(/workspaceId/);
+  });
+});
+
+describe('AllocationPlan persistence adapter', () => {
+  it('maps only valid semantic ratios into the legacy physical columns', async () => {
+    const create = vi.fn(async ({ data }) => ({ id: 'plan-1', ...data }));
+    const db = { allocationPlan: { create }, decision: { createMany: vi.fn(async () => ({})) } };
+    const plan = samplePlan();
+    await persistAllocation(db, 'ws1', plan);
+    const data = create.mock.calls[0][0].data;
+    expect(data.merBefore).toBe(plan.projected.blendedRevenueEfficiencyBefore);
+    expect(data.merAfter).toBe(plan.projected.blendedRevenueEfficiencyAfter);
+    expect(data.projectedRoas).toBeNull();
+    expect(data.reasoning).toMatch(/^\[BLENDED_REVENUE_EFFICIENCY_V1\]/);
+  });
+  it('refuses unavailable or stale semantic metrics before any write', async () => {
+    const create = vi.fn();
+    const db = { allocationPlan: { create }, decision: { createMany: vi.fn() } };
+    await expect(persistAllocation(db, 'ws1', { ...samplePlan(), efficiencyStatus: 'UNAVAILABLE' }))
+      .rejects.toMatchObject({ code: 'AllocationEfficiencyUnavailable' });
+    expect(create).not.toHaveBeenCalled();
   });
 });
 

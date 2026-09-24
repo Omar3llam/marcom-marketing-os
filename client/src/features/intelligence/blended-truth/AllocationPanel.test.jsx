@@ -12,11 +12,12 @@ import { AllocationPanel } from './AllocationPanel.jsx';
 const PLAN = {
   goal: { type: 'GROWTH_CEILING', value: null },
   totalBudgetMinor: 5000000, currency: 'USD', monetaryStatus: 'MONETARY_VALID', monetaryReason: null,
+  efficiencyStatus: 'VALID', efficiencyReason: null,
   allocations: [
     { channelId: 'meta', channel: 'Meta', verdict: 'SCALE', currentSpendMinor: 3000000, recommendedSpendMinor: 3500000, deltaMinor: 500000, blendedRoas: 2.4, rationale: 'higher blended ROAS' },
     { channelId: 'google', channel: 'Google', verdict: 'TRIM', currentSpendMinor: 2000000, recommendedSpendMinor: 1500000, deltaMinor: -500000, blendedRoas: 1.1, rationale: 'lower blended ROAS' },
   ],
-  projected: { blendedRevenueMinor: 12000000, projectedCpaMinor: 4500, merBefore: 1.8, merAfter: 2.2 },
+  projected: { blendedRevenueMinor: 12000000, projectedCpaMinor: 4500, blendedRevenueEfficiencyBefore: 1.8, blendedRevenueEfficiencyAfter: 2.2 },
   reasoningTrail: [],
 };
 
@@ -65,7 +66,8 @@ describe('AllocationPanel — preview', () => {
     const unavailable = {
       ...PLAN, currency: null, monetaryStatus: 'MONETARY_UNAVAILABLE_MIXED', monetaryReason: 'SPEND_CURRENCY_MIXED',
       allocations: [{ ...PLAN.allocations[0], currentSpendMinor: null, recommendedSpendMinor: null, deltaMinor: null, blendedRoas: null }],
-      projected: { blendedRevenueMinor: null, projectedCpaMinor: null, merBefore: null, merAfter: null },
+      efficiencyStatus: 'UNAVAILABLE', efficiencyReason: 'CURRENCY_UNTRUSTED',
+      projected: { blendedRevenueMinor: null, projectedCpaMinor: null, blendedRevenueEfficiencyBefore: null, blendedRevenueEfficiencyAfter: null },
     };
     render(<AllocationPanel currency="EGP" plan={unavailable} canCommit />);
     expect(screen.getByText(/SPEND_CURRENCY_MIXED/)).toBeInTheDocument();
@@ -77,12 +79,12 @@ describe('AllocationPanel — preview', () => {
 });
 
 describe('AllocationPanel — proposed plan + commit', () => {
-  it('renders the per-channel moves and the projected MER', () => {
+  it('renders the per-channel moves and projected blended efficiency', () => {
     render(<AllocationPanel currency="USD" plan={PLAN} canCommit />);
     expect(screen.getByText('Meta')).toBeInTheDocument();
     expect(screen.getByText('Google')).toBeInTheDocument();
-    expect(screen.getByText('1.8×')).toBeInTheDocument();   // merBefore
-    expect(screen.getByText('2.2×')).toBeInTheDocument();   // merAfter
+    expect(screen.getByText('1.8×')).toBeInTheDocument();
+    expect(screen.getByText('2.2×')).toBeInTheDocument();
   });
 
   it('a strategist sees Commit; clicking fires onCommit with the budget', () => {

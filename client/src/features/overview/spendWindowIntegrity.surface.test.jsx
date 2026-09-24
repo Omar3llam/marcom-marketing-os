@@ -82,12 +82,13 @@ describe('the contract carries the refusal', () => {
       goal: { type: 'GROWTH_CEILING', value: null },
       totalBudgetMinor: 3_000_000,
       currency: 'USD',
+      efficiencyStatus: 'UNAVAILABLE', efficiencyReason: 'MEASUREMENT_WINDOW_UNKNOWN',
       spendPeriod: NOT_MEASURABLE_PERIOD,
       allocations: [{
         channelId: 'a', channel: 'META', verdict: 'HOLD', blendedRoas: 2,
         currentSpendMinor: null, recommendedSpendMinor: null, deltaMinor: null, rationale: 'x',
       }],
-      projected: { blendedRevenueMinor: null, projectedCpaMinor: null, merBefore: null, merAfter: null },
+      projected: { blendedRevenueMinor: null, projectedCpaMinor: null, blendedRevenueEfficiencyBefore: null, blendedRevenueEfficiencyAfter: null },
       reasoningTrail: [],
     });
     expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
@@ -140,7 +141,8 @@ describe('Reallocate capital · no move is printed that was not measured', () =>
       { channelId: 'a', channel: 'Meta A', verdict: 'HOLD', blendedRoas: 2, currentSpendMinor: null, recommendedSpendMinor: null, deltaMinor: null, rationale: 'x' },
       { channelId: 'b', channel: 'Meta B', verdict: 'HOLD', blendedRoas: 2, currentSpendMinor: null, recommendedSpendMinor: null, deltaMinor: null, rationale: 'x' },
     ],
-    projected: { blendedRevenueMinor: null, projectedCpaMinor: null, merBefore: null, merAfter: null },
+    efficiencyStatus: 'UNAVAILABLE', efficiencyReason: 'MEASUREMENT_WINDOW_UNKNOWN',
+    projected: { blendedRevenueMinor: null, projectedCpaMinor: null, blendedRevenueEfficiencyBefore: null, blendedRevenueEfficiencyAfter: null },
     reasoningTrail: [],
   };
 
