@@ -315,9 +315,12 @@ export async function persistAllocation(db, workspaceId, plan) {
       currency:          plan.currency,
       projectedRoas:     null, // legacy ROAS column cannot describe blended revenue efficiency
       projectedCpaMinor: plan.projected.projectedCpaMinor,
-      // Legacy physical names; only a proven current semantic metric is stored.
-      merBefore:         plan.projected.blendedRevenueEfficiencyBefore,
-      merAfter:          plan.projected.blendedRevenueEfficiencyAfter,
+      // Keep legacy MER-named storage empty so a rolled-back reader cannot
+      // mislabel a newly written blended-efficiency projection as MER.
+      merBefore:         null,
+      merAfter:          null,
+      blendedRevenueEfficiencyBefore: plan.projected.blendedRevenueEfficiencyBefore,
+      blendedRevenueEfficiencyAfter:  plan.projected.blendedRevenueEfficiencyAfter,
       reasoning:         tagAllocationReasoning(plan.reasoningTrail),
       status:            'PROPOSED',
     },

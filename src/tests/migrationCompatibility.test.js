@@ -111,9 +111,11 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
     // default stays unchanged for older instances during rollout.
     // 73 → 74 and COMPATIBLE 51 → 52: Phase 6 adds nullable paid-media UTC
     // window bounds. Existing rows remain unknown; no backfill invents proof.
-    expect(scan.length).toBe(74);
+    // 74 → 75 and COMPATIBLE 52 → 53: two nullable AllocationPlan efficiency
+    // columns isolate new writes from legacy MER-named storage. No backfill.
+    expect(scan.length).toBe(75);
     expect(counts).toEqual({
-      COMPATIBLE: 52,
+      COMPATIBLE: 53,
       TRANSITION_REQUIRED: 10,
       INCOMPATIBLE: 8,
       UNKNOWN: 4,
@@ -265,7 +267,7 @@ describe('B5-01R⁗ · migration rollout compatibility', () => {
   // ── T7 · corpus boundary ────────────────────────────────────────────────
   it('T7 — the scanner reads production migrations and nothing else', () => {
     const dirs = migrationDirs(fs, MIGRATIONS);
-    expect(dirs).toHaveLength(74); // +1 additive Phase 6 spend-window provenance migration
+    expect(dirs).toHaveLength(75); // +1 additive Phase 6 AllocationPlan semantic storage migration
     expect(dirs.every((d) => /^\d{14}_/.test(d))).toBe(true);
     // Real non-migration entries that sit in this directory today.
     expect(dirs).not.toContain('migration_lock.toml');

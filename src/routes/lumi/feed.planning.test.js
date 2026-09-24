@@ -26,6 +26,26 @@ app.use((req, _res, next) => { req.workspaceId = 'ws-1'; next(); });
 app.use('/', feedRouter);
 
 describe('feed planning evidence', () => {
+  it('publishes semantic storage and keeps legacy MER-named columns classified as legacy', async () => {
+    prisma.plan.findFirst.mockResolvedValueOnce(null);
+    prisma.allocationPlan.findMany.mockResolvedValueOnce([
+      { id: 'new', goalType: 'GROWTH_CEILING', totalBudgetMinor: 100000, currency: 'USD',
+        blendedRevenueEfficiencyBefore: 2, blendedRevenueEfficiencyAfter: 2.4,
+        merBefore: null, merAfter: null, projectedCpaMinor: null, status: 'PROPOSED' },
+      { id: 'legacy', goalType: 'GROWTH_CEILING', totalBudgetMinor: 100000, currency: 'USD',
+        blendedRevenueEfficiencyBefore: null, blendedRevenueEfficiencyAfter: null,
+        merBefore: 9, merAfter: 10, projectedCpaMinor: null, status: 'PROPOSED' },
+    ]);
+    const response = await request(app).get('/feed').expect(200);
+    expect(response.body.allocationPlans).toMatchObject([
+      { id: 'new', efficiencyStatus: 'BLENDED_REVENUE_EFFICIENCY',
+        blendedRevenueEfficiencyBefore: 2, blendedRevenueEfficiencyAfter: 2.4 },
+      { id: 'legacy', efficiencyStatus: 'LEGACY_PROJECTED_EFFICIENCY',
+        blendedRevenueEfficiencyBefore: null, blendedRevenueEfficiencyAfter: null },
+    ]);
+    expect(JSON.stringify(response.body.allocationPlans)).not.toMatch(/"merBefore"|"merAfter"/);
+  });
+
   it('does not publish a legacy positive status or stored numeric landing when MER is unmeasured', async () => {
     const goal = { id: 'goal-1', metric: 'mer', comparator: 'GTE', targetValue: 3, status: 'ON_TRACK' };
     prisma.plan.findFirst.mockResolvedValue({

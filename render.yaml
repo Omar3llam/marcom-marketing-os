@@ -159,10 +159,11 @@ services:
     env: node
     region: oregon
     plan: starter
-    # `npx prisma generate` is explicit here: bare `npm install` under
-    # NODE_ENV=production may omit the `prisma` devDep and skip the client
-    # generation postinstall, leaving the worker with a stale Prisma client.
-    buildCommand: npm install && npx prisma generate
+    # Both services deploy independently. The worker reads AllocationPlan with
+    # a generated client, so its migration gate must finish before it starts;
+    # the backend build runs the same gate before serving or writing new rows.
+    # Include the Prisma CLI dev dependency explicitly under NODE_ENV=production.
+    buildCommand: npm install --include=dev && npx prisma generate && node scripts/prisma-migrate-safe.js
     startCommand: npm run worker
     autoDeploy: true
     envVars:
