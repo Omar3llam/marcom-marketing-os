@@ -31,7 +31,9 @@ vi.mock('../../services/collaboration/ApprovalService.js', () => ({
 vi.mock('../../services/narrative-engine/NarrativeService.js', () => ({
   generateNarrative: vi.fn(), listNarratives: vi.fn(), getNarrative: vi.fn(),
 }));
-vi.mock('../../services/collaboration/InboxService.js', () => ({ inboxFor: vi.fn() }));
+vi.mock('../../services/collaboration/InboxService.js', () => ({
+  inboxFor: vi.fn(), readInboxSource: (_source, read) => read(),
+}));
 vi.mock('../../lib/prisma.js', () => ({ prisma: { user: { findUnique: vi.fn() } } }));
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },

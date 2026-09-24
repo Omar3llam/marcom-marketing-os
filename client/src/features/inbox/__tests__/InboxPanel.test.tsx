@@ -64,12 +64,14 @@ describe('InboxPanel — honest states + actionable navigation', () => {
     vi.mocked(useInbox).mockReturnValue({ items: [], isLoading: true, error: null, refetch: vi.fn() });
     render(<InboxPanel onClose={vi.fn()} onNavigate={vi.fn()} />);
     expect(screen.getByText(/Loading your inbox/i)).toBeInTheDocument();
+    expect(screen.queryByText(/You’re all caught up/i)).not.toBeInTheDocument();
   });
 
   it('renders a user-facing error state', () => {
     vi.mocked(useInbox).mockReturnValue({ items: [], isLoading: false, error: new Error('x'), refetch: vi.fn() });
     render(<InboxPanel onClose={vi.fn()} onNavigate={vi.fn()} />);
     expect(screen.getByText(/Couldn’t load your inbox/i)).toBeInTheDocument();
+    expect(screen.queryByText(/You’re all caught up/i)).not.toBeInTheDocument();
   });
 
   it('navigates to the item route and closes on select', () => {

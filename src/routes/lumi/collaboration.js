@@ -23,7 +23,7 @@ import { WORKSPACE_ROLE, visibleStates, normalizeRole } from '../../services/col
 import { generateNarrative, listNarratives, getNarrative } from '../../services/narrative-engine/NarrativeService.js';
 import { NARRATIVE_PERIOD, NARRATIVE_AUDIENCE } from '../../services/narrative-engine/narrativeTypes.js';
 import { requestApproval, decideApproval, handoff, listApprovals, APPROVAL_STATE } from '../../services/collaboration/ApprovalService.js';
-import { inboxFor } from '../../services/collaboration/InboxService.js';
+import { inboxFor, readInboxSource } from '../../services/collaboration/InboxService.js';
 import { ALERT_KIND, radarSeverity } from '../../services/collaboration/notificationRouter.js';
 import { resolveActorId } from './actorId.js';
 
@@ -236,7 +236,7 @@ collaborationRouter.get('/inbox', async (req, res) => {
   const role = normalizeRole(req.collabRole ?? (await resolveCollabRoleForDisplay(req)));
   try {
     // Live alert stream: recent PROPOSED radar verdicts (no new table).
-    const proposed = await prisma.decision.findMany({
+    const proposed = await readInboxSource('RADAR', () => prisma.decision.findMany({
       // C-10 — SIGNAL only. Every row here is published as ALERT_KIND.RADAR with
       // a severity derived from `confidence`; unscoped, a guardrail episode
       // (constant confidence 0.9) arrived as a HIGH-severity radar verdict, and
@@ -244,7 +244,7 @@ collaborationRouter.get('/inbox', async (req, res) => {
       where: { workspaceId: wsId, status: 'PROPOSED', ...scopeFor('collaboration/inbox') },
       orderBy: { createdAt: 'desc' }, take: 20,
       select: { id: true, verdict: true, diagnosis: true, confidence: true },
-    }).catch(() => []);
+    }));
     const alerts = proposed.map((d) => ({
       kind: ALERT_KIND.RADAR, id: d.id, verdict: d.verdict, headline: d.diagnosis,
       // C-16 — null when the confidence was never measured, rather than the
@@ -254,7 +254,7 @@ collaborationRouter.get('/inbox', async (req, res) => {
     const inbox = await inboxFor(wsId, role, { alerts });
     return res.json({ workspaceId: wsId, ...inbox });
   } catch (err) {
-    logger.error({ err: err.message, wsId }, '[lumi/collaboration] inbox failed');
+    logger.error({ err: err.message, source: err.source ?? null, wsId }, '[lumi/collaboration] inbox failed');
     return res.status(500).json({ error: 'InboxUnavailable', message: 'Request failed' });
   }
 });
