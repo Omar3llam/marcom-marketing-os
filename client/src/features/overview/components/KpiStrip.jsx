@@ -21,28 +21,30 @@
 import { BarChart, Target, AlertTriangle, Activity } from 'lucide-react';
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
 import StatCard from '@/components/ui/StatCard.jsx';
+import { isKnownCurrency } from '@/lib/monetaryCurrency.js';
 
 export default function KpiStrip({ kpis, killCount = 0, healthLabel, healthTone }) {
+  const canShowMoney = isKnownCurrency(kpis.currency);
   return (
     // responsive: 1 col mobile, 2 col tablet, 4 col desktop
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
       <StatCard
         label="Total spend"
-        value={kpis.spend != null ? formatCurrencyWhole(kpis.spend, kpis.currency) : '—'}
-        sub={kpis.spend != null ? kpis.spendCaption : kpis.spendLabel}
+        value={canShowMoney && kpis.spend != null ? formatCurrencyWhole(kpis.spend, kpis.currency) : '—'}
+        sub={canShowMoney && kpis.spend != null ? kpis.spendCaption : kpis.spendLabel}
         Icon={BarChart}
         tone="neutral"
       />
       <StatCard
         label="Blended CPA"
-        value={kpis.cpa != null ? formatCurrencyWhole(kpis.cpa, kpis.currency) : '—'}
-        sub={kpis.cpa != null ? 'across active campaigns' : (kpis.cpaLabel ?? 'across active campaigns')}
+        value={canShowMoney && kpis.cpa != null ? formatCurrencyWhole(kpis.cpa, kpis.currency) : '—'}
+        sub={canShowMoney && kpis.cpa != null ? 'across active campaigns' : (kpis.cpaLabel ?? 'across active campaigns')}
         Icon={Target}
         tone="neutral"
       />
       <StatCard
         label="Wasted spend"
-        value={kpis.wasted != null ? `${formatCurrencyWhole(kpis.wasted, kpis.currency)}/mo` : '—'}
+        value={canShowMoney && kpis.wasted != null ? `${formatCurrencyWhole(kpis.wasted, kpis.currency)}/mo` : '—'}
         sub={killCount > 0 ? `${killCount} KILL-verdict campaign${killCount === 1 ? '' : 's'}` : 'flagged for review'}
         Icon={AlertTriangle}
         tone="danger"

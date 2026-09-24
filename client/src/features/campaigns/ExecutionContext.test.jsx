@@ -157,6 +157,21 @@ describe('ExecutionContext — the evidence', () => {
     expect(screen.getByText('£3,255.00')).toBeInTheDocument();
     expect(screen.queryByText('$3,255.00')).not.toBeInTheDocument();
   });
+
+  it('withholds an ad set spend without currency while keeping the CTR evidence', () => {
+    setup({ evidence: evidenceFor({ ...worst, currency: null }) });
+    expect(screen.getByText('Where to execute')).toBeInTheDocument();
+    expect(screen.getByText('0.32%')).toBeInTheDocument();
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.queryByText('$3,255.00')).not.toBeInTheDocument();
+    expect(screen.queryByText(/% of campaign spend/)).not.toBeInTheDocument();
+  });
+
+  it('withholds a spend share across different currencies', () => {
+    setup({ evidence: evidenceFor({ ...worst, currency: 'GBP' }) });
+    expect(screen.getByText('£3,255.00')).toBeInTheDocument();
+    expect(screen.queryByText(/% of campaign spend/)).not.toBeInTheDocument();
+  });
 });
 
 // The base fixture carries no impressions, so buildHypothesis short-circuits at

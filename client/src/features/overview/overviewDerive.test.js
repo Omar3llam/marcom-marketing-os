@@ -126,7 +126,7 @@ describe('partitionDecisions', () => {
   });
 
   it('sums protected spend across the healthy band, skipping unreported rows', () => {
-    const { healthySpend, healthyCurrency } = partitionDecisions([
+    const { healthySpend, healthyCurrency, healthySpendStatus } = partitionDecisions([
       d({ entityId: 'a', verdict: 'HOLD', spendMinor: 120_000, currency: 'EGP' }),
       d({ entityId: 'b', verdict: 'SCALE', spendMinor: 80_000, currency: 'EGP' }),
       d({ entityId: 'c', verdict: 'HOLD', spendMinor: null, currency: 'EGP' }),
@@ -134,16 +134,36 @@ describe('partitionDecisions', () => {
     ]);
     expect(healthySpend).toBe(200_000);
     expect(healthyCurrency).toBe('EGP');
+    expect(healthySpendStatus).toBe('VALID');
+  });
+
+  it('sums USD contributors under their shared unit', () => {
+    expect(partitionDecisions([
+      d({ verdict: 'HOLD', spendMinor: 100, currency: 'USD' }),
+      d({ entityId: 'b', verdict: 'SCALE', spendMinor: 200, currency: 'USD' }),
+    ])).toMatchObject({ healthySpend: 300, healthyCurrency: 'USD', healthySpendStatus: 'VALID' });
+  });
+
+  it.each([
+    ['mixed', 'USD', 'EGP', 'MIXED'],
+    ['unknown', 'USD', null, 'UNAVAILABLE'],
+    ['invalid', 'USD', 'XYZ', 'UNAVAILABLE'],
+  ])('%s contributor withholds the whole aggregate but keeps the count', (_name, first, second, status) => {
+    expect(partitionDecisions([
+      d({ verdict: 'HOLD', spendMinor: 100, currency: first }),
+      d({ entityId: 'b', verdict: 'SCALE', spendMinor: 200, currency: second }),
+    ])).toMatchObject({ healthyCount: 2, healthySpend: null, healthyCurrency: null, healthySpendStatus: status });
   });
 
   // Nothing measured is not zero protected.
   it('protected spend is null when no healthy campaign reported one', () => {
-    const { healthyCount, healthySpend } = partitionDecisions([
+    const { healthyCount, healthySpend, healthySpendStatus } = partitionDecisions([
       d({ verdict: 'HOLD', spendMinor: null }),
       d({ entityId: 'b', verdict: 'SCALE', spendMinor: null }),
     ]);
     expect(healthyCount).toBe(2);
     expect(healthySpend).toBeNull();
+    expect(healthySpendStatus).toBe('EMPTY');
   });
 
   it('an empty feed is three empty bands, not a throw', () => {
@@ -183,11 +203,11 @@ describe('overviewKpis', () => {
   it('reads the canonical aggregate, and keeps the engine figures beside it', () => {
     const k = overviewKpis({
       aggregate: reading(),
-      health: { score: 82, wastedSpend: { minor: 50000 } },
-      currency: 'USD',
+      health: { score: 82, currency: 'EGP', currencyStatus: 'HOMOGENEOUS_KNOWN', wastedSpend: { minor: 50000 } },
+      currency: 'EGP',
     });
     expect(k.live).toBe(true);
-    expect(k.currency).toBe('EGP');       // the aggregate's own currency wins
+    expect(k.currency).toBe('EGP');
     expect(k.spend).toBe(4000);           // 400_000 minor EGP
     expect(k.cpa).toBe(100);              // 10_000 minor EGP
     expect(k.wasted).toBe(500);           // fromMinor(50000, EGP) — health engine
@@ -201,11 +221,37 @@ describe('overviewKpis', () => {
   // gap is to reintroduce a second derivation — and this asserts they agree.
   it('a 3-exponent currency agrees with the reading the other axis uses', () => {
     const r = reading({ currency: 'KWD' });
-    const k = overviewKpis({ aggregate: r, health: null, currency: 'USD' });
+    const k = overviewKpis({ aggregate: r, health: null, currency: 'KWD' });
     expect(k.spend).toBe(400);            // 400_000 fils = 400 KWD, not 4,000
     expect(k.cpa).toBe(10);
     expect(k.spend).toBe(r.spend);        // the two axes read the SAME number
     expect(k.cpa).toBe(r.blendedCpa);
+  });
+
+  it.each(['EGP', 'USD', 'SAR'])('renders %s only when workspace and aggregate agree', (currency) => {
+    const k = overviewKpis({ aggregate: reading({ currency }), currency, health: { score: 71 } });
+    expect(k).toMatchObject({ currency, spend: 4000, cpa: 100, health: 71 });
+  });
+
+  it.each([null, 'XYZ', 'usd'])('withholds money for uncertain workspace currency %s', (currency) => {
+    const k = overviewKpis({ aggregate: reading(), health: { score: 71 }, currency });
+    expect(k).toMatchObject({ currency: null, spend: null, cpa: null, wasted: null, health: 71 });
+    expect(k.spendLabel).toMatch(/Currency unavailable/);
+  });
+
+  it('a failed workspace read remains an error while health score remains visible', () => {
+    const k = overviewKpis({ aggregate: reading(), health: { score: 71 }, currencyError: true });
+    expect(k).toMatchObject({ spend: null, cpa: null, health: 71 });
+    expect(k.spendLabel).toMatch(/Couldn’t read workspace currency/);
+  });
+
+  it('does not relabel an aggregate or health amount from another currency', () => {
+    const k = overviewKpis({
+      aggregate: reading({ currency: 'USD' }),
+      health: { score: 82, currency: 'USD', currencyStatus: 'HOMOGENEOUS_KNOWN', wastedSpend: { minor: 50000 } },
+      currency: 'EGP',
+    });
+    expect(k).toMatchObject({ spend: null, cpa: null, wasted: null, health: 82 });
   });
 
   it('returns null for every KPI when there is no data at all (→ "—", never 0)', () => {

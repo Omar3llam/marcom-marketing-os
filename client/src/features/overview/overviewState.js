@@ -17,6 +17,7 @@
 // ============================================================
 
 import { formatCurrencyWhole } from '@/lib/currencyFormatter.js';
+import { isKnownCurrency } from '@/lib/monetaryCurrency.js';
 
 export const ACCOUNT_STATE = Object.freeze({
   ACTION_REQUIRED: 'ACTION_REQUIRED',
@@ -144,8 +145,8 @@ export function buildHeroNarrative({
       // (useAccountHealth vs the band inputs), so it can be absent while the
       // headline is confident. It degrades on its own rather than blocking or
       // printing a placeholder.
-      const money = isRealAmount(wastedAmount)
-        ? `${formatCurrencyWhole(wastedAmount, currency || 'USD')} at risk.`
+      const money = isRealAmount(wastedAmount) && isKnownCurrency(currency)
+        ? `${formatCurrencyWhole(wastedAmount, currency)} at risk.`
         : null;
 
       return [decision, money].filter(Boolean);

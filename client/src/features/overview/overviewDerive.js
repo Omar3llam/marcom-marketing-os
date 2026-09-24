@@ -17,6 +17,7 @@
 // ============================================================
 import { fromMinor } from '@/lib/money';
 import { nextActionFor } from '@/features/campaigns/verdictEvidence.js';
+import { isKnownCurrency, isKnownMinorAmount } from '@/lib/monetaryCurrency.js';
 
 // PURE: the decision feed — health rows (verdict + impact + name, the ONLY
 // source of impactScore) joined to their connector row for the metrics
@@ -102,14 +103,22 @@ export function partitionDecisions(feed = []) {
   const watching   = band(WATCH_VERDICTS);
   const healthy    = feed.filter((d) => HEALTHY_VERDICTS.includes(d.verdict));
 
-  // Protected spend stays NULL when not one healthy campaign reported a spend —
-  // "nothing measured" is not "zero protected". A row missing its own spend just
-  // contributes nothing to the sum.
+  // Only reported spend contributes. One unknown or mixed unit makes the whole
+  // aggregate unavailable; zero contributors is a distinct empty state.
   let healthySpend = null;
   let healthyCurrency = null;
-  for (const d of healthy) {
-    if (d.spendMinor != null) healthySpend = (healthySpend ?? 0) + d.spendMinor;
-    if (!healthyCurrency && d.currency) healthyCurrency = d.currency;
+  let healthySpendStatus = 'EMPTY';
+  const contributors = healthy.filter((d) => d.spendMinor != null);
+  if (contributors.length > 0) {
+    if (contributors.some((d) => !isKnownMinorAmount(d.spendMinor) || !isKnownCurrency(d.currency))) {
+      healthySpendStatus = 'UNAVAILABLE';
+    } else if (contributors.some((d) => d.currency !== contributors[0].currency)) {
+      healthySpendStatus = 'MIXED';
+    } else {
+      healthySpend = contributors.reduce((sum, d) => sum + d.spendMinor, 0);
+      healthyCurrency = contributors[0].currency;
+      healthySpendStatus = 'VALID';
+    }
   }
 
   return {
@@ -120,6 +129,7 @@ export function partitionDecisions(feed = []) {
     healthyCount: healthy.length,
     healthySpend,
     healthyCurrency,
+    healthySpendStatus,
   };
 }
 
@@ -166,24 +176,29 @@ export function partitionDecisions(feed = []) {
 // branch unreachable — so this is a hazard removed, not a bug caught in the
 // wild. Removing the parameter retires it by construction rather than leaving
 // it standing behind a coincidence between two files.
-export function overviewKpis({ aggregate = null, health = null, currency = 'USD' }) {
-  // The aggregate names its own currency; the workspace's is the fallback for
-  // the wasted-spend card, which comes from a different service and is still
-  // denominated even when the account aggregate refuses to be.
-  const kpiCurrency = aggregate?.currency ?? currency;
+export function overviewKpis({ aggregate = null, health = null, currency = null, currencyError = false, currencyLoading = false }) {
+  const workspaceKnown = isKnownCurrency(currency);
+  const aggregateKnown = workspaceKnown && aggregate?.currency === currency;
+  const healthKnown = workspaceKnown && health?.currency === currency
+    && health?.currencyStatus === 'HOMOGENEOUS_KNOWN'
+    && !health?.currencyUnavailable && !health?.wastedSpend?.unavailable;
+  const currencyLabel = currencyError ? 'Couldn’t read workspace currency'
+    : currencyLoading ? 'Checking workspace currency…' : 'Currency unavailable';
+  const aggregateHasMoney = aggregate?.spend != null || aggregate?.blendedCpa != null;
   return {
     live: aggregate?.available === true,
-    currency: kpiCurrency,
-    spend: aggregate?.spend ?? null,
-    cpa: aggregate?.blendedCpa ?? null,
+    currency: workspaceKnown ? currency : null,
+    spend: aggregateKnown && Number.isFinite(aggregate?.spend) ? aggregate.spend : null,
+    cpa: aggregateKnown && Number.isFinite(aggregate?.blendedCpa) ? aggregate.blendedCpa : null,
     // The card's captions come from the ANSWER, not from the markup: the period
     // the rows reported, and — when there is no figure — which absence this is.
     // "last 30 days" was typed into KpiStrip and asserted for every account,
     // including ones whose rows do not agree on a window.
     spendCaption: aggregate?.windowCaption || '',
-    spendLabel: aggregate?.spendLabel ?? null,
-    cpaLabel: aggregate?.cpaLabel ?? null,
-    wasted: health?.wastedSpend?.minor != null ? fromMinor(health.wastedSpend.minor, kpiCurrency) : null,
+    spendLabel: !aggregateKnown && aggregateHasMoney ? currencyLabel : (aggregate?.spendLabel ?? null),
+    cpaLabel: !aggregateKnown && aggregateHasMoney ? currencyLabel : (aggregate?.cpaLabel ?? null),
+    wasted: healthKnown && isKnownMinorAmount(health?.wastedSpend?.minor)
+      ? fromMinor(health.wastedSpend.minor, currency) : null,
     health: health?.score ?? null,
   };
 }

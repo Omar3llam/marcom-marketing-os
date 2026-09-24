@@ -22,7 +22,7 @@ describe('the count', () => {
 
 describe('protected spend', () => {
   it('renders it in the reported currency', () => {
-    render(<PerformingWellSection count={2} spend={500_000} currency="EGP" />);
+    render(<PerformingWellSection count={2} spend={500_000} currency="EGP" spendStatus="VALID" />);
     expect(screen.getByText(/Protected spend:/)).toBeInTheDocument();
   });
 
@@ -32,8 +32,15 @@ describe('protected spend', () => {
   });
 
   it('a real zero is still shown — measured zero is not missing', () => {
-    render(<PerformingWellSection count={2} spend={0} currency="USD" />);
+    render(<PerformingWellSection count={2} spend={0} currency="USD" spendStatus="VALID" />);
     expect(screen.getByText(/Protected spend:/)).toBeInTheDocument();
+  });
+
+  it.each(['MIXED', 'UNAVAILABLE'])('%s omits the number but keeps the count', (spendStatus) => {
+    render(<PerformingWellSection count={2} spend={null} spendStatus={spendStatus} />);
+    expect(screen.getByText('2 campaigns performing well')).toBeInTheDocument();
+    expect(screen.getByText(/protected spend unavailable/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Protected spend:/)).not.toBeInTheDocument();
   });
 });
 

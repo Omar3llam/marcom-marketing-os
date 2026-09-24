@@ -19,6 +19,7 @@ import { Link } from 'react-router-dom';
 import { ChevronRight, Loader2, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
 import { formatCurrency } from '@/lib/money';
+import { isKnownCurrency, isKnownMinorAmount } from '@/lib/monetaryCurrency.js';
 import { appRoutes } from '@/app/routeManifest.js';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { useEvidence, evidenceKey } from '@/hooks/useEvidence.js';
@@ -111,9 +112,9 @@ export default function DecisionCard({
           formatCurrencyWhole takes MAJOR and would be 100x wrong here. */}
       <div className="mb-2">
         <p className="font-display text-sm font-semibold text-lumi-text">{name || 'Unnamed campaign'}</p>
-        {spendMinor != null && (
+        {isKnownMinorAmount(spendMinor) && isKnownCurrency(currency) && (
           <p className="section-label mt-0.5 text-lumi-muted">
-            {formatCurrency(spendMinor, currency || 'USD')} spent
+            {formatCurrency(spendMinor, currency)} spent
           </p>
         )}
       </div>
