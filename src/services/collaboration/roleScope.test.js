@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   WORKSPACE_ROLE, visibleStates, canSeeState, canApprove, canExecute,
-  canAuthorNarrative, canHandoffTo, normalizeRole, DEFAULT_ROLE,
+  canAuthorNarrative, canHandoffTo, normalizeRole,
 } from './roleScope.js';
 
 describe('roleScope', () => {
@@ -28,10 +28,12 @@ describe('roleScope', () => {
     expect(canAuthorNarrative(WORKSPACE_ROLE.STRATEGIST)).toBe(true);
   });
 
-  it('null/unknown role falls back to STRATEGIST (no existing seat locked out)', () => {
-    expect(normalizeRole(null)).toBe(DEFAULT_ROLE);
-    expect(normalizeRole('GARBAGE')).toBe(WORKSPACE_ROLE.STRATEGIST);
-    expect(canApprove(null)).toBe(true);
+  it.each([null, undefined, 'GARBAGE'])('unresolved role %s has no scope or authority', (role) => {
+    expect(normalizeRole(role)).toBeNull();
+    expect(visibleStates(role)).toEqual([]);
+    expect(canApprove(role)).toBe(false);
+    expect(canExecute(role)).toBe(false);
+    expect(canAuthorNarrative(role)).toBe(false);
   });
 
   it('handoff is legal strategist↔buyer, never to/from client', () => {

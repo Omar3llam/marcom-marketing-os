@@ -17,22 +17,8 @@ export const WORKSPACE_ROLE = Object.freeze({
   CLIENT:     'CLIENT',
 });
 
-// Null/unknown collab role falls back to STRATEGIST so existing seats (who
-// predate Phase 8) are never locked out of their own workspace.
-//
-// ⚠️ R-14.a (Phase 5.14) — THIS DEFAULT MAY NOT BE PUBLISHED AS A ROLE.
-// It exists so a role-SCOPED view can still compose something; it is not an
-// answer to "what seat is this". GET /api/lumi/roles/me used to hand it to the
-// client through `resolveCollabRoleForDisplay`, and the client, seeing a
-// recognised role, recorded a CONFIRMED STRATEGIST — so a database blip or an
-// unassigned seat rendered the full operator surface. Anything that PUBLISHES a
-// seat must read `asKnownRole` below, which has no default.
-//
-// The default is left in place for the callers that legitimately need a concrete
-// role AFTER enforcement has already run, and for the role-scoped composers
-// (/inbox, /home, feedSurfacing) whose blast radius is data shaping rather than
-// an access claim. Those are recorded as follow-ups, not silently changed here.
-export const DEFAULT_ROLE = WORKSPACE_ROLE.STRATEGIST;
+// A missing or future collaboration role has no scope. Phase 6 SC-04 removes
+// the old STRATEGIST fallback from both display shaping and permission helpers.
 
 // FSM views each role may see. Maps to client useDecisionFSM view names.
 const VISIBLE_STATES = Object.freeze({
@@ -41,17 +27,17 @@ const VISIBLE_STATES = Object.freeze({
   CLIENT:     ['REPORT'],
 });
 
+// Retained for existing callers; normalization now refuses unknown values.
 export function normalizeRole(role) {
-  return Object.values(WORKSPACE_ROLE).includes(role) ? role : DEFAULT_ROLE;
+  return asKnownRole(role);
 }
 
 /**
  * PURE: the role, or null. No default, ever.
  *
- * The counterpart to `normalizeRole` for every path that reports a seat rather
- * than shapes a view. "We could not establish your role" and "your role is
- * STRATEGIST" are different answers, and only this function can express the
- * first one.
+ * The strict role primitive behind normalization, display and authorization.
+ * "We could not establish your role" and "your role is STRATEGIST" remain
+ * different answers.
  *
  * @param {unknown} role
  * @returns {string|null} a WORKSPACE_ROLE, or null when there is no known seat
@@ -62,7 +48,7 @@ export function asKnownRole(role) {
 
 /** FSM views this role may navigate to. */
 export function visibleStates(role) {
-  return [...(VISIBLE_STATES[normalizeRole(role)] ?? VISIBLE_STATES.STRATEGIST)];
+  return [...(VISIBLE_STATES[normalizeRole(role)] ?? [])];
 }
 
 /** Can this role see a given FSM view? */
@@ -91,9 +77,7 @@ export function canAuthorNarrative(role) {
  * verdict/plan to a buyer for execution. Clients neither give nor receive.
  */
 export function canHandoffTo(fromRole, toRole) {
-  // Handoffs are an authorization boundary, so an unknown value must remain
-  // unknown. normalizeRole is intentionally generous for display shaping and
-  // would otherwise promote an unrecognised role to STRATEGIST here.
+  // Handoffs are an authorization boundary, so an unknown value remains unknown.
   const from = asKnownRole(fromRole);
   const to = asKnownRole(toRole);
   if (!from || !to) return false;

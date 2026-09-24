@@ -67,6 +67,7 @@ export function buildLoopStatus(agenda, { lastRunAt = null, nextRunAt = null, in
 export async function getHome(workspaceId, role) {
   if (!workspaceId) throw new Error('getHome: workspaceId required');
   const r = normalizeRole(role);
+  if (!r) throw new Error('getHome: resolved collaboration role required');
   const now = new Date();
 
   // Timing determines whether Home reuses a sweep and what the loop ring says.

@@ -68,6 +68,18 @@ describe('useHome', () => {
     expect(result.current.error).toBe(failure);
   });
 
+  it.each([
+    [409, 'RoleNotConfigured'],
+    [503, 'RoleUnavailable'],
+  ])('does not turn unresolved-role HTTP %s into an empty Home', async (httpStatus, code) => {
+    const failure = Object.assign(new Error(code), { httpStatus });
+    api.get.mockRejectedValueOnce(failure);
+    const { result } = renderHook(() => useHome());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.home).toBeNull();
+    expect(result.current.error).toBe(failure);
+  });
+
   it('accepts a genuine empty Home response without an error', async () => {
     api.get.mockResolvedValueOnce({ data: {
       ...validHome,

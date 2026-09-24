@@ -9,7 +9,15 @@ vi.mock('../../utils/logger.js', () => ({
 }));
 
 import { prisma } from '../../lib/prisma.js';
-import { approvalToEvent, APPROVAL_STATE, handoff } from './ApprovalService.js';
+import { approvalToEvent, APPROVAL_STATE, decideApproval, handoff } from './ApprovalService.js';
+
+describe('approval authority fails closed before persistence', () => {
+  it.each([null, undefined, 'FUTURE_ROLE'])('refuses unresolved approver %s', async (approverRole) => {
+    await expect(decideApproval('ws1', { requestId: 'r1', decision: APPROVAL_STATE.APPROVED, approverRole }))
+      .rejects.toMatchObject({ code: 'RoleForbidden' });
+    expect(prisma.collaborationEvent.create).not.toHaveBeenCalled();
+  });
+});
 
 describe('approvalToEvent (pure)', () => {
   const request = { id: 'req1', subjectType: 'PLAN', subjectId: 'plan1', planId: 'plan1' };

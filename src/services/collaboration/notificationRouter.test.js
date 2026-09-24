@@ -32,6 +32,10 @@ describe('notificationRouter', () => {
     expect(routed.map((a) => a.kind)).toEqual([ALERT_KIND.NARRATIVE]);
   });
 
+  it.each([null, undefined, 'FUTURE_ROLE'])('routes no strategist alerts for unresolved %s', (role) => {
+    expect(routeByRole({ role, alerts })).toEqual([]);
+  });
+
   it('normalizes severity and sorts highest-first', () => {
     const routed = routeByRole({ role: WORKSPACE_ROLE.STRATEGIST, alerts });
     expect(routed[0].severity).toBe('CRITICAL'); // the radar one

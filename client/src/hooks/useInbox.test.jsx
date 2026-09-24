@@ -33,6 +33,18 @@ describe('useInbox reads the endpoint outcome', () => {
     expect(result.current.items).toEqual([]);
   });
 
+  it.each([
+    [409, 'RoleNotConfigured'],
+    [503, 'RoleUnavailable'],
+  ])('keeps unresolved-role HTTP %s as an error, never a caught-up Inbox', async (httpStatus, code) => {
+    const failure = Object.assign(new Error(code), { httpStatus });
+    api.get.mockRejectedValue(failure);
+    const { result } = renderHook(() => useInbox());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toBe(failure);
+    expect(result.current.items).toEqual([]);
+  });
+
   it('keeps a malformed 200 response as a contract error', async () => {
     api.get.mockResolvedValue({ data: { workspaceId: 'ws1', role: null, alerts: [] } });
     const { result } = renderHook(() => useInbox());

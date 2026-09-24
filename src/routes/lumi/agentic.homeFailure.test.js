@@ -7,7 +7,7 @@ vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 vi.mock('../../middleware/requireCollabRole.js', () => ({
-  resolveCollabRoleForDisplay: vi.fn().mockResolvedValue('STRATEGIST'),
+  requireResolvedCollabRole: (req, _res, next) => { req.collabRole = 'STRATEGIST'; next(); },
   requireCollabRole: () => (_req, _res, next) => next(),
 }));
 vi.mock('../../services/agentic-loop/AgentHomeService.js', () => ({ getHome: vi.fn() }));

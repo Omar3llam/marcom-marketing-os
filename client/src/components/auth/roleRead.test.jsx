@@ -90,6 +90,14 @@ describe('RoleContext — a seat that was NOT read', () => {
     expect(result.current.status).toBe(ROLE_READ.NOT_REACHABLE);
   });
 
+  it.each(['ROLE_UNKNOWN', 'ROLE_IDENTITY_MISSING'])('%s is an error with no strategist UI authority', async (roleReason) => {
+    api.get.mockResolvedValue({ data: { role: null, roleStatus: 'UNRESOLVED', roleReason } });
+    const { result } = await settled();
+    expect(result.current.status).toBe(ROLE_READ.NOT_REACHABLE);
+    expect(result.current.role).toBeNull();
+    expect(result.current.visibleStates).toBeNull();
+  });
+
   it('the two unresolved reasons do NOT collapse to one state', async () => {
     api.get.mockResolvedValue({ data: { role: null, roleStatus: 'UNRESOLVED', roleReason: 'ROLE_UNSET' } });
     const unset = (await settled()).result.current.status;
