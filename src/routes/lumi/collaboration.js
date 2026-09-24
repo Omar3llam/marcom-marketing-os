@@ -17,9 +17,9 @@ import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
 import { scopeFor } from '../../services/decisions/decisionClassScope.js';
 import { logger } from '../../utils/logger.js';
-import { requireCollabRole, resolveCollabRoleForDisplay, resolveCollabRoleContext } from '../../middleware/requireCollabRole.js';
+import { requireCollabRole, requireResolvedCollabRole, resolveCollabRoleContext } from '../../middleware/requireCollabRole.js';
 import { requirePlan } from '../../middleware/requirePlan.js';
-import { WORKSPACE_ROLE, visibleStates, normalizeRole } from '../../services/collaboration/roleScope.js';
+import { WORKSPACE_ROLE, visibleStates } from '../../services/collaboration/roleScope.js';
 import { generateNarrative, listNarratives, getNarrative } from '../../services/narrative-engine/NarrativeService.js';
 import { NARRATIVE_PERIOD, NARRATIVE_AUDIENCE } from '../../services/narrative-engine/narrativeTypes.js';
 import { requestApproval, decideApproval, handoff, listApprovals, APPROVAL_STATE } from '../../services/collaboration/ApprovalService.js';
@@ -158,7 +158,7 @@ collaborationRouter.post('/narratives/generate', requireCollabRole(WORKSPACE_ROL
 // ─────────────────────────────────────────────────────────────
 // Approvals
 // ─────────────────────────────────────────────────────────────
-collaborationRouter.get('/approvals', async (req, res) => {
+collaborationRouter.get('/approvals', requireResolvedCollabRole, async (req, res) => {
   const wsId = await need(req, res); if (!wsId) return;
   const state = Object.values(APPROVAL_STATE).includes(req.query.state) ? req.query.state : undefined;
   try {
@@ -231,9 +231,8 @@ collaborationRouter.post('/handoff', requireCollabRole(WORKSPACE_ROLE.BUYER, WOR
 // ─────────────────────────────────────────────────────────────
 // GET /inbox — role+severity routed (narrative + approvals + radar)
 // ─────────────────────────────────────────────────────────────
-collaborationRouter.get('/inbox', async (req, res) => {
+collaborationRouter.get('/inbox', requireResolvedCollabRole, async (req, res) => {
   const wsId = await need(req, res); if (!wsId) return;
-  const role = normalizeRole(req.collabRole ?? (await resolveCollabRoleForDisplay(req)));
   try {
     // Live alert stream: recent PROPOSED radar verdicts (no new table).
     const proposed = await readInboxSource('RADAR', () => prisma.decision.findMany({
@@ -251,7 +250,7 @@ collaborationRouter.get('/inbox', async (req, res) => {
       // real-looking LOW that `null >= 0.6` would have produced silently.
       severity: radarSeverity(d.confidence),
     }));
-    const inbox = await inboxFor(wsId, role, { alerts });
+    const inbox = await inboxFor(wsId, req.collabRole, { alerts });
     return res.json({ workspaceId: wsId, ...inbox });
   } catch (err) {
     logger.error({ err: err.message, source: err.source ?? null, wsId }, '[lumi/collaboration] inbox failed');

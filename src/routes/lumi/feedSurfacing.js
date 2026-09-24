@@ -7,7 +7,7 @@
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
-import { normalizeRole } from '../../services/collaboration/roleScope.js';
+import { asKnownRole } from '../../services/collaboration/roleScope.js';
 
 /**
  * Phase 8 — role-scoped collaboration surfacing: the latest narrative headline
@@ -16,7 +16,10 @@ import { normalizeRole } from '../../services/collaboration/roleScope.js';
  */
 export async function surfaceCollaboration(wsId, collabRole) {
   try {
-    const role = normalizeRole(collabRole);
+    const role = asKnownRole(collabRole);
+    // The feed itself is role-neutral; this enrichment is not. With no known
+    // seat there is no audience or approval count to publish.
+    if (!role) return null;
     const audience = role === 'CLIENT' ? 'LEADERSHIP' : role;
     const [latestNarrative, pendingApprovals] = await Promise.all([
       prisma.stakeholderNarrative.findFirst({

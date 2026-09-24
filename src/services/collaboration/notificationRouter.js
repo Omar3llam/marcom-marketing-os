@@ -72,7 +72,7 @@ function normalizeSeverity(s) {
  * @returns {Array<object>} the role's alerts, severity-normalized + sorted
  */
 export function routeByRole({ role, alerts = [] } = {}) {
-  const allowed = new Set(KINDS_BY_ROLE[normalizeRole(role)] ?? KINDS_BY_ROLE.STRATEGIST);
+  const allowed = new Set(KINDS_BY_ROLE[normalizeRole(role)] ?? []);
   return alerts
     .filter((a) => a && allowed.has(a.kind))
     .map((a) => ({ ...a, severity: normalizeSeverity(a.severity) }))

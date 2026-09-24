@@ -13,7 +13,7 @@ import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import { getHome } from '../../services/agentic-loop/AgentHomeService.js';
 import { runSweep, getLoopState } from '../../services/agentic-loop/AgenticLoopService.js';
-import { resolveCollabRoleForDisplay, requireCollabRole } from '../../middleware/requireCollabRole.js';
+import { requireResolvedCollabRole, requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 
 export const agenticRouter = Router();
@@ -40,11 +40,10 @@ async function need(req, res) {
 // ─────────────────────────────────────────────────────────────
 // GET /home — buyer band + strategist band + loop status (role-aware)
 // ─────────────────────────────────────────────────────────────
-agenticRouter.get('/home', async (req, res) => {
+agenticRouter.get('/home', requireResolvedCollabRole, async (req, res) => {
   const wsId = await need(req, res); if (!wsId) return;
   try {
-    const role = await resolveCollabRoleForDisplay(req);
-    const home = await getHome(wsId, role);
+    const home = await getHome(wsId, req.collabRole);
     return res.json({ workspaceId: wsId, generatedAt: new Date().toISOString(), ...home });
   } catch (err) {
     logger.error({ err: err.message, source: err.source ?? null, wsId }, '[lumi/agentic] home failed');

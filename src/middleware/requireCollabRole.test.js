@@ -17,7 +17,7 @@ vi.mock('../utils/logger.js', () => ({
 
 import {
   requireCollabRole, resolveCollabRole, resolveCollabRoleForDisplay,
-  resolveCollabRoleContext, ROLE_UNRESOLVED_REASON, RoleUnavailableError,
+  resolveCollabRoleContext, requireResolvedCollabRole, ROLE_UNRESOLVED_REASON, RoleUnavailableError,
 } from './requireCollabRole.js';
 import { _resetOverrideWarnings } from '../lib/devOverrides.js';
 import { prisma } from '../lib/prisma.js';
@@ -92,24 +92,20 @@ describe('the gate fails CLOSED (I61)', () => {
   });
 });
 
-describe('display resolution is generous, enforcement is strict', () => {
-  // These two are KEPT, not deleted: resolveCollabRoleForDisplay still has three
-  // callers (/inbox, /home, feedSurfacing) that SHAPE role-scoped content rather
-  // than publish a seat, and its generosity is still deliberate there.
-  //
-  // R-14.a (Phase 5.14) narrowed what the asymmetry is allowed to reach. It may
-  // decide what a view composes; it may NOT answer "what seat is this". The
-  // renamed titles say which of the two each case is about, because the old
-  // names read as a blanket endorsement of the default — and GET /roles/me
-  // relied on exactly that reading.
-  it('SHAPING: resolveCollabRoleForDisplay still defaults an outage to the default seat', async () => {
+describe('display resolution never invents STRATEGIST', () => {
+  it('returns null on a lookup failure', async () => {
     prisma.user.findUnique.mockRejectedValue(new Error('down'));
-    await expect(resolveCollabRoleForDisplay({ userId: 'u1' })).resolves.toBe('STRATEGIST');
+    await expect(resolveCollabRoleForDisplay({ userId: 'u1' })).resolves.toBeNull();
   });
 
-  it('SHAPING: resolveCollabRoleForDisplay never throws on a null role', async () => {
+  it('returns null on an unset role', async () => {
     prisma.user.findUnique.mockResolvedValue({ collabRole: null });
-    await expect(resolveCollabRoleForDisplay({ userId: 'u1' })).resolves.toBe('STRATEGIST');
+    await expect(resolveCollabRoleForDisplay({ userId: 'u1' })).resolves.toBeNull();
+  });
+
+  it('returns null for a future role', async () => {
+    prisma.user.findUnique.mockResolvedValue({ collabRole: 'FUTURE_ROLE' });
+    await expect(resolveCollabRoleForDisplay({ userId: 'u1' })).resolves.toBeNull();
   });
 });
 
@@ -150,6 +146,7 @@ describe('resolveCollabRoleContext — the reporting resolver', () => {
     const ctx = await resolveCollabRoleContext({ userId: 'u1' });
     expect(ctx.status).toBe('UNRESOLVED');
     expect(ctx.role).toBeNull();
+    expect(ctx.reason).toBe(ROLE_UNRESOLVED_REASON.ROLE_UNKNOWN);
   });
 
   it('the two reasons are DISTINCT — they have different next steps', async () => {
@@ -169,6 +166,31 @@ describe('resolveCollabRoleContext — the reporting resolver', () => {
     const ctx = await resolveCollabRoleContext({});
     expect(ctx.status).toBe('UNRESOLVED');
     expect(ctx.role).toBeNull();
+    expect(ctx.reason).toBe(ROLE_UNRESOLVED_REASON.ROLE_IDENTITY_MISSING);
+  });
+});
+
+describe('requireResolvedCollabRole — role-scoped reads', () => {
+  it.each(['STRATEGIST', 'BUYER', 'CLIENT'])('passes a resolved %s through', async (role) => {
+    const out = await run(requireResolvedCollabRole, { collabRole: role, userId: 'u1' });
+    expect(out.passed).toBe(true);
+  });
+
+  it('returns not-configured for an unset role', async () => {
+    prisma.user.findUnique.mockResolvedValue({ collabRole: null });
+    const out = await run(requireResolvedCollabRole, { userId: 'u1' });
+    expect(out).toMatchObject({ status: 409, passed: false, body: { error: 'RoleNotConfigured', roleReason: 'ROLE_UNSET' } });
+  });
+
+  it('returns error for a failed lookup', async () => {
+    prisma.user.findUnique.mockRejectedValue(new Error('down'));
+    const out = await run(requireResolvedCollabRole, { userId: 'u1' });
+    expect(out).toMatchObject({ status: 503, passed: false, body: { error: 'RoleUnavailable', roleReason: 'ROLE_LOOKUP_FAILED' } });
+  });
+
+  it('does not pass an unknown or future role', async () => {
+    const out = await run(requireResolvedCollabRole, { collabRole: 'FUTURE_ROLE', userId: 'u1' });
+    expect(out).toMatchObject({ status: 503, passed: false, body: { roleReason: 'ROLE_UNKNOWN' } });
   });
 });
 

@@ -12,10 +12,8 @@
 // same failure; the two disagreed about what an infrastructure error means.
 //
 // Now: an infrastructure failure throws and the gate answers 5xx, and an
-// unresolvable role denies. Note the deliberate asymmetry with roleScope's
-// DEFAULT_ROLE — SURFACING may still default a null role to STRATEGIST so the
-// UI renders something, but ENFORCEMENT never does. Generous display, strict
-// gate; never the reverse.
+// unresolvable role denies. Role-scoped content also requires a known seat;
+// absence cannot be used as display authority.
 //
 // Env override COLLAB_ROLE_OVERRIDE is development-only and inert in
 // production (see lib/devOverrides.js).
@@ -23,7 +21,7 @@
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
 import { devOverride } from '../lib/devOverrides.js';
-import { asKnownRole, normalizeRole } from '../services/collaboration/roleScope.js';
+import { asKnownRole } from '../services/collaboration/roleScope.js';
 
 /**
  * Raised when the role could not be determined because the identity store was
@@ -42,40 +40,28 @@ export class RoleUnavailableError extends Error {
  * Resolve the caller's collab role for ENFORCEMENT.
  *
  * @returns {Promise<string|null>} a WORKSPACE_ROLE, or null when the seat
- *          genuinely carries no role (deny).
+ *          carries no known role (deny).
  * @throws  {RoleUnavailableError} when the lookup itself failed (5xx).
  */
-export async function resolveCollabRole(req) {
-  // R-14.a — `asKnownRole`, not `normalizeRole`. The difference only shows on a
-  // value this gate does not recognise, and there normalizeRole answers
-  // STRATEGIST: a seat the gate cannot identify would be ENFORCED as the widest
-  // one, and `req.collabRole` arrives here straight from the store
-  // (firebaseAuth.js:223), so the promotion would happen before any check ran.
-  //
-  // No reachable input changes. `User.collabRole` is a Prisma enum
-  // (WorkspaceRole?), so only STRATEGIST | BUYER | CLIENT | null can be stored,
-  // and all three already pass through unchanged. What this closes is the day
-  // the enum gains a fourth value: with normalizeRole that value would be
-  // silently enforced as STRATEGIST everywhere; with asKnownRole it is denied
-  // until the gate is taught about it. Fail closed on a seat we cannot name.
+async function readRawCollabRole(req) {
   const override = devOverride('COLLAB_ROLE_OVERRIDE');
-  if (override) return asKnownRole(override);
-  if (req.collabRole) return asKnownRole(req.collabRole);
-  if (req.userId) {
+  if (override) return { rawRole: override, identityFound: true };
+  if (req?.collabRole != null) return { rawRole: req.collabRole, identityFound: true };
+  if (req?.userId) {
     try {
       const u = await prisma.user.findUnique({ where: { clerkId: req.userId }, select: { collabRole: true } });
-      if (u?.collabRole) return asKnownRole(u.collabRole);
-      // The row exists and its role is genuinely unset. Every provisioning path
-      // now writes one explicitly and the backfill migration filled the rest,
-      // so reaching here means something is wrong with the row — not that the
-      // seat should be handed the top role.
-      return null;
+      return { rawRole: u?.collabRole ?? null, identityFound: Boolean(u) };
     } catch (err) {
       logger.error({ err: err.message, userId: req.userId }, '[requireCollabRole] role lookup failed');
       throw new RoleUnavailableError(err);
     }
   }
-  return null;
+  return { rawRole: null, identityFound: false };
+}
+
+export async function resolveCollabRole(req) {
+  const { rawRole } = await readRawCollabRole(req);
+  return asKnownRole(rawRole);
 }
 
 /**
@@ -87,19 +73,22 @@ export async function resolveCollabRole(req) {
  *                       This is the same condition requireCollabRole already
  *                       answers with 403 "Ask a workspace Strategist to set one".
  *   ROLE_LOOKUP_FAILED  the read itself failed. A retry is honest.
+ *   ROLE_UNKNOWN        a stored or cached role is not understood here.
+ *   ROLE_IDENTITY_MISSING  no user identity or row established a seat.
  */
 export const ROLE_UNRESOLVED_REASON = Object.freeze({
   ROLE_UNSET: 'ROLE_UNSET',
   ROLE_LOOKUP_FAILED: 'ROLE_LOOKUP_FAILED',
+  ROLE_UNKNOWN: 'ROLE_UNKNOWN',
+  ROLE_IDENTITY_MISSING: 'ROLE_IDENTITY_MISSING',
 });
 
 /**
  * R-14.a — resolve the caller's seat for PUBLICATION, with no default.
  *
  * The question this answers is "what seat is this", and the honest set of
- * answers includes "we could not tell". `resolveCollabRoleForDisplay` below
- * cannot express that: it maps every failure onto DEFAULT_ROLE, which is how a
- * database blip came to be published as a confirmed STRATEGIST.
+ * answers includes "we could not tell". The old display resolver turned that
+ * absence into STRATEGIST, so role-scoped content appeared complete on outage.
  *
  * Never throws — the caller gets a described outcome instead of an exception,
  * because an endpoint that reports a seat should still answer when it cannot
@@ -109,41 +98,47 @@ export const ROLE_UNRESOLVED_REASON = Object.freeze({
  *                 | {status:'UNRESOLVED', role:null, reason:string}>}
  */
 export async function resolveCollabRoleContext(req) {
-  let role;
+  let reading;
   try {
-    role = await resolveCollabRole(req);
+    reading = await readRawCollabRole(req);
   } catch (err) {
     logger.error({ err: err.message, userId: req?.userId }, '[requireCollabRole] role context unresolvable');
     return { status: 'UNRESOLVED', role: null, reason: ROLE_UNRESOLVED_REASON.ROLE_LOOKUP_FAILED };
   }
-  const known = asKnownRole(role);
+  const known = asKnownRole(reading.rawRole);
+  const reason = reading.rawRole != null
+    ? ROLE_UNRESOLVED_REASON.ROLE_UNKNOWN
+    : reading.identityFound
+      ? ROLE_UNRESOLVED_REASON.ROLE_UNSET
+      : ROLE_UNRESOLVED_REASON.ROLE_IDENTITY_MISSING;
   return known
     ? { status: 'RESOLVED', role: known, reason: null }
-    : { status: 'UNRESOLVED', role: null, reason: ROLE_UNRESOLVED_REASON.ROLE_UNSET };
+    : { status: 'UNRESOLVED', role: null, reason };
 }
 
 /**
- * Resolve a role for DISPLAY / surfacing, where the question is "what should
- * this screen show" rather than "may this act". Never throws; an unresolvable
- * role renders as the default seat. Callers must not use this to gate.
- *
- * ⚠️ R-14.a — this must NOT be used to publish a seat. It answers with
- * DEFAULT_ROLE when nothing could be resolved, so its answer is a shaping
- * choice, not a fact about the caller. `GET /api/lumi/roles/me` used it and
- * therefore told the client STRATEGIST during an outage; it now uses
- * `resolveCollabRoleContext` above.
- *
- * Three callers remain, all of them role-SCOPED CONTENT rather than an access
- * claim (/inbox, /home, feedSurfacing). They are recorded as follow-ups in
- * PHASE_5_14 rather than changed here, because narrowing them changes what data
- * those surfaces return, which is a product decision and not this ruling.
+ * Compatibility helper for display consumers: a known role or null. New
+ * role-scoped routes use requireResolvedCollabRole so they also publish the
+ * reason when the role is unresolved.
  */
 export async function resolveCollabRoleForDisplay(req) {
-  try {
-    return normalizeRole(await resolveCollabRole(req));
-  } catch {
-    return normalizeRole(null);
+  return (await resolveCollabRoleContext(req)).role;
+}
+
+/** Require a known role before composing role-scoped read content. */
+export async function requireResolvedCollabRole(req, res, next) {
+  const ctx = await resolveCollabRoleContext(req);
+  if (ctx.status === 'RESOLVED') {
+    req.collabRole = ctx.role;
+    return next();
   }
+  const unset = ctx.reason === ROLE_UNRESOLVED_REASON.ROLE_UNSET;
+  return res.status(unset ? 409 : 503).json({
+    error: unset ? 'RoleNotConfigured' : 'RoleUnavailable',
+    roleStatus: ctx.status,
+    roleReason: ctx.reason,
+    message: unset ? 'This seat has no collaboration role assigned.' : 'Could not determine your collaboration role right now.',
+  });
 }
 
 /**

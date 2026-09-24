@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildBuyerBand, buildStrategistBand, buildLoopStatus } from './AgentHomeService.js';
+import { buildBuyerBand, buildStrategistBand, buildLoopStatus, getHome } from './AgentHomeService.js';
 
 const agenda = {
   buyerBand: [{ id: 'verdict:d1', band: 'BUYER', type: 'VERDICT', title: 'KILL Cold #1', severity: 'HIGH', humanAction: 'confirm' }],
@@ -41,5 +41,11 @@ describe('AgentHomeService builders (pure, independent)', () => {
     const l = buildLoopStatus({});
     expect(l.loopHealth).toBe('STALLED');
     expect(l.closed).toBe(false);
+  });
+});
+
+describe('Home composition requires an identified seat', () => {
+  it.each([null, undefined, 'FUTURE_ROLE'])('rejects %s before composing a strategist Home', async (role) => {
+    await expect(getHome('ws1', role)).rejects.toThrow('resolved collaboration role required');
   });
 });

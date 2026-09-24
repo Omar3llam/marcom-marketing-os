@@ -44,6 +44,7 @@ export async function readInboxSource(source, read) {
 export async function inboxFor(workspaceId, role, { alerts = [] } = {}) {
   if (!workspaceId) throw new Error('inboxFor: workspaceId required');
   const r = normalizeRole(role);
+  if (!r) throw new Error('inboxFor: resolved collaboration role required');
 
   const routed = routeByRole({ role: r, alerts });
 

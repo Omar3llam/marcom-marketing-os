@@ -103,6 +103,14 @@ describe('GET /roles/me — R-14.a: an unresolved seat is never STRATEGIST', () 
     const res = await get().expect(200);
     expect(res.body.role).toBeNull();
     expect(res.body.roleStatus).toBe('UNRESOLVED');
+    expect(res.body.roleReason).toBe('ROLE_UNKNOWN');
+    expect(res.body.visibleStates).toBeNull();
+  });
+
+  it('a missing user row is not reported as an assigned or merely unset seat', async () => {
+    prisma.user.findUnique.mockResolvedValue(null);
+    const res = await get().expect(200);
+    expect(res.body).toMatchObject({ role: null, roleStatus: 'UNRESOLVED', roleReason: 'ROLE_IDENTITY_MISSING', visibleStates: null });
   });
 
   it('REGRESSION: visibleStates is WITHHELD when the seat is unknown', async () => {
