@@ -53,8 +53,11 @@ function readinessOf(c) {
   return c?.lastSyncedAt ? 'STALE' : 'NEVER_SYNCED';
 }
 
-export default function ConnectionHealthStrip({ compact = false }) {
-  const { data, loading, error } = useConnections();
+export default function ConnectionHealthStrip({ compact = false, state = null }) {
+  const ownState = useConnections();
+  // Overview passes the same read it used to classify PARTIAL, so its rail
+  // cannot independently report a different answer from a duplicate request.
+  const { data, loading, error } = state ?? ownState;
 
   if (loading) {
     return compact

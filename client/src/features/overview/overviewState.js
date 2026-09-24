@@ -40,6 +40,31 @@ export const ACCOUNT_STATE = Object.freeze({
   UNREADABLE:      'UNREADABLE',
 });
 
+// Completeness of the independently fetched Overview sources. This is separate
+// from the health-derived account verdict: a valid KILL can coexist with a
+// failed optional calibration read, but that page is PARTIAL, not COMPLETE.
+export const OVERVIEW_STATUS = Object.freeze({
+  LOADING: 'LOADING',
+  ERROR: 'ERROR',
+  UNAVAILABLE: 'UNAVAILABLE',
+  PARTIAL: 'PARTIAL',
+  EMPTY: 'EMPTY',
+  COMPLETE: 'COMPLETE',
+});
+
+export function getOverviewStatus({
+  loading = false, optionalLoading = false, requiredError = false, requiredUnavailable = false,
+  optionalError = false, hasCampaigns = false,
+} = {}) {
+  if (loading) return OVERVIEW_STATUS.LOADING;
+  if (requiredError) return OVERVIEW_STATUS.ERROR;
+  if (requiredUnavailable) return OVERVIEW_STATUS.UNAVAILABLE;
+  if (optionalError) return OVERVIEW_STATUS.PARTIAL;
+  if (optionalLoading) return OVERVIEW_STATUS.LOADING;
+  if (!hasCampaigns) return OVERVIEW_STATUS.EMPTY;
+  return OVERVIEW_STATUS.COMPLETE;
+}
+
 /**
  * PURE: what does the user need to do right now?
  *
@@ -76,10 +101,10 @@ export function getAccountState({
   // AFTER `loading` for the existing reason: a page that shows a failure for
   // 400ms before revealing three KILLs has told the user something false.
   //
-  // It does NOT outrank a real verdict. A partial failure must not suppress
-  // what was actually measured, so the band checks come first below — the same
-  // ordering SCORING_HIDDEN already follows.
-  if (!hasAnyData && unreadable) return ACCOUNT_STATE.UNREADABLE;
+  // A failed REQUIRED read invalidates the core account claim even if a prior
+  // response left cached campaign rows in memory. Optional failures use the
+  // separate PARTIAL status and preserve valid health-derived verdicts.
+  if (unreadable) return ACCOUNT_STATE.UNREADABLE;
 
   if (!hasAnyData) return ACCOUNT_STATE.LEARNING;  // nothing to score yet
 
@@ -126,6 +151,7 @@ const isRealAmount = (n) => typeof n === 'number' && Number.isFinite(n) && n > 0
  */
 export function buildHeroNarrative({
   state,
+  partial = false,
   actNowTotal = 0,
   watchTotal = 0,
   healthyCount = 0,
@@ -157,12 +183,12 @@ export function buildHeroNarrative({
         watchTotal === 1
           ? '1 campaign needs monitoring.'
           : `${watchTotal} campaigns need monitoring.`,
-        'No urgent actions today.',
-      ];
+        partial ? null : 'No urgent actions today.',
+      ].filter(Boolean);
 
     case ACCOUNT_STATE.PERFORMING_WELL:
       return [
-        'Everything is running smoothly today.',
+        partial ? 'Available health results show performing campaigns.' : 'Everything is running smoothly today.',
         healthyCount > 0
           ? `${healthyCount} campaign${healthyCount === 1 ? '' : 's'} performing well.`
           : null,

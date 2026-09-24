@@ -40,6 +40,7 @@ describe('useAccountHealth', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.health).toBeNull();
     expect(result.current.error).toBeNull();
+    expect(result.current.forbidden).toBe(true);
   });
 
   // Backward compat: a raw axios error (un-mapped request-interceptor path) still gates.
@@ -50,6 +51,7 @@ describe('useAccountHealth', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.health).toBeNull();
     expect(result.current.error).toBeNull();
+    expect(result.current.forbidden).toBe(true);
   });
 
   it('surfaces a non-403 error honestly', async () => {

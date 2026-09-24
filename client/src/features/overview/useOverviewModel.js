@@ -11,9 +11,8 @@
 // call site. With the fetches in one place, "which substrates does this claim
 // read?" is answerable by reading twenty lines.
 //
-// Refactor only. Every hook call, memo dependency array and derived value is
-// carried over verbatim from OverviewView.jsx; nothing here changes what the
-// page renders. The seam is the point, not new behaviour.
+// The seam also classifies completeness: required failures withhold account
+// claims; optional failures keep surviving evidence and mark the page PARTIAL.
 //
 // Deliberately NOT here: the first-run / revenue banner state. That is UI
 // interrupt sequencing (sessionStorage, dismissal, precedence), not a data
@@ -31,7 +30,7 @@ import { useAccuracy } from '@/hooks/useAccuracy.js';
 import { useAccountAggregate } from '@/hooks/useAccountAggregate.js';
 import { accountAggregateReading } from '@/lib/accountAggregate.js';
 import { isKnownCurrency } from '@/lib/monetaryCurrency.js';
-import { getAccountState } from './overviewState.js';
+import { getAccountState, getOverviewStatus } from './overviewState.js';
 import { buildSurfacePlan } from './overviewPlan.js';
 import { pickInterrupt } from './overviewInterrupts.js';
 import { useDismissals } from './useDismissals.js';
@@ -64,12 +63,12 @@ export function useOverviewModel() {
   // withhold the connect-a-channel instruction that would have helped.
   // NAME EVERY SUBSTRATE A CLAIM READS — and no others.
   const { campaigns: connectorCampaigns, loading: connectorLoading, error: connectorError } = useConnectorCampaigns();
-  const { data: connectionsData } = useConnections(); // channel sync status (lastSyncedAt)
+  const { data: connectionsData, loading: connectionsLoading, error: connectionsError } = useConnections(); // channel sync status (lastSyncedAt)
   // `loading` is destructured DELIBERATELY — see the readiness gate below.
-  const { health, loading: healthLoading, error: healthError } = useAccountHealth(); // connector campaign health + wasted spend + impact scores
-  const { home, isStale: homeStale } = useHome();     // agentic loop home (includes aiInsight)
-  const { verdicts } = useConnectorVerdicts();       // the engine's own rationale per campaign
-  const { surface: proofSurface } = useAccuracy();   // gated proof one-liner (best-effort)
+  const { health, loading: healthLoading, error: healthError, forbidden: healthForbidden } = useAccountHealth(); // connector campaign health + wasted spend + impact scores
+  const { home, isStale: homeStale, error: homeError } = useHome(); // agentic loop home (includes aiInsight)
+  const { verdicts, loading: verdictLoading, error: verdictError } = useConnectorVerdicts(); // engine rationale
+  const { surface: proofSurface, loading: accuracyLoading, error: accuracyError } = useAccuracy();
   const { role: collabRole } = useCollabRole();
   // PARITY-01 — the CANONICAL account aggregate. Attention used to sum the
   // connector rows itself; so did Campaigns, with a different divisor. This is
@@ -80,6 +79,28 @@ export function useOverviewModel() {
     error: aggregateError,
     forbidden: aggregateForbidden,
   } = useAccountAggregate();
+
+  const requiredError = Boolean(connectorError || healthError);
+  // The server publishes a health object even when it scored nothing. A null
+  // health beside known campaigns is not evidence that they are merely learning.
+  const healthUnresolved = !healthLoading && !healthError && !healthForbidden
+    && connectorCampaigns.length > 0 && health == null;
+  const requiredUnavailable = Boolean(healthForbidden || healthUnresolved);
+  const coreLoading = Boolean(connectorLoading || healthLoading);
+  const coreAvailable = !requiredError
+    && (!requiredUnavailable || collabRole === WORKSPACE_ROLE.CLIENT);
+  const coreUsable = !coreLoading && coreAvailable;
+  const optionalError = Boolean(verdictError || aggregateError || connectionsError || accuracyError
+    || (aggregateForbidden && collabRole !== WORKSPACE_ROLE.CLIENT));
+  const overviewStatus = getOverviewStatus({
+    loading: coreLoading,
+    optionalLoading: Boolean(verdictLoading || aggregateLoading || connectionsLoading || accuracyLoading),
+    requiredError,
+    requiredUnavailable,
+    optionalError,
+    hasCampaigns: !connectorError && connectorCampaigns.length > 0,
+  });
+  const effectiveHealth = coreAvailable ? health : null;
 
   const currency = !workspaceLoading && !workspaceError && workspaceStatus !== 'NOT_REACHABLE'
     && isKnownCurrency(workspace?.currency) ? workspace.currency : null;
@@ -107,35 +128,40 @@ export function useOverviewModel() {
     [aggregateResponse, aggregateLoading, aggregateError, aggregateForbidden],
   );
   const kpis = useMemo(
-    () => overviewKpis({ aggregate, health, currency, currencyError, currencyLoading: workspaceLoading }),
-    [aggregate, health, currency, currencyError, workspaceLoading],
+    () => overviewKpis({ aggregate, health: effectiveHealth, currency, currencyError, currencyLoading: workspaceLoading }),
+    [aggregate, effectiveHealth, currency, currencyError, workspaceLoading],
   );
 
   // The decision feed + the two revenue-data stories, all keyed off the health
   // rows. The revenue stories are NOT decisions — a campaign there is not
   // performing badly, its revenue is unmeasurable — so they sit apart from the
   // feed rather than inside it.
+  // Health rows establish the decision bands. The separate verdict response
+  // enriches them with rationale and persisted decision identity; its failure
+  // makes the page PARTIAL, never a confirmed zero-verdict response.
   const decisions = useMemo(
-    () => decisionFeed({
-      healthCampaigns: health?.campaigns ?? [],
+    () => coreUsable ? decisionFeed({
+      healthCampaigns: effectiveHealth?.campaigns ?? [],
       connectorCampaigns,
-      verdicts,
-    }),
-    [health, connectorCampaigns, verdicts],
+      verdicts: verdictError ? [] : verdicts,
+    }) : null,
+    [coreUsable, effectiveHealth, connectorCampaigns, verdicts, verdictError],
   );
-  const bands = useMemo(() => partitionDecisions(decisions), [decisions]);
+  // A required failure has no decision count at all. Zero is reserved for a
+  // successful health read that actually returned no scored decisions.
+  const bands = useMemo(() => decisions === null ? null : partitionDecisions(decisions), [decisions]);
   const needsRevenue = useMemo(
-    () => (health?.campaigns ?? []).filter((c) => c.needsRevenue),
-    [health],
+    () => (effectiveHealth?.campaigns ?? []).filter((c) => c.needsRevenue),
+    [effectiveHealth],
   );
   const staleRevenue = useMemo(
-    () => (health?.campaigns ?? []).filter((c) => c.revenueStale),
-    [health],
+    () => (effectiveHealth?.campaigns ?? []).filter((c) => c.revenueStale),
+    [effectiveHealth],
   );
 
   const killCount = useMemo(
-    () => countKillVerdicts({ healthCampaigns: health?.campaigns ?? [] }),
-    [health],
+    () => coreAvailable ? countKillVerdicts({ healthCampaigns: effectiveHealth?.campaigns ?? [] }) : null,
+    [coreAvailable, effectiveHealth],
   );
 
   // Two DISJOINT substrates: the legacy CampaignState feed (drives the stat
@@ -161,8 +187,8 @@ export function useOverviewModel() {
   // health-derived claim is gated on this one value (or, for the health card's
   // caption, on the same flag passed into healthPresentation) so a fourth cannot
   // be added without passing through it.
-  const loading = connectorLoading || healthLoading;
-  const hasConnectorData = connectorCampaigns.length > 0;      // connector entity graph
+  const loading = coreLoading;
+  const hasConnectorData = !connectorError && connectorCampaigns.length > 0;
   // FE-03 — this was `hasData || hasConnectorData`, where `hasData` read the
   // legacy CampaignState feed. The two were already equal in FACT, since that
   // feed could not be non-empty; they are equal by CONSTRUCTION now, so nothing
@@ -203,7 +229,7 @@ export function useOverviewModel() {
   // `error` state is not an error path" — is retired with its hook, so this
   // slice owns the replacement: useOverviewModel.substrates.test.jsx pins that
   // a failure of EITHER remaining substrate still reaches the operator.
-  const readFailed = Boolean(connectorError || healthError);
+  const readFailed = requiredError || (requiredUnavailable && collabRole !== WORKSPACE_ROLE.CLIENT);
 
   // Account-health card tone + caption (pure; see overviewDerive).
   // The band is the ENGINE's, read off the same payload the score came from —
@@ -212,7 +238,7 @@ export function useOverviewModel() {
   // vocabulary, no reclassification here. See overviewDerive.healthPresentation.
   const { tone: healthTone, label: healthLabel } = healthPresentation({
     score: kpis.health,
-    label: health?.label ?? null,
+    label: effectiveHealth?.label ?? null,
     loading: healthLoading,
   });
 
@@ -220,9 +246,9 @@ export function useOverviewModel() {
   // above — never from a second fetch, so the headline cannot disagree with the
   // sections under it. null while loading (no flashed claim).
   const accountState = getAccountState({
-    actNowTotal:  bands.actNowTotal,
-    watchTotal:   bands.watchTotal,
-    healthyCount: bands.healthyCount,
+    actNowTotal:  bands?.actNowTotal,
+    watchTotal:   bands?.watchTotal,
+    healthyCount: bands?.healthyCount,
     hasAnyData,
     loading,
     scoringHidden,
@@ -245,15 +271,15 @@ export function useOverviewModel() {
   //                      Rendering it there would contradict the line above it.
   //                      (The API returns aiInsight to a CLIENT regardless —
   //                      see the PR notes; gating it here is the frontend half.)
-  const insight = (!homeStale && !scoringHidden) ? (home?.aiInsight ?? null) : null;
+  const insight = (!homeError && !homeStale && !scoringHidden && coreUsable) ? (home?.aiInsight ?? null) : null;
 
   // ── The one interrupt, and the plan that orders everything ──
   const hasEverSynced = connectionsData?.connections?.some((c) => c.lastSyncedAt != null) ?? false;
-  const hasRevenueData = connectorCampaigns.some((c) => (c.revenueMinor ?? 0) > 0);
+  const hasRevenueData = hasConnectorData && connectorCampaigns.some((c) => (c.revenueMinor ?? 0) > 0);
   const { firstRunFlag, dismissed, dismiss } = useDismissals({ hasAnyData });
 
-  const interrupt = pickInterrupt({
-    loading,
+  const interrupt = connectionsError ? null : pickInterrupt({
+    loading: loading || Boolean(connectionsLoading),
     firstRunFlag,
     hasAnyData,
     hasConnectorData,
@@ -276,6 +302,9 @@ export function useOverviewModel() {
 
     // readiness + substrate presence
     loading,
+    overviewStatus,
+    coreAvailable,
+    coreUsable,
     hasAnyData,
     hasConnectorData,
     hasScorableData,
@@ -299,8 +328,10 @@ export function useOverviewModel() {
     // raw passthroughs the page hands straight to a child
     health,
     home,
-    proofSurface,
+    proofSurface: accuracyError ? null : proofSurface,
     connectorCampaigns,
     connectionsData,
+    connectionsLoading,
+    connectionsError,
   };
 }

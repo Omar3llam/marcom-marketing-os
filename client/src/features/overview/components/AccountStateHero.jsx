@@ -28,6 +28,7 @@ export default function AccountStateHero({
   hasAnyData = false,
   hasScorableData = false,
   insight = null,   // LLM prose; the caller owns the freshness + role gating
+  partial = false,
 }) {
   // null === still loading. Rendering a state here would flash a claim the data
   // has not supported yet; the sections below own their own skeletons.
@@ -36,7 +37,7 @@ export default function AccountStateHero({
   const config = STATE_CONFIG[state] ?? STATE_CONFIG[ACCOUNT_STATE.LEARNING];
   const narrative = buildHeroNarrative({
     state, actNowTotal, watchTotal, healthyCount,
-    wastedAmount, currency, hasAnyData, hasScorableData,
+    wastedAmount, currency, hasAnyData, hasScorableData, partial,
     workspaceName: workspace?.name ?? null,
   });
 

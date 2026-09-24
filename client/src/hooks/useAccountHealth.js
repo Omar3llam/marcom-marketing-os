@@ -12,7 +12,9 @@
 //
 // Disjoint from useConnectorCampaigns/useConnectorVerdicts — this hook adds the
 // scored roll-up on top of the same substrate. Cleanup guard per the ONE WAY rules.
-// A 403 (CLIENT role) is treated as "no health to show" → null, not an error toast.
+// A 403 (CLIENT role) is permission absence: null health, forbidden=true, no
+// error toast. Overview uses that flag to avoid mistaking another role's 403
+// for successful empty scoring.
 // ============================================================
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api.js';
@@ -21,11 +23,13 @@ export function useAccountHealth() {
   const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [forbidden, setForbidden] = useState(false);
   const aliveRef = useRef(true);
 
   const refetch = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setForbidden(false);
     try {
       const res = await api.get('/api/lumi/entities/health');
       if (!aliveRef.current) return;
@@ -35,7 +39,7 @@ export function useAccountHealth() {
       // 403 = this role can't see the efficiency critique → show "—", not an error.
       // AppError carries .httpStatus; fall back to raw .response.status (un-mapped path).
       const status = err?.httpStatus ?? err?.response?.status;
-      if (status === 403) { setHealth(null); return; }
+      if (status === 403) { setHealth(null); setForbidden(true); return; }
       setError(err);
     } finally {
       if (aliveRef.current) setLoading(false);
@@ -48,5 +52,5 @@ export function useAccountHealth() {
     return () => { aliveRef.current = false; };
   }, [refetch]);
 
-  return { health, loading, error, refetch };
+  return { health, loading, error, forbidden, refetch };
 }

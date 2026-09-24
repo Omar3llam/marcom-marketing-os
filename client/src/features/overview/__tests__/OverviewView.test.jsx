@@ -71,7 +71,7 @@ beforeEach(() => {
   // and every pre-existing test is unaffected. Revenue-banner tests override this.
   useConnections.mockReturnValue({ data: null, loading: false, error: null, refetch: vi.fn() });
   // Default: nothing scored → the decision feed renders its honest empty line.
-  useAccountHealth.mockReturnValue({ health: null, loading: false, error: null, refetch: vi.fn() });
+  useAccountHealth.mockReturnValue({ health: { campaigns: [], score: null, label: null }, loading: false, error: null, refetch: vi.fn() });
   useConnectorVerdicts.mockReturnValue({ verdicts: [], gatedOut: [], loading: false, error: null, refetch: vi.fn() });
   // Default: no proof surface → the calibration block renders nothing, so every
   // pre-existing test is unaffected. The IA tests override this.
@@ -541,7 +541,7 @@ describe('OverviewView — a CLIENT is told what it actually cannot see', () => 
     useCollabRole.mockReturnValue({ role: WORKSPACE_ROLE.CLIENT });
     useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
     // exactly what the 403 branch of useAccountHealth produces
-    useAccountHealth.mockReturnValue({ health: null, loading: false, error: null, refetch: vi.fn() });
+    useAccountHealth.mockReturnValue({ health: null, loading: false, error: null, forbidden: true, refetch: vi.fn() });
   };
 
   it('does not claim the account has nothing worth scoring', () => {
@@ -816,6 +816,46 @@ describe('B8-02 · the hero reports a failed read as a failure', () => {
     // called everything a failure.
     renderView(); // all defaults: no data, no errors
     expect(screen.queryByText(/couldn’t read this account/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('SC-03C · Overview composition states reach the screen', () => {
+  it('a health failure after campaigns succeed shows ERROR without a learning or zero-decision claim', () => {
+    useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null });
+    useAccountHealth.mockReturnValue({ health: null, loading: false, error: new Error('health 500') });
+    renderView();
+
+    expect(screen.getByText(/couldn’t read this account/i)).toBeInTheDocument();
+    expect(screen.queryByText('Building confidence')).not.toBeInTheDocument();
+    expect(screen.queryByText(/No score yet/i)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('stat-card')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Some Overview information/i)).not.toBeInTheDocument();
+  });
+
+  it('a verdict-detail failure shows PARTIAL and preserves a measured action', () => {
+    useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null });
+    useAccountHealth.mockReturnValue({ health: { campaigns: [
+      { entityId: 'c1', name: 'Eid Sale', verdict: 'KILL', impactScore: 8 },
+    ] }, loading: false, error: null });
+    useConnectorVerdicts.mockReturnValue({ verdicts: [], loading: false, error: new Error('verdicts 500') });
+    renderView();
+
+    expect(screen.getByRole('status')).toHaveTextContent(/Some Overview information couldn’t be loaded/i);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('1 decision needs your attention.');
+    expect(screen.getByText('Eid Sale')).toBeInTheDocument();
+  });
+
+  it('PARTIAL health success never says everything is running smoothly', () => {
+    useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null });
+    useAccountHealth.mockReturnValue({ health: { campaigns: [
+      { entityId: 'c1', name: 'Eid Sale', verdict: 'HOLD', impactScore: 8 },
+    ] }, loading: false, error: null });
+    useAccuracy.mockReturnValue({ surface: null, loading: false, error: new Error('accuracy 500') });
+    renderView();
+
+    expect(screen.getByRole('status')).toHaveTextContent(/Some Overview information/i);
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Available health results show performing campaigns.');
+    expect(screen.queryByText('Everything is running smoothly today.')).not.toBeInTheDocument();
   });
 });
 

@@ -51,6 +51,7 @@ const MAIN_BY_STATE = Object.freeze({
   PERFORMING_WELL: [SLOT.HERO, SLOT.DOING_WELL, SLOT.REVENUE_NOTICES, SLOT.PACING, SLOT.KPIS],
   LEARNING:        [SLOT.HERO],
   SCORING_HIDDEN:  [SLOT.HERO, SLOT.PACING, SLOT.KPIS],
+  UNREADABLE:      [SLOT.HERO],
 });
 
 // There is no separate "why is the feed empty" slot. All three bands are empty
