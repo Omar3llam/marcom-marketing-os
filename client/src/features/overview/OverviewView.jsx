@@ -40,14 +40,16 @@ import CalibrationSection from './components/CalibrationSection.jsx';
 import { SLOT } from './overviewPlan.js';
 import { INTERRUPT } from './overviewInterrupts.js';
 import { useOverviewModel } from './useOverviewModel.js';
+import { OVERVIEW_STATUS } from './overviewState.js';
 
 export default function OverviewView() {
   const {
     workspace, plan, dismiss,
-    hasAnyData, hasScorableData,
+    hasAnyData, hasScorableData, overviewStatus, coreAvailable, coreUsable,
     accountState, insight, bands, kpis, healthTone, healthLabel, killCount,
     needsRevenue, staleRevenue,
     proofSurface, connectorCampaigns,
+    connectionsData, connectionsLoading, connectionsError,
   } = useOverviewModel();
 
   const [copilotOpen, setCopilotOpen] = useState(false);
@@ -104,9 +106,9 @@ export default function OverviewView() {
     [SLOT.HERO]: (
       <AccountStateHero
         state={accountState}
-        actNowTotal={bands.actNowTotal}
-        watchTotal={bands.watchTotal}
-        healthyCount={bands.healthyCount}
+        actNowTotal={bands?.actNowTotal}
+        watchTotal={bands?.watchTotal}
+        healthyCount={bands?.healthyCount}
         /* MAJOR units already — overviewKpis (overviewDerive.js) applied fromMinor */
         wastedAmount={kpis.wasted}
         /* connector-derived, so the hero and the Wasted-spend card share a unit */
@@ -118,21 +120,22 @@ export default function OverviewView() {
         hasScorableData={hasScorableData}
         /* Lumi's briefing — folded in from the deleted standalone card */
         insight={insight}
+        partial={overviewStatus === OVERVIEW_STATUS.PARTIAL}
       />
     ),
 
-    [SLOT.ACT_NOW]: bands.actNow.length > 0
+    [SLOT.ACT_NOW]: coreUsable && bands.actNow.length > 0
       ? <ActNowSection items={bands.actNow} total={bands.actNowTotal} />
       : null,
 
     // Open by default in WATCH_CLOSELY, where the watch band is the entire
     // answer the page has; collapsed elsewhere, where a KILL sits above it and
     // the engine has explicitly said "not yet" about these.
-    [SLOT.WATCH]: bands.watchNow.length > 0
+    [SLOT.WATCH]: coreUsable && bands.watchNow.length > 0
       ? <WatchSection items={bands.watchNow} total={bands.watchTotal} defaultOpen={accountState === 'WATCH_CLOSELY'} />
       : null,
 
-    [SLOT.DOING_WELL]: bands.healthyCount > 0
+    [SLOT.DOING_WELL]: coreUsable && bands.healthyCount > 0
       ? (
         <PerformingWellSection
           count={bands.healthyCount}
@@ -145,7 +148,7 @@ export default function OverviewView() {
 
     // NOT decisions: a campaign here is not performing badly, its revenue is
     // unmeasurable — and "never uploaded" is not "uploaded but now stale".
-    [SLOT.REVENUE_NOTICES]: (hasAnyData && (needsRevenue.length > 0 || staleRevenue.length > 0))
+    [SLOT.REVENUE_NOTICES]: (coreUsable && hasAnyData && (needsRevenue.length > 0 || staleRevenue.length > 0))
       ? (
         <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <RevenueNotice type="needs" campaigns={needsRevenue} />
@@ -155,16 +158,16 @@ export default function OverviewView() {
       : null,
 
     // Honest burn-rate (gated; refuses misleading single-channel pacing).
-    [SLOT.PACING]: hasAnyData ? <PacingWidget /> : null,
+    [SLOT.PACING]: coreAvailable && hasAnyData ? <PacingWidget /> : null,
 
-    [SLOT.KPIS]: hasAnyData
+    [SLOT.KPIS]: coreAvailable && hasAnyData
       ? <KpiStrip kpis={kpis} killCount={killCount} healthLabel={healthLabel} healthTone={healthTone} />
       : null,
 
     // The role-scoped agenda + the ONE loop-status surface (the full ring, with
     // its stage strip and the single sweep trigger). Owns its own loading and
     // empty states.
-    [SLOT.AGENDA]: hasAnyData ? <AgenticShellView /> : null,
+    [SLOT.AGENDA]: coreAvailable && hasAnyData ? <AgenticShellView /> : null,
 
     // Account-aware Q&A. Cmd/Ctrl+K is intentionally NOT bound here — it is
     // already the global CommandPalette.
@@ -188,7 +191,7 @@ export default function OverviewView() {
       </div>
     ),
 
-    [SLOT.CHANNELS]: <ConnectionHealthStrip compact />,
+    [SLOT.CHANNELS]: <ConnectionHealthStrip compact state={{ data: connectionsData, loading: connectionsLoading, error: connectionsError }} />,
     [SLOT.CALIBRATION]: <CalibrationSection surface={proofSurface} compact />,
   };
 
@@ -207,6 +210,11 @@ export default function OverviewView() {
           {/* The hero is always first, then the interrupt, then the rest of the
               plan — so a nudge never outranks the account's own answer. */}
           {render(plan.main.slice(0, 1))}
+          {overviewStatus === OVERVIEW_STATUS.PARTIAL && (
+            <p role="status" className="mb-4 text-sm text-lumi-muted">
+              Some Overview information couldn’t be loaded. Available results are shown below.
+            </p>
+          )}
           {plan.interrupt && interrupts[plan.interrupt]}
           {render(plan.main.slice(1))}
 

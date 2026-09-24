@@ -39,14 +39,11 @@ describe('B8-02 · a failed read is not an empty account', () => {
     expect(empty).toBe(ACCOUNT_STATE.LEARNING);
   });
 
-  it('still shows a real verdict that DID arrive, rather than hiding it', () => {
-    // A partial failure must not suppress what was actually measured. Same
-    // ordering rule SCORING_HIDDEN already follows: a real call outranks a
-    // statement about the reader's position.
+  it('withholds the core state when a required read failed despite cached data', () => {
     const state = getAccountState({
       ...base, hasAnyData: true, actNowTotal: 2, unreadable: true,
     });
-    expect(state).toBe(ACCOUNT_STATE.ACTION_REQUIRED);
+    expect(state).toBe(ACCOUNT_STATE.UNREADABLE);
   });
 
   it('never flashes UNREADABLE while still loading', () => {
