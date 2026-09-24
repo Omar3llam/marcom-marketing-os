@@ -12,6 +12,7 @@ import { toMinor } from '../../../lib/money.js';
 import { num, accountRollup } from './fieldUtils.js';
 import { CHANNEL, DATA_SOURCE, MEASUREMENT_WINDOW } from '../connectorTypes.js';
 import { logger } from '../../../utils/logger.js';
+import { sourceLocalDayWindow } from '../../../lib/sourceLocalDayWindow.js';
 
 // ── The funnel, extracted rather than discarded ──────────────────────────────
 // Meta returns `actions`/`action_values` as an open-ended array of
@@ -120,6 +121,9 @@ function baseMeasures(r, currency, d, win) {
   const conversions = actionValue(r.actions, PURCHASE_ACTIONS);
   const revenueMajor = actionValue(r.action_values, PURCHASE_ACTIONS); // real claimed value; 0 if none
   const clicks = num(r.clicks ?? r.inline_link_clicks);
+  // Only Meta's returned dates plus this account's authoritative timezone can
+  // prove instants. The canonical requested range is never proof by itself.
+  const spendWindow = sourceLocalDayWindow(r.date_start, r.date_stop, win.accountTimeZone);
   return {
     channel: CHANNEL.META,
     source: DATA_SOURCE.META,
@@ -145,6 +149,8 @@ function baseMeasures(r, currency, d, win) {
     // than be quietly overwritten with the period we hoped for.
     windowStart: toDate(r.date_start) ?? win.requestedWindowStart,
     windowEnd: toDate(r.date_stop) ?? win.requestedWindowEnd,
+    spendWindowStartUtc: spendWindow.windowStart,
+    spendWindowEndUtc: spendWindow.windowEnd,
     currency,
     spendMinor: toMinor(num(r.spend), currency),
     revenueMinor: toMinor(revenueMajor, currency),
@@ -289,7 +295,7 @@ function normalizeAds(rows, currency, d, accountExternalId, win) {
  * @returns {NormalizedSnapshot[]} one ACCOUNT rollup + CAMPAIGN + ADSET + AD rows
  */
 export function metaNormalize({
-  accountExternalId, accountName = null, currency, currencyProvenance, date, rows = [],
+  accountExternalId, accountName = null, currency, currencyProvenance, accountTimeZone = null, date, rows = [],
   // ── Phase F: the canonical 30-day path ────────────────────────────────────
   // Defaults reproduce the operational path exactly, so every existing caller is
   // untouched. The canonical fetch passes CUMULATIVE_30D plus the period it
@@ -323,7 +329,7 @@ export function metaNormalize({
 
   // The window declaration, threaded to every level so one request can never
   // produce rows disagreeing about what period they cover.
-  const win = { measurementWindow, requestedWindowStart, requestedWindowEnd };
+  const win = { measurementWindow, requestedWindowStart, requestedWindowEnd, accountTimeZone };
 
   const adSets = normalizeAdSets(adSetRows, currency, d, accountExternalId, win);
   const ads    = normalizeAds(adRows, currency, d, accountExternalId, win);

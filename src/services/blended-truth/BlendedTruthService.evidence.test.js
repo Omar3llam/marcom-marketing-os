@@ -53,6 +53,7 @@ const WS = 'ws-blended';
 const EVIDENCE_SELECT = {
   entityId: true, date: true, source: true, revenueMinor: true, spendMinor: true, currency: true, currencyProvenance: true,
   measurementWindow: true, windowStart: true, windowEnd: true,
+  spendWindowStartUtc: true, spendWindowEndUtc: true,
 };
 
 const row = (over = {}) => ({

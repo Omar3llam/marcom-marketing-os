@@ -108,6 +108,7 @@ export function reconcile({ channels } = {}) {
       blendedRevenueWindow: hasActual
         ? (c.actualRevenueWindow ?? unknownRevenueWindow())
         : (c.platformRevenueWindow ?? unknownRevenueWindow()),
+      spendWindow: c.spendWindow ?? unknownRevenueWindow(),
       gapMinor:            valid(comparisonUnit) ? gapMinor : null,
       gapPct:              valid(comparisonUnit) ? gapPct : null,
       platformRoas:        valid(platformRatioUnit) ? roas(platformRevenueMinor, c.spendMinor) : null,
@@ -145,6 +146,11 @@ export function reconcile({ channels } = {}) {
   portfolio.monetaryReason = blendedComparison.monetaryReason;
   portfolio.monetaryEvidence = { spend: spendUnit, platform: platformUnit, blended: blendedUnit };
   portfolio.blendedRevenueWindow = combineRevenueWindows(rows.map((r) => r.blendedRevenueWindow));
+  // Revenue-only channels do not contribute spend. Keep zero-valued platform
+  // observations: they still represent a measured interval and must not vanish.
+  portfolio.spendWindow = combineRevenueWindows(rows
+    .filter((_r, i) => channels[i].spendEvidencePresent !== false)
+    .map((r) => r.spendWindow));
   if (!valid(spendUnit)) portfolio.spendMinor = null;
   if (!valid(platformUnit)) portfolio.platformRevenueMinor = null;
   if (!valid(blendedUnit)) portfolio.blendedRevenueMinor = null;

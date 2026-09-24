@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../lib/prisma.js', () => ({ prisma: { workspace: { findUnique: vi.fn(), update: vi.fn(async () => ({})) } } }));
 vi.mock('./credentialStore.js', () => ({ resolveCredential: vi.fn(async () => ({ accessToken: 'test', accountId: '123' })) }));
-vi.mock('../metaAdsService.js', async (original) => ({ ...(await original()), fetchAccountCurrency: vi.fn() }));
+vi.mock('../metaAdsService.js', async (original) => ({ ...(await original()), fetchAccountCurrency: vi.fn(), fetchAccountTimezone: vi.fn(async () => null) }));
+vi.mock('./google/googleAdsClient.js', async (original) => ({ ...(await original()), fetchGoogleCustomerTimezone: vi.fn(async () => null) }));
 
 import { prisma } from '../../lib/prisma.js';
 import { fetchAccountCurrency } from '../metaAdsService.js';

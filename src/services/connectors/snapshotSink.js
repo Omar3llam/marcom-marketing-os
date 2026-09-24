@@ -87,6 +87,10 @@ export function toSnapshotRows(workspaceId, channel, normalized = []) {
       // unreported; never reconstructed from `date`, which is the sync time.
       windowStart: n.windowStart ?? null,
       windowEnd: n.windowEnd ?? null,
+      // Explicit nulls are load-bearing on restatement: an observation that
+      // loses source timezone proof must clear its prior exact UTC bounds.
+      spendWindowStartUtc: n.spendWindowStartUtc ?? null,
+      spendWindowEndUtc: n.spendWindowEndUtc ?? null,
       spendMinor,
       revenueMinor,
       cpaMinor: conversions > 0 ? round(spendMinor / conversions) : null,

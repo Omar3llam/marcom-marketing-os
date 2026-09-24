@@ -51,6 +51,7 @@ import { num } from './fieldUtils.js';
 import { CHANNEL, DATA_SOURCE, MEASUREMENT_WINDOW } from '../connectorTypes.js';
 import { extractActionMetrics } from './metaNormalize.js';
 import { logger } from '../../../utils/logger.js';
+import { sourceLocalDayWindow } from '../../../lib/sourceLocalDayWindow.js';
 
 const DAY_MS = 86_400_000;
 
@@ -130,7 +131,7 @@ export function dailyEligibility(row) {
  * @param {Array}  input.rows — raw Meta insight objects, campaign level, daily
  * @returns {{ snapshots: Array, rejected: Array<{externalId, reason}> }}
  */
-export function metaDailyNormalize({ accountExternalId, currency, currencyProvenance, date, rows = [] } = {}) {
+export function metaDailyNormalize({ accountExternalId, currency, currencyProvenance, accountTimeZone, date, rows = [] } = {}) {
   const denomination = currencyWithProvenance(currency, currencyProvenance);
   currency = denomination.currency;
   const d = date instanceof Date ? date : new Date(date);
@@ -154,6 +155,7 @@ export function metaDailyNormalize({ accountExternalId, currency, currencyProven
     const conversions = funnel?.purchase ?? 0;
     const revenueMajor = funnel?.purchaseValue ?? 0;
     const spendMinor = toMinor(num(r.spend), currency);
+    const spendWindow = sourceLocalDayWindow(r.date_start, r.date_stop, accountTimeZone);
 
     snapshots.push({
       externalId: String(r.campaign_id ?? r.campaign_name),
@@ -171,6 +173,8 @@ export function metaDailyNormalize({ accountExternalId, currency, currencyProven
       // range, never derived from `date`.
       windowStart: verdict.windowStart,
       windowEnd: verdict.windowEnd,
+      spendWindowStartUtc: spendWindow.windowStart,
+      spendWindowEndUtc: spendWindow.windowEnd,
       ...denomination,
       spendMinor,
       revenueMinor: toMinor(revenueMajor, currency),

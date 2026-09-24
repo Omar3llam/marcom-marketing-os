@@ -137,6 +137,29 @@ describe.skipIf(!DB_OK)('B4-E5 · the non-DAILY writers against the partial iden
       }
     });
 
+    it('paid-media UTC proof downgrades and upgrades on the same observation without stale bounds', async () => {
+      const proof = {
+        spendWindowStartUtc: new Date('2026-08-01T04:00:00.000Z'),
+        spendWindowEndUtc: new Date('2026-09-01T03:59:59.999Z'),
+      };
+      await landSnapshots(WS, CHANNEL.META, [account(proof), norm(proof)]);
+      const exact = await oneRow({ entityLevel: 'CAMPAIGN' });
+      expect(exact.spendWindowStartUtc).toEqual(proof.spendWindowStartUtc);
+      expect(exact.spendWindowEndUtc).toEqual(proof.spendWindowEndUtc);
+
+      await landSnapshots(WS, CHANNEL.META, [account(), norm()]);
+      const unknown = await oneRow({ entityLevel: 'CAMPAIGN' });
+      expect(unknown.id).toBe(exact.id);
+      expect(unknown.spendWindowStartUtc).toBeNull();
+      expect(unknown.spendWindowEndUtc).toBeNull();
+
+      await landSnapshots(WS, CHANNEL.META, [account(proof), norm(proof)]);
+      const restored = await oneRow({ entityLevel: 'CAMPAIGN' });
+      expect(restored.id).toBe(exact.id);
+      expect(restored.spendWindowStartUtc).toEqual(proof.spendWindowStartUtc);
+      expect(await rowsWhere({ entityLevel: 'CAMPAIGN', source: 'META' })).toHaveLength(1);
+    });
+
     it('the two canonical windows are separate rows, not a collision', async () => {
       // The reason measurementWindow entered the identity in the first place —
       // and still the reason, now that the index is partial.

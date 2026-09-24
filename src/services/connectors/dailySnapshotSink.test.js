@@ -215,6 +215,20 @@ describe('R8 — running the same sync twice', () => {
     expect(updated()[0].data.conversions).toBe(15);
   });
 
+  it('restates both UTC spend bounds, including an exact-to-unknown downgrade', async () => {
+    prisma.metricSnapshot.findMany.mockResolvedValue([{
+      id: 'snap-1', entityId: idOf('c1'), entityLevel: 'CAMPAIGN',
+      source: DATA_SOURCE.META, windowStart: DAY('10'),
+    }]);
+    const start = new Date('2026-08-10T04:00:00.000Z');
+    const end = new Date('2026-08-11T03:59:59.999Z');
+    await landDailySnapshots(WS, CHANNEL.META, [daily({ spendWindowStartUtc: start, spendWindowEndUtc: end })]);
+    expect(updated()[0].data).toMatchObject({ spendWindowStartUtc: start, spendWindowEndUtc: end });
+    vi.clearAllMocks();
+    await landDailySnapshots(WS, CHANNEL.META, [daily()]);
+    expect(updated()[0].data).toMatchObject({ spendWindowStartUtc: null, spendWindowEndUtc: null });
+  });
+
   it('never rewrites the identity or the measured day', async () => {
     // A restatement may change what we believe about a day. It may not change
     // WHICH day, which entity, or which population the row belongs to — those

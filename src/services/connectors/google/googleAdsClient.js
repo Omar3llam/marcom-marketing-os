@@ -12,17 +12,24 @@
 import { logger } from '../../../utils/logger.js';
 import { canonicalWindowBounds } from '../../verdict-engine/metricWindow.js';
 
-const API_VERSION = 'v17';
+const API_VERSION = 'v24';
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
 function ymd(d) {
   return (d instanceof Date ? d : new Date(d)).toISOString().slice(0, 10);
 }
 
+export function googleReportRange({ since, until } = {}) {
+  const now = new Date();
+  return {
+    startDate: since ? ymd(since) : ymd(new Date(now.getTime() - 7 * 86_400_000)),
+    endDate: until ? ymd(until) : ymd(now),
+  };
+}
+
 /** PURE: the campaign-level GAQL report query for a date range. */
 export function buildGaqlReportQuery({ since, until } = {}) {
-  const end = until ? ymd(until) : ymd(new Date());
-  const start = since ? ymd(since) : ymd(new Date(Date.now() - 7 * 86_400_000));
+  const { startDate: start, endDate: end } = googleReportRange({ since, until });
   return [
     'SELECT campaign.id, campaign.name,',
     'metrics.cost_micros, metrics.impressions, metrics.clicks,',
@@ -235,6 +242,34 @@ export async function refreshAccessToken(refreshToken) {
   return body.access_token;
 }
 
+/** Read the customer's immutable reporting timezone from Google Ads itself. */
+export async function fetchGoogleCustomerTimezone(auth) {
+  try {
+    const { devToken } = requireEnv();
+    const customerId = String(auth.accountExternalId || '').replace(/[^0-9]/g, '');
+    if (!customerId) return null;
+    const accessToken = await refreshAccessToken(auth.refreshToken);
+    const res = await fetch(`https://googleads.googleapis.com/${API_VERSION}/customers/${customerId}/googleAds:searchStream`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'developer-token': devToken,
+        'login-customer-id': customerId,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: 'SELECT customer.time_zone FROM customer' }),
+    });
+    if (!res.ok) return null;
+    const body = await res.json();
+    const rows = (Array.isArray(body) ? body : [body]).flatMap((batch) => batch.results || []);
+    return rows.length === 1 && typeof rows[0]?.customer?.timeZone === 'string'
+      ? rows[0].customer.timeZone : null;
+  } catch (err) {
+    logger.warn({ err: err.message }, '[googleAdsClient] customer timezone unavailable');
+    return null;
+  }
+}
+
 /** LIVE: refresh → GAQL searchStream → mapped raw rows. Throws (never fakes) without creds/network. */
 export async function fetchGoogleCampaignMetrics(auth, dateRange = {}) {
   const { devToken } = requireEnv();
@@ -243,6 +278,7 @@ export async function fetchGoogleCampaignMetrics(auth, dateRange = {}) {
 
   const accessToken = await refreshAccessToken(auth.refreshToken);
   const url = `https://googleads.googleapis.com/${API_VERSION}/customers/${customerId}/googleAds:searchStream`;
+  const range = googleReportRange(dateRange);
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -251,12 +287,16 @@ export async function fetchGoogleCampaignMetrics(auth, dateRange = {}) {
       'login-customer-id': customerId,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ query: buildGaqlReportQuery(dateRange) }),
+    body: JSON.stringify({ query: buildGaqlReportQuery({ since: range.startDate, until: range.endDate }) }),
   });
   const body = await res.json();
   if (!res.ok) throw new Error(`googleAdsClient: searchStream failed (${res.status})`);
   // searchStream returns an array of batches, each { results: [...] }.
   const rows = (Array.isArray(body) ? body : [body]).flatMap((batch) => batch.results || []);
   logger.info({ customerId, rows: rows.length }, '[googleAdsClient] fetched campaign metrics');
-  return mapGoogleAdsResponse(rows);
+  const mapped = mapGoogleAdsResponse(rows);
+  // The successful completed query, not its sync timestamp or sparse campaign
+  // rows, establishes the requested period under the accepted Google contract.
+  Object.defineProperty(mapped, 'reportedRange', { value: Object.freeze(range) });
+  return mapped;
 }

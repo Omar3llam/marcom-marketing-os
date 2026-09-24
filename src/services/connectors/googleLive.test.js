@@ -70,6 +70,7 @@ vi.mock('./snapshotSink.js', () => ({ landSnapshots: vi.fn(async () => ({ entiti
 // Partial mock: keep the real pure seams, override ONLY the live network call.
 vi.mock('./google/googleAdsClient.js', async (importOriginal) => ({
   ...(await importOriginal()),
+  fetchGoogleCustomerTimezone: vi.fn(async () => null),
   fetchGoogleCampaignMetrics: vi.fn(async () => ([
     { campaign: { id: 'g1', name: 'G Camp' }, metrics: { cost_micros: 1230000, impressions: 2000, clicks: 40, conversions: 3, conversions_value: 200 } },
   ])),

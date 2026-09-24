@@ -2,6 +2,7 @@
 // MetricSnapshot already stores the bounds; LEGACY_UNKNOWN and absent/invalid
 // bounds cannot be promoted to an exact period by a reader.
 import { declareStatusVocabulary, KNOWLEDGE } from '@marcom/runtime-contracts';
+import { DATA_SOURCE } from '../services/connectors/connectorTypes.js';
 
 export const REVENUE_WINDOW_STATUS = Object.freeze({ EXACT: 'EXACT', UNKNOWN: 'UNKNOWN' });
 export const REVENUE_WINDOW_KNOWLEDGE = declareStatusVocabulary('REVENUE_WINDOW_STATUS', REVENUE_WINDOW_STATUS, {
@@ -30,10 +31,23 @@ export function exactRevenueWindow(windowStart, windowEnd) {
 }
 
 export function revenueWindowOfSnapshot(row) {
+  // A platform claim shares its source period with paid-media spend. Historical
+  // platform windowStart/windowEnd are date labels parsed as UTC, not instant
+  // proof; only newly persisted source-timezone bounds can establish it.
+  if ([DATA_SOURCE.META, DATA_SOURCE.GOOGLE, DATA_SOURCE.TIKTOK, DATA_SOURCE.SNAP, DATA_SOURCE.LINKEDIN].includes(row?.source)) {
+    return spendWindowOfSnapshot(row);
+  }
   if (!row || !['ROLLING_WINDOW', 'CUMULATIVE_30D', 'DAILY'].includes(row.measurementWindow)) {
     return unknownRevenueWindow();
   }
   return exactRevenueWindow(row.windowStart, row.windowEnd);
+}
+
+export function spendWindowOfSnapshot(row) {
+  if (!row || !['ROLLING_WINDOW', 'CUMULATIVE_30D', 'DAILY'].includes(row.measurementWindow)) {
+    return unknownRevenueWindow();
+  }
+  return exactRevenueWindow(row.spendWindowStartUtc, row.spendWindowEndUtc);
 }
 
 export function combineRevenueWindows(windows = []) {

@@ -33,6 +33,7 @@ import { MEASUREMENT_WINDOW } from '../connectors/connectorTypes.js';
 import { PLATFORM_SOURCES, latestPerStream } from '../blended-truth/BlendedTruthService.js';
 import { TEMPORAL } from '../../config/temporal.js';
 import { authoritativeMoney, MONETARY_STATUS, MONETARY_REASON, monetaryUnavailable } from '../../lib/operationalMonetary.js';
+import { combineRevenueWindows, spendWindowOfSnapshot, unknownRevenueWindow } from '../../lib/revenueMeasurementWindow.js';
 
 const DAY_MS = 86_400_000;
 
@@ -119,10 +120,11 @@ export function declaredWindowOf(row) {
   return { start, end };
 }
 
-function refusal(period, reason, window = null, money = monetaryUnavailable(reason)) {
+function refusal(period, reason, window = null, money = monetaryUnavailable(reason), spendWindow = unknownRevenueWindow()) {
   return {
     status: SPEND_PERIOD_STATUS.NOT_MEASURABLE, reason, period,
     window, daysCovered: null, spendMinor: null,
+    spendWindow,
     currency: null, monetaryStatus: money.monetaryStatus, monetaryReason: money.monetaryReason,
   };
 }
@@ -150,13 +152,14 @@ export function resolvePeriodSpend(rows = [], period, { coverage, now = new Date
   if (streams.length === 0) {
     return { portfolio: refusal(period, SPEND_PERIOD_REASON.NO_SPEND_ROWS), byEntity };
   }
+  const spendWindow = combineRevenueWindows(streams.map(spendWindowOfSnapshot));
 
   const windows = streams.map(declaredWindowOf);
   if (windows.some((w) => w === null)) {
-    return { portfolio: refusal(period, SPEND_PERIOD_REASON.WINDOW_UNKNOWN), byEntity };
+    return { portfolio: refusal(period, SPEND_PERIOD_REASON.WINDOW_UNKNOWN, null, undefined, spendWindow), byEntity };
   }
   if (new Set(windows.map((w) => `${w.start}|${w.end}`)).size > 1) {
-    return { portfolio: refusal(period, SPEND_PERIOD_REASON.MIXED_WINDOWS), byEntity };
+    return { portfolio: refusal(period, SPEND_PERIOD_REASON.MIXED_WINDOWS, null, undefined, spendWindow), byEntity };
   }
 
   const window = windows[0];
@@ -167,12 +170,12 @@ export function resolvePeriodSpend(rows = [], period, { coverage, now = new Date
   if (!matches) {
     // The declared window is published: "Lumi has spend for Jun 15 – Sep 12"
     // explains a refusal; a bare refusal only reports one.
-    return { portfolio: refusal(period, SPEND_PERIOD_REASON.WINDOW_MISMATCH, window), byEntity };
+    return { portfolio: refusal(period, SPEND_PERIOD_REASON.WINDOW_MISMATCH, window, undefined, spendWindow), byEntity };
   }
 
   const money = authoritativeMoney(streams, 'spendMinor');
   if (money.monetaryStatus !== MONETARY_STATUS.VALID) {
-    return { portfolio: refusal(period, money.monetaryReason, window, money), byEntity };
+    return { portfolio: refusal(period, money.monetaryReason, window, money, spendWindow), byEntity };
   }
 
   let spendMinor = 0;
@@ -185,6 +188,7 @@ export function resolvePeriodSpend(rows = [], period, { coverage, now = new Date
     portfolio: {
       status: SPEND_PERIOD_STATUS.MEASURABLE, reason: null, period,
       window, daysCovered: daysIn(window), spendMinor,
+      spendWindow,
       currency: money.currency, monetaryStatus: money.monetaryStatus, monetaryReason: null,
     },
     byEntity,
@@ -202,6 +206,8 @@ export const SPEND_PERIOD_SELECT = Object.freeze({
   measurementWindow: true,
   windowStart: true,
   windowEnd: true,
+  spendWindowStartUtc: true,
+  spendWindowEndUtc: true,
 });
 
 /**

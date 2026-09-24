@@ -14,7 +14,8 @@
 // dimensions ga4Normalize maps to an ad channel + campaign.
 // ============================================================
 import { logger } from '../../../utils/logger.js';
-import { exactRevenueWindow, unknownRevenueWindow } from '../../../lib/revenueMeasurementWindow.js';
+import { unknownRevenueWindow } from '../../../lib/revenueMeasurementWindow.js';
+import { sourceLocalDayWindow } from '../../../lib/sourceLocalDayWindow.js';
 
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
@@ -57,45 +58,13 @@ export function buildRunReportBody(dateRange = {}) {
  * PURE: GA4 runReport response → the connector raw shape. GA4 returns parallel
  * dimensionValues / metricValues arrays positioned by the request order above.
  */
-// GA4 dateRanges are inclusive calendar days in the property's time zone.
-// Translate both local midnights to UTC instants. In particular, the end is
-// the instant just before the NEXT local midnight, not the sync timestamp or
-// UTC midnight on endDate. Missing response timeZone is genuinely unknown.
-function localMidnight(dateString, timeZone) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString ?? '')) return null;
-  const day = new Date(`${dateString}T00:00:00.000Z`);
-  if (!Number.isFinite(day.getTime()) || day.toISOString().slice(0, 10) !== dateString) return null;
-  let formatter;
-  try {
-    formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
-    });
-  } catch { return null; }
-  let instant = day.getTime();
-  for (let i = 0; i < 4; i += 1) {
-    const parts = Object.fromEntries(formatter.formatToParts(new Date(instant)).map((p) => [p.type, p.value]));
-    const shown = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day),
-      Number(parts.hour), Number(parts.minute), Number(parts.second));
-    const delta = shown - day.getTime();
-    if (delta === 0) return new Date(instant);
-    instant -= delta;
-  }
-  return null;
-}
-
+// GA4 dateRanges are inclusive property-calendar days. The shared converter
+// keeps the same instant semantics for revenue and paid-media spend.
 export function ga4ResponseWindow(requestBody, responseBody) {
   const range = requestBody?.dateRanges?.[0];
   const timeZone = responseBody?.metadata?.timeZone;
   if (!range || !timeZone || requestBody.dateRanges.length !== 1) return unknownRevenueWindow();
-  const start = localMidnight(range.startDate, timeZone);
-  const endDay = new Date(`${range.endDate}T00:00:00.000Z`);
-  if (!Number.isFinite(endDay.getTime()) || endDay.toISOString().slice(0, 10) !== range.endDate) return unknownRevenueWindow();
-  const nextDay = new Date(endDay.getTime() + 86_400_000).toISOString().slice(0, 10);
-  const nextMidnight = localMidnight(nextDay, timeZone);
-  return start && nextMidnight
-    ? exactRevenueWindow(start, new Date(nextMidnight.getTime() - 1))
-    : unknownRevenueWindow();
+  return sourceLocalDayWindow(range.startDate, range.endDate, timeZone);
 }
 
 export function mapGa4Response(body = {}, requestBody = null) {

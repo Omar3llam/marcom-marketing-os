@@ -76,6 +76,7 @@ const RESTATEABLE = Object.freeze([
   'date', 'spendMinor', 'revenueMinor', 'cpaMinor', 'impressions', 'clicks',
   'conversions', 'ctr', 'roas', 'reach', 'frequency', 'actionMetrics',
   'dailyBudgetMinor', 'currency', 'currencyProvenance', 'windowEnd',
+  'spendWindowStartUtc', 'spendWindowEndUtc',
 ]);
 
 /** PURE: the update payload for a re-observed day — never its identity. */
