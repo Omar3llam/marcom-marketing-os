@@ -61,6 +61,9 @@ vi.mock('../../lib/prisma.js', () => ({
 // The two proposal organs R8 does not touch. Quiet, so the sweep runs.
 vi.mock('../guardrail-engine/GuardrailSweepService.js', () => ({ sweepGuardrails: vi.fn().mockResolvedValue() }));
 vi.mock('../fatigue-forecaster/FatigueSweepService.js', () => ({ sweepFatigue: vi.fn().mockResolvedValue() }));
+vi.mock('../portfolio/PortfolioService.js', async (importOriginal) => ({ ...await importOriginal(), getPortfolio: vi.fn().mockResolvedValue(null) }));
+vi.mock('../blended-truth/BlendedTruthService.js', async (importOriginal) => ({ ...await importOriginal(), getBlendedTruth: vi.fn().mockResolvedValue(null) }));
+vi.mock('../test-generator/TestGeneratorService.js', async (importOriginal) => ({ ...await importOriginal(), getWeeklyAgenda: vi.fn().mockResolvedValue([]) }));
 
 // The AI gateway, from BOTH the entry points its two consumers use.
 const { execute } = vi.hoisted(() => ({ execute: vi.fn() }));
@@ -151,7 +154,8 @@ describe('R8 · one sweep computes connector verdicts exactly once', () => {
   it('a FAILED evaluation is carried, not retried, and invents nothing', async () => {
     getCanonicalVerdictCampaigns.mockRejectedValue(new Error('snapshot read timed out'));
 
-    const { loopRun } = await runSweep(WS, { trigger: 'MANUAL', force: true });
+    await expect(runSweep(WS, { trigger: 'MANUAL', force: true }))
+      .rejects.toMatchObject({ source: 'IMPACT_PRIORITY' });
 
     // ONE attempt. The old shape would have had each of the four consumers try
     // again on its own and fail again — four reads, four errors, one outage.
@@ -163,9 +167,9 @@ describe('R8 · one sweep computes connector verdicts exactly once', () => {
     // No reasoning and no narration written from an account nobody could judge.
     expect(prisma.campaignReasoning.upsert).not.toHaveBeenCalled();
     expect(prisma.loopRun.update).not.toHaveBeenCalled();
-    // The sweep itself still completes and audits — the deterministic agenda
-    // stands on the other organs. A verdict outage degrades, it does not blank.
-    expect(loopRun).toBeTruthy();
+    // A complete LoopRun audit cannot be written from an unavailable required
+    // priority input. No zero-count or quiet-loop result is persisted.
+    expect(prisma.loopRun.create).not.toHaveBeenCalled();
   });
 
   // CONTROL 5/6 (evidence widening / population switching). Whatever the engine

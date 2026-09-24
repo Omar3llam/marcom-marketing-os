@@ -1,15 +1,10 @@
 // ============================================================
-// AgentHomeService.getHome — resilience to a failing loop-state read
+// AgentHomeService.getHome — loop-state failure is not a first run
 // ------------------------------------------------------------
 // Regression: a schema change added `ai_insight` to LoopRun; the regenerated
-// Prisma client then pulled that column in getLoopState's default projection.
-// On a DB where the migration hadn't been applied, the read threw
-// ("column loop_runs.ai_insight does not exist") and — because getLoopState was
-// called unguarded — getHome threw a 500, blanking the WHOLE agenda with
-// "Couldn't load your agenda". The fix: getLoopState now uses an explicit select
-// (never auto-pulls a new column) AND getHome guards the call with
-// `.catch(() => null)` + null-safe reads. This test locks that in: even when
-// every loop_runs read fails, getHome still composes a home from planAgenda.
+// getLoopState already selects only the columns it needs. If that read still
+// fails, publishing null timing as though no loop had run would erase failure
+// truth and could lead to a false Home status.
 // ============================================================
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -24,13 +19,18 @@ vi.mock('../../lib/prisma.js', () => ({
   },
 }));
 
-// getLoopState throws (the un-guarded read that used to crash getHome). runSweep
-// also throws (the sweep write hits the same missing column). buildLoopInputs +
-// planAgenda are the fallback path that must still produce a usable agenda.
+// A failed timing read must stop composition before any agenda is planned.
 vi.mock('./AgenticLoopService.js', () => ({
   getLoopState: vi.fn().mockRejectedValue(new Error('column loop_runs.ai_insight does not exist')),
   runSweep: vi.fn().mockRejectedValue(new Error('column loop_runs.ai_insight does not exist')),
   buildLoopInputs: vi.fn().mockResolvedValue({ verdicts: [], goals: [], plans: [] }),
+  readRequiredLoopSource: async (source, read) => {
+    try { return await read(); } catch (cause) {
+      const error = new Error(`Home ${source} read failed`, { cause });
+      error.source = source;
+      throw error;
+    }
+  },
   LOOP_MIN_INTERVAL_MS: 900000,
 }));
 
@@ -50,24 +50,13 @@ vi.mock('../decision-accuracy/DecisionAccuracyService.js', () => ({ getAccuracy:
 vi.mock('../decision-accuracy/accuracyTypes.js', () => ({ accuracySurface: vi.fn().mockReturnValue(null) }));
 
 import { getHome } from './AgentHomeService.js';
+import { buildLoopInputs } from './AgenticLoopService.js';
 
-describe('getHome — degrades gracefully when the loop-state read fails', () => {
+describe('getHome — fails closed when the loop-state read fails', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('composes a home from planAgenda instead of throwing', async () => {
-    const home = await getHome('ws1', 'STRATEGIST');
-    expect(home).toBeTruthy();
-    // The agenda still renders — the whole point of the fix.
-    expect(home.strategistBand.count).toBe(1);
-    expect(home.summary).toBe('Portfolio steady.');
-  });
-
-  it('reports honest null timing + null briefing rather than blanking', async () => {
-    const home = await getHome('ws1', 'STRATEGIST');
-    expect(home.loop.loopHealth).toBe('STALLED');
-    expect(home.loop.lastRunAt).toBeNull();
-    expect(home.loop.nextRunAt).toBeNull();
-    expect(home.loop.intervalMs).toBe(900000); // fallback interval, not a crash
-    expect(home.aiInsight).toBeNull();
+  it('rejects with source identity before calling the planner input loader', async () => {
+    await expect(getHome('ws1', 'STRATEGIST')).rejects.toMatchObject({ source: 'LOOP_STATE' });
+    expect(buildLoopInputs).not.toHaveBeenCalled();
   });
 });

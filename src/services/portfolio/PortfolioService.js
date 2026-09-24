@@ -33,9 +33,11 @@ function daysInMonth(date) {
  * @param {object} [opts]
  * @param {number} [opts.monthlyBudgetMinor] — overrides the latest plan budget
  * @param {Date}   [opts.now] — injectable clock (defaults to new Date())
+ * @param {boolean} [opts.strictBudgetRead] — Home must distinguish a failed
+ *   budget lookup from a genuine absence before publishing complete pacing.
  * @returns {Promise<object>} portfolio view
  */
-export async function getPortfolio(workspaceId, { monthlyBudgetMinor, monthlyBudgetCurrency, now = new Date() } = {}) {
+export async function getPortfolio(workspaceId, { monthlyBudgetMinor, monthlyBudgetCurrency, now = new Date(), strictBudgetRead = false } = {}) {
   if (!workspaceId) throw new Error('getPortfolio: workspaceId required');
 
   const { channels, portfolio } = await getBlendedTruth(workspaceId);
@@ -45,11 +47,14 @@ export async function getPortfolio(workspaceId, { monthlyBudgetMinor, monthlyBud
   let budgetMinor = monthlyBudgetMinor ?? null;
   let budgetCurrency = monthlyBudgetCurrency ?? null;
   if (budgetMinor == null) {
-    const latestPlan = await prisma.allocationPlan.findFirst({
+    const budgetRead = prisma.allocationPlan.findFirst({
       where:   { workspaceId },
       orderBy: { createdAt: 'desc' },
       select:  { totalBudgetMinor: true, currency: true },
-    }).catch(() => null);
+    });
+    // Preserve legacy best-effort callers. Home opts into a strict read so a DB
+    // error cannot become "no budget" and then "no pacing item" in its agenda.
+    const latestPlan = strictBudgetRead ? await budgetRead : await budgetRead.catch(() => null);
     budgetMinor = latestPlan?.totalBudgetMinor ?? null;
     budgetCurrency = latestPlan?.currency ?? null;
   }

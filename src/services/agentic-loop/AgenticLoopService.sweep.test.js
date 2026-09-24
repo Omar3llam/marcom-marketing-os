@@ -16,9 +16,8 @@ vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-// buildLoopInputs wraps every source in safe(p, fallback), so unmocked reads
-// degrade to empties rather than throwing — we only need loopRun + the models
-// runSweep itself touches. force:true skips the idempotency findFirst.
+// Every required read must succeed before buildLoopInputs plans the sweep.
+// These fixtures provide genuine empty successes; force:true skips idempotency.
 vi.mock('../../lib/prisma.js', () => ({
   prisma: {
     loopRun:             { create: vi.fn(), findFirst: vi.fn() },
@@ -44,6 +43,9 @@ vi.mock('../../lib/prisma.js', () => ({
 vi.mock('../guardrail-engine/GuardrailSweepService.js', () => ({ sweepGuardrails: vi.fn().mockResolvedValue() }));
 vi.mock('../fatigue-forecaster/FatigueSweepService.js', () => ({ sweepFatigue: vi.fn().mockResolvedValue() }));
 vi.mock('../verdict-engine/VerdictService.js', () => ({ persistConnectorVerdicts: vi.fn().mockResolvedValue() }));
+vi.mock('../portfolio/PortfolioService.js', async (importOriginal) => ({ ...await importOriginal(), getPortfolio: vi.fn().mockResolvedValue(null) }));
+vi.mock('../blended-truth/BlendedTruthService.js', async (importOriginal) => ({ ...await importOriginal(), getBlendedTruth: vi.fn().mockResolvedValue(null) }));
+vi.mock('../test-generator/TestGeneratorService.js', async (importOriginal) => ({ ...await importOriginal(), getWeeklyAgenda: vi.fn().mockResolvedValue([]) }));
 vi.mock('../analysis/CampaignReasoningService.js', () => ({ generateReasoningForSweep: vi.fn().mockResolvedValue() }));
 vi.mock('../analysis/PortfolioAnalysisService.js', () => ({ runPortfolioAnalysis: vi.fn().mockResolvedValue() }));
 

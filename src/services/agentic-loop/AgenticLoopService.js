@@ -42,6 +42,29 @@ const ACTIVITY_RECENCY_DAYS = TEMPORAL.loopActivityRecencyDays;
 export const LOOP_MIN_INTERVAL_MS = Number(process.env.LOOP_MIN_INTERVAL_MS || 15 * 60 * 1000);
 const AGENTIC_CRON_MS = Number(process.env.LOOP_INTERVAL_MS || 15 * 60 * 1000);
 
+// A failed required read must never reach planAgenda as an empty collection.
+// Keep the source on the error for the safe /home route's server-side diagnostic.
+export async function readRequiredLoopSource(source, read) {
+  try {
+    return await read();
+  } catch (cause) {
+    const error = new Error(`Home ${source} read failed`, { cause });
+    error.source = source;
+    throw error;
+  }
+}
+
+async function readEntityLabels(workspaceId) {
+  try {
+    return await loadLabels(workspaceId);
+  } catch (err) {
+    // Labels only replace raw entity IDs in titles. They cannot change an item,
+    // its score, its order, or loop status; preserve failure in diagnostics.
+    logger.warn({ source: 'ENTITY_LABELS', err: err.message, workspaceId }, '[AgenticLoop] entity labels unavailable');
+    return new Map();
+  }
+}
+
 // The two Decision families that ARE a "verdict to confirm" for the buyer band:
 //   • guardrail hits      → rootCause `guardrail:<rule>`
 //   • connector verdicts  → rootCause = a BUYER_ACTIONABLE_ROOT_CAUSES member
@@ -124,9 +147,9 @@ async function loadImpactById(workspaceId, evaluation, memory) {
 }
 
 /**
- * Load every organ's surface into the planner's inputs. Each source is
- * best-effort (a cold organ never fails the whole sweep). Shared read path for
- * runSweep + AgentHomeService.getHome.
+ * Load every organ's surface into the planner's inputs. Required reads must
+ * all resolve before the planner may derive a complete agenda or loop status.
+ * Shared read path for runSweep + AgentHomeService.getHome.
  *
  * @param {string} workspaceId
  * @param {object} [opts]
@@ -139,8 +162,6 @@ async function loadImpactById(workspaceId, evaluation, memory) {
 export async function buildLoopInputs(workspaceId, { now = new Date(), evaluation, memory } = {}) {
   if (!workspaceId) throw new Error('buildLoopInputs: workspaceId required');
   const since = new Date(now.getTime() - ACTIVITY_RECENCY_DAYS * 86_400_000);
-  const safe = (p, fallback) => p.catch(() => fallback);
-
   const [
     signalVerdicts, guardrailEpisodes, fatiguePredictions, openTests, openHoldouts, plans, allocationPlans,
     platformExecutions, recentOutcomes, recentMemory, labelsById,
@@ -155,7 +176,7 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
     // verdict when it writes a new one, so `distinct` collapses re-sweeps of the
     // same call rather than hiding a second live one. BUYER_ACTIONABLE (not the
     // identity scope) because this read asks who needs a buyer, not who wrote it.
-    safe(prisma.decision.findMany({
+    readRequiredLoopSource('SIGNAL_DECISIONS', () => prisma.decision.findMany({
       where: {
         workspaceId, status: 'PROPOSED',
         // C-10 — the CLASS says whose row it is; BUYER_ACTIONABLE still says
@@ -191,7 +212,7 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
         // publish null for every item in a band that is scoped by class.
         decisionClass: true,
       },
-    }), []),
+    })),
     // GUARDRAIL — no `distinct`, deliberately. C-02 made an open episode a row
     // the database itself keeps unique, via `@@unique(workspaceId, openHitKey)`,
     // so one entity breaching three rules holds three open episodes and each is
@@ -206,7 +227,7 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
     // Naming it matters because the old `distinct` was collapsing that legacy
     // pile to one row per entity BY ACCIDENT, and removing `distinct` without
     // this filter would bring ~96 rows a day back to the surface.
-    safe(prisma.decision.findMany({
+    readRequiredLoopSource('GUARDRAIL_DECISIONS', () => prisma.decision.findMany({
       where: { workspaceId, status: 'PROPOSED', ...scopeFor('loop/guardrail-episodes'), openHitKey: { not: null } },
       orderBy: { createdAt: 'desc' },
       take: 100,
@@ -215,9 +236,9 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
         diagnosis: true, rootCause: true, status: true, createdAt: true,
         decisionClass: true,
       },
-    }), []),
-    safe(prisma.fatiguePrediction.findMany({ where: { workspaceId, resolvedAt: null }, orderBy: { projectedBreachDate: 'asc' }, take: 100 }), []),
-    safe(prisma.testExperiment.findMany({ where: { workspaceId, status: 'RUNNING' }, orderBy: { startedAt: 'desc' }, take: 20 }), []),
+    })),
+    readRequiredLoopSource('FATIGUE', () => prisma.fatiguePrediction.findMany({ where: { workspaceId, resolvedAt: null }, orderBy: { projectedBreachDate: 'asc' }, take: 100 })),
+    readRequiredLoopSource('EXPERIMENTS', () => prisma.testExperiment.findMany({ where: { workspaceId, status: 'RUNNING' }, orderBy: { startedAt: 'desc' }, take: 20 })),
     // C-13 — the OTHER half of the same class. R-3 unified Test and
     // Incrementality; R-A says the class enters Attention through its live
     // object. Reading only one of the two live objects published a partial
@@ -225,14 +246,11 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
     // the slowest and most deliberate thing Lumi can be doing — was invisible
     // here while its A/B sibling was not.
     //
-    // RUNNING only, mirroring the read above rather than inventing a second
-    // rule: DESIGNED asks the strategist for nothing yet and CONCLUDED has
-    // already been read out. Two reads, not one `OR` over two tables, because
-    // they are two tables — and `safe()` for the same reason as every sibling:
-    // one organ's outage must not empty the whole agenda.
-    safe(prisma.incrementalityTest.findMany({ where: { workspaceId, status: 'RUNNING' }, orderBy: { startedAt: 'desc' }, take: 20 }), []),
-    safe(prisma.plan.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 10, include: { goals: true } }), []),
-    safe(prisma.allocationPlan.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 10 }), []),
+    // RUNNING only, mirroring the read above. Both experiment populations are
+    // required to claim that the agenda contains every running experiment.
+    readRequiredLoopSource('HOLDOUTS', () => prisma.incrementalityTest.findMany({ where: { workspaceId, status: 'RUNNING' }, orderBy: { startedAt: 'desc' }, take: 20 })),
+    readRequiredLoopSource('PLANS', () => prisma.plan.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 10, include: { goals: true } })),
+    readRequiredLoopSource('ALLOCATIONS', () => prisma.allocationPlan.findMany({ where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 10 })),
     // B4-B — canonical PLATFORM execution evidence, and nothing else.
     //
     // `Decision.platformExecutedAt` has exactly one writer in the system
@@ -251,28 +269,27 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
     // `{ gte: since }` carries the NOT NULL too: a null cannot satisfy a range
     // comparison, so an unexecuted decision is excluded by the same predicate
     // that windows the rest. One condition, not two that could drift.
-    safe(prisma.decision.findMany({
+    readRequiredLoopSource('EXECUTIONS', () => prisma.decision.findMany({
       // C-10 — ALL classes, declared. 'Did Lumi land a platform mutation' is
       // class-agnostic by nature: the EXECUTE stage asks whether the system
       // turned, and a mutation counts however it was proposed.
       where:  { workspaceId, ...scopeFor('loop/platform-executions'), platformExecutedAt: { gte: since } },
       select: { id: true, platformExecutedAt: true },
       take:   100,
-    }), []),
-    safe(prisma.outcomeSnapshot.findMany({ where: { workspaceId, createdAt: { gte: since } }, select: { id: true, createdAt: true }, take: 100 }), []),
-    safe(prisma.decisionMemoryEntry.findMany({ where: { workspaceId, createdAt: { gte: since } }, select: { id: true, createdAt: true }, take: 100 }), []),
-    safe(loadLabels(workspaceId), new Map()),
+    })),
+    readRequiredLoopSource('OUTCOMES', () => prisma.outcomeSnapshot.findMany({ where: { workspaceId, createdAt: { gte: since } }, select: { id: true, createdAt: true }, take: 100 })),
+    readRequiredLoopSource('MEMORY', () => prisma.decisionMemoryEntry.findMany({ where: { workspaceId, createdAt: { gte: since } }, select: { id: true, createdAt: true }, take: 100 })),
+    readEntityLabels(workspaceId),
   ]);
 
-  // Pacing + blended + plan tracking via the existing services (best-effort).
-  // The onboarding objective is a workspace-scoped column (promoted from
-  // User.context) that frames the agenda; null when the step was skipped.
+  // Pacing, blended truth, tests, objective, and impact all shape agenda claims.
+  // A successful absence is valid; a failed read is not evidence of absence.
   const [portfolio, blended, testAgenda, objective, impactById] = await Promise.all([
-    safe(getPortfolio(workspaceId), null),
-    safe(getBlendedTruth(workspaceId), null),
-    safe(getWeeklyAgenda(workspaceId).then((a) => a.slice(0, 5)), []),
-    safe(prisma.workspace.findUnique({ where: { id: workspaceId }, select: { objective: true } }).then((w) => w?.objective ?? null), null),
-    safe(loadImpactById(workspaceId, evaluation, memory), new Map()),
+    readRequiredLoopSource('PORTFOLIO_PACING', () => getPortfolio(workspaceId, { strictBudgetRead: true })),
+    readRequiredLoopSource('BLENDED_TRUTH', () => getBlendedTruth(workspaceId)),
+    readRequiredLoopSource('TEST_AGENDA', async () => (await getWeeklyAgenda(workspaceId)).slice(0, 5)),
+    readRequiredLoopSource('OBJECTIVE', async () => (await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { objective: true } }))?.objective ?? null),
+    readRequiredLoopSource('IMPACT_PRIORITY', () => loadImpactById(workspaceId, evaluation, memory)),
   ]);
   // One population again, but assembled from two reads that each kept their own
   // identity rule. Signal first so a re-swept verdict and a standing breach on
@@ -280,7 +297,7 @@ export async function buildLoopInputs(workspaceId, { now = new Date(), evaluatio
   const verdicts = [...signalVerdicts, ...guardrailEpisodes];
 
   const activePlan = activePlanOf(plans);
-  const planTracking = activePlan ? await safe(trackPlan(workspaceId, activePlan, { now }), null) : null;
+  const planTracking = activePlan ? await readRequiredLoopSource('PLAN_TRACKING', () => trackPlan(workspaceId, activePlan, { now })) : null;
 
   return {
     verdicts, fatiguePredictions, pacing: pacingFromPortfolio(portfolio),
@@ -308,7 +325,7 @@ export async function runSweep(workspaceId, { trigger = 'MANUAL', now = new Date
 
   // Idempotency: reuse a very recent sweep unless forced.
   if (!force) {
-    const last = await prisma.loopRun.findFirst({ where: { workspaceId }, orderBy: { createdAt: 'desc' } }).catch(() => null);
+    const last = await readRequiredLoopSource('LOOP_STATE', () => prisma.loopRun.findFirst({ where: { workspaceId }, orderBy: { createdAt: 'desc' } }));
     if (last && now.getTime() - new Date(last.createdAt).getTime() < LOOP_MIN_INTERVAL_MS) {
       logger.debug({ workspaceId, lastRunId: last.id }, '[AgenticLoop] reusing recent sweep');
       return { loopRun: last, agenda: null, reused: true };
