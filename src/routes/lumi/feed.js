@@ -11,6 +11,7 @@ import { logger }  from '../../utils/logger.js';
 import { getPortfolio } from '../../services/portfolio/PortfolioService.js';
 import { getWeeklyAgenda } from '../../services/test-generator/TestGeneratorService.js';
 import { evaluateGoalTracking } from '../../services/planning/PlanService.js';
+import { readAllocationEfficiency } from '../../services/allocation-engine/allocationPlanMetric.js';
 import { surfaceCollaboration } from './feedSurfacing.js';
 
 // The static public demo feed lives in its own module (route-file size).
@@ -253,8 +254,7 @@ feedRouter.get('/feed', async (req, res) => {
         goalType:          p.goalType,
         totalBudgetMinor:  p.totalBudgetMinor,
         currency:          p.currency,
-        merBefore:         p.merBefore,
-        merAfter:          p.merAfter,
+        ...readAllocationEfficiency(p),
         projectedCpaMinor: p.projectedCpaMinor,
         status:            p.status, // PROPOSED → awaits human confirm
       })),

@@ -84,7 +84,10 @@ portfolioRouter.get('/blended', async (req, res) => {
   if (!wsId) {
     return res.json({
       workspaceId: null, generatedAt: new Date().toISOString(),
-      channels: [], portfolio: { spendMinor: 0, platformRevenueMinor: 0, blendedRevenueMinor: 0, gapMinor: 0, gapPct: 0, platformRoas: 0, blendedRoas: 0, reconciledCount: 0, unverifiedCount: 0 },
+      channels: [], portfolio: { spendMinor: 0, platformRevenueMinor: 0, blendedRevenueMinor: 0, gapMinor: 0, gapPct: 0,
+        platformRoas: null, blendedRoas: null,
+        blendedRevenueEfficiency: { status: 'UNAVAILABLE', reason: 'SPEND_BASIS_UNAVAILABLE', value: null, currency: null, windowCompatibility: 'UNKNOWN' },
+        reconciledCount: 0, unverifiedCount: 0 },
     });
   }
   try {
@@ -150,6 +153,9 @@ portfolioRouter.post('/portfolio/allocate/commit', requireCollabRole(WORKSPACE_R
     logger.info({ wsId, planId, decisionsCreated }, '[lumi/portfolio] allocation committed');
     return res.status(201).json({ workspaceId: wsId, planId, decisionsCreated, plan });
   } catch (err) {
+    if (err.code === 'AllocationEfficiencyUnavailable') {
+      return res.status(409).json({ error: err.code, reason: err.reason });
+    }
     if (err.code === 'AllocationMonetaryUnavailable') {
       return res.status(409).json({ error: err.code, reason: err.reason, monetaryStatus: 'MONETARY_UNAVAILABLE_UNTRUSTED' });
     }

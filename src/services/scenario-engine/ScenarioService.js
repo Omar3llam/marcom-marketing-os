@@ -22,6 +22,7 @@ import { selectCanonicalFatigueSnapshots } from '../fatigue-forecaster/canonical
 import { buildEntitySeries } from '../fatigue-forecaster/FatigueSweepService.js';
 import { TEMPORAL } from '../../config/temporal.js';
 import { MONETARY_STATUS, MONETARY_REASON, sameMonetaryUnit } from '../../lib/operationalMonetary.js';
+import { EFFICIENCY_STATUS, EFFICIENCY_REASON } from '../../lib/blendedRevenueEfficiency.js';
 
 // Bounds MetricSnapshot.date — the SYNC timestamp — on canonical CUMULATIVE_30D
 // rows. Deliberately its own setting rather than sharing the fatigue one: a
@@ -40,7 +41,7 @@ export function buildScenarioInputs(channels, economics, patterns = []) {
     channelId:   c.channelId,
     channel:     c.channel,
     spendMinor:  c.spendMinor,
-    blendedRoas: c.blendedRoas,
+    blendedRoas: c.blendedRevenueEfficiency?.value ?? null,
     currency:    c.currency,
     monetaryStatus: c.monetaryStatus,
     monetaryReason: c.monetaryReason,
@@ -73,7 +74,7 @@ const NOT_CONFIGURED_ASSUMPTION =
  * Pure: stamp `economicsStatus` and, when the workspace has NOT asserted its
  * unit economics (`isDefault`), blank the AOV/margin-derived projections to honest
  * null ranges (→ "—") plus an explicit assumption. Spend/ROAS-based projections
- * (revenueMinor, merAfter) are economics-independent and always preserved.
+ * (revenueMinor, blendedRevenueEfficiencyAfter) are economics-independent when evidence is eligible.
  * Exported for unit testing without a DB.
  *
  * @param {object} scenario — projectScenario() output
@@ -116,13 +117,17 @@ export async function runScenario(workspaceId, { change, now } = {}) {
 
   const { baseline, economics: econ, memory, memoryBasis } = buildScenarioInputs(channels, economics, enriched);
   const money = sameMonetaryUnit(...channels.map((c) => ({ monetaryStatus: c.monetaryStatus, monetaryReason: c.monetaryReason, currency: c.currency })));
-  if (money.monetaryStatus !== MONETARY_STATUS.VALID) {
+  const unavailableEfficiency = channels.find((c) => c.blendedRevenueEfficiency?.status !== EFFICIENCY_STATUS.VALID);
+  if (money.monetaryStatus !== MONETARY_STATUS.VALID || unavailableEfficiency) {
     const blank = { low: null, expected: null, high: null };
+    const efficiencyReason = unavailableEfficiency?.blendedRevenueEfficiency?.reason ?? EFFICIENCY_REASON.REVENUE_BASIS_UNAVAILABLE;
     return {
-      scenarioType: change?.type ?? null, change, currency: null,
+      scenarioType: change?.type ?? null, change,
+      currency: money.monetaryStatus === MONETARY_STATUS.VALID ? money.currency : null,
       monetaryStatus: money.monetaryStatus, monetaryReason: money.monetaryReason,
-      projections: { blendedCacMinor: blank, volume: blank, revenueMinor: blank, grossProfitMinor: blank, merAfter: blank },
-      assumptions: ['Operational monetary basis unavailable.'], confidence: null, basis: null, memoryBasis,
+      efficiencyStatus: EFFICIENCY_STATUS.UNAVAILABLE, efficiencyReason,
+      projections: { blendedCacMinor: blank, volume: blank, revenueMinor: blank, grossProfitMinor: blank, blendedRevenueEfficiencyAfter: blank },
+      assumptions: [`Projection evidence unavailable: ${money.monetaryReason ?? efficiencyReason}.`], confidence: null, basis: null, memoryBasis,
     };
   }
   const scenario = projectScenario({ baseline, change, economics: econ, memory, now, config: { monetaryCurrency: money.currency } });
@@ -132,7 +137,9 @@ export async function runScenario(workspaceId, { change, now } = {}) {
   const withStatus = withEconomicsStatus(scenario, !economicsCompatible);
 
   logger.info({ workspaceId, type: change?.type, patterns: memoryBasis.length, economicsStatus: withStatus.economicsStatus }, '[ScenarioService] projected');
-  return { ...withStatus, monetaryStatus: MONETARY_STATUS.VALID, monetaryReason: null, economicsMonetaryReason: economicsCompatible ? null : MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED, memoryBasis };
+  return { ...withStatus, monetaryStatus: MONETARY_STATUS.VALID, monetaryReason: null,
+    efficiencyStatus: EFFICIENCY_STATUS.VALID, efficiencyReason: null,
+    economicsMonetaryReason: economicsCompatible ? null : MONETARY_REASON.SPEND_CURRENCY_UNTRUSTED, memoryBasis };
 }
 
 /**

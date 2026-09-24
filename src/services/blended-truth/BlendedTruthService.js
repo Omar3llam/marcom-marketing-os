@@ -144,6 +144,7 @@ export function buildChannelInputs(snapshots, labelsById = new Map()) {
       monetaryStatus: monetary.monetaryStatus, monetaryReason: monetary.monetaryReason,
       actualRevenueWindow, platformRevenueWindow, blendedRevenueWindow, spendWindow,
       spendEvidencePresent: _spendWindows.length > 0,
+      platformEvidencePresent: _platformEvidence.length > 0,
     };
   });
 }

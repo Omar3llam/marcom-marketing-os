@@ -52,6 +52,7 @@ import { EXECUTION_STATE_KNOWLEDGE } from '../execution/executionProjection.js';
 import { SPEND_PERIOD_KNOWLEDGE } from '../budget-period/spendPeriod.js';
 import { MONETARY_KNOWLEDGE } from '../../lib/operationalMonetary.js';
 import { REVENUE_WINDOW_KNOWLEDGE } from '../../lib/revenueMeasurementWindow.js';
+import { EFFICIENCY_KNOWLEDGE } from '../../lib/blendedRevenueEfficiency.js';
 
 /**
  * The suffixes that define the ratchet's jurisdiction. A shape, not a guess.
@@ -94,6 +95,7 @@ export const JURISDICTION_SUFFIXES = Object.freeze(['_STATUS', '_STATE', '_REASO
 export const DECLARED = Object.freeze([
   { at: 'src/lib/operationalMonetary.js', symbol: 'MONETARY_STATUS', declaration: MONETARY_KNOWLEDGE },
   { at: 'src/lib/revenueMeasurementWindow.js', symbol: 'REVENUE_WINDOW_STATUS', declaration: REVENUE_WINDOW_KNOWLEDGE },
+  { at: 'src/lib/blendedRevenueEfficiency.js', symbol: 'EFFICIENCY_STATUS', declaration: EFFICIENCY_KNOWLEDGE },
   { at: 'src/services/decision-memory/decisionHistory.js',            symbol: 'HISTORY_STATUS',      declaration: HISTORY_KNOWLEDGE },
   { at: 'src/services/pattern-engine/institutionalMemory.js',         symbol: 'MEMORY_STATUS',       declaration: MEMORY_KNOWLEDGE },
   { at: 'src/services/attribution-engine/attributionTypes.js',        symbol: 'ATTRIBUTION_STATUS',  declaration: ATTRIBUTION_KNOWLEDGE },
@@ -121,6 +123,10 @@ export const DECLARED = Object.freeze([
  * editing one line here instead of by discovering the omission in production.
  */
 export const EXCLUDED = Object.freeze([
+  {
+    at: 'src/lib/blendedRevenueEfficiency.js', symbol: 'EFFICIENCY_REASON',
+    because: 'A reason vocabulary refining EFFICIENCY_STATUS. Currency, window and denominator failures explain the unavailable state without creating a second knowledge token.',
+  },
   {
     at: 'src/services/planning/planningActuals.js', symbol: 'PLANNING_REASON',
     because: 'These codes refine insufficient-evidence tracking with the failed currency, window, or business-revenue prerequisite; they are reasons rather than independent knowledge states.',

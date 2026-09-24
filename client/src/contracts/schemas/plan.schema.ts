@@ -12,6 +12,7 @@
 
 import { z } from 'zod';
 import { RangeSchema, ScenarioTypeSchema, ScenarioProjectionsSchema } from './scenario.schema';
+import { AllocationProjectedSchema } from './allocationPlan.schema';
 import { UnitEconomicsSchema } from './unitEconomics.schema';
 import { ComparatorSchema } from './guardrailRule.schema';
 
@@ -113,15 +114,31 @@ export const NorthStarGoalSchema = z.object({
 // scenario projection. Kept faithful to the handler to stay honest.
 export const PlanScenarioProjectionSchema = z.object({
   scenarioType: ScenarioTypeSchema,
-  projections: ScenarioProjectionsSchema,
+  // Historical JSON has merAfter and no measurement authority. It remains
+  // readable as legacy data; only new writes carry the corrected key/status.
+  projections: z.union([
+    ScenarioProjectionsSchema,
+    ScenarioProjectionsSchema.omit({ blendedRevenueEfficiencyAfter: true }).extend({ merAfter: RangeSchema }),
+  ]),
   assumptions: z.array(z.string()),
-  confidence: z.number().min(0).max(1),
-  basis: z.string(),
+  confidence: z.number().min(0).max(1).nullable(),
+  basis: z.string().nullable(),
+  efficiencyStatus: z.enum(['VALID', 'UNAVAILABLE']).optional(),
+  efficiencyReason: z.string().nullable().optional(),
 });
 
 // The assembled projections block stored on a Plan (all ranges).
 export const PlanProjectionsSchema = z.object({
   scenario: PlanScenarioProjectionSchema.nullable(),
+  mix: z.object({
+    efficiencyStatus: z.enum(['VALID', 'UNAVAILABLE']).optional(),
+    efficiencyReason: z.string().nullable().optional(),
+    projected: z.union([
+      AllocationProjectedSchema,
+      z.object({ blendedRevenueMinor: z.number().nullable(), projectedCpaMinor: z.number().nullable(),
+        merBefore: z.number().nullable(), merAfter: z.number().nullable() }),
+    ]).nullable(),
+  }).passthrough().nullish(),
   economics: UnitEconomicsSchema.partial().nullable(),
   goalLanding: GoalLandingSchema.nullable(),
   goalTracking: z.object({

@@ -1919,8 +1919,8 @@ model AllocationPlan {
   // Projected blended impact (minor units / ratios).
   projectedRoas     Float?
   projectedCpaMinor Int?
-  merBefore         Float? // blended MER before the reallocation
-  merAfter          Float? // blended MER after the reallocation
+  merBefore         Float? // legacy physical name; tagged new rows store blended revenue efficiency before
+  merAfter          Float? // legacy physical name; tagged new rows store blended revenue efficiency after
 
   reasoning String // newline-joined reasoning trail
   status    AllocationStatus @default(PROPOSED)

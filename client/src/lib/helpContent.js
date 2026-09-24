@@ -61,8 +61,8 @@ export const HELP = {
     description: 'The gap between what Meta/Google claim and what actually happened in your business. Platforms often overcount conversions; Blended Truth reconciles their numbers against real revenue.',
   },
   BLENDED_ROAS: {
-    title: 'Blended ROAS',
-    description: 'Return on ad spend from your real revenue, reconciled across all channels together — a truer figure than each platform’s self-reported ROAS.',
+    title: 'Blended revenue efficiency',
+    description: 'Selected Blended Truth revenue divided by compatible paid-media spend. This differs from platform ROAS and from MER, which requires authoritative total-business revenue.',
   },
   LOOP_STALLED: {
     title: 'The decision loop',

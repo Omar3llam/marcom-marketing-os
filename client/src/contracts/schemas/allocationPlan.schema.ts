@@ -39,8 +39,8 @@ export const AllocationMoveSchema = z.object({
 export const AllocationProjectedSchema = z.object({
   blendedRevenueMinor: z.number().int().nullable(),
   projectedCpaMinor: z.number().int().nullable(),
-  merBefore: z.number().nullable(),
-  merAfter: z.number().nullable(),
+  blendedRevenueEfficiencyBefore: z.number().nullable(),
+  blendedRevenueEfficiencyAfter: z.number().nullable(),
 });
 
 // allocationEngine.allocate() preview shape.
@@ -50,6 +50,8 @@ export const AllocationPlanPreviewSchema = z.object({
   currency: z.string().nullable(),
   monetaryStatus: MonetaryStatusSchema.optional(),
   monetaryReason: z.string().nullable().optional(),
+  efficiencyStatus: z.enum(['VALID', 'UNAVAILABLE']),
+  efficiencyReason: z.string().nullable(),
   // The period the budget governs, and whether moves could be sized against it.
   spendPeriod: SpendPeriodSchema.nullish(),
   allocations: z.array(AllocationMoveSchema),
@@ -67,6 +69,8 @@ export const AllocationPlanSchema = z.object({
   currency: z.string(),
   projectedRoas: z.number().nullish(),
   projectedCpaMinor: z.number().int().nullish(),
+  // Physical Prisma names remain legacy storage; first-party API uses the
+  // semantic fields below and does not promote historical values.
   merBefore: z.number().nullish(),
   merAfter: z.number().nullish(),
   reasoning: z.string(),

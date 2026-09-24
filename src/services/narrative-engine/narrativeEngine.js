@@ -106,13 +106,13 @@ function sectionChanged(blended) {
   if (typeof blended.deltaPct === 'number') {
     const better = blended.deltaPct >= 0;
     claims.push(claim(
-      `Blended ROAS ${better ? 'improved' : 'softened'} ${Math.abs(blended.deltaPct).toFixed(1)}% vs the prior period.`,
+      `Blended revenue efficiency ${better ? 'improved' : 'softened'} ${Math.abs(blended.deltaPct).toFixed(1)}% vs the prior period.`,
       [figure(Number(blended.deltaPct.toFixed(1)), '%', blended.evidenceRef, { kind: EVIDENCE_KIND.BLENDED })],
       { tier: 'exec' },
     ));
   } else if (typeof blended.blendedRoas === 'number') {
     claims.push(claim(
-      `Blended ROAS stands at ${blended.blendedRoas.toFixed(2)}x (reconciled against actuals).`,
+      `Blended revenue efficiency stands at ${blended.blendedRoas.toFixed(2)}x (selected Blended Truth revenue over compatible paid-media spend).`,
       [figure(Number(blended.blendedRoas.toFixed(2)), 'x', blended.evidenceRef, { kind: EVIDENCE_KIND.BLENDED })],
       { tier: 'exec' },
     ));

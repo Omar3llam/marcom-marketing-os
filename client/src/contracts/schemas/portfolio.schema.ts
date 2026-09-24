@@ -1,7 +1,7 @@
 /**
  * Portfolio Schema — cross-channel portfolio view
  *
- * Mirrors the Phase 3 PortfolioService output: blended totals (MER),
+ * Mirrors the Phase 3 PortfolioService output: selected Blended Truth totals,
  * platform-vs-blended gap, and pacing — per channel and for the
  * portfolio. Money is integer minor units.
  *
@@ -9,15 +9,16 @@
  */
 
 import { z } from 'zod';
-import { BlendedChannelSchema } from './blendedTruth.schema';
+import { BlendedChannelSchema, BlendedRevenueEfficiencySchema } from './blendedTruth.schema';
 import { PacingSchema } from './pacing.schema';
 
 export const PortfolioTotalsSchema = z.object({
   spendMinor: z.number().int(),
   platformRevenueMinor: z.number().int(),
   blendedRevenueMinor: z.number().int(),
-  blendedRoas: z.number(),
-  platformRoas: z.number(),
+  blendedRoas: z.number().nullable(),
+  blendedRevenueEfficiency: BlendedRevenueEfficiencySchema.optional(),
+  platformRoas: z.number().nullable(),
   gapMinor: z.number().int(),
   gapPct: z.number(),
   reconciledCount: z.number().int(),

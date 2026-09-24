@@ -78,7 +78,7 @@ describe('allocationEngine.allocate (GROWTH_CEILING)', () => {
     expect(a.recommendedSpendMinor).toBeLessThanOrEqual(600_000 + 1); // ±1 minor unit rounding
   });
 
-  it('projects merBefore → merAfter and a blended CPA', () => {
+  it('projects blended revenue efficiency before → after and a blended CPA', () => {
     const r = allocateProven({ totalBudgetCurrency: 'USD',
       totalBudgetMinor: 1_000_000,
       goal: { type: GOAL_TYPE.GROWTH_CEILING },
@@ -87,7 +87,7 @@ describe('allocationEngine.allocate (GROWTH_CEILING)', () => {
         { channelId: 'snap', blendedRoas: 2.0, blendedCpaMinor: 30_000, currentSpendMinor: 500_000, verdict: 'HOLD' },
       ],
     });
-    expect(r.projected.merAfter).toBeGreaterThan(0);
+    expect(r.projected.blendedRevenueEfficiencyAfter).toBeGreaterThan(0);
     expect(r.projected.projectedCpaMinor).toBeGreaterThan(0);
     expect(r.reasoningTrail.length).toBeGreaterThan(0);
   });

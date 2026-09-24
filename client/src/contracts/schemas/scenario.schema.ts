@@ -3,7 +3,7 @@
  *
  * Mirrors scenarioEngine.projectScenario(). THE HONESTY RULE is encoded
  * here: every projection is a RANGE { low, expected, high }, never a bare
- * number, plus a named `assumptions[]` list. CAC/Volume/MER answer the
+ * number, plus a named `assumptions[]` list. CAC, volume, and blended efficiency answer the
  * media-buyer question; revenue + grossProfit are first-class (the CEO
  * lens). Money is integer minor units.
  *
@@ -30,17 +30,19 @@ export const ScenarioProjectionsSchema = z.object({
   volume: RangeSchema,
   revenueMinor: RangeSchema,
   grossProfitMinor: RangeSchema,
-  merAfter: RangeSchema,
+  blendedRevenueEfficiencyAfter: RangeSchema,
 });
 
 export const ScenarioSchema = z.object({
   scenarioType: ScenarioTypeSchema,
   change: z.record(z.string(), z.unknown()),
-  currency: z.string().default('USD'),
+  currency: z.string().nullable(),
+  efficiencyStatus: z.enum(['VALID', 'UNAVAILABLE']),
+  efficiencyReason: z.string().nullable(),
   projections: ScenarioProjectionsSchema,
   assumptions: z.array(z.string()).min(1),
-  confidence: z.number().min(0).max(1),
-  basis: z.string(),
+  confidence: z.number().min(0).max(1).nullable(),
+  basis: z.string().nullable(),
   // Whether the workspace has ASSERTED its unit economics. When 'NOT_CONFIGURED'
   // the AOV/margin-dependent projections (volume, blendedCacMinor, grossProfitMinor)
   // are honestly blanked to null ranges — never computed off the seeded default AOV.

@@ -208,7 +208,7 @@ export function allocate({ totalBudgetMinor, totalBudgetCurrency, goal, channels
     const rationale =
       verdict === 'KILL'  ? `Drain ${c.channelId}: KILL verdict — pull budget out.`
       : dir === 'hold'    ? `Hold ${c.channelId}: already near its efficient share.`
-      : `${dir === 'increase' ? 'Grow' : 'Trim'} ${c.channelId} by ${Math.abs(deltaMinor)} (${verdict}, blended ROAS ${c.blendedRoas.toFixed(2)}x).`;
+      : `${dir === 'increase' ? 'Grow' : 'Trim'} ${c.channelId} by ${Math.abs(deltaMinor)} (${verdict}, blended revenue efficiency ${c.blendedRoas.toFixed(2)}x).`;
     reasoningTrail.push(rationale);
 
     return {
@@ -223,17 +223,17 @@ export function allocate({ totalBudgetMinor, totalBudgetCurrency, goal, channels
     };
   });
 
-  const merBefore       = currentTotal > 0 ? currentRevenueMinor / currentTotal : 0;
-  const merAfter        = projectedRevenueMinor / totalBudgetMinor;
+  const blendedRevenueEfficiencyBefore = currentTotal > 0 ? currentRevenueMinor / currentTotal : null;
+  const blendedRevenueEfficiencyAfter = projectedRevenueMinor / totalBudgetMinor;
   const projectedCpaMinor = projectedConversions > 0 ? Math.round(totalBudgetMinor / projectedConversions) : null;
 
   reasoningTrail.unshift(
     `Goal GROWTH_CEILING: distribute ${totalBudgetMinor} (${currency}, minor units) toward marginal efficiency; ` +
-    `projected blended ROAS ${merBefore.toFixed(2)}x → ${merAfter.toFixed(2)}x.`,
+    `projected blended revenue efficiency ${blendedRevenueEfficiencyBefore?.toFixed(2) ?? 'unavailable'}x → ${blendedRevenueEfficiencyAfter.toFixed(2)}x.`,
   );
 
   logger.debug(
-    { goal: goalType, channels: channels.length, merBefore, merAfter },
+    { goal: goalType, channels: channels.length, blendedRevenueEfficiencyBefore, blendedRevenueEfficiencyAfter },
     '[AllocationEngine] allocated',
   );
 
@@ -245,8 +245,8 @@ export function allocate({ totalBudgetMinor, totalBudgetCurrency, goal, channels
     projected: {
       blendedRevenueMinor: projectedRevenueMinor,
       projectedCpaMinor,
-      merBefore,
-      merAfter,
+      blendedRevenueEfficiencyBefore,
+      blendedRevenueEfficiencyAfter,
     },
     reasoningTrail,
   };

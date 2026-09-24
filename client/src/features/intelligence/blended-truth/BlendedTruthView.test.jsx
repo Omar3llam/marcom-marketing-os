@@ -25,10 +25,10 @@ vi.mock('../IntelligenceSubNav.jsx', () => ({ default: () => null }));
 
 const data = {
   channels: [
-    { channelId: 'meta', channel: 'META', platformRoas: 3.1, blendedRoas: 2.2, gapPct: 29, coverage: 'RECONCILED', confidence: 'HIGH', currency: 'USD' },
-    { channelId: 'google', channel: 'GOOGLE', platformRoas: 2.0, blendedRoas: 1.5, gapPct: 25, coverage: 'PARTIAL', confidence: 'MED', currency: 'USD' },
+    { channelId: 'meta', channel: 'META', platformRoas: 3.1, blendedRoas: 2.2, blendedRevenueEfficiency: { status: 'VALID', value: 2.2 }, gapPct: 29, coverage: 'RECONCILED', confidence: 'HIGH', currency: 'USD' },
+    { channelId: 'google', channel: 'GOOGLE', platformRoas: 2.0, blendedRoas: 1.5, blendedRevenueEfficiency: { status: 'VALID', value: 1.5 }, gapPct: 25, coverage: 'PARTIAL', confidence: 'MED', currency: 'USD' },
   ],
-  portfolio: { platformRoas: 2.7, blendedRoas: 1.9, gapPct: 30, gapMinor: 120000, reconciledCount: 1, unverifiedCount: 1 },
+  portfolio: { platformRoas: 2.7, blendedRoas: 1.9, blendedRevenueEfficiency: { status: 'VALID', value: 1.9 }, gapPct: 30, gapMinor: 120000, reconciledCount: 1, unverifiedCount: 1 },
 };
 
 describe('BlendedTruthView — channel cross-link', () => {
@@ -116,7 +116,7 @@ describe('BlendedTruth (wrapper) — tier gate', () => {
 
   it('does not use workspace currency when portfolio money is unavailable', () => {
     useBlendedTruth.mockReturnValue({ data: {
-      ...data, portfolio: { ...data.portfolio, currency: null, monetaryStatus: 'MONETARY_UNAVAILABLE_MIXED', monetaryReason: 'SPEND_CURRENCY_MIXED', blendedRoas: null, gapMinor: null, gapPct: null, platformRoas: null },
+      ...data, portfolio: { ...data.portfolio, currency: null, monetaryStatus: 'MONETARY_UNAVAILABLE_MIXED', monetaryReason: 'SPEND_CURRENCY_MIXED', blendedRoas: null, blendedRevenueEfficiency: { status: 'UNAVAILABLE', value: null }, gapMinor: null, gapPct: null, platformRoas: null },
     }, loading: false, error: null, gated: false });
     renderWrapper();
     expect(screen.getAllByText(/SPEND_CURRENCY_MIXED/).length).toBeGreaterThan(0);

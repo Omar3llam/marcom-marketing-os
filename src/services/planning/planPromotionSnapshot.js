@@ -51,6 +51,7 @@
 import { SPEND_PERIOD_STATUS } from '../budget-period/spendPeriod.js';
 import { MONETARY_STATUS, MONETARY_REASON } from '../../lib/operationalMonetary.js';
 import { isSupportedCurrency } from '../../lib/currencyDetector.js';
+import { EFFICIENCY_STATUS } from '../../lib/blendedRevenueEfficiency.js';
 
 /** Typed refusals, so the route answers 409 rather than 500. */
 export const PROMOTION_REFUSAL = Object.freeze({
@@ -93,6 +94,8 @@ export function captureMixSnapshot(mix) {
     currency:         mix.currency ?? null,
     monetaryStatus:   mix.monetaryStatus ?? MONETARY_STATUS.UNAVAILABLE_UNTRUSTED,
     monetaryReason:   mix.monetaryReason ?? null,
+    efficiencyStatus: mix.efficiencyStatus ?? EFFICIENCY_STATUS.UNAVAILABLE,
+    efficiencyReason: mix.efficiencyReason ?? null,
     projected:        mix.projected ?? null,
     reasoningTrail:   Array.isArray(mix.reasoningTrail) ? mix.reasoningTrail : null,
     // What the mix's moves were sized against — or why they were not. A mix
@@ -133,6 +136,12 @@ export function planToAllocationCommit(plan) {
   }
 
   const allocations = Array.isArray(plan.channelMix) ? plan.channelMix : [];
+  // Pre-contract JSON contains merBefore/merAfter without proof. Never promote
+  // those values into a current semantic metric or a budget move.
+  if (snap.efficiencyStatus == null) {
+    throw refusePromotion(PROMOTION_REFUSAL.SNAPSHOT_INCOMPLETE,
+      'This legacy mix has no proven efficiency basis. Build a new plan before promotion.');
+  }
   if (snap.monetaryStatus !== MONETARY_STATUS.VALID || !isSupportedCurrency(snap.currency)
     || snap.currency !== plan.currency || snap.spendPeriod?.status !== SPEND_PERIOD_STATUS.MEASURABLE
     || snap.spendPeriod?.currency !== snap.currency) {
@@ -156,6 +165,8 @@ export function planToAllocationCommit(plan) {
     currency:         snap.currency,
     monetaryStatus:   snap.monetaryStatus,
     monetaryReason:   null,
+    efficiencyStatus: snap.efficiencyStatus,
+    efficiencyReason: snap.efficiencyReason ?? null,
     allocations,
     projected:        snap.projected,
     reasoningTrail:   snap.reasoningTrail,
@@ -185,5 +196,6 @@ export function hasBudgetMoves(commit) {
  */
 export function budgetMovesAreMeasured(commit) {
   return commit?.monetaryStatus === MONETARY_STATUS.VALID
+    && commit?.efficiencyStatus === EFFICIENCY_STATUS.VALID
     && commit?.spendPeriod?.status === SPEND_PERIOD_STATUS.MEASURABLE;
 }

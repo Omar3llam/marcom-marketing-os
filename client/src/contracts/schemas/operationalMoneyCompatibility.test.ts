@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BlendedTruthSchema } from './blendedTruth.schema';
 import { AllocationPlanPreviewSchema } from './allocationPlan.schema';
-import { NorthStarGoalSchema } from './plan.schema';
+import { NorthStarGoalSchema, PlanProjectionsSchema } from './plan.schema';
 
 const channel = (currency: string | null, monetaryStatus: string, monetaryReason: string | null) => ({
   channelId: 'meta', channel: 'META', name: 'Prospecting', currency, monetaryStatus, monetaryReason,
@@ -29,6 +29,21 @@ const portfolio = (currency: string | null, monetaryStatus: string, monetaryReas
 });
 
 describe('operational monetary frontend schemas', () => {
+  it('keeps legacy Plan JSON readable without promoting old mer keys', () => {
+    const parsed = PlanProjectionsSchema.parse({
+      scenario: { scenarioType: 'BUDGET_EXPANSION', projections: {
+        blendedCacMinor: { low: null, expected: null, high: null },
+        volume: { low: null, expected: null, high: null },
+        revenueMinor: { low: null, expected: null, high: null },
+        grossProfitMinor: { low: null, expected: null, high: null },
+        merAfter: { low: 2, expected: 2.5, high: 3 },
+      }, assumptions: [], confidence: 0.5, basis: 'legacy' },
+      economics: null, goalLanding: null,
+      mix: { projected: { blendedRevenueMinor: 100, projectedCpaMinor: null, merBefore: 2, merAfter: 2.5 } },
+    });
+    expect(parsed.scenario?.projections).toHaveProperty('merAfter');
+    expect(parsed.mix?.efficiencyStatus).toBeUndefined();
+  });
   it.each(['EGP', 'USD', 'SAR'])('retains proven %s from the backend portfolio', (currency) => {
     const parsed = BlendedTruthSchema.parse({
       channels: [channel(currency, 'MONETARY_VALID', null)],
@@ -53,10 +68,11 @@ describe('operational monetary frontend schemas', () => {
     const parsed = AllocationPlanPreviewSchema.parse({
       goal: { type: 'GROWTH_CEILING', value: null }, totalBudgetMinor: 10000,
       currency: null, monetaryStatus: 'MONETARY_UNAVAILABLE_MIXED', monetaryReason: 'SPEND_CURRENCY_MIXED',
+      efficiencyStatus: 'UNAVAILABLE', efficiencyReason: 'CURRENCY_UNTRUSTED',
       spendPeriod: null,
       allocations: [{ channelId: 'meta', channel: 'META', verdict: 'HOLD', currentSpendMinor: null,
         recommendedSpendMinor: null, deltaMinor: null, blendedRoas: null, rationale: 'unavailable' }],
-      projected: { blendedRevenueMinor: null, projectedCpaMinor: null, merBefore: null, merAfter: null },
+      projected: { blendedRevenueMinor: null, projectedCpaMinor: null, blendedRevenueEfficiencyBefore: null, blendedRevenueEfficiencyAfter: null },
       reasoningTrail: ['unavailable'],
     });
     expect(parsed.currency).toBeNull();

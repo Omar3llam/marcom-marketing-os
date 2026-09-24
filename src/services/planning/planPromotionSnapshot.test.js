@@ -36,6 +36,7 @@ const preview = () => ({
   currency: 'USD',
   monetaryStatus: 'MONETARY_VALID',
   monetaryReason: null,
+  efficiencyStatus: 'VALID', efficiencyReason: null,
   spendPeriod: { status: 'MEASURABLE', currency: 'USD', spendMinor: 1_000_000 },
   basis: 'blended',
   allocations: [
@@ -46,7 +47,7 @@ const preview = () => ({
       currentSpendMinor: 600_000, recommendedSpendMinor: 400_000, deltaMinor: -200_000,
       blendedRoas: 0.9, rationale: 'REALLOCATE at 0.90x blended' },
   ],
-  projected: { blendedRevenueMinor: 2_100_000, projectedCpaMinor: 3_100, merBefore: 1.7, merAfter: 2.1 },
+  projected: { blendedRevenueMinor: 2_100_000, projectedCpaMinor: 3_100, blendedRevenueEfficiencyBefore: 1.7, blendedRevenueEfficiencyAfter: 2.1 },
   reasoningTrail: ['ceiling 10,000.00 USD', 'META favoured on 2.40x blended'],
 });
 
@@ -73,7 +74,7 @@ describe('the snapshot is written whole', () => {
       goal: { type: 'GROWTH_CEILING', value: null },
       totalBudgetMinor: 1_000_000,
       currency: 'USD',
-      projected: { projectedCpaMinor: 3_100, merBefore: 1.7, merAfter: 2.1 },
+      projected: { projectedCpaMinor: 3_100, blendedRevenueEfficiencyBefore: 1.7, blendedRevenueEfficiencyAfter: 2.1 },
       reasoningTrail: ['ceiling 10,000.00 USD', 'META favoured on 2.40x blended'],
     });
   });
@@ -120,6 +121,16 @@ describe('the snapshot is read back whole', () => {
 });
 
 describe('an incomplete snapshot refuses — it is not filled in', () => {
+  it('keeps a complete old mer snapshot legacy rather than granting current authority', () => {
+    const p = storedPlan();
+    delete p.projections.mix.efficiencyStatus;
+    p.projections.mix.projected = { blendedRevenueMinor: 2_100_000, projectedCpaMinor: 3_100,
+      merBefore: 1.7, merAfter: 2.1 };
+    expect(() => planToAllocationCommit(p)).toThrowError(
+      expect.objectContaining({ code: PROMOTION_REFUSAL.SNAPSHOT_INCOMPLETE }),
+    );
+    expect(p.projections.mix.projected.merAfter).toBe(2.1); // read refusal did not rewrite history
+  });
   it('refuses a plan built before this contract, and names its prerequisite', () => {
     // Every plan on master carries channelMix and NO projections.mix. Its moves
     // are fully recorded; what it projected is not, and AllocationPlan.reasoning

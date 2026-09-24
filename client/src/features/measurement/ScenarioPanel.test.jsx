@@ -23,7 +23,7 @@ const configuredScenario = () => ({
     volume:           { low: 90,     expected: 100,    high: 110 },
     revenueMinor:     { low: 450000, expected: 500000, high: 550000 },
     grossProfitMinor: { low: 225000, expected: 250000, high: 275000 },
-    merAfter:         { low: 2.1,    expected: 2.5,    high: 2.9 },
+    blendedRevenueEfficiencyAfter: { low: 2.1, expected: 2.5, high: 2.9 },
   },
   assumptions: ['expected: added budget retains 85% of marginal efficiency'],
   confidence: 0.6,
@@ -61,7 +61,7 @@ describe('ScenarioPanel — economics NOT configured', () => {
     expect(screen.queryByText('100')).not.toBeInTheDocument();
   });
 
-  it('still renders the spend/ROAS-based MER (economics-independent)', () => {
+  it('still renders eligible blended efficiency without configured economics', () => {
     renderPanel(notConfiguredScenario());
     expect(screen.getByText('2.5×')).toBeInTheDocument();
   });

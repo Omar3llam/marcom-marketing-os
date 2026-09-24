@@ -8,10 +8,13 @@ vi.mock('../../utils/logger.js', () => ({
 }));
 
 import { reconcile, COVERAGE, CONFIDENCE } from './blendedTruthEngine.js';
+import { exactRevenueWindow } from '../../lib/revenueMeasurementWindow.js';
 
 const proven = (c) => {
   const state = { monetaryStatus: 'MONETARY_VALID', monetaryReason: null, currency: c.currency ?? 'EGP' };
-  return { ...c, monetaryEvidence: { spend: state, platform: state, actual: state, blended: state } };
+  const window = exactRevenueWindow('2026-08-01T00:00:00Z', '2026-09-01T00:00:00Z');
+  return { ...c, actualRevenueWindow: window, platformRevenueWindow: window, spendWindow: window,
+    monetaryEvidence: { spend: state, platform: state, actual: state, blended: state } };
 };
 const reconcileProven = ({ channels }) => reconcile({ channels: channels.map(proven) });
 
@@ -80,6 +83,17 @@ describe('blendedTruthEngine.reconcile', () => {
     expect(channels[0].platformRoas).toBeNull();
     expect(channels[0].blendedRoas).toBeNull();
     expect(channels[0].gapPct).toBeNull();
+  });
+
+  it('does not treat revenue-only actual streams as spend or platform evidence', () => {
+    const { portfolio } = reconcileProven({ channels: [
+      { channelId: 'meta', platformRevenueMinor: 200, actualRevenueMinor: null, spendMinor: 100 },
+      { channelId: 'actual', platformRevenueMinor: 0, actualRevenueMinor: 100, spendMinor: 0,
+        spendEvidencePresent: false, platformEvidencePresent: false },
+    ] });
+    expect(portfolio.spendMinor).toBe(100);
+    expect(portfolio.blendedRevenueMinor).toBe(300);
+    expect(portfolio.blendedRevenueEfficiency.value).toBe(3);
   });
 
   it('throws on a non-finite platform revenue', () => {

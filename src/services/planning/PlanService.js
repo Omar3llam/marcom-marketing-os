@@ -292,7 +292,10 @@ export async function buildPlan(workspaceId, { name, periodStart, periodEnd, tot
   // Sustainability of the projected CAC (scenario range if present, else the
   // allocation's projected CPA point).
   const cacMinor = scenario?.projections?.blendedCacMinor ?? mix?.projected?.projectedCpaMinor ?? null;
-  const econ = cacMinor != null ? await assessSustainability(workspaceId, { cacMinor, currency: mix.currency }) : null;
+  const expectedCac = typeof cacMinor === 'object' ? cacMinor?.expected : cacMinor;
+  const econ = Number.isFinite(expectedCac) && expectedCac > 0
+    ? await assessSustainability(workspaceId, { cacMinor, currency: mix.currency })
+    : null;
 
   // Goal landing (best-effort) before persistence, so the plan stores an
   // initial read alongside its target.
@@ -303,7 +306,8 @@ export async function buildPlan(workspaceId, { name, periodStart, periodEnd, tot
   const memoryBasis = scenario?.memoryBasis ?? [];
   const currency = mix.currency;
   const projections = {
-    scenario: scenario ? { scenarioType: scenario.scenarioType, projections: scenario.projections, assumptions: scenario.assumptions, confidence: scenario.confidence, basis: scenario.basis } : null,
+    scenario: scenario ? { scenarioType: scenario.scenarioType, projections: scenario.projections, assumptions: scenario.assumptions, confidence: scenario.confidence, basis: scenario.basis,
+      efficiencyStatus: scenario.efficiencyStatus, efficiencyReason: scenario.efficiencyReason } : null,
     economics: econ?.result ? { ltvToCac: econ.result.ltvToCac, sustainabilityBand: econ.result.sustainabilityBand, paybackOrders: econ.result.paybackOrders, ltvMinor: econ.result.ltvMinor, isDefault: econ.isDefault, assumptions: econ.result.assumptions } : null,
     goalLanding: landing,
     goalTracking: tracking ? { contractVersion: 1, status: tracking.status, unavailableReason: tracking.reason, measuredCurrency: tracking.currency } : null,

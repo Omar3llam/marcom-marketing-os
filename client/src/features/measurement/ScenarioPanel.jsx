@@ -18,7 +18,7 @@ import { formatCurrency } from '@/lib/money';
 import { appRoutes } from '@/app/routeManifest.js';
 import UpgradePrompt from '@/components/plan/UpgradePrompt.jsx';
 
-const money = (minor, ccy = 'USD') => (minor == null ? '—' : formatCurrency(minor, ccy));
+const money = (minor, ccy) => (minor == null || !ccy ? '—' : formatCurrency(minor, ccy));
 
 const num = (v, digits = 0) => (v == null ? '—' : Number(v).toLocaleString(undefined, { maximumFractionDigits: digits }));
 
@@ -85,8 +85,8 @@ export function ScenarioPanel({ scenario, message = null, gated = false, loading
   if (gated) return <UpgradePrompt feature="Scenario projection" requiredPlan="PRO" />;
 
   // The scenario's own currency wins (most specific); else the workspace currency
-  // threaded from the page; else USD. Never a hardcoded assumption.
-  const ccy = scenario?.currency ?? currency ?? 'USD';
+  // threaded from the page. Without either, monetary projections stay unavailable.
+  const ccy = scenario?.currency ?? currency ?? null;
   const p = scenario?.projections;
   // When the workspace hasn't asserted its unit economics, the server blanks the
   // AOV/margin-derived projections (volume, CAC, gross profit) to null ranges (→ "—")
@@ -116,6 +116,9 @@ export function ScenarioPanel({ scenario, message = null, gated = false, loading
         {!error && scenario && p && (
           <div className="mt-5 grid gap-5 md:grid-cols-2">
             <div>
+              {scenario.efficiencyStatus === 'UNAVAILABLE' && (
+                <p className="mb-3 text-xs text-lumi-subtle">Blended efficiency unavailable: {scenario.efficiencyReason ?? 'insufficient evidence'}.</p>
+              )}
               <div className="flex items-center gap-2 mb-1.5">
                 <LineChart className="w-4 h-4 text-lumi-accent" strokeWidth={1.5} />
                 <span className="font-display text-sm text-lumi-text">Projected outcome</span>
@@ -129,7 +132,7 @@ export function ScenarioPanel({ scenario, message = null, gated = false, loading
               <RangeRow label="Volume (orders)" range={p.volume} fmt={(v) => num(v)} />
               <RangeRow label="Revenue" range={p.revenueMinor} fmt={(v) => money(v, ccy)} />
               <RangeRow label="Gross profit" range={p.grossProfitMinor} fmt={(v) => money(v, ccy)} />
-              <RangeRow label="MER after" range={p.merAfter} fmt={(v) => `${num(v, 2)}×`} />
+              <RangeRow label="Projected blended efficiency" range={p.blendedRevenueEfficiencyAfter} fmt={(v) => v == null ? '—' : `${num(v, 2)}×`} />
               <p className="mt-2 text-[11px] text-lumi-subtle">
                 Projected CAC is a forward hypothetical — not the account’s realized current CAC.
               </p>

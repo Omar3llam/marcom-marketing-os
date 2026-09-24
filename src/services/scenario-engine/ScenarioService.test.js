@@ -6,7 +6,7 @@
 // never dressed as a measurement. When economics is unconfigured (isDefault),
 // the volume-derived projections (volume, blendedCacMinor, grossProfitMinor)
 // are blanked to honest null ranges (→ "—") + an explicit assumption, while the
-// spend/ROAS-based projections (revenueMinor, merAfter) are always preserved.
+// Spend-based projections are preserved only after eligibility is established.
 // Pure helper → tested without a DB (mirrors buildScenarioInputs).
 // ============================================================
 import { describe, it, expect } from 'vitest';
@@ -24,7 +24,7 @@ const baseScenario = () => ({
     volume:           { low: 90,     expected: 100,    high: 110 },
     revenueMinor:     { low: 450000, expected: 500000, high: 550000 },
     grossProfitMinor: { low: 225000, expected: 250000, high: 275000 },
-    merAfter:         { low: 2.1,    expected: 2.5,    high: 2.9 },
+    blendedRevenueEfficiencyAfter: { low: 2.1, expected: 2.5, high: 2.9 },
   },
   assumptions: ['expected: added budget retains 85% of marginal efficiency'],
   confidence: 0.6,
@@ -39,10 +39,10 @@ describe('withEconomicsStatus — economics NOT configured (isDefault=true)', ()
     expect(out.projections.grossProfitMinor).toEqual(NULL_RANGE);
   });
 
-  it('preserves the spend/ROAS-based projections (revenue, MER)', () => {
+  it('preserves eligible revenue and blended efficiency projections', () => {
     const out = withEconomicsStatus(baseScenario(), true);
     expect(out.projections.revenueMinor).toEqual({ low: 450000, expected: 500000, high: 550000 });
-    expect(out.projections.merAfter).toEqual({ low: 2.1, expected: 2.5, high: 2.9 });
+    expect(out.projections.blendedRevenueEfficiencyAfter).toEqual({ low: 2.1, expected: 2.5, high: 2.9 });
   });
 
   it('stamps economicsStatus = NOT_CONFIGURED', () => {

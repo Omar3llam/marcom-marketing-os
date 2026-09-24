@@ -57,6 +57,8 @@ const mix = ({ deltas, spendPeriod }) => ({
   currency: spendPeriod?.status === 'MEASURABLE' ? 'USD' : null,
   monetaryStatus: spendPeriod?.status === 'MEASURABLE' ? 'MONETARY_VALID' : 'MONETARY_UNAVAILABLE_UNTRUSTED',
   monetaryReason: spendPeriod?.status === 'MEASURABLE' ? null : spendPeriod?.reason ?? 'WINDOW_UNKNOWN',
+  efficiencyStatus: spendPeriod?.status === 'MEASURABLE' ? 'VALID' : 'UNAVAILABLE',
+  efficiencyReason: spendPeriod?.status === 'MEASURABLE' ? null : spendPeriod?.reason ?? 'MEASUREMENT_WINDOW_UNKNOWN',
   ...(spendPeriod === undefined ? {} : { spendPeriod }),
   allocations: deltas.map((d, i) => ({
     channelId: `ch-${i}`, channel: 'META', verdict: 'HOLD', blendedRoas: 2,
@@ -64,7 +66,7 @@ const mix = ({ deltas, spendPeriod }) => ({
     recommendedSpendMinor: d == null ? null : 500_000 + d,
     deltaMinor: d, rationale: 'because',
   })),
-  projected: { blendedRevenueMinor: null, projectedCpaMinor: null, merBefore: null, merAfter: null },
+  projected: { blendedRevenueMinor: null, projectedCpaMinor: null, blendedRevenueEfficiencyBefore: null, blendedRevenueEfficiencyAfter: null },
   reasoningTrail: ['a trail'],
 });
 
