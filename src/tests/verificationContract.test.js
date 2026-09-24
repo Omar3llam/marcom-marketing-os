@@ -128,7 +128,7 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
   // 31 — two increments landed without it. A title that disagrees with its own
   // assertion is a small untruth inside the verification contract itself, so it
   // now states the same number the test enforces.
-  it('the census matches the current baseline of 37 files', () => {
+  it('the census matches the current baseline of 38 files', () => {
     // A drift here is not automatically a failure — but it must be NOTICED,
     // because a new DB-gated file added through a different mechanism is
     // exactly how the guarantee erodes.
@@ -205,7 +205,10 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
     // 36 → 37 in Phase 6: currencyProvenance.integration.test.js proves the
     // shipped migration preserves legacy amounts/codes and real snapshot
     // inserts/restatements carry origin. Both require PostgreSQL semantics.
-    expect(dbGatedFiles().length).toBe(37);
+    // 37 → 38 in Phase 6: AllocationPlanStorage.integration.test.js proves the
+    // additive migration preserves legacy rows and new Prisma writes leave
+    // MER-named columns null for readers from before #497.
+    expect(dbGatedFiles().length).toBe(38);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {

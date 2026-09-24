@@ -1919,8 +1919,10 @@ model AllocationPlan {
   // Projected blended impact (minor units / ratios).
   projectedRoas     Float?
   projectedCpaMinor Int?
-  merBefore         Float? // legacy physical name; tagged new rows store blended revenue efficiency before
-  merAfter          Float? // legacy physical name; tagged new rows store blended revenue efficiency after
+  merBefore                         Float? // legacy-only projected efficiency; never written by new blended-efficiency plans
+  merAfter                          Float? // legacy-only projected efficiency; never written by new blended-efficiency plans
+  blendedRevenueEfficiencyBefore    Float? // selected Blended Truth revenue / compatible paid-media spend
+  blendedRevenueEfficiencyAfter     Float? // projected selected revenue / projected paid-media spend
 
   reasoning String // newline-joined reasoning trail
   status    AllocationStatus @default(PROPOSED)

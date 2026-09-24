@@ -74,14 +74,19 @@ describe('AllocationService.planToDecisionRows — governance', () => {
 });
 
 describe('AllocationPlan persistence adapter', () => {
-  it('maps only valid semantic ratios into the legacy physical columns', async () => {
+  it('writes valid semantic ratios only to dedicated columns, safely for an old reader', async () => {
     const create = vi.fn(async ({ data }) => ({ id: 'plan-1', ...data }));
     const db = { allocationPlan: { create }, decision: { createMany: vi.fn(async () => ({})) } };
     const plan = samplePlan();
     await persistAllocation(db, 'ws1', plan);
     const data = create.mock.calls[0][0].data;
-    expect(data.merBefore).toBe(plan.projected.blendedRevenueEfficiencyBefore);
-    expect(data.merAfter).toBe(plan.projected.blendedRevenueEfficiencyAfter);
+    expect(data.blendedRevenueEfficiencyBefore).toBe(plan.projected.blendedRevenueEfficiencyBefore);
+    expect(data.blendedRevenueEfficiencyAfter).toBe(plan.projected.blendedRevenueEfficiencyAfter);
+    expect(data.merBefore).toBeNull();
+    expect(data.merAfter).toBeNull();
+    // Pre-#497 feed readers selected only these two physical columns.
+    const oldReader = (row) => ({ merBefore: row.merBefore, merAfter: row.merAfter });
+    expect(oldReader(data)).toEqual({ merBefore: null, merAfter: null });
     expect(data.projectedRoas).toBeNull();
     expect(data.reasoning).toMatch(/^\[BLENDED_REVENUE_EFFICIENCY_V1\]/);
   });

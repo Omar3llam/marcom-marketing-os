@@ -1,6 +1,6 @@
-// AllocationPlan's physical merBefore/merAfter columns predate the current
-// metric contract. New writes carry a marker in the existing reasoning field;
-// unmarked historical rows remain legacy and cannot be promoted by a read.
+// AllocationPlan's physical merBefore/merAfter columns are legacy-only.
+// New writes use dedicated semantic columns. The reasoning marker remains for
+// audit of #497-era rows, but it grants no metric authority to legacy columns.
 const MARKER = '[BLENDED_REVENUE_EFFICIENCY_V1]\n';
 
 export function tagAllocationReasoning(lines) {
@@ -8,12 +8,13 @@ export function tagAllocationReasoning(lines) {
 }
 
 export function readAllocationEfficiency(row) {
-  if (!row?.reasoning?.startsWith(MARKER)
-    || !Number.isFinite(row.merBefore) || !Number.isFinite(row.merAfter)) {
-    return { efficiencyStatus: 'LEGACY_PROJECTED_EFFICIENCY',
-      blendedRevenueEfficiencyBefore: null, blendedRevenueEfficiencyAfter: null };
+  if (Number.isFinite(row?.blendedRevenueEfficiencyBefore)
+    && Number.isFinite(row?.blendedRevenueEfficiencyAfter)) {
+    return { efficiencyStatus: 'BLENDED_REVENUE_EFFICIENCY',
+      blendedRevenueEfficiencyBefore: row.blendedRevenueEfficiencyBefore,
+      blendedRevenueEfficiencyAfter: row.blendedRevenueEfficiencyAfter };
   }
-  return { efficiencyStatus: 'VALID',
-    blendedRevenueEfficiencyBefore: row.merBefore,
-    blendedRevenueEfficiencyAfter: row.merAfter };
+  return { efficiencyStatus: Number.isFinite(row?.merBefore) || Number.isFinite(row?.merAfter)
+    ? 'LEGACY_PROJECTED_EFFICIENCY' : 'UNAVAILABLE',
+  blendedRevenueEfficiencyBefore: null, blendedRevenueEfficiencyAfter: null };
 }
