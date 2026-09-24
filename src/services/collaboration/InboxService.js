@@ -22,6 +22,18 @@ const AUDIENCE_BY_ROLE = Object.freeze({
   CLIENT:     'LEADERSHIP',
 });
 
+// Keep the failed source identifiable in server logs while the route publishes
+// only its existing, safe InboxUnavailable response.
+export async function readInboxSource(source, read) {
+  try {
+    return await read();
+  } catch (cause) {
+    const error = new Error(`Inbox ${source} read failed`, { cause });
+    error.source = source;
+    throw error;
+  }
+}
+
 /**
  * Compose the inbox for a role. `alerts` are the live streams the caller
  * already has (feed.js); we route + tag them, attach the latest narrative,
@@ -36,16 +48,16 @@ export async function inboxFor(workspaceId, role, { alerts = [] } = {}) {
   const routed = routeByRole({ role: r, alerts });
 
   const [latestNarrative, pendingApprovals] = await Promise.all([
-    prisma.stakeholderNarrative.findFirst({
+    readInboxSource('NARRATIVE', () => prisma.stakeholderNarrative.findFirst({
       where: { workspaceId, audience: AUDIENCE_BY_ROLE[r] },
       orderBy: { createdAt: 'desc' },
       select: { id: true, headline: true, period: true, confidenceScore: true, createdAt: true },
-    }).catch(() => null),
+    })),
     r === WORKSPACE_ROLE.STRATEGIST
-      ? prisma.approvalRequest.findMany({
+      ? readInboxSource('APPROVAL', () => prisma.approvalRequest.findMany({
           where: { workspaceId, state: 'PENDING' },
           orderBy: { createdAt: 'desc' }, take: 10,
-        }).catch(() => [])
+        }))
       : Promise.resolve([]),
   ]);
 
