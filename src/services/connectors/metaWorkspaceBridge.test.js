@@ -66,6 +66,7 @@ vi.mock('./snapshotSink.js', () => ({ landSnapshots: vi.fn(async () => ({ entiti
 vi.mock('../metaAdsService.js', async (importOriginal) => ({
   ...(await importOriginal()),
   fetchAccountCurrency: vi.fn(async () => null), // no real network for the currency probe
+  fetchAccountTimezone: vi.fn(async () => null),
   fetchCampaignInsights: vi.fn(async () => ([
     { _data: { campaign_id: 'c1', campaign_name: 'M Camp', spend: '100.00', impressions: '1000', clicks: '50', actions: [], action_values: [{ action_type: 'offsite_conversion.fb_pixel_purchase', value: '420.00' }] } },
   ])),
@@ -91,6 +92,7 @@ vi.mock('../metaAdsService.js', async (importOriginal) => ({
 }));
 vi.mock('./google/googleAdsClient.js', async (importOriginal) => ({
   ...(await importOriginal()),
+  fetchGoogleCustomerTimezone: vi.fn(async () => null),
   fetchGoogleCampaignMetrics: vi.fn(async () => ([
     { campaign: { id: 'g1', name: 'G Camp' }, metrics: { cost_micros: 800000, impressions: 2000, clicks: 40, conversions: 3, conversions_value: 300 } },
   ])),

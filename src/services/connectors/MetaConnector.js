@@ -9,7 +9,7 @@
 import { prisma } from '../../lib/prisma.js';
 import { logger } from '../../utils/logger.js';
 import {
-  fetchCampaignInsights, fetchAccountCurrency, fetchAllCampaigns, mergeMetaCampaigns,
+  fetchCampaignInsights, fetchAccountCurrency, fetchAccountTimezone, fetchAllCampaigns, mergeMetaCampaigns,
   fetchAdSetInsights, fetchAllAdSets, mergeMetaAdSets,
   fetchAdInsights, fetchAllAds, mergeMetaAds, fetchCanonicalAllLevels, fetchDailyInsights,
 } from '../metaAdsService.js';
@@ -33,7 +33,10 @@ export class MetaConnector extends ChannelConnector {
     // stored currency, then USD. fetchAccountCurrency never throws → a currency
     // lookup can never break the sync. This single field threads through
     // `...auth` → normalize → toMinor → every snapshot row's currency.
-    const metaCurrency = await fetchAccountCurrency(cred.accessToken, cred.accountId);
+    const [metaCurrency, accountTimeZone] = await Promise.all([
+      fetchAccountCurrency(cred.accessToken, cred.accountId),
+      fetchAccountTimezone(cred.accessToken, cred.accountId),
+    ]);
     let ws = null;
     try {
       ws = await prisma.workspace.findUnique({ where: { id: workspaceId }, select: { currency: true } });
@@ -61,6 +64,7 @@ export class MetaConnector extends ChannelConnector {
       accountName: null,
       currency,
       currencyProvenance,
+      accountTimeZone,
     };
   }
 
@@ -146,8 +150,8 @@ export class MetaConnector extends ChannelConnector {
     return rows;
   }
 
-  normalize({ accountExternalId, accountName, currency, currencyProvenance, date = new Date(), rows = [] }) {
-    const out = metaNormalize({ accountExternalId, accountName, currency, currencyProvenance, date, rows });
+  normalize({ accountExternalId, accountName, currency, currencyProvenance, accountTimeZone, date = new Date(), rows = [] }) {
+    const out = metaNormalize({ accountExternalId, accountName, currency, currencyProvenance, accountTimeZone, date, rows });
     return assertNormalized(out);
   }
 
@@ -206,13 +210,13 @@ export class MetaConnector extends ChannelConnector {
    * `time_increment` produces zero snapshots and a pile of NOT_ONE_DAY, and the
    * caller must be able to tell that from an account that simply did not deliver.
    */
-  normalizeDaily({ accountExternalId, currency, currencyProvenance, date = new Date(), rows = [] }) {
-    return metaDailyNormalize({ accountExternalId, currency, currencyProvenance, date, rows });
+  normalizeDaily({ accountExternalId, currency, currencyProvenance, accountTimeZone, date = new Date(), rows = [] }) {
+    return metaDailyNormalize({ accountExternalId, currency, currencyProvenance, accountTimeZone, date, rows });
   }
 
-  normalizeCanonical({ accountExternalId, accountName, currency, currencyProvenance, date = new Date(), rows = [], windowStart, windowEnd }) {
+  normalizeCanonical({ accountExternalId, accountName, currency, currencyProvenance, accountTimeZone, date = new Date(), rows = [], windowStart, windowEnd }) {
     const out = metaNormalize({
-      accountExternalId, accountName, currency, currencyProvenance, date, rows,
+      accountExternalId, accountName, currency, currencyProvenance, accountTimeZone, date, rows,
       measurementWindow: MEASUREMENT_WINDOW.CUMULATIVE_30D,
       requestedWindowStart: windowStart ?? null,
       requestedWindowEnd: windowEnd ?? null,

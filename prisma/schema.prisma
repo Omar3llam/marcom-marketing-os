@@ -1284,6 +1284,12 @@ model MetricSnapshot {
   // "unreported", never a fabricated range.
   windowStart DateTime?
   windowEnd   DateTime?
+  // Paid-media windowStart/windowEnd historically contain source-local DATE
+  // labels parsed as UTC midnights. They cannot prove UTC instants. Only these
+  // new nullable bounds carry a source-timezone-proven spend interval; null
+  // leaves all historical and unproven observations UNKNOWN without backfill.
+  spendWindowStartUtc DateTime?
+  spendWindowEndUtc   DateTime?
 
   // Money — integer minor units (e.g. piastres, halalas, fils, cents).
   spendMinor   Int  @default(0)

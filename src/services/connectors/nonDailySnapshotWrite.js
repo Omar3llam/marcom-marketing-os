@@ -73,7 +73,7 @@ const CAST = Object.freeze({
 });
 
 /** Columns stored as `timestamp WITHOUT time zone`. */
-const TIMESTAMP_COLUMNS = new Set(['date', 'windowStart', 'windowEnd']);
+const TIMESTAMP_COLUMNS = new Set(['date', 'windowStart', 'windowEnd', 'spendWindowStartUtc', 'spendWindowEndUtc']);
 
 /** PURE: the value expression for one column, with whatever cast it needs. */
 function valueExpr(column, value) {

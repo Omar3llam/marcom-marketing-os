@@ -65,7 +65,8 @@ describe('selected blended revenue window', () => {
   const end = new Date('2026-08-31T23:59:59.999Z');
   const platform = (over = {}) => snap({ entityId: 'A', source: 'META',
     date: new Date('2026-09-01T12:00:00Z'), spendMinor: 100, revenueMinor: 300,
-    measurementWindow: 'ROLLING_WINDOW', windowStart: start, windowEnd: end, ...over });
+    measurementWindow: 'ROLLING_WINDOW', windowStart: start, windowEnd: end,
+    spendWindowStartUtc: start, spendWindowEndUtc: end, ...over });
   const actual = (over = {}) => snap({ entityId: 'A', source: 'GA4',
     date: new Date('2026-09-01T12:00:00Z'), revenueMinor: 250,
     measurementWindow: 'ROLLING_WINDOW', windowStart: start, windowEnd: end, ...over });

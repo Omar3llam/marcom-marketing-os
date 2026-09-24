@@ -96,6 +96,8 @@ describe('R8 seam — one Meta day becomes exactly one row', () => {
       // The MEASURED day — the platform's own dates, inclusive both ends.
       windowStart: new Date('2026-08-10T00:00:00.000Z'),
       windowEnd: new Date('2026-08-10T00:00:00.000Z'),
+      spendWindowStartUtc: null, // no source account timezone supplied in this fixture
+      spendWindowEndUtc: null,
       spendMinor: 42000,
       revenueMinor: 210000,
       cpaMinor: 3500,               // 42000 / 12, derived by the shared builder

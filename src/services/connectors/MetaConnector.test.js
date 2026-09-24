@@ -27,6 +27,7 @@ vi.mock('../metaAdsService.js', async (importActual) => {
   return {
     ...actual,
     fetchAccountCurrency: vi.fn(),
+    fetchAccountTimezone: vi.fn(async () => null),
     fetchCampaignInsights: vi.fn(),
     fetchAllCampaigns: vi.fn(),
     // The ad-set edges MUST be stubbed too. Left real they call initSdk and hit

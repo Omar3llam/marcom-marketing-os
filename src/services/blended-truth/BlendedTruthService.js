@@ -11,7 +11,7 @@
 // and differ only by `source`.
 // ============================================================
 import { prisma } from '../../lib/prisma.js';
-import { combineRevenueWindows, revenueWindowOfSnapshot } from '../../lib/revenueMeasurementWindow.js';
+import { combineRevenueWindows, revenueWindowOfSnapshot, spendWindowOfSnapshot } from '../../lib/revenueMeasurementWindow.js';
 import { logger } from '../../utils/logger.js';
 import { reconcile } from './blendedTruthEngine.js';
 import { isStale } from '../connectors/connectorTypes.js';
@@ -111,6 +111,7 @@ export function buildChannelInputs(snapshots, labelsById = new Map()) {
         _actualEvidence: [],
         _actualWindows: [],
         _platformWindows: [],
+        _spendWindows: [],
       });
     }
     const row = byChannel.get(key);
@@ -123,10 +124,11 @@ export function buildChannelInputs(snapshots, labelsById = new Map()) {
       row.spendMinor           += s.spendMinor ?? 0;
       row._platformEvidence.push({ amountMinor: s.revenueMinor, currency: s.currency, currencyProvenance: s.currencyProvenance });
       row._platformWindows.push(revenueWindowOfSnapshot(s));
+      row._spendWindows.push(spendWindowOfSnapshot(s));
       row._spendEvidence.push({ amountMinor: s.spendMinor, currency: s.currency, currencyProvenance: s.currencyProvenance });
     }
   }
-  return [...byChannel.values()].map(({ _spendEvidence, _platformEvidence, _actualEvidence, _actualWindows, _platformWindows, ...row }) => {
+  return [...byChannel.values()].map(({ _spendEvidence, _platformEvidence, _actualEvidence, _actualWindows, _platformWindows, _spendWindows, ...row }) => {
     const spend = authoritativeMoney(_spendEvidence);
     const platform = authoritativeMoney(_platformEvidence);
     const actual = authoritativeMoney(_actualEvidence);
@@ -134,12 +136,14 @@ export function buildChannelInputs(snapshots, labelsById = new Map()) {
     const monetary = sameMonetaryUnit(spend, blended);
     const actualRevenueWindow = combineRevenueWindows(_actualWindows);
     const platformRevenueWindow = combineRevenueWindows(_platformWindows);
+    const spendWindow = combineRevenueWindows(_spendWindows);
     const blendedRevenueWindow = row.actualRevenueMinor != null ? actualRevenueWindow : platformRevenueWindow;
     return {
       ...row, currency: monetary.currency,
       monetaryEvidence: { spend, platform, actual, blended },
       monetaryStatus: monetary.monetaryStatus, monetaryReason: monetary.monetaryReason,
-      actualRevenueWindow, platformRevenueWindow, blendedRevenueWindow,
+      actualRevenueWindow, platformRevenueWindow, blendedRevenueWindow, spendWindow,
+      spendEvidencePresent: _spendWindows.length > 0,
     };
   });
 }
@@ -181,7 +185,7 @@ export async function getBlendedTruth(workspaceId, { lookbackDays = SYNC_RECENCY
     // from that row. The Evidence seam still owns the population filter.
     selectOperationalSnapshots(workspaceId, {
       since,
-      select: { entityId: true, date: true, source: true, revenueMinor: true, spendMinor: true, currency: true, currencyProvenance: true, measurementWindow: true, windowStart: true, windowEnd: true },
+      select: { entityId: true, date: true, source: true, revenueMinor: true, spendMinor: true, currency: true, currencyProvenance: true, measurementWindow: true, windowStart: true, windowEnd: true, spendWindowStartUtc: true, spendWindowEndUtc: true },
       orderBy: null,
     }),
     // Snapshots are CAMPAIGN-grain: MetricSnapshot.entityId == Campaign.id (both are

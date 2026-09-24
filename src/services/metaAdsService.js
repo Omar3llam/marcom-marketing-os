@@ -139,6 +139,20 @@ export async function fetchAccountCurrency(accessToken, adAccountId) {
   }
 }
 
+/** Account-local reporting timezone from Meta itself; never a workspace guess. */
+export async function fetchAccountTimezone(accessToken, adAccountId) {
+  try {
+    const accountId = normalizeAccountId(adAccountId);
+    const res = await fetch(`${GRAPH_BASE}/${accountId}?fields=timezone_name`, { headers: bearer(accessToken) });
+    const body = await res.json();
+    if (!res.ok || body?.error) return null;
+    return typeof body?.timezone_name === 'string' ? body.timezone_name : null;
+  } catch (err) {
+    logger.warn({ adAccountId, err: err.message }, '[Meta] account timezone fetch failed');
+    return null;
+  }
+}
+
 /**
  * Create a PAUSED test campaign to verify the token + account are valid.
  * Returns the campaign_id string.

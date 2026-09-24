@@ -11,6 +11,7 @@
 import { currencyWithProvenance } from '../../../lib/currencyProvenance.js';
 import { toMinor } from '../../../lib/money.js';
 import { logger } from '../../../utils/logger.js';
+import { sourceLocalDayWindow } from '../../../lib/sourceLocalDayWindow.js';
 import { num, accountRollup } from './fieldUtils.js';
 import { CHANNEL, DATA_SOURCE, MEASUREMENT_WINDOW } from '../connectorTypes.js';
 
@@ -25,16 +26,24 @@ export function microsToMinor(micros, currency) {
  * @returns {NormalizedSnapshot[]} one ACCOUNT rollup + one CAMPAIGN row each
  */
 export function googleNormalize({
-  accountExternalId, accountName = null, currency, currencyProvenance, date, rows = [],
+  accountExternalId, accountName = null, currency, currencyProvenance, accountTimeZone = null, date, rows = [],
   // Window provenance. Defaults preserve the OPERATIONAL contract exactly, so
   // every existing caller is unchanged; only the canonical path passes these.
   measurementWindow = MEASUREMENT_WINDOW.ROLLING_WINDOW,
   windowStart = null,
   windowEnd = null,
+  reportedRange = null,
 }) {
   const denomination = currencyWithProvenance(currency, currencyProvenance);
   currency = denomination.currency;
   const d = date instanceof Date ? date : new Date(date);
+  const rangeStart = reportedRange?.startDate ?? (windowStart instanceof Date ? windowStart.toISOString().slice(0, 10) : null);
+  const rangeEnd = reportedRange?.endDate ?? (windowEnd instanceof Date ? windowEnd.toISOString().slice(0, 10) : null);
+  const spendWindow = sourceLocalDayWindow(rangeStart, rangeEnd, accountTimeZone);
+  // These two existing fields retain source-local date labels for budget-period
+  // consumers. UTC instant proof lives separately and only on new observations.
+  const reportedStart = reportedRange?.startDate ? new Date(`${rangeStart}T00:00:00.000Z`) : windowStart;
+  const reportedEnd = reportedRange?.endDate ? new Date(`${rangeEnd}T00:00:00.000Z`) : windowEnd;
   const campaigns = rows
     // R9 (I41) — a row with NEITHER a platform id NOR a name has no identity of
     // its own, and the old `?? 'unknown'` fallback gave every such row the SAME
@@ -81,8 +90,10 @@ export function googleNormalize({
         // returned `segments.date` fell inside those bounds before it aggregates,
         // and refuses to build a row at all if one did not.
         measurementWindow,
-        windowStart,
-        windowEnd,
+        windowStart: reportedStart,
+        windowEnd: reportedEnd,
+        spendWindowStartUtc: spendWindow.windowStart,
+        spendWindowEndUtc: spendWindow.windowEnd,
         currency,
         spendMinor: microsToMinor(m.cost_micros, currency),
         revenueMinor: toMinor(num(m.conversions_value), currency), // claimed value, as-is

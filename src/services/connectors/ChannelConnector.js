@@ -88,6 +88,9 @@ export function assertNormalized(rows) {
         `NormalizedSnapshot.measurementWindow must be one of ${Object.values(MEASUREMENT_WINDOW).join('/')}: ${r.measurementWindow}`,
       );
     }
+    if ((r.spendWindowStartUtc == null) !== (r.spendWindowEndUtc == null)) {
+      throw new Error('NormalizedSnapshot: exact spend window requires both UTC bounds');
+    }
   }
   return rows;
 }

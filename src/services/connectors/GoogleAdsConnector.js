@@ -37,6 +37,8 @@ export class GoogleAdsConnector extends ChannelConnector {
     }
     const { currency, currencyProvenance } = resolveSyncCurrencyWithProvenance(null, ws?.currency);
 
+    const { fetchGoogleCustomerTimezone } = await import('./google/googleAdsClient.js');
+    const accountTimeZone = await fetchGoogleCustomerTimezone({ refreshToken: cred.refreshToken, accountExternalId: cred.accountId });
     return {
       ok: true,
       accessToken: cred.accessToken,
@@ -45,6 +47,7 @@ export class GoogleAdsConnector extends ChannelConnector {
       accountName: null,
       currency,
       currencyProvenance,
+      accountTimeZone,
     };
   }
 
@@ -56,8 +59,9 @@ export class GoogleAdsConnector extends ChannelConnector {
     return fetchGoogleCampaignMetrics(auth, dateRange);
   }
 
-  normalize({ accountExternalId, accountName, currency, currencyProvenance, date = new Date(), rows = [] }) {
-    const out = googleNormalize({ accountExternalId, accountName, currency, currencyProvenance, date, rows });
+  normalize({ accountExternalId, accountName, currency, currencyProvenance, accountTimeZone, date = new Date(), rows = [] }) {
+    const out = googleNormalize({ accountExternalId, accountName, currency, currencyProvenance, accountTimeZone, date, rows,
+      reportedRange: rows.reportedRange ?? null });
     return assertNormalized(out);
   }
 
@@ -91,9 +95,9 @@ export class GoogleAdsConnector extends ChannelConnector {
    * `segments.date` before aggregation. If that corroboration failed, no rows
    * reached this point at all.
    */
-  normalizeCanonical({ accountExternalId, accountName, currency, currencyProvenance, date = new Date(), rows = [], windowStart, windowEnd }) {
+  normalizeCanonical({ accountExternalId, accountName, currency, currencyProvenance, accountTimeZone, date = new Date(), rows = [], windowStart, windowEnd }) {
     const out = googleNormalize({
-      accountExternalId, accountName, currency, currencyProvenance, date, rows,
+      accountExternalId, accountName, currency, currencyProvenance, accountTimeZone, date, rows,
       measurementWindow: MEASUREMENT_WINDOW.CUMULATIVE_30D,
       windowStart: windowStart ?? null,
       windowEnd: windowEnd ?? null,

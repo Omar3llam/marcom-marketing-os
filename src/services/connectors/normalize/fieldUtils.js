@@ -1,4 +1,5 @@
 // Shared field helpers for connector normalizers. Pure.
+import { combineRevenueWindows, exactRevenueWindow } from '../../../lib/revenueMeasurementWindow.js';
 export const num = (v) => {
   if (v == null || v === '') return 0;
   const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/[^0-9.\-]/g, ''));
@@ -36,6 +37,8 @@ export function accountRollup(rows, { accountExternalId, accountName, channel, s
   // Children of one request share a window; take the first that reported one.
   // Never widened to min/max: that would describe a range no row measured.
   const withWindow = rows.find((r) => r.windowStart != null || r.windowEnd != null) || {};
+  const spendWindows = rows.map((r) => exactRevenueWindow(r.spendWindowStartUtc, r.spendWindowEndUtc));
+  const spendWindow = combineRevenueWindows(spendWindows);
   const acc = { spendMinor: 0, revenueMinor: 0, impressions: 0, clicks: 0, conversions: 0 };
   for (const r of rows) {
     acc.spendMinor += r.spendMinor;
@@ -56,6 +59,8 @@ export function accountRollup(rows, { accountExternalId, accountName, channel, s
     measurementWindow,
     windowStart: withWindow.windowStart ?? null,
     windowEnd: withWindow.windowEnd ?? null,
+    spendWindowStartUtc: spendWindow.windowStart,
+    spendWindowEndUtc: spendWindow.windowEnd,
     frequency: null,
     ...acc,
   };
