@@ -104,7 +104,6 @@ userRouter.get('/workspace', async (req, res) => {
     }, '[userRouter] GET /workspace error');
     return res.status(500).json({
       error:  'Failed to fetch workspace',
-      detail: process.env.NODE_ENV === 'development' ? err.message : undefined,
     });
   }
 });

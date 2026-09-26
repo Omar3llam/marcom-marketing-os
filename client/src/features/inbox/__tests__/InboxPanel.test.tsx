@@ -74,6 +74,18 @@ describe('InboxPanel — honest states + actionable navigation', () => {
     expect(screen.queryByText(/You’re all caught up/i)).not.toBeInTheDocument();
   });
 
+  it.each([409, 503])('workspace %s stays separate from successful empty Inbox', (httpStatus) => {
+    const error = Object.assign(new Error('workspace'), { httpStatus, code: httpStatus === 409 ? 'NoWorkspace' : 'PLATFORM_ERROR' });
+    vi.mocked(useInbox).mockReturnValue({ items: [], isLoading: false, error, refetch: vi.fn() });
+    render(<InboxPanel onClose={vi.fn()} onNavigate={vi.fn()} />);
+    if (httpStatus === 409) expect(screen.getByText(/inbox is not configured/i)).toBeInTheDocument();
+    else {
+      expect(screen.getByText(/Couldn’t load your inbox/i)).toBeInTheDocument();
+      expect(screen.queryByText(/not configured/i)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText(/all caught up/i)).not.toBeInTheDocument();
+  });
+
   it('navigates to the item route and closes on select', () => {
     const onNavigate = vi.fn();
     const onClose = vi.fn();

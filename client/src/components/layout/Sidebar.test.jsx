@@ -25,7 +25,7 @@ vi.mock('@/hooks/useCollabRole.js', () => ({
 // factory would leave that re-export undefined in every consumer.
 vi.mock('@/hooks/useWorkspace.js', async (importOriginal) => ({
   ...(await importOriginal()),
-  useWorkspace: () => ({ workspace: { name: 'Acme', market: 'EG' }, hasWorkspace: true, loading: false, status: 'PRESENT' }),
+  useWorkspace: vi.fn(() => ({ workspace: { name: 'Acme', market: 'EG' }, hasWorkspace: true, loading: false, status: 'PRESENT' })),
 }));
 // Default the workspace to PRO so every role-visible item is unlocked (a link) —
 // the existing badge/label assertions below expect interactive nav items. The
@@ -57,6 +57,7 @@ import { useConnections } from '@/hooks/useConnections.js';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
 import { usePendingApprovals } from '@/hooks/usePendingApprovals.js';
 import { usePlan, WORKSPACE_READ } from '@/hooks/usePlan.js';
+import { useWorkspace } from '@/hooks/useWorkspace.js';
 
 // Mirror the real hierarchy so a mocked plan locks exactly what usePlan would.
 const PLAN_RANK = { FREE: 0, GROWTH: 1, PRO: 2 };
@@ -78,10 +79,32 @@ function renderSidebar(props = {}, { path = '/' } = {}) {
 // Reset the overridable mocks to their defaults after each test (this file mutates
 // per-test return values, so leaking state would make later tests order-dependent).
 afterEach(() => {
+  useWorkspace.mockReturnValue({ workspace: { name: 'Acme', market: 'EG' }, hasWorkspace: true, loading: false, status: WORKSPACE_READ.PRESENT });
   useCollabRole.mockReturnValue({ role: 'STRATEGIST' });
   useConnections.mockReturnValue({ data: null, loading: false, error: null });
   usePendingApprovals.mockReturnValue({ pending: [], loading: false, error: null, refetch: vi.fn() });
   usePlan.mockReturnValue({ canAccess: () => true, loading: false, status: WORKSPACE_READ.PRESENT }); // back to PRO/unlocked
+});
+
+describe('Sidebar — workspace truth boundary', () => {
+  it('offers setup only after a successful absence finding', () => {
+    useWorkspace.mockReturnValue({ workspace: null, hasWorkspace: false, loading: false, status: WORKSPACE_READ.NOTHING_FOUND });
+    const { getByText, queryByRole } = renderSidebar();
+    expect(getByText('Create Workspace')).toBeInTheDocument();
+    expect(queryByRole('alert')).not.toBeInTheDocument();
+  });
+  it.each([WORKSPACE_READ.NOT_REACHABLE, WORKSPACE_READ.NOT_PERMITTED])('shows %s without an absence/setup affordance', (status) => {
+    useWorkspace.mockReturnValue({ workspace: null, hasWorkspace: false, loading: false, status });
+    const { queryByText, getByRole } = renderSidebar();
+    expect(queryByText('Create Workspace')).not.toBeInTheDocument();
+    expect(getByRole('alert')).toHaveTextContent(status === WORKSPACE_READ.NOT_PERMITTED ? /not allowed/i : /could not be read/i);
+  });
+  it('does not imply absence in the collapsed shell after a failed read', () => {
+    useWorkspace.mockReturnValue({ workspace: null, hasWorkspace: false, loading: false, status: WORKSPACE_READ.NOT_REACHABLE });
+    const { getByTitle, queryByTitle } = renderSidebar({ collapsed: true });
+    expect(getByTitle('Workspace unavailable')).toBeInTheDocument();
+    expect(queryByTitle('No Workspace')).not.toBeInTheDocument();
+  });
 });
 
 describe('Sidebar — mobile drawer visibility', () => {

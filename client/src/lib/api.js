@@ -195,6 +195,15 @@ export function mapTransportError(error) {
     });
   }
 
+  // Only the backend's explicit workspace absence can become setup state.
+  if (status === 409 && error.response?.data?.error === 'NoWorkspace') {
+    return new ValidationError({
+      message: message || 'No workspace is attached to this account.',
+      code: 'NoWorkspace', httpStatus: status, requestId, sessionId,
+      context: { endpoint },
+    });
+  }
+
   // Platform errors (5xx)
   if (status >= 500) {
     return new PlatformError({

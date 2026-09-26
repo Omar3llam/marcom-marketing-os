@@ -12,8 +12,25 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('../firebase.js', () => ({ auth: { currentUser: null } }));
 
 import { mapTransportError } from './api.js';
+import { isNoWorkspaceError } from '@/design-system/states/readStatus.js';
 
 const err403 = (data) => ({ response: { status: 403, data }, config: { url: '/api/lumi/blended' } });
+
+describe('workspace transport truth', () => {
+  it('preserves explicit 409 NoWorkspace as a configuration finding', () => {
+    const mapped = mapTransportError({ response: { status: 409, data: { error: 'NoWorkspace' } } });
+    expect(mapped.code).toBe('NoWorkspace');
+    expect(isNoWorkspaceError(mapped)).toBe(true);
+    expect(isNoWorkspaceError({ code: 'ERR_BAD_REQUEST', response: { status: 409, data: { error: 'NoWorkspace' } } })).toBe(true);
+  });
+  it.each([403, 500, 503])('%s cannot become configuration absence', (status) => {
+    const mapped = mapTransportError({ response: { status, data: { error: 'WorkspaceUnavailable' } } });
+    expect(isNoWorkspaceError(mapped)).toBe(false);
+  });
+  it('an unrelated 409 cannot become configuration absence', () => {
+    expect(isNoWorkspaceError(mapTransportError({ response: { status: 409, data: { error: 'RoleNotConfigured' } } }))).toBe(false);
+  });
+});
 
 describe('mapTransportError — 403 PLAN_REQUIRED', () => {
   it('tags a plan paywall 403 with code PLAN_REQUIRED + the required/current tiers', () => {

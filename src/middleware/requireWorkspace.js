@@ -12,8 +12,8 @@
 // This middleware makes the tenant context an explicit precondition. It runs
 // AFTER requireAuth (which has already converted an identity-layer failure
 // into 401/409/503) so reaching here with no workspace means the identity is
-// sound but the tenant is genuinely unresolved — a 409, not a 401 and not an
-// empty list.
+// sound. A missing context is looked up strictly: a successful miss is 409;
+// a failed read is 503, never an empty list or a setup finding.
 //
 // Mount it on workspace-scoped routers. Do NOT mount it on user-scoped or
 // project-scoped routers (history, projects, credentials): those legitimately
@@ -21,9 +21,11 @@
 // direction.
 // ============================================================
 import { logger } from '../utils/logger.js';
+import { needWorkspace } from '../lib/workspaceResolution.js';
 
-export function requireWorkspace(req, res, next) {
-  if (!req.workspaceId) {
+export async function requireWorkspace(req, res, next) {
+  const workspaceId = await needWorkspace(req, res);
+  if (!workspaceId) {
     logger.warn({
       path:   req.path,
       method: req.method,
@@ -31,10 +33,8 @@ export function requireWorkspace(req, res, next) {
       authSource: req.authSource ?? null,
     }, '[requireWorkspace] authenticated request with no resolvable workspace');
 
-    return res.status(409).json({
-      error:   'NoWorkspace',
-      message: 'No workspace is resolvable for this account. Reload, and contact support if this persists.',
-    });
+    return;
   }
+  req.workspaceId = workspaceId;
   return next();
 }

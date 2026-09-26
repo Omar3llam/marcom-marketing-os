@@ -242,7 +242,7 @@ export default function Sidebar({
   const { currentUser } = useAuth();
   const { role: collabRole } = useCollabRole();
   const { canAccess, loading: planLoading, status: planStatus } = usePlan();
-  const { workspace, hasWorkspace, loading: workspaceLoading } = useWorkspace();
+  const { workspace, hasWorkspace, loading: workspaceLoading, status: workspaceStatus } = useWorkspace();
   const { data: connectionsData, loading: connectionsLoading } = useConnections();
 
   // Role- AND plan-gated navigation. An item hides if the seat's role can't see
@@ -378,7 +378,7 @@ export default function Sidebar({
   // Workspace display name (fallback for loading/empty states)
   const workspaceName = workspaceLoading
     ? 'Loading...'
-    : workspace?.name || 'No Project';
+    : workspace?.name || (workspaceStatus === WORKSPACE_READ.NOTHING_FOUND ? 'No Workspace' : 'Workspace unavailable');
 
   return (
     <>
@@ -481,7 +481,7 @@ export default function Sidebar({
         )}
 
         {/* Fallback: No workspace (expanded) */}
-        {!collapsed && !hasWorkspace && !workspaceLoading && (
+        {!collapsed && workspaceStatus === WORKSPACE_READ.NOTHING_FOUND && !workspaceLoading && (
           <div className="px-3 mt-2">
             <div className="section-label mb-2 px-1">Workspace</div>
             <button
@@ -493,6 +493,17 @@ export default function Sidebar({
               <Plus className="w-4 h-4 text-lumi-muted" strokeWidth={1.5} />
               <span className="text-sm font-display font-medium text-lumi-muted">Create Workspace</span>
             </button>
+          </div>
+        )}
+
+        {!collapsed && !hasWorkspace && !workspaceLoading && workspaceStatus !== WORKSPACE_READ.NOTHING_FOUND && (
+          <div className="px-3 mt-2" role="alert">
+            <div className="section-label mb-2 px-1">Workspace</div>
+            <p className="px-3 py-2.5 text-xs text-lumi-muted">
+              {workspaceStatus === WORKSPACE_READ.NOT_PERMITTED
+                ? 'You are not allowed to read this workspace.'
+                : 'Your workspace could not be read right now.'}
+            </p>
           </div>
         )}
 

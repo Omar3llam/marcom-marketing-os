@@ -67,6 +67,15 @@ describe('useWorkspace — status classification', () => {
     expect(result.current.status).toBe(WORKSPACE_READ.NOT_REACHABLE);
   });
 
+  it('a workspace lookup 503 is ERROR, not a setup absence finding', async () => {
+    rejects(domainError(503));
+    const { result } = await settled();
+    expect(result.current.status).toBe(WORKSPACE_READ.NOT_REACHABLE);
+    expect(result.current.status).not.toBe(WORKSPACE_READ.NOTHING_FOUND);
+    expect(result.current.hasWorkspace).toBe(false);
+    expect(result.current.error).toBeTruthy();
+  });
+
   it('a transport error with no status at all is NOT_REACHABLE', async () => {
     rejects(new Error('Network Error'));
     const { result } = await settled();

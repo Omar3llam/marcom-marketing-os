@@ -23,6 +23,7 @@
 // ============================================================
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useHome } from '@/hooks/useHome.js';
+import { isNoWorkspaceError } from '@/design-system/states/readStatus.js';
 import AgendaBand from './components/AgendaBand.jsx';
 import LoopStatusRing from './components/LoopStatusRing.jsx';
 
@@ -41,6 +42,14 @@ export default function AgenticShellView() {
       <div className="space-y-3 mb-6" aria-busy="true">
         <div className="h-[60px] rounded-xl border border-surface-border bg-surface-card animate-pulse" />
         <div className="h-[160px] rounded-xl border border-surface-border bg-surface-card animate-pulse" />
+      </div>
+    );
+  }
+
+  if (isNoWorkspaceError(error)) {
+    return (
+      <div className="mb-6 rounded-xl border border-surface-border bg-surface-card px-4 py-3 font-mono text-xs text-dark-soft">
+        No workspace is attached to this account. Your agenda is not configured.
       </div>
     );
   }

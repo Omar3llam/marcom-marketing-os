@@ -226,6 +226,19 @@ describe('AgenticShellView — role-aware composition', () => {
     expect(screen.queryByText(/Nothing needs a decision right now/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Portfolio on track/i)).not.toBeInTheDocument();
   });
+
+  it.each([409, 503])('workspace %s is never complete Home content', (httpStatus) => {
+    const error = Object.assign(new Error('workspace'), { httpStatus, code: httpStatus === 409 ? 'NoWorkspace' : 'PLATFORM_ERROR' });
+    vi.mocked(useHome).mockReturnValue({ home: null, isStale: false, isLoading: false, error, refetch: vi.fn() } as never);
+    render(<AgenticShellView />);
+    if (httpStatus === 409) expect(screen.getByText(/agenda is not configured/i)).toBeInTheDocument();
+    else {
+      expect(screen.getByText(/Couldn.t load your agenda/i)).toBeInTheDocument();
+      expect(screen.queryByText(/not configured/i)).not.toBeInTheDocument();
+    }
+    expect(screen.queryByText('Loop healthy')).not.toBeInTheDocument();
+    expect(screen.queryByText(STRATEGIST_TITLE)).not.toBeInTheDocument();
+  });
 });
 
 describe('contract seam — the home envelope safeParses', () => {
