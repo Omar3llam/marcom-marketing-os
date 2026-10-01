@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-const { verdictsMock, campaignsMock } = vi.hoisted(() => ({
+const { verdictsMock, campaignsMock, connectionsMock } = vi.hoisted(() => ({
   verdictsMock: vi.fn(),
   campaignsMock: vi.fn(),
+  connectionsMock: vi.fn(),
 }));
 
 vi.mock('@/hooks/useConnectorVerdicts.js', () => ({ useConnectorVerdicts: () => verdictsMock() }));
 vi.mock('@/hooks/useConnectorCampaigns.js', () => ({ useConnectorCampaigns: () => campaignsMock() }));
+vi.mock('@/hooks/useConnections.js', () => ({ useConnections: () => connectionsMock() }));
 
 import { ReadyStep } from './ReadyStep.jsx';
 
@@ -15,6 +17,75 @@ beforeEach(() => {
   vi.clearAllMocks();
   verdictsMock.mockReturnValue({ verdicts: [], loading: false });
   campaignsMock.mockReturnValue({ campaigns: [], loading: false });
+  connectionsMock.mockReturnValue({ data: { connections: [] }, loading: false, error: null });
+});
+
+describe('ReadyStep — read and connection truth', () => {
+  it.each([
+    ['campaign failure with successful empty verdicts', [], [], new Error('campaigns'), null],
+    ['verdict failure with successful empty campaigns', [], [], null, new Error('verdicts')],
+    ['campaign failure with successful populated verdicts', [], [{ verdict: 'KILL', name: 'Winner', spendMinor: 100 }], new Error('campaigns'), null],
+    ['verdict failure with successful populated campaigns', [{ entityId: 'a' }], [], null, new Error('verdicts')],
+    ['both reads fail', [], [], new Error('campaigns'), new Error('verdicts')],
+    ['failed reads retain stale data', [{ entityId: 'a' }], [{ verdict: 'SCALE', name: 'Old verdict' }], new Error('campaigns'), new Error('verdicts')],
+  ])('%s cannot publish completed, empty or numeric results', (_name, campaigns, verdicts, campaignError, verdictError) => {
+    campaignsMock.mockReturnValue({ campaigns, loading: false, error: campaignError });
+    verdictsMock.mockReturnValue({ verdicts, loading: false, error: verdictError });
+    const onEnterApp = vi.fn();
+    render(<ReadyStep onEnterApp={onEnterApp} />);
+    expect(screen.getByRole('alert')).toHaveTextContent(/results.*couldn.t be loaded/i);
+    expect(screen.queryByText(/analysis complete|your first verdict/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/no campaigns found|no verdicts requiring/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/verdicts appear|Lumi scored|recommendation/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^\d+ (Campaigns?|Verdicts?)$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^(KILL|SCALE)$/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /open campaigns/i }));
+    expect(onEnterApp).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['campaigns', 'verdicts'])('%s still loading cannot publish final results', (pending) => {
+    campaignsMock.mockReturnValue({ campaigns: [], loading: pending === 'campaigns', error: null });
+    verdictsMock.mockReturnValue({ verdicts: [], loading: pending === 'verdicts', error: null });
+    render(<ReadyStep onEnterApp={vi.fn()} />);
+    expect(screen.queryByText(/analysis complete|no campaigns found|0 campaigns/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['no connections', { data: { connections: [] }, loading: false, error: null }],
+    ['Meta disconnected', { data: { connections: [{ platform: 'META', connected: false }] }, loading: false, error: null }],
+    ['different provider connected', { data: { connections: [{ platform: 'GOOGLE', connected: true }] }, loading: false, error: null }],
+    ['connection read pending with old Meta data', { data: { connections: [{ platform: 'META', connected: true }] }, loading: true, error: null }],
+    ['connection read failed with old Meta data', { data: { connections: [{ platform: 'META', connected: true }] }, loading: false, error: new Error('connections') }],
+  ])('%s does not certify Meta or block valid campaign results', (_name, connectionRead) => {
+    connectionsMock.mockReturnValue(connectionRead);
+    render(<ReadyStep onEnterApp={vi.fn()} />);
+    expect(screen.queryByText('Meta')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /no campaigns found yet/i })).toBeInTheDocument();
+    expect(screen.getByText('0 Campaigns')).toBeInTheDocument();
+  });
+
+  it('a successful connection read certifies only a connected Meta entry', () => {
+    connectionsMock.mockReturnValue({ data: { connections: [{ platform: 'META', connected: true }] }, loading: false, error: null });
+    render(<ReadyStep onEnterApp={vi.fn()} />);
+    expect(screen.getByText('Meta').querySelector('svg')).toHaveClass('lucide-circle-check');
+    expect(screen.getByText('0 Campaigns')).toBeInTheDocument();
+  });
+
+  it('a recovered required read replaces the error with the successful verdict summary', () => {
+    campaignsMock.mockReturnValue({ campaigns: [{ entityId: 'a' }], loading: false, error: null });
+    verdictsMock.mockReturnValue({ verdicts: [], loading: false, error: new Error('verdicts') });
+    const view = render(<ReadyStep onEnterApp={vi.fn()} />);
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+    verdictsMock.mockReturnValue({ verdicts: [{ verdict: 'SCALE', name: 'Recovered', confidence: 0.9 }], loading: false, error: null });
+    view.rerender(<ReadyStep onEnterApp={vi.fn()} />);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByText('SCALE')).toBeInTheDocument();
+    expect(screen.getByText('Recovered')).toBeInTheDocument();
+    expect(screen.getByText('1 Campaign')).toBeInTheDocument();
+    expect(screen.getByText('1 Verdict')).toBeInTheDocument();
+  });
 });
 
 describe('ReadyStep — verdict-first', () => {
