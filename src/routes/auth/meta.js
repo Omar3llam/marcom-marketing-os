@@ -15,7 +15,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { requireAuth } from '../../middleware/firebaseAuth.js';
 import { prisma } from '../../lib/prisma.js';
 import { saveCredential } from '../../models/credential.js';
-import { attachWorkspaceToCredential } from '../../services/connectors/credentialStore.js';
+import { attachWorkspaceToCredential, listConnections, resolveCredential } from '../../services/connectors/credentialStore.js';
 import { getProject }    from '../../models/project.js';
 import {
   exchangeForLongLivedToken,
@@ -103,12 +103,14 @@ export function safeReturnTo(returnTo) {
 
 // Append query params to a path that may already carry a query string.
 function withParams(base, params) {
-  const qs = Object.entries(params)
-    .filter(([, v]) => v != null && v !== '')
-    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
-    .join('&');
-  if (!qs) return base;
-  return `${base}${base.includes('?') ? '&' : '?'}${qs}`;
+  const target = new URL(base, 'http://localhost');
+  // An earlier callback flag in returnTo must not outrank this attempt's result.
+  target.searchParams.delete('meta_connected');
+  target.searchParams.delete('meta_error');
+  for (const [key, value] of Object.entries(params)) {
+    if (value != null && value !== '') target.searchParams.set(key, value);
+  }
+  return `${target.pathname}${target.search}${target.hash}`;
 }
 
 // ── CONNECT  GET /api/auth/meta/connect?projectId=xxx ────────
@@ -154,7 +156,7 @@ authMetaRouter.get('/connect', requireAuth, (req, res, next) => {
 // NOT protected by requireAuth — Meta redirects the browser here.
 // User identity is recovered from the HMAC-signed state param.
 authMetaRouter.get('/callback', async (req, res) => {
-  const { code, state: stateParam, error: oauthError, error_description } = req.query;
+  const { code, state: stateParam, error: oauthError } = req.query;
 
   // Parse state first so every redirect (incl. denial) can return the user to
   // wherever they started the connect from (onboarding vs Settings).
@@ -163,7 +165,7 @@ authMetaRouter.get('/callback', async (req, res) => {
 
   // ── User denied the OAuth permission dialog
   if (oauthError) {
-    logger.warn({ oauthError, error_description }, '[meta-auth] User denied Meta OAuth');
+    logger.warn('[meta-auth] User denied Meta OAuth');
     return res.redirect(withParams(returnTo, { meta_error: 'denied' }));
   }
 
@@ -222,8 +224,8 @@ authMetaRouter.get('/callback', async (req, res) => {
       // the user can switch the active account later without re-running OAuth.
       availableAccounts = accounts.map(a => ({ id: a.id, name: a.name }));
       logger.info({ userId, projectId, accountCount: accounts.length, adAccountId }, '[meta-auth] Ad accounts discovered');
-    } catch (err) {
-      logger.warn({ err: err.message }, '[meta-auth] Could not list ad accounts — saving token only');
+    } catch {
+      logger.warn({ userId, projectId }, '[meta-auth] Could not list ad accounts — saving token only');
     }
 
     // ── Persist to marcom_credentials
@@ -239,22 +241,22 @@ authMetaRouter.get('/callback', async (req, res) => {
 
     logger.info({ userId, projectId, adAccountId }, '[meta-auth] Meta credential saved');
 
-    // ── Bridge to the workspace-scoped connector world (Phase 12c).
-    // Stamp workspace_id on the just-saved project-keyed row so the Meta connector
-    // (which resolves by workspace_id) can see it. ADDITIVE — the legacy feed still
-    // reads the same row by (project_id, user_id). Best-effort: a user with no
-    // Prisma workspace keeps a working feed; the connector simply won't see it yet.
-    try {
-      const u = await prisma.user.findUnique({ where: { clerkId: userId }, select: { workspaceId: true } });
-      if (u?.workspaceId) {
-        await attachWorkspaceToCredential({ projectId, userId, platform: 'meta_ads', workspaceId: u.workspaceId });
-        logger.info({ userId, projectId, workspaceId: u.workspaceId }, '[meta-auth] stamped workspace on Meta credential');
-      } else {
-        logger.warn({ userId }, '[meta-auth] no Prisma workspace for user — Meta connector will not see this credential yet');
-      }
-    } catch (stampErr) {
-      logger.warn({ err: stampErr.message, userId }, '[meta-auth] workspace stamp failed (non-fatal — feed unaffected)');
+    // Completion requires the same workspace connection that display and sync read.
+    // Keep a saved credential on failure: a retry upserts the same owned row.
+    const u = await prisma.user.findUnique({ where: { clerkId: userId }, select: { workspaceId: true } });
+    if (!u?.workspaceId) throw new Error('OAuth workspace unavailable');
+    if (!longToken || !adAccountId) throw new Error('OAuth credential incomplete');
+    const linked = await attachWorkspaceToCredential({ projectId, userId, platform: 'meta_ads', workspaceId: u.workspaceId });
+    if (linked?.stamped !== true) throw new Error('OAuth workspace link incomplete');
+    const [connections, credential] = await Promise.all([
+      listConnections(u.workspaceId), resolveCredential(u.workspaceId, 'META'),
+    ]);
+    const visible = connections.some((c) => c.platform === 'META' && c.isActive && c.accountId === adAccountId);
+    if (!visible || !credential?.accessToken || !credential.accountId
+      || credential.accessToken !== longToken || credential.accountId !== adAccountId) {
+      throw new Error('OAuth workspace connection unreadable');
     }
+    logger.info({ userId, projectId, workspaceId: u.workspaceId }, '[meta-auth] workspace connection complete');
 
     // ── Redirect back to wherever the connect started (Settings, or onboarding)
     return res.redirect(withParams(returnTo, {
@@ -262,8 +264,8 @@ authMetaRouter.get('/callback', async (req, res) => {
       projectId,
       adAccountId: adAccountId || undefined,
     }));
-  } catch (err) {
-    logger.error({ err: err.message, userId, projectId }, '[meta-auth] Callback error');
+  } catch {
+    logger.error({ userId, projectId }, '[meta-auth] Callback completion failed');
     return res.redirect(withParams(returnTo, { meta_error: 'server_error' }));
   }
 });

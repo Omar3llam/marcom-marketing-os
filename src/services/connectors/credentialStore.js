@@ -196,21 +196,24 @@ export async function recordSync(workspaceId, channel, { ok, error = null, warni
 export async function attachWorkspaceToCredential({ projectId, userId, platform, workspaceId } = {}) {
   if (!workspaceId || !platform || !projectId) return { stamped: false };
   const sql = getDb();
-  const stamped = userId
-    ? await sql`UPDATE marcom_credentials SET workspace_id = ${workspaceId}, is_active = true, updated_at = NOW() WHERE project_id = ${projectId} AND user_id = ${userId} AND platform = ${platform} RETURNING id`
-    : await sql`UPDATE marcom_credentials SET workspace_id = ${workspaceId}, is_active = true, updated_at = NOW() WHERE project_id = ${projectId} AND platform = ${platform} RETURNING id`;
-  if (stamped.length === 0) return { stamped: false };
-  const keepId = stamped[0].id;
-  const losers = await sql`
-    UPDATE marcom_credentials SET is_active = false, updated_at = NOW()
-    WHERE workspace_id = ${workspaceId} AND platform = ${platform} AND id <> ${keepId} AND is_active = true
-    RETURNING id
-  `;
-  if (losers.length > 0) {
-    logger.warn({ workspaceId, platform, deactivated: losers.length }, '[credentialStore] one-account rule deactivated other rows for this channel');
-  }
-  logger.info({ workspaceId, platform, projectId }, '[credentialStore] stamped workspace on credential');
-  return { stamped: true, id: keepId, deactivated: losers.length };
+  // Link and active-row reconciliation commit together; retry never sees a half-stamp.
+  return sql.begin(async (tx) => {
+    const stamped = userId
+      ? await tx`UPDATE marcom_credentials SET workspace_id = ${workspaceId}, is_active = true, updated_at = NOW() WHERE project_id = ${projectId} AND user_id = ${userId} AND platform = ${platform} RETURNING id`
+      : await tx`UPDATE marcom_credentials SET workspace_id = ${workspaceId}, is_active = true, updated_at = NOW() WHERE project_id = ${projectId} AND platform = ${platform} RETURNING id`;
+    if (stamped.length === 0) return { stamped: false };
+    const keepId = stamped[0].id;
+    const losers = await tx`
+      UPDATE marcom_credentials SET is_active = false, updated_at = NOW()
+      WHERE workspace_id = ${workspaceId} AND platform = ${platform} AND id <> ${keepId} AND is_active = true
+      RETURNING id
+    `;
+    if (losers.length > 0) {
+      logger.warn({ workspaceId, platform, deactivated: losers.length }, '[credentialStore] one-account rule deactivated other rows for this channel');
+    }
+    logger.info({ workspaceId, platform, projectId }, '[credentialStore] stamped workspace on credential');
+    return { stamped: true, id: keepId, deactivated: losers.length };
+  });
 }
 
 /**

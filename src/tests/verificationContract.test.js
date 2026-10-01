@@ -128,7 +128,7 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
   // 31 — two increments landed without it. A title that disagrees with its own
   // assertion is a small untruth inside the verification contract itself, so it
   // now states the same number the test enforces.
-  it('the census matches the current baseline of 38 files', () => {
+  it('the census matches the current baseline of 39 files', () => {
     // A drift here is not automatically a failure — but it must be NOTICED,
     // because a new DB-gated file added through a different mechanism is
     // exactly how the guarantee erodes.
@@ -208,7 +208,9 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
     // 37 → 38 in Phase 6: AllocationPlanStorage.integration.test.js proves the
     // additive migration preserves legacy rows and new Prisma writes leave
     // MER-named columns null for readers from before #497.
-    expect(dbGatedFiles().length).toBe(38);
+    // 38 → 39 in SC-08A: meta.completion.integration.test.js proves encrypted
+    // OAuth persistence, workspace-reader agreement, and atomic link rollback/retry.
+    expect(dbGatedFiles().length).toBe(39);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {
