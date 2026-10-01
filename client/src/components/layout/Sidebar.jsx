@@ -242,7 +242,7 @@ export default function Sidebar({
   const { currentUser } = useAuth();
   const { role: collabRole } = useCollabRole();
   const { canAccess, loading: planLoading, status: planStatus } = usePlan();
-  const { workspace, hasWorkspace, loading: workspaceLoading, status: workspaceStatus } = useWorkspace();
+  const { workspace, hasWorkspace, loading: workspaceLoading, status: workspaceStatus, canRetry: workspaceCanRetry, refetch: retryWorkspace } = useWorkspace();
   const { data: connectionsData, loading: connectionsLoading } = useConnections();
 
   // Role- AND plan-gated navigation. An item hides if the seat's role can't see
@@ -504,6 +504,7 @@ export default function Sidebar({
                 ? 'You are not allowed to read this workspace.'
                 : 'Your workspace could not be read right now.'}
             </p>
+            {workspaceCanRetry && <button type="button" onClick={retryWorkspace}>Retry workspace</button>}
           </div>
         )}
 

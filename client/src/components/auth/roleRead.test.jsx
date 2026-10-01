@@ -13,7 +13,7 @@
 // this catch in practice.
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn() } }));
 
@@ -190,5 +190,23 @@ describe('RoleContext — a seat that was NOT read', () => {
     const { result } = await settled();
     expect(result.current.error).toBeTruthy();
     expect(result.current.role).toBeNull();
+  });
+});
+
+
+describe('SC-06 useRoleContext recovery', () => {
+  it('clears the old failure while retrying and accepts fresh success', async () => {
+    const failure = Object.assign(new Error('temporary'), { httpStatus: 503 });
+    let resolve;
+    api.get.mockRejectedValueOnce(failure).mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
+    const { result } = renderHook(() => useRoleContext(), { wrapper });
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    act(() => { result.current.refetch(); });
+    expect(result.current.loading).toBe(true);
+    expect(result.current.error).toBeNull();
+    await act(async () => { resolve({ data: { role: 'BUYER', roleStatus: 'RESOLVED' } }); });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBeNull();
+    expect(result.current.role).not.toBeNull();
   });
 });

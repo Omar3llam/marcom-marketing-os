@@ -82,13 +82,18 @@ export function useConnectorVerdicts() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const aliveRef = useRef(true);
+  const attemptRef = useRef(0);
 
   const refetch = useCallback(async () => {
+    if (!aliveRef.current) return;
+    const attempt = ++attemptRef.current;
+    setVerdicts([]); setGatedOut([]); setAccount(null); setMemory({});
+    setDecisionHistoryStatus(null); setDecisionHistoryKnowledge(null); setStatus(null);
     setLoading(true);
     setError(null);
     try {
       const res = await api.get('/api/lumi/entities/verdicts');
-      if (!aliveRef.current) return;
+      if (!aliveRef.current || attempt !== attemptRef.current) return;
       // PARITY-04 — parse at the boundary. The two `Array.isArray(…) ? … : []`
       // defaults that stood here are the defect: a 200 whose shape had changed
       // emptied BOTH collections with `error` null, so every campaign fell to
@@ -117,17 +122,18 @@ export function useConnectorVerdicts() {
       setDecisionHistoryKnowledge(parsed.data.decisionHistoryKnowledge ?? null);
       setStatus(parsed.data.status ?? null);
     } catch (err) {
-      if (!aliveRef.current) return;
+      if (!aliveRef.current || attempt !== attemptRef.current) return;
       setError(err);
     } finally {
-      if (aliveRef.current) setLoading(false);
+      if (aliveRef.current && attempt === attemptRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    const attempts = attemptRef;
     aliveRef.current = true;
     refetch();
-    return () => { aliveRef.current = false; };
+    return () => { aliveRef.current = false; ++attempts.current; };
   }, [refetch]);
 
   return {

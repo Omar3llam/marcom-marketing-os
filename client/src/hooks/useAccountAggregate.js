@@ -28,7 +28,7 @@ export function useAccountAggregate() {
 
   useEffect(() => {
     let cancelled = false;
-    setState((s) => ({ ...s, loading: true, error: null, forbidden: false }));
+    setState(EMPTY);
     (async () => {
       try {
         const res = await api.get('/api/lumi/account/aggregate');
@@ -49,7 +49,7 @@ export function useAccountAggregate() {
         setState({ response: parsed.data, loading: false, error: null, forbidden: false });
       } catch (err) {
         if (cancelled) return;
-        if (err?.response?.status === 403) {
+        if ((err?.httpStatus ?? err?.response?.status) === 403) {
           setState({ response: null, loading: false, error: null, forbidden: true });
           return;
         }

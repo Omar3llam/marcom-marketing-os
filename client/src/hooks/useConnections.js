@@ -15,7 +15,7 @@ export function useConnections() {
 
   useEffect(() => {
     let cancelled = false;
-    setState((s) => ({ ...s, loading: true, error: null }));
+    setState({ data: null, loading: true, error: null });
     (async () => {
       try {
         const res = await api.get('/api/lumi/connections');

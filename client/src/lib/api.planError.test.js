@@ -12,7 +12,7 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('../firebase.js', () => ({ auth: { currentUser: null } }));
 
 import { mapTransportError } from './api.js';
-import { isNoWorkspaceError } from '@/design-system/states/readStatus.js';
+import { isNoWorkspaceError, isRetryableReadError } from '@/design-system/states/readStatus.js';
 
 const err403 = (data) => ({ response: { status: 403, data }, config: { url: '/api/lumi/blended' } });
 
@@ -64,5 +64,17 @@ describe('mapTransportError — monetary 409', () => {
   it('leaves unrelated 409 mapping unchanged', () => {
     const mapped = mapTransportError({ response: { status: 409, data: { error: 'ApprovalRequired' } }, config: { url: '/api/lumi/plans/1/promote' } });
     expect(mapped.code).toBe('UNKNOWN_ERROR');
+  });
+});
+
+describe('SC-06 role reason survives error mapping', () => {
+  it.each(['ROLE_UNKNOWN', 'ROLE_IDENTITY_MISSING', 'ROLE_UNSET'])('preserves non-transient %s', (roleReason) => {
+    const mapped = mapTransportError({ response: { status: 503, data: { error: 'RoleUnavailable', roleReason } } });
+    expect(mapped.context.roleReason).toBe(roleReason);
+    expect(isRetryableReadError(mapped)).toBe(false);
+  });
+  it('allows recovery for a failed lookup', () => {
+    const mapped = mapTransportError({ response: { status: 503, data: { roleReason: 'ROLE_LOOKUP_FAILED' } } });
+    expect(isRetryableReadError(mapped)).toBe(true);
   });
 });

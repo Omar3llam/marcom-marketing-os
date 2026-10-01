@@ -6,7 +6,7 @@
 // error passthrough, and the pure `computeStale` derivation.
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { useHome, computeStale } from './useHome.js';
 import { api } from '@/lib/api.js';
 
@@ -104,4 +104,56 @@ describe('computeStale', () => {
     expect(computeStale({ lastRunAt: null, intervalMs: 900000 })).toBe(false);
     expect(computeStale(null)).toBe(false);
   });
+});
+
+
+describe('SC-06 useHome recovery', () => {
+  it('clears the old failure while retrying and accepts fresh success', async () => {
+    const failure = Object.assign(new Error('temporary'), { httpStatus: 503 });
+    let resolve;
+    api.get.mockRejectedValueOnce(failure).mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
+    const { result } = renderHook(() => useHome());
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    act(() => { result.current.refetch(); });
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.error).toBeNull();
+    await act(async () => { resolve({ data: { ...validHome, buyerBand: band([]) } }); });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toBeNull();
+    expect(result.current.home).not.toBeNull();
+  });
+});
+
+beforeEach(() => vi.resetAllMocks());
+
+it('SC-06 ignores an older failure arriving after a newer success', async () => {
+  let rejectOld;
+  api.get.mockImplementationOnce(() => new Promise((_, reject) => { rejectOld = reject; }))
+    .mockResolvedValueOnce({ data: validHome });
+  const { result } = renderHook(() => useHome());
+  await act(async () => { await result.current.refetch(); });
+  await act(async () => { rejectOld(new Error('old failure')); });
+  expect(result.current.error).toBeNull();
+  expect(result.current.home).not.toBeNull();
+});
+it.each([403, 409])('SC-06 focus does not retry permanent HTTP %s', async (httpStatus) => {
+  api.get.mockRejectedValue(Object.assign(new Error('permanent'), { httpStatus }));
+  const { result } = renderHook(() => useHome());
+  await waitFor(() => expect(result.current.isLoading).toBe(false));
+  act(() => window.dispatchEvent(new Event('focus')));
+  expect(api.get).toHaveBeenCalledTimes(1);
+});
+
+it('SC-06 retracts the old home while a fresh read is pending', async () => {
+  let reject;
+  api.get.mockResolvedValueOnce({ data: validHome }).mockImplementationOnce(() => new Promise((_, r) => { reject = r; }));
+  const { result } = renderHook(useHome);
+  await waitFor(() => expect(result.current.home).not.toBeNull());
+  act(() => { result.current.refetch(); });
+  expect(result.current.home).toBeNull();
+  expect(result.current.isLoading).toBe(true);
+  const current = Object.assign(new Error('current failure'), { httpStatus: 503 });
+  await act(async () => reject(current));
+  expect(result.current.error).toBe(current);
+  expect(result.current.home).toBeNull();
 });

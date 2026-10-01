@@ -15,7 +15,7 @@
 import { X, ClipboardCheck, Radar, FileText, AlertCircle } from 'lucide-react';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { useInbox } from '@/hooks/useInbox.js';
-import { isNoWorkspaceError } from '@/design-system/states/readStatus.js';
+import { isNoWorkspaceError, isRetryableReadError } from '@/design-system/states/readStatus.js';
 
 const ICON = { approval: ClipboardCheck, radar: Radar, narrative: FileText };
 
@@ -54,7 +54,7 @@ function InboxItem({ item, onSelect }) {
 }
 
 export function InboxPanel({ onNavigate, onClose }) {
-  const { items, isLoading, error } = useInbox();
+  const { items, isLoading, error, refetch } = useInbox();
   const select = (to) => { onNavigate?.(to); onClose?.(); };
 
   return (
@@ -76,6 +76,7 @@ export function InboxPanel({ onNavigate, onClose }) {
         ) : error ? (
           <div className="px-4 py-8 text-center text-xs text-signal-kill">
             <AlertCircle className="w-4 h-4 mx-auto mb-1.5" strokeWidth={1.5} /> Couldn’t load your inbox.
+            {isRetryableReadError(error) && <button type="button" className="block mx-auto mt-2" onClick={refetch}>Retry inbox</button>}
           </div>
         ) : items.length === 0 ? (
           <div className="px-4 py-8 text-center text-xs text-dark-subtle">You’re all caught up.</div>

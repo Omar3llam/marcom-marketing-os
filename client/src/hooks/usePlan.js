@@ -39,7 +39,7 @@ export const PLAN_HIERARCHY = { FREE: 0, GROWTH: 1, PRO: 2 };
 const rank = (p) => PLAN_HIERARCHY[p] ?? 0;
 
 export function usePlan() {
-  const { workspace, loading, status } = useWorkspace();
+  const { workspace, loading, status, canRetry, refetch } = useWorkspace();
   // One condition governs every answer below, so no branch can accidentally
   // treat an unestablished entitlement as a tier.
   const known = status === WORKSPACE_READ.PRESENT;
@@ -47,6 +47,8 @@ export function usePlan() {
 
   return {
     plan,
+    canRetry,
+    refetch,
     status,
     loading,
     /** True only for a workspace we READ and whose plan IS FREE. */

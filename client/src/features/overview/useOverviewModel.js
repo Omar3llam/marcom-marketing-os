@@ -18,6 +18,7 @@
 // interrupt sequencing (sessionStorage, dismissal, precedence), not a data
 // substrate, and it keeps its own home until the interrupt queue replaces it.
 // ============================================================
+import { isRetryableReadError } from '@/design-system/states/readStatus.js';
 import { useMemo } from 'react';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
@@ -43,7 +44,7 @@ import {
 } from './overviewDerive.js';
 
 export function useOverviewModel() {
-  const { workspace, loading: workspaceLoading, error: workspaceError, status: workspaceStatus } = useWorkspace();
+  const { workspace, loading: workspaceLoading, error: workspaceError, refetch: workspaceRetry, status: workspaceStatus, canRetry: workspaceCanRetry } = useWorkspace();
   // B8-02 — `error` is destructured from every substrate that decides whether
   // data EXISTS. Before this the word did not appear in this file at all, from
   // seven hooks, so a failed read arrived as `hasAnyData: false` and the hero
@@ -62,13 +63,13 @@ export function useOverviewModel() {
   // and, because the first-run interrupt is `!hasAnyData && !unreadable`,
   // withhold the connect-a-channel instruction that would have helped.
   // NAME EVERY SUBSTRATE A CLAIM READS — and no others.
-  const { campaigns: connectorCampaigns, loading: connectorLoading, error: connectorError } = useConnectorCampaigns();
-  const { data: connectionsData, loading: connectionsLoading, error: connectionsError } = useConnections(); // channel sync status (lastSyncedAt)
+  const { campaigns: connectorCampaigns, loading: connectorLoading, error: connectorError, refetch: connectorRetry } = useConnectorCampaigns();
+  const { data: connectionsData, loading: connectionsLoading, error: connectionsError, refetch: connectionsRetry } = useConnections(); // channel sync status (lastSyncedAt)
   // `loading` is destructured DELIBERATELY — see the readiness gate below.
-  const { health, loading: healthLoading, error: healthError, forbidden: healthForbidden } = useAccountHealth(); // connector campaign health + wasted spend + impact scores
-  const { home, isStale: homeStale, error: homeError } = useHome(); // agentic loop home (includes aiInsight)
-  const { verdicts, loading: verdictLoading, error: verdictError } = useConnectorVerdicts(); // engine rationale
-  const { surface: proofSurface, loading: accuracyLoading, error: accuracyError } = useAccuracy();
+  const { health, loading: healthLoading, error: healthError, refetch: healthRetry, forbidden: healthForbidden } = useAccountHealth(); // connector campaign health + wasted spend + impact scores
+  const { home, isStale: homeStale, error: homeError, refetch: homeRetry } = useHome(); // agentic loop home (includes aiInsight)
+  const { verdicts, loading: verdictLoading, error: verdictError, refetch: verdictRetry } = useConnectorVerdicts(); // engine rationale
+  const { surface: proofSurface, loading: accuracyLoading, error: accuracyError, refetch: accuracyRetry } = useAccuracy();
   const { role: collabRole } = useCollabRole();
   // PARITY-01 — the CANONICAL account aggregate. Attention used to sum the
   // connector rows itself; so did Campaigns, with a different divisor. This is
@@ -77,8 +78,17 @@ export function useOverviewModel() {
     response: aggregateResponse,
     loading: aggregateLoading,
     error: aggregateError,
+    refetch: aggregateRetry,
     forbidden: aggregateForbidden,
   } = useAccountAggregate();
+
+  const retryableReads = [
+    [workspaceCanRetry, workspaceRetry],
+    ...[[connectorError, connectorRetry], [connectionsError, connectionsRetry],
+      [healthError, healthRetry], [homeError, homeRetry], [verdictError, verdictRetry],
+      [accuracyError, accuracyRetry], [aggregateError, aggregateRetry]]
+      .map(([error, retry]) => [isRetryableReadError(error), retry]),
+  ].filter(([retryable, retry]) => retryable && typeof retry === 'function');
 
   const requiredError = Boolean(connectorError || healthError);
   // The server publishes a health object even when it scored nothing. A null
@@ -303,6 +313,8 @@ export function useOverviewModel() {
     // readiness + substrate presence
     loading,
     overviewStatus,
+    canRetry: retryableReads.length > 0,
+    retryFailedReads: () => retryableReads.forEach(([, retry]) => retry()),
     coreAvailable,
     coreUsable,
     hasAnyData,

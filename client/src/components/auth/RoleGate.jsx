@@ -18,7 +18,7 @@ import { ROLE_READ } from '@/context/RoleContext.jsx';
 import RoleUnavailable from './RoleUnavailable.jsx';
 
 export default function RoleGate({ role, fallback = null, unavailable, children }) {
-  const { role: current, loading, status } = useCollabRole();
+  const { role: current, loading, status, canRetry, refetch } = useCollabRole();
   const allow = Array.isArray(role) ? role : [role];
 
   if (loading || status === ROLE_READ.LOADING) return null;
@@ -31,7 +31,7 @@ export default function RoleGate({ role, fallback = null, unavailable, children 
   // MainLayout already holds the shell on an unread seat, so in practice this
   // fires only outside it or if that boundary is ever moved. Kept because a
   // gate that depends on another gate is not a gate.
-  if (status !== ROLE_READ.PRESENT) return unavailable ?? <RoleUnavailable status={status} />;
+  if (status !== ROLE_READ.PRESENT) return unavailable ?? <RoleUnavailable status={status} canRetry={canRetry} onRetry={refetch} />;
   return allow.includes(current) ? children : fallback;
 }
 
