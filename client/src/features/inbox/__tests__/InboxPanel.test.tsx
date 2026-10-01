@@ -4,7 +4,7 @@
 //   • toItems() folds the server's role-routed envelope into one ordered list
 //     (approvals → radar → narrative), each with a real CTA route, and does NOT
 //     double-count the narrative (latestNarrative is the single source for it).
-//   • InboxPanel renders honest states (loading / error / "all caught up") and
+//   • InboxPanel renders honest states (loading / error / neutral empty) and
 //     navigates + closes on select.
 //   • The contract seam safeParses a representative inbox envelope.
 // ============================================================
@@ -55,23 +55,24 @@ describe('toItems — fold the routed envelope into one ordered list', () => {
 describe('InboxPanel — honest states + actionable navigation', () => {
   beforeEach(() => vi.mocked(useInbox).mockReturnValue({ items: [], isLoading: false, error: null, refetch: vi.fn() }));
 
-  it('shows the all-caught-up empty state', () => {
+  it('shows a neutral empty state without claiming acknowledgement', () => {
     render(<InboxPanel onClose={vi.fn()} onNavigate={vi.fn()} />);
-    expect(screen.getByText(/You’re all caught up/i)).toBeInTheDocument();
+    expect(screen.getByText(/No items to show right now/i)).toBeInTheDocument();
+    expect(screen.queryByText(/caught up|reviewed|acknowledged|completed|resolved/i)).not.toBeInTheDocument();
   });
 
   it('renders a loading state', () => {
     vi.mocked(useInbox).mockReturnValue({ items: [], isLoading: true, error: null, refetch: vi.fn() });
     render(<InboxPanel onClose={vi.fn()} onNavigate={vi.fn()} />);
     expect(screen.getByText(/Loading your inbox/i)).toBeInTheDocument();
-    expect(screen.queryByText(/You’re all caught up/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No items to show right now/i)).not.toBeInTheDocument();
   });
 
   it('renders a user-facing error state', () => {
     vi.mocked(useInbox).mockReturnValue({ items: [], isLoading: false, error: new Error('x'), refetch: vi.fn() });
     render(<InboxPanel onClose={vi.fn()} onNavigate={vi.fn()} />);
     expect(screen.getByText(/Couldn’t load your inbox/i)).toBeInTheDocument();
-    expect(screen.queryByText(/You’re all caught up/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No items to show right now/i)).not.toBeInTheDocument();
   });
 
   it.each([409, 503])('workspace %s stays separate from successful empty Inbox', (httpStatus) => {
@@ -83,7 +84,7 @@ describe('InboxPanel — honest states + actionable navigation', () => {
       expect(screen.getByText(/Couldn’t load your inbox/i)).toBeInTheDocument();
       expect(screen.queryByText(/not configured/i)).not.toBeInTheDocument();
     }
-    expect(screen.queryByText(/all caught up/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/No items to show right now/i)).not.toBeInTheDocument();
   });
 
   it('navigates to the item route and closes on select', () => {

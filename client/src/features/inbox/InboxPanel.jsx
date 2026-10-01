@@ -10,7 +10,7 @@
 //
 // Pull-only: it fetches on open (mounted only when the bell is open), shows what
 // it gets, and has no "mark as read"/badge persistence. Honest states: loading,
-// a user-facing error, and "You're all caught up" when empty.
+// a user-facing error, and a neutral empty state when no items are returned.
 // ============================================================
 import { X, ClipboardCheck, Radar, FileText, AlertCircle } from 'lucide-react';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
@@ -79,7 +79,7 @@ export function InboxPanel({ onNavigate, onClose }) {
             {isRetryableReadError(error) && <button type="button" className="block mx-auto mt-2" onClick={refetch}>Retry inbox</button>}
           </div>
         ) : items.length === 0 ? (
-          <div className="px-4 py-8 text-center text-xs text-dark-subtle">You’re all caught up.</div>
+          <div className="px-4 py-8 text-center text-xs text-dark-subtle">No items to show right now.</div>
         ) : (
           <div className="p-2">
             {items.map((item) => <InboxItem key={`${item.type}-${item.id}`} item={item} onSelect={select} />)}

@@ -46,16 +46,17 @@ describe.each([
     expect(result.current.error).toBeNull();
   });
 });
-it('Inbox click shows recovery and only claims caught-up after fresh empty success', async () => {
+it('Inbox retry shows a neutral empty state only after fresh empty success', async () => {
   let resolve;
   api.get.mockRejectedValueOnce(failure()).mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
   render(<InboxPanel />);
   fireEvent.click(await screen.findByRole('button', { name: 'Retry inbox' }));
   expect(screen.getByText(/Loading your inbox/)).toBeInTheDocument();
-  expect(screen.queryByText(/caught up/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/No items to show right now/)).not.toBeInTheDocument();
   await act(async () => resolve({ data: emptyInbox }));
-  expect(await screen.findByText(/caught up/)).toBeInTheDocument();
+  expect(await screen.findByText(/No items to show right now/)).toBeInTheDocument();
   expect(screen.queryByText(/Couldn’t load/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/caught up|reviewed|acknowledged|completed|resolved/i)).not.toBeInTheDocument();
 });
 it.each([403, 409])('Inbox offers no retry for permanent HTTP %s', async (status) => {
   api.get.mockRejectedValue(failure(status));
