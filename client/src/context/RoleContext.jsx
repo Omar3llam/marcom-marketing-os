@@ -1,8 +1,8 @@
 // ============================================================
 // MARCOM / Lumi — RoleContext (Phase 11A · the role-gating spine)
 // ------------------------------------------------------------
-// Fetches the caller's Phase-8 collabRole ONCE from GET /api/lumi/roles/me
-// and exposes it app-wide. Every role-gated surface (RoleGate, the gated nav,
+// Fetches the caller's Phase-8 collabRole from GET /api/lumi/roles/me
+// and exposes it app-wide with explicit transient-read recovery. Every role-gated surface (RoleGate, the gated nav,
 // the proof/blended pages) reads from here — one fetch, not one-per-screen.
 //
 // ── WHY THERE IS NO DEFAULT ROLE (Phase 5.11) ──────────────────────────────
@@ -34,9 +34,9 @@
 // Backend authorization is unchanged and remains the enforcement layer; this
 // governs what the client is willing to CLAIM, not what it is allowed to do.
 // ============================================================
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { api } from '@/lib/api.js';
-import { READ, readStatusForError } from '@/design-system/states/readStatus.js';
+import { READ, readStatusForError, isRetryableReadError } from '@/design-system/states/readStatus.js';
 
 export const WORKSPACE_ROLE = Object.freeze({ STRATEGIST: 'STRATEGIST', BUYER: 'BUYER', CLIENT: 'CLIENT' });
 
@@ -47,13 +47,16 @@ const KNOWN_ROLES = Object.freeze(Object.values(WORKSPACE_ROLE));
 export { READ as ROLE_READ };
 
 const INITIAL = Object.freeze({
-  role: null, visibleStates: null, loading: true, error: null, status: READ.LOADING,
+  role: null, visibleStates: null, loading: true, error: null, status: READ.LOADING, canRetry: false,
 });
 
 export const RoleContext = createContext(INITIAL);
 
 export function RoleProvider({ children }) {
   const [state, setState] = useState(INITIAL);
+
+  const [reloadKey, setReloadKey] = useState(0);
+  const refetch = useCallback(() => { setState(INITIAL); setReloadKey((k) => k + 1); }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,7 +70,7 @@ export function RoleProvider({ children }) {
         // called the read. An older server sends no roleStatus at all, and a
         // valid role still resolves, so the fix degrades safely either way.
         if (res.data?.roleStatus !== 'UNRESOLVED' && KNOWN_ROLES.includes(role)) {
-          setState({ role, visibleStates: res.data?.visibleStates ?? null, loading: false, error: null, status: READ.PRESENT });
+          setState({ role, visibleStates: res.data?.visibleStates ?? null, loading: false, error: null, status: READ.PRESENT, canRetry: false });
         } else {
           // The server established that this seat carries no role. That is an
           // ANSWER, not a failure, and it has its own next step — so it may not
@@ -79,19 +82,20 @@ export function RoleProvider({ children }) {
             loading: false,
             error: null,
             status: unset ? READ.NOTHING_FOUND : READ.NOT_REACHABLE,
+            canRetry: res.data?.roleReason === 'ROLE_LOOKUP_FAILED',
           });
         }
       } catch (err) {
         if (cancelled) return;
         // Fails CLOSED. A 403 is a refusal we can name; anything else is a read
         // we could not complete. Neither is a role.
-        setState({ role: null, visibleStates: null, loading: false, error: err, status: readStatusForError(err) });
+        setState({ role: null, visibleStates: null, loading: false, error: err, status: readStatusForError(err), canRetry: isRetryableReadError(err) });
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadKey]);
 
-  return <RoleContext.Provider value={state}>{children}</RoleContext.Provider>;
+  return <RoleContext.Provider value={{ ...state, refetch }}>{children}</RoleContext.Provider>;
 }
 
 export function useRoleContext() {

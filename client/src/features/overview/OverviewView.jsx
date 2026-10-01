@@ -44,7 +44,7 @@ import { OVERVIEW_STATUS } from './overviewState.js';
 
 export default function OverviewView() {
   const {
-    workspace, plan, dismiss,
+    workspace, plan, dismiss, canRetry, retryFailedReads,
     hasAnyData, hasScorableData, overviewStatus, coreAvailable, coreUsable,
     accountState, insight, bands, kpis, healthTone, healthLabel, killCount,
     needsRevenue, staleRevenue,
@@ -210,6 +210,7 @@ export default function OverviewView() {
           {/* The hero is always first, then the interrupt, then the rest of the
               plan — so a nudge never outranks the account's own answer. */}
           {render(plan.main.slice(0, 1))}
+          {canRetry && <button type="button" onClick={retryFailedReads}>Retry Overview</button>}
           {overviewStatus === OVERVIEW_STATUS.PARTIAL && (
             <p role="status" className="mb-4 text-sm text-lumi-muted">
               Some Overview information couldn’t be loaded. Available results are shown below.

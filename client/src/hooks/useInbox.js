@@ -62,30 +62,34 @@ export function useInbox() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const aliveRef = useRef(true);
+  const attemptRef = useRef(0);
 
   const load = useCallback(async () => {
     if (!aliveRef.current) return;
+    const attempt = ++attemptRef.current;
+    setItems([]);
     setIsLoading(true);
     setError(null);
     try {
       const res = await api.get('/api/lumi/inbox');
-      if (!aliveRef.current) return;
+      if (!aliveRef.current || attempt !== attemptRef.current) return;
       const parsed = InboxResponseSchema.safeParse(res.data);
       if (parsed.success) setItems(toItems(parsed.data));
       else { setItems([]); setError(new Error('Inbox response failed contract validation')); }
     } catch (err) {
-      if (!aliveRef.current) return;
+      if (!aliveRef.current || attempt !== attemptRef.current) return;
       setError(err);
       setItems([]);
     } finally {
-      if (aliveRef.current) setIsLoading(false);
+      if (aliveRef.current && attempt === attemptRef.current) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    const attempts = attemptRef;
     aliveRef.current = true;
     load();
-    return () => { aliveRef.current = false; };
+    return () => { aliveRef.current = false; ++attempts.current; };
   }, [load]);
 
   return { items, isLoading, error, refetch: load };

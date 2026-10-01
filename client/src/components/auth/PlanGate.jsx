@@ -61,10 +61,7 @@ import { StateBlock } from '@/design-system/patterns/index.js';
  * What is NOT claimed: no plan, no tier, no upgrade path. An unread entitlement
  * is not a FREE seat (Phase 5.9), and none of these sentences mentions money.
  *
- * No retry control: `useWorkspace` exposes `refetch`, but wiring it here
- * changes when the entitlement is re-read, which is a behaviour change rather
- * than copy. Recorded as follow-up in PHASE_5_14 rather than faked with a
- * button that does nothing.
+ * Retry is offered only for transient failed reads.
  */
 const ENTITLEMENT_COPY = {
   [WORKSPACE_READ.NOTHING_FOUND]: {
@@ -87,7 +84,7 @@ const ENTITLEMENT_COPY = {
   },
 };
 
-function EntitlementUnavailable({ status }) {
+function EntitlementUnavailable({ status, canRetry, onRetry }) {
   const copy = ENTITLEMENT_COPY[status] ?? ENTITLEMENT_COPY[WORKSPACE_READ.NOT_REACHABLE];
   return (
     <div className="flex min-h-full items-center justify-center p-6">
@@ -97,6 +94,7 @@ function EntitlementUnavailable({ status }) {
         icon={copy.icon}
         title={copy.title}
         description={copy.description}
+        action={status === WORKSPACE_READ.NOT_REACHABLE && canRetry && onRetry ? <button type="button" onClick={onRetry}>Retry workspace</button> : undefined}
       />
     </div>
   );
@@ -106,11 +104,11 @@ function EntitlementUnavailable({ status }) {
 export { ENTITLEMENT_COPY };
 
 export default function PlanGate({ required, fallback = null, unavailable, children }) {
-  const { canAccess, loading, status } = usePlan();
+  const { canAccess, loading, status, canRetry, refetch } = usePlan();
 
   if (loading) return null;
   if (status !== WORKSPACE_READ.PRESENT) {
-    return unavailable ?? <EntitlementUnavailable status={status} />;
+    return unavailable ?? <EntitlementUnavailable status={status} canRetry={canRetry} onRetry={refetch} />;
   }
   return canAccess(required) ? children : fallback;
 }

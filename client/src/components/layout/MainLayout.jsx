@@ -33,7 +33,7 @@ function MainLayoutShell() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { data: recentDecisions = [] } = useRecentDecisions();
-  const { status: roleStatus } = useCollabRole();
+  const { status: roleStatus, canRetry, refetch } = useCollabRole();
 
   // ── THE ROLE BOUNDARY (Phase 5.11) ───────────────────────────
   // Nothing inside this shell renders until the seat is KNOWN.
@@ -54,7 +54,7 @@ function MainLayoutShell() {
   if (roleStatus !== ROLE_READ.PRESENT) {
     // Not a redirect: routing on an unknown seat is the same guess, one layer
     // down. The route is preserved and the reason is stated.
-    return <RoleUnavailable status={roleStatus} />;
+    return <RoleUnavailable status={roleStatus} canRetry={canRetry} onRetry={refetch} />;
   }
 
   // FE-03 — `highPriorityAlerts` was built here from

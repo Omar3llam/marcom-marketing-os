@@ -109,8 +109,8 @@ function PageFallback() {
 // role therefore cannot arrive here; it is guarded anyway, because sending an
 // unknown seat to the operator home is the guess this phase exists to end.
 function RoleAwareRedirect() {
-  const { role, status } = useCollabRole();
-  if (status !== ROLE_READ.PRESENT) return <RoleUnavailable status={status} />;
+  const { role, status, canRetry, refetch } = useCollabRole();
+  if (status !== ROLE_READ.PRESENT) return <RoleUnavailable status={status} canRetry={canRetry} onRetry={refetch} />;
   return <Navigate to={role === WORKSPACE_ROLE.CLIENT ? appRoutes.leadership : appRoutes.overview} replace />;
 }
 
@@ -126,9 +126,9 @@ function RoleAwareRedirect() {
 // A null role no longer slips through either: `role === CLIENT` is false for
 // null, which would have sent every unread seat down the OPERATOR branch.
 function LockFromClient({ children }) {
-  const { role, loading, status } = useCollabRole();
+  const { role, loading, status, canRetry, refetch } = useCollabRole();
   if (loading || status === ROLE_READ.LOADING) return null;
-  if (status !== ROLE_READ.PRESENT) return <RoleUnavailable status={status} />;
+  if (status !== ROLE_READ.PRESENT) return <RoleUnavailable status={status} canRetry={canRetry} onRetry={refetch} />;
   if (role === WORKSPACE_ROLE.CLIENT) return <Navigate to={appRoutes.leadership} replace />;
   return children;
 }

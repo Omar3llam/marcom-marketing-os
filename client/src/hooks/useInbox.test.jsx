@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn() } }));
 
@@ -51,5 +51,23 @@ describe('useInbox reads the endpoint outcome', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.error).toBeInstanceOf(Error);
     expect(result.current.error.message).toMatch(/contract validation/);
+  });
+});
+
+
+describe('SC-06 useInbox recovery', () => {
+  it('clears the old failure while retrying and accepts fresh success', async () => {
+    const failure = Object.assign(new Error('temporary'), { httpStatus: 503 });
+    let resolve;
+    api.get.mockRejectedValueOnce(failure).mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
+    const { result } = renderHook(() => useInbox());
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    act(() => { result.current.refetch(); });
+    expect(result.current.isLoading).toBe(true);
+    expect(result.current.error).toBeNull();
+    await act(async () => { resolve({ data: { workspaceId: 'ws', role: 'BUYER', alerts: [], latestNarrative: null, pendingApprovals: [] } }); });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.error).toBeNull();
+    expect(result.current.items).toEqual([]);
   });
 });

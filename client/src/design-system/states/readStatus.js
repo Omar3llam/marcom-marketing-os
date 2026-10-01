@@ -46,6 +46,15 @@ export function readStatusForError(err) {
   return httpStatus === 403 ? READ.NOT_PERMITTED : READ.NOT_REACHABLE;
 }
 
+/** Retry transport failures only; contract drift and permanent refusals stay explicit. */
+export function isRetryableReadError(err) {
+  if (!err || /failed contract validation/.test(err.message ?? '')) return false;
+  const roleReason = err.context?.roleReason ?? err.response?.data?.roleReason;
+  if (['ROLE_UNSET', 'ROLE_UNKNOWN', 'ROLE_IDENTITY_MISSING'].includes(roleReason)) return false;
+  const status = err.httpStatus ?? err.response?.status;
+  return status == null || status === 408 || status === 429 || status >= 500;
+}
+
 /** A setup absence must be explicitly established by the backend. */
 export function isNoWorkspaceError(err) {
   const status = err?.httpStatus ?? err?.response?.status;

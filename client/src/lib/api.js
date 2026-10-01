@@ -213,7 +213,7 @@ export function mapTransportError(error) {
       fallbackAction: 'Try again or contact support if issue persists',
       requestId,
       sessionId,
-      context: { endpoint },
+      context: { endpoint, ...(error.response?.data?.roleReason ? { roleReason: error.response.data.roleReason } : {}) },
     });
   }
 

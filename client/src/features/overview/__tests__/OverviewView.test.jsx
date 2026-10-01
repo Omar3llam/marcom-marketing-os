@@ -13,7 +13,7 @@
 // account, null→"—" for any absent metric (never fabricated).
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('@/context/AuthContext.jsx', () => ({ useAuth: () => ({ currentUser: { displayName: 'Omar A' } }) }));
@@ -911,4 +911,28 @@ describe('Account health · Attention renders the engine’s band, never its own
   // The score's own passthrough is asserted in overviewDerive.test.js, not
   // here: this file stubs StatCard down to {label, sub} and drops `value`
   // entirely, so a score assertion in this harness would be testing the stub.
+});
+
+describe('SC-06 Overview recovery control', () => {
+  it('retries only failed transient sources and removes the old failure after recovery', () => {
+    const retry = vi.fn();
+    const healthy = vi.fn();
+    useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: healthy });
+    useConnectorVerdicts.mockReturnValue({ verdicts: [], loading: false, error: Object.assign(new Error('temporary'), { httpStatus: 503 }), refetch: retry });
+    const view = renderView();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry Overview' }));
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(healthy).not.toHaveBeenCalled();
+    useConnectorVerdicts.mockReturnValue({ verdicts: [], loading: true, error: null, refetch: retry });
+    view.rerender(<MemoryRouter><OverviewView /></MemoryRouter>);
+    expect(screen.queryByText(/Some Overview information couldn’t/)).not.toBeInTheDocument();
+    useConnectorVerdicts.mockReturnValue({ verdicts: [], loading: false, error: null, refetch: retry });
+    view.rerender(<MemoryRouter><OverviewView /></MemoryRouter>);
+    expect(screen.queryByRole('button', { name: 'Retry Overview' })).not.toBeInTheDocument();
+  });
+  it.each([403, 409])('does not retry permanent HTTP %s', (httpStatus) => {
+    useConnectorVerdicts.mockReturnValue({ verdicts: [], loading: false, error: Object.assign(new Error('permanent'), { httpStatus }), refetch: vi.fn() });
+    renderView();
+    expect(screen.queryByRole('button', { name: 'Retry Overview' })).not.toBeInTheDocument();
+  });
 });

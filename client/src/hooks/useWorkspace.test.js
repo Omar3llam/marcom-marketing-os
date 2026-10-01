@@ -10,7 +10,7 @@
 // shape (and in the raw shape too, since both reach this catch in practice).
 // ============================================================
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 const mockAuth = { currentUser: { uid: 'u1' } };
 vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn() } }));
@@ -163,5 +163,23 @@ describe('useWorkspace — session boundaries', () => {
     expect(result.current.status).toBe(WORKSPACE_READ.LOADING);
     expect(result.current.workspace).toBeNull();
     expect(result.current.hasWorkspace).toBe(false);
+  });
+});
+
+
+describe('SC-06 useWorkspace recovery', () => {
+  it('clears the old failure while retrying and accepts fresh success', async () => {
+    const failure = Object.assign(new Error('temporary'), { httpStatus: 503 });
+    let resolve;
+    api.get.mockRejectedValueOnce(failure).mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
+    const { result } = renderHook(() => useWorkspace());
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    act(() => { result.current.refetch(); });
+    expect(result.current.loading).toBe(true);
+    expect(result.current.error).toBeNull();
+    await act(async () => { resolve({ data: { hasWorkspace: true, workspace: { id: 'w1', plan: 'PRO' } } }); });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBeNull();
+    expect(result.current.workspace).not.toBeNull();
   });
 });

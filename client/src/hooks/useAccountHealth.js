@@ -25,31 +25,36 @@ export function useAccountHealth() {
   const [error, setError] = useState(null);
   const [forbidden, setForbidden] = useState(false);
   const aliveRef = useRef(true);
+  const attemptRef = useRef(0);
 
   const refetch = useCallback(async () => {
+    if (!aliveRef.current) return;
+    const attempt = ++attemptRef.current;
+    setHealth(null);
     setLoading(true);
     setError(null);
     setForbidden(false);
     try {
       const res = await api.get('/api/lumi/entities/health');
-      if (!aliveRef.current) return;
+      if (!aliveRef.current || attempt !== attemptRef.current) return;
       setHealth(res.data ?? null);
     } catch (err) {
-      if (!aliveRef.current) return;
+      if (!aliveRef.current || attempt !== attemptRef.current) return;
       // 403 = this role can't see the efficiency critique → show "—", not an error.
       // AppError carries .httpStatus; fall back to raw .response.status (un-mapped path).
       const status = err?.httpStatus ?? err?.response?.status;
       if (status === 403) { setHealth(null); setForbidden(true); return; }
       setError(err);
     } finally {
-      if (aliveRef.current) setLoading(false);
+      if (aliveRef.current && attempt === attemptRef.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    const attempts = attemptRef;
     aliveRef.current = true;
     refetch();
-    return () => { aliveRef.current = false; };
+    return () => { aliveRef.current = false; ++attempts.current; };
   }, [refetch]);
 
   return { health, loading, error, forbidden, refetch };

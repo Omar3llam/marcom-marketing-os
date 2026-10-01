@@ -23,7 +23,7 @@
 // ============================================================
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useHome } from '@/hooks/useHome.js';
-import { isNoWorkspaceError } from '@/design-system/states/readStatus.js';
+import { isNoWorkspaceError, isRetryableReadError } from '@/design-system/states/readStatus.js';
 import AgendaBand from './components/AgendaBand.jsx';
 import LoopStatusRing from './components/LoopStatusRing.jsx';
 
@@ -57,7 +57,8 @@ export default function AgenticShellView() {
   if (error || !home) {
     return (
       <div className="mb-6 rounded-xl border border-surface-border bg-surface-card px-4 py-3 font-mono text-xs text-dark-soft">
-        Couldn&apos;t load your agenda right now. The loop keeps running — refresh shortly.
+        Couldn&apos;t load your agenda right now.
+        {isRetryableReadError(error) && <button type="button" className="block mt-2" onClick={refetch}>Retry agenda</button>}
       </div>
     );
   }

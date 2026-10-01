@@ -16,8 +16,7 @@
 //   NOTHING_FOUND  the read SUCCEEDED and this seat carries no role. An answer,
 //                  not a failure — and the one state here with a real next step.
 //   NOT_REACHABLE  the read did not complete. Our position, not a fact about
-//                  the account. No action is offered because none exists (see
-//                  RECOVERY below).
+//                  the account. Transient failures expose recovery.
 //   NOT_PERMITTED  we were refused the read itself. Distinct from "you may not
 //                  see this feature", which is a section refusal and lives in
 //                  SectionNotPermitted.
@@ -33,12 +32,7 @@
 // workspace failure were textually identical (Phase 5.13, M-4). These sentences
 // say ACCESS; PlanGate's say WORKSPACE.
 //
-// ── RECOVERY: THERE IS NONE, SO NONE IS PROMISED ───────────────────────────
-// RoleContext fetches once with `[]` deps and exposes no refetch, so a reload
-// is the only recovery. No "Try again" control is rendered, and no sentence
-// tells the user to retry — a button that does not re-read would be a lie, and
-// wiring one changes when a role is re-read, which is a semantics change and
-// not this phase's. Recorded as follow-up in PHASE_5_14.
+// Recovery requires an explicitly retryable read and a real callback.
 // ============================================================
 import { AlertTriangle, Lock, UserX } from 'lucide-react';
 // From the vocabulary's HOME rather than RoleContext's re-export: the copy map
@@ -73,7 +67,7 @@ const COPY = {
   },
 };
 
-export default function RoleUnavailable({ status }) {
+export default function RoleUnavailable({ status, canRetry = false, onRetry }) {
   // An unrecognised status falls to the least-claiming sentence. It says only
   // what is certainly true — we do not have an access level to act on — and
   // promises nothing about why.
@@ -86,6 +80,7 @@ export default function RoleUnavailable({ status }) {
         icon={copy.icon}
         title={copy.title}
         description={copy.description}
+        action={status === ROLE_READ.NOT_REACHABLE && canRetry && onRetry ? <button type="button" onClick={onRetry}>Retry access check</button> : undefined}
       />
     </div>
   );

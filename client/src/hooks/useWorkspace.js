@@ -4,10 +4,10 @@
 // Fetches the current user's workspace from /api/user/workspace.
 // Returns workspace metadata for the PROJECT dropdown in Sidebar.
 // ============================================================
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { api } from '@/lib/api.js';
 import { useAuth } from '@/context/AuthContext.jsx';
-import { READ, readStatusForError } from '@/design-system/states/readStatus.js';
+import { READ, readStatusForError, isRetryableReadError } from '@/design-system/states/readStatus.js';
 
 /**
  * What this read established about the workspace ENTITLEMENT.
@@ -49,7 +49,14 @@ export function useWorkspace() {
   const [error, setError] = useState(null);
   const [status, setStatus] = useState(WORKSPACE_READ.LOADING);
 
-  const fetchWorkspace = async ({ isCancelled = () => false } = {}) => {
+  const [canRetry, setCanRetry] = useState(false);
+  const attemptRef = useRef(0);
+  const aliveRef = useRef(true);
+  const fetchWorkspace = useCallback(async () => {
+      if (!aliveRef.current) return;
+      const attempt = ++attemptRef.current;
+      const isCancelled = () => !aliveRef.current || attempt !== attemptRef.current;
+      setWorkspace(null); setHasWorkspace(false); setError(null); setCanRetry(false);
       if (!currentUser) {
         if (isCancelled()) return;
         setWorkspace(null);
@@ -97,13 +104,15 @@ export function useWorkspace() {
         // Classified by the shared helper: a 403 is a refusal, anything else
         // is a read we could not complete. Never the same thing as a tier.
         setStatus(readStatusForError(err));
+        setCanRetry(isRetryableReadError(err));
       } finally {
         if (!isCancelled()) setLoading(false);
       }
-  };
+  }, [currentUser]);
 
   useEffect(() => {
-    let cancelled = false;
+    const attempts = attemptRef;
+    aliveRef.current = true;
     // A new identity must not inherit the previous one's answer: reset before
     // asking, or the next user reads this one's entitlement until the request
     // lands.
@@ -112,11 +121,9 @@ export function useWorkspace() {
     setError(null);
     setStatus(WORKSPACE_READ.LOADING);
     setLoading(true);
-    fetchWorkspace({ isCancelled: () => cancelled });
-    return () => { cancelled = true; };
-  // fetchWorkspace closes over currentUser; including it would recreate the effect every render.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentUser]);
+    fetchWorkspace();
+    return () => { aliveRef.current = false; ++attempts.current; };
+  }, [fetchWorkspace]);
 
   return {
     workspace,
@@ -125,5 +132,6 @@ export function useWorkspace() {
     error,
     status,
     refetch: fetchWorkspace,
+    canRetry,
   };
 }
