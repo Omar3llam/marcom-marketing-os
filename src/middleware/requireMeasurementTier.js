@@ -15,23 +15,11 @@
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
 import { devOverride } from '../lib/devOverrides.js';
-
-// Resolve workspaceId — mirrors the per-route resolvers. Never fabricate a uuid.
-async function resolveWorkspaceId(req) {
-  if (req.workspaceId) return req.workspaceId;
-  if (!req.userId) return null;
-  try {
-    const u = await prisma.user.findUnique({ where: { clerkId: req.userId }, select: { workspaceId: true } });
-    return u?.workspaceId ?? null;
-  } catch (err) {
-    logger.error({ err: err.message, userId: req.userId }, '[requireMeasurementTier] workspaceId fallback failed');
-    return null;
-  }
-}
+import { needWorkspace } from '../lib/workspaceResolution.js';
 
 export async function requireMeasurementTier(req, res, next) {
-  const wsId = await resolveWorkspaceId(req);
-  if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
+  const wsId = await needWorkspace(req, res);
+  if (!wsId) return;
 
   const override = devOverride('MEASUREMENT_TIER_OVERRIDE'); // dev/local escape hatch
   let tier = override;

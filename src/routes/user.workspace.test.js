@@ -193,3 +193,34 @@ describe('GET /api/user/workspace — market + industry from context', () => {
     expect(res.body.workspace.plan).toBe('FREE');
   });
 });
+
+describe('GET /api/user/workspace — absence versus read failure', () => {
+  beforeEach(() => vi.clearAllMocks());
+  it.each([null, { workspaceId: null }])('successful user lookup establishes absence: %j', async (user) => {
+    prisma.user.findFirst.mockResolvedValue(user);
+    const res = await request(buildApp()).get('/api/user/workspace').expect(200);
+    expect(res.body).toEqual({ workspace: null, hasWorkspace: false });
+    expect(prisma.workspace.findUnique).not.toHaveBeenCalled();
+  });
+  it('successful workspace lookup establishes a missing row', async () => {
+    prisma.user.findFirst.mockResolvedValue({ workspaceId: WS });
+    prisma.workspace.findUnique.mockResolvedValue(null);
+    const res = await request(buildApp()).get('/api/user/workspace').expect(200);
+    expect(res.body).toEqual({ workspace: null, hasWorkspace: false });
+  });
+  it.each(['user', 'workspace'])('%s read failure never returns absence or private details, even in development', async (source) => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    try {
+      prisma.user.findFirst.mockResolvedValue({ workspaceId: WS });
+      const failure = new Error('private SQL password stack');
+      if (source === 'user') prisma.user.findFirst.mockRejectedValue(failure);
+      else prisma.workspace.findUnique.mockRejectedValue(failure);
+      const res = await request(buildApp()).get('/api/user/workspace').expect(500);
+      expect(res.body).toEqual({ error: 'Failed to fetch workspace' });
+      expect(res.body).not.toHaveProperty('hasWorkspace');
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
+});

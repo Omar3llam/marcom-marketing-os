@@ -15,6 +15,7 @@
 import { X, ClipboardCheck, Radar, FileText, AlertCircle } from 'lucide-react';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { useInbox } from '@/hooks/useInbox.js';
+import { isNoWorkspaceError } from '@/design-system/states/readStatus.js';
 
 const ICON = { approval: ClipboardCheck, radar: Radar, narrative: FileText };
 
@@ -68,6 +69,10 @@ export function InboxPanel({ onNavigate, onClose }) {
       <div className="max-h-96 overflow-y-auto">
         {isLoading ? (
           <div className="px-4 py-8 text-center text-xs text-dark-subtle">Loading your inbox…</div>
+        ) : isNoWorkspaceError(error) ? (
+          <div className="px-4 py-8 text-center text-xs text-dark-subtle">
+            No workspace is attached to this account. Your inbox is not configured.
+          </div>
         ) : error ? (
           <div className="px-4 py-8 text-center text-xs text-signal-kill">
             <AlertCircle className="w-4 h-4 mx-auto mb-1.5" strokeWidth={1.5} /> Couldn’t load your inbox.

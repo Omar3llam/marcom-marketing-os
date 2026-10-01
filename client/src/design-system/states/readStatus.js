@@ -45,3 +45,10 @@ export function readStatusForError(err) {
   const httpStatus = err?.httpStatus ?? err?.response?.status;
   return httpStatus === 403 ? READ.NOT_PERMITTED : READ.NOT_REACHABLE;
 }
+
+/** A setup absence must be explicitly established by the backend. */
+export function isNoWorkspaceError(err) {
+  const status = err?.httpStatus ?? err?.response?.status;
+  const code = err?.response?.data?.error ?? err?.code;
+  return status === 409 && code === 'NoWorkspace';
+}

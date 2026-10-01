@@ -30,24 +30,10 @@
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../utils/logger.js';
 import { devOverride } from '../lib/devOverrides.js';
+import { needWorkspace } from '../lib/workspaceResolution.js';
 
 export const PLAN_RANK = { FREE: 0, GROWTH: 1, PRO: 2 };
 const rank = (p) => PLAN_RANK[p] ?? 0; // unknown/missing plan floors to FREE
-
-// Resolve workspaceId — mirrors requireMeasurementTier. firebaseAuthMiddleware
-// normally sets req.workspaceId; fall back to a direct uid lookup for a
-// transient miss. Never fabricate a synthetic id (workspaceId is @db.Uuid).
-async function resolveWorkspaceId(req) {
-  if (req.workspaceId) return req.workspaceId;
-  if (!req.userId) return null;
-  try {
-    const u = await prisma.user.findUnique({ where: { clerkId: req.userId }, select: { workspaceId: true } });
-    return u?.workspaceId ?? null;
-  } catch (err) {
-    logger.error({ err: err.message, userId: req.userId }, '[requirePlan] workspaceId fallback failed');
-    return null;
-  }
-}
 
 function deny(res, required, current) {
   return res.status(403).json({
@@ -71,8 +57,8 @@ export function requirePlan(minimumPlan) {
       return rank(override) >= rank(minimumPlan) ? next() : deny(res, minimumPlan, override);
     }
 
-    const wsId = await resolveWorkspaceId(req);
-    if (!wsId) return res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' });
+    const wsId = await needWorkspace(req, res);
+    if (!wsId) return;
 
     let plan;
     try {

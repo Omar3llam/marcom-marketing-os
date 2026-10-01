@@ -15,6 +15,8 @@
 // ============================================================
 import { Router } from 'express';
 import { prisma } from '../../lib/prisma.js';
+import { needWorkspace as need } from '../../lib/workspaceResolution.js';
+import { requireWorkspace } from '../../middleware/requireWorkspace.js';
 import { scopeFor } from '../../services/decisions/decisionClassScope.js';
 import { logger } from '../../utils/logger.js';
 import { requireCollabRole, requireResolvedCollabRole, resolveCollabRoleContext } from '../../middleware/requireCollabRole.js';
@@ -28,6 +30,7 @@ import { ALERT_KIND, radarSeverity } from '../../services/collaboration/notifica
 import { resolveActorId } from './actorId.js';
 
 export const collaborationRouter = Router();
+collaborationRouter.use(['/roles/me', '/narratives', '/approvals', '/handoff', '/inbox'], requireWorkspace);
 
 // ── Plan gate (GROWTH) ───────────────────────────────────────
 // Approvals render on the Intelligence → Growth Strategy surface (GROWTH). The
@@ -35,25 +38,6 @@ export const collaborationRouter = Router();
 // generate), inbox, roles/me, and handoff stay ungated — Reports/Leadership is
 // a FREE surface end to end (every role + every plan reads the narrative).
 collaborationRouter.use('/approvals', requirePlan('GROWTH'));
-
-// Resolve workspaceId — mirrors lumi/measurement.js. Never fabricate a uuid.
-async function resolveWorkspaceId(req) {
-  if (req.workspaceId) return req.workspaceId;
-  if (!req.userId) return null;
-  try {
-    const u = await prisma.user.findUnique({ where: { clerkId: req.userId }, select: { workspaceId: true } });
-    return u?.workspaceId ?? null;
-  } catch (err) {
-    logger.error({ err: err.message, userId: req.userId }, '[lumi/collaboration] workspaceId fallback failed');
-    return null;
-  }
-}
-
-async function need(req, res) {
-  const wsId = await resolveWorkspaceId(req);
-  if (!wsId) { res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' }); return null; }
-  return wsId;
-}
 
 // ─────────────────────────────────────────────────────────────
 // GET /roles/me — the client gates its FSM nav from this

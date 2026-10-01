@@ -9,7 +9,8 @@
 // through the existing /api/execute/meta governance.
 // ============================================================
 import { Router } from 'express';
-import { prisma } from '../../lib/prisma.js';
+import { needWorkspace as need } from '../../lib/workspaceResolution.js';
+import { requireWorkspace } from '../../middleware/requireWorkspace.js';
 import { logger } from '../../utils/logger.js';
 import { getHome } from '../../services/agentic-loop/AgentHomeService.js';
 import { runSweep, getLoopState } from '../../services/agentic-loop/AgenticLoopService.js';
@@ -17,25 +18,7 @@ import { requireResolvedCollabRole, requireCollabRole } from '../../middleware/r
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
 
 export const agenticRouter = Router();
-
-// Resolve workspaceId — mirrors lumi/measurement.js. Never fabricate a uuid.
-async function resolveWorkspaceId(req) {
-  if (req.workspaceId) return req.workspaceId;
-  if (!req.userId) return null;
-  try {
-    const u = await prisma.user.findUnique({ where: { clerkId: req.userId }, select: { workspaceId: true } });
-    return u?.workspaceId ?? null;
-  } catch (err) {
-    logger.error({ err: err.message, userId: req.userId }, '[lumi/agentic] workspaceId fallback failed');
-    return null;
-  }
-}
-
-async function need(req, res) {
-  const wsId = await resolveWorkspaceId(req);
-  if (!wsId) { res.status(409).json({ error: 'NoWorkspace', message: 'No resolvable workspace.' }); return null; }
-  return wsId;
-}
+agenticRouter.use(['/home', '/loop'], requireWorkspace);
 
 // ─────────────────────────────────────────────────────────────
 // GET /home — buyer band + strategist band + loop status (role-aware)
