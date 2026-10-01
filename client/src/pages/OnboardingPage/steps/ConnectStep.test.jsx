@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { StrictMode } from 'react';
 
 const { useConnectionsMock, useProjectIdMock, startConnectMock } = vi.hoisted(() => ({
   useConnectionsMock: vi.fn(),
@@ -25,6 +26,38 @@ beforeEach(() => {
 });
 
 describe('ConnectStep', () => {
+  it('a callback error blocks cached connected data and conflicting success flags', () => {
+    setUrl('?step=connect&meta_error=server_error&meta_connected=1');
+    useConnectionsMock.mockReturnValue({ data: { connections: [{ platform: 'META', connected: true }] } });
+    const onConnected = vi.fn(); render(<ConnectStep onConnected={onConnected} onSkip={vi.fn()} />);
+    expect(onConnected).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    expect(onConnected).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /connect meta/i })).toBeInTheDocument();
+  });
+  it('callback and reader success together advance once, including StrictMode replay', () => {
+    setUrl('?step=connect&meta_connected=1');
+    useConnectionsMock.mockReturnValue({ data: { connections: [{ platform: 'META', connected: true }] } });
+    const onConnected = vi.fn();
+    const view = render(<StrictMode><ConnectStep onConnected={onConnected} onSkip={vi.fn()} /></StrictMode>);
+    view.rerender(<StrictMode><ConnectStep onConnected={onConnected} onSkip={vi.fn()} /></StrictMode>);
+    expect(onConnected).toHaveBeenCalledTimes(1);
+  });
+  it('skip cannot be submitted while context is saving', () => {
+    setUrl('?step=connect&meta_error=server_error'); const onSkip = vi.fn();
+    const view = render(<ConnectStep onConnected={vi.fn()} onSkip={onSkip} />);
+    view.rerender(<ConnectStep onConnected={vi.fn()} onSkip={onSkip} saving />);
+    const skip = screen.getByRole('button', { name: /continue without connecting/i });
+    expect(skip).toBeDisabled(); fireEvent.click(skip); expect(onSkip).not.toHaveBeenCalled();
+  });
+  it('duplicate connection clicks issue one request', () => {
+    startConnectMock.mockReturnValue(new Promise(() => {}));
+    render(<ConnectStep onConnected={vi.fn()} onSkip={vi.fn()} />);
+    const connect = screen.getByRole('button', { name: /connect meta/i });
+    fireEvent.click(connect); fireEvent.click(connect);
+    expect(startConnectMock).toHaveBeenCalledTimes(1);
+  });
   it('clicking Connect calls startConnect with META + projectId + the onboarding returnTo', () => {
     render(<ConnectStep onConnected={vi.fn()} onSkip={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: /connect meta/i }));
