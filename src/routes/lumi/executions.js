@@ -37,6 +37,7 @@ import {
 } from '../../services/execution/executionProjection.js';
 import { PROVENANCE_SELECT, legacyExecutedAt } from '../../services/execution/decisionProvenance.js';
 import { getCurrentOutcome } from '../../services/decision-accuracy/outcomeSelection.js';
+import { outcomeMonetaryEvidence } from '../../services/decision-accuracy/outcomeProjection.js';
 
 export const executionsRouter = Router();
 
@@ -71,8 +72,8 @@ export const OUTCOME_SELECT = Object.freeze({
  * EVERY NULL STAYS NULL. `sustained` is a nullable Boolean where null means the
  * question was never established — a decision whose lift nobody checked is not
  * a decision whose lift failed, and `?? false` would silently convert one into
- * the other. The three deltas are the same: null is "not measured", and a 0
- * there would be a fabricated result, not an absent one.
+ * the other. ROAS is independently human-reported. Spend/revenue authority is
+ * withheld even for stored zero: OutcomeSnapshot cannot prove denomination.
  *
  * When there is no outcome the object carries `available: false` and NOTHING
  * else — no zeroed metrics, no null-filled skeleton that reads at a glance like
@@ -80,6 +81,7 @@ export const OUTCOME_SELECT = Object.freeze({
  */
 export function toOutcomeSection(o) {
   if (!o) return { available: false };
+  const monetary = outcomeMonetaryEvidence();
   return {
     available:  true,
     outcomeId:  o.id,
@@ -92,9 +94,10 @@ export function toOutcomeSection(o) {
     window: { start: o.windowStart ?? null, end: o.windowEnd ?? null },
     // null = nobody established whether the lift held. NOT false.
     sustained: o.sustained ?? null,
+    monetary,
     deltas: {
-      spendMinor:   o.spendDeltaMinor   ?? null,
-      revenueMinor: o.revenueDeltaMinor ?? null,
+      spendMinor:   monetary.spendDeltaMinor,
+      revenueMinor: monetary.revenueDeltaMinor,
       roas:         o.roasDelta         ?? null,
     },
   };

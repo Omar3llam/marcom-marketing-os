@@ -16,6 +16,7 @@ import { accuracySurface, LIFT_KNOWLEDGE } from '../../services/decision-accurac
 import { readOutcomeEvidence, EVIDENCE_ERROR, EVIDENCE_KNOWLEDGE } from '../../services/decision-accuracy/outcomeEvidenceComparison.js';
 import { requireCollabRole } from '../../middleware/requireCollabRole.js';
 import { WORKSPACE_ROLE } from '../../services/collaboration/roleScope.js';
+import { projectOutcomeSnapshot } from '../../services/decision-accuracy/outcomeProjection.js';
 
 // C-06 — the surface's `status` is a LIFT_STATUS. Publish what it means as
 // knowledge beside it, and nothing at all when the surface carries no status
@@ -157,7 +158,7 @@ accuracyRouter.post('/decisions/:id/outcome', requireOperator, async (req, res) 
       { wsId, decisionId: req.params.id, outcomeId: out.outcome?.id, previousOutcomeId: out.previousOutcomeId },
       '[lumi/accuracy] outcome recorded',
     );
-    return res.status(201).json(out);
+    return res.status(201).json({ ...out, outcome: projectOutcomeSnapshot(out.outcome) });
   } catch (err) {
     if (err.code === OUTCOME_ERROR.DECISION_NOT_FOUND || /not found/i.test(err.message)) {
       return res.status(404).json({ error: 'DecisionNotFound', message: err.message });

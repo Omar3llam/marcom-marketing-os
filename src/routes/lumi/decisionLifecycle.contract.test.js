@@ -40,6 +40,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { dbAvailable, dbRequired } from '../../tests/dbProbe.js';
 import { prisma } from '../../lib/prisma.js';
 import { executionsRouter, toOutcomeSection } from './executions.js';
+import { accuracyRouter } from './accuracy.js';
 
 const DB_OK = await dbAvailable();
 
@@ -52,6 +53,7 @@ function makeApp({ workspaceId = WS, collabRole = 'BUYER' } = {}) {
   app.use(express.json());
   app.use((req, _res, next) => { req.workspaceId = workspaceId; req.collabRole = collabRole; next(); });
   app.use('/api/lumi', executionsRouter);
+  app.use('/api/lumi', accuracyRouter);
   return app;
 }
 const get = (id, opts) => request(makeApp(opts)).get(`/api/lumi/decisions/${id}/executions`);
@@ -135,7 +137,7 @@ describe('B4-A — toOutcomeSection states absence rather than shaping it', () =
       sustained: false, spendDeltaMinor: 0, revenueDeltaMinor: 0, roasDelta: 0,
     });
     expect(section.sustained).toBe(false);
-    expect(section.deltas).toEqual({ spendMinor: 0, revenueMinor: 0, roas: 0 });
+    expect(section.deltas).toEqual({ spendMinor: null, revenueMinor: null, roas: 0 });
   });
 
   it('T6e · invents no `status` the model does not have', () => {
@@ -286,7 +288,7 @@ describe.skipIf(!DB_OK)('B4-A — the lifecycle read path', () => {
   });
 
   // ── T7 ────────────────────────────────────────────────────────────────────
-  it('T7 · the recorded outcome reads back with its own values', async () => {
+  it('T7 · outcome facts remain available while unproven money is withheld without changing storage', async () => {
     const measuredAt   = new Date('2026-08-10T00:00:00Z');
     const windowStart  = new Date('2026-08-01T00:00:00Z');
     const windowEnd    = new Date('2026-08-08T00:00:00Z');
@@ -296,6 +298,7 @@ describe.skipIf(!DB_OK)('B4-A — the lifecycle read path', () => {
       spendDeltaMinor: -5000, revenueDeltaMinor: 1200, roasDelta: 0.4,
     });
 
+    const before = await prisma.outcomeSnapshot.findUnique({ where: { id: o.id } });
     const res = await get(d.id);
 
     expect(res.body.outcome.available).toBe(true);
@@ -304,8 +307,14 @@ describe.skipIf(!DB_OK)('B4-A — the lifecycle read path', () => {
     expect(new Date(res.body.outcome.window.start).toISOString()).toBe(windowStart.toISOString());
     expect(new Date(res.body.outcome.window.end).toISOString()).toBe(windowEnd.toISOString());
     expect(res.body.outcome.sustained).toBe(true);
-    // Persisted values, passed through — not recomputed, not aggregated.
-    expect(res.body.outcome.deltas).toEqual({ spendMinor: -5000, revenueMinor: 1200, roas: 0.4 });
+    expect(res.body.outcome.deltas).toEqual({ spendMinor: null, revenueMinor: null, roas: 0.4 });
+    expect(res.body.outcome.monetary).toEqual({
+      status: 'INSUFFICIENT_EVIDENCE', reason: 'OUTCOME_MONETARY_BASIS_UNPROVEN',
+      knowledge: 'NOT_ENOUGH', spendDeltaMinor: null, revenueDeltaMinor: null, currency: null,
+    });
+    expect(JSON.stringify(res.body.outcome)).not.toContain('-5000');
+    expect(JSON.stringify(res.body.outcome)).not.toContain('1200');
+    expect(await prisma.outcomeSnapshot.findUnique({ where: { id: o.id } })).toEqual(before);
   });
 
   it('T7b · a superseded outcome is never the one returned', async () => {
@@ -324,6 +333,65 @@ describe.skipIf(!DB_OK)('B4-A — the lifecycle read path', () => {
 
     expect(res.body.outcome.outcomeId).toBe(current.id);
     expect(res.body.outcome.deltas.roas).toBe(0.9);
+  });
+
+  it.each([
+    ['negative/positive', -7654321, 2345678, true],
+    ['zero', 0, 0, false],
+    ['null', null, null, null],
+  ])('SC-11 · %s stored money never acquires authority from workspace currency', async (_label, spend, revenue, sustained) => {
+    const d = await makeDecision({ humanExecutedAt: new Date('2026-08-01') });
+    const o = await makeOutcome(d.id, {
+      spendDeltaMinor: spend, revenueDeltaMinor: revenue, sustained, roasDelta: 0.7,
+    });
+    const before = await prisma.outcomeSnapshot.findUnique({ where: { id: o.id } });
+    let first;
+    for (const currency of ['EGP', 'JPY', 'USD']) {
+      await prisma.workspace.update({ where: { id: WS }, data: { currency } });
+      const res = await get(d.id);
+      expect(res.status).toBe(200);
+      expect(res.body.outcome.available).toBe(true);
+      expect(res.body.outcome.monetary).toEqual({
+        status: 'INSUFFICIENT_EVIDENCE', reason: 'OUTCOME_MONETARY_BASIS_UNPROVEN',
+        knowledge: 'NOT_ENOUGH', spendDeltaMinor: null, revenueDeltaMinor: null, currency: null,
+      });
+      expect(res.body.outcome.deltas).toEqual({ spendMinor: null, revenueMinor: null, roas: 0.7 });
+      expect(res.body.outcome.sustained).toBe(sustained);
+      if (first) expect(res.body.outcome).toEqual(first);
+      first = res.body.outcome;
+      expect(await prisma.outcomeSnapshot.findUnique({ where: { id: o.id } })).toEqual(before);
+    }
+  });
+
+  it('SC-11 · POST receipt and GET agree while the writer retains the original human-reported values', async () => {
+    const d = await makeDecision({ humanExecutedAt: new Date('2026-08-01') });
+    const body = {
+      spendDeltaMinor: -654321, revenueDeltaMinor: 876543, roasDelta: -0.3,
+      windowStart: '2026-08-02T00:00:00Z', windowEnd: '2026-08-09T00:00:00Z',
+      measuredAt: '2026-08-10T00:00:00Z', sustained: false,
+      // Caller-supplied authority must not survive the writer/projection.
+      currency: 'USD', monetary: { status: 'AVAILABLE', currency: 'USD' },
+    };
+    const post = await request(makeApp()).post(`/api/lumi/decisions/${d.id}/outcome`).send(body);
+    expect(post.status).toBe(201);
+    expect(post.body.outcome).toMatchObject({
+      decisionId: d.id, workspaceId: WS, sustained: false, roasDelta: -0.3,
+      spendDeltaMinor: null, revenueDeltaMinor: null, currency: null,
+      monetary: { status: 'INSUFFICIENT_EVIDENCE', reason: 'OUTCOME_MONETARY_BASIS_UNPROVEN' },
+    });
+    expect(JSON.stringify(post.body)).not.toContain('654321');
+    expect(JSON.stringify(post.body)).not.toContain('876543');
+    const stored = await prisma.outcomeSnapshot.findUnique({ where: { id: post.body.outcome.id } });
+    expect(stored).toMatchObject({
+      spendDeltaMinor: body.spendDeltaMinor, revenueDeltaMinor: body.revenueDeltaMinor,
+      roasDelta: body.roasDelta, sustained: false,
+    });
+    const res = await get(d.id);
+    expect(res.status).toBe(200);
+    expect(res.body.outcome.monetary).toEqual(post.body.outcome.monetary);
+    expect(res.body.outcome.outcomeId).toBe(stored.id);
+    expect(res.body.outcome.deltas).toEqual({ spendMinor: null, revenueMinor: null, roas: -0.3 });
+    expect(await prisma.outcomeSnapshot.findUnique({ where: { id: stored.id } })).toEqual(stored);
   });
 
   it('T7c · an outcome with nothing measured is available but empty-handed', async () => {

@@ -17,7 +17,7 @@ import { logger } from '../../utils/logger.js';
 import { composeNarrative } from './narrativeEngine.js';
 import { NARRATIVE_PERIOD, NARRATIVE_AUDIENCE, confidenceLabel } from './narrativeTypes.js';
 import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
-import { MONETARY_REASON } from '../../lib/operationalMonetary.js';
+import { outcomeMonetaryEvidence } from '../decision-accuracy/outcomeProjection.js';
 import { evaluateGoalTracking } from '../planning/PlanService.js';
 
 const PERIOD_DAYS = Object.freeze({ WEEKLY: 7, MONTHLY: 30 });
@@ -65,14 +65,15 @@ export function buildNarrativeInputs({
   // What we did — decisions with their realized outcome.
   const decisionInputs = decisions.map((d) => {
     const outcome = (d.outcomes && d.outcomes[0]) || null;
+    const monetary = outcomeMonetaryEvidence();
     return {
       id: d.id, verdict: d.verdict, entityId: d.entityId,
       entityLabel: labelsById.get(d.entityId) ?? null,
       outcomeId: outcome?.id ?? null,
-      spendDeltaMinor: null,
-      revenueDeltaMinor: null,
-      currency: null,
-      monetaryReason: outcome ? MONETARY_REASON.OUTCOME_MONETARY_BASIS_UNPROVEN : null,
+      spendDeltaMinor: monetary.spendDeltaMinor,
+      revenueDeltaMinor: monetary.revenueDeltaMinor,
+      currency: monetary.currency,
+      monetaryReason: outcome ? monetary.reason : null,
       monetaryStatus: outcome ? 'MONETARY_UNAVAILABLE_UNTRUSTED' : null,
     };
   });
