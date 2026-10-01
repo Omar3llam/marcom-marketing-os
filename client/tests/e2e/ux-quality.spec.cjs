@@ -120,7 +120,7 @@ test.describe('UX Quality Checks', () => {
       : 'FAIL ❌ Horizontal scroll detected on 390px viewport');
   });
 
-  test('Context: Locked visible in bottom bar (authenticated)', async ({ page }) => {
+  test('pseudo-system status claims are absent (authenticated)', async ({ page }) => {
     await page.goto(`${BASE}/app`);
     await page.waitForTimeout(1000);
 
@@ -130,11 +130,12 @@ test.describe('UX Quality Checks', () => {
       return;
     }
 
-    const contextBar = page.locator('text=/Context.*Locked/i, text=/Dual-Agent/i');
-    const visible = await contextBar.isVisible().catch(() => false);
-    console.log(visible
-      ? 'PASS ✅ ContextBar visible with status'
-      : 'WARNING 🟡 ContextBar or status text not found');
+    const unsupportedStatus = page.getByText(/Context: Locked|Dual-Agent Ready|SID _NSD87T|\bWATCHING\b/);
+    const visible = await unsupportedStatus.isVisible().catch(() => false);
+    console.log(!visible
+      ? 'PASS ✅ Pseudo-system status claims are absent'
+      : 'FAIL ❌ Unsupported pseudo-system status is visible');
+    if (visible) throw new Error('Unsupported ContextBar or workspace status is visible');
   });
 
 });

@@ -87,6 +87,20 @@ afterEach(() => {
 });
 
 describe('Sidebar — workspace truth boundary', () => {
+  it('keeps persisted workspace and market values; does not invent a market or liveness', () => {
+    const { getByText, queryByText, rerender } = renderSidebar();
+    expect(getByText('Acme')).toBeInTheDocument();
+    expect(getByText('EG')).toBeInTheDocument();
+    expect(queryByText('WATCHING')).not.toBeInTheDocument();
+
+    useWorkspace.mockReturnValue({ workspace: { name: 'Acme', market: null }, hasWorkspace: true, loading: false, status: WORKSPACE_READ.PRESENT });
+    rerender(<MemoryRouter><Sidebar collapsed={false} onToggle={() => {}} onMobileMenuToggle={() => {}} /></MemoryRouter>);
+    expect(getByText('Acme')).toBeInTheDocument();
+    expect(queryByText('Market:')).not.toBeInTheDocument();
+    expect(queryByText('EG')).not.toBeInTheDocument();
+    expect(queryByText('WATCHING')).not.toBeInTheDocument();
+  });
+
   it('offers setup only after a successful absence finding', () => {
     useWorkspace.mockReturnValue({ workspace: null, hasWorkspace: false, loading: false, status: WORKSPACE_READ.NOTHING_FOUND });
     const { getByText, queryByRole } = renderSidebar();

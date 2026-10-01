@@ -6,14 +6,11 @@
 //   │      │                                 │
 //   │ Side │   <Outlet />                    │
 //   │ bar  │                                 │
-//   │      ├─────────────────────────────────┤
-//   │      │   ContextBar (44px)             │
 //   └──────┴─────────────────────────────────┘
 // ============================================================
 import { useState } from 'react';
 import { Outlet }   from 'react-router-dom';
 import Sidebar      from './Sidebar.jsx';
-import ContextBar   from './ContextBar.jsx';
 import { useRecentDecisions } from '@/features/shell';
 import { RoleProvider, ROLE_READ } from '@/context/RoleContext.jsx';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
@@ -128,7 +125,6 @@ function MainLayoutShell() {
         >
           <Outlet />
         </main>
-        <ContextBar />
       </div>
     </div>
   );
