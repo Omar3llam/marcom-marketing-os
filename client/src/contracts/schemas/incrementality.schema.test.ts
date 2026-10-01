@@ -28,6 +28,7 @@ import { describe, it, expect } from 'vitest';
 import {
   IncrementalityTestSchema,
   IncrementalityListResponseSchema,
+  IncrementalityMonetarySchema,
 } from './incrementality.schema';
 
 // Shaped as the route actually sends it: a full row, counters present as 0.
@@ -55,6 +56,24 @@ const wireRow = (over: Record<string, unknown> = {}) => ({
   startedAt: null,
   concludedAt: null,
   ...over,
+});
+
+describe('SC-10 — explicit monetary absence survives the parse', () => {
+  const monetary = { status: 'INSUFFICIENT_EVIDENCE', reason: 'INCREMENTALITY_MONETARY_BASIS_UNPROVEN',
+    knowledge: 'NOT_ENOUGH', incrementalRevenueMinor: null, currency: null };
+  it('retains monetary absence alongside causal and decision evidence', () => {
+    const parsed = IncrementalityTestSchema.parse(wireRow({
+      status: 'CONCLUDED', liftPct: 20, decisionId: 'd1', monetary,
+    }));
+    expect(parsed.monetary).toEqual(monetary);
+    expect(parsed.liftPct).toBe(20);
+    expect(parsed.decisionId).toBe('d1');
+  });
+  it('cannot validate an amount or currency under insufficient evidence', () => {
+    expect(IncrementalityMonetarySchema.safeParse({ ...monetary, incrementalRevenueMinor: 50000 }).success).toBe(false);
+    expect(IncrementalityMonetarySchema.safeParse({ ...monetary, currency: 'USD' }).success).toBe(false);
+    expect(IncrementalityMonetarySchema.safeParse({ ...monetary, status: 'AVAILABLE' }).success).toBe(false);
+  });
 });
 
 describe('B8-05 — decisionId survives the parse (C-13 F-6)', () => {

@@ -12,14 +12,22 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 vi.mock('../../utils/logger.js', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock('../blended-truth/BlendedTruthService.js', () => ({ getBlendedTruth: vi.fn() }));
+vi.mock('../blended-truth/BlendedTruthService.js', async (importOriginal) => ({
+  ...await importOriginal(), getBlendedTruth: vi.fn(),
+}));
 vi.mock('../../lib/prisma.js', () => ({
-  prisma: { incrementalityTest: { findMany: vi.fn() } },
+  prisma: { incrementalityTest: { findMany: vi.fn() }, decision: { findMany: vi.fn().mockResolvedValue([]) } },
+}));
+vi.mock('../budget-period/spendPeriod.js', async (importOriginal) => ({
+  ...await importOriginal(), readPeriodSpend: vi.fn(),
 }));
 
 import { getReconciliation, incrementalChannels } from './ReconciliationService.js';
+import { projectIncrementalityTest } from '../incrementality-engine/incrementalityProjection.js';
 import { getBlendedTruth } from '../blended-truth/BlendedTruthService.js';
 import { prisma } from '../../lib/prisma.js';
+import { readPeriodSpend } from '../budget-period/spendPeriod.js';
+import { previewAllocation, persistAllocation, planToDecisionRows } from '../allocation-engine/AllocationService.js';
 
 function channel(over = {}) {
   return {
@@ -184,6 +192,37 @@ describe('ReconciliationService — a failed holdout read (B5-01T′)', () => {
 });
 
 describe('ReconciliationService.incrementalChannels — allocation feed', () => {
+  it('SC-10 safe public projection cannot restore monetary reconciliation or allocation authority', async () => {
+    getBlendedTruth.mockResolvedValue(bt([channel({ blendedRoas: 2.0, blendedRevenueMinor: 100_000 })]));
+    prisma.incrementalityTest.findMany.mockResolvedValue([projectIncrementalityTest({
+      entityId: 'a', channel: 'META', status: 'CONCLUDED', incrementalRevenueMinor: 60_000,
+    })]);
+    const report = await getReconciliation('ws1');
+    expect(report.rows[0].incremental.value).toBeNull();
+    expect(report.rows[0].incremental.reason).toBe('INCREMENTAL_MONETARY_BASIS_UNPROVEN');
+    const feed = await incrementalChannels('ws1');
+    expect(feed.anyIncremental).toBe(false);
+    expect(feed.channels[0]).toMatchObject({
+      monetaryStatus: 'MONETARY_UNAVAILABLE_UNTRUSTED', currency: null,
+      monetaryReason: 'INCREMENTAL_MONETARY_BASIS_UNPROVEN',
+    });
+    readPeriodSpend.mockResolvedValue({
+      portfolio: { status: 'MEASURABLE', monetaryStatus: 'MONETARY_VALID', currency: 'USD',
+        spendMinor: 50_000, period: { start: '2026-08-01', end: '2026-08-31' } },
+      byEntity: new Map([['a', 50_000]]),
+    });
+    const plan = await previewAllocation('ws1', {
+      basis: 'incremental', totalBudgetMinor: 100_000, totalBudgetCurrency: 'USD',
+    });
+    expect(plan.monetaryStatus).toBe('MONETARY_UNAVAILABLE_UNTRUSTED');
+    expect(plan.allocations[0].recommendedSpendMinor).toBeNull();
+    expect(plan.projected.blendedRevenueEfficiencyAfter).toBeNull();
+    expect(planToDecisionRows(plan, { workspaceId: 'ws1', planId: 'p1' })).toEqual([]);
+    const create = vi.fn();
+    await expect(persistAllocation({ allocationPlan: { create } }, 'ws1', plan))
+      .rejects.toMatchObject({ code: 'AllocationMonetaryUnavailable' });
+    expect(create).not.toHaveBeenCalled();
+  });
   it('requires a workspaceId', async () => {
     await expect(incrementalChannels()).rejects.toThrow(/workspaceId/);
   });

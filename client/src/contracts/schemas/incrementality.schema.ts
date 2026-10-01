@@ -14,6 +14,16 @@ import { AttributedSchema, ConfidenceLevelSchema } from './attributed.schema';
 
 export const IncrementalityStatusSchema = z.enum(['DESIGNED', 'RUNNING', 'CONCLUDED', 'ABANDONED']);
 
+// SC-10: all current rows lack persisted denomination/AOV valuation provenance.
+// An AVAILABLE variant requires a separate provenance-restoration contract.
+export const IncrementalityMonetarySchema = z.object({
+  status: z.literal('INSUFFICIENT_EVIDENCE'),
+  reason: z.literal('INCREMENTALITY_MONETARY_BASIS_UNPROVEN'),
+  knowledge: z.literal('NOT_ENOUGH'),
+  incrementalRevenueMinor: z.null(),
+  currency: z.null(),
+});
+
 export const HoldoutDesignSchema = z.object({
   sampleSizePerArm: z.number().int().positive(),
   durationDays: z.number().int().positive(),
@@ -33,6 +43,7 @@ export const IncrementalityReadoutSchema = z.object({
   conclusive: z.boolean(),
   incrementalConversions: AttributedSchema,
   incrementalRevenueMinor: AttributedSchema,
+  monetary: IncrementalityMonetarySchema.nullish(),
   rationale: z.string(),
 });
 
@@ -68,6 +79,8 @@ export const IncrementalityTestSchema = z.object({
   ciHigh: z.number().nullish(),
   confidenceLabel: ConfidenceLevelSchema.nullish(),
   incrementalRevenueMinor: z.number().int().nullish(),
+  // Nullish only for legacy responses: absence never permits money formatting.
+  monetary: IncrementalityMonetarySchema.nullish(),
   // C-13 F-6 — PUBLISHED, THEN EATEN. The route sends a full Prisma row, so
   // `decisionId` was always on the wire; a `z.object` strips what it does not
   // declare, so the id of the Decision this holdout produced never reached a

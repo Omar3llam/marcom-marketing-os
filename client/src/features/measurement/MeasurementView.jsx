@@ -21,7 +21,8 @@ export function MeasurementView() {
   const { scenario, message, gated: scenarioGated, loading: scenarioLoading, error: scenarioError, run } = useScenario();
   const inc = useIncrementality();
   // The page owns the workspace read; the pure panels stay prop-driven. This is
-  // the account currency money is displayed in (scenario data may override it).
+  // the scenario currency (scenario data may override it). It cannot denominate
+  // historical incrementality values.
   const { workspace } = useWorkspace();
   const currency = workspace?.currency ?? 'USD';
 
@@ -51,7 +52,6 @@ export function MeasurementView() {
           onDesign={inc.design}
           onRecord={inc.recordCounts}
           onConclude={inc.conclude}
-          currency={currency}
         />
       </RoleGate>
     </div>
