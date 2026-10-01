@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { ArrowRight, Loader2, ShieldCheck } from 'lucide-react';
 import { useConnections } from '@/hooks/useConnections.js';
 import { useProjectId } from '@/hooks/useProjectId.js';
@@ -24,26 +24,38 @@ const ERROR_MESSAGES = {
 };
 const DEFAULT_ERROR = 'The connection didn’t complete.';
 
-export function ConnectStep({ onConnected, onSkip }) {
+export function ConnectStep({ onConnected, onSkip, saving = false }) {
   const { data } = useConnections();
   const { projectId, loading: projectLoading, refetch: refetchProject } = useProjectId();
   const [status, setStatus] = useState('idle'); // idle | connecting | failed
   const [errorCode, setErrorCode] = useState(null);
-
-  // Return from OAuth: success advances, an error surfaces retry/skip.
+  const notified = useRef(false);
+  const readerEligible = useRef(!new URLSearchParams(window.location.search).has('meta_error'));
+  const request = useRef({ id: 0, locked: false, active: true });
   useEffect(() => {
+    request.current.active = true;
+    const current = request.current;
+    return () => { current.active = false; current.id += 1; };
+  }, []);
+
+  // A failed callback outranks even cached connection data. Re-entry without a
+  // callback outcome still uses the existing authoritative connection reader.
+  useEffect(() => {
+    if (saving || notified.current) return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get('meta_connected') === '1') { onConnected(); return; }
     const err = params.get('meta_error');
-    if (err) { setErrorCode(err); setStatus('failed'); }
-  }, [onConnected]);
-
-  // Already connected (re-entry, or a previous session's credential) → advance.
-  useEffect(() => {
-    if (data?.connections?.some((c) => c.connected)) onConnected();
-  }, [data, onConnected]);
+    if (err) { setErrorCode(err); setStatus('failed'); return; }
+    if (params.get('meta_connected') === '1' || (readerEligible.current && status === 'idle' && data?.connections?.some((c) => c.connected))) {
+      notified.current = true;
+      onConnected();
+    }
+  }, [data, onConnected, saving, status]);
 
   const handleConnect = async () => {
+    if (saving || request.current.locked || notified.current) return;
+    const id = ++request.current.id;
+    request.current.locked = true;
+    readerEligible.current = false;
     setStatus('connecting');
     setErrorCode(null);
     try {
@@ -51,10 +63,14 @@ export function ConnectStep({ onConnected, onSkip }) {
       // this was fired and forgotten: any failure rejected unhandled and the
       // button sat on "Redirecting to Meta…" with no error and no way back.
       const redirecting = await startConnect('META', projectId, RETURN_TO);
+      if (!request.current.active || request.current.id !== id) return;
       if (!redirecting) { setErrorCode('start_failed'); setStatus('failed'); }
+      if (!redirecting) request.current.locked = false;
       // On success the browser is already navigating away — leave the button in
       // its 'connecting' state rather than flashing a failure during unload.
     } catch {
+      if (!request.current.active || request.current.id !== id) return;
+      request.current.locked = false;
       setErrorCode('start_failed');
       setStatus('failed');
     }
@@ -70,12 +86,19 @@ export function ConnectStep({ onConnected, onSkip }) {
         </p>
         <button
           type="button"
-          onClick={() => { setErrorCode(null); setStatus('idle'); }}
+          disabled={saving}
+          onClick={() => {
+            const target = new URL(window.location.href);
+            target.searchParams.delete('meta_error');
+            target.searchParams.delete('meta_connected');
+            window.history.replaceState({}, '', `${target.pathname}${target.search}${target.hash}`);
+            setErrorCode(null); setStatus('idle');
+          }}
           className={`${PRIMARY_BTN} mb-3`}
         >
           Try again
         </button>
-        <button type="button" onClick={onSkip} className={GHOST_BTN}>
+        <button type="button" onClick={onSkip} disabled={saving} className={GHOST_BTN}>
           Continue without connecting
         </button>
       </div>
@@ -96,7 +119,7 @@ export function ConnectStep({ onConnected, onSkip }) {
       <button
         type="button"
         onClick={handleConnect}
-        disabled={status === 'connecting' || projectLoading || !projectId}
+        disabled={saving || status === 'connecting' || projectLoading || !projectId}
         className={`${PRIMARY_BTN} mb-3`}
       >
         {projectLoading
@@ -110,11 +133,11 @@ export function ConnectStep({ onConnected, onSkip }) {
         <>
           <p className="text-xs text-signal-kill text-center mb-3">
             We couldn&apos;t prepare the connection.{' '}
-            <button type="button" onClick={refetchProject} className="underline font-medium">
+            <button type="button" onClick={refetchProject} disabled={saving} className="underline font-medium">
               Retry
             </button>
           </p>
-          <button type="button" onClick={onSkip} className={GHOST_BTN}>
+          <button type="button" onClick={onSkip} disabled={saving} className={GHOST_BTN}>
             Continue without connecting
           </button>
         </>

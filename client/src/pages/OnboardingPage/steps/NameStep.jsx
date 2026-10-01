@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { PRIMARY_BTN, INPUT, ONBOARDING_NAME_KEY } from './onboardingStyles.js';
 
@@ -6,14 +6,18 @@ import { PRIMARY_BTN, INPUT, ONBOARDING_NAME_KEY } from './onboardingStyles.js';
 // localStorage (survives the OAuth redirect); the backend context is written
 // later, after connect + sync.
 export function NameStep({ onNext }) {
+  const [error, setError] = useState(false);
+  const advanced = useRef(false);
   const [name, setName] = useState(() => {
     try { return localStorage.getItem(ONBOARDING_NAME_KEY) ?? ''; } catch { return ''; }
   });
 
   const advance = () => {
     const trimmed = name.trim();
-    if (!trimmed) return;
-    try { localStorage.setItem(ONBOARDING_NAME_KEY, trimmed); } catch { /* ignore */ }
+    if (!trimmed || advanced.current) return;
+    try { localStorage.setItem(ONBOARDING_NAME_KEY, trimmed); } catch { setError(true); return; }
+    setError(false);
+    advanced.current = true;
     onNext(trimmed);
   };
 
@@ -33,6 +37,7 @@ export function NameStep({ onNext }) {
       <button type="button" onClick={advance} disabled={!name.trim()} className={PRIMARY_BTN}>
         Continue <ArrowRight className="w-4 h-4" strokeWidth={2} />
       </button>
+      {error && <p role="alert" className="text-sm text-signal-kill mt-3">We couldn’t keep your workspace name for the connection step. Check browser storage and try Continue again.</p>}
     </div>
   );
 }

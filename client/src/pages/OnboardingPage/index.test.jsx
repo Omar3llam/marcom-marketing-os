@@ -6,10 +6,10 @@
 // bounce the user to /app mid-flow. Step bodies are stubbed; this exercises the
 // orchestration (routing + the deferred context write + final navigation).
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 
 const navigateSpy = vi.hoisted(() => vi.fn());
-const putMock = vi.hoisted(() => vi.fn().mockResolvedValue({}));
+const putMock = vi.hoisted(() => vi.fn().mockResolvedValue({ data: { ok: true } }));
 
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal();
@@ -50,8 +50,93 @@ function mountAt(search) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  putMock.mockResolvedValue({});
+  putMock.mockResolvedValue({ data: { ok: true } });
   localStorage.clear();
+});
+
+describe('OnboardingPage — persistence owns advancement', () => {
+  const deferred = () => {
+    let resolve;
+    const promise = new Promise((yes) => { resolve = yes; });
+    return { promise, resolve };
+  };
+  beforeEach(() => localStorage.setItem('marcom:onboarding:name', 'Acme'));
+
+  it('waits for successful persistence and rejects duplicate completion callbacks', async () => {
+    const save = deferred(); putMock.mockReturnValue(save.promise);
+    mountAt('?step=sync');
+    fireEvent.click(screen.getByText('go-ready'));
+    fireEvent.click(screen.getByText('go-ready'));
+    expect(putMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('enter-app')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/saving/i);
+    await act(async () => save.resolve({ data: { ok: true } }));
+    expect(screen.getAllByText('enter-app')).toHaveLength(1);
+    expect(window.location.search).toBe('?step=ready');
+  });
+
+  it('keeps sync on a failed context save, exposes an error, and retries the same name', async () => {
+    putMock.mockRejectedValueOnce(new Error('private failure'));
+    mountAt('?step=sync');
+    fireEvent.click(screen.getByText('go-ready'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn’t save/i);
+    expect(screen.getByText('go-ready')).toBeInTheDocument();
+    expect(screen.queryByText('enter-app')).not.toBeInTheDocument();
+    expect(localStorage.getItem('marcom:onboarding:name')).toBe('Acme');
+    fireEvent.click(screen.getByRole('button', { name: /retry saving/i }));
+    await screen.findByText('enter-app');
+    expect(putMock).toHaveBeenCalledTimes(2);
+    expect(putMock.mock.calls[0][1]).toEqual(putMock.mock.calls[1][1]);
+  });
+
+  it('skip failure cannot navigate or clear the name; retry navigates once', async () => {
+    putMock.mockRejectedValueOnce(new Error('failed'));
+    mountAt('?step=connect');
+    fireEvent.click(screen.getByText('skip'));
+    await screen.findByRole('alert');
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(window.location.search).toBe('?step=connect');
+    expect(localStorage.getItem('marcom:onboarding:name')).toBe('Acme');
+    fireEvent.click(screen.getByRole('button', { name: /retry saving/i }));
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByText('skip'));
+    expect(navigateSpy).toHaveBeenCalledTimes(1);
+    expect(putMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('an unconfirmed resolved save cannot advance', async () => {
+    putMock.mockResolvedValue({ data: { ok: false } });
+    mountAt('?step=sync'); fireEvent.click(screen.getByText('go-ready'));
+    await screen.findByRole('alert');
+    expect(screen.queryByText('enter-app')).not.toBeInTheDocument();
+  });
+
+  it('a stale save from an unmounted flow cannot advance a newer flow', async () => {
+    const earlier = deferred(); const newer = deferred();
+    putMock.mockReturnValueOnce(earlier.promise).mockReturnValueOnce(newer.promise);
+    const first = mountAt('?step=connect'); fireEvent.click(screen.getByText('skip')); first.unmount();
+    mountAt('?step=sync'); fireEvent.click(screen.getByText('go-ready'));
+    await act(async () => earlier.resolve({ data: { ok: true } }));
+    expect(navigateSpy).not.toHaveBeenCalled();
+    expect(screen.queryByText('enter-app')).not.toBeInTheDocument();
+    await act(async () => newer.resolve({ data: { ok: true } }));
+    expect(screen.getByText('enter-app')).toBeInTheDocument();
+  });
+
+  it('retains the entered name in memory if draft storage disappears before save', async () => {
+    mountAt(''); fireEvent.click(screen.getByText('go-connect')); localStorage.clear();
+    fireEvent.click(screen.getByText('skip'));
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalled());
+    expect(putMock.mock.calls[0][1].workspaceName).toBe('Acme');
+  });
+
+  it('does not fabricate a default name after a reload loses the draft', async () => {
+    localStorage.clear(); mountAt('?step=sync'); fireEvent.click(screen.getByText('go-ready'));
+    await screen.findByRole('alert');
+    expect(putMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /return to workspace/i }));
+    expect(screen.getByText('go-connect')).toBeInTheDocument();
+  });
 });
 
 describe('OnboardingPage — connect-first flow', () => {
