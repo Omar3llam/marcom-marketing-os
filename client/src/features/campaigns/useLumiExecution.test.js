@@ -103,6 +103,23 @@ describe('a refused REQUEST is not a failed EXECUTION', () => {
 });
 
 describe('it never invents a state', () => {
+  it('preserves a present Outcome with unavailable money without substituting zeros or currency', async () => {
+    const outcome = {
+      available: true, outcomeId: 'o1', measuredAt: '2026-08-10T00:00:00Z',
+      recordedAt: '2026-08-12T00:00:00Z',
+      window: { start: '2026-08-01T00:00:00Z', end: '2026-08-08T00:00:00Z' }, sustained: false,
+      monetary: { status: 'INSUFFICIENT_EVIDENCE', reason: 'OUTCOME_MONETARY_BASIS_UNPROVEN',
+        knowledge: 'NOT_ENOUGH', spendDeltaMinor: null, revenueDeltaMinor: null, currency: null },
+      deltas: { spendMinor: null, revenueMinor: null, roas: 0.4 },
+    };
+    get.mockResolvedValue(envelope('EXECUTED_SUCCESS', { outcome }));
+    const { result } = renderHook(() => useLumiExecution());
+    await act(async () => { await result.current.refresh(DEC); });
+    expect(result.current.executions[DEC].outcome).toEqual(outcome);
+    expect(result.current.states[DEC]).toBe(EXEC_STATE.EXECUTED_SUCCESS);
+    expect(JSON.stringify(result.current.executions[DEC].outcome)).not.toContain('USD');
+  });
+
   it('a failed READ leaves the state where it was', async () => {
     // A polling hiccup says nothing about the execution. Reporting
     // EXECUTED_FAILED here would claim a platform refusal that never happened.

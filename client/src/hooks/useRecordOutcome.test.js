@@ -21,6 +21,21 @@ const BODY = {
 describe('useRecordOutcome', () => {
   beforeEach(() => vi.clearAllMocks());
 
+  it('does not recover submitted money into the backend-withheld Outcome receipt', async () => {
+    const outcome = { id: 'o1', spendDeltaMinor: null, revenueDeltaMinor: null, currency: null,
+      roasDelta: BODY.roasDelta, sustained: BODY.sustained,
+      monetary: { status: 'INSUFFICIENT_EVIDENCE', reason: 'OUTCOME_MONETARY_BASIS_UNPROVEN',
+        knowledge: 'NOT_ENOUGH', spendDeltaMinor: null, revenueDeltaMinor: null, currency: null } };
+    api.post.mockResolvedValueOnce({ data: { workspaceId: 'ws', decisionId: 'd-1', outcome } });
+    const { result } = renderHook(() => useRecordOutcome());
+    let returned;
+    await act(async () => { returned = await result.current.record('d-1', BODY); });
+    expect(returned.outcome).toEqual(outcome);
+    expect(JSON.stringify(returned.outcome)).not.toContain('420000');
+    expect(JSON.stringify(returned.outcome)).not.toContain('1820000');
+    expect(JSON.stringify(returned.outcome)).not.toContain('USD');
+  });
+
   it('POSTs the body to /decisions/:id/outcome and returns the response', async () => {
     api.post.mockResolvedValueOnce({ data: { workspaceId: 'ws', decisionId: 'd-1', outcome: { id: 'o-1' } } });
 
