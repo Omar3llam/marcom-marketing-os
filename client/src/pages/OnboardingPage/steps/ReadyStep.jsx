@@ -1,6 +1,7 @@
 import { CheckCircle2, ArrowRight } from 'lucide-react';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useConnectorCampaigns } from '@/hooks/useConnectorCampaigns.js';
+import { useConnections } from '@/hooks/useConnections.js';
 import { PRIMARY_BTN } from './onboardingStyles.js';
 
 // The payoff of the whole flow: the verdict IS the page. The status counts are
@@ -44,10 +45,33 @@ function Skeleton() {
 }
 
 export function ReadyStep({ onEnterApp }) {
-  const { verdicts, loading: vLoading } = useConnectorVerdicts();
-  const { campaigns, loading: cLoading } = useConnectorCampaigns();
+  const { verdicts, loading: vLoading, error: verdictError } = useConnectorVerdicts();
+  const { campaigns, loading: cLoading, error: campaignError } = useConnectorCampaigns();
+  const { data: connections, loading: connectionsLoading, error: connectionsError } = useConnections();
 
   if (vLoading || cLoading) return <Skeleton />;
+
+  // Neither cleared arrays nor retained data can certify a failed combined read.
+  if (campaignError || verdictError) {
+    return (
+      <div>
+        <div role="alert" className="mb-6">
+          <h1 className="decision-title text-lumi-text mb-2">Your results couldn&apos;t be loaded.</h1>
+          <p className="text-sm text-lumi-muted">
+            Lumi couldn&apos;t read your campaigns and verdicts together. Open Campaigns to continue.
+          </p>
+        </div>
+        <button type="button" onClick={onEnterApp} className={PRIMARY_BTN}>
+          Open Campaigns
+          <ArrowRight className="w-4 h-4" strokeWidth={2} />
+        </button>
+      </div>
+    );
+  }
+
+  // Connection evidence is independent of the campaign/verdict population.
+  const metaConnected = !connectionsLoading && !connectionsError
+    && connections?.connections?.some((connection) => connection.platform === 'META' && connection.connected === true);
 
   const total  = campaigns?.length ?? 0;
   const scored = verdicts?.length ?? 0;
@@ -128,7 +152,7 @@ export function ReadyStep({ onEnterApp }) {
       </button>
 
       <div className="flex items-center justify-center gap-2 flex-wrap animate-fade-up-late">
-        <Chip done>Meta</Chip>
+        {metaConnected && <Chip done>Meta</Chip>}
         <Chip done={total > 0}>{`${total} Campaign${total === 1 ? '' : 's'}`}</Chip>
         <Chip done={scored > 0}>{`${scored} Verdict${scored === 1 ? '' : 's'}`}</Chip>
       </div>
