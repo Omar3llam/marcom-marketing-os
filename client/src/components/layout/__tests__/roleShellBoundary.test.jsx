@@ -18,7 +18,6 @@ import { MemoryRouter } from 'react-router-dom';
 vi.mock('@/hooks/useCollabRole.js', async (io) => ({ ...(await io()), useCollabRole: vi.fn() }));
 vi.mock('@/features/shell', () => ({ useRecentDecisions: () => ({ data: [] }) }));
 vi.mock('../Sidebar.jsx', () => ({ default: () => <nav>operator sidebar</nav> }));
-vi.mock('../ContextBar.jsx', () => ({ default: () => <div>context bar</div> }));
 vi.mock('@/components/brand/LumiStar.jsx', () => ({ default: () => null }));
 vi.mock('@/router/ProtectedRoute.jsx', () => ({
   FullscreenLoader: ({ label }) => <div>{label ?? 'loading'}</div>,
@@ -42,6 +41,9 @@ describe('MainLayout — the role boundary', () => {
     renderShell();
     expect(screen.getByText('operator sidebar')).toBeInTheDocument();
     expect(document.querySelector('#main-content')).toBeTruthy();
+    expect(screen.queryByText('Context: Locked')).not.toBeInTheDocument();
+    expect(screen.queryByText('Dual-Agent Ready')).not.toBeInTheDocument();
+    expect(screen.queryByText(/SID _NSD87T/)).not.toBeInTheDocument();
   });
 
   it('a LOADING seat renders no sidebar and no main region — only a wait', () => {

@@ -3,7 +3,6 @@
 // ------------------------------------------------------------
 // 268px expanded, 64px collapsed. Features:
 // - Lumi star mark + notification bell
-// - Live "WATCHING" status + countdown timer
 // - Cmd+K search affordance
 // - Alert badges on nav items
 // - Simplified navigation structure
@@ -173,28 +172,12 @@ function WorkspaceHQ({ workspace, onNewProject }) {
             <div className="text-sm font-display font-semibold text-lumi-text truncate">
               {workspace.name}
             </div>
-            <div className="text-xs text-lumi-subtle mt-0.5 font-mono">
-              Market: <span className="text-lumi-muted">{workspace.market || 'EG'}</span>
-            </div>
+            {workspace.market && (
+              <div className="text-xs text-lumi-subtle mt-0.5 font-mono">
+                Market: <span className="text-lumi-muted">{workspace.market}</span>
+              </div>
+            )}
           </div>
-        </div>
-
-        {/* Live WATCHING status */}
-        <div className="flex items-center gap-2 mb-3 px-2 py-1.5 rounded-lg bg-signal-scale-bg">
-          <div className="flex items-center gap-1.5">
-            <span
-              className="w-1.5 h-1.5 rounded-full bg-signal-scale"
-              style={{ animation: 'pulse 2s ease-in-out infinite' }}
-            />
-            <span className="font-mono text-[10px] font-semibold tracking-[0.08em] uppercase text-signal-scale">
-              WATCHING
-            </span>
-          </div>
-          {workspace.adSetsCount && (
-            <span className="font-mono text-[10px] text-dark-soft">
-              · {workspace.adSetsCount} ad sets
-            </span>
-          )}
         </div>
 
         {/* Actions */}
