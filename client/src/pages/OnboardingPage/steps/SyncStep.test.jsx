@@ -8,7 +8,94 @@ import { SyncStep } from './SyncStep.jsx';
 const success = { data: { ok: true, synced: 1, failed: 0, results: [{ platform: 'META', status: 'success' }] } };
 
 beforeEach(() => { vi.clearAllMocks(); vi.useFakeTimers(); });
-afterEach(() => { vi.useRealTimers(); });
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+
+describe('SyncStep — pending progress truth', () => {
+  it.each(['success', 'failure', 'partial'])('queued hint callbacks cannot republish waiting copy after %s', async (outcome) => {
+    const timeout = vi.spyOn(globalThis, 'setTimeout');
+    let resolve; let reject;
+    api.post.mockReturnValue(new Promise((yes, no) => { resolve = yes; reject = no; }));
+    render(<SyncStep onComplete={vi.fn()} />);
+    const oldHints = timeout.mock.calls.filter(([, delay]) => delay === 30_000 || delay === 60_000).map(([callback]) => callback);
+    expect(oldHints).toHaveLength(2);
+    await act(async () => {
+      if (outcome === 'failure') reject(new Error('failed'));
+      else resolve(outcome === 'success' ? success : { data: { ok: true, synced: 1, results: [{ status: 'success' }, { status: 'error' }] } });
+    });
+    await act(async () => oldHints.forEach((callback) => callback()));
+    expect(screen.queryByText(/large accounts|still waiting/i)).not.toBeInTheDocument();
+    if (outcome === 'success') expect(screen.getByRole('status')).toHaveTextContent(/sync results received/i);
+    else expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('queued waiting callbacks from a failed attempt cannot alter its retry', async () => {
+    const timeout = vi.spyOn(globalThis, 'setTimeout');
+    let reject;
+    api.post.mockReturnValueOnce(new Promise((_yes, no) => { reject = no; })).mockReturnValue(new Promise(() => {}));
+    render(<SyncStep onComplete={vi.fn()} />);
+    const oldHints = timeout.mock.calls.filter(([, delay]) => delay === 30_000 || delay === 60_000).map(([callback]) => callback);
+    expect(oldHints).toHaveLength(2);
+    await act(async () => { reject(new Error('failed')); });
+    fireEvent.click(screen.getByRole('button', { name: /retry sync/i }));
+    await act(async () => oldHints.forEach((callback) => callback()));
+    expect(screen.queryByText(/large accounts|still waiting/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/syncing your workspace/i);
+  });
+
+  it.each([601, 2001, 4501, 120_000])('an unresolved request at %ims cannot certify backend stages', async (elapsed) => {
+    api.post.mockReturnValue(new Promise(() => {}));
+    const onComplete = vi.fn();
+    const { container } = render(<SyncStep onComplete={onComplete} />);
+    await act(async () => vi.advanceTimersByTimeAsync(elapsed));
+    expect(container.querySelector('.lucide-circle-check')).toBeNull();
+    expect(screen.queryByText(/connected to meta/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/scanning campaigns|calculating signals|building verdicts|preparing results/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/syncing your workspace/i);
+    expect(container.textContent).not.toMatch(/\d+%|under a minute|sync complete/i);
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it.each(['failure', 'partial'])('%s after a long pending request cannot retain completed stage claims', async (outcome) => {
+    let resolve; let reject;
+    api.post.mockReturnValue(new Promise((yes, no) => { resolve = yes; reject = no; }));
+    const onComplete = vi.fn();
+    const { container } = render(<SyncStep onComplete={onComplete} />);
+    await act(async () => vi.advanceTimersByTimeAsync(65_000));
+    await act(async () => {
+      if (outcome === 'failure') reject(new Error('failed'));
+      else resolve({ data: { ok: true, synced: 1, failed: 1, results: [{ status: 'success' }, { status: 'error' }] } });
+    });
+    expect(container.querySelector('.lucide-circle-check')).toBeNull();
+    expect(screen.getByRole('alert')).toHaveTextContent(outcome === 'failure' ? /couldn’t analyze/i : /others failed or were skipped/i);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('retry resets pending presentation without carrying earlier stage completion', async () => {
+    api.post.mockRejectedValueOnce(new Error('failed')).mockReturnValue(new Promise(() => {}));
+    const onComplete = vi.fn();
+    const { container } = render(<SyncStep onComplete={onComplete} />);
+    await act(async () => vi.runAllTimersAsync());
+    fireEvent.click(screen.getByRole('button', { name: /retry sync/i }));
+    await act(async () => vi.advanceTimersByTimeAsync(4501));
+    expect(container.querySelector('.lucide-circle-check')).toBeNull();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/syncing your workspace/i);
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it('pending unmount clears every visual timer and a remount begins pending', async () => {
+    api.post.mockReturnValue(new Promise(() => {}));
+    const first = render(<SyncStep onComplete={vi.fn()} />);
+    await act(async () => vi.advanceTimersByTimeAsync(4501));
+    first.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+    const { container } = render(<SyncStep onComplete={vi.fn()} />);
+    await act(async () => vi.advanceTimersByTimeAsync(120_000));
+    expect(container.querySelector('.lucide-circle-check')).toBeNull();
+    expect(screen.getByRole('status')).toHaveTextContent(/syncing your workspace/i);
+  });
+});
 
 describe('SyncStep', () => {
   it('auto-triggers the sync POST on mount', () => {
@@ -35,16 +122,15 @@ describe('SyncStep', () => {
     expect(screen.getByRole('button', { name: /retry sync/i })).toBeInTheDocument();
   });
 
-  it('renders the progress phases', () => {
+  it('renders neutral activity while awaiting the response', () => {
     api.post.mockResolvedValue(success);
     render(<SyncStep onComplete={vi.fn()} />);
     expect(screen.getByText(/analyzing your account/i)).toBeInTheDocument();
-    expect(screen.getByText(/building verdicts/i)).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/syncing your workspace/i);
   });
 });
 
-// A 'maximum' pull on a large account can outlast the phase list, and the api
-// client gives up at 60s. Both lines are about expectations, not progress.
+// Waiting hints report the unresolved request, not backend progress or an ETA.
 describe('SyncStep — long-sync messaging', () => {
   const hang = () => { api.post.mockReturnValue(new Promise(() => {})); };
 
@@ -53,21 +139,21 @@ describe('SyncStep — long-sync messaging', () => {
     render(<SyncStep onComplete={vi.fn()} />);
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000); });
     expect(screen.queryByText(/large accounts/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/safely leave/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/keep this page open/i)).not.toBeInTheDocument();
   });
 
   it('after 30s, explains that large accounts take longer', async () => {
     hang();
     render(<SyncStep onComplete={vi.fn()} />);
     await act(async () => { await vi.advanceTimersByTimeAsync(30_000); });
-    expect(screen.getByText(/large accounts can take a few minutes/i)).toBeInTheDocument();
+    expect(screen.getByText(/large accounts may take longer/i)).toBeInTheDocument();
   });
 
   it('after 60s, tells the user they can leave the page open', async () => {
     hang();
     render(<SyncStep onComplete={vi.fn()} />);
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
-    expect(screen.getByText(/safely leave this page open/i)).toBeInTheDocument();
+    expect(screen.getByText(/still waiting for sync results/i)).toBeInTheDocument();
     expect(screen.queryByText(/large accounts/i)).not.toBeInTheDocument();
   });
 
@@ -77,7 +163,7 @@ describe('SyncStep — long-sync messaging', () => {
     render(<SyncStep onComplete={vi.fn()} />);
     await act(async () => { await vi.advanceTimersByTimeAsync(90_000); });
     expect(screen.queryByText(/large accounts/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/safely leave/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/keep this page open/i)).not.toBeInTheDocument();
   });
 });
 
