@@ -4,14 +4,14 @@
 // Proves money is no longer hardcoded to USD:
 //   • the pure panels format in the currency they're GIVEN (a non-USD prop
 //     produces a non-USD string — the '$' glyph never appears for EGP);
-//   • they fall back to USD only when given nothing;
-//   • MeasurementView threads the WORKSPACE currency into both panels, so an
-//     EGP workspace renders EGP money without any prop being passed by hand.
+//   • incrementality never borrows scenario/workspace denomination;
+//   • unproven historical revenue stays withheld while causal lift survives.
 // (The minor-unit exponent correctness itself lives in money.ts's own tests.)
 // ============================================================
 import { describe, it, expect, vi } from 'vitest';
 import { render as rtlRender } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+const workspaceState = vi.hoisted(() => ({ currency: 'EGP' }));
 
 // B8-05 — each holdout row now links to its own destination (/app/measure/:id),
 // so these renders need a router in context. Wrapping here leaves every call
@@ -38,9 +38,9 @@ vi.mock('@/hooks/useScenario.js', () => ({
   }),
 }));
 vi.mock('@/hooks/useIncrementality.js', () => ({
-  useIncrementality: () => ({ tests: [], readouts: {}, gated: false, loading: false, error: null, busyId: null, design: () => {}, recordCounts: () => {}, conclude: () => {} }),
+  useIncrementality: () => ({ tests: [concludedYes], readouts: {}, gated: false, loading: false, error: null, busyId: null, design: () => {}, recordCounts: () => {}, conclude: () => {} }),
 }));
-vi.mock('@/hooks/useWorkspace.js', () => ({ useWorkspace: () => ({ workspace: { currency: 'EGP' } }) }));
+vi.mock('@/hooks/useWorkspace.js', () => ({ useWorkspace: () => ({ workspace: { currency: workspaceState.currency } }) }));
 vi.mock('@/components/auth/RoleGate.jsx', () => ({ default: ({ children }: { children: React.ReactNode }) => children }));
 
 import { ScenarioPanel } from '../ScenarioPanel.jsx';
@@ -73,22 +73,34 @@ describe('ScenarioPanel — formats money in the given currency (Layer 2/3)', ()
   });
 });
 
-describe('IncrementalityPanel — formats incremental revenue in the given currency', () => {
-  it('uses the threaded currency (EGP), not USD', () => {
+describe('IncrementalityPanel — legacy money cannot borrow denomination', () => {
+  it('does not format raw historical revenue using a currency prop', () => {
     const { container } = render(<IncrementalityPanel tests={[concludedYes]} currency="EGP" onDesign={vi.fn()} onRecord={vi.fn()} onConclude={vi.fn()} />);
-    expect(container.textContent).toMatch(/incremental revenue/);
+    expect(container.textContent).toMatch(/20% incremental lift/);
+    expect(container.textContent).not.toMatch(/incremental revenue|EGP|500\.00/);
     expect(container.textContent).not.toContain('$');
   });
-  it('defaults to USD when no currency prop is passed', () => {
+  it('cannot default historical revenue to USD when no currency is passed', () => {
     const { container } = render(<IncrementalityPanel tests={[concludedYes]} onDesign={vi.fn()} onRecord={vi.fn()} onConclude={vi.fn()} />);
-    expect(container.textContent).toContain('$500.00'); // 50000 minor → $500.00
+    expect(container.textContent).toMatch(/20% incremental lift/);
+    expect(container.textContent).not.toMatch(/\$|USD|incremental revenue|500\.00/);
   });
 });
 
-describe('MeasurementView — threads the workspace currency into both panels', () => {
+describe('MeasurementView — workspace currency governs only scenario compatibility', () => {
   it('renders scenario money in the workspace currency (EGP), never USD', () => {
     const { container } = render(<MeasurementView />);
     expect(container.textContent).toMatch(/Projected outcome/);
     expect(container.textContent).not.toContain('$');
+  });
+  it('workspace currency changes cannot reinterpret the same historical holdout', () => {
+    const { container, rerender } = render(<MeasurementView />);
+    const lift = container.querySelector('a[href="/app/measure/t3"]')?.parentElement?.parentElement?.textContent;
+    expect(lift).toContain('20% incremental lift');
+    expect(lift).not.toMatch(/incremental revenue|500\.00/);
+    workspaceState.currency = 'SAR';
+    rerender(<MeasurementView />);
+    expect(container.querySelector('a[href="/app/measure/t3"]')?.parentElement?.parentElement?.textContent).toBe(lift);
+    workspaceState.currency = 'EGP';
   });
 });

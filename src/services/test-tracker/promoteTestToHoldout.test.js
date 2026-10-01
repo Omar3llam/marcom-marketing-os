@@ -64,6 +64,10 @@ describe('promoteTestToHoldout — happy path', () => {
       where: { id: 'inc-1' }, data: { sourceTestId: 'test-1' },
     });
     expect(out.sourceTestId).toBe('test-1');
+    expect(out.incrementalRevenueMinor).toBeNull();
+    expect(out.monetary).toMatchObject({
+      status: 'INSUFFICIENT_EVIDENCE', currency: null, incrementalRevenueMinor: null,
+    });
     expect(out.design).toEqual({ holdoutPct: 0.1, sampleSizePerArm: 1000, durationDays: 14 });
   });
 

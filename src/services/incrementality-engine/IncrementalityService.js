@@ -16,6 +16,7 @@ import { logger } from '../../utils/logger.js';
 import { designHoldout, readIncrementality } from './incrementalityEngine.js';
 import { getEconomics } from '../unit-economics/EconomicsService.js';
 import { DECISION_CLASS } from '@marcom/runtime-contracts';
+import { projectIncrementalityTest, projectIncrementalityReadout } from './incrementalityProjection.js';
 
 const MEMORY_PREFIX = 'incrementality:';
 
@@ -56,17 +57,18 @@ export async function designTest(workspaceId, { name, channel, entityId, entityL
     },
   });
   logger.info({ workspaceId, testId: created.id, channel }, '[IncrementalityService] holdout designed');
-  return { ...created, design };
+  return { ...projectIncrementalityTest(created), design };
 }
 
 export async function listTests(workspaceId) {
   if (!workspaceId) throw new Error('listTests: workspaceId required');
-  return prisma.incrementalityTest.findMany({
+  const rows = await prisma.incrementalityTest.findMany({
     where: { workspaceId }, orderBy: { createdAt: 'desc' }, take: 50,
     // Provenance (Phase 7C): surface the A/B test a holdout was promoted from
     // so the panel can show "From A/B test". Null for directly-designed holdouts.
     include: { sourceTest: { select: { id: true, dimension: true, hypothesis: true } } },
   });
+  return rows.map(projectIncrementalityTest);
 }
 
 /**
@@ -110,7 +112,7 @@ export async function recordCounts(workspaceId, testId, counts = {}) {
 
   const updated = await prisma.incrementalityTest.findFirst({ where: { id: test.id, workspaceId } });
   logger.info({ workspaceId, testId }, '[IncrementalityService] observed counts recorded');
-  return updated;
+  return projectIncrementalityTest(updated);
 }
 
 /**
@@ -131,10 +133,11 @@ export async function recordCounts(workspaceId, testId, counts = {}) {
  */
 export async function getTest(workspaceId, testId) {
   if (!workspaceId) throw new Error('getTest: workspaceId required');
-  return prisma.incrementalityTest.findFirst({
+  const row = await prisma.incrementalityTest.findFirst({
     where: { id: testId, workspaceId },
     include: { sourceTest: { select: { id: true, dimension: true, hypothesis: true } } },
   });
+  return projectIncrementalityTest(row);
 }
 
 /**
@@ -195,5 +198,5 @@ export async function concludeIncrementality(workspaceId, testId) {
   });
 
   logger.info({ workspaceId, testId, conclusive: readout.conclusive, decisionId: result.decisionId }, '[IncrementalityService] concluded — loop closed');
-  return { readout, memoryId: result.memoryId, decisionId: result.decisionId };
+  return { readout: projectIncrementalityReadout(readout), memoryId: result.memoryId, decisionId: result.decisionId };
 }

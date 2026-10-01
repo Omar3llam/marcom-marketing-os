@@ -17,7 +17,6 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Lock, Microscope, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils.js';
-import { formatCurrency } from '@/lib/money';
 import { HelpTip } from '@/components/ui/HelpTip.jsx';
 import { HELP } from '@/lib/helpContent.js';
 import { appRoutes } from '@/app/routeManifest.js';
@@ -119,7 +118,7 @@ function RecordForm({ test, onRecord, busy }) {
 }
 
 // ── A single holdout row ────────────────────────────────────────
-function HoldoutRow({ test, readout, busy, onRecord, onConclude, ccy = 'USD' }) {
+function HoldoutRow({ test, readout, busy, onRecord, onConclude }) {
   const concluded = test.status === 'CONCLUDED';
   const conclusive = concluded && test.confidenceLabel != null;
 
@@ -160,7 +159,6 @@ function HoldoutRow({ test, readout, busy, onRecord, onConclude, ccy = 'USD' }) 
                   the middle band MEDIUM and the A/B half spells it MODERATE;
                   a reader should not have to learn which engine wrote the row. */}
               {Number(test.liftPct) > 0 ? '+' : ''}{test.liftPct}% incremental lift · {confidenceText(confidenceRung(test.confidenceLabel))}
-              {test.incrementalRevenueMinor != null && <span className="text-lumi-subtle"> · {formatCurrency(test.incrementalRevenueMinor, ccy)} incremental revenue</span>}
             </p>
           ) : (
             // The A/B half stores the word INCONCLUSIVE where this half stores
@@ -168,6 +166,11 @@ function HoldoutRow({ test, readout, busy, onRecord, onConclude, ccy = 'USD' }) 
             <p className="text-sm text-lumi-muted">No causal lift called — no call could be made.</p>
           )}
           {readout?.rationale && <p className="mt-1 text-[11px] text-lumi-subtle">{readout.rationale}</p>}
+          {test.monetary?.status === 'INSUFFICIENT_EVIDENCE' && (
+            <p className="mt-1 text-[11px] text-lumi-subtle">
+              Revenue valuation unavailable — currency and AOV provenance have not been established.
+            </p>
+          )}
         </div>
       )}
 
@@ -189,8 +192,7 @@ function HoldoutRow({ test, readout, busy, onRecord, onConclude, ccy = 'USD' }) 
   );
 }
 
-export function IncrementalityPanel({ tests = [], readouts = {}, gated = false, loading = false, error = null, busyId = null, onDesign, onRecord, onConclude, currency }) {
-  const ccy = currency ?? 'USD';
+export function IncrementalityPanel({ tests = [], readouts = {}, gated = false, loading = false, error = null, busyId = null, onDesign, onRecord, onConclude }) {
   return (
     <section className="mb-10">
       <div className="section-label inline-flex items-center gap-1">
@@ -226,7 +228,7 @@ export function IncrementalityPanel({ tests = [], readouts = {}, gated = false, 
             <p className="text-sm text-lumi-subtle">No holdouts yet — design one above to measure a channel’s true causal lift.</p>
           ) : (
             tests.map((t) => (
-              <HoldoutRow key={t.id} test={t} readout={readouts[t.id]} busy={busyId === t.id} onRecord={onRecord} onConclude={onConclude} ccy={ccy} />
+              <HoldoutRow key={t.id} test={t} readout={readouts[t.id]} busy={busyId === t.id} onRecord={onRecord} onConclude={onConclude} />
             ))
           )}
         </div>

@@ -28,6 +28,7 @@ import { verdictToActionType } from '../verdict-engine/verdictTypes.js';
 import { validateActionTarget } from '../metaExecutionService.js';
 import { resolveCredential } from '../connectors/credentialStore.js';
 import { designTest } from '../incrementality-engine/IncrementalityService.js';
+import { projectIncrementalityTest } from '../incrementality-engine/incrementalityProjection.js';
 import { DECISION_CLASS } from '@marcom/runtime-contracts';
 
 const GRAPH_BASE = `https://graph.facebook.com/${process.env.META_API_VERSION || 'v21.0'}`;
@@ -408,5 +409,5 @@ export async function promoteTestToHoldout(workspaceId, testId, { dailyEligible,
   });
 
   logger.info({ workspaceId, testId, holdoutId: holdout.id }, '[TestTrackerService] test promoted to holdout — loop bridged');
-  return { ...linked, design: holdout.design };
+  return { ...projectIncrementalityTest(linked), design: holdout.design };
 }
