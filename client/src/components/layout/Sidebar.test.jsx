@@ -12,14 +12,14 @@
 // only exercises the <aside> class resolution (cn = twMerge → last display wins).
 // ============================================================
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
 vi.mock('@/context/AuthContext.jsx', () => ({
   useAuth: () => ({ currentUser: { email: 'op@ws.com', displayName: 'Op' } }),
 }));
 vi.mock('@/hooks/useCollabRole.js', () => ({
-  useCollabRole: vi.fn(() => ({ role: 'STRATEGIST' })),
+  useCollabRole: vi.fn(() => ({ role: 'STRATEGIST', status: 'PRESENT', loading: false, error: null })),
 }));
 // Partial: usePlan.js re-exports WORKSPACE_READ from here, so a whole-module
 // factory would leave that re-export undefined in every consumer.
@@ -58,6 +58,7 @@ import { useCollabRole } from '@/hooks/useCollabRole.js';
 import { usePendingApprovals } from '@/hooks/usePendingApprovals.js';
 import { usePlan, WORKSPACE_READ } from '@/hooks/usePlan.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
+import { ROLE_READ } from '@/context/RoleContext.jsx';
 
 // Mirror the real hierarchy so a mocked plan locks exactly what usePlan would.
 const PLAN_RANK = { FREE: 0, GROWTH: 1, PRO: 2 };
@@ -80,10 +81,83 @@ function renderSidebar(props = {}, { path = '/' } = {}) {
 // per-test return values, so leaking state would make later tests order-dependent).
 afterEach(() => {
   useWorkspace.mockReturnValue({ workspace: { name: 'Acme', market: 'EG' }, hasWorkspace: true, loading: false, status: WORKSPACE_READ.PRESENT });
-  useCollabRole.mockReturnValue({ role: 'STRATEGIST' });
+  useCollabRole.mockReturnValue({ role: 'STRATEGIST', status: ROLE_READ.PRESENT, loading: false, error: null });
   useConnections.mockReturnValue({ data: null, loading: false, error: null });
   usePendingApprovals.mockReturnValue({ pending: [], loading: false, error: null, refetch: vi.fn() });
   usePlan.mockReturnValue({ canAccess: () => true, loading: false, status: WORKSPACE_READ.PRESENT }); // back to PRO/unlocked
+});
+
+// Scope assertions to the rendered user footer, not WorkspaceHQ's separate text.
+const footerOf = (view) => view.container.querySelector('aside').lastElementChild;
+
+describe('Sidebar — footer evidence', () => {
+  it.each([
+    ['null market', { workspace: { name: 'Acme', market: null }, hasWorkspace: true, loading: false, status: WORKSPACE_READ.PRESENT }],
+    ['missing market', { workspace: { name: 'Acme' }, hasWorkspace: true, loading: false, status: WORKSPACE_READ.PRESENT }],
+    ['blank market', { workspace: { name: 'Acme', market: ' ' }, hasWorkspace: true, loading: false, status: WORKSPACE_READ.PRESENT }],
+    ['malformed market', { workspace: { name: 'Acme', market: 0 }, hasWorkspace: true, loading: false, status: WORKSPACE_READ.PRESENT }],
+    ['loading', { workspace: { name: 'Acme', market: 'EG' }, hasWorkspace: true, loading: true, status: WORKSPACE_READ.LOADING }],
+    ['unavailable', { workspace: null, hasWorkspace: false, loading: false, status: WORKSPACE_READ.NOT_REACHABLE }],
+    ['failed read with retained data', { workspace: { name: 'Acme', market: 'EG' }, hasWorkspace: true, loading: false, status: WORKSPACE_READ.NOT_REACHABLE, error: 'failed' }],
+    ['permission refusal', { workspace: null, hasWorkspace: false, loading: false, status: WORKSPACE_READ.NOT_PERMITTED }],
+  ])('%s cannot fabricate a footer market or separator', (_name, read) => {
+    useWorkspace.mockReturnValue(read);
+    const footer = footerOf(renderSidebar());
+    expect(footer.textContent).not.toMatch(/\bEG\b|Operator|·/);
+    expect(within(footer).getByText('STRATEGIST')).toBeInTheDocument();
+  });
+
+  it.each(['EG', 'KSA', 'UAE'])('displays exactly the established market %s', (market) => {
+    useWorkspace.mockReturnValue({ workspace: { name: 'Acme', market }, hasWorkspace: true, loading: false, status: WORKSPACE_READ.PRESENT });
+    expect(within(footerOf(renderSidebar())).getByText(`STRATEGIST · ${market}`)).toBeInTheDocument();
+  });
+
+  it('an unreadable entitlement does not erase independently established workspace metadata', () => {
+    useWorkspace.mockReturnValue({ workspace: { name: 'Acme', market: 'UAE' }, hasWorkspace: true, loading: false, error: null, status: WORKSPACE_READ.NOT_REACHABLE });
+    expect(within(footerOf(renderSidebar())).getByText('STRATEGIST · UAE')).toBeInTheDocument();
+  });
+
+  it.each(['CLIENT', 'BUYER', 'STRATEGIST'])('displays the resolved %s seat without inventing Operator', (role) => {
+    useCollabRole.mockReturnValue({ role, status: ROLE_READ.PRESENT, loading: false, error: null });
+    const footer = footerOf(renderSidebar());
+    expect(within(footer).getByText(`${role} · EG`)).toBeInTheDocument();
+    expect(footer.textContent).not.toMatch(/Operator/);
+  });
+
+  it.each([
+    ['loading', { role: 'STRATEGIST', status: ROLE_READ.LOADING, loading: true }],
+    ['unresolved', { role: null, status: ROLE_READ.NOTHING_FOUND, loading: false }],
+    ['unavailable', { role: 'BUYER', status: ROLE_READ.NOT_REACHABLE, loading: false, error: new Error('failed') }],
+    ['refused', { role: null, status: ROLE_READ.NOT_PERMITTED, loading: false }],
+    ['unknown role', { role: 'OWNER', status: ROLE_READ.PRESENT, loading: false }],
+  ])('%s role leaves only the independently established market', (_name, read) => {
+    useCollabRole.mockReturnValue(read);
+    const footer = footerOf(renderSidebar());
+    expect(within(footer).getByText('EG')).toBeInTheDocument();
+    expect(footer.textContent).not.toMatch(/Operator|BUYER|STRATEGIST|CLIENT|OWNER|·/);
+  });
+
+  it('both unknown fields leave the evidenced user identity without an empty metadata row', () => {
+    useWorkspace.mockReturnValue({ workspace: null, hasWorkspace: false, loading: true, status: WORKSPACE_READ.LOADING });
+    useCollabRole.mockReturnValue({ role: null, status: ROLE_READ.LOADING, loading: true });
+    const footer = footerOf(renderSidebar());
+    expect(within(footer).getByText('Op')).toBeInTheDocument();
+    expect(footer.textContent).not.toMatch(/EG|Operator|·/);
+    expect(footer.querySelector('.font-mono')).toBeNull();
+  });
+
+  it.each([false, true])('avatar has no presence indicator, collapsed=%s', (collapsed) => {
+    const footer = footerOf(renderSidebar({ collapsed }));
+    const avatar = within(footer).getByText('O').parentElement;
+    expect(avatar.children).toHaveLength(1);
+    expect(avatar.querySelector('.bg-signal-scale')).toBeNull();
+    expect(footer.textContent).not.toMatch(/Online|Active|Connected|Live/);
+    expect(within(footer).getByRole('link', { name: 'Settings' })).toBeInTheDocument();
+    if (collapsed) {
+      expect(within(footer).queryByText('Op')).not.toBeInTheDocument();
+      expect(footer.textContent).not.toMatch(/STRATEGIST|EG/);
+    }
+  });
 });
 
 describe('Sidebar — workspace truth boundary', () => {
