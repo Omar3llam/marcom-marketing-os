@@ -56,6 +56,7 @@ import { useAccountHealth } from '@/hooks/useAccountHealth.js';
 import { useConnectorVerdicts } from '@/hooks/useConnectorVerdicts.js';
 import { useAccuracy } from '@/hooks/useAccuracy.js';
 import { useHome } from '@/hooks/useHome.js';
+import * as accountAggregateHook from '@/hooks/useAccountAggregate.js';
 
 const CONNECTOR_ROW = { entityId: 'c1', name: 'Eid Sale', channel: 'META', spendMinor: 50000, ctr: 0.0185 };
 
@@ -487,6 +488,33 @@ describe('OverviewView — the briefing folds into the hero', () => {
       { entityId: 'c1', name: 'Eid Sale', verdict: 'KILL', impactScore: 8 },
     ] }, loading: false, error: null, refetch: vi.fn() });
   };
+
+  it('Home-only failure renders the existing PARTIAL notice and retry, then clears on recovery', () => {
+    const aggregateRead = vi.spyOn(accountAggregateHook, 'useAccountAggregate').mockReturnValue({
+      response: { available: false, aggregate: null }, loading: false, error: null, forbidden: false,
+    });
+    try {
+      const homeRetry = vi.fn();
+      scored(); withHome({ refetch: homeRetry });
+      const view = renderView();
+      expect(screen.getByText(INSIGHT)).toBeInTheDocument();
+      withHome({ error: Object.assign(new Error('Home unavailable'), { httpStatus: 503 }), refetch: homeRetry });
+      view.rerender(<MemoryRouter><OverviewView /></MemoryRouter>);
+      expect(screen.getByRole('status')).toHaveTextContent(/Some Overview information couldn’t be loaded/i);
+      expect(screen.queryByText(INSIGHT)).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('1 decision needs your attention.');
+      expect(screen.getByText('Eid Sale')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Retry Overview' }));
+      expect(homeRetry).toHaveBeenCalledTimes(1);
+      withHome({ refetch: homeRetry });
+      view.rerender(<MemoryRouter><OverviewView /></MemoryRouter>);
+      expect(screen.queryByText(/Some Overview information couldn’t be loaded/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Retry Overview' })).not.toBeInTheDocument();
+      expect(screen.getByText(INSIGHT)).toBeInTheDocument();
+    } finally {
+      aggregateRead.mockRestore();
+    }
+  });
 
   it('shows a FRESH briefing once, inside the hero', () => {
     scored(); withHome();
