@@ -14,7 +14,7 @@
 // plants the stale flag and proves it changes nothing.
 // ============================================================
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 
 const session = vi.hoisted(() => ({ currentUser: { uid: 'u1' }, loading: false, authReady: true }));
@@ -23,7 +23,7 @@ vi.mock('@/context/AuthContext.jsx', () => ({ useAuth: () => session }));
 const context = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock('@/lib/api.js', () => ({ api: { get: (...args) => context.get(...args) } }));
 
-const { ProtectedRoute, OnboardingRoute, AdminRoute } = await import('../ProtectedRoute.jsx');
+const { ProtectedRoute, OnboardingRoute, AdminRoute, primeContextCache, clearContextCache } = await import('../ProtectedRoute.jsx');
 
 const SIGNED_IN = { uid: 'u1' };
 const onboarded = { data: { context: { name: 'Acme' } } };
@@ -214,4 +214,76 @@ describe('OnboardingRoute', () => {
     at('/onboarding', 'onboarding');
     expect(await screen.findByRole('alert')).toHaveTextContent('could not be read');
   });
+});
+
+describe.each([
+  ['ProtectedRoute', '/app/overview', undefined, 'app'],
+  ['OnboardingRoute', '/onboarding', 'onboarding', 'onboarding-wizard'],
+])('%s · account-context refusal and recovery', (_name, path, guard, destination) => {
+  it.each([
+    { httpStatus: 403, code: 'INVITATION_INVALID' },
+    { response: { status: 403 } },
+  ])('a 403 blocks both destinations with factual refusal copy and no retry (%j)', async (details) => {
+    localStorage.setItem('marcom:onboarded', 'true');
+    context.get.mockRejectedValue(Object.assign(new Error('Access denied'), details));
+    at(path, guard);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Your account setup cannot be accessed');
+    expect(alert).toHaveTextContent('Access to account setup was refused for this session.');
+    expect(alert).not.toHaveTextContent(/could not reach|service|incomplete|missing|upgrade|invitation/i);
+    expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('app')).not.toBeInTheDocument();
+    expect(screen.queryByText('onboarding-wizard')).not.toBeInTheDocument();
+    expect(context.get).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { httpStatus: 503, code: 'ContextUnavailable' },
+    { code: 'NETWORK_ERROR' },
+  ])('transient failure remains unavailable and retry recovers the correct destination (%j)', async (details) => {
+    const recovered = guard === 'onboarding' ? { data: { context: null } } : onboarded;
+    context.get.mockRejectedValueOnce(Object.assign(new Error('unavailable'), details)).mockResolvedValue(recovered);
+    at(path, guard);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your account setup could not be read');
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    expect(await screen.findByText(destination)).toBeInTheDocument();
+    expect(context.get).toHaveBeenCalledTimes(2);
+  });
+
+  it('successful context:null is setup absence, never a failure', async () => {
+    context.get.mockResolvedValue({ data: { context: null } });
+    at(path, guard);
+    expect(await screen.findByText('onboarding-wizard')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('a new valid read after remount does not inherit the old refusal', async () => {
+    context.get.mockRejectedValueOnce(Object.assign(new Error('denied'), { httpStatus: 403 })).mockResolvedValue(onboarded);
+    const view = at(path, guard);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your account setup cannot be accessed');
+    view.unmount();
+    at(path, guard);
+    expect(await screen.findByText('app')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(context.get).toHaveBeenCalledTimes(2);
+  });
+
+  it('an exhausted 401 preserves the existing blocking and retry boundary', async () => {
+    context.get.mockRejectedValue(Object.assign(new Error('expired'), { httpStatus: 401 }));
+    at(path, guard);
+    expect(await screen.findByRole('alert')).toHaveTextContent('could not be read');
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+    expect(screen.queryByText('app')).not.toBeInTheDocument();
+    expect(screen.queryByText('onboarding-wizard')).not.toBeInTheDocument();
+  });
+});
+
+it('priming and clearing context preserve the guards’ existing successful-state behavior', async () => {
+  context.get.mockReturnValue(new Promise(() => {}));
+  at('/app/overview');
+  expect(await screen.findByRole('status')).toHaveTextContent('Checking your account');
+  act(() => primeContextCache({ name: 'Acme' }));
+  expect(await screen.findByText('app')).toBeInTheDocument();
+  act(() => clearContextCache());
+  expect(await screen.findByText('onboarding-wizard')).toBeInTheDocument();
 });

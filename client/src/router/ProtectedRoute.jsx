@@ -15,14 +15,15 @@
 // blip decided a route from a value written by an earlier session — and both
 // possible wrong answers were bad: "skip onboarding" and "redo onboarding".
 // The storage is gone. The API is the only source, and when it cannot be read
-// the guard says so and offers a retry instead of guessing. Four outcomes, kept
-// distinct: LOADING · onboarded · not onboarded · UNREADABLE.
+// the guard says so, offers retry for transient failures, and never guesses. Five outcomes, kept
+// distinct: LOADING · onboarded · not onboarded · UNREADABLE · NOT_PERMITTED.
 // ============================================================
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth }             from '../context/AuthContext.jsx';
 import { api }                 from '../lib/api.js';
 import { Loader2, RefreshCw }  from 'lucide-react';
+import { READ, readStatusForError, isRetryableReadError } from '../design-system/states/readStatus.js';
 import { loginPathFor, safeNextPath, currentDestination } from './nextPath.js';
 
 export function FullscreenLoader({ label = 'Loading…' }) {
@@ -37,27 +38,28 @@ export function FullscreenLoader({ label = 'Loading…' }) {
 }
 
 /**
- * The read failed. This names which read, and offers the only honest next step.
- * It deliberately does NOT name a cause it cannot know (offline? signed out?
- * server?), and it never continues into the app or into onboarding on a guess.
+ * Keep an explicit refusal separate from an unreadable setup. Do not infer an
+ * invitation, role or setup diagnosis. Only retryable reads offer recovery here;
+ * neither failure continues into the app or onboarding on a guess.
  */
-function AccountSetupUnavailable({ onRetry }) {
+function AccountSetupUnavailable({ onRetry, refused = false }) {
   return (
     <div className="flex h-screen items-center justify-center bg-surface-dark p-6">
       <div className="max-w-md text-center" role="alert">
-        <h1 className="decision-title text-dark-base">Your account setup could not be read</h1>
+        <h1 className="decision-title text-dark-base">{refused ? 'Your account setup cannot be accessed' : 'Your account setup could not be read'}</h1>
         <p className="mt-2 text-sm leading-6 text-dark-muted">
-          Lumi could not reach the service that stores it, so it does not know whether your
-          setup is complete. Nothing on your account has changed.
+          {refused ? 'Access to account setup was refused for this session.' : (
+            'Lumi could not reach the service that stores it, so it does not know whether your setup is complete. Nothing on your account has changed.'
+          )}
         </p>
-        <button
+        {onRetry && <button
           type="button"
           onClick={onRetry}
           className="mt-5 inline-flex items-center gap-2 rounded-xl border border-lumi-border px-4 py-2 font-display text-sm font-semibold text-dark-base transition-colors hover:bg-lumi-elevated"
         >
           <RefreshCw className="h-4 w-4" strokeWidth={1.5} />
           Try again
-        </button>
+        </button>}
       </div>
     </div>
   );
@@ -88,7 +90,7 @@ function isOnboarded(context) {
 const _subs = new Set();
 
 function publish(next) {
-  const broadcast = next ?? { loading: true, hasContext: false, failed: false };
+  const broadcast = next ?? { status: READ.LOADING, hasContext: null };
   _subs.forEach((fn) => fn(broadcast));
 }
 
@@ -97,7 +99,7 @@ function useUserContext() {
 
   // Always start pessimistic: the API is the only source of truth, so the route
   // is held until it answers.
-  const [state, setState] = useState({ loading: true, hasContext: false, failed: false });
+  const [state, setState] = useState({ status: READ.LOADING, hasContext: null });
   // Bumped by retry(); the fetch effect depends on it, so a retry re-reads.
   const [attempt, setAttempt] = useState(0);
 
@@ -113,25 +115,26 @@ function useUserContext() {
     if (!currentUser) {
       // Not signed in: there is no protected status to ask for, and asking
       // would 401. A resolved answer, not a failure.
-      publish({ loading: false, hasContext: false, failed: false });
+      publish({ status: READ.NOTHING_FOUND, hasContext: false });
       return;
     }
 
-    publish({ loading: true, hasContext: false, failed: false });
+    publish({ status: READ.LOADING, hasContext: null });
 
     let cancelled = false;
     api.get('/api/campaigns/me/context')
       .then((res) => {
         if (cancelled) return;
         const context = res?.data?.context ?? null;
-        publish({ loading: false, hasContext: isOnboarded(context), failed: false });
+        publish({ status: isOnboarded(context) ? READ.PRESENT : READ.NOTHING_FOUND, hasContext: isOnboarded(context) });
       })
       .catch((err) => {
         if (cancelled) return;
         console.error('[ProtectedRoute] Context API failed:', err);
-        // EVERY failure lands here, transient or not. We do not know the
-        // answer, so we do not route on one — see the file header.
-        publish({ loading: false, hasContext: false, failed: true });
+        // A refusal cannot establish setup absence or a service outage.
+        // Preserve the existing 401 blocking/retry boundary; api.js owns token recovery.
+        publish({ status: readStatusForError(err), hasContext: null,
+          canRetry: isRetryableReadError(err) || (err?.httpStatus ?? err?.response?.status) === 401 });
       });
 
     return () => { cancelled = true; };
@@ -143,17 +146,17 @@ function useUserContext() {
 // Prime the guards directly from a PUT response — eliminates the race where
 // navigate('/app') fires a refetch before the new context is visible.
 export function primeContextCache(context) {
-  publish({ loading: false, hasContext: isOnboarded(context), failed: false });
+  publish({ status: isOnboarded(context) ? READ.PRESENT : READ.NOTHING_FOUND, hasContext: isOnboarded(context) });
 }
 
 // Called on sign-out and on "reset setup": the next mount must ask again.
 export function clearContextCache() {
-  publish({ loading: false, hasContext: false, failed: false });
+  publish({ status: READ.NOTHING_FOUND, hasContext: false });
 }
 
 export function ProtectedRoute({ children }) {
   const { currentUser, loading: authLoading, authReady } = useAuth();
-  const { loading, hasContext, failed, retry } = useUserContext();
+  const { status, hasContext, canRetry, retry } = useUserContext();
   const location = useLocation();
 
   // Wait for Firebase to complete its initial check before redirecting.
@@ -166,12 +169,12 @@ export function ProtectedRoute({ children }) {
     return <Navigate to={loginPathFor(location)} replace />;
   }
 
-  if (loading) {
+  if (status === READ.LOADING) {
     return <FullscreenLoader label="Checking your account…" />;
   }
 
-  if (failed) {
-    return <AccountSetupUnavailable onRetry={retry} />;
+  if (status === READ.NOT_PERMITTED || status === READ.NOT_REACHABLE) {
+    return <AccountSetupUnavailable refused={status === READ.NOT_PERMITTED} onRetry={canRetry && status !== READ.NOT_PERMITTED ? retry : undefined} />;
   }
 
   if (!hasContext) {
@@ -184,7 +187,7 @@ export function ProtectedRoute({ children }) {
 
 export function OnboardingRoute({ children }) {
   const { currentUser, loading: authLoading, authReady } = useAuth();
-  const { loading, hasContext, failed, retry } = useUserContext();
+  const { status, hasContext, canRetry, retry } = useUserContext();
   const location = useLocation();
   const nextPath = safeNextPath(new URLSearchParams(location.search).get('next'));
 
@@ -197,12 +200,12 @@ export function OnboardingRoute({ children }) {
     return <Navigate to={loginPathFor(location)} replace />;
   }
 
-  if (loading) {
+  if (status === READ.LOADING) {
     return <FullscreenLoader label="Checking your account…" />;
   }
 
-  if (failed) {
-    return <AccountSetupUnavailable onRetry={retry} />;
+  if (status === READ.NOT_PERMITTED || status === READ.NOT_REACHABLE) {
+    return <AccountSetupUnavailable refused={status === READ.NOT_PERMITTED} onRetry={canRetry && status !== READ.NOT_PERMITTED ? retry : undefined} />;
   }
 
   if (hasContext) {
