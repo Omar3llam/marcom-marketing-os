@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { api } from '@/lib/api.js';
 import { PRIMARY_BTN, GHOST_BTN } from './onboardingStyles.js';
+import { syncFailureState } from './syncFailureState.js';
 
 // The sync is a single synchronous POST — it resolves when the pull is done, so
 // completion is gated on the real request, not a fixed timer. No intermediate
@@ -12,10 +13,18 @@ const HINTS = {
   soon: 'Large accounts may take longer. Waiting for sync results.',
   long: 'Still waiting for sync results. Keep this page open.',
 };
+const FAILURE_COPY = {
+  NOT_PERMITTED: 'This seat can’t start a connection sync. Ask a workspace operator with sync access to continue.',
+  AUTH_REQUIRED: 'Your session needs authentication. Sign in again before starting a sync.',
+  INVALID_CONTEXT: 'Lumi couldn’t start this sync with the current workspace setup.',
+  RETRYABLE: 'We couldn’t analyze your connections. Stay here and retry the sync.',
+  FAILED: 'This sync request couldn’t be completed.',
+};
 
 export function SyncStep({ onComplete }) {
   const [hint, setHint] = useState(null); // null | 'soon' | 'long'
   const [status, setStatus] = useState('running');
+  const [failure, setFailure] = useState(null);
   const [attempt, setAttempt] = useState(0);
   const doneRef = useRef(false);
   const completeRef = useRef(onComplete);
@@ -31,6 +40,7 @@ export function SyncStep({ onComplete }) {
     doneRef.current = false;
     retryLock.current = true;
     setStatus('running');
+    setFailure(null);
     setHint(null);
     const timers = [
       setTimeout(() => { if (active && waiting) setHint('soon'); }, 30_000),
@@ -66,13 +76,15 @@ export function SyncStep({ onComplete }) {
           retryLock.current = false;
         } else finish();
       })
-      .catch(() => {
+      .catch((err) => {
         if (!active) return;
         waiting = false;
         timers.forEach(clearTimeout);
         setHint(null);
+        const outcome = syncFailureState(err);
+        setFailure(outcome);
         setStatus('failed');
-        retryLock.current = false;
+        retryLock.current = !outcome.retryable;
       });
     return () => {
       active = false;
@@ -88,6 +100,8 @@ export function SyncStep({ onComplete }) {
     retryLock.current = true;
     finishRef.current = null;
     setStatus('running');
+    setFailure(null);
+    setHint(null);
     setAttempt((value) => value + 1);
   };
 
@@ -110,8 +124,8 @@ export function SyncStep({ onComplete }) {
       )}
       {status === 'failed' && (
         <div className="mt-6">
-          <p role="alert" className="text-sm text-signal-kill mb-3">We couldn’t analyze your connections. Stay here and retry the sync.</p>
-          <button type="button" onClick={retry} className={PRIMARY_BTN}>Retry sync</button>
+          <p role="alert" className="text-sm text-signal-kill mb-3">{FAILURE_COPY[failure?.kind]}</p>
+          {failure?.retryable && <button type="button" onClick={retry} className={PRIMARY_BTN}>Retry sync</button>}
         </div>
       )}
       {status === 'partial' && (

@@ -14,7 +14,24 @@ vi.mock('../firebase.js', () => ({ auth: { currentUser: null } }));
 import { mapTransportError } from './api.js';
 import { incrementalityGateReason } from '@/hooks/incrementalityGateReason.js';
 import { scenarioGateReason } from '@/hooks/scenarioGateReason.js';
+import { syncFailureState } from '@/pages/OnboardingPage/steps/syncFailureState.js';
 import { isNoWorkspaceError, isRetryableReadError } from '@/design-system/states/readStatus.js';
+
+describe('sync mutation transport evidence', () => {
+  it.each([
+    [400, 'INVALID_CONTEXT', false], [401, 'AUTH_REQUIRED', false], [403, 'NOT_PERMITTED', false],
+    [408, 'RETRYABLE', true], [429, 'RETRYABLE', true], [500, 'RETRYABLE', true],
+    [503, 'RETRYABLE', true], [409, 'FAILED', false],
+  ])('raw and mapped HTTP %s retain %s retryability', (status, kind, retryable) => {
+    const raw = { response: { status, data: { error: 'OpaqueError', message: 'retry upgrade sign in' } } };
+    expect(syncFailureState(raw)).toEqual({ kind, retryable });
+    expect(syncFailureState(mapTransportError(raw))).toEqual({ kind, retryable });
+  });
+  it('no-response network failure stays retryable without reading its message', () => {
+    const raw = { request: {}, message: 'RoleForbidden' };
+    expect(syncFailureState(mapTransportError(raw))).toEqual({ kind: 'RETRYABLE', retryable: true });
+  });
+});
 
 it('preserves only the explicit RoleNotConfigured 409 token and role reason', () => {
   const mapped = mapTransportError({ response: { status: 409, data: {
