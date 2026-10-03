@@ -16,6 +16,7 @@ vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn() } }));
 const band = (items = []) => ({ title: 't', items, count: items.length, empty: items.length === 0 });
 
 const validHome = {
+  aiInsight: null, aiInsightStatus: 'EMPTY',
   role: 'STRATEGIST',
   summary: '1 to decide, 0 to steer.',
   buyerBand: band([

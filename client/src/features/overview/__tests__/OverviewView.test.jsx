@@ -480,7 +480,7 @@ describe('OverviewView — health readiness gate (no claim before its substrate 
 describe('OverviewView — the briefing folds into the hero', () => {
   const INSIGHT = 'Two retargeting sets carry most of the waste.';
   const withHome = (over = {}) => useHome.mockReturnValue({
-    home: { aiInsight: INSIGHT }, isStale: false, isLoading: false, error: null, refetch: vi.fn(), ...over,
+    home: { aiInsight: INSIGHT, aiInsightStatus: 'PRESENT' }, isStale: false, isLoading: false, error: null, refetch: vi.fn(), ...over,
   });
   const scored = () => {
     useConnectorCampaigns.mockReturnValue({ campaigns: [CONNECTOR_ROW], loading: false, error: null, refetch: vi.fn() });
@@ -489,7 +489,7 @@ describe('OverviewView — the briefing folds into the hero', () => {
     ] }, loading: false, error: null, refetch: vi.fn() });
   };
 
-  it('Home-only failure renders the existing PARTIAL notice and retry, then clears on recovery', () => {
+  it.each(['transport', 'briefing'])('%s failure renders the existing PARTIAL notice and retry, then clears on recovery', (source) => {
     const aggregateRead = vi.spyOn(accountAggregateHook, 'useAccountAggregate').mockReturnValue({
       response: { available: false, aggregate: null }, loading: false, error: null, forbidden: false,
     });
@@ -498,7 +498,9 @@ describe('OverviewView — the briefing folds into the hero', () => {
       scored(); withHome({ refetch: homeRetry });
       const view = renderView();
       expect(screen.getByText(INSIGHT)).toBeInTheDocument();
-      withHome({ error: Object.assign(new Error('Home unavailable'), { httpStatus: 503 }), refetch: homeRetry });
+      withHome(source === 'transport'
+        ? { error: Object.assign(new Error('Home unavailable'), { httpStatus: 503 }), refetch: homeRetry }
+        : { home: { aiInsightStatus: 'UNAVAILABLE', aiInsight: null }, refetch: homeRetry });
       view.rerender(<MemoryRouter><OverviewView /></MemoryRouter>);
       expect(screen.getByRole('status')).toHaveTextContent(/Some Overview information couldn’t be loaded/i);
       expect(screen.queryByText(INSIGHT)).not.toBeInTheDocument();

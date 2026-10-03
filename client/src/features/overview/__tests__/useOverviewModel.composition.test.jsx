@@ -47,6 +47,57 @@ beforeEach(() => {
 });
 
 describe('Overview source composition', () => {
+  it('optional briefing failure is PARTIAL with valid account evidence and retry through Home once', () => {
+    const retry = vi.fn();
+    const before = model();
+    useHome.mockReturnValue({ home: { aiInsight: null, aiInsightStatus: 'UNAVAILABLE' }, isStale: false, error: null, refetch: retry });
+    const after = model();
+    expect(after).toMatchObject({ overviewStatus: OVERVIEW_STATUS.PARTIAL, insight: null, canRetry: true,
+      accountState: ACCOUNT_STATE.ACTION_REQUIRED, coreUsable: true });
+    expect(after.bands).toEqual(before.bands);
+    expect(after.kpis).toEqual(before.kpis);
+    after.retryFailedReads();
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['PRESENT', 'EMPTY'])('%s → UNAVAILABLE → retry → %s restores completeness without old prose', (status) => {
+    const retry = vi.fn();
+    const text = status === 'PRESENT' ? 'Exact fresh prose' : null;
+    const read = (aiInsightStatus, aiInsight = null) => useHome.mockReturnValue({
+      home: { aiInsightStatus, aiInsight }, isStale: false, error: null, refetch: retry,
+    });
+    read(status, text);
+    const { result, rerender } = renderHook(useOverviewModel);
+    expect(result.current).toMatchObject({ overviewStatus: OVERVIEW_STATUS.COMPLETE, insight: text, canRetry: false });
+    read('UNAVAILABLE'); rerender();
+    expect(result.current).toMatchObject({ overviewStatus: OVERVIEW_STATUS.PARTIAL, insight: null, canRetry: true });
+    result.current.retryFailedReads(); expect(retry).toHaveBeenCalledTimes(1);
+    read(status, text); rerender();
+    expect(result.current).toMatchObject({ overviewStatus: OVERVIEW_STATUS.COMPLETE, insight: text, canRetry: false });
+  });
+
+  it.each([
+    [{ health: null, loading: false, error: failed }, OVERVIEW_STATUS.ERROR],
+    [{ health: null, loading: false, error: null, forbidden: true }, OVERVIEW_STATUS.UNAVAILABLE],
+    [{ health: null, loading: true, error: null }, OVERVIEW_STATUS.LOADING],
+  ])('required core precedence survives optional briefing failure %j', (healthRead, status) => {
+    useHome.mockReturnValue({ home: { aiInsightStatus: 'UNAVAILABLE', aiInsight: null }, error: null, isStale: false });
+    useAccountHealth.mockReturnValue(healthRead);
+    expect(model().overviewStatus).toBe(status);
+  });
+
+  it('optional briefing plus accuracy failure remains PARTIAL', () => {
+    useHome.mockReturnValue({ home: { aiInsightStatus: 'UNAVAILABLE', aiInsight: null }, error: null, isStale: false });
+    useAccuracy.mockReturnValue({ surface: null, loading: false, error: failed });
+    expect(model()).toMatchObject({ overviewStatus: OVERVIEW_STATUS.PARTIAL, coreUsable: true, insight: null });
+  });
+
+  it('Home transport retry is not duplicated by an unavailable briefing', () => {
+    const retry = vi.fn();
+    useHome.mockReturnValue({ home: { aiInsightStatus: 'UNAVAILABLE', aiInsight: null }, error: failed, refetch: retry });
+    model().retryFailedReads(); expect(retry).toHaveBeenCalledTimes(1);
+  });
+
   it('is COMPLETE with successful core and optional reads', () => {
     expect(model()).toMatchObject({ overviewStatus: OVERVIEW_STATUS.COMPLETE, accountState: ACCOUNT_STATE.ACTION_REQUIRED, coreUsable: true });
   });
@@ -107,7 +158,7 @@ describe('Overview source composition', () => {
   });
 
   it('briefing failure makes the composition PARTIAL while suppressing AI prose', () => {
-    useHome.mockReturnValue({ home: { aiInsight: 'Old narration' }, isStale: false, error: failed });
+    useHome.mockReturnValue({ home: { aiInsight: 'Old narration', aiInsightStatus: 'PRESENT' }, isStale: false, error: failed });
     const view = model();
     expect(view.overviewStatus).toBe(OVERVIEW_STATUS.PARTIAL);
     expect(view.insight).toBeNull();
@@ -127,16 +178,16 @@ describe('Overview source composition', () => {
   });
 
   it.each(['Fresh narration', null])('a successful Home read with insight %s remains COMPLETE', (aiInsight) => {
-    useHome.mockReturnValue({ home: { aiInsight }, isStale: false, error: null });
+    useHome.mockReturnValue({ home: { aiInsight, aiInsightStatus: aiInsight === null ? 'EMPTY' : 'PRESENT' }, isStale: false, error: null });
     expect(model()).toMatchObject({ overviewStatus: OVERVIEW_STATUS.COMPLETE, insight: aiInsight });
   });
 
   it('stale Home suppresses insight without implying a read failure', () => {
-    useHome.mockReturnValue({ home: { aiInsight: 'Stale narration' }, isStale: true, error: null });
+    useHome.mockReturnValue({ home: { aiInsight: 'Stale narration', aiInsightStatus: 'PRESENT' }, isStale: true, error: null });
     expect(model()).toMatchObject({ overviewStatus: OVERVIEW_STATUS.COMPLETE, insight: null });
   });
 
-  it('Home failure retains established health, decisions and monetary KPI evidence', () => {
+  it.each(['transport', 'briefing'])('%s failure retains established health, decisions and monetary KPI evidence', (source) => {
     useAccountAggregate.mockReturnValue({ response: { available: true, aggregate: {
       currency: 'EGP', currencyStatus: 'SINGLE',
       population: { campaignCount: 1, measurementWindow: 'CUMULATIVE_30D', boundsStatus: 'REPORTED' },
@@ -145,7 +196,9 @@ describe('Overview source composition', () => {
     } }, loading: false, error: null, forbidden: false });
     const before = model();
     expect(before.kpis).toMatchObject({ spend: 10, cpa: 10, currency: 'EGP', health: 42 });
-    useHome.mockReturnValue({ home: null, isStale: false, error: failed });
+    useHome.mockReturnValue(source === 'transport'
+      ? { home: null, isStale: false, error: failed }
+      : { home: { aiInsightStatus: 'UNAVAILABLE', aiInsight: null }, isStale: false, error: null });
     const after = model();
     expect(after.overviewStatus).toBe(OVERVIEW_STATUS.PARTIAL);
     expect(after.health).toBe(health);
@@ -183,7 +236,7 @@ describe('Overview source composition', () => {
     const homeRetry = vi.fn();
     const coreRetry = vi.fn();
     useConnectorCampaigns.mockReturnValue({ campaigns: [campaign], loading: false, error: null, refetch: coreRetry });
-    useHome.mockReturnValue({ home: { aiInsight: 'Fresh' }, isStale: false, error: null, refetch: homeRetry });
+    useHome.mockReturnValue({ home: { aiInsight: 'Fresh', aiInsightStatus: 'PRESENT' }, isStale: false, error: null, refetch: homeRetry });
     const { result, rerender } = renderHook(() => useOverviewModel());
     expect(result.current).toMatchObject({ overviewStatus: OVERVIEW_STATUS.COMPLETE, insight: 'Fresh', canRetry: false });
     useHome.mockReturnValue({ home: null, isStale: false, error: Object.assign(new Error('temporary'), { httpStatus: 503 }), refetch: homeRetry });
@@ -192,7 +245,7 @@ describe('Overview source composition', () => {
     result.current.retryFailedReads();
     expect(homeRetry).toHaveBeenCalledTimes(1);
     expect(coreRetry).not.toHaveBeenCalled();
-    useHome.mockReturnValue({ home: { aiInsight: 'Recovered' }, isStale: false, error: null, refetch: homeRetry });
+    useHome.mockReturnValue({ home: { aiInsight: 'Recovered', aiInsightStatus: 'PRESENT' }, isStale: false, error: null, refetch: homeRetry });
     rerender();
     expect(result.current).toMatchObject({ overviewStatus: OVERVIEW_STATUS.COMPLETE, insight: 'Recovered', canRetry: false });
   });

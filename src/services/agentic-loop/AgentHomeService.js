@@ -116,9 +116,9 @@ export async function getHome(workspaceId, role) {
     logger.warn({ source: 'ACCURACY', err: err.message, workspaceId }, '[AgentHome] accuracy headline skipped');
   }
 
-  // AI Insight — pre-generated briefing from the latest LoopRun. Null when no
-  // sweep has generated one yet (honest empty state on Overview).
+  // Optional briefing: only a successful query can establish absence.
   let aiInsight = null;
+  let aiInsightStatus;
   try {
     const latestRun = await prisma.loopRun.findFirst({
       where: { workspaceId },
@@ -126,10 +126,12 @@ export async function getHome(workspaceId, role) {
       select: { aiInsight: true },
     });
     aiInsight = latestRun?.aiInsight ?? null;
+    aiInsightStatus = aiInsight === null ? 'EMPTY' : 'PRESENT';
   } catch (err) {
+    aiInsightStatus = 'UNAVAILABLE';
     logger.warn({ source: 'BRIEFING', err: err.message, workspaceId }, '[AgentHome] aiInsight read skipped');
   }
 
   logger.info({ workspaceId, role: r, loopHealth: loop.loopHealth }, '[AgentHome] composed');
-  return { role: r, summary: agenda.summary, buyerBand, strategistBand, loop, proof, aiInsight };
+  return { role: r, summary: agenda.summary, buyerBand, strategistBand, loop, proof, aiInsight, aiInsightStatus };
 }

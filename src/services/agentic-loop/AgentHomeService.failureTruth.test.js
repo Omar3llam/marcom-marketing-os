@@ -44,6 +44,31 @@ beforeEach(() => {
 });
 
 describe('getHome only plans from successfully read inputs', () => {
+  it.each([
+    [{ aiInsight: 'Exact generated briefing' }, 'PRESENT', 'Exact generated briefing'],
+    [null, 'EMPTY', null],
+    [{ aiInsight: null }, 'EMPTY', null],
+  ])('publishes successful briefing state %s as %s', async (row, status, text) => {
+    prisma.loopRun.findFirst.mockResolvedValue(row);
+    expect(await getHome('ws1', 'STRATEGIST')).toMatchObject({ aiInsightStatus: status, aiInsight: text });
+  });
+
+  it.each(['BUYER', 'STRATEGIST', 'CLIENT'])('%s retains scoped agenda and loop when optional briefing fails', async (role) => {
+    planAgenda.mockReturnValue({ ...emptyAgenda, buyerBand: [{ id: 'd1' }], strategistBand: [{ id: 'g1' }] });
+    const before = await getHome('ws1', role);
+    prisma.loopRun.findFirst.mockRejectedValue(new Error('private briefing database error'));
+    const after = await getHome('ws1', role);
+    expect(before).toMatchObject({ aiInsightStatus: 'EMPTY', aiInsight: null });
+    expect(after).toMatchObject({ aiInsightStatus: 'UNAVAILABLE', aiInsight: null });
+    expect(after.buyerBand).toEqual(before.buyerBand);
+    expect(after.strategistBand).toEqual(before.strategistBand);
+    expect(after.loop).toEqual(before.loop);
+    expect(after.summary).toBe(before.summary);
+    expect(after.role).toBe(role);
+    if (role === 'CLIENT') expect(after.buyerBand).toBeNull();
+    expect(JSON.stringify(after)).not.toContain('private');
+  });
+
   it.each(['BUYER', 'STRATEGIST'])('%s keeps a genuine empty agenda successful', async (role) => {
     const home = await getHome('ws1', role);
     expect(home.summary).toMatch(/quiet/);
