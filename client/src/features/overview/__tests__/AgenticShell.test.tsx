@@ -37,10 +37,13 @@ import AgendaItem, { agendaItemRoute } from '../components/AgendaItem.jsx';
 import AgendaBand from '../components/AgendaBand.jsx';
 import LoopStatusRing from '../components/LoopStatusRing.jsx';
 import AgenticShellView from '../AgenticShellView.jsx';
-import { useHome } from '@/hooks/useHome.js';
+import { useHome, homeReadState } from '@/hooks/useHome.js';
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { AgentHomeSchema } from '@/contracts/schemas';
 import { appRoutes } from '@/app/routeManifest.js';
+
+const mockHome = (state: { home: unknown; isStale: boolean; isLoading: boolean; error: Error | null; refetch: ReturnType<typeof vi.fn> }) =>
+  vi.mocked(useHome).mockReturnValue({ ...state, ...homeReadState(state) } as never);
 
 const item = (over = {}) => ({
   id: 'verdict:d1', band: 'BUYER', type: 'VERDICT', title: 'KILL Cold #1',
@@ -74,7 +77,7 @@ const home = {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(useCollabRole).mockReturnValue({ role: WORKSPACE_ROLE.STRATEGIST } as never);
-  vi.mocked(useHome).mockReturnValue({ home, isStale: false, isLoading: false, error: null, refetch: vi.fn() } as never);
+  mockHome({ home, isStale: false, isLoading: false, error: null, refetch: vi.fn() } as never);
 });
 
 describe('agendaItemRoute — navigates to the owning surface (never executes)', () => {
@@ -181,6 +184,109 @@ describe('LoopStatusRing — health + the single sweep control', () => {
 });
 
 describe('AgenticShellView — role-aware composition', () => {
+  it.each([
+    { httpStatus: 409, code: 'RoleNotConfigured', context: { roleReason: 'ROLE_UNSET' } },
+    { response: { status: 409, data: { error: 'RoleNotConfigured', roleReason: 'ROLE_UNSET' } } },
+  ])('missing-role evidence %j renders configuration copy without retry or agenda content', (details) => {
+    mockHome({ home: null, isStale: false, isLoading: false, error: Object.assign(new Error('refused'), details), refetch: vi.fn() } as never);
+    render(<AgenticShellView />);
+    expect(screen.getByText('Your agenda isn’t available until this seat has a collaboration role.')).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn.t load|Nothing needs|Portfolio on track|No workspace/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry agenda' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Loop healthy')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { httpStatus: 503, context: { roleReason: 'ROLE_LOOKUP_FAILED' } },
+    { response: { status: 503, data: { error: 'RoleUnavailable', roleReason: 'ROLE_LOOKUP_FAILED' } } },
+  ])('role lookup failure %j renders explicit unavailable copy and retry', (details) => {
+    const refetch = vi.fn();
+    mockHome({ home: null, isStale: false, isLoading: false, error: Object.assign(new Error('failed'), details), refetch } as never);
+    render(<AgenticShellView />);
+    expect(screen.getByText('Lumi couldn’t determine your agenda access right now.')).toBeInTheDocument();
+    expect(screen.queryByText(/collaboration role|Portfolio on track|No workspace|refused/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry agenda' }));
+    expect(refetch).toHaveBeenCalledOnce();
+    expect(screen.queryByText(STRATEGIST_TITLE)).not.toBeInTheDocument();
+  });
+
+  it.each(['ROLE_UNKNOWN', 'ROLE_IDENTITY_MISSING'])('permanent unresolved reason %s is not setup or a transient failure', (roleReason) => {
+    mockHome({ home: null, isStale: false, isLoading: false,
+      error: Object.assign(new Error('failed'), { httpStatus: 503, context: { roleReason } }), refetch: vi.fn() } as never);
+    render(<AgenticShellView />);
+    expect(screen.getByText('Your agenda access could not be established for this seat.')).toBeInTheDocument();
+    expect(screen.queryByText(/collaboration role|No workspace|Portfolio on track/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry agenda' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Loop healthy')).not.toBeInTheDocument();
+  });
+
+  it.each([{ httpStatus: 403 }, { response: { status: 403 } }])('generic refusal %j renders neutral access copy without retry', (details) => {
+    mockHome({ home: null, isStale: false, isLoading: false,
+      error: Object.assign(new Error('denied'), details), refetch: vi.fn() } as never);
+    render(<AgenticShellView />);
+    expect(screen.getByText('This agenda cannot be accessed for this request.')).toBeInTheDocument();
+    expect(screen.queryByText(/role|workspace|plan|Portfolio on track|Couldn.t load/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry agenda' })).not.toBeInTheDocument();
+    expect(screen.queryByText(STRATEGIST_TITLE)).not.toBeInTheDocument();
+  });
+
+  it.each([WORKSPACE_ROLE.STRATEGIST, WORKSPACE_ROLE.CLIENT])('stale %s content stays visible without claiming or starting a refresh', (role) => {
+    const refetch = vi.fn();
+    vi.mocked(useCollabRole).mockReturnValue({ role } as never);
+    mockHome({ home: { ...home, role, buyerBand: role === WORKSPACE_ROLE.CLIENT ? null : home.buyerBand },
+      isStale: true, isLoading: false, error: null, refetch } as never);
+    const { container } = render(<AgenticShellView />);
+    expect(screen.getByText('Showing the last available sweep. This view may be out of date.')).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/refreshing|updating|syncing|refresh in progress/i);
+    expect(screen.getByText(STRATEGIST_TITLE)).toBeInTheDocument();
+    expect(screen.getByText('Goal blendedCac off track')).toBeInTheDocument();
+    expect(refetch).not.toHaveBeenCalled();
+    if (role === WORKSPACE_ROLE.CLIENT) expect(screen.queryByText('Loop healthy')).not.toBeInTheDocument();
+    else expect(screen.getByText('Loop healthy')).toBeInTheDocument();
+  });
+
+  it('fresh Home has no stale warning', () => {
+    render(<AgenticShellView />);
+    expect(screen.queryByText(/last available sweep|out of date/)).not.toBeInTheDocument();
+  });
+
+  it('role-read retry clears unavailable content while loading and fresh success renders the agenda', () => {
+    const refetch = vi.fn();
+    mockHome({ home: null, isStale: false, isLoading: false,
+      error: Object.assign(new Error('failed'), { httpStatus: 503, context: { roleReason: 'ROLE_LOOKUP_FAILED' } }), refetch });
+    const { rerender } = render(<AgenticShellView />);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry agenda' }));
+    expect(refetch).toHaveBeenCalledOnce();
+    mockHome({ home: null, isStale: false, isLoading: true, error: null, refetch });
+    rerender(<AgenticShellView />);
+    expect(document.querySelector('[aria-busy="true"]')).toBeTruthy();
+    expect(screen.queryByText(/couldn’t determine/)).not.toBeInTheDocument();
+    expect(screen.queryByText(STRATEGIST_TITLE)).not.toBeInTheDocument();
+    mockHome({ home, isStale: false, isLoading: false, error: null, refetch });
+    rerender(<AgenticShellView />);
+    expect(screen.getByText('Loop healthy')).toBeInTheDocument();
+    expect(screen.getByText(STRATEGIST_TITLE)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry agenda' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    Object.assign(new Error('HomeUnavailable'), { httpStatus: 500 }), new Error('offline'),
+  ])('service/network failure %j retains generic unavailable copy and retry', (error) => {
+    mockHome({ home: null, isStale: false, isLoading: false, error, refetch: vi.fn() } as never);
+    render(<AgenticShellView />);
+    expect(screen.getByText(/Couldn.t load your agenda/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry agenda' })).toBeInTheDocument();
+    expect(screen.queryByText(STRATEGIST_TITLE)).not.toBeInTheDocument();
+  });
+
+  it('contract failure renders no valid agenda content or transport retry', () => {
+    mockHome({ home: null, isStale: false, isLoading: false,
+      error: new Error('Home response failed contract validation'), refetch: vi.fn() } as never);
+    render(<AgenticShellView />);
+    expect(screen.getByText(/Couldn.t load your agenda/)).toBeInTheDocument();
+    expect(screen.queryByText(STRATEGIST_TITLE)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry agenda' })).not.toBeInTheDocument();
+  });
   it('STRATEGIST sees the ring + the portfolio band', () => {
     vi.mocked(useCollabRole).mockReturnValue({ role: WORKSPACE_ROLE.STRATEGIST } as never);
     render(<AgenticShellView />);
@@ -197,7 +303,7 @@ describe('AgenticShellView — role-aware composition', () => {
 
   it('CLIENT sees the portfolio band only — no ring', () => {
     vi.mocked(useCollabRole).mockReturnValue({ role: WORKSPACE_ROLE.CLIENT } as never);
-    vi.mocked(useHome).mockReturnValue({ home: { ...home, buyerBand: null }, isStale: false, isLoading: false, error: null, refetch: vi.fn() } as never);
+    mockHome({ home: { ...home, buyerBand: null }, isStale: false, isLoading: false, error: null, refetch: vi.fn() } as never);
     render(<AgenticShellView />);
     expect(screen.queryByText('Loop healthy')).not.toBeInTheDocument();
     expect(screen.getByText(STRATEGIST_TITLE)).toBeInTheDocument();
@@ -216,11 +322,11 @@ describe('AgenticShellView — role-aware composition', () => {
     });
 
   it('shows a loading skeleton then an honest error', () => {
-    vi.mocked(useHome).mockReturnValue({ home: null, isStale: false, isLoading: true, error: null, refetch: vi.fn() } as never);
+    mockHome({ home: null, isStale: false, isLoading: true, error: null, refetch: vi.fn() } as never);
     const { rerender } = render(<AgenticShellView />);
     expect(document.querySelector('[aria-busy="true"]')).toBeTruthy();
 
-    vi.mocked(useHome).mockReturnValue({ home: null, isStale: false, isLoading: false, error: new Error('x'), refetch: vi.fn() } as never);
+    mockHome({ home: null, isStale: false, isLoading: false, error: new Error('x'), refetch: vi.fn() } as never);
     rerender(<AgenticShellView />);
     expect(screen.getByText(/Couldn.t load your agenda/i)).toBeInTheDocument();
     expect(screen.queryByText(/Nothing needs a decision right now/i)).not.toBeInTheDocument();
@@ -229,7 +335,7 @@ describe('AgenticShellView — role-aware composition', () => {
 
   it.each([409, 503])('workspace %s is never complete Home content', (httpStatus) => {
     const error = Object.assign(new Error('workspace'), { httpStatus, code: httpStatus === 409 ? 'NoWorkspace' : 'PLATFORM_ERROR' });
-    vi.mocked(useHome).mockReturnValue({ home: null, isStale: false, isLoading: false, error, refetch: vi.fn() } as never);
+    mockHome({ home: null, isStale: false, isLoading: false, error, refetch: vi.fn() } as never);
     render(<AgenticShellView />);
     if (httpStatus === 409) expect(screen.getByText(/agenda is not configured/i)).toBeInTheDocument();
     else {

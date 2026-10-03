@@ -17,7 +17,7 @@
 // rather than blocking — the next focus/refetch (or the cron) refreshes it.
 // ============================================================
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { isRetryableReadError } from '@/design-system/states/readStatus.js';
+import { READ, isNoWorkspaceError, readStatusForError, isRetryableReadError } from '@/design-system/states/readStatus.js';
 import { api } from '@/lib/api.js';
 import { AgentHomeSchema } from '@/contracts/schemas';
 
@@ -26,6 +26,21 @@ import { AgentHomeSchema } from '@/contracts/schemas';
 export function computeStale(loop) {
   if (!loop?.lastRunAt || !loop?.intervalMs) return false;
   return Date.now() - new Date(loop.lastRunAt).getTime() > loop.intervalMs;
+}
+
+/** Keep access/configuration evidence separate from the validated Home payload. */
+export function homeReadState({ home, isLoading, error }) {
+  if (isLoading) return { status: READ.LOADING, reason: null };
+  if (!error) return { status: home ? READ.PRESENT : READ.NOT_REACHABLE, reason: null };
+  if (isNoWorkspaceError(error)) return { status: READ.NOTHING_FOUND, reason: 'NoWorkspace' };
+  const httpStatus = error.httpStatus ?? error.response?.status;
+  const code = error.response?.data?.error ?? error.code;
+  if (httpStatus === 409 && code === 'RoleNotConfigured') {
+    return { status: READ.NOTHING_FOUND, reason: 'ROLE_UNSET' };
+  }
+  const status = readStatusForError(error);
+  const roleReason = error.context?.roleReason ?? error.response?.data?.roleReason;
+  return { status, reason: status === READ.NOT_PERMITTED ? null : roleReason ?? null };
 }
 
 export function useHome() {
@@ -71,5 +86,6 @@ export function useHome() {
     return () => window.removeEventListener('focus', onFocus);
   }, [load, error]);
 
-  return { home, isStale: computeStale(home?.loop), isLoading, error, refetch: load };
+  return { home, isStale: computeStale(home?.loop), isLoading, error,
+    ...homeReadState({ home, isLoading, error }), refetch: load };
 }

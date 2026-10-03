@@ -114,6 +114,18 @@ describe('Overview source composition', () => {
     expect(view.accountState).toBe(ACCOUNT_STATE.ACTION_REQUIRED);
   });
 
+  it.each([
+    { httpStatus: 409, code: 'RoleNotConfigured', context: { roleReason: 'ROLE_UNSET' } },
+    { httpStatus: 503, context: { roleReason: 'ROLE_LOOKUP_FAILED' } },
+    { httpStatus: 503, context: { roleReason: 'ROLE_UNKNOWN' } },
+    { httpStatus: 403 },
+  ])('Home access/configuration failure %j remains optional PARTIAL with valid core', (details) => {
+    const error = Object.assign(new Error('Home unavailable'), details);
+    useHome.mockReturnValue({ home: null, isStale: false, error, refetch: vi.fn() });
+    expect(model()).toMatchObject({ overviewStatus: OVERVIEW_STATUS.PARTIAL, coreUsable: true,
+      accountState: ACCOUNT_STATE.ACTION_REQUIRED, insight: null });
+  });
+
   it.each(['Fresh narration', null])('a successful Home read with insight %s remains COMPLETE', (aiInsight) => {
     useHome.mockReturnValue({ home: { aiInsight }, isStale: false, error: null });
     expect(model()).toMatchObject({ overviewStatus: OVERVIEW_STATUS.COMPLETE, insight: aiInsight });
