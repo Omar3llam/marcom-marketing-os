@@ -204,6 +204,15 @@ export function mapTransportError(error) {
     });
   }
 
+  // Preserve only the backend's explicit missing-seat-role configuration finding.
+  if (status === 409 && error.response?.data?.error === 'RoleNotConfigured') {
+    return new ValidationError({
+      message: message || 'This seat has no collaboration role assigned.',
+      code: 'RoleNotConfigured', httpStatus: status, requestId, sessionId,
+      context: { endpoint, roleReason: error.response.data.roleReason },
+    });
+  }
+
   // Platform errors (5xx)
   if (status >= 500) {
     return new PlatformError({
