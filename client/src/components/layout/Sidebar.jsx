@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext.jsx';
 import { useCollabRole } from '@/hooks/useCollabRole.js';
+import { ROLE_READ, WORKSPACE_ROLE } from '@/context/RoleContext.jsx';
 import { roleAllowed } from '@/components/auth/RoleGate.jsx';
 import { usePlan, WORKSPACE_READ } from '@/hooks/usePlan.js';
 import { useWorkspace } from '@/hooks/useWorkspace.js';
@@ -223,9 +224,9 @@ export default function Sidebar({
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { currentUser } = useAuth();
-  const { role: collabRole } = useCollabRole();
+  const { role: collabRole, status: roleStatus, loading: roleLoading, error: roleError } = useCollabRole();
   const { canAccess, loading: planLoading, status: planStatus } = usePlan();
-  const { workspace, hasWorkspace, loading: workspaceLoading, status: workspaceStatus, canRetry: workspaceCanRetry, refetch: retryWorkspace } = useWorkspace();
+  const { workspace, hasWorkspace, loading: workspaceLoading, error: workspaceError, status: workspaceStatus, canRetry: workspaceCanRetry, refetch: retryWorkspace } = useWorkspace();
   const { data: connectionsData, loading: connectionsLoading } = useConnections();
 
   // Role- AND plan-gated navigation. An item hides if the seat's role can't see
@@ -357,6 +358,13 @@ export default function Sidebar({
 
   const initial = (currentUser?.displayName?.[0] || currentUser?.email?.[0] || 'L').toUpperCase();
   const userLabel = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User';
+  const footerRole = roleStatus === ROLE_READ.PRESENT && !roleLoading && !roleError
+    && Object.values(WORKSPACE_ROLE).includes(collabRole) ? collabRole : null;
+  // Workspace status also describes entitlement readability. The current record
+  // may establish a market independently, but a loading/failed record cannot.
+  const footerMarket = !workspaceLoading && !workspaceError && hasWorkspace
+    && typeof workspace?.market === 'string' && workspace.market.trim() ? workspace.market : null;
+  const footerFacts = [footerRole, footerMarket].filter(Boolean).join(' · ');
 
   // Workspace display name (fallback for loading/empty states)
   const workspaceName = workspaceLoading
@@ -577,7 +585,7 @@ export default function Sidebar({
         <RadarStrip hasHighAlerts={alertCount > 0} />
       )}
 
-      {/* ── FOOTER with online status ──────────────────────── */}
+      {/* ── FOOTER with evidenced user identity ───────────── */}
       <div className={cn(
         'flex-shrink-0 border-t border-lumi-border p-3',
         collapsed ? 'flex flex-col items-center gap-2' : 'space-y-1',
@@ -602,18 +610,15 @@ export default function Sidebar({
         <div className={cn('flex items-center gap-2.5', collapsed ? 'mt-1' : 'px-3 py-2 mt-1')}>
           <div className="relative w-7 h-7 rounded-full bg-lumi-accent/20 border border-lumi-accent/30 flex items-center justify-center flex-shrink-0">
             <span className="text-xs font-display font-bold text-lumi-accent">{initial}</span>
-            {/* Online dot */}
-            <span
-              className="absolute bottom-0 right-0 w-2 h-2 rounded-full bg-signal-scale border-2 border-lumi-surface"
-              style={{ boxShadow: '0 0 4px rgba(16,185,129,0.5)' }}
-            />
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <div className="text-[13px] font-display font-medium text-lumi-text truncate">{userLabel}</div>
-              <div className="text-[10px] text-lumi-subtle truncate">
-                <span className="font-mono">Operator · {workspace?.market || 'EG'}</span>
-              </div>
+              {footerFacts && (
+                <div className="text-[10px] text-lumi-subtle truncate">
+                  <span className="font-mono">{footerFacts}</span>
+                </div>
+              )}
             </div>
           )}
         </div>
