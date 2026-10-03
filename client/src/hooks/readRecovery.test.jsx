@@ -31,7 +31,11 @@ describe.each([
   ['Inbox', useInbox, emptyInbox, 'isLoading'],
   ['health', useAccountHealth, { campaigns: [], score: null, label: null }, 'loading'],
   ['campaigns', useConnectorCampaigns, { campaigns: [] }, 'loading'],
-  ['verdicts', useConnectorVerdicts, { verdicts: [], gatedOut: [] }, 'loading'],
+  ['verdicts', useConnectorVerdicts, { verdicts: [], gatedOut: [], budgetDistribution: {
+    status: 'EMPTY', reason: 'NO_SCORED_SPEND', currency: null, totalSpendMinor: null,
+    killSpendMinor: null, holdSpendMinor: null, scaleSpendMinor: null,
+    killPct: null, holdPct: null, scalePct: null,
+  } }, 'loading'],
   ['connections', useConnections, { connections: [] }, 'loading'],
 ])('%s repeated recovery', (_, hook, payload, loading) => {
   it('retains the current failure, then clears it on a genuinely empty success', async () => {

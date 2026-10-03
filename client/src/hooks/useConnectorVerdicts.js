@@ -55,6 +55,7 @@ export function useConnectorVerdicts() {
   const [verdicts, setVerdicts] = useState([]);
   const [gatedOut, setGatedOut] = useState([]);
   const [account, setAccount] = useState(null);
+  const [budgetDistribution, setBudgetDistribution] = useState(null);
   // Past decisions per campaign, keyed by entityId. A SEPARATE map, never a
   // field on a verdict: the verdict is what Lumi thinks now and this is what it
   // said before, and merging them would let history edit the current call.
@@ -88,6 +89,7 @@ export function useConnectorVerdicts() {
     if (!aliveRef.current) return;
     const attempt = ++attemptRef.current;
     setVerdicts([]); setGatedOut([]); setAccount(null); setMemory({});
+    setBudgetDistribution(null);
     setDecisionHistoryStatus(null); setDecisionHistoryKnowledge(null); setStatus(null);
     setLoading(true);
     setError(null);
@@ -112,6 +114,7 @@ export function useConnectorVerdicts() {
       }
       setVerdicts(parsed.data.verdicts);
       setGatedOut(parsed.data.gatedOut);
+      setBudgetDistribution(parsed.data.budgetDistribution);
       setAccount(parsed.data.account ?? null);
       setMemory(parsed.data.memoryByEntityId ?? {});
       // null, not 'OK', when the server said nothing about it: the field is
@@ -137,7 +140,7 @@ export function useConnectorVerdicts() {
   }, [refetch]);
 
   return {
-    verdicts, gatedOut, account, memory,
+    verdicts, gatedOut, account, memory, budgetDistribution,
     decisionHistoryStatus, decisionHistoryKnowledge,
     status, loading, error, refetch,
   };

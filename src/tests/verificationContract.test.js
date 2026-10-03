@@ -128,7 +128,7 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
   // 31 — two increments landed without it. A title that disagrees with its own
   // assertion is a small untruth inside the verification contract itself, so it
   // now states the same number the test enforces.
-  it('the census matches the current baseline of 39 files', () => {
+  it('the census matches the current baseline of 40 files', () => {
     // A drift here is not automatically a failure — but it must be NOTICED,
     // because a new DB-gated file added through a different mechanism is
     // exactly how the guarantee erodes.
@@ -210,7 +210,10 @@ describe('B5-01G · Ratchets B & C — every DB-gated file participates', () => 
     // MER-named columns null for readers from before #497.
     // 38 → 39 in SC-08A: meta.completion.integration.test.js proves encrypted
     // OAuth persistence, workspace-reader agreement, and atomic link rollback/retry.
-    expect(dbGatedFiles().length).toBe(39);
+    // 39 → 40 in SC-17A: canonicalCurrencyProvenance.integration.test.js
+    // proves stored origin survives the real Prisma SELECT, canonical reader
+    // and evaluation before it can authorize budget-distribution publication.
+    expect(dbGatedFiles().length).toBe(40);
   });
 
   it('Ratchet B · every DB-gated file obtains its gate from the shared probe', () => {

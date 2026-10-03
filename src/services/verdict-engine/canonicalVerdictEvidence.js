@@ -96,7 +96,7 @@ export const PLATFORM_SOURCE_FILTER = Object.freeze({ in: PLATFORM_VERDICT_SOURC
  * entirely WHICH ROWS, never which fields.
  */
 export const CANONICAL_VERDICT_SELECT = Object.freeze({
-  entityId: true, date: true, source: true, currency: true,
+  entityId: true, date: true, source: true, currency: true, currencyProvenance: true,
   spendMinor: true, revenueMinor: true, impressions: true, clicks: true, conversions: true,
   // roas and ctr are derived BY snapshotSink from this row's own totals at write
   // time, so both sides of each ratio come from one measurement. The verdict

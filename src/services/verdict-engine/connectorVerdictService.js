@@ -43,6 +43,7 @@ import {
 } from '../pattern-engine/institutionalMemory.js';
 import { executabilityFor }      from '../execution/decisionExecutability.js';
 import { logger }                from '../../utils/logger.js';
+import { projectBudgetDistribution } from './budgetDistribution.js';
 
 // Meta objectives that are GENUINELY awareness/reach — no purchase revenue is
 // expected, so "no revenue measured" is honest, not a tracking gap. Everything
@@ -471,7 +472,7 @@ export async function getLatestDecisions(workspaceId) {
  * @returns {Promise<{ verdicts:Array, gatedOut:Array, account:object|null, status:string }>}
  */
 export async function getConnectorVerdicts(workspaceId, { evaluation, memory: suppliedMemory } = {}) {
-  if (!workspaceId) return { verdicts: [], gatedOut: [], account: null, status: 'NO_WORKSPACE' };
+  if (!workspaceId) return { verdicts: [], gatedOut: [], account: null, status: 'NO_WORKSPACE', budgetDistribution: projectBudgetDistribution() };
   if (evaluation) assertUsableEvaluation('getConnectorVerdicts', workspaceId, evaluation);
 
   // Parallel: neither read feeds the other. The decision lookup is keyed by
@@ -507,8 +508,9 @@ export async function getConnectorVerdicts(workspaceId, { evaluation, memory: su
   const decisionIdentityOk = decisionIdentity.ok;
 
   const { gatedOut, annotated } = ev;
+  const budgetDistribution = projectBudgetDistribution(ev);
   if (!annotated) {
-    return { verdicts: [], gatedOut, account: null, status: ev.status };
+    return { verdicts: [], gatedOut, account: null, status: ev.status, budgetDistribution };
   }
 
   const verdicts = annotated.children.map((c) => {
@@ -783,6 +785,7 @@ export async function getConnectorVerdicts(workspaceId, { evaluation, memory: su
   return {
     verdicts,
     gatedOut,
+    budgetDistribution,
     account: { verdict: annotated.verdict, confidence: annotated.verdictConfidence },
     // Keyed by entityId, and ABSENT for campaigns with no history — never
     // present with a zero, which would be indistinguishable from a real one.

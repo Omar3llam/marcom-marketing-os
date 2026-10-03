@@ -12,13 +12,16 @@
 // second contract for the whole verdict feed.
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { useConnectorVerdicts } from './useConnectorVerdicts.js';
 import { api } from '@/lib/api.js';
 
 vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn() } }));
 
 const payload = (over = {}) => ({
+  budgetDistribution: { status: 'EMPTY', reason: 'NO_SCORED_SPEND', currency: null,
+    totalSpendMinor: null, killSpendMinor: null, holdSpendMinor: null, scaleSpendMinor: null,
+    killPct: null, holdPct: null, scalePct: null },
   verdicts: [{ id: 'c1', name: 'Campaign', verdict: 'KILL' }],
   gatedOut: [],
   account: { verdict: 'WATCH', confidence: 0.5 },
@@ -26,6 +29,39 @@ const payload = (over = {}) => ({
   decisionHistoryStatus: 'OK',
   status: 'OK',
   ...over,
+});
+
+describe('SC-17A distribution contract and recovery', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const distribution = { status: 'AVAILABLE', reason: null, currency: 'EGP', totalSpendMinor: 1000,
+    killSpendMinor: 250, holdSpendMinor: 500, scaleSpendMinor: 250,
+    killPct: 24.99, holdPct: 50.02, scalePct: 24.99 };
+  it('exposes the backend projection without reinterpreting amounts or percentages', async () => {
+    const result = await load(payload({ budgetDistribution: distribution }));
+    expect(result.current.budgetDistribution).toEqual(distribution);
+  });
+  it.each([undefined, {}, { ...distribution, killPct: null }, { ...distribution, status: 'EMPTY' }])
+  ('missing/malformed projection is a contract error: %j', async (budgetDistribution) => {
+    const result = await load(payload({ budgetDistribution }));
+    expect(result.current.error?.message).toMatch(/contract validation/i);
+    expect(result.current.budgetDistribution).toBeNull();
+  });
+  it('clears prior truth immediately at retry and keeps it cleared after failure', async () => {
+    api.get.mockResolvedValueOnce({ data: payload({ budgetDistribution: distribution }) });
+    const { result } = renderHook(() => useConnectorVerdicts());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.budgetDistribution).toEqual(distribution);
+    let reject;
+    api.get.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail; }));
+    let pending;
+    act(() => { pending = result.current.refetch(); });
+    expect(result.current.loading).toBe(true);
+    expect(result.current.budgetDistribution).toBeNull();
+    await act(async () => { reject(new Error('network')); await pending; });
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeTruthy();
+    expect(result.current.budgetDistribution).toBeNull();
+  });
 });
 
 const load = async (data) => {
