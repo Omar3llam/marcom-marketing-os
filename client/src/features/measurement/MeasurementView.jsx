@@ -4,7 +4,7 @@
 // Two surfaces that answer forward + causal questions:
 //   • Scenario — a forward what-if on the real channel mix (all roles; ranges).
 //   • Incrementality — holdout testing, the only causal signal (STRATEGIST,
-//     and tier-gated server-side: a 403 renders an honest locked state).
+//     and gated server-side with distinct plan/capability/permission refusals).
 //
 // The page wrapper owns the fetches; the panels are pure + prop-driven (unit-
 // tested directly). Mirrors the Phase-11A surfacing pattern.
@@ -18,7 +18,7 @@ import { ScenarioPanel } from './ScenarioPanel.jsx';
 import { IncrementalityPanel } from './IncrementalityPanel.jsx';
 
 export function MeasurementView() {
-  const { scenario, message, gated: scenarioGated, loading: scenarioLoading, error: scenarioError, run } = useScenario();
+  const { scenario, message, gated: scenarioGated, gateReason: scenarioGateReason, loading: scenarioLoading, error: scenarioError, run } = useScenario();
   const inc = useIncrementality();
   // The page owns the workspace read; the pure panels stay prop-driven. This is
   // the scenario currency (scenario data may override it). It cannot denominate
@@ -39,7 +39,7 @@ export function MeasurementView() {
         </div>
       </header>
 
-      <ScenarioPanel scenario={scenario} message={message} gated={scenarioGated} loading={scenarioLoading} error={scenarioError} onRun={run} currency={currency} />
+      <ScenarioPanel scenario={scenario} message={message} gated={scenarioGated} gateReason={scenarioGateReason} loading={scenarioLoading} error={scenarioError} onRun={run} currency={currency} />
 
       <RoleGate role={['STRATEGIST']}>
         <IncrementalityPanel

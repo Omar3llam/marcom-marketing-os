@@ -78,11 +78,14 @@ function Controls({ onRun, loading }) {
   );
 }
 
-export function ScenarioPanel({ scenario, message = null, gated = false, loading = false, error = null, onRun, currency }) {
-  // Tier gate wins over every other state (mirrors IncrementalityPanel): a 403
-  // from requirePlan('PRO') is an honest LOCKED state, not a failure. Checked
-  // first so a gated workspace never sees the controls or an error flash.
-  if (gated) return <UpgradePrompt feature="Scenario projection" requiredPlan="PRO" />;
+export function ScenarioPanel({ scenario, message = null, gated = false, gateReason = null, loading = false, error = null, onRun, currency }) {
+  // Only an explicit plan restriction can recommend a subscription change.
+  if (gated && gateReason === 'PLAN_REQUIRED') return <UpgradePrompt feature="Scenario projection" requiredPlan="PRO" />;
+  if (gated) return (
+    <section className="mb-10 rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
+      <p className="text-sm text-lumi-muted">Scenario projection isn’t available for this seat.</p>
+    </section>
+  );
 
   // The scenario's own currency wins (most specific); else the workspace currency
   // threaded from the page. Without either, monetary projections stay unavailable.

@@ -13,6 +13,7 @@ vi.mock('../firebase.js', () => ({ auth: { currentUser: null } }));
 
 import { mapTransportError } from './api.js';
 import { incrementalityGateReason } from '@/hooks/incrementalityGateReason.js';
+import { scenarioGateReason } from '@/hooks/scenarioGateReason.js';
 import { isNoWorkspaceError, isRetryableReadError } from '@/design-system/states/readStatus.js';
 
 it('preserves only the explicit RoleNotConfigured 409 token and role reason', () => {
@@ -58,6 +59,16 @@ describe('workspace transport truth', () => {
 });
 
 describe('mapTransportError — 403 PLAN_REQUIRED', () => {
+  it.each(['FREE', 'GROWTH'])('%s workspace plan refusal maps to the Scenario plan classifier', (current) => {
+    const mapped = mapTransportError(err403({ error: 'PLAN_REQUIRED', required: 'PRO', current }));
+    expect(mapped).toMatchObject({ code: 'PLAN_REQUIRED', httpStatus: 403, context: { requiredPlan: 'PRO', currentPlan: current } });
+    expect(scenarioGateReason(mapped)).toBe('PLAN_REQUIRED');
+  });
+  it.each(['BUYER', 'CLIENT'])('PRO workspace %s role refusal maps to Scenario permission without a billing diagnosis', (role) => {
+    const mapped = mapTransportError(err403({ error: 'RoleForbidden', role }));
+    expect(mapped).toMatchObject({ httpStatus: 403, code: 'AUTH_ACCESS_DENIED' });
+    expect(scenarioGateReason(mapped)).toBe('NOT_PERMITTED');
+  });
   it('tags a plan paywall 403 with code PLAN_REQUIRED + the required/current tiers', () => {
     const mapped = mapTransportError(err403({
       error: 'PLAN_REQUIRED', required: 'GROWTH', current: 'FREE',
