@@ -68,6 +68,7 @@ const loop = {
 };
 
 const home = {
+  aiInsight: null, aiInsightStatus: 'EMPTY',
   role: 'STRATEGIST', summary: '1 to decide, 1 to steer.',
   buyerBand: bandView([item()]),
   strategistBand: bandView([item({ id: 'goal:g1', band: 'STRATEGIST', type: 'PLAN_ADJUSTMENT', title: 'Goal blendedCac off track', severity: 'HIGH', humanAction: 'adjust', evidenceRef: 'g1' })]),

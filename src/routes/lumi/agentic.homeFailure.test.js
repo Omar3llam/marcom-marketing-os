@@ -27,9 +27,21 @@ function app() {
 beforeEach(() => vi.resetAllMocks());
 
 describe('GET /home error serialization', () => {
+  it.each([
+    ['PRESENT', 'Exact briefing'], ['EMPTY', null], ['UNAVAILABLE', null],
+  ])('preserves %s briefing publication in a successful Home', async (aiInsightStatus, aiInsight) => {
+    const home = { role: 'STRATEGIST', summary: 'Valid agenda', buyerBand: { items: [{ id: 'd1' }] },
+      strategistBand: { items: [{ id: 'g1' }] }, loop: { loopHealth: 'HEALTHY' }, aiInsightStatus, aiInsight };
+    getHome.mockResolvedValue(home);
+    const response = await request(app()).get('/home').expect(200);
+    expect(response.body).toMatchObject(home);
+    expect(getHome).toHaveBeenCalledWith('ws1', 'STRATEGIST');
+  });
+
   it('publishes a genuinely empty successful Home', async () => {
     getHome.mockResolvedValue({
       role: 'STRATEGIST', summary: 'Nothing needs a decision right now — the loop is quiet.',
+      aiInsight: null, aiInsightStatus: 'EMPTY',
       buyerBand: { title: 'What needs a decision today', items: [], count: 0, empty: true },
       strategistBand: { title: 'How the portfolio is tracking to goal', items: [], count: 0, empty: true },
       loop: { stageStatus: [], closed: false, staleStages: [], loopHealth: 'STALLED', lastRunAt: null, nextRunAt: null, intervalMs: 900000 },

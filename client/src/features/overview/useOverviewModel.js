@@ -82,8 +82,10 @@ export function useOverviewModel() {
     forbidden: aggregateForbidden,
   } = useAccountAggregate();
 
+  const briefingUnavailable = home?.aiInsightStatus === 'UNAVAILABLE';
   const retryableReads = [
     [workspaceCanRetry, workspaceRetry],
+    [briefingUnavailable && !homeError, homeRetry],
     ...[[connectorError, connectorRetry], [connectionsError, connectionsRetry],
       [healthError, healthRetry], [homeError, homeRetry], [verdictError, verdictRetry],
       [accuracyError, accuracyRetry], [aggregateError, aggregateRetry]]
@@ -100,7 +102,7 @@ export function useOverviewModel() {
   const coreAvailable = !requiredError
     && (!requiredUnavailable || collabRole === WORKSPACE_ROLE.CLIENT);
   const coreUsable = !coreLoading && coreAvailable;
-  const optionalError = Boolean(verdictError || aggregateError || connectionsError || accuracyError || homeError
+  const optionalError = Boolean(verdictError || aggregateError || connectionsError || accuracyError || homeError || briefingUnavailable
     || (aggregateForbidden && collabRole !== WORKSPACE_ROLE.CLIENT));
   const overviewStatus = getOverviewStatus({
     loading: coreLoading,
@@ -281,7 +283,8 @@ export function useOverviewModel() {
   //                      Rendering it there would contradict the line above it.
   //                      (The API returns aiInsight to a CLIENT regardless —
   //                      see the PR notes; gating it here is the frontend half.)
-  const insight = (!homeError && !homeStale && !scoringHidden && coreUsable) ? (home?.aiInsight ?? null) : null;
+  const insight = (!homeError && home?.aiInsightStatus === 'PRESENT' && !homeStale && !scoringHidden && coreUsable)
+    ? (home.aiInsight ?? null) : null;
 
   // ── The one interrupt, and the plan that orders everything ──
   const hasEverSynced = connectionsData?.connections?.some((c) => c.lastSyncedAt != null) ?? false;

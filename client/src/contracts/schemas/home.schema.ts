@@ -26,8 +26,11 @@ export const AgentHomeSchema = z.object({
   buyerBand: AgendaBandViewSchema.nullable(), // null for a CLIENT
   strategistBand: AgendaBandViewSchema,
   loop: LoopStatusSchema,
-  aiInsight: z.string().nullable().optional(), // pre-generated briefing paragraph
-});
+  aiInsight: z.string().nullable(), // pre-generated briefing paragraph
+  aiInsightStatus: z.enum(['PRESENT', 'EMPTY', 'UNAVAILABLE']),
+}).refine((home) => home.aiInsightStatus === 'PRESENT'
+  ? typeof home.aiInsight === 'string' : home.aiInsight === null,
+{ message: 'Briefing value must agree with its published read status', path: ['aiInsight'] });
 
 export type AgendaBandView = z.infer<typeof AgendaBandViewSchema>;
 export type AgentHome = z.infer<typeof AgentHomeSchema>;
