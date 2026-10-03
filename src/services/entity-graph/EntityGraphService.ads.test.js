@@ -74,11 +74,9 @@ describe('getAdSetAds — null vs empty children', () => {
     expect(await getAdSetAds(null, AS)).toBeNull();
   });
 
-  it('degrades to empty children when the ad read itself fails — a broken child query is not a missing parent', async () => {
+  it('rejects when the ad read itself fails — a broken child query is not an empty population', async () => {
     h.prisma.ad.findMany.mockRejectedValue(new Error('db down'));
-    const out = await getAdSetAds(WS, AS);
-    expect(out.children).toEqual([]);
-    expect(out.entity).not.toBeNull();
+    await expect(getAdSetAds(WS, AS)).rejects.toThrow('db down');
   });
 });
 
@@ -333,10 +331,8 @@ describe('getCampaignAdSets — the campaign baseline', () => {
     expect(out.entity.entityId).toBe(CAMP);
   });
 
-  it('degrades to empty adSets when the child read fails — a broken query is not a missing campaign', async () => {
+  it('rejects when the ad-set read itself fails — a broken query is not an empty population', async () => {
     h.prisma.adSet.findMany.mockRejectedValue(new Error('db down'));
-    const out = await getCampaignAdSets(WS, CAMP);
-    expect(out.adSets).toEqual([]);
-    expect(out.entity).not.toBeNull();
+    await expect(getCampaignAdSets(WS, CAMP)).rejects.toThrow('db down');
   });
 });

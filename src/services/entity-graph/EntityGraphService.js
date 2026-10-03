@@ -116,9 +116,6 @@ async function latestSnapshots(workspaceId, entityLevel, entityIds) {
     since,
     select:  METRIC_SELECT,
     orderBy: null,
-  }).catch((err) => {
-    logger.debug({ err: err.message, workspaceId, entityLevel }, '[EntityGraph] snapshot read failed');
-    return [];
   });
   const consumedByEntity = new Map();
   for (const s of snaps) consumedByEntity.set(s.entityId, (consumedByEntity.get(s.entityId) ?? 0) + 1);
@@ -430,7 +427,7 @@ export async function getCampaignAdSets(workspaceId, campaignEntityId) {
       externalId: true, platformCreatedTime: true,
       _count: { select: { adSets: true } },
     },
-  }).catch(() => null);
+  });
   if (!campaign) return null;
 
   // Independent reads — the campaign's own snapshot does not depend on the
@@ -446,9 +443,6 @@ export async function getCampaignAdSets(workspaceId, campaignEntityId) {
       select:  { id: true, name: true, channel: true, status: true, _count: { select: { ads: true } } },
       orderBy: { createdAt: 'asc' },
       take:    500,
-    }).catch((err) => {
-      logger.debug({ err: err.message, workspaceId, campaignEntityId }, '[EntityGraph] adsets read failed');
-      return [];
     }),
   ]);
 
@@ -497,7 +491,7 @@ export async function getAdSetAds(workspaceId, adSetEntityId) {
       _count:   { select: { ads: true } },
       campaign: { select: { objective: true } },
     },
-  }).catch(() => null);
+  });
   if (!adSet) return null;
 
   // Independent reads — the ad-set's own snapshot does not depend on the child
@@ -517,9 +511,6 @@ export async function getAdSetAds(workspaceId, adSetEntityId) {
         { createdAt: 'asc' },
       ],
       take: MAX_ADS_PER_ADSET,
-    }).catch((err) => {
-      logger.debug({ err: err.message, workspaceId, adSetEntityId }, '[EntityGraph] ads read failed');
-      return [];
     }),
   ]);
 

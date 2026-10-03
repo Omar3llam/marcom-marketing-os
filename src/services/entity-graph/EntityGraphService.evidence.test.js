@@ -406,39 +406,27 @@ describe('R3.9 — the ad-set drill-down is unchanged', () => {
   });
 });
 
-// ── Error parity: EntityGraph's own logging catch ───────────────────────────
+// ── Operational failure truth: no metrics-absence fallback ──────────────────
 
-describe('R3.9 — the catch stays at EntityGraph, and still logs', () => {
-  it('logs [EntityGraph] snapshot read failed and degrades to no metrics', async () => {
-    h.prisma.metricSnapshot.findMany.mockRejectedValue(new Error('db down'));
-    const rows = await getConnectorCampaigns(WS);
-
-    // Not weakened to "returns []": the assertion is anchored to EntityGraph's
-    // own log line and its arguments, because the thing being preserved is that
-    // THIS file decides what a failed snapshot read means — not the seam.
-    expect(h.logger.debug).toHaveBeenCalledWith(
-      expect.objectContaining({ err: 'db down', workspaceId: WS, entityLevel: 'CAMPAIGN' }),
-      '[EntityGraph] snapshot read failed',
-    );
-    // Identities still render; only the metrics are absent.
-    expect(rows.map((r) => r.entityId)).toEqual([C1, C2]);
-    expect(rows.every((r) => r.spendMinor === null)).toBe(true);
+describe('R3.9 / SC-18C — snapshot failures remain failures', () => {
+  it('propagates snapshot failure without publishing metric-less identities or logging twice', async () => {
+    const error = new Error('db down');
+    h.prisma.metricSnapshot.findMany.mockRejectedValue(error);
+    await expect(getConnectorCampaigns(WS)).rejects.toBe(error);
+    expect(h.logger.debug).not.toHaveBeenCalled(); // the route owns terminal logging
   });
 
-  it('the failure is per level — an ad-set read failing still logs its own level', async () => {
-    h.prisma.metricSnapshot.findMany.mockRejectedValue(new Error('db down'));
-    await getCampaignAdSets(WS, C1);
-    const levels = h.logger.debug.mock.calls
-      .filter((c) => c[1] === '[EntityGraph] snapshot read failed')
-      .map((c) => c[0].entityLevel);
-    expect(levels).toContain('CAMPAIGN');
-    expect(levels).toContain('ADSET');
+  it('a child snapshot failure rejects even when parent metrics were read successfully', async () => {
+    const error = new Error('db down');
+    h.prisma.metricSnapshot.findMany.mockImplementation(({ where }) =>
+      where.entityLevel === 'ADSET' ? Promise.reject(error) : Promise.resolve([]));
+    await expect(getCampaignAdSets(WS, C1)).rejects.toBe(error);
+    expect(h.logger.debug).not.toHaveBeenCalled();
   });
 
   it('the seam itself does not swallow — the rejection has to reach this file', async () => {
-    // If the catch ever moves into operationalEvidence.js, the log above stops
-    // happening and every other consumer silently inherits an error policy it
-    // never chose. This is the assertion that notices.
+    // A catch at the shared seam would silently give unrelated consumers the
+    // same false absence. Keep the selector's rejection intact.
     const { selectOperationalSnapshots } = await import('../evidence/index.js');
     h.prisma.metricSnapshot.findMany.mockRejectedValue(new Error('db down'));
     await expect(selectOperationalSnapshots(WS, { select: METRIC_SELECT })).rejects.toThrow('db down');
