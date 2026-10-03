@@ -27,7 +27,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { PageHeader, DetailSection, DetailRefusal, DetailBackLink } from '@/design-system/patterns/index.js';
-import { absenceState } from '@/design-system/states/absence.js';
+import { ABSENCE, absenceState } from '@/design-system/states/absence.js';
 import { CONFIDENCE, confidenceRung, confidenceText } from '@/design-system/states/confidence.js';
 import { appRoutes } from '@/app/routeManifest.js';
 import { useHoldoutDetail, knowledgeOfRefusal, DETAIL_REFUSAL } from '@/hooks/useExperimentDetail.js';
@@ -42,6 +42,10 @@ const pct = (n) => (Number.isFinite(n) ? `${n}%` : '—');
 
 // Both 403s are NOT_PERMITTED; they are not the same instruction. C-07.
 const ENTITLEMENT_COPY = {
+  NOT_PERMITTED: {
+    heading: 'This holdout cannot be accessed.',
+    body: 'Access to this holdout was refused for this request.',
+  },
   PLAN_REQUIRED: {
     heading: 'This holdout isn’t open to you.',
     body: 'Measurement is part of the Pro plan. Upgrading unlocks holdout testing for this workspace.',
@@ -87,12 +91,13 @@ export default function HoldoutDetailView() {
 
   if (!test) {
     const copy = refusal === DETAIL_REFUSAL.NOT_PERMITTED
-      ? (ENTITLEMENT_COPY[reason] ?? ENTITLEMENT_COPY.NOT_ENTITLED)
+      ? (ENTITLEMENT_COPY[reason] ?? ENTITLEMENT_COPY.NOT_PERMITTED)
       : (REFUSAL_COPY[refusal] ?? REFUSAL_COPY[DETAIL_REFUSAL.UNREADABLE]);
     return (
       <div className="max-w-3xl">
         <DetailRefusal
-          state={absenceState({ knowledge: knowledgeOfRefusal(refusal), reason: reason ?? 'NOT_APPLICABLE' })}
+          state={refusal === DETAIL_REFUSAL.NOT_PERMITTED ? ABSENCE.NOT_PERMITTED
+            : absenceState({ knowledge: knowledgeOfRefusal(refusal), reason: reason ?? 'NOT_APPLICABLE' })}
           heading={copy.heading}
           body={copy.body}
           backTo={appRoutes.measure}

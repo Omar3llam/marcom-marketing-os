@@ -132,6 +132,12 @@ describe('B8-05 · E6 forward edge', () => {
 });
 
 describe('B8-05 · R-E1 — a refusal is a measured state, and they are not one state', () => {
+  it('generic permission refusal does not claim plan or measurement depth and offers no retry', () => {
+    const { container } = show({ refusal: DETAIL_REFUSAL.NOT_PERMITTED, reason: 'NOT_PERMITTED' });
+    expect(screen.getByText('Access to this holdout was refused for this request.')).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/upgrade|Agency|Enterprise|enabled|Pro plan/i);
+    expect(screen.queryByRole('button', { name: /retry|try again/i })).not.toBeInTheDocument();
+  });
   it('404 says it could not be found, and does not claim it never existed', () => {
     show({ refusal: DETAIL_REFUSAL.NOT_FOUND });
     expect(screen.getByRole('heading', { name: /couldn’t find this holdout/i })).toBeInTheDocument();
