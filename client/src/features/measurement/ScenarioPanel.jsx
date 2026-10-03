@@ -39,7 +39,7 @@ function RangeRow({ label, range, fmt }) {
 }
 
 // ── The change controls (signed budget delta → expansion/contraction) ──
-function Controls({ onRun, loading }) {
+function Controls({ onRun, loading, authRequired }) {
   const [direction, setDirection] = useState('expand');
   const [pct, setPct] = useState('20');
 
@@ -48,7 +48,7 @@ function Controls({ onRun, loading }) {
 
   const submit = (e) => {
     e.preventDefault();
-    if (!valid) return;
+    if (!valid || authRequired) return;
     const deltaPct = (direction === 'expand' ? 1 : -1) * (magnitude / 100);
     onRun({ type: direction === 'expand' ? 'BUDGET_EXPANSION' : 'BUDGET_CONTRACTION', deltaPct });
   };
@@ -70,7 +70,7 @@ function Controls({ onRun, loading }) {
           inputMode="decimal" value={pct} onChange={(e) => setPct(e.target.value)} aria-label="Budget change percent"
         />
       </label>
-      <button type="submit" disabled={!valid || loading}
+      <button type="submit" disabled={!valid || loading || authRequired}
         className="rounded-lg bg-lumi-accent px-3 py-2 text-xs font-semibold text-lumi-bg hover:bg-lumi-gold disabled:opacity-40 disabled:cursor-not-allowed">
         {loading ? 'Projecting…' : 'Project'}
       </button>
@@ -78,10 +78,10 @@ function Controls({ onRun, loading }) {
   );
 }
 
-export function ScenarioPanel({ scenario, message = null, gated = false, gateReason = null, loading = false, error = null, onRun, currency }) {
+export function ScenarioPanel({ scenario, message = null, gated = false, gateReason = null, loading = false, error = null, failureReason = null, onRun, currency }) {
   // Only an explicit plan restriction can recommend a subscription change.
-  if (gated && gateReason === 'PLAN_REQUIRED') return <UpgradePrompt feature="Scenario projection" requiredPlan="PRO" />;
-  if (gated) return (
+  if (!loading && gated && gateReason === 'PLAN_REQUIRED') return <UpgradePrompt feature="Scenario projection" requiredPlan="PRO" />;
+  if (!loading && gated) return (
     <section className="mb-10 rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
       <p className="text-sm text-lumi-muted">Scenario projection isn’t available for this seat.</p>
     </section>
@@ -91,6 +91,7 @@ export function ScenarioPanel({ scenario, message = null, gated = false, gateRea
   // threaded from the page. Without either, monetary projections stay unavailable.
   const ccy = scenario?.currency ?? currency ?? null;
   const p = scenario?.projections;
+  const authRequired = failureReason === 'AUTH_REQUIRED';
   // When the workspace hasn't asserted its unit economics, the server blanks the
   // AOV/margin-derived projections (volume, CAC, gross profit) to null ranges (→ "—")
   // rather than compute them off a default AOV. Surface the fix, don't hide it.
@@ -104,19 +105,23 @@ export function ScenarioPanel({ scenario, message = null, gated = false, gateRea
       </p>
 
       <div className="rounded-2xl border border-lumi-border bg-lumi-elevated p-5">
-        <Controls onRun={onRun} loading={loading} />
+        <Controls onRun={onRun} loading={loading} authRequired={authRequired} />
 
-        {error && (
+        {!loading && authRequired && (
+          <p className="mt-4 text-sm text-lumi-muted">Your session needs authentication before you can project another scenario.</p>
+        )}
+
+        {!loading && !authRequired && error && (
           <div className="mt-4 flex items-center gap-2 text-sm text-signal-kill">
             <AlertCircle className="w-4 h-4" strokeWidth={1.5} /> Couldn’t project that scenario.
           </div>
         )}
 
-        {!error && !loading && message && !scenario && (
+        {!authRequired && !error && !loading && message && !scenario && (
           <p className="mt-4 text-sm text-lumi-subtle">{message}</p>
         )}
 
-        {!error && scenario && p && (
+        {!authRequired && !loading && !error && scenario && p && (
           <div className="mt-5 grid gap-5 md:grid-cols-2">
             <div>
               {scenario.efficiencyStatus === 'UNAVAILABLE' && (

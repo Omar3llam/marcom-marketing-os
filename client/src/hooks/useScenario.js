@@ -26,6 +26,7 @@ export function useScenario() {
   const [gateReason, setGateReason] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [failureReason, setFailureReason] = useState(null);
   const aliveRef = useRef(true);
 
   useEffect(() => {
@@ -35,6 +36,8 @@ export function useScenario() {
 
   const run = useCallback(async (change) => {
     setLoading(true);
+    setScenario(null); // a prior projection is not the answer to this request
+    setFailureReason(null);
     setError(null);
     setMessage(null); // a fresh run must not show a prior run's message
     setGated(false);
@@ -58,12 +61,17 @@ export function useScenario() {
       // refusal; the explicit token determines whether it is a plan restriction.
       const status = err?.httpStatus ?? err?.response?.status;
       if (status === 403) { setGated(true); setGateReason(scenarioGateReason(err)); setScenario(null); setError(null); }
-      else { setGated(false); setError(err); } // clear stale lock on a real failure
+      else {
+        setGated(false);
+        setError(err);
+        // api.js has already exhausted its one forced-token-refresh retry.
+        setFailureReason(status === 401 ? 'AUTH_REQUIRED' : null);
+      }
       return null;
     } finally {
       if (aliveRef.current) setLoading(false);
     }
   }, []);
 
-  return { scenario, message, gated, gateReason, loading, error, run };
+  return { scenario, message, gated, gateReason, loading, error, failureReason, run };
 }

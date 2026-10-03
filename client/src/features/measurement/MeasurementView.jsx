@@ -18,7 +18,7 @@ import { ScenarioPanel } from './ScenarioPanel.jsx';
 import { IncrementalityPanel } from './IncrementalityPanel.jsx';
 
 export function MeasurementView() {
-  const { scenario, message, gated: scenarioGated, gateReason: scenarioGateReason, loading: scenarioLoading, error: scenarioError, run } = useScenario();
+  const { scenario, message, gated: scenarioGated, gateReason: scenarioGateReason, loading: scenarioLoading, error: scenarioError, failureReason: scenarioFailureReason, run } = useScenario();
   const inc = useIncrementality();
   // The page owns the workspace read; the pure panels stay prop-driven. This is
   // the scenario currency (scenario data may override it). It cannot denominate
@@ -39,7 +39,7 @@ export function MeasurementView() {
         </div>
       </header>
 
-      <ScenarioPanel scenario={scenario} message={message} gated={scenarioGated} gateReason={scenarioGateReason} loading={scenarioLoading} error={scenarioError} onRun={run} currency={currency} />
+      <ScenarioPanel scenario={scenario} message={message} gated={scenarioGated} gateReason={scenarioGateReason} loading={scenarioLoading} error={scenarioError} failureReason={scenarioFailureReason} onRun={run} currency={currency} />
 
       <RoleGate role={['STRATEGIST']}>
         <IncrementalityPanel
