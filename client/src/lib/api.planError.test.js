@@ -15,6 +15,19 @@ import { mapTransportError } from './api.js';
 import { incrementalityGateReason } from '@/hooks/incrementalityGateReason.js';
 import { isNoWorkspaceError, isRetryableReadError } from '@/design-system/states/readStatus.js';
 
+it('preserves only the explicit RoleNotConfigured 409 token and role reason', () => {
+  const mapped = mapTransportError({ response: { status: 409, data: {
+    error: 'RoleNotConfigured', roleReason: 'ROLE_UNSET',
+  } }, config: { url: '/api/lumi/inbox' } });
+  expect(mapped.httpStatus).toBe(409);
+  expect(mapped.code).toBe('RoleNotConfigured');
+  expect(mapped.context.roleReason).toBe('ROLE_UNSET');
+  expect(isRetryableReadError(mapped)).toBe(false);
+  const unrelated = mapTransportError({ response: { status: 409, data: { error: 'OtherConflict', roleReason: 'ROLE_UNSET' } } });
+  expect(unrelated.code).toBe('UNKNOWN_ERROR');
+  expect(unrelated.context.roleReason).toBeUndefined();
+});
+
 const err403 = (data) => ({ response: { status: 403, data }, config: { url: '/api/lumi/blended' } });
 
 it.each([

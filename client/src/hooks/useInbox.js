@@ -15,6 +15,22 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api.js';
 import { appRoutes } from '@/app/routeManifest.js';
 import { InboxResponseSchema } from '@/contracts/schemas';
+import { READ, isNoWorkspaceError, readStatusForError } from '@/design-system/states/readStatus.js';
+
+/** Read truth travels beside items; an empty array cannot establish success. */
+export function inboxReadState({ items, isLoading, error }) {
+  if (isLoading) return { status: READ.LOADING, reason: null };
+  if (!error) return { status: items.length ? READ.PRESENT : READ.NOTHING_FOUND, reason: null };
+  if (isNoWorkspaceError(error)) return { status: READ.NOTHING_FOUND, reason: 'NoWorkspace' };
+  const httpStatus = error.httpStatus ?? error.response?.status;
+  const code = error.response?.data?.error ?? error.code;
+  const roleReason = error.context?.roleReason ?? error.response?.data?.roleReason;
+  if (httpStatus === 409 && code === 'RoleNotConfigured') {
+    return { status: READ.NOTHING_FOUND, reason: 'ROLE_UNSET' };
+  }
+  const status = readStatusForError(error);
+  return { status, reason: status === READ.NOT_PERMITTED ? null : roleReason ?? null };
+}
 
 // Fold the server's role-routed envelope into a single ordered list. Order:
 // approvals (need a decision) → radar verdicts (server pre-sorted by severity)
@@ -92,5 +108,5 @@ export function useInbox() {
     return () => { aliveRef.current = false; ++attempts.current; };
   }, [load]);
 
-  return { items, isLoading, error, refetch: load };
+  return { items, isLoading, error, ...inboxReadState({ items, isLoading, error }), refetch: load };
 }

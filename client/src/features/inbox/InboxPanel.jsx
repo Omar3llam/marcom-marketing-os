@@ -15,7 +15,7 @@
 import { X, ClipboardCheck, Radar, FileText, AlertCircle } from 'lucide-react';
 import { VerdictPill } from '@/components/ui/DecisionPill.jsx';
 import { useInbox } from '@/hooks/useInbox.js';
-import { isNoWorkspaceError, isRetryableReadError } from '@/design-system/states/readStatus.js';
+import { READ, isRetryableReadError } from '@/design-system/states/readStatus.js';
 
 const ICON = { approval: ClipboardCheck, radar: Radar, narrative: FileText };
 
@@ -54,7 +54,7 @@ function InboxItem({ item, onSelect }) {
 }
 
 export function InboxPanel({ onNavigate, onClose }) {
-  const { items, isLoading, error, refetch } = useInbox();
+  const { items, status, reason, error, refetch } = useInbox();
   const select = (to) => { onNavigate?.(to); onClose?.(); };
 
   return (
@@ -67,18 +67,29 @@ export function InboxPanel({ onNavigate, onClose }) {
       </div>
 
       <div className="max-h-96 overflow-y-auto">
-        {isLoading ? (
+        {status === READ.LOADING ? (
           <div className="px-4 py-8 text-center text-xs text-dark-subtle">Loading your inbox…</div>
-        ) : isNoWorkspaceError(error) ? (
+        ) : reason === 'NoWorkspace' ? (
           <div className="px-4 py-8 text-center text-xs text-dark-subtle">
             No workspace is attached to this account. Your inbox is not configured.
           </div>
-        ) : error ? (
+        ) : reason === 'ROLE_UNSET' ? (
+          <div className="px-4 py-8 text-center text-xs text-dark-subtle">
+            Your inbox isn’t available until this seat has a collaboration role.
+          </div>
+        ) : status === READ.NOT_PERMITTED ? (
+          <div className="px-4 py-8 text-center text-xs text-dark-subtle">
+            This inbox cannot be accessed for this request.
+          </div>
+        ) : status === READ.NOT_REACHABLE ? (
           <div className="px-4 py-8 text-center text-xs text-signal-kill">
-            <AlertCircle className="w-4 h-4 mx-auto mb-1.5" strokeWidth={1.5} /> Couldn’t load your inbox.
+            <AlertCircle className="w-4 h-4 mx-auto mb-1.5" strokeWidth={1.5} />
+            {reason === 'ROLE_LOOKUP_FAILED' ? 'Lumi couldn’t determine your inbox access right now.'
+              : ['ROLE_UNKNOWN', 'ROLE_IDENTITY_MISSING'].includes(reason)
+                ? 'Your inbox access could not be established for this seat.' : 'Couldn’t load your inbox.'}
             {isRetryableReadError(error) && <button type="button" className="block mx-auto mt-2" onClick={refetch}>Retry inbox</button>}
           </div>
-        ) : items.length === 0 ? (
+        ) : status === READ.NOTHING_FOUND ? (
           <div className="px-4 py-8 text-center text-xs text-dark-subtle">No items to show right now.</div>
         ) : (
           <div className="p-2">

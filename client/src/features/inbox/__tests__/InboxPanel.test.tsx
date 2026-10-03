@@ -16,10 +16,13 @@ vi.mock('@/hooks/useInbox.js', async (importOriginal) => {
   return { ...actual, useInbox: vi.fn() };
 });
 
-import { useInbox, toItems } from '@/hooks/useInbox.js';
+import { useInbox, toItems, inboxReadState } from '@/hooks/useInbox.js';
 import { InboxPanel } from '../InboxPanel.jsx';
 import { InboxResponseSchema } from '@/contracts/schemas';
 import { appRoutes } from '@/app/routeManifest.js';
+
+const mockInbox = (state: { items: unknown[]; isLoading: boolean; error: Error | null; refetch: ReturnType<typeof vi.fn> }) =>
+  vi.mocked(useInbox).mockReturnValue({ ...state, ...inboxReadState(state) });
 
 const envelope = {
   workspaceId: 'ws', role: 'STRATEGIST',
@@ -53,7 +56,7 @@ describe('toItems — fold the routed envelope into one ordered list', () => {
 });
 
 describe('InboxPanel — honest states + actionable navigation', () => {
-  beforeEach(() => vi.mocked(useInbox).mockReturnValue({ items: [], isLoading: false, error: null, refetch: vi.fn() }));
+  beforeEach(() => mockInbox({ items: [], isLoading: false, error: null, refetch: vi.fn() }));
 
   it('shows a neutral empty state without claiming acknowledgement', () => {
     render(<InboxPanel onClose={vi.fn()} onNavigate={vi.fn()} />);
@@ -62,22 +65,84 @@ describe('InboxPanel — honest states + actionable navigation', () => {
   });
 
   it('renders a loading state', () => {
-    vi.mocked(useInbox).mockReturnValue({ items: [], isLoading: true, error: null, refetch: vi.fn() });
+    mockInbox({ items: [], isLoading: true, error: null, refetch: vi.fn() });
     render(<InboxPanel onClose={vi.fn()} onNavigate={vi.fn()} />);
     expect(screen.getByText(/Loading your inbox/i)).toBeInTheDocument();
     expect(screen.queryByText(/No items to show right now/i)).not.toBeInTheDocument();
   });
 
   it('renders a user-facing error state', () => {
-    vi.mocked(useInbox).mockReturnValue({ items: [], isLoading: false, error: new Error('x'), refetch: vi.fn() });
+    mockInbox({ items: [], isLoading: false, error: new Error('x'), refetch: vi.fn() });
     render(<InboxPanel onClose={vi.fn()} onNavigate={vi.fn()} />);
     expect(screen.getByText(/Couldn’t load your inbox/i)).toBeInTheDocument();
     expect(screen.queryByText(/No items to show right now/i)).not.toBeInTheDocument();
   });
 
+  it.each([
+    { httpStatus: 409, code: 'RoleNotConfigured', context: { roleReason: 'ROLE_UNSET' } },
+    { response: { status: 409, data: { error: 'RoleNotConfigured', roleReason: 'ROLE_UNSET' } } },
+  ])('missing-role evidence %j renders configuration truth with no retry', (details) => {
+    const error = Object.assign(new Error('refused'), details);
+    mockInbox({ items: [], isLoading: false, error, refetch: vi.fn() });
+    render(<InboxPanel />);
+    expect(screen.getByText('Your inbox isn’t available until this seat has a collaboration role.')).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn’t load|No items to show|No workspace|temporarily/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Retry inbox/ })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { httpStatus: 503, code: 'PLATFORM_ERROR', context: { roleReason: 'ROLE_LOOKUP_FAILED' } },
+    { response: { status: 503, data: { error: 'RoleUnavailable', roleReason: 'ROLE_LOOKUP_FAILED' } } },
+  ])('role lookup failure %j reports read unavailability and invokes retry', (details) => {
+    const refetch = vi.fn();
+    mockInbox({ items: [], isLoading: false, error: Object.assign(new Error('failed'), details), refetch });
+    render(<InboxPanel />);
+    expect(screen.getByText('Lumi couldn’t determine your inbox access right now.')).toBeInTheDocument();
+    expect(screen.queryByText(/collaboration role|No items to show|No workspace|refused/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry inbox' }));
+    expect(refetch).toHaveBeenCalledOnce();
+  });
+
+  it.each(['ROLE_UNKNOWN', 'ROLE_IDENTITY_MISSING'])('permanent unresolved role %s does not invent setup or retry', (roleReason) => {
+    const error = Object.assign(new Error('failed'), { httpStatus: 503, context: { roleReason } });
+    mockInbox({ items: [], isLoading: false, error, refetch: vi.fn() });
+    render(<InboxPanel />);
+    expect(screen.getByText('Your inbox access could not be established for this seat.')).toBeInTheDocument();
+    expect(screen.queryByText(/collaboration role|No items to show|No workspace/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Retry inbox/ })).not.toBeInTheDocument();
+  });
+
+  it.each([{ httpStatus: 403 }, { response: { status: 403 } }])('generic refusal %j is explicit and non-retryable', (details) => {
+    mockInbox({ items: [], isLoading: false, error: Object.assign(new Error('denied'), details), refetch: vi.fn() });
+    render(<InboxPanel />);
+    expect(screen.getByText('This inbox cannot be accessed for this request.')).toBeInTheDocument();
+    expect(screen.queryByText(/role|workspace|plan|No items to show|Couldn’t load/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Retry inbox/ })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    Object.assign(new Error('InboxUnavailable'), { httpStatus: 500 }),
+    new Error('offline'),
+  ])('transient Inbox failure %j retains generic unavailable copy and retry', (error) => {
+    mockInbox({ items: [], isLoading: false, error, refetch: vi.fn() });
+    render(<InboxPanel />);
+    expect(screen.getByText(/Couldn’t load your inbox/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry inbox' })).toBeInTheDocument();
+    expect(screen.queryByText(/No items to show/i)).not.toBeInTheDocument();
+  });
+
+  it('contract failure is not empty and cannot offer a transport retry', () => {
+    const error = new Error('Inbox response failed contract validation');
+    mockInbox({ items: [], isLoading: false, error, refetch: vi.fn() });
+    render(<InboxPanel />);
+    expect(screen.getByText(/Couldn’t load your inbox/i)).toBeInTheDocument();
+    expect(screen.queryByText(/No items to show/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry inbox' })).not.toBeInTheDocument();
+  });
+
   it.each([409, 503])('workspace %s stays separate from successful empty Inbox', (httpStatus) => {
     const error = Object.assign(new Error('workspace'), { httpStatus, code: httpStatus === 409 ? 'NoWorkspace' : 'PLATFORM_ERROR' });
-    vi.mocked(useInbox).mockReturnValue({ items: [], isLoading: false, error, refetch: vi.fn() });
+    mockInbox({ items: [], isLoading: false, error, refetch: vi.fn() });
     render(<InboxPanel onClose={vi.fn()} onNavigate={vi.fn()} />);
     if (httpStatus === 409) expect(screen.getByText(/inbox is not configured/i)).toBeInTheDocument();
     else {
@@ -87,13 +152,17 @@ describe('InboxPanel — honest states + actionable navigation', () => {
     expect(screen.queryByText(/No items to show right now/i)).not.toBeInTheDocument();
   });
 
-  it('navigates to the item route and closes on select', () => {
+  it.each([
+    [/Approval needed/, appRoutes.insights],
+    [/Cold #3 bleeding/, appRoutes.overview],
+    [/New weekly report available/i, appRoutes.leadership],
+  ])('navigates from %s to %s and closes on select', (title, destination) => {
     const onNavigate = vi.fn();
     const onClose = vi.fn();
-    vi.mocked(useInbox).mockReturnValue({ items: toItems(envelope), isLoading: false, error: null, refetch: vi.fn() });
+    mockInbox({ items: toItems(envelope), isLoading: false, error: null, refetch: vi.fn() });
     render(<InboxPanel onClose={onClose} onNavigate={onNavigate} />);
-    fireEvent.click(screen.getByText(/New weekly report available/i));
-    expect(onNavigate).toHaveBeenCalledWith(appRoutes.leadership);
+    fireEvent.click(screen.getByText(title));
+    expect(onNavigate).toHaveBeenCalledWith(destination);
     expect(onClose).toHaveBeenCalled();
   });
 });
