@@ -8,7 +8,7 @@
 // THREE STATES, THREE TREATMENTS — the distinction this component exists for:
 //
 //   loading  — spinner, subtle. In progress.
-//   error    — AlertTriangle, danger. The request failed; retryable, our fault.
+//   error    — HTTP/contract failure; structured evidence determines retry copy.
 //   refusal  — Info, subtle. The request SUCCEEDED and the engine declined to
 //              rank. Deliberately NOT the danger colour: "no ad set is
 //              measurably behind the others" is a healthy answer, and painting
@@ -32,7 +32,7 @@ const CHECKING = Object.freeze({
   ad:    'Checking creative performance…',
 });
 
-export function EvidenceState({ loading = false, error = null, reasonKey = null, dimension = 'adset', className = '' }) {
+export function EvidenceState({ loading = false, error = null, failure = null, reasonKey = null, dimension = 'adset', className = '' }) {
   if (loading) {
     return (
       <p className={`${ROW} text-lumi-subtle ${className}`}>
@@ -42,9 +42,12 @@ export function EvidenceState({ loading = false, error = null, reasonKey = null,
   }
 
   if (error) {
+    const copy = failure?.kind === 'NOT_PERMITTED' ? 'Evidence isn’t available for this seat.'
+      : failure?.kind === 'CONTRACT_INVALID' ? 'Couldn’t read the evidence response.'
+        : "Couldn't load evidence — collapse and try again.";
     return (
-      <p className={`${ROW} text-trend-danger ${className}`}>
-        <AlertTriangle className="h-3 w-3" strokeWidth={2} /> Couldn&apos;t load evidence — collapse and try again.
+      <p className={`${ROW} ${failure?.retryable === false ? 'text-lumi-subtle' : 'text-trend-danger'} ${className}`}>
+        <AlertTriangle className="h-3 w-3" strokeWidth={2} /> {copy}
       </p>
     );
   }

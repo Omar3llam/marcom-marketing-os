@@ -16,12 +16,13 @@ import { MemoryRouter } from 'react-router-dom';
 // panel reads the evidence payload alone and the card no longer narrates a
 // second request whose result it never shows.
 const ev = vi.hoisted(() => ({
-  load: vi.fn(), byId: { current: {} }, loading: { current: {} }, errors: { current: {} },
+  load: vi.fn(), byId: { current: {} }, loading: { current: {} }, errors: { current: {} }, failures: { current: {} },
 }));
 vi.mock('@/hooks/useEvidence.js', () => ({
   evidenceKey: (id, metric = 'ctr') => `${id}:${metric}`,
   useEvidence: () => ({
     load: ev.load, byId: ev.byId.current, loading: ev.loading.current, errors: ev.errors.current,
+    failures: ev.failures.current,
   }),
 }));
 
@@ -67,10 +68,19 @@ beforeEach(() => {
   ev.byId.current = {};
   ev.loading.current = {};
   ev.errors.current = {};
+  ev.failures.current = {};
   action.states.current = {};
 });
 
 describe('DecisionCard — the decision itself', () => {
+  it('forwards shared evidence permission failure without retry or analytical copy', () => {
+    ev.errors.current = { 'c-1:ctr': 'RoleForbidden' };
+    ev.failures.current = { 'c-1:ctr': { kind: 'NOT_PERMITTED', retryable: false } };
+    setup();
+    fireEvent.click(screen.getByRole('button', { name: /Show execution context/ }));
+    expect(screen.getByText('Evidence isn’t available for this seat.')).toBeInTheDocument();
+    expect(screen.queryByText(/try again|measurably behind/)).not.toBeInTheDocument();
+  });
   it('leads with the verdict', () => {
     setup();
     expect(screen.getByText('KILL')).toBeInTheDocument();

@@ -26,7 +26,7 @@
 //
 // THREE OUTCOMES, NOT TWO. This is the whole reason the hook exists rather than
 // a fourth field on useEntityDrillDown:
-//   error            — the request failed. Retryable, our fault.
+//   error            — HTTP failure; structured failure owns retryability.
 //   insufficientData — the request SUCCEEDED and the engine declined to rank.
 //                      Not an error, not empty: a real answer with a reasonKey
 //                      naming which input was missing.
@@ -40,6 +40,7 @@
 // ============================================================
 import { useState, useCallback, useRef } from 'react';
 import { api } from '@/lib/api.js';
+import { drillDownFailure } from './drillDownFailure.js';
 
 /** PURE: the cache key. Exported so a consumer reads the same entry it asked for. */
 export const evidenceKey = (parentId, metric = 'ctr') => `${parentId}:${metric}`;
@@ -65,6 +66,7 @@ export function useEvidence({ dimension = 'adset' } = {}) {
   const [byId, setById] = useState({});
   const [loading, setLoading] = useState({});
   const [errors, setErrors] = useState({});
+  const [failures, setFailures] = useState({});
   const seen = useRef(new Set());
   const route = EVIDENCE_ROUTE[dimension] ?? EVIDENCE_ROUTE.adset;
 
@@ -76,6 +78,7 @@ export function useEvidence({ dimension = 'adset' } = {}) {
 
     setLoading((s) => ({ ...s, [key]: true }));
     setErrors((s) => ({ ...s, [key]: null }));
+    setFailures((s) => ({ ...s, [key]: null }));
 
     try {
       const res = await api.get(route(parentId), { params: { metric } });
@@ -93,12 +96,14 @@ export function useEvidence({ dimension = 'adset' } = {}) {
         },
       }));
     } catch (err) {
-      seen.current.delete(key); // allow a retry on the next expand
+      const failure = drillDownFailure(err);
+      if (failure.retryable) seen.current.delete(key);
+      setFailures((s) => ({ ...s, [key]: failure }));
       setErrors((s) => ({ ...s, [key]: err?.message ?? 'Failed to load evidence' }));
     } finally {
       setLoading((s) => ({ ...s, [key]: false }));
     }
   }, [route]);
 
-  return { byId, loading, errors, load };
+  return { byId, loading, errors, failures, load };
 }
