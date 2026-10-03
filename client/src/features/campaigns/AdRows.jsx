@@ -38,8 +38,8 @@ const MessageRow = ({ cols, tone = 'text-lumi-subtle', children }) => (
  * @param {?string} props.evidenceError
  */
 export function AdRows({
-  cols, state = null, loading = false, error = null,
-  evidence = null, evidenceLoading = false, evidenceError = null,
+  cols, state = null, loading = false, error = null, failure = null,
+  evidence = null, evidenceLoading = false, evidenceError = null, evidenceFailure = null,
 }) {
   if (loading || (!error && !state)) {
     return (
@@ -50,9 +50,12 @@ export function AdRows({
   }
 
   if (error) {
+    const copy = failure?.kind === 'NOT_PERMITTED' ? 'Ads aren’t available for this seat.'
+      : failure?.kind === 'CONTRACT_INVALID' ? 'Couldn’t read the ads response.'
+        : 'Couldn’t load ads — collapse and try again.';
     return (
-      <MessageRow cols={cols} tone="text-trend-danger">
-        <AlertTriangle className="inline w-3.5 h-3.5 mr-1.5" strokeWidth={2} /> Couldn’t load ads — collapse and try again.
+      <MessageRow cols={cols} tone={failure?.retryable === false ? 'text-lumi-subtle' : 'text-trend-danger'}>
+        <AlertTriangle className="inline w-3.5 h-3.5 mr-1.5" strokeWidth={2} /> {copy}
       </MessageRow>
     );
   }
@@ -105,6 +108,7 @@ export function AdRows({
             <EvidenceState
               loading={evidenceLoading}
               error={evidenceError}
+              failure={evidenceFailure}
               reasonKey={evidence?.insufficientData ? evidence.reasonKey : null}
               dimension="ad"
               className="py-2"

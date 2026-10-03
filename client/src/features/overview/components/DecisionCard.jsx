@@ -54,7 +54,7 @@ export default function DecisionCard({
   // anything on this card. A spinner for work the user never sees, and a failure
   // banner over a panel that rendered fine.
   const {
-    byId: evidenceById, loading: evidenceLoading, errors: evidenceErrors, load: loadEvidence,
+    byId: evidenceById, loading: evidenceLoading, errors: evidenceErrors, failures: evidenceFailures = {}, load: loadEvidence,
   } = useEvidence();
   const { states: actionStates, execute, dismiss } = useDecisionAction();
   // One instance per card here, unlike the campaigns table: each card is its own
@@ -160,6 +160,7 @@ export default function DecisionCard({
             <EvidenceState
               loading={false}
               error={evError}
+              failure={evidenceFailures[evKey] ?? null}
               reasonKey={ev?.insufficientData ? ev.reasonKey : null}
               className="mt-2"
             />

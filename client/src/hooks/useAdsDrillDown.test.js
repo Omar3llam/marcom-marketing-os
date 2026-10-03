@@ -78,18 +78,15 @@ describe('useAdsDrillDown', () => {
     expect(result.current.byId.as1.children).toEqual([AD]);
   });
 
-  // A body without children[] is a contract break, not a request failure — it
-  // degrades to an empty expansion rather than throwing.
-  it('degrades a malformed body to an empty children array', async () => {
+  it('withholds malformed success and retains the non-retryable guard', async () => {
     api.get.mockResolvedValue({ data: {} });
     const { result } = renderHook(() => useAdsDrillDown());
     await act(async () => { await result.current.load('as1'); });
-    expect(result.current.byId.as1.children).toEqual([]);
-    // null, NOT a synthesised { id } row. The route returns the ad-set's real
-    // measured row; substituting a metric-less object for a missing one would
-    // let a consumer read entity.ctr as undefined and render it as a figure.
-    expect(result.current.byId.as1.entity).toBeNull();
-    expect(result.current.byId.as1.objective).toBeNull();
+    expect(result.current.byId.as1).toBeUndefined();
+    expect(result.current.errors.as1).toContain('failed contract validation');
+    expect(result.current.failures.as1).toEqual({ kind: 'CONTRACT_INVALID', retryable: false });
+    await act(async () => { await result.current.load('as1'); });
+    expect(api.get).toHaveBeenCalledTimes(1);
   });
 
   it('carries the ad-set row and objective the route now returns', async () => {

@@ -140,9 +140,12 @@ function AdSetRows({ state, ads }) {
     );
   }
   if (state.error) {
+    const copy = state.failure?.kind === 'CONTRACT_INVALID' ? 'Couldn’t read the ad-set response.'
+      : state.failure?.kind === 'NOT_PERMITTED' ? 'Ad sets aren’t available for this seat.'
+        : 'Couldn’t load ad sets — collapse and try again.';
     return (
-      <tr><td colSpan={COLS} className="px-4 py-3 text-center text-xs text-trend-danger">
-        <AlertTriangle className="inline w-3.5 h-3.5 mr-1.5" strokeWidth={2} /> Couldn’t load ad sets — collapse and try again.
+      <tr><td colSpan={COLS} className={`px-4 py-3 text-center text-xs ${state.failure?.retryable === false ? 'text-lumi-subtle' : 'text-trend-danger'}`}>
+        <AlertTriangle className="inline w-3.5 h-3.5 mr-1.5" strokeWidth={2} /> {copy}
       </td></tr>
     );
   }
@@ -191,9 +194,11 @@ function AdSetRows({ state, ads }) {
             state={ads.byId[a.entityId] ?? null}
             loading={Boolean(ads.loading[a.entityId])}
             error={ads.errors[a.entityId] ?? null}
+            failure={ads.failures[a.entityId] ?? null}
             evidence={ads.evidenceById[evKey] ?? null}
             evidenceLoading={Boolean(ads.evidenceLoading[evKey])}
             evidenceError={ads.evidenceErrors[evKey] ?? null}
+            evidenceFailure={ads.evidenceFailures[evKey] ?? null}
           />
         )}
       </Fragment>
@@ -242,14 +247,14 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
   const [adsOpen, setAdsOpen] = useState(new Set());    // ad drill-down, keyed by AD-SET id
   const [detailOpen, setDetailOpen] = useState(new Set()); // signals + reasoning panel
   const { byId, load } = useEntityDrillDown();
-  const { byId: evidenceById, loading: evidenceLoading, errors: evidenceErrors, load: loadEvidence } = useEvidence();
-  const { byId: adsById, loading: adsLoading, errors: adsErrors, load: loadAds } = useAdsDrillDown();
+  const { byId: evidenceById, loading: evidenceLoading, errors: evidenceErrors, failures: evidenceFailures = {}, load: loadEvidence } = useEvidence();
+  const { byId: adsById, loading: adsLoading, errors: adsErrors, failures: adsFailures = {}, load: loadAds } = useAdsDrillDown();
   // A SECOND instance of the same hook, fixed to the AD dimension. Its own byId
   // and `seen` maps, so an ad-set id ranking its ads can never collide with a
   // campaign id ranking its ad sets in one cache — see useEvidence's header.
   const {
     byId: adEvidenceById, loading: adEvidenceLoading,
-    errors: adEvidenceErrors, load: loadAdEvidence,
+    errors: adEvidenceErrors, failures: adEvidenceFailures = {}, load: loadAdEvidence,
   } = useEvidence({ dimension: 'ad' });
   // One instance for the whole table — the hook keys its state by entityId, so
   // every row reads its own answer rather than the last one clicked.
@@ -360,9 +365,11 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
     byId: adsById,
     loading: adsLoading,
     errors: adsErrors,
+    failures: adsFailures,
     evidenceById: adEvidenceById,
     evidenceLoading: adEvidenceLoading,
     evidenceErrors: adEvidenceErrors,
+    evidenceFailures: adEvidenceFailures,
   };
 
   const toggleDetail = (id) => {
@@ -575,6 +582,7 @@ export function ConnectorCampaignsPanel({ campaigns = [], verdicts = {}, relativ
                 <EvidenceState
                   loading={evLoading}
                   error={evError}
+                  failure={evidenceFailures[key] ?? null}
                   reasonKey={ev?.insufficientData ? ev.reasonKey : null}
                   className="py-2"
                 />

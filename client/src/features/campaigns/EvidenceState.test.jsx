@@ -12,6 +12,17 @@ import { render, screen } from '@testing-library/react';
 import { EvidenceState } from './EvidenceState.jsx';
 
 describe('EvidenceState', () => {
+  it.each(['ad', 'adset'])('renders permanent failures neutrally at %s dimension', (dimension) => {
+    const { container, rerender } = render(<EvidenceState dimension={dimension} error="RoleForbidden"
+      failure={{ kind: 'NOT_PERMITTED', retryable: false }} reasonKey="NO_MEANINGFUL_GAP" />);
+    expect(screen.getByText('Evidence isn’t available for this seat.')).toBeInTheDocument();
+    expect(screen.queryByText(/try again|measurably behind/)).not.toBeInTheDocument();
+    expect(container.querySelector('.text-trend-danger')).toBeNull();
+    rerender(<EvidenceState dimension={dimension} error="bad"
+      failure={{ kind: 'CONTRACT_INVALID', retryable: false }} />);
+    expect(screen.getByText('Couldn’t read the evidence response.')).toBeInTheDocument();
+    expect(screen.queryByText(/try again/)).not.toBeInTheDocument();
+  });
   it('renders nothing when there is nothing to say', () => {
     const { container } = render(<EvidenceState />);
     expect(container).toBeEmptyDOMElement();
