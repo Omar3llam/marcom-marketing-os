@@ -100,7 +100,7 @@ export function useOverviewModel() {
   const coreAvailable = !requiredError
     && (!requiredUnavailable || collabRole === WORKSPACE_ROLE.CLIENT);
   const coreUsable = !coreLoading && coreAvailable;
-  const optionalError = Boolean(verdictError || aggregateError || connectionsError || accuracyError
+  const optionalError = Boolean(verdictError || aggregateError || connectionsError || accuracyError || homeError
     || (aggregateForbidden && collabRole !== WORKSPACE_ROLE.CLIENT));
   const overviewStatus = getOverviewStatus({
     loading: coreLoading,
