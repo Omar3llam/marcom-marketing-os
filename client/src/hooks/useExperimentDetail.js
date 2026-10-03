@@ -30,6 +30,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import axios from 'axios';
 import { api } from '@/lib/api.js';
+import { incrementalityGateReason } from './incrementalityGateReason.js';
 import { KNOWLEDGE } from '@marcom/runtime-contracts';
 import {
   TestExperimentDetailResponseSchema,
@@ -56,15 +57,8 @@ export function knowledgeOfRefusal(refusal) {
   }
 }
 
-// The api client normalises a plan paywall to `code: 'PLAN_REQUIRED'` and every
-// other 403 to `AUTH_ACCESS_DENIED` (lib/api.js). Both reasons below are
-// already declared in absence.js's ENTITLEMENT_REASONS, so both resolve to
-// NOT_PERMITTED — nothing new is registered here.
-//
-// On these two routes the only other 403 source is the measurement-tier gate,
-// so NOT_ENTITLED is the accurate reading; and if a third gate ever appeared,
-// "you are not entitled to this" is still true of any 403, which is why the
-// fallback is safe rather than merely convenient.
+// Preserve the existing A/B detail contract. Holdouts supply the strict shared
+// classifier below: auth refusal is reachable and cannot establish tier depth.
 function entitlementReason(err) {
   return err?.code === 'PLAN_REQUIRED' ? 'PLAN_REQUIRED' : 'NOT_ENTITLED';
 }
@@ -74,7 +68,7 @@ function entitlementReason(err) {
  * response schema differ, and a second copy of this logic is how two halves of
  * one class drift apart — which is the defect B8-05 exists to stop repeating.
  */
-function useByIdRead(id, { path, schema }) {
+function useByIdRead(id, { path, schema, reasonForError = entitlementReason }) {
   const [test, setTest] = useState(null);
   const [refusal, setRefusal] = useState(null);
   const [reason, setReason] = useState(null);
@@ -107,12 +101,12 @@ function useByIdRead(id, { path, schema }) {
       if (status === 404) setRefusal(DETAIL_REFUSAL.NOT_FOUND);
       else if (status === 403) {
         setRefusal(DETAIL_REFUSAL.NOT_PERMITTED);
-        setReason(entitlementReason(err));
+        setReason(reasonForError(err));
       } else setRefusal(DETAIL_REFUSAL.UNREADABLE);
     } finally {
       if (aliveRef.current) setIsLoading(false);
     }
-  }, [id, path, schema]);
+  }, [id, path, schema, reasonForError]);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -136,5 +130,6 @@ export function useHoldoutDetail(id) {
   return useByIdRead(id, {
     path: '/api/lumi/incrementality',
     schema: IncrementalityDetailResponseSchema,
+    reasonForError: incrementalityGateReason,
   });
 }

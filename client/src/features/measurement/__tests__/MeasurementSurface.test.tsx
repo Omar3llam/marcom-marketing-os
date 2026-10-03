@@ -93,7 +93,7 @@ describe('ScenarioPanel — forward what-if as ranges, CAC labelled projected', 
 // ── IncrementalityPanel ─────────────────────────────────────
 describe('IncrementalityPanel — gated lock + honest holdout loop', () => {
   it('renders the tier-gate as an honest locked state (not an error)', () => {
-    render(<IncrementalityPanel gated onDesign={vi.fn()} onRecord={vi.fn()} onConclude={vi.fn()} />);
+    render(<IncrementalityPanel gated gateReason="NOT_ENTITLED" onDesign={vi.fn()} onRecord={vi.fn()} onConclude={vi.fn()} />);
     expect(screen.getByText(/Agency\/Enterprise capability/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Channel$/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Couldn’t load/i)).not.toBeInTheDocument();

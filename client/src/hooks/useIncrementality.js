@@ -6,20 +6,22 @@
 // POST /api/lumi/incrementality/:id/metrics→ record OBSERVED counts (DESIGNED→RUNNING)
 // POST /api/lumi/incrementality/:id/conclude→ read out lift + CI → memory
 //
-// THE PRODUCT SEAM: measurement is Agency/Enterprise depth. A 403 is NOT an
-// error — it's an honest LOCKED state (`gated`), so the view renders "not
-// enabled for this workspace" rather than a failure. Rows are contract-validated
+// THE PRODUCT SEAM: a 403 establishes refusal (`gated`); only explicit reason
+// evidence distinguishes billing entitlement, measurement depth and access.
+// Rows are contract-validated
 // (IncrementalityListResponseSchema); a CONCLUDED row carries its persisted
 // lift/CI/confidence — the view renders the backing row, never a re-derived lift.
 // ============================================================
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/api.js';
+import { incrementalityGateReason } from './incrementalityGateReason.js';
 import { IncrementalityListResponseSchema, ConcludeIncrementalityResponseSchema } from '@/contracts/schemas';
 
 export function useIncrementality() {
   const [tests, setTests] = useState([]);
   const [readouts, setReadouts] = useState({}); // testId → fresh conclude readout
   const [gated, setGated] = useState(false);
+  const [gateReason, setGateReason] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [busyId, setBusyId] = useState(null);
@@ -29,6 +31,8 @@ export function useIncrementality() {
     if (!aliveRef.current) return;
     setLoading(true);
     setError(null);
+    setGated(false);
+    setGateReason(null);
     try {
       const res = await api.get('/api/lumi/incrementality');
       if (!aliveRef.current) return;
@@ -38,11 +42,12 @@ export function useIncrementality() {
       if (!parsed.success) setError(new Error('Incrementality response failed contract validation'));
     } catch (err) {
       if (!aliveRef.current) return;
-      // 403 = tier-gated. An honest locked state, not a failure. The live api
-      // client rejects with a mapped AppError (.httpStatus); fall back to the raw
-      // axios shape (.response.status) for any un-mapped path (request-interceptor).
+      // api.js preserves PLAN_REQUIRED as code, and MeasurementGated as the
+      // exact message token. Raw axios paths retain response.data.error.
       const status = err?.httpStatus ?? err?.response?.status;
-      if (status === 403) { setGated(true); setTests([]); setError(null); }
+      if (status === 403) {
+        setGated(true); setGateReason(incrementalityGateReason(err)); setTests([]); setError(null);
+      }
       else { setGated(false); setError(err); setTests([]); } // clear stale lock on a real failure
     } finally {
       if (aliveRef.current) setLoading(false);
@@ -102,5 +107,5 @@ export function useIncrementality() {
     }
   }, [load]);
 
-  return { tests, readouts, gated, loading, error, busyId, refetch: load, design, recordCounts, conclude };
+  return { tests, readouts, gated, gateReason, loading, error, busyId, refetch: load, design, recordCounts, conclude };
 }

@@ -1,14 +1,11 @@
 // ============================================================
 // useIncrementality Hook Tests — the tier-gate seam (P1.4b)
 // ------------------------------------------------------------
-// /incrementality is Agency/Enterprise depth (tier-gated server-side). A 403 is
-// an honest LOCKED state (`gated`), NOT a failure. Detection is:
-//   status = err?.httpStatus ?? err?.response?.status
-// The live api client rejects with a mapped AppError (.httpStatus); the raw axios
-// shape (.response.status) is the backward-compat fallback. Both must gate.
+// A 403 establishes refusal; its explicit reason establishes the instruction.
+// Mapped and raw paths must retain plan, measurement-depth and generic refusal.
 // ============================================================
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { useIncrementality } from './useIncrementality.js';
 import { api } from '@/lib/api.js';
 
@@ -27,31 +24,50 @@ describe('useIncrementality — tier gate', () => {
     expect(result.current.error).toBeNull();
   });
 
-  it('treats an AppError httpStatus 403 as gated — tests=[], error=null', async () => {
-    api.get.mockRejectedValue({ httpStatus: 403 });
+  it.each([
+    [{ httpStatus: 403, code: 'PLAN_REQUIRED' }, 'PLAN_REQUIRED'],
+    [{ response: { status: 403, data: { error: 'PLAN_REQUIRED' } } }, 'PLAN_REQUIRED'],
+    [{ httpStatus: 403, code: 'AUTH_ACCESS_DENIED', message: 'MeasurementGated' }, 'NOT_ENTITLED'],
+    [{ response: { status: 403, data: { error: 'MeasurementGated' } } }, 'NOT_ENTITLED'],
+    [{ httpStatus: 403, code: 'AUTH_ACCESS_DENIED' }, 'NOT_PERMITTED'],
+    [{ response: { status: 403 } }, 'NOT_PERMITTED'],
+  ])('preserves refusal evidence %j as %s', async (err, reason) => {
+    api.get.mockRejectedValue(err);
     const { result } = renderHook(() => useIncrementality());
-
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.gated).toBe(true);
-    expect(result.current.error).toBeNull(); // gated=true, error=null — never both
+    expect(result.current.gateReason).toBe(reason);
+    expect(result.current.error).toBeNull();
     expect(result.current.tests).toEqual([]);
   });
 
-  it('also gates on a raw response.status 403 (backward-compat fallback path)', async () => {
-    api.get.mockRejectedValue({ response: { status: 403 } });
+  it('a successful read clears a previous refusal reason', async () => {
+    api.get.mockRejectedValueOnce({ httpStatus: 403, code: 'PLAN_REQUIRED' })
+      .mockResolvedValue({ data: { workspaceId: 'w1', tests: [] } });
     const { result } = renderHook(() => useIncrementality());
-
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.gated).toBe(true);
+    expect(result.current.gateReason).toBe('PLAN_REQUIRED');
+    await act(() => result.current.refetch());
+    expect(result.current.gated).toBe(false);
+    expect(result.current.gateReason).toBeNull();
     expect(result.current.error).toBeNull();
   });
 
-  it('surfaces a non-403 error honestly (and stays ungated)', async () => {
-    api.get.mockRejectedValue({ httpStatus: 500 });
+  it.each([{ httpStatus: 500 }, new Error('offline')])('surfaces a non-403 failure %j honestly', async (err) => {
+    api.get.mockRejectedValue(err);
     const { result } = renderHook(() => useIncrementality());
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBeTruthy();
     expect(result.current.gated).toBe(false);
+  });
+
+  it('contract-invalid success is an error, never a successful empty or refusal', async () => {
+    api.get.mockResolvedValue({ data: { tests: 'invalid' } });
+    const { result } = renderHook(() => useIncrementality());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error.message).toMatch(/contract validation/);
+    expect(result.current.gated).toBe(false);
+    expect(result.current.gateReason).toBeNull();
   });
 });

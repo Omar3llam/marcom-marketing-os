@@ -4,8 +4,8 @@
 // Holdout testing — the only causal signal. The honest loop, end to end:
 //   design (power calc) → record OBSERVED counts → conclude (lift + CI).
 //
-// THE PRODUCT SEAM: `gated` (a 403 from the tier middleware) renders an honest
-// LOCKED state — measurement is Agency/Enterprise depth, not a failure.
+// THE PRODUCT SEAM: `gated` establishes refusal; `gateReason` determines copy.
+// Billing entitlement, measurement depth and generic access remain distinct.
 //
 // HONEST BY CONSTRUCTION:
 //   • A holdout with no recorded counts cannot be concluded (no Conclude button
@@ -192,7 +192,7 @@ function HoldoutRow({ test, readout, busy, onRecord, onConclude }) {
   );
 }
 
-export function IncrementalityPanel({ tests = [], readouts = {}, gated = false, loading = false, error = null, busyId = null, onDesign, onRecord, onConclude }) {
+export function IncrementalityPanel({ tests = [], readouts = {}, gated = false, gateReason = null, loading = false, error = null, busyId = null, onDesign, onRecord, onConclude }) {
   return (
     <section className="mb-10">
       <div className="section-label inline-flex items-center gap-1">
@@ -207,8 +207,14 @@ export function IncrementalityPanel({ tests = [], readouts = {}, gated = false, 
       {gated ? (
         <div className="rounded-2xl border border-lumi-border bg-lumi-surface/60 p-8 text-center">
           <Lock className="w-8 h-8 mx-auto text-lumi-subtle" strokeWidth={1.5} />
-          <p className="mt-3 font-display text-lumi-text">Measurement is an Agency/Enterprise capability.</p>
-          <p className="mt-1 text-lumi-muted text-sm">Incrementality holdouts aren’t enabled for this workspace.</p>
+          <p className="mt-3 font-display text-lumi-text">{gateReason === 'PLAN_REQUIRED'
+            ? 'Holdout testing requires the Pro plan.'
+            : gateReason === 'NOT_ENTITLED' ? 'Measurement is an Agency/Enterprise capability.'
+              : 'Holdout testing cannot be accessed.'}</p>
+          <p className="mt-1 text-lumi-muted text-sm">{gateReason === 'PLAN_REQUIRED'
+            ? 'Upgrade your workspace plan to access holdout testing.'
+            : gateReason === 'NOT_ENTITLED' ? 'Incrementality holdouts aren’t enabled for this workspace.'
+              : 'Access to holdout testing was refused for this request.'}</p>
         </div>
       ) : loading ? (
         <div className="rounded-xl border border-dashed border-lumi-border p-6 text-center text-sm text-lumi-subtle">Loading holdouts…</div>

@@ -46,6 +46,7 @@ export function MeasurementView() {
           tests={inc.tests}
           readouts={inc.readouts}
           gated={inc.gated}
+          gateReason={inc.gateReason}
           loading={inc.loading}
           error={inc.error}
           busyId={inc.busyId}

@@ -70,7 +70,7 @@ describe('B8-05 — an AppError’s status is read, so the refusals stay apart',
   it('useHoldoutDetail: a tier 403 is NOT_PERMITTED with the OTHER reason', async () => {
     // Both are 403 and both are NOT_PERMITTED. C-07: the token cannot carry the
     // instruction, so the reason travels beside it.
-    get.mockRejectedValue(appError(403, 'AUTH_ACCESS_DENIED'));
+    get.mockRejectedValue(Object.assign(appError(403, 'AUTH_ACCESS_DENIED'), { message: 'MeasurementGated' }));
     const { result } = renderHook(() => useHoldoutDetail('h1'));
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.refusal).toBe(DETAIL_REFUSAL.NOT_PERMITTED);
@@ -83,6 +83,17 @@ describe('B8-05 — an AppError’s status is read, so the refusals stay apart',
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.refusal).toBe(DETAIL_REFUSAL.UNREADABLE);
     expect(result.current.test).toBeNull();
+  });
+
+  it.each([
+    { httpStatus: 403, code: 'AUTH_ACCESS_DENIED' },
+    { response: { status: 403, data: { error: 'RoleForbidden' } } },
+  ])('useHoldoutDetail: generic refusal %j carries no tier diagnosis', async (err) => {
+    get.mockRejectedValue(err);
+    const { result } = renderHook(() => useHoldoutDetail('h1'));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.refusal).toBe(DETAIL_REFUSAL.NOT_PERMITTED);
+    expect(result.current.reason).toBe('NOT_PERMITTED');
   });
 
   it('a body that fails the contract is UNREADABLE, not an empty experiment', async () => {

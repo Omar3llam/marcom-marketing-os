@@ -12,9 +12,21 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('../firebase.js', () => ({ auth: { currentUser: null } }));
 
 import { mapTransportError } from './api.js';
+import { incrementalityGateReason } from '@/hooks/incrementalityGateReason.js';
 import { isNoWorkspaceError, isRetryableReadError } from '@/design-system/states/readStatus.js';
 
 const err403 = (data) => ({ response: { status: 403, data }, config: { url: '/api/lumi/blended' } });
+
+it.each([
+  ['PLAN_REQUIRED', 'PLAN_REQUIRED'],
+  ['MeasurementGated', 'NOT_ENTITLED'],
+  ['INVITATION_INVALID', 'NOT_PERMITTED'],
+  ['RoleForbidden', 'NOT_PERMITTED'],
+])('actual API mapping preserves %s as %s for list and holdout detail', (token, reason) => {
+  const mapped = mapTransportError(err403({ error: token }));
+  expect(mapped.httpStatus).toBe(403);
+  expect(incrementalityGateReason(mapped)).toBe(reason);
+});
 
 describe('workspace transport truth', () => {
   it('preserves explicit 409 NoWorkspace as a configuration finding', () => {
