@@ -25,6 +25,7 @@ import { api }                 from '../lib/api.js';
 import { Loader2, RefreshCw }  from 'lucide-react';
 import { READ, readStatusForError, isRetryableReadError } from '../design-system/states/readStatus.js';
 import { loginPathFor, safeNextPath, currentDestination } from './nextPath.js';
+import { parseAccountContextResponse } from './accountContextContract.js';
 
 export function FullscreenLoader({ label = 'Loading…' }) {
   return (
@@ -125,7 +126,7 @@ function useUserContext() {
     api.get('/api/campaigns/me/context')
       .then((res) => {
         if (cancelled) return;
-        const context = res?.data?.context ?? null;
+        const context = parseAccountContextResponse(res?.data);
         publish({ status: isOnboarded(context) ? READ.PRESENT : READ.NOTHING_FOUND, hasContext: isOnboarded(context) });
       })
       .catch((err) => {
