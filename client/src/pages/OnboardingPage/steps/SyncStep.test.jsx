@@ -11,7 +11,7 @@ beforeEach(() => { vi.clearAllMocks(); vi.useFakeTimers(); });
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('SyncStep — pending progress truth', () => {
-  it.each(['success', 'failure', 'partial'])('queued hint callbacks cannot republish waiting copy after %s', async (outcome) => {
+  it.each(['success', 'failure', 'partial', 'refusal'])('queued hint callbacks cannot republish waiting copy after %s', async (outcome) => {
     const timeout = vi.spyOn(globalThis, 'setTimeout');
     let resolve; let reject;
     api.post.mockReturnValue(new Promise((yes, no) => { resolve = yes; reject = no; }));
@@ -20,12 +20,17 @@ describe('SyncStep — pending progress truth', () => {
     expect(oldHints).toHaveLength(2);
     await act(async () => {
       if (outcome === 'failure') reject(new Error('failed'));
+      else if (outcome === 'refusal') reject({ httpStatus: 403 });
       else resolve(outcome === 'success' ? success : { data: { ok: true, synced: 1, results: [{ status: 'success' }, { status: 'error' }] } });
     });
     await act(async () => oldHints.forEach((callback) => callback()));
     expect(screen.queryByText(/large accounts|still waiting/i)).not.toBeInTheDocument();
     if (outcome === 'success') expect(screen.getByRole('status')).toHaveTextContent(/sync results received/i);
     else expect(screen.getByRole('alert')).toBeInTheDocument();
+    if (outcome === 'refusal') {
+      expect(screen.queryByRole('button', { name: /retry sync/i })).not.toBeInTheDocument();
+      expect(vi.getTimerCount()).toBe(0);
+    }
   });
 
   it('queued waiting callbacks from a failed attempt cannot alter its retry', async () => {
@@ -98,6 +103,34 @@ describe('SyncStep — pending progress truth', () => {
 });
 
 describe('SyncStep', () => {
+  it.each([
+    { httpStatus: 503 }, { response: { status: 500 } }, new Error('offline'),
+    { httpStatus: 408 }, { response: { status: 429 } },
+  ])('transient failure %j keeps retry without completing', async (err) => {
+    api.post.mockRejectedValueOnce(err);
+    const onComplete = vi.fn(); render(<SyncStep onComplete={onComplete} />);
+    await act(async () => vi.runAllTimersAsync());
+    expect(screen.getByRole('button', { name: /retry sync/i })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/retry the sync/i);
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [{ httpStatus: 403, code: 'AUTH_ACCESS_DENIED' }, /this seat can’t start a connection sync/i],
+    [{ response: { status: 403, data: { error: 'RoleForbidden' } } }, /this seat can’t start a connection sync/i],
+    [{ httpStatus: 401 }, /sign in again/i],
+    [{ response: { status: 400, data: { error: 'WorkspaceNotFound' } } }, /current workspace setup/i],
+  ])('permanent refusal %j stays on step without a blind retry', async (err, copy) => {
+    api.post.mockRejectedValueOnce(err);
+    const onComplete = vi.fn(); const { container } = render(<SyncStep onComplete={onComplete} />);
+    await act(async () => vi.runAllTimersAsync());
+    expect(screen.queryByRole('button', { name: /retry sync/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(copy);
+    expect(container.textContent).not.toMatch(/stay here and retry|RoleForbidden|AUTH_ACCESS_DENIED|WorkspaceNotFound|SyncFailed/);
+    expect(api.post).toHaveBeenCalledTimes(1);
+    expect(onComplete).not.toHaveBeenCalled();
+  });
+
   it('auto-triggers the sync POST on mount', () => {
     api.post.mockResolvedValue(success);
     render(<SyncStep onComplete={vi.fn()} />);
@@ -168,7 +201,46 @@ describe('SyncStep — long-sync messaging', () => {
 });
 
 describe('SyncStep — outcome and lifecycle safety', () => {
+  it.each(['success', 'partial'])('retryable failure retracts copy and hints, then recovers to %s exactly once', async (outcome) => {
+    let resolve;
+    api.post.mockRejectedValueOnce(outcome === 'success' ? { httpStatus: 500 } : new Error('offline'))
+      .mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    const onComplete = vi.fn(); render(<SyncStep onComplete={onComplete} />);
+    await act(async () => vi.runAllTimersAsync());
+    const retry = screen.getByRole('button', { name: /retry sync/i });
+    fireEvent.click(retry); fireEvent.click(retry);
+    expect(api.post).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText(/large accounts|still waiting/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(/syncing your workspace/i);
+    await act(async () => { resolve(outcome === 'success' ? success
+      : { data: { ok: true, synced: 1, results: [{ status: 'success' }, { status: 'error' }] } }); });
+    if (outcome === 'partial') {
+      expect(onComplete).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: /retry sync/i })).toBeInTheDocument();
+      const proceed = screen.getByRole('button', { name: /continue with available/i });
+      fireEvent.click(proceed); fireEvent.click(proceed);
+    }
+    await act(async () => vi.runAllTimersAsync());
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it('partial retry issues one additional request and completes from its success', async () => {
+    api.post.mockResolvedValueOnce({ data: { ok: true, synced: 1, results: [{ status: 'success' }, { status: 'skipped' }] } })
+      .mockResolvedValueOnce(success);
+    const onComplete = vi.fn(); render(<SyncStep onComplete={onComplete} />);
+    await act(async () => vi.runAllTimersAsync());
+    expect(screen.getByRole('button', { name: /continue with available/i })).toBeInTheDocument();
+    const retry = screen.getByRole('button', { name: /retry sync/i });
+    fireEvent.click(retry); fireEvent.click(retry);
+    await act(async () => vi.runAllTimersAsync());
+    expect(api.post).toHaveBeenCalledTimes(2);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
+    { data: { ok: true, synced: 1 } },
+    { data: { ok: true, synced: 1, results: 'invalid' } },
     { data: { ok: false, synced: 1, results: [{ status: 'success' }] } },
     { data: { ok: true, synced: 0, failed: 1, results: [{ status: 'error' }] } },
     { data: { ok: true, synced: 0, failed: 0, results: [{ status: 'skipped' }] } },
@@ -179,6 +251,8 @@ describe('SyncStep — outcome and lifecycle safety', () => {
     await act(async () => vi.runAllTimersAsync());
     expect(onComplete).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /retry sync/i })).toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledTimes(1);
   });
 
   it('retry after failure is guarded against duplicate clicks and completes once', async () => {
