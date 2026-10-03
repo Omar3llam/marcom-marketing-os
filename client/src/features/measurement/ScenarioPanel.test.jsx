@@ -96,14 +96,21 @@ describe('ScenarioPanel — tier gate (gated)', () => {
       </MemoryRouter>,
     );
 
+  it('permission refusal cannot recommend an upgrade or name a subscription', () => {
+    const { container } = renderGate({ gated: true, gateReason: 'NOT_PERMITTED' });
+    expect(screen.getByText('Scenario projection isn’t available for this seat.')).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/upgrade|\bPRO\b|subscription|payment|billing/i);
+    expect(screen.queryByRole('button', { name: /retry|project/i })).not.toBeInTheDocument();
+  });
+
   it('renders the upgrade prompt (PRO) when gated — no Project controls', () => {
-    renderGate({ gated: true });
+    renderGate({ gated: true, gateReason: 'PLAN_REQUIRED' });
     expect(screen.getByText(/Scenario projection is a Pro feature/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /project/i })).not.toBeInTheDocument();
   });
 
   it('gated wins over a stale error — never shows both', () => {
-    renderGate({ gated: true, error: new Error('boom') });
+    renderGate({ gated: true, gateReason: 'PLAN_REQUIRED', error: new Error('boom') });
     expect(screen.getByText(/Scenario projection is a Pro feature/i)).toBeInTheDocument();
     expect(screen.queryByText(/couldn’t project/i)).not.toBeInTheDocument();
   });
@@ -112,5 +119,16 @@ describe('ScenarioPanel — tier gate (gated)', () => {
     renderGate({ gated: false });
     expect(screen.getByRole('button', { name: /project/i })).toBeInTheDocument();
     expect(screen.queryByText(/is a Pro feature/i)).not.toBeInTheDocument();
+  });
+
+  it('an unclassified refusal is neutral and suppresses stale error/results', () => {
+    renderGate({ gated: true, scenario: configuredScenario(), error: new Error('boom') });
+    expect(screen.getByText('Scenario projection isn’t available for this seat.')).toBeInTheDocument();
+    expect(screen.queryByText(/couldn’t project|Projected outcome|Pro feature/i)).not.toBeInTheDocument();
+  });
+
+  it('pending projection disables the existing control and retains its pending label', () => {
+    renderGate({ loading: true });
+    expect(screen.getByRole('button', { name: 'Projecting…' })).toBeDisabled();
   });
 });
