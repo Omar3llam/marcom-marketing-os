@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { useHome, computeStale } from './useHome.js';
 import { api } from '@/lib/api.js';
+import { READ } from '@/design-system/states/readStatus.js';
 
 vi.mock('@/lib/api.js', () => ({ api: { get: vi.fn() } }));
 
@@ -39,6 +40,7 @@ describe('useHome', () => {
     expect(api.get).toHaveBeenCalledWith('/api/lumi/home');
     expect(result.current.home?.buyerBand.items).toHaveLength(1);
     expect(result.current.error).toBeNull();
+    expect(result.current).toMatchObject({ status: READ.PRESENT, reason: null });
   });
 
   it('rejects a malformed envelope with an honest error (no junk render)', async () => {
@@ -48,6 +50,7 @@ describe('useHome', () => {
 
     expect(result.current.home).toBeNull();
     expect(result.current.error?.message).toMatch(/contract validation/i);
+    expect(result.current.status).toBe(READ.NOT_REACHABLE);
   });
 
   it('surfaces a network error and nulls the home', async () => {
@@ -90,6 +93,73 @@ describe('useHome', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.error).toBeNull();
     expect(result.current.home?.buyerBand).toMatchObject({ items: [], count: 0, empty: true });
+  });
+});
+
+describe('Home access read truth', () => {
+  it.each([
+    [{ httpStatus: 409, code: 'NoWorkspace' }, READ.NOTHING_FOUND, 'NoWorkspace'],
+    [{ httpStatus: 409, code: 'RoleNotConfigured', context: { roleReason: 'ROLE_UNSET' } }, READ.NOTHING_FOUND, 'ROLE_UNSET'],
+    [{ response: { status: 409, data: { error: 'RoleNotConfigured', roleReason: 'ROLE_UNSET' } } }, READ.NOTHING_FOUND, 'ROLE_UNSET'],
+    [{ httpStatus: 503, context: { roleReason: 'ROLE_LOOKUP_FAILED' } }, READ.NOT_REACHABLE, 'ROLE_LOOKUP_FAILED'],
+    [{ response: { status: 503, data: { error: 'RoleUnavailable', roleReason: 'ROLE_LOOKUP_FAILED' } } }, READ.NOT_REACHABLE, 'ROLE_LOOKUP_FAILED'],
+    [{ httpStatus: 503, context: { roleReason: 'ROLE_UNKNOWN' } }, READ.NOT_REACHABLE, 'ROLE_UNKNOWN'],
+    [{ httpStatus: 503, context: { roleReason: 'ROLE_IDENTITY_MISSING' } }, READ.NOT_REACHABLE, 'ROLE_IDENTITY_MISSING'],
+    [{ httpStatus: 403 }, READ.NOT_PERMITTED, null],
+    [{ response: { status: 403 } }, READ.NOT_PERMITTED, null],
+    [{ httpStatus: 500 }, READ.NOT_REACHABLE, null],
+    [{ code: 'NETWORK_ERROR' }, READ.NOT_REACHABLE, null],
+  ])('structured error %j becomes %s / %s while retaining its failure', async (details, status, reason) => {
+    const error = Object.assign(new Error('same opaque message'), details);
+    api.get.mockRejectedValue(error);
+    const { result } = renderHook(useHome);
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current).toMatchObject({ status, reason, error, home: null });
+  });
+
+  it('stale success is PRESENT with no request started merely by staleness', async () => {
+    api.get.mockResolvedValue({ data: { ...validHome,
+      loop: { ...validHome.loop, lastRunAt: new Date(Date.now() - 3_600_000).toISOString() },
+    } });
+    const { result } = renderHook(useHome);
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    await act(async () => {});
+    expect(result.current).toMatchObject({ isStale: true, isLoading: false, status: READ.PRESENT, error: null });
+    expect(api.get).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['manual', 'focus'])('role lookup failure recovers through %s without stale error or reason', async (action) => {
+    let resolve;
+    api.get.mockRejectedValueOnce(Object.assign(new Error('failed'), { httpStatus: 503, context: { roleReason: 'ROLE_LOOKUP_FAILED' } }))
+      .mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
+    const { result } = renderHook(useHome);
+    await waitFor(() => expect(result.current.reason).toBe('ROLE_LOOKUP_FAILED'));
+    act(() => { if (action === 'focus') window.dispatchEvent(new Event('focus')); else result.current.refetch(); });
+    expect(result.current).toMatchObject({ status: READ.LOADING, reason: null, error: null, home: null });
+    await act(async () => resolve({ data: validHome }));
+    expect(result.current).toMatchObject({ status: READ.PRESENT, reason: null, error: null });
+    expect(result.current.home).not.toBeNull();
+    expect(api.get).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['ROLE_UNKNOWN', 'ROLE_IDENTITY_MISSING'])('focus does not retry permanent role reason %s behind 503', async (roleReason) => {
+    api.get.mockRejectedValue(Object.assign(new Error('failed'), { httpStatus: 503, context: { roleReason } }));
+    const { result } = renderHook(useHome);
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    act(() => window.dispatchEvent(new Event('focus')));
+    expect(api.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('focus after successful Home preserves the existing retract-and-reload lifecycle', async () => {
+    let resolve;
+    api.get.mockResolvedValueOnce({ data: validHome }).mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
+    const { result } = renderHook(useHome);
+    await waitFor(() => expect(result.current.home).not.toBeNull());
+    act(() => window.dispatchEvent(new Event('focus')));
+    expect(result.current).toMatchObject({ status: READ.LOADING, home: null, isLoading: true, error: null });
+    await act(async () => resolve({ data: validHome }));
+    expect(result.current.status).toBe(READ.PRESENT);
+    expect(api.get).toHaveBeenCalledTimes(2);
   });
 });
 

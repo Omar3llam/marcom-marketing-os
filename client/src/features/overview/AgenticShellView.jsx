@@ -23,13 +23,13 @@
 // ============================================================
 import { useCollabRole, WORKSPACE_ROLE } from '@/hooks/useCollabRole.js';
 import { useHome } from '@/hooks/useHome.js';
-import { isNoWorkspaceError, isRetryableReadError } from '@/design-system/states/readStatus.js';
+import { READ, isRetryableReadError } from '@/design-system/states/readStatus.js';
 import AgendaBand from './components/AgendaBand.jsx';
 import LoopStatusRing from './components/LoopStatusRing.jsx';
 
 export default function AgenticShellView() {
   const { role } = useCollabRole();
-  const { home, isStale, isLoading, error, refetch } = useHome();
+  const { home, isStale, isLoading, error, status, reason, refetch } = useHome();
 
   const isClient = role === WORKSPACE_ROLE.CLIENT;
   const canRunSweep = role === WORKSPACE_ROLE.BUYER || role === WORKSPACE_ROLE.STRATEGIST;
@@ -46,7 +46,7 @@ export default function AgenticShellView() {
     );
   }
 
-  if (isNoWorkspaceError(error)) {
+  if (reason === 'NoWorkspace') {
     return (
       <div className="mb-6 rounded-xl border border-surface-border bg-surface-card px-4 py-3 font-mono text-xs text-dark-soft">
         No workspace is attached to this account. Your agenda is not configured.
@@ -54,10 +54,21 @@ export default function AgenticShellView() {
     );
   }
 
+  if (reason === 'ROLE_UNSET' || status === READ.NOT_PERMITTED) {
+    return (
+      <div className="mb-6 rounded-xl border border-surface-border bg-surface-card px-4 py-3 font-mono text-xs text-dark-soft">
+        {reason === 'ROLE_UNSET' ? 'Your agenda isn’t available until this seat has a collaboration role.'
+          : 'This agenda cannot be accessed for this request.'}
+      </div>
+    );
+  }
+
   if (error || !home) {
     return (
       <div className="mb-6 rounded-xl border border-surface-border bg-surface-card px-4 py-3 font-mono text-xs text-dark-soft">
-        Couldn&apos;t load your agenda right now.
+        {reason === 'ROLE_LOOKUP_FAILED' ? 'Lumi couldn’t determine your agenda access right now.'
+          : ['ROLE_UNKNOWN', 'ROLE_IDENTITY_MISSING'].includes(reason)
+            ? 'Your agenda access could not be established for this seat.' : 'Couldn’t load your agenda right now.'}
         {isRetryableReadError(error) && <button type="button" className="block mt-2" onClick={refetch}>Retry agenda</button>}
       </div>
     );
@@ -67,7 +78,7 @@ export default function AgenticShellView() {
     <div className="space-y-4 mb-6">
       {isStale && (
         <p className="font-mono text-[10px] text-dark-subtle">
-          Showing the last sweep — refreshing in the background.
+          Showing the last available sweep. This view may be out of date.
         </p>
       )}
 
