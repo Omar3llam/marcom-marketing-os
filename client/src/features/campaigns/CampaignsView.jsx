@@ -142,6 +142,8 @@ export default function CampaignsView() {
     // FAILED — network or contract — left every campaign unscored and the page
     // said "Needs Data" for the whole account.
     error: verdictsError,
+    loading: verdictsLoading,
+    budgetDistribution,
     refetch: refetchVerdicts,
   } = useConnectorVerdicts();
 
@@ -255,32 +257,6 @@ export default function CampaignsView() {
     for (const c of health?.campaigns ?? []) m[c.entityId] = c.impactScore;
     return m;
   }, [health]);
-
-  // Spend-weighted KILL/HOLD/SCALE buckets from the connector VERDICT engine —
-  // same shape PerformanceChart consumes from the CSV `totals`, so the chart needs
-  // no change. The engine's six verdicts coarsen into the chart's three lanes:
-  // KILL→kill, SCALE→scale, everything keep-running/adjust (HOLD/WATCH/REALLOCATE/
-  // REFRESH)→hold. Units are minor here — the chart only renders ratios. Only
-  // revenue-eligible campaigns are present (the rest are in connectorGatedOut), so
-  // a positive `spend` here means "we have honestly-scored connector spend."
-  const connectorTotals = useMemo(() => {
-    const t = { spend: 0, kill: 0, hold: 0, scale: 0 };
-    for (const v of connectorVerdicts) {
-      const spend = v.spendMinor ?? 0;
-      t.spend += spend;
-      if (v.verdict === 'KILL') t.kill += spend;
-      else if (v.verdict === 'SCALE') t.scale += spend;
-      else t.hold += spend;
-    }
-    return t;
-  }, [connectorVerdicts]);
-
-  // FE-03 — this was `connectorTotals.spend > 0 ? connectorTotals : totals`,
-  // and the fallback was a zeroed roll-up of the retired feed. There is one
-  // substrate now, so there is nothing to fall back TO: an account with no
-  // scored connector spend has all-zero totals, and PerformanceChart already
-  // takes `hasConnectorData` to tell "nothing yet" from "nothing scored".
-  const chartTotals = connectorTotals;
 
   // Join the engine verdict onto each connector campaign row (by entityId) so the
   // Connected-channels table can render a verdict badge — revenue track (KILL/
@@ -601,7 +577,7 @@ export default function CampaignsView() {
       {/* Where the money currently sits, as context BELOW the decisions rather
           than the second thing on the page. */}
       <div className="mt-6">
-        <PerformanceChart totals={chartTotals} currency={currency} hasConnectorData={hasConnectorData} />
+        <PerformanceChart budgetDistribution={budgetDistribution} loading={verdictsLoading} error={verdictsError} />
       </div>
 
       {/* FE-03 — the channel filter and <AnalysisSummary> stood here. The

@@ -36,6 +36,7 @@
  */
 
 import { z } from 'zod';
+import { SUPPORTED_CURRENCY_CODES } from '@marcom/runtime-contracts';
 
 /**
  * ⚠️ THE ONLY CLOSED VOCABULARY HERE, and it is earned.
@@ -159,6 +160,27 @@ export const ConnectorCampaignsResponseSchema = z.object({
   campaigns: z.array(ConnectorCampaignRowSchema),
 });
 
+// SC-17A: state and numeric publication are inseparable. An absent/malformed
+// projection is a contract error, never a successful empty distribution.
+const absentDistribution = {
+  currency: z.null(), totalSpendMinor: z.null(),
+  killSpendMinor: z.null(), holdSpendMinor: z.null(), scaleSpendMinor: z.null(),
+  killPct: z.null(), holdPct: z.null(), scalePct: z.null(),
+};
+const amount = z.number().finite().nonnegative();
+const share = z.number().finite().min(0).max(100);
+export const BudgetDistributionSchema = z.discriminatedUnion('status', [
+  z.object({
+    status: z.literal('AVAILABLE'), reason: z.null(),
+    currency: z.string().refine((code) => SUPPORTED_CURRENCY_CODES.includes(code)),
+    totalSpendMinor: z.number().finite().positive(),
+    killSpendMinor: amount, holdSpendMinor: amount, scaleSpendMinor: amount,
+    killPct: share, holdPct: share, scalePct: share,
+  }),
+  z.object({ status: z.literal('UNAVAILABLE'), reason: z.enum(['MIXED_CURRENCY', 'UNKNOWN_CURRENCY']), ...absentDistribution }),
+  z.object({ status: z.literal('EMPTY'), reason: z.literal('NO_SCORED_SPEND'), ...absentDistribution }),
+]);
+
 export const ConnectorVerdictsResponseSchema = z.object({
   workspaceId: z.string().nullish(),
   generatedAt: z.string().nullish(),
@@ -166,6 +188,7 @@ export const ConnectorVerdictsResponseSchema = z.object({
   // losing it silently removes the operator's only explanation.
   verdicts: z.array(ConnectorVerdictRowSchema),
   gatedOut: z.array(GatedOutRowSchema),
+  budgetDistribution: BudgetDistributionSchema,
   // Absent on the service's early return (no annotated tree), so nullish rather
   // than required: a shape the server legitimately produces may not be an error.
   account: z.unknown().nullish(),

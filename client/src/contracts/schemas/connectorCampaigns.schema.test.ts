@@ -35,6 +35,28 @@ import {
   ConnectorVerdictRowSchema,
 } from './connectorCampaigns.schema';
 
+describe('SC-17A required distribution contract', () => {
+  const available = { status: 'AVAILABLE', reason: null, currency: 'EGP', totalSpendMinor: 1000,
+    killSpendMinor: 250, holdSpendMinor: 500, scaleSpendMinor: 250,
+    killPct: 24.99, holdPct: 50.02, scalePct: 24.99 };
+  const parse = (budgetDistribution: unknown) => ConnectorVerdictsResponseSchema.safeParse({ verdicts: [], gatedOut: [], budgetDistribution });
+  it('preserves valid backend values exactly', () => {
+    expect(ConnectorVerdictsResponseSchema.parse({ verdicts: [], gatedOut: [], budgetDistribution: available })).toHaveProperty('budgetDistribution', available);
+  });
+  it.each([undefined, null, {}, { ...available, killPct: null }, { ...available, holdPct: 101 },
+    { ...available, totalSpendMinor: Infinity }, { ...available, currency: 'XXX' },
+    { ...available, reason: 'MIXED_CURRENCY' }, { ...available, status: 'EMPTY' },
+    { ...available, status: 'UNAVAILABLE', reason: 'MIXED_CURRENCY' }])
+  ('rejects missing/malformed or contradictory distribution: %j', (distribution) => {
+    expect(parse(distribution).success).toBe(false);
+  });
+  it.each(['MIXED_CURRENCY', 'UNKNOWN_CURRENCY', 'NO_SCORED_SPEND'])('admits explicit null-only %s', (reason) => {
+    expect(parse({ status: reason === 'NO_SCORED_SPEND' ? 'EMPTY' : 'UNAVAILABLE', reason,
+      currency: null, totalSpendMinor: null, killSpendMinor: null, holdSpendMinor: null,
+      scaleSpendMinor: null, killPct: null, holdPct: null, scalePct: null }).success).toBe(true);
+  });
+});
+
 // Mirrors toCampaignRow + metricsOf + the route's `needsRevenue`.
 const row = (over = {}) => ({
   entityId: 'c1',
@@ -102,6 +124,9 @@ const verdict = (over = {}) => ({
 });
 
 const verdictsBody = (over = {}) => ({
+  budgetDistribution: { status: 'EMPTY', reason: 'NO_SCORED_SPEND', currency: null,
+    totalSpendMinor: null, killSpendMinor: null, holdSpendMinor: null, scaleSpendMinor: null,
+    killPct: null, holdPct: null, scalePct: null },
   workspaceId: 'ws-1',
   generatedAt: '2026-09-08T00:00:00.000Z',
   verdicts: [verdict()],
@@ -206,6 +231,7 @@ describe('PARITY-04 · GET /entities/verdicts', () => {
     // decision-history keys. A schema that required them would reject a shape
     // the server legitimately produces.
     const early = {
+      budgetDistribution: verdictsBody().budgetDistribution,
       workspaceId: 'ws-1',
       generatedAt: '2026-09-08T00:00:00.000Z',
       verdicts: [],
