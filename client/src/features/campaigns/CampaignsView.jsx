@@ -43,9 +43,16 @@ import { VERDICT_RANK } from '@/lib/verdictRank.js';
 import { buildPdfCampaigns } from '@/features/campaigns/pdfData.js';
 
 // The PDF is sourced from the LIVE connector substrate, so export is available
-// exactly when there are synced connector campaigns (never the retired CSV feed).
-// Exported (pure) so the button-gate can be unit-tested without booting the page.
+// when there are synced connector campaigns (never the retired CSV feed).
+// This pure row predicate is combined with read availability at the header.
 export const canExportPdf = (connectorCampaigns = []) => connectorCampaigns.length > 0;
+
+// [] during a pending/failed read makes no claim about the campaign population.
+function campaignHeaderState({ campaigns, loading, error }) {
+  if (loading) return 'LOADING';
+  if (error) return 'ERROR';
+  return campaigns.length === 0 ? 'EMPTY' : 'PRESENT';
+}
 
 // Revenue-source → the guidance clause shown when connected campaigns can't be
 // scored. Keyed by the industry's `revenueSource` (from onboarding INDUSTRIES),
@@ -151,6 +158,9 @@ export default function CampaignsView() {
   // means the decision table cannot be drawn honestly: campaigns without
   // verdicts render as UNSCORED, which is a measurement nobody took.
   const substrateError = connectorError ?? verdictsError;
+  const headerState = campaignHeaderState({ campaigns: connectorCampaigns, loading: connectorLoading, error: connectorError });
+  const headerReadsReady = !connectorLoading && !connectorError && !verdictsLoading && !verdictsError;
+  const exportReadPending = connectorLoading || verdictsLoading;
 
   // Deterministic analysis over the live connector graph: Account Health +
   // Wasted Spend + per-campaign Impact. Every number traces to a MetricSnapshot
@@ -183,6 +193,10 @@ export default function CampaignsView() {
   const [downloading, setDownloading] = useState(false);
 
   const handleDownloadPdf = async () => {
+    if (exportReadPending) {
+      toast.error('Checking campaign data before export');
+      return;
+    }
     if (substrateError) {
       toast.error('Can’t export while the campaign read is unavailable');
       return;
@@ -452,18 +466,17 @@ export default function CampaignsView() {
           {/* The page is a queue of decisions, not a report. It says so, and
               then leads with the count that decides whether you read on. */}
           <h1 className="page-title text-lumi-text">Decision Queue</h1>
-          {actionCount > 0 && (
+          {headerReadsReady && actionCount > 0 && (
             <p className="font-mono text-xs text-signal-kill mt-1">
               {actionCount} campaign{actionCount === 1 ? '' : 's'} need{actionCount === 1 ? 's' : ''} action
             </p>
           )}
           <p className="font-mono text-xs text-lumi-subtle mt-0.5">
             {(() => {
-              // Count from whichever substrate has data — a connector-synced
-              // account has 0 CSV rows but N live campaigns, so keying this off
-              // the CSV feed alone falsely read "no data" with 34 campaigns synced.
+              if (headerState === 'LOADING') return 'Checking synced campaigns…';
+              if (headerState === 'ERROR') return 'Couldn’t read synced campaigns.';
+              if (headerState === 'EMPTY') return 'No campaigns synced yet';
               const n = connectorCampaigns.length;
-              if (n === 0) return 'No campaigns synced yet';
               const scanned = `${n} campaign${n === 1 ? '' : 's'} · live`;
               // Budget at Risk is the analysis engine's figure (KILL + REFRESH),
               // shown here in the SAME formatter as the KPI card so the header
@@ -481,10 +494,11 @@ export default function CampaignsView() {
             // The PDF carries verdicts and gating reasons, so an unreadable
             // verdict read would export a document asserting every campaign is
             // unscored. Refuse rather than publish it.
-            disabled={downloading || !canExportPdf(connectorCampaigns) || Boolean(substrateError)}
+            disabled={downloading || !headerReadsReady || !canExportPdf(connectorCampaigns)}
             className="inline-flex items-center gap-1.5 bg-lumi-elevated border border-lumi-border rounded-xl px-4 py-2 text-sm font-display text-lumi-text hover:border-lumi-accent/40 disabled:opacity-60 transition-all"
-            title={substrateError ? 'Can’t export while the campaign read is unavailable'
-              : !canExportPdf(connectorCampaigns) ? 'Sync your Meta account to export' : 'Download PDF Report'}
+            title={exportReadPending ? 'Checking campaign data before export'
+              : substrateError ? 'Can’t export while the campaign read is unavailable'
+              : !canExportPdf(connectorCampaigns) ? 'No campaign data to export' : 'Download PDF Report'}
           >
             {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" strokeWidth={1.5} />}
             {downloading ? 'Generating…' : 'PDF Report'}
