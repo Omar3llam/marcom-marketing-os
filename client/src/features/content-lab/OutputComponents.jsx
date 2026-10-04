@@ -8,7 +8,6 @@ import {
   Sparkles, Check, RotateCcw, FileText, Zap, Layers, Play,
   AlertTriangle, Target,
 } from 'lucide-react';
-import LumiLoader from '@/components/ui/LumiLoader.jsx';
 
 // ── Empty state ──────────────────────────────────────────────
 export function OutputEmpty() {
@@ -27,30 +26,10 @@ export function OutputEmpty() {
 
 // ── Generating state ─────────────────────────────────────────
 export function OutputGenerating() {
-  const steps = ['Reading diagnosis', 'Loading brand voice', 'Drafting copy', 'Composing visuals', 'Pressure-testing'];
-
   return (
-    <div className="bg-surface-card border border-surface-border rounded-xl p-8 min-h-[480px] flex flex-col items-center justify-center text-center shadow-card">
-      <div aria-live="polite" aria-atomic="true" className="sr-only">
-        Generating content.
-      </div>
-      <LumiLoader label="Generating" sub="Working" />
-      <div className="mt-7 flex flex-col gap-2">
-        {steps.map((s, i) => (
-          <div key={s} className="flex items-center gap-2">
-            <span className="w-3.5 flex justify-center">
-              {i === 0 ? (
-                <span className="w-2 h-2 rounded-full bg-lumi-accent animate-pulse" />
-              ) : (
-                <span className="w-1.5 h-1.5 rounded-full border border-dark-subtle" />
-              )}
-            </span>
-            <span className={`font-mono text-xs ${i === 0 ? 'text-dark-base' : 'text-dark-subtle'}`}>
-              {s}
-            </span>
-          </div>
-        ))}
-      </div>
+    <div role="status" aria-live="polite" aria-atomic="true" className="bg-surface-card border border-surface-border rounded-xl p-8 min-h-[480px] flex flex-col items-center justify-center text-center shadow-card">
+      <p className="font-display font-bold text-lg text-dark-base">Generating content…</p>
+      <p className="mt-2 text-[13px] text-dark-soft">Waiting for this request to finish.</p>
     </div>
   );
 }

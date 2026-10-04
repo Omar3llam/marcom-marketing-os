@@ -44,7 +44,6 @@ export default function ContentLabView() {
     content,
     loading,
     error: apiError,
-    progress: apiProgress,
     reset: resetGeneration,
   } = useContentGeneration();
   // Saved-generations history (workspace-scoped). Refetched after each generate.
@@ -91,7 +90,6 @@ export default function ContentLabView() {
 
   // Derive phase from hook state
   const phase = loading ? 'generating' : apiError ? 'error' : content ? 'done' : 'idle';
-  const progress = apiProgress;
 
   const generate = async () => {
     const p = product.trim(), o = offer.trim(), k = keyFacts.trim();
@@ -544,13 +542,6 @@ export default function ContentLabView() {
             {phase !== 'generating' && <ArrowRight className="w-3.5 h-3.5" strokeWidth={1.5} />}
           </button>
 
-          {phase === 'generating' && (
-            <div className="mt-3 h-0.5 rounded-sm bg-surface-border overflow-hidden">
-              <div
-                className="h-full w-1/3 bg-lumi-accent animate-progress-sweep"
-              />
-            </div>
-          )}
         </aside>
 
         {/* MIDDLE: History rail */}
@@ -598,7 +589,7 @@ export default function ContentLabView() {
           ) : (
             <>
               {phase === 'idle' && <OutputEmpty />}
-              {phase === 'generating' && <OutputGenerating progress={progress} />}
+              {phase === 'generating' && <OutputGenerating />}
               {phase === 'error' && <OutputError error={apiError} onRetry={reset} />}
               {phase === 'done' && (
                 <OutputDone
